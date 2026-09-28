@@ -1431,6 +1431,54 @@ createTableIfNeeded(`
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
 `);
+// 2026-09-28 — Demand fulfillment assumptions, per direct instruction on
+// the board-case workbook's Impressions tab: "Demand Fulfillment growth
+// based on Growth Marketing media impressions is an important statistical
+// add focused on US Traffic only. Forecasting the change to brand search,
+// remarketing pool, ID resolution print and email are important aspects
+// of the evergreen budget." The rule: these four lines scale with WEBSITE
+// VISITORS (which growth-marketing impressions create), not with the media
+// budget directly — so as a plan year's campaigns add visitors, the
+// evergreen demand-fulfillment budget re-states itself. One row per
+// account; nulls fall back to the defaults below on read (isDefault per
+// field), so the forecast can run before every field is entered.
+// Defaults are Verilume's own ID-resolution product economics (the same
+// across clients — match rate on US traffic, cost per matched postcard
+// all-in, cost per acquired email) and cadence norms; US share of traffic,
+// the remarketing pool rate and the brand-search click rate are genuinely
+// per-client (GA4 geo split, tag coverage, brand strength) and start null.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_demand_fulfillment (
+    accountId TEXT PRIMARY KEY,
+    usShareOfTraffic REAL,
+    idResMatchRate REAL,
+    postcardDropsPerMatchedVisitor REAL,
+    idResPostcardCostPerPiece REAL,
+    idResEmailsPerVisitor REAL,
+    idResEmailCost REAL,
+    remarketingPoolRate REAL,
+    remarketingImpressionsPerMember REAL,
+    remarketingCpm REAL,
+    brandSearchClicksPerVisitor REAL,
+    brandSearchCpc REAL,
+    notes TEXT,
+    updatedAt TEXT NOT NULL,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+const DEMAND_FULFILLMENT_FIELDS = [
+  { key: 'usShareOfTraffic', label: 'US share of website traffic', unit: 'rate', defaultValue: null, note: 'From GA4 geo split — per client. ID resolution matches US traffic only.' },
+  { key: 'idResMatchRate', label: 'ID-resolution match rate on US traffic', unit: 'rate', defaultValue: 0.10, note: 'Verilume ID-resolution product: ~10% of US visitors resolve to a mailable household.' },
+  { key: 'postcardDropsPerMatchedVisitor', label: 'Postcard drops per matched visitor per year', unit: 'count', defaultValue: 3, note: 'Cadence cap on ID-resolution postcards; 2–4 typical.' },
+  { key: 'idResPostcardCostPerPiece', label: 'ID-resolution postcard cost per piece (all-in)', unit: 'money', defaultValue: 1.05, note: 'Includes data and account costs, print and postage.' },
+  { key: 'idResEmailsPerVisitor', label: 'ID-resolution emails acquired per US website visitor', unit: 'rate', defaultValue: 0.05, note: 'Acquired emails scale with US visitors (~5% of annual US visitors at current match rates on known records).' },
+  { key: 'idResEmailCost', label: 'Cost per acquired email', unit: 'money', defaultValue: 0.21, note: 'ID-resolution email acquisition, per email.' },
+  { key: 'remarketingPoolRate', label: 'Remarketing pool rate (share of visitors addressable)', unit: 'rate', defaultValue: null, note: 'Tag/consent coverage — per client; typically 40–70% of visitors.' },
+  { key: 'remarketingImpressionsPerMember', label: 'Remarketing impressions per pool member per year', unit: 'count', defaultValue: 24, note: 'Frequency-capped retargeting; ~2 per month.' },
+  { key: 'remarketingCpm', label: 'Remarketing CPM', unit: 'money', defaultValue: null, note: 'Per client / platform.' },
+  { key: 'brandSearchClicksPerVisitor', label: 'Brand-search clicks per website visitor', unit: 'rate', defaultValue: null, note: 'Brand search scales with visitors: baseline brand clicks ÷ baseline visitors. Per client.' },
+  { key: 'brandSearchCpc', label: 'Brand-search CPC', unit: 'money', defaultValue: null, note: 'Per client.' }
+];
 const ANNUAL_PLAN_KINDS = ['baseline', 'target'];
 const ANNUAL_PLAN_NUMERIC_FIELDS = ['workingMedia', 'impressions', 'websiteUsers', 'prospectLeads', 'growthLeads', 'valueLeads', 'directCalls', 'bookings', 'directBookings', 'grossRevenue'];
 // 2026-09-28 — Magazine equivalent, per direct instruction: magazine ad
@@ -6288,6 +6336,148 @@ const MMM_ADSTOCK_LAG_STATUSES = ['reference', 'applied', 'removed'];
 function getMmmAdstockLagDecisions(accountId){
   const rows = db.prepare('SELECT category, status, reason, decidedBy, decidedAt FROM mmm_adstock_lag_decisions WHERE accountId = ?').all(accountId);
   return Object.fromEntries(rows.map(r => [r.category, r]));
+}
+
+// ============================================================
+// 2026-09-28 — Channel timing & frequency (lag, carryover, ramp), per direct
+// instruction on the AOV board-case workbook's Timing tab: "The channel
+// timing is an estimate from MMM type generalizations. This would tie
+// nicely into our MMM workstream and maybe DMA Matchmarket Testing that
+// would override our generic assumption... industry specific metrics for
+// this also. We should make the capabilities. It's important for the
+// Enterprise level clients."
+//
+// Three layers, resolved per account per MMM category by
+// resolveChannelTiming() below, most-specific wins:
+//   1. CHANNEL_TIMING_REFERENCE — the generic MMM-style prior per category
+//      (this file, below). Category norms, not any one client's data: lag
+//      to outcome impact, carryover half-life, months to full effect, and
+//      the cadence/frequency guidance that goes with them. The workbook's
+//      Timing tab rows are the seed for the channels it covers; the rest
+//      are filled from the same MMM literature conventions (search and
+//      remarketing near-immediate with no carryover; broadcast/print long
+//      lag and long tail; audio and OOH in between).
+//   2. Industry adjustment — lag and carryover scale with the purchase
+//      cycle: INDUSTRY_CYCLE_MULTIPLIER (mirrored from portal.html, hand-
+//      synced, same disclosed-duplication convention as ACCOUNT_DM_CHANNELS
+//      and MMM_CATEGORIES) taken to the power 0.5 and clamped 0.5×–2.0×,
+//      so a 6× cruise cycle doesn't turn a 6-week print lag into 36 weeks
+//      (the purchase cycle stretches media response, it doesn't multiply
+//      it linearly) — a 2.4× stretch, clamped to 2×. Disclosed as a
+//      heuristic on every row.
+//   3. Account evidence — either the MMM workstream's own adstock/lag
+//      estimate for that category once a human data scientist has marked
+//      it 'applied' (computeAdstockLagEstimate above; periods are months,
+//      converted to weeks; the geometric decay d per month converts to a
+//      half-life of ln(0.5)/ln(d) months), or a recorded DMA matched-market
+//      / geo-lift test read, or a manual override — all three live in
+//      account_channel_timing_overrides with `source` saying which. A
+//      recorded test read beats an MMM estimate beats the industry-adjusted
+//      prior, and every row says which source it's on.
+// ============================================================
+const CHANNEL_TIMING_REFERENCE = {
+  'Linear TV':              { lagWeeks: 6, carryoverHalfLifeWeeks: 8, monthsToFullEffect: 12, cadence: 'Flighted; 3+ effective frequency per 4 wks in-flight', basis: 'Broadcast brand effect accrues with cumulative reach; MMM norms 4–8 wk lag, 6–10 wk half-life.' },
+  'OTV':                    { lagWeeks: 5, carryoverHalfLifeWeeks: 6, monthsToFullEffect: 12, cadence: 'Continuous or flighted; 3–5 exposures per HH per 4 wks', basis: 'Online video behaves like CTV with slightly faster response (more clickable placements).' },
+  'CTV':                    { lagWeeks: 8, carryoverHalfLifeWeeks: 6, monthsToFullEffect: 15, cadence: 'Continuous; 3–5 exposures per HH per 4 wks; pulses on launch windows', basis: 'Category norm 6–10 wk lag; carryover 4–8 wks. Brand effect accrues with cumulative reach — slowest to full effect of the video channels.' },
+  'Paid Social':            { lagWeeks: 2, carryoverHalfLifeWeeks: 1, monthsToFullEffect: 8, cadence: 'Always on + launch pulses; geo test cells need 8-wk reads', basis: 'Lead-gen / prospecting: response within 1–3 wks; leads convert over ~6 wks so plan on a 6-wk read lag. Social video variant: 2–3 posts/wk, 3 wk lag, 2 wk half-life, 9 months to full effect.' },
+  'Brand Search':           { lagWeeks: 0, carryoverHalfLifeWeeks: 0, monthsToFullEffect: 1, cadence: 'Always on; demand fulfillment — scales with website visitors, not budget', basis: 'Captures intent created elsewhere; no lag, no carryover of its own.' },
+  'Non-Brand Search':       { lagWeeks: 1, carryoverHalfLifeWeeks: 0, monthsToFullEffect: 1, cadence: 'Always on; scale with awareness flights', basis: 'Intent capture; near-immediate, no carryover.' },
+  'Internal Email':         { lagWeeks: 2, carryoverHalfLifeWeeks: 3, monthsToFullEffect: 10, cadence: 'Weekly cadence + triggered flows (rebooking window, alerts)', basis: 'First-party lifecycle: growth leads convert in ~45 days, value leads ~20; program effect builds as flows and file coverage expand.' },
+  'PR':                     { lagWeeks: 4, carryoverHalfLifeWeeks: 8, monthsToFullEffect: 6, cadence: 'Event-driven; earned pickup lags placement', basis: 'Earned media: slow, long tail, hard to attribute; geo/matched-market holdouts are the honest read.' },
+  'Programmatic Display':   { lagWeeks: 1, carryoverHalfLifeWeeks: 1, monthsToFullEffect: 3, cadence: 'Always on; frequency-capped 3–5 per user per week', basis: 'Short lag, short tail; view-through effects fade within days.' },
+  'Partner Media':          { lagWeeks: 1, carryoverHalfLifeWeeks: 0, monthsToFullEffect: 1, cadence: 'Deal-driven (bi-weekly offers typical)', basis: 'Offer partners: immediate, yield lever more than volume; no carryover.' },
+  'Magazines':              { lagWeeks: 6, carryoverHalfLifeWeeks: 8, monthsToFullEffect: 3, cadence: 'Monthly issues; awards/long-form placements', basis: 'Long lag, long tail; brochure/inquiry requests are the leading indicator.' },
+  'Newspapers':             { lagWeeks: 2, carryoverHalfLifeWeeks: 2, monthsToFullEffect: 1, cadence: 'Weekend pulses around offers', basis: 'Offer-driven; near-immediate response, short tail.' },
+  'Out-of-Home':            { lagWeeks: 4, carryoverHalfLifeWeeks: 6, monthsToFullEffect: 6, cadence: '4-wk postings; 3+ frequency for recall', basis: 'Reach/recall channel; effect accrues over the posting period and decays over ~6 wks.' },
+  'Radio':                  { lagWeeks: 2, carryoverHalfLifeWeeks: 2, monthsToFullEffect: 3, cadence: 'Weekly flights; 3–4 frequency', basis: 'Audio: short lag, short tail; strongest with an offer or call-to-action.' },
+  'Podcasts':               { lagWeeks: 3, carryoverHalfLifeWeeks: 4, monthsToFullEffect: 6, cadence: 'Host-read, recurring across episodes', basis: 'Host-read audio builds slowly and carries longer than spot radio (on-demand listening).' },
+  'Email — Remarketing':    { lagWeeks: 1, carryoverHalfLifeWeeks: 1, monthsToFullEffect: 2, cadence: 'Triggered; demand fulfillment — scales with the remarketing pool', basis: 'Retargets known visitors; near-immediate; pool size is the lever, not budget.' },
+  'Direct Mail — Prospects':  { lagWeeks: 5, carryoverHalfLifeWeeks: 4, monthsToFullEffect: 2, cadence: '4–6 drops/yr; timed 8–10 wks ahead of booking windows', basis: 'In-home + call/visit lag; prospect lists convert slower than house files.' },
+  'Direct Mail — Past Guests': { lagWeeks: 4, carryoverHalfLifeWeeks: 6, monthsToFullEffect: 3, cadence: 'Quarterly + rebooking-window drops; capacity-bound by the house file', basis: 'Pairs with lifecycle email; past guests convert faster and the effect carries.' },
+  'Direct Mail — Inquiries':  { lagWeeks: 3, carryoverHalfLifeWeeks: 4, monthsToFullEffect: 2, cadence: 'Triggered off inquiry; 1–2 follow-ups within the decision window', basis: 'Warm inquirers respond faster than cold prospects; treat like a lead follow-up, not a prospecting drop.' }
+};
+// Mirror of portal.html's INDUSTRY_CYCLE_MULTIPLIER (hand-synced).
+const INDUSTRY_CYCLE_MULTIPLIER = {
+  'Quick-Service / Limited-Service Restaurants': 0.3, 'Full-Service Dining': 0.4, 'Hotels / Hospitality': 1.5,
+  'Retail — General Merchandise': 0.4, 'Retail — Specialty / Apparel': 0.6, 'Grocery / Supermarkets': 0.15,
+  'Automotive Sales & Service': 3, 'Healthcare — Outpatient / Clinics': 1, 'Healthcare — Hospitals & Systems': 1.5,
+  'Financial Services / Banking': 2.5, 'Insurance': 2, 'Real Estate': 6, 'Fitness / Gyms & Studios': 0.7,
+  'Salons / Spas / Personal Care': 0.5, 'Home Services / Contractors': 1.5, 'Professional Services (B2B)': 4,
+  'Education / Training': 3, 'Entertainment / Attractions': 0.5, 'Travel / Tourism': 2.5, 'Cruise Lines — Luxury': 6,
+  'Cruise Lines — Mass Market': 2.5, 'Sporting Goods Retail': 0.5, 'Wine & Spirits / Winery': 0.6,
+  'Telecom / Wireless Retail': 1, 'E-commerce / DTC Brand': 0.5, 'Nonprofit / Association': 2
+};
+function channelTimingIndustryFactor(industry){
+  const mult = INDUSTRY_CYCLE_MULTIPLIER[industry];
+  if (!mult) return { factor: 1, applied: false };
+  return { factor: Math.max(0.5, Math.min(2.0, Math.sqrt(mult))), applied: true };
+}
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_channel_timing_overrides (
+    accountId TEXT NOT NULL,
+    category TEXT NOT NULL,
+    lagWeeks REAL,
+    carryoverHalfLifeWeeks REAL,
+    monthsToFullEffect REAL,
+    source TEXT NOT NULL,
+    note TEXT,
+    decidedBy TEXT,
+    updatedAt TEXT NOT NULL,
+    PRIMARY KEY (accountId, category)
+  );
+`);
+const CHANNEL_TIMING_OVERRIDE_SOURCES = ['dma_test', 'manual'];
+const WEEKS_PER_MONTH = 52 / 12;
+function resolveChannelTiming(accountId){
+  const account = db.prepare('SELECT industry, mmmIncludedCategoriesJson FROM accounts WHERE accountId = ?').get(accountId) || {};
+  let included = [];
+  try { included = account.mmmIncludedCategoriesJson ? JSON.parse(account.mmmIncludedCategoriesJson) : []; } catch (e){ included = []; }
+  const { factor, applied: industryApplied } = channelTimingIndustryFactor(account.industry);
+  const decisions = getMmmAdstockLagDecisions(accountId);
+  const overrides = Object.fromEntries(db.prepare('SELECT * FROM account_channel_timing_overrides WHERE accountId = ?').all(accountId).map(r => [r.category, r]));
+  const r1 = v => Math.round(v * 10) / 10;
+  return MMM_CATEGORIES.map(category => {
+    const generic = CHANNEL_TIMING_REFERENCE[category] || { lagWeeks: 2, carryoverHalfLifeWeeks: 2, monthsToFullEffect: 3, cadence: '', basis: 'No reference row for this category yet — generic mid-range prior.' };
+    const industryAdjusted = {
+      lagWeeks: r1(generic.lagWeeks * factor),
+      carryoverHalfLifeWeeks: r1(generic.carryoverHalfLifeWeeks * factor),
+      monthsToFullEffect: generic.monthsToFullEffect, // ramp-to-full-effect is a program-maturity property, not a purchase-cycle one — left unscaled
+      factor: industryApplied ? r1(factor) : null,
+      industry: industryApplied ? account.industry : null
+    };
+    // MMM evidence: only an 'applied' estimate counts (a human reviewed it).
+    let mmm = null;
+    const decision = decisions[category];
+    if (decision && decision.status === 'applied' && included.includes(category)){
+      const est = computeAdstockLagEstimate(accountId, category);
+      if (est.flag === 'estimated'){
+        const halfLifeMonths = (est.bestAdstockDecay > 0 && est.bestAdstockDecay < 1) ? Math.log(0.5) / Math.log(est.bestAdstockDecay) : 0;
+        mmm = {
+          lagWeeks: r1(est.bestLagPeriods * WEEKS_PER_MONTH),
+          carryoverHalfLifeWeeks: r1(halfLifeMonths * WEEKS_PER_MONTH),
+          monthsToFullEffect: null, // MMM lag/decay says nothing about program ramp
+          confidence: est.confidence, bestLagPeriods: est.bestLagPeriods, bestAdstockDecay: est.bestAdstockDecay,
+          decidedBy: decision.decidedBy || null, decidedAt: decision.decidedAt || null
+        };
+      }
+    }
+    const override = overrides[category] || null;
+    let effective, source;
+    if (override){
+      effective = { lagWeeks: override.lagWeeks != null ? override.lagWeeks : industryAdjusted.lagWeeks, carryoverHalfLifeWeeks: override.carryoverHalfLifeWeeks != null ? override.carryoverHalfLifeWeeks : industryAdjusted.carryoverHalfLifeWeeks, monthsToFullEffect: override.monthsToFullEffect != null ? override.monthsToFullEffect : industryAdjusted.monthsToFullEffect };
+      source = override.source === 'dma_test' ? 'DMA matched-market test' : 'Manual override';
+    } else if (mmm){
+      effective = { lagWeeks: mmm.lagWeeks, carryoverHalfLifeWeeks: mmm.carryoverHalfLifeWeeks, monthsToFullEffect: industryAdjusted.monthsToFullEffect };
+      source = `MMM estimate (applied, ${mmm.confidence} confidence)`;
+    } else if (industryApplied){
+      effective = { lagWeeks: industryAdjusted.lagWeeks, carryoverHalfLifeWeeks: industryAdjusted.carryoverHalfLifeWeeks, monthsToFullEffect: industryAdjusted.monthsToFullEffect };
+      source = `Generic prior × ${industryAdjusted.factor} industry cycle (${account.industry})`;
+    } else {
+      effective = { lagWeeks: generic.lagWeeks, carryoverHalfLifeWeeks: generic.carryoverHalfLifeWeeks, monthsToFullEffect: generic.monthsToFullEffect };
+      source = 'Generic prior (no Industry set)';
+    }
+    return { category, included: included.includes(category), generic, industryAdjusted, mmm, override, effective, source };
+  });
 }
 
 // 2026-09-12 — AI Brain Contribution Ledger, first build-order item
@@ -12705,6 +12895,29 @@ const LEGACY_CASING_COLUMNS = [
   ['account_dm_format_cost', 'formatName'],
   ['account_dm_format_cost', 'costPerPiece'],
   ['account_dm_format_cost', 'updatedAt'],
+  ['account_channel_timing_overrides', 'accountId'],
+  ['account_channel_timing_overrides', 'category'],
+  ['account_channel_timing_overrides', 'lagWeeks'],
+  ['account_channel_timing_overrides', 'carryoverHalfLifeWeeks'],
+  ['account_channel_timing_overrides', 'monthsToFullEffect'],
+  ['account_channel_timing_overrides', 'source'],
+  ['account_channel_timing_overrides', 'note'],
+  ['account_channel_timing_overrides', 'decidedBy'],
+  ['account_channel_timing_overrides', 'updatedAt'],
+  ['account_demand_fulfillment', 'accountId'],
+  ['account_demand_fulfillment', 'usShareOfTraffic'],
+  ['account_demand_fulfillment', 'idResMatchRate'],
+  ['account_demand_fulfillment', 'postcardDropsPerMatchedVisitor'],
+  ['account_demand_fulfillment', 'idResPostcardCostPerPiece'],
+  ['account_demand_fulfillment', 'idResEmailsPerVisitor'],
+  ['account_demand_fulfillment', 'idResEmailCost'],
+  ['account_demand_fulfillment', 'remarketingPoolRate'],
+  ['account_demand_fulfillment', 'remarketingImpressionsPerMember'],
+  ['account_demand_fulfillment', 'remarketingCpm'],
+  ['account_demand_fulfillment', 'brandSearchClicksPerVisitor'],
+  ['account_demand_fulfillment', 'brandSearchCpc'],
+  ['account_demand_fulfillment', 'notes'],
+  ['account_demand_fulfillment', 'updatedAt'],
   ['account_annual_plan', 'accountId'],
   ['account_annual_plan', 'year'],
   ['account_annual_plan', 'kind'],
@@ -31497,6 +31710,93 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         else db.prepare('INSERT INTO account_magazine_cost (accountId, publication, "adFormat", "costPerInsertion", updatedAt) VALUES (?, ?, ?, ?, ?)').run(accountId, publication, adFormat, cost, now);
       }
       return sendJson(res, 200, { accountId, saved: rowsIn.length, updatedAt: now });
+    }
+
+    // GET /api/accounts/:id/channel-timing — every MMM category's resolved
+    // lag / carryover / ramp with all three layers exposed (see
+    // resolveChannelTiming()'s comment above CHANNEL_TIMING_REFERENCE).
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'channel-timing'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      return sendJson(res, 200, { accountId, rows: resolveChannelTiming(accountId), industryNote: 'Lag and carryover scale with the purchase cycle (√ of the Industry cycle multiplier, clamped 0.5×–2×); ramp-to-full-effect is unscaled. A recorded DMA matched-market test read outranks an applied MMM estimate, which outranks the industry-adjusted prior.' });
+    }
+    // POST /api/accounts/:id/channel-timing — record (or clear) an account
+    // override for one category: a DMA matched-market / geo-lift test read
+    // or a manual override. { category, source: 'dma_test'|'manual',
+    // lagWeeks?, carryoverHalfLifeWeeks?, monthsToFullEffect?, note?,
+    // decidedBy? } — or { category, clear: true } to drop the override and
+    // fall back to MMM/industry/generic.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'channel-timing'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const category = String(body.category || '').trim();
+      if (!MMM_CATEGORIES.includes(category)) return sendJson(res, 400, { error: `unknown category: ${body.category}` });
+      const now = new Date().toISOString();
+      if (body.clear){
+        db.prepare('DELETE FROM account_channel_timing_overrides WHERE accountId = ? AND category = ?').run(accountId, category);
+        return sendJson(res, 200, { accountId, category, cleared: true, rows: resolveChannelTiming(accountId) });
+      }
+      const source = String(body.source || '').trim();
+      if (!CHANNEL_TIMING_OVERRIDE_SOURCES.includes(source)) return sendJson(res, 400, { error: `source must be one of ${CHANNEL_TIMING_OVERRIDE_SOURCES.join('/')}` });
+      const numOrNull = (v, name) => {
+        if (v === null || v === undefined || v === '') return null;
+        const n = Number(v);
+        if (!(Number.isFinite(n) && n >= 0)) throw new Error(`${name} must be a non-negative number or blank`);
+        return n;
+      };
+      let lag, half, months;
+      try { lag = numOrNull(body.lagWeeks, 'lagWeeks'); half = numOrNull(body.carryoverHalfLifeWeeks, 'carryoverHalfLifeWeeks'); months = numOrNull(body.monthsToFullEffect, 'monthsToFullEffect'); }
+      catch (e){ return sendJson(res, 400, { error: e.message }); }
+      if (lag == null && half == null && months == null) return sendJson(res, 400, { error: 'at least one of lagWeeks / carryoverHalfLifeWeeks / monthsToFullEffect is required' });
+      if (source === 'dma_test' && !(body.note && String(body.note).trim())) return sendJson(res, 400, { error: 'a DMA test read needs a note naming the test (markets, dates, what was measured)' });
+      const note = body.note != null ? String(body.note).slice(0, 2000) : null;
+      const decidedBy = body.decidedBy != null ? String(body.decidedBy).slice(0, 200) : null;
+      const existing = db.prepare('SELECT 1 FROM account_channel_timing_overrides WHERE accountId = ? AND category = ?').get(accountId, category);
+      if (existing) db.prepare('UPDATE account_channel_timing_overrides SET lagWeeks = ?, carryoverHalfLifeWeeks = ?, monthsToFullEffect = ?, source = ?, note = ?, decidedBy = ?, updatedAt = ? WHERE accountId = ? AND category = ?').run(lag, half, months, source, note, decidedBy, now, accountId, category);
+      else db.prepare('INSERT INTO account_channel_timing_overrides (accountId, category, lagWeeks, carryoverHalfLifeWeeks, monthsToFullEffect, source, note, decidedBy, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(accountId, category, lag, half, months, source, note, decidedBy, now);
+      return sendJson(res, 200, { accountId, category, saved: true, rows: resolveChannelTiming(accountId) });
+    }
+
+    // GET /api/accounts/:id/demand-fulfillment — the account's assumptions
+    // with defaults filled per field (isDefault) — see
+    // DEMAND_FULFILLMENT_FIELDS. The forecast itself runs client-side
+    // (computeDemandFulfillmentForecast in portal.html) off whichever
+    // website-user figure the plan year has (annual target, Σ campaigns,
+    // or baseline), so it sits next to the Media Plan it re-states.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'demand-fulfillment'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const row = db.prepare('SELECT * FROM account_demand_fulfillment WHERE accountId = ?').get(accountId) || {};
+      const fields = DEMAND_FULFILLMENT_FIELDS.map(f => {
+        const saved = row[f.key];
+        const has = saved !== null && saved !== undefined;
+        return { ...f, value: has ? saved : f.defaultValue, isDefault: !has && f.defaultValue != null, isMissing: !has && f.defaultValue == null };
+      });
+      return sendJson(res, 200, { accountId, fields, notes: row.notes || '', updatedAt: row.updatedAt || null });
+    }
+    // POST /api/accounts/:id/demand-fulfillment — upsert. Blank clears a
+    // field back to its default (or to missing).
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'demand-fulfillment'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const vals = {};
+      for (const f of DEMAND_FULFILLMENT_FIELDS){
+        const v = body[f.key];
+        if (v === null || v === undefined || v === ''){ vals[f.key] = null; continue; }
+        const n = Number(v);
+        if (!(Number.isFinite(n) && n >= 0)) return sendJson(res, 400, { error: `${f.key} must be a non-negative number or blank` });
+        if (f.unit === 'rate' && n > 1) return sendJson(res, 400, { error: `${f.key} is a rate — enter a fraction between 0 and 1 (e.g. 0.85 for 85%)` });
+        vals[f.key] = n;
+      }
+      const notes = body.notes != null ? String(body.notes).slice(0, 4000) : null;
+      const now = new Date().toISOString();
+      const keys = DEMAND_FULFILLMENT_FIELDS.map(f => f.key);
+      const existing = db.prepare('SELECT 1 FROM account_demand_fulfillment WHERE accountId = ?').get(accountId);
+      if (existing) db.prepare(`UPDATE account_demand_fulfillment SET ${keys.map(k => `"${k}" = ?`).join(', ')}, notes = ?, updatedAt = ? WHERE accountId = ?`).run(...keys.map(k => vals[k]), notes, now, accountId);
+      else db.prepare(`INSERT INTO account_demand_fulfillment (accountId, ${keys.map(k => `"${k}"`).join(', ')}, notes, updatedAt) VALUES (?, ${keys.map(() => '?').join(', ')}, ?, ?)`).run(accountId, ...keys.map(k => vals[k]), notes, now);
+      return sendJson(res, 200, { accountId, saved: true, updatedAt: now });
     }
 
     // GET /api/accounts/:id/annual-plan[?year=YYYY] — annual baseline &
