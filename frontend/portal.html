@@ -12040,7 +12040,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-28-final-approval-review-simplified-redesign';
+const CXMEDIA_BUILD_STAMP = '2026-09-28-manual-reach-input-field-styling';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -65728,7 +65728,22 @@ async function mbuLoadWebsiteUsersMonthly(){
     const m = i + 1;
     return `<tr><td>${mname}</td>${MBU_WEBSITE_USER_REGIONS.map(region => {
       const v = byKey[`${m}|${region}`];
-      return `<td><input type="number" min="0" step="1" style="width:100px;" value="${v == null ? '' : v}" data-month="${m}" data-region="${region}" onchange="mbuQueueWebsiteUsersSave()"></td>`;
+      // 2026-09-28 fix, per direct report ("field styles... Ability to
+      // enter a numeric values. Current functionality limits to increments
+      // of 1 from 0"): this input was missing the .tbl-input class every
+      // other in-table numeric field on this site gets (see
+      // renderCampaignMmmLineItemsRows()'s 2026-09-09 fix for the same
+      // class), so it rendered as a bare, unstyled, 100px browser-default
+      // number box — easy to mistake for a stepper-only control limited to
+      // its native spin buttons (which do only move by 1) rather than a
+      // real field you can type a full figure (these are monthly website
+      // user counts, routinely in the tens or hundreds of thousands) into
+      // directly. Widened and styled; still type="number" with no explicit
+      // step (so typing any whole number works — the native spin buttons,
+      // which do move by 1, are just one optional way to adjust a value,
+      // not the only one), min="0" kept since a negative user count isn't
+      // meaningful.
+      return `<td><input type="number" min="0" class="tbl-input" style="width:140px;" value="${v == null ? '' : v}" data-month="${m}" data-region="${region}" onchange="mbuQueueWebsiteUsersSave()"></td>`;
     }).join('')}</tr>`;
   }).join('');
   if (status) status.textContent = '';
@@ -65776,10 +65791,14 @@ async function mbuLoadMarketableSizes(){
     } catch (e){ console.warn('mbuLoadMarketableSizes: fetch failed', e); }
   }
   const genLabel = key => (GENERATIONS.find(g => g.key === key) || {}).label || key;
+  // 2026-09-28 fix — same root cause and fix as Website users by month just
+  // above (missing .tbl-input class, no explicit step): these list-size
+  // counts can also run well into six figures, so the field is widened and
+  // styled to match every other in-table numeric input on this site.
   body.innerHTML = rows.map(r => `<tr>
     <td>${r.label || genLabel(r.generationKey)}</td>
-    <td><input type="number" min="0" step="1" style="width:120px;" value="${r.dmMarketable == null ? '' : r.dmMarketable}" data-genkey="${r.generationKey}" data-field="dmMarketable" onchange="mbuQueueMarketableSizesSave()"></td>
-    <td><input type="number" min="0" step="1" style="width:120px;" value="${r.emMarketable == null ? '' : r.emMarketable}" data-genkey="${r.generationKey}" data-field="emMarketable" onchange="mbuQueueMarketableSizesSave()"></td>
+    <td><input type="number" min="0" class="tbl-input" style="width:150px;" value="${r.dmMarketable == null ? '' : r.dmMarketable}" data-genkey="${r.generationKey}" data-field="dmMarketable" onchange="mbuQueueMarketableSizesSave()"></td>
+    <td><input type="number" min="0" class="tbl-input" style="width:150px;" value="${r.emMarketable == null ? '' : r.emMarketable}" data-genkey="${r.generationKey}" data-field="emMarketable" onchange="mbuQueueMarketableSizesSave()"></td>
   </tr>`).join('');
   if (status) status.textContent = '';
 }
