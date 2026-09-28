@@ -1335,6 +1335,24 @@ createTableIfNeeded(`
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
 `);
+// 2026-09-28 addition, per direct instruction: "DM Audience Size * Cost per
+// Piece to create actual budget" — this account's own real, editable
+// all-in per-piece Direct Mail cost (list + printing + postage), one row
+// per real DM channel (ACCOUNT_DM_CHANNELS below). Same manual-bridge
+// pattern as account_marketable_sizes above. The actual budget calculation
+// itself (DM Marketable audience size × this cost) is computed on the
+// frontend per campaign (cmpComputeDmActualBudget()), not stored here.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_dm_cost_per_piece (
+    accountId TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    costPerPiece REAL,
+    updatedAt TEXT NOT NULL,
+    PRIMARY KEY (accountId, channel),
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+const ACCOUNT_DM_CHANNELS = ['Direct Mail — Past Guests', 'Direct Mail — Prospects', 'Direct Mail — Inquiries'];
 // Canonical region set for the website-users-monthly grid, per Todd's own
 // wording ("US, CAN and international markets identified").
 const ACCOUNT_WEBSITE_USER_REGIONS = ['US', 'CAN', 'International'];
@@ -12559,6 +12577,7 @@ const LEGACY_CASING_COLUMNS = [
   ['account_data_access_log', 'occurredAt'],
   ['account_data_access_log', 'recordCount'],
   ['account_data_access_log', 'requestPath'],
+  ['account_dm_cost_per_piece', 'costPerPiece'],
   ['account_marketable_sizes', 'dmMarketable'],
   ['account_marketable_sizes', 'emMarketable'],
   ['account_marketable_sizes', 'generationKey'],
@@ -31150,6 +31169,48 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         const existing = db.prepare('SELECT 1 FROM account_marketable_sizes WHERE accountId = ? AND "generationKey" = ?').get(accountId, generationKey);
         if (existing) db.prepare('UPDATE account_marketable_sizes SET "dmMarketable" = ?, "emMarketable" = ?, updatedAt = ? WHERE accountId = ? AND "generationKey" = ?').run(dm, em, now, accountId, generationKey);
         else db.prepare('INSERT INTO account_marketable_sizes (accountId, "generationKey", "dmMarketable", "emMarketable", updatedAt) VALUES (?, ?, ?, ?, ?)').run(accountId, generationKey, dm, em, now);
+      }
+      return sendJson(res, 200, { accountId, saved: rowsIn.length, updatedAt: now });
+    }
+
+    // GET /api/accounts/:id/dm-cost-per-piece — first-party Direct Mail
+    // cost-per-piece per real DM channel. 2026-09-28, per direct
+    // instruction — same manual-bridge purpose and pattern as
+    // marketable-sizes above. Always returns one row per ACCOUNT_DM_CHANNELS
+    // entry, null where nothing has been entered yet.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'dm-cost-per-piece'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const rows = db.prepare('SELECT channel, "costPerPiece", updatedAt FROM account_dm_cost_per_piece WHERE accountId = ?').all(accountId);
+      const byChannel = {};
+      rows.forEach(r => { byChannel[r.channel] = r; });
+      const out = ACCOUNT_DM_CHANNELS.map(channel => {
+        const r = byChannel[channel];
+        return { channel, costPerPiece: r ? r.costPerPiece : null, updatedAt: r ? r.updatedAt : null };
+      });
+      return sendJson(res, 200, { accountId, rows: out });
+    }
+    // POST /api/accounts/:id/dm-cost-per-piece — batch upsert.
+    // { rows: [{ channel, costPerPiece }, ...] }
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'dm-cost-per-piece'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const rowsIn = Array.isArray(body.rows) ? body.rows : [];
+      if (!rowsIn.length) return sendJson(res, 400, { error: 'rows is required' });
+      const now = new Date().toISOString();
+      for (const row of rowsIn){
+        const channel = String(row.channel || '').trim();
+        if (!ACCOUNT_DM_CHANNELS.includes(channel)) return sendJson(res, 400, { error: `unknown channel: ${row.channel}` });
+        let cost = null;
+        if (row.costPerPiece !== null && row.costPerPiece !== undefined && row.costPerPiece !== ''){
+          const n = Number(row.costPerPiece);
+          if (!(Number.isFinite(n) && n >= 0)) return sendJson(res, 400, { error: 'costPerPiece must be a non-negative number or blank' });
+          cost = n;
+        }
+        const existing = db.prepare('SELECT 1 FROM account_dm_cost_per_piece WHERE accountId = ? AND channel = ?').get(accountId, channel);
+        if (existing) db.prepare('UPDATE account_dm_cost_per_piece SET "costPerPiece" = ?, updatedAt = ? WHERE accountId = ? AND channel = ?').run(cost, now, accountId, channel);
+        else db.prepare('INSERT INTO account_dm_cost_per_piece (accountId, channel, "costPerPiece", updatedAt) VALUES (?, ?, ?, ?)').run(accountId, channel, cost, now);
       }
       return sendJson(res, 200, { accountId, saved: rowsIn.length, updatedAt: now });
     }
