@@ -12034,7 +12034,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-28-bulk-create-campaigns-grouping-copy-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-28-creative-asset-orphan-channel-data-loss-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -60819,6 +60819,32 @@ function cmpCreativeAssetApprovedChannels(){
   }
   return [...Object.keys(cmpChannelPlanRows), ...cmpDemandFulfillmentChannelsInPlan];
 }
+// 2026-09-28 fix, per direct report ("creative assets did not appear with
+// the saved versions... I need to start over") — traced to real data loss,
+// confirmed in the database: cmpBuildCreativeAssetGridRows() and
+// cmpRenderCreativeAssetMatrix() only ever built/rendered a row group for a
+// channel in cmpCreativeAssetApprovedChannels() (this campaign's CURRENT
+// Channel Plan). A channel with a real, previously-approved creative asset
+// that had since fallen out of the Channel Plan (edited, or the async
+// channel-plan fetch just hadn't resolved yet) never got a row built for
+// it, and cmpRenderCreativeAssetMatrix() calls cmpSyncCreativeAssetRequestsFromGrid()
+// immediately after rendering — which flattens ONLY the rendered rows back
+// into campaign.approvedCreativeAssets and auto-persists it. Net effect:
+// simply opening this stage silently deleted that channel's saved asset
+// within 600ms, no explicit action needed — that's how "Direct Mail — Past
+// Guests" (already-approved copy and all) vanished. Every place that
+// decides which channel groups to build/render now unions the approved
+// Channel Plan with whatever channels this campaign already has a saved
+// asset for, so a saved asset is never dropped just because the plan moved
+// on — it renders with an "isn't in the current Channel Plan" note instead
+// (see cmpCreativeAssetChannelGroupInnerHtml), and the person can Remove it
+// explicitly if it really shouldn't exist anymore.
+function cmpCreativeAssetChannelsToRender(){
+  const approved = cmpCreativeAssetApprovedChannels();
+  const saved = new Set((cmpCreativeAssetRequests || []).map(a => a && a.channel).filter(Boolean));
+  const extra = [...saved].filter(ch => !approved.includes(ch));
+  return extra.length ? cmpSortChannelsByTaxonomy([...approved, ...extra]) : approved;
+}
 function cmpSortChannelsByTaxonomy(names){
   const order = new Map(MMM_CATEGORIES.map((c, i) => [c, i]));
   return names.slice().sort((a, b) => (order.has(a) ? order.get(a) : 999) - (order.has(b) ? order.get(b) : 999) || a.localeCompare(b));
@@ -60859,7 +60885,7 @@ function cmpAssetFormatOptions(channel){
 // with nothing saved yet starts with one row, prefilled from this account's
 // remembered default for that channel if one exists.
 function cmpBuildCreativeAssetGridRows(){
-  const channels = cmpCreativeAssetApprovedChannels();
+  const channels = cmpCreativeAssetChannelsToRender();
   const grid = {};
   channels.forEach(channel => {
     const existing = cmpCreativeAssetRequests.filter(a => a.channel === channel).map(a => ({ partner: a.partner || '', mediaType: a.mediaType || '', size: a.size || '', copyVersions: (a.copyVersions && typeof a.copyVersions === 'object') ? a.copyVersions : {} }));
@@ -61886,11 +61912,18 @@ function cmpCreativeAssetChannelGroupInnerHtml(channel){
   const formatOptions = cmpAssetFormatOptions(channel);
   const def = cmpCreativeAssetDefaultsByChannel[channel];
   const usedDefault = !!def && rows.length === 1 && rows[0].partner === def.partner && rows[0].mediaType === def.mediaType && rows[0].size === def.size;
+  // 2026-09-28 — a channel that has a real saved asset but has fallen out of
+  // (or never made it into) this campaign's current Channel Plan still gets
+  // a group here (see cmpCreativeAssetChannelsToRender()'s comment on why —
+  // it stops a saved asset from being silently deleted) but is called out
+  // plainly so it isn't mistaken for a currently-planned channel.
+  const isOrphanChannel = !cmpCreativeAssetApprovedChannels().includes(channel);
   return `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
       <span style="font-weight:600;font-size:0.9375rem;">${escapeHtml(channel)}</span>
       ${usedDefault ? `<span class="hint" style="margin:0;">Prefilled from this account's last saved setup for this channel — edit any field to override.</span>` : ''}
     </div>
+    ${isOrphanChannel ? `<p class="hint" style="margin:0 0 8px;color:#9A6A0E;">⚠ This channel isn't in the campaign's current Channel Plan — this asset is kept so nothing gets lost, but double-check it's still wanted. Clear the Partner/Format/Size fields below (or Remove, if there's more than one row) if it shouldn't be here.</p>` : ''}
     <div>
       ${rows.map((row, i) => cmpCreativeAssetRowHtml(channel, slug, i, row, formatOptions, rows.length > 1)).join('')}
     </div>
@@ -61952,7 +61985,7 @@ function cmpRenderCreativeAssetMatrix(){
   const el = document.getElementById('cmpCreativeAssetMatrix');
   if (!el) return;
   cmpRenderCreativeAssetContestStatus();
-  const channels = cmpCreativeAssetApprovedChannels();
+  const channels = cmpCreativeAssetChannelsToRender();
   if (!channels.length){
     // 2026-09-24 — context-aware empty state: "approve the Channel Plan
     // above" is meaningless from inside the Creative workspace (there's no
