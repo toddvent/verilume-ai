@@ -12034,7 +12034,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-28-tracking-links-real-creative-jobs-source';
+const CXMEDIA_BUILD_STAMP = '2026-09-28-marketing-functions-from-approved-channels';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -12974,6 +12974,24 @@ function creativeCollectionStatusForFunction(campaign, fn){
 // has no approved-creative-asset row mapped to fn at all, so it never
 // downgrades evidence a real Project record already established.
 function creativeAssetCopyStatusForFunction(campaign, fn){
+  // 2026-09-28 fix, per direct report: "Links were created for each. We
+  // still show 0 in QA." Confirmed against the database this campaign's 7
+  // creative assets were all really approved and really saved
+  // (approvedCreativeAssetsJson) — this function just never looked there.
+  // Every other reader of campaign.approvedCreativeAssets in this file
+  // (cmpCollectApprovedCopyForReview, the Creative Asset Selection grid
+  // opener) lazy-hydrates it from approvedCreativeAssetsJson before reading,
+  // because a campaign object reaching them from a plain campaign-list fetch
+  // only ever carries the raw JSON string, never the parsed array — this
+  // function was the one place in the fold-in chain that skipped that step,
+  // so computeFunctionCompletion()/computeStageStatuses() (the Dashboard's
+  // "Creative in QA" tile, the campaign's own QA Rating card) silently saw
+  // zero approved assets and never credited the real work, UNLESS this
+  // exact campaign object happened to already be hydrated by one of those
+  // other two call sites earlier in the same session.
+  if (!(Array.isArray(campaign.approvedCreativeAssets) && campaign.approvedCreativeAssets.length) && campaign.approvedCreativeAssetsJson){
+    try { const parsed = JSON.parse(campaign.approvedCreativeAssetsJson); if (Array.isArray(parsed)) campaign.approvedCreativeAssets = parsed; } catch (e){ /* malformed — start empty */ }
+  }
   const assets = (campaign.approvedCreativeAssets || []).filter(a => (FUNCTION_GROUP_CHANNELS[fn] || []).includes(a.channel));
   if (!assets.length) return null;
   const hasApprovedCopy = a => a.copyVersions && Object.values(a.copyVersions).some(v => v && v.approved);
@@ -51648,50 +51666,44 @@ async function saveJobDates(jobId, field, value){
 // itself a marketing function scoped to creative-producing project types.
 // Existing unfiltered callers (creativeOnly left at its default null) are
 // unaffected — they still see every activated function.
-function computeFunctionCompletion(campaign, { creativeOnly = null } = {}){
-  let required = (campaign.functions || '').split(',').map(s => s.trim()).filter(Boolean);
-  if (creativeOnly !== null){
-    // Only hold a function to this bucket if some Project Type actually
-    // mapped to it matches the creative/non-creative flag — e.g. "PR" has no
-    // creative-tagged project type at all, so it should never block the
-    // Creative stage; it's simply not applicable there.
-    required = required.filter(fn => Object.keys(PROJECT_TYPE_FUNCTION_MAP).some(ptKey =>
-      (PROJECT_TYPE_FUNCTION_MAP[ptKey] || []).includes(fn) && isCreativeProjectType(ptKey) === creativeOnly));
+// 2026-09-28 rewrite, per direct instruction: "Only creative channels
+// approved for the specific campaign are considered marketing functions. The
+// below have no impact on campaign production steps: Press Release, Social
+// Content Batch, Video Creation, Email Sequence, Landing Page Copy,
+// One-Pager, Analytics Brief, etc" — i.e. the whole Project-Type workflow
+// (PROJECT_TYPE_FUNCTION_MAP, campaign.projects, campaign.functions as a
+// requirement list) is out of the QA-gating picture entirely. Which function
+// groups even APPLY to a campaign is now derived purely from real evidence:
+// the channels that actually have an approved creative asset on this
+// campaign (campaign.approvedCreativeAssets, the same Creative Asset Copy
+// grid data creativeAssetCopyStatusForFunction() already reads), mapped to
+// function groups via FUNCTION_GROUP_CHANNELS. A function is 'complete' only
+// once every one of ITS approved-channel asset rows has approved copy — same
+// real per-asset evidence as before, just now the only source, not a
+// fold-in on top of unused Project records. `creativeOnly` is still
+// accepted (existing call sites pass it) but no longer changes anything:
+// Marketing Functions and Creative are now driven by the exact same real
+// signal, per this instruction, so the two stages will show the same status
+// for a given campaign. Creative Messaging Collection evidence
+// (creativeCollectionStatusForFunction) is kept as an additional, real,
+// per-campaign approval signal — it can still lift a function's status, but
+// only for a function already in this required set, never add one Todd
+// hasn't approved channels for.
+function cmpFunctionsFromApprovedCreative(campaign){
+  if (!(Array.isArray(campaign.approvedCreativeAssets) && campaign.approvedCreativeAssets.length) && campaign.approvedCreativeAssetsJson){
+    try { const parsed = JSON.parse(campaign.approvedCreativeAssetsJson); if (Array.isArray(parsed)) campaign.approvedCreativeAssets = parsed; } catch (e){ /* malformed — start empty */ }
   }
+  const channels = new Set((campaign.approvedCreativeAssets || []).map(a => a && a.channel).filter(Boolean));
+  return Object.keys(FUNCTION_GROUP_CHANNELS).filter(fn => (FUNCTION_GROUP_CHANNELS[fn] || []).some(ch => channels.has(ch)));
+}
+function computeFunctionCompletion(campaign, { creativeOnly = null } = {}){
+  const required = cmpFunctionsFromApprovedCreative(campaign);
   if (!required.length) return { required: [], statuses: [] };
   const statuses = required.map(fn => {
-    let matching = (campaign.projects || []).filter(p => (PROJECT_TYPE_FUNCTION_MAP[p.projectType] || []).includes(fn));
-    if (creativeOnly !== null) matching = matching.filter(p => isCreativeProjectType(p.projectType) === creativeOnly);
-    let status;
-    if (!matching.length) status = 'missing';
-    else {
-      const approved = matching.filter(p => p.status === 'approved');
-      if (!approved.length) status = 'in-progress';
-      else {
-        const passing = approved.some(p => validateOutputAgainstObjective(p, campaign).allPass);
-        status = passing ? 'complete' : 'needs-qa';
-      }
-    }
-    // Round 82 — fold in Creative Messaging Collection evidence (Deliverable
-    // #7 wiring). Deliberately skipped for the `creativeOnly === false`
-    // (non-creative) bucket — a Collection is creative-tagged work by design,
-    // matching round 36's split, so it should only ever help the Creative
-    // bucket (creativeOnly === true) or the unfiltered overall score
-    // (creativeOnly === null), never the non-creative bucket. Never
-    // downgrades an existing status — only lifts 'missing' to 'in-progress',
-    // or anything short of 'complete' up to 'complete' when a requirement is
-    // actually Approved.
-    if (creativeOnly !== false){
-      const collectionStatus = creativeCollectionStatusForFunction(campaign, fn);
-      if (collectionStatus === 'complete') status = 'complete';
-      else if (collectionStatus === 'in-progress' && status === 'missing') status = 'in-progress';
-      // 2026-09-27 addition — same fold-in, now also from the Creative
-      // Asset Copy grid's own approved copy (see
-      // creativeAssetCopyStatusForFunction() above).
-      const assetCopyStatus = creativeAssetCopyStatusForFunction(campaign, fn);
-      if (assetCopyStatus === 'complete') status = 'complete';
-      else if (assetCopyStatus === 'in-progress' && status === 'missing') status = 'in-progress';
-    }
+    let status = creativeAssetCopyStatusForFunction(campaign, fn) || 'missing';
+    const collectionStatus = creativeCollectionStatusForFunction(campaign, fn);
+    if (collectionStatus === 'complete') status = 'complete';
+    else if (collectionStatus === 'in-progress' && status === 'missing') status = 'in-progress';
     return { fn, label: functionLabel(fn), status };
   });
   return { required, statuses };
