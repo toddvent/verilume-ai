@@ -1479,6 +1479,64 @@ const DEMAND_FULFILLMENT_FIELDS = [
   { key: 'brandSearchClicksPerVisitor', label: 'Brand-search clicks per website visitor', unit: 'rate', defaultValue: null, note: 'Brand search scales with visitors: baseline brand clicks ÷ baseline visitors. Per client.' },
   { key: 'brandSearchCpc', label: 'Brand-search CPC', unit: 'money', defaultValue: null, note: 'Per client.' }
 ];
+// 2026-09-28 — two manual/upload data homes, per direct instruction with
+// the AOV_ENGAGEMENT.xlsx export: "The AOV Engagement rate by session is
+// attached for 2026. This might be good to add manually until integrations
+// are done. Upload is easier but can add manually. I can also upload or
+// manually add leads by type by month with the high value or registration
+// designation. Just need to find a home for the data. Columns would be
+// Source (e.g., website, Meta, coreg, transaction), Lead Type (High Value,
+// Registration), Form Name, Count of Email."
+//
+// account_website_engagement — GA4 "Session default channel group"
+// engagement rows: one per (year, month, channel group); month 0 = a
+// whole-year / year-to-date row (the AOV export is one such). Feeds the
+// Campaign Summary's Website Engagement tile (session-weighted average
+// engagement time and engagement rate for the campaign's year) — the tile
+// that was null pending GA4 — and stays the manual bridge until the GA4
+// integration pulls the same report.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_website_engagement (
+    accountId TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    month INTEGER NOT NULL DEFAULT 0,
+    channelGroup TEXT NOT NULL,
+    sessions REAL,
+    engagedSessions REAL,
+    engagementRate REAL,
+    avgEngagementTimeMin REAL,
+    updatedAt TEXT NOT NULL,
+    PRIMARY KEY (accountId, year, month, channelGroup),
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+// account_lead_counts — leads by month, by Source × Lead Type × Form Name,
+// count of emails. Lead Type is the app's own two-way designation (High
+// Value = the annual model's value leads; Registration = growth leads), so
+// these become the ACTUALS behind the High-Value Leads and Registrations
+// tiles for a campaign's in-market months, and the year's totals for the
+// annual roll-up.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_lead_counts (
+    accountId TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    month INTEGER NOT NULL,
+    source TEXT NOT NULL,
+    leadType TEXT NOT NULL,
+    formName TEXT NOT NULL DEFAULT '',
+    count REAL,
+    updatedAt TEXT NOT NULL,
+    PRIMARY KEY (accountId, year, month, source, leadType, formName),
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+const LEAD_TYPES = ['High Value', 'Registration'];
+function normalizeLeadType(v){
+  const s = String(v || '').trim().toLowerCase();
+  if (/high|value|hv/.test(s)) return 'High Value';
+  if (/reg|sign|subscri|growth/.test(s)) return 'Registration';
+  return null;
+}
 const ANNUAL_PLAN_KINDS = ['baseline', 'target'];
 const ANNUAL_PLAN_NUMERIC_FIELDS = ['workingMedia', 'impressions', 'websiteUsers', 'prospectLeads', 'growthLeads', 'valueLeads', 'directCalls', 'bookings', 'directBookings', 'grossRevenue'];
 // 2026-09-28 — Magazine equivalent, per direct instruction: magazine ad
@@ -1725,6 +1783,12 @@ ensureColumn('campaigns', 'funnelVisitRatePct', 'REAL');
 ensureColumn('campaigns', 'funnelLeadRatePct', 'REAL');
 ensureColumn('campaigns', 'funnelBookingRatePct', 'REAL');
 ensureColumn('campaigns', 'funnelRegistrationRatePct', 'REAL');
+// 2026-09-28 — actualRevenue: logged revenue for the Analysis stage's
+// Executive Campaign Summary (Revenue / ROAS rows, Target vs Actual vs
+// Variance). Hand-entered alongside actualConversions until a booking/
+// order integration exists; null = not logged (the summary then shows
+// the model-tracked figure, labeled, never a fabricated actual).
+ensureColumn('campaigns', 'actualRevenue', 'REAL');
 
 // audienceCopyJson — Step 1's real per-audience contest winners. Added
 // 2026-09-22, per direct instruction to build Step 1 (Select Winner &
@@ -12479,6 +12543,7 @@ const LEGACY_CASING_COLUMNS = [
   ['campaigns', 'demandSignalRef'],
   ['campaigns', 'endDate'],
   ['campaigns', 'fundingSource'],
+  ['campaigns', 'actualRevenue'],
   ['campaigns', 'funnelVisitRatePct'],
   ['campaigns', 'funnelLeadRatePct'],
   ['campaigns', 'funnelBookingRatePct'],
@@ -12918,6 +12983,23 @@ const LEGACY_CASING_COLUMNS = [
   ['account_demand_fulfillment', 'brandSearchCpc'],
   ['account_demand_fulfillment', 'notes'],
   ['account_demand_fulfillment', 'updatedAt'],
+  ['account_website_engagement', 'accountId'],
+  ['account_website_engagement', 'year'],
+  ['account_website_engagement', 'month'],
+  ['account_website_engagement', 'channelGroup'],
+  ['account_website_engagement', 'sessions'],
+  ['account_website_engagement', 'engagedSessions'],
+  ['account_website_engagement', 'engagementRate'],
+  ['account_website_engagement', 'avgEngagementTimeMin'],
+  ['account_website_engagement', 'updatedAt'],
+  ['account_lead_counts', 'accountId'],
+  ['account_lead_counts', 'year'],
+  ['account_lead_counts', 'month'],
+  ['account_lead_counts', 'source'],
+  ['account_lead_counts', 'leadType'],
+  ['account_lead_counts', 'formName'],
+  ['account_lead_counts', 'count'],
+  ['account_lead_counts', 'updatedAt'],
   ['account_annual_plan', 'accountId'],
   ['account_annual_plan', 'year'],
   ['account_annual_plan', 'kind'],
@@ -24171,7 +24253,8 @@ Submit your response via the campaign_intake_turn tool.`;
         funnelVisitRatePct: body.funnelVisitRatePct !== undefined ? ((typeof body.funnelVisitRatePct === 'number' && body.funnelVisitRatePct >= 0) ? body.funnelVisitRatePct : null) : existing.funnelVisitRatePct,
         funnelLeadRatePct: body.funnelLeadRatePct !== undefined ? ((typeof body.funnelLeadRatePct === 'number' && body.funnelLeadRatePct >= 0) ? body.funnelLeadRatePct : null) : existing.funnelLeadRatePct,
         funnelBookingRatePct: body.funnelBookingRatePct !== undefined ? ((typeof body.funnelBookingRatePct === 'number' && body.funnelBookingRatePct >= 0) ? body.funnelBookingRatePct : null) : existing.funnelBookingRatePct,
-        funnelRegistrationRatePct: body.funnelRegistrationRatePct !== undefined ? ((typeof body.funnelRegistrationRatePct === 'number' && body.funnelRegistrationRatePct >= 0) ? body.funnelRegistrationRatePct : null) : existing.funnelRegistrationRatePct
+        funnelRegistrationRatePct: body.funnelRegistrationRatePct !== undefined ? ((typeof body.funnelRegistrationRatePct === 'number' && body.funnelRegistrationRatePct >= 0) ? body.funnelRegistrationRatePct : null) : existing.funnelRegistrationRatePct,
+        actualRevenue: body.actualRevenue !== undefined ? ((typeof body.actualRevenue === 'number' && body.actualRevenue >= 0) ? body.actualRevenue : null) : existing.actualRevenue
       };
       // 2026-09-16 — status derived from the dates this save ends up with
       // (see deriveCampaignStatusFromDates()'s comment above), computed
@@ -24288,6 +24371,7 @@ Submit your response via the campaign_intake_turn tool.`;
       addCol('funnelLeadRatePct', body.funnelLeadRatePct !== undefined, merged.funnelLeadRatePct);
       addCol('funnelBookingRatePct', body.funnelBookingRatePct !== undefined, merged.funnelBookingRatePct);
       addCol('funnelRegistrationRatePct', body.funnelRegistrationRatePct !== undefined, merged.funnelRegistrationRatePct);
+      addCol('actualRevenue', body.actualRevenue !== undefined, merged.actualRevenue);
       if (setCols.length){
         setVals.push(campaignId);
         db.prepare(`UPDATE campaigns SET ${setCols.join(', ')} WHERE id = ?`).run(...setVals);
@@ -31710,6 +31794,155 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         else db.prepare('INSERT INTO account_magazine_cost (accountId, publication, "adFormat", "costPerInsertion", updatedAt) VALUES (?, ?, ?, ?, ?)').run(accountId, publication, adFormat, cost, now);
       }
       return sendJson(res, 200, { accountId, saved: rowsIn.length, updatedAt: now });
+    }
+
+    // GET /api/accounts/:id/website-engagement[?year=YYYY] — GA4 channel-
+    // group engagement rows (see account_website_engagement's comment).
+    // Also returns per-(year, month) session-weighted summaries so the
+    // Campaign Summary tile reads one number without re-deriving it.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'website-engagement'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const reqUrl = new URL(req.url, 'http://localhost');
+      const yearParam = reqUrl.searchParams.get('year');
+      const year = yearParam ? parseInt(yearParam, 10) : null;
+      const rows = Number.isFinite(year)
+        ? db.prepare('SELECT * FROM account_website_engagement WHERE accountId = ? AND year = ? ORDER BY month ASC, sessions DESC').all(accountId, year)
+        : db.prepare('SELECT * FROM account_website_engagement WHERE accountId = ? ORDER BY year DESC, month ASC, sessions DESC').all(accountId);
+      const summaries = {};
+      rows.forEach(r => {
+        const key = `${r.year}-${r.month}`;
+        if (!summaries[key]) summaries[key] = { year: r.year, month: r.month, sessions: 0, engagedSessions: 0, timeWeighted: 0, timeWeight: 0, channelGroups: 0 };
+        const sm = summaries[key];
+        sm.channelGroups += 1;
+        sm.sessions += Number(r.sessions) || 0;
+        sm.engagedSessions += Number(r.engagedSessions) || 0;
+        if (r.avgEngagementTimeMin != null && (Number(r.engagedSessions) || 0) > 0){ sm.timeWeighted += r.avgEngagementTimeMin * Number(r.engagedSessions); sm.timeWeight += Number(r.engagedSessions); }
+      });
+      const summaryRows = Object.values(summaries).map(sm => ({
+        year: sm.year, month: sm.month, channelGroups: sm.channelGroups, sessions: sm.sessions, engagedSessions: sm.engagedSessions,
+        engagementRate: sm.sessions > 0 ? sm.engagedSessions / sm.sessions : null,
+        avgEngagementTimeMin: sm.timeWeight > 0 ? sm.timeWeighted / sm.timeWeight : null
+      }));
+      return sendJson(res, 200, { accountId, rows, summaries: summaryRows });
+    }
+    // POST /api/accounts/:id/website-engagement — bulk upsert.
+    // { rows: [{ year, month (0 = whole year / YTD), channelGroup, sessions,
+    //   engagedSessions, engagementRate?, avgEngagementTimeMin }], replace?:
+    //   { year, month } } — replace deletes that (year, month)'s existing
+    //   rows first, so a re-upload of the same export doesn't leave a
+    //   renamed channel group behind as a stale row.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'website-engagement'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const rowsIn = Array.isArray(body.rows) ? body.rows : [];
+      if (!rowsIn.length) return sendJson(res, 400, { error: 'rows is required' });
+      const now = new Date().toISOString();
+      const numOrNull = v => { if (v === null || v === undefined || v === '') return null; const n = Number(v); return Number.isFinite(n) && n >= 0 ? n : NaN; };
+      const clean = [];
+      for (const row of rowsIn){
+        const year = parseInt(row.year, 10), month = row.month == null || row.month === '' ? 0 : parseInt(row.month, 10);
+        const channelGroup = String(row.channelGroup || '').trim();
+        if (!(year >= 2000 && year <= 2100)) return sendJson(res, 400, { error: `year must be a 4-digit year: ${row.year}` });
+        if (!(month >= 0 && month <= 12)) return sendJson(res, 400, { error: `month must be 0 (whole year) or 1–12: ${row.month}` });
+        if (!channelGroup) return sendJson(res, 400, { error: 'channelGroup is required on every row' });
+        const sessions = numOrNull(row.sessions), engaged = numOrNull(row.engagedSessions), time = numOrNull(row.avgEngagementTimeMin);
+        let rate = numOrNull(row.engagementRate);
+        if ([sessions, engaged, time, rate].some(v => Number.isNaN(v))) return sendJson(res, 400, { error: `${channelGroup}: sessions / engaged sessions / engagement rate / avg engagement time must be non-negative numbers or blank` });
+        if (rate != null && rate > 1) rate = rate / 100; // "65.6" typed as a percent
+        if (rate == null && sessions > 0 && engaged != null) rate = engaged / sessions;
+        clean.push({ year, month, channelGroup, sessions, engaged, rate, time });
+      }
+      if (body.replace && body.replace.year != null){
+        const ry = parseInt(body.replace.year, 10), rm = body.replace.month == null ? 0 : parseInt(body.replace.month, 10);
+        db.prepare('DELETE FROM account_website_engagement WHERE accountId = ? AND year = ? AND month = ?').run(accountId, ry, rm);
+      }
+      const upsert = db.prepare(`INSERT INTO account_website_engagement (accountId, year, month, "channelGroup", sessions, "engagedSessions", "engagementRate", "avgEngagementTimeMin", updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(accountId, year, month, "channelGroup") DO UPDATE SET sessions = excluded.sessions, "engagedSessions" = excluded."engagedSessions", "engagementRate" = excluded."engagementRate", "avgEngagementTimeMin" = excluded."avgEngagementTimeMin", updatedAt = excluded.updatedAt`);
+      clean.forEach(r => upsert.run(accountId, r.year, r.month, r.channelGroup, r.sessions, r.engaged, r.rate, r.time, now));
+      return sendJson(res, 200, { accountId, saved: clean.length, updatedAt: now });
+    }
+    // DELETE /api/accounts/:id/website-engagement?year=&month=&channelGroup=
+    if (req.method === 'DELETE' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'website-engagement'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const reqUrl = new URL(req.url, 'http://localhost');
+      const year = parseInt(reqUrl.searchParams.get('year'), 10), month = parseInt(reqUrl.searchParams.get('month') || '0', 10);
+      const channelGroup = (reqUrl.searchParams.get('channelGroup') || '').trim();
+      if (!Number.isFinite(year)) return sendJson(res, 400, { error: 'year is required' });
+      const info = channelGroup
+        ? db.prepare('DELETE FROM account_website_engagement WHERE accountId = ? AND year = ? AND month = ? AND "channelGroup" = ?').run(accountId, year, month, channelGroup)
+        : db.prepare('DELETE FROM account_website_engagement WHERE accountId = ? AND year = ? AND month = ?').run(accountId, year, month);
+      return sendJson(res, 200, { accountId, deleted: info.changes });
+    }
+
+    // GET /api/accounts/:id/lead-counts[?year=YYYY] — leads by month ×
+    // source × lead type × form (see account_lead_counts' comment), plus
+    // per-(year, month, leadType) totals for the tiles/roll-up.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'lead-counts'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const reqUrl = new URL(req.url, 'http://localhost');
+      const yearParam = reqUrl.searchParams.get('year');
+      const year = yearParam ? parseInt(yearParam, 10) : null;
+      const rows = Number.isFinite(year)
+        ? db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ? AND year = ? ORDER BY month ASC, source ASC, "leadType" ASC, "formName" ASC').all(accountId, year)
+        : db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ? ORDER BY year DESC, month ASC, source ASC, "leadType" ASC, "formName" ASC').all(accountId);
+      const totals = {};
+      rows.forEach(r => {
+        const key = `${r.year}-${r.month}-${r.leadType}`;
+        if (!totals[key]) totals[key] = { year: r.year, month: r.month, leadType: r.leadType, count: 0, rows: 0 };
+        totals[key].count += Number(r.count) || 0; totals[key].rows += 1;
+      });
+      return sendJson(res, 200, { accountId, rows, totals: Object.values(totals) });
+    }
+    // POST /api/accounts/:id/lead-counts — bulk upsert.
+    // { rows: [{ year, month, source, leadType, formName?, count }],
+    //   replace?: { year, month } } — replace clears that month first.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'lead-counts'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const rowsIn = Array.isArray(body.rows) ? body.rows : [];
+      if (!rowsIn.length) return sendJson(res, 400, { error: 'rows is required' });
+      const now = new Date().toISOString();
+      const clean = [];
+      for (const row of rowsIn){
+        const year = parseInt(row.year, 10), month = parseInt(row.month, 10);
+        const source = String(row.source || '').trim();
+        const leadType = normalizeLeadType(row.leadType);
+        const formName = String(row.formName || '').trim();
+        if (!(year >= 2000 && year <= 2100)) return sendJson(res, 400, { error: `year must be a 4-digit year: ${row.year}` });
+        if (!(month >= 1 && month <= 12)) return sendJson(res, 400, { error: `month must be 1–12: ${row.month}` });
+        if (!source) return sendJson(res, 400, { error: 'source is required on every row (e.g. website, Meta, coreg, transaction)' });
+        if (!leadType) return sendJson(res, 400, { error: `leadType must read as High Value or Registration: "${row.leadType}"` });
+        const count = row.count === null || row.count === undefined || row.count === '' ? null : Number(String(row.count).replace(/,/g, ''));
+        if (count != null && !(Number.isFinite(count) && count >= 0)) return sendJson(res, 400, { error: `${source} / ${leadType} / ${formName || '(no form)'}: count must be a non-negative number` });
+        clean.push({ year, month, source, leadType, formName, count });
+      }
+      if (body.replace && body.replace.year != null && body.replace.month != null){
+        db.prepare('DELETE FROM account_lead_counts WHERE accountId = ? AND year = ? AND month = ?').run(accountId, parseInt(body.replace.year, 10), parseInt(body.replace.month, 10));
+      }
+      const upsert = db.prepare(`INSERT INTO account_lead_counts (accountId, year, month, source, "leadType", "formName", count, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(accountId, year, month, source, "leadType", "formName") DO UPDATE SET count = excluded.count, updatedAt = excluded.updatedAt`);
+      clean.forEach(r => upsert.run(accountId, r.year, r.month, r.source, r.leadType, r.formName, r.count, now));
+      return sendJson(res, 200, { accountId, saved: clean.length, updatedAt: now });
+    }
+    // DELETE /api/accounts/:id/lead-counts?year=&month=[&source=&leadType=&formName=]
+    if (req.method === 'DELETE' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'lead-counts'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const reqUrl = new URL(req.url, 'http://localhost');
+      const year = parseInt(reqUrl.searchParams.get('year'), 10), month = parseInt(reqUrl.searchParams.get('month'), 10);
+      if (!Number.isFinite(year) || !Number.isFinite(month)) return sendJson(res, 400, { error: 'year and month are required' });
+      const source = (reqUrl.searchParams.get('source') || '').trim(), leadType = (reqUrl.searchParams.get('leadType') || '').trim(), formName = (reqUrl.searchParams.get('formName') || '').trim();
+      const info = source
+        ? db.prepare('DELETE FROM account_lead_counts WHERE accountId = ? AND year = ? AND month = ? AND source = ? AND "leadType" = ? AND "formName" = ?').run(accountId, year, month, source, leadType, formName)
+        : db.prepare('DELETE FROM account_lead_counts WHERE accountId = ? AND year = ? AND month = ?').run(accountId, year, month);
+      return sendJson(res, 200, { accountId, deleted: info.changes });
     }
 
     // GET /api/accounts/:id/channel-timing — every MMM category's resolved
