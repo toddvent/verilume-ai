@@ -12034,7 +12034,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-28-single-campaign-tracking-link-builder';
+const CXMEDIA_BUILD_STAMP = '2026-09-28-per-asset-tracking-links';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -41669,41 +41669,37 @@ let cmpTraffickingWorkspaceBookmark = null;
 // 3-stat block instead of one paragraph, and calling the same real
 // cmpRunUtmLinkTest() (POST /api/utm-links/validate) rather than a second,
 // duplicate test implementation.
-// 2026-09-28 rewrite, per direct report and correction — the previous
-// version's "Build a tracking link below ↓" pointed at the legacy per-Job
-// builder (#campaignTraffickingCard, relocated in by
-// cmpOpenTraffickingWorkspace()), but that builder reads a Campaign URL
-// field (#campaignUrlInput) that lives on a completely different, NOT
-// relocated card — so clicking its "Build tracking link →" button inside
-// this workspace threw immediately (null.value) with no visible error,
-// which is very plausibly the "something crashed" this session already
-// hit once. On top of that, Todd's direct correction: "a campaign only has
-// one URL that is applied to all creative assets. We don't have separate
-// URLs per campaign asset" — so the old per-Job picker/build flow was the
-// wrong shape entirely, not just wired to a missing field. This is now a
-// fully self-contained, single-URL builder that lives entirely on this
-// card: one Campaign URL field (backed by the same real campaign.campaignUrl
-// field the rest of the app already reads/writes), one "Build tracking
-// link" action, and that one resulting link is written onto every creative
-// job on the campaign (cmpTraffickingBuildCampaignLink() below) so the
-// existing per-job plumbing elsewhere (the Trafficking send-gate, link
-// testing) keeps working unchanged even though there's conceptually only
-// one link.
+// 2026-09-28 rewrite, per direct report and TWO rounds of correction. Round
+// 1 ("a campaign only has one URL that is applied to all creative assets.
+// We don't have separate URLs per campaign asset") moved this to a single
+// shared link. Round 2, immediately after, corrected that: "We only need 1
+// ULR but need a link for each creative asset since we're measuring
+// creative also" — one destination URL, but each creative asset still needs
+// its OWN distinguishable tracking link (different utm_content/cx_creative_id
+// per asset) so performance can be measured per creative, not just per
+// campaign. So: ONE Campaign URL field (still backed by the real
+// campaign.campaignUrl — nothing destined for it changes), ONE "Build
+// tracking links" action, but that action now generates a DIFFERENT link
+// per creative job (same base URL, same campaign-level UTM values, but
+// each job's own channel/spec/id folded into whichever elements the Master
+// UTM Configuration includes) and shows each asset's own link with its own
+// Copy/QR controls — see cmpTraffickingBuildCampaignLinks()/
+// cmpTraffickingLinkRowHtml() below.
 function cmpRenderTraffickingQrUtm(campaign){
   const el = document.getElementById('cmpTraffickingQrUtm');
   if (!el || !campaign) return;
   const elementCount = (state.utmMasterElements || []).length;
-  const jobsWithTracking = (campaign.projects || []).filter(p => p.trackingUrl);
-  const totalJobs = (campaign.projects || []).length;
+  const jobs = campaign.projects || [];
+  const jobsWithTracking = jobs.filter(p => p.trackingUrl);
+  const totalJobs = jobs.length;
   const test = cmpUtmLinkTest.campaignId === campaign.id ? cmpUtmLinkTest : null;
   const testStatLabel = test && test.results ? `${test.results.filter(r => r.ok).length} ✓ / ${test.results.filter(r => !r.ok).length} ✕` : '—';
   const savedUrl = campaign.campaignUrl || '';
-  const builtLink = jobsWithTracking.length ? jobsWithTracking[0].trackingUrl : '';
   el.innerHTML = `
-    <p class="lede" style="margin-bottom:16px;">${elementCount ? `This account's Master UTM Configuration uses ${elementCount} element${elementCount === 1 ? '' : 's'} in every link it builds.` : 'No Master UTM Configuration set for this account yet.'} One tracking link covers this whole campaign — every creative asset shares it, so there's nothing to build per asset.</p>
+    <p class="lede" style="margin-bottom:16px;">${elementCount ? `This account's Master UTM Configuration uses ${elementCount} element${elementCount === 1 ? '' : 's'} in every link it builds.` : 'No Master UTM Configuration set for this account yet.'} One Campaign URL for the whole campaign, but every creative asset gets its own tracking link off of it — so performance can be measured per creative, not just per campaign.</p>
     <div class="cmp-wf-stat-row">
       <div class="cmp-wf-stat"><div class="cmp-wf-stat-label">UTM template fields (per link)</div><div class="cmp-wf-stat-value">${elementCount}</div></div>
-      <div class="cmp-wf-stat"><div class="cmp-wf-stat-label">Assets using this link</div><div class="cmp-wf-stat-value" id="cmpTraffickingAssetsUsingLinkStat">${jobsWithTracking.length} of ${totalJobs}</div></div>
+      <div class="cmp-wf-stat"><div class="cmp-wf-stat-label">Assets with a tracking link</div><div class="cmp-wf-stat-value" id="cmpTraffickingAssetsUsingLinkStat">${jobsWithTracking.length} of ${totalJobs}</div></div>
       <div class="cmp-wf-stat"><div class="cmp-wf-stat-label">Last test run</div><div class="cmp-wf-stat-value">${testStatLabel}</div></div>
     </div>
     <div class="field" style="margin:14px 0 10px;">
@@ -41711,36 +41707,48 @@ function cmpRenderTraffickingQrUtm(campaign){
       <input type="text" id="cmpTraffickingCampaignUrlInput" placeholder="https://..." value="${escapeHtml(savedUrl)}">
     </div>
     <div class="btn-row" style="margin:0 0 14px;">
-      <button type="button" class="btn-primary" onclick="cmpTraffickingBuildCampaignLink()">Build tracking link →</button>
+      <button type="button" class="btn-primary" onclick="cmpTraffickingBuildCampaignLinks()">Build tracking links →</button>
     </div>
-    <div id="cmpTraffickingLinkResult" style="margin-bottom:10px;">${builtLink ? `
-      <div class="field" style="margin-bottom:10px;">
-        <label>Current tracking link${totalJobs ? ` — applied to ${jobsWithTracking.length} of ${totalJobs} asset${totalJobs === 1 ? '' : 's'}` : ''}</label>
-        <input type="text" id="cmpTraffickingLinkOutput" readonly value="${escapeHtml(builtLink)}">
+    <div id="cmpTraffickingLinkResult" style="margin-bottom:10px;">${jobsWithTracking.length
+      ? jobsWithTracking.map(job => cmpTraffickingLinkRowHtml(job)).join('')
+      : (totalJobs ? `<p class="hint" style="margin:0;">No tracking links built yet — enter the Campaign URL above and click Build.</p>` : `<p class="hint" style="margin:0;">No creative jobs on this campaign yet — tracking links build per job once one exists.</p>`)}</div>
+    ${jobsWithTracking.length ? `<div class="btn-row" style="margin:0 0 10px;"><button type="button" class="btn-ghost" ${test && test.running ? 'disabled' : ''} onclick="cmpTraffickingRunUtmLinkTest()">${test && test.running ? 'Testing links…' : `Test ${jobsWithTracking.length} tracking link${jobsWithTracking.length === 1 ? '' : 's'} →`}</button></div>${test && test.results ? cmpRenderUtmLinkTestResults(test.results) : ''}` : ''}`;
+}
+// One row per creative job's own tracking link, with its own Copy/QR
+// controls (ids suffixed by job.id, so every row's QR code and copy status
+// are independent of every other row's).
+function cmpTraffickingLinkRowHtml(job){
+  const label = `${job.channel || 'Asset'}${job.deliveryPlatform ? ' — ' + job.deliveryPlatform : ''}`;
+  return `
+    <div class="cmp-asset-row-card" style="margin-bottom:10px;">
+      <div class="field" style="margin-bottom:8px;">
+        <label>${escapeHtml(label)} <span class="hint" style="font-weight:400;">(${escapeHtml(job.id)})</span></label>
+        <input type="text" id="cmpTraffickingLinkOutput_${job.id}" readonly value="${escapeHtml(job.trackingUrl || '')}">
       </div>
       <div class="btn-row" style="margin-top:0;">
-        <button type="button" class="btn-ghost" onclick="cmpTraffickingCopyLink()">Copy link →</button>
-        <button type="button" class="btn-primary" onclick="cmpTraffickingGenerateQr()">Generate QR code →</button>
+        <button type="button" class="btn-ghost" onclick="cmpTraffickingCopyLink('${job.id}')">Copy link →</button>
+        <button type="button" class="btn-ghost" onclick="cmpTraffickingGenerateQr('${job.id}')">Generate QR code →</button>
       </div>
-      <div id="cmpTraffickingQrStatus" style="font-size:0.75rem;margin-top:8px;"></div>
-      <div id="cmpTraffickingQrHolder" style="margin-top:10px;"></div>` : ''}</div>
-    ${jobsWithTracking.length ? `<div class="btn-row" style="margin:0 0 10px;"><button type="button" class="btn-ghost" ${test && test.running ? 'disabled' : ''} onclick="cmpTraffickingRunUtmLinkTest()">${test && test.running ? 'Testing links…' : `Test ${jobsWithTracking.length} tracking link${jobsWithTracking.length === 1 ? '' : 's'} →`}</button></div>${test && test.results ? cmpRenderUtmLinkTestResults(test.results) : ''}` : `<p class="cmp-stage-note" style="padding:0;">No tracking link built for this campaign yet.</p>`}`;
+      <div id="cmpTraffickingQrStatus_${job.id}" style="font-size:0.75rem;margin-top:6px;"></div>
+      <div id="cmpTraffickingQrHolder_${job.id}" style="margin-top:8px;"></div>
+    </div>`;
 }
-// Builds ONE tracking link for the whole campaign (not per Creative Job —
-// see cmpRenderTraffickingQrUtm()'s comment) and applies it to every
-// creative job so the rest of this file's per-job trackingUrl reads
-// (Trafficking send-gate, link testing, the Marketing Ops queue) all see it
-// as built. Saves the URL itself onto campaign.campaignUrl first — the same
-// real field the rest of the app already reads — so this is the one place
-// that field lives, not a second, disconnected copy of it.
-async function cmpTraffickingBuildCampaignLink(){
+// Builds one tracking link PER creative job, all off the one Campaign URL
+// (saved onto campaign.campaignUrl — the same real field the rest of the
+// app reads, not a second copy of it), so each asset is individually
+// measurable while there's still only one URL to manage. Campaign-level UTM
+// elements (source/medium/campaign/term/etc.) are the same on every link;
+// asset-identifying elements (utm_content, cx_creative_id, cx_placement,
+// cx_channel) vary per job — same values the old per-Job builder used, just
+// no longer requiring a manual pick-one-job-at-a-time step.
+async function cmpTraffickingBuildCampaignLinks(){
   const campaign = cmpRailLoadedCampaign();
   const resultEl = document.getElementById('cmpTraffickingLinkResult');
   if (!campaign || !resultEl) return;
   const urlInput = document.getElementById('cmpTraffickingCampaignUrlInput');
   const baseUrl = urlInput ? urlInput.value.trim() : '';
   if (!baseUrl){
-    resultEl.innerHTML = `<p class="hint">Enter the Campaign URL above first — the tracking link builds on top of it.</p>`;
+    resultEl.innerHTML = `<p class="hint">Enter the Campaign URL above first — tracking links build on top of it.</p>`;
     return;
   }
   const elements = state.utmMasterElements || [];
@@ -41748,37 +41756,41 @@ async function cmpTraffickingBuildCampaignLink(){
     resultEl.innerHTML = `<p class="hint">No Master UTM Configuration set yet — <a onclick="goToStep('analyticsSetup')" style="cursor:pointer;">choose up to 8 elements</a> in Analytics Integrations first.</p>`;
     return;
   }
+  const jobs = campaign.projects || [];
+  if (!jobs.length){
+    resultEl.innerHTML = `<p class="hint">No creative jobs on this campaign yet — tracking links build per job once one exists.</p>`;
+    return;
+  }
   campaign.campaignUrl = baseUrl;
   await cmpPersistCampaignField(campaign, { campaignUrl: baseUrl }, 'Campaign URL');
 
   const segments = (campaign.segment || '').split(',').map(s => s.trim()).filter(Boolean);
-  const channelText = (typeof cmpCreativeChannelsText === 'function' ? cmpCreativeChannelsText(campaign) : '').split(',')[0].trim();
-  const VALUE_BY_KEY = {
-    utm_source: slugify(channelText) || 'direct',
-    utm_medium: guessUtmMedium(channelText),
-    utm_campaign: slugify(campaign.name || campaign.objective || ''),
-    utm_content: 'all-assets',
-    utm_term: slugify(segments[0] || ''),
-    cx_campaign_id: campaign.id || '',
-    cx_creative_id: '',
-    cx_channel: slugify(channelText),
-    cx_placement: '',
-    cx_stage: slugify(campaign.stage || ''),
-    cx_audience: slugify(segments[0] || ''),
-    cx_flight: new Date().toISOString().slice(0, 10)
-  };
-  const params = elements.map(key => {
-    const elDef = UTM_ELEMENT_LIBRARY.find(e => e.key === key);
-    const val = VALUE_BY_KEY[key];
-    return (elDef && val) ? `${elDef.param}=${encodeURIComponent(val)}` : null;
-  }).filter(Boolean);
-  const separator = baseUrl.includes('?') ? '&' : '?';
-  const finalUrl = params.length ? `${baseUrl}${separator}${params.join('&')}` : baseUrl;
-
-  const jobs = campaign.projects || [];
-  resultEl.innerHTML = jobs.length ? `<p class="hint">Applying this link to ${jobs.length} creative asset${jobs.length === 1 ? '' : 's'}…</p>` : '';
+  const campaignChannelText = (typeof cmpCreativeChannelsText === 'function' ? cmpCreativeChannelsText(campaign) : '').split(',')[0].trim();
+  resultEl.innerHTML = `<p class="hint">Building ${jobs.length} tracking link${jobs.length === 1 ? '' : 's'}…</p>`;
   let okCount = 0;
   for (const job of jobs){
+    const channelText = job.channel || campaignChannelText;
+    const VALUE_BY_KEY = {
+      utm_source: slugify(channelText) || 'direct',
+      utm_medium: guessUtmMedium(channelText),
+      utm_campaign: slugify(campaign.name || campaign.objective || ''),
+      utm_content: slugify(job.specSummary || job.id),
+      utm_term: slugify(segments[0] || ''),
+      cx_campaign_id: campaign.id || '',
+      cx_creative_id: job.id || '',
+      cx_channel: slugify(channelText),
+      cx_placement: slugify(job.specSummary || ''),
+      cx_stage: slugify(campaign.stage || ''),
+      cx_audience: slugify(segments[0] || ''),
+      cx_flight: new Date().toISOString().slice(0, 10)
+    };
+    const params = elements.map(key => {
+      const elDef = UTM_ELEMENT_LIBRARY.find(e => e.key === key);
+      const val = VALUE_BY_KEY[key];
+      return (elDef && val) ? `${elDef.param}=${encodeURIComponent(val)}` : null;
+    }).filter(Boolean);
+    const separator = baseUrl.includes('?') ? '&' : '?';
+    const finalUrl = params.length ? `${baseUrl}${separator}${params.join('&')}` : baseUrl;
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(job.id)}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -41787,35 +41799,25 @@ async function cmpTraffickingBuildCampaignLink(){
       if (resp.ok){ job.trackingUrl = finalUrl; okCount++; }
     } catch (e){ /* best-effort per job — reflected in the warning below */ }
   }
-  resultEl.innerHTML = `
-    <div class="field" style="margin-bottom:10px;">
-      <label>Tracking link${jobs.length ? ` — applied to ${okCount} of ${jobs.length} asset${jobs.length === 1 ? '' : 's'}` : ''}</label>
-      <input type="text" id="cmpTraffickingLinkOutput" readonly value="${escapeHtml(finalUrl)}">
-    </div>
-    <div class="btn-row" style="margin-top:0;">
-      <button type="button" class="btn-ghost" onclick="cmpTraffickingCopyLink()">Copy link →</button>
-      <button type="button" class="btn-primary" onclick="cmpTraffickingGenerateQr()">Generate QR code →</button>
-    </div>
-    <div id="cmpTraffickingQrStatus" style="font-size:0.75rem;margin-top:8px;"></div>
-    <div id="cmpTraffickingQrHolder" style="margin-top:10px;"></div>
-    ${jobs.length && okCount < jobs.length ? `<p class="hint" style="color:#8A5A0A;margin-top:8px;">⚠ Couldn't save this link to ${jobs.length - okCount} asset${jobs.length - okCount === 1 ? '' : 's'} — check your connection and try again.</p>` : ''}`;
+  resultEl.innerHTML = jobs.filter(j => j.trackingUrl).map(job => cmpTraffickingLinkRowHtml(job)).join('')
+    + (okCount < jobs.length ? `<p class="hint" style="color:#8A5A0A;margin-top:4px;">⚠ Couldn't build a link for ${jobs.length - okCount} asset${jobs.length - okCount === 1 ? '' : 's'} — check your connection and try again.</p>` : '');
   const statEl = document.getElementById('cmpTraffickingAssetsUsingLinkStat');
   if (statEl) statEl.textContent = `${okCount} of ${jobs.length}`;
   cmpRenderTraffickingWorkspaceStatusBadge(campaign);
 }
-function cmpTraffickingCopyLink(){
-  const input = document.getElementById('cmpTraffickingLinkOutput');
+function cmpTraffickingCopyLink(jobId){
+  const input = document.getElementById(`cmpTraffickingLinkOutput_${jobId}`);
   if (!input) return;
   input.select();
   navigator.clipboard.writeText(input.value).then(() => {
-    const status = document.getElementById('cmpTraffickingQrStatus');
+    const status = document.getElementById(`cmpTraffickingQrStatus_${jobId}`);
     if (status) status.textContent = `Copied ${new Date().toLocaleTimeString()}.`;
   }).catch(() => {});
 }
-async function cmpTraffickingGenerateQr(){
-  const input = document.getElementById('cmpTraffickingLinkOutput');
-  const status = document.getElementById('cmpTraffickingQrStatus');
-  const holder = document.getElementById('cmpTraffickingQrHolder');
+async function cmpTraffickingGenerateQr(jobId){
+  const input = document.getElementById(`cmpTraffickingLinkOutput_${jobId}`);
+  const status = document.getElementById(`cmpTraffickingQrStatus_${jobId}`);
+  const holder = document.getElementById(`cmpTraffickingQrHolder_${jobId}`);
   if (!input || !input.value) return;
   if (status) status.textContent = 'Generating…';
   try {
@@ -41829,8 +41831,8 @@ async function cmpTraffickingGenerateQr(){
       return;
     }
     const data = await resp.json();
-    if (holder) holder.innerHTML = `<img src="${data.dataUrl}" alt="QR code for this tracking link" style="width:180px;height:180px;border:1px solid var(--line);border-radius:4px;padding:8px;background:var(--white);">
-      <div style="margin-top:6px;"><a href="${data.dataUrl}" download="qr-${(currentCampaignId || 'campaign')}.png" class="btn-ghost" style="text-decoration:none;display:inline-block;padding:6px 12px;font-size:0.75rem;">Download QR →</a></div>`;
+    if (holder) holder.innerHTML = `<img src="${data.dataUrl}" alt="QR code for this tracking link" style="width:150px;height:150px;border:1px solid var(--line);border-radius:4px;padding:8px;background:var(--white);">
+      <div style="margin-top:6px;"><a href="${data.dataUrl}" download="qr-${(jobId || currentCampaignId || 'campaign')}.png" class="btn-ghost" style="text-decoration:none;display:inline-block;padding:6px 12px;font-size:0.75rem;">Download QR →</a></div>`;
     if (status) status.textContent = `Generated ${new Date().toLocaleTimeString()}.`;
   } catch (e){
     if (status) status.textContent = 'Backend unreachable — could not generate a QR code.';
