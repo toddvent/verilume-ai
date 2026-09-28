@@ -12034,7 +12034,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-28-per-asset-tracking-links';
+const CXMEDIA_BUILD_STAMP = '2026-09-28-tracking-links-real-creative-jobs-source';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -41685,11 +41685,29 @@ let cmpTraffickingWorkspaceBookmark = null;
 // UTM Configuration includes) and shows each asset's own link with its own
 // Copy/QR controls — see cmpTraffickingBuildCampaignLinks()/
 // cmpTraffickingLinkRowHtml() below.
+//
+// 2026-09-28 follow-up fix, per direct report: "I previously approved all
+// jobs and we were able to generate the one link with UTM parameters. Now
+// the message is that no creative jobs have been submitted." The rewrite
+// above read `campaign.projects` for "creative jobs" — but that array is
+// the Marketing Functions "Project" records (createProject(), the unrelated
+// objective/segment/keyMessage workflow), which this campaign has zero of.
+// The REAL per-asset creative jobs — the ones Submit to Brand creates via
+// POST /api/campaigns/:id/creative-jobs (one per approved channel, real
+// JOB-... ids, confirmed in the backend's own creative_jobs table) — were
+// never loaded into `campaign.projects` anywhere in this file; the only
+// place that fetches them is loadCreativeJobs() (GET .../creative-jobs),
+// which caches its result in the module-level creativeJobsCache and applies
+// the same Performance-Marketing-approved-only filter (campaign.
+// approvedAssetJobIds) already used everywhere else jobs are shown. This
+// card now reads that same cache instead of the wrong, always-empty field —
+// cmpOpenTraffickingWorkspace() re-renders this card once loadCreativeJobs()
+// resolves, same as it already did for renderTraffickingJobsSummary().
 function cmpRenderTraffickingQrUtm(campaign){
   const el = document.getElementById('cmpTraffickingQrUtm');
   if (!el || !campaign) return;
   const elementCount = (state.utmMasterElements || []).length;
-  const jobs = campaign.projects || [];
+  const jobs = (typeof creativeJobsCache !== 'undefined' && creativeJobsCache) || [];
   const jobsWithTracking = jobs.filter(p => p.trackingUrl);
   const totalJobs = jobs.length;
   const test = cmpUtmLinkTest.campaignId === campaign.id ? cmpUtmLinkTest : null;
@@ -41711,7 +41729,7 @@ function cmpRenderTraffickingQrUtm(campaign){
     </div>
     <div id="cmpTraffickingLinkResult" style="margin-bottom:10px;">${jobsWithTracking.length
       ? jobsWithTracking.map(job => cmpTraffickingLinkRowHtml(job)).join('')
-      : (totalJobs ? `<p class="hint" style="margin:0;">No tracking links built yet — enter the Campaign URL above and click Build.</p>` : `<p class="hint" style="margin:0;">No creative jobs on this campaign yet — tracking links build per job once one exists.</p>`)}</div>
+      : (totalJobs ? `<p class="hint" style="margin:0;">No tracking links built yet — enter the Campaign URL above and click Build.</p>` : `<p class="hint" style="margin:0;">No approved creative jobs on this campaign yet — submit assets to Brand on Creative Asset Selection, then approve them on Performance Marketing; tracking links build per job once one exists.</p>`)}</div>
     ${jobsWithTracking.length ? `<div class="btn-row" style="margin:0 0 10px;"><button type="button" class="btn-ghost" ${test && test.running ? 'disabled' : ''} onclick="cmpTraffickingRunUtmLinkTest()">${test && test.running ? 'Testing links…' : `Test ${jobsWithTracking.length} tracking link${jobsWithTracking.length === 1 ? '' : 's'} →`}</button></div>${test && test.results ? cmpRenderUtmLinkTestResults(test.results) : ''}` : ''}`;
 }
 // One row per creative job's own tracking link, with its own Copy/QR
@@ -41756,9 +41774,13 @@ async function cmpTraffickingBuildCampaignLinks(){
     resultEl.innerHTML = `<p class="hint">No Master UTM Configuration set yet — <a onclick="goToStep('analyticsSetup')" style="cursor:pointer;">choose up to 8 elements</a> in Analytics Integrations first.</p>`;
     return;
   }
-  const jobs = campaign.projects || [];
+  // 2026-09-28 fix — real creative jobs (GET .../creative-jobs), same
+  // creativeJobsCache cmpRenderTraffickingQrUtm() now reads, not the
+  // unrelated Marketing Functions campaign.projects — see that function's
+  // comment for the full root-cause.
+  const jobs = (typeof creativeJobsCache !== 'undefined' && creativeJobsCache) || [];
   if (!jobs.length){
-    resultEl.innerHTML = `<p class="hint">No creative jobs on this campaign yet — tracking links build per job once one exists.</p>`;
+    resultEl.innerHTML = `<p class="hint">No approved creative jobs on this campaign yet — submit assets to Brand on Creative Asset Selection, then approve them on Performance Marketing.</p>`;
     return;
   }
   campaign.campaignUrl = baseUrl;
@@ -41920,8 +41942,17 @@ function cmpOpenTraffickingWorkspace(){
   }
   cmpRenderTraffickingQrUtm(campaign);
   cmpRenderTraffickingQa(campaign);
+  // 2026-09-28 fix — cmpRenderTraffickingQrUtm() reads creativeJobsCache
+  // (the real creative_jobs backend rows: id/channel/deliveryPlatform/
+  // specSummary/trackingUrl), which loadCreativeJobs() below is what
+  // actually populates. The first paint above runs on whatever was cached
+  // from a previous visit (often nothing) — re-render once this real fetch
+  // resolves so the tracking-link builder reflects the real jobs, not "No
+  // creative jobs on this campaign yet" every time this workspace is
+  // freshly opened.
   if (typeof loadCreativeJobs === 'function') loadCreativeJobs().then(() => {
     if (typeof renderTraffickingJobsSummary === 'function') renderTraffickingJobsSummary();
+    cmpRenderTraffickingQrUtm(campaign);
   }).catch(() => {});
   cmpRenderTraffickingWorkspaceStatusBadge(campaign);
 }
