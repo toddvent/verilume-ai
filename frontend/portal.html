@@ -11385,6 +11385,23 @@
       </div>
     </div>
 
+    <!-- 2026-09-28 — Evergreen demand-fulfillment forecast for this plan
+         year (see mbuDemandFulfillmentCard on Company Profile for the
+         assumptions and the reasoning). Same computeDemandFulfillmentForecast()
+         / cmpForecastWebsiteUsersForYear() as that card, keyed to
+         mpSelectedYear, so the Media Plan sees the evergreen budget its
+         growth-marketing impressions imply. -->
+    <div class="sk-card" id="mpDemandFulfillmentCard" style="margin-top:18px;">
+      <div class="sk-card-head cx">
+        <div class="htext"><div class="kicker">Evergreen budget</div><h3>Demand fulfillment forecast — <span id="mpDemandFulfillmentYear"></span></h3></div>
+        <div class="hicon">🔁</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">Brand search, the remarketing pool, and ID-resolution print and email scale with the website visitors this year's growth-marketing impressions create — not with the working budget. Plan them from here; the growth mix below holds them out. <a onclick="(function(){ const c = document.getElementById('mbuDemandFulfillmentCard'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); })()" style="cursor:pointer;">Edit the assumptions further down this page →</a></p>
+        <div id="mpDemandFulfillmentBody"><p class="hint">Loading…</p></div>
+      </div>
+    </div>
+
     <!-- Step 2 (Round 2026-09-07, per direct instruction: "Manual should be
          a fun interactive, streamlined experience with Agentic Guidance" --
          (b) start with pre-populated Channels or Loop Stages, with
@@ -11780,6 +11797,35 @@
         <h4 style="margin:18px 0 6px;">Campaign roll-up vs. target</h4>
         <p class="hint" style="margin:0 0 8px;">Every campaign whose Start Date falls in the plan year, summed — logged actuals where they exist, otherwise the same per-campaign model the Analysis workspace shows. The gap is what campaigns not yet created still have to deliver.</p>
         <div id="mbuAnnualRollupBody"><p class="hint">Loading…</p></div>
+      </div>
+    </div>
+
+    <!-- 2026-09-28 — Demand fulfillment (evergreen) assumptions + forecast,
+         per direct instruction on the board-case workbook's Impressions
+         tab: brand search, the remarketing pool, and ID-resolution print
+         and email scale with WEBSITE VISITORS (US traffic only for ID
+         resolution), not with the media budget — so as growth-marketing
+         impressions add visitors, the evergreen budget re-states itself.
+         Assumptions are per account (account_demand_fulfillment); the
+         forecast uses the plan year selected on the Annual plan card above
+         and the same website-user figure the Campaign Summaries model.
+         The Media Plan page shows the same forecast for its own year. -->
+    <div class="sk-card" id="mbuDemandFulfillmentCard" style="margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Account setting — evergreen budget</div><h3>Demand fulfillment — assumptions &amp; forecast</h3></div>
+        <div class="hicon">🔁</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">The four lines that grow with website traffic rather than media spend. Rates are fractions (0.85 = 85%). Italic rows are Verilume product defaults — edit to override; rows marked "needed" have no default because they're specific to this account (GA4 geo split, tag coverage, brand strength). Saves as you go.</p>
+        <span class="hint" id="mbuDemandFulfillmentStatus" style="margin:0 0 8px;display:block;"></span>
+        <div style="overflow-x:auto;">
+          <table class="data-table" style="min-width:560px;">
+            <thead><tr><th>Assumption</th><th>Value</th><th>Basis</th></tr></thead>
+            <tbody id="mbuDemandFulfillmentBody"></tbody>
+          </table>
+        </div>
+        <h4 style="margin:18px 0 6px;">Forecast for the plan year <span class="hint" id="mbuDemandFulfillmentYearLabel"></span></h4>
+        <div id="mbuDemandFulfillmentForecast"><p class="hint">Loading…</p></div>
       </div>
     </div>
 
@@ -12215,7 +12261,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-28-campaign-summary-strip-and-annual-plan-rollup';
+const CXMEDIA_BUILD_STAMP = '2026-09-28-channel-timing-and-demand-fulfillment';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -31733,6 +31779,7 @@ function renderMediaPlanFieldsAndCharts(fromUpload){
   renderMpYearRow();
   renderMpCarryForwardPrompt();
   renderMpForecastSuggestion();
+  if (typeof mpRenderDemandFulfillmentCard === 'function') mpRenderDemandFulfillmentCard();
   mswRenderStageWeightCard();
   // Round 53 — solo accounts used to have a tranche choice to hide; Round
   // 116's plan-wide Flat/Manual monthly control (below) applies the same
@@ -38715,6 +38762,7 @@ async function loadMmmReadiness(){
     if (!resp.ok){ el.innerHTML = '<p class="lede">Couldn\'t load the analysis readiness readout right now.</p>'; return; }
     const data = await resp.json();
     renderMmmReadinessPanel(data);
+    loadChannelTimingPanel();
   } catch (e){ el.innerHTML = '<p class="lede">Backend unreachable — can\'t load the analysis readiness readout.</p>'; }
 }
 function renderMmmReadinessPanel(data){
@@ -38828,7 +38876,100 @@ function renderMmmReadinessPanel(data){
     <p style="font-size:0.8125rem;font-weight:600;margin:16px 0 6px;">Recommended incrementality-test designs by category</p>
     <p style="font-size:0.75rem;color:var(--muted);margin:0 0 10px;">Reference designs only — none of these are run or simulated by this app. Use these to shape the test-design conversation with your MMM partner.</p>
     ${testingHtml}
+    <div id="mmmChannelTimingPanel" style="margin-top:20px;"></div>
   `;
+}
+
+// 2026-09-28 — Channel timing & frequency (lag, carryover, ramp), per
+// direct instruction: generic MMM-style priors per category, industry-
+// adjusted, overridden by this account's own applied MMM estimate or a
+// recorded DMA matched-market test read. Resolution and the reference
+// table live server-side (resolveChannelTiming() / CHANNEL_TIMING_REFERENCE
+// in server.js); this only renders the layers and records overrides.
+let mmmChannelTimingRows = [];
+async function loadChannelTimingPanel(){
+  const el = document.getElementById('mmmChannelTimingPanel');
+  if (!el || !state.companyId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/channel-timing`);
+    if (!resp.ok){ el.innerHTML = '<p class="lede">Couldn\'t load channel timing right now.</p>'; return; }
+    const data = await resp.json();
+    mmmChannelTimingRows = data.rows || [];
+    renderChannelTimingPanel(data);
+  } catch (e){ el.innerHTML = '<p class="lede">Backend unreachable — can\'t load channel timing.</p>'; }
+}
+function renderChannelTimingPanel(data){
+  const el = document.getElementById('mmmChannelTimingPanel');
+  if (!el) return;
+  const rows = (data.rows || []);
+  const included = rows.filter(r => r.included);
+  const shown = included.length ? included : rows;
+  const fmtT = t => t ? `${t.lagWeeks != null ? t.lagWeeks : '—'} wk lag · ${t.carryoverHalfLifeWeeks != null ? t.carryoverHalfLifeWeeks : '—'} wk ½-life${t.monthsToFullEffect != null ? ` · ${t.monthsToFullEffect} mo to full` : ''}` : '<span class="hint">—</span>';
+  const srcColor = r => r.override ? 'var(--cx)' : r.mmm ? '#c98a1f' : 'var(--muted)';
+  const trs = shown.map(r => `<tr>
+      <td><b>${escapeHtml(r.category)}</b><div class="hint" style="margin-top:2px;">${escapeHtml(r.generic.cadence || '')}</div></td>
+      <td>${fmtT(r.generic)}<div class="hint" style="margin-top:2px;">${escapeHtml(r.generic.basis || '')}</div></td>
+      <td>${r.industryAdjusted.factor ? fmtT(r.industryAdjusted) + `<div class="hint" style="margin-top:2px;">× ${r.industryAdjusted.factor} for ${escapeHtml(r.industryAdjusted.industry)}</div>` : '<span class="hint">No Industry set</span>'}</td>
+      <td>${r.mmm ? fmtT(r.mmm) + `<div class="hint" style="margin-top:2px;">${r.mmm.bestLagPeriods} period lag, ${(r.mmm.bestAdstockDecay * 100).toFixed(0)}% decay · ${escapeHtml(r.mmm.confidence)} confidence${r.mmm.decidedBy ? ' · applied by ' + escapeHtml(r.mmm.decidedBy) : ''}</div>` : '<span class="hint">No applied MMM estimate</span>'}</td>
+      <td>${r.override ? fmtT(r.override) + `<div class="hint" style="margin-top:2px;">${r.override.source === 'dma_test' ? 'DMA test' : 'Manual'}${r.override.note ? ': "' + escapeHtml(r.override.note) + '"' : ''}${r.override.decidedBy ? ' — ' + escapeHtml(r.override.decidedBy) : ''}</div>` : '<span class="hint">None</span>'}</td>
+      <td style="font-weight:700;">${fmtT(r.effective)}<div style="font-size:0.6875rem;color:${srcColor(r)};font-weight:600;margin-top:2px;">${escapeHtml(r.source)}</div>
+        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
+          <button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;" onclick="mmmRecordChannelTiming('${escapeHtml(r.category)}','dma_test')">Record DMA test read</button>
+          <button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;" onclick="mmmRecordChannelTiming('${escapeHtml(r.category)}','manual')">Manual override</button>
+          ${r.override ? `<button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;color:var(--advocacy);" onclick="mmmClearChannelTiming('${escapeHtml(r.category)}')">Clear override</button>` : ''}
+        </div></td>
+    </tr>`).join('');
+  el.innerHTML = `
+    <p style="font-size:0.8125rem;font-weight:600;margin:0 0 6px;">Channel timing &amp; frequency — lag, carryover, ramp</p>
+    <p style="font-size:0.75rem;color:var(--muted);margin:0 0 10px;">Channels don't pay back on the same clock. Each row starts from a generic MMM-style prior for the category, stretches with this account's Industry purchase cycle, and is overridden by evidence when there is some: an MMM adstock/lag estimate a data scientist has <b>applied</b> above, or a recorded DMA matched-market / geo-lift test read (which outranks the model). ${escapeHtml(data.industryNote || '')}${included.length ? '' : ' Showing every category — select included categories in Step 1 to narrow this.'}</p>
+    <div id="mmmChannelTimingFlag" style="font-size:0.75rem;color:var(--cx);margin:0 0 8px;"></div>
+    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:8px;">
+      <thead><tr><th>Category · cadence</th><th>Generic prior</th><th>Industry-adjusted</th><th>MMM estimate (applied)</th><th>Test read / override</th><th>Effective · source</th></tr></thead>
+      <tbody>${trs || '<tr><td colspan="6">No categories.</td></tr>'}</tbody>
+    </table></div>`;
+}
+async function mmmRecordChannelTiming(category, source){
+  const flag = document.getElementById('mmmChannelTimingFlag');
+  const row = mmmChannelTimingRows.find(r => r.category === category);
+  const eff = row ? row.effective : {};
+  const ask = (label, cur) => { const v = prompt(`${category} — ${label} (blank keeps ${cur != null ? cur : 'the current value'})`); return v === null ? undefined : v.trim(); };
+  const lag = ask('lag to outcome impact, in weeks', eff.lagWeeks); if (lag === undefined) return;
+  const half = ask('carryover half-life, in weeks', eff.carryoverHalfLifeWeeks); if (half === undefined) return;
+  const months = ask('months to full effect', eff.monthsToFullEffect); if (months === undefined) return;
+  const note = prompt(source === 'dma_test'
+    ? `${category} — name the test (markets, dates, what was measured). Required — this is the evidence trail.`
+    : `${category} — note for this override (optional)`);
+  if (note === null) return;
+  if (source === 'dma_test' && !note.trim()){ if (flag) flag.textContent = 'A DMA test read needs a note naming the test — not saved.'; return; }
+  if (!lag && !half && !months){ if (flag) flag.textContent = 'Enter at least one of lag / half-life / months to full effect — not saved.'; return; }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/channel-timing`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category, source, lagWeeks: lag || null, carryoverHalfLifeWeeks: half || null, monthsToFullEffect: months || null, note: note.trim() || null, decidedBy: state.userName || null })
+    });
+    const data = await resp.json();
+    if (!resp.ok){ if (flag) flag.textContent = data.error || 'Could not save.'; return; }
+    mmmChannelTimingRows = data.rows || [];
+    renderChannelTimingPanel({ rows: mmmChannelTimingRows });
+    const f2 = document.getElementById('mmmChannelTimingFlag');
+    if (f2) f2.textContent = `Saved ${new Date().toLocaleTimeString()} — ${category} now on ${source === 'dma_test' ? 'the recorded DMA test read' : 'the manual override'}.`;
+    if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext();
+  } catch (e){ if (flag) flag.textContent = 'Backend unreachable — not saved.'; }
+}
+async function mmmClearChannelTiming(category){
+  const flag = document.getElementById('mmmChannelTimingFlag');
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/channel-timing`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category, clear: true })
+    });
+    const data = await resp.json();
+    if (!resp.ok){ if (flag) flag.textContent = data.error || 'Could not clear.'; return; }
+    mmmChannelTimingRows = data.rows || [];
+    renderChannelTimingPanel({ rows: mmmChannelTimingRows });
+    const f2 = document.getElementById('mmmChannelTimingFlag');
+    if (f2) f2.textContent = `Cleared — ${category} falls back to MMM / industry / generic.`;
+    if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext();
+  } catch (e){ if (flag) flag.textContent = 'Backend unreachable — not cleared.'; }
 }
 
 // Round 132bk — records a human data scientist's Reference/Apply/Remove
@@ -42468,20 +42609,123 @@ async function cmpLoadCampaignSummaryContext(){
   let cpu = { rows: [], blended: null, yearsWithData: 0 };
   try { cpu = await computeCostPerWebsiteUserByYear(); } catch (e){ console.warn('cmpLoadCampaignSummaryContext: cost per user failed', e); }
   const annualByYear = {};
+  let timingByCategory = {};
+  let demandFulfillment = null;
   if (dataSourceLabel === 'backend'){
+    const acct = encodeURIComponent(state.companyId);
+    const [planResp, timingResp, dfResp] = await Promise.all([
+      authedFetch(`${BACKEND_URL}/api/accounts/${acct}/annual-plan`).catch(() => null),
+      authedFetch(`${BACKEND_URL}/api/accounts/${acct}/channel-timing`).catch(() => null),
+      authedFetch(`${BACKEND_URL}/api/accounts/${acct}/demand-fulfillment`).catch(() => null)
+    ]);
     try {
-      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/annual-plan`);
-      if (resp.ok){
-        const data = await resp.json();
+      if (planResp && planResp.ok){
+        const data = await planResp.json();
         (data.rows || []).forEach(r => {
           if (!annualByYear[r.year]) annualByYear[r.year] = {};
           annualByYear[r.year][r.kind] = r;
         });
       }
-    } catch (e){ console.warn('cmpLoadCampaignSummaryContext: annual plan fetch failed', e); }
+    } catch (e){ console.warn('cmpLoadCampaignSummaryContext: annual plan parse failed', e); }
+    try {
+      if (timingResp && timingResp.ok){ const data = await timingResp.json(); (data.rows || []).forEach(r => { timingByCategory[r.category] = r; }); }
+    } catch (e){ console.warn('cmpLoadCampaignSummaryContext: channel timing parse failed', e); }
+    try {
+      if (dfResp && dfResp.ok){ demandFulfillment = await dfResp.json(); }
+    } catch (e){ console.warn('cmpLoadCampaignSummaryContext: demand fulfillment parse failed', e); }
   }
-  cmpSummaryCtxCache = { accountId: state.companyId, cpu, annualByYear };
+  cmpSummaryCtxCache = { accountId: state.companyId, cpu, annualByYear, timingByCategory, demandFulfillment };
   return cmpSummaryCtxCache;
+}
+// 2026-09-28 — expected impact timing for one campaign off the resolved
+// channel timing (GET .../channel-timing): the slowest selected channel
+// sets when outcomes should first show and when the campaign's effect is
+// fully built, so an Analysis read isn't taken before the lag has run.
+function cmpCampaignTimingNote(campaign, ctx){
+  const timing = ctx && ctx.timingByCategory;
+  if (!timing || !campaign || !campaign.startDate) return '';
+  const channels = (typeof cmpCreativeChannelsText === 'function' ? cmpCreativeChannelsText(campaign) : (campaign.channels || '')).split(',').map(s => s.trim()).filter(Boolean);
+  const rows = channels.map(ch => timing[ch]).filter(Boolean);
+  if (!rows.length) return '';
+  const slowest = rows.reduce((a, b) => ((b.effective.lagWeeks || 0) > (a.effective.lagWeeks || 0) ? b : a));
+  const longestTail = rows.reduce((a, b) => ((b.effective.carryoverHalfLifeWeeks || 0) > (a.effective.carryoverHalfLifeWeeks || 0) ? b : a));
+  const start = new Date(campaign.startDate);
+  const firstImpact = new Date(start.getTime() + (slowest.effective.lagWeeks || 0) * 7 * 86400000);
+  const fmtD = d => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  const evidence = rows.some(r => r.override || r.mmm);
+  return `Expected timing: first outcome impact ~${slowest.effective.lagWeeks || 0} wk after start (${fmtD(firstImpact)}) on ${escapeHtml(slowest.category)}; carryover half-life up to ${longestTail.effective.carryoverHalfLifeWeeks || 0} wk (${escapeHtml(longestTail.category)}). ${evidence ? 'Includes this account\u2019s own MMM/test evidence.' : 'Generic priors' + (slowest.industryAdjusted && slowest.industryAdjusted.factor ? ' stretched for this Industry' : '') + ' — record a DMA test read or apply an MMM estimate under MMM → Analysis Readiness to replace them.'}`;
+}
+// 2026-09-28 — Demand fulfillment forecast (see account_demand_fulfillment
+// on the backend): the four evergreen lines that scale with website
+// VISITORS rather than budget — brand search, the remarketing pool, and
+// ID-resolution print and email (US traffic only) — re-stated for a given
+// website-user figure. Returns per-line units and budget, null where an
+// input is still missing (isMissing on the field) rather than a zero.
+function computeDemandFulfillmentForecast(websiteUsers, df){
+  const f = {};
+  ((df && df.fields) || []).forEach(x => { f[x.key] = (x.value != null ? Number(x.value) : null); });
+  const has = (...keys) => websiteUsers != null && keys.every(k => f[k] != null);
+  const usVisitors = has('usShareOfTraffic') ? websiteUsers * f.usShareOfTraffic : null;
+  const matched = (usVisitors != null && f.idResMatchRate != null) ? usVisitors * f.idResMatchRate : null;
+  const postcards = (matched != null && f.postcardDropsPerMatchedVisitor != null) ? matched * f.postcardDropsPerMatchedVisitor : null;
+  const emails = (usVisitors != null && f.idResEmailsPerVisitor != null) ? usVisitors * f.idResEmailsPerVisitor : null;
+  const pool = has('remarketingPoolRate') ? websiteUsers * f.remarketingPoolRate : null;
+  const rmImps = (pool != null && f.remarketingImpressionsPerMember != null) ? pool * f.remarketingImpressionsPerMember : null;
+  const brandClicks = has('brandSearchClicksPerVisitor') ? websiteUsers * f.brandSearchClicksPerVisitor : null;
+  return {
+    websiteUsers, usVisitors, matchedVisitors: matched,
+    lines: [
+      { key: 'idResPrint', label: 'ID-resolution print (postcards to matched US visitors)', units: postcards, unitLabel: 'pieces', budget: (postcards != null && f.idResPostcardCostPerPiece != null) ? postcards * f.idResPostcardCostPerPiece : null, needs: usVisitors == null ? 'US share of traffic' : (f.idResPostcardCostPerPiece == null ? 'postcard cost per piece' : null) },
+      { key: 'idResEmail', label: 'ID-resolution email acquisition (US visitors)', units: emails, unitLabel: 'emails', budget: (emails != null && f.idResEmailCost != null) ? emails * f.idResEmailCost : null, needs: usVisitors == null ? 'US share of traffic' : (f.idResEmailCost == null ? 'cost per email' : null) },
+      { key: 'remarketing', label: 'Remarketing pool', units: pool, unitLabel: 'addressable visitors', impressions: rmImps, budget: (rmImps != null && f.remarketingCpm != null) ? (rmImps / 1000) * f.remarketingCpm : null, needs: pool == null ? 'remarketing pool rate' : (f.remarketingCpm == null ? 'remarketing CPM' : null) },
+      { key: 'brandSearch', label: 'Brand search', units: brandClicks, unitLabel: 'clicks', budget: (brandClicks != null && f.brandSearchCpc != null) ? brandClicks * f.brandSearchCpc : null, needs: brandClicks == null ? 'brand-search clicks per visitor' : (f.brandSearchCpc == null ? 'brand-search CPC' : null) }
+    ]
+  };
+}
+// Website users for a plan year, most-real first: Σ campaigns modeled
+// (cmpCampaignSummaryModel) → the year's annual target → nothing.
+function cmpForecastWebsiteUsersForYear(year, ctx){
+  const campaigns = (state.campaigns || []).filter(c => c && c.startDate && !c.isAdHoc && !c.cancelled && new Date(c.startDate).getFullYear() === year);
+  let sum = 0, n = 0;
+  campaigns.forEach(c => { const m = cmpCampaignSummaryModel(c, ctx); if (m.websiteUsers != null){ sum += m.websiteUsers; n++; } });
+  if (n) return { websiteUsers: sum, source: `Σ ${n} campaign${n === 1 ? '' : 's'} starting in ${year}` };
+  const t = ctx.annualByYear[year] && ctx.annualByYear[year].target;
+  if (t && t.websiteUsers != null) return { websiteUsers: t.websiteUsers, source: `${year} annual target` };
+  return { websiteUsers: null, source: null };
+}
+function renderDemandFulfillmentForecastHtml(year, ctx, opts){
+  const df = ctx.demandFulfillment;
+  if (!df) return '<p class="hint" style="margin:0;">Demand fulfillment assumptions not loaded.</p>';
+  const plan = cmpForecastWebsiteUsersForYear(year, ctx);
+  const baseline = cmpAnnualBaselineFor(ctx, year);
+  const baseUsers = baseline && baseline.websiteUsers != null ? baseline.websiteUsers : null;
+  const fcPlan = computeDemandFulfillmentForecast(plan.websiteUsers, df);
+  const fcBase = computeDemandFulfillmentForecast(baseUsers, df);
+  const fmtInt = v => v == null ? '<span class="hint">—</span>' : Math.round(v).toLocaleString();
+  const fmtM = v => v == null ? '<span class="hint">—</span>' : fmtMoney(v);
+  const delta = (a, b, fmt) => (a != null && b != null) ? `<span style="color:${a - b >= 0 ? 'var(--cx)' : 'var(--advocacy)'};">${a - b >= 0 ? '+' : '−'}${fmt(Math.abs(a - b)).replace(/<[^>]+>/g, '')}</span>` : '<span class="hint">—</span>';
+  const missing = (df.fields || []).filter(x => x.isMissing).map(x => x.label);
+  const rows = fcPlan.lines.map((l, i) => {
+    const b = fcBase.lines[i];
+    return `<tr>
+      <td>${escapeHtml(l.label)}${l.needs ? `<div class="hint">Needs: ${escapeHtml(l.needs)}</div>` : ''}</td>
+      <td>${fmtInt(b.units)}${b.impressions != null ? `<div class="hint">${fmtInt(b.impressions)} imps</div>` : ''}</td>
+      <td>${fmtInt(l.units)}${l.impressions != null ? `<div class="hint">${fmtInt(l.impressions)} imps</div>` : ''}</td>
+      <td>${delta(l.units, b.units, fmtInt)}</td>
+      <td>${fmtM(b.budget)}</td>
+      <td><b>${fmtM(l.budget)}</b></td>
+      <td>${delta(l.budget, b.budget, fmtM)}</td>
+    </tr>`;
+  }).join('');
+  const totalPlan = fcPlan.lines.reduce((s, l) => s + (l.budget || 0), 0);
+  const totalBase = fcBase.lines.reduce((s, l) => s + (l.budget || 0), 0);
+  return `
+    <p class="hint" style="margin:0 0 8px;">${plan.websiteUsers != null ? `<b>${Math.round(plan.websiteUsers).toLocaleString()}</b> website users forecast for ${year} (${escapeHtml(plan.source)})` : `No ${year} website-user forecast yet — create campaigns starting in ${year} or enter a ${year} annual target`}${baseUsers != null ? ` vs. <b>${Math.round(baseUsers).toLocaleString()}</b> in the ${baseline.year} baseline` : ' — no annual baseline on file for the "change from" column'}${fcPlan.usVisitors != null ? ` · ${Math.round(fcPlan.usVisitors).toLocaleString()} US · ${Math.round(fcPlan.matchedVisitors).toLocaleString()} ID-resolution matched` : ''}.</p>
+    <div class="table-scroll"><table class="data-table" style="margin-bottom:8px;">
+      <thead><tr><th>Evergreen line</th><th>Baseline units</th><th>${year} units</th><th>Change</th><th>Baseline budget</th><th>${year} budget</th><th>Change</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <p class="hint" style="margin:0;">${totalPlan > 0 ? `Evergreen demand-fulfillment budget for ${year}: <b>${fmtMoney(totalPlan)}</b>${totalBase > 0 ? ` (${fmtMoney(totalBase)} at baseline traffic)` : ''} — lines with a missing input are excluded from the total. ` : ''}${missing.length ? `Still needed on ${opts && opts.assumptionsHere ? 'this card' : 'the Demand fulfillment assumptions card further down this page'}: ${escapeHtml(missing.join('; '))}.` : ''} These lines scale with visitors, not the media budget — they're the "demand fulfillment" channels the Recommended Channels logic already holds out of the growth mix.</p>`;
 }
 // Latest baseline row on file at or before `year` (a 2027 campaign is
 // modeled off the 2026 TTM baseline until a 2027 baseline exists).
@@ -42636,6 +42880,8 @@ async function cmpRenderAnalysisSummary(campaign){
       escapeHtml(m.txnNote) + (m.grossRevenue != null ? ` · ~${fmtMoney(m.grossRevenue)} gross revenue at the baseline’s revenue per booking` : ''),
       m.txnIsActual, m.transactions != null, cmpShareOfTargetNote(m.transactions, t, 'bookings', fmtInt))}
   </div>`;
+  const timingNote = cmpCampaignTimingNote(campaign, ctx);
+  if (timingNote) el.insertAdjacentHTML('beforeend', `<p class="hint" style="margin:10px 0 0;">${timingNote}</p>`);
   if (lede){
     const modeledCount = [!m.spendIsActual && m.spend != null, !m.impsIsActual && m.impressions != null, m.websiteUsers != null, m.leads != null, m.registrations != null, m.transactions != null && !m.txnIsActual].filter(Boolean).length;
     const annualNote = t
@@ -66215,6 +66461,7 @@ function mbuLoadReachInputs(){
   mbuLoadMagazineCost();
   mbuRenderCostPerWebsiteUser();
   mbuLoadAnnualPlan();
+  mbuLoadDemandFulfillment();
 }
 async function mbuLoadWebsiteUsersMonthly(){
   const body = document.getElementById('mbuWebsiteUsersBody');
@@ -66611,6 +66858,7 @@ async function mbuLoadAnnualPlan(){
     ${mbuAnnualPlanDerivedRowsHtml()}`;
   if (status) status.textContent = '';
   mbuRenderAnnualRollup();
+  if (typeof mbuRenderDemandFulfillmentForecast === 'function') mbuRenderDemandFulfillmentForecast();
 }
 // Read-only derived rates under the inputs — the exact ratios the Campaign
 // Summary model uses, shown so a person can sanity-check them against the
@@ -66721,6 +66969,84 @@ async function mbuRenderAnnualRollup(){
       ${line('Gross revenue', sums.grossRevenue, 'grossRevenue', fmtMoney, 'Modeled: transactions × baseline revenue per booking')}
     </tbody></table></div>
     ${target ? '' : `<p class="hint" style="margin:0;">No ${year} target entered yet — fill the Target column above to see coverage and gap.</p>`}`;
+}
+
+// 2026-09-28 — Demand fulfillment assumptions card (see
+// mbuDemandFulfillmentCard's own comment). Fields and defaults come from
+// the backend (DEMAND_FULFILLMENT_FIELDS) so there's one list.
+async function mbuLoadDemandFulfillment(){
+  const body = document.getElementById('mbuDemandFulfillmentBody');
+  const status = document.getElementById('mbuDemandFulfillmentStatus');
+  if (!body) return;
+  let data = null;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/demand-fulfillment`);
+      if (resp.ok) data = await resp.json();
+    } catch (e){ console.warn('mbuLoadDemandFulfillment: fetch failed', e); }
+  }
+  if (!data){ body.innerHTML = '<tr><td colspan="3" class="hint">Backend unreachable.</td></tr>'; return; }
+  body.innerHTML = (data.fields || []).map(f => `<tr${f.isDefault ? ' style="font-style:italic;"' : ''}>
+    <td>${escapeHtml(f.label)}${f.isMissing ? ' <span class="cmp-summary-badge modeled">needed</span>' : (f.isDefault ? '<div class="hint" style="font-style:normal;">Verilume default — edit to confirm</div>' : '')}</td>
+    <td><input type="number" min="0" step="${f.unit === 'rate' ? '0.001' : (f.unit === 'money' ? '0.01' : '1')}" class="tbl-input" style="width:130px;" value="${f.value == null ? '' : f.value}" data-key="${escapeHtml(f.key)}" onchange="mbuQueueDemandFulfillmentSave()"></td>
+    <td class="hint">${escapeHtml(f.note || '')}</td>
+  </tr>`).join('');
+  if (status) status.textContent = '';
+  mbuRenderDemandFulfillmentForecast();
+}
+let mbuDemandFulfillmentSaveTimer = null;
+function mbuQueueDemandFulfillmentSave(){
+  const status = document.getElementById('mbuDemandFulfillmentStatus');
+  if (status) status.textContent = 'Saving…';
+  if (mbuDemandFulfillmentSaveTimer) clearTimeout(mbuDemandFulfillmentSaveTimer);
+  mbuDemandFulfillmentSaveTimer = setTimeout(mbuSaveDemandFulfillment, 600);
+}
+async function mbuSaveDemandFulfillment(){
+  const status = document.getElementById('mbuDemandFulfillmentStatus');
+  const body = document.getElementById('mbuDemandFulfillmentBody');
+  if (!body) return;
+  const payload = {};
+  body.querySelectorAll('input[data-key]').forEach(inp => { payload[inp.dataset.key] = inp.value === '' ? null : Number(inp.value); });
+  let persisted = false, err = null;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/demand-fulfillment`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+      });
+      persisted = resp.ok;
+      if (!resp.ok){ try { err = (await resp.json()).error; } catch (e){ /* ignore */ } }
+    } catch (e){ console.warn('mbuSaveDemandFulfillment: backend write failed.', e); }
+  }
+  if (status) status.textContent = persisted
+    ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
+    : (err ? `Not saved — ${err}` : `Saved ${new Date().toLocaleTimeString()} — local only, this session.`);
+  if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext();
+  if (persisted) mbuLoadDemandFulfillment();
+}
+async function mbuRenderDemandFulfillmentForecast(){
+  const el = document.getElementById('mbuDemandFulfillmentForecast');
+  const yearSel = document.getElementById('mbuAnnualPlanYear');
+  const yearLabel = document.getElementById('mbuDemandFulfillmentYearLabel');
+  if (!el) return;
+  const year = yearSel && yearSel.value ? parseInt(yearSel.value, 10) : new Date().getFullYear() + 1;
+  if (yearLabel) yearLabel.textContent = `(${year}, from the Annual plan card's year)`;
+  if (typeof cmpLoadCampaignSummaryContext !== 'function'){ el.innerHTML = ''; return; }
+  const ctx = await cmpLoadCampaignSummaryContext();
+  el.innerHTML = renderDemandFulfillmentForecastHtml(year, ctx, { assumptionsHere: true });
+}
+// Media Plan page's copy of the forecast, keyed to its own selected year.
+async function mpRenderDemandFulfillmentCard(){
+  const el = document.getElementById('mpDemandFulfillmentBody');
+  const yl = document.getElementById('mpDemandFulfillmentYear');
+  if (!el) return;
+  const year = (typeof mpSelectedYear === 'number' && mpSelectedYear) ? mpSelectedYear : new Date().getFullYear();
+  if (yl) yl.textContent = year;
+  if (dataSourceLabel !== 'backend' || !state.companyId){ el.innerHTML = '<p class="hint" style="margin:0;">Available once this account is on the backend.</p>'; return; }
+  el.innerHTML = '<p class="hint" style="margin:0;">Computing…</p>';
+  try {
+    const ctx = await cmpLoadCampaignSummaryContext();
+    el.innerHTML = renderDemandFulfillmentForecastHtml(year, ctx, { assumptionsHere: false });
+  } catch (e){ el.innerHTML = '<p class="hint" style="margin:0;">Couldn\'t compute the forecast right now.</p>'; }
 }
 
 // 2026-09-28 addition, per direct instruction: "Average cost per website
