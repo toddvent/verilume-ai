@@ -11930,7 +11930,7 @@
 
         <div id="traffickingJobsSummary"></div>
 
-        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line);">
+        <div id="cmpUtmLinkBuilderAnchor" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line);">
           <h4 style="margin:0 0 6px;">Approve an asset &amp; build its link</h4>
           <div class="field">
             <label for="utmBuilderCreativeJob">Creative Job</label>
@@ -12034,7 +12034,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-28-cta-live-counter-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-28-marketing-ops-tracking-links-inline-and-routing-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -15445,7 +15445,7 @@ function renderCmpDownstreamStages(){
       <button type="button" class="btn-ghost" ${utmTestForThisCampaign && utmTestForThisCampaign.running ? 'disabled' : ''} onclick="cmpRunUtmLinkTest()">${utmTestForThisCampaign && utmTestForThisCampaign.running ? 'Testing links…' : `Test ${jobsWithTracking.length} tracking link${jobsWithTracking.length === 1 ? '' : 's'} →`}</button>
     </div>
     ${utmTestForThisCampaign && utmTestForThisCampaign.results ? cmpRenderUtmLinkTestResults(utmTestForThisCampaign.results) : ''}` : ''}
-    <a class="flink" onclick="openExperienceSubWorkstream('marketingOps')">Build/manage tracking links in Marketing Ops →</a>`;
+    <a class="flink" onclick="const t=document.getElementById('cmpUtmLinkBuilderAnchor'); if(t) t.scrollIntoView({behavior:'smooth',block:'start'}); else openExperienceSubWorkstream('marketingOps');">Build a tracking link below ↓</a>`;
 
   // 5 — Creative: Round 132av, per direct instruction — replaced the old
   // this-campaign-only job list with a real cross-campaign handoff grid
@@ -41678,14 +41678,22 @@ function cmpRenderTraffickingQrUtm(campaign){
   const test = cmpUtmLinkTest.campaignId === campaign.id ? cmpUtmLinkTest : null;
   const testStatLabel = test && test.results ? `${test.results.filter(r => r.ok).length} ✓ / ${test.results.filter(r => !r.ok).length} ✕` : '—';
   el.innerHTML = `
-    <p class="lede" style="margin-bottom:16px;">${elementCount ? `This account's Master UTM Configuration uses ${elementCount} element${elementCount === 1 ? '' : 's'}.` : 'No Master UTM Configuration set for this account yet.'} Built from this account's Master UTM Configuration — test every link before it ships.</p>
+    <p class="lede" style="margin-bottom:16px;">${elementCount ? `This account's Master UTM Configuration uses ${elementCount} element${elementCount === 1 ? '' : 's'} in every link it builds.` : 'No Master UTM Configuration set for this account yet.'} Built from this account's Master UTM Configuration — test every link before it ships.</p>
     <div class="cmp-wf-stat-row">
-      <div class="cmp-wf-stat"><div class="cmp-wf-stat-label">UTM elements configured</div><div class="cmp-wf-stat-value">${elementCount}</div></div>
+      <div class="cmp-wf-stat"><div class="cmp-wf-stat-label">UTM template fields (per link)</div><div class="cmp-wf-stat-value">${elementCount}</div></div>
       <div class="cmp-wf-stat"><div class="cmp-wf-stat-label">Tracking links built</div><div class="cmp-wf-stat-value">${jobsWithTracking.length} of ${totalJobs}</div></div>
       <div class="cmp-wf-stat"><div class="cmp-wf-stat-label">Last test run</div><div class="cmp-wf-stat-value">${testStatLabel}</div></div>
     </div>
     ${jobsWithTracking.length ? `<div class="btn-row" style="margin:0 0 10px;"><button type="button" class="btn-ghost" ${test && test.running ? 'disabled' : ''} onclick="cmpTraffickingRunUtmLinkTest()">${test && test.running ? 'Testing links…' : `Test ${jobsWithTracking.length} tracking link${jobsWithTracking.length === 1 ? '' : 's'} →`}</button></div>${test && test.results ? cmpRenderUtmLinkTestResults(test.results) : ''}` : `<p class="cmp-stage-note" style="padding:0;">No tracking links built for this campaign yet.</p>`}
-    <a class="flink" onclick="openExperienceSubWorkstream('marketingOps')">Build/manage tracking links in Marketing Ops →</a>`;
+    <!-- 2026-09-28 fix, per direct report ("no intuitive way to assign the
+         tracking links and then add the UTM from this page... users should
+         not need to leave the page") — this used to link out to Marketing
+         Ops, but the real per-link builder (#campaignTraffickingCard, with
+         its own "Build tracking link →" button) is already relocated onto
+         THIS same workspace panel by cmpOpenTraffickingWorkspace() — it was
+         just further down, past this stat card, with no signpost. Scrolls
+         to it instead of navigating away. -->
+    <a class="flink" onclick="const t=document.getElementById('cmpUtmLinkBuilderAnchor'); if(t) t.scrollIntoView({behavior:'smooth',block:'start'});">Build a tracking link below ↓</a>`;
 }
 // Wraps the real cmpRunUtmLinkTest() (defined above, still the single real
 // implementation/endpoint) so this workspace's own stat block refreshes too
@@ -49994,12 +50002,16 @@ function renderMopsQueueRows(rows){
         ? '<span class="badge strong">Complete</span>'
         : overdue ? '<span class="badge weak">Overdue</span>' : '<span class="badge">On schedule</span>';
       // Campaign Creation & Editing (no focusCard) opens the edit form
-      // directly; Channel Selection, Tracking Links, and Ad Trafficking
-      // all deep-link to Campaign Detail with their own card focused and
-      // every other card collapsed.
-      const openFn = r.focusCard
-        ? `goToStep('campaign','${r.campaignId}','${r.focusCard}')`
-        : `openCampaignInEditForm('${r.campaignId}')`;
+      // directly; Channel Selection still deep-links to the legacy Campaign
+      // Detail page with its own card focused. Tracking Links and Ad
+      // Trafficking (2026-09-28 fix, per direct report on old-page wiring —
+      // see cmpOpenCampaignTraffickingFromQueue()'s own comment) now open
+      // the real Trafficking workspace instead of that legacy page.
+      const openFn = r.focusCard === 'campaignTraffickingCard'
+        ? `cmpOpenCampaignTraffickingFromQueue('${r.campaignId}')`
+        : r.focusCard
+          ? `goToStep('campaign','${r.campaignId}','${r.focusCard}')`
+          : `openCampaignInEditForm('${r.campaignId}')`;
       return `<tr>
       <td style="font-size:0.8125rem;">${escapeHtml(r.campaignName)}</td>
       <td style="font-size:0.8125rem;color:var(--muted);">${escapeHtml(r.detail || '—')}</td>
@@ -50011,6 +50023,20 @@ function renderMopsQueueRows(rows){
   </tbody></table></div>`;
 }
 
+// 2026-09-28 fix, per direct report ("We need new wires to be consistent
+// with current flow. We're linking to old pages.") — the Tracking Links and
+// Ad Trafficking specialties' "Open →" used to route through
+// goToStep('campaign', id, 'campaignTraffickingCard'), landing on the
+// legacy flat Campaign Detail page — the same page cmpManageExistingCampaign()
+// already replaced as the "Manage Campaign →" entry point everywhere else
+// (see its own comment: "the sunset"). This loads the campaign the same way
+// that button does and opens straight into the real Trafficking workspace,
+// where the actual link/QR builder (the relocated #campaignTraffickingCard)
+// lives — see cmpOpenTraffickingWorkspace()'s bookmark/relocate comment.
+function cmpOpenCampaignTraffickingFromQueue(campaignId){
+  cmpManageExistingCampaign(campaignId);
+  if (typeof cmpOpenTraffickingWorkspace === 'function') cmpOpenTraffickingWorkspace();
+}
 // Opens a campaign in the create/update form (Round 30's single form),
 // pre-loaded with its existing data — used by the Campaign Creation &
 // Editing specialty above (the only one of the four whose task genuinely
@@ -55281,6 +55307,20 @@ function jumpToCampaignSection(sectionId){
 
 let lastGroup = 'Brand';
 function goToStep(step, arg, arg2, arg3){
+  // 2026-09-28 fix, per direct report ("Tracking Links page: I can't scroll
+  // down past the first campaign") — six full-screen workspace overlays
+  // (Objectives, Budget/Recommendation, Creative, Trafficking, CX Vision,
+  // Analysis) each set document.body.style.overflow='hidden' on open and
+  // reset it to '' on their own close function — but that reset only ever
+  // runs if the person leaves through that overlay's own Close/X. Any other
+  // way off the page (a sidebar link, a breadcrumb, browser back) skips it,
+  // so the lock survives onto whatever page loads next and the WHOLE page —
+  // not just a table on it — stops scrolling. Todd had just been in the
+  // Creative/Trafficking workspaces this same session before landing on
+  // Marketing Ops, which is exactly this. Clearing it unconditionally here,
+  // on every navigation, means a stuck lock can never outlive the page it
+  // was set on, regardless of how the previous overlay was left.
+  document.body.style.overflow = '';
   // 2026-08-26 fix, per direct report ("Select the Atlas Ocean Voyages
   // dashboard links to a different Account Management experience above the
   // content area") — a real bug from the same day's routing change (see
