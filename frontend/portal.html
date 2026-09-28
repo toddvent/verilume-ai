@@ -11604,6 +11604,24 @@
       </div>
     </div>
 
+    <!-- 2026-09-28 addition, per direct instruction: "Average cost per
+         website user when looking at historical full year budgets and
+         current campaign trends... important to validate the database
+         capture" (this feeds direct mail expense and campaign productivity
+         forecasting). Computed, not entered — see
+         mbuRenderCostPerWebsiteUser()'s own comment for the real formula
+         and data sources. -->
+    <div class="sk-card" id="mbuCostPerUserCard" style="margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Computed from the above</div><h3>Average cost per website user</h3></div>
+        <div class="hicon">📈</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">Each year's real campaign budgets (grouped by campaign Start Date) divided by that year's Website users entered above — feeds direct mail expense and campaign productivity forecasting.</p>
+        <div id="mbuCostPerUserBody"><p class="hint">Loading…</p></div>
+      </div>
+    </div>
+
     <div class="sk-card" id="mbuMarketableSizesCard" style="margin-top:18px;">
       <div class="sk-card-head ink">
         <div class="htext"><div class="kicker">Account setting — manual reach input</div><h3>First-party DM &amp; EM marketable sizes</h3></div>
@@ -11616,6 +11634,30 @@
           <table class="data-table" id="mbuMarketableSizesTable" style="min-width:520px;">
             <thead><tr><th>Audience category</th><th>DM Marketable</th><th>EM Marketable</th></tr></thead>
             <tbody id="mbuMarketableSizesBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2026-09-28 addition, per direct instruction: "DM Audience Size *
+         Cost per Piece to create actual budget." Cost per Piece is a new
+         manual bridge input (same convention as Website users/Marketable
+         sizes above), one row per real Direct Mail channel — Actual DM
+         Budget itself is computed per campaign, not entered, from this ×
+         the campaign's selected-audience DM Marketable size (see
+         cmpComputeDmActualBudget()). -->
+    <div class="sk-card" id="mbuDmCostPerPieceCard" style="margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Account setting — manual reach input</div><h3>Direct Mail cost per piece</h3></div>
+        <div class="hicon">📬</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">All-in cost per mailed piece (list + printing + postage), per Direct Mail channel — used with a campaign's DM Marketable audience size to compute its actual Direct Mail budget. Saves as you go.</p>
+        <span class="hint" id="mbuDmCostPerPieceStatus" style="margin:0 0 8px;display:block;"></span>
+        <div style="overflow-x:auto;">
+          <table class="data-table" id="mbuDmCostPerPieceTable" style="min-width:420px;">
+            <thead><tr><th>Direct Mail channel</th><th>Cost per Piece</th></tr></thead>
+            <tbody id="mbuDmCostPerPieceBody"></tbody>
           </table>
         </div>
       </div>
@@ -11660,6 +11702,13 @@
     <p class="lede" id="campaignMeta"></p>
     <div class="camp-card-tags" id="campaignVisTags" style="margin:0 0 16px;"></div>
     <div id="campaignIdBlock" style="font-size:0.875rem;color:var(--muted);margin:-6px 0 20px;"></div>
+
+    <!-- 2026-09-28 addition, per direct instruction: "DM Audience Size *
+         Cost per Piece to create actual budget." Only rendered (non-empty)
+         when this campaign has at least one Direct Mail channel selected —
+         see cmpRenderDmActualBudgetCard()'s own comment for the real
+         calculation and its data sources. -->
+    <div id="cmpDmActualBudgetCard"></div>
 
     <!-- Round 32, part D (2026-08-05), per direct instruction: "Upon
          submit we should recommend the mix of available channels, audience
@@ -12046,7 +12095,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-28-marketable-sizes-audience-segments-cancelled-orders';
+const CXMEDIA_BUILD_STAMP = '2026-09-28-cost-per-user-and-dm-actual-budget-math';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -48683,6 +48732,13 @@ function renderCampaignDetail(focusCardId){
       <span class="camp-tag">${funding}${c.budget != null ? ' · ' + fmtMoney(c.budget) : ''}</span>
       <span class="camp-tag">Alignment ${Math.round(align.overall)}</span>`;
   }
+  // 2026-09-28 addition — see cmpRenderDmActualBudgetCard()'s own comment.
+  // Fires the async loader every render; it self-guards (no-op once this
+  // account's data is already cached) and re-renders this card when it
+  // resolves, so the first-ever load on a fresh account just fills in a
+  // beat after the rest of the page.
+  if (typeof cmpLoadDmActualBudgetInputsIfNeeded === 'function') cmpLoadDmActualBudgetInputsIfNeeded();
+  if (typeof cmpRenderDmActualBudgetCard === 'function') cmpRenderDmActualBudgetCard(c);
 
   // Round 17, point 4 — Campaign ID + Copy Job Link (previously only shown
   // once, in the Add Campaign Details "created" banner) and the Marketing
@@ -65734,6 +65790,8 @@ function mbuLoadReachInputs(){
   }
   mbuLoadWebsiteUsersMonthly();
   mbuLoadMarketableSizes();
+  mbuLoadDmCostPerPiece();
+  mbuRenderCostPerWebsiteUser();
 }
 async function mbuLoadWebsiteUsersMonthly(){
   const body = document.getElementById('mbuWebsiteUsersBody');
@@ -65805,6 +65863,11 @@ async function mbuSaveWebsiteUsersMonthly(){
   if (status) status.textContent = persisted
     ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
     : `Saved ${new Date().toLocaleTimeString()} — local only, this session.`;
+  // 2026-09-28 — Average cost per website user (below) is computed from
+  // this same data; refresh it live on every save instead of only on the
+  // next full page load, so a just-entered year's Cost per User shows up
+  // immediately.
+  if (typeof mbuRenderCostPerWebsiteUser === 'function') mbuRenderCostPerWebsiteUser();
 }
 let mbuMarketableSizesSaveTimer = null;
 // 2026-09-28 fix, per direct instruction: "First party database counts are
@@ -65886,6 +65949,217 @@ async function mbuSaveMarketableSizes(){
     ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
     : `Saved ${new Date().toLocaleTimeString()} — local only, this session.`;
 }
+
+// 2026-09-28 addition, per direct instruction: "DM Audience Size * Cost per
+// Piece to create actual budget." This card is the "Cost per Piece" half —
+// same manual-bridge convention as Website users/Marketable sizes above.
+// Mirrors backend's ACCOUNT_DM_CHANNELS — hand-synced, same disclosed-
+// duplication convention this file already uses for its other client/server
+// label maps (see e.g. MARKETABLE_SIZE_AUDIENCES' own comment).
+const ACCOUNT_DM_CHANNELS = ['Direct Mail — Past Guests', 'Direct Mail — Prospects', 'Direct Mail — Inquiries'];
+async function mbuLoadDmCostPerPiece(){
+  const body = document.getElementById('mbuDmCostPerPieceBody');
+  const status = document.getElementById('mbuDmCostPerPieceStatus');
+  if (!body) return;
+  let rows = ACCOUNT_DM_CHANNELS.map(channel => ({ channel, costPerPiece: null }));
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/dm-cost-per-piece`);
+      if (resp.ok){ const data = await resp.json(); if (Array.isArray(data.rows) && data.rows.length) rows = data.rows; }
+    } catch (e){ console.warn('mbuLoadDmCostPerPiece: fetch failed', e); }
+  }
+  // Dollars-and-cents, unlike the whole-number audience-size fields above —
+  // type="number" with step="0.01" so $0.71/piece is entered exactly, not
+  // rounded to a whole dollar.
+  body.innerHTML = rows.map(r => `<tr>
+    <td>${escapeHtml(r.channel)}</td>
+    <td><input type="number" min="0" step="0.01" class="tbl-input" style="width:120px;" value="${r.costPerPiece == null ? '' : r.costPerPiece}" data-channel="${escapeHtml(r.channel)}" onchange="mbuQueueDmCostPerPieceSave()"></td>
+  </tr>`).join('');
+  if (status) status.textContent = '';
+}
+let mbuDmCostPerPieceSaveTimer = null;
+function mbuQueueDmCostPerPieceSave(){
+  const status = document.getElementById('mbuDmCostPerPieceStatus');
+  if (status) status.textContent = 'Saving…';
+  if (mbuDmCostPerPieceSaveTimer) clearTimeout(mbuDmCostPerPieceSaveTimer);
+  mbuDmCostPerPieceSaveTimer = setTimeout(mbuSaveDmCostPerPiece, 500);
+}
+async function mbuSaveDmCostPerPiece(){
+  const status = document.getElementById('mbuDmCostPerPieceStatus');
+  const body = document.getElementById('mbuDmCostPerPieceBody');
+  if (!body) return;
+  const rows = [...body.querySelectorAll('input[data-channel]')].map(inp => ({
+    channel: inp.dataset.channel,
+    costPerPiece: inp.value === '' ? null : Number(inp.value)
+  }));
+  let persisted = false;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/dm-cost-per-piece`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows })
+      });
+      persisted = resp.ok;
+    } catch (e){ console.warn('mbuSaveDmCostPerPiece: backend write failed.', e); }
+  }
+  if (status) status.textContent = persisted
+    ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
+    : `Saved ${new Date().toLocaleTimeString()} — local only, this session.`;
+}
+
+// 2026-09-28 addition, per direct instruction: "Average cost per website
+// user when looking at historical full year budgets and current campaign
+// trends." Computed, not entered — combines this account's own real
+// campaign budgets (state.campaigns, already loaded; grouped by each
+// campaign's Start Date year — "historical full year budgets and current
+// campaign trends" is exactly every year that has a real campaign, past or
+// in-progress) with the Website users by month figures entered above, per
+// year, plus a blended overall average. Years with no website-user data
+// entered yet show an honest "—", never a fabricated number — this feeds
+// direct mail expense and campaign productivity forecasting, so an
+// invented placeholder here would be worse than a visible gap.
+async function mbuRenderCostPerWebsiteUser(){
+  const el = document.getElementById('mbuCostPerUserBody');
+  if (!el) return;
+  el.innerHTML = '<p class="hint">Computing…</p>';
+  const campaigns = (state.campaigns || []).filter(c => c.startDate && !c.isAdHoc);
+  const years = [...new Set(campaigns.map(c => new Date(c.startDate).getFullYear()).filter(y => Number.isFinite(y)))].sort((a, b) => b - a);
+  if (!years.length){
+    el.innerHTML = '<p class="lede">No campaigns with a Start Date yet — this needs at least one real campaign budget to compute against.</p>';
+    return;
+  }
+  const budgetByYear = {};
+  campaigns.forEach(c => {
+    const y = new Date(c.startDate).getFullYear();
+    budgetByYear[y] = (budgetByYear[y] || 0) + (Number(c.budget) || 0);
+  });
+  const usersByYear = {};
+  if (dataSourceLabel === 'backend'){
+    for (const y of years){
+      try {
+        const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/website-users-monthly?year=${y}`);
+        if (resp.ok){
+          const data = await resp.json();
+          usersByYear[y] = (data.rows || []).reduce((s, r) => s + (Number(r.users) || 0), 0);
+        }
+      } catch (e){ console.warn('mbuRenderCostPerWebsiteUser: fetch failed for', y, e); }
+    }
+  }
+  let totalBudget = 0, totalUsers = 0, yearsWithData = 0;
+  const rows = years.map(y => {
+    const budget = budgetByYear[y] || 0;
+    const users = usersByYear[y] || 0;
+    if (users > 0){ totalBudget += budget; totalUsers += users; yearsWithData++; }
+    const costPerUser = users > 0 ? (budget / users) : null;
+    return { year: y, budget, users, costPerUser };
+  });
+  const blended = totalUsers > 0 ? (totalBudget / totalUsers) : null;
+  el.innerHTML = `
+    <div class="table-scroll"><table class="data-table" style="margin-bottom:8px;">
+      <thead><tr><th>Year</th><th>Campaign Budget</th><th>Website Users</th><th>Cost per User</th></tr></thead>
+      <tbody>${rows.map(r => `<tr>
+        <td>${r.year}</td>
+        <td>${fmtMoney(r.budget)}</td>
+        <td>${r.users ? r.users.toLocaleString() : '<span class="hint">No data entered yet</span>'}</td>
+        <td>${r.costPerUser != null ? `$${r.costPerUser.toFixed(2)}` : '<span class="hint">—</span>'}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+    <p class="hint" style="margin:0;">${blended != null
+      ? `Blended average across ${yearsWithData} year${yearsWithData === 1 ? '' : 's'} with Website users data: <b>$${blended.toFixed(2)} per website user</b> (${fmtMoney(totalBudget)} total campaign budget ÷ ${totalUsers.toLocaleString()} total users).`
+      : 'No years have both a campaign budget and Website users by month data yet — enter Website users above for at least one year with a real campaign to compute this.'}</p>`;
+}
+
+// 2026-09-28 addition, per direct instruction: "DM Audience Size * Cost per
+// Piece to create actual budget." Independent fetch/cache of the two inputs
+// this needs (First-party DM & EM marketable sizes, Direct Mail cost per
+// piece — both entered on Company Profile), keyed by accountId so a
+// switched account refetches. Not the same cache as mbu*'s own load
+// functions above — those render into that page's own table bodies, which
+// aren't mounted while viewing a Campaign Detail page.
+let cmpDmActualBudgetInputs = null; // { accountId, marketableByKey, costByChannel }
+let cmpDmActualBudgetInputsLoading = false;
+async function cmpLoadDmActualBudgetInputsIfNeeded(){
+  if (dataSourceLabel !== 'backend') return;
+  if (cmpDmActualBudgetInputsLoading) return;
+  if (cmpDmActualBudgetInputs && cmpDmActualBudgetInputs.accountId === state.companyId) return;
+  cmpDmActualBudgetInputsLoading = true;
+  try {
+    const [sizesResp, costResp] = await Promise.all([
+      authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketable-sizes`),
+      authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/dm-cost-per-piece`)
+    ]);
+    const sizesData = sizesResp.ok ? await sizesResp.json() : { rows: [] };
+    const costData = costResp.ok ? await costResp.json() : { rows: [] };
+    const marketableByKey = {};
+    (sizesData.rows || []).forEach(r => { marketableByKey[r.generationKey] = r.dmMarketable; });
+    const costByChannel = {};
+    (costData.rows || []).forEach(r => { costByChannel[r.channel] = r.costPerPiece; });
+    cmpDmActualBudgetInputs = { accountId: state.companyId, marketableByKey, costByChannel };
+  } catch (e){ console.warn('cmpLoadDmActualBudgetInputsIfNeeded: fetch failed', e); }
+  cmpDmActualBudgetInputsLoading = false;
+  const campaign = findCampaign(currentCampaignId);
+  if (campaign) cmpRenderDmActualBudgetCard(campaign);
+}
+// The real calculation: for each Direct Mail channel this campaign has
+// selected, DM Audience Size = the sum of this campaign's targeted
+// audience segments' DM Marketable list sizes (Company Profile), counting
+// only the segments actually eligible for THAT channel per
+// SEGMENT_CHANNEL_ELIGIBILITY (the same eligibility mapping Campaign
+// Audiences itself is built on — e.g. Direct Mail — Past Guests only ever
+// counts Past Customers/Cancelled Orders, never Prospects). Actual budget
+// = that audience size × this channel's Cost per Piece. Overlapping
+// segments eligible for the same channel (e.g. a campaign targeting both
+// Past Customers and Cancelled Orders, both eligible for Direct Mail —
+// Past Guests) are summed as entered — there's no cross-segment de-dup in
+// this account's data, so a campaign spanning genuinely overlapping lists
+// will overstate audience size; disclosed in the card, not hidden.
+function cmpComputeDmActualBudget(campaign){
+  if (!campaign || !cmpDmActualBudgetInputs) return [];
+  const segments = (campaign.segment || '').split(',').map(s => s.trim()).filter(Boolean);
+  const channels = (typeof cmpCreativeChannelsText === 'function' ? cmpCreativeChannelsText(campaign) : (campaign.channels || '')).split(',').map(s => s.trim()).filter(Boolean);
+  const dmChannels = channels.filter(ch => ch.startsWith('Direct Mail'));
+  return dmChannels.map(channel => {
+    const eligibleSegments = segments.filter(s => (SEGMENT_CHANNEL_ELIGIBILITY[s] || []).includes(channel));
+    let audienceSize = 0, missingSize = false;
+    eligibleSegments.forEach(s => {
+      const key = (MARKETABLE_SIZE_AUDIENCES.find(a => a.label === s) || {}).key;
+      const size = key ? cmpDmActualBudgetInputs.marketableByKey[key] : null;
+      if (size == null) missingSize = true; else audienceSize += size;
+    });
+    const costPerPiece = cmpDmActualBudgetInputs.costByChannel[channel];
+    const budget = (costPerPiece != null && !missingSize && eligibleSegments.length) ? audienceSize * costPerPiece : null;
+    return { channel, eligibleSegments, audienceSize, costPerPiece, missingSize, budget };
+  });
+}
+function cmpRenderDmActualBudgetCard(campaign){
+  const el = document.getElementById('cmpDmActualBudgetCard');
+  if (!el) return;
+  if (!campaign || campaign.isAdHoc){ el.innerHTML = ''; return; }
+  const rows = cmpComputeDmActualBudget(campaign);
+  if (!rows.length){ el.innerHTML = ''; return; }
+  const totalBudget = rows.reduce((s, r) => s + (r.budget || 0), 0);
+  el.innerHTML = `
+    <div class="sk-card" style="margin:0 0 16px;">
+      <div class="sk-card-head cx">
+        <div class="htext"><h3>Direct Mail — Actual Budget</h3><div class="kicker">Audience size × Cost per Piece</div></div>
+        <div class="hicon">📬</div>
+      </div>
+      <div class="sk-card-body">
+        <div class="table-scroll"><table class="data-table" style="margin-bottom:8px;">
+          <thead><tr><th>Channel</th><th>Audience (segments)</th><th>DM Marketable</th><th>Cost/Piece</th><th>Actual Budget</th></tr></thead>
+          <tbody>${rows.map(r => `<tr>
+            <td>${escapeHtml(r.channel)}</td>
+            <td>${r.eligibleSegments.length ? escapeHtml(r.eligibleSegments.join(', ')) : '<span class="hint">No eligible audience selected</span>'}</td>
+            <td>${r.eligibleSegments.length ? (r.missingSize ? '<span class="hint">Missing data</span>' : r.audienceSize.toLocaleString()) : '—'}</td>
+            <td>${r.costPerPiece != null ? `$${r.costPerPiece.toFixed(2)}` : '<span class="hint">Not set</span>'}</td>
+            <td>${r.budget != null ? `<b>${fmtMoney(r.budget)}</b>` : '<span class="hint">—</span>'}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+        <p class="hint" style="margin:0;">${totalBudget > 0 ? `Total actual Direct Mail budget: <b>${fmtMoney(totalBudget)}</b>.` : ''} Missing audience size or Cost per Piece comes from Company Profile → First-party DM &amp; EM marketable sizes / Direct Mail cost per piece.</p>
+      </div>
+    </div>`;
+}
+
 // Round 132zz (2026-08-11) — Partners list add/remove, same simple pattern
 // as the rest of Company Profile's account-setup fields.
 // Round 22e (2026-09-08) — this editor moved from Company Overview to
