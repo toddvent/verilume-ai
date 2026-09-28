@@ -12034,7 +12034,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-28-creative-asset-orphan-channel-data-loss-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-28-creative-asset-silent-save-failure-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -61749,10 +61749,29 @@ function cmpAssetCopyToggleWireframe(slug, i, keyId){
 }
 function cmpAssetCopyApprove(slug, i, keyId){
   const r = cmpAssetCopyResolve(slug, i, keyId);
-  if (!r) return;
+  // 2026-09-28 fix, per direct report ("Selected Approve Copy... more than
+  // 2 minutes ago. No verification or greyed out like others that the
+  // approval stuck") — cmpAssetCopyResolve() returning null (a stale
+  // slug/row-index no longer matching the live grid — e.g. after the grid
+  // rebuilt under it) used to fail this whole function completely silently:
+  // no badge change, no error, nothing, and the person has no way to tell
+  // "click did nothing" apart from "click is still saving." Same for the
+  // over-budget guard just below, which also used to bail with zero
+  // feedback beyond a small badge most people don't reread after clicking
+  // Approve. Both paths now surface a real, visible message so a stuck
+  // Approve click is never silently indistinguishable from a working one.
+  const errEl = document.getElementById('cmpCreativeAssetError');
+  if (!r){
+    if (errEl) errEl.textContent = 'Couldn\'t find this asset to approve — try reopening this channel\'s card (collapse/expand it) and approving again. If that keeps happening, tell us which channel.';
+    return;
+  }
   const v = cmpAssetCopyVersion(r.c, r.channel, r.row, r.key);
   const spec = cmpSpecForRowSize(r.channel, r.row.size);
-  if (cmpAssetCopyOverBudget(cmpAssetCopySchema(r.channel, spec, r.row), v.fields)) return;
+  if (cmpAssetCopyOverBudget(cmpAssetCopySchema(r.channel, spec, r.row), v.fields)){
+    if (errEl) errEl.textContent = `${r.channel}: this copy is over its character budget — shorten the field(s) marked red above before it can be approved.`;
+    return;
+  }
+  if (errEl) errEl.textContent = '';
   v.approved = true; v.approvedAt = new Date().toISOString();
   cmpSyncCreativeAssetRequestsFromGrid();
   cmpAssetCopyRefreshBadge(r);
@@ -61771,6 +61790,17 @@ function cmpRerenderCreativeAssetCopyPanels(){
 // column is real as of this round (approvedCreativeAssetsJson); before it,
 // the grid only ever lived in memory and emptied on reload.
 let cmpCreativeAssetPersistTimer = null;
+// 2026-09-28 fix, per direct report ("Why are they not being saved prior to
+// me submitting them") — this write only ever had a .catch(), never a
+// .then() checking resp.ok. fetch() only rejects on a real network failure;
+// a 401 (expired session), a 500, or any other non-2xx response resolves
+// normally and silently did nothing here — no retry, no warning, not even
+// the console.warn below, which only fires on an actual thrown exception.
+// So a person could approve copy all day, see every local badge/button
+// update (that part was always real and in-memory), and never learn the
+// server never got it — exactly what was reported. Now any non-ok response
+// is treated the same as a thrown exception: surfaced in the one error
+// element this whole Creative Asset stage already shows messages in.
 function cmpPersistCreativeAssetsToServer(){
   const c = cmpRailLoadedCampaign();
   if (!c || c.isAdHoc || c.localOnly || dataSourceLabel !== 'backend') return;
@@ -61780,8 +61810,20 @@ function cmpPersistCreativeAssetsToServer(){
     authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ approvedCreativeAssetsJson: JSON.stringify(c.approvedCreativeAssets || []) })
-    }).catch(e => console.warn('creative asset grid save failed (kept locally):', e && e.message));
+    }).then(resp => {
+      if (!resp.ok) cmpShowCreativeAssetSaveError(resp.status);
+    }).catch(e => {
+      console.warn('creative asset grid save failed (kept locally):', e && e.message);
+      cmpShowCreativeAssetSaveError(null);
+    });
   }, 600);
+}
+function cmpShowCreativeAssetSaveError(status){
+  const errEl = document.getElementById('cmpCreativeAssetError');
+  if (!errEl) return;
+  errEl.textContent = status === 401
+    ? '⚠ Your session has expired — the copy you just approved was NOT saved to the server, only in this browser tab. Log in again, then redo your last change.'
+    : '⚠ Couldn\'t save this change to the server — it only exists in this browser tab right now and will be lost on refresh. Check your connection and try again.';
 }
 
 // 2026-09-25, per direct report on the Creative Asset Selection grid: "The
@@ -62179,18 +62221,44 @@ async function cmpSubmitCreativeRequestToBrand(){
     campaign.approvedAssetJobIds = approvedAssetJobIds;
     campaign.pmAssetsApprovedAt = pmAssetsApprovedAt;
     campaign.approvedAssetSummary = approvedAssetSummary;
+    // 2026-09-28 fix, per direct report ("I saved and sent to the next
+    // step. Nothing is showing up in the chart" / "why are they not being
+    // saved prior to me submitting them" / "Leaving page and returning
+    // changes status to all 7 approved") — this write used to be wrapped in
+    // a try/catch with no resp.ok check and no fallback, "best-effort" in
+    // name only: on a failure (expired session, a rejected write, anything
+    // non-2xx) the local campaign object above was already mutated to look
+    // fully submitted, the "N assets submitted" note below said so
+    // unconditionally, and cmpApprovePerfMarketing() advanced this stage's
+    // own status badge — all while the server had nothing. Reopening the
+    // page then rebuilt the grid from that same optimistic local state
+    // (never a fresh reload of what the server actually has), so it kept
+    // showing "all 7 approved" indefinitely. Submitting to Brand on a real,
+    // non-local campaign now requires that write to actually succeed before
+    // any of that is shown or advanced.
+    let submitError = null;
     if (!campaign.isAdHoc && !campaign.localOnly){
       try {
-        await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}`, {
+        const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             approvedAssetJobIds, pmAssetsApprovedAt, approvedAssetSummary,
             approvedCreativeAssetsJson: JSON.stringify(campaign.approvedCreativeAssets)
           })
         });
-      } catch (e){ /* best-effort — local state still updated above */ }
+        if (!resp.ok) submitError = resp.status;
+      } catch (e){ submitError = 'network'; }
     }
     const submittedNote = document.getElementById('cmpCreativeAssetSubmittedNote');
+    if (submitError){
+      if (submittedNote) submittedNote.style.display = 'none';
+      if (errEl){
+        errEl.textContent = submitError === 401
+          ? '⚠ Your session has expired — this was NOT sent to Brand. Log in again and submit once more.'
+          : '⚠ Couldn\'t reach the server to submit this — it was NOT sent to Brand. Check your connection and try again.';
+      }
+      return;
+    }
     if (submittedNote){
       submittedNote.style.display = '';
       submittedNote.textContent = `${cmpCreativeAssetRequests.length} asset${cmpCreativeAssetRequests.length === 1 ? '' : 's'} submitted to Brand ${new Date(pmAssetsApprovedAt).toLocaleString()}.`;
