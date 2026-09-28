@@ -4918,7 +4918,17 @@
           <span class="chevron">▸</span>
         </div>
         <div class="module-body">
-          <p class="hint" style="margin-top:0;">For getting a client up and running fast — not for everyday use. Every row names a campaign by name; rows sharing a campaign name become that campaign's Channel Planning Detail line items. A campaign name that already exists on this account is <strong>overridden</strong> — its existing rows are replaced by this file's rows, not added alongside them — so re-uploading a corrected file is always safe. A campaign name Verilume hasn't seen before is created fresh with its own campaign ID.</p>
+          <!-- 2026-09-28 fix, per direct instruction: this copy still
+               described the old name-based grouping/override design.
+               Grouping was changed a while back (per Todd's own earlier
+               instruction — "clients don't always have a name") to match on
+               Channel + Partner + Hit Date + End Date + Audience instead;
+               campaignName is now display-only and never used for matching.
+               A row whose key matches an existing campaign adds its line
+               item to that campaign rather than replacing what's already
+               there (see the backend's own ADD-not-replace comment on this
+               endpoint) — updated below to say so, not "overridden". -->
+          <p class="hint" style="margin-top:0;">For getting a client up and running fast — not for everyday use. Rows are grouped into a campaign by matching <strong>Channel + Partner + Hit Date + End Date + Audience</strong> — not by name, since clients don't always have one. campaignName is just a display label. A row whose match already exists on this account <strong>adds</strong> its line item to that campaign's Channel Planning Detail — existing rows are kept, not replaced — so re-uploading a corrected file is always safe. A combination Verilume hasn't seen before is created as a new campaign with its own campaign ID.</p>
 
           <div class="field-divider">Date range for this file</div>
           <div class="field-row" style="display:flex;gap:16px;flex-wrap:wrap;">
@@ -4930,7 +4940,7 @@
           <div class="field-divider">Get the template</div>
           <div class="field">
             <label>Download the CSV template</label>
-            <div class="hint" style="margin-bottom:8px;">One header row, one example row. <code>campaignName</code> is the key that groups rows into a campaign and matches against any existing campaign of the same name.</div>
+            <div class="hint" style="margin-bottom:8px;">One header row, one example row. Rows are grouped/matched by <code>channel</code> + <code>partner</code> + <code>hitDate</code> + <code>endDate</code> + <code>audience</code> — <code>campaignName</code> is a display label only, not part of the match.</div>
             <button type="button" class="btn-ghost" onclick="downloadBulkCreateCampaignsTemplate()">Download CSV template →</button>
           </div>
 
@@ -12024,7 +12034,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-28-bulk-create-campaigns-upload-fixes';
+const CXMEDIA_BUILD_STAMP = '2026-09-28-bulk-create-campaigns-grouping-copy-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -16937,25 +16947,30 @@ function renderBulkCreateCampaignsPreview(){
   });
   const validCount = bccRows.filter(r => !r.errors.length).length;
   const errorCount = bccRows.length - validCount;
-  const existingNames = new Set((state.campaigns || []).map(c => (c.name || c.objective || '').trim().toLowerCase()).filter(Boolean));
-  const campaignNamesInFile = new Set(bccRows.filter(r => r.raw.campaignName).map(r => r.raw.campaignName.trim().toLowerCase()));
-  const newCount = [...campaignNamesInFile].filter(n => !existingNames.has(n)).length;
-  const overrideCount = campaignNamesInFile.size - newCount;
+  // 2026-09-28 fix, per direct instruction ("fix the text"): this used to
+  // call a row NEW or OVERRIDE by matching campaignName against existing
+  // campaign names — stale from before grouping switched to Channel +
+  // Partner + Hit Date + End Date + Audience (campaignName is display-only
+  // now). Replicating the real match client-side would mean fetching every
+  // existing campaign's Channel Planning Detail rows just for this preview,
+  // so instead of a wrong-but-confident NEW/OVERRIDE guess, the preview is
+  // honest about what it can't know yet — the real new-vs-matched split
+  // comes back from the server in the upload result below (campaignsCreated/
+  // campaignsMatched), same as it always has.
+  const campaignLabelsInFile = new Set(bccRows.filter(r => r.raw.campaignName).map(r => r.raw.campaignName.trim().toLowerCase()));
   document.getElementById('bccSummary').textContent =
-    `${bccRows.length} row${bccRows.length === 1 ? '' : 's'} parsed, ${campaignNamesInFile.size} campaign${campaignNamesInFile.size === 1 ? '' : 's'} (${newCount} new, ${overrideCount} will override an existing campaign of the same name) — ${validCount} row${validCount === 1 ? '' : 's'} ready to upload, ${errorCount} with errors.`;
+    `${bccRows.length} row${bccRows.length === 1 ? '' : 's'} parsed, ${campaignLabelsInFile.size} campaign label${campaignLabelsInFile.size === 1 ? '' : 's'} — ${validCount} row${validCount === 1 ? '' : 's'} ready to upload, ${errorCount} with errors. Rows are matched to campaigns on the server by Channel + Partner + Hit Date + End Date + Audience; which ones landed on a new vs. an existing campaign shows up after upload.`;
 
   const table = document.getElementById('bccPreviewTable');
   table.innerHTML = `<thead><tr><th>#</th><th>Campaign</th><th>Channel</th><th>Product Group</th><th>Creative Market</th><th>Budget</th><th>Status</th></tr></thead>
     <tbody>${bccRows.map(r => {
       const name = (r.raw.campaignName || '').trim();
-      const willOverride = name && existingNames.has(name.toLowerCase());
-      const campaignBadge = !name ? '' : (willOverride ? `<span style="color:var(--media);font-weight:600;">OVERRIDE</span>` : `<span style="color:var(--cx);font-weight:600;">NEW</span>`);
       const statusHtml = r.errors.length
         ? `<span style="color:#B3261E;">${r.errors.length} error${r.errors.length === 1 ? '' : 's'}: ${escapeHtml(r.errors.join('; '))}</span>`
         : (r.warnings.length ? `<span style="color:var(--media);">Ready — ${escapeHtml(r.warnings.join('; '))}</span>` : `<span style="color:var(--cx);">Ready</span>`);
       return `<tr>
         <td class="num">${r.index + 1}</td>
-        <td>${escapeHtml(name)} ${campaignBadge}</td>
+        <td>${escapeHtml(name)}</td>
         <td>${escapeHtml(r.raw.channel || '')}</td>
         <td>${escapeHtml(r.raw.productGroup || '')}</td>
         <td>${escapeHtml(r.raw.creativeMarket || '')}</td>
