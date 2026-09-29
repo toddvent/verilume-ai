@@ -14441,6 +14441,27 @@ function voiceContextBundle(accountId, opts){
       blocks.push(`DIGITAL AGENCY ACTUALS (last ${months.length} months on file):\n` + months.map(m => { const t = src[m]; const chans = Object.entries(t || {}).filter(([k, v]) => v && typeof v === 'object' && 'spend' in v).map(([k, v]) => `${k} $${Math.round(v.spend || 0).toLocaleString()} / ${Math.round(v.leads || 0)} leads`).join('; '); return `- ${m}: ${chans || JSON.stringify(t).slice(0, 200)}`; }).join('\n'));
     }
   } catch (e){ /* digital actuals optional */ }
+  // Planned media by month, straight from Channel Planning Detail (the same
+  // rows the Marketing Calendar plots): impressions/reach and budget per
+  // channel, keyed on the hit date (else drop date). Without this the agent
+  // could not answer "how many impressions are planned in November".
+  try {
+    const cpd = db.prepare("SELECT cpd.campaignId AS campaignId, c.name AS cname, c.campaignCode AS ccode, cpd.channel AS channel, cpd.partner AS partner, cpd.impressions AS impressions, cpd.budget AS budget, cpd.dropDate AS dropDate, cpd.hitDate AS hitDate, cpd.status AS status FROM channel_planning_details cpd JOIN campaigns c ON c.id = cpd.campaignId WHERE c.accountId = ? AND COALESCE(c.cancelled,0) = 0").all(accountId);
+    const byMonth = {};
+    cpd.forEach(r => {
+      const d = String(r.hitDate || r.dropDate || '').slice(0, 7); if (!/^\d{4}-\d{2}$/.test(d)) return;
+      const m = byMonth[d] || (byMonth[d] = { lines: 0, impressions: 0, budget: 0, byChannel: {}, campaigns: {} });
+      m.lines++; m.impressions += Number(r.impressions) || 0; m.budget += Number(r.budget) || 0;
+      const ch = m.byChannel[r.channel || 'Other'] || (m.byChannel[r.channel || 'Other'] = { impressions: 0, budget: 0, lines: 0 });
+      ch.lines++; ch.impressions += Number(r.impressions) || 0; ch.budget += Number(r.budget) || 0;
+      const cn = (r.cname || r.campaignId) + (r.ccode ? ' [' + r.ccode + ']' : '');
+      const cc = m.campaigns[cn] || (m.campaigns[cn] = { impressions: 0, budget: 0 }); cc.impressions += Number(r.impressions) || 0; cc.budget += Number(r.budget) || 0;
+    });
+    const months = Object.keys(byMonth).sort();
+    if (months.length){
+      blocks.push('PLANNED MEDIA BY MONTH (Channel Planning Detail lines, by hit date; impressions = planned impressions/reach; status may be draft):\n' + months.map(k => { const m = byMonth[k]; return `- ${k}: ${m.lines} lines, ${Math.round(m.impressions).toLocaleString()} planned impressions, $${Math.round(m.budget).toLocaleString()} planned budget. By channel: ` + Object.entries(m.byChannel).map(([n, v]) => `${n} ${Math.round(v.impressions).toLocaleString()} imp / $${Math.round(v.budget).toLocaleString()}`).join('; ') + '. By campaign: ' + Object.entries(m.campaigns).slice(0, 12).map(([n, v]) => `${n} ${Math.round(v.impressions).toLocaleString()} imp`).join('; '); }).join('\n'));
+    }
+  } catch (e){ blocks.push('(planned media by month unavailable)'); }
   if (o.campaignId){
     const c = db.prepare('SELECT * FROM campaigns WHERE id = ? AND accountId = ?').get(o.campaignId, accountId);
     if (c){
@@ -14473,7 +14494,7 @@ async function voiceAsk(accountId, body, actorId){
   let campaignId = body.campaignId ? String(body.campaignId) : null;
   if (!campaignId && body.campaignRef){ const c = voiceResolveCampaign(accountId, body.campaignRef); if (c) campaignId = c.id; }
   const history = Array.isArray(body.history) ? body.history.slice(-8).map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', text: String(h.text || '').slice(0, 600) })) : [];
-  logAccountDataAccess({ accountId, resource: 'voice_ask', action: 'read', actorType: 'voice_agent', actorId: actorId || 'voice', recordCount: 1, detail: `${surface}/${tab}: ${question.slice(0, 120)}` });
+  logAccountDataAccess({ accountId, resource: 'voice_ask', action: 'read', actorType: 'voice_agent', actorId: actorId || 'voice', recordCount: 1, detail: `${surface}/${tab}` }); // question text deliberately not retained
   if (!process.env.ANTHROPIC_API_KEY){
     return { answer: 'The AI Brain is not configured on this deployment yet (ANTHROPIC_API_KEY is missing), so I cannot answer from your data.', cards: [], proposal: null, followUps: [] };
   }
