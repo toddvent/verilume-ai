@@ -12471,7 +12471,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-29-elevenlabs-voice-final-c';
+const CXMEDIA_BUILD_STAMP = '2026-09-29-elevenlabs-voice-final-d';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -14927,9 +14927,11 @@ async function cmpCollabToggleVoice(){
   await vxVoiceStart({
     surface: 'collab', campaignId: campaign ? campaign.id : '',
     onState: setSt,
-    onStatus: (m) => cmpCollabAddNote('ai', m, true),
-    onMessage: (role, text) => cmpCollabAddNote('ai', text, role === 'assistant'),
-    onCards: (cards) => cmpCollabAddNote('ai', cards.map(c => `${c.title}: ${(c.lines || []).join('; ')}`).join('\n'), true),
+    // Nothing spoken is written into the campaign's saved notes; results show
+    // as cards in the Ask Verilume panel and are not persisted.
+    onStatus: (m) => { askVerilumeOpenLive(); askVerilumeSetStatus(m); },
+    onMessage: () => {},
+    onCards: (cards) => { askVerilumeOpenLive(); askVerilumeRenderCards(cards); },
     onProposal: (p) => { askVerilumeOpenLive(); askVerilumeRenderProposal(p); }
   });
 }
@@ -23056,7 +23058,9 @@ async function askVerilumeToggleVoice(){
     surface: 'ask_bar',
     onState: (st) => { askVerilumeSetMic(st); if (st === 'live') askVerilumeSetStatus('Listening. Talk to Verilume; click the mic to stop.'); if (st === 'idle') askVerilumeSetStatus(''); },
     onStatus: askVerilumeSetStatus,
-    onMessage: (role, text) => askVerilumeAppend(role, text),
+    // Spoken words are not shown or kept (Todd, 2026-09-29): only the on-screen
+    // cards, proposal and status appear. In-memory history only, for context.
+    onMessage: (role, text) => { askVerilumeHistory.push({ role, text }); if (askVerilumeHistory.length > 20) askVerilumeHistory.shift(); },
     onCards: askVerilumeRenderCards,
     onProposal: askVerilumeRenderProposal
   });
