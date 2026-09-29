@@ -15369,7 +15369,7 @@ function sendJson(res, status, obj){
     'Content-Type': 'application/json',
     'Cache-Control': 'no-store, must-revalidate',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Admin-Token'
   });
   res.end(body);
@@ -18845,7 +18845,7 @@ async function handleRequest(req, res) {
   if (req.method === 'OPTIONS'){
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
+      'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Admin-Token'
     });
     return res.end();
@@ -23628,7 +23628,12 @@ Submit your response via the campaign_intake_turn tool.`;
     // allocations/keywords elsewhere in this file) rather than incremental
     // add/remove — order matters (it's dropdown order), so the caller always
     // sends the full ordered list it wants.
-    if (req.method === 'PUT' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'taxonomies'){
+    // 2026-09-29 — POST accepted alongside PUT: the CORS allow-list never
+    // included PUT until today, so every cross-origin PUT here was blocked
+    // by the browser's preflight ("Backend unreachable" on the upload
+    // preview's Add-to-list, and latently on the Taxonomy Manager's save).
+    // The frontend now sends POST; PUT stays for any older page.
+    if ((req.method === 'PUT' || req.method === 'POST') && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'taxonomies' && parts[4] !== 'bulk'){
       const accountId = decodeURIComponent(parts[2]);
       const taxonomyKey = decodeURIComponent(parts[4]);
       if (!requireAccount(req, res, accountId)) return;
@@ -23667,7 +23672,7 @@ Submit your response via the campaign_intake_turn tool.`;
     // lists (defends against a stale client-side draft referencing a value
     // that's since been renamed/removed there) — reported back per-key so
     // the caller can surface it rather than fail the whole save.
-    if (req.method === 'PUT' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'taxonomy-mappings'){
+    if ((req.method === 'PUT' || req.method === 'POST') && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'taxonomy-mappings'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       const body = await readBody(req);
@@ -25956,7 +25961,7 @@ Reply directly to this, following the instructions you were given. Submit your r
             'X-Accel-Buffering': 'no',
             'Server-Timing': serverTimingHeader(),
             'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
+            'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Admin-Token'
           });
           if (typeof res.flushHeaders === 'function') res.flushHeaders();
