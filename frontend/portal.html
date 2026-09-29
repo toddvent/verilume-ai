@@ -11937,13 +11937,14 @@
             <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option><option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option><option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option><option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
           </select>
           <label class="btn-ghost" style="cursor:pointer;margin:0;">Upload monthly totals (.xlsx / .csv)<input type="file" accept=".csv,.xlsx" style="display:none;" onchange="mbuHandleTxnFile(event)"></label>
-          <label class="btn-ghost" style="cursor:pointer;margin:0;">Upload guest-level bookings (.xlsx / .csv)<input type="file" accept=".csv,.xlsx" style="display:none;" onchange="mbuHandleGuestBookingsFile(event)"></label>
+          <label class="btn-ghost" style="cursor:pointer;margin:0;">Upload customer-level transactions (.xlsx / .csv)<input type="file" accept=".csv,.xlsx" style="display:none;" onchange="mbuHandleGuestBookingsFile(event)"></label>
           <button type="button" class="btn-ghost" onclick="mbuAddTxnRow()">+ Add row</button>
           <span class="hint" id="mbuTxnStatus" style="margin:0;"></span>
         </div>
-        <p class="hint" style="margin:0 0 10px;">Guest-level file = one row per guest (Transaction Date, Booking Type, Revenue Promo Type, Booking Status, Booking Code, Sail Date, Age, Guest State / Postal Code / Country, Gross Revenue, Net Revenue, Product Group, Creative Focus). Unique transactions = distinct booking codes per month; guests and revenue are kept per row; booking types are classified Full fare / Discounted / Group-Charter / Free; whole periods in the file are replaced, so one 2025 + 2026 YTD file is fine and can be re-uploaded.</p>
+        <p class="hint" style="margin:0 0 10px;">Customer-level file = one row per customer (or per line): Transaction Date, Transaction / Order Code, Transaction Type, Promo Type, Status, Service or Delivery Date, Age, Customer State / Postal Code / Country, Gross Revenue, Net Revenue, Product Group, Creative Focus — any subset, any column names close to those. Unique transactions = distinct transaction codes per month (two customers on one code count once); customers and revenue are kept per row. Which status values count and how each transaction type maps to a class and to marketing-attributable are <b>this account's own settings</b> (below, seeded from your data with generic suggestions). Whole periods in the file are replaced, so one multi-year file is fine and can be re-uploaded.</p>
         <div id="mbuTxnPreview"></div>
         <div id="mbuGuestBookingsSummary"></div>
+        <div id="mbuTransactionSettings"></div>
         <div style="overflow-x:auto;">
           <table class="data-table" style="min-width:560px;">
             <thead><tr><th>Product Group</th><th>Unique transactions</th><th>Revenue (optional)</th><th></th></tr></thead>
@@ -12388,7 +12389,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-29-guest-level-bookings-upload';
+const CXMEDIA_BUILD_STAMP = '2026-09-29-self-service-transaction-settings';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -43092,10 +43093,16 @@ function cmpCampaignSummaryModel(campaign, ctx, plan){
     if (narrowed) rows = pgRows; else rows = rows.filter(r => !String(r.productGroup || '').trim() || !pgs.length);
     if (rows.length){
       const months = [...new Set(rows.map(r => `${r.year}-${r.month}`))].length;
-      m.actual.transactions = rows.reduce((a, r) => a + (Number(r.transactions) || 0), 0);
-      const rev = rows.reduce((a, r) => a + (Number(r.revenue) || 0), 0);
-      if (m.actual.revenue == null && rows.some(r => r.revenue != null)) m.actual.revenue = rev;
-      m.transactionsActualNote = `Σ unique transactions across ${months} in-market month${months === 1 ? '' : 's'}${narrowed ? ` for ${escapeHtml(campaign.productGroups)}` : ' (all product groups)'}`;
+      // 2026-09-29 — guest-level rows carry the marketing-KPI figures
+      // (attributable = excl. non-revenue, charter, interline; statuses R/V
+      // only); manual monthly rows are used as entered.
+      const txOf = r => (r.source === 'guest_bookings' && r.attributableTransactions != null) ? Number(r.attributableTransactions) : (Number(r.transactions) || 0);
+      const revOf = r => (r.source === 'guest_bookings' && r.attributableRevenue != null) ? Number(r.attributableRevenue) : (r.revenue != null ? Number(r.revenue) : null);
+      const anyGuest = rows.some(r => r.source === 'guest_bookings');
+      m.actual.transactions = rows.reduce((a, r) => a + txOf(r), 0);
+      const revRows = rows.filter(r => revOf(r) != null);
+      if (m.actual.revenue == null && revRows.length) m.actual.revenue = revRows.reduce((a, r) => a + revOf(r), 0);
+      m.transactionsActualNote = `Σ ${anyGuest ? 'marketing-attributable ' : ''}unique transactions across ${months} in-market month${months === 1 ? '' : 's'}${narrowed ? ` for ${escapeHtml(campaign.productGroups)}` : ' (all product groups)'}${anyGuest ? ' — per this account\u2019s Transaction settings' : ''}`;
     }
   }
   m.actual.leads = null; m.actual.registrations = null; m.actual.prospectLeads = null; m.leadActualNote = '';
@@ -67736,6 +67743,7 @@ async function mbuLoadTransactions(){
   mbuRenderTxnRows();
   if (status) status.textContent = '';
   mbuLoadGuestBookingsSummary();
+  mbuLoadTransactionSettings();
 }
 let mbuTxnSeasonality = {};
 function mbuRenderTxnRows(){
@@ -67763,7 +67771,7 @@ function mbuRenderTxnRows(){
     const txY = months.reduce((t, m) => t + m.transactions, 0), revY = months.reduce((t, m) => t + m.revenue, 0);
     const anyGuest = months.some(m => m.fromGuestRows);
     const gY = months.reduce((t, m) => t + (m.guests || 0), 0), attrY = months.reduce((t, m) => t + (m.attributableTransactions || 0), 0), attrRevY = months.reduce((t, m) => t + (m.attributableRevenue || 0), 0);
-    yearTotalsEl.innerHTML = months.length ? `<div class="hint" style="margin:0 0 4px;font-weight:700;">${year} by month</div><div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Month</th><th>Unique transactions</th>${anyGuest ? '<th>Guests</th><th>Marketing-attributable</th>' : ''}<th>Gross revenue</th>${anyGuest ? '<th>Attributable revenue</th>' : ''}${seas ? '<th>Seasonality index</th>' : ''}</tr></thead><tbody>${months.map(m => `<tr><td>${MBU_MONTH_NAMES_1[m.month]}</td><td>${Math.round(m.transactions).toLocaleString()}</td>${anyGuest ? `<td>${m.fromGuestRows ? Math.round(m.guests).toLocaleString() : '—'}</td><td>${m.fromGuestRows ? Math.round(m.attributableTransactions).toLocaleString() : '—'}</td>` : ''}<td>${m.hasRevenue ? fmtMoney(m.revenue) : '—'}</td>${anyGuest ? `<td>${m.fromGuestRows ? fmtMoney(m.attributableRevenue) : '—'}</td>` : ''}${seas ? `<td>${seas[m.month] != null ? seas[m.month].toFixed(2) : '—'}</td>` : ''}</tr>`).join('')}<tr><td><b>Total</b></td><td><b>${Math.round(txY).toLocaleString()}</b></td>${anyGuest ? `<td><b>${Math.round(gY).toLocaleString()}</b></td><td><b>${Math.round(attrY).toLocaleString()}</b></td>` : ''}<td><b>${revY > 0 ? fmtMoney(revY) : '—'}</b></td>${anyGuest ? `<td><b>${fmtMoney(attrRevY)}</b></td>` : ''}${seas ? '<td></td>' : ''}</tr></tbody></table></div><p class="hint" style="margin:6px 0 0;">${seas ? 'Seasonality index = this month’s share of the year × 12 (1.00 = an average month) — available because all 12 months are on file.' : `Seasonality index appears once all 12 months of ${year} are on file (${months.length} so far).`} These are the Transactions actuals for campaigns in market during these months, narrowed to a campaign’s own Product Groups when they match.</p>` : '';
+    yearTotalsEl.innerHTML = months.length ? `<div class="hint" style="margin:0 0 4px;font-weight:700;">${year} by month</div><div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Month</th><th>Unique transactions</th>${anyGuest ? '<th>Customers</th><th>Marketing-attributable</th>' : ''}<th>Gross revenue</th>${anyGuest ? '<th>Attributable revenue</th>' : ''}${seas ? '<th>Seasonality index</th>' : ''}</tr></thead><tbody>${months.map(m => `<tr><td>${MBU_MONTH_NAMES_1[m.month]}</td><td>${Math.round(m.transactions).toLocaleString()}</td>${anyGuest ? `<td>${m.fromGuestRows ? Math.round(m.guests).toLocaleString() : '—'}</td><td>${m.fromGuestRows ? Math.round(m.attributableTransactions).toLocaleString() : '—'}</td>` : ''}<td>${m.hasRevenue ? fmtMoney(m.revenue) : '—'}</td>${anyGuest ? `<td>${m.fromGuestRows ? fmtMoney(m.attributableRevenue) : '—'}</td>` : ''}${seas ? `<td>${seas[m.month] != null ? seas[m.month].toFixed(2) : '—'}</td>` : ''}</tr>`).join('')}<tr><td><b>Total</b></td><td><b>${Math.round(txY).toLocaleString()}</b></td>${anyGuest ? `<td><b>${Math.round(gY).toLocaleString()}</b></td><td><b>${Math.round(attrY).toLocaleString()}</b></td>` : ''}<td><b>${revY > 0 ? fmtMoney(revY) : '—'}</b></td>${anyGuest ? `<td><b>${fmtMoney(attrRevY)}</b></td>` : ''}${seas ? '<td></td>' : ''}</tr></tbody></table></div><p class="hint" style="margin:6px 0 0;">${seas ? 'Seasonality index = this month’s share of the year × 12 (1.00 = an average month) — available because all 12 months are on file.' : `Seasonality index appears once all 12 months of ${year} are on file (${months.length} so far).`} These are the Transactions actuals for campaigns in market during these months, narrowed to a campaign’s own Product Groups when they match.</p>` : '';
   }
 }
 function mbuAddTxnRow(){ mbuTxnRows.push({ productGroup: '', transactions: null, revenue: null }); mbuRenderTxnRows(); }
@@ -67888,22 +67896,22 @@ async function mbuHandleGuestBookingsFile(event){
   try {
     const grid = await mbuReadFileGridDates(file);
     const found = mbuFindHeaderRow(grid, [
-      ['bookingCode', ['booking code', 'booking id', 'reservation', 'invoice code', 'code'], true],
-      ['bookingDate', ['transaction date', 'booking date', 'book date', 'booked', 'date'], true],
-      ['bookingType', ['booking type', 'fare type', 'type'], false],
-      ['promoType', ['promo type', 'promo'], false],
-      ['bookingStatus', ['booking status', 'status'], false],
-      ['sailDate', ['purchase del date', 'sail date', 'departure', 'delivery date', 'sailing'], false],
+      ['bookingCode', ['transaction code', 'transaction id', 'order code', 'order id', 'order number', 'invoice', 'booking code', 'booking id', 'reservation', 'code'], true],
+      ['bookingDate', ['transaction date', 'order date', 'purchase date', 'booking date', 'book date', 'booked', 'date'], true],
+      ['bookingType', ['transaction type', 'order type', 'booking type', 'fare type', 'rate type', 'type'], false],
+      ['promoType', ['promo type', 'promotion', 'promo', 'offer type'], false],
+      ['bookingStatus', ['status'], false],
+      ['sailDate', ['service date', 'delivery date', 'ship date', 'fulfillment', 'purchase del date', 'sail date', 'departure', 'appointment', 'sailing'], false],
       ['age', ['age'], false],
-      ['guestState', ['guest state', 'state', 'province'], false],
+      ['guestState', ['state', 'province', 'region'], false],
       ['guestPostalCode', ['postal', 'zip'], false],
       ['guestCountry', ['country'], false],
-      ['grossRevenue', ['gross revenue', 'gross'], false],
+      ['grossRevenue', ['gross revenue', 'gross', 'revenue', 'amount', 'total'], false],
       ['netRevenue', ['net revenue', 'net'], false],
-      ['productGroup', ['product group', 'actual', 'destination', 'product'], false],
-      ['creativeFocus', ['expedition type', 'creative focus', 'focus', 'expedition'], false]
+      ['productGroup', ['product group', 'product line', 'category', 'destination', 'actual', 'product'], false],
+      ['creativeFocus', ['creative focus', 'focus', 'expedition type', 'expedition', 'theme'], false]
     ]);
-    if (!found) throw new Error('Couldn\'t find a header row with a Booking Code and a Transaction/Booking Date column.');
+    if (!found) throw new Error('Couldn\'t find a header row with a transaction/order code column and a transaction date column.');
     const { headerIndex, colIndex } = found;
     const rows = [], periods = new Set(), codes = new Set(), classes = {}, statuses = {};
     let skipped = 0;
@@ -67924,14 +67932,14 @@ async function mbuHandleGuestBookingsFile(event){
       const st = String(get('bookingStatus') || '(blank)'); statuses[st] = (statuses[st] || 0) + 1;
       const cls = mbuClassifyBookingTypeClient(bookingType); classes[cls] = (classes[cls] || 0) + 1;
     }
-    if (!rows.length) throw new Error('Header found but no guest rows with a booking code and date under it.');
+    if (!rows.length) throw new Error('Header found but no customer rows with a transaction code and date under it.');
     const periodList = [...periods].map(p => { const [y, m] = p.split('-').map(Number); return { year: y, month: m }; }).sort((a, b) => a.year - b.year || a.month - b.month);
     mbuPendingGuestBookings = { rows, periods: periodList, fileName: file.name };
     const perLabel = periodList.length ? `${MBU_MONTH_NAMES_1[periodList[0].month]} ${periodList[0].year} → ${MBU_MONTH_NAMES_1[periodList[periodList.length - 1].month]} ${periodList[periodList.length - 1].year} (${periodList.length} months)` : '';
     if (preview) preview.innerHTML = `<div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:10px 12px;margin:0 0 10px;font-size:0.8125rem;">
-      <b>${rows.length.toLocaleString()} guest rows</b> · <b>${codes.size.toLocaleString()} unique booking codes</b> read from ${escapeHtml(file.name)}, ${perLabel}${skipped ? ` · ${skipped} row${skipped === 1 ? '' : 's'} without a code/date skipped (e.g. the export's filter footer)` : ''}.
-      <div class="hint" style="margin-top:4px;">Booking classes (guests): ${Object.entries(classes).map(([k, v]) => `${escapeHtml(k)} ${v.toLocaleString()}`).join(' · ')}. Statuses: ${Object.entries(statuses).map(([k, v]) => `${escapeHtml(k)} ${v.toLocaleString()}`).join(' · ')} — every status counts until you say otherwise.</div>
-      <div class="hint" style="margin-top:4px;">Saving replaces those ${periodList.length} months' guest rows and recomputes their monthly totals (unique transactions, guests, gross and net revenue, marketing-attributable share) by Product Group.</div>
+      <b>${rows.length.toLocaleString()} customer rows</b> · <b>${codes.size.toLocaleString()} unique transaction codes</b> read from ${escapeHtml(file.name)}, ${perLabel}${skipped ? ` · ${skipped} row${skipped === 1 ? '' : 's'} without a code/date skipped (e.g. an export's filter footer)` : ''}.
+      <div class="hint" style="margin-top:4px;">Suggested classes (customers): ${Object.entries(classes).map(([k, v]) => `${escapeHtml(k)} ${v.toLocaleString()}`).join(' · ')}. Statuses: ${Object.entries(statuses).map(([k, v]) => `${escapeHtml(k)} ${v.toLocaleString()}`).join(' · ')} — every status counts until you uncheck one in Transaction settings after saving.</div>
+      <div class="hint" style="margin-top:4px;">Saving replaces those ${periodList.length} months' customer rows and recomputes their monthly totals (unique transactions, customers, gross and net revenue, marketing-attributable share) by Product Group.</div>
       <div class="btn-row" style="margin-top:8px;"><button type="button" class="btn-primary" onclick="mbuConfirmGuestBookingsUpload()">Save — replace these months</button><button type="button" class="btn-ghost" onclick="document.getElementById('mbuTxnPreview').innerHTML='';mbuPendingGuestBookings=null;">Cancel</button></div>
       <div id="mbuGuestBookingsProgress" class="hint" style="margin-top:6px;"></div></div>`;
     if (status) status.textContent = '';
@@ -67940,13 +67948,16 @@ async function mbuHandleGuestBookingsFile(event){
 }
 // Mirror of backend classifyBookingType() for the preview only — the
 // backend's verdict is what's stored.
+// Mirror of backend suggestTransactionClass() for the preview only —
+// generic words, no client-specific names; the account's own mapping
+// (Transaction settings) is what the roll-up actually uses.
 function mbuClassifyBookingTypeClient(bookingType){
   const t = String(bookingType || '').trim().toLowerCase();
   if (!t) return '(blank)';
-  if (/\bfree\b|\bcomp\b|staff|employee|\bfam\b|media|barter|charity|site inspection|maintenance|sweepstake|gift certificate|future cruise certificate/.test(t)) return 'Free / non-revenue';
-  if (/charter|interline|\bgroups?\b|\bmcg\b|group c\/o|group distinctive/.test(t)) return 'Group / Charter';
-  if (/travel ?zoo|private sale|savings|discount|military|buy2|bring a friend|friends|travel partner|aycf|canadian resident|explore and save|seminar|2 sails|loyalty|onboard|bonus|early|upgrade|no hotel|no air/.test(t)) return 'Discounted';
-  return 'Full fare';
+  if (/\bfree\b|\bcomp\b|complimentary|staff|employee|internal|\bfam\b|familiari[sz]ation|media|press|barter|charity|donat|gift|certificate|voucher|sweepstake|contest|prize|test|sample|warranty|replacement/.test(t)) return 'Free / non-revenue';
+  if (/charter|interline|wholesale|reseller|distributor|trade|b2b|partner|affiliate|consortium|\bgroups?\b|corporate|incentive|bulk/.test(t)) return 'Group / partner / wholesale';
+  if (/discount|sale|promo|savings|offer|deal|coupon|clearance|markdown|loyalty|member|military|senior|student|bonus|early|last minute|flash|bogo|buy ?\d|% ?off|resident|friends|family|upgrade|package/.test(t)) return 'Discounted / promotional';
+  return 'Full price';
 }
 async function mbuConfirmGuestBookingsUpload(){
   if (!mbuPendingGuestBookings) return;
@@ -67970,10 +67981,11 @@ async function mbuConfirmGuestBookingsUpload(){
       saved += data.saved || 0; skipped += data.skipped || 0; if (data.rollup) rollup = data.rollup;
     }
     const preview = document.getElementById('mbuTxnPreview'); if (preview) preview.innerHTML = '';
-    if (status) status.textContent = `Saved ${new Date().toLocaleTimeString()} — ${saved.toLocaleString()} guest rows${skipped ? ` (${skipped} skipped)` : ''}; monthly totals recomputed for ${rollup ? rollup.periods : periods.length} month${(rollup ? rollup.periods : periods.length) === 1 ? '' : 's'}.`;
+    if (status) status.textContent = `Saved ${new Date().toLocaleTimeString()} — ${saved.toLocaleString()} customer rows${skipped ? ` (${skipped} skipped)` : ''}; monthly totals recomputed for ${rollup ? rollup.periods : periods.length} month${(rollup ? rollup.periods : periods.length) === 1 ? '' : 's'}. Review Transaction settings below to confirm which statuses and types count.`;
     if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext();
     mbuLoadTransactions();
     mbuLoadGuestBookingsSummary();
+    mbuLoadTransactionSettings();
   } catch (e){
     if (progress) progress.textContent = '';
     if (status) status.textContent = `Not saved — ${e.message}`;
@@ -67993,16 +68005,79 @@ async function mbuLoadGuestBookingsSummary(){
     const list = (arr, fmt) => arr.slice(0, 8).map(b => `${escapeHtml(b.key)} ${fmt(b)}`).join(' · ');
     const bk = b => `${b.bookings.toLocaleString()}`;
     el.innerHTML = `<div style="background:var(--paper-dim);border:1px solid var(--line-hairline);border-radius:10px;padding:10px 12px;margin:0 0 12px;font-size:0.8125rem;">
-      <b>Guest-level bookings on file${year ? ` — ${year}` : ''}:</b> ${d.bookings.toLocaleString()} unique transactions · ${d.guests.toLocaleString()} guests (${(d.guests / d.bookings).toFixed(2)} per booking) · ${fmtMoney(d.grossRevenue)} gross / ${fmtMoney(d.netRevenue)} net · marketing-attributable ${d.attributable.bookings.toLocaleString()} bookings, ${fmtMoney(d.attributable.grossRevenue)} (excl. charter, interline, free).
-      <div class="hint" style="margin-top:4px;"><b>By class (bookings):</b> ${list(d.byClass, bk)}</div>
-      <div class="hint" style="margin-top:2px;"><b>By status (bookings):</b> ${list(d.byStatus, bk)} — all statuses currently count; say which to exclude.</div>
+      <b>Customer-level transactions on file${year ? ` — ${year}` : ''}:</b> ${d.bookings.toLocaleString()} unique transactions · ${d.guests.toLocaleString()} customers (${(d.guests / d.bookings).toFixed(2)} per transaction) · ${fmtMoney(d.grossRevenue)} gross / ${fmtMoney(d.netRevenue)} net · marketing-attributable ${d.attributable.bookings.toLocaleString()} transactions, ${fmtMoney(d.attributable.grossRevenue)} (per this account's Transaction settings).
+      <div class="hint" style="margin-top:4px;"><b>By class (transactions):</b> ${list(d.byClass, bk)}</div>
+      <div class="hint" style="margin-top:2px;"><b>By status (transactions):</b> ${d.byStatus.map(b => `${escapeHtml(b.key)} ${b.bookings.toLocaleString()}${b.valid ? '' : ' <i>(excluded)</i>'}`).join(' · ')} — ${d.validStatuses ? `only ${d.validStatuses.join(' / ')} count` : 'every status counts'}${d.excludedBookings ? `; ${d.excludedBookings.toLocaleString()} excluded` : ''}.</div>
       <div class="hint" style="margin-top:2px;"><b>By Product Group:</b> ${list(d.byProductGroup, bk)}</div>
       <div class="hint" style="margin-top:2px;"><b>By Creative Focus:</b> ${list(d.byCreativeFocus, bk)}</div>
-      <div class="hint" style="margin-top:2px;"><b>By generation (guests):</b> ${d.byGeneration.slice(0, 8).map(b => `${escapeHtml(b.key)} ${b.guests.toLocaleString()}`).join(' · ')}</div>
+      <div class="hint" style="margin-top:2px;"><b>By generation (customers):</b> ${d.byGeneration.slice(0, 8).map(b => `${escapeHtml(b.key)} ${b.guests.toLocaleString()}`).join(' · ')}</div>
       <div class="hint" style="margin-top:2px;"><b>Top countries:</b> ${list(d.byCountry, bk)} · <b>Top states:</b> ${list(d.byState.filter(b => b.key !== '(blank)'), bk)}</div>
-      ${d.leadTime ? `<div class="hint" style="margin-top:2px;"><b>Booking → sail lead time:</b> median ${Math.round(d.leadTime.medianDays)} days, mean ${Math.round(d.leadTime.meanDays)} (${d.leadTime.guests.toLocaleString()} guests with both dates).</div>` : ''}
+      ${d.leadTime ? `<div class="hint" style="margin-top:2px;"><b>Transaction → service/delivery lead time:</b> median ${Math.round(d.leadTime.medianDays)} days, mean ${Math.round(d.leadTime.meanDays)} (${d.leadTime.guests.toLocaleString()} customers with both dates).</div>` : ''}
     </div>`;
   } catch (e){ el.innerHTML = ''; }
+}
+// ---------- Transaction settings (self-service; per account) ----------
+// See account_transaction_settings (backend). Lists the status and
+// transaction-type values actually present in this account's uploaded
+// rows; the client ticks which statuses count and sets each type's class
+// and marketing-attributable flag (seeded by a generic suggestion, marked
+// "suggested" until confirmed). Save recomputes every month's roll-up.
+let mbuTxnSettingsData = null;
+async function mbuLoadTransactionSettings(){
+  const el = document.getElementById('mbuTransactionSettings');
+  if (!el) return;
+  if (dataSourceLabel !== 'backend' || !state.companyId){ el.innerHTML = ''; return; }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/transaction-settings`);
+    if (!resp.ok){ el.innerHTML = ''; return; }
+    mbuTxnSettingsData = await resp.json();
+    mbuRenderTransactionSettings();
+  } catch (e){ el.innerHTML = ''; }
+}
+function mbuRenderTransactionSettings(){
+  const el = document.getElementById('mbuTransactionSettings');
+  const d = mbuTxnSettingsData;
+  if (!el || !d) return;
+  const obs = d.observed || { statuses: [], types: [] };
+  if (!obs.statuses.length && !obs.types.length){ el.innerHTML = ''; return; }
+  const classes = d.classes || [];
+  el.innerHTML = `<div style="border:1px solid var(--line-hairline);border-radius:10px;padding:12px 14px;margin:0 0 12px;">
+    <div style="font-weight:700;margin:0 0 4px;">Transaction settings — what counts</div>
+    <p class="hint" style="margin:0 0 10px;">Values below come from your own upload. Untick a status that isn't a real transaction (holds, waitlists, cancellations). For each transaction type, confirm its class and whether it counts toward marketing KPIs — partner/wholesale and free/non-revenue types usually don't. Suggestions are generic keyword guesses until you save.</p>
+    <div style="font-weight:600;font-size:0.8125rem;margin:0 0 4px;">Statuses that count</div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin:0 0 12px;">${obs.statuses.map(st => `<label style="font-size:0.8125rem;display:flex;align-items:center;gap:6px;"><input type="checkbox" data-status="${escapeHtml(st.value)}" ${st.counts ? 'checked' : ''}> ${escapeHtml(st.value || '(blank)')} <span class="hint">${st.transactions.toLocaleString()} txns · ${st.customers.toLocaleString()} customers</span></label>`).join('')}</div>
+    <div style="font-weight:600;font-size:0.8125rem;margin:0 0 4px;">Transaction types</div>
+    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:8px;"><thead><tr><th>Type value</th><th>Transactions</th><th>Gross revenue</th><th>Class</th><th>Counts toward marketing KPIs</th></tr></thead><tbody>${obs.types.map(t => `<tr>
+      <td>${escapeHtml(t.value || '(blank)')}${t.suggested ? '<div class="hint">suggested</div>' : ''}</td>
+      <td>${t.transactions.toLocaleString()}</td>
+      <td>${fmtMoney(t.grossRevenue)}</td>
+      <td><select class="tbl-select" data-type="${escapeHtml(t.value)}" data-field="class">${classes.map(c => `<option value="${escapeHtml(c)}"${c === t.class ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select></td>
+      <td><input type="checkbox" data-type="${escapeHtml(t.value)}" data-field="attributable" ${t.attributable ? 'checked' : ''}></td>
+    </tr>`).join('')}</tbody></table></div>
+    <div class="btn-row" style="margin-top:0;"><button type="button" class="btn-primary" onclick="mbuSaveTransactionSettings()">Save settings &amp; recompute totals</button><span class="hint" id="mbuTxnSettingsStatus" style="margin-left:10px;"></span></div>
+  </div>`;
+}
+async function mbuSaveTransactionSettings(){
+  const el = document.getElementById('mbuTransactionSettings');
+  const status = document.getElementById('mbuTxnSettingsStatus');
+  if (!el) return;
+  const validStatuses = [...el.querySelectorAll('input[data-status]')].filter(i => i.checked).map(i => i.dataset.status).filter(v => v !== '');
+  const allChecked = [...el.querySelectorAll('input[data-status]')].every(i => i.checked);
+  const typeMapping = {};
+  el.querySelectorAll('select[data-type][data-field="class"]').forEach(sel => { typeMapping[sel.dataset.type] = { class: sel.value, attributable: 0 }; });
+  el.querySelectorAll('input[data-type][data-field="attributable"]').forEach(cb => { if (typeMapping[cb.dataset.type]) typeMapping[cb.dataset.type].attributable = cb.checked ? 1 : 0; });
+  if (status) status.textContent = 'Saving…';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/transaction-settings`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ validStatuses: allChecked ? null : validStatuses, typeMapping })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){ if (status) status.textContent = `Not saved — ${data.error || 'server error'}`; return; }
+    if (status) status.textContent = `Saved ${new Date().toLocaleTimeString()} — totals recomputed for ${data.rollup ? data.rollup.periods : 0} months.`;
+    if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext();
+    mbuLoadTransactions(); mbuLoadGuestBookingsSummary(); mbuLoadTransactionSettings();
+  } catch (e){ if (status) status.textContent = 'Backend unreachable — not saved.'; }
 }
 async function mbuConfirmTxnUpload(){
   if (!mbuPendingTxns) return;
