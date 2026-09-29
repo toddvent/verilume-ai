@@ -12471,7 +12471,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-29-elevenlabs-voice-final';
+const CXMEDIA_BUILD_STAMP = '2026-09-29-elevenlabs-voice-final-b';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -22910,7 +22910,10 @@ async function vxVoiceStart(opts){
     if (!sess.signedUrl) console.warn('[voice] no signed URL (' + (sess.signedUrlReason || 'unknown') + ') — falling back to agentId; this only works if the agent does not require authentication.');
     const { Conversation } = await import('https://cdn.jsdelivr.net/npm/@elevenlabs/client/+esm');
     const clientTools = {
-      show_cards: async (params) => { try { const cards = Array.isArray(params && params.cards) ? params.cards : (params && params.title ? [params] : []); if (o.onCards) o.onCards(cards); } catch (e){ console.warn('show_cards failed', e); } return 'shown'; },
+      // The ElevenLabs tool editor cannot save a nested array-of-objects
+      // schema, so the agent sends the cards as a JSON string (cards_json);
+      // a real `cards` array is still accepted if the schema ever allows it.
+      show_cards: async (params) => { try { let cards = []; if (params && typeof params.cards_json === 'string'){ try { cards = JSON.parse(params.cards_json); } catch (e){ cards = []; } } else if (Array.isArray(params && params.cards)) cards = params.cards; else if (params && params.title) cards = [params]; if (!Array.isArray(cards)) cards = cards && typeof cards === 'object' ? [cards] : []; cards = cards.filter(c => c && typeof c === 'object').map(c => ({ ...c, lines: Array.isArray(c.lines) ? c.lines : (c.lines ? [String(c.lines)] : []) })); if (o.onCards) o.onCards(cards); } catch (e){ console.warn('show_cards failed', e); } return 'shown'; },
       show_proposal: async (params) => { try { if (o.onProposal) o.onProposal(params || null); } catch (e){ console.warn('show_proposal failed', e); } return 'shown — waiting for the user to confirm on screen'; },
       navigate: async (params) => { try { if (params && params.step) goToStep(params.step, params.campaignId || undefined); } catch (e){ console.warn('navigate failed', e); } return 'navigated'; }
     };
