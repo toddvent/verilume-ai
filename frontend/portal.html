@@ -257,6 +257,29 @@
   .prompt-chip{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:600;color:var(--hdr-navy);background:var(--paper-dim);border:1px solid var(--line);border-radius:999px;padding:6px 13px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;}
   .prompt-chip:hover{border-color:var(--hdr-amber);}
   .prompt-chip .q{color:var(--muted);font-weight:800;}
+  /* 2026-09-29 — Ask Verilume, live. Transcript, answer cards, confirm card
+     and the typed box live inside the existing expand panel; same fonts,
+     buttons and card styling as the rest of the portal. */
+  .ask-mic[data-state="connecting"]{opacity:0.6;}
+  .ask-mic[data-state="live"]{background:#1E8E4A;box-shadow:0 0 0 4px rgba(30,142,74,0.18);}
+  .ask-live{margin-top:12px;display:none;}
+  .ask-live.open{display:block;}
+  .ask-input-row{display:flex;gap:8px;align-items:center;}
+  .ask-input-row input{flex:1;min-width:0;border:1px solid var(--line);border-radius:999px;padding:9px 14px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;background:var(--white);color:var(--ink);}
+  .ask-input-row input:focus{outline:2px solid var(--hdr-amber);outline-offset:1px;}
+  .ask-input-row .btn-primary{padding:8px 16px;font-size:0.8125rem;}
+  .ask-status{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--muted);margin:8px 0 0;min-height:1em;}
+  .ask-thread{display:flex;flex-direction:column;gap:8px;margin-top:10px;max-height:300px;overflow-y:auto;}
+  .ask-msg{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;line-height:1.5;max-width:78ch;padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:var(--white);color:var(--ink);}
+  .ask-msg.me{align-self:flex-end;background:var(--paper-dim);}
+  .ask-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-top:10px;}
+  .ask-card{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:var(--shadow-sm);}
+  .ask-card b{display:block;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+  .ask-card ul{margin:0;padding-left:16px;font-size:0.8125rem;line-height:1.5;}
+  .ask-card .flink{display:inline-block;margin-top:6px;font-size:0.75rem;}
+  .ask-proposal{margin-top:10px;background:var(--white);border:2px solid var(--hdr-amber);border-radius:12px;padding:12px 14px;}
+  .ask-proposal p{margin:0 0 8px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;}
+  .ask-followups{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
   .ask-voice-note{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--muted);margin:10px 0 0;padding:10px 12px;background:var(--paper-dim);border-radius:8px;}
 
   /* PENDING DEVELOPMENT (purple — a build-status marker, "not built yet")
@@ -3982,9 +4005,9 @@
        page. -->
   <div class="ask-bar" id="askVerilumeBar">
     <div class="ask-row">
-      <div class="ask-mic" id="askVerilumeMic" role="button" tabindex="0" aria-label="Ask Verilume — voice (pending development)" onclick="toggleAskVerilumeVoiceNote()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg></div>
+      <div class="ask-mic" id="askVerilumeMic" role="button" tabindex="0" data-state="idle" aria-label="Ask Verilume — talk" title="Talk to Verilume" onclick="askVerilumeToggleVoice()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg></div>
       <div class="ask-label">Ask Verilume</div>
-      <div class="ask-placeholder">Type or talk — routes to the right function, wherever you are</div>
+      <div class="ask-placeholder" id="askVerilumePlaceholder" role="button" tabindex="0" onclick="askVerilumeOpenTyped()">Type or talk — answers come from this account's own data</div>
       <!-- 2026-08-24 (round 17) — badge text matched to the comps
            ("VOICE · ENTERPRISE"). This is a tier-gate label, not a build-
            status one — Voice itself is still UI-shell-only (see
@@ -3996,7 +4019,18 @@
     <div class="ask-expand" id="askVerilumeExpand">
       <div class="ask-expand-label" id="askVerilumeExpandLabel">Suggested — scoped to Daily Brief</div>
       <div class="prompt-row" id="askVerilumePromptRow"></div>
-      <p class="ask-voice-note" id="askVerilumeVoiceNote" style="display:none;">Voice — Pending Development. Typing and talking to Verilume directly isn't wired to a real assistant yet; this is the shell the real ElevenLabs integration will land in.</p>
+      <p class="ask-voice-note" id="askVerilumeVoiceNote" style="display:none;"></p>
+      <div class="ask-live" id="askVerilumeLive">
+        <div class="ask-input-row">
+          <input type="text" id="askVerilumeInput" placeholder="Ask Verilume about this account…" aria-label="Ask Verilume" onkeydown="if(event.key==='Enter'){askVerilumeSubmitTyped();}">
+          <button type="button" class="btn-primary" onclick="askVerilumeSubmitTyped()">Ask</button>
+        </div>
+        <p class="ask-status" id="askVerilumeStatus"></p>
+        <div class="ask-thread" id="askVerilumeThread"></div>
+        <div class="ask-cards" id="askVerilumeCards"></div>
+        <div id="askVerilumeProposal"></div>
+        <div class="ask-followups" id="askVerilumeFollowups"></div>
+      </div>
     </div>
   </div>
 
@@ -12437,7 +12471,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-29-calendar-project-number';
+const CXMEDIA_BUILD_STAMP = '2026-09-29-elevenlabs-voice-final';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -14880,6 +14914,25 @@ function cmpCollabPromptChip(i){
   input.value = text;
   cmpCollabSend('ai');
 }
+// 2026-09-29 — voice on the Collaboration Center's AI Brain tab: same
+// shared ElevenLabs session helper; spoken turns are written into this
+// campaign's AI thread through cmpCollabAddNote so text and voice
+// interleave in one persisted conversation.
+async function cmpCollabToggleVoice(){
+  const btn = document.getElementById('cmpCollabMicBtn');
+  const setSt = (st) => { if (btn){ btn.dataset.state = st; btn.title = st === 'live' ? 'Stop talking' : 'Talk to the AI Brain'; } };
+  if (vxVoice.state !== 'idle' && vxVoice.surface === 'collab'){ await vxVoiceStop(); setSt('idle'); return; }
+  if (vxVoice.state !== 'idle'){ cmpCollabAddNote('ai', 'Voice is already in use on another panel — stop it there first.', true); return; }
+  const campaign = (typeof cmpRailLoadedCampaign === 'function') ? cmpRailLoadedCampaign() : null;
+  await vxVoiceStart({
+    surface: 'collab', campaignId: campaign ? campaign.id : '',
+    onState: setSt,
+    onStatus: (m) => cmpCollabAddNote('ai', m, true),
+    onMessage: (role, text) => cmpCollabAddNote('ai', text, role === 'assistant'),
+    onCards: (cards) => cmpCollabAddNote('ai', cards.map(c => `${c.title}: ${(c.lines || []).join('; ')}`).join('\n'), true),
+    onProposal: (p) => { askVerilumeOpenLive(); askVerilumeRenderProposal(p); }
+  });
+}
 function cmpCollabComposerHtml(tab, placeholder, hasHistory){
   const thinking = tab === 'ai' && (cmpCollabAiBusy || cmpPreCampaignCollabBusy);
   // Chips only make sense on the real AI Brain conversation — Team/
@@ -14896,6 +14949,7 @@ function cmpCollabComposerHtml(tab, placeholder, hasHistory){
     ${thinking ? `<div class="cmp-note-brain-training-done" style="margin:0 0 2px;">${(tab === 'ai' && cmpCollabStreamingText) ? 'AI Brain is writing…' : 'AI Brain is thinking…'}</div>` : ''}
     <div class="cmp-note-send-row">
       <textarea id="cmpCollabInput_${tab}" rows="1" placeholder="${escapeHtml(placeholder)}" ${thinking ? 'disabled' : ''} onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cmpCollabSend('${tab}');}"></textarea>
+      ${tab === 'ai' ? `<button type="button" class="cmp-intake-mic-btn" id="cmpCollabMicBtn" data-state="${vxVoice.state !== 'idle' && vxVoice.surface === 'collab' ? vxVoice.state : 'idle'}" onclick="cmpCollabToggleVoice()" title="Talk to the AI Brain" aria-label="Talk to the AI Brain"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg></button>` : ''}
       <button type="button" class="cmp-note-send-btn" ${thinking ? 'disabled' : ''} onclick="cmpCollabSend('${tab}')" aria-label="${thinking ? 'AI Brain is thinking' : 'Send'}" title="${thinking ? 'AI Brain is thinking…' : 'Send'}">
         <svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg>
       </button>
@@ -22793,7 +22847,7 @@ function renderAskVerilumeBar(){
   const tab = activePrimaryTab || 'dailyBrief';
   const prompts = ASK_VERILUME_PROMPTS[tab] || ASK_VERILUME_PROMPTS.dailyBrief;
   labelEl.textContent = `Suggested — scoped to ${ASK_VERILUME_TAB_LABELS[tab] || 'Daily Brief'}`;
-  rowEl.innerHTML = prompts.map(p => `<span class="prompt-chip" onclick="toggleAskVerilumeVoiceNote()"><span class="q">?</span>${escapeHtml(p)}</span>`).join('');
+  rowEl.innerHTML = prompts.map(p => `<span class="prompt-chip" onclick="askVerilumeAsk(${JSON.stringify(p).replace(/"/g, '&quot;')})"><span class="q">?</span>${escapeHtml(p)}</span>`).join('');
 }
 function toggleAskVerilumePrompts(){
   const toggleEl = document.getElementById('askVerilumeToggle');
@@ -22813,12 +22867,164 @@ function toggleAskVerilumePrompts(){
 // whatever page the visitor is on (the whole point of a persistent bar is
 // staying put). forceOpen expands the panel first (prompt chips are only
 // visible once it's already open, but the mic can be tapped from collapsed).
-function toggleAskVerilumeVoiceNote(){
+function toggleAskVerilumeVoiceNote(msg){
   const expandEl = document.getElementById('askVerilumeExpand');
   const noteEl = document.getElementById('askVerilumeVoiceNote');
   if (!expandEl || !noteEl) return;
   if (!expandEl.classList.contains('open')) toggleAskVerilumePrompts();
-  noteEl.style.display = '';
+  noteEl.textContent = msg || '';
+  noteEl.style.display = msg ? '' : 'none';
+}
+// ---------------------------------------------------------------------
+// 2026-09-29 — ElevenLabs voice, final integration. One shared session
+// helper (vxVoice*) used by the Ask Verilume bar and by the campaign-intake
+// mic. The browser asks GET /api/accounts/:id/voice/session for a signed
+// URL (the agent requires authentication) plus a short-lived voice token,
+// then opens the conversation with ElevenLabs' client SDK. The agent
+// answers by calling POST .../voice/ask server-side with that token; the
+// page hears both sides through onMessage and renders cards/proposals the
+// agent pushes through client tools. Writes never run from here — a
+// proposal renders a Confirm card and the click uses the portal session.
+const VX_VOICE_CONSENT_KEY = 'vx_voice_consent_v1';
+let vxVoice = { conversation: null, state: 'idle', surface: null, onMessage: null, onEnd: null };
+function vxVoiceConsented(){
+  try { return localStorage.getItem(VX_VOICE_CONSENT_KEY) === 'yes'; } catch (e){ return false; }
+}
+function vxVoiceAskConsent(){
+  if (vxVoiceConsented()) return true;
+  const ok = window.confirm('Talk to Verilume uses your microphone. Audio is processed by ElevenLabs to understand and answer you, and the transcript is kept with this account\'s conversation history. Continue?');
+  if (ok){ try { localStorage.setItem(VX_VOICE_CONSENT_KEY, 'yes'); } catch (e){} }
+  return ok;
+}
+async function vxVoiceStart(opts){
+  const o = opts || {};
+  if (vxVoice.state !== 'idle') return false;
+  if (!state.companyId || dataSourceLabel !== 'backend'){ if (o.onStatus) o.onStatus('Voice needs a signed-in account with a backend record.'); return false; }
+  if (!vxVoiceAskConsent()) return false;
+  vxVoice.state = 'connecting'; vxVoice.surface = o.surface || 'ask_bar'; vxVoice.onMessage = o.onMessage || null; vxVoice.onEnd = o.onEnd || null;
+  if (o.onState) o.onState('connecting');
+  try {
+    await navigator.mediaDevices.getUserMedia({ audio: true });
+    const sess = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice/session`, { method: 'GET' }, 3, 700);
+    if (!sess || !sess.token) throw new Error('voice session response had no token');
+    if (!sess.signedUrl) console.warn('[voice] no signed URL (' + (sess.signedUrlReason || 'unknown') + ') — falling back to agentId; this only works if the agent does not require authentication.');
+    const { Conversation } = await import('https://cdn.jsdelivr.net/npm/@elevenlabs/client/+esm');
+    const clientTools = {
+      show_cards: async (params) => { try { const cards = Array.isArray(params && params.cards) ? params.cards : (params && params.title ? [params] : []); if (o.onCards) o.onCards(cards); } catch (e){ console.warn('show_cards failed', e); } return 'shown'; },
+      show_proposal: async (params) => { try { if (o.onProposal) o.onProposal(params || null); } catch (e){ console.warn('show_proposal failed', e); } return 'shown — waiting for the user to confirm on screen'; },
+      navigate: async (params) => { try { if (params && params.step) goToStep(params.step, params.campaignId || undefined); } catch (e){ console.warn('navigate failed', e); } return 'navigated'; }
+    };
+    const startArgs = {
+      dynamicVariables: Object.assign({ account_id: state.companyId, secret__voice_token: sess.token, surface: vxVoice.surface, tab: activePrimaryTab || 'dailyBrief', campaign_id: o.campaignId || '', member_name: (state.member && (state.member.name || state.member.email)) || '' }, o.dynamicVariables || {}),
+      clientTools,
+      onConnect: () => { vxVoice.state = 'live'; if (o.onState) o.onState('live'); },
+      onDisconnect: () => { vxVoice.state = 'idle'; vxVoice.conversation = null; if (o.onState) o.onState('idle'); if (vxVoice.onEnd) vxVoice.onEnd(); },
+      onMessage: (msg) => { const role = msg && msg.source === 'user' ? 'user' : 'assistant'; const text = (msg && msg.message) || ''; if (text && vxVoice.onMessage) vxVoice.onMessage(role, text); },
+      onError: (err) => { console.warn('[voice] session error:', err); if (o.onStatus) o.onStatus('Voice connection had a problem. Try again, or type your question.'); }
+    };
+    if (sess.signedUrl) startArgs.signedUrl = sess.signedUrl; else startArgs.agentId = sess.agentId;
+    vxVoice.conversation = await Conversation.startSession(startArgs);
+    return true;
+  } catch (e){
+    console.warn('[voice] start failed:', e);
+    vxVoice.state = 'idle'; vxVoice.conversation = null;
+    if (o.onState) o.onState('idle');
+    const msg = /Permission|NotAllowed/i.test(String(e && (e.name || e.message))) ? 'Microphone permission was declined. Allow the mic in your browser, or type your question.' : (/concurren|limit|429/i.test(String(e && e.message)) ? 'Verilume is busy talking with others right now. Type your question and it will answer in text.' : 'Could not start voice. Check your microphone and try again, or type your question.');
+    if (o.onStatus) o.onStatus(msg);
+    return false;
+  }
+}
+async function vxVoiceStop(){
+  if (vxVoice.conversation){ try { await vxVoice.conversation.endSession(); } catch (e){ console.warn('[voice] endSession failed:', e); } }
+  vxVoice.conversation = null; vxVoice.state = 'idle';
+}
+// ---- Ask Verilume bar ----
+let askVerilumeHistory = [];
+function askVerilumeOpenLive(){
+  const expandEl = document.getElementById('askVerilumeExpand');
+  if (expandEl && !expandEl.classList.contains('open')) toggleAskVerilumePrompts();
+  const live = document.getElementById('askVerilumeLive'); if (live) live.classList.add('open');
+}
+function askVerilumeOpenTyped(){ askVerilumeOpenLive(); const i = document.getElementById('askVerilumeInput'); if (i) i.focus(); }
+function askVerilumeSetStatus(t){ const el = document.getElementById('askVerilumeStatus'); if (el) el.textContent = t || ''; }
+function askVerilumeSetMic(st){ const m = document.getElementById('askVerilumeMic'); if (m){ m.dataset.state = st; m.title = st === 'live' ? 'Stop talking' : (st === 'connecting' ? 'Connecting…' : 'Talk to Verilume'); m.setAttribute('aria-label', m.title); } }
+function askVerilumeAppend(role, text){
+  askVerilumeHistory.push({ role, text });
+  const th = document.getElementById('askVerilumeThread'); if (!th) return;
+  const d = document.createElement('div'); d.className = 'ask-msg' + (role === 'user' ? ' me' : ''); d.textContent = text; th.appendChild(d); th.scrollTop = th.scrollHeight;
+}
+function askVerilumeRenderCards(cards){
+  const el = document.getElementById('askVerilumeCards'); if (!el) return;
+  el.innerHTML = (cards || []).map(c => `<div class="ask-card"><b>${escapeHtml(c.title || '')}</b><ul>${(c.lines || []).map(l => `<li>${escapeHtml(String(l))}</li>`).join('')}</ul>${c.campaignId ? `<a class="flink" onclick="goToStep('campaign','${escapeHtml(c.campaignId)}')">Open campaign →</a>` : ''}</div>`).join('');
+}
+function askVerilumeRenderFollowups(list){
+  const el = document.getElementById('askVerilumeFollowups'); if (!el) return;
+  el.innerHTML = (list || []).map(q => `<span class="prompt-chip" onclick="askVerilumeAsk(${JSON.stringify(q).replace(/"/g, '&quot;')})"><span class="q">?</span>${escapeHtml(q)}</span>`).join('');
+}
+function askVerilumeRenderProposal(p){
+  const el = document.getElementById('askVerilumeProposal'); if (!el) return;
+  if (!p || !p.action){ el.innerHTML = ''; return; }
+  const key = 'vxp_' + Date.now(); window[key] = p;
+  el.innerHTML = `<div class="ask-proposal"><p><b>Confirm:</b> ${escapeHtml(p.label || p.action)}</p><div class="btn-row"><button type="button" class="btn-primary" onclick="askVerilumeConfirmProposal('${key}')">Confirm</button><button type="button" class="btn-ghost" onclick="askVerilumeRenderProposal(null)">Cancel</button></div></div>`;
+}
+async function askVerilumeConfirmProposal(key){
+  const p = window[key]; if (!p) return; delete window[key];
+  askVerilumeRenderProposal(null);
+  try {
+    let body = null;
+    if (p.action === 'set_creative_disposition') body = { creativeDisposition: (p.value === 'needed' ? 'needed' : 'external') };
+    else if (p.action === 'cancel_campaign') body = { cancelled: true, cancelledAt: new Date().toISOString() };
+    else if (p.action === 'add_note'){
+      const c = (state.campaigns || []).find(x => x.id === p.campaignId);
+      const notes = (c && c.activityNotes) || {};
+      const thread = Array.isArray(notes.voice) ? notes.voice : [];
+      thread.push({ at: new Date().toISOString(), text: String(p.value || ''), source: 'voice' });
+      body = { activityNotesJson: JSON.stringify(Object.assign({}, notes, { voice: thread })) };
+    }
+    if (!body) throw new Error('unknown action ' + p.action);
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(p.campaignId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const c = (state.campaigns || []).find(x => x.id === p.campaignId);
+    if (c) Object.assign(c, body.creativeDisposition ? { creativeDisposition: body.creativeDisposition } : {}, body.cancelled ? { cancelled: 1 } : {});
+    askVerilumeAppend('assistant', 'Done: ' + (p.label || p.action));
+    askVerilumeSetStatus('');
+    if (typeof renderTopUrgentModule === 'function') renderTopUrgentModule();
+  } catch (e){
+    console.warn('[voice] proposal failed:', e);
+    askVerilumeSetStatus('That change did not save (' + e.message + '). Nothing was changed.');
+  }
+}
+async function askVerilumeAsk(question){
+  const q = String(question || '').trim(); if (!q) return;
+  askVerilumeOpenLive();
+  askVerilumeAppend('user', q);
+  askVerilumeSetStatus('Verilume is thinking…');
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice/ask`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: q, surface: 'ask_bar', tab: activePrimaryTab || 'dailyBrief', history: askVerilumeHistory.slice(-8) }) });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    askVerilumeAppend('assistant', data.answer || '(no answer)');
+    askVerilumeRenderCards(data.cards); askVerilumeRenderProposal(data.proposal); askVerilumeRenderFollowups(data.followUps);
+    askVerilumeSetStatus(data.degraded ? 'The AI Brain was slow to respond; showing what is on file.' : '');
+  } catch (e){
+    console.warn('[ask verilume] failed:', e);
+    askVerilumeSetStatus('Could not reach the backend. Try again in a moment.');
+  }
+}
+function askVerilumeSubmitTyped(){ const i = document.getElementById('askVerilumeInput'); if (!i) return; const q = i.value; i.value = ''; askVerilumeAsk(q); }
+async function askVerilumeToggleVoice(){
+  if (vxVoice.state !== 'idle' && vxVoice.surface === 'ask_bar'){ await vxVoiceStop(); askVerilumeSetMic('idle'); askVerilumeSetStatus(''); return; }
+  if (vxVoice.state !== 'idle'){ askVerilumeSetStatus('Voice is already in use on another panel.'); return; }
+  askVerilumeOpenLive();
+  askVerilumeSetStatus('Connecting…');
+  await vxVoiceStart({
+    surface: 'ask_bar',
+    onState: (st) => { askVerilumeSetMic(st); if (st === 'live') askVerilumeSetStatus('Listening. Talk to Verilume; click the mic to stop.'); if (st === 'idle') askVerilumeSetStatus(''); },
+    onStatus: askVerilumeSetStatus,
+    onMessage: (role, text) => askVerilumeAppend(role, text),
+    onCards: askVerilumeRenderCards,
+    onProposal: askVerilumeRenderProposal
+  });
 }
 // 2026-08-23 (nav redesign, round 16), per nav-structure.html §6 (round 11
 // of the design review) — one abstract per tab, verbatim from the approved
@@ -41564,8 +41770,7 @@ async function cmpStartDialogueFromCampaign(campaignId){
 // that data into the page, or having the browser poll
 // GET /api/accounts/:id/campaign-intake state after each agent turn —
 // neither is built. Flag this to Todd rather than treating it as done.
-const ELEVENLABS_AGENT_ID = 'agent_1901m2jpy694em5v6nkc249vs0ec';
-let cmpIntakeVoiceConversation = null;
+// Agent id now comes from GET .../voice/session (server-side ELEVENLABS_AGENT_ID).
 let cmpIntakeVoiceState = 'idle'; // 'idle' | 'connecting' | 'live'
 function cmpSetIntakeVoiceStatus(text){
   const el = document.getElementById('cmpIntakeVoiceStatus');
@@ -41593,62 +41798,29 @@ async function cmpIntakeStartVoice(){
   const campaign = cmpRailLoadedCampaign();
   if (!campaign) return;
   if (cmpIntakeVoiceState !== 'idle') return;
+  if (vxVoice.state !== 'idle'){ cmpSetIntakeVoiceStatus('Voice is already in use in the Ask Verilume bar — stop it there first.'); return; }
   cmpSetIntakeMicState('connecting');
   cmpSetIntakeVoiceStatus('Connecting…');
-  try {
-    // Mic permission first — startSession expects it already granted.
-    await navigator.mediaDevices.getUserMedia({ audio: true });
-    // Same silent-retry treatment as cmpIntakeSendMessage — a momentary
-    // blip minting the token shouldn't make voice unusable.
-    const { token } = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice-token`, { method: 'POST' }, 3, 700);
-    if (!token) throw new Error('voice-token response had no token');
-    // Loaded from ElevenLabs' own npm package via jsdelivr's ESM build —
-    // this codebase has no bundler/CDN dependency today, so this is the
-    // first one; loaded lazily (only once voice is actually started), not
-    // on every page load.
-    const { Conversation } = await import('https://cdn.jsdelivr.net/npm/@elevenlabs/client/+esm');
-    cmpIntakeVoiceConversation = await Conversation.startSession({
-      agentId: ELEVENLABS_AGENT_ID,
-      dynamicVariables: {
-        account_id: state.companyId,
-        secret__voice_token: token
-      },
-      onConnect: () => {
-        cmpSetIntakeMicState('live');
-        cmpSetIntakeVoiceStatus('Listening — talk to the AI Brain, click the mic to stop.');
-      },
-      onDisconnect: () => {
-        cmpSetIntakeMicState('idle');
-        cmpSetIntakeVoiceStatus('');
-        cmpIntakeVoiceConversation = null;
-      },
-      onMessage: (msg) => {
-        // Observed shape per ElevenLabs' client SDK: {message, source}
-        // where source is 'user' or 'ai'. Mirrored into the same history
-        // array/renderer the typed flow uses — see the block comment above
-        // this section for what this does NOT cover (recommendation cards).
-        const role = msg && msg.source === 'user' ? 'user' : 'assistant';
-        const text = (msg && msg.message) || '';
-        if (!text) return;
-        cmpIntakeHistory.push({ role, text });
-        cmpRenderIntakeChat();
-      },
-      onError: (err) => {
-        console.warn('ElevenLabs voice session error:', err);
-        cmpSetIntakeVoiceStatus('Voice connection had a problem — try again, or switch to typing below.');
-      }
-    });
-  } catch (e){
-    console.warn('cmpIntakeStartVoice failed:', e);
-    cmpSetIntakeMicState('idle');
-    cmpSetIntakeVoiceStatus('Could not start voice — check your microphone permission and try again, or use text below.');
-  }
+  // 2026-09-29 — same shared session helper as the Ask Verilume bar (signed
+  // URL, voice token, client tools). show_cards from the agent closes the
+  // old "voice-only turns never show recommendation cards" gap: the agent
+  // pushes the extracted summary + recommended campaigns here.
+  await vxVoiceStart({
+    surface: 'campaign_intake', campaignId: campaign.id,
+    onState: (st) => { cmpSetIntakeMicState(st); if (st === 'live') cmpSetIntakeVoiceStatus('Listening — talk to the AI Brain, click the mic to stop.'); if (st === 'idle') cmpSetIntakeVoiceStatus(''); },
+    onStatus: cmpSetIntakeVoiceStatus,
+    onMessage: (role, text) => { cmpIntakeHistory.push({ role, text }); cmpRenderIntakeChat(); },
+    onCards: (cards) => {
+      const rec = cards.find(c => c && (c.extracted || c.recommendedCampaigns));
+      if (rec && typeof cmpRenderIntakeRecommendations === 'function'){ cmpRenderIntakeRecommendations(rec.extracted || { goalSummary: rec.title }, (rec.recommendedCampaigns || []).map(r => ({ id: r.id || r.campaignId, name: r.name, why: r.why || '' }))); return; }
+      const mount = document.getElementById('cmpIntakeRecommendations');
+      if (mount) mount.innerHTML = cards.map(c => `<div class="cmp-intake-summary"><b>${escapeHtml(c.title || '')}</b><ul style="margin:6px 0 0;padding-left:16px;">${(c.lines || []).map(l => `<li>${escapeHtml(String(l))}</li>`).join('')}</ul></div>`).join('');
+    },
+    onProposal: askVerilumeRenderProposal
+  });
 }
 async function cmpIntakeStopVoice(){
-  if (cmpIntakeVoiceConversation){
-    try { await cmpIntakeVoiceConversation.endSession(); } catch (e){ console.warn('endSession failed:', e); }
-  }
-  cmpIntakeVoiceConversation = null;
+  await vxVoiceStop();
   cmpSetIntakeMicState('idle');
   cmpSetIntakeVoiceStatus('');
 }

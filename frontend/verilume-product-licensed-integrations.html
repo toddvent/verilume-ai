@@ -144,6 +144,7 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
     <div class="toc-group">
       <p class="toc-group-label">Product ops</p>
       <a href="#status-endpoint">Status endpoint</a>
+      <a href="#voice">Voice — ElevenLabs Agents</a>
       <a href="#gaps" class="flag">Known gaps &amp; open items</a>
       <a href="#roadmap">Suggested next steps</a>
     </div>
@@ -560,6 +561,31 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
       <p>Already surfaced live in the Ops Console's Directory view ("Platform
       Integration Status" panel) — this document is the narrative reference for
       that same data, not a new source of truth.</p>
+    </section>
+
+    <section id="voice">
+      <h2><span>Voice — ElevenLabs Agents</span><span class="num">&sect; 07a</span></h2>
+      <p>Licensed (Creator plan, 2026-09-29). One shared agent (<code>agent_1901m2jpy694em5v6nkc249vs0ec</code>) with <em>Require authentication</em> on; the account is passed per session and every data call is checked against a voice token minted for that account. Webhooks call the Railway API directly. Env: <code>ELEVENLABS_API_KEY</code> (Railway), optional <code>ELEVENLABS_AGENT_ID</code> override.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Endpoint</th><th>Auth</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>GET /api/accounts/:id/voice/session</code></td><td>Portal session</td><td>Mints a short-lived voice token and a signed conversation URL (ElevenLabs <code>get-signed-url</code>). Returns <code>agentId</code> as a fallback only when the key is missing.</td></tr>
+            <tr><td><code>POST /api/accounts/:id/voice/ask</code></td><td><code>X-Voice-Token</code> (agent) or portal session (typed box)</td><td>The one gateway: builds an account context bundle (most-urgent campaigns by the Top 5 rule, campaigns by status, monthly KPI report, last 3 months of digital agency actuals, the current campaign's lines, product-docs hits) and returns <code>{ answer, cards, proposal, followUps }</code>. Logged to <code>account_data_access_log</code> as actor <code>voice_agent</code>.</td></tr>
+            <tr><td><code>POST /api/accounts/:id/campaign-intake</code></td><td><code>X-Voice-Token</code> or session</td><td>Unchanged; the intake mic's webhook tool.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><b>Writes never execute from voice.</b> The gateway returns a <code>proposal</code> (<code>set_creative_disposition</code>, <code>cancel_campaign</code>, <code>add_note</code>); the page renders a Confirm card; the click uses the portal session against <code>POST /api/campaigns/:id</code>.</p>
+      <p><b>Frontend:</b> shared <code>vxVoiceStart/vxVoiceStop</code> helper (signed URL, dynamic variables <code>account_id, secret__voice_token, surface, tab, campaign_id, member_name</code>, client tools <code>show_cards</code>, <code>show_proposal</code>, <code>navigate</code>). Live on: the Ask Verilume bar (mic, typed box, transcript, cards, confirm, follow-ups; the per-tab prompt chips now ask for real), the campaign-intake mic (the voice-only recommendation-cards gap is closed through <code>show_cards</code>), and the Collaboration Center AI tab. A one-time consent line precedes first mic use. Browser dictation on the Start of Day input is unchanged.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Trigger</th><th>Decision / change</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">2026-09-29</td><td>"Let's go ahead and start the final ElevenLabs integration … all voice related activations across the platform."</td><td>Built as above. Agent kept; Require authentication ON ("every user inside the Portal who has logged in can engage"); key scoped to ElevenAgents: Write; webhooks to Railway so the Vercel password gate is not involved. Verified with a mocked ElevenLabs/Anthropic backend harness and a jsdom frontend flow; not yet verified live in a browser against ElevenLabs.</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <section id="gaps">
