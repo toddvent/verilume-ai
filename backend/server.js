@@ -26996,7 +26996,22 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
         if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
         return raw;
       }
+      // 2026-09-29, per Todd (clarifying question on the Email tab turning
+      // 137 rows into 127 campaigns): the client's own Project Number is
+      // the campaign identity when a row carries one — every row sharing
+      // it becomes one campaign, whatever its hit date or audience (5851's
+      // PG / INQ / TRADE sends are three line items of one email campaign).
+      // Rows with no Project Number keep the Channel + Partner + Hit Date +
+      // End Date + Audience key. Matching against existing campaigns works
+      // the same way: a Project Number already on any of this account's
+      // line items resolves to that campaign.
+      function projectKeyFor(row){
+        const pn = (row && row.projectNumber ? String(row.projectNumber) : '').trim().toLowerCase();
+        return pn ? `pn||${pn}` : '';
+      }
       function groupKeyFor(row){
+        const pnKey = projectKeyFor(row);
+        if (pnKey) return pnKey;
         const channel = (row && row.channel ? String(row.channel) : '').trim().toLowerCase();
         const partner = (row && row.partner ? String(row.partner) : '').trim().toLowerCase();
         const hitDate = normalizeDateForGrouping(row && row.hitDate);
@@ -27020,8 +27035,15 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
             hitDate: row.hitDate || null,
             endDate: row.endDate || null,
             audience: (row.audience || '').trim(),
+            projectNumber: (row.projectNumber ? String(row.projectNumber) : '').trim(),
             entries: []
           });
+        } else if (key.startsWith('pn||')){
+          // A project-number campaign spans its sends: earliest hit → latest end.
+          const g = groups.get(key);
+          const h = normalizeDateForGrouping(row.hitDate), e = normalizeDateForGrouping(row.endDate);
+          if (h && (!g.hitDate || h < normalizeDateForGrouping(g.hitDate))) g.hitDate = row.hitDate;
+          if (e && (!g.endDate || e > normalizeDateForGrouping(g.endDate))) g.endDate = row.endDate;
         }
         groups.get(key).entries.push({ row, index });
       });
@@ -27030,15 +27052,19 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       // batch's key can be matched against real existing data structurally
       // — never by name. Fetched once, up front, rather than per group.
       const existingRows = db.prepare(
-        `SELECT cpd.campaignId, cpd.channel, cpd.partner, cpd.hitDate, cpd.endDate, cpd.audience
+        `SELECT cpd.campaignId, cpd.channel, cpd.partner, cpd.hitDate, cpd.endDate, cpd.audience, cpd.projectNumber
          FROM channel_planning_details cpd
          JOIN campaigns c ON c.id = cpd.campaignId
          WHERE c.accountId = ?`
       ).all(accountId);
       const existingCampaignIdByKey = new Map();
       existingRows.forEach(r => {
-        const k = groupKeyFor(r);
-        if (!existingCampaignIdByKey.has(k)) existingCampaignIdByKey.set(k, r.campaignId);
+        // Register both keys for an existing line so a batch row matches
+        // it by Project Number when it has one, or by the 5-field key.
+        const pnKey = projectKeyFor(r);
+        if (pnKey && !existingCampaignIdByKey.has(pnKey)) existingCampaignIdByKey.set(pnKey, r.campaignId);
+        const k5 = groupKeyFor({ ...r, projectNumber: '' });
+        if (!existingCampaignIdByKey.has(k5)) existingCampaignIdByKey.set(k5, r.campaignId);
       });
 
       const batchId = generateId('CPUB');
@@ -27061,8 +27087,11 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
         // "clients don't always have a name" / "assume unique" comment
         // above). Falls back to a generated label built from the real
         // grouping fields when no name was supplied.
-        const displayName = first('campaignName') ||
-          [partner, channel, audience].filter(Boolean).join(' · ') || 'Unnamed campaign';
+        const projectNumber = group.projectNumber || '';
+        const distinctAudiences = [...new Set(entries.map(e => (e.row.audience || '').trim()).filter(Boolean))];
+        const productionProject = (() => { for (const { row } of entries){ if (row && row.details && row.details.productionProject) return String(row.details.productionProject); } return ''; })();
+        const displayName = first('campaignName') || productionProject ||
+          [partner, channel, distinctAudiences.length === 1 ? distinctAudiences[0] : (distinctAudiences.length ? `${distinctAudiences.length} audiences` : ''), projectNumber ? `#${projectNumber}` : ''].filter(Boolean).join(' · ') || 'Unnamed campaign';
 
         let campaignId;
         const matchedCampaignId = existingCampaignIdByKey.get(key);
@@ -27143,6 +27172,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
         syncCampaignProductCreativeGroupsFromChannelPlanning(campaignId);
         keyGroups.push({
           channel, partner, hitDate: hitDate || null, endDate: endDate || null, audience: audience || null,
+          projectNumber: projectNumber || null, groupedBy: projectNumber ? 'projectNumber' : 'channelPartnerDatesAudience',
           campaignId, matchedExistingCampaign: !!matchedCampaignId, rowCount: entries.length
         });
       });
