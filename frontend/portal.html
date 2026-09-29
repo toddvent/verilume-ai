@@ -12437,7 +12437,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-29-calendar-campaign-names';
+const CXMEDIA_BUILD_STAMP = '2026-09-29-calendar-project-number';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -51564,6 +51564,7 @@ function mktCalVisibleEvents(){
   if (!f.search) return mktCal.events;
   return mktCal.events.filter(e =>
     (e.campaignTitle || '').toLowerCase().includes(f.search) ||
+    String(e.projectNumber || '').toLowerCase().includes(f.search) ||
     (e.partner || '').toLowerCase().includes(f.search)
   );
 }
@@ -51643,11 +51644,23 @@ function mktCalIso(y, m, d){
 // long/variable-length enough to blow out the grid column math — see the
 // CSS comment above .mktcal-grid). Full title still shows on hover via the
 // title attribute, and the detail modal (mktCalOpenDetail) shows it too.
+// 2026-09-29, per direct instruction ("go ahead with the first"): uploaded
+// campaigns often carry a generated name (partner · channel · audience), so
+// many cards read the same. Prefix the client Project # (when on file and not
+// already in the name) so cards are distinguishable; prefixed rather than
+// appended so the ellipsis never cuts off the distinguishing part.
+function mktCalDisplayTitle(e){
+  const base = e.campaignTitle || '';
+  const pn = e.projectNumber ? String(e.projectNumber).trim() : '';
+  if (!pn) return base;
+  if (base.includes(pn)) return base;
+  return base ? `#${pn} · ${base}` : `#${pn}`;
+}
 function mktCalPillHtml(e){
   // 2026-09-29, per direct instruction: the calendar shows the campaign NAME,
   // not the ID (the ID moves to the hover tooltip).
-  const idLabel = escapeHtml(e.campaignTitle || e.campaignId || e.id || '—');
-  const title = escapeHtml(e.campaignTitle || '(untitled campaign)');
+  const idLabel = escapeHtml(mktCalDisplayTitle(e) || e.campaignId || e.id || '—');
+  const title = escapeHtml(mktCalDisplayTitle(e) || '(untitled campaign)');
   // 2026-09-21 — work-in-progress placeholder events (no real Channel
   // Planning Detail entry yet — see getMarketingCalendarEvents()) get a
   // dashed border instead of the default solid one, so a campaign that's
@@ -51687,7 +51700,7 @@ function mktCalRenderAgenda(events){
       <button type="button" class="mktcal-agenda-row${e.workInProgress ? ' mktcal-agenda-row-wip' : ''}" onclick="mktCalOpenDetail('${e.id}')">
         <span class="mktcal-dot" style="background:${channelCalColor(e.channel)}"></span>
         <span class="mktcal-agenda-main">
-          <div class="mktcal-agenda-title">${escapeHtml(e.campaignTitle || '(untitled campaign)')}</div>
+          <div class="mktcal-agenda-title">${escapeHtml(mktCalDisplayTitle(e) || '(untitled campaign)')}</div>
           <div class="mktcal-agenda-meta">${e.workInProgress ? 'Work in progress — not yet trafficked' : escapeHtml(e.partner || '—')}</div>
         </span>
         <span class="mktcal-agenda-channel" style="background:${channelCalColor(e.channel)}">${e.workInProgress ? 'WIP' : escapeHtml(e.channel || '—')}</span>
