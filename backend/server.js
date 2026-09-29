@@ -281,6 +281,7 @@ const CAMPAIGNS_LOWERCASE_FOLDED_COLUMNS = {
   audiencemessagingchannelsjson: 'audienceMessagingChannelsJson',
   approvedcreativeassetsjson: 'approvedCreativeAssetsJson',
   briefanalyticscontinuedat: 'briefAnalyticsContinuedAt',
+  creativedisposition: 'creativeDisposition',
   businessinitiative: 'businessInitiative',
   channelgapnote: 'channelGapNote',
   campaigntypedetailsjson: 'campaignTypeDetailsJson',
@@ -758,6 +759,16 @@ ensureColumn('campaigns', 'transactionWindowDays', 'INTEGER');
 ensureColumn('campaigns', 'cmoCopywriterBrief', 'TEXT');
 ensureColumn('campaigns', 'cmoAnalyticsBrief', 'TEXT');
 ensureColumn('campaigns', 'briefAnalyticsContinuedAt', 'TEXT');
+// 2026-09-29 — creative gate for uploaded campaigns, per Todd: "Historical
+// campaigns < today are marked as complete w/ no creative needed. Campaigns
+// with future dates may or may not require creative." Decision (confirmed
+// via clarifying question): ask per campaign. Values: 'needed' (creative
+// flows through Verilume as usual), 'external' (produced outside Verilume
+// or not required — the Creative stages read as complete), null (not yet
+// decided — the Creative stage shows a one-time choice). Uploads can carry
+// a CREATIVE NEEDED (Yes/No) column to set it in bulk, and an uploaded
+// campaign whose hit date is already past is stamped 'external' on import.
+ensureColumn('campaigns', 'creativeDisposition', 'TEXT');
 // 2026-09-19 — real auto-refresh behavior for the two messages above, per
 // the wireframe's own footnote: "Refines automatically as Objectives, the
 // approved Channel Plan, and Copy evolve — edit either message directly to
@@ -23821,7 +23832,8 @@ Submit your response via the campaign_intake_turn tool.`;
       let sql = `SELECT cpd.id, cpd.campaignId, c.name AS campaignName, c.objective AS campaignObjective,
           cpd.channel, cpd.partner, cpd.hitDate, cpd.dropDate, cpd.endDate,
           cpd.productYear, cpd.productGroup, cpd.creativeMarket, cpd.audience, cpd.budget, cpd.status,
-          cpd.impressions, cpd.actualCalls, cpd.actualQrScans, cpd.actualUrlVisits, cpd.actualLeads, cpd.stage
+          cpd.impressions, cpd.actualCalls, cpd.actualQrScans, cpd.actualUrlVisits, cpd.actualLeads, cpd.stage,
+          cpd.projectNumber, cpd.detailsJson
         FROM channel_planning_details cpd
         JOIN campaigns c ON c.id = cpd.campaignId
         WHERE c.accountId = ?`;
@@ -23863,6 +23875,10 @@ Submit your response via the campaign_intake_turn tool.`;
         actualQrScans: r.actualQrScans === null ? null : Number(r.actualQrScans),
         actualUrlVisits: r.actualUrlVisits === null ? null : Number(r.actualUrlVisits),
         actualLeads: r.actualLeads === null ? null : Number(r.actualLeads),
+        // 2026-09-29 — client reference + the row's production path (see
+        // Marketing Ops → Production Schedule & Details in portal.html).
+        projectNumber: r.projectNumber || null,
+        production: (() => { try { return r.detailsJson ? JSON.parse(r.detailsJson) : {}; } catch (e){ return {}; } })(),
         workInProgress: false
       }));
 
@@ -24587,6 +24603,7 @@ Submit your response via the campaign_intake_turn tool.`;
         cmoCopywriterBrief: body.cmoCopywriterBrief !== undefined ? body.cmoCopywriterBrief : existing.cmoCopywriterBrief,
         cmoAnalyticsBrief: body.cmoAnalyticsBrief !== undefined ? body.cmoAnalyticsBrief : existing.cmoAnalyticsBrief,
         briefAnalyticsContinuedAt: body.briefAnalyticsContinuedAt !== undefined ? body.briefAnalyticsContinuedAt : existing.briefAnalyticsContinuedAt,
+        creativeDisposition: body.creativeDisposition !== undefined ? (['needed', 'external'].includes(body.creativeDisposition) ? body.creativeDisposition : null) : existing.creativeDisposition,
         // 2026-09-19 — the real auto-refresh-vs-human-override bookkeeping
         // for the two messages above (see ensureColumn(...EditedByHuman)/
         // ensureColumn(...UpstreamHash) comments up top for the full
@@ -24724,6 +24741,7 @@ Submit your response via the campaign_intake_turn tool.`;
       addCol('cmoCopywriterBrief', body.cmoCopywriterBrief !== undefined, merged.cmoCopywriterBrief);
       addCol('cmoAnalyticsBrief', body.cmoAnalyticsBrief !== undefined, merged.cmoAnalyticsBrief);
       addCol('briefAnalyticsContinuedAt', body.briefAnalyticsContinuedAt !== undefined, merged.briefAnalyticsContinuedAt);
+      addCol('creativeDisposition', body.creativeDisposition !== undefined, merged.creativeDisposition);
       addCol('cmoCopywriterBriefEditedByHuman', body.cmoCopywriterBriefEditedByHuman !== undefined, merged.cmoCopywriterBriefEditedByHuman);
       addCol('cmoAnalyticsBriefEditedByHuman', body.cmoAnalyticsBriefEditedByHuman !== undefined, merged.cmoAnalyticsBriefEditedByHuman);
       addCol('cmoCopywriterBriefUpstreamHash', body.cmoCopywriterBriefUpstreamHash !== undefined, merged.cmoCopywriterBriefUpstreamHash);
@@ -26725,6 +26743,170 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       return { deleted: true };
     }
 
+    // 2026-09-29 — placement-level details carried on a bulk-upload row
+    // (client's own media-plan columns: Size, Specs, 1st Proof Due, Creative
+    // Due, promoted products, QR link, phone, notes). Whitelisted keys only,
+    // strings only, stored in the row's detailsJson — the same "variable
+    // part" blob the single-entry POST uses for its channel sub-fields.
+    // Second pass the same day, from the client's Direct Mail worksheet:
+    // the production path (timeline milestones, format/quantities/vendor,
+    // production costs) — mirrors PRODUCTION_FIELD_GROUPS in portal.html.
+    // Cost keys reuse the names the single-entry POST already stores in
+    // detailsJson (unitCost, postageCost, paperMfgCost, insertionCost), so
+    // nothing downstream that reads those has to change.
+    const BULK_ROW_DETAIL_TEXT_KEYS = ['creativeSize', 'creativeSpecs', 'proofDueDate', 'creativeDueDate', 'promotedItems', 'qrCodeLink', 'phone', 'notes',
+      'productionProject', 'listRequestDate', 'listDueDate', 'releaseFilesDate', 'dropDateBudget', 'inHomeDate', 'vendor', 'materialsOrdered'];
+    const BULK_ROW_DETAIL_NUMERIC_KEYS = ['totalQuantity', 'distributedQuantity', 'fulfillmentQuantity', 'paperMfgCost', 'postageCost', 'insertionCost', 'productionCost', 'unitCost'];
+    const BULK_ROW_DETAIL_KEYS = [...BULK_ROW_DETAIL_TEXT_KEYS, ...BULK_ROW_DETAIL_NUMERIC_KEYS];
+    function bulkRowDetails(row){
+      const src = (row && row.details && typeof row.details === 'object') ? row.details : {};
+      const out = {};
+      BULK_ROW_DETAIL_KEYS.forEach(k => {
+        const v = src[k];
+        if (v === undefined || v === null) return;
+        if (BULK_ROW_DETAIL_NUMERIC_KEYS.includes(k)){
+          const n = typeof v === 'number' ? v : Number(String(v).replace(/[$,\s]/g, ''));
+          if (Number.isFinite(n)) out[k] = n;
+          else { const str = String(v).trim(); if (str) out[k] = str.slice(0, 200); }
+          return;
+        }
+        const str = String(v).trim();
+        if (str) out[k] = str.slice(0, 2000);
+      });
+      return out;
+    }
+    // Direct Mail rows: Format + Unit Cost seed account_dm_format_cost's
+    // cost per piece (blank cells only — a typed cost always wins) when the
+    // client's format name resolves to exactly one catalog format. Generic
+    // synonyms only: "SJ 32 pg" / "slim jim 20" → the Slim Jim entry with
+    // the nearest page count; "postcard 6x9" / "jumbo postcard" → that
+    // postcard; a bare "PC" or "Letter_Env" is ambiguous or absent from
+    // the catalog and is left on the line item untouched.
+    function resolveDirectMailFormatName(sizeRaw){
+      const k = String(sizeRaw || '').toLowerCase().replace(/[_\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!k) return null;
+      const formats = GLOBAL_DIRECT_MAIL_SPECS.map(s => s.formatName);
+      const exact = formats.find(f => f.toLowerCase() === k);
+      if (exact) return exact;
+      const pages = /\b(\d+)\s*(?:pg|pgs|page|pages|p)?\b/.exec(k);
+      if (/slim ?jim|\bsj\b|booklet|catalog/.test(k) && pages){
+        const n = Number(pages[1]);
+        const cands = formats.filter(f => /slim jim|catalog/i.test(f) && /(\d+)-?page|(\d+)p\b/i.exec(f));
+        let best = null, bestDiff = Infinity;
+        cands.forEach(f => { const m = /(\d+)-?page|(\d+)p\b/i.exec(f); const fp = Number(m[1] || m[2]); const d = Math.abs(fp - n); if (d < bestDiff){ bestDiff = d; best = f; } });
+        return best;
+      }
+      if (/postcard|\bpc\b/.test(k)){
+        const dims = /(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)/.exec(k);
+        if (dims){ const hit = formats.find(f => /postcard/i.test(f) && f.includes(`${dims[1]}x${dims[2]}`)); if (hit) return hit; }
+        if (/jumbo/.test(k) && !/oversize/.test(k)) return formats.find(f => /jumbo postcard/i.test(f)) || null;
+        if (/oversize/.test(k)) return formats.find(f => /oversized postcard/i.test(f)) || null;
+        if (/standard/.test(k)) return formats.find(f => /standard postcard/i.test(f)) || null;
+        return null;
+      }
+      if (/trifold|tri fold/.test(k)) return formats.find(f => /trifold/i.test(f)) || null;
+      if (/bifold|bi fold/.test(k)) return formats.find(f => /bifold/i.test(f)) || null;
+      return null;
+    }
+    function registerDirectMailPlacementFromUpload(accountId, row, now){
+      const out = { costSeeded: false, formatName: null };
+      const channel = String(row.channel || '');
+      if (!ACCOUNT_DM_CHANNELS.includes(channel)) return out;
+      const details = bulkRowDetails(row);
+      const formatName = resolveDirectMailFormatName(details.creativeSize);
+      if (!formatName) return out;
+      out.formatName = formatName;
+      let unit = typeof details.unitCost === 'number' ? details.unitCost : null;
+      if (unit == null && typeof details.productionCost === 'number' && typeof details.distributedQuantity === 'number' && details.distributedQuantity > 0) unit = details.productionCost / details.distributedQuantity;
+      if (!(unit > 0)) return out;
+      const existing = db.prepare('SELECT "costPerPiece" FROM account_dm_format_cost WHERE accountId = ? AND channel = ? AND "formatName" = ?').get(accountId, channel, formatName);
+      if (!existing){
+        db.prepare('INSERT INTO account_dm_format_cost (accountId, channel, "formatName", "costPerPiece", updatedAt) VALUES (?,?,?,?,?)').run(accountId, channel, formatName, Math.round(unit * 10000) / 10000, now);
+        out.costSeeded = true;
+      } else if (existing.costPerPiece == null){
+        db.prepare('UPDATE account_dm_format_cost SET "costPerPiece" = ?, updatedAt = ? WHERE accountId = ? AND channel = ? AND "formatName" = ?').run(Math.round(unit * 10000) / 10000, now, accountId, channel, formatName);
+        out.costSeeded = true;
+      }
+      return out;
+    }
+    // Parses a print spec string like `8.5 x 11"`, `8 1/4 x 10 7/8"`,
+    // `8 3/8" x 10 13/16"` or `9 x 10.875` into trim inches. Returns nulls
+    // when it can't — the spec text itself is still kept on the row.
+    function parseTrimInches(specText){
+      const s = String(specText || '').replace(/[\u201d\u201c\u2033"\uFFFD]/g, '').replace(/\s*in\.?\b/gi, '').toLowerCase();
+      const m = /(\d+(?:\s+\d+\/\d+)?(?:\.\d+)?|\d+\/\d+)\s*[x×]\s*(\d+(?:\s+\d+\/\d+)?(?:\.\d+)?|\d+\/\d+)/.exec(s);
+      if (!m) return { w: null, h: null };
+      const toNum = (t) => {
+        const parts = t.trim().split(/\s+/);
+        let total = 0;
+        for (const p of parts){
+          if (/^\d+\/\d+$/.test(p)){ const [a, b] = p.split('/').map(Number); if (b) total += a / b; }
+          else if (!isNaN(Number(p))) total += Number(p);
+        }
+        return total > 0 ? Math.round(total * 1000) / 1000 : null;
+      };
+      return { w: toNum(m[1]), h: toNum(m[2]) };
+    }
+    // Maps the size words clients actually type onto the catalog's ad-format
+    // spelling when one already exists for that publication, so "Spread"
+    // finds "2-Page Spread" rather than creating a duplicate. Generic
+    // print vocabulary only.
+    function normalizePrintFormatKey(v){
+      let k = String(v || '').toLowerCase().replace(/[^a-z0-9\/ +]+/g, ' ').replace(/\s+/g, ' ').trim();
+      k = k.replace(/\bfp\b/g, 'full page').replace(/\btwo page\b/g, '2 page').replace(/\bdouble page\b/g, '2 page').replace(/\bdps\b/g, '2 page spread').replace(/\b1\/2\b/g, 'half').replace(/\b1\/4\b/g, 'quarter').replace(/\b1\/3\b/g, 'third');
+      if (k === 'spread') k = '2 page spread';
+      return k.replace(/\s+/g, ' ').trim();
+    }
+    // For a Magazines/Newspapers upload row with Partner + Size: make sure
+    // (publication, adFormat) exists in this account's print-spec catalog
+    // (GLOBAL_PRINT_SPECS or print_specs_custom; case-insensitive, format
+    // synonyms tolerated) — adding a custom spec with trim inches parsed
+    // from Specs when it doesn't — and seed account_magazine_cost's cost per
+    // insertion from Budget when no cost is saved for that pair yet. Never
+    // overwrites a saved cost or an existing spec; a manually-entered value
+    // always wins over a plan-derived one.
+    function registerPrintPlacementFromUpload(accountId, row, now){
+      const out = { specAdded: false, costSeeded: false };
+      const channel = String(row.channel || '').toLowerCase();
+      const medium = channel === 'magazines' ? 'Magazine' : (channel === 'newspapers' ? 'Newspaper' : null);
+      if (!medium) return out;
+      const publication = String(row.partner || '').trim().replace(/\s+/g, ' ');
+      const details = bulkRowDetails(row);
+      const sizeRaw = String(details.creativeSize || '').trim();
+      if (!publication || !sizeRaw) return out;
+      const pubKey = publication.toLowerCase();
+      const fmtKey = normalizePrintFormatKey(sizeRaw);
+      const custom = db.prepare('SELECT publication, "adFormat" FROM print_specs_custom WHERE accountId = ? AND "mediumType" = ?').all(accountId, medium);
+      const all = [...GLOBAL_PRINT_SPECS.filter(g => String(g.mediumType || '').toLowerCase() === medium.toLowerCase()), ...custom];
+      let match = all.find(sp => String(sp.publication || '').trim().toLowerCase() === pubKey && normalizePrintFormatKey(sp.adFormat) === fmtKey);
+      let adFormat;
+      let costPublication = publication;
+      if (match){ adFormat = match.adFormat; costPublication = match.publication; }
+      else {
+        adFormat = sizeRaw;
+        const dims = parseTrimInches(details.creativeSpecs);
+        db.prepare(`INSERT INTO print_specs_custom (id, accountId, publication, publisher, "mediumType", "adFormat", "trimWidthIn", "trimHeightIn", notes, createdAt)
+                    VALUES (?,?,?,?,?,?,?,?,?,?)`)
+          .run(generateId('PSC'), accountId, publication, null, medium, adFormat, dims.w, dims.h,
+               details.creativeSpecs ? `From media plan upload: ${details.creativeSpecs}` : 'From media plan upload', now);
+        out.specAdded = true;
+      }
+      if (medium === 'Magazine'){
+        const budget = typeof row.budget === 'number' ? row.budget : Number(row.budget);
+        if (budget > 0){
+          const existing = db.prepare('SELECT "costPerInsertion" FROM account_magazine_cost WHERE accountId = ? AND publication = ? AND "adFormat" = ?').get(accountId, costPublication, adFormat);
+          if (!existing){
+            db.prepare('INSERT INTO account_magazine_cost (accountId, publication, "adFormat", "costPerInsertion", updatedAt) VALUES (?,?,?,?,?)').run(accountId, costPublication, adFormat, budget, now);
+            out.costSeeded = true;
+          } else if (existing.costPerInsertion == null){
+            db.prepare('UPDATE account_magazine_cost SET "costPerInsertion" = ?, updatedAt = ? WHERE accountId = ? AND publication = ? AND "adFormat" = ?').run(budget, now, accountId, costPublication, adFormat);
+            out.costSeeded = true;
+          }
+        }
+      }
+      return out;
+    }
+
     // POST /api/accounts/:accountId/channel-planning/bulk-create-campaigns —
     // 2026-09-11, per direct instruction: a second, separate bulk uploader
     // from the Product Group/Creative Focus taxonomy upload above — this
@@ -26854,6 +27036,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       const campaignIdsMatched = [];
       const results = [...ungroupedErrors];
       let insertedRowCount = 0;
+      let printSpecsAdded = 0, magazineCostsSeeded = 0, dmFormatCostsSeeded = 0, productionRows = 0;
       const keyGroups = [];
 
       groups.forEach((group, key) => {
@@ -26884,10 +27067,23 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
           // the main creation endpoint above (see
           // deriveCampaignStatusFromDates()'s comment).
           const initialStatus = deriveCampaignStatusFromDates({ startDate: hitDate || null, endDate: endDate || null });
+          // Creative gate (see ensureColumn('campaigns','creativeDisposition')):
+          // an explicit CREATIVE NEEDED column wins; otherwise a hit date
+          // already in the past means the creative was produced before this
+          // campaign existed in Verilume; a future one is left undecided
+          // for the Creative stage to ask.
+          const creativeNeededRaw = String(first('creativeNeeded') || '').trim().toLowerCase();
+          let creativeDisposition = null;
+          if (/^(y|yes|true|1|needed|required)$/.test(creativeNeededRaw)) creativeDisposition = 'needed';
+          else if (/^(n|no|false|0|external|not needed|none|complete|done)$/.test(creativeNeededRaw)) creativeDisposition = 'external';
+          else {
+            const hit = normalizeDateForGrouping(hitDate);
+            if (/^\d{4}-\d{2}-\d{2}$/.test(hit) && hit < now.slice(0, 10)) creativeDisposition = 'external';
+          }
           db.prepare(
-            `INSERT INTO campaigns (id, accountId, objective, name, startDate, endDate, campaignType, productGroups, creativeFocusGroups, campaignCode, fundingSource, createdByUploadBatchId, status, createdAt)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-          ).run(campaignId, accountId, displayName, displayName, hitDate || null, endDate || null, campaignClassification || '', '', '', campaignCode, 'unplanned', batchId, initialStatus, now);
+            `INSERT INTO campaigns (id, accountId, objective, name, startDate, endDate, campaignType, productGroups, creativeFocusGroups, campaignCode, fundingSource, createdByUploadBatchId, status, creativeDisposition, createdAt)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          ).run(campaignId, accountId, displayName, displayName, hitDate || null, endDate || null, campaignClassification || '', '', '', campaignCode, 'unplanned', batchId, initialStatus, creativeDisposition, now);
           campaignIdsCreated.push(campaignId);
           // So a later group in THIS SAME batch with an identical key
           // (shouldn't happen since groups are already deduped by key, but
@@ -26911,12 +27107,24 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
               row.dropDate || null, row.hitDate || null, row.endDate || null,
               row.productYear || null, row.productGroup || null, row.creativeMarket || null,
               typeof row.budget === 'number' ? row.budget : (Number(row.budget) || null),
-              '{}', 'draft', actorRole, actorName, actorRole, actorName, batchId,
+              JSON.stringify(bulkRowDetails(row)), 'draft', actorRole, actorName, actorRole, actorName, batchId,
               typeof row.projectNumber === 'string' ? row.projectNumber : (row.projectNumber || null),
               now, now
             );
             insertedRowCount++;
             results.push({ index, ok: true, entryId, campaignId });
+            // 2026-09-29 — Partner + Size on a print row registers the ad
+            // format and seeds its cost per insertion (see
+            // registerPrintPlacementFromUpload()).
+            try {
+              const reg = registerPrintPlacementFromUpload(accountId, row, now);
+              if (reg.specAdded) printSpecsAdded++;
+              if (reg.costSeeded) magazineCostsSeeded++;
+              const dm = registerDirectMailPlacementFromUpload(accountId, row, now);
+              if (dm.costSeeded) dmFormatCostsSeeded++;
+              const det = bulkRowDetails(row);
+              if (['listRequestDate', 'listDueDate', 'releaseFilesDate', 'dropDateBudget', 'inHomeDate', 'vendor', 'totalQuantity', 'distributedQuantity'].some(k => det[k] !== undefined)) productionRows++;
+            } catch (e){ /* catalog seeding is best-effort — never fails the row */ }
           } catch (e){
             results.push({ index, ok: false, campaignId, error: (e && e.error) || 'unexpected error inserting this row' });
           }
@@ -26936,7 +27144,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       return sendJson(res, 200, {
         batchId, rowsInserted: insertedRowCount, rowsFailed: results.length - results.filter(r => r.ok).length,
         results, campaignsCreated: campaignIdsCreated, campaignsMatched: campaignIdsMatched,
-        keyGroups
+        keyGroups, printSpecsAdded, magazineCostsSeeded, dmFormatCostsSeeded, productionRows
       });
     }
 
