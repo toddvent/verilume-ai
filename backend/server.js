@@ -15593,6 +15593,16 @@ async function syncSnowflakeAccount(account){
 // the exact shape portal.html's Campaigns view renders directly.
 const updateCampaignStatusStmt = db.prepare('UPDATE campaigns SET status = ? WHERE id = ?');
 
+// 2026-09-29 — Postgres folds an UNQUOTED camelCase alias (e.g. `c.name AS
+// campaignName`) to lowercase, and these aliases are not in
+// schema-identifiers.json, so reads of r.campaignName came back undefined on
+// production (calendar events all titled "(untitled campaign)"). Read the
+// alias case-insensitively.
+function aliasVal(row, name){
+  if (!row) return undefined;
+  const v = row[name];
+  return v !== undefined ? v : row[String(name).toLowerCase()];
+}
 function getCampaignsForAccount(accountId){
   const campaigns = db.prepare(
     'SELECT * FROM campaigns WHERE accountId = ? ORDER BY createdAt ASC'
@@ -24173,7 +24183,7 @@ Submit your response via the campaign_intake_turn tool.`;
       const realEvents = rows.map(r => ({
         id: r.id,
         campaignId: r.campaignId,
-        campaignTitle: r.campaignName || r.campaignObjective || '(untitled campaign)',
+        campaignTitle: aliasVal(r, 'campaignName') || aliasVal(r, 'campaignObjective') || '(untitled campaign)',
         channel: r.channel,
         partner: r.partner,
         hitDate: r.hitDate,
@@ -27595,8 +27605,8 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
         try { d = r.detailsJson ? JSON.parse(r.detailsJson) : {}; } catch (e){ d = {}; }
         const out = {
           verilumeCampaignId: r.campaignId, verilumeLineId: r.id, campaignCode: r.campaignCode || '',
-          campaignName: r.campaignName || '', campaignClassification: r.campaignClassification || '',
-          campaignStartDate: r.campaignStartDate || '', campaignEndDate: r.campaignEndDate || '',
+          campaignName: aliasVal(r, 'campaignName') || '', campaignClassification: aliasVal(r, 'campaignClassification') || '',
+          campaignStartDate: aliasVal(r, 'campaignStartDate') || '', campaignEndDate: aliasVal(r, 'campaignEndDate') || '',
           creativeNeeded: r.creativeDisposition === 'needed' ? 'Yes' : (r.creativeDisposition === 'external' ? 'No' : ''),
           channel: r.channel || '', partner: r.partner || '', audience: r.audience || '', buyType: r.buyType || '', mediaType: r.mediaType || '',
           impressions: r.impressions == null ? '' : r.impressions, dropDate: r.dropDate || '', hitDate: r.hitDate || '', endDate: r.endDate || '',
@@ -28083,6 +28093,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       if (!requireAccount(req, res, campaign.accountId)) return;
       const jobs = db.prepare('SELECT * FROM creative_jobs WHERE campaignId = ?').all(campaignId)
         .sort((a, b) => (CREATIVE_JOB_PRIORITY_ORDER[a.priority] ?? 2) - (CREATIVE_JOB_PRIORITY_ORDER[b.priority] ?? 2) || a.createdAt.localeCompare(b.createdAt));
+      jobs.forEach(j => { ['campaignName', 'campaignObjective', 'campaignApprovedAssetJobIds'].forEach(k => { if (j[k] === undefined && j[k.toLowerCase()] !== undefined) j[k] = j[k.toLowerCase()]; }); });
       return sendJson(res, 200, { jobs });
     }
 
