@@ -12437,7 +12437,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-29-campaigns-list-batched-queries';
+const CXMEDIA_BUILD_STAMP = '2026-09-29-calendar-campaign-names';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -48940,7 +48940,7 @@ async function renderPublisherPerformanceLeaderboard(){
   }
 
   if (!data.rows.length){
-    panel.innerHTML = `<p class="lede">No response actuals recorded yet for ${escapeHtml(channel)} — enter Calls/QR scans/URL visits/Leads on a placement's Marketing Calendar event (click the event, fill in "Response actuals," Save).</p>`;
+    panel.innerHTML = `<p class="lede">No response actuals recorded yet for ${escapeHtml(channel)} — record Calls/QR scans/URL visits/Leads for this channel's placements to populate it.</p>`;
     return;
   }
 
@@ -51644,7 +51644,9 @@ function mktCalIso(y, m, d){
 // CSS comment above .mktcal-grid). Full title still shows on hover via the
 // title attribute, and the detail modal (mktCalOpenDetail) shows it too.
 function mktCalPillHtml(e){
-  const idLabel = escapeHtml(e.campaignId || e.id || '—');
+  // 2026-09-29, per direct instruction: the calendar shows the campaign NAME,
+  // not the ID (the ID moves to the hover tooltip).
+  const idLabel = escapeHtml(e.campaignTitle || e.campaignId || e.id || '—');
   const title = escapeHtml(e.campaignTitle || '(untitled campaign)');
   // 2026-09-21 — work-in-progress placeholder events (no real Channel
   // Planning Detail entry yet — see getMarketingCalendarEvents()) get a
@@ -51652,7 +51654,7 @@ function mktCalPillHtml(e){
   // still being built stands out from one with a confirmed channel plan,
   // per direct instruction.
   const wipClass = e.workInProgress ? ' mktcal-pill-wip' : '';
-  const tooltip = e.workInProgress ? `${title} — work in progress (not yet trafficked)` : `${title} — ${escapeHtml(e.channel || '')}`;
+  const tooltip = e.workInProgress ? `${title} — work in progress (not yet trafficked)` : `${title} — ${escapeHtml(e.channel || '')}${e.campaignId ? ' · ' + escapeHtml(e.campaignId) : ''}`;
   return `<button type="button" class="mktcal-pill${wipClass}" onclick="mktCalOpenDetail('${e.id}')" title="${tooltip}">
     <span class="mktcal-dot" style="background:${channelCalColor(e.channel)}"></span>
     <span class="mktcal-pill-label">${idLabel}</span>
@@ -51758,32 +51760,14 @@ function mktCalOpenDetail(eventId){
       body.innerHTML = detailRowsHtml
         + `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
              <p style="font-size:0.8125rem;font-weight:700;margin:0 0 4px;">Not yet trafficked</p>
-             <p class="hint" style="margin:0;">This campaign hasn't reached channel planning yet, so there's no Channel Planning Detail entry to show response actuals for. It's plotted here on its own Start Date so it doesn't disappear from the calendar while work is in progress.</p>
+             <p class="hint" style="margin:0;">This campaign hasn't reached channel planning yet, so there's no Channel Planning Detail entry to show yet. It's plotted here on its own Start Date so it doesn't disappear from the calendar while work is in progress.</p>
            </div>`;
     } else {
-      // 2026-09-13 — Publisher/Vendor Performance actuals, per direct
-      // instruction ("we capture cost, household reach, total circulation
-      // and creative size compared to other magazines and newspapers based
-      // on calls, QR code scans, direct URL visits and measurable leads —
-      // Direct Mail: same approach"). Four separate inputs, not one blended
-      // response field, so which engagement type is actually driving this
-      // placement stays visible. Feeds renderPublisherPerformanceLeaderboard()
-      // below via GET .../channel-planning/publisher-performance.
-      body.innerHTML = detailRowsHtml
-        + `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
-             <p style="font-size:0.8125rem;font-weight:700;margin:0 0 4px;">Response actuals</p>
-             <p class="hint" style="margin:0 0 10px;">Feeds the Publisher/Vendor Performance leaderboard under Comparative Analytics.</p>
-             <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
-               <div class="field"><label for="mktCalActualCalls">Calls</label><input type="number" min="0" id="mktCalActualCalls" value="${e.actualCalls ?? ''}"></div>
-               <div class="field"><label for="mktCalActualQrScans">QR scans</label><input type="number" min="0" id="mktCalActualQrScans" value="${e.actualQrScans ?? ''}"></div>
-               <div class="field"><label for="mktCalActualUrlVisits">Direct URL visits</label><input type="number" min="0" id="mktCalActualUrlVisits" value="${e.actualUrlVisits ?? ''}"></div>
-               <div class="field"><label for="mktCalActualLeads">Measurable leads</label><input type="number" min="0" id="mktCalActualLeads" value="${e.actualLeads ?? ''}"></div>
-             </div>
-             <div class="btn-row" style="margin-top:10px;">
-               <button type="button" class="btn-primary" onclick="mktCalSaveActuals('${e.campaignId}','${e.id}')">Save actuals</button>
-             </div>
-             <div id="mktCalActualsSaveNote" class="hint" style="margin-top:6px;"></div>
-           </div>`;
+      // 2026-09-29, per direct instruction ("We don't need response actuals
+      // on the calendar cards"): the Response actuals inputs no longer
+      // appear in the calendar detail. The stored actuals and the
+      // Publisher/Vendor Performance leaderboard are untouched.
+      body.innerHTML = detailRowsHtml;
     }
   }
   const footer = document.getElementById('mktCalModalFooter');
