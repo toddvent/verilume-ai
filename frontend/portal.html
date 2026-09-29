@@ -4964,7 +4964,7 @@
           <div class="field-divider">Get the template</div>
           <div class="field">
             <label>Download the CSV template</label>
-            <div class="hint" style="margin-bottom:8px;">One header row, one example row. Rows are grouped/matched by <code>channel</code> + <code>partner</code> + <code>hitDate</code> + <code>endDate</code> + <code>audience</code> — <code>campaignName</code> is a display label only, not part of the match.</div>
+            <div class="hint" style="margin-bottom:8px;">One header row, one example row. Rows are grouped/matched by <code>channel</code> + <code>partner</code> + <code>hitDate</code> + <code>endDate</code> + <code>audience</code> — <code>campaignName</code> is a display label only, not part of the match. Your own column names are fine too (Marketing Group, Partner, Budget, Drop/Hit/End Date, Size, Specs, 1st Proof Due, Creative Due, QR Code Link, Phone, Notes, Project Number…) — they're matched on upload, and dollar signs, thousands separators and m/d/yyyy dates are read as-is. On Magazines and Newspapers rows, Partner + Size registers the ad format in your print-spec catalog and seeds its cost per insertion from Budget where none is saved yet. Production columns (List Request, List Due, Release Files, In Home, Format, Total/Mail Qty, Paper &amp; Manufacturing, Postage/Freight, Insertion, Cost, Unit Cost, Vendor…) are captured on each line item and editable afterwards under Marketing Ops → Production Schedule &amp; Details.</div>
             <button type="button" class="btn-ghost" onclick="downloadBulkCreateCampaignsTemplate()">Download CSV template →</button>
           </div>
 
@@ -12389,7 +12389,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-29-self-service-transaction-settings';
+const CXMEDIA_BUILD_STAMP = '2026-09-29-production-schedule-reupload-fix';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -12908,6 +12908,7 @@ const FUNCTION_GROUPS = [
     { name: 'Tracking Links (UTM, QR Codes & Links)', tier: 'ready', built: true, queueSpecialty: 'tracking', note: 'Master UTM config, QR code generation, and tracking-link building — prioritized by each creative job\'s real due date.' },
     { name: 'Channel Selection', tier: 'ready', built: true, queueSpecialty: 'channels', note: 'Which campaigns still need their channel mix chosen, prioritized by delivery due date.' },
     { name: 'Ad Trafficking', tier: 'ready', built: true, queueSpecialty: 'trafficking', note: 'Which campaigns still haven\'t sent their approved creative + tracking links to trafficking, prioritized by delivery due date.' },
+    { name: 'Production Schedule & Details', tier: 'ready', built: true, queueSpecialty: 'production', note: 'Per line item: data/list dates, files-to-vendor, planned drop, in-home; format, quantities, vendor and production costs. Filled by upload or by hand.' },
     { name: 'KPI Development & Monitoring', tier: 'hybrid', note: 'Defining which KPIs and why is prompt-ready; live monitoring is a dashboard job.' },
     { name: 'Marketing Calendar', tier: 'ready', built: true, route: 'marketingCalendar', note: 'Every Channel Planning Detail entry\'s Hit Date plotted on a real calendar — filter by Channel, Product Group, or Creative Market, and export the current view to Excel or CSV.' }
     // Round 131 — Vendor Management moved to Manage Account (step-
@@ -16992,10 +16993,19 @@ function parseCsvText(text){
   // Drop a trailing fully-blank row (a trailing newline in the file).
   if (rows.length && rows[rows.length - 1].every(c => c.trim() === '')) rows.pop();
   if (!rows.length) return [];
-  const headers = rows[0].map(h => h.trim());
+  // A blank header cell gets a positional name so a column that carries
+  // data under no heading is reported to the person as unused instead of
+  // silently dropped.
+  const headers = rows[0].map((h, i) => h.trim() || `(unnamed column ${i + 1})`);
   return rows.slice(1).map(r => {
     const obj = {};
-    headers.forEach((h, i) => { obj[h] = (r[i] !== undefined ? r[i] : '').trim(); });
+    // 2026-09-29 — a file can carry the same header twice (the client's
+    // media plan lists PARTNER in two columns). Keep the first non-empty
+    // value rather than letting the right-most column silently win.
+    headers.forEach((h, i) => {
+      const v = (r[i] !== undefined ? r[i] : '').trim();
+      if (obj[h] === undefined || (obj[h] === '' && v !== '')) obj[h] = v;
+    });
     return obj;
   });
 }
@@ -17022,7 +17032,12 @@ function downloadBulkUploadTemplate(){
     mediaType: (cmpTaxonomyValues('mediaType') || ['Social'])[0], impressions: 50000,
     dropDate: '2026-09-01', hitDate: '2026-09-05', endDate: '2026-09-30', productYear: '2026',
     productGroup: (cmpTaxonomyValues('productGroup') || ['Example Product Group'])[0],
-    creativeMarket: (cmpTaxonomyValues('creativeMarket') || ['Example Creative Market'])[0], budget: 5000
+    creativeMarket: (cmpTaxonomyValues('creativeMarket') || ['Example Creative Market'])[0], budget: 5000,
+    projectNumber: 'JOB-1042', creativeSize: 'Full Page', creativeSpecs: '8.25 x 10.875 in trim', proofDueDate: '2026-08-10', creativeDueDate: '2026-08-17',
+    promotedItems: 'Fall menu', qrCodeLink: 'https://example.com/fall', phone: '800-555-0100', notes: '',
+    productionProject: 'Fall launch mailer', listRequestDate: '2026-07-20', listDueDate: '2026-07-27', releaseFilesDate: '2026-08-05', dropDateBudget: '2026-08-20', inHomeDate: '2026-08-28',
+    vendor: 'Example Printer', totalQuantity: 50100, distributedQuantity: 50000, fulfillmentQuantity: 100, materialsOrdered: 'Yes',
+    paperMfgCost: 6000, postageCost: 19800, insertionCost: 0, productionCost: 25800, unitCost: 0.52
   };
   const lines = [
     BULK_UPLOAD_CORE_FIELDS.join(','),
@@ -17159,7 +17174,16 @@ async function submitBulkUpload(){
     productYear: r.raw.productYear || '',
     productGroup: r.raw.productGroup || '',
     creativeMarket: r.raw.creativeMarket || '',
-    budget: r.raw.budget ? Number(r.raw.budget) : null
+    budget: r.raw.budget ? Number(r.raw.budget) : null,
+    // 2026-09-29 — client reference + placement details (see
+    // BULK_CREATE_CAMPAIGNS_DETAIL_FIELDS).
+    projectNumber: r.raw.projectNumber || '',
+    details: BULK_CREATE_CAMPAIGNS_DETAIL_FIELDS.filter(f => f !== 'projectNumber' && String(r.raw[f] || '').trim() !== '')
+      .reduce((acc, f) => {
+        const v = String(r.raw[f]).trim();
+        acc[f] = (PRODUCTION_NUMERIC_FIELDS.includes(f) && !isNaN(Number(v))) ? Number(v) : v;
+        return acc;
+      }, {})
   }));
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/channel-planning/bulk`, {
@@ -17199,7 +17223,245 @@ async function submitBulkUpload(){
 // intended for every day use").
 const BULK_CREATE_CAMPAIGNS_CAMPAIGN_FIELDS = ['campaignName', 'campaignClassification', 'campaignStartDate', 'campaignEndDate'];
 const BULK_CREATE_CAMPAIGNS_LINE_FIELDS = ['channel', 'partner', 'audience', 'buyType', 'mediaType', 'impressions', 'dropDate', 'hitDate', 'endDate', 'productYear', 'productGroup', 'creativeMarket', 'budget'];
-const BULK_CREATE_CAMPAIGNS_ALL_FIELDS = [...BULK_CREATE_CAMPAIGNS_CAMPAIGN_FIELDS, ...BULK_CREATE_CAMPAIGNS_LINE_FIELDS];
+// 2026-09-29 — placement-level detail columns, added when the client's own
+// magazine/newspaper media plan (MEDIA_PLANS_2H2026CONSUMER_ADS) arrived
+// with Project Number, Size, Specs, proof/creative due dates, promoted
+// products, QR link, phone and notes on every row. projectNumber is the
+// existing pass-through column on channel_planning_details; the rest ride
+// in that row's detailsJson (the "variable part" convention). creativeSize
+// is the one that feeds pricing: on Magazines/Newspapers rows the backend
+// registers Partner + Size as a publication/ad-format pair in the account's
+// print-spec catalog and seeds its cost-per-insertion from Budget (only
+// where no cost is saved yet), so the asset-level Magazine cost card fills
+// itself from the plan instead of being typed in twice.
+// 2026-09-29 (second pass, from the client's Direct Mail worksheet) — the
+// row splits into two paths, per Todd: (1) the business metrics and
+// categorization of the campaign (the line-item columns above) and (2)
+// the production timeline and details needed to execute it. Path 2 is
+// modeled generically so it serves every industry — a printer's
+// "in-home" date and a retailer's "in-store" date are the same
+// milestone — and is captured either here on upload or in-app under
+// Marketing Ops → Production Schedule & Details (see
+// PRODUCTION_FIELD_GROUPS / renderMopsProductionEditor). All of it lives
+// in the line item's detailsJson.
+const PRODUCTION_FIELD_GROUPS = [
+  { key: 'milestones', label: 'Production timeline', fields: [
+    { key: 'listRequestDate', label: 'Data / list request', type: 'date' },
+    { key: 'listDueDate', label: 'Data / list due', type: 'date' },
+    { key: 'creativeDueDate', label: 'Creative due', type: 'date' },
+    { key: 'proofDueDate', label: 'Proof due', type: 'date' },
+    { key: 'releaseFilesDate', label: 'Files released to vendor', type: 'date' },
+    { key: 'dropDateBudget', label: 'Planned drop (budget)', type: 'date' },
+    { key: 'inHomeDate', label: 'In-home / in-market', type: 'date' }
+  ]},
+  { key: 'details', label: 'Production details', fields: [
+    { key: 'productionProject', label: 'Production job', type: 'text' },
+    { key: 'creativeSize', label: 'Format / size', type: 'text' },
+    { key: 'creativeSpecs', label: 'Specs', type: 'text' },
+    { key: 'vendor', label: 'Vendor', type: 'text' },
+    { key: 'totalQuantity', label: 'Total quantity', type: 'number' },
+    { key: 'distributedQuantity', label: 'Distributed quantity', type: 'number' },
+    { key: 'fulfillmentQuantity', label: 'Held for fulfillment', type: 'number' },
+    { key: 'materialsOrdered', label: 'Materials ordered', type: 'text' }
+  ]},
+  { key: 'costs', label: 'Production costs', fields: [
+    { key: 'paperMfgCost', label: 'Paper & manufacturing', type: 'money' },
+    { key: 'postageCost', label: 'Postage / freight', type: 'money' },
+    { key: 'insertionCost', label: 'Insertion', type: 'money' },
+    { key: 'productionCost', label: 'Total production cost', type: 'money' },
+    { key: 'unitCost', label: 'Unit cost', type: 'money' }
+  ]},
+  { key: 'other', label: 'Execution details', fields: [
+    { key: 'promotedItems', label: 'Promoted items', type: 'text' },
+    { key: 'qrCodeLink', label: 'QR / landing link', type: 'text' },
+    { key: 'phone', label: 'Tracking phone', type: 'text' },
+    { key: 'notes', label: 'Notes', type: 'text' }
+  ]}
+];
+const PRODUCTION_FIELDS = PRODUCTION_FIELD_GROUPS.flatMap(g => g.fields);
+const PRODUCTION_DATE_FIELDS = PRODUCTION_FIELDS.filter(f => f.type === 'date').map(f => f.key);
+const PRODUCTION_NUMERIC_FIELDS = PRODUCTION_FIELDS.filter(f => f.type === 'number' || f.type === 'money').map(f => f.key);
+const BULK_CREATE_CAMPAIGNS_DETAIL_FIELDS = ['projectNumber', ...PRODUCTION_FIELDS.map(f => f.key)];
+const BULK_CREATE_CAMPAIGNS_ALL_FIELDS = [...BULK_CREATE_CAMPAIGNS_CAMPAIGN_FIELDS, ...BULK_CREATE_CAMPAIGNS_LINE_FIELDS, ...BULK_CREATE_CAMPAIGNS_DETAIL_FIELDS];
+// Spreadsheet helper columns that are derived from real fields (a hit
+// month, a hit week, a campaign-days count). Recognized so they don't
+// show up as "not used" noise, and ignored because Verilume derives them.
+const BCC_IGNORED_HEADERS = ['hit month', 'hit month calc', 'hit week', 'hit week calc', 'campaign days', 'campaign days calc', 'week', 'month', 'quarter', 'days'];
+
+// Header aliases — the uploader accepts a client's own column names, not
+// only the template's. Matching is case-, space- and punctuation-
+// insensitive ("1ST PROOF DUE", "1st Proof Due", "first_proof_due" all
+// resolve). Industry-neutral on purpose: a cruise line's "EXPEDITIONS
+// PROMOTED" and a retailer's "Products Promoted" both land in
+// promotedItems. Unknown columns are reported in the file hint and
+// ignored — never an error.
+const BCC_HEADER_ALIASES = {
+  campaignName: ['campaign name', 'campaign', 'campaign label'],
+  campaignClassification: ['campaign classification', 'campaign type', 'classification'],
+  campaignStartDate: ['campaign start date', 'campaign start'],
+  campaignEndDate: ['campaign end date', 'campaign end'],
+  channel: ['channel', 'marketing group', 'media channel', 'channel category', 'marketing channel'],
+  partner: ['partner', 'publication', 'publisher', 'media partner', 'media vendor', 'outlet', 'station', 'network'],
+  audience: ['audience', 'segment', 'target audience', 'audience segment'],
+  buyType: ['buy type', 'buying type', 'pricing model', 'cost model'],
+  mediaType: ['media type', 'ad type', 'unit type', 'placement type'],
+  impressions: ['impressions', 'impressions reach', 'impressions or reach', 'circulation', 'reach', 'estimated impressions', 'est impressions', 'imps', 'sends', 'audience size'],
+  dropDate: ['drop date', 'mail date', 'drop'],
+  hitDate: ['hit date', 'start date', 'on sale date', 'issue date', 'run date', 'flight start', 'live date'],
+  endDate: ['end date', 'end date calc', 'flight end', 'off sale date', 'stop date'],
+  productYear: ['product year', 'product year sail year', 'sail year', 'season', 'program year', 'sailing year', 'model year', 'season year'],
+  productGroup: ['product group', 'product', 'product line', 'product category'],
+  creativeMarket: ['creative market', 'creative focus', 'creative focus group', 'destination', 'market', 'creative theme'],
+  budget: ['budget', 'spend', 'net cost', 'gross cost', 'planned spend', 'media cost', 'media budget'],
+  projectNumber: ['project number', 'project #', '#', 'project no', 'job number', 'job #', 'wrike #', 'wrike number', 'reference', 'reference number', 'client reference'],
+  creativeSize: ['size', 'ad size', 'format', 'ad format', 'unit', 'unit size', 'creative size', 'space', 'piece', 'mailer format'],
+  // Production path (see PRODUCTION_FIELD_GROUPS)
+  productionProject: ['project', 'project name', 'production job', 'job', 'job name', 'production project'],
+  listRequestDate: ['list request', 'list request date', 'data request', 'data request date', 'audience request'],
+  listDueDate: ['list due', 'list due date', 'data due', 'data due date', 'audience due', 'file due'],
+  releaseFilesDate: ['release files', 'release files date', 'release files to printer', 'release files to vendor', 'files to printer', 'files to vendor', 'files released', 'release to vendor', 'release to printer', 'art release', 'release date'],
+  dropDateBudget: ['drop date budget', 'budget drop date', 'planned drop', 'planned drop date'],
+  inHomeDate: ['in home', 'in home date', 'in market', 'in market date', 'in store', 'in store date', 'arrival date', 'delivery date'],
+  vendor: ['vendor', 'production vendor', 'printer', 'supplier', 'production partner', 'mail house', 'lettershop'],
+  totalQuantity: ['total qty', 'total quantity', 'qty', 'quantity', 'print qty', 'print quantity', 'total units'],
+  distributedQuantity: ['mail qty', 'mail quantity', 'mailed qty', 'distributed qty', 'distributed quantity', 'shipped qty', 'units distributed'],
+  fulfillmentQuantity: ['sales fulfill', 'sales fulfillment', 'fulfillment qty', 'fulfillment quantity', 'overs', 'held qty', 'held quantity'],
+  materialsOrdered: ['paper ordered', 'materials ordered', 'stock ordered', 'materials'],
+  paperMfgCost: ['paper and manufacturingcost', 'paper and manufacturing cost', 'paper manufacturing cost', 'paper mfg cost', 'manufacturing cost', 'production cost paper', 'print cost', 'printing cost'],
+  postageCost: ['postage or freight', 'postage', 'postage cost', 'freight', 'freight cost', 'shipping', 'shipping cost', 'delivery cost'],
+  insertionCost: ['insertion', 'insertion cost', 'inserting'],
+  productionCost: ['cost', 'total cost', 'production cost', 'total production cost'],
+  unitCost: ['unit cost', 'cost per unit', 'cost per piece', 'cpp', 'unit price'],
+  creativeSpecs: ['specs', 'spec', 'specifications', 'dimensions', 'trim size', 'trim', 'mechanical specs'],
+  proofDueDate: ['1st proof due', 'first proof due', 'proof due', 'proof due date', 'proof date'],
+  creativeDueDate: ['creative due', 'creative due date', 'creative deadline', 'internal creative deadline', 'materials due', 'material due', 'artwork due', 'material deadline', 'materials deadline', 'art due', 'files due'],
+  promotedItems: ['expeditions promoted', 'products promoted', 'promoted', 'promoted items', 'promoted products', 'offerings promoted', 'itineraries promoted', 'featured products', 'featured', 'promotion'],
+  qrCodeLink: ['qr code link', 'qr link', 'qr url', 'qr code url', 'qr', 'landing page', 'landing page url', 'url', 'link', 'tracking url'],
+  phone: ['phone', 'phone number', 'tracking phone', 'tracking number', 'call tracking number', 'call tracking', 'toll free', 'phone #'],
+  notes: ['notes', 'note', 'comments', 'comment', 'remarks']
+};
+function bccNormalizeHeaderKey(h){
+  return String(h || '').toLowerCase().replace(/[^a-z0-9#]+/g, ' ').trim();
+}
+const BCC_HEADER_LOOKUP = (() => {
+  const m = {};
+  BULK_CREATE_CAMPAIGNS_ALL_FIELDS.forEach(f => { m[bccNormalizeHeaderKey(f.replace(/([A-Z])/g, ' $1'))] = f; m[f.toLowerCase()] = f; });
+  Object.entries(BCC_HEADER_ALIASES).forEach(([field, aliases]) => aliases.forEach(a => { m[bccNormalizeHeaderKey(a)] = field; }));
+  return m;
+})();
+// Remaps one parsed CSV row's keys onto Verilume field names. Returns the
+// remapped row plus the list of source headers that matched nothing.
+function bccRemapRow(parsedRow){
+  const out = {};
+  const unmapped = [];
+  Object.entries(parsedRow).forEach(([header, rawValue]) => {
+    if (!header) return;
+    const headerKey = bccNormalizeHeaderKey(header);
+    let value = String(rawValue == null ? '' : rawValue).trim();
+    // A spreadsheet's own formula errors and template echoes (a cell that
+    // just repeats its column heading, e.g. "PRODUCT GROUP") are blanks.
+    if (/^#(div\/0!|n\/a|ref!|value!|name\?|num!|null!)$/i.test(value)) value = '';
+    if (value && bccNormalizeHeaderKey(value) === headerKey) value = '';
+    if (BCC_IGNORED_HEADERS.includes(headerKey)) return;
+    const field = BCC_HEADER_LOOKUP[headerKey];
+    if (!field){ if (value) unmapped.push(header); return; }
+    if (out[field] === undefined || (out[field] === '' && value !== '')) out[field] = value;
+  });
+  return { row: out, unmapped };
+}
+// A worksheet exported with its empty template rows still in it (formula
+// columns filled, everything real blank) — those carry no placement and
+// are dropped before validation rather than reported as errors.
+function bccRowIsTemplatePlaceholder(row){
+  const has = k => String(row[k] || '').trim() !== '';
+  // Partner alone doesn't count — a worksheet template often pre-fills it
+  // (the client's own name on every empty row).
+  if (has('projectNumber') || has('hitDate') || has('dropDate') || has('impressions') || has('campaignName')) return false;
+  const budget = Number(bccNormalizeNumber(row.budget || ''));
+  return !(budget > 0);
+}
+// "Direct Mail" alone names a family of channels (Direct Mail — Prospects /
+// Past Guests / Inquiries). When the file's channel matches a family
+// prefix rather than one member, the row's audience picks the member:
+// prospect-type words → Prospects, past/guest/customer/loyalty → Past
+// Guests, inquiry/hand-raiser/lead → Inquiries. No signal → the first
+// member, with a warning so the person can move it.
+// Umbrella channel names a media plan tab tends to use, resolved to the
+// Verilume category the row's media type points at. Industry-neutral
+// vocabulary only; the row gets a warning naming the assignment so it can
+// be corrected after upload.
+function bccResolveUmbrellaChannel(channelValue, mediaTypeValue, buyTypeValue){
+  const c = String(channelValue || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const m = `${mediaTypeValue || ''} ${buyTypeValue || ''}`.toLowerCase();
+  const has = name => MMM_CATEGORIES.includes(name) ? name : null;
+  if (/^(e ?mail|internal email|owned email|house email|crm email|newsletter)$/.test(c)){
+    return /remarket|retarget/.test(m) ? (has('Email — Remarketing') || has('Internal Email')) : (has('Internal Email') || has('Email — Remarketing'));
+  }
+  if (/^(digital|online|web|display|paid digital|digital media)$/.test(c)){
+    if (/social|meta|facebook|instagram|tiktok|linkedin|pinterest/.test(m)) return has('Paid Social');
+    if (/search|sem|ppc|txt link|text link|sponsored listing|cpc/.test(m)) return has('Partner Media') || has('Non-Brand Search');
+    if (/programmatic|dsp|rtb/.test(m)) return has('Programmatic Display');
+    if (/display|iab|banner|takeover|sponsor|native|runner|email|em /.test(m)) return has('Partner Media') || has('Programmatic Display');
+    return has('Partner Media') || has('Programmatic Display');
+  }
+  if (/^(social|paid social|social media)$/.test(c)) return has('Paid Social');
+  if (/^(search|paid search|sem|ppc)$/.test(c)) return /brand/.test(m) && !/non ?brand/.test(m) ? has('Brand Search') : has('Non-Brand Search');
+  if (/^(tv|television|broadcast)$/.test(c)) return /ctv|connected|streaming/.test(m) ? has('CTV') : (/otv|online video|olv/.test(m) ? has('OTV') : has('Linear TV'));
+  if (/^(print|publication|magazine ads?)$/.test(c)) return /news/.test(m) ? has('Newspapers') : has('Magazines');
+  if (/^(ooh|outdoor|out of home|billboard)$/.test(c)) return has('Out-of-Home');
+  if (/^(audio|streaming audio)$/.test(c)) return /podcast/.test(m) ? has('Podcasts') : has('Radio');
+  return null;
+}
+function bccResolveChannelFamily(channelValue, audienceValue){
+  const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const v = norm(channelValue);
+  if (!v) return null;
+  const family = MMM_CATEGORIES.filter(c => norm(c).startsWith(v + ' '));
+  if (!family.length) return null;
+  const a = norm(audienceValue);
+  const pick = (re) => family.find(c => re.test(norm(c)));
+  let chosen = null;
+  if (/^pr\b|prospect|acquisition|new|cold/.test(a)) chosen = pick(/prospect/);
+  else if (/^pg\b|past|guest|customer|loyal|retention|existing|member|repeat/.test(a)) chosen = pick(/past|guest|customer/);
+  else if (/inq|hand|lead|raiser|warm|request/.test(a)) chosen = pick(/inquir|lead|hand/);
+  return { channel: chosen || family[0], assumed: !chosen, family };
+}
+// "$35,000 " -> "35000"; "712,000" -> "712000"; "(1,200)" -> "-1200".
+// Leaves anything non-numeric alone so validation still reports it.
+function bccNormalizeNumber(v){
+  const s = String(v == null ? '' : v).trim();
+  if (!s) return '';
+  const neg = /^\(.*\)$/.test(s);
+  const cleaned = s.replace(/[()$€£,\s]/g, '').replace(/[A-Za-z]+$/, '');
+  if (cleaned === '' || isNaN(Number(cleaned))) return s;
+  return String(neg ? -Number(cleaned) : Number(cleaned));
+}
+// Accepts yyyy-mm-dd, m/d/yyyy, m/d/yy, m-d-yyyy, yyyy/mm/dd and "Jul 7,
+// 2026"; returns yyyy-mm-dd, or the original string when unparsable.
+function bccNormalizeDate(v){
+  const s = String(v == null ? '' : v).trim();
+  if (!s) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  let m = /^(\d{4})[\/.](\d{1,2})[\/.](\d{1,2})$/.exec(s);
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  m = /^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/.exec(s);
+  if (m){
+    let y = Number(m[3]); if (m[3].length === 2) y += (y < 70 ? 2000 : 1900);
+    return `${y}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`;
+  }
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return s;
+}
+// Channel match that forgives case, punctuation and plural ("MAGAZINE" and
+// "MAGAZINES" both resolve to the configured "Magazines"; "Direct Mail -
+// Prospects" matches the em-dash spelling).
+function bccChannelMatch(value){
+  const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().replace(/s\b/g, '');
+  const v = norm(value);
+  if (!v) return null;
+  return MMM_CATEGORIES.find(c => norm(c) === v) || null;
+}
 
 let bccRows = []; // [{ index, raw, errors, warnings }]
 
@@ -17251,7 +17513,12 @@ function downloadBulkCreateCampaignsTemplate(){
     mediaType: (cmpTaxonomyValues('mediaType') || ['Social'])[0], impressions: 50000,
     dropDate: '2026-09-01', hitDate: '2026-09-05', endDate: '2026-09-30', productYear: '2026',
     productGroup: (cmpTaxonomyValues('productGroup') || ['Example Product Group'])[0],
-    creativeMarket: (cmpTaxonomyValues('creativeMarket') || ['Example Creative Market'])[0], budget: 5000
+    creativeMarket: (cmpTaxonomyValues('creativeMarket') || ['Example Creative Market'])[0], budget: 5000,
+    projectNumber: 'JOB-1042', creativeSize: 'Full Page', creativeSpecs: '8.25 x 10.875 in trim', proofDueDate: '2026-08-10', creativeDueDate: '2026-08-17',
+    promotedItems: 'Fall menu', qrCodeLink: 'https://example.com/fall', phone: '800-555-0100', notes: '',
+    productionProject: 'Fall launch mailer', listRequestDate: '2026-07-20', listDueDate: '2026-07-27', releaseFilesDate: '2026-08-05', dropDateBudget: '2026-08-20', inHomeDate: '2026-08-28',
+    vendor: 'Example Printer', totalQuantity: 50100, distributedQuantity: 50000, fulfillmentQuantity: 100, materialsOrdered: 'Yes',
+    paperMfgCost: 6000, postageCost: 19800, insertionCost: 0, productionCost: 25800, unitCost: 0.52
   };
   const lines = [
     BULK_CREATE_CAMPAIGNS_ALL_FIELDS.join(','),
@@ -17285,12 +17552,42 @@ function ciFindMatch(list, value){
 }
 function validateBccRow(raw){
   const errors = [], warnings = [];
-  if (!raw.campaignName) errors.push('campaignName is required');
+  // 2026-09-29 — normalize the client's own formats before validating:
+  // "$35,000 " budgets, "712,000" impressions, 7/7/2026 dates. Rewrites
+  // the row in place so what's uploaded is already canonical.
+  [...BULK_UPLOAD_NUMERIC_FIELDS, ...PRODUCTION_NUMERIC_FIELDS].forEach(f => { if (raw[f]) raw[f] = bccNormalizeNumber(raw[f]); });
+  ['dropDate', 'hitDate', 'endDate', 'campaignStartDate', 'campaignEndDate', ...PRODUCTION_DATE_FIELDS].forEach(f => { if (raw[f]) raw[f] = bccNormalizeDate(raw[f]); });
+  // campaignName is display-only (grouping is Channel + Partner + Hit Date
+  // + End Date + Audience) — a client file without one is fine; the
+  // server labels the campaign from Partner · Channel · Audience.
   if (!raw.channel) errors.push('channel is required');
   else {
-    const canonicalChannel = ciFindMatch(MMM_CATEGORIES, raw.channel);
-    if (!canonicalChannel) errors.push(`channel "${raw.channel}" isn't one of this account's Channels (see MMM_CATEGORIES — e.g. "${MMM_CATEGORIES[0]}")`);
+    let canonicalChannel = ciFindMatch(MMM_CATEGORIES, raw.channel) || bccChannelMatch(raw.channel);
+    if (!canonicalChannel){
+      const umbrella = bccResolveUmbrellaChannel(raw.channel, raw.mediaType, raw.buyType);
+      if (umbrella){
+        warnings.push(`"${raw.channel}"${raw.mediaType ? ` / ${raw.mediaType}` : ''} mapped to "${umbrella}" — change it after upload if a different channel fits`);
+        canonicalChannel = umbrella;
+      }
+    }
+    if (!canonicalChannel){
+      const fam = bccResolveChannelFamily(raw.channel, raw.audience);
+      if (fam){
+        canonicalChannel = fam.channel;
+        if (fam.assumed) warnings.push(`"${raw.channel}" covers ${fam.family.length} channels — assigned to "${fam.channel}" (audience "${raw.audience || '—'}" didn't say which); change it after upload if needed`);
+      }
+    }
+    if (!canonicalChannel) errors.push(`channel "${raw.channel}" isn't one of this account's Channels (e.g. "${MMM_CATEGORIES[0]}", "Magazines", "Newspapers")`);
     else raw.channel = canonicalChannel;
+  }
+  if (!raw.hitDate) warnings.push('no hit date — the campaign will have no start date until one is added');
+  // Soft check against the date range typed above the file — a 10/6/2025
+  // hit date inside a 2H-2026 plan is almost always a typo worth a look,
+  // but it's the client's call, so this warns rather than blocks.
+  const rangeFrom = (document.getElementById('bccDateFrom') || {}).value || '';
+  const rangeTo = (document.getElementById('bccDateTo') || {}).value || '';
+  if (raw.hitDate && /^\d{4}-\d{2}-\d{2}$/.test(raw.hitDate) && ((rangeFrom && raw.hitDate < rangeFrom) || (rangeTo && raw.hitDate > rangeTo))){
+    warnings.push(`hit date ${raw.hitDate} falls outside the file's date range (${rangeFrom || '…'} → ${rangeTo || '…'}) — check it isn't a typo`);
   }
 
   Object.entries(BULK_UPLOAD_TAXONOMY_FIELD_KEYS).forEach(([field, taxKey]) => {
@@ -17306,9 +17603,17 @@ function validateBccRow(raw){
   BULK_UPLOAD_NUMERIC_FIELDS.forEach(f => {
     if (raw[f] && (isNaN(Number(raw[f])) || Number(raw[f]) < 0)) errors.push(`${f} must be a non-negative number, got "${raw[f]}"`);
   });
-  ['dropDate', 'hitDate', 'endDate', 'campaignStartDate', 'campaignEndDate'].forEach(f => {
-    if (raw[f] && !/^\d{4}-\d{2}-\d{2}$/.test(raw[f])) errors.push(`${f} must be yyyy-mm-dd, got "${raw[f]}"`);
+  ['dropDate', 'hitDate', 'endDate', 'campaignStartDate', 'campaignEndDate', ...PRODUCTION_DATE_FIELDS].forEach(f => {
+    if (raw[f] && !/^\d{4}-\d{2}-\d{2}$/.test(raw[f])) errors.push(`${f} must be a date (yyyy-mm-dd or m/d/yyyy), got "${raw[f]}"`);
   });
+  PRODUCTION_NUMERIC_FIELDS.forEach(f => {
+    if (raw[f] && (isNaN(Number(raw[f])) || Number(raw[f]) < 0)) warnings.push(`${f} "${raw[f]}" isn't a number — kept as text`);
+  });
+  // A production milestone that lands after the hit date is worth a look
+  // (a 2028 in-home date on a 2026 drop is a typo, not a plan).
+  if (raw.hitDate && raw.inHomeDate && /^\d{4}-\d{2}-\d{2}$/.test(raw.inHomeDate) && raw.inHomeDate > raw.hitDate){
+    warnings.push(`in-home date ${raw.inHomeDate} is after the hit date ${raw.hitDate} — check the year`);
+  }
 
   return { errors, warnings };
 }
@@ -17318,16 +17623,33 @@ function handleBulkCreateCampaignsFile(event){
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
-    const parsed = parseCsvText(String(reader.result || ''));
+    const parsedSource = parseCsvText(String(reader.result || ''));
+    // Drop fully blank rows (trailing empty lines Excel leaves behind).
+    const parsed = parsedSource.filter(r => Object.values(r).some(v => String(v || '').trim() !== ''));
     if (!parsed.length){
       document.getElementById('bccFileHint').textContent = 'No data rows found in that file — check it has a header row plus at least one data row.';
       return;
     }
-    bccRows = parsed.map((raw, index) => {
+    // 2026-09-29 — accept the client's own headers (see BCC_HEADER_ALIASES).
+    const unmappedHeaders = new Set();
+    let placeholderRows = 0;
+    bccRows = [];
+    parsed.forEach((sourceRow, index) => {
+      const { row: raw, unmapped } = bccRemapRow(sourceRow);
+      if (bccRowIsTemplatePlaceholder(raw)){ placeholderRows++; return; }
+      unmapped.forEach(h => unmappedHeaders.add(h));
       const { errors, warnings } = validateBccRow(raw);
-      return { index, raw, errors, warnings };
+      bccRows.push({ index, raw, errors, warnings });
     });
-    document.getElementById('bccFileHint').textContent = `Parsed ${parsed.length} row${parsed.length === 1 ? '' : 's'} from ${file.name}.`;
+    if (!bccRows.length){
+      document.getElementById('bccFileHint').textContent = `No placements found — ${parsed.length} row${parsed.length === 1 ? '' : 's'} parsed but every one is an empty template row (no partner, dates, project number or budget).`;
+      return;
+    }
+    const mappedFields = BULK_CREATE_CAMPAIGNS_ALL_FIELDS.filter(f => bccRows.some(r => String(r.raw[f] || '').trim() !== ''));
+    document.getElementById('bccFileHint').textContent = `Parsed ${bccRows.length} row${bccRows.length === 1 ? '' : 's'} from ${file.name}.` +
+      (placeholderRows ? ` Skipped ${placeholderRows} empty template row${placeholderRows === 1 ? '' : 's'}.` : '') +
+      ` Columns recognized: ${mappedFields.join(', ')}.` +
+      (unmappedHeaders.size ? ` Not used (no matching field): ${[...unmappedHeaders].join(', ')}.` : '');
     document.getElementById('bccActorNameDisplay').textContent = (state.userName || '').trim() || 'You';
     document.getElementById('bccActorWrap').style.display = '';
     document.getElementById('bccPreviewDivider').style.display = '';
@@ -17337,6 +17659,10 @@ function handleBulkCreateCampaignsFile(event){
   };
   reader.onerror = () => { document.getElementById('bccFileHint').textContent = 'Could not read that file — try again.'; };
   reader.readAsText(file);
+  // 2026-09-29 — clear the input once the file is read, so choosing the
+  // same file again after editing it fires a fresh parse (browsers skip
+  // the change event when the same path is picked twice).
+  event.target.value = '';
 }
 
 function renderBulkCreateCampaignsPreview(){
@@ -17361,9 +17687,9 @@ function renderBulkCreateCampaignsPreview(){
     `${bccRows.length} row${bccRows.length === 1 ? '' : 's'} parsed, ${campaignLabelsInFile.size} campaign label${campaignLabelsInFile.size === 1 ? '' : 's'} — ${validCount} row${validCount === 1 ? '' : 's'} ready to upload, ${errorCount} with errors. Rows are matched to campaigns on the server by Channel + Partner + Hit Date + End Date + Audience; which ones landed on a new vs. an existing campaign shows up after upload.`;
 
   const table = document.getElementById('bccPreviewTable');
-  table.innerHTML = `<thead><tr><th>#</th><th>Campaign</th><th>Channel</th><th>Product Group</th><th>Creative Market</th><th>Budget</th><th>Status</th></tr></thead>
+  table.innerHTML = `<thead><tr><th>#</th><th>Campaign</th><th>Channel</th><th>Partner</th><th>Hit date</th><th>Product Group</th><th>Creative Market</th><th>Size</th><th>Budget</th><th>Status</th></tr></thead>
     <tbody>${bccRows.map(r => {
-      const name = (r.raw.campaignName || '').trim();
+      const name = (r.raw.campaignName || '').trim() || [r.raw.partner, r.raw.channel, r.raw.audience].filter(Boolean).join(' · ');
       const statusHtml = r.errors.length
         ? `<span style="color:#B3261E;">${r.errors.length} error${r.errors.length === 1 ? '' : 's'}: ${escapeHtml(r.errors.join('; '))}</span>`
         : (r.warnings.length ? `<span style="color:var(--media);">Ready — ${escapeHtml(r.warnings.join('; '))}</span>` : `<span style="color:var(--cx);">Ready</span>`);
@@ -17371,9 +17697,12 @@ function renderBulkCreateCampaignsPreview(){
         <td class="num">${r.index + 1}</td>
         <td>${escapeHtml(name)}</td>
         <td>${escapeHtml(r.raw.channel || '')}</td>
+        <td>${escapeHtml(r.raw.partner || '')}</td>
+        <td>${escapeHtml(r.raw.hitDate || '')}</td>
         <td>${escapeHtml(r.raw.productGroup || '')}</td>
         <td>${escapeHtml(r.raw.creativeMarket || '')}</td>
-        <td class="num">${escapeHtml(r.raw.budget || '')}</td>
+        <td>${escapeHtml(r.raw.creativeSize || '')}</td>
+        <td class="num">${r.raw.budget ? fmtMoney(Number(r.raw.budget)) : ''}</td>
         <td>${statusHtml}</td>
       </tr>`;
     }).join('')}</tbody>`;
@@ -17390,7 +17719,7 @@ async function submitBulkCreateCampaigns(){
   const dateRangeStart = document.getElementById('bccDateFrom').value || '';
   const dateRangeEnd = document.getElementById('bccDateTo').value || '';
   const fileHint = document.getElementById('bccFileHint').textContent || '';
-  const fileNameMatch = /from (.+)\.$/.exec(fileHint);
+  const fileNameMatch = /from (.+?)\.(?: Skipped| Columns recognized|$)/.exec(fileHint);
   const resultEl = document.getElementById('bccResult');
   resultEl.textContent = `Uploading ${validRows.length} row${validRows.length === 1 ? '' : 's'}…`;
   const rows = validRows.map(r => ({
@@ -17410,7 +17739,16 @@ async function submitBulkCreateCampaigns(){
     productYear: r.raw.productYear || '',
     productGroup: r.raw.productGroup || '',
     creativeMarket: r.raw.creativeMarket || '',
-    budget: r.raw.budget ? Number(r.raw.budget) : null
+    budget: r.raw.budget ? Number(r.raw.budget) : null,
+    // 2026-09-29 — client reference + placement details (see
+    // BULK_CREATE_CAMPAIGNS_DETAIL_FIELDS).
+    projectNumber: r.raw.projectNumber || '',
+    details: BULK_CREATE_CAMPAIGNS_DETAIL_FIELDS.filter(f => f !== 'projectNumber' && String(r.raw[f] || '').trim() !== '')
+      .reduce((acc, f) => {
+        const v = String(r.raw[f]).trim();
+        acc[f] = (PRODUCTION_NUMERIC_FIELDS.includes(f) && !isNaN(Number(v))) ? Number(v) : v;
+        return acc;
+      }, {})
   }));
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/channel-planning/bulk-create-campaigns`, {
@@ -17423,7 +17761,14 @@ async function submitBulkCreateCampaigns(){
     }
     const data = await resp.json();
     const failedLines = (data.results || []).filter(r => !r.ok).map(r => `Row #${r.index + 1}: ${r.error}`);
-    resultEl.innerHTML = `Uploaded ${data.rowsInserted} row${data.rowsInserted === 1 ? '' : 's'} — ${data.campaignsCreated.length} campaign${data.campaignsCreated.length === 1 ? '' : 's'} created, ${data.campaignsMatched.length} existing campaign${data.campaignsMatched.length === 1 ? '' : 's'} overridden.${data.rowsFailed ? ` ${data.rowsFailed} row${data.rowsFailed === 1 ? '' : 's'} rejected by the backend.` : ''}` +
+    const catalogNote = ((data.printSpecsAdded || data.magazineCostsSeeded)
+      ? ` Print catalog: ${data.printSpecsAdded || 0} publication/format pair${data.printSpecsAdded === 1 ? '' : 's'} added, ${data.magazineCostsSeeded || 0} cost${data.magazineCostsSeeded === 1 ? '' : 's'} per insertion seeded from Budget (see Magazine cost on Media Plan &amp; Budget).`
+      : '') + (data.dmFormatCostsSeeded
+      ? ` Direct Mail: ${data.dmFormatCostsSeeded} cost${data.dmFormatCostsSeeded === 1 ? '' : 's'} per piece seeded from Unit Cost (see DM format cost on Media Plan &amp; Budget).`
+      : '') + (data.productionRows
+      ? ` Production details captured on ${data.productionRows} row${data.productionRows === 1 ? '' : 's'} — review under Marketing Ops → Production Schedule &amp; Details.`
+      : '');
+    resultEl.innerHTML = `Uploaded ${data.rowsInserted} row${data.rowsInserted === 1 ? '' : 's'} — ${data.campaignsCreated.length} campaign${data.campaignsCreated.length === 1 ? '' : 's'} created, ${data.campaignsMatched.length} existing campaign${data.campaignsMatched.length === 1 ? '' : 's'} added to.${data.rowsFailed ? ` ${data.rowsFailed} row${data.rowsFailed === 1 ? '' : 's'} rejected by the backend.` : ''}${catalogNote}` +
       (failedLines.length ? `<br>${failedLines.map(escapeHtml).join('<br>')}` : '');
     if (data.rowsInserted){
       await loadCampaigns();
@@ -50282,7 +50627,12 @@ const MOPS_QUEUE_SPECIALTIES = [
   { key: 'creation', label: 'Campaign Creation & Editing' },
   { key: 'tracking', label: 'Tracking Links (UTM, QR Codes & Links)' },
   { key: 'channels', label: 'Channel Selection' },
-  { key: 'trafficking', label: 'Ad Trafficking' }
+  { key: 'trafficking', label: 'Ad Trafficking' },
+  // 2026-09-29 — production timeline & details per line item (see
+  // PRODUCTION_FIELD_GROUPS), per Todd: "Production specific timelines and
+  // details needed to execute... The Marketing Ops section is the best
+  // location for this and supports all industries."
+  { key: 'production', label: 'Production Schedule & Details' }
 ];
 let mopsQueueSpecialty = 'creation';
 let mopsQueueView = 'active';
@@ -51457,7 +51807,9 @@ function renderMarketingOpsQueueStep(specialty){
         ? 'Which campaigns still need their channel mix chosen, prioritized by delivery due date.'
         : mopsQueueSpecialty === 'trafficking'
           ? 'Which campaigns still haven\'t sent their approved creative + tracking links to trafficking, prioritized by delivery due date.'
-          : 'Which campaigns are still missing core setup, prioritized by delivery due date.';
+          : mopsQueueSpecialty === 'production'
+            ? 'Every physical placement (direct mail, print, out-of-home) and its production timeline — data/list dates, files to vendor, planned drop, in-home — plus format, quantities, vendor and production costs. Captured from a media-plan upload or entered here, per line item.'
+            : 'Which campaigns are still missing core setup, prioritized by delivery due date.';
   }
   const tabsEl = document.getElementById('mopsQueueTabs');
   if (tabsEl) tabsEl.innerHTML = MOPS_QUEUE_SPECIALTIES.map(s => `<button type="button" class="btn-ghost${s.key === mopsQueueSpecialty ? ' active' : ''}" onclick="switchMopsQueueSpecialty('${s.key}')">${s.label}</button>`).join('');
@@ -51495,6 +51847,11 @@ async function loadMarketingOpsQueue(){
     } catch (e){
       el.innerHTML = '<p class="lede">Backend unreachable — can\'t load tracking-link status.</p>';
     }
+    return;
+  }
+
+  if (mopsQueueSpecialty === 'production'){
+    await loadMopsProductionQueue();
     return;
   }
 
@@ -51563,6 +51920,8 @@ function renderMopsQueueRows(rows){
       // the real Trafficking workspace instead of that legacy page.
       const openFn = r.focusCard === 'campaignTraffickingCard'
         ? `cmpOpenCampaignTraffickingFromQueue('${r.campaignId}')`
+        : r.focusCard === 'production'
+          ? `renderMopsProductionEditor('${r.campaignId}')`
         : r.focusCard
           ? `goToStep('campaign','${r.campaignId}','${r.focusCard}')`
           : `openCampaignInEditForm('${r.campaignId}')`;
@@ -51590,6 +51949,146 @@ function renderMopsQueueRows(rows){
 function cmpOpenCampaignTraffickingFromQueue(campaignId){
   cmpManageExistingCampaign(campaignId);
   if (typeof cmpOpenTraffickingWorkspace === 'function') cmpOpenTraffickingWorkspace();
+}
+
+// ============ Marketing Ops → Production Schedule & Details (2026-09-29) ============
+// Per line item (channel_planning_details row), the production path of a
+// media plan: timeline milestones, format/quantities/vendor, production
+// costs — see PRODUCTION_FIELD_GROUPS for the generic field set. Reads the
+// account-wide marketing-calendar events (which now carry projectNumber and
+// the row's detailsJson as `production`) and writes back through the
+// existing PATCH /api/campaigns/:id/channel-planning/:entryId, whose
+// detailsJson merge keeps every other key on the row intact.
+// Channels whose placements have a physical production path. Every line
+// item can still be edited from the campaign's editor; this only decides
+// which lines count toward the queue's "needs attention" state.
+const PRODUCTION_CHANNEL_RE = /direct mail|magazine|newspaper|out-of-home|print|catalog|insert|field|partner media|retail media/i;
+let mopsProductionEvents = [];
+function mopsProductionLineComplete(ev){
+  const p = ev.production || {};
+  const hasMilestone = PRODUCTION_DATE_FIELDS.some(k => p[k]);
+  const hasDetail = !!(p.vendor || p.totalQuantity || p.distributedQuantity || p.creativeSize);
+  return hasMilestone && hasDetail;
+}
+function mopsProductionNextMilestone(ev){
+  const p = ev.production || {};
+  const today = new Date().toISOString().slice(0, 10);
+  const dates = PRODUCTION_DATE_FIELDS.map(k => p[k]).filter(d => d && /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+  return dates.find(d => d >= today) || dates[dates.length - 1] || ev.dropDate || ev.hitDate || null;
+}
+async function loadMopsProductionQueue(){
+  const el = document.getElementById('mopsQueueList');
+  if (!el) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-calendar`);
+    if (!resp.ok){ el.innerHTML = '<p class="lede">Couldn\'t load line items right now.</p>'; return; }
+    const data = await resp.json();
+    mopsProductionEvents = (data.events || []).filter(e => e.campaignId && !e.workInProgress);
+  } catch (e){
+    el.innerHTML = '<p class="lede">Backend unreachable — can\'t load line items.</p>';
+    return;
+  }
+  const cancelled = new Set(state.campaigns.filter(c => c.cancelled).map(c => c.id));
+  const byCampaign = new Map();
+  mopsProductionEvents.forEach(ev => {
+    if (cancelled.has(ev.campaignId)) return;
+    if (!byCampaign.has(ev.campaignId)) byCampaign.set(ev.campaignId, { title: ev.campaignTitle, lines: [] });
+    byCampaign.get(ev.campaignId).lines.push(ev);
+  });
+  const rows = [];
+  byCampaign.forEach((g, campaignId) => {
+    const physical = g.lines.filter(l => PRODUCTION_CHANNEL_RE.test(l.channel || ''));
+    if (!physical.length) return; // nothing to produce — digital-only campaign
+    const done = physical.filter(mopsProductionLineComplete).length;
+    const complete = done === physical.length;
+    const next = physical.map(mopsProductionNextMilestone).filter(Boolean).sort()[0] || null;
+    const channels = [...new Set(physical.map(l => l.channel))].join(', ');
+    rows.push({
+      campaignId,
+      campaignName: g.title,
+      detail: `${done} of ${physical.length} line item${physical.length === 1 ? '' : 's'} with a production schedule · ${channels}`,
+      dueDate: next,
+      complete,
+      focusCard: 'production'
+    });
+  });
+  renderMopsQueueRows(rows.filter(r => mopsQueueView === 'active' ? !r.complete : r.complete));
+}
+function mopsProductionFieldInput(entryId, field, value){
+  const id = `mopsProd_${entryId}_${field.key}`;
+  const v = value == null ? '' : value;
+  if (field.type === 'date') return `<input type="date" id="${id}" class="tbl-input" value="${escapeHtml(String(v))}">`;
+  if (field.type === 'number') return `<input type="number" min="0" step="1" id="${id}" class="tbl-input" value="${escapeHtml(String(v))}">`;
+  if (field.type === 'money') return `<input type="number" min="0" step="0.01" id="${id}" class="tbl-input" value="${escapeHtml(String(v))}" placeholder="$">`;
+  return `<input type="text" id="${id}" class="tbl-input" value="${escapeHtml(String(v))}">`;
+}
+function renderMopsProductionEditor(campaignId){
+  const el = document.getElementById('mopsQueueList');
+  if (!el) return;
+  const lines = mopsProductionEvents.filter(e => e.campaignId === campaignId);
+  const title = lines.length ? lines[0].campaignTitle : campaignId;
+  if (!lines.length){
+    el.innerHTML = `<p class="lede">No line items on this campaign yet.</p><button type="button" class="btn-ghost" onclick="loadMarketingOpsQueue()">← Back to queue</button>`;
+    return;
+  }
+  const money = n => (typeof n === 'number' && isFinite(n)) ? fmtMoney(n) : '—';
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+      <div><div class="kicker">Production schedule &amp; details</div><h3 style="margin:2px 0 0;">${escapeHtml(title)}</h3></div>
+      <button type="button" class="btn-ghost" onclick="loadMarketingOpsQueue()">← Back to queue</button>
+    </div>
+    <p class="hint" style="margin:0 0 14px;">One card per line item. Business fields (channel, partner, dates, budget) are edited on the campaign's Budget &amp; Recommendation screen; everything here is the production path — timeline, format, quantities, vendor and production costs — and saves per line item.</p>
+    ${lines.map(ev => {
+      const p = ev.production || {};
+      const done = mopsProductionLineComplete(ev);
+      return `<div class="card" style="margin-bottom:14px;padding:16px;" id="mopsProdCard_${ev.id}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+          <div>
+            <strong>${escapeHtml(ev.channel || '')}</strong>${ev.partner ? ` · ${escapeHtml(ev.partner)}` : ''}
+            <div class="hint" style="margin:2px 0 0;">Drop ${ev.dropDate || '—'} · Hit ${ev.hitDate || '—'} · End ${ev.endDate || '—'} · Budget ${money(ev.budget)} · ${ev.impressions != null ? Number(ev.impressions).toLocaleString() + ' impressions' : 'no impressions'}${ev.projectNumber ? ` · Ref ${escapeHtml(ev.projectNumber)}` : ''}</div>
+          </div>
+          ${done ? '<span class="badge strong">Scheduled</span>' : '<span class="badge">Needs production details</span>'}
+        </div>
+        ${PRODUCTION_FIELD_GROUPS.map(g => `
+          <div class="field-divider" style="margin-top:14px;">${g.label}</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px 14px;">
+            ${g.fields.map(f => `<div class="field" style="margin:0;"><label style="font-size:0.75rem;">${f.label}</label>${mopsProductionFieldInput(ev.id, f, p[f.key])}</div>`).join('')}
+          </div>`).join('')}
+        <div class="btn-row" style="margin-top:14px;align-items:center;gap:12px;">
+          <button type="button" class="btn-primary" onclick="saveMopsProductionLine('${ev.campaignId}','${ev.id}')">Save line item</button>
+          <span class="hint" id="mopsProdSaveNote_${ev.id}"></span>
+        </div>
+      </div>`;
+    }).join('')}`;
+}
+async function saveMopsProductionLine(campaignId, entryId){
+  const note = document.getElementById(`mopsProdSaveNote_${entryId}`);
+  const detailsJson = {};
+  PRODUCTION_FIELDS.forEach(f => {
+    const input = document.getElementById(`mopsProd_${entryId}_${f.key}`);
+    if (!input) return;
+    const v = String(input.value || '').trim();
+    if (f.type === 'number' || f.type === 'money') detailsJson[f.key] = v === '' ? null : Number(v);
+    else detailsJson[f.key] = v === '' ? null : v;
+  });
+  if (note) note.textContent = 'Saving…';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaignId)}/channel-planning/${encodeURIComponent(entryId)}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actorName: (state.userName || '').trim(), detailsJson })
+    });
+    if (!resp.ok){ if (note) note.textContent = `Not saved (${resp.status}).`; return; }
+    const ev = mopsProductionEvents.find(e => e.id === entryId);
+    if (ev) ev.production = { ...(ev.production || {}), ...detailsJson };
+    if (note) note.textContent = `Saved ${new Date().toLocaleTimeString()}.`;
+    const badgeCard = document.getElementById(`mopsProdCard_${entryId}`);
+    if (badgeCard && ev){
+      const badge = badgeCard.querySelector('.badge');
+      if (badge){ const ok = mopsProductionLineComplete(ev); badge.className = ok ? 'badge strong' : 'badge'; badge.textContent = ok ? 'Scheduled' : 'Needs production details'; }
+    }
+  } catch (e){
+    if (note) note.textContent = 'Backend unreachable — not saved.';
+  }
 }
 // Opens a campaign in the create/update form (Round 30's single form),
 // pre-loaded with its existing data — used by the Campaign Creation &
