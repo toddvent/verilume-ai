@@ -4977,7 +4977,11 @@
           <div class="field">
             <label>Download the CSV template</label>
             <div class="hint" style="margin-bottom:8px;">One header row, one example row. Rows are grouped/matched by <code>channel</code> + <code>partner</code> + <code>hitDate</code> + <code>endDate</code> + <code>audience</code> — <code>campaignName</code> is a display label only, not part of the match. A row can carry several Product Groups or Creative Focus Groups — separate them with commas (<code>Polar, Epicurean</code>). Your own column names are fine too (Marketing Group, Partner, Budget, Drop/Hit/End Date, Size, Specs, 1st Proof Due, Creative Due, QR Code Link, Phone, Notes, Project Number…) — they're matched on upload, and dollar signs, thousands separators and m/d/yyyy dates are read as-is. On Magazines and Newspapers rows, Partner + Size registers the ad format in your print-spec catalog and seeds its cost per insertion from Budget where none is saved yet. Production columns (List Request, List Due, Release Files, In Home, Format, Total/Mail Qty, Paper &amp; Manufacturing, Postage/Freight, Insertion, Cost, Unit Cost, Vendor…) are captured on each line item and editable afterwards under Marketing Ops → Production Schedule &amp; Details.</div>
-            <button type="button" class="btn-ghost" onclick="downloadBulkCreateCampaignsTemplate()">Download CSV template →</button>
+            <div class="btn-row" style="gap:10px;flex-wrap:wrap;">
+              <button type="button" class="btn-ghost" onclick="downloadBulkCreateCampaignsTemplate()">Download CSV template →</button>
+              <button type="button" class="btn-ghost" onclick="downloadCurrentCampaignsCsv()">Download current campaigns (for editing) →</button>
+            </div>
+            <div class="hint" id="bccDownloadNote" style="margin-top:6px;">The second download carries every line item with its Verilume campaign id and line id — edit it and upload it back here to update in place.</div>
           </div>
 
           <div class="field-divider">Upload your file</div>
@@ -12401,7 +12405,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-29-upload-groups-by-project-number';
+const CXMEDIA_BUILD_STAMP = '2026-09-29-download-edit-reupload-round-trip';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -17161,6 +17165,8 @@ function renderBulkUploadPreview(){
         : (r.warnings.length
           ? `<div style="color:var(--media);min-width:480px;"><strong>Ready</strong> — assumptions:<ul style="margin:4px 0 0;padding-left:18px;">${r.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul></div>`
           : `<span style="color:var(--cx);">Ready</span>`);
+      const modeLabel = r.raw._mode === 'update' ? `<div class="hint" style="margin:0 0 4px;">Updates line <code>${escapeHtml(r.raw.verilumeLineId)}</code> in place</div>`
+        : r.raw._mode === 'attach' ? `<div class="hint" style="margin:0 0 4px;">Adds a line to campaign <code>${escapeHtml(r.raw.verilumeCampaignId || r.raw.campaignCode)}</code></div>` : '';
       return `<tr>
         <td class="num">${r.index + 1}</td>
         <td>${escapeHtml(r.raw.campaignId || '')}</td>
@@ -17306,7 +17312,11 @@ const PRODUCTION_FIELDS = PRODUCTION_FIELD_GROUPS.flatMap(g => g.fields);
 const PRODUCTION_DATE_FIELDS = PRODUCTION_FIELDS.filter(f => f.type === 'date').map(f => f.key);
 const PRODUCTION_NUMERIC_FIELDS = PRODUCTION_FIELDS.filter(f => f.type === 'number' || f.type === 'money').map(f => f.key);
 const BULK_CREATE_CAMPAIGNS_DETAIL_FIELDS = ['projectNumber', ...PRODUCTION_FIELDS.map(f => f.key)];
-const BULK_CREATE_CAMPAIGNS_ALL_FIELDS = [...BULK_CREATE_CAMPAIGNS_CAMPAIGN_FIELDS, ...BULK_CREATE_CAMPAIGNS_LINE_FIELDS, ...BULK_CREATE_CAMPAIGNS_DETAIL_FIELDS];
+// 2026-09-29 — round-trip ids, per Todd ("downloads that are used for
+// editing and then reuploading the file with the campaign id that we
+// create"). Blank on a fresh file; filled by "Download current campaigns".
+const BULK_CREATE_CAMPAIGNS_ID_FIELDS = ['verilumeCampaignId', 'verilumeLineId', 'campaignCode'];
+const BULK_CREATE_CAMPAIGNS_ALL_FIELDS = [...BULK_CREATE_CAMPAIGNS_ID_FIELDS, ...BULK_CREATE_CAMPAIGNS_CAMPAIGN_FIELDS, ...BULK_CREATE_CAMPAIGNS_LINE_FIELDS, ...BULK_CREATE_CAMPAIGNS_DETAIL_FIELDS];
 // Spreadsheet helper columns that are derived from real fields (a hit
 // month, a hit week, a campaign-days count). Recognized so they don't
 // show up as "not used" noise, and ignored because Verilume derives them.
@@ -17320,6 +17330,9 @@ const BCC_IGNORED_HEADERS = ['hit month', 'hit month calc', 'hit week', 'hit wee
 // promotedItems. Unknown columns are reported in the file hint and
 // ignored — never an error.
 const BCC_HEADER_ALIASES = {
+  verilumeCampaignId: ['verilume campaign id', 'campaign id', 'verilume id', 'cmp id'],
+  verilumeLineId: ['verilume line id', 'line id', 'line item id', 'verilume line item id', 'entry id'],
+  campaignCode: ['campaign code', 'verilume campaign code'],
   campaignName: ['campaign name', 'campaign', 'campaign label'],
   campaignClassification: ['campaign classification', 'campaign type', 'classification'],
   campaignStartDate: ['campaign start date', 'campaign start'],
@@ -17401,7 +17414,7 @@ function bccRowIsTemplatePlaceholder(row){
   const has = k => String(row[k] || '').trim() !== '';
   // Partner alone doesn't count — a worksheet template often pre-fills it
   // (the client's own name on every empty row).
-  if (has('projectNumber') || has('hitDate') || has('dropDate') || has('impressions') || has('campaignName')) return false;
+  if (has('verilumeLineId') || has('verilumeCampaignId') || has('projectNumber') || has('hitDate') || has('dropDate') || has('impressions') || has('campaignName')) return false;
   const budget = Number(bccNormalizeNumber(row.budget || ''));
   return !(budget > 0);
 }
@@ -17547,6 +17560,23 @@ function resetBulkCreateCampaignsState(){
 // instruction. Vendor cost fields are no longer role-gated — see
 // validateBccRow() below.
 
+// 2026-09-29 — the round-trip download: every line item on the account
+// with its Verilume ids, in exactly the columns the uploader reads. Edit
+// in Excel, re-upload: rows keep their verilumeLineId → updated in place.
+async function downloadCurrentCampaignsCsv(){
+  const note = document.getElementById('bccDownloadNote');
+  if (note) note.textContent = 'Building…';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/channel-planning/lines`);
+    if (!resp.ok){ if (note) note.textContent = `Couldn't build the download (${resp.status}).`; return; }
+    const data = await resp.json();
+    const lines = data.lines || [];
+    const cols = [...BULK_CREATE_CAMPAIGNS_ALL_FIELDS, 'region', 'stage', 'status'];
+    const csv = [cols.join(','), ...lines.map(l => cols.map(c => csvEscape(l[c] === undefined || l[c] === null ? '' : l[c])).join(','))].join('\n');
+    downloadCsvFile(`verilume-campaign-lines-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+    if (note) note.textContent = `${lines.length} line item${lines.length === 1 ? '' : 's'} downloaded. Edit and re-upload: rows that keep their verilumeLineId are updated in place; rows with only a verilumeCampaignId are added to that campaign; rows with neither are grouped as new.`;
+  } catch (e){ if (note) note.textContent = 'Backend unreachable — could not build the download.'; }
+}
 function downloadBulkCreateCampaignsTemplate(){
   const exampleChannel = MMM_CATEGORIES[0];
   const exampleRow = {
@@ -17722,6 +17752,9 @@ function validateBccRow(raw){
     if (canonicals.length === parts.length) raw[field] = canonicals.join(', ');
   });
   raw._missing = missing;
+  if (raw.verilumeLineId && !/^CPD-/i.test(raw.verilumeLineId)) warnings.push(`line id "${raw.verilumeLineId}" doesn't look like a Verilume line id (CPD-…) — the row will be treated as new if it isn't found`);
+  if (raw.verilumeCampaignId && !/^CMP-/i.test(raw.verilumeCampaignId)) warnings.push(`campaign id "${raw.verilumeCampaignId}" doesn't look like a Verilume campaign id (CMP-…) — it'll also be tried as a campaign code`);
+  raw._mode = raw.verilumeLineId ? 'update' : ((raw.verilumeCampaignId || raw.campaignCode) ? 'attach' : 'new');
 
   BULK_UPLOAD_NUMERIC_FIELDS.forEach(f => {
     if (raw[f] && (isNaN(Number(raw[f])) || Number(raw[f]) < 0)) errors.push(`${f} must be a non-negative number, got "${raw[f]}"`);
@@ -17807,13 +17840,15 @@ function renderBulkCreateCampaignsPreview(){
   // campaignsMatched), same as it always has.
   // Mirrors the server's grouping: Project Number when present, else the
   // 5-field key.
-  const groupKeys = new Set(bccRows.filter(r => !r.errors.length).map(r => {
+  const groupKeys = new Set(bccRows.filter(r => !r.errors.length && r.raw._mode === 'new').map(r => {
     const pn = String(r.raw.projectNumber || '').trim().toLowerCase();
     return pn ? `pn||${pn}` : [r.raw.channel, r.raw.partner, r.raw.hitDate, r.raw.endDate, r.raw.audience].map(v => String(v || '').trim().toLowerCase()).join('||');
   }));
-  const withPn = bccRows.filter(r => !r.errors.length && String(r.raw.projectNumber || '').trim()).length;
+  const withPn = bccRows.filter(r => !r.errors.length && String(r.raw.projectNumber || '').trim() && r.raw._mode === 'new').length;
+  const updates = bccRows.filter(r => !r.errors.length && r.raw._mode === 'update').length;
+  const attaches = bccRows.filter(r => !r.errors.length && r.raw._mode === 'attach').length;
   document.getElementById('bccSummary').textContent =
-    `${bccRows.length} row${bccRows.length === 1 ? '' : 's'} parsed — ${validCount} ready to upload as ${groupKeys.size} campaign${groupKeys.size === 1 ? '' : 's'} (${withPn ? `rows sharing a Project Number become one campaign${withPn < validCount ? '; the rest group' : ''}` : 'grouped'}${withPn < validCount ? ' by Channel + Partner + Hit Date + End Date + Audience' : ''}), ${errorCount} with errors. The Status column explains each row: red = a problem that blocks that row; "Ready" = it uploads, with any assumptions noted. Which rows landed on a new vs. an existing campaign shows after upload.`;
+    `${bccRows.length} row${bccRows.length === 1 ? '' : 's'} parsed — ${validCount} ready${updates || attaches ? ` (${updates} update${updates === 1 ? '' : 's'} to existing lines, ${attaches} added to existing campaigns, ${validCount - updates - attaches} new)` : ''}; new rows form ${groupKeys.size} campaign${groupKeys.size === 1 ? '' : 's'} (${withPn ? `rows sharing a Project Number become one campaign${withPn < validCount ? '; the rest group' : ''}` : 'grouped'}${withPn < validCount ? ' by Channel + Partner + Hit Date + End Date + Audience' : ''}), ${errorCount} with errors. The Status column explains each row: red = a problem that blocks that row; "Ready" = it uploads, with any assumptions noted. Which rows landed on a new vs. an existing campaign shows after upload.`;
 
   // One-click "add everything the file has that the lists don't" above the table.
   const allMissing = new Map();
@@ -17836,6 +17871,8 @@ function renderBulkCreateCampaignsPreview(){
         : (r.warnings.length
           ? `<div style="color:var(--media);min-width:480px;"><strong>Ready</strong> — assumptions:<ul style="margin:4px 0 0;padding-left:18px;">${r.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul></div>`
           : `<span style="color:var(--cx);">Ready</span>`);
+      const modeLabel = r.raw._mode === 'update' ? `<div class="hint" style="margin:0 0 4px;">Updates line <code>${escapeHtml(r.raw.verilumeLineId)}</code> in place</div>`
+        : r.raw._mode === 'attach' ? `<div class="hint" style="margin:0 0 4px;">Adds a line to campaign <code>${escapeHtml(r.raw.verilumeCampaignId || r.raw.campaignCode)}</code></div>` : '';
       return `<tr>
         <td class="num">${r.index + 1}</td>
         <td>${escapeHtml(name)}</td>
@@ -17846,7 +17883,7 @@ function renderBulkCreateCampaignsPreview(){
         <td>${escapeHtml(r.raw.creativeMarket || '')}</td>
         <td>${escapeHtml(r.raw.creativeSize || '')}</td>
         <td class="num">${r.raw.budget ? fmtMoney(Number(r.raw.budget)) : ''}</td>
-        <td>${statusHtml}</td>
+        <td>${modeLabel}${statusHtml}</td>
       </tr>`;
     }).join('')}</tbody>`;
 
@@ -17871,6 +17908,9 @@ async function submitBulkCreateCampaigns(){
     campaignStartDate: r.raw.campaignStartDate || '',
     campaignEndDate: r.raw.campaignEndDate || '',
     creativeNeeded: r.raw.creativeNeeded || '',
+    verilumeCampaignId: r.raw.verilumeCampaignId || '',
+    verilumeLineId: r.raw.verilumeLineId || '',
+    campaignCode: r.raw.campaignCode || '',
     channel: r.raw.channel,
     partner: r.raw.partner || '',
     audience: r.raw.audience || '',
@@ -17912,9 +17952,9 @@ async function submitBulkCreateCampaigns(){
       : '') + (data.productionRows
       ? ` Production details captured on ${data.productionRows} row${data.productionRows === 1 ? '' : 's'} — review under Marketing Ops → Production Schedule &amp; Details.`
       : '');
-    resultEl.innerHTML = `Uploaded ${data.rowsInserted} row${data.rowsInserted === 1 ? '' : 's'} — ${data.campaignsCreated.length} campaign${data.campaignsCreated.length === 1 ? '' : 's'} created, ${data.campaignsMatched.length} existing campaign${data.campaignsMatched.length === 1 ? '' : 's'} added to.${data.rowsFailed ? ` ${data.rowsFailed} row${data.rowsFailed === 1 ? '' : 's'} rejected by the backend.` : ''}${catalogNote}` +
+    resultEl.innerHTML = `Uploaded ${data.rowsInserted} new row${data.rowsInserted === 1 ? '' : 's'}${data.rowsUpdated ? `, updated ${data.rowsUpdated} existing line${data.rowsUpdated === 1 ? '' : 's'} in place` : ''} — ${data.campaignsCreated.length} campaign${data.campaignsCreated.length === 1 ? '' : 's'} created, ${data.campaignsMatched.length} existing campaign${data.campaignsMatched.length === 1 ? '' : 's'} added to.${data.rowsFailed ? ` ${data.rowsFailed} row${data.rowsFailed === 1 ? '' : 's'} rejected by the backend.` : ''}${catalogNote}` +
       (failedLines.length ? `<br>${failedLines.map(escapeHtml).join('<br>')}` : '');
-    if (data.rowsInserted){
+    if (data.rowsInserted || data.rowsUpdated){
       await loadCampaigns();
       await loadBulkCreateCampaignsBatches();
     }
