@@ -15611,11 +15611,33 @@ function getCampaignsForAccount(accountId){
       catch (e){ console.warn('getCampaignsForAccount: status write-through failed for', c.id, e); }
     }
   });
-  const getDraws = db.prepare('SELECT id, allocationId, amount FROM campaign_allocation_draws WHERE campaignId = ?');
+  // 2026-09-29 fix — the dashboard lost every campaign after the uploads
+  // grew the list: this used to run FOUR-plus queries PER campaign (projects,
+  // draws, creative collections + their requirements, MMM line items). On
+  // Postgres each query is a synchronous round trip through the sync bridge,
+  // so ~130 campaigns meant 500+ round trips (>12 s) — the client's 12 s
+  // timeout aborted /campaigns and everything queued behind it (kpi-metrics,
+  // press-releases, corporate-comms, me), and the page fell back to an empty
+  // list. Now one query per child table for the whole account, grouped in JS.
+  // Output shape is identical to the per-campaign version.
+  const groupBy = (rows, key) => { const m = new Map(); rows.forEach(r => { const k = r[key]; if (!m.has(k)) m.set(k, []); m.get(k).push(r); }); return m; };
+  const projectsBy = groupBy(db.prepare(
+    'SELECT p.* FROM projects p JOIN campaigns c ON c.id = p.campaignId WHERE c.accountId = ? ORDER BY p.createdAt ASC'
+  ).all(accountId), 'campaignId');
+  const drawsBy = groupBy(db.prepare(
+    'SELECT d.campaignId AS campaignId, d.id AS id, d.allocationId AS allocationId, d.amount AS amount FROM campaign_allocation_draws d JOIN campaigns c ON c.id = d.campaignId WHERE c.accountId = ?'
+  ).all(accountId), 'campaignId');
+  const collectionsBy = groupBy(db.prepare(
+    'SELECT cc.* FROM creative_collections cc JOIN campaigns c ON c.id = cc.campaignId WHERE c.accountId = ? ORDER BY cc.createdAt ASC'
+  ).all(accountId), 'campaignId');
+  const reqsBy = groupBy(db.prepare(
+    'SELECT r.* FROM creative_requirements r JOIN creative_collections cc ON cc.id = r.collectionId JOIN campaigns c ON c.id = cc.campaignId WHERE c.accountId = ? ORDER BY r.createdAt ASC'
+  ).all(accountId), 'collectionId');
+  const mmmBy = groupBy(db.prepare(
+    'SELECT li.campaignId AS campaignId, li.id AS id, li.category AS category, li.spend AS spend, li.reach AS reach, li.impressions AS impressions, li.updatedAt AS updatedAt FROM campaign_mmm_line_items li JOIN campaigns c ON c.id = li.campaignId WHERE c.accountId = ? ORDER BY li.category ASC'
+  ).all(accountId), 'campaignId');
   return campaigns.map(c => {
-    const projects = db.prepare(
-      'SELECT * FROM projects WHERE campaignId = ? ORDER BY createdAt ASC'
-    ).all(c.id).map(p => ({
+    const projects = (projectsBy.get(c.id) || []).map(p => ({
       ...p,
       derivatives: p.derivatives ? JSON.parse(p.derivatives) : null,
       fields: p.fieldsJson ? JSON.parse(p.fieldsJson) : null
@@ -15624,20 +15646,18 @@ function getCampaignsForAccount(accountId){
     // synthesized single-row draw from the legacy allocationId/budget pair
     // for campaigns created before this round, so the front end always sees
     // one shape (allocationDraws: [...]) regardless of which era created it.
-    let allocationDraws = getDraws.all(c.id);
+    let allocationDraws = (drawsBy.get(c.id) || []).map(d => ({ id: d.id, allocationId: d.allocationId, amount: d.amount }));
     if (!allocationDraws.length && c.fundingSource === 'plan' && c.allocationId){
       allocationDraws = [{ id: `legacy-${c.id}`, allocationId: c.allocationId, amount: c.budget || 0 }];
     }
-    // Round 82 (Deliverable #7 QA wiring) — Creative Messaging Collections
-    // nested onto the campaign payload itself (same pattern as `projects`
-    // above), so Campaign QA's completion scoring can read them for any
-    // campaign in a list without a second per-campaign fetch, and so it never
-    // goes stale relative to the dedicated collections endpoint.
-    const creativeCollections = getCreativeCollectionsForCampaign(c.id);
-    // Round 89 — this campaign's real per-MMM-category line items, same
-    // nested-onto-the-payload pattern as projects/creativeCollections above,
-    // so the campaign detail page can render them without a second fetch.
-    const mmmLineItems = getCampaignMmmLineItems(c.id);
+    // Round 82 — Creative Messaging Collections nested onto the payload.
+    const creativeCollections = (collectionsBy.get(c.id) || []).map(col => {
+      const requirements = (reqsBy.get(col.id) || [])
+        .map(r => ({ ...r, copyStructure: r.copyStructureJson ? JSON.parse(r.copyStructureJson) : null, copyContent: r.copyContentJson ? JSON.parse(r.copyContentJson) : {} }));
+      return { ...col, status: rollUpCollectionStatus(requirements), requirements };
+    });
+    // Round 89 — per-MMM-category line items (same shape as getCampaignMmmLineItems).
+    const mmmLineItems = (mmmBy.get(c.id) || []).map(li => ({ id: li.id, category: li.category, spend: li.spend, reach: li.reach, impressions: li.impressions, updatedAt: li.updatedAt }));
     return { ...c, projects, allocationDraws, creativeCollections, mmmLineItems };
   });
 }
