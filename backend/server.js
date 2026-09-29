@@ -14356,6 +14356,150 @@ function checkVoiceToken(accountId, token){
   return true;
 }
 
+
+// =====================================================================
+// 2026-09-29 — ElevenLabs voice, final integration ("all voice-related
+// activations across the platform", Todd). See the project doc
+// cxmedia-elevenlabs-voice-final-integration-plan-2026-09-29.md.
+//
+// One agent (ELEVENLABS_AGENT_ID, shared by every account — the account is
+// passed per session and every data call is checked against the voice
+// token minted for THAT account), one gateway the agent calls for every
+// question (POST /api/accounts/:id/voice/ask), and a session endpoint the
+// browser calls to start a conversation (GET /api/accounts/:id/voice/session)
+// that returns a signed URL minted with ELEVENLABS_API_KEY — the agent has
+// "Require authentication" on, so only a signed-in portal user can open a
+// session. Writes never execute from voice: the gateway returns a
+// `proposal` the page renders as a Confirm card; the click runs the write
+// with the portal session (never the voice token).
+// =====================================================================
+const ELEVENLABS_AGENT_ID = process.env.ELEVENLABS_AGENT_ID || 'agent_1901m2jpy694em5v6nkc249vs0ec';
+const VOICE_ASK_MODEL = 'claude-sonnet-4-5';
+
+async function getElevenLabsSignedUrl(agentId){
+  const key = process.env.ELEVENLABS_API_KEY;
+  if (!key) return { signedUrl: null, reason: 'ELEVENLABS_API_KEY not set on this deployment' };
+  const resp = await fetchWithTimeout(`https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${encodeURIComponent(agentId)}`, {
+    method: 'GET', headers: { 'xi-api-key': key }
+  }, 15000);
+  if (!resp.ok){
+    const t = await resp.text();
+    return { signedUrl: null, reason: `ElevenLabs get-signed-url HTTP ${resp.status}: ${t.slice(0, 200)}` };
+  }
+  const data = await resp.json();
+  return { signedUrl: data.signed_url || data.signedUrl || null, reason: null };
+}
+
+// Most-urgent campaigns, server-side — the same rule the dashboard's Top 5
+// Most Urgent uses client-side (cmgmtLoadDueDates/cmgmtCampaignDueDate in
+// portal.html): earliest real dropDate per campaign, else earliest hitDate
+// unless it merely echoes the campaign's own startDate; cancelled and
+// ad-hoc campaigns excluded; sorted soonest-due-first.
+function voiceMostUrgent(accountId, limit){
+  const campaigns = db.prepare('SELECT id, name, objective, campaignCode, startDate, endDate, status, creativeDisposition FROM campaigns WHERE accountId = ? AND COALESCE(cancelled,0) = 0 AND COALESCE(isAdHoc,0) = 0').all(accountId);
+  const lines = db.prepare('SELECT cpd.campaignId AS campaignId, cpd.dropDate AS dropDate, cpd.hitDate AS hitDate FROM channel_planning_details cpd JOIN campaigns c ON c.id = cpd.campaignId WHERE c.accountId = ?').all(accountId);
+  const due = {};
+  lines.forEach(l => {
+    const cid = l.campaignId; if (!cid) return;
+    if (l.dropDate){ const cur = due[cid]; if (!cur || !cur.real || l.dropDate < cur.date) due[cid] = { date: l.dropDate, real: true }; }
+    else if (l.hitDate){ const cur = due[cid]; if (!cur) due[cid] = { date: l.hitDate, real: false }; else if (!cur.real && l.hitDate < cur.date) cur.date = l.hitDate; }
+  });
+  return campaigns.map(c => {
+    const d = due[c.id]; let assetsDue = null;
+    if (d){ const ds = String(d.date).slice(0, 10); assetsDue = (!d.real && ds === c.startDate) ? null : ds; }
+    return { campaignId: c.id, campaignCode: c.campaignCode || '', name: c.name || c.objective || '(untitled campaign)', assetsDue, startDate: c.startDate || null, endDate: c.endDate || null, status: deriveCampaignStatusFromDates(c), creativeDisposition: c.creativeDisposition || null };
+  }).sort((a, b) => { if (!a.assetsDue && !b.assetsDue) return 0; if (!a.assetsDue) return 1; if (!b.assetsDue) return -1; return a.assetsDue < b.assetsDue ? -1 : (a.assetsDue > b.assetsDue ? 1 : 0); })
+    .slice(0, limit || 5);
+}
+
+// Resolve "Campaign 14" / a code / part of a name to one campaign, so a
+// spoken reference can become a real id. Returns null when ambiguous.
+function voiceResolveCampaign(accountId, ref){
+  const r = String(ref || '').trim().toLowerCase(); if (!r) return null;
+  const rows = db.prepare('SELECT id, name, objective, campaignCode FROM campaigns WHERE accountId = ? AND COALESCE(cancelled,0) = 0').all(accountId);
+  const exact = rows.filter(c => [c.id, c.campaignCode, c.name, c.objective].some(v => v && String(v).toLowerCase() === r));
+  if (exact.length === 1) return exact[0];
+  const partial = rows.filter(c => [c.campaignCode, c.name, c.objective].some(v => v && String(v).toLowerCase().includes(r)));
+  return partial.length === 1 ? partial[0] : null;
+}
+
+function voiceContextBundle(accountId, opts){
+  const o = opts || {};
+  const blocks = [];
+  const account = db.prepare('SELECT accountId, company FROM accounts WHERE accountId = ?').get(accountId);
+  blocks.push(`ACCOUNT: ${account && account.company ? account.company : accountId} (${accountId}). Today is ${new Date().toISOString().slice(0, 10)}.`);
+  const urgent = voiceMostUrgent(accountId, 8);
+  const all = db.prepare("SELECT status, COUNT(*) AS n FROM campaigns WHERE accountId = ? AND COALESCE(cancelled,0) = 0 AND COALESCE(isAdHoc,0) = 0 GROUP BY status").all(accountId);
+  blocks.push(`CAMPAIGNS BY STATUS: ${all.length ? all.map(x => `${x.status || 'unset'}=${x.n}`).join(', ') : 'none on file'}.`);
+  blocks.push(`MOST URGENT (soonest assets due first):\n${urgent.length ? urgent.map(u => `- ${u.name} [${u.campaignCode || u.campaignId}] assets due ${u.assetsDue || '—'}, start ${u.startDate || '—'}, end ${u.endDate || '—'}, status ${u.status}, creative ${u.creativeDisposition || 'undecided'}`).join('\n') : '(no campaigns with due dates)'}`);
+  try { blocks.push(buildAccountMonthlyKpiContextForPrompt(accountId).promptBlock); } catch (e){ blocks.push('(monthly KPI report unavailable)'); }
+  try {
+    const dm = getDigitalMonthlyTotals(accountId);
+    const months = Object.keys(dm.byMonth || dm.months || {}).sort().slice(-3);
+    if (months.length){
+      const src = dm.byMonth || dm.months;
+      blocks.push(`DIGITAL AGENCY ACTUALS (last ${months.length} months on file):\n` + months.map(m => { const t = src[m]; const chans = Object.entries(t || {}).filter(([k, v]) => v && typeof v === 'object' && 'spend' in v).map(([k, v]) => `${k} $${Math.round(v.spend || 0).toLocaleString()} / ${Math.round(v.leads || 0)} leads`).join('; '); return `- ${m}: ${chans || JSON.stringify(t).slice(0, 200)}`; }).join('\n'));
+    }
+  } catch (e){ /* digital actuals optional */ }
+  if (o.campaignId){
+    const c = db.prepare('SELECT * FROM campaigns WHERE id = ? AND accountId = ?').get(o.campaignId, accountId);
+    if (c){
+      const lines = db.prepare('SELECT channel, partner, dropDate, hitDate, endDate, budget, status FROM channel_planning_details WHERE campaignId = ? ORDER BY hitDate ASC').all(c.id);
+      blocks.push(`THIS CAMPAIGN: ${c.name || c.objective} [${c.campaignCode || c.id}] stage ${c.stage || '—'}, KPI ${c.primaryKpi || '—'}, budget ${c.budget != null ? '$' + Math.round(c.budget).toLocaleString() : '—'}, start ${c.startDate || '—'}, end ${c.endDate || '—'}, status ${deriveCampaignStatusFromDates(c)}, creative ${c.creativeDisposition || 'undecided'}, product groups ${c.productGroups || '—'}, creative focus ${c.creativeFocusGroups || '—'}.\nLINES:\n${lines.map(l => `- ${l.channel} · ${l.partner || '—'} · drop ${l.dropDate || '—'} hit ${l.hitDate || '—'} end ${l.endDate || '—'} · $${Math.round(l.budget || 0).toLocaleString()} · ${l.status || ''}`).join('\n') || '(no channel lines)'}`);
+    }
+  }
+  if (o.question){
+    try { const hits = searchProductDocs(o.question, 3); if (hits && hits.length) blocks.push(`PRODUCT DOCS (how Verilume works — cite only if the question is about the product itself):\n${hits.map(h => `- ${h.heading}: ${String(h.text || '').slice(0, 300)}`).join('\n')}`); } catch (e){ /* optional */ }
+  }
+  return blocks.join('\n\n');
+}
+
+const VOICE_ASK_SCHEMA = {
+  type: 'object',
+  properties: {
+    answer: { type: 'string', description: 'Spoken answer, 1-4 sentences, plain conversational English. Numbers rounded. Never invent data.' },
+    cards: { type: 'array', description: 'Optional structured results to show on screen (max 5).', items: { type: 'object', properties: { title: { type: 'string' }, lines: { type: 'array', items: { type: 'string' } }, campaignId: { type: 'string' } }, required: ['title', 'lines'] } },
+    proposal: { type: ['object', 'null'], description: 'A write the user asked for. NEVER executed here — the page asks the user to confirm.', properties: { action: { type: 'string', enum: ['set_creative_disposition', 'cancel_campaign', 'add_note'] }, campaignId: { type: 'string' }, value: { type: 'string' }, label: { type: 'string', description: 'One sentence describing exactly what will change.' } }, required: ['action', 'campaignId', 'value', 'label'] },
+    followUps: { type: 'array', items: { type: 'string' }, description: 'Up to 3 short follow-up questions the user might ask next.' }
+  },
+  required: ['answer']
+};
+
+async function voiceAsk(accountId, body, actorId){
+  const question = String(body.question || body.message || '').trim().slice(0, 2000);
+  if (!question) return { error: 'question is required' };
+  const surface = String(body.surface || 'ask_bar');
+  const tab = String(body.tab || '');
+  let campaignId = body.campaignId ? String(body.campaignId) : null;
+  if (!campaignId && body.campaignRef){ const c = voiceResolveCampaign(accountId, body.campaignRef); if (c) campaignId = c.id; }
+  const history = Array.isArray(body.history) ? body.history.slice(-8).map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', text: String(h.text || '').slice(0, 600) })) : [];
+  logAccountDataAccess({ accountId, resource: 'voice_ask', action: 'read', actorType: 'voice_agent', actorId: actorId || 'voice', recordCount: 1, detail: `${surface}/${tab}: ${question.slice(0, 120)}` });
+  if (!process.env.ANTHROPIC_API_KEY){
+    return { answer: 'The AI Brain is not configured on this deployment yet (ANTHROPIC_API_KEY is missing), so I cannot answer from your data.', cards: [], proposal: null, followUps: [] };
+  }
+  const context = voiceContextBundle(accountId, { campaignId, question });
+  const content = `You are Verilume's AI Brain, speaking with a signed-in team member on the ${tab || 'portal'} ${surface === 'ask_bar' ? 'dashboard (Ask Verilume bar)' : surface}. Answer ONLY from the account data below. If the data does not cover the question, say what is not on file and which upload or page would fill it — never guess a number.
+Rules: spoken answers are short (1-4 sentences). Put lists and figures in cards, not in the spoken answer. If the user asks to change something (mark creative as not needed / external, mark creative as needed, cancel a campaign, add a note to a campaign), do NOT say it is done — return a proposal describing the change and say you need them to confirm on screen. If a campaign reference is ambiguous, ask which one.
+
+${context}
+
+CONVERSATION SO FAR:
+${history.map(h => `${h.role === 'assistant' ? 'Verilume' : 'User'}: ${h.text}`).join('\n') || '(none)'}
+User: ${question}`;
+  try {
+    const out = await callClaudeForJSON({ model: VOICE_ASK_MODEL, maxTokens: 900, content, schema: VOICE_ASK_SCHEMA, toolName: 'voice_answer', toolDescription: 'Return the spoken answer, optional on-screen cards, and an optional write proposal.', timeoutMs: 40000 });
+    if (out.proposal && out.proposal.campaignId){
+      const c = db.prepare('SELECT id, name, objective FROM campaigns WHERE id = ? AND accountId = ?').get(out.proposal.campaignId, accountId);
+      if (!c){ const r = voiceResolveCampaign(accountId, out.proposal.campaignId); if (r) out.proposal.campaignId = r.id; else out.proposal = null; }
+    }
+    return { answer: out.answer || '', cards: Array.isArray(out.cards) ? out.cards.slice(0, 5) : [], proposal: out.proposal || null, followUps: Array.isArray(out.followUps) ? out.followUps.slice(0, 3) : [], campaignId };
+  } catch (e){
+    console.warn('[voice/ask] model call failed:', e.message);
+    const urgent = voiceMostUrgent(accountId, 5);
+    return { answer: 'I could not reach the AI Brain just now. Here are the campaigns closest to their asset due dates.', cards: [{ title: 'Most urgent', lines: urgent.map(u => `${u.name} — assets due ${u.assetsDue || '—'}`) }], proposal: null, followUps: [], degraded: true };
+  }
+}
+
 // Added 2026-08-18 — a system-issued temporary password for a freshly
 // registered admin/CMO user, per direct instruction: real, memorable
 // username+password rather than the access-code model, with a temp
@@ -22968,6 +23112,40 @@ async function handleRequest(req, res) {
       db.prepare('UPDATE accounts SET company = ?, industry = ?, footprint = ?, productsServices = ?, audience = ?, wealth = ?, wealthIndexTargetIncome = ?, activeChannels = ?, partnerCode = ?, corporateGoals = ? WHERE accountId = ?')
         .run(merged.company, merged.industry, merged.footprint, merged.productsServices, merged.audience, merged.wealth, merged.wealthIndexTargetIncome, merged.activeChannels, merged.partnerCode, merged.corporateGoals, accountId);
       return sendJson(res, 200, { updatedAt: new Date().toISOString(), company: merged.company });
+    }
+
+    // GET /api/accounts/:id/voice/session — 2026-09-29, ElevenLabs final
+    // integration. Portal session only (requireAccount). Mints a voice token
+    // and, when ELEVENLABS_API_KEY is set, a signed URL for the agent (the
+    // agent has "Require authentication" on, so a bare agentId cannot open
+    // a session). Returns agentId too so the browser can fall back to an
+    // unauthenticated session if the key is missing in a dev deployment.
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice' && parts[4] === 'session'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const { token, expiresAt } = createVoiceToken(accountId);
+      let signed = { signedUrl: null, reason: null };
+      try { signed = await getElevenLabsSignedUrl(ELEVENLABS_AGENT_ID); } catch (e){ signed = { signedUrl: null, reason: e.message }; }
+      logAccountDataAccess({ accountId, resource: 'voice_session', action: 'create', actorType: 'member', actorId: (() => { const sess = authenticate(req); return (sess && sess.memberId) || 'account'; })(), recordCount: 1, detail: signed.signedUrl ? 'signed' : `unsigned: ${signed.reason}` });
+      return sendJson(res, 200, { agentId: ELEVENLABS_AGENT_ID, signedUrl: signed.signedUrl, signedUrlReason: signed.reason, token, expiresAt });
+    }
+
+    // POST /api/accounts/:id/voice/ask — the one gateway the ElevenLabs
+    // agent (X-Voice-Token) and the portal's typed Ask Verilume box (session)
+    // both call. Body: { question, surface, tab, campaignId?, campaignRef?,
+    // history? }. Returns { answer, cards, proposal, followUps }.
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice' && parts[4] === 'ask'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccountOrVoiceToken(req, res, accountId)) return;
+      const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const body = await readBody(req);
+      const viaVoice = !!req.headers['x-voice-token'];
+      const result = await voiceAsk(accountId, body || {}, viaVoice ? 'elevenlabs_agent' : (() => { const sess = authenticate(req); return (sess && sess.memberId) || 'portal'; })());
+      if (result.error) return sendJson(res, 400, result);
+      return sendJson(res, 200, result);
     }
 
     // POST /api/accounts/:id/voice-token — 2026-09-15, ElevenLabs Phase 2
