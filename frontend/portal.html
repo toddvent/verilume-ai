@@ -130,6 +130,11 @@
      column every other step keeps. */
   main.wrap:has(#step-bulkUpload.active), main.wrap:has(#step-marketingOpsQueue.active){max-width:none;}
   #step-bulkUpload .table-scroll table{width:100%;}
+  /* The real clip: every .field is capped at 640px site-wide (form inputs
+     shouldn't stretch), and the preview table + file hint sat inside one.
+     Those two blocks are read-only review content, not inputs — uncapped. */
+  #bccPreviewWrap, #bccFileHint, #bccResult, #bccSummary{max-width:none;}
+  #step-bulkUpload .field:has(#bccFileHint){max-width:none;}
   a{color:inherit;}
 
   .back-nav{display:flex;justify-content:flex-start;align-items:center;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;letter-spacing:0.04em;padding:20px 28px;border-bottom:1px solid var(--line);max-width:1440px;margin:0 auto;position:relative;}
@@ -12396,7 +12401,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-29-upload-preview-full-width';
+const CXMEDIA_BUILD_STAMP = '2026-09-29-upload-channel-inferred-from-media-type';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -17421,6 +17426,24 @@ function bccResolveUmbrellaChannel(channelValue, mediaTypeValue, buyTypeValue){
   if (/^(audio|streaming audio)$/.test(c)) return /podcast/.test(m) ? has('Podcasts') : has('Radio');
   return null;
 }
+function bccInferChannelFromMediaType(mediaTypeValue, audienceValue, buyTypeValue){
+  const m = String(mediaTypeValue || '').toLowerCase();
+  if (!m) return null;
+  const has = name => MMM_CATEGORIES.includes(name) ? name : null;
+  if (/\bmag\b|magazine/.test(m)) return has('Magazines');
+  if (/newspaper|\bnews\b/.test(m)) return has('Newspapers');
+  if (/\bdm\b|direct mail|mailer|postcard|self mailer/.test(m)){ const fam = bccResolveChannelFamily('Direct Mail', audienceValue); return fam ? fam.channel : null; }
+  if (/\bem\b|e-?mail|newsletter/.test(m)) return bccResolveUmbrellaChannel('email', m, buyTypeValue);
+  if (/social|meta|facebook|instagram|tiktok|linkedin/.test(m)) return has('Paid Social');
+  if (/ctv|connected tv/.test(m)) return has('CTV');
+  if (/otv|online video|olv|youtube/.test(m)) return has('OTV');
+  if (/\btv\b|linear|broadcast|spot/.test(m)) return has('Linear TV');
+  if (/radio/.test(m)) return has('Radio');
+  if (/podcast/.test(m)) return has('Podcasts');
+  if (/ooh|billboard|outdoor|transit|bulletin/.test(m)) return has('Out-of-Home');
+  if (/display|iab|banner|takeover|sponsor|txt link|text link|search|native/.test(m)) return bccResolveUmbrellaChannel('digital', m, buyTypeValue);
+  return null;
+}
 function bccResolveChannelFamily(channelValue, audienceValue){
   const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   const v = norm(channelValue);
@@ -17569,7 +17592,14 @@ function validateBccRow(raw){
   // campaignName is display-only (grouping is Channel + Partner + Hit Date
   // + End Date + Audience) — a client file without one is fine; the
   // server labels the campaign from Partner · Channel · Audience.
-  if (!raw.channel) errors.push('channel is required');
+  // No channel column (or a blank/echoed cell) — infer it from the media
+  // type when that's unambiguous ("MAG AD" → Magazines, "DM STANDARD" →
+  // Direct Mail family, "EM FULL" → Internal Email), and say so.
+  if (!raw.channel && raw.mediaType){
+    const inferred = bccInferChannelFromMediaType(raw.mediaType, raw.audience, raw.buyType);
+    if (inferred){ raw.channel = inferred; warnings.push(`no channel given — inferred "${inferred}" from media type "${raw.mediaType}"`); }
+  }
+  if (!raw.channel) errors.push('channel is required — add a Channel (or Marketing Group) column, e.g. Magazines, Newspapers, Direct Mail, Email, Digital');
   else {
     let canonicalChannel = ciFindMatch(MMM_CATEGORIES, raw.channel) || bccChannelMatch(raw.channel);
     if (!canonicalChannel){
