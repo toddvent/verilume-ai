@@ -477,5 +477,11 @@
   "workingCopy",
   "workingMedia",
   "yoyLabel",
-  "creativeDisposition"
+  "creativeDisposition",
+  "sourceChannel",
+  "keywordType",
+  "creativeOffer",
+  "leadsByFormJson",
+  "sourceSheet",
+  "mappingJson"
 ]

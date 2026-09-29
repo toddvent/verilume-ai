@@ -1630,6 +1630,269 @@ createTableIfNeeded(`
 // prospect leads: Meta lead forms, co-registration).
 const LEAD_TYPES = ['High Value', 'Registration', 'Prospect'];
 // Pool economics off mature months — see the comment above.
+// 2026-09-29 — Digital performance (agency exports), per Todd with the
+// 2025/2026 WMX Search / Social / Display workbooks: "Digital campaigns
+// are creative allocations against the overall media plans except for
+// Evergreen remarketing and brand search programs. How should we upload
+// and then leverage for analytics and campaign planning?" Decisions
+// (clarifying questions): build the upload, the monthly actuals into
+// Campaign Summary / MMM inputs, the evergreen calibration, AND the
+// campaign allocation by creative market — with lead forms mapped to the
+// three lead types through a per-account setting seeded from generic
+// suggestions (same self-service pattern as Transaction settings).
+//
+// One row per (year, month, grain, channel, publisher, tactic, keyword
+// type, region, creative offer). grain: 'overview' (channel × month
+// totals), 'split' (Brand vs Non-Brand search), 'detail' (publisher /
+// tactic / ad name, region, creative offer). channel is the Verilume MMM
+// category the row resolves to (Programmatic Display, Remarketing,
+// Brand Search, Non-Brand Search, Paid Search (total), Paid Social);
+// sourceChannel keeps the agency's own label. leadsByFormJson keeps every
+// lead-form column as exported ({"Talk to Expert": 43.4, ...}) so the
+// lead-type mapping can change later without a re-upload.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_digital_performance (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    month INTEGER NOT NULL,
+    grain TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    sourceChannel TEXT,
+    publisher TEXT NOT NULL DEFAULT '',
+    tactic TEXT NOT NULL DEFAULT '',
+    keywordType TEXT NOT NULL DEFAULT '',
+    region TEXT NOT NULL DEFAULT '',
+    creativeOffer TEXT NOT NULL DEFAULT '',
+    impressions REAL,
+    clicks REAL,
+    spend REAL,
+    leads REAL,
+    calls REAL,
+    leadsByFormJson TEXT,
+    sourceSheet TEXT,
+    updatedAt TEXT NOT NULL,
+    UNIQUE (accountId, year, month, grain, channel, publisher, tactic, keywordType, region, creativeOffer),
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+// Lead form → lead type, per account. mappingJson: { "<form key>": "High
+// Value" | "Growth" | "Prospect" }. Unmapped forms fall back to
+// suggestLeadTypeForForm() (generic keywords) and are flagged suggested.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_lead_form_settings (
+    accountId TEXT PRIMARY KEY,
+    mappingJson TEXT,
+    updatedAt TEXT NOT NULL,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+// Stored lead-type values are LEAD_TYPES above ('Registration' = Growth).
+function suggestLeadTypeForForm(formKey){
+  const k = String(formKey || '').toLowerCase();
+  if (/call|phone|quote|talk|expert|brochure|consult|demo|appointment|book|reservation|schedule|apply|application/.test(k)) return 'High Value';
+  if (/subscribe|newsletter|fb lead|facebook|lead form|lead ad|sweep|contest|giveaway|download|guide|whitepaper|coreg|co-reg/.test(k)) return 'Prospect';
+  if (/contact|request|inquir|enquir|info|question|chat|message/.test(k)) return 'Registration';
+  return 'Registration';
+}
+function getLeadFormSettings(accountId){
+  const row = db.prepare('SELECT * FROM account_lead_form_settings WHERE accountId = ?').get(accountId);
+  let mapping = {};
+  try { mapping = row && row.mappingJson ? JSON.parse(row.mappingJson) : {}; } catch (e){ mapping = {}; }
+  return { mapping, updatedAt: row ? row.updatedAt : null };
+}
+function leadTypeForForm(formKey, settings){
+  const m = settings && settings.mapping ? settings.mapping[formKey] : null;
+  if (m && LEAD_TYPES.includes(m)) return { leadType: m, suggested: false };
+  return { leadType: suggestLeadTypeForForm(formKey), suggested: true };
+}
+// Channel resolution for an agency row — generic vocabulary only.
+function resolveDigitalChannel(sourceChannel, tactic, keywordType){
+  const c = String(sourceChannel || '').toLowerCase();
+  const t = String(tactic || '').toLowerCase();
+  const k = String(keywordType || '').toLowerCase();
+  if (/sem|search|ppc|google ads|bing|microsoft/.test(c) || k){
+    if (/brand/.test(k) && !/non/.test(k)) return 'Brand Search';
+    if (/non/.test(k)) return 'Non-Brand Search';
+    return 'Paid Search (total)';
+  }
+  if (/social|meta|facebook|instagram|tiktok|linkedin|pinterest/.test(c)) return 'Paid Social';
+  if (/display|programmatic|banner|video|ctv|olv/.test(c)){
+    if (/retarget|remarket/.test(t)) return 'Remarketing';
+    return 'Programmatic Display';
+  }
+  return sourceChannel ? String(sourceChannel) : 'Digital';
+}
+// Monthly channel totals. The OVERVIEW sheet is the authoritative monthly
+// total for a family (Display, Search, Social) — it carries every
+// publisher, including ones the detail sheets omit (Bing sits in the
+// search overview but not in the brand/non-brand split). The split /
+// tactic detail then only decides the SHARE of that total that belongs to
+// the evergreen program: Display → Programmatic Display + Remarketing by
+// the Prospecting/Retargeting spend ratio; Search → Brand Search +
+// Non-Brand Search by the keyword-type spend ratio. With no detail on
+// file the whole total stays in the non-evergreen category. Leads are
+// split into lead types through the account's lead-form mapping; leads
+// the forms don't account for land in 'Unassigned'.
+function getDigitalMonthlyTotals(accountId){
+  const rows = db.prepare('SELECT * FROM account_digital_performance WHERE accountId = ?').all(accountId);
+  const settings = getLeadFormSettings(accountId);
+  // Phone calls (Invoca etc.) are counted inside Total Leads but arrive as
+  // their own column, not a form — treated as one more lead source named
+  // "Calls" so the account's lead-type mapping decides where they land.
+  const parseForms = r => { let f = {}; try { f = r.leadsByFormJson ? JSON.parse(r.leadsByFormJson) : {}; } catch (e){ f = {}; } if ((Number(r.calls) || 0) > 0) f.Calls = (Number(f.Calls) || 0) + Number(r.calls); return f; };
+  const blank = () => ({ spend: 0, impressions: 0, clicks: 0, leads: 0, calls: 0, leadsByType: {}, rowCount: 0 });
+  const addRow = (acc, r, share) => {
+    const f = share == null ? 1 : share;
+    acc.spend += (Number(r.spend) || 0) * f; acc.impressions += (Number(r.impressions) || 0) * f; acc.clicks += (Number(r.clicks) || 0) * f; acc.leads += (Number(r.leads) || 0) * f; acc.calls += (Number(r.calls) || 0) * f;
+    let assigned = 0;
+    Object.entries(parseForms(r)).forEach(([form, v]) => { const n = (Number(v) || 0) * f; if (!n) return; const lt = leadTypeForForm(form, settings).leadType; acc.leadsByType[lt] = (acc.leadsByType[lt] || 0) + n; assigned += n; });
+    const rest = (Number(r.leads) || 0) * f - assigned;
+    if (rest > 0.5) acc.leadsByType.Unassigned = (acc.leadsByType.Unassigned || 0) + rest;
+    acc.rowCount++;
+  };
+  const scale = (acc, f) => { const o = blank(); o.spend = acc.spend * f; o.impressions = acc.impressions * f; o.clicks = acc.clicks * f; o.leads = acc.leads * f; o.calls = acc.calls * f; Object.entries(acc.leadsByType).forEach(([k, v]) => { o.leadsByType[k] = v * f; }); o.rowCount = acc.rowCount; return o; };
+  const byMonth = {};
+  rows.forEach(r => { const k = `${r.year}-${String(r.month).padStart(2, '0')}`; if (!byMonth[k]) byMonth[k] = { year: r.year, month: r.month, rows: [] }; byMonth[k].rows.push(r); });
+  const out = [];
+  const spendOf = arr => arr.reduce((a, r) => a + (Number(r.spend) || 0), 0);
+  Object.values(byMonth).forEach(({ year, month, rows: mrows }) => {
+    const push = (channel, acc, basis) => { if (!acc.rowCount) return; out.push({ year, month, channel, basis, ...acc, cpl: acc.leads > 0 ? acc.spend / acc.leads : null, cpc: acc.clicks > 0 ? acc.spend / acc.clicks : null, cpm: acc.impressions > 0 ? acc.spend / acc.impressions * 1000 : null }); };
+    // Display family
+    const dispOverview = mrows.filter(r => r.grain === 'overview' && r.channel === 'Programmatic Display');
+    const dispDetail = mrows.filter(r => r.grain === 'detail' && (r.channel === 'Programmatic Display' || r.channel === 'Remarketing') && r.tactic);
+    if (dispOverview.length){
+      const total = blank(); dispOverview.forEach(r => addRow(total, r));
+      const remSpend = spendOf(dispDetail.filter(r => r.channel === 'Remarketing')), allSpend = spendOf(dispDetail);
+      const remShare = allSpend > 0 ? remSpend / allSpend : 0;
+      if (remShare > 0){ push('Remarketing', scale(total, remShare), 'overview × retargeting share from tactic detail'); push('Programmatic Display', scale(total, 1 - remShare), 'overview × prospecting share from tactic detail'); }
+      else push('Programmatic Display', total, dispDetail.length ? 'overview (no retargeting rows)' : 'overview (no tactic detail on file)');
+    } else if (dispDetail.length){
+      const rem = blank(), pro = blank();
+      dispDetail.forEach(r => addRow(r.channel === 'Remarketing' ? rem : pro, r));
+      push('Remarketing', rem, 'tactic detail'); push('Programmatic Display', pro, 'tactic detail');
+    }
+    // Search family
+    const srchOverview = mrows.filter(r => r.grain === 'overview' && r.channel === 'Paid Search (total)');
+    const split = mrows.filter(r => r.grain === 'split' && (r.channel === 'Brand Search' || r.channel === 'Non-Brand Search'));
+    if (srchOverview.length){
+      const total = blank(); srchOverview.forEach(r => addRow(total, r));
+      const brandSpend = spendOf(split.filter(r => r.channel === 'Brand Search')), allSpend = spendOf(split);
+      const brandShare = allSpend > 0 ? brandSpend / allSpend : 0;
+      if (brandShare > 0){ push('Brand Search', scale(total, brandShare), 'overview × brand share from keyword split'); push('Non-Brand Search', scale(total, 1 - brandShare), 'overview × non-brand share from keyword split'); }
+      else push('Non-Brand Search', total, split.length ? 'overview (no brand rows)' : 'overview (no brand / non-brand split on file)');
+    } else if (split.length){
+      const b = blank(), nb = blank();
+      split.forEach(r => addRow(r.channel === 'Brand Search' ? b : nb, r));
+      push('Brand Search', b, 'keyword split'); push('Non-Brand Search', nb, 'keyword split');
+    }
+    // Social
+    const soc = mrows.filter(r => r.grain === 'overview' && r.channel === 'Paid Social');
+    if (soc.length){ const total = blank(); soc.forEach(r => addRow(total, r)); push('Paid Social', total, 'overview'); }
+    else { const det = mrows.filter(r => r.grain === 'detail' && r.channel === 'Paid Social'); if (det.length){ const total = blank(); det.forEach(r => addRow(total, r)); push('Paid Social', total, 'creative detail'); } }
+  });
+  return out.sort((a, b) => (a.year - b.year) || (a.month - b.month) || a.channel.localeCompare(b.channel));
+}
+// Allocation of digital DETAIL rows to one campaign, per Todd: digital
+// campaigns are creative allocations against the overall media plan,
+// except the evergreen remarketing and brand search programs (those are
+// account-level and reported separately, never allocated). A detail row is
+// tied to a campaign when (a) its month overlaps the campaign's in-market
+// months and (b) its region / ad name / creative offer names one of the
+// campaign's Creative Focus Groups or Product Groups (case-insensitive,
+// either string containing the other, 4+ characters — "Europe" matches
+// "Northern Europe"). Everything in the window that doesn't name a
+// creative market comes back as unallocated, with the labels seen, so the
+// gap is visible rather than guessed at.
+function allocateDigitalToCampaign(campaign){
+  const accountId = campaign.accountId;
+  const start = campaign.startDate ? new Date(`${String(campaign.startDate).slice(0, 10)}T00:00:00`) : null;
+  const end = campaign.endDate ? new Date(`${String(campaign.endDate).slice(0, 10)}T00:00:00`) : start;
+  if (!start || isNaN(start.getTime())) return { campaignId: campaign.id, months: [], tokens: [], allocated: [], unallocated: [], evergreen: [], note: 'This campaign has no start date, so no months to allocate digital performance to.' };
+  const months = [];
+  for (let d = new Date(start.getFullYear(), start.getMonth(), 1); d <= (end && !isNaN(end.getTime()) ? end : start); d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) months.push({ year: d.getFullYear(), month: d.getMonth() + 1 });
+  const lineRows = db.prepare('SELECT productGroup, creativeMarket FROM channel_planning_details WHERE campaignId = ?').all(campaign.id);
+  const tokenSet = new Set();
+  const addTokens = v => String(v || '').split(',').map(x => x.trim().toLowerCase()).filter(x => x.length >= 4).forEach(x => tokenSet.add(x));
+  addTokens(campaign.productGroups); addTokens(campaign.creativeFocusGroups);
+  lineRows.forEach(r => { addTokens(r.productGroup); addTokens(r.creativeMarket); });
+  const tokens = [...tokenSet];
+  const settings = getLeadFormSettings(accountId);
+  const all = db.prepare('SELECT * FROM account_digital_performance WHERE accountId = ?').all(accountId);
+  const inWindow = r => months.some(m => m.year === r.year && m.month === r.month);
+  const win = all.filter(inWindow);
+  const blank = () => ({ spend: 0, impressions: 0, clicks: 0, leads: 0, calls: 0, byType: {}, rows: 0, labels: new Set() });
+  const add = (acc, r) => {
+    acc.spend += Number(r.spend) || 0; acc.impressions += Number(r.impressions) || 0; acc.clicks += Number(r.clicks) || 0; acc.leads += Number(r.leads) || 0; acc.calls += Number(r.calls) || 0;
+    let forms = {}; try { forms = r.leadsByFormJson ? JSON.parse(r.leadsByFormJson) : {}; } catch (e){ forms = {}; }
+    if ((Number(r.calls) || 0) > 0) forms.Calls = (Number(forms.Calls) || 0) + Number(r.calls);
+    let assigned = 0;
+    Object.entries(forms).forEach(([f, v]) => { const n = Number(v) || 0; if (!n) return; const lt = leadTypeForForm(f, settings).leadType; acc.byType[lt] = (acc.byType[lt] || 0) + n; assigned += n; });
+    const rest = (Number(r.leads) || 0) - assigned; if (rest > 0.5) acc.byType.Unassigned = (acc.byType.Unassigned || 0) + rest;
+    acc.rows++;
+  };
+  const out = acc => ({ spend: acc.spend, impressions: acc.impressions, clicks: acc.clicks, leads: acc.leads, byType: acc.byType, rows: acc.rows, labels: [...acc.labels].slice(0, 12) });
+  const labelOf = r => r.creativeOffer || r.region || r.tactic || r.publisher || '';
+  // Whole-word / whole-phrase matching so "Arctic" never matches
+  // "Antarctica"; camel-case names ("AntarcticaCarousel") are split into
+  // words first. A label matches a token when the token appears in the
+  // label as whole words, or the label (a region like "Europe") appears
+  // as whole words inside the token ("Northern Europe").
+  const words = x => ' ' + String(x || '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([a-zA-Z])(\d)/g, '$1 $2').replace(/[^A-Za-z0-9]+/g, ' ').trim().toLowerCase() + ' ';
+  const matches = (r) => {
+    const cand = [r.region, r.creativeOffer].map(x => String(x || '').trim()).filter(x => x.length >= 4);
+    return cand.filter(c => { const cw = words(c); return tokens.some(t => { const tw = words(t); return cw.includes(tw) || tw.includes(cw); }); });
+  };
+  // Search detail rows that equal the Brand split for the month are the
+  // brand program (the agency lists it as its own "region"): evergreen.
+  const brandSpendByMonth = {};
+  win.filter(r => r.grain === 'split' && r.channel === 'Brand Search').forEach(r => { const k = `${r.year}-${r.month}`; brandSpendByMonth[k] = (brandSpendByMonth[k] || 0) + (Number(r.spend) || 0); });
+  const allocated = {}, unallocated = {}, evergreen = { 'Brand Search': blank(), Remarketing: blank() };
+  const detail = win.filter(r => r.grain === 'detail');
+  detail.forEach(r => {
+    const isRetarget = r.channel === 'Remarketing' || /retarget|remarket/i.test(r.tactic || '');
+    if (isRetarget){ add(evergreen.Remarketing, r); return; }
+    const brandSpend = brandSpendByMonth[`${r.year}-${r.month}`];
+    if (r.channel === 'Paid Search (total)' && brandSpend && Math.abs((Number(r.spend) || 0) - brandSpend) <= brandSpend * 0.01){ add(evergreen['Brand Search'], r); return; }
+    const hits = matches(r);
+    const channelKey = r.channel === 'Paid Search (total)' ? 'Non-Brand Search' : r.channel;
+    if (hits.length){ if (!allocated[channelKey]) allocated[channelKey] = blank(); add(allocated[channelKey], r); hits.forEach(h => allocated[channelKey].labels.add(h)); }
+    else { if (!unallocated[channelKey]) unallocated[channelKey] = blank(); add(unallocated[channelKey], r); const lb = labelOf(r); if (lb) unallocated[channelKey].labels.add(lb); }
+  });
+  return {
+    campaignId: campaign.id, months, tokens,
+    allocated: Object.entries(allocated).map(([channel, a]) => ({ channel, ...out(a) })),
+    unallocated: Object.entries(unallocated).map(([channel, a]) => ({ channel, ...out(a) })),
+    evergreen: Object.entries(evergreen).filter(([, a]) => a.rows).map(([channel, a]) => ({ channel, ...out(a) })),
+    note: tokens.length ? '' : 'This campaign has no Creative Focus Group or Product Group, so nothing can be tied to it — add one and the digital detail rows that name it are allocated automatically.'
+  };
+}
+// Evergreen calibration from the actuals: brand-search CPC and clicks per
+// website visitor, remarketing CPM — measured over the months both sides
+// have data, offered next to the Demand Fulfillment defaults.
+function computeDigitalEvergreenCalibration(accountId){
+  const totals = getDigitalMonthlyTotals(accountId);
+  const users = db.prepare('SELECT year, month, region, users FROM account_website_users_monthly WHERE accountId = ?').all(accountId);
+  const usersByMonth = {};
+  users.forEach(u => { const k = `${u.year}-${u.month}`; if (!usersByMonth[k]) usersByMonth[k] = { us: 0, all: 0 }; usersByMonth[k].all += Number(u.users) || 0; if (/^us$/i.test(String(u.region || ''))) usersByMonth[k].us += Number(u.users) || 0; });
+  const brand = totals.filter(t => t.channel === 'Brand Search');
+  const rem = totals.filter(t => t.channel === 'Remarketing');
+  const sum = (arr, k) => arr.reduce((a, t) => a + (Number(t[k]) || 0), 0);
+  const out = { months: totals.length ? [...new Set(totals.map(t => `${t.year}-${String(t.month).padStart(2, '0')}`))].sort() : [] };
+  if (brand.length){
+    out.brandSearchCpc = sum(brand, 'clicks') > 0 ? sum(brand, 'spend') / sum(brand, 'clicks') : null;
+    let clicks = 0, visitors = 0, n = 0;
+    brand.forEach(t => { const u = usersByMonth[`${t.year}-${t.month}`]; if (u && (u.us || u.all)){ clicks += t.clicks; visitors += (u.us || u.all); n++; } });
+    out.brandSearchClicksPerVisitor = visitors > 0 ? clicks / visitors : null;
+    out.brandSearchMonths = brand.length; out.brandSearchVisitorMonths = n;
+    out.brandSearchCplByType = null;
+  }
+  if (rem.length){
+    out.remarketingCpm = sum(rem, 'impressions') > 0 ? sum(rem, 'spend') / sum(rem, 'impressions') * 1000 : null;
+    out.remarketingMonths = rem.length;
+  }
+  return out;
+}
 function computeLeadPoolEconomics(rows, today){
   const now = today || new Date();
   const byPool = {};
@@ -5682,9 +5945,15 @@ const MMM_CATEGORIES = [
   'Out-of-Home',
   'Radio',
   'Podcasts',
-  'Email — Remarketing'
+  'Email — Remarketing',
+  // 2026-09-29 — aligned with portal.html's MMM_CATEGORIES (which gained
+  // these in rounds 132xx / later): the digital actuals feed resolves
+  // retargeting rows to 'Remarketing', which must be a real category here.
+  'Remarketing',
+  'Retail Media',
+  'Field / ABM'
 ];
-// Which of the 18 categories this account has actually selected as
+// Which of the categories this account has actually selected as
 // applicable ("inclusions") — a one-time-but-editable setup step, per direct
 // instruction. Only these show in the data-entry dropdown, and only these
 // are what monthly Reach/Impressions become "required" against (the
@@ -6812,6 +7081,8 @@ const CHANNEL_TIMING_OVERRIDE_SOURCES = ['dma_test', 'manual'];
 // See repairFoldedColumns() near createTableIfNeeded() — one bulk check
 // covering every table added 2026-09-28 (all created above this point).
 repairFoldedColumns([
+  ['account_digital_performance', ['accountId', 'sourceChannel', 'keywordType', 'creativeOffer', 'leadsByFormJson', 'sourceSheet', 'updatedAt']],
+  ['account_lead_form_settings', ['accountId', 'mappingJson', 'updatedAt']],
   ['account_dm_cost_per_piece', ['accountId', 'costPerPiece', 'updatedAt']],
   ['account_dm_format_cost', ['accountId', 'formatName', 'costPerPiece', 'updatedAt']],
   ['account_magazine_cost', ['accountId', 'adFormat', 'costPerInsertion', 'updatedAt']],
@@ -7739,15 +8010,35 @@ function getEffectiveMmmTotals(accountId){
     if (r.impressions != null) t.impressions = (t.impressions || 0) + r.impressions;
     t.hasManual = true;
   });
+  // 2026-09-29 — agency digital actuals (account_digital_performance) are
+  // a third source. For the channels they cover they REPLACE the campaign
+  // roll-up for that period (measured spend/impressions beat planned line
+  // items — digital campaigns are creative allocations against the same
+  // media plan, so adding both would double count); a manual row still
+  // wins over both, as before. Reach isn't in agency exports, so those
+  // keys stay incomplete on reach until entered.
+  let digitalTotals = [];
+  try { digitalTotals = getDigitalMonthlyTotals(accountId).filter(t => MMM_CATEGORIES.includes(t.channel)); } catch (e){ digitalTotals = []; }
+  const digitalKeys = new Set(digitalTotals.map(t => `${t.year}-${String(t.month).padStart(2, '0')}||${t.channel}`));
   campaignRollup.forEach(c => {
     const key = `${c.periodLabel}||${c.category}`;
+    if (digitalKeys.has(key)) return;
     const t = touch(key, c.periodLabel, c.category);
     if (c.spend != null) t.spend = (t.spend || 0) + c.spend;
     if (c.reach != null) t.reach = (t.reach || 0) + c.reach;
     if (c.impressions != null) t.impressions = (t.impressions || 0) + c.impressions;
     t.hasCampaign = true;
   });
-  return { totals: Object.values(byKey), manualRows, campaignRollup };
+  digitalTotals.forEach(d => {
+    const periodLabel = `${d.year}-${String(d.month).padStart(2, '0')}`;
+    const key = `${periodLabel}||${d.channel}`;
+    const t = touch(key, periodLabel, d.channel);
+    if (t.hasManual) return;
+    t.spend = (t.spend || 0) + d.spend;
+    t.impressions = (t.impressions || 0) + d.impressions;
+    t.hasDigital = true;
+  });
+  return { totals: Object.values(byKey), manualRows, campaignRollup, digitalTotals };
 }
 
 // Round 87 — analysis readiness + recommended incrementality-test designs,
@@ -25003,6 +25294,15 @@ Submit your response via the campaign_intake_turn tool.`;
       }
     }
 
+    // GET /api/campaigns/:id/digital-allocation — see allocateDigitalToCampaign().
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'digital-allocation'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      return sendJson(res, 200, allocateDigitalToCampaign(campaign));
+    }
+
     // GET /api/campaigns/:id/channel-planning — list every Channel Planning
     // Detail entry (one per vendor/insertion/drop) for this campaign.
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'channel-planning'){
@@ -32511,6 +32811,118 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     // group engagement rows (see account_website_engagement's comment).
     // Also returns per-(year, month) session-weighted summaries so the
     // Campaign Summary tile reads one number without re-deriving it.
+    // GET /api/accounts/:id/digital-performance[?year=] — rows + monthly
+    // channel totals (lead types applied) + evergreen calibration + the
+    // observed lead forms with their current mapping.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'digital-performance'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const reqUrl = new URL(req.url, 'http://localhost');
+      const yearParam = reqUrl.searchParams.get('year');
+      const year = yearParam ? parseInt(yearParam, 10) : null;
+      const rows = Number.isFinite(year)
+        ? db.prepare('SELECT * FROM account_digital_performance WHERE accountId = ? AND year = ? ORDER BY month ASC, grain ASC, channel ASC').all(accountId, year)
+        : db.prepare('SELECT * FROM account_digital_performance WHERE accountId = ? ORDER BY year DESC, month ASC, grain ASC, channel ASC').all(accountId);
+      const settings = getLeadFormSettings(accountId);
+      const forms = {};
+      db.prepare('SELECT "leadsByFormJson", calls FROM account_digital_performance WHERE accountId = ?').all(accountId).forEach(r => {
+        let f = {}; try { f = r.leadsByFormJson ? JSON.parse(r.leadsByFormJson) : {}; } catch (e){ f = {}; }
+        Object.entries(f).forEach(([k, v]) => { forms[k] = (forms[k] || 0) + (Number(v) || 0); });
+        if ((Number(r.calls) || 0) > 0) forms.Calls = (forms.Calls || 0) + Number(r.calls);
+      });
+      const leadForms = Object.entries(forms).map(([formKey, total]) => ({ formKey, total, ...leadTypeForForm(formKey, settings) })).sort((a, b) => b.total - a.total);
+      const detail = rows.filter(r => r.grain === 'detail').map(r => ({ ...r, leadsByForm: (() => { try { return r.leadsByFormJson ? JSON.parse(r.leadsByFormJson) : {}; } catch (e){ return {}; } })() }));
+      return sendJson(res, 200, {
+        accountId, rows, totals: getDigitalMonthlyTotals(accountId).filter(t => !Number.isFinite(year) || t.year === year),
+        detail, leadForms, leadTypes: LEAD_TYPES, calibration: computeDigitalEvergreenCalibration(accountId), settingsUpdatedAt: settings.updatedAt
+      });
+    }
+    // POST /api/accounts/:id/digital-performance — { rows: [...], replace:
+    // [{ year, month, grain, sourceSheet? }] } — replace clears those
+    // (year, month, grain[, sheet]) rows first so a re-export overwrites.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'digital-performance'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const rowsIn = Array.isArray(body.rows) ? body.rows : [];
+      if (!rowsIn.length) return sendJson(res, 400, { error: 'rows is required' });
+      if (rowsIn.length > 20000) return sendJson(res, 400, { error: 'capped at 20,000 rows per upload' });
+      const now = new Date().toISOString();
+      const numOrNull = v => { if (v === null || v === undefined || v === '') return null; const n = Number(String(v).replace(/[$,%\s]/g, '')); return Number.isFinite(n) ? n : null; };
+      const clean = [];
+      for (const r of rowsIn){
+        const year = parseInt(r.year, 10), month = parseInt(r.month, 10);
+        if (!(year >= 2000 && year <= 2100) || !(month >= 1 && month <= 12)) continue;
+        const grain = ['overview', 'split', 'detail'].includes(r.grain) ? r.grain : 'overview';
+        const sourceChannel = String(r.sourceChannel || r.channel || '').trim();
+        const tactic = String(r.tactic || '').trim(), keywordType = String(r.keywordType || '').trim();
+        const channel = r.channel && MMM_CATEGORIES.includes(r.channel) ? r.channel : resolveDigitalChannel(sourceChannel, tactic, keywordType);
+        const forms = {};
+        if (r.leadsByForm && typeof r.leadsByForm === 'object') Object.entries(r.leadsByForm).forEach(([k, v]) => { const n = numOrNull(v); if (n != null && k) forms[String(k).trim()] = n; });
+        clean.push({
+          year, month, grain, channel, sourceChannel,
+          publisher: String(r.publisher || '').trim(), tactic, keywordType, region: String(r.region || '').trim(), creativeOffer: String(r.creativeOffer || '').trim(),
+          impressions: numOrNull(r.impressions), clicks: numOrNull(r.clicks), spend: numOrNull(r.spend), leads: numOrNull(r.leads), calls: numOrNull(r.calls),
+          leadsByFormJson: JSON.stringify(forms), sourceSheet: String(r.sourceSheet || '').slice(0, 120)
+        });
+      }
+      if (!clean.length) return sendJson(res, 400, { error: 'no rows had a valid year and month' });
+      const replace = Array.isArray(body.replace) ? body.replace : [];
+      replace.forEach(rp => {
+        const y = parseInt(rp.year, 10), m = parseInt(rp.month, 10);
+        if (!(y >= 2000) || !(m >= 1 && m <= 12)) return;
+        if (rp.sourceSheet) db.prepare('DELETE FROM account_digital_performance WHERE accountId = ? AND year = ? AND month = ? AND grain = ? AND "sourceSheet" = ?').run(accountId, y, m, rp.grain || 'overview', String(rp.sourceSheet));
+        else db.prepare('DELETE FROM account_digital_performance WHERE accountId = ? AND year = ? AND month = ? AND grain = ?').run(accountId, y, m, rp.grain || 'overview');
+      });
+      const upsert = db.prepare(`INSERT INTO account_digital_performance (id, accountId, year, month, grain, channel, "sourceChannel", publisher, tactic, "keywordType", region, "creativeOffer", impressions, clicks, spend, leads, calls, "leadsByFormJson", "sourceSheet", updatedAt)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(accountId, year, month, grain, channel, publisher, tactic, "keywordType", region, "creativeOffer") DO UPDATE SET
+          "sourceChannel" = excluded."sourceChannel", impressions = excluded.impressions, clicks = excluded.clicks, spend = excluded.spend, leads = excluded.leads, calls = excluded.calls,
+          "leadsByFormJson" = excluded."leadsByFormJson", "sourceSheet" = excluded."sourceSheet", updatedAt = excluded.updatedAt`);
+      let saved = 0;
+      const seen = new Set();
+      clean.forEach(c => {
+        const k = [c.year, c.month, c.grain, c.channel, c.publisher, c.tactic, c.keywordType, c.region, c.creativeOffer].join('||');
+        if (seen.has(k)) return; // an export that repeats a row (February twice) counts once
+        seen.add(k);
+        upsert.run(generateId('DGP'), accountId, c.year, c.month, c.grain, c.channel, c.sourceChannel, c.publisher, c.tactic, c.keywordType, c.region, c.creativeOffer, c.impressions, c.clicks, c.spend, c.leads, c.calls, c.leadsByFormJson, c.sourceSheet, now);
+        saved++;
+      });
+      return sendJson(res, 200, { accountId, saved, duplicatesSkipped: clean.length - saved, updatedAt: now });
+    }
+    // DELETE /api/accounts/:id/digital-performance?year=&month=[&grain=]
+    if (req.method === 'DELETE' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'digital-performance'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const reqUrl = new URL(req.url, 'http://localhost');
+      const year = parseInt(reqUrl.searchParams.get('year'), 10), month = parseInt(reqUrl.searchParams.get('month') || '0', 10);
+      const grain = (reqUrl.searchParams.get('grain') || '').trim();
+      if (!Number.isFinite(year)) return sendJson(res, 400, { error: 'year is required' });
+      let info;
+      if (month >= 1 && grain) info = db.prepare('DELETE FROM account_digital_performance WHERE accountId = ? AND year = ? AND month = ? AND grain = ?').run(accountId, year, month, grain);
+      else if (month >= 1) info = db.prepare('DELETE FROM account_digital_performance WHERE accountId = ? AND year = ? AND month = ?').run(accountId, year, month);
+      else info = db.prepare('DELETE FROM account_digital_performance WHERE accountId = ? AND year = ?').run(accountId, year);
+      return sendJson(res, 200, { accountId, deleted: info.changes });
+    }
+    // GET / POST /api/accounts/:id/lead-form-settings — lead form → lead type.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'lead-form-settings'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const settings = getLeadFormSettings(accountId);
+      return sendJson(res, 200, { accountId, mapping: settings.mapping, leadTypes: LEAD_TYPES, updatedAt: settings.updatedAt });
+    }
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'lead-form-settings'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const mapping = {};
+      if (body.mapping && typeof body.mapping === 'object') Object.entries(body.mapping).forEach(([k, v]) => { if (k && LEAD_TYPES.includes(v)) mapping[String(k).trim()] = v; });
+      const now = new Date().toISOString();
+      const existing = db.prepare('SELECT 1 FROM account_lead_form_settings WHERE accountId = ?').get(accountId);
+      if (existing) db.prepare('UPDATE account_lead_form_settings SET "mappingJson" = ?, updatedAt = ? WHERE accountId = ?').run(JSON.stringify(mapping), now, accountId);
+      else db.prepare('INSERT INTO account_lead_form_settings (accountId, "mappingJson", updatedAt) VALUES (?,?,?)').run(accountId, JSON.stringify(mapping), now);
+      return sendJson(res, 200, { accountId, mapping, updatedAt: now });
+    }
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'website-engagement'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
@@ -32945,12 +33357,26 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       const row = db.prepare('SELECT * FROM account_demand_fulfillment WHERE accountId = ?').get(accountId) || {};
+      // 2026-09-29 — measured values from the digital agency actuals
+      // (account_digital_performance): brand-search CPC and clicks per
+      // visitor, remarketing CPM. A measured value fills a field that has
+      // no saved value and no default (the "per client" nulls); a saved
+      // value always wins; the measurement is reported alongside either way.
+      let cal = {};
+      try { cal = computeDigitalEvergreenCalibration(accountId); } catch (e){ cal = {}; }
+      const measuredByKey = {
+        brandSearchCpc: cal.brandSearchCpc != null ? { value: cal.brandSearchCpc, note: `measured: brand-search spend ÷ clicks over ${cal.brandSearchMonths} month(s) of agency actuals` } : null,
+        brandSearchClicksPerVisitor: cal.brandSearchClicksPerVisitor != null ? { value: cal.brandSearchClicksPerVisitor, note: `measured: brand clicks ÷ website users over ${cal.brandSearchVisitorMonths} month(s) both are on file` } : null,
+        remarketingCpm: cal.remarketingCpm != null ? { value: cal.remarketingCpm, note: `measured: retargeting spend ÷ impressions × 1000 over ${cal.remarketingMonths} month(s) of agency actuals` } : null
+      };
       const fields = DEMAND_FULFILLMENT_FIELDS.map(f => {
         const saved = row[f.key];
         const has = saved !== null && saved !== undefined;
-        return { ...f, value: has ? saved : f.defaultValue, isDefault: !has && f.defaultValue != null, isMissing: !has && f.defaultValue == null };
+        const measured = measuredByKey[f.key] || null;
+        const useMeasured = !has && f.defaultValue == null && measured;
+        return { ...f, value: has ? saved : (useMeasured ? measured.value : f.defaultValue), isDefault: !has && !useMeasured && f.defaultValue != null, isMissing: !has && !useMeasured && f.defaultValue == null, isMeasured: !!useMeasured, measured };
       });
-      return sendJson(res, 200, { accountId, fields, notes: row.notes || '', updatedAt: row.updatedAt || null });
+      return sendJson(res, 200, { accountId, fields, notes: row.notes || '', updatedAt: row.updatedAt || null, calibration: cal });
     }
     // POST /api/accounts/:id/demand-fulfillment — upsert. Blank clears a
     // field back to its default (or to missing).
