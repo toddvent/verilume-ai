@@ -12389,7 +12389,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-29-production-schedule-reupload-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-29-upload-preview-status-column';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -17135,8 +17135,10 @@ function renderBulkUploadPreview(){
   table.innerHTML = `<thead><tr><th>#</th><th>Campaign ID</th><th>Channel</th><th>Product Group</th><th>Creative Market</th><th>Budget</th><th>Impressions</th><th>Status</th></tr></thead>
     <tbody>${bulkUploadRows.map(r => {
       const statusHtml = r.errors.length
-        ? `<span style="color:#B3261E;">${r.errors.length} error${r.errors.length === 1 ? '' : 's'}: ${escapeHtml(r.errors.join('; '))}</span>`
-        : (r.warnings.length ? `<span style="color:var(--media);">Ready — ${escapeHtml(r.warnings.join('; '))}</span>` : `<span style="color:var(--cx);">Ready</span>`);
+        ? `<div style="color:#B3261E;min-width:360px;"><strong>Won't upload — ${r.errors.length} problem${r.errors.length === 1 ? '' : 's'}:</strong><ul style="margin:4px 0 0;padding-left:18px;">${r.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul></div>`
+        : (r.warnings.length
+          ? `<div style="color:var(--media);min-width:360px;"><strong>Ready</strong> — assumptions:<ul style="margin:4px 0 0;padding-left:18px;">${r.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul></div>`
+          : `<span style="color:var(--cx);">Ready</span>`);
       return `<tr>
         <td class="num">${r.index + 1}</td>
         <td>${escapeHtml(r.raw.campaignId || '')}</td>
@@ -17361,9 +17363,9 @@ function bccRemapRow(parsedRow){
     // A spreadsheet's own formula errors and template echoes (a cell that
     // just repeats its column heading, e.g. "PRODUCT GROUP") are blanks.
     if (/^#(div\/0!|n\/a|ref!|value!|name\?|num!|null!)$/i.test(value)) value = '';
-    if (value && bccNormalizeHeaderKey(value) === headerKey) value = '';
     if (BCC_IGNORED_HEADERS.includes(headerKey)) return;
     const field = BCC_HEADER_LOOKUP[headerKey];
+    if (value && (bccNormalizeHeaderKey(value) === headerKey || (field && BCC_HEADER_LOOKUP[bccNormalizeHeaderKey(value)] === field))) value = '';
     if (!field){ if (value) unmapped.push(header); return; }
     if (out[field] === undefined || (out[field] === '' && value !== '')) out[field] = value;
   });
@@ -17682,17 +17684,19 @@ function renderBulkCreateCampaignsPreview(){
   // honest about what it can't know yet — the real new-vs-matched split
   // comes back from the server in the upload result below (campaignsCreated/
   // campaignsMatched), same as it always has.
-  const campaignLabelsInFile = new Set(bccRows.filter(r => r.raw.campaignName).map(r => r.raw.campaignName.trim().toLowerCase()));
+  const groupKeys = new Set(bccRows.filter(r => !r.errors.length).map(r => [r.raw.channel, r.raw.partner, r.raw.hitDate, r.raw.endDate, r.raw.audience].map(v => String(v || '').trim().toLowerCase()).join('||')));
   document.getElementById('bccSummary').textContent =
-    `${bccRows.length} row${bccRows.length === 1 ? '' : 's'} parsed, ${campaignLabelsInFile.size} campaign label${campaignLabelsInFile.size === 1 ? '' : 's'} — ${validCount} row${validCount === 1 ? '' : 's'} ready to upload, ${errorCount} with errors. Rows are matched to campaigns on the server by Channel + Partner + Hit Date + End Date + Audience; which ones landed on a new vs. an existing campaign shows up after upload.`;
+    `${bccRows.length} row${bccRows.length === 1 ? '' : 's'} parsed — ${validCount} ready to upload (${groupKeys.size} campaign${groupKeys.size === 1 ? '' : 's'} by Channel + Partner + Hit Date + End Date + Audience), ${errorCount} with errors. The Status column explains each row: red = a problem that blocks that row; "Ready" = it uploads, with any assumptions noted. Which rows landed on a new vs. an existing campaign shows after upload.`;
 
   const table = document.getElementById('bccPreviewTable');
-  table.innerHTML = `<thead><tr><th>#</th><th>Campaign</th><th>Channel</th><th>Partner</th><th>Hit date</th><th>Product Group</th><th>Creative Market</th><th>Size</th><th>Budget</th><th>Status</th></tr></thead>
+  table.innerHTML = `<thead><tr><th>#</th><th>Campaign</th><th>Channel</th><th>Partner</th><th>Hit date</th><th>Product Group</th><th>Creative Market</th><th>Size</th><th>Budget</th><th style="min-width:360px;">Status — what will happen to this row</th></tr></thead>
     <tbody>${bccRows.map(r => {
       const name = (r.raw.campaignName || '').trim() || [r.raw.partner, r.raw.channel, r.raw.audience].filter(Boolean).join(' · ');
       const statusHtml = r.errors.length
-        ? `<span style="color:#B3261E;">${r.errors.length} error${r.errors.length === 1 ? '' : 's'}: ${escapeHtml(r.errors.join('; '))}</span>`
-        : (r.warnings.length ? `<span style="color:var(--media);">Ready — ${escapeHtml(r.warnings.join('; '))}</span>` : `<span style="color:var(--cx);">Ready</span>`);
+        ? `<div style="color:#B3261E;min-width:360px;"><strong>Won't upload — ${r.errors.length} problem${r.errors.length === 1 ? '' : 's'}:</strong><ul style="margin:4px 0 0;padding-left:18px;">${r.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul></div>`
+        : (r.warnings.length
+          ? `<div style="color:var(--media);min-width:360px;"><strong>Ready</strong> — assumptions:<ul style="margin:4px 0 0;padding-left:18px;">${r.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul></div>`
+          : `<span style="color:var(--cx);">Ready</span>`);
       return `<tr>
         <td class="num">${r.index + 1}</td>
         <td>${escapeHtml(name)}</td>
