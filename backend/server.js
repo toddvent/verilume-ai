@@ -27025,7 +27025,71 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       // together.
       const groups = new Map(); // key -> { channel, partner, hitDate, endDate, audience, entries: [{row, index}] }
       const ungroupedErrors = [];
+      // 2026-09-29 — round-trip: a row carrying the Verilume line id from a
+      // download UPDATES that line in place (every business + production
+      // field the row supplies; blanks leave the stored value alone); a
+      // row carrying only a Verilume campaign id (or campaign code) is
+      // ADDED to that campaign. Neither goes through grouping.
+      const results = [...ungroupedErrors];
+      const campaignIdsMatched = [];
+      let updatedRowCount = 0;
+      const touchedByIdCampaigns = new Set();
+      const accountCampaignById = new Map();
+      db.prepare('SELECT id, campaignCode FROM campaigns WHERE accountId = ?').all(accountId).forEach(c => {
+        accountCampaignById.set(String(c.id).toLowerCase(), c.id);
+        if (c.campaignCode) accountCampaignById.set(String(c.campaignCode).toLowerCase(), c.id);
+      });
+      const resolveCampaignRef = (v) => v ? (accountCampaignById.get(String(v).trim().toLowerCase()) || null) : null;
+      const now0 = new Date().toISOString();
+      const idRows = [];
       rows.forEach((row, index) => {
+        if (!row) return;
+        const lineId = row.verilumeLineId ? String(row.verilumeLineId).trim() : '';
+        const campaignRef = resolveCampaignRef(row.verilumeCampaignId) || resolveCampaignRef(row.campaignCode);
+        if (!lineId && !campaignRef) return;
+        idRows.push({ row, index, lineId, campaignRef });
+      });
+      const idRowIndexes = new Set(idRows.map(r => r.index));
+      idRows.forEach(({ row, index, lineId, campaignRef }) => {
+        try {
+          if (lineId){
+            const existingLine = db.prepare('SELECT cpd.*, c.accountId FROM channel_planning_details cpd JOIN campaigns c ON c.id = cpd.campaignId WHERE cpd.id = ?').get(lineId);
+            if (!existingLine || existingLine.accountId !== accountId) throw { error: `line id ${lineId} not found on this account` };
+            const val = (k, cur) => (row[k] === undefined || row[k] === null || row[k] === '') ? cur : row[k];
+            const num = (k, cur) => (row[k] === undefined || row[k] === null || row[k] === '') ? cur : (Number(row[k]) || 0);
+            let det = {}; try { det = existingLine.detailsJson ? JSON.parse(existingLine.detailsJson) : {}; } catch (e){ det = {}; }
+            Object.assign(det, bulkRowDetails(row));
+            db.prepare(`UPDATE channel_planning_details SET channel = ?, partner = ?, audience = ?, buyType = ?, mediaType = ?, impressions = ?, dropDate = ?, hitDate = ?, endDate = ?,
+                          productYear = ?, productGroup = ?, creativeMarket = ?, budget = ?, projectNumber = ?, detailsJson = ?, lastEditedByRole = ?, lastEditedByName = ?, updatedAt = ? WHERE id = ?`)
+              .run(val('channel', existingLine.channel), val('partner', existingLine.partner), val('audience', existingLine.audience), val('buyType', existingLine.buyType), val('mediaType', existingLine.mediaType),
+                   num('impressions', existingLine.impressions), val('dropDate', existingLine.dropDate), val('hitDate', existingLine.hitDate), val('endDate', existingLine.endDate),
+                   val('productYear', existingLine.productYear), val('productGroup', existingLine.productGroup), val('creativeMarket', existingLine.creativeMarket), num('budget', existingLine.budget),
+                   val('projectNumber', existingLine.projectNumber), JSON.stringify(det), actorRole, actorName, now0, lineId);
+            updatedRowCount++;
+            touchedByIdCampaigns.add(existingLine.campaignId);
+            results.push({ index, ok: true, entryId: lineId, campaignId: existingLine.campaignId, updated: true });
+          } else {
+            const entryId = generateId('CPD');
+            db.prepare(`INSERT INTO channel_planning_details
+              (id, campaignId, allocationId, channel, partner, audience, buyType, mediaType, impressions,
+               dropDate, hitDate, endDate, productYear, productGroup, creativeMarket, budget, detailsJson,
+               status, enteredByRole, enteredByName, lastEditedByRole, lastEditedByName, uploadBatchId, projectNumber, createdAt, updatedAt)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+            ).run(entryId, campaignRef, null, row.channel || '', row.partner || null, row.audience || null, row.buyType || null, row.mediaType || null,
+              Number(row.impressions) || null, row.dropDate || null, row.hitDate || null, row.endDate || null, row.productYear || null, row.productGroup || null, row.creativeMarket || null,
+              Number(row.budget) || null, JSON.stringify(bulkRowDetails(row)), 'draft', actorRole, actorName, actorRole, actorName, null, row.projectNumber ? String(row.projectNumber) : null, now0, now0);
+            touchedByIdCampaigns.add(campaignRef);
+            if (!campaignIdsMatched.includes(campaignRef)) campaignIdsMatched.push(campaignRef);
+            results.push({ index, ok: true, entryId, campaignId: campaignRef, attached: true });
+          }
+        } catch (e){
+          results.push({ index, ok: false, error: (e && e.error) || 'could not apply this row by id' });
+        }
+      });
+      touchedByIdCampaigns.forEach(id => syncCampaignProductCreativeGroupsFromChannelPlanning(id));
+
+      rows.forEach((row, index) => {
+        if (idRowIndexes.has(index)) return;
         if (!row || !row.channel){ ungroupedErrors.push({ index, ok: false, error: 'channel is required' }); return; }
         const key = groupKeyFor(row);
         if (!groups.has(key)){
@@ -27070,8 +27134,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       const batchId = generateId('CPUB');
       const now = new Date().toISOString();
       const campaignIdsCreated = [];
-      const campaignIdsMatched = [];
-      const results = [...ungroupedErrors];
+      ungroupedErrors.forEach(e => { if (!results.includes(e)) results.push(e); });
       let insertedRowCount = 0;
       let printSpecsAdded = 0, magazineCostsSeeded = 0, dmFormatCostsSeeded = 0, productionRows = 0;
       const keyGroups = [];
@@ -27183,10 +27246,47 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       ).run(batchId, accountId, body.fileName || '', body.dateRangeStart || null, body.dateRangeEnd || null, actorRole, actorName, insertedRowCount, JSON.stringify(campaignIdsCreated), JSON.stringify(campaignIdsMatched), now);
 
       return sendJson(res, 200, {
-        batchId, rowsInserted: insertedRowCount, rowsFailed: results.length - results.filter(r => r.ok).length,
+        batchId, rowsInserted: insertedRowCount, rowsUpdated: updatedRowCount, rowsFailed: results.length - results.filter(r => r.ok).length,
         results, campaignsCreated: campaignIdsCreated, campaignsMatched: campaignIdsMatched,
         keyGroups, printSpecsAdded, magazineCostsSeeded, dmFormatCostsSeeded, productionRows
       });
+    }
+
+    // GET /api/accounts/:accountId/channel-planning/lines — 2026-09-29,
+    // per Todd: "downloads that are used for editing and then reuploading
+    // the file with the campaign id that we create." Every line item on
+    // the account with its Verilume campaign id + code, the campaign
+    // label, every business field and every production field flattened
+    // out of detailsJson — the exact column set the create-campaigns
+    // upload reads back, so download → edit in Excel → upload round-trips
+    // (see the verilumeLineId / verilumeCampaignId handling in
+    // bulk-create-campaigns below).
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'channel-planning' && parts[4] === 'lines'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const rows = db.prepare(
+        `SELECT cpd.*, c.campaignCode, c.name AS campaignName, c.campaignType AS campaignClassification, c.startDate AS campaignStartDate, c.endDate AS campaignEndDate, c.creativeDisposition
+         FROM channel_planning_details cpd JOIN campaigns c ON c.id = cpd.campaignId
+         WHERE c.accountId = ? AND COALESCE(c.cancelled, 0) = 0
+         ORDER BY c.startDate ASC, cpd.channel ASC, cpd.hitDate ASC`
+      ).all(accountId);
+      const lines = rows.map(r => {
+        let d = {};
+        try { d = r.detailsJson ? JSON.parse(r.detailsJson) : {}; } catch (e){ d = {}; }
+        const out = {
+          verilumeCampaignId: r.campaignId, verilumeLineId: r.id, campaignCode: r.campaignCode || '',
+          campaignName: r.campaignName || '', campaignClassification: r.campaignClassification || '',
+          campaignStartDate: r.campaignStartDate || '', campaignEndDate: r.campaignEndDate || '',
+          creativeNeeded: r.creativeDisposition === 'needed' ? 'Yes' : (r.creativeDisposition === 'external' ? 'No' : ''),
+          channel: r.channel || '', partner: r.partner || '', audience: r.audience || '', buyType: r.buyType || '', mediaType: r.mediaType || '',
+          impressions: r.impressions == null ? '' : r.impressions, dropDate: r.dropDate || '', hitDate: r.hitDate || '', endDate: r.endDate || '',
+          productYear: r.productYear || '', productGroup: r.productGroup || '', creativeMarket: r.creativeMarket || '',
+          budget: r.budget == null ? '' : r.budget, projectNumber: r.projectNumber || '', region: r.region || '', stage: r.stage || '', status: r.status || ''
+        };
+        BULK_ROW_DETAIL_KEYS.forEach(k => { out[k] = d[k] === undefined || d[k] === null ? '' : d[k]; });
+        return out;
+      });
+      return sendJson(res, 200, { accountId, lines });
     }
 
     // GET /api/accounts/:accountId/channel-planning/bulk-batches — lists
