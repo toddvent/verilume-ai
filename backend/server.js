@@ -1661,6 +1661,127 @@ function normalizeLeadType(v){
   if (/reg|sign|subscri|growth/.test(s)) return 'Registration';
   return null;
 }
+// 2026-09-29 — Guest-level bookings (ATLAS_BK_DATE.xlsx shape), per direct
+// instruction: "Each row is a unique guest. The booking code is the unique
+// transaction code supporting double occupancy. We would keep revenue but
+// dedup the booking code when looking at unique transactions vs. total
+// customers. Booking types help to differentiate full fare guests from
+// discounted or free." One row per guest; the roll-up into
+// account_transactions_monthly counts DISTINCT booking codes per month ×
+// Product Group (a two-guest booking is one transaction), counts guests,
+// and sums gross/net revenue across guest rows (each row carries that
+// guest's fare). Booking Type is kept verbatim and also classified by
+// classifyBookingType() into Full fare / Discounted / Group-Charter /
+// Free-non-revenue, with marketingAttributable = not charter, not interline,
+// not free/non-revenue — the same exclusion the annual board case applies
+// ("marketing-attributed gross revenue, excl. charters, interline,
+// non-rev"). Booking Status is stored as-is and every status counts until
+// told otherwise (the summary shows the split so that call can be made on
+// real numbers). Age → generation; state/postal/country kept for the
+// trade-area and DMA work. Uploads replace whole (year, month) periods so
+// a re-export of the same months never double-counts.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_guest_bookings (
+    accountId TEXT NOT NULL,
+    bookingCode TEXT NOT NULL,
+    guestSeq INTEGER NOT NULL,
+    bookingDate TEXT,
+    year INTEGER NOT NULL,
+    month INTEGER NOT NULL,
+    bookingType TEXT,
+    bookingClass TEXT,
+    marketingAttributable INTEGER,
+    promoType TEXT,
+    bookingStatus TEXT,
+    sailDate TEXT,
+    age REAL,
+    generation TEXT,
+    guestState TEXT,
+    guestPostalCode TEXT,
+    guestCountry TEXT,
+    grossRevenue REAL,
+    netRevenue REAL,
+    productGroup TEXT,
+    creativeFocus TEXT,
+    uploadBatchId TEXT,
+    updatedAt TEXT NOT NULL,
+    PRIMARY KEY (accountId, bookingCode, guestSeq)
+  );
+`);
+// Extra roll-up columns on account_transactions_monthly, filled by
+// rollupGuestBookings() below (manual rows leave them null).
+ensureColumn('account_transactions_monthly', 'guests', 'REAL');
+ensureColumn('account_transactions_monthly', 'netRevenue', 'REAL');
+ensureColumn('account_transactions_monthly', 'attributableTransactions', 'REAL');
+ensureColumn('account_transactions_monthly', 'attributableRevenue', 'REAL');
+ensureColumn('account_transactions_monthly', 'fullFareTransactions', 'REAL');
+ensureColumn('account_transactions_monthly', 'freeTransactions', 'REAL');
+ensureColumn('account_transactions_monthly', 'source', 'TEXT');
+const BOOKING_CLASSES = ['Full fare', 'Discounted', 'Group / Charter', 'Free / non-revenue'];
+function classifyBookingType(bookingType){
+  const t = String(bookingType || '').trim().toLowerCase();
+  if (!t) return { bookingClass: null, marketingAttributable: null };
+  const isFree = /\bfree\b|\bcomp\b|staff|employee|\bfam\b|media|barter|charity|site inspection|maintenance|sweepstake|gift certificate|future cruise certificate/.test(t);
+  const isCharterOrInterline = /charter|interline/.test(t);
+  const isGroup = /\bgroups?\b|\bmcg\b|group c\/o|group distinctive/.test(t);
+  const isDiscount = /travel ?zoo|private sale|savings|discount|military|buy2|bring a friend|friends|travel partner|aycf|canadian resident|explore and save|seminar|2 sails|loyalty|onboard|bonus|early|upgrade|no hotel|no air/.test(t);
+  let bookingClass;
+  if (isFree) bookingClass = 'Free / non-revenue';
+  else if (isCharterOrInterline || isGroup) bookingClass = 'Group / Charter';
+  else if (isDiscount) bookingClass = 'Discounted';
+  else bookingClass = 'Full fare';
+  return { bookingClass, marketingAttributable: (isFree || isCharterOrInterline) ? 0 : 1 };
+}
+function generationForAge(age, asOfYear){
+  const a = Number(age);
+  if (!Number.isFinite(a) || a <= 0 || a > 110) return null;
+  const birth = (asOfYear || new Date().getFullYear()) - a;
+  if (birth >= 2025) return 'genbeta';
+  if (birth >= 2013) return 'genalpha';
+  if (birth >= 1997) return 'genz';
+  if (birth >= 1981) return 'millennial';
+  if (birth >= 1965) return 'genx';
+  if (birth >= 1946) return 'boomer';
+  if (birth >= 1928) return 'silent';
+  return 'greatest';
+}
+// Recompute account_transactions_monthly from guest rows for the given
+// (year, month) periods — or every period on file when none are given.
+function rollupGuestBookings(accountId, periods){
+  const where = periods && periods.length ? ` AND (${periods.map(() => '(year = ? AND month = ?)').join(' OR ')})` : '';
+  const params = periods && periods.length ? periods.flatMap(p => [p.year, p.month]) : [];
+  const rows = db.prepare(`SELECT year, month, "productGroup", "bookingCode", "bookingClass", "marketingAttributable", "grossRevenue", "netRevenue" FROM account_guest_bookings WHERE accountId = ?${where}`).all(accountId, ...params);
+  const agg = {};
+  rows.forEach(r => {
+    const pg = String(r.productGroup || '').trim();
+    const key = `${r.year}-${r.month}-${pg}`;
+    const a = agg[key] = agg[key] || { year: r.year, month: r.month, productGroup: pg, codes: new Set(), attrCodes: new Set(), fullCodes: new Set(), freeCodes: new Set(), guests: 0, gross: 0, net: 0, attrGross: 0 };
+    a.codes.add(r.bookingCode); a.guests += 1;
+    a.gross += Number(r.grossRevenue) || 0; a.net += Number(r.netRevenue) || 0;
+    if (r.marketingAttributable){ a.attrCodes.add(r.bookingCode); a.attrGross += Number(r.grossRevenue) || 0; }
+    if (r.bookingClass === 'Full fare') a.fullCodes.add(r.bookingCode);
+    if (r.bookingClass === 'Free / non-revenue') a.freeCodes.add(r.bookingCode);
+  });
+  const now = new Date().toISOString();
+  const touched = new Set();
+  const upsert = db.prepare(`INSERT INTO account_transactions_monthly (accountId, year, month, "productGroup", transactions, revenue, guests, "netRevenue", "attributableTransactions", "attributableRevenue", "fullFareTransactions", "freeTransactions", source, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'guest_bookings', ?)
+    ON CONFLICT(accountId, year, month, "productGroup") DO UPDATE SET transactions = excluded.transactions, revenue = excluded.revenue, guests = excluded.guests, "netRevenue" = excluded."netRevenue", "attributableTransactions" = excluded."attributableTransactions", "attributableRevenue" = excluded."attributableRevenue", "fullFareTransactions" = excluded."fullFareTransactions", "freeTransactions" = excluded."freeTransactions", source = 'guest_bookings', updatedAt = excluded.updatedAt`);
+  Object.values(agg).forEach(a => {
+    upsert.run(accountId, a.year, a.month, a.productGroup, a.codes.size, a.gross, a.guests, a.net, a.attrCodes.size, a.attrGross, a.fullCodes.size, a.freeCodes.size, now);
+    touched.add(`${a.year}-${a.month}`);
+  });
+  // A product group that no longer has guest rows in a replaced period
+  // (e.g. a re-export fixed a mislabeled destination) must not linger.
+  if (periods && periods.length){
+    periods.forEach(p => {
+      const keep = Object.values(agg).filter(a => a.year === p.year && a.month === p.month).map(a => a.productGroup);
+      const stale = db.prepare('SELECT "productGroup" FROM account_transactions_monthly WHERE accountId = ? AND year = ? AND month = ? AND source = ?').all(accountId, p.year, p.month, 'guest_bookings');
+      stale.forEach(srow => { if (!keep.includes(srow.productGroup)) db.prepare('DELETE FROM account_transactions_monthly WHERE accountId = ? AND year = ? AND month = ? AND "productGroup" = ?').run(accountId, p.year, p.month, srow.productGroup); });
+    });
+  }
+  return { periods: touched.size, rows: Object.keys(agg).length };
+}
 const ANNUAL_PLAN_KINDS = ['baseline', 'target'];
 const ANNUAL_PLAN_NUMERIC_FIELDS = ['workingMedia', 'impressions', 'websiteUsers', 'prospectLeads', 'growthLeads', 'valueLeads', 'directCalls', 'bookings', 'directBookings', 'grossRevenue'];
 // 2026-09-28 — Magazine equivalent, per direct instruction: magazine ad
@@ -6626,7 +6747,8 @@ repairFoldedColumns([
   ['account_demand_fulfillment', ['accountId', 'usShareOfTraffic', 'idResMatchRate', 'postcardDropsPerMatchedVisitor', 'idResPostcardCostPerPiece', 'idResEmailsPerVisitor', 'idResEmailCost', 'remarketingPoolRate', 'remarketingImpressionsPerMember', 'remarketingCpm', 'brandSearchClicksPerVisitor', 'brandSearchCpc', 'updatedAt']],
   ['account_website_engagement', ['accountId', 'channelGroup', 'engagedSessions', 'engagementRate', 'avgEngagementTimeMin', 'updatedAt']],
   ['account_lead_counts', ['accountId', 'leadType', 'formName', 'avgDaysToConvert', 'updatedAt']],
-  ['account_transactions_monthly', ['accountId', 'productGroup', 'updatedAt']]
+  ['account_transactions_monthly', ['accountId', 'productGroup', 'updatedAt', 'netRevenue', 'attributableTransactions', 'attributableRevenue', 'fullFareTransactions', 'freeTransactions']],
+  ['account_guest_bookings', ['accountId', 'bookingCode', 'guestSeq', 'bookingDate', 'bookingType', 'bookingClass', 'marketingAttributable', 'promoType', 'bookingStatus', 'sailDate', 'guestState', 'guestPostalCode', 'guestCountry', 'grossRevenue', 'netRevenue', 'productGroup', 'creativeFocus', 'uploadBatchId', 'updatedAt']]
 ]);
 const WEEKS_PER_MONTH = 52 / 12;
 function resolveChannelTiming(accountId){
@@ -13138,6 +13260,33 @@ const LEGACY_CASING_COLUMNS = [
   ['account_lead_counts', 'count'],
   ['account_lead_counts', 'bookings'],
   ['account_lead_counts', 'avgDaysToConvert'],
+  ['account_guest_bookings', 'accountId'],
+  ['account_guest_bookings', 'bookingCode'],
+  ['account_guest_bookings', 'guestSeq'],
+  ['account_guest_bookings', 'bookingDate'],
+  ['account_guest_bookings', 'bookingType'],
+  ['account_guest_bookings', 'bookingClass'],
+  ['account_guest_bookings', 'marketingAttributable'],
+  ['account_guest_bookings', 'promoType'],
+  ['account_guest_bookings', 'bookingStatus'],
+  ['account_guest_bookings', 'sailDate'],
+  ['account_guest_bookings', 'generation'],
+  ['account_guest_bookings', 'guestState'],
+  ['account_guest_bookings', 'guestPostalCode'],
+  ['account_guest_bookings', 'guestCountry'],
+  ['account_guest_bookings', 'grossRevenue'],
+  ['account_guest_bookings', 'netRevenue'],
+  ['account_guest_bookings', 'productGroup'],
+  ['account_guest_bookings', 'creativeFocus'],
+  ['account_guest_bookings', 'uploadBatchId'],
+  ['account_guest_bookings', 'updatedAt'],
+  ['account_transactions_monthly', 'guests'],
+  ['account_transactions_monthly', 'netRevenue'],
+  ['account_transactions_monthly', 'attributableTransactions'],
+  ['account_transactions_monthly', 'attributableRevenue'],
+  ['account_transactions_monthly', 'fullFareTransactions'],
+  ['account_transactions_monthly', 'freeTransactions'],
+  ['account_transactions_monthly', 'source'],
   ['account_transactions_monthly', 'accountId'],
   ['account_transactions_monthly', 'year'],
   ['account_transactions_monthly', 'month'],
@@ -32096,6 +32245,105 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       return sendJson(res, 200, { accountId, deleted: info.changes });
     }
 
+    // POST /api/accounts/:id/guest-bookings — chunked upload of guest-level
+    // booking rows (see account_guest_bookings). { batchId, rows: [{
+    // bookingCode, bookingDate (ISO or parseable), bookingType, promoType,
+    // bookingStatus, sailDate, age, guestState, guestPostalCode,
+    // guestCountry, grossRevenue, netRevenue, productGroup, creativeFocus }],
+    // replacePeriods?: [{year, month}], final?: true }. The FIRST chunk
+    // carries replacePeriods (every period in the whole file) — those
+    // periods' existing rows are deleted once, before any chunk is written;
+    // the LAST chunk sets final:true, which recomputes the monthly roll-up.
+    // guestSeq is assigned per booking code within this batch (a two-guest
+    // booking is rows 1 and 2), so the primary key never collides.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'guest-bookings'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const rowsIn = Array.isArray(body.rows) ? body.rows : [];
+      const batchId = String(body.batchId || '').trim() || `gb_${Date.now()}`;
+      const now = new Date().toISOString();
+      if (Array.isArray(body.replacePeriods) && body.replacePeriods.length){
+        const del = db.prepare('DELETE FROM account_guest_bookings WHERE accountId = ? AND year = ? AND month = ?');
+        body.replacePeriods.forEach(p => { const y = parseInt(p.year, 10), m = parseInt(p.month, 10); if (y >= 2000 && m >= 1 && m <= 12) del.run(accountId, y, m); });
+      }
+      // Continue guestSeq numbering across chunks of the same batch.
+      const seqRows = rowsIn.length ? db.prepare('SELECT "bookingCode", MAX("guestSeq") AS maxSeq FROM account_guest_bookings WHERE accountId = ? AND "uploadBatchId" = ? GROUP BY "bookingCode"').all(accountId, batchId) : [];
+      const seq = {}; seqRows.forEach(r => { seq[r.bookingCode] = Number(r.maxSeq) || 0; });
+      const ins = db.prepare(`INSERT INTO account_guest_bookings (accountId, "bookingCode", "guestSeq", "bookingDate", year, month, "bookingType", "bookingClass", "marketingAttributable", "promoType", "bookingStatus", "sailDate", age, generation, "guestState", "guestPostalCode", "guestCountry", "grossRevenue", "netRevenue", "productGroup", "creativeFocus", "uploadBatchId", updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(accountId, "bookingCode", "guestSeq") DO UPDATE SET "bookingDate" = excluded."bookingDate", year = excluded.year, month = excluded.month, "bookingType" = excluded."bookingType", "bookingClass" = excluded."bookingClass", "marketingAttributable" = excluded."marketingAttributable", "promoType" = excluded."promoType", "bookingStatus" = excluded."bookingStatus", "sailDate" = excluded."sailDate", age = excluded.age, generation = excluded.generation, "guestState" = excluded."guestState", "guestPostalCode" = excluded."guestPostalCode", "guestCountry" = excluded."guestCountry", "grossRevenue" = excluded."grossRevenue", "netRevenue" = excluded."netRevenue", "productGroup" = excluded."productGroup", "creativeFocus" = excluded."creativeFocus", "uploadBatchId" = excluded."uploadBatchId", updatedAt = excluded.updatedAt`);
+      let saved = 0, skipped = 0;
+      const numOrNull = v => { if (v === null || v === undefined || v === '') return null; const n = Number(String(v).replace(/[,$]/g, '')); return Number.isFinite(n) ? n : null; };
+      for (const r of rowsIn){
+        const code = String(r.bookingCode || '').trim();
+        const d = r.bookingDate ? new Date(r.bookingDate) : null;
+        if (!code || !d || isNaN(d)){ skipped++; continue; }
+        const year = d.getFullYear(), month = d.getMonth() + 1;
+        const cls = classifyBookingType(r.bookingType);
+        seq[code] = (seq[code] || 0) + 1;
+        const sail = r.sailDate ? new Date(r.sailDate) : null;
+        ins.run(accountId, code, seq[code], d.toISOString(), year, month, r.bookingType != null ? String(r.bookingType).trim() : null, cls.bookingClass, cls.marketingAttributable,
+          r.promoType != null ? String(r.promoType).trim() : null, r.bookingStatus != null ? String(r.bookingStatus).trim() : null, sail && !isNaN(sail) ? sail.toISOString() : null,
+          numOrNull(r.age), generationForAge(numOrNull(r.age), year), r.guestState != null ? String(r.guestState).trim() : null, r.guestPostalCode != null ? String(r.guestPostalCode).trim() : null, r.guestCountry != null ? String(r.guestCountry).trim() : null,
+          numOrNull(r.grossRevenue), numOrNull(r.netRevenue), r.productGroup != null ? String(r.productGroup).trim() : '', r.creativeFocus != null ? String(r.creativeFocus).trim() : null, batchId, now);
+        saved++;
+      }
+      let rollup = null;
+      if (body.final){
+        const periods = db.prepare('SELECT DISTINCT year, month FROM account_guest_bookings WHERE accountId = ? AND "uploadBatchId" = ?').all(accountId, batchId);
+        rollup = rollupGuestBookings(accountId, periods);
+      }
+      return sendJson(res, 200, { accountId, batchId, saved, skipped, rollup, updatedAt: now });
+    }
+    // GET /api/accounts/:id/guest-bookings/summary[?year=] — the read-out
+    // behind the Transactions card: unique bookings vs guests, by class,
+    // by status, by product group, by creative focus, by generation, top
+    // countries/states, and booking → sail lead time, so the "which
+    // statuses count" and "free bookings" calls can be made on numbers.
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'guest-bookings' && parts[4] === 'summary'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const reqUrl = new URL(req.url, 'http://localhost');
+      const yearParam = reqUrl.searchParams.get('year');
+      const year = yearParam ? parseInt(yearParam, 10) : null;
+      const rows = Number.isFinite(year)
+        ? db.prepare('SELECT * FROM account_guest_bookings WHERE accountId = ? AND year = ?').all(accountId, year)
+        : db.prepare('SELECT * FROM account_guest_bookings WHERE accountId = ?').all(accountId);
+      const bucket = (keyFn) => { const m = {}; rows.forEach(r => { const k = keyFn(r) == null || keyFn(r) === '' ? '(blank)' : String(keyFn(r)); const b = m[k] = m[k] || { key: k, guests: 0, codes: new Set(), gross: 0 }; b.guests++; b.codes.add(r.bookingCode); b.gross += Number(r.grossRevenue) || 0; }); return Object.values(m).map(b => ({ key: b.key, guests: b.guests, bookings: b.codes.size, grossRevenue: b.gross })).sort((a, b) => b.bookings - a.bookings); };
+      const codes = new Set(rows.map(r => r.bookingCode));
+      const attrRows = rows.filter(r => r.marketingAttributable);
+      let leadDays = [], leadSum = 0;
+      rows.forEach(r => { if (r.bookingDate && r.sailDate){ const d = (new Date(r.sailDate) - new Date(r.bookingDate)) / 86400000; if (Number.isFinite(d) && d >= 0 && d < 1500){ leadDays.push(d); leadSum += d; } } });
+      leadDays.sort((a, b) => a - b);
+      const years = {}; rows.forEach(r => { years[r.year] = (years[r.year] || 0) + 1; });
+      return sendJson(res, 200, {
+        accountId, guests: rows.length, bookings: codes.size,
+        grossRevenue: rows.reduce((t, r) => t + (Number(r.grossRevenue) || 0), 0), netRevenue: rows.reduce((t, r) => t + (Number(r.netRevenue) || 0), 0),
+        attributable: { guests: attrRows.length, bookings: new Set(attrRows.map(r => r.bookingCode)).size, grossRevenue: attrRows.reduce((t, r) => t + (Number(r.grossRevenue) || 0), 0) },
+        byClass: bucket(r => r.bookingClass), byStatus: bucket(r => r.bookingStatus), byProductGroup: bucket(r => r.productGroup), byCreativeFocus: bucket(r => r.creativeFocus),
+        byGeneration: bucket(r => r.generation), byCountry: bucket(r => r.guestCountry).slice(0, 12), byState: bucket(r => r.guestState).slice(0, 15), byPromoType: bucket(r => r.promoType),
+        byBookingType: bucket(r => r.bookingType).map(b => ({ ...b, bookingClass: classifyBookingType(b.key).bookingClass })),
+        leadTime: leadDays.length ? { guests: leadDays.length, meanDays: leadSum / leadDays.length, medianDays: leadDays[Math.floor(leadDays.length / 2)] } : null,
+        rowsByYear: years
+      });
+    }
+    // DELETE /api/accounts/:id/guest-bookings?year=&month= — remove a period's guest rows and its roll-up.
+    if (req.method === 'DELETE' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'guest-bookings'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const reqUrl = new URL(req.url, 'http://localhost');
+      const year = parseInt(reqUrl.searchParams.get('year'), 10), month = parseInt(reqUrl.searchParams.get('month'), 10);
+      if (!Number.isFinite(year)) return sendJson(res, 400, { error: 'year is required' });
+      const info = Number.isFinite(month)
+        ? db.prepare('DELETE FROM account_guest_bookings WHERE accountId = ? AND year = ? AND month = ?').run(accountId, year, month)
+        : db.prepare('DELETE FROM account_guest_bookings WHERE accountId = ? AND year = ?').run(accountId, year);
+      const rp = Number.isFinite(month)
+        ? db.prepare('DELETE FROM account_transactions_monthly WHERE accountId = ? AND year = ? AND month = ? AND source = ?').run(accountId, year, month, 'guest_bookings')
+        : db.prepare('DELETE FROM account_transactions_monthly WHERE accountId = ? AND year = ? AND source = ?').run(accountId, year, 'guest_bookings');
+      return sendJson(res, 200, { accountId, deleted: info.changes, rollupsDeleted: rp.changes });
+    }
+
     // GET /api/accounts/:id/transactions-monthly[?year=] — unique
     // transactions (+ revenue) by month by Product Group (see
     // account_transactions_monthly), plus per-(year, month) totals and a
@@ -32112,9 +32360,10 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const totals = {};
       all.forEach(r => {
         const key = `${r.year}-${r.month}`;
-        if (!totals[key]) totals[key] = { year: r.year, month: r.month, transactions: 0, revenue: 0, hasRevenue: false, productGroups: 0 };
+        if (!totals[key]) totals[key] = { year: r.year, month: r.month, transactions: 0, revenue: 0, hasRevenue: false, productGroups: 0, guests: 0, netRevenue: 0, attributableTransactions: 0, attributableRevenue: 0, fromGuestRows: false };
         totals[key].transactions += Number(r.transactions) || 0; totals[key].productGroups += 1;
         if (r.revenue != null){ totals[key].revenue += Number(r.revenue) || 0; totals[key].hasRevenue = true; }
+        if (r.source === 'guest_bookings'){ totals[key].fromGuestRows = true; totals[key].guests += Number(r.guests) || 0; totals[key].netRevenue += Number(r.netRevenue) || 0; totals[key].attributableTransactions += Number(r.attributableTransactions) || 0; totals[key].attributableRevenue += Number(r.attributableRevenue) || 0; }
       });
       const byYear = {};
       Object.values(totals).forEach(t => { (byYear[t.year] = byYear[t.year] || []).push(t); });
