@@ -23841,8 +23841,11 @@ Submit your response via the campaign_intake_turn tool.`;
       if (q.start){ sql += ' AND cpd.hitDate >= ?'; params.push(q.start); }
       if (q.end){ sql += ' AND cpd.hitDate <= ?'; params.push(q.end); }
       if (q.channel){ sql += ' AND cpd.channel = ?'; params.push(q.channel); }
-      if (q.productGroup){ sql += ' AND cpd.productGroup = ?'; params.push(q.productGroup); }
-      if (q.creativeMarket){ sql += ' AND cpd.creativeMarket = ?'; params.push(q.creativeMarket); }
+      // 2026-09-29 — a line may hold several comma-joined values; match
+      // the filter value as a whole item inside the list, not the whole cell.
+      const listMatch = (col, v) => { sql += ` AND (${col} = ? OR ${col} LIKE ? OR ${col} LIKE ? OR ${col} LIKE ?)`; params.push(v, `${v}, %`, `%, ${v}`, `%, ${v}, %`); };
+      if (q.productGroup) listMatch('cpd.productGroup', q.productGroup);
+      if (q.creativeMarket) listMatch('cpd.creativeMarket', q.creativeMarket);
       if (q.campaignId){ sql += ' AND cpd.campaignId = ?'; params.push(q.campaignId); }
       sql += ' ORDER BY cpd.hitDate ASC';
       const rows = db.prepare(sql).all(...params);
@@ -24962,9 +24965,12 @@ Submit your response via the campaign_intake_turn tool.`;
       // line-item-level picture once one exists; it never erases a
       // campaign-level value that has no line items to check it against.
       if (!rows.length) return;
+      // 2026-09-29 — a line item may itself carry several values joined
+      // with ", " (multi-value cells from the media-plan upload), so each
+      // is split before the distinct set is built.
       const distinctNonEmpty = (col) => {
         const seen = new Set();
-        rows.forEach(r => { const v = (r[col] || '').trim(); if (v) seen.add(v); });
+        rows.forEach(r => { String(r[col] || '').split(',').map(v => v.trim()).filter(Boolean).forEach(v => seen.add(v)); });
         return [...seen];
       };
       // 2026-09-21 fix, per direct bug report: Campaign Creation's real
