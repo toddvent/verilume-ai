@@ -23137,11 +23137,19 @@ async function handleRequest(req, res) {
     // both call. Body: { question, surface, tab, campaignId?, campaignRef?,
     // history? }. Returns { answer, cards, proposal, followUps }.
     if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice' && parts[4] === 'ask'){
-      const accountId = decodeURIComponent(parts[2]);
-      if (!requireAccountOrVoiceToken(req, res, accountId)) return;
-      const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
-      if (!account) return sendJson(res, 404, { error: 'account not found' });
       const body = await readBody(req);
+      // The ElevenLabs tool editor may refuse a dynamic variable inside the
+      // URL; a "-" path segment means "read the account from the body's
+      // accountId" (a dynamic-variable body parameter). The voice token is
+      // still checked against that account, so nothing widens.
+      let accountId = decodeURIComponent(parts[2]);
+      const rawSeg = accountId;
+      if (accountId === '-' || accountId === '_') accountId = String((body && body.accountId) || (body && body.account_id) || '');
+      console.log('[voice/ask] in: seg=' + rawSeg + ' resolvedAccount=' + (accountId || '(empty)') + ' hasToken=' + !!req.headers['x-voice-token'] + ' bodyKeys=' + Object.keys(body || {}).join(','));
+      if (!accountId) return sendJson(res, 400, { error: 'accountId is required (path or body)' });
+      if (!requireAccountOrVoiceToken(req, res, accountId)){ console.warn('[voice/ask] rejected 401 for account ' + accountId); return; }
+      const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account){ console.warn('[voice/ask] 404 no account row for ' + accountId); return sendJson(res, 404, { error: 'account not found' }); }
       const viaVoice = !!req.headers['x-voice-token'];
       const result = await voiceAsk(accountId, body || {}, viaVoice ? 'elevenlabs_agent' : (() => { const sess = authenticate(req); return (sess && sess.memberId) || 'portal'; })());
       if (result.error) return sendJson(res, 400, result);
