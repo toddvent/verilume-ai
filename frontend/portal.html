@@ -123,6 +123,13 @@
      ask-expand) is widened to match so the whole shell's edges still
      line up — see the header/nav/ask-bar alignment comment further down. */
   .wrap{max-width:1440px;margin:0 auto;padding:0 32px;}
+  /* 2026-09-29, per direct instruction ("We have plenty of white space to
+     use to expand the total area used. Go full width"): the bulk-upload
+     preview and the Production Schedule editor are wide tables — on those
+     two steps the page uses the whole viewport instead of the 1440px
+     column every other step keeps. */
+  main.wrap:has(#step-bulkUpload.active), main.wrap:has(#step-marketingOpsQueue.active){max-width:none;}
+  #step-bulkUpload .table-scroll table{width:100%;}
   a{color:inherit;}
 
   .back-nav{display:flex;justify-content:flex-start;align-items:center;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;letter-spacing:0.04em;padding:20px 28px;border-bottom:1px solid var(--line);max-width:1440px;margin:0 auto;position:relative;}
@@ -12389,7 +12396,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-29-upload-preview-status-column';
+const CXMEDIA_BUILD_STAMP = '2026-09-29-upload-preview-full-width';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -17135,9 +17142,9 @@ function renderBulkUploadPreview(){
   table.innerHTML = `<thead><tr><th>#</th><th>Campaign ID</th><th>Channel</th><th>Product Group</th><th>Creative Market</th><th>Budget</th><th>Impressions</th><th>Status</th></tr></thead>
     <tbody>${bulkUploadRows.map(r => {
       const statusHtml = r.errors.length
-        ? `<div style="color:#B3261E;min-width:360px;"><strong>Won't upload — ${r.errors.length} problem${r.errors.length === 1 ? '' : 's'}:</strong><ul style="margin:4px 0 0;padding-left:18px;">${r.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul></div>`
+        ? `<div style="color:#B3261E;min-width:480px;"><strong>Won't upload — ${r.errors.length} problem${r.errors.length === 1 ? '' : 's'}:</strong><ul style="margin:4px 0 0;padding-left:18px;">${r.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul></div>`
         : (r.warnings.length
-          ? `<div style="color:var(--media);min-width:360px;"><strong>Ready</strong> — assumptions:<ul style="margin:4px 0 0;padding-left:18px;">${r.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul></div>`
+          ? `<div style="color:var(--media);min-width:480px;"><strong>Ready</strong> — assumptions:<ul style="margin:4px 0 0;padding-left:18px;">${r.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul></div>`
           : `<span style="color:var(--cx);">Ready</span>`);
       return `<tr>
         <td class="num">${r.index + 1}</td>
@@ -17689,13 +17696,13 @@ function renderBulkCreateCampaignsPreview(){
     `${bccRows.length} row${bccRows.length === 1 ? '' : 's'} parsed — ${validCount} ready to upload (${groupKeys.size} campaign${groupKeys.size === 1 ? '' : 's'} by Channel + Partner + Hit Date + End Date + Audience), ${errorCount} with errors. The Status column explains each row: red = a problem that blocks that row; "Ready" = it uploads, with any assumptions noted. Which rows landed on a new vs. an existing campaign shows after upload.`;
 
   const table = document.getElementById('bccPreviewTable');
-  table.innerHTML = `<thead><tr><th>#</th><th>Campaign</th><th>Channel</th><th>Partner</th><th>Hit date</th><th>Product Group</th><th>Creative Market</th><th>Size</th><th>Budget</th><th style="min-width:360px;">Status — what will happen to this row</th></tr></thead>
+  table.innerHTML = `<thead><tr><th>#</th><th>Campaign</th><th>Channel</th><th>Partner</th><th>Hit date</th><th>Product Group</th><th>Creative Market</th><th>Size</th><th>Budget</th><th style="min-width:480px;">Status — what will happen to this row</th></tr></thead>
     <tbody>${bccRows.map(r => {
       const name = (r.raw.campaignName || '').trim() || [r.raw.partner, r.raw.channel, r.raw.audience].filter(Boolean).join(' · ');
       const statusHtml = r.errors.length
-        ? `<div style="color:#B3261E;min-width:360px;"><strong>Won't upload — ${r.errors.length} problem${r.errors.length === 1 ? '' : 's'}:</strong><ul style="margin:4px 0 0;padding-left:18px;">${r.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul></div>`
+        ? `<div style="color:#B3261E;min-width:480px;"><strong>Won't upload — ${r.errors.length} problem${r.errors.length === 1 ? '' : 's'}:</strong><ul style="margin:4px 0 0;padding-left:18px;">${r.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul></div>`
         : (r.warnings.length
-          ? `<div style="color:var(--media);min-width:360px;"><strong>Ready</strong> — assumptions:<ul style="margin:4px 0 0;padding-left:18px;">${r.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul></div>`
+          ? `<div style="color:var(--media);min-width:480px;"><strong>Ready</strong> — assumptions:<ul style="margin:4px 0 0;padding-left:18px;">${r.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul></div>`
           : `<span style="color:var(--cx);">Ready</span>`);
       return `<tr>
         <td class="num">${r.index + 1}</td>
