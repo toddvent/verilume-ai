@@ -4976,7 +4976,7 @@
           <div class="field-divider">Get the template</div>
           <div class="field">
             <label>Download the CSV template</label>
-            <div class="hint" style="margin-bottom:8px;">One header row, one example row. Rows are grouped/matched by <code>channel</code> + <code>partner</code> + <code>hitDate</code> + <code>endDate</code> + <code>audience</code> — <code>campaignName</code> is a display label only, not part of the match. Your own column names are fine too (Marketing Group, Partner, Budget, Drop/Hit/End Date, Size, Specs, 1st Proof Due, Creative Due, QR Code Link, Phone, Notes, Project Number…) — they're matched on upload, and dollar signs, thousands separators and m/d/yyyy dates are read as-is. On Magazines and Newspapers rows, Partner + Size registers the ad format in your print-spec catalog and seeds its cost per insertion from Budget where none is saved yet. Production columns (List Request, List Due, Release Files, In Home, Format, Total/Mail Qty, Paper &amp; Manufacturing, Postage/Freight, Insertion, Cost, Unit Cost, Vendor…) are captured on each line item and editable afterwards under Marketing Ops → Production Schedule &amp; Details.</div>
+            <div class="hint" style="margin-bottom:8px;">One header row, one example row. Rows are grouped/matched by <code>channel</code> + <code>partner</code> + <code>hitDate</code> + <code>endDate</code> + <code>audience</code> — <code>campaignName</code> is a display label only, not part of the match. A row can carry several Product Groups or Creative Focus Groups — separate them with commas (<code>Polar, Epicurean</code>). Your own column names are fine too (Marketing Group, Partner, Budget, Drop/Hit/End Date, Size, Specs, 1st Proof Due, Creative Due, QR Code Link, Phone, Notes, Project Number…) — they're matched on upload, and dollar signs, thousands separators and m/d/yyyy dates are read as-is. On Magazines and Newspapers rows, Partner + Size registers the ad format in your print-spec catalog and seeds its cost per insertion from Budget where none is saved yet. Production columns (List Request, List Due, Release Files, In Home, Format, Total/Mail Qty, Paper &amp; Manufacturing, Postage/Freight, Insertion, Cost, Unit Cost, Vendor…) are captured on each line item and editable afterwards under Marketing Ops → Production Schedule &amp; Details.</div>
             <button type="button" class="btn-ghost" onclick="downloadBulkCreateCampaignsTemplate()">Download CSV template →</button>
           </div>
 
@@ -12401,7 +12401,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-29-creative-gate-plan-partners-add-to-list';
+const CXMEDIA_BUILD_STAMP = '2026-09-29-upload-multi-product-groups';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -17638,6 +17638,16 @@ async function bccAddTaxonomyValue(taxKey, value){
     renderBulkCreateCampaignsPreview();
   } catch (e){ alert('Backend unreachable — not added.'); }
 }
+function bccSplitMultiValue(value, allowed){
+  const base = String(value || '').split(/\s*[,;|]\s*/).map(x => x.trim()).filter(Boolean);
+  const out = [];
+  base.forEach(piece => {
+    const sub = piece.split(/\s*[\/+&]\s*/).map(x => x.trim()).filter(Boolean);
+    if (sub.length > 1 && sub.every(x => ciFindMatch(allowed, x))) sub.forEach(x => out.push(x));
+    else out.push(piece);
+  });
+  return out;
+}
 function validateBccRow(raw){
   const errors = [], warnings = [];
   // 2026-09-29 — normalize the client's own formats before validating:
@@ -17691,12 +17701,25 @@ function validateBccRow(raw){
     if (!v) return;
     const allowed = cmpTaxonomyValues(taxKey);
     if (!allowed) { warnings.push(`${field} "${v}" — no ${taxKey} taxonomy configured for this account yet, accepted as free text`); return; }
-    const canonical = ciFindMatch(allowed, v);
-    if (!canonical){
-      errors.push(`${field} "${v}" isn't in this account's ${BCC_TAXONOMY_LABELS[taxKey] || taxKey} list yet (${allowed.join(', ')})`);
-      missing.push({ field, taxKey, value: v });
-    }
-    else raw[field] = canonical;
+    // 2026-09-29, per direct report ("We allow clients to select multiple
+    // product groups and creative focal options... I tried to separate
+    // with commas but failed"): Product Group and Creative Focus Group
+    // cells may carry several values, split on commas / semicolons /
+    // pipes (and on "/" or "+" only when every piece is a known value, so
+    // a single name that happens to contain a slash isn't torn apart).
+    // Each piece is canonicalized; the line item stores them joined with
+    // ", " — the same shape the campaign-level rollup already uses.
+    const multi = field === 'productGroup' || field === 'creativeMarket';
+    let parts = multi ? bccSplitMultiValue(v, allowed) : [v];
+    const canonicals = [];
+    parts.forEach(part => {
+      const canonical = ciFindMatch(allowed, part);
+      if (!canonical){
+        errors.push(`${field} "${part}" isn't in this account's ${BCC_TAXONOMY_LABELS[taxKey] || taxKey} list yet (${allowed.join(', ')})`);
+        missing.push({ field, taxKey, value: part });
+      } else if (!canonicals.includes(canonical)) canonicals.push(canonical);
+    });
+    if (canonicals.length === parts.length) raw[field] = canonicals.join(', ');
   });
   raw._missing = missing;
 
