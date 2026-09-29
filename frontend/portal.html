@@ -11973,6 +11973,38 @@
       </div>
     </div>
 
+    <!-- 2026-09-29 — Digital performance (agency exports), per Todd with
+         the 2025/2026 WMX Search / Social / Display workbooks. Every sheet
+         of a workbook is read at once; each sheet's grain and channel are
+         detected from its headers (Channel / Publisher / Tactic /
+         Search_Keyword_Type / Region / Creative Offer), month names become
+         months, and every lead-form column travels with the row so the
+         lead-type mapping below can change without a re-upload. Feeds:
+         Campaign Summary actuals + MMM inputs (monthly channel totals),
+         Demand Fulfillment (measured brand-search CPC / clicks per visitor,
+         remarketing CPM), and the campaign allocation by creative market. -->
+    <div class="sk-card" id="mbuDigitalCard" style="margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Manual bridge — until ad-platform integrations</div><h3>Digital performance (agency exports: search, social, display)</h3></div>
+        <div class="hicon">📈</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">Upload the agency workbook as-is — overview sheets (channel × month) and detail sheets (publisher, tactic, brand vs. non-brand, region, creative offer) are all read. Retargeting rows become <strong>Remarketing</strong> and brand keyword rows become <strong>Brand Search</strong> (the evergreen programs); everything else is Programmatic Display, Non-Brand Search or Paid Social. Re-uploading a month replaces it.</p>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;">
+          <label class="btn-ghost" style="cursor:pointer;margin:0;">Upload agency workbook (.xlsx / .csv)<input type="file" accept=".csv,.xlsx" style="display:none;" onchange="dpHandleWorkbookFile(event)"></label>
+          <label for="dpYear" style="margin:0;">Show</label>
+          <select id="dpYear" class="tbl-select" onchange="dpLoad()"><option value="">All years</option></select>
+          <span class="hint" id="dpStatus" style="margin:0;"></span>
+        </div>
+        <div id="dpPreview"></div>
+        <div id="dpTotals"></div>
+        <div class="field-divider" style="margin-top:14px;">Lead forms → lead types</div>
+        <p class="hint" style="margin:0 0 8px;">Each lead-form column in the exports maps to one of your three lead types. Suggested mappings are marked; confirm or change them and the monthly totals recompute.</p>
+        <div id="dpLeadForms"></div>
+        <div id="dpCalibration" style="margin-top:12px;"></div>
+      </div>
+    </div>
+
     <div class="sk-card" id="mbuHistoryCard" style="margin-top:18px;">
       <div class="sk-card-head ink">
         <div class="htext"><div class="kicker">Audit trail</div><h3>Upload history</h3></div>
@@ -12405,7 +12437,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-29-confirm-every-delete';
+const CXMEDIA_BUILD_STAMP = '2026-09-29-digital-performance-upload-allocation';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -43716,6 +43748,40 @@ function cmpShareOfTargetNote(value, target, field, fmt){
   return `<div class="cmp-summary-note" style="color:var(--cx);">${pct < 0.05 ? '<0.1' : pct.toFixed(1)}% of ${target.year} annual target (${fmt(target[field])})</div>`;
 }
 let cmpAnalysisSummaryToken = 0;
+// 2026-09-29 — Digital performance (agency actuals) allocated to this
+// campaign: detail rows (region / ad name / creative offer) that name one
+// of the campaign's Creative Focus Groups or Product Groups, in its
+// in-market months; what didn't name one; and the evergreen programs
+// (brand search, remarketing) shown separately, never allocated. See
+// allocateDigitalToCampaign() on the backend.
+async function cmpRenderDigitalAllocation(campaign, el, token){
+  if (dataSourceLabel !== 'backend' || !campaign || !campaign.id || campaign.localOnly) return;
+  let data = null;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/digital-allocation`);
+    if (!resp.ok) return;
+    data = await resp.json();
+  } catch (e){ return; }
+  if (token !== cmpAnalysisSummaryToken || !data) return;
+  const has = a => Array.isArray(a) && a.length;
+  if (!has(data.allocated) && !has(data.unallocated) && !has(data.evergreen)) return;
+  const fmtInt = v => Math.round(v || 0).toLocaleString();
+  const typeText = b => ['High Value', 'Registration', 'Prospect'].filter(k => b && b[k]).map(k => `${fmtInt(b[k])} ${k === 'Registration' ? 'Growth' : k}`).join(' · ') || '—';
+  const row = (label, a, kind) => `<tr><td>${escapeHtml(label)}${a.labels && a.labels.length ? `<div class="hint" style="margin:2px 0 0;font-size:0.7rem;">${kind === 'alloc' ? 'matched on' : 'labels'}: ${escapeHtml(a.labels.slice(0, 6).join(', '))}${a.labels.length > 6 ? '…' : ''}</div>` : ''}</td><td class="num">${fmtMoney(a.spend)}</td><td class="num">${fmtInt(a.impressions)}</td><td class="num">${fmtInt(a.clicks)}</td><td class="num">${fmtInt(a.leads)}</td><td style="font-size:0.75rem;">${typeText(a.byType)}</td><td class="num">${a.leads > 0 ? fmtMoney(a.spend / a.leads) : '—'}</td></tr>`;
+  const sum = arr => arr.reduce((o, a) => ({ spend: o.spend + a.spend, impressions: o.impressions + a.impressions, clicks: o.clicks + a.clicks, leads: o.leads + a.leads }), { spend: 0, impressions: 0, clicks: 0, leads: 0 });
+  const allocTotal = sum(data.allocated || []);
+  const months = (data.months || []).map(m => `${MBU_MONTH_NAMES_1[m.month]} ${m.year}`);
+  el.insertAdjacentHTML('beforeend', `
+    <h3 style="margin:18px 0 6px;font-size:0.9375rem;">Digital performance tied to this campaign <span class="hint" style="font-weight:400;">(agency actuals · ${escapeHtml(months.length > 2 ? months[0] + ' – ' + months[months.length - 1] : months.join(', '))})</span></h3>
+    ${data.note ? `<p class="hint" style="margin:0 0 6px;">${escapeHtml(data.note)}</p>` : ''}
+    <div class="table-scroll"><table class="data-table cmp-summary-table"><thead><tr><th style="width:30%;">Source</th><th>Spend</th><th>Impressions</th><th>Clicks</th><th>Leads</th><th>Lead types</th><th>CPL</th></tr></thead><tbody>
+      ${(data.allocated || []).map(a => row(`${a.channel} — allocated`, a, 'alloc')).join('')}
+      ${has(data.allocated) ? `<tr style="font-weight:600;"><td>Allocated to this campaign</td><td class="num">${fmtMoney(allocTotal.spend)}</td><td class="num">${fmtInt(allocTotal.impressions)}</td><td class="num">${fmtInt(allocTotal.clicks)}</td><td class="num">${fmtInt(allocTotal.leads)}</td><td></td><td class="num">${allocTotal.leads > 0 ? fmtMoney(allocTotal.spend / allocTotal.leads) : '—'}</td></tr>` : ''}
+      ${(data.unallocated || []).map(a => row(`${a.channel} — in these months, not tied to a creative market`, a, 'un')).join('')}
+      ${(data.evergreen || []).map(a => row(`${a.channel} — evergreen program (account-level, not allocated)`, a, 'ev')).join('')}
+    </tbody></table></div>
+    <p class="hint" style="margin:6px 0 0;">Digital campaigns are creative allocations against the overall media plan: a row is tied here when its region, ad name or creative offer names one of this campaign\u2019s Creative Focus Groups or Product Groups. Anything else stays account-level until it\u2019s named.</p>`);
+}
 async function cmpRenderAnalysisSummary(campaign){
   const el = document.getElementById('cmpAnalysisSummary');
   const lede = document.getElementById('cmpAnalysisSummaryLede');
@@ -43814,6 +43880,7 @@ async function cmpRenderAnalysisSummary(campaign){
     <div class="table-scroll"><table class="data-table cmp-summary-table" style="margin-bottom:4px;">${head}<tbody>${detailRows}</tbody></table></div>`;
   const timingNote = cmpCampaignTimingNote(campaign, ctx);
   if (timingNote) el.insertAdjacentHTML('beforeend', `<p class="hint" style="margin:10px 0 0;">${timingNote}</p>`);
+  cmpRenderDigitalAllocation(campaign, el, token);
   if (lede){
     const annualNote = t
       ? `Shares are against the ${t.year} annual target${t.label ? ` (${escapeHtml(t.label)})` : ''}.`
@@ -67631,6 +67698,7 @@ function mbuLoadReachInputs(){
   mbuLoadEngagement();
   mbuLoadLeadCounts();
   mbuLoadTransactions();
+  dpLoad();
 }
 async function mbuLoadWebsiteUsersMonthly(){
   const body = document.getElementById('mbuWebsiteUsersBody');
@@ -68494,6 +68562,212 @@ async function mbuConfirmLeadUpload(){
 // ---------- Unique transactions by month, by Product Group ----------
 let mbuTxnRows = [];
 let mbuTxnYearTotals = [];
+// ============ Digital performance (agency exports) — 2026-09-29 ============
+// See the #mbuDigitalCard comment in the HTML for the "why".
+const DP_MONTHS = { january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12, jan: 1, feb: 2, mar: 3, apr: 4, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12 };
+// Dimension / metric headers the detector understands (normalized: lower
+// case, non-alphanumerics → space). Anything else numeric is a lead-form
+// column and rides along in leadsByForm.
+const DP_HEADERS = {
+  year: ['year', 'yr', 'so'],
+  month: ['monthname', 'month name', 'month'],
+  sourceChannel: ['channel', 'media channel'],
+  publisher: ['publisher', 'pub rename', 'pub', 'platform', 'network', 'engine'],
+  tactic: ['tactic', 'campaign type', 'funnel'],
+  keywordType: ['search keyword type', 'keyword type', 'brand non brand', 'brand type'],
+  region: ['region', 'market', 'destination', 'creative market', 'geo'],
+  creativeOffer: ['creative offer', 'offer', 'ad name', 'creative', 'creative name', 'ad'],
+  impressions: ['impressions', 'imps'],
+  clicks: ['clicks', 'link clicks'],
+  spend: ['ad spend', 'spend', 'cost', 'media cost', 'amount spent'],
+  leads: ['total leads', 'leads', 'conversions'],
+  calls: ['calls', 'invoca calls', 'phone calls', 'call'],
+  cpl: ['cpl', 'cost per lead'],
+  ctr: ['ctr'], cpc: ['cpc'], cpm: ['cpm']
+};
+function dpNormHeader(h){ return String(h || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+function dpDetectSheet(name, grid){
+  const rows = (grid || []).filter(r => Array.isArray(r) && r.some(c => String(c || '').trim() !== ''));
+  if (rows.length < 2) return null;
+  const headers = rows[0].map(dpNormHeader);
+  const col = {};
+  const claimed = new Set();
+  Object.entries(DP_HEADERS).forEach(([key, aliases]) => {
+    const idx = headers.findIndex((h, i) => !claimed.has(i) && aliases.includes(h));
+    if (idx >= 0){ col[key] = idx; claimed.add(idx); }
+  });
+  if (col.month === undefined) return null;
+  // Lead-form columns: every remaining header with at least one numeric cell.
+  const formCols = [];
+  // Export headers differ only by case between sheets ("Request info" vs
+  // "Request Info"); normalize so one lead form is one key everywhere.
+  const smallWords = new Set(['to', 'of', 'a', 'an', 'the', 'for', 'and', 'or', 'in']);
+  const tidyForm = raw => String(raw).trim().split(/\s+/).map((w, i) => (w === w.toUpperCase() && w.length <= 3) ? w : ((i > 0 && smallWords.has(w.toLowerCase())) ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())).join(' ');
+  headers.forEach((h, i) => {
+    if (claimed.has(i) || !h) return;
+    const numeric = rows.slice(1).some(r => r[i] !== undefined && r[i] !== '' && !isNaN(Number(String(r[i]).replace(/[$,%\s]/g, ''))));
+    if (numeric) formCols.push({ idx: i, key: tidyForm(rows[0][i]) });
+  });
+  const hasDim = k => col[k] !== undefined && rows.slice(1).some(r => String(r[col[k]] || '').trim() !== '');
+  let grain = 'overview';
+  if (hasDim('keywordType')) grain = 'split';
+  else if (hasDim('tactic') || hasDim('region') || hasDim('creativeOffer') || (hasDim('publisher') && !hasDim('sourceChannel'))) grain = 'detail';
+  // A search overview keyed by publisher (Google / Bing) with no keyword
+  // type is still channel-level for our purposes.
+  if (grain === 'detail' && hasDim('publisher') && hasDim('sourceChannel') && !hasDim('tactic') && !hasDim('region') && !hasDim('creativeOffer')) grain = 'overview';
+  const num = v => { const t = String(v == null ? '' : v).replace(/[$,%\s]/g, ''); if (t === '' ) return null; const n = Number(t); return Number.isFinite(n) ? n : null; };
+  const nameHint = dpNormHeader(name);
+  const inferredChannel = /display/.test(nameHint) ? 'Display' : (/search|serch|sem|ppc/.test(nameHint) ? 'SEM' : (/social|meta|facebook/.test(nameHint) ? 'Social' : ''));
+  // A detail sheet with no Channel column: the publisher says which family.
+  const channelFromPublisher = (pub) => { const p = String(pub || '').toLowerCase(); if (/google|bing|microsoft|yahoo|duckduckgo/.test(p)) return 'SEM'; if (/facebook|instagram|meta|tiktok|linkedin|pinterest|snap|reddit/.test(p)) return 'Social'; if (/display|dsp|trade desk|dv360|programmatic|youtube|ctv|olv/.test(p)) return 'Display'; return ''; };
+  const out = [];
+  let yearFallback = null;
+  rows.slice(1).forEach(r => {
+    const monthRaw = String(r[col.month] || '').trim().toLowerCase();
+    const month = DP_MONTHS[monthRaw] || (/^\d{1,2}$/.test(monthRaw) ? Number(monthRaw) : null);
+    let year = col.year !== undefined ? parseInt(String(r[col.year] || '').trim(), 10) : NaN;
+    if (!Number.isFinite(year) && yearFallback) year = yearFallback;
+    if (Number.isFinite(year)) yearFallback = year;
+    if (!month || !Number.isFinite(year)) return;
+    const sourceChannel = col.sourceChannel !== undefined ? String(r[col.sourceChannel] || '').trim() : '';
+    const leadsByForm = {};
+    formCols.forEach(f => { const n = num(r[f.idx]); if (n != null && n !== 0) leadsByForm[f.key] = n; });
+    const rec = {
+      year, month, grain, sourceChannel: sourceChannel || inferredChannel || channelFromPublisher(col.publisher !== undefined ? r[col.publisher] : ''), sourceSheet: name,
+      publisher: col.publisher !== undefined ? String(r[col.publisher] || '').trim() : '',
+      tactic: col.tactic !== undefined ? String(r[col.tactic] || '').trim() : '',
+      keywordType: col.keywordType !== undefined ? String(r[col.keywordType] || '').trim() : '',
+      region: col.region !== undefined ? String(r[col.region] || '').trim() : '',
+      creativeOffer: col.creativeOffer !== undefined ? String(r[col.creativeOffer] || '').trim() : '',
+      impressions: col.impressions !== undefined ? num(r[col.impressions]) : null,
+      clicks: col.clicks !== undefined ? num(r[col.clicks]) : null,
+      spend: col.spend !== undefined ? num(r[col.spend]) : null,
+      leads: col.leads !== undefined ? num(r[col.leads]) : null,
+      calls: col.calls !== undefined ? num(r[col.calls]) : null,
+      leadsByForm
+    };
+    if (rec.impressions == null && rec.clicks == null && rec.spend == null && rec.leads == null && !Object.keys(leadsByForm).length) return;
+    out.push(rec);
+  });
+  return { name, grain, rows: out, formKeys: formCols.map(f => f.key), inferredChannel };
+}
+async function dpReadWorkbook(file){
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  if (ext === 'csv'){
+    const { headers, rows } = cfiParseCsvText(await file.text());
+    return [{ name: file.name.replace(/\.csv$/i, ''), grid: [headers, ...rows] }];
+  }
+  const XLSX = await cfiLoadSheetJs();
+  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+  return wb.SheetNames.map(n => ({ name: n, grid: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false, defval: '' }).map(r => r.map(c => (c == null ? '' : String(c)))) }));
+}
+let dpPendingSheets = [];
+async function dpHandleWorkbookFile(event){
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const status = document.getElementById('dpStatus'), preview = document.getElementById('dpPreview');
+  if (status) status.textContent = `Reading ${file.name}…`;
+  try {
+    const sheets = await dpReadWorkbook(file);
+    dpPendingSheets = sheets.map(sh => dpDetectSheet(sh.name, sh.grid)).filter(Boolean).filter(d => d.rows.length);
+    event.target.value = '';
+    if (!dpPendingSheets.length){ if (status) status.textContent = 'No sheet with a Year / MonthName layout was found in that file.'; return; }
+    const totalRows = dpPendingSheets.reduce((a, d) => a + d.rows.length, 0);
+    if (status) status.textContent = `${dpPendingSheets.length} sheet${dpPendingSheets.length === 1 ? '' : 's'} recognized, ${totalRows} monthly row${totalRows === 1 ? '' : 's'} — review and upload.`;
+    const money = n => n == null ? '—' : fmtMoney(n);
+    preview.innerHTML = `<div class="table-scroll" style="margin:0 0 10px;"><table class="active-camp-table"><thead><tr><th>Sheet</th><th>Read as</th><th>Rows</th><th>Months</th><th>Spend</th><th>Impressions</th><th>Leads</th><th>Lead-form columns</th></tr></thead><tbody>
+      ${dpPendingSheets.map(d => {
+        const months = [...new Set(d.rows.map(r => `${r.year}-${String(r.month).padStart(2, '0')}`))].sort();
+        const sum = k => d.rows.reduce((a, r) => a + (Number(r[k]) || 0), 0);
+        const label = d.grain === 'overview' ? `channel × month totals${d.inferredChannel ? ` (${d.inferredChannel})` : ''}` : d.grain === 'split' ? 'brand vs. non-brand search' : `detail (${['publisher', 'tactic', 'region', 'creativeOffer'].filter(k => d.rows.some(r => r[k])).join(' / ') || 'line'})`;
+        return `<tr><td>${escapeHtml(d.name)}</td><td>${escapeHtml(label)}</td><td class="num">${d.rows.length}</td><td>${months[0]} → ${months[months.length - 1]} (${months.length})</td><td class="num">${money(sum('spend'))}</td><td class="num">${sum('impressions').toLocaleString()}</td><td class="num">${Math.round(sum('leads')).toLocaleString()}</td><td style="font-size:0.75rem;">${escapeHtml(d.formKeys.join(', ') || '—')}</td></tr>`;
+      }).join('')}</tbody></table></div>
+      <div class="btn-row" style="gap:10px;"><button type="button" class="btn-primary" onclick="dpUploadPending()">Upload ${totalRows} rows →</button><button type="button" class="btn-ghost" onclick="dpPendingSheets = []; document.getElementById('dpPreview').innerHTML = ''; document.getElementById('dpStatus').textContent = '';">Cancel</button></div>`;
+  } catch (e){
+    if (status) status.textContent = `Couldn't read that file — ${e && e.message ? e.message : 'unknown error'}`;
+  }
+}
+async function dpUploadPending(){
+  const status = document.getElementById('dpStatus');
+  if (!dpPendingSheets.length) return;
+  const rows = dpPendingSheets.flatMap(d => d.rows);
+  const replace = [];
+  const seen = new Set();
+  rows.forEach(r => { const k = `${r.year}-${r.month}-${r.grain}-${r.sourceSheet}`; if (seen.has(k)) return; seen.add(k); replace.push({ year: r.year, month: r.month, grain: r.grain, sourceSheet: r.sourceSheet }); });
+  if (status) status.textContent = `Uploading ${rows.length} rows…`;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/digital-performance`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows, replace })
+    });
+    if (!resp.ok){ const t = await resp.json().catch(() => ({})); if (status) status.textContent = `Not saved — ${t.error || resp.status}`; return; }
+    const data = await resp.json();
+    if (status) status.textContent = `Saved ${data.saved} rows${data.duplicatesSkipped ? ` (${data.duplicatesSkipped} repeated rows in the export counted once)` : ''}.`;
+    dpPendingSheets = [];
+    document.getElementById('dpPreview').innerHTML = '';
+    if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext();
+    dpLoad();
+  } catch (e){ if (status) status.textContent = 'Backend unreachable — not saved.'; }
+}
+let dpLatest = null;
+async function dpLoad(){
+  const totalsEl = document.getElementById('dpTotals'), formsEl = document.getElementById('dpLeadForms'), calEl = document.getElementById('dpCalibration'), yearSel = document.getElementById('dpYear');
+  if (!totalsEl || dataSourceLabel !== 'backend' || !state.companyId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/digital-performance`);
+    if (!resp.ok){ totalsEl.innerHTML = '<p class="hint">Couldn\'t load digital performance.</p>'; return; }
+    dpLatest = await resp.json();
+  } catch (e){ totalsEl.innerHTML = '<p class="hint">Backend unreachable.</p>'; return; }
+  const years = [...new Set((dpLatest.totals || []).map(t => t.year))].sort((a, b) => b - a);
+  if (yearSel){ const prev = yearSel.value; yearSel.innerHTML = `<option value="">All years</option>` + years.map(y => `<option value="${y}">${y}</option>`).join(''); yearSel.value = years.includes(Number(prev)) ? prev : ''; }
+  const yf = yearSel && yearSel.value ? Number(yearSel.value) : null;
+  const totals = (dpLatest.totals || []).filter(t => !yf || t.year === yf);
+  if (!totals.length){ totalsEl.innerHTML = '<p class="hint" style="margin:8px 0 0;">Nothing on file yet — upload an agency workbook above.</p>'; }
+  else {
+    const byChannel = {};
+    totals.forEach(t => { const c = byChannel[t.channel] || (byChannel[t.channel] = { channel: t.channel, months: 0, spend: 0, impressions: 0, clicks: 0, leads: 0, calls: 0, byType: {} }); c.months++; c.spend += t.spend; c.impressions += t.impressions; c.clicks += t.clicks; c.leads += t.leads; c.calls += t.calls; Object.entries(t.leadsByType || {}).forEach(([k, v]) => { c.byType[k] = (c.byType[k] || 0) + v; }); });
+    const order = ['Programmatic Display', 'Remarketing', 'Non-Brand Search', 'Brand Search', 'Paid Social'];
+    const chans = Object.values(byChannel).sort((a, b) => (order.indexOf(a.channel) + 100) % 100 - (order.indexOf(b.channel) + 100) % 100);
+    const typeCols = ['High Value', 'Registration', 'Prospect', 'Unassigned'];
+    totalsEl.innerHTML = `<div class="table-scroll" style="margin-top:8px;"><table class="active-camp-table"><thead><tr><th>Channel</th><th>Months</th><th>Spend</th><th>Impressions</th><th>Clicks</th><th>Leads</th><th>CPL</th><th>CPC</th><th>CPM</th>${typeCols.map(c => `<th>${c === 'Registration' ? 'Growth' : c}</th>`).join('')}</tr></thead><tbody>
+      ${chans.map(c => `<tr><td>${escapeHtml(c.channel)}${/remarketing|brand search/i.test(c.channel) ? ' <span class="badge" style="font-size:0.65rem;">evergreen</span>' : ''}</td><td class="num">${c.months}</td><td class="num">${fmtMoney(c.spend)}</td><td class="num">${Math.round(c.impressions).toLocaleString()}</td><td class="num">${Math.round(c.clicks).toLocaleString()}</td><td class="num">${Math.round(c.leads).toLocaleString()}</td><td class="num">${c.leads > 0 ? fmtMoney(c.spend / c.leads) : '—'}</td><td class="num">${c.clicks > 0 ? '$' + (c.spend / c.clicks).toFixed(2) : '—'}</td><td class="num">${c.impressions > 0 ? '$' + (c.spend / c.impressions * 1000).toFixed(2) : '—'}</td>${typeCols.map(t => `<td class="num">${c.byType[t] ? Math.round(c.byType[t]).toLocaleString() : '—'}</td>`).join('')}</tr>`).join('')}
+    </tbody></table></div>
+    <p class="hint" style="margin:6px 0 0;">Monthly channel totals feed Campaign Summary actuals and the MMM inputs (measured spend/impressions replace planned digital line items for the same month). Detail rows by region / creative offer are allocated to campaigns by Creative Focus Group on each campaign’s Analysis view.</p>`;
+  }
+  // Lead forms
+  const forms = dpLatest.leadForms || [];
+  if (formsEl){
+    if (!forms.length) formsEl.innerHTML = '<p class="hint" style="margin:0;">Lead-form columns appear here after the first upload.</p>';
+    else formsEl.innerHTML = `<div class="table-scroll"><table class="active-camp-table"><thead><tr><th>Lead form (export column)</th><th>Leads on file</th><th>Lead type</th><th></th></tr></thead><tbody>
+      ${forms.map(f => `<tr><td>${escapeHtml(f.formKey)}</td><td class="num">${Math.round(f.total).toLocaleString()}</td><td><select class="tbl-select" data-form="${escapeHtml(f.formKey)}" onchange="dpQueueLeadFormSave()">${['High Value', 'Registration', 'Prospect'].map(t => `<option value="${t}"${t === f.leadType ? ' selected' : ''}>${t === 'Registration' ? 'Growth' : t}</option>`).join('')}</select></td><td>${f.suggested ? '<span class="badge" style="font-size:0.65rem;">suggested — confirm</span>' : '<span class="badge strong" style="font-size:0.65rem;">confirmed</span>'}</td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="btn-row" style="margin-top:8px;align-items:center;gap:10px;"><button type="button" class="btn-primary" onclick="dpSaveLeadForms()">Save lead-type mapping</button><span class="hint" id="dpLeadFormsNote" style="margin:0;"></span></div>`;
+  }
+  // Calibration
+  const cal = dpLatest.calibration || {};
+  if (calEl){
+    const bits = [];
+    if (cal.brandSearchCpc != null) bits.push(`Brand-search CPC <strong>$${cal.brandSearchCpc.toFixed(2)}</strong> (${cal.brandSearchMonths} mo)`);
+    if (cal.brandSearchClicksPerVisitor != null) bits.push(`brand clicks per website visitor <strong>${(cal.brandSearchClicksPerVisitor * 100).toFixed(2)}%</strong> (${cal.brandSearchVisitorMonths} mo with traffic on file)`);
+    else if (cal.brandSearchCpc != null) bits.push('brand clicks per visitor needs monthly website users on file for the same months');
+    if (cal.remarketingCpm != null) bits.push(`remarketing CPM <strong>$${cal.remarketingCpm.toFixed(2)}</strong> (${cal.remarketingMonths} mo)`);
+    calEl.innerHTML = bits.length ? `<p class="hint" style="margin:0;"><strong>Evergreen calibration</strong> — ${bits.join(' · ')}. These fill the Demand fulfillment card’s per-client fields where nothing is saved; a value you type there always wins.</p>` : '';
+  }
+}
+let dpLeadFormSaveTimer = null;
+function dpQueueLeadFormSave(){ const n = document.getElementById('dpLeadFormsNote'); if (n) n.textContent = 'Unsaved changes.'; }
+async function dpSaveLeadForms(){
+  const note = document.getElementById('dpLeadFormsNote');
+  const mapping = {};
+  document.querySelectorAll('#dpLeadForms select[data-form]').forEach(sel => { mapping[sel.dataset.form] = sel.value; });
+  if (note) note.textContent = 'Saving…';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/lead-form-settings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mapping }) });
+    if (!resp.ok){ if (note) note.textContent = `Not saved (${resp.status}).`; return; }
+    if (note) note.textContent = `Saved ${new Date().toLocaleTimeString()}.`;
+    if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext();
+    dpLoad();
+  } catch (e){ if (note) note.textContent = 'Backend unreachable — not saved.'; }
+}
 async function mbuLoadTransactions(){
   const body = document.getElementById('mbuTxnBody');
   const status = document.getElementById('mbuTxnStatus');
@@ -68873,8 +69147,8 @@ async function mbuLoadDemandFulfillment(){
   }
   if (!data){ body.innerHTML = '<tr><td colspan="3" class="hint">Backend unreachable.</td></tr>'; return; }
   body.innerHTML = (data.fields || []).map(f => `<tr${f.isDefault ? ' style="font-style:italic;"' : ''}>
-    <td>${escapeHtml(f.label)}${f.isMissing ? ' <span class="cmp-summary-badge modeled">needed</span>' : (f.isDefault ? '<div class="hint" style="font-style:normal;">Verilume default — edit to confirm</div>' : '')}</td>
-    <td><input type="number" min="0" step="${f.unit === 'rate' ? '0.001' : (f.unit === 'money' ? '0.01' : '1')}" class="tbl-input" style="width:130px;" value="${f.value == null ? '' : f.value}" data-key="${escapeHtml(f.key)}" onchange="mbuQueueDemandFulfillmentSave()"></td>
+    <td>${escapeHtml(f.label)}${f.isMissing ? ' <span class="cmp-summary-badge modeled">needed</span>' : (f.isMeasured ? `<div class="hint" style="font-style:normal;color:var(--cx);">Measured from your agency digital data — ${escapeHtml(f.measured && f.measured.note ? f.measured.note.replace(/^measured: /, '') : '')}. Type a value to override.</div>` : (f.isDefault ? '<div class="hint" style="font-style:normal;">Verilume default — edit to confirm</div>' : ''))}</td>
+    <td><input type="number" min="0" step="${f.unit === 'rate' ? '0.001' : (f.unit === 'money' ? '0.01' : '1')}" class="tbl-input" style="width:130px;" value="${f.value == null ? '' : f.value}" data-key="${escapeHtml(f.key)}"${f.isMeasured ? ` data-measured="${f.value}"` : ''} onchange="mbuQueueDemandFulfillmentSave()"></td>
     <td class="hint">${escapeHtml(f.note || '')}</td>
   </tr>`).join('');
   if (status) status.textContent = '';
@@ -68892,7 +69166,12 @@ async function mbuSaveDemandFulfillment(){
   const body = document.getElementById('mbuDemandFulfillmentBody');
   if (!body) return;
   const payload = {};
-  body.querySelectorAll('input[data-key]').forEach(inp => { payload[inp.dataset.key] = inp.value === '' ? null : Number(inp.value); });
+  // A measured value that hasn't been edited stays measured (not saved), so
+  // it keeps tracking new agency uploads until someone types over it.
+  body.querySelectorAll('input[data-key]').forEach(inp => {
+    if (inp.dataset.measured !== undefined && Number(inp.value) === Number(inp.dataset.measured)){ payload[inp.dataset.key] = null; return; }
+    payload[inp.dataset.key] = inp.value === '' ? null : Number(inp.value);
+  });
   let persisted = false, err = null;
   if (dataSourceLabel === 'backend'){
     try {
