@@ -1717,20 +1717,79 @@ ensureColumn('account_transactions_monthly', 'attributableRevenue', 'REAL');
 ensureColumn('account_transactions_monthly', 'fullFareTransactions', 'REAL');
 ensureColumn('account_transactions_monthly', 'freeTransactions', 'REAL');
 ensureColumn('account_transactions_monthly', 'source', 'TEXT');
-const BOOKING_CLASSES = ['Full fare', 'Discounted', 'Group / Charter', 'Free / non-revenue'];
-function classifyBookingType(bookingType){
-  const t = String(bookingType || '').trim().toLowerCase();
-  if (!t) return { bookingClass: null, marketingAttributable: null };
-  const isFree = /\bfree\b|\bcomp\b|staff|employee|\bfam\b|media|barter|charity|site inspection|maintenance|sweepstake|gift certificate|future cruise certificate/.test(t);
-  const isCharterOrInterline = /charter|interline/.test(t);
-  const isGroup = /\bgroups?\b|\bmcg\b|group c\/o|group distinctive/.test(t);
-  const isDiscount = /travel ?zoo|private sale|savings|discount|military|buy2|bring a friend|friends|travel partner|aycf|canadian resident|explore and save|seminar|2 sails|loyalty|onboard|bonus|early|upgrade|no hotel|no air/.test(t);
-  let bookingClass;
-  if (isFree) bookingClass = 'Free / non-revenue';
-  else if (isCharterOrInterline || isGroup) bookingClass = 'Group / Charter';
-  else if (isDiscount) bookingClass = 'Discounted';
-  else bookingClass = 'Full fare';
-  return { bookingClass, marketingAttributable: (isFree || isCharterOrInterline) ? 0 : 1 };
+// 2026-09-29 (later), per direct product guardrail: "We're focused on
+// building a platform to support 100 clients across several industries.
+// Our processes need to support a self-service model. Just want to make
+// sure that we don't build a platform based on AOV demo by accident."
+// The first cut of this hardcoded AOV's reservation-status codes (R/V)
+// and a classifier written from AOV's 80 booking-type names. Both are now
+// PER-ACCOUNT SETTINGS with industry-neutral defaults
+// (account_transaction_settings): which status values count as a real
+// transaction (default: every value counts until the client unchecks
+// one), and how each transaction-type value maps to a class and to
+// marketing-attributable (default: a generic keyword heuristic below the
+// client confirms or overrides per value). The settings screen lists the
+// values actually present in the client's own upload, so nothing has to
+// be typed from memory and nothing client-specific lives in code.
+const TRANSACTION_CLASSES = ['Full price', 'Discounted / promotional', 'Group / partner / wholesale', 'Free / non-revenue'];
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_transaction_settings (
+    accountId TEXT PRIMARY KEY,
+    validStatusesJson TEXT,
+    typeMappingJson TEXT,
+    updatedAt TEXT NOT NULL,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+function getTransactionSettings(accountId){
+  const row = db.prepare('SELECT * FROM account_transaction_settings WHERE accountId = ?').get(accountId);
+  let validStatuses = null, typeMapping = {};
+  if (row){
+    try { validStatuses = row.validStatusesJson ? JSON.parse(row.validStatusesJson) : null; } catch (e){ validStatuses = null; }
+    try { typeMapping = row.typeMappingJson ? JSON.parse(row.typeMappingJson) : {}; } catch (e){ typeMapping = {}; }
+  }
+  if (Array.isArray(validStatuses)) validStatuses = validStatuses.map(v => String(v).trim().toUpperCase());
+  else validStatuses = null;
+  return { validStatuses, typeMapping: typeMapping && typeof typeMapping === 'object' ? typeMapping : {} };
+}
+// null validStatuses = every status counts (a blank status always counts).
+function isValidTransactionStatus(status, settings){
+  const st = String(status || '').trim().toUpperCase();
+  if (!st) return true;
+  if (!settings || !settings.validStatuses) return true;
+  return settings.validStatuses.includes(st);
+}
+// Generic heuristic — industry-neutral words only. A client's own
+// per-value mapping (settings.typeMapping[value] = { class, attributable })
+// always wins; this only seeds the suggestion.
+function suggestTransactionClass(typeValue){
+  const t = String(typeValue || '').trim().toLowerCase();
+  if (!t) return { transactionClass: null, marketingAttributable: null, suggested: true };
+  const isFree = /\bfree\b|\bcomp\b|complimentary|staff|employee|internal|\bfam\b|familiari[sz]ation|media|press|barter|charity|donat|gift|certificate|voucher|sweepstake|contest|prize|test|sample|warranty|replacement/.test(t);
+  const isPartner = /charter|interline|wholesale|reseller|distributor|trade|b2b|partner|affiliate|consortium/.test(t);
+  const isGroup = /\bgroups?\b|corporate|incentive|bulk/.test(t);
+  const isDiscount = /discount|sale|promo|savings|offer|deal|coupon|clearance|markdown|loyalty|member|military|senior|student|bonus|early|last minute|flash|bogo|buy ?\d|% ?off|resident|friends|family|upgrade|package/.test(t);
+  let transactionClass;
+  if (isFree) transactionClass = 'Free / non-revenue';
+  else if (isPartner || isGroup) transactionClass = 'Group / partner / wholesale';
+  else if (isDiscount) transactionClass = 'Discounted / promotional';
+  else transactionClass = 'Full price';
+  // Attributable by default unless free or sold through a partner/
+  // wholesale channel the client's marketing didn't drive.
+  return { transactionClass, marketingAttributable: (isFree || isPartner) ? 0 : 1, suggested: true };
+}
+function classifyTransactionType(typeValue, settings){
+  const key = String(typeValue || '').trim();
+  const m = settings && settings.typeMapping ? settings.typeMapping[key] : null;
+  if (m && m.class && TRANSACTION_CLASSES.includes(m.class)){
+    return { transactionClass: m.class, marketingAttributable: m.attributable ? 1 : 0, suggested: false };
+  }
+  return suggestTransactionClass(key);
+}
+// Back-compat shim for the two call sites written against the first cut.
+function classifyBookingType(bookingType, settings){
+  const r = classifyTransactionType(bookingType, settings);
+  return { bookingClass: r.transactionClass, marketingAttributable: r.marketingAttributable, suggested: r.suggested };
 }
 function generationForAge(age, asOfYear){
   const a = Number(age);
@@ -1750,17 +1809,20 @@ function generationForAge(age, asOfYear){
 function rollupGuestBookings(accountId, periods){
   const where = periods && periods.length ? ` AND (${periods.map(() => '(year = ? AND month = ?)').join(' OR ')})` : '';
   const params = periods && periods.length ? periods.flatMap(p => [p.year, p.month]) : [];
-  const rows = db.prepare(`SELECT year, month, "productGroup", "bookingCode", "bookingClass", "marketingAttributable", "grossRevenue", "netRevenue" FROM account_guest_bookings WHERE accountId = ?${where}`).all(accountId, ...params);
+  const settings = getTransactionSettings(accountId);
+  const rows = db.prepare(`SELECT year, month, "productGroup", "bookingCode", "bookingType", "bookingStatus", "grossRevenue", "netRevenue" FROM account_guest_bookings WHERE accountId = ?${where}`).all(accountId, ...params);
   const agg = {};
   rows.forEach(r => {
+    if (!isValidTransactionStatus(r.bookingStatus, settings)) return; // a status the client has unchecked
+    const cls = classifyTransactionType(r.bookingType, settings); // current mapping, not the one stored at upload time
     const pg = String(r.productGroup || '').trim();
     const key = `${r.year}-${r.month}-${pg}`;
     const a = agg[key] = agg[key] || { year: r.year, month: r.month, productGroup: pg, codes: new Set(), attrCodes: new Set(), fullCodes: new Set(), freeCodes: new Set(), guests: 0, gross: 0, net: 0, attrGross: 0 };
     a.codes.add(r.bookingCode); a.guests += 1;
     a.gross += Number(r.grossRevenue) || 0; a.net += Number(r.netRevenue) || 0;
-    if (r.marketingAttributable){ a.attrCodes.add(r.bookingCode); a.attrGross += Number(r.grossRevenue) || 0; }
-    if (r.bookingClass === 'Full fare') a.fullCodes.add(r.bookingCode);
-    if (r.bookingClass === 'Free / non-revenue') a.freeCodes.add(r.bookingCode);
+    if (cls.marketingAttributable){ a.attrCodes.add(r.bookingCode); a.attrGross += Number(r.grossRevenue) || 0; }
+    if (cls.transactionClass === 'Full price') a.fullCodes.add(r.bookingCode);
+    if (cls.transactionClass === 'Free / non-revenue') a.freeCodes.add(r.bookingCode);
   });
   const now = new Date().toISOString();
   const touched = new Set();
@@ -6748,6 +6810,7 @@ repairFoldedColumns([
   ['account_website_engagement', ['accountId', 'channelGroup', 'engagedSessions', 'engagementRate', 'avgEngagementTimeMin', 'updatedAt']],
   ['account_lead_counts', ['accountId', 'leadType', 'formName', 'avgDaysToConvert', 'updatedAt']],
   ['account_transactions_monthly', ['accountId', 'productGroup', 'updatedAt', 'netRevenue', 'attributableTransactions', 'attributableRevenue', 'fullFareTransactions', 'freeTransactions']],
+  ['account_transaction_settings', ['accountId', 'validStatusesJson', 'typeMappingJson', 'updatedAt']],
   ['account_guest_bookings', ['accountId', 'bookingCode', 'guestSeq', 'bookingDate', 'bookingType', 'bookingClass', 'marketingAttributable', 'promoType', 'bookingStatus', 'sailDate', 'guestState', 'guestPostalCode', 'guestCountry', 'grossRevenue', 'netRevenue', 'productGroup', 'creativeFocus', 'uploadBatchId', 'updatedAt']]
 ]);
 const WEEKS_PER_MONTH = 52 / 12;
@@ -13260,6 +13323,10 @@ const LEGACY_CASING_COLUMNS = [
   ['account_lead_counts', 'count'],
   ['account_lead_counts', 'bookings'],
   ['account_lead_counts', 'avgDaysToConvert'],
+  ['account_transaction_settings', 'accountId'],
+  ['account_transaction_settings', 'validStatusesJson'],
+  ['account_transaction_settings', 'typeMappingJson'],
+  ['account_transaction_settings', 'updatedAt'],
   ['account_guest_bookings', 'accountId'],
   ['account_guest_bookings', 'bookingCode'],
   ['account_guest_bookings', 'guestSeq'],
@@ -32274,13 +32341,14 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(accountId, "bookingCode", "guestSeq") DO UPDATE SET "bookingDate" = excluded."bookingDate", year = excluded.year, month = excluded.month, "bookingType" = excluded."bookingType", "bookingClass" = excluded."bookingClass", "marketingAttributable" = excluded."marketingAttributable", "promoType" = excluded."promoType", "bookingStatus" = excluded."bookingStatus", "sailDate" = excluded."sailDate", age = excluded.age, generation = excluded.generation, "guestState" = excluded."guestState", "guestPostalCode" = excluded."guestPostalCode", "guestCountry" = excluded."guestCountry", "grossRevenue" = excluded."grossRevenue", "netRevenue" = excluded."netRevenue", "productGroup" = excluded."productGroup", "creativeFocus" = excluded."creativeFocus", "uploadBatchId" = excluded."uploadBatchId", updatedAt = excluded.updatedAt`);
       let saved = 0, skipped = 0;
+      const txnSettings = getTransactionSettings(accountId);
       const numOrNull = v => { if (v === null || v === undefined || v === '') return null; const n = Number(String(v).replace(/[,$]/g, '')); return Number.isFinite(n) ? n : null; };
       for (const r of rowsIn){
         const code = String(r.bookingCode || '').trim();
         const d = r.bookingDate ? new Date(r.bookingDate) : null;
         if (!code || !d || isNaN(d)){ skipped++; continue; }
         const year = d.getFullYear(), month = d.getMonth() + 1;
-        const cls = classifyBookingType(r.bookingType);
+        const cls = classifyBookingType(r.bookingType, txnSettings);
         seq[code] = (seq[code] || 0) + 1;
         const sail = r.sailDate ? new Date(r.sailDate) : null;
         ins.run(accountId, code, seq[code], d.toISOString(), year, month, r.bookingType != null ? String(r.bookingType).trim() : null, cls.bookingClass, cls.marketingAttributable,
@@ -32307,10 +32375,14 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const reqUrl = new URL(req.url, 'http://localhost');
       const yearParam = reqUrl.searchParams.get('year');
       const year = yearParam ? parseInt(yearParam, 10) : null;
-      const rows = Number.isFinite(year)
+      let rows = Number.isFinite(year)
         ? db.prepare('SELECT * FROM account_guest_bookings WHERE accountId = ? AND year = ?').all(accountId, year)
         : db.prepare('SELECT * FROM account_guest_bookings WHERE accountId = ?').all(accountId);
       const bucket = (keyFn) => { const m = {}; rows.forEach(r => { const k = keyFn(r) == null || keyFn(r) === '' ? '(blank)' : String(keyFn(r)); const b = m[k] = m[k] || { key: k, guests: 0, codes: new Set(), gross: 0 }; b.guests++; b.codes.add(r.bookingCode); b.gross += Number(r.grossRevenue) || 0; }); return Object.values(m).map(b => ({ key: b.key, guests: b.guests, bookings: b.codes.size, grossRevenue: b.gross })).sort((a, b) => b.bookings - a.bookings); };
+      const txnSettings = getTransactionSettings(accountId);
+      const allRows = rows.map(r => ({ ...r, ...(() => { const c = classifyTransactionType(r.bookingType, txnSettings); return { bookingClass: c.transactionClass, marketingAttributable: c.marketingAttributable }; })() }));
+      const excludedRows = allRows.filter(r => !isValidTransactionStatus(r.bookingStatus, txnSettings));
+      rows = allRows.filter(r => isValidTransactionStatus(r.bookingStatus, txnSettings));
       const codes = new Set(rows.map(r => r.bookingCode));
       const attrRows = rows.filter(r => r.marketingAttributable);
       let leadDays = [], leadSum = 0;
@@ -32321,9 +32393,10 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         accountId, guests: rows.length, bookings: codes.size,
         grossRevenue: rows.reduce((t, r) => t + (Number(r.grossRevenue) || 0), 0), netRevenue: rows.reduce((t, r) => t + (Number(r.netRevenue) || 0), 0),
         attributable: { guests: attrRows.length, bookings: new Set(attrRows.map(r => r.bookingCode)).size, grossRevenue: attrRows.reduce((t, r) => t + (Number(r.grossRevenue) || 0), 0) },
-        byClass: bucket(r => r.bookingClass), byStatus: bucket(r => r.bookingStatus), byProductGroup: bucket(r => r.productGroup), byCreativeFocus: bucket(r => r.creativeFocus),
+        validStatuses: txnSettings.validStatuses, excludedGuests: excludedRows.length, excludedBookings: new Set(excludedRows.map(r => r.bookingCode)).size,
+        byClass: bucket(r => r.bookingClass), byStatus: (() => { const m = {}; allRows.forEach(r => { const k = String(r.bookingStatus || '(blank)'); const b = m[k] = m[k] || { key: k, guests: 0, codes: new Set(), gross: 0, valid: isValidTransactionStatus(r.bookingStatus, txnSettings) }; b.guests++; b.codes.add(r.bookingCode); b.gross += Number(r.grossRevenue) || 0; }); return Object.values(m).map(b => ({ key: b.key, guests: b.guests, bookings: b.codes.size, grossRevenue: b.gross, valid: b.valid })).sort((a, b) => b.bookings - a.bookings); })(), byProductGroup: bucket(r => r.productGroup), byCreativeFocus: bucket(r => r.creativeFocus),
         byGeneration: bucket(r => r.generation), byCountry: bucket(r => r.guestCountry).slice(0, 12), byState: bucket(r => r.guestState).slice(0, 15), byPromoType: bucket(r => r.promoType),
-        byBookingType: bucket(r => r.bookingType).map(b => ({ ...b, bookingClass: classifyBookingType(b.key).bookingClass })),
+        byBookingType: bucket(r => r.bookingType).map(b => { const c = classifyTransactionType(b.key, txnSettings); return { ...b, bookingClass: c.transactionClass, marketingAttributable: c.marketingAttributable, suggested: c.suggested }; }),
         leadTime: leadDays.length ? { guests: leadDays.length, meanDays: leadSum / leadDays.length, medianDays: leadDays[Math.floor(leadDays.length / 2)] } : null,
         rowsByYear: years
       });
@@ -32342,6 +32415,55 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         ? db.prepare('DELETE FROM account_transactions_monthly WHERE accountId = ? AND year = ? AND month = ? AND source = ?').run(accountId, year, month, 'guest_bookings')
         : db.prepare('DELETE FROM account_transactions_monthly WHERE accountId = ? AND year = ? AND source = ?').run(accountId, year, 'guest_bookings');
       return sendJson(res, 200, { accountId, deleted: info.changes, rollupsDeleted: rp.changes });
+    }
+
+    // GET /api/accounts/:id/transaction-settings — the self-service
+    // settings behind customer-level transaction uploads: which status
+    // values count, and how each transaction-type value maps to a class /
+    // marketing-attributable. `observed` lists the values actually present
+    // in this account's uploaded rows with the current verdict for each
+    // (client mapping, else the generic suggestion, flagged as such).
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'transaction-settings'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const settings = getTransactionSettings(accountId);
+      const statusRows = db.prepare('SELECT "bookingStatus" AS v, COUNT(*) AS n, COUNT(DISTINCT "bookingCode") AS b FROM account_guest_bookings WHERE accountId = ? GROUP BY "bookingStatus" ORDER BY n DESC').all(accountId);
+      const typeRows = db.prepare('SELECT "bookingType" AS v, COUNT(*) AS n, COUNT(DISTINCT "bookingCode") AS b, SUM("grossRevenue") AS g FROM account_guest_bookings WHERE accountId = ? GROUP BY "bookingType" ORDER BY n DESC').all(accountId);
+      return sendJson(res, 200, {
+        accountId,
+        validStatuses: settings.validStatuses,
+        typeMapping: settings.typeMapping,
+        classes: TRANSACTION_CLASSES,
+        observed: {
+          statuses: statusRows.map(r => ({ value: r.v == null ? '' : String(r.v), customers: Number(r.n) || 0, transactions: Number(r.b) || 0, counts: isValidTransactionStatus(r.v, settings) })),
+          types: typeRows.map(r => { const c = classifyTransactionType(r.v, settings); return { value: r.v == null ? '' : String(r.v), customers: Number(r.n) || 0, transactions: Number(r.b) || 0, grossRevenue: Number(r.g) || 0, class: c.transactionClass, attributable: c.marketingAttributable, suggested: c.suggested }; })
+        }
+      });
+    }
+    // POST /api/accounts/:id/transaction-settings — { validStatuses:
+    // [..] | null, typeMapping: { "<value>": { class, attributable } } }.
+    // Recomputes every month's roll-up afterwards so the Campaign Summary
+    // and Media Plan read the new rule immediately, without a re-upload.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'transaction-settings'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      let validStatuses = null;
+      if (Array.isArray(body.validStatuses)) validStatuses = body.validStatuses.map(v => String(v).trim().toUpperCase()).filter(Boolean);
+      const typeMapping = {};
+      if (body.typeMapping && typeof body.typeMapping === 'object'){
+        Object.keys(body.typeMapping).slice(0, 500).forEach(k => {
+          const m = body.typeMapping[k] || {};
+          if (!TRANSACTION_CLASSES.includes(m.class)) return;
+          typeMapping[String(k).trim()] = { class: m.class, attributable: m.attributable ? 1 : 0 };
+        });
+      }
+      const now = new Date().toISOString();
+      const existing = db.prepare('SELECT 1 FROM account_transaction_settings WHERE accountId = ?').get(accountId);
+      if (existing) db.prepare('UPDATE account_transaction_settings SET "validStatusesJson" = ?, "typeMappingJson" = ?, updatedAt = ? WHERE accountId = ?').run(validStatuses ? JSON.stringify(validStatuses) : null, JSON.stringify(typeMapping), now, accountId);
+      else db.prepare('INSERT INTO account_transaction_settings (accountId, "validStatusesJson", "typeMappingJson", updatedAt) VALUES (?, ?, ?, ?)').run(accountId, validStatuses ? JSON.stringify(validStatuses) : null, JSON.stringify(typeMapping), now);
+      const rollup = rollupGuestBookings(accountId, null);
+      return sendJson(res, 200, { accountId, saved: true, rollup, updatedAt: now });
     }
 
     // GET /api/accounts/:id/transactions-monthly[?year=] — unique
