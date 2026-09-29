@@ -12401,7 +12401,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-29-upload-channel-inferred-from-media-type';
+const CXMEDIA_BUILD_STAMP = '2026-09-29-creative-gate-plan-partners-add-to-list';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -13858,6 +13858,10 @@ function cmpModuleStatus(key){
   const railEntry = CMP_STAGE_RAIL.find(s => s.key === key);
   if (railEntry && railEntry.cs){
     if (!campaign) return 'not-started';
+    // 2026-09-29 — creative gate: a campaign whose creative was produced
+    // outside Verilume (uploaded historical campaign, or the person chose
+    // so on the Creative stage) reads as complete on every creative stage.
+    if (railEntry.cs === 'creative' && campaign.creativeDisposition === 'external') return 'complete';
     const match = computeStageStatuses(campaign).find(s => s.key === railEntry.cs);
     return match ? match.status : 'not-started';
   }
@@ -13881,10 +13885,12 @@ function cmpModuleStatus(key){
       return cmpPerfMarketingApproved ? 'complete' : 'in-progress';
     case 'messaging':
       if (!campaign) return 'not-started';
+      if (campaign.creativeDisposition === 'external') return 'complete';
       if (cmpMessagingApproved) return 'complete';
       return (campaign.keyMessage || campaign.longformCopy) ? 'in-progress' : 'not-started';
     case 'copyVersions': {
       if (!campaign) return 'not-started';
+      if (campaign.creativeDisposition === 'external') return 'complete';
       const assets = campaign.copyVersionAssets || [];
       if (!assets.length) return 'not-started';
       return assets.every(a => a.status === 'Approved') ? 'complete' : 'in-progress';
@@ -17146,8 +17152,12 @@ function renderBulkUploadPreview(){
   const table = document.getElementById('bulkUploadPreviewTable');
   table.innerHTML = `<thead><tr><th>#</th><th>Campaign ID</th><th>Channel</th><th>Product Group</th><th>Creative Market</th><th>Budget</th><th>Impressions</th><th>Status</th></tr></thead>
     <tbody>${bulkUploadRows.map(r => {
+      const missing = r.raw._missing || [];
+      const seenMissing = new Set();
+      const addButtons = missing.filter(m => { const k = `${m.taxKey}||${m.value.toLowerCase()}`; if (seenMissing.has(k)) return false; seenMissing.add(k); return true; })
+        .map(m => `<button type="button" class="btn-ghost" style="padding:4px 10px;font-size:0.72rem;margin:6px 6px 0 0;" onclick='bccAddTaxonomyValue(${JSON.stringify(m.taxKey)}, ${JSON.stringify(m.value)})'>+ Add "${escapeHtml(m.value)}" to ${escapeHtml(BCC_TAXONOMY_LABELS[m.taxKey] || m.taxKey)} list</button>`).join('');
       const statusHtml = r.errors.length
-        ? `<div style="color:#B3261E;min-width:480px;"><strong>Won't upload — ${r.errors.length} problem${r.errors.length === 1 ? '' : 's'}:</strong><ul style="margin:4px 0 0;padding-left:18px;">${r.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul></div>`
+        ? `<div style="color:#B3261E;min-width:480px;"><strong>Won't upload — ${r.errors.length} problem${r.errors.length === 1 ? '' : 's'}:</strong><ul style="margin:4px 0 0;padding-left:18px;">${r.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul>${addButtons ? `<div>${addButtons}</div>` : ''}</div>`
         : (r.warnings.length
           ? `<div style="color:var(--media);min-width:480px;"><strong>Ready</strong> — assumptions:<ul style="margin:4px 0 0;padding-left:18px;">${r.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul></div>`
           : `<span style="color:var(--cx);">Ready</span>`);
@@ -17235,7 +17245,7 @@ async function submitBulkUpload(){
 // (replaces its rows wholesale) rather than adding alongside — per direct
 // instruction ("you shouldn't have overlapping campaigns... it's not
 // intended for every day use").
-const BULK_CREATE_CAMPAIGNS_CAMPAIGN_FIELDS = ['campaignName', 'campaignClassification', 'campaignStartDate', 'campaignEndDate'];
+const BULK_CREATE_CAMPAIGNS_CAMPAIGN_FIELDS = ['campaignName', 'campaignClassification', 'campaignStartDate', 'campaignEndDate', 'creativeNeeded'];
 const BULK_CREATE_CAMPAIGNS_LINE_FIELDS = ['channel', 'partner', 'audience', 'buyType', 'mediaType', 'impressions', 'dropDate', 'hitDate', 'endDate', 'productYear', 'productGroup', 'creativeMarket', 'budget'];
 // 2026-09-29 — placement-level detail columns, added when the client's own
 // magazine/newspaper media plan (MEDIA_PLANS_2H2026CONSUMER_ADS) arrived
@@ -17314,6 +17324,7 @@ const BCC_HEADER_ALIASES = {
   campaignClassification: ['campaign classification', 'campaign type', 'classification'],
   campaignStartDate: ['campaign start date', 'campaign start'],
   campaignEndDate: ['campaign end date', 'campaign end'],
+  creativeNeeded: ['creative needed', 'creative required', 'needs creative', 'creative in verilume', 'creative'],
   channel: ['channel', 'marketing group', 'media channel', 'channel category', 'marketing channel'],
   partner: ['partner', 'publication', 'publisher', 'media partner', 'media vendor', 'outlet', 'station', 'network'],
   audience: ['audience', 'segment', 'target audience', 'audience segment'],
@@ -17582,6 +17593,51 @@ function ciFindMatch(list, value){
   const v = (value || '').trim().toLowerCase();
   return (list || []).find(x => (x || '').trim().toLowerCase() === v);
 }
+const BCC_TAXONOMY_LABELS = { audience: 'Audience', buyType: 'Buy Type', mediaType: 'Media Type', productGroup: 'Product Group', creativeMarket: 'Creative Focus Group', partner: 'Partner' };
+// 2026-09-29, per direct instruction ("When uploading, we identify what's
+// not part of the DB. We should allow someone to add it"): a value the file
+// carries that isn't in the account's list yet gets an "Add to list" action
+// in the preview. Appends to the real account taxonomy (same PUT the
+// Taxonomy Manager uses), then re-validates every row so all rows carrying
+// that value clear at once.
+async function bccAddAllMissingTaxonomyValues(){
+  const byKey = new Map();
+  bccRows.forEach(r => (r.raw._missing || []).forEach(m => {
+    if (!byKey.has(m.taxKey)) byKey.set(m.taxKey, new Map());
+    const vals = byKey.get(m.taxKey);
+    if (![...vals.keys()].includes(m.value.toLowerCase())) vals.set(m.value.toLowerCase(), m.value);
+  }));
+  for (const [taxKey, vals] of byKey){
+    const current = state.calendarTaxonomies && state.calendarTaxonomies[taxKey];
+    const values = Array.isArray(current && current.valuesJson) ? current.valuesJson.slice() : [];
+    vals.forEach(v => { if (!ciFindMatch(values, v)) values.push(v); });
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/taxonomies/${encodeURIComponent(taxKey)}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: (current && current.label) || BCC_TAXONOMY_LABELS[taxKey] || taxKey, values })
+      });
+      if (!resp.ok){ alert(`Couldn't update the ${BCC_TAXONOMY_LABELS[taxKey] || taxKey} list (${resp.status}).`); continue; }
+      state.calendarTaxonomies = state.calendarTaxonomies || {};
+      state.calendarTaxonomies[taxKey] = { ...(current || { taxonomyKey: taxKey }), label: (current && current.label) || BCC_TAXONOMY_LABELS[taxKey] || taxKey, valuesJson: values };
+    } catch (e){ alert('Backend unreachable — lists not updated.'); return; }
+  }
+  renderBulkCreateCampaignsPreview();
+}
+async function bccAddTaxonomyValue(taxKey, value){
+  const current = state.calendarTaxonomies && state.calendarTaxonomies[taxKey];
+  const values = Array.isArray(current && current.valuesJson) ? current.valuesJson.slice() : [];
+  if (!ciFindMatch(values, value)) values.push(value);
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/taxonomies/${encodeURIComponent(taxKey)}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label: (current && current.label) || BCC_TAXONOMY_LABELS[taxKey] || taxKey, values })
+    });
+    if (!resp.ok){ alert(`Couldn't add "${value}" (${resp.status}).`); return; }
+    state.calendarTaxonomies = state.calendarTaxonomies || {};
+    state.calendarTaxonomies[taxKey] = { ...(current || { taxonomyKey: taxKey }), label: (current && current.label) || BCC_TAXONOMY_LABELS[taxKey] || taxKey, valuesJson: values };
+    renderBulkCreateCampaignsPreview();
+  } catch (e){ alert('Backend unreachable — not added.'); }
+}
 function validateBccRow(raw){
   const errors = [], warnings = [];
   // 2026-09-29 — normalize the client's own formats before validating:
@@ -17629,15 +17685,20 @@ function validateBccRow(raw){
     warnings.push(`hit date ${raw.hitDate} falls outside the file's date range (${rangeFrom || '…'} → ${rangeTo || '…'}) — check it isn't a typo`);
   }
 
+  const missing = [];
   Object.entries(BULK_UPLOAD_TAXONOMY_FIELD_KEYS).forEach(([field, taxKey]) => {
     const v = raw[field];
     if (!v) return;
     const allowed = cmpTaxonomyValues(taxKey);
     if (!allowed) { warnings.push(`${field} "${v}" — no ${taxKey} taxonomy configured for this account yet, accepted as free text`); return; }
     const canonical = ciFindMatch(allowed, v);
-    if (!canonical) errors.push(`${field} "${v}" isn't in this account's configured ${taxKey} list (${allowed.join(', ')})`);
+    if (!canonical){
+      errors.push(`${field} "${v}" isn't in this account's ${BCC_TAXONOMY_LABELS[taxKey] || taxKey} list yet (${allowed.join(', ')})`);
+      missing.push({ field, taxKey, value: v });
+    }
     else raw[field] = canonical;
   });
+  raw._missing = missing;
 
   BULK_UPLOAD_NUMERIC_FIELDS.forEach(f => {
     if (raw[f] && (isNaN(Number(raw[f])) || Number(raw[f]) < 0)) errors.push(`${f} must be a non-negative number, got "${raw[f]}"`);
@@ -17725,12 +17786,24 @@ function renderBulkCreateCampaignsPreview(){
   document.getElementById('bccSummary').textContent =
     `${bccRows.length} row${bccRows.length === 1 ? '' : 's'} parsed — ${validCount} ready to upload (${groupKeys.size} campaign${groupKeys.size === 1 ? '' : 's'} by Channel + Partner + Hit Date + End Date + Audience), ${errorCount} with errors. The Status column explains each row: red = a problem that blocks that row; "Ready" = it uploads, with any assumptions noted. Which rows landed on a new vs. an existing campaign shows after upload.`;
 
+  // One-click "add everything the file has that the lists don't" above the table.
+  const allMissing = new Map();
+  bccRows.forEach(r => (r.raw._missing || []).forEach(m => { const k = `${m.taxKey}||${m.value.toLowerCase()}`; if (!allMissing.has(k)) allMissing.set(k, m); }));
+  const summaryEl = document.getElementById('bccSummary');
+  if (allMissing.size){
+    summaryEl.innerHTML = escapeHtml(summaryEl.textContent) + `<div style="margin-top:8px;">${allMissing.size} value${allMissing.size === 1 ? '' : 's'} in this file ${allMissing.size === 1 ? "isn't" : "aren't"} in your lists yet: ${[...allMissing.values()].map(m => `<code>${escapeHtml(m.value)}</code> (${escapeHtml(BCC_TAXONOMY_LABELS[m.taxKey] || m.taxKey)})`).join(', ')}. <button type="button" class="btn-ghost" style="padding:4px 10px;font-size:0.72rem;" onclick="bccAddAllMissingTaxonomyValues()">+ Add all to the lists</button></div>`;
+  }
+
   const table = document.getElementById('bccPreviewTable');
   table.innerHTML = `<thead><tr><th>#</th><th>Campaign</th><th>Channel</th><th>Partner</th><th>Hit date</th><th>Product Group</th><th>Creative Market</th><th>Size</th><th>Budget</th><th style="min-width:480px;">Status — what will happen to this row</th></tr></thead>
     <tbody>${bccRows.map(r => {
       const name = (r.raw.campaignName || '').trim() || [r.raw.partner, r.raw.channel, r.raw.audience].filter(Boolean).join(' · ');
+      const missing = r.raw._missing || [];
+      const seenMissing = new Set();
+      const addButtons = missing.filter(m => { const k = `${m.taxKey}||${m.value.toLowerCase()}`; if (seenMissing.has(k)) return false; seenMissing.add(k); return true; })
+        .map(m => `<button type="button" class="btn-ghost" style="padding:4px 10px;font-size:0.72rem;margin:6px 6px 0 0;" onclick='bccAddTaxonomyValue(${JSON.stringify(m.taxKey)}, ${JSON.stringify(m.value)})'>+ Add "${escapeHtml(m.value)}" to ${escapeHtml(BCC_TAXONOMY_LABELS[m.taxKey] || m.taxKey)} list</button>`).join('');
       const statusHtml = r.errors.length
-        ? `<div style="color:#B3261E;min-width:480px;"><strong>Won't upload — ${r.errors.length} problem${r.errors.length === 1 ? '' : 's'}:</strong><ul style="margin:4px 0 0;padding-left:18px;">${r.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul></div>`
+        ? `<div style="color:#B3261E;min-width:480px;"><strong>Won't upload — ${r.errors.length} problem${r.errors.length === 1 ? '' : 's'}:</strong><ul style="margin:4px 0 0;padding-left:18px;">${r.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul>${addButtons ? `<div>${addButtons}</div>` : ''}</div>`
         : (r.warnings.length
           ? `<div style="color:var(--media);min-width:480px;"><strong>Ready</strong> — assumptions:<ul style="margin:4px 0 0;padding-left:18px;">${r.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul></div>`
           : `<span style="color:var(--cx);">Ready</span>`);
@@ -17768,6 +17841,7 @@ async function submitBulkCreateCampaigns(){
     campaignClassification: r.raw.campaignClassification || '',
     campaignStartDate: r.raw.campaignStartDate || '',
     campaignEndDate: r.raw.campaignEndDate || '',
+    creativeNeeded: r.raw.creativeNeeded || '',
     channel: r.raw.channel,
     partner: r.raw.partner || '',
     audience: r.raw.audience || '',
@@ -62996,7 +63070,15 @@ async function cmpLoadApprovedChannelsFromPlan(campaign){
     // budget or not — "which channels are in this campaign's plan," not
     // "which channels have spend."
     const names = cmpSortChannelsByTaxonomy([...new Set(entries.map(e => (e.channel || '').trim()).filter(Boolean))]);
-    cmpApprovedChannelsFromPlan = { campaignId: campaign.id, channels: names };
+    // 2026-09-29 — keep the lines themselves: the Creative grid prefills
+    // Partner (and Size, for print) from the campaign's own plan rows, so a
+    // partner that arrived by upload (e.g. a publication not in the global
+    // print catalog) is always offered.
+    const lines = entries.map(e => ({
+      channel: (e.channel || '').trim(), partner: (e.partner || '').trim(),
+      size: (e.detailsJson && e.detailsJson.creativeSize) ? String(e.detailsJson.creativeSize).trim() : ''
+    })).filter(l => l.channel);
+    cmpApprovedChannelsFromPlan = { campaignId: campaign.id, channels: names, lines };
     return names;
   } catch (e){
     console.warn('cmpLoadApprovedChannelsFromPlan failed (grid falls back to in-memory channel sets):', e && e.message);
@@ -63023,6 +63105,16 @@ function cmpBuildCreativeAssetGridRows(){
   channels.forEach(channel => {
     const existing = cmpCreativeAssetRequests.filter(a => a.channel === channel).map(a => ({ partner: a.partner || '', mediaType: a.mediaType || '', size: a.size || '', copyVersions: (a.copyVersions && typeof a.copyVersions === 'object') ? a.copyVersions : {} }));
     if (existing.length){ grid[channel] = existing; return; }
+    // 2026-09-29 — one row per distinct partner on this campaign's own plan
+    // lines for the channel (partner prefilled; print size resolved once
+    // the catalog loads — see planSize in cmpPopulateCreativeAssetSizeSelectsForChannel).
+    const planLines = cmpPlanLinesForChannel(channel).filter(l => l.partner);
+    if (planLines.length){
+      const seen = new Set();
+      grid[channel] = planLines.filter(l => { const k = `${l.partner}||${l.size}`; if (seen.has(k)) return false; seen.add(k); return true; })
+        .map(l => ({ partner: l.partner, mediaType: '', size: '', planSize: l.size }));
+      return;
+    }
     const def = cmpCreativeAssetDefaultsByChannel[channel];
     grid[channel] = [def ? { ...def } : { partner: '', mediaType: '', size: '' }];
   });
@@ -63061,6 +63153,13 @@ function cmpPopulateCreativeAssetSizeSelectsForChannel(channel){
         const sel = document.getElementById(`cmpCAG_${slug}_${i}_size`);
         if (!sel) return;
         const scoped = row.partner ? all.filter(o => !o.publication || o.publication === row.partner) : all;
+        // Prefill from the plan line's own format ("Full Page") when the
+        // catalog has that format for this publication.
+        if (!row.size && row.planSize){
+          const want = row.planSize.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+          const hit = (scoped.length ? scoped : all).find(o => o.label.toLowerCase().replace(/[^a-z0-9]+/g, ' ').includes(want));
+          if (hit) row.size = hit.label;
+        }
         const labels = (scoped.length ? scoped : all).map(o => o.label);
         const withSaved = (row.size && !labels.includes(row.size)) ? [...labels, row.size] : labels;
         sel.innerHTML = cmpOptionsHtmlSelected(withSaved, 'Select a size…', row.size);
@@ -64036,9 +64135,16 @@ function cmpLoadPublisherNames(channel){
     return cmpPublisherNamesByMedium[channel];
   });
 }
+function cmpPlanLinesForChannel(channel){
+  const c = cmpRailLoadedCampaign();
+  if (!c || cmpApprovedChannelsFromPlan.campaignId !== c.id || !Array.isArray(cmpApprovedChannelsFromPlan.lines)) return [];
+  return cmpApprovedChannelsFromPlan.lines.filter(l => l.channel === channel);
+}
 function cmpPartnerOptionsForChannel(channel, savedValue){
   const out = [];
   const push = (v) => { if (v && !out.includes(v)) out.push(v); };
+  // This campaign's own plan partners lead the list.
+  cmpPlanLinesForChannel(channel).forEach(l => push(l.partner));
   if (CMP_IN_HOUSE_CHANNELS.has(channel)) push(cmpInHousePartnerLabel());
   (CMP_PARTNERS_BY_CHANNEL[channel] || []).forEach(push);
   if (cmpPublisherNamesByMedium[channel]) cmpPublisherNamesByMedium[channel].forEach(push);
@@ -64178,9 +64284,49 @@ async function cmpRenderCreativeAssetContestStatus(){
     paint(cmpContestStatusCache[c.id]);
   } catch (e){ /* keep whatever was painted */ }
 }
+// 2026-09-29 — creative gate (see backend ensureColumn('campaigns',
+// 'creativeDisposition')). Undecided uploaded campaigns get a one-time
+// choice here; 'external' collapses the grid to a note with an undo.
+function cmpCreativeGateHtml(c){
+  if (!c) return '';
+  if (c.creativeDisposition === 'external'){
+    return `<div class="hint" style="margin:0 0 12px;padding:12px 14px;background:var(--paper-dim);border-radius:10px;">
+      <strong>Creative produced outside Verilume</strong> — this campaign's creative stages read as complete and no assets are requested here.
+      <a style="cursor:pointer;margin-left:8px;" onclick="cmpSetCreativeDisposition('needed')">Creative is needed after all →</a>
+    </div>`;
+  }
+  const uploaded = !!c.createdByUploadBatchId;
+  if (uploaded && !c.creativeDisposition){
+    return `<div style="margin:0 0 14px;padding:14px 16px;background:#FBF6EA;border:1px solid var(--media);border-radius:10px;">
+      <strong>Does this campaign need creative produced in Verilume?</strong>
+      <div class="hint" style="margin:4px 0 10px;">It came in from a media-plan upload with a future date, so nobody has said yet. Choose once; you can change it later.</div>
+      <div class="btn-row" style="gap:10px;">
+        <button type="button" class="btn-primary" onclick="cmpSetCreativeDisposition('needed')">Yes — produce creative here</button>
+        <button type="button" class="btn-ghost" onclick="cmpSetCreativeDisposition('external')">No — produced elsewhere / not needed</button>
+      </div>
+    </div>`;
+  }
+  return '';
+}
+async function cmpSetCreativeDisposition(value){
+  const c = cmpRailLoadedCampaign();
+  if (!c) return;
+  await cmpBriefSaveField('creativeDisposition', value);
+  const inList = (state.campaigns || []).find(x => x.id === c.id);
+  if (inList) inList.creativeDisposition = value;
+  cmpRenderCreativeAssetMatrix();
+  if (typeof renderCmpStageRail === 'function') renderCmpStageRail();
+  if (typeof cmpRenderWorkspaceHub === 'function') cmpRenderWorkspaceHub();
+}
 function cmpRenderCreativeAssetMatrix(){
   const el = document.getElementById('cmpCreativeAssetMatrix');
   if (!el) return;
+  const gateCampaign = cmpRailLoadedCampaign();
+  if (gateCampaign && gateCampaign.creativeDisposition === 'external'){
+    el.innerHTML = cmpCreativeGateHtml(gateCampaign);
+    cmpRenderCreativeAssetCoverageNote();
+    return;
+  }
   cmpRenderCreativeAssetContestStatus();
   const channels = cmpCreativeAssetChannelsToRender();
   if (!channels.length){
@@ -64198,7 +64344,7 @@ function cmpRenderCreativeAssetMatrix(){
   // 2026-09-09 style-check fix — .creative-asset-channel-group's look was
   // fully inline at its only call site; given a real rule (below, near
   // the other .cmp-* card patterns) instead.
-  el.innerHTML = channels.map(channel => `<div class="creative-asset-channel-group" id="cmpCAG_${cmpCreativeAssetChannelSlug(channel)}_group">${cmpCreativeAssetChannelGroupInnerHtml(channel)}</div>`).join('');
+  el.innerHTML = cmpCreativeGateHtml(gateCampaign) + channels.map(channel => `<div class="creative-asset-channel-group" id="cmpCAG_${cmpCreativeAssetChannelSlug(channel)}_group">${cmpCreativeAssetChannelGroupInnerHtml(channel)}</div>`).join('');
   channels.forEach(channel => { cmpPopulateCreativeAssetSizeSelectsForChannel(channel); cmpFillPublisherPartnerSelects(channel); });
   cmpSyncCreativeAssetRequestsFromGrid();
 }
