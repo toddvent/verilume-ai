@@ -12405,7 +12405,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-29-download-edit-reupload-round-trip';
+const CXMEDIA_BUILD_STAMP = '2026-09-29-confirm-every-delete';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -20435,6 +20435,12 @@ function sessionStorageKey(accountId){
 // a chance to run. Wrapping every authedFetch() call in an AbortController
 // timeout turns "hangs forever" into "fails after timeoutMs," so the
 // existing fallback logic actually fires instead of leaving the UI stuck.
+// 2026-09-29, per Todd: "validate all delete selections with a pop-up
+// asking the user to confirm or cancel." One shared prompt so every
+// delete/remove of saved data reads the same; returns true only on OK.
+function confirmDeleteAction(what, extra){
+  return window.confirm(`Delete ${what}?${extra ? `\n\n${extra}` : ''}\n\nThis can't be undone. OK to delete, Cancel to keep it.`);
+}
 function authedFetch(url, options = {}){
   const headers = Object.assign({}, options.headers || {});
   if (sessionToken) headers['Authorization'] = `Bearer ${sessionToken}`;
@@ -25001,6 +25007,7 @@ function collabReopenTheme(id){
 }
 
 function collabDeleteTheme(id){
+  if (!confirmDeleteAction('this saved theme')) return;
   collabLibrary = collabLibrary.filter(t => t.id !== id);
   collabRenderLibrary();
   document.getElementById('collabLibCount').textContent = collabLibrary.length ? `(${collabLibrary.length})` : '';
@@ -35088,6 +35095,7 @@ async function bwsSetExcluded(id, excluded){
 }
 
 async function bwsDeleteSample(id){
+  if (!confirmDeleteAction('this brand writing sample')) return;
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-writing-samples/${encodeURIComponent(id)}`, { method: 'DELETE' });
     if (resp.ok) bwsLoadLibrary();
@@ -35229,6 +35237,7 @@ async function wsRetagCreativeMarket(id, creativeMarket){
   } catch (e){ alert('Backend unreachable — could not save that tag.'); }
 }
 async function wsDeleteRule(id){
+  if (!confirmDeleteAction('this website copy example')) return;
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-copy-website-examples/${encodeURIComponent(id)}`, { method: 'DELETE' });
     if (resp.ok) wsLoadList();
@@ -55843,6 +55852,8 @@ async function prcToggleStatus(type, id){
 
 async function prcDelete(type, id){
   const cfg = PRC_TYPE_CONFIG[type];
+  const prcLabels = { press: 'press release', editorial: 'editorial pitch', corp: 'corporate communication' };
+  if (!confirmDeleteAction(`this ${prcLabels[type] || 'item'}`)) return;
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/${cfg.endpoint}/${encodeURIComponent(id)}`, { method: 'DELETE' });
     if (resp.ok) await loadPrCorpCommData();
@@ -56801,6 +56812,7 @@ async function deleteTeamMember(id){
     if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = `${m.name} is this account's only Admin — promote someone else to Admin before removing them.`; }
     return;
   }
+  if (!confirmDeleteAction(m ? `${m.name} from the team` : 'this team member')) return;
   if (editingTeamMemberId === id) cancelEditTeamMember();
   state.team = state.team.filter(m => m.id !== id);
   const wasActingAs = actingAsId === id;
@@ -62805,6 +62817,7 @@ function cmpAddChannelPlanCategory(){
 async function cmpDeleteChannelPlanCategory(channel){
   const row = cmpChannelPlanRows[channel];
   if (!row) return;
+  if (!confirmDeleteAction(`the ${channel} line from this campaign's channel plan`)) return;
   const campaign = cmpRailLoadedCampaign();
   delete cmpChannelPlanRows[channel];
   selectedChannels.delete(channel);
@@ -68226,6 +68239,7 @@ function mbuRenderEngagementRows(){
 function mbuAddEngagementRow(){ mbuEngagementRows.push({ channelGroup: '', sessions: null, engagedSessions: null, engagementRate: null, avgEngagementTimeMin: null }); mbuRenderEngagementRows(); }
 async function mbuDeleteEngagementRow(i){
   const r = mbuEngagementRows[i]; if (!r) return;
+  if (r.channelGroup && !confirmDeleteAction(`the ${r.channelGroup} engagement row for this period`)) return;
   const yearSel = document.getElementById('mbuEngagementYear'), monthSel = document.getElementById('mbuEngagementMonth');
   mbuEngagementRows.splice(i, 1); mbuRenderEngagementRows();
   if (r.channelGroup && dataSourceLabel === 'backend'){
@@ -68372,6 +68386,7 @@ function mbuRenderLeadRows(){
 function mbuAddLeadRow(){ mbuLeadRows.push({ source: '', leadType: 'High Value', formName: '', count: null, bookings: null, avgDaysToConvert: null }); mbuRenderLeadRows(); }
 async function mbuDeleteLeadRow(i){
   const r = mbuLeadRows[i]; if (!r) return;
+  if (r.source && !confirmDeleteAction(`the ${r.source}${r.leadType ? ' · ' + r.leadType : ''} lead row for this period`)) return;
   const yearSel = document.getElementById('mbuLeadYear'), monthSel = document.getElementById('mbuLeadMonth');
   mbuLeadRows.splice(i, 1); mbuRenderLeadRows();
   if (r.source && dataSourceLabel === 'backend'){
@@ -68532,6 +68547,7 @@ function mbuRenderTxnRows(){
 function mbuAddTxnRow(){ mbuTxnRows.push({ productGroup: '', transactions: null, revenue: null }); mbuRenderTxnRows(); }
 async function mbuDeleteTxnRow(i){
   const r = mbuTxnRows[i]; if (!r) return;
+  if (!confirmDeleteAction(`the ${r.productGroup || 'transactions'} row for this period`)) return;
   const yearSel = document.getElementById('mbuTxnYear'), monthSel = document.getElementById('mbuTxnMonth');
   mbuTxnRows.splice(i, 1); mbuRenderTxnRows();
   if (dataSourceLabel === 'backend'){
@@ -69166,6 +69182,7 @@ function addPartner(){
   savePartnersVendors();
 }
 function removePartner(i){
+  if (!confirmDeleteAction(`${state.partners[i] || 'this partner'} from the partners & vendors list`)) return;
   state.partners.splice(i, 1);
   renderPartnersVendorsSection();
   savePartnersVendors();
