@@ -12471,7 +12471,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-29-elevenlabs-voice-final-b';
+const CXMEDIA_BUILD_STAMP = '2026-09-29-elevenlabs-voice-final-c';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -22896,6 +22896,38 @@ function vxVoiceAskConsent(){
   if (ok){ try { localStorage.setItem(VX_VOICE_CONSENT_KEY, 'yes'); } catch (e){} }
   return ok;
 }
+// 2026-09-29 — the ElevenLabs client is bundled into the repo
+// (frontend/vendor/elevenlabs-client.iife.js, the package's own IIFE build,
+// v1.26.0) and served from verilume.ai, because a live test showed the
+// jsdelivr CDN timing out on Todd's network (net::ERR_TIMED_OUT after 45s).
+// Tried in order: same folder as this page (local demo opened from the
+// frontend folder), /frontend/vendor (Vercel serves the repo as-is; the
+// /portal.html rewrite keeps the document at the site root), then the CDN
+// as a last resort. Loaded once, lazily, only when a mic is started.
+let vxElevenLabsLoading = null;
+function vxLoadElevenLabsClient(){
+  if (window.ElevenLabsClient && window.ElevenLabsClient.Conversation) return Promise.resolve(window.ElevenLabsClient);
+  if (vxElevenLabsLoading) return vxElevenLabsLoading;
+  const candidates = ['vendor/elevenlabs-client.iife.js', 'frontend/vendor/elevenlabs-client.iife.js', '/frontend/vendor/elevenlabs-client.iife.js'];
+  const loadScript = (src) => new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = src; el.async = true;
+    const timer = setTimeout(() => { el.remove(); reject(new Error('timeout loading ' + src)); }, 20000);
+    el.onload = () => { clearTimeout(timer); resolve(); };
+    el.onerror = () => { clearTimeout(timer); el.remove(); reject(new Error('failed loading ' + src)); };
+    document.head.appendChild(el);
+  });
+  vxElevenLabsLoading = (async () => {
+    for (const src of candidates){
+      try { await loadScript(src); if (window.ElevenLabsClient && window.ElevenLabsClient.Conversation) return window.ElevenLabsClient; }
+      catch (e){ console.warn('[voice] client bundle not at', src, '-', e.message); }
+    }
+    console.warn('[voice] falling back to the CDN build');
+    return await import('https://cdn.jsdelivr.net/npm/@elevenlabs/client/+esm');
+  })();
+  vxElevenLabsLoading.catch(() => { vxElevenLabsLoading = null; });
+  return vxElevenLabsLoading;
+}
 async function vxVoiceStart(opts){
   const o = opts || {};
   if (vxVoice.state !== 'idle') return false;
@@ -22908,7 +22940,7 @@ async function vxVoiceStart(opts){
     const sess = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice/session`, { method: 'GET' }, 3, 700);
     if (!sess || !sess.token) throw new Error('voice session response had no token');
     if (!sess.signedUrl) console.warn('[voice] no signed URL (' + (sess.signedUrlReason || 'unknown') + ') — falling back to agentId; this only works if the agent does not require authentication.');
-    const { Conversation } = await import('https://cdn.jsdelivr.net/npm/@elevenlabs/client/+esm');
+    const { Conversation } = await vxLoadElevenLabsClient();
     const clientTools = {
       // The ElevenLabs tool editor cannot save a nested array-of-objects
       // schema, so the agent sends the cards as a JSON string (cards_json);
