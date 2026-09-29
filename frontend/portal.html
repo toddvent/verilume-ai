@@ -4964,7 +4964,7 @@
                item to that campaign rather than replacing what's already
                there (see the backend's own ADD-not-replace comment on this
                endpoint) — updated below to say so, not "overridden". -->
-          <p class="hint" style="margin-top:0;">For getting a client up and running fast — not for everyday use. Rows are grouped into a campaign by matching <strong>Channel + Partner + Hit Date + End Date + Audience</strong> — not by name, since clients don't always have one. campaignName is just a display label. A row whose match already exists on this account <strong>adds</strong> its line item to that campaign's Channel Planning Detail — existing rows are kept, not replaced — so re-uploading a corrected file is always safe. A combination Verilume hasn't seen before is created as a new campaign with its own campaign ID.</p>
+          <p class="hint" style="margin-top:0;">For getting a client up and running fast — not for everyday use. Rows that share a <strong>Project Number</strong> become one campaign (its sends, drops or insertions are the line items; the campaign runs from the earliest hit date to the latest end date). Rows without one are grouped by <strong>Channel + Partner + Hit Date + End Date + Audience</strong> — not by name, since clients don't always have one. campaignName is just a display label. A row whose match already exists on this account <strong>adds</strong> its line item to that campaign's Channel Planning Detail — existing rows are kept, not replaced — so re-uploading a corrected file is always safe. A combination Verilume hasn't seen before is created as a new campaign with its own campaign ID.</p>
 
           <div class="field-divider">Date range for this file</div>
           <div class="field-row" style="display:flex;gap:16px;flex-wrap:wrap;">
@@ -12401,7 +12401,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-29-taxonomy-save-cors-fix';
+const CXMEDIA_BUILD_STAMP = '2026-09-29-upload-groups-by-project-number';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -17805,9 +17805,15 @@ function renderBulkCreateCampaignsPreview(){
   // honest about what it can't know yet — the real new-vs-matched split
   // comes back from the server in the upload result below (campaignsCreated/
   // campaignsMatched), same as it always has.
-  const groupKeys = new Set(bccRows.filter(r => !r.errors.length).map(r => [r.raw.channel, r.raw.partner, r.raw.hitDate, r.raw.endDate, r.raw.audience].map(v => String(v || '').trim().toLowerCase()).join('||')));
+  // Mirrors the server's grouping: Project Number when present, else the
+  // 5-field key.
+  const groupKeys = new Set(bccRows.filter(r => !r.errors.length).map(r => {
+    const pn = String(r.raw.projectNumber || '').trim().toLowerCase();
+    return pn ? `pn||${pn}` : [r.raw.channel, r.raw.partner, r.raw.hitDate, r.raw.endDate, r.raw.audience].map(v => String(v || '').trim().toLowerCase()).join('||');
+  }));
+  const withPn = bccRows.filter(r => !r.errors.length && String(r.raw.projectNumber || '').trim()).length;
   document.getElementById('bccSummary').textContent =
-    `${bccRows.length} row${bccRows.length === 1 ? '' : 's'} parsed — ${validCount} ready to upload (${groupKeys.size} campaign${groupKeys.size === 1 ? '' : 's'} by Channel + Partner + Hit Date + End Date + Audience), ${errorCount} with errors. The Status column explains each row: red = a problem that blocks that row; "Ready" = it uploads, with any assumptions noted. Which rows landed on a new vs. an existing campaign shows after upload.`;
+    `${bccRows.length} row${bccRows.length === 1 ? '' : 's'} parsed — ${validCount} ready to upload as ${groupKeys.size} campaign${groupKeys.size === 1 ? '' : 's'} (${withPn ? `rows sharing a Project Number become one campaign${withPn < validCount ? '; the rest group' : ''}` : 'grouped'}${withPn < validCount ? ' by Channel + Partner + Hit Date + End Date + Audience' : ''}), ${errorCount} with errors. The Status column explains each row: red = a problem that blocks that row; "Ready" = it uploads, with any assumptions noted. Which rows landed on a new vs. an existing campaign shows after upload.`;
 
   // One-click "add everything the file has that the lists don't" above the table.
   const allMissing = new Map();
@@ -17948,7 +17954,7 @@ async function loadBulkCreateCampaignsBatches(){
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
           <div>
             <strong>${escapeHtml(b.fileName || '(unnamed file)')}</strong>
-            <span class="hint" style="display:block;">${b.dateRangeStart || '?'} → ${b.dateRangeEnd || '?'} · ${b.rowCount} row${b.rowCount === 1 ? '' : 's'} · ${created.length} created, ${matched.length} overridden · uploaded ${new Date(b.createdAt).toLocaleString()} by ${escapeHtml(b.uploadedByName || b.uploadedByRole || 'unknown')}</span>
+            <span class="hint" style="display:block;">${(b.dateRangeStart || b.dateRangeEnd) ? `${b.dateRangeStart || '…'} → ${b.dateRangeEnd || '…'}` : 'no date range given'} · ${b.rowCount} row${b.rowCount === 1 ? '' : 's'} · ${created.length} created, ${matched.length} overridden · uploaded ${new Date(b.createdAt).toLocaleString()} by ${escapeHtml(b.uploadedByName || b.uploadedByRole || 'unknown')}</span>
           </div>
           <button type="button" class="btn-ghost" onclick="deleteBulkCreateCampaignsBatch('${b.id}')">Delete this file →</button>
         </div>
