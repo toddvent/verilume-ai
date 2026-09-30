@@ -1472,7 +1472,7 @@
   .strat-tag{display:inline-block;font-size:0.6875rem;font-weight:700;background:var(--paper-dim);border:1px solid var(--line);border-radius:980px;padding:2px 8px;margin-right:6px;color:var(--muted);}
   .strat-tag.benchmark,.strat-tag.low{background:#FFF4E5;border-color:#F0C98F;color:#8A5A12;}
   .bd-card .strat-head{align-items:flex-start;} .bd-metric{display:flex;flex-direction:column;align-items:flex-end;gap:2px;} .bd-metric-lbl{font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);} .bd-metric-val{font-size:1.375rem;font-weight:700;}
-  .strat-tablewrap{overflow-x:auto;} .ttb-step.done{opacity:0.75;} .ttb-min{font-size:0.75rem;color:var(--muted);} .ttb-items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;} .ttb-items li{display:flex;gap:10px;align-items:flex-start;} .ttb-mark{width:18px;height:18px;border:1.5px solid var(--line-hairline);border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:0.6875rem;margin-top:2px;} .ttb-items li.done .ttb-mark{background:var(--ink,#222);color:var(--paper,#fff);border-color:transparent;} .ttb-feed-row{display:flex;justify-content:space-between;gap:16px;padding:8px 0;border-top:1px solid var(--line-hairline);font-size:0.875rem;} .ttb-feed-row:first-child{border-top:0;} .ttb-all{margin-top:20px;} .ttb-all>summary{cursor:pointer;font-size:0.875rem;color:var(--muted);padding:8px 0;} .bd-working{display:flex;align-items:center;gap:14px;} .bd-failed{border-color:var(--line-strong,#999);} .bd-spin{width:18px;height:18px;border-radius:50%;border:2px solid var(--line-hairline);border-top-color:var(--ink,#222);animation:portalLoadSpin 0.9s linear infinite;flex:none;} .bd-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;} .bd-thread{margin-top:14px;border-top:1px solid var(--line-hairline);padding-top:10px;} .bd-comment{font-size:0.8125rem;line-height:1.5;padding:6px 0;} .bd-comment.brain{background:var(--paper-dim);border-radius:10px;padding:8px 10px;margin:4px 0;}
+  .strat-tablewrap{overflow-x:auto;} .cx-brief{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line-hairline);font-size:0.875rem;} .strat-field-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;} .strat-field-row{padding:6px 0;font-size:0.875rem;} @media (max-width:720px){.strat-field-grid{grid-template-columns:1fr;}} .ttb-step.done{opacity:0.75;} .ttb-min{font-size:0.75rem;color:var(--muted);} .ttb-items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;} .ttb-items li{display:flex;gap:10px;align-items:flex-start;} .ttb-mark{width:18px;height:18px;border:1.5px solid var(--line-hairline);border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:0.6875rem;margin-top:2px;} .ttb-items li.done .ttb-mark{background:var(--ink,#222);color:var(--paper,#fff);border-color:transparent;} .ttb-feed-row{display:flex;justify-content:space-between;gap:16px;padding:8px 0;border-top:1px solid var(--line-hairline);font-size:0.875rem;} .ttb-feed-row:first-child{border-top:0;} .ttb-all{margin-top:20px;} .ttb-all>summary{cursor:pointer;font-size:0.875rem;color:var(--muted);padding:8px 0;} .bd-working{display:flex;align-items:center;gap:14px;} .bd-failed{border-color:var(--line-strong,#999);} .bd-spin{width:18px;height:18px;border-radius:50%;border:2px solid var(--line-hairline);border-top-color:var(--ink,#222);animation:portalLoadSpin 0.9s linear infinite;flex:none;} .bd-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;} .bd-thread{margin-top:14px;border-top:1px solid var(--line-hairline);padding-top:10px;} .bd-comment{font-size:0.8125rem;line-height:1.5;padding:6px 0;} .bd-comment.brain{background:var(--paper-dim);border-radius:10px;padding:8px 10px;margin:4px 0;}
   .bd-compose{display:flex;gap:8px;margin-top:8px;} .bd-compose input{flex:1;font:inherit;font-size:0.8125rem;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--white);color:var(--ink);}
   .strat-trust{margin:0 0 0 18px;padding:0;font-size:0.8125rem;color:var(--muted);line-height:1.7;}
   .strat-foot,.strat-empty{font-size:0.8125rem;color:var(--muted);margin:10px 0 0;line-height:1.5;}
@@ -12519,7 +12519,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-30-train-b';
+const CXMEDIA_BUILD_STAMP = '2026-09-30-build-d';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -22761,6 +22761,16 @@ function stratRenderAudience(){
 function stratPickAud(t){ strat.audType = t; stratRenderAudience(); }
 
 // ---- Forecast against the annual plan target ----
+async function stratLoadRolling(){
+  if (!stratIsLive()) return; const box = document.getElementById('stratRollBody'); if (!box) return;
+  box.innerHTML = '<p class="strat-empty">Loading…</p>';
+  let d; try { d = await stratGet('rolling-budget'); } catch (e){ box.innerHTML = '<p class="strat-empty">Could not load the rolling budget just now.</p>'; return; }
+  const mlabel = k => { const [y, m] = k.split('-'); return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m) - 1] + ' ' + y; };
+  const rows = d.months.map(r => `<tr><td>${mlabel(r.month)}${r.month === d.asOfMonth ? ' <span class="strat-sub">(this month)</span>' : ''}</td><td>${stratMoney(r.budget)}</td><td>${stratMoney(r.spend)} <span class="strat-sub">${r.spend == null ? '' : r.kind === 'actual' ? 'actual' : 'planned'}</span></td><td>${r.budget != null && r.spend != null ? stratMoney(r.spend - r.budget) : '—'}</td><td>${stratNum(r.impressions)}</td></tr>`).join('');
+  const g = d.gap;
+  const reading = g ? `Across the ${g.months} months that have both a budget and spend, spend is ${stratMoney(g.spend)} against ${stratMoney(g.budget)} budgeted (${stratMoney(g.spend - g.budget)} ${g.spend - g.budget >= 0 ? 'over' : 'under'}).` : 'No month has both a budget and spend yet.';
+  box.innerHTML = `<p class="strat-reading" style="margin:0 0 10px;">${escapeHtml(reading)}</p><div class="strat-tablewrap"><table class="strat-table"><thead><tr><th>Month</th><th>Budget</th><th>Spend</th><th>Spend minus budget</th><th>Impressions</th></tr></thead><tbody>${rows}</tbody></table></div>${d.budgetNote ? `<p class="strat-foot">${escapeHtml(d.budgetNote)}</p>` : ''}<p class="strat-foot">Past months use recorded spend and the rest use the media plan as loaded. Budget adds every category and scope from the confirmed budget uploads.</p>`;
+}
 async function stratLoadForecast(){
   if (!stratIsLive()) return; const box = document.getElementById('stratFcBody'); if (!box) return;
   box.innerHTML = '<p class="strat-empty">Loading…</p>';
@@ -22789,7 +22799,7 @@ function stratAsk(q){ try { askVerilumeOpenLive(); } catch (e){} askVerilumeAsk(
 function stratToolsHtml(){
   const go = it => it.step ? `goToStep('${it.step}'${it.stepArg ? `,'${jsStrEscape(it.stepArg)}'` : ''})` : `goToStep('pendingFeature','${jsStrEscape(it.label)}','Strategy','strategy')`;
   const items = [
-    { label: 'Manage Budgets' }, { label: 'MMM Model Allocations Fixed Views', note: 'built in Advanced Analytics' },
+    { label: 'Marketing Budget Upload', step: 'marketingBudgetUpload', stepArg: 'configuration' }, { label: 'Manage Budgets' }, { label: 'MMM Model Allocations Fixed Views', note: 'built in Advanced Analytics' },
     { label: 'Finalized / Audited Media Plans', step: 'mediaplan' }, { label: 'Product & Destination Positioning' },
     { label: 'View My Customers', step: 'marketOptimization' }, { label: 'Competitor Tracking', step: 'competitivePositioning' },
     { label: 'Battle Brief' }, { label: 'Consumer Trends' }, { label: 'What Competitors Are Doing Now' }
@@ -22797,6 +22807,16 @@ function stratToolsHtml(){
   return `<div class="strat-tools"><span class="strat-tools-lbl">Tools</span>${items.map(it => `<a class="flink" onclick="${go(it)}">${escapeHtml(it.label)}</a>${it.note ? `<span class="strat-note">(${escapeHtml(it.note)})</span>` : ''}`).join('')}</div>`;
 }
 
+function stratFieldHtml(){
+  const comp = curatedNewsCompetitorItems().slice(0, 4);
+  const news = DAILY_NEWS_ITEMS.filter(i => i.category === 'industry_news' || (i.category === 'ai_marketing' && !/AEO|GEO/i.test(i.title))).slice(0, 4);
+  const compHtml = comp.length ? comp.map(c => `<div class="strat-field-row"><strong>${escapeHtml(c.competitor)}</strong><div class="strat-sub">${escapeHtml(c.title)}</div></div>`).join('') : '<p class="strat-empty">No competitor watch items yet. They appear after the weekly intelligence refresh.</p>';
+  const newsHtml = news.map(n => `<div class="strat-field-row"><a class="flink" href="${escapeHtml(n.url || '#')}" target="_blank" rel="noopener">${escapeHtml(n.title)}</a><div class="strat-sub">${escapeHtml(n.meta || '')}</div></div>`).join('');
+  return `<div class="strat-card"><div class="strat-head"><h2>The field this week</h2><span class="strat-tag">External</span></div>
+    <p class="strat-sub" style="margin:0 0 10px;">What is happening outside your account. Competitor items are the Brain's reasoning about what to watch, not sourced reports. News links go to the publisher. None of it is proven to move your numbers.</p>
+    <div class="strat-field-grid"><div><div class="strat-chart-label" style="margin:0 0 6px;">Competitors</div>${compHtml}</div><div><div class="strat-chart-label" style="margin:0 0 6px;">Market and industry</div>${newsHtml}</div></div>
+    <div class="strat-actions"><a class="flink" onclick="goToStep('competitivePositioning')">Competitor tracking →</a></div></div>`;
+}
 function strategyShellHtml(){
   if (!stratIsLive()){
     return `<div class="strat-card"><h2>Strategy</h2><p class="strat-empty">Sign in to a live account to see spend, revenue, ROAS, price and volume, audience growth and the forecast here. Tools are below.</p></div>` + stratToolsHtml();
@@ -22810,6 +22830,8 @@ function strategyShellHtml(){
       </div></div><div id="stratPriceBody"></div></div>
     <div class="strat-card"><div class="strat-head"><h2>Database growth by audience type</h2></div><div id="stratAudBody"></div></div>
     <div class="strat-card"><div class="strat-head"><h2>Forecast against the plan target</h2></div><div id="stratFcBody"></div></div>
+    <div class="strat-card"><div class="strat-head"><h2>Rolling 18 months: budget and spend</h2></div><div id="stratRollBody"></div></div>
+    ${stratFieldHtml()}
     ${stratToolsHtml()}`;
 }
 
@@ -22906,7 +22928,7 @@ function mediaSciencePageInit(){ if (msIsLive()) msLoad(); }
 
 
 // ---- Customer Experiences (2026-09-30): creative schedule, creative and media together, tools ----
-const cx = { data: null };
+const cx = { data: null, briefs: [], sending: '' };
 function cxIsLive(){ return stratIsLive(); }
 function cxToday(){ const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 function cxGate(c){
@@ -22938,6 +22960,7 @@ function cxRenderTopUrgent(bodyEl){
 async function cxLoad(){
   if (!cxIsLive()) return;
   try { cx.data = await stratGet('creative-media?months=12'); } catch (e){ cx.data = null; }
+  await cxLoadBriefs();
   if (activePrimaryTab === 'brand'){ cxRenderCoreRow(); cxRenderMedia(); }
 }
 function cxRenderCoreRow(){
@@ -22957,6 +22980,30 @@ function cxRenderCoreRow(){
     card('Creative in QA', String(qa), qa ? '• Awaiting approval' : '• Nothing pending', qa === 0, 'Approve or send back') +
     card('Cost per engagement', l ? `$${l.costPerEngagement.toFixed(2)}` : '—', dl != null ? `${stratPct(dl)} vs prior month` : (cx.data ? 'Not on file yet' : 'Loading'), dl != null && dl <= 0, l ? `Spend ÷ clicks · ${stratMonthLabel(l.month)}` : 'Digital performance upload');
 }
+async function cxLoadBriefs(){
+  try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/creative-briefs`); if (r.ok){ const j = await r.json(); cx.briefs = j.briefs || []; } } catch (e){}
+}
+async function cxSendToCreative(kind, key){
+  if (cx.sending) return; cx.sending = kind + ':' + key; cxRenderMedia();
+  let err = '';
+  try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/creative-briefs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, key }) }); if (!r.ok){ const j = await r.json().catch(() => ({})); err = j.error || 'Could not send it just now.'; } }
+  catch (e){ err = 'Could not reach the server.'; }
+  cx.sending = ''; cx.sendError = err; await cxLoadBriefs(); cxRenderMedia();
+}
+async function cxBriefStatus(id, status){
+  try { await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/creative-briefs/${encodeURIComponent(id)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) }); } catch (e){}
+  await cxLoadBriefs(); cxRenderMedia();
+}
+function cxSendBtn(kind, key){
+  const sent = cx.briefs.some(b => b.kind === kind && b.evidence && (b.evidence.offer === key || b.evidence.creativeFocus === key));
+  const busy = cx.sending === kind + ':' + key;
+  return sent ? '<span class="strat-sub">Sent</span>' : `<button type="button" class="strat-chip" ${cx.sending ? 'disabled' : ''} onclick="cxSendToCreative('${kind}','${jsStrEscape(key)}')">${busy ? 'Sending…' : 'Send to Creative'}</button>`;
+}
+function cxBriefsHtml(){
+  if (!cx.briefs.length) return '';
+  const label = { sent: 'Sent', picked_up: 'Picked up', done: 'Done' };
+  return `<div class="strat-chart-label">Sent to Creative</div>` + cx.briefs.slice(0, 8).map(b => `<div class="cx-brief"><div><strong>${escapeHtml(b.title)}</strong><div class="strat-sub">${escapeHtml(b.briefText.split('\\n\\n')[1] || '')}</div><div class="strat-sub">${label[b.status] || b.status} · ${escapeHtml(new Date(b.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' }))}${b.requestedBy ? ' · ' + escapeHtml(b.requestedBy) : ''}</div></div><select onchange="cxBriefStatus('${b.id}', this.value)" aria-label="Brief status">${['sent', 'picked_up', 'done'].map(v => `<option value="${v}" ${b.status === v ? 'selected' : ''}>${label[v]}</option>`).join('')}</select></div>`).join('');
+}
 function cxRenderMedia(){
   const box = document.getElementById('cxMediaBody'); if (!box) return;
   const d = cx.data; if (!d){ box.innerHTML = '<p class="strat-empty">Loading…</p>'; return; }
@@ -22964,11 +23011,13 @@ function cxRenderMedia(){
   const tr = d.costPerEngagement.trend;
   if (tr.length){ html += `<div class="strat-chart-label">Cost per engagement by month <span class="strat-key">spend ÷ clicks, all channels</span></div>` + stratBarsSvg(tr.map(t => ({ month: t.month, v: t.costPerEngagement })), 'v', 'p', '#1E2761', n => n == null ? '—' : '$' + n.toFixed(2), false); }
   else html += '<p class="strat-empty">Not on file yet: monthly digital performance with clicks and spend.</p>';
-  if (d.offers.length){ html += `<div class="strat-chart-label">Offers by cost per lead</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Offer</th><th>Spend</th><th>Leads</th><th>Cost per lead</th><th>Cost per engagement</th></tr></thead><tbody>` + d.offers.map((o, i) => `<tr><td>${i === 0 && o.cpl != null ? '<span class="strat-tag">Winning</span> ' : ''}${escapeHtml(o.offer)}</td><td>${stratMoney(o.spend)}</td><td>${stratNum(o.leads)}</td><td>${o.cpl != null ? '$' + o.cpl.toFixed(2) : '—'}</td><td>${o.costPerEngagement != null ? '$' + o.costPerEngagement.toFixed(2) : '—'}</td></tr>`).join('') + `</tbody></table></div>`; }
+  if (d.offers.length){ html += `<div class="strat-chart-label">Offers by cost per lead</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Offer</th><th>Spend</th><th>Leads</th><th>Cost per lead</th><th>Cost per engagement</th><th></th></tr></thead><tbody>` + d.offers.map((o, i) => `<tr><td>${i === 0 && o.cpl != null ? '<span class="strat-tag">Winning</span> ' : ''}${escapeHtml(o.offer)}</td><td>${stratMoney(o.spend)}</td><td>${stratNum(o.leads)}</td><td>${o.cpl != null ? '$' + o.cpl.toFixed(2) : '—'}</td><td>${o.costPerEngagement != null ? '$' + o.costPerEngagement.toFixed(2) : '—'}</td><td>${o.cpl != null ? cxSendBtn('offer', o.offer) : ''}</td></tr>`).join('') + `</tbody></table></div>`; }
   else html += '<p class="strat-foot">Offers appear once the digital performance upload includes the creative offer column.</p>';
-  if (d.creativeFocus.length){ html += `<div class="strat-chart-label">Creative focus · transactions and price</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Creative focus</th><th>Transactions</th><th>Gross revenue</th><th>Average price</th></tr></thead><tbody>` + d.creativeFocus.map(r => `<tr><td>${escapeHtml(r.creativeFocus)}</td><td>${r.transactions.toLocaleString()}</td><td>${stratMoney(r.gross)}</td><td>${r.avgPrice != null ? '$' + r.avgPrice.toLocaleString() : '—'}</td></tr>`).join('') + `</tbody></table></div><p class="strat-foot">Leads are not tagged by creative focus, so lead-to-booking by creative focus is not shown yet.</p>`; }
+  if (d.creativeFocus.length){ html += `<div class="strat-chart-label">Creative focus · transactions and price</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Creative focus</th><th>Transactions</th><th>Gross revenue</th><th>Average price</th><th></th></tr></thead><tbody>` + d.creativeFocus.map(r => `<tr><td>${escapeHtml(r.creativeFocus)}</td><td>${r.transactions.toLocaleString()}</td><td>${stratMoney(r.gross)}</td><td>${r.avgPrice != null ? '$' + r.avgPrice.toLocaleString() : '—'}</td><td>${r.creativeFocus !== 'Unassigned' ? cxSendBtn('focus', r.creativeFocus) : ''}</td></tr>`).join('') + `</tbody></table></div><p class="strat-foot">Leads are not tagged by creative focus, so lead-to-booking by creative focus is not shown yet.</p>`; }
   const rl = d.relevance.trend;
   html += rl.length ? `<div class="strat-chart-label">Relevance score by month scored <span class="strat-key">average across ${d.relevance.scoredCampaigns} scored campaign${d.relevance.scoredCampaigns === 1 ? '' : 's'}</span></div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Month</th><th>Campaigns scored</th><th>Average score</th></tr></thead><tbody>` + rl.map(r => `<tr><td>${stratMonthLabel(r.month)}</td><td>${r.campaigns}</td><td>${r.avgScore}</td></tr>`).join('') + `</tbody></table></div>` : '<p class="strat-foot">No messaging relevance scores saved yet. Scores appear after copy is scored inside a campaign.</p>';
+  if (cx.sendError) html += `<p class="strat-sub" role="alert">${escapeHtml(cx.sendError)}</p>`;
+  html += cxBriefsHtml();
   box.innerHTML = html;
 }
 function cxToolsHtml(){
@@ -23056,7 +23105,7 @@ function gpRenderView(){
 function gpToolsHtml(){
   const go = it => it.step ? `goToStep('${it.step}')` : `goToStep('pendingFeature','${jsStrEscape(it.label)}','Growth & Performance','marketer')`;
   const items = [
-    { label: 'Campaign Management', step: 'campaignMgmt' }, { label: 'Marketing Calendar', step: 'marketingCalendar' }, { label: 'UTM & QR Code Activation', note: 'opens inside a selected campaign' },
+    { label: 'Campaign Management', step: 'campaignMgmt' }, { label: 'Marketing Calendar', step: 'marketingCalendar' }, { label: 'Marketing Calendar Bulk Upload', step: 'bulkUpload' }, { label: 'UTM & QR Code Activation', note: 'opens inside a selected campaign' },
     { label: 'A/B / Multi-Variant Testing Views', note: 'built by Analytics' }, { label: 'View My Customers', step: 'marketOptimization' }
   ];
   return `<div class="strat-tools"><span class="strat-tools-lbl">Tools</span>${items.map(it => `<a class="flink" onclick="${go(it)}">${escapeHtml(it.label)}</a>${it.note ? `<span class="strat-note">(${escapeHtml(it.note)})</span>` : ''}`).join('')}</div>`;
@@ -23147,11 +23196,13 @@ function bdRender(){
     return `<div class="strat-card bd-card"><div class="strat-head"><h2>${escapeHtml(s.title)}</h2><div class="bd-metric"><span class="bd-metric-lbl">${escapeHtml(m.label || '')}</span><span class="bd-metric-val">${escapeHtml(m.display || '—')}</span></div></div>
       <p class="strat-reading">${escapeHtml((d.text && d.text[s.key]) || (f.lines || []).join(' '))}</p>
       <div class="strat-actions">${(f.links || []).map(bdLinkHtml).join(' · ')}</div>${bdRenderComments(s.key)}</div>`; }).join('');
+  const chgList = (d.facts && d.facts._changes) || [];
+  const chg = chgList.length ? `<div class="strat-card"><div class="strat-chart-label" style="margin:0 0 6px;">Since the last edition</div>${chgList.map(c => `<p class="strat-sub" style="margin:0 0 4px;">${escapeHtml(c)}</p>`).join('')}</div>` : '';
   const ext = bdExternalItems();
   const extHtml = `<div class="strat-card"><div class="strat-head"><h2>From outside</h2><span class="strat-tag benchmark">External sources, not this account's data</span></div>
     <div class="curated-news-grid">${ext.map(i => i.url ? `<a class="curated-news-card" href="${i.url}" target="_blank" rel="noopener"><div class="cn-meta">${escapeHtml(i.meta)}</div><div class="cn-title">${escapeHtml(i.title)}</div></a>` : `<div class="curated-news-card"><div class="cn-meta">${escapeHtml(i.meta)} <span class="illustrative-tag">AI reasoning</span></div><div class="cn-title">${escapeHtml(i.title)}</div></div>`).join('')}</div>
     <p class="strat-foot">Industry, marketing, CX, AI and AEO/GEO reading. Account monitoring for AEO/GEO is not connected yet.</p></div>`;
-  box.innerHTML = `<div class="strat-card bd-head"><div><div class="strat-chart-label" style="margin:0 0 4px;">Week of ${bdWeekLabel(d.weekStart)}</div><p class="strat-reading" style="margin:0;">Posted ${escapeHtml(posted)}. ${by}, and it stays fixed until the next run. Comment under any section, or mention @AIBrain to dig deeper.</p></div>${runBtn}</div>${runNote}${sections}${extHtml}`;
+  box.innerHTML = `<div class="strat-card bd-head"><div><div class="strat-chart-label" style="margin:0 0 4px;">Week of ${bdWeekLabel(d.weekStart)}</div><p class="strat-reading" style="margin:0;">Posted ${escapeHtml(posted)}. ${by}, and it stays fixed until the next run. Comment under any section, or mention @AIBrain to dig deeper.</p></div>${runBtn}</div>${runNote}${chg}${sections}${extHtml}`;
 }
 function brainDumpShellHtml(){
   if (!bdIsLive()) return dailyBriefExtraHtml();
@@ -23164,7 +23215,7 @@ function strategyPageInit(){
   if (!stratIsLive()) return;
   stratSyncPriceControls();
   stratLoadPrice().then(stratFillPgSelect); stratLoadAudience();
-  stratLoadDemand().then(() => stratLoadForecast());
+  stratLoadDemand().then(() => stratLoadForecast()); stratLoadRolling();
 }
 function stratFillPgSelect(){
   const sel = document.getElementById('stratPgSel'); const d = strat.priceData; if (!sel || !d) return;
