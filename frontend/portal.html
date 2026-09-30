@@ -1431,6 +1431,37 @@
   .stat-card-row-head{display:flex;justify-content:flex-end;margin-bottom:12px;}
   .customize-kpis-btn{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:700;color:var(--ink);background:var(--white);border:1px solid var(--line);border-radius:999px;padding:7px 16px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
   .customize-kpis-btn:hover{border-color:var(--hdr-navy);}
+  .fd-panel button,.fd-panel input{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;}
+  .gp-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 14px;}
+  .fd-cta-b{font-weight:800;text-decoration:underline;text-underline-offset:2px;}
+  .fd-backdrop{position:fixed;inset:0;background:rgba(20,20,20,0.45);z-index:950;display:flex;align-items:flex-start;justify-content:center;padding:5vh 12px;overflow-y:auto;}
+  .fd-backdrop[hidden]{display:none;}
+  .fd-panel{background:var(--white);border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,0.25);width:min(760px,100%);padding:22px 24px 26px;font-size:1rem;}
+  .fd-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;}
+  .fd-head h2{margin:0;font-size:1.25rem;}
+  .fd-close{background:none;border:1px solid var(--line);border-radius:999px;width:36px;height:36px;font-size:1.25rem;line-height:1;cursor:pointer;color:var(--ink);}
+  .fd-top{display:flex;gap:12px;align-items:center;flex-wrap:wrap;}
+  .fd-mic{background:var(--ink);color:var(--white);border:none;border-radius:999px;font-weight:700;font-size:0.9375rem;padding:12px 22px;cursor:pointer;min-width:84px;}
+  .fd-mic[data-live="yes"]{outline:3px solid var(--line);}
+  .fd-textrow{display:flex;gap:8px;flex:1;min-width:220px;}
+  .fd-textrow input{flex:1;font-size:1rem;padding:10px 14px;border:1px solid var(--line);border-radius:999px;}
+  .fd-status{min-height:1.4em;margin:8px 2px;font-size:0.875rem;color:var(--ink-soft,#6E6E73);}
+  .fd-card{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:6px 0 14px;}
+  .fd-cardhead{font-weight:700;margin-bottom:6px;}
+  .fd-row{display:flex;gap:12px;align-items:baseline;padding:4px 0;}
+  .fd-k{width:64px;color:var(--ink-soft,#6E6E73);font-size:0.875rem;flex:none;}
+  .fd-v{flex:1;}
+  .fd-dim{color:var(--ink-soft,#6E6E73);}
+  .fd-ask{font-weight:700;margin:12px 0 8px;}
+  .fd-chips{display:flex;gap:8px;flex-wrap:wrap;}
+  .fd-chip{background:var(--white);border:1px solid var(--line);border-radius:999px;padding:10px 16px;font-size:0.9375rem;font-weight:600;color:var(--ink);cursor:pointer;}
+  .fd-chip:hover{border-color:var(--hdr-navy);}
+  .fd-hint{font-size:0.875rem;color:var(--ink-soft,#6E6E73);margin:6px 0;}
+  .fd-existing{background:var(--paper-dim);border-radius:12px;padding:4px 14px 10px;margin:10px 0;}
+  .fd-ex{display:flex;justify-content:space-between;gap:12px;padding:5px 0;}
+  .fd-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0 4px;}
+  .fd-out{border-top:1px solid var(--line);margin-top:14px;padding-top:6px;}
+  .fd-sum{margin:0 0 10px;font-size:1rem;}
   .stat-card-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:32px;}
   .stat-card{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:20px 22px;box-shadow:var(--shadow-sm);transition:box-shadow 0.15s ease,transform 0.15s ease;}
   .stat-card:hover{box-shadow:var(--shadow-md);transform:translateY(-1px);}
@@ -4271,7 +4302,7 @@
          Management) still works unchanged. -->
       <div id="execChartsModule">
         <div class="stat-card-row-head">
-          <button type="button" class="customize-kpis-btn" onclick="goToStep('pendingFeature','Customize KPIs','Stat cards')">⚙ Customize KPIs</button>
+          <button type="button" class="customize-kpis-btn" onclick="fireDrillOpen()">Need something we don't show? <span class="fd-cta-b">Ask Verilume</span></button>
         </div>
         <div class="stat-card-grid" id="tabStatCardGrid"></div>
       </div>
@@ -12601,7 +12632,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-30-build-l';
+const CXMEDIA_BUILD_STAMP = '2026-09-30-build-n';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -23274,7 +23305,7 @@ function gpToolsHtml(){
 }
 function growthPerformanceShellHtml(){
   if (!gpIsLive()) return renderTileShellGroups(MARKETER_SHELL_GROUPS, null, 'marketer');
-  return `<div class="strat-card"><div class="strat-head"><h2>Campaigns in motion</h2></div>${gpPipelineHtml()}</div>
+  return `<div class="gp-actions"><button type="button" class="btn-primary" onclick="startNewCampaign()">＋ Create New Campaign</button><button type="button" class="btn-ghost" onclick="goToStep('marketingCalendar')">Marketing Calendar</button><button type="button" class="btn-ghost" onclick="goToStep('campaignMgmt')">All Campaigns</button></div><div class="strat-card"><div class="strat-head"><h2>Campaigns in motion</h2></div>${gpPipelineHtml()}</div>
     <div class="strat-card"><div class="strat-head"><h2>Performance and lifecycle</h2><div class="strat-ctl"><span class="strat-seg"><button type="button" data-gp-view="performance" class="${gp.view === 'performance' ? 'on' : ''}" onclick="gpSetView('performance')">Performance</button><button type="button" data-gp-view="lifecycle" class="${gp.view === 'lifecycle' ? 'on' : ''}" onclick="gpSetView('lifecycle')">Lifecycle</button></span></div></div><div id="gpViewBody"><p class="strat-empty">Loading…</p></div></div>` + gpToolsHtml();
 }
 function growthPerformancePageInit(){ if (gpIsLive()) gpLoad(); }
@@ -23948,6 +23979,108 @@ async function askVerilumeToggleVoice(){
     onCards: askVerilumeRenderCards,
     onProposal: askVerilumeRenderProposal
   });
+}
+// ---- Fire drill panel (2026-09-30): "Need something we don't show?" ----
+// Replaces the dead Customize KPIs button. Slice 1: interview (taps, typing or voice) builds a
+// request card, existing reports are offered first, then a safe server template builds one view
+// that can be downloaded once. Saving to the Report Library is slice 2.
+const fd = { card: { need: null, subject: null, use: null }, next: null, existing: [], view: null, notOnFile: '', unmet: false, busy: false, status: '', voice: false, asked: false };
+const FD_LABELS = {
+  need: { number: 'A number', compare: 'A comparison', trend: 'A trend over time', list: 'A list or ranking' },
+  subject: { account: 'The whole account', productGroup: 'A product group', channel: 'A channel', campaign: 'A campaign', audience: 'An audience type' },
+  use: { look: 'Just look', present: 'Present it', send: 'Send it to someone', keep: 'Keep it' }
+};
+function fdEl(){ return document.getElementById('fireDrillPanel'); }
+function fdEnsure(){
+  let el = fdEl(); if (el) return el;
+  el = document.createElement('div'); el.id = 'fireDrillPanel'; el.className = 'fd-backdrop'; el.hidden = true;
+  el.innerHTML = '<div class="fd-panel" role="dialog" aria-modal="true" aria-labelledby="fdTitle"><div class="fd-head"><h2 id="fdTitle">Need something we don\'t show?</h2><button type="button" class="fd-close" id="fdClose" aria-label="Close" onclick="fireDrillClose()">&times;</button></div><div id="fdBody"></div></div>';
+  el.addEventListener('click', (e) => { if (e.target === el) fireDrillClose(); });
+  document.body.appendChild(el);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && fdEl() && !fdEl().hidden) fireDrillClose(); });
+  return el;
+}
+function fireDrillOpen(){
+  fdEnsure(); fd.card = { need: null, subject: null, use: null }; fd.next = null; fd.existing = []; fd.view = null; fd.notOnFile = ''; fd.unmet = false; fd.busy = false; fd.status = ''; fd.asked = false;
+  fdEl().hidden = false; fdRender();
+  const c = document.getElementById('fdClose'); if (c) c.focus();
+  fdTurn('');
+  if (typeof state !== 'undefined' && state.companyId && typeof vxVoiceConsented === 'function' && vxVoiceConsented()) fdToggleVoice(); // voice first once the person has already agreed to the mic
+}
+async function fireDrillClose(){
+  if (fd.voice){ try { await vxVoiceStop(); } catch (e){} fd.voice = false; }
+  const el = fdEl(); if (el) el.hidden = true;
+}
+async function fdPost(path, body){
+  const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/fire-drill/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  return resp.json();
+}
+async function fdTurn(text){
+  if (fd.busy) return; fd.busy = true; fd.status = text ? 'Working out what you need…' : ''; fdRender();
+  try {
+    const d = await fdPost('turn', { text: text || '', card: fd.card });
+    fd.card = d.card; fd.next = d.next; fd.existing = d.existing || []; fd.asked = true; fd.status = '';
+    if (text && (fd.view || fd.notOnFile || fd.unmet)){ fd.view = null; fd.notOnFile = ''; fd.unmet = false; }
+  } catch (e){ fd.status = 'Could not reach the backend. Try again in a moment.'; }
+  fd.busy = false; fdRender();
+}
+function fdPick(key, v){ fd.card[key] = v; fd.view = null; fd.notOnFile = ''; fd.unmet = false; fdTurn(''); }
+function fdChange(key){ fd.card[key] = null; fd.view = null; fd.notOnFile = ''; fd.unmet = false; fdTurn(''); }
+function fdSubmitText(){ const i = document.getElementById('fdText'); if (!i || !i.value.trim()) return; const t = i.value; i.value = ''; fdTurn(t); }
+async function fdBuild(){
+  if (fd.busy || !fd.card.subject) return; fd.busy = true; fd.status = 'Building the view from this account\'s own data…'; fdRender();
+  try {
+    const d = await fdPost('run', { card: fd.card });
+    if (d.unmet){ fd.unmet = true; fd.view = null; fd.notOnFile = ''; }
+    else if (d.notOnFile){ fd.notOnFile = d.notOnFile; fd.view = null; fd.unmet = false; }
+    else { fd.view = d; fd.notOnFile = ''; fd.unmet = false; }
+    fd.status = '';
+  } catch (e){ fd.status = 'That view could not be built right now. Nothing was changed.'; }
+  fd.busy = false; fdRender();
+}
+async function fdExport(format){
+  try {
+    const q = new URLSearchParams({ format, need: fd.card.need || '', subject: fd.card.subject || '', use: fd.card.use || '' });
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/fire-drill/export?${q}`);
+    if (!resp.ok){ fd.status = 'Could not build that download right now.'; fdRender(); return; }
+    const blob = await resp.blob(); const cd = resp.headers.get('Content-Disposition') || ''; const m = /filename="([^"]+)"/.exec(cd);
+    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = m ? m[1] : `fire-drill.${format}`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  } catch (e){ fd.status = 'Could not build that download right now.'; fdRender(); }
+}
+function fdOpenExisting(tab){ fireDrillClose(); try { switchPrimaryTab(tab); } catch (e){} }
+async function fdToggleVoice(){
+  if (fd.voice){ await vxVoiceStop(); fd.voice = false; fd.status = ''; fdRender(); return; }
+  if (vxVoice.state !== 'idle'){ fd.status = 'Voice is already in use on another panel.'; fdRender(); return; }
+  fd.status = 'Connecting…'; fdRender();
+  const ok = await vxVoiceStart({
+    surface: 'fire_drill',
+    onState: (st) => { fd.voice = st === 'live' || st === 'connecting'; if (st === 'live') fd.status = 'Listening. Say what you need, or tap an answer.'; if (st === 'idle'){ fd.voice = false; if (/Listening/.test(fd.status)) fd.status = ''; } fdRender(); },
+    onStatus: (t) => { fd.status = t; fdRender(); },
+    // Spoken words are not shown or kept: only the request card fills in from them.
+    onMessage: (role, text) => { if (role === 'user' && text) fdTurn(text); }
+  });
+  if (!ok){ fd.voice = false; fdRender(); }
+}
+function fdRender(){
+  const body = document.getElementById('fdBody'); if (!body) return;
+  const rows = ['need', 'subject', 'use'].map(k => `<div class="fd-row"><span class="fd-k">${{ need: 'Need', subject: 'About', use: 'Use' }[k]}</span><span class="fd-v">${fd.card[k] ? escapeHtml(FD_LABELS[k][fd.card[k]]) : '<span class="fd-dim">Not yet</span>'}</span>${fd.card[k] ? `<a class="flink" role="button" tabindex="0" onclick="fdChange('${k}')">Change</a>` : ''}</div>`).join('');
+  const rangeTxt = (typeof drr !== 'undefined' && drr && drr.resolved && drr.resolved.label) ? drr.resolved.label : 'the date range at the top of this dashboard';
+  const q = fd.next ? `<div class="fd-q"><p class="fd-ask">${escapeHtml(fd.next.ask)}</p><div class="fd-chips">${fd.next.options.map(o => `<button type="button" class="fd-chip" onclick="fdPick('${fd.next.key}','${o.v}')">${escapeHtml(o.l)}</button>`).join('')}</div>${fd.next.key === 'use' ? '<p class="fd-hint">You can skip this and build it now.</p>' : ''}</div>` : '';
+  const existing = fd.existing.length ? `<div class="fd-existing"><p class="fd-ask">This may already exist</p>${fd.existing.map(m => `<div class="fd-ex"><span>${escapeHtml(m.title)} <span class="fd-dim">on ${escapeHtml(m.tabLabel)}</span></span><a class="flink" role="button" tabindex="0" onclick="fdOpenExisting('${m.tab}')">Open it</a></div>`).join('')}<p class="fd-hint">Or build a new view below.</p></div>` : '';
+  const canBuild = !!fd.card.subject && !fd.busy;
+  const build = `<div class="fd-actions"><button type="button" class="btn-primary" ${canBuild ? '' : 'disabled'} onclick="fdBuild()">${fd.view ? 'Build it again' : 'Build it'}</button></div>`;
+  let out = '';
+  if (fd.unmet) out = `<div class="fd-out"><p class="fd-ask">There is no report for that yet.</p><p class="fd-hint">I can't build this one from the account's data yet. Try a different subject, or tell your team what you were hoping to see.</p></div>`;
+  else if (fd.notOnFile) out = `<div class="fd-out"><p class="fd-ask">Not on file yet</p><p class="fd-hint">This needs ${escapeHtml(fd.notOnFile)}. Once that is loaded, ask again.</p></div>`;
+  else if (fd.view){
+    const v = fd.view;
+    out = `<div class="fd-out"><p class="fd-ask">${escapeHtml(v.title)}</p><p class="fd-sum">${escapeHtml(v.summary)}</p>${(v.tables || []).map(t => `<div class="strat-table-wrap"><table class="strat-table"><thead><tr>${t.columns.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead><tbody>${t.rows.map(r => `<tr>${r.map(c => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`).join('')}${(v.notes || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}<div class="fd-actions"><span class="fd-hint">Just this once:</span><button type="button" class="btn-ghost" onclick="fdExport('xlsx')">Excel</button><button type="button" class="btn-ghost" onclick="fdExport('csv')">CSV</button><button type="button" class="btn-ghost" onclick="fdExport('pdf')">PDF</button></div><p class="fd-hint">Saving to a report library and pinning to the dashboard is coming next.</p></div>`;
+  }
+  body.innerHTML = `<div class="fd-top"><button type="button" class="fd-mic" data-live="${fd.voice ? 'yes' : 'no'}" onclick="fdToggleVoice()" aria-label="${fd.voice ? 'Stop talking' : 'Talk to Verilume'}">${fd.voice ? 'Stop' : 'Talk'}</button><div class="fd-textrow"><input type="text" id="fdText" placeholder="Or type what you need, in your own words" aria-label="Type what you need" onkeydown="if(event.key==='Enter')fdSubmitText()"><button type="button" class="btn-ghost" onclick="fdSubmitText()">Send</button></div></div>
+    <p class="fd-status" role="status" aria-live="polite">${escapeHtml(fd.status || '')}</p>
+    <div class="fd-card"><div class="fd-cardhead">Your request</div>${rows}<div class="fd-row"><span class="fd-k">Period</span><span class="fd-v">${escapeHtml(rangeTxt)}</span></div></div>
+    ${q}${existing}${build}${out}`;
 }
 // 2026-08-23 (nav redesign, round 16), per nav-structure.html §6 (round 11
 // of the design review) — one abstract per tab, verbatim from the approved
