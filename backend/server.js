@@ -8023,10 +8023,20 @@ function getEffectiveMmmTotals(accountId){
   let digitalTotals = [];
   try { digitalTotals = getDigitalMonthlyTotals(accountId).filter(t => MMM_CATEGORIES.includes(t.channel)); } catch (e){ digitalTotals = []; }
   const digitalKeys = new Set(digitalTotals.map(t => `${t.year}-${String(t.month).padStart(2, '0')}||${t.channel}`));
-  campaignRollup.forEach(c => {
+  // 2026-09-30 — campaign spend OVERRIDES historical monthly figures on the days a
+  // campaign covers (Todd's rule; it used to be added, which double counted). Each
+  // campaign line item is spread evenly across the campaign's days, so a campaign that
+  // crosses a month boundary lands in both months; the historical monthly figure only
+  // stands for the days in that month no campaign covers.
+  campaignMonthlyFromDaily(getCampaignDailyMedia(accountId)).forEach(c => {
     const key = `${c.periodLabel}||${c.category}`;
     if (digitalKeys.has(key)) return;
     const t = touch(key, c.periodLabel, c.category);
+    if (t.hasManual){
+      const dim = dmDim(Number(c.periodLabel.slice(0, 4)), Number(c.periodLabel.slice(5, 7)));
+      const keep = Math.max(0, (dim - c.coveredDays) / dim);
+      ['spend', 'reach', 'impressions'].forEach(f => { if (t[f] != null) t[f] = t[f] * keep; });
+    }
     if (c.spend != null) t.spend = (t.spend || 0) + c.spend;
     if (c.reach != null) t.reach = (t.reach || 0) + c.reach;
     if (c.impressions != null) t.impressions = (t.impressions || 0) + c.impressions;
@@ -14549,7 +14559,8 @@ function buildStoryDemand(accountId, opts){
       roas: (rev != null && spend) ? Math.round((rev / spend) * 100) / 100 : null,
       cacTransaction: (spend != null && txn) ? Math.round(spend / txn) : null };
   };
-  const cur = pack(win), prev = pack(prevWin);
+  let cur = pack(win), prev = pack(prevWin);
+  const RG = opts.range ? storyRangePack(accountId, opts.range, S) : null;
   // Compare like with like: only months where BOTH years have the needed series on file, so a
   // 12-month window is never set against a prior year that only has a few months.
   const delta = {}; const deltaMonths = {};
@@ -14561,6 +14572,7 @@ function buildStoryDemand(accountId, opts){
   };
   cmpOver('spend', ['spend']); cmpOver('revenue', ['revenue']); cmpOver('transactions', ['transactions']); cmpOver('impressions', ['impressions']);
   cmpOver('roas', ['spend', 'revenue']); cmpOver('cacTransaction', ['spend', 'transactions']);
+  if (RG){ cur = RG.cur; prev = RG.prev; Object.keys(delta).forEach(k => delete delta[k]); Object.assign(delta, RG.delta); Object.keys(deltaMonths).forEach(k => delete deltaMonths[k]); Object.assign(deltaMonths, RG.deltaMonths); }
   const year = asOf.getUTCFullYear();
   const { target: targetRow, baseline: baselineRow } = storyPlanRows(accountId, year);
   const tR = storyRatios(targetRow), bR = storyRatios(baselineRow);
@@ -14569,8 +14581,8 @@ function buildStoryDemand(accountId, opts){
   // Current numbers show even with no history; comparisons appear only where a prior exists.
   let outcomes = null;
   if (cur.revenue > 0 && cur.spend > 0){
-    outcomes = { basis: 'monthly', basisLabel: `Monthly transactions, ${win[0]} to ${win[win.length - 1]}`, spend: cur.spend, revenue: cur.revenue, transactions: cur.transactions, roas: cur.roas, cac: cur.cacTransaction,
-      deltaPct: { revenue: delta.revenue, roas: delta.roas, cac: delta.cacTransaction }, comparedTo: 'same months a year earlier' };
+    outcomes = { basis: 'monthly', basisLabel: RG ? `Transactions, ${RG.window.from} to ${RG.window.to}` : `Monthly transactions, ${win[0]} to ${win[win.length - 1]}`, spend: cur.spend, revenue: cur.revenue, transactions: cur.transactions, roas: cur.roas, cac: cur.cacTransaction,
+      deltaPct: { revenue: delta.revenue, roas: delta.roas, cac: delta.cacTransaction }, comparedTo: RG ? 'same dates a year earlier' : 'same months a year earlier' };
   } else if (bR && (bR.revenue > 0 || bR.spend > 0)){
     outcomes = { basis: 'baseline', basisLabel: `Annual Plan baseline${bR.label ? ' (' + bR.label + ')' : ''}: trailing 12 months, ${bR.year}`, spend: bR.spend, revenue: bR.revenue, transactions: bR.transactions, roas: bR.roas, cac: bR.cac, deltaPct: {}, comparedTo: null };
   } else {
@@ -14598,13 +14610,394 @@ function buildStoryDemand(accountId, opts){
         expectedShareByNow: Math.round((elapsed / 12) * 1000) / 1000,
         spendPacingPct: Math.round((ytd.spend / (targetRow.workingMedia * elapsed / 12)) * 1000) / 10 }
     : null;
-  return { window: { from: win[0], to: win[win.length - 1], months }, comparisonWindow: { from: prevWin[0], to: prevWin[prevWin.length - 1], note: 'same months one year earlier' },
+  return { window: RG ? RG.window : { from: win[0], to: win[win.length - 1], months }, comparisonWindow: RG ? RG.comparisonWindow : { from: prevWin[0], to: prevWin[prevWin.length - 1], note: 'same months one year earlier' },
+    range: RG ? RG.range : null, estimated: RG ? RG.estimated : [], ratioMonths: RG ? RG.ratioMonths : null,
     current: cur, previous: prev, deltaPct: delta, deltaMonths, outcomes,
     cacCustomer: { value: null, reason: 'Bookings carry no customer id yet, so spend per total customer cannot be computed; CAC shown is spend per unique transaction.' },
     definitions: { roas: 'gross revenue / marketing spend', cac: 'spend / unique transactions (transaction level)', impressions: 'total across all channels' },
     target: tR ? { year: tR.year, label: tR.label, workingMedia: tR.spend, impressions: tR.impressions, bookings: tR.transactions, grossRevenue: tR.revenue } : null,
     baseline: bR, ytd, pacing, coverage: storyCoverage(accountId),
     notOnFile: [cur.spend == null ? 'marketing spend' : null, !outcomes ? 'revenue and transactions (monthly transactions, Annual Plan baseline, or year results)' : null, tR ? null : 'annual plan target'].filter(Boolean) };
+}
+
+// ===========================================================================
+// 2026-09-30 — Analytics card standard, part 1: the daily media model, the
+// per-user date range, and the transaction/revenue daily view.
+//
+// Rules (Todd, 2026-09-30):
+//  - Campaign spend and impressions are daily (each line item is spread evenly
+//    across the campaign's days). Historical monthly figures are divided evenly
+//    across the days of their month.
+//  - Campaign spend OVERRIDES historical monthly on the days a campaign covers;
+//    the historical figure only stands for the days no campaign covers. (Before
+//    this, the two were ADDED and a campaign's whole spend landed in its start
+//    month.) Agency digital actuals keep their existing rule: they replace the
+//    campaign roll-up for their channels, and a manual monthly row wins over them.
+//  - Transactions and revenue are daily when they come from the booking file
+//    (bookingDate); the monthly summary table is divided by days only for
+//    partial-month ranges, and labeled as estimated.
+//  - Year is calendar; weeks run Sunday to Saturday; the comparison is always
+//    the same dates one year earlier.
+// ===========================================================================
+function dmParse(s){ const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s || '')); return m ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null; }
+function dmIso(t){ return new Date(t).toISOString().slice(0, 10); }
+function dmDim(y, m){ return new Date(Date.UTC(y, m, 0)).getUTCDate(); } // m is 1-12
+function dmPad(n){ return String(n).padStart(2, '0'); }
+function dmShiftYear(iso, delta){
+  const y = Number(iso.slice(0, 4)) + delta, m = Number(iso.slice(5, 7)), d = Number(iso.slice(8, 10));
+  return `${y}-${dmPad(m)}-${dmPad(Math.min(d, dmDim(y, m)))}`;
+}
+function dmMonthsOf(from, to){
+  const out = []; const s = dmParse(from), e = dmParse(to); if (s == null || e == null || e < s) return out;
+  let y = Number(from.slice(0, 4)), m = Number(from.slice(5, 7));
+  const ey = Number(to.slice(0, 4)), em = Number(to.slice(5, 7));
+  while (y < ey || (y === ey && m <= em)){ out.push(`${y}-${dmPad(m)}`); m++; if (m > 12){ m = 1; y++; } }
+  return out;
+}
+const DM_MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function dmFmt(iso){ return `${DM_MON[Number(iso.slice(5, 7)) - 1]} ${Number(iso.slice(8, 10))}, ${iso.slice(0, 4)}`; }
+function dmMonthName(pl){ return `${DM_MON[Number(pl.slice(5, 7)) - 1]} ${pl.slice(0, 4)}`; }
+
+// Presets are the current period; the comparison is the same dates one year earlier.
+// The current period runs through today (a range that has not finished yet is
+// compared like for like: year to date against last year's same dates).
+function resolveDateRange(spec, now){
+  const today = now || new Date();
+  const y = today.getUTCFullYear(), mo = today.getUTCMonth(), d = today.getUTCDate();
+  const todayIso = dmIso(Date.UTC(y, mo, d));
+  let preset = spec && ['week', 'month', 'quarter', 'year', 'custom'].includes(spec.preset) ? spec.preset : 'year';
+  let from, to;
+  if (preset === 'week'){ const start = Date.UTC(y, mo, d) - today.getUTCDay() * 864e5; from = dmIso(start); to = dmIso(start + 6 * 864e5); }
+  else if (preset === 'month'){ from = dmIso(Date.UTC(y, mo, 1)); to = dmIso(Date.UTC(y, mo + 1, 0)); }
+  else if (preset === 'quarter'){ const q = Math.floor(mo / 3); from = dmIso(Date.UTC(y, q * 3, 1)); to = dmIso(Date.UTC(y, q * 3 + 3, 0)); }
+  else if (preset === 'custom'){
+    const f = dmParse(spec.from), t = dmParse(spec.to);
+    if (f != null && t != null && t >= f && (t - f) / 864e5 <= 366 * 5){ from = dmIso(f); to = dmIso(t); }
+    else { preset = 'year'; }
+  }
+  if (preset === 'year'){ from = `${y}-01-01`; to = `${y}-12-31`; }
+  const through = (to > todayIso && from <= todayIso) ? todayIso : to;
+  const partial = through < to;
+  const names = { week: 'This week', month: 'This month', quarter: 'This quarter', year: 'This year', custom: 'Custom range' };
+  const label = `${partial && preset !== 'custom' ? names[preset].replace('This ', '').replace(/^./, c => c.toUpperCase()) + ' to date' : names[preset]}: ${dmFmt(from)} to ${dmFmt(through)}`;
+  const compFrom = dmShiftYear(from, -1), compThrough = dmShiftYear(through, -1);
+  return { preset, from, to, through, partial, label, compFrom, compThrough, compLabel: `Same dates last year: ${dmFmt(compFrom)} to ${dmFmt(compThrough)}` };
+}
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS user_preferences (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    memberId TEXT NOT NULL,
+    prefKey TEXT NOT NULL,
+    valueJson TEXT,
+    updatedAt TEXT NOT NULL
+  );
+`);
+function getUserPref(accountId, memberId, key){
+  const r = db.prepare('SELECT * FROM user_preferences WHERE accountId = ? AND memberId = ? AND prefKey = ?').get(accountId, memberId, key);
+  if (!r) return null;
+  try { return JSON.parse(aliasVal(r, 'valueJson') || 'null'); } catch (e){ return null; }
+}
+function setUserPref(accountId, memberId, key, value){
+  const now = new Date().toISOString(); const json = JSON.stringify(value);
+  const r = db.prepare('SELECT id FROM user_preferences WHERE accountId = ? AND memberId = ? AND prefKey = ?').get(accountId, memberId, key);
+  if (r) db.prepare('UPDATE user_preferences SET valueJson = ?, updatedAt = ? WHERE id = ?').run(json, now, r.id);
+  else db.prepare('INSERT INTO user_preferences (id, accountId, memberId, prefKey, valueJson, updatedAt) VALUES (?,?,?,?,?,?)').run(`UP-${crypto.randomBytes(6).toString('hex')}`, accountId, memberId, key, json, now);
+}
+function cleanDateRangeSpec(b){
+  const preset = b && ['week', 'month', 'quarter', 'year', 'custom'].includes(b.preset) ? b.preset : null;
+  if (!preset) return null;
+  if (preset !== 'custom') return { preset };
+  const f = dmParse(b.from), t = dmParse(b.to);
+  if (f == null || t == null || t < f || (t - f) / 864e5 > 366 * 5) return null;
+  return { preset, from: dmIso(f), to: dmIso(t) };
+}
+function dateRangeForRequest(req, accountId, qs){
+  if (qs && qs.preset){ const q = cleanDateRangeSpec({ preset: qs.preset, from: qs.from, to: qs.to }); if (q) return resolveDateRange(q); }
+  let memberId = 'account';
+  try { const sess = authenticate(req); if (sess && sess.memberId) memberId = sess.memberId; } catch (e){ /* no session member */ }
+  let spec = null; try { spec = getUserPref(accountId, memberId, 'dateRange'); } catch (e){ spec = null; }
+  return resolveDateRange(spec);
+}
+
+// Campaign line items spread evenly across each campaign's days.
+function getCampaignDailyMedia(accountId){
+  const rows = db.prepare(`
+    SELECT li.category AS category, li.spend AS spend, li.reach AS reach, li.impressions AS impressions, c.startDate AS startDate, c.endDate AS endDate
+    FROM campaign_mmm_line_items li JOIN campaigns c ON c.id = li.campaignId
+    WHERE c.accountId = ? AND c.isAdHoc = 0 AND c.startDate IS NOT NULL AND c.startDate != ''
+  `).all(accountId);
+  const byCat = {};
+  rows.forEach(r => {
+    const s = dmParse(r.startDate); if (s == null) return;
+    let e = dmParse(aliasVal(r, 'endDate')); if (e == null || e < s) e = s;
+    const n = Math.round((e - s) / 864e5) + 1;
+    const cat = byCat[r.category] || (byCat[r.category] = {});
+    for (let i = 0; i < n; i++){
+      const d = dmIso(s + i * 864e5); const cell = cat[d] || (cat[d] = { spend: null, reach: null, impressions: null });
+      ['spend', 'reach', 'impressions'].forEach(f => { if (r[f] != null) cell[f] = (cell[f] || 0) + Number(r[f]) / n; });
+    }
+  });
+  return byCat;
+}
+function campaignMonthlyFromDaily(byCat){
+  const out = {};
+  Object.entries(byCat).forEach(([cat, days]) => Object.entries(days).forEach(([d, cell]) => {
+    const pl = d.slice(0, 7); const key = `${pl}||${cat}`;
+    const t = out[key] || (out[key] = { periodLabel: pl, category: cat, spend: null, reach: null, impressions: null, coveredDays: 0 });
+    t.coveredDays++;
+    ['spend', 'reach', 'impressions'].forEach(f => { if (cell[f] != null) t[f] = (t[f] || 0) + cell[f]; });
+  }));
+  return Object.values(out);
+}
+
+function dmLoadSources(accountId){
+  const manualBy = {};
+  db.prepare('SELECT * FROM mmm_inputs WHERE accountId = ?').all(accountId).forEach(r => {
+    const pl = String(r.periodLabel || ''); if (!/^\d{4}-\d{2}$/.test(pl)) return;
+    const k = `${pl}||${r.channel}`; const t = manualBy[k] || (manualBy[k] = { spend: null, impressions: null });
+    if (r.spend != null) t.spend = (t.spend || 0) + Number(r.spend);
+    if (r.impressions != null) t.impressions = (t.impressions || 0) + Number(r.impressions);
+  });
+  const digitalBy = {};
+  try { getDigitalMonthlyTotals(accountId).filter(t => MMM_CATEGORIES.includes(t.channel)).forEach(t => { digitalBy[`${t.year}-${dmPad(t.month)}||${t.channel}`] = { spend: Number(t.spend) || 0, impressions: Number(t.impressions) || 0 }; }); } catch (e){ /* no digital actuals */ }
+  const camp = getCampaignDailyMedia(accountId);
+  const cats = new Set(Object.keys(camp));
+  Object.keys(manualBy).concat(Object.keys(digitalBy)).forEach(k => cats.add(k.split('||')[1]));
+  const txn = storyTxnRows(accountId);
+  const guestByDate = {}, guestUndated = {}, monthlyTxn = {};
+  if (txn.source === 'account_guest_bookings'){
+    const settings = getTransactionSettings(accountId);
+    db.prepare('SELECT * FROM account_guest_bookings WHERE accountId = ?').all(accountId).forEach(r => {
+      if (!isValidTransactionStatus(aliasVal(r, 'bookingStatus'), settings)) return;
+      const code = aliasVal(r, 'bookingCode'); const rev = Number(aliasVal(r, 'grossRevenue')) || 0;
+      const bd = dmParse(aliasVal(r, 'bookingDate'));
+      const bucket = bd != null ? guestByDate : guestUndated;
+      const k = bd != null ? dmIso(bd) : `${r.year}-${dmPad(r.month)}`;
+      const a = bucket[k] || (bucket[k] = { codes: new Set(), revenue: 0 });
+      a.codes.add(code); a.revenue += rev;
+    });
+  } else if (txn.source){
+    txn.rows.forEach(r => { const k = `${r.year}-${dmPad(r.month)}`; const a = monthlyTxn[k] || (monthlyTxn[k] = { transactions: 0, revenue: 0 }); a.transactions += r.transactions; a.revenue += r.revenue; });
+  }
+  return { manualBy, digitalBy, camp, cats: Array.from(cats), txn, guestByDate, guestUndated, monthlyTxn };
+}
+function dmAdd(cell, f, v){ if (v == null || !isFinite(v)) return; cell[f] = (cell[f] || 0) + v; }
+// One row per day: spend, impressions, revenue, transactions. `estimated` names the
+// months whose figures were divided from a monthly total for a partial-month range.
+function dmDailyMetrics(src, from, to){
+  const days = {}; const estimated = new Set();
+  const s = dmParse(from), e = dmParse(to); if (s == null || e == null || e < s) return { days, estimated: [] };
+  for (let t = s; t <= e; t += 864e5){
+    const d = dmIso(t); const pl = d.slice(0, 7); const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7)); const dim = dmDim(y, m);
+    const fullMonth = from <= `${pl}-01` && to >= `${pl}-${dmPad(dim)}`;
+    const cell = days[d] = { spend: null, impressions: null, revenue: null, transactions: null };
+    src.cats.forEach(cat => {
+      const key = `${pl}||${cat}`; const man = src.manualBy[key], dig = src.digitalBy[key];
+      const cc = !dig && src.camp[cat] && src.camp[cat][d];
+      if (cc){ dmAdd(cell, 'spend', cc.spend); dmAdd(cell, 'impressions', cc.impressions); }
+      else { const b = man || dig; if (b){ dmAdd(cell, 'spend', b.spend == null ? null : b.spend / dim); dmAdd(cell, 'impressions', b.impressions == null ? null : b.impressions / dim); if (!fullMonth && (b.spend || b.impressions)) estimated.add(`media|${pl}`); } }
+    });
+    if (src.txn.source === 'account_guest_bookings'){
+      const g = src.guestByDate[d]; if (g){ dmAdd(cell, 'transactions', g.codes.size); dmAdd(cell, 'revenue', g.revenue); }
+      const u = src.guestUndated[pl]; if (u){ dmAdd(cell, 'transactions', u.codes.size / dim); dmAdd(cell, 'revenue', u.revenue / dim); if (!fullMonth) estimated.add(`txn|${pl}`); }
+    } else if (src.txn.source){
+      const mt = src.monthlyTxn[pl]; if (mt){ dmAdd(cell, 'transactions', mt.transactions / dim); dmAdd(cell, 'revenue', mt.revenue / dim); if (!fullMonth) estimated.add(`txn|${pl}`); }
+    }
+  }
+  return { days, estimated: Array.from(estimated) };
+}
+function dmSum(days, f, monthSet){
+  let n = 0; Object.keys(days).forEach(d => { if (monthSet && !monthSet.has(d.slice(0, 7))) return; if (days[d][f] != null) n += days[d][f]; });
+  return n;
+}
+function storyRangePack(accountId, range, S){
+  const src = dmLoadSources(accountId);
+  const cur = dmDailyMetrics(src, range.from, range.through), prv = dmDailyMetrics(src, range.compFrom, range.compThrough);
+  const mCur = dmMonthsOf(range.from, range.through), mPrv = dmMonthsOf(range.compFrom, range.compThrough);
+  const r0 = v => v == null ? null : Math.round(v);
+  const anyIn = (months, f) => months.some(k => S[f][k] != null);
+  const total = (days, f, months) => anyIn(months, f) ? r0(dmSum(days, f)) : null;
+  const ratios = (days, months, need) => new Set(months.filter(k => need.every(n => S[n][k] != null)));
+  const pack = (dd, months) => {
+    const base = { spend: total(dd.days, 'spend', months), revenue: total(dd.days, 'revenue', months), transactions: total(dd.days, 'transactions', months), impressions: total(dd.days, 'impressions', months) };
+    const rr = ratios(dd.days, months, ['spend', 'revenue']), rc = ratios(dd.days, months, ['spend', 'transactions']);
+    const sR = dmSum(dd.days, 'spend', rr), vR = dmSum(dd.days, 'revenue', rr), sC = dmSum(dd.days, 'spend', rc), tC = dmSum(dd.days, 'transactions', rc);
+    base.roas = sR > 0 && rr.size ? Math.round((vR / sR) * 100) / 100 : null;
+    base.cacTransaction = sC > 0 && tC > 0 && rc.size ? Math.round(sC / tC) : null;
+    base._ratioMonths = { roas: rr.size, cac: rc.size };
+    return base;
+  };
+  const curP = pack(cur, mCur), prvP = pack(prv, mPrv);
+  const ratioMonths = Object.assign({ of: mCur.length }, curP._ratioMonths); delete curP._ratioMonths; delete prvP._ratioMonths;
+  // Change vs last year: only months where BOTH years have the needed series, so a
+  // range is never set against a prior year that has a few months on file.
+  const delta = {}, deltaMonths = {}; const need = Math.min(3, mCur.length);
+  const cmp = (f, needs) => {
+    const idx = mCur.filter(k => needs.every(n => S[n][k] != null && S[n][dmShiftYear(`${k}-01`, -1).slice(0, 7)] != null));
+    deltaMonths[f] = idx.length; if (idx.length < need){ delta[f] = null; return; }
+    const cs = new Set(idx), ps = new Set(idx.map(k => dmShiftYear(`${k}-01`, -1).slice(0, 7)));
+    const fld = f === 'cacTransaction' ? null : f;
+    let a, b;
+    if (f === 'roas'){ a = dmSum(cur.days, 'spend', cs) > 0 ? dmSum(cur.days, 'revenue', cs) / dmSum(cur.days, 'spend', cs) : null; b = dmSum(prv.days, 'spend', ps) > 0 ? dmSum(prv.days, 'revenue', ps) / dmSum(prv.days, 'spend', ps) : null; }
+    else if (f === 'cacTransaction'){ const ta = dmSum(cur.days, 'transactions', cs), tb = dmSum(prv.days, 'transactions', ps); a = ta > 0 ? dmSum(cur.days, 'spend', cs) / ta : null; b = tb > 0 ? dmSum(prv.days, 'spend', ps) / tb : null; }
+    else { a = dmSum(cur.days, fld, cs); b = dmSum(prv.days, fld, ps); }
+    delta[f] = storyPct(a, b);
+  };
+  cmp('spend', ['spend']); cmp('revenue', ['revenue']); cmp('transactions', ['transactions']); cmp('impressions', ['impressions']);
+  cmp('roas', ['spend', 'revenue']); cmp('cacTransaction', ['spend', 'transactions']);
+  const notes = [];
+  const est = Array.from(new Set(cur.estimated.concat(prv.estimated)));
+  const mediaMonths = est.filter(x => x.startsWith('media|')).map(x => dmMonthName(x.slice(6))), txnMonths = est.filter(x => x.startsWith('txn|')).map(x => dmMonthName(x.slice(4)));
+  if (mediaMonths.length) notes.push(`Spend and impressions for ${Array.from(new Set(mediaMonths)).join(', ')} are estimated from monthly totals divided evenly by day (campaign days are exact).`);
+  if (txnMonths.length) notes.push(`Transactions and revenue for ${Array.from(new Set(txnMonths)).join(', ')} are estimated from monthly totals divided evenly by day.`);
+  return { cur: curP, prev: prvP, delta, deltaMonths, ratioMonths, estimated: notes,
+    window: { from: range.from, to: range.through, months: mCur.length, days: Object.keys(cur.days).length },
+    comparisonWindow: { from: range.compFrom, to: range.compThrough, note: 'same dates one year earlier' },
+    range: { preset: range.preset, from: range.from, to: range.to, through: range.through, label: range.label, compLabel: range.compLabel, partial: range.partial } };
+}
+
+// ---------------------------------------------------------------------------
+// Analytics card standard, part 2: one export path for every card. A card
+// returns a payload ({ title, context, tables, notes }); the same payload is
+// written as CSV, Excel or PDF, so a new card gets all three by returning it.
+// ---------------------------------------------------------------------------
+const CARD_EXPORT_METRICS = {
+  spend:   { label: 'Marketing spend', kind: 'money' },
+  revenue: { label: 'Gross revenue', kind: 'money' },
+  roas:    { label: 'ROAS', kind: 'x' },
+  cac:     { label: 'CAC', kind: 'money' }
+};
+function cardFmt(v, kind){
+  if (v == null) return '';
+  if (kind === 'money') return '$' + Math.round(v).toLocaleString('en-US');
+  if (kind === 'x') return Number(v).toFixed(2) + 'x';
+  if (kind === 'pct') return (v >= 0 ? '+' : '') + Number(v).toFixed(1) + '%';
+  if (kind === 'int') return Math.round(v).toLocaleString('en-US');
+  return String(v);
+}
+function buildStrategyCardExport(accountId, card, range){
+  const d = buildStoryDemand(accountId, { asOf: new Date(), range });
+  const c = d.current, p = d.previous || {}, o = d.outcomes || {}, dl = d.deltaPct || {};
+  const vals = {
+    spend:   { cur: c.spend, prev: p.spend, ch: dl.spend, mk: 'spend' },
+    revenue: { cur: o.revenue != null ? o.revenue : c.revenue, prev: p.revenue, ch: o.deltaPct ? o.deltaPct.revenue : dl.revenue, mk: 'revenue' },
+    roas:    { cur: o.roas != null ? o.roas : c.roas, prev: p.roas, ch: o.deltaPct ? o.deltaPct.roas : dl.roas, mk: 'roas' },
+    cac:     { cur: o.cac != null ? o.cac : c.cacTransaction, prev: p.cacTransaction, ch: o.deltaPct ? o.deltaPct.cac : dl.cacTransaction, mk: 'cacTransaction' }
+  };
+  const keys = CARD_EXPORT_METRICS[card] ? [card] : Object.keys(CARD_EXPORT_METRICS);
+  const rows = keys.map(k => {
+    const m = CARD_EXPORT_METRICS[k], v = vals[k];
+    const n = d.deltaMonths && d.deltaMonths[v.mk]; const matched = n && d.window && n < d.window.months ? `Change uses ${n} matched months` : '';
+    const rm = d.ratioMonths && (k === 'roas' ? d.ratioMonths.roas : k === 'cac' ? d.ratioMonths.cac : null);
+    const ratioNote = rm != null && rm < d.ratioMonths.of ? `Ratio uses the ${rm} of ${d.ratioMonths.of} months that have both figures` : '';
+    return { metric: m.label, kind: m.kind, cur: v.cur, prev: v.prev, change: v.ch, note: [matched, ratioNote].filter(Boolean).join('; ') };
+  });
+  const S = buildForecastSeries(accountId);
+  const months = dmMonthsOf(range.from, range.through);
+  const monthRows = months.map(k => {
+    const pk = dmShiftYear(`${k}-01`, -1).slice(0, 7);
+    const ratio = (m) => (S.revenue[m] != null && S.spend[m]) ? S.revenue[m] / S.spend[m] : null;
+    const cac = (m) => (S.spend[m] != null && S.transactions[m]) ? S.spend[m] / S.transactions[m] : null;
+    return [dmMonthName(k), S.spend[k], S.spend[pk], S.revenue[k], S.revenue[pk], S.transactions[k], S.transactions[pk], ratio(k), ratio(pk), cac(k), cac(pk)];
+  });
+  const title = CARD_EXPORT_METRICS[card] ? CARD_EXPORT_METRICS[card].label : 'Strategy KPIs';
+  return {
+    title, fileSlug: 'strategy-' + (CARD_EXPORT_METRICS[card] ? card : 'kpis'),
+    context: [['Account', accountId], ['Period', range.label], ['Compared with', range.compLabel], ['Generated', new Date().toISOString().slice(0, 10)]],
+    tables: [
+      { name: 'Summary', columns: [{ h: 'Metric' }, { h: 'This period' }, { h: 'Same period last year' }, { h: 'Change vs last year' }, { h: 'Note' }],
+        rows: rows.map(r => [r.metric, { v: r.cur, kind: r.kind }, { v: r.prev, kind: r.kind }, { v: r.change, kind: 'pct' }, r.note]) },
+      { name: 'By month (whole months the range touches)', columns: ['Month', 'Spend', 'Spend last year', 'Revenue', 'Revenue last year', 'Transactions', 'Transactions last year', 'ROAS', 'ROAS last year', 'CAC', 'CAC last year'].map(h => ({ h })),
+        rows: monthRows.map(r => [r[0], { v: r[1], kind: 'money' }, { v: r[2], kind: 'money' }, { v: r[3], kind: 'money' }, { v: r[4], kind: 'money' }, { v: r[5], kind: 'int' }, { v: r[6], kind: 'int' }, { v: r[7], kind: 'x' }, { v: r[8], kind: 'x' }, { v: r[9], kind: 'money' }, { v: r[10], kind: 'money' }]) }
+    ],
+    notes: d.estimated.concat(['ROAS = gross revenue / marketing spend. CAC = spend / unique transactions.', 'Campaign spend overrides historical monthly figures on the days a campaign covers.'])
+  };
+}
+function cardCellText(c){ if (c && typeof c === 'object' && 'kind' in c) return cardFmt(c.v, c.kind); return c == null ? '' : String(c); }
+function cardToCsv(x){
+  const esc = v => { const s = cardCellText(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const out = [[x.title]].concat(x.context);
+  x.tables.forEach(t => { out.push([]); out.push([t.name]); out.push(t.columns.map(c => c.h)); t.rows.forEach(r => out.push(r)); });
+  out.push([]); x.notes.forEach(n => out.push(['Note', n]));
+  return '﻿' + out.map(r => r.map(esc).join(',')).join('\r\n') + '\r\n';
+}
+async function cardToXlsx(x){
+  const wb = new ExcelJS.Workbook(); wb.creator = 'Verilume'; wb.created = new Date();
+  const F = { name: 'Arial', size: 10 };
+  x.tables.forEach((t, ti) => {
+    const ws = wb.addWorksheet(t.name);
+    let r = 1;
+    if (ti === 0){
+      ws.getCell(r, 1).value = x.title; ws.getCell(r, 1).font = { name: 'Arial', size: 14, bold: true }; r++;
+      x.context.forEach(([k, v]) => { ws.getCell(r, 1).value = k; ws.getCell(r, 1).font = { ...F, bold: true }; ws.getCell(r, 2).value = v; ws.getCell(r, 2).font = F; r++; });
+      r++;
+    }
+    t.columns.forEach((c, i) => { const cell = ws.getCell(r, i + 1); cell.value = c.h; cell.font = { ...F, bold: true }; cell.border = { bottom: { style: 'thin' } }; cell.alignment = { wrapText: true, vertical: 'bottom' }; });
+    r++;
+    t.rows.forEach(row => {
+      row.forEach((c, i) => {
+        const cell = ws.getCell(r, i + 1); cell.font = F;
+        if (c && typeof c === 'object' && 'kind' in c){
+          if (c.v == null){ cell.value = null; return; }
+          cell.value = Number(c.v);
+          cell.numFmt = c.kind === 'money' ? '$#,##0' : c.kind === 'x' ? '0.00"x"' : c.kind === 'pct' ? '+0.0"%";-0.0"%";0.0"%"' : '#,##0';
+        } else cell.value = c == null ? '' : String(c);
+      });
+      r++;
+    });
+    if (ti === 0){ r++; x.notes.forEach(n => { ws.getCell(r, 1).value = n; ws.getCell(r, 1).font = { ...F, italic: true }; r++; }); }
+    ws.columns.forEach((col, i) => { col.width = i === 0 ? 28 : ti === 0 && i === 4 ? 46 : 18; });
+  });
+  return wb.xlsx.writeBuffer();
+}
+// A small dependency-free PDF writer: Helvetica text on Letter pages, tables wrapped in columns.
+function cardToPdf(x){
+  const W = 792, H = 612, M = 40; // landscape Letter
+  const map = { '—': '-', '–': '-', '·': '-', '÷': '/', '‘': "'", '’': "'", '“': '"', '”': '"', '…': '...' };
+  const clean = s => String(s == null ? '' : s).replace(/[–—·÷‘’“”…]/g, ch => map[ch]).replace(/[^\x20-\x7e\xa0-\xff]/g, '?');
+  const esc = s => clean(s).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+  const pages = [[]]; let y = H - M;
+  const newPage = () => { pages.push([]); y = H - M; };
+  const put = (text, xx, size, bold) => { pages[pages.length - 1].push(`BT /${bold ? 'F2' : 'F1'} ${size} Tf ${xx.toFixed(1)} ${y.toFixed(1)} Td (${esc(text)}) Tj ET`); };
+  const line = (text, size, bold, gap) => { if (y < M + size) newPage(); put(text, M, size, bold); y -= size + (gap == null ? 4 : gap); };
+  const wrap = (text, width, size) => { const per = Math.max(4, Math.floor(width / (size * 0.5))); const words = clean(text).split(/\s+/); const out = []; let cur = ''; words.forEach(w => { while (w.length > per){ if (cur){ out.push(cur); cur = ''; } out.push(w.slice(0, per)); w = w.slice(per); } if ((cur + ' ' + w).trim().length > per){ out.push(cur); cur = w; } else cur = (cur + ' ' + w).trim(); }); if (cur) out.push(cur); return out.length ? out : ['']; };
+  line(x.title, 18, true, 8);
+  x.context.forEach(([k, v]) => line(`${k}: ${v}`, 9, false, 3));
+  y -= 8;
+  x.tables.forEach(t => {
+    line(t.name, 12, true, 6);
+    const n = t.columns.length; const first = n > 6 ? 70 : 150; const wNote = t.columns.some(c => c.h === 'Note') ? 210 : 0;
+    const rest = (W - 2 * M - first - wNote) / Math.max(1, n - 1 - (wNote ? 1 : 0));
+    const widths = t.columns.map((c, i) => i === 0 ? first : (c.h === 'Note' ? wNote : rest));
+    const xs = []; widths.reduce((acc, w, i) => { xs[i] = acc; return acc + w; }, M);
+    const drawRow = (cells, bold) => {
+      const size = n > 6 ? 7.5 : 9; const wrapped = cells.map((c, i) => wrap(cardCellText(c), widths[i] - 6, size)); const lines = Math.max(...wrapped.map(a => a.length));
+      if (y < M + lines * (size + 2)) newPage();
+      for (let li = 0; li < lines; li++){ wrapped.forEach((w, i) => { if (w[li]) put(w[li], xs[i], size, bold); }); y -= size + 2; }
+      y -= 3;
+    };
+    drawRow(t.columns.map(c => c.h), true);
+    t.rows.forEach(r => drawRow(r, false));
+    y -= 10;
+  });
+  x.notes.forEach(nn => wrap(nn, W - 2 * M, 8).forEach(l => line(l, 8, false, 2)));
+  // assemble objects
+  const objs = []; const add = s => { objs.push(s); return objs.length; };
+  const catalog = add(''); const pagesObj = add(''); const f1 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>'); const f2 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+  const kids = [];
+  pages.forEach(p => {
+    const body = p.join('\n'); const cs = add(`<< /Length ${Buffer.byteLength(body, 'latin1')} >>\nstream\n${body}\nendstream`);
+    kids.push(add(`<< /Type /Page /Parent ${pagesObj} 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 ${f1} 0 R /F2 ${f2} 0 R >> >> /Contents ${cs} 0 R >>`));
+  });
+  objs[catalog - 1] = `<< /Type /Catalog /Pages ${pagesObj} 0 R >>`;
+  objs[pagesObj - 1] = `<< /Type /Pages /Kids [${kids.map(k => k + ' 0 R').join(' ')}] /Count ${kids.length} >>`;
+  const parts = [Buffer.from('%PDF-1.4\n', 'latin1')]; const offs = []; let pos = parts[0].length;
+  objs.forEach((s, i) => { offs.push(pos); const b = Buffer.from(`${i + 1} 0 obj\n${s}\nendobj\n`, 'latin1'); parts.push(b); pos += b.length; });
+  let xref = `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`; offs.forEach(o => { xref += String(o).padStart(10, '0') + ' 00000 n \n'; });
+  parts.push(Buffer.from(xref + `trailer\n<< /Size ${objs.length + 1} /Root ${catalog} 0 R >>\nstartxref\n${pos}\n%%EOF\n`, 'latin1'));
+  return Buffer.concat(parts);
 }
 
 function buildStoryForecastVsTarget(accountId, opts){
@@ -15122,7 +15515,7 @@ function brainWrite(accountId, { dashboard, action, subject, refId, scopeType, r
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings']);
+const CATALOG_EXEMPT = new Set(['user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -24183,6 +24576,45 @@ async function handleRequest(req, res) {
       }
     }
 
+    // GET|PUT /api/accounts/:id/preferences/date-range — the signed-in person's date
+    // range, shared by every analytics card on the site until they change it. One
+    // setting per person today; a team-level setting would add a scope, not a rewrite.
+    if ((req.method === 'GET' || req.method === 'PUT') && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'preferences' && parts[4] === 'date-range'){
+      {
+        const accountId = decodeURIComponent(parts[2]);
+        if (!requireAccount(req, res, accountId)) return;
+        const sess = authenticate(req); const memberId = (sess && sess.memberId) || 'account';
+        try {
+          if (req.method === 'PUT'){
+            const spec = cleanDateRangeSpec(await readBody(req));
+            if (!spec) return sendJson(res, 400, { error: 'Choose Week, Month, Quarter, Year, or a custom range with a start date on or before the end date.' });
+            setUserPref(accountId, memberId, 'dateRange', spec);
+          }
+          const saved = getUserPref(accountId, memberId, 'dateRange');
+          return sendJson(res, 200, { spec: saved || { preset: 'year' }, resolved: resolveDateRange(saved) });
+        } catch (e){ console.warn('[preferences/date-range] failed:', e.message); return sendJson(res, 500, { error: 'could not read or save the date range' }); }
+      }
+    }
+
+    // GET /api/accounts/:id/analytics/export?card=spend|revenue|roas|cac|strategy-kpis&format=xlsx|csv|pdf
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'analytics' && parts[4] === 'export'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const qs = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries());
+      const format = ['xlsx', 'csv', 'pdf'].includes(qs.format) ? qs.format : null;
+      if (!format) return sendJson(res, 400, { error: 'format must be xlsx, csv or pdf' });
+      try {
+        const range = dateRangeForRequest(req, accountId, qs);
+        const x = buildStrategyCardExport(accountId, qs.card, range);
+        const base = `${x.fileSlug}-${range.from}-to-${range.through}`;
+        if (format === 'csv'){ res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${base}.csv"`, 'Access-Control-Allow-Origin': '*' }); return res.end(cardToCsv(x)); }
+        if (format === 'pdf'){ res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${base}.pdf"`, 'Access-Control-Allow-Origin': '*' }); return res.end(cardToPdf(x)); }
+        const buf = await cardToXlsx(x);
+        res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="${base}.xlsx"`, 'Access-Control-Allow-Origin': '*' });
+        return res.end(Buffer.from(buf));
+      } catch (e){ console.warn('[analytics/export] failed:', e.message); return sendJson(res, 500, { error: 'could not build the export' }); }
+    }
+
     // GET /api/accounts/:id/analytics/(story|forecast-vs-target|price-volume|audience-growth)
     // 2026-09-30 — the Strategy dashboard's data (see buildStory* above).
     // Read-only; portal session required. Query: months, dim, productGroup, asOf (YYYY-MM, testing).
@@ -24191,6 +24623,7 @@ async function handleRequest(req, res) {
       if (!requireAccount(req, res, accountId)) return;
       const qs = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries());
       const opts = { asOf: storyAsOf(qs), months: qs.months, dim: qs.dim, productGroup: qs.productGroup };
+      if (parts[4] === 'story' && !qs.months){ try { opts.range = dateRangeForRequest(req, accountId, qs); } catch (e){ opts.range = null; } }
       try {
         const data = parts[4] === 'story' ? buildStoryDemand(accountId, opts)
           : parts[4] === 'forecast-vs-target' ? buildStoryForecastVsTarget(accountId, opts)
