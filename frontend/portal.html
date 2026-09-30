@@ -12519,7 +12519,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-30-braindump-a';
+const CXMEDIA_BUILD_STAMP = '2026-09-30-braindump-b';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -23070,7 +23070,7 @@ function growthPerformancePageInit(){ if (gpIsLive()) gpLoad(); }
 
 
 // ---- Brain Dump (2026-09-30): the weekly standup that replaces the Daily Brief ----
-const bd = { data: null, comments: [], loading: false, error: false };
+const bd = { data: null, comments: [], loading: false, error: false, running: false };
 function bdIsLive(){ return stratIsLive(); }
 const BD_SECTIONS = [
   { key: 'strategy', title: 'Strategy' }, { key: 'brand', title: 'Customer Experiences' }, { key: 'growth', title: 'Growth & Performance' },
@@ -23082,20 +23082,27 @@ async function bdApi(path, opts){
   if (!resp.ok) throw new Error(String(resp.status));
   return resp.json();
 }
-async function bdLoad(refresh){
+async function bdLoad(){
   if (!bdIsLive()) return;
   bd.loading = true; bd.error = false; bdRender();
   try {
-    bd.data = await bdApi(refresh ? '?refresh=1' : '');
-    const c = await bdApi('/comments' + (bd.data.weekStart ? `?week=${bd.data.weekStart}` : '')); bd.comments = c.comments || [];
+    bd.data = await bdApi('');
+    if (bd.data && bd.data.posted){ const c = await bdApi('/comments?week=' + bd.data.weekStart); bd.comments = c.comments || []; }
   } catch (e){ bd.error = true; }
   bd.loading = false; bdRender();
+}
+// Runs this week's edition and posts it. It can take a while, so a dropped connection is followed by a re-read.
+async function bdRun(){
+  if (bd.running) return; bd.running = true; bdRender();
+  try { await bdApi('', { method: 'POST' }); } catch (e){ await new Promise(r => setTimeout(r, 4000)); }
+  bd.running = false; await bdLoad();
 }
 function bdLinkHtml(l){ const act = l.tab ? `switchPrimaryTab('${l.tab}')` : `goToStep('${l.step}')`; return `<a class="flink" onclick="${act}">${escapeHtml(l.label)} →</a>`; }
 function bdExternalItems(){
   const pick = cat => DAILY_NEWS_ITEMS.find(i => i.category === cat);
   const aeo = DAILY_NEWS_ITEMS.find(i => /AEO|GEO/i.test(i.title));
-  const comp = curatedNewsCompetitorItems()[0];
+  const posted = bd.data && bd.data.external && bd.data.external.items ? bd.data.external.items.map((x, n) => ({ id: 'bdx' + n, category: 'client_competitors', title: x.title, meta: `Worth watching — ${x.competitor}` })) : [];
+  const comp = posted[0];
   const seen = new Set(); return [pick('industry_news'), pick('ai_marketing') && !/AEO|GEO/i.test(pick('ai_marketing').title) ? pick('ai_marketing') : DAILY_NEWS_ITEMS.find(i => i.category === 'ai_marketing' && !/AEO|GEO/i.test(i.title)), aeo, comp].filter(i => i && !seen.has(i.id) && seen.add(i.id));
 }
 function bdRenderComments(key){
@@ -23107,7 +23114,7 @@ async function bdPost(section){
   const inp = document.getElementById('bdIn-' + section); if (!inp || !inp.value.trim()) return;
   const text = inp.value.trim(); inp.value = ''; inp.disabled = true;
   try {
-    const r = await bdApi('/comments' + (bd.data && bd.data.weekStart ? `?week=${bd.data.weekStart}` : ''), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ section, text, authorName: state.userName || undefined }) });
+    const r = await bdApi('/comments?week=' + bd.data.weekStart, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ section, text, authorName: state.userName || undefined }) });
     bd.comments = bd.comments.concat(r.comments || []);
   } catch (e){ inp.value = text; }
   bdRender(); const again = document.getElementById('bdIn-' + section); if (again) again.focus();
@@ -23115,9 +23122,12 @@ async function bdPost(section){
 function bdRender(){
   const box = document.getElementById('brainDumpBody'); if (!box) return;
   if (bd.loading && !bd.data){ box.innerHTML = '<div class="strat-card"><p class="strat-empty">The Brain is reading this week\'s numbers…</p></div>'; return; }
-  if (bd.error || !bd.data){ box.innerHTML = '<div class="strat-card"><p class="strat-empty">Could not load the Brain Dump just now. <a class="flink" onclick="bdLoad(false)">Try again</a></p></div>'; return; }
+  if (bd.error || !bd.data){ box.innerHTML = '<div class="strat-card"><p class="strat-empty">Could not load the Brain Dump just now. <a class="flink" onclick="bdLoad()">Try again</a></p></div>'; return; }
   const d = bd.data;
-  const by = d.writtenBy === 'brain' ? 'Written by the Brain from this week\'s numbers' : 'Assembled from this week\'s numbers';
+  const runBtn = `<button type="button" class="strat-chip" ${bd.running ? 'disabled' : ''} onclick="bdRun()">${bd.running ? 'Running…' : 'Run and post now'}</button>`;
+  if (!d.posted){ box.innerHTML = `<div class="strat-card bd-head"><div><div class="strat-chart-label" style="margin:0 0 4px;">No edition posted yet</div><p class="strat-reading" style="margin:0;">The Brain Dump posts every Monday after the weekly curated news refresh, and stays fixed until the next run. You can also run and post one now.</p></div>${runBtn}</div>`; return; }
+  const by = d.writtenBy === 'brain' ? 'Written by the Brain from that week\'s numbers' : 'Assembled from that week\'s numbers';
+  const posted = d.postedAt ? new Date(d.postedAt).toLocaleString([], { weekday: 'long', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
   const sections = BD_SECTIONS.map(s => { const f = d.facts[s.key]; if (!f) return ''; const m = f.metric || {};
     return `<div class="strat-card bd-card"><div class="strat-head"><h2>${escapeHtml(s.title)}</h2><div class="bd-metric"><span class="bd-metric-lbl">${escapeHtml(m.label || '')}</span><span class="bd-metric-val">${escapeHtml(m.display || '—')}</span></div></div>
       <p class="strat-reading">${escapeHtml((d.text && d.text[s.key]) || (f.lines || []).join(' '))}</p>
@@ -23126,13 +23136,13 @@ function bdRender(){
   const extHtml = `<div class="strat-card"><div class="strat-head"><h2>From outside</h2><span class="strat-tag benchmark">External sources, not this account's data</span></div>
     <div class="curated-news-grid">${ext.map(i => i.url ? `<a class="curated-news-card" href="${i.url}" target="_blank" rel="noopener"><div class="cn-meta">${escapeHtml(i.meta)}</div><div class="cn-title">${escapeHtml(i.title)}</div></a>` : `<div class="curated-news-card"><div class="cn-meta">${escapeHtml(i.meta)} <span class="illustrative-tag">AI reasoning</span></div><div class="cn-title">${escapeHtml(i.title)}</div></div>`).join('')}</div>
     <p class="strat-foot">Industry, marketing, CX, AI and AEO/GEO reading. Account monitoring for AEO/GEO is not connected yet.</p></div>`;
-  box.innerHTML = `<div class="strat-card bd-head"><div><div class="strat-chart-label" style="margin:0 0 4px;">Week of ${bdWeekLabel(d.weekStart)}</div><p class="strat-reading" style="margin:0;">${by}. Comment under any section, or mention @AIBrain to dig deeper.</p></div><button type="button" class="strat-chip" onclick="bdLoad(true)">Refresh this week</button></div>${sections}${extHtml}`;
+  box.innerHTML = `<div class="strat-card bd-head"><div><div class="strat-chart-label" style="margin:0 0 4px;">Week of ${bdWeekLabel(d.weekStart)}</div><p class="strat-reading" style="margin:0;">Posted ${escapeHtml(posted)}. ${by}, and it stays fixed until the next run. Comment under any section, or mention @AIBrain to dig deeper.</p></div>${runBtn}</div>${sections}${extHtml}`;
 }
 function brainDumpShellHtml(){
   if (!bdIsLive()) return dailyBriefExtraHtml();
   return '<div id="brainDumpBody" style="grid-column:1/-1;"></div>';
 }
-function brainDumpPageInit(){ if (!bdIsLive()) return; if (bd.data){ bdRender(); bdLoad(false); } else bdLoad(false); }
+function brainDumpPageInit(){ if (!bdIsLive()) return; if (bd.data) bdRender(); bdLoad(); }
 
 // Called right after renderWorkstreams() puts the shell in the page.
 function strategyPageInit(){
