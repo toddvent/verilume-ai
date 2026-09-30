@@ -7774,6 +7774,34 @@
           </div>
         </div>
 
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line);">
+          <p style="font-size:0.8125rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);margin:0 0 12px;">Analytics platform</p>
+          <div class="field" style="margin-bottom:12px;">
+            <label for="utmPlatformSelect">Which analytics tool reads these links?</label>
+            <select id="utmPlatformSelect" onchange="onUtmPlatformChange()">
+              <option value="">Follow the analytics integration above</option>
+              <option value="ga4">Google Analytics 4</option>
+              <option value="adobe">Adobe Analytics</option>
+              <option value="both">Both</option>
+            </select>
+            <div class="hint">GA4 reads the utm_ parameters directly. Adobe reads one tracking code, so links for Adobe accounts also carry that code, and the channel check runs against Adobe's rules.</div>
+          </div>
+          <div class="field" id="utmAdobeParamBox" style="margin-bottom:12px;display:none;">
+            <label for="utmAdobeCodeParam">Adobe tracking code parameter</label>
+            <input type="text" id="utmAdobeCodeParam" placeholder="cid">
+            <div class="hint">The query parameter your Adobe tag reads into the campaign variable. Common choices are cid or cmp. Your tag decides, so match what it already reads.</div>
+          </div>
+          <div class="field" style="margin-bottom:0;">
+            <label class="radio-row"><input type="checkbox" id="utmGa4CustomGroupCheck"> I have added the custom channel group below in GA4</label>
+            <div class="hint">Until then, GA4's default channel group files direct mail, print, radio and other offline links as Unassigned, and our link check will say so.</div>
+          </div>
+        </div>
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line);">
+          <p style="font-size:0.8125rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);margin:0 0 12px;">Channel rules to paste into your analytics tool</p>
+          <div id="utmRulesBody"></div>
+          <div id="utmRulesFlag" class="hint" style="margin-top:6px;"></div>
+        </div>
+
         <div class="btn-row">
           <button type="button" class="btn-primary" onclick="saveUtmMasterConfig()">Save master configuration →</button>
         </div>
@@ -12463,6 +12491,20 @@
               <option value="">— Campaign-level (no specific creative) —</option>
             </select>
           </div>
+          <div class="field">
+            <label for="utmBuilderVendor">Publisher or vendor (becomes utm_source)</label>
+            <select id="utmBuilderVendor" onchange="onUtmVendorChange()"><option value="">Detect from the creative job</option></select>
+            <div class="hint">Standard platforms, the magazines and newspapers in the publisher spec catalog, and partners clients have added. Not listed? Add it and it joins the list for every account.</div>
+          </div>
+          <div id="utmVendorAddBox" style="display:none;margin-bottom:12px;">
+            <div class="field-row-2">
+              <div><label for="utmVendorAddName" style="font-size:0.75rem;">Vendor name</label><input type="text" id="utmVendorAddName" placeholder="e.g. Cruise Critic"></div>
+              <div><label for="utmVendorAddKind" style="font-size:0.75rem;">Type</label><select id="utmVendorAddKind" onchange="onUtmVendorKindChange()"></select></div>
+            </div>
+            <div class="field"><label for="utmVendorAddMedium" style="font-size:0.75rem;">Medium</label><select id="utmVendorAddMedium"></select></div>
+            <div class="btn-row" style="margin-top:0;"><button type="button" class="btn-ghost" onclick="utmAddVendor()">Add vendor →</button></div>
+          </div>
+          <div id="utmVendorAddStatus" class="hint" style="margin-bottom:10px;"></div>
           <div id="traffickingJobGateNote" style="margin-bottom:10px;"></div>
           <div class="btn-row" style="margin-top:0;margin-bottom:14px;">
             <button type="button" class="btn-ghost" id="traffickingApproveAssetBtn" onclick="approveCreativeAsset()">Approve creative asset →</button>
@@ -12559,7 +12601,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-30-build-j';
+const CXMEDIA_BUILD_STAMP = '2026-09-30-build-k';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -12689,6 +12731,9 @@ const state = {
   utmContactIdParam: 'contact_id',
   utmContactIdToken: '{{contact_id}}',
   utmAutoGclidEnabled: true,
+  utmPlatform: '',
+  utmAdobeCodeParam: 'cid',
+  utmGa4CustomGroup: false,
   // Round 19 — Company Profile (Brand Foundations). Illustrative defaults
   // here match the same sample-account convention as company/industry/
   // footprint above; loadAccountData() overwrites these with the account's
@@ -20839,6 +20884,10 @@ async function loadAccountData(){
       state.utmContactIdToken = record.account.utmContactIdToken || '{{contact_id}}';
       state.utmAutoGclidEnabled = record.account.utmAutoGclidEnabled === undefined || record.account.utmAutoGclidEnabled === null
         ? true : !!record.account.utmAutoGclidEnabled;
+      state.utmPlatform = record.account.utmPlatform || '';
+      state.utmAdobeCodeParam = record.account.utmAdobeCodeParam || 'cid';
+      state.utmGa4CustomGroup = !!record.account.utmGa4CustomGroup;
+      utmLoadVendors();
       // Round 19, Brand Foundations (Company Profile) — read back the
       // target-audience/wealth-tier selections made during the assessment
       // phase (only non-empty once assessment.html's round-19 update to
@@ -34150,6 +34199,10 @@ function renderAnalyticsSetupStep(){
   document.getElementById('utmContactIdParam').value = state.utmContactIdParam || 'contact_id';
   document.getElementById('utmContactIdToken').value = state.utmContactIdToken || '{{contact_id}}';
   document.getElementById('utmAutoGclidCheck').checked = !!state.utmAutoGclidEnabled;
+  document.getElementById('utmPlatformSelect').value = state.utmPlatform || '';
+  document.getElementById('utmAdobeCodeParam').value = state.utmAdobeCodeParam || 'cid';
+  document.getElementById('utmGa4CustomGroupCheck').checked = !!state.utmGa4CustomGroup;
+  onUtmPlatformChange();
   const flag = document.getElementById('analyticsStatusFlag');
   if (flag){
     flag.textContent = state.analyticsRequestedAt
@@ -41168,6 +41221,8 @@ const UTM_ELEMENT_LIBRARY = [
   { key: 'utm_source', param: 'utm_source', label: 'Source', source: 'This campaign\'s primary channel (e.g. "meta", "google", "print")' },
   { key: 'utm_medium', param: 'utm_medium', label: 'Medium', source: 'A medium slug derived from that channel (e.g. "paid-social", "ooh", "email")' },
   { key: 'utm_campaign', param: 'utm_campaign', label: 'Campaign name', source: 'This campaign\'s name (or objective, if unnamed)' },
+  { key: 'utm_id', param: 'utm_id', label: 'Campaign ID (GA4)', source: 'This campaign\'s real system ID, in the parameter GA4 reads as the campaign ID' },
+  { key: 'utm_source_platform', param: 'utm_source_platform', label: 'Source platform', source: 'The ad platform, for digital vendors (e.g. "google", "facebook")' },
   { key: 'utm_content', param: 'utm_content', label: 'Creative used', source: 'The Creative Job selected below (or "campaign-level" if none)' },
   { key: 'utm_term', param: 'utm_term', label: 'Audience / term', source: 'This campaign\'s first target audience segment' },
   { key: 'cx_campaign_id', param: 'cx_campaign_id', label: 'Campaign ID', source: 'This campaign\'s real system ID' },
@@ -41191,7 +41246,7 @@ const UTM_MAX_ELEMENTS = 8;
 // internally. Order matters here too — it's applied via the same
 // library-order filter toggleUtmElement() uses, so this isn't read
 // directly as the query-string order.
-const DEFAULT_UTM_ELEMENTS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'cx_campaign_id', 'cx_creative_id', 'cx_channel'];
+const DEFAULT_UTM_ELEMENTS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_id', 'utm_content', 'utm_term', 'cx_campaign_id', 'cx_creative_id'];
 
 function slugify(text){
   return (text || '').toString().toLowerCase().trim()
@@ -41228,6 +41283,9 @@ async function saveUtmMasterConfig(){
   state.utmContactIdParam = document.getElementById('utmContactIdParam').value.trim() || 'contact_id';
   state.utmContactIdToken = document.getElementById('utmContactIdToken').value.trim() || '{{contact_id}}';
   state.utmAutoGclidEnabled = document.getElementById('utmAutoGclidCheck').checked;
+  state.utmPlatform = document.getElementById('utmPlatformSelect').value;
+  state.utmAdobeCodeParam = document.getElementById('utmAdobeCodeParam').value.trim() || 'cid';
+  state.utmGa4CustomGroup = document.getElementById('utmGa4CustomGroupCheck').checked;
   let persisted = false;
   if (dataSourceLabel === 'backend'){
     try {
@@ -41238,7 +41296,10 @@ async function saveUtmMasterConfig(){
           utmAutoContactIdEnabled: state.utmAutoContactIdEnabled,
           utmContactIdParam: state.utmContactIdParam,
           utmContactIdToken: state.utmContactIdToken,
-          utmAutoGclidEnabled: state.utmAutoGclidEnabled
+          utmAutoGclidEnabled: state.utmAutoGclidEnabled,
+          utmPlatform: state.utmPlatform,
+          utmAdobeCodeParam: state.utmAdobeCodeParam,
+          utmGa4CustomGroup: state.utmGa4CustomGroup
         })
       });
       persisted = resp.ok;
@@ -41251,20 +41312,276 @@ async function saveUtmMasterConfig(){
   }
 }
 
-// Maps a job/campaign's channel text to a short utm_medium slug — a plain
-// keyword lookup, same "heuristic, not a live tool" spirit as
-// recommendCopyForJob()'s treatment-guessing above.
+/* ===== UTM CORE (2026-09-30, round 1) =====
+   One place for: the vendor list, the medium set, the link builder used by BOTH the single-link builder
+   and the trafficking bulk builder, the GA4 and Adobe channel prediction, and the paste-in channel rules. */
+const UTM_MEDIUMS = ['cpc', 'paid-social', 'display', 'paid-video', 'email', 'referral', 'affiliate', 'direct-mail', 'print', 'radio', 'tv', 'ooh', 'event', 'podcast', 'qr', 'other'];
+const UTM_OFFLINE_MEDIUMS = ['direct-mail', 'print', 'radio', 'tv', 'ooh', 'event', 'podcast', 'qr'];
+const UTM_VENDOR_KINDS = [
+  { key: 'digital', label: 'Digital platform', medium: 'cpc' },
+  { key: 'email', label: 'Email or newsletter', medium: 'email' },
+  { key: 'direct-mail', label: 'Direct mail partner', medium: 'direct-mail' },
+  { key: 'print', label: 'Magazine or newspaper', medium: 'print' },
+  { key: 'partner-site', label: 'Partner or sponsored site', medium: 'referral' },
+  { key: 'broadcast', label: 'Radio or TV', medium: 'radio' },
+  { key: 'ooh', label: 'Out-of-home', medium: 'ooh' },
+  { key: 'event', label: 'Event or sponsorship', medium: 'event' },
+  { key: 'podcast', label: 'Podcast', medium: 'podcast' }
+];
+// The standard Verilume vendors. Print publications come from the publisher spec catalog (master source);
+// partners clients add come from the shared catalog. Both are merged in by utmLoadVendors().
+const UTM_STANDARD_VENDORS = [
+  { slug: 'google', name: 'Google', kind: 'digital', medium: 'cpc', aliases: ['google ads', 'adwords', 'google search'] },
+  { slug: 'bing', name: 'Microsoft Advertising (Bing)', kind: 'digital', medium: 'cpc', aliases: ['microsoft', 'microsoft ads', 'bing ads'] },
+  // Meta is split into its individual properties: GA4's source list recognizes facebook and instagram, not "meta".
+  { slug: 'facebook', name: 'Facebook (Meta)', kind: 'digital', medium: 'paid-social', aliases: ['meta', 'meta ads', 'fb', 'facebook ads'] },
+  { slug: 'instagram', name: 'Instagram (Meta)', kind: 'digital', medium: 'paid-social', aliases: ['ig', 'instagram ads'] },
+  { slug: 'linkedin', name: 'LinkedIn', kind: 'digital', medium: 'paid-social', aliases: [] },
+  { slug: 'tiktok', name: 'TikTok', kind: 'digital', medium: 'paid-social', aliases: [] },
+  { slug: 'youtube', name: 'YouTube', kind: 'digital', medium: 'paid-video', aliases: [] },
+  { slug: 'pinterest', name: 'Pinterest', kind: 'digital', medium: 'paid-social', aliases: [] },
+  { slug: 'twitter', name: 'X (Twitter)', kind: 'digital', medium: 'paid-social', aliases: ['x ads', 'x.com', 'x'] },
+  { slug: 'reddit', name: 'Reddit', kind: 'digital', medium: 'paid-social', aliases: [] },
+  { slug: 'snapchat', name: 'Snapchat', kind: 'digital', medium: 'paid-social', aliases: ['snap'] },
+  { slug: 'nextdoor', name: 'Nextdoor', kind: 'digital', medium: 'paid-social', aliases: [] },
+  { slug: 'yelp', name: 'Yelp', kind: 'digital', medium: 'cpc', aliases: [] },
+  { slug: 'programmatic', name: 'Programmatic display', kind: 'digital', medium: 'display', aliases: ['dv360', 'trade desk', 'the trade desk', 'display network'] },
+  { slug: 'mailchimp', name: 'Mailchimp', kind: 'email', medium: 'email', aliases: [] },
+  { slug: 'klaviyo', name: 'Klaviyo', kind: 'email', medium: 'email', aliases: [] },
+  { slug: 'hubspot', name: 'HubSpot', kind: 'email', medium: 'email', aliases: [] },
+  { slug: 'constant-contact', name: 'Constant Contact', kind: 'email', medium: 'email', aliases: [] },
+  { slug: 'house-email', name: 'House email', kind: 'email', medium: 'email', aliases: ['email', 'newsletter', 'e-mail'] },
+  // Generic offline sources, used when a creative job names a channel but no vendor.
+  { slug: 'direct-mail', name: 'Direct mail (vendor not named)', kind: 'direct-mail', medium: 'direct-mail', aliases: ['direct mail', 'postcard', 'mailer'], generic: true },
+  { slug: 'print', name: 'Print (publication not named)', kind: 'print', medium: 'print', aliases: ['magazine', 'magazines', 'newspaper', 'newspapers'], generic: true },
+  { slug: 'radio', name: 'Radio (station not named)', kind: 'broadcast', medium: 'radio', aliases: [], generic: true },
+  { slug: 'tv', name: 'TV (network not named)', kind: 'broadcast', medium: 'tv', aliases: ['linear', 'television', 'ctv'], generic: true },
+  { slug: 'ooh', name: 'Out-of-home (vendor not named)', kind: 'ooh', medium: 'ooh', aliases: ['out-of-home', 'out of home', 'billboard', 'dooh'], generic: true },
+  { slug: 'event', name: 'Event (not named)', kind: 'event', medium: 'event', aliases: ['events', 'sponsorship'], generic: true },
+  { slug: 'podcast', name: 'Podcast (show not named)', kind: 'podcast', medium: 'podcast', aliases: ['podcasts'], generic: true }
+];
+let utmSharedVendors = []; // print publications from the spec catalog + partners clients have added
+
+function utmNorm(t){ return ' ' + String(t || '').toLowerCase().replace(/[^a-z0-9.]+/g, ' ').trim() + ' '; }
+function utmAllVendors(){
+  const bySlug = new Map();
+  UTM_STANDARD_VENDORS.forEach(v => bySlug.set(v.slug, v));
+  (utmSharedVendors || []).forEach(v => { if (!bySlug.has(v.slug)) bySlug.set(v.slug, v); });
+  return [...bySlug.values()];
+}
+function utmVendorBySlug(slug){ return utmAllVendors().find(v => v.slug === slug) || null; }
+// Finds the vendor named in free text (a creative job's delivery platform or channel). Longest name wins;
+// named vendors beat the generic offline ones.
+function utmFindVendor(text){
+  const hay = utmNorm(text);
+  if (hay.trim() === '') return null;
+  let best = null, bestLen = 0;
+  utmAllVendors().forEach(v => {
+    const names = [v.name, v.slug.replace(/-/g, ' '), ...(v.aliases || [])].map(n => utmNorm(n)).filter(n => n.trim().length >= 2);
+    names.forEach(n => {
+      if (hay.includes(n)){
+        const len = n.trim().length + (v.generic ? 0 : 100);
+        if (len > bestLen){ best = v; bestLen = len; }
+      }
+    });
+  });
+  return best;
+}
 const UTM_MEDIUM_BY_CHANNEL_HINT = [
-  ['out-of-home', 'ooh'], ['ooh', 'ooh'], ['print', 'print'], ['email', 'email'],
-  ['social', 'paid-social'], ['meta', 'paid-social'], ['display', 'display'],
-  ['search', 'cpc'], ['video', 'video'], ['radio', 'radio'], ['direct mail', 'direct-mail'],
+  ['out-of-home', 'ooh'], ['ooh', 'ooh'], ['billboard', 'ooh'], ['direct mail', 'direct-mail'], ['postcard', 'direct-mail'],
+  ['magazine', 'print'], ['newspaper', 'print'], ['print', 'print'], ['podcast', 'podcast'], ['radio', 'radio'],
+  ['linear', 'tv'], ['television', 'tv'], ['ctv', 'tv'], ['event', 'event'], ['email', 'email'], ['e-mail', 'email'],
+  ['social', 'paid-social'], ['meta', 'paid-social'], ['facebook', 'paid-social'], ['instagram', 'paid-social'],
+  ['display', 'display'], ['programmatic', 'display'], ['search', 'cpc'], ['video', 'paid-video'], ['youtube', 'paid-video'],
   ['landing page', 'referral'], ['qr', 'qr']
 ];
 function guessUtmMedium(channelText){
   const hay = (channelText || '').toLowerCase();
   const hit = UTM_MEDIUM_BY_CHANNEL_HINT.find(([h]) => hay.includes(h));
-  return hit ? hit[1] : slugify(channelText) || 'other';
+  return hit ? hit[1] : (slugify(channelText) || 'other');
 }
+// Decides utm_source (the vendor) and utm_medium for one creative job, and says so plainly when it could not.
+function utmResolveSourceMedium(job, channelText, vendorSlug){
+  const warnings = [];
+  const platformText = (job && job.deliveryPlatform) || '';
+  const channel = (job && job.channel) || channelText || '';
+  let vendor = vendorSlug ? utmVendorBySlug(vendorSlug) : null;
+  if (!vendor && platformText) vendor = utmFindVendor(platformText);
+  if (!vendor) vendor = utmFindVendor(channel);
+  const hintMedium = guessUtmMedium(channel);
+  if (vendor){
+    let medium = vendor.medium;
+    // A digital or partner vendor can run several formats; the channel decides which.
+    if (['digital', 'partner-site', 'email'].includes(vendor.kind) && hintMedium && hintMedium !== 'other' && hintMedium !== 'referral' && UTM_MEDIUMS.includes(hintMedium) && !UTM_OFFLINE_MEDIUMS.includes(hintMedium)) medium = hintMedium;
+    if (vendor.generic) warnings.push(`No vendor is named for this ${vendor.medium.replace('-', ' ')} job, so the source is the generic "${vendor.slug}". Naming the vendor makes the report show who ran it.`);
+    return { vendor, source: vendor.slug, medium, warnings };
+  }
+  if (platformText){
+    warnings.push(`"${platformText}" is not in the vendor list yet. Add it as a vendor so this and every later link uses the same source.`);
+    return { vendor: null, source: slugify(platformText), medium: hintMedium, warnings };
+  }
+  warnings.push('Choose the publisher or platform for this link. Without it the source falls back to the channel name, which analytics tools do not recognize.');
+  return { vendor: null, source: slugify(channel) || 'direct', medium: hintMedium, warnings };
+}
+// Removes any utm_ parameters (and our tracking-code parameter) already on the landing page URL, keeps the #fragment last.
+function utmCleanBaseUrl(raw, extraParamsToStrip){
+  const text = String(raw || '').trim();
+  const strip = new Set((extraParamsToStrip || []).map(x => String(x).toLowerCase()));
+  try {
+    const u = new URL(text);
+    const removed = [];
+    [...u.searchParams.keys()].forEach(k => { const lk = k.toLowerCase(); if (lk.startsWith('utm_') || strip.has(lk)){ removed.push(k); } });
+    removed.forEach(k => u.searchParams.delete(k));
+    const hash = u.hash;
+    u.hash = '';
+    let out = u.toString();
+    if (out.endsWith('?')) out = out.slice(0, -1);
+    return { url: out, hash, removed: [...new Set(removed)], ok: true };
+  } catch (e){
+    return { url: text, hash: '', removed: [], ok: false };
+  }
+}
+function utmField(t){ return slugify(t) || ''; }
+// The Adobe tracking code: campaignid_publisher_medium_creative, one value that a single classification row can expand.
+function utmAdobeCode(campaignId, source, medium, creativeId){
+  const parts = [campaignId, source, medium, creativeId || 'all'].map(utmField);
+  const code = parts.join('_');
+  const bytes = (typeof TextEncoder !== 'undefined') ? new TextEncoder().encode(code).length : code.length;
+  return { code, bytes, ok: bytes <= 255 && parts.every(p => p) };
+}
+function utmPlatformOf(){
+  const p = (typeof state !== 'undefined' && state.utmPlatform) || '';
+  if (p) return p;
+  return (typeof state !== 'undefined' && state.analyticsPathway === 'adobe') ? 'adobe' : 'ga4';
+}
+function utmUsesGa4(){ return ['ga4', 'both'].includes(utmPlatformOf()); }
+function utmUsesAdobe(){ return ['adobe', 'both'].includes(utmPlatformOf()); }
+// Which auto-inserted click parameters make sense for this link (the builder shows them as suggestions).
+function utmAutoInsertSuggestions(vendor, medium){
+  return { contactId: medium === 'email', gclid: !!(vendor && vendor.slug === 'google' && medium === 'cpc') };
+}
+const UTM_REQUIRED_ELEMENTS = ['utm_source', 'utm_medium', 'utm_campaign'];
+// THE builder. Both screens call this. opts: { baseUrl, campaign, job, channelText, elements, vendorSlug, contactId, gclid }
+function utmBuildTrackedLink(opts){
+  const campaign = opts.campaign || {};
+  const job = opts.job || null;
+  const adobeParam = (typeof state !== 'undefined' && state.utmAdobeCodeParam) || 'cid';
+  const cleaned = utmCleanBaseUrl(opts.baseUrl, utmUsesAdobe() ? [adobeParam] : []);
+  const warnings = [];
+  if (!cleaned.ok) warnings.push('The landing page URL could not be read. Include the https:// prefix.');
+  if (cleaned.removed.length) warnings.push(`Removed ${cleaned.removed.join(', ')} already on the landing page URL, so the parameters are not duplicated.`);
+  const res = utmResolveSourceMedium(job, opts.channelText, opts.vendorSlug);
+  warnings.push(...res.warnings);
+  const segments = String(campaign.segment || '').split(',').map(t => t.trim()).filter(Boolean);
+  const campaignSlug = slugify(campaign.name || campaign.objective || '');
+  const values = {
+    utm_source: res.source,
+    utm_medium: res.medium,
+    utm_campaign: campaignSlug,
+    utm_id: campaign.id ? String(campaign.id) : '',
+    utm_source_platform: res.vendor && res.vendor.kind === 'digital' ? res.vendor.slug : '',
+    utm_content: job ? slugify(job.specSummary || job.id) : 'campaign-level',
+    utm_term: slugify(segments[0] || ''),
+    cx_campaign_id: campaign.id || '',
+    cx_creative_id: job ? job.id : '',
+    cx_channel: slugify((job && job.channel) || opts.channelText || ''),
+    cx_placement: job ? slugify(job.specSummary || '') : '',
+    cx_stage: slugify(campaign.stage || ''),
+    cx_audience: slugify(segments[0] || ''),
+    cx_flight: new Date().toISOString().slice(0, 10)
+  };
+  const chosen = new Set([...(opts.elements || []), ...UTM_REQUIRED_ELEMENTS]);
+  const order = UTM_ELEMENT_LIBRARY.map(e => e.key).filter(k => chosen.has(k));
+  const params = order.map(k => { const el = UTM_ELEMENT_LIBRARY.find(e => e.key === k); const v = values[k]; return (el && v) ? `${el.param}=${encodeURIComponent(v)}` : null; }).filter(Boolean);
+  let adobe = null;
+  if (utmUsesAdobe()){
+    adobe = utmAdobeCode(campaign.id || campaignSlug, res.source, res.medium, job ? job.id : '');
+    if (adobe.ok) params.push(`${adobeParam}=${encodeURIComponent(adobe.code)}`);
+    else warnings.push(`The Adobe tracking code is ${adobe.bytes > 255 ? 'over Adobe\'s 255-byte limit' : 'missing a part'}: ${adobe.code}`);
+  }
+  // Merge tokens are appended raw: the email platform or Google fills them in, and encoding the braces would break that.
+  if (opts.contactId && typeof state !== 'undefined' && state.utmAutoContactIdEnabled && state.utmContactIdToken) params.push(`${state.utmContactIdParam || 'contact_id'}=${state.utmContactIdToken}`);
+  if (opts.gclid) params.push('gclid={gclid}');
+  const sep = cleaned.url.includes('?') ? '&' : '?';
+  const url = (params.length ? `${cleaned.url}${sep}${params.join('&')}` : cleaned.url) + (cleaned.hash || '');
+  const prediction = utmPredictChannels(res.source, res.medium, res.vendor);
+  return { url, values, vendor: res.vendor, source: res.source, medium: res.medium, adobe, warnings, prediction, cleaned };
+}
+
+/* ---- Channel prediction ---- */
+// Google's published default channel group rules (support.google.com/analytics/answer/9756891). The source
+// lists are Google's own downloadable spreadsheet; only sources we are confident are on it are listed here.
+const GA4_SEARCH_SOURCES = ['google', 'bing', 'yahoo', 'duckduckgo', 'baidu', 'ecosia', 'yandex'];
+const GA4_SOCIAL_SOURCES = ['facebook', 'instagram', 'linkedin', 'pinterest', 'reddit', 'snapchat', 'tiktok', 'twitter'];
+const GA4_VIDEO_SOURCES = ['youtube', 'vimeo'];
+const GA4_PAID_MEDIUM = /^(.*cp.*|ppc|retargeting|paid.*)$/;
+function utmGa4DefaultChannel(source, medium){
+  const s = String(source || '').toLowerCase(), m = String(medium || '').toLowerCase();
+  const paid = GA4_PAID_MEDIUM.test(m);
+  if (paid && GA4_SEARCH_SOURCES.includes(s)) return 'Paid Search';
+  if (paid && GA4_SOCIAL_SOURCES.includes(s)) return 'Paid Social';
+  if (paid && GA4_VIDEO_SOURCES.includes(s)) return 'Paid Video';
+  if (['display', 'banner', 'expandable', 'interstitial', 'cpm'].includes(m)) return 'Display';
+  if (paid) return 'Paid Other';
+  if (GA4_SOCIAL_SOURCES.includes(s) || ['social', 'social-network', 'social-media', 'sm', 'social network', 'social media'].includes(m)) return 'Organic Social';
+  if (m === 'organic' || GA4_SEARCH_SOURCES.includes(s)) return 'Organic Search';
+  if (/^(email|e-mail|e_mail|e mail)$/.test(m)) return 'Email';
+  if (m === 'affiliate') return 'Affiliates';
+  if (['referral', 'app', 'link'].includes(m)) return 'Referral';
+  if (m === 'audio') return 'Audio';
+  return 'Unassigned';
+}
+// The custom channel group we ask the client to add in GA4: medium-based, so a newly added vendor needs no edit.
+const UTM_CUSTOM_CHANNELS = [
+  { channel: 'Paid Search', medium: ['cpc'] },
+  { channel: 'Paid Social', medium: ['paid-social'] },
+  { channel: 'Paid Video', medium: ['paid-video'] },
+  { channel: 'Display', medium: ['display'] },
+  { channel: 'Email', medium: ['email'] },
+  { channel: 'Direct Mail', medium: ['direct-mail'] },
+  { channel: 'Print', medium: ['print'] },
+  { channel: 'Radio', medium: ['radio'] },
+  { channel: 'TV', medium: ['tv'] },
+  { channel: 'Out-of-Home', medium: ['ooh'] },
+  { channel: 'Events', medium: ['event'] },
+  { channel: 'Podcast', medium: ['podcast'] },
+  { channel: 'QR Code', medium: ['qr'] },
+  { channel: 'Partner Referral', medium: ['referral', 'affiliate'] }
+];
+function utmCustomChannel(medium){ const r = UTM_CUSTOM_CHANNELS.find(c => c.medium.includes(medium)); return r ? r.channel : null; }
+function utmPredictChannels(source, medium, vendor){
+  const out = {};
+  const def = utmGa4DefaultChannel(source, medium);
+  const custom = utmCustomChannel(medium);
+  const hasGroup = !!(typeof state !== 'undefined' && state.utmGa4CustomGroup);
+  const sourceConfirmed = [...GA4_SEARCH_SOURCES, ...GA4_SOCIAL_SOURCES, ...GA4_VIDEO_SOURCES].includes(String(source).toLowerCase());
+  let pass, note;
+  if (hasGroup && custom){ pass = true; note = `Your custom channel group sorts this into ${custom}. GA4's own default group would say ${def}.`; }
+  else if (def === 'Unassigned'){ pass = false; note = `GA4's default channel group will file this as Unassigned${custom ? `. Add the custom channel group (Analytics Integrations) and it becomes ${custom}` : '. Use one of the standard mediums so it can be grouped'}.`; }
+  else if (def === 'Paid Other' && !sourceConfirmed){ pass = false; note = `GA4's default group files this as Paid Other because "${source}" is not on Google's list of recognized platforms. ${custom ? `The custom channel group sorts it into ${custom}.` : ''}`.trim(); }
+  else { pass = true; note = `GA4's default channel group will file this as ${def}.`; }
+  out.ga4 = { channel: hasGroup && custom ? custom : def, defaultChannel: def, customChannel: custom, pass, note };
+  const ac = custom || 'Other';
+  out.adobe = { channel: ac, pass: !!custom, note: custom ? `Marketing Channel rule: medium = ${medium} sets the channel to ${ac} (rule list in Analytics Integrations).` : `No Marketing Channel rule covers the medium "${medium}". Use a standard medium.` };
+  return out;
+}
+
+/* ---- Paste-in channel rules for the client's analytics team ---- */
+function utmGa4ChannelGroupText(){
+  const lines = ['GA4 custom channel group: "Verilume channels"', 'Admin > Data display > Channel groups > Create new channel group. Add each channel below in this order, with the condition shown.', ''];
+  UTM_CUSTOM_CHANNELS.forEach((c, i) => lines.push(`${i + 1}. ${c.channel}: Medium ${c.medium.length > 1 ? 'matches regex ' + c.medium.join('|') : 'exactly matches ' + c.medium[0]}`));
+  lines.push('', 'Every link we build uses lowercase values. Vendors are not listed here on purpose: the rules read the medium, so a new vendor needs no change.');
+  return lines.join('\n');
+}
+function utmAdobeChannelRulesText(){
+  const param = (typeof state !== 'undefined' && state.utmAdobeCodeParam) || 'cid';
+  const lines = ['Adobe Analytics: Marketing Channel processing rules (Admin > Marketing Channels > Processing Rules)', 'Rules run in order; the first that matches sets the channel. Text matching is not case sensitive.', ''];
+  UTM_CUSTOM_CHANNELS.forEach((c, i) => lines.push(`${i + 1}. If Query String Parameter utm_medium ${c.medium.length > 1 ? 'matches any of: ' + c.medium.join(', ') : 'equals ' + c.medium[0]}, set Channel to "${c.channel}" and Channel Detail to the value of utm_source.`));
+  lines.push('', `Tracking code: our links carry ${param}=campaignid_publisher_medium_creative. Map ${param} to the campaign variable (s.campaign in AppMeasurement, marketing.trackingCode in the Web SDK), for example with getQueryParam.`, 'Set the campaign variable to expire on the first visit and not persist over later organic visits, or set it to expire in 30 days if that is your reporting window. Adobe keeps the value by default, so a later visit can be credited to an earlier campaign.', 'The code has four parts (campaign ID, publisher, medium, creative). To see names instead of codes in reports, classify the code in a Classification Set with those four columns.');
+  return lines.join('\n');
+}
+
+/* ===== end UTM CORE ===== */
 
 // Populates the Creative-used <select> on Campaign Detail's Tracking card
 // from this campaign's real Creative Jobs — called from
@@ -41278,6 +41595,7 @@ function renderUtmBuilderJobOptions(){
     (creativeJobsCache || []).map(j => `<option value="${j.id}">${j.id} — ${j.channel}${j.deliveryPlatform ? ' / ' + j.deliveryPlatform : ''}</option>`).join('');
   if (creativeJobsCache.some(j => j.id === current)) sel.value = current;
   document.getElementById('utmBuilderResult').innerHTML = '';
+  renderUtmVendorOptions();
   renderUtmAutoParamsRow();
   renderTraffickingJobGateNote();
   renderTraffickingJobsSummary();
@@ -41302,11 +41620,14 @@ function getUtmLinkChannelContext(){
   const job = jobId ? findCreativeJob(jobId) : null;
   const channelText = (job && `${job.channel} ${job.deliveryPlatform || ''}`) || (c && cmpCreativeChannelsText(c)) || '';
   const hay = channelText.toLowerCase();
+  const vendorSel = document.getElementById('utmBuilderVendor');
+  const res = utmResolveSourceMedium(job, channelText, vendorSel && vendorSel.value !== '__add' ? vendorSel.value : '');
+  const sug = utmAutoInsertSuggestions(res.vendor, res.medium);
   return {
     job,
     campaign: c,
-    emailSuggested: hay.includes('email'),
-    googleSuggested: hay.includes('google') || hay.includes('search')
+    emailSuggested: sug.contactId,
+    googleSuggested: sug.gclid
   };
 }
 function renderUtmAutoParamsRow(){
@@ -41450,53 +41771,25 @@ function buildUtmLink(){
   }
   const jobId = document.getElementById('utmBuilderCreativeJob').value;
   const job = jobId ? findCreativeJob(jobId) : null;
-  const segments = ((c && c.segment) || '').split(',').map(s => s.trim()).filter(Boolean);
   const channelText = (job && job.channel) || (c && cmpCreativeChannelsText(c).split(',')[0].trim()) || '';
-
-  const VALUE_BY_KEY = {
-    utm_source: slugify(channelText) || 'direct',
-    utm_medium: guessUtmMedium(channelText),
-    utm_campaign: slugify((c && (c.name || c.objective)) || ''),
-    utm_content: job ? slugify(job.specSummary || job.id) : 'campaign-level',
-    utm_term: slugify(segments[0] || ''),
-    cx_campaign_id: (c && c.id) || '',
-    cx_creative_id: job ? job.id : '',
-    cx_channel: slugify(channelText),
-    cx_placement: job ? slugify(job.specSummary || '') : '',
-    cx_stage: slugify((c && c.stage) || ''),
-    cx_audience: slugify(segments[0] || ''),
-    cx_flight: new Date().toISOString().slice(0, 10)
-  };
-
-  const params = elements
-    .map(key => {
-      const el = UTM_ELEMENT_LIBRARY.find(e => e.key === key);
-      const val = VALUE_BY_KEY[key];
-      return (el && val) ? `${el.param}=${encodeURIComponent(val)}` : null;
-    })
-    .filter(Boolean);
-
-  // Round 72 — auto-inserted Contact ID / GCLID. These are appended RAW,
-  // never encodeURIComponent'd — {{contact_id}}/{gclid} are literal merge-
-  // tag/ValueTrack tokens the ESP or Google Ads substitutes at send/click
-  // time; percent-encoding the braces would break that substitution.
+  const vendorSel = document.getElementById('utmBuilderVendor');
+  const vendorSlug = vendorSel && vendorSel.value && vendorSel.value !== '__add' ? vendorSel.value : '';
   const contactIdCheck = document.getElementById('utmLinkContactIdCheck');
-  if (state.utmAutoContactIdEnabled && contactIdCheck && contactIdCheck.checked && state.utmContactIdToken){
-    params.push(`${state.utmContactIdParam || 'contact_id'}=${state.utmContactIdToken}`);
-  }
   const gclidCheck = document.getElementById('utmLinkGclidCheck');
-  if (state.utmAutoGclidEnabled && gclidCheck && gclidCheck.checked){
-    params.push('gclid={gclid}');
-  }
-
-  const separator = baseUrl.includes('?') ? '&' : '?';
-  const finalUrl = params.length ? `${baseUrl}${separator}${params.join('&')}` : baseUrl;
+  // One shared builder (utmBuildTrackedLink) is used here and on the trafficking screen. Merge tokens are appended raw inside it.
+  const built = utmBuildTrackedLink({
+    baseUrl, campaign: c, job, channelText, elements, vendorSlug,
+    contactId: !!(state.utmAutoContactIdEnabled && contactIdCheck && contactIdCheck.checked),
+    gclid: !!(state.utmAutoGclidEnabled && gclidCheck && gclidCheck.checked)
+  });
+  const finalUrl = built.url;
 
   resultEl.innerHTML = `
     <div class="field" style="margin-bottom:10px;">
       <label>Generated tracking link</label>
       <input type="text" id="utmBuilderLinkOutput" readonly value="${escapeHtml(finalUrl)}">
     </div>
+    ${utmPredictionHtml(built)}
     <div class="btn-row" style="margin-top:0;">
       <button type="button" class="btn-ghost" onclick="copyUtmLink()">Copy link →</button>
       <button type="button" class="btn-ghost" onclick="useUtmLinkAsCampaignUrl()">Use as Campaign URL &amp; audit →</button>
@@ -41539,6 +41832,102 @@ function useUtmLinkAsCampaignUrl(){
   saveCampaignUrlSettings();
   runUrlAudit();
 }
+// Shows what the analytics tool will do with a link: the vendor, medium and predicted channel in GA4 and Adobe.
+function utmPredictionHtml(built){
+  const rows = [];
+  rows.push(`<div><strong>Source</strong> ${escapeHtml(built.source)}${built.vendor ? ` (${escapeHtml(built.vendor.name)})` : ''} · <strong>Medium</strong> ${escapeHtml(built.medium)}</div>`);
+  if (utmUsesGa4()) rows.push(`<div><span style="margin-right:6px;">${built.prediction.ga4.pass ? '✓' : '✕'}</span><strong>GA4:</strong> ${escapeHtml(built.prediction.ga4.note)}</div>`);
+  if (utmUsesAdobe()){
+    rows.push(`<div><span style="margin-right:6px;">${built.prediction.adobe.pass ? '✓' : '✕'}</span><strong>Adobe:</strong> ${escapeHtml(built.prediction.adobe.note)}${built.adobe ? ` Tracking code <code>${escapeHtml(built.adobe.code)}</code> (${built.adobe.bytes} of 255 bytes).` : ''}</div>`);
+  }
+  built.warnings.forEach(w => rows.push(`<div>${escapeHtml(w)}</div>`));
+  return `<div class="hint" style="margin:0 0 10px;display:grid;gap:4px;">${rows.join('')}</div>`;
+}
+
+// ----- Vendor list: standard Verilume vendors + the publisher spec catalog + partners clients add -----
+async function utmLoadVendors(){
+  if (dataSourceLabel !== 'backend' || !state.companyId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/utm-vendors`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    utmSharedVendors = (data.vendors || []).filter(v => v && v.slug);
+    renderUtmVendorOptions();
+  } catch (e){ console.warn('utmLoadVendors failed', e); }
+}
+function renderUtmVendorOptions(){
+  const sel = document.getElementById('utmBuilderVendor');
+  if (!sel) return;
+  const current = sel.value;
+  const groups = UTM_VENDOR_KINDS.map(k => {
+    const list = utmAllVendors().filter(v => v.kind === k.key && !v.generic).sort((a, b) => a.name.localeCompare(b.name));
+    return list.length ? `<optgroup label="${escapeHtml(k.label)}">${list.map(v => `<option value="${escapeHtml(v.slug)}">${escapeHtml(v.name)}</option>`).join('')}</optgroup>` : '';
+  }).join('');
+  sel.innerHTML = `<option value="">Detect from the creative job</option>${groups}<option value="__add">+ Add a vendor not on this list…</option>`;
+  if ([...sel.options].some(o => o.value === current)) sel.value = current;
+}
+function onUtmVendorChange(){
+  const sel = document.getElementById('utmBuilderVendor');
+  const box = document.getElementById('utmVendorAddBox');
+  if (box) box.style.display = sel && sel.value === '__add' ? '' : 'none';
+  if (sel && sel.value === '__add'){
+    const kindSel = document.getElementById('utmVendorAddKind');
+    if (kindSel && !kindSel.options.length) kindSel.innerHTML = UTM_VENDOR_KINDS.map(k => `<option value="${k.key}">${escapeHtml(k.label)}</option>`).join('');
+    onUtmVendorKindChange();
+  }
+  onUtmBuilderContextChange();
+}
+function onUtmVendorKindChange(){
+  const k = UTM_VENDOR_KINDS.find(x => x.key === document.getElementById('utmVendorAddKind').value);
+  const m = document.getElementById('utmVendorAddMedium');
+  if (m){ m.innerHTML = UTM_MEDIUMS.map(x => `<option value="${x}">${x}</option>`).join(''); if (k) m.value = k.medium; }
+}
+async function utmAddVendor(){
+  const status = document.getElementById('utmVendorAddStatus');
+  const name = document.getElementById('utmVendorAddName').value.trim();
+  const kind = document.getElementById('utmVendorAddKind').value;
+  const medium = document.getElementById('utmVendorAddMedium').value;
+  if (!name){ if (status) status.textContent = 'Enter the vendor name first.'; return; }
+  if (dataSourceLabel !== 'backend'){ if (status) status.textContent = 'Backend unreachable: the vendor was not saved.'; return; }
+  if (status) status.textContent = 'Saving…';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/utm-vendors`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, kind, medium })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){ if (status) status.textContent = data.error || "Couldn't add this vendor."; return; }
+    const v = data.vendor;
+    if (!utmVendorBySlug(v.slug)) utmSharedVendors.push({ slug: v.slug, name: v.name, kind: v.kind, medium: v.medium, aliases: v.aliases || [], source: 'added' });
+    renderUtmVendorOptions();
+    document.getElementById('utmBuilderVendor').value = v.slug;
+    document.getElementById('utmVendorAddBox').style.display = 'none';
+    document.getElementById('utmVendorAddName').value = '';
+    if (status) status.textContent = data.reused ? `${v.name} was already on the list.` : `${v.name} added. It is now on the vendor list for every account.`;
+    onUtmBuilderContextChange();
+  } catch (e){ if (status) status.textContent = 'Backend unreachable: the vendor was not saved.'; }
+}
+async function copyUtmRules(which){
+  const text = which === 'adobe' ? utmAdobeChannelRulesText() : utmGa4ChannelGroupText();
+  const flag = document.getElementById('utmRulesFlag');
+  try { await navigator.clipboard.writeText(text); if (flag) flag.textContent = `Copied the ${which === 'adobe' ? 'Adobe' : 'GA4'} rules.`; }
+  catch (e){ if (flag) flag.textContent = 'Could not copy. Select the text in the box and copy it.'; }
+}
+function renderUtmRulesCard(){
+  const el = document.getElementById('utmRulesBody');
+  if (!el) return;
+  const parts = [];
+  if (utmUsesGa4()) parts.push(`<div class="field"><label>GA4 custom channel group</label><textarea readonly rows="18" style="font-family:monospace;font-size:0.75rem;">${escapeHtml(utmGa4ChannelGroupText())}</textarea><div class="btn-row" style="margin-top:6px;"><button type="button" class="btn-ghost" onclick="copyUtmRules('ga4')">Copy GA4 rules →</button></div></div>`);
+  if (utmUsesAdobe()) parts.push(`<div class="field"><label>Adobe Marketing Channel rules and tracking code</label><textarea readonly rows="18" style="font-family:monospace;font-size:0.75rem;">${escapeHtml(utmAdobeChannelRulesText())}</textarea><div class="btn-row" style="margin-top:6px;"><button type="button" class="btn-ghost" onclick="copyUtmRules('adobe')">Copy Adobe rules →</button></div></div>`);
+  el.innerHTML = parts.join('');
+}
+function onUtmPlatformChange(){
+  const v = document.getElementById('utmPlatformSelect').value;
+  state.utmPlatform = v;
+  const adobeBox = document.getElementById('utmAdobeParamBox');
+  if (adobeBox) adobeBox.style.display = (v === 'adobe' || v === 'both' || (v === '' && state.analyticsPathway === 'adobe')) ? '' : 'none';
+  renderUtmRulesCard();
+}
+
 // Real QR image generation — POSTs to /api/qr, which shells out to
 // backend/qr_gen.py (OpenCV's QRCodeEncoder, verified round-trip against
 // OpenCV's own decoder — see that file's header comment). Not a mocked
@@ -44268,33 +44657,19 @@ async function cmpTraffickingBuildCampaignLinks(){
   campaign.campaignUrl = baseUrl;
   await cmpPersistCampaignField(campaign, { campaignUrl: baseUrl }, 'Campaign URL');
 
-  const segments = (campaign.segment || '').split(',').map(s => s.trim()).filter(Boolean);
   const campaignChannelText = (typeof cmpCreativeChannelsText === 'function' ? cmpCreativeChannelsText(campaign) : '').split(',')[0].trim();
   resultEl.innerHTML = `<p class="hint">Building ${jobs.length} tracking link${jobs.length === 1 ? '' : 's'}…</p>`;
   let okCount = 0;
+  const jobWarnings = [];
   for (const job of jobs){
     const channelText = job.channel || campaignChannelText;
-    const VALUE_BY_KEY = {
-      utm_source: slugify(channelText) || 'direct',
-      utm_medium: guessUtmMedium(channelText),
-      utm_campaign: slugify(campaign.name || campaign.objective || ''),
-      utm_content: slugify(job.specSummary || job.id),
-      utm_term: slugify(segments[0] || ''),
-      cx_campaign_id: campaign.id || '',
-      cx_creative_id: job.id || '',
-      cx_channel: slugify(channelText),
-      cx_placement: slugify(job.specSummary || ''),
-      cx_stage: slugify(campaign.stage || ''),
-      cx_audience: slugify(segments[0] || ''),
-      cx_flight: new Date().toISOString().slice(0, 10)
-    };
-    const params = elements.map(key => {
-      const elDef = UTM_ELEMENT_LIBRARY.find(e => e.key === key);
-      const val = VALUE_BY_KEY[key];
-      return (elDef && val) ? `${elDef.param}=${encodeURIComponent(val)}` : null;
-    }).filter(Boolean);
-    const separator = baseUrl.includes('?') ? '&' : '?';
-    const finalUrl = params.length ? `${baseUrl}${separator}${params.join('&')}` : baseUrl;
+    // Same builder as the single-link screen, so the two can no longer drift apart.
+    const pre = utmResolveSourceMedium(job, channelText, '');
+    const sug = utmAutoInsertSuggestions(pre.vendor, pre.medium);
+    const built = utmBuildTrackedLink({ baseUrl, campaign, job, channelText, elements, vendorSlug: '', contactId: !!(state.utmAutoContactIdEnabled && sug.contactId), gclid: !!(state.utmAutoGclidEnabled && sug.gclid) });
+    const finalUrl = built.url;
+    const notes = built.warnings.filter(w => !w.startsWith('Removed '));
+    if (notes.length || !built.prediction.ga4.pass && utmUsesGa4() || !built.prediction.adobe.pass && utmUsesAdobe()) jobWarnings.push({ id: job.id, notes: notes.concat(utmUsesGa4() && !built.prediction.ga4.pass ? [built.prediction.ga4.note] : [], utmUsesAdobe() && !built.prediction.adobe.pass ? [built.prediction.adobe.note] : []) });
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(job.id)}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -44303,7 +44678,8 @@ async function cmpTraffickingBuildCampaignLinks(){
       if (resp.ok){ job.trackingUrl = finalUrl; okCount++; }
     } catch (e){ /* best-effort per job — reflected in the warning below */ }
   }
-  resultEl.innerHTML = jobs.filter(j => j.trackingUrl).map(job => cmpTraffickingLinkRowHtml(job)).join('')
+  resultEl.innerHTML = (jobWarnings.length ? `<div class="hint" style="margin-bottom:10px;"><strong>${jobWarnings.length} link${jobWarnings.length === 1 ? '' : 's'} need${jobWarnings.length === 1 ? 's' : ''} a look before trafficking.</strong>${jobWarnings.map(w => `<div style="margin-top:4px;">${escapeHtml(w.id)}: ${w.notes.map(escapeHtml).join(' ')}</div>`).join('')}</div>` : '')
+    + jobs.filter(j => j.trackingUrl).map(job => cmpTraffickingLinkRowHtml(job)).join('')
     + (okCount < jobs.length ? `<p class="hint" style="color:#8A5A0A;margin-top:4px;">⚠ Couldn't build a link for ${jobs.length - okCount} asset${jobs.length - okCount === 1 ? '' : 's'} — check your connection and try again.</p>` : '');
   const statEl = document.getElementById('cmpTraffickingAssetsUsingLinkStat');
   if (statEl) statEl.textContent = `${okCount} of ${jobs.length}`;
@@ -55474,6 +55850,21 @@ function auditCampaignUrl(url, campaign){
       ? `All three of utm_source/utm_medium/utm_campaign are present — this campaign's traffic will be attributable in any analytics tool reading standard UTM params.`
       : `${utmPresent.length} of 3 present (missing: ${['utm_source','utm_medium','utm_campaign'].filter(k => !params.has(k)).join(', ')}) — without all three, this campaign's traffic can't be reliably separated from other traffic to this page.`
   });
+
+  // 2026-09-30 — predicted channel in the analytics tool(s) this account uses, plus the case and spacing rules GA4 is strict about.
+  if (params.get('utm_source') && params.get('utm_medium')){
+    const src = params.get('utm_source'), med = params.get('utm_medium');
+    const pred = utmPredictChannels(src.toLowerCase(), med.toLowerCase(), utmVendorBySlug(src.toLowerCase()));
+    if (utmUsesGa4()) checks.push({ label: 'Predicted GA4 channel', pass: pred.ga4.pass, detail: pred.ga4.note });
+    if (utmUsesAdobe()){
+      const adobeParam = state.utmAdobeCodeParam || 'cid';
+      const code = params.get(adobeParam);
+      const bytes = code ? new TextEncoder().encode(code).length : 0;
+      checks.push({ label: 'Adobe channel and tracking code', pass: pred.adobe.pass && !!code && bytes <= 255, detail: `${pred.adobe.note} ${code ? `Tracking code ${adobeParam} is present (${bytes} of 255 bytes).` : `The tracking code parameter ${adobeParam} is missing from this link.`}` });
+    }
+    const messy = [src, med, params.get('utm_campaign') || ''].some(v => v !== v.toLowerCase() || /\s/.test(v));
+    checks.push({ label: 'Lowercase values, no spaces', pass: !messy, detail: messy ? 'GA4 treats Email and email as two different values, and spaces become %20. Use lowercase with hyphens.' : 'Source, medium and campaign are lowercase with no spaces, so they will group correctly.' });
+  }
 
   const haystack = (parsed.pathname + ' ' + parsed.hostname).toLowerCase();
   const keywords = OBJECTIVE_URL_KEYWORDS[campaign.objective] || [];
