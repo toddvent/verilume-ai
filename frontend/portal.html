@@ -1471,6 +1471,7 @@
   .strat-reading{font-size:0.875rem;margin:0 0 6px;line-height:1.5;}
   .strat-tag{display:inline-block;font-size:0.6875rem;font-weight:700;background:var(--paper-dim);border:1px solid var(--line);border-radius:980px;padding:2px 8px;margin-right:6px;color:var(--muted);}
   .strat-tag.benchmark,.strat-tag.low{background:#FFF4E5;border-color:#F0C98F;color:#8A5A12;}
+  .strat-trust{margin:0 0 0 18px;padding:0;font-size:0.8125rem;color:var(--muted);line-height:1.7;}
   .strat-foot,.strat-empty{font-size:0.8125rem;color:var(--muted);margin:10px 0 0;line-height:1.5;}
   .strat-actions{margin-top:12px;} .strat-chip{font:inherit;font-size:0.8125rem;border:1px solid var(--line);background:var(--white);border-radius:980px;padding:6px 14px;cursor:pointer;color:var(--ink);}
   .strat-chip:hover{border-color:var(--ink);}
@@ -12515,7 +12516,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-30-strategy-a';
+const CXMEDIA_BUILD_STAMP = '2026-09-30-mediascience-a';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -22807,6 +22808,98 @@ function strategyShellHtml(){
     <div class="strat-card"><div class="strat-head"><h2>Forecast against the plan target</h2></div><div id="stratFcBody"></div></div>
     ${stratToolsHtml()}`;
 }
+
+// ---- Media Science (2026-09-30): Analysis due, Core elements, Trust layer, Tools ----
+const ms = { data: null, loading: false };
+function msIsLive(){ return stratIsLive(); }
+function msDate(d){ if (!d) return '—'; const [y, m, dd] = String(d).slice(0, 10).split('-'); return `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m) - 1]} ${Number(dd)}, ${y}`; }
+async function msLoad(){
+  if (!msIsLive()) return;
+  try { ms.data = await stratGet('media-science?months=12'); } catch (e){ ms.data = null; }
+  if (activePrimaryTab === 'dataScientist'){ msRenderCoreRow(); msRenderDue(); msRenderCore(); msRenderTrust(); }
+}
+function msRenderCoreRow(){
+  const el = document.getElementById('tabStatCardGrid'); if (!el) return;
+  el.classList.add('four');
+  const old = document.getElementById('msCoreNote'); if (old) old.remove();
+  const d = ms.data;
+  if (!d){ el.innerHTML = ['Impressions', 'Reach and frequency', 'Cost per lead', 'Lead to booking'].map(l => `<div class="stat-card"><div class="sc-label">${l}</div><div class="sc-value">…</div><div class="sc-delta neutral">Loading</div></div>`).join(''); return; }
+  const c = d.core, t = c.totals, p = c.priorYear, w = d.window;
+  const per = t ? `${stratMonthLabel(w.from)} to ${stratMonthLabel(w.to)}` : 'Not on file yet';
+  const pct = (a, b) => (a != null && b) ? Math.round(((a - b) / Math.abs(b)) * 1000) / 10 : null;
+  const cmp = (pv, good) => pv == null ? 'No prior year on file' : `${stratPct(pv)} vs prior year`;
+  const card = (label, value, delta, good, sub) => `<div class="stat-card"><div class="sc-label">${label}</div><div class="sc-value">${value}</div><div class="sc-delta ${good ? 'good' : 'neutral'}">${delta}</div><div class="strat-sub">${sub}</div></div>`;
+  const dImp = t && p ? pct(t.impressions, p.impressions) : null, dCpl = t && p ? pct(t.cpl, p.cpl) : null;
+  const rf = c.reachFrequency, l2b = c.leadToBooking;
+  el.innerHTML =
+    card('Impressions', t ? stratNum(t.impressions) : '—', cmp(dImp), dImp != null && dImp >= 0, `All channels · ${per}`) +
+    card('Reach and frequency', rf ? `${stratNum(rf.reach)} · ${rf.frequency}x` : '—', rf ? `Across ${rf.campaigns} analyzed campaign${rf.campaigns === 1 ? '' : 's'}` : 'Enter reach in campaign actuals', false, 'Impressions ÷ reach') +
+    card('Cost per lead', t && t.cpl != null ? `$${t.cpl.toFixed(2)}` : '—', cmp(dCpl), dCpl != null && dCpl <= 0, `Spend ÷ leads · ${per}`) +
+    card('Lead to booking', l2b ? `${l2b.ratePct}%` : '—', l2b ? `${l2b.bookings.toLocaleString()} bookings from ${l2b.leads.toLocaleString()} leads` : 'Lead counts not on file', false, l2b && l2b.avgDaysToConvert != null ? `Average ${l2b.avgDaysToConvert} days to convert` : per);
+}
+function msRenderDue(){
+  const box = document.getElementById('msDueBody'); if (!box) return;
+  const d = ms.data; if (!d){ box.innerHTML = '<p class="strat-empty">Loading…</p>'; return; }
+  const a = d.analysisDue;
+  if (!a.total){
+    box.innerHTML = `<p class="strat-reading">No campaign is past its ${d.attributionDays}-day window without an analysis.</p>` + (a.maturing ? `<p class="strat-foot">${a.maturing} campaign${a.maturing === 1 ? ' is' : 's are'} still converting; the first reaches ${d.attributionDays} days ${a.nextMaturing[0] ? 'after ' + msDate(a.nextMaturing[0].hitDate) : 'soon'}.</p>` : '<p class="strat-foot">Campaigns appear here once a hit date is set on their channel lines.</p>');
+    return;
+  }
+  const rows = a.top.map(r => `<tr><td><strong>${escapeHtml(r.name)}</strong>${r.campaignCode ? `<div class="strat-sub">${escapeHtml(r.campaignCode)}</div>` : ''}</td><td>${msDate(r.hitDate)}</td><td class="${r.daysSince >= 180 ? 'neg' : ''}">${r.daysSince} days</td><td><span class="strat-tag">${r.maturity === 'mature' ? 'Mature' : 'Still converting'}</span></td><td>${r.missing.length ? escapeHtml(r.missing.slice(0, 3).join(', ')) : 'Complete'}</td><td style="white-space:nowrap;"><a class="flink" onclick="goToStep('campaignMgmt')">Enter actuals</a> · <a class="flink" onclick="goToStep('pendingFeature','Analysis contest','Media Science','dataScientist')">Run analysis contest</a></td></tr>`).join('');
+  box.innerHTML = `<p class="strat-reading">${a.total} campaign${a.total === 1 ? '' : 's'} ${a.total === 1 ? 'has' : 'have'} passed ${d.attributionDays} days since the last hit date with no analysis on file. Oldest first.</p>
+    <div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Campaign</th><th>Last hit date</th><th>Days since</th><th>Data</th><th>Actuals missing</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="strat-foot">${a.total > a.top.length ? `${a.total - a.top.length} more not shown. ` : ''}${a.maturing ? `${a.maturing} more still inside the ${d.attributionDays}-day window. ` : ''}Analysis is complete once spend, impressions, conversions or revenue actuals are saved on the campaign.</p>`;
+}
+function msRenderCore(){
+  const box = document.getElementById('msCoreBody'); if (!box) return;
+  const d = ms.data; if (!d){ box.innerHTML = '<p class="strat-empty">Loading…</p>'; return; }
+  const c = d.core; let html = '';
+  if (c.channels.length){
+    const t = c.totals;
+    html += `<div class="strat-chart-label">By channel · ${stratMonthLabel(d.window.from)} to ${stratMonthLabel(d.window.to)}</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Channel</th><th>Impressions</th><th>Click rate</th><th>Spend</th><th>Leads</th><th>Cost per lead</th><th>Calls</th><th>Cost per call</th></tr></thead><tbody>` +
+      c.channels.map(r => `<tr><td>${escapeHtml(r.channel)}</td><td>${stratNum(r.impressions)}</td><td>${r.ctr != null ? r.ctr + '%' : '—'}</td><td>${stratMoney(r.spend)}</td><td>${stratNum(r.leads)}</td><td>${r.cpl != null ? '$' + r.cpl.toFixed(2) : '—'}</td><td>${stratNum(r.calls)}</td><td>${r.cpc != null ? '$' + r.cpc.toFixed(2) : '—'}</td></tr>`).join('') +
+      (t ? `<tr><td><strong>Total</strong></td><td><strong>${stratNum(t.impressions)}</strong></td><td>${t.ctr != null ? t.ctr + '%' : '—'}</td><td><strong>${stratMoney(t.spend)}</strong></td><td>${stratNum(t.leads)}</td><td>${t.cpl != null ? '$' + t.cpl.toFixed(2) : '—'}</td><td>${stratNum(t.calls)}</td><td>${t.cpc != null ? '$' + t.cpc.toFixed(2) : '—'}</td></tr>` : '') +
+      `</tbody></table></div>`;
+  } else html += '<p class="strat-empty">Not on file yet: monthly digital performance (Account Management uploads).</p>';
+  if (c.leadToBooking && c.leadToBooking.byType.length){
+    html += `<div class="strat-chart-label">Lead to booking by audience type</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Type</th><th>Leads</th><th>Bookings</th><th>Rate</th></tr></thead><tbody>` + c.leadToBooking.byType.map(r => `<tr><td>${escapeHtml(r.leadType)}</td><td>${stratNum(r.leads)}</td><td>${stratNum(r.bookings)}</td><td>${r.ratePct != null ? r.ratePct + '%' : '—'}</td></tr>`).join('') + `</tbody></table></div>`;
+  }
+  if (c.campaigns.length){
+    html += `<div class="strat-chart-label">Analyzed campaigns</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Campaign</th><th>Last hit</th><th>Spend</th><th>Impressions</th><th>Reach</th><th>Frequency</th><th>Conversions</th><th>Cost per conversion</th><th>ROAS</th></tr></thead><tbody>` +
+      c.campaigns.map(r => `<tr><td>${escapeHtml(r.name)}</td><td>${msDate(r.hitDate)}</td><td>${r.spend != null ? stratMoney(r.spend) : '—'}</td><td>${r.impressions != null ? stratNum(r.impressions) : '—'}</td><td>${r.reach != null ? stratNum(r.reach) : '—'}</td><td>${r.frequency != null ? r.frequency + 'x' : '—'}</td><td>${r.conversions != null ? stratNum(r.conversions) : '—'}</td><td>${r.costPerConversion != null ? '$' + r.costPerConversion.toLocaleString() : '—'}</td><td>${r.roas != null ? r.roas.toFixed(2) + 'x' : '—'}</td></tr>`).join('') + `</tbody></table></div>`;
+  } else html += '<p class="strat-foot">Campaign-level reach, frequency and ROAS appear once actuals are saved on a campaign.</p>';
+  html += '<p class="strat-foot">Relevance scores and ROAS by channel are not shown yet: relevance is scored per campaign in Campaign Management, and revenue is not split by channel.</p>';
+  box.innerHTML = html;
+}
+function msRenderTrust(){
+  const box = document.getElementById('msTrustBody'); if (!box) return;
+  const d = ms.data; if (!d){ box.innerHTML = ''; return; }
+  const cv = d.coverage, dp = cv.digitalPerformance;
+  box.innerHTML = `<ul class="strat-trust"><li>Campaigns on file: ${cv.campaigns} (${cv.withHitDate} with a hit date, ${cv.withActuals} with actuals)</li><li>Digital performance upload: ${dp.rows ? `${dp.rows.toLocaleString()} rows, latest ${stratMonthLabel(dp.latest)}` : 'nothing on file'}</li><li>Lead counts: ${cv.leadCounts ? 'on file' : 'nothing on file'}</li><li>Attribution window: ${d.attributionDays} days, fixed for this phase</li></ul>`;
+}
+function msToolsHtml(){
+  const go = it => it.step ? `goToStep('${it.step}')` : `goToStep('pendingFeature','${jsStrEscape(it.label)}','Media Science','dataScientist')`;
+  const items = [
+    { label: 'Measurement Coverage & Confidence', step: 'measurementCoverage' }, { label: 'Match Market Builder', step: 'marketOptimization' },
+    { label: 'Website Traffic Analysis', step: 'websiteTraffic' }, { label: 'Analytics Connections', step: 'analyticsSetup' },
+    { label: 'MMM Data Inputs', step: 'analyticsSetup' }, { label: 'Master UTM Configuration', step: 'analyticsSetup' },
+    { label: 'Manual KPI & Actuals Entry', step: 'campaignMgmt' }, { label: 'Historical Campaigns & Media Plans', step: 'campaignMgmt' },
+    { label: 'View My Customers', step: 'marketOptimization' }
+  ];
+  return `<div class="strat-tools"><span class="strat-tools-lbl">Tools</span>${items.map(it => `<a class="flink" onclick="${go(it)}">${escapeHtml(it.label)}</a>`).join('')}</div>`;
+}
+function mediaScienceShellHtml(){
+  if (!msIsLive()){
+    return `<div class="strat-card"><h2>Media Science</h2><p class="strat-empty">Sign in to a live account to see analysis due, impressions, reach and frequency, and lead performance here. Tools are below.</p></div>` + msToolsHtml();
+  }
+  return `
+    <div class="strat-card"><div class="strat-head"><h2>Analysis due</h2></div><div id="msDueBody"><p class="strat-empty">Loading…</p></div></div>
+    <div class="strat-card"><div class="strat-head"><h2>Core elements</h2></div><div id="msCoreBody"><p class="strat-empty">Loading…</p></div></div>
+    <div class="strat-card"><div class="strat-head"><h2>What this page is reading</h2></div><div id="msTrustBody"></div></div>
+    ${msToolsHtml()}`;
+}
+function mediaSciencePageInit(){ if (msIsLive()) msLoad(); }
+
 // Called right after renderWorkstreams() puts the shell in the page.
 function strategyPageInit(){
   if (!stratIsLive()) return;
@@ -23454,8 +23547,8 @@ function renderTopUrgentModule(){
   const moduleEl = document.getElementById('topUrgentModule');
   const bodyEl = document.getElementById('topUrgentBody');
   if (!moduleEl || !bodyEl) return;
-  if (activePrimaryTab === 'accountManagement' || activePrimaryTab === 'strategy'){
-    // 2026-09-30: Top 5 Most Urgent moves off Strategy (CMO / VP view).
+  if (activePrimaryTab === 'accountManagement' || activePrimaryTab === 'strategy' || (activePrimaryTab === 'dataScientist' && msIsLive())){
+    // 2026-09-30: Top 5 Most Urgent moves off Strategy; Media Science shows Analysis due instead (CMO / VP view).
     moduleEl.style.display = 'none';
     return;
   }
@@ -23599,7 +23692,8 @@ function renderWorkstreams(){
     return;
   }
   if (activePrimaryTab === 'dataScientist'){
-    grid.innerHTML = banner + dataScientistShellHtml();
+    grid.innerHTML = banner + mediaScienceShellHtml();
+    mediaSciencePageInit();
     return;
   }
   if (!list.length){
@@ -23815,6 +23909,7 @@ function renderStatCards(){
   el.classList.remove('four');
   const oldNote = document.getElementById('stratDemandNote'); if (oldNote) oldNote.remove();
   if (tab === 'strategy' && stratIsLive()){ stratRenderDemandRow(); return; }
+  if (tab === 'dataScientist' && msIsLive()){ msRenderCoreRow(); return; }
   const cards = STAT_CARD_META[tab];
   if (!cards){ el.innerHTML = ''; return; }
   el.innerHTML = cards.map(c => {
