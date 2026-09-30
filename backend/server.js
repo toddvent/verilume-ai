@@ -14932,6 +14932,118 @@ function buildStrategyCardExport(accountId, card, range){
     notes: d.estimated.concat(['ROAS = gross revenue / marketing spend. CAC = spend / unique transactions.', 'Campaign spend overrides historical monthly figures on the days a campaign covers.'])
   };
 }
+// ---- Fire drill (2026-09-30): "Need something we don't show?" ----
+// Slice 1 of claude/cxmedia-fire-drill-ask-verilume-and-report-library-scoping-2026-09-30.md.
+// The interview is deterministic (no free SQL, no model-written numbers): a request card
+// {need, subject, use} is filled by taps or by keywords in what the person said, the
+// existing-report registry is checked first, and only then a safe template runs over the
+// account's own data. The period is always the person's shared dashboard date range.
+const FD_QUESTIONS = [
+  { key: 'need', ask: 'What do you need?', options: [{ v: 'number', l: 'A number' }, { v: 'compare', l: 'A comparison' }, { v: 'trend', l: 'A trend over time' }, { v: 'list', l: 'A list or ranking' }] },
+  { key: 'subject', ask: 'About what?', options: [{ v: 'account', l: 'The whole account' }, { v: 'productGroup', l: 'A product group' }, { v: 'channel', l: 'A channel' }, { v: 'campaign', l: 'A campaign' }, { v: 'audience', l: 'An audience type' }] },
+  { key: 'use', ask: 'What will you do with it?', options: [{ v: 'look', l: 'Just look' }, { v: 'present', l: 'Present it' }, { v: 'send', l: 'Send it to someone' }, { v: 'keep', l: 'Keep it' }] }
+];
+const FD_WORDS = {
+  need: { number: ['how much', 'how many', 'total', 'number'], compare: ['compare', 'versus', ' vs ', 'against', 'last year', 'better', 'worse'], trend: ['trend', 'over time', 'by month', 'monthly', 'growth', 'growing'], list: ['list', 'rank', 'top ', 'which ', 'best', 'worst'] },
+  subject: { account: ['whole account', 'overall', 'everything', 'total spend', 'revenue', 'roas', 'cac'], productGroup: ['product', 'sailing', 'itinerary', 'price', 'volume'], channel: ['channel', 'social', 'search', 'email', 'display', 'direct mail', 'cost per lead', 'cpl', 'calls'], campaign: ['campaign', 'roas by', 'conversion'], audience: ['audience', 'lead', 'prospect', 'registration', 'booking'] },
+  use: { present: ['present', 'board', 'meeting', 'deck'], send: ['send', 'share', 'email it'], keep: ['keep', 'save', 'library'], look: ['just look', 'curious'] }
+};
+function fdInfer(text, card){
+  const t = ' ' + String(text || '').toLowerCase() + ' '; const out = Object.assign({}, card || {});
+  Object.keys(FD_WORDS).forEach(k => { if (out[k]) return; let best = null, hits = 0; Object.entries(FD_WORDS[k]).forEach(([v, ws]) => { const n = ws.filter(w => t.includes(w)).length; if (n > hits){ hits = n; best = v; } }); if (best) out[k] = best; });
+  return out;
+}
+// Reports that already exist. Checked first so the portal does not fill with near-duplicates.
+const FD_REGISTRY = [
+  { key: 'strategy-kpis', title: 'Spend, gross revenue, ROAS and CAC', tab: 'strategy', tabLabel: 'Strategy', subjects: ['account'], needs: ['number', 'compare', 'trend'], words: ['spend', 'revenue', 'roas', 'cac', 'acquisition'] },
+  { key: 'price-volume', title: 'Price and volume by product group', tab: 'strategy', tabLabel: 'Strategy', subjects: ['productGroup'], needs: ['trend', 'compare', 'list'], words: ['price', 'volume', 'product group', 'average price'] },
+  { key: 'audience-growth', title: 'Audience growth by lead type', tab: 'strategy', tabLabel: 'Strategy', subjects: ['audience'], needs: ['trend', 'compare', 'number'], words: ['audience', 'growth', 'leads', 'prospects'] },
+  { key: 'forecast-vs-target', title: 'Forecast versus target', tab: 'strategy', tabLabel: 'Strategy', subjects: ['account'], needs: ['compare', 'trend'], words: ['forecast', 'target', 'plan', 'pace', 'pacing'] },
+  { key: 'channel-core', title: 'Core elements by channel', tab: 'dataScientist', tabLabel: 'Media Science', subjects: ['channel'], needs: ['list', 'compare', 'number'], words: ['channel', 'cost per lead', 'click rate', 'calls', 'impressions'] },
+  { key: 'campaign-analysis', title: 'Analyzed campaigns: reach, frequency, ROAS', tab: 'dataScientist', tabLabel: 'Media Science', subjects: ['campaign'], needs: ['list', 'compare'], words: ['campaign', 'roas', 'reach', 'frequency'] },
+  { key: 'lead-to-booking', title: 'Lead to booking by audience type', tab: 'dataScientist', tabLabel: 'Media Science', subjects: ['audience'], needs: ['number', 'compare', 'list'], words: ['lead to booking', 'conversion', 'bookings', 'days to convert'] }
+];
+function fdRegistryMatches(card, text){
+  const t = String(text || '').toLowerCase();
+  return FD_REGISTRY.map(r => { let s = 0; if (card.subject && r.subjects.includes(card.subject)) s += 2; if (card.need && r.needs.includes(card.need)) s += 1; s += r.words.filter(w => t.includes(w)).length; return { r, s }; })
+    .filter(x => x.s >= 3).sort((a, b) => b.s - a.s).slice(0, 3).map(x => ({ key: x.r.key, title: x.r.title, tab: x.r.tab, tabLabel: x.r.tabLabel }));
+}
+function fdMoney2(n){ return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function fdPct(cur, prev){ return storyPct(cur, prev); }
+function fdCtx(accountId, range, extra){ return [['Account', accountId], ['Period', range.label], ['Compared with', range.compLabel], ['Generated', new Date().toISOString().slice(0, 10)]].concat(extra || []); }
+// Templates: each returns an export-shaped object plus a one-sentence summary computed from the same numbers, or { empty: reason }.
+const FD_TEMPLATES = {
+  monthly_kpis: { subjects: ['account'], title: 'Spend, revenue, ROAS and CAC by month', run(accountId, range){
+    const S = buildForecastSeries(accountId); const months = dmMonthsOf(range.from, range.through);
+    let sp = 0, rev = 0, tx = 0, spBoth = 0, revBoth = 0; let any = false;
+    const rows = months.map(k => { const pk = dmShiftYear(`${k}-01`, -1).slice(0, 7);
+      const s = S.spend[k], r = S.revenue[k], t = S.transactions[k], ps = S.spend[pk], pr = S.revenue[pk];
+      if (s != null || r != null) any = true;
+      if (s != null) sp += s; if (r != null) rev += r; if (t != null) tx += t; if (s != null && r != null){ spBoth += s; revBoth += r; }
+      return [dmMonthName(k), { v: s, kind: 'money' }, { v: ps, kind: 'money' }, { v: r, kind: 'money' }, { v: pr, kind: 'money' }, { v: t, kind: 'int' }, { v: (s != null && r != null && s) ? r / s : null, kind: 'x' }, { v: (s != null && t) ? s / t : null, kind: 'money' }]; });
+    if (!any) return { empty: 'monthly media spend and revenue (Account Management uploads or the Annual Media Plan)' };
+    const roas = spBoth ? revBoth / spBoth : null;
+    return { title: this.title, fileSlug: 'fire-drill-monthly-kpis', context: fdCtx(accountId, range),
+      summary: `Marketing spend was ${cardFmt(sp, 'money')}${revBoth ? ` and gross revenue ${cardFmt(rev, 'money')}` : ' (no revenue on file for these months)'}${roas != null ? `, a ROAS of ${roas.toFixed(2)}x` : ''}${tx ? ` across ${cardFmt(tx, 'int')} transactions` : ''} (${range.label}).`,
+      tables: [{ name: 'By month', columns: ['Month', 'Spend', 'Spend last year', 'Revenue', 'Revenue last year', 'Transactions', 'ROAS', 'CAC'].map(h => ({ h })), rows }],
+      notes: ['Months with only one of spend or revenue on file are left out of ROAS. CAC = spend / unique transactions.'] }; } },
+  channel_efficiency: { subjects: ['channel'], title: 'Channels by cost per lead', run(accountId, range){
+    const months = dmMonthsOf(range.from, range.through).length;
+    const d = buildMediaScience(accountId, { asOf: new Date(), months: Math.max(3, Math.min(24, months)) }); const ch = d.core.channels || [];
+    if (!ch.length) return { empty: 'monthly digital performance (Account Management uploads)' };
+    const ranked = ch.filter(c => c.leads > 0 && c.spend > 0 && c.cpl != null).sort((a, b) => a.cpl - b.cpl);
+    const win = `${dmMonthName(d.window.from)} to ${dmMonthName(d.window.to)}`;
+    return { title: this.title, fileSlug: 'fire-drill-channels', context: fdCtx(accountId, range, [['Data window', `${win} (the months the digital performance upload covers)`]]),
+      summary: ranked.length ? `${ranked[0].channel} has the lowest cost per lead at ${fdMoney2(ranked[0].cpl)}${ranked.length > 1 ? `, and ${ranked[ranked.length - 1].channel} the highest at ${fdMoney2(ranked[ranked.length - 1].cpl)}` : ''} (${win}).` : `Channel spend is on file for ${win}, but no channel has both spend and leads yet.`,
+      tables: [{ name: 'By channel', columns: ['Channel', 'Impressions', 'Spend', 'Leads', 'Cost per lead', 'Calls', 'Cost per call'].map(h => ({ h })), rows: ch.map(c => [c.channel, { v: c.impressions, kind: 'int' }, { v: c.spend, kind: 'money' }, { v: c.leads, kind: 'int' }, c.cpl != null ? fdMoney2(c.cpl) : '', { v: c.calls, kind: 'int' }, c.cpc != null ? fdMoney2(c.cpc) : '']) }],
+      notes: ['This report reads the whole digital performance window, not only the dashboard date range.'] }; } },
+  product_group_price_volume: { subjects: ['productGroup'], title: 'Product groups by gross revenue, volume and price', run(accountId, range){
+    const months = dmMonthsOf(range.from, range.through).length;
+    const d = buildStoryPriceVolume(accountId, { asOf: new Date(), months: Math.max(3, Math.min(36, months)), dim: 'productGroup' });
+    const groups = Object.keys(d.byGroup || {}).map(g => { const a = d.byGroup[g]; const gross = a.reduce((n, x) => n + (x.gross || 0), 0), vol = a.reduce((n, x) => n + (x.volume || 0), 0); return { g, gross, vol }; }).filter(x => x.gross || x.vol).sort((a, b) => b.gross - a.gross);
+    if (!groups.length) return { empty: 'monthly transactions with revenue by product group' };
+    const total = groups.reduce((n, x) => n + x.gross, 0); const win = `${dmMonthName(d.window.from)} to ${dmMonthName(d.window.to)}`;
+    return { title: this.title, fileSlug: 'fire-drill-product-groups', context: fdCtx(accountId, range, [['Data window', win]]),
+      summary: `${groups[0].g} is the largest product group at ${cardFmt(groups[0].gross, 'money')} gross revenue${total ? ` (${Math.round(groups[0].gross / total * 100)}% of the total)` : ''} over ${win}.`,
+      tables: [{ name: 'By product group', columns: ['Product group', 'Gross revenue', 'Share', 'Transactions', 'Average price'].map(h => ({ h })), rows: groups.map(x => [x.g, { v: x.gross, kind: 'money' }, total ? Math.round(x.gross / total * 1000) / 10 + '%' : '', { v: x.vol, kind: 'int' }, { v: x.vol ? x.gross / x.vol : null, kind: 'money' }]) }],
+      notes: ['Transactions are unique booking codes. The ten largest groups are shown; the rest are folded into Other.'] }; } },
+  campaign_roas: { subjects: ['campaign'], title: 'Analyzed campaigns by ROAS', run(accountId, range){
+    const d = buildMediaScience(accountId, { asOf: new Date(), months: 12 }); const cs = d.core.campaigns || [];
+    if (!cs.length) return { empty: 'campaign actuals (spend, conversions and revenue saved on a campaign)' };
+    const ranked = cs.filter(c => c.roas != null).sort((a, b) => b.roas - a.roas);
+    return { title: this.title, fileSlug: 'fire-drill-campaigns', context: fdCtx(accountId, range),
+      summary: ranked.length ? `${ranked[0].name} has the best ROAS of the ${cs.length} analyzed campaigns at ${ranked[0].roas.toFixed(2)}x.` : `${cs.length} campaigns have actuals saved, but none has both spend and revenue.`,
+      tables: [{ name: 'Analyzed campaigns', columns: ['Campaign', 'Last hit', 'Spend', 'Conversions', 'Cost per conversion', 'ROAS'].map(h => ({ h })), rows: cs.map(c => [c.name, c.hitDate || '', { v: c.spend, kind: 'money' }, { v: c.conversions, kind: 'int' }, { v: c.costPerConversion, kind: 'money' }, { v: c.roas, kind: 'x' }]) }],
+      notes: ['Shows the ten most recent campaigns with actuals saved.'] }; } },
+  lead_to_booking: { subjects: ['audience'], title: 'Lead to booking by audience type', run(accountId, range){
+    const months = dmMonthsOf(range.from, range.through).length;
+    const d = buildMediaScience(accountId, { asOf: new Date(), months: Math.max(3, Math.min(24, months)) }); const l = d.core.leadToBooking;
+    if (!l || !l.byType.length) return { empty: 'lead counts with bookings by lead type' };
+    const win = `${dmMonthName(d.window.from)} to ${dmMonthName(d.window.to)}`;
+    return { title: this.title, fileSlug: 'fire-drill-lead-to-booking', context: fdCtx(accountId, range, [['Data window', win]]),
+      summary: `${l.bookings.toLocaleString('en-US')} bookings came from ${l.leads.toLocaleString('en-US')} leads (${l.ratePct}%) over ${win}.`,
+      tables: [{ name: 'By audience type', columns: ['Audience type', 'Leads', 'Bookings', 'Rate'].map(h => ({ h })), rows: l.byType.map(r => [r.leadType, { v: r.leads, kind: 'int' }, { v: r.bookings, kind: 'int' }, r.ratePct != null ? r.ratePct + '%' : '']) }],
+      notes: ['Lead types named Registration are shown as Growth.'] }; } }
+};
+function fdPickTemplate(card){
+  const list = Object.entries(FD_TEMPLATES).filter(([, t]) => t.subjects.includes(card.subject));
+  return list.length ? list[0][0] : null;
+}
+function fdRun(accountId, card, range){
+  const key = fdPickTemplate(card);
+  if (!key) return { templateKey: null };
+  const t = FD_TEMPLATES[key]; const x = t.run(accountId, range);
+  if (x.empty) return { templateKey: key, empty: x.empty };
+  return { templateKey: key, x };
+}
+function fdCleanCard(b){
+  const okV = (k) => { const q = FD_QUESTIONS.find(z => z.key === k); const v = b && b[k]; return q && q.options.some(o => o.v === v) ? v : null; };
+  return { need: okV('need'), subject: okV('subject'), use: okV('use') };
+}
+function fdNextQuestion(card){
+  const q = FD_QUESTIONS.find(z => !card[z.key]); return q ? { key: q.key, ask: q.ask, options: q.options } : null;
+}
+
 function cardCellText(c){ if (c && typeof c === 'object' && 'kind' in c) return cardFmt(c.v, c.kind); return c == null ? '' : String(c); }
 function cardToCsv(x){
   const esc = v => { const s = cardCellText(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
@@ -24848,6 +24960,56 @@ async function handleRequest(req, res) {
           return sendJson(res, 200, { spec: saved || { preset: 'year' }, resolved: resolveDateRange(saved) });
         } catch (e){ console.warn('[preferences/date-range] failed:', e.message); return sendJson(res, 500, { error: 'could not read or save the date range' }); }
       }
+    }
+
+    // POST /api/accounts/:id/fire-drill/turn — one interview turn. Body: { text?, card? }.
+    // Returns the updated request card, the next question (or null when the card is complete),
+    // and any reports that already exist for what was asked. No model call: keywords and taps only.
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'fire-drill' && parts[4] === 'turn'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      try {
+        const body = await readBody(req) || {};
+        const text = String(body.text || '').slice(0, 600);
+        const card = fdCleanCard(fdInfer(text, fdCleanCard(body.card)));
+        return sendJson(res, 200, { card, next: fdNextQuestion(card), existing: fdRegistryMatches(card, text), hasTemplate: !!fdPickTemplate(card) });
+      } catch (e){ console.warn('[fire-drill/turn] failed:', e.message); return sendJson(res, 500, { error: 'could not take that turn' }); }
+    }
+    // POST /api/accounts/:id/fire-drill/run — a complete request card becomes a view. Body: { card, skipExisting? }.
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'fire-drill' && parts[4] === 'run'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      try {
+        const body = await readBody(req) || {};
+        const card = fdCleanCard(body.card);
+        if (!card.subject) return sendJson(res, 400, { error: 'choose a subject first' });
+        const range = dateRangeForRequest(req, accountId, {});
+        const r = fdRun(accountId, card, range);
+        if (!r.templateKey) return sendJson(res, 200, { unmet: true, reason: 'There is no report for that yet.', existing: fdRegistryMatches(card, '') });
+        if (r.empty) return sendJson(res, 200, { unmet: false, notOnFile: r.empty, templateKey: r.templateKey });
+        const x = r.x;
+        return sendJson(res, 200, { templateKey: r.templateKey, title: x.title, summary: x.summary, period: range.label, compared: range.compLabel,
+          tables: x.tables.map(t => ({ name: t.name, columns: t.columns.map(c => c.h), rows: t.rows.map(row => row.map(cardCellText)) })), notes: x.notes });
+      } catch (e){ console.warn('[fire-drill/run] failed:', e.message); return sendJson(res, 500, { error: 'could not build that view' }); }
+    }
+    // GET /api/accounts/:id/fire-drill/export?subject=&format=xlsx|csv|pdf — a one-off download of the same view.
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'fire-drill' && parts[4] === 'export'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const qs = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries());
+      const format = ['xlsx', 'csv', 'pdf'].includes(qs.format) ? qs.format : null;
+      if (!format) return sendJson(res, 400, { error: 'format must be xlsx, csv or pdf' });
+      try {
+        const card = fdCleanCard(qs); const range = dateRangeForRequest(req, accountId, {});
+        const r = fdRun(accountId, card, range);
+        if (!r.x) return sendJson(res, 404, { error: 'nothing to export for that request' });
+        const x = r.x; const base = `${x.fileSlug}-${range.from}-to-${range.through}`;
+        if (format === 'csv'){ res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${base}.csv"`, 'Access-Control-Allow-Origin': '*' }); return res.end(cardToCsv(x)); }
+        if (format === 'pdf'){ res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${base}.pdf"`, 'Access-Control-Allow-Origin': '*' }); return res.end(cardToPdf(x)); }
+        const buf = await cardToXlsx(x);
+        res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="${base}.xlsx"`, 'Access-Control-Allow-Origin': '*' });
+        return res.end(Buffer.from(buf));
+      } catch (e){ console.warn('[fire-drill/export] failed:', e.message); return sendJson(res, 500, { error: 'could not build the export' }); }
     }
 
     // GET /api/accounts/:id/analytics/export?card=spend|revenue|roas|cac|strategy-kpis&format=xlsx|csv|pdf
