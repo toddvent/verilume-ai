@@ -137,6 +137,7 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
       <p class="toc-group-label">Product ops</p>
       <a href="#data-model">Data model reference</a>
       <a href="#analysis-summary">Campaign Summary &amp; annual roll-up</a>
+      <a href="#tracking">Tracking links, vendors &amp; QR</a>
       <a href="#gaps" class="flag">Known gaps &amp; open items</a>
       <a href="#log">Decision log — this cycle</a>
       <a href="#roadmap">Suggested next steps</a>
@@ -328,6 +329,67 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
       <p>Vocabulary mapping, workbook &rarr; app: Value leads (talk to expert / quote / request info) = High-Value Leads; Growth leads (subscribe / brochure / popup / share / contact) = Registrations; Bookings = Transactions.</p>
     </section>
 
+    <section id="tracking">
+      <h2><span>Tracking links, vendors &amp; QR codes (Ad Trafficking)</span><span class="num">&sect; 06b &mdash; added 2026-09-30</span></h2>
+      <p class="lede">Every tracking link is now built by one shared builder (<code>utmBuildTrackedLink()</code> in <code>portal.html</code>), used by both the single-link builder on Campaign Detail and the trafficking workspace's bulk builder. It picks <code>utm_source</code> from a vendor list, checks how GA4 and/or Adobe will file the link, and hands the QR code a short link the account controls. Training guide: <a href="training/Verilume-UTM-QR-Tracking-Training.pdf" target="_blank" rel="noopener">Tracking Links, Vendors &amp; QR Codes (v2.0)</a>. Scope and priorities: <code>cxmedia-utm-qr-analytics-setup-scope-and-priority-2026-09-30</code> and <code>cxmedia-utm-qr-round1-build-status-2026-09-30</code> in the project.</p>
+      <p class="hint"><strong>Verification status.</strong> Tested locally: the link builder and channel prediction in Node, the backend routes on SQLite, the Analytics Integrations card and QR flow in a headless browser (network calls stubbed). <strong>Not yet run on Postgres or in production</strong>, and never against a real GA4 property or Adobe report suite. The GA4 channel predictions come from Google's published default channel group rules, not from an observed report.</p>
+
+      <h3>What the builder does</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Piece</th><th>Behavior</th></tr></thead>
+          <tbody>
+            <tr><td>Vendor &rarr; <code>utm_source</code></td><td>The source is a vendor slug (<code>google</code>, <code>facebook</code>, <code>instagram</code>, <code>vogue</code>, <code>cruise-critic</code>). Resolved from an explicit &ldquo;Publisher or vendor&rdquo; pick, else the creative job's <code>deliveryPlatform</code>, else the channel. With no vendor named, offline jobs fall back to a generic slug (<code>direct-mail</code>, <code>print</code>&hellip;) and say so; digital jobs with no platform fall back to the channel name and warn.</td></tr>
+            <tr><td>Medium</td><td>From a fixed set: <code>cpc, paid-social, display, paid-video, email, referral, affiliate</code> and offline <code>direct-mail, print, radio, tv, ooh, event, podcast, qr</code>. The vendor sets the default; for digital, email and partner vendors the job's channel can refine it.</td></tr>
+            <tr><td>Required elements</td><td><code>utm_source</code>, <code>utm_medium</code>, <code>utm_campaign</code> are always included even if the account did not tick them (GA4 requires them). The 8-element cap applies to what the account picks. Library is now 14 elements (added <code>utm_id</code>, <code>utm_source_platform</code>); <code>utm_id</code> is in the default set only for accounts that never saved a selection.</td></tr>
+            <tr><td>Base URL cleaner</td><td>Strips existing <code>utm_</code> parameters (and the Adobe code parameter), keeps the <code>#fragment</code> last, reports what it removed.</td></tr>
+            <tr><td>Adobe tracking code</td><td>For accounts using Adobe or both: <code>campaignid_publisher_medium_creative</code>, lowercase, appended in the account's chosen parameter name (default <code>cid</code>), checked against the 255-byte limit.</td></tr>
+            <tr><td>Auto-inserts</td><td>Contact ID on email links and <code>gclid={gclid}</code> on Google <code>cpc</code> links are suggested from the resolved vendor and medium; the bulk builder now applies them too (it used to skip both). Merge tokens are appended raw.</td></tr>
+            <tr><td>Channel check</td><td>Every built link and the URL audit show the predicted GA4 channel (Google's default rules, or the account's custom group once flagged) and, for Adobe, the channel from the account's own rule list plus the tracking code. Also flags uppercase and spaces. Offline mediums are predicted <em>Unassigned</em> in GA4 until the custom channel group is applied.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Vendor list: three layers, one merged list</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Layer</th><th>Source</th></tr></thead>
+          <tbody>
+            <tr><td>Standard Verilume vendors</td><td>In <code>UTM_STANDARD_VENDORS</code> (portal code): digital platforms, email platforms, and generic offline sources. Meta is split into <code>facebook</code> and <code>instagram</code> and X uses <code>twitter</code>, because those are the names on GA4's recognized-source list; <code>meta</code> is not.</td></tr>
+            <tr><td>Publisher spec catalog</td><td>Master source for print. <code>GET /api/accounts/:id/utm-vendors</code> derives one vendor per publication from <code>GLOBAL_PRINT_SPECS</code> plus the account's own <code>print_specs_custom</code> rows (the account's own additions stay private to that account).</td></tr>
+            <tr><td>Partners clients add</td><td>Table <code>utm_vendors</code> (slug, name, <code>vendorKind</code>, medium, <code>aliasesJson</code>, <code>addedByAccountId</code>). <code>POST /api/accounts/:id/utm-vendors</code> adds one; an existing slug is reused. <strong>Shared across every account by decision</strong> (vendor names are not sensitive).</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Short links and QR</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field / route</th><th>Role</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><code>short_links</code></td><td>One row per short code: <code>code</code>, <code>accountId</code>, <code>campaignId</code>, <code>jobId</code>, <code>destinationUrl</code></td><td>Six characters from an unambiguous alphabet. A creative job keeps <strong>one code for life</strong>: rebuilding its link updates the destination, so a printed QR keeps working. Same destination in the same account reuses the code.</td></tr>
+            <tr><td><code>short_link_clicks</code></td><td>Visit log: time, device kind (mobile/desktop), <code>isScan</code></td><td>No IP address or other personal data stored. Bots and link previewers are not counted. QR scans are marked by <code>?q=1</code> on the address the QR encodes.</td></tr>
+            <tr><td><code>GET /r/:code</code></td><td>Public 302 redirect</td><td>Unauthenticated on purpose (someone scanning a printed code has no login). Unknown code returns a plain &ldquo;link not active&rdquo; page.</td></tr>
+            <tr><td><code>/api/accounts/:id/short-links</code></td><td>POST create or reuse; GET list with scan and visit counts; PATCH <code>/:code</code> correct the destination</td><td>Host defaults to the API host; set <code>SHORT_LINK_BASE</code> on Railway for a short branded domain (do this before printing, because a printed code keeps its host). There is no screen yet for editing a destination or retiring a code.</td></tr>
+            <tr><td><code>POST /api/qr</code></td><td>PNG data URL, or SVG with <code>format: 'svg'</code></td><td>The portal's QR now encodes the short link and offers PNG and an SVG for print. Counts shown are redirect visits, not website sessions.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>New account fields</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Column</th><th>Role</th></tr></thead>
+          <tbody>
+            <tr><td><code>accounts.utmPlatform</code></td><td><code>''</code> (follow <code>analyticsPathway</code>), <code>ga4</code>, <code>adobe</code> or <code>both</code></td></tr>
+            <tr><td><code>accounts.utmAdobeCodeParam</code></td><td>Query parameter the client's Adobe tag reads into the campaign variable; default <code>cid</code></td></tr>
+            <tr><td><code>accounts.utmGa4CustomGroup</code></td><td>The client has applied the custom channel group in GA4; switches the offline prediction from Unassigned to the custom channel</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>All three are saved through the existing <code>POST /api/accounts/:id/utm-config</code>, which merge-updates, so older callers that send only <code>elements</code> do not reset them. The Analytics Integrations card also prints the paste-in GA4 custom channel group and Adobe Marketing Channel rules for the chosen platform.</p>
+    </section>
+
     <section id="gaps">
       <h2><span>Known gaps &amp; open items</span><span class="num">&sect; 07 — for product awareness</span></h2>
       <ul>
@@ -335,6 +397,8 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
         <li><strong>Annual plan is manual entry.</strong> The board-case workbook is not imported automatically; Todd transcribes the Baseline and chosen-scenario rows on Company Profile. No monthly phasing (the workbook's Timing tab: lag, carryover, ramp) is applied to campaigns yet &mdash; a campaign's modeled numbers are unphased annual-rate slices.</li>
         <li><strong>Website Engagement is null by design</strong> until GA4 session duration is pulled; a Magazine &mdash; Actual Budget calc (cost per insertion &times; insertions) is not built &mdash; no structured insertion count exists on a campaign.</li>
         <li>This doc covers the campaign data model as it stood after the 2026-09-22 consolidation. Campaign Creation intake, the CMO Dashboard, and portal-wide analytics that also touch campaigns are not yet covered here — see the (not yet documented) CMO Dashboard &amp; Portal Navigation card on the home page.</li>
+              <li><strong>Tracking &amp; QR (&sect; 06b) &mdash; not built yet:</strong> Adobe classification export (a <code>Key</code> CSV for Classification Sets), the AI Brain analytics setup guide and click-ID questions (gclid defaults still follow the old setting), the Invoca/warehouse UTM column reconciliation, an edit or retire screen for short links, a slug lock once a vendor has been used in a link, and admin edit or removal of client-added vendors (anyone's addition is visible to every account).</li>
+        <li><strong>Tracking &amp; QR &mdash; unverified against real tools:</strong> the GA4 channel predictions and the Adobe rule and code formats are built from Google's and Adobe's public documentation. Confirm against AOV's Traffic acquisition report, and whether the <code>nextdoor</code> and <code>yelp</code> sources are on Google's recognized list (the check treats them as unconfirmed).</li>
       </ul>
     </section>
 
@@ -370,6 +434,11 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
             <tr><td class="mono">2026-09-29</td><td>Dashboard showed 0 campaigns and Top 5 empty; Network tab showed <code>/campaigns</code>, <code>kpi-metrics</code>, <code>press-releases</code>, <code>corporate-comms</code> and <code>me</code> all cancelled at ~12 s.</td><td>Root cause: <code>getCampaignsForAccount()</code> ran 4+ queries per campaign (projects, draws, creative collections and requirements, MMM line items). On Postgres each is a synchronous round trip, so after uploads pushed the list past ~100 campaigns the request exceeded the client 12 s timeout, and the single-threaded bridge queued every other request behind it. Fix: one query per child table for the whole account, grouped in JS; output verified identical to the old per-campaign version on 150 seeded campaigns. The page still degrades silently to an empty list on failure (console warning only) — flagged as a follow-up.</td></tr>
             <tr><td class="mono">2026-09-29</td><td>"The calendar should include the campaign name instead of the ID. We don't need response actuals on the calendar cards." Detail popup titled the campaign "(untitled campaign)".</td><td>Calendar pills show the campaign name (ID moved to the hover tooltip); the Response actuals inputs are removed from the calendar event detail (stored actuals and the Publisher/Vendor leaderboard are untouched). Root cause of "(untitled campaign)": <code>c.name AS campaignName</code> is an unquoted camelCase alias that Postgres folds to lowercase and it is not in <code>schema-identifiers.json</code>, so <code>r.campaignName</code> was undefined; reads now go through <code>aliasVal()</code> (also applied to the lines download and the creative-jobs list).</td></tr>
             <tr><td class="mono">2026-09-29</td><td>Calendar cards for uploaded campaigns repeat ("AOV · Internal Email · INQ") because their names are generated from partner · channel · audience. "Go ahead with the first" (add the project number).</td><td>Calendar cards and the agenda list prefix the client Project # (<code>#6010 · AOV · Internal Email · INQ</code>) when one is on file and not already in the name; prefixed so the ellipsis never hides it. Calendar search also matches Project #. Display only — no campaign is renamed; real names come from a Campaign Name column via the download/edit/re-upload round trip. Frontend only (<code>portal.html</code>).</td></tr>
+                      <tr><td class="mono">2026-09-30</td><td>GA4 and Adobe UTM and QR review; "Page not assigned is a huge issue for AOV." Standards: utm_source is the publisher, click IDs are standard and asked through the AI Brain, GA4 setup belongs in the AI Brain, every GA4 capability needs an Adobe equivalent.</td><td>Reviewed against Google's and Adobe's public documentation and scoped in two project docs. Built round 1 (&sect; 06b): platform per account, vendor list, one shared builder, channel check for both platforms, Adobe tracking code, paste-in channel rules. Correction found on the way: unrecognized paid sources land in <em>Paid Other</em>, not Unassigned; offline mediums and unmatched mediums are the Unassigned ones.</td></tr>
+            <tr><td class="mono">2026-09-30</td><td>"Hybrid: standard Verilume sources to get started and then augment based on partners added by clients"; "Client based adds can be added to the Verilume defaults. It's not really sensitive information"; "Our publisher creative spec frontend is a great resource for the master source file."</td><td>Vendor list is three merged layers (&sect; 06b): standard vendors in code, print publications from the publisher spec catalog, and a shared <code>utm_vendors</code> table clients add to for every account.</td></tr>
+            <tr><td class="mono">2026-09-30</td><td>"We just need to stick to the individual Meta properties" (a screenshot showing GA4's source list has <code>facebook</code> and <code>instagram</code> but not <code>meta</code>).</td><td>Meta split into <code>facebook</code> and <code>instagram</code> vendors; X uses <code>twitter</code>. A job that says "Meta" resolves to <code>facebook</code>.</td></tr>
+            <tr><td class="mono">2026-09-30</td><td>"Plan on AOV and other clients having an offline channel. Build out the short link as well."</td><td>Offline is a first-class channel: fixed offline mediums, generic offline sources, a custom-channel-group prompt on the trafficking screen. Short links built (&sect; 06b): public redirect, one code per creative job, scan log without personal data, SVG QR.</td></tr>
+            <tr><td class="mono">2026-09-30</td><td>"Update our Trafficking training guide and product documentation."</td><td>Training guide rewritten as v2.0 (13 pages: platforms, vendors, offline, short links, ten steps, checklist) and this section added. Home-page card updated.</td></tr>
           </tbody>
         </table>
       </div>
@@ -391,7 +460,7 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
       verified against the working tree and direct Supabase queries on
       2026-09-22 (dead-field consolidation), re-verified 2026-09-23 for the
       <code>currentCampaignId</code> upstream fix, Dashboard KPI wiring, and
-      the legacy-casing audit affecting this Product's tables; extended 2026-09-28 for the Campaign Summary strip, annual plan roll-up, per-format DM / per-publication Magazine cost, and persisted funnel rates. Update this
+      the legacy-casing audit affecting this Product's tables; extended 2026-09-28 for the Campaign Summary strip, annual plan roll-up, per-format DM / per-publication Magazine cost, and persisted funnel rates. Extended 2026-09-30 for tracking links, the vendor list, GA4/Adobe channel checks and short-link QR codes (&sect; 06b; tested locally only, not yet on Postgres or in production). Update this
       document as the Product changes — it's meant to be the living
       reference, not a point-in-time snapshot.
     </div>
