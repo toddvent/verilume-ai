@@ -14883,6 +14883,152 @@ function buildGrowthPerformance(accountId, opts){
     coverage: { digitalPerformanceRows: dp.length, websiteUserRows: users.length, leadCountRows: leadRows.length, transactionRows: tx.rows.length } };
 }
 
+
+// ---- Brain Dump (weekly standup, 2026-09-30) ------------------------------
+// The Daily Brief becomes the Brain Dump: one paragraph per area, one key metric each,
+// every number computed from the dashboard builders and the Brain only writes the prose.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS brain_dump_weeks (
+    accountId TEXT NOT NULL,
+    weekStart TEXT NOT NULL,
+    factsJson TEXT NOT NULL,
+    textJson TEXT,
+    writtenBy TEXT,
+    createdAt TEXT NOT NULL,
+    PRIMARY KEY (accountId, weekStart)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS brain_dump_comments (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    weekStart TEXT NOT NULL,
+    section TEXT NOT NULL,
+    authorName TEXT,
+    authorType TEXT NOT NULL DEFAULT 'member',
+    text TEXT NOT NULL,
+    createdAt TEXT NOT NULL
+  );
+`);
+const BRAIN_DUMP_SECTIONS = ['strategy', 'brand', 'growth', 'analysis', 'learnings'];
+function bdWeekStart(d){ const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); const dow = x.getUTCDay(); x.setUTCDate(x.getUTCDate() - ((dow + 6) % 7)); return x.toISOString().slice(0, 10); }
+function bdMonthName(k){ const m = /^(\d{4})-(\d{2})$/.exec(String(k)); return m ? ['January','February','March','April','May','June','July','August','September','October','November','December'][Number(m[2]) - 1] + ' ' + m[1] : String(k); }
+function bdMoney(n){ if (n == null) return null; const a = Math.abs(n); if (a >= 1e6) return `$${(n / 1e6).toFixed(a >= 1e7 ? 1 : 2)}M`; if (a >= 1e3) return `$${Math.round(n / 1e3)}K`; return `$${Math.round(n)}`; }
+function bdDays(dateStr, now){ if (!dateStr) return null; const a = new Date(String(dateStr).slice(0, 10) + 'T00:00:00Z'); if (isNaN(a)) return null; return Math.round((a.getTime() - Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())) / 86400000); }
+function buildBrainDumpFacts(accountId, now, prevFacts){
+  const F = {};
+  // Strategy: forecast trend toward the plan target.
+  try {
+    const fc = buildStoryForecastVsTarget(accountId, { asOf: now });
+    const dm = buildStoryDemand(accountId, { asOf: now, months: 12 });
+    const lines = []; let metric = { label: 'Forecast trend toward target', value: null, display: 'Not on file yet' };
+    const pr = fc.projectedRevenue;
+    if (pr && fc.target && fc.target.grossRevenue && fc.comparable){
+      const pct = Math.round((pr.expected / fc.target.grossRevenue) * 1000) / 10;
+      const prev = prevFacts && prevFacts.strategy && prevFacts.strategy.metric && prevFacts.strategy.metric.value;
+      const move = prev != null ? Math.round((pct - prev) * 10) / 10 : null;
+      metric = { label: 'Forecast trend toward target', value: pct, display: `${pct}% of target`, movePts: move };
+      lines.push(`The year-end revenue forecast is ${bdMoney(pr.expected)} against a ${bdMoney(fc.target.grossRevenue)} target, ${pct}% of the way there${move != null ? `, ${move >= 0 ? 'up' : 'down'} ${Math.abs(move)} points from last week` : ''}.`);
+      if (fc.impressions) lines.push(`Planned impressions reach ${fc.impressions.pctOfTarget}% of the impressions target.`);
+    } else if (pr){
+      lines.push(`The forecast is ${bdMoney(pr.expected)} for the planned months; no matching plan target is on file to compare against.`);
+    } else lines.push('No revenue forecast is available yet; it needs monthly transactions or an Annual Plan baseline.');
+    const o = dm.outcomes; const outliers = [];
+    if (o){ ['revenue', 'roas', 'cac'].forEach(k => { const v = o.deltaPct && o.deltaPct[k]; if (v != null && Math.abs(v) >= 25) outliers.push(`${k === 'roas' ? 'ROAS' : k === 'cac' ? 'CAC' : 'Revenue'} is ${v >= 0 ? 'up' : 'down'} ${Math.abs(v)}% against the same months last year`); }); }
+    if (o && o.roas != null) lines.push(`ROAS is ${o.roas.toFixed(2)}x on ${bdMoney(o.revenue)} of gross revenue.`);
+    if (outliers.length) lines.push(`Outliers to look at: ${outliers.join('; ')}.`);
+    F.strategy = { metric, lines, outliers, links: [{ label: 'Strategy dashboard', tab: 'strategy' }] };
+  } catch (e){ F.strategy = { metric: { label: 'Forecast trend toward target', value: null, display: 'Unavailable' }, lines: ['The Strategy numbers could not be read this week.'], outliers: [], links: [{ label: 'Strategy dashboard', tab: 'strategy' }] }; }
+  // Brand: relevance score, creative due.
+  try {
+    const camps = db.prepare('SELECT messagingRelevanceJson, messagingRelevanceScoredAt FROM campaigns WHERE accountId = ? AND COALESCE(cancelled,0) = 0').all(accountId);
+    const nowMs = now.getTime(); const scores = { cur: [], prior: [] };
+    camps.forEach(c => { const at = aliasVal(c, 'messagingRelevanceScoredAt'); let j = null; try { j = JSON.parse(aliasVal(c, 'messagingRelevanceJson') || 'null'); } catch (e) {} if (!at || !j || typeof j.score !== 'number') return;
+      const age = (nowMs - new Date(at).getTime()) / 86400000; if (age <= 28) scores.cur.push(j.score); else if (age <= 56) scores.prior.push(j.score); });
+    const avg = a => a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) : null;
+    const cur = avg(scores.cur), pri = avg(scores.prior);
+    const urgent = voiceMostUrgent(accountId, 200).filter(u => u.assetsDue && !(u.endDate && String(u.endDate).slice(0, 10) < now.toISOString().slice(0, 10)));
+    const due7 = urgent.filter(u => { const d = bdDays(u.assetsDue, now); return d != null && d >= 0 && d <= 7; }).length;
+    const past = urgent.filter(u => { const d = bdDays(u.assetsDue, now); return d != null && d < 0; }).length;
+    const lines = [];
+    lines.push(cur != null ? `The average relevance score on copy scored in the last four weeks is ${cur}${pri != null ? `, ${cur >= pri ? 'up' : 'down'} from ${pri} the four weeks before` : ''}.` : 'No copy has been scored for relevance in the last four weeks.');
+    lines.push(`${due7} campaign${due7 === 1 ? ' has' : 's have'} creative assets due in the next 7 days${past ? `, and ${past} still open ${past === 1 ? 'is' : 'are'} past due` : ''}.`);
+    F.brand = { metric: { label: 'Relevance Score', value: cur, display: cur != null ? String(cur) : 'No scores yet', prior: pri }, lines, outliers: [], links: [{ label: 'Customer Experiences', tab: 'brand' }, { label: 'Marketing calendar', step: 'marketingCalendar' }] };
+  } catch (e){ F.brand = { metric: { label: 'Relevance Score', value: null, display: 'Unavailable' }, lines: ['The creative numbers could not be read this week.'], outliers: [], links: [{ label: 'Customer Experiences', tab: 'brand' }] }; }
+  // Growth & Performance: readiness of campaigns hitting in the next 30 days.
+  try {
+    const today = now.toISOString().slice(0, 10);
+    const camps = db.prepare('SELECT id, name, startDate, endDate, qaApproved, pmAssetsApprovedAt FROM campaigns WHERE accountId = ? AND COALESCE(cancelled,0) = 0 AND COALESCE(isAdHoc,0) = 0').all(accountId).map(c => ({ start: aliasVal(c, 'startDate'), qa: aliasVal(c, 'qaApproved'), assets: aliasVal(c, 'pmAssetsApprovedAt') }));
+    const next = camps.filter(c => { const d = bdDays(c.start, now); return d != null && d >= 0 && d <= 30; });
+    const ready = next.filter(c => c.qa).length; const pendAssets = next.filter(c => !c.assets).length; const pendQa = next.length - ready;
+    const pct = next.length ? Math.round((ready / next.length) * 100) : null;
+    const lines = [next.length ? `${next.length} campaign${next.length === 1 ? '' : 's'} hit${next.length === 1 ? 's' : ''} market in the next 30 days: ${ready} cleared QA and approval, ${pendQa} still waiting on it, and ${pendAssets} without approved asset selections.` : 'No campaigns are scheduled to start in the next 30 days.'];
+    F.growth = { metric: { label: 'Campaign readiness (next 30 days)', value: pct, display: pct != null ? `${pct}% cleared` : 'Nothing scheduled' }, lines, outliers: [], links: [{ label: 'Growth & Performance', tab: 'marketer' }, { label: 'Marketing calendar', step: 'marketingCalendar' }] };
+  } catch (e){ F.growth = { metric: { label: 'Campaign readiness (next 30 days)', value: null, display: 'Unavailable' }, lines: ['The campaign pipeline could not be read this week.'], outliers: [], links: [{ label: 'Growth & Performance', tab: 'marketer' }] }; }
+  // Analysis: leads against baseline, database health, analysis due.
+  try {
+    const key = (y, m) => `${y}-${String(m).padStart(2, '0')}`; const byM = {};
+    db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId).forEach(r => { const k = key(r.year, r.month); byM[k] = (byM[k] || 0) + (Number(r.count) || 0); });
+    const keys = Object.keys(byM).sort(); const latest = keys[keys.length - 1];
+    const base = keys.slice(-7, -1).map(k => byM[k]); const mean = base.length >= 3 ? base.reduce((a, b) => a + b, 0) / base.length : null;
+    const sd = mean != null ? Math.sqrt(base.reduce((a, b) => a + (b - mean) * (b - mean), 0) / base.length) : null;
+    let metric = { label: 'Leads against baseline', value: null, display: 'Not on file yet' }; const lines = []; const outliers = [];
+    if (latest && mean){
+      const pct = Math.round(((byM[latest] - mean) / mean) * 1000) / 10; const out = sd != null && Math.abs(byM[latest] - mean) > Math.max(sd * 1.5, mean * 0.15);
+      metric = { label: 'Leads against baseline', value: pct, display: `${pct >= 0 ? '+' : ''}${pct}% vs baseline`, outside: !!out };
+      lines.push(`${Math.round(byM[latest]).toLocaleString('en-US')} leads landed in ${bdMonthName(latest)}, ${Math.abs(pct)}% ${pct >= 0 ? 'above' : 'below'} the ${base.length}-month baseline, which is ${out ? 'outside' : 'within'} the expected range.`);
+      if (out) outliers.push(`Leads in ${bdMonthName(latest)} are outside the expected range`);
+    } else lines.push('Lead counts need at least four months on file before a baseline can be set.');
+    try { const ag = buildStoryAudienceGrowth(accountId, { asOf: now, months: 6 }); const l = (ag.latest || []).filter(x => x.count != null); if (l.length) lines.push(`Database growth this month: ${l.map(x => `${x.type} ${x.count.toLocaleString('en-US')}${x.vsPriorMonthPct != null ? ` (${x.vsPriorMonthPct >= 0 ? '+' : ''}${x.vsPriorMonthPct}% vs last month)` : ''}`).join(', ')}.`); } catch (e) {}
+    try { const ms = buildMediaScience(accountId, { asOf: now }); if (ms.analysisDue.total) lines.push(`${ms.analysisDue.total} campaign${ms.analysisDue.total === 1 ? ' is' : 's are'} past the 90-day window with no analysis on file.`); } catch (e) {}
+    F.analysis = { metric, lines, outliers, links: [{ label: 'Media Science', tab: 'dataScientist' }] };
+  } catch (e){ F.analysis = { metric: { label: 'Leads against baseline', value: null, display: 'Unavailable' }, lines: ['The analysis numbers could not be read this week.'], outliers: [], links: [{ label: 'Media Science', tab: 'dataScientist' }] }; }
+  // AI Brain learnings from the Contribution Ledger, last 7 days.
+  try {
+    const since = new Date(now.getTime() - 7 * 86400000).toISOString();
+    const rows = db.prepare('SELECT sourceType, status, reason, createdAt, decidedAt FROM ai_brain_contributions WHERE accountId = ?').all(accountId).map(r => ({ type: aliasVal(r, 'sourceType'), status: r.status, reason: r.reason, created: aliasVal(r, 'createdAt'), decided: aliasVal(r, 'decidedAt') }));
+    const added = rows.filter(r => r.created && r.created >= since); const decided = rows.filter(r => r.decided && r.decided >= since && r.status !== 'reference');
+    const label = { voice_guide: 'voice guide', website_scan: 'website scan', website_profile: 'website profile', competitive_positioning: 'competitive positioning', brand_writing_sample_style: 'writing samples', training_digest: 'training digest', model_readout_finding: 'analysis readout', video_analysis: 'video analysis', forecast_calibration: 'forecast calibration', contest_winner: 'contest winner' };
+    const tally = {}; added.forEach(r => { const l = label[r.type] || String(r.type || 'other').replace(/_/g, ' '); tally[l] = (tally[l] || 0) + 1; });
+    const top = Object.entries(tally).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => `${v} ${k}`);
+    const total = added.length + decided.length;
+    const lines = [total ? `The Brain took in ${added.length} new item${added.length === 1 ? '' : 's'} and recorded ${decided.length} team decision${decided.length === 1 ? '' : 's'} this week${top.length ? `, including ${top.join(' and ')}` : ''}.` : 'The Brain recorded no new learnings this week.'];
+    F.learnings = { metric: { label: 'Decisions the Brain learned from', value: decided.length, display: `${decided.length} this week`, added: added.length }, lines, outliers: [], links: [{ label: 'Train the Brain', tab: 'accountManagement' }] };
+  } catch (e){ F.learnings = { metric: { label: 'Decisions the Brain learned from', value: null, display: 'Unavailable' }, lines: ['The Brain ledger could not be read this week.'], outliers: [], links: [{ label: 'Train the Brain', tab: 'accountManagement' }] }; }
+  return F;
+}
+// The Brain writes the prose; a paragraph is kept only when every number in it comes from the facts.
+function bdNumbers(t){ return (String(t).match(/\d[\d,]*\.?\d*/g) || []).map(x => x.replace(/,/g, '').replace(/\.$/, '')); }
+async function writeBrainDumpText(facts){
+  const fallback = {}; BRAIN_DUMP_SECTIONS.forEach(k => { fallback[k] = (facts[k].lines || []).join(' '); });
+  if (!process.env.ANTHROPIC_API_KEY) return { text: fallback, writtenBy: 'template' };
+  try {
+    const schema = { type: 'object', properties: {}, required: BRAIN_DUMP_SECTIONS };
+    BRAIN_DUMP_SECTIONS.forEach(k => { schema.properties[k] = { type: 'string', description: 'One paragraph, at most 70 words, standup tone, plain sentences.' }; });
+    const input = {}; BRAIN_DUMP_SECTIONS.forEach(k => { input[k] = { metric: facts[k].metric.label + ': ' + facts[k].metric.display, facts: facts[k].lines }; });
+    const out = await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 1400, timeoutMs: 45000, toolName: 'submit_brain_dump', toolDescription: 'Submit the weekly standup paragraphs.', schema,
+      content: `You are the AI Brain giving a weekly marketing standup to the team. Write one short paragraph per section (strategy, brand, growth, analysis, learnings) from the facts below. Lead with the section's key metric. Use ONLY numbers that appear in the facts; never add, round, or infer a number. Do not invent events, competitors, or causes. Plain sentences, no lists, no markdown, no headings.\n\nFACTS:\n${JSON.stringify(input, null, 1)}` });
+    const text = {}; let used = 0;
+    BRAIN_DUMP_SECTIONS.forEach(k => {
+      const t = typeof out[k] === 'string' ? out[k].trim() : ''; const allowed = new Set(bdNumbers(JSON.stringify(input[k])));
+      const ok = t && bdNumbers(t).every(n => allowed.has(n) || allowed.has(String(Number(n))));
+      if (ok){ text[k] = t; used++; } else text[k] = fallback[k];
+    });
+    return { text, writtenBy: used ? 'brain' : 'template' };
+  } catch (e){ console.warn('[brain-dump] writing failed, using facts text:', e.message); return { text: fallback, writtenBy: 'template' }; }
+}
+async function getBrainDump(accountId, weekStart, refresh){
+  const row = db.prepare('SELECT * FROM brain_dump_weeks WHERE accountId = ? AND weekStart = ?').get(accountId, weekStart);
+  if (row && !refresh){ try { return { weekStart, facts: JSON.parse(row.factsJson), text: JSON.parse(row.textJson || '{}'), writtenBy: aliasVal(row, 'writtenBy'), createdAt: aliasVal(row, 'createdAt'), cached: true }; } catch (e) {} }
+  const prevRow = db.prepare('SELECT factsJson FROM brain_dump_weeks WHERE accountId = ? AND weekStart < ? ORDER BY weekStart DESC').get(accountId, weekStart);
+  let prevFacts = null; try { prevFacts = prevRow ? JSON.parse(aliasVal(prevRow, 'factsJson')) : null; } catch (e) {}
+  const now = new Date();
+  const facts = buildBrainDumpFacts(accountId, now, prevFacts);
+  const w = await writeBrainDumpText(facts); const createdAt = now.toISOString();
+  db.prepare('INSERT INTO brain_dump_weeks (accountId, weekStart, factsJson, textJson, "writtenBy", createdAt) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(accountId, weekStart) DO UPDATE SET factsJson = excluded.factsJson, textJson = excluded.textJson, "writtenBy" = excluded."writtenBy", createdAt = excluded.createdAt').run(accountId, weekStart, JSON.stringify(facts), JSON.stringify(w.text), w.writtenBy, createdAt);
+  return { weekStart, facts, text: w.text, writtenBy: w.writtenBy, createdAt, cached: false };
+}
+
 function maybeSnapshotForecastCalibration(accountId, cal, actor){
   try {
     const sig = JSON.stringify([cal.confidence, cal.impressionsToVisits.source, Math.round(cal.impressionsToVisits.visitsPerImp * 1e6), Math.round(cal.visitsToLeads.mid * 1e4), Math.round(cal.leadsToBookings.mid * 1e3), cal.bookingsToRevenue.mid != null ? Math.round(cal.bookingsToRevenue.mid) : null]);
@@ -23689,6 +23835,48 @@ async function handleRequest(req, res) {
       if (!months || !months.length){ months = getForecastPlanMonths(accountId); planSource = 'plan as loaded'; }
       if (!months.length) return sendJson(res, 200, { calibration: cal, forecast: null, note: 'No planned impressions or spend on file and no scenario supplied.' });
       return sendJson(res, 200, { planSource, calibration: cal, forecast: forecastEngine.forecast(cal, { months }) });
+    }
+
+
+    // Brain Dump (weekly standup). GET /api/accounts/:id/brain-dump[?week=YYYY-MM-DD&refresh=1]
+    // Comments: GET/POST /api/accounts/:id/brain-dump/comments — an @AIBrain mention gets a reply grounded in that section's facts.
+    if (parts.length >= 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'brain-dump' && (parts.length === 4 || (parts.length === 5 && parts[4] === 'comments'))){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const q = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries());
+      const weekStart = /^\d{4}-\d{2}-\d{2}$/.test(q.week || '') ? bdWeekStart(new Date(q.week + 'T00:00:00Z')) : bdWeekStart(new Date());
+      if (parts.length === 4 && req.method === 'GET'){
+        try { const bd = await getBrainDump(accountId, weekStart, q.refresh === '1'); return sendJson(res, 200, bd); }
+        catch (e){ console.warn('[brain-dump] failed:', e.message); return sendJson(res, 500, { error: 'could not build the Brain Dump' }); }
+      }
+      if (parts.length === 5 && req.method === 'GET'){
+        const rows = db.prepare('SELECT * FROM brain_dump_comments WHERE accountId = ? AND weekStart = ? ORDER BY createdAt ASC').all(accountId, weekStart).map(r => ({ id: r.id, section: r.section, authorName: aliasVal(r, 'authorName'), authorType: aliasVal(r, 'authorType'), text: r.text, createdAt: aliasVal(r, 'createdAt') }));
+        return sendJson(res, 200, { weekStart, comments: rows });
+      }
+      if (parts.length === 5 && req.method === 'POST'){
+        const body = await readBody(req); const section = String(body.section || ''); const text = String(body.text || '').trim().slice(0, 2000);
+        if (!BRAIN_DUMP_SECTIONS.includes(section) || !text) return sendJson(res, 400, { error: 'section and text are required' });
+        const sess = authenticate(req); const author = String(body.authorName || (sess && sess.name) || 'Team member').slice(0, 80);
+        const now = new Date().toISOString(); const id = generateId('BDC');
+        db.prepare('INSERT INTO brain_dump_comments (id, accountId, weekStart, section, "authorName", "authorType", text, "createdAt") VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(id, accountId, weekStart, section, author, 'member', text, now);
+        const out = [{ id, section, authorName: author, authorType: 'member', text, createdAt: now }];
+        if (/@ai\s?brain/i.test(text)){
+          let reply = 'I can only answer from this week\'s numbers, and the AI service is not available right now. Open the dashboard linked above for the detail.';
+          try {
+            const bd = await getBrainDump(accountId, weekStart, false); const f = bd.facts[section];
+            if (process.env.ANTHROPIC_API_KEY){
+              const thread = db.prepare('SELECT authorName, authorType, text FROM brain_dump_comments WHERE accountId = ? AND weekStart = ? AND section = ? ORDER BY createdAt ASC').all(accountId, weekStart, section).slice(-8).map(r => `${aliasVal(r, 'authorType') === 'brain' ? 'AI Brain' : aliasVal(r, 'authorName')}: ${r.text}`).join('\n');
+              const r = await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 500, timeoutMs: 30000, toolName: 'submit_reply', schema: { type: 'object', properties: { reply: { type: 'string' } }, required: ['reply'] },
+                content: `You are the AI Brain replying in a team thread under the "${section}" section of the weekly Brain Dump. Answer the last message using ONLY the facts below. If the facts do not answer it, say what is missing and which dashboard to open. Never invent or estimate a number. Keep it under 80 words, plain sentences.\n\nSECTION FACTS:\n${JSON.stringify({ metric: f.metric, facts: f.lines, outliers: f.outliers }, null, 1)}\n\nTHREAD:\n${thread}` });
+              if (r && typeof r.reply === 'string' && r.reply.trim()) reply = r.reply.trim();
+            } else reply = `Here is what this week's numbers say: ${(f.lines || []).join(' ')}`;
+          } catch (e){ console.warn('[brain-dump] reply failed:', e.message); }
+          const rid = generateId('BDC'); const rnow = new Date().toISOString();
+          db.prepare('INSERT INTO brain_dump_comments (id, accountId, weekStart, section, "authorName", "authorType", text, "createdAt") VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(rid, accountId, weekStart, section, 'AI Brain', 'brain', reply.slice(0, 2000), rnow);
+          out.push({ id: rid, section, authorName: 'AI Brain', authorType: 'brain', text: reply.slice(0, 2000), createdAt: rnow });
+        }
+        return sendJson(res, 200, { weekStart, comments: out });
+      }
     }
 
     // GET /api/accounts/:id/analytics/(story|forecast-vs-target|price-volume|audience-growth)
