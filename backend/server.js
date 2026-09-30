@@ -2578,6 +2578,15 @@ ensureColumn('accounts', 'utmContactIdParam', "TEXT DEFAULT 'contact_id'");
 ensureColumn('accounts', 'utmContactIdToken', "TEXT DEFAULT '{{contact_id}}'");
 ensureColumn('accounts', 'utmAutoGclidEnabled', 'INTEGER DEFAULT 1');
 
+// 2026-09-30 — UTM/QR/analytics round 1. utmPlatform says which analytics tool the account reads
+// its tracking with ('ga4', 'adobe' or 'both'; empty = follow analyticsPathway). utmAdobeCodeParam is
+// the query parameter the client's Adobe tag reads the campaign tracking code from. utmGa4CustomGroup
+// records that the client has applied our custom channel group in GA4 (offline media stops being
+// predicted as Unassigned once it is set).
+ensureColumn('accounts', 'utmPlatform', "TEXT DEFAULT ''");
+ensureColumn('accounts', 'utmAdobeCodeParam', "TEXT DEFAULT 'cid'");
+ensureColumn('accounts', 'utmGa4CustomGroup', 'INTEGER DEFAULT 0');
+
 // Round 55 — campaign_allocation_draws, closing the round-50 scoping doc's
 // original design: a campaign can span multiple Media Plan allocations
 // (multiple stages/channels) instead of the single flat allocationId/budget
@@ -15490,6 +15499,45 @@ createTableIfNeeded(`
     dismissedAt TEXT
   );
 `);
+// Shared vendor catalog for tracking links (2026-09-30). The standard Verilume vendors live in the
+// portal code; this table holds the partners clients add (a magazine, a newsletter, a mail house). Per
+// Todd, what a client adds is not sensitive, so it joins the defaults for every account. One row per
+// slug; adding an existing slug reuses the row.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS utm_vendors (
+    slug TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    vendorKind TEXT NOT NULL,
+    medium TEXT NOT NULL,
+    aliasesJson TEXT,
+    addedByAccountId TEXT,
+    createdAt TEXT NOT NULL
+  );
+`);
+// Short links (2026-09-30). A QR code or printed URL points at a short address we own (/r/CODE) that
+// redirects to the full tracking link. The code stays short so the QR is sparse and scans at small print
+// sizes, the destination can be corrected after printing, and every visit is counted. Nothing personal is
+// stored: no IP address, only the time, a device kind and whether the visit came from a QR scan (?q=1).
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS short_links (
+    code TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    campaignId TEXT,
+    jobId TEXT,
+    destinationUrl TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS short_link_clicks (
+    id TEXT PRIMARY KEY,
+    code TEXT NOT NULL,
+    clickedAt TEXT NOT NULL,
+    deviceKind TEXT,
+    isScan INTEGER DEFAULT 0
+  );
+`);
 // Saves the assessment's market sizing (TAM, SAM and the generation and wealth tables behind it). Only real numbers are stored.
 function cleanMarketRows(rows){
   return (Array.isArray(rows) ? rows : []).slice(0, 12).map(r => ({ key: String(r && r.key || '').slice(0, 40), label: String(r && r.label || '').slice(0, 80), share: Number.isFinite(Number(r && r.share)) ? Number(r.share) : null, count: Number.isFinite(Number(r && r.count)) ? Math.round(Number(r.count)) : null })).filter(r => r.label);
@@ -15649,7 +15697,7 @@ function brainWrite(accountId, { dashboard, action, subject, refId, scopeType, r
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['brain_dump_welcome', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings']);
+const CATALOG_EXEMPT = new Set(['brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -20809,6 +20857,27 @@ async function handleRequest(req, res) {
         }
       });
     }
+    // GET /r/:code — short link redirect (2026-09-30). Public on purpose: a person scanning a printed QR code
+    // has no login. Bots and link previewers are not counted. ?q=1 marks a QR scan.
+    if ((req.method === 'GET' || req.method === 'HEAD') && parts.length === 2 && parts[0] === 'r'){
+      const code = String(parts[1] || '').slice(0, 20);
+      const row = /^[A-Za-z0-9]{4,20}$/.test(code) ? db.prepare('SELECT code, destinationUrl FROM short_links WHERE code = ?').get(code) : null;
+      const dest = row ? aliasVal(row, 'destinationUrl') : null;
+      if (!dest){
+        res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        return res.end('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Link not active</title><body style="font-family:system-ui,sans-serif;max-width:32rem;margin:15vh auto;padding:0 1rem"><h1 style="font-size:1.25rem">This link is not active</h1><p>It may have been mistyped or retired. Please check the address and try again.</p></body>');
+      }
+      const ua = String(req.headers['user-agent'] || '');
+      if (req.method === 'GET' && !/bot|crawl|spider|preview|facebookexternalhit|slackbot|whatsapp|curl|monitor/i.test(ua)){
+        try {
+          db.prepare('INSERT INTO short_link_clicks (id, code, clickedAt, deviceKind, isScan) VALUES (?,?,?,?,?)')
+            .run(crypto.randomBytes(8).toString('hex'), code, new Date().toISOString(), /mobile|iphone|android|ipad/i.test(ua) ? 'mobile' : 'desktop', url.searchParams.get('q') ? 1 : 0);
+        } catch (e){ console.warn('[short-link] click log failed:', e.message); }
+      }
+      res.writeHead(302, { 'Location': dest, 'Cache-Control': 'no-store' });
+      return res.end();
+    }
+
     // GET /api/health — buildStamp added round 132bx follow-on #3
     // (2026-08-15), matching CXMEDIA_BUILD_STAMP in portal.html, so it's
     // possible to confirm which copy of the code is actually running on
@@ -25304,7 +25373,7 @@ Submit your response via the campaign_intake_turn tool.`;
     // populated for every campaign's tracking links. Whole-array save, same
     // convention as /content-library — the front end always sends the full
     // ordered selection, order matters (it's the query-string param order).
-    const VALID_UTM_ELEMENTS = ['utm_source','utm_medium','utm_campaign','utm_content','utm_term','cx_campaign_id','cx_creative_id','cx_channel','cx_placement','cx_stage','cx_audience','cx_flight'];
+    const VALID_UTM_ELEMENTS = ['utm_source','utm_medium','utm_campaign','utm_id','utm_source_platform','utm_content','utm_term','cx_campaign_id','cx_creative_id','cx_channel','cx_placement','cx_stage','cx_audience','cx_flight'];
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'utm-config'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
@@ -25329,15 +25398,139 @@ Submit your response via the campaign_intake_turn tool.`;
       const contactIdParam = (body.utmContactIdParam !== undefined && body.utmContactIdParam.trim()) ? body.utmContactIdParam.trim() : (existingAuto.utmContactIdParam || 'contact_id');
       const contactIdToken = (body.utmContactIdToken !== undefined && body.utmContactIdToken.trim()) ? body.utmContactIdToken.trim() : (existingAuto.utmContactIdToken || '{{contact_id}}');
       const autoGclid = body.utmAutoGclidEnabled !== undefined ? !!body.utmAutoGclidEnabled : !!existingAuto.utmAutoGclidEnabled;
-      db.prepare(`UPDATE accounts SET utmMasterElementsJson = ?, utmAutoContactIdEnabled = ?, utmContactIdParam = ?, utmContactIdToken = ?, utmAutoGclidEnabled = ? WHERE accountId = ?`)
-        .run(JSON.stringify(elements), autoContactId ? 1 : 0, contactIdParam, contactIdToken, autoGclid ? 1 : 0, accountId);
+      // 2026-09-30 — analytics platform, Adobe code parameter and the GA4 custom-group flag. Merge-update
+      // like the fields above, so older callers that send only `elements` do not reset them.
+      const existingPlat = db.prepare('SELECT utmPlatform, utmAdobeCodeParam, utmGa4CustomGroup FROM accounts WHERE accountId = ?').get(accountId) || {};
+      let platform = existingPlat.utmPlatform || '';
+      if (body.utmPlatform !== undefined){
+        if (!['', 'ga4', 'adobe', 'both'].includes(body.utmPlatform)) return sendJson(res, 400, { error: "utmPlatform must be '', 'ga4', 'adobe' or 'both'." });
+        platform = body.utmPlatform;
+      }
+      let adobeParam = existingPlat.utmAdobeCodeParam || 'cid';
+      if (body.utmAdobeCodeParam !== undefined){
+        const p = String(body.utmAdobeCodeParam).trim();
+        if (!/^[A-Za-z][A-Za-z0-9_]{0,31}$/.test(p)) return sendJson(res, 400, { error: 'The Adobe tracking code parameter must be 1 to 32 letters, digits or underscores, starting with a letter.' });
+        adobeParam = p;
+      }
+      const ga4Group = body.utmGa4CustomGroup !== undefined ? !!body.utmGa4CustomGroup : !!existingPlat.utmGa4CustomGroup;
+      db.prepare(`UPDATE accounts SET utmMasterElementsJson = ?, utmAutoContactIdEnabled = ?, utmContactIdParam = ?, utmContactIdToken = ?, utmAutoGclidEnabled = ?, utmPlatform = ?, utmAdobeCodeParam = ?, utmGa4CustomGroup = ? WHERE accountId = ?`)
+        .run(JSON.stringify(elements), autoContactId ? 1 : 0, contactIdParam, contactIdToken, autoGclid ? 1 : 0, platform, adobeParam, ga4Group ? 1 : 0, accountId);
       return sendJson(res, 200, {
         elements,
         utmAutoContactIdEnabled: autoContactId,
         utmContactIdParam: contactIdParam,
         utmContactIdToken: contactIdToken,
-        utmAutoGclidEnabled: autoGclid
+        utmAutoGclidEnabled: autoGclid,
+        utmPlatform: platform,
+        utmAdobeCodeParam: adobeParam,
+        utmGa4CustomGroup: ga4Group
       });
+    }
+
+    // GET|POST /api/accounts/:id/utm-vendors — the shared vendor catalog (partners clients have added).
+    // The standard Verilume vendors are in the portal code; these are added on top for every account.
+    const VENDOR_KINDS = ['digital', 'email', 'direct-mail', 'print', 'partner-site', 'broadcast', 'ooh', 'event', 'podcast'];
+    const VENDOR_MEDIUMS = ['cpc', 'paid-social', 'display', 'paid-video', 'email', 'referral', 'direct-mail', 'print', 'radio', 'tv', 'ooh', 'event', 'podcast', 'qr', 'affiliate', 'other'];
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'utm-vendors' && (req.method === 'GET' || req.method === 'POST')){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      if (req.method === 'GET'){
+        const slugOf = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+        const out = new Map();
+        // 1. The publisher spec catalog is the master source for print: every magazine and newspaper in it,
+        //    plus this account's own added publications (those stay private to the account).
+        const specRows = [...GLOBAL_PRINT_SPECS.map(r => ({ ...r, from: 'spec' })),
+          ...db.prepare('SELECT publication, publisher, mediumType FROM print_specs_custom WHERE accountId = ?').all(accountId).map(r => ({ publication: r.publication, publisher: r.publisher, mediumType: aliasVal(r, 'mediumType'), from: 'account-spec' }))];
+        specRows.forEach(r => {
+          const slug = slugOf(r.publication);
+          if (!slug || out.has(slug)) return;
+          out.set(slug, { slug, name: r.publication, kind: 'print', medium: 'print', aliases: r.publisher ? [String(r.publisher).toLowerCase()] : [], source: r.from, mediumType: r.mediumType });
+        });
+        // 2. Partners any client has added in the tracking-link builder (shared with every account).
+        db.prepare('SELECT slug, name, vendorKind, medium, aliasesJson, addedByAccountId FROM utm_vendors ORDER BY name').all().forEach(r => {
+          if (out.has(r.slug)) return;
+          let aliases = []; try { aliases = JSON.parse(aliasVal(r, 'aliasesJson') || '[]'); } catch (e){ aliases = []; }
+          out.set(r.slug, { slug: r.slug, name: r.name, kind: aliasVal(r, 'vendorKind'), medium: r.medium, aliases, source: 'added', mine: aliasVal(r, 'addedByAccountId') === accountId });
+        });
+        return sendJson(res, 200, { vendors: [...out.values()].sort((a, b) => a.name.localeCompare(b.name)) });
+      }
+      const body = await readBody(req);
+      const name = String(body.name || '').trim().slice(0, 80);
+      const slug = String(body.slug || name).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+      const kind = String(body.kind || '');
+      const medium = String(body.medium || '');
+      if (!name || !slug) return sendJson(res, 400, { error: 'A vendor needs a name.' });
+      if (!VENDOR_KINDS.includes(kind)) return sendJson(res, 400, { error: `Vendor type must be one of: ${VENDOR_KINDS.join(', ')}.` });
+      if (!VENDOR_MEDIUMS.includes(medium)) return sendJson(res, 400, { error: `Medium must be one of: ${VENDOR_MEDIUMS.join(', ')}.` });
+      const aliases = (Array.isArray(body.aliases) ? body.aliases : []).map(a => String(a).toLowerCase().trim().slice(0, 60)).filter(Boolean).slice(0, 6);
+      const existing = db.prepare('SELECT slug, name, vendorKind, medium FROM utm_vendors WHERE slug = ?').get(slug);
+      if (existing){
+        return sendJson(res, 200, { vendor: { slug, name: existing.name, kind: aliasVal(existing, 'vendorKind'), medium: existing.medium, custom: true }, reused: true });
+      }
+      const total = db.prepare('SELECT COUNT(*) AS n FROM utm_vendors WHERE addedByAccountId = ?').get(accountId);
+      if (Number(total && total.n) >= 200) return sendJson(res, 400, { error: 'This account has added the maximum number of vendors.' });
+      db.prepare('INSERT INTO utm_vendors (slug, name, vendorKind, medium, aliasesJson, addedByAccountId, createdAt) VALUES (?,?,?,?,?,?,?)')
+        .run(slug, name, kind, medium, JSON.stringify(aliases), accountId, new Date().toISOString());
+      return sendJson(res, 200, { vendor: { slug, name, kind, medium, aliases, custom: true, mine: true }, reused: false });
+    }
+
+    // Short links — POST creates (or returns the existing one for the same account and destination), GET lists
+    // with counts, PATCH corrects the destination after printing. See the /r/:code redirect above.
+    if (parts.length >= 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'short-links' && ['GET', 'POST', 'PATCH'].includes(req.method)){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const base = (process.env.SHORT_LINK_BASE || `${String(req.headers['x-forwarded-proto'] || 'http').split(',')[0]}://${req.headers.host}`).replace(/\/+$/, '');
+      const okUrl = u => { try { const x = new URL(u); return (x.protocol === 'https:' || x.protocol === 'http:') && u.length <= 2000; } catch (e){ return false; } };
+      const shape = (code, dest, extra) => ({ code, shortUrl: `${base}/r/${code}`, qrUrl: `${base}/r/${code}?q=1`, destinationUrl: dest, ...(extra || {}) });
+      if (req.method === 'POST' && parts.length === 4){
+        const body = await readBody(req);
+        const dest = String(body.url || '').trim();
+        if (!okUrl(dest)) return sendJson(res, 400, { error: 'A full http(s) tracking link is required (up to 2000 characters).' });
+        const existing = db.prepare('SELECT code FROM short_links WHERE accountId = ? AND destinationUrl = ?').get(accountId, dest);
+        if (existing) return sendJson(res, 200, shape(existing.code, dest, { created: false }));
+        // A creative job keeps ONE short code for life. Rebuilding its link (a new landing page, a changed
+        // parameter) updates where that code points, so a QR that is already printed keeps working.
+        if (body.jobId){
+          const byJob = db.prepare('SELECT code FROM short_links WHERE accountId = ? AND jobId = ?').get(accountId, String(body.jobId).slice(0, 80));
+          if (byJob){
+            db.prepare('UPDATE short_links SET destinationUrl = ?, updatedAt = ? WHERE code = ?').run(dest, new Date().toISOString(), byJob.code);
+            return sendJson(res, 200, shape(byJob.code, dest, { created: false, updated: true }));
+          }
+        }
+        const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        let code = '';
+        for (let attempt = 0; attempt < 8 && !code; attempt++){
+          let c = ''; const bytes = crypto.randomBytes(6);
+          for (let k = 0; k < 6; k++) c += chars[bytes[k] % chars.length];
+          if (!db.prepare('SELECT code FROM short_links WHERE code = ?').get(c)) code = c;
+        }
+        if (!code) return sendJson(res, 500, { error: 'Could not allocate a short code. Try again.' });
+        const now = new Date().toISOString();
+        db.prepare('INSERT INTO short_links (code, accountId, campaignId, jobId, destinationUrl, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?)')
+          .run(code, accountId, body.campaignId ? String(body.campaignId).slice(0, 80) : null, body.jobId ? String(body.jobId).slice(0, 80) : null, dest, now, now);
+        return sendJson(res, 200, shape(code, dest, { created: true }));
+      }
+      if (req.method === 'GET' && parts.length === 4){
+        const cid = url.searchParams.get('campaignId');
+        const rows = cid
+          ? db.prepare('SELECT code, campaignId, jobId, destinationUrl, createdAt FROM short_links WHERE accountId = ? AND campaignId = ? ORDER BY createdAt DESC').all(accountId, cid)
+          : db.prepare('SELECT code, campaignId, jobId, destinationUrl, createdAt FROM short_links WHERE accountId = ? ORDER BY createdAt DESC LIMIT 500').all(accountId);
+        const counts = {};
+        db.prepare('SELECT c.code AS code, COUNT(*) AS n, SUM(c.isScan) AS scans FROM short_link_clicks c JOIN short_links l ON l.code = c.code WHERE l.accountId = ? GROUP BY c.code').all(accountId)
+          .forEach(r => { counts[r.code] = { clicks: Number(r.n) || 0, scans: Number(aliasVal(r, 'scans')) || 0 }; });
+        return sendJson(res, 200, { links: rows.map(r => shape(r.code, aliasVal(r, 'destinationUrl'), { campaignId: aliasVal(r, 'campaignId'), jobId: aliasVal(r, 'jobId'), createdAt: aliasVal(r, 'createdAt'), clicks: (counts[r.code] || {}).clicks || 0, scans: (counts[r.code] || {}).scans || 0 })) });
+      }
+      if (req.method === 'PATCH' && parts.length === 5){
+        const code = decodeURIComponent(parts[4]);
+        const body = await readBody(req);
+        const dest = String(body.url || '').trim();
+        if (!okUrl(dest)) return sendJson(res, 400, { error: 'A full http(s) link is required.' });
+        const row = db.prepare('SELECT code FROM short_links WHERE code = ? AND accountId = ?').get(code, accountId);
+        if (!row) return sendJson(res, 404, { error: 'short link not found' });
+        db.prepare('UPDATE short_links SET destinationUrl = ?, updatedAt = ? WHERE code = ?').run(dest, new Date().toISOString(), code);
+        return sendJson(res, 200, shape(code, dest, { updated: true }));
+      }
+      return sendJson(res, 404, { error: 'not found' });
     }
 
     // POST /api/qr — round 71, real QR code image generation for the UTM
@@ -25366,6 +25559,11 @@ Submit your response via the campaign_intake_turn tool.`;
       try {
         const QRCode = require('qrcode');
         const size = Math.min(2048, Math.max(128, Number(body.size) || 512));
+        if (body.format === 'svg'){
+          // Vector output for print: scales to any size without blurring.
+          const svg = await QRCode.toString(data, { type: 'svg', errorCorrectionLevel: 'M', margin: 2 });
+          return sendJson(res, 200, { svg });
+        }
         const dataUrl = await QRCode.toDataURL(data, { errorCorrectionLevel: 'M', margin: 2, width: size });
         return sendJson(res, 200, { dataUrl });
       } catch (e){
