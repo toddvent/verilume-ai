@@ -132,6 +132,11 @@ function calibrate(series, opts){
     const recent = tm.slice(-12);
     const aovs = recent.map(k => num(rev[k]) / num(tx[k]));
     s4 = { source: 'account history (last ' + recent.length + ' months)', n: recent.length, mid: sum(recent.map(k => num(rev[k]))) / sum(recent.map(k => num(tx[k]))), low: pct(aovs, 0.25), high: pct(aovs, 0.75) };
+  } else if (opts && opts.fallbackAov && opts.fallbackAov.value > 0){
+    // No monthly transaction history: use the Annual Plan baseline's revenue per booking. One number, no spread.
+    const v = Number(opts.fallbackAov.value);
+    s4 = { source: 'annual plan baseline' + (opts.fallbackAov.label ? ' (' + opts.fallbackAov.label + ')' : ''), n: 0, mid: v, low: v, high: v };
+    notes.push('Revenue per booking comes from the Annual Plan baseline, not monthly history, so the revenue range does not include order-value spread.');
   } else { s4 = { source: 'none on file', n: 0, mid: null, low: null, high: null }; notes.push('No transaction revenue on file, so revenue and ROAS cannot be forecast.'); }
 
   // --- Cost side: blended CPM from recent months ----------------------------
