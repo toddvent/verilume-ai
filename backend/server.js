@@ -15048,6 +15048,78 @@ async function postBrainDump(accountId){
   return readBrainDump(accountId, weekStart);
 }
 
+// ---- Train the Brain (2026-09-30): setup in four short sittings, what the Brain learned, and the data it consumes ----
+// DATA_CATALOG is version 1 of the data catalog: one entry per data set with its owner dashboard, grain, keywords and status.
+// "Data consumed" is a live view of it, and the forecast, Ask the Brain and voice lookups can route through the same list.
+const DATA_CATALOG = [
+  { key: 'transactions', label: 'Monthly transactions', table: 'account_transactions_monthly', period: 'ym', dashboard: 'Strategy', grain: 'month by product group', kind: 'manual', keywords: ['revenue', 'transactions', 'sales', 'bookings revenue', 'aov'], usedBy: ['forecast', 'ask', 'voice', 'brain dump'], status: 'current' },
+  { key: 'guest_bookings', label: 'Guest booking file', table: 'account_guest_bookings', period: 'ym', dashboard: 'Strategy', grain: 'one row per guest booking', kind: 'manual', keywords: ['guest', 'booking', 'cruise', 'customer file', 'gross price'], usedBy: ['forecast', 'ask'], status: 'current' },
+  { key: 'leads', label: 'Leads by month', table: 'account_lead_counts', period: 'ym', dashboard: 'Media Science', grain: 'month by source, lead type and form', kind: 'manual', keywords: ['leads', 'forms', 'prospect', 'growth', 'value leads', 'cpl'], usedBy: ['forecast', 'ask', 'voice', 'brain dump'], status: 'current' },
+  { key: 'digital', label: 'Digital actuals', table: 'account_digital_performance', period: 'ym', dashboard: 'Media Science', grain: 'month by channel, publisher and tactic', kind: 'manual', keywords: ['impressions', 'clicks', 'spend', 'channel', 'search', 'social', 'display'], usedBy: ['forecast', 'ask', 'voice'], status: 'current' },
+  { key: 'web_engagement', label: 'Website engagement', table: 'account_website_engagement', period: 'ym', dashboard: 'Media Science', grain: 'month by channel group', kind: 'manual', keywords: ['sessions', 'traffic', 'engagement', 'ga4'], usedBy: ['forecast', 'ask'], status: 'current' },
+  { key: 'web_users', label: 'Website users', table: 'account_website_users_monthly', period: 'ym', dashboard: 'Media Science', grain: 'month by region', kind: 'manual', keywords: ['visits', 'users', 'region', 'website'], usedBy: ['forecast', 'ask'], status: 'current' },
+  { key: 'annual_plan', label: 'Annual plan and targets', table: 'account_annual_plan', period: 'year', dashboard: 'Strategy', grain: 'year by plan kind', kind: 'manual', keywords: ['plan', 'target', 'goal', 'baseline', 'budget vs target'], usedBy: ['forecast', 'ask', 'brain dump'], status: 'current' },
+  { key: 'budget_lines', label: 'Marketing budget lines', table: 'marketing_budget_line_items', period: null, dashboard: 'Strategy', grain: 'budget line', kind: 'manual', keywords: ['budget', 'spend plan', 'allocation', 'category'], usedBy: ['forecast', 'ask'], status: 'current' },
+  { key: 'campaigns', label: 'Campaign calendar', table: 'campaigns', period: null, dashboard: 'Growth & Performance', grain: 'campaign', kind: 'manual', keywords: ['campaign', 'calendar', 'flight', 'start date', 'qa'], usedBy: ['ask', 'voice', 'brain dump'], status: 'current' },
+  { key: 'kpis', label: 'Monthly KPI entries', table: 'account_kpi_metrics', period: 'period', dashboard: 'Strategy', grain: 'metric by month', kind: 'manual', keywords: ['kpi', 'metric', 'scorecard'], usedBy: ['ask'], status: 'current' },
+  { key: 'customers', label: 'Customer uploads', table: 'market_customer_uploads', period: null, dashboard: 'Growth & Performance', grain: 'customer file', kind: 'manual', keywords: ['customers', 'penetration', 'trade area', 'match market'], usedBy: ['ask'], status: 'current' },
+  { key: 'writing', label: 'Writing samples', table: 'brand_writing_samples', period: null, dashboard: 'Customer Experiences', grain: 'document', kind: 'manual', keywords: ['voice', 'samples', 'style', 'copy'], usedBy: ['copywriting'], status: 'current' },
+  { key: 'warehouse_leads', label: 'Warehouse leads (Snowflake)', table: 'warehouse_leads', period: null, dashboard: 'Media Science', grain: 'lead', kind: 'integration', keywords: ['snowflake', 'lead level', 'warehouse'], usedBy: ['forecast', 'ask'], status: 'current' },
+  { key: 'warehouse_bookings', label: 'Warehouse bookings (Snowflake)', table: 'warehouse_bookings', period: null, dashboard: 'Media Science', grain: 'booking', kind: 'integration', keywords: ['snowflake', 'bookings', 'warehouse'], usedBy: ['forecast', 'ask'], status: 'current' },
+  { key: 'warehouse_calls', label: 'Warehouse calls (Snowflake)', table: 'warehouse_calls', period: null, dashboard: 'Media Science', grain: 'call', kind: 'integration', keywords: ['snowflake', 'calls', 'warehouse'], usedBy: ['forecast', 'ask'], status: 'current' }
+];
+const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
+function buildTrainTheBrain(accountId){
+  const cnt = (sql, ...a) => { try { const r = db.prepare(sql).get(...a); return Number(r && (r.n !== undefined ? r.n : Object.values(r)[0])) || 0; } catch (e) { return 0; } };
+  let acct = null; try { acct = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId); } catch (e) {}
+  const A = k => aliasVal(acct, k);
+  const websiteUrl = A('websiteUrl');
+  const budgetDone = cnt('SELECT COUNT(*) AS n FROM marketing_budget_line_items WHERE accountId = ?', accountId) > 0 || cnt('SELECT COUNT(*) AS n FROM marketing_budget_uploads WHERE accountId = ? AND confirmedAt IS NOT NULL', accountId) > 0;
+  const txnDone = cnt('SELECT COUNT(*) AS n FROM account_transactions_monthly WHERE accountId = ?', accountId) > 0 || cnt('SELECT COUNT(*) AS n FROM account_guest_bookings WHERE accountId = ?', accountId) > 0;
+  const integrationDone = !!(A('analyticsPathway') || A('analyticsSnowflakeLastSyncAt'));
+  const samples = cnt('SELECT COUNT(*) AS n FROM brand_writing_samples WHERE accountId = ?', accountId);
+  const examples = cnt('SELECT COUNT(*) AS n FROM brand_copy_website_examples WHERE accountId = ?', accountId);
+  const team = cnt('SELECT COUNT(*) AS n FROM team_members WHERE accountId = ?', accountId);
+  const yes = v => !!(v && v !== '0' && v !== 0);
+  const steps = [
+    { key: 'company', title: 'Your company', minutes: 2, gain: 'Everything else reads from this: what you sell, who you sell to, and how you look.', items: [
+      { label: 'Company profile', done: !!(websiteUrl && (A('assessmentDescription') || A('websiteContextJson') || A('onboardingIndustryCode'))), gain: 'Add your website and the Brain reads it to fill in the profile.', step: 'companyProfile' },
+      { label: 'Style guide: colors and fonts', done: yes(A('styleAssetsApproved')), gain: 'Keeps every draft and creative on brand.', step: 'styleAssets' },
+      { label: 'Website examples', done: examples > 0, gain: 'Real pages from your site become copy examples.', step: 'websiteExamples' },
+      { label: 'Competitive positioning', done: yes(A('competitivePositioningApproved')), gain: 'Sets who you are measured against. Ongoing tracking lives in Strategy.', step: 'competitivePositioning' } ] },
+    { key: 'voice', title: 'Your voice', minutes: 3, gain: 'Lets the Brain write and score copy the way you sound.', items: [
+      { label: 'Sample writings (two or three is enough)', done: samples >= 1, gain: samples ? `${samples} on file.` : 'Drop in an email, a brochure page or a speech.', step: 'brandWritingSamples' },
+      { label: 'Approve the brand voice guide', done: yes(A('voiceApproved')), gain: 'The Brain drafts it from your samples; you approve it.', step: 'voice' } ] },
+    { key: 'numbers', title: 'Your numbers', minutes: 3, gain: 'Turns on the forecast, the story and the weekly Brain Dump.', items: [
+      { label: 'Marketing budget upload', done: budgetDone, gain: 'Gives the forecast a spend plan to test.', step: 'marketingBudgetUpload', stepArg: 'configuration' },
+      { label: 'Transactions or booking file', done: txnDone, gain: 'Lets the forecast learn from what actually sold.', step: 'bulkUpload' },
+      { label: 'Connect a data source, or choose a path', done: integrationDone, gain: 'Snowflake, GA4, Meta, Google Ads or The Trade Desk.', step: 'partnerIntegrations' } ] },
+    { key: 'team', title: 'Your team', minutes: 2, gain: 'Everyone works from the same picture and can comment in the Brain Dump.', items: [
+      { label: 'Team and org chart', done: team >= 2, gain: team ? `${team} on the chart.` : 'Add the people who use this account.', step: 'team' } ] }
+  ];
+  steps.forEach(st => { st.done = st.items.every(i => i.done); st.doneCount = st.items.filter(i => i.done).length; });
+  const remainingMinutes = steps.filter(st => !st.done).reduce((a, st) => a + st.minutes, 0);
+  // What the Brain has learned lately, newest first, each entry tagged with the dashboard it came from.
+  let learnings = [];
+  try {
+    learnings = db.prepare('SELECT sourceType, status, reason, createdAt, decidedAt, decidedBy FROM ai_brain_contributions WHERE accountId = ? ORDER BY createdAt DESC LIMIT 40').all(accountId).map(r => {
+      const t = aliasVal(r, 'sourceType'); const lab = BRAIN_LEDGER_LABELS[t] || [String(t || 'other').replace(/_/g, ' '), 'Brain'];
+      const st = r.status; const verb = st === 'applied' ? 'Applied' : st === 'removed' ? 'Removed' : st === 'reference' ? 'Recorded' : String(st || 'Recorded').replace(/^./, c => c.toUpperCase());
+      return { what: lab[0], dashboard: lab[1], action: verb, reason: r.reason || null, at: aliasVal(r, 'decidedAt') || aliasVal(r, 'createdAt') };
+    });
+  } catch (e) {}
+  // Data consumed: row counts and latest period for each catalog entry, from the account's own tables.
+  const consumed = DATA_CATALOG.map(c => {
+    const rows = cnt(`SELECT COUNT(*) AS n FROM ${c.table} WHERE accountId = ?`, accountId);
+    let latest = null;
+    if (rows && c.period === 'ym'){ try { const r = db.prepare(`SELECT year, month FROM ${c.table} WHERE accountId = ? ORDER BY year DESC, month DESC LIMIT 1`).get(accountId); if (r && r.year){ latest = r.month ? `${r.year}-${String(r.month).padStart(2, '0')}` : String(r.year); } } catch (e) {} }
+    else if (rows && c.period === 'year'){ try { const r = db.prepare(`SELECT year FROM ${c.table} WHERE accountId = ? ORDER BY year DESC LIMIT 1`).get(accountId); if (r) latest = String(r.year); } catch (e) {} }
+    else if (rows && c.period === 'period'){ try { const r = db.prepare(`SELECT period FROM ${c.table} WHERE accountId = ? AND period <> 'current' ORDER BY period DESC LIMIT 1`).get(accountId); if (r) latest = String(r.period); } catch (e) {} }
+    return { key: c.key, label: c.label, dashboard: c.dashboard, grain: c.grain, kind: c.kind, keywords: c.keywords, usedBy: c.usedBy, status: c.status, rows, latest };
+  });
+  return { setup: { steps, remainingMinutes, doneCount: steps.filter(s => s.done).length, total: steps.length }, learnings, consumed, syncedAt: A('analyticsSnowflakeLastSyncAt') || null };
+}
+
 function maybeSnapshotForecastCalibration(accountId, cal, actor){
   try {
     const sig = JSON.stringify([cal.confidence, cal.impressionsToVisits.source, Math.round(cal.impressionsToVisits.visitsPerImp * 1e6), Math.round(cal.visitsToLeads.mid * 1e4), Math.round(cal.leadsToBookings.mid * 1e3), cal.bookingsToRevenue.mid != null ? Math.round(cal.bookingsToRevenue.mid) : null]);
@@ -23856,6 +23928,14 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, { planSource, calibration: cal, forecast: forecastEngine.forecast(cal, { months }) });
     }
 
+
+    // Train the Brain: GET /api/accounts/:id/train-the-brain — setup status, recent Brain learnings, data consumed.
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'train-the-brain' && req.method === 'GET'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      try { return sendJson(res, 200, buildTrainTheBrain(accountId)); }
+      catch (e){ console.warn('[train-the-brain] failed:', e.message); return sendJson(res, 500, { error: 'could not read Train the Brain', detail: String(e.message || e).slice(0, 300) }); }
+    }
 
     // Brain Dump (weekly standup). GET /api/accounts/:id/brain-dump[?week=YYYY-MM-DD&refresh=1]
     // Comments: GET/POST /api/accounts/:id/brain-dump/comments — an @AIBrain mention gets a reply grounded in that section's facts.
