@@ -1328,6 +1328,8 @@
   .cmp-collab-status .dot{width:6px;height:6px;border-radius:50%;background:#1E9E5A;display:inline-block;flex-shrink:0;}
   .cmp-collab-mic{margin-left:auto;width:30px;height:30px;border-radius:8px;background:var(--paper-dim);border:none;color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;}
   .cmp-collab-mic:hover{background:var(--line-hairline);}
+  .cmp-collab-mic[data-state="connecting"]{opacity:0.6;cursor:wait;}
+  .cmp-collab-mic[data-state="live"]{background:#C0273C;color:#fff;animation:cmpIntakeMicPulse 1.6s ease-in-out infinite;}
   /* Banner used to sit on the colored head and read white-on-dark-overlay;
      the head is plain white now, so give it its own light muted background
      rather than leaving a dark overlay that no longer matches its context. */
@@ -12471,7 +12473,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-29-elevenlabs-voice-final-d';
+const CXMEDIA_BUILD_STAMP = '2026-09-30-collab-voice-e';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -14359,7 +14361,7 @@ function cmpRenderCollabCenter(campaign){
           <div class="cmp-collab-title">Collaboration Center</div>
           <div class="cmp-collab-status"><span class="dot"></span>${campaign ? 'AI Brain live — watching this campaign' : 'AI Brain live — ready to help you plan a campaign'}</div>
         </div>
-        <button type="button" class="cmp-collab-mic" aria-label="Voice input (coming soon)" title="Voice input (coming soon)" onclick="cmpToggleCollabVoiceNote()">
+        <button type="button" class="cmp-collab-mic" id="cmpCollabHeaderMic" data-state="idle" aria-label="Talk to the AI Brain" title="Talk to the AI Brain" onclick="cmpCollabToggleVoice()">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
         </button>
         <button type="button" class="cmp-collab-expand-btn" aria-label="${cmpCollabExpanded ? 'Collapse Collaboration Center' : 'Expand Collaboration Center for easier reading'}" title="${cmpCollabExpanded ? 'Collapse' : 'Expand for easier reading'}" onclick="cmpToggleCollabExpanded()">
@@ -14368,7 +14370,11 @@ function cmpRenderCollabCenter(campaign){
             : `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H3v6"/><path d="M21 9V3h-6"/><path d="M3 15v6h6"/><path d="M21 15v6h-6"/></svg>`}
         </button>
       </div>
-      <div class="cmp-collab-voice-note" id="cmpCollabVoiceNote">Voice input isn't wired up yet — it's coming in a later round.</div>
+      <div class="cmp-collab-voice-live" id="cmpCollabVoiceLive" style="display:none;padding:10px 14px;border-bottom:1px solid var(--border,#e2e2e6);">
+        <div class="ask-live-status" id="cmpCollabVoiceStatus" style="font-size:13px;color:#5b5b66;"></div>
+        <div class="ask-cards" id="cmpCollabVoiceCards"></div>
+        <div id="cmpCollabVoiceProposal"></div>
+      </div>
       <div class="cmp-collab-tabs" id="cmpCollabTabs">
         ${CMP_COLLAB_TABS.map(t => `<button type="button" class="cmp-collab-tab${cmpCollabActiveTab === t.key ? ' active' : ''}" onclick="cmpSwitchCollabTab('${t.key}')">${t.label}</button>`).join('')}
       </div>
@@ -14918,21 +14924,25 @@ function cmpCollabPromptChip(i){
 // shared ElevenLabs session helper; spoken turns are written into this
 // campaign's AI thread through cmpCollabAddNote so text and voice
 // interleave in one persisted conversation.
+function cmpCollabVoiceStatus(t){
+  const live = document.getElementById('cmpCollabVoiceLive'); const st = document.getElementById('cmpCollabVoiceStatus');
+  if (live) live.style.display = 'block'; if (st) st.textContent = t || '';
+}
 async function cmpCollabToggleVoice(){
-  const btn = document.getElementById('cmpCollabMicBtn');
-  const setSt = (st) => { if (btn){ btn.dataset.state = st; btn.title = st === 'live' ? 'Stop talking' : 'Talk to the AI Brain'; } };
-  if (vxVoice.state !== 'idle' && vxVoice.surface === 'collab'){ await vxVoiceStop(); setSt('idle'); return; }
-  if (vxVoice.state !== 'idle'){ cmpCollabAddNote('ai', 'Voice is already in use on another panel — stop it there first.', true); return; }
+  const setSt = (st) => { document.querySelectorAll('#cmpCollabMicBtn, #cmpCollabHeaderMic').forEach(b => { b.dataset.state = st; b.title = st === 'live' ? 'Stop talking' : 'Talk to the AI Brain'; }); };
+  if (vxVoice.state !== 'idle' && vxVoice.surface === 'collab'){ await vxVoiceStop(); setSt('idle'); cmpCollabVoiceStatus(''); return; }
+  if (vxVoice.state !== 'idle'){ cmpCollabVoiceStatus('Voice is already in use on another panel — stop it there first.'); return; }
   const campaign = (typeof cmpRailLoadedCampaign === 'function') ? cmpRailLoadedCampaign() : null;
+  cmpCollabVoiceStatus('Connecting…');
   await vxVoiceStart({
     surface: 'collab', campaignId: campaign ? campaign.id : '',
-    onState: setSt,
-    // Nothing spoken is written into the campaign's saved notes; results show
-    // as cards in the Ask Verilume panel and are not persisted.
-    onStatus: (m) => { askVerilumeOpenLive(); askVerilumeSetStatus(m); },
+    onState: (st) => { setSt(st); if (st === 'live') cmpCollabVoiceStatus('Listening. Talk to the AI Brain; click the mic to stop.'); if (st === 'idle') cmpCollabVoiceStatus(''); },
+    // Nothing spoken is shown or written into the campaign's saved notes;
+    // status, result cards and Confirm cards appear here and are not kept.
+    onStatus: (m) => cmpCollabVoiceStatus(m),
     onMessage: () => {},
-    onCards: (cards) => { askVerilumeOpenLive(); askVerilumeRenderCards(cards); },
-    onProposal: (p) => { askVerilumeOpenLive(); askVerilumeRenderProposal(p); }
+    onCards: (cards) => { cmpCollabVoiceStatus('Listening. Talk to the AI Brain; click the mic to stop.'); askVerilumeRenderCards(cards, 'cmpCollabVoiceCards'); },
+    onProposal: (p) => { askVerilumeRenderProposal(p, 'cmpCollabVoiceProposal'); }
   });
 }
 function cmpCollabComposerHtml(tab, placeholder, hasHistory){
@@ -22990,23 +23000,23 @@ function askVerilumeAppend(role, text){
   const th = document.getElementById('askVerilumeThread'); if (!th) return;
   const d = document.createElement('div'); d.className = 'ask-msg' + (role === 'user' ? ' me' : ''); d.textContent = text; th.appendChild(d); th.scrollTop = th.scrollHeight;
 }
-function askVerilumeRenderCards(cards){
-  const el = document.getElementById('askVerilumeCards'); if (!el) return;
+function askVerilumeRenderCards(cards, elId){
+  const el = document.getElementById(elId || 'askVerilumeCards'); if (!el) return;
   el.innerHTML = (cards || []).map(c => `<div class="ask-card"><b>${escapeHtml(c.title || '')}</b><ul>${(c.lines || []).map(l => `<li>${escapeHtml(String(l))}</li>`).join('')}</ul>${c.campaignId ? `<a class="flink" onclick="goToStep('campaign','${escapeHtml(c.campaignId)}')">Open campaign →</a>` : ''}</div>`).join('');
 }
 function askVerilumeRenderFollowups(list){
   const el = document.getElementById('askVerilumeFollowups'); if (!el) return;
   el.innerHTML = (list || []).map(q => `<span class="prompt-chip" onclick="askVerilumeAsk(${JSON.stringify(q).replace(/"/g, '&quot;')})"><span class="q">?</span>${escapeHtml(q)}</span>`).join('');
 }
-function askVerilumeRenderProposal(p){
-  const el = document.getElementById('askVerilumeProposal'); if (!el) return;
+function askVerilumeRenderProposal(p, elId){
+  const el = document.getElementById(elId || 'askVerilumeProposal'); if (!el) return;
   if (!p || !p.action){ el.innerHTML = ''; return; }
   const key = 'vxp_' + Date.now(); window[key] = p;
-  el.innerHTML = `<div class="ask-proposal"><p><b>Confirm:</b> ${escapeHtml(p.label || p.action)}</p><div class="btn-row"><button type="button" class="btn-primary" onclick="askVerilumeConfirmProposal('${key}')">Confirm</button><button type="button" class="btn-ghost" onclick="askVerilumeRenderProposal(null)">Cancel</button></div></div>`;
+  el.innerHTML = `<div class="ask-proposal"><p><b>Confirm:</b> ${escapeHtml(p.label || p.action)}</p><div class="btn-row"><button type="button" class="btn-primary" onclick="askVerilumeConfirmProposal('${key}', '${elId || 'askVerilumeProposal'}')">Confirm</button><button type="button" class="btn-ghost" onclick="askVerilumeRenderProposal(null, '${elId || 'askVerilumeProposal'}')">Cancel</button></div></div>`;
 }
-async function askVerilumeConfirmProposal(key){
+async function askVerilumeConfirmProposal(key, elId){
   const p = window[key]; if (!p) return; delete window[key];
-  askVerilumeRenderProposal(null);
+  askVerilumeRenderProposal(null, elId);
   try {
     let body = null;
     if (p.action === 'set_creative_disposition') body = { creativeDisposition: (p.value === 'needed' ? 'needed' : 'external') };
@@ -23023,12 +23033,11 @@ async function askVerilumeConfirmProposal(key){
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const c = (state.campaigns || []).find(x => x.id === p.campaignId);
     if (c) Object.assign(c, body.creativeDisposition ? { creativeDisposition: body.creativeDisposition } : {}, body.cancelled ? { cancelled: 1 } : {});
-    askVerilumeAppend('assistant', 'Done: ' + (p.label || p.action));
-    askVerilumeSetStatus('');
+    if (elId === 'cmpCollabVoiceProposal') cmpCollabVoiceStatus('Done: ' + (p.label || p.action)); else { askVerilumeAppend('assistant', 'Done: ' + (p.label || p.action)); askVerilumeSetStatus(''); }
     if (typeof renderTopUrgentModule === 'function') renderTopUrgentModule();
   } catch (e){
     console.warn('[voice] proposal failed:', e);
-    askVerilumeSetStatus('That change did not save (' + e.message + '). Nothing was changed.');
+    if (elId === 'cmpCollabVoiceProposal') cmpCollabVoiceStatus('That change did not save (' + e.message + '). Nothing was changed.'); else askVerilumeSetStatus('That change did not save (' + e.message + '). Nothing was changed.');
   }
 }
 async function askVerilumeAsk(question){
