@@ -412,7 +412,7 @@ async function insertLoginMfaVerificationViaPg(pool, member, channel, target, se
   }
   await pool.query(
     `INSERT INTO phone_verifications
-      (id, "memberId", phone, purpose, "codeHash", "codeSalt", provider, channel, "createdAt", "expiresAt")
+      (id, "memberId", phone, purpose, "codeHash", "codeSalt", provider, channel, createdAt, "expiresAt")
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
     [verificationId, member.id, target, 'login-mfa', codeHash, codeSalt, sendResult.provider, channel, now.toISOString(), expiresAt]
   );
@@ -15035,7 +15035,7 @@ function readBrainDump(accountId, weekStart){
     ? db.prepare('SELECT * FROM brain_dump_weeks WHERE accountId = ? AND weekStart = ?').get(accountId, weekStart)
     : db.prepare('SELECT * FROM brain_dump_weeks WHERE accountId = ? AND postedAt IS NOT NULL ORDER BY weekStart DESC').get(accountId);
   if (!row) return null;
-  try { return { posted: true, weekStart: row.weekStart, postedAt: aliasVal(row, 'postedAt') || aliasVal(row, 'createdAt'), facts: JSON.parse(row.factsJson), text: JSON.parse(row.textJson || '{}'), external: JSON.parse(aliasVal(row, 'externalJson') || 'null'), writtenBy: aliasVal(row, 'writtenBy') }; } catch (e){ return null; }
+  try { return { posted: true, weekStart: aliasVal(row, 'weekStart'), postedAt: aliasVal(row, 'postedAt') || aliasVal(row, 'createdAt'), facts: JSON.parse(aliasVal(row, 'factsJson')), text: JSON.parse(aliasVal(row, 'textJson') || '{}'), external: JSON.parse(aliasVal(row, 'externalJson') || 'null'), writtenBy: aliasVal(row, 'writtenBy') }; } catch (e){ return null; }
 }
 // Run and post this week's edition (scheduled after the curated-news refresh, or by hand).
 async function postBrainDump(accountId){
@@ -15044,7 +15044,7 @@ async function postBrainDump(accountId){
   let prevFacts = null; try { prevFacts = prevRow ? JSON.parse(aliasVal(prevRow, 'factsJson')) : null; } catch (e) {}
   const facts = buildBrainDumpFacts(accountId, now, prevFacts);
   const w = await writeBrainDumpText(facts); const ext = bdExternalFromIntelligence(accountId); const iso = now.toISOString();
-  db.prepare('INSERT INTO brain_dump_weeks (accountId, weekStart, factsJson, textJson, "writtenBy", "createdAt", "externalJson", "postedAt") VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(accountId, weekStart) DO UPDATE SET factsJson = excluded.factsJson, textJson = excluded.textJson, "writtenBy" = excluded."writtenBy", "createdAt" = excluded."createdAt", "externalJson" = excluded."externalJson", "postedAt" = excluded."postedAt"').run(accountId, weekStart, JSON.stringify(facts), JSON.stringify(w.text), w.writtenBy, iso, JSON.stringify(ext), iso);
+  db.prepare('INSERT INTO brain_dump_weeks (accountId, weekStart, factsJson, textJson, writtenBy, createdAt, externalJson, postedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(accountId, weekStart) DO UPDATE SET factsJson = excluded.factsJson, textJson = excluded.textJson, writtenBy = excluded.writtenBy, createdAt = excluded.createdAt, externalJson = excluded.externalJson, postedAt = excluded.postedAt').run(accountId, weekStart, JSON.stringify(facts), JSON.stringify(w.text), w.writtenBy, iso, JSON.stringify(ext), iso);
   return readBrainDump(accountId, weekStart);
 }
 
@@ -20704,7 +20704,7 @@ async function handleRequest(req, res) {
       try {
         if (useAsyncPg){
           const r = await getAuthPgPool().query(
-            'SELECT id, "accountId", name, "passwordHash", "passwordSalt", "mustChangePassword", status, phone, email, "isAdmin" FROM team_members WHERE lower(email) = lower($1) ORDER BY "createdAt" DESC LIMIT 1',
+            'SELECT id, "accountId", name, "passwordHash", "passwordSalt", "mustChangePassword", status, phone, email, "isAdmin" FROM team_members WHERE lower(email) = lower($1) ORDER BY createdAt DESC LIMIT 1',
             [body.email]
           );
           member = r.rows[0];
@@ -20742,7 +20742,7 @@ async function handleRequest(req, res) {
             const now = new Date();
             const expiresAt = new Date(now.getTime() + SESSION_LIFETIME_MS).toISOString();
             await getAuthPgPool().query(
-              'INSERT INTO sessions (token, "accountId", "memberId", "createdAt", "expiresAt") VALUES ($1,$2,$3,$4,$5)',
+              'INSERT INTO sessions (token, "accountId", "memberId", createdAt, "expiresAt") VALUES ($1,$2,$3,$4,$5)',
               [token, member.accountId, member.id || null, now.toISOString(), expiresAt]
             );
             session = { token, expiresAt };
@@ -20843,7 +20843,7 @@ async function handleRequest(req, res) {
       try {
         if (useAsyncPg){
           const r = await getAuthPgPool().query(
-            `SELECT COUNT(*) AS c FROM phone_verifications WHERE phone = $1 AND purpose = 'login-mfa' AND "createdAt" > $2`,
+            `SELECT COUNT(*) AS c FROM phone_verifications WHERE phone = $1 AND purpose = 'login-mfa' AND createdAt > $2`,
             [target, oneHourAgo]
           );
           recentCount = r.rows[0];
@@ -20997,7 +20997,7 @@ async function handleRequest(req, res) {
           const now = new Date();
           const expiresAt = new Date(now.getTime() + SESSION_LIFETIME_MS).toISOString();
           await getAuthPgPool().query(
-            'INSERT INTO sessions (token, "accountId", "memberId", "createdAt", "expiresAt") VALUES ($1,$2,$3,$4,$5)',
+            'INSERT INTO sessions (token, "accountId", "memberId", createdAt, "expiresAt") VALUES ($1,$2,$3,$4,$5)',
             [token, member.accountId, member.id || null, now.toISOString(), expiresAt]
           );
           session = { token, expiresAt };
@@ -21027,7 +21027,7 @@ async function handleRequest(req, res) {
             const now = new Date();
             const dExpiresAt = new Date(now.getTime() + DEVICE_TRUST_LIFETIME_MS).toISOString();
             await getAuthPgPool().query(
-              'INSERT INTO trusted_devices (token, "memberId", "createdAt", "expiresAt", "lastUsedAt") VALUES ($1,$2,$3,$4,$5)',
+              'INSERT INTO trusted_devices (token, "memberId", createdAt, "expiresAt", "lastUsedAt") VALUES ($1,$2,$3,$4,$5)',
               [dToken, member.id, now.toISOString(), dExpiresAt, now.toISOString()]
             );
             device = { token: dToken, expiresAt: dExpiresAt };
@@ -23864,14 +23864,14 @@ async function handleRequest(req, res) {
       if (!requireAccount(req, res, accountId)) return;
       const q = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries());
       const latestPosted = db.prepare('SELECT weekStart FROM brain_dump_weeks WHERE accountId = ? AND postedAt IS NOT NULL ORDER BY weekStart DESC').get(accountId);
-      const weekStart = /^\d{4}-\d{2}-\d{2}$/.test(q.week || '') ? bdWeekStart(new Date(q.week + 'T00:00:00Z')) : (latestPosted ? latestPosted.weekStart : bdWeekStart(new Date()));
+      const weekStart = /^\d{4}-\d{2}-\d{2}$/.test(q.week || '') ? bdWeekStart(new Date(q.week + 'T00:00:00Z')) : (latestPosted ? aliasVal(latestPosted, 'weekStart') : bdWeekStart(new Date()));
       if (parts.length === 4 && req.method === 'GET'){
         const bd = readBrainDump(accountId, /^\d{4}-\d{2}-\d{2}$/.test(q.week || '') ? bdWeekStart(new Date(q.week + 'T00:00:00Z')) : null);
         return sendJson(res, 200, bd || { posted: false, nextRun: 'Mondays after the weekly curated news refresh' });
       }
       if (parts.length === 4 && req.method === 'POST'){
         try { const bd = await postBrainDump(accountId); return sendJson(res, 200, bd); }
-        catch (e){ console.warn('[brain-dump] run failed:', e.message); return sendJson(res, 500, { error: 'could not run the Brain Dump' }); }
+        catch (e){ console.warn('[brain-dump] run failed:', e.message); return sendJson(res, 500, { error: 'could not run the Brain Dump', detail: String(e.message || e).slice(0, 300) }); }
       }
       if (parts.length === 5 && req.method === 'GET'){
         const rows = db.prepare('SELECT * FROM brain_dump_comments WHERE accountId = ? AND weekStart = ? ORDER BY createdAt ASC').all(accountId, weekStart).map(r => ({ id: r.id, section: r.section, authorName: aliasVal(r, 'authorName'), authorType: aliasVal(r, 'authorType'), text: r.text, createdAt: aliasVal(r, 'createdAt') }));
@@ -23882,7 +23882,7 @@ async function handleRequest(req, res) {
         if (!BRAIN_DUMP_SECTIONS.includes(section) || !text) return sendJson(res, 400, { error: 'section and text are required' });
         const sess = authenticate(req); const author = String(body.authorName || (sess && sess.name) || 'Team member').slice(0, 80);
         const now = new Date().toISOString(); const id = generateId('BDC');
-        db.prepare('INSERT INTO brain_dump_comments (id, accountId, weekStart, section, "authorName", "authorType", text, "createdAt") VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(id, accountId, weekStart, section, author, 'member', text, now);
+        db.prepare('INSERT INTO brain_dump_comments (id, accountId, weekStart, section, authorName, authorType, text, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(id, accountId, weekStart, section, author, 'member', text, now);
         const out = [{ id, section, authorName: author, authorType: 'member', text, createdAt: now }];
         if (/@ai\s?brain/i.test(text)){
           let reply = 'I can only answer from this week\'s numbers, and the AI service is not available right now. Open the dashboard linked above for the detail.';
@@ -23896,7 +23896,7 @@ async function handleRequest(req, res) {
             } else reply = `Here is what this week's numbers say: ${(f.lines || []).join(' ')}`;
           } catch (e){ console.warn('[brain-dump] reply failed:', e.message); }
           const rid = generateId('BDC'); const rnow = new Date().toISOString();
-          db.prepare('INSERT INTO brain_dump_comments (id, accountId, weekStart, section, "authorName", "authorType", text, "createdAt") VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(rid, accountId, weekStart, section, 'AI Brain', 'brain', reply.slice(0, 2000), rnow);
+          db.prepare('INSERT INTO brain_dump_comments (id, accountId, weekStart, section, authorName, authorType, text, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(rid, accountId, weekStart, section, 'AI Brain', 'brain', reply.slice(0, 2000), rnow);
           out.push({ id: rid, section, authorName: 'AI Brain', authorType: 'brain', text: reply.slice(0, 2000), createdAt: rnow });
         }
         return sendJson(res, 200, { weekStart, comments: out });
