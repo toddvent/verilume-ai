@@ -1441,6 +1441,47 @@
   .stat-card .sc-spark span.hi{background:var(--hdr-amber);}
   @media (max-width:820px){ .stat-card-grid{grid-template-columns:1fr;} }
 
+  /* 2026-09-30 — Strategy page (CMO / VP view) */
+  .stat-card-grid.four{grid-template-columns:repeat(4,1fr);}
+  @media (max-width:1100px){ .stat-card-grid.four{grid-template-columns:repeat(2,1fr);} }
+  @media (max-width:820px){ .stat-card-grid.four{grid-template-columns:1fr;} }
+  .stat-card .strat-sub{font-size:0.6875rem;color:var(--muted);margin-top:8px;}
+  .strat-card{grid-column:1/-1;background:var(--white);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-bottom:20px;box-shadow:var(--shadow-sm);}
+  .strat-card h2{margin:0;font-size:1.0625rem;}
+  .strat-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;}
+  .strat-ctl{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+  .strat-ctl select{font:inherit;font-size:0.8125rem;padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:var(--white);color:var(--ink);}
+  .strat-seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+  .strat-seg button{font:inherit;font-size:0.8125rem;padding:6px 12px;border:0;background:var(--white);color:var(--ink);cursor:pointer;}
+  .strat-seg button.on{background:var(--hdr-navy);color:#fff;}
+  .strat-svg{width:100%;height:auto;display:block;}
+  .strat-chart-label{font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 4px;}
+  .strat-key{font-size:0.75rem;color:var(--muted);font-weight:500;text-transform:none;letter-spacing:0;margin-left:8px;}
+  .strat-key i.dash{display:inline-block;width:16px;border-top:2px dashed #1D1D1F;vertical-align:middle;margin-right:4px;}
+  .strat-table-wrap{overflow-x:auto;margin-top:12px;}
+  .strat-table{width:100%;border-collapse:collapse;font-size:0.8125rem;font-variant-numeric:tabular-nums;}
+  .strat-table th{text-align:left;font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);padding:6px 10px;border-bottom:1px solid var(--line);}
+  .strat-table td{padding:8px 10px;border-bottom:1px solid var(--line-hairline);}
+  .strat-table td.pos{color:#1E8E4A;} .strat-table td.neg{color:#C0273C;}
+  .strat-table.clickable tbody tr{cursor:pointer;} .strat-table.clickable tbody tr:hover,.strat-table tr.sel{background:var(--paper-dim);}
+  .strat-table i.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:8px;}
+  .strat-legend-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;}
+  .strat-legend{font:inherit;font-size:0.8125rem;border:1px solid var(--line);background:var(--white);border-radius:980px;padding:4px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;color:var(--ink);}
+  .strat-legend i{width:9px;height:9px;border-radius:50%;display:inline-block;} .strat-legend.on{border-color:var(--ink);font-weight:600;}
+  .strat-reading{font-size:0.875rem;margin:0 0 6px;line-height:1.5;}
+  .strat-tag{display:inline-block;font-size:0.6875rem;font-weight:700;background:var(--paper-dim);border:1px solid var(--line);border-radius:980px;padding:2px 8px;margin-right:6px;color:var(--muted);}
+  .strat-tag.benchmark,.strat-tag.low{background:#FFF4E5;border-color:#F0C98F;color:#8A5A12;}
+  .strat-foot,.strat-empty{font-size:0.8125rem;color:var(--muted);margin:10px 0 0;line-height:1.5;}
+  .strat-actions{margin-top:12px;} .strat-chip{font:inherit;font-size:0.8125rem;border:1px solid var(--line);background:var(--white);border-radius:980px;padding:6px 14px;cursor:pointer;color:var(--ink);}
+  .strat-chip:hover{border-color:var(--ink);}
+  .strat-fc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;}
+  .strat-fc-card{border:1px solid var(--line-hairline);border-radius:12px;padding:14px 16px;background:var(--paper-dim);}
+  .strat-fc-card .l{font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);}
+  .strat-fc-card .v{font-size:1.5rem;font-weight:700;margin:4px 0;} .strat-fc-card .s{font-size:0.75rem;color:var(--muted);line-height:1.4;}
+  .strat-tools{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;padding:4px 2px 24px;font-size:0.875rem;}
+  .strat-tools-lbl{font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);}
+  .strat-note{font-size:0.75rem;color:var(--muted);margin-left:-10px;}
+
   /* Daily Brief's own modules — Generative Summarized Commentary + Key
      Observations, Curated News, Key Tiles Per Role, AI Partner — Text
      Routing — all sourced verbatim from the approved comps. */
@@ -3972,10 +4013,10 @@
   <nav class="primary-nav" id="primaryNav" aria-label="Primary">
     <button type="button" class="primary-nav-item active" data-tab="dailyBrief" onclick="switchPrimaryTab('dailyBrief')"><span class="num">01</span> Daily Brief</button>
     <button type="button" class="primary-nav-item" data-tab="strategy" onclick="switchPrimaryTab('strategy')"><span class="num">02</span> Strategy</button>
-    <button type="button" class="primary-nav-item" data-tab="brand" onclick="switchPrimaryTab('brand')"><span class="num">03</span> Brand</button>
-    <button type="button" class="primary-nav-item" data-tab="marketer" onclick="switchPrimaryTab('marketer')"><span class="num">04</span> Marketer</button>
-    <button type="button" class="primary-nav-item" data-tab="dataScientist" onclick="switchPrimaryTab('dataScientist')"><span class="num">05</span> Data Scientist</button>
-    <button type="button" class="primary-nav-item" data-tab="accountManagement" onclick="switchPrimaryTab('accountManagement')"><span class="num">06</span> Account Management</button>
+    <button type="button" class="primary-nav-item" data-tab="brand" onclick="switchPrimaryTab('brand')"><span class="num">03</span> Customer Experiences</button>
+    <button type="button" class="primary-nav-item" data-tab="marketer" onclick="switchPrimaryTab('marketer')"><span class="num">04</span> Growth &amp; Performance</button>
+    <button type="button" class="primary-nav-item" data-tab="dataScientist" onclick="switchPrimaryTab('dataScientist')"><span class="num">05</span> Media Science</button>
+    <button type="button" class="primary-nav-item" data-tab="accountManagement" onclick="switchPrimaryTab('accountManagement')"><span class="num">06</span> Train the Brain</button>
   </nav>
   <!-- 2026-08-24 (round 17, direct feedback: "the nav expands beyond the
        mobile width... maybe a dropdown") — same six tabs, same
@@ -3987,10 +4028,10 @@
   <select class="primary-nav-mobile-select" id="primaryNavMobileSelect" aria-label="Primary" onchange="switchPrimaryTab(this.value)">
     <option value="dailyBrief">01 · Daily Brief</option>
     <option value="strategy">02 · Strategy</option>
-    <option value="brand">03 · Brand</option>
-    <option value="marketer">04 · Marketer</option>
-    <option value="dataScientist">05 · Data Scientist</option>
-    <option value="accountManagement">06 · Account Management</option>
+    <option value="brand">03 · Customer Experiences</option>
+    <option value="marketer">04 · Growth &amp; Performance</option>
+    <option value="dataScientist">05 · Media Science</option>
+    <option value="accountManagement">06 · Train the Brain</option>
   </select>
 
   <!-- 2026-08-23 (nav redesign, round 16) — Ask Verilume, per directive 3
@@ -12473,7 +12514,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-30-collab-voice-e';
+const CXMEDIA_BUILD_STAMP = '2026-09-30-strategy-a';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -21757,10 +21798,10 @@ const WORKSTREAMS = [
 const PRIMARY_TABS = [
   { key: 'dailyBrief', label: 'Daily Brief' },
   { key: 'strategy', label: 'Strategy' },
-  { key: 'brand', label: 'Brand' },
-  { key: 'marketer', label: 'Marketer' },
-  { key: 'dataScientist', label: 'Data Scientist' },
-  { key: 'accountManagement', label: 'Account Management' }
+  { key: 'brand', label: 'Customer Experiences' },
+  { key: 'marketer', label: 'Growth & Performance' },
+  { key: 'dataScientist', label: 'Media Science' },
+  { key: 'accountManagement', label: 'Train the Brain' }
 ];
 let activePrimaryTab = 'dailyBrief';
 
@@ -22537,8 +22578,217 @@ const STRATEGY_SHELL_GROUPS = [
     { label: 'What Competitors Are Doing Now', desc: 'Live activity feed' }
   ], note: "Website traffic comparisons live under Data Scientist → Media Science → Website Traffic Analysis — split out of Research, not dropped, since it's a measurement tool, not a planning input." }
 ];
+// ---------------------------------------------------------------------------
+// 2026-09-30 — Strategy, the CMO / VP Marketing view. Replaces the tile shell
+// with the account's own numbers: a Demand row (spend, gross revenue, ROAS,
+// CAC on Todd's definitions), Price and volume, Database growth by audience
+// type, and the forecast against the annual plan target. Data comes from the
+// read-only /analytics/* endpoints; "not on file" is said in words, never a
+// zero. Tools stay as plain text links underneath. Colour tokens are the
+// app's own (--cx, navy, amber); nothing new in the style system.
+// ---------------------------------------------------------------------------
+const strat = { dim: 'productGroup', pg: '', compare: 'yoy', audType: 'High Value', priceData: null, audData: null, fcData: null, demand: null, loading: {} };
+const STRAT_COLORS = { 'High Value': '#1E2761', 'Growth': '#0891B2', 'Prospect': '#D08A3E' };
+function stratMoney(n){ if (n == null || isNaN(n)) return '—'; const a = Math.abs(n); const s = n < 0 ? '-' : ''; if (a >= 1e9) return `${s}$${(a / 1e9).toFixed(2)}B`; if (a >= 1e6) return `${s}$${(a / 1e6).toFixed(a >= 1e7 ? 1 : 2)}M`; if (a >= 1e3) return `${s}$${Math.round(a / 1e3)}K`; return `${s}$${Math.round(a)}`; }
+function stratMoneyFull(n){ return n == null || isNaN(n) ? '—' : `$${Math.round(n).toLocaleString()}`; }
+function stratNum(n){ if (n == null || isNaN(n)) return '—'; const a = Math.abs(n); if (a >= 1e6) return `${(n / 1e6).toFixed(a >= 1e7 ? 1 : 2)}M`; if (a >= 1e4) return `${Math.round(n / 1e3)}K`; return Math.round(n).toLocaleString(); }
+function stratPct(p){ return p == null ? '—' : `${p > 0 ? '▲' : p < 0 ? '▼' : '•'} ${Math.abs(p).toFixed(1)}%`; }
+function stratMonthLabel(k){ const [y, m] = k.split('-'); return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m) - 1] + " '" + y.slice(2); }
+function stratIsLive(){ return dataSourceLabel === 'backend' && !!state.companyId; }
+async function stratGet(path){
+  const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/analytics/${path}`);
+  if (!resp.ok) throw new Error(String(resp.status));
+  return resp.json();
+}
+function stratNotOnFile(list){ return list && list.length ? `<p class="strat-empty">Not on file yet: ${escapeHtml(list.join('; '))}.</p>` : ''; }
+
+// ---- Demand row: rendered into the top-row stat card grid ----
+function stratRenderDemandRow(){
+  const el = document.getElementById('tabStatCardGrid'); if (!el) return;
+  el.classList.add('four');
+  const oldN = document.getElementById('stratDemandNote'); if (oldN) oldN.remove();
+  const d = strat.demand;
+  if (!d){ el.innerHTML = ['Spend', 'Gross revenue', 'ROAS', 'CAC'].map(l => `<div class="stat-card"><div class="sc-label">${l}</div><div class="sc-value">…</div><div class="sc-delta neutral">Loading</div></div>`).join(''); return; }
+  const c = d.current, dl = d.deltaPct, w = d.window;
+  const per = `${stratMonthLabel(w.from)} to ${stratMonthLabel(w.to)}`;
+  const card = (label, value, delta, good, sub) => `<div class="stat-card"><div class="sc-label">${label}</div><div class="sc-value">${value}</div><div class="sc-delta ${good ? 'good' : 'neutral'}">${delta}</div><div class="strat-sub">${sub}</div></div>`;
+  const pace = d.pacing ? `Pacing ${d.pacing.spendPacingPct}% of plan to date` : per;
+  el.innerHTML =
+    card('Marketing spend', stratMoney(c.spend), `${stratPct(dl.spend)} vs prior year`, false, pace) +
+    card('Gross revenue', stratMoney(c.revenue), `${stratPct(dl.revenue)} vs prior year`, dl.revenue != null && dl.revenue >= 0, per) +
+    card('ROAS', c.roas != null ? `${c.roas.toFixed(2)}x` : '—', `${stratPct(dl.roas)} vs prior year`, dl.roas != null && dl.roas >= 0, 'Gross revenue ÷ marketing spend') +
+    card('CAC', c.cacTransaction != null ? `$${c.cacTransaction.toLocaleString()}` : '—', `${stratPct(dl.cacTransaction)} vs prior year`, dl.cacTransaction != null && dl.cacTransaction <= 0, 'Spend ÷ unique transactions');
+  if (d.notOnFile && d.notOnFile.length) el.insertAdjacentHTML('afterend', `<p class="strat-empty" id="stratDemandNote">Not on file yet: ${escapeHtml(d.notOnFile.join('; '))}. Customer-level CAC needs a customer id on bookings.</p>`);
+}
+async function stratLoadDemand(){
+  if (!stratIsLive()) return;
+  try { strat.demand = await stratGet('story?months=12'); } catch (e){ strat.demand = null; }
+  if (activePrimaryTab === 'strategy'){ const n = document.getElementById('stratDemandNote'); if (n) n.remove(); if (strat.demand) stratRenderDemandRow(); else { const el = document.getElementById('tabStatCardGrid'); if (el) el.innerHTML = '<p class="strat-empty">Could not load the demand row just now.</p>'; } }
+}
+
+// ---- SVG helpers ----
+function stratBarsSvg(months, key, priorKey, color, fmt, showPrior){
+  const W = 640, H = 170, pl = 44, pr = 8, pt = 10, pb = 22; const n = months.length;
+  const vals = months.map(m => m[key]).concat(showPrior ? months.map(m => m[priorKey]) : []).filter(v => v != null);
+  const max = Math.max(1, ...vals) * 1.1; const bw = (W - pl - pr) / n;
+  let g = '';
+  for (let i = 0; i <= 3; i++){ const y = pt + (H - pt - pb) * (1 - i / 3); g += `<line x1="${pl}" x2="${W - pr}" y1="${y}" y2="${y}" stroke="#E8E8ED"/><text x="${pl - 6}" y="${y + 3}" text-anchor="end" font-size="10" fill="#6E6E73">${fmt(max * i / 3)}</text>`; }
+  months.forEach((m, i) => {
+    const x = pl + i * bw; const v = m[key]; const h = v != null ? (H - pt - pb) * (v / max) : 0;
+    g += `<rect x="${x + bw * 0.18}" y="${H - pb - h}" width="${bw * 0.64}" height="${h}" rx="3" fill="${color}"><title>${stratMonthLabel(m.month)}: ${fmt(v)}</title></rect>`;
+    if (showPrior && m[priorKey] != null){ const py = H - pb - (H - pt - pb) * (m[priorKey] / max); g += `<line x1="${x + bw * 0.1}" x2="${x + bw * 0.9}" y1="${py}" y2="${py}" stroke="#1D1D1F" stroke-width="2" stroke-dasharray="3 2"><title>${stratMonthLabel(m.month)} last year: ${fmt(m[priorKey])}</title></line>`; }
+    g += `<text x="${x + bw / 2}" y="${H - 6}" text-anchor="middle" font-size="10" fill="#6E6E73">${stratMonthLabel(m.month).split(' ')[0]}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" class="strat-svg" role="img">${g}</svg>`;
+}
+function stratLinesSvg(labels, lines, showPrior){
+  const W = 640, H = 200, pl = 44, pr = 8, pt = 10, pb = 22; const n = labels.length;
+  const all = []; lines.forEach(l => { l.vals.forEach(v => v != null && all.push(v)); if (showPrior && l.prior) l.prior.forEach(v => v != null && all.push(v)); });
+  const max = Math.max(1, ...all) * 1.1; const step = n > 1 ? (W - pl - pr) / (n - 1) : 0;
+  const X = i => pl + i * step, Y = v => pt + (H - pt - pb) * (1 - v / max);
+  let g = '';
+  for (let i = 0; i <= 3; i++){ const y = pt + (H - pt - pb) * (1 - i / 3); g += `<line x1="${pl}" x2="${W - pr}" y1="${y}" y2="${y}" stroke="#E8E8ED"/><text x="${pl - 6}" y="${y + 3}" text-anchor="end" font-size="10" fill="#6E6E73">${stratNum(max * i / 3)}</text>`; }
+  labels.forEach((k, i) => { if (n <= 8 || i % 2 === 0 || i === n - 1) g += `<text x="${X(i)}" y="${H - 6}" text-anchor="middle" font-size="10" fill="#6E6E73">${stratMonthLabel(k).split(' ')[0]}</text>`; });
+  const path = vals => { let d = '', pen = false; vals.forEach((v, i) => { if (v == null){ pen = false; return; } d += `${pen ? 'L' : 'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`; pen = true; }); return d; };
+  lines.forEach(l => {
+    if (showPrior && l.prior) g += `<path d="${path(l.prior)}" fill="none" stroke="${l.color}" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.55"><title>${l.name}, same month last year</title></path>`;
+    g += `<path d="${path(l.vals)}" fill="none" stroke="${l.color}" stroke-width="2.5" stroke-linejoin="round"/>`;
+    l.vals.forEach((v, i) => { if (v != null) g += `<circle cx="${X(i)}" cy="${Y(v)}" r="${i === n - 1 ? 4 : 2.2}" fill="${l.color}"><title>${l.name} ${stratMonthLabel(labels[i])}: ${Math.round(v).toLocaleString()}</title></circle>`; });
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" class="strat-svg" role="img">${g}</svg>`;
+}
+
+// ---- Price and volume ----
+async function stratLoadPrice(){
+  if (!stratIsLive()) return; const box = document.getElementById('stratPriceBody'); if (!box) return;
+  box.innerHTML = '<p class="strat-empty">Loading…</p>';
+  try {
+    const q = `price-volume?dim=${strat.dim}&months=18${strat.dim === 'creativeFocus' && strat.pg ? `&productGroup=${encodeURIComponent(strat.pg)}` : ''}`;
+    strat.priceData = await stratGet(q);
+  } catch (e){ strat.priceData = null; box.innerHTML = '<p class="strat-empty">Could not load price and volume just now.</p>'; return; }
+  stratRenderPrice();
+}
+function stratPriceReading(d){
+  const rows = d.months.filter(m => m.gross != null); if (!rows.length) return '';
+  const last = rows[rows.length - 1];
+  const bits = [`${stratMonthLabel(last.month)} gross price was ${stratMoney(last.gross)} on ${Math.round(last.volume).toLocaleString()} transactions (average ${stratMoneyFull(last.avgPrice)})`];
+  if (last.yoyGrossPct != null){ const dir = last.yoyGrossPct >= 0 ? 'up' : 'down'; const volDir = last.yoyVolumePct != null ? (Math.abs(last.yoyVolumePct - last.yoyGrossPct) < 2 ? `almost entirely from volume (${last.yoyVolumePct >= 0 ? 'up' : 'down'} ${Math.abs(last.yoyVolumePct).toFixed(1)}%)` : `with volume ${last.yoyVolumePct >= 0 ? 'up' : 'down'} ${Math.abs(last.yoyVolumePct).toFixed(1)}% and average price ${stratMoneyFull(last.avgPrice)}`) : ''; bits.push(`${dir} ${Math.abs(last.yoyGrossPct).toFixed(1)}% on a year ago, ${volDir}`); }
+  return bits.join(', ') + '.';
+}
+function stratRenderPrice(){
+  const box = document.getElementById('stratPriceBody'); const d = strat.priceData; if (!box || !d) return;
+  if (d.notOnFile && d.notOnFile.length){ box.innerHTML = stratNotOnFile(d.notOnFile); return; }
+  const showPrior = strat.compare === 'yoy';
+  const last = d.months.filter(m => m.gross != null).slice(-1)[0];
+  const lastKey = last ? last.month : null;
+  const tbl = Object.keys(d.byGroup).map(g => { const r = d.byGroup[g].find(x => x.month === lastKey) || {}; const yo = (r.gross != null && r.priorYearGross) ? (r.gross - r.priorYearGross) / r.priorYearGross * 100 : null; return { g, gross: r.gross, volume: r.volume, avg: r.volume ? Math.round(r.gross / r.volume) : null, yo }; }).filter(r => r.gross != null).sort((a, b) => b.gross - a.gross);
+  box.innerHTML = `
+    <p class="strat-reading"><span class="strat-tag">Computed from your transactions</span> ${escapeHtml(stratPriceReading(d))}</p>
+    <div class="strat-chart-label">Gross price by month${showPrior ? ' <span class="strat-key"><i class="dash"></i> same month last year</span>' : ''}</div>
+    ${stratBarsSvg(d.months, 'gross', 'priorYearGross', '#0891B2', stratMoney, showPrior)}
+    <div class="strat-chart-label">Transaction volume by month</div>
+    ${stratBarsSvg(d.months, 'volume', 'priorYearVolume', '#1E2761', v => v == null ? '—' : stratNum(v), showPrior)}
+    <div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>${strat.dim === 'productGroup' ? 'Product group' : 'Creative focus'} · ${lastKey ? stratMonthLabel(lastKey) : ''}</th><th>Gross price</th><th>Volume</th><th>Avg price</th><th>vs last year</th></tr></thead><tbody>
+      ${tbl.map(r => `<tr><td>${escapeHtml(r.g)}</td><td>${stratMoney(r.gross)}</td><td>${r.volume != null ? Math.round(r.volume).toLocaleString() : '—'}</td><td>${stratMoneyFull(r.avg)}</td><td class="${r.yo != null && r.yo < 0 ? 'neg' : 'pos'}">${stratPct(r.yo)}</td></tr>`).join('')}
+    </tbody></table></div>
+    <p class="strat-foot">Gross price is the sum of gross revenue by month. ${escapeHtml(d.eventsNote)}</p>
+    <div class="strat-actions"><button type="button" class="strat-chip" onclick="stratAsk('What is driving the change in gross price and transaction volume this month versus last year?')">Ask Verilume why</button></div>`;
+}
+function stratSetDim(dim){ strat.dim = dim; if (dim === 'productGroup') strat.pg = ''; stratSyncPriceControls(); stratLoadPrice(); }
+function stratSetPg(pg){ strat.pg = pg; stratLoadPrice(); }
+function stratSetCompare(c){ strat.compare = c; stratRenderPrice(); stratRenderAudience(); }
+function stratSyncPriceControls(){
+  const wrap = document.getElementById('stratPgWrap'); if (wrap) wrap.style.display = strat.dim === 'creativeFocus' ? '' : 'none';
+  document.querySelectorAll('[data-strat-dim]').forEach(b => b.classList.toggle('on', b.dataset.stratDim === strat.dim));
+}
+
+// ---- Database growth by audience type ----
+async function stratLoadAudience(){
+  if (!stratIsLive()) return; const box = document.getElementById('stratAudBody'); if (!box) return;
+  box.innerHTML = '<p class="strat-empty">Loading…</p>';
+  try { strat.audData = await stratGet('audience-growth?months=18'); } catch (e){ strat.audData = null; box.innerHTML = '<p class="strat-empty">Could not load audience growth just now.</p>'; return; }
+  stratRenderAudience();
+}
+function stratRenderAudience(){
+  const box = document.getElementById('stratAudBody'); const d = strat.audData; if (!box || !d) return;
+  if (d.notOnFile && d.notOnFile.length){ box.innerHTML = stratNotOnFile(d.notOnFile); return; }
+  const showPrior = strat.compare === 'yoy';
+  const labels = d.types[0].months.map(m => m.month);
+  const lines = d.types.map(t => ({ name: t.type, color: STRAT_COLORS[t.type], vals: t.months.map(m => m.count), prior: (showPrior && t.type === strat.audType) ? t.months.map(m => m.priorYear) : null }));
+  const legend = d.types.map(t => `<button type="button" class="strat-legend ${t.type === strat.audType ? 'on' : ''}" onclick="stratPickAud('${t.type}')"><i style="background:${STRAT_COLORS[t.type]}"></i>${t.type}</button>`).join('');
+  const rows = d.latest.map(l => `<tr class="${l.type === strat.audType ? 'sel' : ''}" onclick="stratPickAud('${l.type}')"><td><i class="dot" style="background:${STRAT_COLORS[l.type]}"></i>${l.type}</td><td>${l.count != null ? l.count.toLocaleString() : '—'}</td><td>${l.shareOfLeadsPct != null ? l.shareOfLeadsPct + '%' : '—'}</td><td class="${l.vsPriorMonthPct != null && l.vsPriorMonthPct < 0 ? 'neg' : 'pos'}">${stratPct(l.vsPriorMonthPct)}</td><td class="${l.vsPriorYearPct != null && l.vsPriorYearPct < 0 ? 'neg' : 'pos'}">${stratPct(l.vsPriorYearPct)}</td></tr>`).join('');
+  const forms = d.forms.filter(f => f.type === strat.audType).slice(0, 8);
+  box.innerHTML = `
+    <div class="strat-legend-row">${legend}${showPrior ? '<span class="strat-key"><i class="dash"></i> selected type, same month last year</span>' : ''}</div>
+    ${stratLinesSvg(labels, lines, showPrior)}
+    <div class="strat-table-wrap"><table class="strat-table clickable"><thead><tr><th>Audience type · ${stratMonthLabel(d.latestMonth)}</th><th>Leads</th><th>Share</th><th>vs prior month</th><th>vs prior year</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="strat-chart-label">Forms behind ${escapeHtml(strat.audType)}</div>
+    ${forms.length ? `<div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Form</th><th>Source</th><th>Last 18 months</th><th>Latest month</th></tr></thead><tbody>${forms.map(f => `<tr><td>${escapeHtml(f.form)}</td><td>${escapeHtml(f.source || '')}</td><td>${f.total.toLocaleString()}</td><td>${f.months[f.months.length - 1].count != null ? f.months[f.months.length - 1].count.toLocaleString() : '—'}</td></tr>`).join('')}</tbody></table></div>` : '<p class="strat-empty">No forms mapped to this audience type yet.</p>'}
+    <p class="strat-foot">High Value, Growth (registration) and Prospect follow the lead types on the Annual Media Plan.</p>
+    <div class="strat-actions"><button type="button" class="strat-chip" onclick="stratAsk('How is database growth trending by audience type and which forms are driving it?')">Ask Verilume about growth</button></div>`;
+}
+function stratPickAud(t){ strat.audType = t; stratRenderAudience(); }
+
+// ---- Forecast against the annual plan target ----
+async function stratLoadForecast(){
+  if (!stratIsLive()) return; const box = document.getElementById('stratFcBody'); if (!box) return;
+  box.innerHTML = '<p class="strat-empty">Loading…</p>';
+  try { strat.fcData = await stratGet('forecast-vs-target'); } catch (e){ strat.fcData = null; box.innerHTML = '<p class="strat-empty">Could not load the forecast just now.</p>'; return; }
+  stratRenderForecast();
+}
+function stratRenderForecast(){
+  const box = document.getElementById('stratFcBody'); const d = strat.fcData; if (!box || !d) return;
+  const conf = { high: 'High confidence: learned from this account\'s history', medium: 'Medium confidence: partly learned, partly benchmark', low: 'Low confidence: little history', benchmark: 'Benchmark only: not enough history yet, rates are industry starting points' }[d.confidence] || d.confidence;
+  const y = d.yearEndRevenue, t = d.target, cards = [];
+  if (y) cards.push(`<div class="strat-fc-card"><div class="l">Year-end gross revenue, expected</div><div class="v">${stratMoney(y.expected)}</div><div class="s">Range ${stratMoney(y.low)} to ${stratMoney(y.high)} · year to date ${stratMoney(d.ytd.revenue)} plus the plan as loaded</div></div>`);
+  if (t && t.grossRevenue) cards.push(`<div class="strat-fc-card"><div class="l">Plan target, gross revenue</div><div class="v">${stratMoney(t.grossRevenue)}</div><div class="s">${d.revenueGapToTarget ? `${d.revenueGapToTarget.expected >= 0 ? 'Ahead of target by ' + stratMoney(d.revenueGapToTarget.expected) : 'Short of target by ' + stratMoney(-d.revenueGapToTarget.expected)} at the expected case` : 'Annual plan on file'}</div></div>`);
+  if (d.impressions) cards.push(`<div class="strat-fc-card"><div class="l">Impressions vs target</div><div class="v">${d.impressions.pctOfTarget != null ? d.impressions.pctOfTarget + '%' : '—'}</div><div class="s">${stratNum(d.impressions.projected)} projected of ${stratNum(d.impressions.target)} targeted (all channels)</div></div>`);
+  const dm = strat.demand && strat.demand.pacing; if (dm) cards.push(`<div class="strat-fc-card"><div class="l">Spend pacing</div><div class="v">${dm.spendPacingPct}%</div><div class="s">Year-end spend ${stratMoney(dm.yearEndSpendProjection)} against ${stratMoney(dm.targetWorkingMedia)} working media</div></div>`);
+  box.innerHTML = `
+    <div class="strat-fc-grid">${cards.join('') || '<p class="strat-empty">Nothing to compare yet.</p>'}</div>
+    <p class="strat-foot"><span class="strat-tag ${d.confidence}">${escapeHtml(conf)}</span> Low and high assume every stage of the funnel lands at its own 25th and 75th percentile together: a planning band, not a statistical interval. The current month counts only if it has planned media.</p>
+    ${stratNotOnFile(d.notOnFile)}
+    <div class="strat-actions"><button type="button" class="strat-chip" onclick="stratAsk('What ROAS should we expect from the rest of this year’s plan, and what does one more million impressions buy?')">Ask Verilume about the forecast</button></div>`;
+}
+function stratAsk(q){ try { askVerilumeOpenLive(); } catch (e){} askVerilumeAsk(q); }
+
+// ---- Tools as text links ----
+function stratToolsHtml(){
+  const go = it => it.step ? `goToStep('${it.step}'${it.stepArg ? `,'${jsStrEscape(it.stepArg)}'` : ''})` : `goToStep('pendingFeature','${jsStrEscape(it.label)}','Strategy','strategy')`;
+  const items = [
+    { label: 'Manage Budgets' }, { label: 'MMM Model Allocations Fixed Views', note: 'built in Advanced Analytics' },
+    { label: 'Finalized / Audited Media Plans', step: 'mediaplan' }, { label: 'Product & Destination Positioning' },
+    { label: 'View My Customers', step: 'marketOptimization' }, { label: 'Competitor Tracking', step: 'competitivePositioning' },
+    { label: 'Battle Brief' }, { label: 'Consumer Trends' }, { label: 'What Competitors Are Doing Now' }
+  ];
+  return `<div class="strat-tools"><span class="strat-tools-lbl">Tools</span>${items.map(it => `<a class="flink" onclick="${go(it)}">${escapeHtml(it.label)}</a>${it.note ? `<span class="strat-note">(${escapeHtml(it.note)})</span>` : ''}`).join('')}</div>`;
+}
+
 function strategyShellHtml(){
-  return renderTileShellGroups(STRATEGY_SHELL_GROUPS, null, 'strategy');
+  if (!stratIsLive()){
+    return `<div class="strat-card"><h2>Strategy</h2><p class="strat-empty">Sign in to a live account to see spend, revenue, ROAS, price and volume, audience growth and the forecast here. Tools are below.</p></div>` + stratToolsHtml();
+  }
+  return `
+    <div class="strat-card"><div class="strat-head"><h2>Price and volume</h2>
+      <div class="strat-ctl">
+        <span class="strat-seg"><button type="button" data-strat-dim="productGroup" class="on" onclick="stratSetDim('productGroup')">Product group</button><button type="button" data-strat-dim="creativeFocus" onclick="stratSetDim('creativeFocus')">Creative focus</button></span>
+        <span id="stratPgWrap" style="display:none;"><select id="stratPgSel" onchange="stratSetPg(this.value)" aria-label="Product group"><option value="">All product groups</option></select></span>
+        <select onchange="stratSetCompare(this.value)" aria-label="Comparison"><option value="yoy">Compare: year over year</option><option value="none">No comparison</option></select>
+      </div></div><div id="stratPriceBody"></div></div>
+    <div class="strat-card"><div class="strat-head"><h2>Database growth by audience type</h2></div><div id="stratAudBody"></div></div>
+    <div class="strat-card"><div class="strat-head"><h2>Forecast against the plan target</h2></div><div id="stratFcBody"></div></div>
+    ${stratToolsHtml()}`;
+}
+// Called right after renderWorkstreams() puts the shell in the page.
+function strategyPageInit(){
+  if (!stratIsLive()) return;
+  stratSyncPriceControls();
+  stratLoadPrice().then(stratFillPgSelect); stratLoadAudience();
+  stratLoadDemand().then(() => stratLoadForecast());
+}
+function stratFillPgSelect(){
+  const sel = document.getElementById('stratPgSel'); const d = strat.priceData; if (!sel || !d) return;
+  sel.innerHTML = '<option value="">All product groups</option>' + d.productGroups.map(p => `<option value="${escapeHtml(p)}" ${p === strat.pg ? 'selected' : ''}>${escapeHtml(p)}</option>`).join('');
 }
 // 2026-08-23 (nav redesign, round 15), per directive 1 (nav-structure.html
 // §1/§2) and Todd's direct instruction to prioritize the front-end build
@@ -23088,10 +23338,10 @@ async function askVerilumeToggleVoice(){
 // rather than fabricating one.
 const PRIMARY_TAB_HEADER_META = {
   strategy: { eyebrow: 'Planning · Where Are We Going', h1: 'Strategy' },
-  brand: { eyebrow: 'Creative & Brand', h1: 'Brand & Voice Experiences' },
+  brand: { eyebrow: 'Creative & Brand', h1: 'Customer Experiences' },
   marketer: { eyebrow: 'Execution', h1: 'Growth & Performance Marketing' },
-  dataScientist: { eyebrow: 'Measurement & Analysis', h1: 'Data Scientist' },
-  accountManagement: { eyebrow: 'Setup · All Optional', h1: 'Account Management' }
+  dataScientist: { eyebrow: 'Measurement & Analysis', h1: 'Media Science' },
+  accountManagement: { eyebrow: 'Setup · All Optional', h1: 'Train the Brain' }
 };
 function dailyBriefGreeting(){
   const first = (state.userName || '').trim().split(/\s+/)[0];
@@ -23127,10 +23377,10 @@ const AI_THOUGHTS_TAB_ABSTRACTS = {
 const AI_THOUGHTS_TAB_TITLES = {
   dailyBrief: 'AI Agent Thoughts — Daily Brief',
   strategy: 'AI Agent Thoughts — Strategy',
-  brand: 'AI Agent Thoughts — Brand',
-  marketer: 'AI Agent Thoughts — Marketer',
-  dataScientist: 'AI Agent Thoughts — Data Scientist',
-  accountManagement: 'AI Agent Thoughts — Account Management'
+  brand: 'AI Agent Thoughts — Customer Experiences',
+  marketer: 'AI Agent Thoughts — Growth & Performance',
+  dataScientist: 'AI Agent Thoughts — Media Science',
+  accountManagement: 'AI Agent Thoughts — Train the Brain'
 };
 // 2026-08-24 (round 17, direct feedback) — no longer called anywhere
 // (see the two call sites' own comments). #aiThoughtsPreviewCard was
@@ -23176,7 +23426,8 @@ function renderTopUrgentModule(){
   const moduleEl = document.getElementById('topUrgentModule');
   const bodyEl = document.getElementById('topUrgentBody');
   if (!moduleEl || !bodyEl) return;
-  if (activePrimaryTab === 'accountManagement'){
+  if (activePrimaryTab === 'accountManagement' || activePrimaryTab === 'strategy'){
+    // 2026-09-30: Top 5 Most Urgent moves off Strategy (CMO / VP view).
     moduleEl.style.display = 'none';
     return;
   }
@@ -23255,7 +23506,7 @@ function accountIsConfigured(){
 }
 function accountNotConfiguredBannerHtml(){
   return `<div class="group-card" style="grid-column:1/-1;background:var(--paper-dim);border-style:dashed;text-align:center;padding:18px 20px;color:var(--muted);font-size:0.875rem;">
-    Configure your account first — Brand Voice, Style Guide, and Competitive Positioning aren't fully approved yet. <a class="flink" onclick="goToStep('manageAccount')">Go to Account Management →</a>
+    Configure your account first — Brand Voice, Style Guide, and Competitive Positioning aren't fully approved yet. <a class="flink" onclick="goToStep('manageAccount')">Go to Train the Brain →</a>
   </div>`;
 }
 // 2026-08-23 (nav redesign, round 12) — filters the same workstream cards
@@ -23292,6 +23543,7 @@ function renderWorkstreams(){
     // blank grid or a fabricated card. Per direct instruction, content
     // behind those links doesn't matter yet; the links themselves do.
     grid.innerHTML = banner + strategyShellHtml();
+    strategyPageInit();
     return;
   }
   // 2026-08-26 — Account Management no longer has a branch here. It's a
@@ -23532,6 +23784,9 @@ function renderStatCards(){
   const el = document.getElementById('tabStatCardGrid');
   if (!el) return;
   const tab = activePrimaryTab || 'dailyBrief';
+  el.classList.remove('four');
+  const oldNote = document.getElementById('stratDemandNote'); if (oldNote) oldNote.remove();
+  if (tab === 'strategy' && stratIsLive()){ stratRenderDemandRow(); return; }
   const cards = STAT_CARD_META[tab];
   if (!cards){ el.innerHTML = ''; return; }
   el.innerHTML = cards.map(c => {
@@ -23605,10 +23860,10 @@ function renderCuratedNewsCards(){
 // of something that already exists.
 const ROLE_TILES = [
   { tab: 'strategy', label: 'Strategy', desc: 'Budget pacing, competitive intel, planning' },
-  { tab: 'brand', label: 'Brand', desc: 'Creative production, sentiment, reputation' },
-  { tab: 'marketer', label: 'Marketer', desc: 'Campaign status, calendar, testing' },
-  { tab: 'dataScientist', label: 'Data Scientist', desc: 'Measurement, match markets, KPIs' },
-  { tab: 'accountManagement', label: 'Account Management', desc: 'Setup — all optional, any order' }
+  { tab: 'brand', label: 'Customer Experiences', desc: 'Creative production, sentiment, reputation' },
+  { tab: 'marketer', label: 'Growth & Performance', desc: 'Campaign status, calendar, testing' },
+  { tab: 'dataScientist', label: 'Media Science', desc: 'Measurement, match markets, KPIs' },
+  { tab: 'accountManagement', label: 'Train the Brain', desc: 'Setup — all optional, any order' }
 ];
 
 // 2026-08-29 — fills #genCommentaryGrid with this account's real,
@@ -46860,10 +47115,10 @@ const BP_FAQ_TOPIC_ROLE = Object.fromEntries(BP_FAQ_TOPICS.map(t => [t.letter, b
 // not a gap (skipped below the same way an empty role group already was).
 const BP_FAQ_TAB_GROUPS = [
   { key: 'strategy', label: 'Strategy' },
-  { key: 'brand', label: 'Brand' },
-  { key: 'marketer', label: 'Marketer' },
-  { key: 'dataScientist', label: 'Data Scientist' },
-  { key: 'accountManagement', label: 'Account Management' }
+  { key: 'brand', label: 'Customer Experiences' },
+  { key: 'marketer', label: 'Growth & Performance' },
+  { key: 'dataScientist', label: 'Media Science' },
+  { key: 'accountManagement', label: 'Train the Brain' }
 ];
 const BP_FAQ_TOPIC_TAB = {
   A: 'strategy', K: 'strategy', J: 'strategy', F: 'strategy',
