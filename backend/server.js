@@ -14954,7 +14954,10 @@ function buildBrainDumpFacts(accountId, now, prevFacts){
     const past = urgent.filter(u => { const d = bdDays(u.assetsDue, now); return d != null && d < 0; }).length;
     const lines = [];
     lines.push(cur != null ? `The average relevance score on copy scored in the last four weeks is ${cur}${pri != null ? `, ${cur >= pri ? 'up' : 'down'} from ${pri} the four weeks before` : ''}.` : 'No copy has been scored for relevance in the last four weeks.');
+    let picks = 0; const sinceIso = new Date(now.getTime() - 7 * 86400000).toISOString();
+    try { picks += Number((db.prepare('SELECT COUNT(*) AS n FROM account_voice_interviews WHERE accountId = ? AND selectedAt >= ?').get(accountId, sinceIso) || {}).n) || 0; picks += Number((db.prepare('SELECT COUNT(*) AS n FROM campaign_copy_interviews WHERE accountId = ? AND selectedAt >= ?').get(accountId, sinceIso) || {}).n) || 0; } catch (e) {}
     lines.push(`${due7} campaign${due7 === 1 ? ' has' : 's have'} creative assets due in the next 7 days${past ? `, and ${past} still open ${past === 1 ? 'is' : 'are'} past due` : ''}.`);
+    if (picks) lines.push(`${picks} brand voice or copy contest winner${picks === 1 ? ' was' : 's were'} picked in the last 7 days.`);
     F.brand = { metric: { label: 'Relevance Score', value: cur, display: cur != null ? String(cur) : 'No scores yet', prior: pri }, lines, outliers: [], links: [{ label: 'Customer Experiences', tab: 'brand' }, { label: 'Marketing calendar', step: 'marketingCalendar' }] };
   } catch (e){ F.brand = { metric: { label: 'Relevance Score', value: null, display: 'Unavailable' }, lines: ['The creative numbers could not be read this week.'], outliers: [], links: [{ label: 'Customer Experiences', tab: 'brand' }] }; }
   // Growth & Performance: readiness of campaigns hitting in the next 30 days.
@@ -14997,27 +15000,49 @@ function buildBrainDumpFacts(accountId, now, prevFacts){
     const lines = [total ? `The Brain took in ${added.length} new item${added.length === 1 ? '' : 's'} and recorded ${decided.length} team decision${decided.length === 1 ? '' : 's'} this week${top.length ? `, including ${top.join(' and ')}` : ''}.` : 'The Brain recorded no new learnings this week.'];
     F.learnings = { metric: { label: 'Decisions the Brain learned from', value: decided.length, display: `${decided.length} this week`, added: added.length }, lines, outliers: [], links: [{ label: 'Train the Brain', tab: 'accountManagement' }] };
   } catch (e){ F.learnings = { metric: { label: 'Decisions the Brain learned from', value: null, display: 'Unavailable' }, lines: ['The Brain ledger could not be read this week.'], outliers: [], links: [{ label: 'Train the Brain', tab: 'accountManagement' }] }; }
+  // What moved since the last posted edition, straight from the two sets of metrics.
+  try {
+    const ch = [];
+    BRAIN_DUMP_SECTIONS.forEach(k => { const cur = F[k] && F[k].metric, prev = prevFacts && prevFacts[k] && prevFacts[k].metric; if (cur && prev && typeof cur.value === 'number' && typeof prev.value === 'number' && cur.value !== prev.value){ const d = Math.round((cur.value - prev.value) * 10) / 10; ch.push(`${cur.label} moved from ${prev.value} to ${cur.value} (${d > 0 ? '+' : ''}${d}) since the last edition.`); } });
+    F._changes = ch;
+  } catch (e) { F._changes = []; }
   return F;
 }
 // The Brain writes the prose; a paragraph is kept only when every number in it comes from the facts.
 function bdNumbers(t){ return (String(t).match(/\d[\d,]*\.?\d*/g) || []).map(x => x.replace(/,/g, '').replace(/\.$/, '')); }
+// Model per section: BRAIN_DUMP_MODEL_<SECTION> overrides BRAIN_DUMP_MODEL, which defaults to claude-sonnet-4-5.
+// Set BRAIN_DUMP_MODEL to compare another model on the same facts without changing code.
+const BD_SECTION_GUIDE = {
+  strategy: 'Say where the forecast stands against the plan target and whether it moved since last week. Name any outlier plainly.',
+  brand: 'Lead with the Relevance Score and its direction, then creative that is due or late, then any voice or copy contest picks.',
+  growth: 'Lead with campaign readiness for the next 30 days, then what is blocking the rest.',
+  analysis: 'Lead with leads against baseline and whether that is within the expected range, then database growth and analysis that is due.',
+  learnings: 'Say what the Brain took in and which team decisions it learned from this week.'
+};
+function bdModelFor(section){ return process.env['BRAIN_DUMP_MODEL_' + String(section).toUpperCase()] || process.env.BRAIN_DUMP_MODEL || 'claude-sonnet-4-5'; }
+// One short call per section, all at once, so the slowest section sets the time and one failure never blocks the rest.
 async function writeBrainDumpText(facts){
   const fallback = {}; BRAIN_DUMP_SECTIONS.forEach(k => { fallback[k] = (facts[k].lines || []).join(' '); });
-  if (!process.env.ANTHROPIC_API_KEY) return { text: fallback, writtenBy: 'template' };
-  try {
-    const schema = { type: 'object', properties: {}, required: BRAIN_DUMP_SECTIONS };
-    BRAIN_DUMP_SECTIONS.forEach(k => { schema.properties[k] = { type: 'string', description: 'One paragraph, at most 70 words, standup tone, plain sentences.' }; });
-    const input = {}; BRAIN_DUMP_SECTIONS.forEach(k => { input[k] = { metric: facts[k].metric.label + ': ' + facts[k].metric.display, facts: facts[k].lines }; });
-    const out = await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 1400, timeoutMs: 22000, toolName: 'submit_brain_dump', toolDescription: 'Submit the weekly standup paragraphs.', schema,
-      content: `You are the AI Brain giving a weekly marketing standup to the team. Write one short paragraph per section (strategy, brand, growth, analysis, learnings) from the facts below. Lead with the section's key metric. Use ONLY numbers that appear in the facts; never add, round, or infer a number. Do not invent events, competitors, or causes. Plain sentences, no lists, no markdown, no headings.\n\nFACTS:\n${JSON.stringify(input, null, 1)}` });
-    const text = {}; let used = 0;
-    BRAIN_DUMP_SECTIONS.forEach(k => {
-      const t = typeof out[k] === 'string' ? out[k].trim() : ''; const allowed = new Set(bdNumbers(JSON.stringify(input[k])));
+  if (!process.env.ANTHROPIC_API_KEY) return { text: fallback, writtenBy: 'template', models: {} };
+  const models = {}; let used = 0;
+  const schema = { type: 'object', properties: { paragraph: { type: 'string', description: 'One paragraph, at most 70 words, standup tone, plain sentences.' } }, required: ['paragraph'] };
+  const one = async k => {
+    const input = { metric: facts[k].metric.label + ': ' + facts[k].metric.display, facts: facts[k].lines };
+    const model = bdModelFor(k);
+    try {
+      const out = await callClaudeForJSON({ model, maxTokens: 500, timeoutMs: 25000, toolName: 'submit_paragraph', toolDescription: 'Submit the standup paragraph for this section.', schema,
+        content: `You are the AI Brain giving a weekly marketing standup to the team. Write ONE short paragraph for the "${k}" section from the facts below. ${BD_SECTION_GUIDE[k]} Use ONLY numbers that appear in the facts; never add, round, or infer a number. Do not invent events, competitors, or causes. Plain sentences, no lists, no markdown, no headings.\n\nFACTS:\n${JSON.stringify(input, null, 1)}` });
+      const t = typeof out.paragraph === 'string' ? out.paragraph.trim() : '';
+      const allowed = new Set(bdNumbers(JSON.stringify(input)));
       const ok = t && bdNumbers(t).every(n => allowed.has(n) || allowed.has(String(Number(n))));
-      if (ok){ text[k] = t; used++; } else text[k] = fallback[k];
-    });
-    return { text, writtenBy: used ? 'brain' : 'template' };
-  } catch (e){ console.warn('[brain-dump] writing failed, using facts text:', e.message); return { text: fallback, writtenBy: 'template' }; }
+      if (ok){ used++; models[k] = model; return t; }
+      models[k] = 'facts (paragraph rejected: number not in facts)';
+    } catch (e){ console.warn(`[brain-dump] ${k} writing failed, using facts text:`, e.message); models[k] = 'facts (' + String(e.message || '').slice(0, 60) + ')'; }
+    return fallback[k];
+  };
+  const results = await Promise.all(BRAIN_DUMP_SECTIONS.map(one));
+  const text = {}; BRAIN_DUMP_SECTIONS.forEach((k, i) => { text[k] = results[i]; });
+  return { text, writtenBy: used ? 'brain' : 'template', models };
 }
 function bdExternalFromIntelligence(accountId){
   // Competitor watch items from the weekly curated-news / intelligence refresh, frozen into the edition at post time.
@@ -15044,7 +15069,7 @@ async function postBrainDump(accountId){
   let prevFacts = null; try { prevFacts = prevRow ? JSON.parse(aliasVal(prevRow, 'factsJson')) : null; } catch (e) {}
   const facts = buildBrainDumpFacts(accountId, now, prevFacts);
   const w = await writeBrainDumpText(facts); const ext = bdExternalFromIntelligence(accountId); const iso = now.toISOString();
-  db.prepare('INSERT INTO brain_dump_weeks (accountId, weekStart, factsJson, textJson, writtenBy, createdAt, externalJson, postedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(accountId, weekStart) DO UPDATE SET factsJson = excluded.factsJson, textJson = excluded.textJson, writtenBy = excluded.writtenBy, createdAt = excluded.createdAt, externalJson = excluded.externalJson, postedAt = excluded.postedAt').run(accountId, weekStart, JSON.stringify(facts), JSON.stringify(w.text), w.writtenBy, iso, JSON.stringify(ext), iso);
+  db.prepare('INSERT INTO brain_dump_weeks (accountId, weekStart, factsJson, textJson, writtenBy, createdAt, externalJson, postedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(accountId, weekStart) DO UPDATE SET factsJson = excluded.factsJson, textJson = excluded.textJson, writtenBy = excluded.writtenBy, createdAt = excluded.createdAt, externalJson = excluded.externalJson, postedAt = excluded.postedAt').run(accountId, weekStart, JSON.stringify(facts), JSON.stringify(Object.assign({}, w.text, { _models: w.models || {} })), w.writtenBy, iso, JSON.stringify(ext), iso);
   return readBrainDump(accountId, weekStart);
 }
 
@@ -15084,15 +15109,26 @@ const DATA_CATALOG = [
   { key: 'corporate_comms', label: 'Corporate communications', table: 'corporate_comms', period: null, dashboard: 'Customer Experiences', grain: 'document', kind: 'manual', keywords: ['corporate comms','announcement','statement'], usedBy: ['copywriting'], status: 'current' },
   { key: 'mmm_inputs', label: 'Media mix model inputs', table: 'mmm_inputs', period: null, dashboard: 'Media Science', grain: 'period by category', kind: 'manual', keywords: ['mmm','media mix','adstock','model inputs'], usedBy: ['forecast', 'ask'], status: 'current' }
 ];
+// Brain writes: one helper that records a dashboard action in the Contribution Ledger with the dashboard as its source,
+// so it shows in Train the Brain's learnings feed and counts in the Brain Dump. Never throws; a failed write must not fail the action.
+function brainWrite(accountId, { dashboard, action, subject, refId, scopeType, reason, actor }){
+  try {
+    if (!accountId || !dashboard || !action) return null;
+    const id = generateId('ABC'); const now = new Date().toISOString();
+    db.prepare(`INSERT INTO ai_brain_contributions (id, accountId, sourceType, sourceRefId, scopeType, scopeValue, contentJson, status, reason, decidedBy, createdAt, decidedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(id, accountId, 'dashboard_action', refId || null, scopeType || null, refId || null, JSON.stringify({ dashboard, action, subject: subject || null }), 'applied', reason ? String(reason).slice(0, 500) : null, actor || null, now, now);
+    return id;
+  } catch (e) { console.warn('[brain-write] skipped:', e.message); return null; }
+}
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings']);
+const CATALOG_EXEMPT = new Set(['creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
   try { tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map(r => r.name).filter(n => { try { return db.prepare(`SELECT name FROM pragma_table_info('${n}')`).all().some(c => String(c.name).toLowerCase() === 'accountid'); } catch (e) { return false; } }); }
   catch (e) {
-    try { tables = db.prepare("SELECT DISTINCT table_name AS name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'accountid'").all().map(r => r.name); } catch (e2) { return null; }
+    try { tables = db.prepare("SELECT DISTINCT table_name AS name FROM information_schema.columns WHERE table_schema = 'public' AND LOWER(column_name) = 'accountid'").all().map(r => r.name); } catch (e2) { return null; }
   }
   const known = new Set(DATA_CATALOG.map(c => c.table));
   return tables.filter(t => !known.has(t) && !CATALOG_EXEMPT.has(t)).sort();
@@ -15131,8 +15167,9 @@ function buildTrainTheBrain(accountId){
   // What the Brain has learned lately, newest first, each entry tagged with the dashboard it came from.
   let learnings = [];
   try {
-    learnings = db.prepare('SELECT sourceType, status, reason, createdAt, decidedAt, decidedBy FROM ai_brain_contributions WHERE accountId = ? ORDER BY createdAt DESC LIMIT 40').all(accountId).map(r => {
-      const t = aliasVal(r, 'sourceType'); const lab = BRAIN_LEDGER_LABELS[t] || [String(t || 'other').replace(/_/g, ' '), 'Brain'];
+    learnings = db.prepare('SELECT sourceType, status, reason, createdAt, decidedAt, decidedBy, contentJson FROM ai_brain_contributions WHERE accountId = ? ORDER BY createdAt DESC LIMIT 40').all(accountId).map(r => {
+      const t = aliasVal(r, 'sourceType');
+      if (t === 'dashboard_action'){ let c = {}; try { c = JSON.parse(aliasVal(r, 'contentJson') || '{}'); } catch (e) {} return { what: c.subject || 'Dashboard action', dashboard: c.dashboard || 'Brain', action: c.action || 'Recorded', reason: r.reason || null, at: aliasVal(r, 'decidedAt') || aliasVal(r, 'createdAt') }; } const lab = BRAIN_LEDGER_LABELS[t] || [String(t || 'other').replace(/_/g, ' '), 'Brain'];
       const st = r.status; const verb = st === 'applied' ? 'Applied' : st === 'removed' ? 'Removed' : st === 'reference' ? 'Recorded' : String(st || 'Recorded').replace(/^./, c => c.toUpperCase());
       return { what: lab[0], dashboard: lab[1], action: verb, reason: r.reason || null, at: aliasVal(r, 'decidedAt') || aliasVal(r, 'createdAt') };
     });
@@ -15159,6 +15196,62 @@ function buildTrainTheBrain(accountId){
   return { uncataloged, setup: { steps, remainingMinutes, doneCount: steps.filter(s => s.done).length, total: steps.length }, learnings, consumed, syncedAt: A('analyticsSnowflakeLastSyncAt') || null };
 }
 
+// Rolling 18 months: the last six months, this month and the next eleven. Spend and impressions come from the same
+// series the forecast uses (actuals for past months, the loaded plan for the rest); budget comes from confirmed
+// Marketing Budget uploads by month across every category and scope.
+function buildRollingBudget(accountId, opts){
+  const asOf = (opts && opts.asOf) || new Date(); const S = buildForecastSeries(accountId);
+  let y = asOf.getUTCFullYear(), m = asOf.getUTCMonth() + 1; const cur = `${y}-${String(m).padStart(2, '0')}`;
+  m -= 6; while (m < 1){ m += 12; y -= 1; }
+  const keys = []; for (let i = 0; i < 18; i++){ keys.push(`${y}-${String(m).padStart(2, '0')}`); m += 1; if (m > 12){ m = 1; y += 1; } }
+  const budget = {}; let budgetNote = null;
+  try {
+    const rows = db.prepare('SELECT u.year AS uyear, li.month AS lmonth, li.amount AS amt FROM marketing_budget_line_items li JOIN marketing_budget_uploads u ON u.id = li.uploadId WHERE li.accountId = ? AND u.confirmedAt IS NOT NULL AND COALESCE(u.totalOnly, 0) = 0').all(accountId);
+    rows.forEach(r => { const yr = Number(aliasVal(r, 'uyear')), mi = MARKETING_BUDGET_MONTHS.indexOf(String(aliasVal(r, 'lmonth') || '').toLowerCase()); const a = Number(r.amt); if (!yr || mi < 0 || !isFinite(a)) return; const k = `${yr}-${String(mi + 1).padStart(2, '0')}`; budget[k] = (budget[k] || 0) + a; });
+    if (!Object.keys(budget).length) budgetNote = 'No monthly budget is on file. Upload a Marketing Budget with month columns to compare.';
+  } catch (e) { budgetNote = 'The budget could not be read.'; }
+  const rows = keys.map(k => ({ month: k, kind: k < cur ? 'actual' : 'planned', budget: budget[k] != null ? Math.round(budget[k]) : null, spend: S.spend[k] != null ? Math.round(S.spend[k]) : null, impressions: S.impressions[k] != null ? Math.round(S.impressions[k]) : null, revenue: S.revenue[k] != null ? Math.round(S.revenue[k]) : null }));
+  const sum = f => { const v = rows.map(r => r[f]).filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) : null; };
+  const both = rows.filter(r => r.budget != null && r.spend != null);
+  return { asOfMonth: cur, months: rows, totals: { budget: sum('budget'), spend: sum('spend'), impressions: sum('impressions'), revenue: sum('revenue') },
+    gap: both.length ? { months: both.length, budget: both.reduce((a, r) => a + r.budget, 0), spend: both.reduce((a, r) => a + r.spend, 0) } : null, budgetNote };
+}
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS creative_brief_requests (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    sourceDashboard TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    briefText TEXT NOT NULL,
+    evidenceJson TEXT NOT NULL,
+    campaignId TEXT,
+    status TEXT NOT NULL DEFAULT 'sent',
+    requestedBy TEXT,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL
+  );
+`);
+// Send to Creative: turns a finding into a pre-filled brief with the evidence attached. The server rebuilds the
+// evidence from the account's own data, so the numbers in a brief never come from the browser.
+function buildCreativeBriefFromFinding(accountId, kind, key){
+  const cm = buildCreativeMedia(accountId, {});
+  const win = cm.window ? `${cm.window.from} to ${cm.window.to}` : 'the recent window';
+  if (kind === 'offer'){
+    const o = (cm.offers || []).find(x => x.offer === key); if (!o) return null;
+    const rank = (cm.offers || []).filter(x => x.cpl != null).findIndex(x => x.offer === key) + 1;
+    const evidence = { source: 'Digital performance, ' + win, offer: o.offer, spend: o.spend, leads: o.leads, costPerLead: o.cpl, costPerEngagement: o.costPerEngagement, cplRank: rank || null, offersCompared: (cm.offers || []).filter(x => x.cpl != null).length };
+    const lines = [`Offer: ${o.offer}`, `What the numbers show (${win}): ${o.leads != null ? Math.round(o.leads).toLocaleString('en-US') : 'no'} leads on ${bdMoney(o.spend)} of spend${o.cpl != null ? `, a cost per lead of $${o.cpl.toFixed(2)}${rank ? `, ranked ${rank} of ${evidence.offersCompared} offers` : ''}` : ''}${o.costPerEngagement != null ? `, and a cost per engagement of $${o.costPerEngagement.toFixed(2)}` : ''}.`, 'Ask: develop creative variants that lead with this offer, keeping the approved brand voice, so the next flight can test them against the current control.'];
+    return { title: `Creative variants leading with "${o.offer}"`, briefText: lines.join('\n\n'), evidence };
+  }
+  if (kind === 'focus'){
+    const f = (cm.creativeFocus || []).find(x => x.creativeFocus === key); if (!f) return null;
+    const evidence = { source: 'Guest bookings', creativeFocus: f.creativeFocus, transactions: f.transactions, grossRevenue: f.gross, averagePrice: f.avgPrice };
+    const lines = [`Creative focus: ${f.creativeFocus}`, `What the numbers show: ${f.transactions} transactions and ${bdMoney(f.gross)} of gross revenue${f.avgPrice != null ? `, at an average price of ${bdMoney(f.avgPrice)}` : ''}.`, 'Ask: develop creative that builds on this focus, keeping the approved brand voice, and say which audience type it is meant for.'];
+    return { title: `Creative built on "${f.creativeFocus}"`, briefText: lines.join('\n\n'), evidence };
+  }
+  return null;
+}
 function maybeSnapshotForecastCalibration(accountId, cal, actor){
   try {
     const sig = JSON.stringify([cal.confidence, cal.impressionsToVisits.source, Math.round(cal.impressionsToVisits.visitsPerImp * 1e6), Math.round(cal.visitsToLeads.mid * 1e4), Math.round(cal.leadsToBookings.mid * 1e3), cal.bookingsToRevenue.mid != null ? Math.round(cal.bookingsToRevenue.mid) : null]);
@@ -23991,6 +24084,51 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, { saved: true, read: true, contributionId, title: context.title || null, description: desc || null, headings: (context.headings || []).slice(0, 5), filled });
     }
 
+    // Brain writes from the page: POST /api/accounts/:id/brain-writes { dashboard, action, subject, reason }
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'brain-writes' && req.method === 'POST'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = (await readBody(req)) || {};
+      const DASH = ['Strategy', 'Customer Experiences', 'Growth & Performance', 'Media Science', 'Brain Dump'];
+      if (!DASH.includes(body.dashboard)) return sendJson(res, 400, { error: 'unknown dashboard' });
+      const action = String(body.action || '').trim().slice(0, 80); if (!action) return sendJson(res, 400, { error: 'action is required' });
+      const sess = authenticate(req);
+      const id = brainWrite(accountId, { dashboard: body.dashboard, action, subject: String(body.subject || '').slice(0, 160) || null, reason: body.reason, refId: body.refId ? String(body.refId).slice(0, 80) : null, actor: sess && (sess.name || sess.email) || null });
+      return sendJson(res, id ? 200 : 500, id ? { id } : { error: 'could not record' });
+    }
+
+    // Send to Creative: POST /api/accounts/:id/creative-briefs { kind: 'offer'|'focus', key }, GET the list,
+    // POST /api/accounts/:id/creative-briefs/:briefId { status: 'sent'|'picked_up'|'done' }.
+    if (parts.length >= 4 && parts.length <= 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'creative-briefs'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const shape = r => ({ id: r.id, sourceDashboard: aliasVal(r, 'sourceDashboard'), kind: r.kind, title: r.title, briefText: aliasVal(r, 'briefText'), evidence: (() => { try { return JSON.parse(aliasVal(r, 'evidenceJson')); } catch (e) { return null; } })(), status: r.status, requestedBy: aliasVal(r, 'requestedBy'), createdAt: aliasVal(r, 'createdAt'), updatedAt: aliasVal(r, 'updatedAt') });
+      if (parts.length === 4 && req.method === 'GET'){
+        const rows = db.prepare('SELECT * FROM creative_brief_requests WHERE accountId = ? ORDER BY createdAt DESC LIMIT 50').all(accountId);
+        return sendJson(res, 200, { briefs: rows.map(shape) });
+      }
+      if (parts.length === 4 && req.method === 'POST'){
+        const body = (await readBody(req)) || {};
+        const kind = String(body.kind || ''); const key = String(body.key || '').slice(0, 200);
+        let built = null; try { built = buildCreativeBriefFromFinding(accountId, kind, key); } catch (e) {}
+        if (!built) return sendJson(res, 404, { error: 'That finding is no longer in the data, so there is nothing to attach.' });
+        const sess = authenticate(req); const actor = sess && (sess.name || sess.email) || null;
+        const id = generateId('CBR'); const now = new Date().toISOString();
+        db.prepare('INSERT INTO creative_brief_requests (id, accountId, sourceDashboard, kind, title, briefText, evidenceJson, campaignId, status, requestedBy, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
+          .run(id, accountId, 'Customer Experiences', kind, built.title, built.briefText, JSON.stringify(built.evidence), null, 'sent', actor, now, now);
+        brainWrite(accountId, { dashboard: 'Customer Experiences', action: 'Sent to Creative:', subject: built.title, refId: id, scopeType: 'creative_brief', actor });
+        return sendJson(res, 200, shape(db.prepare('SELECT * FROM creative_brief_requests WHERE id = ?').get(id)));
+      }
+      if (parts.length === 5 && req.method === 'POST'){
+        const body = (await readBody(req)) || {};
+        if (!['sent', 'picked_up', 'done'].includes(body.status)) return sendJson(res, 400, { error: 'status must be sent, picked_up or done' });
+        const row = db.prepare('SELECT * FROM creative_brief_requests WHERE id = ? AND accountId = ?').get(parts[4], accountId);
+        if (!row) return sendJson(res, 404, { error: 'brief not found' });
+        db.prepare('UPDATE creative_brief_requests SET status = ?, updatedAt = ? WHERE id = ?').run(body.status, new Date().toISOString(), parts[4]);
+        return sendJson(res, 200, shape(db.prepare('SELECT * FROM creative_brief_requests WHERE id = ?').get(parts[4])));
+      }
+    }
+
     // Train the Brain: GET /api/accounts/:id/train-the-brain — setup status, recent Brain learnings, data consumed.
     if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'train-the-brain' && req.method === 'GET'){
       const accountId = decodeURIComponent(parts[2]);
@@ -24048,7 +24186,7 @@ async function handleRequest(req, res) {
     // GET /api/accounts/:id/analytics/(story|forecast-vs-target|price-volume|audience-growth)
     // 2026-09-30 — the Strategy dashboard's data (see buildStory* above).
     // Read-only; portal session required. Query: months, dim, productGroup, asOf (YYYY-MM, testing).
-    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'analytics' && ['story', 'forecast-vs-target', 'price-volume', 'audience-growth', 'media-science', 'creative-media', 'growth-performance'].includes(parts[4])){
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'analytics' && ['story', 'forecast-vs-target', 'price-volume', 'audience-growth', 'media-science', 'creative-media', 'growth-performance', 'rolling-budget'].includes(parts[4])){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       const qs = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries());
@@ -24060,6 +24198,7 @@ async function handleRequest(req, res) {
           : parts[4] === 'media-science' ? buildMediaScience(accountId, opts)
           : parts[4] === 'creative-media' ? buildCreativeMedia(accountId, opts)
           : parts[4] === 'growth-performance' ? buildGrowthPerformance(accountId, opts)
+          : parts[4] === 'rolling-budget' ? buildRollingBudget(accountId, opts)
           : buildStoryAudienceGrowth(accountId, opts);
         return sendJson(res, 200, data);
       } catch (e){ console.warn('[analytics/' + parts[4] + '] failed:', e.message); return sendJson(res, 500, { error: 'could not build ' + parts[4] }); }
@@ -26233,6 +26372,14 @@ Submit your response via the campaign_intake_turn tool.`;
         setVals.push(campaignId);
         db.prepare(`UPDATE campaigns SET ${setCols.join(', ')} WHERE id = ?`).run(...setVals);
       }
+      try {
+        const actor = (() => { try { const ss = authenticate(req); return ss && (ss.name || ss.email) || null; } catch (e) { return null; } })();
+        const cname = merged.name || existing.name || campaignId; const acct = existing.accountId || aliasVal(existing, 'accountId');
+        if (body.qaApproved !== undefined && !Number(aliasVal(existing, 'qaApproved')) && Number(merged.qaApproved)) brainWrite(acct, { dashboard: 'Growth & Performance', action: 'Approved QA for', subject: cname, refId: campaignId, scopeType: 'campaign', actor });
+        if (body.creativeComplete !== undefined && !Number(aliasVal(existing, 'creativeComplete')) && Number(merged.creativeComplete)) brainWrite(acct, { dashboard: 'Customer Experiences', action: 'Marked creative complete for', subject: cname, refId: campaignId, scopeType: 'campaign', actor });
+        if (body.pmAssetsApprovedAt !== undefined && !aliasVal(existing, 'pmAssetsApprovedAt') && merged.pmAssetsApprovedAt) brainWrite(acct, { dashboard: 'Growth & Performance', action: 'Approved asset selections for', subject: cname, refId: campaignId, scopeType: 'campaign', actor });
+        if (body.cancelled !== undefined && !Number(existing.cancelled) && Number(merged.cancelled)) brainWrite(acct, { dashboard: 'Growth & Performance', action: 'Cancelled', subject: cname, refId: campaignId, scopeType: 'campaign', actor });
+      } catch (e) {}
       // 2026-09-12 — AI Brain Contribution Ledger, Round 2 (training
       // digest pooling, build-order item 2). messagingStyleDigestJson has
       // been stored on the campaign row since round 132be but read by
