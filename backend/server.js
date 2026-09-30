@@ -2087,7 +2087,9 @@ function rollupGuestBookings(accountId, periods){
   const settings = getTransactionSettings(accountId);
   const rows = db.prepare(`SELECT year, month, "productGroup", "bookingCode", "bookingType", "bookingStatus", "grossRevenue", "netRevenue" FROM account_guest_bookings WHERE accountId = ?${where}`).all(accountId, ...params);
   const agg = {};
-  rows.forEach(r => {
+  rows.forEach(r0 => {
+    // Postgres folds camelCase column names to lowercase; read both spellings.
+    const r = { year: r0.year, month: r0.month, productGroup: aliasVal(r0,'productGroup'), bookingCode: aliasVal(r0,'bookingCode'), bookingType: aliasVal(r0,'bookingType'), bookingStatus: aliasVal(r0,'bookingStatus'), grossRevenue: aliasVal(r0,'grossRevenue'), netRevenue: aliasVal(r0,'netRevenue') };
     if (!isValidTransactionStatus(r.bookingStatus, settings)) return; // a status the client has unchecked
     const cls = classifyTransactionType(r.bookingType, settings); // current mapping, not the one stored at upload time
     const pg = String(r.productGroup || '').trim();
@@ -14399,6 +14401,30 @@ async function getElevenLabsSignedUrl(agentId){
 // hands them in. No screen of its own: Ask Verilume (typed and voice) and the
 // dashboards read it, and each calibration is logged to the AI Brain ledger.
 // ---------------------------------------------------------------------------
+// Monthly transactions and revenue by product group, normalised. Reads the monthly table (manual
+// bridge or the roll-up written by a customer-level upload); when that table has nothing, derives the same
+// numbers straight from the customer-level rows (unique booking codes, this account's status settings), so
+// a customer-level upload alone is enough. camelCase columns go through aliasVal for Postgres.
+function storyTxnRows(accountId){
+  const rows = db.prepare('SELECT * FROM account_transactions_monthly WHERE accountId = ?').all(accountId)
+    .map(r => ({ year: Number(r.year), month: Number(r.month), productGroup: String(aliasVal(r, 'productGroup') || '').trim(), transactions: Number(r.transactions) || 0, revenue: Number(r.revenue) || 0 }))
+    .filter(r => r.year && r.month && (r.revenue > 0 || r.transactions > 0));
+  if (rows.length) return { rows, source: 'account_transactions_monthly' };
+  let guest = [];
+  try { guest = db.prepare('SELECT * FROM account_guest_bookings WHERE accountId = ?').all(accountId); } catch (e){ guest = []; }
+  if (!guest.length) return { rows: [], source: null };
+  const settings = getTransactionSettings(accountId);
+  const agg = {};
+  guest.forEach(r => {
+    if (!isValidTransactionStatus(aliasVal(r, 'bookingStatus'), settings)) return;
+    const pg = String(aliasVal(r, 'productGroup') || '').trim();
+    const k = `${r.year}-${r.month}-${pg}`;
+    const a = agg[k] || (agg[k] = { year: Number(r.year), month: Number(r.month), productGroup: pg, codes: new Set(), revenue: 0 });
+    a.codes.add(aliasVal(r, 'bookingCode')); a.revenue += Number(aliasVal(r, 'grossRevenue')) || 0;
+  });
+  return { rows: Object.values(agg).map(a => ({ year: a.year, month: a.month, productGroup: a.productGroup, transactions: a.codes.size, revenue: a.revenue })), source: 'account_guest_bookings' };
+}
+
 function buildForecastSeries(accountId){
   const key = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
   const S = { impressions: {}, spend: {}, visits: {}, leads: {}, revenue: {}, transactions: {} };
@@ -14416,16 +14442,17 @@ function buildForecastSeries(accountId){
     const k = key(r.year, r.month);
     const c = S.leads[k] || (S.leads[k] = { total: 0, byType: {} });
     const n = Number(r.count) || 0; c.total += n;
-    const t = c.byType[r.leadType || 'Unassigned'] || (c.byType[r.leadType || 'Unassigned'] = { count: 0, bookings: null, avgDays: null, _dw: 0 });
+    const lt = aliasVal(r, 'leadType') || 'Unassigned'; const adc = aliasVal(r, 'avgDaysToConvert');
+    const t = c.byType[lt] || (c.byType[lt] = { count: 0, bookings: null, avgDays: null, _dw: 0 });
     t.count += n;
     if (r.bookings != null) t.bookings = (t.bookings || 0) + (Number(r.bookings) || 0);
-    if (r.avgDaysToConvert != null && n > 0){ t._dw += (Number(r.avgDaysToConvert) || 0) * n; }
+    if (adc != null && n > 0){ t._dw += (Number(adc) || 0) * n; }
   });
   Object.values(S.leads).forEach(c => Object.values(c.byType).forEach(t => { t.avgDays = t.count > 0 && t._dw > 0 ? t._dw / t.count : null; delete t._dw; }));
-  db.prepare('SELECT * FROM account_transactions_monthly WHERE accountId = ?').all(accountId).forEach(r => {
+  storyTxnRows(accountId).rows.forEach(r => {
     const k = key(r.year, r.month);
-    S.transactions[k] = (S.transactions[k] || 0) + (Number(r.transactions) || 0);
-    S.revenue[k] = (S.revenue[k] || 0) + (Number(r.revenue) || 0);
+    S.transactions[k] = (S.transactions[k] || 0) + r.transactions;
+    S.revenue[k] = (S.revenue[k] || 0) + r.revenue;
   });
   return S;
 }
@@ -14481,11 +14508,10 @@ function storyCoverage(accountId){
   const key = r => (r.year && r.month) ? `${r.year}-${String(r.month).padStart(2, '0')}` : null;
   const S = buildForecastSeries(accountId);
   const mmmKeys = Array.from(new Set(Object.keys(S.spend).concat(Object.keys(S.impressions)))).sort();
-  const txn = db.prepare('SELECT * FROM account_transactions_monthly WHERE accountId = ?').all(accountId);
-  const withRev = txn.filter(r => (Number(r.revenue) || 0) > 0 || (Number(r.transactions) || 0) > 0);
+  const tx = storyTxnRows(accountId); const withRev = tx.rows;
   return {
     mediaByMonth: mmmKeys.length ? { from: mmmKeys[0], to: mmmKeys[mmmKeys.length - 1], rows: mmmKeys.length } : { from: null, to: null, rows: 0 },
-    transactionsByMonth: span(withRev, key),
+    transactionsByMonth: Object.assign(span(withRev, key), { source: tx.source }),
     leadCountsByMonth: span(db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId).filter(r => (Number(r.count) || 0) > 0), key),
     guestBookings: span(db.prepare('SELECT year, month FROM account_guest_bookings WHERE accountId = ?').all(accountId), key),
     websiteUsersByMonth: span(db.prepare('SELECT * FROM account_website_users_monthly WHERE accountId = ?').all(accountId), key),
@@ -14614,7 +14640,7 @@ function buildStoryForecastVsTarget(accountId, opts){
 function storyLatestMonth(accountId, source){
   const key = r => `${r.year}-${String(r.month).padStart(2, '0')}`;
   let rows = [];
-  if (source === 'txn') rows = db.prepare('SELECT * FROM account_transactions_monthly WHERE accountId = ?').all(accountId).filter(r => (Number(r.revenue) || 0) > 0 || (Number(r.transactions) || 0) > 0);
+  if (source === 'txn') rows = storyTxnRows(accountId).rows;
   else if (source === 'guest') rows = db.prepare('SELECT year, month FROM account_guest_bookings WHERE accountId = ?').all(accountId);
   else rows = db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId).filter(r => (Number(r.count) || 0) > 0);
   const ks = rows.filter(r => r.year && r.month).map(key).sort();
@@ -14637,9 +14663,9 @@ function buildStoryPriceVolume(accountId, opts){
   const key = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
   let source;
   if (dim === 'productGroup'){
-    source = 'account_transactions_monthly';
-    db.prepare('SELECT * FROM account_transactions_monthly WHERE accountId = ?').all(accountId).forEach(r => add(String(r.productGroup || '').trim() || 'Unassigned', key(r.year, r.month), Number(r.revenue) || 0, Number(r.transactions) || 0));
-    db.prepare("SELECT DISTINCT \"productGroup\", \"creativeFocus\" FROM account_guest_bookings WHERE accountId = ?").all(accountId).forEach(r => { const pg = String(r.productGroup || '').trim(), cf = String(r.creativeFocus || '').trim(); if (pg){ productGroups.add(pg); if (cf){ (focusByGroup[pg] = focusByGroup[pg] || new Set()).add(cf); } } });
+    const tx = storyTxnRows(accountId); source = tx.source || 'account_transactions_monthly';
+    tx.rows.forEach(r => add(r.productGroup || 'Unassigned', key(r.year, r.month), r.revenue, r.transactions));
+    db.prepare("SELECT DISTINCT \"productGroup\", \"creativeFocus\" FROM account_guest_bookings WHERE accountId = ?").all(accountId).forEach(r => { const pg = String(aliasVal(r, 'productGroup') || '').trim(), cf = String(aliasVal(r, 'creativeFocus') || '').trim(); if (pg){ productGroups.add(pg); if (cf){ (focusByGroup[pg] = focusByGroup[pg] || new Set()).add(cf); } } });
   } else {
     source = 'account_guest_bookings';
     const settings = getTransactionSettings(accountId);
@@ -33875,6 +33901,15 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const reqUrl = new URL(req.url, 'http://localhost');
       const yearParam = reqUrl.searchParams.get('year');
       const year = yearParam ? parseInt(yearParam, 10) : null;
+      // Customer-level rows on file but the monthly table is empty/zero (roll-up
+      // never ran or failed): rebuild it from the customer rows.
+      try {
+        const gCount = Number((db.prepare('SELECT COUNT(*) AS n FROM account_guest_bookings WHERE accountId = ?').get(accountId) || {}).n) || 0;
+        if (gCount > 0){
+          const mt = db.prepare('SELECT COALESCE(SUM(transactions),0) AS t, COALESCE(SUM(revenue),0) AS r FROM account_transactions_monthly WHERE accountId = ?').get(accountId) || {};
+          if (!(Number(mt.t) > 0) && !(Number(mt.r) > 0)) rollupGuestBookings(accountId, null);
+        }
+      } catch (e) { console.warn('[transactions-monthly] rollup on demand failed:', e.message); }
       const all = db.prepare('SELECT * FROM account_transactions_monthly WHERE accountId = ? ORDER BY year DESC, month ASC, "productGroup" ASC').all(accountId);
       const rows = Number.isFinite(year) ? all.filter(r => r.year === year) : all;
       const totals = {};
