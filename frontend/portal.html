@@ -12516,7 +12516,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-30-growthperf-a';
+const CXMEDIA_BUILD_STAMP = '2026-09-30-growthperf-c';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -22846,7 +22846,7 @@ function msRenderDue(){
     box.innerHTML = `<p class="strat-reading">No campaign is past its ${d.attributionDays}-day window without an analysis.</p>` + (a.maturing ? `<p class="strat-foot">${a.maturing} campaign${a.maturing === 1 ? ' is' : 's are'} still converting; the first reaches ${d.attributionDays} days ${a.nextMaturing[0] ? 'after ' + msDate(a.nextMaturing[0].hitDate) : 'soon'}.</p>` : '<p class="strat-foot">Campaigns appear here once a hit date is set on their channel lines.</p>');
     return;
   }
-  const rows = a.top.map(r => `<tr><td><strong>${escapeHtml(r.name)}</strong>${r.campaignCode ? `<div class="strat-sub">${escapeHtml(r.campaignCode)}</div>` : ''}</td><td>${msDate(r.hitDate)}</td><td class="${r.daysSince >= 180 ? 'neg' : ''}">${r.daysSince} days</td><td><span class="strat-tag">${r.maturity === 'mature' ? 'Mature' : 'Still converting'}</span></td><td>${r.missing.length ? escapeHtml(r.missing.slice(0, 3).join(', ')) : 'Complete'}</td><td style="white-space:nowrap;"><a class="flink" onclick="goToStep('campaignMgmt')">Enter actuals</a> · <a class="flink" onclick="goToStep('pendingFeature','Analysis contest','Media Science','dataScientist')">Run analysis contest</a></td></tr>`).join('');
+  const rows = a.top.map(r => `<tr><td><strong>${escapeHtml(r.name)}</strong>${r.campaignCode ? `<div class="strat-sub">${escapeHtml(r.campaignCode)}</div>` : ''}</td><td>${msDate(r.hitDate)}</td><td>${r.daysSince} days</td><td><span class="strat-tag">${r.maturity === 'mature' ? 'Mature' : 'Still converting'}</span></td><td>${r.missing.length ? escapeHtml(r.missing.slice(0, 3).join(', ')) : 'Complete'}</td><td style="white-space:nowrap;"><a class="flink" onclick="goToStep('campaignMgmt')">Enter actuals</a> · <a class="flink" onclick="goToStep('pendingFeature','Analysis contest','Media Science','dataScientist')">Run analysis contest</a></td></tr>`).join('');
   box.innerHTML = `<p class="strat-reading">${a.total} campaign${a.total === 1 ? '' : 's'} ${a.total === 1 ? 'has' : 'have'} passed ${d.attributionDays} days since the last hit date with no analysis on file. Oldest first.</p>
     <div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Campaign</th><th>Last hit date</th><th>Days since</th><th>Data</th><th>Actuals missing</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
     <p class="strat-foot">${a.total > a.top.length ? `${a.total - a.top.length} more not shown. ` : ''}${a.maturing ? `${a.maturing} more still inside the ${d.attributionDays}-day window. ` : ''}Analysis is complete once spend, impressions, conversions or revenue actuals are saved on the campaign.</p>`;
@@ -22914,7 +22914,9 @@ function cxGate(c){
 function cxGateLabel(g){ return g === 'complete' ? 'Creative complete' : g === 'in-progress' ? 'Creative in progress' : 'Creative not started'; }
 function cxScheduleRows(){
   const rows = cmpCreativeGridRows().map(c => ({ c, due: cmgmtCampaignDueDate(c), gate: cxGate(c) }));
-  const open = rows.filter(r => r.gate !== 'complete'), done = rows.filter(r => r.gate === 'complete');
+  // A campaign whose end date has passed is no longer waiting on creative, so it drops out of the urgent list.
+  const today = cxToday(); const live = rows.filter(r => !(r.c.endDate && String(r.c.endDate).slice(0, 10) < today));
+  const open = live.filter(r => r.gate !== 'complete'), done = live.filter(r => r.gate === 'complete');
   return open.concat(done);
 }
 function cxDaysUntil(due){ if (!due) return null; const a = new Date(due.slice(0, 10) + 'T00:00:00'), b = new Date(cxToday() + 'T00:00:00'); return Math.round((a - b) / 86400000); }
@@ -22925,7 +22927,7 @@ function cxRenderTopUrgent(bodyEl){
     <tbody>${rows.length ? rows.map(r => {
       const c = r.c, n = cxDaysUntil(r.due), late = r.gate !== 'complete' && n != null && n <= 0;
       const dueTxt = r.due ? `${r.due}${n != null && r.gate !== 'complete' ? (n < 0 ? ` · ${-n} day${n === -1 ? '' : 's'} past` : n === 0 ? ' · today' : ` · in ${n} day${n === 1 ? '' : 's'}`) : ''}` : '—';
-      return `<tr style="${late ? 'outline:2px solid #C0273C;outline-offset:-2px;' : ''}">
+      return `<tr>
         <td>${escapeHtml(c.campaignCode || c.id)}</td><td>${escapeHtml(c.name || c.objective || 'Untitled Campaign')}</td><td${late ? ' style="color:#C0273C;font-weight:600;"' : ''}>${escapeHtml(dueTxt)}</td>
         <td><span class="strat-tag">${cxGateLabel(r.gate)}</span></td><td>${c.startDate || '—'}</td><td>${c.endDate || '—'}</td>
         <td><button type="button" class="btn-ghost" style="padding:4px 10px;font-size:0.6875rem;white-space:nowrap;" onclick="cmpManageExistingCampaign('${c.id}')">Manage Campaign →</button></td></tr>`; }).join('') : `<tr class="empty-state-row"><td colspan="7">No Campaigns Have Been Added</td></tr>`}</tbody></table></div>`;
@@ -23004,7 +23006,7 @@ function gpRenderTop5(bodyEl){
   bodyEl.innerHTML = `<div class="table-scroll"><table class="active-camp-table"><thead><tr><th>Campaign Code</th><th>Campaign Name</th><th>Stage</th><th>Start</th><th>End</th><th></th></tr></thead><tbody>${open.length ? open.map(r => {
     const c = r.c, n = gpDaysTo(c.startDate), risk = cmgmtIsAtRisk(c) || (r.stage !== 'In Market' && n != null && n <= 0);
     const when = c.startDate ? `${c.startDate}${n != null ? (n < 0 ? ` · started ${-n}d ago` : n === 0 ? ' · today' : ` · in ${n}d`) : ''}` : '—';
-    return `<tr style="${risk ? 'outline:2px solid #C0273C;outline-offset:-2px;' : ''}"><td>${escapeHtml(c.campaignCode || c.id)}</td><td>${escapeHtml(c.name || c.objective || 'Untitled Campaign')}</td><td><span class="strat-tag">${escapeHtml(r.stage)}</span></td><td${risk ? ' style="color:#C0273C;font-weight:600;"' : ''}>${escapeHtml(when)}</td><td>${c.endDate || '—'}</td><td><button type="button" class="btn-ghost" style="padding:4px 10px;font-size:0.6875rem;white-space:nowrap;" onclick="cmpManageExistingCampaign('${c.id}')">Manage Campaign →</button></td></tr>`; }).join('') : '<tr class="empty-state-row"><td colspan="6">No Campaigns Are In Motion</td></tr>'}</tbody></table></div>`;
+    return `<tr><td>${escapeHtml(c.campaignCode || c.id)}</td><td>${escapeHtml(c.name || c.objective || 'Untitled Campaign')}</td><td><span class="strat-tag">${escapeHtml(r.stage)}</span></td><td${risk ? ' style="color:#C0273C;font-weight:600;"' : ''}>${escapeHtml(when)}</td><td>${c.endDate || '—'}</td><td><button type="button" class="btn-ghost" style="padding:4px 10px;font-size:0.6875rem;white-space:nowrap;" onclick="cmpManageExistingCampaign('${c.id}')">Manage Campaign →</button></td></tr>`; }).join('') : '<tr class="empty-state-row"><td colspan="6">No Campaigns Are In Motion</td></tr>'}</tbody></table></div>`;
 }
 function gpPipelineHtml(){
   const rows = gpCampaigns(); const n = label => rows.filter(r => r.stage === label).length;
