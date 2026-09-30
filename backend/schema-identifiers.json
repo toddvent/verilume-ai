@@ -483,5 +483,10 @@
   "creativeOffer",
   "leadsByFormJson",
   "sourceSheet",
-  "mappingJson"
+  "mappingJson",
+  "marketBasisJson",
+  "marketSamPeople",
+  "marketSource",
+  "marketTamRevenue",
+  "marketUpdatedAt"
 ]
