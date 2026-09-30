@@ -12519,7 +12519,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-30-train-a';
+const CXMEDIA_BUILD_STAMP = '2026-09-30-train-b';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -26604,7 +26604,7 @@ async function saveSurveyCoreField(key, value){
   } catch (e){ return null; }
 }
 // ---- Train the Brain page (2026-09-30): four short sittings, recent Brain learnings, data consumed ----
-const ttb = { data: null, loading: false, error: false, tab: 'setup' };
+const ttb = { data: null, loading: false, error: false, tab: 'setup', qs: { busy: false, result: null, error: '' } };
 function ttbIsLive(){ return stratIsLive(); }
 function ttbSetHeader(){ const h = document.getElementById('ttbH1'), l = document.getElementById('ttbLede'); if (h) h.textContent = 'Train the Brain'; if (l) l.textContent = 'The Brain learns from what you give it and what your team decides. Setup takes about ten minutes, and every step is optional and can be done in any order.'; }
 async function ttbLoad(){
@@ -26618,6 +26618,27 @@ function ttbRerender(){ const stepEl = document.getElementById('step-manageAccou
 function ttbGo(step, arg){ if (arg) goToStep(step, arg); else goToStep(step); }
 function ttbSetTab(t){ ttb.tab = t; ttbRerender(); }
 function ttbFmtDate(iso){ if (!iso) return ''; const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString([], { month: 'short', day: 'numeric' }); }
+async function ttbQuickStart(){
+  const inp = document.getElementById('ttbSite'); const v = inp ? inp.value.trim() : ''; if (!v || ttb.qs.busy) return;
+  ttb.qs = { busy: true, result: null, error: '' }; ttbRerender();
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/quick-start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ websiteUrl: v }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) ttb.qs = { busy: false, result: null, error: j.error || `Could not start (${r.status}).` };
+    else ttb.qs = { busy: false, result: j, error: '' };
+  } catch (e){ ttb.qs = { busy: false, result: null, error: 'Could not reach the server. Try again.' }; }
+  ttb.qs.busy = false; await ttbLoad(); if (typeof loadAccountData === 'function') { try { loadAccountData(); } catch (e){} }
+}
+function ttbQuickStartHtml(d){
+  const company = d.setup.steps[0].items[0]; const q = ttb.qs;
+  if (company.done && !q.result) return '';
+  let out = '';
+  if (q.busy) out = `<div class="bd-working" role="status" aria-live="polite" style="margin-top:12px;"><span class="bd-spin"></span><div><strong>The Brain is reading your website.</strong><div class="strat-sub">This takes a few seconds.</div></div></div>`;
+  else if (q.error) out = `<p class="strat-sub" role="alert" style="margin:10px 0 0;">${escapeHtml(q.error)}</p>`;
+  else if (q.result) { const r = q.result; out = r.read ? `<div style="margin-top:12px;"><strong>Here is what the Brain read.</strong><div class="strat-sub">${r.title ? escapeHtml(r.title) : ''}${r.description ? ' — ' + escapeHtml(r.description) : ''}</div>${r.filled && r.filled.length ? `<div class="strat-sub">Filled in your ${escapeHtml(r.filled.join(' and '))} from the site. <a class="flink" onclick="ttbGo('companyProfile')">Review it on Company Profile →</a></div>` : `<div class="strat-sub"><a class="flink" onclick="ttbGo('companyProfile')">Review your Company Profile →</a></div>`}</div>` : `<p class="strat-sub" style="margin:10px 0 0;">${escapeHtml(r.note || 'Saved.')}</p>`; }
+  return `<div class="strat-card"><div class="strat-chart-label" style="margin:0 0 6px;">Start here</div><p class="strat-reading" style="margin:0 0 10px;">Paste your website address and the Brain reads it, starting your company profile so you only have to correct it.</p>
+    <div class="bd-compose"><input type="text" id="ttbSite" placeholder="yourcompany.com" aria-label="Your website address" value="${escapeHtml(q.result ? '' : '')}" onkeydown="if(event.key==='Enter')ttbQuickStart()"><button type="button" class="strat-chip" ${q.busy ? 'disabled' : ''} onclick="ttbQuickStart()">${q.busy ? 'Reading…' : 'Read my website'}</button></div>${out}</div>`;
+}
 function ttbSetupHtml(d){
   const S = d.setup;
   const head = S.doneCount === S.total ? `<p class="strat-reading" style="margin:0;">All four sittings are done. The Brain has what it needs to start; keep adding and it keeps learning.</p>` : `<p class="strat-reading" style="margin:0;">${S.doneCount} of ${S.total} sittings done. About ${S.remainingMinutes} minute${S.remainingMinutes === 1 ? '' : 's'} left. Do them in any order, or one now and one later.</p>`;
@@ -26625,7 +26646,7 @@ function ttbSetupHtml(d){
     <div class="strat-head"><h2>${escapeHtml(st.title)}</h2><span class="ttb-min">${st.done ? 'Done' : `About ${st.minutes} min`}</span></div>
     <p class="strat-sub" style="margin:0 0 8px;">${escapeHtml(st.gain)}</p>
     <ul class="ttb-items">${st.items.map(i => `<li class="${i.done ? 'done' : ''}"><span class="ttb-mark" aria-hidden="true">${i.done ? '✓' : ''}</span><div><a class="flink" onclick="ttbGo('${i.step}'${i.stepArg ? `, '${i.stepArg}'` : ''})">${escapeHtml(i.label)}${i.done ? '' : ' →'}</a><div class="strat-sub">${escapeHtml(i.gain)}</div></div></li>`).join('')}</ul></div>`).join('');
-  return `<div class="strat-card"><div class="strat-chart-label" style="margin:0 0 6px;">Getting started</div>${head}</div>${steps}`;
+  return `${ttbQuickStartHtml(d)}<div class="strat-card"><div class="strat-chart-label" style="margin:0 0 6px;">Getting started</div>${head}</div>${steps}`;
 }
 function ttbLearningsHtml(d){
   if (!d.learnings.length) return `<div class="strat-card"><p class="strat-empty">Nothing recorded yet. As your team approves, applies or removes sources and decisions across the dashboards, they show up here.</p></div>`;
@@ -26634,7 +26655,7 @@ function ttbLearningsHtml(d){
 function ttbConsumedHtml(d){
   const rows = d.consumed.slice().sort((a, b) => b.rows - a.rows);
   const tbl = `<div class="strat-tablewrap"><table class="strat-table"><thead><tr><th>Data</th><th>Source</th><th>Rows</th><th>Latest</th><th>Used by</th></tr></thead><tbody>${rows.map(r => `<tr><td>${escapeHtml(r.label)}<div class="strat-sub">${escapeHtml(r.dashboard)} · ${escapeHtml(r.grain)}</div></td><td>${r.kind === 'integration' ? 'Integration' : 'Uploaded or entered'}</td><td>${r.rows ? r.rows.toLocaleString('en-US') : 'None yet'}</td><td>${escapeHtml(r.latest || '')}</td><td>${escapeHtml((r.usedBy || []).join(', '))}</td></tr>`).join('')}</tbody></table></div>`;
-  return `<div class="strat-card"><div class="strat-chart-label" style="margin:0 0 6px;">Data the Brain consumes</div><p class="strat-sub" style="margin:0 0 8px;">Every data set carries an owner dashboard, a grain and keywords, so the forecast, Ask the Brain and voice reports can find the right one.${d.syncedAt ? ` Last warehouse sync ${escapeHtml(ttbFmtDate(d.syncedAt))}.` : ''}</p>${tbl}</div>`;
+  return `<div class="strat-card"><div class="strat-chart-label" style="margin:0 0 6px;">Data the Brain consumes</div><p class="strat-sub" style="margin:0 0 8px;">Every data set carries an owner dashboard, a grain and keywords, so the forecast, Ask the Brain and voice reports can find the right one.${d.syncedAt ? ` Last warehouse sync ${escapeHtml(ttbFmtDate(d.syncedAt))}.` : ''}</p>${tbl}${d.uncataloged && d.uncataloged.length ? `<p class="strat-sub" style="margin:10px 0 0;">${d.uncataloged.length} more data set${d.uncataloged.length === 1 ? ' has' : 's have'} rows but no description in the catalog yet: ${escapeHtml(d.uncataloged.map(u => u.table.replace(/_/g, ' ')).join(', '))}.</p>` : ''}</div>`;
 }
 function ttbHtml(){
   if (ttb.loading && !ttb.data) return '<div class="strat-card"><p class="strat-empty">Reading what the Brain has so far…</p></div>';
