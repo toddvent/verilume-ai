@@ -5584,6 +5584,7 @@ function renderRecapCensus(){
   // picker, generationWealthMultiplier(), best-practice panels).
   const showAllGenerations = selAud.has('general') || selAud.size === 0;
   let genRows = '';
+  const genData = []; // structured copy of the generation table, saved with the account
   let genShareSum = 0;
   GENERATIONS.filter(g => g.key !== 'general' && !GEN_KEYS_WITHOUT_CENSUS_TABLE.includes(g.key) && (showAllGenerations || selAud.has(g.key))).forEach(g => {
     let count, share;
@@ -5596,6 +5597,7 @@ function renderRecapCensus(){
     }
     if (!showAllGenerations) genShareSum += share;
     genRows += `<tr class="selected"><td>${g.label}</td><td>${(share*100).toFixed(0)}%</td><td>${count.toLocaleString()}</td></tr>`;
+    genData.push({ key: g.key, label: g.label, share: Math.round(share * 1000) / 1000, count: Math.round(count) });
   });
   const genShare = showAllGenerations ? 1 : Math.min(genShareSum, 1);
 
@@ -5617,6 +5619,7 @@ function renderRecapCensus(){
   // for the broad, much-less age-skewed middle-income band.
   const genWealthMult = generationWealthMultiplier();
   let wealthRows = '';
+  const wealthData = []; // structured copy of the wealth table, saved with the account
   let wealthShareSum = 0;
   WEALTH_TIERS.filter(w => selWealth.has(w.key)).forEach(w => {
     const base = WEALTH_TIER_ILLUSTRATIVE[w.key] || 0;
@@ -5625,6 +5628,7 @@ function renderRecapCensus(){
     const count = Math.round(pop * share);
     wealthShareSum += share;
     wealthRows += `<tr class="selected"><td>${w.label}</td><td>${(share*100).toFixed(0)}%</td><td>${count.toLocaleString()}</td></tr>`;
+    wealthData.push({ key: w.key, label: w.label, share: Math.round(share * 1000) / 1000, count });
   });
   const wealthShare = selWealth.size === 0 ? 1 : Math.min(wealthShareSum, 1);
 
@@ -5638,6 +5642,10 @@ function renderRecapCensus(){
   state.opportunity.genSharePct = (genShare*100).toFixed(0);
   state.opportunity.wealthSharePct = (wealthShare*100).toFixed(0);
   state.opportunity.isLocalPop = isLocal;
+  // 2026-09-30 — saved with the account (POST /api/accounts `market`), so the Portal can show what the assessment found.
+  state.opportunity.population = pop;
+  state.opportunity.generationRows = genData;
+  state.opportunity.wealthRows = wealthData;
 
   // 2026-08-31 — #recapCensusBody lived inside #reportCompanyProfileSection,
   // now deleted; guarded so the state.opportunity assignments above still
@@ -6771,6 +6779,20 @@ function buildScorecardPayload(){
     // Sending the raw income here lets any later screen (portal.html's
     // Company Overview) recompute and show the real index, same formula.
     wealthIndexTargetIncome: state.targetIncome,
+    // 2026-09-30 — the assessment's market sizing, previously computed in the browser and never saved:
+    // TAM = U.S. industry revenue, SAM = estimated market size (people in the selected generations and wealth tiers),
+    // with the generation and wealth tables behind it. Null when the assessment never reached those steps.
+    market: (state.opportunity && state.opportunity.marketSize != null) ? {
+      tamRevenue: state.opportunity.industryRevenue != null ? state.opportunity.industryRevenue : null,
+      samPeople: state.opportunity.marketSize,
+      population: state.opportunity.population != null ? state.opportunity.population : null,
+      popLabel: state.opportunity.popLabel || null,
+      isLocal: !!state.opportunity.isLocalPop,
+      genSharePct: state.opportunity.genSharePct != null ? Number(state.opportunity.genSharePct) : null,
+      wealthSharePct: state.opportunity.wealthSharePct != null ? Number(state.opportunity.wealthSharePct) : null,
+      generations: state.opportunity.generationRows || [],
+      wealthTiers: state.opportunity.wealthRows || []
+    } : null,
     // 2026-08-29 — competitors is intentionally NOT part of this payload.
     // Round 25 once carried a Step 1 "Top 3 U.S. competitors" field here,
     // but Round 106 removed that field from the assessment (see the removed

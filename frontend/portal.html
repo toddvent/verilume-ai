@@ -1482,17 +1482,35 @@
   .strat-actions{margin-top:12px;} .strat-chip{font:inherit;font-size:0.8125rem;border:1px solid var(--line);background:var(--white);border-radius:980px;padding:6px 14px;cursor:pointer;color:var(--ink);}
   .strat-chip:hover{border-color:var(--ink);}
   /* Train the Brain (2026-09-30): larger type by default for readability, a minutes clock, and expandable item modules. */
-  .ttb-page{font-size:1.125rem;line-height:1.55;} .ttb-page .strat-sub{font-size:1rem;line-height:1.5;} .ttb-page .strat-reading{font-size:1.125rem;} .ttb-page .strat-seg button{font-size:1.0625rem;padding:10px 18px;min-height:44px;} .ttb-page .strat-chip,.ttb-page .bd-compose input{font-size:1.0625rem;min-height:44px;} .ttb-page .bd-compose input{padding:10px 14px;}
-  .ttb-hero{display:flex;align-items:center;gap:28px;flex-wrap:wrap;} .ttb-clock{color:var(--ink);display:block;} .ttb-big{font-size:2rem;font-weight:800;letter-spacing:-0.01em;line-height:1.15;}
-  .ttb-group{margin-top:26px;} .ttb-group-h{display:flex;align-items:center;gap:14px;margin-bottom:8px;} .ttb-group-h h2{margin:0;font-size:1.5rem;} .ttb-mini{flex:none;}
+  .bd-welcome{padding:28px 32px}
+.bd-w-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.bd-w-title{margin:0;font-size:1.75rem;line-height:1.2}
+.bd-w-tools{font-size:.9375rem;white-space:nowrap}
+.bd-w-lead{font-size:1.125rem;line-height:1.55;margin:12px 0 20px;max-width:70ch}
+.bd-w-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px}
+.bd-w-grid h3{margin:0 0 10px;font-size:1.0625rem}
+.bd-w-facts{display:grid;gap:6px;margin:0 0 12px;font-size:.9375rem}
+.bd-w-facts div{display:flex;flex-direction:column}
+.bd-w-facts span{font-size:.8125rem;opacity:.7}
+.bd-w-opp{margin:0 0 12px;padding:0 0 12px;border-bottom:1px solid rgba(128,128,128,.25)}
+.bd-w-opp-h span{white-space:nowrap}.bd-w-opp-h{display:flex;justify-content:space-between;gap:8px;font-size:.9375rem}
+.bd-w-clock{display:flex;align-items:center;gap:14px;margin:0 0 10px}
+.bd-w-next{margin:0 0 10px;padding-left:18px;font-size:.9375rem}
+.bd-w-next li{margin:0 0 6px}
+.bd-welcome-min{grid-column:1/-1;margin:0 0 10px}
+@media (max-width:900px){.bd-w-grid{grid-template-columns:1fr}.bd-welcome{padding:20px}}
+  .ttb-hero{display:flex;align-items:center;gap:28px;flex-wrap:wrap;} .ttb-clock{color:var(--ink);display:block;} .ttb-big{font-size:1.3125rem;font-weight:500;line-height:1.2;}
+  .ttb-group{margin-top:26px;} .ttb-group-h{display:flex;align-items:center;gap:14px;margin-bottom:8px;} .ttb-group-h h2{margin:0;font-size:1.3125rem;font-weight:500;} .ttb-mini{flex:none;}
   .ttb-mod{border:1px solid var(--line);border-radius:14px;background:var(--white);margin:10px 0;} .ttb-mod.open{border-color:var(--ink);}
-  .ttb-mod-h{display:flex;width:100%;align-items:center;gap:16px;padding:16px 18px;background:none;border:0;cursor:pointer;text-align:left;font:inherit;color:var(--ink);min-height:64px;} .ttb-mod-h:focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:14px;}
+  .ttb-mod-h{display:flex;width:100%;align-items:center;gap:16px;padding:16px 18px;background:none;border:0;cursor:pointer;text-align:left;font:inherit;color:var(--ink);min-height:56px;} .ttb-mod-h:focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:14px;}
   .ttb-check{flex:none;width:30px;height:30px;border:2px solid var(--ink);border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:1.125rem;font-weight:800;} .ttb-mod.done .ttb-check{background:var(--ink);color:var(--white);}
-  .ttb-mod-t{flex:1;display:flex;flex-direction:column;gap:2px;} .ttb-name{font-size:1.3125rem;font-weight:700;} .ttb-benefit{font-size:1.0625rem;color:var(--muted);} .ttb-chev{flex:none;font-size:1.125rem;color:var(--muted);}
+  .ttb-mod-t{flex:1;display:flex;flex-direction:column;gap:2px;} .ttb-name{font-size:1.0625rem;font-weight:600;} .ttb-benefit{font-size:0.875rem;color:var(--muted);} .ttb-chev{flex:none;font-size:1.125rem;color:var(--muted);}
   .ttb-mod-body{padding:4px 18px 20px 64px;} .ttb-mod-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:24px;} @media (max-width:860px){.ttb-mod-grid{grid-template-columns:1fr;} .ttb-mod-body{padding-left:18px;}}
-  .ttb-tag{font-size:0.875rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;} .ttb-done{font-size:1.0625rem;margin:0 0 12px;font-weight:600;}
-  .ttb-sample{border:1px dashed var(--line);border-radius:12px;padding:8px 16px;background:var(--paper-dim);} .ttb-srow{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-top:1px solid var(--line-hairline);font-size:1.0625rem;} .ttb-srow:first-child{border-top:0;} .ttb-srow span:last-child{color:var(--muted);text-align:right;} .ttb-head{font-weight:700;color:var(--muted);font-size:0.9375rem;text-transform:uppercase;letter-spacing:0.03em;} .ttb-sw{display:inline-flex;gap:6px;} .ttb-sw i{display:inline-block;width:26px;height:26px;border-radius:6px;border:1px solid var(--line);}
-  .ttb-opts{display:flex;flex-direction:column;gap:10px;margin-top:6px;align-items:flex-start;} .ttb-opt{font:inherit;font-size:1.125rem;font-weight:600;min-height:48px;padding:10px 22px;border-radius:980px;border:2px solid var(--ink);background:var(--white);color:var(--ink);cursor:pointer;} .ttb-opt:hover,.ttb-opt:focus-visible{background:var(--ink);color:var(--white);}
+  .ttb-tag{font-size:0.6875rem;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;} .ttb-done{font-size:0.875rem;margin:0 0 12px;font-weight:600;}
+  .ttb-sample{border:1px dashed var(--line);border-radius:12px;padding:8px 16px;background:var(--paper-dim);} .ttb-srow{display:flex;justify-content:space-between;gap:16px;padding:8px 0;border-top:1px solid var(--line-hairline);font-size:0.875rem;} .ttb-srow:first-child{border-top:0;} .ttb-srow span:last-child{color:var(--muted);text-align:right;} .ttb-head{font-weight:700;color:var(--muted);font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.04em;} .ttb-sw{display:inline-flex;gap:6px;} .ttb-sw i{display:inline-block;width:26px;height:26px;border-radius:6px;border:1px solid var(--line);}
+  .ttb-opts{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px;align-items:center;} .ttb-viewrow{margin-top:14px;} .ttb-view[disabled]{opacity:.45;cursor:not-allowed;} .ttb-used{display:inline-block;margin:0;}
+  .ttb-manual-wrap{margin-top:16px;border-top:1px solid var(--line-hairline);padding-top:16px;} .ttb-slot>*{margin-top:0 !important;} .ttb-manual .field label{display:block;font-size:0.75rem;font-weight:600;margin-bottom:4px;}
+  .ttb-modal{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;} .ttb-modal-card{background:var(--white);color:var(--ink);border-radius:14px;padding:24px 26px;max-width:520px;width:100%;box-shadow:var(--shadow-sm);} .ttb-modal-card h2{margin:0 0 14px;font-size:1.3125rem;font-weight:500;}
   .ttb-inline{margin:0 0 12px;} .ttb-clock-n{paint-order:stroke;stroke:var(--white);stroke-width:7px;stroke-linejoin:round;}
   .drr-bar{margin:0 0 12px;} .drr-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;} .drr-lbl{font-size:0.75rem;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--muted);margin-right:4px;}
   .drr-chip{font:inherit;font-size:0.8125rem;border:1px solid var(--line);background:var(--white);border-radius:980px;padding:6px 14px;cursor:pointer;color:var(--ink);} .drr-chip:hover{border-color:var(--ink);} .drr-chip.on{background:var(--ink);color:var(--white);border-color:var(--ink);}
@@ -12541,7 +12559,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-30-build-h';
+const CXMEDIA_BUILD_STAMP = '2026-09-30-build-j';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -23207,7 +23225,7 @@ function growthPerformancePageInit(){ if (gpIsLive()) gpLoad(); }
 
 
 // ---- Brain Dump (2026-09-30): the weekly standup that replaces the Daily Brief ----
-const bd = { data: null, comments: [], loading: false, error: false, running: false, runError: '', runStart: 0 };
+const bd = { data: null, comments: [], loading: false, error: false, running: false, runError: '', runStart: 0, welcome: null, welcomeBusy: false };
 function bdIsLive(){ return stratIsLive(); }
 const BD_SECTIONS = [
   { key: 'strategy', title: 'Strategy' }, { key: 'brand', title: 'Customer Experiences' }, { key: 'growth', title: 'Growth & Performance' },
@@ -23270,7 +23288,39 @@ async function bdPost(section){
   } catch (e){ inp.value = text; }
   bdRender(); const again = document.getElementById('bdIn-' + section); if (again) again.focus();
 }
-function bdRender(){
+// Welcome to your Verilume account: recaps what the assessment captured and where the opportunities are. Sits above every edition.
+async function bdWelcomeLoad(){
+  if (!bdIsLive()) return;
+  try { bd.welcome = await bdApi('/welcome'); } catch (e){ bd.welcome = null; }
+  bdRender();
+}
+async function bdWelcomeAct(action){
+  if (bd.welcomeBusy) return; bd.welcomeBusy = true; bdRender();
+  try { bd.welcome = await bdApi('/welcome', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) }); } catch (e){}
+  bd.welcomeBusy = false; bdRender();
+}
+function bdWelcomeHtml(){
+  const w = bd.welcome; if (!w || !w.facts) return '';
+  if (w.dismissed) return `<div class="bd-welcome-min"><a class="flink" onclick="bdWelcomeAct('restore')">Show the welcome to your Verilume account</a></div>`;
+  const f = w.facts, t = w.text || {}, p = f.profile || {}, s = f.scorecard, fs = w.firstSteps || {};
+  const facts = [['Industry', p.industry], ['Footprint', p.footprint], ['Audience', (p.audience || []).join(', ')], ['Wealth level', p.wealth], ['Website', p.website], ['Competitors', (p.competitors || []).join(', ')]].filter(x => x[1]);
+  const factsHtml = facts.length ? `<div class="bd-w-facts">${facts.map(x => `<div><span>${escapeHtml(x[0])}</span><b>${escapeHtml(String(x[1]))}</b></div>`).join('')}</div>` : '';
+  const opps = (f.opportunities || []).map(o => `<div class="bd-w-opp"><div class="bd-w-opp-h"><b>${escapeHtml(o.stage)} · ${escapeHtml(o.layer)}</b><span>Assessed ${Number(o.score).toFixed(1)}</span></div><div class="strat-sub">${escapeHtml(o.where)} ${escapeHtml(o.help)}</div>${o.link ? bdLinkHtml(o.link) : ''}</div>`).join('');
+  const done = fs.doneCount || 0, total = fs.total || 0, left = fs.minutesLeft;
+  const clock = total ? ttbClock(total, done, 72, left ? left + ' minutes left' : 'All done') : '';
+  const nextHtml = (fs.next || []).length ? `<ul class="bd-w-next">${fs.next.map(n => `<li><b>${escapeHtml(n.label)}</b>${n.gain ? `<br><span class="strat-sub">${escapeHtml(n.gain)}</span>` : ''}</li>`).join('')}</ul>` : '<p class="strat-sub" style="margin:0;">Everything in setup is done. The Brain is working from all of it.</p>';
+  return `<div class="strat-card bd-welcome" id="bdWelcome">
+    <div class="bd-w-top"><div><div class="strat-chart-label" style="margin:0 0 4px;">Welcome to your Verilume account</div><h2 class="bd-w-title">${escapeHtml(f.company || '')}</h2></div><div class="bd-w-tools"><a class="flink" onclick="bdWelcomeAct('refresh')">${bd.welcomeBusy ? 'Refreshing…' : 'Refresh'}</a> · <a class="flink" onclick="bdWelcomeAct('dismiss')">Hide</a></div></div>
+    <p class="bd-w-lead">${escapeHtml(t.welcome || '')}</p>
+    <div class="bd-w-grid">
+      <section><h3>What we remember</h3>${factsHtml}<p class="strat-reading">${escapeHtml(t.remember || '')}</p></section>
+      <section><h3>Where your opportunities are</h3><p class="strat-reading">${escapeHtml(t.opportunities || (s ? '' : 'Your assessment scores will appear here once they are recorded. Train the Brain is the fastest way to start.'))}</p>${opps}</section>
+      <section><h3>Your first steps</h3><div class="bd-w-clock">${clock}<div><b>${done} of ${total}</b> <span class="strat-sub">setup items done${left ? `, about ${left} minutes to go` : ''}</span></div></div>${nextHtml}<a class="flink" onclick="switchPrimaryTab('accountManagement')">Open Train the Brain →</a></section>
+    </div>
+  </div>`;
+}
+function bdRender(){ bdRenderMain(); const box = document.getElementById('brainDumpBody'); if (!box) return; const wh = bdWelcomeHtml(); if (wh) box.insertAdjacentHTML('afterbegin', wh); }
+function bdRenderMain(){
   const box = document.getElementById('brainDumpBody'); if (!box) return;
   if (bd.loading && !bd.data){ box.innerHTML = '<div class="strat-card"><p class="strat-empty">The Brain is reading this week\'s numbers…</p></div>'; return; }
   if (bd.error || !bd.data){ box.innerHTML = '<div class="strat-card"><p class="strat-empty">Could not load the Brain Dump just now. <a class="flink" onclick="bdLoad()">Try again</a></p></div>'; return; }
@@ -23296,7 +23346,7 @@ function brainDumpShellHtml(){
   if (!bdIsLive()) return dailyBriefExtraHtml();
   return '<div id="brainDumpBody" style="grid-column:1/-1;"></div>';
 }
-function brainDumpPageInit(){ if (!bdIsLive()) return; if (bd.data) bdRender(); bdLoad(); }
+function brainDumpPageInit(){ if (!bdIsLive()) return; if (bd.data) bdRender(); bdLoad(); bdWelcomeLoad(); }
 
 // Called right after renderWorkstreams() puts the shell in the page.
 function strategyPageInit(){
@@ -24477,6 +24527,7 @@ function dailyBriefExtraHtml(){
 }
 
 function switchPrimaryTab(tab){
+  if (tab !== 'accountManagement' && typeof ttbReturnCards === 'function') ttbReturnCards();
   activePrimaryTab = tab;
   try { sessionStorage.setItem('primaryTab', tab); } catch (e) {}
   document.querySelectorAll('.primary-nav-item').forEach(el => {
@@ -26744,11 +26795,12 @@ async function saveSurveyCoreField(key, value){
   } catch (e){ return null; }
 }
 // ---- Train the Brain page (2026-09-30): four short sittings, recent Brain learnings, data consumed ----
-const ttb = { data: null, loading: false, error: false, tab: 'setup', open: null, qs: { busy: false, result: null, error: '' } };
+const ttb = { data: null, loading: false, error: false, tab: 'setup', open: null, manual: {}, loaded: {}, qs: { busy: false, result: null, error: '' } };
 function ttbIsLive(){ return stratIsLive(); }
-function ttbSetHeader(){ const h = document.getElementById('ttbH1'), l = document.getElementById('ttbLede'); if (h) h.textContent = 'TRAIN THE BRAIN IN 24 HOURS'; if (l) l.textContent = 'About ten minutes of setup, in any order. The Brain starts learning from each thing you give it as soon as you give it.'; }
+function ttbSetHeader(){ const h = document.getElementById('ttbH1'), l = document.getElementById('ttbLede'); if (h) h.textContent = 'TRAIN THE BRAIN IN 24 HOURS'; if (l) l.textContent = 'About twenty minutes of setup in all, in any order. The Brain starts learning from each thing you give it as soon as you give it.'; }
 async function ttbLoad(){
   if (!ttbIsLive()) return;
+  ttbInitHomes();
   ttb.loading = true; ttb.error = false; ttbRerender();
   try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/train-the-brain`); if (!r.ok) throw new Error(String(r.status)); ttb.data = await r.json(); }
   catch (e){ ttb.error = true; }
@@ -26777,7 +26829,7 @@ function ttbQuickStartHtml(d, inline){
   else if (q.error) out = `<p class="strat-sub" role="alert" style="margin:10px 0 0;">${escapeHtml(q.error)}</p>`;
   else if (q.result) { const r = q.result; out = r.read ? `<div style="margin-top:12px;"><strong>Here is what the Brain read.</strong><div class="strat-sub">${r.title ? escapeHtml(r.title) : ''}${r.description ? ' — ' + escapeHtml(r.description) : ''}</div>${r.filled && r.filled.length ? `<div class="strat-sub">Filled in your ${escapeHtml(r.filled.join(' and '))} from the site. <a class="flink" onclick="ttbGo('companyProfile')">Review it on Company Profile →</a></div>` : `<div class="strat-sub"><a class="flink" onclick="ttbGo('companyProfile')">Review your Company Profile →</a></div>`}</div>` : `<p class="strat-sub" style="margin:10px 0 0;">${escapeHtml(r.note || 'Saved.')}</p>`; }
   return `<div class="${inline ? 'ttb-inline' : 'strat-card'}">${inline ? '' : '<div class="strat-chart-label" style="margin:0 0 6px;">Start here</div>'}<p class="strat-reading" style="margin:0 0 10px;">Paste your website address and the Brain reads it, starting your company profile so you only have to correct it.</p>
-    <div class="bd-compose"><input type="text" id="ttbSite" placeholder="yourcompany.com" aria-label="Your website address" value="${escapeHtml(q.result ? '' : '')}" onkeydown="if(event.key==='Enter')ttbQuickStart()"><button type="button" class="strat-chip" ${q.busy ? 'disabled' : ''} onclick="ttbQuickStart()">${q.busy ? 'Reading…' : 'Read my website'}</button></div>${out}</div>`;
+    <div class="bd-compose"><input type="text" id="ttbSite" placeholder="yourcompany.com" aria-label="Your website address" value="${escapeHtml(q.result ? '' : '')}" onkeydown="if(event.key==='Enter')ttbQuickStart()"><button type="button" class="btn-primary" ${q.busy ? 'disabled' : ''} onclick="ttbQuickStart()">${q.busy ? 'Reading…' : 'Read my website'}</button></div>${out}</div>`;
 }
 // A clock face for minutes: one tick per minute of setup, the shaded wedge is time already done,
 // the hand points at where you are, and the number is minutes left.
@@ -26828,13 +26880,155 @@ const TTB_ITEMS = {
     opts: [['manual', 'Add Manually', 'team']] }
 };
 function ttbToggle(k){ ttb.open = ttb.open === k ? '' : k; ttbRerender(); }
+// ---- Train the Brain rebuild (2026-09-30, build-j): every input on one page --------------------------------------------
+// Each item: what it is, a sample of what the Brain keeps, then up to three ways in.
+//   Upload File   -> a pop-up (accepted files, sample file to download, choose file). Nothing to learn on another page.
+//   Add Manually  -> opens inside the row. The existing entry card is moved in here rather than copied, so it works exactly as before.
+//   Partner Integration -> the one Partner Integrations page.
+// View in Portal is greyed until the item has data, and only shown as a link where the data actually appears.
+const TTB_ALL_CARDS = ['kpiMetricsAdminModule', 'mbuWebsiteUsersCard', 'mbuMarketableSizesCard', 'mbuDmCostPerPieceCard', 'mbuDmFormatCostCard', 'mbuMagazineCostCard', 'mbuAnnualPlanCard', 'mbuDemandFulfillmentCard', 'mbuEngagementCard', 'mbuLeadCountsCard', 'mbuTransactionsCard', 'mbuDigitalCard'];
+let ttbHomes = null;
+function ttbInitHomes(){
+  if (ttbHomes) return; ttbHomes = {};
+  TTB_ALL_CARDS.forEach(id => { const el = document.getElementById(id); if (!el) return; let n = el.nextElementSibling; while (n && TTB_ALL_CARDS.indexOf(n.id) >= 0) n = n.nextElementSibling; ttbHomes[id] = { parent: el.parentNode, anchor: n, mt: el.style.marginTop }; });
+}
+function ttbReturnCards(){
+  if (!ttbHomes) return;
+  TTB_ALL_CARDS.forEach((id, n) => {
+    const h = ttbHomes[id], el = document.getElementById(id); if (!h || !el || el.parentNode === h.parent) return;
+    // Back before the next card that is already home, else before the fixed element that followed the group, so the original order is kept.
+    let ref = null;
+    for (let k = n + 1; k < TTB_ALL_CARDS.length && !ref; k++){ const o = document.getElementById(TTB_ALL_CARDS[k]); if (o && o.parentNode === h.parent && ttbHomes[TTB_ALL_CARDS[k]] && ttbHomes[TTB_ALL_CARDS[k]].parent === h.parent) ref = o; }
+    if (!ref && h.anchor && h.anchor.parentNode === h.parent) ref = h.anchor;
+    h.parent.insertBefore(el, ref); el.style.marginTop = h.mt;
+  });
+}
+const TTB_MONTHS_SAMPLE = [['2026', 'Jan'], ['2026', 'Feb']];
+const TTB_CFG = {
+  companyProfile: { manual: { profile: true }, view: { step: 'companyProfile', label: 'Company Profile' } },
+  styleAssets: { upload: { formats: 'Logo, font or brand guide files (PNG, SVG, PDF, OTF, TTF)', go: 'styleAssets' }, manual: { step: 'styleAssets' }, view: { tab: 'brand', label: 'Customer Experiences' } },
+  websiteExamples: { manual: { step: 'websiteExamples' }, used: 'Used by Copywriting' },
+  competitivePositioning: { manual: { step: 'competitivePositioning' }, view: { tab: 'strategy', label: 'Strategy' } },
+  brandWritingSamples: { upload: { formats: 'Word, PDF or text files', go: 'brandWritingSamples' }, manual: { step: 'brandWritingSamples' }, used: 'Used by Copywriting' },
+  voice: { manual: { step: 'voice' }, view: { tab: 'brand', label: 'Customer Experiences' } },
+  marketingBudgetUpload: { upload: { formats: '.xlsx or .csv, in any layout. The Brain shows which columns it recognized and asks about the rest.', go: 'marketingBudgetUpload', arg: 'configuration', sample: { name: 'marketing-budget-sample.csv', cols: ['Category', 'Status', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Total'], rows: [['Paid Social', 'Working', 24000, 26000, 30000, 30000, 28000, 26000, 24000, 24000, 30000, 32000, 34000, 20000, 328000], ['Agency fees', 'Non-Working', 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 96000]] } }, manual: { step: 'marketingBudgetUpload', arg: 'configuration' }, view: { step: 'mediaplan', label: 'Budget and Plan' } },
+  bulkUpload: { upload: { formats: '.xlsx or .csv, one row per month and product group', handler: 'mbuHandleTxnFile', cards: ['mbuTransactionsCard'], sample: { name: 'transactions-by-month-sample.csv', cols: ['Year', 'Month', 'Product Group', 'Transactions', 'Revenue'], rows: [[2026, 'Jan', 'Mediterranean', 42, 268000], [2026, 'Feb', 'Mediterranean', 51, 322500]] } }, manual: { cards: ['mbuTransactionsCard'] }, integ: true, view: { tab: 'strategy', label: 'Strategy' } },
+  partnerIntegrations: { integ: true, manual: { note: 'Prefer to type it? Every number on this page has an Add Manually option.' }, view: { tab: 'dataScientist', label: 'Media Science' } },
+  team: { manual: { step: 'team' }, view: { step: 'team', label: 'Team' } },
+  websiteUsers: { manual: { cards: ['mbuWebsiteUsersCard'] }, integ: true, view: { tab: 'strategy', label: 'Strategy' } },
+  websiteEngagement: { upload: { formats: 'The GA4 Traffic acquisition export (.xlsx or .csv), by Session default channel group', handler: 'mbuHandleEngagementFile', cards: ['mbuEngagementCard'], sample: { name: 'website-engagement-sample.csv', cols: ['Year', 'Month', 'Session default channel group', 'Sessions', 'Engaged sessions', 'Engagement rate', 'Average engagement time per engaged session'], rows: [[2026, 'Jan', 'Organic Search', 18400, 12100, '65.8%', 1.4], [2026, 'Jan', 'Paid Search', 9200, 5100, '55.4%', 1.1]] } }, manual: { cards: ['mbuEngagementCard'] }, integ: true, view: { tab: 'dataScientist', label: 'Media Science' } },
+  leadCounts: { upload: { formats: '.xlsx or .csv, one row per source, lead type and form', handler: 'mbuHandleLeadFile', cards: ['mbuLeadCountsCard'], sample: { name: 'leads-by-month-sample.csv', cols: ['Year', 'Month', 'Source', 'Lead Type', 'Form Name', 'Total Leads', 'Bookings', 'Avg Days to Convert'], rows: [[2026, 'Jan', 'Website', 'High Value', 'Request a brochure', 320, 18, 41], [2026, 'Jan', 'Meta', 'Growth', 'Sweepstakes', 1150, 9, 66]] } }, manual: { cards: ['mbuLeadCountsCard'] }, integ: true, view: { tab: 'marketer', label: 'Growth & Performance' } },
+  digitalPerformance: { upload: { formats: 'The agency workbook as it comes (.xlsx or .csv). Sheets with a year and month layout are read automatically.', handler: 'dpHandleWorkbookFile', cards: ['mbuDigitalCard'], noSample: 'No sample needed. Send the workbook your agency already gives you.' }, manual: { cards: ['mbuDigitalCard'] }, integ: true, view: { tab: 'dataScientist', label: 'Media Science' } },
+  kpiMetrics: { manual: { cards: ['kpiMetricsAdminModule'] }, view: { step: 'analyticsSetup', label: 'CMO View' } },
+  annualPlan: { manual: { cards: ['mbuAnnualPlanCard'] }, view: { tab: 'strategy', label: 'Strategy' } },
+  yearResults: { manual: { step: 'mediaplan' }, view: { step: 'mediaplan', label: 'Budget and Plan' } },
+  demandFulfillment: { manual: { cards: ['mbuDemandFulfillmentCard'] }, view: { tab: 'strategy', label: 'Strategy' } },
+  marketableSizes: { manual: { cards: ['mbuMarketableSizesCard'] }, used: 'Used by campaign forecasts' },
+  dmCost: { manual: { cards: ['mbuDmCostPerPieceCard', 'mbuDmFormatCostCard'] }, used: 'Used by campaign budgets' },
+  magazineCost: { manual: { cards: ['mbuMagazineCostCard'] }, used: 'Used by campaign budgets' }
+};
+const TTB_PLAN_SAMPLES = {
+  websiteUsers: { benefit: 'Sets the reach and cost per website user the forecast starts from.', sample: `<div class="ttb-srow ttb-head"><span>Month</span><span>US</span><span>Canada</span><span>Intl</span></div><div class="ttb-srow"><span>Jan</span><span>182,000</span><span>21,400</span><span>9,800</span></div><div class="ttb-srow"><span>Feb</span><span>176,500</span><span>20,900</span><span>10,200</span></div>` },
+  websiteEngagement: { benefit: 'Shows which channels bring visitors who stay.', sample: `<div class="ttb-srow ttb-head"><span>Channel group</span><span>Sessions</span><span>Engaged</span></div><div class="ttb-srow"><span>Organic Search</span><span>18,400</span><span>65.8%</span></div><div class="ttb-srow"><span>Paid Search</span><span>9,200</span><span>55.4%</span></div>` },
+  leadCounts: { benefit: 'Follows leads through to bookings, by source and lead type.', sample: `<div class="ttb-srow ttb-head"><span>Source · type</span><span>Leads</span><span>Bookings</span></div><div class="ttb-srow"><span>Website · High Value</span><span>320</span><span>18</span></div><div class="ttb-srow"><span>Meta · Growth</span><span>1,150</span><span>9</span></div>` },
+  digitalPerformance: { benefit: 'Spend, impressions and clicks by channel, publisher and tactic.', sample: `<div class="ttb-srow ttb-head"><span>Channel</span><span>Spend</span><span>Impressions</span></div><div class="ttb-srow"><span>Non-Brand Search</span><span>$42,300</span><span>1.9M</span></div><div class="ttb-srow"><span>Paid Social</span><span>$28,900</span><span>3.4M</span></div>` },
+  kpiMetrics: { benefit: 'Feeds the KPI grid and trend line on the CMO View.', sample: `<div class="ttb-srow ttb-head"><span>Metric</span><span>Month</span><span>Value</span></div><div class="ttb-srow"><span>Marketing ROAS</span><span>2026-08</span><span>13.5</span></div><div class="ttb-srow"><span>Cost per booking</span><span>2026-08</span><span>$1,240</span></div>` },
+  annualPlan: { benefit: 'What the year is calibrated on and what you aim for.', sample: `<div class="ttb-srow ttb-head"><span>Measure</span><span>Baseline</span><span>Target</span></div><div class="ttb-srow"><span>Website users</span><span>2.1M</span><span>2.6M</span></div><div class="ttb-srow"><span>Bookings</span><span>1,940</span><span>2,400</span></div>` },
+  yearResults: { benefit: 'Last year\'s spend and results, so this year\'s plan can be compared with something real.', sample: `<div class="ttb-srow"><span>2025 gross revenue</span><span>$8.2M</span></div><div class="ttb-srow"><span>2025 transactions</span><span>1,940</span></div><div class="ttb-srow"><span>Avg per transaction</span><span>$4,226</span></div>` },
+  demandFulfillment: { benefit: 'How demand grows with website traffic rather than media spend.', sample: `<div class="ttb-srow"><span>Traffic to lead rate</span><span>0.85%</span></div><div class="ttb-srow"><span>Lead to booking rate</span><span>4.2%</span></div><div class="ttb-srow"><span>Remarketing pool rate</span><span>0.22</span></div>` },
+  marketableSizes: { benefit: 'Direct mail and email list counts by audience, so campaigns can size their reach.', sample: `<div class="ttb-srow ttb-head"><span>Audience</span><span>Direct mail</span><span>Email</span></div><div class="ttb-srow"><span>Past guests</span><span>18,400</span><span>26,900</span></div><div class="ttb-srow"><span>Prospects</span><span>52,000</span><span>71,300</span></div>` },
+  dmCost: { benefit: 'Turns an audience size into a direct mail budget.', sample: `<div class="ttb-srow ttb-head"><span>Format</span><span>Cost per piece</span></div><div class="ttb-srow"><span>Oversize postcard</span><span>$0.71</span></div><div class="ttb-srow"><span>Brochure mailer</span><span>$1.94</span></div>` },
+  magazineCost: { benefit: 'Your negotiated print rates by title and format.', sample: `<div class="ttb-srow ttb-head"><span>Title · format</span><span>Per insertion</span></div><div class="ttb-srow"><span>Travel Monthly · full page</span><span>$18,500</span></div><div class="ttb-srow"><span>Travel Monthly · half page</span><span>$11,200</span></div>` }
+};
+Object.keys(TTB_PLAN_SAMPLES).forEach(k => { TTB_ITEMS[k] = TTB_PLAN_SAMPLES[k]; });
+function ttbMoney(n){ n = Number(n); if (!isFinite(n)) return '—'; if (n >= 1e12) return '$' + (n / 1e12).toFixed(1).replace(/\.0$/, '') + 'T'; if (n >= 1e9) return '$' + (n / 1e9).toFixed(1).replace(/\.0$/, '') + 'B'; if (n >= 1e6) return '$' + (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M'; return '$' + Math.round(n).toLocaleString(); }
+function ttbPeople(n){ n = Number(n); if (!isFinite(n)) return '—'; if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M'; return Math.round(n).toLocaleString(); }
+// The company profile sample card shows this client's own industry, TAM and SAM (and the generation and wealth tables behind them) once they exist.
+function ttbProfileSample(d){
+  const P = d.profile || {}, M = P.market, B = (M && M.basis) || {};
+  if (!P.industry && !M) return null;
+  const pct = v => v == null ? '' : Math.round(v * 100) + '%';
+  const rows = [`<div class="ttb-srow"><b>${escapeHtml(P.company || 'Your company')}</b><span>${escapeHtml(P.industry || 'Industry not set yet')}</span></div>`];
+  if (M){
+    rows.push(`<div class="ttb-srow"><span>TAM (U.S. industry revenue)</span><span>${M.tamRevenue != null ? ttbMoney(M.tamRevenue) : 'Not set'}</span></div>`);
+    rows.push(`<div class="ttb-srow"><span>SAM (${escapeHtml(B.popLabel ? 'people in your target market' : 'people in your target market')})</span><span>${M.samPeople != null ? ttbPeople(M.samPeople) : 'Not set'}</span></div>`);
+    if ((B.generations || []).length) rows.push(`<div class="ttb-srow ttb-head"><span>Generation</span><span>Share · people</span></div>` + B.generations.map(g => `<div class="ttb-srow"><span>${escapeHtml(g.label)}</span><span>${pct(g.share)} · ${g.count != null ? ttbPeople(g.count) : '—'}</span></div>`).join(''));
+    if ((B.wealthTiers || []).length) rows.push(`<div class="ttb-srow ttb-head"><span>Wealth tier</span><span>Share · people</span></div>` + B.wealthTiers.map(w => `<div class="ttb-srow"><span>${escapeHtml(w.label)}</span><span>${pct(w.share)} · ${w.count != null ? ttbPeople(w.count) : '—'}</span></div>`).join(''));
+  } else rows.push(`<div class="ttb-srow"><span>TAM and SAM</span><span>Not saved from your assessment</span></div>`);
+  return rows.join('');
+}
+async function ttbSaveMarket(){
+  const t = document.getElementById('ttbTam'), s = document.getElementById('ttbSam'), st = document.getElementById('ttbMarketMsg'); if (!t || !s) return;
+  const num = v => { const x = String(v || '').replace(/[$,\s]/g, ''); return x === '' ? null : Number(x); };
+  const body = { tamRevenue: num(t.value), samPeople: num(s.value) };
+  if ((body.tamRevenue !== null && !isFinite(body.tamRevenue)) || (body.samPeople !== null && !isFinite(body.samPeople))){ if (st) st.textContent = 'Enter plain numbers, like 312000000000 and 4100000.'; return; }
+  if (st) st.textContent = 'Saving…';
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/market-size`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok){ const j = await r.json().catch(() => ({})); if (st) st.textContent = j.error || 'Not saved.'; return; }
+    await ttbLoad();
+  } catch (e){ if (st) st.textContent = 'Could not reach the server. Not saved.'; }
+}
+function ttbProfileManualHtml(d){
+  const M = (d.profile && d.profile.market) || {};
+  return `<div class="ttb-manual"><div class="ttb-tag">Market size</div><p class="hint" style="margin:0 0 10px;">The assessment works these out. Correct them here if your own numbers are better.</p>
+    <div class="field-row" style="display:flex;gap:14px;flex-wrap:wrap;"><div class="field" style="flex:1;min-width:200px;"><label for="ttbTam">TAM: U.S. industry revenue ($)</label><input type="text" id="ttbTam" inputmode="numeric" value="${M.tamRevenue != null ? Math.round(M.tamRevenue) : ''}" placeholder="e.g. 312000000000"></div>
+    <div class="field" style="flex:1;min-width:200px;"><label for="ttbSam">SAM: people in your target market</label><input type="text" id="ttbSam" inputmode="numeric" value="${M.samPeople != null ? Math.round(M.samPeople) : ''}" placeholder="e.g. 4100000"></div></div>
+    <div class="btn-row" style="gap:10px;align-items:center;"><button type="button" class="btn-primary" onclick="ttbSaveMarket()">Save market size</button><span class="hint" id="ttbMarketMsg" style="margin:0;" role="status"></span></div>
+    <p class="hint" style="margin:10px 0 0;">Industry, audience and the rest of the profile: <a class="flink" onclick="ttbGo('companyProfile')">open Company Profile →</a></p></div>`;
+}
+function ttbCsv(sample){ const q = v => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }; return [sample.cols].concat(sample.rows).map(r => r.map(q).join(',')).join('\r\n') + '\r\n'; }
+function ttbDownloadSample(key){
+  const u = TTB_CFG[key] && TTB_CFG[key].upload; if (!u || !u.sample) return;
+  const blob = new Blob([ttbCsv(u.sample)], { type: 'text/csv;charset=utf-8' }); const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = u.sample.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+function ttbItemLabel(key){ const all = ttb.data ? [].concat(...ttb.data.setup.steps.map(s => s.items)) : []; const it = all.find(i => i.step === key); return it ? it.label : key; }
+function ttbUploadClose(){ const m = document.getElementById('ttbModal'); if (m) m.remove(); document.removeEventListener('keydown', ttbModalKey); }
+function ttbModalKey(e){ if (e.key === 'Escape') ttbUploadClose(); }
+function ttbUploadOpen(key){
+  const c = TTB_CFG[key]; if (!c || !c.upload) return; ttbUploadClose(); const u = c.upload;
+  const m = document.createElement('div'); m.id = 'ttbModal'; m.className = 'ttb-modal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.setAttribute('aria-labelledby', 'ttbModalT');
+  m.innerHTML = `<div class="ttb-modal-card"><h2 id="ttbModalT">Upload: ${escapeHtml(ttbItemLabel(key))}</h2>
+    <div class="ttb-tag">Accepted files</div><p class="hint" style="margin:0 0 12px;">${escapeHtml(u.formats)}</p>
+    ${u.sample ? `<div class="ttb-tag">Sample file</div><p class="hint" style="margin:0 0 8px;">Columns: ${u.sample.cols.map(escapeHtml).join(', ')}. Your own file does not have to match exactly; the Brain looks for the columns it needs.</p><button type="button" class="btn-ghost" onclick="ttbDownloadSample('${key}')">Download sample file</button>` : `<p class="hint" style="margin:0;">${escapeHtml(u.noSample || 'There is no sample file for this one.')}</p>`}
+    <div class="btn-row" style="gap:10px;margin-top:18px;"><label class="btn-primary" style="cursor:pointer;margin:0;">Choose file<input type="file" ${u.handler ? 'accept=".csv,.xlsx"' : ''} style="display:none;" onchange="ttbUploadPicked('${key}', event)"></label><button type="button" class="btn-ghost" onclick="ttbUploadClose()">Cancel</button></div></div>`;
+  m.addEventListener('click', e => { if (e.target === m) ttbUploadClose(); });
+  document.body.appendChild(m); document.addEventListener('keydown', ttbModalKey);
+  const first = m.querySelector('button, label'); if (first) first.focus();
+}
+function ttbUploadPicked(key, ev){
+  const u = TTB_CFG[key].upload; const files = ev.target.files;
+  ttbUploadClose();
+  if (u.handler && files && files.length){ ttb.open = key; ttb.manual[key] = true; ttbRerender(); const fn = window[u.handler]; if (typeof fn === 'function') fn({ target: { files, value: '' } }); }
+  else if (u.go){ ttbGo(u.go, u.arg); }
+}
+function ttbToggleManual(key){ ttb.manual[key] = !ttb.manual[key]; ttbRerender(); }
+function ttbOpenView(key){ const v = TTB_CFG[key].view; if (!v) return; if (v.tab) switchPrimaryTab(v.tab); else if (v.step) goToStep(v.step); }
+function ttbMountOpen(){
+  ttbInitHomes();
+  Object.keys(ttb.manual).forEach(k => {
+    if (!ttb.manual[k] || ttb.open !== k) return; const c = TTB_CFG[k]; const cards = (c && c.manual && c.manual.cards) || []; const slot = document.getElementById('ttbSlot-' + k); if (!slot) return;
+    cards.forEach(id => { const el = document.getElementById(id); if (!el) return; el.style.marginTop = '0'; slot.appendChild(el); });
+    if (cards.length && !ttb.loaded[k]){ ttb.loaded[k] = true; try { if (cards[0] === 'kpiMetricsAdminModule') loadKpiMetricsAdminTable(); else mbuLoadReachInputs(); } catch (e){ console.warn('ttb: loading entry card failed', e); } }
+  });
+}
 function ttbModuleHtml(d, i){
-  const cfg = TTB_ITEMS[i.step] || { benefit: i.gain, sample: '', opts: [['manual', 'Open', i.step]] };
+  const cfg = TTB_ITEMS[i.step] || { benefit: i.gain, sample: '' };
+  const c = TTB_CFG[i.step] || { manual: { step: i.step } };
   const open = ttb.open === i.step;
   const status = i.done ? `<div class="ttb-done">Done. ${escapeHtml(i.gain)}</div>` : '';
-  const opts = cfg.opts.map(o => `<button type="button" class="ttb-opt ${o[0]}" onclick="ttbGo('${o[2]}'${cfg.arg && o[2] === i.step ? `, '${cfg.arg}'` : ''})">${o[1]}</button>`).join('');
+  const sample = (i.step === 'companyProfile' && ttbProfileSample(d)) || cfg.sample;
+  const btns = [];
+  if (c.upload) btns.push(`<button type="button" class="btn-primary" onclick="ttbUploadOpen('${i.step}')">Upload File</button>`);
+  if (c.manual) btns.push(`<button type="button" class="btn-ghost" aria-expanded="${!!ttb.manual[i.step]}" onclick="${c.manual.cards || c.manual.profile ? `ttbToggleManual('${i.step}')` : c.manual.step ? `ttbGo('${c.manual.step}'${c.manual.arg ? `, '${c.manual.arg}'` : ''})` : `ttbToggleManual('${i.step}')`}">${ttb.manual[i.step] && (c.manual.cards || c.manual.profile) ? 'Hide manual entry' : 'Add Manually'}</button>`);
+  if (c.integ) btns.push(`<button type="button" class="btn-ghost" onclick="ttbGo('partnerIntegrations')">Partner Integration</button>`);
+  const hasData = i.done;
+  const viewHtml = c.view ? `<button type="button" class="btn-ghost ttb-view" ${hasData ? '' : 'disabled aria-disabled="true" title="Available once this is added"'} onclick="ttbOpenView('${i.step}')">View in Portal${hasData ? ' →' : ''}</button>` : `<span class="hint ttb-used">${escapeHtml(c.used || 'Trains the Brain only')}</span>`;
+  const manualOpen = open && ttb.manual[i.step];
+  const manualBody = manualOpen ? (c.manual && c.manual.profile ? ttbProfileManualHtml(d) : `<div id="ttbSlot-${i.step}" class="ttb-slot"></div>`) : '';
   const inlineSite = i.step === 'companyProfile' ? ttbQuickStartHtml(d, true) : '';
-  const body = open ? `<div class="ttb-mod-body">${status}<div class="ttb-mod-grid"><div><div class="ttb-tag">Example of what the Brain keeps</div><div class="ttb-sample">${cfg.sample}</div></div><div><div class="ttb-tag">Add it</div>${inlineSite}<div class="ttb-opts">${opts}</div></div></div></div>` : '';
+  const body = open ? `<div class="ttb-mod-body">${status}<div class="ttb-mod-grid"><div><div class="ttb-tag">Example of what the Brain keeps</div><div class="ttb-sample">${sample}</div></div><div><div class="ttb-tag">Add it</div>${inlineSite}<div class="ttb-opts">${btns.join('')}</div><div class="ttb-viewrow">${viewHtml}</div></div></div>${manualBody ? `<div class="ttb-manual-wrap">${manualBody}</div>` : ''}</div>` : '';
   return `<div class="ttb-mod ${i.done ? 'done' : ''} ${open ? 'open' : ''}"><button type="button" class="ttb-mod-h" aria-expanded="${open}" onclick="ttbToggle('${i.step}')"><span class="ttb-check" aria-label="${i.done ? 'Done' : 'Not done yet'}">${i.done ? '&#10003;' : ''}</span><span class="ttb-mod-t"><span class="ttb-name">${escapeHtml(i.label)}</span><span class="ttb-benefit">${escapeHtml(cfg.benefit)}</span></span><span class="ttb-chev" aria-hidden="true">${open ? '&#9652;' : '&#9662;'}</span></button>${body}</div>`;
 }
 function ttbSetupHtml(d){
@@ -26890,8 +27084,10 @@ function renderAiPartnerOnboardingHub(skipMmmFetch){
         </div>`;
       }).join('')}
     </div>`).join('');
+  if (typeof ttbReturnCards === 'function') ttbReturnCards(); // borrowed entry cards must leave before the hub is redrawn, or the redraw would delete them
   if (ttbIsLive()){ ttbSetHeader(); mount.innerHTML = ttbHtml() + `<details class="ttb-all"><summary>All setup cards (the full list, by role)</summary>${oldHtml}</details>`; if (!ttb.data && !ttb.loading) ttbLoad(); }
   else mount.innerHTML = oldHtml;
+  if (ttbIsLive() && typeof ttbMountOpen === 'function') ttbMountOpen();
   if (!skipMmmFetch && aipoMmmPeriodCount == null) aipoLoadMmmCount();
   if (aipoVoiceContestStats == null) aipoLoadVoiceContestStats();
 }
@@ -58743,6 +58939,7 @@ function jumpToCampaignSection(sectionId){
 
 let lastGroup = 'Brand';
 function goToStep(step, arg, arg2, arg3){
+  if (step !== 'manageAccount' && typeof ttbReturnCards === 'function') ttbReturnCards(); // entry cards borrowed by Train the Brain go back to their own page
   // 2026-09-28 fix, per direct report ("Tracking Links page: I can't scroll
   // down past the first campaign") — six full-screen workspace overlays
   // (Objectives, Budget/Recommendation, Creative, Trafficking, CX Vision,
