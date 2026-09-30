@@ -14898,6 +14898,8 @@ createTableIfNeeded(`
     PRIMARY KEY (accountId, weekStart)
   );
 `);
+ensureColumn('brain_dump_weeks', 'externalJson', 'TEXT');
+ensureColumn('brain_dump_weeks', 'postedAt', 'TEXT');
 createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS brain_dump_comments (
     id TEXT PRIMARY KEY,
@@ -15006,7 +15008,7 @@ async function writeBrainDumpText(facts){
     const schema = { type: 'object', properties: {}, required: BRAIN_DUMP_SECTIONS };
     BRAIN_DUMP_SECTIONS.forEach(k => { schema.properties[k] = { type: 'string', description: 'One paragraph, at most 70 words, standup tone, plain sentences.' }; });
     const input = {}; BRAIN_DUMP_SECTIONS.forEach(k => { input[k] = { metric: facts[k].metric.label + ': ' + facts[k].metric.display, facts: facts[k].lines }; });
-    const out = await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 1400, timeoutMs: 45000, toolName: 'submit_brain_dump', toolDescription: 'Submit the weekly standup paragraphs.', schema,
+    const out = await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 1400, timeoutMs: 22000, toolName: 'submit_brain_dump', toolDescription: 'Submit the weekly standup paragraphs.', schema,
       content: `You are the AI Brain giving a weekly marketing standup to the team. Write one short paragraph per section (strategy, brand, growth, analysis, learnings) from the facts below. Lead with the section's key metric. Use ONLY numbers that appear in the facts; never add, round, or infer a number. Do not invent events, competitors, or causes. Plain sentences, no lists, no markdown, no headings.\n\nFACTS:\n${JSON.stringify(input, null, 1)}` });
     const text = {}; let used = 0;
     BRAIN_DUMP_SECTIONS.forEach(k => {
@@ -15017,16 +15019,33 @@ async function writeBrainDumpText(facts){
     return { text, writtenBy: used ? 'brain' : 'template' };
   } catch (e){ console.warn('[brain-dump] writing failed, using facts text:', e.message); return { text: fallback, writtenBy: 'template' }; }
 }
-async function getBrainDump(accountId, weekStart, refresh){
-  const row = db.prepare('SELECT * FROM brain_dump_weeks WHERE accountId = ? AND weekStart = ?').get(accountId, weekStart);
-  if (row && !refresh){ try { return { weekStart, facts: JSON.parse(row.factsJson), text: JSON.parse(row.textJson || '{}'), writtenBy: aliasVal(row, 'writtenBy'), createdAt: aliasVal(row, 'createdAt'), cached: true }; } catch (e) {} }
+function bdExternalFromIntelligence(accountId){
+  // Competitor watch items from the weekly curated-news / intelligence refresh, frozen into the edition at post time.
+  try {
+    const row = db.prepare('SELECT accountIntelligenceJson, accountIntelligenceGeneratedAt FROM accounts WHERE accountId = ?').get(accountId);
+    const j = row && aliasVal(row, 'accountIntelligenceJson'); if (!j) return { items: [], refreshedAt: null };
+    const intel = JSON.parse(j); const items = [];
+    (intel.competitors || []).forEach(c => (c.watchItems || []).slice(0, 2).forEach(w => items.push({ competitor: c.name, title: String(w).slice(0, 300) })));
+    return { items: items.slice(0, 4), refreshedAt: aliasVal(row, 'accountIntelligenceGeneratedAt') || null };
+  } catch (e){ return { items: [], refreshedAt: null }; }
+}
+// Read the latest POSTED edition. Never generates: the Brain Dump is static between runs.
+function readBrainDump(accountId, weekStart){
+  const row = weekStart
+    ? db.prepare('SELECT * FROM brain_dump_weeks WHERE accountId = ? AND weekStart = ?').get(accountId, weekStart)
+    : db.prepare('SELECT * FROM brain_dump_weeks WHERE accountId = ? AND postedAt IS NOT NULL ORDER BY weekStart DESC').get(accountId);
+  if (!row) return null;
+  try { return { posted: true, weekStart: row.weekStart, postedAt: aliasVal(row, 'postedAt') || aliasVal(row, 'createdAt'), facts: JSON.parse(row.factsJson), text: JSON.parse(row.textJson || '{}'), external: JSON.parse(aliasVal(row, 'externalJson') || 'null'), writtenBy: aliasVal(row, 'writtenBy') }; } catch (e){ return null; }
+}
+// Run and post this week's edition (scheduled after the curated-news refresh, or by hand).
+async function postBrainDump(accountId){
+  const now = new Date(); const weekStart = bdWeekStart(now);
   const prevRow = db.prepare('SELECT factsJson FROM brain_dump_weeks WHERE accountId = ? AND weekStart < ? ORDER BY weekStart DESC').get(accountId, weekStart);
   let prevFacts = null; try { prevFacts = prevRow ? JSON.parse(aliasVal(prevRow, 'factsJson')) : null; } catch (e) {}
-  const now = new Date();
   const facts = buildBrainDumpFacts(accountId, now, prevFacts);
-  const w = await writeBrainDumpText(facts); const createdAt = now.toISOString();
-  db.prepare('INSERT INTO brain_dump_weeks (accountId, weekStart, factsJson, textJson, "writtenBy", createdAt) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(accountId, weekStart) DO UPDATE SET factsJson = excluded.factsJson, textJson = excluded.textJson, "writtenBy" = excluded."writtenBy", createdAt = excluded.createdAt').run(accountId, weekStart, JSON.stringify(facts), JSON.stringify(w.text), w.writtenBy, createdAt);
-  return { weekStart, facts, text: w.text, writtenBy: w.writtenBy, createdAt, cached: false };
+  const w = await writeBrainDumpText(facts); const ext = bdExternalFromIntelligence(accountId); const iso = now.toISOString();
+  db.prepare('INSERT INTO brain_dump_weeks (accountId, weekStart, factsJson, textJson, "writtenBy", "createdAt", "externalJson", "postedAt") VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(accountId, weekStart) DO UPDATE SET factsJson = excluded.factsJson, textJson = excluded.textJson, "writtenBy" = excluded."writtenBy", "createdAt" = excluded."createdAt", "externalJson" = excluded."externalJson", "postedAt" = excluded."postedAt"').run(accountId, weekStart, JSON.stringify(facts), JSON.stringify(w.text), w.writtenBy, iso, JSON.stringify(ext), iso);
+  return readBrainDump(accountId, weekStart);
 }
 
 function maybeSnapshotForecastCalibration(accountId, cal, actor){
@@ -23844,10 +23863,15 @@ async function handleRequest(req, res) {
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       const q = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries());
-      const weekStart = /^\d{4}-\d{2}-\d{2}$/.test(q.week || '') ? bdWeekStart(new Date(q.week + 'T00:00:00Z')) : bdWeekStart(new Date());
+      const latestPosted = db.prepare('SELECT weekStart FROM brain_dump_weeks WHERE accountId = ? AND postedAt IS NOT NULL ORDER BY weekStart DESC').get(accountId);
+      const weekStart = /^\d{4}-\d{2}-\d{2}$/.test(q.week || '') ? bdWeekStart(new Date(q.week + 'T00:00:00Z')) : (latestPosted ? latestPosted.weekStart : bdWeekStart(new Date()));
       if (parts.length === 4 && req.method === 'GET'){
-        try { const bd = await getBrainDump(accountId, weekStart, q.refresh === '1'); return sendJson(res, 200, bd); }
-        catch (e){ console.warn('[brain-dump] failed:', e.message); return sendJson(res, 500, { error: 'could not build the Brain Dump' }); }
+        const bd = readBrainDump(accountId, /^\d{4}-\d{2}-\d{2}$/.test(q.week || '') ? bdWeekStart(new Date(q.week + 'T00:00:00Z')) : null);
+        return sendJson(res, 200, bd || { posted: false, nextRun: 'Mondays after the weekly curated news refresh' });
+      }
+      if (parts.length === 4 && req.method === 'POST'){
+        try { const bd = await postBrainDump(accountId); return sendJson(res, 200, bd); }
+        catch (e){ console.warn('[brain-dump] run failed:', e.message); return sendJson(res, 500, { error: 'could not run the Brain Dump' }); }
       }
       if (parts.length === 5 && req.method === 'GET'){
         const rows = db.prepare('SELECT * FROM brain_dump_comments WHERE accountId = ? AND weekStart = ? ORDER BY createdAt ASC').all(accountId, weekStart).map(r => ({ id: r.id, section: r.section, authorName: aliasVal(r, 'authorName'), authorType: aliasVal(r, 'authorType'), text: r.text, createdAt: aliasVal(r, 'createdAt') }));
@@ -23863,7 +23887,7 @@ async function handleRequest(req, res) {
         if (/@ai\s?brain/i.test(text)){
           let reply = 'I can only answer from this week\'s numbers, and the AI service is not available right now. Open the dashboard linked above for the detail.';
           try {
-            const bd = await getBrainDump(accountId, weekStart, false); const f = bd.facts[section];
+            const bd = readBrainDump(accountId, weekStart); if (!bd) throw new Error('no posted edition'); const f = bd.facts[section];
             if (process.env.ANTHROPIC_API_KEY){
               const thread = db.prepare('SELECT authorName, authorType, text FROM brain_dump_comments WHERE accountId = ? AND weekStart = ? AND section = ? ORDER BY createdAt ASC').all(accountId, weekStart, section).slice(-8).map(r => `${aliasVal(r, 'authorType') === 'brain' ? 'AI Brain' : aliasVal(r, 'authorName')}: ${r.text}`).join('\n');
               const r = await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 500, timeoutMs: 30000, toolName: 'submit_reply', schema: { type: 'object', properties: { reply: { type: 'string' } }, required: ['reply'] },
@@ -24854,6 +24878,17 @@ Submit your response via the campaign_intake_turn tool.`;
           results.failed.push({ accountId: account.accountId, note: e.message });
         }
       }
+      return sendJson(res, 200, results);
+    }
+
+
+    // GET /api/cron/brain-dump — runs and posts the weekly Brain Dump for every paid account.
+    // Scheduled after the curated-news refresh (Mondays 13:00 UTC), see vercel.json. Same fail-closed CRON_SECRET pattern.
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'cron' && parts[2] === 'brain-dump'){
+      if (!process.env.CRON_SECRET) return sendJson(res, 501, { error: 'CRON_SECRET is not configured — refusing to run an unauthenticated cron endpoint.' });
+      if ((req.headers['authorization'] || '') !== `Bearer ${process.env.CRON_SECRET}`) return sendJson(res, 401, { error: 'unauthorized' });
+      const accts = db.prepare('SELECT accountId FROM accounts WHERE paidTier IS NOT NULL').all(); const results = { processed: accts.length, posted: 0, failed: [] };
+      for (const a of accts){ try { await postBrainDump(aliasVal(a, 'accountId')); results.posted++; } catch (e){ results.failed.push({ accountId: aliasVal(a, 'accountId'), note: e.message }); } }
       return sendJson(res, 200, results);
     }
 
