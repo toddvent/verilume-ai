@@ -14498,7 +14498,8 @@ function storyMonthKeys(asOf, months){
   return out;
 }
 function storyShiftYear(key, delta){ return `${Number(key.slice(0, 4)) + delta}${key.slice(4)}`; }
-function storyPct(cur, prev){ return (cur != null && prev != null && prev !== 0) ? Math.round(((cur - prev) / Math.abs(prev)) * 1000) / 10 : null; }
+// A change over 500% means the earlier period is a sliver of data (a partial month, a first upload); show no percent instead of a misleading one.
+function storyPct(cur, prev){ if (cur == null || prev == null || prev === 0) return null; const v = Math.round(((cur - prev) / Math.abs(prev)) * 1000) / 10; return Math.abs(v) > 500 ? null : v; }
 function storyAsOf(q){ const s = q && q.asOf && /^\d{4}-\d{2}$/.test(q.asOf) ? new Date(q.asOf + '-15T00:00:00Z') : new Date(); return s; }
 
 // What the Strategy page is reading: which sources have rows, and for which
@@ -14549,7 +14550,17 @@ function buildStoryDemand(accountId, opts){
       cacTransaction: (spend != null && txn) ? Math.round(spend / txn) : null };
   };
   const cur = pack(win), prev = pack(prevWin);
-  const delta = {}; ['spend', 'revenue', 'transactions', 'impressions', 'roas', 'cacTransaction'].forEach(f => { delta[f] = storyPct(cur[f], prev[f]); });
+  // Compare like with like: only months where BOTH years have the needed series on file, so a
+  // 12-month window is never set against a prior year that only has a few months.
+  const delta = {}; const deltaMonths = {};
+  const cmpOver = (f, need) => {
+    const idx = win.map((k, i) => i).filter(i => need.every(n => S[n][win[i]] != null && S[n][prevWin[i]] != null));
+    deltaMonths[f] = idx.length; if (idx.length < 3){ delta[f] = null; return; }
+    const a = pack(idx.map(i => win[i])), b = pack(idx.map(i => prevWin[i]));
+    delta[f] = storyPct(a[f], b[f]);
+  };
+  cmpOver('spend', ['spend']); cmpOver('revenue', ['revenue']); cmpOver('transactions', ['transactions']); cmpOver('impressions', ['impressions']);
+  cmpOver('roas', ['spend', 'revenue']); cmpOver('cacTransaction', ['spend', 'transactions']);
   const year = asOf.getUTCFullYear();
   const { target: targetRow, baseline: baselineRow } = storyPlanRows(accountId, year);
   const tR = storyRatios(targetRow), bR = storyRatios(baselineRow);
@@ -14588,7 +14599,7 @@ function buildStoryDemand(accountId, opts){
         spendPacingPct: Math.round((ytd.spend / (targetRow.workingMedia * elapsed / 12)) * 1000) / 10 }
     : null;
   return { window: { from: win[0], to: win[win.length - 1], months }, comparisonWindow: { from: prevWin[0], to: prevWin[prevWin.length - 1], note: 'same months one year earlier' },
-    current: cur, previous: prev, deltaPct: delta, outcomes,
+    current: cur, previous: prev, deltaPct: delta, deltaMonths, outcomes,
     cacCustomer: { value: null, reason: 'Bookings carry no customer id yet, so spend per total customer cannot be computed; CAC shown is spend per unique transaction.' },
     definitions: { roas: 'gross revenue / marketing spend', cac: 'spend / unique transactions (transaction level)', impressions: 'total across all channels' },
     target: tR ? { year: tR.year, label: tR.label, workingMedia: tR.spend, impressions: tR.impressions, bookings: tR.transactions, grossRevenue: tR.revenue } : null,
@@ -14772,10 +14783,15 @@ function buildMediaScience(accountId, opts){
     dp.forEach(r => { if (!set.has(key(r.year, r.month))) return; const c = byCh[r.channel] = byCh[r.channel] || { channel: r.channel, impressions: 0, clicks: 0, spend: 0, leads: 0, calls: 0 };
       ['impressions','clicks','spend','leads','calls'].forEach(f => { const v = Number(r[f]) || 0; c[f] += v; tot[f] += v; }); tot.any = true; });
     return { byCh, tot }; };
-  const cur = pack(wset), pri = pack(pset);
+  const cur = pack(wset);
+  // Prior-year comparison over months present in both years only.
+  const dpKeys = new Set(dp.map(r => key(r.year, r.month)));
+  const mIdx = win.filter(k => dpKeys.has(k) && dpKeys.has(storyShiftYear(k, -1)));
+  const useCmp = mIdx.length >= 3;
+  const curM = useCmp ? pack(new Set(mIdx)) : null, pri = useCmp ? pack(new Set(mIdx.map(k => storyShiftYear(k, -1)))) : pack(new Set());
   const fin = o => Object.assign({}, o, { ctr: o.impressions ? Math.round((o.clicks / o.impressions) * 10000) / 100 : null, cpl: o.leads ? Math.round((o.spend / o.leads) * 100) / 100 : null, cpc: o.calls ? Math.round((o.spend / o.calls) * 100) / 100 : null });
   const channels = Object.values(cur.byCh).map(fin).sort((a, b) => b.spend - a.spend);
-  const priTot = pri.tot.any ? fin(pri.tot) : null; const curTot = cur.tot.any ? fin(cur.tot) : null;
+  const priTot = pri.tot.any ? fin(pri.tot) : null; const curTot = cur.tot.any ? fin(cur.tot) : null; const curMatched = curM && curM.tot.any ? fin(curM.tot) : null;
   // Lead to booking, from lead counts (same window).
   const lead = { leads: 0, bookings: 0, weightedDays: 0, dayN: 0 }; const byType = {};
   db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId).forEach(r => {
@@ -14791,8 +14807,80 @@ function buildMediaScience(accountId, opts){
   if (rfTot) rfTot.frequency = Math.round((rfTot.impressions / rfTot.reach) * 10) / 10;
   return { asOf: asOfDate.toISOString().slice(0, 10), attributionDays: MS_ATTRIBUTION_DAYS, window: { from: win[0], to: win[win.length - 1], months: win.length },
     analysisDue: { total: due.length, top: due.slice(0, 5), maturing: maturing.length, nextMaturing: maturing.slice(0, 3) },
-    core: { totals: curTot, priorYear: priTot, channels, leadToBooking, reachFrequency: rfTot, campaigns: analyzed.slice(0, 10) },
+    core: { totals: curTot, priorYear: priTot, currentMatched: curMatched, comparedMonths: useCmp ? mIdx.length : 0, channels, leadToBooking, reachFrequency: rfTot, campaigns: analyzed.slice(0, 10) },
     coverage: { campaigns: rowsC.length, withHitDate: rowsC.filter(r => r.hitDate).length, withActuals: analyzed.length, digitalPerformance: { rows: dp.length, latest }, leadCounts: lead.leads > 0 } };
+}
+
+
+// ---- Customer Experiences dashboard (2026-09-30): creative and media together ----
+function buildCreativeMedia(accountId, opts){
+  const asOfDate = opts.asOf || new Date(); const months = Math.max(3, Math.min(24, Number(opts.months) || 12));
+  const key = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
+  const dp = db.prepare('SELECT * FROM account_digital_performance WHERE accountId = ?').all(accountId).map(r => ({ year: r.year, month: r.month, grain: r.grain, channel: aliasVal(r, 'channel'), offer: String(aliasVal(r, 'creativeOffer') || '').trim(), impressions: Number(r.impressions) || 0, clicks: Number(r.clicks) || 0, spend: Number(r.spend) || 0, leads: Number(r.leads) || 0, calls: Number(r.calls) || 0 }));
+  const latest = dp.map(r => key(r.year, r.month)).sort().pop() || null;
+  const win = storyWindowEndingAtData(asOfDate, months, latest); const wset = new Set(win);
+  // Cost per engagement (spend per click) by month, all channels, overview grain.
+  const byMonth = {}; win.forEach(k => { byMonth[k] = { month: k, spend: 0, clicks: 0, impressions: 0 }; });
+  dp.filter(r => r.grain === 'overview' && wset.has(key(r.year, r.month))).forEach(r => { const m = byMonth[key(r.year, r.month)]; m.spend += r.spend; m.clicks += r.clicks; m.impressions += r.impressions; });
+  const trend = win.map(k => { const m = byMonth[k]; return { month: k, spend: m.spend, clicks: m.clicks, costPerEngagement: m.clicks ? Math.round((m.spend / m.clicks) * 100) / 100 : null }; });
+  const hasTrend = trend.some(t => t.costPerEngagement != null);
+  // Winning offers by cost per lead (detail rows carrying a creative offer).
+  const offers = {};
+  dp.filter(r => r.offer && wset.has(key(r.year, r.month))).forEach(r => { const o = offers[r.offer] = offers[r.offer] || { offer: r.offer, spend: 0, clicks: 0, impressions: 0, leads: 0, calls: 0 }; o.spend += r.spend; o.clicks += r.clicks; o.impressions += r.impressions; o.leads += r.leads; o.calls += r.calls; });
+  const offerRows = Object.values(offers).map(o => Object.assign(o, { cpl: o.leads ? Math.round((o.spend / o.leads) * 100) / 100 : null, costPerEngagement: o.clicks ? Math.round((o.spend / o.clicks) * 100) / 100 : null })).sort((a, b) => (a.cpl == null) - (b.cpl == null) || (a.cpl || 0) - (b.cpl || 0)).slice(0, 8);
+  // Creative focus: bookings and gross from customer-level rows (leads are not tagged by creative focus).
+  let focusRows = [];
+  try {
+    const settings = getTransactionSettings(accountId); const g = {};
+    db.prepare('SELECT year, month, "creativeFocus", "bookingCode", "bookingStatus", "grossRevenue" FROM account_guest_bookings WHERE accountId = ?').all(accountId).forEach(r => {
+      if (!wset.has(key(r.year, r.month))) return; if (!isValidTransactionStatus(aliasVal(r, 'bookingStatus'), settings)) return;
+      const cf = String(aliasVal(r, 'creativeFocus') || '').trim() || 'Unassigned'; const x = g[cf] = g[cf] || { creativeFocus: cf, codes: new Set(), gross: 0 };
+      x.codes.add(aliasVal(r, 'bookingCode')); x.gross += Number(aliasVal(r, 'grossRevenue')) || 0; });
+    focusRows = Object.values(g).map(x => ({ creativeFocus: x.creativeFocus, transactions: x.codes.size, gross: Math.round(x.gross), avgPrice: x.codes.size ? Math.round(x.gross / x.codes.size) : null })).sort((a, b) => b.gross - a.gross).slice(0, 8);
+  } catch (e) {}
+  // Relevance score trend: AI business-outcome score saved per campaign, by month scored.
+  const rel = {}; let relCount = 0;
+  db.prepare('SELECT messagingRelevanceJson, messagingRelevanceScoredAt FROM campaigns WHERE accountId = ? AND COALESCE(cancelled,0) = 0').all(accountId).forEach(c => {
+    const at = aliasVal(c, 'messagingRelevanceScoredAt'); let j = null; try { j = JSON.parse(aliasVal(c, 'messagingRelevanceJson') || 'null'); } catch (e) {}
+    if (!at || !j || typeof j.score !== 'number') return; const k = String(at).slice(0, 7); const x = rel[k] = rel[k] || { month: k, n: 0, sum: 0 }; x.n += 1; x.sum += j.score; relCount += 1; });
+  const relevance = Object.values(rel).sort((a, b) => a.month.localeCompare(b.month)).slice(-12).map(x => ({ month: x.month, campaigns: x.n, avgScore: Math.round(x.sum / x.n) }));
+  return { asOf: asOfDate.toISOString().slice(0, 10), window: { from: win[0], to: win[win.length - 1], months: win.length }, costPerEngagement: { trend: hasTrend ? trend : [], latest: hasTrend ? trend.filter(t => t.costPerEngagement != null).slice(-1)[0] : null },
+    offers: offerRows, creativeFocus: focusRows, relevance: { trend: relevance, scoredCampaigns: relCount },
+    coverage: { digitalPerformanceRows: dp.length, offerRows: Object.keys(offers).length, guestBookingFocus: focusRows.length } };
+}
+
+
+// ---- Growth & Performance dashboard (2026-09-30): Performance and Lifecycle views ----
+function buildGrowthPerformance(accountId, opts){
+  const asOfDate = opts.asOf || new Date(); const months = Math.max(3, Math.min(24, Number(opts.months) || 12));
+  const key = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
+  const dp = db.prepare("SELECT * FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").all(accountId).map(r => ({ k: key(r.year, r.month), channel: aliasVal(r, 'channel'), impressions: Number(r.impressions) || 0, clicks: Number(r.clicks) || 0, spend: Number(r.spend) || 0, leads: Number(r.leads) || 0, calls: Number(r.calls) || 0 }));
+  const users = db.prepare('SELECT year, month, users FROM account_website_users_monthly WHERE accountId = ?').all(accountId).map(r => ({ k: key(r.year, r.month), users: Number(r.users) || 0 }));
+  const leadRows = db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId).map(r => ({ k: key(r.year, r.month), type: String(aliasVal(r, 'leadType') || '') === 'Registration' ? 'Growth' : String(aliasVal(r, 'leadType') || 'Other'), count: Number(r.count) || 0, bookings: Number(r.bookings) || 0, days: aliasVal(r, 'avgDaysToConvert') }));
+  const latestAll = dp.map(r => r.k).concat(users.map(r => r.k)).concat(leadRows.map(r => r.k)).sort().pop() || null;
+  const win = storyWindowEndingAtData(asOfDate, months, latestAll); const wset = new Set(win); const pset = new Set(win.map(k => storyShiftYear(k, -1)));
+  const sum = (rows, set, f) => rows.filter(r => set.has(r.k)).reduce((n, r) => n + r[f], 0);
+  const has = (rows, set) => rows.some(r => set.has(r.k));
+  const perfTot = set => has(dp, set) ? { impressions: sum(dp, set, 'impressions'), clicks: sum(dp, set, 'clicks'), spend: sum(dp, set, 'spend'), leads: sum(dp, set, 'leads'), calls: sum(dp, set, 'calls'), visits: has(users, set) ? sum(users, set, 'users') : null } : null;
+  const fin = t => t && Object.assign({}, t, { cpl: t.leads ? Math.round((t.spend / t.leads) * 100) / 100 : null, cpCall: t.calls ? Math.round((t.spend / t.calls) * 100) / 100 : null, cpv: t.visits ? Math.round((t.spend / t.visits) * 100) / 100 : null, ctr: t.impressions ? Math.round((t.clicks / t.impressions) * 10000) / 100 : null });
+  const chan = {}; dp.filter(r => wset.has(r.k)).forEach(r => { const c = chan[r.channel] = chan[r.channel] || { channel: r.channel, impressions: 0, clicks: 0, spend: 0, leads: 0, calls: 0 }; ['impressions','clicks','spend','leads','calls'].forEach(f => { c[f] += r[f]; }); });
+  const channels = Object.values(chan).map(fin).sort((a, b) => b.spend - a.spend);
+  const gpKeys = new Set(dp.map(r => r.k)); const gpIdx = win.filter(k => gpKeys.has(k) && gpKeys.has(storyShiftYear(k, -1))); const gpUse = gpIdx.length >= 3;
+  const trend = win.map(k => ({ month: k, impressions: sum(dp, new Set([k]), 'impressions'), visits: users.some(u => u.k === k) ? sum(users, new Set([k]), 'users') : null, leads: sum(dp, new Set([k]), 'leads'), spend: sum(dp, new Set([k]), 'spend') }));
+  // Lifecycle
+  const l = { leads: 0, bookings: 0, wd: 0, wn: 0 }; const byType = {}; const byMonth = {};
+  leadRows.filter(r => wset.has(r.k)).forEach(r => { l.leads += r.count; l.bookings += r.bookings; if (r.days != null && r.bookings > 0){ l.wd += Number(r.days) * r.bookings; l.wn += r.bookings; }
+    const t = byType[r.type] = byType[r.type] || { leadType: r.type, leads: 0, bookings: 0, wd: 0, wn: 0 }; t.leads += r.count; t.bookings += r.bookings; if (r.days != null && r.bookings > 0){ t.wd += Number(r.days) * r.bookings; t.wn += r.bookings; }
+    const m = byMonth[r.k] = byMonth[r.k] || { month: r.k, leads: 0, bookings: 0 }; m.leads += r.count; m.bookings += r.bookings; });
+  const typeRows = Object.values(byType).map(t => ({ leadType: t.leadType, leads: t.leads, bookings: t.bookings, ratePct: t.leads ? Math.round((t.bookings / t.leads) * 1000) / 10 : null, avgDaysToConvert: t.wn ? Math.round(t.wd / t.wn) : null }));
+  const monthRows = win.map(k => { const m = byMonth[k]; return { month: k, leads: m ? m.leads : null, bookings: m ? m.bookings : null, ratePct: m && m.leads ? Math.round((m.bookings / m.leads) * 1000) / 10 : null }; });
+  const pg = {}; let pgTotal = 0; const tx = storyTxnRows(accountId);
+  tx.rows.forEach(r => { const k = key(r.year, r.month); if (!wset.has(k)) return; const g = String(r.productGroup || 'Unassigned') || 'Unassigned'; pg[g] = (pg[g] || 0) + (Number(r.revenue) || 0); pgTotal += Number(r.revenue) || 0; });
+  const pgRows = Object.keys(pg).map(g => ({ productGroup: g, revenue: Math.round(pg[g]), sharePct: pgTotal ? Math.round((pg[g] / pgTotal) * 1000) / 10 : null })).sort((a, b) => b.revenue - a.revenue).slice(0, 10);
+  return { asOf: asOfDate.toISOString().slice(0, 10), window: { from: win[0], to: win[win.length - 1], months: win.length },
+    performance: { totals: fin(perfTot(wset)), priorYear: gpUse ? fin(perfTot(new Set(gpIdx.map(k => storyShiftYear(k, -1))))) : null, currentMatched: gpUse ? fin(perfTot(new Set(gpIdx))) : null, comparedMonths: gpUse ? gpIdx.length : 0, channels, trend: trend.some(t => t.impressions || t.visits || t.leads) ? trend : [] },
+    lifecycle: { leadToBooking: l.leads ? { leads: l.leads, bookings: l.bookings, ratePct: Math.round((l.bookings / l.leads) * 1000) / 10, avgDaysToConvert: l.wn ? Math.round(l.wd / l.wn) : null } : null, byType: typeRows, byMonth: monthRows.some(m => m.leads != null) ? monthRows : [], revenueByProductGroup: pgRows, revenueSource: tx.source || null },
+    coverage: { digitalPerformanceRows: dp.length, websiteUserRows: users.length, leadCountRows: leadRows.length, transactionRows: tx.rows.length } };
 }
 
 function maybeSnapshotForecastCalibration(accountId, cal, actor){
@@ -23606,7 +23694,7 @@ async function handleRequest(req, res) {
     // GET /api/accounts/:id/analytics/(story|forecast-vs-target|price-volume|audience-growth)
     // 2026-09-30 — the Strategy dashboard's data (see buildStory* above).
     // Read-only; portal session required. Query: months, dim, productGroup, asOf (YYYY-MM, testing).
-    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'analytics' && ['story', 'forecast-vs-target', 'price-volume', 'audience-growth', 'media-science'].includes(parts[4])){
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'analytics' && ['story', 'forecast-vs-target', 'price-volume', 'audience-growth', 'media-science', 'creative-media', 'growth-performance'].includes(parts[4])){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       const qs = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries());
@@ -23616,6 +23704,8 @@ async function handleRequest(req, res) {
           : parts[4] === 'forecast-vs-target' ? buildStoryForecastVsTarget(accountId, opts)
           : parts[4] === 'price-volume' ? buildStoryPriceVolume(accountId, opts)
           : parts[4] === 'media-science' ? buildMediaScience(accountId, opts)
+          : parts[4] === 'creative-media' ? buildCreativeMedia(accountId, opts)
+          : parts[4] === 'growth-performance' ? buildGrowthPerformance(accountId, opts)
           : buildStoryAudienceGrowth(accountId, opts);
         return sendJson(res, 200, data);
       } catch (e){ console.warn('[analytics/' + parts[4] + '] failed:', e.message); return sendJson(res, 500, { error: 'could not build ' + parts[4] }); }
