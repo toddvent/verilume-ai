@@ -12519,7 +12519,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-30-braindump-c';
+const CXMEDIA_BUILD_STAMP = '2026-09-30-braindump-d';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -23079,7 +23079,7 @@ const BD_SECTIONS = [
 function bdWeekLabel(ws){ if (!ws) return ''; const [y, m, d] = ws.split('-').map(Number); return `${['January','February','March','April','May','June','July','August','September','October','November','December'][m - 1]} ${d}, ${y}`; }
 async function bdApi(path, opts){
   const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brain-dump${path}`, opts);
-  if (!resp.ok) throw new Error(String(resp.status));
+  if (!resp.ok){ const err = new Error(String(resp.status)); try { const j = await resp.json(); err.detail = j && j.detail; } catch (e){} throw err; }
   return resp.json();
 }
 async function bdLoad(){
@@ -23097,7 +23097,7 @@ async function bdRun(){
   bd.running = true; bd.runError = ''; bd.runStart = Date.now(); bdRender();
   const tick = setInterval(() => { const el = document.getElementById('bdRunElapsed'); if (el) el.textContent = Math.round((Date.now() - bd.runStart) / 1000) + 's'; }, 1000);
   let failed = '';
-  try { await bdApi('', { method: 'POST' }); } catch (e){ failed = String(e && e.message || 'network'); }
+  try { await bdApi('', { method: 'POST' }); } catch (e){ failed = String(e && e.message || 'network'); bd.runDetail = e && e.detail || ''; }
   // A dropped or timed-out connection does not mean the run stopped, so keep checking for the posted edition for up to two minutes.
   const t0 = Date.now();
   let posted = false;
@@ -23108,7 +23108,7 @@ async function bdRun(){
   }
   clearInterval(tick);
   bd.running = false;
-  if (!posted) bd.runError = failed === '404' || failed === '405' ? 'The server does not have the Brain Dump run endpoint yet. Upload the latest server.js and try again.' : failed ? `The run did not finish (${failed}). Give it a minute and try again; if it keeps failing, check the server logs.` : 'The run finished but no edition was posted. Try again.';
+  if (!posted) bd.runError = failed === '404' || failed === '405' ? 'The server does not have the Brain Dump run endpoint yet. Upload the latest server.js and try again.' : failed ? `The run did not finish (${failed}). Give it a minute and try again; if it keeps failing, check the server logs.${bd.runDetail ? ' Server said: ' + bd.runDetail : ''}` : 'The run finished but no edition was posted. Try again.';
   await bdLoad();
 }
 function bdLinkHtml(l){ const act = l.tab ? `switchPrimaryTab('${l.tab}')` : `goToStep('${l.step}')`; return `<a class="flink" onclick="${act}">${escapeHtml(l.label)} →</a>`; }
