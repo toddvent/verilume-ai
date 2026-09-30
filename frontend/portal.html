@@ -41935,27 +41935,65 @@ function onUtmPlatformChange(){
 // feature was built for.
 async function generateUtmQrCode(){
   const input = document.getElementById('utmBuilderLinkOutput');
-  const status = document.getElementById('utmQrStatus');
-  const holder = document.getElementById('utmQrHolder');
   if (!input || !input.value) return;
+  const jobSel = document.getElementById('utmBuilderCreativeJob');
+  await utmShortQr({ url: input.value, campaignId: currentCampaignId, jobId: jobSel ? jobSel.value : '', statusEl: document.getElementById('utmQrStatus'), holderEl: document.getElementById('utmQrHolder'), filename: `qr-${jobSel && jobSel.value ? jobSel.value : (currentCampaignId || 'campaign')}` });
+}
+
+// ----- Short link + QR (2026-09-30) -----
+// A QR code encodes a short address we own (/r/CODE) that redirects to the full tracking link. That keeps the
+// code sparse so it scans at small print sizes, lets the destination be corrected after printing, and counts
+// visits. A creative job keeps one short code for life: rebuilding its link updates where the code points.
+async function utmShortQr(o){
+  const status = o.statusEl, holder = o.holderEl;
   if (status) status.textContent = 'Generating…';
+  let target = o.url, shortUrl = '', note = '';
+  if (dataSourceLabel === 'backend' && state.companyId){
+    try {
+      const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/short-links`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: o.url, campaignId: o.campaignId || '', jobId: o.jobId || '' })
+      });
+      if (r.ok){ const d = await r.json(); target = d.qrUrl; shortUrl = d.shortUrl; note = d.updated ? 'This job already had a short link, so it now points at the rebuilt tracking link. A QR code you have already printed keeps working.' : ''; }
+      else { const e = await r.json().catch(() => ({})); note = `Short link not created (${e.error || r.statusText}), so the QR encodes the full link.`; }
+    } catch (e){ note = 'Short link service unreachable, so the QR encodes the full link.'; }
+  } else {
+    note = 'No backend connection, so the QR encodes the full link.';
+  }
   try {
-    const resp = await fetch(`${BACKEND_URL}/api/qr`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data: input.value })
-    });
-    if (!resp.ok){
-      const err = await resp.json().catch(() => ({}));
-      if (status) status.textContent = `Couldn't generate a QR code: ${err.error || resp.statusText}`;
-      return;
-    }
-    const data = await resp.json();
-    if (holder) holder.innerHTML = `<img src="${data.dataUrl}" alt="QR code for this tracking link" style="width:180px;height:180px;border:1px solid var(--line);border-radius:4px;padding:8px;background:var(--white);">
-      <div style="margin-top:6px;"><a href="${data.dataUrl}" download="qr-${(currentCampaignId || 'campaign')}.png" class="btn-ghost" style="text-decoration:none;display:inline-block;padding:6px 12px;font-size:0.75rem;">Download QR →</a></div>`;
-    if (status) status.textContent = `Generated ${new Date().toLocaleTimeString()}.`;
+    const [png, svg] = await Promise.all([
+      fetch(`${BACKEND_URL}/api/qr`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: target }) }),
+      fetch(`${BACKEND_URL}/api/qr`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: target, format: 'svg' }) })
+    ]);
+    if (!png.ok){ const err = await png.json().catch(() => ({})); if (status) status.textContent = `Couldn't generate a QR code: ${err.error || png.statusText}`; return; }
+    const pd = await png.json();
+    const sd = svg.ok ? await svg.json() : null;
+    const svgHref = sd && sd.svg ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(sd.svg)}` : '';
+    const idKey = String(o.filename || 'qr').replace(/[^A-Za-z0-9_-]/g, '');
+    if (holder) holder.innerHTML = `${shortUrl ? `<div class="field" style="margin-bottom:8px;max-width:420px;"><label>Short link (what the QR code opens)</label><input type="text" readonly value="${escapeHtml(shortUrl)}" onclick="this.select()"></div>` : ''}
+      <img src="${pd.dataUrl}" alt="QR code for this tracking link" style="width:180px;height:180px;border:1px solid var(--line);border-radius:4px;padding:8px;background:var(--white);">
+      <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">
+        <a href="${pd.dataUrl}" download="${idKey}.png" class="btn-ghost" style="text-decoration:none;display:inline-block;padding:6px 12px;font-size:0.75rem;">Download PNG →</a>
+        ${svgHref ? `<a href="${svgHref}" download="${idKey}.svg" class="btn-ghost" style="text-decoration:none;display:inline-block;padding:6px 12px;font-size:0.75rem;">Download SVG for print →</a>` : ''}
+      </div>
+      <div class="hint" style="margin-top:6px;">Use the SVG for print: it stays sharp at any size. Leave a blank border of at least four squares around the code.</div>
+      ${shortUrl ? `<div class="hint" id="utmShortCounts_${idKey}" style="margin-top:4px;"></div>` : ''}`;
+    if (status) status.textContent = `Generated ${new Date().toLocaleTimeString()}.${note ? ' ' + note : ''}`;
+    if (shortUrl) utmLoadShortCounts(o.campaignId, o.jobId, `utmShortCounts_${idKey}`);
   } catch (e){
     if (status) status.textContent = 'Backend unreachable — could not generate a QR code.';
   }
+}
+async function utmLoadShortCounts(campaignId, jobId, elId){
+  const el = document.getElementById(elId);
+  if (!el || !campaignId) return;
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/short-links?campaignId=${encodeURIComponent(campaignId)}`);
+    if (!r.ok) return;
+    const d = await r.json();
+    const row = (d.links || []).find(l => !jobId || l.jobId === jobId);
+    if (row) el.textContent = `${row.scans} QR scan${row.scans === 1 ? '' : 's'} and ${Math.max(0, row.clicks - row.scans)} other visit${row.clicks - row.scans === 1 ? '' : 's'} through this short link so far. These count people who reached the redirect, not website sessions.`;
+  } catch (e){ /* counts are a nice-to-have */ }
 }
 
 // Round 12, point 5 — replaces manual Campaign-ID entry with a one-click
@@ -44661,6 +44699,7 @@ async function cmpTraffickingBuildCampaignLinks(){
   resultEl.innerHTML = `<p class="hint">Building ${jobs.length} tracking link${jobs.length === 1 ? '' : 's'}…</p>`;
   let okCount = 0;
   const jobWarnings = [];
+  let offlineCount = 0;
   for (const job of jobs){
     const channelText = job.channel || campaignChannelText;
     // Same builder as the single-link screen, so the two can no longer drift apart.
@@ -44668,6 +44707,7 @@ async function cmpTraffickingBuildCampaignLinks(){
     const sug = utmAutoInsertSuggestions(pre.vendor, pre.medium);
     const built = utmBuildTrackedLink({ baseUrl, campaign, job, channelText, elements, vendorSlug: '', contactId: !!(state.utmAutoContactIdEnabled && sug.contactId), gclid: !!(state.utmAutoGclidEnabled && sug.gclid) });
     const finalUrl = built.url;
+    if (UTM_OFFLINE_MEDIUMS.includes(built.medium)) offlineCount++;
     const notes = built.warnings.filter(w => !w.startsWith('Removed '));
     if (notes.length || !built.prediction.ga4.pass && utmUsesGa4() || !built.prediction.adobe.pass && utmUsesAdobe()) jobWarnings.push({ id: job.id, notes: notes.concat(utmUsesGa4() && !built.prediction.ga4.pass ? [built.prediction.ga4.note] : [], utmUsesAdobe() && !built.prediction.adobe.pass ? [built.prediction.adobe.note] : []) });
     try {
@@ -44678,7 +44718,9 @@ async function cmpTraffickingBuildCampaignLinks(){
       if (resp.ok){ job.trackingUrl = finalUrl; okCount++; }
     } catch (e){ /* best-effort per job — reflected in the warning below */ }
   }
-  resultEl.innerHTML = (jobWarnings.length ? `<div class="hint" style="margin-bottom:10px;"><strong>${jobWarnings.length} link${jobWarnings.length === 1 ? '' : 's'} need${jobWarnings.length === 1 ? 's' : ''} a look before trafficking.</strong>${jobWarnings.map(w => `<div style="margin-top:4px;">${escapeHtml(w.id)}: ${w.notes.map(escapeHtml).join(' ')}</div>`).join('')}</div>` : '')
+  const offlineNote = (offlineCount && utmUsesGa4() && !state.utmGa4CustomGroup)
+    ? `<div class="hint" style="margin-bottom:10px;"><strong>${offlineCount} offline link${offlineCount === 1 ? '' : 's'} (print, direct mail, radio and similar).</strong> GA4 has no default channel for offline media, so this traffic shows as Unassigned until the custom channel group is added. <a onclick="goToStep('analyticsSetup')" style="cursor:pointer;">Copy the rules from Analytics Integrations →</a></div>` : '';
+  resultEl.innerHTML = offlineNote + (jobWarnings.length ? `<div class="hint" style="margin-bottom:10px;"><strong>${jobWarnings.length} link${jobWarnings.length === 1 ? '' : 's'} need${jobWarnings.length === 1 ? 's' : ''} a look before trafficking.</strong>${jobWarnings.map(w => `<div style="margin-top:4px;">${escapeHtml(w.id)}: ${w.notes.map(escapeHtml).join(' ')}</div>`).join('')}</div>` : '')
     + jobs.filter(j => j.trackingUrl).map(job => cmpTraffickingLinkRowHtml(job)).join('')
     + (okCount < jobs.length ? `<p class="hint" style="color:#8A5A0A;margin-top:4px;">⚠ Couldn't build a link for ${jobs.length - okCount} asset${jobs.length - okCount === 1 ? '' : 's'} — check your connection and try again.</p>` : '');
   const statEl = document.getElementById('cmpTraffickingAssetsUsingLinkStat');
@@ -44696,27 +44738,8 @@ function cmpTraffickingCopyLink(jobId){
 }
 async function cmpTraffickingGenerateQr(jobId){
   const input = document.getElementById(`cmpTraffickingLinkOutput_${jobId}`);
-  const status = document.getElementById(`cmpTraffickingQrStatus_${jobId}`);
-  const holder = document.getElementById(`cmpTraffickingQrHolder_${jobId}`);
   if (!input || !input.value) return;
-  if (status) status.textContent = 'Generating…';
-  try {
-    const resp = await fetch(`${BACKEND_URL}/api/qr`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data: input.value })
-    });
-    if (!resp.ok){
-      const err = await resp.json().catch(() => ({}));
-      if (status) status.textContent = `Couldn't generate a QR code: ${err.error || resp.statusText}`;
-      return;
-    }
-    const data = await resp.json();
-    if (holder) holder.innerHTML = `<img src="${data.dataUrl}" alt="QR code for this tracking link" style="width:150px;height:150px;border:1px solid var(--line);border-radius:4px;padding:8px;background:var(--white);">
-      <div style="margin-top:6px;"><a href="${data.dataUrl}" download="qr-${(jobId || currentCampaignId || 'campaign')}.png" class="btn-ghost" style="text-decoration:none;display:inline-block;padding:6px 12px;font-size:0.75rem;">Download QR →</a></div>`;
-    if (status) status.textContent = `Generated ${new Date().toLocaleTimeString()}.`;
-  } catch (e){
-    if (status) status.textContent = 'Backend unreachable — could not generate a QR code.';
-  }
+  await utmShortQr({ url: input.value, campaignId: currentCampaignId, jobId, statusEl: document.getElementById(`cmpTraffickingQrStatus_${jobId}`), holderEl: document.getElementById(`cmpTraffickingQrHolder_${jobId}`), filename: `qr-${jobId}` });
 }
 // Wraps the real cmpRunUtmLinkTest() (defined above, still the single real
 // implementation/endpoint) so this workspace's own stat block refreshes too
