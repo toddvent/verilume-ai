@@ -412,7 +412,7 @@ async function insertLoginMfaVerificationViaPg(pool, member, channel, target, se
   }
   await pool.query(
     `INSERT INTO phone_verifications
-      (id, "memberId", phone, purpose, "codeHash", "codeSalt", provider, channel, createdAt, "expiresAt")
+      (id, "memberId", phone, purpose, "codeHash", "codeSalt", provider, channel, "createdAt", "expiresAt")
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
     [verificationId, member.id, target, 'login-mfa', codeHash, codeSalt, sendResult.provider, channel, now.toISOString(), expiresAt]
   );
@@ -20908,7 +20908,7 @@ async function handleRequest(req, res) {
       try {
         if (useAsyncPg){
           const r = await getAuthPgPool().query(
-            'SELECT id, "accountId", name, "passwordHash", "passwordSalt", "mustChangePassword", status, phone, email, "isAdmin" FROM team_members WHERE lower(email) = lower($1) ORDER BY createdAt DESC LIMIT 1',
+            'SELECT id, "accountId", name, "passwordHash", "passwordSalt", "mustChangePassword", status, phone, email, "isAdmin" FROM team_members WHERE lower(email) = lower($1) ORDER BY "createdAt" DESC LIMIT 1',
             [body.email]
           );
           member = r.rows[0];
@@ -20946,7 +20946,7 @@ async function handleRequest(req, res) {
             const now = new Date();
             const expiresAt = new Date(now.getTime() + SESSION_LIFETIME_MS).toISOString();
             await getAuthPgPool().query(
-              'INSERT INTO sessions (token, "accountId", "memberId", createdAt, "expiresAt") VALUES ($1,$2,$3,$4,$5)',
+              'INSERT INTO sessions (token, "accountId", "memberId", "createdAt", "expiresAt") VALUES ($1,$2,$3,$4,$5)',
               [token, member.accountId, member.id || null, now.toISOString(), expiresAt]
             );
             session = { token, expiresAt };
@@ -21047,7 +21047,7 @@ async function handleRequest(req, res) {
       try {
         if (useAsyncPg){
           const r = await getAuthPgPool().query(
-            `SELECT COUNT(*) AS c FROM phone_verifications WHERE phone = $1 AND purpose = 'login-mfa' AND createdAt > $2`,
+            `SELECT COUNT(*) AS c FROM phone_verifications WHERE phone = $1 AND purpose = 'login-mfa' AND "createdAt" > $2`,
             [target, oneHourAgo]
           );
           recentCount = r.rows[0];
@@ -21201,7 +21201,7 @@ async function handleRequest(req, res) {
           const now = new Date();
           const expiresAt = new Date(now.getTime() + SESSION_LIFETIME_MS).toISOString();
           await getAuthPgPool().query(
-            'INSERT INTO sessions (token, "accountId", "memberId", createdAt, "expiresAt") VALUES ($1,$2,$3,$4,$5)',
+            'INSERT INTO sessions (token, "accountId", "memberId", "createdAt", "expiresAt") VALUES ($1,$2,$3,$4,$5)',
             [token, member.accountId, member.id || null, now.toISOString(), expiresAt]
           );
           session = { token, expiresAt };
@@ -21231,7 +21231,7 @@ async function handleRequest(req, res) {
             const now = new Date();
             const dExpiresAt = new Date(now.getTime() + DEVICE_TRUST_LIFETIME_MS).toISOString();
             await getAuthPgPool().query(
-              'INSERT INTO trusted_devices (token, "memberId", createdAt, "expiresAt", "lastUsedAt") VALUES ($1,$2,$3,$4,$5)',
+              'INSERT INTO trusted_devices (token, "memberId", "createdAt", "expiresAt", "lastUsedAt") VALUES ($1,$2,$3,$4,$5)',
               [dToken, member.id, now.toISOString(), dExpiresAt, now.toISOString()]
             );
             device = { token: dToken, expiresAt: dExpiresAt };
