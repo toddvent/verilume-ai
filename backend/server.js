@@ -15066,9 +15066,38 @@ const DATA_CATALOG = [
   { key: 'writing', label: 'Writing samples', table: 'brand_writing_samples', period: null, dashboard: 'Customer Experiences', grain: 'document', kind: 'manual', keywords: ['voice', 'samples', 'style', 'copy'], usedBy: ['copywriting'], status: 'current' },
   { key: 'warehouse_leads', label: 'Warehouse leads (Snowflake)', table: 'warehouse_leads', period: null, dashboard: 'Media Science', grain: 'lead', kind: 'integration', keywords: ['snowflake', 'lead level', 'warehouse'], usedBy: ['forecast', 'ask'], status: 'current' },
   { key: 'warehouse_bookings', label: 'Warehouse bookings (Snowflake)', table: 'warehouse_bookings', period: null, dashboard: 'Media Science', grain: 'booking', kind: 'integration', keywords: ['snowflake', 'bookings', 'warehouse'], usedBy: ['forecast', 'ask'], status: 'current' },
-  { key: 'warehouse_calls', label: 'Warehouse calls (Snowflake)', table: 'warehouse_calls', period: null, dashboard: 'Media Science', grain: 'call', kind: 'integration', keywords: ['snowflake', 'calls', 'warehouse'], usedBy: ['forecast', 'ask'], status: 'current' }
+  { key: 'warehouse_calls', label: 'Warehouse calls (Snowflake)', table: 'warehouse_calls', period: null, dashboard: 'Media Science', grain: 'call', kind: 'integration', keywords: ['snowflake', 'calls', 'warehouse'], usedBy: ['forecast', 'ask'], status: 'current' },
+  { key: 'media_plans', label: 'Media plans', table: 'media_plans', period: null, dashboard: 'Strategy', grain: 'plan by year and version', kind: 'manual', keywords: ['media plan','plan','agency plan','flighting'], usedBy: ['forecast', 'ask'], status: 'current' },
+  { key: 'year_results', label: 'Prior-year results', table: 'account_year_results', period: null, dashboard: 'Strategy', grain: 'year', kind: 'manual', keywords: ['results','last year','history','baseline'], usedBy: ['forecast', 'ask'], status: 'current' },
+  { key: 'demand_fulfillment', label: 'Demand fulfillment', table: 'account_demand_fulfillment', period: null, dashboard: 'Strategy', grain: 'month', kind: 'manual', keywords: ['capacity','fulfillment','inventory','demand'], usedBy: ['forecast'], status: 'current' },
+  { key: 'marketable_sizes', label: 'Marketable audience sizes', table: 'account_marketable_sizes', period: null, dashboard: 'Strategy', grain: 'audience type', kind: 'manual', keywords: ['audience size','marketable','addressable'], usedBy: ['forecast', 'ask'], status: 'current' },
+  { key: 'dm_cost_per_piece', label: 'Direct mail cost per piece', table: 'account_dm_cost_per_piece', period: null, dashboard: 'Growth & Performance', grain: 'format', kind: 'manual', keywords: ['direct mail','print cost','cost per piece'], usedBy: ['forecast'], status: 'current' },
+  { key: 'dm_format_cost', label: 'Direct mail format costs', table: 'account_dm_format_cost', period: null, dashboard: 'Growth & Performance', grain: 'format', kind: 'manual', keywords: ['direct mail','format','postage'], usedBy: ['forecast'], status: 'current' },
+  { key: 'magazine_cost', label: 'Magazine costs', table: 'account_magazine_cost', period: null, dashboard: 'Growth & Performance', grain: 'title', kind: 'manual', keywords: ['magazine','print','rate card'], usedBy: ['forecast'], status: 'current' },
+  { key: 'stores', label: 'Store locations', table: 'account_stores', period: null, dashboard: 'Growth & Performance', grain: 'store', kind: 'manual', keywords: ['stores','locations','trade area','address'], usedBy: ['ask'], status: 'current' },
+  { key: 'website_examples', label: 'Website examples', table: 'brand_copy_website_examples', period: null, dashboard: 'Customer Experiences', grain: 'page', kind: 'manual', keywords: ['website','pages','copy examples','sitemap'], usedBy: ['copywriting'], status: 'current' },
+  { key: 'copy_library', label: 'Copy library', table: 'copy_library', period: null, dashboard: 'Customer Experiences', grain: 'copy block', kind: 'manual', keywords: ['copy','library','approved copy','headline'], usedBy: ['copywriting', 'ask'], status: 'current' },
+  { key: 'creative_collections', label: 'Creative collections', table: 'creative_collections', period: null, dashboard: 'Customer Experiences', grain: 'collection', kind: 'manual', keywords: ['creative','assets','collection','images'], usedBy: ['ask'], status: 'current' },
+  { key: 'creative_jobs', label: 'Creative jobs', table: 'creative_jobs', period: null, dashboard: 'Customer Experiences', grain: 'job', kind: 'manual', keywords: ['creative job','brief','trafficking','approval'], usedBy: ['ask', 'brain dump'], status: 'current' },
+  { key: 'press_releases', label: 'Press releases', table: 'press_releases', period: null, dashboard: 'Customer Experiences', grain: 'document', kind: 'manual', keywords: ['pr','press release','news'], usedBy: ['copywriting', 'ask'], status: 'current' },
+  { key: 'editorial_pitches', label: 'Editorial pitches', table: 'editorial_pitches', period: null, dashboard: 'Customer Experiences', grain: 'document', kind: 'manual', keywords: ['pitch','editorial','media relations'], usedBy: ['copywriting'], status: 'current' },
+  { key: 'corporate_comms', label: 'Corporate communications', table: 'corporate_comms', period: null, dashboard: 'Customer Experiences', grain: 'document', kind: 'manual', keywords: ['corporate comms','announcement','statement'], usedBy: ['copywriting'], status: 'current' },
+  { key: 'mmm_inputs', label: 'Media mix model inputs', table: 'mmm_inputs', period: null, dashboard: 'Media Science', grain: 'period by category', kind: 'manual', keywords: ['mmm','media mix','adstock','model inputs'], usedBy: ['forecast', 'ask'], status: 'current' }
 ];
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
+// Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
+const CATALOG_EXEMPT = new Set(['accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings']);
+// Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
+function catalogCoverage(){
+  let tables = [];
+  try { tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map(r => r.name).filter(n => { try { return db.prepare(`SELECT name FROM pragma_table_info('${n}')`).all().some(c => String(c.name).toLowerCase() === 'accountid'); } catch (e) { return false; } }); }
+  catch (e) {
+    try { tables = db.prepare("SELECT DISTINCT table_name AS name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'accountid'").all().map(r => r.name); } catch (e2) { return null; }
+  }
+  const known = new Set(DATA_CATALOG.map(c => c.table));
+  return tables.filter(t => !known.has(t) && !CATALOG_EXEMPT.has(t)).sort();
+}
+try { const gap = catalogCoverage(); if (gap && gap.length) console.warn('[data-catalog] tables with an accountId but no catalog entry or exemption:', gap.join(', ')); } catch (e) {}
 function buildTrainTheBrain(accountId){
   const cnt = (sql, ...a) => { try { const r = db.prepare(sql).get(...a); return Number(r && (r.n !== undefined ? r.n : Object.values(r)[0])) || 0; } catch (e) { return 0; } };
   let acct = null; try { acct = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId); } catch (e) {}
@@ -15083,7 +15112,7 @@ function buildTrainTheBrain(accountId){
   const yes = v => !!(v && v !== '0' && v !== 0);
   const steps = [
     { key: 'company', title: 'Your company', minutes: 2, gain: 'Everything else reads from this: what you sell, who you sell to, and how you look.', items: [
-      { label: 'Company profile', done: !!(websiteUrl && (A('assessmentDescription') || A('websiteContextJson') || A('onboardingIndustryCode'))), gain: 'Add your website and the Brain reads it to fill in the profile.', step: 'companyProfile' },
+      { label: 'Company profile', done: !!(websiteUrl && (A('assessmentDescription') || A('websiteContextJson') || A('onboardingIndustryCode') || cnt("SELECT COUNT(*) AS n FROM ai_brain_contributions WHERE accountId = ? AND sourceType = 'website_scan'", accountId) > 0)), gain: 'Add your website and the Brain reads it to fill in the profile.', step: 'companyProfile' },
       { label: 'Style guide: colors and fonts', done: yes(A('styleAssetsApproved')), gain: 'Keeps every draft and creative on brand.', step: 'styleAssets' },
       { label: 'Website examples', done: examples > 0, gain: 'Real pages from your site become copy examples.', step: 'websiteExamples' },
       { label: 'Competitive positioning', done: yes(A('competitivePositioningApproved')), gain: 'Sets who you are measured against. Ongoing tracking lives in Strategy.', step: 'competitivePositioning' } ] },
@@ -15108,6 +15137,14 @@ function buildTrainTheBrain(accountId){
       return { what: lab[0], dashboard: lab[1], action: verb, reason: r.reason || null, at: aliasVal(r, 'decidedAt') || aliasVal(r, 'createdAt') };
     });
   } catch (e) {}
+  // Decisions made on other dashboards, folded into the same feed.
+  const push = (sql, map) => { try { db.prepare(sql).all(accountId).forEach(r => { const m = map(r); if (m && m.at) learnings.push(m); }); } catch (e) {} };
+  push('SELECT approved, reason, decidedAt FROM creative_job_decisions WHERE accountId = ? ORDER BY decidedAt DESC LIMIT 20', r => ({ what: 'Creative job', dashboard: 'Customer Experiences', action: Number(r.approved) ? 'Approved' : 'Sent back', reason: r.reason || null, at: aliasVal(r, 'decidedAt') }));
+  push('SELECT docType, approved, reason, decidedAt FROM pr_corp_comm_decisions WHERE accountId = ? ORDER BY decidedAt DESC LIMIT 20', r => ({ what: `PR and corporate comms (${String(aliasVal(r, 'docType') || 'document').replace(/_/g, ' ')})`, dashboard: 'Customer Experiences', action: Number(r.approved) ? 'Approved' : 'Sent back', reason: r.reason || null, at: aliasVal(r, 'decidedAt') }));
+  push('SELECT category, status, reason, decidedAt FROM mmm_adstock_lag_decision_log WHERE accountId = ? ORDER BY decidedAt DESC LIMIT 20', r => ({ what: `Media model timing for ${r.category}`, dashboard: 'Media Science', action: String(r.status || 'Recorded').replace(/^./, c => c.toUpperCase()), reason: r.reason || null, at: aliasVal(r, 'decidedAt') }));
+  push('SELECT selectedAt, feedbackNote FROM account_voice_interviews WHERE accountId = ? AND selectedCandidateKey IS NOT NULL ORDER BY selectedAt DESC LIMIT 20', r => ({ what: 'Voice contest winner', dashboard: 'Customer Experiences', action: 'Picked', reason: aliasVal(r, 'feedbackNote') || null, at: aliasVal(r, 'selectedAt') }));
+  push('SELECT selectedAt FROM campaign_copy_interviews WHERE accountId = ? AND selectedCandidateKey IS NOT NULL ORDER BY selectedAt DESC LIMIT 20', r => ({ what: 'Campaign copy winner', dashboard: 'Customer Experiences', action: 'Picked', reason: null, at: aliasVal(r, 'selectedAt') }));
+  learnings.sort((a, b) => String(b.at).localeCompare(String(a.at))); learnings = learnings.slice(0, 40);
   // Data consumed: row counts and latest period for each catalog entry, from the account's own tables.
   const consumed = DATA_CATALOG.map(c => {
     const rows = cnt(`SELECT COUNT(*) AS n FROM ${c.table} WHERE accountId = ?`, accountId);
@@ -15117,7 +15154,9 @@ function buildTrainTheBrain(accountId){
     else if (rows && c.period === 'period'){ try { const r = db.prepare(`SELECT period FROM ${c.table} WHERE accountId = ? AND period <> 'current' ORDER BY period DESC LIMIT 1`).get(accountId); if (r) latest = String(r.period); } catch (e) {} }
     return { key: c.key, label: c.label, dashboard: c.dashboard, grain: c.grain, kind: c.kind, keywords: c.keywords, usedBy: c.usedBy, status: c.status, rows, latest };
   });
-  return { setup: { steps, remainingMinutes, doneCount: steps.filter(s => s.done).length, total: steps.length }, learnings, consumed, syncedAt: A('analyticsSnowflakeLastSyncAt') || null };
+  let uncataloged = [];
+  try { (catalogCoverage() || []).forEach(t => { const n = cnt(`SELECT COUNT(*) AS n FROM ${t} WHERE accountId = ?`, accountId); if (n) uncataloged.push({ table: t, rows: n }); }); } catch (e) {}
+  return { uncataloged, setup: { steps, remainingMinutes, doneCount: steps.filter(s => s.done).length, total: steps.length }, learnings, consumed, syncedAt: A('analyticsSnowflakeLastSyncAt') || null };
 }
 
 function maybeSnapshotForecastCalibration(accountId, cal, actor){
@@ -23928,6 +23967,29 @@ async function handleRequest(req, res) {
       return sendJson(res, 200, { planSource, calibration: cal, forecast: forecastEngine.forecast(cal, { months }) });
     }
 
+
+    // Quick start: POST /api/accounts/:id/quick-start { websiteUrl } — saves the address, reads the homepage once,
+    // records it as a website scan and fills an empty company description from what the site says about itself.
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'quick-start' && req.method === 'POST'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = (await readBody(req)) || {};
+      let url = String(body.websiteUrl || '').trim(); if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url;
+      let host = ''; try { const u = new URL(url); host = u.hostname; } catch (e) {}
+      if (!host || !host.includes('.')) return sendJson(res, 400, { error: 'Enter a website address like example.com.' });
+      if (/^(localhost|.*\.local|.*\.internal)$/i.test(host) || /^(\d{1,3}\.){3}\d{1,3}$/.test(host) || host.includes(':')) return sendJson(res, 400, { error: 'Enter your public website address, not an IP address or internal host.' });
+      const existing = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      if (!existing) return sendJson(res, 404, { error: 'account not found' });
+      db.prepare('UPDATE accounts SET websiteUrl = ? WHERE accountId = ?').run(url, accountId);
+      let context;
+      try { context = await fetchAndExtractPage(url); }
+      catch (e){ return sendJson(res, 200, { saved: true, read: false, note: `Saved ${host}, but the Brain could not read it just now (${String(e.message || e).slice(0, 160)}). You can retry from Company Profile.` }); }
+      let contributionId = null; try { contributionId = createWebsiteScanContribution(accountId, context); } catch (e) {}
+      const filled = [];
+      const desc = String(context.metaDescription || '').trim();
+      if (desc && !aliasVal(existing, 'assessmentDescription')){ db.prepare('UPDATE accounts SET assessmentDescription = ? WHERE accountId = ?').run(desc.slice(0, 600), accountId); filled.push('company description'); }
+      return sendJson(res, 200, { saved: true, read: true, contributionId, title: context.title || null, description: desc || null, headings: (context.headings || []).slice(0, 5), filled });
+    }
 
     // Train the Brain: GET /api/accounts/:id/train-the-brain — setup status, recent Brain learnings, data consumed.
     if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'train-the-brain' && req.method === 'GET'){
@@ -35789,3 +35851,4 @@ try {
 }
 
 module.exports = handleRequest;
+module.exports.catalogCoverage = catalogCoverage;
