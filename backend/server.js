@@ -921,6 +921,14 @@ ensureColumn('accounts', 'wealth', 'TEXT');
 // this field (or was never given an income) stores null, never a fabricated
 // default.
 ensureColumn('accounts', 'wealthIndexTargetIncome', 'REAL');
+// 2026-09-30 — the assessment's market sizing, previously computed in the browser and never saved.
+// TAM = U.S. industry revenue (dollars); SAM = estimated market size (people in the selected generations and wealth tiers);
+// marketBasisJson keeps the generation and wealth tables behind it. Accounts created before this have none until entered by hand.
+ensureColumn('accounts', 'marketTamRevenue', 'REAL');
+ensureColumn('accounts', 'marketSamPeople', 'REAL');
+ensureColumn('accounts', 'marketBasisJson', 'TEXT');
+ensureColumn('accounts', 'marketSource', 'TEXT');
+ensureColumn('accounts', 'marketUpdatedAt', 'TEXT');
 // Added 2026-08-05 (round 32, follow-on) — which of the 18 MMM_CATEGORIES
 // channels this account has actually activated. Comma-joined, same shape
 // as audience/wealth above. Empty/null means "never configured" — the
@@ -15466,6 +15474,132 @@ async function postBrainDump(accountId){
   return readBrainDump(accountId, weekStart);
 }
 
+// ---- Welcome to your Verilume account (2026-09-30) -------------------------
+// A first section at the top of the Brain Dump: what we remember from the assessment, where the
+// opportunities are, and the first things to add. Facts come from the account's own assessment data;
+// the Brain only writes the prose, and any paragraph with a number that is not in the facts falls back
+// to plain text. Written once when first opened (the assessment does not change), refreshed on request.
+// The "first steps" list is always read live so it reflects what has been added since.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS brain_dump_welcome (
+    accountId TEXT PRIMARY KEY,
+    factsJson TEXT NOT NULL,
+    textJson TEXT,
+    writtenBy TEXT,
+    createdAt TEXT NOT NULL,
+    dismissedAt TEXT
+  );
+`);
+// Saves the assessment's market sizing (TAM, SAM and the generation and wealth tables behind it). Only real numbers are stored.
+function cleanMarketRows(rows){
+  return (Array.isArray(rows) ? rows : []).slice(0, 12).map(r => ({ key: String(r && r.key || '').slice(0, 40), label: String(r && r.label || '').slice(0, 80), share: Number.isFinite(Number(r && r.share)) ? Number(r.share) : null, count: Number.isFinite(Number(r && r.count)) ? Math.round(Number(r.count)) : null })).filter(r => r.label);
+}
+function saveAccountMarket(accountId, m, source){
+  if (!accountId || !m || typeof m !== 'object') return false;
+  const num = v => (v !== null && v !== '' && Number.isFinite(Number(v)) && Number(v) >= 0) ? Number(v) : null;
+  const tam = num(m.tamRevenue), sam = num(m.samPeople);
+  if (tam === null && sam === null) return false;
+  const basis = { population: num(m.population), popLabel: typeof m.popLabel === 'string' ? m.popLabel.slice(0, 200) : null, isLocal: !!m.isLocal, genSharePct: num(m.genSharePct), wealthSharePct: num(m.wealthSharePct), generations: cleanMarketRows(m.generations), wealthTiers: cleanMarketRows(m.wealthTiers) };
+  db.prepare('UPDATE accounts SET marketTamRevenue = ?, marketSamPeople = ?, marketBasisJson = ?, marketSource = ?, marketUpdatedAt = ? WHERE accountId = ?')
+    .run(tam, sam, JSON.stringify(basis), source || 'manual', new Date().toISOString(), accountId);
+  return true;
+}
+function getAccountMarket(accountId){
+  let a = null; try { a = db.prepare('SELECT marketTamRevenue, marketSamPeople, marketBasisJson, marketSource, marketUpdatedAt FROM accounts WHERE accountId = ?').get(accountId); } catch (e){}
+  if (!a) return null;
+  const tam = aliasVal(a, 'marketTamRevenue'), sam = aliasVal(a, 'marketSamPeople');
+  let basis = {}; try { basis = JSON.parse(aliasVal(a, 'marketBasisJson') || '{}'); } catch (e){}
+  if (tam == null && sam == null) return null;
+  return { tamRevenue: tam == null ? null : Number(tam), samPeople: sam == null ? null : Number(sam), basis, source: aliasVal(a, 'marketSource') || null, updatedAt: aliasVal(a, 'marketUpdatedAt') || null };
+}
+const WELCOME_LAYER_HELP = {
+  'Creative Visuals': { where: 'Customer Experiences', tab: 'brand', help: 'keeps creative on brand, shows which offers and creative focuses sell, and sends what works straight to your creative team.' },
+  'Search Everywhere (SEO/AEO/GEO)': { where: 'Growth & Performance', tab: 'marketer', help: 'shows how search and every other channel perform, while Strategy watches your competitors and industry headlines each week.' },
+  'Call Center': { where: 'Growth & Performance', tab: 'marketer', help: 'follows leads through to bookings by lead type and shows how many days each takes to convert.' },
+  'POS / Team': { where: 'Train the Brain', step: 'manageAccount', help: 'puts your team on one chart so everyone works from the same picture and can comment in the weekly Brain Dump.' },
+  'Product Delivery': { where: 'Strategy', tab: 'strategy', help: 'shows revenue, volume and price by product group so you can see where delivery and demand diverge.' }
+};
+function buildWelcomeFacts(accountId, now){
+  const rec = getAccountRecord(accountId); if (!rec) return null;
+  const a = rec.account; const A = k => aliasVal(a, k);
+  const list = v => { if (!v) return []; if (Array.isArray(v)) return v.map(String).filter(Boolean); try { const j = JSON.parse(v); if (Array.isArray(j)) return j.map(x => typeof x === 'string' ? x : (x && (x.name || x.company))).filter(Boolean).map(String); } catch (e) {} return String(v).split(/[;,]/).map(s => s.trim()).filter(Boolean); };
+  const cells = rec.cells.filter(c => c.score != null);
+  const rounded = c => ({ stage: c.stage, layer: c.layer, score: Math.round(c.score * 10) / 10 });
+  const asc = cells.slice().sort((x, y) => x.score - y.score || String(x.stage).localeCompare(String(y.stage)));
+  const desc = asc.slice().reverse();
+  const improved = cells.filter(c => c.history.length > 1 && c.history[c.history.length - 1].score > c.history[0].score).map(c => ({ stage: c.stage, layer: c.layer, from: Math.round(c.history[0].score * 10) / 10, to: Math.round(c.score * 10) / 10 })).sort((x, y) => (y.to - y.from) - (x.to - x.from)).slice(0, 3);
+  const assessedOn = cells.reduce((m, c) => { const d = String(c.history[0].recordedAt || '').slice(0, 10); return d && (!m || d < m) ? d : m; }, null);
+  const avg = cells.length ? Math.round((cells.reduce((n, c) => n + c.score, 0) / cells.length) * 10) / 10 : null;
+  const weakest = asc.slice(0, 3).map(rounded);
+  const opportunities = weakest.map(w => { const h = WELCOME_LAYER_HELP[w.layer] || { where: 'Train the Brain', step: 'manageAccount', help: 'starts with the setup items below.' }; return { stage: w.stage, layer: w.layer, score: w.score, where: h.where, help: h.help, link: h.tab ? { tab: h.tab, label: h.where } : { step: h.step, label: h.where } }; });
+  return {
+    company: A('company') || 'your company',
+    profile: { market: (() => { const m = getAccountMarket(accountId); return m ? { tamRevenue: m.tamRevenue, samPeople: m.samPeople } : null; })(), industry: A('industry') || null, footprint: A('footprint') || null, audience: list(A('audience')), wealth: A('wealth') || null, targetIncome: A('wealthIndexTargetIncome') != null ? Number(A('wealthIndexTargetIncome')) : null, website: A('websiteUrl') || null, description: A('assessmentDescription') || null, productsServices: A('productsServices') || null, competitors: list(A('competitorsJson')).slice(0, 5), assessedStages: list(A('assessedStagesJson')) },
+    scorecard: cells.length ? { count: cells.length, average: avg, assessedOn, strongest: desc.slice(0, 2).map(rounded), weakest, improved } : null,
+    opportunities
+  };
+}
+function welcomeFallbackText(f){
+  const p = f.profile, s = f.scorecard;
+  const remember = [];
+  const who = [p.industry, p.footprint].filter(Boolean).join(', ');
+  if (who) remember.push(`We remember ${f.company} as ${who}.`);
+  if (p.audience.length) remember.push(`Your target audience is ${p.audience.join(', ')}${p.wealth ? ` at the ${p.wealth} wealth level` : ''}.`);
+  if (p.competitors.length) remember.push(`You named ${p.competitors.join(', ')} as competitors.`);
+  if (s) remember.push(`Your assessment covered ${s.count} checkpoints across the customer journey, averaging ${s.average.toFixed(1)}${s.assessedOn ? `, recorded ${s.assessedOn}` : ''}.`);
+  const opp = [];
+  if (s && s.strongest.length) opp.push(`Strongest: ${s.strongest.map(x => `${x.stage} ${x.layer} (${x.score.toFixed(1)})`).join(' and ')}.`);
+  if (f.opportunities.length) opp.push(`Biggest opportunities: ${f.opportunities.map(o => `${o.stage} ${o.layer} (${o.score.toFixed(1)})`).join(', ')}.`);
+  if (s && s.improved.length) opp.push(`Already improving: ${s.improved.map(x => `${x.stage} ${x.layer}, from ${x.from.toFixed(1)} to ${x.to.toFixed(1)}`).join('; ')}.`);
+  return { welcome: `Welcome to your Verilume account, ${f.company}. Here is what we remember from your assessment, where your biggest opportunities are, and the first things to add so the Brain can start working for you.`, remember: remember.join(' ') || 'Your assessment details will appear here once they are on file.', opportunities: opp.join(' ') || 'Once your assessment scores are on file, your biggest opportunities appear here.' };
+}
+async function writeWelcomeText(facts){
+  const fb = welcomeFallbackText(facts);
+  if (!process.env.ANTHROPIC_API_KEY) return { text: fb, writtenBy: 'template' };
+  const guide = {
+    welcome: 'A warm two-sentence welcome to the account by company name. Say this page recaps the assessment and points to the first steps.',
+    remember: 'Reflect back what the assessment captured about the company, audience, wealth level, competitors and scorecard, so the client feels remembered. Plain sentences.',
+    opportunities: 'Name the strongest points first, then the biggest opportunities (the lowest-scoring points) and any that have already improved. Frame gaps as opportunities, not failures.'
+  };
+  const schema = { type: 'object', properties: { paragraph: { type: 'string', description: 'One paragraph, at most 80 words.' } }, required: ['paragraph'] };
+  let used = 0;
+  const one = async k => {
+    const input = k === 'welcome' ? { company: facts.company } : k === 'remember' ? { company: facts.company, profile: facts.profile, scorecard: facts.scorecard && { count: facts.scorecard.count, average: facts.scorecard.average, assessedOn: facts.scorecard.assessedOn } } : { scorecard: facts.scorecard, opportunities: facts.opportunities.map(o => ({ stage: o.stage, layer: o.layer, score: o.score })) };
+    try {
+      const out = await callClaudeForJSON({ model: bdModelFor('learnings'), maxTokens: 500, timeoutMs: 25000, toolName: 'submit_paragraph', toolDescription: 'Submit the paragraph.', schema,
+        content: `You are the AI Brain welcoming a new client to their Verilume account. Write ONE short paragraph for the "${k}" part of the welcome page from the facts below. ${guide[k]} Use ONLY numbers and names that appear in the facts; never add, round or infer a number, and never claim results or events not in the facts. No greeting other than the welcome part, no headings, no bullet points.\n\nFacts:\n${JSON.stringify(input)}` });
+      const t = typeof out.paragraph === 'string' ? out.paragraph.trim() : '';
+      const allowed = new Set(bdNumbers(JSON.stringify(input)));
+      if (t && bdNumbers(t).every(n => allowed.has(n) || allowed.has(String(Number(n))))){ used++; return t; }
+    } catch (e){ console.warn(`[welcome] ${k} writing failed, using plain text:`, e.message); }
+    return fb[k];
+  };
+  const keys = ['welcome', 'remember', 'opportunities'];
+  const res = await Promise.all(keys.map(one));
+  const text = {}; keys.forEach((k, i) => { text[k] = res[i]; });
+  return { text, writtenBy: used ? 'brain' : 'template' };
+}
+function welcomeFirstSteps(accountId){
+  try {
+    const t = buildTrainTheBrain(accountId); const items = [].concat(...t.setup.steps.map(s => s.items));
+    return { doneCount: items.filter(i => i.done).length, total: items.length, minutesLeft: t.setup.remainingMinutes, next: items.filter(i => !i.done).slice(0, 3).map(i => ({ label: i.label, gain: i.gain })) };
+  } catch (e){ return { doneCount: 0, total: 0, minutesLeft: null, next: [] }; }
+}
+async function getWelcome(accountId, opts){
+  opts = opts || {};
+  let row = db.prepare('SELECT * FROM brain_dump_welcome WHERE accountId = ?').get(accountId);
+  if (!row || opts.refresh){
+    const facts = buildWelcomeFacts(accountId, new Date()); if (!facts) return null;
+    const w = await writeWelcomeText(facts); const now = new Date().toISOString();
+    const dismissed = row ? aliasVal(row, 'dismissedAt') : null;
+    if (row) db.prepare('UPDATE brain_dump_welcome SET factsJson = ?, textJson = ?, writtenBy = ?, createdAt = ? WHERE accountId = ?').run(JSON.stringify(facts), JSON.stringify(w.text), w.writtenBy, now, accountId);
+    else db.prepare('INSERT INTO brain_dump_welcome (accountId, factsJson, textJson, writtenBy, createdAt, dismissedAt) VALUES (?,?,?,?,?,?)').run(accountId, JSON.stringify(facts), JSON.stringify(w.text), w.writtenBy, now, dismissed);
+    row = db.prepare('SELECT * FROM brain_dump_welcome WHERE accountId = ?').get(accountId);
+  }
+  let facts = {}, text = {}; try { facts = JSON.parse(aliasVal(row, 'factsJson')); text = JSON.parse(aliasVal(row, 'textJson') || '{}'); } catch (e) {}
+  return { facts, text, writtenBy: aliasVal(row, 'writtenBy'), createdAt: aliasVal(row, 'createdAt'), dismissed: !!aliasVal(row, 'dismissedAt'), firstSteps: welcomeFirstSteps(accountId) };
+}
+
 // ---- Train the Brain (2026-09-30): setup in four short sittings, what the Brain learned, and the data it consumes ----
 // DATA_CATALOG is version 1 of the data catalog: one entry per data set with its owner dashboard, grain, keywords and status.
 // "Data consumed" is a live view of it, and the forecast, Ask the Brain and voice lookups can route through the same list.
@@ -15515,7 +15649,7 @@ function brainWrite(accountId, { dashboard, action, subject, refId, scopeType, r
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings']);
+const CATALOG_EXEMPT = new Set(['brain_dump_welcome', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -15538,6 +15672,7 @@ function buildTrainTheBrain(accountId){
   const samples = cnt('SELECT COUNT(*) AS n FROM brand_writing_samples WHERE accountId = ?', accountId);
   const examples = cnt('SELECT COUNT(*) AS n FROM brand_copy_website_examples WHERE accountId = ?', accountId);
   const team = cnt('SELECT COUNT(*) AS n FROM team_members WHERE accountId = ?', accountId);
+  const rowsOf = t => cnt(`SELECT COUNT(*) AS n FROM ${t} WHERE accountId = ?`, accountId);
   const yes = v => !!(v && v !== '0' && v !== 0);
   const steps = [
     { key: 'company', title: 'Your company', minutes: 2, gain: 'Everything else reads from this: what you sell, who you sell to, and how you look.', items: [
@@ -15548,10 +15683,22 @@ function buildTrainTheBrain(accountId){
     { key: 'voice', title: 'Your voice', minutes: 3, gain: 'Lets the Brain write and score copy the way you sound.', items: [
       { label: 'Sample writings (two or three is enough)', done: samples >= 1, gain: samples ? `${samples} on file.` : 'Drop in an email, a brochure page or a speech.', step: 'brandWritingSamples' },
       { label: 'Approve the brand voice guide', done: yes(A('voiceApproved')), gain: 'The Brain drafts it from your samples; you approve it.', step: 'voice' } ] },
-    { key: 'numbers', title: 'Your numbers', minutes: 3, gain: 'Turns on the forecast, the story and the weekly Brain Dump.', items: [
+    { key: 'numbers', title: 'Your numbers', minutes: 8, gain: 'Turns on the forecast, the story and the weekly Brain Dump.', items: [
       { label: 'Marketing budget upload', done: budgetDone, gain: 'Gives the forecast a spend plan to test.', step: 'marketingBudgetUpload', stepArg: 'configuration' },
       { label: 'Transactions or booking file', done: txnDone, gain: 'Lets the forecast learn from what actually sold.', step: 'bulkUpload' },
+      { label: 'Website users by month', done: rowsOf('account_website_users_monthly') > 0, rows: rowsOf('account_website_users_monthly'), gain: 'Sets the reach and cost per website user the forecast starts from.', step: 'websiteUsers' },
+      { label: 'Website engagement by channel group', done: rowsOf('account_website_engagement') > 0, rows: rowsOf('account_website_engagement'), gain: 'Shows which channels bring visitors who stay.', step: 'websiteEngagement' },
+      { label: 'Leads by type, by month', done: rowsOf('account_lead_counts') > 0, rows: rowsOf('account_lead_counts'), gain: 'Follows leads through to bookings.', step: 'leadCounts' },
+      { label: 'Digital performance', done: rowsOf('account_digital_performance') > 0, rows: rowsOf('account_digital_performance'), gain: 'Spend, impressions and clicks by channel, publisher and tactic.', step: 'digitalPerformance' },
+      { label: 'Monthly KPI report', done: rowsOf('account_kpi_metrics') > 0, rows: rowsOf('account_kpi_metrics'), gain: 'Feeds the KPI grid and trend line on the CMO Dashboard.', step: 'kpiMetrics' },
       { label: 'Connect a data source, or choose a path', done: integrationDone, gain: 'Snowflake, GA4, Meta, Google Ads or The Trade Desk.', step: 'partnerIntegrations' } ] },
+    { key: 'plan', title: 'Your plan', minutes: 4, gain: 'Gives the forecast the targets and costs it needs to test a plan.', items: [
+      { label: 'Annual plan: baseline and targets', done: rowsOf('account_annual_plan') > 0, rows: rowsOf('account_annual_plan'), gain: 'What the year is calibrated on and what you aim for.', step: 'annualPlan' },
+      { label: 'Prior-year results', done: rowsOf('account_year_results') > 0, rows: rowsOf('account_year_results'), gain: 'Last year\'s spend and results the plan is compared with.', step: 'yearResults' },
+      { label: 'Demand fulfillment assumptions', done: rowsOf('account_demand_fulfillment') > 0, rows: rowsOf('account_demand_fulfillment'), gain: 'How demand grows with website traffic.', step: 'demandFulfillment' },
+      { label: 'Marketable audience sizes', done: rowsOf('account_marketable_sizes') > 0, rows: rowsOf('account_marketable_sizes'), gain: 'Direct mail and email list counts by audience.', step: 'marketableSizes' },
+      { label: 'Direct mail cost per piece', done: rowsOf('account_dm_cost_per_piece') + rowsOf('account_dm_format_cost') > 0, rows: rowsOf('account_dm_cost_per_piece') + rowsOf('account_dm_format_cost'), gain: 'Turns audience size into a direct mail budget.', step: 'dmCost' },
+      { label: 'Magazine cost per insertion', done: rowsOf('account_magazine_cost') > 0, rows: rowsOf('account_magazine_cost'), gain: 'Your negotiated print rates by title and format.', step: 'magazineCost' } ] },
     { key: 'team', title: 'Your team', minutes: 2, gain: 'Everyone works from the same picture and can comment in the Brain Dump.', items: [
       { label: 'Team and org chart', done: team >= 2, gain: team ? `${team} on the chart.` : 'Add the people who use this account.', step: 'team' } ] }
   ];
@@ -15586,7 +15733,9 @@ function buildTrainTheBrain(accountId){
   });
   let uncataloged = [];
   try { (catalogCoverage() || []).forEach(t => { const n = cnt(`SELECT COUNT(*) AS n FROM ${t} WHERE accountId = ?`, accountId); if (n) uncataloged.push({ table: t, rows: n }); }); } catch (e) {}
-  return { uncataloged, setup: { steps, remainingMinutes, doneCount: steps.filter(s => s.done).length, total: steps.length }, learnings, consumed, syncedAt: A('analyticsSnowflakeLastSyncAt') || null };
+  const mk = getAccountMarket(accountId);
+  const profile = { industry: A('industry') || null, company: A('company') || null, market: mk };
+  return { profile, uncataloged, setup: { steps, remainingMinutes, doneCount: steps.filter(s => s.done).length, total: steps.length }, learnings, consumed, syncedAt: A('analyticsSnowflakeLastSyncAt') || null };
 }
 
 // Rolling 18 months: the last six months, this month and the next eleven. Spend and impressions come from the same
@@ -21050,6 +21199,7 @@ async function handleRequest(req, res) {
         try { createWebsiteScanContribution(accountId, JSON.parse(websiteContextJson)); }
         catch (e){ /* malformed websiteContext from the client — skip it, not fatal */ }
       }
+      try { saveAccountMarket(accountId, body.market, 'assessment'); } catch (e){ console.warn('[account-create] market sizing not saved:', e.message); }
       const insertCell = db.prepare(
         'INSERT INTO score_history (accountId, stage, layer, score, source, recordedAt) VALUES (?,?,?,?,?,?)'
       );
@@ -24532,6 +24682,41 @@ async function handleRequest(req, res) {
 
     // Brain Dump (weekly standup). GET /api/accounts/:id/brain-dump[?week=YYYY-MM-DD&refresh=1]
     // Comments: GET/POST /api/accounts/:id/brain-dump/comments — an @AIBrain mention gets a reply grounded in that section's facts.
+    // GET|PUT /api/accounts/:id/market-size — TAM and SAM from the assessment (or entered by hand), with the generation and wealth tables.
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'market-size' && (req.method === 'GET' || req.method === 'PUT')){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      try {
+        if (req.method === 'PUT'){
+          const body = (await readBody(req)) || {};
+          const prev = getAccountMarket(accountId);
+          const merged = { tamRevenue: body.tamRevenue, samPeople: body.samPeople, population: prev && prev.basis.population, popLabel: prev && prev.basis.popLabel, isLocal: prev && prev.basis.isLocal, genSharePct: prev && prev.basis.genSharePct, wealthSharePct: prev && prev.basis.wealthSharePct, generations: prev && prev.basis.generations, wealthTiers: prev && prev.basis.wealthTiers };
+          if (!saveAccountMarket(accountId, merged, 'manual')) return sendJson(res, 400, { error: 'enter TAM (industry revenue in dollars) or SAM (people), as numbers' });
+          brainWrite(accountId, { dashboard: 'Train the Brain', action: 'Updated', subject: 'Market size (TAM and SAM)', refId: 'market-size' });
+        }
+        return sendJson(res, 200, { market: getAccountMarket(accountId) });
+      } catch (e){ return sendJson(res, 500, { error: 'could not read or save market size', detail: String(e.message || e).slice(0, 300) }); }
+    }
+
+    // GET|POST /api/accounts/:id/brain-dump/welcome — the Welcome section at the top of the Brain Dump.
+    // GET reads it (writing it the first time); POST { action: 'refresh' | 'dismiss' | 'restore' }.
+    if (parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'brain-dump' && parts[4] === 'welcome' && (req.method === 'GET' || req.method === 'POST')){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      try {
+        if (req.method === 'POST'){
+          const body = (await readBody(req)) || {};
+          if (body.action === 'dismiss' || body.action === 'restore'){
+            await getWelcome(accountId);
+            db.prepare('UPDATE brain_dump_welcome SET dismissedAt = ? WHERE accountId = ?').run(body.action === 'dismiss' ? new Date().toISOString() : null, accountId);
+          } else if (body.action === 'refresh'){ await getWelcome(accountId, { refresh: true }); }
+          else return sendJson(res, 400, { error: 'action must be refresh, dismiss or restore' });
+        }
+        const w = await getWelcome(accountId);
+        return sendJson(res, 200, w || { error: 'account not found' });
+      } catch (e){ console.warn('[brain-dump/welcome] failed:', e.message); return sendJson(res, 500, { error: 'could not build the welcome', detail: String(e.message || e).slice(0, 300) }); }
+    }
+
     if (parts.length >= 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'brain-dump' && (parts.length === 4 || (parts.length === 5 && parts[4] === 'comments'))){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
