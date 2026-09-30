@@ -12516,7 +12516,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-30-mediascience-a';
+const CXMEDIA_BUILD_STAMP = '2026-09-30-growthperf-a';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -22618,6 +22618,7 @@ function stratCoverageHtml(cov){
     <li>Annual Plan rows: ${escapeHtml(plan)}</li>
     <li>Closed-year results: ${cov.yearResults && cov.yearResults.length ? cov.yearResults.join(', ') : 'nothing on file'}</li></ul></details>`;
 }
+function stratMatchedNote(d, k){ const n = d && d.deltaMonths && d.deltaMonths[k]; return n && d.window && n < d.window.months ? ` (${n} matched months)` : ''; }
 function stratRenderDemandRow(){
   const el = document.getElementById('tabStatCardGrid'); if (!el) return;
   el.classList.add('four');
@@ -22628,8 +22629,8 @@ function stratRenderDemandRow(){
   const per = `${stratMonthLabel(w.from)} to ${stratMonthLabel(w.to)}`;
   const card = (label, value, delta, good, sub) => `<div class="stat-card"><div class="sc-label">${label}</div><div class="sc-value">${value}</div><div class="sc-delta ${good ? 'good' : 'neutral'}">${delta}</div><div class="strat-sub">${sub}</div></div>`;
   // Show the current number always; a comparison only where one exists.
-  const cmp = (pct, vsTarget, tgtText) => {
-    if (pct != null) return `${stratPct(pct)} vs prior year`;
+  const cmp = (pct, vsTarget, tgtText, mkey) => {
+    if (pct != null) return `${stratPct(pct)} vs prior year${stratMatchedNote(d, mkey)}`;
     if (vsTarget != null && tgtText) return `${stratPct(vsTarget)} vs plan target ${tgtText}`;
     if (tgtText) return `Plan target ${tgtText}`;
     return 'No prior year on file';
@@ -22638,10 +22639,10 @@ function stratRenderDemandRow(){
   const t = o && o.target, vt = o && o.vsTargetPct;
   const spendSub = d.pacing ? `Pacing ${d.pacing.spendPacingPct}% of plan to date · ${per}` : per;
   el.innerHTML =
-    card('Marketing spend', stratMoney(c.spend), cmp(dl.spend), false, spendSub) +
-    card('Gross revenue', o ? stratMoney(o.revenue) : '—', cmp(o && o.deltaPct.revenue, vt && vt.revenue, t && t.revenue != null ? stratMoney(t.revenue) : null), !!(o && ((o.deltaPct.revenue != null && o.deltaPct.revenue >= 0) || (vt && vt.revenue != null && vt.revenue >= 0))), basisSub) +
-    card('ROAS', o && o.roas != null ? `${o.roas.toFixed(2)}x` : '—', cmp(o && o.deltaPct.roas, vt && vt.roas, t && t.roas != null ? `${t.roas.toFixed(2)}x` : null), !!(o && ((o.deltaPct.roas != null && o.deltaPct.roas >= 0) || (vt && vt.roas != null && vt.roas >= 0))), 'Gross revenue ÷ marketing spend') +
-    card('CAC', o && o.cac != null ? `$${o.cac.toLocaleString()}` : '—', cmp(o && o.deltaPct.cac, vt && vt.cac, t && t.cac != null ? `$${t.cac.toLocaleString()}` : null), !!(o && ((o.deltaPct.cac != null && o.deltaPct.cac <= 0) || (vt && vt.cac != null && vt.cac <= 0))), 'Spend ÷ unique transactions');
+    card('Marketing spend', stratMoney(c.spend), cmp(dl.spend, null, null, 'spend'), false, spendSub) +
+    card('Gross revenue', o ? stratMoney(o.revenue) : '—', cmp(o && o.deltaPct.revenue, vt && vt.revenue, t && t.revenue != null ? stratMoney(t.revenue) : null, 'revenue'), !!(o && ((o.deltaPct.revenue != null && o.deltaPct.revenue >= 0) || (vt && vt.revenue != null && vt.revenue >= 0))), basisSub) +
+    card('ROAS', o && o.roas != null ? `${o.roas.toFixed(2)}x` : '—', cmp(o && o.deltaPct.roas, vt && vt.roas, t && t.roas != null ? `${t.roas.toFixed(2)}x` : null, 'roas'), !!(o && ((o.deltaPct.roas != null && o.deltaPct.roas >= 0) || (vt && vt.roas != null && vt.roas >= 0))), 'Gross revenue ÷ marketing spend') +
+    card('CAC', o && o.cac != null ? `$${o.cac.toLocaleString()}` : '—', cmp(o && o.deltaPct.cac, vt && vt.cac, t && t.cac != null ? `$${t.cac.toLocaleString()}` : null, 'cacTransaction'), !!(o && ((o.deltaPct.cac != null && o.deltaPct.cac <= 0) || (vt && vt.cac != null && vt.cac <= 0))), 'Spend ÷ unique transactions');
   const msgs = [];
   if (d.notOnFile && d.notOnFile.length) msgs.push(`Not on file yet: ${escapeHtml(d.notOnFile.join('; '))}.`);
   msgs.push('Customer-level CAC needs a customer id on bookings.');
@@ -22708,7 +22709,7 @@ function stratRenderPrice(){
   const showPrior = strat.compare === 'yoy';
   const last = d.months.filter(m => m.gross != null).slice(-1)[0];
   const lastKey = last ? last.month : null;
-  const tbl = Object.keys(d.byGroup).map(g => { const r = d.byGroup[g].find(x => x.month === lastKey) || {}; const yo = (r.gross != null && r.priorYearGross) ? (r.gross - r.priorYearGross) / r.priorYearGross * 100 : null; return { g, gross: r.gross, volume: r.volume, avg: r.volume ? Math.round(r.gross / r.volume) : null, yo }; }).filter(r => r.gross != null).sort((a, b) => b.gross - a.gross);
+  const tbl = Object.keys(d.byGroup).map(g => { const r = d.byGroup[g].find(x => x.month === lastKey) || {}; const yo = (r.gross != null && r.priorYearGross) ? (Math.abs((r.gross - r.priorYearGross) / r.priorYearGross * 100) > 500 ? null : (r.gross - r.priorYearGross) / r.priorYearGross * 100) : null; return { g, gross: r.gross, volume: r.volume, avg: r.volume ? Math.round(r.gross / r.volume) : null, yo }; }).filter(r => r.gross != null).sort((a, b) => b.gross - a.gross);
   box.innerHTML = `
     <p class="strat-reading"><span class="strat-tag">Computed from your transactions</span> ${escapeHtml(stratPriceReading(d))}</p>
     <div class="strat-chart-label">Gross price by month${showPrior ? ' <span class="strat-key"><i class="dash"></i> same month last year</span>' : ''}</div>
@@ -22827,9 +22828,9 @@ function msRenderCoreRow(){
   const c = d.core, t = c.totals, p = c.priorYear, w = d.window;
   const per = t ? `${stratMonthLabel(w.from)} to ${stratMonthLabel(w.to)}` : 'Not on file yet';
   const pct = (a, b) => (a != null && b) ? Math.round(((a - b) / Math.abs(b)) * 1000) / 10 : null;
-  const cmp = (pv, good) => pv == null ? 'No prior year on file' : `${stratPct(pv)} vs prior year`;
+  const cmp = (pv, good) => pv == null ? 'No prior year on file' : `${stratPct(pv)} vs prior year${cmpN && cmpN < d.window.months ? ` (${cmpN} matched months)` : ''}`;
   const card = (label, value, delta, good, sub) => `<div class="stat-card"><div class="sc-label">${label}</div><div class="sc-value">${value}</div><div class="sc-delta ${good ? 'good' : 'neutral'}">${delta}</div><div class="strat-sub">${sub}</div></div>`;
-  const dImp = t && p ? pct(t.impressions, p.impressions) : null, dCpl = t && p ? pct(t.cpl, p.cpl) : null;
+  const cm = c.currentMatched; const dImp = cm && p ? pct(cm.impressions, p.impressions) : null, dCpl = cm && p ? pct(cm.cpl, p.cpl) : null; const cmpN = c.comparedMonths;
   const rf = c.reachFrequency, l2b = c.leadToBooking;
   el.innerHTML =
     card('Impressions', t ? stratNum(t.impressions) : '—', cmp(dImp), dImp != null && dImp >= 0, `All channels · ${per}`) +
@@ -22899,6 +22900,168 @@ function mediaScienceShellHtml(){
     ${msToolsHtml()}`;
 }
 function mediaSciencePageInit(){ if (msIsLive()) msLoad(); }
+
+
+// ---- Customer Experiences (2026-09-30): creative schedule, creative and media together, tools ----
+const cx = { data: null };
+function cxIsLive(){ return stratIsLive(); }
+function cxToday(){ const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function cxGate(c){
+  // Complete only when the team marked Creative complete (the Complete flag in the Creative grid); otherwise show the computed progress.
+  if (c.creativeComplete === true || c.creativeComplete === 1 || c.creativeComplete === '1') return 'complete';
+  try { const st = computeStageStatuses(c).find(x => x.key === 'creative'); return st && st.status === 'not-started' ? 'not-started' : 'in-progress'; } catch (e){ return 'not-started'; }
+}
+function cxGateLabel(g){ return g === 'complete' ? 'Creative complete' : g === 'in-progress' ? 'Creative in progress' : 'Creative not started'; }
+function cxScheduleRows(){
+  const rows = cmpCreativeGridRows().map(c => ({ c, due: cmgmtCampaignDueDate(c), gate: cxGate(c) }));
+  const open = rows.filter(r => r.gate !== 'complete'), done = rows.filter(r => r.gate === 'complete');
+  return open.concat(done);
+}
+function cxDaysUntil(due){ if (!due) return null; const a = new Date(due.slice(0, 10) + 'T00:00:00'), b = new Date(cxToday() + 'T00:00:00'); return Math.round((a - b) / 86400000); }
+function cxRenderTopUrgent(bodyEl){
+  const rows = cxScheduleRows().slice(0, 5);
+  bodyEl.innerHTML = `<div class="table-scroll"><table class="active-camp-table">
+    <thead><tr><th>Project Number</th><th>Campaign Name</th><th>Assets Due</th><th>Creative Gate</th><th>Start</th><th>End</th><th></th></tr></thead>
+    <tbody>${rows.length ? rows.map(r => {
+      const c = r.c, n = cxDaysUntil(r.due), late = r.gate !== 'complete' && n != null && n <= 0;
+      const dueTxt = r.due ? `${r.due}${n != null && r.gate !== 'complete' ? (n < 0 ? ` · ${-n} day${n === -1 ? '' : 's'} past` : n === 0 ? ' · today' : ` · in ${n} day${n === 1 ? '' : 's'}`) : ''}` : '—';
+      return `<tr style="${late ? 'outline:2px solid #C0273C;outline-offset:-2px;' : ''}">
+        <td>${escapeHtml(c.campaignCode || c.id)}</td><td>${escapeHtml(c.name || c.objective || 'Untitled Campaign')}</td><td${late ? ' style="color:#C0273C;font-weight:600;"' : ''}>${escapeHtml(dueTxt)}</td>
+        <td><span class="strat-tag">${cxGateLabel(r.gate)}</span></td><td>${c.startDate || '—'}</td><td>${c.endDate || '—'}</td>
+        <td><button type="button" class="btn-ghost" style="padding:4px 10px;font-size:0.6875rem;white-space:nowrap;" onclick="cmpManageExistingCampaign('${c.id}')">Manage Campaign →</button></td></tr>`; }).join('') : `<tr class="empty-state-row"><td colspan="7">No Campaigns Have Been Added</td></tr>`}</tbody></table></div>`;
+}
+async function cxLoad(){
+  if (!cxIsLive()) return;
+  try { cx.data = await stratGet('creative-media?months=12'); } catch (e){ cx.data = null; }
+  if (activePrimaryTab === 'brand'){ cxRenderCoreRow(); cxRenderMedia(); }
+}
+function cxRenderCoreRow(){
+  const el = document.getElementById('tabStatCardGrid'); if (!el) return;
+  el.classList.add('four');
+  const rows = cxScheduleRows().filter(r => r.gate !== 'complete');
+  const past = rows.filter(r => { const n = cxDaysUntil(r.due); return n != null && n < 0; }).length;
+  const soon = rows.filter(r => { const n = cxDaysUntil(r.due); return n != null && n >= 0 && n <= 14; }).length;
+  const card = (label, value, delta, good, sub) => `<div class="stat-card"><div class="sc-label">${label}</div><div class="sc-value">${value}</div><div class="sc-delta ${good ? 'good' : 'neutral'}">${delta}</div><div class="strat-sub">${sub}</div></div>`;
+  const qa = (typeof cmpCreativeInQaCount === 'function') ? cmpCreativeInQaCount() : 0;
+  const t = cx.data && cx.data.costPerEngagement;
+  const l = t && t.latest, tr = t && t.trend ? t.trend.filter(x => x.costPerEngagement != null) : [], p = tr.length > 1 ? tr[tr.length - 2] : null;
+  const dl = l && p && p.costPerEngagement ? Math.round(((l.costPerEngagement - p.costPerEngagement) / p.costPerEngagement) * 1000) / 10 : null;
+  el.innerHTML =
+    card('Assets due in 14 days', String(soon), soon ? '• Creative to deliver' : '• Nothing due soon', soon === 0, 'Campaigns with creative not yet complete') +
+    card('Assets past due', String(past), past ? '▼ Act today' : '▲ On schedule', past === 0, 'Creative gate not complete') +
+    card('Creative in QA', String(qa), qa ? '• Awaiting approval' : '• Nothing pending', qa === 0, 'Approve or send back') +
+    card('Cost per engagement', l ? `$${l.costPerEngagement.toFixed(2)}` : '—', dl != null ? `${stratPct(dl)} vs prior month` : (cx.data ? 'Not on file yet' : 'Loading'), dl != null && dl <= 0, l ? `Spend ÷ clicks · ${stratMonthLabel(l.month)}` : 'Digital performance upload');
+}
+function cxRenderMedia(){
+  const box = document.getElementById('cxMediaBody'); if (!box) return;
+  const d = cx.data; if (!d){ box.innerHTML = '<p class="strat-empty">Loading…</p>'; return; }
+  let html = '';
+  const tr = d.costPerEngagement.trend;
+  if (tr.length){ html += `<div class="strat-chart-label">Cost per engagement by month <span class="strat-key">spend ÷ clicks, all channels</span></div>` + stratBarsSvg(tr.map(t => ({ month: t.month, v: t.costPerEngagement })), 'v', 'p', '#1E2761', n => n == null ? '—' : '$' + n.toFixed(2), false); }
+  else html += '<p class="strat-empty">Not on file yet: monthly digital performance with clicks and spend.</p>';
+  if (d.offers.length){ html += `<div class="strat-chart-label">Offers by cost per lead</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Offer</th><th>Spend</th><th>Leads</th><th>Cost per lead</th><th>Cost per engagement</th></tr></thead><tbody>` + d.offers.map((o, i) => `<tr><td>${i === 0 && o.cpl != null ? '<span class="strat-tag">Winning</span> ' : ''}${escapeHtml(o.offer)}</td><td>${stratMoney(o.spend)}</td><td>${stratNum(o.leads)}</td><td>${o.cpl != null ? '$' + o.cpl.toFixed(2) : '—'}</td><td>${o.costPerEngagement != null ? '$' + o.costPerEngagement.toFixed(2) : '—'}</td></tr>`).join('') + `</tbody></table></div>`; }
+  else html += '<p class="strat-foot">Offers appear once the digital performance upload includes the creative offer column.</p>';
+  if (d.creativeFocus.length){ html += `<div class="strat-chart-label">Creative focus · transactions and price</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Creative focus</th><th>Transactions</th><th>Gross revenue</th><th>Average price</th></tr></thead><tbody>` + d.creativeFocus.map(r => `<tr><td>${escapeHtml(r.creativeFocus)}</td><td>${r.transactions.toLocaleString()}</td><td>${stratMoney(r.gross)}</td><td>${r.avgPrice != null ? '$' + r.avgPrice.toLocaleString() : '—'}</td></tr>`).join('') + `</tbody></table></div><p class="strat-foot">Leads are not tagged by creative focus, so lead-to-booking by creative focus is not shown yet.</p>`; }
+  const rl = d.relevance.trend;
+  html += rl.length ? `<div class="strat-chart-label">Relevance score by month scored <span class="strat-key">average across ${d.relevance.scoredCampaigns} scored campaign${d.relevance.scoredCampaigns === 1 ? '' : 's'}</span></div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Month</th><th>Campaigns scored</th><th>Average score</th></tr></thead><tbody>` + rl.map(r => `<tr><td>${stratMonthLabel(r.month)}</td><td>${r.campaigns}</td><td>${r.avgScore}</td></tr>`).join('') + `</tbody></table></div>` : '<p class="strat-foot">No messaging relevance scores saved yet. Scores appear after copy is scored inside a campaign.</p>';
+  box.innerHTML = html;
+}
+function cxToolsHtml(){
+  const go = it => it.step ? `goToStep('${it.step}')` : `goToStep('pendingFeature','${jsStrEscape(it.label)}','Customer Experiences','brand')`;
+  const items = [
+    { label: 'Voice Contest', step: 'voiceContest' }, { label: 'Experience Development' }, { label: 'Omni-Channel Creative', step: 'omniCreative' },
+    { label: 'AI Agent Analysis: CMO to Creative', step: 'customerExperiences' }, { label: 'Reputation Monitoring', step: 'reputation', note: 'Enterprise' },
+    { label: 'Press Release Distribution', step: 'reputation', note: 'Enterprise' }, { label: 'Editorial Solicitation', step: 'reputation', note: 'Enterprise' },
+    { label: 'SEO, AEO & GEO Monitoring', step: 'searchOptimization', note: 'Enterprise' }, { label: 'Customer Sentiment Analysis & Responses', note: 'Pending' }
+  ];
+  return `<div class="strat-tools"><span class="strat-tools-lbl">Tools</span>${items.map(it => `<a class="flink" onclick="${go(it)}">${escapeHtml(it.label)}</a>${it.note ? `<span class="strat-note">(${escapeHtml(it.note)})</span>` : ''}`).join('')}</div>`;
+}
+function customerExperiencesShellHtml(){
+  if (aipoVoiceContestStats == null) aipoLoadVoiceContestStats();
+  const voice = renderTileShellGroups([BRAND_SHELL_GROUPS[0]], null, 'brand');
+  if (!cxIsLive()) return voice + cxToolsHtml();
+  return `<div class="strat-card"><div class="strat-head"><h2>Creative and media together</h2></div><div id="cxMediaBody"><p class="strat-empty">Loading…</p></div></div>
+    <div class="strat-card"><div class="strat-head"><h2>Reputation and the brand space</h2></div><p class="strat-empty">Sentiment, reputation monitoring, new entrants and ad formats will be written here by the Brain once those feeds are connected. Reputation Monitoring is available in Tools below.</p></div>` + voice + cxToolsHtml();
+}
+function customerExperiencesPageInit(){ if (cxIsLive()) cxLoad(); }
+
+
+// ---- Growth & Performance (2026-09-30): campaigns in motion, Performance / Lifecycle switch, tools ----
+const gp = { data: null, view: 'performance' };
+function gpIsLive(){ return stratIsLive(); }
+const GP_STAGES = [{ key: 'brand', label: 'Brand' }, { key: 'functions', label: 'Marketing Functions' }, { key: 'creative', label: 'Creative' }, { key: 'qa', label: 'QA & Approval' }, { key: 'market', label: 'In Market' }, { key: 'analysis', label: 'Analysis' }];
+function gpStageOf(c){
+  try {
+    const st = computeStageStatuses(c); const by = {}; st.forEach(x => { by[x.key] = x.status; });
+    for (const s of GP_STAGES){ if (by[s.key] !== 'complete') return s.label; }
+    return 'Complete';
+  } catch (e){ return 'Brand'; }
+}
+function gpCampaigns(){ return (state.campaigns || []).filter(c => !c.isAdHoc && !c.cancelled).map(c => ({ c, stage: gpStageOf(c) })); }
+function gpDaysTo(d){ if (!d) return null; const a = new Date(String(d).slice(0, 10) + 'T00:00:00'), b = new Date(cxToday() + 'T00:00:00'); return Math.round((a - b) / 86400000); }
+function gpRenderTop5(bodyEl){
+  const open = gpCampaigns().filter(r => r.stage !== 'Complete' && r.stage !== 'Analysis').sort((a, b) => String(a.c.startDate || '9999').localeCompare(String(b.c.startDate || '9999'))).slice(0, 5);
+  bodyEl.innerHTML = `<div class="table-scroll"><table class="active-camp-table"><thead><tr><th>Campaign Code</th><th>Campaign Name</th><th>Stage</th><th>Start</th><th>End</th><th></th></tr></thead><tbody>${open.length ? open.map(r => {
+    const c = r.c, n = gpDaysTo(c.startDate), risk = cmgmtIsAtRisk(c) || (r.stage !== 'In Market' && n != null && n <= 0);
+    const when = c.startDate ? `${c.startDate}${n != null ? (n < 0 ? ` · started ${-n}d ago` : n === 0 ? ' · today' : ` · in ${n}d`) : ''}` : '—';
+    return `<tr style="${risk ? 'outline:2px solid #C0273C;outline-offset:-2px;' : ''}"><td>${escapeHtml(c.campaignCode || c.id)}</td><td>${escapeHtml(c.name || c.objective || 'Untitled Campaign')}</td><td><span class="strat-tag">${escapeHtml(r.stage)}</span></td><td${risk ? ' style="color:#C0273C;font-weight:600;"' : ''}>${escapeHtml(when)}</td><td>${c.endDate || '—'}</td><td><button type="button" class="btn-ghost" style="padding:4px 10px;font-size:0.6875rem;white-space:nowrap;" onclick="cmpManageExistingCampaign('${c.id}')">Manage Campaign →</button></td></tr>`; }).join('') : '<tr class="empty-state-row"><td colspan="6">No Campaigns Are In Motion</td></tr>'}</tbody></table></div>`;
+}
+function gpPipelineHtml(){
+  const rows = gpCampaigns(); const n = label => rows.filter(r => r.stage === label).length;
+  return `<div class="strat-fc-grid">${GP_STAGES.map(s => `<div class="strat-fc-card"><div class="strat-chart-label" style="margin:0 0 4px;">${s.label}</div><div style="font-size:1.5rem;font-weight:700;">${n(s.label)}</div><div class="strat-sub">campaign${n(s.label) === 1 ? '' : 's'} at this stage</div></div>`).join('')}</div>`;
+}
+async function gpLoad(){
+  if (!gpIsLive()) return;
+  try { gp.data = await stratGet('growth-performance?months=12'); } catch (e){ gp.data = null; }
+  if (activePrimaryTab === 'marketer'){ gpRenderCoreRow(); gpRenderView(); }
+}
+function gpSetView(v){ gp.view = v; document.querySelectorAll('[data-gp-view]').forEach(b => b.classList.toggle('on', b.getAttribute('data-gp-view') === v)); gpRenderView(); }
+function gpRenderCoreRow(){
+  const el = document.getElementById('tabStatCardGrid'); if (!el) return; el.classList.add('four');
+  const rows = gpCampaigns(); const inMarket = rows.filter(r => r.stage === 'In Market').length; const risk = rows.filter(r => r.stage !== 'Complete' && r.stage !== 'Analysis' && cmgmtIsAtRisk(r.c)).length;
+  const inMotion = rows.filter(r => r.stage !== 'Complete' && r.stage !== 'Analysis').length;
+  const card = (label, value, delta, good, sub) => `<div class="stat-card"><div class="sc-label">${label}</div><div class="sc-value">${value}</div><div class="sc-delta ${good ? 'good' : 'neutral'}">${delta}</div><div class="strat-sub">${sub}</div></div>`;
+  const d = gp.data, t = d && d.performance.totals, p = d && d.performance.priorYear, w = d && d.window;
+  const pct = (a, b) => (a != null && b) ? Math.round(((a - b) / Math.abs(b)) * 1000) / 10 : null;
+  const per = w ? `${stratMonthLabel(w.from)} to ${stratMonthLabel(w.to)}` : '';
+  const cmG = d && d.performance.currentMatched; const dCpv = cmG && p ? pct(cmG.cpv, p.cpv) : null; const dCplG = cmG && p ? pct(cmG.cpl, p.cpl) : null; const mN = d && d.performance.comparedMonths; const mTxt = mN && d && mN < d.window.months ? ` (${mN} matched months)` : '';
+  el.innerHTML = card('Campaigns in motion', String(inMotion), inMarket ? `• ${inMarket} in market` : '• None in market yet', false, 'Not yet in analysis') +
+    card('Starting within 2 weeks, not approved', String(risk), risk ? '▼ Act today' : '▲ On track', risk === 0, 'QA & Approval pending') +
+    card('Cost per visit', t && t.cpv != null ? `$${t.cpv.toFixed(2)}` : '—', dCpv != null ? `${stratPct(dCpv)} vs prior year${mTxt}` : (d ? 'Not on file yet' : 'Loading'), dCpv != null && dCpv <= 0, t ? `Spend ÷ website users · ${per}` : 'Needs spend and website users') +
+    card('Cost per lead', t && t.cpl != null ? `$${t.cpl.toFixed(2)}` : '—', dCplG != null ? `${stratPct(dCplG)} vs prior year${mTxt}` : (d ? 'No prior year on file' : 'Loading'), dCplG != null && dCplG <= 0, t ? `Spend ÷ leads · ${per}` : 'Digital performance upload');
+}
+function gpRenderView(){
+  const box = document.getElementById('gpViewBody'); if (!box) return;
+  const d = gp.data; if (!d){ box.innerHTML = '<p class="strat-empty">Loading…</p>'; return; }
+  let html = '';
+  if (gp.view === 'performance'){
+    const pf = d.performance;
+    if (pf.trend.length){ html += `<div class="strat-chart-label">Impressions and website visits by month</div>` + stratLinesSvg(pf.trend.map(t => t.month), [{ name: 'Impressions', color: '#1E2761', vals: pf.trend.map(t => t.impressions || null) }, { name: 'Website visits', color: '#0891B2', vals: pf.trend.map(t => t.visits) }], false); }
+    if (pf.channels.length){ html += `<div class="strat-chart-label">By channel · ${stratMonthLabel(d.window.from)} to ${stratMonthLabel(d.window.to)}</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Channel</th><th>Impressions</th><th>Spend</th><th>Leads</th><th>Cost per lead</th><th>Calls</th><th>Cost per call</th></tr></thead><tbody>` + pf.channels.map(r => `<tr><td>${escapeHtml(r.channel)}</td><td>${stratNum(r.impressions)}</td><td>${stratMoney(r.spend)}</td><td>${stratNum(r.leads)}</td><td>${r.cpl != null ? '$' + r.cpl.toFixed(2) : '—'}</td><td>${stratNum(r.calls)}</td><td>${r.cpCall != null ? '$' + r.cpCall.toFixed(2) : '—'}</td></tr>`).join('') + `</tbody></table></div><p class="strat-foot">Website visits are account-wide, so cost per visit is shown for all channels together, not by channel.</p>`; }
+    else html += '<p class="strat-empty">Not on file yet: monthly digital performance (Account Management uploads).</p>';
+  } else {
+    const lc = d.lifecycle;
+    if (lc.byMonth.length){ html += `<div class="strat-chart-label">Lead to booking by month <span class="strat-key">bookings ÷ leads, %</span></div>` + stratBarsSvg(lc.byMonth.map(m => ({ month: m.month, v: m.ratePct })), 'v', 'p', '#0891B2', n => n == null ? '—' : n.toFixed(1) + '%', false); }
+    if (lc.byType.length){ html += `<div class="strat-chart-label">By audience type</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Type</th><th>Leads</th><th>Bookings</th><th>Lead to booking</th><th>Days to convert</th></tr></thead><tbody>` + lc.byType.map(r => `<tr><td>${escapeHtml(r.leadType)}</td><td>${stratNum(r.leads)}</td><td>${stratNum(r.bookings)}</td><td>${r.ratePct != null ? r.ratePct + '%' : '—'}</td><td>${r.avgDaysToConvert != null ? r.avgDaysToConvert : '—'}</td></tr>`).join('') + `</tbody></table></div>`; }
+    else html += '<p class="strat-empty">Not on file yet: leads by type by month (Account Management > Annual Media Plan).</p>';
+    if (lc.revenueByProductGroup.length){ html += `<div class="strat-chart-label">Revenue by product group</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Product group</th><th>Gross revenue</th><th>Share</th></tr></thead><tbody>` + lc.revenueByProductGroup.map(r => `<tr><td>${escapeHtml(r.productGroup)}</td><td>${stratMoney(r.revenue)}</td><td>${r.sharePct != null ? r.sharePct + '%' : '—'}</td></tr>`).join('') + `</tbody></table></div>`; }
+  }
+  box.innerHTML = html;
+}
+function gpToolsHtml(){
+  const go = it => it.step ? `goToStep('${it.step}')` : `goToStep('pendingFeature','${jsStrEscape(it.label)}','Growth & Performance','marketer')`;
+  const items = [
+    { label: 'Campaign Management', step: 'campaignMgmt' }, { label: 'Marketing Calendar', step: 'marketingCalendar' }, { label: 'UTM & QR Code Activation', note: 'opens inside a selected campaign' },
+    { label: 'A/B / Multi-Variant Testing Views', note: 'built by Analytics' }, { label: 'View My Customers', step: 'marketOptimization' }
+  ];
+  return `<div class="strat-tools"><span class="strat-tools-lbl">Tools</span>${items.map(it => `<a class="flink" onclick="${go(it)}">${escapeHtml(it.label)}</a>${it.note ? `<span class="strat-note">(${escapeHtml(it.note)})</span>` : ''}`).join('')}</div>`;
+}
+function growthPerformanceShellHtml(){
+  if (!gpIsLive()) return renderTileShellGroups(MARKETER_SHELL_GROUPS, null, 'marketer');
+  return `<div class="strat-card"><div class="strat-head"><h2>Campaigns in motion</h2></div>${gpPipelineHtml()}</div>
+    <div class="strat-card"><div class="strat-head"><h2>Performance and lifecycle</h2><div class="strat-ctl"><span class="strat-seg"><button type="button" data-gp-view="performance" class="${gp.view === 'performance' ? 'on' : ''}" onclick="gpSetView('performance')">Performance</button><button type="button" data-gp-view="lifecycle" class="${gp.view === 'lifecycle' ? 'on' : ''}" onclick="gpSetView('lifecycle')">Lifecycle</button></span></div></div><div id="gpViewBody"><p class="strat-empty">Loading…</p></div></div>` + gpToolsHtml();
+}
+function growthPerformancePageInit(){ if (gpIsLive()) gpLoad(); }
 
 // Called right after renderWorkstreams() puts the shell in the page.
 function strategyPageInit(){
@@ -23565,6 +23728,8 @@ function renderTopUrgentModule(){
   if (!cmgmtDueDatesLoaded){
     cmgmtLoadDueDates();
   }
+  if (activePrimaryTab === 'brand' && cxIsLive()){ cxRenderTopUrgent(bodyEl); return; }
+  if (activePrimaryTab === 'marketer' && gpIsLive()){ gpRenderTop5(bodyEl); return; }
   const rows = cmpCreativeGridRows().slice(0, 5);
   // 2026-08-24 (round 17, direct feedback) — the table's own column
   // headers should always render, even with zero campaigns, so the module
@@ -23684,11 +23849,13 @@ function renderWorkstreams(){
   if (activePrimaryTab === 'brand'){
     // 2026-08-23 (round 16) — real designed shell replacing the old
     // filtered flat-card grid, same pattern as Strategy/Account Management.
-    grid.innerHTML = banner + brandShellHtml();
+    grid.innerHTML = banner + customerExperiencesShellHtml();
+    customerExperiencesPageInit();
     return;
   }
   if (activePrimaryTab === 'marketer'){
-    grid.innerHTML = banner + marketerShellHtml();
+    grid.innerHTML = banner + growthPerformanceShellHtml();
+    growthPerformancePageInit();
     return;
   }
   if (activePrimaryTab === 'dataScientist'){
@@ -23910,6 +24077,8 @@ function renderStatCards(){
   const oldNote = document.getElementById('stratDemandNote'); if (oldNote) oldNote.remove();
   if (tab === 'strategy' && stratIsLive()){ stratRenderDemandRow(); return; }
   if (tab === 'dataScientist' && msIsLive()){ msRenderCoreRow(); return; }
+  if (tab === 'brand' && cxIsLive()){ cxRenderCoreRow(); return; }
+  if (tab === 'marketer' && gpIsLive()){ gpRenderCoreRow(); return; }
   const cards = STAT_CARD_META[tab];
   if (!cards){ el.innerHTML = ''; return; }
   el.innerHTML = cards.map(c => {
