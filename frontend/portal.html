@@ -188,7 +188,8 @@
      32px this bar's own bleed convention uses everywhere else. Item font
      size stays bumped up from an earlier round, per that round's own
      "acceptable" note. */
-  .primary-nav{display:flex;justify-content:center;gap:2px;margin:0 -32px;padding:0 32px;background:var(--hdr-navy);overflow-x:auto;}
+  /* 2026-09-30, per direct instruction: left-justified so the first nav item's number lines up with the first letter of the client name above (32px bar padding minus the item's own 14px padding). */
+  .primary-nav{display:flex;justify-content:flex-start;gap:2px;margin:0 -32px;padding:0 32px 0 18px;background:var(--hdr-navy);overflow-x:auto;}
   .primary-nav-item{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.9375rem;font-weight:600;letter-spacing:0.01em;color:var(--hdr-muted-on-navy);background:none;border:none;border-bottom:2px solid transparent;padding:12px 14px 12px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:baseline;gap:6px;}
   .primary-nav-item .num{font-size:0.75rem;font-weight:700;opacity:0.7;}
   .primary-nav-item:hover{color:var(--hdr-ink-on-navy);}
@@ -457,7 +458,7 @@
      is deliberate: it's what lets .co-logo below use a plain height:100%
      nested inside a fixed-height ancestor works. box-sizing:border-box so
      the 5px 32px padding is INSIDE that 88px, not added on top of it. */
-  .account-summary{position:sticky;top:0;z-index:35;background:var(--hdr-navy);border:none;color:var(--hdr-ink-on-navy);border-radius:0;height:88px;box-sizing:border-box;padding:5px 32px;margin:0 -32px 0;display:flex;flex-wrap:wrap;gap:18px;align-items:center;justify-content:space-between;}
+  .account-summary{position:sticky;top:0;z-index:35;background:var(--hdr-navy);border:none;color:var(--hdr-ink-on-navy);border-radius:0;height:64px;box-sizing:border-box;padding:0 32px;margin:0 -32px 0;display:flex;flex-wrap:wrap;gap:18px;align-items:center;justify-content:space-between;}
   .account-summary .logo-and-name{display:flex;align-items:center;gap:14px;height:100%;}
   /* 2026-09-12, per direct report — a client-uploaded sample logo was
      rendering "very small" in this header. Root cause: this cap (36px tall
@@ -476,8 +477,9 @@
      will look identical — a naturally wide, short logo file is still bound
      by max-width before it ever reaches 78px tall. */
   .account-summary .co-logo{max-height:78px;max-width:260px;width:auto;height:auto;object-fit:contain;flex-shrink:0;}
-  .account-summary .co-name{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.1875rem;font-weight:700;margin:0;color:var(--hdr-ink-on-navy);}
-  .account-summary .co-code{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:700;letter-spacing:0.04em;color:var(--hdr-muted-on-navy);background:var(--hdr-navy-dim);border:1px solid var(--hdr-navy-line);border-radius:6px;padding:2px 7px;}
+  /* 2026-09-30, per direct instruction: back to the client NAME in white text with the client code beside it (no logo image, no initials badge) for a smaller footprint. Name is 2x the portal navigation font (nav is 0.9375rem, so 1.875rem) and sized for 25 characters; longer names ellipsize and show in full on hover. */
+  .account-summary .co-name{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.875rem;line-height:1.15;font-weight:700;margin:0;color:var(--hdr-ink-on-navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:26ch;}
+  .account-summary .co-code{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.9375rem;flex-shrink:0;font-weight:700;letter-spacing:0.04em;color:var(--hdr-muted-on-navy);background:var(--hdr-navy-dim);border:1px solid var(--hdr-navy-line);border-radius:6px;padding:2px 7px;}
   .account-summary .co-id{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:600;color:var(--hdr-muted-on-navy);}
   .account-summary .tag{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--hdr-muted-on-navy);}
   .acct-header-brand-avatar{width:40px;height:40px;border-radius:10px;background:var(--hdr-amber);color:#2A1B05;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
@@ -506,7 +508,8 @@
      even when its condition matches; confirmed by rendering both
      orderings before shipping this one. */
   @media (max-width:760px){
-    .account-summary{height:auto;min-height:88px;padding:10px 32px;row-gap:6px;}
+    .account-summary{height:auto;min-height:64px;padding:10px 32px;row-gap:6px;}
+    .account-summary .co-name{font-size:1.375rem;}
     .acct-header-right{flex-basis:100%;justify-content:flex-end;margin-top:2px;}
   }
   /* Round 132bb — settings gear pinned to the card's upper-right corner,
@@ -3942,7 +3945,7 @@
              "Acme Hospitality Group," even briefly, is a real trust problem,
              not just a cosmetic one. "Loading…" is a neutral placeholder that
              never claims to be any specific account. -->
-        <div style="display:flex;align-items:baseline;gap:8px;">
+        <div style="display:flex;align-items:center;gap:12px;">
           <div class="co-name" id="acctCompanyName">Loading…</div>
           <!-- 2026-08-26 account-management reorg, per direct instruction:
                "The Partner Code should be client code and be adjacent to
@@ -12525,7 +12528,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-30-build-e';
+const CXMEDIA_BUILD_STAMP = '2026-09-30-build-g';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -70861,24 +70864,13 @@ function renderAccountLogo(){
   if (!img) return;
   const nameEl = document.getElementById('acctCompanyName');
   const avatarEl = document.getElementById('acctAvatarBadge');
-  const dataUrl = state.styleAssets && state.styleAssets.logoDataUrl;
-  if (dataUrl){
-    img.src = dataUrl;
-    img.style.display = '';
-    // Round 132bb, per direct instruction — once the real logo is shown,
-    // drop the redundant text name next to it; text-only accounts (no
-    // logo uploaded yet) keep the name as their only identifier.
-    if (nameEl) nameEl.style.display = 'none';
-    // Round 17 — same logic extends to the amber initials avatar badge:
-    // once a real uploaded mark exists, the initials placeholder steps
-    // aside for it rather than showing both.
-    if (avatarEl) avatarEl.style.display = 'none';
-  } else {
-    img.removeAttribute('src');
-    img.style.display = 'none';
-    if (nameEl) nameEl.style.display = '';
-    if (avatarEl) avatarEl.style.display = '';
-  }
+  // 2026-09-30, per direct instruction: the header shows the client name in white text with the
+  // client code beside it. The uploaded logo and the initials badge no longer appear here (the
+  // logo is still stored and used by the style guide and creative work).
+  img.removeAttribute('src');
+  img.style.display = 'none';
+  if (nameEl){ nameEl.style.display = ''; nameEl.title = nameEl.textContent || ''; }
+  if (avatarEl) avatarEl.style.display = 'none';
   // Round 17 — amber initials badge + Client ID display, per the comps.
   // Initials derived from the company name (first letter of up to the
   // first 3 words, e.g. "Atlas Ocean Voyages" -> "AOV"), same convention
@@ -71643,7 +71635,7 @@ async function posSetDecision(contributionId, status){
   renderOrgModelRow();
   applyOrgModel();
 
-  document.getElementById('acctCompanyName').textContent = state.company;
+  { const _n = document.getElementById('acctCompanyName'); _n.textContent = state.company; _n.title = state.company || ''; }
   renderDashboardLabel(); // Round 132bx (2026-08-14) — "CMO Dashboard" becomes "<Company> Dashboard" now that state.company is loaded
   renderAccountLogo(); // Round 130 — show the uploaded mark (if any) now that styleAssets is loaded
   const tagEl = document.getElementById('acctTag');
