@@ -140,6 +140,7 @@ async function buildXlsxBuffer(sheetName, headers, rows){
 // .pdf. Both are pure-JS, no native build step, safe for a Vercel serverless
 // function.
 const mammoth = require('mammoth');
+const forecastEngine = require('./forecast-engine');
 const pdfParse = require('pdf-parse');
 
 // Database: local SQLite file when running standalone (unchanged local-dev
@@ -14390,6 +14391,101 @@ async function getElevenLabsSignedUrl(agentId){
   return { signedUrl: data.signed_url || data.signedUrl || null, reason: null };
 }
 
+// ---------------------------------------------------------------------------
+// 2026-09-30 — Forecasting ("Train the Brain", behind the scenes). The pure
+// maths lives in forecast-engine.js; this gathers the account's monthly series
+// (impressions and spend from getEffectiveMmmTotals, website users, lead
+// cohorts with bookings and days-to-convert, transactions and revenue) and
+// hands them in. No screen of its own: Ask Verilume (typed and voice) and the
+// dashboards read it, and each calibration is logged to the AI Brain ledger.
+// ---------------------------------------------------------------------------
+function buildForecastSeries(accountId){
+  const key = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
+  const S = { impressions: {}, spend: {}, visits: {}, leads: {}, revenue: {}, transactions: {} };
+  try {
+    getEffectiveMmmTotals(accountId).totals.forEach(t => {
+      if (!/^\d{4}-\d{2}$/.test(String(t.periodLabel || ''))) return;
+      if (t.impressions != null) S.impressions[t.periodLabel] = (S.impressions[t.periodLabel] || 0) + (Number(t.impressions) || 0);
+      if (t.spend != null) S.spend[t.periodLabel] = (S.spend[t.periodLabel] || 0) + (Number(t.spend) || 0);
+    });
+  } catch (e){ /* no media totals — engine falls back to benchmarks */ }
+  db.prepare('SELECT * FROM account_website_users_monthly WHERE accountId = ?').all(accountId).forEach(r => {
+    const k = key(r.year, r.month); S.visits[k] = (S.visits[k] || 0) + (Number(r.users) || 0);
+  });
+  db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId).forEach(r => {
+    const k = key(r.year, r.month);
+    const c = S.leads[k] || (S.leads[k] = { total: 0, byType: {} });
+    const n = Number(r.count) || 0; c.total += n;
+    const t = c.byType[r.leadType || 'Unassigned'] || (c.byType[r.leadType || 'Unassigned'] = { count: 0, bookings: null, avgDays: null, _dw: 0 });
+    t.count += n;
+    if (r.bookings != null) t.bookings = (t.bookings || 0) + (Number(r.bookings) || 0);
+    if (r.avgDaysToConvert != null && n > 0){ t._dw += (Number(r.avgDaysToConvert) || 0) * n; }
+  });
+  Object.values(S.leads).forEach(c => Object.values(c.byType).forEach(t => { t.avgDays = t.count > 0 && t._dw > 0 ? t._dw / t.count : null; delete t._dw; }));
+  db.prepare('SELECT * FROM account_transactions_monthly WHERE accountId = ?').all(accountId).forEach(r => {
+    const k = key(r.year, r.month);
+    S.transactions[k] = (S.transactions[k] || 0) + (Number(r.transactions) || 0);
+    S.revenue[k] = (S.revenue[k] || 0) + (Number(r.revenue) || 0);
+  });
+  return S;
+}
+
+function getForecastCalibration(accountId, asOf){
+  return forecastEngine.calibrate(buildForecastSeries(accountId), { asOf: asOf || new Date() });
+}
+
+// The plan as loaded: every month from this month on that has planned
+// impressions or spend, on the same definition the calibration learned from.
+function getForecastPlanMonths(accountId){
+  const now = new Date(); const cur = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  const S = buildForecastSeries(accountId);
+  const keys = Array.from(new Set(Object.keys(S.impressions).concat(Object.keys(S.spend)))).filter(k => k >= cur).sort();
+  return keys.map(k => ({ month: k, impressions: Math.round(S.impressions[k] || 0), spend: Math.round(S.spend[k] || 0) })).filter(m => m.impressions > 0 || m.spend > 0);
+}
+
+// At most one ledger snapshot per account per day, and only when a headline
+// rate moved — the Brain's record of what it has learned about this funnel.
+// Starts 'reference' like every other estimate; nothing here is auto-applied.
+function maybeSnapshotForecastCalibration(accountId, cal, actor){
+  try {
+    const sig = JSON.stringify([cal.confidence, cal.impressionsToVisits.source, Math.round(cal.impressionsToVisits.visitsPerImp * 1e6), Math.round(cal.visitsToLeads.mid * 1e4), Math.round(cal.leadsToBookings.mid * 1e3), cal.bookingsToRevenue.mid != null ? Math.round(cal.bookingsToRevenue.mid) : null]);
+    const last = db.prepare("SELECT contentJson, createdAt FROM ai_brain_contributions WHERE accountId = ? AND sourceType = 'forecast_calibration' ORDER BY createdAt DESC LIMIT 1").get(accountId);
+    if (last){ let lj = {}; try { lj = JSON.parse(last.contentJson); } catch (e){} if (lj.signature === sig) return null; if (Date.now() - new Date(last.createdAt).getTime() < 86400000) return null; }
+    const id = generateId('ABC'); const now = new Date().toISOString();
+    db.prepare(`INSERT INTO ai_brain_contributions (id, accountId, sourceType, sourceRefId, scopeType, scopeValue, contentJson, status, reason, decidedBy, createdAt, decidedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(id, accountId, 'forecast_calibration', null, 'account', accountId, JSON.stringify({ signature: sig, calibration: cal }), 'reference', null, actor || null, now, null);
+    return id;
+  } catch (e){ console.warn('[forecast] ledger snapshot skipped:', e.message); return null; }
+}
+
+// A compact block for the Ask Verilume prompt: how the funnel has actually
+// behaved, what one more million impressions buys, and the plan as loaded.
+function forecastContextBlock(accountId){
+  const cal = getForecastCalibration(accountId);
+  maybeSnapshotForecastCalibration(accountId, cal, 'ask_verilume');
+  const plan = getForecastPlanMonths(accountId);
+  const f = plan.length ? forecastEngine.forecast(cal, { months: plan }) : null;
+  const marg = forecastEngine.marginalPerMillion(cal);
+  const r = (x, d) => x == null ? '—' : Number(x).toLocaleString(undefined, { maximumFractionDigits: d == null ? 0 : d });
+  const L = [];
+  L.push(`FORECAST MODEL (calibrated ${cal.asOf}; confidence: ${cal.confidence}; bookings are scored only on lead cohorts at least ${cal.attributionWindowDays} days old):`);
+  L.push(`- Impressions -> website visits: ${cal.impressionsToVisits.source}; about ${r(cal.impressionsToVisits.baseVisits)} baseline visits a month plus ${r(cal.impressionsToVisits.visitsPerImp * 1000, 2)} visits per 1,000 impressions${cal.impressionsToVisits.r2 != null ? ` (fit R2 ${cal.impressionsToVisits.r2}, ${cal.impressionsToVisits.n} months)` : ''}.`);
+  L.push(`- Visits -> leads: ${cal.visitsToLeads.source}; ${r(cal.visitsToLeads.mid * 100, 2)}% (typical ${r(cal.visitsToLeads.low * 100, 2)}-${r(cal.visitsToLeads.high * 100, 2)}%).`);
+  L.push(`- Leads -> bookings: ${cal.leadsToBookings.source}; ${r(cal.leadsToBookings.mid * 100, 1)}% (typical ${r(cal.leadsToBookings.low * 100, 1)}-${r(cal.leadsToBookings.high * 100, 1)}%), average ${cal.avgDaysToConvert != null ? cal.avgDaysToConvert + ' days' : 'unknown days'} to convert, so revenue lands about ${cal.bookingLagMonths} month(s) after the lead month.`);
+  const ltr = Object.entries(cal.leadTypeBookingRates || {}); if (ltr.length) L.push(`- Lead-to-booking by lead type: ${ltr.map(([t, v]) => `${t} ${r(v.rate * 100, 1)}%`).join('; ')}.`);
+  L.push(`- Bookings -> revenue: ${cal.bookingsToRevenue.source}; ${cal.bookingsToRevenue.mid != null ? '$' + r(cal.bookingsToRevenue.mid) + ' average order value' : 'no transaction revenue on file'}.`);
+  if (cal.blendedCpm != null) L.push(`- Blended CPM (recent months): $${r(cal.blendedCpm, 2)}.`);
+  L.push(`- At the margin, each additional 1,000,000 impressions is worth about ${r(marg.visits)} visits, ${r(marg.leads[1])} leads (${r(marg.leads[0])}-${r(marg.leads[2])}), ${r(marg.bookings[1])} bookings (${r(marg.bookings[0])}-${r(marg.bookings[2])})${marg.revenue ? ', $' + r(marg.revenue[1]) + ' revenue' : ''}. Scale linearly for other volumes; the baseline visits above are excluded.`);
+  if (f){
+    L.push(`- THE PLAN AS LOADED (${plan.length} month(s) from now on; low/expected/high): ${r(f.totals.impressions)} impressions, $${r(f.totals.spend)} spend -> ${r(f.totals.visits[1])} visits, ${r(f.totals.leads[1])} leads (${r(f.totals.leads[0])}-${r(f.totals.leads[2])}), ${r(f.totals.bookings[1])} bookings (${r(f.totals.bookings[0])}-${r(f.totals.bookings[2])})${f.totals.revenue ? `, $${r(f.totals.revenue[1])} revenue (${r(f.totals.revenue[0])}-${r(f.totals.revenue[2])}), ROAS ${f.totals.roas[1]} (${f.totals.roas[0]}-${f.totals.roas[2]})` : ''}; cost per lead $${r(f.totals.costPerLead, 2)}, per booking $${r(f.totals.costPerBooking, 2)}.`);
+    L.push('  By month: ' + f.months.map(m => `${m.month} ${r(m.impressions)} imp -> ${r(m.leads[1])} leads, ${r(m.bookings[1])} bookings`).join('; ') + '.');
+  } else L.push('- No planned impressions or spend for upcoming months are on file, so there is no plan forecast yet.');
+  if (cal.notes.length) L.push('- Data caveats: ' + cal.notes.join(' '));
+  L.push('FORECAST RULES: always give the expected number with its range, name which stages come from this account\'s own history and which are benchmarks, and say the numbers are a planning estimate, not a guarantee. Revenue is lead-sourced bookings at the account\'s average order value.');
+  return L.join('\n');
+}
+const FORECAST_INTENT_RE = /forecast|project(ed|ion)?|predict|expect|estimate|what[ -]?if|scenario|how many (leads|visits|bookings|transactions)|(leads|visits|bookings|revenue|roas)\b.*\b(from|for|if|with)\b.*\b(impressions|spend|budget)|\b(impressions|spend|budget)\b.*\b(lead|visit|booking|revenue|roas)|roas|return on|cac\b|cost per (lead|booking|visit)/i;
+
 // Most-urgent campaigns, server-side — the same rule the dashboard's Top 5
 // Most Urgent uses client-side (cmgmtLoadDueDates/cmgmtCampaignDueDate in
 // portal.html): earliest real dropDate per campaign, else earliest hitDate
@@ -14468,6 +14564,9 @@ function voiceContextBundle(accountId, opts){
       const lines = db.prepare('SELECT channel, partner, dropDate, hitDate, endDate, budget, status FROM channel_planning_details WHERE campaignId = ? ORDER BY hitDate ASC').all(c.id);
       blocks.push(`THIS CAMPAIGN: ${c.name || c.objective} [${c.campaignCode || c.id}] stage ${c.stage || '—'}, KPI ${c.primaryKpi || '—'}, budget ${c.budget != null ? '$' + Math.round(c.budget).toLocaleString() : '—'}, start ${c.startDate || '—'}, end ${c.endDate || '—'}, status ${deriveCampaignStatusFromDates(c)}, creative ${c.creativeDisposition || 'undecided'}, product groups ${c.productGroups || '—'}, creative focus ${c.creativeFocusGroups || '—'}.\nLINES:\n${lines.map(l => `- ${l.channel} · ${l.partner || '—'} · drop ${l.dropDate || '—'} hit ${l.hitDate || '—'} end ${l.endDate || '—'} · $${Math.round(l.budget || 0).toLocaleString()} · ${l.status || ''}`).join('\n') || '(no channel lines)'}`);
     }
+  }
+  if (o.question && FORECAST_INTENT_RE.test(o.question)){
+    try { blocks.push(forecastContextBlock(accountId)); } catch (e){ console.warn('[forecast] context block failed:', e.message); blocks.push('(forecast model unavailable right now)'); }
   }
   if (o.question){
     try { const hits = searchProductDocs(o.question, 3); if (hits && hits.length) blocks.push(`PRODUCT DOCS (how Verilume works — cite only if the question is about the product itself):\n${hits.map(h => `- ${h.heading}: ${String(h.text || '').slice(0, 300)}`).join('\n')}`); } catch (e){ /* optional */ }
@@ -23133,6 +23232,26 @@ async function handleRequest(req, res) {
       db.prepare('UPDATE accounts SET company = ?, industry = ?, footprint = ?, productsServices = ?, audience = ?, wealth = ?, wealthIndexTargetIncome = ?, activeChannels = ?, partnerCode = ?, corporateGoals = ? WHERE accountId = ?')
         .run(merged.company, merged.industry, merged.footprint, merged.productsServices, merged.audience, merged.wealth, merged.wealthIndexTargetIncome, merged.activeChannels, merged.partnerCode, merged.corporateGoals, accountId);
       return sendJson(res, 200, { updatedAt: new Date().toISOString(), company: merged.company });
+    }
+
+    // GET  /api/accounts/:id/forecast/calibration — what the funnel has learned
+    // POST /api/accounts/:id/forecast — { months:[{month, impressions?, spend?}] }
+    //   or { scale: { impressions|spend } } (no months = the plan as loaded).
+    // 2026-09-30, forecasting behind the scenes: dashboards and Ask Verilume
+    // read these; there is deliberately no forecast screen of its own.
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'forecast' && req.method === 'POST' || (parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'forecast' && parts[4] === 'calibration' && req.method === 'GET')){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const cal = getForecastCalibration(accountId);
+      const sess = authenticate(req);
+      maybeSnapshotForecastCalibration(accountId, cal, (sess && sess.memberId) || 'account');
+      if (req.method === 'GET') return sendJson(res, 200, { calibration: cal, marginalPerMillionImpressions: forecastEngine.marginalPerMillion(cal) });
+      const body = (await readBody(req)) || {};
+      let months = Array.isArray(body.months) ? body.months.slice(0, 36).map(m => ({ month: m.month ? String(m.month).slice(0, 7) : null, impressions: Number(m.impressions) || 0, spend: Number(m.spend) || 0 })) : null;
+      let planSource = 'scenario';
+      if (!months || !months.length){ months = getForecastPlanMonths(accountId); planSource = 'plan as loaded'; }
+      if (!months.length) return sendJson(res, 200, { calibration: cal, forecast: null, note: 'No planned impressions or spend on file and no scenario supplied.' });
+      return sendJson(res, 200, { planSource, calibration: cal, forecast: forecastEngine.forecast(cal, { months }) });
     }
 
     // GET /api/accounts/:id/voice/session — 2026-09-29, ElevenLabs final
