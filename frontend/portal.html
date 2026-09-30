@@ -1472,7 +1472,7 @@
   .strat-tag{display:inline-block;font-size:0.6875rem;font-weight:700;background:var(--paper-dim);border:1px solid var(--line);border-radius:980px;padding:2px 8px;margin-right:6px;color:var(--muted);}
   .strat-tag.benchmark,.strat-tag.low{background:#FFF4E5;border-color:#F0C98F;color:#8A5A12;}
   .bd-card .strat-head{align-items:flex-start;} .bd-metric{display:flex;flex-direction:column;align-items:flex-end;gap:2px;} .bd-metric-lbl{font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);} .bd-metric-val{font-size:1.375rem;font-weight:700;}
-  .bd-working{display:flex;align-items:center;gap:14px;} .bd-failed{border-color:var(--line-strong,#999);} .bd-spin{width:18px;height:18px;border-radius:50%;border:2px solid var(--line-hairline);border-top-color:var(--ink,#222);animation:portalLoadSpin 0.9s linear infinite;flex:none;} .bd-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;} .bd-thread{margin-top:14px;border-top:1px solid var(--line-hairline);padding-top:10px;} .bd-comment{font-size:0.8125rem;line-height:1.5;padding:6px 0;} .bd-comment.brain{background:var(--paper-dim);border-radius:10px;padding:8px 10px;margin:4px 0;}
+  .strat-tablewrap{overflow-x:auto;} .ttb-step.done{opacity:0.75;} .ttb-min{font-size:0.75rem;color:var(--muted);} .ttb-items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;} .ttb-items li{display:flex;gap:10px;align-items:flex-start;} .ttb-mark{width:18px;height:18px;border:1.5px solid var(--line-hairline);border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:0.6875rem;margin-top:2px;} .ttb-items li.done .ttb-mark{background:var(--ink,#222);color:var(--paper,#fff);border-color:transparent;} .ttb-feed-row{display:flex;justify-content:space-between;gap:16px;padding:8px 0;border-top:1px solid var(--line-hairline);font-size:0.875rem;} .ttb-feed-row:first-child{border-top:0;} .ttb-all{margin-top:20px;} .ttb-all>summary{cursor:pointer;font-size:0.875rem;color:var(--muted);padding:8px 0;} .bd-working{display:flex;align-items:center;gap:14px;} .bd-failed{border-color:var(--line-strong,#999);} .bd-spin{width:18px;height:18px;border-radius:50%;border:2px solid var(--line-hairline);border-top-color:var(--ink,#222);animation:portalLoadSpin 0.9s linear infinite;flex:none;} .bd-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;} .bd-thread{margin-top:14px;border-top:1px solid var(--line-hairline);padding-top:10px;} .bd-comment{font-size:0.8125rem;line-height:1.5;padding:6px 0;} .bd-comment.brain{background:var(--paper-dim);border-radius:10px;padding:8px 10px;margin:4px 0;}
   .bd-compose{display:flex;gap:8px;margin-top:8px;} .bd-compose input{flex:1;font:inherit;font-size:0.8125rem;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--white);color:var(--ink);}
   .strat-trust{margin:0 0 0 18px;padding:0;font-size:0.8125rem;color:var(--muted);line-height:1.7;}
   .strat-foot,.strat-empty{font-size:0.8125rem;color:var(--muted);margin:10px 0 0;line-height:1.5;}
@@ -4878,8 +4878,8 @@
   <div class="step" id="step-manageAccount">
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / Manage Account</div>
     <div class="eyebrow">Workstream · Manage Account</div>
-    <h1>AI Partner Onboarding &amp; Training</h1>
-    <p class="lede">Everything that trains your AI Partners, in one place — from the structural minimums every campaign needs to the historical documents that deepen what each seat already knows. Organized macro to micro; every card names which seat it trains. <span class="illustrative-tag">a rollup of data already collected elsewhere in the Portal, not a new form to fill out</span></p>
+    <h1 id="ttbH1">AI Partner Onboarding &amp; Training</h1>
+    <p class="lede" id="ttbLede">Everything that trains your AI Partners, in one place — from the structural minimums every campaign needs to the historical documents that deepen what each seat already knows. Organized macro to micro; every card names which seat it trains. <span class="illustrative-tag">a rollup of data already collected elsewhere in the Portal, not a new form to fill out</span></p>
 
     <div id="cfdWsModule-manageAccount"></div>
 
@@ -12519,7 +12519,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-30-braindump-d';
+const CXMEDIA_BUILD_STAMP = '2026-09-30-train-a';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -26603,10 +26603,50 @@ async function saveSurveyCoreField(key, value){
     return data.core;
   } catch (e){ return null; }
 }
+// ---- Train the Brain page (2026-09-30): four short sittings, recent Brain learnings, data consumed ----
+const ttb = { data: null, loading: false, error: false, tab: 'setup' };
+function ttbIsLive(){ return stratIsLive(); }
+function ttbSetHeader(){ const h = document.getElementById('ttbH1'), l = document.getElementById('ttbLede'); if (h) h.textContent = 'Train the Brain'; if (l) l.textContent = 'The Brain learns from what you give it and what your team decides. Setup takes about ten minutes, and every step is optional and can be done in any order.'; }
+async function ttbLoad(){
+  if (!ttbIsLive()) return;
+  ttb.loading = true; ttb.error = false; ttbRerender();
+  try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/train-the-brain`); if (!r.ok) throw new Error(String(r.status)); ttb.data = await r.json(); }
+  catch (e){ ttb.error = true; }
+  ttb.loading = false; ttbRerender();
+}
+function ttbRerender(){ const stepEl = document.getElementById('step-manageAccount'); if (stepEl && stepEl.classList.contains('active')) renderAiPartnerOnboardingHub(true); }
+function ttbGo(step, arg){ if (arg) goToStep(step, arg); else goToStep(step); }
+function ttbSetTab(t){ ttb.tab = t; ttbRerender(); }
+function ttbFmtDate(iso){ if (!iso) return ''; const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString([], { month: 'short', day: 'numeric' }); }
+function ttbSetupHtml(d){
+  const S = d.setup;
+  const head = S.doneCount === S.total ? `<p class="strat-reading" style="margin:0;">All four sittings are done. The Brain has what it needs to start; keep adding and it keeps learning.</p>` : `<p class="strat-reading" style="margin:0;">${S.doneCount} of ${S.total} sittings done. About ${S.remainingMinutes} minute${S.remainingMinutes === 1 ? '' : 's'} left. Do them in any order, or one now and one later.</p>`;
+  const steps = S.steps.map((st, n) => `<div class="strat-card ttb-step ${st.done ? 'done' : ''}">
+    <div class="strat-head"><h2>${escapeHtml(st.title)}</h2><span class="ttb-min">${st.done ? 'Done' : `About ${st.minutes} min`}</span></div>
+    <p class="strat-sub" style="margin:0 0 8px;">${escapeHtml(st.gain)}</p>
+    <ul class="ttb-items">${st.items.map(i => `<li class="${i.done ? 'done' : ''}"><span class="ttb-mark" aria-hidden="true">${i.done ? '✓' : ''}</span><div><a class="flink" onclick="ttbGo('${i.step}'${i.stepArg ? `, '${i.stepArg}'` : ''})">${escapeHtml(i.label)}${i.done ? '' : ' →'}</a><div class="strat-sub">${escapeHtml(i.gain)}</div></div></li>`).join('')}</ul></div>`).join('');
+  return `<div class="strat-card"><div class="strat-chart-label" style="margin:0 0 6px;">Getting started</div>${head}</div>${steps}`;
+}
+function ttbLearningsHtml(d){
+  if (!d.learnings.length) return `<div class="strat-card"><p class="strat-empty">Nothing recorded yet. As your team approves, applies or removes sources and decisions across the dashboards, they show up here.</p></div>`;
+  return `<div class="strat-card"><div class="strat-chart-label" style="margin:0 0 6px;">Recent Brain learnings</div><div class="ttb-feed">${d.learnings.map(l => `<div class="ttb-feed-row"><div><strong>${escapeHtml(l.action)}</strong> ${escapeHtml(l.what)}${l.reason ? `<div class="strat-sub">${escapeHtml(l.reason)}</div>` : ''}</div><div class="strat-sub" style="white-space:nowrap;">${escapeHtml(l.dashboard)} · ${escapeHtml(ttbFmtDate(l.at))}</div></div>`).join('')}</div></div>`;
+}
+function ttbConsumedHtml(d){
+  const rows = d.consumed.slice().sort((a, b) => b.rows - a.rows);
+  const tbl = `<div class="strat-tablewrap"><table class="strat-table"><thead><tr><th>Data</th><th>Source</th><th>Rows</th><th>Latest</th><th>Used by</th></tr></thead><tbody>${rows.map(r => `<tr><td>${escapeHtml(r.label)}<div class="strat-sub">${escapeHtml(r.dashboard)} · ${escapeHtml(r.grain)}</div></td><td>${r.kind === 'integration' ? 'Integration' : 'Uploaded or entered'}</td><td>${r.rows ? r.rows.toLocaleString('en-US') : 'None yet'}</td><td>${escapeHtml(r.latest || '')}</td><td>${escapeHtml((r.usedBy || []).join(', '))}</td></tr>`).join('')}</tbody></table></div>`;
+  return `<div class="strat-card"><div class="strat-chart-label" style="margin:0 0 6px;">Data the Brain consumes</div><p class="strat-sub" style="margin:0 0 8px;">Every data set carries an owner dashboard, a grain and keywords, so the forecast, Ask the Brain and voice reports can find the right one.${d.syncedAt ? ` Last warehouse sync ${escapeHtml(ttbFmtDate(d.syncedAt))}.` : ''}</p>${tbl}</div>`;
+}
+function ttbHtml(){
+  if (ttb.loading && !ttb.data) return '<div class="strat-card"><p class="strat-empty">Reading what the Brain has so far…</p></div>';
+  if (ttb.error || !ttb.data) return '<div class="strat-card"><p class="strat-empty">Could not load Train the Brain just now. <a class="flink" onclick="ttbLoad()">Try again</a></p></div>';
+  const tabs = [['setup', 'Getting started'], ['learnings', 'Recent learnings'], ['data', 'Data consumed']];
+  const body = ttb.tab === 'learnings' ? ttbLearningsHtml(ttb.data) : ttb.tab === 'data' ? ttbConsumedHtml(ttb.data) : ttbSetupHtml(ttb.data);
+  return `<div class="strat-ctl" style="margin:0 0 12px;"><span class="strat-seg">${tabs.map(t => `<button type="button" class="${ttb.tab === t[0] ? 'on' : ''}" onclick="ttbSetTab('${t[0]}')">${t[1]}</button>`).join('')}</span></div>${body}`;
+}
 function renderAiPartnerOnboardingHub(skipMmmFetch){
   const mount = document.getElementById('aipoMount');
   if (!mount) return;
-  mount.innerHTML = aipoRenderAiTrainingToggleMarkup() + AI_PARTNER_ONBOARDING_GROUPS.map(g => `
+  const oldHtml = aipoRenderAiTrainingToggleMarkup() + AI_PARTNER_ONBOARDING_GROUPS.map(g => `
     <div class="aipo-group-label">${g.label}${g.sub ? `<span class="aipo-role-sub"> — ${g.sub}</span>` : ''}</div>
     <div class="aipo-group-desc">${g.desc}</div>
     <div class="aipo-grid">
@@ -26628,6 +26668,8 @@ function renderAiPartnerOnboardingHub(skipMmmFetch){
         </div>`;
       }).join('')}
     </div>`).join('');
+  if (ttbIsLive()){ ttbSetHeader(); mount.innerHTML = ttbHtml() + `<details class="ttb-all"><summary>All setup cards (the full list, by role)</summary>${oldHtml}</details>`; if (!ttb.data && !ttb.loading) ttbLoad(); }
+  else mount.innerHTML = oldHtml;
   if (!skipMmmFetch && aipoMmmPeriodCount == null) aipoLoadMmmCount();
   if (aipoVoiceContestStats == null) aipoLoadVoiceContestStats();
 }
