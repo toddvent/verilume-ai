@@ -1481,6 +1481,19 @@
   .strat-foot,.strat-empty{font-size:0.8125rem;color:var(--muted);margin:10px 0 0;line-height:1.5;}
   .strat-actions{margin-top:12px;} .strat-chip{font:inherit;font-size:0.8125rem;border:1px solid var(--line);background:var(--white);border-radius:980px;padding:6px 14px;cursor:pointer;color:var(--ink);}
   .strat-chip:hover{border-color:var(--ink);}
+  /* Train the Brain (2026-09-30): larger type by default for readability, a minutes clock, and expandable item modules. */
+  .ttb-page{font-size:1.125rem;line-height:1.55;} .ttb-page .strat-sub{font-size:1rem;line-height:1.5;} .ttb-page .strat-reading{font-size:1.125rem;} .ttb-page .strat-seg button{font-size:1.0625rem;padding:10px 18px;min-height:44px;} .ttb-page .strat-chip,.ttb-page .bd-compose input{font-size:1.0625rem;min-height:44px;} .ttb-page .bd-compose input{padding:10px 14px;}
+  .ttb-hero{display:flex;align-items:center;gap:28px;flex-wrap:wrap;} .ttb-clock{color:var(--ink);display:block;} .ttb-big{font-size:2rem;font-weight:800;letter-spacing:-0.01em;line-height:1.15;}
+  .ttb-group{margin-top:26px;} .ttb-group-h{display:flex;align-items:center;gap:14px;margin-bottom:8px;} .ttb-group-h h2{margin:0;font-size:1.5rem;} .ttb-mini{flex:none;}
+  .ttb-mod{border:1px solid var(--line);border-radius:14px;background:var(--white);margin:10px 0;} .ttb-mod.open{border-color:var(--ink);}
+  .ttb-mod-h{display:flex;width:100%;align-items:center;gap:16px;padding:16px 18px;background:none;border:0;cursor:pointer;text-align:left;font:inherit;color:var(--ink);min-height:64px;} .ttb-mod-h:focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:14px;}
+  .ttb-check{flex:none;width:30px;height:30px;border:2px solid var(--ink);border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:1.125rem;font-weight:800;} .ttb-mod.done .ttb-check{background:var(--ink);color:var(--white);}
+  .ttb-mod-t{flex:1;display:flex;flex-direction:column;gap:2px;} .ttb-name{font-size:1.3125rem;font-weight:700;} .ttb-benefit{font-size:1.0625rem;color:var(--muted);} .ttb-chev{flex:none;font-size:1.125rem;color:var(--muted);}
+  .ttb-mod-body{padding:4px 18px 20px 64px;} .ttb-mod-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:24px;} @media (max-width:860px){.ttb-mod-grid{grid-template-columns:1fr;} .ttb-mod-body{padding-left:18px;}}
+  .ttb-tag{font-size:0.875rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;} .ttb-done{font-size:1.0625rem;margin:0 0 12px;font-weight:600;}
+  .ttb-sample{border:1px dashed var(--line);border-radius:12px;padding:8px 16px;background:var(--paper-dim);} .ttb-srow{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-top:1px solid var(--line-hairline);font-size:1.0625rem;} .ttb-srow:first-child{border-top:0;} .ttb-srow span:last-child{color:var(--muted);text-align:right;} .ttb-head{font-weight:700;color:var(--muted);font-size:0.9375rem;text-transform:uppercase;letter-spacing:0.03em;} .ttb-sw{display:inline-flex;gap:6px;} .ttb-sw i{display:inline-block;width:26px;height:26px;border-radius:6px;border:1px solid var(--line);}
+  .ttb-opts{display:flex;flex-direction:column;gap:10px;margin-top:6px;align-items:flex-start;} .ttb-opt{font:inherit;font-size:1.125rem;font-weight:600;min-height:48px;padding:10px 22px;border-radius:980px;border:2px solid var(--ink);background:var(--white);color:var(--ink);cursor:pointer;} .ttb-opt:hover,.ttb-opt:focus-visible{background:var(--ink);color:var(--white);}
+  .ttb-inline{margin:0 0 12px;} .ttb-clock-n{paint-order:stroke;stroke:var(--white);stroke-width:7px;stroke-linejoin:round;}
   .drr-bar{margin:0 0 12px;} .drr-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;} .drr-lbl{font-size:0.75rem;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--muted);margin-right:4px;}
   .drr-chip{font:inherit;font-size:0.8125rem;border:1px solid var(--line);background:var(--white);border-radius:980px;padding:6px 14px;cursor:pointer;color:var(--ink);} .drr-chip:hover{border-color:var(--ink);} .drr-chip.on{background:var(--ink);color:var(--white);border-color:var(--ink);}
   .drr-custom{display:inline-flex;align-items:center;gap:6px;font-size:0.8125rem;color:var(--muted);} .drr-custom input{font:inherit;font-size:0.8125rem;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--white);color:var(--ink);}
@@ -12528,7 +12541,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-30-build-g';
+const CXMEDIA_BUILD_STAMP = '2026-09-30-build-h';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -26731,9 +26744,9 @@ async function saveSurveyCoreField(key, value){
   } catch (e){ return null; }
 }
 // ---- Train the Brain page (2026-09-30): four short sittings, recent Brain learnings, data consumed ----
-const ttb = { data: null, loading: false, error: false, tab: 'setup', qs: { busy: false, result: null, error: '' } };
+const ttb = { data: null, loading: false, error: false, tab: 'setup', open: null, qs: { busy: false, result: null, error: '' } };
 function ttbIsLive(){ return stratIsLive(); }
-function ttbSetHeader(){ const h = document.getElementById('ttbH1'), l = document.getElementById('ttbLede'); if (h) h.textContent = 'Train the Brain'; if (l) l.textContent = 'The Brain learns from what you give it and what your team decides. Setup takes about ten minutes, and every step is optional and can be done in any order.'; }
+function ttbSetHeader(){ const h = document.getElementById('ttbH1'), l = document.getElementById('ttbLede'); if (h) h.textContent = 'TRAIN THE BRAIN IN 24 HOURS'; if (l) l.textContent = 'About ten minutes of setup, in any order. The Brain starts learning from each thing you give it as soon as you give it.'; }
 async function ttbLoad(){
   if (!ttbIsLive()) return;
   ttb.loading = true; ttb.error = false; ttbRerender();
@@ -26756,24 +26769,85 @@ async function ttbQuickStart(){
   } catch (e){ ttb.qs = { busy: false, result: null, error: 'Could not reach the server. Try again.' }; }
   ttb.qs.busy = false; await ttbLoad(); if (typeof loadAccountData === 'function') { try { loadAccountData(); } catch (e){} }
 }
-function ttbQuickStartHtml(d){
+function ttbQuickStartHtml(d, inline){
   const company = d.setup.steps[0].items[0]; const q = ttb.qs;
-  if (company.done && !q.result) return '';
+  if (!inline && company.done && !q.result) return '';
   let out = '';
   if (q.busy) out = `<div class="bd-working" role="status" aria-live="polite" style="margin-top:12px;"><span class="bd-spin"></span><div><strong>The Brain is reading your website.</strong><div class="strat-sub">This takes a few seconds.</div></div></div>`;
   else if (q.error) out = `<p class="strat-sub" role="alert" style="margin:10px 0 0;">${escapeHtml(q.error)}</p>`;
   else if (q.result) { const r = q.result; out = r.read ? `<div style="margin-top:12px;"><strong>Here is what the Brain read.</strong><div class="strat-sub">${r.title ? escapeHtml(r.title) : ''}${r.description ? ' — ' + escapeHtml(r.description) : ''}</div>${r.filled && r.filled.length ? `<div class="strat-sub">Filled in your ${escapeHtml(r.filled.join(' and '))} from the site. <a class="flink" onclick="ttbGo('companyProfile')">Review it on Company Profile →</a></div>` : `<div class="strat-sub"><a class="flink" onclick="ttbGo('companyProfile')">Review your Company Profile →</a></div>`}</div>` : `<p class="strat-sub" style="margin:10px 0 0;">${escapeHtml(r.note || 'Saved.')}</p>`; }
-  return `<div class="strat-card"><div class="strat-chart-label" style="margin:0 0 6px;">Start here</div><p class="strat-reading" style="margin:0 0 10px;">Paste your website address and the Brain reads it, starting your company profile so you only have to correct it.</p>
+  return `<div class="${inline ? 'ttb-inline' : 'strat-card'}">${inline ? '' : '<div class="strat-chart-label" style="margin:0 0 6px;">Start here</div>'}<p class="strat-reading" style="margin:0 0 10px;">Paste your website address and the Brain reads it, starting your company profile so you only have to correct it.</p>
     <div class="bd-compose"><input type="text" id="ttbSite" placeholder="yourcompany.com" aria-label="Your website address" value="${escapeHtml(q.result ? '' : '')}" onkeydown="if(event.key==='Enter')ttbQuickStart()"><button type="button" class="strat-chip" ${q.busy ? 'disabled' : ''} onclick="ttbQuickStart()">${q.busy ? 'Reading…' : 'Read my website'}</button></div>${out}</div>`;
+}
+// A clock face for minutes: one tick per minute of setup, the shaded wedge is time already done,
+// the hand points at where you are, and the number is minutes left.
+function ttbClock(total, done, size, label){
+  const c = size / 2, r = c - 5, left = Math.max(0, Math.ceil(total - done - 0.001)); const frac = total > 0 ? Math.min(1, done / total) : 0;
+  const pt = (f, rr) => { const a = f * 2 * Math.PI - Math.PI / 2; return [c + rr * Math.cos(a), c + rr * Math.sin(a)]; };
+  let ticks = ''; const n = Math.max(1, Math.round(total));
+  for (let i = 0; i < n; i++){ const p1 = pt(i / n, r), p2 = pt(i / n, r - (size > 90 ? 8 : 5)); ticks += `<line x1="${p1[0].toFixed(1)}" y1="${p1[1].toFixed(1)}" x2="${p2[0].toFixed(1)}" y2="${p2[1].toFixed(1)}" stroke="currentColor" stroke-width="${size > 90 ? 2 : 1.5}" opacity="0.55"/>`; }
+  let wedge = '';
+  if (frac >= 0.999) wedge = `<circle cx="${c}" cy="${c}" r="${r - 1}" fill="currentColor" opacity="0.14"/>`;
+  else if (frac > 0){ const e = pt(frac, r - 1); wedge = `<path d="M${c},${c} L${c},${(c - r + 1).toFixed(1)} A${r - 1},${r - 1} 0 ${frac > 0.5 ? 1 : 0} 1 ${e[0].toFixed(1)},${e[1].toFixed(1)} Z" fill="currentColor" opacity="0.14"/>`; }
+  const h = pt(frac, r - (size > 90 ? 14 : 8));
+  const hand = frac >= 0.999 ? '' : `<line x1="${c}" y1="${c}" x2="${h[0].toFixed(1)}" y2="${h[1].toFixed(1)}" stroke="currentColor" stroke-width="${size > 90 ? 3 : 2}" stroke-linecap="round"/><circle cx="${c}" cy="${c}" r="${size > 90 ? 4 : 2.5}" fill="currentColor"/>`;
+  const text = size > 90 ? (left === 0 ? `<text x="${c}" y="${c + 12}" text-anchor="middle" font-size="38" font-weight="700" fill="currentColor">&#10003;</text>` : `<text x="${c}" y="${c + 8}" text-anchor="middle" font-size="38" font-weight="800" fill="currentColor">${left}</text><text x="${c}" y="${c + 28}" text-anchor="middle" font-size="14" font-weight="600" fill="currentColor" opacity="0.7">min left</text>`) : '';
+  return `<svg class="ttb-clock" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="${escapeHtml(label || (left === 0 ? 'All done' : left + ' minutes left'))}"><circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="currentColor" stroke-width="2.5"/>${wedge}${ticks}${hand}${text}</svg>`;
+}
+// What each item looks like once the Brain has it (illustrative sample data, not this account's) and how it can be added.
+const TTB_ITEMS = {
+  companyProfile: { benefit: 'Everything else reads from this: what you sell, who you sell to, and how you look.',
+    sample: `<div class="ttb-srow"><b>Sample Co</b><span>Hospitality and travel</span></div><div class="ttb-srow"><span>Audience</span><span>Affluent couples, 45 to 70</span></div><div class="ttb-srow"><span>Website</span><span>sampleco.com</span></div><div class="ttb-srow"><span>Footprint</span><span>National, 14 markets</span></div>`,
+    opts: [['manual', 'Add Manually', 'companyProfile']] },
+  styleAssets: { benefit: 'Keeps every draft and creative on brand.',
+    sample: `<div class="ttb-srow"><span>Colors</span><span class="ttb-sw"><i style="background:#1E2761"></i><i style="background:#C8963E"></i><i style="background:#F5F5F7"></i></span></div><div class="ttb-srow"><span>Headline font</span><span>Georgia Bold</span></div><div class="ttb-srow"><span>Body font</span><span>Arial Regular</span></div>`,
+    opts: [['upload', 'Upload File', 'styleAssets'], ['manual', 'Add Manually', 'styleAssets']] },
+  websiteExamples: { benefit: 'Real pages from your site become copy examples the Brain writes from.',
+    sample: `<div class="ttb-srow"><b>/cruises/mediterranean</b><span>Headline, 3 paragraphs</span></div><div class="ttb-srow"><b>/about</b><span>Brand story, 2 paragraphs</span></div><div class="ttb-srow"><b>/offers</b><span>Offer copy, 4 blocks</span></div>`,
+    opts: [['manual', 'Add Manually', 'websiteExamples']] },
+  competitivePositioning: { benefit: 'Sets who you are measured against. Ongoing tracking lives in Strategy.',
+    sample: `<div class="ttb-srow"><b>Competitor A</b><span>Premium, all-inclusive</span></div><div class="ttb-srow"><b>Competitor B</b><span>Value, families</span></div><div class="ttb-srow"><b>You</b><span>Small ship, expedition</span></div>`,
+    opts: [['manual', 'Add Manually', 'competitivePositioning']] },
+  brandWritingSamples: { benefit: 'Two or three writings are enough. The Brain learns how you sound from them.',
+    sample: `<div class="ttb-srow"><b>Spring email to past guests</b><span>420 words</span></div><div class="ttb-srow"><b>Brochure page, Antarctica</b><span>610 words</span></div><div class="ttb-srow"><b>CEO welcome speech</b><span>780 words</span></div>`,
+    opts: [['upload', 'Upload File', 'brandWritingSamples'], ['manual', 'Add Manually', 'brandWritingSamples']] },
+  voice: { benefit: 'The Brain drafts the voice guide from your samples; you approve it.',
+    sample: `<div class="ttb-srow"><span>Sounds</span><span>Warm, precise, unhurried</span></div><div class="ttb-srow"><span>Avoids</span><span>Hype, exclamation marks</span></div><div class="ttb-srow"><span>Sample line</span><span>"Small ships, big horizons."</span></div>`,
+    opts: [['manual', 'Add Manually', 'voice']] },
+  marketingBudgetUpload: { benefit: 'Gives the forecast a spend plan to test.', arg: 'configuration',
+    sample: `<div class="ttb-srow ttb-head"><span>Channel</span><span>Jan</span><span>Feb</span><span>Mar</span></div><div class="ttb-srow"><span>Paid social</span><span>$24k</span><span>$26k</span><span>$30k</span></div><div class="ttb-srow"><span>Direct mail</span><span>$40k</span><span>$0</span><span>$40k</span></div><div class="ttb-srow"><span>Search</span><span>$18k</span><span>$18k</span><span>$22k</span></div>`,
+    opts: [['upload', 'Upload File', 'marketingBudgetUpload']] },
+  bulkUpload: { benefit: 'Lets the forecast learn from what actually sold, by day.',
+    sample: `<div class="ttb-srow ttb-head"><span>Date</span><span>Bookings</span><span>Revenue</span></div><div class="ttb-srow"><span>Mar 3</span><span>4</span><span>$21,400</span></div><div class="ttb-srow"><span>Mar 4</span><span>7</span><span>$38,900</span></div><div class="ttb-srow"><span>Mar 5</span><span>3</span><span>$15,200</span></div>`,
+    opts: [['upload', 'Upload File', 'bulkUpload'], ['integration', 'Partner Integration', 'partnerIntegrations']] },
+  partnerIntegrations: { benefit: 'Snowflake, GA4, Meta, Google Ads or The Trade Desk feed the Brain on their own.',
+    sample: `<div class="ttb-srow"><b>Google Analytics 4</b><span>Connected, synced today</span></div><div class="ttb-srow"><b>Meta Ads</b><span>Connected, synced today</span></div><div class="ttb-srow"><b>Snowflake</b><span>Not connected</span></div>`,
+    opts: [['integration', 'Partner Integration', 'partnerIntegrations']] },
+  team: { benefit: 'Everyone works from the same picture and can comment in the Brain Dump.',
+    sample: `<div class="ttb-srow"><b>Dana Reyes</b><span>CMO</span></div><div class="ttb-srow"><b>Sam Ortiz</b><span>Director, Growth</span></div><div class="ttb-srow"><b>Priya Shah</b><span>Brand manager</span></div>`,
+    opts: [['manual', 'Add Manually', 'team']] }
+};
+function ttbToggle(k){ ttb.open = ttb.open === k ? '' : k; ttbRerender(); }
+function ttbModuleHtml(d, i){
+  const cfg = TTB_ITEMS[i.step] || { benefit: i.gain, sample: '', opts: [['manual', 'Open', i.step]] };
+  const open = ttb.open === i.step;
+  const status = i.done ? `<div class="ttb-done">Done. ${escapeHtml(i.gain)}</div>` : '';
+  const opts = cfg.opts.map(o => `<button type="button" class="ttb-opt ${o[0]}" onclick="ttbGo('${o[2]}'${cfg.arg && o[2] === i.step ? `, '${cfg.arg}'` : ''})">${o[1]}</button>`).join('');
+  const inlineSite = i.step === 'companyProfile' ? ttbQuickStartHtml(d, true) : '';
+  const body = open ? `<div class="ttb-mod-body">${status}<div class="ttb-mod-grid"><div><div class="ttb-tag">Example of what the Brain keeps</div><div class="ttb-sample">${cfg.sample}</div></div><div><div class="ttb-tag">Add it</div>${inlineSite}<div class="ttb-opts">${opts}</div></div></div></div>` : '';
+  return `<div class="ttb-mod ${i.done ? 'done' : ''} ${open ? 'open' : ''}"><button type="button" class="ttb-mod-h" aria-expanded="${open}" onclick="ttbToggle('${i.step}')"><span class="ttb-check" aria-label="${i.done ? 'Done' : 'Not done yet'}">${i.done ? '&#10003;' : ''}</span><span class="ttb-mod-t"><span class="ttb-name">${escapeHtml(i.label)}</span><span class="ttb-benefit">${escapeHtml(cfg.benefit)}</span></span><span class="ttb-chev" aria-hidden="true">${open ? '&#9652;' : '&#9662;'}</span></button>${body}</div>`;
 }
 function ttbSetupHtml(d){
   const S = d.setup;
-  const head = S.doneCount === S.total ? `<p class="strat-reading" style="margin:0;">All four sittings are done. The Brain has what it needs to start; keep adding and it keeps learning.</p>` : `<p class="strat-reading" style="margin:0;">${S.doneCount} of ${S.total} sittings done. About ${S.remainingMinutes} minute${S.remainingMinutes === 1 ? '' : 's'} left. Do them in any order, or one now and one later.</p>`;
-  const steps = S.steps.map((st, n) => `<div class="strat-card ttb-step ${st.done ? 'done' : ''}">
-    <div class="strat-head"><h2>${escapeHtml(st.title)}</h2><span class="ttb-min">${st.done ? 'Done' : `About ${st.minutes} min`}</span></div>
-    <p class="strat-sub" style="margin:0 0 8px;">${escapeHtml(st.gain)}</p>
-    <ul class="ttb-items">${st.items.map(i => `<li class="${i.done ? 'done' : ''}"><span class="ttb-mark" aria-hidden="true">${i.done ? '✓' : ''}</span><div><a class="flink" onclick="ttbGo('${i.step}'${i.stepArg ? `, '${i.stepArg}'` : ''})">${escapeHtml(i.label)}${i.done ? '' : ' →'}</a><div class="strat-sub">${escapeHtml(i.gain)}</div></div></li>`).join('')}</ul></div>`).join('');
-  return `${ttbQuickStartHtml(d)}<div class="strat-card"><div class="strat-chart-label" style="margin:0 0 6px;">Getting started</div>${head}</div>${steps}`;
+  let total = 0, done = 0;
+  S.steps.forEach(st => { const per = st.minutes / st.items.length; total += st.minutes; st.items.forEach(i => { if (i.done) done += per; }); });
+  const left = Math.max(0, Math.ceil(total - done - 0.001));
+  const allItems = [].concat(...S.steps.map(st => st.items));
+  if (ttb.open === null){ const first = allItems.find(i => !i.done); ttb.open = first ? first.step : ''; }
+  const doneItems = allItems.filter(i => i.done).length;
+  const hero = `<div class="strat-card ttb-hero"><div class="ttb-clockwrap">${ttbClock(total, done, 132)}</div><div><div class="ttb-big">${left === 0 ? 'Setup is done' : `${left} minute${left === 1 ? '' : 's'} to go`}</div><p class="strat-reading" style="margin:4px 0 0;">${left === 0 ? `All ${allItems.length} items are done. Open any item to update it; the Brain keeps learning from what you add.` : `${doneItems} of ${allItems.length} items done. About ${total} minutes of setup in all. Pick any item, in any order; one now and one later is fine.`}</p></div></div>`;
+  const groups = S.steps.map(st => `<div class="ttb-group"><div class="ttb-group-h"><span class="ttb-mini">${ttbClock(st.minutes, st.items.filter(i => i.done).length * st.minutes / st.items.length, 44, st.done ? st.title + ' done' : st.title + ', about ' + st.minutes + ' minutes')}</span><div><h2>${escapeHtml(st.title)}</h2><div class="strat-sub">${st.done ? 'Done' : `About ${st.minutes} min`}. ${escapeHtml(st.gain)}</div></div></div>${st.items.map(i => ttbModuleHtml(d, i)).join('')}</div>`).join('');
+  return `${hero}${groups}`;
 }
 function ttbLearningsHtml(d){
   if (!d.learnings.length) return `<div class="strat-card"><p class="strat-empty">Nothing recorded yet. As your team approves, applies or removes sources and decisions across the dashboards, they show up here.</p></div>`;
@@ -26789,7 +26863,7 @@ function ttbHtml(){
   if (ttb.error || !ttb.data) return '<div class="strat-card"><p class="strat-empty">Could not load Train the Brain just now. <a class="flink" onclick="ttbLoad()">Try again</a></p></div>';
   const tabs = [['setup', 'Getting started'], ['learnings', 'Recent learnings'], ['data', 'Data consumed']];
   const body = ttb.tab === 'learnings' ? ttbLearningsHtml(ttb.data) : ttb.tab === 'data' ? ttbConsumedHtml(ttb.data) : ttbSetupHtml(ttb.data);
-  return `<div class="strat-ctl" style="margin:0 0 12px;"><span class="strat-seg">${tabs.map(t => `<button type="button" class="${ttb.tab === t[0] ? 'on' : ''}" onclick="ttbSetTab('${t[0]}')">${t[1]}</button>`).join('')}</span></div>${body}`;
+  return `<div class="ttb-page"><div class="strat-ctl" style="margin:0 0 12px;"><span class="strat-seg">${tabs.map(t => `<button type="button" class="${ttb.tab === t[0] ? 'on' : ''}" onclick="ttbSetTab('${t[0]}')">${t[1]}</button>`).join('')}</span></div>${body}</div>`;
 }
 function renderAiPartnerOnboardingHub(skipMmmFetch){
   const mount = document.getElementById('aipoMount');
