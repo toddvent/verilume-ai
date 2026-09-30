@@ -1478,6 +1478,12 @@
   .strat-foot,.strat-empty{font-size:0.8125rem;color:var(--muted);margin:10px 0 0;line-height:1.5;}
   .strat-actions{margin-top:12px;} .strat-chip{font:inherit;font-size:0.8125rem;border:1px solid var(--line);background:var(--white);border-radius:980px;padding:6px 14px;cursor:pointer;color:var(--ink);}
   .strat-chip:hover{border-color:var(--ink);}
+  .drr-bar{margin:0 0 12px;} .drr-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;} .drr-lbl{font-size:0.75rem;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--muted);margin-right:4px;}
+  .drr-chip{font:inherit;font-size:0.8125rem;border:1px solid var(--line);background:var(--white);border-radius:980px;padding:6px 14px;cursor:pointer;color:var(--ink);} .drr-chip:hover{border-color:var(--ink);} .drr-chip.on{background:var(--ink);color:var(--white);border-color:var(--ink);}
+  .drr-custom{display:inline-flex;align-items:center;gap:6px;font-size:0.8125rem;color:var(--muted);} .drr-custom input{font:inherit;font-size:0.8125rem;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--white);color:var(--ink);}
+  .drr-note{font-size:0.8125rem;color:var(--muted);margin-top:6px;line-height:1.5;} .drr-hint{display:block;} .drr-err{font-size:0.8125rem;color:var(--ink);margin-top:6px;}
+  .stat-card.has-share{position:relative;} .share-wrap{position:absolute;top:12px;right:12px;} .share-btn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:1px solid var(--line);background:var(--white);color:var(--muted);border-radius:8px;cursor:pointer;} .share-btn:hover,.share-btn:focus-visible{color:var(--ink);border-color:var(--ink);}
+  .share-menu{position:absolute;right:0;top:34px;z-index:20;min-width:150px;background:var(--white);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow-sm);padding:4px;display:flex;flex-direction:column;} .share-menu[hidden]{display:none;} .share-menu button{font:inherit;font-size:0.8125rem;text-align:left;background:none;border:0;padding:8px 10px;border-radius:6px;cursor:pointer;color:var(--ink);} .share-menu button:hover{background:var(--paper-dim);}
   .strat-fc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;}
   .strat-fc-card{border:1px solid var(--line-hairline);border-radius:12px;padding:14px 16px;background:var(--paper-dim);}
   .strat-fc-card .l{font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);}
@@ -12519,7 +12525,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-30-build-d';
+const CXMEDIA_BUILD_STAMP = '2026-09-30-build-e';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -22600,6 +22606,66 @@ function stratNum(n){ if (n == null || isNaN(n)) return '—'; const a = Math.ab
 function stratPct(p){ return p == null ? '—' : `${p > 0 ? '▲' : p < 0 ? '▼' : '•'} ${Math.abs(p).toFixed(1)}%`; }
 function stratMonthLabel(k){ const [y, m] = k.split('-'); return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m) - 1] + " '" + y.slice(2); }
 function stratIsLive(){ return dataSourceLabel === 'backend' && !!state.companyId; }
+// ---- Analytics card standard (2026-09-30): one date range per person, one share menu ----
+// The range is saved per signed-in person and every analytics card reads it, so changing it on
+// any card changes them all. A card that shows a range registers a reload with drrOnChange().
+const drr = { spec: null, resolved: null, loaded: false, listeners: [], customOpen: false, error: '' };
+async function drrLoad(){
+  if (drr.loaded) return;
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/preferences/date-range`);
+    if (r.ok){ const j = await r.json(); drr.spec = j.spec; drr.resolved = j.resolved; }
+  } catch (e){ /* the server falls back to this year to date */ }
+  drr.loaded = true;
+}
+function drrOnChange(fn){ if (!drr.listeners.includes(fn)) drr.listeners.push(fn); }
+async function drrSet(spec){
+  drr.error = '';
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/preferences/date-range`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(spec) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok){ drr.error = j.error || 'Could not save the date range.'; drrRenderBars(); return; }
+    drr.spec = j.spec; drr.resolved = j.resolved; drr.customOpen = false; drr.draft = null;
+  } catch (e){ drr.error = 'Could not save the date range.'; drrRenderBars(); return; }
+  drrRenderBars();
+  drr.listeners.forEach(fn => { try { fn(); } catch (e){ /* one card failing never stops the others */ } });
+}
+function drrPickPreset(p){ if (p === 'custom'){ drr.customOpen = !drr.customOpen; drrRenderBars(); return; } drrSet({ preset: p }); }
+function drrApplyCustom(){
+  const f = (document.getElementById('drrFrom') || {}).value, t = (document.getElementById('drrTo') || {}).value;
+  drr.draft = { from: f, to: t };
+  if (!f || !t){ drr.error = 'Choose a start and an end date.'; drrRenderBars(); return; }
+  if (t < f){ drr.error = 'The start date must be on or before the end date.'; drrRenderBars(); return; }
+  drrSet({ preset: 'custom', from: f, to: t });
+}
+function drrBarHtml(){
+  const cur = (drr.spec && drr.spec.preset) || 'year'; const rs = drr.resolved;
+  const chip = (k, l) => `<button type="button" class="drr-chip${cur === k ? ' on' : ''}" onclick="drrPickPreset('${k}')">${l}</button>`;
+  const custom = drr.customOpen ? `<span class="drr-custom"><input type="date" id="drrFrom" aria-label="Start date" value="${escapeHtml((drr.draft && drr.draft.from) || (drr.spec && drr.spec.from) || (rs && rs.from) || '')}"> to <input type="date" id="drrTo" aria-label="End date" value="${escapeHtml((drr.draft && drr.draft.to) || (drr.spec && drr.spec.to) || (rs && rs.through) || '')}"> <button type="button" class="drr-chip" onclick="drrApplyCustom()">Apply</button></span>` : '';
+  return `<div class="drr-row"><span class="drr-lbl">Date range</span>${chip('week', 'Week')}${chip('month', 'Month')}${chip('quarter', 'Quarter')}${chip('year', 'Year')}${chip('custom', 'Calendar')}${custom}</div>
+    <div class="drr-note">${rs ? `${escapeHtml(rs.label)} &middot; ${escapeHtml(rs.compLabel)}` : ''} <span class="drr-hint">Applies to every analytics card until you change it. You can also ask Verilume for a range.</span></div>${drr.error ? `<div class="drr-err">${escapeHtml(drr.error)}</div>` : ''}`;
+}
+function drrRenderBars(){ document.querySelectorAll('.drr-bar').forEach(b => { b.innerHTML = drrBarHtml(); }); }
+function shareBtnHtml(card){
+  const items = [['xlsx', 'Excel (.xlsx)'], ['csv', 'CSV'], ['pdf', 'PDF']].map(([f, l]) => `<button type="button" role="menuitem" onclick="analyticsExport('${card}','${f}')">${l}</button>`).join('');
+  return `<div class="share-wrap"><button type="button" class="share-btn" aria-label="Share or download this card" aria-haspopup="menu" onclick="shareToggle(event,'${card}')"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg></button><div class="share-menu" id="shareMenu-${card}" role="menu" hidden>${items}</div></div>`;
+}
+function shareToggle(ev, card){
+  ev.stopPropagation();
+  document.querySelectorAll('.share-menu').forEach(m => { if (m.id !== `shareMenu-${card}`) m.hidden = true; });
+  const m = document.getElementById(`shareMenu-${card}`); if (m) m.hidden = !m.hidden;
+}
+document.addEventListener('click', () => { document.querySelectorAll('.share-menu').forEach(m => { m.hidden = true; }); });
+async function analyticsExport(card, format){
+  document.querySelectorAll('.share-menu').forEach(m => { m.hidden = true; });
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/analytics/export?card=${encodeURIComponent(card)}&format=${encodeURIComponent(format)}`);
+    if (!resp.ok){ drr.error = 'Could not build that download right now.'; drrRenderBars(); return; }
+    const blob = await resp.blob(); const cd = resp.headers.get('Content-Disposition') || ''; const m = /filename="([^"]+)"/.exec(cd);
+    const url = URL.createObjectURL(blob); const a = document.createElement('a');
+    a.href = url; a.download = m ? m[1] : `${card}.${format}`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  } catch (e){ drr.error = 'Could not build that download right now.'; drrRenderBars(); }
+}
 async function stratGet(path){
   const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/analytics/${path}`);
   if (!resp.ok) throw new Error(String(resp.status));
@@ -22626,11 +22692,13 @@ function stratRenderDemandRow(){
   const el = document.getElementById('tabStatCardGrid'); if (!el) return;
   el.classList.add('four');
   const oldN = document.getElementById('stratDemandNote'); if (oldN) oldN.remove();
+  if (!document.getElementById('drrBar')) el.insertAdjacentHTML('beforebegin', '<div class="drr-bar" id="drrBar"></div>');
+  drrRenderBars();
   const d = strat.demand;
   if (!d){ el.innerHTML = ['Spend', 'Gross revenue', 'ROAS', 'CAC'].map(l => `<div class="stat-card"><div class="sc-label">${l}</div><div class="sc-value">…</div><div class="sc-delta neutral">Loading</div></div>`).join(''); return; }
   const c = d.current, dl = d.deltaPct, w = d.window, o = d.outcomes;
-  const per = `${stratMonthLabel(w.from)} to ${stratMonthLabel(w.to)}`;
-  const card = (label, value, delta, good, sub) => `<div class="stat-card"><div class="sc-label">${label}</div><div class="sc-value">${value}</div><div class="sc-delta ${good ? 'good' : 'neutral'}">${delta}</div><div class="strat-sub">${sub}</div></div>`;
+  const per = d.range ? d.range.label : `${stratMonthLabel(w.from)} to ${stratMonthLabel(w.to)}`;
+  const card = (label, value, delta, good, sub, key) => `<div class="stat-card has-share">${shareBtnHtml(key)}<div class="sc-label">${label}</div><div class="sc-value">${value}</div><div class="sc-delta ${good ? 'good' : 'neutral'}">${delta}</div><div class="strat-sub">${sub}</div></div>`;
   // Show the current number always; a comparison only where one exists.
   const cmp = (pct, vsTarget, tgtText, mkey) => {
     if (pct != null) return `${stratPct(pct)} vs prior year${stratMatchedNote(d, mkey)}`;
@@ -22642,18 +22710,22 @@ function stratRenderDemandRow(){
   const t = o && o.target, vt = o && o.vsTargetPct;
   const spendSub = d.pacing ? `Pacing ${d.pacing.spendPacingPct}% of plan to date · ${per}` : per;
   el.innerHTML =
-    card('Marketing spend', stratMoney(c.spend), cmp(dl.spend, null, null, 'spend'), false, spendSub) +
-    card('Gross revenue', o ? stratMoney(o.revenue) : '—', cmp(o && o.deltaPct.revenue, vt && vt.revenue, t && t.revenue != null ? stratMoney(t.revenue) : null, 'revenue'), !!(o && ((o.deltaPct.revenue != null && o.deltaPct.revenue >= 0) || (vt && vt.revenue != null && vt.revenue >= 0))), basisSub) +
-    card('ROAS', o && o.roas != null ? `${o.roas.toFixed(2)}x` : '—', cmp(o && o.deltaPct.roas, vt && vt.roas, t && t.roas != null ? `${t.roas.toFixed(2)}x` : null, 'roas'), !!(o && ((o.deltaPct.roas != null && o.deltaPct.roas >= 0) || (vt && vt.roas != null && vt.roas >= 0))), 'Gross revenue ÷ marketing spend') +
-    card('CAC', o && o.cac != null ? `$${o.cac.toLocaleString()}` : '—', cmp(o && o.deltaPct.cac, vt && vt.cac, t && t.cac != null ? `$${t.cac.toLocaleString()}` : null, 'cacTransaction'), !!(o && ((o.deltaPct.cac != null && o.deltaPct.cac <= 0) || (vt && vt.cac != null && vt.cac <= 0))), 'Spend ÷ unique transactions');
+    card('Marketing spend', stratMoney(c.spend), cmp(dl.spend, null, null, 'spend'), false, spendSub, 'spend') +
+    card('Gross revenue', o ? stratMoney(o.revenue) : '—', cmp(o && o.deltaPct.revenue, vt && vt.revenue, t && t.revenue != null ? stratMoney(t.revenue) : null, 'revenue'), !!(o && ((o.deltaPct.revenue != null && o.deltaPct.revenue >= 0) || (vt && vt.revenue != null && vt.revenue >= 0))), basisSub, 'revenue') +
+    card('ROAS', o && o.roas != null ? `${o.roas.toFixed(2)}x` : '—', cmp(o && o.deltaPct.roas, vt && vt.roas, t && t.roas != null ? `${t.roas.toFixed(2)}x` : null, 'roas'), !!(o && ((o.deltaPct.roas != null && o.deltaPct.roas >= 0) || (vt && vt.roas != null && vt.roas >= 0))), 'Gross revenue ÷ marketing spend', 'roas') +
+    card('CAC', o && o.cac != null ? `$${o.cac.toLocaleString()}` : '—', cmp(o && o.deltaPct.cac, vt && vt.cac, t && t.cac != null ? `$${t.cac.toLocaleString()}` : null, 'cacTransaction'), !!(o && ((o.deltaPct.cac != null && o.deltaPct.cac <= 0) || (vt && vt.cac != null && vt.cac <= 0))), 'Spend ÷ unique transactions', 'cac');
   const msgs = [];
   if (d.notOnFile && d.notOnFile.length) msgs.push(`Not on file yet: ${escapeHtml(d.notOnFile.join('; '))}.`);
+  if (d.estimated && d.estimated.length) d.estimated.forEach(n => msgs.push(escapeHtml(n)));
+  if (d.ratioMonths && d.ratioMonths.roas != null && d.ratioMonths.roas < d.ratioMonths.of) msgs.push(`ROAS uses the ${d.ratioMonths.roas} of ${d.ratioMonths.of} months that have both spend and revenue on file.`);
+  if (d.ratioMonths && d.ratioMonths.cac != null && d.ratioMonths.cac < d.ratioMonths.of) msgs.push(`CAC uses the ${d.ratioMonths.cac} of ${d.ratioMonths.of} months that have both spend and transactions on file.`);
   msgs.push('Customer-level CAC needs a customer id on bookings.');
   el.insertAdjacentHTML('afterend', `<div id="stratDemandNote"><p class="strat-empty">${msgs.join(' ')}</p>${stratCoverageHtml(d.coverage)}</div>`);
 }
 async function stratLoadDemand(){
   if (!stratIsLive()) return;
-  try { strat.demand = await stratGet('story?months=12'); } catch (e){ strat.demand = null; }
+  await drrLoad(); drrOnChange(stratLoadDemand);
+  try { strat.demand = await stratGet('story'); } catch (e){ strat.demand = null; }
   if (activePrimaryTab === 'strategy'){ const n = document.getElementById('stratDemandNote'); if (n) n.remove(); if (strat.demand) stratRenderDemandRow(); else { const el = document.getElementById('tabStatCardGrid'); if (el) el.innerHTML = '<p class="strat-empty">Could not load the demand row just now.</p>'; } }
 }
 
@@ -24223,6 +24295,7 @@ function renderStatCards(){
   const tab = activePrimaryTab || 'dailyBrief';
   el.classList.remove('four');
   const oldNote = document.getElementById('stratDemandNote'); if (oldNote) oldNote.remove();
+  if (tab !== 'strategy'){ const bar = document.getElementById('drrBar'); if (bar) bar.remove(); }
   if (tab === 'dailyBrief' && bdIsLive()){ el.innerHTML = ''; return; }
   if (tab === 'strategy' && stratIsLive()){ stratRenderDemandRow(); return; }
   if (tab === 'dataScientist' && msIsLive()){ msRenderCoreRow(); return; }
