@@ -12601,7 +12601,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-30-build-k';
+const CXMEDIA_BUILD_STAMP = '2026-09-30-build-l';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -22687,7 +22687,14 @@ function stratMoney(n){ if (n == null || isNaN(n)) return '—'; const a = Math.
 function stratMoneyFull(n){ return n == null || isNaN(n) ? '—' : `$${Math.round(n).toLocaleString()}`; }
 function stratNum(n){ if (n == null || isNaN(n)) return '—'; const a = Math.abs(n); if (a >= 1e6) return `${(n / 1e6).toFixed(a >= 1e7 ? 1 : 2)}M`; if (a >= 1e4) return `${Math.round(n / 1e3)}K`; return Math.round(n).toLocaleString(); }
 function stratPct(p){ return p == null ? '—' : `${p > 0 ? '▲' : p < 0 ? '▼' : '•'} ${Math.abs(p).toFixed(1)}%`; }
-function stratMonthLabel(k){ const [y, m] = k.split('-'); return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m) - 1] + " '" + y.slice(2); }
+const STRAT_MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+// One date style on every analytics card: "Jan 1, 2026". Single months read "Sep 2026".
+function stratMonthLabel(k){ const [y, m] = String(k).split('-'); return STRAT_MON[Number(m) - 1] + ' ' + y; }
+function stratDay(iso){ const [y, m, d] = String(iso).slice(0, 10).split('-'); return `${STRAT_MON[Number(m) - 1]} ${Number(d)}, ${y}`; }
+// Month-key window (YYYY-MM to YYYY-MM) shown as full dates: first day of the first month to last day of the last.
+function stratRangeText(from, to){ const [ty, tm] = String(to).split('-').map(Number); const last = new Date(Date.UTC(ty, tm, 0)).getUTCDate(); return `${stratDay(String(from).slice(0, 7) + '-01')} to ${stratDay(String(to).slice(0, 7) + '-' + String(last).padStart(2, '0'))}`; }
+// Any ISO dates inside a server-built label become the same style.
+function stratHumanDates(str){ return String(str == null ? '' : str).replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (m0) => stratDay(m0)); }
 function stratIsLive(){ return dataSourceLabel === 'backend' && !!state.companyId; }
 // ---- Analytics card standard (2026-09-30): one date range per person, one share menu ----
 // The range is saved per signed-in person and every analytics card reads it, so changing it on
@@ -22759,7 +22766,7 @@ function stratNotOnFile(list){ return list && list.length ? `<p class="strat-emp
 // ---- Demand row: rendered into the top-row stat card grid ----
 function stratCoverageHtml(cov){
   if (!cov) return '';
-  const span = x => x && x.rows ? `${stratMonthLabel(x.from)} to ${stratMonthLabel(x.to)} (${x.rows.toLocaleString()} rows)` : 'nothing on file';
+  const span = x => x && x.rows ? `${stratRangeText(x.from, x.to)} (${x.rows.toLocaleString()} rows)` : 'nothing on file';
   const plan = cov.annualPlan && cov.annualPlan.length ? cov.annualPlan.map(r => `${r.year} ${r.kind}`).join(', ') : 'nothing on file';
   return `<details class="strat-cov"><summary>What this page is reading</summary><ul>
     <li>Media spend and impressions by month: ${span(cov.mediaByMonth)}</li>
@@ -22780,7 +22787,7 @@ function stratRenderDemandRow(){
   const d = strat.demand;
   if (!d){ el.innerHTML = ['Spend', 'Gross revenue', 'ROAS', 'CAC'].map(l => `<div class="stat-card"><div class="sc-label">${l}</div><div class="sc-value">…</div><div class="sc-delta neutral">Loading</div></div>`).join(''); return; }
   const c = d.current, dl = d.deltaPct, w = d.window, o = d.outcomes;
-  const per = d.range ? d.range.label : `${stratMonthLabel(w.from)} to ${stratMonthLabel(w.to)}`;
+  const per = d.range ? stratHumanDates(d.range.label) : `${stratRangeText(w.from, w.to)}`;
   const card = (label, value, delta, good, sub, key) => `<div class="stat-card has-share">${shareBtnHtml(key)}<div class="sc-label">${label}</div><div class="sc-value">${value}</div><div class="sc-delta ${good ? 'good' : 'neutral'}">${delta}</div><div class="strat-sub">${sub}</div></div>`;
   // Show the current number always; a comparison only where one exists.
   const cmp = (pct, vsTarget, tgtText, mkey) => {
@@ -22789,7 +22796,7 @@ function stratRenderDemandRow(){
     if (tgtText) return `Plan target ${tgtText}`;
     return 'No prior year on file';
   };
-  const basisSub = o ? escapeHtml(o.basisLabel) : 'Not on file yet';
+  const basisSub = o ? escapeHtml(stratHumanDates(o.basisLabel)) : 'Not on file yet';
   const t = o && o.target, vt = o && o.vsTargetPct;
   const spendSub = d.pacing ? `Pacing ${d.pacing.spendPacingPct}% of plan to date · ${per}` : per;
   el.innerHTML =
@@ -23006,7 +23013,7 @@ function msRenderCoreRow(){
   const d = ms.data;
   if (!d){ el.innerHTML = ['Impressions', 'Reach and frequency', 'Cost per lead', 'Lead to booking'].map(l => `<div class="stat-card"><div class="sc-label">${l}</div><div class="sc-value">…</div><div class="sc-delta neutral">Loading</div></div>`).join(''); return; }
   const c = d.core, t = c.totals, p = c.priorYear, w = d.window;
-  const per = t ? `${stratMonthLabel(w.from)} to ${stratMonthLabel(w.to)}` : 'Not on file yet';
+  const per = t ? `${stratRangeText(w.from, w.to)}` : 'Not on file yet';
   const pct = (a, b) => (a != null && b) ? Math.round(((a - b) / Math.abs(b)) * 1000) / 10 : null;
   const cmp = (pv, good) => pv == null ? 'No prior year on file' : `${stratPct(pv)} vs prior year${cmpN && cmpN < d.window.months ? ` (${cmpN} matched months)` : ''}`;
   const card = (label, value, delta, good, sub) => `<div class="stat-card"><div class="sc-label">${label}</div><div class="sc-value">${value}</div><div class="sc-delta ${good ? 'good' : 'neutral'}">${delta}</div><div class="strat-sub">${sub}</div></div>`;
@@ -23037,7 +23044,7 @@ function msRenderCore(){
   const c = d.core; let html = '';
   if (c.channels.length){
     const t = c.totals;
-    html += `<div class="strat-chart-label">By channel · ${stratMonthLabel(d.window.from)} to ${stratMonthLabel(d.window.to)}</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Channel</th><th>Impressions</th><th>Click rate</th><th>Spend</th><th>Leads</th><th>Cost per lead</th><th>Calls</th><th>Cost per call</th></tr></thead><tbody>` +
+    html += `<div class="strat-chart-label">By channel · ${stratRangeText(d.window.from, d.window.to)}</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Channel</th><th>Impressions</th><th>Click rate</th><th>Spend</th><th>Leads</th><th>Cost per lead</th><th>Calls</th><th>Cost per call</th></tr></thead><tbody>` +
       c.channels.map(r => `<tr><td>${escapeHtml(r.channel)}</td><td>${stratNum(r.impressions)}</td><td>${r.ctr != null ? r.ctr + '%' : '—'}</td><td>${stratMoney(r.spend)}</td><td>${stratNum(r.leads)}</td><td>${r.cpl != null ? '$' + r.cpl.toFixed(2) : '—'}</td><td>${stratNum(r.calls)}</td><td>${r.cpc != null ? '$' + r.cpc.toFixed(2) : '—'}</td></tr>`).join('') +
       (t ? `<tr><td><strong>Total</strong></td><td><strong>${stratNum(t.impressions)}</strong></td><td>${t.ctr != null ? t.ctr + '%' : '—'}</td><td><strong>${stratMoney(t.spend)}</strong></td><td>${stratNum(t.leads)}</td><td>${t.cpl != null ? '$' + t.cpl.toFixed(2) : '—'}</td><td>${stratNum(t.calls)}</td><td>${t.cpc != null ? '$' + t.cpc.toFixed(2) : '—'}</td></tr>` : '') +
       `</tbody></table></div>`;
@@ -23232,7 +23239,7 @@ function gpRenderCoreRow(){
   const card = (label, value, delta, good, sub) => `<div class="stat-card"><div class="sc-label">${label}</div><div class="sc-value">${value}</div><div class="sc-delta ${good ? 'good' : 'neutral'}">${delta}</div><div class="strat-sub">${sub}</div></div>`;
   const d = gp.data, t = d && d.performance.totals, p = d && d.performance.priorYear, w = d && d.window;
   const pct = (a, b) => (a != null && b) ? Math.round(((a - b) / Math.abs(b)) * 1000) / 10 : null;
-  const per = w ? `${stratMonthLabel(w.from)} to ${stratMonthLabel(w.to)}` : '';
+  const per = w ? `${stratRangeText(w.from, w.to)}` : '';
   const cmG = d && d.performance.currentMatched; const dCpv = cmG && p ? pct(cmG.cpv, p.cpv) : null; const dCplG = cmG && p ? pct(cmG.cpl, p.cpl) : null; const mN = d && d.performance.comparedMonths; const mTxt = mN && d && mN < d.window.months ? ` (${mN} matched months)` : '';
   el.innerHTML = card('Campaigns in motion', String(inMotion), inMarket ? `• ${inMarket} in market` : '• None in market yet', false, 'Not yet in analysis') +
     card('Starting within 2 weeks, not approved', String(risk), risk ? '▼ Act today' : '▲ On track', risk === 0, 'QA & Approval pending') +
@@ -23246,7 +23253,7 @@ function gpRenderView(){
   if (gp.view === 'performance'){
     const pf = d.performance;
     if (pf.trend.length){ html += `<div class="strat-chart-label">Impressions and website visits by month</div>` + stratLinesSvg(pf.trend.map(t => t.month), [{ name: 'Impressions', color: '#1E2761', vals: pf.trend.map(t => t.impressions || null) }, { name: 'Website visits', color: '#0891B2', vals: pf.trend.map(t => t.visits) }], false); }
-    if (pf.channels.length){ html += `<div class="strat-chart-label">By channel · ${stratMonthLabel(d.window.from)} to ${stratMonthLabel(d.window.to)}</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Channel</th><th>Impressions</th><th>Spend</th><th>Leads</th><th>Cost per lead</th><th>Calls</th><th>Cost per call</th></tr></thead><tbody>` + pf.channels.map(r => `<tr><td>${escapeHtml(r.channel)}</td><td>${stratNum(r.impressions)}</td><td>${stratMoney(r.spend)}</td><td>${stratNum(r.leads)}</td><td>${r.cpl != null ? '$' + r.cpl.toFixed(2) : '—'}</td><td>${stratNum(r.calls)}</td><td>${r.cpCall != null ? '$' + r.cpCall.toFixed(2) : '—'}</td></tr>`).join('') + `</tbody></table></div><p class="strat-foot">Website visits are account-wide, so cost per visit is shown for all channels together, not by channel.</p>`; }
+    if (pf.channels.length){ html += `<div class="strat-chart-label">By channel · ${stratRangeText(d.window.from, d.window.to)}</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Channel</th><th>Impressions</th><th>Spend</th><th>Leads</th><th>Cost per lead</th><th>Calls</th><th>Cost per call</th></tr></thead><tbody>` + pf.channels.map(r => `<tr><td>${escapeHtml(r.channel)}</td><td>${stratNum(r.impressions)}</td><td>${stratMoney(r.spend)}</td><td>${stratNum(r.leads)}</td><td>${r.cpl != null ? '$' + r.cpl.toFixed(2) : '—'}</td><td>${stratNum(r.calls)}</td><td>${r.cpCall != null ? '$' + r.cpCall.toFixed(2) : '—'}</td></tr>`).join('') + `</tbody></table></div><p class="strat-foot">Website visits are account-wide, so cost per visit is shown for all channels together, not by channel.</p>`; }
     else html += '<p class="strat-empty">Not on file yet: monthly digital performance (Account Management uploads).</p>';
   } else {
     const lc = d.lifecycle;
