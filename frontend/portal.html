@@ -1471,6 +1471,9 @@
   .strat-reading{font-size:0.875rem;margin:0 0 6px;line-height:1.5;}
   .strat-tag{display:inline-block;font-size:0.6875rem;font-weight:700;background:var(--paper-dim);border:1px solid var(--line);border-radius:980px;padding:2px 8px;margin-right:6px;color:var(--muted);}
   .strat-tag.benchmark,.strat-tag.low{background:#FFF4E5;border-color:#F0C98F;color:#8A5A12;}
+  .bd-card .strat-head{align-items:flex-start;} .bd-metric{display:flex;flex-direction:column;align-items:flex-end;gap:2px;} .bd-metric-lbl{font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);} .bd-metric-val{font-size:1.375rem;font-weight:700;}
+  .bd-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;} .bd-thread{margin-top:14px;border-top:1px solid var(--line-hairline);padding-top:10px;} .bd-comment{font-size:0.8125rem;line-height:1.5;padding:6px 0;} .bd-comment.brain{background:var(--paper-dim);border-radius:10px;padding:8px 10px;margin:4px 0;}
+  .bd-compose{display:flex;gap:8px;margin-top:8px;} .bd-compose input{flex:1;font:inherit;font-size:0.8125rem;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--white);color:var(--ink);}
   .strat-trust{margin:0 0 0 18px;padding:0;font-size:0.8125rem;color:var(--muted);line-height:1.7;}
   .strat-foot,.strat-empty{font-size:0.8125rem;color:var(--muted);margin:10px 0 0;line-height:1.5;}
   .strat-actions{margin-top:12px;} .strat-chip{font:inherit;font-size:0.8125rem;border:1px solid var(--line);background:var(--white);border-radius:980px;padding:6px 14px;cursor:pointer;color:var(--ink);}
@@ -4013,7 +4016,7 @@
        2026-08-24 (round 17) — numbered (01-06) labels added per the comps;
        tab keys/onclick wiring unchanged. -->
   <nav class="primary-nav" id="primaryNav" aria-label="Primary">
-    <button type="button" class="primary-nav-item active" data-tab="dailyBrief" onclick="switchPrimaryTab('dailyBrief')"><span class="num">01</span> Daily Brief</button>
+    <button type="button" class="primary-nav-item active" data-tab="dailyBrief" onclick="switchPrimaryTab('dailyBrief')"><span class="num">01</span> Brain Dump</button>
     <button type="button" class="primary-nav-item" data-tab="strategy" onclick="switchPrimaryTab('strategy')"><span class="num">02</span> Strategy</button>
     <button type="button" class="primary-nav-item" data-tab="brand" onclick="switchPrimaryTab('brand')"><span class="num">03</span> Customer Experiences</button>
     <button type="button" class="primary-nav-item" data-tab="marketer" onclick="switchPrimaryTab('marketer')"><span class="num">04</span> Growth &amp; Performance</button>
@@ -4028,7 +4031,7 @@
        switchPrimaryTab() keeps whichever one isn't the click source in
        sync (see its own comment). -->
   <select class="primary-nav-mobile-select" id="primaryNavMobileSelect" aria-label="Primary" onchange="switchPrimaryTab(this.value)">
-    <option value="dailyBrief">01 · Daily Brief</option>
+    <option value="dailyBrief">01 · Brain Dump</option>
     <option value="strategy">02 · Strategy</option>
     <option value="brand">03 · Customer Experiences</option>
     <option value="marketer">04 · Growth &amp; Performance</option>
@@ -12516,7 +12519,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-30-growthperf-c';
+const CXMEDIA_BUILD_STAMP = '2026-09-30-braindump-a';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -21798,7 +21801,7 @@ const WORKSTREAMS = [
 // nav-redesign-2026-08-23 project, in the order they render. `key` matches
 // WORKSTREAMS' own `tab` field above.
 const PRIMARY_TABS = [
-  { key: 'dailyBrief', label: 'Daily Brief' },
+  { key: 'dailyBrief', label: 'Brain Dump' },
   { key: 'strategy', label: 'Strategy' },
   { key: 'brand', label: 'Customer Experiences' },
   { key: 'marketer', label: 'Growth & Performance' },
@@ -23002,7 +23005,7 @@ function gpStageOf(c){
 function gpCampaigns(){ return (state.campaigns || []).filter(c => !c.isAdHoc && !c.cancelled).map(c => ({ c, stage: gpStageOf(c) })); }
 function gpDaysTo(d){ if (!d) return null; const a = new Date(String(d).slice(0, 10) + 'T00:00:00'), b = new Date(cxToday() + 'T00:00:00'); return Math.round((a - b) / 86400000); }
 function gpRenderTop5(bodyEl){
-  const open = gpCampaigns().filter(r => r.stage !== 'Complete' && r.stage !== 'Analysis').sort((a, b) => String(a.c.startDate || '9999').localeCompare(String(b.c.startDate || '9999'))).slice(0, 5);
+  const today = cxToday(); const open = gpCampaigns().filter(r => r.stage !== 'Complete' && r.stage !== 'Analysis' && !(r.c.endDate && String(r.c.endDate).slice(0, 10) < today)).sort((a, b) => String(a.c.startDate || '9999').localeCompare(String(b.c.startDate || '9999'))).slice(0, 5);
   bodyEl.innerHTML = `<div class="table-scroll"><table class="active-camp-table"><thead><tr><th>Campaign Code</th><th>Campaign Name</th><th>Stage</th><th>Start</th><th>End</th><th></th></tr></thead><tbody>${open.length ? open.map(r => {
     const c = r.c, n = gpDaysTo(c.startDate), risk = cmgmtIsAtRisk(c) || (r.stage !== 'In Market' && n != null && n <= 0);
     const when = c.startDate ? `${c.startDate}${n != null ? (n < 0 ? ` · started ${-n}d ago` : n === 0 ? ' · today' : ` · in ${n}d`) : ''}` : '—';
@@ -23064,6 +23067,72 @@ function growthPerformanceShellHtml(){
     <div class="strat-card"><div class="strat-head"><h2>Performance and lifecycle</h2><div class="strat-ctl"><span class="strat-seg"><button type="button" data-gp-view="performance" class="${gp.view === 'performance' ? 'on' : ''}" onclick="gpSetView('performance')">Performance</button><button type="button" data-gp-view="lifecycle" class="${gp.view === 'lifecycle' ? 'on' : ''}" onclick="gpSetView('lifecycle')">Lifecycle</button></span></div></div><div id="gpViewBody"><p class="strat-empty">Loading…</p></div></div>` + gpToolsHtml();
 }
 function growthPerformancePageInit(){ if (gpIsLive()) gpLoad(); }
+
+
+// ---- Brain Dump (2026-09-30): the weekly standup that replaces the Daily Brief ----
+const bd = { data: null, comments: [], loading: false, error: false };
+function bdIsLive(){ return stratIsLive(); }
+const BD_SECTIONS = [
+  { key: 'strategy', title: 'Strategy' }, { key: 'brand', title: 'Customer Experiences' }, { key: 'growth', title: 'Growth & Performance' },
+  { key: 'analysis', title: 'Media Science' }, { key: 'learnings', title: 'AI Brain learnings' }
+];
+function bdWeekLabel(ws){ if (!ws) return ''; const [y, m, d] = ws.split('-').map(Number); return `${['January','February','March','April','May','June','July','August','September','October','November','December'][m - 1]} ${d}, ${y}`; }
+async function bdApi(path, opts){
+  const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brain-dump${path}`, opts);
+  if (!resp.ok) throw new Error(String(resp.status));
+  return resp.json();
+}
+async function bdLoad(refresh){
+  if (!bdIsLive()) return;
+  bd.loading = true; bd.error = false; bdRender();
+  try {
+    bd.data = await bdApi(refresh ? '?refresh=1' : '');
+    const c = await bdApi('/comments' + (bd.data.weekStart ? `?week=${bd.data.weekStart}` : '')); bd.comments = c.comments || [];
+  } catch (e){ bd.error = true; }
+  bd.loading = false; bdRender();
+}
+function bdLinkHtml(l){ const act = l.tab ? `switchPrimaryTab('${l.tab}')` : `goToStep('${l.step}')`; return `<a class="flink" onclick="${act}">${escapeHtml(l.label)} →</a>`; }
+function bdExternalItems(){
+  const pick = cat => DAILY_NEWS_ITEMS.find(i => i.category === cat);
+  const aeo = DAILY_NEWS_ITEMS.find(i => /AEO|GEO/i.test(i.title));
+  const comp = curatedNewsCompetitorItems()[0];
+  const seen = new Set(); return [pick('industry_news'), pick('ai_marketing') && !/AEO|GEO/i.test(pick('ai_marketing').title) ? pick('ai_marketing') : DAILY_NEWS_ITEMS.find(i => i.category === 'ai_marketing' && !/AEO|GEO/i.test(i.title)), aeo, comp].filter(i => i && !seen.has(i.id) && seen.add(i.id));
+}
+function bdRenderComments(key){
+  const list = bd.comments.filter(c => c.section === key);
+  return `<div class="bd-thread">${list.map(c => `<div class="bd-comment ${c.authorType === 'brain' ? 'brain' : ''}"><strong>${escapeHtml(c.authorName || 'Team')}</strong> <span class="strat-sub">${new Date(c.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span><div>${escapeHtml(c.text)}</div></div>`).join('')}
+    <div class="bd-compose"><input type="text" id="bdIn-${key}" placeholder="Comment, or @AIBrain to dig deeper" onkeydown="if(event.key==='Enter')bdPost('${key}')" aria-label="Comment on ${key}"><button type="button" class="strat-chip" onclick="bdPost('${key}')">Send</button></div></div>`;
+}
+async function bdPost(section){
+  const inp = document.getElementById('bdIn-' + section); if (!inp || !inp.value.trim()) return;
+  const text = inp.value.trim(); inp.value = ''; inp.disabled = true;
+  try {
+    const r = await bdApi('/comments' + (bd.data && bd.data.weekStart ? `?week=${bd.data.weekStart}` : ''), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ section, text, authorName: state.userName || undefined }) });
+    bd.comments = bd.comments.concat(r.comments || []);
+  } catch (e){ inp.value = text; }
+  bdRender(); const again = document.getElementById('bdIn-' + section); if (again) again.focus();
+}
+function bdRender(){
+  const box = document.getElementById('brainDumpBody'); if (!box) return;
+  if (bd.loading && !bd.data){ box.innerHTML = '<div class="strat-card"><p class="strat-empty">The Brain is reading this week\'s numbers…</p></div>'; return; }
+  if (bd.error || !bd.data){ box.innerHTML = '<div class="strat-card"><p class="strat-empty">Could not load the Brain Dump just now. <a class="flink" onclick="bdLoad(false)">Try again</a></p></div>'; return; }
+  const d = bd.data;
+  const by = d.writtenBy === 'brain' ? 'Written by the Brain from this week\'s numbers' : 'Assembled from this week\'s numbers';
+  const sections = BD_SECTIONS.map(s => { const f = d.facts[s.key]; if (!f) return ''; const m = f.metric || {};
+    return `<div class="strat-card bd-card"><div class="strat-head"><h2>${escapeHtml(s.title)}</h2><div class="bd-metric"><span class="bd-metric-lbl">${escapeHtml(m.label || '')}</span><span class="bd-metric-val">${escapeHtml(m.display || '—')}</span></div></div>
+      <p class="strat-reading">${escapeHtml((d.text && d.text[s.key]) || (f.lines || []).join(' '))}</p>
+      <div class="strat-actions">${(f.links || []).map(bdLinkHtml).join(' · ')}</div>${bdRenderComments(s.key)}</div>`; }).join('');
+  const ext = bdExternalItems();
+  const extHtml = `<div class="strat-card"><div class="strat-head"><h2>From outside</h2><span class="strat-tag benchmark">External sources, not this account's data</span></div>
+    <div class="curated-news-grid">${ext.map(i => i.url ? `<a class="curated-news-card" href="${i.url}" target="_blank" rel="noopener"><div class="cn-meta">${escapeHtml(i.meta)}</div><div class="cn-title">${escapeHtml(i.title)}</div></a>` : `<div class="curated-news-card"><div class="cn-meta">${escapeHtml(i.meta)} <span class="illustrative-tag">AI reasoning</span></div><div class="cn-title">${escapeHtml(i.title)}</div></div>`).join('')}</div>
+    <p class="strat-foot">Industry, marketing, CX, AI and AEO/GEO reading. Account monitoring for AEO/GEO is not connected yet.</p></div>`;
+  box.innerHTML = `<div class="strat-card bd-head"><div><div class="strat-chart-label" style="margin:0 0 4px;">Week of ${bdWeekLabel(d.weekStart)}</div><p class="strat-reading" style="margin:0;">${by}. Comment under any section, or mention @AIBrain to dig deeper.</p></div><button type="button" class="strat-chip" onclick="bdLoad(true)">Refresh this week</button></div>${sections}${extHtml}`;
+}
+function brainDumpShellHtml(){
+  if (!bdIsLive()) return dailyBriefExtraHtml();
+  return '<div id="brainDumpBody" style="grid-column:1/-1;"></div>';
+}
+function brainDumpPageInit(){ if (!bdIsLive()) return; if (bd.data){ bdRender(); bdLoad(false); } else bdLoad(false); }
 
 // Called right after renderWorkstreams() puts the shell in the page.
 function strategyPageInit(){
@@ -23385,7 +23454,7 @@ const ASK_VERILUME_PROMPTS = {
   accountManagement: ['What’s left to finish account setup', 'Is our brand voice guide approved yet', 'Who on the team still needs onboarding']
 };
 const ASK_VERILUME_TAB_LABELS = {
-  dailyBrief: 'Daily Brief', strategy: 'Strategy', brand: 'Brand', marketer: 'Marketer',
+  dailyBrief: 'Brain Dump', strategy: 'Strategy', brand: 'Brand', marketer: 'Marketer',
   dataScientist: 'Data Scientist', accountManagement: 'Account Management'
 };
 function renderAskVerilumeBar(){
@@ -23648,8 +23717,8 @@ function renderPrimaryTabHeaderText(){
     h1El.childNodes[0].nodeValue = meta.h1;
   } else {
     // dailyBrief
-    eyebrowEl.textContent = 'Daily Brief · Home';
-    h1El.childNodes[0].nodeValue = dailyBriefGreeting();
+    eyebrowEl.textContent = 'Brain Dump · Weekly Standup';
+    h1El.childNodes[0].nodeValue = bdIsLive() ? 'Brain Dump' : dailyBriefGreeting();
   }
 }
 const AI_THOUGHTS_TAB_ABSTRACTS = {
@@ -23712,7 +23781,7 @@ function renderTopUrgentModule(){
   const moduleEl = document.getElementById('topUrgentModule');
   const bodyEl = document.getElementById('topUrgentBody');
   if (!moduleEl || !bodyEl) return;
-  if (activePrimaryTab === 'accountManagement' || activePrimaryTab === 'strategy' || (activePrimaryTab === 'dataScientist' && msIsLive())){
+  if (activePrimaryTab === 'accountManagement' || activePrimaryTab === 'strategy' || (activePrimaryTab === 'dataScientist' && msIsLive()) || ((activePrimaryTab === 'dailyBrief' || !activePrimaryTab) && bdIsLive())){
     // 2026-09-30: Top 5 Most Urgent moves off Strategy; Media Science shows Analysis due instead (CMO / VP view).
     moduleEl.style.display = 'none';
     return;
@@ -23820,6 +23889,7 @@ function renderWorkstreams(){
     // Generative Summarized Commentary + Key Observations, Curated News,
     // Key Tiles Per Role, AI Partner — Text Routing. See
     // dailyBriefExtraHtml().
+    if (bdIsLive()){ grid.innerHTML = brainDumpShellHtml(); brainDumpPageInit(); return; }
     grid.innerHTML = dailyBriefExtraHtml();
     renderGenerativeBrief();
     renderCuratedNewsCards();
@@ -24077,6 +24147,7 @@ function renderStatCards(){
   const tab = activePrimaryTab || 'dailyBrief';
   el.classList.remove('four');
   const oldNote = document.getElementById('stratDemandNote'); if (oldNote) oldNote.remove();
+  if (tab === 'dailyBrief' && bdIsLive()){ el.innerHTML = ''; return; }
   if (tab === 'strategy' && stratIsLive()){ stratRenderDemandRow(); return; }
   if (tab === 'dataScientist' && msIsLive()){ msRenderCoreRow(); return; }
   if (tab === 'brand' && cxIsLive()){ cxRenderCoreRow(); return; }
