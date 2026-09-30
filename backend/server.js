@@ -14443,6 +14443,172 @@ function getForecastPlanMonths(accountId){
   return keys.map(k => ({ month: k, impressions: Math.round(S.impressions[k] || 0), spend: Math.round(S.spend[k] || 0) })).filter(m => m.impressions > 0 || m.spend > 0);
 }
 
+// ---------------------------------------------------------------------------
+// 2026-09-30 — Strategy dashboard data (CMO / VP view). Three read-only views
+// over data already on file; nothing here writes. Definitions are Todd's:
+//   ROAS = gross revenue / marketing spend
+//   CAC  = spend / unique transactions (transaction level). Customer level
+//          (spend / total customers) is not computable yet: bookings carry no
+//          customer id, so it reports null with a reason rather than a guess.
+// Impressions are the total across all channels. "Not on file" is returned as
+// null with a reason so the page can say so instead of showing a zero.
+// ---------------------------------------------------------------------------
+const STORY_LEAD_LABEL = { 'High Value': 'High Value', 'Registration': 'Growth', 'Growth': 'Growth', 'Prospect': 'Prospect' };
+function storyMonthKeys(asOf, months){
+  // the last `months` COMPLETE calendar months before asOf's month
+  const out = []; let y = asOf.getUTCFullYear(), m = asOf.getUTCMonth(); // m = 0-based current month
+  for (let i = 0; i < months; i++){ m -= 1; if (m < 0){ m = 11; y -= 1; } out.unshift(`${y}-${String(m + 1).padStart(2, '0')}`); }
+  return out;
+}
+function storyShiftYear(key, delta){ return `${Number(key.slice(0, 4)) + delta}${key.slice(4)}`; }
+function storyPct(cur, prev){ return (cur != null && prev != null && prev !== 0) ? Math.round(((cur - prev) / Math.abs(prev)) * 1000) / 10 : null; }
+function storyAsOf(q){ const s = q && q.asOf && /^\d{4}-\d{2}$/.test(q.asOf) ? new Date(q.asOf + '-15T00:00:00Z') : new Date(); return s; }
+
+function buildStoryDemand(accountId, opts){
+  const asOf = opts.asOf; const months = Math.max(1, Math.min(24, Number(opts.months) || 12));
+  const S = buildForecastSeries(accountId);
+  const win = storyMonthKeys(asOf, months);
+  const prevWin = win.map(k => storyShiftYear(k, -1)); // same months a year earlier: matching time frame
+  const sum = (obj, keys) => { let n = 0, any = false; keys.forEach(k => { if (obj[k] != null){ n += Number(obj[k]) || 0; any = true; } }); return any ? n : null; };
+  const pack = keys => {
+    const spend = sum(S.spend, keys), rev = sum(S.revenue, keys), txn = sum(S.transactions, keys), imp = sum(S.impressions, keys);
+    return { spend, revenue: rev, transactions: txn, impressions: imp,
+      roas: (rev != null && spend) ? Math.round((rev / spend) * 100) / 100 : null,
+      cacTransaction: (spend != null && txn) ? Math.round(spend / txn) : null };
+  };
+  const cur = pack(win), prev = pack(prevWin);
+  const delta = {}; ['spend', 'revenue', 'transactions', 'impressions', 'roas', 'cacTransaction'].forEach(f => { delta[f] = storyPct(cur[f], prev[f]); });
+  // Annual plan (the "target" row for the calendar year of asOf) and year-to-date pacing.
+  const year = asOf.getUTCFullYear();
+  const plan = db.prepare('SELECT * FROM account_annual_plan WHERE accountId = ? AND year = ?').all(accountId, year);
+  const target = plan.find(r => r.kind === 'target') || null;
+  const ytdKeys = []; for (let m = 1; m <= asOf.getUTCMonth(); m++) ytdKeys.push(`${year}-${String(m).padStart(2, '0')}`);
+  const planned = []; for (let m = asOf.getUTCMonth() + 1; m <= 12; m++) planned.push(`${year}-${String(m).padStart(2, '0')}`);
+  const ytd = { spend: sum(S.spend, ytdKeys), impressions: sum(S.impressions, ytdKeys), revenue: sum(S.revenue, ytdKeys), transactions: sum(S.transactions, ytdKeys) };
+  const remainingPlan = { spend: sum(S.spend, planned), impressions: sum(S.impressions, planned) };
+  const elapsed = ytdKeys.length;
+  const pacing = (target && target.workingMedia && ytd.spend != null && elapsed > 0)
+    ? { targetWorkingMedia: target.workingMedia, ytdSpend: ytd.spend, plannedRemaining: remainingPlan.spend,
+        yearEndSpendProjection: ytd.spend + (remainingPlan.spend || 0),
+        expectedShareByNow: Math.round((elapsed / 12) * 1000) / 1000,
+        spendPacingPct: Math.round((ytd.spend / (target.workingMedia * elapsed / 12)) * 1000) / 10 }
+    : null;
+  return { window: { from: win[0], to: win[win.length - 1], months }, comparisonWindow: { from: prevWin[0], to: prevWin[prevWin.length - 1], note: 'same months one year earlier' },
+    current: cur, previous: prev, deltaPct: delta,
+    cacCustomer: { value: null, reason: 'Bookings carry no customer id yet, so spend per total customer cannot be computed; CAC shown is spend per unique transaction.' },
+    definitions: { roas: 'gross revenue / marketing spend', cac: 'spend / unique transactions (transaction level)', impressions: 'total across all channels' },
+    target: target ? { year, workingMedia: target.workingMedia, impressions: target.impressions, bookings: target.bookings, grossRevenue: target.grossRevenue, label: target.label } : null,
+    ytd, pacing,
+    notOnFile: [cur.spend == null ? 'marketing spend' : null, cur.revenue == null ? 'revenue (transactions)' : null, target ? null : 'annual plan target'].filter(Boolean) };
+}
+
+function buildStoryForecastVsTarget(accountId, opts){
+  const asOf = opts.asOf; const year = asOf.getUTCFullYear();
+  const S = buildForecastSeries(accountId);
+  const cal = forecastEngine.calibrate(S, { asOf });
+  const cur = `${year}-${String(asOf.getUTCMonth() + 1).padStart(2, '0')}`;
+  const keys = Array.from(new Set(Object.keys(S.impressions).concat(Object.keys(S.spend)))).filter(k => k >= cur && k.startsWith(String(year))).sort();
+  const months = keys.map(k => ({ month: k, impressions: Math.round(S.impressions[k] || 0), spend: Math.round(S.spend[k] || 0) })).filter(m => m.impressions > 0 || m.spend > 0);
+  const ytdKeys = []; for (let m = 1; m <= asOf.getUTCMonth(); m++) ytdKeys.push(`${year}-${String(m).padStart(2, '0')}`);
+  const sum = (obj) => { let n = 0, any = false; ytdKeys.forEach(k => { if (obj[k] != null){ n += Number(obj[k]) || 0; any = true; } }); return any ? n : null; };
+  const ytdRev = sum(S.revenue), ytdImp = sum(S.impressions);
+  const target = db.prepare("SELECT * FROM account_annual_plan WHERE accountId = ? AND year = ? AND kind = 'target'").get(accountId, year) || null;
+  const f = months.length ? forecastEngine.forecast(cal, { months }) : null;
+  const yearEnd = (f && f.totals.revenue && ytdRev != null) ? f.totals.revenue.map(v => Math.round(ytdRev + v)) : null;
+  const impYearEnd = ytdImp != null || months.length ? Math.round((ytdImp || 0) + months.reduce((a, m) => a + m.impressions, 0)) : null;
+  // last year's revenue for the same remaining months, for the "vs last year" comparison
+  let lyRemaining = null; if (months.length){ let n = 0, any = false; months.forEach(m => { const v = S.revenue[storyShiftYear(m.month, -1)]; if (v != null){ n += v; any = true; } }); lyRemaining = any ? n : null; }
+  const gapRev = (target && target.grossRevenue && yearEnd) ? yearEnd.map(v => Math.round(v - target.grossRevenue)) : null;
+  const impNeeded = (target && target.impressions != null && impYearEnd != null) ? { target: target.impressions, projected: impYearEnd, gap: Math.round(impYearEnd - target.impressions), pctOfTarget: target.impressions ? Math.round(impYearEnd / target.impressions * 1000) / 10 : null } : null;
+  return { year, confidence: cal.confidence, planSource: 'plan as loaded (this year, remaining months)',
+    ytd: { revenue: ytdRev, impressions: ytdImp },
+    remaining: f ? { months: f.months, totals: f.totals, rangeNote: f.rangeNote } : null,
+    yearEndRevenue: yearEnd ? { low: yearEnd[0], expected: yearEnd[1], high: yearEnd[2] } : null,
+    target: target ? { grossRevenue: target.grossRevenue, impressions: target.impressions, bookings: target.bookings, workingMedia: target.workingMedia } : null,
+    revenueGapToTarget: gapRev ? { low: gapRev[0], expected: gapRev[1], high: gapRev[2] } : null,
+    impressions: impNeeded,
+    lastYearSameRemainingMonthsRevenue: lyRemaining,
+    notOnFile: [target ? null : 'annual plan target (Company Profile)', months.length ? null : 'planned impressions or spend for the remaining months'].filter(Boolean) };
+}
+
+function buildStoryPriceVolume(accountId, opts){
+  const asOf = opts.asOf; const months = Math.max(3, Math.min(36, Number(opts.months) || 18));
+  const dim = opts.dim === 'creativeFocus' ? 'creativeFocus' : 'productGroup';
+  const win = storyMonthKeys(asOf, months);
+  const need = new Set(win.concat(win.map(k => storyShiftYear(k, -1))));
+  const series = {}; const totals = {}; const groups = new Set(); const focusByGroup = {}; const productGroups = new Set();
+  const add = (g, k, gross, vol) => { if (!need.has(k)) return; groups.add(g); const s = series[g] || (series[g] = {}); const c = s[k] || (s[k] = { gross: 0, volume: 0 }); c.gross += gross; c.volume += vol; const t = totals[k] || (totals[k] = { gross: 0, volume: 0 }); t.gross += gross; t.volume += vol; };
+  const key = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
+  let source;
+  if (dim === 'productGroup'){
+    source = 'account_transactions_monthly';
+    db.prepare('SELECT * FROM account_transactions_monthly WHERE accountId = ?').all(accountId).forEach(r => add(String(r.productGroup || '').trim() || 'Unassigned', key(r.year, r.month), Number(r.revenue) || 0, Number(r.transactions) || 0));
+    db.prepare("SELECT DISTINCT \"productGroup\", \"creativeFocus\" FROM account_guest_bookings WHERE accountId = ?").all(accountId).forEach(r => { const pg = String(r.productGroup || '').trim(), cf = String(r.creativeFocus || '').trim(); if (pg){ productGroups.add(pg); if (cf){ (focusByGroup[pg] = focusByGroup[pg] || new Set()).add(cf); } } });
+  } else {
+    source = 'account_guest_bookings';
+    const settings = getTransactionSettings(accountId);
+    const pgFilter = opts.productGroup ? String(opts.productGroup).trim() : null;
+    const seen = {};
+    db.prepare('SELECT * FROM account_guest_bookings WHERE accountId = ?').all(accountId).forEach(r => {
+      if (!isValidTransactionStatus(aliasVal(r, 'bookingStatus'), settings)) return;
+      const pg = String(aliasVal(r, 'productGroup') || '').trim(), cf = String(aliasVal(r, 'creativeFocus') || '').trim() || 'Unassigned';
+      if (pg){ productGroups.add(pg); if (cf !== 'Unassigned') (focusByGroup[pg] = focusByGroup[pg] || new Set()).add(cf); }
+      if (pgFilter && pg !== pgFilter) return;
+      const k = key(r.year, r.month); const code = aliasVal(r, 'bookingCode');
+      const dk = `${cf}|${k}|${code}`; const isNew = !seen[dk]; seen[dk] = true;
+      add(cf, k, Number(aliasVal(r, 'grossRevenue')) || 0, isNew ? 1 : 0);
+    });
+  }
+  // keep the ten largest groups by gross over the window, fold the rest into "Other"
+  const rank = Array.from(groups).map(g => ({ g, gross: win.reduce((a, k) => a + ((series[g][k] || {}).gross || 0), 0) })).sort((a, b) => b.gross - a.gross);
+  const keep = rank.slice(0, 10).map(x => x.g);
+  const out = {}; keep.forEach(g => { out[g] = series[g]; });
+  const rest = rank.slice(10).map(x => x.g);
+  if (rest.length){ out['Other'] = {}; rest.forEach(g => Object.entries(series[g]).forEach(([k, v]) => { const c = out['Other'][k] || (out['Other'][k] = { gross: 0, volume: 0 }); c.gross += v.gross; c.volume += v.volume; })); }
+  const monthsOut = win.map(k => {
+    const t = totals[k] || null; const p = totals[storyShiftYear(k, -1)] || null;
+    return { month: k, gross: t ? Math.round(t.gross) : null, volume: t ? t.volume : null, avgPrice: t && t.volume ? Math.round(t.gross / t.volume) : null,
+      priorYearGross: p ? Math.round(p.gross) : null, priorYearVolume: p ? p.volume : null,
+      yoyGrossPct: storyPct(t && t.gross, p && p.gross), yoyVolumePct: storyPct(t && t.volume, p && p.volume) };
+  });
+  const byGroup = {}; Object.keys(out).forEach(g => { byGroup[g] = win.map(k => { const c = out[g][k]; const p = out[g][storyShiftYear(k, -1)]; return { month: k, gross: c ? Math.round(c.gross) : null, volume: c ? c.volume : null, priorYearGross: p ? Math.round(p.gross) : null, priorYearVolume: p ? p.volume : null }; }); });
+  return { dim, source, window: { from: win[0], to: win[win.length - 1], months }, filter: opts.productGroup || null,
+    months: monthsOut, byGroup,
+    productGroups: Array.from(productGroups).sort(),
+    creativeFocusByProductGroup: Object.fromEntries(Object.entries(focusByGroup).map(([k, v]) => [k, Array.from(v).sort()])),
+    definitions: { gross: 'sum of gross revenue by month', volume: 'unique transactions (booking codes)' },
+    events: [], eventsNote: 'Macro and competitor events will be marked here from the curated news feed, labeled external; none are loaded yet.',
+    notOnFile: monthsOut.every(m => m.gross == null) ? [dim === 'productGroup' ? 'monthly transactions' : 'guest bookings with creative focus'] : [] };
+}
+
+function buildStoryAudienceGrowth(accountId, opts){
+  const asOf = opts.asOf; const months = Math.max(3, Math.min(36, Number(opts.months) || 18));
+  const win = storyMonthKeys(asOf, months); const need = new Set(win.concat(win.map(k => storyShiftYear(k, -1))));
+  const key = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
+  const byType = { 'High Value': {}, 'Growth': {}, 'Prospect': {} }; const forms = {};
+  db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId).forEach(r => {
+    const k = key(r.year, r.month); if (!need.has(k)) return;
+    const label = STORY_LEAD_LABEL[aliasVal(r, 'leadType')] || null; if (!label) return;
+    const n = Number(r.count) || 0;
+    byType[label][k] = (byType[label][k] || 0) + n;
+    const fn = String(aliasVal(r, 'formName') || '').trim() || '(no form name)';
+    const fk = `${label}||${fn}`; const f = forms[fk] || (forms[fk] = { type: label, form: fn, source: r.source, months: {} });
+    f.months[k] = (f.months[k] || 0) + n;
+  });
+  const types = Object.keys(byType).map(t => ({ type: t,
+    months: win.map(k => { const v = byType[t][k]; const p = byType[t][storyShiftYear(k, -1)]; return { month: k, count: v != null ? Math.round(v) : null, priorYear: p != null ? Math.round(p) : null }; }) }));
+  const last = win[win.length - 1], prevM = win[win.length - 2];
+  const latest = types.map(t => { const c = byType[t.type][last], p = byType[t.type][prevM], y = byType[t.type][storyShiftYear(last, -1)];
+    return { type: t.type, count: c != null ? Math.round(c) : null, vsPriorMonthPct: storyPct(c, p), vsPriorYearPct: storyPct(c, y) }; });
+  const total = types.reduce((a, t) => a + (byType[t.type][last] || 0), 0);
+  latest.forEach(l => { l.shareOfLeadsPct = total ? Math.round(((l.count || 0) / total) * 1000) / 10 : null; });
+  const formList = Object.values(forms).map(f => ({ type: f.type, form: f.form, source: f.source, months: win.map(k => ({ month: k, count: f.months[k] != null ? Math.round(f.months[k]) : null })), total: Math.round(win.reduce((a, k) => a + (f.months[k] || 0), 0)) }))
+    .filter(f => f.total > 0).sort((a, b) => b.total - a.total);
+  return { window: { from: win[0], to: win[win.length - 1], months }, latestMonth: last, types, latest, forms: formList,
+    definitions: { 'High Value': 'high-value leads', 'Growth': 'registration leads (stored as Registration)', 'Prospect': 'prospect leads (Meta and co-registration)' },
+    notOnFile: formList.length || latest.some(l => l.count != null) ? [] : ['monthly lead counts (Account Management > Annual Media Plan > Leads by Type by Month)'] };
+}
+
 // At most one ledger snapshot per account per day, and only when a headline
 // rate moved — the Brain's record of what it has learned about this funnel.
 // Starts 'reference' like every other estimate; nothing here is auto-applied.
@@ -23252,6 +23418,23 @@ async function handleRequest(req, res) {
       if (!months || !months.length){ months = getForecastPlanMonths(accountId); planSource = 'plan as loaded'; }
       if (!months.length) return sendJson(res, 200, { calibration: cal, forecast: null, note: 'No planned impressions or spend on file and no scenario supplied.' });
       return sendJson(res, 200, { planSource, calibration: cal, forecast: forecastEngine.forecast(cal, { months }) });
+    }
+
+    // GET /api/accounts/:id/analytics/(story|forecast-vs-target|price-volume|audience-growth)
+    // 2026-09-30 — the Strategy dashboard's data (see buildStory* above).
+    // Read-only; portal session required. Query: months, dim, productGroup, asOf (YYYY-MM, testing).
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'analytics' && ['story', 'forecast-vs-target', 'price-volume', 'audience-growth'].includes(parts[4])){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const qs = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries());
+      const opts = { asOf: storyAsOf(qs), months: qs.months, dim: qs.dim, productGroup: qs.productGroup };
+      try {
+        const data = parts[4] === 'story' ? buildStoryDemand(accountId, opts)
+          : parts[4] === 'forecast-vs-target' ? buildStoryForecastVsTarget(accountId, opts)
+          : parts[4] === 'price-volume' ? buildStoryPriceVolume(accountId, opts)
+          : buildStoryAudienceGrowth(accountId, opts);
+        return sendJson(res, 200, data);
+      } catch (e){ console.warn('[analytics/' + parts[4] + '] failed:', e.message); return sendJson(res, 500, { error: 'could not build ' + parts[4] }); }
     }
 
     // GET /api/accounts/:id/voice/session — 2026-09-29, ElevenLabs final
