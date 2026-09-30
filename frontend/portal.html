@@ -1481,6 +1481,7 @@
   .strat-tools{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;padding:4px 2px 24px;font-size:0.875rem;}
   .strat-tools-lbl{font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);}
   .strat-note{font-size:0.75rem;color:var(--muted);margin-left:-10px;}
+  .strat-cov{grid-column:1/-1;font-size:0.75rem;color:var(--muted);margin:6px 0 16px;} .strat-cov summary{cursor:pointer;} .strat-cov ul{margin:6px 0 0 18px;padding:0;line-height:1.6;}
 
   /* Daily Brief's own modules — Generative Summarized Commentary + Key
      Observations, Curated News, Key Tiles Per Role, AI Partner — Text
@@ -22603,22 +22604,47 @@ async function stratGet(path){
 function stratNotOnFile(list){ return list && list.length ? `<p class="strat-empty">Not on file yet: ${escapeHtml(list.join('; '))}.</p>` : ''; }
 
 // ---- Demand row: rendered into the top-row stat card grid ----
+function stratCoverageHtml(cov){
+  if (!cov) return '';
+  const span = x => x && x.rows ? `${stratMonthLabel(x.from)} to ${stratMonthLabel(x.to)} (${x.rows.toLocaleString()} rows)` : 'nothing on file';
+  const plan = cov.annualPlan && cov.annualPlan.length ? cov.annualPlan.map(r => `${r.year} ${r.kind}`).join(', ') : 'nothing on file';
+  return `<details class="strat-cov"><summary>What this page is reading</summary><ul>
+    <li>Media spend and impressions by month: ${span(cov.mediaByMonth)}</li>
+    <li>Transactions and revenue by month: ${span(cov.transactionsByMonth)}</li>
+    <li>Leads by type by month: ${span(cov.leadCountsByMonth)}</li>
+    <li>Guest bookings (creative focus): ${span(cov.guestBookings)}</li>
+    <li>Website users by month: ${span(cov.websiteUsersByMonth)}</li>
+    <li>Annual Plan rows: ${escapeHtml(plan)}</li>
+    <li>Closed-year results: ${cov.yearResults && cov.yearResults.length ? cov.yearResults.join(', ') : 'nothing on file'}</li></ul></details>`;
+}
 function stratRenderDemandRow(){
   const el = document.getElementById('tabStatCardGrid'); if (!el) return;
   el.classList.add('four');
   const oldN = document.getElementById('stratDemandNote'); if (oldN) oldN.remove();
   const d = strat.demand;
   if (!d){ el.innerHTML = ['Spend', 'Gross revenue', 'ROAS', 'CAC'].map(l => `<div class="stat-card"><div class="sc-label">${l}</div><div class="sc-value">…</div><div class="sc-delta neutral">Loading</div></div>`).join(''); return; }
-  const c = d.current, dl = d.deltaPct, w = d.window;
+  const c = d.current, dl = d.deltaPct, w = d.window, o = d.outcomes;
   const per = `${stratMonthLabel(w.from)} to ${stratMonthLabel(w.to)}`;
   const card = (label, value, delta, good, sub) => `<div class="stat-card"><div class="sc-label">${label}</div><div class="sc-value">${value}</div><div class="sc-delta ${good ? 'good' : 'neutral'}">${delta}</div><div class="strat-sub">${sub}</div></div>`;
-  const pace = d.pacing ? `Pacing ${d.pacing.spendPacingPct}% of plan to date` : per;
+  // Show the current number always; a comparison only where one exists.
+  const cmp = (pct, vsTarget, tgtText) => {
+    if (pct != null) return `${stratPct(pct)} vs prior year`;
+    if (vsTarget != null && tgtText) return `${stratPct(vsTarget)} vs plan target ${tgtText}`;
+    if (tgtText) return `Plan target ${tgtText}`;
+    return 'No prior year on file';
+  };
+  const basisSub = o ? escapeHtml(o.basisLabel) : 'Not on file yet';
+  const t = o && o.target, vt = o && o.vsTargetPct;
+  const spendSub = d.pacing ? `Pacing ${d.pacing.spendPacingPct}% of plan to date · ${per}` : per;
   el.innerHTML =
-    card('Marketing spend', stratMoney(c.spend), `${stratPct(dl.spend)} vs prior year`, false, pace) +
-    card('Gross revenue', stratMoney(c.revenue), `${stratPct(dl.revenue)} vs prior year`, dl.revenue != null && dl.revenue >= 0, per) +
-    card('ROAS', c.roas != null ? `${c.roas.toFixed(2)}x` : '—', `${stratPct(dl.roas)} vs prior year`, dl.roas != null && dl.roas >= 0, 'Gross revenue ÷ marketing spend') +
-    card('CAC', c.cacTransaction != null ? `$${c.cacTransaction.toLocaleString()}` : '—', `${stratPct(dl.cacTransaction)} vs prior year`, dl.cacTransaction != null && dl.cacTransaction <= 0, 'Spend ÷ unique transactions');
-  if (d.notOnFile && d.notOnFile.length) el.insertAdjacentHTML('afterend', `<p class="strat-empty" id="stratDemandNote">Not on file yet: ${escapeHtml(d.notOnFile.join('; '))}. Customer-level CAC needs a customer id on bookings.</p>`);
+    card('Marketing spend', stratMoney(c.spend), cmp(dl.spend), false, spendSub) +
+    card('Gross revenue', o ? stratMoney(o.revenue) : '—', cmp(o && o.deltaPct.revenue, vt && vt.revenue, t && t.revenue != null ? stratMoney(t.revenue) : null), !!(o && ((o.deltaPct.revenue != null && o.deltaPct.revenue >= 0) || (vt && vt.revenue != null && vt.revenue >= 0))), basisSub) +
+    card('ROAS', o && o.roas != null ? `${o.roas.toFixed(2)}x` : '—', cmp(o && o.deltaPct.roas, vt && vt.roas, t && t.roas != null ? `${t.roas.toFixed(2)}x` : null), !!(o && ((o.deltaPct.roas != null && o.deltaPct.roas >= 0) || (vt && vt.roas != null && vt.roas >= 0))), 'Gross revenue ÷ marketing spend') +
+    card('CAC', o && o.cac != null ? `$${o.cac.toLocaleString()}` : '—', cmp(o && o.deltaPct.cac, vt && vt.cac, t && t.cac != null ? `$${t.cac.toLocaleString()}` : null), !!(o && ((o.deltaPct.cac != null && o.deltaPct.cac <= 0) || (vt && vt.cac != null && vt.cac <= 0))), 'Spend ÷ unique transactions');
+  const msgs = [];
+  if (d.notOnFile && d.notOnFile.length) msgs.push(`Not on file yet: ${escapeHtml(d.notOnFile.join('; '))}.`);
+  msgs.push('Customer-level CAC needs a customer id on bookings.');
+  el.insertAdjacentHTML('afterend', `<div id="stratDemandNote"><p class="strat-empty">${msgs.join(' ')}</p>${stratCoverageHtml(d.coverage)}</div>`);
 }
 async function stratLoadDemand(){
   if (!stratIsLive()) return;
@@ -22739,14 +22765,16 @@ async function stratLoadForecast(){
 function stratRenderForecast(){
   const box = document.getElementById('stratFcBody'); const d = strat.fcData; if (!box || !d) return;
   const conf = { high: 'High confidence: learned from this account\'s history', medium: 'Medium confidence: partly learned, partly benchmark', low: 'Low confidence: little history', benchmark: 'Benchmark only: not enough history yet, rates are industry starting points' }[d.confidence] || d.confidence;
-  const y = d.yearEndRevenue, t = d.target, cards = [];
-  if (y) cards.push(`<div class="strat-fc-card"><div class="l">Year-end gross revenue, expected</div><div class="v">${stratMoney(y.expected)}</div><div class="s">Range ${stratMoney(y.low)} to ${stratMoney(y.high)} · year to date ${stratMoney(d.ytd.revenue)} plus the plan as loaded</div></div>`);
-  if (t && t.grossRevenue) cards.push(`<div class="strat-fc-card"><div class="l">Plan target, gross revenue</div><div class="v">${stratMoney(t.grossRevenue)}</div><div class="s">${d.revenueGapToTarget ? `${d.revenueGapToTarget.expected >= 0 ? 'Ahead of target by ' + stratMoney(d.revenueGapToTarget.expected) : 'Short of target by ' + stratMoney(-d.revenueGapToTarget.expected)} at the expected case` : 'Annual plan on file'}</div></div>`);
-  if (d.impressions) cards.push(`<div class="strat-fc-card"><div class="l">Impressions vs target</div><div class="v">${d.impressions.pctOfTarget != null ? d.impressions.pctOfTarget + '%' : '—'}</div><div class="s">${stratNum(d.impressions.projected)} projected of ${stratNum(d.impressions.target)} targeted (all channels)</div></div>`);
-  const dm = strat.demand && strat.demand.pacing; if (dm) cards.push(`<div class="strat-fc-card"><div class="l">Spend pacing</div><div class="v">${dm.spendPacingPct}%</div><div class="s">Year-end spend ${stratMoney(dm.yearEndSpendProjection)} against ${stratMoney(dm.targetWorkingMedia)} working media</div></div>`);
+  const y = d.projectedRevenue, t = d.target, cards = [];
+  if (y) cards.push(`<div class="strat-fc-card"><div class="l">Gross revenue from the plan as loaded, expected</div><div class="v">${stratMoney(y.expected)}</div><div class="s">Range ${stratMoney(y.low)} to ${stratMoney(y.high)} · ${escapeHtml(y.basis)}</div></div>`);
+  if (t && t.grossRevenue) cards.push(`<div class="strat-fc-card"><div class="l">${d.year} plan target, gross revenue${t.label ? ' (' + escapeHtml(t.label) + ')' : ''}</div><div class="v">${stratMoney(t.grossRevenue)}</div><div class="s">${!d.comparable ? 'Different period from the loaded media plan, so no gap is calculated' : d.revenueGapToTarget ? `${d.revenueGapToTarget.expected >= 0 ? 'Ahead of target by ' + stratMoney(d.revenueGapToTarget.expected) : 'Short of target by ' + stratMoney(-d.revenueGapToTarget.expected)} at the expected case` : 'Annual Plan on file'}</div></div>`);
+  if (d.impressions) cards.push(`<div class="strat-fc-card"><div class="l">Impressions vs target</div><div class="v">${d.impressions.pctOfTarget != null ? d.impressions.pctOfTarget + '%' : '—'}</div><div class="s">${stratNum(d.impressions.projected)} planned of ${stratNum(d.impressions.target)} targeted (all channels)</div></div>`);
+  if (d.spend) cards.push(`<div class="strat-fc-card"><div class="l">Spend vs plan target</div><div class="v">${d.spend.pctOfTarget != null ? d.spend.pctOfTarget + '%' : '—'}</div><div class="s">${stratMoney(d.spend.projected)} planned of ${stratMoney(d.spend.target)} working media</div></div>`);
+  const b = d.baseline;
+  if (b && !cards.length) cards.push(`<div class="strat-fc-card"><div class="l">Baseline, trailing 12 months (${b.year})</div><div class="v">${stratMoney(b.revenue)}</div><div class="s">Spend ${stratMoney(b.spend)} · ROAS ${b.roas != null ? b.roas.toFixed(2) + 'x' : '—'}</div></div>`);
   box.innerHTML = `
     <div class="strat-fc-grid">${cards.join('') || '<p class="strat-empty">Nothing to compare yet.</p>'}</div>
-    <p class="strat-foot"><span class="strat-tag ${d.confidence}">${escapeHtml(conf)}</span> Low and high assume every stage of the funnel lands at its own 25th and 75th percentile together: a planning band, not a statistical interval. The current month counts only if it has planned media.</p>
+    <p class="strat-foot"><span class="strat-tag ${d.confidence}">${escapeHtml(conf)}</span> Low and high assume every stage of the funnel lands at its own 25th and 75th percentile together: a planning band, not a statistical interval. Only months with planned media count.</p>
     ${stratNotOnFile(d.notOnFile)}
     <div class="strat-actions"><button type="button" class="strat-chip" onclick="stratAsk('What ROAS should we expect from the rest of this year’s plan, and what does one more million impressions buy?')">Ask Verilume about the forecast</button></div>`;
 }
