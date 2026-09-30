@@ -14735,6 +14735,66 @@ function buildStoryAudienceGrowth(accountId, opts){
 // At most one ledger snapshot per account per day, and only when a headline
 // rate moved — the Brain's record of what it has learned about this funnel.
 // Starts 'reference' like every other estimate; nothing here is auto-applied.
+
+// ---- Media Science dashboard (2026-09-30) --------------------------------
+// Analysis due (Top 5: hit date 90+ days past, analysis not complete) and
+// Core elements (impressions, reach, frequency, CPL, lead-to-booking, ROAS by
+// campaign). Read-only. Attribution window is a fixed 90 days for this phase.
+const MS_ATTRIBUTION_DAYS = 90;
+function msDaysBetween(aStr, bDate){ const a = new Date(String(aStr).slice(0, 10) + 'T00:00:00Z'); if (isNaN(a)) return null; return Math.floor((Date.UTC(bDate.getUTCFullYear(), bDate.getUTCMonth(), bDate.getUTCDate()) - a.getTime()) / 86400000); }
+function msHasActuals(c){ return [c.actualSpend, c.actualImpressions, c.actualConversions, c.actualRevenue].some(v => v !== undefined && v !== null && v !== ''); }
+function buildMediaScience(accountId, opts){
+  const asOfDate = opts.asOf || new Date(); const months = Math.max(3, Math.min(24, Number(opts.months) || 12));
+  const camps = db.prepare('SELECT * FROM campaigns WHERE accountId = ? AND COALESCE(cancelled,0) = 0 AND COALESCE(isAdHoc,0) = 0').all(accountId);
+  const lines = db.prepare('SELECT cpd.campaignId AS cid, cpd.hitDate AS hd, cpd.endDate AS ed FROM channel_planning_details cpd JOIN campaigns c ON c.id = cpd.campaignId WHERE c.accountId = ?').all(accountId);
+  const lastHit = {};
+  lines.forEach(l => { const cid = aliasVal(l, 'cid'); const d = String(aliasVal(l, 'hd') || '').slice(0, 10); if (cid && /^\d{4}-\d{2}-\d{2}$/.test(d) && (!lastHit[cid] || d > lastHit[cid])) lastHit[cid] = d; });
+  const rowsC = camps.map(c0 => {
+    const c = {}; ['id','name','objective','campaignCode','startDate','endDate','actualSpend','actualImpressions','actualReach','actualConversions','actualRevenue','budget','plannedImpressions','primaryKpi','analysisNotes'].forEach(k => { c[k] = aliasVal(c0, k); });
+    const hit = lastHit[c.id] || (c.endDate ? String(c.endDate).slice(0, 10) : null);
+    const days = hit ? msDaysBetween(hit, asOfDate) : null;
+    const spend = c.actualSpend != null ? Number(c.actualSpend) : null, imp = c.actualImpressions != null ? Number(c.actualImpressions) : null, reach = c.actualReach != null ? Number(c.actualReach) : null, conv = c.actualConversions != null ? Number(c.actualConversions) : null, rev = c.actualRevenue != null ? Number(c.actualRevenue) : null;
+    const missing = []; if (spend == null) missing.push('spend'); if (imp == null) missing.push('impressions'); if (conv == null) missing.push('conversions'); if (rev == null) missing.push('revenue'); if (reach == null) missing.push('reach');
+    return { campaignId: c.id, campaignCode: c.campaignCode || '', name: c.name || c.objective || '(untitled campaign)', hitDate: hit, daysSince: days, analysisComplete: msHasActuals(c), missing,
+      maturity: days == null ? 'unknown' : (days >= MS_ATTRIBUTION_DAYS ? 'mature' : 'still converting'),
+      spend, impressions: imp, reach, frequency: (imp != null && reach) ? Math.round((imp / reach) * 10) / 10 : null, conversions: conv, revenue: rev,
+      roas: (rev != null && spend) ? Math.round((rev / spend) * 100) / 100 : null, costPerConversion: (spend != null && conv) ? Math.round(spend / conv) : null, primaryKpi: c.primaryKpi || null };
+  });
+  const due = rowsC.filter(r => r.daysSince != null && r.daysSince >= MS_ATTRIBUTION_DAYS && !r.analysisComplete).sort((a, b) => b.daysSince - a.daysSince);
+  const maturing = rowsC.filter(r => r.daysSince != null && r.daysSince >= 0 && r.daysSince < MS_ATTRIBUTION_DAYS && !r.analysisComplete).sort((a, b) => b.daysSince - a.daysSince);
+  const analyzed = rowsC.filter(r => r.analysisComplete).sort((a, b) => String(b.hitDate || '').localeCompare(String(a.hitDate || '')));
+  // Account-wide core elements from the digital performance upload (overview grain: one row per channel x month).
+  const dp = db.prepare("SELECT * FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").all(accountId).map(r => ({ year: r.year, month: r.month, channel: aliasVal(r, 'channel'), impressions: r.impressions, clicks: r.clicks, spend: r.spend, leads: r.leads, calls: r.calls }));
+  const key = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
+  const latest = dp.map(r => key(r.year, r.month)).sort().pop() || null;
+  const win = storyWindowEndingAtData(asOfDate, months, latest); const prev = win.map(k => storyShiftYear(k, -1)); const wset = new Set(win), pset = new Set(prev);
+  const pack = set => { const byCh = {}; const tot = { impressions: 0, clicks: 0, spend: 0, leads: 0, calls: 0, any: false };
+    dp.forEach(r => { if (!set.has(key(r.year, r.month))) return; const c = byCh[r.channel] = byCh[r.channel] || { channel: r.channel, impressions: 0, clicks: 0, spend: 0, leads: 0, calls: 0 };
+      ['impressions','clicks','spend','leads','calls'].forEach(f => { const v = Number(r[f]) || 0; c[f] += v; tot[f] += v; }); tot.any = true; });
+    return { byCh, tot }; };
+  const cur = pack(wset), pri = pack(pset);
+  const fin = o => Object.assign({}, o, { ctr: o.impressions ? Math.round((o.clicks / o.impressions) * 10000) / 100 : null, cpl: o.leads ? Math.round((o.spend / o.leads) * 100) / 100 : null, cpc: o.calls ? Math.round((o.spend / o.calls) * 100) / 100 : null });
+  const channels = Object.values(cur.byCh).map(fin).sort((a, b) => b.spend - a.spend);
+  const priTot = pri.tot.any ? fin(pri.tot) : null; const curTot = cur.tot.any ? fin(cur.tot) : null;
+  // Lead to booking, from lead counts (same window).
+  const lead = { leads: 0, bookings: 0, weightedDays: 0, dayN: 0 }; const byType = {};
+  db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId).forEach(r => {
+    if (!wset.has(key(r.year, r.month))) return; const t = String(aliasVal(r, 'leadType') || '') === 'Registration' ? 'Growth' : String(aliasVal(r, 'leadType') || 'Other');
+    const n = Number(r.count) || 0, b = Number(r.bookings) || 0, dd = aliasVal(r, 'avgDaysToConvert');
+    const x = byType[t] = byType[t] || { leadType: t, leads: 0, bookings: 0 }; x.leads += n; x.bookings += b; lead.leads += n; lead.bookings += b;
+    if (dd != null && b > 0){ lead.weightedDays += Number(dd) * b; lead.dayN += b; }
+  });
+  const leadToBooking = lead.leads ? { leads: lead.leads, bookings: lead.bookings, ratePct: Math.round((lead.bookings / lead.leads) * 1000) / 10, avgDaysToConvert: lead.dayN ? Math.round(lead.weightedDays / lead.dayN) : null, byType: Object.values(byType).map(t => Object.assign(t, { ratePct: t.leads ? Math.round((t.bookings / t.leads) * 1000) / 10 : null })) } : null;
+  // Reach / frequency across campaigns that have both on file.
+  const rf = analyzed.filter(r => r.impressions != null && r.reach);
+  const rfTot = rf.length ? { campaigns: rf.length, impressions: rf.reduce((n, r) => n + r.impressions, 0), reach: rf.reduce((n, r) => n + r.reach, 0) } : null;
+  if (rfTot) rfTot.frequency = Math.round((rfTot.impressions / rfTot.reach) * 10) / 10;
+  return { asOf: asOfDate.toISOString().slice(0, 10), attributionDays: MS_ATTRIBUTION_DAYS, window: { from: win[0], to: win[win.length - 1], months: win.length },
+    analysisDue: { total: due.length, top: due.slice(0, 5), maturing: maturing.length, nextMaturing: maturing.slice(0, 3) },
+    core: { totals: curTot, priorYear: priTot, channels, leadToBooking, reachFrequency: rfTot, campaigns: analyzed.slice(0, 10) },
+    coverage: { campaigns: rowsC.length, withHitDate: rowsC.filter(r => r.hitDate).length, withActuals: analyzed.length, digitalPerformance: { rows: dp.length, latest }, leadCounts: lead.leads > 0 } };
+}
+
 function maybeSnapshotForecastCalibration(accountId, cal, actor){
   try {
     const sig = JSON.stringify([cal.confidence, cal.impressionsToVisits.source, Math.round(cal.impressionsToVisits.visitsPerImp * 1e6), Math.round(cal.visitsToLeads.mid * 1e4), Math.round(cal.leadsToBookings.mid * 1e3), cal.bookingsToRevenue.mid != null ? Math.round(cal.bookingsToRevenue.mid) : null]);
@@ -23546,7 +23606,7 @@ async function handleRequest(req, res) {
     // GET /api/accounts/:id/analytics/(story|forecast-vs-target|price-volume|audience-growth)
     // 2026-09-30 — the Strategy dashboard's data (see buildStory* above).
     // Read-only; portal session required. Query: months, dim, productGroup, asOf (YYYY-MM, testing).
-    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'analytics' && ['story', 'forecast-vs-target', 'price-volume', 'audience-growth'].includes(parts[4])){
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'analytics' && ['story', 'forecast-vs-target', 'price-volume', 'audience-growth', 'media-science'].includes(parts[4])){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       const qs = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries());
@@ -23555,6 +23615,7 @@ async function handleRequest(req, res) {
         const data = parts[4] === 'story' ? buildStoryDemand(accountId, opts)
           : parts[4] === 'forecast-vs-target' ? buildStoryForecastVsTarget(accountId, opts)
           : parts[4] === 'price-volume' ? buildStoryPriceVolume(accountId, opts)
+          : parts[4] === 'media-science' ? buildMediaScience(accountId, opts)
           : buildStoryAudienceGrowth(accountId, opts);
         return sendJson(res, 200, data);
       } catch (e){ console.warn('[analytics/' + parts[4] + '] failed:', e.message); return sendJson(res, 500, { error: 'could not build ' + parts[4] }); }
