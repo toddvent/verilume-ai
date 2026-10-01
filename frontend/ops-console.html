@@ -624,6 +624,16 @@
          /status and /api/market-reference-data/proxy/* siblings) only
          require the same signed-in-staff session this console already
          holds (OPS_TOKEN_STORAGE_KEY) — no separate token to paste. -->
+    <div class="module" style="border-top-color:var(--advocacy-tint);">
+      <h3>Data Integrity <span class="badge" style="margin-left:6px;">Staff only</span></h3>
+      <p class="desc">What the database holds for one account, table by table and month by month: row counts, the sums that matter, and the receipt for each upload (what the file said next to what landed). Set it against the client's source file before trusting any dashboard number.</p>
+      <div class="field-row">
+        <div><label>Account ID</label><input type="text" id="diAccountId" placeholder="e.g. CXM-NAT-2026-..."></div>
+        <div style="display:flex;align-items:flex-end;gap:8px;"><button class="btn primary" onclick="diLoad()">Check this account →</button><button class="btn" onclick="diCsv()">Download CSV</button></div>
+      </div>
+      <div id="diError" class="empty-note" style="display:none;color:var(--danger);font-style:normal;"></div>
+      <div id="diBody"></div>
+    </div>
     <div class="module">
       <h3>Report Cards <span class="badge" style="margin-left:6px;">Staff only</span></h3>
       <p class="desc">Every reporting card the portal produces: when it was added, whether it is a Verilume default or added by a client, the formula behind it and the source tables, for testing against raw data.</p>
@@ -1280,6 +1290,50 @@ function integStatusBadge(configured){
     : '<span class="badge status-not-configured">Not configured</span>';
 }
 
+
+
+// ============ Data Integrity (2026-10-01) ============
+let diData = null;
+async function diLoad(){
+  const accountId = (document.getElementById('diAccountId').value || '').trim(); const token = document.getElementById('opsAdminToken').value.trim();
+  const err = document.getElementById('diError'), body = document.getElementById('diBody'); err.style.display = 'none'; body.innerHTML = '';
+  if (!accountId){ err.textContent = 'Enter an Account ID.'; err.style.display = 'block'; return; }
+  if (!token){ err.textContent = 'Enter the ADMIN_API_TOKEN configured on this deployment (top of this page).'; err.style.display = 'block'; return; }
+  body.innerHTML = '<p class="empty-note">Loading…</p>';
+  try { const r = await fetch(`${BACKEND_URL}/api/ops/accounts/${encodeURIComponent(accountId)}/data-integrity`, { headers: { 'X-Admin-Token': token } }); const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`); diData = d; }
+  catch (e){ diData = null; body.innerHTML = ''; err.textContent = e.message; err.style.display = 'block'; return; }
+  diRender();
+}
+function diNum(v){ return v == null ? '—' : Number(v).toLocaleString(); }
+function diRender(){
+  const d = diData, body = document.getElementById('diBody'); if (!d || !body) return;
+  let html = `<p class="desc">Generated ${escapeHtml(new Date(d.generatedAt).toLocaleString())}.</p>`;
+  if (d.receipts && d.receipts.length){
+    html += `<h4 style="margin:12px 0 6px;">Upload receipts</h4><div class="table-scroll"><table class="data-table" style="width:100%;font-size:0.8125rem;"><thead><tr><th>When</th><th>Kind</th><th>File</th><th>File rows</th><th>Database rows</th><th>File gross</th><th>Database gross</th><th>Result</th></tr></thead><tbody>${d.receipts.map(r => `<tr><td style="white-space:nowrap;">${escapeHtml(new Date(r.createdAt).toLocaleString())}</td><td>${escapeHtml(r.kind)}</td><td>${escapeHtml(r.fileName || '')}</td><td>${r.file ? diNum(r.file.rows) : '—'}</td><td>${diNum(r.database && r.database.rows)}</td><td>${r.file ? '$' + diNum(r.file.gross) : '—'}</td><td>$${diNum(r.database && r.database.gross)}</td><td>${r.matched === 1 ? '<span style="color:#1F7A4D;font-weight:600;">Match</span>' : r.matched === 0 ? `<span style="color:var(--danger);font-weight:600;">Differs</span> <span class="empty-note" style="font-style:normal;">${escapeHtml(r.note || '')}</span>` : 'Not compared'}</td></tr>`).join('')}</tbody></table></div>`;
+  } else html += '<p class="empty-note">No upload receipts yet. Receipts are written by uploads made after this panel shipped (guest bookings first).</p>';
+  (d.tables || []).forEach(t => {
+    if (t.error){ html += `<h4 style="margin:14px 0 6px;">${escapeHtml(t.key)}</h4><p class="empty-note" style="color:var(--danger);">${escapeHtml(t.error)}</p>`; return; }
+    const cols = t.columns || [];
+    html += `<h4 style="margin:14px 0 6px;">${escapeHtml(t.label)} <span class="empty-note" style="font-style:normal;">· ${diNum(t.total.rows)} rows${t.lastUpdate ? ` · last written ${escapeHtml(String(t.lastUpdate).slice(0, 10))}` : ''}</span></h4>`;
+    if (!t.months.length){ html += '<p class="empty-note">Nothing on file.</p>'; return; }
+    html += `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Month</th><th>Rows</th>${cols.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead><tbody>${t.months.map(m => `<tr><td>${escapeHtml(m.month)}</td><td>${diNum(m.rows)}</td>${cols.map(c => `<td>${diNum(m[c])}</td>`).join('')}</tr>`).join('')}<tr style="font-weight:700;"><td>Total</td><td>${diNum(t.total.rows)}</td>${cols.map(c => `<td>${diNum(t.total[c])}</td>`).join('')}</tr></tbody></table></div>`;
+  });
+  const yr = (d.yearResults || []).map(r => `<tr><td>${r.year}</td><td>$${diNum(r.grossRevenue)}</td><td>${diNum(r.transactions)}</td><td>${escapeHtml(r.notes || '')}</td></tr>`).join('');
+  html += `<h4 style="margin:14px 0 6px;">Annual results (entered)</h4>${yr ? `<table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Year</th><th>Gross revenue</th><th>Transactions</th><th>Notes</th></tr></thead><tbody>${yr}</tbody></table>` : '<p class="empty-note">None entered.</p>'}`;
+  const ap = (d.annualPlan || []).map(r => `<tr><td>${r.year}</td><td>${escapeHtml(r.kind)}</td><td>${escapeHtml(r.label || '')}</td><td>$${diNum(r.workingMedia)}</td><td>${diNum(r.websiteUsers)}</td><td>${diNum(r.bookings)}</td><td>$${diNum(r.grossRevenue)}</td></tr>`).join('');
+  html += `<h4 style="margin:14px 0 6px;">Annual plan</h4>${ap ? `<table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Year</th><th>Kind</th><th>Label</th><th>Working media</th><th>Website users</th><th>Bookings</th><th>Gross revenue</th></tr></thead><tbody>${ap}</tbody></table>` : '<p class="empty-note">No annual plan saved (the dashboards fall back to the recommended plan).</p>'}`;
+  const bu = (d.budgets || []).map(b => `<tr><td>${b.year}</td><td>${escapeHtml(b.scope || '')}</td><td>${escapeHtml(b.status || '')}</td><td>${escapeHtml(b.fileName || '')}</td><td>${diNum(b.lines)}</td><td>$${diNum(b.workingMedia)}</td><td>$${diNum(b.total)}</td></tr>`).join('');
+  html += `<h4 style="margin:14px 0 6px;">Marketing budget uploads</h4>${bu ? `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Year</th><th>Scope</th><th>Status</th><th>File</th><th>Lines</th><th>Working media</th><th>Total</th></tr></thead><tbody>${bu}</tbody></table></div><p class="empty-note">Only uploads with status "confirmed" feed the plan and the dashboards.</p>` : '<p class="empty-note">None.</p>'}`;
+  if (d.campaigns) html += `<p class="desc" style="margin-top:12px;">Campaigns: ${diNum(d.campaigns.total)} total · ${diNum(d.campaigns.adHoc)} ad hoc · ${diNum(d.campaigns.cancelled)} cancelled · ${diNum(d.campaigns.undated)} without a start date.</p>`;
+  body.innerHTML = html;
+}
+function diCsv(){
+  const d = diData; if (!d) return;
+  const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const lines = [['Table', 'Month', 'Rows', 'Measure', 'Value'].map(q).join(',')];
+  (d.tables || []).forEach(t => (t.months || []).forEach(m => { lines.push([t.label, m.month, m.rows, '', ''].map(q).join(',')); (t.columns || []).forEach(c => lines.push([t.label, m.month, m.rows, c, m[c]].map(q).join(','))); }));
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' })); a.download = `data-integrity-${d.accountId}.csv`; a.click();
+}
 
 // ============ Report Cards (2026-10-01) ============
 let rcData = null;

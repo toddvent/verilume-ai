@@ -1437,6 +1437,7 @@
   .gp-row{display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid #E2E8F0;font-size:0.8125rem;}
   .gp-row>span:last-child{text-align:right;}
   .gp-mini{font-size:0.75rem;}
+  .gp-stamp{margin:-6px 0 14px;font-size:0.75rem;line-height:1.5;}
   .gp-mini th,.gp-mini td{padding:3px 6px;white-space:nowrap;}
   .sc-delta.bad{color:#C0273C;}
   @media (max-width:1400px){ .gp-core.stat-card-grid.four{grid-template-columns:1fr 1fr;} }
@@ -12164,6 +12165,7 @@
         </div>
         <p class="hint" style="margin:0 0 10px;">Customer-level file = one row per customer (or per line): Transaction Date, Transaction / Order Code, Transaction Type, Promo Type, Status, Service or Delivery Date, Age, Customer State / Postal Code / Country, Gross Revenue, Net Revenue, Product Group, Creative Focus — any subset, any column names close to those. Unique transactions = distinct transaction codes per month (two customers on one code count once); customers and revenue are kept per row. Which status values count and how each transaction type maps to a class and to marketing-attributable are <b>this account's own settings</b> (below, seeded from your data with generic suggestions). Whole periods in the file are replaced, so one multi-year file is fine and can be re-uploaded.</p>
         <div id="mbuTxnPreview"></div>
+        <div id="mbuUploadReceipt"></div>
         <div id="mbuGuestBookingsSummary"></div>
         <div id="mbuTransactionSettings"></div>
         <div style="overflow-x:auto;">
@@ -22833,6 +22835,18 @@ function stratCoverageHtml(cov){
     <li>Closed-year results: ${cov.yearResults && cov.yearResults.length ? cov.yearResults.join(', ') : 'nothing on file'}</li></ul></details>`;
 }
 function stratMatchedNote(d, k){ const n = d && d.deltaMonths && d.deltaMonths[k]; return n && d.window && n < d.window.months ? ` (${n} matched months)` : ''; }
+
+// 2026-10-01 — source stamp: which tables, how many rows and months, and when they were last written, so a number is
+// never shown without where it came from. Reads the provenance block the analytics routes attach.
+function stratSourceStampHtml(prov){
+  if (!prov || !prov.sources) return '';
+  const used = prov.sources.filter(s => s.rows > 0);
+  if (!used.length) return '<p class="strat-sub gp-stamp">Source: nothing on file yet for this account.</p>';
+  const parts = used.map(s => `${escapeHtml(s.label)} ${Number(s.rows).toLocaleString()} rows${s.from ? ` (${escapeHtml(s.from)}${s.to && s.to !== s.from ? ' to ' + escapeHtml(s.to) : ''})` : ''}${s.lastWritten ? `, written ${escapeHtml(s.lastWritten)}` : ''}`);
+  const r = prov.lastReceipt;
+  const rc = r ? ` · Last upload ${escapeHtml(r.fileName || r.kind)} ${escapeHtml(String(r.createdAt).slice(0, 10))}: ${r.matched === 1 ? 'file and database match' : r.matched === 0 ? '<span style="color:#C0273C;font-weight:600;">file and database differ, see Train the Brain › Transactions</span>' : 'not compared'}` : '';
+  return `<p class="strat-sub gp-stamp"><b>Source:</b> ${parts.join(' · ')}${rc}</p>`;
+}
 function stratRenderDemandRow(){
   const el = document.getElementById('tabStatCardGrid'); if (!el) return;
   el.classList.add('four');
@@ -22865,7 +22879,7 @@ function stratRenderDemandRow(){
   if (d.ratioMonths && d.ratioMonths.roas != null && d.ratioMonths.roas < d.ratioMonths.of) msgs.push(`ROAS uses the ${d.ratioMonths.roas} of ${d.ratioMonths.of} months that have both spend and revenue on file.`);
   if (d.ratioMonths && d.ratioMonths.cac != null && d.ratioMonths.cac < d.ratioMonths.of) msgs.push(`CAC uses the ${d.ratioMonths.cac} of ${d.ratioMonths.of} months that have both spend and transactions on file.`);
   msgs.push('Customer-level CAC needs a customer id on bookings.');
-  el.insertAdjacentHTML('afterend', `<div id="stratDemandNote"><p class="strat-empty">${msgs.join(' ')}</p>${stratCoverageHtml(d.coverage)}</div>`);
+  el.insertAdjacentHTML('afterend', `<div id="stratDemandNote"><p class="strat-empty">${msgs.join(' ')}</p>${stratSourceStampHtml(d.provenance)}${stratCoverageHtml(d.coverage)}</div>`);
 }
 async function stratLoadDemand(){
   if (!stratIsLive()) return;
@@ -23347,6 +23361,8 @@ function gpStoryCards(d){
 function gpRenderCoreRow(){
   const el = document.getElementById('tabStatCardGrid'); if (!el) return; el.classList.add('four');
   el.classList.add('gp-core'); el.innerHTML = gpStoryCards(gp.data);
+  const oldS = document.getElementById('gpSourceStamp'); if (oldS) oldS.remove();
+  if (gp.data && gp.data.provenance) el.insertAdjacentHTML('afterend', `<div id="gpSourceStamp">${stratSourceStampHtml(gp.data.provenance)}</div>`);
   const rows = gpCampaigns(); const risk = rows.filter(r => r.stage !== 'Complete' && r.stage !== 'Analysis' && cmgmtIsAtRisk(r.c)).length;
   const rb = document.getElementById('gpRiskLine'); if (rb) rb.innerHTML = risk ? `<span style="color:#C0273C;font-weight:600;">${risk} campaign${risk === 1 ? '' : 's'} starting within 2 weeks, not approved</span> · QA &amp; Approval pending` : '';
 }
@@ -70784,6 +70800,7 @@ async function mbuLoadTransactions(){
   mbuRenderTxnRows();
   if (status) status.textContent = '';
   mbuLoadGuestBookingsSummary();
+  mbuLoadUploadReceipt();
   mbuLoadTransactionSettings();
 }
 let mbuTxnSeasonality = {};
@@ -71003,12 +71020,15 @@ function mbuClassifyBookingTypeClient(bookingType){
 }
 async function mbuConfirmGuestBookingsUpload(){
   if (!mbuPendingGuestBookings) return;
-  const { rows, periods } = mbuPendingGuestBookings; mbuPendingGuestBookings = null;
+  const { rows, periods, fileName } = mbuPendingGuestBookings; mbuPendingGuestBookings = null;
+  // What the file holds, counted here, so the server can show it next to what the database holds after the save.
+  const fileTotals = { rows: rows.length, codes: new Set(rows.map(r => r.bookingCode)).size, gross: 0, byMonth: {} };
+  { const codesBy = {}; rows.forEach(r => { const d = new Date(r.bookingDate); const k = `${d.getFullYear()}-${d.getMonth() + 1}`; const g = Number(String(r.grossRevenue == null ? '' : r.grossRevenue).replace(/[,$]/g, '')) || 0; fileTotals.gross += g; const m = fileTotals.byMonth[k] = fileTotals.byMonth[k] || { rows: 0, codes: 0, gross: 0 }; m.rows++; m.gross += g; (codesBy[k] = codesBy[k] || new Set()).add(r.bookingCode); }); Object.keys(codesBy).forEach(k => { fileTotals.byMonth[k].codes = codesBy[k].size; fileTotals.byMonth[k].gross = Math.round(fileTotals.byMonth[k].gross); }); fileTotals.gross = Math.round(fileTotals.gross); }
   const progress = document.getElementById('mbuGuestBookingsProgress');
   const status = document.getElementById('mbuTxnStatus');
   const batchId = `gb_${Date.now()}`;
   const CHUNK = 500; // 2026-10-01: smaller chunks and a 2-minute wait per chunk, so a full two-year file lands instead of stopping after the first chunk
-  let saved = 0, skipped = 0, rollup = null;
+  let saved = 0, skipped = 0, rollup = null, receipt = null;
   try {
     for (let i = 0; i < rows.length; i += CHUNK){
       const chunk = rows.slice(i, i + CHUNK);
@@ -71016,11 +71036,11 @@ async function mbuConfirmGuestBookingsUpload(){
       if (progress) progress.textContent = `Saving rows ${(i + 1).toLocaleString()}–${Math.min(i + CHUNK, rows.length).toLocaleString()} of ${rows.length.toLocaleString()}…`;
       const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/guest-bookings`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 120000,
-        body: JSON.stringify({ batchId, rows: chunk, replacePeriods: isFirst ? periods : undefined, final: isLast })
+        body: JSON.stringify({ batchId, rows: chunk, replacePeriods: isFirst ? periods : undefined, final: isLast, fileName: isLast ? fileName : undefined, fileTotals: isLast ? fileTotals : undefined })
       });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(data.error || `server error on rows ${i + 1}+`);
-      saved += data.saved || 0; skipped += data.skipped || 0; if (data.rollup) rollup = data.rollup;
+      saved += data.saved || 0; skipped += data.skipped || 0; if (data.rollup) rollup = data.rollup; if (data.receipt) receipt = data.receipt;
     }
     const preview = document.getElementById('mbuTxnPreview'); if (preview) preview.innerHTML = '';
     if (status) status.textContent = `Saved ${new Date().toLocaleTimeString()} — ${saved.toLocaleString()} customer rows${skipped ? ` (${skipped} skipped)` : ''}; monthly totals recomputed for ${rollup ? rollup.periods : periods.length} month${(rollup ? rollup.periods : periods.length) === 1 ? '' : 's'}. Review Transaction settings below to confirm which statuses and types count.`;
@@ -71028,10 +71048,29 @@ async function mbuConfirmGuestBookingsUpload(){
     mbuLoadTransactions();
     mbuLoadGuestBookingsSummary();
     mbuLoadTransactionSettings();
+    mbuRenderUploadReceipt(receipt);
   } catch (e){
     if (progress) progress.textContent = '';
-    if (status) status.textContent = saved ? `Stopped after ${saved.toLocaleString()} of ${rows.length.toLocaleString()} rows — ${e.message}. Upload the file again; the saved months are replaced.` : `Not saved — ${e.message}`;
+    if (status) status.textContent = `Not saved — ${e.message} Nothing in the database changed; upload the file again.`;
   }
+}
+
+// 2026-10-01 — the upload receipt: what the file said next to what the database holds for the same months.
+function mbuReceiptHtml(r){
+  if (!r) return '';
+  const n = v => v == null ? '—' : Number(v).toLocaleString();
+  const f = r.file, d = r.database; const ok = r.matched === 1;
+  const row = (label, a, b, money) => `<tr><td>${label}</td><td>${f ? (money ? '$' + n(a) : n(a)) : '—'}</td><td>${money ? '$' + n(b) : n(b)}</td><td>${f ? (a === b || (money && Math.abs(a - b) <= 1) ? '✓' : '<span style="color:#C0273C;font-weight:600;">differs</span>') : ''}</td></tr>`;
+  return `<div style="border:1px solid ${ok ? '#BFD4F1' : '#F2B8B5'};background:${ok ? '#EAF1FB' : '#FDECEC'};border-radius:8px;padding:10px 12px;margin:0 0 12px;font-size:0.8125rem;">
+    <b>Upload receipt</b> · ${escapeHtml(r.fileName || '')} · ${escapeHtml(new Date(r.createdAt).toLocaleString())} · ${ok ? '<span style="color:#1F7A4D;font-weight:600;">File and database match</span>' : (r.matched === 0 ? '<span style="color:#C0273C;font-weight:600;">File and database differ</span>' : 'Not compared')}
+    <table class="data-table" style="margin-top:6px;font-size:0.8125rem;"><thead><tr><th></th><th>In the file</th><th>In the database</th><th></th></tr></thead><tbody>${row('Customer rows', f && f.rows, d.rows)}${row('Unique transactions', f && f.codes, d.codes)}${row('Gross revenue', f && f.gross, d.gross, true)}</tbody></table>
+    <div class="hint" style="margin-top:4px;">${escapeHtml(r.note || '')}</div></div>`;
+}
+function mbuRenderUploadReceipt(r){ const el = document.getElementById('mbuUploadReceipt'); if (el) el.innerHTML = mbuReceiptHtml(r); }
+async function mbuLoadUploadReceipt(){
+  const el = document.getElementById('mbuUploadReceipt'); if (!el) return;
+  if (dataSourceLabel !== 'backend' || !state.companyId){ el.innerHTML = ''; return; }
+  try { const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/upload-receipts?kind=guest_bookings&limit=1`); if (!resp.ok) return; const d = await resp.json(); el.innerHTML = mbuReceiptHtml((d.receipts || [])[0]); } catch (e){}
 }
 async function mbuLoadGuestBookingsSummary(){
   const el = document.getElementById('mbuGuestBookingsSummary');
