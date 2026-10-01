@@ -624,6 +624,12 @@
          /status and /api/market-reference-data/proxy/* siblings) only
          require the same signed-in-staff session this console already
          holds (OPS_TOKEN_STORAGE_KEY) — no separate token to paste. -->
+    <div class="module">
+      <h3>Report Cards <span class="badge" style="margin-left:6px;">Staff only</span></h3>
+      <p class="desc">Every reporting card the portal produces: when it was added, whether it is a Verilume default or added by a client, the formula behind it and the source tables, for testing against raw data.</p>
+      <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:10px;"><div style="flex:1 1 auto;"><label>Filter</label><input type="text" id="rcFilter" placeholder="Name, tab, table or formula" oninput="rcRender()"></div><button class="btn" onclick="rcLoad()">Refresh</button><button class="btn" onclick="rcCsv()">Download CSV</button></div>
+      <div id="rcBody" class="empty-note">Loading…</div>
+    </div>
     <div class="module" style="border-top-color:var(--advocacy-tint);">
       <h3>Reference Data <span class="badge" style="margin-left:6px;">Staff only</span></h3>
       <p class="desc">The Population Index and DMA roll-up every account's Match Market Builder results depend on need two shared reference files no client supplies: population by zip (U.S. Census, free) and a zip→DMA crosswalk (DMA boundaries are Nielsen's; the free crosswalk is a public approximation, labelled that way wherever a DMA appears — a licensed Nielsen file can be loaded below and replaces it). Zip centroids (for store trade areas) are the same kind of one-time, shared load. None of this is account-scoped — one load here serves every account.</p>
@@ -1272,6 +1278,31 @@ function integStatusBadge(configured){
   return configured
     ? '<span class="badge status-configured">Configured</span>'
     : '<span class="badge status-not-configured">Not configured</span>';
+}
+
+
+// ============ Report Cards (2026-10-01) ============
+let rcData = null;
+async function rcLoad(){
+  const el = document.getElementById('rcBody'); if (!el) return; el.textContent = 'Loading…';
+  try { const r = await opsAuthedFetch(`${BACKEND_URL}/api/ops/report-cards`); if (!r.ok) throw new Error(String(r.status)); rcData = await r.json(); }
+  catch (e){ rcData = null; el.textContent = 'Could not load the report cards just now.'; return; }
+  rcRender();
+}
+function rcRows(){
+  const q = ((document.getElementById('rcFilter') || {}).value || '').toLowerCase();
+  return ((rcData && rcData.cards) || []).filter(c => !q || [c.name, c.tab, c.formula, c.scope, c.client || '', c.sourceTables.join(' ')].join(' ').toLowerCase().includes(q));
+}
+function rcRender(){
+  const el = document.getElementById('rcBody'); if (!el || !rcData) return;
+  const rows = rcRows();
+  el.innerHTML = `<div class="table-scroll"><table class="data-table" style="width:100%;font-size:0.8125rem;"><thead><tr><th>Date added</th><th>Added by</th><th>Name</th><th>Formula used</th><th>Source tables</th></tr></thead><tbody>${rows.map(c => `<tr><td style="white-space:nowrap;">${escapeHtml(c.dateAdded)}</td><td>${escapeHtml(c.client || c.scope)}</td><td><b>${escapeHtml(c.name)}</b><br><span style="color:#64748B;">${escapeHtml(c.tab)}</span></td><td>${escapeHtml(c.formula)}</td><td>${c.sourceTables.map(t => `<code>${escapeHtml(t)}</code>`).join('<br>')}</td></tr>`).join('') || '<tr><td colspan="5">No cards match.</td></tr>'}</tbody></table></div><p class="desc" style="margin-top:8px;">${rows.length} of ${rcData.cards.length} cards. ${escapeHtml(rcData.note || '')}</p>`;
+}
+function rcCsv(){
+  const rows = rcRows(); if (!rows.length) return;
+  const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const csv = [['Date added', 'Added by', 'Tab', 'Name', 'Formula used', 'Source tables'].map(q).join(',')].concat(rows.map(c => [c.dateAdded, c.client || c.scope, c.tab, c.name, c.formula, c.sourceTables.join('; ')].map(q).join(','))).join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'verilume-report-cards.csv'; a.click();
 }
 
 // ============ Reference Data (2026-09-09) ============
@@ -2763,6 +2794,7 @@ function showOpsApp(name){
   document.getElementById('opsLoginGate').classList.add('hidden');
   document.getElementById('opsAppRoot').classList.remove('hidden');
   document.getElementById('opsSignedInAs').textContent = name || 'Admin';
+  try { rcLoad(); } catch (e) {}
 }
 
 async function opsLogout(){
