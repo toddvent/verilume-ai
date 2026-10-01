@@ -15433,6 +15433,79 @@ function buildGrowthOutlook(accountId, asOfDate, totals, leadToBooking, dpRows){
   O.roas = roas; O.cac = cac; O.roasDeltaPct = roasDelta; O.cacDeltaPct = cacDelta;
   return O;
 }
+// ---- Report card catalog for the Ops Console (2026-10-01) -----------------------
+// Every reporting card the portal produces today, with the formula and the tables behind it, so staff can test
+// each one against raw data. All are Verilume defaults; cards a client adds will carry their own scope and
+// account once a saved-report library exists (Fire Drill slice for saving is not built yet).
+const REPORT_CARD_CATALOG = [
+  { added: '2026-09-30', scope: 'Verilume default', tab: 'Strategy', name: 'Spend (Demand row)', formula: 'SUM(spend) over the last N complete months; compared with the same months one year earlier, only where both years have spend', tables: ['mmm_inputs', 'campaign planning rollup (getEffectiveMmmTotals)'] },
+  { added: '2026-09-30', scope: 'Verilume default', tab: 'Strategy', name: 'Gross revenue (Demand row)', formula: 'SUM(revenue) per month, where revenue = SUM(grossRevenue) of valid-status bookings (monthly table first; rebuilt from customer rows when the monthly table is empty)', tables: ['account_transactions_monthly', 'account_guest_bookings'] },
+  { added: '2026-09-30', scope: 'Verilume default', tab: 'Strategy', name: 'ROAS', formula: 'gross revenue ÷ marketing spend (same months)', tables: ['account_transactions_monthly', 'account_guest_bookings', 'mmm_inputs'] },
+  { added: '2026-09-30', scope: 'Verilume default', tab: 'Strategy', name: 'CAC (transaction level)', formula: 'marketing spend ÷ unique transactions (distinct booking codes); customer-level CAC not computable, bookings carry no customer id', tables: ['account_transactions_monthly', 'account_guest_bookings', 'mmm_inputs'] },
+  { added: '2026-09-30', scope: 'Verilume default', tab: 'Strategy', name: 'Impressions (all channels)', formula: 'SUM(impressions) across all channels per month, print and digital together', tables: ['mmm_inputs', 'campaign planning rollup'] },
+  { added: '2026-09-30', scope: 'Verilume default', tab: 'Strategy', name: 'Price and volume by product group', formula: 'volume = distinct booking codes; gross = SUM(grossRevenue); average price = gross ÷ volume, per product group per month vs same month last year', tables: ['account_transactions_monthly', 'account_guest_bookings'] },
+  { added: '2026-09-30', scope: 'Verilume default', tab: 'Strategy', name: 'Audience growth by lead type', formula: 'SUM(count) by lead type (High Value, Growth = Registration, Prospect) per month; share of leads = type ÷ total in latest month; vs prior month and prior year', tables: ['account_lead_counts'] },
+  { added: '2026-09-30', scope: 'Verilume default', tab: 'Strategy', name: 'Forecast versus target', formula: 'year-end revenue = YTD actual revenue + forecast revenue for planned months; gap = year-end − annual target. Forecast chain: impressions → visits (regression) → leads → bookings → revenue, low/expected/high', tables: ['account_annual_plan', 'mmm_inputs', 'account_website_users_monthly', 'account_lead_counts', 'account_transactions_monthly', 'account_guest_bookings'] },
+  { added: '2026-09-30', scope: 'Verilume default', tab: 'Strategy', name: 'Rolling 18-month budget', formula: 'six months back, twelve forward: budget per month (confirmed Marketing Budget uploads) vs spend per month; gap over months having both', tables: ['marketing_budget_uploads', 'marketing_budget_line_items', 'mmm_inputs'] },
+  { added: '2026-09-30', scope: 'Verilume default', tab: 'Media Science', name: 'Analysis due / maturing / analyzed campaigns', formula: 'days since last hit date (or end date) ≥ attribution window (90 days) and actuals missing = due; < 90 days = still converting; ROAS = actualRevenue ÷ actualSpend; frequency = impressions ÷ reach; cost per conversion = spend ÷ conversions', tables: ['campaigns', 'channel_planning_details'] },
+  { added: '2026-09-30', scope: 'Verilume default', tab: 'Media Science', name: 'Core elements by channel', formula: 'per channel: SUM(impressions, clicks, spend, leads, calls); cost per lead = spend ÷ leads; click rate = clicks ÷ impressions', tables: ['account_digital_performance (grain overview)'] },
+  { added: '2026-09-30', scope: 'Verilume default', tab: 'Media Science', name: 'Lead to booking by audience type', formula: 'bookings ÷ leads per lead type; average days to convert weighted by bookings', tables: ['account_lead_counts'] },
+  { added: '2026-09-30', scope: 'Verilume default', tab: 'Customer Experiences', name: 'Cost per engagement by month', formula: 'SUM(spend) ÷ SUM(clicks), all channels, overview grain', tables: ['account_digital_performance'] },
+  { added: '2026-09-30', scope: 'Verilume default', tab: 'Customer Experiences', name: 'Offers by cost per lead', formula: 'per creative offer: spend ÷ leads and spend ÷ clicks, detail rows carrying a creative offer', tables: ['account_digital_performance'] },
+  { added: '2026-09-30', scope: 'Verilume default', tab: 'Customer Experiences', name: 'Creative focus: transactions and price', formula: 'distinct valid booking codes and SUM(grossRevenue) by creative focus; average price = gross ÷ transactions', tables: ['account_guest_bookings'] },
+  { added: '2026-09-30', scope: 'Verilume default', tab: 'Fire Drill', name: 'Fire Drill report templates (7 registered)', formula: 'Registry of the reports above plus template answers computed from the same builders and the shared dashboard date range', tables: ['same as the cards they reuse'] },
+  { added: '2026-09-30', scope: 'Verilume default', tab: 'Growth & Performance', name: 'Cost per visit', formula: 'SUM(spend) ÷ SUM(website users), trailing 12 months ending at latest data; vs the same matched months last year', tables: ['account_digital_performance', 'account_website_users_monthly'] },
+  { added: '2026-09-30', scope: 'Verilume default', tab: 'Growth & Performance', name: 'Cost per lead', formula: 'SUM(spend) ÷ SUM(leads) from digital performance, trailing 12 months; vs the same matched months last year', tables: ['account_digital_performance'] },
+  { added: '2026-09-30', scope: 'Verilume default', tab: 'Growth & Performance', name: 'Performance and lifecycle views', formula: 'trend of impressions and website visits; channel table; lead-to-booking = bookings ÷ leads by month and type; revenue by product group share', tables: ['account_digital_performance', 'account_website_users_monthly', 'account_lead_counts', 'account_transactions_monthly'] },
+  { added: '2026-10-01', scope: 'Verilume default', tab: 'Growth & Performance', name: 'Card 1: Plan vs target', formula: 'impressions = YTD + planned months vs annual target impressions; spend vs target working media; bar = impressions of completed-YTD (ended this year), active (start ≤ today ≤ end), pending (start > today) campaigns', tables: ['account_annual_plan', 'mmm_inputs', 'campaigns', 'channel_planning_details'] },
+  { added: '2026-10-01', scope: 'Verilume default', tab: 'Growth & Performance', name: 'Card 2: Demand', formula: 'forecast visits = base + visitsPerImpression × planned impressions; leads = visits × visit-to-lead rate. Needed = (target bookings − YTD) ÷ lead-to-booking ÷ visit-to-lead, back to impressions', tables: ['account_website_users_monthly', 'account_lead_counts', 'mmm_inputs', 'account_annual_plan'] },
+  { added: '2026-10-01', scope: 'Verilume default', tab: 'Growth & Performance', name: 'Card 3: Conversion and revenue', formula: 'bookings = leads × lead-to-booking rate (mature cohorts, ≥90-day window); revenue = bookings × revenue per booking; year-end vs target; ROAS = revenue ÷ planned spend; low/high are a planning band', tables: ['account_lead_counts', 'account_transactions_monthly', 'account_guest_bookings', 'account_annual_plan'] },
+  { added: '2026-10-01', scope: 'Verilume default', tab: 'Growth & Performance', name: 'Card 4: Versus last year', formula: 'impressions, visits, leads, transactions, revenue: year-to-date months and planned months vs the same calendar months one year earlier; change = (this − last) ÷ last, hidden when over 500%', tables: ['mmm_inputs', 'account_website_users_monthly', 'account_lead_counts', 'account_transactions_monthly', 'account_guest_bookings'] }
+];
+
+// ---- Growth & Performance four-card story (2026-10-01) -------------------------
+// Plan versus target, run through the forecast engine (impressions to website visits to leads to bookings to
+// revenue). Print and digital impressions count the same. Prior year = the same months one year earlier.
+function buildGrowthStory(accountId, asOfDate){
+  const asOf = asOfDate; const curYear = asOf.getUTCFullYear(); const mi = asOf.getUTCMonth();
+  const mk = (y, m) => `${y}-${String(m).padStart(2, '0')}`; const cur = mk(curYear, mi + 1);
+  const S = buildForecastSeries(accountId);
+  const fvt = buildStoryForecastVsTarget(accountId, { asOf });
+  const cal = forecastEngine.calibrate(S, { asOf, fallbackAov: storyFallbackAov(accountId, curYear) });
+  const keys = Array.from(new Set(Object.keys(S.impressions).concat(Object.keys(S.spend)))).filter(k => k >= cur).sort();
+  const months = keys.map(k => ({ month: k, impressions: Math.round(S.impressions[k] || 0), spend: Math.round(S.spend[k] || 0) })).filter(m => m.impressions > 0 || m.spend > 0);
+  const f = months.length ? forecastEngine.forecast(cal, { months }) : null;
+  const sumK = (obj, ks, pick) => { let n = 0, any = false; ks.forEach(k => { const v = pick ? pick(obj[k]) : obj[k]; if (v != null){ n += Number(v) || 0; any = true; } }); return any ? n : null; };
+  const ytdKeys = []; for (let m = 1; m <= mi; m++) ytdKeys.push(mk(curYear, m));
+  const planKeys = months.map(m => m.month);
+  const block = ks => ({ impressions: sumK(S.impressions, ks), spend: sumK(S.spend, ks), visits: sumK(S.visits, ks), leads: sumK(S.leads, ks, c => c && c.total), transactions: sumK(S.transactions, ks), revenue: sumK(S.revenue, ks) });
+  const prior = ks => block(ks.map(k => storyShiftYear(k, -1)));
+  const t = fvt.target;
+  const ytd = block(ytdKeys);
+  // What the target needs from here, walked backward through the same rates the forecast uses.
+  let required = null;
+  if (t && fvt.comparable && f && cal.bookingsToRevenue.mid){
+    const needRev = t.grossRevenue != null ? Math.max(0, t.grossRevenue - (ytd.revenue || 0)) : null;
+    const needBk = t.bookings != null ? Math.max(0, t.bookings - (ytd.transactions || 0)) : (needRev != null ? needRev / cal.bookingsToRevenue.mid : null);
+    if (needBk != null){
+      const leads = needBk / cal.leadsToBookings.mid; const visits = leads / cal.visitsToLeads.mid;
+      const s1 = cal.impressionsToVisits; const imps = s1.visitsPerImp > 0 ? Math.max(0, (visits - (s1.baseVisits || 0) * months.length) / s1.visitsPerImp) : null;
+      required = { bookings: Math.round(needBk), leads: Math.round(leads), visits: Math.round(visits), impressions: imps != null ? Math.round(imps) : null, revenue: needRev != null ? Math.round(needRev) : Math.round(needBk * cal.bookingsToRevenue.mid) };
+    }
+  }
+  const ft = f && f.totals;
+  const have = ft ? { impressions: ft.impressions, visits: ft.visits[1], leads: ft.leads[1], bookings: ft.bookings[1], revenue: ft.revenue ? ft.revenue[1] : null } : null;
+  const cover = (a, b) => (a != null && b) ? Math.round(a / b * 1000) / 10 : null;
+  const coverage = (required && have) ? { impressions: cover(have.impressions, required.impressions), visits: cover(have.visits, required.visits), leads: cover(have.leads, required.leads), bookings: cover(have.bookings, required.bookings), revenue: cover(have.revenue, required.revenue) } : null;
+  const pyPlan = months.length ? prior(planKeys) : null;
+  return { asOf: asOf.toISOString().slice(0, 10), confidence: cal.confidence, planSpan: months.length ? { from: months[0].month, to: months[months.length - 1].month, months: months.length } : null,
+    target: t, comparable: fvt.comparable, ytd, plan: have && { impressions: have.impressions, spend: ft.spend, visits: ft.visits, leads: ft.leads, bookings: ft.bookings, revenue: ft.revenue, roas: ft.roas, costPerLead: ft.costPerLead },
+    yearEnd: fvt.projectedRevenue, revenueGapToTarget: fvt.revenueGapToTarget, impressionsVsTarget: fvt.impressions, spendVsTarget: fvt.spend,
+    required, coverage,
+    rates: { impressionsToVisitsPer1k: cal.impressionsToVisits.visitsPerImp != null ? Math.round(cal.impressionsToVisits.visitsPerImp * 100000) / 100 : null, visitsToLeadsPct: Math.round(cal.visitsToLeads.mid * 1000) / 10, leadsToBookingsPct: Math.round(cal.leadsToBookings.mid * 1000) / 10, revenuePerBooking: cal.bookingsToRevenue.mid != null ? Math.round(cal.bookingsToRevenue.mid) : null, sources: { visits: cal.impressionsToVisits.source || null, leads: cal.visitsToLeads.source || null, bookings: cal.leadsToBookings.source || null } },
+    priorYear: { ytd: ytdKeys.length ? { current: ytd, prior: prior(ytdKeys) } : null, planMonths: pyPlan, planMonthsLabel: months.length ? `${storyShiftYear(months[0].month, -1)} to ${storyShiftYear(months[months.length - 1].month, -1)}` : null },
+    notes: cal.notes || [], notOnFile: fvt.notOnFile };
+}
 function buildGrowthPerformance(accountId, opts){
   const asOfDate = opts.asOf || new Date(); const months = Math.max(3, Math.min(24, Number(opts.months) || 12));
   const key = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
@@ -15463,6 +15536,7 @@ function buildGrowthPerformance(accountId, opts){
     performance: { totals: fin(perfTot(wset)), priorYear: gpUse ? fin(perfTot(new Set(gpIdx.map(k => storyShiftYear(k, -1))))) : null, currentMatched: gpUse ? fin(perfTot(new Set(gpIdx))) : null, comparedMonths: gpUse ? gpIdx.length : 0, channels, trend: trend.some(t => t.impressions || t.visits || t.leads) ? trend : [] },
     lifecycle: { leadToBooking: l.leads ? { leads: l.leads, bookings: l.bookings, ratePct: Math.round((l.bookings / l.leads) * 1000) / 10, avgDaysToConvert: l.wn ? Math.round(l.wd / l.wn) : null } : null, byType: typeRows, byMonth: monthRows.some(m => m.leads != null) ? monthRows : [], revenueByProductGroup: pgRows, revenueSource: tx.source || null },
     coverage: { digitalPerformanceRows: dp.length, websiteUserRows: users.length, leadCountRows: leadRows.length, transactionRows: tx.rows.length },
+    story: (() => { try { return buildGrowthStory(accountId, asOfDate); } catch (e){ console.warn('[growth story] failed:', e.message); return null; } })(),
     outlook: (() => { try { return buildGrowthOutlook(accountId, asOfDate, fin(perfTot(wset)), l.leads ? { ratePct: Math.round((l.bookings / l.leads) * 1000) / 10 } : null, dp); } catch (e){ console.warn('[growth outlook] failed:', e.message); return null; } })() };
 }
 
@@ -33147,6 +33221,12 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       return sendJson(res, 200, { inserted: validRows.length, errors, totalZipsOnFile: db.prepare('SELECT COUNT(*) AS n FROM zip_dma_master').get().n });
     }
     // GET /api/market-dma-master/status
+    // GET /api/ops/report-cards — 2026-10-01: catalog of every reporting card the portal produces, for staff testing.
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'report-cards'){
+      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      return sendJson(res, 200, { cards: REPORT_CARD_CATALOG.map(c => ({ dateAdded: c.added, scope: c.scope, client: null, tab: c.tab, name: c.name, formula: c.formula, sourceTables: c.tables })), clientAddedCount: 0, note: 'Client-added cards will list here with the client name once a saved-report library exists. None can be added yet.' });
+    }
+
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'market-dma-master' && parts[2] === 'status'){
       if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
       return sendJson(res, 200, dmaMasterStatus());
