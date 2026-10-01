@@ -117,10 +117,30 @@ async function queryWithRetry(pgSql, params, attempt = 1) {
   }
 }
 
+async function runBatch(stmts){
+  const client = await pool.connect();
+  let changes = 0;
+  try {
+    await client.query('BEGIN');
+    for (const st of stmts){ const r = await client.query(translate(st.sql), st.params || []); changes += r.rowCount || 0; }
+    await client.query('COMMIT');
+    return { changes };
+  } catch (err){
+    try { await client.query('ROLLBACK'); } catch (e2){ /* connection may be gone */ }
+    throw err;
+  } finally { client.release(); }
+}
+
 parentPort.on('message', async (msg) => {
   const { id, sql, params, mode, signal, port } = msg;
   let response;
   try {
+    if (mode === 'batch'){
+      const value = await runBatch(Array.isArray(params) ? params : []);
+      response = { ok: true, value };
+      try { port.postMessage(response); } finally { Atomics.store(signal, 0, 1); Atomics.notify(signal, 0); port.close(); }
+      return;
+    }
     const pgSql = translate(sql);
     const result = await queryWithRetry(pgSql, params || []);
     if (mode === 'get') {

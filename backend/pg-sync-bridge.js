@@ -99,7 +99,7 @@ function createSyncDb(connectionString) {
   // wrong, so they cost nothing on the normal path.
   const DEBUG_PG_BRIDGE = process.env.DEBUG_PG_BRIDGE === '1';
   let callWorkerSeq = 0;
-  function callWorker(sql, params, mode) {
+  function callWorker(sql, params, mode, timeoutMs) {
     const callId = `pgw${++callWorkerSeq}-${Date.now().toString(36)}`;
     if (closed) throw new Error('pg-sync-bridge: database already closed');
     // A worker that already died (see the 'error'/'exit' listeners above)
@@ -115,13 +115,14 @@ function createSyncDb(connectionString) {
     const signal = new Int32Array(new SharedArrayBuffer(4));
     if (DEBUG_PG_BRIDGE) console.error(`[pg-sync-bridge] ${callId} posting to worker (mode=${mode}): ${sql.slice(0, 100)}`);
     worker.postMessage({ sql, params, mode, signal, port: port2 }, [port2]);
+    const waitMs = timeoutMs || WAIT_TIMEOUT_MS;
 
     if (DEBUG_PG_BRIDGE) console.error(`[pg-sync-bridge] ${callId} entering Atomics.wait (timeout ${WAIT_TIMEOUT_MS}ms)`);
-    const status = Atomics.wait(signal, 0, 0, WAIT_TIMEOUT_MS);
+    const status = Atomics.wait(signal, 0, 0, waitMs);
     if (DEBUG_PG_BRIDGE) console.error(`[pg-sync-bridge] ${callId} Atomics.wait returned: ${status}`);
     if (status === 'timed-out') {
       port1.close();
-      throw new Error(`pg-sync-bridge: query timed out after ${WAIT_TIMEOUT_MS}ms: ${sql.slice(0, 120)}`);
+      throw new Error(`pg-sync-bridge: query timed out after ${waitMs}ms: ${String(sql).slice(0, 120)}`);
     }
     const msg = receiveMessageOnPort(port1);
     port1.close();
@@ -150,6 +151,12 @@ function createSyncDb(connectionString) {
         all(...params) { return callWorker(sql, params, 'all'); },
         run(...params) { return callWorker(sql, params, 'run'); },
       };
+    },
+    // 2026-10-01 — batch(stmts): every statement runs on ONE connection inside BEGIN ... COMMIT, so a multi-step
+    // save (delete the old months, copy the staged rows in, clear the stage) lands whole or not at all. Each
+    // entry is { sql, params }. The worker rolls back on the first failure and reports it.
+    batch(stmts, timeoutMs) {
+      return callWorker('BATCH', stmts, 'batch', timeoutMs || 120000);
     },
     close() {
       closed = true;

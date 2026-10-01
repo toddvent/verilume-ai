@@ -186,6 +186,13 @@ function wrapDbForInit(rawDb) {
       }
     },
     prepare(sql) { return rawDb.prepare(sql); },
+    // All statements in one transaction (see pg-sync-bridge batch). SQLite runs them inside BEGIN/COMMIT here.
+    batch(stmts, timeoutMs) {
+      if (typeof rawDb.batch === 'function') return rawDb.batch(stmts, timeoutMs);
+      rawDb.exec('BEGIN');
+      try { let changes = 0; for (const st of stmts){ const r = rawDb.prepare(st.sql).run(...(st.params || [])); changes += Number(r && r.changes) || 0; } rawDb.exec('COMMIT'); return { changes }; }
+      catch (e){ try { rawDb.exec('ROLLBACK'); } catch (e2){} throw e; }
+    },
     close() { return rawDb.close(); },
   };
 }
@@ -1993,6 +2000,79 @@ createTableIfNeeded(`
 `);
 // Extra roll-up columns on account_transactions_monthly, filled by
 // rollupGuestBookings() below (manual rows leave them null).
+// 2026-10-01 — staging for all-or-nothing guest bookings uploads, and receipts for every upload (see the route).
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_guest_bookings_staging (
+    accountId TEXT NOT NULL,
+    bookingCode TEXT NOT NULL,
+    guestSeq INTEGER NOT NULL,
+    bookingDate TEXT,
+    year INTEGER NOT NULL,
+    month INTEGER NOT NULL,
+    bookingType TEXT,
+    bookingClass TEXT,
+    marketingAttributable INTEGER,
+    promoType TEXT,
+    bookingStatus TEXT,
+    sailDate TEXT,
+    age REAL,
+    generation TEXT,
+    guestState TEXT,
+    guestPostalCode TEXT,
+    guestCountry TEXT,
+    grossRevenue REAL,
+    netRevenue REAL,
+    productGroup TEXT,
+    creativeFocus TEXT,
+    uploadBatchId TEXT NOT NULL,
+    updatedAt TEXT NOT NULL,
+    PRIMARY KEY (accountId, uploadBatchId, bookingCode, guestSeq)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS upload_receipts (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    batchId TEXT,
+    fileName TEXT,
+    createdAt TEXT NOT NULL,
+    "fileJson" TEXT,
+    "dbJson" TEXT,
+    matched INTEGER,
+    note TEXT
+  );
+`);
+// What the browser counted in the file versus what the live table holds for the same months, side by side.
+// fileTotals (from the browser): { rows, codes, gross, byMonth: { 'YYYY-M': { rows, codes, gross } } }.
+function buildUploadReceipt(accountId, kind, batchId, fileName, fileTotals, periods, now){
+  const dbBy = {}; let dbRows = 0, dbGross = 0; const dbCodes = new Set();
+  if (kind === 'guest_bookings'){
+    periods.forEach(p => {
+      const rows = db.prepare('SELECT "bookingCode", "grossRevenue" FROM account_guest_bookings WHERE accountId = ? AND year = ? AND month = ?').all(accountId, p.year, p.month);
+      const codes = new Set(); let g = 0; rows.forEach(r => { codes.add(aliasVal(r, 'bookingCode')); g += Number(aliasVal(r, 'grossRevenue')) || 0; codes.forEach(c => dbCodes.add(c)); });
+      dbBy[`${p.year}-${p.month}`] = { rows: rows.length, codes: codes.size, gross: Math.round(g) }; dbRows += rows.length; dbGross += g;
+    });
+  }
+  const dbT = { rows: dbRows, codes: dbCodes.size, gross: Math.round(dbGross), byMonth: dbBy };
+  const f = fileTotals && typeof fileTotals === 'object' ? { rows: Number(fileTotals.rows) || 0, codes: Number(fileTotals.codes) || 0, gross: Math.round(Number(fileTotals.gross) || 0), byMonth: fileTotals.byMonth && typeof fileTotals.byMonth === 'object' ? fileTotals.byMonth : {} } : null;
+  const diffs = [];
+  if (f){
+    if (f.rows !== dbT.rows) diffs.push(`rows: file ${f.rows.toLocaleString('en-US')}, database ${dbT.rows.toLocaleString('en-US')}`);
+    if (f.codes !== dbT.codes) diffs.push(`unique transactions: file ${f.codes.toLocaleString('en-US')}, database ${dbT.codes.toLocaleString('en-US')}`);
+    if (Math.abs(f.gross - dbT.gross) > 1) diffs.push(`gross revenue: file ${f.gross.toLocaleString('en-US')}, database ${dbT.gross.toLocaleString('en-US')}`);
+    Object.keys(f.byMonth).forEach(k => { const a = f.byMonth[k] || {}, b = dbBy[k]; if (!b) diffs.push(`${k}: in the file, not in the database`); else if ((Number(a.rows) || 0) !== b.rows) diffs.push(`${k}: file ${a.rows} rows, database ${b.rows}`); });
+  }
+  const matched = f ? (diffs.length ? 0 : 1) : null;
+  const id = `rcpt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+  const note = f ? (diffs.length ? diffs.join('; ') : 'Every count in the file matches the database.') : 'The browser sent no file totals, so nothing could be compared.';
+  try { db.prepare('INSERT INTO upload_receipts (id, accountId, kind, "batchId", "fileName", "createdAt", "fileJson", "dbJson", matched, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, accountId, kind, batchId || null, fileName ? String(fileName).slice(0, 300) : null, now, f ? JSON.stringify(f) : null, JSON.stringify(dbT), matched, note); } catch (e){ console.warn('[upload receipt] not stored:', e.message); }
+  return { id, kind, batchId, fileName: fileName || null, createdAt: now, file: f, database: dbT, matched, note, periods: periods.length };
+}
+function uploadReceiptOut(r){
+  const j = v => { try { return v ? JSON.parse(v) : null; } catch (e){ return null; } };
+  return { id: r.id, kind: r.kind, batchId: aliasVal(r, 'batchId'), fileName: aliasVal(r, 'fileName'), createdAt: aliasVal(r, 'createdAt'), file: j(aliasVal(r, 'fileJson')), database: j(aliasVal(r, 'dbJson')), matched: r.matched == null ? null : Number(r.matched), note: r.note };
+}
 ensureColumn('account_transactions_monthly', 'guests', 'REAL');
 ensureColumn('account_transactions_monthly', 'netRevenue', 'REAL');
 ensureColumn('account_transactions_monthly', 'attributableTransactions', 'REAL');
@@ -15508,6 +15588,63 @@ function buildAnnualPlanRecommendation(accountId, year, asOfDate){
   return { year, baseline, target, method: used.concat(['Impressions and direct calls scale with the media budget. Impressions are digital only (print is not in the monthly history).']), budget: { target: tBudget, baseline: bBudget }, missing, recommended: true };
 }
 
+// A one-line account of where the numbers came from: rows, months covered and the last write per source table,
+// plus the latest upload receipt. Attached to the dashboard analytics so every card can show its source.
+function buildProvenance(accountId){
+  const mk = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
+  const one = (key, label, sql, keyFn) => {
+    try { const rows = db.prepare(sql).all(accountId); const ks = rows.map(keyFn).filter(k => /^\d{4}-\d{2}$/.test(String(k || ''))).sort(); const last = rows.map(r => aliasVal(r, 'updatedAt') || null).filter(Boolean).sort().pop() || null;
+      return { key, label, rows: rows.length, from: ks[0] || null, to: ks[ks.length - 1] || null, lastWritten: last ? String(last).slice(0, 10) : null }; }
+    catch (e){ return { key, label, rows: 0, from: null, to: null, lastWritten: null }; }
+  };
+  const ym = r => mk(r.year, r.month);
+  const sources = [
+    one('guest_bookings', 'guest bookings', 'SELECT year, month, "updatedAt" FROM account_guest_bookings WHERE accountId = ?', ym),
+    one('transactions', 'monthly transactions', 'SELECT year, month, "updatedAt" FROM account_transactions_monthly WHERE accountId = ?', ym),
+    one('leads', 'lead counts', 'SELECT year, month, "updatedAt" FROM account_lead_counts WHERE accountId = ?', ym),
+    one('website_users', 'website users', 'SELECT year, month, "updatedAt" FROM account_website_users_monthly WHERE accountId = ?', ym),
+    one('digital', 'digital performance', "SELECT year, month, \"updatedAt\" FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'", ym),
+    one('plan_lines', 'campaign plan lines', 'SELECT cpd."hitDate" AS hd, cpd."updatedAt" AS "updatedAt" FROM channel_planning_details cpd JOIN campaigns c ON c.id = cpd.campaignId WHERE c.accountId = ?', r => String(aliasVal(r, 'hd') || '').slice(0, 7))
+  ];
+  let receipt = null; try { const r = db.prepare('SELECT * FROM upload_receipts WHERE accountId = ? ORDER BY "createdAt" DESC LIMIT 1').get(accountId); if (r) receipt = uploadReceiptOut(r); } catch (e){}
+  return { sources, lastReceipt: receipt ? { kind: receipt.kind, fileName: receipt.fileName, createdAt: receipt.createdAt, matched: receipt.matched } : null };
+}
+
+// ---- Data integrity (2026-10-01) ------------------------------------------------
+// What the database holds for one account, table by table and month by month, so a person can set it against the
+// client's source file: row counts and the sums that matter, plus the latest upload receipts. Read-only.
+function buildDataIntegrity(accountId){
+  const out = { accountId, generatedAt: new Date().toISOString(), tables: [], receipts: [] };
+  const mk = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
+  const monthly = (key, label, rows, keyFn, sums) => {
+    const by = {}; rows.forEach(r => { const k = keyFn(r); if (!k) return; const b = by[k] || (by[k] = { month: k, rows: 0 }); b.rows++; Object.keys(sums).forEach(f => { b[f] = (b[f] || 0) + (Number(sums[f](r)) || 0); }); });
+    const months = Object.values(by).sort((a, b) => a.month.localeCompare(b.month)).map(b => { Object.keys(sums).forEach(f => { b[f] = Math.round(b[f]); }); return b; });
+    const total = { rows: rows.length }; Object.keys(sums).forEach(f => { total[f] = Math.round(months.reduce((n, b) => n + (b[f] || 0), 0)); });
+    const lastUpdate = rows.map(r => aliasVal(r, 'updatedAt') || null).filter(Boolean).sort().pop() || null;
+    out.tables.push({ key, label, total, months, lastUpdate, columns: Object.keys(sums) });
+  };
+  try { const g = db.prepare('SELECT year, month, "bookingCode", "grossRevenue", "netRevenue", "bookingStatus", "updatedAt" FROM account_guest_bookings WHERE accountId = ?').all(accountId);
+    const codesBy = {}; g.forEach(r => { const k = mk(r.year, r.month); (codesBy[k] = codesBy[k] || new Set()).add(aliasVal(r, 'bookingCode')); });
+    monthly('guest_bookings', 'Guest bookings (customer rows)', g, r => mk(r.year, r.month), { grossRevenue: r => aliasVal(r, 'grossRevenue'), netRevenue: r => aliasVal(r, 'netRevenue') });
+    const t = out.tables[out.tables.length - 1]; t.months.forEach(b => { b.uniqueTransactions = codesBy[b.month] ? codesBy[b.month].size : 0; }); t.total.uniqueTransactions = new Set(g.map(r => aliasVal(r, 'bookingCode'))).size; t.columns = ['uniqueTransactions'].concat(t.columns);
+  } catch (e){ out.tables.push({ key: 'guest_bookings', error: e.message }); }
+  try { monthly('transactions_monthly', 'Monthly transactions (roll-up)', db.prepare('SELECT * FROM account_transactions_monthly WHERE accountId = ?').all(accountId), r => mk(r.year, r.month), { transactions: r => r.transactions, revenue: r => r.revenue }); } catch (e){ out.tables.push({ key: 'transactions_monthly', error: e.message }); }
+  try { monthly('leads', 'Leads by month', db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId), r => mk(r.year, r.month), { leads: r => r.count, bookings: r => r.bookings }); } catch (e){ out.tables.push({ key: 'leads', error: e.message }); }
+  try { monthly('website_users', 'Website users', db.prepare('SELECT * FROM account_website_users_monthly WHERE accountId = ?').all(accountId), r => mk(r.year, r.month), { users: r => r.users }); } catch (e){ out.tables.push({ key: 'website_users', error: e.message }); }
+  try { monthly('digital', 'Digital performance (overview grain)', db.prepare("SELECT * FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").all(accountId), r => mk(r.year, r.month), { impressions: r => r.impressions, spend: r => r.spend, leads: r => r.leads, calls: r => r.calls }); } catch (e){ out.tables.push({ key: 'digital', error: e.message }); }
+  try { monthly('mmm_inputs', 'Media totals (MMM inputs)', db.prepare('SELECT * FROM mmm_inputs WHERE accountId = ?').all(accountId), r => (/^\d{4}-\d{2}$/.test(String(aliasVal(r, 'periodLabel') || '')) ? aliasVal(r, 'periodLabel') : null), { spend: r => r.spend, impressions: r => r.impressions }); } catch (e){ out.tables.push({ key: 'mmm_inputs', error: e.message }); }
+  try { const camps = db.prepare('SELECT id, startDate, isAdHoc, cancelled FROM campaigns WHERE accountId = ?').all(accountId); const lines = db.prepare('SELECT cpd.campaignId AS cid, cpd.impressions, cpd.budget, cpd.hitDate, cpd.dropDate FROM channel_planning_details cpd JOIN campaigns c ON c.id = cpd.campaignId WHERE c.accountId = ?').all(accountId);
+    const startBy = {}; camps.forEach(c => { startBy[c.id] = String(aliasVal(c, 'startDate') || '').slice(0, 7); });
+    monthly('campaign_plan_lines', 'Campaign plan lines (by hit date, else drop date, else campaign start)', lines, r => { const d = String(aliasVal(r, 'hitDate') || aliasVal(r, 'dropDate') || startBy[aliasVal(r, 'cid')] || '').slice(0, 7); return /^\d{4}-\d{2}$/.test(d) ? d : 'undated'; }, { impressions: r => r.impressions, budget: r => aliasVal(r, 'budget') });
+    out.campaigns = { total: camps.length, adHoc: camps.filter(c => Number(aliasVal(c, 'isAdHoc'))).length, cancelled: camps.filter(c => Number(c.cancelled)).length, undated: camps.filter(c => !aliasVal(c, 'startDate')).length };
+  } catch (e){ out.tables.push({ key: 'campaign_plan_lines', error: e.message }); }
+  try { out.annualPlan = db.prepare('SELECT * FROM account_annual_plan WHERE accountId = ? ORDER BY year, kind').all(accountId).map(r => ({ year: r.year, kind: r.kind, label: r.label, workingMedia: aliasVal(r, 'workingMedia'), impressions: r.impressions, websiteUsers: aliasVal(r, 'websiteUsers'), bookings: r.bookings, grossRevenue: aliasVal(r, 'grossRevenue'), updatedAt: aliasVal(r, 'updatedAt') })); } catch (e){ out.annualPlan = []; }
+  try { out.yearResults = db.prepare('SELECT * FROM account_year_results WHERE accountId = ? ORDER BY year').all(accountId).map(r => ({ year: r.year, grossRevenue: aliasVal(r, 'grossRevenue'), transactions: r.transactions, notes: r.notes, updatedAt: aliasVal(r, 'updatedAt') })); } catch (e){ out.yearResults = []; }
+  try { out.budgets = db.prepare('SELECT u.id, u.year, u.scope, u.status, u."fileName", u."confirmedAt" FROM marketing_budget_uploads u WHERE u.accountId = ? ORDER BY u.year, u.createdAt').all(accountId).map(u => { const li = db.prepare('SELECT status, amount FROM marketing_budget_line_items WHERE uploadId = ?').all(u.id); let wm = 0, tot = 0; li.forEach(r => { const a = Number(r.amount) || 0; tot += a; if (/^\s*working/i.test(String(r.status || ''))) wm += a; }); return { id: u.id, year: u.year, scope: u.scope, status: u.status, fileName: aliasVal(u, 'fileName'), confirmedAt: aliasVal(u, 'confirmedAt'), lines: li.length, workingMedia: Math.round(wm), total: Math.round(tot) }; }); } catch (e){ out.budgets = []; }
+  try { out.receipts = db.prepare('SELECT * FROM upload_receipts WHERE accountId = ? ORDER BY "createdAt" DESC LIMIT 20').all(accountId).map(uploadReceiptOut); } catch (e){ out.receipts = []; }
+  return out;
+}
+
 // ---- Report card catalog for the Ops Console (2026-10-01) -----------------------
 // Every reporting card the portal produces today, with the formula and the tables behind it, so staff can test
 // each one against raw data. All are Verilume defaults; cards a client adds will carry their own scope and
@@ -25289,6 +25426,7 @@ async function handleRequest(req, res) {
           : parts[4] === 'growth-performance' ? buildGrowthPerformance(accountId, opts)
           : parts[4] === 'rolling-budget' ? buildRollingBudget(accountId, opts)
           : buildStoryAudienceGrowth(accountId, opts);
+        if (data && (parts[4] === 'story' || parts[4] === 'growth-performance')){ try { data.provenance = buildProvenance(accountId); } catch (e){ data.provenance = null; } }
         return sendJson(res, 200, data);
       } catch (e){ console.warn('[analytics/' + parts[4] + '] failed:', e.message); return sendJson(res, 500, { error: 'could not build ' + parts[4] }); }
     }
@@ -33326,6 +33464,17 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       return sendJson(res, 200, { inserted: validRows.length, errors, totalZipsOnFile: db.prepare('SELECT COUNT(*) AS n FROM zip_dma_master').get().n });
     }
     // GET /api/market-dma-master/status
+    // GET /api/ops/accounts/:id/data-integrity — staff view of what the database holds for an account (ADMIN_API_TOKEN).
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'accounts' && parts[4] === 'data-integrity'){
+      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN) return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
+      return sendJson(res, 200, buildDataIntegrity(decodeURIComponent(parts[3])));
+    }
+    // GET /api/accounts/:id/data-integrity — the same view for the account's own team.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'data-integrity'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      return sendJson(res, 200, buildDataIntegrity(accountId));
+    }
     // GET /api/ops/report-cards — 2026-10-01: catalog of every reporting card the portal produces, for staff testing.
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'report-cards'){
       if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
@@ -35634,6 +35783,14 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     // the LAST chunk sets final:true, which recomputes the monthly roll-up.
     // guestSeq is assigned per booking code within this batch (a two-guest
     // booking is rows 1 and 2), so the primary key never collides.
+    // POST /api/accounts/:id/guest-bookings — 2026-10-01 rewrite: all-or-nothing with a receipt.
+    // Every chunk of the file is written to a staging table under one upload id (batchId). Nothing in the live
+    // table changes until the final chunk, when one transaction deletes the months the file covers, copies the
+    // staged rows in, and clears the stage. A browser that gives up halfway leaves the live data untouched.
+    // The final call also carries what the browser counted in the file (rows, unique transactions, gross revenue,
+    // by month); the server counts what the live table now holds for those months and stores both as a receipt,
+    // flagged when they differ. Before this, a 1,500-row chunk of one-row-at-a-time inserts outran the browser's
+    // 12-second wait: the first chunk landed, the rest never arrived, and nothing said so.
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'guest-bookings'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
@@ -35641,21 +35798,14 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const rowsIn = Array.isArray(body.rows) ? body.rows : [];
       const batchId = String(body.batchId || '').trim() || `gb_${Date.now()}`;
       const now = new Date().toISOString();
-      if (Array.isArray(body.replacePeriods) && body.replacePeriods.length){
-        const del = db.prepare('DELETE FROM account_guest_bookings WHERE accountId = ? AND year = ? AND month = ?');
-        body.replacePeriods.forEach(p => { const y = parseInt(p.year, 10), m = parseInt(p.month, 10); if (y >= 2000 && m >= 1 && m <= 12) del.run(accountId, y, m); });
-      }
-      // Continue guestSeq numbering across chunks of the same batch.
-      const seqRows = rowsIn.length ? db.prepare('SELECT "bookingCode", MAX("guestSeq") AS maxSeq FROM account_guest_bookings WHERE accountId = ? AND "uploadBatchId" = ? GROUP BY "bookingCode"').all(accountId, batchId) : [];
-      const seq = {}; seqRows.forEach(r => { seq[r.bookingCode] = Number(r.maxSeq) || 0; });
-      // 2026-10-01 — rows are written in multi-row statements (200 per statement) instead of one INSERT per guest row.
-      // Each statement is a blocking round trip to Postgres, so a 1,500-row chunk used to take well over the browser's
-      // 12-second limit: the first chunk landed, the browser gave up, and the rest of the file never arrived. That is why
-      // the live account held exactly 1,500 guest rows of a full two-year file.
-      const GB_COLS = 23, GB_PER_STMT = 200; const gbHead = `INSERT INTO account_guest_bookings (accountId, "bookingCode", "guestSeq", "bookingDate", year, month, "bookingType", "bookingClass", "marketingAttributable", "promoType", "bookingStatus", "sailDate", age, generation, "guestState", "guestPostalCode", "guestCountry", "grossRevenue", "netRevenue", "productGroup", "creativeFocus", "uploadBatchId", updatedAt) VALUES `;
-      const gbTail = ` ON CONFLICT(accountId, "bookingCode", "guestSeq") DO UPDATE SET "bookingDate" = excluded."bookingDate", year = excluded.year, month = excluded.month, "bookingType" = excluded."bookingType", "bookingClass" = excluded."bookingClass", "marketingAttributable" = excluded."marketingAttributable", "promoType" = excluded."promoType", "bookingStatus" = excluded."bookingStatus", "sailDate" = excluded."sailDate", age = excluded.age, generation = excluded.generation, "guestState" = excluded."guestState", "guestPostalCode" = excluded."guestPostalCode", "guestCountry" = excluded."guestCountry", "grossRevenue" = excluded."grossRevenue", "netRevenue" = excluded."netRevenue", "productGroup" = excluded."productGroup", "creativeFocus" = excluded."creativeFocus", "uploadBatchId" = excluded."uploadBatchId", updatedAt = excluded.updatedAt`;
+      const GB_COLS = 23, GB_PER_STMT = 200;
+      const gbColList = `(accountId, "bookingCode", "guestSeq", "bookingDate", year, month, "bookingType", "bookingClass", "marketingAttributable", "promoType", "bookingStatus", "sailDate", age, generation, "guestState", "guestPostalCode", "guestCountry", "grossRevenue", "netRevenue", "productGroup", "creativeFocus", "uploadBatchId", updatedAt)`;
+      const gbUpdate = `"bookingDate" = excluded."bookingDate", year = excluded.year, month = excluded.month, "bookingType" = excluded."bookingType", "bookingClass" = excluded."bookingClass", "marketingAttributable" = excluded."marketingAttributable", "promoType" = excluded."promoType", "bookingStatus" = excluded."bookingStatus", "sailDate" = excluded."sailDate", age = excluded.age, generation = excluded.generation, "guestState" = excluded."guestState", "guestPostalCode" = excluded."guestPostalCode", "guestCountry" = excluded."guestCountry", "grossRevenue" = excluded."grossRevenue", "netRevenue" = excluded."netRevenue", "productGroup" = excluded."productGroup", "creativeFocus" = excluded."creativeFocus", "uploadBatchId" = excluded."uploadBatchId", updatedAt = excluded.updatedAt`;
+      // Continue guestSeq numbering across chunks of the same upload (read from the stage).
+      const seqRows = rowsIn.length ? db.prepare('SELECT "bookingCode", MAX("guestSeq") AS maxSeq FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ? GROUP BY "bookingCode"').all(accountId, batchId) : [];
+      const seq = {}; seqRows.forEach(r => { seq[aliasVal(r, 'bookingCode')] = Number(aliasVal(r, 'maxSeq')) || 0; });
       let saved = 0, skipped = 0; const pending = []; const stmtCache = {};
-      const flush = () => { if (!pending.length) return; const n = pending.length / GB_COLS; const st = stmtCache[n] || (stmtCache[n] = db.prepare(gbHead + Array.from({ length: n }, () => '(' + Array(GB_COLS).fill('?').join(', ') + ')').join(', ') + gbTail)); st.run(...pending); pending.length = 0; };
+      const flush = () => { if (!pending.length) return; const n = pending.length / GB_COLS; const st = stmtCache[n] || (stmtCache[n] = db.prepare(`INSERT INTO account_guest_bookings_staging ${gbColList} VALUES ` + Array.from({ length: n }, () => '(' + Array(GB_COLS).fill('?').join(', ') + ')').join(', ') + ` ON CONFLICT(accountId, "uploadBatchId", "bookingCode", "guestSeq") DO UPDATE SET ${gbUpdate}`)); st.run(...pending); pending.length = 0; };
       const txnSettings = getTransactionSettings(accountId);
       const numOrNull = v => { if (v === null || v === undefined || v === '') return null; const n = Number(String(v).replace(/[,$]/g, '')); return Number.isFinite(n) ? n : null; };
       for (const r of rowsIn){
@@ -35674,12 +35824,29 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         if (pending.length >= GB_COLS * GB_PER_STMT) flush();
       }
       flush();
-      let rollup = null;
-      if (body.final){
-        const periods = db.prepare('SELECT DISTINCT year, month FROM account_guest_bookings WHERE accountId = ? AND "uploadBatchId" = ?').all(accountId, batchId);
-        rollup = rollupGuestBookings(accountId, periods);
-      }
-      return sendJson(res, 200, { accountId, batchId, saved, skipped, rollup, updatedAt: now });
+      const stagedTotal = Number(aliasVal(db.prepare('SELECT COUNT(*) AS n FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ?').get(accountId, batchId) || {}, 'n')) || 0;
+      if (!body.final) return sendJson(res, 200, { accountId, batchId, saved, skipped, staged: stagedTotal, committed: false, updatedAt: now });
+      // Final chunk: commit the whole upload in one transaction.
+      const periods = db.prepare('SELECT DISTINCT year, month FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ?').all(accountId, batchId).map(p => ({ year: Number(p.year), month: Number(p.month) })).filter(p => p.year >= 2000 && p.month >= 1 && p.month <= 12);
+      (Array.isArray(body.replacePeriods) ? body.replacePeriods : []).forEach(p => { const y = parseInt(p.year, 10), m = parseInt(p.month, 10); if (y >= 2000 && m >= 1 && m <= 12 && !periods.some(q => q.year === y && q.month === m)) periods.push({ year: y, month: m }); });
+      if (!periods.length) return sendJson(res, 400, { error: 'nothing staged for this upload — send the rows again' });
+      const stmts = periods.map(p => ({ sql: 'DELETE FROM account_guest_bookings WHERE accountId = ? AND year = ? AND month = ?', params: [accountId, p.year, p.month] }));
+      stmts.push({ sql: `INSERT INTO account_guest_bookings ${gbColList} SELECT accountId, "bookingCode", "guestSeq", "bookingDate", year, month, "bookingType", "bookingClass", "marketingAttributable", "promoType", "bookingStatus", "sailDate", age, generation, "guestState", "guestPostalCode", "guestCountry", "grossRevenue", "netRevenue", "productGroup", "creativeFocus", "uploadBatchId", updatedAt FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ? ON CONFLICT(accountId, "bookingCode", "guestSeq") DO UPDATE SET ${gbUpdate}`, params: [accountId, batchId] });
+      stmts.push({ sql: 'DELETE FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ?', params: [accountId, batchId] });
+      try { db.batch(stmts, 180000); }
+      catch (e){ console.error('[guest-bookings] commit failed, live rows untouched:', e.message); return sendJson(res, 500, { error: `The upload was not saved: ${e.message}. Your existing data is unchanged.` }); }
+      try { db.prepare("DELETE FROM account_guest_bookings_staging WHERE accountId = ? AND updatedAt < ?").run(accountId, new Date(Date.now() - 2 * 86400000).toISOString()); } catch (e){}
+      const rollup = rollupGuestBookings(accountId, periods);
+      const receipt = buildUploadReceipt(accountId, 'guest_bookings', batchId, body.fileName, body.fileTotals, periods, now);
+      return sendJson(res, 200, { accountId, batchId, saved, skipped, staged: stagedTotal, committed: true, rollup, receipt, updatedAt: now });
+    }
+    // GET /api/accounts/:id/upload-receipts[?kind=guest_bookings&limit=10] — what each upload said versus what landed.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'upload-receipts'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const q = new URL(req.url, 'http://localhost').searchParams; const kind = q.get('kind'); const limit = Math.max(1, Math.min(50, parseInt(q.get('limit') || '10', 10) || 10));
+      const rows = (kind ? db.prepare('SELECT * FROM upload_receipts WHERE accountId = ? AND kind = ? ORDER BY createdAt DESC LIMIT ?').all(accountId, kind, limit) : db.prepare('SELECT * FROM upload_receipts WHERE accountId = ? ORDER BY createdAt DESC LIMIT ?').all(accountId, limit)).map(uploadReceiptOut);
+      return sendJson(res, 200, { accountId, receipts: rows });
     }
     // GET /api/accounts/:id/guest-bookings/summary[?year=] — the read-out
     // behind the Transactions card: unique bookings vs guests, by class,
