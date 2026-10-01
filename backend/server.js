@@ -15373,6 +15373,66 @@ function buildCreativeMedia(accountId, opts){
 
 
 // ---- Growth & Performance dashboard (2026-09-30): Performance and Lifecycle views ----
+// ---- Growth & Performance Card 1 outlook (2026-10-01) ------------------------
+// Impressions by where each campaign sits against today's date, the leads and
+// transactions the pending impressions are expected to bring, and the cost lines.
+// Active = start <= today <= end; Completed YTD = ended this calendar year;
+// Pending = starts after today. Rates are the account's own trailing history,
+// and every expected number is labelled as an estimate by the front end.
+// DEFAULT channel to loop stage map (editable later). The campaign and plan lines carry no loop stage today.
+const GP_LOOP_BY_CHANNEL = [
+  [/search|remarket|retarget|lead|website|landing/i, 'Consideration'],
+  [/past guest|loyalty|internal|crm|owned|onboard|alumni|referral|ambassador|advocacy|review|affiliate/i, 'Loyalty'],
+  [/direct mail|dm |email|sms|call|phone|sales|booking|convert|purchase/i, 'Purchase'],
+  [/./, 'Awareness']
+];
+function gpLoopStageOfChannel(ch){
+  const c = String(ch || '');
+  // Past-guest and internal lists are Loyalty; prospect mail is Consideration; the rest follow the order of the map above.
+  if (/prospect/i.test(c) && /direct mail|dm/i.test(c)) return 'Consideration';
+  for (const [re, stage] of GP_LOOP_BY_CHANNEL){ if (re.test(c)) return stage; }
+  return 'Awareness';
+}
+function buildGrowthOutlook(accountId, asOfDate, totals, leadToBooking, dpRows){
+  const today = asOfDate.toISOString().slice(0, 10), yr = today.slice(0, 4), jan1 = `${yr}-01-01`;
+  const camps = db.prepare("SELECT id, startDate, endDate, plannedImpressions FROM campaigns WHERE accountId = ? AND isAdHoc = 0 AND COALESCE(cancelled, 0) = 0").all(accountId)
+    .map(r => ({ id: r.id, start: String(aliasVal(r, 'startDate') || '').slice(0, 10), end: String(aliasVal(r, 'endDate') || '').slice(0, 10), planned: Number(aliasVal(r, 'plannedImpressions')) || 0 }));
+  const lineBy = {};
+  if (camps.length){
+    const lines = db.prepare('SELECT campaignId, channel, impressions FROM channel_planning_details WHERE campaignId IN (SELECT id FROM campaigns WHERE accountId = ? AND isAdHoc = 0)').all(accountId);
+    lines.forEach(l => { const k = aliasVal(l, 'campaignId'); (lineBy[k] = lineBy[k] || []).push({ channel: l.channel, imps: Number(l.impressions) || 0 }); });
+  }
+  const O = { asOf: today, active: { campaigns: 0, impressions: 0 }, completedYtd: { campaigns: 0, impressions: 0 }, pending: { campaigns: 0, impressions: 0 }, undated: 0 };
+  const byLoop = {};
+  camps.forEach(c => {
+    const lines = lineBy[c.id] || []; const imps = lines.length ? lines.reduce((n, l) => n + l.imps, 0) : c.planned;
+    if (!c.start || !c.end){ O.undated++; return; }
+    let bucket = null;
+    if (c.start <= today && today <= c.end) bucket = O.active;
+    else if (c.end < today && c.end >= jan1) bucket = O.completedYtd;
+    else if (c.start > today){
+      bucket = O.pending;
+      (lines.length ? lines : [{ channel: '', imps }]).forEach(l => { const st = gpLoopStageOfChannel(l.channel); byLoop[st] = (byLoop[st] || 0) + l.imps; });
+    }
+    if (bucket){ bucket.campaigns++; bucket.impressions += imps; }
+  });
+  const loopTot = Object.values(byLoop).reduce((n, v) => n + v, 0);
+  O.pendingByLoop = ['Awareness', 'Consideration', 'Purchase', 'Loyalty', 'Advocacy'].map(st => ({ stage: st, impressions: Math.round(byLoop[st] || 0), pct: loopTot ? Math.round(((byLoop[st] || 0) / loopTot) * 1000) / 10 : null }));
+  O.loopMapNote = 'Loop stages come from a default channel map, not from stage tags on the campaigns.';
+  const ytdLeads = dpRows.filter(r => String(r.k).slice(0, 4) === yr).reduce((n, r) => n + (r.leads || 0), 0);
+  const hasYtd = dpRows.some(r => String(r.k).slice(0, 4) === yr);
+  const i2l = totals && totals.impressions ? totals.leads / totals.impressions : null;
+  const l2b = leadToBooking && leadToBooking.ratePct != null ? leadToBooking.ratePct / 100 : null;
+  let rps = null, roas = null, cac = null, cacDelta = null, roasDelta = null;
+  try { const dm = buildStoryDemand(accountId, { asOf: asOfDate, months: 12 }); const o = dm && dm.outcomes; if (o){ rps = o.transactions ? o.revenue / o.transactions : null; roas = o.roas; cac = o.cac; roasDelta = o.deltaPct && o.deltaPct.roas; cacDelta = o.deltaPct && o.deltaPct.cac; } } catch (e){}
+  O.leads = { ytd: hasYtd ? Math.round(ytdLeads) : null, expected: (i2l != null && O.pending.impressions) ? Math.round(O.pending.impressions * i2l) : null };
+  O.rates = { impressionsToLeadPct: i2l != null ? Math.round(i2l * 100000) / 1000 : null, leadToBookingPct: l2b != null ? Math.round(l2b * 1000) / 10 : null, revenuePerTransaction: rps != null ? Math.round(rps) : null };
+  O.expectedTransactions = (O.leads.expected != null && l2b != null) ? Math.round(O.leads.expected * l2b) : null;
+  O.expectedRevenue = (O.expectedTransactions != null && rps != null) ? Math.round(O.expectedTransactions * rps) : null;
+  O.cpl = totals && totals.cpl != null ? { value: totals.cpl } : null;
+  O.roas = roas; O.cac = cac; O.roasDeltaPct = roasDelta; O.cacDeltaPct = cacDelta;
+  return O;
+}
 function buildGrowthPerformance(accountId, opts){
   const asOfDate = opts.asOf || new Date(); const months = Math.max(3, Math.min(24, Number(opts.months) || 12));
   const key = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
@@ -15402,7 +15462,8 @@ function buildGrowthPerformance(accountId, opts){
   return { asOf: asOfDate.toISOString().slice(0, 10), window: { from: win[0], to: win[win.length - 1], months: win.length },
     performance: { totals: fin(perfTot(wset)), priorYear: gpUse ? fin(perfTot(new Set(gpIdx.map(k => storyShiftYear(k, -1))))) : null, currentMatched: gpUse ? fin(perfTot(new Set(gpIdx))) : null, comparedMonths: gpUse ? gpIdx.length : 0, channels, trend: trend.some(t => t.impressions || t.visits || t.leads) ? trend : [] },
     lifecycle: { leadToBooking: l.leads ? { leads: l.leads, bookings: l.bookings, ratePct: Math.round((l.bookings / l.leads) * 1000) / 10, avgDaysToConvert: l.wn ? Math.round(l.wd / l.wn) : null } : null, byType: typeRows, byMonth: monthRows.some(m => m.leads != null) ? monthRows : [], revenueByProductGroup: pgRows, revenueSource: tx.source || null },
-    coverage: { digitalPerformanceRows: dp.length, websiteUserRows: users.length, leadCountRows: leadRows.length, transactionRows: tx.rows.length } };
+    coverage: { digitalPerformanceRows: dp.length, websiteUserRows: users.length, leadCountRows: leadRows.length, transactionRows: tx.rows.length },
+    outlook: (() => { try { return buildGrowthOutlook(accountId, asOfDate, fin(perfTot(wset)), l.leads ? { ratePct: Math.round((l.bookings / l.leads) * 1000) / 10 } : null, dp); } catch (e){ console.warn('[growth outlook] failed:', e.message); return null; } })() };
 }
 
 
