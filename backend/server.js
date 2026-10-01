@@ -15711,13 +15711,13 @@ function welcomeFallbackText(f){
   if (s && s.strongest.length) opp.push(`Strongest: ${s.strongest.map(x => `${x.stage} ${x.layer} (${x.score.toFixed(1)})`).join(' and ')}.`);
   if (f.opportunities.length) opp.push(`Biggest opportunities: ${f.opportunities.map(o => `${o.stage} ${o.layer} (${o.score.toFixed(1)})`).join(', ')}.`);
   if (s && s.improved.length) opp.push(`Already improving: ${s.improved.map(x => `${x.stage} ${x.layer}, from ${x.from.toFixed(1)} to ${x.to.toFixed(1)}`).join('; ')}.`);
-  return { welcome: `Welcome to your Verilume account, ${f.company}. Here is what we remember from your assessment, where your biggest opportunities are, and the first things to add so the Brain can start working for you.`, remember: remember.join(' ') || 'Your assessment details will appear here once they are on file.', opportunities: opp.join(' ') || 'Once your assessment scores are on file, your biggest opportunities appear here.' };
+  return { welcome: `Here is what we remember from your assessment, where your biggest opportunities are, and the first things to add so the Brain can start working for you.`, remember: remember.join(' ') || 'Your assessment details will appear here once they are on file.', opportunities: opp.join(' ') || 'Once your assessment scores are on file, your biggest opportunities appear here.' };
 }
 async function writeWelcomeText(facts){
   const fb = welcomeFallbackText(facts);
   if (!process.env.ANTHROPIC_API_KEY) return { text: fb, writtenBy: 'template' };
   const guide = {
-    welcome: 'A warm two-sentence welcome to the account by company name. Say this page recaps the assessment and points to the first steps.',
+    welcome: 'A warm two-sentence introduction. The page heading already says "Welcome to your Verilume account" and shows the company name, so do NOT repeat either. Say this page recaps the assessment and points to the first steps.',
     remember: 'Reflect back what the assessment captured about the company, audience, wealth level, competitors and scorecard, so the client feels remembered. Plain sentences.',
     opportunities: 'Name the strongest points first, then the biggest opportunities (the lowest-scoring points) and any that have already improved. Frame gaps as opportunities, not failures.'
   };
