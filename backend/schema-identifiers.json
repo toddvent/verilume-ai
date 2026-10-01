@@ -183,6 +183,8 @@
   "directCalls",
   "distributedDate",
   "dmMarketable",
+  "dmaCode",
+  "dmaName",
   "docDate",
   "docType",
   "documentType",
