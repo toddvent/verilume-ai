@@ -7811,18 +7811,18 @@
             <label for="utmPlatformSelect">Which analytics tool reads these links?</label>
             <select id="utmPlatformSelect" onchange="onUtmPlatformChange()">
               <option value="">Follow the analytics integration above</option>
-              <option value="ga4">Google Analytics 4</option>
+              <option value="ga4">Google Analytics 4 (GA4)</option>
               <option value="adobe">Adobe Analytics</option>
               <option value="both">Both</option>
             </select>
-            <div class="hint">GA4 reads the utm_ parameters directly. Adobe reads one tracking code, so links for Adobe accounts also carry that code, and the channel check runs against Adobe's rules.</div>
+            <div class="hint" id="utmPlatformHint"></div>
           </div>
           <div class="field" id="utmAdobeParamBox" style="margin-bottom:12px;display:none;">
             <label for="utmAdobeCodeParam">Adobe tracking code parameter</label>
             <input type="text" id="utmAdobeCodeParam" placeholder="cid">
             <div class="hint">The query parameter your Adobe tag reads into the campaign variable. Common choices are cid or cmp. Your tag decides, so match what it already reads.</div>
           </div>
-          <div class="field" style="margin-bottom:0;">
+          <div class="field" id="utmGa4Box" style="margin-bottom:0;">
             <label class="radio-row"><input type="checkbox" id="utmGa4CustomGroupCheck"> I have added the custom channel group below in GA4</label>
             <div class="hint">Until then, GA4's default channel group files direct mail, print, radio and other offline links as Unassigned, and our link check will say so.</div>
           </div>
@@ -12632,7 +12632,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-09-30-build-n';
+const CXMEDIA_BUILD_STAMP = '2026-09-30-build-o';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -23390,8 +23390,10 @@ function bdWelcomeHtml(){
   const w = bd.welcome; if (!w || !w.facts) return '';
   if (w.dismissed) return `<div class="bd-welcome-min"><a class="flink" onclick="bdWelcomeAct('restore')">Show the welcome to your Verilume account</a></div>`;
   const f = w.facts, t = w.text || {}, p = f.profile || {}, s = f.scorecard, fs = w.firstSteps || {};
-  const facts = [['Industry', p.industry], ['Footprint', p.footprint], ['Audience', (p.audience || []).join(', ')], ['Wealth level', p.wealth], ['Website', p.website], ['Competitors', (p.competitors || []).join(', ')]].filter(x => x[1]);
-  const factsHtml = facts.length ? `<div class="bd-w-facts">${facts.map(x => `<div><span>${escapeHtml(x[0])}</span><b>${escapeHtml(String(x[1]))}</b></div>`).join('')}</div>` : '';
+  const hasComp = (p.competitors || []).length > 0; // competitors are optional — when none are on file, show a default link instead of leaving the row out
+  const facts = [['Industry', p.industry], ['Footprint', p.footprint], ['Audience', (p.audience || []).join(', ')], ['Wealth level', p.wealth], ['Website', p.website], ['Competitors', hasComp ? (p.competitors || []).join(', ') : '']].filter(x => x[1]);
+  const compHtml = hasComp ? '' : `<div><span>Competitors</span><b class="bd-w-none">None added yet · <a class="flink" onclick="goToStep('competitivePositioning')">Add competitors →</a></b></div>`;
+  const factsHtml = (facts.length || compHtml) ? `<div class="bd-w-facts">${facts.map(x => `<div><span>${escapeHtml(x[0])}</span><b>${escapeHtml(String(x[1]))}</b></div>`).join('')}${compHtml}</div>` : '';
   const opps = (f.opportunities || []).map(o => `<div class="bd-w-opp"><div class="bd-w-opp-h"><b>${escapeHtml(o.stage)} · ${escapeHtml(o.layer)}</b><span>Assessed ${Number(o.score).toFixed(1)}</span></div><div class="strat-sub">${escapeHtml(o.where)} ${escapeHtml(o.help)}</div>${o.link ? bdLinkHtml(o.link) : ''}</div>`).join('');
   const done = fs.doneCount || 0, total = fs.total || 0, left = fs.minutesLeft;
   const clock = total ? ttbClock(total, done, 72, left ? left + ' minutes left' : 'All done') : '';
@@ -23406,7 +23408,8 @@ function bdWelcomeHtml(){
     </div>
   </div>`;
 }
-function bdRender(){ bdRenderMain(); const box = document.getElementById('brainDumpBody'); if (!box) return; const wh = bdWelcomeHtml(); if (wh) box.insertAdjacentHTML('afterbegin', wh); }
+// 2026-10-01 — a published Brain Dump is a FULL REFRESH of the page: the Welcome is the first-run introduction and shows only until the first edition posts, so it never stacks above the weekly edition.
+function bdRender(){ bdRenderMain(); const box = document.getElementById('brainDumpBody'); if (!box) return; if (bd.data && bd.data.posted) return; const wh = bdWelcomeHtml(); if (wh) box.insertAdjacentHTML('afterbegin', wh); }
 function bdRenderMain(){
   const box = document.getElementById('brainDumpBody'); if (!box) return;
   if (bd.loading && !bd.data){ box.innerHTML = '<div class="strat-card"><p class="strat-empty">The Brain is reading this week\'s numbers…</p></div>'; return; }
@@ -42063,8 +42066,18 @@ function renderUtmRulesCard(){
 function onUtmPlatformChange(){
   const v = document.getElementById('utmPlatformSelect').value;
   state.utmPlatform = v;
+  // Only the options for the tool the client picked are shown.
   const adobeBox = document.getElementById('utmAdobeParamBox');
-  if (adobeBox) adobeBox.style.display = (v === 'adobe' || v === 'both' || (v === '' && state.analyticsPathway === 'adobe')) ? '' : 'none';
+  if (adobeBox) adobeBox.style.display = utmUsesAdobe() ? '' : 'none';
+  const gaBox = document.getElementById('utmGa4Box');
+  if (gaBox) gaBox.style.display = utmUsesGa4() ? '' : 'none';
+  const hint = document.getElementById('utmPlatformHint');
+  if (hint){
+    const p = utmPlatformOf();
+    hint.textContent = p === 'adobe' ? 'Adobe reads one tracking code, so your links also carry that code, and the channel check runs against Adobe\'s rules.'
+      : p === 'both' ? 'GA4 reads the utm_ parameters directly. Adobe reads one tracking code, so your links carry both, and the channel check runs against both tools\' rules.'
+      : 'GA4 reads the utm_ parameters directly. Put your Verilume campaign code in utm_id so GA4 reports can be tied back to the campaign.';
+  }
   renderUtmRulesCard();
 }
 
