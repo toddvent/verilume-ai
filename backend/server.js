@@ -14452,6 +14452,23 @@ function storyTxnRows(accountId){
   return { rows: Object.values(agg).map(a => ({ year: a.year, month: a.month, productGroup: a.productGroup, transactions: a.codes.size, revenue: a.revenue })), source: 'account_guest_bookings' };
 }
 
+// When no monthly media totals were entered, learn from what the platform already holds: digital performance
+// actuals for finished months, and the campaigns' planned lines (impressions and budget, placed in the month of
+// the hit date, else the drop date, else the campaign start) for this month on. The tail of the digital history is
+// dropped while it is still loading (a month under 40% of the prior six-month median).
+function fillForecastSeriesFromPlatform(accountId, S){
+  const key = (y, m) => `${y}-${String(m).padStart(2, '0')}`; const now = new Date(); const cur = key(now.getUTCFullYear(), now.getUTCMonth() + 1);
+  const dp = {}; db.prepare("SELECT * FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").all(accountId).forEach(r => { const k = key(r.year, r.month); const c = dp[k] || (dp[k] = { imp: 0, spend: 0 }); c.imp += Number(r.impressions) || 0; c.spend += Number(r.spend) || 0; });
+  const ks = Object.keys(dp).sort();
+  const med = a => { const b = a.slice().sort((x, y) => x - y); return b.length ? b[Math.floor(b.length / 2)] : 0; };
+  while (ks.length > 3){ const last = ks[ks.length - 1]; const prior = ks.slice(-7, -1).map(k => dp[k].imp); if (dp[last].imp < 0.4 * med(prior) || last >= cur) ks.pop(); else break; }
+  ks.forEach(k => { if (k < cur){ S.impressions[k] = dp[k].imp; S.spend[k] = dp[k].spend; } });
+  const rows = db.prepare('SELECT cpd.*, c.startDate AS cStart FROM channel_planning_details cpd JOIN campaigns c ON c.id = cpd.campaignId WHERE c.accountId = ? AND COALESCE(c.isAdHoc, 0) = 0 AND COALESCE(c.cancelled, 0) = 0').all(accountId);
+  rows.forEach(r => {
+    const d = String(aliasVal(r, 'hitDate') || aliasVal(r, 'dropDate') || aliasVal(r, 'cStart') || '').slice(0, 7); if (!/^\d{4}-\d{2}$/.test(d) || d < cur) return;
+    S.impressions[d] = (S.impressions[d] || 0) + (Number(r.impressions) || 0); S.spend[d] = (S.spend[d] || 0) + (Number(aliasVal(r, 'budget')) || 0);
+  });
+}
 function buildForecastSeries(accountId){
   const key = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
   const S = { impressions: {}, spend: {}, visits: {}, leads: {}, revenue: {}, transactions: {} };
@@ -14462,6 +14479,7 @@ function buildForecastSeries(accountId){
       if (t.spend != null) S.spend[t.periodLabel] = (S.spend[t.periodLabel] || 0) + (Number(t.spend) || 0);
     });
   } catch (e){ /* no media totals — engine falls back to benchmarks */ }
+  if (!Object.keys(S.impressions).length && !Object.keys(S.spend).length){ try { fillForecastSeriesFromPlatform(accountId, S); } catch (e){ /* leave empty */ } }
   db.prepare('SELECT * FROM account_website_users_monthly WHERE accountId = ?').all(accountId).forEach(r => {
     const k = key(r.year, r.month); S.visits[k] = (S.visits[k] || 0) + (Number(r.users) || 0);
   });
@@ -15433,6 +15451,63 @@ function buildGrowthOutlook(accountId, asOfDate, totals, leadToBooking, dpRows){
   O.roas = roas; O.cac = cac; O.roasDeltaPct = roasDelta; O.cacDeltaPct = cacDelta;
   return O;
 }
+// ---- Recommended annual plan (2026-10-01) ------------------------------------------
+// Builds a proposed Baseline (prior year, from what is loaded) and Target (plan year) for the Annual Plan in
+// Train the Brain, so a person can edit and approve instead of typing every number. Nothing is saved here.
+// Inputs: confirmed marketing budget (working media), the prior-year audited result, leads, website users and
+// digital impressions for both years. Method (shown to the person): working media is the plan-year budget;
+// website users and each lead type follow the run rate (this year vs the same months last year) where at least
+// three matched months exist, otherwise they scale with the media budget; bookings follow total leads; revenue is
+// bookings x last year's audited revenue per booking.
+function planWorkingMediaBudget(accountId, year){
+  let up = null;
+  try { up = db.prepare("SELECT id FROM marketing_budget_uploads WHERE accountId = ? AND year = ? AND status = 'confirmed' AND COALESCE(\"totalOnly\", 0) = 0 ORDER BY confirmedAt DESC LIMIT 1").get(accountId, year); } catch (e){ up = null; }
+  if (!up) return null;
+  const rows = db.prepare('SELECT status, amount FROM marketing_budget_line_items WHERE uploadId = ?').all(up.id);
+  let wm = 0, tot = 0; rows.forEach(r => { const a = Number(r.amount) || 0; tot += a; if (/^\s*working/i.test(String(r.status || ''))) wm += a; });
+  return wm > 0 ? { uploadId: up.id, workingMedia: Math.round(wm), total: Math.round(tot) } : null;
+}
+function buildAnnualPlanRecommendation(accountId, year, asOfDate){
+  const asOf = asOfDate || new Date(); const py = year - 1; const mk = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
+  const lastComplete = storyMonthKeys(asOf, 1)[0];
+  const users = {}, leads = { Prospect: {}, Growth: {}, Value: {} }, bk = {}, imps = {}, calls = {};
+  db.prepare('SELECT year, month, users FROM account_website_users_monthly WHERE accountId = ?').all(accountId).forEach(r => { const k = mk(r.year, r.month); users[k] = (users[k] || 0) + (Number(r.users) || 0); });
+  db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId).forEach(r => {
+    const k = mk(r.year, r.month); const t = String(aliasVal(r, 'leadType') || ''); const g = t === 'High Value' ? 'Value' : (t === 'Registration' || t === 'Growth') ? 'Growth' : t === 'Prospect' ? 'Prospect' : null;
+    if (g) leads[g][k] = (leads[g][k] || 0) + (Number(r.count) || 0);
+    bk[k] = (bk[k] || 0) + (Number(r.bookings) || 0);
+  });
+  db.prepare("SELECT * FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").all(accountId).forEach(r => { const k = mk(r.year, r.month); imps[k] = (imps[k] || 0) + (Number(r.impressions) || 0); calls[k] = (calls[k] || 0) + (Number(r.calls) || 0); });
+  const yearTotal = (m, y) => { let n = 0, any = false; Object.keys(m).forEach(k => { if (k.startsWith(String(y))){ n += m[k]; any = true; } }); return any ? n : null; };
+  const matched = (m) => { const ks = Object.keys(m).filter(k => k.startsWith(String(year)) && k <= lastComplete && m[k] > 0 && m[storyShiftYear(k, -1)] > 0); if (ks.length < 3) return null; const a = ks.reduce((n, k) => n + m[k], 0), b = ks.reduce((n, k) => n + m[storyShiftYear(k, -1)], 0); return b > 0 ? { ratio: a / b, months: ks.length } : null; };
+  let audited = null; try { audited = db.prepare('SELECT * FROM account_year_results WHERE accountId = ? AND year = ?').get(accountId, py); } catch (e){}
+  const txRows = storyTxnRows(accountId).rows.filter(r => r.year === py);
+  const bBudget = planWorkingMediaBudget(accountId, py), tBudget = planWorkingMediaBudget(accountId, year);
+  const g = (bBudget && tBudget) ? tBudget.workingMedia / bBudget.workingMedia : 1;
+  const used = [];
+  const scaled = (name, base, m) => { if (base == null) return null; const mm = matched(m); if (mm){ used.push(`${name}: run rate ${Math.round((mm.ratio - 1) * 1000) / 10}% vs the same ${mm.months} months last year`); return Math.round(base * mm.ratio); } used.push(`${name}: scaled with the media budget (${Math.round((g - 1) * 1000) / 10}%)`); return Math.round(base * g); };
+  const bLeads = { Prospect: yearTotal(leads.Prospect, py), Growth: yearTotal(leads.Growth, py), Value: yearTotal(leads.Value, py) };
+  const bUsers = yearTotal(users, py), bImps = yearTotal(imps, py), bCalls = yearTotal(calls, py), bLeadBookings = yearTotal(bk, py);
+  const bBookings = audited && audited.transactions != null ? Number(audited.transactions) : (txRows.length ? txRows.reduce((n, r) => n + r.transactions, 0) : null);
+  const bRevenue = audited && audited.grossRevenue != null ? Number(audited.grossRevenue) : (txRows.length ? txRows.reduce((n, r) => n + r.revenue, 0) : null);
+  const bDirect = (bBookings != null && bLeadBookings != null) ? Math.max(0, Math.round(bBookings - bLeadBookings)) : null;
+  const baseline = { year: py, kind: 'baseline', label: `${py} actuals${audited ? ' (audited result)' : ''}`, workingMedia: bBudget ? bBudget.workingMedia : null, impressions: bImps != null ? Math.round(bImps) : null, websiteUsers: bUsers != null ? Math.round(bUsers) : null,
+    prospectLeads: bLeads.Prospect != null ? Math.round(bLeads.Prospect) : null, growthLeads: bLeads.Growth != null ? Math.round(bLeads.Growth) : null, valueLeads: bLeads.Value != null ? Math.round(bLeads.Value) : null, directCalls: bCalls != null ? Math.round(bCalls) : null,
+    bookings: bBookings, directBookings: bDirect, grossRevenue: bRevenue != null ? Math.round(bRevenue) : null };
+  const tLeads = { Prospect: scaled('Prospect leads', bLeads.Prospect, leads.Prospect), Growth: scaled('Growth leads', bLeads.Growth, leads.Growth), Value: scaled('Value leads', bLeads.Value, leads.Value) };
+  const sumL = o => ['Prospect', 'Growth', 'Value'].reduce((n, k) => n + (o[k] || 0), 0);
+  const bL = sumL(bLeads), tL = sumL(tLeads); const leadRatio = bL > 0 ? tL / bL : null;
+  const tUsers = scaled('Website users', bUsers, users);
+  const tBookings = (bBookings != null && leadRatio != null) ? Math.round(bBookings * leadRatio) : null;
+  const rpb = (bRevenue != null && bBookings) ? bRevenue / bBookings : null;
+  if (tBookings != null) used.push(`Bookings: ${py} bookings × the change in total leads (${Math.round((leadRatio - 1) * 1000) / 10}%)`);
+  if (rpb != null) used.push(`Revenue: bookings × ${py} revenue per booking ($${Math.round(rpb).toLocaleString('en-US')})`);
+  const target = { year, kind: 'target', label: `Recommended ${year} plan (not approved)`, workingMedia: tBudget ? tBudget.workingMedia : null, impressions: bImps != null ? Math.round(bImps * g) : null, websiteUsers: tUsers, prospectLeads: tLeads.Prospect, growthLeads: tLeads.Growth, valueLeads: tLeads.Value,
+    directCalls: bCalls != null ? Math.round(bCalls * g) : null, bookings: tBookings, directBookings: (bDirect != null && leadRatio != null) ? Math.round(bDirect * leadRatio) : null, grossRevenue: (tBookings != null && rpb != null) ? Math.round(tBookings * rpb) : null };
+  const missing = []; if (!tBudget) missing.push(`confirmed ${year} marketing budget with working media`); if (!bBudget) missing.push(`confirmed ${py} marketing budget`); if (bRevenue == null) missing.push(`${py} gross revenue (Annual results or transactions)`); if (bUsers == null) missing.push(`${py} website users`); if (bL === 0) missing.push(`${py} lead counts`);
+  return { year, baseline, target, method: used.concat(['Impressions and direct calls scale with the media budget. Impressions are digital only (print is not in the monthly history).']), budget: { target: tBudget, baseline: bBudget }, missing, recommended: true };
+}
+
 // ---- Report card catalog for the Ops Console (2026-10-01) -----------------------
 // Every reporting card the portal produces today, with the formula and the tables behind it, so staff can test
 // each one against raw data. All are Verilume defaults; cards a client adds will carry their own scope and
@@ -15457,9 +15532,10 @@ const REPORT_CARD_CATALOG = [
   { added: '2026-09-30', scope: 'Verilume default', tab: 'Growth & Performance', name: 'Cost per visit', formula: 'SUM(spend) ÷ SUM(website users), trailing 12 months ending at latest data; vs the same matched months last year', tables: ['account_digital_performance', 'account_website_users_monthly'] },
   { added: '2026-09-30', scope: 'Verilume default', tab: 'Growth & Performance', name: 'Cost per lead', formula: 'SUM(spend) ÷ SUM(leads) from digital performance, trailing 12 months; vs the same matched months last year', tables: ['account_digital_performance'] },
   { added: '2026-09-30', scope: 'Verilume default', tab: 'Growth & Performance', name: 'Performance and lifecycle views', formula: 'trend of impressions and website visits; channel table; lead-to-booking = bookings ÷ leads by month and type; revenue by product group share', tables: ['account_digital_performance', 'account_website_users_monthly', 'account_lead_counts', 'account_transactions_monthly'] },
-  { added: '2026-10-01', scope: 'Verilume default', tab: 'Growth & Performance', name: 'Card 1: Plan vs target', formula: 'impressions = YTD + planned months vs annual target impressions; spend vs target working media; bar = impressions of completed-YTD (ended this year), active (start ≤ today ≤ end), pending (start > today) campaigns', tables: ['account_annual_plan', 'mmm_inputs', 'campaigns', 'channel_planning_details'] },
-  { added: '2026-10-01', scope: 'Verilume default', tab: 'Growth & Performance', name: 'Card 2: Demand', formula: 'forecast visits = base + visitsPerImpression × planned impressions; leads = visits × visit-to-lead rate. Needed = (target bookings − YTD) ÷ lead-to-booking ÷ visit-to-lead, back to impressions', tables: ['account_website_users_monthly', 'account_lead_counts', 'mmm_inputs', 'account_annual_plan'] },
-  { added: '2026-10-01', scope: 'Verilume default', tab: 'Growth & Performance', name: 'Card 3: Conversion and revenue', formula: 'bookings = leads × lead-to-booking rate (mature cohorts, ≥90-day window); revenue = bookings × revenue per booking; year-end vs target; ROAS = revenue ÷ planned spend; low/high are a planning band', tables: ['account_lead_counts', 'account_transactions_monthly', 'account_guest_bookings', 'account_annual_plan'] },
+  { added: '2026-10-01', scope: 'Verilume default', tab: 'Growth & Performance', name: 'Card 1: Plan vs target', formula: 'budget planned in campaigns = SUM(channel plan line budget) for the year ÷ working media budget (Annual Plan target, else the recommended plan); impressions planned vs impressions needed = (target website users − base visits) ÷ visits per impression; bar = completed-YTD, active and pending campaign impressions', tables: ['account_annual_plan', 'marketing_budget_uploads', 'marketing_budget_line_items', 'campaigns', 'channel_planning_details', 'account_website_users_monthly'] },
+  { added: '2026-10-01', scope: 'Verilume default', tab: 'Growth & Performance', name: 'Card 2: Demand', formula: 'planned months (campaign lines, this month on): visits = base + visits-per-impression × impressions; leads = visits × visit-to-lead rate. Needed = annual plan × last year seasonal share of leads for those months; pace = finished months vs the plan share', tables: ['account_annual_plan', 'channel_planning_details', 'account_digital_performance', 'account_website_users_monthly', 'account_lead_counts'] },
+  { added: '2026-10-01', scope: 'Verilume default', tab: 'Growth & Performance', name: 'Card 3: Conversion and revenue', formula: 'lead-driven bookings = leads × lead-to-booking (mature cohorts, ≥90 days); revenue = bookings × revenue per booking; needed = (plan bookings − direct bookings) × seasonal share × plan revenue per booking; ROAS = revenue ÷ planned spend', tables: ['account_lead_counts', 'account_transactions_monthly', 'account_guest_bookings', 'account_annual_plan'] },
+  { added: '2026-10-01', scope: 'Verilume default', tab: 'Train the Brain', name: 'Recommended annual plan', formula: 'baseline = prior-year actuals (audited result, leads, website users, digital impressions, working media budget); target working media = plan-year budget; users and each lead type follow the run rate vs the same months last year (3+ matched months) else the budget change; bookings follow total leads; revenue = bookings × prior-year revenue per booking', tables: ['marketing_budget_uploads', 'marketing_budget_line_items', 'account_year_results', 'account_lead_counts', 'account_website_users_monthly', 'account_digital_performance'] },
   { added: '2026-10-01', scope: 'Verilume default', tab: 'Growth & Performance', name: 'Card 4: Versus last year', formula: 'impressions, visits, leads, transactions, revenue: year-to-date months and planned months vs the same calendar months one year earlier; change = (this − last) ÷ last, hidden when over 500%', tables: ['mmm_inputs', 'account_website_users_monthly', 'account_lead_counts', 'account_transactions_monthly', 'account_guest_bookings'] }
 ];
 
@@ -15470,42 +15546,71 @@ function buildGrowthStory(accountId, asOfDate){
   const asOf = asOfDate; const curYear = asOf.getUTCFullYear(); const mi = asOf.getUTCMonth();
   const mk = (y, m) => `${y}-${String(m).padStart(2, '0')}`; const cur = mk(curYear, mi + 1);
   const S = buildForecastSeries(accountId);
-  const fvt = buildStoryForecastVsTarget(accountId, { asOf });
   const cal = forecastEngine.calibrate(S, { asOf, fallbackAov: storyFallbackAov(accountId, curYear) });
   const keys = Array.from(new Set(Object.keys(S.impressions).concat(Object.keys(S.spend)))).filter(k => k >= cur).sort();
   const months = keys.map(k => ({ month: k, impressions: Math.round(S.impressions[k] || 0), spend: Math.round(S.spend[k] || 0) })).filter(m => m.impressions > 0 || m.spend > 0);
   const f = months.length ? forecastEngine.forecast(cal, { months }) : null;
   const sumK = (obj, ks, pick) => { let n = 0, any = false; ks.forEach(k => { const v = pick ? pick(obj[k]) : obj[k]; if (v != null){ n += Number(v) || 0; any = true; } }); return any ? n : null; };
+  const lastComplete = storyMonthKeys(asOf, 1)[0];
   const ytdKeys = []; for (let m = 1; m <= mi; m++) ytdKeys.push(mk(curYear, m));
   const planKeys = months.map(m => m.month);
   const block = ks => ({ impressions: sumK(S.impressions, ks), spend: sumK(S.spend, ks), visits: sumK(S.visits, ks), leads: sumK(S.leads, ks, c => c && c.total), transactions: sumK(S.transactions, ks), revenue: sumK(S.revenue, ks) });
   const prior = ks => block(ks.map(k => storyShiftYear(k, -1)));
-  const t = fvt.target;
-  const ytd = block(ytdKeys);
-  // What the target needs from here, walked backward through the same rates the forecast uses.
-  let required = null;
-  if (t && fvt.comparable && f && cal.bookingsToRevenue.mid){
-    const needRev = t.grossRevenue != null ? Math.max(0, t.grossRevenue - (ytd.revenue || 0)) : null;
-    const needBk = t.bookings != null ? Math.max(0, t.bookings - (ytd.transactions || 0)) : (needRev != null ? needRev / cal.bookingsToRevenue.mid : null);
-    if (needBk != null){
-      const leads = needBk / cal.leadsToBookings.mid; const visits = leads / cal.visitsToLeads.mid;
-      const s1 = cal.impressionsToVisits; const imps = s1.visitsPerImp > 0 ? Math.max(0, (visits - (s1.baseVisits || 0) * months.length) / s1.visitsPerImp) : null;
-      required = { bookings: Math.round(needBk), leads: Math.round(leads), visits: Math.round(visits), impressions: imps != null ? Math.round(imps) : null, revenue: needRev != null ? Math.round(needRev) : Math.round(needBk * cal.bookingsToRevenue.mid) };
-    }
+  // The plan: a saved Annual Plan target when there is one, otherwise the recommended plan built from the budget and loaded actuals.
+  const { target: tRow } = storyPlanRows(accountId, curYear);
+  let rec = null; try { rec = buildAnnualPlanRecommendation(accountId, curYear, asOf); } catch (e){ rec = null; }
+  const src = tRow && tRow.year === curYear ? tRow : (rec ? rec.target : null);
+  const targetStatus = tRow && tRow.year === curYear ? 'approved' : (src && src.workingMedia != null ? 'recommended' : 'none');
+  let target = null;
+  if (src && targetStatus !== 'none'){
+    const leadsT = (Number(src.prospectLeads) || 0) + (Number(src.growthLeads) || 0) + (Number(src.valueLeads) || 0);
+    const bk = src.bookings != null ? Number(src.bookings) : null, dir = src.directBookings != null ? Number(src.directBookings) : 0;
+    target = { year: curYear, workingMedia: src.workingMedia, impressions: src.impressions, websiteUsers: src.websiteUsers, leads: leadsT || null, bookings: bk, directBookings: src.directBookings, leadBookings: bk != null ? Math.max(0, bk - dir) : null, grossRevenue: src.grossRevenue, revenuePerBooking: (src.grossRevenue && bk) ? Math.round(src.grossRevenue / bk) : null };
   }
+  // Seasonality from last year's monthly leads (even 1/12ths when last year is not complete).
+  const ly = {}; Object.keys(S.leads).forEach(k => { if (k.startsWith(String(curYear - 1))) ly[k] = S.leads[k].total; });
+  const lyTot = Object.values(ly).reduce((n, v) => n + v, 0), full = Object.keys(ly).length === 12 && lyTot > 0;
+  const share = ks => full ? ks.reduce((n, k) => n + (ly[storyShiftYear(k, -1)] || 0), 0) / lyTot : ks.length / 12;
+  const sh = months.length ? share(planKeys) : null, shYtd = ytdKeys.length ? share(ytdKeys) : null;
+  const ytd = block(ytdKeys);
   const ft = f && f.totals;
   const have = ft ? { impressions: ft.impressions, visits: ft.visits[1], leads: ft.leads[1], bookings: ft.bookings[1], revenue: ft.revenue ? ft.revenue[1] : null } : null;
+  // What the plan needs from the planned months (a seasonal slice of the annual target), with impressions worked back through the learned rates.
+  let required = null;
+  if (target && sh != null){
+    const leads = target.leads != null ? target.leads * sh : null, visits = target.websiteUsers != null ? target.websiteUsers * sh : null;
+    const lb = target.leadBookings != null ? target.leadBookings * sh : null, rev = (lb != null && target.revenuePerBooking) ? lb * target.revenuePerBooking : null;
+    const s1 = cal.impressionsToVisits; const imps = (visits != null && s1.visitsPerImp > 0) ? Math.max(0, (visits - (s1.baseVisits || 0) * months.length) / s1.visitsPerImp) : null;
+    required = { visits: visits != null ? Math.round(visits) : null, leads: leads != null ? Math.round(leads) : null, bookings: lb != null ? Math.round(lb) : null, revenue: rev != null ? Math.round(rev) : null, impressions: imps != null ? Math.round(imps) : null };
+  }
   const cover = (a, b) => (a != null && b) ? Math.round(a / b * 1000) / 10 : null;
   const coverage = (required && have) ? { impressions: cover(have.impressions, required.impressions), visits: cover(have.visits, required.visits), leads: cover(have.leads, required.leads), bookings: cover(have.bookings, required.bookings), revenue: cover(have.revenue, required.revenue) } : null;
+  // Pace so far: this year's finished months against the target's seasonal share for those months.
+  let pace = null;
+  if (target && shYtd){
+    const ytdUsers = ytd.visits, ytdLeads = ytd.leads;
+    pace = { months: ytdKeys.length, visits: { actual: ytdUsers != null ? Math.round(ytdUsers) : null, expected: target.websiteUsers != null ? Math.round(target.websiteUsers * shYtd) : null }, leads: { actual: ytdLeads != null ? Math.round(ytdLeads) : null, expected: target.leads != null ? Math.round(target.leads * shYtd) : null } };
+    pace.visits.pct = cover(pace.visits.actual, pace.visits.expected); pace.leads.pct = cover(pace.leads.actual, pace.leads.expected);
+  }
+  // Everything the campaigns say for the year, against the working media budget and the impressions the target needs.
+  let campaignPlan = null;
+  try {
+    const rows = db.prepare('SELECT cpd.*, c.startDate AS cStart FROM channel_planning_details cpd JOIN campaigns c ON c.id = cpd.campaignId WHERE c.accountId = ? AND COALESCE(c.isAdHoc, 0) = 0 AND COALESCE(c.cancelled, 0) = 0').all(accountId);
+    let imps = 0, bud = 0, n = 0, undated = 0;
+    rows.forEach(r => { const d = String(aliasVal(r, 'hitDate') || aliasVal(r, 'dropDate') || aliasVal(r, 'cStart') || '').slice(0, 4); if (d && d !== String(curYear)) return; if (!d) undated++; n++; imps += Number(r.impressions) || 0; bud += Number(aliasVal(r, 'budget')) || 0; });
+    if (n){ const s1 = cal.impressionsToVisits; const need = (target && target.websiteUsers != null && s1.visitsPerImp > 0) ? Math.max(0, Math.round((target.websiteUsers - (s1.baseVisits || 0) * 12) / s1.visitsPerImp)) : null;
+      campaignPlan = { lines: n, undatedLines: undated, impressions: Math.round(imps), budget: Math.round(bud), budgetPct: (target && target.workingMedia) ? cover(bud, target.workingMedia) : null, impressionsNeeded: need, impressionsPct: cover(imps, need) }; }
+  } catch (e){ campaignPlan = null; }
   const pyPlan = months.length ? prior(planKeys) : null;
   return { asOf: asOf.toISOString().slice(0, 10), confidence: cal.confidence, planSpan: months.length ? { from: months[0].month, to: months[months.length - 1].month, months: months.length } : null,
-    target: t, comparable: fvt.comparable, ytd, plan: have && { impressions: have.impressions, spend: ft.spend, visits: ft.visits, leads: ft.leads, bookings: ft.bookings, revenue: ft.revenue, roas: ft.roas, costPerLead: ft.costPerLead },
-    yearEnd: fvt.projectedRevenue, revenueGapToTarget: fvt.revenueGapToTarget, impressionsVsTarget: fvt.impressions, spendVsTarget: fvt.spend,
-    required, coverage,
+    targetStatus, target, method: rec ? rec.method : [], missing: rec ? rec.missing : [], seasonality: months.length ? { share: Math.round(sh * 1000) / 10, basis: full ? `${curYear - 1} monthly leads` : 'even months (last year incomplete)' } : null,
+    ytd, plan: have && { impressions: have.impressions, spend: ft.spend, visits: ft.visits, leads: ft.leads, bookings: ft.bookings, revenue: ft.revenue, roas: ft.roas, costPerLead: ft.costPerLead },
+    required, coverage, pace, campaignPlan,
     rates: { impressionsToVisitsPer1k: cal.impressionsToVisits.visitsPerImp != null ? Math.round(cal.impressionsToVisits.visitsPerImp * 100000) / 100 : null, visitsToLeadsPct: Math.round(cal.visitsToLeads.mid * 1000) / 10, leadsToBookingsPct: Math.round(cal.leadsToBookings.mid * 1000) / 10, revenuePerBooking: cal.bookingsToRevenue.mid != null ? Math.round(cal.bookingsToRevenue.mid) : null, sources: { visits: cal.impressionsToVisits.source || null, leads: cal.visitsToLeads.source || null, bookings: cal.leadsToBookings.source || null } },
     priorYear: { ytd: ytdKeys.length ? { current: ytd, prior: prior(ytdKeys) } : null, planMonths: pyPlan, planMonthsLabel: months.length ? `${storyShiftYear(months[0].month, -1)} to ${storyShiftYear(months[months.length - 1].month, -1)}` : null },
-    notes: cal.notes || [], notOnFile: fvt.notOnFile };
+    notes: cal.notes || [] };
 }
+
 function buildGrowthPerformance(accountId, opts){
   const asOfDate = opts.asOf || new Date(); const months = Math.max(3, Math.min(24, Number(opts.months) || 12));
   const key = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
@@ -35856,6 +35961,14 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       return sendJson(res, 200, { accountId, saved: true, updatedAt: now });
     }
 
+    // GET /api/accounts/:id/annual-plan/recommendation?year=YYYY — proposed baseline and target (nothing is saved).
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'annual-plan' && parts[4] === 'recommendation'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const y = parseInt(new URL(req.url, 'http://localhost').searchParams.get('year'), 10);
+      const year = Number.isFinite(y) ? y : new Date().getUTCFullYear();
+      return sendJson(res, 200, buildAnnualPlanRecommendation(accountId, year, new Date()));
+    }
     // GET /api/accounts/:id/annual-plan[?year=YYYY] — annual baseline &
     // target rows (see account_annual_plan's own comment). Without ?year,
     // every row on file, newest year first. Each row also carries derived
