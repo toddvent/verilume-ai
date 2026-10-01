@@ -71007,7 +71007,7 @@ async function mbuConfirmGuestBookingsUpload(){
   const progress = document.getElementById('mbuGuestBookingsProgress');
   const status = document.getElementById('mbuTxnStatus');
   const batchId = `gb_${Date.now()}`;
-  const CHUNK = 1500;
+  const CHUNK = 500; // 2026-10-01: smaller chunks and a 2-minute wait per chunk, so a full two-year file lands instead of stopping after the first chunk
   let saved = 0, skipped = 0, rollup = null;
   try {
     for (let i = 0; i < rows.length; i += CHUNK){
@@ -71015,7 +71015,7 @@ async function mbuConfirmGuestBookingsUpload(){
       const isFirst = i === 0, isLast = i + CHUNK >= rows.length;
       if (progress) progress.textContent = `Saving rows ${(i + 1).toLocaleString()}–${Math.min(i + CHUNK, rows.length).toLocaleString()} of ${rows.length.toLocaleString()}…`;
       const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/guest-bookings`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 120000,
         body: JSON.stringify({ batchId, rows: chunk, replacePeriods: isFirst ? periods : undefined, final: isLast })
       });
       const data = await resp.json().catch(() => ({}));
@@ -71030,7 +71030,7 @@ async function mbuConfirmGuestBookingsUpload(){
     mbuLoadTransactionSettings();
   } catch (e){
     if (progress) progress.textContent = '';
-    if (status) status.textContent = `Not saved — ${e.message}`;
+    if (status) status.textContent = saved ? `Stopped after ${saved.toLocaleString()} of ${rows.length.toLocaleString()} rows — ${e.message}. Upload the file again; the saved months are replaced.` : `Not saved — ${e.message}`;
   }
 }
 async function mbuLoadGuestBookingsSummary(){
