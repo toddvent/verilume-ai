@@ -1432,9 +1432,14 @@
   .customize-kpis-btn{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:700;color:var(--ink);background:var(--white);border:1px solid var(--line);border-radius:999px;padding:7px 16px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
   .customize-kpis-btn:hover{border-color:var(--hdr-navy);}
   .fd-panel button,.fd-panel input{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;}
-  .gp-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin:0 0 14px;}
-  .gp-core.stat-card-grid.four{grid-template-columns:2fr 1fr 1fr 1fr;}
-  @media (max-width:1100px){ .gp-core.stat-card-grid.four{grid-template-columns:1fr 1fr;} .gp-core .gp-card1{grid-column:1 / -1;} }
+  .gp-actions{grid-column:1/-1;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin:0 0 14px;}
+  .gp-core.stat-card-grid.four{grid-template-columns:repeat(4,1fr);align-items:start;}
+  .gp-row{display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid #E2E8F0;font-size:0.8125rem;}
+  .gp-row>span:last-child{text-align:right;}
+  .gp-mini{font-size:0.75rem;}
+  .gp-mini th,.gp-mini td{padding:3px 6px;white-space:nowrap;}
+  .sc-delta.bad{color:#C0273C;}
+  @media (max-width:1400px){ .gp-core.stat-card-grid.four{grid-template-columns:1fr 1fr;} }
   @media (max-width:820px){ .gp-core.stat-card-grid.four{grid-template-columns:1fr;} }
   .gp-bar{display:flex;height:14px;border-radius:7px;overflow:hidden;background:rgba(0,0,0,.06);margin:8px 0 6px;}
   .gp-bar span{display:block;height:100%;}
@@ -1443,12 +1448,13 @@
   .gp-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;}
   .gp-line{margin:10px 0 0;font-size:.875rem;}
   .gp-sub2{margin-top:8px;font-size:.875rem;}
-  .gp-motion{display:grid;grid-template-columns:minmax(220px,1fr) 3fr;gap:14px;align-items:stretch;margin:0 0 14px;}
-  .gp-motion > .strat-card{margin:0;}
-  .gp-pipe3{grid-template-columns:repeat(3,1fr);}
+  .gp-motion{grid-column:1/-1;display:grid;grid-template-columns:minmax(200px,1fr) 3fr;gap:14px;align-items:stretch;margin:0 0 14px;}
+  .gp-motion > .strat-card{grid-column:auto;margin:0;}
+  .strat-fc-grid.gp-pipe3{grid-template-columns:repeat(3,1fr);}
+  .gp-chips{display:flex;gap:8px;flex-wrap:wrap;}
   .gp-cal-n{font-size:2.25rem;font-weight:700;line-height:1.1;}
   .gp-cal-next{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:8px;font-size:.875rem;}
-  @media (max-width:760px){.gp-motion{grid-template-columns:1fr;}.gp-pipe3{grid-template-columns:1fr 1fr;}}
+  @media (max-width:760px){.gp-motion{grid-template-columns:1fr;}.strat-fc-grid.gp-pipe3{grid-template-columns:1fr 1fr;}}
   .fd-cta-b{font-weight:800;text-decoration:underline;text-underline-offset:2px;}
   .fd-backdrop{position:fixed;inset:0;background:rgba(20,20,20,0.45);z-index:950;display:flex;align-items:flex-start;justify-content:center;padding:5vh 12px;overflow-y:auto;}
   .fd-backdrop[hidden]{display:none;}
@@ -12003,7 +12009,10 @@
           <label for="mbuAnnualPlanYear" style="margin:0;">Plan year</label>
           <select id="mbuAnnualPlanYear" class="tbl-select" onchange="mbuLoadAnnualPlan()"></select>
           <span class="hint" id="mbuAnnualPlanStatus" style="margin:0;"></span>
+          <button type="button" class="btn-ghost" onclick="mbuRecommendAnnualPlan()">Recommend a plan</button>
+          <button type="button" class="btn-primary" id="mbuApprovePlanBtn" onclick="mbuApproveAnnualPlan()" style="display:none;">Approve this plan</button>
         </div>
+        <div id="mbuAnnualPlanRec" class="hint" style="display:none;margin:0 0 10px;"></div>
         <div style="overflow-x:auto;">
           <table class="data-table" id="mbuAnnualPlanTable" style="min-width:640px;">
             <thead><tr><th>Metric</th><th>Baseline (trailing 12 mo.)</th><th>Target (approved scenario)</th></tr></thead>
@@ -23282,37 +23291,64 @@ async function gpLoad(){
   if (activePrimaryTab === 'marketer'){ gpRenderCoreRow(); gpRenderView(); }
 }
 function gpSetView(v){ gp.view = v; document.querySelectorAll('[data-gp-view]').forEach(b => b.classList.toggle('on', b.getAttribute('data-gp-view') === v)); gpRenderView(); }
-function gpOutlookCardHtml(d){
-  const o = d && d.outlook; const per = d && d.window ? stratRangeText(d.window.from, d.window.to) : '';
-  if (!o) return `<div class="stat-card gp-card1"><div class="sc-label">Impressions outlook</div><div class="sc-value">—</div><div class="strat-sub">${d ? 'Not on file yet: campaign dates and planned impressions.' : 'Loading'}</div></div>`;
-  const segs = [{ k: 'Completed YTD', v: o.completedYtd.impressions, n: o.completedYtd.campaigns, c: '#94A3B8' }, { k: 'Active', v: o.active.impressions, n: o.active.campaigns, c: '#0891B2' }, { k: 'Pending', v: o.pending.impressions, n: o.pending.campaigns, c: '#1E2761' }];
-  const tot = segs.reduce((n, x) => n + x.v, 0);
-  const bar = tot ? `<div class="gp-bar" role="img" aria-label="Impressions: completed year to date, active and pending">${segs.map(x => x.v ? `<span style="width:${(x.v / tot * 100).toFixed(1)}%;background:${x.c};"></span>` : '').join('')}</div>` : '';
-  const legend = `<div class="gp-legend">${segs.map(x => `<div><i style="background:${x.c};"></i><b>${stratNum(x.v)}</b> ${x.k} <span class="strat-sub">· ${x.n} campaign${x.n === 1 ? '' : 's'}</span></div>`).join('')}</div>`;
-  const lp = (o.pendingByLoop || []).filter(x => x.impressions > 0);
-  const shades = ['#1E2761', '#2F4A8A', '#0891B2', '#5EAFC4', '#94A3B8'];
-  const loopHtml = lp.length ? `<div class="strat-chart-label" style="margin:12px 0 4px;">Pending loop stage mix <span class="strat-key">default channel map</span></div><div class="gp-bar">${lp.map((x, i) => `<span style="width:${x.pct}%;background:${shades[i % 5]};" title="${escapeHtml(x.stage)} ${x.pct}%"></span>`).join('')}</div><div class="gp-legend gp-legend-row">${lp.map((x, i) => `<div><i style="background:${shades[i % 5]};"></i>${escapeHtml(x.stage)} <b>${x.pct}%</b></div>`).join('')}</div>` : '';
-  const lead = o.leads && (o.leads.ytd != null || o.leads.expected != null) ? `<p class="gp-line"><b>Leads:</b> ${o.leads.ytd != null ? `${stratNum(o.leads.ytd)} so far this year` : 'year to date not on file'}${o.leads.expected != null ? `, about <b>${stratNum(o.leads.expected)}</b> expected from pending impressions (${o.rates.impressionsToLeadPct}% impressions-to-lead, trailing 12 months)` : ''}.</p>` : '';
-  const t = d.performance && d.performance.totals, p = d.performance && d.performance.priorYear, cm = d.performance && d.performance.currentMatched;
-  const cplD = cm && p && p.cpl ? Math.round(((cm.cpl - p.cpl) / Math.abs(p.cpl)) * 1000) / 10 : null; const mN = d.performance && d.performance.comparedMonths;
-  const cplLine = t && t.cpl != null ? `<p class="gp-line"><b>Cost per lead</b> is $${t.cpl.toFixed(2)}${cplD != null ? `, ${cplD <= 0 ? 'down' : 'up'} ${Math.abs(cplD).toFixed(1)}% year over year${mN ? ` (${mN} matched months)` : ''}` : ''}.</p>` : '';
-  const exp = o.expectedTransactions != null ? `<p class="gp-line"><b>Expected future campaign transactions:</b> about ${stratNum(o.expectedTransactions)}${o.expectedRevenue != null ? `, with revenue of about <b>${stratMoney(o.expectedRevenue)}</b>` : ''}. <span class="strat-sub">Estimate: expected leads × ${o.rates.leadToBookingPct}% lead-to-booking${o.rates.revenuePerTransaction != null ? ` × ${stratMoneyFull(o.rates.revenuePerTransaction)} revenue per transaction` : ''}.</span></p>` : '';
-  const ra = (o.roas != null || o.cac != null) ? `<div class="gp-sub2">${o.roas != null ? `ROAS <b>${o.roas.toFixed(2)}x</b>${o.roasDeltaPct != null ? ` (${stratPct(o.roasDeltaPct)} vs prior year)` : ''}` : ''}${o.roas != null && o.cac != null ? ' · ' : ''}${o.cac != null ? `CAC <b>${stratMoneyFull(o.cac)}</b>${o.cacDeltaPct != null ? ` (${stratPct(o.cacDeltaPct)} vs prior year)` : ''}` : ''}</div>` : '';
-  return `<div class="stat-card gp-card1"><div class="sc-label">Impressions outlook</div>${bar}${legend}${loopHtml}${lead}${cplLine}${exp}${ra}<div class="strat-sub" style="margin-top:8px;">As of ${escapeHtml(o.asOf)}. Active = start on or before today and end on or after it; completed = ended this year; pending = starts after today.${o.undated ? ` ${o.undated} campaign${o.undated === 1 ? ' has' : 's have'} no dates and ${o.undated === 1 ? 'is' : 'are'} left out.` : ''}</div></div>`;
+function gpVerdict(cov){ if (cov == null) return { cls: 'neutral', txt: '' }; if (cov >= 100) return { cls: 'good', txt: 'Covers the target' }; if (cov >= 90) return { cls: 'neutral', txt: 'Close to the target' }; return { cls: 'bad', txt: 'Short of the target' }; }
+function gpRow(label, plan, need, cov, fmt){
+  const v = gpVerdict(cov);
+  return `<div class="gp-row"><span>${label}</span><span><b>${plan != null ? fmt(plan) : '—'}</b>${need ? ` <span class="strat-sub">of ${fmt(need)} needed${cov != null ? ` · ${cov}%` : ''}</span>` : ''}</span></div>`;
+}
+function gpStoryCards(d){
+  const s = d && d.story;
+  const wrap = (n, title, head, headCls, body, foot) => `<div class="stat-card gp-card1"><div class="sc-label">${n} · ${title}</div><div class="sc-delta ${headCls}" style="font-size:0.9375rem;font-weight:600;margin:4px 0 8px;">${head}</div>${body}${foot ? `<div class="strat-sub" style="margin-top:8px;">${foot}</div>` : ''}</div>`;
+  if (!s) return [1, 2, 3, 4].map(i => `<div class="stat-card"><div class="sc-label">${['Plan vs target', 'Demand', 'Conversion', 'Last year'][i - 1]}</div><div class="sc-value">—</div><div class="strat-sub">${d ? 'Not on file yet' : 'Loading'}</div></div>`).join('');
+  const span = s.planSpan ? `${s.planSpan.from} to ${s.planSpan.to}` : null;
+  const t = s.target, req = s.required, cv = s.coverage, pl = s.plan, cp = s.campaignPlan, pc = s.pace;
+  const noPlan = !pl;
+  const money = stratMoney, num = stratNum;
+  const statusNote = !t ? 'No annual plan yet. Add a confirmed marketing budget and prior-year actuals, then use Recommend a plan in Train the Brain › Annual plan.' : (s.targetStatus === 'recommended' ? 'Target is the <b>recommended plan</b>, built from your confirmed budget and the actuals loaded for both years. <a class="flink" onclick="switchPrimaryTab(\'accountManagement\')">Review, edit and approve it in Train the Brain › Annual plan</a>.' : 'Target is your approved annual plan.');
+  // Card 1: the campaigns' plan against the budget and the impressions the target needs
+  const o = d.outlook;
+  let bar = '';
+  if (o){ const segs = [{ k: 'Completed YTD', v: o.completedYtd.impressions, n: o.completedYtd.campaigns, c: '#94A3B8' }, { k: 'Active', v: o.active.impressions, n: o.active.campaigns, c: '#0891B2' }, { k: 'Pending', v: o.pending.impressions, n: o.pending.campaigns, c: '#1E2761' }]; const tot = segs.reduce((n, x) => n + x.v, 0);
+    if (tot) bar = `<div class="gp-bar" role="img" aria-label="Impressions completed this year, active and pending">${segs.map(x => x.v ? `<span style="width:${(x.v / tot * 100).toFixed(1)}%;background:${x.c};"></span>` : '').join('')}</div><div class="gp-legend">${segs.map(x => `<div><i style="background:${x.c};"></i><b>${num(x.v)}</b> ${x.k} <span class="strat-sub">· ${x.n} campaign${x.n === 1 ? '' : 's'}</span></div>`).join('')}</div>`; }
+  const h1 = (cp && cp.budgetPct != null) ? `Campaigns plan ${cp.budgetPct}% of the working media budget` : (t ? 'Campaign plan vs the annual plan' : 'No annual plan to compare yet');
+  const c1 = wrap(1, 'Plan vs target budget', h1, cp && cp.budgetPct != null ? gpVerdict(cp.budgetPct).cls : 'neutral',
+    `${bar}${t && t.workingMedia != null ? `<div class="gp-row"><span>Working media budget ${s.target.year}</span><span><b>${money(t.workingMedia)}</b></span></div>` : ''}${cp ? `<div class="gp-row"><span>Planned in campaigns (${cp.lines} lines)</span><span><b>${money(cp.budget)}</b>${cp.budgetPct != null ? ` <span class="strat-sub">${cp.budgetPct}% of budget · ${money(Math.max(0, t.workingMedia - cp.budget))} not yet planned</span>` : ''}</span></div><div class="gp-row"><span>Impressions planned</span><span><b>${num(cp.impressions)}</b>${cp.impressionsNeeded ? ` <span class="strat-sub">of ${num(cp.impressionsNeeded)} needed for the website traffic target · ${cp.impressionsPct}%</span>` : ''}</span></div>` : '<p class="strat-sub">No campaign plan lines on file for this year.</p>'}<p class="strat-sub">${statusNote}</p>`,
+    `Print and digital impressions count the same. As of ${escapeHtml(s.asOf)}.${cp && cp.undatedLines ? ` ${cp.undatedLines} plan line${cp.undatedLines === 1 ? ' has' : 's have'} no date.` : ''}`);
+  // Card 2: demand the planned months generate vs the seasonal slice of the target
+  const h2 = noPlan ? 'No planned months on file' : (cv && cv.leads != null ? `Planned months deliver ${cv.leads}% of the leads the plan needs` : 'Demand the plan generates');
+  const c2 = wrap(2, 'Demand', h2, cv && cv.leads != null ? gpVerdict(cv.leads).cls : 'neutral',
+    noPlan ? '' : `<div class="gp-row"><span>Impressions (${span})</span><span><b>${num(pl.impressions)}</b>${req && req.impressions ? ` <span class="strat-sub">of ${num(req.impressions)} needed${cv.impressions != null ? ` · ${cv.impressions}%` : ''}</span>` : ''}</span></div>` +
+    gpRow('Website visits', pl.visits[1], req && req.visits, cv && cv.visits, num) + gpRow('Leads', pl.leads[1], req && req.leads, cv && cv.leads, num) +
+    `<p class="gp-line"><span class="strat-sub">Leads range ${num(pl.leads[0])} to ${num(pl.leads[2])}. Learned from your history: ${s.rates.impressionsToVisitsPer1k} visits per 1,000 impressions, ${s.rates.visitsToLeadsPct}% of visits become leads.</span></p>` +
+    (pc && pc.leads.pct != null ? `<p class="gp-line"><b>Pace so far:</b> ${pc.months} finished months at ${pc.leads.pct}% of the plan's lead pace and ${pc.visits.pct != null ? pc.visits.pct + '%' : '—'} of its website traffic pace.</p>` : ''),
+    s.seasonality ? `Needed = ${s.seasonality.share}% of the annual plan, the share of leads that fell in these months (${escapeHtml(s.seasonality.basis)}).` : '');
+  // Card 3: conversion and revenue (lead-driven)
+  const h3 = noPlan ? 'No forecast yet' : (cv && cv.revenue != null ? `Lead-driven revenue lands at ${cv.revenue}% of what the plan needs` : 'Forecast revenue');
+  const c3 = wrap(3, 'Conversion and revenue', h3, cv && cv.revenue != null ? gpVerdict(cv.revenue).cls : 'neutral',
+    noPlan ? '' : gpRow('Bookings from leads', pl.bookings[1], req && req.bookings, cv && cv.bookings, num) +
+    `<div class="gp-row"><span>Revenue from those bookings</span><span><b>${pl.revenue ? money(pl.revenue[1]) : '—'}</b>${req && req.revenue ? ` <span class="strat-sub">of ${money(req.revenue)} needed</span>` : ''}${pl.revenue ? `<br><span class="strat-sub">range ${money(pl.revenue[0])} to ${money(pl.revenue[2])}</span>` : ''}</span></div>` +
+    (t && t.grossRevenue ? `<div class="gp-row"><span>Full-year revenue in the plan</span><span><b>${money(t.grossRevenue)}</b> <span class="strat-sub">${t.bookings ? num(t.bookings) + ' bookings' : ''}${t.directBookings != null ? `, ${num(t.directBookings)} direct` : ''}</span></span></div>` : '') +
+    `<div class="gp-sub2">${pl.roas ? `ROAS <b>${pl.roas[1].toFixed(2)}x</b> · ` : ''}${pl.costPerLead != null ? `Cost per lead <b>$${pl.costPerLead.toFixed(2)}</b> · ` : ''}${s.rates.leadsToBookingsPct}% lead-to-booking${s.rates.revenuePerBooking != null ? ` · ${stratMoneyFull(s.rates.revenuePerBooking)} per booking` : ''}</div>`,
+    `Direct and phone bookings are not part of the lead-driven forecast. Forecast confidence: ${escapeHtml(s.confidence || 'n/a')}; low and high are a planning band.`);
+  // Card 4: same dates a year earlier
+  const py = s.priorYear, y1 = py && py.ytd, pm = py && py.planMonths;
+  const chg = (a, b) => { const v = (a != null && b) ? Math.round(((a - b) / Math.abs(b)) * 1000) / 10 : null; return v != null && Math.abs(v) <= 500 ? v : null; };
+  const line = (label, a, b, fmt) => { const v = chg(a, b); return `<tr><td>${label}</td><td>${a != null ? fmt(a) : '—'}</td><td>${b != null ? fmt(b) : '—'}</td><td>${v != null ? stratPct(v) : '—'}</td></tr>`; };
+  const tbl = (cur, prev, fmtR) => `<div class="strat-table-wrap"><table class="strat-table gp-mini"><thead><tr><th></th><th>This year</th><th>Last year</th><th>Change</th></tr></thead><tbody>${line('Impressions', cur.impressions, prev.impressions, num)}${line('Visits', cur.visits, prev.visits, num)}${line('Leads', cur.leads, prev.leads, num)}${line('Transactions', cur.transactions, prev.transactions, num)}${line('Revenue', cur.revenue, prev.revenue, fmtR)}</tbody></table></div>`;
+  const yRev = y1 ? chg(y1.current.revenue, y1.prior.revenue) : null;
+  const h4 = yRev != null ? `Revenue year to date is ${Math.abs(yRev)}% ${yRev >= 0 ? 'above' : 'below'} the same months last year` : 'Compared with the same dates last year';
+  const planCmp = pm && pl ? { impressions: pl.impressions, visits: pl.visits[1], leads: pl.leads[1], transactions: pl.bookings[1], revenue: pl.revenue ? pl.revenue[1] : null } : null;
+  const c4 = wrap(4, 'Versus last year', h4, yRev != null ? (yRev >= 0 ? 'good' : 'bad') : 'neutral',
+    (y1 ? `<div class="strat-chart-label" style="margin:0 0 2px;">Year to date vs the same months last year</div>${tbl(y1.current, y1.prior, money)}` : '<p class="strat-sub">No year-to-date months yet.</p>') +
+    (planCmp ? `<div class="strat-chart-label" style="margin:10px 0 2px;">Planned months (${span}) forecast vs ${escapeHtml(py.planMonthsLabel)} actual</div>${tbl(planCmp, pm, money)}` : ''),
+    'Same calendar months, one year earlier. Months with no data on file show a dash.');
+  return c1 + c2 + c3 + c4;
 }
 function gpRenderCoreRow(){
   const el = document.getElementById('tabStatCardGrid'); if (!el) return; el.classList.add('four');
-  const rows = gpCampaigns(); const inMarket = rows.filter(r => r.stage === 'In Market').length; const risk = rows.filter(r => r.stage !== 'Complete' && r.stage !== 'Analysis' && cmgmtIsAtRisk(r.c)).length;
-  const inMotion = rows.filter(r => r.stage !== 'Complete' && r.stage !== 'Analysis').length;
-  const card = (label, value, delta, good, sub) => `<div class="stat-card"><div class="sc-label">${label}</div><div class="sc-value">${value}</div><div class="sc-delta ${good ? 'good' : 'neutral'}">${delta}</div><div class="strat-sub">${sub}</div></div>`;
-  const d = gp.data, t = d && d.performance.totals, p = d && d.performance.priorYear, w = d && d.window;
-  const pct = (a, b) => (a != null && b) ? Math.round(((a - b) / Math.abs(b)) * 1000) / 10 : null;
-  const per = w ? `${stratRangeText(w.from, w.to)}` : '';
-  const cmG = d && d.performance.currentMatched; const dCpv = cmG && p ? pct(cmG.cpv, p.cpv) : null; const dCplG = cmG && p ? pct(cmG.cpl, p.cpl) : null; const mN = d && d.performance.comparedMonths; const mTxt = mN && d && mN < d.window.months ? ` (${mN} matched months)` : '';
-  el.classList.add('gp-core'); el.innerHTML = gpOutlookCardHtml(d) +
-    card('Starting within 2 weeks, not approved', String(risk), risk ? '▼ Act today' : '▲ On track', risk === 0, 'QA & Approval pending') +
-    card('Cost per visit', t && t.cpv != null ? `$${t.cpv.toFixed(2)}` : '—', dCpv != null ? `${stratPct(dCpv)} vs prior year${mTxt}` : (d ? 'Not on file yet' : 'Loading'), dCpv != null && dCpv <= 0, t ? `Spend ÷ website users · ${per}` : 'Needs spend and website users') +
-    card('Cost per lead', t && t.cpl != null ? `$${t.cpl.toFixed(2)}` : '—', dCplG != null ? `${stratPct(dCplG)} vs prior year${mTxt}` : (d ? 'No prior year on file' : 'Loading'), dCplG != null && dCplG <= 0, t ? `Spend ÷ leads · ${per}` : 'Digital performance upload');
+  el.classList.add('gp-core'); el.innerHTML = gpStoryCards(gp.data);
+  const rows = gpCampaigns(); const risk = rows.filter(r => r.stage !== 'Complete' && r.stage !== 'Analysis' && cmgmtIsAtRisk(r.c)).length;
+  const rb = document.getElementById('gpRiskLine'); if (rb) rb.innerHTML = risk ? `<span style="color:#C0273C;font-weight:600;">${risk} campaign${risk === 1 ? '' : 's'} starting within 2 weeks, not approved</span> · QA &amp; Approval pending` : '';
 }
 function gpRenderView(){
   const box = document.getElementById('gpViewBody'); if (!box) return;
@@ -23340,15 +23376,17 @@ function gpToolsHtml(){
   ];
   return `<div class="strat-tools"><span class="strat-tools-lbl">Tools</span>${items.map(it => `<a class="flink" onclick="${go(it)}">${escapeHtml(it.label)}</a>${it.note ? `<span class="strat-note">(${escapeHtml(it.note)})</span>` : ''}`).join('')}</div>`;
 }
+function gpOpenCalendar(year){
+  goToStep('marketingCalendar');
+  setTimeout(() => { try { if (typeof mktCal === 'undefined') return; const now = new Date(); mktCal.year = year; mktCal.month = year === now.getFullYear() ? now.getMonth() : 0; mktCalRenderMonthLabel(); mktCalFetchEvents(); } catch (e){} }, 150);
+}
 function gpCalendarTileHtml(){
-  const today = cxToday(); const rows = gpCampaigns().filter(r => r.c.startDate && String(r.c.startDate).slice(0, 10) >= today).sort((a, b) => String(a.c.startDate).localeCompare(String(b.c.startDate)));
-  const in30 = rows.filter(r => { const n = gpDaysTo(r.c.startDate); return n != null && n <= 30; }).length;
-  const next = rows.slice(0, 3).map(r => { const n = gpDaysTo(r.c.startDate); return `<li><b>${escapeHtml(String(r.c.startDate).slice(0, 10))}</b> ${n === 0 ? '· today' : `· in ${n}d`}<br><span class="strat-sub">${escapeHtml(r.c.name || r.c.objective || 'Untitled Campaign')}</span></li>`; }).join('');
-  return `<div class="strat-card gp-cal"><div class="strat-head"><h2>Marketing Calendar</h2></div><div class="gp-cal-n">${in30}</div><div class="strat-sub">campaign${in30 === 1 ? '' : 's'} starting in the next 30 days</div>${next ? `<ul class="gp-cal-next">${next}</ul>` : '<p class="strat-sub" style="margin:10px 0 0;">No upcoming starts on the calendar.</p>'}<button type="button" class="btn-ghost" style="margin-top:12px;" onclick="goToStep('marketingCalendar')">Open Marketing Calendar →</button></div>`;
+  const y = new Date().getFullYear();
+  return `<div class="strat-card gp-cal"><div class="strat-head"><h2>Marketing Calendar</h2></div><p class="strat-sub" style="margin:0 0 12px;">Track Campaign Plans</p><div class="gp-chips"><button type="button" class="strat-chip" onclick="gpOpenCalendar(${y - 1})">${y - 1}</button><button type="button" class="strat-chip" onclick="gpOpenCalendar(${y})">${y}</button></div></div>`;
 }
 function growthPerformanceShellHtml(){
   if (!gpIsLive()) return renderTileShellGroups(MARKETER_SHELL_GROUPS, null, 'marketer');
-  return `<div class="gp-actions"><button type="button" class="btn-primary" onclick="startNewCampaign()">＋ Create New Campaign</button><button type="button" class="btn-ghost gp-right" onclick="goToStep('campaignMgmt')">View All Campaigns →</button></div><div class="gp-motion">${gpCalendarTileHtml()}<div class="strat-card"><div class="strat-head"><h2>Campaigns in motion</h2></div>${gpPipelineHtml()}</div></div>
+  return `<div class="gp-actions"><button type="button" class="btn-primary" onclick="startNewCampaign()">＋ Create New Campaign</button><button type="button" class="btn-ghost gp-right" onclick="goToStep('campaignMgmt')">View All Campaigns →</button></div><div class="gp-motion">${gpCalendarTileHtml()}<div class="strat-card"><div class="strat-head"><h2>Campaigns in motion</h2></div><div id="gpRiskLine" class="strat-sub" style="margin-bottom:8px;"></div>${gpPipelineHtml()}</div></div>
     <div class="strat-card"><div class="strat-head"><h2>Performance and lifecycle</h2><div class="strat-ctl"><span class="strat-seg"><button type="button" data-gp-view="performance" class="${gp.view === 'performance' ? 'on' : ''}" onclick="gpSetView('performance')">Performance</button><button type="button" data-gp-view="lifecycle" class="${gp.view === 'lifecycle' ? 'on' : ''}" onclick="gpSetView('lifecycle')">Lifecycle</button></span></div></div><div id="gpViewBody"><p class="strat-empty">Loading…</p></div></div>` + gpToolsHtml();
 }
 function growthPerformancePageInit(){ if (gpIsLive()) gpLoad(); }
@@ -70051,6 +70089,32 @@ function mbuAnnualPlanDerivedRowsHtml(){
   ];
   return `<tr><td colspan="3" style="font-weight:700;padding-top:14px;">Derived rates (computed, not entered)</td></tr>` +
     rows.map(r => `<tr><td class="hint">${r[0]}</td><td class="hint">${r[1]}</td><td class="hint">${r[2]}</td></tr>`).join('');
+}
+
+// 2026-10-01 — Recommend a plan: fills the inputs with a proposal built from the confirmed budget and the actuals
+// loaded for both years. Nothing is saved until the person edits what they want and approves.
+async function mbuRecommendAnnualPlan(){
+  const yearSel = document.getElementById('mbuAnnualPlanYear'); const box = document.getElementById('mbuAnnualPlanRec'); const status = document.getElementById('mbuAnnualPlanStatus');
+  if (!yearSel || !box) return; const year = parseInt(yearSel.value, 10);
+  if (status) status.textContent = 'Building a recommendation…';
+  let rec = null;
+  try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/annual-plan/recommendation?year=${year}`); if (r.ok) rec = await r.json(); } catch (e){}
+  if (!rec){ if (status) status.textContent = 'Could not build a recommendation just now.'; return; }
+  const body = document.getElementById('mbuAnnualPlanBody');
+  ['baseline', 'target'].forEach(kind => { const row = rec[kind]; body.querySelectorAll(`input[data-kind="${kind}"]`).forEach(inp => { const v = row[inp.dataset.key]; if (v != null) inp.value = v; }); });
+  box.style.display = 'block';
+  box.innerHTML = `<b>Recommended, not saved yet.</b> Edit any number, then approve. How it was built:<ul style="margin:6px 0 0 18px;">${(rec.method || []).map(m => `<li>${escapeHtml(m)}</li>`).join('')}</ul>${(rec.missing || []).length ? `<div style="margin-top:6px;color:#C0273C;">Not on file, so left blank: ${rec.missing.map(escapeHtml).join('; ')}.</div>` : ''}`;
+  const btn = document.getElementById('mbuApprovePlanBtn'); if (btn) btn.style.display = '';
+  if (status) status.textContent = 'Recommendation loaded. Review and approve.';
+}
+async function mbuApproveAnnualPlan(){
+  const body = document.getElementById('mbuAnnualPlanBody'); if (!body) return;
+  const who = (state.currentUserName || state.userName || '').toString().slice(0, 80);
+  const lab = body.querySelector('input[data-kind="target"][data-key="label"]');
+  if (lab) lab.value = `Approved ${new Date().toISOString().slice(0, 10)}${who ? ' by ' + who : ''}`;
+  await mbuSaveAnnualPlan();
+  const box = document.getElementById('mbuAnnualPlanRec'); if (box) box.style.display = 'none';
+  const btn = document.getElementById('mbuApprovePlanBtn'); if (btn) btn.style.display = 'none';
 }
 let mbuAnnualPlanSaveTimer = null;
 function mbuQueueAnnualPlanSave(){
