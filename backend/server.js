@@ -35648,10 +35648,14 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       // Continue guestSeq numbering across chunks of the same batch.
       const seqRows = rowsIn.length ? db.prepare('SELECT "bookingCode", MAX("guestSeq") AS maxSeq FROM account_guest_bookings WHERE accountId = ? AND "uploadBatchId" = ? GROUP BY "bookingCode"').all(accountId, batchId) : [];
       const seq = {}; seqRows.forEach(r => { seq[r.bookingCode] = Number(r.maxSeq) || 0; });
-      const ins = db.prepare(`INSERT INTO account_guest_bookings (accountId, "bookingCode", "guestSeq", "bookingDate", year, month, "bookingType", "bookingClass", "marketingAttributable", "promoType", "bookingStatus", "sailDate", age, generation, "guestState", "guestPostalCode", "guestCountry", "grossRevenue", "netRevenue", "productGroup", "creativeFocus", "uploadBatchId", updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(accountId, "bookingCode", "guestSeq") DO UPDATE SET "bookingDate" = excluded."bookingDate", year = excluded.year, month = excluded.month, "bookingType" = excluded."bookingType", "bookingClass" = excluded."bookingClass", "marketingAttributable" = excluded."marketingAttributable", "promoType" = excluded."promoType", "bookingStatus" = excluded."bookingStatus", "sailDate" = excluded."sailDate", age = excluded.age, generation = excluded.generation, "guestState" = excluded."guestState", "guestPostalCode" = excluded."guestPostalCode", "guestCountry" = excluded."guestCountry", "grossRevenue" = excluded."grossRevenue", "netRevenue" = excluded."netRevenue", "productGroup" = excluded."productGroup", "creativeFocus" = excluded."creativeFocus", "uploadBatchId" = excluded."uploadBatchId", updatedAt = excluded.updatedAt`);
-      let saved = 0, skipped = 0;
+      // 2026-10-01 — rows are written in multi-row statements (200 per statement) instead of one INSERT per guest row.
+      // Each statement is a blocking round trip to Postgres, so a 1,500-row chunk used to take well over the browser's
+      // 12-second limit: the first chunk landed, the browser gave up, and the rest of the file never arrived. That is why
+      // the live account held exactly 1,500 guest rows of a full two-year file.
+      const GB_COLS = 23, GB_PER_STMT = 200; const gbHead = `INSERT INTO account_guest_bookings (accountId, "bookingCode", "guestSeq", "bookingDate", year, month, "bookingType", "bookingClass", "marketingAttributable", "promoType", "bookingStatus", "sailDate", age, generation, "guestState", "guestPostalCode", "guestCountry", "grossRevenue", "netRevenue", "productGroup", "creativeFocus", "uploadBatchId", updatedAt) VALUES `;
+      const gbTail = ` ON CONFLICT(accountId, "bookingCode", "guestSeq") DO UPDATE SET "bookingDate" = excluded."bookingDate", year = excluded.year, month = excluded.month, "bookingType" = excluded."bookingType", "bookingClass" = excluded."bookingClass", "marketingAttributable" = excluded."marketingAttributable", "promoType" = excluded."promoType", "bookingStatus" = excluded."bookingStatus", "sailDate" = excluded."sailDate", age = excluded.age, generation = excluded.generation, "guestState" = excluded."guestState", "guestPostalCode" = excluded."guestPostalCode", "guestCountry" = excluded."guestCountry", "grossRevenue" = excluded."grossRevenue", "netRevenue" = excluded."netRevenue", "productGroup" = excluded."productGroup", "creativeFocus" = excluded."creativeFocus", "uploadBatchId" = excluded."uploadBatchId", updatedAt = excluded.updatedAt`;
+      let saved = 0, skipped = 0; const pending = []; const stmtCache = {};
+      const flush = () => { if (!pending.length) return; const n = pending.length / GB_COLS; const st = stmtCache[n] || (stmtCache[n] = db.prepare(gbHead + Array.from({ length: n }, () => '(' + Array(GB_COLS).fill('?').join(', ') + ')').join(', ') + gbTail)); st.run(...pending); pending.length = 0; };
       const txnSettings = getTransactionSettings(accountId);
       const numOrNull = v => { if (v === null || v === undefined || v === '') return null; const n = Number(String(v).replace(/[,$]/g, '')); return Number.isFinite(n) ? n : null; };
       for (const r of rowsIn){
@@ -35662,12 +35666,14 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         const cls = classifyBookingType(r.bookingType, txnSettings);
         seq[code] = (seq[code] || 0) + 1;
         const sail = r.sailDate ? new Date(r.sailDate) : null;
-        ins.run(accountId, code, seq[code], d.toISOString(), year, month, r.bookingType != null ? String(r.bookingType).trim() : null, cls.bookingClass, cls.marketingAttributable,
+        pending.push(accountId, code, seq[code], d.toISOString(), year, month, r.bookingType != null ? String(r.bookingType).trim() : null, cls.bookingClass, cls.marketingAttributable,
           r.promoType != null ? String(r.promoType).trim() : null, r.bookingStatus != null ? String(r.bookingStatus).trim() : null, sail && !isNaN(sail) ? sail.toISOString() : null,
           numOrNull(r.age), generationForAge(numOrNull(r.age), year), r.guestState != null ? String(r.guestState).trim() : null, r.guestPostalCode != null ? String(r.guestPostalCode).trim() : null, r.guestCountry != null ? String(r.guestCountry).trim() : null,
           numOrNull(r.grossRevenue), numOrNull(r.netRevenue), r.productGroup != null ? String(r.productGroup).trim() : '', r.creativeFocus != null ? String(r.creativeFocus).trim() : null, batchId, now);
         saved++;
+        if (pending.length >= GB_COLS * GB_PER_STMT) flush();
       }
+      flush();
       let rollup = null;
       if (body.final){
         const periods = db.prepare('SELECT DISTINCT year, month FROM account_guest_bookings WHERE accountId = ? AND "uploadBatchId" = ?').all(accountId, batchId);
