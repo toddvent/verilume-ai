@@ -1432,7 +1432,23 @@
   .customize-kpis-btn{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:700;color:var(--ink);background:var(--white);border:1px solid var(--line);border-radius:999px;padding:7px 16px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
   .customize-kpis-btn:hover{border-color:var(--hdr-navy);}
   .fd-panel button,.fd-panel input{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;}
-  .gp-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 14px;}
+  .gp-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin:0 0 14px;}
+  .gp-core.stat-card-grid.four{grid-template-columns:2fr 1fr 1fr 1fr;}
+  @media (max-width:1100px){ .gp-core.stat-card-grid.four{grid-template-columns:1fr 1fr;} .gp-core .gp-card1{grid-column:1 / -1;} }
+  @media (max-width:820px){ .gp-core.stat-card-grid.four{grid-template-columns:1fr;} }
+  .gp-bar{display:flex;height:14px;border-radius:7px;overflow:hidden;background:rgba(0,0,0,.06);margin:8px 0 6px;}
+  .gp-bar span{display:block;height:100%;}
+  .gp-legend{display:grid;gap:3px;font-size:.8125rem;}
+  .gp-legend-row{display:flex;flex-wrap:wrap;gap:4px 14px;}
+  .gp-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;}
+  .gp-line{margin:10px 0 0;font-size:.875rem;}
+  .gp-sub2{margin-top:8px;font-size:.875rem;}
+  .gp-motion{display:grid;grid-template-columns:minmax(220px,1fr) 3fr;gap:14px;align-items:stretch;margin:0 0 14px;}
+  .gp-motion > .strat-card{margin:0;}
+  .gp-pipe3{grid-template-columns:repeat(3,1fr);}
+  .gp-cal-n{font-size:2.25rem;font-weight:700;line-height:1.1;}
+  .gp-cal-next{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:8px;font-size:.875rem;}
+  @media (max-width:760px){.gp-motion{grid-template-columns:1fr;}.gp-pipe3{grid-template-columns:1fr 1fr;}}
   .fd-cta-b{font-weight:800;text-decoration:underline;text-underline-offset:2px;}
   .fd-backdrop{position:fixed;inset:0;background:rgba(20,20,20,0.45);z-index:950;display:flex;align-items:flex-start;justify-content:center;padding:5vh 12px;overflow-y:auto;}
   .fd-backdrop[hidden]{display:none;}
@@ -4322,7 +4338,6 @@
       <div class="module open accent-cx" id="topUrgentModule" style="display:none;">
         <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
           <h2 style="margin:0;font-size:1.0625rem;">🔴 Top 5 Most Urgent</h2>
-          <span class="tag" style="margin:0;">Account-wide · sorted soonest-due-first</span>
         </div>
         <div id="topUrgentBody"></div>
       </div>
@@ -23239,6 +23254,10 @@ function gpIsLive(){ return stratIsLive(); }
 const GP_STAGES = [{ key: 'brand', label: 'Brand' }, { key: 'functions', label: 'Marketing Functions' }, { key: 'creative', label: 'Creative' }, { key: 'qa', label: 'QA & Approval' }, { key: 'market', label: 'In Market' }, { key: 'analysis', label: 'Analysis' }];
 function gpStageOf(c){
   try {
+    // 2026-10-01 — dates decide In Market and Analysis (see the 2026-09-16 status-from-dates decision): a campaign inside its start-to-end run is In Market, one past its end is Analysis. Only campaigns that have not started use the workflow stage checks. (Before this, every campaign without every earlier stage marked complete counted as Brand.)
+    const today = cxToday(), sd = c.startDate ? String(c.startDate).slice(0, 10) : '', ed = c.endDate ? String(c.endDate).slice(0, 10) : '';
+    if (sd && ed && sd <= today && today <= ed) return 'In Market';
+    if (ed && today > ed) return 'Analysis';
     const st = computeStageStatuses(c); const by = {}; st.forEach(x => { by[x.key] = x.status; });
     for (const s of GP_STAGES){ if (by[s.key] !== 'complete') return s.label; }
     return 'Complete';
@@ -23255,7 +23274,7 @@ function gpRenderTop5(bodyEl){
 }
 function gpPipelineHtml(){
   const rows = gpCampaigns(); const n = label => rows.filter(r => r.stage === label).length;
-  return `<div class="strat-fc-grid">${GP_STAGES.map(s => `<div class="strat-fc-card"><div class="strat-chart-label" style="margin:0 0 4px;">${s.label}</div><div style="font-size:1.5rem;font-weight:700;">${n(s.label)}</div><div class="strat-sub">campaign${n(s.label) === 1 ? '' : 's'} at this stage</div></div>`).join('')}</div>`;
+  return `<div class="strat-fc-grid gp-pipe3">${GP_STAGES.map(s => `<div class="strat-fc-card"><div class="strat-chart-label" style="margin:0 0 4px;">${s.label}</div><div style="font-size:1.5rem;font-weight:700;">${n(s.label)}</div><div class="strat-sub">campaign${n(s.label) === 1 ? '' : 's'} at this stage</div></div>`).join('')}</div>`;
 }
 async function gpLoad(){
   if (!gpIsLive()) return;
@@ -23263,6 +23282,24 @@ async function gpLoad(){
   if (activePrimaryTab === 'marketer'){ gpRenderCoreRow(); gpRenderView(); }
 }
 function gpSetView(v){ gp.view = v; document.querySelectorAll('[data-gp-view]').forEach(b => b.classList.toggle('on', b.getAttribute('data-gp-view') === v)); gpRenderView(); }
+function gpOutlookCardHtml(d){
+  const o = d && d.outlook; const per = d && d.window ? stratRangeText(d.window.from, d.window.to) : '';
+  if (!o) return `<div class="stat-card gp-card1"><div class="sc-label">Impressions outlook</div><div class="sc-value">—</div><div class="strat-sub">${d ? 'Not on file yet: campaign dates and planned impressions.' : 'Loading'}</div></div>`;
+  const segs = [{ k: 'Completed YTD', v: o.completedYtd.impressions, n: o.completedYtd.campaigns, c: '#94A3B8' }, { k: 'Active', v: o.active.impressions, n: o.active.campaigns, c: '#0891B2' }, { k: 'Pending', v: o.pending.impressions, n: o.pending.campaigns, c: '#1E2761' }];
+  const tot = segs.reduce((n, x) => n + x.v, 0);
+  const bar = tot ? `<div class="gp-bar" role="img" aria-label="Impressions: completed year to date, active and pending">${segs.map(x => x.v ? `<span style="width:${(x.v / tot * 100).toFixed(1)}%;background:${x.c};"></span>` : '').join('')}</div>` : '';
+  const legend = `<div class="gp-legend">${segs.map(x => `<div><i style="background:${x.c};"></i><b>${stratNum(x.v)}</b> ${x.k} <span class="strat-sub">· ${x.n} campaign${x.n === 1 ? '' : 's'}</span></div>`).join('')}</div>`;
+  const lp = (o.pendingByLoop || []).filter(x => x.impressions > 0);
+  const shades = ['#1E2761', '#2F4A8A', '#0891B2', '#5EAFC4', '#94A3B8'];
+  const loopHtml = lp.length ? `<div class="strat-chart-label" style="margin:12px 0 4px;">Pending loop stage mix <span class="strat-key">default channel map</span></div><div class="gp-bar">${lp.map((x, i) => `<span style="width:${x.pct}%;background:${shades[i % 5]};" title="${escapeHtml(x.stage)} ${x.pct}%"></span>`).join('')}</div><div class="gp-legend gp-legend-row">${lp.map((x, i) => `<div><i style="background:${shades[i % 5]};"></i>${escapeHtml(x.stage)} <b>${x.pct}%</b></div>`).join('')}</div>` : '';
+  const lead = o.leads && (o.leads.ytd != null || o.leads.expected != null) ? `<p class="gp-line"><b>Leads:</b> ${o.leads.ytd != null ? `${stratNum(o.leads.ytd)} so far this year` : 'year to date not on file'}${o.leads.expected != null ? `, about <b>${stratNum(o.leads.expected)}</b> expected from pending impressions (${o.rates.impressionsToLeadPct}% impressions-to-lead, trailing 12 months)` : ''}.</p>` : '';
+  const t = d.performance && d.performance.totals, p = d.performance && d.performance.priorYear, cm = d.performance && d.performance.currentMatched;
+  const cplD = cm && p && p.cpl ? Math.round(((cm.cpl - p.cpl) / Math.abs(p.cpl)) * 1000) / 10 : null; const mN = d.performance && d.performance.comparedMonths;
+  const cplLine = t && t.cpl != null ? `<p class="gp-line"><b>Cost per lead</b> is $${t.cpl.toFixed(2)}${cplD != null ? `, ${cplD <= 0 ? 'down' : 'up'} ${Math.abs(cplD).toFixed(1)}% year over year${mN ? ` (${mN} matched months)` : ''}` : ''}.</p>` : '';
+  const exp = o.expectedTransactions != null ? `<p class="gp-line"><b>Expected future campaign transactions:</b> about ${stratNum(o.expectedTransactions)}${o.expectedRevenue != null ? `, with revenue of about <b>${stratMoney(o.expectedRevenue)}</b>` : ''}. <span class="strat-sub">Estimate: expected leads × ${o.rates.leadToBookingPct}% lead-to-booking${o.rates.revenuePerTransaction != null ? ` × ${stratMoneyFull(o.rates.revenuePerTransaction)} revenue per transaction` : ''}.</span></p>` : '';
+  const ra = (o.roas != null || o.cac != null) ? `<div class="gp-sub2">${o.roas != null ? `ROAS <b>${o.roas.toFixed(2)}x</b>${o.roasDeltaPct != null ? ` (${stratPct(o.roasDeltaPct)} vs prior year)` : ''}` : ''}${o.roas != null && o.cac != null ? ' · ' : ''}${o.cac != null ? `CAC <b>${stratMoneyFull(o.cac)}</b>${o.cacDeltaPct != null ? ` (${stratPct(o.cacDeltaPct)} vs prior year)` : ''}` : ''}</div>` : '';
+  return `<div class="stat-card gp-card1"><div class="sc-label">Impressions outlook</div>${bar}${legend}${loopHtml}${lead}${cplLine}${exp}${ra}<div class="strat-sub" style="margin-top:8px;">As of ${escapeHtml(o.asOf)}. Active = start on or before today and end on or after it; completed = ended this year; pending = starts after today.${o.undated ? ` ${o.undated} campaign${o.undated === 1 ? ' has' : 's have'} no dates and ${o.undated === 1 ? 'is' : 'are'} left out.` : ''}</div></div>`;
+}
 function gpRenderCoreRow(){
   const el = document.getElementById('tabStatCardGrid'); if (!el) return; el.classList.add('four');
   const rows = gpCampaigns(); const inMarket = rows.filter(r => r.stage === 'In Market').length; const risk = rows.filter(r => r.stage !== 'Complete' && r.stage !== 'Analysis' && cmgmtIsAtRisk(r.c)).length;
@@ -23272,7 +23309,7 @@ function gpRenderCoreRow(){
   const pct = (a, b) => (a != null && b) ? Math.round(((a - b) / Math.abs(b)) * 1000) / 10 : null;
   const per = w ? `${stratRangeText(w.from, w.to)}` : '';
   const cmG = d && d.performance.currentMatched; const dCpv = cmG && p ? pct(cmG.cpv, p.cpv) : null; const dCplG = cmG && p ? pct(cmG.cpl, p.cpl) : null; const mN = d && d.performance.comparedMonths; const mTxt = mN && d && mN < d.window.months ? ` (${mN} matched months)` : '';
-  el.innerHTML = card('Campaigns in motion', String(inMotion), inMarket ? `• ${inMarket} in market` : '• None in market yet', false, 'Not yet in analysis') +
+  el.classList.add('gp-core'); el.innerHTML = gpOutlookCardHtml(d) +
     card('Starting within 2 weeks, not approved', String(risk), risk ? '▼ Act today' : '▲ On track', risk === 0, 'QA & Approval pending') +
     card('Cost per visit', t && t.cpv != null ? `$${t.cpv.toFixed(2)}` : '—', dCpv != null ? `${stratPct(dCpv)} vs prior year${mTxt}` : (d ? 'Not on file yet' : 'Loading'), dCpv != null && dCpv <= 0, t ? `Spend ÷ website users · ${per}` : 'Needs spend and website users') +
     card('Cost per lead', t && t.cpl != null ? `$${t.cpl.toFixed(2)}` : '—', dCplG != null ? `${stratPct(dCplG)} vs prior year${mTxt}` : (d ? 'No prior year on file' : 'Loading'), dCplG != null && dCplG <= 0, t ? `Spend ÷ leads · ${per}` : 'Digital performance upload');
@@ -23303,9 +23340,15 @@ function gpToolsHtml(){
   ];
   return `<div class="strat-tools"><span class="strat-tools-lbl">Tools</span>${items.map(it => `<a class="flink" onclick="${go(it)}">${escapeHtml(it.label)}</a>${it.note ? `<span class="strat-note">(${escapeHtml(it.note)})</span>` : ''}`).join('')}</div>`;
 }
+function gpCalendarTileHtml(){
+  const today = cxToday(); const rows = gpCampaigns().filter(r => r.c.startDate && String(r.c.startDate).slice(0, 10) >= today).sort((a, b) => String(a.c.startDate).localeCompare(String(b.c.startDate)));
+  const in30 = rows.filter(r => { const n = gpDaysTo(r.c.startDate); return n != null && n <= 30; }).length;
+  const next = rows.slice(0, 3).map(r => { const n = gpDaysTo(r.c.startDate); return `<li><b>${escapeHtml(String(r.c.startDate).slice(0, 10))}</b> ${n === 0 ? '· today' : `· in ${n}d`}<br><span class="strat-sub">${escapeHtml(r.c.name || r.c.objective || 'Untitled Campaign')}</span></li>`; }).join('');
+  return `<div class="strat-card gp-cal"><div class="strat-head"><h2>Marketing Calendar</h2></div><div class="gp-cal-n">${in30}</div><div class="strat-sub">campaign${in30 === 1 ? '' : 's'} starting in the next 30 days</div>${next ? `<ul class="gp-cal-next">${next}</ul>` : '<p class="strat-sub" style="margin:10px 0 0;">No upcoming starts on the calendar.</p>'}<button type="button" class="btn-ghost" style="margin-top:12px;" onclick="goToStep('marketingCalendar')">Open Marketing Calendar →</button></div>`;
+}
 function growthPerformanceShellHtml(){
   if (!gpIsLive()) return renderTileShellGroups(MARKETER_SHELL_GROUPS, null, 'marketer');
-  return `<div class="gp-actions"><button type="button" class="btn-primary" onclick="startNewCampaign()">＋ Create New Campaign</button><button type="button" class="btn-ghost" onclick="goToStep('marketingCalendar')">Marketing Calendar</button><button type="button" class="btn-ghost" onclick="goToStep('campaignMgmt')">All Campaigns</button></div><div class="strat-card"><div class="strat-head"><h2>Campaigns in motion</h2></div>${gpPipelineHtml()}</div>
+  return `<div class="gp-actions"><button type="button" class="btn-primary" onclick="startNewCampaign()">＋ Create New Campaign</button><button type="button" class="btn-ghost gp-right" onclick="goToStep('campaignMgmt')">View All Campaigns →</button></div><div class="gp-motion">${gpCalendarTileHtml()}<div class="strat-card"><div class="strat-head"><h2>Campaigns in motion</h2></div>${gpPipelineHtml()}</div></div>
     <div class="strat-card"><div class="strat-head"><h2>Performance and lifecycle</h2><div class="strat-ctl"><span class="strat-seg"><button type="button" data-gp-view="performance" class="${gp.view === 'performance' ? 'on' : ''}" onclick="gpSetView('performance')">Performance</button><button type="button" data-gp-view="lifecycle" class="${gp.view === 'lifecycle' ? 'on' : ''}" onclick="gpSetView('lifecycle')">Lifecycle</button></span></div></div><div id="gpViewBody"><p class="strat-empty">Loading…</p></div></div>` + gpToolsHtml();
 }
 function growthPerformancePageInit(){ if (gpIsLive()) gpLoad(); }
