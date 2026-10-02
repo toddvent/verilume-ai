@@ -71135,7 +71135,7 @@ async function mbuGbApprove(auto){
     const colIndex = {}; Object.keys(m.assign).forEach(k => { colIndex[k] = m.assign[k].idx; });
     const sizeLbl = (document.getElementById('mbuGbSizeLabel') || {}).value || m.orderSizeLabel || (colIndex.tripDays != null ? m.cols.find(c => c.idx === colIndex.tripDays).header : 'Trip Days');
     const grid = m.grid, headerIndex = m.headerIndex;
-    const rows = [], periods = new Set(), codes = new Set(), classes = {}, statuses = {};
+    const rows = [], periods = new Set(), codes = new Set();
     let skipped = 0, units = 0, unitRows = 0;
     for (let i = headerIndex + 1; i < grid.length; i++){
       const r = grid[i] || [];
@@ -71153,8 +71153,6 @@ async function mbuGbApprove(auto){
         grossRevenue: get('grossRevenue'), netRevenue: get('netRevenue'), productGroup: get('productGroup'), creativeFocus: get('creativeFocus'), tripDays: tdOk ? td : null
       });
       periods.add(`${d.getFullYear()}-${d.getMonth() + 1}`); codes.add(code);
-      const st = String(get('bookingStatus') == null || get('bookingStatus') === '' ? '(blank)' : get('bookingStatus')).trim(); statuses[st] = (statuses[st] || 0) + 1;
-      const cls = mbuClassifyBookingTypeClient(bookingType); classes[cls] = (classes[cls] || 0) + 1;
     }
     if (!rows.length) throw new Error('No customer rows with a transaction ID and a transaction date under the chosen columns. Check the two required columns.');
     const periodList = [...periods].map(p => { const [y, mo] = p.split('-').map(Number); return { year: y, month: mo }; }).sort((a, b) => a.year - b.year || a.month - b.month);
@@ -71162,46 +71160,22 @@ async function mbuGbApprove(auto){
     const columns = {}; Object.keys(colIndex).forEach(k => { columns[k] = m.cols.find(c => c.idx === colIndex[k]).header; });
     const usedIdx = new Set(Object.values(colIndex));
     authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/upload-mapping`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'guest_bookings', approvedBy: state.userName || '', mapping: { columns, orderSizeLabel: sizeLbl, ignored: m.cols.filter(c => !usedIdx.has(c.idx)).map(c => c.header) } }) }).catch(() => {});
-    let curSettings = null; try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/transaction-settings`); if (r.ok) curSettings = await r.json(); } catch (e){}
-    const cur = curSettings && Array.isArray(curSettings.validStatuses) ? curSettings.validStatuses : null;
-    mbuPendingGuestBookings = { rows, periods: periodList, fileName: m.fileName, units, sizeLabel: sizeLbl, statusKeys: Object.keys(statuses), curValid: cur, curTypeMapping: curSettings ? curSettings.typeMapping : {} };
+    mbuPendingGuestBookings = { rows, periods: periodList, fileName: m.fileName, units, sizeLabel: sizeLbl };
     const perLabel = periodList.length ? `${MBU_MONTH_NAMES_1[periodList[0].month]} ${periodList[0].year} → ${MBU_MONTH_NAMES_1[periodList[periodList.length - 1].month]} ${periodList[periodList.length - 1].year} (${periodList.length} months)` : '';
-    const stRows = Object.entries(statuses).sort((a, b) => b[1] - a[1]).slice(0, 30).map(([k, v]) => { const up = k.toUpperCase(); const counts = k === '(blank)' ? true : (cur ? cur.includes(up) : !/cancel|void|refund|no.?show|withdraw|declin|expired/i.test(k)); return `<label style="display:inline-flex;align-items:center;gap:4px;margin:2px 14px 2px 0;"><input type="checkbox" class="mbuGbStatusChk" data-v="${escapeHtml(k)}" ${counts ? 'checked' : ''}> <b>${escapeHtml(k)}</b> <span class="hint">${v.toLocaleString()} rows</span></label>`; }).join('');
     if (preview) preview.innerHTML = `<div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:10px 12px;margin:0 0 10px;font-size:0.8125rem;">
       ${auto ? `<div style="margin-bottom:6px;">Using the column mapping ${m.saved && m.saved.approvedBy ? 'approved by ' + escapeHtml(m.saved.approvedBy) + ' ' : 'approved '}on ${new Date(m.saved.approvedAt).toLocaleDateString()}. <a href="#" onclick="event.preventDefault();mbuGbMap.savedClean=false;mbuGbRenderReview();">Review the mapping</a></div>` : ''}
       <b>${rows.length.toLocaleString()} customer rows</b> · <b>${codes.size.toLocaleString()} unique transaction codes</b> read from ${escapeHtml(m.fileName)}, ${perLabel}${skipped ? ` · ${skipped} row${skipped === 1 ? '' : 's'} without a transaction ID or date skipped (e.g. a totals row or filter footer)` : ''}.
       ${unitRows ? `<div class="hint" style="margin-top:4px;">${escapeHtml(sizeLbl)}: ${Math.round(units).toLocaleString()} total across ${unitRows.toLocaleString()} rows (average ${(units / unitRows).toFixed(1)} per customer row).${unitRows < rows.length ? ` ${(rows.length - unitRows).toLocaleString()} rows had no usable value and are left blank.` : ''}</div>` : ''}
-      <div style="margin-top:8px;"><b>Which statuses count as a sale?</b> <span class="hint">Untick the ones that mean canceled, voided or never completed. If you aren't sure what a code means, ask whoever owns the booking system.</span><div style="margin-top:4px;">${stRows}</div></div>
-      <div class="hint" style="margin-top:6px;">Suggested classes (customers): ${Object.entries(classes).map(([k, v]) => `${escapeHtml(k)} ${v.toLocaleString()}`).join(' · ')}. Adjust them in Transaction settings after saving.</div>
-      <div class="hint" style="margin-top:4px;">Saving replaces those ${periodList.length} months' customer rows and recomputes their monthly totals (unique transactions, customers, gross and net revenue, marketing-attributable share) by Product Group.</div>
+      <div class="hint" style="margin-top:6px;">Everything in the file is imported as it came. After saving, choose what counts (statuses, transaction types and more) under “What counts in revenue and reports”.</div>
+      <div class="hint" style="margin-top:4px;">Saving replaces those ${periodList.length} months' customer rows and recomputes their monthly totals (unique transactions, customers, gross and net revenue) by Product Group.</div>
       <div class="btn-row" style="margin-top:8px;"><button type="button" class="btn-primary" onclick="mbuConfirmGuestBookingsUpload()">Save — replace these months</button><button type="button" class="btn-ghost" onclick="document.getElementById('mbuTxnPreview').innerHTML='';mbuPendingGuestBookings=null;">Cancel</button></div>
       <div id="mbuGuestBookingsProgress" class="hint" style="margin-top:6px;"></div></div>`;
     if (status) status.textContent = '';
   } catch (e){ if (status) status.textContent = e.message || 'Could not read the file with that mapping.'; }
 }
-// Mirror of backend classifyBookingType() for the preview only — the
-// backend's verdict is what's stored.
-// Mirror of backend suggestTransactionClass() for the preview only —
-// generic words, no client-specific names; the account's own mapping
-// (Transaction settings) is what the roll-up actually uses.
-function mbuClassifyBookingTypeClient(bookingType){
-  const t = String(bookingType || '').trim().toLowerCase();
-  if (!t) return '(blank)';
-  if (/\bfree\b|\bcomp\b|complimentary|staff|employee|internal|\bfam\b|familiari[sz]ation|media|press|barter|charity|donat|gift|certificate|voucher|sweepstake|contest|prize|test|sample|warranty|replacement/.test(t)) return 'Free / non-revenue';
-  if (/charter|interline|wholesale|reseller|distributor|trade|b2b|partner|affiliate|consortium|\bgroups?\b|corporate|incentive|bulk/.test(t)) return 'Group / partner / wholesale';
-  if (/discount|sale|promo|savings|offer|deal|coupon|clearance|markdown|loyalty|member|military|senior|student|bonus|early|last minute|flash|bogo|buy ?\d|% ?off|resident|friends|family|upgrade|package/.test(t)) return 'Discounted / promotional';
-  return 'Full price';
-}
 async function mbuConfirmGuestBookingsUpload(){
   if (!mbuPendingGuestBookings) return;
-  const { rows, periods, fileName, curValid, curTypeMapping } = mbuPendingGuestBookings; mbuPendingGuestBookings = null;
-  // The status choices made in the read-out are the account's transaction settings; store them before the save so the monthly totals use them.
-  { const chks = [...document.querySelectorAll('.mbuGbStatusChk')];
-    if (chks.length){
-      const allUp = chks.map(c => c.dataset.v.toUpperCase()); const on = chks.filter(c => c.checked).map(c => c.dataset.v.toUpperCase()).filter(v => v !== '(BLANK)');
-      const next = chks.every(c => c.checked) ? null : on; const same = JSON.stringify((next || []).slice().sort()) === JSON.stringify((curValid || []).slice().sort()) && (!!next === !!curValid);
-      if (!same){ try { await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/transaction-settings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 120000, body: JSON.stringify({ validStatuses: next, typeMapping: curTypeMapping || {} }) }); } catch (e){} }
-    } }
+  const { rows, periods, fileName } = mbuPendingGuestBookings; mbuPendingGuestBookings = null;
   // What the file holds, counted here, so the server can show it next to what the database holds after the save.
   const fileTotals = { rows: rows.length, codes: new Set(rows.map(r => r.bookingCode)).size, gross: 0, units: Math.round(rows.reduce((t, r) => t + (Number(r.tripDays) || 0), 0)), byMonth: {} };
   { const codesBy = {}; rows.forEach(r => { const d = new Date(r.bookingDate); const k = `${d.getFullYear()}-${d.getMonth() + 1}`; const g = Number(String(r.grossRevenue == null ? '' : r.grossRevenue).replace(/[,$]/g, '')) || 0; fileTotals.gross += g; const m = fileTotals.byMonth[k] = fileTotals.byMonth[k] || { rows: 0, codes: 0, gross: 0 }; m.rows++; m.gross += g; (codesBy[k] = codesBy[k] || new Set()).add(r.bookingCode); }); Object.keys(codesBy).forEach(k => { fileTotals.byMonth[k].codes = codesBy[k].size; fileTotals.byMonth[k].gross = Math.round(fileTotals.byMonth[k].gross); }); fileTotals.gross = Math.round(fileTotals.gross); }
@@ -71224,7 +71198,7 @@ async function mbuConfirmGuestBookingsUpload(){
       saved += data.saved || 0; skipped += data.skipped || 0; if (data.rollup) rollup = data.rollup; if (data.receipt) receipt = data.receipt;
     }
     const preview = document.getElementById('mbuTxnPreview'); if (preview) preview.innerHTML = '';
-    if (status) status.textContent = `Saved ${new Date().toLocaleTimeString()} — ${saved.toLocaleString()} customer rows${skipped ? ` (${skipped} skipped)` : ''}; monthly totals recomputed for ${rollup ? rollup.periods : periods.length} month${(rollup ? rollup.periods : periods.length) === 1 ? '' : 's'}. Review Transaction settings below to confirm which statuses and types count.`;
+    if (status) status.textContent = `Saved ${new Date().toLocaleTimeString()} — ${saved.toLocaleString()} customer rows${skipped ? ` (${skipped} skipped)` : ''}; monthly totals recomputed for ${rollup ? rollup.periods : periods.length} month${(rollup ? rollup.periods : periods.length) === 1 ? '' : 's'}. Choose what counts under “What counts in revenue and reports”.`;
     if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext();
     mbuLoadTransactions();
     mbuLoadGuestBookingsSummary();
@@ -71268,7 +71242,6 @@ async function mbuLoadGuestBookingsSummary(){
     const bk = b => `${b.bookings.toLocaleString()}`;
     el.innerHTML = `<div style="background:var(--paper-dim);border:1px solid var(--line-hairline);border-radius:10px;padding:10px 12px;margin:0 0 12px;font-size:0.8125rem;">
       <b>Customer-level transactions on file${year ? ` — ${year}` : ''}:</b> ${d.bookings.toLocaleString()} unique transactions · ${d.guests.toLocaleString()} customers (${(d.guests / d.bookings).toFixed(2)} per transaction) · ${fmtMoney(d.grossRevenue)} gross / ${fmtMoney(d.netRevenue)} net · marketing-attributable ${d.attributable.bookings.toLocaleString()} transactions, ${fmtMoney(d.attributable.grossRevenue)} (per this account's Transaction settings).
-      <div class="hint" style="margin-top:4px;"><b>By class (transactions):</b> ${list(d.byClass, bk)}</div>
       <div class="hint" style="margin-top:2px;"><b>By status (transactions):</b> ${d.byStatus.map(b => `${escapeHtml(b.key)} ${b.bookings.toLocaleString()}${b.valid ? '' : ' <i>(excluded)</i>'}`).join(' · ')} — ${d.validStatuses ? `only ${d.validStatuses.join(' / ')} count` : 'every status counts'}${d.excludedBookings ? `; ${d.excludedBookings.toLocaleString()} excluded` : ''}.</div>
       <div class="hint" style="margin-top:2px;"><b>By Product Group:</b> ${list(d.byProductGroup, bk)}</div>
       <div class="hint" style="margin-top:2px;"><b>By Creative Focus:</b> ${list(d.byCreativeFocus, bk)}</div>
@@ -71296,43 +71269,48 @@ async function mbuLoadTransactionSettings(){
     mbuRenderTransactionSettings();
   } catch (e){ el.innerHTML = ''; }
 }
+// 2026-10-02 — filters, not classes. Everything in the file is imported as it came. For each filterable column the client sees its values with
+// counts and ticks the ones to include, like choosing a filter before reading a report. Unticked values are left out of every revenue number.
 function mbuRenderTransactionSettings(){
   const el = document.getElementById('mbuTransactionSettings');
   const d = mbuTxnSettingsData;
   if (!el || !d) return;
-  const obs = d.observed || { statuses: [], types: [] };
-  if (!obs.statuses.length && !obs.types.length){ el.innerHTML = ''; return; }
-  const classes = d.classes || [];
+  const cols = d.columns || [];
+  if (!cols.length){ el.innerHTML = ''; return; }
+  const block = (c, i) => {
+    const off = c.values.filter(v => !v.counts).length;
+    return `<details ${i < 2 || off ? 'open' : ''} style="border:1px solid var(--line-hairline);border-radius:8px;margin:0 0 8px;" data-col="${c.key}">
+      <summary style="cursor:pointer;padding:8px 10px;font-weight:600;font-size:0.8125rem;">${escapeHtml(c.label)} <span class="hint" style="font-weight:400;">· ${c.values.length}${c.tooMany ? '+' : ''} values${off ? ` · <b>${off} left out</b>` : ''}</span></summary>
+      <div style="padding:0 10px 10px;">
+        <div class="hint" style="margin:0 0 6px;"><a href="#" onclick="event.preventDefault();mbuTxnTickAll('${c.key}', true)">Include all</a> · <a href="#" onclick="event.preventDefault();mbuTxnTickAll('${c.key}', false)">Include none</a>${c.tooMany ? ' · showing the 200 largest values' : ''}</div>
+        <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin:0;"><thead><tr><th>Value</th><th>Transactions</th><th>Gross revenue</th><th>Include</th></tr></thead><tbody>${c.values.map(v => `<tr>
+          <td>${escapeHtml(v.value || '(blank)')}</td><td>${v.transactions.toLocaleString()}</td><td>${fmtMoney(v.grossRevenue)}</td>
+          <td><input type="checkbox" data-col="${c.key}" data-value="${escapeHtml(v.value)}" ${v.counts ? 'checked' : ''}></td></tr>`).join('')}</tbody></table></div>
+      </div></details>`;
+  };
   el.innerHTML = `<div style="border:1px solid var(--line-hairline);border-radius:10px;padding:12px 14px;margin:0 0 12px;">
-    <div style="font-weight:700;margin:0 0 4px;">Transaction settings — what counts</div>
-    <p class="hint" style="margin:0 0 10px;">Values below come from your own upload. Untick a status that isn't a real transaction (holds, waitlists, cancellations). For each transaction type, confirm its class and whether it counts toward marketing KPIs — partner/wholesale and free/non-revenue types usually don't. Suggestions are generic keyword guesses until you save.</p>
-    <div style="font-weight:600;font-size:0.8125rem;margin:0 0 4px;">Statuses that count</div>
-    <div style="display:flex;gap:14px;flex-wrap:wrap;margin:0 0 12px;">${obs.statuses.map(st => `<label style="font-size:0.8125rem;display:flex;align-items:center;gap:6px;"><input type="checkbox" data-status="${escapeHtml(st.value)}" ${st.counts ? 'checked' : ''}> ${escapeHtml(st.value || '(blank)')} <span class="hint">${st.transactions.toLocaleString()} txns · ${st.customers.toLocaleString()} customers</span></label>`).join('')}</div>
-    <div style="font-weight:600;font-size:0.8125rem;margin:0 0 4px;">Transaction types</div>
-    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;margin-bottom:8px;"><thead><tr><th>Type value</th><th>Transactions</th><th>Gross revenue</th><th>Class</th><th>Counts toward marketing KPIs</th></tr></thead><tbody>${obs.types.map(t => `<tr>
-      <td>${escapeHtml(t.value || '(blank)')}${t.suggested ? '<div class="hint">suggested</div>' : ''}</td>
-      <td>${t.transactions.toLocaleString()}</td>
-      <td>${fmtMoney(t.grossRevenue)}</td>
-      <td><select class="tbl-select" data-type="${escapeHtml(t.value)}" data-field="class">${classes.map(c => `<option value="${escapeHtml(c)}"${c === t.class ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select></td>
-      <td><input type="checkbox" data-type="${escapeHtml(t.value)}" data-field="attributable" ${t.attributable ? 'checked' : ''}></td>
-    </tr>`).join('')}</tbody></table></div>
-    <div class="btn-row" style="margin-top:0;"><button type="button" class="btn-primary" onclick="mbuSaveTransactionSettings()">Save settings &amp; recompute totals</button><span class="hint" id="mbuTxnSettingsStatus" style="margin-left:10px;"></span></div>
+    <div style="font-weight:700;margin:0 0 4px;">What counts in revenue and reports</div>
+    <p class="hint" style="margin:0 0 10px;">Everything in your file is imported exactly as it came. Choose a column, then tick the values to include. Values you untick (holds, cancellations, free or internal bookings) are left out of every revenue number. You can change this any time without uploading again.</p>
+    ${cols.map(block).join('')}
+    <div class="btn-row" style="margin-top:6px;"><button type="button" class="btn-primary" onclick="mbuSaveTransactionSettings()">Save and recompute totals</button><span class="hint" id="mbuTxnSettingsStatus" style="margin-left:10px;"></span></div>
   </div>`;
 }
+function mbuTxnTickAll(col, on){ document.querySelectorAll(`#mbuTransactionSettings input[type=checkbox][data-col="${col}"]`).forEach(i => { i.checked = on; }); }
 async function mbuSaveTransactionSettings(){
   const el = document.getElementById('mbuTransactionSettings');
   const status = document.getElementById('mbuTxnSettingsStatus');
   if (!el) return;
-  const validStatuses = [...el.querySelectorAll('input[data-status]')].filter(i => i.checked).map(i => i.dataset.status).filter(v => v !== '');
-  const allChecked = [...el.querySelectorAll('input[data-status]')].every(i => i.checked);
-  const typeMapping = {};
-  el.querySelectorAll('select[data-type][data-field="class"]').forEach(sel => { typeMapping[sel.dataset.type] = { class: sel.value, attributable: 0 }; });
-  el.querySelectorAll('input[data-type][data-field="attributable"]').forEach(cb => { if (typeMapping[cb.dataset.type]) typeMapping[cb.dataset.type].attributable = cb.checked ? 1 : 0; });
+  const boxes = [...el.querySelectorAll('input[type=checkbox][data-col]')];
+  const st = boxes.filter(i => i.dataset.col === 'bookingStatus');
+  const validStatuses = st.filter(i => i.checked).map(i => i.dataset.value).filter(v => v !== '');
+  const allStatus = st.every(i => i.checked);
+  const filters = {};
+  boxes.filter(i => i.dataset.col !== 'bookingStatus' && !i.checked).forEach(i => { (filters[i.dataset.col] = filters[i.dataset.col] || []).push(i.dataset.value); });
   if (status) status.textContent = 'Saving…';
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/transaction-settings`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ validStatuses: allChecked ? null : validStatuses, typeMapping })
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 120000,
+      body: JSON.stringify({ validStatuses: st.length && !allStatus ? validStatuses : null, filters })
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok){ if (status) status.textContent = `Not saved — ${data.error || 'server error'}`; return; }
