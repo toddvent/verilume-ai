@@ -25,6 +25,10 @@
       "destination": "https://verilume-api-production.up.railway.app/api/$1"
     },
     {
+      "source": "/r/:code",
+      "destination": "https://verilume-api-production.up.railway.app/r/:code"
+    },
+    {
       "source": "/",
       "destination": "/frontend/index.html"
     },
@@ -135,6 +139,10 @@
     {
       "source": "/docs/",
       "destination": "/frontend/verilume-product-docs.html"
+    },
+    {
+      "source": "/docs/data-uploads",
+      "destination": "/frontend/verilume-product-data-uploads.html"
     },
     {
       "source": "/docs/media-plan-budget",
