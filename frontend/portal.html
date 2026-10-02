@@ -70946,6 +70946,113 @@ function mbuParseDateCell(v){
   return isNaN(d) ? null : d;
 }
 let mbuPendingGuestBookings = null;
+// ---------- 2026-10-02 — column mapping for customer-level files ----------
+// A client's file keeps the client's own column labels. Read the file, propose how each column maps to our standard fields
+// (header words + what the values look like + an AI second opinion for what's left), show the proposal with a confidence level for
+// each, and ask the client to approve it. The approved mapping is saved per account, so the next file from the same system skips this.
+const MBU_GB_FIELDS = [
+  { key: 'bookingCode', label: 'Transaction ID', req: true, shape: 'code', hint: 'Identifies the transaction; the same ID repeats across the customer rows of one transaction.', strong: ['transaction id', 'transaction code', 'order id', 'order code', 'order number', 'booking code', 'booking id', 'booking number', 'invoice number', 'invoice', 'confirmation number', 'reservation number'], weak: ['code', 'id', 'number', 'reservation'] },
+  { key: 'bookingDate', label: 'Transaction date', req: true, shape: 'date', hint: 'The date the sale was made (purchase, booking or conversion date), not the delivery or start date.', strong: ['transaction date', 'order date', 'purchase date', 'booking date', 'order placed', 'date placed', 'placed date', 'booking conversion date', 'conversion date', 'sale date', 'date booked', 'booked date', 'book date'], weak: ['date', 'booked'] },
+  { key: 'sailDate', label: 'Delivery date', shape: 'date', hint: 'When the product is delivered or begins (first day of the trip). Same as the transaction date in retail.', strong: ['delivery date', 'event start date', 'start date', 'ship date', 'service date', 'sail date', 'sailing date', 'departure date', 'travel date', 'check in date', 'fulfillment date', 'appointment date'], weak: ['departure', 'sail', 'delivery', 'fulfillment'] },
+  { key: 'bookingStatus', label: 'Transaction status', shape: 'fewvalues', hint: 'Confirmed, canceled, etc. You map the values on the next step.', strong: ['transaction status', 'booking status', 'order status', 'status'], weak: [] },
+  { key: 'bookingType', label: 'Transaction type', shape: 'category', hint: 'How it was sold (channel / fare type). Drives which transactions count as marketing-driven.', strong: ['transaction type', 'booking type', 'order type', 'sales channel', 'channel', 'fare type', 'rate type'], weak: ['type'] },
+  { key: 'promoType', label: 'Offer / promo type', shape: 'category', hint: 'The offer or promotion applied.', strong: ['revenue promo type', 'promo type', 'offer type', 'promotion type', 'promotion', 'promo code', 'coupon'], weak: ['promo', 'offer'] },
+  { key: 'tripDays', label: 'Order size', shape: 'smallint', hint: 'How big the order is beyond dollars: trip days, nights, number of units. Used for revenue per day / per unit.', strong: ['trip days', 'order size', 'length of stay', 'number of nights', 'nights', 'duration', 'units', 'quantity', 'qty', 'items', 'days'], weak: ['length', 'size'] },
+  { key: 'productGroup', label: 'Product group', shape: 'category', hint: 'Top-level product family (type of cruise, TVs vs shirts).', strong: ['product group', 'product line', 'product category', 'category', 'product'], weak: ['group', 'line'] },
+  { key: 'creativeFocus', label: 'Creative focus group', shape: 'category', hint: 'What the creative features (a destination, a model, a collection).', strong: ['creative focus group', 'creative focus', 'focus group', 'focus', 'destination', 'theme', 'expedition type', 'collection'], weak: ['creative'] },
+  { key: 'age', label: 'Customer age', shape: 'age', hint: 'Age at the time of the transaction.', strong: ['customer age', 'guest age', 'age'], weak: [] },
+  { key: 'guestState', label: 'Customer state', shape: 'state', hint: 'State or province.', strong: ['guest state', 'customer state', 'state', 'province', 'guest province'], weak: [] },
+  { key: 'guestPostalCode', label: 'Customer postal code', shape: 'postal', hint: 'Postal or ZIP code.', strong: ['guest postal code', 'customer postal code', 'postal code', 'zip code', 'postal', 'zip', 'postcode'], weak: [] },
+  { key: 'guestCountry', label: 'Customer country', shape: 'country', hint: 'Country (code or name).', strong: ['guest country', 'customer country', 'country'], weak: [] },
+  { key: 'grossRevenue', label: 'Gross revenue', req: false, shape: 'money', hint: "This row's own gross revenue (the sum of all rows is the total).", strong: ['gross revenue', 'gross amount', 'gross sales', 'gross', 'revenue', 'order total', 'total amount'], weak: ['amount', 'total', 'sales'] },
+  { key: 'netRevenue', label: 'Net revenue', shape: 'money', hint: "This row's own net revenue.", strong: ['net revenue', 'net amount', 'net sales', 'net'], weak: [] }
+];
+function mbuGbNorm(h){ return String(h == null ? '' : h).toLowerCase().replace(/#/g, ' number ').replace(/[_\-./]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+function mbuGbHas(h, a){ return new RegExp('(^|[^a-z0-9])' + a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^a-z0-9]|$)').test(h); }
+function mbuGbNameScore(header, f){
+  const h = mbuGbNorm(header); if (!h) return { s: 0 };
+  for (const a of f.strong) if (h === a) return { s: 1, why: `the column is named "${header}"` };
+  for (const a of f.strong) if (mbuGbHas(h, a)) return { s: 0.9, why: `the column name contains "${a}"` };
+  for (const a of f.weak) if (h === a) return { s: 0.7, why: `the column is named just "${header}", which is only a loose match` };
+  for (const a of f.weak) if (mbuGbHas(h, a)) return { s: 0.5, why: `the column name contains "${a}", which is only a loose match` };
+  return { s: 0 };
+}
+function mbuGbIsDateLike(v){
+  if (v instanceof Date) return !isNaN(v);
+  if (typeof v === 'number') return v > 25000 && v < 80000;
+  const t = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(t) || /^\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/.test(t)) return !isNaN(new Date(t));
+  return /[a-z]{3}/i.test(t) && /\d{4}|\d{1,2}[ ,]/.test(t) && !isNaN(new Date(t));
+}
+function mbuGbShape(kind, vals){
+  const v = vals.filter(x => String(x == null ? '' : x).trim() !== '');
+  if (!v.length) return 0;
+  const n = vals.length, fill = v.length / n;
+  const str = v.map(x => String(x).trim());
+  const num = str.map(x => Number(x.replace(/[,$\s]/g, ''))), isNum = num.map(x => Number.isFinite(x));
+  const numFrac = isNum.filter(Boolean).length / v.length;
+  const distinct = new Set(str).size, avgLen = str.reduce((t, x) => t + x.length, 0) / str.length;
+  const sorted = num.filter(Number.isFinite).sort((a, b) => a - b), med = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0;
+  const dateFrac = v.filter(mbuGbIsDateLike).length / v.length;
+  switch (kind){
+    case 'date': return dateFrac * Math.min(1, fill + 0.1);
+    case 'code': return dateFrac > 0.3 ? 0 : Math.min(1, fill) * (avgLen <= 24 ? 1 : 0.4) * (distinct > 3 ? 1 : 0.3);
+    case 'fewvalues': return distinct <= 15 && avgLen <= 14 && numFrac < 0.5 ? 1 : (distinct <= 30 ? 0.4 : 0);
+    case 'category': return numFrac > 0.8 ? 0 : (distinct <= 80 ? 1 : distinct <= 300 ? 0.5 : 0.15);
+    case 'smallint': return numFrac > 0.9 && sorted.filter(x => x >= 0 && x <= 400).length / sorted.length > 0.95 && med >= 1 && med <= 400 ? 1 : 0; // mostly whole numbers, but real files carry the odd fraction
+    case 'age': return numFrac > 0.9 && med >= 15 && med <= 95 && sorted.filter(x => x >= 0 && x <= 110).length / sorted.length > 0.95 ? 1 : 0;
+    case 'state': return numFrac < 0.3 && distinct <= 100 && avgLen <= 20 ? 0.8 : 0.2;
+    case 'postal': return avgLen >= 3 && avgLen <= 10 && distinct > 20 ? 0.7 : 0.2;
+    case 'country': return numFrac < 0.3 && distinct <= 80 && avgLen <= 14 ? 0.8 : 0.2;
+    case 'money': return numFrac > 0.9 && med > 0 ? (str.some(x => /[.]\d/.test(x)) || med > 100 ? 1 : 0.5) : 0;
+  }
+  return 0;
+}
+// Header row: first row with several text cells that is followed by a row with data.
+function mbuGbDetectHeaderRow(grid){
+  const score = r => (r || []).filter(c => { const t = String(c == null ? '' : c).trim(); return t && !/^-?[\d.,$%]+$/.test(t); }).length;
+  let best = 0; for (let i = 0; i < Math.min(grid.length, 30); i++) best = Math.max(best, score(grid[i]));
+  for (let i = 0; i < Math.min(grid.length - 1, 30); i++){ const s = score(grid[i]); if (s >= Math.max(3, Math.floor(best * 0.6)) && (grid[i + 1] || []).some(c => String(c == null ? '' : c).trim() !== '')) return i; }
+  return 0;
+}
+function mbuGbProposeColumns(grid, headerIndex){
+  const headers = (grid[headerIndex] || []).map(h => String(h == null ? '' : h).trim());
+  const body = grid.slice(headerIndex + 1, headerIndex + 1 + 400);
+  const cols = headers.map((h, idx) => ({ idx, header: h, samples: body.map(r => (r || [])[idx]).filter(x => String(x == null ? '' : x).trim() !== '').slice(0, 300) })).filter(c => c.header);
+  const cand = [];
+  cols.forEach(c => MBU_GB_FIELDS.forEach(f => {
+    const nm = mbuGbNameScore(c.header, f), sh = mbuGbShape(f.shape, body.map(r => (r || [])[c.idx]).slice(0, 300));
+    let s = nm.s > 0 ? (0.7 * nm.s + 0.3 * sh) : 0.4 * sh;
+    if (nm.s > 0 && sh < 0.3) s *= 0.6;
+    if (s >= 0.4) cand.push({ col: c.idx, field: f.key, s, sh, why: nm.s > 0 ? nm.why : 'the values look like this field', shapeNote: sh >= 0.8 ? 'the values fit' : sh >= 0.4 ? 'the values partly fit' : 'the values do not fit well' });
+  }));
+  cand.sort((a, b) => b.s - a.s);
+  const byField = {}, usedCol = new Set();
+  cand.forEach(c => { if (byField[c.field] || usedCol.has(c.col)) return; byField[c.field] = c; usedCol.add(c.col); });
+  Object.keys(byField).forEach(k => {
+    const a = byField[k];
+    const alts = cand.filter(c => c.field === k && c.col !== a.col && !usedCol.has(c.col) && c.s >= Math.max(0.5, a.s - 0.1));
+    a.conf = a.s; a.source = 'rules';
+    if (alts.length){ a.conf = Math.min(a.conf, 0.7); a.alt = cols.find(x => x.idx === alts[0].col).header; }
+  });
+  return { headers, cols, byField };
+}
+const mbuGbTier = c => c === 'saved' ? 'saved' : c >= 0.8 ? 'high' : c >= 0.55 ? 'medium' : 'low';
+async function mbuGbAssist(model){
+  const unresolved = MBU_GB_FIELDS.filter(f => { const a = model.assign[f.key]; return !a || a.conf < 0.55; });
+  if (!unresolved.length) return;
+  const samples = {}; model.cols.forEach(c => { samples[c.header] = c.samples.slice(0, 6).map(x => String(x).slice(0, 40)); });
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/guest-bookings/map-assist`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 30000, body: JSON.stringify({ headers: model.cols.map(c => c.header), samples, fields: unresolved.map(f => ({ key: f.key, label: f.label, hint: f.hint })) }) });
+    if (!resp.ok) return; const d = await resp.json();
+    (d.suggestions || []).forEach(s => {
+      if (!s.header) return; const f = MBU_GB_FIELDS.find(x => x.key === s.field); const col = model.cols.find(c => c.header === s.header); if (!f || !col) return;
+      const cur = model.assign[s.field]; if (cur && cur.conf >= 0.55) return;
+      if (Object.values(model.assign).some(a => a && a.idx === col.idx && a.conf >= 0.8)) return;
+      model.assign[s.field] = { idx: col.idx, conf: Math.min(0.7, s.confidence || 0.5), source: 'ai', why: s.reason };
+    });
+  } catch (e){}
+}
 async function mbuHandleGuestBookingsFile(event){
   const file = event.target.files && event.target.files[0];
   const status = document.getElementById('mbuTxnStatus');
@@ -70954,56 +71061,123 @@ async function mbuHandleGuestBookingsFile(event){
   if (status) status.textContent = `Reading ${file.name}…`;
   try {
     const grid = await mbuReadFileGridDates(file);
-    const found = mbuFindHeaderRow(grid, [
-      ['bookingCode', ['transaction code', 'transaction id', 'order code', 'order id', 'order number', 'invoice', 'booking code', 'booking id', 'reservation', 'code'], true],
-      ['bookingDate', ['transaction date', 'order date', 'purchase date', 'booking date', 'book date', 'booked', 'date'], true],
-      ['bookingType', ['transaction type', 'order type', 'booking type', 'fare type', 'rate type', 'type'], false],
-      ['promoType', ['promo type', 'promotion', 'promo', 'offer type'], false],
-      ['bookingStatus', ['status'], false],
-      ['sailDate', ['service date', 'delivery date', 'ship date', 'fulfillment', 'purchase del date', 'sail date', 'departure', 'appointment', 'sailing'], false],
-      ['age', ['age'], false],
-      ['guestState', ['state', 'province', 'region'], false],
-      ['guestPostalCode', ['postal', 'zip'], false],
-      ['guestCountry', ['country'], false],
-      ['grossRevenue', ['gross revenue', 'gross', 'revenue', 'amount', 'total'], false],
-      ['netRevenue', ['net revenue', 'net'], false],
-      ['productGroup', ['product group', 'product line', 'category', 'destination', 'actual', 'product'], false],
-      ['creativeFocus', ['creative focus', 'focus', 'expedition type', 'expedition', 'theme'], false]
-    ]);
-    if (!found) throw new Error('Couldn\'t find a header row with a transaction/order code column and a transaction date column.');
-    const { headerIndex, colIndex } = found;
+    if (!grid.length) throw new Error(`${file.name} is empty.`);
+    const headerIndex = mbuGbDetectHeaderRow(grid);
+    const prop = mbuGbProposeColumns(grid, headerIndex);
+    const dataRows = grid.length - headerIndex - 1;
+    const model = { grid, headerIndex, fileName: file.name, cols: prop.cols, dataRows, assign: {}, saved: null, newCols: [] };
+    Object.keys(prop.byField).forEach(k => { const a = prop.byField[k]; model.assign[k] = { idx: a.col, conf: a.conf, source: 'rules', why: `${a.why}; ${a.shapeNote}`, alt: a.alt }; });
+    // A mapping the account approved before: use it where those columns are still in the file.
+    let savedResp = null; try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/upload-mapping?kind=guest_bookings`); if (r.ok) savedResp = await r.json(); } catch (e){}
+    if (savedResp && savedResp.mapping && savedResp.mapping.columns){
+      model.saved = savedResp; const byNorm = {}; model.cols.forEach(c => { byNorm[mbuGbNorm(c.header)] = c; });
+      const known = new Set(); let missing = 0;
+      Object.keys(savedResp.mapping.columns).forEach(k => { const c = byNorm[mbuGbNorm(savedResp.mapping.columns[k])]; if (c){ model.assign[k] = { idx: c.idx, conf: 'saved', source: 'saved', why: `you approved this on ${new Date(savedResp.approvedAt).toLocaleDateString()}` }; known.add(c.idx); } else { missing++; } });
+      (savedResp.mapping.ignored || []).forEach(h => { const c = byNorm[mbuGbNorm(h)]; if (c) known.add(c.idx); });
+      model.newCols = model.cols.filter(c => !known.has(c.idx) && !Object.values(model.assign).some(a => a && a.idx === c.idx && a.source === 'saved'));
+      model.savedClean = missing === 0 && model.newCols.length === 0 && MBU_GB_FIELDS.filter(f => f.req).every(f => model.assign[f.key]);
+      model.orderSizeLabel = savedResp.mapping.orderSizeLabel || null;
+    }
+    if (!model.savedClean){ if (status) status.textContent = 'Checking the column match…'; await mbuGbAssist(model); }
+    mbuGbMap = model;
+    if (model.savedClean){ mbuGbApprove(true); }
+    else { mbuGbRenderReview(); if (status) status.textContent = ''; }
+  } catch (e){ if (status) status.textContent = e.message || `Couldn't read ${file.name}.`; }
+  event.target.value = '';
+}
+let mbuGbMap = null;
+const MBU_GB_BADGE = { high: ['#1F7A4D', '#E6F4EC', 'High'], medium: ['#8A5A00', '#FFF4DB', 'Please confirm'], low: ['#C0273C', '#FDECEC', 'Low — please check'], saved: ['#1F5FA8', '#EAF1FB', 'Saved mapping'], none: ['#6B7280', '#F1F3F5', 'Not found'], chosen: ['#1F5FA8', '#EAF1FB', 'You chose'] };
+function mbuGbRenderReview(){
+  const m = mbuGbMap; const preview = document.getElementById('mbuTxnPreview'); if (!m || !preview) return;
+  const opts = sel => `<option value="">— not in this file —</option>` + m.cols.map(c => `<option value="${c.idx}"${sel === c.idx ? ' selected' : ''}>${escapeHtml(c.header)}</option>`).join('');
+  const rows = MBU_GB_FIELDS.map(f => {
+    const a = m.assign[f.key]; const tier = a ? mbuGbTier(a.conf) : 'none'; const b = MBU_GB_BADGE[tier];
+    const note = a ? `${a.source === 'ai' ? '<b>AI suggestion:</b> ' : ''}${escapeHtml(a.why || '')}${a.alt ? ` <span style="color:#8A5A00;">Also could be “${escapeHtml(a.alt)}”.</span>` : ''}` : (f.req ? '<span style="color:#C0273C;">Required. Pick the column that holds it.</span>' : 'No matching column found; leave blank if the file does not have it.');
+    return `<tr data-field="${f.key}"><td style="white-space:nowrap;"><b>${f.label}</b>${f.req ? ' <span style="color:#C0273C;">*</span>' : ''}<div class="hint" style="font-weight:400;max-width:230px;white-space:normal;">${escapeHtml(f.hint)}</div></td>
+      <td><select onchange="mbuGbChoose('${f.key}', this.value)" style="max-width:220px;">${opts(a ? a.idx : null)}</select></td>
+      <td><span id="mbuGbBadge_${f.key}" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:600;color:${b[0]};background:${b[1]};white-space:nowrap;">${b[2]}</span></td>
+      <td style="font-size:0.8125rem;"><div id="mbuGbNote_${f.key}">${note}</div><div class="hint" id="mbuGbSample_${f.key}" style="margin-top:2px;">${a ? 'Examples: ' + escapeHtml(m.cols.find(c => c.idx === a.idx).samples.slice(0, 3).map(x => String(x).slice(0, 24)).join(' · ')) : ''}</div></td></tr>`;
+  }).join('');
+  preview.innerHTML = `<div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:12px 14px;margin:0 0 10px;font-size:0.8125rem;">
+    <b>How we matched your columns</b> · ${escapeHtml(m.fileName)} · ${m.cols.length} columns, ${m.dataRows.toLocaleString()} rows
+    ${m.saved ? `<div class="hint" style="margin-top:4px;">Your earlier approved mapping was applied where the same columns exist. ${m.newCols.length ? `New or renamed columns: ${m.newCols.map(c => '“' + escapeHtml(c.header) + '”').join(', ')}.` : ''}</div>` : ''}
+    <div id="mbuGbSummary" style="margin:6px 0;"></div>
+    <div style="overflow-x:auto;"><table class="data-table" style="margin-top:6px;font-size:0.8125rem;"><thead><tr><th>Our field</th><th>Your column</th><th>Confidence</th><th>Why, and what's in it</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div id="mbuGbUnused" class="hint" style="margin-top:8px;"></div>
+    <div style="margin-top:8px;"><label style="font-size:0.8125rem;">What does the order-size column count? <input id="mbuGbSizeLabel" type="text" value="${escapeHtml(m.orderSizeLabel || (m.assign.tripDays ? m.cols.find(c => c.idx === m.assign.tripDays.idx).header : 'Trip Days'))}" style="width:150px;"> <span class="hint">e.g. Trip Days, Nights, Units</span></label></div>
+    <label id="mbuGbReviewedWrap" style="display:none;margin-top:8px;font-size:0.8125rem;"><input type="checkbox" id="mbuGbReviewed" onchange="mbuGbRefresh()"> I've checked the rows marked “Please confirm” or “Low”.</label>
+    <div class="btn-row" style="margin-top:10px;"><button type="button" id="mbuGbApproveBtn" class="btn-primary" onclick="mbuGbApprove(false)">Approve this mapping and read the file</button><button type="button" class="btn-ghost" onclick="document.getElementById('mbuTxnPreview').innerHTML='';mbuGbMap=null;">Cancel</button></div></div>`;
+  mbuGbRefresh();
+}
+function mbuGbChoose(field, val){
+  const m = mbuGbMap; if (!m) return;
+  if (val === '') delete m.assign[field]; else { const idx = parseInt(val, 10); Object.keys(m.assign).forEach(k => { if (k !== field && m.assign[k] && m.assign[k].idx === idx) delete m.assign[k]; }); m.assign[field] = { idx, conf: 'chosen', source: 'you', why: 'you chose this column' }; }
+  mbuGbRenderReview();
+}
+function mbuGbRefresh(){
+  const m = mbuGbMap; if (!m) return;
+  const tiers = MBU_GB_FIELDS.map(f => { const a = m.assign[f.key]; return a ? (a.conf === 'chosen' ? 'saved' : mbuGbTier(a.conf)) : 'none'; });
+  const high = tiers.filter(t => t === 'high' || t === 'saved').length, confirm = tiers.filter(t => t === 'medium' || t === 'low').length;
+  const missingReq = MBU_GB_FIELDS.filter(f => f.req && !m.assign[f.key]);
+  const sum = document.getElementById('mbuGbSummary');
+  if (sum) sum.innerHTML = `${high} matched with confidence · <b>${confirm}</b> need your confirmation · ${tiers.filter(t => t === 'none').length} not found${missingReq.length ? ` · <span style="color:#C0273C;font-weight:600;">Still needed: ${missingReq.map(f => f.label).join(', ')}</span>` : ''}`;
+  const used = new Set(Object.values(m.assign).map(a => a.idx)); const unused = m.cols.filter(c => !used.has(c.idx));
+  const un = document.getElementById('mbuGbUnused'); if (un) un.innerHTML = unused.length ? `Columns we are not using (${unused.length}): ${unused.map(c => escapeHtml(c.header)).join(', ')}. They stay out of the platform for now; nothing is lost from your file.` : '';
+  const wrap = document.getElementById('mbuGbReviewedWrap'); if (wrap) wrap.style.display = confirm > 0 ? 'block' : 'none';
+  const ok = !missingReq.length && (confirm === 0 || (document.getElementById('mbuGbReviewed') || {}).checked);
+  const btn = document.getElementById('mbuGbApproveBtn'); if (btn){ btn.disabled = !ok; btn.style.opacity = ok ? '1' : '0.5'; }
+}
+// Build customer rows from the approved mapping, save the mapping, then show the usual read-out with the status question.
+async function mbuGbApprove(auto){
+  const m = mbuGbMap; if (!m) return;
+  const preview = document.getElementById('mbuTxnPreview'); const status = document.getElementById('mbuTxnStatus');
+  try {
+    const colIndex = {}; Object.keys(m.assign).forEach(k => { colIndex[k] = m.assign[k].idx; });
+    const sizeLbl = (document.getElementById('mbuGbSizeLabel') || {}).value || m.orderSizeLabel || (colIndex.tripDays != null ? m.cols.find(c => c.idx === colIndex.tripDays).header : 'Trip Days');
+    const grid = m.grid, headerIndex = m.headerIndex;
     const rows = [], periods = new Set(), codes = new Set(), classes = {}, statuses = {};
-    let skipped = 0;
+    let skipped = 0, units = 0, unitRows = 0;
     for (let i = headerIndex + 1; i < grid.length; i++){
       const r = grid[i] || [];
-      const code = String(r[colIndex.bookingCode] || '').trim();
+      const code = String(r[colIndex.bookingCode] == null ? '' : r[colIndex.bookingCode]).trim();
       const d = mbuParseDateCell(r[colIndex.bookingDate]);
-      if (!code || !d){ if (r.some(c => String(c || '').trim())) skipped++; continue; }
+      if (!code || !d){ if (r.some(c => String(c == null ? '' : c).trim())) skipped++; continue; }
       const get = k => colIndex[k] != null ? r[colIndex[k]] : null;
       const sail = colIndex.sailDate != null ? mbuParseDateCell(get('sailDate')) : null;
       const bookingType = get('bookingType') != null ? String(get('bookingType')).trim() : '';
+      const td = colIndex.tripDays != null ? mbuNum(get('tripDays')) : null; const tdOk = td != null && td >= 0 && td <= 3650;
+      if (tdOk){ units += td; unitRows++; }
       rows.push({
         bookingCode: code, bookingDate: d.toISOString(), bookingType, promoType: get('promoType'), bookingStatus: get('bookingStatus'),
         sailDate: sail ? sail.toISOString() : null, age: get('age'), guestState: get('guestState'), guestPostalCode: get('guestPostalCode') != null ? String(get('guestPostalCode')) : null, guestCountry: get('guestCountry'),
-        grossRevenue: get('grossRevenue'), netRevenue: get('netRevenue'), productGroup: get('productGroup'), creativeFocus: get('creativeFocus')
+        grossRevenue: get('grossRevenue'), netRevenue: get('netRevenue'), productGroup: get('productGroup'), creativeFocus: get('creativeFocus'), tripDays: tdOk ? td : null
       });
       periods.add(`${d.getFullYear()}-${d.getMonth() + 1}`); codes.add(code);
-      const st = String(get('bookingStatus') || '(blank)'); statuses[st] = (statuses[st] || 0) + 1;
+      const st = String(get('bookingStatus') == null || get('bookingStatus') === '' ? '(blank)' : get('bookingStatus')).trim(); statuses[st] = (statuses[st] || 0) + 1;
       const cls = mbuClassifyBookingTypeClient(bookingType); classes[cls] = (classes[cls] || 0) + 1;
     }
-    if (!rows.length) throw new Error('Header found but no customer rows with a transaction code and date under it.');
-    const periodList = [...periods].map(p => { const [y, m] = p.split('-').map(Number); return { year: y, month: m }; }).sort((a, b) => a.year - b.year || a.month - b.month);
-    mbuPendingGuestBookings = { rows, periods: periodList, fileName: file.name };
+    if (!rows.length) throw new Error('No customer rows with a transaction ID and a transaction date under the chosen columns. Check the two required columns.');
+    const periodList = [...periods].map(p => { const [y, mo] = p.split('-').map(Number); return { year: y, month: mo }; }).sort((a, b) => a.year - b.year || a.month - b.month);
+    // Keep the approved mapping for the next file from this system.
+    const columns = {}; Object.keys(colIndex).forEach(k => { columns[k] = m.cols.find(c => c.idx === colIndex[k]).header; });
+    const usedIdx = new Set(Object.values(colIndex));
+    authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/upload-mapping`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'guest_bookings', approvedBy: state.userName || '', mapping: { columns, orderSizeLabel: sizeLbl, ignored: m.cols.filter(c => !usedIdx.has(c.idx)).map(c => c.header) } }) }).catch(() => {});
+    let curSettings = null; try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/transaction-settings`); if (r.ok) curSettings = await r.json(); } catch (e){}
+    const cur = curSettings && Array.isArray(curSettings.validStatuses) ? curSettings.validStatuses : null;
+    mbuPendingGuestBookings = { rows, periods: periodList, fileName: m.fileName, units, sizeLabel: sizeLbl, statusKeys: Object.keys(statuses), curValid: cur, curTypeMapping: curSettings ? curSettings.typeMapping : {} };
     const perLabel = periodList.length ? `${MBU_MONTH_NAMES_1[periodList[0].month]} ${periodList[0].year} → ${MBU_MONTH_NAMES_1[periodList[periodList.length - 1].month]} ${periodList[periodList.length - 1].year} (${periodList.length} months)` : '';
+    const stRows = Object.entries(statuses).sort((a, b) => b[1] - a[1]).slice(0, 30).map(([k, v]) => { const up = k.toUpperCase(); const counts = k === '(blank)' ? true : (cur ? cur.includes(up) : !/cancel|void|refund|no.?show|withdraw|declin|expired/i.test(k)); return `<label style="display:inline-flex;align-items:center;gap:4px;margin:2px 14px 2px 0;"><input type="checkbox" class="mbuGbStatusChk" data-v="${escapeHtml(k)}" ${counts ? 'checked' : ''}> <b>${escapeHtml(k)}</b> <span class="hint">${v.toLocaleString()} rows</span></label>`; }).join('');
     if (preview) preview.innerHTML = `<div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:10px 12px;margin:0 0 10px;font-size:0.8125rem;">
-      <b>${rows.length.toLocaleString()} customer rows</b> · <b>${codes.size.toLocaleString()} unique transaction codes</b> read from ${escapeHtml(file.name)}, ${perLabel}${skipped ? ` · ${skipped} row${skipped === 1 ? '' : 's'} without a code/date skipped (e.g. an export's filter footer)` : ''}.
-      <div class="hint" style="margin-top:4px;">Suggested classes (customers): ${Object.entries(classes).map(([k, v]) => `${escapeHtml(k)} ${v.toLocaleString()}`).join(' · ')}. Statuses: ${Object.entries(statuses).map(([k, v]) => `${escapeHtml(k)} ${v.toLocaleString()}`).join(' · ')} — every status counts until you uncheck one in Transaction settings after saving.</div>
+      ${auto ? `<div style="margin-bottom:6px;">Using the column mapping ${m.saved && m.saved.approvedBy ? 'approved by ' + escapeHtml(m.saved.approvedBy) + ' ' : 'approved '}on ${new Date(m.saved.approvedAt).toLocaleDateString()}. <a href="#" onclick="event.preventDefault();mbuGbMap.savedClean=false;mbuGbRenderReview();">Review the mapping</a></div>` : ''}
+      <b>${rows.length.toLocaleString()} customer rows</b> · <b>${codes.size.toLocaleString()} unique transaction codes</b> read from ${escapeHtml(m.fileName)}, ${perLabel}${skipped ? ` · ${skipped} row${skipped === 1 ? '' : 's'} without a transaction ID or date skipped (e.g. a totals row or filter footer)` : ''}.
+      ${unitRows ? `<div class="hint" style="margin-top:4px;">${escapeHtml(sizeLbl)}: ${Math.round(units).toLocaleString()} total across ${unitRows.toLocaleString()} rows (average ${(units / unitRows).toFixed(1)} per customer row).${unitRows < rows.length ? ` ${(rows.length - unitRows).toLocaleString()} rows had no usable value and are left blank.` : ''}</div>` : ''}
+      <div style="margin-top:8px;"><b>Which statuses count as a sale?</b> <span class="hint">Untick the ones that mean canceled, voided or never completed. If you aren't sure what a code means, ask whoever owns the booking system.</span><div style="margin-top:4px;">${stRows}</div></div>
+      <div class="hint" style="margin-top:6px;">Suggested classes (customers): ${Object.entries(classes).map(([k, v]) => `${escapeHtml(k)} ${v.toLocaleString()}`).join(' · ')}. Adjust them in Transaction settings after saving.</div>
       <div class="hint" style="margin-top:4px;">Saving replaces those ${periodList.length} months' customer rows and recomputes their monthly totals (unique transactions, customers, gross and net revenue, marketing-attributable share) by Product Group.</div>
       <div class="btn-row" style="margin-top:8px;"><button type="button" class="btn-primary" onclick="mbuConfirmGuestBookingsUpload()">Save — replace these months</button><button type="button" class="btn-ghost" onclick="document.getElementById('mbuTxnPreview').innerHTML='';mbuPendingGuestBookings=null;">Cancel</button></div>
       <div id="mbuGuestBookingsProgress" class="hint" style="margin-top:6px;"></div></div>`;
     if (status) status.textContent = '';
-  } catch (e){ if (status) status.textContent = e.message || `Couldn't read ${file.name}.`; }
-  event.target.value = '';
+  } catch (e){ if (status) status.textContent = e.message || 'Could not read the file with that mapping.'; }
 }
 // Mirror of backend classifyBookingType() for the preview only — the
 // backend's verdict is what's stored.
@@ -71020,9 +71194,16 @@ function mbuClassifyBookingTypeClient(bookingType){
 }
 async function mbuConfirmGuestBookingsUpload(){
   if (!mbuPendingGuestBookings) return;
-  const { rows, periods, fileName } = mbuPendingGuestBookings; mbuPendingGuestBookings = null;
+  const { rows, periods, fileName, curValid, curTypeMapping } = mbuPendingGuestBookings; mbuPendingGuestBookings = null;
+  // The status choices made in the read-out are the account's transaction settings; store them before the save so the monthly totals use them.
+  { const chks = [...document.querySelectorAll('.mbuGbStatusChk')];
+    if (chks.length){
+      const allUp = chks.map(c => c.dataset.v.toUpperCase()); const on = chks.filter(c => c.checked).map(c => c.dataset.v.toUpperCase()).filter(v => v !== '(BLANK)');
+      const next = chks.every(c => c.checked) ? null : on; const same = JSON.stringify((next || []).slice().sort()) === JSON.stringify((curValid || []).slice().sort()) && (!!next === !!curValid);
+      if (!same){ try { await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/transaction-settings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 120000, body: JSON.stringify({ validStatuses: next, typeMapping: curTypeMapping || {} }) }); } catch (e){} }
+    } }
   // What the file holds, counted here, so the server can show it next to what the database holds after the save.
-  const fileTotals = { rows: rows.length, codes: new Set(rows.map(r => r.bookingCode)).size, gross: 0, byMonth: {} };
+  const fileTotals = { rows: rows.length, codes: new Set(rows.map(r => r.bookingCode)).size, gross: 0, units: Math.round(rows.reduce((t, r) => t + (Number(r.tripDays) || 0), 0)), byMonth: {} };
   { const codesBy = {}; rows.forEach(r => { const d = new Date(r.bookingDate); const k = `${d.getFullYear()}-${d.getMonth() + 1}`; const g = Number(String(r.grossRevenue == null ? '' : r.grossRevenue).replace(/[,$]/g, '')) || 0; fileTotals.gross += g; const m = fileTotals.byMonth[k] = fileTotals.byMonth[k] || { rows: 0, codes: 0, gross: 0 }; m.rows++; m.gross += g; (codesBy[k] = codesBy[k] || new Set()).add(r.bookingCode); }); Object.keys(codesBy).forEach(k => { fileTotals.byMonth[k].codes = codesBy[k].size; fileTotals.byMonth[k].gross = Math.round(fileTotals.byMonth[k].gross); }); fileTotals.gross = Math.round(fileTotals.gross); }
   const progress = document.getElementById('mbuGuestBookingsProgress');
   const status = document.getElementById('mbuTxnStatus');
@@ -71063,7 +71244,7 @@ function mbuReceiptHtml(r){
   const row = (label, a, b, money) => `<tr><td>${label}</td><td>${f ? (money ? '$' + n(a) : n(a)) : '—'}</td><td>${money ? '$' + n(b) : n(b)}</td><td>${f ? (a === b || (money && Math.abs(a - b) <= 1) ? '✓' : '<span style="color:#C0273C;font-weight:600;">differs</span>') : ''}</td></tr>`;
   return `<div style="border:1px solid ${ok ? '#BFD4F1' : '#F2B8B5'};background:${ok ? '#EAF1FB' : '#FDECEC'};border-radius:8px;padding:10px 12px;margin:0 0 12px;font-size:0.8125rem;">
     <b>Upload receipt</b> · ${escapeHtml(r.fileName || '')} · ${escapeHtml(new Date(r.createdAt).toLocaleString())} · ${ok ? '<span style="color:#1F7A4D;font-weight:600;">File and database match</span>' : (r.matched === 0 ? '<span style="color:#C0273C;font-weight:600;">File and database differ</span>' : 'Not compared')}
-    <table class="data-table" style="margin-top:6px;font-size:0.8125rem;"><thead><tr><th></th><th>In the file</th><th>In the database</th><th></th></tr></thead><tbody>${row('Customer rows', f && f.rows, d.rows)}${row('Unique transactions', f && f.codes, d.codes)}${row('Gross revenue', f && f.gross, d.gross, true)}</tbody></table>
+    <table class="data-table" style="margin-top:6px;font-size:0.8125rem;"><thead><tr><th></th><th>In the file</th><th>In the database</th><th></th></tr></thead><tbody>${row('Customer rows', f && f.rows, d.rows)}${row('Unique transactions', f && f.codes, d.codes)}${row('Gross revenue', f && f.gross, d.gross, true)}${f && f.units ? row('Order size (units)', f.units, d.units) : ''}</tbody></table>
     <div class="hint" style="margin-top:4px;">${escapeHtml(r.note || '')}</div></div>`;
 }
 function mbuRenderUploadReceipt(r){ const el = document.getElementById('mbuUploadReceipt'); if (el) el.innerHTML = mbuReceiptHtml(r); }
