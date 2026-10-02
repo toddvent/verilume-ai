@@ -2029,6 +2029,19 @@ createTableIfNeeded(`
     PRIMARY KEY (accountId, uploadBatchId, bookingCode, guestSeq)
   );
 `);
+// 2026-10-02 — Order Size (Trip Days for travel, units for retail): stored per customer row, and the approved column mapping per account.
+ensureColumn('account_guest_bookings', 'tripDays', 'REAL');
+ensureColumn('account_guest_bookings_staging', 'tripDays', 'REAL');
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_upload_mappings (
+    accountId TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    "mappingJson" TEXT NOT NULL,
+    "approvedBy" TEXT,
+    "approvedAt" TEXT NOT NULL,
+    PRIMARY KEY (accountId, kind)
+  );
+`);
 createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS upload_receipts (
     id TEXT PRIMARY KEY,
@@ -2046,21 +2059,22 @@ createTableIfNeeded(`
 // What the browser counted in the file versus what the live table holds for the same months, side by side.
 // fileTotals (from the browser): { rows, codes, gross, byMonth: { 'YYYY-M': { rows, codes, gross } } }.
 function buildUploadReceipt(accountId, kind, batchId, fileName, fileTotals, periods, now){
-  const dbBy = {}; let dbRows = 0, dbGross = 0; const dbCodes = new Set();
+  const dbBy = {}; let dbRows = 0, dbGross = 0, dbUnits = 0; const dbCodes = new Set();
   if (kind === 'guest_bookings'){
     periods.forEach(p => {
-      const rows = db.prepare('SELECT "bookingCode", "grossRevenue" FROM account_guest_bookings WHERE accountId = ? AND year = ? AND month = ?').all(accountId, p.year, p.month);
-      const codes = new Set(); let g = 0; rows.forEach(r => { codes.add(aliasVal(r, 'bookingCode')); g += Number(aliasVal(r, 'grossRevenue')) || 0; codes.forEach(c => dbCodes.add(c)); });
-      dbBy[`${p.year}-${p.month}`] = { rows: rows.length, codes: codes.size, gross: Math.round(g) }; dbRows += rows.length; dbGross += g;
+      const rows = db.prepare('SELECT "bookingCode", "grossRevenue", "tripDays" FROM account_guest_bookings WHERE accountId = ? AND year = ? AND month = ?').all(accountId, p.year, p.month);
+      const codes = new Set(); let g = 0, u = 0; rows.forEach(r => { codes.add(aliasVal(r, 'bookingCode')); g += Number(aliasVal(r, 'grossRevenue')) || 0; u += Number(aliasVal(r, 'tripDays')) || 0; codes.forEach(c => dbCodes.add(c)); });
+      dbBy[`${p.year}-${p.month}`] = { rows: rows.length, codes: codes.size, gross: Math.round(g), units: Math.round(u) }; dbRows += rows.length; dbGross += g; dbUnits += u;
     });
   }
-  const dbT = { rows: dbRows, codes: dbCodes.size, gross: Math.round(dbGross), byMonth: dbBy };
-  const f = fileTotals && typeof fileTotals === 'object' ? { rows: Number(fileTotals.rows) || 0, codes: Number(fileTotals.codes) || 0, gross: Math.round(Number(fileTotals.gross) || 0), byMonth: fileTotals.byMonth && typeof fileTotals.byMonth === 'object' ? fileTotals.byMonth : {} } : null;
+  const dbT = { rows: dbRows, codes: dbCodes.size, gross: Math.round(dbGross), units: Math.round(dbUnits), byMonth: dbBy };
+  const f = fileTotals && typeof fileTotals === 'object' ? { rows: Number(fileTotals.rows) || 0, codes: Number(fileTotals.codes) || 0, gross: Math.round(Number(fileTotals.gross) || 0), units: Math.round(Number(fileTotals.units) || 0), byMonth: fileTotals.byMonth && typeof fileTotals.byMonth === 'object' ? fileTotals.byMonth : {} } : null;
   const diffs = [];
   if (f){
     if (f.rows !== dbT.rows) diffs.push(`rows: file ${f.rows.toLocaleString('en-US')}, database ${dbT.rows.toLocaleString('en-US')}`);
     if (f.codes !== dbT.codes) diffs.push(`unique transactions: file ${f.codes.toLocaleString('en-US')}, database ${dbT.codes.toLocaleString('en-US')}`);
     if (Math.abs(f.gross - dbT.gross) > 1) diffs.push(`gross revenue: file ${f.gross.toLocaleString('en-US')}, database ${dbT.gross.toLocaleString('en-US')}`);
+    if (f.units > 0 && Math.abs(f.units - dbT.units) > 1) diffs.push(`order size units: file ${f.units.toLocaleString('en-US')}, database ${dbT.units.toLocaleString('en-US')}`);
     Object.keys(f.byMonth).forEach(k => { const a = f.byMonth[k] || {}, b = dbBy[k]; if (!b) diffs.push(`${k}: in the file, not in the database`); else if ((Number(a.rows) || 0) !== b.rows) diffs.push(`${k}: file ${a.rows} rows, database ${b.rows}`); });
   }
   const matched = f ? (diffs.length ? 0 : 1) : null;
@@ -7193,7 +7207,7 @@ repairFoldedColumns([
   ['account_lead_counts', ['accountId', 'leadType', 'formName', 'avgDaysToConvert', 'updatedAt']],
   ['account_transactions_monthly', ['accountId', 'productGroup', 'updatedAt', 'netRevenue', 'attributableTransactions', 'attributableRevenue', 'fullFareTransactions', 'freeTransactions']],
   ['account_transaction_settings', ['accountId', 'validStatusesJson', 'typeMappingJson', 'updatedAt']],
-  ['account_guest_bookings', ['accountId', 'bookingCode', 'guestSeq', 'bookingDate', 'bookingType', 'bookingClass', 'marketingAttributable', 'promoType', 'bookingStatus', 'sailDate', 'guestState', 'guestPostalCode', 'guestCountry', 'grossRevenue', 'netRevenue', 'productGroup', 'creativeFocus', 'uploadBatchId', 'updatedAt']]
+  ['account_guest_bookings', ['accountId', 'bookingCode', 'guestSeq', 'bookingDate', 'bookingType', 'bookingClass', 'marketingAttributable', 'promoType', 'bookingStatus', 'sailDate', 'guestState', 'guestPostalCode', 'guestCountry', 'grossRevenue', 'netRevenue', 'productGroup', 'creativeFocus', 'tripDays', 'uploadBatchId', 'updatedAt']]
 ]);
 const WEEKS_PER_MONTH = 52 / 12;
 function resolveChannelTiming(accountId){
@@ -13757,6 +13771,7 @@ const LEGACY_CASING_COLUMNS = [
   ['account_guest_bookings', 'netRevenue'],
   ['account_guest_bookings', 'productGroup'],
   ['account_guest_bookings', 'creativeFocus'],
+  ['account_guest_bookings', 'tripDays'],
   ['account_guest_bookings', 'uploadBatchId'],
   ['account_guest_bookings', 'updatedAt'],
   ['account_transactions_monthly', 'guests'],
@@ -16186,7 +16201,7 @@ function brainWrite(accountId, { dashboard, action, subject, refId, scopeType, r
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings']);
+const CATALOG_EXEMPT = new Set(['account_guest_bookings_staging', 'account_upload_mappings', 'upload_receipts', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -35798,9 +35813,9 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const rowsIn = Array.isArray(body.rows) ? body.rows : [];
       const batchId = String(body.batchId || '').trim() || `gb_${Date.now()}`;
       const now = new Date().toISOString();
-      const GB_COLS = 23, GB_PER_STMT = 200;
-      const gbColList = `(accountId, "bookingCode", "guestSeq", "bookingDate", year, month, "bookingType", "bookingClass", "marketingAttributable", "promoType", "bookingStatus", "sailDate", age, generation, "guestState", "guestPostalCode", "guestCountry", "grossRevenue", "netRevenue", "productGroup", "creativeFocus", "uploadBatchId", updatedAt)`;
-      const gbUpdate = `"bookingDate" = excluded."bookingDate", year = excluded.year, month = excluded.month, "bookingType" = excluded."bookingType", "bookingClass" = excluded."bookingClass", "marketingAttributable" = excluded."marketingAttributable", "promoType" = excluded."promoType", "bookingStatus" = excluded."bookingStatus", "sailDate" = excluded."sailDate", age = excluded.age, generation = excluded.generation, "guestState" = excluded."guestState", "guestPostalCode" = excluded."guestPostalCode", "guestCountry" = excluded."guestCountry", "grossRevenue" = excluded."grossRevenue", "netRevenue" = excluded."netRevenue", "productGroup" = excluded."productGroup", "creativeFocus" = excluded."creativeFocus", "uploadBatchId" = excluded."uploadBatchId", updatedAt = excluded.updatedAt`;
+      const GB_COLS = 24, GB_PER_STMT = 200;
+      const gbColList = `(accountId, "bookingCode", "guestSeq", "bookingDate", year, month, "bookingType", "bookingClass", "marketingAttributable", "promoType", "bookingStatus", "sailDate", age, generation, "guestState", "guestPostalCode", "guestCountry", "grossRevenue", "netRevenue", "productGroup", "creativeFocus", "tripDays", "uploadBatchId", updatedAt)`;
+      const gbUpdate = `"bookingDate" = excluded."bookingDate", year = excluded.year, month = excluded.month, "bookingType" = excluded."bookingType", "bookingClass" = excluded."bookingClass", "marketingAttributable" = excluded."marketingAttributable", "promoType" = excluded."promoType", "bookingStatus" = excluded."bookingStatus", "sailDate" = excluded."sailDate", age = excluded.age, generation = excluded.generation, "guestState" = excluded."guestState", "guestPostalCode" = excluded."guestPostalCode", "guestCountry" = excluded."guestCountry", "grossRevenue" = excluded."grossRevenue", "netRevenue" = excluded."netRevenue", "productGroup" = excluded."productGroup", "creativeFocus" = excluded."creativeFocus", "tripDays" = excluded."tripDays", "uploadBatchId" = excluded."uploadBatchId", updatedAt = excluded.updatedAt`;
       // Continue guestSeq numbering across chunks of the same upload (read from the stage).
       const seqRows = rowsIn.length ? db.prepare('SELECT "bookingCode", MAX("guestSeq") AS maxSeq FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ? GROUP BY "bookingCode"').all(accountId, batchId) : [];
       const seq = {}; seqRows.forEach(r => { seq[aliasVal(r, 'bookingCode')] = Number(aliasVal(r, 'maxSeq')) || 0; });
@@ -35819,7 +35834,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         pending.push(accountId, code, seq[code], d.toISOString(), year, month, r.bookingType != null ? String(r.bookingType).trim() : null, cls.bookingClass, cls.marketingAttributable,
           r.promoType != null ? String(r.promoType).trim() : null, r.bookingStatus != null ? String(r.bookingStatus).trim() : null, sail && !isNaN(sail) ? sail.toISOString() : null,
           numOrNull(r.age), generationForAge(numOrNull(r.age), year), r.guestState != null ? String(r.guestState).trim() : null, r.guestPostalCode != null ? String(r.guestPostalCode).trim() : null, r.guestCountry != null ? String(r.guestCountry).trim() : null,
-          numOrNull(r.grossRevenue), numOrNull(r.netRevenue), r.productGroup != null ? String(r.productGroup).trim() : '', r.creativeFocus != null ? String(r.creativeFocus).trim() : null, batchId, now);
+          numOrNull(r.grossRevenue), numOrNull(r.netRevenue), r.productGroup != null ? String(r.productGroup).trim() : '', r.creativeFocus != null ? String(r.creativeFocus).trim() : null, (() => { const t = numOrNull(r.tripDays); return t != null && t >= 0 && t <= 3650 ? t : null; })(), batchId, now);
         saved++;
         if (pending.length >= GB_COLS * GB_PER_STMT) flush();
       }
@@ -35831,7 +35846,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       (Array.isArray(body.replacePeriods) ? body.replacePeriods : []).forEach(p => { const y = parseInt(p.year, 10), m = parseInt(p.month, 10); if (y >= 2000 && m >= 1 && m <= 12 && !periods.some(q => q.year === y && q.month === m)) periods.push({ year: y, month: m }); });
       if (!periods.length) return sendJson(res, 400, { error: 'nothing staged for this upload — send the rows again' });
       const stmts = periods.map(p => ({ sql: 'DELETE FROM account_guest_bookings WHERE accountId = ? AND year = ? AND month = ?', params: [accountId, p.year, p.month] }));
-      stmts.push({ sql: `INSERT INTO account_guest_bookings ${gbColList} SELECT accountId, "bookingCode", "guestSeq", "bookingDate", year, month, "bookingType", "bookingClass", "marketingAttributable", "promoType", "bookingStatus", "sailDate", age, generation, "guestState", "guestPostalCode", "guestCountry", "grossRevenue", "netRevenue", "productGroup", "creativeFocus", "uploadBatchId", updatedAt FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ? ON CONFLICT(accountId, "bookingCode", "guestSeq") DO UPDATE SET ${gbUpdate}`, params: [accountId, batchId] });
+      stmts.push({ sql: `INSERT INTO account_guest_bookings ${gbColList} SELECT accountId, "bookingCode", "guestSeq", "bookingDate", year, month, "bookingType", "bookingClass", "marketingAttributable", "promoType", "bookingStatus", "sailDate", age, generation, "guestState", "guestPostalCode", "guestCountry", "grossRevenue", "netRevenue", "productGroup", "creativeFocus", "tripDays", "uploadBatchId", updatedAt FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ? ON CONFLICT(accountId, "bookingCode", "guestSeq") DO UPDATE SET ${gbUpdate}`, params: [accountId, batchId] });
       stmts.push({ sql: 'DELETE FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ?', params: [accountId, batchId] });
       try { db.batch(stmts, 180000); }
       catch (e){ console.error('[guest-bookings] commit failed, live rows untouched:', e.message); return sendJson(res, 500, { error: `The upload was not saved: ${e.message}. Your existing data is unchanged.` }); }
@@ -35839,6 +35854,55 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const rollup = rollupGuestBookings(accountId, periods);
       const receipt = buildUploadReceipt(accountId, 'guest_bookings', batchId, body.fileName, body.fileTotals, periods, now);
       return sendJson(res, 200, { accountId, batchId, saved, skipped, staged: stagedTotal, committed: true, rollup, receipt, updatedAt: now });
+    }
+    // 2026-10-02 — the approved column mapping for a customer-file upload, saved per account so the next file from the same system maps without asking.
+    // GET /api/accounts/:id/upload-mapping?kind=guest_bookings -> { mapping, approvedBy, approvedAt } | { mapping: null }
+    // PUT /api/accounts/:id/upload-mapping { kind, mapping: { columns: { field: 'Client Header' }, orderSizeLabel, ... }, approvedBy }
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'upload-mapping' && (req.method === 'GET' || req.method === 'PUT')){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      if (req.method === 'GET'){
+        const kind = new URL(req.url, 'http://localhost').searchParams.get('kind') || 'guest_bookings';
+        const r = db.prepare('SELECT * FROM account_upload_mappings WHERE accountId = ? AND kind = ?').get(accountId, kind);
+        if (!r) return sendJson(res, 200, { accountId, kind, mapping: null });
+        let mapping = null; try { mapping = JSON.parse(aliasVal(r, 'mappingJson')); } catch (e){}
+        return sendJson(res, 200, { accountId, kind, mapping, approvedBy: aliasVal(r, 'approvedBy'), approvedAt: aliasVal(r, 'approvedAt') });
+      }
+      const body = await readBody(req);
+      const kind = String(body.kind || 'guest_bookings').slice(0, 40);
+      const m = body.mapping;
+      if (!m || typeof m !== 'object' || !m.columns || typeof m.columns !== 'object') return sendJson(res, 400, { error: 'mapping.columns is required' });
+      const columns = {}; Object.keys(m.columns).slice(0, 60).forEach(k => { const v = m.columns[k]; if (typeof v === 'string' && v.trim()) columns[String(k).slice(0, 40)] = v.trim().slice(0, 200); });
+      const clean = { columns, orderSizeLabel: String(m.orderSizeLabel || '').slice(0, 40) || null, ignored: Array.isArray(m.ignored) ? m.ignored.slice(0, 80).map(v => String(v).slice(0, 200)) : [] };
+      const now = new Date().toISOString(); const by = body.approvedBy ? String(body.approvedBy).slice(0, 120) : null;
+      const ex = db.prepare('SELECT 1 FROM account_upload_mappings WHERE accountId = ? AND kind = ?').get(accountId, kind);
+      if (ex) db.prepare('UPDATE account_upload_mappings SET "mappingJson" = ?, "approvedBy" = ?, "approvedAt" = ? WHERE accountId = ? AND kind = ?').run(JSON.stringify(clean), by, now, accountId, kind);
+      else db.prepare('INSERT INTO account_upload_mappings (accountId, kind, "mappingJson", "approvedBy", "approvedAt") VALUES (?, ?, ?, ?, ?)').run(accountId, kind, JSON.stringify(clean), by, now);
+      return sendJson(res, 200, { accountId, kind, saved: true, approvedAt: now });
+    }
+    // POST /api/accounts/:id/guest-bookings/map-assist { headers: [..], samples: { header: [up to 6 values] }, fields: [{ key, label, hint }] }
+    // Asks Claude only about the fields the rules couldn't place with confidence. It can only choose from the headers it was sent, and its answer is
+    // only ever a suggestion the client confirms in the mapping screen. Failure is silent (the screen works without it).
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'guest-bookings' && parts[4] === 'map-assist'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      if (!process.env.ANTHROPIC_API_KEY) return sendJson(res, 200, { suggestions: [], unavailable: true });
+      const body = await readBody(req);
+      const headers = (Array.isArray(body.headers) ? body.headers : []).map(h => String(h).slice(0, 120)).slice(0, 80);
+      const fields = (Array.isArray(body.fields) ? body.fields : []).slice(0, 20).map(f => ({ key: String(f.key || '').slice(0, 40), label: String(f.label || '').slice(0, 80), hint: String(f.hint || '').slice(0, 240) })).filter(f => f.key);
+      if (!headers.length || !fields.length) return sendJson(res, 200, { suggestions: [] });
+      const sampleOf = h => { const v = body.samples && body.samples[h]; return Array.isArray(v) ? v.slice(0, 6).map(x => String(x).slice(0, 60)) : []; };
+      try {
+        const out = await callClaudeForJSON({
+          model: MODEL_STANDARD, maxTokens: 1500, timeoutMs: 25000, toolName: 'suggest_column_mapping',
+          toolDescription: 'For each requested standard field, name the file column that holds it, or null when no column does.',
+          schema: { type: 'object', properties: { suggestions: { type: 'array', items: { type: 'object', properties: { field: { type: 'string' }, header: { type: ['string', 'null'] }, confidence: { type: 'number', description: '0 to 1' }, reason: { type: 'string', description: 'one short sentence a business user can read' } }, required: ['field', 'header', 'confidence', 'reason'] } } }, required: ['suggestions'] },
+          content: `A client uploaded a customer-level transaction file. Match its columns to our standard fields. Choose ONLY from the column headers listed; if no column fits a field, return header null. Never guess between two equally plausible columns: lower the confidence and say what the ambiguity is.\n\nColumn headers with sample values:\n${JSON.stringify(headers.map(h => ({ header: h, samples: sampleOf(h) })))}\n\nStandard fields to place:\n${JSON.stringify(fields)}`
+        });
+        const hset = new Set(headers); const fset = new Set(fields.map(f => f.key));
+        const suggestions = (Array.isArray(out.suggestions) ? out.suggestions : []).filter(x => fset.has(x.field) && (x.header === null || hset.has(x.header))).map(x => ({ field: x.field, header: x.header, confidence: Math.max(0, Math.min(1, Number(x.confidence) || 0)), reason: String(x.reason || '').slice(0, 240) }));
+        return sendJson(res, 200, { suggestions });
+      } catch (e){ console.warn('[map-assist] skipped:', e.message); return sendJson(res, 200, { suggestions: [], unavailable: true }); }
     }
     // GET /api/accounts/:id/upload-receipts[?kind=guest_bookings&limit=10] — what each upload said versus what landed.
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'upload-receipts'){
