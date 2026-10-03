@@ -24084,7 +24084,7 @@ async function askVerilumeToggleVoice(){
 // Replaces the dead Customize KPIs button. Slice 1: interview (taps, typing or voice) builds a
 // request card, existing reports are offered first, then a safe server template builds one view
 // that can be downloaded once. Saving to the Report Library is slice 2.
-const fd = { card: { need: null, subject: null, use: null }, next: null, existing: [], view: null, notOnFile: '', unmet: false, busy: false, status: '', voice: false, asked: false };
+const fd = { card: { need: null, subject: null, use: null }, next: null, existing: [], view: null, notOnFile: '', unmet: false, busy: false, status: '', voice: false, asked: false, dq: null, cat: null, dqMsg: '', dqSug: [], slot: { measure: 'revenue', agg: 'avg', by1: 'creativeFocus', by2: '', period: 'range', compare: false } };
 const FD_LABELS = {
   need: { number: 'A number', compare: 'A comparison', trend: 'A trend over time', list: 'A list or ranking' },
   subject: { account: 'The whole account', productGroup: 'A product group', channel: 'A channel', campaign: 'A campaign', audience: 'An audience type' },
@@ -24102,7 +24102,8 @@ function fdEnsure(){
 }
 function fireDrillOpen(){
   fdEnsure(); fd.card = { need: null, subject: null, use: null }; fd.next = null; fd.existing = []; fd.view = null; fd.notOnFile = ''; fd.unmet = false; fd.busy = false; fd.status = ''; fd.asked = false;
-  fdEl().hidden = false; fdRender();
+  fd.dq = null; fd.dqMsg = ''; fd.dqSug = [];
+  fdEl().hidden = false; fdRender(); fdLoadCatalog();
   const c = document.getElementById('fdClose'); if (c) c.focus();
   fdTurn('');
   if (typeof state !== 'undefined' && state.companyId && typeof vxVoiceConsented === 'function' && vxVoiceConsented()) fdToggleVoice(); // voice first once the person has already agreed to the mic
@@ -24118,12 +24119,100 @@ async function fdPost(path, body){
 }
 async function fdTurn(text){
   if (fd.busy) return; fd.busy = true; fd.status = text ? 'Working out what you need…' : ''; fdRender();
+  // A question about the account's own transactions is answered straight away, whatever columns it touches.
+  if (text){
+    try {
+      const a = await fdPost('ask', { text });
+      if (a.result){ fd.dq = a; fd.dqMsg = ''; fd.dqSug = []; fd.view = null; fd.notOnFile = ''; fd.unmet = false; fd.status = ''; fd.busy = false; fdSyncSlots(a.spec); fdRender(); return; }
+      if (a.notOnFile){ fd.dq = null; fd.notOnFile = a.notOnFile; fd.view = null; fd.unmet = false; fd.status = ''; fd.busy = false; fdRender(); return; }
+      if (a.needMore){ fd.dqMsg = a.message || ''; fd.dqSug = a.suggestions || []; }
+    } catch (e){ /* fall through to the guided questions */ }
+  }
   try {
     const d = await fdPost('turn', { text: text || '', card: fd.card });
     fd.card = d.card; fd.next = d.next; fd.existing = d.existing || []; fd.asked = true; fd.status = '';
     if (text && (fd.view || fd.notOnFile || fd.unmet)){ fd.view = null; fd.notOnFile = ''; fd.unmet = false; }
   } catch (e){ fd.status = 'Could not reach the backend. Try again in a moment.'; }
   fd.busy = false; fdRender();
+}
+async function fdLoadCatalog(){
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/fire-drill/catalog`);
+    if (resp.ok){ fd.cat = await resp.json(); fdRender(); }
+  } catch (e){ /* the builder just stays hidden */ }
+}
+function fdSyncSlots(spec){
+  if (!spec) return;
+  fd.slot = { measure: spec.measure, agg: spec.agg, by1: (spec.by || [])[0] || '', by2: (spec.by || [])[1] || '', period: spec.period && spec.period.kind === 'year' ? 'y' + spec.period.year : (spec.period && spec.period.kind === 'all' ? 'all' : 'range'), compare: spec.compare === 'priorYear' };
+}
+function fdSlotSpec(){
+  const sl = fd.slot; const by = [sl.by1, sl.by2].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
+  const period = sl.period === 'all' ? { kind: 'all' } : /^y\d{4}$/.test(sl.period) ? { kind: 'year', year: Number(sl.period.slice(1)) } : { kind: 'range' };
+  return { measure: sl.measure, agg: sl.agg, by, filters: [], period, compare: sl.compare ? 'priorYear' : null, top: null, order: 'desc' };
+}
+function fdSlotSet(k, v){
+  if (k === 'measure' && fd.cat){ const m = fd.cat.measures.find(x => x.key === v); fd.slot.measure = v; fd.slot.agg = m ? m.aggs[0].key : 'avg'; }
+  else if (k === 'compare') fd.slot.compare = !!v;
+  else fd.slot[k] = v;
+  if (k === 'by1' && !v) fd.slot.by2 = '';
+  fdRender();
+}
+async function fdAskSpec(spec){
+  if (fd.busy) return; fd.busy = true; fd.status = 'Working it out from this account\'s own data…'; fdRender();
+  try {
+    const a = await fdPost('ask', { spec });
+    if (a.result){ fd.dq = a; fd.dqMsg = ''; fd.dqSug = []; fd.view = null; fd.notOnFile = ''; fd.unmet = false; fdSyncSlots(a.spec); }
+    else if (a.notOnFile){ fd.dq = null; fd.notOnFile = a.notOnFile; }
+    else { fd.dq = null; fd.dqMsg = a.message || 'That question could not be run.'; fd.dqSug = a.suggestions || []; }
+    fd.status = '';
+  } catch (e){ fd.status = 'That question could not be answered right now. Nothing was changed.'; }
+  fd.busy = false; fdRender();
+}
+function fdRunSlots(){ fdAskSpec(fdSlotSpec()); }
+function fdRunRecipe(i){ const r = (fd.cat && fd.cat.recipes || [])[i]; if (r) fdAskSpec(r.spec); }
+function fdRunSuggestion(i){ const r = fd.dqSug[i]; if (r) fdAskSpec(r.spec); }
+async function fdApproveGroups(field){
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/fire-drill/buckets`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ field, action: 'approve' }) });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    if (fd.dq && fd.dq.spec) await fdAskSpec(fd.dq.spec);
+  } catch (e){ fd.status = 'Could not save those groups right now.'; fdRender(); }
+}
+async function fdExportAsk(format){
+  try {
+    const q = new URLSearchParams({ format, spec: JSON.stringify(fd.dq.spec) });
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/fire-drill/ask-export?${q}`);
+    if (!resp.ok){ fd.status = 'Could not build that download right now.'; fdRender(); return; }
+    const blob = await resp.blob(); const cd = resp.headers.get('Content-Disposition') || ''; const m = /filename="([^"]+)"/.exec(cd);
+    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = m ? m[1] : `data-question.${format}`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  } catch (e){ fd.status = 'Could not build that download right now.'; fdRender(); }
+}
+function fdBuilderHtml(){
+  const c = fd.cat; if (!c || !c.hasData) return '';
+  const sl = fd.slot; const m = c.measures.find(x => x.key === sl.measure) || c.measures[0];
+  const opt = (v, l, cur) => `<option value="${escapeHtml(v)}"${v === cur ? ' selected' : ''}>${escapeHtml(l)}</option>`;
+  const aggSel = m.aggs.length > 1 ? `<select class="tbl-select" aria-label="How to total it" onchange="fdSlotSet('agg', this.value)">${m.aggs.map(a => opt(a.key, a.label.toLowerCase(), sl.agg)).join('')}</select>` : '';
+  const meas = `<select class="tbl-select" aria-label="What to measure" onchange="fdSlotSet('measure', this.value)">${c.measures.map(x => opt(x.key, x.label.toLowerCase(), sl.measure)).join('')}</select>`;
+  const dimOpts = (cur) => opt('', '(nothing, one overall number)', cur) + c.dims.map(d => opt(d.key, d.label.toLowerCase(), cur)).join('');
+  const by1 = `<select class="tbl-select" aria-label="Break it down by" onchange="fdSlotSet('by1', this.value)">${dimOpts(sl.by1)}</select>`;
+  const by2 = sl.by1 ? ` and by <select class="tbl-select" aria-label="Then by" onchange="fdSlotSet('by2', this.value)">${dimOpts(sl.by2)}</select>` : '';
+  const per = `<select class="tbl-select" aria-label="Period" onchange="fdSlotSet('period', this.value)">${opt('range', 'the dashboard date range', sl.period)}${(c.years || []).slice().reverse().map(y => opt('y' + y, String(y), sl.period)).join('')}${opt('all', 'all years on file', sl.period)}</select>`;
+  const recipes = (c.recipes || []).map((r, i) => `<button type="button" class="fd-chip" onclick="fdRunRecipe(${i})">${escapeHtml(r.title)}</button>`).join('');
+  const vocabNote = c.orderSizeLabel ? '' : `<p class="fd-hint">Order size is being read as ${escapeHtml((c.orderSizeNames || []).slice(0, 3).join(', ') || 'order size')} for your industry. You can set your own word when you upload the file.</p>`;
+  return `<div class="fd-card"><div class="fd-cardhead">Ask about your data</div>
+    <p style="line-height:2.4;margin:0;">Show me ${aggSel} ${meas} by ${by1}${by2} for ${per} <label style="white-space:nowrap;"><input type="checkbox" ${sl.compare ? 'checked' : ''} onchange="fdSlotSet('compare', this.checked)"> compared with last year</label> <button type="button" class="btn-primary" ${fd.busy ? 'disabled' : ''} onclick="fdRunSlots()">Show it</button></p>
+    ${vocabNote}<p class="fd-hint" style="margin-top:10px;">Or start from a common question:</p><div class="fd-chips">${recipes}</div></div>`;
+}
+function fdAnswerHtml(){
+  const a = fd.dq; if (!a || !a.result) return '';
+  const r = a.result;
+  const drafts = (a.buckets || []).filter(b => !b.saved).map(b => `<p class="fd-hint">${escapeHtml(b.label)}: the groups are a draft drawn from your data. <button type="button" class="btn-ghost" onclick="fdApproveGroups('${b.field}')">Approve these groups</button> so every period is compared on the same ones.</p>`).join('');
+  return `<div class="fd-out"><p class="fd-hint">How I read it: ${escapeHtml(a.sentence || '')}${a.source === 'model' ? ' (words matched to your data by Verilume)' : ''}</p>${(a.assumptions || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}
+    <p class="fd-ask">${escapeHtml(r.title)}</p><p class="fd-sum">${escapeHtml(r.summary)}</p>
+    ${(r.tables || []).map(t => `<div class="strat-table-wrap"><table class="strat-table"><thead><tr>${t.columns.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead><tbody>${t.rows.map(row => `<tr>${row.map(c => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`).join('')}
+    ${(r.notes || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}${drafts}
+    <details class="fd-hint"><summary>How this was counted</summary>${(r.definitions || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}</details>
+    <div class="fd-actions"><span class="fd-hint">Just this once:</span><button type="button" class="btn-ghost" onclick="fdExportAsk('xlsx')">Excel</button><button type="button" class="btn-ghost" onclick="fdExportAsk('csv')">CSV</button><button type="button" class="btn-ghost" onclick="fdExportAsk('pdf')">PDF</button></div></div>`;
 }
 function fdPick(key, v){ fd.card[key] = v; fd.view = null; fd.notOnFile = ''; fd.unmet = false; fdTurn(''); }
 function fdChange(key){ fd.card[key] = null; fd.view = null; fd.notOnFile = ''; fd.unmet = false; fdTurn(''); }
@@ -24179,6 +24268,8 @@ function fdRender(){
   }
   body.innerHTML = `<div class="fd-top"><button type="button" class="fd-mic" data-live="${fd.voice ? 'yes' : 'no'}" onclick="fdToggleVoice()" aria-label="${fd.voice ? 'Stop talking' : 'Talk to Verilume'}">${fd.voice ? 'Stop' : 'Talk'}</button><div class="fd-textrow"><input type="text" id="fdText" placeholder="Or type what you need, in your own words" aria-label="Type what you need" onkeydown="if(event.key==='Enter')fdSubmitText()"><button type="button" class="btn-ghost" onclick="fdSubmitText()">Send</button></div></div>
     <p class="fd-status" role="status" aria-live="polite">${escapeHtml(fd.status || '')}</p>
+    ${fd.dqMsg ? `<div class="fd-existing"><p class="fd-ask">${escapeHtml(fd.dqMsg)}</p><div class="fd-chips">${(fd.dqSug || []).map((r, i) => `<button type="button" class="fd-chip" onclick="fdRunSuggestion(${i})">${escapeHtml(r.title)}</button>`).join('')}</div></div>` : ''}
+    ${fdAnswerHtml()}${fdBuilderHtml()}
     <div class="fd-card"><div class="fd-cardhead">Your request</div>${rows}<div class="fd-row"><span class="fd-k">Period</span><span class="fd-v">${escapeHtml(rangeTxt)}</span></div></div>
     ${q}${existing}${build}${out}`;
 }
