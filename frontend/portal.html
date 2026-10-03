@@ -273,6 +273,7 @@
   .ask-thread{display:flex;flex-direction:column;gap:8px;margin-top:10px;max-height:300px;overflow-y:auto;}
   .ask-msg{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;line-height:1.5;max-width:78ch;padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:var(--white);color:var(--ink);}
   .ask-msg.me{align-self:flex-end;background:var(--paper-dim);}
+  .ask-assist{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:10px;}
   .ask-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-top:10px;}
   .ask-card{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:var(--shadow-sm);}
   .ask-card b{display:block;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
@@ -4169,7 +4170,9 @@
         </div>
         <p class="ask-status" id="askVerilumeStatus"></p>
         <div class="ask-thread" id="askVerilumeThread"></div>
+        <div id="askVerilumeDq"></div>
         <div class="ask-cards" id="askVerilumeCards"></div>
+        <div class="ask-assist" id="askVerilumeAssist"><button type="button" class="btn-ghost" onclick="askVerilumeOpenGuided()">Need something we don't show? <span class="fd-cta-b">Guide me</span></button><span class="fd-hint">Build the exact number step by step, then bring it back here.</span></div>
         <div id="askVerilumeProposal"></div>
         <div class="ask-followups" id="askVerilumeFollowups"></div>
       </div>
@@ -24046,17 +24049,59 @@ async function askVerilumeConfirmProposal(key, elId){
     if (elId === 'cmpCollabVoiceProposal') cmpCollabVoiceStatus('That change did not save (' + e.message + '). Nothing was changed.'); else askVerilumeSetStatus('That change did not save (' + e.message + '). Nothing was changed.');
   }
 }
+let askVerilumeDqLast = null;
+function askVerilumeRenderDq(a){
+  askVerilumeDqLast = a || null;
+  const el = document.getElementById('askVerilumeDq'); if (!el) return;
+  if (!a || !a.result){ el.innerHTML = ''; return; }
+  const r = a.result;
+  const drafts = (a.buckets || []).filter(b => !b.saved).map(b => `<p class="fd-hint">${escapeHtml(b.label)}: the groups are a draft drawn from your data. <button type="button" class="btn-ghost" onclick="askVerilumeApproveGroups('${escapeHtml(b.field)}')">Approve these groups</button> so every period is compared on the same ones.</p>`).join('');
+  el.innerHTML = `<div class="fd-out"><p class="fd-hint">How I read it: ${escapeHtml(a.sentence || '')}</p>${(a.assumptions || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}
+    <p class="fd-ask">${escapeHtml(r.title)}</p><p class="fd-sum">${escapeHtml(r.summary)}</p>
+    ${(r.tables || []).map(t => `<div class="strat-table-wrap"><table class="strat-table"><thead><tr>${t.columns.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead><tbody>${t.rows.map(row => `<tr>${row.map(c => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`).join('')}
+    ${(r.notes || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}${drafts}
+    <details class="fd-hint"><summary>How this was counted</summary>${(r.definitions || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}</details>
+    <div class="fd-actions"><button type="button" class="btn-ghost" onclick="askVerilumeOpenGuided(true)">Change this in the guided view</button><span class="fd-hint">Download:</span><button type="button" class="btn-ghost" onclick="askVerilumeExportDq('xlsx')">Excel</button><button type="button" class="btn-ghost" onclick="askVerilumeExportDq('csv')">CSV</button><button type="button" class="btn-ghost" onclick="askVerilumeExportDq('pdf')">PDF</button></div></div>`;
+}
+async function askVerilumeExportDq(format){
+  const a = askVerilumeDqLast; if (!a || !a.spec) return;
+  try {
+    const q = new URLSearchParams({ format, spec: JSON.stringify(a.spec) });
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/fire-drill/ask-export?${q}`);
+    if (!resp.ok){ askVerilumeSetStatus('Could not build that download right now.'); return; }
+    const blob = await resp.blob(); const cd = resp.headers.get('Content-Disposition') || ''; const m = /filename="([^"]+)"/.exec(cd);
+    const url = URL.createObjectURL(blob); const l = document.createElement('a'); l.href = url; l.download = m ? m[1] : `data-question.${format}`; document.body.appendChild(l); l.click(); l.remove(); URL.revokeObjectURL(url);
+  } catch (e){ askVerilumeSetStatus('Could not build that download right now.'); }
+}
+async function askVerilumeApproveGroups(field){
+  const a = askVerilumeDqLast; if (!a || !a.spec) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/fire-drill/buckets`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ field, action: 'approve' }) });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const r2 = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/fire-drill/ask`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spec: a.spec }) });
+    if (r2.ok){ const d = await r2.json(); if (d.result) askVerilumeRenderDq(d); }
+    askVerilumeSetStatus('Groups saved. Future answers use the same ones.');
+  } catch (e){ askVerilumeSetStatus('Could not save those groups right now.'); }
+}
+// The guided panel is a callout of the same door: it opens with whatever the bar already understood.
+function askVerilumeOpenGuided(carry){
+  const a = askVerilumeDqLast;
+  fireDrillOpen();
+  if (carry && a && a.result){ fd.dq = a; try { fdSyncSlots(a.spec); } catch (e){} fdRender(); }
+}
 async function askVerilumeAsk(question){
   const q = String(question || '').trim(); if (!q) return;
   askVerilumeOpenLive();
   askVerilumeAppend('user', q);
+  askVerilumeRenderDq(null);
   askVerilumeSetStatus('Verilume is thinking…');
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice/ask`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: q, surface: 'ask_bar', tab: activePrimaryTab || 'dailyBrief', history: askVerilumeHistory.slice(-8) }) });
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const data = await resp.json();
     askVerilumeAppend('assistant', data.answer || '(no answer)');
-    askVerilumeRenderCards(data.cards); askVerilumeRenderProposal(data.proposal); askVerilumeRenderFollowups(data.followUps);
+    askVerilumeRenderDq(data.dq || null);
+    askVerilumeRenderCards(data.dq ? [] : data.cards); askVerilumeRenderProposal(data.proposal); askVerilumeRenderFollowups(data.followUps);
     askVerilumeSetStatus(data.degraded ? 'The AI Brain was slow to respond; showing what is on file.' : '');
   } catch (e){
     console.warn('[ask verilume] failed:', e);
