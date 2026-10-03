@@ -27449,8 +27449,8 @@ function ttbUploadOpen(key){
 // Self-contained on purpose: it borrows nothing from the Annual Plan page. The file picker opens straight from the button, the Brain
 // proposes which column is which (High or Low confidence), the client edits the second column if needed, and View Budget saves the
 // mapping and opens the Annual Plan on the file's year. Category review and everything after it lives in the Annual Plan.
-const ttbBu = { stage: 'idle', fileName: '', year: null, yearChoices: [], grid: null, dataUrl: null, analysis: null, roles: {}, excl: {}, edited: {}, upId: null, msg: '', reviewed: false, open: 0 };
-function ttbBuReset(){ Object.assign(ttbBu, { stage: 'idle', fileName: '', year: null, yearChoices: [], grid: null, dataUrl: null, analysis: null, roles: {}, excl: {}, edited: {}, upId: null, msg: '', reviewed: false, open: 0 }); }
+const ttbBu = { stage: 'idle', fileName: '', year: null, yearChoices: [], grid: null, dataUrl: null, analysis: null, roles: {}, excl: {}, cand: {}, edited: {}, upId: null, msg: '', reviewed: false, open: 0 };
+function ttbBuReset(){ Object.assign(ttbBu, { stage: 'idle', fileName: '', year: null, yearChoices: [], grid: null, dataUrl: null, analysis: null, roles: {}, excl: {}, cand: {}, edited: {}, upId: null, msg: '', reviewed: false, open: 0 }); }
 function ttbBuPick(){
   ttb.open = 'marketingBudgetUpload'; ttb.manual.marketingBudgetUpload = true;
   const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.csv,.xlsx'; inp.style.display = 'none';
@@ -27495,13 +27495,21 @@ async function ttbBuAnalyze(){
       ttbBuSet({ stage: 'error', msg: ad.error || 'The file could not be analyzed.' }); return;
     }
     if (ad.layout === 'unrecognized'){ ttbBuSet({ stage: 'error', msg: ad.note || 'The Brain could not find budget columns in this file. Check that it has a header row with the months.' }); return; }
-    ttbBu.analysis = ad; ttbBu.reviewed = false; ttbBu.upId = ad.id; ttbBu.roles = {}; ttbBu.excl = {}; ttbBu.edited = {};
+    ttbBu.analysis = ad; ttbBu.reviewed = false; ttbBu.upId = ad.id; ttbBu.roles = {}; ttbBu.excl = {}; ttbBu.cand = {}; ttbBu.edited = {};
     (ad.blocks || []).forEach(b => {
       ttbBu.roles[b.headerRowIdx] = mbuInitColumnRoles(b);
-      ttbBu.excl[b.headerRowIdx] = [...(b.likelySubtotalRowIdxs || []), ...((ad.likelyGrandTotalRowIdxs || []).filter(i => b.dataRowIdxs.includes(i)))];
+      const flagged = [...(b.likelySubtotalRowIdxs || []), ...((ad.likelyGrandTotalRowIdxs || []).filter(i => b.dataRowIdxs.includes(i)))];
+      // Rows whose label reads like a total (Total, Subtotal, Grand Total, Total Marketing...) are suggested too, even if the sums did not flag them.
+      const catIdx = b.suggestedCategoryCol ? b.suggestedCategoryCol.colIdx : null;
+      const byLabel = catIdx == null ? [] : b.dataRowIdxs.filter(ri => mbuIsTotalLikeLabel(String((ttbBu.grid[ri] || [])[catIdx] || '')));
+      const cand = [...new Set([...flagged, ...byLabel])].sort((x, y) => x - y);
+      ttbBu.cand[b.headerRowIdx] = cand; ttbBu.excl[b.headerRowIdx] = cand.slice();
     });
     ttbBuSet({ stage: 'map', msg: '' });
   } catch (e){ ttbBuSet({ stage: 'error', msg: (e && e.name === 'AbortError') ? 'The server took too long. Try again in a moment.' : 'Could not reach the server. Try again.' }); }
+}
+function ttbBuExcl(hri, ri, leaveOut){
+  const cur = new Set(ttbBu.excl[hri] || []); if (leaveOut) cur.add(ri); else cur.delete(ri); ttbBu.excl[hri] = [...cur]; ttbBuRender();
 }
 function ttbBuChoose(hri, field, colIdx){
   const roles = ttbBu.roles[hri] || (ttbBu.roles[hri] = {});
@@ -27585,14 +27593,16 @@ function ttbBuRender(){
         const req = f === 'category'; if (req && !has) missing.push(MARKETING_BUDGET_LABELS[f]);
         const isText = f === 'category' || f === 'status';
         const note = has ? `${escapeHtml(m.why)}${isText && samples(idx).length ? `<div class="hint" style="margin-top:2px;">Examples: ${samples(idx).map(x => escapeHtml(x.slice(0, 24))).join(' · ')}</div>` : ''}` : (req ? '<span style="color:#C0273C;">Required. Pick the column that holds the budget line names.</span>' : (f === 'status' ? 'No matching column found. Every line will count as Working media.' : 'No matching column found; leave blank if the file does not have it.'));
-        return `<tr><td style="white-space:nowrap;"><b>${escapeHtml(MARKETING_BUDGET_LABELS[f])}</b>${req ? ' <span style="color:#C0273C;">*</span>' : ''}</td><td><select onchange="ttbBuChoose(${b.headerRowIdx}, '${f}', this.value)" style="max-width:220px;">${colOpts(has ? idx : null)}</select></td><td><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:600;color:${bd[0]};background:${bd[1]};white-space:nowrap;">${bd[2]}</span></td><td style="font-size:0.8125rem;">${note}</td></tr>`;
+        return `<tr><td style="white-space:nowrap;"><b>${escapeHtml(MARKETING_BUDGET_LABELS[f])}</b>${req ? ' <span style="color:#C0273C;">*</span>' : ''}</td><td><select class="tbl-select" onchange="ttbBuChoose(${b.headerRowIdx}, '${f}', this.value)" style="max-width:240px;">${colOpts(has ? idx : null)}</select></td><td><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:600;color:${bd[0]};background:${bd[1]};white-space:nowrap;">${bd[2]}</span></td><td style="font-size:0.8125rem;">${note}</td></tr>`;
       }).join('');
+      const cand = (S.cand && S.cand[b.headerRowIdx]) || []; const exSet = new Set(S.excl[b.headerRowIdx] || []); const catIdx = assign.category;
+      const totalsHtml = `<div style="margin-top:12px;"><div class="ttb-tag">Total rows</div>${cand.length ? `<p class="hint" style="margin:0 0 6px;">These rows look like totals or subtotals. We suggest leaving them out so they are not counted twice. Untick any you want to keep.</p>${cand.map(ri => `<label style="display:block;font-size:0.8125rem;margin:2px 0;"><input type="checkbox" ${exSet.has(ri) ? 'checked' : ''} onchange="ttbBuExcl(${b.headerRowIdx}, ${ri}, this.checked)"> Leave out: ${escapeHtml(String((catIdx != null ? (S.grid[ri] || [])[catIdx] : '') || '').trim() || '(no name)')} <span class="hint">(row ${ri + 1})</span></label>`).join('')}` : '<p class="hint" style="margin:0;">No total or subtotal rows found.</p>'}</div>`;
       const unused = Array.from({ length: cols }, (_, i) => i).filter(i => String(head[i] || '').trim() !== '' && !usedCols.has(b.headerRowIdx + ':' + i)).map(i => escapeHtml(String(head[i]).trim()));
-      return `${(ad.blocks || []).length > 1 ? `<div class="ttb-tag" style="margin-top:10px;">Section ${bi + 1} of ${ad.blocks.length}</div>` : ''}<div style="overflow-x:auto;"><table class="data-table" style="margin-top:6px;font-size:0.8125rem;"><thead><tr><th>Our field</th><th>Your column</th><th>Match</th><th>Why</th></tr></thead><tbody>${rows}</tbody></table></div>${unused.length ? `<div class="hint" style="margin-top:6px;">Columns we are not using (${unused.length}): ${unused.join(', ')}. They stay out of the platform for now; nothing is lost from your file.</div>` : ''}`;
+      return `${(ad.blocks || []).length > 1 ? `<div class="ttb-tag" style="margin-top:10px;">Section ${bi + 1} of ${ad.blocks.length}</div>` : ''}<div style="overflow-x:auto;"><table class="data-table" style="margin-top:6px;font-size:0.8125rem;"><thead><tr><th>Our field</th><th>Your column</th><th>Match</th><th>Why</th></tr></thead><tbody>${rows}</tbody></table></div>${totalsHtml}${unused.length ? `<div class="hint" style="margin-top:6px;">Columns we are not using (${unused.length}): ${unused.join(', ')}. They stay out of the platform for now; nothing is lost from your file.</div>` : ''}`;
     }).join('');
     const ok = !missing.length && (needConfirm === 0 || S.reviewed);
     const yrs = (() => { const y0 = new Date().getFullYear(); const a = [y0 - 2, y0 - 1, y0, y0 + 1, y0 + 2]; if (!a.includes(Number(S.year))) a.push(Number(S.year)); return a.sort(); })();
-    h = box(`<div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:12px 14px;font-size:0.8125rem;"><b>How we matched your columns</b> · ${escapeHtml(S.fileName)} · ${(S.grid[(ad.blocks[0] || {}).headerRowIdx] || []).filter(c => String(c || '').trim() !== '').length} columns · <label>Budget year <select onchange="ttbBuChangeYear(this.value)">${yrs.map(y => `<option value="${y}"${y === Number(S.year) ? ' selected' : ''}>${y}</option>`).join('')}</select></label>
+    h = box(`<div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:12px 14px;font-size:0.8125rem;"><b>How we matched your columns</b> · ${escapeHtml(S.fileName)} · ${(S.grid[(ad.blocks[0] || {}).headerRowIdx] || []).filter(c => String(c || '').trim() !== '').length} columns · <label>Budget year <select class="tbl-select" style="width:auto;min-width:96px;display:inline-block;margin-left:6px;" onchange="ttbBuChangeYear(this.value)">${yrs.map(y => `<option value="${y}"${y === Number(S.year) ? ' selected' : ''}>${y}</option>`).join('')}</select></label>
       <div style="margin:6px 0;">${matched} matched · <b>${needConfirm}</b> need your confirmation · ${notFound} not found${missing.length ? ` · <span style="color:#C0273C;font-weight:600;">Still needed: ${missing.join(', ')}</span>` : ''}</div>
       ${tables}
       ${needConfirm > 0 ? `<label style="display:block;margin-top:8px;font-size:0.8125rem;"><input type="checkbox" ${S.reviewed ? 'checked' : ''} onchange="ttbBu.reviewed = this.checked; ttbBuRender();"> I've checked the rows marked “Please confirm”.</label>` : ''}
