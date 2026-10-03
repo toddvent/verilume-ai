@@ -23046,7 +23046,7 @@ function stratRenderForecast(){
     <div class="strat-fc-grid">${cards.join('') || '<p class="strat-empty">Nothing to compare yet.</p>'}</div>
     <p class="strat-foot"><span class="strat-tag ${d.confidence}">${escapeHtml(conf)}</span> Low and high assume every stage of the funnel lands at its own 25th and 75th percentile together: a planning band, not a statistical interval. Only months with planned media count.</p>
     ${stratNotOnFile(d.notOnFile)}
-    <div class="strat-actions"><button type="button" class="strat-chip" onclick="stratAsk('What ROAS should we expect from the rest of this year’s plan, and what does one more million impressions buy?')">Ask Verilume about the forecast</button></div>`;
+    <div class="strat-actions"><a class="flink" onclick="goToStep('mediaplan')">Open the Annual Plan →</a> <button type="button" class="strat-chip" onclick="stratAsk('What ROAS should we expect from the rest of this year’s plan, and what does one more million impressions buy?')">Ask Verilume about the forecast</button></div>`;
 }
 function stratAsk(q){ try { askVerilumeOpenLive(); } catch (e){} askVerilumeAsk(q); }
 
@@ -23054,7 +23054,7 @@ function stratAsk(q){ try { askVerilumeOpenLive(); } catch (e){} askVerilumeAsk(
 function stratToolsHtml(){
   const go = it => it.step ? `goToStep('${it.step}'${it.stepArg ? `,'${jsStrEscape(it.stepArg)}'` : ''})` : `goToStep('pendingFeature','${jsStrEscape(it.label)}','Strategy','strategy')`;
   const items = [
-    { label: 'Marketing Budget Upload', step: 'marketingBudgetUpload', stepArg: 'configuration' }, { label: 'Manage Budgets' }, { label: 'MMM Model Allocations Fixed Views', note: 'built in Advanced Analytics' },
+    { label: 'Annual Plan', step: 'mediaplan' }, { label: 'Marketing Budget Upload', step: 'marketingBudgetUpload', stepArg: 'configuration' }, { label: 'Manage Budgets' }, { label: 'MMM Model Allocations Fixed Views', note: 'built in Advanced Analytics' },
     { label: 'Finalized / Audited Media Plans', step: 'mediaplan' }, { label: 'Product & Destination Positioning' },
     { label: 'View My Customers', step: 'marketOptimization' }, { label: 'Competitor Tracking', step: 'competitivePositioning' },
     { label: 'Battle Brief' }, { label: 'Consumer Trends' }, { label: 'What Competitors Are Doing Now' }
