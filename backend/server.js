@@ -15567,6 +15567,42 @@ async function dqPlanWithModel(text, ctx){
     return { measure: out.measure, agg: out.agg, by: out.by || [], filters: out.filters || [], period: out.period === 'this_year' ? { kind: 'year', year: yr } : out.period === 'last_year' ? { kind: 'year', year: yr - 1 } : out.period === 'all' ? { kind: 'all' } : { kind: 'range' }, compare: out.compare_last_year ? 'priorYear' : null, top: out.top || null, order: 'desc' };
   } catch (e){ console.warn('[data-question] model planner failed:', e.message); return null; }
 }
+// ---- Ask Verilume bar: the customer-level transaction file as a context block, with a computed answer when the question names a measure.
+const dqCtxCache = new Map();
+function dqLoadCached(accountId){
+  const hit = dqCtxCache.get(accountId);
+  if (hit && Date.now() - hit.t < 60000) return hit.L;
+  const L = dqLoadTransactions(accountId); dqCtxCache.set(accountId, { t: Date.now(), L }); return L;
+}
+function dqContextBlock(accountId, question){
+  const L = dqLoadCached(accountId);
+  if (!L.txs.length) return 'TRANSACTION FILE: no customer-level transaction file is on file for this account (Train the Brain, Transactions card).';
+  const vocab = dqVocab(accountId);
+  const years = {}; L.txs.forEach(t => { const y = t.year || 'unknown'; const o = years[y] || (years[y] = { n: 0, rev: 0, sizeSum: 0, sizeN: 0 }); o.n++; if (t.revenue !== null) o.rev += t.revenue; if (t.orderSize !== null){ o.sizeSum += t.orderSize; o.sizeN++; } });
+  const yrLines = Object.keys(years).sort().map(y => { const o = years[y]; return `- ${y}: gross revenue ${dqFmt(o.rev, 'money')}, ${o.n.toLocaleString('en-US')} transactions, average ${dqFmt(o.rev / Math.max(1, o.n), 'money')} per transaction${o.sizeN ? `, average ${dqOrderLabel(vocab).toLowerCase()} ${dqFmt(o.sizeSum / o.sizeN, 'num1')}` : ''}`; });
+  const vals = dqValuesByDim(L.txs);
+  const lines = [`TRANSACTION FILE (customer-level, ${L.txs.length.toLocaleString('en-US')} counted transactions; ${dqCountingRule(L.settings)}). Revenue below is gross revenue summed over each transaction's rows. Order size means ${dqOrderLabel(vocab)}.`,
+    'By year:', ...yrLines,
+    `Product groups: ${(vals.productGroup || []).slice(0, 12).join(', ') || 'none'}. Creative focus groups: ${(vals.creativeFocus || []).slice(0, 15).join(', ') || 'none'}.`];
+  if (question){
+    try {
+      const ctx = { vocab, values: vals }; const p = dqParse(question, ctx);
+      if (p.spec.measure){
+        if (p.spec.period.kind === 'range') p.spec.period = { kind: 'all' }; // no period named: use every year on file
+        const r = dqRun(accountId, p.spec, resolveDateRange(null), L);
+        if (r && r.x){
+          const t = r.x.tables[0];
+          lines.push(`COMPUTED ANSWER TO THIS QUESTION (exact; read it back, do not recompute): ${r.x.title} for ${r.period}. ${r.x.summary}`);
+          lines.push(t.columns.map(c => c.h).join(' | '));
+          t.rows.slice(0, 25).forEach(row => lines.push(row.join(' | ')));
+          r.x.notes.slice(0, 4).forEach(n => lines.push('Note: ' + n));
+        }
+      }
+    } catch (e){ /* the by-year summary above still stands */ }
+  }
+  lines.push('RULE: for any question about revenue, transactions, order size, product group, creative focus, promo, state or generation, answer from this block. If a number is not here, say it needs the Need something we don\'t show? panel rather than guessing.');
+  return lines.join('\n');
+}
 // ==== DQ END ====
 
 function cardCellText(c){ if (c && typeof c === 'object' && 'kind' in c) return cardFmt(c.v, c.kind); return c == null ? '' : String(c); }
@@ -16844,6 +16880,7 @@ function voiceContextBundle(accountId, opts){
   blocks.push(`CAMPAIGNS BY STATUS: ${all.length ? all.map(x => `${x.status || 'unset'}=${x.n}`).join(', ') : 'none on file'}.`);
   blocks.push(`MOST URGENT (soonest assets due first):\n${urgent.length ? urgent.map(u => `- ${u.name} [${u.campaignCode || u.campaignId}] assets due ${u.assetsDue || '—'}, start ${u.startDate || '—'}, end ${u.endDate || '—'}, status ${u.status}, creative ${u.creativeDisposition || 'undecided'}`).join('\n') : '(no campaigns with due dates)'}`);
   try { blocks.push(buildAccountMonthlyKpiContextForPrompt(accountId).promptBlock); } catch (e){ blocks.push('(monthly KPI report unavailable)'); }
+  try { blocks.push(dqContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] transaction context failed:', e.message); }
   try {
     const dm = getDigitalMonthlyTotals(accountId);
     const months = Object.keys(dm.byMonth || dm.months || {}).sort().slice(-3);
