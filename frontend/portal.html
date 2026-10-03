@@ -1561,7 +1561,6 @@
   .ttb-check{flex:none;width:30px;height:30px;border:2px solid var(--ink);border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:1.125rem;font-weight:800;} .ttb-mod.done .ttb-check{background:var(--ink);color:var(--white);}
   .ttb-mod-t{flex:1;display:flex;flex-direction:column;gap:2px;} .ttb-name{font-size:1.0625rem;font-weight:600;} .ttb-benefit{font-size:0.875rem;color:var(--muted);} .ttb-chev{flex:none;font-size:1.125rem;color:var(--muted);}
   .ttb-mod-body{padding:4px 18px 20px 64px;} .ttb-mod-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:24px;} @media (max-width:860px){.ttb-mod-grid{grid-template-columns:1fr;} .ttb-mod-body{padding-left:18px;}}
-  .ttbbu-pill{display:inline-block;margin-top:4px;padding:1px 8px;border-radius:999px;font-size:0.6875rem;font-weight:600;border:1px solid var(--line);} .ttbbu-pill.hi{color:#14532d;background:#ecfdf3;border-color:#bbf7d0;} .ttbbu-pill.lo{color:#92400e;background:#fffbeb;border-color:#fde68a;} .ttbbu-pill.you{color:var(--ink);background:var(--paper-dim);}
   .ttb-tag{font-size:0.6875rem;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;} .ttb-done{font-size:0.875rem;margin:0 0 12px;font-weight:600;}
   .ttb-sample{border:1px dashed var(--line);border-radius:12px;padding:8px 16px;background:var(--paper-dim);} .ttb-srow{display:flex;justify-content:space-between;gap:16px;padding:8px 0;border-top:1px solid var(--line-hairline);font-size:0.875rem;} .ttb-srow:first-child{border-top:0;} .ttb-srow span:last-child{color:var(--muted);text-align:right;} .ttb-head{font-weight:700;color:var(--muted);font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.04em;} .ttb-sw{display:inline-flex;gap:6px;} .ttb-sw i{display:inline-block;width:26px;height:26px;border-radius:6px;border:1px solid var(--line);}
   .ttb-opts{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px;align-items:center;} .ttb-viewrow{margin-top:14px;} .ttb-view[disabled]{opacity:.45;cursor:not-allowed;} .ttb-used{display:inline-block;margin:0;}
@@ -27359,7 +27358,7 @@ const TTB_CFG = {
   competitivePositioning: { manual: { step: 'competitivePositioning' }, view: { tab: 'strategy', label: 'Strategy' } },
   brandWritingSamples: { upload: { formats: 'Word, PDF or text files', go: 'brandWritingSamples' }, manual: { step: 'brandWritingSamples' }, used: 'Used by Copywriting' },
   voice: { manual: { step: 'voice' }, view: { tab: 'brand', label: 'Customer Experiences' } },
-  marketingBudgetUpload: { upload: { formats: '.xlsx or .csv, in any layout. Choose the file and check the column mapping. Viewing and changing the budget happens in the Annual Plan.', direct: 'ttbBuPick', sample: { name: 'marketing-budget-sample.csv', cols: ['Category', 'Status', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Total'], rows: [['Paid Social', 'Working', 24000, 26000, 30000, 30000, 28000, 26000, 24000, 24000, 30000, 32000, 34000, 20000, 328000], ['Agency fees', 'Non-Working', 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 96000]] } }, manual: { step: 'marketingBudgetUpload', arg: 'configuration' }, view: { step: 'mediaplan', label: 'Budget and Plan' } },
+  marketingBudgetUpload: { upload: { formats: '.xlsx or .csv, in any layout. Excel or CSV, in any layout.', direct: 'ttbBuPick', sample: { name: 'marketing-budget-sample.csv', cols: ['Category', 'Status', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Total'], rows: [['Paid Social', 'Working', 24000, 26000, 30000, 30000, 28000, 26000, 24000, 24000, 30000, 32000, 34000, 20000, 328000], ['Agency fees', 'Non-Working', 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 96000]] } }, manual: { step: 'marketingBudgetUpload', arg: 'configuration' }, view: { step: 'mediaplan', label: 'Budget and Plan' } },
   bulkUpload: { upload: { formats: '.xlsx or .csv, one row per month and product group', handler: 'mbuHandleTxnFile', cards: ['mbuTransactionsCard'], sample: { name: 'transactions-by-month-sample.csv', cols: ['Year', 'Month', 'Product Group', 'Transactions', 'Revenue'], rows: [[2026, 'Jan', 'Mediterranean', 42, 268000], [2026, 'Feb', 'Mediterranean', 51, 322500]] } }, manual: { cards: ['mbuTransactionsCard'] }, integ: true, view: { tab: 'strategy', label: 'Strategy' } },
   partnerIntegrations: { integ: true, manual: { note: 'Prefer to type it? Every number on this page has an Add Manually option.' }, view: { tab: 'dataScientist', label: 'Media Science' } },
   team: { manual: { step: 'team' }, view: { step: 'team', label: 'Team' } },
@@ -27450,8 +27449,8 @@ function ttbUploadOpen(key){
 // Self-contained on purpose: it borrows nothing from the Annual Plan page. The file picker opens straight from the button, the Brain
 // proposes which column is which (High or Low confidence), the client edits the second column if needed, and View Budget saves the
 // mapping and opens the Annual Plan on the file's year. Category review and everything after it lives in the Annual Plan.
-const ttbBu = { stage: 'idle', fileName: '', year: null, yearChoices: [], grid: null, dataUrl: null, analysis: null, roles: {}, excl: {}, edited: {}, upId: null, msg: '' };
-function ttbBuReset(){ Object.assign(ttbBu, { stage: 'idle', fileName: '', year: null, yearChoices: [], grid: null, dataUrl: null, analysis: null, roles: {}, excl: {}, edited: {}, upId: null, msg: '' }); }
+const ttbBu = { stage: 'idle', fileName: '', year: null, yearChoices: [], grid: null, dataUrl: null, analysis: null, roles: {}, excl: {}, edited: {}, upId: null, msg: '', reviewed: false, open: 0 };
+function ttbBuReset(){ Object.assign(ttbBu, { stage: 'idle', fileName: '', year: null, yearChoices: [], grid: null, dataUrl: null, analysis: null, roles: {}, excl: {}, edited: {}, upId: null, msg: '', reviewed: false, open: 0 }); }
 function ttbBuPick(){
   ttb.open = 'marketingBudgetUpload'; ttb.manual.marketingBudgetUpload = true;
   const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.csv,.xlsx'; inp.style.display = 'none';
@@ -27496,7 +27495,7 @@ async function ttbBuAnalyze(){
       ttbBuSet({ stage: 'error', msg: ad.error || 'The file could not be analyzed.' }); return;
     }
     if (ad.layout === 'unrecognized'){ ttbBuSet({ stage: 'error', msg: ad.note || 'The Brain could not find budget columns in this file. Check that it has a header row with the months.' }); return; }
-    ttbBu.analysis = ad; ttbBu.upId = ad.id; ttbBu.roles = {}; ttbBu.excl = {}; ttbBu.edited = {};
+    ttbBu.analysis = ad; ttbBu.reviewed = false; ttbBu.upId = ad.id; ttbBu.roles = {}; ttbBu.excl = {}; ttbBu.edited = {};
     (ad.blocks || []).forEach(b => {
       ttbBu.roles[b.headerRowIdx] = mbuInitColumnRoles(b);
       ttbBu.excl[b.headerRowIdx] = [...(b.likelySubtotalRowIdxs || []), ...((ad.likelyGrandTotalRowIdxs || []).filter(i => b.dataRowIdxs.includes(i)))];
@@ -27504,67 +27503,101 @@ async function ttbBuAnalyze(){
     ttbBuSet({ stage: 'map', msg: '' });
   } catch (e){ ttbBuSet({ stage: 'error', msg: (e && e.name === 'AbortError') ? 'The server took too long. Try again in a moment.' : 'Could not reach the server. Try again.' }); }
 }
-function ttbBuConfidence(b, idx, role){
-  if (!role) return '';
-  if (ttbBu.edited[b.headerRowIdx + ':' + idx]) return 'you';
-  if (b.monthAndTotalMap && b.monthAndTotalMap[idx]) return 'high';
-  const h = String((ttbBu.grid[b.headerRowIdx] || [])[idx] || '');
-  if (role === 'category') return /categor|line item|channel|media|description|item/i.test(h) ? 'high' : 'low';
-  if (role === 'status') return /working|status|type/i.test(h) ? 'high' : 'low';
-  return 'low';
-}
-function ttbBuRole(hri, idx, val){
+function ttbBuChoose(hri, field, colIdx){
   const roles = ttbBu.roles[hri] || (ttbBu.roles[hri] = {});
-  if (val) Object.keys(roles).forEach(k => { if (roles[k] === val) delete roles[k]; });
-  if (val) roles[idx] = val; else delete roles[idx];
-  ttbBu.edited[hri + ':' + idx] = true; ttbBuRender();
+  Object.keys(roles).forEach(k => { if (roles[k] === field) delete roles[k]; });
+  if (colIdx !== '') { Object.keys(roles).forEach(k => { if (Number(k) === Number(colIdx)) delete roles[k]; }); roles[Number(colIdx)] = field; }
+  ttbBu.edited[hri + ':' + field] = true; ttbBuRender();
+}
+// How sure the Brain is about each field: header words that match the field are High; a guess from what the column holds needs confirming.
+function ttbBuMatch(b, field, colIdx){
+  const head = String((ttbBu.grid[b.headerRowIdx] || [])[colIdx] || '').trim() || '(no heading)';
+  if (ttbBu.edited[b.headerRowIdx + ':' + field]) return { tier: 'chosen', why: 'you chose this column' };
+  if (b.monthAndTotalMap && b.monthAndTotalMap[colIdx] && b.monthAndTotalMap[colIdx].key === field) return { tier: 'high', why: `The heading “${head}” matches ${MARKETING_BUDGET_LABELS[field]}.` };
+  if (field === 'category'){ const sg = b.suggestedCategoryCol; const strong = /categor|line item|channel|media|description|item/i.test(head); return { tier: strong ? 'high' : 'medium', why: (sg && sg.colIdx === colIdx && sg.reason) ? sg.reason : `Heading “${head}”.` }; }
+  if (field === 'status'){ const sg = b.suggestedStatusCol; const strong = /working|status|type/i.test(head); return { tier: strong ? 'high' : 'medium', why: (sg && sg.colIdx === colIdx && sg.reason) ? sg.reason : `Heading “${head}”.` }; }
+  return { tier: 'medium', why: `Heading “${head}”.` };
 }
 function ttbBuCancel(){
   const id = ttbBu.upId; ttbBuReset(); ttbBuRender();
   if (id) authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(id)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmDelete: false }) }).catch(() => {});
 }
+async function ttbBuChangeYear(y){
+  const id = ttbBu.upId; ttbBu.year = Number(y); ttbBu.upId = null;
+  if (id) { try { await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(id)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmDelete: false }) }); } catch (e){} }
+  ttbBuAnalyze();
+}
+// Submit: save the approved column mapping, then let the Brain place each budget line in our categories so the budget is ready in the Annual Plan.
 async function ttbBuApply(){
   const ad = ttbBu.analysis; if (!ad) return;
+  const base = `${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(ttbBu.upId)}`;
   const blocks = (ad.blocks || []).map(b => {
     const roles = ttbBu.roles[b.headerRowIdx] || {}; const monthCols = {}; let totalColIdx = null, categoryColIdx = null, statusColIdx = null;
     Object.entries(roles).forEach(([i, r]) => { const c = Number(i); if (r === 'total') totalColIdx = c; else if (r === 'category') categoryColIdx = c; else if (r === 'status') statusColIdx = c; else if (MARKETING_BUDGET_MONTHS_CLIENT.includes(r)) monthCols[r] = c; });
     return { headerRowIdx: b.headerRowIdx, categoryColIdx, statusColIdx, monthCols, totalColIdx, excludeRowIdxs: ttbBu.excl[b.headerRowIdx] || [] };
   });
+  const keep = { fileName: ttbBu.fileName, year: ttbBu.year };
   ttbBuSet({ stage: 'saving', msg: 'Saving your budget…' });
   try {
-    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(ttbBu.upId)}/confirm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 60000, body: JSON.stringify({ blocks }) });
+    const r = await authedFetch(`${base}/confirm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 60000, body: JSON.stringify({ blocks }) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok){ ttbBuSet({ stage: 'map', msg: d.error || 'The budget could not be saved. Check the columns and try again.' }); return; }
-    const id = ttbBu.upId, year = ttbBu.year; ttbBuReset();
-    mbuSelectedYear = year; mbuSelectedScope = 'domestic';
-    goToStep('mediaplan');
-    try { await mbuLoadYearsList(); await mbuOpenExistingUpload(id); } catch (e){ console.warn('ttbBuApply: opening the budget failed', e); }
+    ttbBuSet({ msg: 'Placing each budget line in our categories…' });
+    let open = 0;
+    try {
+      const cm = await authedFetch(`${base}/category-mapping`); const cd = cm.ok ? await cm.json() : null;
+      const mapping = {}; (cd && cd.workingCategories || []).forEach(c => { mapping[c.category] = c.currentVerilumeCategory || (c.suggested && c.suggested.matched ? c.suggested.category : ''); });
+      const fin = await authedFetch(`${base}/confirm-categories`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 60000, body: JSON.stringify({ mapping }) });
+      const fd = await fin.json().catch(() => ({}));
+      open = fin.ok && fd.available ? 0 : ((fd.stillUnmapped || []).length || 1);
+      if (fin.ok && Array.isArray(fd.activeChannels)){ state.activeChannels = new Set(fd.activeChannels); if (typeof mbuRenderActiveChannels === 'function') mbuRenderActiveChannels(); }
+    } catch (e){ open = 1; }
+    if (typeof mbuLoadYearsList === 'function') mbuLoadYearsList();
+    ttbBuReset(); ttbBu.stage = 'done'; ttbBu.fileName = keep.fileName; ttbBu.year = keep.year; ttbBu.open = open;
+    ttbBuRender();
+    try { ttbLoad(); } catch (e){}
   } catch (e){ ttbBuSet({ stage: 'map', msg: 'Could not reach the server. Nothing was saved.' }); }
 }
+async function ttbBuOpenPlan(){ const y = Number(ttbBu.year) || mbuSelectedYear; mbuSelectedYear = y; mbuSelectedScope = 'domestic'; goToStep('mediaplan'); try { await mbuLoadYearsList(); setMbuYear(y); } catch (e){} }
 function ttbBuRender(){
   const slot = document.getElementById('ttbSlot-marketingBudgetUpload'); if (!slot) return;
   const S = ttbBu; let h = '';
   const note = (t, bad) => `<p class="hint" style="margin:0 0 10px;${bad ? 'color:var(--advocacy);' : ''}">${escapeHtml(t)}</p>`;
-  if (S.stage === 'idle') h = `<div class="ttb-manual"><div class="ttb-tag">Marketing budget</div>${note('Choose Upload File above to start. The Brain reads your file, shows how it matched your columns to ours, and you open the budget in the Annual Plan.')}<button type="button" class="btn-ghost" onclick="ttbDownloadSample('marketingBudgetUpload')">Download sample file</button></div>`;
-  else if (S.stage === 'reading' || S.stage === 'saving') h = `<div class="ttb-manual"><div class="ttb-tag">${escapeHtml(S.fileName)}</div>${note(S.msg)}</div>`;
-  else if (S.stage === 'year') h = `<div class="ttb-manual"><div class="ttb-tag">${escapeHtml(S.fileName)}</div>${note(S.msg)}<div class="btn-row" style="gap:10px;">${S.yearChoices.map(y => `<button type="button" class="btn-ghost" onclick="ttbBuYear(${y})">${y}</button>`).join('')}<button type="button" class="btn-ghost" onclick="ttbBuCancel()">Cancel</button></div></div>`;
-  else if (S.stage === 'exists') h = `<div class="ttb-manual"><div class="ttb-tag">${escapeHtml(S.fileName)}</div>${note(S.msg)}<p class="hint" style="margin:0 0 12px;">To change it, open it in the Annual Plan. To load this file instead, delete that budget there first.</p><div class="btn-row" style="gap:10px;"><button type="button" class="btn-primary" onclick="mbuSelectedYear=${Number(S.year)}; goToStep('mediaplan')">Open ${Number(S.year)} in the Annual Plan →</button><button type="button" class="btn-ghost" onclick="ttbBuCancel()">Choose a different file</button></div></div>`;
-  else if (S.stage === 'error') h = `<div class="ttb-manual"><div class="ttb-tag">${escapeHtml(S.fileName || 'Upload')}</div>${note(S.msg, true)}<div class="btn-row"><button type="button" class="btn-ghost" onclick="ttbBuCancel()">Start over</button></div></div>`;
+  const box = inner => `<div class="ttb-manual">${inner}</div>`;
+  if (S.stage === 'idle') h = '';
+  else if (S.stage === 'reading' || S.stage === 'saving') h = box(`<div class="ttb-tag">${escapeHtml(S.fileName)}</div>${note(S.msg)}`);
+  else if (S.stage === 'year') h = box(`<div class="ttb-tag">${escapeHtml(S.fileName)}</div>${note(S.msg)}<div class="btn-row" style="gap:10px;">${S.yearChoices.map(y => `<button type="button" class="btn-ghost" onclick="ttbBuYear(${y})">${y}</button>`).join('')}<button type="button" class="btn-ghost" onclick="ttbBuCancel()">Cancel</button></div>`);
+  else if (S.stage === 'exists') h = box(`<div class="ttb-tag">${escapeHtml(S.fileName)}</div>${note(S.msg)}<p class="hint" style="margin:0 0 12px;">To change it, open it in the Annual Plan. To load this file instead, delete that budget there first.</p><div class="btn-row" style="gap:10px;"><button type="button" class="btn-primary" onclick="ttbBuOpenPlan()">Open ${Number(S.year)} in the Annual Plan →</button><button type="button" class="btn-ghost" onclick="ttbBuCancel()">Choose a different file</button></div>`);
+  else if (S.stage === 'error') h = box(`<div class="ttb-tag">${escapeHtml(S.fileName || 'Upload')}</div>${note(S.msg, true)}<div class="btn-row"><button type="button" class="btn-ghost" onclick="ttbBuCancel()">Start over</button></div>`);
+  else if (S.stage === 'done') h = box(`<div class="ttb-tag">${escapeHtml(S.fileName)} · ${Number(S.year)} budget</div><p style="margin:0 0 4px;font-weight:700;color:var(--cx);">✓ Submitted. The ${Number(S.year)} budget is now in the Annual Plan working area.</p><p class="hint" style="margin:0 0 14px;">Mapped and ready. View the numbers, change them and add categories in the Annual Plan.</p>${S.open ? note(`${S.open} budget line${S.open === 1 ? '' : 's'} could not be placed in a category automatically. Finish them in the Annual Plan.`, true) : ''}<div class="btn-row" style="gap:10px;"><button type="button" class="btn-primary" onclick="ttbBuOpenPlan()">View in Annual Plan →</button><button type="button" class="btn-ghost" onclick="ttbBuCancel()">Upload another file</button></div>`);
   else if (S.stage === 'map'){
-    const ad = S.analysis; const pill = c => c === 'high' ? '<span class="ttbbu-pill hi">High confidence</span>' : c === 'low' ? '<span class="ttbbu-pill lo">Low confidence, please check</span>' : c === 'you' ? '<span class="ttbbu-pill you">Set by you</span>' : '';
-    let canView = true; let warn = '';
-    const cards = (ad.blocks || []).map((b, bi) => {
+    const ad = S.analysis; const FIELDS = ['category', 'status', ...MARKETING_BUDGET_MONTHS_CLIENT, 'total'];
+    let missing = [], needConfirm = 0, matched = 0, notFound = 0; const usedCols = new Set();
+    const tables = (ad.blocks || []).map((b, bi) => {
       const roles = S.roles[b.headerRowIdx] || {}; const head = S.grid[b.headerRowIdx] || [];
       const cols = Math.max(head.length, ...b.dataRowIdxs.map(ri => (S.grid[ri] || []).length), 1);
-      const vals = Object.values(roles);
-      if (!vals.includes('category')){ canView = false; warn = 'Choose which column holds the budget line names (Category / Line Item).'; }
-      else if (!vals.some(v => MARKETING_BUDGET_MONTHS_CLIENT.includes(v)) && !vals.includes('total')){ canView = false; warn = 'Choose at least one month column or the Total column.'; }
-      const rows = Array.from({ length: cols }, (_, i) => i).filter(i => String(head[i] || '').trim() !== '' || roles[i]).map(i => {
-        const role = roles[i] || ''; return `<tr><td style="padding:8px 10px;">${escapeHtml(String(head[i] || '').trim() || '(no heading)')}<div>${pill(ttbBuConfidence(b, i, role))}</div></td><td style="padding:8px 10px;"><select class="tbl-select" aria-label="Our field for ${escapeHtml(String(head[i] || 'this column'))}" onchange="ttbBuRole(${b.headerRowIdx}, ${i}, this.value)">${mbuRoleOptionsHtml(role).replace('— ignore this column —', 'Not used')}</select></td></tr>`;
+      const colOpts = sel => `<option value="">— not in this file —</option>` + Array.from({ length: cols }, (_, i) => i).filter(i => String(head[i] || '').trim() !== '').map(i => `<option value="${i}"${sel === i ? ' selected' : ''}>${escapeHtml(String(head[i]).trim())}</option>`).join('');
+      const assign = {}; Object.entries(roles).forEach(([i, r]) => { assign[r] = Number(i); usedCols.add(b.headerRowIdx + ':' + i); });
+      const samples = idx => { const out = []; for (const ri of b.dataRowIdxs){ const v = String((S.grid[ri] || [])[idx] || '').trim(); if (v && !out.includes(v)) out.push(v); if (out.length >= 3) break; } return out; };
+      const rows = FIELDS.map(f => {
+        const idx = assign[f]; const has = idx != null; const m = has ? ttbBuMatch(b, f, idx) : null; const bd = MBU_GB_BADGE[has ? m.tier : 'none'];
+        if (has && m.tier === 'high') matched++; else if (has && m.tier === 'chosen') matched++; else if (has) needConfirm++; else notFound++;
+        const req = f === 'category'; if (req && !has) missing.push(MARKETING_BUDGET_LABELS[f]);
+        const isText = f === 'category' || f === 'status';
+        const note = has ? `${escapeHtml(m.why)}${isText && samples(idx).length ? `<div class="hint" style="margin-top:2px;">Examples: ${samples(idx).map(x => escapeHtml(x.slice(0, 24))).join(' · ')}</div>` : ''}` : (req ? '<span style="color:#C0273C;">Required. Pick the column that holds the budget line names.</span>' : (f === 'status' ? 'No matching column found. Every line will count as Working media.' : 'No matching column found; leave blank if the file does not have it.'));
+        return `<tr><td style="white-space:nowrap;"><b>${escapeHtml(MARKETING_BUDGET_LABELS[f])}</b>${req ? ' <span style="color:#C0273C;">*</span>' : ''}</td><td><select onchange="ttbBuChoose(${b.headerRowIdx}, '${f}', this.value)" style="max-width:220px;">${colOpts(has ? idx : null)}</select></td><td><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:600;color:${bd[0]};background:${bd[1]};white-space:nowrap;">${bd[2]}</span></td><td style="font-size:0.8125rem;">${note}</td></tr>`;
       }).join('');
-      return `<div class="strat-card" style="margin:0 0 12px;">${(ad.blocks || []).length > 1 ? `<div class="ttb-tag">Section ${bi + 1} of ${ad.blocks.length}</div>` : ''}<div class="strat-tablewrap"><table class="strat-table"><thead><tr><th style="text-align:left;">Your column</th><th style="text-align:left;">Our field</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+      const unused = Array.from({ length: cols }, (_, i) => i).filter(i => String(head[i] || '').trim() !== '' && !usedCols.has(b.headerRowIdx + ':' + i)).map(i => escapeHtml(String(head[i]).trim()));
+      return `${(ad.blocks || []).length > 1 ? `<div class="ttb-tag" style="margin-top:10px;">Section ${bi + 1} of ${ad.blocks.length}</div>` : ''}<div style="overflow-x:auto;"><table class="data-table" style="margin-top:6px;font-size:0.8125rem;"><thead><tr><th>Our field</th><th>Your column</th><th>Match</th><th>Why</th></tr></thead><tbody>${rows}</tbody></table></div>${unused.length ? `<div class="hint" style="margin-top:6px;">Columns we are not using (${unused.length}): ${unused.join(', ')}. They stay out of the platform for now; nothing is lost from your file.</div>` : ''}`;
     }).join('');
-    h = `<div class="ttb-manual"><div class="ttb-tag">${escapeHtml(S.fileName)} · ${Number(S.year)} budget</div>${note('Here is how the Brain matched your columns to ours. Change any field on the right if it got one wrong. Total and subtotal rows are left out automatically.')}${cards}${S.msg ? note(S.msg, true) : ''}${warn ? note(warn, true) : ''}<div class="btn-row" style="gap:10px;"><button type="button" class="btn-primary" ${canView ? '' : 'disabled aria-disabled="true"'} onclick="ttbBuApply()">View Budget →</button><button type="button" class="btn-ghost" onclick="ttbBuCancel()">Cancel</button></div></div>`;
+    const ok = !missing.length && (needConfirm === 0 || S.reviewed);
+    const yrs = (() => { const y0 = new Date().getFullYear(); const a = [y0 - 2, y0 - 1, y0, y0 + 1, y0 + 2]; if (!a.includes(Number(S.year))) a.push(Number(S.year)); return a.sort(); })();
+    h = box(`<div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:12px 14px;font-size:0.8125rem;"><b>How we matched your columns</b> · ${escapeHtml(S.fileName)} · ${(S.grid[(ad.blocks[0] || {}).headerRowIdx] || []).filter(c => String(c || '').trim() !== '').length} columns · <label>Budget year <select onchange="ttbBuChangeYear(this.value)">${yrs.map(y => `<option value="${y}"${y === Number(S.year) ? ' selected' : ''}>${y}</option>`).join('')}</select></label>
+      <div style="margin:6px 0;">${matched} matched · <b>${needConfirm}</b> need your confirmation · ${notFound} not found${missing.length ? ` · <span style="color:#C0273C;font-weight:600;">Still needed: ${missing.join(', ')}</span>` : ''}</div>
+      ${tables}
+      ${needConfirm > 0 ? `<label style="display:block;margin-top:8px;font-size:0.8125rem;"><input type="checkbox" ${S.reviewed ? 'checked' : ''} onchange="ttbBu.reviewed = this.checked; ttbBuRender();"> I've checked the rows marked “Please confirm”.</label>` : ''}
+      ${S.msg ? note(S.msg, true) : ''}
+      <div class="btn-row" style="margin-top:10px;gap:10px;"><button type="button" class="btn-primary" ${ok ? '' : 'disabled aria-disabled="true" style="opacity:0.5;"'} onclick="ttbBuApply()">Submit</button><button type="button" class="btn-ghost" onclick="ttbBuCancel()">Cancel</button></div></div>`);
   }
   slot.innerHTML = h;
 }
@@ -27600,7 +27633,7 @@ function ttbModuleHtml(d, i){
   const manualOpen = open && ttb.manual[i.step];
   const manualBody = manualOpen ? (c.manual && c.manual.profile ? ttbProfileManualHtml(d) : `<div id="ttbSlot-${i.step}" class="ttb-slot"></div>`) : '';
   const inlineSite = i.step === 'companyProfile' ? ttbQuickStartHtml(d, true) : '';
-  const body = open ? `<div class="ttb-mod-body">${status}<div class="ttb-mod-grid"><div><div class="ttb-tag">Example of what the Brain keeps</div><div class="ttb-sample">${sample}</div></div><div><div class="ttb-tag">Add it</div>${inlineSite}<div class="ttb-opts">${btns.join('')}</div><div class="ttb-viewrow">${viewHtml}</div></div></div>${manualBody ? `<div class="ttb-manual-wrap">${manualBody}</div>` : ''}</div>` : '';
+  const body = open ? `<div class="ttb-mod-body">${status}<div class="ttb-mod-grid"><div><div class="ttb-tag">Example of what the Brain keeps</div><div class="ttb-sample">${sample}</div></div><div><div class="ttb-tag">Add it</div>${inlineSite}<div class="ttb-opts">${btns.join('')}</div>${c.upload && c.upload.direct ? `<p class="hint" style="margin:10px 0 0;">${escapeHtml(c.upload.formats)} <a class="flink" onclick="ttbDownloadSample('${i.step}')">Download a sample file</a></p>` : ''}<div class="ttb-viewrow">${viewHtml}</div></div></div>${manualBody ? `<div class="ttb-manual-wrap">${manualBody}</div>` : ''}</div>` : '';
   return `<div class="ttb-mod ${i.done ? 'done' : ''} ${open ? 'open' : ''}"><button type="button" class="ttb-mod-h" aria-expanded="${open}" onclick="ttbToggle('${i.step}')"><span class="ttb-check" aria-label="${i.done ? 'Done' : 'Not done yet'}">${i.done ? '&#10003;' : ''}</span><span class="ttb-mod-t"><span class="ttb-name">${escapeHtml(i.label)}</span><span class="ttb-benefit">${escapeHtml(cfg.benefit)}</span></span><span class="ttb-chev" aria-hidden="true">${open ? '&#9652;' : '&#9662;'}</span></button>${body}</div>`;
 }
 function ttbSetupHtml(d){
