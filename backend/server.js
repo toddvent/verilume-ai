@@ -2087,6 +2087,34 @@ function uploadReceiptOut(r){
   const j = v => { try { return v ? JSON.parse(v) : null; } catch (e){ return null; } };
   return { id: r.id, kind: r.kind, batchId: aliasVal(r, 'batchId'), fileName: aliasVal(r, 'fileName'), createdAt: aliasVal(r, 'createdAt'), file: j(aliasVal(r, 'fileJson')), database: j(aliasVal(r, 'dbJson')), matched: r.matched == null ? null : Number(r.matched), note: r.note };
 }
+
+// ---- Monthly uploaders (lead counts, digital performance, website engagement): all-or-nothing commit and a receipt.
+// stmts: every delete and upsert for the upload, run as ONE transaction (db.batch), so a failure leaves the live data untouched.
+// fileMap: Map(key -> { measureKey: number }) of what the upload carried (after the same de-duplication the save applies).
+// readBack(): Map(key -> { measureKey: number }) of what the live table holds for those keys after the commit.
+// The receipt puts the two side by side: rows found, and the sum of each measure over the same keys.
+function commitMonthlyUpload(accountId, kind, fileName, stmts, fileMap, readBack, measures, skipped, now){
+  try { db.batch(stmts, 120000); }
+  catch (e){ console.error(`[${kind}] commit failed, live rows untouched:`, e.message); return { error: `The upload was not saved: ${e.message}. Your existing data is unchanged.` }; }
+  let dbMap = new Map(); let readFailed = false;
+  try { dbMap = readBack(); } catch (e){ readFailed = true; console.warn(`[${kind}] receipt read-back failed:`, e.message); }
+  const sumOver = (map, keys, mk) => { let t = 0; keys.forEach(k => { const o = map.get(k); if (o && Number.isFinite(o[mk])) t += o[mk]; }); return Math.round(t * 100) / 100; };
+  const fileKeys = Array.from(fileMap.keys()); const found = fileKeys.filter(k => dbMap.has(k));
+  const fileSide = { rows: fileMap.size, skipped: skipped || 0, measures: measures.map(m => ({ key: m.key, label: m.label, money: !!m.money, v: sumOver(fileMap, fileKeys, m.key) })) };
+  const dbSide = { rows: found.length, measures: measures.map(m => ({ key: m.key, label: m.label, money: !!m.money, v: sumOver(dbMap, found, m.key) })) };
+  const diffs = [];
+  if (readFailed) diffs.push('the database could not be read back to compare');
+  else {
+    if (fileSide.rows !== dbSide.rows) diffs.push(`rows: file ${fileSide.rows.toLocaleString('en-US')}, database ${dbSide.rows.toLocaleString('en-US')}`);
+    fileSide.measures.forEach((m, i) => { if (Math.abs(m.v - dbSide.measures[i].v) > 0.01) diffs.push(`${m.label}: file ${m.v.toLocaleString('en-US')}, database ${dbSide.measures[i].v.toLocaleString('en-US')}`); });
+  }
+  const matched = diffs.length ? 0 : 1;
+  const note = diffs.length ? diffs.join('; ') : `Every row and total in the file matches the database.${skipped ? ' ' + skipped + ' row' + (skipped === 1 ? ' was' : 's were') + ' left out (no valid year and month, or a repeat of another row).' : ''}`;
+  const id = `rcpt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+  try { db.prepare('INSERT INTO upload_receipts (id, accountId, kind, "batchId", "fileName", "createdAt", "fileJson", "dbJson", matched, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, accountId, kind, null, fileName || null, now, JSON.stringify(fileSide), JSON.stringify(dbSide), matched, note); }
+  catch (e){ console.warn(`[${kind}] could not store the receipt:`, e.message); }
+  return { receipt: { id, kind, batchId: null, fileName: fileName || null, createdAt: now, file: fileSide, database: dbSide, matched, note } };
+}
 ensureColumn('account_transactions_monthly', 'guests', 'REAL');
 ensureColumn('account_transactions_monthly', 'netRevenue', 'REAL');
 ensureColumn('account_transactions_monthly', 'attributableTransactions', 'REAL');
@@ -16752,7 +16780,7 @@ async function getWelcome(accountId, opts){
 // DATA_CATALOG is version 1 of the data catalog: one entry per data set with its owner dashboard, grain, keywords and status.
 // "Data consumed" is a live view of it, and the forecast, Ask the Brain and voice lookups can route through the same list.
 const DATA_CATALOG = [
-  { key: 'upload_receipts', label: 'Upload receipts', table: 'upload_receipts', period: null, dashboard: 'Train the Brain', grain: 'one per customer-file upload', kind: 'manual', keywords: ['upload receipt', 'file vs database', 'row counts', 'data trust', 'integrity'], usedBy: [], status: 'current' },
+  { key: 'upload_receipts', label: 'Upload receipts', table: 'upload_receipts', period: null, dashboard: 'Train the Brain', grain: 'one per file upload (customer file, lead counts, digital performance, website engagement)', kind: 'manual', keywords: ['upload receipt', 'file vs database', 'row counts', 'data trust', 'integrity'], usedBy: [], status: 'current' },
   { key: 'dq_buckets', label: 'Approved question groups', table: 'account_dq_buckets', period: null, dashboard: 'Train the Brain', grain: 'one approved set of order-size (or lead-time) group edges per account', kind: 'manual', keywords: ['order size groups', 'buckets', 'trip days groups', 'question groups'], usedBy: [], status: 'current' },
   { key: 'upload_mappings', label: 'Upload column mappings', table: 'account_upload_mappings', period: null, dashboard: 'Train the Brain', grain: 'one approved mapping per account and file type', kind: 'manual', keywords: ['column mapping', 'file columns', 'approved mapping', 'upload format'], usedBy: [], status: 'current' },
   { key: 'transactions', label: 'Monthly transactions', table: 'account_transactions_monthly', period: 'ym', dashboard: 'Strategy', grain: 'month by product group', kind: 'manual', keywords: ['revenue', 'transactions', 'sales', 'bookings revenue', 'aov'], usedBy: ['forecast', 'ask', 'voice', 'brain dump'], status: 'current' },
@@ -36253,27 +36281,32 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       }
       if (!clean.length) return sendJson(res, 400, { error: 'no rows had a valid year and month' });
       const replace = Array.isArray(body.replace) ? body.replace : [];
+      const stmts = [];
       replace.forEach(rp => {
         const y = parseInt(rp.year, 10), m = parseInt(rp.month, 10);
         if (!(y >= 2000) || !(m >= 1 && m <= 12)) return;
-        if (rp.sourceSheet) db.prepare('DELETE FROM account_digital_performance WHERE accountId = ? AND year = ? AND month = ? AND grain = ? AND "sourceSheet" = ?').run(accountId, y, m, rp.grain || 'overview', String(rp.sourceSheet));
-        else db.prepare('DELETE FROM account_digital_performance WHERE accountId = ? AND year = ? AND month = ? AND grain = ?').run(accountId, y, m, rp.grain || 'overview');
+        if (rp.sourceSheet) stmts.push({ sql: 'DELETE FROM account_digital_performance WHERE accountId = ? AND year = ? AND month = ? AND grain = ? AND "sourceSheet" = ?', params: [accountId, y, m, rp.grain || 'overview', String(rp.sourceSheet)] });
+        else stmts.push({ sql: 'DELETE FROM account_digital_performance WHERE accountId = ? AND year = ? AND month = ? AND grain = ?', params: [accountId, y, m, rp.grain || 'overview'] });
       });
-      const upsert = db.prepare(`INSERT INTO account_digital_performance (id, accountId, year, month, grain, channel, "sourceChannel", publisher, tactic, "keywordType", region, "creativeOffer", impressions, clicks, spend, leads, calls, "leadsByFormJson", "sourceSheet", updatedAt)
+      const upsertSql = `INSERT INTO account_digital_performance (id, accountId, year, month, grain, channel, "sourceChannel", publisher, tactic, "keywordType", region, "creativeOffer", impressions, clicks, spend, leads, calls, "leadsByFormJson", "sourceSheet", updatedAt)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(accountId, year, month, grain, channel, publisher, tactic, "keywordType", region, "creativeOffer") DO UPDATE SET
           "sourceChannel" = excluded."sourceChannel", impressions = excluded.impressions, clicks = excluded.clicks, spend = excluded.spend, leads = excluded.leads, calls = excluded.calls,
-          "leadsByFormJson" = excluded."leadsByFormJson", "sourceSheet" = excluded."sourceSheet", updatedAt = excluded.updatedAt`);
+          "leadsByFormJson" = excluded."leadsByFormJson", "sourceSheet" = excluded."sourceSheet", updatedAt = excluded.updatedAt`;
       let saved = 0;
-      const seen = new Set();
+      const fileMap = new Map(); const dk = c => [c.year, c.month, c.grain, c.channel, c.publisher, c.tactic, c.keywordType, c.region, c.creativeOffer].join('||');
       clean.forEach(c => {
-        const k = [c.year, c.month, c.grain, c.channel, c.publisher, c.tactic, c.keywordType, c.region, c.creativeOffer].join('||');
-        if (seen.has(k)) return; // an export that repeats a row (February twice) counts once
-        seen.add(k);
-        upsert.run(generateId('DGP'), accountId, c.year, c.month, c.grain, c.channel, c.sourceChannel, c.publisher, c.tactic, c.keywordType, c.region, c.creativeOffer, c.impressions, c.clicks, c.spend, c.leads, c.calls, c.leadsByFormJson, c.sourceSheet, now);
+        const k = dk(c);
+        if (fileMap.has(k)) return; // an export that repeats a row (February twice) counts once
+        const ov = c.grain === 'overview'; // the totals the dashboards read are the overview rows
+        fileMap.set(k, { spend: ov ? (c.spend || 0) : 0, impressions: ov ? (c.impressions || 0) : 0, leads: ov ? (c.leads || 0) : 0 });
+        stmts.push({ sql: upsertSql, params: [generateId('DGP'), accountId, c.year, c.month, c.grain, c.channel, c.sourceChannel, c.publisher, c.tactic, c.keywordType, c.region, c.creativeOffer, c.impressions, c.clicks, c.spend, c.leads, c.calls, c.leadsByFormJson, c.sourceSheet, now] });
         saved++;
       });
-      return sendJson(res, 200, { accountId, saved, duplicatesSkipped: clean.length - saved, updatedAt: now });
+      const readBack = () => { const m = new Map(); const periods = new Set(clean.map(c => c.year + '-' + c.month)); periods.forEach(pk => { const [y, mo] = pk.split('-').map(Number); db.prepare('SELECT * FROM account_digital_performance WHERE accountId = ? AND year = ? AND month = ?').all(accountId, y, mo).forEach(r => { const ov = r.grain === 'overview'; m.set([r.year, r.month, r.grain, aliasVal(r, 'channel'), aliasVal(r, 'publisher') || '', aliasVal(r, 'tactic') || '', aliasVal(r, 'keywordType') || '', aliasVal(r, 'region') || '', aliasVal(r, 'creativeOffer') || ''].join('||'), { spend: ov ? (Number(r.spend) || 0) : 0, impressions: ov ? (Number(r.impressions) || 0) : 0, leads: ov ? (Number(r.leads) || 0) : 0 }); }); }); return m; };
+      const out = commitMonthlyUpload(accountId, 'digital_performance', body.fileName, stmts, fileMap, readBack, [{ key: 'spend', label: 'Spend (overview rows)', money: true }, { key: 'impressions', label: 'Impressions (overview rows)' }, { key: 'leads', label: 'Leads (overview rows)' }], (rowsIn.length - clean.length) + (clean.length - saved), now);
+      if (out.error) return sendJson(res, 500, { error: out.error });
+      return sendJson(res, 200, { accountId, saved, duplicatesSkipped: clean.length - saved, invalidSkipped: rowsIn.length - clean.length, updatedAt: now, receipt: body.fileName ? out.receipt : null });
     }
     // DELETE /api/accounts/:id/digital-performance?year=&month=[&grain=]
     if (req.method === 'DELETE' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'digital-performance'){
@@ -36362,15 +36395,20 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         if (rate == null && sessions > 0 && engaged != null) rate = engaged / sessions;
         clean.push({ year, month, channelGroup, sessions, engaged, rate, time });
       }
+      const stmts = [];
       if (body.replace && body.replace.year != null){
         const ry = parseInt(body.replace.year, 10), rm = body.replace.month == null ? 0 : parseInt(body.replace.month, 10);
-        db.prepare('DELETE FROM account_website_engagement WHERE accountId = ? AND year = ? AND month = ?').run(accountId, ry, rm);
+        stmts.push({ sql: 'DELETE FROM account_website_engagement WHERE accountId = ? AND year = ? AND month = ?', params: [accountId, ry, rm] });
       }
-      const upsert = db.prepare(`INSERT INTO account_website_engagement (accountId, year, month, "channelGroup", sessions, "engagedSessions", "engagementRate", "avgEngagementTimeMin", updatedAt)
+      const upsertSql = `INSERT INTO account_website_engagement (accountId, year, month, "channelGroup", sessions, "engagedSessions", "engagementRate", "avgEngagementTimeMin", updatedAt)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(accountId, year, month, "channelGroup") DO UPDATE SET sessions = excluded.sessions, "engagedSessions" = excluded."engagedSessions", "engagementRate" = excluded."engagementRate", "avgEngagementTimeMin" = excluded."avgEngagementTimeMin", updatedAt = excluded.updatedAt`);
-      clean.forEach(r => upsert.run(accountId, r.year, r.month, r.channelGroup, r.sessions, r.engaged, r.rate, r.time, now));
-      return sendJson(res, 200, { accountId, saved: clean.length, updatedAt: now });
+        ON CONFLICT(accountId, year, month, "channelGroup") DO UPDATE SET sessions = excluded.sessions, "engagedSessions" = excluded."engagedSessions", "engagementRate" = excluded."engagementRate", "avgEngagementTimeMin" = excluded."avgEngagementTimeMin", updatedAt = excluded.updatedAt`;
+      const fileMap = new Map();
+      clean.forEach(r => { stmts.push({ sql: upsertSql, params: [accountId, r.year, r.month, r.channelGroup, r.sessions, r.engaged, r.rate, r.time, now] }); fileMap.set([r.year, r.month, r.channelGroup].join('||'), { sessions: r.sessions || 0, engaged: r.engaged || 0 }); });
+      const readBack = () => { const m = new Map(); const periods = new Set(clean.map(r => r.year + '-' + r.month)); periods.forEach(pk => { const [y, mo] = pk.split('-').map(Number); db.prepare('SELECT * FROM account_website_engagement WHERE accountId = ? AND year = ? AND month = ?').all(accountId, y, mo).forEach(r => m.set([r.year, r.month, aliasVal(r, 'channelGroup')].join('||'), { sessions: Number(r.sessions) || 0, engaged: Number(aliasVal(r, 'engagedSessions')) || 0 })); }); return m; };
+      const out = commitMonthlyUpload(accountId, 'website_engagement', body.fileName, stmts, fileMap, readBack, [{ key: 'sessions', label: 'Sessions' }, { key: 'engaged', label: 'Engaged sessions' }], clean.length - fileMap.size, now);
+      if (out.error) return sendJson(res, 500, { error: out.error });
+      return sendJson(res, 200, { accountId, saved: clean.length, updatedAt: now, receipt: body.fileName ? out.receipt : null });
     }
     // DELETE /api/accounts/:id/website-engagement?year=&month=&channelGroup=
     if (req.method === 'DELETE' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'website-engagement'){
@@ -36435,14 +36473,19 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         try { bookings = numOrNull(row.bookings, 'bookings'); days = numOrNull(row.avgDaysToConvert, 'avgDaysToConvert'); } catch (e){ return sendJson(res, 400, { error: e.message }); }
         clean.push({ year, month, source, leadType, formName, count, bookings, days });
       }
+      const stmts = [];
       if (body.replace && body.replace.year != null && body.replace.month != null){
-        db.prepare('DELETE FROM account_lead_counts WHERE accountId = ? AND year = ? AND month = ?').run(accountId, parseInt(body.replace.year, 10), parseInt(body.replace.month, 10));
+        stmts.push({ sql: 'DELETE FROM account_lead_counts WHERE accountId = ? AND year = ? AND month = ?', params: [accountId, parseInt(body.replace.year, 10), parseInt(body.replace.month, 10)] });
       }
-      const upsert = db.prepare(`INSERT INTO account_lead_counts (accountId, year, month, source, "leadType", "formName", count, bookings, "avgDaysToConvert", updatedAt)
+      const upsertSql = `INSERT INTO account_lead_counts (accountId, year, month, source, "leadType", "formName", count, bookings, "avgDaysToConvert", updatedAt)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(accountId, year, month, source, "leadType", "formName") DO UPDATE SET count = excluded.count, bookings = excluded.bookings, "avgDaysToConvert" = excluded."avgDaysToConvert", updatedAt = excluded.updatedAt`);
-      clean.forEach(r => upsert.run(accountId, r.year, r.month, r.source, r.leadType, r.formName, r.count, r.bookings, r.days, now));
-      return sendJson(res, 200, { accountId, saved: clean.length, updatedAt: now });
+        ON CONFLICT(accountId, year, month, source, "leadType", "formName") DO UPDATE SET count = excluded.count, bookings = excluded.bookings, "avgDaysToConvert" = excluded."avgDaysToConvert", updatedAt = excluded.updatedAt`;
+      const fileMap = new Map(); const lk = r => [r.year, r.month, r.source, r.leadType, r.formName].join('||');
+      clean.forEach(r => { stmts.push({ sql: upsertSql, params: [accountId, r.year, r.month, r.source, r.leadType, r.formName, r.count, r.bookings, r.days, now] }); fileMap.set(lk(r), { count: r.count || 0, bookings: r.bookings || 0 }); });
+      const readBack = () => { const m = new Map(); const periods = new Set(clean.map(r => r.year + '-' + r.month)); periods.forEach(pk => { const [y, mo] = pk.split('-').map(Number); db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ? AND year = ? AND month = ?').all(accountId, y, mo).forEach(r => m.set([r.year, r.month, aliasVal(r, 'source'), aliasVal(r, 'leadType'), String(aliasVal(r, 'formName') || '')].join('||'), { count: Number(r.count) || 0, bookings: Number(r.bookings) || 0 })); }); return m; };
+      const out = commitMonthlyUpload(accountId, 'lead_counts', body.fileName, stmts, fileMap, readBack, [{ key: 'count', label: 'Leads' }, { key: 'bookings', label: 'Bookings' }], clean.length - fileMap.size, now);
+      if (out.error) return sendJson(res, 500, { error: out.error });
+      return sendJson(res, 200, { accountId, saved: clean.length, updatedAt: now, receipt: body.fileName ? out.receipt : null });
     }
     // DELETE /api/accounts/:id/lead-counts?year=&month=[&source=&leadType=&formName=]
     if (req.method === 'DELETE' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'lead-counts'){
