@@ -12088,6 +12088,7 @@
           <span class="hint" id="mbuEngagementStatus" style="margin:0;"></span>
         </div>
         <div id="mbuEngagementPreview"></div>
+        <div id="mbuEngagementReceipt"></div>
         <div style="overflow-x:auto;">
           <table class="data-table" style="min-width:680px;">
             <thead><tr><th>Channel group</th><th>Sessions</th><th>Engaged sessions</th><th>Engagement rate</th><th>Avg engagement time (min)</th><th></th></tr></thead>
@@ -12128,6 +12129,7 @@
           <span class="hint" id="mbuLeadStatus" style="margin:0;"></span>
         </div>
         <div id="mbuLeadPreview"></div>
+        <div id="mbuLeadReceipt"></div>
         <div style="overflow-x:auto;">
           <table class="data-table" style="min-width:640px;">
             <thead><tr><th>Source</th><th>Lead type</th><th>Form name</th><th>Count of email</th><th>Bookings</th><th>Avg days to convert</th><th></th></tr></thead>
@@ -12207,6 +12209,7 @@
           <span class="hint" id="dpStatus" style="margin:0;"></span>
         </div>
         <div id="dpPreview"></div>
+        <div id="dpReceipt"></div>
         <div id="dpTotals"></div>
         <div class="field-divider" style="margin-top:14px;">Lead forms → lead types</div>
         <p class="hint" style="margin:0 0 8px;">Each lead-form column in the exports maps to one of your three lead types. Suggested mappings are marked; confirm or change them and the monthly totals recompute.</p>
@@ -70416,6 +70419,7 @@ function mbuParseEngagementMinutes(v){
 // ---------- Website engagement (GA4 export) ----------
 let mbuEngagementRows = [];
 async function mbuLoadEngagement(){
+  mbuLoadMonthlyReceipt('website_engagement', 'mbuEngagementReceipt');
   const body = document.getElementById('mbuEngagementBody');
   const status = document.getElementById('mbuEngagementStatus');
   const yearSel = document.getElementById('mbuEngagementYear');
@@ -70472,7 +70476,7 @@ function mbuQueueEngagementSave(){
   if (mbuEngagementSaveTimer) clearTimeout(mbuEngagementSaveTimer);
   mbuEngagementSaveTimer = setTimeout(() => mbuSaveEngagement(false), 600);
 }
-async function mbuSaveEngagement(replace){
+async function mbuSaveEngagement(replace, fileName){
   const status = document.getElementById('mbuEngagementStatus');
   const yearSel = document.getElementById('mbuEngagementYear'), monthSel = document.getElementById('mbuEngagementMonth');
   const year = parseInt(yearSel.value, 10), month = parseInt(monthSel.value, 10);
@@ -70482,9 +70486,9 @@ async function mbuSaveEngagement(replace){
   if (dataSourceLabel === 'backend'){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/website-engagement`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows, replace: replace ? { year, month } : undefined })
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows, replace: replace ? { year, month } : undefined, fileName: fileName || undefined })
       });
-      persisted = resp.ok; if (!resp.ok){ try { err = (await resp.json()).error; } catch (e){ /* ignore */ } }
+      persisted = resp.ok; if (!resp.ok){ try { err = (await resp.json()).error; } catch (e){ /* ignore */ } } else { try { const d = await resp.json(); if (d.receipt) mbuRenderUploadReceipt(d.receipt, 'mbuEngagementReceipt'); } catch (e){ /* receipt is optional */ } }
     } catch (e){ console.warn('mbuSaveEngagement failed', e); }
   }
   if (status) status.textContent = persisted ? `Saved ${new Date().toLocaleTimeString()} — ${rows.length} channel group${rows.length === 1 ? '' : 's'} for ${MBU_MONTH_NAMES_1[month] || 'whole year'} ${year}.` : (err ? `Not saved — ${err}` : 'Saved locally only, this session.');
@@ -70529,18 +70533,18 @@ async function mbuHandleEngagementFile(event){
     if (preview) preview.innerHTML = `<div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:10px 12px;margin:0 0 10px;font-size:0.8125rem;">
       <b>${parsed.length} channel group${parsed.length === 1 ? '' : 's'}</b> read from ${escapeHtml(file.name)} for <b>${MBU_MONTH_NAMES_1[parseInt(monthSel.value, 10)] || 'whole year / YTD'} ${yearSel.value}</b> (change the Year / Period above if that's wrong): ${parsed.map(p => escapeHtml(p.channelGroup)).join(', ')}.
       <div class="btn-row" style="margin-top:8px;"><button type="button" class="btn-primary" onclick="mbuConfirmEngagementUpload()">Save — replace this period</button><button type="button" class="btn-ghost" onclick="document.getElementById('mbuEngagementPreview').innerHTML='';mbuPendingEngagement=null;">Cancel</button></div></div>`;
-    mbuPendingEngagement = parsed;
+    mbuPendingEngagement = parsed; mbuPendingEngagementFile = file.name;
     if (status) status.textContent = '';
   } catch (e){ if (status) status.textContent = e.message || `Couldn't read ${file.name}.`; }
   event.target.value = '';
 }
-let mbuPendingEngagement = null;
+let mbuPendingEngagement = null, mbuPendingEngagementFile = '';
 async function mbuConfirmEngagementUpload(){
   if (!mbuPendingEngagement) return;
-  mbuEngagementRows = mbuPendingEngagement; mbuPendingEngagement = null;
+  mbuEngagementRows = mbuPendingEngagement; mbuPendingEngagement = null; const fname = mbuPendingEngagementFile; mbuPendingEngagementFile = '';
   const preview = document.getElementById('mbuEngagementPreview'); if (preview) preview.innerHTML = '';
   mbuRenderEngagementRows();
-  await mbuSaveEngagement(true);
+  await mbuSaveEngagement(true, fname);
 }
 
 // ---------- Leads by type, by month ----------
@@ -70548,6 +70552,7 @@ let mbuLeadRows = [];
 let mbuLeadYearTotals = [];
 let mbuLeadPoolEconomics = null;
 async function mbuLoadLeadCounts(){
+  mbuLoadMonthlyReceipt('lead_counts', 'mbuLeadReceipt');
   const body = document.getElementById('mbuLeadBody');
   const status = document.getElementById('mbuLeadStatus');
   const yearSel = document.getElementById('mbuLeadYear'), monthSel = document.getElementById('mbuLeadMonth');
@@ -70620,7 +70625,7 @@ function mbuQueueLeadSave(){
   if (mbuLeadSaveTimer) clearTimeout(mbuLeadSaveTimer);
   mbuLeadSaveTimer = setTimeout(() => mbuSaveLeadCounts(null), 600);
 }
-async function mbuSaveLeadCounts(rowsOverride){
+async function mbuSaveLeadCounts(rowsOverride, fileName){
   const status = document.getElementById('mbuLeadStatus');
   const yearSel = document.getElementById('mbuLeadYear'), monthSel = document.getElementById('mbuLeadMonth');
   const year = parseInt(yearSel.value, 10), month = parseInt(monthSel.value, 10);
@@ -70630,16 +70635,16 @@ async function mbuSaveLeadCounts(rowsOverride){
   if (dataSourceLabel === 'backend'){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/lead-counts`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows })
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows, fileName: fileName || undefined })
       });
-      persisted = resp.ok; if (!resp.ok){ try { err = (await resp.json()).error; } catch (e){ /* ignore */ } }
+      persisted = resp.ok; if (!resp.ok){ try { err = (await resp.json()).error; } catch (e){ /* ignore */ } } else { try { const d = await resp.json(); if (d.receipt) mbuRenderUploadReceipt(d.receipt, 'mbuLeadReceipt'); } catch (e){ /* receipt is optional */ } }
     } catch (e){ console.warn('mbuSaveLeadCounts failed', e); }
   }
   if (status) status.textContent = persisted ? `Saved ${new Date().toLocaleTimeString()} — ${rows.length} row${rows.length === 1 ? '' : 's'}.` : (err ? `Not saved — ${err}` : 'Saved locally only, this session.');
   if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext();
   if (persisted) mbuLoadLeadCounts();
 }
-let mbuPendingLeads = null;
+let mbuPendingLeads = null, mbuPendingLeadsFile = '';
 async function mbuHandleLeadFile(event){
   const file = event.target.files && event.target.files[0];
   const status = document.getElementById('mbuLeadStatus');
@@ -70693,7 +70698,7 @@ async function mbuHandleLeadFile(event){
     const hv = parsed.filter(p => p.leadType === 'High Value').reduce((t, p) => t + (p.count || 0), 0);
     const reg = parsed.filter(p => p.leadType === 'Registration').reduce((t, p) => t + (p.count || 0), 0);
     const pro = parsed.filter(p => p.leadType === 'Prospect').reduce((t, p) => t + (p.count || 0), 0);
-    mbuPendingLeads = parsed;
+    mbuPendingLeads = parsed; mbuPendingLeadsFile = file.name;
     if (preview) preview.innerHTML = `<div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:10px 12px;margin:0 0 10px;font-size:0.8125rem;">
       <b>${parsed.length} row${parsed.length === 1 ? '' : 's'}</b> read from ${escapeHtml(file.name)} — ${periods.length === 1 ? `for <b>${escapeHtml(periods[0])}</b>${colIndex.year == null && colIndex.month == null && colIndex.date == null ? ' (no Year/Month columns in the file, so the Year / Month selected above is used — change them first if that\'s wrong)' : ''}` : `across ${periods.length} periods (${escapeHtml(periods.join(', '))})`}: <b>${hv.toLocaleString()}</b> High Value, <b>${reg.toLocaleString()}</b> Growth, <b>${pro.toLocaleString()}</b> Prospect.${problems.length ? `<div style="color:var(--advocacy);margin-top:4px;">Skipped: ${escapeHtml(problems.slice(0, 5).join('; '))}${problems.length > 5 ? ` (+${problems.length - 5} more)` : ''}</div>` : ''}
       <div class="btn-row" style="margin-top:8px;"><button type="button" class="btn-primary" onclick="mbuConfirmLeadUpload()">Save rows</button><button type="button" class="btn-ghost" onclick="document.getElementById('mbuLeadPreview').innerHTML='';mbuPendingLeads=null;">Cancel</button></div></div>`;
@@ -70703,9 +70708,9 @@ async function mbuHandleLeadFile(event){
 }
 async function mbuConfirmLeadUpload(){
   if (!mbuPendingLeads) return;
-  const rows = mbuPendingLeads; mbuPendingLeads = null;
+  const rows = mbuPendingLeads; mbuPendingLeads = null; const fname = mbuPendingLeadsFile; mbuPendingLeadsFile = '';
   const preview = document.getElementById('mbuLeadPreview'); if (preview) preview.innerHTML = '';
-  await mbuSaveLeadCounts(rows);
+  await mbuSaveLeadCounts(rows, fname);
 }
 
 // ---------- Unique transactions by month, by Product Group ----------
@@ -70820,9 +70825,11 @@ async function dpReadWorkbook(file){
   return wb.SheetNames.map(n => ({ name: n, grid: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false, defval: '' }).map(r => r.map(c => (c == null ? '' : String(c)))) }));
 }
 let dpPendingSheets = [];
+let dpPendingFileName = '';
 async function dpHandleWorkbookFile(event){
   const file = event.target.files && event.target.files[0];
   if (!file) return;
+  dpPendingFileName = file.name;
   const status = document.getElementById('dpStatus'), preview = document.getElementById('dpPreview');
   if (status) status.textContent = `Reading ${file.name}…`;
   try {
@@ -70855,11 +70862,12 @@ async function dpUploadPending(){
   if (status) status.textContent = `Uploading ${rows.length} rows…`;
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/digital-performance`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows, replace })
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows, replace, fileName: dpPendingFileName || 'digital workbook' })
     });
     if (!resp.ok){ const t = await resp.json().catch(() => ({})); if (status) status.textContent = `Not saved — ${t.error || resp.status}`; return; }
     const data = await resp.json();
-    if (status) status.textContent = `Saved ${data.saved} rows${data.duplicatesSkipped ? ` (${data.duplicatesSkipped} repeated rows in the export counted once)` : ''}.`;
+    if (data.receipt) mbuRenderUploadReceipt(data.receipt, 'dpReceipt');
+    if (status) status.textContent = `Saved ${data.saved} rows${data.duplicatesSkipped ? ` (${data.duplicatesSkipped} repeated rows in the export counted once)` : ''}${data.invalidSkipped ? ` (${data.invalidSkipped} rows with no valid year and month were left out)` : ''}.`;
     dpPendingSheets = [];
     document.getElementById('dpPreview').innerHTML = '';
     if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext();
@@ -70868,6 +70876,7 @@ async function dpUploadPending(){
 }
 let dpLatest = null;
 async function dpLoad(){
+  mbuLoadMonthlyReceipt('digital_performance', 'dpReceipt');
   const totalsEl = document.getElementById('dpTotals'), formsEl = document.getElementById('dpLeadForms'), calEl = document.getElementById('dpCalibration'), yearSel = document.getElementById('dpYear');
   if (!totalsEl || dataSourceLabel !== 'backend' || !state.companyId) return;
   try {
@@ -71391,12 +71400,16 @@ function mbuReceiptHtml(r){
   const n = v => v == null ? '—' : Number(v).toLocaleString();
   const f = r.file, d = r.database; const ok = r.matched === 1;
   const row = (label, a, b, money) => `<tr><td>${label}</td><td>${f ? (money ? '$' + n(a) : n(a)) : '—'}</td><td>${money ? '$' + n(b) : n(b)}</td><td>${f ? (a === b || (money && Math.abs(a - b) <= 1) ? '✓' : '<span style="color:#C0273C;font-weight:600;">differs</span>') : ''}</td></tr>`;
+  // The monthly files (leads, digital, website) carry a list of measures instead of customer-file totals.
+  const lines = (f && f.measures) ? row('Rows', f.rows, d.rows) + f.measures.map((m, i) => row(escapeHtml(m.label), m.v, d.measures && d.measures[i] ? d.measures[i].v : null, m.money)).join('')
+    : row('Customer rows', f && f.rows, d.rows) + row('Unique transactions', f && f.codes, d.codes) + row('Gross revenue', f && f.gross, d.gross, true) + (f && f.units ? row('Order size (units)', f.units, d.units) : '');
   return `<div style="border:1px solid ${ok ? '#BFD4F1' : '#F2B8B5'};background:${ok ? '#EAF1FB' : '#FDECEC'};border-radius:8px;padding:10px 12px;margin:0 0 12px;font-size:0.8125rem;">
     <b>Upload receipt</b> · ${escapeHtml(r.fileName || '')} · ${escapeHtml(new Date(r.createdAt).toLocaleString())} · ${ok ? '<span style="color:#1F7A4D;font-weight:600;">File and database match</span>' : (r.matched === 0 ? '<span style="color:#C0273C;font-weight:600;">File and database differ</span>' : 'Not compared')}
-    <table class="data-table" style="margin-top:6px;font-size:0.8125rem;"><thead><tr><th></th><th>In the file</th><th>In the database</th><th></th></tr></thead><tbody>${row('Customer rows', f && f.rows, d.rows)}${row('Unique transactions', f && f.codes, d.codes)}${row('Gross revenue', f && f.gross, d.gross, true)}${f && f.units ? row('Order size (units)', f.units, d.units) : ''}</tbody></table>
+    <table class="data-table" style="margin-top:6px;font-size:0.8125rem;"><thead><tr><th></th><th>In the file</th><th>In the database</th><th></th></tr></thead><tbody>${lines}</tbody></table>
     <div class="hint" style="margin-top:4px;">${escapeHtml(r.note || '')}</div></div>`;
 }
-function mbuRenderUploadReceipt(r){ const el = document.getElementById('mbuUploadReceipt'); if (el) el.innerHTML = mbuReceiptHtml(r); }
+function mbuRenderUploadReceipt(r, elId){ const el = document.getElementById(elId || 'mbuUploadReceipt'); if (el) el.innerHTML = mbuReceiptHtml(r); }
+async function mbuLoadMonthlyReceipt(kind, elId){ if (dataSourceLabel !== 'backend' || !state.companyId) return; try { const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/upload-receipts?kind=${kind}&limit=1`); if (!resp.ok) return; const d = await resp.json(); mbuRenderUploadReceipt((d.receipts || [])[0], elId); } catch (e){} }
 async function mbuLoadUploadReceipt(){
   const el = document.getElementById('mbuUploadReceipt'); if (!el) return;
   if (dataSourceLabel !== 'backend' || !state.companyId){ el.innerHTML = ''; return; }
