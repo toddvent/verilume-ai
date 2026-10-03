@@ -40711,11 +40711,14 @@ function mbuRenderPlanSetup(){
     const viewBtn = `<button type="button" class="btn-primary" onclick="mbuViewBudgetDetail('${active.id}')">View budget detail →</button>`;
     const csvBtn = ''; // exports sit with the budget detail itself (CSV and Excel), not in this bar
     const deleteBtn = `<button type="button" class="btn-ghost" onclick="mbuToggleDeleteConfirm('${active.id}')">Delete →</button>`;
+    // mbuToggleDeleteConfirm looks these two elements up by id and does nothing without them (the Delete button on this card used to do nothing).
+    const delMount = `<div id="mbuDeleteConfirmRow-${active.id}" style="display:none;width:100%;"><div class="cch-confirm" id="mbuDeleteConfirm-${active.id}"></div></div>`;
     if (active.totalOnly){
       mount.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 16px;">
           <span><b style="color:${period.closed ? '#14532d' : 'var(--cx)'};">${period.label}</b> — ${mbuSelectedYear} ${scopeName} budget on file as a total-only figure: $${Number(active.totalAmount || 0).toLocaleString()}.</span>
           <span style="display:flex;gap:8px;flex-shrink:0;">${period.closed ? '' : `<button type="button" class="btn-ghost" onclick="mbuEditTotalOnly('${active.id}', ${Number(active.totalAmount || 0)})">✎ Edit total →</button>`}${deleteBtn}</span>
+          ${delMount}
         </div>`;
       return;
     }
@@ -40726,10 +40729,12 @@ function mbuRenderPlanSetup(){
           <span style="display:flex;gap:8px;flex-shrink:0;">${viewBtn}${csvBtn}${deleteBtn}</span>
         </div>
         <p class="hint" style="margin:8px 0 0;">${mbuSelectedYear} is a historical year: this budget is the record of a completed year and every allocation is treated as complete. The charts below show its final results as the historical benchmark for the years that follow.</p>
+        ${delMount}
       </div>` : `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 16px;">
         <span><b style="color:var(--cx);">${period.label}</b> — ${mbuSelectedYear} ${scopeName} budget on file${fileNote}, driving this year's Media Plan.</span>
         <span style="display:flex;gap:8px;flex-shrink:0;">${viewBtn}${csvBtn}${deleteBtn}</span>
+        ${delMount}
       </div>`;
     if (typeof mbdShowForUpload === 'function') mbdShowForUpload(active.id);
     return;
