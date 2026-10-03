@@ -1561,6 +1561,7 @@
   .ttb-check{flex:none;width:30px;height:30px;border:2px solid var(--ink);border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:1.125rem;font-weight:800;} .ttb-mod.done .ttb-check{background:var(--ink);color:var(--white);}
   .ttb-mod-t{flex:1;display:flex;flex-direction:column;gap:2px;} .ttb-name{font-size:1.0625rem;font-weight:600;} .ttb-benefit{font-size:0.875rem;color:var(--muted);} .ttb-chev{flex:none;font-size:1.125rem;color:var(--muted);}
   .ttb-mod-body{padding:4px 18px 20px 64px;} .ttb-mod-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:24px;} @media (max-width:860px){.ttb-mod-grid{grid-template-columns:1fr;} .ttb-mod-body{padding-left:18px;}}
+  .ttbbu-pill{display:inline-block;margin-top:4px;padding:1px 8px;border-radius:999px;font-size:0.6875rem;font-weight:600;border:1px solid var(--line);} .ttbbu-pill.hi{color:#14532d;background:#ecfdf3;border-color:#bbf7d0;} .ttbbu-pill.lo{color:#92400e;background:#fffbeb;border-color:#fde68a;} .ttbbu-pill.you{color:var(--ink);background:var(--paper-dim);}
   .ttb-tag{font-size:0.6875rem;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;} .ttb-done{font-size:0.875rem;margin:0 0 12px;font-weight:600;}
   .ttb-sample{border:1px dashed var(--line);border-radius:12px;padding:8px 16px;background:var(--paper-dim);} .ttb-srow{display:flex;justify-content:space-between;gap:16px;padding:8px 0;border-top:1px solid var(--line-hairline);font-size:0.875rem;} .ttb-srow:first-child{border-top:0;} .ttb-srow span:last-child{color:var(--muted);text-align:right;} .ttb-head{font-weight:700;color:var(--muted);font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.04em;} .ttb-sw{display:inline-flex;gap:6px;} .ttb-sw i{display:inline-block;width:26px;height:26px;border-radius:6px;border:1px solid var(--line);}
   .ttb-opts{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px;align-items:center;} .ttb-viewrow{margin-top:14px;} .ttb-view[disabled]{opacity:.45;cursor:not-allowed;} .ttb-used{display:inline-block;margin:0;}
@@ -27333,7 +27334,7 @@ function ttbToggle(k){ ttb.open = ttb.open === k ? '' : k; ttbRerender(); }
 //   Add Manually  -> opens inside the row. The existing entry card is moved in here rather than copied, so it works exactly as before.
 //   Partner Integration -> the one Partner Integrations page.
 // View in Portal is greyed until the item has data, and only shown as a link where the data actually appears.
-const TTB_ALL_CARDS = ['kpiMetricsAdminModule', 'mbuWebsiteUsersCard', 'mbuMarketableSizesCard', 'mbuDmCostPerPieceCard', 'mbuDmFormatCostCard', 'mbuMagazineCostCard', 'mbuAnnualPlanCard', 'mbuDemandFulfillmentCard', 'mbuEngagementCard', 'mbuLeadCountsCard', 'mbuTransactionsCard', 'mbuDigitalCard', 'mbuUploadCard', 'mbuResultsCard'];
+const TTB_ALL_CARDS = ['kpiMetricsAdminModule', 'mbuWebsiteUsersCard', 'mbuMarketableSizesCard', 'mbuDmCostPerPieceCard', 'mbuDmFormatCostCard', 'mbuMagazineCostCard', 'mbuAnnualPlanCard', 'mbuDemandFulfillmentCard', 'mbuEngagementCard', 'mbuLeadCountsCard', 'mbuTransactionsCard', 'mbuDigitalCard'];
 let ttbHomes = null;
 function ttbInitHomes(){
   if (ttbHomes) return; ttbHomes = {};
@@ -27341,7 +27342,6 @@ function ttbInitHomes(){
 }
 function ttbReturnCards(){
   if (!ttbHomes) return;
-  ttbBudgetMode = false;
   TTB_ALL_CARDS.forEach((id, n) => {
     const h = ttbHomes[id], el = document.getElementById(id); if (!h || !el || el.parentNode === h.parent) return;
     // Back before the next card that is already home, else before the fixed element that followed the group, so the original order is kept.
@@ -27359,7 +27359,7 @@ const TTB_CFG = {
   competitivePositioning: { manual: { step: 'competitivePositioning' }, view: { tab: 'strategy', label: 'Strategy' } },
   brandWritingSamples: { upload: { formats: 'Word, PDF or text files', go: 'brandWritingSamples' }, manual: { step: 'brandWritingSamples' }, used: 'Used by Copywriting' },
   voice: { manual: { step: 'voice' }, view: { tab: 'brand', label: 'Customer Experiences' } },
-  marketingBudgetUpload: { upload: { formats: '.xlsx or .csv, in any layout. Choose the file, check the columns, review the categories, submit. Viewing and changing the budget happens in the Annual Plan.', workspace: ['mbuUploadCard', 'mbuResultsCard'], sample: { name: 'marketing-budget-sample.csv', cols: ['Category', 'Status', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Total'], rows: [['Paid Social', 'Working', 24000, 26000, 30000, 30000, 28000, 26000, 24000, 24000, 30000, 32000, 34000, 20000, 328000], ['Agency fees', 'Non-Working', 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 96000]] } }, manual: { step: 'marketingBudgetUpload', arg: 'configuration' }, view: { step: 'mediaplan', label: 'Budget and Plan' } },
+  marketingBudgetUpload: { upload: { formats: '.xlsx or .csv, in any layout. Choose the file and check the column mapping. Viewing and changing the budget happens in the Annual Plan.', direct: 'ttbBuPick', sample: { name: 'marketing-budget-sample.csv', cols: ['Category', 'Status', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Total'], rows: [['Paid Social', 'Working', 24000, 26000, 30000, 30000, 28000, 26000, 24000, 24000, 30000, 32000, 34000, 20000, 328000], ['Agency fees', 'Non-Working', 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 96000]] } }, manual: { step: 'marketingBudgetUpload', arg: 'configuration' }, view: { step: 'mediaplan', label: 'Budget and Plan' } },
   bulkUpload: { upload: { formats: '.xlsx or .csv, one row per month and product group', handler: 'mbuHandleTxnFile', cards: ['mbuTransactionsCard'], sample: { name: 'transactions-by-month-sample.csv', cols: ['Year', 'Month', 'Product Group', 'Transactions', 'Revenue'], rows: [[2026, 'Jan', 'Mediterranean', 42, 268000], [2026, 'Feb', 'Mediterranean', 51, 322500]] } }, manual: { cards: ['mbuTransactionsCard'] }, integ: true, view: { tab: 'strategy', label: 'Strategy' } },
   partnerIntegrations: { integ: true, manual: { note: 'Prefer to type it? Every number on this page has an Add Manually option.' }, view: { tab: 'dataScientist', label: 'Media Science' } },
   team: { manual: { step: 'team' }, view: { step: 'team', label: 'Team' } },
@@ -27440,20 +27440,133 @@ function ttbUploadOpen(key){
   m.innerHTML = `<div class="ttb-modal-card"><h2 id="ttbModalT">Upload: ${escapeHtml(ttbItemLabel(key))}</h2>
     <div class="ttb-tag">Accepted files</div><p class="hint" style="margin:0 0 12px;">${escapeHtml(u.formats)}</p>
     ${u.sample ? `<div class="ttb-tag">Sample file</div><p class="hint" style="margin:0 0 8px;">Columns: ${u.sample.cols.map(escapeHtml).join(', ')}. Your own file does not have to match exactly; the Brain looks for the columns it needs.</p><button type="button" class="btn-ghost" onclick="ttbDownloadSample('${key}')">Download sample file</button>` : `<p class="hint" style="margin:0;">${escapeHtml(u.noSample || 'There is no sample file for this one.')}</p>`}
-    <div class="btn-row" style="gap:10px;margin-top:18px;">${u.workspace ? `<button type="button" class="btn-primary" onclick="ttbUploadWorkspace('${key}')">Pick year and file</button>` : `<label class="btn-primary" style="cursor:pointer;margin:0;">Choose file<input type="file" ${u.handler ? 'accept=".csv,.xlsx"' : ''} style="display:none;" onchange="ttbUploadPicked('${key}', event)"></label>`}<button type="button" class="btn-ghost" onclick="ttbUploadClose()">Cancel</button></div></div>`;
+    <div class="btn-row" style="gap:10px;margin-top:18px;"><label class="btn-primary" style="cursor:pointer;margin:0;">Choose file<input type="file" ${u.handler ? 'accept=".csv,.xlsx"' : ''} style="display:none;" onchange="ttbUploadPicked('${key}', event)"></label><button type="button" class="btn-ghost" onclick="ttbUploadClose()">Cancel</button></div></div>`;
   m.addEventListener('click', e => { if (e.target === m) ttbUploadClose(); });
   document.body.appendChild(m); document.addEventListener('keydown', ttbModalKey);
   const first = m.querySelector('button, label'); if (first) first.focus();
 }
-function ttbUploadWorkspace(key){
-  ttbUploadClose(); ttb.open = key; ttb.manual[key] = true; ttbRerender();
-  const slot = document.getElementById('ttbSlot-' + key); if (slot) slot.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+// ---- Budget upload on Train the Brain: Upload File > column mapping > View Budget -----------------------------------------
+// Self-contained on purpose: it borrows nothing from the Annual Plan page. The file picker opens straight from the button, the Brain
+// proposes which column is which (High or Low confidence), the client edits the second column if needed, and View Budget saves the
+// mapping and opens the Annual Plan on the file's year. Category review and everything after it lives in the Annual Plan.
+const ttbBu = { stage: 'idle', fileName: '', year: null, yearChoices: [], grid: null, dataUrl: null, analysis: null, roles: {}, excl: {}, edited: {}, upId: null, msg: '' };
+function ttbBuReset(){ Object.assign(ttbBu, { stage: 'idle', fileName: '', year: null, yearChoices: [], grid: null, dataUrl: null, analysis: null, roles: {}, excl: {}, edited: {}, upId: null, msg: '' }); }
+function ttbBuPick(){
+  ttb.open = 'marketingBudgetUpload'; ttb.manual.marketingBudgetUpload = true;
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.csv,.xlsx'; inp.style.display = 'none';
+  inp.addEventListener('change', () => { const f = inp.files && inp.files[0]; inp.remove(); if (f) ttbBuStart(f); });
+  inp.addEventListener('cancel', () => inp.remove());
+  document.body.appendChild(inp); inp.click();
 }
-function ttbBudgetOpen(){
-  ttbBudgetMode = true;
-  const link = document.getElementById('mbuTemplateDownloadLink'); if (link) link.href = `${BACKEND_URL}/api/marketing-budget-upload-template.csv`;
-  try { if (!mbuAnalysis && !mbuCategoryMappingData) mbuResetImport(); } catch (e){}
-  if (typeof mbuLoadYearsList === 'function') mbuLoadYearsList();
+function ttbBuSet(patch){ Object.assign(ttbBu, patch); ttbBuRender(); }
+async function ttbBuStart(file){
+  ttbBuReset(); ttb.open = 'marketingBudgetUpload'; ttb.manual.marketingBudgetUpload = true;
+  ttbBuSet({ stage: 'reading', fileName: file.name, msg: 'Reading your file…' });
+  ttbRerender();
+  try {
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    let grid;
+    if (ext === 'csv'){ const { headers, rows } = cfiParseCsvText(await file.text()); grid = [headers, ...rows]; }
+    else if (ext === 'xlsx'){ const XLSX = await cfiLoadSheetJs(); const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' }); grid = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: '' }).map(r => r.map(c => (c == null ? '' : String(c)))); }
+    else { ttbBuSet({ stage: 'error', msg: `"${file.name}" is not a .csv or .xlsx file. Export it to one of those and try again.` }); return; }
+    ttbBu.grid = grid; ttbBu.dataUrl = await mouFileToDataUrl(file);
+    const found = new Set(); const scan = t => String(t || '').replace(/\b(20[2-4]\d)\b/g, (m, y) => { found.add(Number(y)); return m; });
+    scan(file.name); grid.slice(0, 8).forEach(r => (r || []).forEach(scan));
+    if (found.size === 1){ ttbBu.year = [...found][0]; await ttbBuAnalyze(); return; }
+    const y0 = new Date().getFullYear(); const choices = found.size ? [...found].sort() : [y0 - 1, y0, y0 + 1, y0 + 2];
+    ttbBuSet({ stage: 'year', yearChoices: choices, msg: found.size ? 'Your file mentions more than one year. Which year is this budget for?' : 'Which year is this budget for?' });
+  } catch (e){ ttbBuSet({ stage: 'error', msg: (e && e.message) || `Could not read ${file.name}.` }); }
+}
+function ttbBuYear(y){ ttbBu.year = Number(y); ttbBuAnalyze(); }
+async function ttbBuAnalyze(){
+  ttbBuSet({ stage: 'reading', msg: 'Checking your file and finding the columns…' });
+  const base = `${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}`;
+  try {
+    const up = await authedFetch(`${base}/uploads`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 90000, body: JSON.stringify({ purpose: 'marketing_budget', filename: ttbBu.fileName, dataUrl: ttbBu.dataUrl, uploadedBy: '' }) });
+    const ud = await up.json().catch(() => ({}));
+    if (!up.ok){
+      const m = ud.status === 'rejected_pii' ? 'This file appears to contain personal information, so it was not stored.' : ud.status === 'rejected_virus' ? 'This file did not pass the virus scan, so it was not stored.' : ud.status === 'rejected_scan_unavailable' ? 'File scanning is not available right now, so uploads are held back. Try again shortly.' : (ud.error || 'The file was not accepted.');
+      ttbBuSet({ stage: 'error', msg: m }); return;
+    }
+    const an = await authedFetch(`${base}/marketing-budget-uploads`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 60000, body: JSON.stringify({ year: ttbBu.year, scope: 'domestic', uploadedFileId: ud.id, fileName: ttbBu.fileName, grid: ttbBu.grid }) });
+    const ad = await an.json().catch(() => ({}));
+    if (!an.ok){
+      if (an.status === 409 && ad.existingUploadId){ ttbBuSet({ stage: 'exists', msg: `${ttbBu.year} already has a budget on file.` }); return; }
+      ttbBuSet({ stage: 'error', msg: ad.error || 'The file could not be analyzed.' }); return;
+    }
+    if (ad.layout === 'unrecognized'){ ttbBuSet({ stage: 'error', msg: ad.note || 'The Brain could not find budget columns in this file. Check that it has a header row with the months.' }); return; }
+    ttbBu.analysis = ad; ttbBu.upId = ad.id; ttbBu.roles = {}; ttbBu.excl = {}; ttbBu.edited = {};
+    (ad.blocks || []).forEach(b => {
+      ttbBu.roles[b.headerRowIdx] = mbuInitColumnRoles(b);
+      ttbBu.excl[b.headerRowIdx] = [...(b.likelySubtotalRowIdxs || []), ...((ad.likelyGrandTotalRowIdxs || []).filter(i => b.dataRowIdxs.includes(i)))];
+    });
+    ttbBuSet({ stage: 'map', msg: '' });
+  } catch (e){ ttbBuSet({ stage: 'error', msg: (e && e.name === 'AbortError') ? 'The server took too long. Try again in a moment.' : 'Could not reach the server. Try again.' }); }
+}
+function ttbBuConfidence(b, idx, role){
+  if (!role) return '';
+  if (ttbBu.edited[b.headerRowIdx + ':' + idx]) return 'you';
+  if (b.monthAndTotalMap && b.monthAndTotalMap[idx]) return 'high';
+  const h = String((ttbBu.grid[b.headerRowIdx] || [])[idx] || '');
+  if (role === 'category') return /categor|line item|channel|media|description|item/i.test(h) ? 'high' : 'low';
+  if (role === 'status') return /working|status|type/i.test(h) ? 'high' : 'low';
+  return 'low';
+}
+function ttbBuRole(hri, idx, val){
+  const roles = ttbBu.roles[hri] || (ttbBu.roles[hri] = {});
+  if (val) Object.keys(roles).forEach(k => { if (roles[k] === val) delete roles[k]; });
+  if (val) roles[idx] = val; else delete roles[idx];
+  ttbBu.edited[hri + ':' + idx] = true; ttbBuRender();
+}
+function ttbBuCancel(){
+  const id = ttbBu.upId; ttbBuReset(); ttbBuRender();
+  if (id) authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(id)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmDelete: false }) }).catch(() => {});
+}
+async function ttbBuApply(){
+  const ad = ttbBu.analysis; if (!ad) return;
+  const blocks = (ad.blocks || []).map(b => {
+    const roles = ttbBu.roles[b.headerRowIdx] || {}; const monthCols = {}; let totalColIdx = null, categoryColIdx = null, statusColIdx = null;
+    Object.entries(roles).forEach(([i, r]) => { const c = Number(i); if (r === 'total') totalColIdx = c; else if (r === 'category') categoryColIdx = c; else if (r === 'status') statusColIdx = c; else if (MARKETING_BUDGET_MONTHS_CLIENT.includes(r)) monthCols[r] = c; });
+    return { headerRowIdx: b.headerRowIdx, categoryColIdx, statusColIdx, monthCols, totalColIdx, excludeRowIdxs: ttbBu.excl[b.headerRowIdx] || [] };
+  });
+  ttbBuSet({ stage: 'saving', msg: 'Saving your budget…' });
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(ttbBu.upId)}/confirm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 60000, body: JSON.stringify({ blocks }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok){ ttbBuSet({ stage: 'map', msg: d.error || 'The budget could not be saved. Check the columns and try again.' }); return; }
+    const id = ttbBu.upId, year = ttbBu.year; ttbBuReset();
+    mbuSelectedYear = year; mbuSelectedScope = 'domestic';
+    goToStep('mediaplan');
+    try { await mbuLoadYearsList(); await mbuOpenExistingUpload(id); } catch (e){ console.warn('ttbBuApply: opening the budget failed', e); }
+  } catch (e){ ttbBuSet({ stage: 'map', msg: 'Could not reach the server. Nothing was saved.' }); }
+}
+function ttbBuRender(){
+  const slot = document.getElementById('ttbSlot-marketingBudgetUpload'); if (!slot) return;
+  const S = ttbBu; let h = '';
+  const note = (t, bad) => `<p class="hint" style="margin:0 0 10px;${bad ? 'color:var(--advocacy);' : ''}">${escapeHtml(t)}</p>`;
+  if (S.stage === 'idle') h = `<div class="ttb-manual"><div class="ttb-tag">Marketing budget</div>${note('Choose Upload File above to start. The Brain reads your file, shows how it matched your columns to ours, and you open the budget in the Annual Plan.')}<button type="button" class="btn-ghost" onclick="ttbDownloadSample('marketingBudgetUpload')">Download sample file</button></div>`;
+  else if (S.stage === 'reading' || S.stage === 'saving') h = `<div class="ttb-manual"><div class="ttb-tag">${escapeHtml(S.fileName)}</div>${note(S.msg)}</div>`;
+  else if (S.stage === 'year') h = `<div class="ttb-manual"><div class="ttb-tag">${escapeHtml(S.fileName)}</div>${note(S.msg)}<div class="btn-row" style="gap:10px;">${S.yearChoices.map(y => `<button type="button" class="btn-ghost" onclick="ttbBuYear(${y})">${y}</button>`).join('')}<button type="button" class="btn-ghost" onclick="ttbBuCancel()">Cancel</button></div></div>`;
+  else if (S.stage === 'exists') h = `<div class="ttb-manual"><div class="ttb-tag">${escapeHtml(S.fileName)}</div>${note(S.msg)}<p class="hint" style="margin:0 0 12px;">To change it, open it in the Annual Plan. To load this file instead, delete that budget there first.</p><div class="btn-row" style="gap:10px;"><button type="button" class="btn-primary" onclick="mbuSelectedYear=${Number(S.year)}; goToStep('mediaplan')">Open ${Number(S.year)} in the Annual Plan →</button><button type="button" class="btn-ghost" onclick="ttbBuCancel()">Choose a different file</button></div></div>`;
+  else if (S.stage === 'error') h = `<div class="ttb-manual"><div class="ttb-tag">${escapeHtml(S.fileName || 'Upload')}</div>${note(S.msg, true)}<div class="btn-row"><button type="button" class="btn-ghost" onclick="ttbBuCancel()">Start over</button></div></div>`;
+  else if (S.stage === 'map'){
+    const ad = S.analysis; const pill = c => c === 'high' ? '<span class="ttbbu-pill hi">High confidence</span>' : c === 'low' ? '<span class="ttbbu-pill lo">Low confidence, please check</span>' : c === 'you' ? '<span class="ttbbu-pill you">Set by you</span>' : '';
+    let canView = true; let warn = '';
+    const cards = (ad.blocks || []).map((b, bi) => {
+      const roles = S.roles[b.headerRowIdx] || {}; const head = S.grid[b.headerRowIdx] || [];
+      const cols = Math.max(head.length, ...b.dataRowIdxs.map(ri => (S.grid[ri] || []).length), 1);
+      const vals = Object.values(roles);
+      if (!vals.includes('category')){ canView = false; warn = 'Choose which column holds the budget line names (Category / Line Item).'; }
+      else if (!vals.some(v => MARKETING_BUDGET_MONTHS_CLIENT.includes(v)) && !vals.includes('total')){ canView = false; warn = 'Choose at least one month column or the Total column.'; }
+      const rows = Array.from({ length: cols }, (_, i) => i).filter(i => String(head[i] || '').trim() !== '' || roles[i]).map(i => {
+        const role = roles[i] || ''; return `<tr><td style="padding:8px 10px;">${escapeHtml(String(head[i] || '').trim() || '(no heading)')}<div>${pill(ttbBuConfidence(b, i, role))}</div></td><td style="padding:8px 10px;"><select class="tbl-select" aria-label="Our field for ${escapeHtml(String(head[i] || 'this column'))}" onchange="ttbBuRole(${b.headerRowIdx}, ${i}, this.value)">${mbuRoleOptionsHtml(role).replace('— ignore this column —', 'Not used')}</select></td></tr>`;
+      }).join('');
+      return `<div class="strat-card" style="margin:0 0 12px;">${(ad.blocks || []).length > 1 ? `<div class="ttb-tag">Section ${bi + 1} of ${ad.blocks.length}</div>` : ''}<div class="strat-tablewrap"><table class="strat-table"><thead><tr><th style="text-align:left;">Your column</th><th style="text-align:left;">Our field</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+    }).join('');
+    h = `<div class="ttb-manual"><div class="ttb-tag">${escapeHtml(S.fileName)} · ${Number(S.year)} budget</div>${note('Here is how the Brain matched your columns to ours. Change any field on the right if it got one wrong. Total and subtotal rows are left out automatically.')}${cards}${S.msg ? note(S.msg, true) : ''}${warn ? note(warn, true) : ''}<div class="btn-row" style="gap:10px;"><button type="button" class="btn-primary" ${canView ? '' : 'disabled aria-disabled="true"'} onclick="ttbBuApply()">View Budget →</button><button type="button" class="btn-ghost" onclick="ttbBuCancel()">Cancel</button></div></div>`;
+  }
+  slot.innerHTML = h;
 }
 function ttbUploadPicked(key, ev){
   const u = TTB_CFG[key].upload; const files = ev.target.files;
@@ -27468,13 +27581,7 @@ function ttbMountOpen(){
   Object.keys(ttb.manual).forEach(k => {
     if (!ttb.manual[k] || ttb.open !== k) return; const c = TTB_CFG[k]; const cards = (c && c.manual && c.manual.cards) || (c && c.upload && c.upload.workspace) || []; const slot = document.getElementById('ttbSlot-' + k); if (!slot) return;
     cards.forEach(id => { const el = document.getElementById(id); if (!el) return; el.style.marginTop = '0'; slot.appendChild(el); });
-    if (k === 'marketingBudgetUpload'){ ttbBudgetMode = true;
-      if (!document.getElementById('ttbBudgetYearBar')){
-        const y0 = new Date().getFullYear(); const yrs = [y0 - 2, y0 - 1, y0, y0 + 1, y0 + 2]; if (yrs.indexOf(mbuSelectedYear) < 0) mbuSelectedYear = y0 + 1; mbuSelectedScope = 'domestic';
-        const bar = document.createElement('div'); bar.id = 'ttbBudgetYearBar'; bar.className = 'field'; bar.style.maxWidth = '240px';
-        bar.innerHTML = `<label for="ttbBudgetYear">Budget year</label><select id="ttbBudgetYear" class="tbl-select" onchange="mbuSelectedYear = Number(this.value); mbuResetImport();">${yrs.map(y => `<option value="${y}" ${y === mbuSelectedYear ? 'selected' : ''}>${y}</option>`).join('')}</select>`;
-        slot.insertBefore(bar, slot.firstChild);
-      } if (!ttb.loaded[k]){ ttb.loaded[k] = true; ttbBudgetOpen(); } else mbuRenderPlanSetup(); return; }
+    if (k === 'marketingBudgetUpload'){ ttbBuRender(); return; }
     if (cards.length && !ttb.loaded[k]){ ttb.loaded[k] = true; try { if (cards[0] === 'kpiMetricsAdminModule') loadKpiMetricsAdminTable(); else mbuLoadReachInputs(); } catch (e){ console.warn('ttb: loading entry card failed', e); } }
   });
 }
@@ -27485,7 +27592,7 @@ function ttbModuleHtml(d, i){
   const status = i.done ? `<div class="ttb-done">Done. ${escapeHtml(i.gain)}</div>` : '';
   const sample = (i.step === 'companyProfile' && ttbProfileSample(d)) || cfg.sample;
   const btns = [];
-  if (c.upload) btns.push(`<button type="button" class="btn-primary" onclick="${c.upload.workspace ? `ttbUploadWorkspace('${i.step}')` : `ttbUploadOpen('${i.step}')`}">Upload File</button>`);
+  if (c.upload) btns.push(`<button type="button" class="btn-primary" onclick="${c.upload.direct ? `${c.upload.direct}()` : `ttbUploadOpen('${i.step}')`}">Upload File</button>`);
   if (c.manual) btns.push(`<button type="button" class="btn-ghost" aria-expanded="${!!ttb.manual[i.step]}" onclick="${c.manual.cards || c.manual.profile ? `ttbToggleManual('${i.step}')` : c.manual.step ? `ttbGo('${c.manual.step}'${c.manual.arg ? `, '${c.manual.arg}'` : ''})` : `ttbToggleManual('${i.step}')`}">${ttb.manual[i.step] && (c.manual.cards || c.manual.profile) ? 'Hide manual entry' : 'Add Manually'}</button>`);
   if (c.integ) btns.push(`<button type="button" class="btn-ghost" onclick="ttbGo('partnerIntegrations')">Partner Integration</button>`);
   const hasData = i.done;
@@ -37372,10 +37479,7 @@ async function mbuHandleFile(event){
   // file only to be rejected at the very last step.
   const dupExisting = mbuYearsData.find(u => u.year === mbuSelectedYear && u.status === 'confirmed' && (u.scope || 'domestic') === mbuSelectedScope);
   if (dupExisting){
-    if (statusEl){
-      if (ttbBudgetMode) statusEl.innerHTML = `${mbuSelectedYear} already has a confirmed budget. Pick a different year, or <a class="flink" onclick="goToStep('mediaplan')">open it in the Annual Plan</a> to change or delete it.`;
-      else statusEl.textContent = `${mbuSelectedYear} already has a confirmed ${mbuScopeLabel(mbuSelectedScope).toLowerCase()} budget — see the notice above to review/adjust or delete it first.`;
-    }
+    if (statusEl) statusEl.textContent = `${mbuSelectedYear} already has a confirmed ${mbuScopeLabel(mbuSelectedScope).toLowerCase()} budget — see the notice above to review/adjust or delete it first.`;
     event.target.value = '';
     return;
   }
@@ -38938,13 +39042,6 @@ async function mbuSubmitFinal(){
       state.activeChannels = new Set(data.activeChannels);
       if (typeof mbuRenderActiveChannels === 'function') mbuRenderActiveChannels();
     }
-    if (ttbBudgetMode){
-      const rb = document.getElementById('mbuResultsBody');
-      if (rb) rb.innerHTML = `<p style="margin:0 0 10px;font-weight:700;color:var(--cx);">✓ Budget submitted.</p><p class="hint" style="margin:0 0 12px;">It is saved and mapped. View the numbers, make changes and add categories in the Annual Plan.</p><button type="button" class="btn-primary" onclick="goToStep('mediaplan')">View in Annual Plan →</button>`;
-      mbuLoadHistory();
-      if (typeof mbuLoadYearsList === 'function') mbuLoadYearsList();
-      return;
-    }
     if (typeof mbuSetupPath !== 'undefined') mbuSetupPath = null;
     const detailResp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(mbuAnalysis.id)}`);
     if (detailResp.ok) mbuRenderResults(await detailResp.json());
@@ -40473,14 +40570,11 @@ function mbuBudgetExists(){
 // the current (budget-less) year+scope. Reset whenever the year/scope
 // changes (see setMbuYear/setMbuScope callers of mbuRenderPlanSetup).
 let mbuSetupPath = null;
-// True while the budget cards are borrowed by the Train the Brain page (see ttbBudgetOpen): the page is then a single Upload workspace,
-// so the upload card stays open for any year with no budget, and the Setup tiles are not needed.
-let ttbBudgetMode = false;
 function mbuApplyPageMode(){
   const exists = mbuBudgetExists();
-  const path = exists ? null : (ttbBudgetMode ? 'upload' : mbuSetupPath);
+  const path = exists ? null : mbuSetupPath;
   const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
-  show('mbuUploadCard', ttbBudgetMode || (!exists && path === 'upload'));
+  show('mbuUploadCard', !exists && path === 'upload');
   // Round 2026-09-07 (Todd, direct: "we merged the upload and manual budget
   // development process instead of figuring out a consistent process" —
   // screenshots showed "Imported budget" and the Step 1-4 editing wizard
@@ -40558,7 +40652,6 @@ function mbuRenderPlanSetup(){
   const mount = document.getElementById('mbuPlanSetupStatus');
   if (!mount) return;
   mbuApplyPageMode();
-  if (ttbBudgetMode) return; // Train the Brain shows only the upload; the Annual Plan owns the rest
   // 2026-09-14 fix — see mbuYearsLoadFailed's own comment (mbuLoadYearsList
   // above). Checked before the "no budget yet" Setup state below: a failed
   // fetch is NOT the same thing as a genuinely empty account, and showing
