@@ -27333,7 +27333,7 @@ function ttbToggle(k){ ttb.open = ttb.open === k ? '' : k; ttbRerender(); }
 //   Add Manually  -> opens inside the row. The existing entry card is moved in here rather than copied, so it works exactly as before.
 //   Partner Integration -> the one Partner Integrations page.
 // View in Portal is greyed until the item has data, and only shown as a link where the data actually appears.
-const TTB_ALL_CARDS = ['kpiMetricsAdminModule', 'mbuWebsiteUsersCard', 'mbuMarketableSizesCard', 'mbuDmCostPerPieceCard', 'mbuDmFormatCostCard', 'mbuMagazineCostCard', 'mbuAnnualPlanCard', 'mbuDemandFulfillmentCard', 'mbuEngagementCard', 'mbuLeadCountsCard', 'mbuTransactionsCard', 'mbuDigitalCard'];
+const TTB_ALL_CARDS = ['kpiMetricsAdminModule', 'mbuWebsiteUsersCard', 'mbuMarketableSizesCard', 'mbuDmCostPerPieceCard', 'mbuDmFormatCostCard', 'mbuMagazineCostCard', 'mbuAnnualPlanCard', 'mbuDemandFulfillmentCard', 'mbuEngagementCard', 'mbuLeadCountsCard', 'mbuTransactionsCard', 'mbuDigitalCard', 'mbuPlanSetupCard', 'mbuUploadCard', 'mbuResultsCard'];
 let ttbHomes = null;
 function ttbInitHomes(){
   if (ttbHomes) return; ttbHomes = {};
@@ -27341,11 +27341,12 @@ function ttbInitHomes(){
 }
 function ttbReturnCards(){
   if (!ttbHomes) return;
+  ttbBudgetMode = false;
   TTB_ALL_CARDS.forEach((id, n) => {
     const h = ttbHomes[id], el = document.getElementById(id); if (!h || !el || el.parentNode === h.parent) return;
     // Back before the next card that is already home, else before the fixed element that followed the group, so the original order is kept.
     let ref = null;
-    for (let k = n + 1; k < TTB_ALL_CARDS.length && !ref; k++){ const o = document.getElementById(TTB_ALL_CARDS[k]); if (o && o.parentNode === h.parent && ttbHomes[TTB_ALL_CARDS[k]] && ttbHomes[TTB_ALL_CARDS[k]].parent === h.parent) ref = o; }
+    for (let k = n + 1; k < TTB_ALL_CARDS.length && !ref; k++){ const o = document.getElementById(TTB_ALL_CARDS[k]); if (o && o.parentNode === h.parent && ttbHomes[TTB_ALL_CARDS[k]] && ttbHomes[TTB_ALL_CARDS[k]].parent === h.parent && ttbHomes[TTB_ALL_CARDS[k]].anchor === h.anchor) ref = o; }
     if (!ref && h.anchor && h.anchor.parentNode === h.parent) ref = h.anchor;
     h.parent.insertBefore(el, ref); el.style.marginTop = h.mt;
   });
@@ -27358,7 +27359,7 @@ const TTB_CFG = {
   competitivePositioning: { manual: { step: 'competitivePositioning' }, view: { tab: 'strategy', label: 'Strategy' } },
   brandWritingSamples: { upload: { formats: 'Word, PDF or text files', go: 'brandWritingSamples' }, manual: { step: 'brandWritingSamples' }, used: 'Used by Copywriting' },
   voice: { manual: { step: 'voice' }, view: { tab: 'brand', label: 'Customer Experiences' } },
-  marketingBudgetUpload: { upload: { formats: '.xlsx or .csv, in any layout. The Brain shows which columns it recognized and asks about the rest.', go: 'marketingBudgetUpload', arg: 'configuration', sample: { name: 'marketing-budget-sample.csv', cols: ['Category', 'Status', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Total'], rows: [['Paid Social', 'Working', 24000, 26000, 30000, 30000, 28000, 26000, 24000, 24000, 30000, 32000, 34000, 20000, 328000], ['Agency fees', 'Non-Working', 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 96000]] } }, manual: { step: 'marketingBudgetUpload', arg: 'configuration' }, view: { step: 'mediaplan', label: 'Budget and Plan' } },
+  marketingBudgetUpload: { upload: { formats: '.xlsx or .csv, in any layout. Pick the budget year, choose the file, and the Brain shows which columns it recognized and asks about the rest. All of it happens in this row.', workspace: ['mbuPlanSetupCard', 'mbuUploadCard', 'mbuResultsCard'], sample: { name: 'marketing-budget-sample.csv', cols: ['Category', 'Status', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Total'], rows: [['Paid Social', 'Working', 24000, 26000, 30000, 30000, 28000, 26000, 24000, 24000, 30000, 32000, 34000, 20000, 328000], ['Agency fees', 'Non-Working', 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 96000]] } }, manual: { step: 'marketingBudgetUpload', arg: 'configuration' }, view: { step: 'mediaplan', label: 'Budget and Plan' } },
   bulkUpload: { upload: { formats: '.xlsx or .csv, one row per month and product group', handler: 'mbuHandleTxnFile', cards: ['mbuTransactionsCard'], sample: { name: 'transactions-by-month-sample.csv', cols: ['Year', 'Month', 'Product Group', 'Transactions', 'Revenue'], rows: [[2026, 'Jan', 'Mediterranean', 42, 268000], [2026, 'Feb', 'Mediterranean', 51, 322500]] } }, manual: { cards: ['mbuTransactionsCard'] }, integ: true, view: { tab: 'strategy', label: 'Strategy' } },
   partnerIntegrations: { integ: true, manual: { note: 'Prefer to type it? Every number on this page has an Add Manually option.' }, view: { tab: 'dataScientist', label: 'Media Science' } },
   team: { manual: { step: 'team' }, view: { step: 'team', label: 'Team' } },
@@ -27439,10 +27440,20 @@ function ttbUploadOpen(key){
   m.innerHTML = `<div class="ttb-modal-card"><h2 id="ttbModalT">Upload: ${escapeHtml(ttbItemLabel(key))}</h2>
     <div class="ttb-tag">Accepted files</div><p class="hint" style="margin:0 0 12px;">${escapeHtml(u.formats)}</p>
     ${u.sample ? `<div class="ttb-tag">Sample file</div><p class="hint" style="margin:0 0 8px;">Columns: ${u.sample.cols.map(escapeHtml).join(', ')}. Your own file does not have to match exactly; the Brain looks for the columns it needs.</p><button type="button" class="btn-ghost" onclick="ttbDownloadSample('${key}')">Download sample file</button>` : `<p class="hint" style="margin:0;">${escapeHtml(u.noSample || 'There is no sample file for this one.')}</p>`}
-    <div class="btn-row" style="gap:10px;margin-top:18px;"><label class="btn-primary" style="cursor:pointer;margin:0;">Choose file<input type="file" ${u.handler ? 'accept=".csv,.xlsx"' : ''} style="display:none;" onchange="ttbUploadPicked('${key}', event)"></label><button type="button" class="btn-ghost" onclick="ttbUploadClose()">Cancel</button></div></div>`;
+    <div class="btn-row" style="gap:10px;margin-top:18px;">${u.workspace ? `<button type="button" class="btn-primary" onclick="ttbUploadWorkspace('${key}')">Pick year and file</button>` : `<label class="btn-primary" style="cursor:pointer;margin:0;">Choose file<input type="file" ${u.handler ? 'accept=".csv,.xlsx"' : ''} style="display:none;" onchange="ttbUploadPicked('${key}', event)"></label>`}<button type="button" class="btn-ghost" onclick="ttbUploadClose()">Cancel</button></div></div>`;
   m.addEventListener('click', e => { if (e.target === m) ttbUploadClose(); });
   document.body.appendChild(m); document.addEventListener('keydown', ttbModalKey);
   const first = m.querySelector('button, label'); if (first) first.focus();
+}
+function ttbUploadWorkspace(key){
+  ttbUploadClose(); ttb.open = key; ttb.manual[key] = true; ttbRerender();
+  const slot = document.getElementById('ttbSlot-' + key); if (slot) slot.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function ttbBudgetOpen(){
+  ttbBudgetMode = true;
+  const link = document.getElementById('mbuTemplateDownloadLink'); if (link) link.href = `${BACKEND_URL}/api/marketing-budget-upload-template.csv`;
+  try { if (!mbuAnalysis && !mbuCategoryMappingData) mbuResetImport(); } catch (e){}
+  if (typeof mbuLoadYearsList === 'function') mbuLoadYearsList();
 }
 function ttbUploadPicked(key, ev){
   const u = TTB_CFG[key].upload; const files = ev.target.files;
@@ -27455,8 +27466,9 @@ function ttbOpenView(key){ const v = TTB_CFG[key].view; if (!v) return; if (v.ta
 function ttbMountOpen(){
   ttbInitHomes();
   Object.keys(ttb.manual).forEach(k => {
-    if (!ttb.manual[k] || ttb.open !== k) return; const c = TTB_CFG[k]; const cards = (c && c.manual && c.manual.cards) || []; const slot = document.getElementById('ttbSlot-' + k); if (!slot) return;
+    if (!ttb.manual[k] || ttb.open !== k) return; const c = TTB_CFG[k]; const cards = (c && c.manual && c.manual.cards) || (c && c.upload && c.upload.workspace) || []; const slot = document.getElementById('ttbSlot-' + k); if (!slot) return;
     cards.forEach(id => { const el = document.getElementById(id); if (!el) return; el.style.marginTop = '0'; slot.appendChild(el); });
+    if (k === 'marketingBudgetUpload'){ ttbBudgetMode = true; if (!ttb.loaded[k]){ ttb.loaded[k] = true; ttbBudgetOpen(); } else mbuRenderPlanSetup(); return; }
     if (cards.length && !ttb.loaded[k]){ ttb.loaded[k] = true; try { if (cards[0] === 'kpiMetricsAdminModule') loadKpiMetricsAdminTable(); else mbuLoadReachInputs(); } catch (e){ console.warn('ttb: loading entry card failed', e); } }
   });
 }
@@ -37328,7 +37340,7 @@ function mbuRenderDuplicateYearNotice(){
   // 2026-09-06 review: a confirmed year is described once, by the Plan
   // Setup status (period-aware, with its own actions) -- this notice only
   // matters while a file is being picked for a year that already has one.
-  if (!existing || !mbuSetupPath){ mount.innerHTML = ''; return; }
+  if (!existing || !(mbuSetupPath || ttbBudgetMode)){ mount.innerHTML = ''; return; }
   mount.innerHTML = `
     <div class="hint" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px 14px;margin:8px 0 16px;">
       <span>${mbuSelectedYear} already has a confirmed ${mbuScopeLabel(mbuSelectedScope).toLowerCase()} budget ("${escapeHtml(existing.fileName || 'untitled file')}"). Adjust its category totals instead of uploading again, or delete it first if you truly need to start over.</span>
@@ -40427,9 +40439,12 @@ function mbuBudgetExists(){
 // the current (budget-less) year+scope. Reset whenever the year/scope
 // changes (see setMbuYear/setMbuScope callers of mbuRenderPlanSetup).
 let mbuSetupPath = null;
+// True while the budget cards are borrowed by the Train the Brain page (see ttbBudgetOpen): the page is then a single Upload workspace,
+// so the upload card stays open for any year with no budget, and the Setup tiles are not needed.
+let ttbBudgetMode = false;
 function mbuApplyPageMode(){
   const exists = mbuBudgetExists();
-  const path = exists ? null : mbuSetupPath;
+  const path = exists ? null : (ttbBudgetMode ? 'upload' : mbuSetupPath);
   const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
   show('mbuUploadCard', !exists && path === 'upload');
   // Round 2026-09-07 (Todd, direct: "we merged the upload and manual budget
@@ -40637,6 +40652,13 @@ function mbuRenderPlanSetup(){
           <input type="number" id="mbuTotalOnlyInput" min="0" step="1000" placeholder="e.g. 250000">
           <button type="button" class="btn-primary" style="align-self:flex-start;" onclick="mbuStartTotalOnly()">Save total →</button>
         </div>
+      </div>`;
+    return;
+  }
+  if (ttbBudgetMode){
+    mount.innerHTML = `
+      <div style="background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 16px;">
+        <span style="font-weight:700;color:#b8860b;">No confirmed ${scopeWord} budget for ${mbuSelectedYear} yet.</span> <span class="hint">Choose the file below. The column mapping, the check against your file and the category review all happen on this page.</span>
       </div>`;
     return;
   }
