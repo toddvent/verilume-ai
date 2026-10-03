@@ -13817,6 +13817,9 @@ function bucketStageStatus(completion){
 // fields); Brand is manual (no live per-campaign brand-asset signal exists
 // yet); QA & Approval needs exactly one manual gesture (approveCampaignQa()),
 // gated on Functions + Creative both being Complete first.
+// 2026-10-03 — historical complete: an uploaded campaign whose hit dates have all passed reads complete on every stage (no internal
+// copy, QA or approvals needed). Financials, impressions and reporting are separate data and stay valid. A person can reopen it.
+function cmpIsHistoricalComplete(c){ return !!c && (c.historicalComplete === true || c.historicalComplete === 1 || c.historicalComplete === '1'); }
 function computeStageStatuses(campaign){
   const align = computeCampaignRelevanceScore(campaign);
   const brandStatus = normalizeStageStatus(campaign.brandStage || 'Not Started');
@@ -13846,6 +13849,7 @@ function computeStageStatuses(campaign){
   // add to In Progress and Completed stages" — same overall score attached
   // to every qualifying stage (there's no per-stage score to compute
   // separately; the score itself is one campaign-wide figure).
+  if (cmpIsHistoricalComplete(campaign)) return stages.map(s => ({ ...s, status: 'complete', score: align.overall }));
   return stages.map(s => ({ ...s, score: (s.status === 'in-progress' || s.status === 'complete') ? align.overall : null }));
 }
 function renderStageBar(campaign){
@@ -14122,6 +14126,7 @@ const CMP_MODULE_TAG_LABEL = { 'not-started': 'Pending', 'in-progress': 'In Prog
 function cmpModuleStatus(key){
   const campaign = cmpRailLoadedCampaign();
   const railEntry = CMP_STAGE_RAIL.find(s => s.key === key);
+  if (campaign && cmpIsHistoricalComplete(campaign)) return 'complete';
   if (railEntry && railEntry.cs){
     if (!campaign) return 'not-started';
     // 2026-09-29 — creative gate: a campaign whose creative was produced
@@ -14410,8 +14415,15 @@ function renderCmpWorkspaceHub(campaign){
       <div class="workstream-alert"><span class="label" style="color:var(--advocacy);font-weight:700;">Open →</span></div>
     </div>`;
   }).join('');
+  const histBanner = cmpIsHistoricalComplete(campaign)
+    ? `<div class="hint" style="margin:0 0 12px;padding:12px 14px;background:var(--paper-dim);border-radius:10px;">
+        <strong>Historical campaign</strong> — every stage reads complete because this campaign's hit dates have already passed, so no internal copy, QA or approvals are needed. Budget, impressions, actuals and reporting are unchanged and still count.
+        <a style="cursor:pointer;margin-left:8px;" onclick="cmpReopenHistorical()">Reopen the stages →</a>
+      </div>`
+    : '';
   hub.innerHTML = `
     <div class="cmp-workspace-main">
+      ${histBanner}
       <div class="cmp-workspace-switcher" id="cmpWorkspaceSwitcher"></div>
       <div class="group-grid cmp-workspace-grid">${cardsHtml}</div>
     </div>
@@ -23177,6 +23189,7 @@ function cxToday(){ const d = new Date(); return `${d.getFullYear()}-${String(d.
 function cxGate(c){
   // Complete only when the team marked Creative complete (the Complete flag in the Creative grid); otherwise show the computed progress.
   if (c.creativeComplete === true || c.creativeComplete === 1 || c.creativeComplete === '1') return 'complete';
+  if (cmpIsHistoricalComplete(c) || c.creativeDisposition === 'external') return 'complete';
   try { const st = computeStageStatuses(c).find(x => x.key === 'creative'); return st && st.status === 'not-started' ? 'not-started' : 'in-progress'; } catch (e){ return 'not-started'; }
 }
 function cxGateLabel(g){ return g === 'complete' ? 'Creative complete' : g === 'in-progress' ? 'Creative in progress' : 'Creative not started'; }
@@ -66593,6 +66606,16 @@ function cmpCreativeGateHtml(c){
     </div>`;
   }
   return '';
+}
+async function cmpReopenHistorical(){
+  const c = cmpRailLoadedCampaign();
+  if (!c) return;
+  await cmpBriefSaveField('historicalComplete', 0);
+  const inList = (state.campaigns || []).find(x => x.id === c.id);
+  if (inList) inList.historicalComplete = 0;
+  if (typeof renderCmpStageRail === 'function') renderCmpStageRail();
+  if (typeof cmpRenderWorkspaceHub === 'function') cmpRenderWorkspaceHub();
+  renderCmpWorkspaceHub(c);
 }
 async function cmpSetCreativeDisposition(value){
   const c = cmpRailLoadedCampaign();
