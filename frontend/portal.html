@@ -17258,9 +17258,10 @@ const BULK_UPLOAD_DATE_FIELDS = ['dropDate', 'hitDate', 'endDate'];
 const BULK_UPLOAD_TAXONOMY_FIELD_KEYS = { audience: 'audience', buyType: 'buyType', mediaType: 'mediaType', productGroup: 'productGroup', creativeMarket: 'creativeMarket', partner: 'partner' };
 
 let bulkUploadRows = []; // [{ index, raw: {...}, errors: [str], warnings: [str] }]
+let bulkUploadFileName = '';
 
 function resetBulkUploadState(){
-  bulkUploadRows = [];
+  bulkUploadRows = []; bulkUploadFileName = '';
   const fileInput = document.getElementById('bulkUploadFileInput');
   if (fileInput) fileInput.value = '';
   const nameInput = document.getElementById('bulkUploadActorName');
@@ -17412,6 +17413,7 @@ function validateBulkUploadRow(raw){
 function handleBulkUploadFileChange(event){
   const file = event.target.files && event.target.files[0];
   if (!file) return;
+  bulkUploadFileName = file.name || '';
   const reader = new FileReader();
   reader.onload = () => {
     const parsed = parseCsvText(String(reader.result || ''));
@@ -17510,17 +17512,19 @@ async function submitBulkUpload(){
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/channel-planning/bulk`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ actorName, rows })
+      body: JSON.stringify({ actorName, fileName: bulkUploadFileName || 'marketing-calendar-upload', skippedRows: bulkUploadRows.length - validRows.length, rows })
     });
+    const data = await resp.json().catch(() => ({}));
     if (!resp.ok){
-      resultEl.textContent = `Upload failed (${resp.status}) — no rows were saved. Try again, or check the backend is reachable.`;
+      const errs = (data.errors || []).slice(0, 25).map(e => `Row ${e.row} (${e.campaignId || 'no campaign'}): ${e.error}`);
+      resultEl.innerHTML = escapeHtml(data.error || `Upload failed (${resp.status}) — no rows were saved. Try again, or check the backend is reachable.`) +
+        (errs.length ? `<br>${errs.map(escapeHtml).join('<br>')}${(data.errors || []).length > 25 ? '<br>…and ' + ((data.errors || []).length - 25) + ' more.' : ''}` : '');
       return;
     }
-    const data = await resp.json();
-    const failedLines = (data.results || []).filter(r => !r.ok).map(r => `Row referencing ${r.campaignId || '(no campaign)'}: ${r.error}`);
-    resultEl.innerHTML = `Uploaded ${data.insertedCount} row${data.insertedCount === 1 ? '' : 's'}${data.failedCount ? `, ${data.failedCount} rejected by the backend (should match the client-side check above unless the account's taxonomy changed mid-upload)` : ''}.` +
-      (failedLines.length ? `<br>${failedLines.map(escapeHtml).join('<br>')}` : '') +
-      (data.campaignsSynced && data.campaignsSynced.length ? `<br>Product Group/Creative Focus Group recomputed for ${data.campaignsSynced.length} campaign${data.campaignsSynced.length === 1 ? '' : 's'} from the real rows just uploaded.` : '');
+    resultEl.innerHTML = `Added ${data.insertedCount} line${data.insertedCount === 1 ? '' : 's'}${data.alreadyLoaded ? `; ${data.alreadyLoaded} already on the calendar and not added again` : ''}.` +
+      (data.campaignsSynced && data.campaignsSynced.length ? `<br>Product Group/Creative Focus Group recomputed for ${data.campaignsSynced.length} campaign${data.campaignsSynced.length === 1 ? '' : 's'} from the real rows just uploaded.` : '') +
+      '<div id="bulkUploadReceipt" style="margin-top:10px"></div>';
+    if (data.receipt) mbuRenderUploadReceipt(data.receipt, 'bulkUploadReceipt');
     // Refresh this account's campaigns from the backend so the newly
     // synced productGroups/creativeFocusGroups (and anything else the
     // upload touched) show up immediately elsewhere in the app — same
@@ -18229,13 +18233,14 @@ async function submitBulkCreateCampaigns(){
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/channel-planning/bulk-create-campaigns`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ actorName, fileName: fileNameMatch ? fileNameMatch[1] : '', dateRangeStart, dateRangeEnd, rows })
+      body: JSON.stringify({ actorName, fileName: fileNameMatch ? fileNameMatch[1] : '', dateRangeStart, dateRangeEnd, skippedRows: Math.max(0, bccRows.length - validRows.length), rows })
     });
+    const data = await resp.json().catch(() => ({}));
     if (!resp.ok){
-      resultEl.textContent = `Upload failed (${resp.status}) — no rows were saved. Try again, or check the backend is reachable.`;
+      const errs = (data.errors || []).slice(0, 25).map(e => `Row ${e.row}: ${e.error}`);
+      resultEl.innerHTML = escapeHtml(data.error || `Upload failed (${resp.status}) — no rows were saved. Try again, or check the backend is reachable.`) + (errs.length ? `<br>${errs.map(escapeHtml).join('<br>')}${(data.errors || []).length > 25 ? '<br>…and ' + ((data.errors || []).length - 25) + ' more.' : ''}` : '');
       return;
     }
-    const data = await resp.json();
     const failedLines = (data.results || []).filter(r => !r.ok).map(r => `Row #${r.index + 1}: ${r.error}`);
     const catalogNote = ((data.printSpecsAdded || data.magazineCostsSeeded)
       ? ` Print catalog: ${data.printSpecsAdded || 0} publication/format pair${data.printSpecsAdded === 1 ? '' : 's'} added, ${data.magazineCostsSeeded || 0} cost${data.magazineCostsSeeded === 1 ? '' : 's'} per insertion seeded from Budget (see Magazine cost on Media Plan &amp; Budget).`
@@ -18245,7 +18250,8 @@ async function submitBulkCreateCampaigns(){
       ? ` Production details captured on ${data.productionRows} row${data.productionRows === 1 ? '' : 's'} — review under Marketing Ops → Production Schedule &amp; Details.`
       : '');
     resultEl.innerHTML = `Uploaded ${data.rowsInserted} new row${data.rowsInserted === 1 ? '' : 's'}${data.rowsUpdated ? `, updated ${data.rowsUpdated} existing line${data.rowsUpdated === 1 ? '' : 's'} in place` : ''} — ${data.campaignsCreated.length} campaign${data.campaignsCreated.length === 1 ? '' : 's'} created, ${data.campaignsMatched.length} existing campaign${data.campaignsMatched.length === 1 ? '' : 's'} added to.${data.rowsFailed ? ` ${data.rowsFailed} row${data.rowsFailed === 1 ? '' : 's'} rejected by the backend.` : ''}${catalogNote}` +
-      (failedLines.length ? `<br>${failedLines.map(escapeHtml).join('<br>')}` : '');
+      (failedLines.length ? `<br>${failedLines.map(escapeHtml).join('<br>')}` : '') + '<div id="bccReceipt" style="margin-top:10px"></div>';
+    if (data.receipt) mbuRenderUploadReceipt(data.receipt, 'bccReceipt');
     if (data.rowsInserted || data.rowsUpdated){
       await loadCampaigns();
       await loadBulkCreateCampaignsBatches();
@@ -37671,6 +37677,11 @@ async function mbuConfirmImport(){
       return;
     }
     if (resultEl) resultEl.textContent = `Imported ${data.lineItemsInserted} line item(s)${data.rowsSkipped ? `, ${data.rowsSkipped} row(s) skipped (excluded or missing a category)` : ''}. Not available to use yet — map each category to a Verilume category below.`;
+    if (resultEl && data.receipt){
+      let rc = document.getElementById('mbuBudgetReceipt');
+      if (!rc){ rc = document.createElement('div'); rc.id = 'mbuBudgetReceipt'; rc.style.marginTop = '10px'; resultEl.insertAdjacentElement('afterend', rc); }
+      mbuRenderUploadReceipt(data.receipt, 'mbuBudgetReceipt');
+    }
     await mbuLoadCategoryMapping();
     mbuLoadHistory();
   } catch (e){
