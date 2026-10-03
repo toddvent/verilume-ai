@@ -24129,7 +24129,7 @@ async function askVerilumeToggleVoice(){
 // Replaces the dead Customize KPIs button. Slice 1: interview (taps, typing or voice) builds a
 // request card, existing reports are offered first, then a safe server template builds one view
 // that can be downloaded once. Saving to the Report Library is slice 2.
-const fd = { card: { need: null, subject: null, use: null }, next: null, existing: [], view: null, notOnFile: '', unmet: false, busy: false, status: '', voice: false, asked: false, dq: null, cat: null, dqMsg: '', dqSug: [], slot: { measure: 'revenue', agg: 'avg', by1: 'creativeFocus', by2: '', period: 'range', compare: false } };
+const fd = { card: { need: null, subject: null, use: null }, next: null, existing: [], view: null, notOnFile: '', unmet: false, busy: false, status: '', voice: false, asked: false, dq: null, cat: null, dqMsg: '', dqSug: [], slot: { measure: 'revenue', agg: 'avg', by1: 'creativeFocus', by2: '', period: 'range', basis: 'booked', compare: false } };
 const FD_LABELS = {
   need: { number: 'A number', compare: 'A comparison', trend: 'A trend over time', list: 'A list or ranking' },
   subject: { account: 'The whole account', productGroup: 'A product group', channel: 'A channel', campaign: 'A campaign', audience: 'An audience type' },
@@ -24188,12 +24188,12 @@ async function fdLoadCatalog(){
 }
 function fdSyncSlots(spec){
   if (!spec) return;
-  fd.slot = { measure: spec.measure, agg: spec.agg, by1: (spec.by || [])[0] || '', by2: (spec.by || [])[1] || '', period: spec.period && spec.period.kind === 'year' ? 'y' + spec.period.year : (spec.period && spec.period.kind === 'all' ? 'all' : 'range'), compare: spec.compare === 'priorYear' };
+  fd.slot = { measure: spec.measure, agg: spec.agg, by1: (spec.by || [])[0] || '', by2: (spec.by || [])[1] || '', period: spec.period && spec.period.kind === 'year' ? 'y' + spec.period.year : (spec.period && spec.period.kind === 'all' ? 'all' : 'range'), basis: spec.basis === 'delivered' ? 'delivered' : 'booked', compare: spec.compare === 'priorYear' };
 }
 function fdSlotSpec(){
   const sl = fd.slot; const by = [sl.by1, sl.by2].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
   const period = sl.period === 'all' ? { kind: 'all' } : /^y\d{4}$/.test(sl.period) ? { kind: 'year', year: Number(sl.period.slice(1)) } : { kind: 'range' };
-  return { measure: sl.measure, agg: sl.agg, by, filters: [], period, compare: sl.compare ? 'priorYear' : null, top: null, order: 'desc' };
+  return { measure: sl.measure, agg: sl.agg, by, filters: [], period, basis: sl.basis === 'delivered' ? 'delivered' : 'booked', compare: sl.compare ? 'priorYear' : null, top: null, order: 'desc' };
 }
 function fdSlotSet(k, v){
   if (k === 'measure' && fd.cat){ const m = fd.cat.measures.find(x => x.key === v); fd.slot.measure = v; fd.slot.agg = m ? m.aggs[0].key : 'avg'; }
@@ -24245,7 +24245,7 @@ function fdBuilderHtml(){
   const recipes = (c.recipes || []).map((r, i) => `<button type="button" class="fd-chip" onclick="fdRunRecipe(${i})">${escapeHtml(r.title)}</button>`).join('');
   const vocabNote = c.orderSizeLabel ? '' : `<p class="fd-hint">Order size is being read as ${escapeHtml((c.orderSizeNames || []).slice(0, 3).join(', ') || 'order size')} for your industry. You can set your own word when you upload the file.</p>`;
   return `<div class="fd-card"><div class="fd-cardhead">Ask about your data</div>
-    <p style="line-height:2.4;margin:0;">Show me ${aggSel} ${meas} by ${by1}${by2} for ${per} <label style="white-space:nowrap;"><input type="checkbox" ${sl.compare ? 'checked' : ''} onchange="fdSlotSet('compare', this.checked)"> compared with last year</label> <button type="button" class="btn-primary" ${fd.busy ? 'disabled' : ''} onclick="fdRunSlots()">Show it</button></p>
+    <p style="line-height:2.4;margin:0;">Show me ${aggSel} ${meas} by ${by1}${by2} for ${per} counted by <select class="tbl-select" aria-label="Which date decides the year" onchange="fdSlotSet('basis', this.value)">${opt('booked', 'booking date', sl.basis)}${opt('delivered', 'service delivery date', sl.basis)}</select> <label style="white-space:nowrap;"><input type="checkbox" ${sl.compare ? 'checked' : ''} onchange="fdSlotSet('compare', this.checked)"> compared with last year</label> <button type="button" class="btn-primary" ${fd.busy ? 'disabled' : ''} onclick="fdRunSlots()">Show it</button></p>
     ${vocabNote}<p class="fd-hint" style="margin-top:10px;">Or start from a common question:</p><div class="fd-chips">${recipes}</div></div>`;
 }
 function fdAnswerHtml(){
