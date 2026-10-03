@@ -3808,6 +3808,22 @@
      toggles it). Not "Save Draft" or any save-related messaging — Todd
      was explicit that's out of scope for now. */
   #utilNavBackToDash{margin-right:auto;}
+
+  /* 2026-10-03 — Ask Verilume dock, slice 1 (behind ?dock=1). One floating, bottom-centre dock: Ask input plus the four surface icons.
+     The existing bar markup is reused; with body.ask-dock it stops being a full-width strip and floats. Off by default; ?dock=0 turns it off. */
+  body.ask-dock{padding-bottom:96px;}
+  body.ask-dock .ask-bar{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);width:min(760px,calc(100vw - 24px));margin:0;padding:0 12px 0 10px;background:var(--white);border:1px solid #CDD1D8;border-radius:32px;box-shadow:0 10px 30px rgba(20,20,30,0.18),0 2px 6px rgba(0,0,0,0.08);z-index:880;}
+  body.ask-dock .ask-row{min-height:56px;padding:8px 0;flex-wrap:nowrap;gap:10px;}
+  body.ask-dock .ask-label,body.ask-dock .ask-badge{display:none;}
+  body.ask-dock .ask-toggle{white-space:nowrap;}
+  body.ask-dock .ask-expand{position:absolute;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%);width:min(540px,100%);max-height:min(560px,70vh);overflow:auto;padding:14px 16px;background:var(--white);border:1px solid #CDD1D8;border-radius:16px;box-shadow:0 14px 36px rgba(20,20,30,0.2);box-sizing:border-box;}
+  .ask-dock-icons{display:none;align-items:center;gap:4px;padding-left:10px;margin-left:2px;border-left:1px solid var(--line);}
+  body.ask-dock .ask-dock-icons{display:flex;}
+  .ask-dock-btn{position:relative;display:flex;align-items:center;justify-content:center;width:44px;height:44px;border:0;border-radius:50%;background:transparent;color:var(--hdr-navy);cursor:pointer;}
+  .ask-dock-btn:hover{background:var(--paper-dim);}
+  .ask-dock-btn:focus-visible{outline:2px solid #4F46E5;outline-offset:1px;}
+  .ask-dock-btn[aria-disabled="true"]{opacity:0.4;cursor:not-allowed;}
+  .ask-dock-toast{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);background:#1D1D1F;color:#fff;font-size:0.8125rem;font-weight:600;padding:9px 14px;border-radius:8px;z-index:890;}
 </style>
 </head>
 <body>
@@ -14373,7 +14389,7 @@ function cmpSyncAskVerilumeBarVisibility(){
   // its own Collaboration Center placeholder covering the same job, so the
   // fixed Ask Verilume bar is redundant there too.
   const inCampaignWorkflow = !!(campaignStep && campaignStep.classList.contains('active'));
-  bar.style.display = inCampaignWorkflow ? 'none' : '';
+  bar.style.display = (inCampaignWorkflow && !(typeof ASK_DOCK_ON !== 'undefined' && ASK_DOCK_ON)) ? 'none' : '';
 }
 function renderCmpWorkspaceHub(campaign){
   const hub = document.getElementById('cmpWorkspaceHub');
@@ -23887,6 +23903,39 @@ function renderAskVerilumeBar(){
   labelEl.textContent = `Suggested — scoped to ${ASK_VERILUME_TAB_LABELS[tab] || 'Daily Brief'}`;
   rowEl.innerHTML = prompts.map(p => `<span class="prompt-chip" onclick="askVerilumeAsk(${JSON.stringify(p).replace(/"/g, '&quot;')})"><span class="q">?</span>${escapeHtml(p)}</span>`).join('');
 }
+
+// ---- Ask Verilume dock (slice 1). Switch: ?dock=1 turns it on and remembers it, ?dock=0 turns it off. ----
+var ASK_DOCK_ON = (() => { try { const q = new URLSearchParams(location.search).get('dock'); if (q === '1') localStorage.setItem('askDock', '1'); if (q === '0') localStorage.removeItem('askDock'); return localStorage.getItem('askDock') === '1'; } catch (e){ return /[?&]dock=1/.test(location.search); } })();
+const ASK_DOCK_ICONS = [
+  { key: 'thoughts', label: 'Thoughts', fn: 'askDockOpen(\'thoughts\')', svg: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/>' },
+  { key: 'brainTrain', label: 'Brain Train', fn: 'askDockOpen(\'brainTrain\')', svg: '<path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/>' },
+  { key: 'contest', label: 'Contest, available in a later release', fn: '', disabled: true, svg: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4Z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>' },
+  { key: 'team', label: 'Team', fn: 'askDockOpen(\'team\')', svg: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M18 20a5.6 5.6 0 0 0-2.4-4.6"/>' }
+];
+function askDockInit(){
+  if (!ASK_DOCK_ON) return;
+  document.body.classList.add('ask-dock');
+  const row = document.querySelector('#askVerilumeBar .ask-row'); if (!row || row.querySelector('.ask-dock-icons')) return;
+  const wrap = document.createElement('div'); wrap.className = 'ask-dock-icons'; wrap.setAttribute('role', 'group'); wrap.setAttribute('aria-label', 'Verilume surfaces');
+  wrap.innerHTML = ASK_DOCK_ICONS.map(b => `<button type="button" class="ask-dock-btn" title="${b.label}" aria-label="${b.label}" ${b.disabled ? 'aria-disabled="true"' : `onclick="${b.fn}"`}><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${b.svg}</svg></button>`).join('');
+  row.appendChild(wrap);
+}
+function askDockToast(t){ const o = document.querySelector('.ask-dock-toast'); if (o) o.remove(); const d = document.createElement('div'); d.className = 'ask-dock-toast'; d.setAttribute('role', 'status'); d.textContent = t; document.body.appendChild(d); setTimeout(() => d.remove(), 3200); }
+// One surface at a time: opening one closes the Ask sheet and the others. Until each surface is built (slices 2 to 4) these open the existing screens.
+function askDockCloseAll(){
+  const ex = document.getElementById('askVerilumeExpand'); if (ex && ex.classList.contains('open')) toggleAskVerilumePrompts();
+  try { closeFaqDrawer(); } catch (e){}
+  if (typeof cmpCollabExpanded !== 'undefined' && cmpCollabExpanded){ try { cmpToggleCollabExpanded(); } catch (e){} }
+}
+function askDockOpen(which){
+  askDockCloseAll();
+  try { localStorage.setItem('askDockLast', which); } catch (e){}
+  if (which === 'thoughts') openFaqDrawer();
+  else if (which === 'brainTrain'){ switchPrimaryTab('accountManagement'); try { ttb.tab = 'learnings'; ttbRerender(); } catch (e){} }
+  else if (which === 'team'){ if (document.getElementById(cmpCollabMountId) && document.getElementById(cmpCollabMountId).children.length) cmpToggleCollabExpanded(); else askDockToast('Team opens inside a campaign for now.'); }
+}
+document.addEventListener('keydown', e => { if (ASK_DOCK_ON && e.key === 'Escape'){ const ex = document.getElementById('askVerilumeExpand'); if (ex && ex.classList.contains('open')) toggleAskVerilumePrompts(); } });
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', askDockInit); else askDockInit();
 function toggleAskVerilumePrompts(){
   const toggleEl = document.getElementById('askVerilumeToggle');
   const expandEl = document.getElementById('askVerilumeExpand');
