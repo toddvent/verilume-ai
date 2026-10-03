@@ -27479,7 +27479,7 @@ function ttbModuleHtml(d, i){
   const status = i.done ? `<div class="ttb-done">Done. ${escapeHtml(i.gain)}</div>` : '';
   const sample = (i.step === 'companyProfile' && ttbProfileSample(d)) || cfg.sample;
   const btns = [];
-  if (c.upload) btns.push(`<button type="button" class="btn-primary" onclick="ttbUploadOpen('${i.step}')">Upload File</button>`);
+  if (c.upload) btns.push(`<button type="button" class="btn-primary" onclick="${c.upload.workspace ? `ttbUploadWorkspace('${i.step}')` : `ttbUploadOpen('${i.step}')`}">Upload File</button>`);
   if (c.manual) btns.push(`<button type="button" class="btn-ghost" aria-expanded="${!!ttb.manual[i.step]}" onclick="${c.manual.cards || c.manual.profile ? `ttbToggleManual('${i.step}')` : c.manual.step ? `ttbGo('${c.manual.step}'${c.manual.arg ? `, '${c.manual.arg}'` : ''})` : `ttbToggleManual('${i.step}')`}">${ttb.manual[i.step] && (c.manual.cards || c.manual.profile) ? 'Hide manual entry' : 'Add Manually'}</button>`);
   if (c.integ) btns.push(`<button type="button" class="btn-ghost" onclick="ttbGo('partnerIntegrations')">Partner Integration</button>`);
   const hasData = i.done;
@@ -39950,7 +39950,8 @@ async function mbuRenderResults(data){
   const actions = `
     <div class="btn-row" style="margin:6px 0 10px;flex-wrap:wrap;">
       <button type="button" class="btn-ghost" onclick="mbuLoadCategoryMapping()">✎ Edit categories &amp; labels →</button>
-      ${isAvailable ? `<button type="button" class="btn-ghost" onclick="mbuExportMonthlyCsv('${data.id}')">⬇ Download monthly detail (CSV) →</button>` : ''}
+      ${isAvailable ? `<button type="button" class="btn-ghost" onclick="mbuExportMonthlyCsv('${data.id}')">⬇ Download monthly detail (CSV) →</button>
+      <button type="button" class="btn-ghost" onclick="mbuExportMonthlyXlsx('${data.id}')">⬇ Download monthly detail (Excel) →</button>` : ''}
       <button type="button" class="btn-ghost" onclick="mbdToggle('${lineItemsId}')">Imported line items (${cats.length}) →</button>
     </div>`;
   const statusLine = `
@@ -39988,7 +39989,9 @@ async function mbuRenderResults(data){
     // manual path with no upload at all (mbdShowForPlan's own actions).
     mbuActiveBudgetExtrasHtml = `
     <div class="btn-row" style="margin:6px 0 10px;flex-wrap:wrap;">
+      ${ttbBudgetMode ? `<button type="button" class="btn-primary" onclick="goToStep('mediaplan')">View in Annual Plan →</button>` : ''}
       <button type="button" class="btn-ghost" onclick="mbuExportMonthlyCsv('${data.id}')">⬇ Download monthly detail (CSV) →</button>
+      <button type="button" class="btn-ghost" onclick="mbuExportMonthlyXlsx('${data.id}')">⬇ Download monthly detail (Excel) →</button>
       <button type="button" class="btn-ghost" onclick="mbdToggle('${lineItemsId}')">Imported line items (${cats.length}) →</button>
     </div>` + lineItemsHtml;
     mbuAnalysis = mbuAnalysis && mbuAnalysis.id === data.id ? mbuAnalysis : { id: data.id, layout: data.layout, status: data.status, year: data.year };
@@ -40035,6 +40038,22 @@ async function mbuRenderResults(data){
 // mktCalExport()/mediaPlanExport() already use elsewhere on this page (a
 // plain <a href download> can't carry the Bearer session token this
 // account-scoped endpoint requires).
+async function mbuExportMonthlyXlsx(uploadId){
+  if (!uploadId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(uploadId)}/export.csv`);
+    if (!resp.ok){ alert("Couldn't build that export right now."); return; }
+    const text = await resp.text();
+    const { headers, rows } = cfiParseCsvText(text);
+    const XLSX = await cfiLoadSheetJs();
+    const disposition = resp.headers.get('Content-Disposition') || '';
+    const m = disposition.match(/filename="([^"]+)"/);
+    const name = (m ? m[1] : 'verilume-budget-monthly-detail.csv').replace(/\.csv$/i, '') + '.xlsx';
+    const aoa = [headers, ...rows].map(r => r.map(c => (c !== '' && isFinite(Number(String(c).replace(/[$,]/g, ''))) && /^[\s$\d.,-]+$/.test(String(c))) ? Number(String(c).replace(/[$,]/g, '')) : c));
+    const ws = XLSX.utils.aoa_to_sheet(aoa); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Monthly detail');
+    XLSX.writeFile(wb, name);
+  } catch (e){ alert('Could not build the Excel file.'); }
+}
 async function mbuExportMonthlyCsv(uploadId){
   if (!uploadId) return;
   try {
@@ -40547,8 +40566,10 @@ function mbuRenderPlanSetup(){
     const period = mbuPeriodFor(mbuSelectedYear);
     const scopeName = mbuScopeLabel(mbuSelectedScope);
     const fileNote = active.fileName ? ` ("${escapeHtml(active.fileName)}")` : '';
-    const viewBtn = `<button type="button" class="btn-primary" onclick="mbuViewBudgetDetail('${active.id}')">View budget detail →</button>`;
-    const csvBtn = `<button type="button" class="btn-ghost" onclick="mbuExportMonthlyCsv('${active.id}')">⬇ Monthly detail (CSV) →</button>`;
+    const viewBtn = ttbBudgetMode
+      ? `<button type="button" class="btn-primary" onclick="goToStep('mediaplan')">View in Annual Plan →</button>`
+      : `<button type="button" class="btn-primary" onclick="mbuViewBudgetDetail('${active.id}')">View budget detail →</button>`;
+    const csvBtn = ''; // exports sit with the budget detail itself (CSV and Excel), not in this bar
     const deleteBtn = `<button type="button" class="btn-ghost" onclick="mbuToggleDeleteConfirm('${active.id}')">Delete →</button>`;
     if (active.totalOnly){
       mount.innerHTML = `
@@ -40568,7 +40589,7 @@ function mbuRenderPlanSetup(){
       </div>` : `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 16px;">
         <span><b style="color:var(--cx);">${period.label}</b> — ${mbuSelectedYear} ${scopeName} budget on file${fileNote}, driving this year's Media Plan.</span>
-        <span style="display:flex;gap:8px;flex-shrink:0;">${viewBtn}<button type="button" class="btn-ghost" onclick="mbuOpenExistingUpload('${active.id}')">Edit categories &amp; labels →</button>${csvBtn}${deleteBtn}</span>
+        <span style="display:flex;gap:8px;flex-shrink:0;">${viewBtn}${csvBtn}${deleteBtn}</span>
       </div>`;
     if (typeof mbdShowForUpload === 'function') mbdShowForUpload(active.id);
     return;
