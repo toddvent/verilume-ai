@@ -12161,8 +12161,6 @@
           <select id="mbuTxnMonth" class="tbl-select" onchange="mbuLoadTransactions()">
             <option value="0">Full year</option><option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option><option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option><option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option><option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
           </select>
-          <label class="btn-ghost" style="cursor:pointer;margin:0;">Upload monthly totals (.xlsx / .csv)<input type="file" accept=".csv,.xlsx" style="display:none;" onchange="mbuHandleTxnFile(event)"></label>
-          <label class="btn-ghost" style="cursor:pointer;margin:0;">Upload customer-level transactions (.xlsx / .csv)<input type="file" accept=".csv,.xlsx" style="display:none;" onchange="mbuHandleGuestBookingsFile(event)"></label>
           <button type="button" class="btn-ghost" onclick="mbuAddTxnRow()">+ Add row</button>
           <span class="hint" id="mbuTxnStatus" style="margin:0;"></span>
         </div>
@@ -12201,7 +12199,6 @@
       <div class="sk-card-body">
         <p class="hint" style="margin-top:0;">Upload the agency workbook as-is — overview sheets (channel × month) and detail sheets (publisher, tactic, brand vs. non-brand, region, creative offer) are all read. Retargeting rows become <strong>Remarketing</strong> and brand keyword rows become <strong>Brand Search</strong> (the evergreen programs); everything else is Programmatic Display, Non-Brand Search or Paid Social. Re-uploading a month replaces it.</p>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;">
-          <label class="btn-ghost" style="cursor:pointer;margin:0;">Upload agency workbook (.xlsx / .csv)<input type="file" accept=".csv,.xlsx" style="display:none;" onchange="dpHandleWorkbookFile(event)"></label>
           <label for="dpYear" style="margin:0;">Show</label>
           <select id="dpYear" class="tbl-select" onchange="dpLoad()"><option value="">All years</option></select>
           <span class="hint" id="dpStatus" style="margin:0;"></span>
@@ -27357,7 +27354,7 @@ const TTB_CFG = {
   brandWritingSamples: { upload: { formats: 'Word, PDF or text files', go: 'brandWritingSamples' }, manual: { step: 'brandWritingSamples' }, used: 'Used by Copywriting' },
   voice: { manual: { step: 'voice' }, view: { tab: 'brand', label: 'Customer Experiences' } },
   marketingBudgetUpload: { upload: { formats: '.xlsx or .csv, in any layout. Excel or CSV, in any layout.', direct: 'ttbBuPick', sample: { name: 'marketing-budget-sample.csv', cols: ['Category', 'Status', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Total'], rows: [['Paid Social', 'Working', 24000, 26000, 30000, 30000, 28000, 26000, 24000, 24000, 30000, 32000, 34000, 20000, 328000], ['Agency fees', 'Non-Working', 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 96000]] } }, manual: { step: 'marketingBudgetUpload', arg: 'configuration' }, view: { step: 'mediaplan', label: 'Budget and Plan' } },
-  bulkUpload: { upload: { direct: 'ttbUpPick', formats: '.xlsx or .csv, one row per month and product group', handler: 'mbuHandleTxnFile', cards: ['mbuTransactionsCard'], sample: { name: 'transactions-by-month-sample.csv', cols: ['Year', 'Month', 'Product Group', 'Transactions', 'Revenue'], rows: [[2026, 'Jan', 'Mediterranean', 42, 268000], [2026, 'Feb', 'Mediterranean', 51, 322500]] } }, manual: { cards: ['mbuTransactionsCard'] }, integ: true, view: { tab: 'strategy', label: 'Strategy' } },
+  bulkUpload: { upload: { direct: 'ttbUpPick', alt: { label: 'Upload customer-level file', key: 'bulkUploadCustomer' }, formats: '.xlsx or .csv, one row per month and product group', handler: 'mbuHandleTxnFile', cards: ['mbuTransactionsCard'], sample: { name: 'transactions-by-month-sample.csv', cols: ['Year', 'Month', 'Product Group', 'Transactions', 'Revenue'], rows: [[2026, 'Jan', 'Mediterranean', 42, 268000], [2026, 'Feb', 'Mediterranean', 51, 322500]] } }, manual: { cards: ['mbuTransactionsCard'] }, integ: true, view: { tab: 'strategy', label: 'Strategy' } },
   partnerIntegrations: { integ: true, manual: { note: 'Prefer to type it? Every number on this page has an Add Manually option.' }, view: { tab: 'dataScientist', label: 'Media Science' } },
   team: { manual: { step: 'team' }, view: { step: 'team', label: 'Team' } },
   websiteUsers: { manual: { cards: ['mbuWebsiteUsersCard'] }, integ: true, view: { tab: 'strategy', label: 'Strategy' } },
@@ -27681,14 +27678,39 @@ const TTB_UP = {
       return await mbuSaveEngagement(true, fname);
     }
   },
-  bulkUpload: { legacy: 'mbuHandleTxnFile' },
+  bulkUpload: {
+    title: 'Unique transactions by month, by Product Group', yearEl: 'mbuTxnYear', monthEl: 'mbuTxnMonth', statusEl: 'mbuTxnStatus', allowWholeYear: true,
+    fields: [
+      { key: 'transactions', label: 'Unique transactions', req: true, names: ['unique transactions', 'transactions', 'bookings', 'orders', 'count'], hint: 'How many transactions in the row.' },
+      { key: 'productGroup', label: 'Product group', names: ['product group', 'product', 'group', 'destination'], hint: 'Leave unmapped if the file has one total per month.' },
+      { key: 'revenue', label: 'Revenue', names: ['revenue', 'sales', 'gross'], hint: 'Optional revenue for the row.' },
+      { key: 'year', label: 'Year', names: ['year'], period: true, hint: 'Only needed if the file covers several periods.' },
+      { key: 'month', label: 'Month', names: ['month'], period: true, hint: 'Only needed if the file covers several periods.' },
+      { key: 'date', label: 'Date', names: ['date', 'period'], period: true, hint: 'A full date can stand in for Year and Month.' }
+    ],
+    build(grid, hi, col, per){
+      const parsed = [];
+      for (let i = hi + 1; i < grid.length; i++){
+        const r = grid[i] || []; const tx = mbuNum(r[col.transactions]); if (tx == null) continue;
+        let year = col.year != null ? parseInt(r[col.year], 10) : NaN, month = NaN;
+        if (col.month != null){ const t = ttbUpMonthOf(r[col.month], year); month = t.month; year = t.year; }
+        if (col.date != null && (!Number.isFinite(year) || !Number.isFinite(month))){ const d = new Date(String(r[col.date] || '')); if (!isNaN(d)){ year = d.getFullYear(); month = d.getMonth() + 1; } }
+        if (!Number.isFinite(year)) year = per.year; if (!Number.isFinite(month)) month = per.month >= 1 ? per.month : NaN;
+        parsed.push({ year, month, productGroup: col.productGroup != null ? String(r[col.productGroup] || '').trim() : '', transactions: tx, revenue: col.revenue != null ? mbuNum(r[col.revenue]) : null });
+      }
+      return { rows: parsed, problems: [] };
+    },
+    summary(rows){ const per = [...new Set(rows.map(p => TTB_UP_MONTHS[p.month] + ' ' + p.year))]; const t = rows.reduce((a, p) => a + (p.transactions || 0), 0); return rows.length + ' row' + (rows.length === 1 ? '' : 's') + ', ' + t.toLocaleString() + ' transactions, for ' + per.join(', '); },
+    async save(rows){ return await mbuSaveTransactions(rows); }
+  },
+  bulkUploadCustomer: { legacy: 'mbuHandleGuestBookingsFile', row: 'bulkUpload' },
   digitalPerformance: { legacy: 'dpHandleWorkbookFile' }
 };
 const ttbUp = { key: null, stage: 'idle', fileName: '', grid: null, hi: 0, assign: {}, chosen: {}, year: null, month: null, reviewed: false, msg: '', result: '' };
 function ttbUpReset(){ Object.assign(ttbUp, { key: null, stage: 'idle', fileName: '', grid: null, hi: 0, assign: {}, chosen: {}, year: null, month: null, reviewed: false, msg: '', result: '' }); }
 function ttbUpPick(key){
   const cfg = TTB_UP[key]; if (!cfg) return;
-  ttb.open = key; ttb.manual[key] = true;
+  ttb.open = cfg.row || key; ttb.manual[cfg.row || key] = true;
   const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.csv,.xlsx'; inp.style.display = 'none';
   inp.addEventListener('change', () => { const f = inp.files && inp.files[0]; inp.remove(); if (!f) return; if (cfg.legacy){ ttbRerender(); const fn = window[cfg.legacy]; if (typeof fn === 'function') fn({ target: { files: [f], value: '' } }); } else ttbUpStart(key, f); });
   inp.addEventListener('cancel', () => inp.remove());
@@ -27797,7 +27819,8 @@ function ttbModuleHtml(d, i){
   const status = i.done ? `<div class="ttb-done">Done. ${escapeHtml(i.gain)}</div>` : '';
   const sample = (i.step === 'companyProfile' && ttbProfileSample(d)) || cfg.sample;
   const btns = [];
-  if (c.upload) btns.push(`<button type="button" class="btn-primary" onclick="${c.upload.direct ? `${c.upload.direct}('${i.step}')` : `ttbUploadOpen('${i.step}')`}">Upload File</button>`);
+  if (c.upload) btns.push(`<button type="button" class="btn-primary" onclick="${c.upload.direct ? `${c.upload.direct}('${i.step}')` : `ttbUploadOpen('${i.step}')`}">${c.upload.alt ? 'Upload monthly totals' : 'Upload File'}</button>`);
+  if (c.upload && c.upload.alt) btns.push(`<button type="button" class="btn-primary" onclick="${c.upload.direct}('${c.upload.alt.key}')">${escapeHtml(c.upload.alt.label)}</button>`);
   if (c.manual) btns.push(`<button type="button" class="btn-ghost" aria-expanded="${!!ttb.manual[i.step]}" onclick="${c.manual.cards || c.manual.profile ? `ttbToggleManual('${i.step}')` : c.manual.step ? `ttbGo('${c.manual.step}'${c.manual.arg ? `, '${c.manual.arg}'` : ''})` : `ttbToggleManual('${i.step}')`}">${ttb.manual[i.step] && (c.manual.cards || c.manual.profile) ? 'Hide manual entry' : 'Add Manually'}</button>`);
   if (c.integ) btns.push(`<button type="button" class="btn-ghost" onclick="ttbGo('partnerIntegrations')">Partner Integration</button>`);
   const hasData = i.done;
@@ -71443,6 +71466,7 @@ async function mbuSaveTransactions(rowsOverride){
   if (status) status.textContent = persisted ? `Saved ${new Date().toLocaleTimeString()} — ${rows.length} row${rows.length === 1 ? '' : 's'}.` : (err ? `Not saved — ${err}` : 'Saved locally only, this session.');
   if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext();
   if (persisted) mbuLoadTransactions();
+  return persisted;
 }
 let mbuPendingTxns = null;
 async function mbuHandleTxnFile(event){
