@@ -15213,7 +15213,7 @@ const DQ_MEASURES = {
   customers: { label: 'Customers', syn: ['customers', 'guests', 'party size', 'travelers', 'passengers', 'people'], aggs: ['sum', 'avg'], kind: 'num1', basis: 'customer rows on the transaction' },
   undeliveredRevenue: { label: 'Booked, not yet delivered revenue', syn: ['booked not yet delivered revenue', 'booked but not yet delivered', 'not yet delivered revenue', 'not yet delivered', 'undelivered revenue', 'undelivered', 'accrued revenue', 'accrued', 'revenue at risk', 'at risk revenue', 'deferred revenue', 'future service revenue'], aggs: ['sum'], kind: 'money', valueKey: 'revenue', pre: t => t.delivered === false, zeroIfEmpty: true, basis: 'gross revenue on transactions whose service start date is after today (sold, not yet delivered, so still at risk)' },
   deliveredRevenue: { label: 'Delivered revenue', syn: ['delivered revenue', 'recognized revenue', 'recognised revenue', 'earned revenue'], aggs: ['sum'], kind: 'money', valueKey: 'revenue', pre: t => t.delivered === true, zeroIfEmpty: true, basis: 'gross revenue on transactions whose service start date is on or before today' },
-  marketing: { label: 'Marketing performance', syn: ['marketing performance', 'marketing kpis', 'marketing kpi', 'marketing roi', 'spend leads and transactions', 'spend leads transactions', 'cost per transaction', 'funnel performance'], aggs: ['ratio'], kind: 'money', basis: 'media spend, leads and counted transactions by booking month' },
+  marketing: { label: 'Marketing performance', syn: ['marketing performance', 'marketing kpis', 'marketing kpi', 'marketing roi', 'spend leads and transactions', 'spend leads transactions', 'cost per transaction', 'funnel performance', 'per day kpis', 'per-day kpis', 'kpis per day', 'average daily revenue', 'daily revenue', 'marketing cost per day', 'cost per day', 'cac per day'], aggs: ['ratio'], kind: 'money', basis: 'media spend, leads and counted transactions by booking month' },
   revenuePerUnit: { label: 'Revenue per order-size unit', syn: [], aggs: ['ratio'], kind: 'money', basis: 'gross revenue divided by order size, over all counted transactions in the group' }
 };
 const DQ_DIMS = {
@@ -15324,12 +15324,12 @@ function dqLoadTransactions(accountId){
         guestState: aliasVal(r0, 'guestState'), guestCountry: aliasVal(r0, 'guestCountry'), generation: aliasVal(r0, 'generation'),
         serviceDate: svc, serviceYear: svc ? Number(svc.slice(0, 4)) : null, serviceMonth: svc ? Number(svc.slice(5, 7)) : null,
         delivered: svc ? svc <= todayIso : null, deliveryStatus: svc ? (svc <= todayIso ? 'Delivered' : 'Not yet delivered') : '(no service date)',
-        revenue: null, netRevenue: null, orderSize: null, leadDays: lead, customers: 0 };
+        revenue: null, netRevenue: null, orderSize: null, daySum: null, leadDays: lead, customers: 0 };
       byCode.set(code, t);
     }
     const g = num(aliasVal(r0, 'grossRevenue')); if (g !== null) t.revenue = (t.revenue || 0) + g;
     const n = num(aliasVal(r0, 'netRevenue')); if (n !== null) t.netRevenue = (t.netRevenue || 0) + n;
-    const ts = num(aliasVal(r0, 'tripDays')); if (ts !== null) t.orderSize = Math.max(t.orderSize === null ? ts : t.orderSize, ts);
+    const ts = num(aliasVal(r0, 'tripDays')); if (ts !== null) t.orderSize = Math.max(t.orderSize === null ? ts : t.orderSize, ts); t.daySum = (t.daySum || 0) + ts;
     t.customers += 1;
   });
   return { txs: Array.from(byCode.values()), settings, rowCount: rows.length, excludedRows: excluded };
@@ -15595,10 +15595,10 @@ function dqMarketingRun(accountId, spec, range, L, vocab){
     if (spec.period.kind === 'year') return key.slice(0, 4) === String(spec.period.year);
     return key >= range.from.slice(0, 7) && key <= range.through.slice(0, 7);
   };
-  const M = new Map(); const slot = k => { let o = M.get(k); if (!o) { o = { spend: null, leads: null, tx: 0, rev: 0 }; M.set(k, o); } return o; };
+  const M = new Map(); const slot = k => { let o = M.get(k); if (!o) { o = { spend: null, leads: null, tx: 0, rev: 0, days: 0, revD: 0, noSize: 0 }; M.set(k, o); } return o; };
   try { db.prepare("SELECT year, month, spend FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").all(accountId).forEach(r => { const k = ym(r.year, r.month); if (!inPeriod(k)) return; const o = slot(k); o.spend = (o.spend || 0) + (Number(r.spend) || 0); }); } catch (e) { /* no digital file */ }
   try { db.prepare('SELECT year, month, count FROM account_lead_counts WHERE accountId = ?').all(accountId).forEach(r => { const k = ym(r.year, r.month); if (!inPeriod(k)) return; const o = slot(k); o.leads = (o.leads || 0) + (Number(r.count) || 0); }); } catch (e) { /* no lead file */ }
-  cur.forEach(t => { if (!t.year || !t.month) return; const o = slot(ym(t.year, t.month)); o.tx += 1; if (t.revenue !== null) o.rev += t.revenue; });
+  cur.forEach(t => { if (!t.year || !t.month) return; const o = slot(ym(t.year, t.month)); o.tx += 1; if (t.revenue !== null) o.rev += t.revenue; if (t.daySum) { o.days += t.daySum; if (t.revenue !== null) o.revD += t.revenue; } else o.noSize += 1; });
   const keys = Array.from(M.keys()).sort();
   const div = (a, b) => (a !== null && b && b > 0) ? a / b : null;
   const f2 = v => v === null ? '—' : '$' + (Math.round(v * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -15606,9 +15606,20 @@ function dqMarketingRun(accountId, spec, range, L, vocab){
   const int = v => v === null || v === undefined ? '—' : dqFmt(v, 'int');
   const ratio = v => v === null ? '—' : (Math.round(v * 100) / 100).toLocaleString('en-US') ;
   const line = (label, o) => [label, money(o.spend), int(o.leads), int(o.tx), money(o.rev), f2(div(o.spend, o.leads)), ratio(div(o.leads, o.tx)), f2(div(o.spend, o.tx)), div(o.rev, o.spend) === null ? '—' : (Math.round(div(o.rev, o.spend) * 10) / 10) + 'x'];
+  // Per-day KPIs (customer-days = sum of order size). Month, quarter and year only. Cost per day uses only months that have both spend and order sizes, so a missing file never skews it.
+  const dayLine = (label, keyList) => { let rev = 0, days = 0, sp = 0, spDays = 0; keyList.forEach(k => { const o = M.get(k); rev += o.revD; days += o.days; if (o.spend !== null && o.days > 0) { sp += o.spend; spDays += o.days; } }); return [label, int(Math.round(days)), money(days > 0 ? rev / days : null), spDays > 0 ? f2(sp / spDays) : '—']; };
+  const qOf = k => k.slice(0, 4) + ' Q' + (Math.floor((Number(k.slice(5, 7)) - 1) / 3) + 1);
+  const group = fn => { const g = new Map(); keys.forEach(k => { const n = fn(k); if (!g.has(n)) g.set(n, []); g.get(n).push(k); }); return Array.from(g.entries()); };
+  const dayCols = ['Customer-days (' + dqOrderLabel(vocab).toLowerCase() + ' summed over customer rows)', 'Average daily revenue', 'Marketing cost per day'];
+  const noSizeTotal = keys.reduce((a, k) => a + M.get(k).noSize, 0);
   const tot = { spend: null, leads: null, tx: 0, rev: 0 };
   keys.forEach(k => { const o = M.get(k); if (o.spend !== null) tot.spend = (tot.spend || 0) + o.spend; if (o.leads !== null) tot.leads = (tot.leads || 0) + o.leads; tot.tx += o.tx; tot.rev += o.rev; });
   const tables = [{ name: 'By month', columns: ['Month', 'Media spend', 'Leads', 'Transactions', 'Revenue', 'Cost per lead', 'Leads per transaction', 'Cost per transaction', 'Revenue per $ of spend'].map(h => ({ h })), rows: keys.map(k => line(k, M.get(k))).concat([line('All', tot)]) }];
+  if (keys.length) {
+    tables.push({ name: 'Per-day KPIs by month', columns: ['Month'].concat(dayCols).map(h => ({ h })), rows: keys.map(k => dayLine(k, [k])).concat([dayLine('All', keys)]) });
+    if (keys.length > 3) tables.push({ name: 'Per-day KPIs by quarter', columns: ['Quarter'].concat(dayCols).map(h => ({ h })), rows: group(qOf).map(([n, ks]) => dayLine(n, ks)) });
+    if (new Set(keys.map(k => k.slice(0, 4))).size > 1) tables.push({ name: 'Per-day KPIs by year', columns: ['Year'].concat(dayCols).map(h => ({ h })), rows: group(k => k.slice(0, 4)).map(([n, ks]) => dayLine(n, ks)) });
+  }
   const dimNames = spec.by.filter(d => d === 'productGroup' || d === 'creativeFocus');
   const notes = []; 
   dimNames.forEach(d => {
@@ -15621,6 +15632,7 @@ function dqMarketingRun(accountId, spec, range, L, vocab){
   if (dimNames.length) notes.push(`Media spend and leads are loaded for the whole account, so they are not split by ${dimNames.map(d => dqFieldLabel(d, vocab).toLowerCase()).join(' or ')}. Transactions and revenue are.`);
   if (spec.filters.length) notes.push('Filtered to ' + spec.filters.map(f => `${dqFieldLabel(f.field, vocab).toLowerCase()} ${f.values.join(' or ')}`).join(' and ') + ' for transactions and revenue only. Spend and leads are not filtered.');
   if (keys.some(k => M.get(k).spend === null)) notes.push('Months with a dash for spend or leads have no spend or lead file loaded for that month.');
+  if (keys.length) notes.push('Average daily revenue = revenue ÷ customer-days (the order size on each customer row, added up) over transactions that carry an order size. Marketing cost per day = media spend ÷ customer-days, over months that have both. Shown by month, quarter and year only.' + (noSizeTotal ? ` ${noSizeTotal.toLocaleString('en-US')} counted transaction${noSizeTotal === 1 ? ' has' : 's have'} no order size and ${noSizeTotal === 1 ? 'is' : 'are'} left out of the per-day figures.` : ''));
   notes.push('Leads convert over time, so a month\'s transactions are partly from earlier months\' leads. Read cost per transaction over several months, not one.');
   const s0 = tot.spend, summary = !keys.length ? `No spend, leads or counted transactions fall in ${per.label}.`
     : `Across ${per.label}: ${s0 === null ? 'no media spend on file' : money(s0) + ' of media spend'}, ${tot.leads === null ? 'no leads on file' : int(tot.leads) + ' leads'}, ${int(tot.tx)} transactions and ${money(tot.rev)} of revenue${div(s0, tot.leads) !== null ? '; ' + f2(div(s0, tot.leads)) + ' per lead' : ''}${div(s0, tot.tx) !== null ? ' and ' + f2(div(s0, tot.tx)) + ' per transaction' : ''}.`;
@@ -35099,7 +35111,10 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (!Array.isArray(body.blocks) || !body.blocks.length) return sendJson(res, 400, { error: 'blocks (array of confirmed column mappings) is required' });
       const grid = JSON.parse(upload.gridJson).map(r => (r || []).map(c => (c == null ? '' : String(c))));
       const allHeaderRows = body.blocks.map(b => b.headerRowIdx).sort((a, b) => a - b);
-      db.prepare('DELETE FROM marketing_budget_line_items WHERE uploadId = ?').run(uploadId);
+      // All-or-nothing: every delete and insert (and the status update) runs as one transaction, then a receipt compares the file with the database.
+      const stmts = [{ sql: 'DELETE FROM marketing_budget_line_items WHERE uploadId = ?', params: [uploadId] }];
+      const fileMap = new Map();
+      const insSql = `INSERT INTO marketing_budget_line_items (id, uploadId, accountId, category, status, month, amount, annualTotal, sourceRowIndex) VALUES (?,?,?,?,?,?,?,?,?)`;
       let inserted = 0, skipped = 0;
       const now2 = new Date().toISOString();
       body.blocks.forEach(b => {
@@ -35130,14 +35145,16 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
             if (colIdx == null) return;
             const amount = mbuNumberOrNull(row[colIdx]);
             if (amount == null) return;
-            db.prepare(`INSERT INTO marketing_budget_line_items (id, uploadId, accountId, category, status, month, amount, annualTotal, sourceRowIndex) VALUES (?,?,?,?,?,?,?,?,?)`)
-              .run(generateId('MBLI'), uploadId, accountId, category, status, m, amount, total, r);
+            const lid = generateId('MBLI');
+            stmts.push({ sql: insSql, params: [lid, uploadId, accountId, category, status, m, amount, total, r] });
+            fileMap.set(lid, { amount });
             inserted++;
           });
           if (!b.monthCols || !Object.keys(b.monthCols).length){
             // No month columns confirmed for this block — still record the category/total as a single annual-only row so it isn't silently lost.
-            db.prepare(`INSERT INTO marketing_budget_line_items (id, uploadId, accountId, category, status, month, amount, annualTotal, sourceRowIndex) VALUES (?,?,?,?,?,?,?,?,?)`)
-              .run(generateId('MBLI'), uploadId, accountId, category, status, null, null, total, r);
+            const lid = generateId('MBLI');
+            stmts.push({ sql: insSql, params: [lid, uploadId, accountId, category, status, null, null, total, r] });
+            fileMap.set(lid, { amount: 0 });
             inserted++;
           }
         }
@@ -35148,9 +35165,11 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       // mapped to Verilume's own standard taxonomy (VERILUME_BUDGET_
       // CATEGORIES above), confirmed by the client, before anything reads
       // from it elsewhere in the platform.
-      db.prepare('UPDATE marketing_budget_uploads SET status = ?, confirmedMappingJson = ?, confirmedAt = ? WHERE id = ?')
-        .run('pending_category_mapping', JSON.stringify(body.blocks), now2, uploadId);
-      return sendJson(res, 200, { uploadId, status: 'pending_category_mapping', lineItemsInserted: inserted, rowsSkipped: skipped });
+      stmts.push({ sql: 'UPDATE marketing_budget_uploads SET status = ?, confirmedMappingJson = ?, confirmedAt = ? WHERE id = ?', params: ['pending_category_mapping', JSON.stringify(body.blocks), now2, uploadId] });
+      const readBack = () => { const m = new Map(); db.prepare('SELECT id, amount FROM marketing_budget_line_items WHERE uploadId = ?').all(uploadId).forEach(r => m.set(r.id, { amount: Number(r.amount) || 0 })); return m; };
+      const out = commitMonthlyUpload(accountId, 'marketing_budget', upload.fileName || aliasVal(upload, 'fileName'), stmts, fileMap, readBack, [{ key: 'amount', label: 'Monthly budget amounts', money: true }], skipped, now2);
+      if (out.error) return sendJson(res, 500, { error: out.error.replace('The upload was not saved', 'The budget was not imported') });
+      return sendJson(res, 200, { uploadId, status: 'pending_category_mapping', lineItemsInserted: inserted, rowsSkipped: skipped, receipt: out.receipt });
     }
 
     // GET /api/accounts/:id/marketing-budget-uploads/:uploadId/category-mapping
@@ -35998,6 +36017,8 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const rowsIn = Array.isArray(body.rows) ? body.rows : [];
       if (!rowsIn.length) return sendJson(res, 400, { error: 'rows is required' });
       const now = new Date().toISOString();
+      // Check every row first, then write them all as one transaction: a bad row leaves everything as it was.
+      const stmts = [];
       for (const row of rowsIn){
         const month = parseInt(row.month, 10);
         const region = String(row.region || '').trim();
@@ -36009,10 +36030,10 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
           if (!(Number.isFinite(n) && n >= 0 && Number.isInteger(n))) return sendJson(res, 400, { error: `users must be a non-negative whole number or blank (month ${month}, ${region})` });
           users = n;
         }
-        const existing = db.prepare('SELECT 1 FROM account_website_users_monthly WHERE accountId = ? AND year = ? AND month = ? AND region = ?').get(accountId, year, month, region);
-        if (existing) db.prepare('UPDATE account_website_users_monthly SET users = ?, updatedAt = ? WHERE accountId = ? AND year = ? AND month = ? AND region = ?').run(users, now, accountId, year, month, region);
-        else db.prepare('INSERT INTO account_website_users_monthly (accountId, year, month, region, users, updatedAt) VALUES (?, ?, ?, ?, ?, ?)').run(accountId, year, month, region, users, now);
+        stmts.push({ sql: 'INSERT INTO account_website_users_monthly (accountId, year, month, region, users, updatedAt) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(accountId, year, month, region) DO UPDATE SET users = excluded.users, updatedAt = excluded.updatedAt', params: [accountId, year, month, region, users, now] });
       }
+      try { db.batch(stmts, 60000); }
+      catch (e){ console.error('[website-users-monthly] save failed, nothing changed:', e.message); return sendJson(res, 500, { error: `Not saved: ${e.message}. Your existing numbers are unchanged.` }); }
       return sendJson(res, 200, { accountId, year, saved: rowsIn.length, updatedAt: now });
     }
 
@@ -36975,6 +36996,11 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const rowsIn = Array.isArray(body.rows) ? body.rows : [];
       if (!rowsIn.length) return sendJson(res, 400, { error: 'rows is required' });
       const now = new Date().toISOString();
+      // Check every row first, then write them all as one transaction: a bad row leaves everything as it was.
+      const stmts = [];
+      const planCols = ANNUAL_PLAN_NUMERIC_FIELDS.map(f => `"${f}"`).join(', ');
+      const planSql = `INSERT INTO account_annual_plan (accountId, year, kind, label, ${planCols}, notes, updatedAt) VALUES (?, ?, ?, ?, ${ANNUAL_PLAN_NUMERIC_FIELDS.map(() => '?').join(', ')}, ?, ?)
+        ON CONFLICT(accountId, year, kind) DO UPDATE SET label = excluded.label, ${ANNUAL_PLAN_NUMERIC_FIELDS.map(f => `"${f}" = excluded."${f}"`).join(', ')}, notes = excluded.notes, updatedAt = excluded.updatedAt`;
       for (const row of rowsIn){
         const year = parseInt(row.year, 10);
         const kind = String(row.kind || '').trim();
@@ -36990,15 +37016,10 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         }
         const label = row.label != null ? String(row.label).slice(0, 200) : null;
         const notes = row.notes != null ? String(row.notes).slice(0, 4000) : null;
-        const existing = db.prepare('SELECT 1 FROM account_annual_plan WHERE accountId = ? AND year = ? AND kind = ?').get(accountId, year, kind);
-        if (existing){
-          db.prepare(`UPDATE account_annual_plan SET label = ?, ${ANNUAL_PLAN_NUMERIC_FIELDS.map(f => `"${f}" = ?`).join(', ')}, notes = ?, updatedAt = ? WHERE accountId = ? AND year = ? AND kind = ?`)
-            .run(label, ...ANNUAL_PLAN_NUMERIC_FIELDS.map(f => vals[f]), notes, now, accountId, year, kind);
-        } else {
-          db.prepare(`INSERT INTO account_annual_plan (accountId, year, kind, label, ${ANNUAL_PLAN_NUMERIC_FIELDS.map(f => `"${f}"`).join(', ')}, notes, updatedAt) VALUES (?, ?, ?, ?, ${ANNUAL_PLAN_NUMERIC_FIELDS.map(() => '?').join(', ')}, ?, ?)`)
-            .run(accountId, year, kind, label, ...ANNUAL_PLAN_NUMERIC_FIELDS.map(f => vals[f]), notes, now);
-        }
+        stmts.push({ sql: planSql, params: [accountId, year, kind, label, ...ANNUAL_PLAN_NUMERIC_FIELDS.map(f => vals[f]), notes, now] });
       }
+      try { db.batch(stmts, 60000); }
+      catch (e){ console.error('[annual-plan] save failed, nothing changed:', e.message); return sendJson(res, 500, { error: `Not saved: ${e.message}. Your existing plan is unchanged.` }); }
       return sendJson(res, 200, { accountId, saved: rowsIn.length, updatedAt: now });
     }
 
