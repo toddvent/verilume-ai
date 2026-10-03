@@ -15183,6 +15183,9 @@ const DQ_MEASURES = {
   leadDays: { label: 'Days from sale to service', syn: ['lead time', 'booking window', 'days out', 'days in advance', 'advance purchase', 'days to travel', 'days from sale to service'], aggs: ['avg', 'median', 'min', 'max'], kind: 'num1', basis: 'days between the transaction date and the service date' },
   transactions: { label: 'Transactions', syn: ['unique transactions', 'transactions', 'orders', 'bookings', 'sales count'], aggs: ['count'], kind: 'int', basis: 'distinct transaction codes' },
   customers: { label: 'Customers', syn: ['customers', 'guests', 'party size', 'travelers', 'passengers', 'people'], aggs: ['sum', 'avg'], kind: 'num1', basis: 'customer rows on the transaction' },
+  undeliveredRevenue: { label: 'Booked, not yet delivered revenue', syn: ['booked not yet delivered revenue', 'booked but not yet delivered', 'not yet delivered revenue', 'not yet delivered', 'undelivered revenue', 'undelivered', 'accrued revenue', 'accrued', 'revenue at risk', 'at risk revenue', 'deferred revenue', 'future service revenue'], aggs: ['sum'], kind: 'money', valueKey: 'revenue', pre: t => t.delivered === false, zeroIfEmpty: true, basis: 'gross revenue on transactions whose service start date is after today (sold, not yet delivered, so still at risk)' },
+  deliveredRevenue: { label: 'Delivered revenue', syn: ['delivered revenue', 'recognized revenue', 'recognised revenue', 'earned revenue'], aggs: ['sum'], kind: 'money', valueKey: 'revenue', pre: t => t.delivered === true, zeroIfEmpty: true, basis: 'gross revenue on transactions whose service start date is on or before today' },
+  marketing: { label: 'Marketing performance', syn: ['marketing performance', 'marketing kpis', 'marketing kpi', 'marketing roi', 'spend leads and transactions', 'spend leads transactions', 'cost per transaction', 'funnel performance'], aggs: ['ratio'], kind: 'money', basis: 'media spend, leads and counted transactions by booking month' },
   revenuePerUnit: { label: 'Revenue per order-size unit', syn: [], aggs: ['ratio'], kind: 'money', basis: 'gross revenue divided by order size, over all counted transactions in the group' }
 };
 const DQ_DIMS = {
@@ -15194,7 +15197,9 @@ const DQ_DIMS = {
   guestState: { label: 'Customer state', col: 'guestState', syn: ['customer state', 'guest state', 'state', 'states'] },
   guestCountry: { label: 'Customer country', col: 'guestCountry', syn: ['customer country', 'country', 'countries'] },
   generation: { label: 'Generation', col: 'generation', syn: ['generations', 'generation', 'age group', 'age groups', 'cohort'] },
-  year: { label: 'Year', col: 'year', syn: ['year over year', 'yearly', 'annual', 'each year', 'by year'], natural: true },
+  year: { label: 'Year', col: 'year', syn: ['year over year', 'yearly', 'annual', 'each year', 'by year', 'booking year', 'booking years', 'booked year', 'year booked'], natural: true },
+  serviceYear: { label: 'Service year', col: 'serviceYear', syn: ['service year', 'service years', 'delivery year', 'delivery years', 'year of service', 'year of delivery', 'travel year', 'year delivered'], natural: true },
+  deliveryStatus: { label: 'Delivery status', col: 'deliveryStatus', syn: ['delivery status', 'delivered or not'], natural: true },
   month: { label: 'Month', col: 'month', syn: ['monthly', 'each month', 'by month', 'month'], natural: true },
   orderSizeGroup: { label: 'Order size group', derived: 'orderSize', syn: ['order size group', 'order size groups', 'order size bucket'], natural: true },
   leadDaysGroup: { label: 'Sale-to-service window', derived: 'leadDays', syn: ['lead time group', 'booking window group'], natural: true }
@@ -15275,7 +15280,7 @@ function dqLoadTransactions(accountId){
   const settings = getTransactionSettings(accountId);
   let rows = [];
   try { rows = db.prepare('SELECT * FROM account_guest_bookings WHERE accountId = ?').all(accountId); } catch (e){ rows = []; }
-  const byCode = new Map(); let excluded = 0;
+  const byCode = new Map(); let excluded = 0; const todayIso = new Date().toISOString().slice(0, 10);
   rows.forEach(r0 => {
     if (!rowCounts(r0, settings)){ excluded++; return; }
     const code = String(aliasVal(r0, 'bookingCode') || '');
@@ -15284,10 +15289,13 @@ function dqLoadTransactions(accountId){
     if (!t){
       const bd = String(aliasVal(r0, 'bookingDate') || '').slice(0, 10);
       const sd = aliasVal(r0, 'sailDate');
+      let svc = null; if (sd){ const q = String(sd).slice(0, 10); const dd = /^\d{4}-\d{2}-\d{2}$/.test(q) ? new Date(q + 'T00:00:00Z') : new Date(sd); if (Number.isFinite(dd.getTime()) && dd.getUTCFullYear() >= 2000) svc = dd.toISOString().slice(0, 10); }
       let lead = null; if (bd && sd){ const d = (new Date(sd) - new Date(bd)) / 86400000; if (Number.isFinite(d) && d >= 0 && d < 1500) lead = d; }
       t = { code, date: bd, year: Number(aliasVal(r0, 'year')) || (bd ? Number(bd.slice(0, 4)) : null), month: Number(aliasVal(r0, 'month')) || (bd ? Number(bd.slice(5, 7)) : null),
         productGroup: aliasVal(r0, 'productGroup'), creativeFocus: aliasVal(r0, 'creativeFocus'), promoType: aliasVal(r0, 'promoType'), bookingType: aliasVal(r0, 'bookingType'), bookingStatus: aliasVal(r0, 'bookingStatus'),
         guestState: aliasVal(r0, 'guestState'), guestCountry: aliasVal(r0, 'guestCountry'), generation: aliasVal(r0, 'generation'),
+        serviceDate: svc, serviceYear: svc ? Number(svc.slice(0, 4)) : null, serviceMonth: svc ? Number(svc.slice(5, 7)) : null,
+        delivered: svc ? svc <= todayIso : null, deliveryStatus: svc ? (svc <= todayIso ? 'Delivered' : 'Not yet delivered') : '(no service date)',
         revenue: null, netRevenue: null, orderSize: null, leadDays: lead, customers: 0 };
       byCode.set(code, t);
     }
@@ -15303,11 +15311,11 @@ function dqValuesByDim(txs){
   DQ_FILTER_DIMS.forEach(d => { const s = new Map(); txs.forEach(t => { const v = t[DQ_DIMS[d].col]; if (v !== null && v !== undefined && String(v).trim() !== '') s.set(String(v).trim().toLowerCase(), String(v).trim()); }); out[d] = Array.from(s.values()).slice(0, 200); });
   return out;
 }
-function dqDefaultAgg(measure){ return { revenue: 'sum', netRevenue: 'sum', orderSize: 'avg', leadDays: 'avg', transactions: 'count', customers: 'sum', revenuePerUnit: 'ratio' }[measure]; }
+function dqDefaultAgg(measure){ return { undeliveredRevenue: 'sum', deliveredRevenue: 'sum', marketing: 'ratio', revenue: 'sum', netRevenue: 'sum', orderSize: 'avg', leadDays: 'avg', transactions: 'count', customers: 'sum', revenuePerUnit: 'ratio' }[measure]; }
 // ---- words to spec (no model)
 function dqParse(text, ctx){
   const raw = dqNorm(text); let t = raw; const assumptions = [];
-  const spec = { measure: null, agg: null, by: [], filters: [], period: { kind: 'range' }, compare: null, top: null, order: 'desc' };
+  const spec = { measure: null, agg: null, by: [], filters: [], period: { kind: 'range' }, basis: 'booked', compare: null, top: null, order: 'desc' };
   const now = new Date(); const thisYear = now.getUTCFullYear();
   // comparison and period words first, so "last year" is not mistaken for the Year breakdown
   if (/ (vs|versus|against|compared with|compared to|compare to|compare with) (the )?(same period )?(last|prior|previous) year /.test(t)){ spec.compare = 'priorYear'; t = t.replace(/ (vs|versus|against|compared with|compared to|compare to|compare with) (the )?(same period )?(last|prior|previous) year /, ' '); }
@@ -15318,6 +15326,9 @@ function dqParse(text, ctx){
   if (/ (all time|overall|ever|all years|full history|since the beginning|every year on file) /.test(t)){ spec.period = { kind: 'all' }; t = t.replace(/ (all time|overall|ever|all years|full history|since the beginning|every year on file) /, ' '); }
   const topM = / top (\d+|three|five|ten|3|5|10) /.exec(t); if (topM){ const w = { three: 3, five: 5, ten: 10 }[topM[1]] || Number(topM[1]); spec.top = Math.min(50, w); t = t.replace(topM[0], ' '); }
   if (/ (lowest|smallest|fewest|bottom|least) /.test(t)) spec.order = 'asc';
+  // booked vs delivered basis
+  if (/ (delivered in|delivery year|recognized in|recognised in|earned in) /.test(t)){ spec.basis = 'delivered'; t = t.replace(/ (delivered in|delivery year|recognized in|recognised in|earned in) /, ' '); }
+  else if (/(20\d\d) service year|service year (20\d\d)|in service year/.test(raw)){ spec.basis = 'delivered'; t = t.replace(/ service year /, ' '); }
   // aggregate words
   if (/ (average|averages|avg|mean|typical|on average) /.test(t)) spec.agg = 'avg';
   else if (/ (total|totals|sum|combined|add up|how much) /.test(t)) spec.agg = 'sum';
@@ -15362,6 +15373,9 @@ function dqParse(text, ctx){
       }
     });
   });
+  if (!spec.measure && spec.by.includes('serviceYear')){ spec.measure = 'revenue'; spec.agg = 'sum'; assumptions.push('No measure was named, so I used gross revenue.'); }
+  if (spec.measure === 'undeliveredRevenue' && spec.period.kind === 'range'){ spec.period = { kind: 'all' }; assumptions.push('Revenue not yet delivered is shown for every booking year, since it is the revenue still ahead.'); }
+  if (spec.by.includes('serviceYear') && spec.period.kind === 'range' && spec.basis === 'booked'){ spec.period = { kind: 'all' }; assumptions.push('No year was named, so I used every year on file.'); }
   if (spec.measure && !spec.agg){ spec.agg = dqDefaultAgg(spec.measure); assumptions.push(`No "average" or "total" was said, so I used ${spec.agg === 'avg' ? 'the average' : spec.agg === 'sum' ? 'the total' : spec.agg === 'count' ? 'a count' : 'the ratio'}.`); }
   if (spec.measure && DQ_MEASURES[spec.measure] && !DQ_MEASURES[spec.measure].aggs.includes(spec.agg)){ assumptions.push(`${DQ_MEASURES[spec.measure].label} cannot be a ${spec.agg}, so I used ${dqDefaultAgg(spec.measure)}.`); spec.agg = dqDefaultAgg(spec.measure); }
   if (spec.by.length > 2){ assumptions.push(`Only two breakdowns fit in one view; I used ${spec.by.slice(0, 2).map(k => dqFieldLabel(k, vocab)).join(' and ')}.`); spec.by = spec.by.slice(0, 2); }
@@ -15383,7 +15397,8 @@ function dqValidateSpec(s, ctx){
   if (s.period && s.period.kind === 'all') period = { kind: 'all' };
   else if (s.period && s.period.kind === 'year' && Number(s.period.year) >= 2000 && Number(s.period.year) <= 2100) period = { kind: 'year', year: Number(s.period.year) };
   const top = Number(s.top) > 0 ? Math.min(50, Math.floor(Number(s.top))) : null;
-  return { measure: s.measure, agg, by, filters, period, compare: s.compare === 'priorYear' && !by.includes('year') && period.kind !== 'all' ? 'priorYear' : null, top, order: s.order === 'asc' ? 'asc' : 'desc' };
+  const basis = s.basis === 'delivered' ? 'delivered' : 'booked';
+  return { measure: s.measure, agg, by, filters, period, basis, compare: s.compare === 'priorYear' && !by.includes('year') && period.kind !== 'all' ? 'priorYear' : null, top, order: s.order === 'asc' ? 'asc' : 'desc' };
 }
 // ---- the rules that decide which transactions count, in words
 function dqCountingRule(settings){
@@ -15402,16 +15417,22 @@ function dqFmt(v, kind){
 function dqMeasureTitle(spec, vocab){
   const lab = spec.measure === 'orderSize' ? dqOrderLabel(vocab).toLowerCase() : dqFieldLabel(spec.measure, vocab).toLowerCase();
   if (spec.measure === 'transactions') return 'Number of transactions';
+  if (spec.measure === 'undeliveredRevenue') return 'Booked, not yet delivered revenue';
+  if (spec.measure === 'deliveredRevenue') return 'Delivered revenue';
+  if (spec.measure === 'marketing') return 'Marketing performance';
   if (spec.measure === 'revenuePerUnit') return dqFieldLabel('revenuePerUnit', vocab);
   if (spec.measure === 'customers') return spec.agg === 'avg' ? 'Average customers per transaction' : 'Total customers';
   if (spec.measure === 'revenue' || spec.measure === 'netRevenue') return spec.agg === 'sum' ? `Total ${lab}` : `${DQ_AGG_LABEL[spec.agg]} ${lab} per transaction`;
   return `${DQ_AGG_LABEL[spec.agg]} ${lab}`;
 }
 function dqPeriodTx(txs, spec, range){
-  if (spec.period.kind === 'all') return { cur: txs, prev: [], label: 'All years on file' };
-  if (spec.period.kind === 'year'){ const y = spec.period.year; const cur = txs.filter(t => t.year === y); const prev = txs.filter(t => t.year === y - 1); return { cur, prev, label: String(y), prevLabel: String(y - 1) }; }
-  const inR = (t, a, b) => t.date && t.date >= a && t.date <= b;
-  return { cur: txs.filter(t => inR(t, range.from, range.through)), prev: txs.filter(t => inR(t, range.compFrom, range.compThrough)), label: range.label, prevLabel: range.compLabel };
+  const dl = spec.basis === 'delivered';
+  const Y = t => dl ? t.serviceYear : t.year, D = t => dl ? t.serviceDate : t.date;
+  const sfx = dl ? ' (by service date)' : '';
+  if (spec.period.kind === 'all') return { cur: dl ? txs.filter(t => Y(t)) : txs, prev: [], label: 'All years on file' + sfx };
+  if (spec.period.kind === 'year'){ const y = spec.period.year; const cur = txs.filter(t => Y(t) === y); const prev = txs.filter(t => Y(t) === y - 1); return { cur, prev, label: String(y) + sfx, prevLabel: String(y - 1) + sfx }; }
+  const inR = (t, a, b) => D(t) && D(t) >= a && D(t) <= b;
+  return { cur: txs.filter(t => inR(t, range.from, range.through)), prev: txs.filter(t => inR(t, range.compFrom, range.compThrough)), label: range.label + sfx, prevLabel: range.compLabel + sfx };
 }
 function dqRun(accountId, specIn, range, preloaded){
   const L = preloaded || dqLoadTransactions(accountId);
@@ -15420,6 +15441,7 @@ function dqRun(accountId, specIn, range, preloaded){
   const spec = dqValidateSpec(specIn, ctx);
   if (!spec) return { error: 'That question is not one I can run.' };
   if (!L.txs.length) return { notOnFile: 'the customer-level transaction file (Train the Brain, Transactions card)' };
+  if (spec.measure === 'marketing') return dqMarketingRun(accountId, spec, range, L, vocab);
   // groups for derived dimensions are drawn once from every counted transaction, so periods are compared on the same edges
   const edgesFor = {}; const bucketInfo = [];
   [['orderSizeGroup', 'orderSize'], ['leadDaysGroup', 'leadDays']].forEach(([dim, src]) => {
@@ -15432,24 +15454,24 @@ function dqRun(accountId, specIn, range, preloaded){
     bucketInfo.push({ field: src, label: dqFieldLabel(dim, vocab), saved: !!saved, groups: labels.map((l, i) => ({ label: l, n: counts[i] })) });
   });
   const dimVal = (t, d) => {
-    if (d === 'year') return t.year === null ? '(blank)' : String(t.year);
-    if (d === 'month') return t.year && t.month ? `${t.year}-${String(t.month).padStart(2, '0')}` : '(blank)';
+    if (d === 'year') { const y = spec.basis === 'delivered' ? t.serviceYear : t.year; return y === null || y === undefined ? '(blank)' : String(y); }
+    if (d === 'month') { const y = spec.basis === 'delivered' ? t.serviceYear : t.year, m = spec.basis === 'delivered' ? t.serviceMonth : t.month; return y && m ? `${y}-${String(m).padStart(2, '0')}` : '(blank)'; }
     if (edgesFor[d]){ const i = dqGroupIndex(edgesFor[d].edges, t[edgesFor[d].src]); return i < 0 ? '(blank)' : dqGroupLabels(edgesFor[d].edges)[i]; }
     const v = t[DQ_DIMS[d].col]; return v === null || v === undefined || String(v).trim() === '' ? '(blank)' : String(v).trim();
   };
   const dimOrder = (d, label) => { if (edgesFor[d]){ const i = dqGroupLabels(edgesFor[d].edges).indexOf(label); return i < 0 ? 9999 : i; } return 0; };
   const passFilters = t => spec.filters.every(f => f.values.some(v => String(t[DQ_DIMS[f.field].col] || '').trim().toLowerCase() === v.toLowerCase()));
   const per = dqPeriodTx(L.txs, spec, range);
-  const cur = per.cur.filter(passFilters), prev = per.prev.filter(passFilters);
-  const meas = DQ_MEASURES[spec.measure];
+  const meas = DQ_MEASURES[spec.measure]; const pre = meas.pre || (() => true);
+  const cur = per.cur.filter(passFilters).filter(pre), prev = per.prev.filter(passFilters).filter(pre);
   const valuesOf = (list) => {
     if (spec.measure === 'transactions') return list.map(() => 1);
     if (spec.measure === 'customers') return list.map(t => t.customers);
-    return list.map(t => t[spec.measure]).filter(v => v !== null && v !== undefined && Number.isFinite(v));
+    return list.map(t => t[meas.valueKey || spec.measure]).filter(v => v !== null && v !== undefined && Number.isFinite(v));
   };
   const reduce = (list) => {
     if (spec.measure === 'revenuePerUnit'){ let r = 0, u = 0; list.forEach(t => { if (t.revenue !== null && t.orderSize) { r += t.revenue; u += t.orderSize; } }); return { v: u > 0 ? r / u : null, used: list.filter(t => t.revenue !== null && t.orderSize).length }; }
-    const vals = valuesOf(list); if (!vals.length) return { v: null, used: 0 };
+    const vals = valuesOf(list); if (!vals.length) return meas.zeroIfEmpty ? { v: 0, used: 0 } : { v: null, used: 0 };
     let v;
     if (spec.agg === 'sum' || spec.agg === 'count') v = vals.reduce((a, b) => a + b, 0);
     else if (spec.agg === 'avg') v = vals.reduce((a, b) => a + b, 0) / vals.length;
@@ -15464,7 +15486,7 @@ function dqRun(accountId, specIn, range, preloaded){
   const firstNatural = spec.by.length && DQ_DIMS[spec.by[0]].natural;
   if (firstNatural && !spec.top) rows.sort((a, b) => spec.by.some((d, i) => edgesFor[d] && i === 0) ? dimOrder(spec.by[0], a.labels[0]) - dimOrder(spec.by[0], b.labels[0]) || (a.labels[1] || '').localeCompare(b.labels[1] || '') : a.labels[0].localeCompare(b.labels[0]) || (a.labels[1] || '').localeCompare(b.labels[1] || ''));
   else rows.sort((a, b) => (spec.order === 'asc' ? 1 : -1) * ((a.v === null ? -Infinity : a.v) - (b.v === null ? -Infinity : b.v)));
-  const notes = []; const assumptionsOut = [];
+  const notes = []; const assumptionsOut = []; let matrixNote = false;
   if (spec.top) rows = rows.slice(0, spec.top);
   else if (rows.length > DQ_MAX_ROWS){ notes.push(`Showing the first ${DQ_MAX_ROWS} of ${rows.length} groups. Narrow the question to see the rest.`); rows = rows.slice(0, DQ_MAX_ROWS); }
   const all = reduce(cur); const allPrev = spec.compare ? reduce(prev) : null;
@@ -15472,12 +15494,33 @@ function dqRun(accountId, specIn, range, preloaded){
   const title = dqMeasureTitle(spec, vocab) + (spec.by.length ? ' by ' + spec.by.map(d => dqFieldLabel(d, vocab).toLowerCase()).join(' and ') : '');
   const mTitle = dqMeasureTitle(spec, vocab);
   const showN = spec.measure !== 'transactions';
-  const cols = spec.by.map(d => dqFieldLabel(d, vocab)).concat(showN ? [mTitle, 'Transactions'] : [mTitle]);
+  const dimLabel = d => (spec.basis === 'delivered' && (d === 'year' || d === 'month')) ? 'Service ' + d : dqFieldLabel(d, vocab);
+  let cols = spec.by.map(d => dimLabel(d)).concat(showN ? [mTitle, 'Transactions'] : [mTitle]);
   if (spec.compare){ cols.push(`${per.prevLabel || 'Prior period'}`); cols.push('Change'); }
   const chg = (c, p) => (c !== null && p !== null && p !== 0) ? `${c >= p ? '+' : ''}${(((c - p) / Math.abs(p)) * 100).toFixed(1)}%` : '—';
   const smallTag = n => n < DQ_SMALL_N ? `${n.toLocaleString('en-US')} (small sample)` : n.toLocaleString('en-US');
-  const tableRows = rows.map(r => r.labels.concat(showN ? [dqFmt(r.v, kind), smallTag(r.n)] : [r.n < DQ_SMALL_N ? `${dqFmt(r.v, kind)} (small sample)` : dqFmt(r.v, kind)]).concat(spec.compare ? [dqFmt(r.prev, kind), chg(r.v, r.prev)] : []));
+  let tableRows = rows.map(r => r.labels.concat(showN ? [dqFmt(r.v, kind), smallTag(r.n)] : [r.n < DQ_SMALL_N ? `${dqFmt(r.v, kind)} (small sample)` : dqFmt(r.v, kind)]).concat(spec.compare ? [dqFmt(r.prev, kind), chg(r.v, r.prev)] : []));
   if (spec.by.length) tableRows.push(spec.by.map((d, i) => i === 0 ? 'All' : '').concat(showN ? [dqFmt(all.v, kind), cur.length.toLocaleString('en-US')] : [dqFmt(all.v, kind)]).concat(spec.compare ? [dqFmt(allPrev.v, kind), chg(all.v, allPrev.v)] : []));
+  // Two breakdowns of something that adds up (a total or a count) read best as a matrix with row and column totals,
+  // so booking year by service year ties to the same grand total as any other view.
+  if (spec.by.length === 2 && (spec.agg === 'sum' || spec.agg === 'count') && !spec.compare && !spec.top){
+    const lists = Array.from(gCur.values());
+    const rl = Array.from(new Set(lists.map(g => g.labels[0]))), cl = Array.from(new Set(lists.map(g => g.labels[1])));
+    const ord = (d, arr, totals) => edgesFor[d] ? arr.sort((a, b) => dimOrder(d, a) - dimOrder(d, b)) : (DQ_DIMS[d].natural ? arr.sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true })) : arr.sort((a, b) => (totals[b] || 0) - (totals[a] || 0)));
+    const tot = (idx) => { const o = {}; lists.forEach(g => { const r = reduce(g.list).v; o[g.labels[idx]] = (o[g.labels[idx]] || 0) + (r || 0); }); return o; };
+    if (cl.length <= 14 && rl.length <= DQ_MAX_ROWS){
+      ord(spec.by[0], rl, tot(0)); ord(spec.by[1], cl, tot(1));
+      const cell = new Map(); lists.forEach(g => cell.set(g.labels.join('\u0001'), reduce(g.list).v));
+      const colList = {}; cl.forEach(c => { colList[c] = lists.filter(g => g.labels[1] === c).flatMap(g => g.list); });
+      cols = [dimLabel(spec.by[0]) + ' \\ ' + dimLabel(spec.by[1])].concat(cl, ['All']);
+      tableRows = rl.map(r => {
+        const rowAll = lists.filter(g => g.labels[0] === r).flatMap(g => g.list);
+        return [r].concat(cl.map(c => { const v = cell.get(r + '\u0001' + c); return v === undefined ? '' : dqFmt(v, kind); }), [dqFmt(reduce(rowAll).v, kind)]);
+      });
+      tableRows.push(['All'].concat(cl.map(c => dqFmt(reduce(colList[c]).v, kind)), [dqFmt(all.v, kind)]));
+      matrixNote = true;
+    }
+  }
   // one sentence, written only from the computed numbers
   let summary;
   if (!cur.length) summary = `No counted transactions fall in ${per.label}.`;
@@ -15496,26 +15539,81 @@ function dqRun(accountId, specIn, range, preloaded){
   const definitions = [
     `${dqFieldLabel(spec.measure, vocab)} = ${meas.basis}.`,
     `Each row of the table is built from whole transactions. Customer-level fields use the first customer on the transaction.`,
+    spec.basis === 'delivered' ? `Basis: delivered. Year and month come from the service start date, not the sale date. A transaction counts as delivered on its service start date (today is ${new Date().toISOString().slice(0, 10)}).` : `Basis: booked. Year and month come from the transaction (sale) date. Service year, where shown, comes from the service start date.`,
     dqCountingRule(L.settings)
   ];
+  if (matrixNote) definitions.push('The table is a matrix: every row and column total adds up to the All total, so views on different bases tie to the same grand total.');
+  if (spec.measure === 'undeliveredRevenue' || spec.measure === 'deliveredRevenue') definitions.push('Delivered means the service start date is on or before today; the full length of the service is not considered. Revenue sold but not yet delivered is accrued and at risk until it is.');
   if (spec.measure === 'orderSize' || spec.by.includes('orderSizeGroup') || spec.measure === 'revenuePerUnit') definitions.push(`Order size here means: ${vocab.orderSizeLabel ? vocab.orderSizeLabel : 'the order-size column'}${vocab.orderSizeLabel ? '' : ' (no label set yet)'}.`);
   const x = {
     title, fileSlug: 'data-question', summary,
-    context: [['Account', accountId], ['Period', per.label], ['Generated', new Date().toISOString().slice(0, 10)]].concat(spec.compare ? [['Compared with', per.prevLabel || '']] : []),
+    context: [['Account', accountId], ['Period', per.label], ['Basis', spec.basis === 'delivered' ? 'Delivered (service start date)' : 'Booked (sale date)'], ['Generated', new Date().toISOString().slice(0, 10)]].concat(spec.compare ? [['Compared with', per.prevLabel || '']] : []),
     tables: [{ name: 'Answer', columns: cols.map(h => ({ h })), rows: tableRows }],
     notes: notes.concat(definitions)
   };
   return { spec, x, bucketInfo, period: per.label, definitions, counted: cur.length };
 }
+
+// Marketing performance: media spend, leads and counted transactions side by side, by booking month, so the
+// spend -> leads -> transactions relationship is always in view. By product group or creative focus the
+// transactions and revenue split, but spend and leads are loaded for the whole account and are not split.
+function dqMarketingRun(accountId, spec, range, L, vocab){
+  const per = dqPeriodTx(L.txs, Object.assign({}, spec, { basis: 'booked' }), range);
+  const pf = t => spec.filters.every(f => f.values.some(v => String(t[DQ_DIMS[f.field].col] || '').trim().toLowerCase() === v.toLowerCase()));
+  const cur = per.cur.filter(pf);
+  const ym = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
+  const inPeriod = key => {
+    if (spec.period.kind === 'all') return true;
+    if (spec.period.kind === 'year') return key.slice(0, 4) === String(spec.period.year);
+    return key >= range.from.slice(0, 7) && key <= range.through.slice(0, 7);
+  };
+  const M = new Map(); const slot = k => { let o = M.get(k); if (!o) { o = { spend: null, leads: null, tx: 0, rev: 0 }; M.set(k, o); } return o; };
+  try { db.prepare("SELECT year, month, spend FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").all(accountId).forEach(r => { const k = ym(r.year, r.month); if (!inPeriod(k)) return; const o = slot(k); o.spend = (o.spend || 0) + (Number(r.spend) || 0); }); } catch (e) { /* no digital file */ }
+  try { db.prepare('SELECT year, month, count FROM account_lead_counts WHERE accountId = ?').all(accountId).forEach(r => { const k = ym(r.year, r.month); if (!inPeriod(k)) return; const o = slot(k); o.leads = (o.leads || 0) + (Number(r.count) || 0); }); } catch (e) { /* no lead file */ }
+  cur.forEach(t => { if (!t.year || !t.month) return; const o = slot(ym(t.year, t.month)); o.tx += 1; if (t.revenue !== null) o.rev += t.revenue; });
+  const keys = Array.from(M.keys()).sort();
+  const div = (a, b) => (a !== null && b && b > 0) ? a / b : null;
+  const f2 = v => v === null ? '—' : '$' + (Math.round(v * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const money = v => v === null || v === undefined ? '—' : dqFmt(v, 'money');
+  const int = v => v === null || v === undefined ? '—' : dqFmt(v, 'int');
+  const ratio = v => v === null ? '—' : (Math.round(v * 100) / 100).toLocaleString('en-US') ;
+  const line = (label, o) => [label, money(o.spend), int(o.leads), int(o.tx), money(o.rev), f2(div(o.spend, o.leads)), ratio(div(o.leads, o.tx)), f2(div(o.spend, o.tx)), div(o.rev, o.spend) === null ? '—' : (Math.round(div(o.rev, o.spend) * 10) / 10) + 'x'];
+  const tot = { spend: null, leads: null, tx: 0, rev: 0 };
+  keys.forEach(k => { const o = M.get(k); if (o.spend !== null) tot.spend = (tot.spend || 0) + o.spend; if (o.leads !== null) tot.leads = (tot.leads || 0) + o.leads; tot.tx += o.tx; tot.rev += o.rev; });
+  const tables = [{ name: 'By month', columns: ['Month', 'Media spend', 'Leads', 'Transactions', 'Revenue', 'Cost per lead', 'Leads per transaction', 'Cost per transaction', 'Revenue per $ of spend'].map(h => ({ h })), rows: keys.map(k => line(k, M.get(k))).concat([line('All', tot)]) }];
+  const dimNames = spec.by.filter(d => d === 'productGroup' || d === 'creativeFocus');
+  const notes = []; 
+  dimNames.forEach(d => {
+    const g = new Map(); cur.forEach(t => { const v = String(t[DQ_DIMS[d].col] || '').trim() || '(blank)'; let o = g.get(v); if (!o) { o = { tx: 0, rev: 0 }; g.set(v, o); } o.tx += 1; if (t.revenue !== null) o.rev += t.revenue; });
+    const list = Array.from(g.entries()).sort((a, b) => b[1].rev - a[1].rev);
+    const totTx = cur.length || 1, totRev = tot.rev || 1;
+    tables.push({ name: dqFieldLabel(d, vocab), columns: [dqFieldLabel(d, vocab), 'Transactions', 'Revenue', 'Share of transactions', 'Share of revenue', 'Average revenue per transaction'].map(h => ({ h })),
+      rows: list.map(([k, o]) => [k, int(o.tx), money(o.rev), (Math.round(o.tx / totTx * 1000) / 10) + '%', (Math.round(o.rev / totRev * 1000) / 10) + '%', money(o.tx ? o.rev / o.tx : null)]).concat([['All', int(cur.length), money(tot.rev), '100%', '100%', money(cur.length ? tot.rev / cur.length : null)]]) });
+  });
+  if (dimNames.length) notes.push(`Media spend and leads are loaded for the whole account, so they are not split by ${dimNames.map(d => dqFieldLabel(d, vocab).toLowerCase()).join(' or ')}. Transactions and revenue are.`);
+  if (spec.filters.length) notes.push('Filtered to ' + spec.filters.map(f => `${dqFieldLabel(f.field, vocab).toLowerCase()} ${f.values.join(' or ')}`).join(' and ') + ' for transactions and revenue only. Spend and leads are not filtered.');
+  if (keys.some(k => M.get(k).spend === null)) notes.push('Months with a dash for spend or leads have no spend or lead file loaded for that month.');
+  notes.push('Leads convert over time, so a month\'s transactions are partly from earlier months\' leads. Read cost per transaction over several months, not one.');
+  const s0 = tot.spend, summary = !keys.length ? `No spend, leads or counted transactions fall in ${per.label}.`
+    : `Across ${per.label}: ${s0 === null ? 'no media spend on file' : money(s0) + ' of media spend'}, ${tot.leads === null ? 'no leads on file' : int(tot.leads) + ' leads'}, ${int(tot.tx)} transactions and ${money(tot.rev)} of revenue${div(s0, tot.leads) !== null ? '; ' + f2(div(s0, tot.leads)) + ' per lead' : ''}${div(s0, tot.tx) !== null ? ' and ' + f2(div(s0, tot.tx)) + ' per transaction' : ''}.`;
+  const definitions = [
+    'Media spend = digital performance file, overview grain, summed by month. Leads = the lead counts file, all sources and lead types, by month.',
+    'Transactions and revenue = counted transactions by booking (sale) month, the same ones every other answer uses.',
+    dqCountingRule(L.settings)
+  ];
+  const x = { title: 'Marketing performance' + (dimNames.length ? ' by ' + dimNames.map(d => dqFieldLabel(d, vocab).toLowerCase()).join(' and ') : ''), fileSlug: 'data-question', summary,
+    context: [['Account', accountId], ['Period', per.label], ['Basis', 'Booked (sale date)'], ['Generated', new Date().toISOString().slice(0, 10)]], tables, notes: notes.concat(definitions) };
+  return { spec, x, bucketInfo: [], period: per.label, definitions, counted: cur.length };
+}
 // A sentence that reads back what will be run, so the person can see how their words were understood.
 function dqSentence(spec, vocab, periodLabel){
   const by = spec.by.length ? ' by ' + spec.by.map(d => dqFieldLabel(d, vocab).toLowerCase()).join(' and ') : '';
   const f = spec.filters.length ? ', only ' + spec.filters.map(x => x.values.join(' or ')).join(', ') : '';
-  return `${dqMeasureTitle(spec, vocab)}${by}${f}, for ${periodLabel}${spec.compare ? ', compared with last year' : ''}.`;
+  return `${dqMeasureTitle(spec, vocab)}${by}${f}, for ${periodLabel}${spec.basis === 'delivered' && !/service date/.test(periodLabel) ? ', delivered basis' : ''}${spec.compare ? ', compared with last year' : ''}.`;
 }
 function dqRecipes(vocab){
   const o = dqOrderLabel(vocab).toLowerCase();
-  const R = (title, spec) => ({ title, spec: Object.assign({ agg: null, by: [], filters: [], period: { kind: 'range' }, compare: null, top: null, order: 'desc' }, spec) });
+  const R = (title, spec) => ({ title, spec: Object.assign({ agg: null, by: [], filters: [], period: { kind: 'range' }, basis: 'booked', compare: null, top: null, order: 'desc' }, spec) });
   return [
     R('Average revenue per transaction by creative focus group', { measure: 'revenue', agg: 'avg', by: ['creativeFocus'] }),
     R(`Average revenue per transaction by ${o} group`, { measure: 'revenue', agg: 'avg', by: ['orderSizeGroup'] }),
@@ -15530,7 +15628,17 @@ function dqRecipes(vocab){
     R('Average days from sale to service by product group', { measure: 'leadDays', agg: 'avg', by: ['productGroup'] }),
     R('Top ten customer states by revenue', { measure: 'revenue', agg: 'sum', by: ['guestState'], top: 10 }),
     R('Average revenue per transaction by generation', { measure: 'revenue', agg: 'avg', by: ['generation'] }),
-    R('Net revenue by product group', { measure: 'netRevenue', agg: 'sum', by: ['productGroup'] })
+    R('Net revenue by product group', { measure: 'netRevenue', agg: 'sum', by: ['productGroup'] }),
+    R('Marketing performance: spend, leads and transactions by month', { measure: 'marketing', agg: 'ratio' }),
+    R('Marketing performance by product group', { measure: 'marketing', agg: 'ratio', by: ['productGroup'] }),
+    R('Marketing performance by creative focus group', { measure: 'marketing', agg: 'ratio', by: ['creativeFocus'] }),
+    R('Revenue by service year', { measure: 'revenue', agg: 'sum', by: ['serviceYear'], period: { kind: 'all' } }),
+    R('Service year revenue by product group', { measure: 'revenue', agg: 'sum', by: ['productGroup', 'serviceYear'], period: { kind: 'all' } }),
+    R('Service year revenue by creative focus group', { measure: 'revenue', agg: 'sum', by: ['creativeFocus', 'serviceYear'], period: { kind: 'all' } }),
+    R(`Service year revenue by ${o} group`, { measure: 'revenue', agg: 'sum', by: ['orderSizeGroup', 'serviceYear'], period: { kind: 'all' } }),
+    R('Booked, not yet delivered revenue by service year', { measure: 'undeliveredRevenue', agg: 'sum', by: ['serviceYear'], period: { kind: 'all' } }),
+    R('Booked, not yet delivered revenue by product group', { measure: 'undeliveredRevenue', agg: 'sum', by: ['productGroup'], period: { kind: 'all' } }),
+    R('Booking year by service year (ties to the grand total)', { measure: 'revenue', agg: 'sum', by: ['year', 'serviceYear'], period: { kind: 'all' } })
   ];
 }
 function dqCatalog(accountId){
@@ -15582,7 +15690,9 @@ function dqContextBlock(accountId, question){
   const yrLines = Object.keys(years).sort().map(y => { const o = years[y]; return `- ${y}: gross revenue ${dqFmt(o.rev, 'money')}, ${o.n.toLocaleString('en-US')} transactions, average ${dqFmt(o.rev / Math.max(1, o.n), 'money')} per transaction${o.sizeN ? `, average ${dqOrderLabel(vocab).toLowerCase()} ${dqFmt(o.sizeSum / o.sizeN, 'num1')}` : ''}`; });
   const vals = dqValuesByDim(L.txs);
   const lines = [`TRANSACTION FILE (customer-level, ${L.txs.length.toLocaleString('en-US')} counted transactions; ${dqCountingRule(L.settings)}). Revenue below is gross revenue summed over each transaction's rows. Order size means ${dqOrderLabel(vocab)}.`,
-    'By year:', ...yrLines,
+    'By booking (sale) year:', ...yrLines,
+    ...(() => { const sy = {}; let acc = 0; L.txs.forEach(t => { if (t.serviceYear){ sy[t.serviceYear] = (sy[t.serviceYear] || 0) + (t.revenue || 0); } if (t.delivered === false) acc += (t.revenue || 0); });
+      const ks = Object.keys(sy).sort(); return ks.length ? ['By service year (service start date; delivered means on or before today):', ...ks.map(y => `- ${y}: gross revenue ${dqFmt(sy[y], 'money')}`), `Booked, not yet delivered (service start after today, accrued and at risk): ${dqFmt(acc, 'money')}`] : []; })(),
     `Product groups: ${(vals.productGroup || []).slice(0, 12).join(', ') || 'none'}. Creative focus groups: ${(vals.creativeFocus || []).slice(0, 15).join(', ') || 'none'}.`];
   if (question){
     try {
