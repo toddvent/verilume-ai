@@ -36683,6 +36683,22 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     // account_transactions_monthly), plus per-(year, month) totals and a
     // seasonality index (each month's share of that year's transactions ×
     // 12, so 1.0 = an average month) for years with all 12 months on file.
+    // GET /api/accounts/:id/transactions-by-service-year -> counted transactions by product group and service (delivery) year.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'transactions-by-service-year'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      try {
+        const L = dqLoadTransactions(accountId); const g = new Map(); const nd = { transactions: 0, revenue: 0 };
+        L.txs.forEach(t => {
+          if (t.delivered === false){ nd.transactions += 1; nd.revenue += t.revenue || 0; }
+          if (!t.serviceYear) return;
+          const k = String(t.productGroup || '').trim() + '\u0001' + t.serviceYear; let o = g.get(k);
+          if (!o){ o = { productGroup: String(t.productGroup || '').trim(), year: t.serviceYear, transactions: 0, revenue: 0 }; g.set(k, o); }
+          o.transactions += 1; o.revenue += t.revenue || 0;
+        });
+        return sendJson(res, 200, { rows: Array.from(g.values()), notDelivered: nd, asOf: new Date().toISOString().slice(0, 10) });
+      } catch (e){ console.warn('[transactions-by-service-year] failed:', e.message); return sendJson(res, 500, { error: 'could not build that view' }); }
+    }
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'transactions-monthly'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
