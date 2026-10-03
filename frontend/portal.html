@@ -12083,7 +12083,6 @@
             <option value="0">Whole year / YTD</option>
             <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option><option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option><option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option><option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
           </select>
-          <label class="btn-ghost" style="cursor:pointer;margin:0;">Upload GA4 export (.xlsx / .csv)<input type="file" accept=".csv,.xlsx" style="display:none;" onchange="mbuHandleEngagementFile(event)"></label>
           <button type="button" class="btn-ghost" onclick="mbuAddEngagementRow()">+ Add channel group</button>
           <span class="hint" id="mbuEngagementStatus" style="margin:0;"></span>
         </div>
@@ -12124,7 +12123,6 @@
           <select id="mbuLeadMonth" class="tbl-select" onchange="mbuLoadLeadCounts()">
             <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option><option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option><option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option><option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
           </select>
-          <label class="btn-ghost" style="cursor:pointer;margin:0;">Upload leads (.xlsx / .csv)<input type="file" accept=".csv,.xlsx" style="display:none;" onchange="mbuHandleLeadFile(event)"></label>
           <button type="button" class="btn-ghost" onclick="mbuAddLeadRow()">+ Add row</button>
           <span class="hint" id="mbuLeadStatus" style="margin:0;"></span>
         </div>
@@ -27359,13 +27357,13 @@ const TTB_CFG = {
   brandWritingSamples: { upload: { formats: 'Word, PDF or text files', go: 'brandWritingSamples' }, manual: { step: 'brandWritingSamples' }, used: 'Used by Copywriting' },
   voice: { manual: { step: 'voice' }, view: { tab: 'brand', label: 'Customer Experiences' } },
   marketingBudgetUpload: { upload: { formats: '.xlsx or .csv, in any layout. Excel or CSV, in any layout.', direct: 'ttbBuPick', sample: { name: 'marketing-budget-sample.csv', cols: ['Category', 'Status', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Total'], rows: [['Paid Social', 'Working', 24000, 26000, 30000, 30000, 28000, 26000, 24000, 24000, 30000, 32000, 34000, 20000, 328000], ['Agency fees', 'Non-Working', 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 96000]] } }, manual: { step: 'marketingBudgetUpload', arg: 'configuration' }, view: { step: 'mediaplan', label: 'Budget and Plan' } },
-  bulkUpload: { upload: { formats: '.xlsx or .csv, one row per month and product group', handler: 'mbuHandleTxnFile', cards: ['mbuTransactionsCard'], sample: { name: 'transactions-by-month-sample.csv', cols: ['Year', 'Month', 'Product Group', 'Transactions', 'Revenue'], rows: [[2026, 'Jan', 'Mediterranean', 42, 268000], [2026, 'Feb', 'Mediterranean', 51, 322500]] } }, manual: { cards: ['mbuTransactionsCard'] }, integ: true, view: { tab: 'strategy', label: 'Strategy' } },
+  bulkUpload: { upload: { direct: 'ttbUpPick', formats: '.xlsx or .csv, one row per month and product group', handler: 'mbuHandleTxnFile', cards: ['mbuTransactionsCard'], sample: { name: 'transactions-by-month-sample.csv', cols: ['Year', 'Month', 'Product Group', 'Transactions', 'Revenue'], rows: [[2026, 'Jan', 'Mediterranean', 42, 268000], [2026, 'Feb', 'Mediterranean', 51, 322500]] } }, manual: { cards: ['mbuTransactionsCard'] }, integ: true, view: { tab: 'strategy', label: 'Strategy' } },
   partnerIntegrations: { integ: true, manual: { note: 'Prefer to type it? Every number on this page has an Add Manually option.' }, view: { tab: 'dataScientist', label: 'Media Science' } },
   team: { manual: { step: 'team' }, view: { step: 'team', label: 'Team' } },
   websiteUsers: { manual: { cards: ['mbuWebsiteUsersCard'] }, integ: true, view: { tab: 'strategy', label: 'Strategy' } },
-  websiteEngagement: { upload: { formats: 'The GA4 Traffic acquisition export (.xlsx or .csv), by Session default channel group', handler: 'mbuHandleEngagementFile', cards: ['mbuEngagementCard'], sample: { name: 'website-engagement-sample.csv', cols: ['Year', 'Month', 'Session default channel group', 'Sessions', 'Engaged sessions', 'Engagement rate', 'Average engagement time per engaged session'], rows: [[2026, 'Jan', 'Organic Search', 18400, 12100, '65.8%', 1.4], [2026, 'Jan', 'Paid Search', 9200, 5100, '55.4%', 1.1]] } }, manual: { cards: ['mbuEngagementCard'] }, integ: true, view: { tab: 'dataScientist', label: 'Media Science' } },
-  leadCounts: { upload: { formats: '.xlsx or .csv, one row per source, lead type and form', handler: 'mbuHandleLeadFile', cards: ['mbuLeadCountsCard'], sample: { name: 'leads-by-month-sample.csv', cols: ['Year', 'Month', 'Source', 'Lead Type', 'Form Name', 'Total Leads', 'Bookings', 'Avg Days to Convert'], rows: [[2026, 'Jan', 'Website', 'High Value', 'Request a brochure', 320, 18, 41], [2026, 'Jan', 'Meta', 'Growth', 'Sweepstakes', 1150, 9, 66]] } }, manual: { cards: ['mbuLeadCountsCard'] }, integ: true, view: { tab: 'marketer', label: 'Growth & Performance' } },
-  digitalPerformance: { upload: { formats: 'The agency workbook as it comes (.xlsx or .csv). Sheets with a year and month layout are read automatically.', handler: 'dpHandleWorkbookFile', cards: ['mbuDigitalCard'], noSample: 'No sample needed. Send the workbook your agency already gives you.' }, manual: { cards: ['mbuDigitalCard'] }, integ: true, view: { tab: 'dataScientist', label: 'Media Science' } },
+  websiteEngagement: { upload: { direct: 'ttbUpPick', formats: 'The GA4 Traffic acquisition export (.xlsx or .csv), by Session default channel group', handler: 'mbuHandleEngagementFile', cards: ['mbuEngagementCard'], sample: { name: 'website-engagement-sample.csv', cols: ['Year', 'Month', 'Session default channel group', 'Sessions', 'Engaged sessions', 'Engagement rate', 'Average engagement time per engaged session'], rows: [[2026, 'Jan', 'Organic Search', 18400, 12100, '65.8%', 1.4], [2026, 'Jan', 'Paid Search', 9200, 5100, '55.4%', 1.1]] } }, manual: { cards: ['mbuEngagementCard'] }, integ: true, view: { tab: 'dataScientist', label: 'Media Science' } },
+  leadCounts: { upload: { direct: 'ttbUpPick', formats: '.xlsx or .csv, one row per source, lead type and form', handler: 'mbuHandleLeadFile', cards: ['mbuLeadCountsCard'], sample: { name: 'leads-by-month-sample.csv', cols: ['Year', 'Month', 'Source', 'Lead Type', 'Form Name', 'Total Leads', 'Bookings', 'Avg Days to Convert'], rows: [[2026, 'Jan', 'Website', 'High Value', 'Request a brochure', 320, 18, 41], [2026, 'Jan', 'Meta', 'Growth', 'Sweepstakes', 1150, 9, 66]] } }, manual: { cards: ['mbuLeadCountsCard'] }, integ: true, view: { tab: 'marketer', label: 'Growth & Performance' } },
+  digitalPerformance: { upload: { direct: 'ttbUpPick', formats: 'The agency workbook as it comes (.xlsx or .csv). Sheets with a year and month layout are read automatically.', handler: 'dpHandleWorkbookFile', cards: ['mbuDigitalCard'], noSample: 'No sample needed. Send the workbook your agency already gives you.' }, manual: { cards: ['mbuDigitalCard'] }, integ: true, view: { tab: 'dataScientist', label: 'Media Science' } },
   kpiMetrics: { manual: { cards: ['kpiMetricsAdminModule'] }, view: { step: 'analyticsSetup', label: 'CMO View' } },
   annualPlan: { manual: { cards: ['mbuAnnualPlanCard'] }, view: { tab: 'strategy', label: 'Strategy' } },
   yearResults: { manual: { step: 'mediaplan' }, view: { step: 'mediaplan', label: 'Budget and Plan' } },
@@ -27611,6 +27609,169 @@ function ttbBuRender(){
   }
   slot.innerHTML = h;
 }
+// ---- Shared upload flow on Train the Brain: Upload File > column mapping > Submit ---------------------------------------------
+// One component for every file upload row. Each row supplies its fields, how its rows are built and where they are saved.
+// Rows marked legacy keep their own reader and only skip the pop-up.
+const TTB_UP_MONTHS = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function ttbUpMonthOf(raw, year){
+  let y = year, m = NaN; raw = String(raw == null ? '' : raw).trim();
+  if (/^\d{1,2}$/.test(raw)) m = parseInt(raw, 10);
+  else {
+    const mi = MBU_MONTH_NAMES_1.findIndex(n => n && new RegExp('(^|[^a-z])' + n.toLowerCase()).test(raw.toLowerCase()));
+    if (mi > 0){ m = mi; const ym = raw.match(/(\d{2,4})/g); if (ym && !Number.isFinite(y)){ const yy = ym.map(Number).find(v => v >= 2000 || v < 100); if (yy != null) y = yy < 100 ? 2000 + yy : yy; } }
+    else { const d = new Date(raw); if (!isNaN(d)){ m = d.getMonth() + 1; if (!Number.isFinite(y)) y = d.getFullYear(); } }
+  }
+  return { month: m, year: y };
+}
+const TTB_UP = {
+  leadCounts: {
+    title: 'Leads by type, by month', yearEl: 'mbuLeadYear', monthEl: 'mbuLeadMonth', statusEl: 'mbuLeadStatus', allowWholeYear: false,
+    fields: [
+      { key: 'source', label: 'Source', req: true, names: ['source', 'channel'], hint: 'Where the lead came from: website, Meta, co-reg, transaction.' },
+      { key: 'leadType', label: 'Lead type', req: true, names: ['lead type', 'type', 'designation'], hint: 'High Value, Growth or Prospect.' },
+      { key: 'formName', label: 'Form name', names: ['form'], hint: 'The form the lead filled in.' },
+      { key: 'count', label: 'Count of leads', req: true, names: ['total leads', 'count', 'emails', 'leads', 'qty', 'quantity'], hint: 'How many leads in the row.' },
+      { key: 'bookings', label: 'Bookings', names: ['booking', 'transactions', 'orders'], hint: 'Bookings that came from those leads.' },
+      { key: 'days', label: 'Avg days to convert', names: ['days to convert', 'avg days', 'days'], hint: 'Average days from lead to booking.' },
+      { key: 'year', label: 'Year', names: ['year'], period: true, hint: 'Only needed if the file covers several periods.' },
+      { key: 'month', label: 'Month', names: ['month'], period: true, hint: 'Only needed if the file covers several periods.' },
+      { key: 'date', label: 'Date', names: ['date', 'period'], period: true, hint: 'A full date can stand in for Year and Month.' }
+    ],
+    build(grid, hi, col, per){
+      const parsed = [], problems = [];
+      for (let i = hi + 1; i < grid.length; i++){
+        const r = grid[i] || []; const source = String(r[col.source] || '').trim(); if (!source) continue;
+        let year = col.year != null ? parseInt(r[col.year], 10) : NaN, month = NaN;
+        if (col.month != null){ const t = ttbUpMonthOf(r[col.month], year); month = t.month; year = t.year; }
+        if (col.date != null && (!Number.isFinite(year) || !Number.isFinite(month))){ const d = new Date(String(r[col.date] || '')); if (!isNaN(d)){ year = d.getFullYear(); month = d.getMonth() + 1; } }
+        if (!Number.isFinite(year)) year = per.year; if (!Number.isFinite(month)) month = per.month >= 1 ? per.month : NaN;
+        const raw = String(r[col.leadType] || '').trim();
+        const leadType = /prospect|meta|co-?reg|facebook|paid social/i.test(raw) ? 'Prospect' : (/high|value|hv/i.test(raw) ? 'High Value' : (/reg|sign|subscri|growth/i.test(raw) ? 'Registration' : null));
+        if (!leadType){ problems.push('row ' + (i + 1) + ': lead type "' + raw + '" isn\'t High Value, Growth or Prospect'); continue; }
+        parsed.push({ year, month, source, leadType, formName: col.formName != null ? String(r[col.formName] || '').trim() : '', count: mbuNum(r[col.count]), bookings: col.bookings != null ? mbuNum(r[col.bookings]) : null, avgDaysToConvert: col.days != null ? mbuNum(r[col.days]) : null });
+      }
+      return { rows: parsed, problems };
+    },
+    summary(rows){ const per = [...new Set(rows.map(p => TTB_UP_MONTHS[p.month] + ' ' + p.year))]; return rows.length + ' lead row' + (rows.length === 1 ? '' : 's') + ' for ' + per.join(', '); },
+    async save(rows, fname){ const ok = await mbuSaveLeadCounts(rows, fname); const f = rows[0]; if (ok && f){ const y = document.getElementById('mbuLeadYear'), m = document.getElementById('mbuLeadMonth'); if (y) y.value = String(f.year); if (m) m.value = String(f.month); try { mbuLoadLeadCounts(); } catch (e){} } return ok; }
+  },
+  websiteEngagement: {
+    title: 'Website engagement', yearEl: 'mbuEngagementYear', monthEl: 'mbuEngagementMonth', statusEl: 'mbuEngagementStatus', allowWholeYear: true,
+    fields: [
+      { key: 'channelGroup', label: 'Channel group', req: true, names: ['channel group', 'channel'], hint: 'GA4 Session default channel group.' },
+      { key: 'sessions', label: 'Sessions', req: true, names: ['sessions'], hint: 'Total sessions for the channel group.' },
+      { key: 'engagedSessions', label: 'Engaged sessions', names: ['engaged session', 'engaged'], hint: 'Sessions that lasted, converted or had several views.' },
+      { key: 'engagementRate', label: 'Engagement rate', names: ['engagement rate'], hint: 'Engaged sessions divided by sessions.' },
+      { key: 'avgTime', label: 'Average engagement time', names: ['average engagement time', 'avg engagement time', 'engagement time'], hint: 'Per session, in minutes or h:mm:ss.' }
+    ],
+    build(grid, hi, col){
+      const parsed = [];
+      for (let i = hi + 1; i < grid.length; i++){
+        const r = grid[i] || []; const cg = String(r[col.channelGroup] || '').trim(); if (!cg) continue;
+        parsed.push({ channelGroup: cg, sessions: mbuNum(r[col.sessions]), engagedSessions: col.engagedSessions != null ? mbuNum(r[col.engagedSessions]) : null,
+          engagementRate: col.engagementRate != null ? (() => { const v = mbuNum(r[col.engagementRate]); return v == null ? null : (v > 1 ? v / 100 : v); })() : null,
+          avgEngagementTimeMin: col.avgTime != null ? mbuParseEngagementMinutes(r[col.avgTime]) : null });
+      }
+      return { rows: parsed, problems: [] };
+    },
+    summary(rows, per){ return rows.length + ' channel group' + (rows.length === 1 ? '' : 's') + ' for ' + (TTB_UP_MONTHS[per.month] || 'the whole year') + ' ' + per.year; },
+    async save(rows, fname, per){
+      const y = document.getElementById('mbuEngagementYear'), m = document.getElementById('mbuEngagementMonth'); if (y) y.value = String(per.year); if (m) m.value = String(per.month || 0);
+      mbuEngagementRows = rows; try { mbuRenderEngagementRows(); } catch (e){}
+      return await mbuSaveEngagement(true, fname);
+    }
+  },
+  bulkUpload: { legacy: 'mbuHandleTxnFile' },
+  digitalPerformance: { legacy: 'dpHandleWorkbookFile' }
+};
+const ttbUp = { key: null, stage: 'idle', fileName: '', grid: null, hi: 0, assign: {}, chosen: {}, year: null, month: null, reviewed: false, msg: '', result: '' };
+function ttbUpReset(){ Object.assign(ttbUp, { key: null, stage: 'idle', fileName: '', grid: null, hi: 0, assign: {}, chosen: {}, year: null, month: null, reviewed: false, msg: '', result: '' }); }
+function ttbUpPick(key){
+  const cfg = TTB_UP[key]; if (!cfg) return;
+  ttb.open = key; ttb.manual[key] = true;
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.csv,.xlsx'; inp.style.display = 'none';
+  inp.addEventListener('change', () => { const f = inp.files && inp.files[0]; inp.remove(); if (!f) return; if (cfg.legacy){ ttbRerender(); const fn = window[cfg.legacy]; if (typeof fn === 'function') fn({ target: { files: [f], value: '' } }); } else ttbUpStart(key, f); });
+  inp.addEventListener('cancel', () => inp.remove());
+  document.body.appendChild(inp); inp.click();
+}
+function ttbUpSet(patch){ Object.assign(ttbUp, patch); ttbUpRender(); }
+function ttbUpTier(f, header){
+  const h = String(header || '').trim().toLowerCase(); if (!h) return 'none';
+  if (f.names.some(n => h === n)) return 'high';
+  if (f.names.some(n => h.startsWith(n) || h.endsWith(n))) return 'high';
+  return 'medium';
+}
+async function ttbUpStart(key, file){
+  const cfg = TTB_UP[key]; ttbUpReset(); ttbUp.key = key; ttb.open = key; ttb.manual[key] = true;
+  ttbUp.stage = 'reading'; ttbUp.fileName = file.name; ttbUp.msg = 'Reading your file…'; ttbRerender();
+  try {
+    const grid = await mbuReadFileGrid(file);
+    const found = mbuFindHeaderRow(grid, cfg.fields.map(f => [f.key, f.names, !!f.req]));
+    if (!found) throw new Error('We could not find a row of column headings with the columns this upload needs (' + cfg.fields.filter(f => f.req).map(f => f.label).join(', ') + '). Check the file, or download the sample to see the layout.');
+    const ye = document.getElementById(cfg.yearEl), me = document.getElementById(cfg.monthEl);
+    const now = new Date(); const y = ye && parseInt(ye.value, 10) || now.getFullYear(); const m = me ? parseInt(me.value, 10) : now.getMonth() + 1;
+    const assign = {}; Object.keys(found.colIndex).forEach(k => { assign[k] = found.colIndex[k]; });
+    Object.assign(ttbUp, { grid, hi: found.headerIndex, assign, year: y, month: Number.isFinite(m) ? m : now.getMonth() + 1, stage: 'map', msg: '' });
+  } catch (e){ Object.assign(ttbUp, { stage: 'error', msg: e.message || ('Could not read ' + file.name) }); }
+  ttbRerender();
+}
+function ttbUpChoose(field, val){ if (val === '') delete ttbUp.assign[field]; else { const idx = parseInt(val, 10); Object.keys(ttbUp.assign).forEach(k => { if (k !== field && ttbUp.assign[k] === idx) delete ttbUp.assign[k]; }); ttbUp.assign[field] = idx; ttbUp.chosen[field] = true; } ttbUpRender(); }
+function ttbUpCancel(){ ttbUpReset(); ttbRerender(); }
+function ttbUpDone(){ const k = ttbUp.key; ttbUpReset(); ttbRerender(); }
+async function ttbUpSubmit(){
+  const key = ttbUp.key, cfg = TTB_UP[key]; if (!cfg) return;
+  const per = { year: Number(ttbUp.year), month: Number(ttbUp.month) };
+  const out = cfg.build(ttbUp.grid, ttbUp.hi, ttbUp.assign, per);
+  if (!out.rows.length){ ttbUpSet({ msg: out.problems.length ? out.problems.slice(0, 4).join('; ') : 'No rows found under those columns. Check the choices above.' }); return; }
+  if (out.rows.some(r => r.month != null && !Number.isFinite(r.month))){ ttbUpSet({ msg: 'Some rows have no month. Pick the month below, or choose the Month or Date column.' }); return; }
+  ttbUpSet({ stage: 'saving', msg: 'Saving ' + cfg.summary(out.rows, per) + '…' });
+  let ok = false;
+  try { ok = await cfg.save(out.rows, ttbUp.fileName, per); } catch (e){ console.warn('ttbUp save failed', e); }
+  const st = document.getElementById(cfg.statusEl); const said = st ? st.textContent : '';
+  if (ok){ ttbUpSet({ stage: 'done', result: cfg.summary(out.rows, per) + (out.problems.length ? ' · ' + out.problems.length + ' row' + (out.problems.length === 1 ? '' : 's') + ' skipped' : ''), msg: '' }); try { ttbLoad(); } catch (e){} }
+  else ttbUpSet({ stage: 'map', msg: said && !/^Saved/.test(said) ? said : 'Not saved. Try again.' });
+}
+function ttbUpRender(){
+  const k = ttbUp.key; if (!k || !TTB_UP[k] || TTB_UP[k].legacy) return;
+  const slot = document.getElementById('ttbSlot-' + k); if (!slot) return;
+  let mount = document.getElementById('ttbUpMount'); if (!mount){ mount = document.createElement('div'); mount.id = 'ttbUpMount'; slot.insertBefore(mount, slot.firstChild); }
+  const cfg = TTB_UP[k], S = ttbUp; let h = '';
+  const note = (t, bad) => `<p class="hint" style="margin:0 0 10px;${bad ? 'color:var(--advocacy);' : ''}">${escapeHtml(t)}</p>`;
+  const box = inner => `<div class="ttb-manual">${inner}</div>`;
+  const active = S.stage !== 'idle' && S.stage !== 'done';
+  slot.querySelectorAll(':scope > .sk-card').forEach(c => { c.style.display = active ? 'none' : ''; });
+  if (S.stage === 'reading' || S.stage === 'saving') h = box(`<div class="ttb-tag">${escapeHtml(S.fileName)}</div>${note(S.msg)}`);
+  else if (S.stage === 'error') h = box(`<div class="ttb-tag">${escapeHtml(S.fileName || 'Upload')}</div>${note(S.msg, true)}<div class="btn-row"><button type="button" class="btn-ghost" onclick="ttbUpCancel()">Start over</button></div>`);
+  else if (S.stage === 'done') h = box(`<div class="ttb-tag">${escapeHtml(S.fileName)}</div><p style="margin:0 0 4px;font-weight:700;color:var(--cx);">✓ Submitted. ${escapeHtml(S.result)}.</p><div class="btn-row" style="margin-top:10px;gap:10px;"><button type="button" class="btn-ghost" onclick="ttbUpDone()">Done</button></div>`);
+  else if (S.stage === 'map'){
+    const head = S.grid[S.hi] || []; const cols = Math.max(head.length, 1);
+    const colOpts = sel => `<option value="">— not in this file —</option>` + Array.from({ length: cols }, (_, i) => i).filter(i => String(head[i] || '').trim() !== '').map(i => `<option value="${i}"${sel === i ? ' selected' : ''}>${escapeHtml(String(head[i]).trim())}</option>`).join('');
+    const sample = idx => { const out = []; for (let ri = S.hi + 1; ri < S.grid.length; ri++){ const v = String((S.grid[ri] || [])[idx] || '').trim(); if (v && !out.includes(v)) out.push(v); if (out.length >= 3) break; } return out; };
+    let matched = 0, confirm = 0, nf = 0; const used = new Set(); const missing = [];
+    const rows = cfg.fields.map(f => {
+      const idx = S.assign[f.key]; const has = idx != null; if (has) used.add(idx);
+      const tier = !has ? 'none' : (S.chosen[f.key] ? 'chosen' : ttbUpTier(f, head[idx])); const bd = MBU_GB_BADGE[tier];
+      if (has && (tier === 'high' || tier === 'chosen')) matched++; else if (has) confirm++; else if (!f.period) nf++;
+      if (f.req && !has) missing.push(f.label);
+      const why = has ? (tier === 'high' ? `The heading “${escapeHtml(String(head[idx]).trim())}” is a direct match.` : tier === 'chosen' ? 'You picked this column.' : `The heading “${escapeHtml(String(head[idx]).trim())}” looks close. Please confirm.`) : escapeHtml(f.hint);
+      const ex = has ? sample(idx) : []; 
+      return `<tr><td style="white-space:nowrap;"><b>${escapeHtml(f.label)}</b>${f.req ? ' <span style="color:#C0273C;">*</span>' : ''}</td><td><select class="tbl-select" style="max-width:220px;" onchange="ttbUpChoose('${f.key}', this.value)">${colOpts(has ? idx : null)}</select></td><td><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:600;color:${bd[0]};background:${bd[1]};white-space:nowrap;">${bd[2]}</span></td><td style="font-size:0.8125rem;">${why}${ex.length && /^(source|leadType|formName|channelGroup)$/.test(f.key) ? `<div class="hint" style="margin-top:2px;">Examples: ${ex.map(escapeHtml).join(', ')}</div>` : ''}</td></tr>`;
+    }).join('');
+    const unused = Array.from({ length: cols }, (_, i) => i).filter(i => String(head[i] || '').trim() !== '' && !used.has(i)).map(i => escapeHtml(String(head[i]).trim()));
+    const needsPer = !(S.assign.month != null || S.assign.date != null);
+    const yrs = (() => { const y0 = new Date().getFullYear(); const a = [y0 - 3, y0 - 2, y0 - 1, y0, y0 + 1]; if (!a.includes(Number(S.year))) a.push(Number(S.year)); return a.sort(); })();
+    const per = needsPer ? `<div style="margin:10px 0 0;font-size:0.8125rem;">Rows with no date in the file are filed under <select class="tbl-select" onchange="ttbUp.year=Number(this.value)">${yrs.map(y => `<option value="${y}"${Number(S.year) === y ? ' selected' : ''}>${y}</option>`).join('')}</select> <select class="tbl-select" onchange="ttbUp.month=Number(this.value)">${(cfg.allowWholeYear ? [0] : []).concat([1,2,3,4,5,6,7,8,9,10,11,12]).map(m => `<option value="${m}"${Number(S.month) === m ? ' selected' : ''}>${m ? TTB_UP_MONTHS[m] : 'Whole year / YTD'}</option>`).join('')}</select></div>` : '';
+    const ok = !missing.length && (confirm === 0 || S.reviewed);
+    h = box(`<div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:12px 14px;font-size:0.8125rem;"><b>How we matched your columns</b> · ${escapeHtml(S.fileName)} · ${S.grid.length - S.hi - 1} rows
+      <div style="margin:6px 0;">${matched} matched · <b>${confirm}</b> need your confirmation · ${nf} not found${missing.length ? ` · <span style="color:#C0273C;font-weight:600;">Still needed: ${missing.join(', ')}</span>` : ''}</div>
+      <div style="overflow-x:auto;"><table class="data-table" style="margin-top:6px;font-size:0.8125rem;"><thead><tr><th>Our field</th><th>Your column</th><th>Match</th><th>Why</th></tr></thead><tbody>${rows}</tbody></table></div>
+      ${per}${unused.length ? `<div class="hint" style="margin-top:8px;">Columns we are not using (${unused.length}): ${unused.join(', ')}.</div>` : ''}</div>
+      ${confirm > 0 ? `<label style="display:block;margin-top:8px;font-size:0.8125rem;"><input type="checkbox" ${S.reviewed ? 'checked' : ''} onchange="ttbUp.reviewed = this.checked; ttbUpRender();"> I've checked the rows marked “Please confirm”.</label>` : ''}
+      ${S.msg ? note(S.msg, true) : ''}
+      <div class="btn-row" style="margin-top:10px;gap:10px;"><button type="button" class="btn-primary" ${ok ? '' : 'disabled aria-disabled="true" style="opacity:0.5;"'} onclick="ttbUpSubmit()">Submit</button><button type="button" class="btn-ghost" onclick="ttbUpCancel()">Cancel</button></div>`);
+  }
+  mount.innerHTML = h;
+}
 function ttbUploadPicked(key, ev){
   const u = TTB_CFG[key].upload; const files = ev.target.files;
   ttbUploadClose();
@@ -27625,6 +27786,7 @@ function ttbMountOpen(){
     if (!ttb.manual[k] || ttb.open !== k) return; const c = TTB_CFG[k]; const cards = (c && c.manual && c.manual.cards) || (c && c.upload && c.upload.workspace) || []; const slot = document.getElementById('ttbSlot-' + k); if (!slot) return;
     cards.forEach(id => { const el = document.getElementById(id); if (!el) return; el.style.marginTop = '0'; slot.appendChild(el); });
     if (k === 'marketingBudgetUpload'){ ttbBuRender(); return; }
+    if (TTB_UP[k] && !TTB_UP[k].legacy && ttbUp.key === k){ ttbUpRender(); }
     if (cards.length && !ttb.loaded[k]){ ttb.loaded[k] = true; try { if (cards[0] === 'kpiMetricsAdminModule') loadKpiMetricsAdminTable(); else mbuLoadReachInputs(); } catch (e){ console.warn('ttb: loading entry card failed', e); } }
   });
 }
@@ -27635,7 +27797,7 @@ function ttbModuleHtml(d, i){
   const status = i.done ? `<div class="ttb-done">Done. ${escapeHtml(i.gain)}</div>` : '';
   const sample = (i.step === 'companyProfile' && ttbProfileSample(d)) || cfg.sample;
   const btns = [];
-  if (c.upload) btns.push(`<button type="button" class="btn-primary" onclick="${c.upload.direct ? `${c.upload.direct}()` : `ttbUploadOpen('${i.step}')`}">Upload File</button>`);
+  if (c.upload) btns.push(`<button type="button" class="btn-primary" onclick="${c.upload.direct ? `${c.upload.direct}('${i.step}')` : `ttbUploadOpen('${i.step}')`}">Upload File</button>`);
   if (c.manual) btns.push(`<button type="button" class="btn-ghost" aria-expanded="${!!ttb.manual[i.step]}" onclick="${c.manual.cards || c.manual.profile ? `ttbToggleManual('${i.step}')` : c.manual.step ? `ttbGo('${c.manual.step}'${c.manual.arg ? `, '${c.manual.arg}'` : ''})` : `ttbToggleManual('${i.step}')`}">${ttb.manual[i.step] && (c.manual.cards || c.manual.profile) ? 'Hide manual entry' : 'Add Manually'}</button>`);
   if (c.integ) btns.push(`<button type="button" class="btn-ghost" onclick="ttbGo('partnerIntegrations')">Partner Integration</button>`);
   const hasData = i.done;
@@ -27643,7 +27805,7 @@ function ttbModuleHtml(d, i){
   const manualOpen = open && ttb.manual[i.step];
   const manualBody = manualOpen ? (c.manual && c.manual.profile ? ttbProfileManualHtml(d) : `<div id="ttbSlot-${i.step}" class="ttb-slot"></div>`) : '';
   const inlineSite = i.step === 'companyProfile' ? ttbQuickStartHtml(d, true) : '';
-  const body = open ? `<div class="ttb-mod-body">${status}<div class="ttb-mod-grid"><div><div class="ttb-tag">Example of what the Brain keeps</div><div class="ttb-sample">${sample}</div></div><div><div class="ttb-tag">Add it</div>${inlineSite}<div class="ttb-opts">${btns.join('')}</div>${c.upload && c.upload.direct ? `<p class="hint" style="margin:10px 0 0;">${escapeHtml(c.upload.formats)} <a class="flink" onclick="ttbDownloadSample('${i.step}')">Download a sample file</a></p>` : ''}<div class="ttb-viewrow">${viewHtml}</div></div></div>${manualBody ? `<div class="ttb-manual-wrap">${manualBody}</div>` : ''}</div>` : '';
+  const body = open ? `<div class="ttb-mod-body">${status}<div class="ttb-mod-grid"><div><div class="ttb-tag">Example of what the Brain keeps</div><div class="ttb-sample">${sample}</div></div><div><div class="ttb-tag">Add it</div>${inlineSite}<div class="ttb-opts">${btns.join('')}</div>${c.upload && c.upload.direct ? `<p class="hint" style="margin:10px 0 0;">${escapeHtml(c.upload.formats)} ${c.upload.sample ? `<a class="flink" onclick="ttbDownloadSample('${i.step}')">Download a sample file</a>` : escapeHtml(c.upload.noSample || '')}</p>` : ''}<div class="ttb-viewrow">${viewHtml}</div></div></div>${manualBody ? `<div class="ttb-manual-wrap">${manualBody}</div>` : ''}</div>` : '';
   return `<div class="ttb-mod ${i.done ? 'done' : ''} ${open ? 'open' : ''}"><button type="button" class="ttb-mod-h" aria-expanded="${open}" onclick="ttbToggle('${i.step}')"><span class="ttb-check" aria-label="${i.done ? 'Done' : 'Not done yet'}">${i.done ? '&#10003;' : ''}</span><span class="ttb-mod-t"><span class="ttb-name">${escapeHtml(i.label)}</span><span class="ttb-benefit">${escapeHtml(cfg.benefit)}</span></span><span class="ttb-chev" aria-hidden="true">${open ? '&#9652;' : '&#9662;'}</span></button>${body}</div>`;
 }
 function ttbSetupHtml(d){
@@ -70719,6 +70881,7 @@ async function mbuSaveEngagement(replace, fileName){
   if (status) status.textContent = persisted ? `Saved ${new Date().toLocaleTimeString()} — ${rows.length} channel group${rows.length === 1 ? '' : 's'} for ${MBU_MONTH_NAMES_1[month] || 'whole year'} ${year}.` : (err ? `Not saved — ${err}` : 'Saved locally only, this session.');
   if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext();
   if (persisted) mbuLoadEngagement();
+  return persisted;
 }
 async function mbuHandleEngagementFile(event){
   const file = event.target.files && event.target.files[0];
@@ -70868,6 +71031,7 @@ async function mbuSaveLeadCounts(rowsOverride, fileName){
   if (status) status.textContent = persisted ? `Saved ${new Date().toLocaleTimeString()} — ${rows.length} row${rows.length === 1 ? '' : 's'}.` : (err ? `Not saved — ${err}` : 'Saved locally only, this session.');
   if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext();
   if (persisted) mbuLoadLeadCounts();
+  return persisted;
 }
 let mbuPendingLeads = null, mbuPendingLeadsFile = '';
 async function mbuHandleLeadFile(event){
