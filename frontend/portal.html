@@ -12156,7 +12156,7 @@
           <select id="mbuTxnYear" class="tbl-select" onchange="mbuLoadTransactions()"></select>
           <label for="mbuTxnMonth" style="margin:0;">Month</label>
           <select id="mbuTxnMonth" class="tbl-select" onchange="mbuLoadTransactions()">
-            <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option><option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option><option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option><option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
+            <option value="0">Full year</option><option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option><option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option><option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option><option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
           </select>
           <label class="btn-ghost" style="cursor:pointer;margin:0;">Upload monthly totals (.xlsx / .csv)<input type="file" accept=".csv,.xlsx" style="display:none;" onchange="mbuHandleTxnFile(event)"></label>
           <label class="btn-ghost" style="cursor:pointer;margin:0;">Upload customer-level transactions (.xlsx / .csv)<input type="file" accept=".csv,.xlsx" style="display:none;" onchange="mbuHandleGuestBookingsFile(event)"></label>
@@ -70543,7 +70543,7 @@ async function mbuHandleLeadFile(event){
       }
       if (colIndex.date != null && (!Number.isFinite(year) || !Number.isFinite(month))){ const d = new Date(String(r[colIndex.date] || '')); if (!isNaN(d)){ year = d.getFullYear(); month = d.getMonth() + 1; } }
       if (!Number.isFinite(year)) year = defYear;
-      if (!Number.isFinite(month)) month = defMonth;
+      if (!Number.isFinite(month)) month = defMonth >= 1 ? defMonth : NaN;
       const leadTypeRaw = String(r[colIndex.leadType] || '').trim();
       const leadType = /prospect|meta|co-?reg|facebook|paid social/i.test(leadTypeRaw) ? 'Prospect' : (/high|value|hv/i.test(leadTypeRaw) ? 'High Value' : (/reg|sign|subscri|growth/i.test(leadTypeRaw) ? 'Registration' : null));
       if (!leadType){ problems.push(`row ${i + 1}: lead type "${leadTypeRaw}" isn't High Value, Growth or Prospect`); continue; }
@@ -70575,6 +70575,14 @@ async function mbuConfirmLeadUpload(){
 // ---------- Unique transactions by month, by Product Group ----------
 let mbuTxnRows = [];
 let mbuTxnYearTotals = [];
+let mbuTxnAllRows = [];
+let mbuTxnFullYear = false;
+// Full-year view: the year's months added up per Product Group. Read-only; edits are made one month at a time.
+function mbuTxnFullYearRows(year){
+  const g = {};
+  mbuTxnAllRows.filter(r => r.year === year).forEach(r => { const k = String(r.productGroup || '').trim(); const o = (g[k] = g[k] || { productGroup: k, transactions: 0, revenue: 0, hasRev: false }); o.transactions += Number(r.transactions) || 0; if (r.revenue != null){ o.revenue += Number(r.revenue) || 0; o.hasRev = true; } });
+  return Object.values(g).filter(o => o.productGroup || o.transactions || o.revenue).map(o => ({ productGroup: o.productGroup, transactions: o.transactions, revenue: o.hasRev ? o.revenue : null }));
+}
 // ============ Digital performance (agency exports) — 2026-09-29 ============
 // See the #mbuDigitalCard comment in the HTML for the "why".
 const DP_MONTHS = { january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12, jan: 1, feb: 2, mar: 3, apr: 4, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12 };
@@ -70788,11 +70796,19 @@ async function mbuLoadTransactions(){
   if (!body || !yearSel || !monthSel) return;
   if (!yearSel.options.length){ mbuSeedYearSelect(yearSel, new Date().getFullYear()); monthSel.value = String(new Date().getMonth() + 1); }
   const year = parseInt(yearSel.value, 10), month = parseInt(monthSel.value, 10);
-  mbuTxnRows = []; mbuTxnYearTotals = [];
+  mbuTxnRows = []; mbuTxnYearTotals = []; mbuTxnAllRows = [];
   if (dataSourceLabel === 'backend'){
     try {
-      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/transactions-monthly?year=${year}`);
-      if (resp.ok){ const data = await resp.json(); mbuTxnRows = (data.rows || []).filter(r => r.month === month); mbuTxnYearTotals = (data.totals || []).filter(t => t.year === year); mbuTxnSeasonality = data.seasonality || {}; }
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/transactions-monthly`);
+      if (resp.ok){
+        const data = await resp.json();
+        mbuTxnAllRows = data.rows || [];
+        mbuTxnFullYear = month === 0;
+        mbuTxnRows = month === 0 ? mbuTxnFullYearRows(year) : mbuTxnAllRows.filter(r => r.year === year && r.month === month);
+        // An empty "(all products)" row of zeros is just a leftover once product groups are on file: don't show it.
+        if (mbuTxnRows.some(r => String(r.productGroup || '').trim() && (Number(r.transactions) || Number(r.revenue)))) mbuTxnRows = mbuTxnRows.filter(r => String(r.productGroup || '').trim() || Number(r.transactions) || Number(r.revenue));
+        mbuTxnYearTotals = (data.totals || []).filter(t => t.year === year); mbuTxnSeasonality = data.seasonality || {};
+      }
     } catch (e){ console.warn('mbuLoadTransactions: fetch failed', e); }
   }
   const dl = document.getElementById('mbuTxnProductGroupList');
@@ -70810,13 +70826,17 @@ function mbuRenderTxnRows(){
   const yearTotalsEl = document.getElementById('mbuTxnYearTotals');
   if (!body) return;
   const rows = mbuTxnRows;
+  if (mbuTxnFullYear){
+    body.innerHTML = rows.length ? rows.map(r => `<tr><td>${escapeHtml(r.productGroup || '(all products)')}</td><td>${Math.round(Number(r.transactions) || 0).toLocaleString()}</td><td>${r.revenue == null ? '—' : fmtMoney(r.revenue)}</td><td></td></tr>`).join('') + `<tr><td><b>Full year</b></td><td><b>${Math.round(rows.reduce((t, r) => t + (Number(r.transactions) || 0), 0)).toLocaleString()}</b></td><td><b>${fmtMoney(rows.reduce((t, r) => t + (Number(r.revenue) || 0), 0))}</b></td><td></td></tr>` : '<tr><td colspan="4" class="hint">No rows for this year yet.</td></tr>';
+  } else
   body.innerHTML = rows.length ? rows.map((r, i) => `<tr>
     <td><input type="text" class="tbl-input" list="mbuTxnProductGroupList" style="width:220px;" placeholder="(all products)" value="${escapeHtml(r.productGroup || '')}" data-i="${i}" data-key="productGroup" onchange="mbuQueueTxnSave()"></td>
     <td><input type="number" min="0" step="1" class="tbl-input" style="width:120px;" value="${r.transactions == null ? '' : r.transactions}" data-i="${i}" data-key="transactions" onchange="mbuQueueTxnSave()"></td>
     <td><input type="number" min="0" step="1" class="tbl-input" style="width:140px;" value="${r.revenue == null ? '' : r.revenue}" data-i="${i}" data-key="revenue" onchange="mbuQueueTxnSave()"></td>
     <td><button type="button" class="btn-ghost" style="font-size:0.6875rem;padding:3px 8px;color:var(--advocacy);" onclick="mbuDeleteTxnRow(${i})">Remove</button></td>
   </tr>`).join('') : '<tr><td colspan="4" class="hint">No rows for this month yet — upload a file or add rows.</td></tr>';
-  if (summary){
+  if (summary && mbuTxnFullYear) summary.innerHTML = 'Full year view: the months added up, read only. Pick a month to edit its rows.';
+  else if (summary){
     const tx = rows.reduce((t, r) => t + (Number(r.transactions) || 0), 0);
     const rev = rows.reduce((t, r) => t + (Number(r.revenue) || 0), 0);
     summary.innerHTML = rows.length ? `This month: <b>${Math.round(tx).toLocaleString()}</b> transactions${rev > 0 ? ` · <b>${fmtMoney(rev)}</b> revenue` : ''} across ${rows.length} product group${rows.length === 1 ? '' : 's'}.` : '';
@@ -70829,10 +70849,24 @@ function mbuRenderTxnRows(){
     const txY = months.reduce((t, m) => t + m.transactions, 0), revY = months.reduce((t, m) => t + m.revenue, 0);
     const anyGuest = months.some(m => m.fromGuestRows);
     const gY = months.reduce((t, m) => t + (m.guests || 0), 0), attrY = months.reduce((t, m) => t + (m.attributableTransactions || 0), 0), attrRevY = months.reduce((t, m) => t + (m.attributableRevenue || 0), 0);
+    // Product Group by year (same shape as a pivot of the file): every year on file, so the totals can be tied out against the source.
+    const pgPivotHtml = (() => {
+      const yrs = [...new Set(mbuTxnAllRows.map(r => r.year))].sort();
+      const groups = {};
+      mbuTxnAllRows.forEach(r => { const g = String(r.productGroup || '').trim() || '(all products)'; const c = (groups[g] = groups[g] || {}); const y = (c[r.year] = c[r.year] || { tx: 0, rev: 0 }); y.tx += Number(r.transactions) || 0; y.rev += Number(r.revenue) || 0; });
+      const names = Object.keys(groups).filter(g => yrs.some(y => groups[g][y] && (groups[g][y].tx || groups[g][y].rev))).sort();
+      if (!names.length || !yrs.length) return '';
+      const add = (a, b) => ({ tx: a.tx + (b ? b.tx : 0), rev: a.rev + (b ? b.rev : 0) });
+      const tot = y => names.reduce((t, g) => add(t, groups[g][y]), { tx: 0, rev: 0 });
+      const cell = (o, k) => o ? (k === 'rev' ? fmtMoney(o.rev) : Math.round(o.tx).toLocaleString()) : '—';
+      const block = (k, title) => `<div class="hint" style="margin:10px 0 4px;font-weight:700;">${title}</div><div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Product Group</th>${yrs.map(y => `<th>${y}</th>`).join('')}<th>Total</th></tr></thead><tbody>${names.map(g => `<tr><td>${escapeHtml(g)}</td>${yrs.map(y => `<td>${cell(groups[g][y], k)}</td>`).join('')}<td><b>${cell(yrs.reduce((t, y) => add(t, groups[g][y]), { tx: 0, rev: 0 }), k)}</b></td></tr>`).join('')}<tr><td><b>Total</b></td>${yrs.map(y => `<td><b>${cell(tot(y), k)}</b></td>`).join('')}<td><b>${cell(yrs.reduce((t, y) => add(t, tot(y)), { tx: 0, rev: 0 }), k)}</b></td></tr></tbody></table></div>`;
+      return block('rev', 'Gross revenue by Product Group and year') + block('tx', 'Unique transactions by Product Group and year') + '<p class="hint" style="margin:6px 0 0;">Years are by transaction date. Only the transactions that count (your Include checkboxes above) are in these totals.</p>';
+    })();
     yearTotalsEl.innerHTML = months.length ? `<div class="hint" style="margin:0 0 4px;font-weight:700;">${year} by month</div><div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Month</th><th>Unique transactions</th>${anyGuest ? '<th>Customers</th><th>Marketing-attributable</th>' : ''}<th>Gross revenue</th>${anyGuest ? '<th>Attributable revenue</th>' : ''}${seas ? '<th>Seasonality index</th>' : ''}</tr></thead><tbody>${months.map(m => `<tr><td>${MBU_MONTH_NAMES_1[m.month]}</td><td>${Math.round(m.transactions).toLocaleString()}</td>${anyGuest ? `<td>${m.fromGuestRows ? Math.round(m.guests).toLocaleString() : '—'}</td><td>${m.fromGuestRows ? Math.round(m.attributableTransactions).toLocaleString() : '—'}</td>` : ''}<td>${m.hasRevenue ? fmtMoney(m.revenue) : '—'}</td>${anyGuest ? `<td>${m.fromGuestRows ? fmtMoney(m.attributableRevenue) : '—'}</td>` : ''}${seas ? `<td>${seas[m.month] != null ? seas[m.month].toFixed(2) : '—'}</td>` : ''}</tr>`).join('')}<tr><td><b>Total</b></td><td><b>${Math.round(txY).toLocaleString()}</b></td>${anyGuest ? `<td><b>${Math.round(gY).toLocaleString()}</b></td><td><b>${Math.round(attrY).toLocaleString()}</b></td>` : ''}<td><b>${revY > 0 ? fmtMoney(revY) : '—'}</b></td>${anyGuest ? `<td><b>${fmtMoney(attrRevY)}</b></td>` : ''}${seas ? '<td></td>' : ''}</tr></tbody></table></div><p class="hint" style="margin:6px 0 0;">${seas ? 'Seasonality index = this month’s share of the year × 12 (1.00 = an average month) — available because all 12 months are on file.' : `Seasonality index appears once all 12 months of ${year} are on file (${months.length} so far).`} These are the Transactions actuals for campaigns in market during these months, narrowed to a campaign’s own Product Groups when they match.</p>` : '';
+    yearTotalsEl.innerHTML += pgPivotHtml;
   }
 }
-function mbuAddTxnRow(){ mbuTxnRows.push({ productGroup: '', transactions: null, revenue: null }); mbuRenderTxnRows(); }
+function mbuAddTxnRow(){ if (mbuTxnFullYear){ const st = document.getElementById('mbuTxnStatus'); if (st) st.textContent = 'Pick a month to add or edit rows. Full year is a read-only total.'; return; } mbuTxnRows.push({ productGroup: '', transactions: null, revenue: null }); mbuRenderTxnRows(); }
 async function mbuDeleteTxnRow(i){
   const r = mbuTxnRows[i]; if (!r) return;
   if (!confirmDeleteAction(`the ${r.productGroup || 'transactions'} row for this period`)) return;
@@ -70853,6 +70887,7 @@ function mbuQueueTxnSave(){
   mbuTxnSaveTimer = setTimeout(() => mbuSaveTransactions(null), 600);
 }
 async function mbuSaveTransactions(rowsOverride){
+  if (!rowsOverride && mbuTxnFullYear) return; // Full year is a read-only total
   const status = document.getElementById('mbuTxnStatus');
   const yearSel = document.getElementById('mbuTxnYear'), monthSel = document.getElementById('mbuTxnMonth');
   const year = parseInt(yearSel.value, 10), month = parseInt(monthSel.value, 10);
@@ -70907,7 +70942,7 @@ async function mbuHandleTxnFile(event){
       }
       if (colIndex.date != null && (!Number.isFinite(year) || !Number.isFinite(month))){ const d = new Date(String(r[colIndex.date] || '')); if (!isNaN(d)){ year = d.getFullYear(); month = d.getMonth() + 1; } }
       if (!Number.isFinite(year)) year = defYear;
-      if (!Number.isFinite(month)) month = defMonth;
+      if (!Number.isFinite(month)) month = defMonth >= 1 ? defMonth : NaN;
       parsed.push({ year, month, productGroup: colIndex.productGroup != null ? String(r[colIndex.productGroup] || '').trim() : '', transactions: tx, revenue: colIndex.revenue != null ? mbuNum(r[colIndex.revenue]) : null });
     }
     if (!parsed.length) throw new Error('Header found but no transaction rows under it.');
