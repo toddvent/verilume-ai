@@ -70712,6 +70712,7 @@ async function mbuConfirmLeadUpload(){
 let mbuTxnRows = [];
 let mbuTxnYearTotals = [];
 let mbuTxnAllRows = [];
+let mbuTxnSvc = null;
 let mbuTxnFullYear = false;
 // Full-year view: the year's months added up per Product Group. Read-only; edits are made one month at a time.
 function mbuTxnFullYearRows(year){
@@ -70932,8 +70933,9 @@ async function mbuLoadTransactions(){
   if (!body || !yearSel || !monthSel) return;
   if (!yearSel.options.length){ mbuSeedYearSelect(yearSel, new Date().getFullYear()); monthSel.value = String(new Date().getMonth() + 1); }
   const year = parseInt(yearSel.value, 10), month = parseInt(monthSel.value, 10);
-  mbuTxnRows = []; mbuTxnYearTotals = []; mbuTxnAllRows = [];
+  mbuTxnRows = []; mbuTxnYearTotals = []; mbuTxnAllRows = []; mbuTxnSvc = null;
   if (dataSourceLabel === 'backend'){
+    try { const sr = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/transactions-by-service-year`); if (sr.ok) mbuTxnSvc = await sr.json(); } catch (e){ /* service-year view is optional */ }
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/transactions-monthly`);
       if (resp.ok){
@@ -70986,18 +70988,20 @@ function mbuRenderTxnRows(){
     const anyGuest = months.some(m => m.fromGuestRows);
     const gY = months.reduce((t, m) => t + (m.guests || 0), 0), attrY = months.reduce((t, m) => t + (m.attributableTransactions || 0), 0), attrRevY = months.reduce((t, m) => t + (m.attributableRevenue || 0), 0);
     // Product Group by year (same shape as a pivot of the file): every year on file, so the totals can be tied out against the source.
-    const pgPivotHtml = (() => {
-      const yrs = [...new Set(mbuTxnAllRows.map(r => r.year))].sort();
+    const pgPivot = (rowsIn, yearWord, note) => {
+      const yrs = [...new Set(rowsIn.map(r => r.year))].filter(y => y != null).sort();
       const groups = {};
-      mbuTxnAllRows.forEach(r => { const g = String(r.productGroup || '').trim() || '(all products)'; const c = (groups[g] = groups[g] || {}); const y = (c[r.year] = c[r.year] || { tx: 0, rev: 0 }); y.tx += Number(r.transactions) || 0; y.rev += Number(r.revenue) || 0; });
+      rowsIn.forEach(r => { const g = String(r.productGroup || '').trim() || '(all products)'; const c = (groups[g] = groups[g] || {}); const y = (c[r.year] = c[r.year] || { tx: 0, rev: 0 }); y.tx += Number(r.transactions) || 0; y.rev += Number(r.revenue) || 0; });
       const names = Object.keys(groups).filter(g => yrs.some(y => groups[g][y] && (groups[g][y].tx || groups[g][y].rev))).sort();
       if (!names.length || !yrs.length) return '';
       const add = (a, b) => ({ tx: a.tx + (b ? b.tx : 0), rev: a.rev + (b ? b.rev : 0) });
       const tot = y => names.reduce((t, g) => add(t, groups[g][y]), { tx: 0, rev: 0 });
       const cell = (o, k) => o ? (k === 'rev' ? fmtMoney(o.rev) : Math.round(o.tx).toLocaleString()) : '—';
       const block = (k, title) => `<div class="hint" style="margin:10px 0 4px;font-weight:700;">${title}</div><div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Product Group</th>${yrs.map(y => `<th>${y}</th>`).join('')}<th>Total</th></tr></thead><tbody>${names.map(g => `<tr><td>${escapeHtml(g)}</td>${yrs.map(y => `<td>${cell(groups[g][y], k)}</td>`).join('')}<td><b>${cell(yrs.reduce((t, y) => add(t, groups[g][y]), { tx: 0, rev: 0 }), k)}</b></td></tr>`).join('')}<tr><td><b>Total</b></td>${yrs.map(y => `<td><b>${cell(tot(y), k)}</b></td>`).join('')}<td><b>${cell(yrs.reduce((t, y) => add(t, tot(y)), { tx: 0, rev: 0 }), k)}</b></td></tr></tbody></table></div>`;
-      return block('rev', 'Gross revenue by Product Group and year') + block('tx', 'Unique transactions by Product Group and year') + '<p class="hint" style="margin:6px 0 0;">Years are by transaction date. Only the transactions that count (your Include checkboxes above) are in these totals.</p>';
-    })();
+      return block('rev', 'Gross revenue by Product Group and ' + yearWord) + block('tx', 'Unique transactions by Product Group and ' + yearWord) + '<p class="hint" style="margin:6px 0 0;">' + note + ' Only the transactions that count (your Include checkboxes above) are in these totals.</p>';
+    };
+    const pgPivotHtml = pgPivot(mbuTxnAllRows, 'booking year', 'Years are by transaction (sale) date.')
+      + (mbuTxnSvc && mbuTxnSvc.rows && mbuTxnSvc.rows.length ? pgPivot(mbuTxnSvc.rows, 'service year', 'Years are by service start date (delivery). Revenue booked but not yet delivered is accrued and at risk until it is.') + (mbuTxnSvc.notDelivered ? `<p class="hint" style="margin:6px 0 0;"><b>Booked, not yet delivered:</b> ${fmtMoney(mbuTxnSvc.notDelivered.revenue)} across ${Math.round(mbuTxnSvc.notDelivered.transactions).toLocaleString()} transactions (service start after today).</p>` : '') : '');
     yearTotalsEl.innerHTML = months.length ? `<div class="hint" style="margin:0 0 4px;font-weight:700;">${year} by month</div><div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Month</th><th>Unique transactions</th>${anyGuest ? '<th>Customers</th><th>Marketing-attributable</th>' : ''}<th>Gross revenue</th>${anyGuest ? '<th>Attributable revenue</th>' : ''}${seas ? '<th>Seasonality index</th>' : ''}</tr></thead><tbody>${months.map(m => `<tr><td>${MBU_MONTH_NAMES_1[m.month]}</td><td>${Math.round(m.transactions).toLocaleString()}</td>${anyGuest ? `<td>${m.fromGuestRows ? Math.round(m.guests).toLocaleString() : '—'}</td><td>${m.fromGuestRows ? Math.round(m.attributableTransactions).toLocaleString() : '—'}</td>` : ''}<td>${m.hasRevenue ? fmtMoney(m.revenue) : '—'}</td>${anyGuest ? `<td>${m.fromGuestRows ? fmtMoney(m.attributableRevenue) : '—'}</td>` : ''}${seas ? `<td>${seas[m.month] != null ? seas[m.month].toFixed(2) : '—'}</td>` : ''}</tr>`).join('')}<tr><td><b>Total</b></td><td><b>${Math.round(txY).toLocaleString()}</b></td>${anyGuest ? `<td><b>${Math.round(gY).toLocaleString()}</b></td><td><b>${Math.round(attrY).toLocaleString()}</b></td>` : ''}<td><b>${revY > 0 ? fmtMoney(revY) : '—'}</b></td>${anyGuest ? `<td><b>${fmtMoney(attrRevY)}</b></td>` : ''}${seas ? '<td></td>' : ''}</tr></tbody></table></div><p class="hint" style="margin:6px 0 0;">${seas ? 'Seasonality index = this month’s share of the year × 12 (1.00 = an average month) — available because all 12 months are on file.' : `Seasonality index appears once all 12 months of ${year} are on file (${months.length} so far).`} These are the Transactions actuals for campaigns in market during these months, narrowed to a campaign’s own Product Groups when they match.</p>` : '';
     yearTotalsEl.innerHTML += pgPivotHtml;
   }
