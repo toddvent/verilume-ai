@@ -290,6 +290,8 @@ const CAMPAIGNS_LOWERCASE_FOLDED_COLUMNS = {
   approvedcreativeassetsjson: 'approvedCreativeAssetsJson',
   briefanalyticscontinuedat: 'briefAnalyticsContinuedAt',
   creativedisposition: 'creativeDisposition',
+  historicalcomplete: 'historicalComplete',
+  historicalcompleteat: 'historicalCompleteAt',
   businessinitiative: 'businessInitiative',
   channelgapnote: 'channelGapNote',
   campaigntypedetailsjson: 'campaignTypeDetailsJson',
@@ -3018,6 +3020,26 @@ createTableIfNeeded(`
 `);
 ensureColumn('channel_planning_details', 'uploadBatchId', 'TEXT');
 ensureColumn('campaigns', 'createdByUploadBatchId', 'TEXT');
+// 2026-10-03 — historical complete: a campaign created from an upload whose hit date(s) have already passed is marked complete on
+// every stage (no internal copy, QA, approvals needed). Financials, impressions and reporting are untouched and stay valid.
+// NULL = never evaluated, 1 = complete, 0 = a person reopened the stages (the backfill below never overrides a 0).
+ensureColumn('campaigns', 'historicalComplete', 'INTEGER');
+ensureColumn('campaigns', 'historicalCompleteAt', 'TEXT');
+function dateOnlyOrNull(v){ const raw = (v === null || v === undefined ? '' : String(v)).trim(); if (!raw) return null; if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10); const d = new Date(raw); return Number.isFinite(d.getTime()) ? d.toISOString().slice(0, 10) : null; }
+// True when every line has a hit date and the latest one is before today (so a campaign with a send still to come is not marked).
+function allHitDatesPast(hitDates, todayIso){ const ds = hitDates.map(dateOnlyOrNull); if (!ds.length || ds.some(d => !d)) return false; return ds.reduce((a, b) => a > b ? a : b) < todayIso; }
+try {
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const pending = db.prepare('SELECT id FROM campaigns WHERE createdByUploadBatchId IS NOT NULL AND historicalComplete IS NULL').all();
+  let marked = 0;
+  pending.forEach(c => {
+    const hits = db.prepare('SELECT hitDate FROM channel_planning_details WHERE campaignId = ?').all(c.id).map(r => aliasVal(r, 'hitDate'));
+    const yes = allHitDatesPast(hits, todayIso);
+    db.prepare('UPDATE campaigns SET historicalComplete = ?, historicalCompleteAt = ? WHERE id = ?').run(yes ? 1 : 0, yes ? new Date().toISOString() : null, c.id);
+    if (yes) marked++;
+  });
+  if (pending.length) console.log(`[historical-complete] evaluated ${pending.length} uploaded campaign(s); ${marked} marked complete (every hit date already past).`);
+} catch (e){ console.warn('[historical-complete] backfill skipped:', e.message); }
 
 // 2026-09-13 — Publisher/Vendor Performance actuals, per direct instruction:
 // Magazines/Newspapers and Direct Mail placements should be comparable on
@@ -13325,6 +13347,8 @@ const LEGACY_CASING_COLUMNS = [
   ['campaigns', 'creativeActive'],
   ['campaigns', 'creativeBrief'],
   ['campaigns', 'creativeComplete'],
+  ['campaigns', 'historicalComplete'],
+  ['campaigns', 'historicalCompleteAt'],
   ['campaigns', 'creativeFocusGroups'],
   ['campaigns', 'demandSignalRef'],
   ['campaigns', 'endDate'],
@@ -17031,7 +17055,7 @@ const FORECAST_INTENT_RE = /forecast|project(ed|ion)?|predict|expect|estimate|wh
 // unless it merely echoes the campaign's own startDate; cancelled and
 // ad-hoc campaigns excluded; sorted soonest-due-first.
 function voiceMostUrgent(accountId, limit){
-  const campaigns = db.prepare('SELECT id, name, objective, campaignCode, startDate, endDate, status, creativeDisposition FROM campaigns WHERE accountId = ? AND COALESCE(cancelled,0) = 0 AND COALESCE(isAdHoc,0) = 0').all(accountId);
+  const campaigns = db.prepare('SELECT id, name, objective, campaignCode, startDate, endDate, status, creativeDisposition FROM campaigns WHERE accountId = ? AND COALESCE(cancelled,0) = 0 AND COALESCE(isAdHoc,0) = 0 AND COALESCE(historicalComplete,0) = 0').all(accountId);
   const lines = db.prepare('SELECT cpd.campaignId AS campaignId, cpd.dropDate AS dropDate, cpd.hitDate AS hitDate FROM channel_planning_details cpd JOIN campaigns c ON c.id = cpd.campaignId WHERE c.accountId = ?').all(accountId);
   const due = {};
   lines.forEach(l => {
@@ -28302,6 +28326,9 @@ Submit your response via the campaign_intake_turn tool.`;
         cmoAnalyticsBrief: body.cmoAnalyticsBrief !== undefined ? body.cmoAnalyticsBrief : existing.cmoAnalyticsBrief,
         briefAnalyticsContinuedAt: body.briefAnalyticsContinuedAt !== undefined ? body.briefAnalyticsContinuedAt : existing.briefAnalyticsContinuedAt,
         creativeDisposition: body.creativeDisposition !== undefined ? (['needed', 'external'].includes(body.creativeDisposition) ? body.creativeDisposition : null) : existing.creativeDisposition,
+        // Reopening (0) or re-marking (1) the historical-complete flag is a person's edit; the upload sets it, the backfill never overrides a 0.
+        historicalComplete: body.historicalComplete !== undefined ? (body.historicalComplete ? 1 : 0) : existing.historicalComplete,
+        historicalCompleteAt: body.historicalComplete !== undefined ? (body.historicalComplete ? new Date().toISOString() : null) : existing.historicalCompleteAt,
         // 2026-09-19 — the real auto-refresh-vs-human-override bookkeeping
         // for the two messages above (see ensureColumn(...EditedByHuman)/
         // ensureColumn(...UpstreamHash) comments up top for the full
@@ -28440,6 +28467,8 @@ Submit your response via the campaign_intake_turn tool.`;
       addCol('cmoAnalyticsBrief', body.cmoAnalyticsBrief !== undefined, merged.cmoAnalyticsBrief);
       addCol('briefAnalyticsContinuedAt', body.briefAnalyticsContinuedAt !== undefined, merged.briefAnalyticsContinuedAt);
       addCol('creativeDisposition', body.creativeDisposition !== undefined, merged.creativeDisposition);
+      addCol('historicalComplete', body.historicalComplete !== undefined, merged.historicalComplete);
+      addCol('historicalCompleteAt', body.historicalComplete !== undefined, merged.historicalCompleteAt);
       addCol('cmoCopywriterBriefEditedByHuman', body.cmoCopywriterBriefEditedByHuman !== undefined, merged.cmoCopywriterBriefEditedByHuman);
       addCol('cmoAnalyticsBriefEditedByHuman', body.cmoAnalyticsBriefEditedByHuman !== undefined, merged.cmoAnalyticsBriefEditedByHuman);
       addCol('cmoCopywriterBriefUpstreamHash', body.cmoCopywriterBriefUpstreamHash !== undefined, merged.cmoCopywriterBriefUpstreamHash);
@@ -30938,6 +30967,8 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
           // campaign existed in Verilume; a future one is left undecided
           // for the Creative stage to ask.
           const creativeNeededRaw = String(first('creativeNeeded') || '').trim().toLowerCase();
+          // 2026-10-03 — historical complete: every line's hit date is already past (latest hit date < today), so all stages read complete.
+          const historicalNow = allHitDatesPast(entries.map(e => e.row && e.row.hitDate), now.slice(0, 10));
           let creativeDisposition = null;
           if (/^(y|yes|true|1|needed|required)$/.test(creativeNeededRaw)) creativeDisposition = 'needed';
           else if (/^(n|no|false|0|external|not needed|none|complete|done)$/.test(creativeNeededRaw)) creativeDisposition = 'external';
@@ -30946,9 +30977,9 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
             if (/^\d{4}-\d{2}-\d{2}$/.test(hit) && hit < now.slice(0, 10)) creativeDisposition = 'external';
           }
           db.prepare(
-            `INSERT INTO campaigns (id, accountId, objective, name, startDate, endDate, campaignType, productGroups, creativeFocusGroups, campaignCode, fundingSource, createdByUploadBatchId, status, creativeDisposition, createdAt)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-          ).run(campaignId, accountId, displayName, displayName, hitDate || null, endDate || null, campaignClassification || '', '', '', campaignCode, 'unplanned', batchId, initialStatus, creativeDisposition, now);
+            `INSERT INTO campaigns (id, accountId, objective, name, startDate, endDate, campaignType, productGroups, creativeFocusGroups, campaignCode, fundingSource, createdByUploadBatchId, status, creativeDisposition, historicalComplete, historicalCompleteAt, createdAt)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          ).run(campaignId, accountId, displayName, displayName, hitDate || null, endDate || null, campaignClassification || '', '', '', campaignCode, 'unplanned', batchId, initialStatus, creativeDisposition, historicalNow ? 1 : 0, historicalNow ? now : null, now);
           campaignIdsCreated.push(campaignId); wroteCampaignIds.push(campaignId);
           // So a later group in THIS SAME batch with an identical key
           // (shouldn't happen since groups are already deduped by key, but

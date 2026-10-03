@@ -245,6 +245,8 @@
   "headingFontName",
   "headingFontNotes",
   "headingsJson",
+  "historicalComplete",
+  "historicalCompleteAt",
   "hitDate",
   "hubspotContactId",
   "hubspotError",
