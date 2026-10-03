@@ -2109,7 +2109,7 @@ function commitMonthlyUpload(accountId, kind, fileName, stmts, fileMap, readBack
     fileSide.measures.forEach((m, i) => { if (Math.abs(m.v - dbSide.measures[i].v) > 0.01) diffs.push(`${m.label}: file ${m.v.toLocaleString('en-US')}, database ${dbSide.measures[i].v.toLocaleString('en-US')}`); });
   }
   const matched = diffs.length ? 0 : 1;
-  const note = diffs.length ? diffs.join('; ') : `Every row and total in the file matches the database.${skipped ? ' ' + skipped + ' row' + (skipped === 1 ? ' was' : 's were') + ' left out (no valid year and month, or a repeat of another row).' : ''}`;
+  const note = diffs.length ? diffs.join('; ') : `Every row and total in the file matches the database.${skipped ? ' ' + skipped + ' row' + (skipped === 1 ? ' was' : 's were') + ' left out (invalid, or a repeat of another row).' : ''}`;
   const id = `rcpt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
   try { db.prepare('INSERT INTO upload_receipts (id, accountId, kind, "batchId", "fileName", "createdAt", "fileJson", "dbJson", matched, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, accountId, kind, null, fileName || null, now, JSON.stringify(fileSide), JSON.stringify(dbSide), matched, note); }
   catch (e){ console.warn(`[${kind}] could not store the receipt:`, e.message); }
@@ -16792,7 +16792,7 @@ async function getWelcome(accountId, opts){
 // DATA_CATALOG is version 1 of the data catalog: one entry per data set with its owner dashboard, grain, keywords and status.
 // "Data consumed" is a live view of it, and the forecast, Ask the Brain and voice lookups can route through the same list.
 const DATA_CATALOG = [
-  { key: 'upload_receipts', label: 'Upload receipts', table: 'upload_receipts', period: null, dashboard: 'Train the Brain', grain: 'one per file upload (customer file, lead counts, digital performance, website engagement)', kind: 'manual', keywords: ['upload receipt', 'file vs database', 'row counts', 'data trust', 'integrity'], usedBy: [], status: 'current' },
+  { key: 'upload_receipts', label: 'Upload receipts', table: 'upload_receipts', period: null, dashboard: 'Train the Brain', grain: 'one per file upload (customer file, lead counts, digital performance, website engagement, budget import, campaign calendar)', kind: 'manual', keywords: ['upload receipt', 'file vs database', 'row counts', 'data trust', 'integrity'], usedBy: [], status: 'current' },
   { key: 'dq_buckets', label: 'Approved question groups', table: 'account_dq_buckets', period: null, dashboard: 'Train the Brain', grain: 'one approved set of order-size (or lead-time) group edges per account', kind: 'manual', keywords: ['order size groups', 'buckets', 'trip days groups', 'question groups'], usedBy: [], status: 'current' },
   { key: 'upload_mappings', label: 'Upload column mappings', table: 'account_upload_mappings', period: null, dashboard: 'Train the Brain', grain: 'one approved mapping per account and file type', kind: 'manual', keywords: ['column mapping', 'file columns', 'approved mapping', 'upload format'], usedBy: [], status: 'current' },
   { key: 'transactions', label: 'Monthly transactions', table: 'account_transactions_monthly', period: 'ym', dashboard: 'Strategy', grain: 'month by product group', kind: 'manual', keywords: ['revenue', 'transactions', 'sales', 'bookings revenue', 'aov'], usedBy: ['forecast', 'ask', 'voice', 'brain dump'], status: 'current' },
@@ -28609,7 +28609,7 @@ Submit your response via the campaign_intake_turn tool.`;
     // internal Wrike reference — see the ensureColumn comment): settable
     // here at creation only. The PATCH endpoint below deliberately has no
     // equivalent — once set, it never changes.
-    function insertChannelPlanningRow(body){
+    function buildChannelPlanningInsert(body){
       const campaignId = body.campaignId;
       if (!campaignId) throw { status: 400, error: 'campaignId is required' };
       const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
@@ -28623,12 +28623,12 @@ Submit your response via the campaign_intake_turn tool.`;
       const now = new Date().toISOString();
       const region = normalizeChannelPlanningRegion(body.region);
       const stage = normalizeChannelPlanningStage(body.stage);
-      db.prepare(`INSERT INTO channel_planning_details
+      const sql = `INSERT INTO channel_planning_details
         (id, campaignId, allocationId, channel, partner, audience, buyType, mediaType, impressions,
          dropDate, hitDate, endDate, productYear, productGroup, creativeMarket, budget, detailsJson,
          status, enteredByRole, enteredByName, lastEditedByRole, lastEditedByName, projectNumber, region, stage, createdAt, updatedAt)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-      ).run(
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+      const params = [
         entryId, campaignId, body.allocationId || null, body.channel,
         body.partner || null, body.audience || null, body.buyType || null, body.mediaType || null,
         typeof body.impressions === 'number' ? body.impressions : null,
@@ -28639,8 +28639,13 @@ Submit your response via the campaign_intake_turn tool.`;
         actorRole, actorName, actorRole, actorName,
         typeof body.projectNumber === 'string' ? body.projectNumber : (body.projectNumber || null),
         region, stage, now, now
-      );
-      return { entryId, campaignId };
+      ];
+      return { entryId, campaignId, sql, params, region };
+    }
+    function insertChannelPlanningRow(body){
+      const b = buildChannelPlanningInsert(body);
+      db.prepare(b.sql).run(...b.params);
+      return { entryId: b.entryId, campaignId: b.campaignId };
     }
 
     // syncCampaignProductCreativeGroupsFromChannelPlanning: the live
@@ -30371,6 +30376,28 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       });
     }
 
+    const BULK_ROW_DETAIL_TEXT_KEYS = ['creativeSize', 'creativeSpecs', 'proofDueDate', 'creativeDueDate', 'promotedItems', 'qrCodeLink', 'phone', 'notes',
+      'productionProject', 'listRequestDate', 'listDueDate', 'releaseFilesDate', 'dropDateBudget', 'inHomeDate', 'vendor', 'materialsOrdered'];
+    const BULK_ROW_DETAIL_NUMERIC_KEYS = ['totalQuantity', 'distributedQuantity', 'fulfillmentQuantity', 'paperMfgCost', 'postageCost', 'insertionCost', 'productionCost', 'unitCost'];
+    const BULK_ROW_DETAIL_KEYS = [...BULK_ROW_DETAIL_TEXT_KEYS, ...BULK_ROW_DETAIL_NUMERIC_KEYS];
+    function bulkRowDetails(row){
+      const src = (row && row.details && typeof row.details === 'object') ? row.details : {};
+      const out = {};
+      BULK_ROW_DETAIL_KEYS.forEach(k => {
+        const v = src[k];
+        if (v === undefined || v === null) return;
+        if (BULK_ROW_DETAIL_NUMERIC_KEYS.includes(k)){
+          const n = typeof v === 'number' ? v : Number(String(v).replace(/[$,\s]/g, ''));
+          if (Number.isFinite(n)) out[k] = n;
+          else { const str = String(v).trim(); if (str) out[k] = str.slice(0, 200); }
+          return;
+        }
+        const str = String(v).trim();
+        if (str) out[k] = str.slice(0, 2000);
+      });
+      return out;
+    }
+
     // POST /api/accounts/:accountId/channel-planning/bulk — round 132x
     // (2026-08-10), per direct instruction: the Manage Account bulk
     // uploader. Body: { actorRole ('cx_ops'|'client'), actorName,
@@ -30404,11 +30431,13 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       if (rows.length > 2000) return sendJson(res, 400, { error: 'bulk upload is capped at 2000 rows per request — split into smaller batches' });
       const actorRole = body.actorRole === 'cx_ops' ? 'cx_ops' : 'client';
       const actorName = typeof body.actorName === 'string' ? body.actorName : '';
-      // Cache campaign->accountId lookups — a real upload can have many
-      // rows against the same handful of campaigns, no need to re-query.
+      // 2026-10-03 — all-or-nothing, like every other upload: every row is checked first, and if any row is wrong NOTHING is saved
+      // and every problem is listed at once (the earlier design saved the good rows and reported the rest, which left a half-loaded
+      // calendar with no way to tell). Re-uploading the same file is safe: a line already on the calendar (same campaign, channel,
+      // partner, audience, buy type, media type, impressions, dates, product group, creative market, budget and region) is not added
+      // twice. A receipt compares the file with the database when the upload carries a file name.
       const campaignAccountCache = new Map();
-      const results = [];
-      const touchedCampaignIds = new Set();
+      const errors = []; const built = [];
       rows.forEach((row, index) => {
         try {
           if (!row || !row.campaignId) throw { status: 400, error: 'campaignId is required' };
@@ -30420,18 +30449,38 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
           }
           if (rowAccountId === null) throw { status: 404, error: `campaign not found: ${row.campaignId}` };
           if (rowAccountId !== accountId) throw { status: 403, error: `campaign ${row.campaignId} does not belong to this account` };
-          const { entryId, campaignId } = insertChannelPlanningRow({ ...row, actorRole, actorName });
-          touchedCampaignIds.add(campaignId);
-          results.push({ index, ok: true, entryId, campaignId });
+          built.push(buildChannelPlanningInsert({ ...row, detailsJson: (row.detailsJson && typeof row.detailsJson === 'object') ? row.detailsJson : bulkRowDetails(row), actorRole, actorName }));
         } catch (e){
-          results.push({ index, ok: false, campaignId: row && row.campaignId, error: (e && e.error) || 'unexpected error inserting this row' });
+          errors.push({ index, row: index + 1, campaignId: row && row.campaignId, error: (e && e.error) || (e && e.message) || 'unexpected error checking this row' });
         }
       });
-      touchedCampaignIds.forEach(id => syncCampaignProductCreativeGroupsFromChannelPlanning(id));
-      const insertedCount = results.filter(r => r.ok).length;
+      if (errors.length) return sendJson(res, 400, { error: `Not saved: ${errors.length} of ${rows.length} row${rows.length === 1 ? '' : 's'} need fixing. Your calendar is unchanged.`, saved: 0, errors });
+      const fpOf = p => [p[1], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[13], p[14], p[15], p[23]].map(v => v == null ? '' : String(v).trim().toLowerCase()).join('|');
+      const fpRow = r => fpOf([null, r.campaignId, null, r.channel, r.partner, r.audience, r.buyType, r.mediaType, r.impressions, r.dropDate, r.hitDate, r.endDate, null, r.productGroup, r.creativeMarket, r.budget, null, null, null, null, null, null, null, normalizeChannelPlanningRegion(r.region)]);
+      const campaignIds = Array.from(new Set(built.map(b => b.campaignId)));
+      const have = new Map();
+      campaignIds.forEach(cid => db.prepare('SELECT * FROM channel_planning_details WHERE campaignId = ?').all(cid).forEach(r => { const k = fpRow({ campaignId: r.campaignId || aliasVal(r, 'campaignId'), channel: r.channel, partner: r.partner, audience: r.audience, buyType: aliasVal(r, 'buyType'), mediaType: aliasVal(r, 'mediaType'), impressions: r.impressions, dropDate: aliasVal(r, 'dropDate'), hitDate: aliasVal(r, 'hitDate'), endDate: aliasVal(r, 'endDate'), productGroup: aliasVal(r, 'productGroup'), creativeMarket: aliasVal(r, 'creativeMarket'), budget: r.budget, region: r.region }); have.set(k, (have.get(k) || 0) + 1); }));
+      const seen = new Map(); const stmts = []; const fileMap = new Map(); let added = 0, alreadyThere = 0;
+      built.forEach(b => {
+        const fp = fpOf(b.params); const n = (seen.get(fp) || 0) + 1; seen.set(fp, n);
+        fileMap.set(fp + '#' + n, { budget: Number(b.params[15]) || 0, impressions: Number(b.params[8]) || 0 });
+        if (n <= (have.get(fp) || 0)) { alreadyThere++; return; }
+        stmts.push({ sql: b.sql, params: b.params }); added++;
+      });
+      const readBack = () => { const m = new Map(); const cnt = new Map(); campaignIds.forEach(cid => db.prepare('SELECT * FROM channel_planning_details WHERE campaignId = ?').all(cid).forEach(r => { const k = fpRow({ campaignId: cid, channel: r.channel, partner: r.partner, audience: r.audience, buyType: aliasVal(r, 'buyType'), mediaType: aliasVal(r, 'mediaType'), impressions: r.impressions, dropDate: aliasVal(r, 'dropDate'), hitDate: aliasVal(r, 'hitDate'), endDate: aliasVal(r, 'endDate'), productGroup: aliasVal(r, 'productGroup'), creativeMarket: aliasVal(r, 'creativeMarket'), budget: r.budget, region: r.region }); const n = (cnt.get(k) || 0) + 1; cnt.set(k, n); m.set(k + '#' + n, { budget: Number(r.budget) || 0, impressions: Number(r.impressions) || 0 }); })); return m; };
+      const now = new Date().toISOString();
+      let out = { receipt: null };
+      if (stmts.length){
+        out = commitMonthlyUpload(accountId, 'campaign_calendar', body.fileName, stmts, fileMap, readBack, [{ key: 'budget', label: 'Planned budget', money: true }, { key: 'impressions', label: 'Impressions' }], Math.max(0, parseInt(body.skippedRows, 10) || 0), now);
+        if (out.error) return sendJson(res, 500, { error: out.error.replace('The upload was not saved', 'The calendar lines were not saved') });
+        campaignIds.forEach(id => syncCampaignProductCreativeGroupsFromChannelPlanning(id));
+      } else {
+        // Nothing new: still compare, so a repeat upload says plainly that everything is already there.
+        out = commitMonthlyUpload(accountId, 'campaign_calendar', body.fileName, [{ sql: 'SELECT 1', params: [] }], fileMap, readBack, [{ key: 'budget', label: 'Planned budget', money: true }, { key: 'impressions', label: 'Impressions' }], Math.max(0, parseInt(body.skippedRows, 10) || 0), now);
+      }
       return sendJson(res, 200, {
-        insertedCount, failedCount: results.length - insertedCount,
-        results, campaignsSynced: [...touchedCampaignIds]
+        insertedCount: added, alreadyLoaded: alreadyThere, failedCount: 0, saved: added,
+        campaignsSynced: campaignIds, receipt: body.fileName ? (out.receipt || null) : null
       });
     }
 
@@ -30472,27 +30521,6 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
     // Cost keys reuse the names the single-entry POST already stores in
     // detailsJson (unitCost, postageCost, paperMfgCost, insertionCost), so
     // nothing downstream that reads those has to change.
-    const BULK_ROW_DETAIL_TEXT_KEYS = ['creativeSize', 'creativeSpecs', 'proofDueDate', 'creativeDueDate', 'promotedItems', 'qrCodeLink', 'phone', 'notes',
-      'productionProject', 'listRequestDate', 'listDueDate', 'releaseFilesDate', 'dropDateBudget', 'inHomeDate', 'vendor', 'materialsOrdered'];
-    const BULK_ROW_DETAIL_NUMERIC_KEYS = ['totalQuantity', 'distributedQuantity', 'fulfillmentQuantity', 'paperMfgCost', 'postageCost', 'insertionCost', 'productionCost', 'unitCost'];
-    const BULK_ROW_DETAIL_KEYS = [...BULK_ROW_DETAIL_TEXT_KEYS, ...BULK_ROW_DETAIL_NUMERIC_KEYS];
-    function bulkRowDetails(row){
-      const src = (row && row.details && typeof row.details === 'object') ? row.details : {};
-      const out = {};
-      BULK_ROW_DETAIL_KEYS.forEach(k => {
-        const v = src[k];
-        if (v === undefined || v === null) return;
-        if (BULK_ROW_DETAIL_NUMERIC_KEYS.includes(k)){
-          const n = typeof v === 'number' ? v : Number(String(v).replace(/[$,\s]/g, ''));
-          if (Number.isFinite(n)) out[k] = n;
-          else { const str = String(v).trim(); if (str) out[k] = str.slice(0, 200); }
-          return;
-        }
-        const str = String(v).trim();
-        if (str) out[k] = str.slice(0, 2000);
-      });
-      return out;
-    }
     // Direct Mail rows: Format + Unit Cost seed account_dm_format_cost's
     // cost per piece (blank cells only — a typed cost always wins) when the
     // client's format name resolves to exactly one catalog format. Generic
@@ -30757,6 +30785,30 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
         idRows.push({ row, index, lineId, campaignRef });
       });
       const idRowIndexes = new Set(idRows.map(r => r.index));
+      // 2026-10-03 — all-or-nothing: every row is checked before anything is written. Any problem blocks the whole file and every
+      // problem is listed at once. If a write still fails part-way, everything this file did is undone (lines added, lines changed
+      // by id put back, campaigns created, the batch record) and the person is told nothing was saved.
+      const preErrors = [];
+      rows.forEach((row, index) => {
+        if (!row){ preErrors.push({ index, row: index + 1, error: 'empty row' }); return; }
+        const idr = idRows.find(r => r.index === index);
+        if (idr){
+          if (idr.lineId){
+            const ex = db.prepare('SELECT cpd.id, c.accountId FROM channel_planning_details cpd JOIN campaigns c ON c.id = cpd.campaignId WHERE cpd.id = ?').get(idr.lineId);
+            if (!ex || ex.accountId !== accountId) preErrors.push({ index, row: index + 1, campaignId: row.verilumeCampaignId || null, error: `line id ${idr.lineId} not found on this account` });
+          }
+        } else if (!row.channel) preErrors.push({ index, row: index + 1, campaignId: null, error: 'channel is required' });
+      });
+      if (preErrors.length) return sendJson(res, 400, { error: `Not saved: ${preErrors.length} of ${rows.length} row${rows.length === 1 ? '' : 's'} need fixing. Nothing was changed.`, saved: 0, errors: preErrors });
+      const wroteLineIds = []; const wroteCampaignIds = []; const beforeImages = new Map(); const fileMap = new Map(); let wroteBatch = null;
+      const undoAll = () => {
+        try { wroteLineIds.forEach(id => db.prepare('DELETE FROM channel_planning_details WHERE id = ?').run(id)); } catch (e2){ console.error('[bulk-create-campaigns] undo lines failed:', e2.message); }
+        try { beforeImages.forEach((b, id) => db.prepare('UPDATE channel_planning_details SET channel = ?, partner = ?, audience = ?, buyType = ?, mediaType = ?, impressions = ?, dropDate = ?, hitDate = ?, endDate = ?, productYear = ?, productGroup = ?, creativeMarket = ?, budget = ?, projectNumber = ?, detailsJson = ?, lastEditedByRole = ?, lastEditedByName = ?, updatedAt = ? WHERE id = ?')
+          .run(b.channel, b.partner, b.audience, aliasVal(b, 'buyType'), aliasVal(b, 'mediaType'), b.impressions, aliasVal(b, 'dropDate'), aliasVal(b, 'hitDate'), aliasVal(b, 'endDate'), aliasVal(b, 'productYear'), aliasVal(b, 'productGroup'), aliasVal(b, 'creativeMarket'), b.budget, aliasVal(b, 'projectNumber'), aliasVal(b, 'detailsJson'), aliasVal(b, 'lastEditedByRole'), aliasVal(b, 'lastEditedByName'), aliasVal(b, 'updatedAt'), id)); } catch (e2){ console.error('[bulk-create-campaigns] undo updates failed:', e2.message); }
+        try { wroteCampaignIds.forEach(id => db.prepare('DELETE FROM campaigns WHERE id = ?').run(id)); } catch (e2){ console.error('[bulk-create-campaigns] undo campaigns failed:', e2.message); }
+        try { if (wroteBatch) db.prepare('DELETE FROM channel_planning_upload_batches WHERE id = ?').run(wroteBatch); } catch (e2){ console.error('[bulk-create-campaigns] undo batch failed:', e2.message); }
+      };
+      try {
       idRows.forEach(({ row, index, lineId, campaignRef }) => {
         try {
           if (lineId){
@@ -30766,6 +30818,8 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
             const num = (k, cur) => (row[k] === undefined || row[k] === null || row[k] === '') ? cur : (Number(row[k]) || 0);
             let det = {}; try { det = existingLine.detailsJson ? JSON.parse(existingLine.detailsJson) : {}; } catch (e){ det = {}; }
             Object.assign(det, bulkRowDetails(row));
+            beforeImages.set(lineId, existingLine);
+            fileMap.set(lineId, { budget: Number(num('budget', existingLine.budget)) || 0, impressions: Number(num('impressions', existingLine.impressions)) || 0 });
             db.prepare(`UPDATE channel_planning_details SET channel = ?, partner = ?, audience = ?, buyType = ?, mediaType = ?, impressions = ?, dropDate = ?, hitDate = ?, endDate = ?,
                           productYear = ?, productGroup = ?, creativeMarket = ?, budget = ?, projectNumber = ?, detailsJson = ?, lastEditedByRole = ?, lastEditedByName = ?, updatedAt = ? WHERE id = ?`)
               .run(val('channel', existingLine.channel), val('partner', existingLine.partner), val('audience', existingLine.audience), val('buyType', existingLine.buyType), val('mediaType', existingLine.mediaType),
@@ -30785,12 +30839,13 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
             ).run(entryId, campaignRef, null, row.channel || '', row.partner || null, row.audience || null, row.buyType || null, row.mediaType || null,
               Number(row.impressions) || null, row.dropDate || null, row.hitDate || null, row.endDate || null, row.productYear || null, row.productGroup || null, row.creativeMarket || null,
               Number(row.budget) || null, JSON.stringify(bulkRowDetails(row)), 'draft', actorRole, actorName, actorRole, actorName, null, row.projectNumber ? String(row.projectNumber) : null, now0, now0);
+            wroteLineIds.push(entryId); fileMap.set(entryId, { budget: Number(row.budget) || 0, impressions: Number(row.impressions) || 0 });
             touchedByIdCampaigns.add(campaignRef);
             if (!campaignIdsMatched.includes(campaignRef)) campaignIdsMatched.push(campaignRef);
             results.push({ index, ok: true, entryId, campaignId: campaignRef, attached: true });
           }
         } catch (e){
-          results.push({ index, ok: false, error: (e && e.error) || 'could not apply this row by id' });
+          throw e;
         }
       });
       touchedByIdCampaigns.forEach(id => syncCampaignProductCreativeGroupsFromChannelPlanning(id));
@@ -30894,7 +30949,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
             `INSERT INTO campaigns (id, accountId, objective, name, startDate, endDate, campaignType, productGroups, creativeFocusGroups, campaignCode, fundingSource, createdByUploadBatchId, status, creativeDisposition, createdAt)
              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
           ).run(campaignId, accountId, displayName, displayName, hitDate || null, endDate || null, campaignClassification || '', '', '', campaignCode, 'unplanned', batchId, initialStatus, creativeDisposition, now);
-          campaignIdsCreated.push(campaignId);
+          campaignIdsCreated.push(campaignId); wroteCampaignIds.push(campaignId);
           // So a later group in THIS SAME batch with an identical key
           // (shouldn't happen since groups are already deduped by key, but
           // keeps the map consistent if the same key is ever looked up
@@ -30921,7 +30976,8 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
               typeof row.projectNumber === 'string' ? row.projectNumber : (row.projectNumber || null),
               now, now
             );
-            insertedRowCount++;
+            insertedRowCount++; wroteLineIds.push(entryId);
+            fileMap.set(entryId, { budget: typeof row.budget === 'number' ? row.budget : (Number(row.budget) || 0), impressions: typeof row.impressions === 'number' ? row.impressions : (Number(row.impressions) || 0) });
             results.push({ index, ok: true, entryId, campaignId });
             // 2026-09-29 — Partner + Size on a print row registers the ad
             // format and seeds its cost per insertion (see
@@ -30936,7 +30992,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
               if (['listRequestDate', 'listDueDate', 'releaseFilesDate', 'dropDateBudget', 'inHomeDate', 'vendor', 'totalQuantity', 'distributedQuantity'].some(k => det[k] !== undefined)) productionRows++;
             } catch (e){ /* catalog seeding is best-effort — never fails the row */ }
           } catch (e){
-            results.push({ index, ok: false, campaignId, error: (e && e.error) || 'unexpected error inserting this row' });
+            throw e;
           }
         });
         syncCampaignProductCreativeGroupsFromChannelPlanning(campaignId);
@@ -30947,16 +31003,25 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
         });
       });
 
+      wroteBatch = batchId;
       db.prepare(
         `INSERT INTO channel_planning_upload_batches (id, accountId, fileName, dateRangeStart, dateRangeEnd, uploadedByRole, uploadedByName, rowCount, campaignIdsCreatedJson, campaignIdsMatchedJson, createdAt)
          VALUES (?,?,?,?,?,?,?,?,?,?,?)`
       ).run(batchId, accountId, body.fileName || '', body.dateRangeStart || null, body.dateRangeEnd || null, actorRole, actorName, insertedRowCount, JSON.stringify(campaignIdsCreated), JSON.stringify(campaignIdsMatched), now);
 
+      // Receipt: re-read every line this file wrote and compare rows, planned budget and impressions with what the file carried.
+      const readBack = () => { const m = new Map(); db.prepare('SELECT id, budget, impressions FROM channel_planning_details WHERE uploadBatchId = ?').all(batchId).forEach(r => m.set(r.id, { budget: Number(r.budget) || 0, impressions: Number(r.impressions) || 0 })); fileMap.forEach((v, id) => { if (!m.has(id)){ const r = db.prepare('SELECT id, budget, impressions FROM channel_planning_details WHERE id = ?').get(id); if (r) m.set(id, { budget: Number(r.budget) || 0, impressions: Number(r.impressions) || 0 }); } }); return m; };
+      const rc = commitMonthlyUpload(accountId, 'campaign_create', body.fileName, [{ sql: 'SELECT 1', params: [] }], fileMap, readBack, [{ key: 'budget', label: 'Planned budget', money: true }, { key: 'impressions', label: 'Impressions' }], Math.max(0, parseInt(body.skippedRows, 10) || 0), new Date().toISOString());
       return sendJson(res, 200, {
         batchId, rowsInserted: insertedRowCount, rowsUpdated: updatedRowCount, rowsFailed: results.length - results.filter(r => r.ok).length,
         results, campaignsCreated: campaignIdsCreated, campaignsMatched: campaignIdsMatched,
-        keyGroups, printSpecsAdded, magazineCostsSeeded, dmFormatCostsSeeded, productionRows
+        keyGroups, printSpecsAdded, magazineCostsSeeded, dmFormatCostsSeeded, productionRows, receipt: rc.receipt || null
       });
+      } catch (e){
+        console.error('[bulk-create-campaigns] write failed, undoing this file:', e && (e.message || e.error));
+        undoAll();
+        return sendJson(res, 500, { error: `Not saved: ${(e && (e.error || e.message)) || 'an unexpected error'}. Everything this file did was undone; your campaigns and calendar are as they were.`, saved: 0 });
+      }
     }
 
     // GET /api/accounts/:accountId/channel-planning/lines — 2026-09-29,
