@@ -15168,6 +15168,407 @@ function fdNextQuestion(card){
   const q = FD_QUESTIONS.find(z => !card[z.key]); return q ? { key: q.key, ask: q.ask, options: q.options } : null;
 }
 
+// ==== DQ BEGIN ====
+// Data questions (2026-10-03). Any loaded customer-level column can be asked about, from taps, typing or voice.
+// A question becomes a validated spec { measure, agg, by[], filters[], period, compare, top, order }; this
+// code runs the spec over the account's own transactions. The model (if used at all) only maps words to a
+// spec; it never writes SQL and never writes a number. See
+// claude/cxmedia-ask-verilume-ad-lib-data-questions-scoping-2026-10-03.md.
+const DQ_SMALL_N = 10;
+const DQ_MAX_ROWS = 60;
+const DQ_MEASURES = {
+  revenue: { label: 'Gross revenue', syn: ['gross revenue', 'revenue', 'gross sales', 'sales', 'booked revenue', 'dollars'], aggs: ['avg', 'sum', 'median', 'min', 'max'], kind: 'money', basis: 'gross revenue, added up across the rows of each transaction' },
+  netRevenue: { label: 'Net revenue', syn: ['net revenue', 'net sales'], aggs: ['avg', 'sum', 'median', 'min', 'max'], kind: 'money', basis: 'net revenue, added up across the rows of each transaction' },
+  orderSize: { label: 'Order size', syn: ['order size', 'order sizes', 'size of order', 'size of the order'], aggs: ['avg', 'sum', 'median', 'min', 'max'], kind: 'num1', basis: 'the order-size column of the transaction file' },
+  leadDays: { label: 'Days from sale to service', syn: ['lead time', 'booking window', 'days out', 'days in advance', 'advance purchase', 'days to travel', 'days from sale to service'], aggs: ['avg', 'median', 'min', 'max'], kind: 'num1', basis: 'days between the transaction date and the service date' },
+  transactions: { label: 'Transactions', syn: ['unique transactions', 'transactions', 'orders', 'bookings', 'sales count'], aggs: ['count'], kind: 'int', basis: 'distinct transaction codes' },
+  customers: { label: 'Customers', syn: ['customers', 'guests', 'party size', 'travelers', 'passengers', 'people'], aggs: ['sum', 'avg'], kind: 'num1', basis: 'customer rows on the transaction' },
+  revenuePerUnit: { label: 'Revenue per order-size unit', syn: [], aggs: ['ratio'], kind: 'money', basis: 'gross revenue divided by order size, over all counted transactions in the group' }
+};
+const DQ_DIMS = {
+  productGroup: { label: 'Product group', col: 'productGroup', syn: ['product groups', 'product group', 'product line', 'product lines', 'product'] },
+  creativeFocus: { label: 'Creative focus group', col: 'creativeFocus', syn: ['creative focus groups', 'creative focus group', 'creative focus', 'focus groups', 'focus group'] },
+  promoType: { label: 'Offer / promo type', col: 'promoType', syn: ['offer type', 'promo type', 'promotion type', 'promotion', 'promo', 'offer'] },
+  bookingType: { label: 'Transaction type', col: 'bookingType', syn: ['transaction type', 'booking type', 'order type'] },
+  bookingStatus: { label: 'Transaction status', col: 'bookingStatus', syn: ['transaction status', 'booking status', 'status'] },
+  guestState: { label: 'Customer state', col: 'guestState', syn: ['customer state', 'guest state', 'state', 'states'] },
+  guestCountry: { label: 'Customer country', col: 'guestCountry', syn: ['customer country', 'country', 'countries'] },
+  generation: { label: 'Generation', col: 'generation', syn: ['generations', 'generation', 'age group', 'age groups', 'cohort'] },
+  year: { label: 'Year', col: 'year', syn: ['year over year', 'yearly', 'annual', 'each year', 'by year'], natural: true },
+  month: { label: 'Month', col: 'month', syn: ['monthly', 'each month', 'by month', 'month'], natural: true },
+  orderSizeGroup: { label: 'Order size group', derived: 'orderSize', syn: ['order size group', 'order size groups', 'order size bucket'], natural: true },
+  leadDaysGroup: { label: 'Sale-to-service window', derived: 'leadDays', syn: ['lead time group', 'booking window group'], natural: true }
+};
+const DQ_FILTER_DIMS = ['productGroup', 'creativeFocus', 'promoType', 'bookingType', 'bookingStatus', 'guestState', 'guestCountry', 'generation'];
+const DQ_AGG_LABEL = { avg: 'Average', sum: 'Total', median: 'Median', min: 'Lowest', max: 'Highest', count: 'Count of', ratio: '' };
+// Draft vocabulary for the order-size column by industry. The client's own label (from the upload mapping) always comes first.
+const DQ_ORDER_SIZE_VOCAB = {
+  travel: ['trip days', 'trip day', 'nights', 'length of stay', 'trip length', 'duration'],
+  retail: ['units', 'items', 'basket size', 'items per order', 'quantity'],
+  services: ['hours', 'sessions', 'visits'],
+  general: ['units', 'items', 'nights', 'trip days']
+};
+function dqIndustryKey(industry){
+  const s = String(industry || '').toLowerCase();
+  if (/travel|cruise|tour|hotel|hospitality|vacation|resort|airline|lodging|leisure/.test(s)) return 'travel';
+  if (/retail|commerce|apparel|fashion|store|consumer|grocery|goods/.test(s)) return 'retail';
+  if (/service|clinic|health|fitness|educat|salon|consult/.test(s)) return 'services';
+  return 'general';
+}
+function dqNorm(s){ return ' ' + String(s || '').toLowerCase().replace(/[^a-z0-9%$.]+/g, ' ').replace(/\s+/g, ' ').trim() + ' '; }
+function dqSingular(s){ return String(s || '').replace(/s$/, ''); }
+function dqVocab(accountId){
+  let label = null, industry = null;
+  try { const r = db.prepare('SELECT * FROM account_upload_mappings WHERE accountId = ? AND kind = ?').get(accountId, 'guest_bookings'); if (r){ const m = JSON.parse(aliasVal(r, 'mappingJson')); label = m && m.orderSizeLabel ? String(m.orderSizeLabel).trim() : null; } } catch (e){ /* no mapping yet */ }
+  try { const a = db.prepare('SELECT industry FROM accounts WHERE accountId = ?').get(accountId); industry = a ? a.industry : null; } catch (e){ /* none */ }
+  const key = dqIndustryKey(industry);
+  const syn = [];
+  if (label) syn.push(label.toLowerCase());
+  DQ_ORDER_SIZE_VOCAB[key].concat(DQ_ORDER_SIZE_VOCAB.general).forEach(w => { if (!syn.includes(w)) syn.push(w); });
+  return { orderSizeLabel: label, industryKey: key, orderSizeSyn: syn };
+}
+function dqOrderLabel(vocab){ return vocab && vocab.orderSizeLabel ? vocab.orderSizeLabel : 'Order size'; }
+function dqFieldLabel(key, vocab){
+  if (key === 'orderSize') return dqOrderLabel(vocab);
+  if (key === 'orderSizeGroup') return dqOrderLabel(vocab) + ' group';
+  if (key === 'revenuePerUnit') return 'Revenue per ' + dqOrderLabel(vocab).toLowerCase().replace(/s$/, '');
+  return (DQ_MEASURES[key] || DQ_DIMS[key] || {}).label || key;
+}
+// ---- order-size style groups drawn from the account's own data (quantile edges, rounded, ties merged, open-ended top group)
+function dqComputeEdges(values){
+  const v = values.filter(x => Number.isFinite(x)).sort((a, b) => a - b);
+  if (v.length < 4) return { min: v.length ? v[0] : 0, ub: [] };
+  const k = v.length >= 200 ? 5 : v.length >= 60 ? 4 : v.length >= 20 ? 3 : 2;
+  const q = p => { const pos = (v.length - 1) * p, lo = Math.floor(pos), hi = Math.ceil(pos); return v[lo] + (v[hi] - v[lo]) * (pos - lo); };
+  const ub = [];
+  for (let i = 1; i < k; i++){ const e = Math.round(q(i / k)); if (e >= v[v.length - 1]) continue; if (!ub.length || e > ub[ub.length - 1]) ub.push(e); }
+  return { min: v[0], ub };
+}
+function dqGroupLabels(edges){
+  const ub = edges.ub || [], out = []; let lo = Math.round(edges.min);
+  ub.forEach(b => { out.push(lo === b ? String(b) : `${lo}–${b}`); lo = b + 1; });
+  out.push(`${lo}+`);
+  return out;
+}
+function dqGroupIndex(edges, value){
+  if (!Number.isFinite(value)) return -1;
+  const ub = edges.ub || [];
+  for (let i = 0; i < ub.length; i++) if (value <= ub[i]) return i;
+  return ub.length;
+}
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_dq_buckets (
+    accountId TEXT NOT NULL,
+    field TEXT NOT NULL,
+    "edgesJson" TEXT NOT NULL,
+    "approvedBy" TEXT,
+    "approvedAt" TEXT NOT NULL,
+    PRIMARY KEY (accountId, field)
+  );
+`);
+function dqSavedEdges(accountId, field){
+  try { const r = db.prepare('SELECT * FROM account_dq_buckets WHERE accountId = ? AND field = ?').get(accountId, field); if (r) return JSON.parse(aliasVal(r, 'edgesJson')); } catch (e){ /* none saved */ }
+  return null;
+}
+// ---- the account's counted transactions, one row per transaction code
+function dqLoadTransactions(accountId){
+  const settings = getTransactionSettings(accountId);
+  let rows = [];
+  try { rows = db.prepare('SELECT * FROM account_guest_bookings WHERE accountId = ?').all(accountId); } catch (e){ rows = []; }
+  const byCode = new Map(); let excluded = 0;
+  rows.forEach(r0 => {
+    if (!rowCounts(r0, settings)){ excluded++; return; }
+    const code = String(aliasVal(r0, 'bookingCode') || '');
+    let t = byCode.get(code);
+    const num = v => (v === null || v === undefined || v === '') ? null : (Number.isFinite(Number(v)) ? Number(v) : null);
+    if (!t){
+      const bd = String(aliasVal(r0, 'bookingDate') || '').slice(0, 10);
+      const sd = aliasVal(r0, 'sailDate');
+      let lead = null; if (bd && sd){ const d = (new Date(sd) - new Date(bd)) / 86400000; if (Number.isFinite(d) && d >= 0 && d < 1500) lead = d; }
+      t = { code, date: bd, year: Number(aliasVal(r0, 'year')) || (bd ? Number(bd.slice(0, 4)) : null), month: Number(aliasVal(r0, 'month')) || (bd ? Number(bd.slice(5, 7)) : null),
+        productGroup: aliasVal(r0, 'productGroup'), creativeFocus: aliasVal(r0, 'creativeFocus'), promoType: aliasVal(r0, 'promoType'), bookingType: aliasVal(r0, 'bookingType'), bookingStatus: aliasVal(r0, 'bookingStatus'),
+        guestState: aliasVal(r0, 'guestState'), guestCountry: aliasVal(r0, 'guestCountry'), generation: aliasVal(r0, 'generation'),
+        revenue: null, netRevenue: null, orderSize: null, leadDays: lead, customers: 0 };
+      byCode.set(code, t);
+    }
+    const g = num(aliasVal(r0, 'grossRevenue')); if (g !== null) t.revenue = (t.revenue || 0) + g;
+    const n = num(aliasVal(r0, 'netRevenue')); if (n !== null) t.netRevenue = (t.netRevenue || 0) + n;
+    const ts = num(aliasVal(r0, 'tripDays')); if (ts !== null) t.orderSize = Math.max(t.orderSize === null ? ts : t.orderSize, ts);
+    t.customers += 1;
+  });
+  return { txs: Array.from(byCode.values()), settings, rowCount: rows.length, excludedRows: excluded };
+}
+function dqValuesByDim(txs){
+  const out = {};
+  DQ_FILTER_DIMS.forEach(d => { const s = new Map(); txs.forEach(t => { const v = t[DQ_DIMS[d].col]; if (v !== null && v !== undefined && String(v).trim() !== '') s.set(String(v).trim().toLowerCase(), String(v).trim()); }); out[d] = Array.from(s.values()).slice(0, 200); });
+  return out;
+}
+function dqDefaultAgg(measure){ return { revenue: 'sum', netRevenue: 'sum', orderSize: 'avg', leadDays: 'avg', transactions: 'count', customers: 'sum', revenuePerUnit: 'ratio' }[measure]; }
+// ---- words to spec (no model)
+function dqParse(text, ctx){
+  const raw = dqNorm(text); let t = raw; const assumptions = [];
+  const spec = { measure: null, agg: null, by: [], filters: [], period: { kind: 'range' }, compare: null, top: null, order: 'desc' };
+  const now = new Date(); const thisYear = now.getUTCFullYear();
+  // comparison and period words first, so "last year" is not mistaken for the Year breakdown
+  if (/ (vs|versus|against|compared with|compared to|compare to|compare with) (the )?(same period )?(last|prior|previous) year /.test(t)){ spec.compare = 'priorYear'; t = t.replace(/ (vs|versus|against|compared with|compared to|compare to|compare with) (the )?(same period )?(last|prior|previous) year /, ' '); }
+  if (/ year over year | yoy /.test(t)){ spec.by.push('year'); t = t.replace(/ year over year | yoy /, ' '); }
+  if (/ (last|prior|previous) year /.test(t)){ spec.period = { kind: 'year', year: thisYear - 1 }; t = t.replace(/ (last|prior|previous) year /, ' '); }
+  else if (/ this year /.test(t)){ spec.period = { kind: 'year', year: thisYear }; t = t.replace(/ this year /, ' '); }
+  const ym = / (20\d\d) /.exec(t); if (ym){ spec.period = { kind: 'year', year: Number(ym[1]) }; t = t.replace(ym[0], ' '); }
+  if (/ (all time|overall|ever|all years|full history|since the beginning|every year on file) /.test(t)){ spec.period = { kind: 'all' }; t = t.replace(/ (all time|overall|ever|all years|full history|since the beginning|every year on file) /, ' '); }
+  const topM = / top (\d+|three|five|ten|3|5|10) /.exec(t); if (topM){ const w = { three: 3, five: 5, ten: 10 }[topM[1]] || Number(topM[1]); spec.top = Math.min(50, w); t = t.replace(topM[0], ' '); }
+  if (/ (lowest|smallest|fewest|bottom|least) /.test(t)) spec.order = 'asc';
+  // aggregate words
+  if (/ (average|averages|avg|mean|typical|on average) /.test(t)) spec.agg = 'avg';
+  else if (/ (total|totals|sum|combined|add up|how much) /.test(t)) spec.agg = 'sum';
+  else if (/ median /.test(t)) spec.agg = 'median';
+  else if (/ (how many|number of|count of|count) /.test(t)) spec.agg = 'count';
+  // collect field mentions, longest phrase first, without overlap
+  const vocab = ctx.vocab; const phrases = [];
+  Object.entries(DQ_MEASURES).forEach(([k, m]) => m.syn.forEach(p => phrases.push({ key: k, type: 'measure', p })));
+  vocab.orderSizeSyn.forEach(p => phrases.push({ key: 'orderSize', type: 'measure', p }));
+  Object.entries(DQ_DIMS).forEach(([k, d]) => d.syn.forEach(p => phrases.push({ key: k, type: 'dim', p })));
+  phrases.sort((a, b) => b.p.length - a.p.length);
+  const claimed = []; const found = [];
+  const rpu = new RegExp(' (revenue|sales|gross revenue) per (' + vocab.orderSizeSyn.map(p => dqNorm(dqSingular(p)).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + 's?').join('|') + ') ');
+  const rpuM = rpu.exec(t);
+  if (rpuM){ spec.measure = 'revenuePerUnit'; spec.agg = 'ratio'; t = t.replace(rpuM[0], ' '); }
+  phrases.forEach(ph => {
+    const needle = dqNorm(ph.p); let from = 0;
+    while (true){
+      const i = t.indexOf(needle, from); if (i < 0) break;
+      const s = i + 1, e = i + needle.length - 1;
+      if (!claimed.some(c => s < c[1] && e > c[0])){ claimed.push([s, e]); found.push({ key: ph.key, type: ph.type, pos: s }); }
+      from = i + 1;
+    }
+  });
+  found.sort((a, b) => a.pos - b.pos);
+  if (!spec.measure){ const m = found.find(f => f.type === 'measure'); if (m) spec.measure = m.key; }
+  found.forEach(f => {
+    let dim = null;
+    if (f.type === 'dim') dim = f.key;
+    else if (f.key !== spec.measure && (f.key === 'orderSize' || f.key === 'leadDays')) dim = f.key + 'Group';
+    if (dim && !spec.by.includes(dim)) spec.by.push(dim);
+  });
+  // "how many transactions" style: the count word with no other measure
+  if (!spec.measure && spec.agg === 'count') spec.measure = 'transactions';
+  // known values in the question become filters ("in Polar")
+  DQ_FILTER_DIMS.forEach(d => {
+    (ctx.values[d] || []).forEach(v => {
+      const n = dqNorm(v); if (n.trim().length < 2) return;
+      if (t.includes(n) && !spec.filters.some(f => f.field === d && f.values.includes(v))){
+        let f = spec.filters.find(x => x.field === d); if (!f){ f = { field: d, values: [] }; spec.filters.push(f); } f.values.push(v);
+        // a filter value is not also a breakdown for that field unless the field was named
+      }
+    });
+  });
+  if (spec.measure && !spec.agg){ spec.agg = dqDefaultAgg(spec.measure); assumptions.push(`No "average" or "total" was said, so I used ${spec.agg === 'avg' ? 'the average' : spec.agg === 'sum' ? 'the total' : spec.agg === 'count' ? 'a count' : 'the ratio'}.`); }
+  if (spec.measure && DQ_MEASURES[spec.measure] && !DQ_MEASURES[spec.measure].aggs.includes(spec.agg)){ assumptions.push(`${DQ_MEASURES[spec.measure].label} cannot be a ${spec.agg}, so I used ${dqDefaultAgg(spec.measure)}.`); spec.agg = dqDefaultAgg(spec.measure); }
+  if (spec.by.length > 2){ assumptions.push(`Only two breakdowns fit in one view; I used ${spec.by.slice(0, 2).map(k => dqFieldLabel(k, vocab)).join(' and ')}.`); spec.by = spec.by.slice(0, 2); }
+  return { spec, assumptions };
+}
+function dqValidateSpec(s, ctx){
+  if (!s || typeof s !== 'object') return null;
+  const m = DQ_MEASURES[s.measure]; if (!m) return null;
+  const agg = m.aggs.includes(s.agg) ? s.agg : dqDefaultAgg(s.measure);
+  const by = (Array.isArray(s.by) ? s.by : []).filter((k, i, a) => DQ_DIMS[k] && a.indexOf(k) === i).slice(0, 2);
+  const filters = [];
+  (Array.isArray(s.filters) ? s.filters : []).forEach(f => {
+    if (!f || !DQ_FILTER_DIMS.includes(f.field)) return;
+    const known = (ctx && ctx.values && ctx.values[f.field]) || [];
+    const vals = (Array.isArray(f.values) ? f.values : []).map(v => known.find(k => k.toLowerCase() === String(v).trim().toLowerCase())).filter(Boolean);
+    if (vals.length) filters.push({ field: f.field, values: vals });
+  });
+  let period = { kind: 'range' };
+  if (s.period && s.period.kind === 'all') period = { kind: 'all' };
+  else if (s.period && s.period.kind === 'year' && Number(s.period.year) >= 2000 && Number(s.period.year) <= 2100) period = { kind: 'year', year: Number(s.period.year) };
+  const top = Number(s.top) > 0 ? Math.min(50, Math.floor(Number(s.top))) : null;
+  return { measure: s.measure, agg, by, filters, period, compare: s.compare === 'priorYear' && !by.includes('year') && period.kind !== 'all' ? 'priorYear' : null, top, order: s.order === 'asc' ? 'asc' : 'desc' };
+}
+// ---- the rules that decide which transactions count, in words
+function dqCountingRule(settings){
+  const parts = [];
+  if (settings && settings.validStatuses) parts.push(`transaction status is ${settings.validStatuses.join(', ')}`);
+  const f = settings && settings.filters ? settings.filters : {};
+  TXN_FILTER_COLUMNS.forEach(([key, label]) => { if (key !== 'bookingStatus' && f[key] && f[key].length) parts.push(`${label.toLowerCase()} not ${f[key].join(', ')}`); });
+  return parts.length ? 'Counting transactions where ' + parts.join('; ') + ' (your Include settings).' : 'Every imported transaction counts (nothing is unticked in your Include settings).';
+}
+function dqFmt(v, kind){
+  if (v === null || v === undefined || !Number.isFinite(v)) return '—';
+  if (kind === 'money') return '$' + Math.round(v).toLocaleString('en-US');
+  if (kind === 'int') return Math.round(v).toLocaleString('en-US');
+  return (Math.round(v * 10) / 10).toLocaleString('en-US');
+}
+function dqMeasureTitle(spec, vocab){
+  const lab = spec.measure === 'orderSize' ? dqOrderLabel(vocab).toLowerCase() : dqFieldLabel(spec.measure, vocab).toLowerCase();
+  if (spec.measure === 'transactions') return 'Number of transactions';
+  if (spec.measure === 'revenuePerUnit') return dqFieldLabel('revenuePerUnit', vocab);
+  if (spec.measure === 'customers') return spec.agg === 'avg' ? 'Average customers per transaction' : 'Total customers';
+  if (spec.measure === 'revenue' || spec.measure === 'netRevenue') return spec.agg === 'sum' ? `Total ${lab}` : `${DQ_AGG_LABEL[spec.agg]} ${lab} per transaction`;
+  return `${DQ_AGG_LABEL[spec.agg]} ${lab}`;
+}
+function dqPeriodTx(txs, spec, range){
+  if (spec.period.kind === 'all') return { cur: txs, prev: [], label: 'All years on file' };
+  if (spec.period.kind === 'year'){ const y = spec.period.year; const cur = txs.filter(t => t.year === y); const prev = txs.filter(t => t.year === y - 1); return { cur, prev, label: String(y), prevLabel: String(y - 1) }; }
+  const inR = (t, a, b) => t.date && t.date >= a && t.date <= b;
+  return { cur: txs.filter(t => inR(t, range.from, range.through)), prev: txs.filter(t => inR(t, range.compFrom, range.compThrough)), label: range.label, prevLabel: range.compLabel };
+}
+function dqRun(accountId, specIn, range, preloaded){
+  const L = preloaded || dqLoadTransactions(accountId);
+  const vocab = dqVocab(accountId);
+  const ctx = { vocab, values: dqValuesByDim(L.txs) };
+  const spec = dqValidateSpec(specIn, ctx);
+  if (!spec) return { error: 'That question is not one I can run.' };
+  if (!L.txs.length) return { notOnFile: 'the customer-level transaction file (Train the Brain, Transactions card)' };
+  // groups for derived dimensions are drawn once from every counted transaction, so periods are compared on the same edges
+  const edgesFor = {}; const bucketInfo = [];
+  [['orderSizeGroup', 'orderSize'], ['leadDaysGroup', 'leadDays']].forEach(([dim, src]) => {
+    if (!spec.by.includes(dim)) return;
+    const saved = dqSavedEdges(accountId, src);
+    const edges = saved || dqComputeEdges(L.txs.map(t => t[src]));
+    edgesFor[dim] = { edges, src };
+    const labels = dqGroupLabels(edges); const counts = labels.map(() => 0);
+    L.txs.forEach(t => { const i = dqGroupIndex(edges, t[src]); if (i >= 0) counts[i]++; });
+    bucketInfo.push({ field: src, label: dqFieldLabel(dim, vocab), saved: !!saved, groups: labels.map((l, i) => ({ label: l, n: counts[i] })) });
+  });
+  const dimVal = (t, d) => {
+    if (d === 'year') return t.year === null ? '(blank)' : String(t.year);
+    if (d === 'month') return t.year && t.month ? `${t.year}-${String(t.month).padStart(2, '0')}` : '(blank)';
+    if (edgesFor[d]){ const i = dqGroupIndex(edgesFor[d].edges, t[edgesFor[d].src]); return i < 0 ? '(blank)' : dqGroupLabels(edgesFor[d].edges)[i]; }
+    const v = t[DQ_DIMS[d].col]; return v === null || v === undefined || String(v).trim() === '' ? '(blank)' : String(v).trim();
+  };
+  const dimOrder = (d, label) => { if (edgesFor[d]){ const i = dqGroupLabels(edgesFor[d].edges).indexOf(label); return i < 0 ? 9999 : i; } return 0; };
+  const passFilters = t => spec.filters.every(f => f.values.some(v => String(t[DQ_DIMS[f.field].col] || '').trim().toLowerCase() === v.toLowerCase()));
+  const per = dqPeriodTx(L.txs, spec, range);
+  const cur = per.cur.filter(passFilters), prev = per.prev.filter(passFilters);
+  const meas = DQ_MEASURES[spec.measure];
+  const valuesOf = (list) => {
+    if (spec.measure === 'transactions') return list.map(() => 1);
+    if (spec.measure === 'customers') return list.map(t => t.customers);
+    return list.map(t => t[spec.measure]).filter(v => v !== null && v !== undefined && Number.isFinite(v));
+  };
+  const reduce = (list) => {
+    if (spec.measure === 'revenuePerUnit'){ let r = 0, u = 0; list.forEach(t => { if (t.revenue !== null && t.orderSize) { r += t.revenue; u += t.orderSize; } }); return { v: u > 0 ? r / u : null, used: list.filter(t => t.revenue !== null && t.orderSize).length }; }
+    const vals = valuesOf(list); if (!vals.length) return { v: null, used: 0 };
+    let v;
+    if (spec.agg === 'sum' || spec.agg === 'count') v = vals.reduce((a, b) => a + b, 0);
+    else if (spec.agg === 'avg') v = vals.reduce((a, b) => a + b, 0) / vals.length;
+    else if (spec.agg === 'median'){ const s = vals.slice().sort((a, b) => a - b); const h = Math.floor(s.length / 2); v = s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2; }
+    else if (spec.agg === 'min') v = Math.min(...vals);
+    else v = Math.max(...vals);
+    return { v, used: vals.length };
+  };
+  const groupBy = (list) => { const g = new Map(); list.forEach(t => { const labels = spec.by.map(d => dimVal(t, d)); const k = labels.join('\u0001'); if (!g.has(k)) g.set(k, { labels, list: [] }); g.get(k).list.push(t); }); return g; };
+  const gCur = groupBy(cur), gPrev = spec.compare ? groupBy(prev) : new Map();
+  let rows = Array.from(gCur.values()).map(g => { const r = reduce(g.list); const p = spec.compare ? reduce((gPrev.get(g.labels.join('\u0001')) || { list: [] }).list) : null; return { labels: g.labels, v: r.v, n: g.list.length, used: r.used, prev: p ? p.v : null }; });
+  const firstNatural = spec.by.length && DQ_DIMS[spec.by[0]].natural;
+  if (firstNatural && !spec.top) rows.sort((a, b) => spec.by.some((d, i) => edgesFor[d] && i === 0) ? dimOrder(spec.by[0], a.labels[0]) - dimOrder(spec.by[0], b.labels[0]) || (a.labels[1] || '').localeCompare(b.labels[1] || '') : a.labels[0].localeCompare(b.labels[0]) || (a.labels[1] || '').localeCompare(b.labels[1] || ''));
+  else rows.sort((a, b) => (spec.order === 'asc' ? 1 : -1) * ((a.v === null ? -Infinity : a.v) - (b.v === null ? -Infinity : b.v)));
+  const notes = []; const assumptionsOut = [];
+  if (spec.top) rows = rows.slice(0, spec.top);
+  else if (rows.length > DQ_MAX_ROWS){ notes.push(`Showing the first ${DQ_MAX_ROWS} of ${rows.length} groups. Narrow the question to see the rest.`); rows = rows.slice(0, DQ_MAX_ROWS); }
+  const all = reduce(cur); const allPrev = spec.compare ? reduce(prev) : null;
+  const kind = meas.kind;
+  const title = dqMeasureTitle(spec, vocab) + (spec.by.length ? ' by ' + spec.by.map(d => dqFieldLabel(d, vocab).toLowerCase()).join(' and ') : '');
+  const mTitle = dqMeasureTitle(spec, vocab);
+  const showN = spec.measure !== 'transactions';
+  const cols = spec.by.map(d => dqFieldLabel(d, vocab)).concat(showN ? [mTitle, 'Transactions'] : [mTitle]);
+  if (spec.compare){ cols.push(`${per.prevLabel || 'Prior period'}`); cols.push('Change'); }
+  const chg = (c, p) => (c !== null && p !== null && p !== 0) ? `${c >= p ? '+' : ''}${(((c - p) / Math.abs(p)) * 100).toFixed(1)}%` : '—';
+  const smallTag = n => n < DQ_SMALL_N ? `${n.toLocaleString('en-US')} (small sample)` : n.toLocaleString('en-US');
+  const tableRows = rows.map(r => r.labels.concat(showN ? [dqFmt(r.v, kind), smallTag(r.n)] : [r.n < DQ_SMALL_N ? `${dqFmt(r.v, kind)} (small sample)` : dqFmt(r.v, kind)]).concat(spec.compare ? [dqFmt(r.prev, kind), chg(r.v, r.prev)] : []));
+  if (spec.by.length) tableRows.push(spec.by.map((d, i) => i === 0 ? 'All' : '').concat(showN ? [dqFmt(all.v, kind), cur.length.toLocaleString('en-US')] : [dqFmt(all.v, kind)]).concat(spec.compare ? [dqFmt(allPrev.v, kind), chg(all.v, allPrev.v)] : []));
+  // one sentence, written only from the computed numbers
+  let summary;
+  if (!cur.length) summary = `No counted transactions fall in ${per.label}.`;
+  else if (!spec.by.length) summary = `${mTitle} was ${dqFmt(all.v, kind)} across ${cur.length.toLocaleString('en-US')} transactions in ${per.label}.`;
+  else {
+    const ranked = rows.filter(r => r.v !== null && r.n >= DQ_SMALL_N).sort((a, b) => b.v - a.v);
+    if (ranked.length >= 2) summary = `${mTitle} was highest for ${ranked[0].labels.join(' / ')} at ${dqFmt(ranked[0].v, kind)} and lowest for ${ranked[ranked.length - 1].labels.join(' / ')} at ${dqFmt(ranked[ranked.length - 1].v, kind)}; overall ${dqFmt(all.v, kind)} across ${cur.length.toLocaleString('en-US')} transactions in ${per.label}.`;
+    else summary = `Overall ${mTitle.toLowerCase()} was ${dqFmt(all.v, kind)} across ${cur.length.toLocaleString('en-US')} transactions in ${per.label}. Groups with fewer than ${DQ_SMALL_N} transactions are marked as small samples.`;
+  }
+  const withoutValue = cur.length - all.used;
+  if (spec.measure !== 'transactions' && spec.measure !== 'customers' && withoutValue > 0) notes.push(`${withoutValue.toLocaleString('en-US')} of ${cur.length.toLocaleString('en-US')} transactions have no ${meas.label.toLowerCase()} on file and are left out of this figure.`);
+  if (rows.some(r => r.n < DQ_SMALL_N)) notes.push(`Groups with fewer than ${DQ_SMALL_N} transactions are marked "small sample". Read them as a hint, not a result.`);
+  if (spec.compare && !spec.by.includes('year')) notes.push(`The comparison column is ${per.prevLabel || 'the prior period'}.`);
+  if (spec.filters.length) notes.push('Filtered to ' + spec.filters.map(f => `${dqFieldLabel(f.field, vocab).toLowerCase()} ${f.values.join(' or ')}`).join(' and ') + '.');
+  bucketInfo.forEach(b => notes.push(`${b.label}: the groups are drawn from this account's own data${b.saved ? ' and have been approved' : ' (a draft until approved)'}. ${b.groups.map(g => `${g.label} (${g.n.toLocaleString('en-US')} transactions)`).join(', ')}.`));
+  const definitions = [
+    `${dqFieldLabel(spec.measure, vocab)} = ${meas.basis}.`,
+    `Each row of the table is built from whole transactions. Customer-level fields use the first customer on the transaction.`,
+    dqCountingRule(L.settings)
+  ];
+  if (spec.measure === 'orderSize' || spec.by.includes('orderSizeGroup') || spec.measure === 'revenuePerUnit') definitions.push(`Order size here means: ${vocab.orderSizeLabel ? vocab.orderSizeLabel : 'the order-size column'}${vocab.orderSizeLabel ? '' : ' (no label set yet)'}.`);
+  const x = {
+    title, fileSlug: 'data-question', summary,
+    context: [['Account', accountId], ['Period', per.label], ['Generated', new Date().toISOString().slice(0, 10)]].concat(spec.compare ? [['Compared with', per.prevLabel || '']] : []),
+    tables: [{ name: 'Answer', columns: cols.map(h => ({ h })), rows: tableRows }],
+    notes: notes.concat(definitions)
+  };
+  return { spec, x, bucketInfo, period: per.label, definitions, counted: cur.length };
+}
+// A sentence that reads back what will be run, so the person can see how their words were understood.
+function dqSentence(spec, vocab, periodLabel){
+  const by = spec.by.length ? ' by ' + spec.by.map(d => dqFieldLabel(d, vocab).toLowerCase()).join(' and ') : '';
+  const f = spec.filters.length ? ', only ' + spec.filters.map(x => x.values.join(' or ')).join(', ') : '';
+  return `${dqMeasureTitle(spec, vocab)}${by}${f}, for ${periodLabel}${spec.compare ? ', compared with last year' : ''}.`;
+}
+function dqRecipes(vocab){
+  const o = dqOrderLabel(vocab).toLowerCase();
+  const R = (title, spec) => ({ title, spec: Object.assign({ agg: null, by: [], filters: [], period: { kind: 'range' }, compare: null, top: null, order: 'desc' }, spec) });
+  return [
+    R('Average revenue per transaction by creative focus group', { measure: 'revenue', agg: 'avg', by: ['creativeFocus'] }),
+    R(`Average revenue per transaction by ${o} group`, { measure: 'revenue', agg: 'avg', by: ['orderSizeGroup'] }),
+    R(`Total revenue by creative focus group and ${o} group`, { measure: 'revenue', agg: 'sum', by: ['creativeFocus', 'orderSizeGroup'] }),
+    R(`How ${o} is spread across transactions`, { measure: 'transactions', agg: 'count', by: ['orderSizeGroup'] }),
+    R(`Average ${o} by product group`, { measure: 'orderSize', agg: 'avg', by: ['productGroup'] }),
+    R(`Average ${o} by month`, { measure: 'orderSize', agg: 'avg', by: ['month'] }),
+    R(`Revenue per ${o.replace(/s$/, '')} by product group`, { measure: 'revenuePerUnit', agg: 'ratio', by: ['productGroup'] }),
+    R('Total revenue by creative focus group, compared with last year', { measure: 'revenue', agg: 'sum', by: ['creativeFocus'], compare: 'priorYear' }),
+    R('Average revenue per transaction by offer or promo type', { measure: 'revenue', agg: 'avg', by: ['promoType'] }),
+    R('Transactions by month', { measure: 'transactions', agg: 'count', by: ['month'] }),
+    R('Average days from sale to service by product group', { measure: 'leadDays', agg: 'avg', by: ['productGroup'] }),
+    R('Top ten customer states by revenue', { measure: 'revenue', agg: 'sum', by: ['guestState'], top: 10 }),
+    R('Average revenue per transaction by generation', { measure: 'revenue', agg: 'avg', by: ['generation'] }),
+    R('Net revenue by product group', { measure: 'netRevenue', agg: 'sum', by: ['productGroup'] })
+  ];
+}
+function dqCatalog(accountId){
+  const vocab = dqVocab(accountId); const L = dqLoadTransactions(accountId);
+  const values = dqValuesByDim(L.txs);
+  return {
+    hasData: L.txs.length > 0, transactions: L.txs.length, orderSizeLabel: vocab.orderSizeLabel, industry: vocab.industryKey, orderSizeNames: vocab.orderSizeSyn.slice(0, 6),
+    measures: Object.keys(DQ_MEASURES).map(k => ({ key: k, label: dqFieldLabel(k, vocab), aggs: DQ_MEASURES[k].aggs.map(a => ({ key: a, label: DQ_AGG_LABEL[a] || 'Per' })) })),
+    dims: Object.keys(DQ_DIMS).map(k => ({ key: k, label: dqFieldLabel(k, vocab) })),
+    values, years: Array.from(new Set(L.txs.map(t => t.year).filter(Boolean))).sort(),
+    recipes: dqRecipes(vocab)
+  };
+}
+// Optional: a model maps unusual wording to the same spec. It is told the catalog and may only pick from it.
+async function dqPlanWithModel(text, ctx){
+  if (!process.env.ANTHROPIC_API_KEY) return null;
+  const vocab = ctx.vocab;
+  const schema = { type: 'object', properties: {
+    measure: { type: 'string', enum: Object.keys(DQ_MEASURES).concat(['none']) },
+    agg: { type: 'string', enum: ['avg', 'sum', 'median', 'min', 'max', 'count', 'ratio'] },
+    by: { type: 'array', items: { type: 'string', enum: Object.keys(DQ_DIMS) }, maxItems: 2 },
+    filters: { type: 'array', items: { type: 'object', properties: { field: { type: 'string', enum: DQ_FILTER_DIMS }, values: { type: 'array', items: { type: 'string' } } }, required: ['field', 'values'] } },
+    period: { type: 'string', enum: ['dashboard', 'this_year', 'last_year', 'all'] },
+    compare_last_year: { type: 'boolean' }, top: { type: 'integer' }
+  }, required: ['measure', 'agg', 'by', 'period'] };
+  const fieldHelp = Object.entries(DQ_MEASURES).map(([k, m]) => `${k} = ${dqFieldLabel(k, vocab)} (also: ${(k === 'orderSize' ? vocab.orderSizeSyn : m.syn).slice(0, 6).join(', ')}); aggregates: ${m.aggs.join('/')}`).join('\n')
+    + '\n' + Object.entries(DQ_DIMS).map(([k, d]) => `${k} = ${dqFieldLabel(k, vocab)}${d.derived ? ' (groups of ' + d.derived + ')' : ''}`).join('\n');
+  const known = DQ_FILTER_DIMS.map(d => `${d}: ${(ctx.values[d] || []).slice(0, 30).join(' | ')}`).join('\n');
+  try {
+    const out = await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 500, timeoutMs: 20000, toolName: 'plan_question', toolDescription: 'Map the question to a data request using only the listed fields.', schema,
+      content: `Map this question about a company's customer transactions to a data request. Use only the fields listed. If the question cannot be answered from them, set measure to "none".\n\nFIELDS\n${fieldHelp}\n\nKNOWN VALUES FOR FILTERS\n${known}\n\nQUESTION: ${String(text).slice(0, 400)}` });
+    if (!out || out.measure === 'none') return null;
+    const yr = new Date().getUTCFullYear();
+    return { measure: out.measure, agg: out.agg, by: out.by || [], filters: out.filters || [], period: out.period === 'this_year' ? { kind: 'year', year: yr } : out.period === 'last_year' ? { kind: 'year', year: yr - 1 } : out.period === 'all' ? { kind: 'all' } : { kind: 'range' }, compare: out.compare_last_year ? 'priorYear' : null, top: out.top || null, order: 'desc' };
+  } catch (e){ console.warn('[data-question] model planner failed:', e.message); return null; }
+}
+// ==== DQ END ====
+
 function cardCellText(c){ if (c && typeof c === 'object' && 'kind' in c) return cardFmt(c.v, c.kind); return c == null ? '' : String(c); }
 function cardToCsv(x){
   const esc = v => { const s = cardCellText(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
@@ -16168,6 +16569,7 @@ async function getWelcome(accountId, opts){
 // "Data consumed" is a live view of it, and the forecast, Ask the Brain and voice lookups can route through the same list.
 const DATA_CATALOG = [
   { key: 'upload_receipts', label: 'Upload receipts', table: 'upload_receipts', period: null, dashboard: 'Train the Brain', grain: 'one per customer-file upload', kind: 'manual', keywords: ['upload receipt', 'file vs database', 'row counts', 'data trust', 'integrity'], usedBy: [], status: 'current' },
+  { key: 'dq_buckets', label: 'Approved question groups', table: 'account_dq_buckets', period: null, dashboard: 'Train the Brain', grain: 'one approved set of order-size (or lead-time) group edges per account', kind: 'manual', keywords: ['order size groups', 'buckets', 'trip days groups', 'question groups'], usedBy: [], status: 'current' },
   { key: 'upload_mappings', label: 'Upload column mappings', table: 'account_upload_mappings', period: null, dashboard: 'Train the Brain', grain: 'one approved mapping per account and file type', kind: 'manual', keywords: ['column mapping', 'file columns', 'approved mapping', 'upload format'], usedBy: [], status: 'current' },
   { key: 'transactions', label: 'Monthly transactions', table: 'account_transactions_monthly', period: 'ym', dashboard: 'Strategy', grain: 'month by product group', kind: 'manual', keywords: ['revenue', 'transactions', 'sales', 'bookings revenue', 'aov'], usedBy: ['forecast', 'ask', 'voice', 'brain dump'], status: 'current' },
   { key: 'guest_bookings', label: 'Customer transaction file', table: 'account_guest_bookings', period: 'ym', dashboard: 'Strategy', grain: 'one row per customer line within a transaction', kind: 'manual', keywords: ['guest', 'booking', 'cruise', 'customer file', 'gross price', 'trip days', 'order size', 'units', 'daily revenue'], usedBy: ['forecast', 'ask'], status: 'current' },
@@ -25397,6 +25799,86 @@ async function handleRequest(req, res) {
         return sendJson(res, 200, { templateKey: r.templateKey, title: x.title, summary: x.summary, period: range.label, compared: range.compLabel,
           tables: x.tables.map(t => ({ name: t.name, columns: t.columns.map(c => c.h), rows: t.rows.map(row => row.map(cardCellText)) })), notes: x.notes });
       } catch (e){ console.warn('[fire-drill/run] failed:', e.message); return sendJson(res, 500, { error: 'could not build that view' }); }
+    }
+    // ---- Data questions (2026-10-03): any loaded customer-level column can be asked about. See the DQ block above.
+    // GET /api/accounts/:id/fire-drill/catalog -> fields, groups, known values and ready-made questions for the ad-lib builder.
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'fire-drill' && parts[4] === 'catalog'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      try { return sendJson(res, 200, dqCatalog(accountId)); }
+      catch (e){ console.warn('[fire-drill/catalog] failed:', e.message); return sendJson(res, 500, { error: 'could not read the question catalog' }); }
+    }
+    // POST /api/accounts/:id/fire-drill/ask { text? | spec? } -> answer built from the account's own transactions.
+    // Words become a spec (keywords first, then an optional model that may only choose from the catalog); the numbers always come from dqRun.
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'fire-drill' && parts[4] === 'ask'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      try {
+        const body = await readBody(req) || {};
+        const L = dqLoadTransactions(accountId);
+        if (!L.txs.length) return sendJson(res, 200, { notOnFile: 'the customer-level transaction file (Train the Brain, Transactions card)' });
+        const vocab = dqVocab(accountId); const ctx = { vocab, values: dqValuesByDim(L.txs) };
+        let spec = null, source = 'spec', assumptions = [];
+        const text = String(body.text || '').slice(0, 600);
+        if (body.spec) spec = dqValidateSpec(body.spec, ctx);
+        else if (text){
+          const p = dqParse(text, ctx);
+          if (p.spec.measure){ spec = dqValidateSpec(p.spec, ctx); assumptions = p.assumptions; source = 'words'; }
+          else { const m = await dqPlanWithModel(text, ctx); if (m){ spec = dqValidateSpec(m, ctx); source = 'model'; } }
+        }
+        if (!spec){
+          const words = dqNorm(text).trim().split(' ').filter(w => w.length > 3);
+          const sug = dqRecipes(vocab).map(r => ({ r, s: words.filter(w => dqNorm(r.title).includes(' ' + w)).length })).sort((a, b) => b.s - a.s).slice(0, 4).map(x => x.r);
+          return sendJson(res, 200, { needMore: true, message: 'I could not tell which number you meant. Pick a measure and a breakdown below, or tap one of these.', suggestions: sug });
+        }
+        const range = dateRangeForRequest(req, accountId, {});
+        const r = dqRun(accountId, spec, range, L);
+        if (r.error) return sendJson(res, 200, { needMore: true, message: r.error, suggestions: dqRecipes(vocab).slice(0, 4) });
+        if (r.notOnFile) return sendJson(res, 200, { notOnFile: r.notOnFile });
+        const x = r.x;
+        return sendJson(res, 200, { source, spec: r.spec, sentence: dqSentence(r.spec, vocab, r.period), period: r.period, assumptions,
+          result: { title: x.title, summary: x.summary, tables: x.tables.map(t => ({ name: t.name, columns: t.columns.map(c => c.h), rows: t.rows })), notes: x.notes.filter(n => !r.definitions.includes(n)), definitions: r.definitions },
+          buckets: r.bucketInfo });
+      } catch (e){ console.warn('[fire-drill/ask] failed:', e.message); return sendJson(res, 500, { error: 'could not answer that' }); }
+    }
+    // GET /api/accounts/:id/fire-drill/ask-export?spec=<json>&format=xlsx|csv|pdf -> the same answer as a download.
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'fire-drill' && parts[4] === 'ask-export'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const qs = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries());
+      const format = ['xlsx', 'csv', 'pdf'].includes(qs.format) ? qs.format : null;
+      if (!format) return sendJson(res, 400, { error: 'format must be xlsx, csv or pdf' });
+      try {
+        let specIn = null; try { specIn = JSON.parse(qs.spec || ''); } catch (e){ specIn = null; }
+        const range = dateRangeForRequest(req, accountId, {});
+        const r = dqRun(accountId, specIn, range);
+        if (!r.x) return sendJson(res, 404, { error: 'nothing to export for that question' });
+        const x = r.x; const base = `${x.fileSlug}-${new Date().toISOString().slice(0, 10)}`;
+        if (format === 'csv'){ res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${base}.csv"`, 'Access-Control-Allow-Origin': '*' }); return res.end(cardToCsv(x)); }
+        if (format === 'pdf'){ res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${base}.pdf"`, 'Access-Control-Allow-Origin': '*' }); return res.end(cardToPdf(x)); }
+        const buf = await cardToXlsx(x);
+        res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="${base}.xlsx"`, 'Access-Control-Allow-Origin': '*' });
+        return res.end(Buffer.from(buf));
+      } catch (e){ console.warn('[fire-drill/ask-export] failed:', e.message); return sendJson(res, 500, { error: 'could not build the export' }); }
+    }
+    // POST /api/accounts/:id/fire-drill/buckets { field: 'orderSize'|'leadDays', action: 'approve'|'reset', approvedBy? }
+    // Freezes the drafted groups so later periods are compared on the same edges.
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'fire-drill' && parts[4] === 'buckets'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      try {
+        const body = await readBody(req) || {};
+        const field = ['orderSize', 'leadDays'].includes(body.field) ? body.field : null;
+        if (!field) return sendJson(res, 400, { error: 'field must be orderSize or leadDays' });
+        if (body.action === 'reset'){ db.prepare('DELETE FROM account_dq_buckets WHERE accountId = ? AND field = ?').run(accountId, field); return sendJson(res, 200, { field, saved: false }); }
+        const L = dqLoadTransactions(accountId);
+        const edges = dqComputeEdges(L.txs.map(t => t[field]));
+        const now = new Date().toISOString(); const by = body.approvedBy ? String(body.approvedBy).slice(0, 120) : null;
+        const ex = db.prepare('SELECT 1 FROM account_dq_buckets WHERE accountId = ? AND field = ?').get(accountId, field);
+        if (ex) db.prepare('UPDATE account_dq_buckets SET "edgesJson" = ?, "approvedBy" = ?, "approvedAt" = ? WHERE accountId = ? AND field = ?').run(JSON.stringify(edges), by, now, accountId, field);
+        else db.prepare('INSERT INTO account_dq_buckets (accountId, field, "edgesJson", "approvedBy", "approvedAt") VALUES (?, ?, ?, ?, ?)').run(accountId, field, JSON.stringify(edges), by, now);
+        return sendJson(res, 200, { field, saved: true, groups: dqGroupLabels(edges) });
+      } catch (e){ console.warn('[fire-drill/buckets] failed:', e.message); return sendJson(res, 500, { error: 'could not save the groups' }); }
     }
     // GET /api/accounts/:id/fire-drill/export?subject=&format=xlsx|csv|pdf — a one-off download of the same view.
     if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'fire-drill' && parts[4] === 'export'){

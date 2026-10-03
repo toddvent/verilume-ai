@@ -199,6 +199,7 @@
   "dropDate",
   "dueDate",
   "durationSeconds",
+  "edgesJson",
   "emMarketable",
   "endDate",
   "engagedSessions",
