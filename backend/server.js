@@ -15603,6 +15603,44 @@ function dqContextBlock(accountId, question){
   lines.push('RULE: for any question about revenue, transactions, order size, product group, creative focus, promo, state or generation, answer from this block. If a number is not here, say it needs the Need something we don\'t show? panel rather than guessing.');
   return lines.join('\n');
 }
+
+// One answer builder for every door: the "Need something we don't show?" panel and the Ask Verilume bar.
+// input: { text } or { spec }. Returns the same payload shape either way (needMore / notOnFile / result).
+async function dqAnswerPayload(accountId, input, range, opts){
+  opts = opts || {};
+  const L = dqLoadTransactions(accountId);
+  if (!L.txs.length) return { notOnFile: 'the customer-level transaction file (Train the Brain, Transactions card)' };
+  const vocab = dqVocab(accountId); const ctx = { vocab, values: dqValuesByDim(L.txs) };
+  let spec = null, source = 'spec', assumptions = [];
+  const text = String(input.text || '').slice(0, 600);
+  if (input.spec) spec = dqValidateSpec(input.spec, ctx);
+  else if (text){
+    const p = dqParse(text, ctx);
+    if (p.spec.measure){ spec = dqValidateSpec(p.spec, ctx); assumptions = p.assumptions; source = 'words'; }
+    else if (opts.allowModel !== false){ const m = await dqPlanWithModel(text, ctx); if (m){ spec = dqValidateSpec(m, ctx); source = 'model'; } }
+  }
+  if (!spec){
+    const words = dqNorm(text).trim().split(' ').filter(w => w.length > 3);
+    const sug = dqRecipes(vocab).map(r => ({ r, s: words.filter(w => dqNorm(r.title).includes(' ' + w)).length })).sort((a, b) => b.s - a.s).slice(0, 4).map(x => x.r);
+    return { needMore: true, message: 'I could not tell which number you meant. Pick a measure and a breakdown below, or tap one of these.', suggestions: sug };
+  }
+  const r = dqRun(accountId, spec, range, L);
+  if (r.error) return { needMore: true, message: r.error, suggestions: dqRecipes(vocab).slice(0, 4) };
+  if (r.notOnFile) return { notOnFile: r.notOnFile };
+  const x = r.x;
+  return { source, spec: r.spec, sentence: dqSentence(r.spec, vocab, r.period), period: r.period, assumptions,
+    result: { title: x.title, summary: x.summary, tables: x.tables.map(t => ({ name: t.name, columns: t.columns.map(c => c.h), rows: t.rows })), notes: x.notes.filter(n => !r.definitions.includes(n)), definitions: r.definitions },
+    buckets: r.bucketInfo };
+}
+// Does this question belong to the data engine? A measure the engine knows, and not a question about a named campaign.
+function dqLooksLikeDataQuestion(accountId, question){
+  try {
+    if (/\bcampaigns?\b/i.test(question)) return false;
+    const L = dqLoadCached(accountId); if (!L.txs.length) return false;
+    const p = dqParse(question, { vocab: dqVocab(accountId), values: dqValuesByDim(L.txs) });
+    return !!p.spec.measure;
+  } catch (e){ return false; }
+}
 // ==== DQ END ====
 
 function cardCellText(c){ if (c && typeof c === 'object' && 'kind' in c) return cardFmt(c.v, c.kind); return c == null ? '' : String(c); }
@@ -16937,7 +16975,7 @@ const VOICE_ASK_SCHEMA = {
   required: ['answer']
 };
 
-async function voiceAsk(accountId, body, actorId){
+async function voiceAsk(accountId, body, actorId, opts){
   const question = String(body.question || body.message || '').trim().slice(0, 2000);
   if (!question) return { error: 'question is required' };
   const surface = String(body.surface || 'ask_bar');
@@ -16946,6 +16984,18 @@ async function voiceAsk(accountId, body, actorId){
   if (!campaignId && body.campaignRef){ const c = voiceResolveCampaign(accountId, body.campaignRef); if (c) campaignId = c.id; }
   const history = Array.isArray(body.history) ? body.history.slice(-8).map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', text: String(h.text || '').slice(0, 600) })) : [];
   logAccountDataAccess({ accountId, resource: 'voice_ask', action: 'read', actorType: 'voice_agent', actorId: actorId || 'voice', recordCount: 1, detail: `${surface}/${tab}` }); // question text deliberately not retained
+  // One door: a question the data engine can compute is answered by it (same answer card as the guided panel); the model only talks around it.
+  if (dqLooksLikeDataQuestion(accountId, question)){
+    try {
+      const dq = await dqAnswerPayload(accountId, { text: question }, (opts && opts.range) || resolveDateRange(null), { allowModel: false });
+      if (dq && dq.result){
+        const spoken = (dq.sentence ? dq.sentence + ' ' : '') + (dq.result.summary || '');
+        const t0 = (dq.result.tables || [])[0];
+        const dqCards = t0 ? [{ title: dq.result.title, lines: t0.rows.slice(0, 8).map(r => r.map(c => String(c)).join(' · ')) }] : [];
+        return { answer: spoken.trim(), cards: dqCards, proposal: null, followUps: ['Break that down by product group', 'Compare it with last year'], campaignId, dq };
+      }
+    } catch (e){ console.warn('[voice/ask] data engine failed, falling back to the model:', e.message); }
+  }
   if (!process.env.ANTHROPIC_API_KEY){
     return { answer: 'The AI Brain is not configured on this deployment yet (ANTHROPIC_API_KEY is missing), so I cannot answer from your data.', cards: [], proposal: null, followUps: [] };
   }
@@ -25852,30 +25902,8 @@ async function handleRequest(req, res) {
       if (!requireAccount(req, res, accountId)) return;
       try {
         const body = await readBody(req) || {};
-        const L = dqLoadTransactions(accountId);
-        if (!L.txs.length) return sendJson(res, 200, { notOnFile: 'the customer-level transaction file (Train the Brain, Transactions card)' });
-        const vocab = dqVocab(accountId); const ctx = { vocab, values: dqValuesByDim(L.txs) };
-        let spec = null, source = 'spec', assumptions = [];
-        const text = String(body.text || '').slice(0, 600);
-        if (body.spec) spec = dqValidateSpec(body.spec, ctx);
-        else if (text){
-          const p = dqParse(text, ctx);
-          if (p.spec.measure){ spec = dqValidateSpec(p.spec, ctx); assumptions = p.assumptions; source = 'words'; }
-          else { const m = await dqPlanWithModel(text, ctx); if (m){ spec = dqValidateSpec(m, ctx); source = 'model'; } }
-        }
-        if (!spec){
-          const words = dqNorm(text).trim().split(' ').filter(w => w.length > 3);
-          const sug = dqRecipes(vocab).map(r => ({ r, s: words.filter(w => dqNorm(r.title).includes(' ' + w)).length })).sort((a, b) => b.s - a.s).slice(0, 4).map(x => x.r);
-          return sendJson(res, 200, { needMore: true, message: 'I could not tell which number you meant. Pick a measure and a breakdown below, or tap one of these.', suggestions: sug });
-        }
         const range = dateRangeForRequest(req, accountId, {});
-        const r = dqRun(accountId, spec, range, L);
-        if (r.error) return sendJson(res, 200, { needMore: true, message: r.error, suggestions: dqRecipes(vocab).slice(0, 4) });
-        if (r.notOnFile) return sendJson(res, 200, { notOnFile: r.notOnFile });
-        const x = r.x;
-        return sendJson(res, 200, { source, spec: r.spec, sentence: dqSentence(r.spec, vocab, r.period), period: r.period, assumptions,
-          result: { title: x.title, summary: x.summary, tables: x.tables.map(t => ({ name: t.name, columns: t.columns.map(c => c.h), rows: t.rows })), notes: x.notes.filter(n => !r.definitions.includes(n)), definitions: r.definitions },
-          buckets: r.bucketInfo });
+        return sendJson(res, 200, await dqAnswerPayload(accountId, { text: body.text, spec: body.spec }, range, { allowModel: true }));
       } catch (e){ console.warn('[fire-drill/ask] failed:', e.message); return sendJson(res, 500, { error: 'could not answer that' }); }
     }
     // GET /api/accounts/:id/fire-drill/ask-export?spec=<json>&format=xlsx|csv|pdf -> the same answer as a download.
@@ -26016,7 +26044,7 @@ async function handleRequest(req, res) {
       const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
       if (!account){ console.warn('[voice/ask] 404 no account row for ' + accountId); return sendJson(res, 404, { error: 'account not found' }); }
       const viaVoice = !!req.headers['x-voice-token'];
-      const result = await voiceAsk(accountId, body || {}, viaVoice ? 'elevenlabs_agent' : (() => { const sess = authenticate(req); return (sess && sess.memberId) || 'portal'; })());
+      const result = await voiceAsk(accountId, body || {}, viaVoice ? 'elevenlabs_agent' : (() => { const sess = authenticate(req); return (sess && sess.memberId) || 'portal'; })(), { range: (() => { try { return dateRangeForRequest(req, accountId, {}); } catch (e){ return null; } })() });
       if (result.error) return sendJson(res, 400, result);
       return sendJson(res, 200, result);
     }
