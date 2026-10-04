@@ -3830,6 +3830,20 @@
   body.ask-dock .faq-drawer{top:auto;right:auto;left:50%;bottom:104px;width:min(540px,calc(100vw - 24px));height:min(560px,calc(100vh - 140px));max-width:none;box-sizing:border-box;border:1px solid #CDD1D8;border-radius:16px;box-shadow:0 14px 36px rgba(20,20,30,0.2);z-index:870;transform:translate(-50%,16px);opacity:0;visibility:hidden;transition:opacity 0.15s,transform 0.15s,visibility 0.15s;}
   body.ask-dock .faq-drawer.open{transform:translate(-50%,0);opacity:1;visibility:visible;}
   @media (prefers-reduced-motion:reduce){body.ask-dock .faq-drawer{transition:none;}}
+
+  /* Dock slice 3: Brain Train surface. Same panel look as Thoughts. */
+  .ask-dock-surface{display:none;position:fixed;left:50%;bottom:104px;transform:translateX(-50%);width:min(540px,calc(100vw - 24px));height:min(560px,calc(100vh - 140px));box-sizing:border-box;background:var(--white);border:1px solid #CDD1D8;border-radius:16px;box-shadow:0 14px 36px rgba(20,20,30,0.2);z-index:870;overflow-y:auto;padding:18px 20px 24px;}
+  body.ask-dock .ask-dock-surface.open{display:block;}
+  .ask-dock-surface h2{margin:0;font-size:1rem;font-weight:700;}
+  .ask-dock-surface .ads-sub{font-size:0.75rem;color:var(--muted);margin:2px 0 12px;}
+  .ask-dock-surface .ads-close{position:absolute;top:8px;right:8px;background:none;border:0;font-size:1.25rem;line-height:1;cursor:pointer;color:var(--muted);min-width:44px;min-height:44px;}
+  .ask-dock-surface .ads-h{font-size:0.6875rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px;}
+  .ask-dock-surface .ads-h.warn{color:#D9480F;}
+  .ask-dock-surface .ads-row{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:6px;font-size:0.8125rem;background:#fff;}
+  .ask-dock-surface .ads-row .ads-grow{flex:1;min-width:0;}
+  .ask-dock-surface .ads-row .ads-meta{font-size:0.6875rem;color:var(--muted);}
+  .ask-dock-surface .ads-tag{font-size:0.6875rem;font-weight:700;padding:2px 8px;border-radius:10px;background:#EEF0FF;color:#4F46E5;white-space:nowrap;}
+  .ask-dock-badge{position:absolute;right:0;top:0;min-width:18px;height:18px;box-sizing:border-box;border-radius:9px;background:#D9480F;color:#fff;font-size:0.6875rem;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 4px;border:2px solid #fff;}
 </style>
 </head>
 <body>
@@ -23923,31 +23937,90 @@ function askDockInit(){
   document.body.classList.add('ask-dock');
   const row = document.querySelector('#askVerilumeBar .ask-row'); if (!row || row.querySelector('.ask-dock-icons')) return;
   const wrap = document.createElement('div'); wrap.className = 'ask-dock-icons'; wrap.setAttribute('role', 'group'); wrap.setAttribute('aria-label', 'Verilume surfaces');
-  wrap.innerHTML = ASK_DOCK_ICONS.map(b => `<button type="button" class="ask-dock-btn" title="${b.label}" aria-label="${b.label}" ${b.disabled ? 'aria-disabled="true"' : `onclick="${b.fn}"`}><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${b.svg}</svg></button>`).join('');
+  wrap.innerHTML = ASK_DOCK_ICONS.map(b => `<button type="button" class="ask-dock-btn" data-key="${b.key}" title="${b.label}" aria-label="${b.label}" ${b.disabled ? 'aria-disabled="true"' : `onclick="${b.fn}"`}><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${b.svg}</svg></button>`).join('');
   row.appendChild(wrap);
+  setTimeout(() => askDockBtPoll(0), 2500);
 }
 function askDockToast(t){ const o = document.querySelector('.ask-dock-toast'); if (o) o.remove(); const d = document.createElement('div'); d.className = 'ask-dock-toast'; d.setAttribute('role', 'status'); d.textContent = t; document.body.appendChild(d); setTimeout(() => d.remove(), 3200); }
 // One surface at a time: opening one closes the Ask sheet and the others. Until each surface is built (slices 2 to 4) these open the existing screens.
+
+// ---- Dock slice 3: Brain Train surface. Waiting items come from the ledger (recorded, not yet applied or removed); history is the learnings feed. ----
+const ASK_DOCK_BT_OPEN = {
+  voice_guide: () => goToStep('voice'), website_scan: () => goToStep('companyProfile'), website_profile: () => goToStep('companyProfile'),
+  competitive_positioning: () => goToStep('competitivePositioning'), brand_writing_sample_style: () => goToStep('brandWritingSamples'),
+  training_digest: () => { switchPrimaryTab('accountManagement'); try { ttb.tab = 'learnings'; ttbRerender(); } catch (e){} },
+  model_readout_finding: () => switchPrimaryTab('dataScientist'), video_analysis: () => switchPrimaryTab('brand'), forecast_calibration: () => switchPrimaryTab('strategy')
+};
+const askDockBt = { waiting: null, history: null, loading: false, error: false };
+function askDockBtEl(){
+  let el = document.getElementById('askDockBrainTrain'); if (el) return el;
+  el = document.createElement('div'); el.id = 'askDockBrainTrain'; el.className = 'ask-dock-surface'; el.setAttribute('role', 'region'); el.setAttribute('aria-label', 'Brain Train');
+  document.body.appendChild(el); return el;
+}
+function askDockBtClose(){ const el = document.getElementById('askDockBrainTrain'); if (el) el.classList.remove('open'); }
+async function askDockBtLoad(withHistory){
+  if (typeof state === 'undefined' || !state.companyId || typeof BACKEND_URL === 'undefined') return;
+  const base = `${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}`;
+  try { const r = await authedFetch(`${base}/brain-train/waiting`); if (r.ok){ askDockBt.waiting = await r.json(); } else askDockBt.error = true; } catch (e){ askDockBt.error = true; }
+  if (withHistory){ try { const r2 = await authedFetch(`${base}/train-the-brain`); if (r2.ok){ const d = await r2.json(); askDockBt.history = d.learnings || []; } } catch (e){} }
+  askDockBtBadge();
+}
+function askDockBtBadge(){
+  const btn = document.querySelector('.ask-dock-btn[data-key="brainTrain"]'); if (!btn) return;
+  const old = btn.querySelector('.ask-dock-badge'); if (old) old.remove();
+  const n = askDockBt.waiting ? Number(askDockBt.waiting.count) || 0 : 0;
+  btn.setAttribute('aria-label', n ? `Brain Train, ${n} waiting` : 'Brain Train');
+  if (n){ const b = document.createElement('span'); b.className = 'ask-dock-badge'; b.textContent = n > 99 ? '99+' : String(n); btn.appendChild(b); }
+}
+function askDockBtRender(){
+  const el = askDockBtEl(); const W = askDockBt.waiting, H = askDockBt.history;
+  const dt = v => { try { return new Date(v).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch (e){ return ''; } };
+  let h = `<button type="button" class="ads-close" aria-label="Close Brain Train" onclick="askDockBtClose()">✕</button><h2>Brain Train</h2><div class="ads-sub">Decisions on Brain notes, and what it learned</div>`;
+  if (askDockBt.error && !W) h += `<p class="hint">Could not read the Brain just now.</p>`;
+  else if (!W) h += `<p class="hint">Reading what is waiting…</p>`;
+  else {
+    h += `<div class="ads-h warn">Waiting on you (${W.count})</div>`;
+    h += W.items.length ? W.items.map(it => `<div class="ads-row"><div class="ads-grow"><b>${escapeHtml(it.label)}</b>${it.scope ? ' · ' + escapeHtml(it.scope) : ''}<div class="ads-meta">${escapeHtml(it.dashboard)} · recorded ${dt(it.createdAt)}</div></div><button type="button" class="btn-ghost" onclick="askDockBtReview('${escapeHtml(it.sourceType)}')">Review</button></div>`).join('') + (W.count > W.items.length ? `<p class="hint">Showing the newest ${W.items.length} of ${W.count}.</p>` : '') : `<p class="hint">Nothing is waiting. The Brain has used or removed everything it recorded.</p>`;
+  }
+  h += `<div class="ads-h">Decision history</div>`;
+  if (H === null) h += `<p class="hint">Reading history…</p>`;
+  else if (!H.length) h += `<p class="hint">No decisions recorded yet.</p>`;
+  else h += H.slice(0, 8).map(l => `<div class="ads-row"><div class="ads-grow"><b>${escapeHtml(l.what || '')}</b><div class="ads-meta">${escapeHtml(l.dashboard || '')} · ${dt(l.at)}${l.reason ? ' · ' + escapeHtml(String(l.reason).slice(0, 80)) : ''}</div></div><span class="ads-tag">${escapeHtml(l.action || '')}</span></div>`).join('');
+  h += `<p style="margin:12px 0 0;"><a class="flink" onclick="askDockBtClose();askDockBtSeeAll()">What the Brain learned from these →</a></p>`;
+  el.innerHTML = h;
+}
+function askDockBtReview(t){ askDockBtClose(); const f = ASK_DOCK_BT_OPEN[t]; if (f) { try { f(); } catch (e){ console.warn('askDockBtReview', e); } } }
+function askDockBtSeeAll(){ switchPrimaryTab('accountManagement'); try { ttb.tab = 'learnings'; ttbRerender(); } catch (e){} }
+function askDockBtToggle(){
+  const el = askDockBtEl();
+  if (el.classList.contains('open')){ askDockBtClose(); return; }
+  askDockCloseAll(); el.classList.add('open'); askDockBtRender();
+  askDockBtLoad(true).then(askDockBtRender);
+}
+function askDockBtPoll(n){ if (!ASK_DOCK_ON) return; if (typeof state !== 'undefined' && state.companyId){ askDockBtLoad(false); } else if (n < 8) setTimeout(() => askDockBtPoll(n + 1), 3000); }
 function askDockCloseAll(){
+  askDockBtClose();
   const ex = document.getElementById('askVerilumeExpand'); if (ex && ex.classList.contains('open')) toggleAskVerilumePrompts();
   try { closeFaqDrawer(); } catch (e){}
   if (typeof cmpCollabExpanded !== 'undefined' && cmpCollabExpanded){ try { cmpToggleCollabExpanded(); } catch (e){} }
 }
 function askDockOpen(which){
+  const btWasOpen = !!(document.getElementById('askDockBrainTrain') && document.getElementById('askDockBrainTrain').classList.contains('open'));
+  if (which === 'brainTrain' && btWasOpen){ askDockBtClose(); return; }
   askDockCloseAll();
   try { localStorage.setItem('askDockLast', which); } catch (e){}
   if (which === 'thoughts') openFaqDrawer();
-  else if (which === 'brainTrain'){ switchPrimaryTab('accountManagement'); try { ttb.tab = 'learnings'; ttbRerender(); } catch (e){} }
+  else if (which === 'brainTrain'){ askDockBtToggle(); }
   else if (which === 'team'){ if (document.getElementById(cmpCollabMountId) && document.getElementById(cmpCollabMountId).children.length) cmpToggleCollabExpanded(); else askDockToast('Team opens inside a campaign for now.'); }
 }
-document.addEventListener('keydown', e => { if (ASK_DOCK_ON && e.key === 'Escape'){ const ex = document.getElementById('askVerilumeExpand'); if (ex && ex.classList.contains('open')) toggleAskVerilumePrompts(); } });
+document.addEventListener('keydown', e => { if (ASK_DOCK_ON && e.key === 'Escape'){ try { askDockBtClose(); } catch (e2){} const ex = document.getElementById('askVerilumeExpand'); if (ex && ex.classList.contains('open')) toggleAskVerilumePrompts(); } });
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', askDockInit); else askDockInit();
 function toggleAskVerilumePrompts(){
   const toggleEl = document.getElementById('askVerilumeToggle');
   const expandEl = document.getElementById('askVerilumeExpand');
   if (!toggleEl || !expandEl) return;
   const willOpen = !expandEl.classList.contains('open');
-  if (willOpen && ASK_DOCK_ON){ try { closeFaqDrawer(); } catch (e){} }
+  if (willOpen && ASK_DOCK_ON){ try { closeFaqDrawer(); } catch (e){} try { askDockBtClose(); } catch (e){} }
   expandEl.classList.toggle('open', willOpen);
   toggleEl.classList.toggle('is-open', willOpen);
   toggleEl.innerHTML = willOpen ? 'Hide prompts <span class="chev">▾</span>' : 'Suggested prompts <span class="chev">▾</span>';
@@ -49626,7 +49699,7 @@ function mountAiThoughtIcons(){
 // Round 16, point 2 — slide-out drawer open/close. Escape and clicking the
 // dimmed overlay both close it, same as the fixed ✕ button.
 function openFaqDrawer(){
-  if (typeof ASK_DOCK_ON !== 'undefined' && ASK_DOCK_ON){ const ex = document.getElementById('askVerilumeExpand'); if (ex && ex.classList.contains('open')) toggleAskVerilumePrompts(); const eb = document.querySelector('#faqDrawer .section-eyebrow'); if (eb) eb.textContent = 'Thoughts'; }
+  if (typeof ASK_DOCK_ON !== 'undefined' && ASK_DOCK_ON){ const ex = document.getElementById('askVerilumeExpand'); if (ex && ex.classList.contains('open')) toggleAskVerilumePrompts(); try { askDockBtClose(); } catch (e){} const eb = document.querySelector('#faqDrawer .section-eyebrow'); if (eb) eb.textContent = 'Thoughts'; }
   document.getElementById('faqDrawer').classList.add('open');
   document.getElementById('faqDrawerOverlay').classList.add('open');
   if (!document.getElementById('bpFaqTopicChips').children.length) renderFaqTopicChips();
