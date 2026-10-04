@@ -7,6 +7,10 @@
   },
   "crons": [
     {
+      "path": "/api/cron/news-feed",
+      "schedule": "0 8 * * 1"
+    },
+    {
       "path": "/api/cron/reputation-sweep",
       "schedule": "0 9 * * 1"
     },
