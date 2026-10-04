@@ -9308,6 +9308,41 @@ createTableIfNeeded(`
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
 `);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS news_feed_items (
+    id TEXT PRIMARY KEY,
+    feedKey TEXT NOT NULL,
+    feedWeek TEXT NOT NULL,
+    title TEXT NOT NULL,
+    url TEXT NOT NULL,
+    sourceName TEXT,
+    publishedDate TEXT,
+    summary TEXT,
+    origin TEXT NOT NULL,
+    createdAt TEXT NOT NULL
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS news_feed_runs (
+    id TEXT PRIMARY KEY,
+    feedKey TEXT NOT NULL,
+    feedWeek TEXT NOT NULL,
+    ranAt TEXT NOT NULL,
+    status TEXT NOT NULL,
+    note TEXT,
+    itemCount INTEGER NOT NULL DEFAULT 0
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS news_feed_hidden (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    url TEXT NOT NULL,
+    hiddenAt TEXT NOT NULL,
+    hiddenBy TEXT,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
 ensureColumn('press_releases', 'releaseType', 'TEXT');
 ensureColumn('press_releases', 'audience', 'TEXT');
 
@@ -16619,9 +16654,16 @@ function buildBrainDumpFacts(accountId, now, prevFacts){
     lines.push(cur != null ? `The average relevance score on copy scored in the last four weeks is ${cur}${pri != null ? `, ${cur >= pri ? 'up' : 'down'} from ${pri} the four weeks before` : ''}.` : 'No copy has been scored for relevance in the last four weeks.');
     let picks = 0; const sinceIso = new Date(now.getTime() - 7 * 86400000).toISOString();
     try { picks += Number((db.prepare('SELECT COUNT(*) AS n FROM account_voice_interviews WHERE accountId = ? AND selectedAt >= ?').get(accountId, sinceIso) || {}).n) || 0; picks += Number((db.prepare('SELECT COUNT(*) AS n FROM campaign_copy_interviews WHERE accountId = ? AND selectedAt >= ?').get(accountId, sinceIso) || {}).n) || 0; } catch (e) {}
+    try {
+      const rl = repLatestForAccount(accountId);
+      if (rl.sweep && rl.sweep.sentimentLabel){
+        const nr = rl.mentions.filter(m => m.needsResponse).length;
+        lines.push(`The latest reputation sweep reads ${rl.sweep.sentimentLabel.toLowerCase()} sentiment${nr ? `, with ${nr} mention${nr === 1 ? '' : 's'} needing a response` : ''}.`);
+      }
+    } catch (e){ /* reputation sweep optional */ }
     lines.push(`${due7} campaign${due7 === 1 ? ' has' : 's have'} creative assets due in the next 7 days${past ? `, and ${past} still open ${past === 1 ? 'is' : 'are'} past due` : ''}.`);
     if (picks) lines.push(`${picks} brand voice or copy contest winner${picks === 1 ? ' was' : 's were'} picked in the last 7 days.`);
-    F.brand = { metric: { label: 'Relevance Score', value: cur, display: cur != null ? String(cur) : 'No scores yet', prior: pri }, lines, outliers: [], links: [{ label: 'Customer Experiences', tab: 'brand' }, { label: 'Marketing calendar', step: 'marketingCalendar' }] };
+    F.brand = { metric: { label: 'Relevance Score', value: cur, display: cur != null ? String(cur) : 'No scores yet', prior: pri }, lines, outliers: [], links: [{ label: 'Customer Experiences', tab: 'brand' }, { label: 'Reputation Monitoring', step: 'reputation' }, { label: 'Marketing calendar', step: 'marketingCalendar' }] };
   } catch (e){ F.brand = { metric: { label: 'Relevance Score', value: null, display: 'Unavailable' }, lines: ['The creative numbers could not be read this week.'], outliers: [], links: [{ label: 'Customer Experiences', tab: 'brand' }] }; }
   // Growth & Performance: readiness of campaigns hitting in the next 30 days.
   try {
@@ -16731,7 +16773,7 @@ async function postBrainDump(accountId){
   const prevRow = db.prepare('SELECT factsJson FROM brain_dump_weeks WHERE accountId = ? AND weekStart < ? ORDER BY weekStart DESC').get(accountId, weekStart);
   let prevFacts = null; try { prevFacts = prevRow ? JSON.parse(aliasVal(prevRow, 'factsJson')) : null; } catch (e) {}
   const facts = buildBrainDumpFacts(accountId, now, prevFacts);
-  const w = await writeBrainDumpText(facts); const ext = bdExternalFromIntelligence(accountId); const iso = now.toISOString();
+  const w = await writeBrainDumpText(facts); const ext = bdExternalFromIntelligence(accountId); ext.news = newsPicksForBrainDump(accountId); const iso = now.toISOString();
   db.prepare('INSERT INTO brain_dump_weeks (accountId, weekStart, factsJson, textJson, writtenBy, createdAt, externalJson, postedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(accountId, weekStart) DO UPDATE SET factsJson = excluded.factsJson, textJson = excluded.textJson, writtenBy = excluded.writtenBy, createdAt = excluded.createdAt, externalJson = excluded.externalJson, postedAt = excluded.postedAt').run(accountId, weekStart, JSON.stringify(facts), JSON.stringify(Object.assign({}, w.text, { _models: w.models || {} })), w.writtenBy, iso, JSON.stringify(ext), iso);
   return readBrainDump(accountId, weekStart);
 }
@@ -20863,6 +20905,162 @@ function repLatestForAccount(accountId){
   const good = db.prepare("SELECT * FROM reputation_sweeps WHERE accountId = ? AND status <> 'failed' ORDER BY ranAt DESC").get(accountId) || null;
   const mentions = good ? db.prepare('SELECT * FROM reputation_mentions WHERE accountId = ? AND sweepId = ? ORDER BY needsResponse DESC, publishedDate DESC').all(accountId, good.id) : [];
   return { lastSweep: last, sweep: good, mentions, sourcesLabel: REP_SWEEP_SOURCES_LABEL };
+}
+
+// ---------- Weekly external news feed (2026-10-04) ----------
+// Replaces a hand-picked list that went stale (Brain Dump showed 2025 items).
+// Lanes: your brand (from the Reputation sweep), your competitors (GDELT),
+// your industry GROUP (one of five broad groups, not the account's exact
+// NAICS code, because the news should follow AI marketing practice), and AI
+// and marketing for everyone. The two Perplexity lanes are shared across
+// accounts, so a weekly run costs six Perplexity calls in total, not one per
+// account. Same anti-fabrication rule as the sweep: an item is kept only if
+// its link is one Perplexity returned AND it has a publish date inside the
+// freshness window. Nothing older than NEWS_FRESH_DAYS is ever shown.
+const NEWS_FRESH_DAYS = 14;
+const NEWS_GROUPS = {
+  travel:     { label: 'Travel & hospitality', desc: 'travel, hospitality, hotels and cruise' },
+  auto:       { label: 'Automotive',           desc: 'automotive dealers and auto retail' },
+  finance:    { label: 'Financial services',   desc: 'banking, lending and insurance' },
+  retail:     { label: 'Retail & e-commerce',  desc: 'retail, e-commerce and consumer brands' },
+  healthcare: { label: 'Healthcare',           desc: 'healthcare providers, clinics and health systems' }
+};
+function newsGroupForIndustry(industry){
+  const t = String(industry || '').toLowerCase();
+  if (!t) return null;
+  if (/health|clinic|hospital|medical|dental|medspa|med spa|pharma|wellness/.test(t)) return 'healthcare';
+  if (/financ|bank|insur|credit|lending|mortgage|wealth/.test(t)) return 'finance';
+  if (/automotive|auto |auto$|dealer|vehicle|car /.test(t)) return 'auto';
+  if (/hotel|hospitality|travel|tourism|cruise|resort|airline|lodging/.test(t)) return 'travel';
+  if (/retail|apparel|grocery|e-?commerce|dtc|sporting|wine|spirits|consumer|restaurant|dining|telecom/.test(t)) return 'retail';
+  return null;
+}
+function newsFreshCutoffIso(){ return new Date(Date.now() - NEWS_FRESH_DAYS * 86400000).toISOString().slice(0, 10); }
+function newsIsFresh(dateStr){
+  if (!/^\d{4}-\d{2}-\d{2}/.test(String(dateStr || ''))) return false;
+  const d = String(dateStr).slice(0, 10);
+  return d >= newsFreshCutoffIso() && d <= new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+}
+const NEWS_PERPLEXITY_TOPICS = {
+  ai_marketing: 'how marketing teams are applying AI to planning, media buying, measurement, creative and content, and important changes to AI marketing tools and platforms',
+};
+async function newsPerplexityLane(feedKey){
+  if (!process.env.PERPLEXITY_API_KEY) return { items: [], note: 'Perplexity is not configured (PERPLEXITY_API_KEY is not set).' };
+  const topic = feedKey === 'ai_marketing' ? NEWS_PERPLEXITY_TOPICS.ai_marketing
+    : `how ${(NEWS_GROUPS[feedKey] || {}).desc} marketers are applying AI and data to planning, media, measurement and customer experience`;
+  const today = new Date().toISOString().slice(0, 10);
+  const prompt = `Today is ${today}. List up to 6 news articles or analyses published in the last ${NEWS_FRESH_DAYS} days about ${topic}.\n\nRules:\n- Only articles from established trade, business or research publications. Skip press-release wires, vendor promotions and listicles.\n- Only include items you can link to a real page. Never invent an article, a date or a URL. If you find nothing, return an empty list.\n- "date" is the publication date as YYYY-MM-DD. If you do not know it, leave it empty.\n- "summary" is one short factual sentence.\n\nReturn ONLY a JSON object: {"items":[{"title":"...","url":"https://...","source":"...","date":"YYYY-MM-DD","summary":"..."}]}`;
+  let data;
+  try {
+    const resp = await fetchWithTimeout('https://api.perplexity.ai/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}` },
+      body: JSON.stringify({ model: process.env.PERPLEXITY_MODEL || 'sonar-pro', search_recency_filter: 'month', messages: [{ role: 'user', content: prompt }] })
+    }, 60000);
+    if (!resp.ok){ let b = ''; try { b = (await resp.text()).slice(0, 200); } catch (e2){} throw new Error('HTTP ' + resp.status + (b ? ': ' + b : '')); }
+    data = await resp.json();
+  } catch (e){ return { items: [], note: 'Perplexity search failed: ' + String(e.message || e).slice(0, 160) }; }
+  const text = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+  const parsed = parseJsonBlock(text);
+  const allowed = new Map(); // urlKey -> date from Perplexity's own search results, if any
+  (Array.isArray(data.citations) ? data.citations : []).forEach(c => { const u = repSafeUrl(typeof c === 'string' ? c : (c && c.url)); if (u && !allowed.has(repUrlKey(u))) allowed.set(repUrlKey(u), null); });
+  (Array.isArray(data.search_results) ? data.search_results : []).forEach(r => { const u = repSafeUrl(r && r.url); if (u) allowed.set(repUrlKey(u), /^\d{4}-\d{2}-\d{2}/.test(String((r && r.date) || '')) ? String(r.date).slice(0, 10) : (allowed.get(repUrlKey(u)) || null)); });
+  const items = []; let dropped = 0; const seen = new Set();
+  for (const m of ((parsed && Array.isArray(parsed.items)) ? parsed.items : [])){
+    const url = repSafeUrl(m && m.url); const k = url ? repUrlKey(url) : null;
+    if (!url || !allowed.has(k) || seen.has(k)){ dropped++; continue; }
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(String(m.date || '')) ? m.date : allowed.get(k);
+    if (!newsIsFresh(date)){ dropped++; continue; }
+    seen.add(k);
+    items.push({ title: String(m.title || '').trim().slice(0, 220) || url, url, sourceName: String(m.source || repHost(url) || '').slice(0, 80) || null, publishedDate: String(date).slice(0, 10), summary: String(m.summary || '').trim().slice(0, 300) || null, origin: 'perplexity' });
+  }
+  return { items: items.slice(0, 6), note: dropped ? `${dropped} item${dropped === 1 ? '' : 's'} left out (no confirmed link or not published in the last ${NEWS_FRESH_DAYS} days).` : null };
+}
+async function newsRefreshFeed(feedKey){
+  const week = bdWeekStart(new Date());
+  const r = await newsPerplexityLane(feedKey);
+  const failed = /failed|not configured/.test(r.note || '');
+  const now = new Date().toISOString();
+  if (!failed){
+    db.prepare('DELETE FROM news_feed_items WHERE feedKey = ? AND feedWeek = ?').run(feedKey, week);
+    const ins = db.prepare('INSERT INTO news_feed_items (id, feedKey, feedWeek, title, url, sourceName, publishedDate, summary, origin, createdAt) VALUES (?,?,?,?,?,?,?,?,?,?)');
+    r.items.forEach(m => ins.run(generateId('NFI'), feedKey, week, m.title, m.url, m.sourceName, m.publishedDate, m.summary, m.origin, now));
+  }
+  const runId = feedKey + '|' + week;
+  db.prepare('DELETE FROM news_feed_runs WHERE id = ?').run(runId);
+  db.prepare('INSERT INTO news_feed_runs (id, feedKey, feedWeek, ranAt, status, note, itemCount) VALUES (?,?,?,?,?,?,?)').run(runId, feedKey, week, now, failed ? 'failed' : 'ok', r.note || null, failed ? 0 : r.items.length);
+  return { feedKey, status: failed ? 'failed' : 'ok', count: r.items.length, note: r.note };
+}
+// Competitor lane: GDELT, one call per account (no key).
+function newsCompetitorNames(account){
+  try { const c = account.competitorsJson ? JSON.parse(account.competitorsJson) : []; return (Array.isArray(c) ? c : []).map(x => x && x.name && String(x.name).trim()).filter(Boolean).slice(0, 4); } catch (e){ return []; }
+}
+async function newsRefreshCompetitors(accountId){
+  const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+  const names = account ? newsCompetitorNames(account) : [];
+  const week = bdWeekStart(new Date()); const feedKey = 'competitors:' + accountId;
+  if (!names.length) return { feedKey, status: 'skipped', count: 0, note: 'No competitors named on this account.' };
+  let arts;
+  try { arts = await repGdeltFetch('(' + names.map(n => '"' + n.replace(/"/g, '') + '"').join(' OR ') + ') sourcelang:english'); }
+  catch (e){ return { feedKey, status: 'failed', count: 0, note: 'GDELT news search failed: ' + String(e.message || e).slice(0, 140) }; }
+  const items = []; const seen = new Set();
+  for (const a of arts){
+    const url = repSafeUrl(a && a.url); if (!url) continue; const k = repUrlKey(url); if (seen.has(k)) continue;
+    const sd = String(a.seendate || ''); const date = /^\d{8}T/.test(sd) ? `${sd.slice(0, 4)}-${sd.slice(4, 6)}-${sd.slice(6, 8)}` : null;
+    if (!newsIsFresh(date)) continue; seen.add(k);
+    const lower = String(a.title || '').toLowerCase(); const hit = names.find(n => lower.includes(n.toLowerCase())) || null;
+    items.push({ title: String(a.title || url).trim().slice(0, 220), url, sourceName: a.domain || repHost(url), publishedDate: date, summary: hit ? `Mentions ${hit}.` : null });
+    if (items.length >= 6) break;
+  }
+  const now = new Date().toISOString();
+  db.prepare('DELETE FROM news_feed_items WHERE feedKey = ? AND feedWeek = ?').run(feedKey, week);
+  const ins = db.prepare('INSERT INTO news_feed_items (id, feedKey, feedWeek, title, url, sourceName, publishedDate, summary, origin, createdAt) VALUES (?,?,?,?,?,?,?,?,?,?)');
+  items.forEach(m => ins.run(generateId('NFI'), feedKey, week, m.title, m.url, m.sourceName, m.publishedDate, m.summary, 'gdelt', now));
+  const runId = feedKey + '|' + week;
+  db.prepare('DELETE FROM news_feed_runs WHERE id = ?').run(runId);
+  db.prepare('INSERT INTO news_feed_runs (id, feedKey, feedWeek, ranAt, status, note, itemCount) VALUES (?,?,?,?,?,?,?)').run(runId, feedKey, week, now, 'ok', null, items.length);
+  return { feedKey, status: 'ok', count: items.length, note: null };
+}
+function newsLaneItems(feedKey, accountId, limit){
+  // Latest week that has rows for this lane, fresh items only, minus anything this account hid.
+  const wk = db.prepare('SELECT feedWeek FROM news_feed_items WHERE feedKey = ? ORDER BY feedWeek DESC').get(feedKey);
+  if (!wk) return [];
+  const hidden = new Set(db.prepare('SELECT url FROM news_feed_hidden WHERE accountId = ?').all(accountId).map(r => repUrlKey(r.url)));
+  return db.prepare('SELECT * FROM news_feed_items WHERE feedKey = ? AND feedWeek = ? ORDER BY publishedDate DESC').all(feedKey, aliasVal(wk, 'feedWeek'))
+    .filter(r => newsIsFresh(r.publishedDate) && !hidden.has(repUrlKey(r.url)))
+    .slice(0, limit || 6)
+    .map(r => ({ title: r.title, url: r.url, sourceName: r.sourceName, date: r.publishedDate, summary: r.summary, origin: r.origin }));
+}
+function newsFeedForAccount(accountId){
+  const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+  const group = account ? newsGroupForIndustry(account.industry) : null;
+  const hidden = new Set(db.prepare('SELECT url FROM news_feed_hidden WHERE accountId = ?').all(accountId).map(r => repUrlKey(r.url)));
+  let brand = [];
+  try {
+    const rep = repLatestForAccount(accountId);
+    brand = rep.mentions.filter(m => m.url && newsIsFresh(m.publishedDate) && !hidden.has(repUrlKey(m.url)))
+      .sort((a, b) => (b.needsResponse - a.needsResponse) || String(b.publishedDate).localeCompare(String(a.publishedDate))).slice(0, 4)
+      .map(m => ({ title: m.title, url: m.url, sourceName: m.sourceName, date: m.publishedDate, summary: m.note, origin: m.origin, needsResponse: !!m.needsResponse, sentiment: m.sentiment }));
+  } catch (e){ brand = []; }
+  return {
+    freshDays: NEWS_FRESH_DAYS,
+    lanes: {
+      brand,
+      competitors: newsLaneItems('competitors:' + accountId, accountId, 4),
+      industry: { group, label: group ? NEWS_GROUPS[group].label : null, items: group ? newsLaneItems(group, accountId, 4) : [] },
+      aiMarketing: newsLaneItems('ai_marketing', accountId, 4)
+    }
+  };
+}
+// The one top item per lane, frozen into a Brain Dump edition at post time.
+function newsPicksForBrainDump(accountId){
+  try {
+    const f = newsFeedForAccount(accountId); const L = f.lanes; const out = [];
+    const add = (lane, label, it) => { if (it) out.push({ lane, label, title: it.title, url: it.url, meta: [it.sourceName, it.date].filter(Boolean).join(' · ') }); };
+    add('brand', 'Your brand', L.brand[0]); add('competitors', 'Competitors', L.competitors[0]);
+    add('industry', L.industry.label || 'Industry', L.industry.items[0]); add('ai_marketing', 'AI & marketing', L.aiMarketing[0]);
+    return out;
+  } catch (e){ return []; }
 }
 
 // 2026-08-29 — continuous competitor monitoring + the generative Daily
@@ -27701,6 +27899,55 @@ Submit your response via the campaign_intake_turn tool.`;
         catch (e){ results.failed.push({ accountId: due[i].id, note: e.message }); }
       }
       return sendJson(res, 200, results);
+    }
+
+    // ---------- Weekly external news feed (2026-10-04) ----------
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'news-feed'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      return sendJson(res, 200, newsFeedForAccount(accountId));
+    }
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'news-feed' && parts[4] === 'hide'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req); const url = repSafeUrl(body && body.url);
+      if (!url) return sendJson(res, 400, { error: 'url is required' });
+      const exists = db.prepare('SELECT id FROM news_feed_hidden WHERE accountId = ? AND url = ?').get(accountId, url);
+      if (!exists) db.prepare('INSERT INTO news_feed_hidden (id, accountId, url, hiddenAt, hiddenBy) VALUES (?,?,?,?,?)').run(generateId('NFH'), accountId, url, new Date().toISOString(), String((body && body.hiddenBy) || '').slice(0, 120) || null);
+      return sendJson(res, 200, { hidden: true });
+    }
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'news-feed' && parts[4] === 'refresh'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const key = 'manual|' + accountId;
+      const last = db.prepare('SELECT ranAt FROM news_feed_runs WHERE id = ?').get(key);
+      if (last && Date.now() - new Date(last.ranAt).getTime() < 3600 * 1000) return sendJson(res, 429, { error: 'The feed was refreshed in the last hour. Try again later.' });
+      db.prepare('DELETE FROM news_feed_runs WHERE id = ?').run(key);
+      db.prepare('INSERT INTO news_feed_runs (id, feedKey, feedWeek, ranAt, status, note, itemCount) VALUES (?,?,?,?,?,?,?)').run(key, 'manual', bdWeekStart(new Date()), new Date().toISOString(), 'ok', null, 0);
+      const group = newsGroupForIndustry(account.industry);
+      const results = await Promise.all([newsRefreshFeed('ai_marketing'), group ? newsRefreshFeed(group) : Promise.resolve(null)]);
+      results.push(await newsRefreshCompetitors(accountId));
+      return sendJson(res, 200, Object.assign({ results: results.filter(Boolean) }, newsFeedForAccount(accountId)));
+    }
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'cron' && parts[2] === 'news-feed'){
+      if (!process.env.CRON_SECRET) return sendJson(res, 501, { error: 'CRON_SECRET is not configured — refusing to run an unauthenticated cron endpoint.' });
+      if ((req.headers['authorization'] || '') !== `Bearer ${process.env.CRON_SECRET}`) return sendJson(res, 401, { error: 'unauthorized' });
+      const out = { feeds: [], competitors: { swept: 0, failed: [], remaining: 0 } };
+      const deadline = Date.now() + 95000;
+      // Shared lanes first (six Perplexity calls, run together), then competitors per account (GDELT, spaced).
+      out.feeds = await Promise.all(['ai_marketing', ...Object.keys(NEWS_GROUPS)].map(k => newsRefreshFeed(k).catch(e => ({ feedKey: k, status: 'failed', note: e.message }))));
+      const week = bdWeekStart(new Date());
+      const accts = db.prepare('SELECT accountId FROM accounts WHERE paidTier IS NOT NULL').all().map(a => aliasVal(a, 'accountId'))
+        .filter(id => !db.prepare('SELECT id FROM news_feed_runs WHERE id = ?').get('competitors:' + id + '|' + week));
+      for (let i = 0; i < accts.length; i++){
+        if (Date.now() > deadline){ out.competitors.remaining = accts.length - i; break; }
+        const r = await newsRefreshCompetitors(accts[i]).catch(e => ({ status: 'failed', note: e.message }));
+        if (r.status === 'failed') out.competitors.failed.push({ accountId: accts[i], note: r.note }); else out.competitors.swept++;
+        if (r.status === 'ok') await repSleep(5200);
+      }
+      return sendJson(res, 200, out);
     }
 
     // GET /api/cron/brain-dump — runs and posts the weekly Brain Dump for every paid account.
