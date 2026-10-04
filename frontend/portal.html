@@ -3847,6 +3847,11 @@
   .ask-dock-surface .ads-meta{font-size:0.6875rem;color:var(--muted);}
   .ask-dock-surface .adbt-card p{font-family:inherit;}
   .ask-dock-surface .hint{font-size:0.75rem;color:var(--muted);margin:8px 0 0;}
+  body.ask-dock #askVerilumeLive.scope-campaign > .ask-status,body.ask-dock #askVerilumeLive.scope-campaign > .ask-thread,body.ask-dock #askVerilumeLive.scope-campaign > #askVerilumeDq,body.ask-dock #askVerilumeLive.scope-campaign > .ask-cards,body.ask-dock #askVerilumeLive.scope-campaign > .ask-assist,body.ask-dock #askVerilumeLive.scope-campaign > #askVerilumeProposal,body.ask-dock #askVerilumeLive.scope-campaign > .ask-followups{display:none;}
+  body.ask-dock .ask-expand.scope-campaign > .ask-expand-label,body.ask-dock .ask-expand.scope-campaign > .prompt-row{display:none;}
+  body.ask-dock .ask-expand button{font-family:inherit;}
+  #askDockCamp{margin-top:10px;}
+  .adc-teach{margin:-2px 0 10px;font-size:0.75rem;}
   .adt-head{display:flex;align-items:center;gap:6px;font-size:0.8125rem;}
   .adt-av{width:24px;height:24px;border-radius:50%;background:#4F46E5;color:#fff;font-size:0.625rem;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
   .adt-text{margin-top:6px;font-size:0.8125rem;line-height:1.45;}
@@ -4227,10 +4232,12 @@
       <div class="prompt-row" id="askVerilumePromptRow"></div>
       <p class="ask-voice-note" id="askVerilumeVoiceNote" style="display:none;"></p>
       <div class="ask-live" id="askVerilumeLive">
+        <div id="askDockScope"></div>
         <div class="ask-input-row">
           <input type="text" id="askVerilumeInput" placeholder="Ask Verilume about this account…" aria-label="Ask Verilume" onkeydown="if(event.key==='Enter'){askVerilumeSubmitTyped();}">
           <button type="button" class="btn-primary" onclick="askVerilumeSubmitTyped()">Ask</button>
         </div>
+        <div id="askDockCamp"></div>
         <p class="ask-status" id="askVerilumeStatus"></p>
         <div class="ask-thread" id="askVerilumeThread"></div>
         <div id="askVerilumeDq"></div>
@@ -14789,20 +14796,20 @@ function cmpShowNoteDetail(noteId){
 // plain persisted note, same as before — there's no AI party in those
 // conversations to reply.
 let cmpCollabAiBusy = false;
-async function cmpCollabSend(tab){
+async function cmpCollabSend(tab, textOverride){
   const input = document.getElementById(`cmpCollabInput_${tab}`);
-  if (!input) return;
-  const text = input.value.trim();
+  if (!input && textOverride === undefined) return;
+  const text = (textOverride !== undefined ? String(textOverride) : input.value).trim();
   if (!text) return;
   // 2026-09-21 fix — no real campaign loaded yet (Create Campaign form):
   // the AI tab still works, routed to cmpCollabSendPreCampaign() below;
   // Team notes genuinely need a real campaign to attach to, so that tab
   // stays a no-op here (cmpRenderCollabBody already explains why).
   if (!cmpRailLoadedCampaign()){
-    if (tab === 'ai'){ input.value = ''; await cmpCollabSendPreCampaign(text); }
+    if (tab === 'ai'){ if (input) input.value = ''; await cmpCollabSendPreCampaign(text); }
     return;
   }
-  input.value = '';
+  if (input) input.value = '';
   cmpCollabAddNote(tab, text, false);
   if (tab !== 'ai') return;
   await cmpCollabRequestAiReply(text);
@@ -14883,6 +14890,7 @@ function cmpCollabStreamingNoteHtml(){
   return cmpCollabNoteRowHtml({ id: null, author: 'AI Assistant', text: cmpCollabStreamingText || '', isAi: true, ts: cmpCollabStreamingStartedAt || Date.now(), streaming: true });
 }
 function cmpCollabPaintStreamingText(){
+  try { askDockCampPaintStream(); } catch (e){}
   const el = document.querySelector('#cmpCollabStreamingNote .cmp-note-text');
   if (el){
     el.innerHTML = formatAiNoteHtml(cmpCollabStreamingText || '') + '<span class="cmp-note-cursor" aria-hidden="true"></span>';
@@ -15233,6 +15241,9 @@ function cmpCollabComposerHtml(tab, placeholder, hasHistory){
   </div>`;
 }
 function cmpRenderCollabBody(campaign){
+  try { cmpRenderCollabBodyCore(campaign); } finally { try { askDockCampRender(); } catch (e){} }
+}
+function cmpRenderCollabBodyCore(campaign){
   const body = document.getElementById('cmpCollabBody');
   if (!body) return;
   if (!campaign){
@@ -24197,6 +24208,67 @@ function askDockTeamToggle(){
   askDockCloseAll(); el.classList.add('open'); askDockTeamRender();
 }
 function askDockTeamPoll(n){ if (!ASK_DOCK_ON) return; askDockTeamBadge(); if (n < 40) setTimeout(() => askDockTeamPoll(n + 1), 15000); }
+
+// ---- Dock slice 4b: the campaign conversation in the Ask sheet. Same engine, notes and Apply cards as the Collaboration Center AI Brain tab. ----
+const askDockScope = { pick: null };
+function askDockCampAvailable(){
+  if (!ASK_DOCK_ON) return false;
+  try { if (cmpRailLoadedCampaign()) return true; } catch (e){}
+  try { const m = document.getElementById(cmpCollabMountId); return !!(m && m.children.length && m.offsetParent !== null); } catch (e){ return false; }
+}
+function askDockScopeNow(){ if (!askDockCampAvailable()) return 'account'; return askDockScope.pick || 'campaign'; }
+function askDockScopeRender(){
+  const el = document.getElementById('askDockScope'); if (!el) return;
+  const live = document.getElementById('askVerilumeLive'); const inp = document.getElementById('askVerilumeInput');
+  if (!askDockCampAvailable()){ el.innerHTML = ''; if (live) live.classList.remove('scope-campaign'); const exp0 = document.getElementById('askVerilumeExpand'); if (exp0) exp0.classList.remove('scope-campaign'); if (inp) inp.placeholder = 'Ask Verilume about this account…'; return; }
+  const now = askDockScopeNow();
+  let c = null; try { c = cmpRailLoadedCampaign(); } catch (e){}
+  let stage = ''; try { const st = (typeof CMP_STAGE_RAIL !== 'undefined' && typeof cmpOpenStage !== 'undefined') ? CMP_STAGE_RAIL.find(x => x.key === cmpOpenStage) : null; stage = st ? st.label : ''; } catch (e){}
+  const label = c ? ('Talking about: ' + (c.name || 'this campaign') + (stage ? ' · ' + stage : '')) : 'Planning a new campaign';
+  el.innerHTML = `<div class="adbt-chips" style="margin-bottom:8px"><button type="button" class="adbt-chip${now === 'campaign' ? ' on' : ''}" aria-pressed="${now === 'campaign'}" onclick="askDockScope.pick='campaign';askDockScopeRender();askDockCampRender()">${escapeHtml(label)}</button><button type="button" class="adbt-chip${now === 'account' ? ' on' : ''}" aria-pressed="${now === 'account'}" onclick="askDockScope.pick='account';askDockScopeRender();askDockCampRender()">Account data</button></div>`;
+  if (live) live.classList.toggle('scope-campaign', now === 'campaign');
+  const exp = document.getElementById('askVerilumeExpand'); if (exp) exp.classList.toggle('scope-campaign', now === 'campaign');
+  if (inp) inp.placeholder = now === 'campaign' ? (c ? 'Ask the AI Brain about this campaign…' : 'Ask the AI Brain about the campaign you want to build…') : 'Ask Verilume about this account…';
+}
+function askDockCampNotes(){
+  let c = null; try { c = cmpRailLoadedCampaign(); } catch (e){}
+  if (!c) return { c: null, notes: (typeof cmpPreCampaignCollabHistory !== 'undefined' ? cmpPreCampaignCollabHistory : []) };
+  return { c, notes: cmpCollabNotesFor(c, 'ai') };
+}
+function askDockCampRender(){
+  const el = document.getElementById('askDockCamp'); if (!el) return;
+  askDockScopeRender();
+  if (askDockScopeNow() !== 'campaign'){ el.innerHTML = ''; return; }
+  const { c, notes } = askDockCampNotes();
+  const busy = (typeof cmpCollabAiBusy !== 'undefined' && cmpCollabAiBusy) || (typeof cmpPreCampaignCollabBusy !== 'undefined' && cmpPreCampaignCollabBusy);
+  const streaming = (typeof cmpCollabAiBusy !== 'undefined' && cmpCollabAiBusy && cmpCollabStreamingText !== null) ? `<div id="askDockCampStream">${cmpCollabStreamingNoteHtml()}</div>` : '';
+  let h = '';
+  if (notes.length) h += notes.map(n => cmpCollabNoteRowHtml(n) + ((n.isAi && n.id && !n.compressedSummary) ? `<div class="adc-teach"><a class="flink" onclick="askDockTeachAbout('${n.id}')">Teach the Brain about this answer</a></div>` : '')).join('');
+  else if (!streaming) h += `<p class="hint">${c ? 'No AI Brain notes yet. Ask a question about this campaign to start.' : 'Ask the AI Brain a question below to start planning a campaign.'}</p>`;
+  h += streaming;
+  if (busy && !streaming) h += `<p class="hint">AI Brain is thinking…</p>`;
+  if (!notes.length && !busy && typeof CMP_COLLAB_AI_SUGGESTED_PROMPTS !== 'undefined' && c) h += `<div class="prompt-row" style="margin-top:8px">${CMP_COLLAB_AI_SUGGESTED_PROMPTS.map((p, i) => `<span class="prompt-chip" onclick="askDockCampSend(CMP_COLLAB_AI_SUGGESTED_PROMPTS[${i}])"><span class="q">?</span>${escapeHtml(p)}</span>`).join('')}</div>`;
+  const keep = el.scrollTop; el.innerHTML = h; el.scrollTop = keep;
+  const sheet = document.getElementById('askVerilumeExpand'); if (sheet && sheet.classList.contains('open') && streaming) sheet.scrollTop = sheet.scrollHeight;
+}
+function askDockCampPaintStream(){
+  const el = document.querySelector('#askDockCampStream .cmp-note-text');
+  if (el){ el.innerHTML = formatAiNoteHtml(cmpCollabStreamingText || '') + '<span class="cmp-note-cursor" aria-hidden="true"></span>'; const sheet = document.getElementById('askVerilumeExpand'); if (sheet) sheet.scrollTop = sheet.scrollHeight; return; }
+  askDockCampRender();
+}
+function askDockCampSend(text){
+  const q = String(text || '').trim(); if (!q) return;
+  askVerilumeOpenLive();
+  let c = null; try { c = cmpRailLoadedCampaign(); } catch (e){}
+  if (!c) cmpCollabSendPreCampaign(q); else cmpCollabSend('ai', q);
+}
+function askDockTeachAbout(noteId){
+  let n = null; try { const c = cmpRailLoadedCampaign(); n = c && (cmpCollabNotesFor(c, 'ai').find(x => x.id === noteId)); } catch (e){}
+  askDockOpen('brainTrain');
+  askDockBt.tab = 'teach'; askDockBt.step = 'compose'; askDockBt.form = askDockBtNewForm();
+  askDockBt.form.looking = 'A Brain answer' + (n && n.text ? ': ' + String(n.text).replace(/\s+/g, ' ').slice(0, 140) : '');
+  askDockBtRender();
+}
 function askDockCloseAll(){
   askDockBtClose(); try { askDockTeamClose(); } catch (e){}
   const ex = document.getElementById('askVerilumeExpand'); if (ex && ex.classList.contains('open')) toggleAskVerilumePrompts();
@@ -24344,6 +24416,7 @@ async function vxVoiceStop(){
 // ---- Ask Verilume bar ----
 let askVerilumeHistory = [];
 function askVerilumeOpenLive(){
+  try { askDockScopeRender(); askDockCampRender(); } catch (e){}
   const expandEl = document.getElementById('askVerilumeExpand');
   if (expandEl && !expandEl.classList.contains('open')) toggleAskVerilumePrompts();
   const live = document.getElementById('askVerilumeLive'); if (live) live.classList.add('open');
@@ -24455,7 +24528,7 @@ async function askVerilumeAsk(question){
     askVerilumeSetStatus('Could not reach the backend. Try again in a moment.');
   }
 }
-function askVerilumeSubmitTyped(){ const i = document.getElementById('askVerilumeInput'); if (!i) return; const q = i.value; i.value = ''; askVerilumeAsk(q); }
+function askVerilumeSubmitTyped(){ const i = document.getElementById('askVerilumeInput'); if (!i) return; const q = i.value; i.value = ''; if (ASK_DOCK_ON && askDockScopeNow() === 'campaign'){ askDockCampSend(q); return; } askVerilumeAsk(q); }
 async function askVerilumeToggleVoice(){
   if (vxVoice.state !== 'idle' && vxVoice.surface === 'ask_bar'){ await vxVoiceStop(); askVerilumeSetMic('idle'); askVerilumeSetStatus(''); return; }
   if (vxVoice.state !== 'idle'){ askVerilumeSetStatus('Voice is already in use on another panel.'); return; }
