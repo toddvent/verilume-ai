@@ -4796,8 +4796,10 @@
           <option value="consumer">Consumer</option>
           <option value="business">Business / Trade Network</option>
         </select>
+        <select id="prcPressNewCampaign" style="min-width:200px;" title="Optional: pre-fills the brief from a campaign"><option value="">Link a campaign (optional)…</option></select>
         <button type="button" class="btn-primary" onclick="prcCreatePress()">+ Add</button>
       </div>
+      <p class="hint" style="margin:-4px 0 10px;">After you add a release, open it to answer four short questions (the news, the experience, the details, the next step). The draft and the contest are built from your answers.</p>
       <!-- 2026-08-29, per direct report: "how to book includes a specific
            process statement... use exact copy vs direction for
            inspiration." A supplied Next-Step/CTA text needs its own
@@ -4834,6 +4836,7 @@
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
         <input type="text" id="prcCorpNewTitle" placeholder="Title" style="flex:1;min-width:180px;">
         <input type="text" id="prcCorpNewAudience" placeholder="Audience (e.g. Internal — Leadership)" style="flex:1;min-width:200px;">
+        <select id="prcCorpNewCampaign" style="min-width:200px;"><option value="">Link a campaign (optional)…</option></select>
         <button type="button" class="btn-primary" onclick="prcCreateCorp()">+ Add</button>
       </div>
       <div id="prccorpNewStatus" class="hint" style="margin-bottom:8px;"></div>
@@ -24444,6 +24447,7 @@ function askDockContestRender(){
   const el = askDockContestEl(); const keep = el.scrollTop;
   const c = askDockContestCampaign();
   let h = `<button type="button" class="ads-close" aria-label="Close Contest" onclick="askDockContestClose()">✕</button><h2>Contest</h2><div class="ads-sub">Compare drafts from several AI partners and keep the strongest</div>`;
+  if (askDockContest.view === 'pr'){ el.innerHTML = h + askDockContestPrHtml(); el.scrollTop = keep; return; }
   if (askDockContest.view === 'copy'){
     h += `<div style="margin:10px 0 8px;"><button type="button" class="btn-ghost" onclick="askDockContest.view='pick';askDockContestRender()">← All contests</button></div>`;
     h += `<div style="font-weight:700;margin-bottom:6px;">Campaign writing${c ? ' · ' + escapeHtml(c.name || 'this campaign') : ''}</div>`;
@@ -24455,12 +24459,12 @@ function askDockContestRender(){
   h += sec('Customer Experience');
   h += askDockContestRow('Campaign writing', c ? `Long form copy for ${escapeHtml(c.name || 'this campaign')}: one draft from each AI partner, scored for campaign fit and brand fit. Pick one, edit it and save it as the campaign copy.` : 'Open a campaign first. The contest writes long form copy for that campaign.', go(askDockContest.cached ? 'See results' : 'Run', 'askDockContestOpenCopy()', !c));
   h += askDockContestRow('Video script', 'Runs on the Brand page with your brand voice and creative focus. Opens it for you.', go('Open', 'askDockContestOpenVideo()'));
-  h += askDockContestRow('PR', 'Not available yet.', go('Soon', '', true));
+  h += askDockContestRow('PR and corporate communications', 'Compare drafts of a press release, editorial pitch or corporate communication, built from the brief you wrote for it.', go('Choose', 'askDockContestOpenPr()'));
   h += sec('Media Science');
   h += askDockContestRow('Data plus human analysis', 'Not available yet.', go('Soon', '', true));
   h += askDockContestRow('Campaign readouts', 'Not available yet.', go('Soon', '', true));
   h += askDockContestRow('Brand analysis strategy and testing configuration', 'Not available yet.', go('Soon', '', true));
-  h += `<p class="hint" style="margin-top:12px;">After campaign writing runs, you can add your own entry as another blind option. The Brand Voice Contest stays on the Brand page.</p>`;
+  h += `<p class="hint" style="margin-top:12px;">After campaign writing runs, you can add your own entry as another blind option. PR drafts are read and picked by a person. The Brand Voice Contest stays on the Brand page.</p>`;
   el.innerHTML = h; el.scrollTop = keep;
 }
 function askDockContestPaint(){
@@ -24505,6 +24509,89 @@ async function askDockContestOwnSubmit(){
     askDockContestPaint();
   } catch (e){ if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Could not reach the server. Try again.'; } if (btn) btn.disabled = false; }
 }
+// ---- Dock Contest: PR and corporate communications. Wraps the existing PR copy contest (pr_copy_interviews). No scores exist for PR: candidates are read and picked by a person. ----
+const askDockPr = { sel: null, running: false, result: null, picked: false, note: '' };
+function askDockPrItems(){
+  const out = [];
+  try {
+    (prcState.pressReleases || []).forEach(x => out.push({ type: 'press', id: x.id, title: x.title, kind: 'Press release', item: x }));
+    (prcState.corporateComms || []).forEach(x => out.push({ type: 'corp', id: x.id, title: x.title, kind: 'Corporate communication', item: x }));
+    (prcState.editorialPitches || []).forEach(x => out.push({ type: 'editorial', id: x.id, title: (x.outlet || '') + ': ' + (x.topic || ''), kind: 'Editorial pitch', item: x }));
+  } catch (e){}
+  return out;
+}
+function askDockPrReady(it){
+  if (it.type === 'press'){
+    const st = it.item.briefStatus || {}; const n = ['news', 'experience', 'details', 'nextStep'].filter(k => st[k]).length;
+    return { ok: !!st.news, label: n === 4 ? 'Brief complete' : `Brief ${n} of 4`, why: st.news ? '' : 'Add the news to the brief first.' };
+  }
+  if (it.type === 'corp'){ const has = !!(it.item.context && it.item.context.trim()); return { ok: has, label: has ? 'Key points added' : 'No key points yet', why: has ? '' : 'Add key points first.' }; }
+  return { ok: true, label: 'Outlet and angle set', why: '' };
+}
+function askDockPrHtml_row(it){
+  const r = askDockPrReady(it);
+  const btn = r.ok ? `<button type="button" class="btn-ghost" onclick="askDockContestPrRun('${it.type}','${it.id}')">Run contest</button>` : `<button type="button" class="btn-ghost" onclick="askDockContestPrOpen('${it.type}','${it.id}')">Open brief</button>`;
+  return askDockContestRow(escapeHtml(it.title || '(untitled)'), `${it.kind} · ${r.label}${r.why ? ' · ' + r.why : ''}`, btn);
+}
+function askDockContestPrHtml(){
+  let h = `<div style="margin:10px 0 8px;"><button type="button" class="btn-ghost" onclick="askDockContest.view='pick';askDockContestRender()">← All contests</button></div>`;
+  if (askDockPr.sel){
+    const it = askDockPrItems().find(x => x.type === askDockPr.sel.type && x.id === askDockPr.sel.id);
+    h += `<div style="font-weight:700;margin-bottom:2px;">${escapeHtml(it ? it.title : 'PR contest')}</div>`;
+    if (askDockPr.running){ h += `<div class="ai-status-bubble" style="margin-top:8px;">Getting one draft from each AI partner, using the brief you wrote. This can take a minute.</div>`; return h; }
+    if (askDockPr.note){ h += `<p class="hint" style="margin-top:8px;color:var(--advocacy);">${escapeHtml(askDockPr.note)}</p>`; }
+    const r = askDockPr.result;
+    if (r && r.candidates && r.candidates.length){
+      h += `<p class="hint" style="margin:4px 0 8px;">Read each draft and pick the one to keep. Drafts are numbered, not named, and are not scored: you decide.</p>`;
+      h += r.candidates.filter(c => c.copy).map(c => `<div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;"><div style="font-weight:700;margin-bottom:6px;">${escapeHtml(c.label)}</div><div style="white-space:pre-wrap;font-size:0.8125rem;max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:8px;">${escapeHtml(c.copy)}</div><div style="margin-top:8px;"><button type="button" class="btn-primary" ${askDockPr.picked ? 'disabled' : ''} onclick="askDockContestPrPick('${escapeHtml(c.key)}')">Use this draft →</button></div></div>`).join('');
+      if (askDockPr.picked) h += `<p class="hint">Saved as the working copy. <button type="button" class="btn-ghost" style="padding:2px 8px;" onclick="askDockContestPrOpen('${askDockPr.sel.type}','${askDockPr.sel.id}')">Open it to edit and approve</button></p>`;
+    }
+    h += `<div style="margin-top:6px;"><button type="button" class="btn-ghost" onclick="askDockPr.sel=null;askDockPr.result=null;askDockPr.note='';askDockContestRender()">Choose another</button></div>`;
+    return h;
+  }
+  h += `<p class="hint" style="margin:4px 0 8px;">Pick the item to run. Each draft is built only from the brief you wrote (the four parts for a release, the key points for a communication).</p>`;
+  const items = askDockPrItems();
+  h += items.length ? items.map(askDockPrHtml_row).join('') : `<p class="hint">Nothing to run yet. Add a press release or corporate communication under Reputation first.</p>`;
+  return h;
+}
+async function askDockContestOpenPr(){
+  askDockContest.view = 'pr'; askDockPr.sel = null; askDockPr.result = null; askDockPr.note = ''; askDockPr.picked = false;
+  askDockContestRender();
+  try { await loadPrCorpCommData(); } catch (e){}
+  if (askDockContest.view === 'pr' && !askDockPr.sel) askDockContestRender();
+}
+async function askDockContestPrRun(type, id){
+  if (askDockPr.running) return;
+  const cfg = PRC_TYPE_CONFIG[type]; if (!cfg) return;
+  askDockPr.sel = { type, id }; askDockPr.running = true; askDockPr.result = null; askDockPr.note = ''; askDockPr.picked = false; askDockContestRender();
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/${cfg.endpoint}/${encodeURIComponent(id)}/interview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}), timeoutMs: 100000 });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) askDockPr.note = data.error || "Couldn't run the contest. Try again.";
+    else if (!data.available) askDockPr.note = data.note || 'The contest is not available right now.';
+    else askDockPr.result = data;
+  } catch (e){ askDockPr.note = 'Could not reach the server. Try again.'; }
+  askDockPr.running = false;
+  const el = document.getElementById('askDockContest'); const open = !!(el && el.classList.contains('open'));
+  if (askDockContest.view === 'pr' && open) askDockContestRender(); else { askDockContest.ready = true; askDockContestBadge(); }
+}
+async function askDockContestPrPick(key){
+  const sel = askDockPr.sel, r = askDockPr.result; if (!sel || !r || askDockPr.picked) return;
+  const cfg = PRC_TYPE_CONFIG[sel.type];
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/${cfg.endpoint}/${encodeURIComponent(sel.id)}/interview/${encodeURIComponent(r.interviewId)}/select`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateKey: key }) });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){ askDockPr.note = data.error || "Couldn't save the pick. Try again."; askDockContestRender(); return; }
+    askDockPr.picked = true; askDockPr.note = '';
+    try { await loadPrCorpCommData(); } catch (e){}
+  } catch (e){ askDockPr.note = 'Could not reach the server. Try again.'; }
+  askDockContestRender();
+}
+function askDockContestPrOpen(type, id){
+  askDockContestClose();
+  try { goToStep('reputation'); } catch (e){}
+  setTimeout(() => { try { prcExpanded[`${type}:${id}`] = true; renderReputationStep(); const sec = document.getElementById(type === 'press' ? 'repPressSection' : type === 'corp' ? 'repCorpCommsSection' : 'repEditorialSection'); if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e){} }, 400);
+}
 function askDockContestOpenCopy(){
   const c = askDockContestCampaign(); if (!c){ askDockToast('Open a campaign to run this contest.'); return; }
   askDockContest.view = 'copy'; askDockContest.ready = false; askDockContestBadge(); askDockContestRender();
@@ -24518,7 +24605,8 @@ function askDockContestToggle(){
   const el = askDockContestEl();
   if (el.classList.contains('open')){ askDockContestClose(); return; }
   askDockCloseAll(); el.classList.add('open');
-  if (askDockContest.ready && askDockContestCampaign()){ askDockContest.view = 'copy'; }
+  if (askDockContest.ready && askDockPr.sel && askDockPr.result){ askDockContest.view = 'pr'; }
+  else if (askDockContest.ready && askDockContestCampaign() && askDockContest.cached){ askDockContest.view = 'copy'; }
   else if (askDockContest.view === 'copy' && !askDockContestCampaign()){ askDockContest.view = 'pick'; }
   askDockContest.ready = false; askDockContestBadge(); askDockContestRender();
 }
@@ -59068,8 +59156,12 @@ function prcCreatePress(){
   const ctaText = (document.getElementById('prcPressNewCtaText') || {}).value || '';
   const ctaMode = (document.getElementById('prcPressNewCtaMode') || {}).value || 'inspiration';
   if (!title.trim()){ document.getElementById('prcpressNewStatus').textContent = 'Title is required.'; return; }
-  prcCreate('press', { title: title.trim(), releaseType, audience, ctaText: ctaText.trim(), ctaMode });
+  const campaignId = (document.getElementById('prcPressNewCampaign') || {}).value || '';
+  const fields = { title: title.trim(), releaseType, audience, ctaText: ctaText.trim(), ctaMode };
+  if (campaignId){ fields.campaignId = campaignId; const c = prcCampaignById(campaignId); if (c) fields.brief = prcBriefFromCampaign(c); }
+  prcCreate('press', fields);
   document.getElementById('prcPressNewTitle').value = '';
+  if (document.getElementById('prcPressNewCampaign')) document.getElementById('prcPressNewCampaign').value = '';
   document.getElementById('prcPressNewType').value = '';
   document.getElementById('prcPressNewAudience').value = '';
   document.getElementById('prcPressNewCtaText').value = '';
@@ -59087,7 +59179,11 @@ function prcCreateCorp(){
   const title = (document.getElementById('prcCorpNewTitle') || {}).value || '';
   const audience = (document.getElementById('prcCorpNewAudience') || {}).value || '';
   if (!title.trim() || !audience.trim()){ document.getElementById('prccorpNewStatus').textContent = 'Title and audience are both required.'; return; }
-  prcCreate('corp', { title: title.trim(), audience: audience.trim() });
+  const corpCampaignId = (document.getElementById('prcCorpNewCampaign') || {}).value || '';
+  const corpFields = { title: title.trim(), audience: audience.trim() };
+  if (corpCampaignId){ corpFields.campaignId = corpCampaignId; const cc = prcCampaignById(corpCampaignId); if (cc){ const ctx = prcCorpContextFromCampaign(cc); if (ctx) corpFields.context = ctx; } }
+  prcCreate('corp', corpFields);
+  if (document.getElementById('prcCorpNewCampaign')) document.getElementById('prcCorpNewCampaign').value = '';
   document.getElementById('prcCorpNewTitle').value = '';
   document.getElementById('prcCorpNewAudience').value = '';
 }
@@ -59184,6 +59280,8 @@ function prcRenderSection(type, containerId, titleFn, subtitleFn){
         <button type="button" class="btn-ghost" onclick="prcDelete('${type}','${item.id}')">Remove</button>
       </div>
       ${expanded ? `<div style="margin-top:8px;">
+        ${type === 'press' ? prcBriefPanelHtml(item) : ''}
+        ${type === 'corp' ? prcCorpContextHtml(item) : ''}
         ${type === 'press' ? `
         <!-- 2026-08-29, per direct request: complete the "set-once at
              creation" gap flagged in Known Gaps — releaseType/audience/
@@ -59200,10 +59298,7 @@ function prcRenderSection(type, containerId, titleFn, subtitleFn){
             <option value="" ${!item.audience ? 'selected' : ''}>Audience…</option>
             ${Object.entries(PRC_PRESS_AUDIENCE_LABELS).map(([v, l]) => `<option value="${v}" ${item.audience === v ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}
           </select>
-          <input type="text" id="prcPressEditCtaText-${item.id}" placeholder="Exact Next Step / how-to-book text" value="${escapeHtml(item.ctaText || '')}" style="flex:1;min-width:220px;">
-          <select id="prcPressEditCtaMode-${item.id}" style="min-width:230px;">
-            ${Object.entries(PRC_PRESS_CTA_MODE_LABELS).map(([v, l]) => `<option value="${v}" ${(item.ctaMode || 'inspiration') === v ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}
-          </select>
+          <select id="prcPressEditCampaign-${item.id}" style="min-width:200px;"><option value="">No linked campaign</option>${prcCampaignOptionsHtml(item.campaignId)}</select>
           <button type="button" class="btn-primary" onclick="prcSavePressMeta('${item.id}')">Save details →</button>
           <div id="prcPressMetaStatus-${item.id}" class="hint" style="flex-basis:100%;"></div>
         </div>` : ''}
@@ -59313,17 +59408,141 @@ const PRC_PRESS_CTA_MODE_LABELS = {
 // audience, ctaText, and ctaMode are now editable on an existing press
 // release, not just at creation. Same PATCH endpoint/validation as every
 // other field edit in this workstream (prcSaveCopy, prcSaveLinkedin).
+// ---- 2026-10-04 PR brief: guided four-part interview (the news, the experience, the details, the next step), optional campaign link ----
+const prcBriefStep = {};
+function prcCampaignById(id){ try { return (state.campaigns || []).find(c => c.id === id) || null; } catch (e){ return null; } }
+function prcCampaignOptionsHtml(selectedId){
+  const list = (state.campaigns || []).filter(c => c && c.id);
+  return list.map(c => `<option value="${escapeHtml(c.id)}" ${c.id === selectedId ? 'selected' : ''}>${escapeHtml(c.name || c.id)}</option>`).join('');
+}
+function prcFillCampaignSelects(){
+  ['prcPressNewCampaign', 'prcCorpNewCampaign'].forEach(id => {
+    const el = document.getElementById(id); if (!el) return;
+    const cur = el.value; el.innerHTML = '<option value="">Link a campaign (optional)…</option>' + prcCampaignOptionsHtml(cur); el.value = cur;
+  });
+}
+function prcCampaignTypeDetailText(c){
+  try { const d = campaignTypeDetailsClient(c); return Object.values(d || {}).filter(v => typeof v === 'string' && v.trim()).join(' ').trim(); } catch (e){ return ''; }
+}
+function prcBriefFromCampaign(c){
+  const when = [c.startDate, c.endDate].filter(Boolean).map(d => String(d).slice(0, 10)).join(' to ');
+  const what = [c.keyMessage, prcCampaignTypeDetailText(c)].filter(x => x && String(x).trim()).join(' ').trim();
+  return { news: { what: what.slice(0, 1500) }, experience: { why: '', distinct: '' }, details: { when, where: '', who: '', how: '' }, nextStep: { matters: (c.objective || '').slice(0, 1500) } };
+}
+function prcCorpContextFromCampaign(c){
+  return [c.keyMessage, prcCampaignTypeDetailText(c)].filter(x => x && String(x).trim()).join('\n').slice(0, 3000);
+}
+const PRC_BRIEF_PARTS = [
+  { key: 'news', n: 1, title: 'The News', q: 'What are we announcing?', fields: [
+    { f: 'what', label: 'The announcement in one or two plain sentences', ph: 'e.g. We are opening bookings for our 2027 world voyage, 138 days from Buenos Aires.', rows: 3 } ] },
+  { key: 'experience', n: 2, title: 'The Experience', q: 'Why is it compelling, and distinctly yours?', fields: [
+    { f: 'why', label: 'Why would someone care?', ph: 'What does the guest or customer actually get or feel?', rows: 3 },
+    { f: 'distinct', label: 'What can only you say?', ph: 'A first, a number, a place, a person, a partnership nobody else has.', rows: 2 } ] },
+  { key: 'details', n: 3, title: 'The Details', q: 'When, where, who and how does it work?', fields: [
+    { f: 'when', label: 'When', ph: 'Dates, launch date, booking window', input: true },
+    { f: 'where', label: 'Where', ph: 'Location, ports, venue, markets', input: true },
+    { f: 'who', label: 'Who', ph: 'Names and titles of anyone quoted or involved', input: true },
+    { f: 'how', label: 'How it works', ph: 'Pricing, what is included, how it is delivered', rows: 3 } ] },
+  { key: 'nextStep', n: 4, title: 'The Next Step', q: 'Why does it matter, and how can guests book?', fields: [
+    { f: 'matters', label: 'Why it matters', ph: 'The reason to act now, or what this means for the reader.', rows: 2 } ] }
+];
+function prcBriefPanelHtml(item){
+  const b = item.brief || { news: {}, experience: {}, details: {}, nextStep: {} };
+  const st = item.briefStatus || {};
+  const cur = prcBriefStep[item.id] || (PRC_BRIEF_PARTS.find(p => !st[p.key]) || PRC_BRIEF_PARTS[0]).n;
+  const brand = escapeHtml(state.company || 'your brand');
+  const ctaMode = item.ctaMode || 'inspiration';
+  const chips = PRC_BRIEF_PARTS.map(p => `<button type="button" class="adbt-chip${p.n === cur ? ' on' : ''}" id="prcBriefChip-${item.id}-${p.n}" onclick="prcBriefGo('${item.id}',${p.n})">${st[p.key] ? '✓' : '○'} ${p.n}. ${p.title}</button>`).join('');
+  const panes = PRC_BRIEF_PARTS.map(p => {
+    const fields = p.fields.map(fd => {
+      const v = escapeHtml((b[p.key] && b[p.key][fd.f]) || '');
+      const id = `prcBr-${item.id}-${p.key}-${fd.f}`;
+      return `<div class="field" style="margin-top:8px;"><label for="${id}">${fd.label}</label>${fd.input ? `<input type="text" id="${id}" value="${v}" placeholder="${escapeHtml(fd.ph)}" style="width:100%;">` : `<textarea id="${id}" rows="${fd.rows || 3}" placeholder="${escapeHtml(fd.ph)}" style="width:100%;font-family:inherit;">${v}</textarea>`}</div>`;
+    }).join('');
+    const cta = p.key === 'nextStep' ? `<div class="field" style="margin-top:8px;"><label for="prcPressEditCtaText-${item.id}">How can guests book or act? (exact wording, if there is one)</label><input type="text" id="prcPressEditCtaText-${item.id}" value="${escapeHtml(item.ctaText || '')}" placeholder="e.g. Call 1-800-000-0000 or book through your travel advisor" style="width:100%;"></div><div class="field" style="margin-top:8px;"><label for="prcPressEditCtaMode-${item.id}">How should that wording be used?</label><select id="prcPressEditCtaMode-${item.id}">${Object.entries(PRC_PRESS_CTA_MODE_LABELS).map(([v, l]) => `<option value="${v}" ${ctaMode === v ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}</select></div>` : '';
+    return `<div id="prcBriefPane-${item.id}-${p.n}" style="display:${p.n === cur ? 'block' : 'none'};"><div style="font-weight:700;margin-top:10px;">${p.n}. ${p.title.toUpperCase()}: ${p.q}</div>${fields}${cta}</div>`;
+  }).join('');
+  const camp = item.campaignId ? prcCampaignById(item.campaignId) : null;
+  return `<div style="margin-bottom:12px;padding:12px;border:1px solid var(--line, #e3e3e8);border-radius:10px;">
+    <div style="font-weight:700;">Brief for ${brand}'s release</div>
+    <div class="hint" style="margin:2px 0 8px;">Four short answers. The draft and the contest use only what you write here, so nothing is invented.${camp ? ` <button type="button" class="btn-ghost" style="padding:2px 8px;" onclick="prcBriefRefill('${item.id}')">Refill from ${escapeHtml(camp.name || 'campaign')}</button>` : ''}</div>
+    <div class="adbt-chips">${chips}</div>
+    ${panes}
+    <div class="btn-row" style="margin-top:10px;flex-wrap:wrap;">
+      <button type="button" class="btn-ghost" onclick="prcBriefGo('${item.id}',${Math.max(1, cur - 1)})">← Back</button>
+      <button type="button" class="btn-ghost" onclick="prcBriefGo('${item.id}',${Math.min(4, cur + 1)})">Next →</button>
+      <button type="button" class="btn-primary" onclick="prcSaveBrief('${item.id}')">Save brief →</button>
+      <button type="button" class="btn-ghost" onclick="prcSaveBrief('${item.id}', true)" ${st.complete ? '' : 'title="Works with what you have; missing parts become placeholders."'}>Save and draft with AI →</button>
+    </div>
+    <div id="prcBriefStatus-${item.id}" class="hint" style="margin-top:6px;">${st.complete ? 'All four parts are filled in.' : (st.missing && st.missing.length ? 'Still missing: ' + st.missing.join(', ') + '.' : '')}</div>
+  </div>`;
+}
+function prcBriefGo(id, n){
+  n = Math.max(1, Math.min(4, n)); prcBriefStep[id] = n;
+  PRC_BRIEF_PARTS.forEach(p => {
+    const pane = document.getElementById(`prcBriefPane-${id}-${p.n}`); if (pane) pane.style.display = p.n === n ? 'block' : 'none';
+    const chip = document.getElementById(`prcBriefChip-${id}-${p.n}`); if (chip){ chip.classList.toggle('on', p.n === n); }
+  });
+}
+function prcBriefCollect(id){
+  const out = {};
+  PRC_BRIEF_PARTS.forEach(p => { out[p.key] = {}; p.fields.forEach(fd => { const el = document.getElementById(`prcBr-${id}-${p.key}-${fd.f}`); out[p.key][fd.f] = el ? el.value.trim() : ''; }); });
+  return out;
+}
+async function prcSaveBrief(id, thenDraft){
+  const statusEl = document.getElementById(`prcBriefStatus-${id}`);
+  const payload = { brief: prcBriefCollect(id) };
+  const ctaTextEl = document.getElementById(`prcPressEditCtaText-${id}`), ctaModeEl = document.getElementById(`prcPressEditCtaMode-${id}`);
+  if (ctaTextEl && ctaModeEl){ payload.ctaText = ctaTextEl.value.trim(); payload.ctaMode = ctaModeEl.value; }
+  if (statusEl) statusEl.textContent = 'Saving…';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/press-releases/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){ if (statusEl) statusEl.textContent = data.error || 'Save failed.'; return; }
+    await loadPrCorpCommData();
+    const fresh = document.getElementById(`prcBriefStatus-${id}`); if (fresh && !thenDraft) fresh.textContent = 'Brief saved.';
+    if (thenDraft) prcGenerateDraft('press', id);
+  } catch (e){ if (statusEl) statusEl.textContent = 'Backend unreachable.'; }
+}
+function prcBriefRefill(id){
+  const item = prcState.pressReleases.find(x => x.id === id); const c = item && prcCampaignById(item.campaignId); if (!c) return;
+  const fresh = prcBriefFromCampaign(c);
+  PRC_BRIEF_PARTS.forEach(p => p.fields.forEach(fd => { const el = document.getElementById(`prcBr-${id}-${p.key}-${fd.f}`); const v = fresh[p.key][fd.f]; if (el && v && !el.value.trim()) el.value = v; }));
+  const st = document.getElementById(`prcBriefStatus-${id}`); if (st) st.textContent = 'Filled the empty answers from the campaign. Review them, then save.';
+}
+function prcCorpContextHtml(item){
+  const camp = item.campaignId ? prcCampaignById(item.campaignId) : null;
+  return `<div style="margin-bottom:12px;padding:12px;border:1px solid var(--line, #e3e3e8);border-radius:10px;">
+    <div style="font-weight:700;">What are we communicating?</div>
+    <div class="hint" style="margin:2px 0 6px;">The real news, policy or position, and the points that must be in it. The draft and the contest use only this, so nothing is invented.${camp ? ` Linked campaign: ${escapeHtml(camp.name || camp.id)}.` : ''}</div>
+    <textarea id="prcCorpContext-${item.id}" rows="4" style="width:100%;font-family:inherit;" placeholder="e.g. Our booking site was down on Oct 3 from 2 to 6 pm. Bookings are safe. Guests can call the line below.">${escapeHtml(item.context || '')}</textarea>
+    <div class="btn-row" style="margin-top:6px;"><button type="button" class="btn-primary" onclick="prcSaveCorpContext('${item.id}')">Save key points →</button></div>
+    <div id="prcCorpContextStatus-${item.id}" class="hint" style="margin-top:4px;"></div>
+  </div>`;
+}
+async function prcSaveCorpContext(id){
+  const el = document.getElementById(`prcCorpContext-${id}`); const statusEl = document.getElementById(`prcCorpContextStatus-${id}`); if (!el) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/corporate-comms/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ context: el.value.trim() }) });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok){ await loadPrCorpCommData(); const f = document.getElementById(`prcCorpContextStatus-${id}`); if (f) f.textContent = 'Saved.'; }
+    else if (statusEl) statusEl.textContent = data.error || 'Save failed.';
+  } catch (e){ if (statusEl) statusEl.textContent = 'Backend unreachable.'; }
+}
 async function prcSavePressMeta(id){
   const typeEl = document.getElementById(`prcPressEditType-${id}`);
   const audienceEl = document.getElementById(`prcPressEditAudience-${id}`);
   const ctaTextEl = document.getElementById(`prcPressEditCtaText-${id}`);
   const ctaModeEl = document.getElementById(`prcPressEditCtaMode-${id}`);
   const statusEl = document.getElementById(`prcPressMetaStatus-${id}`);
-  if (!typeEl || !audienceEl || !ctaTextEl || !ctaModeEl) return;
+  if (!typeEl || !audienceEl) return;
   try {
+    const payload = { releaseType: typeEl.value, audience: audienceEl.value };
+    if (ctaTextEl && ctaModeEl){ payload.ctaText = ctaTextEl.value.trim(); payload.ctaMode = ctaModeEl.value; }
+    const campEl = document.getElementById(`prcPressEditCampaign-${id}`); if (campEl) payload.campaignId = campEl.value;
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/press-releases/${encodeURIComponent(id)}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ releaseType: typeEl.value, audience: audienceEl.value, ctaText: ctaTextEl.value.trim(), ctaMode: ctaModeEl.value })
+      body: JSON.stringify(payload)
     });
     const data = await resp.json().catch(() => ({}));
     if (resp.ok){ if (statusEl) statusEl.textContent = 'Saved.'; await loadPrCorpCommData(); }
@@ -59337,6 +59556,8 @@ function renderRepPress(){
       const bits = [];
       if (p.releaseType && PRC_PRESS_TYPE_LABELS[p.releaseType]) bits.push(PRC_PRESS_TYPE_LABELS[p.releaseType]);
       if (p.audience && PRC_PRESS_AUDIENCE_LABELS[p.audience]) bits.push(PRC_PRESS_AUDIENCE_LABELS[p.audience]);
+      if (p.briefStatus){ const n = ['news', 'experience', 'details', 'nextStep'].filter(k => p.briefStatus[k]).length; bits.push(n === 4 ? 'Brief complete' : `Brief ${n} of 4`); }
+      if (p.campaignId){ const cmp = prcCampaignById(p.campaignId); if (cmp) bits.push('Campaign: ' + escapeHtml(cmp.name || cmp.id)); }
       return bits.join(' · ');
     });
 }
@@ -59350,10 +59571,11 @@ function renderRepEditorial(){
 function renderRepCorpComms(){
   prcRenderSection('corp', 'repCorpCommsList',
     c => `${escapeHtml(c.title)} <span class="hint" style="font-weight:400;">— ${escapeHtml(c.audience)}</span>`,
-    c => c.approvedAt ? `Approved ${escapeHtml(c.approvedAt.slice(0,10))}` : '');
+    c => [c.approvedAt ? `Approved ${escapeHtml(c.approvedAt.slice(0,10))}` : '', c.context ? 'Key points added' : 'No key points yet', c.campaignId && prcCampaignById(c.campaignId) ? 'Campaign: ' + escapeHtml(prcCampaignById(c.campaignId).name || c.campaignId) : ''].filter(Boolean).join(' · '));
 }
 
 function renderReputationStep(){
+  try { prcFillCampaignSelects(); } catch (e){}
   const urgent = REPUTATION_DATA.mentions.filter(m => m.urgent).length;
   const positive = REPUTATION_DATA.mentions.filter(m => m.sentiment === 'positive').length;
   const pendingPitches = prcState.editorialPitches.filter(p => p.status === 'pending').length;
