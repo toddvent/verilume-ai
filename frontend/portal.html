@@ -3843,6 +3843,26 @@
   .ask-dock-surface .ads-row .ads-grow{flex:1;min-width:0;}
   .ask-dock-surface .ads-row .ads-meta{font-size:0.6875rem;color:var(--muted);}
   .ask-dock-surface .ads-tag{font-size:0.6875rem;font-weight:700;padding:2px 8px;border-radius:10px;background:#EEF0FF;color:#4F46E5;white-space:nowrap;}
+  .ask-dock-surface button,.ask-dock-surface textarea,.ask-dock-surface input{font-family:inherit;}
+  .ask-dock-surface .ads-meta{font-size:0.6875rem;color:var(--muted);}
+  .ask-dock-surface .adbt-card p{font-family:inherit;}
+  .adbt-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:0 0 10px;}
+  .adbt-tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:8px 10px;font-size:0.8125rem;font-weight:600;color:var(--muted);cursor:pointer;min-height:44px;}
+  .adbt-tabs button.on{color:#4F46E5;border-bottom-color:#4F46E5;}
+  .adbt-chips{display:flex;flex-wrap:wrap;gap:6px;}
+  .adbt-chip{border:1px solid #CDD1D8;background:#fff;border-radius:16px;padding:6px 12px;font-size:0.8125rem;cursor:pointer;min-height:36px;}
+  .adbt-chip.on{background:#EEF0FF;border-color:#4F46E5;color:#3730A3;font-weight:600;}
+  .adbt-chip:disabled{opacity:0.45;cursor:not-allowed;}
+  .adbt-ta,.adbt-ctx input{width:100%;box-sizing:border-box;border:1px solid #CDD1D8;border-radius:10px;padding:8px 10px;font:inherit;font-size:0.8125rem;margin-top:8px;}
+  .adbt-ctx label{font-size:0.6875rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);}
+  .adbt-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;}
+  .adbt-card{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:#fff;}
+  .adbt-lh{display:flex;flex-wrap:wrap;gap:6px;}
+  .adbt-err{color:#C92A2A;font-size:0.8125rem;margin:8px 0 0;}
+  .adbt-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+  .adbt-stats div{border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;}
+  .adbt-stats b{font-size:1.125rem;}
+  .adbt-stats span{font-size:0.6875rem;color:var(--muted);}
   .ask-dock-badge{position:absolute;right:0;top:0;min-width:18px;height:18px;box-sizing:border-box;border-radius:9px;background:#D9480F;color:#fff;font-size:0.6875rem;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 4px;border:2px solid #fff;}
 </style>
 </head>
@@ -23951,7 +23971,11 @@ const ASK_DOCK_BT_OPEN = {
   training_digest: () => { switchPrimaryTab('accountManagement'); try { ttb.tab = 'learnings'; ttbRerender(); } catch (e){} },
   model_readout_finding: () => switchPrimaryTab('dataScientist'), video_analysis: () => switchPrimaryTab('brand'), forecast_calibration: () => switchPrimaryTab('strategy')
 };
-const askDockBt = { waiting: null, history: null, loading: false, error: false };
+const askDockBt = { waiting: null, history: null, loading: false, error: false, tab: 'teach', lessons: null, canApprove: false, filter: 'all', form: null, step: 'compose', check: null, busy: false, msg: '', editId: null };
+const ASK_DOCK_BT_WHY = ['Wrong data', 'Wrong definition', 'Right but not useful', 'Out of date', 'Does not fit our brand', 'Missing context'];
+const ASK_DOCK_BT_KINDS = ['Correction', 'Preference', 'Business fact', 'Rule'];
+const ASK_DOCK_BT_SCOPES = [['campaign', 'This campaign'], ['account', 'This account'], ['always', 'Always']];
+function askDockBtNewForm(){ return { agree: '', why: [], whyText: '', kind: 'Correction', lesson: '', scope: 'account', looking: '' }; }
 function askDockBtEl(){
   let el = document.getElementById('askDockBrainTrain'); if (el) return el;
   el = document.createElement('div'); el.id = 'askDockBrainTrain'; el.className = 'ask-dock-surface'; el.setAttribute('role', 'region'); el.setAttribute('aria-label', 'Brain Train');
@@ -23963,6 +23987,7 @@ async function askDockBtLoad(withHistory){
   const base = `${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}`;
   try { const r = await authedFetch(`${base}/brain-train/waiting`); if (r.ok){ askDockBt.waiting = await r.json(); } else askDockBt.error = true; } catch (e){ askDockBt.error = true; }
   if (withHistory){ try { const r2 = await authedFetch(`${base}/train-the-brain`); if (r2.ok){ const d = await r2.json(); askDockBt.history = d.learnings || []; } } catch (e){} }
+  try { const r3 = await authedFetch(`${base}/brain-train/lessons`); if (r3.ok){ const d = await r3.json(); askDockBt.lessons = d; askDockBt.canApprove = !!d.canApprove; } } catch (e){}
   askDockBtBadge();
 }
 function askDockBtBadge(){
@@ -23972,22 +23997,119 @@ function askDockBtBadge(){
   btn.setAttribute('aria-label', n ? `Brain Train, ${n} waiting` : 'Brain Train');
   if (n){ const b = document.createElement('span'); b.className = 'ask-dock-badge'; b.textContent = n > 99 ? '99+' : String(n); btn.appendChild(b); }
 }
-function askDockBtRender(){
-  const el = askDockBtEl(); const W = askDockBt.waiting, H = askDockBt.history;
-  const dt = v => { try { return new Date(v).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch (e){ return ''; } };
-  let h = `<button type="button" class="ads-close" aria-label="Close Brain Train" onclick="askDockBtClose()">✕</button><h2>Brain Train</h2><div class="ads-sub">Decisions on Brain notes, and what it learned</div>`;
-  if (askDockBt.error && !W) h += `<p class="hint">Could not read the Brain just now.</p>`;
-  else if (!W) h += `<p class="hint">Reading what is waiting…</p>`;
+function askDockBtDt(v){ try { return new Date(v).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); } catch (e){ return ''; } }
+function askDockBtScopeLabel(l){ return l.scope === 'campaign' ? 'This campaign' : l.scope === 'always' ? 'Always' : 'This account'; }
+function askDockBtTabs(){
+  const W = askDockBt.waiting, n = W ? Number(W.count) || 0 : 0;
+  const tabs = [['teach', 'Teach'], ['asks', 'Brain asks you' + (n ? ' (' + n + ')' : '')], ['lessons', 'Lessons']];
+  return `<div class="adbt-tabs" role="tablist">${tabs.map(t => `<button type="button" role="tab" aria-selected="${askDockBt.tab === t[0]}" class="${askDockBt.tab === t[0] ? 'on' : ''}" onclick="askDockBtTab('${t[0]}')">${escapeHtml(t[1])}</button>`).join('')}</div>`;
+}
+function askDockBtTab(t){ askDockBt.tab = t; askDockBt.msg = ''; if (t === 'teach' && askDockBt.step === 'saved') { askDockBt.step = 'compose'; askDockBt.form = askDockBtNewForm(); } askDockBtRender(); }
+function askDockBtSet(k, v){ if (!askDockBt.form) askDockBt.form = askDockBtNewForm(); askDockBt.form[k] = v; askDockBtRender(); }
+function askDockBtWhy(w){ const f = askDockBt.form; const i = f.why.indexOf(w); if (i >= 0) f.why.splice(i, 1); else f.why.push(w); askDockBtRender(); }
+function askDockBtField(k, v){ if (!askDockBt.form) askDockBt.form = askDockBtNewForm(); askDockBt.form[k] = v; }
+function askDockBtChips(list, cur, fn, multi){ return `<div class="adbt-chips">${list.map(x => { const val = Array.isArray(x) ? x[0] : x, lab = Array.isArray(x) ? x[1] : x; const on = multi ? cur.indexOf(val) >= 0 : cur === val; return `<button type="button" class="adbt-chip${on ? ' on' : ''}" aria-pressed="${on}" onclick="${fn}'${escapeHtml(val).replace(/'/g, '&#39;')}')">${escapeHtml(lab)}</button>`; }).join('')}</div>`; }
+function askDockBtContext(){
+  const tabNames = { dailyBrief: 'Brain Dump', strategy: 'Strategy', brand: 'Customer Experiences', marketer: 'Growth and Performance', dataScientist: 'Media Science', accountManagement: 'Account' };
+  return { tab: tabNames[activePrimaryTab] || activePrimaryTab || '', campaignId: (typeof currentCampaignId !== 'undefined' && currentCampaignId) || null };
+}
+function askDockBtComposeHtml(){
+  const f = askDockBt.form || (askDockBt.form = askDockBtNewForm());
+  if (!f.looking) f.looking = askDockBtContext().tab;
+  const cid = askDockBtContext().campaignId;
+  let h = `<div class="adbt-ctx"><label for="adbtLooking">You are looking at</label><input id="adbtLooking" type="text" maxlength="200" value="${escapeHtml(f.looking)}" oninput="askDockBtField('looking', this.value)" placeholder="The card, value and period you are looking at"></div>`;
+  h += `<div class="ads-h">1 · Do you agree?</div>` + askDockBtChips([['yes', 'Yes'], ['partly', 'Partly'], ['no', 'No']], f.agree, "askDockBtSet('agree',", false);
+  h += `<div class="ads-h">2 · Why?</div>` + askDockBtChips(ASK_DOCK_BT_WHY, f.why, 'askDockBtWhy(', true);
+  h += `<textarea class="adbt-ta" rows="2" maxlength="1000" placeholder="Say more, in your own words" oninput="askDockBtField('whyText', this.value)">${escapeHtml(f.whyText)}</textarea>`;
+  h += `<div class="ads-h">3 · What should the Brain learn?</div>` + askDockBtChips(ASK_DOCK_BT_KINDS, f.kind, "askDockBtSet('kind',", false);
+  h += `<textarea class="adbt-ta" rows="3" maxlength="1000" placeholder="For example: what the Brain should do or know from now on" oninput="askDockBtField('lesson', this.value)">${escapeHtml(f.lesson)}</textarea>`;
+  h += `<div class="ads-h">Applies to</div><div class="adbt-chips">${ASK_DOCK_BT_SCOPES.map(s => { const dis = s[0] === 'campaign' && !cid; return `<button type="button" class="adbt-chip${f.scope === s[0] ? ' on' : ''}" aria-pressed="${f.scope === s[0]}" ${dis ? 'disabled title="Open a campaign to teach it a campaign-only lesson"' : ''} onclick="askDockBtSet('scope','${s[0]}')">${s[1]}</button>`; }).join('')}</div>`;
+  h += `<p class="hint">Account-wide lessons wait for an account admin to approve them. Campaign lessons apply at once.</p>`;
+  if (askDockBt.msg) h += `<p class="adbt-err" role="alert">${escapeHtml(askDockBt.msg)}</p>`;
+  h += `<div class="adbt-actions"><button type="button" class="btn-primary" ${askDockBt.busy ? 'disabled' : ''} onclick="askDockBtReadback()">Show me what you understood</button><button type="button" class="btn-ghost" onclick="askDockBt.form=askDockBtNewForm();askDockBt.msg='';askDockBtRender()">Clear</button></div>`;
+  return h;
+}
+async function askDockBtReadback(){
+  const f = askDockBt.form; askDockBt.msg = '';
+  if (!f || String(f.lesson || '').trim().length < 8){ askDockBt.msg = 'Write what the Brain should learn, at least a short sentence.'; askDockBtRender(); return; }
+  askDockBt.busy = true; askDockBt.check = null; askDockBt.step = 'readback'; askDockBtRender();
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brain-train/lessons/check`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lesson: f.lesson, scope: f.scope }) });
+    askDockBt.check = r.ok ? await r.json() : { similar: [], needsApproval: f.scope !== 'campaign' };
+  } catch (e){ askDockBt.check = { similar: [], needsApproval: f.scope !== 'campaign' }; }
+  askDockBt.busy = false; askDockBtRender();
+}
+function askDockBtReadbackHtml(){
+  const f = askDockBt.form, c = askDockBt.check;
+  const scopeTxt = f.scope === 'campaign' ? 'for this campaign only' : f.scope === 'always' ? 'every time, on every campaign' : 'across this account';
+  let h = `<div class="adbt-card"><div class="ads-h" style="margin-top:0">Here is what I understood</div><p style="margin:0;font-size:0.875rem;"><b>${escapeHtml(f.kind)}</b> ${escapeHtml(scopeTxt)}: ${escapeHtml(f.lesson)}</p>${f.agree ? `<div class="ads-meta">You said you ${f.agree === 'yes' ? 'agree' : f.agree === 'no' ? 'do not agree' : 'partly agree'}${f.why.length ? ' because: ' + escapeHtml(f.why.join(', ').toLowerCase()) : ''}.</div>` : ''}</div>`;
+  if (!c) h += `<p class="hint">Checking against what the Brain already knows…</p>`;
   else {
-    h += `<div class="ads-h warn">Waiting on you (${W.count})</div>`;
-    h += W.items.length ? W.items.map(it => `<div class="ads-row"><div class="ads-grow"><b>${escapeHtml(it.label)}</b>${it.scope ? ' · ' + escapeHtml(it.scope) : ''}<div class="ads-meta">${escapeHtml(it.dashboard)} · recorded ${dt(it.createdAt)}</div></div><button type="button" class="btn-ghost" onclick="askDockBtReview('${escapeHtml(it.sourceType)}')">Review</button></div>`).join('') + (W.count > W.items.length ? `<p class="hint">Showing the newest ${W.items.length} of ${W.count}.</p>` : '') : `<p class="hint">Nothing is waiting. The Brain has used or removed everything it recorded.</p>`;
+    h += `<div class="adbt-card"><div class="ads-h" style="margin-top:0">Conflict check</div>` + (c.similar.length ? c.similar.map(x => `<p style="margin:0 0 6px;font-size:0.8125rem;">This may overlap with a lesson ${x.taughtByName ? 'from ' + escapeHtml(x.taughtByName) : ''}${x.status === 'pending' ? ' (waiting for approval)' : ''}: <i>${escapeHtml(x.lesson)}</i></p>`).join('') + `<div class="ads-meta">If they disagree, an account admin decides which one the Brain follows.</div>` : `<p style="margin:0;font-size:0.8125rem;">Nothing the Brain already knows looks like a conflict.</p>`) + `</div>`;
+    h += `<div class="adbt-card"><div class="ads-h" style="margin-top:0">Data check</div><p style="margin:0;font-size:0.8125rem;color:var(--muted);">Not checked against your numbers yet. The Brain follows this lesson, and says so if the data disagrees.</p></div>`;
+    h += `<p class="hint">${c.needsApproval && f.scope !== 'campaign' ? 'This lesson will wait for an account admin to approve it before the Brain uses it.' : 'The Brain starts using this lesson right away.'}</p>`;
   }
-  h += `<div class="ads-h">Decision history</div>`;
-  if (H === null) h += `<p class="hint">Reading history…</p>`;
-  else if (!H.length) h += `<p class="hint">No decisions recorded yet.</p>`;
-  else h += H.slice(0, 8).map(l => `<div class="ads-row"><div class="ads-grow"><b>${escapeHtml(l.what || '')}</b><div class="ads-meta">${escapeHtml(l.dashboard || '')} · ${dt(l.at)}${l.reason ? ' · ' + escapeHtml(String(l.reason).slice(0, 80)) : ''}</div></div><span class="ads-tag">${escapeHtml(l.action || '')}</span></div>`).join('');
-  h += `<p style="margin:12px 0 0;"><a class="flink" onclick="askDockBtClose();askDockBtSeeAll()">What the Brain learned from these →</a></p>`;
-  el.innerHTML = h;
+  if (askDockBt.msg) h += `<p class="adbt-err" role="alert">${escapeHtml(askDockBt.msg)}</p>`;
+  h += `<div class="adbt-actions"><button type="button" class="btn-primary" ${(askDockBt.busy || !c) ? 'disabled' : ''} onclick="askDockBtSave()">Save lesson</button><button type="button" class="btn-ghost" onclick="askDockBt.step='compose';askDockBtRender()">Edit</button><button type="button" class="btn-ghost" onclick="askDockBt.step='compose';askDockBt.form=askDockBtNewForm();askDockBtRender()">Cancel</button></div>`;
+  return h;
+}
+async function askDockBtSave(){
+  const f = askDockBt.form; if (!f) return; askDockBt.busy = true; askDockBt.msg = ''; askDockBtRender();
+  const ctx = askDockBtContext();
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brain-train/lessons`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agree: f.agree, why: f.why, whyText: f.whyText, kind: f.kind, lesson: f.lesson, scope: f.scope, campaignId: ctx.campaignId, context: { looking: f.looking, tab: ctx.tab } }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok){ askDockBt.msg = d.error || 'The lesson was not saved. Try again.'; askDockBt.busy = false; askDockBt.step = 'compose'; askDockBtRender(); return; }
+    askDockBt.step = 'saved'; askDockBt.savedStatus = d.status; askDockBt.busy = false;
+    await askDockBtLoad(false); askDockBtRender();
+  } catch (e){ askDockBt.msg = 'The lesson was not saved. Check your connection and try again.'; askDockBt.busy = false; askDockBt.step = 'compose'; askDockBtRender(); }
+}
+function askDockBtSavedHtml(){
+  const pend = askDockBt.savedStatus === 'pending';
+  return `<div class="adbt-card"><p style="margin:0;font-size:0.875rem;"><b>${pend ? 'Saved, waiting for approval.' : 'Saved.'}</b> ${pend ? 'An account admin approves it before the Brain uses it everywhere.' : 'The Brain will use it from its next answer.'}</p></div><div class="adbt-actions"><button type="button" class="btn-primary" onclick="askDockBtTab('teach')">Teach another</button><button type="button" class="btn-ghost" onclick="askDockBtTab('lessons')">See lessons</button></div>`;
+}
+function askDockBtAsksHtml(){
+  const W = askDockBt.waiting; let h = '';
+  if (askDockBt.error && !W) return `<p class="hint">Could not read the Brain just now.</p>`;
+  if (!W) return `<p class="hint">Reading what is waiting…</p>`;
+  h += `<div class="ads-sub" style="margin-top:0">Things the Brain recorded that you have not yet used or removed</div>`;
+  h += W.items.length ? W.items.map(it => `<div class="ads-row"><div class="ads-grow"><b>${escapeHtml(it.label)}</b>${it.scope ? ' · ' + escapeHtml(it.scope) : ''}<div class="ads-meta">${escapeHtml(it.dashboard)} · recorded ${askDockBtDt(it.createdAt)}</div></div><button type="button" class="btn-ghost" onclick="askDockBtReview('${escapeHtml(it.sourceType)}')">Review</button></div>`).join('') + (W.count > W.items.length ? `<p class="hint">Showing the newest ${W.items.length} of ${W.count}.</p>` : '') : `<p class="hint">Nothing is waiting. The Brain has used or removed everything it recorded.</p>`;
+  return h;
+}
+function askDockBtLessonsHtml(){
+  const D = askDockBt.lessons; if (!D) return `<p class="hint">Reading lessons…</p>`;
+  const all = D.lessons || [], fl = askDockBt.filter;
+  let h = `<div class="adbt-stats"><div><b>${D.active || 0}</b><span>Active lessons</span></div><div><b>${D.pending || 0}</b><span>Waiting for approval</span></div><div><b>${D.stale || 0}</b><span>Due for a check</span></div></div>`;
+  h += `<div class="adbt-chips" style="margin:10px 0">${[['all', 'All'], ['active', 'Active'], ['pending', 'Waiting'], ['retired', 'Retired']].map(x => `<button type="button" class="adbt-chip${fl === x[0] ? ' on' : ''}" aria-pressed="${fl === x[0]}" onclick="askDockBt.filter='${x[0]}';askDockBtRender()">${x[1]}</button>`).join('')}</div>`;
+  const list = all.filter(l => fl === 'all' ? l.status !== 'retired' : l.status === fl);
+  if (!list.length) return h + `<p class="hint">${all.length ? 'No lessons in this view.' : 'No lessons yet. Use Teach to tell the Brain what it should learn.'}</p>`;
+  h += list.map(l => {
+    const editing = askDockBt.editId === l.id;
+    let acts = '';
+    if (l.status === 'pending' && D.canApprove) acts = `<button type="button" class="btn-primary" onclick="askDockBtAct('${l.id}','approve')">Approve</button><button type="button" class="btn-ghost" onclick="askDockBtAct('${l.id}','decline')">Decline</button>`;
+    else if (l.status === 'active') acts = (l.stale ? `<button type="button" class="btn-ghost" onclick="askDockBtAct('${l.id}','keep')">Keep</button>` : '') + `<button type="button" class="btn-ghost" onclick="askDockBt.editId='${l.id}';askDockBtRender()">Edit</button><button type="button" class="btn-ghost" onclick="askDockBtAct('${l.id}','retire')">Retire</button>`;
+    return `<div class="adbt-card"><div class="adbt-lh"><span class="ads-tag">${escapeHtml(l.kind)}</span><span class="ads-tag" style="background:#F1F3F5;color:#495057">${escapeHtml(askDockBtScopeLabel(l))}</span>${l.status === 'pending' ? '<span class="ads-tag" style="background:#FFF4E6;color:#D9480F">Waiting for approval</span>' : ''}${l.status === 'retired' ? '<span class="ads-tag" style="background:#F1F3F5;color:#868E96">Retired</span>' : ''}${l.stale ? '<span class="ads-tag" style="background:#FFF4E6;color:#D9480F">Still true?</span>' : ''}</div>` +
+      (editing ? `<textarea class="adbt-ta" id="adbtEdit" rows="3" maxlength="1000">${escapeHtml(l.lesson)}</textarea><div class="adbt-actions"><button type="button" class="btn-primary" onclick="askDockBtSaveEdit('${l.id}')">Save</button><button type="button" class="btn-ghost" onclick="askDockBt.editId=null;askDockBtRender()">Cancel</button></div>` : `<p style="margin:6px 0 4px;font-size:0.875rem;">${escapeHtml(l.lesson)}</p>`) +
+      `<div class="ads-meta">Taught by ${escapeHtml(l.taughtByName || 'a team member')} · ${askDockBtDt(l.createdAt)} · used ${l.usedCount} time${l.usedCount === 1 ? '' : 's'}</div>${!editing && acts ? `<div class="adbt-actions">${acts}</div>` : ''}</div>`;
+  }).join('');
+  return h;
+}
+async function askDockBtAct(id, action, extra){
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brain-train/lessons/${encodeURIComponent(id)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ action }, extra || {})) });
+    if (!r.ok){ const d = await r.json().catch(() => ({})); askDockToast(d.error || 'That did not save.'); return; }
+    askDockBt.editId = null; await askDockBtLoad(false); askDockBtRender();
+  } catch (e){ askDockToast('That did not save. Check your connection.'); }
+}
+function askDockBtSaveEdit(id){ const el = document.getElementById('adbtEdit'); if (el) askDockBtAct(id, 'edit', { lesson: el.value }); }
+function askDockBtRender(){
+  const el = askDockBtEl();
+  const keep = el.scrollTop;
+  let h = `<button type="button" class="ads-close" aria-label="Close Brain Train" onclick="askDockBtClose()">✕</button><h2>Brain Train</h2><div class="ads-sub">Tell the Brain what you see, and what it should learn</div>` + askDockBtTabs();
+  if (askDockBt.tab === 'teach') h += askDockBt.step === 'readback' ? askDockBtReadbackHtml() : askDockBt.step === 'saved' ? askDockBtSavedHtml() : askDockBtComposeHtml();
+  else if (askDockBt.tab === 'asks') h += askDockBtAsksHtml();
+  else h += askDockBtLessonsHtml();
+  el.innerHTML = h; el.scrollTop = keep;
 }
 function askDockBtReview(t){ askDockBtClose(); const f = ASK_DOCK_BT_OPEN[t]; if (f) { try { f(); } catch (e){ console.warn('askDockBtReview', e); } } }
 function askDockBtSeeAll(){ switchPrimaryTab('accountManagement'); try { ttb.tab = 'learnings'; ttbRerender(); } catch (e){} }
