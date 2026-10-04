@@ -21903,7 +21903,76 @@ const DAILY_NEWS_ITEMS = [
   { id: 'n5', category: 'ai_marketing', title: 'The 2026 AEO / GEO Benchmarks Report', meta: 'Conductor', url: 'https://www.conductor.com/academy/aeo-geo-benchmarks-report/' }
 ];
 
-const CURATED_NEWS_CATEGORY_LABELS = { ai_marketing: 'AI & Marketing', industry_news: 'Industry News', client_competitors: 'Client Competitors' };
+const CURATED_NEWS_CATEGORY_LABELS = { ai_marketing: 'AI & Marketing', industry_news: 'Industry News', client_competitors: 'Client Competitors', brand: 'Your Brand' };
+
+// 2026-10-04 — weekly news feed. The hand-picked list above went stale (the
+// Brain Dump was showing 2025 items), so nothing older than the freshness
+// window is ever shown. A live account fills DAILY_NEWS_ITEMS from its weekly
+// feed (lanes: AI & marketing, its industry group, plus brand and competitor
+// lanes kept in newsFeed.lanes). Items with only a month, or no date, cannot be
+// shown as current and are dropped.
+const NEWS_FRESH_DAYS = 14;
+let newsFeed = { loaded: false, lanes: null, refreshing: false, msg: '' };
+function newsStaticIsFresh(item){
+  const m = /([A-Z][a-z]{2}) (\d{4})/.exec(String(item && item.meta || ''));
+  if (!m) return false;
+  const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(m[1]);
+  if (mon < 0) return false;
+  const monthEnd = new Date(Date.UTC(Number(m[2]), mon + 1, 0));
+  return Date.now() - monthEnd.getTime() <= 30 * 86400000;
+}
+DAILY_NEWS_ITEMS.splice(0, DAILY_NEWS_ITEMS.length, ...DAILY_NEWS_ITEMS.filter(newsStaticIsFresh));
+function newsMeta(it){
+  let d = '';
+  if (it.date){ const x = new Date(String(it.date).slice(0, 10) + 'T12:00:00'); if (!isNaN(x)) d = x.toLocaleDateString([], { month: 'short', day: 'numeric' }); }
+  return [it.sourceName, d].filter(Boolean).join(' · ');
+}
+function newsLabel(key){
+  if (key === 'industry_news' && newsFeed.lanes && newsFeed.lanes.industry && newsFeed.lanes.industry.label) return newsFeed.lanes.industry.label;
+  return CURATED_NEWS_CATEGORY_LABELS[key] || key;
+}
+function newsSyncItems(){
+  const L = newsFeed.lanes; if (!L) return;
+  const mk = (arr, cat, p) => (arr || []).map((it, i) => ({ id: `${p}${i}`, category: cat, title: it.title, meta: newsMeta(it), url: it.url, feed: true }));
+  DAILY_NEWS_ITEMS.splice(0, DAILY_NEWS_ITEMS.length, ...mk(L.aiMarketing, 'ai_marketing', 'nfa'), ...mk(L.industry && L.industry.items, 'industry_news', 'nfi'));
+}
+function newsRerender(){
+  try { if (document.getElementById('dailyNewsList')) renderDailyNews(); } catch (e){}
+  try { if (document.getElementById('curatedNewsCardGrid')) renderCuratedNewsCards(); } catch (e){}
+  try { cxRenderRep(); } catch (e){}
+}
+async function loadNewsFeed(){
+  if (dataSourceLabel !== 'backend' || !state.companyId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/news-feed`);
+    if (!resp.ok) return;
+    const d = await resp.json();
+    newsFeed.lanes = d.lanes; newsFeed.loaded = true; newsSyncItems();
+  } catch (e){ return; }
+  newsRerender();
+}
+async function newsRefreshNow(){
+  if (newsFeed.refreshing) return;
+  newsFeed.refreshing = true; newsFeed.msg = 'Refreshing. This takes about a minute.'; newsRerender();
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/news-feed/refresh`, { method: 'POST' });
+    const d = await resp.json().catch(() => ({}));
+    if (resp.status === 429) newsFeed.msg = 'The feed was refreshed in the last hour.';
+    else if (!resp.ok) newsFeed.msg = d.error || 'The refresh could not run.';
+    else { newsFeed.lanes = d.lanes; newsFeed.loaded = true; newsSyncItems(); newsFeed.msg = 'Refreshed.'; }
+  } catch (e){ newsFeed.msg = 'The refresh could not run.'; }
+  newsFeed.refreshing = false; newsRerender();
+}
+async function newsHide(url){
+  try { await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/news-feed/hide`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) }); } catch (e){}
+  if (newsFeed.lanes){
+    const keep = a => (a || []).filter(x => x.url !== url);
+    newsFeed.lanes.aiMarketing = keep(newsFeed.lanes.aiMarketing); newsFeed.lanes.brand = keep(newsFeed.lanes.brand); newsFeed.lanes.competitors = keep(newsFeed.lanes.competitors);
+    if (newsFeed.lanes.industry) newsFeed.lanes.industry.items = keep(newsFeed.lanes.industry.items);
+    newsSyncItems();
+  }
+  newsRerender();
+}
 
 // 2026-08-29 — the "client's competitors" curated-news category. Derived
 // from the same real, per-account generative data Battle Brief and the
@@ -21939,14 +22008,14 @@ function curatedNewsCompetitorItems(){
 function newsItemHtml(item){
   const isRead = state.dailyNewsRead.has(item.id);
   const body = item.url
-    ? `<a class="news-title" href="${item.url}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>
+    ? `<a class="news-title" href="${escapeHtml(repSafeHref(item.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a>
        <div class="news-meta">${escapeHtml(item.meta)}</div>`
     : `<div class="news-title">${escapeHtml(item.title)}</div>
        <div class="news-meta">${escapeHtml(item.meta)} <span class="illustrative-tag">AI reasoning — not a live news feed</span></div>`;
   return `
     <div class="news-item${isRead ? ' is-read' : ''}">
       <div class="news-body">${body}</div>
-      <button type="button" class="mark-read-btn" onclick="toggleNewsRead('${item.id}')" ${isRead ? 'disabled' : ''}>${isRead ? 'Read ✓' : 'Mark Read'}</button>
+      <button type="button" class="mark-read-btn" onclick="toggleNewsRead('${item.id}')" ${isRead ? 'disabled' : ''}>${isRead ? 'Read ✓' : 'Mark Read'}</button>${item.feed && item.url ? `<button type="button" class="mark-read-btn" title="Hide this item" onclick="newsHide('${jsStrEscape(item.url)}')">Hide</button>` : ''}
     </div>`;
 }
 function renderDailyNews(){
@@ -21958,23 +22027,33 @@ function renderDailyNews(){
     tagEl.textContent = `Curated News — for your ${role} role`;
   }
   const competitorItems = curatedNewsCompetitorItems();
+  const L = newsFeed.lanes || {};
+  const mkLane = (arr, p) => (arr || []).map((it, i) => ({ id: p + i, title: it.title, meta: newsMeta(it), url: it.url, feed: true }));
   const groups = [
+    { key: 'brand', items: mkLane(L.brand, 'nfb') },
     { key: 'ai_marketing', items: DAILY_NEWS_ITEMS.filter(i => i.category === 'ai_marketing') },
     { key: 'industry_news', items: DAILY_NEWS_ITEMS.filter(i => i.category === 'industry_news') },
-    { key: 'client_competitors', items: competitorItems }
+    { key: 'client_competitors', items: [...mkLane(L.competitors, 'nfc'), ...competitorItems] }
   ];
-  list.innerHTML = groups.map(g => {
+  const live = dataSourceLabel === 'backend' && !!state.companyId;
+  const head = live ? `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 10px;"><span class="hint" style="margin:0;">Auto-selected from the last ${NEWS_FRESH_DAYS} days. Refreshed Monday morning. Hide anything that is not relevant.</span><button type="button" class="btn-ghost" ${newsFeed.refreshing ? 'disabled' : ''} onclick="newsRefreshNow()">Refresh news</button><span class="hint" style="margin:0;">${escapeHtml(newsFeed.msg || '')}</span></div>` : '';
+  list.innerHTML = head + groups.map(g => {
+    if (g.key === 'brand' && !g.items.length) return '';
+    if ((g.key === 'ai_marketing' || g.key === 'industry_news') && !g.items.length){
+      if (g.key === 'industry_news' && newsFeed.lanes && !(newsFeed.lanes.industry && newsFeed.lanes.industry.label)) return '';
+      return `<div class="news-group"><div class="news-group-title">${escapeHtml(newsLabel(g.key))}</div><p class="hint" style="margin:0 0 10px;">Nothing new in the last ${NEWS_FRESH_DAYS} days.</p></div>`;
+    }
     if (g.key === 'client_competitors' && g.items.length === 0){
       // Honest empty state instead of hiding the category outright — matches
       // this account's own onboarding/paid-gate messaging pattern elsewhere.
       const note = state.accountIntelligence.paidTier
         ? 'No competitor watch items yet — Refresh the Daily Brief above to generate them from this account\'s named Direct Competitors.'
         : 'Available on a paid plan — see the Daily Brief tab.';
-      return `<div class="news-group"><div class="news-group-title">${CURATED_NEWS_CATEGORY_LABELS[g.key]}</div><p class="hint" style="margin:0 0 10px;">${note}</p></div>`;
+      return `<div class="news-group"><div class="news-group-title">${newsLabel(g.key)}</div><p class="hint" style="margin:0 0 10px;">${note}</p></div>`;
     }
     if (!g.items.length) return '';
     return `<div class="news-group">
-      <div class="news-group-title">${CURATED_NEWS_CATEGORY_LABELS[g.key]}</div>
+      <div class="news-group-title">${escapeHtml(newsLabel(g.key))}</div>
       ${g.items.map(newsItemHtml).join('')}
     </div>`;
   }).join('');
@@ -23199,7 +23278,7 @@ function stratFieldHtml(){
   const comp = curatedNewsCompetitorItems().slice(0, 4);
   const news = DAILY_NEWS_ITEMS.filter(i => i.category === 'industry_news' || (i.category === 'ai_marketing' && !/AEO|GEO/i.test(i.title))).slice(0, 4);
   const compHtml = comp.length ? comp.map(c => `<div class="strat-field-row"><strong>${escapeHtml(c.competitor)}</strong><div class="strat-sub">${escapeHtml(c.title)}</div></div>`).join('') : '<p class="strat-empty">No competitor watch items yet. They appear after the weekly intelligence refresh.</p>';
-  const newsHtml = news.map(n => `<div class="strat-field-row"><a class="flink" href="${escapeHtml(n.url || '#')}" target="_blank" rel="noopener">${escapeHtml(n.title)}</a><div class="strat-sub">${escapeHtml(n.meta || '')}</div></div>`).join('');
+  const newsHtml = !news.length ? `<p class="strat-empty">Nothing new in the last ${NEWS_FRESH_DAYS} days.</p>` : news.map(n => `<div class="strat-field-row"><a class="flink" href="${escapeHtml(n.url || '#')}" target="_blank" rel="noopener">${escapeHtml(n.title)}</a><div class="strat-sub">${escapeHtml(n.meta || '')}</div></div>`).join('');
   return `<div class="strat-card"><div class="strat-head"><h2>The field this week</h2><span class="strat-tag">External</span></div>
     <p class="strat-sub" style="margin:0 0 10px;">What is happening outside your account. Competitor items are the Brain's reasoning about what to watch, not sourced reports. News links go to the publisher. None of it is proven to move your numbers.</p>
     <div class="strat-field-grid"><div><div class="strat-chart-label" style="margin:0 0 6px;">Competitors</div>${compHtml}</div><div><div class="strat-chart-label" style="margin:0 0 6px;">Market and industry</div>${newsHtml}</div></div>
@@ -23644,11 +23723,14 @@ async function bdRun(){
 }
 function bdLinkHtml(l){ const act = l.tab ? `switchPrimaryTab('${l.tab}')` : `goToStep('${l.step}')`; return `<a class="flink" onclick="${act}">${escapeHtml(l.label)} →</a>`; }
 function bdExternalItems(){
-  const pick = cat => DAILY_NEWS_ITEMS.find(i => i.category === cat);
-  const aeo = DAILY_NEWS_ITEMS.find(i => /AEO|GEO/i.test(i.title));
-  const posted = bd.data && bd.data.external && bd.data.external.items ? bd.data.external.items.map((x, n) => ({ id: 'bdx' + n, category: 'client_competitors', title: x.title, meta: `Worth watching — ${x.competitor}` })) : [];
-  const comp = posted[0];
-  const seen = new Set(); return [pick('industry_news'), pick('ai_marketing') && !/AEO|GEO/i.test(pick('ai_marketing').title) ? pick('ai_marketing') : DAILY_NEWS_ITEMS.find(i => i.category === 'ai_marketing' && !/AEO|GEO/i.test(i.title)), aeo, comp].filter(i => i && !seen.has(i.id) && seen.add(i.id));
+  // The edition's own frozen picks (one per lane, last 14 days at post time), plus a
+  // competitor watch note when no sourced competitor item was found. Older editions
+  // without picks show only the watch note, never a stale article.
+  const ext = bd.data && bd.data.external;
+  const picks = ext && Array.isArray(ext.news) ? ext.news.map((x, n) => ({ id: 'bdn' + n, title: x.title, url: x.url, meta: [x.label, x.meta].filter(Boolean).join(' · ') })) : [];
+  const hasComp = ext && Array.isArray(ext.news) && ext.news.some(x => x.lane === 'competitors');
+  const watch = (!hasComp && ext && ext.items) ? ext.items.slice(0, 1).map((x, n) => ({ id: 'bdx' + n, title: x.title, meta: `Worth watching — ${x.competitor}` })) : [];
+  return [...picks, ...watch];
 }
 function bdRenderComments(key){
   const list = bd.comments.filter(c => c.section === key);
@@ -23717,8 +23799,8 @@ function bdRenderMain(){
   const chg = chgList.length ? `<div class="strat-card"><div class="strat-chart-label" style="margin:0 0 6px;">Since the last edition</div>${chgList.map(c => `<p class="strat-sub" style="margin:0 0 4px;">${escapeHtml(c)}</p>`).join('')}</div>` : '';
   const ext = bdExternalItems();
   const extHtml = `<div class="strat-card"><div class="strat-head"><h2>From outside</h2><span class="strat-tag benchmark">External sources, not this account's data</span></div>
-    <div class="curated-news-grid">${ext.map(i => i.url ? `<a class="curated-news-card" href="${i.url}" target="_blank" rel="noopener"><div class="cn-meta">${escapeHtml(i.meta)}</div><div class="cn-title">${escapeHtml(i.title)}</div></a>` : `<div class="curated-news-card"><div class="cn-meta">${escapeHtml(i.meta)} <span class="illustrative-tag">AI reasoning</span></div><div class="cn-title">${escapeHtml(i.title)}</div></div>`).join('')}</div>
-    <p class="strat-foot">Industry, marketing, CX, AI and AEO/GEO reading. Account monitoring for AEO/GEO is not connected yet.</p></div>`;
+    <div class="curated-news-grid">${!ext.length ? `<p class="hint" style="grid-column:1/-1;margin:0;">Nothing new in the last ${NEWS_FRESH_DAYS} days.</p>` : ext.map(i => i.url ? `<a class="curated-news-card" href="${escapeHtml(repSafeHref(i.url))}" target="_blank" rel="noopener noreferrer"><div class="cn-meta">${escapeHtml(i.meta)}</div><div class="cn-title">${escapeHtml(i.title)}</div></a>` : `<div class="curated-news-card"><div class="cn-meta">${escapeHtml(i.meta)} <span class="illustrative-tag">AI reasoning</span></div><div class="cn-title">${escapeHtml(i.title)}</div></div>`).join('')}</div>
+    <p class="strat-foot">Auto-selected each Monday from the last ${NEWS_FRESH_DAYS} days: your brand, competitors, your industry group, and AI and marketing. Links go to the publisher.</p></div>`;
   box.innerHTML = `<div class="strat-card bd-head"><div><div class="strat-chart-label" style="margin:0 0 4px;">Week of ${bdWeekLabel(d.weekStart)}</div><p class="strat-reading" style="margin:0;">Posted ${escapeHtml(posted)}. ${by}, and it stays fixed until the next run. Comment under any section, or mention @AIBrain to dig deeper.</p></div>${runBtn}</div>${runNote}${chg}${sections}${extHtml}`;
 }
 function brainDumpShellHtml(){
@@ -25628,7 +25710,7 @@ function renderCuratedNewsCards(){
   if (!el) return;
   const competitorItems = curatedNewsCompetitorItems();
   const cardHtml = item => item.url
-    ? `<a class="curated-news-card" href="${item.url}" target="_blank" rel="noopener">
+    ? `<a class="curated-news-card" href="${escapeHtml(repSafeHref(item.url))}" target="_blank" rel="noopener noreferrer">
          <div class="cn-meta">${escapeHtml(item.meta)}</div>
          <div class="cn-title">${escapeHtml(item.title)}</div>
        </a>`
@@ -25636,14 +25718,14 @@ function renderCuratedNewsCards(){
          <div class="cn-meta">${escapeHtml(item.meta)} <span class="illustrative-tag">AI reasoning</span></div>
          <div class="cn-title">${escapeHtml(item.title)}</div>
        </div>`;
-  const picks = competitorItems.length
-    ? [
+  const srcComp = ((newsFeed.lanes && newsFeed.lanes.competitors) || []).slice(0, 1).map(it => ({ title: it.title, meta: newsMeta(it), url: it.url }));
+  const compPick = srcComp[0] || competitorItems[0];
+  const picks = [
         DAILY_NEWS_ITEMS.find(i => i.category === 'ai_marketing'),
         DAILY_NEWS_ITEMS.find(i => i.category === 'industry_news'),
-        competitorItems[0]
-      ].filter(Boolean)
-    : DAILY_NEWS_ITEMS.slice(0, 3);
-  el.innerHTML = picks.map(cardHtml).join('');
+        compPick
+      ].filter(Boolean);
+  el.innerHTML = picks.length ? picks.map(cardHtml).join('') : `<p class="hint" style="grid-column:1/-1;margin:0;">Nothing new in the last ${NEWS_FRESH_DAYS} days. The weekly feed refreshes Monday morning.</p>`;
 }
 
 // 2026-08-24 (round 17) — Daily Brief's own module stack, replacing the
@@ -74365,6 +74447,7 @@ async function posSetDecision(contributionId, status){
     loadTeam(),
     loadPrCorpCommData(),
     loadReputationLive(),
+    loadNewsFeed(),
     loadMediaPlan(),
     loadContentLibrary(),
     loadAccountIntelligence(),
