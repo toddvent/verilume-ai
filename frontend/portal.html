@@ -24447,7 +24447,7 @@ function askDockContestRender(){
   if (askDockContest.view === 'copy'){
     h += `<div style="margin:10px 0 8px;"><button type="button" class="btn-ghost" onclick="askDockContest.view='pick';askDockContestRender()">← All contests</button></div>`;
     h += `<div style="font-weight:700;margin-bottom:6px;">Campaign writing${c ? ' · ' + escapeHtml(c.name || 'this campaign') : ''}</div>`;
-    h += `<div id="askDockContestPanel"></div><button type="button" id="askDockContestBtn" style="display:none"></button>`;
+    h += `<div id="askDockContestPanel"></div><div id="askDockContestOwn"></div><button type="button" id="askDockContestBtn" style="display:none"></button>`;
     el.innerHTML = h; askDockContestPaint(); return;
   }
   const go = (label, fn, dis) => `<button type="button" class="btn-ghost" ${dis ? 'disabled' : `onclick="${fn}"`}>${label}</button>`;
@@ -24460,13 +24460,13 @@ function askDockContestRender(){
   h += askDockContestRow('Data plus human analysis', 'Not available yet.', go('Soon', '', true));
   h += askDockContestRow('Campaign readouts', 'Not available yet.', go('Soon', '', true));
   h += askDockContestRow('Brand analysis strategy and testing configuration', 'Not available yet.', go('Soon', '', true));
-  h += `<p class="hint" style="margin-top:12px;">Adding your own entry to a contest is not available yet. The Brand Voice Contest stays on the Brand page.</p>`;
+  h += `<p class="hint" style="margin-top:12px;">After campaign writing runs, you can add your own entry as another blind option. The Brand Voice Contest stays on the Brand page.</p>`;
   el.innerHTML = h; el.scrollTop = keep;
 }
 function askDockContestPaint(){
   const panel = document.getElementById('askDockContestPanel'); if (!panel) return;
   const last = (typeof cmpCopyContestLastResult !== 'undefined') ? cmpCopyContestLastResult['askDockContestPanel'] : null;
-  if (last){ try { panel.innerHTML = renderCmpCopyContestPanel(last, 'askDockContestFlag', 'askDockContestPanel'); } catch (e){ panel.innerHTML = ''; } }
+  if (last){ try { panel.innerHTML = renderCmpCopyContestPanel(last, 'askDockContestFlag', 'askDockContestPanel'); } catch (e){ panel.innerHTML = ''; } askDockContestOwnRender(); }
   else if (askDockContest.running){ panel.innerHTML = '<p class="hint">Still running. The Contest button shows a mark when results are ready.</p>'; }
   else askDockContestRun();
 }
@@ -24478,7 +24478,32 @@ async function askDockContestRun(){
   const panel = document.getElementById('askDockContestPanel');
   const el = document.getElementById('askDockContest'); const open = !!(el && el.classList.contains('open'));
   if (panel && panel.querySelector('[onclick*="cmpSelectCopyContestCandidate"]')) askDockContest.cached = true;
+  askDockContestOwnRender();
   if (!open || askDockContest.view !== 'copy'){ askDockContest.ready = true; askDockContestBadge(); }
+}
+function askDockContestOwnRender(){
+  const box = document.getElementById('askDockContestOwn'); if (!box) return;
+  const last = (typeof cmpCopyContestLastResult !== 'undefined') ? cmpCopyContestLastResult['askDockContestPanel'] : null;
+  if (!last || !last.interviewId || !(last.candidates || []).some(c => c.copy)){ box.innerHTML = ''; return; }
+  if (askDockContest.ownDone === last.interviewId){ box.innerHTML = `<p class="hint" style="margin-top:10px;">Your entry is in the contest as ${escapeHtml(askDockContest.ownLabel || 'one of the options')}, scored the same way as the AI drafts and not marked as yours.</p>`; return; }
+  if (!askDockContest.ownOpen){ box.innerHTML = `<div style="margin-top:12px;"><button type="button" class="btn-ghost" onclick="askDockContest.ownOpen=true;askDockContestOwnRender()">Add my own entry</button><span class="hint" style="margin-left:8px;">It joins as another option and is scored the same way.</span></div>`; return; }
+  box.innerHTML = `<div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:12px;"><div style="font-weight:700;margin-bottom:4px;">Your entry</div><div class="hint" style="margin-bottom:6px;">Write the long form copy you would use. It is added as a numbered option next to the AI drafts so everyone judges it blind.</div><textarea id="askDockContestOwnText" rows="7" maxlength="6000" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:0.8125rem;padding:8px;border:1px solid var(--line);border-radius:6px;"></textarea><div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;"><button type="button" class="btn-primary" id="askDockContestOwnBtn" onclick="askDockContestOwnSubmit()">Add entry</button><button type="button" class="btn-ghost" onclick="askDockContest.ownOpen=false;askDockContestOwnRender()">Cancel</button></div><div id="askDockContestOwnFlag" class="hint" style="margin-top:6px;"></div></div>`;
+}
+async function askDockContestOwnSubmit(){
+  const last = (typeof cmpCopyContestLastResult !== 'undefined') ? cmpCopyContestLastResult['askDockContestPanel'] : null;
+  const c = askDockContestCampaign(); const ta = document.getElementById('askDockContestOwnText'); const flag = document.getElementById('askDockContestOwnFlag'); const btn = document.getElementById('askDockContestOwnBtn');
+  if (!last || !c || !ta) return;
+  const text = ta.value.trim();
+  if (text.length < 40){ if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Write at least a couple of sentences so it can be scored.'; } return; }
+  if (btn) btn.disabled = true; if (flag){ flag.style.color = ''; flag.textContent = 'Scoring your entry…'; }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}/copy-interview/${encodeURIComponent(last.interviewId)}/entry`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }), timeoutMs: 60000 });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){ if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = data.error || "Couldn't add your entry. Try again."; } if (btn) btn.disabled = false; return; }
+    last.candidates = data.candidates; last.recommendedKey = data.recommendedKey;
+    askDockContest.ownDone = last.interviewId; askDockContest.ownLabel = data.entryLabel || ''; askDockContest.ownOpen = false;
+    askDockContestPaint();
+  } catch (e){ if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Could not reach the server. Try again.'; } if (btn) btn.disabled = false; }
 }
 function askDockContestOpenCopy(){
   const c = askDockContestCampaign(); if (!c){ askDockToast('Open a campaign to run this contest.'); return; }
