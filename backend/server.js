@@ -17122,7 +17122,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['gsc_uploads', 'search_brand_terms', 'search_priorities', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
+const CATALOG_EXEMPT = new Set(['gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -21234,6 +21234,8 @@ const GSC_SETTINGS = {
   minImpForGap: 2000,            // a query needs at least this many impressions to count as an opportunity
   targetCtr: { mid: 0.03, page2: 0.02, deep: 0.01 }, // editable assumptions: click rate if the query reached about position 8, 10, or 12
   indexDropMin: 0.25,
+  unmatchedShareMin: 0.3,        // share of non-brand impressions outside every group that is worth a priority
+  activeLimit: 5,                // most items the team works on at once; new findings wait when this is full
   maxGapPriorities: 5
 };
 // Google's own reason text decides how each not-indexed reason is treated. Many are normal and not problems.
@@ -21323,6 +21325,19 @@ createTableIfNeeded(`
     createdAt TEXT NOT NULL,
     updatedAt TEXT NOT NULL,
     doneAt TEXT,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS search_group_matches (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    queryKey TEXT NOT NULL,
+    groupType TEXT NOT NULL,
+    groupValue TEXT NOT NULL,
+    status TEXT NOT NULL,
+    decidedBy TEXT,
+    createdAt TEXT NOT NULL,
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
 `);
@@ -21492,6 +21507,13 @@ function gscFindings(accountId){
     const gainSum = gaps.reduce((s, g) => s + g.gain, 0);
     gaps.forEach(g => out.push({ key: 'gap:' + gscNorm(g.q), severity: 3, priority: { level: g.gain >= gainSum * 0.25 ? 'P1' : 'P2', title: `Win page one for "${g.q}"`, detail: `${gscFmt(g.imp)} impressions at position ${g.pos.toFixed(1)}, ${(g.ctr * 100).toFixed(2)}% click rate.`, basis: 'calculated', clicks: g.gain, label: `+${gscFmt(g.gain)} clicks`, assumption: `Assumes a ${(gscTargetCtr(g.pos) * 100).toFixed(0)}% click rate at the target position.` } }));
   }
+  if (q.length && brandKnown){
+    const gm = gscGroupMatch(accountId);
+    if (gm.hasGroups && gm.unmatched && gm.groups){
+      if (gm.groups.length >= 2){ const t = gm.groups[0]; out.push({ key: 'group_demand', severity: 3, title: `${t.value} draws ${Math.round(t.share * 100)}% of non-brand search impressions.`, detail: `Average position ${t.avgPosition ? t.avgPosition.toFixed(1) : '—'}, ${(t.ctr * 100).toFixed(2)}% click rate across ${gscFmt(t.queries)} searches.`, more: gm.groups.slice(0, 5).map(g => `${g.value} (${g.typeLabel.toLowerCase()}): ${gscFmt(g.impressions)} impressions, position ${g.avgPosition ? g.avgPosition.toFixed(1) : '—'}`).concat(['Searches are matched to the groups in your Marketing Calendar by the words in each group name.']) }); }
+      if (gm.unmatched.share >= GSC_SETTINGS.unmatchedShareMin && gm.unmatched.impressions >= GSC_SETTINGS.minImpForGap) out.push({ key: 'unmatched_demand', severity: 2, priority: { level: 'P2', title: 'Search demand that is not in any product group', detail: `${Math.round(gm.unmatched.share * 100)}% of non-brand impressions (${gscFmt(gm.unmatched.queries)} searches) match no Product Group or Creative Focus Group. Largest: ${gm.unmatched.top.slice(0, 3).map(x => '"' + x.query + '"').join(', ')}.`, basis: 'rated', clicks: null, label: gm.unmatched.share >= 0.6 ? 'High' : 'Medium' } });
+    }
+  }
   const pages = db.prepare("SELECT dimKey, clicks, impressions, avgPosition FROM gsc_rows WHERE accountId = ? AND kind = 'pages'").all(accountId);
   if (pages.length){
     const totI = sum(pages, 'impressions'); const home = pages.find(p => { try { const u = new URL(p.dimKey); return u.pathname === '/' && !u.search; } catch (e){ return false; } });
@@ -21514,6 +21536,60 @@ function gscFindings(accountId){
     out.push({ key: 'issue:' + gscNorm(r.dimKey), severity: label === 'High' ? 1 : 2, priority: { level: label === 'High' ? 'P1' : label === 'Medium' ? 'P2' : 'P3', title: `${rule.label}`, detail: `${gscFmt(r.pages)} pages. ${rule.why}`, basis: 'rated', clicks: null, label } });
   });
   return out;
+}
+
+// ---- Search by Product Group and Creative Focus Group (2026-10-04) ----
+// The groups come from the same lists the Marketing Calendar uses (account_taxonomies: productGroup, creativeMarket).
+// A search matches a group when all of the group's distinctive words are in the search (or are close misspellings).
+// Words that appear in most of the account's group names are not distinctive, so nothing here is specific to one industry.
+const GSC_GENERIC_WORDS = new Set(['the', 'and', 'of', 'for', 'in', 'to', 'a', 'an', 'with', 'by', 'on', 'at', 'from', 'group', 'groups', 'service', 'services', 'new', 'other', 'all']);
+function gscStem(w){ return w.length > 4 && w.endsWith('ies') ? w.slice(0, -3) + 'y' : w.length > 4 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w; }
+function gscTokens(s){ return gscNorm(s).split(' ').filter(Boolean).map(gscStem); }
+function gscTokenEq(a, b){ return a === b || (a.length >= 6 && b.length >= 6 && gscLev(a, b) <= 1); }
+function gscGroups(accountId){
+  const out = [];
+  [['productGroup', 'Product group'], ['creativeMarket', 'Creative focus']].forEach(([key, label]) => {
+    const row = db.prepare('SELECT valuesJson FROM account_taxonomies WHERE accountId = ? AND taxonomyKey = ?').get(accountId, key);
+    let vals = []; try { vals = row ? JSON.parse(row.valuesJson) : []; } catch (e){ vals = []; }
+    vals.filter(v => typeof v === 'string' && v.trim()).forEach(v => out.push({ type: key, typeLabel: label, value: v.trim(), tokens: gscTokens(v).filter(t => !GSC_GENERIC_WORDS.has(t)) }));
+  });
+  // A word found in most group names (for example the industry's own word) does not tell the groups apart.
+  const df = {}; out.forEach(g => new Set(g.tokens).forEach(t => { df[t] = (df[t] || 0) + 1; }));
+  out.forEach(g => { const distinct = g.tokens.filter(t => !(out.length >= 3 && df[t] / out.length > 0.5)); g.distinct = distinct.length ? distinct : g.tokens; g.unique = g.distinct.filter(t => df[t] === 1); });
+  return out.filter(g => g.distinct.length);
+}
+function gscMatchQuery(qTokens, g){
+  const hits = g.distinct.filter(t => qTokens.some(q => gscTokenEq(q, t)));
+  if (hits.length === g.distinct.length) return { m: 'strong', shared: hits };
+  const uh = hits.filter(t => g.unique.includes(t)); // a word only this group has: worth proposing, never assumed
+  if (uh.length) return { m: 'possible', shared: uh };
+  return null;
+}
+function gscGroupMatch(accountId){
+  const groups = gscGroups(accountId); if (!groups.length) return { hasGroups: false };
+  const q = db.prepare("SELECT dimKey, clicks, impressions, ctr, avgPosition FROM gsc_rows WHERE accountId = ? AND kind = 'queries' AND isBrand = 0").all(accountId);
+  if (!q.length) return { hasGroups: true, groups: [], unmatched: null, suggestions: [] };
+  const dec = db.prepare('SELECT queryKey, groupType, groupValue, status FROM search_group_matches WHERE accountId = ?').all(accountId);
+  const decKey = (k, t, v) => k + '|' + t + '|' + v; const decMap = {}; dec.forEach(d => { decMap[decKey(d.queryKey, d.groupType, d.groupValue)] = d.status; });
+  const agg = {}; groups.forEach(g => { agg[g.type + '|' + g.value] = { type: g.type, typeLabel: g.typeLabel, value: g.value, queries: 0, clicks: 0, impressions: 0, posW: 0 }; });
+  const un = { queries: 0, clicks: 0, impressions: 0, top: [] }; const sug = []; let totImp = 0;
+  q.forEach(r => {
+    const key = gscNorm(r.dimKey); const toks = gscTokens(r.dimKey); const imp = r.impressions || 0, clk = r.clicks || 0; totImp += imp; let matched = false;
+    groups.forEach(g => {
+      const st = decMap[decKey(key, g.type, g.value)]; if (st === 'rejected') return;
+      const mm = st === 'accepted' ? { m: 'accepted' } : gscMatchQuery(toks, g); const m = mm && mm.m;
+      if (m === 'strong' || m === 'accepted'){ const a = agg[g.type + '|' + g.value]; a.queries++; a.clicks += clk; a.impressions += imp; a.posW += (r.avgPosition || 0) * imp; matched = true; }
+      else if (m === 'possible') sug.push({ query: r.dimKey, queryKey: key, impressions: imp, groupType: g.type, groupTypeLabel: g.typeLabel, groupValue: g.value, shared: mm.shared.join(' ') });
+    });
+    if (!matched){ un.queries++; un.clicks += clk; un.impressions += imp; un.top.push({ query: r.dimKey, queryKey: key, clicks: clk, impressions: imp, ctr: r.ctr, avgPosition: r.avgPosition }); }
+  });
+  un.top.sort((a, b) => b.impressions - a.impressions); un.top = un.top.slice(0, 8); un.share = totImp ? un.impressions / totImp : 0;
+  const list = Object.values(agg).filter(a => a.queries > 0).map(a => ({ type: a.type, typeLabel: a.typeLabel, value: a.value, queries: a.queries, clicks: a.clicks, impressions: a.impressions, ctr: a.impressions ? a.clicks / a.impressions : null, avgPosition: a.impressions ? a.posW / a.impressions : null, share: totImp ? a.impressions / totImp : 0 })).sort((a, b) => b.impressions - a.impressions);
+  const silent = Object.values(agg).filter(a => a.queries === 0).map(a => ({ type: a.type, typeLabel: a.typeLabel, value: a.value }));
+  const sg = {}; sug.forEach(x => { if (decMap[x.queryKey + '|' + x.groupType + '|' + x.groupValue]) return; const k = x.groupType + '|' + x.groupValue + '|' + x.shared; const a = sg[k] = sg[k] || { groupType: x.groupType, groupTypeLabel: x.groupTypeLabel, groupValue: x.groupValue, shared: x.shared, count: 0, impressions: 0, examples: [], queryKeys: [] }; a.count++; a.impressions += x.impressions; a.queryKeys.push(x.queryKey); if (a.examples.length < 3) a.examples.push(x.query); });
+  const allSuggestions = Object.values(sg).sort((a, b) => b.impressions - a.impressions);
+  const suggestions = allSuggestions.slice(0, 6).map(a => ({ groupType: a.groupType, groupTypeLabel: a.groupTypeLabel, groupValue: a.groupValue, shared: a.shared, count: a.count, impressions: a.impressions, examples: a.examples }));
+  return { hasGroups: true, groups: list, noSearches: silent, unmatched: un, suggestions, _all: allSuggestions, totalImpressions: totImp, groupOptions: groups.map(g => ({ type: g.type, typeLabel: g.typeLabel, value: g.value })) };
 }
 function gscSyncPriorities(accountId){
   const findings = gscFindings(accountId).filter(f => f.priority); const now = new Date().toISOString(); const seen = new Set();
@@ -21560,7 +21636,17 @@ function gscPayload(req, accountId, account){
   gscSyncPriorities(accountId);
   const priorities = gscPrioritiesList(accountId);
   const open = priorities.filter(p => p.status !== 'done' && p.status !== 'dismissed');
-  out.priorities = { top: open.slice(0, 5), totalOpen: open.length, total: priorities.length };
+  // Capacity: the team works on at most GSC_SETTINGS.activeLimit items at once. Started items come first; new ones fill any free slots; the rest wait.
+  const lim = GSC_SETTINGS.activeLimit;
+  const active = open.filter(p => p.status === 'planned' || p.status === 'in_progress').sort((a, b) => (a.status === b.status ? 0 : a.status === 'in_progress' ? -1 : 1));
+  const fresh = open.filter(p => p.status === 'new');
+  const slots = Math.max(0, lim - active.length);
+  const shown = active.slice(0, lim).concat(fresh.slice(0, slots)); const shownIds = new Set(shown.map(p => p.id));
+  const waitingList = fresh.filter(p => !shownIds.has(p.id));
+  const todayMs = Date.now(); const ageDays = p => Math.max(0, Math.floor((todayMs - Date.parse(p.date + 'T00:00:00Z')) / 864e5));
+  const oldest = active.length ? Math.max(...active.map(ageDays)) : null;
+  out.priorities = { top: shown, totalOpen: open.length, total: priorities.length, limit: lim, active: active.length, waiting: waitingList.length, done: priorities.filter(p => p.status === 'done').length, oldestActiveDays: oldest,
+    all: priorities.filter(p => p.status !== 'dismissed').map(p => Object.assign({}, p, { waiting: waitingList.some(w => w.id === p.id) })) };
   if (range){
     const spanDays = (a, b) => Math.round((dmParse(b) - dmParse(a)) / 864e5) + 1;
     const covered = (sm, a, b) => sm.days >= Math.ceil(spanDays(a, b) * 0.9); // a prior period with missing days is not compared
@@ -21593,7 +21679,13 @@ function gscPayload(req, accountId, account){
   const idx = db.prepare("SELECT day, indexed, notIndexed FROM gsc_daily WHERE accountId = ? AND series = 'index' AND indexed IS NOT NULL ORDER BY day DESC LIMIT 1").get(accountId);
   const iss = db.prepare("SELECT dimKey, pages, kind FROM gsc_rows WHERE accountId = ? AND kind IN ('index_critical','index_noncritical')").all(accountId).map(r => { const rule = GSC_ISSUE_RULES.find(x => x.re.test(r.dimKey)); return { reason: r.dimKey, pages: r.pages, tier: rule ? rule.tier : 'normal' }; });
   out.health = { indexed: idx ? idx.indexed : null, notIndexed: idx ? idx.notIndexed : null, asOf: idx ? idx.day : null, issues: iss.sort((a, b) => (b.pages || 0) - (a.pages || 0)) };
-  out.reads = brandReady ? gscFindings(accountId).filter(f => !f.priority).map(f => ({ key: f.key, line1: f.title, line2: f.detail, more: f.more || [] })).slice(0, 3) : [];
+  // Reads must add something the cards and charts do not already say. Brand share is already the brand chart's headline, so it is not repeated.
+  const P = out.priorities; const parts = [];
+  const inProg = priorities.filter(p => p.status === 'in_progress').length, planned = priorities.filter(p => p.status === 'planned').length;
+  parts.push(`${P.done} done`, `${inProg} in progress`); if (planned) parts.push(`${planned} planned`); parts.push(`${P.waiting} waiting`);
+  const progRead = { key: 'progress', line1: parts.join(', ') + '.', line2: P.active ? (P.active >= P.limit ? `The team is at its limit of ${P.limit} active items, so new findings are waiting. ` : '') + (P.oldestActiveDays != null ? `Oldest active item: ${P.oldestActiveDays} day${P.oldestActiveDays === 1 ? '' : 's'}.` : '') : 'Nothing has been started yet.', more: [`New findings join the top ${P.limit} only when the team has free capacity.`, status.latestDay ? `Search data runs through ${status.latestDay}.` : ''].filter(Boolean) };
+  out.groups = brandReady ? gscGroupMatch(accountId) : { hasGroups: false }; if (out.groups._all) delete out.groups._all;
+  out.reads = [progRead].concat(brandReady ? gscFindings(accountId).filter(f => !f.priority && f.key !== 'brand_share').map(f => ({ key: f.key, line1: f.title, line2: f.detail, more: f.more || [] })) : []).slice(0, 5);
   return out;
 }
 
@@ -21614,6 +21706,7 @@ function gscCardExport(req, accountId, card){
   const healthT = () => T('Index issues', ['Reason', 'Pages', 'Action'], ((d.health && d.health.issues) || []).map(i => [i.reason, { v: i.pages, kind: 'int' }, i.tier === 'fix' ? 'Fix' : i.tier === 'check' ? 'Check' : i.tier === 'review' ? 'Review' : '']));
   const sumT = () => { const c = d.cards; return T('Summary', ['Metric', 'This period', 'Change vs same dates last year'], [['Organic clicks', { v: c.clicks.value, kind: 'int' }, c.clicks.changePct == null ? 'No prior year on file' : { v: c.clicks.changePct, kind: 'pct' }], ['Click rate', pc(c.ctr.value), c.ctr.changePts == null ? 'No prior year on file' : (c.ctr.changePts >= 0 ? '+' : '') + c.ctr.changePts.toFixed(2) + ' pts'], ['Impressions', { v: c.impressions.value, kind: 'int' }, c.impressions.changePct == null ? 'No prior year on file' : { v: c.impressions.changePct, kind: 'pct' }], ['Non-brand share of clicks', c.nonBrandShare ? c.nonBrandShare.value.toFixed(1) + '%' : 'Brand names not confirmed', '']]); };
   const prioT = () => T('Priorities', ['Date', 'Level', 'Priority', 'Detail', 'Business impact', 'Basis', 'Status'], (d.priorities.top || []).map(p => [p.date, p.priority, p.title, p.detail || '', p.impactLabel || '', p.impactBasis === 'calculated' ? 'Calculated' : 'Rated', p.status]));
+  const groupsT = () => d.groups && d.groups.hasGroups && d.groups.groups ? T('Non-brand searches by group', ['Group', 'Type', 'Searches', 'Clicks', 'Impressions', 'Click rate', 'Average position'], d.groups.groups.map(g => [g.value, g.typeLabel, { v: g.queries, kind: 'int' }, { v: g.clicks, kind: 'int' }, { v: g.impressions, kind: 'int' }, pc(g.ctr), g.avgPosition ? Number(g.avgPosition).toFixed(1) : '']).concat(d.groups.unmatched ? [['Not in any product group', '', { v: d.groups.unmatched.queries, kind: 'int' }, { v: d.groups.unmatched.clicks, kind: 'int' }, { v: d.groups.unmatched.impressions, kind: 'int' }, '', '']] : [])) : null;
   let title, slug, tables;
   if (k === 'search-clicks'){ title = 'Organic clicks'; slug = 'search-clicks'; tables = [sumT(), monthsT()]; }
   else if (k === 'search-ctr'){ title = 'Click rate'; slug = 'search-click-rate'; tables = [sumT(), ctrT()]; }
@@ -21623,6 +21716,7 @@ function gscCardExport(req, accountId, card){
   else if (k === 'search-chart-ctr'){ title = 'Click rate by month'; slug = 'search-click-rate-by-month'; tables = [ctrT()]; }
   else if (k === 'search-chart-brand'){ title = 'Brand and non-brand searches'; slug = 'search-brand-split'; tables = [brandT()].filter(Boolean); }
   else if (k === 'search-chart-nonbrand'){ title = 'Top 5 non-brand searches'; slug = 'search-top-non-brand'; tables = [nbT()]; }
+  else if (k === 'search-groups'){ title = 'Search by product group'; slug = 'search-by-group'; tables = [groupsT()].filter(Boolean); }
   else if (k === 'search-health'){ title = 'Search health check'; slug = 'search-health'; tables = [healthT()]; }
   else return null;
   if (!tables.length) return null;
@@ -35456,6 +35550,23 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
           gscReclassify(accountId); gscSyncPriorities(accountId);
           return sendJson(res, 200, Object.assign({ ok: true }, gscBrandTermsPayload(accountId)));
         }
+      }
+      if (sub === 'group-matches' && req.method === 'POST' && parts.length === 5){
+        const body = await readBody(req); const action = body.action;
+        const opts = gscGroups(accountId); const g = opts.find(x => x.type === body.groupType && x.value === body.groupValue);
+        if (!g) return sendJson(res, 400, { error: 'Choose one of your groups.' });
+        if (!['accept', 'reject', 'assign'].includes(action)) return sendJson(res, 400, { error: 'unknown action' });
+        const put = (key, status) => { db.prepare('DELETE FROM search_group_matches WHERE accountId = ? AND queryKey = ? AND groupType = ? AND groupValue = ?').run(accountId, key, g.type, g.value); db.prepare('INSERT INTO search_group_matches (id, accountId, queryKey, groupType, groupValue, status, decidedBy, createdAt) VALUES (?,?,?,?,?,?,?,?)').run(generateId('SGM'), accountId, key, g.type, g.value, status, actor, now); };
+        if (body.shared){ // a whole suggestion: every search the Brain proposed for this group on these words
+          const sug = (gscGroupMatch(accountId)._all || []).find(x => x.groupType === g.type && x.groupValue === g.value && x.shared === body.shared);
+          if (!sug) return sendJson(res, 404, { error: 'That suggestion is no longer on the list.' });
+          sug.queryKeys.slice(0, 500).forEach(k => put(k, action === 'reject' ? 'rejected' : 'accepted'));
+        } else {
+          const key = gscNorm(body.query || ''); if (!key) return sendJson(res, 400, { error: 'Choose a search.' });
+          put(key, action === 'reject' ? 'rejected' : 'accepted');
+        }
+        gscSyncPriorities(accountId);
+        return sendJson(res, 200, { ok: true });
       }
       if (sub === 'priorities'){
         if (req.method === 'GET' && parts.length === 5) return sendJson(res, 200, { priorities: gscPrioritiesList(accountId) });
