@@ -23419,12 +23419,46 @@ function cxToolsHtml(){
   ];
   return `<div class="strat-tools"><span class="strat-tools-lbl">Tools</span>${items.map(it => `<a class="flink" onclick="${go(it)}">${escapeHtml(it.label)}</a>${it.note ? `<span class="strat-note">(${escapeHtml(it.note)})</span>` : ''}`).join('')}</div>`;
 }
+// "Reputation and the brand space" card on Customer Experiences (2026-10-04).
+// Chips with titles and links: this week's Reputation sweep mentions (each
+// links to its source page) and a few market and industry reads (each links to
+// the publisher). Nothing is shown as a chip unless it has a real title.
+function cxRepChipHtml(meta, title, href, tag){
+  const h = href ? repSafeHref(href) : '';
+  const inner = `<div class="cn-meta">${escapeHtml(meta)}${tag ? ` <span class="strat-tag">${escapeHtml(tag)}</span>` : ''}</div><div class="cn-title">${escapeHtml(title)}</div>`;
+  return h ? `<a class="curated-news-card" href="${escapeHtml(h)}" target="_blank" rel="noopener noreferrer">${inner}</a>` : `<div class="curated-news-card">${inner}</div>`;
+}
+function cxRepBodyHtml(){
+  const live = REPUTATION_DATA.live;
+  let html = '';
+  if (!live){
+    html += '<p class="strat-empty">No reputation sweep has run for this account yet. The first one runs Monday early morning and is ready by 8:00 AM, or you can run one now in Reputation Monitoring.</p>';
+  } else {
+    const ms = REPUTATION_DATA.mentions.slice().sort((a, b) => (b.urgent ? 1 : 0) - (a.urgent ? 1 : 0));
+    const urgent = ms.filter(m => m.urgent).length;
+    const when = live.ranAt ? new Date(live.ranAt).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+    html += `<p class="strat-sub" style="margin:0 0 10px;">Sentiment reads <strong>${escapeHtml(String(REPUTATION_DATA.sentiment.label))}</strong>${urgent ? ` · ${urgent} need${urgent === 1 ? 's' : ''} a response` : ''} · swept ${escapeHtml(when)}. A sample of the web, not every mention.</p>`;
+    html += ms.length ? `<div class="curated-news-grid">${ms.slice(0, 6).map(m => cxRepChipHtml([m.channel, m.sourceName, m.date].filter(Boolean).join(' · '), m.title, m.url, m.urgent ? 'Needs response' : (m.sentiment === 'negative' ? 'Negative' : (m.sentiment === 'positive' ? 'Positive' : ''))).replace('<div class="cn-meta">', '<div class="cn-meta">')).join('')}</div>` : '<p class="strat-empty">No public mentions found this week. That can mean a quiet week, or mentions the sweep could not see.</p>';
+  }
+  let news = [];
+  try { news = DAILY_NEWS_ITEMS.filter(i => i.url && repSafeHref(i.url) && (i.category === 'industry_news' || i.category === 'ai_marketing')).slice(0, 3); } catch (e){ news = []; }
+  if (news.length){
+    html += `<div class="strat-chart-label" style="margin:16px 0 6px;">Market and industry <span class="strat-key">links go to the publisher</span></div><div class="curated-news-grid">${news.map(n => cxRepChipHtml(n.meta || '', n.title, n.url, '')).join('')}</div>`;
+  }
+  html += `<div class="strat-actions"><a class="flink" onclick="goToStep('reputation')">Open Reputation Monitoring →</a></div>`;
+  return html;
+}
+function cxRepCardHtml(){
+  return `<div class="strat-card"><div class="strat-head"><h2>Reputation and the brand space</h2><span class="strat-tag benchmark">External sources</span></div><div id="cxRepBody">${cxRepBodyHtml()}</div></div>`;
+}
+function cxRenderRep(){ const el = document.getElementById('cxRepBody'); if (el) el.innerHTML = cxRepBodyHtml(); }
+
 function customerExperiencesShellHtml(){
   if (aipoVoiceContestStats == null) aipoLoadVoiceContestStats();
   const voice = renderTileShellGroups([BRAND_SHELL_GROUPS[0]], null, 'brand');
   if (!cxIsLive()) return voice + cxToolsHtml();
   return `<div class="strat-card"><div class="strat-head"><h2>Creative and media together</h2></div><div id="cxMediaBody"><p class="strat-empty">Loading…</p></div></div>
-    <div class="strat-card"><div class="strat-head"><h2>Reputation and the brand space</h2></div><p class="strat-empty">Sentiment, reputation monitoring, new entrants and ad formats will be written here by the Brain once those feeds are connected. Reputation Monitoring is available in Tools below.</p></div>` + voice + cxToolsHtml();
+    ${cxRepCardHtml()}` + voice + cxToolsHtml();
 }
 function customerExperiencesPageInit(){ if (cxIsLive()) cxLoad(); }
 
@@ -59026,6 +59060,7 @@ async function loadReputationLive(){
     REPUTATION_DATA.mentions = (d.mentions || []).map(m => ({ channel: m.channel, title: m.title, url: m.url, sourceName: m.sourceName, date: m.publishedDate, sentiment: m.sentiment, urgent: !!m.needsResponse, note: m.note, origin: m.origin }));
   } catch (e){ /* keep whatever is on screen */ }
   if (document.getElementById('repMentionsList')) renderReputationStep();
+  try { cxRenderRep(); } catch (e){}
   const signalsEl = document.getElementById('connectedSignalsList');
   if (signalsEl) renderConnectedSignals();
 }
