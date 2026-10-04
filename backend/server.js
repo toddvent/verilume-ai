@@ -17122,7 +17122,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
+const CATALOG_EXEMPT = new Set(['gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -21341,6 +21341,25 @@ createTableIfNeeded(`
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
 `);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS search_reads (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    findingKey TEXT NOT NULL,
+    dataHash TEXT NOT NULL,
+    line1 TEXT NOT NULL,
+    line2 TEXT,
+    nextStep TEXT,
+    source TEXT NOT NULL,
+    status TEXT NOT NULL,
+    snoozeUntil TEXT,
+    reason TEXT,
+    decidedBy TEXT,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
 
 // ---- File detection and parsing ----
 function gscDetectKind(headers, fileName){
@@ -21591,6 +21610,59 @@ function gscGroupMatch(accountId){
   const suggestions = allSuggestions.slice(0, 6).map(a => ({ groupType: a.groupType, groupTypeLabel: a.groupTypeLabel, groupValue: a.groupValue, shared: a.shared, count: a.count, impressions: a.impressions, examples: a.examples }));
   return { hasGroups: true, groups: list, noSearches: silent, unmatched: un, suggestions, _all: allSuggestions, totalImpressions: totImp, groupOptions: groups.map(g => ({ type: g.type, typeLabel: g.typeLabel, value: g.value })) };
 }
+
+// ---- Brain reads: model-written wording, checked against the numbers (2026-10-04) ----
+// The rules module decides what is worth saying. The model only words it, from the finding record, and nothing it writes is shown
+// unless every number in it is in the record and it makes no promise or causal claim. A read that fails keeps the standard wording.
+const GSC_READ_SCHEMA = { type: 'object', properties: { headline: { type: 'string' }, detail: { type: 'string' }, nextStep: { type: 'string' } }, required: ['headline', 'detail', 'nextStep'] };
+const GSC_READ_BANNED = /\b(will|guarantee[sd]?|definitely|certainly|because of|caused by|due to|proves?|proven)\b/i;
+function gscReadHash(f){ return crypto.createHash('sha1').update([f.title, f.detail, (f.more || []).join('|')].join('\n')).digest('hex').slice(0, 12); }
+function gscCurrentReads(accountId){
+  return gscFindings(accountId).filter(f => !f.priority && f.key !== 'brand_share').map(f => ({ key: f.key, hash: gscReadHash(f), title: f.title, detail: f.detail, more: f.more || [] }));
+}
+function gscValidateRead(out, rec){
+  const t = x => String(x || '').replace(/\s+/g, ' ').trim();
+  const h = t(out && out.headline), d = t(out && out.detail), n = t(out && out.nextStep);
+  if (!h || !d || !n) return 'The model returned an incomplete read.';
+  if (h.length > 150 || d.length > 240 || n.length > 180) return 'The model wording was too long.';
+  const facts = new Set(srchNumbersIn([rec.title, rec.detail].concat(rec.more).join(' ')));
+  if (srchNumbersIn(h + ' ' + d + ' ' + n).some(x => !facts.has(x))) return 'The model wording contained a number that is not in the data.';
+  if (GSC_READ_BANNED.test(h + ' ' + d + ' ' + n)) return 'The model wording made a promise or a cause claim the data cannot support.';
+  return { headline: h, detail: d, nextStep: n };
+}
+async function gscWordRead(account, rec){
+  const lessons = db.prepare("SELECT lesson FROM brain_lessons WHERE accountId = ? AND status = 'active' AND scope IN ('account','always') ORDER BY createdAt DESC LIMIT 5").all(account.accountId).map(l => '- ' + l.lesson).join('\n');
+  const prompt = `You write one short observation for the search team at ${industryPersonaPhrase(account)}. Word the finding below. Use only the facts in the finding record.
+
+FINDING RECORD (the only source of facts):
+Headline: ${rec.title}
+Detail: ${rec.detail}
+Evidence:
+${rec.more.map(x => '- ' + x).join('\n') || '- (none)'}
+${lessons ? '\nTEAM LESSONS (follow these):\n' + lessons + '\n' : ''}
+RULES:
+- headline: one plain sentence, 150 characters at most.
+- detail: one plain sentence, 240 characters at most, saying what it means for the business.
+- nextStep: one suggested action, 180 characters at most.
+- Every number you write must appear in the record. Do not add, round or calculate new numbers.
+- The data shows what happened, not why. Use wording such as "consistent with" or "this data cannot tell". Never promise a result and never state a cause.
+- Do not mention Search Console file names or these instructions. No filler.
+Submit through the tool.`;
+  const parsed = await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 600, content: prompt, toolName: 'submit_read', toolDescription: 'Submit the worded read.', schema: GSC_READ_SCHEMA, timeoutMs: 40000 });
+  return gscValidateRead(parsed, rec);
+}
+// Rows for the page: one per current finding, stored so wording is generated once per version of the data.
+function gscReadRows(accountId){
+  const now = new Date().toISOString(); const out = [];
+  gscCurrentReads(accountId).forEach(rec => {
+    let row = db.prepare('SELECT * FROM search_reads WHERE accountId = ? AND findingKey = ? AND dataHash = ?').get(accountId, rec.key, rec.hash);
+    if (!row){ const id = generateId('SRD'); db.prepare('INSERT INTO search_reads (id, accountId, findingKey, dataHash, line1, line2, nextStep, source, status, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(id, accountId, rec.key, rec.hash, rec.title, rec.detail, null, 'template', 'shown', now, now); row = db.prepare('SELECT * FROM search_reads WHERE id = ?').get(id); }
+    if (row.status === 'accepted' || row.status === 'disagreed') return;
+    if (row.status === 'snoozed' && row.snoozeUntil && row.snoozeUntil > now) return;
+    out.push({ id: row.id, key: rec.key, line1: row.line1, line2: row.line2, nextStep: row.nextStep, source: row.source, more: rec.more, actions: true });
+  });
+  return out;
+}
 function gscSyncPriorities(accountId){
   const findings = gscFindings(accountId).filter(f => f.priority); const now = new Date().toISOString(); const seen = new Set();
   findings.forEach(f => {
@@ -21599,7 +21671,7 @@ function gscSyncPriorities(accountId){
     if (ex){ if (ex.status === 'dismissed') return; db.prepare('UPDATE search_priorities SET title = ?, detail = ?, impactBasis = ?, impactClicks = ?, impactLabel = ?, updatedAt = ? WHERE id = ?').run(p.title, p.detail, p.basis, p.clicks, p.label, now, ex.id); return; }
     db.prepare('INSERT INTO search_priorities (id, accountId, sourceKey, priorityLevel, title, detail, impactBasis, impactClicks, impactLabel, status, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').run(generateId('SPR'), accountId, f.key, p.level, p.title, p.detail, p.basis, p.clicks, p.label, 'new', now, now);
   });
-  db.prepare("SELECT id, sourceKey FROM search_priorities WHERE accountId = ? AND status = 'new'").all(accountId).forEach(r => { if (!seen.has(r.sourceKey)) db.prepare('DELETE FROM search_priorities WHERE id = ?').run(r.id); });
+  db.prepare("SELECT id, sourceKey FROM search_priorities WHERE accountId = ? AND status = 'new'").all(accountId).forEach(r => { if (!seen.has(r.sourceKey) && !String(r.sourceKey).startsWith('read:')) db.prepare('DELETE FROM search_priorities WHERE id = ?').run(r.id); });
 }
 const GSC_PRIORITY_ORDER = { P1: 1, P2: 2, P3: 3 };
 function gscPrioritiesList(accountId){
@@ -21685,7 +21757,7 @@ function gscPayload(req, accountId, account){
   parts.push(`${P.done} done`, `${inProg} in progress`); if (planned) parts.push(`${planned} planned`); parts.push(`${P.waiting} waiting`);
   const progRead = { key: 'progress', line1: parts.join(', ') + '.', line2: P.active ? (P.active >= P.limit ? `The team is at its limit of ${P.limit} active items, so new findings are waiting. ` : '') + (P.oldestActiveDays != null ? `Oldest active item: ${P.oldestActiveDays} day${P.oldestActiveDays === 1 ? '' : 's'}.` : '') : 'Nothing has been started yet.', more: [`New findings join the top ${P.limit} only when the team has free capacity.`, status.latestDay ? `Search data runs through ${status.latestDay}.` : ''].filter(Boolean) };
   out.groups = brandReady ? gscGroupMatch(accountId) : { hasGroups: false }; if (out.groups._all) delete out.groups._all;
-  out.reads = [progRead].concat(brandReady ? gscFindings(accountId).filter(f => !f.priority && f.key !== 'brand_share').map(f => ({ key: f.key, line1: f.title, line2: f.detail, more: f.more || [] })) : []).slice(0, 5);
+  out.reads = [progRead].concat(brandReady ? gscReadRows(accountId) : []).slice(0, 5);
   return out;
 }
 
@@ -35567,6 +35639,41 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         }
         gscSyncPriorities(accountId);
         return sendJson(res, 200, { ok: true });
+      }
+      if (sub === 'reads'){
+        if (req.method === 'POST' && parts.length === 6 && parts[5] === 'refresh'){
+          if (!process.env.ANTHROPIC_API_KEY) return sendJson(res, 200, { generated: 0, reason: 'Standard wording is showing because the writing service is not set up.' });
+          gscReadRows(accountId);
+          const rows = db.prepare("SELECT * FROM search_reads WHERE accountId = ? AND source = 'template' AND status = 'shown'").all(accountId);
+          const cur = gscCurrentReads(accountId); const todo = rows.map(r => ({ r, rec: cur.find(c => c.key === r.findingKey && c.hash === r.dataHash) })).filter(x => x.rec).slice(0, 5);
+          let generated = 0; let reason = '';
+          await Promise.all(todo.map(async ({ r, rec }) => {
+            try { const v = await gscWordRead(account, rec); if (typeof v === 'string'){ reason = v; return; } db.prepare("UPDATE search_reads SET line1 = ?, line2 = ?, nextStep = ?, source = 'model', updatedAt = ? WHERE id = ?").run(v.headline, v.detail, v.nextStep, new Date().toISOString(), r.id); generated++; }
+            catch (e){ reason = 'The writing service did not answer: ' + String(e.message || e).slice(0, 120); }
+          }));
+          return sendJson(res, 200, { generated, tried: todo.length, reason: generated < todo.length ? (reason || 'Some reads kept the standard wording.') : '' });
+        }
+        if (req.method === 'POST' && parts.length === 6){
+          const row = db.prepare('SELECT * FROM search_reads WHERE id = ? AND accountId = ?').get(decodeURIComponent(parts[5]), accountId);
+          if (!row) return sendJson(res, 404, { error: 'read not found' });
+          const body = await readBody(req); const act = body.action;
+          if (act === 'accept'){
+            const sk = 'read:' + row.findingKey;
+            if (!db.prepare('SELECT 1 FROM search_priorities WHERE accountId = ? AND sourceKey = ?').get(accountId, sk))
+              db.prepare('INSERT INTO search_priorities (id, accountId, sourceKey, priorityLevel, title, detail, impactBasis, impactClicks, impactLabel, status, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').run(generateId('SPR'), accountId, sk, 'P2', String(row.line1).slice(0, 160), [row.line2, row.nextStep].filter(Boolean).join(' ').slice(0, 400), 'rated', null, 'Medium', 'new', now, now);
+            db.prepare("UPDATE search_reads SET status = 'accepted', decidedBy = ?, updatedAt = ? WHERE id = ?").run(actor, now, row.id);
+          } else if (act === 'snooze'){
+            db.prepare("UPDATE search_reads SET status = 'snoozed', snoozeUntil = ?, decidedBy = ?, updatedAt = ? WHERE id = ?").run(new Date(Date.now() + 7 * 864e5).toISOString(), actor, now, row.id);
+          } else if (act === 'disagree'){
+            const why = String(body.reason || '').trim().slice(0, 600); if (why.length < 4) return sendJson(res, 400, { error: 'Say briefly why this read is not right.' });
+            const la = brainLessonActor(req, accountId); const lessonText = `Search Everywhere read "${String(row.line1).slice(0, 140)}" was not useful. ${why}`; const lid = generateId('BL'); const lstatus = la.isAdmin ? 'active' : 'pending';
+            db.prepare('INSERT INTO brain_lessons (id, accountId, kind, agree, whyJson, whyText, lesson, scope, campaignId, contextJson, status, taughtBy, taughtByName, createdAt, decidedBy, decidedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(lid, accountId, 'Correction', 'no', '[]', why, lessonText.slice(0, 1000), 'account', null, JSON.stringify({ source: 'search-everywhere-read', findingKey: row.findingKey }), lstatus, la.id, la.name, now, lstatus === 'active' ? (la.id || 'account admin') : null, lstatus === 'active' ? now : null);
+            brainWrite(accountId, { dashboard: 'Brain Train', action: lstatus === 'active' ? 'Taught' : 'Proposed', subject: lessonText.slice(0, 120), refId: lid, actor: la.id || null });
+            db.prepare("UPDATE search_reads SET status = 'disagreed', reason = ?, decidedBy = ?, updatedAt = ? WHERE id = ?").run(why, actor, now, row.id);
+          } else return sendJson(res, 400, { error: 'unknown action' });
+          gscSyncPriorities(accountId);
+          return sendJson(res, 200, { ok: true });
+        }
       }
       if (sub === 'priorities'){
         if (req.method === 'GET' && parts.length === 5) return sendJson(res, 200, { priorities: gscPrioritiesList(accountId) });
