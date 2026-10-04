@@ -9298,6 +9298,58 @@ ensureColumn('press_releases', 'ctaMode', "TEXT DEFAULT 'inspiration'");
 // release's approved workingCopy is the master; this is a short LinkedIn
 // rewrite of it, not a second independently-researched piece of copy.
 ensureColumn('press_releases', 'linkedinCopy', 'TEXT');
+// 2026-10-04 — PR brief (Todd: guided four-part interview; optional campaign link). The user supplies the
+// substance for each of the four parts of a release so drafts and contests are built from real facts:
+//   THE NEWS: what are we announcing.  THE EXPERIENCE: why it is compelling / what only this brand can say.
+//   THE DETAILS: when, where, who, how it works.  THE NEXT STEP: why it matters (+ how to book, held in ctaText/ctaMode).
+// Stored as JSON on the release; campaignId is an optional link to a campaign (used to pre-fill, never required).
+ensureColumn('press_releases', 'briefJson', 'TEXT');
+ensureColumn('press_releases', 'campaignId', 'TEXT');
+ensureColumn('corporate_comms', 'context', 'TEXT');
+ensureColumn('corporate_comms', 'campaignId', 'TEXT');
+const PR_BRIEF_SHAPE = { news: ['what'], experience: ['why', 'distinct'], details: ['when', 'where', 'who', 'how'], nextStep: ['matters'] };
+function prCleanBrief(raw){
+  const out = {};
+  Object.keys(PR_BRIEF_SHAPE).forEach(part => {
+    out[part] = {};
+    PR_BRIEF_SHAPE[part].forEach(f => {
+      const v = raw && raw[part] && typeof raw[part][f] === 'string' ? raw[part][f].trim().slice(0, 1500) : '';
+      out[part][f] = v;
+    });
+  });
+  return out;
+}
+function prBriefParse(json){ try { return prCleanBrief(JSON.parse(json || '{}')); } catch (e){ return prCleanBrief({}); } }
+function prBriefStatus(brief, ctaText){
+  const b = brief || prCleanBrief({});
+  const detailsFilled = ['when', 'where', 'who', 'how'].filter(f => b.details[f]).length;
+  const st = {
+    news: !!b.news.what,
+    experience: !!b.experience.why,
+    details: !!b.details.when && detailsFilled >= 2,
+    nextStep: !!(b.nextStep.matters || (ctaText && ctaText.trim()))
+  };
+  const labels = { news: 'The News', experience: 'The Experience', details: 'The Details', nextStep: 'The Next Step' };
+  st.missing = Object.keys(labels).filter(k => !st[k]).map(k => labels[k]);
+  st.complete = st.missing.length === 0;
+  return st;
+}
+function prBriefToKeyFacts(brief){
+  const b = brief || prCleanBrief({});
+  const lines = [];
+  if (b.news.what) lines.push(`THE NEWS (supplied by the team): ${b.news.what}`);
+  const ex = [b.experience.why && `Why it is compelling: ${b.experience.why}`, b.experience.distinct && `What only this brand can say: ${b.experience.distinct}`].filter(Boolean);
+  if (ex.length) lines.push(`THE EXPERIENCE (supplied by the team): ${ex.join(' | ')}`);
+  const dt = [b.details.when && `When: ${b.details.when}`, b.details.where && `Where: ${b.details.where}`, b.details.who && `Who: ${b.details.who}`, b.details.how && `How it works: ${b.details.how}`].filter(Boolean);
+  if (dt.length) lines.push(`THE DETAILS (supplied by the team): ${dt.join(' | ')}`);
+  if (b.nextStep.matters) lines.push(`THE NEXT STEP, why it matters (supplied by the team): ${b.nextStep.matters}`);
+  return lines.join('\n');
+}
+function prRowKeyFacts(row){ return prBriefToKeyFacts(prBriefParse(row && row.briefJson)); }
+function prCampaignOk(accountId, campaignId){
+  if (!campaignId) return true;
+  try { return !!db.prepare('SELECT 1 FROM campaigns WHERE id = ? AND accountId = ?').get(campaignId, accountId); } catch (e){ return false; }
+}
 
 // Real, disclosed-as-heuristic PII screening over a text file's contents.
 // Never claims to be exhaustive or a compliance guarantee (a human should
@@ -20502,7 +20554,7 @@ async function buildPrCorpCommPrompt(account, docType, brief){
     press_release: {
       label: 'a real, publish-ready press release',
       brief: `Headline/Title: ${brief.title || '(not set)'}\nRelease type: ${PRESS_RELEASE_TYPE_LABELS[brief.releaseType] || '(not set — write a general-purpose release)'}\nAudience: ${PRESS_RELEASE_AUDIENCE_LABELS[brief.audience] || '(not set — default to consumer-accessible language)'}\nKey facts/announcement this release is built around: ${brief.keyFacts || '(none supplied — use only what is in the brand context above; do not invent facts, dates, or figures)'}${ctaGuidanceBlock}`,
-      format: `Four required parts, in order: (1) THE NEWS — a dateline-style opening paragraph stating what is being announced (who/what/when/where). (2) THE EXPERIENCE — why this is compelling and distinctly this brand's. (3) THE DETAILS — when, where, who, and how it works. (4) THE NEXT STEP — why it matters, and the concrete next action for the reader (see the SUPPLIED NEXT-STEP text in the brief above, if any, and follow its exact/inspiration/both instruction). One quote attributed to a named role (e.g. "said [Title Placeholder]" if no real spokesperson name is supplied) belongs in THE EXPERIENCE or THE DETAILS. Close with a boilerplate-style line about the brand. 250-400 words, longer only if the pre-approved legal language below requires it.${PRESS_RELEASE_TYPE_GUIDANCE[brief.releaseType] ? `\n\nRELEASE-TYPE GUIDANCE (${PRESS_RELEASE_TYPE_LABELS[brief.releaseType]}): ${PRESS_RELEASE_TYPE_GUIDANCE[brief.releaseType]}` : ''}${PRESS_RELEASE_AUDIENCE_GUIDANCE[brief.audience] ? `\n\nAUDIENCE GUIDANCE (${PRESS_RELEASE_AUDIENCE_LABELS[brief.audience]}): ${PRESS_RELEASE_AUDIENCE_GUIDANCE[brief.audience]}` : ''}`
+      format: `Four required parts, in order: (1) THE NEWS — a dateline-style opening paragraph stating what is being announced (who/what/when/where). (2) THE EXPERIENCE — why this is compelling and distinctly this brand's. (3) THE DETAILS — when, where, who, and how it works. (4) THE NEXT STEP — why it matters, and the concrete next action for the reader (see the SUPPLIED NEXT-STEP text in the brief above, if any, and follow its exact/inspiration/both instruction). One quote attributed to a named role (e.g. "said [Title Placeholder]" if no real spokesperson name is supplied) belongs in THE EXPERIENCE or THE DETAILS. Close with a boilerplate-style line about the brand. Build each part from the matching supplied input in the brief (lines labelled THE NEWS, THE EXPERIENCE, THE DETAILS, THE NEXT STEP); where a part has no supplied input, write a bracketed placeholder for the missing specifics (for example [Date Placeholder]) instead of inventing them. 250-400 words, longer only if the pre-approved legal language below requires it.${PRESS_RELEASE_TYPE_GUIDANCE[brief.releaseType] ? `\n\nRELEASE-TYPE GUIDANCE (${PRESS_RELEASE_TYPE_LABELS[brief.releaseType]}): ${PRESS_RELEASE_TYPE_GUIDANCE[brief.releaseType]}` : ''}${PRESS_RELEASE_AUDIENCE_GUIDANCE[brief.audience] ? `\n\nAUDIENCE GUIDANCE (${PRESS_RELEASE_AUDIENCE_LABELS[brief.audience]}): ${PRESS_RELEASE_AUDIENCE_GUIDANCE[brief.audience]}` : ''}`
     },
     editorial_pitch: {
       label: 'a real, send-ready editorial pitch email to a journalist/outlet contact',
@@ -20827,9 +20879,9 @@ async function runPrCandidateInterview(account, docType, brief){
 // own generate-draft endpoint already builds, just run through the panel
 // above instead of a single Anthropic call.
 const PR_DOC_TYPE_CONFIG = {
-  press_release: { table: 'press_releases', briefFromRow: (row, body) => ({ title: row.title, keyFacts: body.keyFacts || '', releaseType: row.releaseType || '', audience: row.audience || '', ctaText: row.ctaText || '', ctaMode: row.ctaMode || 'inspiration' }) },
+  press_release: { table: 'press_releases', briefFromRow: (row, body) => ({ title: row.title, keyFacts: body.keyFacts || prRowKeyFacts(row), releaseType: row.releaseType || '', audience: row.audience || '', ctaText: row.ctaText || '', ctaMode: row.ctaMode || 'inspiration' }) },
   editorial_pitch: { table: 'editorial_pitches', briefFromRow: (row) => ({ outlet: row.outlet, topic: row.topic }) },
-  corporate_comms: { table: 'corporate_comms', briefFromRow: (row, body) => ({ title: row.title, audience: row.audience, context: body.context || '' }) }
+  corporate_comms: { table: 'corporate_comms', briefFromRow: (row, body) => ({ title: row.title, audience: row.audience, context: body.context || row.context || '' }) }
 };
 // 2026-08-27 — human-readable subtype labels for the contest_rankings ledger
 // (see its own comment) — "Corporate" is this whole table's contestType,
@@ -33906,15 +33958,18 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       }
       const id = generateId('PRL');
       const now = new Date().toISOString();
-      db.prepare(`INSERT INTO press_releases (id, accountId, title, workingCopy, status, distributedDate, createdBy, createdAt, updatedAt, releaseType, audience, ctaText, ctaMode)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-        .run(id, accountId, body.title.trim(), (body.workingCopy || '').trim() || null, 'draft', null, (body.createdBy || '').trim() || null, now, now, body.releaseType || null, body.audience || null, (body.ctaText || '').trim() || null, body.ctaMode || 'inspiration');
+      if (body.campaignId && !prCampaignOk(accountId, body.campaignId)) return sendJson(res, 400, { error: 'campaignId does not match a campaign on this account' });
+      const briefJson = body.brief ? JSON.stringify(prCleanBrief(body.brief)) : null;
+      db.prepare(`INSERT INTO press_releases (id, accountId, title, workingCopy, status, distributedDate, createdBy, createdAt, updatedAt, releaseType, audience, ctaText, ctaMode, briefJson, campaignId)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(id, accountId, body.title.trim(), (body.workingCopy || '').trim() || null, 'draft', null, (body.createdBy || '').trim() || null, now, now, body.releaseType || null, body.audience || null, (body.ctaText || '').trim() || null, body.ctaMode || 'inspiration', briefJson, body.campaignId || null);
       return sendJson(res, 201, { id, status: 'saved' });
     }
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'press-releases'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
-      const rows = db.prepare('SELECT * FROM press_releases WHERE accountId = ? ORDER BY createdAt DESC').all(accountId);
+      const rows = db.prepare('SELECT * FROM press_releases WHERE accountId = ? ORDER BY createdAt DESC').all(accountId)
+        .map(r => { const brief = prBriefParse(r.briefJson); return Object.assign({}, r, { brief, briefStatus: prBriefStatus(brief, r.ctaText) }); });
       return sendJson(res, 200, { pressReleases: rows, statuses: PRESS_RELEASE_STATUSES });
     }
     if (req.method === 'PATCH' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'press-releases'){
@@ -33943,11 +33998,14 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const nextCtaText = body.ctaText !== undefined ? ((body.ctaText || '').trim() || null) : existing.ctaText;
       const nextCtaMode = body.ctaMode !== undefined ? (body.ctaMode || 'inspiration') : (existing.ctaMode || 'inspiration');
       const nextLinkedinCopy = body.linkedinCopy !== undefined ? (body.linkedinCopy || null) : existing.linkedinCopy;
+      if (body.campaignId && !prCampaignOk(accountId, body.campaignId)) return sendJson(res, 400, { error: 'campaignId does not match a campaign on this account' });
+      const nextBriefJson = body.brief !== undefined ? JSON.stringify(prCleanBrief(body.brief)) : existing.briefJson;
+      const nextCampaignId = body.campaignId !== undefined ? (body.campaignId || null) : existing.campaignId;
       // distributedDate follows status the same way copyApprovedAt/etc do elsewhere in this file —
       // stamped the moment status flips to 'distributed', never hand-entered.
       const nextDistributedDate = nextStatus === 'distributed' ? (existing.distributedDate || now) : (nextStatus === existing.status ? existing.distributedDate : null);
-      db.prepare('UPDATE press_releases SET title = ?, workingCopy = ?, status = ?, distributedDate = ?, updatedAt = ?, releaseType = ?, audience = ?, ctaText = ?, ctaMode = ?, linkedinCopy = ? WHERE id = ?')
-        .run(nextTitle, nextCopy, nextStatus, nextDistributedDate, now, nextReleaseType, nextAudience, nextCtaText, nextCtaMode, nextLinkedinCopy, prId);
+      db.prepare('UPDATE press_releases SET title = ?, workingCopy = ?, status = ?, distributedDate = ?, updatedAt = ?, releaseType = ?, audience = ?, ctaText = ?, ctaMode = ?, linkedinCopy = ?, briefJson = ?, campaignId = ? WHERE id = ?')
+        .run(nextTitle, nextCopy, nextStatus, nextDistributedDate, now, nextReleaseType, nextAudience, nextCtaText, nextCtaMode, nextLinkedinCopy, nextBriefJson, nextCampaignId, prId);
       return sendJson(res, 200, { updated: true });
     }
     if (req.method === 'DELETE' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'press-releases'){
@@ -33968,7 +34026,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const existing = db.prepare('SELECT * FROM press_releases WHERE id = ? AND accountId = ?').get(prId, accountId);
       if (!existing) return sendJson(res, 404, { error: 'press release not found' });
       const body = await readBody(req);
-      const result = await draftPrCorpCommCopyViaAI(account, 'press_release', { title: existing.title, keyFacts: body.keyFacts || '', releaseType: existing.releaseType || '', audience: existing.audience || '', ctaText: existing.ctaText || '', ctaMode: existing.ctaMode || 'inspiration' });
+      const result = await draftPrCorpCommCopyViaAI(account, 'press_release', { title: existing.title, keyFacts: body.keyFacts || prRowKeyFacts(existing), releaseType: existing.releaseType || '', audience: existing.audience || '', ctaText: existing.ctaText || '', ctaMode: existing.ctaMode || 'inspiration' });
       if (result.copy){
         const now = new Date().toISOString();
         db.prepare('UPDATE press_releases SET workingCopy = ?, updatedAt = ? WHERE id = ?').run(result.copy, now, prId);
@@ -34132,9 +34190,10 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (!body.audience || !body.audience.trim()) return sendJson(res, 400, { error: 'audience is required' });
       const id = generateId('CCM');
       const now = new Date().toISOString();
-      db.prepare(`INSERT INTO corporate_comms (id, accountId, title, audience, workingCopy, status, approvedAt, createdBy, createdAt, updatedAt)
-        VALUES (?,?,?,?,?,?,?,?,?,?)`)
-        .run(id, accountId, body.title.trim(), body.audience.trim(), (body.workingCopy || '').trim() || null, 'draft', null, (body.createdBy || '').trim() || null, now, now);
+      if (body.campaignId && !prCampaignOk(accountId, body.campaignId)) return sendJson(res, 400, { error: 'campaignId does not match a campaign on this account' });
+      db.prepare(`INSERT INTO corporate_comms (id, accountId, title, audience, workingCopy, status, approvedAt, createdBy, createdAt, updatedAt, context, campaignId)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(id, accountId, body.title.trim(), body.audience.trim(), (body.workingCopy || '').trim() || null, 'draft', null, (body.createdBy || '').trim() || null, now, now, (typeof body.context === 'string' ? body.context.trim().slice(0, 4000) : '') || null, body.campaignId || null);
       return sendJson(res, 201, { id, status: 'saved' });
     }
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'corporate-comms'){
@@ -34157,8 +34216,11 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const nextCopy = body.workingCopy !== undefined ? body.workingCopy : existing.workingCopy;
       const nextStatus = body.status !== undefined ? body.status : existing.status;
       const nextApprovedAt = nextStatus === 'approved' ? (existing.approvedAt || now) : (nextStatus === existing.status ? existing.approvedAt : null);
-      db.prepare('UPDATE corporate_comms SET title = ?, audience = ?, workingCopy = ?, status = ?, approvedAt = ?, updatedAt = ? WHERE id = ?')
-        .run(nextTitle, nextAudience, nextCopy, nextStatus, nextApprovedAt, now, commId);
+      if (body.campaignId && !prCampaignOk(accountId, body.campaignId)) return sendJson(res, 400, { error: 'campaignId does not match a campaign on this account' });
+      const nextContext = body.context !== undefined ? ((typeof body.context === 'string' ? body.context.trim().slice(0, 4000) : '') || null) : existing.context;
+      const nextCommCampaign = body.campaignId !== undefined ? (body.campaignId || null) : existing.campaignId;
+      db.prepare('UPDATE corporate_comms SET title = ?, audience = ?, workingCopy = ?, status = ?, approvedAt = ?, updatedAt = ?, context = ?, campaignId = ? WHERE id = ?')
+        .run(nextTitle, nextAudience, nextCopy, nextStatus, nextApprovedAt, now, nextContext, nextCommCampaign, commId);
       return sendJson(res, 200, { updated: true });
     }
     if (req.method === 'DELETE' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'corporate-comms'){
@@ -34179,7 +34241,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const existing = db.prepare('SELECT * FROM corporate_comms WHERE id = ? AND accountId = ?').get(commId, accountId);
       if (!existing) return sendJson(res, 404, { error: 'corporate communication not found' });
       const body = await readBody(req);
-      const result = await draftPrCorpCommCopyViaAI(account, 'corporate_comms', { title: existing.title, audience: existing.audience, context: body.context || '' });
+      const result = await draftPrCorpCommCopyViaAI(account, 'corporate_comms', { title: existing.title, audience: existing.audience, context: body.context || existing.context || '' });
       if (result.copy){
         const now = new Date().toISOString();
         db.prepare('UPDATE corporate_comms SET workingCopy = ?, updatedAt = ? WHERE id = ?').run(result.copy, now, commId);
