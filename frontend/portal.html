@@ -23275,9 +23275,11 @@ function stratToolsHtml(){
 }
 
 function stratFieldHtml(){
-  const comp = curatedNewsCompetitorItems().slice(0, 4);
+  // Sourced competitor news (weekly feed, linked) comes first; the Brain's "worth watching" reasoning fills in after it.
+  const srcComp = ((newsFeed.lanes && newsFeed.lanes.competitors) || []).slice(0, 4).map(it => ({ competitor: it.sourceName || 'News', title: it.title, url: it.url, meta: newsMeta(it) }));
+  const comp = [...srcComp, ...curatedNewsCompetitorItems()].slice(0, 4);
   const news = DAILY_NEWS_ITEMS.filter(i => i.category === 'industry_news' || (i.category === 'ai_marketing' && !/AEO|GEO/i.test(i.title))).slice(0, 4);
-  const compHtml = comp.length ? comp.map(c => `<div class="strat-field-row"><strong>${escapeHtml(c.competitor)}</strong><div class="strat-sub">${escapeHtml(c.title)}</div></div>`).join('') : '<p class="strat-empty">No competitor watch items yet. They appear after the weekly intelligence refresh.</p>';
+  const compHtml = comp.length ? comp.map(c => c.url ? `<div class="strat-field-row"><a class="flink" href="${escapeHtml(c.url)}" target="_blank" rel="noopener">${escapeHtml(c.title)}</a><div class="strat-sub">${escapeHtml(c.meta || '')}</div></div>` : `<div class="strat-field-row"><strong>${escapeHtml(c.competitor)}</strong><div class="strat-sub">${escapeHtml(c.title)}</div></div>`).join('') : '<p class="strat-empty">No competitor news or watch items yet. News appears after the Monday sweep; watch items after the weekly intelligence refresh.</p>';
   const newsHtml = !news.length ? `<p class="strat-empty">Nothing new in the last ${NEWS_FRESH_DAYS} days.</p>` : news.map(n => `<div class="strat-field-row"><a class="flink" href="${escapeHtml(n.url || '#')}" target="_blank" rel="noopener">${escapeHtml(n.title)}</a><div class="strat-sub">${escapeHtml(n.meta || '')}</div></div>`).join('');
   return `<div class="strat-card"><div class="strat-head"><h2>The field this week</h2><span class="strat-tag">External</span></div>
     <p class="strat-sub" style="margin:0 0 10px;">What is happening outside your account. Competitor items are the Brain's reasoning about what to watch, not sourced reports. News links go to the publisher. None of it is proven to move your numbers.</p>
@@ -28122,10 +28124,10 @@ function ttbRerender(){
   if (!(stepEl && stepEl.classList.contains('active'))) return;
   // 2026-10-04 — keep the user's place: the hub redraw rebuilds the whole module (and briefly shrinks it while loading),
   // which dropped the page to the bottom after a budget upload. Pin the budget-upload slot to the same screen position.
-  const slotBefore = document.getElementById('ttbSlot-marketingBudgetUpload');
+  const slotBefore = document.querySelector('#aipoMount .ttb-mod.open');
   const topBefore = slotBefore && slotBefore.isConnected ? slotBefore.getBoundingClientRect().top : null;
   renderAiPartnerOnboardingHub(true);
-  const slotAfter = document.getElementById('ttbSlot-marketingBudgetUpload');
+  const slotAfter = document.querySelector('#aipoMount .ttb-mod.open');
   if (topBefore != null && slotAfter){ const d = slotAfter.getBoundingClientRect().top - topBefore; if (Math.abs(d) > 1) window.scrollBy(0, d); }
 }
 function ttbGo(step, arg){ if (arg) goToStep(step, arg); else goToStep(step); }
