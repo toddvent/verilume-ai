@@ -3850,6 +3850,11 @@
   body.ask-dock #askVerilumeLive.scope-campaign > .ask-status,body.ask-dock #askVerilumeLive.scope-campaign > .ask-thread,body.ask-dock #askVerilumeLive.scope-campaign > #askVerilumeDq,body.ask-dock #askVerilumeLive.scope-campaign > .ask-cards,body.ask-dock #askVerilumeLive.scope-campaign > .ask-assist,body.ask-dock #askVerilumeLive.scope-campaign > #askVerilumeProposal,body.ask-dock #askVerilumeLive.scope-campaign > .ask-followups{display:none;}
   body.ask-dock .ask-expand.scope-campaign > .ask-expand-label,body.ask-dock .ask-expand.scope-campaign > .prompt-row{display:none;}
   body.ask-dock .ask-expand button{font-family:inherit;}
+  body.ask-dock #cmpObjectivesCollabMount{display:none;}
+  body.ask-dock #cmpObjectivesPanel .cmp-pitch-body{grid-template-columns:minmax(0,1fr);}
+  body.ask-dock #cmpObjectivesPanel .cmp-pitch-left{border-right:0;}
+  body.ask-dock #cmpObjectivesPanel .cmp-pitch-left{padding-left:max(28px,calc((100% - 1040px) / 2));padding-right:max(28px,calc((100% - 1040px) / 2));}
+  body.ask-dock #cmpObjectivesPanel .cmp-pitch-left{padding-bottom:110px;}
   #askDockCamp{margin-top:10px;}
   .adc-teach{margin:-2px 0 10px;font-size:0.75rem;}
   .adt-head{display:flex;align-items:center;gap:6px;font-size:0.8125rem;}
@@ -4237,6 +4242,7 @@
           <input type="text" id="askVerilumeInput" placeholder="Ask Verilume about this account…" aria-label="Ask Verilume" onkeydown="if(event.key==='Enter'){askVerilumeSubmitTyped();}">
           <button type="button" class="btn-primary" onclick="askVerilumeSubmitTyped()">Ask</button>
         </div>
+        <div id="askDockCampVoice" style="display:none"><p class="ask-status" id="askDockCampVoiceStatus"></p><div class="ask-cards" id="askDockCampVoiceCards"></div><div id="askDockCampVoiceProposal"></div></div>
         <div id="askDockCamp"></div>
         <p class="ask-status" id="askVerilumeStatus"></p>
         <div class="ask-thread" id="askVerilumeThread"></div>
@@ -24262,6 +24268,23 @@ function askDockCampSend(text){
   let c = null; try { c = cmpRailLoadedCampaign(); } catch (e){}
   if (!c) cmpCollabSendPreCampaign(q); else cmpCollabSend('ai', q);
 }
+
+function askDockCampVoiceStatus(t){ const box = document.getElementById('askDockCampVoice'); const st = document.getElementById('askDockCampVoiceStatus'); if (box) box.style.display = 'block'; if (st) st.textContent = t || ''; }
+async function askDockCampToggleVoice(){
+  if (vxVoice.state !== 'idle' && vxVoice.surface === 'collab'){ await vxVoiceStop(); askVerilumeSetMic('idle'); askDockCampVoiceStatus(''); return; }
+  if (vxVoice.state !== 'idle'){ askDockCampVoiceStatus('Voice is already in use on another panel. Stop it there first.'); askVerilumeOpenLive(); return; }
+  askVerilumeOpenLive();
+  const campaign = (typeof cmpRailLoadedCampaign === 'function') ? cmpRailLoadedCampaign() : null;
+  askDockCampVoiceStatus('Connecting…');
+  await vxVoiceStart({
+    surface: 'collab', campaignId: campaign ? campaign.id : '',
+    onState: (st) => { askVerilumeSetMic(st); if (st === 'live') askDockCampVoiceStatus('Listening. Talk to the AI Brain; click the mic to stop.'); if (st === 'idle') askDockCampVoiceStatus(''); },
+    onStatus: (m) => askDockCampVoiceStatus(m),
+    onMessage: () => {},
+    onCards: (cards) => { askDockCampVoiceStatus('Listening. Talk to the AI Brain; click the mic to stop.'); askVerilumeRenderCards(cards, 'askDockCampVoiceCards'); },
+    onProposal: (p) => { askVerilumeRenderProposal(p, 'askDockCampVoiceProposal'); }
+  });
+}
 function askDockTeachAbout(noteId){
   let n = null; try { const c = cmpRailLoadedCampaign(); n = c && (cmpCollabNotesFor(c, 'ai').find(x => x.id === noteId)); } catch (e){}
   askDockOpen('brainTrain');
@@ -24530,6 +24553,7 @@ async function askVerilumeAsk(question){
 }
 function askVerilumeSubmitTyped(){ const i = document.getElementById('askVerilumeInput'); if (!i) return; const q = i.value; i.value = ''; if (ASK_DOCK_ON && askDockScopeNow() === 'campaign'){ askDockCampSend(q); return; } askVerilumeAsk(q); }
 async function askVerilumeToggleVoice(){
+  if (ASK_DOCK_ON && (askDockScopeNow() === 'campaign' || (vxVoice.state !== 'idle' && vxVoice.surface === 'collab'))){ return askDockCampToggleVoice(); }
   if (vxVoice.state !== 'idle' && vxVoice.surface === 'ask_bar'){ await vxVoiceStop(); askVerilumeSetMic('idle'); askVerilumeSetStatus(''); return; }
   if (vxVoice.state !== 'idle'){ askVerilumeSetStatus('Voice is already in use on another panel.'); return; }
   askVerilumeOpenLive();
