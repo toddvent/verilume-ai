@@ -3824,6 +3824,12 @@
   .ask-dock-btn:focus-visible{outline:2px solid #4F46E5;outline-offset:1px;}
   .ask-dock-btn[aria-disabled="true"]{opacity:0.4;cursor:not-allowed;}
   .ask-dock-toast{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);background:#1D1D1F;color:#fff;font-size:0.8125rem;font-weight:600;padding:9px 14px;border-radius:8px;z-index:890;}
+
+  /* Dock slice 2: Thoughts surface. The same drawer content, shown above the dock instead of as a right-edge drawer. Non-modal, no overlay, no tab. */
+  body.ask-dock .faq-drawer-tab,body.ask-dock .faq-drawer-overlay{display:none !important;}
+  body.ask-dock .faq-drawer{top:auto;right:auto;left:50%;bottom:104px;width:min(540px,calc(100vw - 24px));height:min(560px,calc(100vh - 140px));max-width:none;box-sizing:border-box;border:1px solid #CDD1D8;border-radius:16px;box-shadow:0 14px 36px rgba(20,20,30,0.2);z-index:870;transform:translate(-50%,16px);opacity:0;visibility:hidden;transition:opacity 0.15s,transform 0.15s,visibility 0.15s;}
+  body.ask-dock .faq-drawer.open{transform:translate(-50%,0);opacity:1;visibility:visible;}
+  @media (prefers-reduced-motion:reduce){body.ask-dock .faq-drawer{transition:none;}}
 </style>
 </head>
 <body>
@@ -23941,6 +23947,7 @@ function toggleAskVerilumePrompts(){
   const expandEl = document.getElementById('askVerilumeExpand');
   if (!toggleEl || !expandEl) return;
   const willOpen = !expandEl.classList.contains('open');
+  if (willOpen && ASK_DOCK_ON){ try { closeFaqDrawer(); } catch (e){} }
   expandEl.classList.toggle('open', willOpen);
   toggleEl.classList.toggle('is-open', willOpen);
   toggleEl.innerHTML = willOpen ? 'Hide prompts <span class="chev">▾</span>' : 'Suggested prompts <span class="chev">▾</span>';
@@ -49619,6 +49626,7 @@ function mountAiThoughtIcons(){
 // Round 16, point 2 — slide-out drawer open/close. Escape and clicking the
 // dimmed overlay both close it, same as the fixed ✕ button.
 function openFaqDrawer(){
+  if (typeof ASK_DOCK_ON !== 'undefined' && ASK_DOCK_ON){ const ex = document.getElementById('askVerilumeExpand'); if (ex && ex.classList.contains('open')) toggleAskVerilumePrompts(); const eb = document.querySelector('#faqDrawer .section-eyebrow'); if (eb) eb.textContent = 'Thoughts'; }
   document.getElementById('faqDrawer').classList.add('open');
   document.getElementById('faqDrawerOverlay').classList.add('open');
   if (!document.getElementById('bpFaqTopicChips').children.length) renderFaqTopicChips();
