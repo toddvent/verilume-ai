@@ -1430,6 +1430,9 @@
      left in place, unused, rather than deleted, since it's real working
      code this just stops calling; see renderStatCards(). */
   .stat-card-row-head{display:flex;justify-content:flex-end;margin-bottom:12px;}
+  .dash-title-row{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:14px;}
+  .dash-title-row h1{flex:1 1 auto;min-width:0;}
+  .dash-title-row .customize-kpis-btn{flex:0 0 auto;margin-top:6px;}
   .customize-kpis-btn{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;font-weight:700;color:var(--ink);background:var(--white);border:1px solid var(--line);border-radius:999px;padding:7px 16px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
   .customize-kpis-btn:hover{border-color:var(--hdr-navy);}
   .fd-panel button,.fd-panel input{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;}
@@ -4321,7 +4324,10 @@
          follow-up notes) — this round only fixes the OTHER five tabs
          showing dailyBrief's copy verbatim, not Daily Brief's own gap. -->
     <div class="eyebrow" id="dashboardEyebrow">CMO Dashboard</div>
-    <h1 id="dashboardH1">The experience, working — and here's the proof.<span class="h1-sub" id="dashboardH1Sub">Everything the assessment found, now tracked to closed.</span></h1>
+    <div class="dash-title-row">
+      <h1 id="dashboardH1">The experience, working — and here's the proof.<span class="h1-sub" id="dashboardH1Sub">Everything the assessment found, now tracked to closed.</span></h1>
+      <button type="button" class="customize-kpis-btn" id="dashAskBtn" onclick="fireDrillOpen()">Need something we don't show? <span class="fd-cta-b">Ask Verilume</span></button>
+    </div>
     <p class="lede lede-full" id="dashboardLede">This summary reads from the free assessment's scorecard and this account's Portal activity — the goal is a clean line from what the assessment found weak to what's been activated to close it. That's the Verilume standard: an honest read on where reach and delivery actually stand, not a vanity-metric roll-up, and a clear, prioritized line to what to fix next.</p>
 
     <!-- Round 132bx (2026-08-15) — Portal Home split into two tabs, per
@@ -4455,9 +4461,7 @@
          so renderExecChartsVisibility() (hides this on Account
          Management) still works unchanged. -->
       <div id="execChartsModule">
-        <div class="stat-card-row-head">
-          <button type="button" class="customize-kpis-btn" onclick="fireDrillOpen()">Need something we don't show? <span class="fd-cta-b">Ask Verilume</span></button>
-        </div>
+        <!-- 2026-10-04: the "Need something we don't show?" button moved up to the shared title row (#dashAskBtn) so every dashboard tab places it identically. -->
         <div class="stat-card-grid" id="tabStatCardGrid"></div>
       </div>
 
@@ -4658,10 +4662,13 @@
        (press releases included), AEO/GEO (AI answer engine) visibility,
        and GA4 standard reporting. -->
   <div class="step" id="step-searchOptimization">
-    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / Search Optimization</div>
-    <div class="eyebrow">Workstream · Search Optimization <span style="font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;padding:2px 8px;border-radius:20px;background:var(--advocacy);color:var(--white);vertical-align:middle;margin-left:6px;">Enterprise</span></div>
-    <h1>Organic visibility, everywhere it's earned — search engines and AI answer engines alike.</h1>
-    <p class="lede">SEO, AEO (Answer Engine Optimization), and GEO (Generative Engine Optimization) in one continuously-monitored workstream: site health, keyword and FAQ opportunities, a content audit, AI-answer-engine citation tracking, and standard GA4 reporting.</p>
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / Search Everywhere</div>
+    <div class="eyebrow">Workstream · Search Everywhere <span style="font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;padding:2px 8px;border-radius:20px;background:var(--advocacy);color:var(--white);vertical-align:middle;margin-left:6px;">Enterprise</span></div>
+    <h1>Search Everywhere: be found, and be quoted, wherever customers ask.</h1>
+    <p class="lede">SEO, AEO (Answer Engine Optimization) and GEO (Generative Engine Optimization) for your press releases and your website. Optimize copy toward your Search keywords, check your site for technical issues, and see where you stand.</p>
+
+    <div id="srchMaster"></div>
+    <p class="hint" style="margin:18px 0 6px;">Monitoring sections below show sample data until Search Console or a licensed tool is connected.</p>
 
     <div id="cfdWsModule-searchOptimization"></div>
 
@@ -22175,7 +22182,7 @@ const WORKSTREAMS = [
   { key: 'marketingCalendar', tab: 'marketer', label: 'Marketing Calendar', desc: 'Every scheduled campaign event across this account, by month — the account-wide view before drilling into any one campaign.' },
   { key: 'campaignMgmt', tab: 'marketer', label: 'Campaign Management', desc: 'Every campaign’s status across Brand, Marketing Functions, Creative, QA & Approval, In Market, and Analysis — in one place, instead of checking each function group separately.' },
   { key: 'collaboration', tab: 'dailyBrief', label: 'Collaboration', desc: 'Describe what you need in plain language — your AI Partner routes it to the right function(s) instead of you clicking through the org chart.', badge: 'Enterprise' },
-  { key: 'searchOptimization', tab: 'brand', label: 'Search Optimization', desc: 'SEO, AEO & GEO — organic visibility across search engines and AI answer engines, monitored continuously.', badge: 'Enterprise' },
+  { key: 'searchOptimization', tab: 'brand', label: 'Search Everywhere', desc: 'SEO, AEO & GEO — optimize press releases and website copy toward your search keywords, and check your site.', badge: 'Enterprise' },
   { key: 'manageAccount', tab: 'accountManagement', label: 'Manage Account', desc: 'AI Partner Onboarding & Training, account settings, vendors, and partners.' }
 ];
 
@@ -23496,7 +23503,7 @@ function cxToolsHtml(){
     { label: 'Voice Contest', step: 'voiceContest' }, { label: 'Experience Development' }, { label: 'Omni-Channel Creative', step: 'omniCreative' },
     { label: 'AI Agent Analysis: CMO to Creative', step: 'customerExperiences' }, { label: 'Reputation Monitoring', step: 'reputation', note: 'Enterprise' },
     { label: 'Press Release Distribution', step: 'reputation', note: 'Enterprise' }, { label: 'Editorial Solicitation', step: 'reputation', note: 'Enterprise' },
-    { label: 'SEO, AEO & GEO Monitoring', step: 'searchOptimization', note: 'Enterprise' }, { label: 'Customer Sentiment Analysis & Responses', note: 'Pending' }
+    { label: 'Search Everywhere (SEO, AEO & GEO)', step: 'searchOptimization', note: 'Enterprise' }, { label: 'Customer Sentiment Analysis & Responses', note: 'Pending' }
   ];
   return `<div class="strat-tools"><span class="strat-tools-lbl">Tools</span>${items.map(it => `<a class="flink" onclick="${go(it)}">${escapeHtml(it.label)}</a>${it.note ? `<span class="strat-note">(${escapeHtml(it.note)})</span>` : ''}`).join('')}</div>`;
 }
@@ -24030,8 +24037,8 @@ const BRAND_SHELL_GROUPS = [
     { label: 'Editorial Solicitation', step: 'reputation', badge: 'enterprise' },
     { label: 'Specialty Partners', badge: 'enterprise' }
   ]},
-  { label: 'Search Optimization', badge: 'enterprise', items: [
-    { label: 'SEO, AEO & GEO Monitoring', step: 'searchOptimization', badge: 'enterprise' }
+  { label: 'Search Everywhere', badge: 'enterprise', items: [
+    { label: 'SEO, AEO & GEO', step: 'searchOptimization', badge: 'enterprise' }
   ]}
 ];
 function brandShellHtml(){
@@ -25303,6 +25310,7 @@ function renderExecChartsVisibility(){
   const moduleEl = document.getElementById('execChartsModule');
   if (!moduleEl) return;
   moduleEl.style.display = activePrimaryTab === 'accountManagement' ? 'none' : '';
+  const askBtn = document.getElementById('dashAskBtn'); if (askBtn) askBtn.style.display = activePrimaryTab === 'accountManagement' ? 'none' : '';
 }
 function renderTopUrgentModule(){
   const moduleEl = document.getElementById('topUrgentModule');
@@ -26285,7 +26293,7 @@ const WORKSTREAM_CFD = {
   // SEO_DATA the section renderers below use, so the standup line is never
   // out of sync with what's on the page under it.
   searchOptimization: {
-    label: 'Search Optimization',
+    label: 'Search Everywhere',
     status(){
       const critical = SEO_DATA.crawlIssues.filter(i => i.severity === 'critical').length;
       const opportunities = SEO_DATA.keywordOpportunities.length;
@@ -28231,6 +28239,7 @@ const TTB_CFG = {
   companyProfile: { manual: { profile: true }, view: { step: 'companyProfile', label: 'Company Profile' } },
   styleAssets: { upload: { formats: 'Logo, font or brand guide files (PNG, SVG, PDF, OTF, TTF)', go: 'styleAssets' }, manual: { step: 'styleAssets' }, view: { tab: 'brand', label: 'Customer Experiences' } },
   websiteExamples: { manual: { step: 'websiteExamples' }, used: 'Used by Copywriting' },
+  searchKeywords: { upload: { direct: 'srchKwPick', formats: 'A CSV export from Semrush, BrightEdge, Search Console or Keyword Planner, or a plain list with one keyword per row.', sample: { name: 'search-keywords-sample.csv', cols: ['Keyword', 'Search Volume', 'Intent', 'Product Group'], rows: [['world cruise', 12100, 'Commercial', 'World Voyage'], ['how long is a world cruise', 880, 'Informational', 'World Voyage']] } }, manual: { cards: [] }, view: { step: 'searchOptimization', label: 'Search Everywhere' } },
   competitivePositioning: { manual: { step: 'competitivePositioning' }, view: { tab: 'strategy', label: 'Strategy' } },
   brandWritingSamples: { upload: { formats: 'Word, PDF or text files', go: 'brandWritingSamples' }, manual: { step: 'brandWritingSamples' }, used: 'Used by Copywriting' },
   voice: { manual: { step: 'voice' }, view: { tab: 'brand', label: 'Customer Experiences' } },
@@ -28264,6 +28273,7 @@ const TTB_PLAN_SAMPLES = {
   magazineCost: { benefit: 'Your negotiated print rates by title and format.', sample: `<div class="ttb-srow ttb-head"><span>Title · format</span><span>Per insertion</span></div><div class="ttb-srow"><span>Travel Monthly · full page</span><span>$18,500</span></div><div class="ttb-srow"><span>Travel Monthly · half page</span><span>$11,200</span></div>` }
 };
 Object.keys(TTB_PLAN_SAMPLES).forEach(k => { TTB_ITEMS[k] = TTB_PLAN_SAMPLES[k]; });
+TTB_ITEMS.searchKeywords = { benefit: 'The queries your customers use. Press releases and website copy are optimized toward them.', sample: `<div class="ttb-srow ttb-head"><span>Keyword</span><span>Volume</span><span>Intent</span></div><div class="ttb-srow"><span>world cruise</span><span>High</span><span>Commercial</span></div><div class="ttb-srow"><span>how long is a world cruise</span><span>Medium</span><span>Informational</span></div>` };
 function ttbMoney(n){ n = Number(n); if (!isFinite(n)) return '—'; if (n >= 1e12) return '$' + (n / 1e12).toFixed(1).replace(/\.0$/, '') + 'T'; if (n >= 1e9) return '$' + (n / 1e9).toFixed(1).replace(/\.0$/, '') + 'B'; if (n >= 1e6) return '$' + (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M'; return '$' + Math.round(n).toLocaleString(); }
 function ttbPeople(n){ n = Number(n); if (!isFinite(n)) return '—'; if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M'; return Math.round(n).toLocaleString(); }
 // The company profile sample card shows this client's own industry, TAM and SAM (and the generation and wealth tables behind them) once they exist.
@@ -28690,6 +28700,7 @@ function ttbMountOpen(){
     if (!ttb.manual[k] || ttb.open !== k) return; const c = TTB_CFG[k]; const cards = (c && c.manual && c.manual.cards) || (c && c.upload && c.upload.workspace) || []; const slot = document.getElementById('ttbSlot-' + k); if (!slot) return;
     cards.forEach(id => { const el = document.getElementById(id); if (!el) return; el.style.marginTop = '0'; slot.appendChild(el); });
     if (k === 'marketingBudgetUpload'){ ttbBuRender(); return; }
+    if (k === 'searchKeywords'){ srchKwRender(); return; }
     if (TTB_UP[k] && !TTB_UP[k].legacy && ttbUp.key === k){ ttbUpRender(); }
     if (cards.length && !ttb.loaded[k]){ ttb.loaded[k] = true; try { if (cards[0] === 'kpiMetricsAdminModule') loadKpiMetricsAdminTable(); else mbuLoadReachInputs(); } catch (e){ console.warn('ttb: loading entry card failed', e); } }
   });
@@ -59078,7 +59089,256 @@ function renderSeoGa4(){
   }
 }
 
+// ---------- Search Everywhere (2026-10-04) ----------
+// One optimize step (suggest, accept or skip, apply) used on the PR release card and on the master page; a site check for the website;
+// and the Train the Brain "Search keywords" module that feeds both. All data comes from /api/accounts/:id/search-everywhere.
+const srch = { overview: null, audit: null, auditLoaded: false, auditBusy: false, auditMsg: '', surface: 'press', open: {}, run: {}, runLoaded: {}, busy: {}, msg: {}, cfg: {}, webUrl: '', webText: '', webText2: '', drafts: {}, area: 'all', showAll: false, kw: null, kwBusy: false, kwMsg: '', kwUp: { stage: 'idle' } };
+function srchLive(){ return dataSourceLabel === 'backend' && !!state.companyId; }
+async function srchApi(path, opts){
+  const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/search-everywhere${path}`, opts);
+  const d = await r.json().catch(() => ({})); if (!r.ok && !d.error) d.error = 'Something went wrong (' + r.status + ').'; return d;
+}
+function srchPost(path, body){ return srchApi(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 120000, body: JSON.stringify(body || {}) }); }
+function srchRerender(){
+  try { const st = document.getElementById('step-searchOptimization'); if (st && st.classList.contains('active') && document.getElementById('srchMaster')) srchMasterRender(); } catch (e){}
+  try { const st = document.getElementById('step-reputation'); if (st && st.classList.contains('active')) renderReputationStep(); } catch (e){}
+}
+const SRCH_TAG_COLOR = { SEO: '#2F5FD0', AEO: '#8A4FD0', GEO: '#1C8A55' };
+function srchChip(tag){ return `<span style="display:inline-block;font-size:0.6875rem;font-weight:700;letter-spacing:0.04em;border-radius:5px;padding:1px 7px;margin-right:6px;color:#fff;background:${SRCH_TAG_COLOR[tag] || '#667085'};">${escapeHtml(tag)}</span>`; }
+function srchMarkedHtml(run){
+  const acc = (run.suggestions || []).filter(s => s.status === 'accepted').sort((a, b) => a.at - b.at); const src = run.originalText || ''; let out = '', pos = 0;
+  const esc = t => escapeHtml(t).replace(/\n/g, '<br>');
+  acc.forEach(s => {
+    const at = src.indexOf(s.find, pos); if (at < 0) return;
+    if (s.kind === 'insert_after'){ out += esc(src.slice(pos, at + s.find.length)) + ' <mark>' + esc(s.replace) + '</mark>'; pos = at + s.find.length; }
+    else { out += esc(src.slice(pos, at)) + '<mark>' + esc(s.replace) + '</mark>'; pos = at + s.find.length; }
+  });
+  return out + esc(src.slice(pos));
+}
+async function srchEnsureRun(key){
+  const c = srch.cfg[key]; if (!c || srch.runLoaded[key] || !srchLive()) return; srch.runLoaded[key] = true;
+  if (c.kind !== 'press') return;
+  try { const d = await srchApi(`/optimize?surface=press&targetRef=${encodeURIComponent(c.id)}`); if (d.run){ srch.run[key] = d.run; srchRerender(); } } catch (e){}
+}
+function srchPanelHtml(key, cfg){
+  srch.cfg[key] = cfg; srchEnsureRun(key);
+  const run = srch.run[key]; const busy = !!srch.busy[key]; const msg = srch.msg[key];
+  const isPress = cfg.kind === 'press';
+  const head = `<div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;"><b>Optimize for search</b><span class="hint">${isPress ? 'Step 2 of 3, optional: Draft, Optimize, Review and approve.' : 'Suggests edits to this copy. Nothing changes until you accept.'}</span></div>`;
+  const note = `<p class="hint" style="margin:6px 0 8px;">Reads your Search keywords from Train the Brain, skips anything on your Avoid list, and only rewords facts already in the text. Each edit is tagged SEO, AEO or GEO.</p>`;
+  const runBtn = `<button type="button" class="btn-primary" ${busy ? 'disabled aria-disabled="true"' : ''} onclick="srchRun('${key}')">${busy ? 'Working… about 20 seconds' : (run ? 'Run again' : 'Find search improvements →')}</button>`;
+  let body = '';
+  if (run){
+    const sug = run.suggestions || []; const by = t => sug.filter(s => s.tag === t).length; const acc = sug.filter(s => s.status === 'accepted').length;
+    body = `<p class="hint" style="margin:0 0 6px;">${sug.length ? `${sug.length} suggestion${sug.length === 1 ? '' : 's'}: ${by('SEO')} SEO, ${by('AEO')} AEO, ${by('GEO')} GEO. ${acc} accepted.` : 'No safe improvements were found for this text.'}${run.droppedCount ? ` ${run.droppedCount} more ${run.droppedCount === 1 ? 'was' : 'were'} removed because they did not pass the checks (text not in the draft, a new number, or an Avoid term).` : ''}</p>`;
+    body += sug.map(s => {
+      const diff = s.kind === 'insert_after' ? `<div class="hint">After “…${escapeHtml(s.find.slice(-70))}”</div><div><ins style="text-decoration:none;background:var(--accbg,#E4F3F5);padding:0 3px;border-radius:3px;">${escapeHtml(s.replace)}</ins></div>` : `<div class="hint"><del>${escapeHtml(s.find)}</del></div><div><ins style="text-decoration:none;background:var(--accbg,#E4F3F5);padding:0 3px;border-radius:3px;">${escapeHtml(s.replace)}</ins></div>`;
+      return `<div style="border:1px solid var(--line-hairline,#dfe3ea);border-radius:10px;padding:10px 12px;margin:8px 0;${s.status === 'skipped' ? 'opacity:0.55;' : ''}"><div>${srchChip(s.tag)}<b>${escapeHtml(s.keyword || '')}</b></div><div class="hint" style="margin:2px 0 6px;">${escapeHtml(s.why)}</div>${diff}<div class="btn-row" style="margin-top:6px;"><button type="button" class="${s.status === 'accepted' ? 'btn-primary' : 'btn-ghost'}" onclick="srchDecide('${key}','${s.id}','${s.status === 'accepted' ? 'pending' : 'accepted'}')">${s.status === 'accepted' ? 'Accepted ✓' : 'Accept'}</button><button type="button" class="btn-ghost" onclick="srchDecide('${key}','${s.id}','${s.status === 'skipped' ? 'pending' : 'skipped'}')">${s.status === 'skipped' ? 'Skipped' : 'Skip'}</button></div></div>`;
+    }).join('');
+    if (sug.length){
+      body += `<div class="btn-row" style="margin-top:6px;"><button type="button" class="btn-ghost" onclick="srchDecideAll('${key}','accepted')">Accept all</button><button type="button" class="btn-primary" ${acc ? '' : 'disabled aria-disabled="true" style="opacity:0.5;"'} onclick="srchApply('${key}')">${isPress ? 'Apply accepted edits to the draft →' : 'Show improved text →'}</button></div>`;
+      body += `<details style="margin-top:8px;"><summary class="hint" style="cursor:pointer;">Preview with accepted edits</summary><div style="border:1px solid var(--line-hairline,#dfe3ea);border-radius:8px;padding:10px;margin-top:6px;font-size:0.875rem;">${srchMarkedHtml(run)}</div></details>`;
+    }
+    if (run.appliedAt && isPress) body += `<p class="hint" style="margin:8px 0 0;color:var(--cx);font-weight:600;">Applied to the draft ${new Date(run.appliedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}. ${run.acceptedCount} of ${run.totalCount} suggestions accepted. Review and approve below.</p>`;
+    if (srch.msg[key + ':text']) body += `<div style="margin-top:8px;"><textarea id="srchOut-${key}" rows="8" style="width:100%;font-family:inherit;">${escapeHtml(srch.msg[key + ':text'])}</textarea><div class="btn-row" style="margin-top:6px;"><button type="button" class="btn-ghost" onclick="srchCopyOut('${key}')">Copy text</button></div><p class="hint">Copy this into your site. Verilume does not publish to your website.</p></div>`;
+  }
+  return `<div class="srch-panel" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line-hairline,#dfe3ea);">${head}${note}<div class="btn-row">${runBtn}</div>${msg ? `<p class="hint" style="margin:6px 0 0;color:var(--advocacy);">${escapeHtml(msg)}</p>` : ''}${body}</div>`;
+}
+async function srchRun(key){
+  const c = srch.cfg[key]; if (!c || srch.busy[key]) return; srch.busy[key] = true; srch.msg[key] = ''; srch.msg[key + ':text'] = ''; srchRerender();
+  try {
+    let body;
+    if (c.kind === 'press'){
+      const ta = document.getElementById(`prcCopy-press-${c.id}`); const item = (typeof prcState !== 'undefined' && prcState && prcState.pressReleases || []).find(x => x.id === c.id);
+      if (ta && (!item || ta.value !== (item.workingCopy || ''))){ try { await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/press-releases/${encodeURIComponent(c.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workingCopy: ta.value }) }); } catch (e){} }
+      body = { surface: 'press', prId: c.id };
+    } else body = { surface: 'website', pageUrl: srch.webUrl || undefined, text: srch.webText2 || undefined };
+    const d = await srchPost('/optimize', body);
+    if (d.error) srch.msg[key] = d.error; else srch.run[key] = d.run;
+  } catch (e){ srch.msg[key] = 'Could not reach the server.'; }
+  srch.busy[key] = false; srchRerender();
+}
+async function srchDecide(key, sid, status){
+  const run = srch.run[key]; if (!run) return;
+  const s = run.suggestions.find(x => x.id === sid); if (s) s.status = status; srchRerender();
+  try { const d = await srchPost(`/optimize/${encodeURIComponent(run.id)}/decide`, { suggestionId: sid, status }); if (d.run) srch.run[key] = d.run; } catch (e){}
+  srch.msg[key + ':text'] = ''; srchRerender();
+}
+async function srchDecideAll(key, status){
+  const run = srch.run[key]; if (!run) return;
+  try { const d = await srchPost(`/optimize/${encodeURIComponent(run.id)}/decide`, { all: true, status }); if (d.run) srch.run[key] = d.run; } catch (e){}
+  srchRerender();
+}
+async function srchApply(key){
+  const run = srch.run[key]; const c = srch.cfg[key]; if (!run) return;
+  try {
+    const d = await srchPost(`/optimize/${encodeURIComponent(run.id)}/apply`, {});
+    if (d.error){ srch.msg[key] = d.error; srchRerender(); return; }
+    run.appliedAt = new Date().toISOString();
+    if (c.kind === 'press'){ try { await loadPrCorpCommData(); } catch (e){} } else srch.msg[key + ':text'] = d.text || '';
+  } catch (e){ srch.msg[key] = 'Could not reach the server.'; }
+  srchRerender();
+}
+function srchCopyOut(key){ const ta = document.getElementById('srchOut-' + key); if (!ta) return; ta.select(); try { navigator.clipboard.writeText(ta.value); } catch (e){ try { document.execCommand('copy'); } catch (e2){} } }
+
+// ---- Master page (Customer Experiences > Search Everywhere) ----
+async function srchMasterLoad(){
+  if (!srchLive()) { srchMasterRender(); return; }
+  try { srch.overview = await srchApi(''); } catch (e){ srch.overview = { error: 'Could not reach the server.' }; }
+  if (!srch.auditLoaded){ srch.auditLoaded = true; try { const d = await srchApi('/website-audit'); srch.audit = d.audit || null; } catch (e){} }
+  srchMasterRender();
+}
+function srchSetSurface(s){ srch.surface = s; srchMasterRender(); }
+function srchOpenKeywords(){ ttb.open = 'searchKeywords'; ttb.manual.searchKeywords = true; goToStep('manageAccount'); }
+function srchMasterRender(){
+  const m = document.getElementById('srchMaster'); if (!m) return;
+  if (!srchLive()){ m.innerHTML = `<div class="module open"><div class="module-body"><p class="hint" style="margin:0;">Search optimization runs against your live account. Open this page from a signed-in account to use it.</p></div></div>`; return; }
+  const o = srch.overview;
+  if (!o){ m.innerHTML = '<p class="hint">Loading…</p>'; return; }
+  if (o.error){ m.innerHTML = `<p class="hint" style="color:var(--advocacy);">${escapeHtml(o.error)}</p>`; return; }
+  const kc = o.keywordCounts || {};
+  const strip = `<div class="strat-card" style="margin:12px 0;"><div style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;"><div><b>Search keywords</b> <span class="hint">${kc.targets || 0} target${kc.targets === 1 ? '' : 's'} · ${kc.queries || 0} quer${kc.queries === 1 ? 'y' : 'ies'} · ${kc.negatives || 0} to avoid${kc.suggested ? ` · <b>${kc.suggested} waiting for you to accept</b>` : ''}</span><div class="hint">High-volume queries relevant to your brand, products and creative focus. Both surfaces below optimize toward this list.</div></div><button type="button" class="btn-ghost" onclick="srchOpenKeywords()">Manage in Train the Brain →</button></div></div>`;
+  const tab = (id, label) => `<button type="button" class="${srch.surface === id ? 'btn-primary' : 'btn-ghost'}" onclick="srchSetSurface('${id}')">${label}</button>`;
+  let body = '';
+  if (srch.surface === 'press'){
+    const rows = (o.press || []);
+    body = rows.length ? rows.map(p => {
+      const opt = p.optimized ? `<span class="hint">${p.optimized.acceptedCount} of ${p.optimized.totalCount} accepted${p.optimized.appliedAt ? ', applied' : ''}</span>` : '<span class="hint">Not optimized yet</span>';
+      const open = !!srch.open[p.id];
+      return `<div class="seo-row" style="flex-direction:column;align-items:stretch;"><div style="display:flex;gap:12px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;"><div class="seo-row-main"><div class="seo-row-title">${escapeHtml(p.title)}</div><div class="seo-row-detail">${escapeHtml(p.status || 'draft')} · ${opt}</div></div><div class="btn-row" style="margin:0;"><button type="button" class="btn-ghost" onclick="srch.open['${p.id}'] = !srch.open['${p.id}']; srchMasterRender();">${open ? 'Hide' : 'Optimize'}</button><button type="button" class="btn-ghost" onclick="goToStep('reputation')">Open in PR →</button></div></div>${open ? srchPanelHtml('press:' + p.id, { kind: 'press', id: p.id }) : ''}</div>`;
+    }).join('') : '<p class="hint">No press releases yet. Draft one under PR and Corp Comm, then optimize it here or on its card.</p>';
+  } else body = srchWebsiteHtml(o);
+  m.innerHTML = `<div class="module open accent-media"><div class="module-head"><span class="modnum">★</span><span class="modtitle">Optimize for search</span></div><div class="module-body">${strip}<div class="btn-row" style="margin:0 0 10px;">${tab('press', 'Press releases')}${tab('website', 'Website')}</div>${body}</div></div>`;
+}
+function srchWebsiteHtml(o){
+  const A = srch.audit; const pages = o.websitePages || [];
+  const files = A && A.files ? A.files : null;
+  const pill = (sev) => `<span style="display:inline-block;font-size:0.6875rem;font-weight:700;text-transform:uppercase;border-radius:5px;padding:1px 7px;margin-right:6px;color:#fff;background:${sev === 'high' ? '#B42318' : sev === 'medium' ? '#B4620A' : '#667085'};">${sev}</span>`;
+  let h = `<div style="margin-bottom:6px;"><b>Site check</b> <span class="hint">${o.websiteUrl ? escapeHtml(o.websiteUrl) : 'No website address on file. Add one in Company Profile.'}</span></div><p class="hint" style="margin:0 0 8px;">Verilume fetches your own pages and checks titles, descriptions, headings, images, links, redirects, URL structure, structured data and AI crawler access. It uses the pages you chose in <a class="flink" onclick="goToStep('websiteExamples')">Website Examples</a> (${pages.length} included) plus the home page.</p>`;
+  h += `<div class="btn-row"><button type="button" class="btn-primary" ${srch.auditBusy || !o.websiteUrl ? 'disabled aria-disabled="true"' : ''} onclick="srchRunAudit()">${srch.auditBusy ? 'Checking your site… about a minute' : (A ? 'Run the check again' : 'Check my site →')}</button></div>`;
+  if (srch.auditMsg) h += `<p class="hint" style="color:var(--advocacy);">${escapeHtml(srch.auditMsg)}</p>`;
+  if (A){
+    const c = A.counts || {};
+    h += `<p class="hint" style="margin:10px 0 6px;">Checked ${A.pagesChecked} page${A.pagesChecked === 1 ? '' : 's'} and ${A.linksChecked} links on ${new Date(A.ranAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}. ${c.high || 0} high, ${c.medium || 0} medium, ${c.low || 0} low.${A.pagesSkipped ? ` ${A.pagesSkipped} page(s) were skipped to stay inside the time limit.` : ''}</p>`;
+    if (files) h += `<div class="hint" style="margin:0 0 8px;">robots.txt: ${files.robots && files.robots.found ? 'found' : 'missing'}${files.robots && files.robots.blockedAiBots && files.robots.blockedAiBots.length ? ` (blocks ${escapeHtml(files.robots.blockedAiBots.join(', '))})` : ''} · sitemap.xml: ${files.sitemap && files.sitemap.found ? files.sitemap.urlCount + ' URLs' : 'missing'} · llms.txt: ${files.llms && files.llms.found ? 'found' : 'missing'} · http to https: ${files.httpRedirect === 301 ? 'redirects (301)' : files.httpRedirect ? 'redirect ' + files.httpRedirect : 'not checked'}</div>`;
+    const areas = ['all', ...Array.from(new Set((A.issues || []).map(i => i.area)))];
+    h += `<div class="btn-row" style="margin:6px 0;flex-wrap:wrap;">${areas.map(a => `<button type="button" class="${srch.area === a ? 'btn-primary' : 'btn-ghost'}" onclick="srch.area='${a}'; srchMasterRender();">${a === 'all' ? 'All' : escapeHtml(a)}</button>`).join('')}</div>`;
+    const list = (A.issues || []).map((i, n) => ({ ...i, n })).filter(i => srch.area === 'all' || i.area === srch.area); const shown = srch.showAll ? list : list.slice(0, 12);
+    h += shown.map(i => {
+      const pi = i.pageUrl ? (A.pages || []).findIndex(p => p.url === i.pageUrl) : -1; const canDraft = pi >= 0 && (i.area === 'Titles' || i.area === 'Meta description');
+      let path = ''; try { path = i.pageUrl ? new URL(i.pageUrl).pathname : 'Whole site'; } catch (e){ path = i.pageUrl || ''; }
+      const d = srch.drafts[i.pageUrl];
+      return `<div style="border:1px solid var(--line-hairline,#dfe3ea);border-radius:10px;padding:10px 12px;margin:8px 0;"><div>${pill(i.severity)}<b>${escapeHtml(i.area)}</b> <span class="hint">${escapeHtml(path)}</span></div><div style="margin:4px 0;">${escapeHtml(i.finding)}</div><div class="hint">${escapeHtml(i.recommendation)}</div>${canDraft ? `<div class="btn-row" style="margin-top:6px;"><button type="button" class="btn-ghost" onclick="srchDraftMeta(${pi})">${d && d.busy ? 'Drafting…' : 'Draft a title and description'}</button></div>` : ''}${d && d.title ? `<div style="margin-top:6px;border-left:3px solid var(--cx,#0F7C8A);padding-left:10px;"><div class="hint">Suggested title (${d.title.length})</div><div>${escapeHtml(d.title)}</div><div class="hint" style="margin-top:4px;">Suggested description (${d.metaDescription.length})</div><div>${escapeHtml(d.metaDescription)}</div></div>` : ''}${d && d.error ? `<p class="hint" style="color:var(--advocacy);">${escapeHtml(d.error)}</p>` : ''}</div>`;
+    }).join('') || '<p class="hint">Nothing found in this area.</p>';
+    if (list.length > 12) h += `<div class="btn-row"><button type="button" class="btn-ghost" onclick="srch.showAll=!srch.showAll; srchMasterRender();">${srch.showAll ? 'Show fewer' : `Show all ${list.length}`}</button></div>`;
+    h += `<p class="hint" style="margin-top:10px;">${escapeHtml(A.limits || '')}</p>`;
+  }
+  h += `<div style="margin-top:18px;"><b>Optimize page copy</b> <span class="hint">Pick a page on your site, or paste the copy.</span></div><div class="field" style="margin:8px 0;"><label for="srchWebUrl">Page address</label><input type="text" id="srchWebUrl" value="${escapeHtml(srch.webUrl)}" placeholder="https://…/destinations/antarctica" list="srchWebUrls" oninput="srch.webUrl=this.value"><datalist id="srchWebUrls">${pages.map(p => { let u = p.path; try { u = new URL(p.path, o.websiteUrl).toString(); } catch (e){} return `<option value="${escapeHtml(u)}">`; }).join('')}</datalist></div><div class="field"><label for="srchWebText">Or paste the page copy</label><textarea id="srchWebText" rows="4" style="width:100%;font-family:inherit;" oninput="srch.webText2=this.value">${escapeHtml(srch.webText2)}</textarea></div>`;
+  h += srchPanelHtml('web', { kind: 'website' });
+  return h;
+}
+async function srchRunAudit(){
+  if (srch.auditBusy) return; srch.auditBusy = true; srch.auditMsg = ''; srchMasterRender();
+  try { const d = await srchPost('/website-audit', {}); if (d.error) srch.auditMsg = d.error; else { srch.audit = d.audit; srch.showAll = false; srch.area = 'all'; try { srch.overview = await srchApi(''); } catch (e){} } } catch (e){ srch.auditMsg = 'Could not reach the server.'; }
+  srch.auditBusy = false; srchMasterRender();
+}
+async function srchDraftMeta(i){
+  const p = srch.audit && srch.audit.pages[i]; if (!p) return; srch.drafts[p.url] = { busy: true }; srchMasterRender();
+  try { const d = await srchPost('/website-audit/draft', { pageUrl: p.url }); srch.drafts[p.url] = d.error ? { error: d.error } : d; } catch (e){ srch.drafts[p.url] = { error: 'Could not reach the server.' }; }
+  srchMasterRender();
+}
+
+// ---- Train the Brain: Search keywords module ----
+async function srchKwLoad(force){
+  if (!srchLive() || (srch.kw && !force)) return;
+  try { srch.kw = await srchApi('/keywords'); } catch (e){ srch.kw = { error: 'Could not reach the server.' }; }
+  srchKwRender();
+}
+function srchKwPick(){
+  ttb.open = 'searchKeywords'; ttb.manual.searchKeywords = true;
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.csv,.txt'; inp.style.display = 'none';
+  inp.addEventListener('change', () => { const f = inp.files && inp.files[0]; inp.remove(); if (f) srchKwStart(f, 'keywords'); });
+  inp.addEventListener('cancel', () => inp.remove()); document.body.appendChild(inp); inp.click();
+}
+function srchKwPickAvoid(){
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.csv,.txt'; inp.style.display = 'none';
+  inp.addEventListener('change', () => { const f = inp.files && inp.files[0]; inp.remove(); if (f) srchKwStart(f, 'negative'); });
+  inp.addEventListener('cancel', () => inp.remove()); document.body.appendChild(inp); inp.click();
+}
+async function srchKwStart(file, kind){
+  srch.kwUp = { stage: 'reading', fileName: file.name, kind }; ttbRerender();
+  try {
+    const csv = await file.text(); srch.kwUp.csv = csv;
+    const d = await srchPost('/keywords/upload', { csv, kind, confirm: false });
+    if (d.error) srch.kwUp = { stage: 'error', fileName: file.name, msg: d.error, kind, csv, headers: d.headers, mapping: d.mapping };
+    else srch.kwUp = Object.assign({ stage: 'preview', fileName: file.name, csv, kind }, d);
+  } catch (e){ srch.kwUp = { stage: 'error', fileName: file.name, msg: 'The file could not be read.', kind }; }
+  srchKwRender();
+}
+async function srchKwRemap(field, val){
+  const u = srch.kwUp; const mapping = Object.assign({}, u.mapping); if (val === '') delete mapping[field]; else mapping[field] = Number(val); u.mapping = mapping;
+  const d = await srchPost('/keywords/upload', { csv: u.csv, kind: u.kind, mapping, kwType: u.kwType, confirm: false });
+  if (d.error){ u.msg = d.error; srchKwRender(); return; }
+  srch.kwUp = Object.assign({}, u, d, { stage: 'preview', msg: '' }); srchKwRender();
+}
+async function srchKwSetType(t){ const u = srch.kwUp; u.kwType = t; const d = await srchPost('/keywords/upload', { csv: u.csv, kind: u.kind, mapping: u.mapping, kwType: t, confirm: false }); if (!d.error) srch.kwUp = Object.assign({}, u, d, { stage: 'preview' }); srchKwRender(); }
+async function srchKwConfirm(){
+  const u = srch.kwUp; srch.kwUp = Object.assign({}, u, { stage: 'saving' }); srchKwRender();
+  const d = await srchPost('/keywords/upload', { csv: u.csv, kind: u.kind, mapping: u.mapping, kwType: u.kwType, fileName: u.fileName, confirm: true });
+  if (d.error){ srch.kwUp = Object.assign({}, u, { stage: 'preview', msg: d.error }); srchKwRender(); return; }
+  srch.kwUp = { stage: 'done', fileName: u.fileName, kind: u.kind, added: d.added, updated: d.updated || 0, skippedOverCap: d.skippedOverCap || 0, skippedNegative: d.skippedNegative || 0, skippedDuplicates: d.skippedDuplicates || 0 };
+  srch.kw = null; await srchKwLoad(true); try { ttbLoad(); } catch (e){}
+}
+function srchKwCancel(){ srch.kwUp = { stage: 'idle' }; srchKwRender(); }
+async function srchKwAct(action, id){ await srchPost('/keywords', { action, id }); srch.kw = null; await srchKwLoad(true); try { ttbLoad(); } catch (e){} }
+async function srchKwAdd(){
+  const inp = document.getElementById('srchKwNew'); const sel = document.getElementById('srchKwNewType'); if (!inp || !inp.value.trim()) return;
+  const d = await srchPost('/keywords', { action: 'add', keyword: inp.value.trim(), kwType: sel ? sel.value : 'target' }); inp.value = '';
+  srch.kwMsg = d.note || ''; srch.kw = null; await srchKwLoad(true); try { ttbLoad(); } catch (e){}
+}
+function srchKwTemplate(){
+  const csv = 'Keyword,Search Volume,Intent,Product Group,Keyword Difficulty,CPC\nworld cruise,12100,Commercial,World Voyage,45,2.31\nhow long is a world cruise,880,Informational,World Voyage,30,1.10\n';
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'search-keywords-template.csv'; document.body.appendChild(a); a.click(); a.remove();
+}
+const SRCH_FIELD_LABELS = { keyword: 'Keyword or query', searchVolume: 'Monthly volume', intent: 'Intent', productGroup: 'Product group', difficulty: 'Keyword difficulty', cpc: 'Cost per click', clicks: 'Clicks', impressions: 'Impressions', ctr: 'Click-through rate', avgPosition: 'Average position' };
+function srchKwRender(){
+  const slot = document.getElementById('ttbSlot-searchKeywords'); if (!slot) return;
+  if (!srchLive()){ slot.innerHTML = '<div class="ttb-manual"><p class="hint" style="margin:0;">Search keywords are saved to your live account.</p></div>'; return; }
+  if (!srch.kw){ slot.innerHTML = '<div class="ttb-manual"><p class="hint" style="margin:0;">Loading…</p></div>'; srchKwLoad(); return; }
+  const K = srch.kw; if (K.error){ slot.innerHTML = `<div class="ttb-manual"><p class="hint" style="margin:0;color:var(--advocacy);">${escapeHtml(K.error)}</p></div>`; return; }
+  const U = srch.kwUp; let up = '';
+  const note = (t, bad) => `<p class="hint" style="margin:0 0 8px;${bad ? 'color:var(--advocacy);' : ''}">${escapeHtml(t)}</p>`;
+  if (U.stage === 'reading' || U.stage === 'saving') up = `<div class="ttb-manual"><div class="ttb-tag">${escapeHtml(U.fileName || '')}</div>${note(U.stage === 'saving' ? 'Saving…' : 'Reading your file…')}</div>`;
+  else if (U.stage === 'error') up = `<div class="ttb-manual"><div class="ttb-tag">${escapeHtml(U.fileName || '')}</div>${note(U.msg, true)}<div class="btn-row"><button type="button" class="btn-ghost" onclick="srchKwCancel()">Close</button></div></div>`;
+  else if (U.stage === 'done') up = `<div class="ttb-manual"><div class="ttb-tag">${escapeHtml(U.fileName || '')}</div><p style="margin:0 0 4px;font-weight:700;color:var(--cx);">✓ ${U.kind === 'negative' ? `${U.added} term${U.added === 1 ? '' : 's'} added to your Avoid list.` : `${U.added} added as suggestions${U.updated ? `, ${U.updated} updated` : ''}.`}</p>${U.kind !== 'negative' ? `<p class="hint" style="margin:0 0 8px;">Review the suggestions below and accept the ones you want in use.${U.skippedDuplicates ? ` ${U.skippedDuplicates} duplicate${U.skippedDuplicates === 1 ? '' : 's'} skipped.` : ''}${U.skippedNegative ? ` ${U.skippedNegative} skipped because they are on your Avoid list.` : ''}${U.skippedOverCap ? ` ${U.skippedOverCap} skipped to stay within the top ${K.max}.` : ''}</p>` : ''}<div class="btn-row"><button type="button" class="btn-ghost" onclick="srchKwCancel()">Close</button></div></div>`;
+  else if (U.stage === 'preview' && U.kind === 'negative') up = `<div class="ttb-manual"><div class="ttb-tag">${escapeHtml(U.fileName)} · Avoid list</div>${note(`${U.total} term${U.total === 1 ? '' : 's'} found, one per row. Examples: ${(U.sample || []).map(escapeHtml).join(', ')}.`)}<div class="btn-row"><button type="button" class="btn-primary" onclick="srchKwConfirm()">Add to Avoid list</button><button type="button" class="btn-ghost" onclick="srchKwCancel()">Cancel</button></div></div>`;
+  else if (U.stage === 'preview'){
+    const hd = U.headers || []; const opt = sel => `<option value="">not in this file</option>` + hd.map((h, i) => `<option value="${i}"${sel === i ? ' selected' : ''}>${escapeHtml(String(h))}</option>`).join('');
+    const rows = Object.keys(SRCH_FIELD_LABELS).map(f => `<tr><td style="white-space:nowrap;"><b>${SRCH_FIELD_LABELS[f]}</b>${f === 'keyword' ? ' <span style="color:#C0273C;">*</span>' : ''}</td><td><select class="tbl-select" onchange="srchKwRemap('${f}', this.value)" style="max-width:240px;">${opt(U.mapping && U.mapping[f] != null ? U.mapping[f] : null)}</select></td></tr>`).join('');
+    up = `<div class="ttb-manual"><div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:12px 14px;font-size:0.8125rem;"><b>Detected: ${escapeHtml(U.detected || 'CSV file')}</b> · ${escapeHtml(U.fileName)} · ${U.totalRows} row${U.totalRows === 1 ? '' : 's'}</div><div style="margin:10px 0;font-size:0.8125rem;">Treat these rows as <select class="tbl-select" onchange="srchKwSetType(this.value)"><option value="target"${U.kwType === 'target' ? ' selected' : ''}>target keywords</option><option value="query"${U.kwType === 'query' ? ' selected' : ''}>search queries people use</option></select></div><div style="overflow-x:auto;"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Our field</th><th>Your column</th></tr></thead><tbody>${rows}</tbody></table></div><p class="hint" style="margin:10px 0;">${U.willKeep} will be saved as suggestions${U.skippedDuplicates ? `, ${U.skippedDuplicates} duplicate${U.skippedDuplicates === 1 ? '' : 's'} skipped` : ''}${U.skippedNegative ? `, ${U.skippedNegative} skipped (on your Avoid list)` : ''}${U.skippedOverCap ? `, ${U.skippedOverCap} skipped to stay within the top ${K.max}` : ''}. They never replace what your team has edited.</p>${U.msg ? note(U.msg, true) : ''}<div class="btn-row"><button type="button" class="btn-primary" onclick="srchKwConfirm()">Save as suggestions</button><button type="button" class="btn-ghost" onclick="srchKwCancel()">Cancel</button></div></div>`;
+  }
+  const band = k => k.volumeBand || (k.fromAccountList ? '' : '');
+  const liveRows = (K.live || []).slice(0, 40).map(k => `<tr><td>${escapeHtml(k.keyword)}</td><td>${k.kwType === 'query' ? 'Query' : 'Target'}${k.isQuestion ? ' · question' : ''}</td><td>${escapeHtml(k.intent || '')}</td><td>${escapeHtml(band(k))}</td><td>${escapeHtml(k.sourceName || '')}</td><td>${k.id ? `<button type="button" class="btn-ghost" onclick="srchKwAct('remove','${k.id}')" aria-label="Remove ${escapeHtml(k.keyword)}">Remove</button>` : ''}</td></tr>`).join('');
+  const sugRows = (K.suggested || []).filter(k => k.kwType !== 'negative').slice(0, 60).map(k => `<tr><td>${escapeHtml(k.keyword)}</td><td>${k.kwType === 'query' ? 'Query' : 'Target'}${k.isQuestion ? ' · question' : ''}</td><td>${escapeHtml(k.intent || '')}</td><td>${escapeHtml(k.volumeBand || '')}${k.impressions != null ? ' · ' + Number(k.impressions).toLocaleString() + ' impressions' : ''}</td><td><button type="button" class="btn-primary" onclick="srchKwAct('accept','${k.id}')">Accept</button> <button type="button" class="btn-ghost" onclick="srchKwAct('reject','${k.id}')">Dismiss</button></td></tr>`).join('');
+  const neg = (K.negatives || []).map(n => `<span class="tag" style="display:inline-block;border:1px solid #B42318;color:#B42318;border-radius:999px;padding:2px 10px;margin:3px 4px 3px 0;font-size:0.8125rem;">${escapeHtml(n)}</span>`).join('');
+  const tbl = (head, body) => `<div style="overflow-x:auto;"><table class="data-table" style="font-size:0.8125rem;"><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
+  slot.innerHTML = `${up}<div class="ttb-manual">
+    <div class="ttb-tag">Search keywords in use</div>
+    <p class="hint" style="margin:0 0 8px;">High-volume queries relevant to your brand, products and creative focus. Press releases and website copy are optimized toward these.</p>
+    ${liveRows ? tbl(['Keyword', 'Type', 'Intent', 'Volume', 'Source', ''], liveRows) : '<p class="hint">None yet. Add some below or upload a file.</p>'}
+    ${sugRows ? `<div class="ttb-tag" style="margin-top:14px;">Waiting for you <button type="button" class="btn-ghost" style="margin-left:8px;" onclick="srchKwAct('acceptAll')">Accept all</button></div>${tbl(['Keyword', 'Type', 'Intent', 'Volume', ''], sugRows)}` : ''}
+    <div class="ttb-tag" style="margin-top:14px;">Add one</div>
+    <div class="btn-row" style="gap:8px;flex-wrap:wrap;"><input type="text" id="srchKwNew" placeholder="e.g. world cruise" style="min-width:220px;" onkeydown="if(event.key==='Enter')srchKwAdd()"><select id="srchKwNewType" class="tbl-select"><option value="target">Target keyword</option><option value="query">Search query</option><option value="negative">Avoid</option></select><button type="button" class="btn-ghost" onclick="srchKwAdd()">Add</button></div>
+    ${srch.kwMsg ? note(srch.kwMsg) : ''}
+    <div class="ttb-tag" style="margin-top:14px;">Avoid (never used in optimized copy)</div>
+    <div>${neg || '<span class="hint">None yet.</span>'}</div>
+    <div class="btn-row" style="margin-top:10px;"><button type="button" class="btn-ghost" onclick="srchKwPickAvoid()">Upload an Avoid list</button><button type="button" class="btn-ghost" onclick="srchKwTemplate()">Download the template</button></div>
+    <p class="hint" style="margin-top:10px;">Next: Google Search Console (free) and licensed tools such as BrightEdge, Adobe and Semrush will refresh this list on the Monday sweep. Until then, upload an export from any of them.</p>
+  </div>`;
+}
+
 function renderSearchOptimizationStep(){
+  try { srchMasterLoad(); } catch (e){}
   const critical = SEO_DATA.crawlIssues.filter(i => i.severity === 'critical').length;
   const warnings = SEO_DATA.crawlIssues.filter(i => i.severity === 'warning').length;
   const citedCount = SEO_DATA.aeoGeoVisibility.filter(e => e.status === 'cited').length;
@@ -59508,6 +59768,7 @@ function prcRenderSection(type, containerId, titleFn, subtitleFn){
         <textarea id="prcCopy-${type}-${item.id}" rows="6" style="width:100%;font-family:inherit;">${escapeHtml(item.workingCopy || '')}</textarea>
         <div class="btn-row" style="margin-top:6px;"><button type="button" class="btn-primary" onclick="prcSaveCopy('${type}','${item.id}')">Save →</button></div>
         <div id="prcCopyStatus-${type}-${item.id}" class="hint" style="margin-top:4px;"></div>
+        ${type === 'press' ? srchPanelHtml('press:' + item.id, { kind: 'press', id: item.id }) : ''}
         <!-- 2026-09-12, per direct instruction — "I think that PR as a
              starting point can benefit from everything except campaigns."
              Structured approve/reject-with-reason capture for this draft,

@@ -1,0 +1,154 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Search Everywhere Page</title><style>:root{--ink:#1D1D1F;--bg:#FFFFFF;--card:#FFFFFF;--dim:#F5F5F7;--mute:#6E6E73;--line:#D2D2D7;--hair:#E8E8ED;--acc:#1E2761;--accbg:#E9EBF7;--amber:#D08A3E;--amberd:#B8752E;--amberbg:#F3E3CC;--p1:#C0273C;--p1bg:#FBE9EC;--p2:#B8752E;--p2bg:#F3E3CC;--p3:#6E6E73;--p3bg:#F0F0F3;--ok:#1E8E4A;--okbg:#E4F4EA;--seo:#2563EB;--aeo:#4F46E5;--geo:#1E8E4A;--cur:#2563EB;--prior:#B8752E;--slate:#6E6E73;--navy:#1E2761;--shadow:0 1px 2px rgba(0,0,0,.04)}
+.shell{max-width:1240px;margin:0 auto;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--bg)}
+.top{padding:16px 24px;font-size:22px;font-weight:500;border-bottom:1px solid var(--hair)}.top span{color:var(--cur)}
+.banner{background:var(--navy);color:#fff;padding:18px 24px 0}.banner .nm{font-size:26px;font-weight:700}.banner .cid{float:right;font-size:12px;color:rgba(255,255,255,.62);margin-top:8px}
+.tabs{display:flex;gap:22px;margin-top:14px;overflow-x:auto}.tabs a{color:rgba(255,255,255,.62);font-weight:600;font-size:15px;padding:10px 0;white-space:nowrap;border-bottom:3px solid transparent}.tabs a i{font-style:normal;font-size:11px;margin-right:6px;opacity:.7}.tabs a.on{color:#fff;border-color:var(--amber)}
+.pg{padding:26px 24px 30px;background:linear-gradient(135deg,#fff 60%,#F3F4FB)}.pg h1{font-size:34px;margin:0 0 4px;letter-spacing:-.01em}.crumb{font-size:13px;color:var(--mute);margin-bottom:6px}
+.ask{float:right;border:1px solid var(--line);border-radius:999px;padding:8px 18px;font-size:14px;background:#fff;font-weight:600}.ask u{font-weight:700}
+.stat4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:12px 0 22px}@media(max-width:900px){.stat4{grid-template-columns:1fr 1fr}}@media(max-width:560px){.stat4{grid-template-columns:1fr}}
+.stat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px 22px;box-shadow:var(--shadow);position:relative}
+.stat .l{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--mute);margin-bottom:8px;padding-right:34px}.stat .v{font-size:28px;font-weight:700;line-height:1.15;font-variant-numeric:tabular-nums}
+.stat .d{font-size:12px;font-weight:600;margin-top:6px}.stat .d.good{color:var(--ok)}.stat .d.bad{color:var(--p1)}.stat .d.neu{color:var(--mute)}.stat .s{font-size:11px;color:var(--mute);margin-top:8px}
+.spark{display:flex;align-items:flex-end;gap:3px;height:20px;margin-top:12px}.spark span{flex:1;background:var(--line);border-radius:2px;min-height:4px}.spark span.hi{background:var(--amber)}
+.urg{background:#fff;border:1px solid #CFE3F1;border-radius:18px;padding:14px 4px 6px;box-shadow:var(--shadow)}.urg h3{margin:0 0 6px 16px;font-size:20px;display:flex;align-items:center;gap:10px}.urg h3 i{width:20px;height:20px;border-radius:50%;background:#E5384F;display:inline-block}.urg h3 a{margin-left:auto;margin-right:16px;font-size:13px;font-weight:600;color:var(--cur)}
+.urg th{padding-left:16px}.urg td{padding-left:16px}.gh{border:1px solid var(--line);border-radius:999px;padding:4px 11px;font-size:12px;font-weight:600;white-space:nowrap;background:#fff}
+
+
+
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;padding:24px 16px 70px}
+.wrap{max-width:1040px;margin:0 auto}h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:38px 0 4px}p.sub{color:var(--mute);margin:0 0 12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin:10px 0}
+.tag{display:inline-block;font-size:12px;border:1px solid var(--line);border-radius:999px;padding:1px 9px;color:var(--mute);white-space:nowrap}
+.note{font-size:13px;color:var(--mute);border-left:3px solid var(--acc);padding:2px 10px;margin:10px 0}
+.btn{display:inline-block;border:1px solid var(--line);border-radius:7px;padding:5px 12px;font-size:13px;margin:6px 6px 0 0;background:var(--card)}.btn.p{background:var(--acc);border-color:var(--acc);color:#fff}
+.map{display:flex;flex-direction:column;gap:8px}.blk{border:1px solid var(--line);border-radius:10px;padding:10px 14px;background:var(--card);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.blk.new{border-color:var(--acc);background:var(--accbg)}.blk b{font-size:14px}.blk span.d{color:var(--mute);font-size:13px}
+.sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}.sum div{border:1px solid var(--line);border-radius:10px;padding:8px 12px}.sum b{display:block;font-size:22px;font-variant-numeric:tabular-nums}.sum span{font-size:12px;color:var(--mute)}
+.bar{height:8px;border-radius:99px;background:var(--p3bg);overflow:hidden;margin:6px 0 2px;display:flex}.bar i{display:block;height:100%}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.fl{font-size:13px;border:1px solid var(--line);border-radius:999px;padding:2px 11px;color:var(--mute)}.fl.on{background:var(--accbg);border-color:var(--acc);color:var(--acc);font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--mute);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+td.dt{white-space:nowrap;color:var(--mute);font-size:13px}.pri{display:inline-block;font-size:12px;font-weight:700;border-radius:6px;padding:2px 9px;white-space:nowrap}
+.p1{color:var(--p1);background:var(--p1bg)}.p2{color:var(--p2);background:var(--p2bg)}.p3{color:var(--p3);background:var(--p3bg)}
+.imp{font-weight:600;font-variant-numeric:tabular-nums}.imp small{display:block;font-weight:400;color:var(--mute);font-size:12px}
+.st{display:inline-block;font-size:12px;border-radius:999px;padding:2px 10px;border:1px solid var(--line);white-space:nowrap}.st.new{color:var(--mute)}.st.plan{color:var(--acc);border-color:var(--acc)}.st.go{color:var(--p2);border-color:var(--p2);background:var(--p2bg)}.st.done{color:var(--ok);border-color:var(--ok);background:var(--okbg)}
+.opp small{display:block;color:var(--mute);font-size:12px;margin-top:2px}.src{font-size:11px;border:1px solid var(--line);border-radius:5px;padding:0 6px;color:var(--mute);margin-left:4px}
+tr.open td{background:var(--accbg)}
+.detail{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:760px){.detail{grid-template-columns:1fr}}
+.flow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0}.flow .arrow{color:var(--mute)}
+.calc{font-variant-numeric:tabular-nums;font-size:14px}.calc td,.calc th{padding:6px 8px}.calc td.r{text-align:right}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:760px){.cols{grid-template-columns:1fr}}.cols .card{margin:0}
+.chip{display:inline-block;font-size:11px;font-weight:700;border-radius:5px;padding:1px 7px;margin-right:4px;color:#fff}.seo{background:var(--seo)}.aeo{background:var(--aeo)}.geo{background:var(--geo)}
+.partner{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.partner .card{margin:0}
+@media(max-width:700px){table.board thead{display:none}table.board,table.board tbody,table.board tr,table.board td{display:block;width:100%}table.board tr{border:1px solid var(--line);border-radius:10px;margin:8px 0;padding:6px 4px}table.board td{border:0;padding:4px 8px}}
+
+
+
+.rng{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.rng b.l{font-size:12px;letter-spacing:.06em;color:var(--mute);margin-right:4px}
+.pill{border:1px solid var(--line);border-radius:999px;padding:5px 16px;font-size:14px;background:var(--card)}.pill.on{background:var(--ink);color:var(--bg);border-color:var(--ink);font-weight:600}
+.kc4{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:12px 0}
+.kcard{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:var(--card);position:relative}
+.kcard .lb{font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--mute);text-transform:uppercase}.kcard .big{font-size:30px;font-weight:700;margin:8px 0 2px;font-variant-numeric:tabular-nums}
+.kcard .dl{font-size:14px;font-weight:600}.kcard .ft{font-size:12px;color:var(--mute);margin-top:4px}
+.shr{position:absolute;top:10px;right:10px;width:30px;height:30px;border:1px solid var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--mute);font-size:15px}
+.up{color:var(--ok)}.dn{color:var(--p1)}
+.slides{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:860px){.slides{grid-template-columns:1fr}}
+.slide{border:1px solid var(--line);border-radius:14px;background:var(--card);padding:16px 18px;position:relative;display:flex;flex-direction:column}
+@media(min-width:861px){.slide{aspect-ratio:16/10.4}}
+.slide h4{margin:0 34px 2px 0;font-size:17px;line-height:1.25;text-wrap:balance}.slide .sb{font-size:12px;color:var(--mute);margin-bottom:6px}
+.slide svg{flex:1;width:100%;min-height:0}.slide .fo{font-size:11px;color:var(--mute);border-top:1px solid var(--line);padding-top:6px;margin-top:6px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.lg{display:flex;gap:14px;font-size:12px;color:var(--mute);margin:2px 0}.lg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.menu{display:block;border:1px solid var(--line);border-radius:10px;padding:6px;background:var(--card);display:inline-block;min-width:230px;font-size:14px}.menu div{padding:5px 10px;border-radius:6px}.menu div.n{background:var(--accbg);color:var(--acc);font-weight:600}
+svg text{font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+.blk .tag{align-self:flex-start;height:fit-content}.sec{font-size:20px;margin:24px 0 8px}.pgw{max-width:1280px;margin:0 auto}body{padding:0 !important}.btnr{float:right;width:34px;height:34px;border-radius:50%;background:#161C4A;color:#fff;display:inline-flex;align-items:center;justify-content:center;margin-left:10px;border:1px solid rgba(255,255,255,.14)}</style></head><body>
+<div class="top" style="padding:20px 40px">Veri<span>lume</span></div>
+<div class="banner" style="padding:22px 40px 0"><span class="cid"><span style="vertical-align:middle">Client ID &middot; CXM-NAT-2026-147628</span><span class="btnr" style="margin-right:0">&#9881;</span><span class="btnr">&minus;</span></span><div class="nm" style="font-size:34px">Atlas Ocean Voyages (demo)</div>
+<div class="tabs" style="margin-top:20px"><a><i>01</i>Brain Dump</a><a><i>02</i>Strategy</a><a class="on"><i>03</i>Customer Experiences</a><a><i>04</i>Growth &amp; Performance</a><a><i>05</i>Media Science</a><a><i>06</i>Train the Brain</a></div></div>
+<div class="pg" style="padding:28px 40px 40px"><div class="pgw">
+<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px"><h1 style="font-size:40px;margin:0">Search Everywhere</h1><span class="ask" style="float:none;display:inline-block">Need something we don't show? <u>Ask Verilume</u></span></div>
+<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px"><div class="rng"><b class="l">DATE RANGE</b><span class="pill">Week</span><span class="pill">Month</span><span class="pill on">Quarter</span><span class="pill">Year</span><span class="pill">Calendar</span><span style="font-size:13px;color:var(--mute);margin-left:6px">Jul 1 to Sep 29, 2026 &middot; vs same dates 2025</span></div></div>
+<div class="stat4">
+<div class="stat"><span class="shr">&#8682;</span><div class="l">Organic clicks</div><div class="v">45,172</div><div class="d bad">&#9660; 6.6% vs same dates last year</div><div class="s">Jul 1 to Sep 29, 2026</div><div class="spark" title="Monthly clicks, Feb to Sep 2026"><span style="height:48%"></span><span style="height:44%"></span><span style="height:52%"></span><span style="height:64%"></span><span style="height:66%"></span><span style="height:100%" class="hi"></span><span style="height:74%"></span><span style="height:59%"></span></div></div>
+<div class="stat"><span class="shr">&#8682;</span><div class="l">Click rate</div><div class="v">4.27%</div><div class="d good">&#9650; 2.19 pts vs same dates last year</div><div class="s">Clicks &divide; impressions</div><div class="spark" title="Monthly click rate, Feb to Sep 2026"><span style="height:55%"></span><span style="height:52%"></span><span style="height:60%"></span><span style="height:80%"></span><span style="height:69%"></span><span style="height:80%"></span><span style="height:100%" class="hi"></span><span style="height:90%"></span></div></div>
+<div class="stat"><span class="shr">&#8682;</span><div class="l">Non-brand share of clicks</div><div class="v">7.3%</div><div class="d neu">&bull; Brand searches drive 92.7%</div><div class="s">Top 1,000 queries</div></div>
+<div class="stat"><span class="shr">&#8682;</span><div class="l">Forecast from open priorities</div><div class="v">+6,400 clicks</div><div class="d good">&#9650; 2 calculated, 3 rated</div><div class="s">Estimate, set against the same period</div></div>
+</div>
+
+<div class="urg"><h3><i></i>Top 5 Priorities <span class="tag" style="font-weight:400">Account-wide &middot; sorted by priority</span><a>View all 7 &rarr;</a></h3>
+<table class="board"><thead><tr><th>Date</th><th>Priority</th><th>Opportunity</th><th>Business Impact</th><th>Status</th><th></th></tr></thead><tbody>
+<tr><td class="dt">Oct 4</td><td><span class="pri p1">P1</span></td><td class="opp"><b>Rewrite the Antarctica page title, meta and add an FAQ</b><span class="src">AOV export</span><small>239,532 impressions at position 13, 0.06% click rate.</small></td><td class="imp">+4,600 clicks<small>about 56 inquiries &middot; Calculated</small></td><td><span class="st new">New</span></td><td><span class="gh">Manage &rarr;</span></td></tr>
+<tr><td class="dt">Oct 4</td><td><span class="pri p1">P1</span></td><td class="opp"><b>Fix pages returning server errors</b><span class="src">AOV export</span><small>379 pages return a 5xx error.</small></td><td class="imp">High<small>Protects indexed pages &middot; Rated</small></td><td><span class="st go">In progress</span></td><td><span class="gh">Manage &rarr;</span></td></tr>
+<tr><td class="dt">Oct 4</td><td><span class="pri p2">P2</span></td><td class="opp"><b>Strengthen "antarctica cruise" and "expedition" pages</b><span class="src">AOV export</span><small>87,801 impressions, click rates near 1%.</small></td><td class="imp">+1,800 clicks<small>about 22 inquiries &middot; Calculated</small></td><td><span class="st plan">Planned</span></td><td><span class="gh">Manage &rarr;</span></td></tr>
+<tr><td class="dt">Oct 4</td><td><span class="pri p2">P2</span></td><td class="opp"><b>Review pages crawled but not indexed</b><span class="src">AOV export</span><small>201,713 pages. Decide which should be indexed.</small></td><td class="imp">High<small>Largest indexing gap &middot; Rated</small></td><td><span class="st new">New</span></td><td><span class="gh">Manage &rarr;</span></td></tr>
+<tr><td class="dt">Oct 4</td><td><span class="pri p2">P2</span></td><td class="opp"><b>Add a next step to blog pages shown in Google AI answers</b><span class="src">AOV export</span><small>Most AI impressions land on blog pages with no booking path.</small></td><td class="imp">Medium<small>Rated</small></td><td><span class="st new">New</span></td><td><span class="gh">Manage &rarr;</span></td></tr>
+</tbody></table></div>
+
+<h3 class="sec">Performance</h3>
+<div class="slides">
+<div class="slide"><span class="shr" title="Share">&#8682;</span><h4>Clicks are 6.6% below last year, while click rate rose 2.19 points</h4><div class="sb">Organic clicks by month · Quarter to date</div><div class="lg"><span><i style="background:var(--prior)"></i>2025</span><span><i style="background:var(--cur)"></i>2026</span></div><svg viewBox="0 0 640 250" role="img" aria-label="Clicks by month, 2025 vs 2026"><line x1="20" x2="620" y1="215" y2="215" stroke="var(--line)"/><path d="M47.7,215.0 V66.8 Q47.7,62.8 51.7,62.8 H101.7 Q105.7,62.8 105.7,66.8 V215.0 Z" fill="var(--prior)"/><text x="76.7" y="56.8" text-anchor="middle" font-size="17.6" font-weight="600" fill="var(--ink)">17,272</text><path d="M107.7,215.0 V48.4 Q107.7,44.4 111.7,44.4 H161.7 Q165.7,44.4 165.7,48.4 V215.0 Z" fill="var(--cur)"/><text x="136.7" y="38.4" text-anchor="middle" font-size="17.6" font-weight="600" fill="var(--ink)">19,369</text><text x="106.7" y="235.0" text-anchor="middle" font-size="17.6" font-weight="400" fill="var(--mute)">Jul</text><path d="M261.0,215.0 V72.1 Q261.0,68.1 265.0,68.1 H315.0 Q319.0,68.1 319.0,72.1 V215.0 Z" fill="var(--prior)"/><text x="290.0" y="62.1" text-anchor="middle" font-size="17.6" font-weight="600" fill="var(--ink)">16,672</text><path d="M321.0,215.0 V92.1 Q321.0,88.1 325.0,88.1 H375.0 Q379.0,88.1 379.0,92.1 V215.0 Z" fill="var(--cur)"/><text x="350.0" y="82.1" text-anchor="middle" font-size="17.6" font-weight="600" fill="var(--ink)">14,405</text><text x="320.0" y="235.0" text-anchor="middle" font-size="17.6" font-weight="400" fill="var(--mute)">Aug</text><path d="M474.3,215.0 V92.0 Q474.3,88.0 478.3,88.0 H528.3 Q532.3,88.0 532.3,92.0 V215.0 Z" fill="var(--prior)"/><text x="503.3" y="82.0" text-anchor="middle" font-size="17.6" font-weight="600" fill="var(--ink)">14,412</text><path d="M534.3,215.0 V118.6 Q534.3,114.6 538.3,114.6 H588.3 Q592.3,114.6 592.3,118.6 V215.0 Z" fill="var(--cur)"/><text x="563.3" y="108.6" text-anchor="middle" font-size="17.6" font-weight="600" fill="var(--ink)">11,398</text><text x="533.3" y="235.0" text-anchor="middle" font-size="17.6" font-weight="400" fill="var(--mute)">Sep (to 29th)</text></svg><div class="fo"><span>Source: Google Search Console, atlasoceanvoyages.com · Jul 1 to Sep 29, 2026 vs same dates 2025</span><span>Verilume</span></div></div>
+<div class="slide"><span class="shr" title="Share">&#8682;</span><h4>Click rate is 4.4%, up from 1.8% in June 2025</h4><div class="sb">Organic click rate by month · Jun 2025 to Sep 2026</div><svg viewBox="0 0 640 250" role="img" aria-label="Monthly click rate, June 2025 to September 2026"><line x1="30" x2="610" y1="205.0" y2="205.0" stroke="var(--line)"/><text x="24.0" y="209.0" text-anchor="end" font-size="14.9" font-weight="400" fill="var(--mute)">0%</text><line x1="30" x2="610" y1="142.8" y2="142.8" stroke="var(--line)"/><text x="24.0" y="146.8" text-anchor="end" font-size="14.9" font-weight="400" fill="var(--mute)">2%</text><line x1="30" x2="610" y1="80.6" y2="80.6" stroke="var(--line)"/><text x="24.0" y="84.6" text-anchor="end" font-size="14.9" font-weight="400" fill="var(--mute)">4%</text><polyline points="30.0,150.0 68.7,150.9 107.3,146.2 146.0,104.0 184.7,96.2 223.3,119.2 262.0,145.9 300.7,144.4 339.3,122.3 378.0,127.0 416.7,115.5 455.3,84.4 494.0,100.8 532.7,84.7 571.3,54.5 610.0,69.1" fill="none" stroke="var(--cur)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/><circle cx="30.0" cy="150.0" r="5" fill="var(--cur)" stroke="var(--card)" stroke-width="2"/><text x="30.0" y="138.0" text-anchor="start" font-size="18.9" font-weight="700" fill="var(--ink)">1.77%</text><circle cx="610.0" cy="69.1" r="5" fill="var(--cur)" stroke="var(--card)" stroke-width="2"/><text x="608.0" y="57.1" text-anchor="end" font-size="18.9" font-weight="700" fill="var(--ink)">4.37%</text><line x1="146.0" x2="146.0" y1="34" y2="205" stroke="var(--mute)" stroke-dasharray="3 3"/><text x="151.0" y="42.0" text-anchor="start" font-size="14.9" font-weight="400" fill="var(--mute)">Sep 2025: counting change*</text><text x="30.0" y="223.0" text-anchor="middle" font-size="14.9" font-weight="400" fill="var(--mute)">Jun 25</text><text x="146.0" y="223.0" text-anchor="middle" font-size="14.9" font-weight="400" fill="var(--mute)">Sep 25</text><text x="300.7" y="223.0" text-anchor="middle" font-size="14.9" font-weight="400" fill="var(--mute)">Jan 26</text><text x="455.3" y="223.0" text-anchor="middle" font-size="14.9" font-weight="400" fill="var(--mute)">May 26</text><text x="610.0" y="223.0" text-anchor="middle" font-size="14.9" font-weight="400" fill="var(--mute)">Sep 26</text></svg><div class="fo"><span>Source: Google Search Console, atlasoceanvoyages.com · Jun 1, 2025 to Sep 29, 2026</span><span>Verilume</span></div></div>
+<div class="slide"><span class="shr" title="Share">&#8682;</span><h4>Nine in ten clicks come from people already searching for the brand</h4><div class="sb">Share of organic clicks · Brand vs non-brand · Top 1,000 queries</div><svg viewBox="0 0 640 250" role="img" aria-label="Brand vs non-brand share of clicks"><rect x="30" y="90" width="536.7" height="56" rx="6" fill="var(--slate)"/><rect x="568.7" y="90" width="41.3" height="56" rx="6" fill="var(--cur)"/><text x="42.0" y="125.0" text-anchor="start" font-size="23.0" font-weight="700" fill="#fff">Brand searches 92.7%</text><text x="569.7" y="78.0" text-anchor="end" font-size="20.2" font-weight="700" fill="var(--cur)">Non-brand 7.3%</text><text x="30.0" y="176.0" text-anchor="start" font-size="17.6" font-weight="400" fill="var(--mute)">116,632 clicks</text><text x="610.0" y="176.0" text-anchor="end" font-size="17.6" font-weight="400" fill="var(--mute)">9,153 clicks</text><text x="30.0" y="216.0" text-anchor="start" font-size="16.2" font-weight="400" fill="var(--mute)">Share of clicks, top 1,000 queries</text></svg><div class="fo"><span>Source: Google Search Console, atlasoceanvoyages.com · Jul 1 to Sep 29, 2026 vs same dates 2025</span><span>Verilume</span></div></div>
+<div class="slide"><span class="shr" title="Share">&#8682;</span><h4>Our top five non-brand queries earn a 0.4% click rate on 347,284 impressions</h4><div class="sb">Top 5 non-brand queries by clicks · Impressions and click rate</div><svg viewBox="0 0 640 250" role="img" aria-label="Top five non-brand queries by impressions with click rate"><text x="250.0" y="14.0" text-anchor="start" font-size="13" font-weight="700" fill="var(--mute)">Impressions</text><text x="636.0" y="14.0" text-anchor="end" font-size="13" font-weight="700" fill="var(--mute)">Click rate</text><text x="242.0" y="46.0" text-anchor="end" font-size="16" font-weight="400" fill="var(--ink)">antarctica</text><rect x="250" y="29" width="250.0" height="26" rx="4" fill="var(--cur)"/><text x="507.0" y="48.0" text-anchor="start" font-size="16" font-weight="700" fill="var(--ink)">239,532</text><text x="636.0" y="48.0" text-anchor="end" font-size="16" font-weight="400" fill="var(--mute)">0.06%</text><text x="242.0" y="89.0" text-anchor="end" font-size="16" font-weight="400" fill="var(--ink)">antarctica cruise</text><rect x="250" y="72" width="60.4" height="26" rx="4" fill="var(--cur)"/><text x="317.4" y="91.0" text-anchor="start" font-size="16" font-weight="700" fill="var(--ink)">57,910</text><text x="636.0" y="91.0" text-anchor="end" font-size="16" font-weight="400" fill="var(--mute)">0.91%</text><text x="242.0" y="132.0" text-anchor="end" font-size="16" font-weight="400" fill="var(--ink)">antarctica expedition</text><rect x="250" y="115" width="31.2" height="26" rx="4" fill="var(--cur)"/><text x="288.2" y="134.0" text-anchor="start" font-size="16" font-weight="700" fill="var(--ink)">29,891</text><text x="636.0" y="134.0" text-anchor="end" font-size="16" font-weight="400" fill="var(--mute)">0.96%</text><text x="242.0" y="175.0" text-anchor="end" font-size="16" font-weight="400" fill="var(--ink)">antarctica expedition cruise</text><rect x="250" y="158" width="17.0" height="26" rx="4" fill="var(--cur)"/><text x="274.0" y="177.0" text-anchor="start" font-size="16" font-weight="700" fill="var(--ink)">16,328</text><text x="636.0" y="177.0" text-anchor="end" font-size="16" font-weight="400" fill="var(--mute)">0.99%</text><text x="242.0" y="218.0" text-anchor="end" font-size="16" font-weight="400" fill="var(--ink)">antarctica cruise from ushuaia</text><rect x="250" y="201" width="3.8" height="26" rx="4" fill="var(--cur)"/><text x="260.8" y="220.0" text-anchor="start" font-size="16" font-weight="700" fill="var(--ink)">3,623</text><text x="636.0" y="220.0" text-anchor="end" font-size="16" font-weight="400" fill="var(--mute)">3.42%</text></svg><div class="fo"><span>Source: Google Search Console, atlasoceanvoyages.com · Jul 1 to Sep 29, 2026 vs same dates 2025</span><span>Verilume</span></div></div>
+</div>
+
+<div class="cols" style="margin-top:14px"><div class="card"><b>Top 5 non-brand queries</b> <span class="tag">table view, also exported</span>
+<table class="calc"><thead><tr><th>Query</th><th class="r">Clicks</th><th class="r">Impr.</th><th class="r">CTR</th><th class="r">Pos.</th></tr></thead><tbody>
+<tr><td>antarctica cruise</td><td class="r">527</td><td class="r">57,910</td><td class="r">0.91%</td><td class="r">20.3</td></tr>
+<tr><td>antarctica expedition</td><td class="r">287</td><td class="r">29,891</td><td class="r">0.96%</td><td class="r">11.4</td></tr>
+<tr><td>antarctica expedition cruise</td><td class="r">161</td><td class="r">16,328</td><td class="r">0.99%</td><td class="r">11.9</td></tr>
+<tr><td>antarctica</td><td class="r">143</td><td class="r">239,532</td><td class="r">0.06%</td><td class="r">13.1</td></tr>
+<tr><td>antarctica cruise from ushuaia</td><td class="r">124</td><td class="r">3,623</td><td class="r">3.42%</td><td class="r">6.6</td></tr>
+</tbody></table></div>
+<div class="card"><b>Health check</b> <span class="tag">opportunity</span>
+<table class="calc"><tbody>
+<tr><td>Pages indexed</td><td class="r">22.5k of 244.3k (9%)</td></tr>
+<tr><td>Server errors (5xx)</td><td class="r"><span class="pri p1">379</span></td></tr>
+<tr><td>Not found (404) &middot; Soft 404</td><td class="r"><span class="pri p2">207 &middot; 79</span></td></tr>
+<tr><td>Indexed but blocked by robots.txt</td><td class="r"><span class="pri p2">17</span></td></tr>
+<tr><td>Indexed without content</td><td class="r"><span class="pri p2">12</span></td></tr>
+</tbody></table>
+</div>
+</div>
+
+</div>
+<h3 class="sec">What Search Console says</h3>
+
+<div class="cols">
+<div class="card"><b>Striking-distance queries</b> <span class="tag">non-brand, position 4 to 20</span>
+<table class="calc"><thead><tr><th>Query</th><th class="r">Impr.</th><th class="r">CTR</th><th class="r">Pos.</th></tr></thead><tbody>
+<tr><td>antarctica</td><td class="r">239,532</td><td class="r">0.06%</td><td class="r">13.1</td></tr>
+<tr><td>antarctica cruise</td><td class="r">57,910</td><td class="r">0.91%</td><td class="r">20.3</td></tr>
+<tr><td>antarctica expedition</td><td class="r">29,891</td><td class="r">0.96%</td><td class="r">11.4</td></tr>
+</tbody></table><span class="btn p">Add to Priorities</span></div>
+<div class="card"><b>Indexing health</b> <span class="tag">from the Page indexing report</span>
+<table class="calc"><tbody>
+<tr><td>Indexed</td><td class="r">22.5k</td></tr><tr><td>Not indexed</td><td class="r">221.8k</td></tr>
+<tr><td>Crawled, not indexed</td><td class="r">201,713</td></tr><tr><td>Server errors (5xx)</td><td class="r">379</td></tr>
+<tr><td>Not found (404) · Soft 404</td><td class="r">207 · 79</td></tr></tbody></table><span class="btn p">Add to Priorities</span></div>
+<div class="card"><b>Google AI answers</b> <span class="tag">from the Generative AI report</span>
+<p style="margin:6px 0;font-size:14px">Impressions by page, country and device. Shows which pages Google's AI draws on and flags pages with no booking path.</p><span class="btn p">Add to Priorities</span></div>
+<div class="card"><b>Devices, search appearance, links</b>
+<p style="margin:6px 0;font-size:14px">Mobile click rate 3.71% vs. desktop 1.78%. Product snippets earn 422 clicks. The latest-links list shows who points to the site.</p></div>
+</div>
+
+<h3 class="sec">AI answer visibility and brand profiles</h3>
+<div class="cols">
+<div class="card"><b>AI answer visibility</b>
+<table class="calc"><thead><tr><th>Question we ask</th><th>Client</th><th>Top cited source</th></tr></thead><tbody>
+<tr><td>Best expedition cruise to Antarctica</td><td>Not mentioned</td><td>Review site</td></tr>
+<tr><td>Is a world cruise worth it?</td><td>Mentioned</td><td>Reddit thread</td></tr></tbody></table>
+</div>
+<div class="card"><b>Brand profiles</b>
+<p style="margin:6px 0;font-size:14px"><span class="chip seo">YouTube</span> titles, descriptions, chapters, captions<br><span class="chip aeo">Facebook · LinkedIn</span> name and description match the website<br><span class="chip geo">Reddit</span> listening only; no posting</p></div>
+</div>
+
+<h3 class="sec">Partners who can help</h3>
+
+<div class="partner">
+<div class="card"><b>Search data</b><p style="font-size:13px;color:var(--mute);margin:4px 0">Google Search Console, Bing Webmaster Tools</p><span class="tag">Connect</span></div>
+<div class="card"><b>Keyword and visibility platforms</b><p style="font-size:13px;color:var(--mute);margin:4px 0">Semrush, BrightEdge, Adobe</p><span class="tag">Planned</span></div>
+<div class="card"><b>Reviews and listings</b><p style="font-size:13px;color:var(--mute);margin:4px 0">Licensed review data that feeds FAQ questions</p><span class="tag">Planned</span></div>
+<div class="card"><b>AI visibility trackers</b><p style="font-size:13px;color:var(--mute);margin:4px 0">Weekly assistant checks across brands</p><span class="tag">Planned</span></div>
+</div>
+
+
+</div></div></body></html>
