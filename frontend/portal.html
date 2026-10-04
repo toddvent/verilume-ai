@@ -1576,7 +1576,7 @@
   .drr-note{font-size:0.8125rem;color:var(--muted);margin-top:6px;line-height:1.5;} .drr-hint{display:block;} .drr-err{font-size:0.8125rem;color:var(--ink);margin-top:6px;}
   .gsc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:6px;} .gsc-top .drr-bar{flex:1 1 420px;margin:0;} .gsc-tools{display:flex;gap:8px;flex-wrap:wrap;} .gsc-tools .btn-ghost{padding:6px 14px;font-size:0.8125rem;}
   .gsc-cards{margin-bottom:20px;} .gsc-reads{padding:14px 22px;} .gsc-read+.gsc-read{border-top:1px solid var(--line-hairline);margin-top:10px;padding-top:10px;} .gsc-read-l1{font-weight:700;} .gsc-read-l2{color:var(--muted);font-size:0.875rem;margin-top:2px;} .gsc-more{margin:6px 0 0 18px;padding:0;color:var(--muted);font-size:0.8125rem;}
-  .gsc-link{font:inherit;font-size:0.8125rem;font-weight:600;color:var(--hdr-navy);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;}
+  .gsc-read-acts{display:flex;gap:14px;margin-top:4px;} .gsc-link{font:inherit;font-size:0.8125rem;font-weight:600;color:var(--hdr-navy);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;}
   .gsc-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:8px;} .gsc-title{font-size:1rem;font-weight:700;} .gsc-sub{font-size:0.75rem;color:var(--muted);}
   .gsc-scroll{overflow-x:auto;} .gsc-table{width:100%;border-collapse:collapse;font-size:0.875rem;} .gsc-table th{text-align:left;font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line);} .gsc-table td{padding:10px 8px;border-bottom:1px solid var(--line-hairline);vertical-align:top;} .gsc-r{text-align:right !important;font-variant-numeric:tabular-nums;} .gsc-nw{white-space:nowrap;}
   .gsc-lvl{display:inline-block;font-size:0.6875rem;font-weight:700;border-radius:5px;padding:1px 7px;color:#fff;background:#6E6E73;} .gsc-P1,.gsc-t-fix{background:#B42318;} .gsc-P2,.gsc-t-check{background:#B4620A;} .gsc-P3,.gsc-t-review{background:#6E6E73;}
@@ -59198,7 +59198,7 @@ function srchCopyOut(key){ const ta = document.getElementById('srchOut-' + key);
 // ---- Search Everywhere: Search Console page (2026-10-04) ----
 // Top of the page: date range, four executive cards, Brain read, Top 5 Priorities, slide-ready charts,
 // top non-brand searches and the index health check. Data comes from GET /search-everywhere/page.
-const gsc = { viewAll: false, data: null, loading: false, error: '', manage: {}, more: {}, brandOpen: false, brandMsg: '', up: { stage: 'idle', files: [], preview: null, busy: false, msg: '' }, saveMsg: '', groupMsg: '' };
+const gsc = { disagree: {}, readNote: '', readMsg: '', refreshed: '', viewAll: false, data: null, loading: false, error: '', manage: {}, more: {}, brandOpen: false, brandMsg: '', up: { stage: 'idle', files: [], preview: null, busy: false, msg: '' }, saveMsg: '', groupMsg: '' };
 const GSC_STATUS_LABEL = { new: 'New', planned: 'Planned', in_progress: 'In progress', done: 'Done', dismissed: 'Dismissed' };
 const gscInt = n => (n == null || isNaN(n)) ? '—' : Math.round(n).toLocaleString();
 const gscPct = (n, d) => (n == null || isNaN(n)) ? '—' : (n * 100).toFixed(d == null ? 1 : d) + '%';
@@ -59229,6 +59229,7 @@ function gscRender(){
   h += gscGroupsHtml(d);
   h += `<div class="gsc-two">${gscTopNbHtml(d)}${gscHealthHtml(d)}</div>`;
   el.innerHTML = h; drrRenderBars();
+  gscRefreshReads();
 }
 // ---- cards ----
 function gscDeltaHtml(pct, kind){
@@ -59251,7 +59252,26 @@ function gscCardsHtml(d){
 // ---- Brain reads ----
 function gscReadsHtml(d){
   const r = d.reads || []; if (!r.length) return '';
-  return `<div class="strat-card gsc-reads">${r.map((x, i) => { const open = !!gsc.more[x.key]; return `<div class="gsc-read"><div class="gsc-read-l1">${escapeHtml(x.line1)}</div><div class="gsc-read-l2">${escapeHtml(x.line2 || '')}${x.more && x.more.length ? ` <button type="button" class="gsc-link" aria-expanded="${open}" onclick="gsc.more['${x.key}']=!gsc.more['${x.key}']; gscRender();">${open ? 'See less' : 'See more'}</button>` : ''}</div>${open ? `<ul class="gsc-more">${x.more.map(m => `<li>${escapeHtml(m)}</li>`).join('')}</ul>` : ''}</div>`; }).join('')}</div>`;
+  return `<div class="strat-card gsc-reads">${r.map((x, i) => {
+    const open = !!gsc.more[x.key]; const dis = gsc.disagree[x.id];
+    const more = (x.more || []).slice(); if (x.nextStep) more.unshift('Suggested next step: ' + x.nextStep);
+    if (x.actions && x.source === 'template' && gsc.readNote) more.push(gsc.readNote);
+    const acts = x.actions ? `<div class="gsc-read-acts"><button type="button" class="gsc-link" onclick="gscReadAct('${x.id}','accept')">Add to priorities</button><button type="button" class="gsc-link" onclick="gscReadAct('${x.id}','snooze')">Not now</button><button type="button" class="gsc-link" onclick="gsc.disagree['${x.id}']=!gsc.disagree['${x.id}']; gscRender();">Disagree</button></div>${dis ? `<div class="gsc-add" style="margin-top:6px;"><input type="text" id="gscWhy-${x.id}" maxlength="500" placeholder="What is off about this?" onkeydown="if(event.key==='Enter'){gscReadAct('${x.id}','disagree');}"><button type="button" class="btn-ghost" onclick="gscReadAct('${x.id}','disagree')">Send to Train the Brain</button></div>` : ''}` : '';
+    return `<div class="gsc-read"><div class="gsc-read-l1">${escapeHtml(x.line1)}</div><div class="gsc-read-l2">${escapeHtml(x.line2 || '')}${more.length ? ` <button type="button" class="gsc-link" aria-expanded="${open}" onclick="gsc.more['${x.key}']=!gsc.more['${x.key}']; gscRender();">${open ? 'See less' : 'See more'}</button>` : ''}</div>${open ? `<ul class="gsc-more">${more.map(m => `<li>${escapeHtml(m)}</li>`).join('')}</ul>` : ''}${acts}</div>`;
+  }).join('')}${gsc.readMsg ? `<p class="strat-empty">${escapeHtml(gsc.readMsg)}</p>` : ''}</div>`;
+}
+async function gscReadAct(id, action){
+  const body = { action };
+  if (action === 'disagree'){ const e = document.getElementById('gscWhy-' + id); body.reason = e ? e.value.trim() : ''; }
+  const r = await srchPost('/reads/' + encodeURIComponent(id), body);
+  gsc.readMsg = r.error ? r.error : (action === 'accept' ? 'Added to your priorities.' : action === 'snooze' ? 'Hidden for a week.' : 'Sent to Train the Brain. This read will not come back.');
+  delete gsc.disagree[id]; await gscLoad();
+}
+// Word any reads still on standard wording, once per set of reads; a failure keeps the standard wording and says why under See more.
+async function gscRefreshReads(){
+  const need = ((gsc.data && gsc.data.reads) || []).filter(x => x.actions && x.source === 'template').map(x => x.id).sort().join(',');
+  if (!need || gsc.refreshed === need) return; gsc.refreshed = need;
+  try { const r = await srchPost('/reads/refresh', {}); gsc.readNote = r.reason ? 'Shown in standard wording. ' + r.reason : ''; if (r.generated){ const d = await srchApi('/page'); if (!d.error){ gsc.data = d; gscRender(); } } else if (gsc.readNote) gscRender(); } catch (e){ gsc.readNote = 'Shown in standard wording. Could not reach the writing service.'; gscRender(); }
 }
 // ---- priorities ----
 function gscPrioritiesHtml(d){
