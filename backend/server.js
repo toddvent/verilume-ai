@@ -16862,9 +16862,78 @@ function brainWrite(accountId, { dashboard, action, subject, refId, scopeType, r
     return id;
   } catch (e) { console.warn('[brain-write] skipped:', e.message); return null; }
 }
+
+// Brain Train lessons: what team members teach the Brain (feedback on what they are seeing).
+// status: active | pending (waiting for an owner/admin to approve an account-wide lesson) | retired | declined.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS brain_lessons (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    agree TEXT,
+    whyJson TEXT,
+    whyText TEXT,
+    lesson TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    campaignId TEXT,
+    contextJson TEXT,
+    status TEXT NOT NULL,
+    taughtBy TEXT,
+    taughtByName TEXT,
+    createdAt TEXT NOT NULL,
+    decidedBy TEXT,
+    decidedAt TEXT,
+    usedCount INTEGER NOT NULL DEFAULT 0,
+    helpedCount INTEGER NOT NULL DEFAULT 0,
+    notHelpedCount INTEGER NOT NULL DEFAULT 0,
+    lastUsedAt TEXT,
+    reviewedAt TEXT
+  );
+`);
+createTableIfNeeded(`CREATE INDEX IF NOT EXISTS idx_brain_lessons_account ON brain_lessons(accountId, status);`);
+const BRAIN_LESSON_KINDS = ['Correction', 'Preference', 'Business fact', 'Rule'];
+const BRAIN_LESSON_SCOPES = ['campaign', 'account', 'always'];
+const BRAIN_LESSON_STALE_DAYS = 180;
+function brainLessonWords(t){ return new Set(String(t || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(w => w.length > 3)); }
+function brainLessonSimilar(a, b){ const A = brainLessonWords(a), B = brainLessonWords(b); if (!A.size || !B.size) return 0; let n = 0; A.forEach(w => { if (B.has(w)) n++; }); return n / (A.size + B.size - n); }
+function brainLessonShape(r){
+  const g = k => aliasVal(r, k);
+  let why = []; try { why = JSON.parse(g('whyJson') || '[]'); } catch (e) {}
+  let ctx = null; try { ctx = JSON.parse(g('contextJson') || 'null'); } catch (e) {}
+  const created = g('createdAt'); const last = g('reviewedAt') || g('lastUsedAt') || created;
+  const stale = g('status') === 'active' && last && (Date.now() - new Date(last).getTime()) > BRAIN_LESSON_STALE_DAYS * 86400000;
+  return { id: g('id'), kind: g('kind'), agree: g('agree'), why: why, whyText: g('whyText'), lesson: g('lesson'), scope: g('scope'), campaignId: g('campaignId'), context: ctx, status: g('status'), taughtByName: g('taughtByName'), createdAt: created, usedCount: Number(g('usedCount')) || 0, helpedCount: Number(g('helpedCount')) || 0, notHelpedCount: Number(g('notHelpedCount')) || 0, lastUsedAt: g('lastUsedAt'), stale: !!stale };
+}
+// Lessons the Brain reads on an answer: active ones for the account (campaign-scoped ones only for that campaign).
+function activeBrainLessons(accountId, campaignId){
+  try {
+    const rows = db.prepare(`SELECT * FROM brain_lessons WHERE accountId = ? AND status = 'active' ORDER BY createdAt DESC LIMIT 60`).all(accountId);
+    return rows.map(brainLessonShape).filter(l => l.scope !== 'campaign' || (campaignId && l.campaignId === campaignId));
+  } catch (e) { return []; }
+}
+function brainLessonsPromptBlock(accountId, campaignId){
+  const ls = activeBrainLessons(accountId, campaignId).slice(0, 25);
+  if (!ls.length) return { block: '', ids: [] };
+  const lines = ls.map(l => `- [${l.kind}${l.scope === 'campaign' ? ', this campaign' : l.scope === 'always' ? ', always' : ''}] ${l.lesson}`);
+  return { ids: ls.map(l => l.id), block: `LESSONS THIS TEAM HAS TAUGHT THE BRAIN (follow them; if one conflicts with the data, say so rather than silently ignoring either):\n${lines.join('\n')}` };
+}
+function brainLessonsMarkUsed(ids){
+  if (!ids || !ids.length) return;
+  const now = new Date().toISOString();
+  try { ids.forEach(id => db.prepare('UPDATE brain_lessons SET usedCount = usedCount + 1, lastUsedAt = ? WHERE id = ?').run(now, id)); } catch (e) {}
+}
+function brainLessonActor(req, accountId){
+  const session = authenticate(req);
+  let name = 'Account admin', isAdmin = true, id = null;
+  if (session && session.memberId){
+    id = session.memberId;
+    try { const m = db.prepare('SELECT name, isAdmin FROM team_members WHERE id = ? AND accountId = ?').get(session.memberId, accountId); if (m){ name = m.name || 'Team member'; isAdmin = !!(m.isAdmin || m.isadmin); } else isAdmin = false; } catch (e) { isAdmin = false; }
+  }
+  return { id, name, isAdmin };
+}
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings']);
+const CATALOG_EXEMPT = new Set(['account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -25942,6 +26011,71 @@ async function handleRequest(req, res) {
       } catch (e){ console.warn('[brain-train/waiting] failed:', e.message); return sendJson(res, 500, { error: 'could not read waiting items' }); }
     }
 
+    // Brain Train lessons. GET list; POST create; POST /check (read-back conflict check); POST /:lessonId { action }.
+    if (parts.length >= 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'brain-train' && parts[4] === 'lessons'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      try {
+        const actor = brainLessonActor(req, accountId);
+        if (parts.length === 5 && req.method === 'GET'){
+          const rows = db.prepare(`SELECT * FROM brain_lessons WHERE accountId = ? AND status IN ('active','pending','retired') ORDER BY createdAt DESC LIMIT 300`).all(accountId);
+          const lessons = rows.map(brainLessonShape);
+          return sendJson(res, 200, { lessons, canApprove: actor.isAdmin, pending: lessons.filter(l => l.status === 'pending').length, active: lessons.filter(l => l.status === 'active').length, stale: lessons.filter(l => l.stale).length });
+        }
+        if (parts.length === 6 && parts[5] === 'check' && req.method === 'POST'){
+          const body = (await readBody(req)) || {};
+          const text = String(body.lesson || '').trim();
+          const rows = db.prepare(`SELECT * FROM brain_lessons WHERE accountId = ? AND status IN ('active','pending') ORDER BY createdAt DESC LIMIT 100`).all(accountId).map(brainLessonShape);
+          const similar = rows.map(l => ({ l, sim: brainLessonSimilar(text, l.lesson) })).filter(x => x.sim >= 0.34).sort((a, b) => b.sim - a.sim).slice(0, 3).map(x => ({ id: x.l.id, lesson: x.l.lesson, scope: x.l.scope, status: x.l.status, taughtByName: x.l.taughtByName }));
+          const needsApproval = body.scope !== 'campaign' && !actor.isAdmin;
+          return sendJson(res, 200, { similar, needsApproval });
+        }
+        if (parts.length === 5 && req.method === 'POST'){
+          const body = (await readBody(req)) || {};
+          const lesson = String(body.lesson || '').trim().slice(0, 1000);
+          if (lesson.length < 8) return sendJson(res, 400, { error: 'write what the Brain should learn (at least a short sentence)' });
+          const kind = BRAIN_LESSON_KINDS.includes(body.kind) ? body.kind : 'Correction';
+          const scope = BRAIN_LESSON_SCOPES.includes(body.scope) ? body.scope : 'campaign';
+          const campaignId = scope === 'campaign' ? (String(body.campaignId || '').slice(0, 120) || null) : null;
+          if (scope === 'campaign' && !campaignId) return sendJson(res, 400, { error: 'open a campaign to teach it a campaign-only lesson, or choose This account' });
+          const agree = ['yes', 'partly', 'no'].includes(body.agree) ? body.agree : null;
+          const why = Array.isArray(body.why) ? body.why.map(x => String(x).slice(0, 60)).slice(0, 8) : [];
+          const status = (scope === 'campaign' || actor.isAdmin) ? 'active' : 'pending';
+          const id = generateId('BL'); const now = new Date().toISOString();
+          db.prepare(`INSERT INTO brain_lessons (id, accountId, kind, agree, whyJson, whyText, lesson, scope, campaignId, contextJson, status, taughtBy, taughtByName, createdAt, decidedBy, decidedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+            .run(id, accountId, kind, agree, JSON.stringify(why), String(body.whyText || '').slice(0, 1000) || null, lesson, scope, campaignId, body.context ? JSON.stringify(body.context).slice(0, 2000) : null, status, actor.id, actor.name, now, status === 'active' ? (actor.id || 'account admin') : null, status === 'active' ? now : null);
+          brainWrite(accountId, { dashboard: 'Brain Train', action: status === 'active' ? 'Taught' : 'Proposed', subject: lesson.slice(0, 120), refId: id, actor: actor.id || null });
+          return sendJson(res, 200, { ok: true, status, lesson: brainLessonShape(db.prepare('SELECT * FROM brain_lessons WHERE id = ?').get(id)) });
+        }
+        if (parts.length === 6 && req.method === 'POST'){
+          const lid = decodeURIComponent(parts[5]);
+          const row = db.prepare('SELECT * FROM brain_lessons WHERE id = ? AND accountId = ?').get(lid, accountId);
+          if (!row) return sendJson(res, 404, { error: 'lesson not found' });
+          const L = brainLessonShape(row); const body = (await readBody(req)) || {}; const now = new Date().toISOString(); const act = body.action;
+          if (['approve', 'decline'].includes(act) && !actor.isAdmin) return sendJson(res, 403, { error: 'only an account admin can approve or decline a lesson' });
+          if (act === 'approve' && L.status === 'pending') db.prepare(`UPDATE brain_lessons SET status = 'active', decidedBy = ?, decidedAt = ? WHERE id = ?`).run(actor.id || 'account admin', now, lid);
+          else if (act === 'decline' && L.status === 'pending') db.prepare(`UPDATE brain_lessons SET status = 'declined', decidedBy = ?, decidedAt = ? WHERE id = ?`).run(actor.id || 'account admin', now, lid);
+          else if (act === 'retire' && L.status !== 'retired') {
+            if (L.scope !== 'campaign' && !actor.isAdmin && actor.name !== L.taughtByName) return sendJson(res, 403, { error: 'only the person who taught it or an admin can retire this lesson' });
+            db.prepare(`UPDATE brain_lessons SET status = 'retired', decidedBy = ?, decidedAt = ? WHERE id = ?`).run(actor.id || 'account admin', now, lid);
+          }
+          else if (act === 'keep') db.prepare('UPDATE brain_lessons SET reviewedAt = ? WHERE id = ?').run(now, lid);
+          else if (act === 'edit'){
+            const t = String(body.lesson || '').trim().slice(0, 1000);
+            if (t.length < 8) return sendJson(res, 400, { error: 'the lesson needs a short sentence' });
+            if (L.scope !== 'campaign' && !actor.isAdmin && actor.name !== L.taughtByName) return sendJson(res, 403, { error: 'only the person who taught it or an admin can edit this lesson' });
+            db.prepare('UPDATE brain_lessons SET lesson = ?, reviewedAt = ? WHERE id = ?').run(t, now, lid);
+          }
+          else if (act === 'helped') db.prepare('UPDATE brain_lessons SET helpedCount = helpedCount + 1 WHERE id = ?').run(lid);
+          else if (act === 'nothelped') db.prepare('UPDATE brain_lessons SET notHelpedCount = notHelpedCount + 1 WHERE id = ?').run(lid);
+          else return sendJson(res, 400, { error: 'unknown action' });
+          brainWrite(accountId, { dashboard: 'Brain Train', action: act === 'approve' ? 'Approved' : act === 'decline' ? 'Declined' : act === 'retire' ? 'Retired' : 'Reviewed', subject: L.lesson.slice(0, 120), refId: lid, actor: actor.id || null });
+          return sendJson(res, 200, { ok: true, lesson: brainLessonShape(db.prepare('SELECT * FROM brain_lessons WHERE id = ?').get(lid)) });
+        }
+        return sendJson(res, 405, { error: 'method not allowed' });
+      } catch (e){ console.warn('[brain-train/lessons] failed:', e.message); return sendJson(res, 500, { error: 'could not read or save lessons' }); }
+    }
+
     // Brain Dump (weekly standup). GET /api/accounts/:id/brain-dump[?week=YYYY-MM-DD&refresh=1]
     // Comments: GET/POST /api/accounts/:id/brain-dump/comments — an @AIBrain mention gets a reply grounded in that section's facts.
     // GET|PUT /api/accounts/:id/market-size — TAM and SAM from the assessment (or entered by hand), with the generation and wealth tables.
@@ -29555,6 +29689,7 @@ Submit your response via the recommendation_dialogue_reply tool.`;
 - Target generation(s): ${audienceLabel || '(not set — assume a broad, general audience)'}
 - Net-worth / wealth tier(s): ${wealthLabel || '(not set — assume a general, mixed-income audience)'}`;
         const { promptBlock: monthlyKpiBlock } = buildAccountMonthlyKpiContextForPromptCached(campaign.accountId, timings);
+        const lessonsInfo = brainLessonsPromptBlock(campaign.accountId, campaignId); const lessonsBlock = lessonsInfo.block; brainLessonsMarkUsed(lessonsInfo.ids);
         const priorNotes = Array.isArray(body.priorNotes) ? body.priorNotes.slice(-10) : [];
         const priorText = priorNotes.map(n => `${n.isAi ? 'AI Brain' : (n.author || 'Team member')}: ${n.text}`).join('\n');
         // Channel plan lines are read LIVE every turn (one query) — they're
@@ -29648,7 +29783,7 @@ ${acctBudgetPerfBlock}
 
 ${segmentationBlock}
 
-${monthlyKpiBlock}`;
+${monthlyKpiBlock}${lessonsBlock ? '\n\n' + lessonsBlock : ''}`;
         const turnBlock = `CONVERSATION SO FAR:
 ${priorText || '(nothing yet)'}
 
