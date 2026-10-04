@@ -11094,7 +11094,8 @@
   <div class="faq-drawer-overlay" id="faqDrawerOverlay" onclick="closeFaqDrawer()"></div>
   <div class="faq-drawer" id="faqDrawer">
     <button class="faq-drawer-close" onclick="closeFaqDrawer()" aria-label="Close">✕</button>
-    <div class="section-eyebrow" style="margin:0 0 10px;color:var(--media);">AI Agent Thoughts</div>
+    <div class="section-eyebrow" style="margin:0 0 4px;color:var(--media);">AI Agent Thoughts</div>
+    <div class="faq-drawer-sub" id="bpFaqSub" style="font-size:0.8125rem;color:var(--muted);margin:0 0 12px;">Questions and Answers</div>
 
     <!-- Round 24 (2026-08-05), per direct instruction: a keyword search that
          maps to the same 6 topics below, so a team member can jump straight
@@ -49928,10 +49929,27 @@ const BP_FAQ_TOPIC_TAB = {
   AE: 'marketer', AF: 'marketer'
 };
 
+// 2026-10-04 (Todd): too many chips at once. Show the five most relevant to the page the person is on
+// (their tab's topics first, then a general default list), with one chip to reveal the rest.
+let bpFaqChipsAll = false;
+let bpFaqChipPin = null;
+const BP_FAQ_DEFAULT_ORDER = ['F', 'A', 'K', 'M', 'B', 'AE', 'AF', 'D', 'E', 'G', 'L', 'N'];
+function bpFaqRelevantLetters(){
+  const tab = (typeof activePrimaryTab !== 'undefined' && activePrimaryTab) ? activePrimaryTab : 'dailyBrief';
+  const all = BP_FAQ_TOPICS.map(t => t.letter);
+  const own = Object.keys(BP_FAQ_TOPIC_TAB).filter(l => BP_FAQ_TOPIC_TAB[l] === tab && all.includes(l));
+  const out = [];
+  [...(bpFaqChipPin ? [bpFaqChipPin] : []), ...own, ...BP_FAQ_DEFAULT_ORDER, ...all].forEach(l => { if (all.includes(l) && !out.includes(l)) out.push(l); });
+  return out.slice(0, 5);
+}
 function renderFaqTopicChips(){
   const el = document.getElementById('bpFaqTopicChips');
   if (!el) return;
-  el.innerHTML = BP_FAQ_TOPICS.map(t => `<button type="button" class="faq-topic-chip" id="bpFaqChip${t.letter}" onclick="selectFaqTopicChip('${t.letter}')">${t.label}</button>`).join('');
+  const top = bpFaqRelevantLetters();
+  const list = bpFaqChipsAll ? BP_FAQ_TOPICS : top.map(l => BP_FAQ_TOPICS.find(t => t.letter === l));
+  const rest = BP_FAQ_TOPICS.length - top.length;
+  el.innerHTML = list.map(t => `<button type="button" class="faq-topic-chip" id="bpFaqChip${t.letter}" onclick="selectFaqTopicChip('${t.letter}')">${t.label}</button>`).join('')
+    + (rest > 0 ? `<button type="button" class="faq-topic-chip" id="bpFaqChipMore" aria-expanded="${bpFaqChipsAll}" onclick="bpFaqChipsAll=!bpFaqChipsAll;renderFaqTopicChips()" style="border-style:dashed;">${bpFaqChipsAll ? 'Show fewer' : 'Show all ' + BP_FAQ_TOPICS.length + ' topics'}</button>` : '');
 }
 // Re-parents the 6 already-rendered .faq-item nodes (their own markup/IDs/
 // per-topic body content — e.g. D's #bpConversionTypeRow — are untouched)
@@ -49987,6 +50005,7 @@ function selectFaqTopicChip(letter){
 function bpFaqShowOnlyTopic(letter){
   const topic = BP_FAQ_TOPICS.find(t => t.letter === letter);
   if (!topic) return;
+  if (!document.getElementById(`bpFaqChip${letter}`)){ bpFaqChipPin = letter; renderFaqTopicChips(); }
   const input = document.getElementById('bpFaqSearchInput');
   const clearBtn = document.getElementById('bpFaqSearchClear');
   const noMatch = document.getElementById('bpFaqNoMatch');
@@ -50324,7 +50343,7 @@ function openFaqDrawer(){
   if (typeof ASK_DOCK_ON !== 'undefined' && ASK_DOCK_ON){ const ex = document.getElementById('askVerilumeExpand'); if (ex && ex.classList.contains('open')) toggleAskVerilumePrompts(); try { askDockBtClose(); } catch (e){} try { askDockTeamClose(); } catch (e){} const eb = document.querySelector('#faqDrawer .section-eyebrow'); if (eb) eb.textContent = 'Thoughts'; }
   document.getElementById('faqDrawer').classList.add('open');
   document.getElementById('faqDrawerOverlay').classList.add('open');
-  if (!document.getElementById('bpFaqTopicChips').children.length) renderFaqTopicChips();
+  bpFaqChipPin = null; renderFaqTopicChips();
   // Round 132ll (2026-08-10) — group into role sections every open (cheap,
   // 6 nodes) rather than gating on a first-open guard, so it stays correct
   // even if something upstream re-renders the widget's own content.
