@@ -3850,6 +3850,11 @@
   body.ask-dock #askVerilumeLive.scope-campaign > .ask-status,body.ask-dock #askVerilumeLive.scope-campaign > .ask-thread,body.ask-dock #askVerilumeLive.scope-campaign > #askVerilumeDq,body.ask-dock #askVerilumeLive.scope-campaign > .ask-cards,body.ask-dock #askVerilumeLive.scope-campaign > .ask-assist,body.ask-dock #askVerilumeLive.scope-campaign > #askVerilumeProposal,body.ask-dock #askVerilumeLive.scope-campaign > .ask-followups{display:none;}
   body.ask-dock .ask-expand.scope-campaign > .ask-expand-label,body.ask-dock .ask-expand.scope-campaign > .prompt-row{display:none;}
   body.ask-dock .ask-expand button{font-family:inherit;}
+  .adc-ask-cta{display:none;}
+  body.ask-dock #cmpPitchPanel .adc-ask-cta{display:flex;align-items:center;gap:12px;justify-content:space-between;margin:0 28px;padding:10px 14px;border:1px solid #BFC4F5;background:#EEF0FF;border-radius:10px;font-size:0.8125rem;}
+  body.ask-dock #cmpPitchCollabMount{display:none;}
+  body.ask-dock #cmpPitchPanel .cmp-pitch-body{grid-template-columns:minmax(0,1fr);}
+  body.ask-dock #cmpPitchPanel .cmp-pitch-left{border-right:0;padding-left:max(28px,calc((100% - 1240px) / 2));padding-right:max(28px,calc((100% - 1240px) / 2));padding-bottom:110px;}
   body.ask-dock #cmpObjectivesCollabMount{display:none;}
   body.ask-dock #cmpObjectivesPanel .cmp-pitch-body{grid-template-columns:minmax(0,1fr);}
   body.ask-dock #cmpObjectivesPanel .cmp-pitch-left{border-right:0;}
@@ -8993,6 +8998,7 @@
     <div class="cmp-pitch-overlay" id="cmpPitchOverlay" onclick="cmpCloseRecommendationPitch()"></div>
     <div class="cmp-pitch-panel" id="cmpPitchPanel">
       <div class="cch-panel-mount" id="cmpPitchHeaderMount"></div>
+      <div class="adc-ask-cta" id="cmpPitchAskCta"><span>Questions about this budget, or want a change? Ask the AI Brain. It can propose a change you can apply.</span><button type="button" class="btn-primary" onclick="askDockAskAboutCampaign()">Ask the AI Brain</button></div>
       <div class="cmp-pitch-body">
         <div class="cmp-pitch-left" id="cmpPitchLeft"></div>
         <div class="cmp-workspace-collab" id="cmpPitchCollabMount"></div>
@@ -24229,7 +24235,9 @@ function askDockScopeRender(){
   if (!askDockCampAvailable()){ el.innerHTML = ''; if (live) live.classList.remove('scope-campaign'); const exp0 = document.getElementById('askVerilumeExpand'); if (exp0) exp0.classList.remove('scope-campaign'); if (inp) inp.placeholder = 'Ask Verilume about this account…'; return; }
   const now = askDockScopeNow();
   let c = null; try { c = cmpRailLoadedCampaign(); } catch (e){}
-  let stage = ''; try { const st = (typeof CMP_STAGE_RAIL !== 'undefined' && typeof cmpOpenStage !== 'undefined') ? CMP_STAGE_RAIL.find(x => x.key === cmpOpenStage) : null; stage = st ? st.label : ''; } catch (e){}
+  let stage = ''; const ovOpen = id => { const e = document.getElementById(id); return !!(e && e.classList.contains('open')); };
+  if (ovOpen('cmpPitchPanel')) stage = 'Recommendation'; else if (ovOpen('cmpObjectivesPanel')) stage = 'Objectives'; else if (ovOpen('cmpPerfMarketingPanel')) stage = 'Performance Marketing'; else if (ovOpen('cmpCreativePanel')) stage = 'Creative'; else if (ovOpen('cmpTraffickingPanel')) stage = 'Trafficking'; else if (ovOpen('cmpAnalysisPanel')) stage = 'Analysis';
+  if (!stage) try { const st = (typeof CMP_STAGE_RAIL !== 'undefined' && typeof cmpOpenStage !== 'undefined') ? CMP_STAGE_RAIL.find(x => x.key === cmpOpenStage) : null; stage = st ? st.label : ''; } catch (e){}
   const label = c ? ('Talking about: ' + (c.name || 'this campaign') + (stage ? ' · ' + stage : '')) : 'Planning a new campaign';
   el.innerHTML = `<div class="adbt-chips" style="margin-bottom:8px"><button type="button" class="adbt-chip${now === 'campaign' ? ' on' : ''}" aria-pressed="${now === 'campaign'}" onclick="askDockScope.pick='campaign';askDockScopeRender();askDockCampRender()">${escapeHtml(label)}</button><button type="button" class="adbt-chip${now === 'account' ? ' on' : ''}" aria-pressed="${now === 'account'}" onclick="askDockScope.pick='account';askDockScopeRender();askDockCampRender()">Account data</button></div>`;
   if (live) live.classList.toggle('scope-campaign', now === 'campaign');
@@ -24284,6 +24292,10 @@ async function askDockCampToggleVoice(){
     onCards: (cards) => { askDockCampVoiceStatus('Listening. Talk to the AI Brain; click the mic to stop.'); askVerilumeRenderCards(cards, 'askDockCampVoiceCards'); },
     onProposal: (p) => { askVerilumeRenderProposal(p, 'askDockCampVoiceProposal'); }
   });
+}
+function askDockAskAboutCampaign(){
+  askDockScope.pick = 'campaign'; askDockCloseAll(); askVerilumeOpenTyped(); askDockScopeRender(); askDockCampRender();
+  const i = document.getElementById('askVerilumeInput'); if (i) i.focus();
 }
 function askDockTeachAbout(noteId){
   let n = null; try { const c = cmpRailLoadedCampaign(); n = c && (cmpCollabNotesFor(c, 'ai').find(x => x.id === noteId)); } catch (e){}
