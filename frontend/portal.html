@@ -3903,7 +3903,7 @@
     body.ask-dock-kb.ask-dock .ask-expand,body.ask-dock-kb.ask-dock .ask-dock-surface,body.ask-dock-kb.ask-dock .faq-drawer{bottom:var(--ask-kb,0px);}
     body.ask-dock .ask-dock-toast{bottom:112px;}
     body.ask-dock .cmp-creative-mobile-ai-bar{display:none !important;}
-    body.ask-dock-mini.ask-dock .ask-bar{left:auto;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));width:56px;height:56px;padding:0;border:0;border-radius:50%;background:#1D1D1F;box-shadow:0 8px 22px rgba(29,29,31,0.3);}
+    body.ask-dock-mini.ask-dock .ask-bar{left:auto;right:16px;bottom:calc(16px + var(--ask-above,0px) + env(safe-area-inset-bottom));width:56px;height:56px;padding:0;border:0;border-radius:50%;background:#1D1D1F;box-shadow:0 8px 22px rgba(29,29,31,0.3);}
     body.ask-dock-mini.ask-dock .ask-bar > .ask-row{display:flex;align-items:center;justify-content:center;height:56px;}
     body.ask-dock-mini.ask-dock .ask-row > *:not(.ask-mic){display:none;}
     body.ask-dock-mini.ask-dock .ask-mic{width:56px;height:56px;background:transparent;}
@@ -24377,7 +24377,26 @@ function askDockMobileInit(){
   if (window.__askDockMobileInit) return; window.__askDockMobileInit = true;
   const bar = document.getElementById('askVerilumeBar'); if (!bar) return;
   const last = new WeakMap(); let quiet = 0;
-  const setMini = on => document.body.classList.toggle('ask-dock-mini', !!on);
+  let hasBar = false;
+  const setMini = on => document.body.classList.toggle('ask-dock-mini', !!on || hasBar);
+  // A screen's own bottom action bar (Save, Continue...) would sit under the dock: find it, keep the dock as the small Ask button above it.
+  const scanBars = () => {
+    if (!askDockIsMobile()){ hasBar = false; document.documentElement.style.removeProperty('--ask-above'); return; }
+    let h = 0; const vh = window.innerHeight, vw = window.innerWidth;
+    document.querySelectorAll('body *').forEach(el => {
+      if (el === bar || bar.contains(el) || (el.closest && el.closest('#askVerilumeBar,#askVerilumeExpand,.ask-dock-surface,.ask-dock-toast,#faqDrawer'))) return;
+      const cs = getComputedStyle(el); if (cs.position !== 'fixed' && cs.position !== 'sticky') return;
+      if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') return;
+      const r = el.getBoundingClientRect(); if (r.width < vw * 0.6 || r.height < 36 || r.height > 220) return;
+      if (r.bottom < vh - 6 || r.top < vh * 0.5) return;
+      h = Math.max(h, Math.round(vh - r.top));
+    });
+    const on = h > 0; document.documentElement.style.setProperty('--ask-above', on ? (h + 'px') : '0px');
+    if (on !== hasBar){ hasBar = on; document.body.classList.toggle('ask-dock-mini', on || (!on && false)); }
+  };
+  let scanT = 0; const scanSoon = () => { clearTimeout(scanT); scanT = setTimeout(scanBars, 150); };
+  try { new MutationObserver(scanSoon).observe(document.body, {subtree:true, childList:true, attributes:true, attributeFilter:['class','style','hidden']}); } catch (e){}
+  window.addEventListener('resize', scanSoon); window.addEventListener('scroll', scanSoon, true); scanSoon();
   document.addEventListener('scroll', e => {
     if (!askDockIsMobile()) return;
     const t = e.target === document ? document.scrollingElement : e.target; if (!t || t.scrollTop === undefined) return;
@@ -24386,7 +24405,7 @@ function askDockMobileInit(){
     if (Date.now() < quiet || askDockAnySurfaceOpen()) return;
     if (y > prev + 12 && y > 80) setMini(true); else if (y < prev - 12 || y < 40) setMini(false);
   }, true);
-  bar.addEventListener('click', e => { if (document.body.classList.contains('ask-dock-mini')){ e.preventDefault(); e.stopPropagation(); setMini(false); quiet = Date.now() + 1500; } }, true);
+  bar.addEventListener('click', e => { if (document.body.classList.contains('ask-dock-mini')){ e.preventDefault(); e.stopPropagation(); if (hasBar){ try { askVerilumeOpenTyped(); } catch (e2){} } else { setMini(false); quiet = Date.now() + 1500; } } }, true);
   const kb = on => { document.body.classList.toggle('ask-dock-kb', on); };
   document.addEventListener('focusin', e => { if (askDockIsMobile() && e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName) && e.target.closest && e.target.closest('#askVerilumeBar, .ask-dock-surface')) kb(true); });
   document.addEventListener('focusout', () => { setTimeout(() => { const a = document.activeElement; if (!(a && /^(INPUT|TEXTAREA)$/.test(a.tagName))) kb(false); }, 80); });
