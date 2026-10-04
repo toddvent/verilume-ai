@@ -3846,6 +3846,13 @@
   .ask-dock-surface button,.ask-dock-surface textarea,.ask-dock-surface input{font-family:inherit;}
   .ask-dock-surface .ads-meta{font-size:0.6875rem;color:var(--muted);}
   .ask-dock-surface .adbt-card p{font-family:inherit;}
+  .ask-dock-surface .hint{font-size:0.75rem;color:var(--muted);margin:8px 0 0;}
+  .adt-head{display:flex;align-items:center;gap:6px;font-size:0.8125rem;}
+  .adt-av{width:24px;height:24px;border-radius:50%;background:#4F46E5;color:#fff;font-size:0.625rem;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .adt-text{margin-top:6px;font-size:0.8125rem;line-height:1.45;}
+  .adt-at{color:#4F46E5;font-weight:600;}
+  .adt-new{background:#EEF0FF;border-color:#BFC4F5;}
+  .adt-newtag{font-size:0.625rem;font-weight:800;padding:2px 6px;border-radius:8px;background:#D9480F;color:#fff;}
   .adbt-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:0 0 10px;}
   .adbt-tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:8px 10px;font-size:0.8125rem;font-weight:600;color:var(--muted);cursor:pointer;min-height:44px;}
   .adbt-tabs button.on{color:#4F46E5;border-bottom-color:#4F46E5;}
@@ -23959,7 +23966,7 @@ function askDockInit(){
   const wrap = document.createElement('div'); wrap.className = 'ask-dock-icons'; wrap.setAttribute('role', 'group'); wrap.setAttribute('aria-label', 'Verilume surfaces');
   wrap.innerHTML = ASK_DOCK_ICONS.map(b => `<button type="button" class="ask-dock-btn" data-key="${b.key}" title="${b.label}" aria-label="${b.label}" ${b.disabled ? 'aria-disabled="true"' : `onclick="${b.fn}"`}><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${b.svg}</svg></button>`).join('');
   row.appendChild(wrap);
-  setTimeout(() => askDockBtPoll(0), 2500);
+  setTimeout(() => askDockBtPoll(0), 2500); setTimeout(() => askDockTeamPoll(0), 4000);
 }
 function askDockToast(t){ const o = document.querySelector('.ask-dock-toast'); if (o) o.remove(); const d = document.createElement('div'); d.className = 'ask-dock-toast'; d.setAttribute('role', 'status'); d.textContent = t; document.body.appendChild(d); setTimeout(() => d.remove(), 3200); }
 // One surface at a time: opening one closes the Ask sheet and the others. Until each surface is built (slices 2 to 4) these open the existing screens.
@@ -24120,29 +24127,101 @@ function askDockBtToggle(){
   askDockBtLoad(true).then(askDockBtRender);
 }
 function askDockBtPoll(n){ if (!ASK_DOCK_ON) return; if (typeof state !== 'undefined' && state.companyId){ askDockBtLoad(false); } else if (n < 8) setTimeout(() => askDockBtPoll(n + 1), 3000); }
+
+// ---- Dock slice 4a: Team surface. Reads and writes the same per-campaign Team notes the Collaboration Center's Team tab uses. ----
+const askDockTeam = { tab: 'campaign', busy: false, draft: '' };
+function askDockTeamEl(){
+  let el = document.getElementById('askDockTeam'); if (el) return el;
+  el = document.createElement('div'); el.id = 'askDockTeam'; el.className = 'ask-dock-surface'; el.setAttribute('role', 'region'); el.setAttribute('aria-label', 'Team');
+  document.body.appendChild(el); return el;
+}
+function askDockTeamClose(){ const el = document.getElementById('askDockTeam'); if (el) el.classList.remove('open'); }
+function askDockTeamMe(){ try { return ((typeof cmpNoteAuthorName !== 'undefined' && cmpNoteAuthorName) || (state.userName || '')).trim(); } catch (e){ return ''; } }
+function askDockTeamNotes(c){ return (c && c.activityNotes && Array.isArray(c.activityNotes.workspace)) ? c.activityNotes.workspace.filter(n => (n.tab || 'ai') === 'team' && n.text) : []; }
+function askDockTeamSeenKey(c){ return 'askDockTeamSeen:' + (state.companyId || '') + ':' + (c ? c.id : ''); }
+function askDockTeamSeen(c){ try { return Number(localStorage.getItem(askDockTeamSeenKey(c))) || 0; } catch (e){ return 0; } }
+function askDockTeamMarkSeen(c){ if (!c) return; try { localStorage.setItem(askDockTeamSeenKey(c), String(Date.now())); } catch (e){} }
+function askDockTeamUnread(c){ const me = askDockTeamMe().toLowerCase(), seen = askDockTeamSeen(c); return askDockTeamNotes(c).filter(n => Number(n.ts) > seen && String(n.author || '').trim().toLowerCase() !== me).length; }
+function askDockTeamUnreadAll(){ try { return (state.campaigns || []).reduce((t, c) => t + askDockTeamUnread(c), 0); } catch (e){ return 0; } }
+function askDockTeamBadge(){
+  const btn = document.querySelector('.ask-dock-btn[data-key="team"]'); if (!btn) return;
+  const old = btn.querySelector('.ask-dock-badge'); if (old) old.remove();
+  const n = askDockTeamUnreadAll();
+  btn.setAttribute('aria-label', n ? `Team, ${n} new` : 'Team');
+  if (n){ const b = document.createElement('span'); b.className = 'ask-dock-badge'; b.textContent = n > 99 ? '99+' : String(n); btn.appendChild(b); }
+}
+function askDockTeamNoteHtml(n, fresh, campaignName){
+  const when = (() => { try { return new Date(Number(n.ts)).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch (e){ return ''; } })();
+  const ini = String(n.author || '?').split(/\s+/).filter(Boolean).map(x => x[0]).slice(0, 2).join('').toUpperCase();
+  const text = escapeHtml(n.text).replace(/(^|\s)(@[A-Za-z][\w.'-]*(?:\s[A-Z][\w.'-]*)?)/g, '$1<span class="adt-at">$2</span>').replace(/\n/g, '<br>');
+  return `<div class="adbt-card${fresh ? ' adt-new' : ''}"><div class="adt-head"><span class="adt-av">${escapeHtml(ini)}</span><b>${escapeHtml(n.author || 'Team member')}</b>${campaignName ? `<span class="ads-meta">· ${escapeHtml(campaignName)}</span>` : ''}<span class="ads-meta" style="margin-left:auto">${escapeHtml(when)}</span>${fresh ? '<span class="adt-newtag">New</span>' : ''}</div><div class="adt-text">${text}</div></div>`;
+}
+function askDockTeamRender(){
+  const el = askDockTeamEl(); const keep = el.scrollTop;
+  const c = (typeof cmpRailLoadedCampaign === 'function') ? cmpRailLoadedCampaign() : null;
+  const me = askDockTeamMe().toLowerCase();
+  const tabs = [['campaign', 'This campaign'], ['all', 'All threads']];
+  let h = `<button type="button" class="ads-close" aria-label="Close Team" onclick="askDockTeamClose()">✕</button><h2>Team</h2><div class="ads-sub">Notes and replies from your team</div><div class="adbt-chips" style="margin-bottom:10px">${tabs.map(t => `<button type="button" class="adbt-chip${askDockTeam.tab === t[0] ? ' on' : ''}" aria-pressed="${askDockTeam.tab === t[0]}" onclick="askDockTeam.tab='${t[0]}';askDockTeamRender()">${t[1]}</button>`).join('')}</div>`;
+  if (askDockTeam.tab === 'campaign'){
+    if (!c) h += `<p class="hint">Team notes attach to a campaign. Open a campaign to read and write notes here, or see every campaign under All threads.</p>`;
+    else {
+      const seen = askDockTeamSeen(c), notes = askDockTeamNotes(c).slice().sort((a, b) => Number(a.ts) - Number(b.ts));
+      h += `<div class="ads-meta" style="margin-bottom:6px">${escapeHtml(c.name || 'This campaign')}</div>`;
+      h += notes.length ? notes.map(n => askDockTeamNoteHtml(n, Number(n.ts) > seen && String(n.author || '').trim().toLowerCase() !== me)).join('') : `<p class="hint">No team notes on this campaign yet.</p>`;
+      const team = (state.team || []).filter(m => m.name);
+      h += `<div class="adt-compose"><textarea id="adtInput" class="adbt-ta" rows="2" maxlength="2000" placeholder="Ask the team, or @ a teammate" oninput="askDockTeam.draft=this.value" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();askDockTeamSend();}">${escapeHtml(askDockTeam.draft)}</textarea>`;
+      if (team.length) h += `<div class="adbt-chips" style="margin-top:6px">${team.slice(0, 12).map((m, i) => `<button type="button" class="adbt-chip" onclick="askDockTeamAt(${i})">@${escapeHtml(m.name)}</button>`).join('')}</div>`;
+      h += `<div class="adbt-actions"><button type="button" class="btn-primary" ${askDockTeam.busy ? 'disabled' : ''} onclick="askDockTeamSend()">Send</button></div><p class="hint">Mentions are highlighted for your team. They do not send an email yet.</p></div>`;
+      askDockTeamMarkSeen(c);
+    }
+  } else {
+    const rows = [];
+    (state.campaigns || []).forEach(cm => { askDockTeamNotes(cm).forEach(n => rows.push({ n, cm })); });
+    rows.sort((a, b) => Number(b.n.ts) - Number(a.n.ts));
+    h += rows.length ? rows.slice(0, 40).map(r => askDockTeamNoteHtml(r.n, Number(r.n.ts) > askDockTeamSeen(r.cm) && String(r.n.author || '').trim().toLowerCase() !== me, r.cm.name || 'Campaign')).join('') : `<p class="hint">No team notes on any campaign yet.</p>`;
+  }
+  el.innerHTML = h; el.scrollTop = keep; askDockTeamBadge();
+}
+function askDockTeamAt(i){ const m = (state.team || []).filter(x => x.name)[i]; if (!m) return; const ta = document.getElementById('adtInput'); const v = (ta ? ta.value : askDockTeam.draft) || ''; askDockTeam.draft = v + (v && !/\s$/.test(v) ? ' ' : '') + '@' + m.name + ' '; askDockTeamRender(); const t2 = document.getElementById('adtInput'); if (t2){ t2.focus(); t2.setSelectionRange(t2.value.length, t2.value.length); } }
+function askDockTeamSend(){
+  const ta = document.getElementById('adtInput'); const text = String((ta ? ta.value : askDockTeam.draft) || '').trim();
+  if (!text) return;
+  const c = cmpRailLoadedCampaign(); if (!c){ askDockToast('Open a campaign to write a team note.'); return; }
+  askDockTeam.draft = '';
+  try { cmpCollabAddNote('team', text, false); } catch (e){ askDockToast('The note was not saved.'); return; }
+  askDockTeamMarkSeen(c); askDockTeamRender();
+}
+function askDockTeamToggle(){
+  const el = askDockTeamEl();
+  if (el.classList.contains('open')){ askDockTeamClose(); return; }
+  askDockCloseAll(); el.classList.add('open'); askDockTeamRender();
+}
+function askDockTeamPoll(n){ if (!ASK_DOCK_ON) return; askDockTeamBadge(); if (n < 40) setTimeout(() => askDockTeamPoll(n + 1), 15000); }
 function askDockCloseAll(){
-  askDockBtClose();
+  askDockBtClose(); try { askDockTeamClose(); } catch (e){}
   const ex = document.getElementById('askVerilumeExpand'); if (ex && ex.classList.contains('open')) toggleAskVerilumePrompts();
   try { closeFaqDrawer(); } catch (e){}
   if (typeof cmpCollabExpanded !== 'undefined' && cmpCollabExpanded){ try { cmpToggleCollabExpanded(); } catch (e){} }
 }
 function askDockOpen(which){
   const btWasOpen = !!(document.getElementById('askDockBrainTrain') && document.getElementById('askDockBrainTrain').classList.contains('open'));
+  const tmWasOpen = !!(document.getElementById('askDockTeam') && document.getElementById('askDockTeam').classList.contains('open'));
   if (which === 'brainTrain' && btWasOpen){ askDockBtClose(); return; }
+  if (which === 'team' && tmWasOpen){ askDockTeamClose(); return; }
   askDockCloseAll();
   try { localStorage.setItem('askDockLast', which); } catch (e){}
   if (which === 'thoughts') openFaqDrawer();
   else if (which === 'brainTrain'){ askDockBtToggle(); }
-  else if (which === 'team'){ if (document.getElementById(cmpCollabMountId) && document.getElementById(cmpCollabMountId).children.length) cmpToggleCollabExpanded(); else askDockToast('Team opens inside a campaign for now.'); }
+  else if (which === 'team'){ askDockTeamToggle(); }
 }
-document.addEventListener('keydown', e => { if (ASK_DOCK_ON && e.key === 'Escape'){ try { askDockBtClose(); } catch (e2){} const ex = document.getElementById('askVerilumeExpand'); if (ex && ex.classList.contains('open')) toggleAskVerilumePrompts(); } });
+document.addEventListener('keydown', e => { if (ASK_DOCK_ON && e.key === 'Escape'){ try { askDockBtClose(); } catch (e2){} try { askDockTeamClose(); } catch (e2){} const ex = document.getElementById('askVerilumeExpand'); if (ex && ex.classList.contains('open')) toggleAskVerilumePrompts(); } });
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', askDockInit); else askDockInit();
 function toggleAskVerilumePrompts(){
   const toggleEl = document.getElementById('askVerilumeToggle');
   const expandEl = document.getElementById('askVerilumeExpand');
   if (!toggleEl || !expandEl) return;
   const willOpen = !expandEl.classList.contains('open');
-  if (willOpen && ASK_DOCK_ON){ try { closeFaqDrawer(); } catch (e){} try { askDockBtClose(); } catch (e){} }
+  if (willOpen && ASK_DOCK_ON){ try { closeFaqDrawer(); } catch (e){} try { askDockBtClose(); } catch (e){} try { askDockTeamClose(); } catch (e){} }
   expandEl.classList.toggle('open', willOpen);
   toggleEl.classList.toggle('is-open', willOpen);
   toggleEl.innerHTML = willOpen ? 'Hide prompts <span class="chev">▾</span>' : 'Suggested prompts <span class="chev">▾</span>';
@@ -49821,7 +49900,7 @@ function mountAiThoughtIcons(){
 // Round 16, point 2 — slide-out drawer open/close. Escape and clicking the
 // dimmed overlay both close it, same as the fixed ✕ button.
 function openFaqDrawer(){
-  if (typeof ASK_DOCK_ON !== 'undefined' && ASK_DOCK_ON){ const ex = document.getElementById('askVerilumeExpand'); if (ex && ex.classList.contains('open')) toggleAskVerilumePrompts(); try { askDockBtClose(); } catch (e){} const eb = document.querySelector('#faqDrawer .section-eyebrow'); if (eb) eb.textContent = 'Thoughts'; }
+  if (typeof ASK_DOCK_ON !== 'undefined' && ASK_DOCK_ON){ const ex = document.getElementById('askVerilumeExpand'); if (ex && ex.classList.contains('open')) toggleAskVerilumePrompts(); try { askDockBtClose(); } catch (e){} try { askDockTeamClose(); } catch (e){} const eb = document.querySelector('#faqDrawer .section-eyebrow'); if (eb) eb.textContent = 'Thoughts'; }
   document.getElementById('faqDrawer').classList.add('open');
   document.getElementById('faqDrawerOverlay').classList.add('open');
   if (!document.getElementById('bpFaqTopicChips').children.length) renderFaqTopicChips();
