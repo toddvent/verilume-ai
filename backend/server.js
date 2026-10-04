@@ -25930,6 +25930,18 @@ async function handleRequest(req, res) {
       catch (e){ console.warn('[train-the-brain] failed:', e.message); return sendJson(res, 500, { error: 'could not read Train the Brain', detail: String(e.message || e).slice(0, 300) }); }
     }
 
+    // Brain Train surface: GET /api/accounts/:id/brain-train/waiting — Brain items recorded but not yet applied or removed (status 'reference'), newest first.
+    if (parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'brain-train' && parts[4] === 'waiting' && req.method === 'GET'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      try {
+        const types = Object.keys(BRAIN_LEDGER_LABELS); const ph = types.map(() => '?').join(',');
+        const rows = db.prepare(`SELECT id, sourceType, scopeType, scopeValue, createdAt FROM ai_brain_contributions WHERE accountId = ? AND status = 'reference' AND sourceType IN (${ph}) ORDER BY createdAt DESC LIMIT 200`).all(accountId, ...types);
+        const items = rows.slice(0, 20).map(r => { const t = aliasVal(r, 'sourceType'); const lab = BRAIN_LEDGER_LABELS[t] || [t, 'Brain']; return { id: r.id, sourceType: t, label: lab[0], dashboard: lab[1], scope: aliasVal(r, 'scopeValue') || null, createdAt: aliasVal(r, 'createdAt') }; });
+        return sendJson(res, 200, { count: rows.length, items });
+      } catch (e){ console.warn('[brain-train/waiting] failed:', e.message); return sendJson(res, 500, { error: 'could not read waiting items' }); }
+    }
+
     // Brain Dump (weekly standup). GET /api/accounts/:id/brain-dump[?week=YYYY-MM-DD&refresh=1]
     // Comments: GET/POST /api/accounts/:id/brain-dump/comments — an @AIBrain mention gets a reply grounded in that section's facts.
     // GET|PUT /api/accounts/:id/market-size — TAM and SAM from the assessment (or entered by hand), with the generation and wealth tables.
