@@ -32146,6 +32146,51 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       return sendJson(res, 200, { interviewId, candidate: redactCandidatesForClient([candidate])[0] });
     }
 
+    // POST /api/campaigns/:id/copy-interview/:interviewId/entry — 2026-10-04, Ask Verilume dock
+    // slice 7 ("Add my own entry"). A person's own draft joins the contest as one more blind
+    // option: scored by the same scoreDraftCopy() judge as the AI drafts, labeled like the
+    // others, and able to win. vendor 'human' is kept server-side only (redactCandidatesForClient
+    // never exposes it) so contest_rankings can later compare human and AI entries.
+    // One human entry per contest run; an entry cannot be added once a winner is chosen.
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'copy-interview' && parts[5] === 'entry'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const interviewId = decodeURIComponent(parts[4]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const interview = db.prepare('SELECT * FROM campaign_copy_interviews WHERE id = ? AND campaignId = ?').get(interviewId, campaignId);
+      if (!interview) return sendJson(res, 404, { error: 'interview not found for this campaign' });
+      if (interview.selectedCandidateKey) return sendJson(res, 409, { error: 'A winner is already chosen for this contest, so entries are closed. Run a new contest to add another entry.' });
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(campaign.accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const session = authenticate(req);
+      const body = await readBody(req);
+      const text = typeof body.text === 'string' ? body.text.trim() : '';
+      if (text.length < 40) return sendJson(res, 400, { error: 'Write at least a couple of sentences (40 characters) so the judge has something to score.' });
+      if (text.length > 6000) return sendJson(res, 400, { error: 'That entry is too long (6000 characters at most).' });
+      let candidates = [];
+      try { candidates = JSON.parse(interview.candidatesJson) || []; } catch (e){ candidates = []; }
+      if (candidates.some(c => c.vendor === 'human')) return sendJson(res, 409, { error: 'This contest already has your entry.' });
+      let score = null;
+      try { score = await scoreDraftCopy(text, campaign, account); } catch (e){ score = null; }
+      const relevanceScore = score ? score.relevanceScore : null;
+      const complianceScore = score ? score.complianceScore : null;
+      const combinedScore = (typeof relevanceScore === 'number' && typeof complianceScore === 'number') ? Math.round((relevanceScore + complianceScore) / 2) : null;
+      const maxN = candidates.reduce((m, c) => Math.max(m, parseInt(String(c.blindLabel || '').replace(/\D/g, ''), 10) || 0), 0);
+      const entry = {
+        key: 'human-entry', label: 'Human entry', vendor: 'human', model: null, configured: true,
+        copy: text, approach: null, error: null, pending: false,
+        relevanceScore, complianceScore, combinedScore,
+        note: score ? score.note : null, flags: score ? score.flags : [], scoreMode: score ? score.mode : null,
+        longCopy: null, blindLabel: 'Option ' + (maxN + 1),
+        addedBy: session ? (session.memberId || (session.accountId + ':admin')) : null, addedAt: new Date().toISOString()
+      };
+      candidates.push(entry);
+      db.prepare('UPDATE campaign_copy_interviews SET candidatesJson = ? WHERE id = ?').run(JSON.stringify(candidates), interviewId);
+      const recommendedKey = pickRecommendedCopyInterviewCandidate(candidates.filter(c => c.configured && c.copy));
+      return sendJson(res, 200, { interviewId, recommendedKey, candidates: redactCandidatesForClient(candidates), entryLabel: entry.blindLabel });
+    }
+
     // POST /api/campaigns/:id/copy-interview/:interviewId/select — same
     // explicit-click-only apply discipline as the creative-jobs sibling.
     // Unlike that one, there's no server-side workingCopy field to update —
