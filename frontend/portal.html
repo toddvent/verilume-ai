@@ -3857,6 +3857,8 @@
   body.ask-dock #cmpPitchPanel .cmp-pitch-left{border-right:0;padding-left:max(28px,calc((100% - 1240px) / 2));padding-right:max(28px,calc((100% - 1240px) / 2));padding-bottom:110px;}
   body.ask-dock #cmpObjectivesCollabMount{display:none;}
   body.ask-dock #cmpPerfMarketingCollabMount{display:none;}
+  body.ask-dock #cmpWorkspaceCollab,body.ask-dock #cmpCreationCollabMount{display:none !important;}
+  body.ask-dock .cmp-workspace-hub,body.ask-dock #cmpCreationTwoCol{max-width:1240px;margin-left:auto;margin-right:auto;}
   body.ask-dock #cmpCreativeCollabMount{display:none;}
   body.ask-dock #cmpCreativePanel .cmp-pitch-body{grid-template-columns:minmax(0,1fr);}
   body.ask-dock #cmpCreativePanel .cmp-pitch-left{border-right:0;padding-left:max(28px,calc((100% - 1240px) / 2));padding-right:max(28px,calc((100% - 1240px) / 2));padding-bottom:110px;}
@@ -3876,6 +3878,37 @@
   body.ask-dock #cmpObjectivesPanel .cmp-pitch-left{padding-bottom:110px;}
   #askDockCamp{margin-top:10px;}
   .adc-teach{margin:-2px 0 10px;font-size:0.75rem;}
+  .ask-dock-lbl{display:none;}
+  .ask-sheet-mic{display:none;}
+  .ask-dock-minibadge{display:none;}
+  @media (max-width:640px){
+    body.ask-dock{padding-bottom:96px;}
+    body.ask-dock .ask-bar{left:0;right:0;bottom:0;transform:none;width:100%;box-sizing:border-box;border:0;border-top:1px solid #CDD1D8;border-radius:0;box-shadow:0 -6px 20px rgba(29,29,31,0.1);padding:8px 6px calc(8px + env(safe-area-inset-bottom));}
+    body.ask-dock .ask-row{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));grid-template-rows:auto auto;gap:2px 0;min-height:0;padding:0;align-items:center;justify-items:center;}
+    body.ask-dock .ask-label,body.ask-dock .ask-placeholder,body.ask-dock .ask-badge,body.ask-dock .ask-toggle{display:none;}
+    body.ask-dock .ask-mic{grid-column:1;grid-row:1;width:44px;height:44px;background:#1D1D1F;}
+    body.ask-dock .ask-dock-lbl{display:block;font-size:0.625rem;font-weight:700;color:#3A3D42;white-space:nowrap;}
+    body.ask-dock .ask-dock-asklbl{grid-column:1;grid-row:2;font-weight:800;}
+    body.ask-dock .ask-dock-icons{display:contents;border:0;padding:0;margin:0;}
+    body.ask-dock .ask-dock-btn{grid-row:1 / 3;flex-direction:column;justify-content:flex-start;width:100%;height:auto;gap:2px;border-radius:10px;padding:0;background:transparent;}
+    body.ask-dock .ask-dock-btn svg{width:44px;height:44px;padding:11px;box-sizing:border-box;border-radius:50%;background:#EEF0FF;color:#4F46E5;}
+    body.ask-dock .ask-dock-btn .ask-dock-badge{top:-2px;right:calc(50% - 28px);}
+    body.ask-dock .ask-expand{position:fixed;left:0;right:0;bottom:calc(96px + var(--ask-kb,0px));transform:none;width:100%;max-height:calc(100dvh - 150px);border-radius:18px 18px 0 0;border-width:1px 0 0;}
+    body.ask-dock .ask-dock-surface,body.ask-dock .faq-drawer{left:0;right:0;bottom:calc(96px + var(--ask-kb,0px));transform:none;width:100%;max-width:100%;height:min(72vh,calc(100dvh - 150px));border-radius:18px 18px 0 0;border-width:1px 0 0;}
+    body.ask-dock .faq-drawer.open{transform:none;}
+    .ask-sheet-mic{display:flex;align-items:center;justify-content:center;width:44px;height:44px;flex-shrink:0;border:0;border-radius:50%;background:#1D1D1F;color:#fff;cursor:pointer;}
+    body.ask-dock .ask-input-row input{min-height:44px;font-size:1rem;}
+    body.ask-dock-kb .ask-bar > .ask-row,body.ask-dock-kb .ask-bar > .ask-dock-minibadge{display:none;}
+    body.ask-dock-kb.ask-dock .ask-bar{padding:0;border:0;box-shadow:none;background:transparent;}
+    body.ask-dock-kb.ask-dock .ask-expand,body.ask-dock-kb.ask-dock .ask-dock-surface,body.ask-dock-kb.ask-dock .faq-drawer{bottom:var(--ask-kb,0px);}
+    body.ask-dock .ask-dock-toast{bottom:112px;}
+    body.ask-dock .cmp-creative-mobile-ai-bar{display:none !important;}
+    body.ask-dock-mini.ask-dock .ask-bar{left:auto;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));width:56px;height:56px;padding:0;border:0;border-radius:50%;background:#1D1D1F;box-shadow:0 8px 22px rgba(29,29,31,0.3);}
+    body.ask-dock-mini.ask-dock .ask-bar > .ask-row{display:flex;align-items:center;justify-content:center;height:56px;}
+    body.ask-dock-mini.ask-dock .ask-row > *:not(.ask-mic){display:none;}
+    body.ask-dock-mini.ask-dock .ask-mic{width:56px;height:56px;background:transparent;}
+    body.ask-dock-mini.ask-dock .ask-bar .ask-dock-minibadge{display:flex;position:absolute;right:-4px;top:-4px;min-width:20px;height:20px;box-sizing:border-box;padding:0 4px;border-radius:10px;background:#D9480F;color:#fff;font-size:0.6875rem;font-weight:800;align-items:center;justify-content:center;border:2px solid #F5F6F8;}
+  }
   .adt-head{display:flex;align-items:center;gap:6px;font-size:0.8125rem;}
   .adt-av{width:24px;height:24px;border-radius:50%;background:#4F46E5;color:#fff;font-size:0.625rem;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
   .adt-text{margin-top:6px;font-size:0.8125rem;line-height:1.45;}
@@ -24001,8 +24034,11 @@ function askDockInit(){
   document.body.classList.add('ask-dock');
   const row = document.querySelector('#askVerilumeBar .ask-row'); if (!row || row.querySelector('.ask-dock-icons')) return;
   const wrap = document.createElement('div'); wrap.className = 'ask-dock-icons'; wrap.setAttribute('role', 'group'); wrap.setAttribute('aria-label', 'Verilume surfaces');
-  wrap.innerHTML = ASK_DOCK_ICONS.map(b => `<button type="button" class="ask-dock-btn" data-key="${b.key}" title="${b.label}" aria-label="${b.label}" ${b.disabled ? 'aria-disabled="true"' : `onclick="${b.fn}"`}><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${b.svg}</svg></button>`).join('');
+  wrap.innerHTML = ASK_DOCK_ICONS.map(b => `<button type="button" class="ask-dock-btn" data-key="${b.key}" title="${b.label}" aria-label="${b.label}" ${b.disabled ? 'aria-disabled="true"' : `onclick="${b.fn}"`}><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${b.svg}</svg><span class="ask-dock-lbl">${b.key === 'brainTrain' ? 'Brain Train' : b.key === 'contest' ? 'Contest' : b.key === 'team' ? 'Team' : 'Thoughts'}</span></button>`).join('');
   row.appendChild(wrap);
+  const mic = row.querySelector('.ask-mic'); if (mic && !row.querySelector('.ask-dock-asklbl')){ const l = document.createElement('span'); l.className = 'ask-dock-lbl ask-dock-asklbl'; l.textContent = 'Ask'; mic.insertAdjacentElement('afterend', l); }
+  const ir = document.querySelector('#askVerilumeLive .ask-input-row'); if (ir && !ir.querySelector('.ask-sheet-mic')){ const mb = document.createElement('button'); mb.type = 'button'; mb.className = 'ask-sheet-mic'; mb.setAttribute('aria-label', 'Talk to Verilume'); mb.setAttribute('onclick', 'askDockSheetMic()'); mb.innerHTML = '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>'; ir.appendChild(mb); }
+  askDockMobileInit();
   setTimeout(() => askDockBtPoll(0), 2500); setTimeout(() => askDockTeamPoll(0), 4000);
 }
 function askDockToast(t){ const o = document.querySelector('.ask-dock-toast'); if (o) o.remove(); const d = document.createElement('div'); d.className = 'ask-dock-toast'; d.setAttribute('role', 'status'); d.textContent = t; document.body.appendChild(d); setTimeout(() => d.remove(), 3200); }
@@ -24040,6 +24076,7 @@ function askDockBtBadge(){
   const n = askDockBt.waiting ? Number(askDockBt.waiting.count) || 0 : 0;
   btn.setAttribute('aria-label', n ? `Brain Train, ${n} waiting` : 'Brain Train');
   if (n){ const b = document.createElement('span'); b.className = 'ask-dock-badge'; b.textContent = n > 99 ? '99+' : String(n); btn.appendChild(b); }
+  try { askDockMiniBadge(); } catch (e){}
 }
 function askDockBtDt(v){ try { return new Date(v).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); } catch (e){ return ''; } }
 function askDockBtScopeLabel(l){ return l.scope === 'campaign' ? 'This campaign' : l.scope === 'always' ? 'Always' : 'This account'; }
@@ -24186,6 +24223,7 @@ function askDockTeamBadge(){
   const n = askDockTeamUnreadAll();
   btn.setAttribute('aria-label', n ? `Team, ${n} new` : 'Team');
   if (n){ const b = document.createElement('span'); b.className = 'ask-dock-badge'; b.textContent = n > 99 ? '99+' : String(n); btn.appendChild(b); }
+  try { askDockMiniBadge(); } catch (e){}
 }
 function askDockTeamNoteHtml(n, fresh, campaignName){
   const when = (() => { try { return new Date(Number(n.ts)).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch (e){ return ''; } })();
@@ -24240,7 +24278,7 @@ const askDockScope = { pick: null };
 function askDockCampAvailable(){
   if (!ASK_DOCK_ON) return false;
   try { if (cmpRailLoadedCampaign()) return true; } catch (e){}
-  try { const m = document.getElementById(cmpCollabMountId); return !!(m && m.children.length && m.offsetParent !== null); } catch (e){ return false; }
+  try { const m = document.getElementById(cmpCollabMountId); const st = document.getElementById('step-campaigns'); return !!(m && m.children.length && st && st.classList.contains('active')); } catch (e){ return false; }
 }
 function askDockScopeNow(){ if (!askDockCampAvailable()) return 'account'; return askDockScope.pick || 'campaign'; }
 function askDockScopeRender(){
@@ -24317,6 +24355,46 @@ function askDockTeachAbout(noteId){
   askDockBt.tab = 'teach'; askDockBt.step = 'compose'; askDockBt.form = askDockBtNewForm();
   askDockBt.form.looking = 'A Brain answer' + (n && n.text ? ': ' + String(n.text).replace(/\s+/g, ' ').slice(0, 140) : '');
   askDockBtRender();
+}
+
+// ---- Dock slice 5: mobile. Docked five-item bar, bottom sheets, collapse to one Ask button on scroll, hidden while the keyboard is up. ----
+let askDockSheetMicFlag = false;
+function askDockIsMobile(){ try { return window.matchMedia('(max-width:640px)').matches; } catch (e){ return false; } }
+function askDockSheetMic(){ askDockSheetMicFlag = true; Promise.resolve(askVerilumeToggleVoice()).finally(() => { askDockSheetMicFlag = false; }); }
+function askDockAnySurfaceOpen(){
+  const q = id => { const e = document.getElementById(id); return !!(e && e.classList.contains('open')); };
+  return q('askVerilumeExpand') || q('askDockBrainTrain') || q('askDockTeam') || q('faqDrawer');
+}
+function askDockMiniBadge(){
+  const bar = document.getElementById('askVerilumeBar'); if (!bar) return;
+  let b = bar.querySelector('.ask-dock-minibadge');
+  const n = (askDockBt.waiting ? Number(askDockBt.waiting.count) || 0 : 0) + (typeof askDockTeamUnreadAll === 'function' ? askDockTeamUnreadAll() : 0);
+  if (!n){ if (b) b.remove(); return; }
+  if (!b){ b = document.createElement('span'); b.className = 'ask-dock-minibadge'; bar.appendChild(b); }
+  b.textContent = n > 99 ? '99+' : String(n);
+}
+function askDockMobileInit(){
+  if (window.__askDockMobileInit) return; window.__askDockMobileInit = true;
+  const bar = document.getElementById('askVerilumeBar'); if (!bar) return;
+  const last = new WeakMap(); let quiet = 0;
+  const setMini = on => document.body.classList.toggle('ask-dock-mini', !!on);
+  document.addEventListener('scroll', e => {
+    if (!askDockIsMobile()) return;
+    const t = e.target === document ? document.scrollingElement : e.target; if (!t || t.scrollTop === undefined) return;
+    if (bar.contains(t) || (t.closest && t.closest('.ask-dock-surface'))) return;
+    const prev = last.get(t) || 0, y = t.scrollTop; last.set(t, y);
+    if (Date.now() < quiet || askDockAnySurfaceOpen()) return;
+    if (y > prev + 12 && y > 80) setMini(true); else if (y < prev - 12 || y < 40) setMini(false);
+  }, true);
+  bar.addEventListener('click', e => { if (document.body.classList.contains('ask-dock-mini')){ e.preventDefault(); e.stopPropagation(); setMini(false); quiet = Date.now() + 1500; } }, true);
+  const kb = on => { document.body.classList.toggle('ask-dock-kb', on); };
+  document.addEventListener('focusin', e => { if (askDockIsMobile() && e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName) && e.target.closest && e.target.closest('#askVerilumeBar, .ask-dock-surface')) kb(true); });
+  document.addEventListener('focusout', () => { setTimeout(() => { const a = document.activeElement; if (!(a && /^(INPUT|TEXTAREA)$/.test(a.tagName))) kb(false); }, 80); });
+  if (window.visualViewport){
+    const upd = () => { const vv = window.visualViewport; const off = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)); document.documentElement.style.setProperty('--ask-kb', off + 'px'); };
+    window.visualViewport.addEventListener('resize', upd); window.visualViewport.addEventListener('scroll', upd); upd();
+  }
+  window.addEventListener('resize', () => { if (!askDockIsMobile()) { setMini(false); document.body.classList.remove('ask-dock-kb'); } });
 }
 function askDockCloseAll(){
   askDockBtClose(); try { askDockTeamClose(); } catch (e){}
@@ -24579,6 +24657,7 @@ async function askVerilumeAsk(question){
 }
 function askVerilumeSubmitTyped(){ const i = document.getElementById('askVerilumeInput'); if (!i) return; const q = i.value; i.value = ''; if (ASK_DOCK_ON && askDockScopeNow() === 'campaign'){ askDockCampSend(q); return; } askVerilumeAsk(q); }
 async function askVerilumeToggleVoice(){
+  if (ASK_DOCK_ON && askDockIsMobile() && !askDockSheetMicFlag && vxVoice.state === 'idle'){ askVerilumeOpenTyped(); return; }
   if (ASK_DOCK_ON && (askDockScopeNow() === 'campaign' || (vxVoice.state !== 'idle' && vxVoice.surface === 'collab'))){ return askDockCampToggleVoice(); }
   if (vxVoice.state !== 'idle' && vxVoice.surface === 'ask_bar'){ await vxVoiceStop(); askVerilumeSetMic('idle'); askVerilumeSetStatus(''); return; }
   if (vxVoice.state !== 'idle'){ askVerilumeSetStatus('Voice is already in use on another panel.'); return; }
