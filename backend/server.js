@@ -9271,6 +9271,61 @@ const PRESS_RELEASE_TYPE_LABELS = {
 };
 const PRESS_RELEASE_AUDIENCES = ['consumer', 'business'];
 const PRESS_RELEASE_AUDIENCE_LABELS = { consumer: 'Consumer', business: 'Business / Trade Network' };
+// Search Everywhere (2026-10-04): keyword module, optimize runs, website audit.
+// Keywords: one row per keyword or search query. status 'live' = in use, 'suggested' = waiting for the team to accept.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS search_keywords (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    keyword TEXT NOT NULL,
+    kwType TEXT NOT NULL,
+    intent TEXT,
+    productGroup TEXT,
+    volumeBand TEXT,
+    searchVolume INTEGER,
+    difficulty INTEGER,
+    cpc REAL,
+    clicks INTEGER,
+    impressions INTEGER,
+    ctr REAL,
+    avgPosition REAL,
+    isQuestion INTEGER NOT NULL DEFAULT 0,
+    sourceName TEXT,
+    status TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS search_optimizations (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    surface TEXT NOT NULL,
+    targetRef TEXT,
+    pageUrl TEXT,
+    originalText TEXT,
+    suggestionsJson TEXT,
+    acceptedCount INTEGER NOT NULL DEFAULT 0,
+    totalCount INTEGER NOT NULL DEFAULT 0,
+    droppedCount INTEGER NOT NULL DEFAULT 0,
+    appliedAt TEXT,
+    createdBy TEXT,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS website_audits (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    ranAt TEXT NOT NULL,
+    pageCount INTEGER NOT NULL DEFAULT 0,
+    auditJson TEXT,
+    createdBy TEXT,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
 // Reputation Monitoring weekly sweep (2026-10-04). Todd: Perplexity is the
 // basic service in every tier; Brandwatch/Meltwater/Mention stay marketplace
 // options. Two small tables: one row per sweep, one row per mention found.
@@ -16977,6 +17032,9 @@ const DATA_CATALOG = [
   { key: 'copy_library', label: 'Copy library', table: 'copy_library', period: null, dashboard: 'Customer Experiences', grain: 'copy block', kind: 'manual', keywords: ['copy','library','approved copy','headline'], usedBy: ['copywriting', 'ask'], status: 'current' },
   { key: 'creative_collections', label: 'Creative collections', table: 'creative_collections', period: null, dashboard: 'Customer Experiences', grain: 'collection', kind: 'manual', keywords: ['creative','assets','collection','images'], usedBy: ['ask'], status: 'current' },
   { key: 'creative_jobs', label: 'Creative jobs', table: 'creative_jobs', period: null, dashboard: 'Customer Experiences', grain: 'job', kind: 'manual', keywords: ['creative job','brief','trafficking','approval'], usedBy: ['ask', 'brain dump'], status: 'current' },
+  { key: 'search_keywords', label: 'Search keywords', table: 'search_keywords', period: null, dashboard: 'Customer Experiences', grain: 'keyword', kind: 'manual', keywords: ['seo','aeo','geo','search','keyword','query'], usedBy: ['copywriting', 'ask'], status: 'current' },
+  { key: 'search_console_rows', label: 'Search Console exports (queries, pages, indexing)', table: 'gsc_rows', period: null, dashboard: 'Customer Experiences', grain: 'query or page', kind: 'upload', keywords: ['search console','queries','pages','indexing','impressions','clicks','seo'], usedBy: ['ask'], status: 'current' },
+  { key: 'search_console_daily', label: 'Search Console by day (clicks, impressions, indexed pages)', table: 'gsc_daily', period: 'day', dashboard: 'Customer Experiences', grain: 'day', kind: 'upload', keywords: ['search console','organic','clicks','impressions','indexed','seo'], usedBy: ['ask'], status: 'current' },
   { key: 'press_releases', label: 'Press releases', table: 'press_releases', period: null, dashboard: 'Customer Experiences', grain: 'document', kind: 'manual', keywords: ['pr','press release','news'], usedBy: ['copywriting', 'ask'], status: 'current' },
   { key: 'editorial_pitches', label: 'Editorial pitches', table: 'editorial_pitches', period: null, dashboard: 'Customer Experiences', grain: 'document', kind: 'manual', keywords: ['pitch','editorial','media relations'], usedBy: ['copywriting'], status: 'current' },
   { key: 'corporate_comms', label: 'Corporate communications', table: 'corporate_comms', period: null, dashboard: 'Customer Experiences', grain: 'document', kind: 'manual', keywords: ['corporate comms','announcement','statement'], usedBy: ['copywriting'], status: 'current' },
@@ -17064,7 +17122,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings']);
+const CATALOG_EXEMPT = new Set(['gsc_uploads', 'search_brand_terms', 'search_priorities', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -17090,11 +17148,12 @@ function buildTrainTheBrain(accountId){
   const rowsOf = t => cnt(`SELECT COUNT(*) AS n FROM ${t} WHERE accountId = ?`, accountId);
   const yes = v => !!(v && v !== '0' && v !== 0);
   const steps = [
-    { key: 'company', title: 'Your company', minutes: 2, gain: 'Everything else reads from this: what you sell, who you sell to, and how you look.', items: [
+    { key: 'company', title: 'Your company', minutes: 3, gain: 'Everything else reads from this: what you sell, who you sell to, and how you look.', items: [
       { label: 'Company profile', done: !!(websiteUrl && (A('assessmentDescription') || A('websiteContextJson') || A('onboardingIndustryCode') || cnt("SELECT COUNT(*) AS n FROM ai_brain_contributions WHERE accountId = ? AND sourceType = 'website_scan'", accountId) > 0)), gain: 'Add your website and the Brain reads it to fill in the profile.', step: 'companyProfile' },
       { label: 'Style guide: colors and fonts', done: yes(A('styleAssetsApproved')), gain: 'Keeps every draft and creative on brand.', step: 'styleAssets' },
       { label: 'Website examples', done: examples > 0, gain: 'Real pages from your site become copy examples.', step: 'websiteExamples' },
-      { label: 'Competitive positioning', done: yes(A('competitivePositioningApproved')), gain: 'Sets who you are measured against. Ongoing tracking lives in Strategy.', step: 'competitivePositioning' } ] },
+      { label: 'Competitive positioning', done: yes(A('competitivePositioningApproved')), gain: 'Sets who you are measured against. Ongoing tracking lives in Strategy.', step: 'competitivePositioning' },
+      { label: 'Search keywords', done: (() => { try { return srchKeywordsForAccount(accountId).liveCount > 0; } catch (e) { return false; } })(), gain: 'The queries your customers use. Press releases and website copy are optimized toward them.', step: 'searchKeywords' } ] },
     { key: 'voice', title: 'Your voice', minutes: 3, gain: 'Lets the Brain write and score copy the way you sound.', items: [
       { label: 'Sample writings (two or three is enough)', done: samples >= 1, gain: samples ? `${samples} on file.` : 'Drop in an email, a brochure page or a speech.', step: 'brandWritingSamples' },
       { label: 'Approve the brand voice guide', done: yes(A('voiceApproved')), gain: 'The Brain drafts it from your samples; you approve it.', step: 'voice' } ] },
@@ -20745,6 +20804,829 @@ Submit the post via the submit_copy tool (hashtags included in the copy text).`;
   } catch (e){
     return { copy: null, note: 'AI drafting failed: ' + e.message };
   }
+}
+
+// ---------- Search Everywhere (2026-10-04) ----------
+// Todd's decisions: a search-optimize step for PR drafts (and the website) that suggests
+// edits tagged SEO / AEO / GEO; the writer accepts each one; keywords come from one
+// Train the Brain "Search keywords" module (own lists, CSV upload, later Search Console and
+// licensed tools). The website surface also gets a technical audit that needs no partner:
+// this server fetches the client's own pages and checks them.
+//
+// Anti-fabrication rules, enforced in code and not only in the prompt: a suggestion is kept only if
+// the text it changes appears verbatim in the draft, the new text has no number that is not already
+// in the draft, it contains no Negative term, and an SEO suggestion actually contains its keyword.
+const SRCH_MAX_KEYWORDS = 500;
+const SRCH_PAGE_CAP = 25;
+const SRCH_TAGS = ['SEO', 'AEO', 'GEO'];
+const SRCH_AI_BOTS = ['GPTBot', 'ChatGPT-User', 'OAI-SearchBot', 'PerplexityBot', 'ClaudeBot', 'Claude-Web', 'anthropic-ai', 'Google-Extended', 'CCBot', 'Applebot-Extended'];
+const SRCH_UA = 'Mozilla/5.0 (compatible; VerilumeSiteCheck/1.0; +https://cxmedia.ai)';
+
+function srchSplitCsv(text){
+  let t = String(text || '').replace(/^﻿/, '');
+  const first = t.split(/\r?\n/, 1)[0] || '';
+  const delim = [',', ';', '\t'].map(d => [d, first.split(d).length]).sort((a, b) => b[1] - a[1])[0][0];
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < t.length; i++){
+    const c = t[i];
+    if (q){ if (c === '"'){ if (t[i + 1] === '"'){ cell += '"'; i++; } else q = false; } else cell += c; }
+    else if (c === '"') q = true;
+    else if (c === delim){ row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r'){ if (c === '\r' && t[i + 1] === '\n') i++; row.push(cell); cell = ''; if (row.some(x => x.trim() !== '')) rows.push(row); row = []; }
+    else cell += c;
+  }
+  row.push(cell); if (row.some(x => x.trim() !== '')) rows.push(row);
+  return rows;
+}
+const SRCH_FIELDS = [
+  ['keyword', /^(keyword|keywords|query|queries|top queries|search terms?|search quer(y|ies)|term|phrase)$/],
+  ['searchVolume', /(search volume|monthly volume|avg\.? monthly searches|monthly searches|^volume$)/],
+  ['intent', /^(search intent|keyword intent|intent)$/],
+  ['difficulty', /(keyword difficulty|^difficulty$|^kd\b|^kd$)/],
+  ['cpc', /(^cpc|cost per click|top of page bid)/],
+  ['clicks', /^clicks$/],
+  ['impressions', /^impressions$/],
+  ['ctr', /^(ctr|click.?through rate)$/],
+  ['avgPosition', /^(position|avg\.? position|average position|current position|rank)$/],
+  ['productGroup', /(product group|^category$|^topic$|^group$)/],
+  ['trend', /trend/],
+  ['market', /^(country|market|region|location)$/]
+];
+function srchDetectMapping(headers){
+  const mapping = {}; const used = new Set();
+  headers.forEach((h, i) => {
+    const n = String(h || '').trim().toLowerCase();
+    for (const [field, re] of SRCH_FIELDS){ if (mapping[field] == null && !used.has(i) && re.test(n)){ mapping[field] = i; used.add(i); break; } }
+  });
+  const hs = headers.map(h => String(h || '').trim().toLowerCase()).join('|');
+  let detected = 'CSV file';
+  if (/top queries/.test(hs) || (mapping.clicks != null && mapping.impressions != null && mapping.ctr != null)) detected = 'Search Console export';
+  else if (/avg\.? monthly searches/.test(hs)) detected = 'Keyword Planner export';
+  else if (/keyword difficulty|(^|\|)kd(\||$)/.test(hs)) detected = 'Semrush export';
+  else if (mapping.avgPosition != null && /url|page/.test(hs)) detected = 'BrightEdge-style export';
+  return { mapping, detected };
+}
+function srchNum(v){
+  if (v == null) return null; let s = String(v).trim(); if (!s || s === '-' || s === '—') return null;
+  const m = s.replace(/,/g, '').match(/(-?\d+(?:\.\d+)?)\s*([KkMm])?/); if (!m) return null;
+  let n = parseFloat(m[1]); if (m[2]) n *= /k/i.test(m[2]) ? 1000 : 1000000; return isFinite(n) ? n : null;
+}
+function srchBand(vol){ if (vol == null) return null; return vol >= 1000 ? 'High' : vol >= 100 ? 'Medium' : 'Low'; }
+function srchIsQuestion(k){ return /^(who|what|when|where|why|how|which|can|does|do|is|are|should|will|best|top)\b/i.test(k) || /\?$/.test(k) || /\b(vs|versus)\b/i.test(k); }
+function srchInferIntent(k, given){
+  const g = String(given || '').toLowerCase();
+  for (const x of ['informational', 'commercial', 'transactional', 'navigational']) if (g.startsWith(x.slice(0, 4))) return x;
+  const s = String(k).toLowerCase();
+  if (/^(who|what|when|where|why|how)\b|\?$/.test(s)) return 'informational';
+  if (/\b(buy|price|prices|pricing|book|booking|order|deal|deals|cost|tickets?)\b/.test(s)) return 'transactional';
+  if (/\b(best|top|vs|versus|review|reviews|compare|comparison|alternatives?)\b/.test(s)) return 'commercial';
+  return null;
+}
+function srchCleanKeyword(k){ return String(k || '').replace(/\s+/g, ' ').trim().slice(0, 140); }
+function srchKwKey(k){ return srchCleanKeyword(k).toLowerCase(); }
+
+// Parse a CSV into keyword rows using a mapping. Pure function, no database access.
+function srchParseKeywordCsv(csvText, mappingOverride, kwTypeOverride){
+  const rows = srchSplitCsv(csvText);
+  if (rows.length < 2) return { error: 'The file needs a header row and at least one keyword.' };
+  const headers = rows[0];
+  const det = srchDetectMapping(headers);
+  const mapping = mappingOverride && typeof mappingOverride === 'object' ? mappingOverride : det.mapping;
+  if (mapping.keyword == null){
+    // A plain one-column list with no recognizable header: treat the first column as keywords and keep the first row.
+    if (headers.length === 1) { mapping.keyword = 0; rows.unshift(['keyword']); }
+    else return { error: 'No keyword column found. Choose which column holds the keywords.', headers, mapping, detected: det.detected };
+  }
+  const kwType = kwTypeOverride === 'query' || kwTypeOverride === 'target' ? kwTypeOverride : (det.detected === 'Search Console export' ? 'query' : 'target');
+  const seen = new Set(); const out = []; let blank = 0, dup = 0;
+  for (let r = 1; r < rows.length; r++){
+    const row = rows[r]; const kw = srchCleanKeyword(row[mapping.keyword]);
+    if (!kw){ blank++; continue; }
+    const key = srchKwKey(kw); if (seen.has(key)){ dup++; continue; } seen.add(key);
+    const g = f => (mapping[f] != null ? row[mapping[f]] : null);
+    const vol = srchNum(g('searchVolume'));
+    let ctr = srchNum(g('ctr')); if (ctr != null && (ctr > 1 || /%/.test(String(g('ctr'))))) ctr = ctr / 100;
+    out.push({
+      keyword: kw, kwType, intent: srchInferIntent(kw, g('intent')), productGroup: (g('productGroup') || '').toString().trim().slice(0, 80) || null,
+      searchVolume: vol != null ? Math.round(vol) : null, volumeBand: srchBand(vol), difficulty: srchNum(g('difficulty')) != null ? Math.round(srchNum(g('difficulty'))) : null,
+      cpc: srchNum(g('cpc')), clicks: srchNum(g('clicks')) != null ? Math.round(srchNum(g('clicks'))) : null, impressions: srchNum(g('impressions')) != null ? Math.round(srchNum(g('impressions'))) : null,
+      ctr, avgPosition: srchNum(g('avgPosition')), isQuestion: srchIsQuestion(kw) ? 1 : 0
+    });
+  }
+  // Rank by volume (or impressions for Search Console files), then keep the top SRCH_MAX_KEYWORDS.
+  out.sort((a, b) => ((b.searchVolume || b.impressions || 0) - (a.searchVolume || a.impressions || 0)));
+  const kept = out.slice(0, SRCH_MAX_KEYWORDS);
+  return { headers, mapping, detected: det.detected, kwType, rows: kept, totalRows: rows.length - 1, skippedOverCap: out.length - kept.length, skippedDuplicates: dup, skippedBlank: blank };
+}
+
+// All keywords an account has: module rows plus the older lists on the account record, de-duplicated.
+function srchKeywordsForAccount(accountId){
+  const account = db.prepare('SELECT searchKeywordsJson, brandKeywordsJson FROM accounts WHERE accountId = ?').get(accountId) || {};
+  const rows = db.prepare('SELECT * FROM search_keywords WHERE accountId = ? ORDER BY updatedAt DESC').all(accountId);
+  const live = rows.filter(r => r.status === 'live'); const suggested = rows.filter(r => r.status === 'suggested');
+  let legacySearch = [], legacy = { brand: [], product: [], negative: [], positive: [] };
+  try { const p = account.searchKeywordsJson ? JSON.parse(account.searchKeywordsJson) : []; if (Array.isArray(p)) legacySearch = p.filter(x => x && x.keyword); } catch (e){}
+  try { const p = account.brandKeywordsJson ? JSON.parse(account.brandKeywordsJson) : null; if (p && typeof p === 'object') legacy = { brand: p.brand || [], product: p.product || [], negative: p.negative || [], positive: p.positive || [] }; } catch (e){}
+  const targets = []; const queries = []; const negatives = []; const seen = new Set();
+  const bandRank = { High: 3, Medium: 2, Low: 1 };
+  live.forEach(r => {
+    const k = srchKwKey(r.keyword + '|' + r.kwType); if (seen.has(k)) return; seen.add(k);
+    if (r.kwType === 'negative') negatives.push(r.keyword); else if (r.kwType === 'query') queries.push(r); else targets.push(r);
+  });
+  legacySearch.forEach(x => { const k = srchKwKey(x.keyword + '|target'); if (seen.has(k)) return; seen.add(k); targets.push({ keyword: x.keyword, kwType: 'target', volumeBand: x.volumeBand || null, sourceName: 'Account list', status: 'live', fromAccountList: true }); });
+  [...legacy.product, ...legacy.brand, ...legacy.positive].forEach(w => { const s = String(w || '').trim(); if (!s) return; const k = srchKwKey(s + '|target'); if (seen.has(k)) return; seen.add(k); targets.push({ keyword: s, kwType: 'target', volumeBand: null, sourceName: 'Brand and Product list', status: 'live', fromAccountList: true }); });
+  legacy.negative.forEach(w => { const s = String(w || '').trim(); if (s && !negatives.some(n => n.toLowerCase() === s.toLowerCase())) negatives.push(s); });
+  { const ng = new Set(negatives.map(n => n.toLowerCase())); [targets, queries].forEach(arr => { for (let i = arr.length - 1; i >= 0; i--) if (ng.has(String(arr[i].keyword).toLowerCase())) arr.splice(i, 1); }); }
+  const rank = r => (bandRank[r.volumeBand] || 0) * 1e9 + (r.searchVolume || r.impressions || 0);
+  targets.sort((a, b) => rank(b) - rank(a)); queries.sort((a, b) => rank(b) - rank(a));
+  return { targets, queries, negatives, suggested, liveCount: targets.length + queries.length };
+}
+
+// ---- Optimize (PR draft or website page copy) ----
+const SRCH_SUGGESTIONS_SCHEMA = {
+  type: 'object',
+  properties: {
+    suggestions: { type: 'array', maxItems: 12, items: {
+      type: 'object',
+      properties: {
+        tag: { type: 'string', enum: SRCH_TAGS },
+        keyword: { type: 'string', description: 'The keyword, question or fact this change serves.' },
+        why: { type: 'string', description: 'One short sentence: why this fits naturally and what it helps.' },
+        kind: { type: 'string', enum: ['replace', 'insert_after'] },
+        find: { type: 'string', description: 'Exact text copied from the draft (a phrase or a full sentence). For insert_after, the sentence to insert after.' },
+        replace: { type: 'string', description: 'For replace: the new wording. For insert_after: the new sentence to add.' }
+      },
+      required: ['tag', 'keyword', 'why', 'kind', 'find', 'replace']
+    } }
+  },
+  required: ['suggestions']
+};
+function srchNumbersIn(s){ return (String(s || '').match(/\d[\d,.]*/g) || []).map(x => x.replace(/[.,]+$/, '')); }
+function srchValidateSuggestions(raw, sourceText, negatives, extraFactsText){
+  const kept = []; let dropped = 0; const used = [];
+  const haystack = String(sourceText || ''); const factsNums = new Set(srchNumbersIn(haystack + ' ' + (extraFactsText || '')));
+  const negs = (negatives || []).map(n => String(n).toLowerCase()).filter(Boolean);
+  for (const s of (Array.isArray(raw) ? raw : [])){
+    const find = String(s.find || ''), rep = String(s.replace || '').trim();
+    const fail = () => { dropped++; };
+    if (!SRCH_TAGS.includes(s.tag) || !find || !rep) { fail(); continue; }
+    const at = haystack.indexOf(find); if (at < 0) { fail(); continue; }
+    if (s.kind === 'replace' && rep === find) { fail(); continue; }
+    if (rep.length > 500) { fail(); continue; }
+    const lowRep = rep.toLowerCase();
+    if (negs.some(n => lowRep.includes(n))) { fail(); continue; }
+    if (srchNumbersIn(rep).some(n => !factsNums.has(n))) { fail(); continue; }
+    if (s.tag === 'SEO' && s.keyword && !lowRep.includes(String(s.keyword).toLowerCase())) { fail(); continue; }
+    if (used.some(u => at < u[1] && at + find.length > u[0])) { fail(); continue; }
+    used.push([at, at + find.length]);
+    kept.push({ id: 's' + (kept.length + 1), tag: s.tag, keyword: String(s.keyword || '').slice(0, 140), why: String(s.why || '').slice(0, 300), kind: s.kind === 'insert_after' ? 'insert_after' : 'replace', find, replace: rep, status: 'pending', at });
+  }
+  kept.sort((a, b) => a.at - b.at);
+  return { suggestions: kept.slice(0, 10), dropped: dropped + Math.max(0, kept.length - 10) };
+}
+function srchApplySuggestions(text, suggestions){
+  // Apply accepted suggestions from the end of the text to the start so earlier positions stay valid.
+  const acc = suggestions.filter(s => s.status === 'accepted').sort((a, b) => b.at - a.at); let out = String(text);
+  for (const s of acc){
+    const idx = out.indexOf(s.find); if (idx < 0) continue;
+    out = s.kind === 'insert_after' ? out.slice(0, idx + s.find.length) + ' ' + s.replace + out.slice(idx + s.find.length) : out.slice(0, idx) + s.replace + out.slice(idx + s.find.length);
+  }
+  return out;
+}
+async function srchRunOptimize(account, { surface, text, facts, meta }){
+  if (!process.env.ANTHROPIC_API_KEY) return { error: 'Search optimization requires ANTHROPIC_API_KEY to be configured.' };
+  const kw = srchKeywordsForAccount(account.accountId);
+  if (!kw.targets.length && !kw.queries.length) return { error: 'Add search keywords first (Train the Brain, Search keywords), so there is something to optimize toward.' };
+  const t = kw.targets.slice(0, 40).map(k => `- ${k.keyword}${k.volumeBand ? ` (${k.volumeBand} volume)` : ''}${k.productGroup ? ` [${k.productGroup}]` : ''}`).join('\n');
+  const q = kw.queries.slice(0, 15).map(k => `- ${k.keyword}`).join('\n') || '(none on file)';
+  const neg = kw.negatives.length ? kw.negatives.join(', ') : '(none)';
+  const voice = String(account.voiceGuideText || '').slice(0, 1200);
+  const label = surface === 'press' ? 'press release draft' : 'website page copy';
+  const prompt = `You are a search optimization editor for ${industryPersonaPhrase(account)}. Improve this ${label} for SEO, AEO (answer engines) and GEO (generative engines) with edits that read naturally. Never keyword-stuff.
+
+${meta ? 'CONTEXT: ' + meta + '\n' : ''}TARGET KEYWORDS (highest volume first):
+${t}
+
+REAL SEARCH QUERIES PEOPLE USE:
+${q}
+
+TERMS TO AVOID (never use): ${neg}
+
+BRAND VOICE (stay in it): ${voice || '(none approved yet; keep the draft\'s own tone)'}
+
+DRAFT (copy "find" text from here exactly, character for character):
+"""
+${text}
+"""
+${facts ? '\nFACTS ON FILE ABOUT THIS ITEM (you may use these):\n' + facts + '\n' : ''}
+RULES:
+- Propose 4 to 10 edits. Each is one of: SEO (work a relevant high-volume keyword into a headline, lede, subhead or boilerplate where it reads naturally), AEO (a short question-and-answer line or question-style subhead an answer engine could quote, built from facts already in the draft), GEO (make a fact easy to cite: name the brand beside it, state it plainly in one sentence).
+- Do NOT invent facts, numbers, quotes, dates or claims. Use only what is in the draft or the facts above. Every number in your new text must already appear there.
+- "find" must be copied exactly from the draft. Use "replace" to change that text, or "insert_after" to add a new sentence after the found sentence.
+- Keep official names (product, brand) intact; you may add the keyword beside them.
+- Prefer fewer, better edits over many.
+Submit through the tool.`;
+  try {
+    const parsed = await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 2500, content: prompt, toolName: 'submit_suggestions', toolDescription: 'Submit search optimization suggestions.', schema: SRCH_SUGGESTIONS_SCHEMA });
+    const v = srchValidateSuggestions(parsed.suggestions, text, kw.negatives, facts);
+    return { suggestions: v.suggestions, dropped: v.dropped };
+  } catch (e){ return { error: 'Search optimization failed: ' + String(e.message || e).slice(0, 200) }; }
+}
+function srchRunRow(r){
+  let sug = []; try { sug = JSON.parse(r.suggestionsJson || '[]'); } catch (e){}
+  return { id: r.id, surface: r.surface, targetRef: r.targetRef, pageUrl: r.pageUrl, originalText: r.originalText, suggestions: sug, acceptedCount: r.acceptedCount, totalCount: r.totalCount, droppedCount: r.droppedCount, appliedAt: r.appliedAt, createdAt: r.createdAt };
+}
+function srchRecount(runId, sug){
+  const acc = sug.filter(s => s.status === 'accepted').length;
+  db.prepare('UPDATE search_optimizations SET suggestionsJson = ?, acceptedCount = ?, totalCount = ? WHERE id = ?').run(JSON.stringify(sug), acc, sug.length, runId);
+}
+
+// ---- Website audit: this server fetches the client's own pages and checks them. No partner needed. ----
+function srchHostOk(urlStr, originHost){
+  try {
+    const u = new URL(urlStr); if (!/^https?:$/.test(u.protocol)) return false;
+    const h = u.hostname.toLowerCase(); const o = originHost.toLowerCase();
+    return h === o || h === 'www.' + o || 'www.' + h === o;
+  } catch (e){ return false; }
+}
+async function srchFetch(url, originHost, opts){
+  opts = opts || {}; const chain = []; let cur = url; let resp = null;
+  for (let hop = 0; hop < 6; hop++){
+    if (!srchHostOk(cur, originHost)) { chain.push({ url: cur, status: 'off-site' }); return { chain, offSite: cur, finalUrl: cur }; }
+    const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), opts.timeoutMs || 8000);
+    try { resp = await fetch(cur, { method: opts.method || 'GET', redirect: 'manual', signal: ctl.signal, headers: { 'User-Agent': SRCH_UA, 'Accept': 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8' } }); }
+    catch (e){ clearTimeout(tm); chain.push({ url: cur, status: 0 }); return { chain, error: e.name === 'AbortError' ? 'timed out' : String(e.message || e).slice(0, 100), finalUrl: cur }; }
+    clearTimeout(tm); chain.push({ url: cur, status: resp.status });
+    if ([301, 302, 303, 307, 308].includes(resp.status) && resp.headers.get('location')){
+      try { cur = new URL(resp.headers.get('location'), cur).toString(); } catch (e){ break; }
+      try { if (resp.body) resp.body.cancel(); } catch (e){}
+      continue;
+    }
+    break;
+  }
+  if (!resp) return { chain, error: 'no response', finalUrl: cur };
+  if (chain.length >= 6 && [301, 302, 303, 307, 308].includes(resp.status)) return { chain, loop: true, finalUrl: cur, status: resp.status };
+  let html = '';
+  if ((opts.method || 'GET') === 'GET'){
+    try {
+      const reader = resp.body.getReader(); const chunks = []; let got = 0; const max = opts.maxBytes || 600000;
+      while (true){ const { done, value } = await reader.read(); if (done) break; chunks.push(value); got += value.length; if (got >= max){ try { await reader.cancel(); } catch (e){} break; } }
+      html = Buffer.concat(chunks.map(c => Buffer.from(c))).toString('utf8');
+    } catch (e){}
+  }
+  return { chain, finalUrl: cur, status: resp.status, html, contentType: resp.headers.get('content-type') || '' };
+}
+function srchAttr(tag, name){ const m = tag.match(new RegExp(name + '\\s*=\\s*(["\'])([\\s\\S]*?)\\1', 'i')); return m ? m[2] : null; }
+function srchUrlIssues(u){
+  const out = [];
+  try {
+    const x = new URL(u); const p = x.pathname;
+    if (p.length > 75) out.push('The path is long (' + p.length + ' characters). Shorter URLs are easier to read and share.');
+    if (p.split('/').filter(Boolean).length > 4) out.push('The path is more than four levels deep.');
+    if (/[A-Z]/.test(p)) out.push('The path has capital letters. Use lowercase so one page does not have two addresses.');
+    if (/_/.test(p)) out.push('The path uses underscores. Hyphens are the usual word separator for search engines.');
+    if (/\.(html?|php|aspx?)$/i.test(p)) out.push('The path ends in a file extension. Clean paths are easier to keep stable.');
+    if (/\/(index|default)\b/i.test(p)) out.push('The path includes index or default, which can create a duplicate of the folder address.');
+    if (/%20|\s/.test(p)) out.push('The path has spaces or encoded spaces.');
+    if (x.search) out.push('The address has a query string (' + x.search.slice(0, 40) + ').');
+  } catch (e){}
+  return out;
+}
+function srchAnalyzePage(url, f, originHost){
+  const html = f.html || ''; const issues = []; const add = (area, severity, finding, recommendation) => issues.push({ pageUrl: url, area, severity, finding, recommendation });
+  const info = { url, finalUrl: f.finalUrl, status: f.status || 0, redirectChain: f.chain.length > 1 ? f.chain : null };
+  if (f.error){ add('Crawl', 'high', 'The page could not be fetched (' + f.error + ').', 'Check the page is public and not blocked to automated requests, then run the check again.'); return { info, issues }; }
+  if (f.offSite){ add('Redirects', 'medium', 'The page redirects to another site (' + f.offSite + ').', 'Confirm this is intended. Search engines treat it as a move to that site.'); return { info, issues }; }
+  if (f.loop){ add('Redirects', 'high', 'The page redirects in a loop or through more than five hops.', 'Point the old address straight to its final page with a single 301.'); return { info, issues }; }
+  if (f.status >= 400) add('Redirects', 'high', 'The page returns ' + f.status + (f.status === 404 ? ' (not found).' : '.'), f.status === 404 ? 'Restore the page, or 301 redirect this address to the closest live page. Remove it from the sitemap and from internal links.' : 'Fix the server error, or redirect to a working page.');
+  const hops = f.chain.filter(c => [301, 302, 303, 307, 308].includes(c.status));
+  if (hops.length >= 2) add('Redirects', 'medium', 'Reaching this page takes ' + hops.length + ' redirects in a row.', 'Redirect the first address directly to the final page so each hop is not lost.');
+  if (hops.length && hops.some(h => [302, 303, 307].includes(h.status))) add('Redirects', 'medium', 'A temporary redirect (' + hops.filter(h => [302, 303, 307].includes(h.status)).map(h => h.status).join(', ') + ') is used on this address.', 'If the move is permanent, use a 301 so search engines transfer the old page to the new one.');
+  srchUrlIssues(f.finalUrl || url).forEach(t => add('URL structure', 'low', t, 'Where practical, keep new URLs short, lowercase and hyphenated. For existing pages, change only with a 301 from the old address.'));
+  if (!html || f.status >= 400) return { info, issues };
+  const head = (html.match(/<head[\s\S]*?<\/head>/i) || [html.slice(0, 20000)])[0];
+  const title = ((head.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '').replace(/\s+/g, ' ').trim();
+  const metas = head.match(/<meta\b[^>]*>/gi) || [];
+  const meta = n => { const t = metas.find(m => new RegExp('(name|property)\\s*=\\s*["\']' + n + '["\']', 'i').test(m)); return t ? (srchAttr(t, 'content') || '') : null; };
+  const desc = meta('description'); const robotsMeta = meta('robots') || '';
+  const linkTags = head.match(/<link\b[^>]*>/gi) || [];
+  const canon = (() => { const t = linkTags.find(l => /rel\s*=\s*["']canonical["']/i.test(l)); return t ? srchAttr(t, 'href') : null; })();
+  const hreflang = linkTags.filter(l => /rel\s*=\s*["']alternate["']/i.test(l) && /hreflang/i.test(l)).length;
+  const lang = (html.match(/<html[^>]*\blang\s*=\s*["']([^"']+)["']/i) || [])[1] || null;
+  const body = (html.match(/<body[\s\S]*<\/body>/i) || [html])[0];
+  const h1s = (body.match(/<h1\b[\s\S]*?<\/h1>/gi) || []).map(x => stripTags(x).trim()).filter(Boolean);
+  const heads = [...body.matchAll(/<h([1-6])\b[\s\S]*?<\/h\1>/gi)].map(m => ({ level: Number(m[1]), text: stripTags(m[0]).trim() })).filter(h => h.text);
+  const imgs = body.match(/<img\b[^>]*>/gi) || [];
+  const noAlt = imgs.filter(i => srchAttr(i, 'alt') == null); const emptyAlt = imgs.filter(i => srchAttr(i, 'alt') === '');
+  const weakAlt = imgs.filter(i => { const a = srchAttr(i, 'alt'); return a && (/\.(jpe?g|png|gif|webp|svg)$/i.test(a) || /^(image|photo|picture|img|banner|logo)[\s_-]*\d*$/i.test(a.trim())); });
+  const ld = [...html.matchAll(/<script[^>]+type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
+  const schemaTypes = new Set();
+  ld.forEach(m => { try { const walk = o => { if (Array.isArray(o)) return o.forEach(walk); if (o && typeof o === 'object'){ if (o['@type']) [].concat(o['@type']).forEach(t => schemaTypes.add(String(t))); if (o['@graph']) walk(o['@graph']); } }; walk(JSON.parse(m[1].trim())); } catch (e){} });
+  const text = stripTags(body); const words = text.split(/\s+/).filter(Boolean).length;
+  const questionHeads = heads.filter(h => h.level >= 2 && /\?$/.test(h.text)).length;
+  const links = [...body.matchAll(/<a\b[^>]*href\s*=\s*(["'])(.*?)\1/gi)].map(m => m[2]);
+  info.title = title; info.titleLength = title.length; info.metaDescription = desc; info.metaLength = desc ? desc.length : 0; info.h1 = h1s[0] || null; info.wordCount = words; info.images = imgs.length; info.imagesMissingAlt = noAlt.length + emptyAlt.length; info.schemaTypes = [...schemaTypes]; info.canonical = canon; info.questionHeadings = questionHeads;
+  const intLinks = new Set();
+  links.forEach(h => { try { if (/^(#|mailto:|tel:|javascript:)/i.test(h)) return; const u = new URL(h, f.finalUrl || url); u.hash = ''; if (srchHostOk(u.toString(), originHost) && !/\.(jpe?g|png|gif|webp|svg|pdf|zip|css|js)$/i.test(u.pathname)) intLinks.add(u.toString()); } catch (e){} });
+  info.internalLinks = [...intLinks].slice(0, 20);
+  // Titles and meta
+  if (!title) add('Titles', 'high', 'The page has no title tag.', 'Add a title of about 50 to 60 characters that starts with the main topic and ends with the brand.');
+  else { if (title.length > 65) add('Titles', 'medium', 'The title is ' + title.length + ' characters, so search results will likely cut it off.', 'Shorten it to about 60 characters and keep the main topic first.'); if (title.length < 25) add('Titles', 'low', 'The title is only ' + title.length + ' characters.', 'Use the space to name the topic and the brand clearly.'); }
+  if (desc == null || !desc.trim()) add('Meta description', 'high', 'The page has no meta description.', 'Write one of about 140 to 155 characters that says what the page offers and why to click.');
+  else { if (desc.length > 165) add('Meta description', 'low', 'The meta description is ' + desc.length + ' characters and will be cut off.', 'Trim to about 155 characters.'); if (desc.length < 70) add('Meta description', 'low', 'The meta description is short (' + desc.length + ' characters).', 'Extend it to about 140 to 155 characters.'); }
+  // Headings
+  if (h1s.length === 0) add('Headings', 'high', 'The page has no H1 heading.', 'Add one H1 that states the page topic in the words a customer would use.');
+  else if (h1s.length > 1) add('Headings', 'medium', 'The page has ' + h1s.length + ' H1 headings.', 'Keep one H1 and demote the others to H2.');
+  for (let i = 1; i < heads.length; i++){ if (heads[i].level - heads[i - 1].level > 1){ add('Headings', 'low', 'Heading levels skip from H' + heads[i - 1].level + ' to H' + heads[i].level + '.', 'Move down one level at a time so the outline makes sense to readers and crawlers.'); break; } }
+  // Technical tags
+  if (/noindex/i.test(robotsMeta)) add('Crawl', 'high', 'The page is marked noindex, so search engines are told to leave it out.', 'Remove noindex if this page should appear in search.');
+  if (!canon) add('Crawl', 'medium', 'The page has no canonical tag.', 'Add a self-referencing canonical so duplicates and tracking-parameter versions do not compete.');
+  else { try { const c = new URL(canon, f.finalUrl); const me = new URL(f.finalUrl); if (c.origin + c.pathname.replace(/\/$/, '') !== me.origin + me.pathname.replace(/\/$/, '')) add('Crawl', 'medium', 'The canonical points to a different address (' + c.pathname + ').', 'Confirm this is intended. Search engines will treat that other page as the main one.'); } catch (e){} }
+  if (!lang) add('Crawl', 'low', 'The html tag has no language attribute.', 'Add lang="en" (or the right language) to help search and screen readers.');
+  if (!meta('og:title') || !meta('og:description') || !meta('og:image')) add('Titles', 'low', 'Open Graph share tags are incomplete (title, description or image missing).', 'Add og:title, og:description and og:image so links share well and AI tools read the page summary.');
+  // Images
+  if (noAlt.length + emptyAlt.length > 0) add('Images', noAlt.length > 3 ? 'medium' : 'low', (noAlt.length + emptyAlt.length) + ' of ' + imgs.length + ' images have no alt text.', 'Describe what the image shows in a short phrase, using a keyword only where it is true and natural. Leave alt empty only for purely decorative images.');
+  if (weakAlt.length) add('Images', 'low', weakAlt.length + ' image(s) have alt text that is a filename or a generic word.', 'Replace with a short description of what the image shows.');
+  // AEO and GEO
+  if (!schemaTypes.size) add('AEO', 'medium', 'The page has no structured data (schema markup).', 'Add JSON-LD that matches the page: Organization on the home page, Product or TouristTrip for offers, Article for stories, FAQPage for question lists.');
+  if (!questionHeads && words > 250) add('AEO', 'low', 'No headings are written as questions.', 'Where the page answers a common customer question, make that a heading and answer it in the first sentence beneath. Answer engines quote that pattern.');
+  if (questionHeads && !schemaTypes.has('FAQPage')) add('AEO', 'low', 'The page has question headings but no FAQPage markup.', 'Add FAQPage JSON-LD for the question and answer pairs that are visible on the page.');
+  if (!(schemaTypes.has('Organization') || schemaTypes.has('LocalBusiness') || schemaTypes.has('Corporation')) && /^\/?$/.test(new URL(f.finalUrl || url).pathname)) add('GEO', 'medium', 'The home page has no Organization markup.', 'Add Organization JSON-LD with the official name, logo, social profiles and contact details so generative engines name the brand correctly.');
+  if (!/author|byline|published|updated|datePublished/i.test(html) && words > 400) add('GEO', 'low', 'No author or date signal was found on a long page.', 'Show who wrote the page and when it was last updated. Generative engines weigh both.');
+  if (words < 80 && (html.match(/<script\b/gi) || []).length > 5) add('Crawl', 'medium', 'Very little text was visible without running JavaScript.', 'If the content is loaded by script, search and AI crawlers may not see it. Ask your web team to render key copy on the server.');
+  else if (words < 150) add('Crawl', 'low', 'The page has little text (' + words + ' words).', 'Add useful copy that answers what a visitor came for.');
+  return { info, issues };
+}
+async function srchFetchSiteFiles(origin, originHost){
+  const out = { robots: null, sitemap: null, llms: null, httpRedirect: null }; const issues = []; const add = (area, severity, finding, recommendation) => issues.push({ pageUrl: null, area, severity, finding, recommendation });
+  const r = await srchFetch(origin + '/robots.txt', originHost, { timeoutMs: 6000 });
+  if (r.status === 200 && /user-agent|sitemap|disallow/i.test(r.html || '')){
+    const txt = r.html; out.robots = { found: true, sitemapListed: /^\s*sitemap:/im.test(txt) };
+    const blocked = []; const groups = txt.split(/\n\s*\n/);
+    SRCH_AI_BOTS.forEach(bot => { const g = [...txt.matchAll(new RegExp('user-agent:\\s*' + bot.replace(/[-]/g, '\\-') + '[\\s\\S]*?(?=\\n\\s*user-agent:|$)', 'gi'))]; if (g.some(m => /disallow:\s*\/\s*$/im.test(m[0]))) blocked.push(bot); });
+    const star = (txt.match(/user-agent:\s*\*[\s\S]*?(?=\n\s*user-agent:|$)/i) || [''])[0];
+    if (/disallow:\s*\/\s*$/im.test(star)) add('Crawl', 'high', 'robots.txt blocks all crawlers from the whole site.', 'Remove the blanket Disallow unless the site is meant to be private.');
+    out.robots.blockedAiBots = blocked;
+    if (blocked.length) add('GEO', 'medium', 'robots.txt blocks AI crawlers: ' + blocked.join(', ') + '.', 'If you want AI answer engines to cite the brand, allow the ones that power them. This is a business choice, so decide it deliberately.');
+    if (!out.robots.sitemapListed) add('Crawl', 'low', 'robots.txt does not list the sitemap.', 'Add a Sitemap: line with the full sitemap address.');
+  } else { out.robots = { found: false }; add('Crawl', 'low', 'No robots.txt was found.', 'Add one that allows crawling and lists the sitemap.'); }
+  let urls = [];
+  try { urls = await fetchSitemapUrls(origin); out.sitemap = { found: true, urlCount: urls.length }; } catch (e){ out.sitemap = { found: false, note: String(e.message || e).slice(0, 160) }; add('Crawl', 'medium', 'No usable sitemap.xml was found.', 'Publish a sitemap of the pages you want indexed and reference it in robots.txt.'); }
+  const l = await srchFetch(origin + '/llms.txt', originHost, { timeoutMs: 6000 });
+  out.llms = { found: l.status === 200 && !/<html/i.test(l.html || '') };
+  if (!out.llms.found) add('GEO', 'low', 'No llms.txt file was found.', 'An llms.txt is an emerging, optional file that points AI tools to your most useful pages. Adding one is low effort; its effect is not proven.');
+  try { const u = new URL(origin); if (u.protocol === 'https:'){ const h = await srchFetch('http://' + u.host + '/', originHost, { method: 'HEAD', timeoutMs: 6000 }); const first = h.chain && h.chain[0]; out.httpRedirect = first ? first.status : null; if (first && first.status === 200) add('Crawl', 'high', 'The http version of the site does not redirect to https.', 'Add a site-wide 301 from http to https.'); else if (first && [302, 307].includes(first.status)) add('Redirects', 'medium', 'The http to https redirect is temporary (' + first.status + ').', 'Make it a 301.'); } } catch (e){}
+  return { files: out, issues, sitemapUrls: urls };
+}
+function srchPageSet(account, body){
+  const base = String(account.websiteUrl || '').trim(); let origin; try { origin = new URL(/^https?:/i.test(base) ? base : 'https://' + base).origin; } catch (e){ return { error: 'This account has no website address on file. Add one under Company Profile first.' }; }
+  const set = new Set([origin + '/']);
+  const given = Array.isArray(body && body.urls) ? body.urls : null;
+  if (given && given.length){ set.clear(); given.slice(0, SRCH_PAGE_CAP).forEach(u => { try { const x = new URL(String(u).trim(), origin); x.hash = ''; x.search = ''; set.add(x.toString()); } catch (e){} }); }
+  else {
+    db.prepare(`SELECT path FROM brand_copy_website_examples WHERE accountId = ? AND scope = 'page' AND mode = 'include' AND status = 'active' ORDER BY createdAt LIMIT ?`).all(account.accountId, SRCH_PAGE_CAP).forEach(r => { try { set.add(new URL(r.path, origin).toString()); } catch (e){} });
+  }
+  return { origin, urls: [...set].slice(0, SRCH_PAGE_CAP) };
+}
+async function srchRunWebsiteAudit(account, body){
+  const ps = srchPageSet(account, body); if (ps.error) return { error: ps.error };
+  const originHost = new URL(ps.origin).hostname; const started = Date.now(); const DEADLINE = 95000;
+  const siteRes = await srchFetchSiteFiles(ps.origin, originHost);
+  let urls = ps.urls;
+  if ((!body || !body.urls) && urls.length < 6 && siteRes.sitemapUrls.length){ siteRes.sitemapUrls.forEach(u => { try { const x = new URL(u); if (srchHostOk(x.toString(), originHost)) { x.search = ''; x.hash = ''; if (urls.length < 10 && !urls.includes(x.toString())) urls.push(x.toString()); } } catch (e){} }); }
+  const pages = []; const issues = [...siteRes.issues]; let idx = 0; const skipped = [];
+  async function worker(){ while (idx < urls.length){ const my = urls[idx++]; if (Date.now() - started > DEADLINE){ skipped.push(my); continue; } const f = await srchFetch(my, originHost, {}); const r = srchAnalyzePage(my, f, originHost); pages.push(r.info); issues.push(...r.issues); } }
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  // Broken-link check: internal links found on the audited pages, capped.
+  const audited = new Set(pages.map(p => p.url)); const linkSet = new Map();
+  pages.forEach(p => (p.internalLinks || []).forEach(l => { if (!audited.has(l) && !linkSet.has(l)) linkSet.set(l, p.url); }));
+  const toCheck = [...linkSet.keys()].slice(0, 40); let li = 0; const broken = [];
+  async function lw(){ while (li < toCheck.length){ const my = toCheck[li++]; if (Date.now() - started > DEADLINE) return; let f = await srchFetch(my, originHost, { method: 'HEAD', timeoutMs: 6000 }); if (f.status === 405 || f.status === 403) f = await srchFetch(my, originHost, { method: 'GET', maxBytes: 2000, timeoutMs: 6000 }); const s = f.status || 0; const hops = (f.chain || []).filter(c => [301, 302, 303, 307, 308].includes(c.status)); if (s >= 400 || (f.error && !f.offSite)) broken.push({ url: my, from: linkSet.get(my), status: s || 'unreachable' }); else if (hops.some(h => [302, 303, 307].includes(h.status))) issues.push({ pageUrl: linkSet.get(my), area: 'Redirects', severity: 'low', finding: 'An internal link goes to ' + my + ', which uses a temporary redirect.', recommendation: 'Link to the final address, and make the redirect a 301 if the move is permanent.' }); } }
+  await Promise.all([lw(), lw(), lw()]);
+  broken.forEach(b => issues.push({ pageUrl: b.from, area: 'Redirects', severity: 'high', finding: 'A link on this page goes to ' + b.url + ', which returns ' + b.status + '.', recommendation: 'Fix the link, or 301 redirect the old address to the closest live page.' }));
+  // Duplicates across audited pages.
+  const dup = (field, label, area) => { const m = new Map(); pages.forEach(p => { const v = (p[field] || '').trim().toLowerCase(); if (!v) return; (m.get(v) || m.set(v, []).get(v)).push(p.url); }); m.forEach((list, v) => { if (list.length > 1) issues.push({ pageUrl: list[0], area, severity: 'medium', finding: list.length + ' pages share the same ' + label + ': "' + v.slice(0, 70) + '".', recommendation: 'Give each page its own ' + label + ' that reflects what is unique about it. Pages: ' + list.slice(0, 4).join(', ') }); }); };
+  dup('title', 'title', 'Titles'); dup('metaDescription', 'meta description', 'Meta description');
+  const slashed = pages.filter(p => { try { return new URL(p.finalUrl || p.url).pathname.length > 1 && new URL(p.finalUrl || p.url).pathname.endsWith('/'); } catch (e){ return false; } }).length;
+  if (pages.length > 3 && slashed > 0 && slashed < pages.filter(p => { try { return new URL(p.finalUrl || p.url).pathname.length > 1; } catch (e){ return false; } }).length) issues.push({ pageUrl: null, area: 'URL structure', severity: 'low', finding: 'Some addresses end in a slash and others do not.', recommendation: 'Pick one pattern and redirect the other to it with a 301.' });
+  const sevRank = { high: 0, medium: 1, low: 2 }; issues.sort((a, b) => sevRank[a.severity] - sevRank[b.severity]);
+  const counts = { high: 0, medium: 0, low: 0 }; issues.forEach(i => counts[i.severity]++);
+  return { audit: { origin: ps.origin, ranAt: new Date().toISOString(), pagesChecked: pages.length, pagesSkipped: skipped.length, linksChecked: toCheck.length, counts, files: siteRes.files, pages, issues, limits: 'This is a scan of ' + pages.length + ' page' + (pages.length === 1 ? '' : 's') + ' fetched from your site on the date shown, not live monitoring. Pages that build their content with JavaScript may look empty. Search demand, rankings and what Google has indexed need Search Console or a licensed tool.' } };
+}
+function srchPageText(html){
+  const body = (html.match(/<main[\s\S]*?<\/main>/i) || html.match(/<article[\s\S]*?<\/article>/i) || html.match(/<body[\s\S]*<\/body>/i) || [html])[0];
+  return stripTags(body.replace(/<(nav|header|footer|aside)[\s\S]*?<\/\1>/gi, ' ')).replace(/\s+/g, ' ').trim();
+}
+
+// ---------- Search Console import, brand list, findings, priorities (2026-10-04) ----------
+// Client-agnostic by design (Todd, 2026-10-04): every rule works from ratios and bands in the account's own data.
+// No client or industry words appear in the logic. Brand terms come from the account and are confirmed by the team.
+const GSC_ROW_KINDS = {
+  queries: 'Search queries', pages: 'Pages', countries: 'Countries', devices: 'Devices', appearance: 'Search appearance',
+  ai_pages: 'Google AI pages', ai_countries: 'Google AI countries', ai_devices: 'Google AI devices',
+  index_critical: 'Page indexing: critical issues', index_noncritical: 'Page indexing: non-critical issues', links: 'Latest links'
+};
+const GSC_DAILY_KINDS = { web_daily: 'web', ai_daily: 'ai', index_daily: 'index' };
+const GSC_ALL_KINDS = Object.assign({}, GSC_ROW_KINDS, { web_daily: 'Web performance by day', ai_daily: 'Google AI by day', index_daily: 'Indexed pages by day' });
+const GSC_SETTINGS = {
+  page2ShareMin: 0.5,            // share of non-brand impressions at position 11 or lower that triggers the read
+  homeShareMin: 0.3, homePosMin: 20,
+  minImpForGap: 2000,            // a query needs at least this many impressions to count as an opportunity
+  targetCtr: { mid: 0.03, page2: 0.02, deep: 0.01 }, // editable assumptions: click rate if the query reached about position 8, 10, or 12
+  indexDropMin: 0.25,
+  maxGapPriorities: 5
+};
+// Google's own reason text decides how each not-indexed reason is treated. Many are normal and not problems.
+const GSC_ISSUE_RULES = [
+  { re: /server error|5xx/i, tier: 'fix', label: 'Pages returning server errors', why: 'Google could not load these pages.' },
+  { re: /soft 404/i, tier: 'fix', label: 'Soft 404 pages', why: 'These pages look empty or missing to Google though they return a normal status.' },
+  { re: /not found \(404\)/i, tier: 'check', label: 'Pages returning not found (404)', why: 'Check whether any of these should exist or be redirected.' },
+  { re: /access forbidden|403|unauthorized|401/i, tier: 'fix', label: 'Pages blocked by access errors', why: 'Google is refused access to these pages.' },
+  { re: /redirect error/i, tier: 'fix', label: 'Pages with redirect errors', why: 'A redirect chain or loop stops Google reaching the page.' },
+  { re: /crawled.*not indexed/i, tier: 'review', label: 'Pages crawled but not indexed', why: 'Google read these pages and chose not to index them, which usually points to thin, duplicate or low-value content.' },
+  { re: /discovered.*not indexed/i, tier: 'review', label: 'Pages discovered but not indexed', why: 'Google knows these pages exist but has not crawled them yet.' }
+];
+const GSC_STOP = new Set(['the', 'and', 'for', 'with', 'from', 'near', 'best', 'top', 'how', 'what', 'where', 'when', 'why', 'cruise', 'cruises', 'ship', 'ships', 'travel', 'tour', 'tours', 'trip', 'trips', 'vacation', 'vacations', 'holiday', 'hotel', 'hotels', 'flight', 'flights', 'price', 'prices', 'cost', 'review', 'reviews', 'booking', 'book', 'offer', 'offers', 'deal', 'deals', 'official', 'site', 'website', 'online', 'login', 'near', 'company', 'group', 'services', 'service', 'inc', 'llc', 'ltd', 'corp']);
+
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS gsc_uploads (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    fileName TEXT,
+    rowCount INTEGER NOT NULL DEFAULT 0,
+    periodStart TEXT,
+    periodEnd TEXT,
+    uploadedAt TEXT NOT NULL,
+    uploadedBy TEXT,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS gsc_rows (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    dimKey TEXT NOT NULL,
+    clicks INTEGER,
+    impressions INTEGER,
+    ctr REAL,
+    avgPosition REAL,
+    pages INTEGER,
+    extra TEXT,
+    isBrand INTEGER,
+    updatedAt TEXT NOT NULL,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS gsc_daily (
+    accountId TEXT NOT NULL,
+    series TEXT NOT NULL,
+    day TEXT NOT NULL,
+    clicks INTEGER,
+    impressions INTEGER,
+    ctr REAL,
+    avgPosition REAL,
+    indexed INTEGER,
+    notIndexed INTEGER,
+    PRIMARY KEY (accountId, series, day)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS search_brand_terms (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    term TEXT NOT NULL,
+    normTerm TEXT NOT NULL,
+    status TEXT NOT NULL,
+    termSource TEXT,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS search_priorities (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    sourceKey TEXT NOT NULL,
+    priorityLevel TEXT NOT NULL,
+    title TEXT NOT NULL,
+    detail TEXT,
+    impactBasis TEXT NOT NULL,
+    impactClicks INTEGER,
+    impactLabel TEXT,
+    status TEXT NOT NULL,
+    ownerId TEXT,
+    dueDate TEXT,
+    dismissedReason TEXT,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL,
+    doneAt TEXT,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+
+// ---- File detection and parsing ----
+function gscDetectKind(headers, fileName){
+  const h = headers.map(x => String(x || '').replace(/^﻿/, '').trim().toLowerCase());
+  const has = n => h.includes(n); const hasClicks = has('clicks'); const name = String(fileName || '').toLowerCase();
+  if (h[0] === 'top queries') return 'queries';
+  if (h[0] === 'top pages') return hasClicks ? 'pages' : 'ai_pages';
+  if (h[0] === 'country') return hasClicks ? 'countries' : 'ai_countries';
+  if (h[0] === 'device') return hasClicks ? 'devices' : 'ai_devices';
+  if (h[0] === 'search appearance') return 'appearance';
+  if (h[0] === 'date' && has('not indexed') && has('indexed')) return 'index_daily';
+  if (h[0] === 'date' && hasClicks) return 'web_daily';
+  if (h[0] === 'date' && has('impressions')) return 'ai_daily';
+  if (h[0] === 'reason' && has('pages')) return /non-?\s?critical/.test(name) ? 'index_noncritical' : 'index_critical';
+  if (h[0] === 'linking page') return 'links';
+  if (h[0] === 'filter' || h[0] === 'property') return 'ignore';
+  return null;
+}
+function gscInt(v){ const n = srchNum(v); return n == null ? null : Math.round(n); }
+function gscParseFile(csvText, fileName, kindOverride){
+  const rows = srchSplitCsv(String(csvText || '').replace(/^﻿/, ''));
+  if (rows.length < 1) return { error: 'The file is empty.' };
+  const headers = rows[0].map(x => String(x || '').trim());
+  const kind = kindOverride && (GSC_ALL_KINDS[kindOverride] || kindOverride === 'ignore') ? kindOverride : gscDetectKind(headers, fileName);
+  if (!kind) return { error: 'This does not look like a Search Console export. The first column should be Top queries, Top pages, Country, Device, Date, Reason or Linking page.', headers };
+  if (kind === 'ignore') return { kind, label: 'Report settings (not used)', rows: [], daily: [] };
+  const idx = {}; headers.forEach((h, i) => { idx[h.toLowerCase()] = i; });
+  const col = (r, n) => (idx[n] != null ? r[idx[n]] : null);
+  const body = rows.slice(1).filter(r => r.some(c => String(c || '').trim()));
+  if (GSC_DAILY_KINDS[kind]){
+    const daily = [];
+    for (const r of body){
+      const day = String(col(r, 'date') || '').trim(); if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+      if (kind === 'web_daily'){ let ctr = srchNum(col(r, 'ctr')); if (ctr != null) ctr = ctr / 100; daily.push({ day, clicks: gscInt(col(r, 'clicks')), impressions: gscInt(col(r, 'impressions')), ctr, avgPosition: srchNum(col(r, 'position')) }); }
+      else if (kind === 'ai_daily') daily.push({ day, impressions: gscInt(col(r, 'impressions')) });
+      else daily.push({ day, indexed: gscInt(col(r, 'indexed')), notIndexed: gscInt(col(r, 'not indexed')), impressions: gscInt(col(r, 'impressions')) });
+    }
+    if (!daily.length) return { error: 'No dated rows found in this file.', kind };
+    daily.sort((a, b) => (a.day < b.day ? -1 : 1));
+    return { kind, label: GSC_ALL_KINDS[kind], rows: [], daily, periodStart: daily[0].day, periodEnd: daily[daily.length - 1].day, rowCount: daily.length };
+  }
+  const out = [];
+  for (const r of body){
+    const key = String(r[0] || '').trim(); if (!key) continue;
+    if (kind === 'index_critical' || kind === 'index_noncritical') out.push({ dimKey: key.slice(0, 200), pages: gscInt(col(r, 'pages')), extra: JSON.stringify({ source: col(r, 'source') || null, validation: col(r, 'validation') || null }) });
+    else if (kind === 'links') out.push({ dimKey: key.slice(0, 500), extra: col(r, 'last crawled') || null });
+    else { let ctr = srchNum(col(r, 'ctr')); if (ctr != null) ctr = ctr / 100; out.push({ dimKey: key.slice(0, 500), clicks: gscInt(col(r, 'clicks')), impressions: gscInt(col(r, 'impressions')), ctr, avgPosition: srchNum(col(r, 'position')) }); }
+  }
+  if (!out.length) return { error: 'No data rows found in this file.', kind };
+  return { kind, label: GSC_ALL_KINDS[kind], rows: out, daily: [], rowCount: out.length };
+}
+function gscStoreParsed(accountId, parsed, fileName, actor, now){
+  const stmts = [];
+  if (parsed.daily && parsed.daily.length){
+    const series = GSC_DAILY_KINDS[parsed.kind];
+    parsed.daily.forEach(d => {
+      stmts.push({ sql: 'DELETE FROM gsc_daily WHERE accountId = ? AND series = ? AND day = ?', params: [accountId, series, d.day] });
+      stmts.push({ sql: 'INSERT INTO gsc_daily (accountId, series, day, clicks, impressions, ctr, avgPosition, indexed, notIndexed) VALUES (?,?,?,?,?,?,?,?,?)', params: [accountId, series, d.day, d.clicks ?? null, d.impressions ?? null, d.ctr ?? null, d.avgPosition ?? null, d.indexed ?? null, d.notIndexed ?? null] });
+    });
+  } else {
+    stmts.push({ sql: 'DELETE FROM gsc_rows WHERE accountId = ? AND kind = ?', params: [accountId, parsed.kind] });
+    parsed.rows.forEach(r => stmts.push({ sql: 'INSERT INTO gsc_rows (id, accountId, kind, dimKey, clicks, impressions, ctr, avgPosition, pages, extra, isBrand, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', params: [generateId('GSR'), accountId, parsed.kind, r.dimKey, r.clicks ?? null, r.impressions ?? null, r.ctr ?? null, r.avgPosition ?? null, r.pages ?? null, r.extra ?? null, null, now] }));
+  }
+  stmts.push({ sql: 'DELETE FROM gsc_uploads WHERE accountId = ? AND kind = ?', params: [accountId, parsed.kind] });
+  stmts.push({ sql: 'INSERT INTO gsc_uploads (id, accountId, kind, fileName, rowCount, periodStart, periodEnd, uploadedAt, uploadedBy) VALUES (?,?,?,?,?,?,?,?,?)', params: [generateId('GSU'), accountId, parsed.kind, String(fileName || '').slice(0, 160), parsed.rowCount || parsed.rows.length, parsed.periodStart || null, parsed.periodEnd || null, now, actor || null] });
+  for (let i = 0; i < stmts.length; i += 400) db.batch(stmts.slice(i, i + 400));
+}
+function gscStatus(accountId){
+  const ups = db.prepare('SELECT kind, fileName, rowCount, periodStart, periodEnd, uploadedAt FROM gsc_uploads WHERE accountId = ?').all(accountId);
+  const loaded = {}; ups.forEach(u => { loaded[u.kind] = { label: GSC_ALL_KINDS[u.kind] || u.kind, fileName: u.fileName, rows: u.rowCount, periodStart: u.periodStart, periodEnd: u.periodEnd, uploadedAt: u.uploadedAt }; });
+  const last = db.prepare("SELECT MAX(day) AS d FROM gsc_daily WHERE accountId = ? AND series = 'web'").get(accountId);
+  return { loaded, latestDay: last && last.d ? last.d : null, hasData: ups.length > 0 };
+}
+
+// ---- Brand list and classification ----
+function gscNorm(s){ return String(s || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim(); }
+function gscLev(a, b){
+  if (a === b) return 0; const m = a.length, n = b.length; if (!m) return n; if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++){ const cur = [i]; for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = cur; }
+  return prev[n];
+}
+function gscIsBrandQuery(q, terms){
+  const nq = gscNorm(q); if (!nq) return false; const padded = ' ' + nq + ' ';
+  for (const t of terms){ if (padded.includes(' ' + t + ' ')) return true; if (/[^\x00-\x7F]/.test(t) && nq.includes(t)) return true; }
+  const qt = nq.split(' ');
+  for (const t of terms){
+    if (t.length < 6) continue; const tw = t.split(' ').length; const maxD = t.length >= 10 ? 2 : 1;
+    for (let i = 0; i + tw <= qt.length; i++){ const w = qt.slice(i, i + tw).join(' '); if (Math.abs(w.length - t.length) <= maxD && gscLev(w, t) <= maxD) return true; }
+  }
+  return false;
+}
+function gscConfirmedTerms(accountId){ return db.prepare("SELECT normTerm FROM search_brand_terms WHERE accountId = ? AND status = 'confirmed'").all(accountId).map(r => r.normTerm).filter(t => t.length >= 3); }
+// Words in non-brand queries that contain a confirmed brand name inside a longer word (for example a login or account name): suggest them for the team.
+function gscProposeVariants(accountId){
+  const terms = gscConfirmedTerms(accountId).filter(t => t.length >= 5 && !t.includes(' ')); if (!terms.length) return 0;
+  const rows = db.prepare("SELECT dimKey, clicks FROM gsc_rows WHERE accountId = ? AND kind = 'queries' AND isBrand = 0 ORDER BY clicks DESC LIMIT 400").all(accountId); const w = {};
+  rows.forEach(r => gscNorm(r.dimKey).split(' ').forEach(t => { if (t.length >= 6 && terms.some(b => t !== b && t.includes(b))) w[t] = (w[t] || 0) + (r.clicks || 0); }));
+  let n = 0; Object.entries(w).filter(([, c]) => c >= 50).sort((a, b) => b[1] - a[1]).slice(0, 5).forEach(([t]) => { if (!db.prepare('SELECT 1 FROM search_brand_terms WHERE accountId = ? AND normTerm = ?').get(accountId, t)){ gscAddTerm(accountId, t, 'suggested', 'Looks like a brand variant'); n++; } });
+  return n;
+}
+function gscReclassify(accountId){
+  const terms = gscConfirmedTerms(accountId); const rows = db.prepare("SELECT id, dimKey FROM gsc_rows WHERE accountId = ? AND kind = 'queries'").all(accountId);
+  const stmts = rows.map(r => ({ sql: 'UPDATE gsc_rows SET isBrand = ? WHERE id = ?', params: [terms.length ? (gscIsBrandQuery(r.dimKey, terms) ? 1 : 0) : null, r.id] }));
+  for (let i = 0; i < stmts.length; i += 400) db.batch(stmts.slice(i, i + 400));
+  if (terms.length) gscProposeVariants(accountId);
+  return { classified: terms.length ? rows.length : 0 };
+}
+function gscAddTerm(accountId, term, status, source){
+  const t = String(term || '').trim().slice(0, 80); const norm = gscNorm(t); if (norm.length < 3) return null;
+  const ex = db.prepare('SELECT id, status FROM search_brand_terms WHERE accountId = ? AND normTerm = ?').get(accountId, norm);
+  if (ex){ if (status === 'confirmed' && ex.status !== 'confirmed') db.prepare("UPDATE search_brand_terms SET status = 'confirmed' WHERE id = ?").run(ex.id); return ex.id; }
+  const id = generateId('SBT'); db.prepare('INSERT INTO search_brand_terms (id, accountId, term, normTerm, status, termSource, createdAt) VALUES (?,?,?,?,?,?,?)').run(id, accountId, t, norm, status, source || null, new Date().toISOString()); return id;
+}
+// First visit: seed the list from what the account already holds, and propose more for the team to confirm.
+function gscSeedBrandTerms(account){
+  const accountId = account.accountId;
+  if (db.prepare('SELECT 1 FROM search_brand_terms WHERE accountId = ? LIMIT 1').get(accountId)) return;
+  const name = String(account.company || '').trim();
+  if (name){
+    gscAddTerm(accountId, name, 'suggested', 'Company name');
+    gscNorm(name).split(' ').filter(w => w.length >= 4 && !GSC_STOP.has(w)).forEach(w => gscAddTerm(accountId, w, 'suggested', 'Part of company name'));
+  }
+  try { const host = new URL(/^https?:/i.test(account.websiteUrl || '') ? account.websiteUrl : 'https://' + account.websiteUrl).hostname.replace(/^www\./, '').split('.')[0]; if (host && host.length >= 4) gscAddTerm(accountId, host, 'suggested', 'Website name'); } catch (e){}
+  try { const bk = account.brandKeywordsJson ? JSON.parse(account.brandKeywordsJson) : null; if (bk) [...(bk.brand || []), ...(bk.product || [])].forEach(w => gscAddTerm(accountId, w, 'suggested', 'Brand and Product list')); } catch (e){}
+}
+// Words that appear in the most-clicked queries and are not generic: likely names the team wants to count as brand.
+function gscProposeFromQueries(accountId){
+  const top = db.prepare("SELECT dimKey, clicks FROM gsc_rows WHERE accountId = ? AND kind = 'queries' ORDER BY clicks DESC LIMIT 40").all(accountId);
+  const total = top.reduce((s, r) => s + (r.clicks || 0), 0); if (!total) return 0; const w = {};
+  top.forEach(r => { new Set(gscNorm(r.dimKey).split(' ')).forEach(t => { if (t.length >= 4 && !GSC_STOP.has(t) && !/^\d+$/.test(t)) w[t] = (w[t] || 0) + (r.clicks || 0); }); });
+  let n = 0; Object.entries(w).filter(([, c]) => c / total >= 0.06).sort((a, b) => b[1] - a[1]).slice(0, 8).forEach(([t]) => { const before = db.prepare('SELECT 1 FROM search_brand_terms WHERE accountId = ? AND normTerm = ?').get(accountId, t); if (!before){ gscAddTerm(accountId, t, 'suggested', 'Common in your most-clicked searches'); n++; } });
+  return n;
+}
+function gscBrandTermsPayload(accountId){
+  const rows = db.prepare('SELECT id, term, status, termSource FROM search_brand_terms WHERE accountId = ? ORDER BY createdAt').all(accountId);
+  return { confirmed: rows.filter(r => r.status === 'confirmed').map(r => ({ id: r.id, term: r.term, source: r.termSource })), suggested: rows.filter(r => r.status === 'suggested').map(r => ({ id: r.id, term: r.term, source: r.termSource, pre: !/^(Common in|Part of|Looks like)/.test(r.termSource || '') })) };
+}
+
+// ---- Findings ----
+function gscPct(n, d){ return d ? Math.round((n / d) * 1000) / 10 : 0; }
+function gscFmt(n){ return Number(n || 0).toLocaleString('en-US'); }
+function gscTargetCtr(pos){ return pos < 11 ? GSC_SETTINGS.targetCtr.mid : pos < 21 ? GSC_SETTINGS.targetCtr.page2 : GSC_SETTINGS.targetCtr.deep; }
+function gscFindings(accountId){
+  const out = [];
+  const q = db.prepare("SELECT dimKey, clicks, impressions, ctr, avgPosition, isBrand FROM gsc_rows WHERE accountId = ? AND kind = 'queries'").all(accountId);
+  const brandKnown = q.length && q.some(r => r.isBrand != null);
+  const sum = (arr, f) => arr.reduce((s, r) => s + (Number(r[f]) || 0), 0);
+  if (q.length && brandKnown){
+    const br = q.filter(r => r.isBrand === 1), nb = q.filter(r => r.isBrand === 0);
+    const totC = sum(q, 'clicks'), totI = sum(q, 'impressions');
+    const bC = sum(br, 'clicks'), bI = sum(br, 'impressions'), nC = sum(nb, 'clicks'), nI = sum(nb, 'impressions');
+    out.push({ key: 'brand_share', severity: 2, title: `Brand searches bring ${gscPct(bC, totC)}% of search clicks but only ${gscPct(bI, totI)}% of impressions.`, detail: `Non-brand searches are ${gscPct(nI, totI)}% of impressions and ${gscPct(nC, totC)}% of clicks (${(nI ? (nC / nI) * 100 : 0).toFixed(2)}% click rate).`,
+      more: [`Based on the top ${gscFmt(q.length)} queries in your Search Console file.`, `Brand: ${gscFmt(bC)} clicks, ${gscFmt(bI)} impressions. Non-brand: ${gscFmt(nC)} clicks, ${gscFmt(nI)} impressions.`, 'A high brand share can mean strong brand demand, unwon non-brand demand, or both. The position breakdown shows which.'] });
+    const nbImp = sum(nb, 'impressions');
+    if (nbImp){
+      const deep = nb.filter(r => (r.avgPosition || 0) >= 11); const dI = sum(deep, 'impressions'); const share = dI / nbImp;
+      const bands = [['1 to 3', 0, 3.99], ['4 to 10', 4, 10.99], ['11 to 20', 11, 20.99], ['21 or lower', 21, 9999]].map(([l, a, b]) => { const s = nb.filter(r => (r.avgPosition || 0) >= a && (r.avgPosition || 0) <= b); return `${l}: ${gscFmt(sum(s, 'impressions'))} impressions (${gscPct(sum(s, 'impressions'), nbImp)}%), ${(sum(s, 'impressions') ? (sum(s, 'clicks') / sum(s, 'impressions')) * 100 : 0).toFixed(2)}% click rate`; });
+      if (share >= GSC_SETTINGS.page2ShareMin) out.push({ key: 'nonbrand_position', severity: 3, title: `${Math.round(share * 100)}% of non-brand impressions are at position 11 or lower.`, detail: `Searchers are seeing the site but not on page one, so few click (${(sum(nb, 'impressions') ? (nC / nI) * 100 : 0).toFixed(2)}% click rate).`, more: [...bands, 'This is consistent with pages that are not yet matched to what people search. It does not show why; page content, links and indexing are the places to check.'] });
+    }
+    // Opportunities: non-brand queries below page one with enough impressions.
+    const gaps = nb.map(r => { const pos = r.avgPosition || 0; const imp = r.impressions || 0; const ctr = r.ctr != null ? r.ctr : (imp ? (r.clicks || 0) / imp : 0); return { q: r.dimKey, pos, imp, ctr, gain: pos >= 4 ? Math.round(imp * Math.max(0, gscTargetCtr(pos) - ctr)) : 0 }; })
+      .filter(g => g.imp >= GSC_SETTINGS.minImpForGap && g.gain > 0).sort((a, b) => b.gain - a.gain).slice(0, GSC_SETTINGS.maxGapPriorities);
+    const gainSum = gaps.reduce((s, g) => s + g.gain, 0);
+    gaps.forEach(g => out.push({ key: 'gap:' + gscNorm(g.q), severity: 3, priority: { level: g.gain >= gainSum * 0.25 ? 'P1' : 'P2', title: `Win page one for "${g.q}"`, detail: `${gscFmt(g.imp)} impressions at position ${g.pos.toFixed(1)}, ${(g.ctr * 100).toFixed(2)}% click rate.`, basis: 'calculated', clicks: g.gain, label: `+${gscFmt(g.gain)} clicks`, assumption: `Assumes a ${(gscTargetCtr(g.pos) * 100).toFixed(0)}% click rate at the target position.` } }));
+  }
+  const pages = db.prepare("SELECT dimKey, clicks, impressions, avgPosition FROM gsc_rows WHERE accountId = ? AND kind = 'pages'").all(accountId);
+  if (pages.length){
+    const totI = sum(pages, 'impressions'); const home = pages.find(p => { try { const u = new URL(p.dimKey); return u.pathname === '/' && !u.search; } catch (e){ return false; } });
+    if (home && totI && home.impressions / totI >= GSC_SETTINGS.homeShareMin && (home.avgPosition || 0) >= GSC_SETTINGS.homePosMin)
+      out.push({ key: 'home_capture', severity: 3, priority: { level: 'P2', title: 'Give generic searches their own pages', detail: `The home page holds ${gscPct(home.impressions, totI)}% of all page impressions at average position ${(home.avgPosition || 0).toFixed(1)}.`, basis: 'rated', clicks: null, label: 'Medium' } });
+  }
+  const idx = db.prepare("SELECT day, indexed, notIndexed FROM gsc_daily WHERE accountId = ? AND series = 'index' AND indexed IS NOT NULL ORDER BY day").all(accountId);
+  let known = null;
+  if (idx.length){
+    const first = idx[0], last = idx[idx.length - 1]; known = (last.indexed || 0) + (last.notIndexed || 0);
+    if (first.indexed > 0 && (first.indexed - last.indexed) / first.indexed >= GSC_SETTINGS.indexDropMin)
+      out.push({ key: 'index_drop', severity: 1, priority: { level: 'P1', title: 'Find out why indexed pages fell', detail: `Indexed pages fell from ${gscFmt(first.indexed)} to ${gscFmt(last.indexed)} between ${first.day} and ${last.day}.`, basis: 'rated', clicks: null, label: 'High' } });
+  }
+  const issues = db.prepare("SELECT dimKey, pages FROM gsc_rows WHERE accountId = ? AND kind IN ('index_critical','index_noncritical')").all(accountId);
+  if (!known && issues.length) known = issues.reduce((s, r) => s + (r.pages || 0), 0);
+  issues.forEach(r => {
+    const rule = GSC_ISSUE_RULES.find(x => x.re.test(r.dimKey)); if (!rule || !(r.pages > 0)) return;
+    const share = known ? r.pages / known : 0;
+    const label = rule.tier === 'review' ? (share >= 0.1 ? 'High' : 'Medium') : rule.tier === 'check' ? (r.pages >= 100 || share >= 0.001 ? 'Medium' : 'Low') : (r.pages >= 100 || share >= 0.001 ? 'High' : 'Medium');
+    out.push({ key: 'issue:' + gscNorm(r.dimKey), severity: label === 'High' ? 1 : 2, priority: { level: label === 'High' ? 'P1' : label === 'Medium' ? 'P2' : 'P3', title: `${rule.label}`, detail: `${gscFmt(r.pages)} pages. ${rule.why}`, basis: 'rated', clicks: null, label } });
+  });
+  return out;
+}
+function gscSyncPriorities(accountId){
+  const findings = gscFindings(accountId).filter(f => f.priority); const now = new Date().toISOString(); const seen = new Set();
+  findings.forEach(f => {
+    seen.add(f.key); const p = f.priority;
+    const ex = db.prepare('SELECT id, status FROM search_priorities WHERE accountId = ? AND sourceKey = ?').get(accountId, f.key);
+    if (ex){ if (ex.status === 'dismissed') return; db.prepare('UPDATE search_priorities SET title = ?, detail = ?, impactBasis = ?, impactClicks = ?, impactLabel = ?, updatedAt = ? WHERE id = ?').run(p.title, p.detail, p.basis, p.clicks, p.label, now, ex.id); return; }
+    db.prepare('INSERT INTO search_priorities (id, accountId, sourceKey, priorityLevel, title, detail, impactBasis, impactClicks, impactLabel, status, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').run(generateId('SPR'), accountId, f.key, p.level, p.title, p.detail, p.basis, p.clicks, p.label, 'new', now, now);
+  });
+  db.prepare("SELECT id, sourceKey FROM search_priorities WHERE accountId = ? AND status = 'new'").all(accountId).forEach(r => { if (!seen.has(r.sourceKey)) db.prepare('DELETE FROM search_priorities WHERE id = ?').run(r.id); });
+}
+const GSC_PRIORITY_ORDER = { P1: 1, P2: 2, P3: 3 };
+function gscPrioritiesList(accountId){
+  const rows = db.prepare('SELECT * FROM search_priorities WHERE accountId = ?').all(accountId);
+  const stOrder = { in_progress: 0, planned: 1, new: 2, done: 3, dismissed: 4 };
+  return rows.map(r => ({ id: r.id, date: String(r.createdAt || '').slice(0, 10), priority: r.priorityLevel, title: r.title, detail: r.detail, impactBasis: r.impactBasis, impactClicks: r.impactClicks, impactLabel: r.impactLabel, status: r.status, ownerId: r.ownerId || null, dueDate: r.dueDate || null, dismissedReason: r.dismissedReason || null }))
+    .sort((a, b) => (stOrder[a.status] >= 3 ? 1 : 0) - (stOrder[b.status] >= 3 ? 1 : 0) || (GSC_PRIORITY_ORDER[a.priority] || 9) - (GSC_PRIORITY_ORDER[b.priority] || 9) || (b.impactClicks || 0) - (a.impactClicks || 0));
+}
+
+// ---- KPI and chart payload ----
+function gscRangeFor(req, accountId, latestDay){
+  const asOf = latestDay ? new Date(latestDay + 'T00:00:00Z') : undefined;
+  let spec = null; let q = new URL(req.url, 'http://x').searchParams;
+  if (q.get('preset')){ spec = cleanDateRangeSpec({ preset: q.get('preset'), from: q.get('from'), to: q.get('to') }); }
+  if (!spec){ let memberId = 'account'; try { const s = authenticate(req); if (s && s.memberId) memberId = s.memberId; } catch (e){} try { spec = getUserPref(accountId, memberId, 'dateRange'); } catch (e){ spec = null; } }
+  const r = resolveDateRange(spec, asOf);
+  const through = latestDay && r.through > latestDay ? latestDay : r.through;
+  const compThrough = dmShiftYear(through, -1);
+  return Object.assign({}, r, { through, compThrough, label: r.label.replace(/ to [A-Z][a-z]{2} \d+, \d{4}$/, ` to ${dmFmt(through)}`), compLabel: `Same dates last year: ${dmFmt(r.compFrom)} to ${dmFmt(compThrough)}` });
+}
+function gscWebSum(accountId, from, to){
+  const r = db.prepare("SELECT SUM(clicks) AS c, SUM(impressions) AS i, COUNT(*) AS n FROM gsc_daily WHERE accountId = ? AND series = 'web' AND day >= ? AND day <= ?").get(accountId, from, to);
+  const c = Number(r && r.c) || 0, i = Number(r && r.i) || 0; return { clicks: c, impressions: i, ctr: i ? c / i : null, days: Number(r && r.n) || 0 };
+}
+function gscPayload(req, accountId, account){
+  const status = gscStatus(accountId);
+  if (!status.hasData) return { status, empty: true };
+  gscSeedBrandTerms(account);
+  const terms = gscBrandTermsPayload(accountId);
+  const range = status.latestDay ? gscRangeFor(req, accountId, status.latestDay) : null;
+  const out = { status, brand: { confirmedCount: terms.confirmed.length, confirmed: terms.confirmed, suggested: terms.suggested } };
+  const brandReady = terms.confirmed.length > 0;
+  if (brandReady && db.prepare("SELECT 1 FROM gsc_rows WHERE accountId = ? AND kind = 'queries' AND isBrand IS NULL LIMIT 1").get(accountId)) gscReclassify(accountId);
+  gscSyncPriorities(accountId);
+  const priorities = gscPrioritiesList(accountId);
+  const open = priorities.filter(p => p.status !== 'done' && p.status !== 'dismissed');
+  out.priorities = { top: open.slice(0, 5), totalOpen: open.length, total: priorities.length };
+  if (range){
+    const spanDays = (a, b) => Math.round((dmParse(b) - dmParse(a)) / 864e5) + 1;
+    const covered = (sm, a, b) => sm.days >= Math.ceil(spanDays(a, b) * 0.9); // a prior period with missing days is not compared
+    const cur = gscWebSum(accountId, range.from, range.through), prev0 = gscWebSum(accountId, range.compFrom, range.compThrough);
+    const prev = covered(prev0, range.compFrom, range.compThrough) ? prev0 : Object.assign({}, prev0, { days: 0 });
+    const pct = (a, b) => (b ? Math.round(((a - b) / b) * 1000) / 10 : null);
+    const q = db.prepare("SELECT dimKey, clicks, impressions, ctr, avgPosition, isBrand FROM gsc_rows WHERE accountId = ? AND kind = 'queries'").all(accountId);
+    const totC = q.reduce((s, r) => s + (r.clicks || 0), 0), nbC = q.filter(r => r.isBrand === 0).reduce((s, r) => s + (r.clicks || 0), 0);
+    const calc = open.filter(p => p.impactBasis === 'calculated' && p.impactClicks); const rated = open.filter(p => p.impactBasis === 'rated');
+    out.range = { label: range.label, compLabel: range.compLabel, from: range.from, through: range.through, compFrom: range.compFrom, compThrough: range.compThrough, preset: range.preset, dataThrough: status.latestDay };
+    out.cards = { clicks: { value: cur.clicks, prior: prev.days ? prev.clicks : null, changePct: prev.days ? pct(cur.clicks, prev.clicks) : null },
+      ctr: { value: cur.ctr, prior: prev.days ? prev.ctr : null, changePts: prev.days && cur.ctr != null && prev.ctr != null ? Math.round((cur.ctr - prev.ctr) * 10000) / 100 : null },
+      impressions: { value: cur.impressions, prior: prev.days ? prev.impressions : null, changePct: prev.days ? pct(cur.impressions, prev.impressions) : null },
+      nonBrandShare: brandReady && totC ? { value: Math.round((nbC / totC) * 1000) / 10, brandValue: Math.round(((totC - nbC) / totC) * 1000) / 10, queries: q.length } : null,
+      forecast: { clicks: calc.reduce((s, p) => s + p.impactClicks, 0), calculated: calc.length, rated: rated.length } };
+    // Months overlapping the range, this year against the same dates last year.
+    const months = []; let cursor = Date.UTC(Number(range.from.slice(0, 4)), Number(range.from.slice(5, 7)) - 1, 1); const endT = dmParse(range.through);
+    while (cursor <= endT && months.length < 24){
+      const d = new Date(cursor); const ms = dmIso(cursor), me = dmIso(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)); const a = ms < range.from ? range.from : ms; const b = me > range.through ? range.through : me;
+      const c = gscWebSum(accountId, a, b), p = gscWebSum(accountId, dmShiftYear(a, -1), dmShiftYear(b, -1));
+      months.push({ month: ms.slice(0, 7), clicks: c.clicks, priorClicks: covered(p, dmShiftYear(a, -1), dmShiftYear(b, -1)) ? p.clicks : null, partial: b < me });
+      cursor = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+    }
+    out.charts = { months };
+    const daily = db.prepare("SELECT substr(day, 1, 7) AS m, SUM(clicks) AS c, SUM(impressions) AS i, COUNT(*) AS n FROM gsc_daily WHERE accountId = ? AND series = 'web' GROUP BY substr(day, 1, 7) ORDER BY m").all(accountId);
+    out.charts.monthlyCtr = daily.filter(r => r.i).map(r => ({ month: r.m, ctr: r.c / r.i, days: r.n }));
+  }
+  out.topNonBrand = brandReady ? db.prepare("SELECT dimKey AS query, clicks, impressions, ctr, avgPosition FROM gsc_rows WHERE accountId = ? AND kind = 'queries' AND isBrand = 0 ORDER BY clicks DESC LIMIT 5").all(accountId) : [];
+  out.brandSplit = (() => { if (!brandReady) return null; const g = db.prepare("SELECT isBrand AS b, SUM(clicks) AS c, SUM(impressions) AS i FROM gsc_rows WHERE accountId = ? AND kind = 'queries' GROUP BY isBrand").all(accountId); const bR = g.find(x => x.b === 1) || { c: 0, i: 0 }, nR = g.find(x => x.b === 0) || { c: 0, i: 0 }; return { brandClicks: Number(bR.c) || 0, nonBrandClicks: Number(nR.c) || 0, brandImpressions: Number(bR.i) || 0, nonBrandImpressions: Number(nR.i) || 0 }; })();
+  const idx = db.prepare("SELECT day, indexed, notIndexed FROM gsc_daily WHERE accountId = ? AND series = 'index' AND indexed IS NOT NULL ORDER BY day DESC LIMIT 1").get(accountId);
+  const iss = db.prepare("SELECT dimKey, pages, kind FROM gsc_rows WHERE accountId = ? AND kind IN ('index_critical','index_noncritical')").all(accountId).map(r => { const rule = GSC_ISSUE_RULES.find(x => x.re.test(r.dimKey)); return { reason: r.dimKey, pages: r.pages, tier: rule ? rule.tier : 'normal' }; });
+  out.health = { indexed: idx ? idx.indexed : null, notIndexed: idx ? idx.notIndexed : null, asOf: idx ? idx.day : null, issues: iss.sort((a, b) => (b.pages || 0) - (a.pages || 0)) };
+  out.reads = brandReady ? gscFindings(accountId).filter(f => !f.priority).map(f => ({ key: f.key, line1: f.title, line2: f.detail, more: f.more || [] })).slice(0, 3) : [];
+  return out;
+}
+
+
+// Search Everywhere card downloads (share icon): Excel, CSV and PDF built from the same payload the page shows.
+function gscCardExport(req, accountId, card){
+  const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+  const d = account ? gscPayload(req, accountId, account) : null;
+  if (!d || d.empty || !d.range) return null;
+  const pc = (v, n) => v == null ? '' : (v * 100).toFixed(n == null ? 2 : n) + '%';
+  const ctx = [['Account', accountId], ['Period', d.range.label], ['Compared with', d.range.compLabel], ['Source', 'Google Search Console'], ['Generated', new Date().toISOString().slice(0, 10)]];
+  const cols = a => a.map(h => ({ h })); const T = (name, h, rows) => ({ name, columns: cols(h), rows });
+  const k = String(card || '');
+  const monthsT = () => T('Clicks by month', ['Month', 'Clicks', 'Same dates last year'], (d.charts.months || []).map(m => [m.month + (m.partial ? ' (partial)' : ''), { v: m.clicks, kind: 'int' }, { v: m.priorClicks, kind: 'int' }]));
+  const ctrT = () => T('Click rate by month', ['Month', 'Click rate', 'Days of data'], (d.charts.monthlyCtr || []).map(m => [m.month, pc(m.ctr), { v: m.days, kind: 'int' }]));
+  const brandT = () => d.brandSplit ? T('Brand and non-brand', ['Group', 'Clicks', 'Impressions'], [['Brand', { v: d.brandSplit.brandClicks, kind: 'int' }, { v: d.brandSplit.brandImpressions, kind: 'int' }], ['Non-brand', { v: d.brandSplit.nonBrandClicks, kind: 'int' }, { v: d.brandSplit.nonBrandImpressions, kind: 'int' }]]) : null;
+  const nbT = () => T('Top 5 non-brand searches', ['Search', 'Clicks', 'Impressions', 'Click rate', 'Average position'], (d.topNonBrand || []).map(q => [q.query, { v: q.clicks, kind: 'int' }, { v: q.impressions, kind: 'int' }, pc(q.ctr), q.avgPosition ? Number(q.avgPosition).toFixed(1) : '']));
+  const healthT = () => T('Index issues', ['Reason', 'Pages', 'Action'], ((d.health && d.health.issues) || []).map(i => [i.reason, { v: i.pages, kind: 'int' }, i.tier === 'fix' ? 'Fix' : i.tier === 'check' ? 'Check' : i.tier === 'review' ? 'Review' : '']));
+  const sumT = () => { const c = d.cards; return T('Summary', ['Metric', 'This period', 'Change vs same dates last year'], [['Organic clicks', { v: c.clicks.value, kind: 'int' }, c.clicks.changePct == null ? 'No prior year on file' : { v: c.clicks.changePct, kind: 'pct' }], ['Click rate', pc(c.ctr.value), c.ctr.changePts == null ? 'No prior year on file' : (c.ctr.changePts >= 0 ? '+' : '') + c.ctr.changePts.toFixed(2) + ' pts'], ['Impressions', { v: c.impressions.value, kind: 'int' }, c.impressions.changePct == null ? 'No prior year on file' : { v: c.impressions.changePct, kind: 'pct' }], ['Non-brand share of clicks', c.nonBrandShare ? c.nonBrandShare.value.toFixed(1) + '%' : 'Brand names not confirmed', '']]); };
+  const prioT = () => T('Priorities', ['Date', 'Level', 'Priority', 'Detail', 'Business impact', 'Basis', 'Status'], (d.priorities.top || []).map(p => [p.date, p.priority, p.title, p.detail || '', p.impactLabel || '', p.impactBasis === 'calculated' ? 'Calculated' : 'Rated', p.status]));
+  let title, slug, tables;
+  if (k === 'search-clicks'){ title = 'Organic clicks'; slug = 'search-clicks'; tables = [sumT(), monthsT()]; }
+  else if (k === 'search-ctr'){ title = 'Click rate'; slug = 'search-click-rate'; tables = [sumT(), ctrT()]; }
+  else if (k === 'search-nonbrand'){ title = 'Non-brand share of clicks'; slug = 'search-non-brand'; tables = [brandT(), nbT()].filter(Boolean); }
+  else if (k === 'search-forecast'){ title = 'Forecast from open priorities'; slug = 'search-forecast'; tables = [prioT()]; }
+  else if (k === 'search-chart-clicks'){ title = 'Organic clicks by month'; slug = 'search-clicks-by-month'; tables = [monthsT()]; }
+  else if (k === 'search-chart-ctr'){ title = 'Click rate by month'; slug = 'search-click-rate-by-month'; tables = [ctrT()]; }
+  else if (k === 'search-chart-brand'){ title = 'Brand and non-brand searches'; slug = 'search-brand-split'; tables = [brandT()].filter(Boolean); }
+  else if (k === 'search-chart-nonbrand'){ title = 'Top 5 non-brand searches'; slug = 'search-top-non-brand'; tables = [nbT()]; }
+  else if (k === 'search-health'){ title = 'Search health check'; slug = 'search-health'; tables = [healthT()]; }
+  else return null;
+  if (!tables.length) return null;
+  return { title, fileSlug: slug, context: ctx, tables, notes: ['Source: Google Search Console exports uploaded by your team.', 'Business impact marked Calculated is impressions x (target click rate - current click rate).'] };
 }
 
 // ---------- Reputation Monitoring weekly sweep (2026-10-04) ----------
@@ -26741,7 +27623,8 @@ async function handleRequest(req, res) {
       if (!format) return sendJson(res, 400, { error: 'format must be xlsx, csv or pdf' });
       try {
         const range = dateRangeForRequest(req, accountId, qs);
-        const x = buildStrategyCardExport(accountId, qs.card, range);
+        const x = String(qs.card || '').startsWith('search-') ? gscCardExport(req, accountId, qs.card) : buildStrategyCardExport(accountId, qs.card, range);
+        if (!x) return sendJson(res, 404, { error: 'nothing to export for that card yet' });
         const base = `${x.fileSlug}-${range.from}-to-${range.through}`;
         if (format === 'csv'){ res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${base}.csv"`, 'Access-Control-Allow-Origin': '*' }); return res.end(cardToCsv(x)); }
         if (format === 'pdf'){ res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${base}.pdf"`, 'Access-Control-Allow-Origin': '*' }); return res.end(cardToPdf(x)); }
@@ -34515,6 +35398,231 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         db.prepare('UPDATE press_releases SET workingCopy = ?, updatedAt = ? WHERE id = ?').run(result.copy, now, prId);
       }
       return sendJson(res, 200, result);
+    }
+
+    // ---------- Search Everywhere (2026-10-04) ----------
+    // All under /api/accounts/:id/search-everywhere/... : keywords (module), optimize (PR draft or website copy), website-audit.
+    if (parts.length >= 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'search-everywhere'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const session = authenticate(req);
+      const actor = session ? (session.memberId || `${session.accountId}:admin`) : null;
+      const sub = parts[4] || '';
+      const now = new Date().toISOString();
+
+      // GET overview: what the master page shows.
+      if (req.method === 'GET' && parts.length === 4){
+        const kw = srchKeywordsForAccount(accountId);
+        const press = db.prepare('SELECT id, title, status, releaseType, updatedAt FROM press_releases WHERE accountId = ? ORDER BY updatedAt DESC').all(accountId).map(p => {
+          const run = db.prepare(`SELECT id, acceptedCount, totalCount, appliedAt, createdAt FROM search_optimizations WHERE accountId = ? AND surface = 'press' AND targetRef = ? ORDER BY createdAt DESC LIMIT 1`).get(accountId, p.id);
+          return { ...p, optimized: run ? { runId: run.id, acceptedCount: run.acceptedCount, totalCount: run.totalCount, appliedAt: run.appliedAt, ranAt: run.createdAt } : null };
+        });
+        const a = db.prepare('SELECT ranAt, pageCount, auditJson FROM website_audits WHERE accountId = ? ORDER BY ranAt DESC LIMIT 1').get(accountId);
+        let auditSummary = null; if (a){ try { const j = JSON.parse(a.auditJson); auditSummary = { ranAt: a.ranAt, pagesChecked: j.pagesChecked, counts: j.counts }; } catch (e){} }
+        const pages = db.prepare(`SELECT id, path, title FROM brand_copy_website_examples WHERE accountId = ? AND scope = 'page' AND mode = 'include' AND status = 'active' ORDER BY createdAt`).all(accountId);
+        return sendJson(res, 200, { keywordCounts: { targets: kw.targets.length, queries: kw.queries.length, negatives: kw.negatives.length, suggested: kw.suggested.length }, press, websiteUrl: account.websiteUrl || null, websitePages: pages, auditSummary });
+      }
+
+      // ---- Search Console data, page payload, brand list, priorities (2026-10-04) ----
+      if (req.method === 'GET' && sub === 'page' && parts.length === 5){
+        try { return sendJson(res, 200, gscPayload(req, accountId, account)); } catch (e){ console.warn('[search-everywhere/page] failed:', e.message); return sendJson(res, 500, { error: 'Could not build the Search Everywhere page.' }); }
+      }
+      if (sub === 'search-console'){
+        if (req.method === 'GET' && parts.length === 5) return sendJson(res, 200, gscStatus(accountId));
+        if (req.method === 'POST' && parts.length === 6 && parts[5] === 'upload'){
+          const body = await readBody(req); const files = Array.isArray(body.files) ? body.files.slice(0, 30) : [];
+          if (!files.length) return sendJson(res, 400, { error: 'Choose at least one Search Console file.' });
+          if (files.reduce((s, f) => s + String((f && f.csv) || '').length, 0) > 14000000) return sendJson(res, 400, { error: 'These files are larger than 14 MB together. Upload them in two batches.' });
+          const results = files.map(f => { const name = String((f && f.name) || 'file.csv').slice(0, 160); const p = gscParseFile(f && f.csv, name, body.kinds && body.kinds[name]); return { name, p }; });
+          const summary = results.map(({ name, p }) => ({ name, kind: p.kind || null, label: p.label || null, rows: p.rowCount != null ? p.rowCount : (p.rows ? p.rows.length : 0), periodStart: p.periodStart || null, periodEnd: p.periodEnd || null, error: p.error || null, ignored: p.kind === 'ignore' }));
+          if (!body.confirm) return sendJson(res, 200, { files: summary, kinds: Object.entries(GSC_ALL_KINDS).map(([k, l]) => ({ kind: k, label: l })) });
+          let stored = 0; const nowIso = new Date().toISOString();
+          for (const { name, p } of results){ if (p.error || p.kind === 'ignore') continue; gscStoreParsed(accountId, p, name, actor, nowIso); stored++; }
+          if (results.some(r => r.p.kind === 'queries' && !r.p.error)){ gscSeedBrandTerms(account); gscProposeFromQueries(accountId); gscReclassify(accountId); }
+          gscSyncPriorities(accountId);
+          return sendJson(res, 200, { ok: true, stored, files: summary });
+        }
+      }
+      if (sub === 'brand-terms'){
+        if (req.method === 'GET' && parts.length === 5){ gscSeedBrandTerms(account); return sendJson(res, 200, gscBrandTermsPayload(accountId)); }
+        if (req.method === 'POST' && parts.length === 5){
+          const body = await readBody(req); const action = body.action;
+          if (action === 'confirm'){ const ids = Array.isArray(body.ids) ? body.ids.slice(0, 200) : []; ids.forEach(id => db.prepare("UPDATE search_brand_terms SET status = 'confirmed' WHERE id = ? AND accountId = ?").run(String(id), accountId)); }
+          else if (action === 'add'){ if (!gscAddTerm(accountId, body.term, 'confirmed', 'Added by your team')) return sendJson(res, 400, { error: 'Enter a name of at least three characters.' }); }
+          else if (action === 'unconfirm' || action === 'reject' || action === 'remove'){ const id = String(body.id || ''); if (action === 'unconfirm') db.prepare("UPDATE search_brand_terms SET status = 'suggested' WHERE id = ? AND accountId = ?").run(id, accountId); else db.prepare('DELETE FROM search_brand_terms WHERE id = ? AND accountId = ?').run(id, accountId); }
+          else return sendJson(res, 400, { error: 'unknown action' });
+          gscReclassify(accountId); gscSyncPriorities(accountId);
+          return sendJson(res, 200, Object.assign({ ok: true }, gscBrandTermsPayload(accountId)));
+        }
+      }
+      if (sub === 'priorities'){
+        if (req.method === 'GET' && parts.length === 5) return sendJson(res, 200, { priorities: gscPrioritiesList(accountId) });
+        if (req.method === 'POST' && parts.length === 6){
+          const row = db.prepare('SELECT * FROM search_priorities WHERE id = ? AND accountId = ?').get(decodeURIComponent(parts[5]), accountId);
+          if (!row) return sendJson(res, 404, { error: 'priority not found' });
+          const body = await readBody(req); const sets = []; const vals = [];
+          if (body.status != null){ if (!['new', 'planned', 'in_progress', 'done', 'dismissed'].includes(body.status)) return sendJson(res, 400, { error: 'unknown status' }); sets.push('status = ?'); vals.push(body.status); sets.push('doneAt = ?'); vals.push(body.status === 'done' ? now : null); if (body.status === 'dismissed'){ sets.push('dismissedReason = ?'); vals.push(String(body.dismissedReason || '').slice(0, 300) || null); } }
+          if (body.priorityLevel != null){ if (!['P1', 'P2', 'P3'].includes(body.priorityLevel)) return sendJson(res, 400, { error: 'unknown priority' }); sets.push('priorityLevel = ?'); vals.push(body.priorityLevel); }
+          if (body.ownerId !== undefined){ sets.push('ownerId = ?'); vals.push(body.ownerId ? String(body.ownerId).slice(0, 80) : null); }
+          if (body.dueDate !== undefined){ sets.push('dueDate = ?'); vals.push(/^\d{4}-\d{2}-\d{2}$/.test(String(body.dueDate || '')) ? body.dueDate : null); }
+          if (!sets.length) return sendJson(res, 400, { error: 'nothing to change' });
+          sets.push('updatedAt = ?'); vals.push(now); vals.push(row.id);
+          db.prepare('UPDATE search_priorities SET ' + sets.join(', ') + ' WHERE id = ?').run(...vals);
+          return sendJson(res, 200, { ok: true });
+        }
+      }
+
+      // ---- Keywords ----
+      if (sub === 'keywords'){
+        if (req.method === 'GET' && parts.length === 5){
+          const kw = srchKeywordsForAccount(accountId);
+          const map = r => ({ id: r.id || null, keyword: r.keyword, kwType: r.kwType, intent: r.intent || null, productGroup: r.productGroup || null, volumeBand: r.volumeBand || null, searchVolume: r.searchVolume != null ? r.searchVolume : null, difficulty: r.difficulty != null ? r.difficulty : null, cpc: r.cpc != null ? r.cpc : null, clicks: r.clicks != null ? r.clicks : null, impressions: r.impressions != null ? r.impressions : null, avgPosition: r.avgPosition != null ? r.avgPosition : null, isQuestion: !!r.isQuestion, sourceName: r.sourceName || null, status: r.status, fromAccountList: !!r.fromAccountList });
+          return sendJson(res, 200, { live: [...kw.targets, ...kw.queries].map(map), suggested: kw.suggested.map(map), negatives: kw.negatives, max: SRCH_MAX_KEYWORDS });
+        }
+        if (req.method === 'POST' && parts.length === 5){
+          const body = await readBody(req); const action = body.action;
+          if (action === 'add'){
+            const k = srchCleanKeyword(body.keyword); if (!k) return sendJson(res, 400, { error: 'Enter a keyword.' });
+            const t = ['target', 'query', 'negative'].includes(body.kwType) ? body.kwType : 'target';
+            const dupe = db.prepare('SELECT id FROM search_keywords WHERE accountId = ? AND lower(keyword) = ? AND kwType = ?').get(accountId, k.toLowerCase(), t);
+            if (dupe) return sendJson(res, 200, { ok: true, id: dupe.id, note: 'Already on the list.' });
+            const id = generateId('SKW');
+            db.prepare('INSERT INTO search_keywords (id, accountId, keyword, kwType, intent, isQuestion, sourceName, status, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?)').run(id, accountId, k, t, srchInferIntent(k), srchIsQuestion(k) ? 1 : 0, 'Added by team', 'live', now, now);
+            return sendJson(res, 200, { ok: true, id });
+          }
+          if (action === 'accept' || action === 'reject' || action === 'remove'){
+            const row = db.prepare('SELECT * FROM search_keywords WHERE id = ? AND accountId = ?').get(String(body.id || ''), accountId);
+            if (!row) return sendJson(res, 404, { error: 'keyword not found' });
+            if (action === 'accept') db.prepare("UPDATE search_keywords SET status = 'live', updatedAt = ? WHERE id = ?").run(now, row.id); else db.prepare('DELETE FROM search_keywords WHERE id = ?').run(row.id);
+            return sendJson(res, 200, { ok: true });
+          }
+          if (action === 'acceptAll'){ const r = db.prepare("UPDATE search_keywords SET status = 'live', updatedAt = ? WHERE accountId = ? AND status = 'suggested' AND kwType != 'negative'").run(now, accountId); return sendJson(res, 200, { ok: true, accepted: r.changes }); }
+          return sendJson(res, 400, { error: 'unknown action' });
+        }
+        // Upload: step 1 preview (detect columns), step 2 confirm (save as suggestions).
+        if (req.method === 'POST' && parts.length === 6 && parts[5] === 'upload'){
+          const body = await readBody(req); const csv = String(body.csv || '');
+          if (!csv.trim()) return sendJson(res, 400, { error: 'The file is empty.' });
+          if (csv.length > 4000000) return sendJson(res, 400, { error: 'The file is larger than 4 MB. Export the top rows by volume and try again.' });
+          if (body.kind === 'negative'){
+            const rows = srchSplitCsv(csv).map(r => srchCleanKeyword(r[0])).filter(Boolean);
+            const terms = rows.filter((t, i) => !(i === 0 && /^(term|terms|keyword|negative|avoid)/i.test(t)));
+            if (!body.confirm) return sendJson(res, 200, { kind: 'negative', total: terms.length, sample: terms.slice(0, 8) });
+            let added = 0; terms.slice(0, 300).forEach(t => { if (!db.prepare("SELECT 1 FROM search_keywords WHERE accountId = ? AND lower(keyword) = ? AND kwType = 'negative'").get(accountId, t.toLowerCase())){ db.prepare('INSERT INTO search_keywords (id, accountId, keyword, kwType, isQuestion, sourceName, status, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?)').run(generateId('SKW'), accountId, t, 'negative', 0, 'Upload', 'live', now, now); added++; } });
+            return sendJson(res, 200, { ok: true, added });
+          }
+          const parsed = srchParseKeywordCsv(csv, body.mapping || null, body.kwType || null);
+          if (parsed.error) return sendJson(res, 200, { error: parsed.error, headers: parsed.headers || null, mapping: parsed.mapping || null, detected: parsed.detected || null });
+          // Terms on the Avoid list are never added as keywords.
+          const negSet = new Set(srchKeywordsForAccount(accountId).negatives.map(n => n.toLowerCase()));
+          const beforeN = parsed.rows.length; parsed.rows = parsed.rows.filter(r => !negSet.has(r.keyword.toLowerCase())); parsed.skippedNegative = beforeN - parsed.rows.length;
+          if (!body.confirm) return sendJson(res, 200, { detected: parsed.detected, headers: parsed.headers, mapping: parsed.mapping, kwType: parsed.kwType, totalRows: parsed.totalRows, willKeep: parsed.rows.length, skippedOverCap: parsed.skippedOverCap, skippedDuplicates: parsed.skippedDuplicates, skippedBlank: parsed.skippedBlank, skippedNegative: parsed.skippedNegative, sample: parsed.rows.slice(0, 8) });
+          const sourceName = String(body.fileName || parsed.detected).slice(0, 80);
+          let added = 0, updated = 0;
+          const insert = db.prepare('INSERT INTO search_keywords (id, accountId, keyword, kwType, intent, productGroup, volumeBand, searchVolume, difficulty, cpc, clicks, impressions, ctr, avgPosition, isQuestion, sourceName, status, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+          for (const r of parsed.rows){
+            const ex = db.prepare('SELECT id, productGroup FROM search_keywords WHERE accountId = ? AND lower(keyword) = ? AND kwType = ?').get(accountId, r.keyword.toLowerCase(), r.kwType);
+            if (ex){ db.prepare('UPDATE search_keywords SET intent = COALESCE(?, intent), volumeBand = COALESCE(?, volumeBand), searchVolume = COALESCE(?, searchVolume), difficulty = COALESCE(?, difficulty), cpc = COALESCE(?, cpc), clicks = COALESCE(?, clicks), impressions = COALESCE(?, impressions), ctr = COALESCE(?, ctr), avgPosition = COALESCE(?, avgPosition), updatedAt = ? WHERE id = ?').run(r.intent, r.volumeBand, r.searchVolume, r.difficulty, r.cpc, r.clicks, r.impressions, r.ctr, r.avgPosition, now, ex.id); updated++; }
+            else { insert.run(generateId('SKW'), accountId, r.keyword, r.kwType, r.intent, r.productGroup, r.volumeBand, r.searchVolume, r.difficulty, r.cpc, r.clicks, r.impressions, r.ctr, r.avgPosition, r.isQuestion, sourceName, 'suggested', now, now); added++; }
+          }
+          return sendJson(res, 200, { ok: true, added, updated, skippedOverCap: parsed.skippedOverCap, skippedDuplicates: parsed.skippedDuplicates, skippedNegative: parsed.skippedNegative });
+        }
+      }
+
+      // ---- Optimize ----
+      if (sub === 'optimize'){
+        if (req.method === 'GET' && parts.length === 5){
+          const q = new URL(req.url, 'http://x').searchParams; const surface = q.get('surface') === 'website' ? 'website' : 'press'; const ref = q.get('targetRef') || '';
+          const row = db.prepare('SELECT * FROM search_optimizations WHERE accountId = ? AND surface = ? AND COALESCE(targetRef, pageUrl, \'\') = ? ORDER BY createdAt DESC LIMIT 1').get(accountId, surface, ref);
+          return sendJson(res, 200, { run: row ? srchRunRow(row) : null });
+        }
+        if (req.method === 'POST' && parts.length === 5){
+          const body = await readBody(req); const surface = body.surface === 'website' ? 'website' : 'press';
+          let text = '', facts = '', meta = '', targetRef = null, pageUrl = null;
+          if (surface === 'press'){
+            const pr = db.prepare('SELECT * FROM press_releases WHERE id = ? AND accountId = ?').get(String(body.prId || ''), accountId);
+            if (!pr) return sendJson(res, 404, { error: 'press release not found' });
+            text = String(pr.workingCopy || '').trim(); if (text.length < 80) return sendJson(res, 200, { error: 'Draft the press release first. There needs to be copy to optimize.' });
+            facts = prRowKeyFacts(pr) || ''; meta = `Press release "${pr.title}"${pr.releaseType ? ', type: ' + (PRESS_RELEASE_TYPE_LABELS[pr.releaseType] || pr.releaseType) : ''}${pr.audience ? ', audience: ' + (PRESS_RELEASE_AUDIENCE_LABELS[pr.audience] || pr.audience) : ''}.`; targetRef = pr.id;
+          } else {
+            if (body.text && String(body.text).trim()){ text = String(body.text).trim().slice(0, 8000); pageUrl = String(body.pageUrl || 'pasted-copy').slice(0, 300); }
+            else {
+              const ps = srchPageSet(account, { urls: [body.pageUrl] }); if (ps.error) return sendJson(res, 200, { error: ps.error });
+              const u = ps.urls[0]; if (!u) return sendJson(res, 200, { error: 'Enter a page address on your site, or paste the page copy.' });
+              const f = await srchFetch(u, new URL(ps.origin).hostname, {});
+              if (f.error || f.offSite || !f.html || f.status >= 400) return sendJson(res, 200, { error: 'The page could not be read' + (f.status ? ' (it returned ' + f.status + ')' : '') + '. Paste the page copy instead.' });
+              text = srchPageText(f.html).slice(0, 8000); pageUrl = u;
+              if (text.length < 120) return sendJson(res, 200, { error: 'Very little text could be read from that page. If it builds its content with JavaScript, paste the page copy instead.' });
+            }
+            meta = 'A page on the brand\'s own website.'; targetRef = null;
+          }
+          const result = await srchRunOptimize(account, { surface, text, facts, meta });
+          if (result.error) return sendJson(res, 200, { error: result.error });
+          const id = generateId('SOP');
+          db.prepare('INSERT INTO search_optimizations (id, accountId, surface, targetRef, pageUrl, originalText, suggestionsJson, acceptedCount, totalCount, droppedCount, createdBy, createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').run(id, accountId, surface, targetRef, pageUrl, text, JSON.stringify(result.suggestions), 0, result.suggestions.length, result.dropped, actor, now);
+          return sendJson(res, 200, { run: srchRunRow(db.prepare('SELECT * FROM search_optimizations WHERE id = ?').get(id)) });
+        }
+        if (req.method === 'POST' && parts.length === 7 && (parts[6] === 'decide' || parts[6] === 'apply')){
+          const runId = decodeURIComponent(parts[5]);
+          const run = db.prepare('SELECT * FROM search_optimizations WHERE id = ? AND accountId = ?').get(runId, accountId);
+          if (!run) return sendJson(res, 404, { error: 'optimization run not found' });
+          let sug = []; try { sug = JSON.parse(run.suggestionsJson || '[]'); } catch (e){}
+          const body = await readBody(req);
+          if (parts[6] === 'decide'){
+            const st = ['accepted', 'skipped', 'pending'].includes(body.status) ? body.status : null; if (!st) return sendJson(res, 400, { error: 'status must be accepted, skipped or pending' });
+            if (body.all) sug.forEach(s => { s.status = st; }); else { const s = sug.find(x => x.id === body.suggestionId); if (!s) return sendJson(res, 404, { error: 'suggestion not found' }); s.status = st; }
+            srchRecount(runId, sug);
+            const text = srchApplySuggestions(run.originalText, sug);
+            return sendJson(res, 200, { run: srchRunRow(db.prepare('SELECT * FROM search_optimizations WHERE id = ?').get(runId)), workingText: text });
+          }
+          // apply: write the accepted edits into the press release's working copy (original is kept on the run).
+          const text = srchApplySuggestions(run.originalText, sug);
+          if (run.surface === 'press' && run.targetRef){
+            const pr = db.prepare('SELECT id FROM press_releases WHERE id = ? AND accountId = ?').get(run.targetRef, accountId);
+            if (pr) db.prepare('UPDATE press_releases SET workingCopy = ?, updatedAt = ? WHERE id = ?').run(text, now, pr.id);
+          }
+          db.prepare('UPDATE search_optimizations SET appliedAt = ? WHERE id = ?').run(now, runId);
+          return sendJson(res, 200, { ok: true, text, appliedToDraft: run.surface === 'press' });
+        }
+      }
+
+      // ---- Website audit ----
+      if (sub === 'website-audit'){
+        if (req.method === 'GET' && parts.length === 5){
+          const a = db.prepare('SELECT * FROM website_audits WHERE accountId = ? ORDER BY ranAt DESC LIMIT 1').get(accountId);
+          let audit = null; if (a){ try { audit = JSON.parse(a.auditJson); } catch (e){} }
+          return sendJson(res, 200, { audit });
+        }
+        if (req.method === 'POST' && parts.length === 5){
+          const last = db.prepare('SELECT ranAt FROM website_audits WHERE accountId = ? ORDER BY ranAt DESC LIMIT 1').get(accountId);
+          if (last && Date.now() - new Date(last.ranAt).getTime() < 5 * 60 * 1000) return sendJson(res, 429, { error: 'A site check ran a moment ago. Give it a few minutes before running another.' });
+          const body = await readBody(req);
+          const r = await srchRunWebsiteAudit(account, body);
+          if (r.error) return sendJson(res, 200, { error: r.error });
+          db.prepare('INSERT INTO website_audits (id, accountId, ranAt, pageCount, auditJson, createdBy) VALUES (?,?,?,?,?,?)').run(generateId('WAU'), accountId, r.audit.ranAt, r.audit.pagesChecked, JSON.stringify(r.audit), actor);
+          return sendJson(res, 200, { audit: r.audit });
+        }
+        // Draft a title, meta description and alt-text lines for one audited page.
+        if (req.method === 'POST' && parts.length === 6 && parts[5] === 'draft'){
+          const body = await readBody(req);
+          const a = db.prepare('SELECT * FROM website_audits WHERE accountId = ? ORDER BY ranAt DESC LIMIT 1').get(accountId);
+          let audit = null; try { audit = a ? JSON.parse(a.auditJson) : null; } catch (e){}
+          const page = audit && (audit.pages || []).find(p => p.url === body.pageUrl);
+          if (!page) return sendJson(res, 404, { error: 'Run the site check first, then pick a page from it.' });
+          if (!process.env.ANTHROPIC_API_KEY) return sendJson(res, 200, { error: 'Drafting requires ANTHROPIC_API_KEY to be configured.' });
+          const kw = srchKeywordsForAccount(accountId);
+          const prompt = `Write a page title and meta description for one page of ${industryPersonaPhrase(account)}'s website.\nPAGE: ${page.url}\nCURRENT TITLE: ${page.title || '(none)'}\nCURRENT DESCRIPTION: ${page.metaDescription || '(none)'}\nMAIN HEADING: ${page.h1 || '(none)'}\nTARGET KEYWORDS: ${kw.targets.slice(0, 20).map(k => k.keyword).join(', ')}\nTERMS TO AVOID: ${kw.negatives.join(', ') || '(none)'}\nRules: title 50 to 60 characters, main topic first, brand last. Description 140 to 155 characters, plain and specific. Use a keyword only where it fits the page's actual topic. Do not invent facts or numbers. Submit through the tool.`;
+          try {
+            const out = await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 500, content: prompt, toolName: 'submit_meta', toolDescription: 'Submit the title and meta description.', schema: { type: 'object', properties: { title: { type: 'string' }, metaDescription: { type: 'string' }, note: { type: 'string' } }, required: ['title', 'metaDescription'] } });
+            const neg = kw.negatives.map(n => n.toLowerCase());
+            const bad = [out.title, out.metaDescription].join(' ').toLowerCase();
+            if (neg.some(n => n && bad.includes(n))) return sendJson(res, 200, { error: 'The draft used a term on your Avoid list, so it was discarded. Try again.' });
+            return sendJson(res, 200, { title: String(out.title).slice(0, 120), metaDescription: String(out.metaDescription).slice(0, 300), note: out.note || null });
+          } catch (e){ return sendJson(res, 200, { error: 'Drafting failed: ' + String(e.message || e).slice(0, 160) }); }
+        }
+      }
     }
 
     // POST /api/accounts/:id/press-releases/:prId/generate-linkedin —
