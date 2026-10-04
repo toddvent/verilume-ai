@@ -1586,6 +1586,7 @@
   .has-share .gsc-head{padding-right:40px;} .gsc-two,.gsc-charts{min-width:0;} .gsc-two > *,.gsc-charts > *,.gsc-prio,.gsc-reads{min-width:0;} @media (max-width:900px){.gsc-two,.gsc-charts{grid-template-columns:minmax(0,1fr) !important;}}
   .gsc-headline{font-size:1rem;font-weight:700;line-height:1.35;padding-right:40px;margin-bottom:8px;} .gsc-svg svg{width:100%;height:auto;display:block;} .gsc-foot{font-size:0.6875rem;color:var(--muted);margin-top:8px;} .gsc-legend{display:flex;gap:14px;font-size:0.75rem;color:var(--muted);margin-bottom:6px;} .gsc-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;}
   .gsc-assign button,.gsc-sugbtn button,.gsc-mg button,.gsc-add button,.gsc-tools button,.gsc-prio button{font-family:inherit;} .gsc-unm td{background:var(--paper-dim);} .gsc-assign{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:4px 0;font-size:0.875rem;} .gsc-assign select{font:inherit;font-size:0.8125rem;padding:4px 8px;border:1px solid var(--line);border-radius:8px;max-width:220px;} .gsc-suggest{margin-top:14px;border-top:1px solid var(--line-hairline);padding-top:10px;} .gsc-sugrow{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--line-hairline);} .gsc-sugbtn{display:flex;gap:8px;}
+  .gsc-ai-tables{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:10px;} @media (max-width:700px){.gsc-ai-tables{grid-template-columns:minmax(0,1fr);}} .gsc-ai-tables td{word-break:break-word;}
   .gsc-two{display:grid;grid-template-columns:1fr 1fr;gap:16px;} .gsc-two .strat-card{margin:0 0 20px;grid-column:auto;} .gsc-hc{font-size:0.875rem;margin-bottom:6px;} .gsc-bad{color:#B42318;}
   .gsc-brand .gsc-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;} .gsc-chipt{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);border-radius:980px;padding:2px 4px 2px 10px;font-size:0.8125rem;} .gsc-chipt button{border:0;background:none;cursor:pointer;font-size:1rem;color:var(--muted);} .gsc-suglist{display:flex;flex-direction:column;gap:4px;margin:6px 0 10px;} .gsc-sug{font-size:0.875rem;display:flex;gap:6px;align-items:baseline;} .gsc-add{display:flex;gap:8px;flex-wrap:wrap;align-items:center;} .gsc-add input{font:inherit;font-size:0.875rem;padding:6px 10px;border:1px solid var(--line);border-radius:8px;min-width:220px;}
   .stat-card.has-share{position:relative;} .share-wrap{position:absolute;top:12px;right:12px;} .share-btn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:1px solid var(--line);background:var(--white);color:var(--muted);border-radius:8px;cursor:pointer;} .share-btn:hover,.share-btn:focus-visible{color:var(--ink);border-color:var(--ink);}
@@ -59226,6 +59227,7 @@ function gscRender(){
   h += gscReadsHtml(d);
   h += gscPrioritiesHtml(d);
   h += gscChartsHtml(d);
+  h += gscAiHtml(d);
   h += gscGroupsHtml(d);
   h += `<div class="gsc-two">${gscTopNbHtml(d)}${gscHealthHtml(d)}</div>`;
   el.innerHTML = h; drrRenderBars();
@@ -59354,6 +59356,20 @@ function gscChartsHtml(d){
     h4 = share != null ? `Five non-brand searches bring ${share}% of non-brand clicks` : `Top 5 non-brand searches bring ${gscInt(sum)} clicks`;
   } else s4 = '<p class="strat-empty">Confirm your brand names to see non-brand searches.</p>';
   return `<div class="gsc-charts">${gscChartCard('search-chart-clicks', h1, s1, leg1, src + partial)}${gscChartCard('search-chart-ctr', h2, s2, '', src + ' · daily data grouped by month')}${gscChartCard('search-chart-brand', h3, s3, leg3, src + ' · top 1,000 searches')}${gscChartCard('search-chart-nonbrand', h4, s4, '', src + ' · click rate and average position at right')}</div>`;
+}
+// ---- Google AI features ----
+function gscAiHtml(d){
+  const a = d.ai; if (!a) return '';
+  const W = 520, H = 200, L = 46, R = 10, T = 12, B = 28, iw = W - L - R, ih = H - T - B;
+  const max = gscNice(Math.max(1, ...a.months.map(m => m.impressions))); const gp = iw / Math.max(1, a.months.length); const bw = Math.min(40, gp * 0.6);
+  const startedMid = a.startedOn && a.months.length && a.months[0].month === String(a.startedOn).slice(0, 7) && String(a.startedOn).slice(8) !== '01';
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Google AI impressions by month">`;
+  [0, 0.5, 1].forEach(f => { const y = T + ih - ih * f; svg += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="${GSC_C.grid}"/><text x="${L - 6}" y="${y + 4}" text-anchor="end" font-size="11" fill="${GSC_C.muted}">${gscFmtShort(max * f)}</text>`; });
+  a.months.forEach((m, i) => { const cx = L + gp * i + gp / 2; const h = Math.max(1, m.impressions / max * ih); svg += `<rect x="${cx - bw / 2}" y="${T + ih - h}" width="${bw}" height="${h}" rx="3" fill="${GSC_C.accent}"><title>${gscMonthLong(m.month)}: ${gscInt(m.impressions)} impressions, ${m.days} days of data</title></rect><text x="${cx}" y="${H - 8}" text-anchor="middle" font-size="11" fill="${GSC_C.muted}">${gscMonthLbl(m.month)}${(i === 0 && startedMid) || (i === a.months.length - 1 && m.days < 28) ? '*' : ''}</text>`; });
+  svg += '</svg>';
+  const head = `Google AI features showed the site ${gscInt(a.impressions)} times` + (a.share != null ? `, equal to ${(a.share * 100).toFixed(1)}% of its web search impressions` : '');
+  const tbl = (title, rows, key) => `<div><div class="gsc-sub" style="font-weight:700;margin-bottom:4px;">${title}</div><table class="gsc-table"><tbody>${rows.map(r => `<tr><td>${escapeHtml(r[key])}</td><td class="gsc-r">${gscInt(r.impressions)}</td></tr>`).join('')}</tbody></table></div>`;
+  return `<div class="strat-card gsc-chart has-share" style="position:relative;">${shareBtnHtml('search-ai')}<div class="gsc-headline">${escapeHtml(head)}</div><div class="gsc-svg" style="max-width:640px;">${svg}</div><div class="gsc-ai-tables">${tbl('Top pages', a.pages, 'page')}${tbl('Top countries', a.countries, 'country')}</div><div class="gsc-foot">${escapeHtml('Source: Google Search Console, Google AI report · impressions only, Google reports no clicks · ' + gscDay(a.from) + ' to ' + gscDay(a.through) + ' · * partial month · top pages and countries are from the latest export')}</div></div>`;
 }
 // ---- search by product group ----
 function gscGroupsHtml(d){
