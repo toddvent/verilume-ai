@@ -24026,7 +24026,7 @@ var ASK_DOCK_ON = (() => { try { const q = new URLSearchParams(location.search).
 const ASK_DOCK_ICONS = [
   { key: 'thoughts', label: 'Thoughts', fn: 'askDockOpen(\'thoughts\')', svg: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/>' },
   { key: 'brainTrain', label: 'Brain Train', fn: 'askDockOpen(\'brainTrain\')', svg: '<path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/>' },
-  { key: 'contest', label: 'Contest, available in a later release', fn: '', disabled: true, svg: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4Z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>' },
+  { key: 'contest', label: 'Contest', fn: 'askDockOpen(\'contest\')', svg: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4Z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>' },
   { key: 'team', label: 'Team', fn: 'askDockOpen(\'team\')', svg: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M18 20a5.6 5.6 0 0 0-2.4-4.6"/>' }
 ];
 function askDockInit(){
@@ -24363,7 +24363,7 @@ function askDockIsMobile(){ try { return window.matchMedia('(max-width:640px)').
 function askDockSheetMic(){ askDockSheetMicFlag = true; Promise.resolve(askVerilumeToggleVoice()).finally(() => { askDockSheetMicFlag = false; }); }
 function askDockAnySurfaceOpen(){
   const q = id => { const e = document.getElementById(id); return !!(e && e.classList.contains('open')); };
-  return q('askVerilumeExpand') || q('askDockBrainTrain') || q('askDockTeam') || q('faqDrawer');
+  return q('askVerilumeExpand') || q('askDockBrainTrain') || q('askDockTeam') || q('askDockContest') || q('faqDrawer');
 }
 function askDockMiniBadge(){
   const bar = document.getElementById('askVerilumeBar'); if (!bar) return;
@@ -24415,8 +24415,91 @@ function askDockMobileInit(){
   }
   window.addEventListener('resize', () => { if (!askDockIsMobile()) { setMini(false); document.body.classList.remove('ask-dock-kb'); } });
 }
+// ---- Dock slice 6: Contest launcher. Wraps the contests that already run; nothing new is generated here. ----
+const askDockContest = { view: 'pick', running: false, ready: false, cached: false };
+function askDockContestEl(){
+  let el = document.getElementById('askDockContest'); if (el) return el;
+  el = document.createElement('div'); el.id = 'askDockContest'; el.className = 'ask-dock-surface'; el.setAttribute('role', 'region'); el.setAttribute('aria-label', 'Contest');
+  document.body.appendChild(el); return el;
+}
+function askDockContestClose(){ const el = document.getElementById('askDockContest'); if (el) el.classList.remove('open'); }
+function askDockContestBadge(){
+  const btn = document.querySelector('.ask-dock-btn[data-key="contest"]'); if (!btn) return;
+  const old = btn.querySelector('.ask-dock-badge'); if (old) old.remove();
+  const on = !!askDockContest.ready;
+  btn.setAttribute('aria-label', on ? 'Contest, results ready' : 'Contest');
+  if (on){ const b = document.createElement('span'); b.className = 'ask-dock-badge'; b.textContent = '1'; btn.appendChild(b); }
+  try { askDockMiniBadge(); } catch (e){}
+}
+function askDockContestCampaign(){
+  let c = null; try { c = cmpRailLoadedCampaign(); } catch (e){}
+  const id = c ? c.id : null;
+  if (askDockContest.cid !== id && !askDockContest.running){ askDockContest.cid = id; askDockContest.cached = false; askDockContest.ready = false; try { delete cmpCopyContestLastResult['askDockContestPanel']; } catch (e){} }
+  return c;
+}
+function askDockContestRow(title, desc, btn){
+  return `<div style="display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:8px;"><div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:0.875rem;">${title}</div><div class="hint" style="margin-top:2px;">${desc}</div></div>${btn}</div>`;
+}
+function askDockContestRender(){
+  const el = askDockContestEl(); const keep = el.scrollTop;
+  const c = askDockContestCampaign();
+  let h = `<button type="button" class="ads-close" aria-label="Close Contest" onclick="askDockContestClose()">✕</button><h2>Contest</h2><div class="ads-sub">Compare drafts from several AI partners and keep the strongest</div>`;
+  if (askDockContest.view === 'copy'){
+    h += `<div style="margin:10px 0 8px;"><button type="button" class="btn-ghost" onclick="askDockContest.view='pick';askDockContestRender()">← All contests</button></div>`;
+    h += `<div style="font-weight:700;margin-bottom:6px;">Campaign writing${c ? ' · ' + escapeHtml(c.name || 'this campaign') : ''}</div>`;
+    h += `<div id="askDockContestPanel"></div><button type="button" id="askDockContestBtn" style="display:none"></button>`;
+    el.innerHTML = h; askDockContestPaint(); return;
+  }
+  const go = (label, fn, dis) => `<button type="button" class="btn-ghost" ${dis ? 'disabled' : `onclick="${fn}"`}>${label}</button>`;
+  const sec = t => `<div style="margin:14px 0 6px;font-size:0.6875rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted,#6B7280);">${t}</div>`;
+  h += sec('Customer Experience');
+  h += askDockContestRow('Campaign writing', c ? `Long form copy for ${escapeHtml(c.name || 'this campaign')}: one draft from each AI partner, scored for campaign fit and brand fit. Pick one, edit it and save it as the campaign copy.` : 'Open a campaign first. The contest writes long form copy for that campaign.', go(askDockContest.cached ? 'See results' : 'Run', 'askDockContestOpenCopy()', !c));
+  h += askDockContestRow('Video script', 'Runs on the Brand page with your brand voice and creative focus. Opens it for you.', go('Open', 'askDockContestOpenVideo()'));
+  h += askDockContestRow('PR', 'Not available yet.', go('Soon', '', true));
+  h += sec('Media Science');
+  h += askDockContestRow('Data plus human analysis', 'Not available yet.', go('Soon', '', true));
+  h += askDockContestRow('Campaign readouts', 'Not available yet.', go('Soon', '', true));
+  h += askDockContestRow('Brand analysis strategy and testing configuration', 'Not available yet.', go('Soon', '', true));
+  h += `<p class="hint" style="margin-top:12px;">Adding your own entry to a contest is not available yet. The Brand Voice Contest stays on the Brand page.</p>`;
+  el.innerHTML = h; el.scrollTop = keep;
+}
+function askDockContestPaint(){
+  const panel = document.getElementById('askDockContestPanel'); if (!panel) return;
+  const last = (typeof cmpCopyContestLastResult !== 'undefined') ? cmpCopyContestLastResult['askDockContestPanel'] : null;
+  if (last){ try { panel.innerHTML = renderCmpCopyContestPanel(last, 'askDockContestFlag', 'askDockContestPanel'); } catch (e){ panel.innerHTML = ''; } }
+  else if (askDockContest.running){ panel.innerHTML = '<p class="hint">Still running. The Contest button shows a mark when results are ready.</p>'; }
+  else askDockContestRun();
+}
+async function askDockContestRun(){
+  const c = askDockContestCampaign(); if (!c || askDockContest.running) return;
+  askDockContest.running = true;
+  try { await cmpRunCampaignCopyContest('askDockContestPanel', 'askDockContestBtn', 'askDockContestFlag'); } catch (e){}
+  askDockContest.running = false;
+  const panel = document.getElementById('askDockContestPanel');
+  const el = document.getElementById('askDockContest'); const open = !!(el && el.classList.contains('open'));
+  if (panel && panel.querySelector('[onclick*="cmpSelectCopyContestCandidate"]')) askDockContest.cached = true;
+  if (!open || askDockContest.view !== 'copy'){ askDockContest.ready = true; askDockContestBadge(); }
+}
+function askDockContestOpenCopy(){
+  const c = askDockContestCampaign(); if (!c){ askDockToast('Open a campaign to run this contest.'); return; }
+  askDockContest.view = 'copy'; askDockContest.ready = false; askDockContestBadge(); askDockContestRender();
+}
+function askDockContestOpenVideo(){
+  askDockContestClose();
+  try { goToStep('voiceContest'); } catch (e){ askDockToast('Open the Brand page to run the video script contest.'); return; }
+  setTimeout(() => { try { const t = document.getElementById('voiceContestNewTileType'); if (t) t.value = 'video_script'; voiceContestOpenNewTile(); } catch (e){} }, 400);
+}
+function askDockContestToggle(){
+  const el = askDockContestEl();
+  if (el.classList.contains('open')){ askDockContestClose(); return; }
+  askDockCloseAll(); el.classList.add('open');
+  if (askDockContest.ready && askDockContestCampaign()){ askDockContest.view = 'copy'; }
+  else if (askDockContest.view === 'copy' && !askDockContestCampaign()){ askDockContest.view = 'pick'; }
+  askDockContest.ready = false; askDockContestBadge(); askDockContestRender();
+}
 function askDockCloseAll(){
   askDockBtClose(); try { askDockTeamClose(); } catch (e){}
+  try { askDockContestClose(); } catch (e){}
   const ex = document.getElementById('askVerilumeExpand'); if (ex && ex.classList.contains('open')) toggleAskVerilumePrompts();
   try { closeFaqDrawer(); } catch (e){}
   if (typeof cmpCollabExpanded !== 'undefined' && cmpCollabExpanded){ try { cmpToggleCollabExpanded(); } catch (e){} }
@@ -24424,15 +24507,18 @@ function askDockCloseAll(){
 function askDockOpen(which){
   const btWasOpen = !!(document.getElementById('askDockBrainTrain') && document.getElementById('askDockBrainTrain').classList.contains('open'));
   const tmWasOpen = !!(document.getElementById('askDockTeam') && document.getElementById('askDockTeam').classList.contains('open'));
+  const ctWasOpen = !!(document.getElementById('askDockContest') && document.getElementById('askDockContest').classList.contains('open'));
   if (which === 'brainTrain' && btWasOpen){ askDockBtClose(); return; }
   if (which === 'team' && tmWasOpen){ askDockTeamClose(); return; }
+  if (which === 'contest' && ctWasOpen){ askDockContestClose(); return; }
   askDockCloseAll();
   try { localStorage.setItem('askDockLast', which); } catch (e){}
   if (which === 'thoughts') openFaqDrawer();
   else if (which === 'brainTrain'){ askDockBtToggle(); }
   else if (which === 'team'){ askDockTeamToggle(); }
+  else if (which === 'contest'){ askDockContestToggle(); }
 }
-document.addEventListener('keydown', e => { if (ASK_DOCK_ON && e.key === 'Escape'){ try { askDockBtClose(); } catch (e2){} try { askDockTeamClose(); } catch (e2){} const ex = document.getElementById('askVerilumeExpand'); if (ex && ex.classList.contains('open')) toggleAskVerilumePrompts(); } });
+document.addEventListener('keydown', e => { if (ASK_DOCK_ON && e.key === 'Escape'){ try { askDockBtClose(); } catch (e2){} try { askDockTeamClose(); } catch (e2){} try { askDockContestClose(); } catch (e2){} const ex = document.getElementById('askVerilumeExpand'); if (ex && ex.classList.contains('open')) toggleAskVerilumePrompts(); } });
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', askDockInit); else askDockInit();
 function toggleAskVerilumePrompts(){
   const toggleEl = document.getElementById('askVerilumeToggle');
