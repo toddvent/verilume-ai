@@ -9271,6 +9271,43 @@ const PRESS_RELEASE_TYPE_LABELS = {
 };
 const PRESS_RELEASE_AUDIENCES = ['consumer', 'business'];
 const PRESS_RELEASE_AUDIENCE_LABELS = { consumer: 'Consumer', business: 'Business / Trade Network' };
+// Reputation Monitoring weekly sweep (2026-10-04). Todd: Perplexity is the
+// basic service in every tier; Brandwatch/Meltwater/Mention stay marketplace
+// options. Two small tables: one row per sweep, one row per mention found.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS reputation_sweeps (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    ranAt TEXT NOT NULL,
+    status TEXT NOT NULL,
+    mentionCount INTEGER NOT NULL DEFAULT 0,
+    sentimentLabel TEXT,
+    sentimentScore INTEGER,
+    sentimentChange INTEGER,
+    sourcesJson TEXT,
+    sourceNote TEXT,
+    triggeredBy TEXT,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS reputation_mentions (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    sweepId TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    title TEXT NOT NULL,
+    url TEXT,
+    sourceName TEXT,
+    publishedDate TEXT,
+    sentiment TEXT NOT NULL,
+    needsResponse INTEGER NOT NULL DEFAULT 0,
+    note TEXT,
+    origin TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
 ensureColumn('press_releases', 'releaseType', 'TEXT');
 ensureColumn('press_releases', 'audience', 'TEXT');
 
@@ -20668,6 +20705,166 @@ Submit the post via the submit_copy tool (hashtags included in the copy text).`;
   }
 }
 
+// ---------- Reputation Monitoring weekly sweep (2026-10-04) ----------
+// Todd's decisions: Perplexity is the BASIC service in every tier (the other
+// listening vendors are marketplace options); GDELT (free public news index,
+// no account or key) is a second, independent news source; sweeps run Monday
+// early morning so results are ready by 8:00 AM; the screen says plainly it
+// is a sample of the web, not every mention.
+//
+// Anti-fabrication rule: a Perplexity mention is kept ONLY if its URL is one
+// of the citations/search results Perplexity itself returned for that call.
+// Anything else is dropped, so a mention on screen always links to a real page.
+const REP_SWEEP_SOURCES_LABEL = 'Perplexity web search and GDELT public news';
+const REP_CHANNELS = ['News', 'Social', 'Reddit', 'Reviews', 'Other'];
+const REP_SENTIMENTS = ['positive', 'negative', 'neutral'];
+const REP_MAX_MENTIONS = 40;
+
+function repSafeUrl(u){
+  if (typeof u !== 'string') return null;
+  try { const x = new URL(u.trim()); return (x.protocol === 'http:' || x.protocol === 'https:') ? x.toString() : null; } catch (e){ return null; }
+}
+function repUrlKey(u){
+  try { const x = new URL(u); return (x.hostname.replace(/^www\./, '') + x.pathname.replace(/\/+$/, '')).toLowerCase(); } catch (e){ return String(u).toLowerCase(); }
+}
+function repHost(u){ try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e){ return null; } }
+function repChannelForUrl(u, claimed){
+  const h = (repHost(u) || '');
+  if (/reddit\.com$/.test(h)) return 'Reddit';
+  if (/(tripadvisor|yelp|trustpilot|google\.com|bbb\.org|glassdoor|cruisecritic)/.test(h)) return 'Reviews';
+  if (/(facebook|instagram|x\.com|twitter|tiktok|linkedin|youtube|threads\.net|bsky)/.test(h)) return 'Social';
+  return REP_CHANNELS.includes(claimed) ? claimed : 'News';
+}
+const repSleep = ms => new Promise(r => setTimeout(r, ms));
+
+function repBrandTerms(account){
+  const names = [];
+  const company = (account.company || '').trim();
+  if (company) names.push(company);
+  try {
+    const kw = account.brandKeywordsJson ? JSON.parse(account.brandKeywordsJson) : null;
+    if (kw && Array.isArray(kw.brand)) kw.brand.slice(0, 3).forEach(b => { const t = String(b || '').trim(); if (t && !names.some(n => n.toLowerCase() === t.toLowerCase())) names.push(t); });
+  } catch (e){ /* brand keywords optional */ }
+  return names.slice(0, 4);
+}
+
+// Perplexity (basic service). Returns { mentions, note }.
+async function repPerplexitySweep(account, terms){
+  if (!process.env.PERPLEXITY_API_KEY) return { mentions: [], note: 'Perplexity is not configured (PERPLEXITY_API_KEY is not set).' };
+  const prompt = `Find public mentions of the brand "${terms[0]}"${terms.length > 1 ? ` (also known as: ${terms.slice(1).join(', ')})` : ''}${account.industry ? ` in the ${account.industry} industry` : ''} published in the last 7 days: news articles, Reddit threads, review sites and public social posts.\n\nRules:\n- Only include items you can link to a real page. Never invent a mention, a quote or a URL. If you find nothing, return an empty list.\n- Do not include the brand's own website or its own social accounts.\n- "needsResponse" is true only when a customer or journalist raised a problem, complaint or question about the brand that has no visible reply from the brand.\n- "note" is one short factual sentence about what the item says.\n\nReturn ONLY a JSON object, no commentary: {"mentions":[{"channel":"News|Social|Reddit|Reviews|Other","title":"...","url":"https://...","date":"YYYY-MM-DD or empty","sentiment":"positive|negative|neutral","needsResponse":true|false,"note":"..."}]}`;
+  let data;
+  try {
+    const resp = await fetchWithTimeout('https://api.perplexity.ai/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}` },
+      body: JSON.stringify({ model: process.env.PERPLEXITY_MODEL || 'sonar-pro', search_recency_filter: 'week', messages: [{ role: 'user', content: prompt }] })
+    }, 60000);
+    if (!resp.ok){ let b = ''; try { b = (await resp.text()).slice(0, 200); } catch (e2){} throw new Error('HTTP ' + resp.status + (b ? ': ' + b : '')); }
+    data = await resp.json();
+  } catch (e){ return { mentions: [], note: 'Perplexity search failed: ' + (e && e.message ? String(e.message).slice(0, 160) : 'unknown error') }; }
+  const text = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+  const parsed = parseJsonBlock(text);
+  const allowed = new Set();
+  (Array.isArray(data.citations) ? data.citations : []).forEach(c => { const u = repSafeUrl(typeof c === 'string' ? c : (c && c.url)); if (u) allowed.add(repUrlKey(u)); });
+  (Array.isArray(data.search_results) ? data.search_results : []).forEach(r => { const u = repSafeUrl(r && r.url); if (u) allowed.add(repUrlKey(u)); });
+  const out = [];
+  let dropped = 0;
+  for (const m of ((parsed && Array.isArray(parsed.mentions)) ? parsed.mentions : [])){
+    const url = repSafeUrl(m && m.url);
+    if (!url || !allowed.has(repUrlKey(url))){ dropped++; continue; }
+    const sentiment = REP_SENTIMENTS.includes(m.sentiment) ? m.sentiment : 'neutral';
+    out.push({
+      channel: repChannelForUrl(url, m.channel), title: String(m.title || url).trim().slice(0, 220), url,
+      sourceName: repHost(url), publishedDate: /^\d{4}-\d{2}-\d{2}$/.test(String(m.date || '')) ? m.date : null,
+      sentiment, needsResponse: !!m.needsResponse && sentiment === 'negative',
+      note: String(m.note || '').trim().slice(0, 300) || null, origin: 'perplexity'
+    });
+  }
+  return { mentions: out, note: dropped ? `${dropped} unlinked item${dropped === 1 ? '' : 's'} left out because no source link could be confirmed.` : null };
+}
+
+// GDELT (free second news source). DOC 2.0 API, no key or account. Asks for
+// no more than one request every 5 seconds, so the three calls are spaced.
+async function repGdeltFetch(query){
+  const url = 'https://api.gdeltproject.org/api/v2/doc/doc?mode=artlist&format=json&timespan=7d&sort=datedesc&maxrecords=25&query=' + encodeURIComponent(query);
+  const resp = await fetchWithTimeout(url, { headers: { 'Accept': 'application/json' } }, 20000);
+  if (!resp.ok) throw new Error('GDELT returned HTTP ' + resp.status);
+  const raw = await resp.text();
+  if (!raw.trim()) return [];
+  let j; try { j = JSON.parse(raw); } catch (e){ throw new Error('GDELT returned a non-JSON reply'); }
+  return Array.isArray(j.articles) ? j.articles : [];
+}
+async function repGdeltSweep(terms){
+  const q = '(' + terms.map(t => '"' + t.replace(/"/g, '') + '"').join(' OR ') + ') sourcelang:english';
+  let all, neg, pos;
+  try {
+    all = await repGdeltFetch(q); await repSleep(5200);
+    neg = await repGdeltFetch(q + ' tone<-3'); await repSleep(5200);
+    pos = await repGdeltFetch(q + ' tone>3');
+  } catch (e){ return { mentions: [], note: 'GDELT news search failed: ' + String(e.message || e).slice(0, 140) }; }
+  const negKeys = new Set(neg.map(a => repUrlKey(a.url))), posKeys = new Set(pos.map(a => repUrlKey(a.url)));
+  const out = [];
+  for (const a of all){
+    const url = repSafeUrl(a && a.url); if (!url) continue;
+    const k = repUrlKey(url);
+    const sentiment = negKeys.has(k) ? 'negative' : (posKeys.has(k) ? 'positive' : 'neutral');
+    const sd = String(a.seendate || '');
+    out.push({
+      channel: 'News', title: String(a.title || url).trim().slice(0, 220), url, sourceName: a.domain || repHost(url),
+      publishedDate: /^\d{8}T/.test(sd) ? `${sd.slice(0, 4)}-${sd.slice(4, 6)}-${sd.slice(6, 8)}` : null,
+      sentiment, needsResponse: false,
+      note: sentiment === 'negative' ? 'News coverage with a negative tone. Worth reading before it spreads.' : (sentiment === 'positive' ? 'News coverage with a positive tone.' : null),
+      origin: 'gdelt'
+    });
+  }
+  return { mentions: out, note: null };
+}
+
+// One sweep for one account. Replaces the account's current list with this
+// week's findings (history of sweeps is kept; mentions are per sweep).
+async function runReputationSweep(accountId, triggeredBy){
+  const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+  if (!account) throw new Error('account not found');
+  const terms = repBrandTerms(account);
+  if (!terms.length) throw new Error('This account has no company name to search for.');
+  const pplx = await repPerplexitySweep(account, terms);
+  const gd = await repGdeltSweep(terms);
+  const seen = new Set(); const merged = [];
+  for (const m of [...pplx.mentions, ...gd.mentions]){
+    const k = repUrlKey(m.url); if (seen.has(k)) continue; seen.add(k); merged.push(m);
+    if (merged.length >= REP_MAX_MENTIONS) break;
+  }
+  const sourcesOk = { perplexity: !pplx.note || pplx.mentions.length > 0 || /left out/.test(pplx.note || ''), gdelt: !gd.note };
+  const notes = [pplx.note, gd.note].filter(Boolean);
+  const nothingWorked = (!process.env.PERPLEXITY_API_KEY || /failed|not configured/.test(pplx.note || '')) && /failed/.test(gd.note || '');
+  const status = nothingWorked ? 'failed' : (notes.some(n => /failed|not configured/.test(n)) ? 'partial' : 'ok');
+  const now = new Date().toISOString();
+  const sweepId = generateId('RSW');
+  const pos = merged.filter(m => m.sentiment === 'positive').length, neg = merged.filter(m => m.sentiment === 'negative').length;
+  let score = null, label = null, change = null;
+  if (merged.length){
+    score = Math.max(0, Math.min(100, Math.round(50 + 50 * (pos - neg) / merged.length)));
+    label = score >= 70 ? 'Positive' : (score <= 40 ? 'Negative' : 'Mixed');
+    const prev = db.prepare("SELECT sentimentScore FROM reputation_sweeps WHERE accountId = ? AND status <> 'failed' AND sentimentScore IS NOT NULL ORDER BY ranAt DESC").get(accountId);
+    if (prev && prev.sentimentScore != null) change = score - prev.sentimentScore;
+  }
+  if (status !== 'failed'){
+    const ins = db.prepare(`INSERT INTO reputation_mentions (id, accountId, sweepId, channel, title, url, sourceName, publishedDate, sentiment, needsResponse, note, origin, createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    merged.forEach(m => ins.run(generateId('RMN'), accountId, sweepId, m.channel, m.title, m.url, m.sourceName, m.publishedDate, m.sentiment, m.needsResponse ? 1 : 0, m.note, m.origin, now));
+  }
+  db.prepare(`INSERT INTO reputation_sweeps (id, accountId, ranAt, status, mentionCount, sentimentLabel, sentimentScore, sentimentChange, sourcesJson, sourceNote, triggeredBy) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(sweepId, accountId, now, status, status === 'failed' ? 0 : merged.length, label, score, change, JSON.stringify(sourcesOk), notes.join(' ') || null, triggeredBy || 'schedule');
+  return { sweepId, status, mentionCount: merged.length, note: notes.join(' ') || null };
+}
+
+// Latest sweep + its mentions (the last sweep that did not fail).
+function repLatestForAccount(accountId){
+  const last = db.prepare('SELECT * FROM reputation_sweeps WHERE accountId = ? ORDER BY ranAt DESC').get(accountId) || null;
+  const good = db.prepare("SELECT * FROM reputation_sweeps WHERE accountId = ? AND status <> 'failed' ORDER BY ranAt DESC").get(accountId) || null;
+  const mentions = good ? db.prepare('SELECT * FROM reputation_mentions WHERE accountId = ? AND sweepId = ? ORDER BY needsResponse DESC, publishedDate DESC').all(accountId, good.id) : [];
+  return { lastSweep: last, sweep: good, mentions, sourcesLabel: REP_SWEEP_SOURCES_LABEL };
+}
+
 // 2026-08-29 — continuous competitor monitoring + the generative Daily
 // Brief, per direct instruction: "I wouldn't leave the AOV competitors
 // untouched. Competitive info changes over time. We should continuously
@@ -27466,6 +27663,45 @@ Submit your response via the campaign_intake_turn tool.`;
       return sendJson(res, 200, results);
     }
 
+
+    // ---------- Reputation Monitoring weekly sweep (2026-10-04) ----------
+    // GET latest saved sweep; POST runs one on demand (at most one per hour
+    // per account, because each sweep spends a Perplexity call); GET cron
+    // target runs every account on the Monday early-morning schedule.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'reputation'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      return sendJson(res, 200, repLatestForAccount(accountId));
+    }
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'reputation' && parts[4] === 'sweep'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const last = db.prepare('SELECT ranAt FROM reputation_sweeps WHERE accountId = ? ORDER BY ranAt DESC').get(accountId);
+      if (last && Date.now() - new Date(last.ranAt).getTime() < 3600 * 1000){
+        return sendJson(res, 429, { error: 'A sweep already ran in the last hour. Try again later.', ranAt: last.ranAt });
+      }
+      try {
+        const result = await runReputationSweep(accountId, 'manual');
+        return sendJson(res, 200, Object.assign({}, result, repLatestForAccount(accountId)));
+      } catch (e){ return sendJson(res, 400, { error: e.message }); }
+    }
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'cron' && parts[2] === 'reputation-sweep'){
+      if (!process.env.CRON_SECRET) return sendJson(res, 501, { error: 'CRON_SECRET is not configured — refusing to run an unauthenticated cron endpoint.' });
+      if ((req.headers['authorization'] || '') !== `Bearer ${process.env.CRON_SECRET}`) return sendJson(res, 401, { error: 'unauthorized' });
+      // Oldest sweep first; skip accounts already swept in the last 6 days so a
+      // second run the same morning picks up whatever the time limit cut off.
+      const accts = db.prepare('SELECT accountId FROM accounts WHERE paidTier IS NOT NULL').all().map(a => aliasVal(a, 'accountId'));
+      const lastRun = id => { const r = db.prepare('SELECT ranAt FROM reputation_sweeps WHERE accountId = ? ORDER BY ranAt DESC').get(id); return r ? new Date(r.ranAt).getTime() : 0; };
+      const due = accts.map(id => ({ id, t: lastRun(id) })).filter(x => Date.now() - x.t > 6 * 86400 * 1000).sort((a, b) => a.t - b.t);
+      const deadline = Date.now() + 95000;
+      const results = { eligible: accts.length, due: due.length, swept: 0, failed: [], remaining: 0 };
+      for (let i = 0; i < due.length; i++){
+        if (Date.now() > deadline){ results.remaining = due.length - i; break; }
+        try { const r = await runReputationSweep(due[i].id, 'schedule'); if (r.status === 'failed') results.failed.push({ accountId: due[i].id, note: r.note }); else results.swept++; }
+        catch (e){ results.failed.push({ accountId: due[i].id, note: e.message }); }
+      }
+      return sendJson(res, 200, results);
+    }
 
     // GET /api/cron/brain-dump — runs and posts the weekly Brain Dump for every paid account.
     // Scheduled after the curated-news refresh (Mondays 13:00 UTC), see vercel.json. Same fail-closed CRON_SECRET pattern.
