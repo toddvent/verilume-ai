@@ -7,12 +7,16 @@
   },
   "crons": [
     {
+      "path": "/api/cron/reputation-sweep",
+      "schedule": "0 9 * * 1"
+    },
+    {
       "path": "/api/cron/refresh-intelligence",
-      "schedule": "0 13 * * 1"
+      "schedule": "0 10 * * 1"
     },
     {
       "path": "/api/cron/brain-dump",
-      "schedule": "0 14 * * 1"
+      "schedule": "0 11 * * 1"
     },
     {
       "path": "/api/cron/sync-snowflake",
