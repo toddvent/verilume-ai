@@ -28117,7 +28117,17 @@ async function ttbLoad(){
   catch (e){ ttb.error = true; }
   ttb.loading = false; ttbRerender();
 }
-function ttbRerender(){ const stepEl = document.getElementById('step-manageAccount'); if (stepEl && stepEl.classList.contains('active')) renderAiPartnerOnboardingHub(true); }
+function ttbRerender(){
+  const stepEl = document.getElementById('step-manageAccount');
+  if (!(stepEl && stepEl.classList.contains('active'))) return;
+  // 2026-10-04 — keep the user's place: the hub redraw rebuilds the whole module (and briefly shrinks it while loading),
+  // which dropped the page to the bottom after a budget upload. Pin the budget-upload slot to the same screen position.
+  const slotBefore = document.getElementById('ttbSlot-marketingBudgetUpload');
+  const topBefore = slotBefore && slotBefore.isConnected ? slotBefore.getBoundingClientRect().top : null;
+  renderAiPartnerOnboardingHub(true);
+  const slotAfter = document.getElementById('ttbSlot-marketingBudgetUpload');
+  if (topBefore != null && slotAfter){ const d = slotAfter.getBoundingClientRect().top - topBefore; if (Math.abs(d) > 1) window.scrollBy(0, d); }
+}
 function ttbGo(step, arg){ if (arg) goToStep(step, arg); else goToStep(step); }
 function ttbSetTab(t){ ttb.tab = t; ttbRerender(); }
 function ttbFmtDate(iso){ if (!iso) return ''; const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString([], { month: 'short', day: 'numeric' }); }
@@ -28427,6 +28437,7 @@ async function ttbBuApply(){
     if (typeof mbuLoadYearsList === 'function') mbuLoadYearsList();
     ttbBuReset(); ttbBu.stage = 'done'; ttbBu.fileName = keep.fileName; ttbBu.year = keep.year; ttbBu.open = open;
     ttbBuRender();
+    try { const sl = document.getElementById('ttbSlot-marketingBudgetUpload'); if (sl){ const r = sl.getBoundingClientRect(); if (r.top < 0 || r.bottom > window.innerHeight) sl.scrollIntoView({ block: 'center', behavior: 'smooth' }); } } catch (e){}
     try { ttbLoad(); } catch (e){}
   } catch (e){ ttbBuSet({ stage: 'map', msg: 'Could not reach the server. Nothing was saved.' }); }
 }
