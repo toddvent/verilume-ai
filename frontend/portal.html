@@ -4775,6 +4775,7 @@
     <div class="seo-section" id="repMentionsSection">
       <div class="seo-section-head"><div class="seo-section-title">👁 Reputation Monitoring</div></div>
       <p class="seo-section-sub">Brand mentions across news, social, Reddit, and reviews, flagged by sentiment — the ones marked "Needs Response" haven't had one yet.</p>
+      <div id="repSweepBar" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:0 0 10px;"></div>
       <div class="seo-card-list" id="repMentionsList"></div>
     </div>
 
@@ -22637,7 +22638,7 @@ function computeConnectedSignals(){
   // technical crawl issue both already point at (Search Optimization) —
   // three facts in two workstreams, one real story.
   const anomaly = SEO_DATA.ga4.anomalies[0];
-  const relatedMention = REPUTATION_DATA.mentions.find(m => m.channel === 'Reddit' && m.sentiment === 'negative');
+  const relatedMention = REPUTATION_DATA.live ? null : REPUTATION_DATA.mentions.find(m => m.channel === 'Reddit' && m.sentiment === 'negative'); // demo data only: this signal pairs the demo GA4 anomaly with the demo thread
   if (anomaly && relatedMention){
     signals.push({
       workstreams: [{ label: 'Search Optimization', key: 'searchOptimization', anchor: 'seoGa4Section' }, { label: 'Reputation', key: 'reputation', anchor: 'repMentionsSection' }],
@@ -58978,17 +58979,69 @@ function repSentimentBadgeClass(sentiment){
   return { positive: 'positive', negative: 'negative', mixed: 'mixed' }[sentiment] || 'mixed';
 }
 
+function repSafeHref(u){ try { const x = new URL(u); return (x.protocol === 'http:' || x.protocol === 'https:') ? x.toString() : ''; } catch (e){ return ''; } }
+
 function renderRepMentions(){
   const el = document.getElementById('repMentionsList');
   if (!el) return;
-  el.innerHTML = REPUTATION_DATA.mentions.map(m => `
+  const live = REPUTATION_DATA.live;
+  const bar = document.getElementById('repSweepBar');
+  if (bar){
+    const when = live && live.ranAt ? new Date(live.ranAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : null;
+    const canSweep = dataSourceLabel === 'backend' && !!state.companyId;
+    bar.innerHTML = `<div class="seo-row-detail" style="flex:1;min-width:240px;"><strong>Weekly web sweep.</strong> Perplexity web search and public news (GDELT). A sample of the web, not every mention. ${live ? 'Last sweep: ' + escapeHtml(when) + '.' : 'Sample data is shown below until your first sweep runs (Monday early morning, ready by 8:00 AM).'}${live && live.sourceNote ? ' <span class="hint">' + escapeHtml(live.sourceNote) + '</span>' : ''}${live && live.status === 'failed' ? ' <span class="hint">The latest sweep could not run, so the previous results are shown.</span>' : ''}<span id="repSweepMsg" class="hint" style="margin-left:6px;"></span></div>${canSweep ? '<button type="button" class="btn-ghost" id="repSweepBtn" onclick="repRunSweepNow()">Sweep now</button>' : ''}`;
+  }
+  if (live && !REPUTATION_DATA.mentions.length){
+    el.innerHTML = '<div class="seo-row"><div class="seo-row-main"><div class="seo-row-title">No public mentions found this week.</div><div class="seo-row-detail">That can mean a quiet week, or mentions this sweep could not see. Brandwatch, Meltwater and Mention (below) cover social posts in depth.</div></div></div>';
+    return;
+  }
+  el.innerHTML = REPUTATION_DATA.mentions.map(m => {
+    const href = m.url ? repSafeHref(m.url) : '';
+    const titleHtml = href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(m.title)}</a>` : escapeHtml(m.title);
+    const when = m.date ? ` <span class="hint" style="font-weight:400;">— ${escapeHtml(m.date)}</span>` : '';
+    const src = m.sourceName ? ` <span class="hint" style="font-weight:400;">· ${escapeHtml(m.sourceName)}</span>` : '';
+    return `
     <div class="seo-row">
       <div class="seo-row-main">
-        <div class="seo-row-title"><span class="rep-channel-tag">${escapeHtml(m.channel)}</span> · ${escapeHtml(m.title)} <span class="hint" style="font-weight:400;">— ${escapeHtml(m.date)}</span></div>
-        <div class="seo-row-detail">${escapeHtml(m.note)}</div>
+        <div class="seo-row-title"><span class="rep-channel-tag">${escapeHtml(m.channel)}</span> · ${titleHtml}${src}${when}</div>
+        ${m.note ? `<div class="seo-row-detail">${escapeHtml(m.note)}</div>` : ''}
       </div>
       <span class="seo-badge rep-badge ${m.urgent ? 'urgent' : repSentimentBadgeClass(m.sentiment)}">${m.urgent ? 'Needs Response' : (m.sentiment.charAt(0).toUpperCase() + m.sentiment.slice(1))}</span>
-    </div>`).join('');
+    </div>`;
+  }).join('');
+}
+
+// Weekly Reputation sweep (2026-10-04). Loads the latest saved sweep and, when
+// one exists, replaces the illustrative sample in REPUTATION_DATA with it.
+// Accounts that have never been swept keep the labelled sample.
+async function loadReputationLive(){
+  if (dataSourceLabel !== 'backend' || !state.companyId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/reputation`);
+    if (!resp.ok) return;
+    const d = await resp.json();
+    if (!d.sweep) return;
+    REPUTATION_DATA.live = { ranAt: d.lastSweep ? d.lastSweep.ranAt : d.sweep.ranAt, status: d.lastSweep ? d.lastSweep.status : 'ok', sourceNote: d.lastSweep ? d.lastSweep.sourceNote : null };
+    REPUTATION_DATA.sentiment = d.sweep.sentimentLabel ? { label: d.sweep.sentimentLabel, score: d.sweep.sentimentScore, changeVsLastPeriod: d.sweep.sentimentChange } : { label: 'No data', score: '–', changeVsLastPeriod: null };
+    REPUTATION_DATA.mentions = (d.mentions || []).map(m => ({ channel: m.channel, title: m.title, url: m.url, sourceName: m.sourceName, date: m.publishedDate, sentiment: m.sentiment, urgent: !!m.needsResponse, note: m.note, origin: m.origin }));
+  } catch (e){ /* keep whatever is on screen */ }
+  if (document.getElementById('repMentionsList')) renderReputationStep();
+  const signalsEl = document.getElementById('connectedSignalsList');
+  if (signalsEl) renderConnectedSignals();
+}
+
+async function repRunSweepNow(){
+  const btn = document.getElementById('repSweepBtn'), msg = document.getElementById('repSweepMsg');
+  if (btn) btn.disabled = true;
+  if (msg) msg.textContent = 'Sweeping. This takes about a minute.';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/reputation/sweep`, { method: 'POST' });
+    const d = await resp.json().catch(() => ({}));
+    if (resp.status === 429){ if (msg) msg.textContent = 'A sweep already ran in the last hour.'; }
+    else if (!resp.ok){ if (msg) msg.textContent = d.error || 'The sweep could not run.'; }
+    else { await loadReputationLive(); const m2 = document.getElementById('repSweepMsg'); if (m2) m2.textContent = d.status === 'failed' ? 'The sweep could not reach its sources.' : 'Done.'; }
+  } catch (e){ if (msg) msg.textContent = 'The sweep could not run.'; }
+  const b2 = document.getElementById('repSweepBtn'); if (b2) b2.disabled = false;
 }
 
 // ---------- PR & Corp Comm real backend (round 132c22b) ----------
@@ -74276,6 +74329,7 @@ async function posSetDecision(contributionId, status){
     loadCampaigns(),
     loadTeam(),
     loadPrCorpCommData(),
+    loadReputationLive(),
     loadMediaPlan(),
     loadContentLibrary(),
     loadAccountIntelligence(),
