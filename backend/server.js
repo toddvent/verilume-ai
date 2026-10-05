@@ -18456,6 +18456,24 @@ async function sendSignupEmailCode(email){
   return { provider: delivered ? 'postmark' : 'interim', code };
 }
 
+// Wave 1.3 (2026-10-05) — how many accounts one phone number may be attached
+// to. A phone is a recovery and sign-in channel, so one number backing many
+// accounts is a sign of bulk fake sign-ups. Default 3 (SIGNUP_MAX_PER_PHONE
+// overrides). Numbers listed in SIGNUP_PHONE_ALLOWLIST (comma-separated, any
+// formatting) are exempt, for the team's own test numbers. Matches on the
+// last 10 digits so "+1 954-805-4195" and "9548054195" count as one number.
+const SIGNUP_MAX_PER_PHONE = Math.max(1, parseInt(process.env.SIGNUP_MAX_PER_PHONE || '3', 10) || 3);
+function phoneLast10(p){ const d = String(p || '').replace(/\D/g, ''); return d.length >= 7 ? d.slice(-10) : ''; }
+function signupPhoneCapReached(phone){
+  const last10 = phoneLast10(phone);
+  if (!last10) return false;
+  const allow = String(process.env.SIGNUP_PHONE_ALLOWLIST || '').split(',').map(phoneLast10).filter(Boolean);
+  if (allow.includes(last10)) return false;
+  const row = db.prepare('SELECT COUNT(*) AS c FROM team_members WHERE phone LIKE ?').get('%' + last10);
+  return !!row && Number(row.c) >= SIGNUP_MAX_PER_PHONE;
+}
+const SIGNUP_PHONE_CAP_MESSAGE = 'That phone number is already used on several Verilume accounts. Use a different number, or contact support.';
+
 // Added 2026-08-20 — login step-up MFA, shared by login-user (first send)
 // and request-login-mfa (resend / channel switch). Thin wrapper choosing
 // sendVerificationCode() (phone, Twilio-aware) vs sendSignupEmailCode()
@@ -24809,6 +24827,12 @@ async function handleRequest(req, res) {
       if (emailTaken){
         return sendJson(res, 409, { error: 'this email is already registered to a Verilume account' });
       }
+      if (body.phone && signupPhoneCapReached(body.phone)){
+        return sendJson(res, 409, { error: SIGNUP_PHONE_CAP_MESSAGE });
+      }
+      if (assessmentRateLimitExceeded(req, 'signup-account', 5)){
+        return sendJson(res, 429, { error: 'Too many accounts created from this network. Try again later or contact support.' });
+      }
       // Consume now — this is the "one verified code, one account" guarantee.
       db.prepare('UPDATE phone_verifications SET consumedAt = ? WHERE id = ?').run(new Date().toISOString(), verification.id);
       const tempPassword = generateTempPassword();
@@ -25520,6 +25544,9 @@ async function handleRequest(req, res) {
           return sendJson(res, 409, { error: 'this email is already registered to a Verilume account — sign in instead' });
         }
       }
+      if (channel === 'sms' && signupPhoneCapReached(target)){
+        return sendJson(res, 409, { error: SIGNUP_PHONE_CAP_MESSAGE });
+      }
       const now = new Date();
       const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
       const recentCount = db.prepare(
@@ -25550,6 +25577,13 @@ async function handleRequest(req, res) {
       // locally-checked regardless of delivery provider (see
       // sendSignupEmailCode()'s own comment), so they must always be
       // hashed here, not just on the interim/no-vendor path.
+      // Wave 1.3 — on the live host a code that could not be delivered is
+      // never shown on screen (that would defeat the check). Local demo only.
+      if (sendResult.provider === 'interim' && process.env.DATABASE_URL){
+        return sendJson(res, 502, { error: channel === 'sms'
+          ? 'Could not send a text code right now. You can try email verification instead.'
+          : 'Could not send an email code right now. Try again shortly.' });
+      }
       let codeHash = null, codeSalt = null;
       if (sendResult.provider === 'interim' || channel === 'email'){
         const hashed = hashAccessCode(sendResult.code);
