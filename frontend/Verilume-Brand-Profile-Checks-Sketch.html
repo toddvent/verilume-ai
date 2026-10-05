@@ -1,0 +1,53 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Brand Profile Checks Sketch</title><style>:root{--ink:#1D1D1F;--bg:#FFFFFF;--dim:#F5F5F7;--mute:#6E6E73;--line:#D2D2D7;--hair:#E8E8ED;--acc:#1E2761;--accbg:#E9EBF7;--amber:#D08A3E;--p1:#C0273C;--p1bg:#FBE9EC;--p2:#B8752E;--p2bg:#F3E3CC;--ok:#1E8E4A;--okbg:#E4F4EA;--shadow:0 1px 2px rgba(0,0,0,.04)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;padding:24px 16px 70px}
+.wrap{max-width:1040px;margin:0 auto}h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:34px 0 4px}p.sub{color:var(--mute);margin:0 0 12px}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:10px 0;box-shadow:var(--shadow)}
+.hd{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px}.t{font-size:16px;font-weight:700}.m{font-size:12px;color:var(--mute)}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--hair);vertical-align:top}th{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--mute)}.r{text-align:right;font-variant-numeric:tabular-nums}
+.tag{display:inline-block;font-size:12px;border:1px solid var(--line);border-radius:999px;padding:1px 9px;color:var(--mute);white-space:nowrap}.tag.ok{color:var(--ok);border-color:var(--ok);background:var(--okbg)}.tag.w{color:var(--p2);border-color:var(--p2);background:var(--p2bg)}
+.btn{display:inline-block;border:1px solid var(--line);border-radius:980px;padding:5px 14px;font-size:13px;margin:6px 6px 0 0;background:#fff;font-weight:600}.btn.p{background:var(--ink);color:#fff;border-color:var(--ink)}
+.lk{font-size:13px;font-weight:600;color:var(--acc);text-decoration:underline}
+.ans{border:1px solid var(--hair);border-radius:10px;padding:10px 14px;background:var(--dim);margin:6px 0;font-size:14px}.src{font-size:12px;color:var(--mute);margin-top:4px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:760px){.cols{grid-template-columns:1fr}}.cols .card{margin:0}
+.note{font-size:13px;color:var(--mute);border-left:3px solid var(--amber);padding:2px 10px;margin:10px 0}
+.dec li{margin:6px 0}.chip{display:inline-block;font-size:11px;font-weight:700;border-radius:5px;padding:1px 7px;margin-right:4px;color:#fff;background:#4F46E5}
+</style></head><body><div class="wrap">
+<h1>Brand profile checks: sketch for approval</h1>
+<p class="sub">Where it sits: Search Everywhere, below Approved FAQs. Static sketch. Page titles, descriptions and searches are real examples from the Atlas files and site check; the status and wording are examples.</p>
+
+<h2>1. Brand checks</h2>
+<p class="sub">Five rule-based checks run against what the account already holds: confirmed brand names, approved brand description, voice guide and avoided terms, approved facts, the latest site check, and Search Console. Nothing is scraped and no model is needed to decide a result.</p>
+<div class="card"><div class="hd"><div class="t">Brand checks</div><div class="m">Site check Oct 2, 2026 · Search Console through Sep 29, 2026 <span class="lk">&#8681;</span></div></div>
+<table><thead><tr><th>Check</th><th>Result</th><th>What we found</th><th></th></tr></thead><tbody>
+<tr><td><b>Name is used the same way</b></td><td><span class="tag ok">Pass</span></td><td>Page titles use a confirmed brand name.</td><td></td></tr>
+<tr><td><b>Pages say what they are</b></td><td><span class="tag w">Needs attention</span></td><td>2 of 3 checked pages have the title "Atlas Ocean Voyages", including the Antarctica page. 1 page has no description.</td><td><span class="lk">Add to priorities</span></td></tr>
+<tr><td><b>Pages match the voice and facts</b></td><td><span class="tag w">Needs attention</span></td><td>The home page description uses a term on your avoided list.</td><td><span class="lk">Add to priorities</span></td></tr>
+<tr><td><b>What people add to your name</b></td><td><span class="tag w">Needs attention</span></td><td>"atlas ocean voyages reviews" has 2,941 impressions, the largest add-on to your name. Your site has no page with reviews in its title or headings.</td><td><span class="lk">Add to priorities</span></td></tr>
+<tr><td><b>Approved FAQs match current facts</b></td><td><span class="tag">Can't check yet</span></td><td>Needs at least one approved FAQ and one saved fact.</td><td></td></tr>
+</tbody></table>
+<div class="note">A page counts as checked only if it is in the latest site check. Pages outside it show "Not checked", never a pass.</div></div>
+
+<h2>2. What each check does</h2>
+<div class="cols">
+<div class="card"><div class="t">Name is used the same way</div><p class="sub">Compares the brand name in titles and descriptions with your confirmed brand names. A close variant that is not confirmed is shown for the team to confirm or fix on the page.</p></div>
+<div class="card"><div class="t">Pages say what they are</div><p class="sub">For the pages with the most search impressions: a title unique to the page, a description present, and the page's main group or destination named in the title. Uses the site check data.</p></div>
+<div class="card"><div class="t">Pages match the voice and facts</div><p class="sub">Titles and descriptions are checked for avoided terms from the voice guide, and for numbers, prices or superlatives that are not in your approved facts. The team decides whether the page or the fact is wrong.</p></div>
+<div class="card"><div class="t">What people add to your name</div><p class="sub">Groups brand searches by the word added to the name, such as reviews, cancel, refund, problems, or a competitor. Reputation words are flagged when a page does not answer them. This is demand, not sentiment.</p></div>
+</div>
+<div class="card"><div class="t">Approved FAQs match current facts</div><p class="sub">When a fact behind an approved FAQ is edited or removed, the FAQ is marked "Review" and the answer is shown next to the changed fact. It is never edited automatically.</p></div>
+
+<h2>3. How a result becomes work</h2>
+<div class="card"><div class="ans">Priority P2 · <b>Give the Antarctica page its own title</b> · Rated · due in 14 days<div class="src">Source: brand check "Pages say what they are". The page has 1.7M impressions and the same title as the home page.</div></div>
+<p class="sub">Add to priorities uses the same list, limit of 5 active items, status and owner as every other finding. Nothing is changed on your site.</p></div>
+
+<div class="note">Not included: sentiment or review content (needs a licensed source, so it belongs in the partner area), competitor pages, and image or logo checks.</div>
+
+<h2>Decisions for you</h2>
+<ol class="dec">
+<li><b>Page scope.</b> Check the top 10 pages by search impressions that are in the site check, or every page in it?</li>
+<li><b>Add-on words.</b> Use a standard list (reviews, cancel, refund, complaints, problems, scam, login) plus competitor names from Competitive Positioning, with the team able to add words?</li>
+<li><b>Who resolves a result.</b> Any team member can mark a result "Fixed" (it is re-checked on the next site check), or only an admin?</li>
+<li><b>Fact drift.</b> Mark an approved FAQ "Review" automatically when its fact changes?</li>
+<li><b>Priorities.</b> Should "Needs attention" results go into Priorities by one click as sketched, or only appear in the card?</li>
+</ol>
+</div></body></html>
