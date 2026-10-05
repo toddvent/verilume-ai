@@ -17122,7 +17122,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
+const CATALOG_EXEMPT = new Set(['gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -21239,6 +21239,8 @@ const GSC_SETTINGS = {
   questionMinImp: 50,            // a question search needs at least this many impressions to be listed
   activeLimit: 5,                // most items the team works on at once; new findings wait when this is full
   maxGapPriorities: 5,
+  brandTopPages: 10,             // brand checks look at this many pages by search impressions unless the team expands to all checked pages
+  addonMinImp: 50,               // a word added to the brand name needs this many impressions to be listed
   leadDays: 90,                  // a group starting within this many days is 'soon' and its search work is time-bound
   urgentDays: 45,                // starting within this many days (or live) raises the priority one level
   prepDays: 42,                  // suggested due date: this many days before the group goes into market (organic changes take weeks to show)
@@ -21397,6 +21399,42 @@ createTableIfNeeded(`
     approvedAt TEXT,
     createdAt TEXT NOT NULL,
     updatedAt TEXT NOT NULL,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS search_brand_checks (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    itemKey TEXT NOT NULL,
+    status TEXT NOT NULL,
+    decidedBy TEXT,
+    decidedAt TEXT,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS search_brand_words (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    word TEXT NOT NULL,
+    createdBy TEXT,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS brain_fact_changes (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    factId TEXT NOT NULL,
+    changeType TEXT NOT NULL,
+    oldText TEXT,
+    newText TEXT,
+    scopeLabel TEXT,
+    changedBy TEXT,
+    changedAt TEXT NOT NULL,
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
 `);
@@ -21785,6 +21823,80 @@ function gscQuestionList(accountId){
     return { window: qw ? gscWindowTag(qw) : null, id: st ? st.id : null, question: r.dimKey, queryKey: key, impressions: r.impressions || 0, avgPosition: r.avgPosition, scope, groups: matched, brand: r.isBrand === 1, offered: !!scope, status: st ? st.status : 'open', answer: st ? st.answer : null, checks: st && st.checksJson ? JSON.parse(st.checksJson) : null, siteHint: hint, approvedAt: st ? st.approvedAt : null };
   }).sort((a, b) => (b.offered - a.offered) || (a.window ? 0 : 1) - (b.window ? 0 : 1) || ((a.window && a.window.days) || 0) - ((b.window && b.window.days) || 0) || (b.impressions - a.impressions));
 }
+
+// ---- brand profile checks ----
+const GSC_REPUTATION_WORDS = ['reviews', 'review', 'complaints', 'complaint', 'cancel', 'cancellation', 'refund', 'problems', 'problem', 'scam', 'login', 'lawsuit', 'legit'];
+function gscUrlKey(u){ try { const x = new URL(u); return x.hostname.replace(/^www\./, '') + x.pathname.replace(/\/+$/, '').toLowerCase(); } catch (e){ return String(u || '').toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/[?#].*$/, '').replace(/\/+$/, ''); } }
+function gscBrandCheckData(accountId, account, expanded){
+  const aRow = db.prepare('SELECT ranAt, auditJson FROM website_audits WHERE accountId = ? ORDER BY ranAt DESC LIMIT 1').get(accountId);
+  let audit = null; if (aRow){ try { audit = JSON.parse(aRow.auditJson); } catch (e){} }
+  const aPages = audit && Array.isArray(audit.pages) ? audit.pages.filter(p => p && p.url && p.status < 400 && p.title !== undefined) : [];
+  const aMap = {}; aPages.forEach(p => { const k = gscUrlKey(p.url); if (!aMap[k]) aMap[k] = p; });
+  const gp = db.prepare("SELECT dimKey, impressions FROM gsc_rows WHERE accountId = ? AND kind = 'pages' ORDER BY impressions DESC").all(accountId);
+  const imp = {}; gp.forEach(r => { const k = gscUrlKey(r.dimKey); imp[k] = (imp[k] || 0) + (r.impressions || 0); });
+  const seenK = new Set(); let ranked = gp.length ? gp.filter(r => { const k = gscUrlKey(r.dimKey); if (seenK.has(k)) return false; seenK.add(k); return true; }).map(r => ({ url: r.dimKey, key: gscUrlKey(r.dimKey), impressions: imp[gscUrlKey(r.dimKey)] })) : aPages.map(p => ({ url: p.url, key: gscUrlKey(p.url), impressions: 0 }));
+  if (expanded){ const have = new Set(ranked.map(r => r.key)); Object.values(aMap).forEach(p => { const k = gscUrlKey(p.url); if (!have.has(k)){ have.add(k); ranked.push({ url: p.url, key: k, impressions: imp[k] || 0 }); } }); ranked = ranked.filter(r => aMap[r.key]).sort((a, b) => b.impressions - a.impressions); }
+  else ranked = ranked.slice(0, GSC_SETTINGS.brandTopPages);
+  const pages = ranked.map(r => Object.assign({}, r, { page: aMap[r.key] || null }));
+  const checked = pages.filter(p => p.page);
+  const terms = gscConfirmedTerms(accountId); const multi = terms.filter(t => t.split(' ').length >= 2);
+  const kw = srchKeywordsForAccount(accountId); const avoid = (kw.negatives || []).map(n => gscNorm(n)).filter(Boolean);
+  const facts = db.prepare("SELECT factText FROM brain_facts WHERE accountId = ? AND status = 'active'").all(accountId); const factsText = facts.map(f => f.factText).join(' ');
+  const factNums = new Set(srchNumbersIn(factsText)); const factsLow = gscNorm(factsText);
+  const dec = {}; db.prepare('SELECT itemKey, status, decidedAt FROM search_brand_checks WHERE accountId = ?').all(accountId).forEach(r => { dec[r.itemKey] = r; });
+  const ranAt = aRow ? aRow.ranAt : null;
+  const mk = (check, key, page, detail, always) => { const id = check + '|' + key; const d = dec[id]; const fixed = !!(d && d.status === 'fixed' && (always || (ranAt && d.decidedAt > ranAt))); return { id, page: page || null, detail, fixed }; };
+  const checks = [];
+  const finish = (key, title, items, cant, okText, cantText) => { const open = items.filter(i => !i.fixed); checks.push({ key, title, status: cant ? 'cant' : (open.length ? 'attention' : 'ok'), summary: cant ? cantText : (open.length ? '' : okText), items, open: open.length, fixed: items.length - open.length }); };
+  const noAudit = !audit || !checked.length;
+  // 1. name used the same way
+  { const items = [];
+    checked.forEach(p => { const text = gscNorm([p.page.title, p.page.metaDescription].filter(Boolean).join(' ')); const tk = text.split(' ').filter(Boolean);
+      multi.forEach(t => { const w = t.split(' '); for (let i = 0; i + w.length <= tk.length; i++){ const win = tk.slice(i, i + w.length); if (win.join(' ') !== t && w.every((x, j) => gscTokenEq(win[j], x))){ items.push(mk('name', p.key + '|' + win.join(' '), p.url, `Uses "${win.join(' ')}", close to your confirmed name "${t}".`)); break; } } });
+      let path = '/'; try { path = new URL(p.url).pathname; } catch (e){}
+      if (path === '/' && terms.length && !terms.some(t => gscNorm(p.page.title).includes(t))) items.push(mk('name', p.key + '|home', p.url, 'The home page title does not include a confirmed brand name.')); });
+    finish('name', 'Name is used the same way', items, noAudit || !terms.length, 'Titles and descriptions use your confirmed brand names.', !terms.length ? 'Confirm your brand names first.' : 'Run the site check first.'); }
+  // 2. pages say what they are
+  { const items = []; const byTitle = {};
+    checked.forEach(p => { const t = gscNorm(p.page.title); if (t){ (byTitle[t] = byTitle[t] || []).push(p); } });
+    checked.forEach(p => { const t = String(p.page.title || '').trim();
+      if (!t) items.push(mk('identity', p.key + '|notitle', p.url, 'The page has no title.'));
+      else { if (t.length < 12) items.push(mk('identity', p.key + '|short', p.url, `The title "${t}" is only ${t.length} characters.`)); const same = byTitle[gscNorm(t)] || []; if (same.length > 1) items.push(mk('identity', p.key + '|dup', p.url, `The title "${t}" is shared with ${same.length - 1} other checked page${same.length === 2 ? '' : 's'}.`)); }
+      if (!String(p.page.metaDescription || '').trim()) items.push(mk('identity', p.key + '|nometa', p.url, 'The page has no description.')); });
+    finish('identity', 'Pages say what they are', items, noAudit, 'Each checked page has its own title and a description.', 'Run the site check first.'); }
+  // 3. pages match voice and facts
+  { const items = [];
+    checked.forEach(p => { const raw = [p.page.title, p.page.metaDescription].filter(Boolean).join(' '); const text = gscNorm(raw);
+      avoid.forEach(a => { if ((' ' + text + ' ').includes(' ' + a + ' ')) items.push(mk('voice', p.key + '|avoid|' + a, p.url, `Uses "${a}", which is on your avoided list.`)); });
+      const m = raw.match(GSC_ANSWER_BANNED); if (m) items.push(mk('voice', p.key + '|claim|' + m[0].toLowerCase(), p.url, `Uses "${m[0]}", a promise, price or superlative that no approved fact supports.`));
+      if (facts.length) srchNumbersIn(raw).filter(n => !/^(19|20)\d\d$/.test(n) && !factNums.has(n)).forEach(n => items.push(mk('voice', p.key + '|num|' + n, p.url, `Shows the number ${n}, which is not in your approved facts.`))); });
+    finish('voice', 'Pages match the voice and facts', items, noAudit, 'No avoided terms or unsupported claims in titles and descriptions.', 'Run the site check first.'); }
+  // 4. what people add to the brand name
+  const addons = []; { const items = [];
+    const bq = db.prepare("SELECT dimKey, impressions FROM gsc_rows WHERE accountId = ? AND kind = 'queries' AND isBrand = 1").all(accountId);
+    const words = db.prepare('SELECT word FROM search_brand_words WHERE accountId = ? ORDER BY createdAt').all(accountId).map(r => r.word);
+    let comps = []; try { const c = account && account.competitorsJson ? JSON.parse(account.competitorsJson) : []; comps = (Array.isArray(c) ? c : []).map(x => gscNorm(x && x.name)).filter(Boolean); } catch (e){}
+    const watch = new Set(GSC_REPUTATION_WORDS.map(gscStem).concat(words.map(w => gscStem(gscNorm(w)))));
+    const sorted = terms.slice().sort((a, b) => b.length - a.length); const agg = {};
+    bq.forEach(r => { const q = gscNorm(r.dimKey); const t = sorted.find(x => (' ' + q + ' ').includes(' ' + x + ' ')); if (!t) return; const rem = (' ' + q + ' ').replace(' ' + t + ' ', ' ').replace(/\s+/g, ' ').trim(); if (!rem) return; agg[rem] = (agg[rem] || 0) + (r.impressions || 0); });
+    const allText = gscNorm(aPages.map(p => [p.title, p.metaDescription].concat(Array.isArray(p.questionHeadings) ? p.questionHeadings : []).filter(Boolean).join(' ')).join(' '));
+    Object.entries(agg).filter(([, n]) => n >= GSC_SETTINGS.addonMinImp).sort((a, b) => b[1] - a[1]).forEach(([rem, n]) => {
+      const toks = rem.split(' '); const comp = comps.find(c => (' ' + rem + ' ').includes(' ' + c + ' ')); const rep = toks.find(t => watch.has(gscStem(t)));
+      const kind = comp ? 'competitor' : (rep ? 'reputation' : null); const named = kind === 'competitor' ? true : (rep ? allText.split(' ').some(t => gscStem(t) === gscStem(rep)) : null);
+      if (addons.length < 10) addons.push({ text: rem, impressions: n, kind, answered: named });
+      if (kind === 'reputation' && !named) items.push(mk('addons', rem, null, `"${rem}" has ${gscFmt(n)} impressions. No checked page names "${rep}" in its title, description or headings.`)); });
+    finish('addons', 'What people add to your name', items, !terms.length || !bq.length || !audit, 'No reputation words are going unanswered.', !terms.length ? 'Confirm your brand names first.' : (!bq.length ? 'Needs Search Console brand searches.' : 'Run the site check first.')); }
+  // 5. approved FAQs match current facts (change report)
+  const faqChanges = [];
+  { const items = []; const apr = db.prepare("SELECT id, queryKey, question, answer, factIds, approvedAt FROM search_questions WHERE accountId = ? AND status = 'approved'").all(accountId);
+    apr.forEach(q => { let ids = []; try { ids = JSON.parse(q.factIds || '[]'); } catch (e){}
+      db.prepare('SELECT * FROM brain_fact_changes WHERE accountId = ? ORDER BY changedAt').all(accountId).filter(c => ids.includes(c.factId) && c.changedAt > (q.approvedAt || '')).forEach(c => {
+        const it = mk('faq', q.id + '|' + c.id, null, c.changeType === 'removed' ? `A fact was removed: "${c.oldText}".` : `A fact was edited. Was: "${c.oldText}". Now: "${c.newText}".`, true);
+        it.faq = { id: q.id, queryKey: q.queryKey, question: q.question, answer: q.answer, changeType: c.changeType, changedAt: c.changedAt, changedBy: c.changedBy, oldText: c.oldText, newText: c.newText }; items.push(it); }); });
+    finish('faq', 'Approved FAQs match current facts', items, !apr.length, 'No fact behind an approved FAQ has changed.', 'Needs an approved FAQ first.'); }
+  checks.forEach(c => { if (c.status === 'attention'){ const o = c.items.filter(i => !i.fixed); c.summary = c.key === 'faq' ? `${o.length} change${o.length === 1 ? '' : 's'} to facts used by approved FAQs. Review each FAQ.` : `${o.length} item${o.length === 1 ? '' : 's'} on ${new Set(o.map(i => i.page || i.id)).size} ${c.key === 'addons' ? 'search add-on' : 'page'}${new Set(o.map(i => i.page || i.id)).size === 1 ? '' : 's'}. ${o[0].detail}`; } });
+  return { checks, addons, words: db.prepare('SELECT id, word FROM search_brand_words WHERE accountId = ? ORDER BY createdAt').all(accountId), scope: { shown: pages.length, checked: checked.length, notChecked: pages.length - checked.length, expanded: !!expanded, top: GSC_SETTINGS.brandTopPages, totalChecked: aPages.length }, auditAt: ranAt, gscThrough: (db.prepare("SELECT MAX(day) AS d FROM gsc_daily WHERE accountId = ?").get(accountId) || {}).d || null };
+}
 const GSC_ANSWER_SCHEMA = { type: 'object', properties: { answer: { type: 'string' }, factIds: { type: 'array', items: { type: 'string' } } }, required: ['answer', 'factIds'] };
 const GSC_ANSWER_BANNED = /\b(guarantee[sd]?|best|cheapest|lowest|cheap|number one|world-class|unbeatable|always|never)\b|#1|\$|€|£/i;
 function gscCheckAnswer(text, facts, question, account, negatives){
@@ -21831,7 +21943,7 @@ function gscSyncPriorities(accountId){
     if (ex){ if (ex.status === 'dismissed') return; db.prepare('UPDATE search_priorities SET title = ?, detail = ?, impactBasis = ?, impactClicks = ?, impactLabel = ?, updatedAt = ? WHERE id = ?').run(p.title, p.detail, p.basis, p.clicks, p.label, now, ex.id); return; }
     db.prepare('INSERT INTO search_priorities (id, accountId, sourceKey, priorityLevel, title, detail, impactBasis, impactClicks, impactLabel, status, dueDate, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').run(generateId('SPR'), accountId, f.key, p.level, p.title, p.detail, p.basis, p.clicks, p.label, 'new', p.dueDate || null, now, now);
   });
-  db.prepare("SELECT id, sourceKey FROM search_priorities WHERE accountId = ? AND status = 'new'").all(accountId).forEach(r => { if (!seen.has(r.sourceKey) && !String(r.sourceKey).startsWith('read:')) db.prepare('DELETE FROM search_priorities WHERE id = ?').run(r.id); });
+  db.prepare("SELECT id, sourceKey FROM search_priorities WHERE accountId = ? AND status = 'new'").all(accountId).forEach(r => { if (!seen.has(r.sourceKey) && !String(r.sourceKey).startsWith('read:') && !String(r.sourceKey).startsWith('brand:')) db.prepare('DELETE FROM search_priorities WHERE id = ?').run(r.id); });
 }
 const GSC_PRIORITY_ORDER = { P1: 1, P2: 2, P3: 3 };
 function gscPrioritiesList(accountId){
@@ -21963,6 +22075,7 @@ function gscCardExport(req, accountId, card){
   const prioT = () => T('Priorities', ['Date', 'Level', 'Priority', 'Detail', 'Business impact', 'Basis', 'Status'], (d.priorities.top || []).map(p => [p.date, p.priority, p.title, p.detail || '', p.impactLabel || '', p.impactBasis === 'calculated' ? 'Calculated' : 'Rated', p.status]));
   const groupsT = () => d.groups && d.groups.hasGroups && d.groups.groups ? T('Non-brand searches by group', ['Group', 'Type', 'Searches', 'Clicks', 'Impressions', 'Click rate', 'Average position', 'In market'], d.groups.groups.map(g => [g.value, g.typeLabel, { v: g.queries, kind: 'int' }, { v: g.clicks, kind: 'int' }, { v: g.impressions, kind: 'int' }, pc(g.ctr), g.avgPosition ? Number(g.avgPosition).toFixed(1) : '', g.window ? g.window.label : '']).concat(d.groups.unmatched ? [['Not in any product group', '', { v: d.groups.unmatched.queries, kind: 'int' }, { v: d.groups.unmatched.clicks, kind: 'int' }, { v: d.groups.unmatched.impressions, kind: 'int' }, '', '', '']] : [])) : null;
   const aiT = () => d.ai ? T('Google AI impressions by month', ['Month', 'Impressions', 'Days of data'], d.ai.months.map(m => [m.month, { v: m.impressions, kind: 'int' }, { v: m.days, kind: 'int' }]).concat([['Top pages (latest export)', '', '']], d.ai.pages.map(p => [p.page, { v: p.impressions, kind: 'int' }, '']), [['Top countries (latest export)', '', '']], d.ai.countries.map(c => [c.country, { v: c.impressions, kind: 'int' }, '']))) : null;
+  const checksT = () => { const bd = gscBrandCheckData(accountId, db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId) || {}, true); const rows = []; bd.checks.forEach(c => { if (!c.items.length) rows.push([c.title, c.status === 'ok' ? 'Pass' : (c.status === 'cant' ? "Can't check yet" : 'Needs attention'), c.summary, '']); c.items.forEach(i => rows.push([c.title, i.fixed ? 'Marked fixed' : 'Needs attention', i.detail, i.page || (i.faq ? i.faq.question : '')])); }); return T('Brand checks', ['Check', 'Result', 'What we found', 'Page or FAQ'], rows); };
   const faqT = () => { const rows = db.prepare("SELECT question, answer, approvedAt FROM search_questions WHERE accountId = ? AND status = 'approved' ORDER BY approvedAt DESC").all(accountId); return rows.length ? T('Approved FAQs', ['Question', 'Answer', 'Approved'], rows.map(r => [r.question, r.answer, String(r.approvedAt || '').slice(0, 10)])) : null; };
   let title, slug, tables;
   if (k === 'search-clicks'){ title = 'Organic clicks'; slug = 'search-clicks'; tables = [sumT(), monthsT()]; }
@@ -21975,6 +22088,7 @@ function gscCardExport(req, accountId, card){
   else if (k === 'search-chart-nonbrand'){ title = 'Top 5 non-brand searches'; slug = 'search-top-non-brand'; tables = [nbT()]; }
   else if (k === 'search-groups'){ title = 'Search by product group'; slug = 'search-by-group'; tables = [groupsT()].filter(Boolean); }
   else if (k === 'search-ai'){ title = 'Google AI impressions'; slug = 'search-google-ai'; tables = [aiT()].filter(Boolean); }
+  else if (k === 'search-brand'){ title = 'Brand checks'; slug = 'search-brand-checks'; tables = [checksT()].filter(Boolean); }
   else if (k === 'search-faq'){ title = 'Approved FAQs'; slug = 'search-approved-faqs'; tables = [faqT()].filter(Boolean); }
   else if (k === 'search-health'){ title = 'Search health check'; slug = 'search-health'; tables = [healthT()]; }
   else return null;
@@ -35874,10 +35988,39 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
             const val = type === 'brand' ? '' : String(body.scopeValue || '');
             if (type !== 'brand' && !scopes()[type].includes(val)) return sendJson(res, 400, { error: 'Choose one of your groups.' });
             if (act === 'add'){ db.prepare('INSERT INTO brain_facts (id, accountId, scopeType, scopeValue, factText, status, createdBy, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?)').run(generateId('BF'), accountId, type, val, text, 'active', actor, now, now); }
-            else { const r = db.prepare('UPDATE brain_facts SET scopeType = ?, scopeValue = ?, factText = ?, updatedAt = ? WHERE id = ? AND accountId = ?').run(type, val, text, now, String(body.id || ''), accountId); if (!r.changes) return sendJson(res, 404, { error: 'fact not found' }); }
+            else { const old = db.prepare('SELECT * FROM brain_facts WHERE id = ? AND accountId = ?').get(String(body.id || ''), accountId); const r = db.prepare('UPDATE brain_facts SET scopeType = ?, scopeValue = ?, factText = ?, updatedAt = ? WHERE id = ? AND accountId = ?').run(type, val, text, now, String(body.id || ''), accountId); if (!r.changes) return sendJson(res, 404, { error: 'fact not found' }); if (old && (old.factText !== text || old.scopeType !== type || (old.scopeValue || '') !== val)) db.prepare('INSERT INTO brain_fact_changes (id, accountId, factId, changeType, oldText, newText, scopeLabel, changedBy, changedAt) VALUES (?,?,?,?,?,?,?,?,?)').run(generateId('BFC'), accountId, old.id, 'edited', old.factText, text, old.scopeType === 'brand' ? 'Brand' : old.scopeValue, actor, now); }
             return sendJson(res, 200, { ok: true });
           }
-          if (act === 'retire'){ db.prepare("UPDATE brain_facts SET status = 'retired', updatedAt = ? WHERE id = ? AND accountId = ?").run(now, String(body.id || ''), accountId); return sendJson(res, 200, { ok: true }); }
+          if (act === 'retire'){ const old = db.prepare("SELECT * FROM brain_facts WHERE id = ? AND accountId = ? AND status = 'active'").get(String(body.id || ''), accountId); db.prepare("UPDATE brain_facts SET status = 'retired', updatedAt = ? WHERE id = ? AND accountId = ?").run(now, String(body.id || ''), accountId); if (old) db.prepare('INSERT INTO brain_fact_changes (id, accountId, factId, changeType, oldText, newText, scopeLabel, changedBy, changedAt) VALUES (?,?,?,?,?,?,?,?,?)').run(generateId('BFC'), accountId, old.id, 'removed', old.factText, null, old.scopeType === 'brand' ? 'Brand' : old.scopeValue, actor, now); return sendJson(res, 200, { ok: true }); }
+          return sendJson(res, 400, { error: 'unknown action' });
+        }
+      }
+      if (sub === 'brand-checks'){
+        if (req.method === 'GET' && parts.length === 5) return sendJson(res, 200, gscBrandCheckData(accountId, account, new URL(req.url, 'http://x').searchParams.get('expand') === '1'));
+        if (req.method === 'POST' && parts.length === 6){
+          const body = await readBody(req); const act = parts[5];
+          if (act === 'fix'){
+            const id = String(body.itemId || ''); if (!id) return sendJson(res, 400, { error: 'itemId required' });
+            const ex = db.prepare('SELECT id FROM search_brand_checks WHERE accountId = ? AND itemKey = ?').get(accountId, id);
+            const st = body.fixed === false ? 'open' : 'fixed';
+            if (ex) db.prepare('UPDATE search_brand_checks SET status = ?, decidedBy = ?, decidedAt = ? WHERE id = ?').run(st, actor, now, ex.id); else db.prepare('INSERT INTO search_brand_checks (id, accountId, itemKey, status, decidedBy, decidedAt) VALUES (?,?,?,?,?,?)').run(generateId('SBC'), accountId, id, st, actor, now);
+            return sendJson(res, 200, { ok: true });
+          }
+          if (act === 'priority'){
+            const d = gscBrandCheckData(accountId, account, false); const c = d.checks.find(x => x.key === body.checkKey); if (!c || c.status !== 'attention') return sendJson(res, 400, { error: 'Nothing to add for this check.' });
+            const sk = 'brand:' + c.key; const o = c.items.filter(i => !i.fixed);
+            const title = { name: 'Use your brand name the same way on every page', identity: 'Give pages their own titles and descriptions', voice: 'Fix titles and descriptions that break your voice or facts', addons: 'Answer what people ask about your name', faq: 'Review FAQs whose facts have changed' }[c.key] || c.title;
+            if (!db.prepare('SELECT 1 FROM search_priorities WHERE accountId = ? AND sourceKey = ?').get(accountId, sk))
+              db.prepare('INSERT INTO search_priorities (id, accountId, sourceKey, priorityLevel, title, detail, impactBasis, impactClicks, impactLabel, status, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').run(generateId('SPR'), accountId, sk, 'P2', title, (o.length + ' item' + (o.length === 1 ? '' : 's') + '. ' + o.slice(0, 2).map(i => i.detail).join(' ')).slice(0, 400), 'rated', null, 'Medium', 'new', now, now);
+            return sendJson(res, 200, { ok: true });
+          }
+          if (act === 'words'){
+            const w = String(body.word || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+            if (body.action === 'remove'){ db.prepare('DELETE FROM search_brand_words WHERE id = ? AND accountId = ?').run(String(body.id || ''), accountId); return sendJson(res, 200, { ok: true }); }
+            if (w.length < 3) return sendJson(res, 400, { error: 'Enter a word of at least 3 letters.' });
+            if (!db.prepare('SELECT 1 FROM search_brand_words WHERE accountId = ? AND LOWER(word) = ?').get(accountId, w.toLowerCase())) db.prepare('INSERT INTO search_brand_words (id, accountId, word, createdBy, createdAt) VALUES (?,?,?,?,?)').run(generateId('SBW'), accountId, w, actor, now);
+            return sendJson(res, 200, { ok: true });
+          }
           return sendJson(res, 400, { error: 'unknown action' });
         }
       }
