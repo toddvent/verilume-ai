@@ -1577,6 +1577,7 @@
   .gsc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:6px;} .gsc-top .drr-bar{flex:1 1 420px;margin:0;} .gsc-tools{display:flex;gap:8px;flex-wrap:wrap;} .gsc-tools .btn-ghost{padding:6px 14px;font-size:0.8125rem;}
   .gsc-cards{margin-bottom:20px;} .gsc-reads{padding:14px 22px;} .gsc-read+.gsc-read{border-top:1px solid var(--line-hairline);margin-top:10px;padding-top:10px;} .gsc-read-l1{font-weight:700;} .gsc-read-l2{color:var(--muted);font-size:0.875rem;margin-top:2px;} .gsc-more{margin:6px 0 0 18px;padding:0;color:var(--muted);font-size:0.8125rem;}
   .gsc-read-acts{display:flex;gap:14px;margin-top:4px;} .gsc-link{font:inherit;font-size:0.8125rem;font-weight:600;color:var(--hdr-navy);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;}
+  .gsc-win{display:inline-block;font-size:0.6875rem;font-weight:600;color:#8A5A1F;background:#FBF1E3;border-radius:980px;padding:1px 8px;white-space:nowrap;vertical-align:middle;} .gsc-dim td{color:var(--muted);} .gsc-qgrid{display:grid;gap:12px;grid-template-columns:minmax(0,2fr) minmax(0,1fr);padding:8px 0;} @media (max-width:700px){.gsc-qgrid{grid-template-columns:minmax(0,1fr);}} #gscPage .btn-row button,#ttbSlot-brainFacts button,#ttbSlot-brainFacts select,#ttbSlot-brainFacts input{font-family:inherit;}
   .gsc-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:8px;} .gsc-title{font-size:1rem;font-weight:700;} .gsc-sub{font-size:0.75rem;color:var(--muted);}
   .gsc-scroll{overflow-x:auto;} .gsc-table{width:100%;border-collapse:collapse;font-size:0.875rem;} .gsc-table th{text-align:left;font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line);} .gsc-table td{padding:10px 8px;border-bottom:1px solid var(--line-hairline);vertical-align:top;} .gsc-r{text-align:right !important;font-variant-numeric:tabular-nums;} .gsc-nw{white-space:nowrap;}
   .gsc-lvl{display:inline-block;font-size:0.6875rem;font-weight:700;border-radius:5px;padding:1px 7px;color:#fff;background:#6E6E73;} .gsc-P1,.gsc-t-fix{background:#B42318;} .gsc-P2,.gsc-t-check{background:#B4620A;} .gsc-P3,.gsc-t-review{background:#6E6E73;}
@@ -28254,6 +28255,7 @@ const TTB_CFG = {
   companyProfile: { manual: { profile: true }, view: { step: 'companyProfile', label: 'Company Profile' } },
   styleAssets: { upload: { formats: 'Logo, font or brand guide files (PNG, SVG, PDF, OTF, TTF)', go: 'styleAssets' }, manual: { step: 'styleAssets' }, view: { tab: 'brand', label: 'Customer Experiences' } },
   websiteExamples: { manual: { step: 'websiteExamples' }, used: 'Used by Copywriting' },
+  brainFacts: { manual: { cards: [] }, view: { step: 'searchOptimization', label: 'Search Everywhere' } },
   searchKeywords: { upload: { direct: 'srchKwPick', formats: 'A CSV export from Semrush, BrightEdge, Search Console or Keyword Planner, or a plain list with one keyword per row.', sample: { name: 'search-keywords-sample.csv', cols: ['Keyword', 'Search Volume', 'Intent', 'Product Group'], rows: [['world cruise', 12100, 'Commercial', 'World Voyage'], ['how long is a world cruise', 880, 'Informational', 'World Voyage']] } }, manual: { cards: [] }, view: { step: 'searchOptimization', label: 'Search Everywhere' } },
   competitivePositioning: { manual: { step: 'competitivePositioning' }, view: { tab: 'strategy', label: 'Strategy' } },
   brandWritingSamples: { upload: { formats: 'Word, PDF or text files', go: 'brandWritingSamples' }, manual: { step: 'brandWritingSamples' }, used: 'Used by Copywriting' },
@@ -28288,6 +28290,7 @@ const TTB_PLAN_SAMPLES = {
   magazineCost: { benefit: 'Your negotiated print rates by title and format.', sample: `<div class="ttb-srow ttb-head"><span>Title · format</span><span>Per insertion</span></div><div class="ttb-srow"><span>Travel Monthly · full page</span><span>$18,500</span></div><div class="ttb-srow"><span>Travel Monthly · half page</span><span>$11,200</span></div>` }
 };
 Object.keys(TTB_PLAN_SAMPLES).forEach(k => { TTB_ITEMS[k] = TTB_PLAN_SAMPLES[k]; });
+TTB_ITEMS.brainFacts = { benefit: 'Confirmed facts about your brand, products and destinations. Answers to customer questions are written only from these.', sample: `<div class="ttb-srow ttb-head"><span>Applies to</span><span>Fact</span></div><div class="ttb-srow"><span>Brand</span><span>Every departure carries a naturalist guide.</span></div><div class="ttb-srow"><span>Faroe Islands</span><span>An archipelago of 18 islands.</span></div>` };
 TTB_ITEMS.searchKeywords = { benefit: 'The queries your customers use. Press releases and website copy are optimized toward them.', sample: `<div class="ttb-srow ttb-head"><span>Keyword</span><span>Volume</span><span>Intent</span></div><div class="ttb-srow"><span>world cruise</span><span>High</span><span>Commercial</span></div><div class="ttb-srow"><span>how long is a world cruise</span><span>Medium</span><span>Informational</span></div>` };
 function ttbMoney(n){ n = Number(n); if (!isFinite(n)) return '—'; if (n >= 1e12) return '$' + (n / 1e12).toFixed(1).replace(/\.0$/, '') + 'T'; if (n >= 1e9) return '$' + (n / 1e9).toFixed(1).replace(/\.0$/, '') + 'B'; if (n >= 1e6) return '$' + (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M'; return '$' + Math.round(n).toLocaleString(); }
 function ttbPeople(n){ n = Number(n); if (!isFinite(n)) return '—'; if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M'; return Math.round(n).toLocaleString(); }
@@ -28716,6 +28719,7 @@ function ttbMountOpen(){
     cards.forEach(id => { const el = document.getElementById(id); if (!el) return; el.style.marginTop = '0'; slot.appendChild(el); });
     if (k === 'marketingBudgetUpload'){ ttbBuRender(); return; }
     if (k === 'searchKeywords'){ srchKwRender(); return; }
+    if (k === 'brainFacts'){ gscFactsRender(); return; }
     if (TTB_UP[k] && !TTB_UP[k].legacy && ttbUp.key === k){ ttbUpRender(); }
     if (cards.length && !ttb.loaded[k]){ ttb.loaded[k] = true; try { if (cards[0] === 'kpiMetricsAdminModule') loadKpiMetricsAdminTable(); else mbuLoadReachInputs(); } catch (e){ console.warn('ttb: loading entry card failed', e); } }
   });
@@ -59211,6 +59215,7 @@ async function gscLoad(){
   gsc.loading = !gsc.data; gsc.error = ''; if (gsc.loading) gscRender();
   try { await drrLoad(); drrOnChange(gscLoad); const d = await srchApi('/page'); if (d.error){ gsc.error = d.error; } else gsc.data = d; } catch (e){ gsc.error = 'Could not reach the server.'; }
   gsc.loading = false; gscRender();
+  if (!gscQ.loaded) gscLoadQuestions();
 }
 function gscRender(){
   const el = document.getElementById('gscPage'); if (!el) return;
@@ -59229,6 +59234,8 @@ function gscRender(){
   h += gscChartsHtml(d);
   h += gscAiHtml(d);
   h += gscGroupsHtml(d);
+  h += gscQuestionsHtml(d);
+  h += gscApprovedHtml();
   h += `<div class="gsc-two">${gscTopNbHtml(d)}${gscHealthHtml(d)}</div>`;
   el.innerHTML = h; drrRenderBars();
   gscRefreshReads();
@@ -59282,7 +59289,7 @@ function gscPrioritiesHtml(d){
   const rows = list.map(x => {
     const open = !!gsc.manage[x.id]; const lvl = `<span class="gsc-lvl gsc-${x.priority}">${x.priority}</span>`;
     const impact = x.impactBasis === 'calculated' ? `<b>${escapeHtml(x.impactLabel)}</b><div class="gsc-sub">Calculated</div>` : `<b>${escapeHtml(x.impactLabel)}</b><div class="gsc-sub">Rated</div>`;
-    return `<tr><td class="gsc-nw">${escapeHtml(gscDay(x.date))}</td><td>${lvl}</td><td><b>${escapeHtml(x.title)}</b><div class="gsc-sub">${escapeHtml(x.detail || '')}</div></td><td class="gsc-nw">${impact}</td><td><span class="gsc-st gsc-st-${x.waiting ? 'waiting' : x.status}">${x.waiting ? 'Waiting' : (GSC_STATUS_LABEL[x.status] || x.status)}</span></td><td class="gsc-nw"><button type="button" class="gsc-link" aria-expanded="${open}" onclick="gsc.manage['${x.id}']=!gsc.manage['${x.id}']; gscRender();">Manage →</button></td></tr>${open ? `<tr class="gsc-manage"><td colspan="6">${gscManageHtml(x)}</td></tr>` : ''}`;
+    return `<tr><td class="gsc-nw">${escapeHtml(gscDay(x.date))}</td><td>${lvl}</td><td><b>${escapeHtml(x.title)}</b>${x.window ? ` <span class="gsc-win">${escapeHtml(x.window.label)}</span>` : ''}<div class="gsc-sub">${escapeHtml(x.detail || '')}</div></td><td class="gsc-nw">${impact}</td><td><span class="gsc-st gsc-st-${x.waiting ? 'waiting' : x.status}">${x.waiting ? 'Waiting' : (GSC_STATUS_LABEL[x.status] || x.status)}</span></td><td class="gsc-nw"><button type="button" class="gsc-link" aria-expanded="${open}" onclick="gsc.manage['${x.id}']=!gsc.manage['${x.id}']; gscRender();">Manage →</button></td></tr>${open ? `<tr class="gsc-manage"><td colspan="6">${gscManageHtml(x)}</td></tr>` : ''}`;
   }).join('');
   return `<div class="strat-card gsc-prio"><div class="gsc-head"><div class="gsc-title">${gsc.viewAll ? 'All priorities' : 'Top ' + (p.limit || 5) + ' priorities'}</div><div class="gsc-sub">${p.totalOpen} open${p.waiting ? ' · ' + p.waiting + ' waiting' : ''}${p.all && p.all.length > p.top.length ? ` · <button type="button" class="gsc-link" onclick="gsc.viewAll=!gsc.viewAll; gscRender();">${gsc.viewAll ? 'Show top ' + (p.limit || 5) : 'View all'}</button>` : ''}</div></div>${rows ? `<div class="gsc-scroll"><table class="gsc-table"><thead><tr><th>Date</th><th></th><th>Priority</th><th>Business impact</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="strat-empty">Nothing open right now.</p>'}${gsc.saveMsg ? `<p class="strat-empty">${escapeHtml(gsc.saveMsg)}</p>` : ''}</div>`;
 }
@@ -59371,15 +59378,101 @@ function gscAiHtml(d){
   const tbl = (title, rows, key) => `<div><div class="gsc-sub" style="font-weight:700;margin-bottom:4px;">${title}</div><table class="gsc-table"><tbody>${rows.map(r => `<tr><td>${escapeHtml(r[key])}</td><td class="gsc-r">${gscInt(r.impressions)}</td></tr>`).join('')}</tbody></table></div>`;
   return `<div class="strat-card gsc-chart has-share" style="position:relative;">${shareBtnHtml('search-ai')}<div class="gsc-headline">${escapeHtml(head)}</div><div class="gsc-svg" style="max-width:640px;">${svg}</div><div class="gsc-ai-tables">${tbl('Top pages', a.pages, 'page')}${tbl('Top countries', a.countries, 'country')}</div><div class="gsc-foot">${escapeHtml('Source: Google Search Console, Google AI report · impressions only, Google reports no clicks · ' + gscDay(a.from) + ' to ' + gscDay(a.through) + ' · * partial month · top pages and countries are from the latest export')}</div></div>`;
 }
+// ---- Questions and FAQ ----
+const gscQ = { data: null, open: {}, busy: {}, msg: {}, facts: {}, why: {}, loaded: false };
+async function gscLoadQuestions(){
+  try { const d = await srchApi('/questions'); gscQ.data = d.error ? null : d; } catch (e){ gscQ.data = null; }
+  gscQ.loaded = true; gscRender();
+}
+function gscQTitle(q){ const t = String(q).trim(); return t.charAt(0).toUpperCase() + t.slice(1) + (t.endsWith('?') ? '' : '?'); }
+function gscQStatusTag(q){
+  if (q.status === 'approved') return '<span class="gsc-st gsc-st-done">Approved</span>';
+  if (q.status === 'answered') return '<span class="gsc-st gsc-st-done">Answered on site</span>';
+  if (q.status === 'drafted') return '<span class="gsc-st gsc-st-in_progress">Draft</span>';
+  if (q.status === 'skipped') return '<span class="gsc-st gsc-st-waiting">Skipped</span>';
+  if (q.siteHint) return `<span class="gsc-st gsc-st-planned" title="A page on your site has these words in its title or heading">Page may answer: ${escapeHtml(q.siteHint)}</span>`;
+  return '<span class="gsc-st">No answer on site</span>';
+}
+function gscQuestionsHtml(d){
+  const Q = gscQ.data; if (!Q || !Q.questions.length) return '';
+  const rows = Q.questions.map(q => {
+    const k = q.queryKey; const open = !!gscQ.open[k];
+    const grp = q.offered ? `<span class="gsc-st">${escapeHtml(q.scope)}</span>${q.window ? ` <span class="gsc-win">${escapeHtml(q.window.label)}</span>` : ''}` : '<span class="gsc-sub">Not in any group</span>';
+    const act = !q.offered ? '' : `<button type="button" class="gsc-link" aria-expanded="${open}" onclick="gscQ.open['${escapeHtml(k).replace(/'/g, "\\'")}']=!gscQ.open['${escapeHtml(k).replace(/'/g, "\\'")}']; gscRender();">${open ? 'Close' : q.status === 'drafted' || q.status === 'approved' ? 'Review' : 'Draft answer →'}</button>`;
+    return `<tr class="${q.offered ? '' : 'gsc-dim'}"><td>${escapeHtml(q.question)}</td><td>${grp}</td><td class="gsc-r">${gscInt(q.impressions)}</td><td class="gsc-r">${q.avgPosition ? q.avgPosition.toFixed(1) : '—'}</td><td>${q.offered ? gscQStatusTag(q) : ''}</td><td class="gsc-nw">${act}</td></tr>${open ? `<tr class="gsc-manage"><td colspan="6">${gscQPanelHtml(q)}</td></tr>` : ''}`;
+  }).join('');
+  return `<div class="strat-card"><div class="gsc-head"><div class="gsc-title">Questions people ask</div><div class="gsc-sub">Searches that are questions, ${escapeHtml(d.range.label)}</div></div><div class="gsc-scroll"><table class="gsc-table"><thead><tr><th>Question</th><th>Group</th><th class="gsc-r">Impressions</th><th class="gsc-r">Position</th><th>FAQ</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+}
+function gscQPanelHtml(q){
+  const k = q.queryKey; const ek = escapeHtml(k).replace(/'/g, "\\'"); const busy = gscQ.busy[k]; const msg = gscQ.msg[k];
+  const facts = gscQ.facts[k] || []; const checks = q.checks || [];
+  const failing = checks.filter(c => !c.ok);
+  let h = '';
+  if (msg) h += `<p class="strat-empty" style="margin:0 0 8px;">${escapeHtml(msg.text)}${msg.needsFacts ? ` <button type="button" class="gsc-link" onclick="ttb.open='brainFacts'; ttb.manual.brainFacts=true; goToStep('manageAccount');">Open Facts in Train the Brain</button>` : ''}</p>`;
+  if (q.status === 'answered') return h + `<p class="strat-empty" style="margin:0;">Marked as answered on your site.</p><div class="btn-row"><button type="button" class="btn-ghost" onclick="gscQAct('${ek}','reopen')">Reopen</button></div>`;
+  if (q.status === 'skipped') return h + `<div class="btn-row" style="margin:0;"><button type="button" class="btn-ghost" onclick="gscQAct('${ek}','reopen')">Reopen</button></div>`;
+  const hasAns = q.answer != null && q.answer !== '';
+  h += `<div class="gsc-qgrid"><div><div class="gsc-sub">Answer${q.status === 'approved' ? ' (approved)' : ''}</div><textarea id="gscQa-${escapeHtml(k)}" rows="4" maxlength="1200" style="width:100%;font:inherit;font-size:0.875rem;padding:8px;border:1px solid var(--line);border-radius:8px;" placeholder="${busy ? 'Working…' : 'Answer'}">${escapeHtml(q.answer || '')}</textarea>${facts.length ? `<div class="gsc-sub" style="margin-top:4px;">Facts used: ${facts.map(f => escapeHtml(f.scope) + ': ' + escapeHtml(f.text)).join(' · ')}</div>` : ''}</div>${checks.length ? `<div><div class="gsc-sub">Checks</div>${checks.map(c => `<div style="font-size:0.8125rem;color:${c.ok ? 'var(--ink)' : '#B42318'};">${c.ok ? '✓' : '✗'} ${escapeHtml(c.label)}${!c.ok && c.detail ? ' (' + escapeHtml(c.detail) + ')' : ''}</div>`).join('')}${failing.length ? '<div class="gsc-sub" style="margin-top:4px;">Review before approving.</div>' : ''}</div>` : ''}</div>`;
+  h += `<div class="btn-row" style="margin-top:8px;"><button type="button" class="btn-ghost" ${busy ? 'disabled' : ''} onclick="gscQDraft('${ek}')">${hasAns ? 'Draft again' : 'Draft answer'}</button><button type="button" class="btn-ghost" ${busy ? 'disabled' : ''} onclick="gscQSave('${ek}','save')">Save edit</button><button type="button" class="btn-primary" ${busy || !hasAns ? 'disabled' : ''} onclick="gscQSave('${ek}','approve')">${failing.length ? 'Approve anyway' : 'Approve'}</button><button type="button" class="btn-ghost" onclick="gscQAct('${ek}','skip')">Skip</button><button type="button" class="btn-ghost" onclick="gscQAct('${ek}','answered')">Already answered on site</button><button type="button" class="btn-ghost" onclick="gscQ.why['${ek}']=!gscQ.why['${ek}']; gscRender();">Disagree</button></div>`;
+  if (gscQ.why[k]) h += `<div class="gsc-add" style="margin-top:6px;"><input type="text" id="gscQw-${escapeHtml(k)}" maxlength="500" placeholder="What is wrong with this answer?"><button type="button" class="btn-ghost" onclick="gscQAct('${ek}','disagree')">Send to Train the Brain</button></div>`;
+  return h;
+}
+async function gscQPost(k, act, extra){
+  const q = (gscQ.data.questions || []).find(x => x.queryKey === k); if (!q) return {};
+  gscQ.busy[k] = true; gscRender();
+  let r; try { r = await srchPost('/questions/' + act, Object.assign({ query: q.question }, extra || {})); } catch (e){ r = { error: 'Could not reach the server.' }; }
+  gscQ.busy[k] = false; return r;
+}
+async function gscQDraft(k){
+  const r = await gscQPost(k, 'draft'); gscQ.msg[k] = r.error ? { text: r.error, needsFacts: !!r.needsFacts } : null; gscQ.facts[k] = r.facts || [];
+  await gscLoadQuestions();
+}
+async function gscQSave(k, act){
+  const e = document.getElementById('gscQa-' + k); const r = await gscQPost(k, act, { answer: e ? e.value : undefined });
+  gscQ.msg[k] = r.error ? { text: r.error } : (act === 'approve' ? { text: 'Approved. It is now in your approved FAQs.' } : null); if (!r.error && act === 'approve') gscQ.open[k] = false;
+  await gscLoadQuestions();
+}
+async function gscQAct(k, act){
+  const extra = {}; if (act === 'disagree'){ const e = document.getElementById('gscQw-' + k); extra.reason = e ? e.value.trim() : ''; }
+  const r = await gscQPost(k, act, extra); gscQ.msg[k] = r.error ? { text: r.error } : (act === 'disagree' ? { text: 'Sent to Train the Brain.' } : null);
+  if (!r.error){ gscQ.why[k] = false; if (act !== 'reopen') gscQ.open[k] = act === 'disagree'; }
+  await gscLoadQuestions();
+}
+function gscFaqMarkup(items){
+  const j = { '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: items.map(x => ({ '@type': 'Question', name: gscQTitle(x.question), acceptedAnswer: { '@type': 'Answer', text: x.answer } })) };
+  return '<scr' + 'ipt type="application/ld+json">\n' + JSON.stringify(j, null, 2).replace(/</g, '\\u003c') + '\n</scr' + 'ipt>';
+}
+function gscCopyText(t){ try { navigator.clipboard.writeText(t); } catch (e){ const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (e2){} ta.remove(); } gscQ.copied = true; }
+function gscFaqCopy(i, what){ const a = (gscQ.data.approved || []); const items = i == null ? a : [a[i]]; if (!items.length || !items[0]) return; gscCopyText(what === 'markup' ? gscFaqMarkup(items) : (i == null ? items.map(x => gscQTitle(x.question) + '\n' + x.answer).join('\n\n') : items[0].answer)); gscQ.msgCopy = 'Copied.'; gscRender(); }
+function gscApprovedHtml(){
+  const Q = gscQ.data; if (!Q || !Q.approved.length) return '';
+  return `<div class="strat-card has-share" style="position:relative;">${shareBtnHtml('search-faq')}<div class="gsc-head"><div class="gsc-title">Approved FAQs</div><div class="gsc-sub">${Q.approved.length} approved</div></div><div class="gsc-scroll"><table class="gsc-table"><thead><tr><th>Question</th><th>Answer</th><th>Approved</th><th></th></tr></thead><tbody>${Q.approved.map((x, i) => `<tr><td>${escapeHtml(gscQTitle(x.question))}</td><td>${escapeHtml(x.answer)}</td><td class="gsc-nw">${escapeHtml(gscDay(String(x.approvedAt || '').slice(0, 10)))}</td><td class="gsc-nw"><button type="button" class="gsc-link" onclick="gscFaqCopy(${i},'answer')">Copy answer</button> · <button type="button" class="gsc-link" onclick="gscFaqCopy(${i},'markup')">Copy as FAQ markup</button></td></tr>`).join('')}</tbody></table></div><div class="btn-row"><button type="button" class="btn-ghost" onclick="gscFaqCopy(null,'markup')">Copy all as FAQ markup</button><button type="button" class="btn-ghost" onclick="gscFaqCopy(null,'answer')">Copy all as text</button>${gscQ.msgCopy ? `<span class="gsc-sub">${gscQ.msgCopy}</span>` : ''}</div></div>`;
+}
+// ---- Facts the Brain can use (Train the Brain module) ----
+const gscF = { data: null, edit: null, msg: '' };
+async function gscFactsLoad(){ try { gscF.data = await srchApi('/facts'); } catch (e){ gscF.data = { error: 'Could not reach the server.' }; } gscFactsRender(); }
+function gscFactsRender(){
+  const slot = document.getElementById('ttbSlot-brainFacts'); if (!slot) return;
+  if (!srchLive()){ slot.innerHTML = '<div class="ttb-manual"><p class="hint" style="margin:0;">Facts are saved to your live account.</p></div>'; return; }
+  const D = gscF.data; if (!D){ slot.innerHTML = '<div class="ttb-manual"><p class="hint" style="margin:0;">Loading…</p></div>'; gscFactsLoad(); return; }
+  if (D.error){ slot.innerHTML = `<div class="ttb-manual"><p class="hint" style="margin:0;color:var(--advocacy);">${escapeHtml(D.error)}</p></div>`; return; }
+  const opts = (sel) => `<option value="brand|"${sel === 'brand|' ? ' selected' : ''}>Brand (everything)</option>` + (D.scopes.productGroup || []).map(v => `<option value="productGroup|${escapeHtml(v)}"${sel === 'productGroup|' + v ? ' selected' : ''}>Product group: ${escapeHtml(v)}</option>`).join('') + (D.scopes.creativeMarket || []).map(v => `<option value="creativeMarket|${escapeHtml(v)}"${sel === 'creativeMarket|' + v ? ' selected' : ''}>Creative focus: ${escapeHtml(v)}</option>`).join('');
+  const label = f => f.scopeType === 'brand' ? 'Brand' : (f.scopeType === 'productGroup' ? 'Product group: ' : 'Creative focus: ') + f.scopeValue;
+  const rows = (D.facts || []).map(f => gscF.edit === f.id ? `<tr><td><select id="gscFs" class="tbl-select">${opts(f.scopeType + '|' + (f.scopeValue || ''))}</select></td><td><input type="text" id="gscFt" maxlength="500" value="${escapeHtml(f.factText)}" style="width:100%;"></td><td style="white-space:nowrap;"><button type="button" class="btn-primary" onclick="gscFactSave('${f.id}')">Save</button> <button type="button" class="btn-ghost" onclick="gscF.edit=null; gscFactsRender();">Cancel</button></td></tr>` : `<tr><td>${escapeHtml(label(f))}</td><td>${escapeHtml(f.factText)}</td><td style="white-space:nowrap;"><button type="button" class="btn-ghost" onclick="gscF.edit='${f.id}'; gscFactsRender();">Edit</button> <button type="button" class="btn-ghost" onclick="gscFactAct('retire','${f.id}')">Remove</button></td></tr>`).join('');
+  slot.innerHTML = `<div class="ttb-manual"><div class="ttb-tag">Facts the Brain can use</div>${rows ? `<div style="overflow-x:auto;"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Applies to</th><th>Fact</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="hint">None yet.</p>'}<div class="ttb-tag" style="margin-top:14px;">Add a fact</div><div class="btn-row" style="gap:8px;flex-wrap:wrap;"><select id="gscFnS" class="tbl-select">${opts('brand|')}</select><input type="text" id="gscFnT" maxlength="500" placeholder="e.g. Every departure carries a naturalist guide." style="min-width:320px;flex:1;" onkeydown="if(event.key==='Enter')gscFactAdd()"><button type="button" class="btn-primary" onclick="gscFactAdd()">Add</button></div>${gscF.msg ? `<p class="hint" style="color:var(--advocacy);">${escapeHtml(gscF.msg)}</p>` : ''}</div>`;
+}
+async function gscFactAdd(){ const s = document.getElementById('gscFnS').value.split('|'); const t = document.getElementById('gscFnT').value; const r = await srchPost('/facts', { action: 'add', scopeType: s[0], scopeValue: s.slice(1).join('|'), factText: t }); gscF.msg = r.error || ''; await gscFactsLoad(); }
+async function gscFactSave(id){ const s = document.getElementById('gscFs').value.split('|'); const t = document.getElementById('gscFt').value; const r = await srchPost('/facts', { action: 'update', id, scopeType: s[0], scopeValue: s.slice(1).join('|'), factText: t }); gscF.msg = r.error || ''; if (!r.error) gscF.edit = null; await gscFactsLoad(); }
+async function gscFactAct(action, id){ const r = await srchPost('/facts', { action, id }); gscF.msg = r.error || ''; await gscFactsLoad(); }
 // ---- search by product group ----
 function gscGroupsHtml(d){
   const g = d.groups; if (!g || !g.hasGroups) return '';
-  const rows = (g.groups || []).map(x => `<tr><td><b>${escapeHtml(x.value)}</b></td><td><span class="gsc-sub">${escapeHtml(x.typeLabel)}</span></td><td class="gsc-r">${gscInt(x.queries)}</td><td class="gsc-r">${gscInt(x.impressions)}</td><td class="gsc-r">${gscPct(x.ctr, 2)}</td><td class="gsc-r">${x.avgPosition ? x.avgPosition.toFixed(1) : '—'}</td></tr>`).join('');
+  const rows = (g.groups || []).map(x => `<tr><td><b>${escapeHtml(x.value)}</b></td><td><span class="gsc-sub">${escapeHtml(x.typeLabel)}</span></td><td class="gsc-r">${gscInt(x.queries)}</td><td class="gsc-r">${gscInt(x.impressions)}</td><td class="gsc-r">${gscPct(x.ctr, 2)}</td><td class="gsc-r">${x.avgPosition ? x.avgPosition.toFixed(1) : '—'}</td><td class="gsc-nw">${x.window ? escapeHtml(x.window.label) : '<span class="gsc-sub">—</span>'}</td></tr>`).join('');
   const un = g.unmatched; const open = !!gsc.more.unmatched;
   const opts = '<option value="">Choose a group</option>' + (g.groupOptions || []).map(o => `<option value="${escapeHtml(o.type + '|' + o.value)}">${escapeHtml(o.value)}</option>`).join('');
-  const unRow = un && un.queries ? `<tr class="gsc-unm"><td><b>Not in any product group</b></td><td></td><td class="gsc-r">${gscInt(un.queries)}</td><td class="gsc-r">${gscInt(un.impressions)}</td><td class="gsc-r"></td><td class="gsc-r"><button type="button" class="gsc-link" aria-expanded="${open}" onclick="gsc.more.unmatched=!gsc.more.unmatched; gscRender();">${open ? 'Hide' : 'See more'}</button></td></tr>${open ? `<tr class="gsc-manage"><td colspan="6">${un.top.map((t, i) => `<div class="gsc-assign"><span>${escapeHtml(t.query)} <span class="gsc-sub">${gscInt(t.impressions)} impressions</span></span><select id="gscAs-${i}" aria-label="Group for ${escapeHtml(t.query)}">${opts}</select><button type="button" class="btn-ghost" onclick="gscAssign(${i})">Assign</button></div>`).join('')}</td></tr>` : ''}` : '';
+  const unRow = un && un.queries ? `<tr class="gsc-unm"><td><b>Not in any product group</b></td><td></td><td class="gsc-r">${gscInt(un.queries)}</td><td class="gsc-r">${gscInt(un.impressions)}</td><td class="gsc-r"></td><td class="gsc-r"><button type="button" class="gsc-link" aria-expanded="${open}" onclick="gsc.more.unmatched=!gsc.more.unmatched; gscRender();">${open ? 'Hide' : 'See more'}</button></td><td></td></tr>${open ? `<tr class="gsc-manage"><td colspan="7">${un.top.map((t, i) => `<div class="gsc-assign"><span>${escapeHtml(t.query)} <span class="gsc-sub">${gscInt(t.impressions)} impressions</span></span><select id="gscAs-${i}" aria-label="Group for ${escapeHtml(t.query)}">${opts}</select><button type="button" class="btn-ghost" onclick="gscAssign(${i})">Assign</button></div>`).join('')}</td></tr>` : ''}` : '';
   const sug = (g.suggestions || []).map((x, i) => `<div class="gsc-sugrow"><div><b>${escapeHtml(x.groupValue)}</b> <span class="gsc-sub">${escapeHtml(x.groupTypeLabel)}</span><div class="gsc-sub">${gscInt(x.count)} search${x.count === 1 ? '' : 'es'} share “${escapeHtml(x.shared)}”, such as ${x.examples.map(e => '“' + escapeHtml(e) + '”').join(', ')}</div></div><div class="gsc-sugbtn"><button type="button" class="btn-primary" onclick="gscSuggest(${i}, 'accept')">Accept</button><button type="button" class="btn-ghost" onclick="gscSuggest(${i}, 'reject')">Not these</button></div></div>`).join('');
-  return `<div class="strat-card has-share" style="position:relative;">${shareBtnHtml('search-groups')}<div class="gsc-head"><div class="gsc-title">Search by product group</div><div class="gsc-sub">Non-brand searches, ${escapeHtml(d.range.label)}</div></div>${rows || un ? `<div class="gsc-scroll"><table class="gsc-table"><thead><tr><th>Group</th><th></th><th class="gsc-r">Searches</th><th class="gsc-r">Impressions</th><th class="gsc-r">Click rate</th><th class="gsc-r">Position</th></tr></thead><tbody>${rows}${unRow}</tbody></table></div>` : '<p class="strat-empty">No non-brand searches to match yet.</p>'}${sug ? `<div class="gsc-suggest"><div class="gsc-title" style="font-size:0.875rem;">Suggested matches</div>${sug}</div>` : ''}${gsc.groupMsg ? `<p class="strat-empty">${escapeHtml(gsc.groupMsg)}</p>` : ''}</div>`;
+  return `<div class="strat-card has-share" style="position:relative;">${shareBtnHtml('search-groups')}<div class="gsc-head"><div class="gsc-title">Search by product group</div><div class="gsc-sub">Non-brand searches, ${escapeHtml(d.range.label)}</div></div>${rows || un ? `<div class="gsc-scroll"><table class="gsc-table"><thead><tr><th>Group</th><th></th><th class="gsc-r">Searches</th><th class="gsc-r">Impressions</th><th class="gsc-r">Click rate</th><th class="gsc-r">Position</th><th>In market</th></tr></thead><tbody>${rows}${unRow}</tbody></table></div>` : '<p class="strat-empty">No non-brand searches to match yet.</p>'}${sug ? `<div class="gsc-suggest"><div class="gsc-title" style="font-size:0.875rem;">Suggested matches</div>${sug}</div>` : ''}${gsc.groupMsg ? `<p class="strat-empty">${escapeHtml(gsc.groupMsg)}</p>` : ''}</div>`;
 }
 async function gscSuggest(i, action){
   const x = ((gsc.data.groups || {}).suggestions || [])[i]; if (!x) return;
