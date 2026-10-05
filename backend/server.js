@@ -13386,25 +13386,25 @@ createTableIfNeeded(`CREATE TABLE IF NOT EXISTS platform_users (
   passwordSalt TEXT,
   status TEXT DEFAULT 'active',
   createdAt TEXT NOT NULL,
-  lastLoginAt TEXT
+  lastloginat TEXT
 )`);
 createTableIfNeeded(`CREATE TABLE IF NOT EXISTS platform_sessions (
   token TEXT PRIMARY KEY,
-  platformUserId TEXT NOT NULL,
+  platformuserid TEXT NOT NULL,
   createdAt TEXT NOT NULL,
   expiresAt TEXT NOT NULL
 )`);
 createTableIfNeeded(`CREATE TABLE IF NOT EXISTS platform_access_log (
   id TEXT PRIMARY KEY,
-  platformUserId TEXT NOT NULL,
-  platformName TEXT,
-  platformRole TEXT,
+  platformuserid TEXT NOT NULL,
+  platformname TEXT,
+  platformrole TEXT,
   accountId TEXT NOT NULL,
   action TEXT NOT NULL,
   ip TEXT,
   createdAt TEXT NOT NULL
 )`);
-ensureColumn('sessions', 'platformUserId', 'TEXT');
+ensureColumn('sessions', 'platformuserid', 'TEXT');
 
 // Round 61 — Print Ad Specs (Print channel of the omni-channel creative
 // selection tree, cxmedia-creative-specs-tree.json). Per direct instruction:
@@ -24310,11 +24310,11 @@ function platformAuth(req){
     try { db.prepare('DELETE FROM platform_sessions WHERE token = ?').run(sess.token); } catch (e){}
     return null;
   }
-  const user = db.prepare('SELECT * FROM platform_users WHERE id = ?').get(sess.platformUserId);
+  const user = db.prepare('SELECT * FROM platform_users WHERE id = ?').get(sess.platformuserid);
   if (!user || user.status !== 'active') return null;
   return { session: sess, user };
 }
-function platformPublicUser(u){ return { id: u.id, email: u.email, name: u.name, role: u.role, status: u.status, lastLoginAt: u.lastLoginAt || null }; }
+function platformPublicUser(u){ return { id: u.id, email: u.email, name: u.name, role: u.role, status: u.status, lastLoginAt: u.lastloginat || null }; }
 // Blocks writes made through a view-as session according to the Verilume
 // person's role. Returns an error message to refuse with, or null to allow.
 function platformViewAsGuard(req, parts){
@@ -24322,9 +24322,9 @@ function platformViewAsGuard(req, parts){
   const m = String(req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/);
   if (!m) return null;
   try {
-    const s = db.prepare('SELECT platformUserId FROM sessions WHERE token = ?').get(m[1].trim());
-    if (!s || !s.platformUserId) return null;
-    const u = db.prepare('SELECT role, status FROM platform_users WHERE id = ?').get(s.platformUserId);
+    const s = db.prepare('SELECT platformuserid FROM sessions WHERE token = ?').get(m[1].trim());
+    if (!s || !s.platformuserid) return null;
+    const u = db.prepare('SELECT role, status FROM platform_users WHERE id = ?').get(s.platformuserid);
     if (!u || u.status !== 'active') return 'This Verilume team access has been turned off.';
     const path = '/' + parts.join('/');
     const isLogout = path === '/api/auth/logout';
@@ -24393,8 +24393,8 @@ async function handleRequest(req, res) {
       // A client's own admin can see every Verilume team visit to their account.
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAdminMember(req, res, accountId)) return;
-      const rows = db.prepare('SELECT platformName, platformRole, action, createdAt FROM platform_access_log WHERE accountId = ? ORDER BY createdAt DESC LIMIT 100').all(accountId);
-      return sendJson(res, 200, { visits: rows.map(r => ({ name: r.platformName, role: r.platformRole, action: r.action, at: r.createdAt })) });
+      const rows = db.prepare('SELECT platformname, platformrole, action, createdAt FROM platform_access_log WHERE accountId = ? ORDER BY createdAt DESC LIMIT 100').all(accountId);
+      return sendJson(res, 200, { visits: rows.map(r => ({ name: r.platformname, role: r.platformrole, action: r.action, at: r.createdAt })) });
     }
     if (parts[0] === 'api' && parts[1] === 'platform'){
       ensurePlatformOwnerSeed();
@@ -24462,8 +24462,8 @@ async function handleRequest(req, res) {
         if (!user || user.status !== 'active') return sendJson(res, 403, { error: 'this Verilume team access has been turned off' });
         const token = crypto.randomBytes(32).toString('hex');
         const expiresAt = new Date(Date.now() + PLATFORM_SESSION_MS).toISOString();
-        db.prepare('INSERT INTO platform_sessions (token, platformUserId, createdAt, expiresAt) VALUES (?,?,?,?)').run(token, user.id, nowIso(), expiresAt);
-        db.prepare('UPDATE platform_users SET lastLoginAt = ? WHERE id = ?').run(nowIso(), user.id);
+        db.prepare('INSERT INTO platform_sessions (token, platformuserid, createdAt, expiresAt) VALUES (?,?,?,?)').run(token, user.id, nowIso(), expiresAt);
+        db.prepare('UPDATE platform_users SET lastloginat = ? WHERE id = ?').run(nowIso(), user.id);
         return sendJson(res, 200, { token, expiresAt, user: platformPublicUser(user) });
       }
       // POST /api/platform/request-reset — { email } -> emails a code (first password or forgotten password)
@@ -24489,15 +24489,15 @@ async function handleRequest(req, res) {
         if (!c.ok) return sendJson(res, c.status, { error: c.error });
         const hp = hashAccessCode(String(body.newPassword));
         db.prepare('UPDATE platform_users SET passwordHash = ?, passwordSalt = ? WHERE id = ?').run(hp.hash, hp.salt, row.memberId);
-        db.prepare('DELETE FROM platform_sessions WHERE platformUserId = ?').run(row.memberId);
+        db.prepare('DELETE FROM platform_sessions WHERE platformuserid = ?').run(row.memberId);
         // The emailed code just proved control of this inbox, so sign the person straight in
         // (no second code right after setting a password).
         const resetUser = db.prepare('SELECT * FROM platform_users WHERE id = ?').get(row.memberId);
         if (resetUser && resetUser.status === 'active'){
           const tok = crypto.randomBytes(32).toString('hex');
           const exp = new Date(Date.now() + PLATFORM_SESSION_MS).toISOString();
-          db.prepare('INSERT INTO platform_sessions (token, platformUserId, createdAt, expiresAt) VALUES (?,?,?,?)').run(tok, resetUser.id, nowIso(), exp);
-          db.prepare('UPDATE platform_users SET lastLoginAt = ? WHERE id = ?').run(nowIso(), resetUser.id);
+          db.prepare('INSERT INTO platform_sessions (token, platformuserid, createdAt, expiresAt) VALUES (?,?,?,?)').run(tok, resetUser.id, nowIso(), exp);
+          db.prepare('UPDATE platform_users SET lastloginat = ? WHERE id = ?').run(nowIso(), resetUser.id);
           return sendJson(res, 200, { ok: true, token: tok, expiresAt: exp, user: platformPublicUser(resetUser) });
         }
         return sendJson(res, 200, { ok: true });
@@ -24526,8 +24526,8 @@ async function handleRequest(req, res) {
         if (!acct) return sendJson(res, 404, { error: 'account not found' });
         const s = createSession(acct.accountId, null);
         const expiresAt = new Date(Date.now() + PLATFORM_VIEW_AS_MS).toISOString();
-        db.prepare('UPDATE sessions SET platformUserId = ?, expiresAt = ? WHERE token = ?').run(me.id, expiresAt, s.token);
-        db.prepare('INSERT INTO platform_access_log (id, platformUserId, platformName, platformRole, accountId, action, ip, createdAt) VALUES (?,?,?,?,?,?,?,?)')
+        db.prepare('UPDATE sessions SET platformuserid = ?, expiresAt = ? WHERE token = ?').run(me.id, expiresAt, s.token);
+        db.prepare('INSERT INTO platform_access_log (id, platformuserid, platformname, platformrole, accountId, action, ip, createdAt) VALUES (?,?,?,?,?,?,?,?)')
           .run(generateId('PLOG'), me.id, me.name, me.role, acct.accountId, 'view_as_started', getClientIp(req) || null, nowIso());
         return sendJson(res, 200, { token: s.token, expiresAt, accountId: acct.accountId, company: acct.company, role: me.role, name: me.name });
       }
@@ -24536,8 +24536,8 @@ async function handleRequest(req, res) {
         const aid = url.searchParams.get('accountId');
         const rows = isOwnerOrAdmin
           ? (aid ? db.prepare('SELECT * FROM platform_access_log WHERE accountId = ? ORDER BY createdAt DESC LIMIT 200').all(aid) : db.prepare('SELECT * FROM platform_access_log ORDER BY createdAt DESC LIMIT 200').all())
-          : db.prepare('SELECT * FROM platform_access_log WHERE platformUserId = ? ORDER BY createdAt DESC LIMIT 200').all(me.id);
-        return sendJson(res, 200, { visits: rows });
+          : db.prepare('SELECT * FROM platform_access_log WHERE platformuserid = ? ORDER BY createdAt DESC LIMIT 200').all(me.id);
+        return sendJson(res, 200, { visits: rows.map(r => ({ id: r.id, platformUserId: r.platformuserid, platformName: r.platformname, platformRole: r.platformrole, accountId: r.accountId, action: r.action, ip: r.ip, createdAt: r.createdAt })) });
       }
       // Team management: owner and admin only.
       if (parts.length >= 3 && sub === 'users'){
@@ -24580,8 +24580,8 @@ async function handleRequest(req, res) {
           }
           db.prepare('UPDATE platform_users SET role = ?, status = ? WHERE id = ?').run(newRole, newStatus, target.id);
           if (newStatus !== 'active'){
-            db.prepare('DELETE FROM platform_sessions WHERE platformUserId = ?').run(target.id);
-            db.prepare('DELETE FROM sessions WHERE platformUserId = ?').run(target.id);
+            db.prepare('DELETE FROM platform_sessions WHERE platformuserid = ?').run(target.id);
+            db.prepare('DELETE FROM sessions WHERE platformuserid = ?').run(target.id);
           }
           return sendJson(res, 200, { user: platformPublicUser(db.prepare('SELECT * FROM platform_users WHERE id = ?').get(target.id)) });
         }
