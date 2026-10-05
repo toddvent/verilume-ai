@@ -91,7 +91,8 @@
     <div class="field"><label for="cdCode">6-digit code</label><input type="text" id="cdCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" onkeydown="if(event.key==='Enter')doVerify()"></div>
     <button class="btn" id="cdBtn" onclick="doVerify()">Sign in</button>
     <div class="err" id="cdErr"></div>
-    <div class="links"><a onclick="backToSignin()">← Back</a></div>
+    <div class="links"><a id="cdResend" onclick="resendCode()">Send a new code</a> &nbsp;·&nbsp; <a onclick="backToSignin()">Not the right email? Back to sign in</a></div>
+    <div class="note" id="cdNote"></div>
   </div>
 </div>
 
@@ -209,7 +210,21 @@ async function doVerify(){
   } catch (e){ $('cdErr').textContent = 'Could not reach the server.'; }
   finally { $('cdBtn').disabled = false; }
 }
-function backToSignin(){ show('signinView'); }
+let resendAt = 0;
+async function resendCode(){
+  if (Date.now() < resendAt){ $('cdNote').textContent = 'Please wait a few seconds before asking again.'; return; }
+  const email = $('siEmail').value.trim(), password = $('siPass').value;
+  if (!email || !password){ backToSignin(); return; }
+  resendAt = Date.now() + 20000; $('cdErr').textContent = ''; $('cdNote').textContent = 'Sending…';
+  try {
+    const r = await api('POST', 'login', { email, password });
+    if (!r.ok){ $('cdNote').textContent = ''; $('cdErr').textContent = r.data.error || 'Could not send a new code.'; return; }
+    pendingVerification = r.data.verificationId; $('cdCode').value = '';
+    $('cdNote').textContent = 'A new code is on its way. Use the newest email.' + (r.data.interimCode ? ` (Local demo: ${r.data.interimCode})` : '');
+    $('cdCode').focus();
+  } catch (e){ $('cdNote').textContent = ''; $('cdErr').textContent = 'Could not reach the server.'; }
+}
+function backToSignin(){ $('siPass').value = ''; $('cdCode').value = ''; $('cdNote').textContent = ''; show('signinView'); }
 
 // ---- first password / forgot password ----
 function showSetup(prefill){
