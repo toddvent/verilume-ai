@@ -482,8 +482,11 @@ function showLoginMfaStep(data){
   document.getElementById('loginMfaStep').style.display = 'block';
   document.getElementById('loginMfaIntro').textContent = data.channel === 'sms'
     ? `We texted a 6-digit code to ${data.target}. Enter it below to finish signing in on this device.`
-    : `We emailed a 6-digit code to ${data.target}. Enter it below to finish signing in on this device.`;
-  document.getElementById('loginMfaSwitchLink').textContent = data.channel === 'sms' ? 'Verify by email instead' : 'Verify by text instead';
+    : `We emailed a 6-digit code to ${data.target}. Enter it below to finish signing in on this device. It can take a minute, so check your spam folder too.`;
+  const switchLink = document.getElementById('loginMfaSwitchLink');
+  switchLink.textContent = data.channel === 'sms' ? 'Verify by email instead' : 'Verify by text instead';
+  // Email is always available. Text is only offered when the account has a phone on file.
+  switchLink.style.display = (data.channel === 'email' && data.canSms === false) ? 'none' : '';
   const interimNote = document.getElementById('loginMfaInterimNote');
   if (data.interimCode){
     interimNote.style.display = 'block';
