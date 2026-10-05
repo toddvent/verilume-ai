@@ -106,7 +106,7 @@
       <button class="btn" id="suSendBtn" onclick="doSetupSend()">Send code</button>
     </div>
     <div id="setupStep2" class="hidden">
-      <div class="field"><label for="suCode">6-digit code</label><input type="text" id="suCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></div>
+      <div class="field" id="suCodeField"><label for="suCode">6-digit code</label><input type="text" id="suCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></div>
       <div class="field"><label for="suPass">New password (12 or more characters)</label><input type="password" id="suPass" autocomplete="new-password"></div>
       <div class="field"><label for="suPass2">Confirm password</label><input type="password" id="suPass2" autocomplete="new-password" onkeydown="if(event.key==='Enter')doSetupSave()"></div>
       <button class="btn" id="suSaveBtn" onclick="doSetupSave()">Save password</button>
@@ -213,7 +213,7 @@ function backToSignin(){ show('signinView'); }
 
 // ---- first password / forgot password ----
 function showSetup(prefill){
-  $('setupStep1').classList.remove('hidden'); $('setupStep2').classList.add('hidden');
+  $('setupStep1').classList.remove('hidden'); $('setupStep2').classList.add('hidden'); $('suCodeField').classList.remove('hidden');
   $('suNote').textContent = ''; $('suErr').textContent = '';
   $('suEmail').value = prefill || $('siEmail').value || '';
   show('setupView');
@@ -332,6 +332,14 @@ async function doLogout(expired){
 // ---- start ----
 (async function init(){
   const qs = new URLSearchParams(location.search);
+  if (qs.get('reset') === '1' && qs.get('v') && qs.get('c')){
+    setupVerification = qs.get('v'); setupEmail = '';
+    $('suCode').value = qs.get('c'); $('suCodeField').classList.add('hidden');
+    $('setupStep1').classList.add('hidden'); $('setupStep2').classList.remove('hidden');
+    $('setupLede').textContent = 'Choose your new password.';
+    show('setupView'); try { history.replaceState(null, '', location.pathname); } catch (e){}
+    return;
+  }
   if (qs.get('setup') === '1'){ showSetup(qs.get('email') || ''); return; }
   if (token()){
     const r = await api('GET', 'me');
