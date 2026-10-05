@@ -22761,9 +22761,14 @@ async function runPrCandidateInterview(account, docType, brief){
   const liveVendorCandidates = configuredVendors.map((v, i) => buildCandidate(v.key, v.label, v.vendor, v.model, true, vendorGenerated[i]));
   const unconfiguredCandidates = INTERVIEW_VENDOR_REGISTRY.filter(v => !process.env[v.envVar]).map(v => buildCandidate(v.key, v.label, v.vendor, null, false, { copy: null, error: `${v.envVar} not configured on this deployment.` }));
 
+  // Blind the drafts on the server: shuffle the ones that have copy and give each an opaque label and key, so neither the order nor the key names the vendor. The real key stays on the stored record for the ranking ledger.
+  const all = [anthropicCandidate, ...liveVendorCandidates, ...unconfiguredCandidates];
+  const withCopy = all.filter(c => c.copy);
+  for (let i = withCopy.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); [withCopy[i], withCopy[j]] = [withCopy[j], withCopy[i]]; }
+  withCopy.forEach((c, i) => { c.blindLabel = 'Draft ' + (i + 1); c.blindKey = 'draft-' + (i + 1); });
   return {
     available: true, note: null, recommendedKey: null,
-    candidates: [anthropicCandidate, ...liveVendorCandidates, ...unconfiguredCandidates]
+    candidates: [...withCopy, ...all.filter(c => !c.copy)]
   };
 }
 // Shared handler bodies for the 3 PR doc types' interview/select endpoints
@@ -22803,14 +22808,14 @@ async function handlePrCopyInterviewRequest(docType, accountId, sourceId, body, 
   const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
   db.prepare(`INSERT INTO pr_copy_interviews (id, accountId, docType, sourceId, requestedBy, candidatesJson, createdAt) VALUES (?,?,?,?,?,?,?)`)
     .run(interviewId, accountId, docType, sourceId, requestedBy, JSON.stringify(result.candidates), now);
-  return { status: 200, body: { available: true, interviewId, recommendedKey: result.recommendedKey, candidates: redactCandidatesForClient(result.candidates), createdAt: now } };
+  return { status: 200, body: { available: true, interviewId, recommendedKey: result.recommendedKey, candidates: result.candidates.filter(c => c.copy).map(c => Object.assign(redactCandidatesForClient([c])[0], { key: c.blindKey })), createdAt: now } };
 }
 function handlePrCopySelectRequest(accountId, interviewId, candidateKey, session){
   const interview = db.prepare('SELECT * FROM pr_copy_interviews WHERE id = ? AND accountId = ?').get(interviewId, accountId);
   if (!interview) return { status: 404, body: { error: 'PR contest not found for this account' } };
   let candidates = [];
   try { candidates = JSON.parse(interview.candidatesJson) || []; } catch (e){ candidates = []; }
-  const chosen = candidates.find(c => c.key === candidateKey);
+  const chosen = candidates.find(c => (c.blindKey && c.blindKey === candidateKey) || c.key === candidateKey);
   if (!chosen || !chosen.copy){
     return { status: 400, body: { error: 'candidateKey does not match a candidate with real copy on this contest' } };
   }
