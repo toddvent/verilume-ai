@@ -23053,7 +23053,7 @@ function drrBarHtml(){
 }
 function drrRenderBars(){ document.querySelectorAll('.drr-bar').forEach(b => { b.innerHTML = drrBarHtml(); }); }
 function shareBtnHtml(card){
-  const items = [['xlsx', 'Excel (.xlsx)'], ['csv', 'CSV'], ['pdf', 'PDF']].map(([f, l]) => `<button type="button" role="menuitem" onclick="analyticsExport('${card}','${f}')">${l}</button>`).join('');
+  const items = [['xlsx', 'Excel (.xlsx)'], ['csv', 'CSV'], ['pdf', 'PDF'], ['pptx', 'Slide (.pptx)'], ['png', 'Image (.png)']].map(([f, l]) => `<button type="button" role="menuitem" onclick="analyticsExport('${card}','${f}')">${l}</button>`).join('');
   return `<div class="share-wrap"><button type="button" class="share-btn" aria-label="Share or download this card" aria-haspopup="menu" onclick="shareToggle(event,'${card}')"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg></button><div class="share-menu" id="shareMenu-${card}" role="menu" hidden>${items}</div></div>`;
 }
 function shareToggle(ev, card){
@@ -23064,6 +23064,7 @@ function shareToggle(ev, card){
 document.addEventListener('click', () => { document.querySelectorAll('.share-menu').forEach(m => { m.hidden = true; }); });
 async function analyticsExport(card, format){
   document.querySelectorAll('.share-menu').forEach(m => { m.hidden = true; });
+  if (format === 'png') return analyticsImage(card);
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/analytics/export?card=${encodeURIComponent(card)}&format=${encodeURIComponent(format)}`);
     if (!resp.ok){ drr.error = 'Could not build that download right now.'; drrRenderBars(); return; }
@@ -23071,6 +23072,50 @@ async function analyticsExport(card, format){
     const url = URL.createObjectURL(blob); const a = document.createElement('a');
     a.href = url; a.download = m ? m[1] : `${card}.${format}`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
   } catch (e){ drr.error = 'Could not build that download right now.'; drrRenderBars(); }
+}
+async function analyticsImage(card){
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/analytics/export?card=${encodeURIComponent(card)}&format=json`);
+    if (!resp.ok){ drr.error = 'Could not build that image right now.'; drrRenderBars(); return; }
+    const x = await resp.json(); const S = 2, W = 1600, P = 48, F = 'Arial, Helvetica, sans-serif';
+    const meas = document.createElement('canvas').getContext('2d');
+    const wrapT = (ctx, text, w) => { const words = String(text).split(/\s+/); const out = []; let cur = ''; words.forEach(wd => { const t = cur ? cur + ' ' + wd : wd; if (ctx.measureText(t).width > w && cur){ out.push(cur); cur = wd; } else cur = t; }); out.push(cur); return out; };
+    const sub = (x.context || []).filter(([k]) => /^(Period|Source)$/i.test(k)).map(([k, v]) => k + ': ' + v).join('   |   ');
+    const blocks = []; let H = P + 44 + 26 + (sub ? 8 : 0); H += 18;
+    meas.font = '15px ' + F;
+    (x.tables || []).slice(0, 3).forEach(t => {
+      const n = t.columns.length; const inner = W - 2 * P; const first = n > 4 ? 0.28 : 0.4; const cw = t.columns.map((c, i) => i === 0 ? inner * first : inner * (1 - first) / Math.max(1, n - 1));
+      const rows = t.rows.slice(0, 20); const hidden = t.rows.length - rows.length;
+      const meta = rows.map(r => { const ls = r.map((c, i) => wrapT(meas, c, cw[i] - 16)); return { ls, h: Math.max(...ls.map(a => a.length)) * 20 + 14 }; });
+      const hd = t.columns.map((c, i) => wrapT(meas, c, cw[i] - 16)); const hh = Math.max(...hd.map(a => a.length)) * 18 + 14;
+      const bh = 30 + hh + meta.reduce((a, m) => a + m.h, 0) + (hidden > 0 ? 26 : 0) + 22;
+      blocks.push({ t, cw, meta, hd, hh, hidden, bh, rows }); H += bh;
+    });
+    H += P;
+    const cv = document.createElement('canvas'); cv.width = W * S; cv.height = Math.round(H * S); const c = cv.getContext('2d'); c.scale(S, S);
+    c.fillStyle = '#FFFFFF'; c.fillRect(0, 0, W, H); c.textBaseline = 'top';
+    let y = P; c.fillStyle = '#1E2761'; c.font = 'bold 34px ' + F; c.fillText(x.title, P, y); y += 44;
+    if (sub){ c.fillStyle = '#6E6E73'; c.font = '14px ' + F; c.fillText(sub, P, y); y += 26 + 8; } y += 18;
+    blocks.forEach(b => {
+      c.fillStyle = '#1D1D1F'; c.font = 'bold 18px ' + F; c.fillText(b.t.name, P, y); y += 30;
+      let xs = []; b.cw.reduce((a, w, i) => { xs[i] = a; return a + w; }, P);
+      c.fillStyle = '#F5F5F7'; c.fillRect(P, y, W - 2 * P, b.hh);
+      c.fillStyle = '#6E6E73'; c.font = 'bold 13px ' + F;
+      b.hd.forEach((ls, i) => { c.textAlign = b.t.numeric[i] ? 'right' : 'left'; ls.forEach((ln, li) => c.fillText(ln, b.t.numeric[i] ? xs[i] + b.cw[i] - 8 : xs[i] + 8, y + 7 + li * 18)); });
+      y += b.hh;
+      b.meta.forEach((m, ri) => {
+        c.fillStyle = '#1D1D1F'; c.font = '15px ' + F;
+        m.ls.forEach((ls, i) => { c.textAlign = b.t.numeric[i] ? 'right' : 'left'; ls.forEach((ln, li) => c.fillText(ln, b.t.numeric[i] ? xs[i] + b.cw[i] - 8 : xs[i] + 8, y + 7 + li * 20)); });
+        y += m.h; c.fillStyle = '#E8E8ED'; c.fillRect(P, y - 1, W - 2 * P, 1);
+      });
+      c.textAlign = 'left';
+      if (b.hidden > 0){ c.fillStyle = '#6E6E73'; c.font = '13px ' + F; c.fillText(b.hidden + ' more rows are in the Excel download.', P, y + 6); y += 26; }
+      y += 22;
+    });
+    const blob = await new Promise(r => cv.toBlob(r, 'image/png')); if (!blob) throw new Error('no image');
+    const url = URL.createObjectURL(blob); const a = document.createElement('a');
+    a.href = url; a.download = String(card).replace(/[^a-z0-9-]/gi, '') + '.png'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  } catch (e){ drr.error = 'Could not build that image right now.'; drrRenderBars(); }
 }
 async function stratGet(path){
   const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/analytics/${path}`);
