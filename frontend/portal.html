@@ -1584,6 +1584,14 @@
   .sl-st{display:inline-block;font-size:0.75rem;font-weight:700;border-radius:980px;padding:2px 10px;white-space:nowrap;} .sl-st-ok{background:#EAF7EF;color:#1E6B44;} .sl-st-warn{background:#FBF1E3;color:#8A5A1F;}
   .sl-need{font-size:0.6875rem;font-weight:700;border-radius:4px;padding:1px 6px;background:var(--dim,#F5F5F7);color:var(--muted);} .sl-need.sl-required{background:#1E2761;color:#fff;} .sl-need.sl-recommended{background:#EAF3EF;color:#1E6B44;}
   .sl-code{background:#F5F5F7;border:1px solid var(--line);border-radius:8px;padding:12px;font-size:0.75rem;line-height:1.5;overflow-x:auto;white-space:pre;margin:4px 0 6px;} .sl-notes{margin:4px 0 0;padding-left:18px;font-size:0.875rem;line-height:1.5;} .sl-notes li{margin:3px 0;}
+  .prc-strip{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:8px;background:#fff;}
+  .prc-strip-t{font-size:0.6875rem;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted,#6B7280);margin-bottom:6px;}
+  .prc-strip-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 14px;}
+  .prc-strip-g b{display:block;font-size:0.875rem;color:var(--ink);}
+  .prc-strip-g span{display:block;font-size:0.75rem;color:var(--muted,#6B7280);}
+  .prc-strip-n{font-size:0.75rem;color:var(--muted,#6B7280);margin-top:6px;}
+  .prc-seed{font-size:0.75rem;color:var(--muted,#6B7280);margin-top:4px;}
+  .gsc-link.gsc-rel{margin-left:10px;}
     .gsc-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:8px;} .gsc-title{font-size:1rem;font-weight:700;} .gsc-sub{font-size:0.75rem;color:var(--muted);}
   .gsc-scroll{overflow-x:auto;} .gsc-table{width:100%;border-collapse:collapse;font-size:0.875rem;} .gsc-table th{text-align:left;font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line);} .gsc-table td{padding:10px 8px;border-bottom:1px solid var(--line-hairline);vertical-align:top;} .gsc-r{text-align:right !important;font-variant-numeric:tabular-nums;} .gsc-nw{white-space:nowrap;}
   .gsc-lvl{display:inline-block;font-size:0.6875rem;font-weight:700;border-radius:5px;padding:1px 7px;color:#fff;background:#6E6E73;} .gsc-P1,.gsc-t-fix{background:#B42318;} .gsc-P2,.gsc-t-check{background:#B4620A;} .gsc-P3,.gsc-t-review{background:#6E6E73;}
@@ -59361,7 +59369,8 @@ function srchCopyOut(key){ const ta = document.getElementById('srchOut-' + key);
 // ---- Search Everywhere: Search Console page (2026-10-04) ----
 // Top of the page: date range, four executive cards, Brain read, Top 5 Priorities, slide-ready charts,
 // top non-brand searches and the index health check. Data comes from GET /search-everywhere/page.
-const gsc = { disagree: {}, readNote: '', readMsg: '', refreshed: '', viewAll: false, data: null, loading: false, error: '', manage: {}, more: {}, brandOpen: false, brandMsg: '', up: { stage: 'idle', files: [], preview: null, busy: false, msg: '' }, saveMsg: '', groupMsg: '' };
+const gscRelSeeds = {};
+const gsc = { relMsg: '', disagree: {}, readNote: '', readMsg: '', refreshed: '', viewAll: false, data: null, loading: false, error: '', manage: {}, more: {}, brandOpen: false, brandMsg: '', up: { stage: 'idle', files: [], preview: null, busy: false, msg: '' }, saveMsg: '', groupMsg: '' };
 const GSC_STATUS_LABEL = { new: 'New', planned: 'Planned', in_progress: 'In progress', done: 'Done', dismissed: 'Dismissed' };
 const gscInt = n => (n == null || isNaN(n)) ? '—' : Math.round(n).toLocaleString();
 const gscPct = (n, d) => (n == null || isNaN(n)) ? '—' : (n * 100).toFixed(d == null ? 1 : d) + '%';
@@ -59455,6 +59464,7 @@ function gscRender(){
   h += gscCardsHtml(d);
   h += gscReadsHtml(d);
   h += gscPrioritiesHtml(d);
+  h += gscContentUpdatesHtml(d);
   h += gscChartsHtml(d);
   h += gscAiHtml(d);
   h += gscGroupsHtml(d);
@@ -59507,6 +59517,12 @@ async function gscRefreshReads(){
   if (!need || gsc.refreshed === need) return; gsc.refreshed = need;
   try { const r = await srchPost('/reads/refresh', {}); gsc.readNote = r.reason ? 'Shown in standard wording. ' + r.reason : ''; if (r.generated){ const d = await srchApi('/page'); if (!d.error){ gsc.data = d; gscRender(); } } else if (gsc.readNote) gscRender(); } catch (e){ gsc.readNote = 'Shown in standard wording. Could not reach the writing service.'; gscRender(); }
 }
+// ---- content updates ----
+function gscContentUpdatesHtml(d){
+  const list = d.contentUpdates || [];
+  const rows = list.length ? list.map(u => `<tr><td class="gsc-nw">${escapeHtml(gscDay(u.date))}</td><td><b>${escapeHtml(u.title)}</b><div class="gsc-sub">${escapeHtml(u.detail || '')}${u.url ? ' · ' + escapeHtml(u.url) : ''}</div></td><td class="gsc-r">${u.impressions == null ? '<span class="gsc-sub">Not measured</span>' : gscInt(u.impressions)}<div class="gsc-sub">${escapeHtml(u.note || '')}</div></td></tr>`).join('') : '<tr><td colspan="3" class="gsc-sub">Nothing yet. A press release joins this list when you mark it Distributed. A gap joins when you mark its priority done.</td></tr>';
+  return `<div class="strat-card"><div class="gsc-head"><div class="gsc-title">Content updates</div><div class="gsc-sub">Press releases you distributed and gaps you marked done${gsc.relMsg ? ' · ' + escapeHtml(gsc.relMsg) : ''}</div></div><div class="gsc-scroll"><table class="gsc-table"><thead><tr><th>Date</th><th>Update</th><th class="gsc-r">Impressions</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+}
 // ---- priorities ----
 function gscPrioritiesHtml(d){
   const p = d.priorities || { top: [], totalOpen: 0 };
@@ -59514,9 +59530,29 @@ function gscPrioritiesHtml(d){
   const rows = list.map(x => {
     const open = !!gsc.manage[x.id]; const lvl = `<span class="gsc-lvl gsc-${x.priority}">${x.priority}</span>`;
     const impact = x.impactBasis === 'calculated' ? `<b>${escapeHtml(x.impactLabel)}</b><div class="gsc-sub">Calculated</div>` : `<b>${escapeHtml(x.impactLabel)}</b><div class="gsc-sub">Rated</div>`;
-    return `<tr><td class="gsc-nw">${escapeHtml(gscDay(x.date))}</td><td>${lvl}</td><td><b>${escapeHtml(x.title)}</b>${x.window ? ` <span class="gsc-win">${escapeHtml(x.window.label)}</span>` : ''}<div class="gsc-sub">${escapeHtml(x.detail || '')}</div></td><td class="gsc-nw">${impact}</td><td><span class="gsc-st gsc-st-${x.waiting ? 'waiting' : x.status}">${x.waiting ? 'Waiting' : (GSC_STATUS_LABEL[x.status] || x.status)}</span></td><td class="gsc-nw"><button type="button" class="gsc-link" aria-expanded="${open}" onclick="gsc.manage['${x.id}']=!gsc.manage['${x.id}']; gscRender();">Manage →</button></td></tr>${open ? `<tr class="gsc-manage"><td colspan="6">${gscManageHtml(x)}</td></tr>` : ''}`;
+    return `<tr><td class="gsc-nw">${escapeHtml(gscDay(x.date))}</td><td>${lvl}</td><td><b>${escapeHtml(x.title)}</b>${x.window ? ` <span class="gsc-win">${escapeHtml(x.window.label)}</span>` : ''}<div class="gsc-sub">${escapeHtml(x.detail || '')}</div></td><td class="gsc-nw">${impact}</td><td><span class="gsc-st gsc-st-${x.waiting ? 'waiting' : x.status}">${x.waiting ? 'Waiting' : (GSC_STATUS_LABEL[x.status] || x.status)}</span></td><td class="gsc-nw"><button type="button" class="gsc-link" aria-expanded="${open}" onclick="gsc.manage['${x.id}']=!gsc.manage['${x.id}']; gscRender();">Manage →</button>${gscRelBtn('p:' + x.id, x.releaseSeed)}</td></tr>${open ? `<tr class="gsc-manage"><td colspan="6">${gscManageHtml(x)}</td></tr>` : ''}`;
   }).join('');
   return `<div class="strat-card gsc-prio"><div class="gsc-head"><div class="gsc-title">${gsc.viewAll ? 'All priorities' : 'Top ' + (p.limit || 5) + ' priorities'} ${aiThoughtIconHtml('AJ')}</div><div class="gsc-sub">${p.totalOpen} open${p.waiting ? ' · ' + p.waiting + ' waiting' : ''}${p.all && p.all.length > p.top.length ? ` · <button type="button" class="gsc-link" onclick="gsc.viewAll=!gsc.viewAll; gscRender();">${gsc.viewAll ? 'Show top ' + (p.limit || 5) : 'View all'}</button>` : ''}</div></div>${rows ? `<div class="gsc-scroll"><table class="gsc-table"><thead><tr><th>Date</th><th></th><th>Priority</th><th>Business impact</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="strat-empty">Nothing open right now.</p>'}${gsc.saveMsg ? `<p class="strat-empty">${escapeHtml(gsc.saveMsg)}</p>` : ''}</div>`;
+}
+function gscRelBtn(key, seed){
+  if (!seed) return '';
+  gscRelSeeds[key] = seed;
+  return `<button type="button" class="gsc-link gsc-rel" onclick="gscDraftRelease('${escapeHtml(key).replace(/'/g, "\\'")}')">Draft a Release</button>`;
+}
+// Starts a press release with the topic and search terms filled in. Nothing is drafted or sent; the writer opens the release and writes the brief.
+async function gscDraftRelease(key){
+  const seed = gscRelSeeds[key]; if (!seed) return;
+  const title = ('Release: ' + seed.text).slice(0, 140);
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/press-releases`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, searchSeed: seed }) });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.id){ gsc.relMsg = data.error || "Couldn't start the release. Try again."; gscRender(); return; }
+    gsc.relMsg = '';
+    goToStep('reputation');
+    try { await loadPrCorpCommData(); } catch (e){}
+    prcExpanded['press:' + data.id] = true; renderReputationStep();
+    setTimeout(() => { const sec = document.getElementById('repPressSection'); if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 200);
+  } catch (e){ gsc.relMsg = 'Could not reach the server. Try again.'; gscRender(); }
 }
 function gscManageHtml(x){
   const sel = (id, opts, cur) => `<select id="${id}-${x.id}">${opts.map(([v, l]) => `<option value="${v}"${v === cur ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
@@ -59623,7 +59659,7 @@ function gscQuestionsHtml(d){
   const rows = Q.questions.map(q => {
     const k = q.queryKey; const open = !!gscQ.open[k];
     const grp = q.offered ? `<span class="gsc-st">${escapeHtml(q.scope)}</span>${q.window ? ` <span class="gsc-win">${escapeHtml(q.window.label)}</span>` : ''}` : '<span class="gsc-sub">Not in any group</span>';
-    const act = !q.offered ? '' : `<button type="button" class="gsc-link" aria-expanded="${open}" onclick="gscQ.open['${escapeHtml(k).replace(/'/g, "\\'")}']=!gscQ.open['${escapeHtml(k).replace(/'/g, "\\'")}']; gscRender();">${open ? 'Close' : q.status === 'drafted' || q.status === 'approved' ? 'Review' : 'Draft answer →'}</button>`;
+    const act = !q.offered ? '' : `<button type="button" class="gsc-link" aria-expanded="${open}" onclick="gscQ.open['${escapeHtml(k).replace(/'/g, "\\'")}']=!gscQ.open['${escapeHtml(k).replace(/'/g, "\\'")}']; gscRender();">${open ? 'Close' : q.status === 'drafted' || q.status === 'approved' ? 'Review' : 'Draft answer →'}</button>${q.status === 'approved' || q.brand || !(q.groups && q.groups[0]) ? '' : gscRelBtn('q:' + q.queryKey, { source: 'question', text: q.question, group: q.brand ? '' : (q.groups && q.groups[0] ? q.groups[0].value : ''), groupType: q.brand ? '' : (q.groups && q.groups[0] ? q.groups[0].type : ''), refId: q.queryKey })}`;
     return `<tr class="${q.offered ? '' : 'gsc-dim'}"><td>${escapeHtml(q.question)}</td><td>${grp}</td><td class="gsc-r">${gscInt(q.impressions)}</td><td class="gsc-r">${q.avgPosition ? q.avgPosition.toFixed(1) : '—'}</td><td>${q.offered ? gscQStatusTag(q) : ''}</td><td class="gsc-nw">${act}</td></tr>${open ? `<tr class="gsc-manage"><td colspan="6">${gscQPanelHtml(q)}</td></tr>` : ''}`;
   }).join('');
   return `<div class="strat-card"><div class="gsc-head"><div class="gsc-title">Questions people ask ${aiThoughtIconHtml('AL')}</div><div class="gsc-sub">Searches that are questions, ${escapeHtml(d.range.label)}</div></div><div class="gsc-scroll"><table class="gsc-table"><thead><tr><th>Question</th><th>Group</th><th class="gsc-r">Impressions</th><th class="gsc-r">Position</th><th>FAQ</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
@@ -60333,6 +60369,43 @@ async function prcGenerateDraft(type, id){
   }
 }
 
+// Shown on releases started from Search Everywhere: the topic is a suggestion, never a fact.
+function prcSeedNoteHtml(item){
+  const sd = item.searchSeed; if (!sd) return '';
+  return `<div class="prc-seed">Started from Search Everywhere (${sd.source === 'question' ? 'a question people ask' : 'a priority'}): ${escapeHtml(sd.text)}${sd.terms && sd.terms.length ? ' · Search terms: ' + escapeHtml(sd.terms.join(', ')) : ''}. These are suggestions. Write the facts in the brief.</div>`;
+}
+// Search status for every Distributed release: only what Search Console files can say, with the file's date range stated.
+function prcStripHtml(item){
+  const st = item.searchStatus; if (!st) return '';
+  const n = v => Number(v || 0).toLocaleString('en-US');
+  const urlRow = `<div class="field" style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;"><input type="text" id="prcPubUrl-${item.id}" value="${escapeHtml(st.url || '')}" placeholder="Page address of this release on your site" style="flex:1;min-width:220px;"><button type="button" class="btn-ghost" onclick="prcSavePublishedUrl('${item.id}')">Save page address →</button><span id="prcPubUrlStatus-${item.id}" class="hint"></span></div>`;
+  const dated = d => { try { return gscDay(d); } catch (e){ return d || ''; } };
+  let onSite, seen, imps;
+  if (st.needsUrl){ onSite = ['Not set', 'Add the page address below']; seen = ['Not checked', 'Needs the page address']; imps = ['Not measured', 'Needs the page address']; }
+  else {
+    onSite = st.siteCheck ? (st.siteCheck.found ? ['Yes', 'In your site check of ' + dated(st.siteCheck.checkedAt)] : ['Not found', 'Not in your site check of ' + dated(st.siteCheck.checkedAt)]) : ['Address saved', 'No site check on file'];
+    const pf = st.pagesFile;
+    if (!pf){ seen = ['No Pages file', 'Upload a Pages export']; imps = ['Not measured', 'Upload a Pages export']; }
+    else { seen = pf.seen ? ['Yes', 'In your Pages file'] : ['Not yet', 'Not in your Pages file']; const rng = pf.from && pf.to ? dated(pf.from) + ' to ' + dated(pf.to) : 'dates not in the file'; imps = pf.seen ? [n(pf.impressions), rng + (pf.includesDaysBeforePublish ? ' (includes days before publishing)' : '')] : ['0', rng]; }
+  }
+  const sug = st.suggestions ? [st.suggestions.accepted + ' of ' + st.suggestions.total, 'Optimize suggestions accepted'] : ['Not run', 'Optimize for search was not used'];
+  return `<div class="prc-strip"><div class="prc-strip-t">Search status · published ${escapeHtml(dated(st.publishedDate))}</div><div class="prc-strip-g">
+    <div><b>${escapeHtml(onSite[0])}</b><span>On your site · ${escapeHtml(onSite[1])}</span></div>
+    <div><b>${escapeHtml(seen[0])}</b><span>Seen in Search Console · ${escapeHtml(seen[1])}</span></div>
+    <div><b>${escapeHtml(imps[0])}</b><span>Impressions · ${escapeHtml(imps[1])}</span></div>
+    <div><b>${escapeHtml(sug[0])}</b><span>${escapeHtml(sug[1])}</span></div>
+    <div><b>Planned</b><span>AI answers and communities · not measured</span></div></div>${urlRow}
+    <div class="prc-strip-n">Search Console files carry no per-page daily data, so impressions are the figure in your latest Pages file, not a count since publishing.</div></div>`;
+}
+async function prcSavePublishedUrl(id){
+  const inp = document.getElementById('prcPubUrl-' + id), out = document.getElementById('prcPubUrlStatus-' + id); if (!inp) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/press-releases/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ publishedUrl: inp.value.trim() }) });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){ if (out) out.textContent = data.error || 'Could not save.'; return; }
+    await loadPrCorpCommData();
+  } catch (e){ if (out) out.textContent = 'Backend unreachable.'; }
+}
 function prcRenderSection(type, containerId, titleFn, subtitleFn){
   const el = document.getElementById(containerId);
   if (!el) return;
@@ -60351,6 +60424,7 @@ function prcRenderSection(type, containerId, titleFn, subtitleFn){
         </div>
         <span class="seo-badge rep-badge ${cls}" style="white-space:nowrap;">${label}</span>
       </div>
+      ${type === 'press' ? prcSeedNoteHtml(item) + prcStripHtml(item) : ''}
       <div class="btn-row" style="margin:8px 0 0;flex-wrap:wrap;">
         <button type="button" class="btn-ghost" onclick="prcToggleExpand('${type}','${item.id}')">${expanded ? 'Hide draft' : 'View / edit draft'}</button>
         <button type="button" class="btn-ghost" onclick="prcGenerateDraft('${type}','${item.id}')">Draft with AI →</button>
