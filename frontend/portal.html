@@ -1490,6 +1490,10 @@
   .fd-out{border-top:1px solid var(--line);margin-top:14px;padding-top:6px;}
   .fd-sum{margin:0 0 10px;font-size:1rem;}
   .stat-card-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:32px;}
+  .stat-card.flow-card .exec-visual-row{flex-direction:column;align-items:center;gap:12px;margin-top:8px;}
+  .stat-card.flow-card .donut-side-col{width:100%;gap:0;}
+  .stat-card.flow-card .donut-legend{gap:6px;font-size:0.8125rem;}
+  .stat-card.flow-card .exec-caption{margin:10px 0 0;font-size:0.75rem;}
   .stat-card{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:20px 22px;box-shadow:var(--shadow-sm);transition:box-shadow 0.15s ease,transform 0.15s ease;}
   .stat-card:hover{box-shadow:var(--shadow-md);transform:translateY(-1px);}
   .stat-card .sc-label{font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
@@ -23225,7 +23229,7 @@ function bfInvalidate(){ bf.cache = {}; }
 function bfBodyHtml(d){
   if (!d) return '<p class="strat-empty" style="margin:0;">Could not load the budget just now.</p>';
   const M = v => fmtMoney(Math.round(v));
-  if (d.planned == null) return `<p class="strat-empty" style="margin:0;">Not on file yet: a confirmed ${d.year} budget upload with working media. ${d.completed ? 'Spend to date is ' + M(d.completed) + '. ' : ''}${d.pending && d.pending.total ? M(d.pending.total) + ' is scheduled on the channel plans.' : ''}</p>`;
+  if (d.planned == null) return `<p class="strat-empty" style="margin:0;">Not on file yet: a confirmed ${d.year} budget upload with working media.</p>`;
   const segs = [
     { label: 'Completed', value: Math.min(d.completed || 0, d.planned), color: 'var(--cx)', note: 'Spend to date' },
     { label: 'Pending', value: Math.min(d.pending.total, Math.max(0, d.planned - (d.completed || 0))), color: 'var(--hdr-amber,#D08A3E)', note: 'Scheduled, dated today or later' },
@@ -23237,11 +23241,9 @@ function bfBodyHtml(d){
   const pct = d.planned ? Math.round((((d.completed || 0) + d.pending.total) / d.planned) * 100) : 0;
   const legend = segs.map(x => `<div class="donut-legend-item"><span class="swatch" style="background:${x.color};border:1px solid var(--line);"></span><span class="lname" title="${escapeHtml(x.note)}">${escapeHtml(x.label)}</span><span class="lval">${M(x.value)} (${Math.round((x.value / total) * 100)}%)</span></div>`).join('');
   const dated = iso => { try { return stratDay(iso); } catch (e){ return iso; } };
-  const from = d.plannedFrom && d.plannedFrom[0] ? `${escapeHtml(d.plannedFrom[0].fileName || 'confirmed upload')}` : 'confirmed upload';
-  const pend = d.pending.rows ? ` (${d.pending.rows} channel-plan rows${d.pending.approved ? `, ${M(d.pending.approved)} client approved` : ''}${d.pending.draft ? `, ${M(d.pending.draft)} draft` : ''})` : '';
   return `<div class="exec-visual-row"><div class="donut-svg-wrap">${donut.svg}<div class="donut-center"><div class="num">${pct}%</div><div class="lbl">Committed</div></div></div>
     <div class="donut-side-col"><div class="donut-legend"><div class="donut-legend-item"><span class="swatch" style="background:transparent;border:1px solid var(--line);"></span><span class="lname"><b>Planned working media</b></span><span class="lval"><b>${M(d.planned)}</b></span></div>${legend}</div></div></div>
-    <p class="exec-caption">${d.year} working media only; non-working media (${M(d.nonWorkingExcluded)}) is excluded. Planned: ${from}. Completed: spend through ${escapeHtml(dated(d.asOf))}. Pending: scheduled media dated from today${d.pending.through ? ' to ' + escapeHtml(dated(d.pending.through)) : ''}${pend}.${d.notes && d.notes.length ? ' ' + d.notes.map(escapeHtml).join(' ') : ''}</p>`;
+    <p class="exec-caption">${d.year} plan. Completed through ${escapeHtml(dated(d.asOf))}${d.pending.through ? '. Pending ' + escapeHtml(dated(d.asOf)) + ' to ' + escapeHtml(dated(d.pending.through)) : ''}.</p>`;
 }
 async function bfRenderStrategy(){
   const el = document.getElementById('stratFlowBody'); if (!el) return;
@@ -23291,7 +23293,7 @@ function stratRenderDemandRow(){
   if (!document.getElementById('drrBar')) el.insertAdjacentHTML('beforebegin', '<div class="drr-bar" id="drrBar"></div>');
   drrRenderBars();
   const d = strat.demand;
-  if (!d){ el.innerHTML = ['Spend', 'Gross revenue', 'ROAS', 'CAC'].map(l => `<div class="stat-card"><div class="sc-label">${l}</div><div class="sc-value">…</div><div class="sc-delta neutral">Loading</div></div>`).join(''); return; }
+  if (!d){ el.innerHTML = ['Budget flow', 'Gross revenue', 'ROAS', 'CAC'].map(l => `<div class="stat-card"><div class="sc-label">${l}</div><div class="sc-value">…</div><div class="sc-delta neutral">Loading</div></div>`).join(''); return; }
   const c = d.current, dl = d.deltaPct, w = d.window, o = d.outcomes;
   const per = d.range ? stratHumanDates(d.range.label) : `${stratRangeText(w.from, w.to)}`;
   const card = (label, value, delta, good, sub, key) => `<div class="stat-card has-share">${shareBtnHtml(key)}<div class="sc-label">${label}</div><div class="sc-value">${value}</div><div class="sc-delta ${good ? 'good' : 'neutral'}">${delta}</div><div class="strat-sub">${sub}</div></div>`;
@@ -23305,9 +23307,8 @@ function stratRenderDemandRow(){
   const basisSub = o ? escapeHtml(stratHumanDates(o.basisLabel)) + (o.outsideRange ? ' · not the selected dates' : '') : 'Not on file yet';
   const oldBasis = o && o.outsideRange ? ' · ' + escapeHtml(o.basis === 'annual_results' ? 'closed-year figures' : 'plan baseline') : '';
   const t = o && o.target, vt = o && o.vsTargetPct;
-  const spendSub = d.pacing ? `Pacing ${d.pacing.spendPacingPct}% of plan to date · ${per}` : per;
   el.innerHTML =
-    card('Marketing spend', stratMoney(c.spend), cmp(dl.spend, null, null, 'spend'), false, spendSub, 'spend') +
+    `<div class="stat-card flow-card"><div class="sc-label">Budget flow · working media</div><div id="stratFlowBody"><p class="hint">Loading…</p></div></div>` +
     card('Gross revenue', o ? stratMoney(o.revenue) : '—', cmp(o && o.deltaPct.revenue, vt && vt.revenue, t && t.revenue != null ? stratMoney(t.revenue) : null, 'revenue'), !!(o && ((o.deltaPct.revenue != null && o.deltaPct.revenue >= 0) || (vt && vt.revenue != null && vt.revenue >= 0))), basisSub, 'revenue') +
     card('ROAS', o && o.roas != null ? `${o.roas.toFixed(2)}x` : '—', cmp(o && o.deltaPct.roas, vt && vt.roas, t && t.roas != null ? `${t.roas.toFixed(2)}x` : null, 'roas'), !!(o && ((o.deltaPct.roas != null && o.deltaPct.roas >= 0) || (vt && vt.roas != null && vt.roas >= 0))), 'Gross revenue ÷ marketing spend' + oldBasis, 'roas') +
     card('CAC', o && o.cac != null ? `$${o.cac.toLocaleString()}` : '—', cmp(o && o.deltaPct.cac, vt && vt.cac, t && t.cac != null ? `$${t.cac.toLocaleString()}` : null, 'cacTransaction'), !!(o && ((o.deltaPct.cac != null && o.deltaPct.cac <= 0) || (vt && vt.cac != null && vt.cac <= 0))), 'Spend ÷ unique transactions' + oldBasis, 'cac');
@@ -23317,6 +23318,7 @@ function stratRenderDemandRow(){
   if (d.ratioMonths && d.ratioMonths.roas != null && d.ratioMonths.roas < d.ratioMonths.of) msgs.push(`ROAS uses the ${d.ratioMonths.roas} of ${d.ratioMonths.of} months that have both spend and revenue on file.`);
   if (d.ratioMonths && d.ratioMonths.cac != null && d.ratioMonths.cac < d.ratioMonths.of) msgs.push(`CAC uses the ${d.ratioMonths.cac} of ${d.ratioMonths.of} months that have both spend and transactions on file.`);
   msgs.push('Customer-level CAC needs a customer id on bookings.');
+  bfRenderStrategy();
   el.insertAdjacentHTML('afterend', `<div id="stratDemandNote"><p class="strat-empty">${msgs.join(' ')}</p>${stratSourceStampHtml(d.provenance)}${stratCoverageHtml(d.coverage)}</div>`);
 }
 async function stratLoadDemand(){
@@ -23493,7 +23495,6 @@ function strategyShellHtml(){
     return `<div class="strat-card"><h2>Strategy</h2><p class="strat-empty">Sign in to a live account to see spend, revenue, ROAS, price and volume, audience growth and the forecast here. Tools are below.</p></div>` + stratToolsHtml();
   }
   return `
-    <div class="strat-card"><div class="strat-head"><h2>Budget flow</h2><span class="strat-tag">Working media</span></div><div id="stratFlowBody"><p class="hint">Loading…</p></div></div>
     <div class="strat-card"><div class="strat-head"><h2>Price and volume</h2>
       <div class="strat-ctl">
         <span class="strat-seg"><button type="button" data-strat-dim="productGroup" class="on" onclick="stratSetDim('productGroup')">Product group</button><button type="button" data-strat-dim="creativeFocus" onclick="stratSetDim('creativeFocus')">Creative focus</button></span>
