@@ -11711,6 +11711,7 @@
          setup form instead — see mediaplan-setup-row below. Grid reverts to
          three-up. -->
     <div class="exec-chart-grid five-scroll" id="budgetChartGrid">
+      <div class="exec-chart-card" id="budgetFlowChartCard"></div>
       <div class="exec-chart-card" id="budgetTrackingChartCard"></div>
       <div class="exec-chart-card" id="planPacingChartCard"></div>
       <div class="exec-chart-card" id="marketingLoopChartCard"></div>
@@ -23211,6 +23212,49 @@ async function stratGet(path){
   if (!resp.ok) throw new Error(String(resp.status));
   return resp.json();
 }
+// ---- Budget flow donut (2026-10-05): planned working media, completed spend and pending scheduled media ----
+const bf = { cache: {}, loading: {} };
+async function bfLoad(year){
+  const y = Number(year) || new Date().getFullYear();
+  if (bf.cache[y]) return bf.cache[y];
+  if (bf.loading[y]) return bf.loading[y];
+  bf.loading[y] = (async () => { try { const d = await stratGet('budget-flow?year=' + y); bf.cache[y] = d; return d; } catch (e){ return null; } finally { delete bf.loading[y]; } })();
+  return bf.loading[y];
+}
+function bfInvalidate(){ bf.cache = {}; }
+function bfBodyHtml(d){
+  if (!d) return '<p class="strat-empty" style="margin:0;">Could not load the budget just now.</p>';
+  const M = v => fmtMoney(Math.round(v));
+  if (d.planned == null) return `<p class="strat-empty" style="margin:0;">Not on file yet: a confirmed ${d.year} budget upload with working media. ${d.completed ? 'Spend to date is ' + M(d.completed) + '. ' : ''}${d.pending && d.pending.total ? M(d.pending.total) + ' is scheduled on the channel plans.' : ''}</p>`;
+  const segs = [
+    { label: 'Completed', value: Math.min(d.completed || 0, d.planned), color: 'var(--cx)', note: 'Spend to date' },
+    { label: 'Pending', value: Math.min(d.pending.total, Math.max(0, d.planned - (d.completed || 0))), color: 'var(--hdr-amber,#D08A3E)', note: 'Scheduled, dated today or later' },
+    { label: 'Not yet scheduled', value: d.remaining || 0, color: 'var(--paper-dim)', note: 'Planned, no media scheduled' }
+  ];
+  if (d.over > 0) segs.push({ label: 'Over plan', value: d.over, color: 'var(--advocacy)', note: 'Spend plus scheduled above the plan' });
+  const total = segs.reduce((a, x) => a + x.value, 0) || 1;
+  const donut = buildDonutSvg(segs, 'sm');
+  const pct = d.planned ? Math.round((((d.completed || 0) + d.pending.total) / d.planned) * 100) : 0;
+  const legend = segs.map(x => `<div class="donut-legend-item"><span class="swatch" style="background:${x.color};border:1px solid var(--line);"></span><span class="lname" title="${escapeHtml(x.note)}">${escapeHtml(x.label)}</span><span class="lval">${M(x.value)} (${Math.round((x.value / total) * 100)}%)</span></div>`).join('');
+  const dated = iso => { try { return stratDay(iso); } catch (e){ return iso; } };
+  const from = d.plannedFrom && d.plannedFrom[0] ? `${escapeHtml(d.plannedFrom[0].fileName || 'confirmed upload')}` : 'confirmed upload';
+  const pend = d.pending.rows ? ` (${d.pending.rows} channel-plan rows${d.pending.approved ? `, ${M(d.pending.approved)} client approved` : ''}${d.pending.draft ? `, ${M(d.pending.draft)} draft` : ''})` : '';
+  return `<div class="exec-visual-row"><div class="donut-svg-wrap">${donut.svg}<div class="donut-center"><div class="num">${pct}%</div><div class="lbl">Committed</div></div></div>
+    <div class="donut-side-col"><div class="donut-legend"><div class="donut-legend-item"><span class="swatch" style="background:transparent;border:1px solid var(--line);"></span><span class="lname"><b>Planned working media</b></span><span class="lval"><b>${M(d.planned)}</b></span></div>${legend}</div></div></div>
+    <p class="exec-caption">${d.year} working media only; non-working media (${M(d.nonWorkingExcluded)}) is excluded. Planned: ${from}. Completed: spend through ${escapeHtml(dated(d.asOf))}. Pending: scheduled media dated from today${d.pending.through ? ' to ' + escapeHtml(dated(d.pending.through)) : ''}${pend}.${d.notes && d.notes.length ? ' ' + d.notes.map(escapeHtml).join(' ') : ''}</p>`;
+}
+async function bfRenderStrategy(){
+  const el = document.getElementById('stratFlowBody'); if (!el) return;
+  const d = await bfLoad(new Date().getFullYear()); el.innerHTML = bfBodyHtml(d);
+}
+async function bfRenderBudget(){
+  const card = document.getElementById('budgetFlowChartCard'); if (!card) return;
+  const y = (typeof mbuSelectedYear !== 'undefined' && mbuSelectedYear) ? Number(mbuSelectedYear) : new Date().getFullYear();
+  card.innerHTML = `<div class="exec-chart-head"><h3>${y} Budget Flow</h3></div><p class="hint">Loading…</p>`;
+  if (!(typeof dataSourceLabel !== 'undefined' && dataSourceLabel === 'backend' && state.companyId)){ card.innerHTML = ''; return; }
+  const d = await bfLoad(y);
+  card.innerHTML = `<div class="exec-chart-head"><h3>${y} Budget Flow</h3></div>${bfBodyHtml(d)}`;
+}
 function stratNotOnFile(list){ return list && list.length ? `<p class="strat-empty">Not on file yet: ${escapeHtml(list.join('; '))}.</p>` : ''; }
 
 // ---- Demand row: rendered into the top-row stat card grid ----
@@ -23258,14 +23302,15 @@ function stratRenderDemandRow(){
     if (tgtText) return `Plan target ${tgtText}`;
     return 'No prior year on file';
   };
-  const basisSub = o ? escapeHtml(stratHumanDates(o.basisLabel)) : 'Not on file yet';
+  const basisSub = o ? escapeHtml(stratHumanDates(o.basisLabel)) + (o.outsideRange ? ' · not the selected dates' : '') : 'Not on file yet';
+  const oldBasis = o && o.outsideRange ? ' · ' + escapeHtml(o.basis === 'annual_results' ? 'closed-year figures' : 'plan baseline') : '';
   const t = o && o.target, vt = o && o.vsTargetPct;
   const spendSub = d.pacing ? `Pacing ${d.pacing.spendPacingPct}% of plan to date · ${per}` : per;
   el.innerHTML =
     card('Marketing spend', stratMoney(c.spend), cmp(dl.spend, null, null, 'spend'), false, spendSub, 'spend') +
     card('Gross revenue', o ? stratMoney(o.revenue) : '—', cmp(o && o.deltaPct.revenue, vt && vt.revenue, t && t.revenue != null ? stratMoney(t.revenue) : null, 'revenue'), !!(o && ((o.deltaPct.revenue != null && o.deltaPct.revenue >= 0) || (vt && vt.revenue != null && vt.revenue >= 0))), basisSub, 'revenue') +
-    card('ROAS', o && o.roas != null ? `${o.roas.toFixed(2)}x` : '—', cmp(o && o.deltaPct.roas, vt && vt.roas, t && t.roas != null ? `${t.roas.toFixed(2)}x` : null, 'roas'), !!(o && ((o.deltaPct.roas != null && o.deltaPct.roas >= 0) || (vt && vt.roas != null && vt.roas >= 0))), 'Gross revenue ÷ marketing spend', 'roas') +
-    card('CAC', o && o.cac != null ? `$${o.cac.toLocaleString()}` : '—', cmp(o && o.deltaPct.cac, vt && vt.cac, t && t.cac != null ? `$${t.cac.toLocaleString()}` : null, 'cacTransaction'), !!(o && ((o.deltaPct.cac != null && o.deltaPct.cac <= 0) || (vt && vt.cac != null && vt.cac <= 0))), 'Spend ÷ unique transactions', 'cac');
+    card('ROAS', o && o.roas != null ? `${o.roas.toFixed(2)}x` : '—', cmp(o && o.deltaPct.roas, vt && vt.roas, t && t.roas != null ? `${t.roas.toFixed(2)}x` : null, 'roas'), !!(o && ((o.deltaPct.roas != null && o.deltaPct.roas >= 0) || (vt && vt.roas != null && vt.roas >= 0))), 'Gross revenue ÷ marketing spend' + oldBasis, 'roas') +
+    card('CAC', o && o.cac != null ? `$${o.cac.toLocaleString()}` : '—', cmp(o && o.deltaPct.cac, vt && vt.cac, t && t.cac != null ? `$${t.cac.toLocaleString()}` : null, 'cacTransaction'), !!(o && ((o.deltaPct.cac != null && o.deltaPct.cac <= 0) || (vt && vt.cac != null && vt.cac <= 0))), 'Spend ÷ unique transactions' + oldBasis, 'cac');
   const msgs = [];
   if (d.notOnFile && d.notOnFile.length) msgs.push(`Not on file yet: ${escapeHtml(d.notOnFile.join('; '))}.`);
   if (d.estimated && d.estimated.length) d.estimated.forEach(n => msgs.push(escapeHtml(n)));
@@ -23448,6 +23493,7 @@ function strategyShellHtml(){
     return `<div class="strat-card"><h2>Strategy</h2><p class="strat-empty">Sign in to a live account to see spend, revenue, ROAS, price and volume, audience growth and the forecast here. Tools are below.</p></div>` + stratToolsHtml();
   }
   return `
+    <div class="strat-card"><div class="strat-head"><h2>Budget flow</h2><span class="strat-tag">Working media</span></div><div id="stratFlowBody"><p class="hint">Loading…</p></div></div>
     <div class="strat-card"><div class="strat-head"><h2>Price and volume</h2>
       <div class="strat-ctl">
         <span class="strat-seg"><button type="button" data-strat-dim="productGroup" class="on" onclick="stratSetDim('productGroup')">Product group</button><button type="button" data-strat-dim="creativeFocus" onclick="stratSetDim('creativeFocus')">Creative focus</button></span>
@@ -23973,7 +24019,7 @@ function strategyPageInit(){
   if (!stratIsLive()) return;
   stratSyncPriceControls();
   stratLoadPrice().then(stratFillPgSelect); stratLoadAudience();
-  stratLoadDemand().then(() => stratLoadForecast()); stratLoadRolling();
+  stratLoadDemand().then(() => stratLoadForecast()); stratLoadRolling(); bfRenderStrategy();
 }
 function stratFillPgSelect(){
   const sel = document.getElementById('stratPgSel'); const d = strat.priceData; if (!sel || !d) return;
@@ -35608,14 +35654,15 @@ function mbdApplyChartOrder(){
   if (!grid) return;
   const closed = (typeof mbdHistoricalMode === 'function') && mbdHistoricalMode();
   const order = closed
-    ? { marketingLoopChartCard: 1, roasChartCard: 2, channelMixChartCard: 3, budgetTrackingChartCard: 4, planPacingChartCard: 5 }
-    : { budgetTrackingChartCard: 1, planPacingChartCard: 2, marketingLoopChartCard: 3, channelMixChartCard: 4, roasChartCard: 5 };
+    ? { budgetFlowChartCard: 0, marketingLoopChartCard: 1, roasChartCard: 2, channelMixChartCard: 3, budgetTrackingChartCard: 4, planPacingChartCard: 5 }
+    : { budgetFlowChartCard: 0, budgetTrackingChartCard: 1, planPacingChartCard: 2, marketingLoopChartCard: 3, channelMixChartCard: 4, roasChartCard: 5 };
   Object.entries(order).forEach(([id, ord]) => { const el = document.getElementById(id); if (el) el.style.order = ord; });
 }
 // Single entry point for "refresh the whole Budget charts row" — replaces
 // the old three-call-together pattern used at every call site below, now
 // that the row holds five cards instead of three.
 function mbdRenderBudgetChartGrid(){
+  bfInvalidate(); bfRenderBudget();
   renderPlanPacingChart();
   renderBudgetTrackingChart();
   renderChannelMixChart();
