@@ -191,7 +191,7 @@ async function doLogin(){
     const r = await api('POST', 'login', { email, password });
     if (!r.ok){ $('siErr').textContent = r.data.error || 'Could not sign in.'; return; }
     pendingVerification = r.data.verificationId;
-    $('codeLede').textContent = `We emailed a 6-digit code to ${r.data.email}. It can take a minute, so check spam too.` + (r.data.interimCode ? ` (Local demo: ${r.data.interimCode})` : '');
+    $('codeLede').textContent = `We emailed a new sign-in code to ${r.data.email}. Use the newest email, titled "your sign-in code". It can take a minute.` + (r.data.interimCode ? ` (Local demo: ${r.data.interimCode})` : '');
     $('cdCode').value = ''; $('cdErr').textContent = '';
     show('codeView'); $('cdCode').focus();
   } catch (e){ $('siErr').textContent = 'Could not reach the server.'; }
@@ -241,6 +241,7 @@ async function doSetupSave(){
   try {
     const r = await api('POST', 'reset-password', { verificationId: setupVerification, code, newPassword: p1 });
     if (!r.ok){ $('suErr').textContent = r.data.error || 'Could not save the password.'; return; }
+    if (r.data.token){ setToken(r.data.token); me = r.data.user; $('suCode').value = ''; $('suPass').value = ''; $('suPass2').value = ''; enterConsole(); return; }
     $('siEmail').value = setupEmail; $('siPass').value = '';
     show('signinView'); $('siErr').textContent = ''; $('siPass').focus();
   } catch (e){ $('suErr').textContent = 'Could not reach the server.'; }
