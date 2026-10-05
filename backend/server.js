@@ -24486,6 +24486,16 @@ async function handleRequest(req, res) {
         const hp = hashAccessCode(String(body.newPassword));
         db.prepare('UPDATE platform_users SET passwordHash = ?, passwordSalt = ? WHERE id = ?').run(hp.hash, hp.salt, row.memberId);
         db.prepare('DELETE FROM platform_sessions WHERE platformUserId = ?').run(row.memberId);
+        // The emailed code just proved control of this inbox, so sign the person straight in
+        // (no second code right after setting a password).
+        const resetUser = db.prepare('SELECT * FROM platform_users WHERE id = ?').get(row.memberId);
+        if (resetUser && resetUser.status === 'active'){
+          const tok = crypto.randomBytes(32).toString('hex');
+          const exp = new Date(Date.now() + PLATFORM_SESSION_MS).toISOString();
+          db.prepare('INSERT INTO platform_sessions (token, platformUserId, createdAt, expiresAt) VALUES (?,?,?,?)').run(tok, resetUser.id, nowIso(), exp);
+          db.prepare('UPDATE platform_users SET lastLoginAt = ? WHERE id = ?').run(nowIso(), resetUser.id);
+          return sendJson(res, 200, { ok: true, token: tok, expiresAt: exp, user: platformPublicUser(resetUser) });
+        }
         return sendJson(res, 200, { ok: true });
       }
 
