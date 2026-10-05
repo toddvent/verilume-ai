@@ -15009,13 +15009,13 @@ function buildStoryDemand(accountId, opts){
     outcomes = { basis: 'monthly', basisLabel: RG ? `Transactions, ${RG.window.from} to ${RG.window.to}` : `Monthly transactions, ${win[0]} to ${win[win.length - 1]}`, spend: cur.spend, revenue: cur.revenue, transactions: cur.transactions, roas: cur.roas, cac: cur.cacTransaction,
       deltaPct: { revenue: delta.revenue, roas: delta.roas, cac: delta.cacTransaction }, comparedTo: RG ? 'same dates a year earlier' : 'same months a year earlier' };
   } else if (bR && (bR.revenue > 0 || bR.spend > 0)){
-    outcomes = { basis: 'baseline', basisLabel: `Annual Plan baseline${bR.label ? ' (' + bR.label + ')' : ''}: trailing 12 months, ${bR.year}`, spend: bR.spend, revenue: bR.revenue, transactions: bR.transactions, roas: bR.roas, cac: bR.cac, deltaPct: {}, comparedTo: null };
+    outcomes = { basis: 'baseline', outsideRange: !!RG, basisLabel: `Annual Plan baseline${bR.label ? ' (' + bR.label + ')' : ''}: trailing 12 months, ${bR.year}`, spend: bR.spend, revenue: bR.revenue, transactions: bR.transactions, roas: bR.roas, cac: bR.cac, deltaPct: {}, comparedTo: null };
   } else {
     const yr = db.prepare('SELECT * FROM account_year_results WHERE accountId = ? AND grossRevenue > 0 ORDER BY year DESC').all(accountId)[0];
     if (yr){
       const ykeys = []; for (let m = 1; m <= 12; m++) ykeys.push(`${yr.year}-${String(m).padStart(2, '0')}`);
       const sp = sum(S.spend, ykeys); const rev = Number(yr.grossRevenue), tx = yr.transactions != null ? Number(yr.transactions) : null;
-      outcomes = { basis: 'annual_results', basisLabel: `Closed-year results, ${yr.year}`, spend: sp, revenue: rev, transactions: tx, roas: sp ? Math.round((rev / sp) * 100) / 100 : null, cac: (sp && tx) ? Math.round(sp / tx) : null, deltaPct: {}, comparedTo: null };
+      outcomes = { basis: 'annual_results', outsideRange: !!RG, basisLabel: `Closed-year results, ${yr.year}`, spend: sp, revenue: rev, transactions: tx, roas: sp ? Math.round((rev / sp) * 100) / 100 : null, cac: (sp && tx) ? Math.round(sp / tx) : null, deltaPct: {}, comparedTo: null };
     }
   }
   if (outcomes && tR){
@@ -15042,7 +15042,63 @@ function buildStoryDemand(accountId, opts){
     definitions: { roas: 'gross revenue / marketing spend', cac: 'spend / unique transactions (transaction level)', impressions: 'total across all channels' },
     target: tR ? { year: tR.year, label: tR.label, workingMedia: tR.spend, impressions: tR.impressions, bookings: tR.transactions, grossRevenue: tR.revenue } : null,
     baseline: bR, ytd, pacing, coverage: storyCoverage(accountId),
-    notOnFile: [cur.spend == null ? 'marketing spend' : null, !outcomes ? 'revenue and transactions (monthly transactions, Annual Plan baseline, or year results)' : null, tR ? null : 'annual plan target'].filter(Boolean) };
+    notOnFile: [cur.spend == null ? (RG ? `marketing spend for ${RG.range.label.replace(/^[^:]*: /, '')} (no Media Mix entry, campaign media plan or agency actuals cover these dates)` : 'marketing spend') : null,
+      !outcomes ? 'revenue and transactions (monthly transactions, Annual Plan baseline, or year results)' : (outcomes.outsideRange ? `revenue and transactions for the selected dates (the figures shown are ${outcomes.basis === 'annual_results' ? 'closed-year results' : 'the Annual Plan baseline'}, not these dates)` : null),
+      tR ? null : 'annual plan target (a manual entry under Company Profile, Annual Plans; the budget upload does not set it)'].filter(Boolean) };
+}
+
+
+// 2026-10-05 — Budget flow: the donut at the top of Strategy and the Budget page.
+// Planned = working media on the confirmed budget upload for the year (non-working media excluded).
+// Completed = spend to date from the same series the Strategy spend card uses.
+// Pending = scheduled media from the channel planning uploads dated today or later in the year,
+// split into client-approved and still-draft rows. Remaining = planned less completed and pending.
+function buildBudgetFlow(accountId, opts){
+  const now = new Date(); const curY = now.getUTCFullYear();
+  const year = Math.max(2000, Math.min(2100, Number(opts && opts.year) || curY));
+  const todayIso = dmIso(Date.UTC(curY, now.getUTCMonth(), now.getUTCDate()));
+  const notes = [];
+  // Planned: the latest confirmed upload for each scope in this year.
+  const ups = db.prepare("SELECT id, scope, fileName, confirmedAt FROM marketing_budget_uploads WHERE accountId = ? AND year = ? AND status = 'confirmed' ORDER BY confirmedAt DESC").all(accountId, year);
+  const seenScope = new Set(); const used = [];
+  ups.forEach(u => { const k = u.scope || 'domestic'; if (seenScope.has(k)) return; seenScope.add(k); used.push(u); });
+  let planned = null; let nonWorking = 0;
+  if (used.length){
+    planned = 0;
+    used.forEach(u => { db.prepare('SELECT status, amount FROM marketing_budget_line_items WHERE uploadId = ?').all(u.id).forEach(r => { const st = String(r.status || '').toUpperCase(); const a = Number(r.amount) || 0; if (st.startsWith('WORKING')) planned += a; else if (st.startsWith('NON')) nonWorking += a; }); });
+    planned = Math.round(planned);
+  }
+  // Completed: spend through today for the year.
+  let completed = null;
+  try {
+    const from = `${year}-01-01`; const to = year < curY ? `${year}-12-31` : (year > curY ? null : todayIso);
+    if (to){ const src = dmLoadSources(accountId); const dm = dmDailyMetrics(src, from, to); const v = dmSum(dm.days, 'spend'); completed = Math.round(v); }
+    else completed = 0;
+  } catch (e){ completed = null; }
+  // Pending: scheduled media dated from today (or the whole year when the year is still ahead).
+  const rows = db.prepare(`SELECT d.budget AS budget, d.hitDate AS hitDate, d.dropDate AS dropDate, d.status AS status, d.clientApprovedAt AS approvedAt, b.fileName AS fileName
+    FROM channel_planning_details d JOIN channel_planning_upload_batches b ON b.id = d.uploadBatchId WHERE b.accountId = ?`).all(accountId);
+  let pendApproved = 0, pendDraft = 0, pendRows = 0, pendFiles = new Set(), lastDate = null;
+  rows.forEach(r => {
+    const b = Number(r.budget) || 0; if (b <= 0) return;
+    const st = String(r.status || '').toLowerCase(); if (st === 'cancelled' || st === 'rejected') return;
+    const dt = String(aliasVal(r, 'hitDate') || aliasVal(r, 'dropDate') || '').slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(dt)) return;
+    if (dt.slice(0, 4) !== String(year)) return;
+    if (year < curY) return;
+    if (year === curY && dt < todayIso) return;
+    pendRows++; pendFiles.add(r.fileName); if (!lastDate || dt > lastDate) lastDate = dt;
+    if (aliasVal(r, 'approvedAt')) pendApproved += b; else pendDraft += b;
+  });
+  let pastScheduled = 0; if (year === curY) rows.forEach(r => { const b = Number(r.budget) || 0; const st = String(r.status || '').toLowerCase(); if (b <= 0 || st === 'cancelled' || st === 'rejected') return; const dt = String(aliasVal(r, 'hitDate') || aliasVal(r, 'dropDate') || '').slice(0, 10); if (dt.slice(0, 4) === String(year) && dt < todayIso) pastScheduled += b; });
+  const pending = Math.round(pendApproved + pendDraft);
+  let remaining = null, over = 0;
+  if (planned != null && completed != null){ const used2 = completed + pending; remaining = Math.max(0, planned - used2); over = Math.max(0, used2 - planned); }
+  if (planned == null) notes.push(`No confirmed ${year} budget upload with working media on file.`);
+  if (completed == null) notes.push('Spend to date could not be read.');
+  if (pastScheduled > 0) notes.push(`$${Math.round(pastScheduled).toLocaleString('en-US')} of scheduled media is dated before today. It counts as completed only where it appears in spend actuals.`);
+  if (!pendRows && year >= curY) notes.push('No scheduled media dated from today on the channel planning uploads.');
+  return { year, asOf: todayIso, planned, nonWorkingExcluded: Math.round(nonWorking), completed, pending: { total: pending, approved: Math.round(pendApproved), draft: Math.round(pendDraft), rows: pendRows, through: lastDate, files: Array.from(pendFiles) },
+    remaining, over, plannedFrom: used.map(u => ({ fileName: u.fileName, scope: u.scope, confirmedAt: u.confirmedAt })), notes };
 }
 
 // ===========================================================================
@@ -28401,7 +28457,7 @@ async function handleRequest(req, res) {
     // GET /api/accounts/:id/analytics/(story|forecast-vs-target|price-volume|audience-growth)
     // 2026-09-30 — the Strategy dashboard's data (see buildStory* above).
     // Read-only; portal session required. Query: months, dim, productGroup, asOf (YYYY-MM, testing).
-    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'analytics' && ['story', 'forecast-vs-target', 'price-volume', 'audience-growth', 'media-science', 'creative-media', 'growth-performance', 'rolling-budget'].includes(parts[4])){
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'analytics' && ['story', 'forecast-vs-target', 'price-volume', 'audience-growth', 'media-science', 'creative-media', 'growth-performance', 'rolling-budget', 'budget-flow'].includes(parts[4])){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       const qs = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries());
@@ -28415,6 +28471,7 @@ async function handleRequest(req, res) {
           : parts[4] === 'creative-media' ? buildCreativeMedia(accountId, opts)
           : parts[4] === 'growth-performance' ? buildGrowthPerformance(accountId, opts)
           : parts[4] === 'rolling-budget' ? buildRollingBudget(accountId, opts)
+          : parts[4] === 'budget-flow' ? buildBudgetFlow(accountId, { year: qs.year })
           : buildStoryAudienceGrowth(accountId, opts);
         if (data && (parts[4] === 'story' || parts[4] === 'growth-performance')){ try { data.provenance = buildProvenance(accountId); } catch (e){ data.provenance = null; } }
         return sendJson(res, 200, data);
