@@ -1578,7 +1578,13 @@
   .gsc-cards{margin-bottom:20px;} .gsc-reads{padding:14px 22px;} .gsc-read+.gsc-read{border-top:1px solid var(--line-hairline);margin-top:10px;padding-top:10px;} .gsc-read-l1{font-weight:700;} .gsc-read-l2{color:var(--muted);font-size:0.875rem;margin-top:2px;} .gsc-more{margin:6px 0 0 18px;padding:0;color:var(--muted);font-size:0.8125rem;}
   .gsc-read-acts{display:flex;gap:14px;margin-top:4px;} .gsc-link{font:inherit;font-size:0.8125rem;font-weight:600;color:var(--hdr-navy);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;}
   .gsc-st{white-space:nowrap;} .gsc-win{display:inline-block;font-size:0.6875rem;font-weight:600;color:#8A5A1F;background:#FBF1E3;border-radius:980px;padding:1px 8px;white-space:nowrap;vertical-align:middle;} .gsc-dim td{color:var(--muted);} .gsc-qgrid{display:grid;gap:12px;grid-template-columns:minmax(0,2fr) minmax(0,1fr);padding:8px 0;} @media (max-width:700px){.gsc-qgrid{grid-template-columns:minmax(0,1fr);}} #gscPage .btn-row button,#ttbSlot-brainFacts button,#ttbSlot-brainFacts select,#ttbSlot-brainFacts input{font-family:inherit;}
-  .gsc-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:8px;} .gsc-title{font-size:1rem;font-weight:700;} .gsc-sub{font-size:0.75rem;color:var(--muted);}
+  .gsc-title .ai-thought-icon,#step-searchOptimization h1 .ai-thought-icon{margin-left:6px;vertical-align:middle;width:22px;height:22px;font-size:0.8125rem;}
+  .sl-card{margin-top:14px;} .sl-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 12px;} .sl-chips .sl-on{background:var(--hdr-navy);color:#fff;border-color:var(--hdr-navy);}
+  .sl-top{display:flex;justify-content:space-between;gap:14px;} .sl-top p{margin:2px 0 10px;font-size:0.875rem;line-height:1.5;max-width:70ch;} .sl-h{font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);margin:12px 0 4px;}
+  .sl-st{display:inline-block;font-size:0.75rem;font-weight:700;border-radius:980px;padding:2px 10px;white-space:nowrap;} .sl-st-ok{background:#EAF7EF;color:#1E6B44;} .sl-st-warn{background:#FBF1E3;color:#8A5A1F;}
+  .sl-need{font-size:0.6875rem;font-weight:700;border-radius:4px;padding:1px 6px;background:var(--dim,#F5F5F7);color:var(--muted);} .sl-need.sl-required{background:#1E2761;color:#fff;} .sl-need.sl-recommended{background:#EAF3EF;color:#1E6B44;}
+  .sl-code{background:#F5F5F7;border:1px solid var(--line);border-radius:8px;padding:12px;font-size:0.75rem;line-height:1.5;overflow-x:auto;white-space:pre;margin:4px 0 6px;} .sl-notes{margin:4px 0 0;padding-left:18px;font-size:0.875rem;line-height:1.5;} .sl-notes li{margin:3px 0;}
+    .gsc-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:8px;} .gsc-title{font-size:1rem;font-weight:700;} .gsc-sub{font-size:0.75rem;color:var(--muted);}
   .gsc-scroll{overflow-x:auto;} .gsc-table{width:100%;border-collapse:collapse;font-size:0.875rem;} .gsc-table th{text-align:left;font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line);} .gsc-table td{padding:10px 8px;border-bottom:1px solid var(--line-hairline);vertical-align:top;} .gsc-r{text-align:right !important;font-variant-numeric:tabular-nums;} .gsc-nw{white-space:nowrap;}
   .gsc-lvl{display:inline-block;font-size:0.6875rem;font-weight:700;border-radius:5px;padding:1px 7px;color:#fff;background:#6E6E73;} .gsc-P1,.gsc-t-fix{background:#B42318;} .gsc-P2,.gsc-t-check{background:#B4620A;} .gsc-P3,.gsc-t-review{background:#6E6E73;}
   .gsc-st{display:inline-block;font-size:0.75rem;font-weight:600;border:1px solid var(--line);border-radius:980px;padding:2px 10px;} .gsc-st-in_progress{border-color:var(--hdr-amber);color:var(--hdr-amber-dim);} .gsc-st-waiting{color:var(--muted);border-style:dashed;} .gsc-st-done{border-color:#1E8E4A;color:#1E8E4A;} .gsc-st-planned{border-color:var(--hdr-navy);color:var(--hdr-navy);}
@@ -4679,9 +4685,11 @@
        and GA4 standard reporting. -->
   <div class="step" id="step-searchOptimization">
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / Search Everywhere</div>
-    <div class="dash-title-row"><h1>Search Everywhere</h1><button type="button" class="customize-kpis-btn" onclick="fireDrillOpen()">Need something we don't show? <span class="fd-cta-b">Ask Verilume</span></button></div>
+    <div class="dash-title-row"><h1>Search Everywhere <span class="ai-thought-mount" data-topic="AG"></span></h1><button type="button" class="customize-kpis-btn" onclick="fireDrillOpen()">Need something we don't show? <span class="fd-cta-b">Ask Verilume</span></button></div>
 
     <div id="gscPage"></div>
+
+    <div id="schemaLibrary"></div>
 
     <div id="srchMaster"></div>
     <p class="hint" style="margin:18px 0 6px;">Monitoring sections below show sample data until Search Console or a licensed tool is connected.</p>
@@ -11472,6 +11480,78 @@
         </div>
       </div>
     </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadAG" onclick="toggleFaqItem('AG')">
+          <span class="faq-label">Search Everywhere: reading the page</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyAG">
+          <p id="bpFaqTextAG"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadAH" onclick="toggleFaqItem('AH')">
+          <span class="faq-label">Add your Search Console files</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyAH">
+          <p id="bpFaqTextAH"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadAI" onclick="toggleFaqItem('AI')">
+          <span class="faq-label">Brand names</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyAI">
+          <p id="bpFaqTextAI"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadAJ" onclick="toggleFaqItem('AJ')">
+          <span class="faq-label">Search priorities</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyAJ">
+          <p id="bpFaqTextAJ"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadAK" onclick="toggleFaqItem('AK')">
+          <span class="faq-label">Search by product group</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyAK">
+          <p id="bpFaqTextAK"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadAL" onclick="toggleFaqItem('AL')">
+          <span class="faq-label">Questions and FAQs</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyAL">
+          <p id="bpFaqTextAL"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadAM" onclick="toggleFaqItem('AM')">
+          <span class="faq-label">Brand checks</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyAM">
+          <p id="bpFaqTextAM"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadAN" onclick="toggleFaqItem('AN')">
+          <span class="faq-label">Schema library</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyAN">
+          <p id="bpFaqTextAN"></p>
+        </div>
+      </div>
   </div>
 
   <!-- ================= MEDIA PLAN (round 53) ================= -->
@@ -22319,7 +22399,7 @@ const SEO_DATA = {
   // one object.
   schemaMarkup: [
     { page: '/', types: ['Organization', 'WebSite'], status: 'complete', note: 'Core site-wide schema present and valid.' },
-    { page: '/destinations/antarctica', types: ['TouristTrip'], status: 'missing', note: 'No TouristTrip or FAQPage schema — a meaningful AEO/GEO citation lever missing on this page.' },
+    { page: '/destinations/antarctica', types: ['TouristTrip'], status: 'missing', note: 'No TouristTrip schema — structured data is missing on this page.' },
     { page: '/voyages/mediterranean-2027', types: ['TouristTrip'], status: 'partial', note: 'TouristTrip present but missing Offer/price schema.' },
     { page: '/press', types: ['Article'], status: 'missing', note: 'Press releases carry no Article/NewsArticle schema — reduces eligibility for both rich results and AI-answer citation.' }
   ],
@@ -49954,6 +50034,14 @@ const BP_FAQ_TOPICS = [
   // first fields on the Create a Campaign form.
   { letter: 'AE', label: 'Product Group', keywords: ['product group','product theme','marketing calendar','campaign classification'] },
   { letter: 'AF', label: 'Creative Focus Group', keywords: ['creative focus group','creative brief','copywriters','design team','campaign classification'] },
+  { letter: 'AG', label: 'Search Everywhere: reading the page', keywords: ['search everywhere', 'google search console', 'organic', 'seo', 'brand demand', 'non-brand'] },
+  { letter: 'AH', label: 'Add your Search Console files', keywords: ['upload', 'csv', 'export', 'queries', 'pages', 'chart', 'indexing'] },
+  { letter: 'AI', label: 'Brand names', keywords: ['brand names', 'brand terms', 'brand search', 'confirm'] },
+  { letter: 'AJ', label: 'Search priorities', keywords: ['priority', 'priorities', 'in market', 'due date', 'top five', 'search ready'] },
+  { letter: 'AK', label: 'Search by product group', keywords: ['product group', 'creative focus group', 'unmatched', 'in market', 'group match'] },
+  { letter: 'AL', label: 'Questions and FAQs', keywords: ['faq', 'questions', 'answer', 'facts', 'train the brain', 'draft answer'] },
+  { letter: 'AM', label: 'Brand checks', keywords: ['brand check', 'page titles', 'voice', 'avoided terms', 'watch word', 'change report'] },
+  { letter: 'AN', label: 'Schema library', keywords: ['schema','structured data','json-ld','article','blogposting','newsarticle','faqpage','howto','videoobject','rich results'] },
   { letter: 'F', label: 'Past campaigns', keywords: ['learned','history','previous','analysis','pattern','overspend','underspend','delivered'] },
   // Round 132uu (2026-08-11), per direct instruction: "We should have a
   // speech bubble next to Lifecycle-loop stage explaining what this is and
@@ -50131,7 +50219,9 @@ const BP_FAQ_TOPIC_TAB = {
   // 2026-09-21 — Product Group / Creative Focus Group, grouped under
   // "marketer" alongside Campaign Audiences (M) and the other campaign-
   // classification/setup topics rather than "strategy".
-  AE: 'marketer', AF: 'marketer'
+  AE: 'marketer', AF: 'marketer',
+  // 2026-10-05 — Search Everywhere page topics, text taken from its client training guide.
+AG: 'marketer', AN: 'marketer', AH: 'marketer', AI: 'marketer', AJ: 'marketer', AK: 'marketer', AL: 'marketer', AM: 'marketer'
 };
 
 // 2026-10-04 (Todd): too many chips at once. Show the five most relevant to the page the person is on
@@ -50345,7 +50435,15 @@ const AI_THOUGHT_PREVIEWS = {
   AA: 'How the sample rows are scored into a tier, carved into a holdout, and matched into Test/Control pairs.',
   AB: 'How your Must Win, Growth, Opportunistic and Monitor markets get plotted — and why only the U.S. map is real today.',
   AC: 'How your customer locations feed the 5-stage Marketing Loop your agentic media partner plans against.',
-  AD: 'How your storefronts get plotted against your top customer markets, and the upload format that drives it.'
+  AD: 'How your storefronts get plotted against your top customer markets, and the upload format that drives it.',
+  AG: 'How to read the page top to bottom, and why brand demand is shown on its own.',
+  AH: 'Which Search Console files to export, and what each one fills.',
+  AI: 'Why brand names are confirmed by your team, and what that changes.',
+  AJ: 'Why only five items are active, and how they are ranked.',
+  AK: 'How searches are matched to your groups, and what to do with the ones that do not fit.',
+  AL: 'How a question becomes an approved answer, using only facts you approved.',
+  AM: 'What the five brand checks look for, and how to act on a result.',
+  AN: 'The structured-data types for blogs, press releases, FAQs, how-tos and videos: what each needs, a copy-ready example, and what Google does with it.'
 };
 function aiThoughtRoleLabel(letter){
   const tabKey = BP_FAQ_TOPIC_TAB[letter];
@@ -50592,6 +50690,7 @@ function renderBestPracticeFaq(){
   renderFaqTopicChips();
   renderFaqAE();
   renderFaqAF();
+  renderFaqSE();
   renderFaqF();
   renderFaqK();
   renderFaqM();
@@ -50745,6 +50844,19 @@ function renderFaqAF(){
   const el = document.getElementById('bpFaqTextAF');
   if (!el) return;
   el.textContent = CMP_FIELD_HELP_TIPS.creativeFocusGroup;
+}
+const SE_THOUGHTS = {
+  AG: 'Search Everywhere covers organic search only: the unpaid results people reach through Google, and the answers Google writes for them. Read it top to bottom. The four cards give organic clicks, click rate, the share of clicks that are not brand searches, and the forecast from your open priorities. Up to five Brain reads follow, led by your progress on priorities. Brand demand is shown on its own, so searches for your name count as overall demand even when no product group is named. Every number comes from the files you uploaded. Nothing is collected from anywhere else, and nothing is changed on your website.',
+  AH: 'In Search Console open a report, choose Export, then Download CSV. Do this for Queries, Pages and Chart (use the longest date range offered), plus Countries, Devices, Search appearance, the Google AI report and Page indexing if you want those cards. Choose all the files at once and leave the names as Google gives them. Verilume recognizes each one from its first column and shows a preview. Nothing is saved until you confirm it. Anything you leave out leaves that part of the page empty.',
+  AI: 'Nothing counts as a brand search until your team confirms the name. Verilume suggests names from your company name and website; confirm the full names and your website name, add others such as a former name or common misspelling, and decline the rest. This one step decides the brand and non-brand split on every card, so a common word like "world" is never treated as your name by accident.',
+  AJ: 'The list holds at most five active items, the same limit as campaigns. When the slots are full, new findings wait until one is done. Ranking uses level (P1 first), then groups going into market. When a Product Group or Creative Focus Group is live or starts within 90 days and its search is weak, a "Get search ready" item appears, due 42 days before the start. Impact is Calculated (impressions times the extra click rate if the search reached the target position) or Rated (High, Medium, Low), and the two are never added together.',
+  AK: 'Non-brand demand is grouped by the Product Groups and Creative Focus Groups already in your Marketing Calendar, with an In market column from the same dates. Review suggested matches: each names the group, the word the searches share, and examples. Accept applies to the whole set; Not these rejects it. Searches that fit no group sit on their own row, and you can assign them one at a time. A large unmatched share becomes a priority.',
+  AL: 'Searches that are questions, with at least 50 impressions, are listed. Only questions that belong to your brand or to one of your groups can be answered; others are dimmed. Choose Draft answer and the Brain writes from the facts you approved in Train the Brain (brand-wide, per group, or per destination or product). A draft that adds anything the facts do not say is dropped, and you are told which check it failed. You review, edit and approve each answer one at a time. Approved answers can be copied out as text or FAQ markup. Nothing is published to your site.',
+  AM: 'Five rule-based checks against your confirmed names, avoided terms, approved facts and latest site check: name used the same way, pages say what they are, pages match your voice and facts, what people add to your name, and approved FAQs against current facts. By default the top 10 pages by impressions are checked, and you can widen it. A page outside the site check shows as not checked, never as a pass. Mark fixed after a correction, or add the item to priorities.',
+  AN: 'A reference for the team, covering Article, BlogPosting, NewsArticle, FAQPage, HowTo and VideoObject. Each entry says what the type is, when to use it, which fields are required or recommended, gives a copy-ready example with placeholders, and notes what Google does with it, checked on a stated date. Nothing here is filled from your account or generated for you. Note that Google no longer shows FAQ or How-to rich results, so those two give no search benefit today.'
+};
+function renderFaqSE(){
+  Object.keys(SE_THOUGHTS).forEach(l => { const el = document.getElementById('bpFaqText' + l); if (el) el.textContent = SE_THOUGHTS[l]; });
 }
 function renderFaqK(){
   const el = document.getElementById('bpFaqTextK');
@@ -59263,6 +59375,71 @@ async function gscLoad(){
   if (!gscQ.loaded) gscLoadQuestions();
   if (!gscBC.loaded) gscLoadBrandChecks();
 }
+// ---- Schema library (reference for the team; content pages) ----
+const SCHEMA_LIB_CHECKED = 'Oct 5, 2026';
+const SCHEMA_LIB = [
+  { type: 'Article', short: 'Article', status: 'ok', statusText: 'Supported by Google',
+    what: 'The parent type for any editorial page: a news story, blog post, guide or press release page. When a more specific type fits (BlogPosting, NewsArticle), use that instead; Google reads all three the same way.',
+    when: 'A page whose main content is a written piece with an author and a date.',
+    fields: [['headline', 'Recommended', 'The title of the piece. Keep it concise; long titles can be cut off.'], ['author', 'Recommended', 'A Person or Organization, with a name and a URL. List every contributor separately.'], ['datePublished', 'Recommended', 'When it was first published, in ISO 8601 (2026-10-05T09:00:00-04:00).'], ['dateModified', 'Recommended', 'When it was last changed, same format.'], ['image', 'Recommended', 'One or more large images (at least 50,000 pixels), ideally in 16:9, 4:3 and 1:1.'], ['publisher', 'Optional', 'The organization behind the site, with name and logo. (schema.org property; not listed by Google as needed.)']],
+    example: { '@context': 'https://schema.org', '@type': 'Article', headline: '[Headline as shown on the page]', image: ['[https://example.com/photo-16x9.jpg]', '[https://example.com/photo-4x3.jpg]', '[https://example.com/photo-1x1.jpg]'], datePublished: '[2026-10-05T09:00:00-04:00]', dateModified: '[2026-10-06T10:30:00-04:00]', author: [{ '@type': 'Person', name: '[Author name]', url: '[https://example.com/about/author]' }] },
+    notes: ['Google lists no required properties for Article, only recommended ones. Fill in every one you can support.', 'The markup must match what a visitor sees on the page. Do not add an author or date that is not shown.', 'Google says it uses this to show better titles, images and dates in Search, News and Assistant. It does not promise a special result.', 'The Site check already flags long pages with no author or date signal, and the AEO/GEO finding for it points here.'],
+    src: ['Google: Article structured data', 'https://developers.google.com/search/docs/appearance/structured-data/article'] },
+  { type: 'BlogPosting', short: 'BlogPosting', status: 'ok', statusText: 'Supported by Google (as an Article)',
+    what: 'A blog post. A more specific kind of Article, so the same fields apply.',
+    when: 'A page on your blog, journal or stories section, with a named author and a date.',
+    fields: [['headline', 'Recommended', 'The post title as shown on the page.'], ['author', 'Recommended', 'A Person or Organization, with a name and a URL.'], ['datePublished', 'Recommended', 'First published date, ISO 8601.'], ['dateModified', 'Recommended', 'Last updated date, ISO 8601. Update it only when the content changes.'], ['image', 'Recommended', 'A large lead image, ideally in 16:9, 4:3 and 1:1.'], ['keywords', 'Optional', 'A short list of the topics the post covers. (schema.org property.)']],
+    example: { '@context': 'https://schema.org', '@type': 'BlogPosting', headline: '[Post title]', image: ['[https://example.com/post-16x9.jpg]'], datePublished: '[2026-10-05T09:00:00-04:00]', dateModified: '[2026-10-05T09:00:00-04:00]', author: { '@type': 'Person', name: '[Author name]', url: '[https://example.com/about/author]' } },
+    notes: ['Use the same visible author and date on the page as in the markup.', 'Google documents Article, NewsArticle and BlogPosting together. There is no separate set of rules for BlogPosting.', 'Link the author name to a real author page. Google recommends a URL or social profile so the author can be told apart from others with the same name.'],
+    src: ['Google: Article structured data', 'https://developers.google.com/search/docs/appearance/structured-data/article'] },
+  { type: 'NewsArticle', short: 'NewsArticle', status: 'ok', statusText: 'Supported by Google (as an Article)',
+    what: 'A news story or press release page. A more specific kind of Article.',
+    when: 'A page announcing news: a press release on your own site, a newsroom story. Press releases are commonly marked up this way.',
+    fields: [['headline', 'Recommended', 'The release or story headline as shown on the page.'], ['author', 'Recommended', 'The writer, or the organization when it is a corporate release. Include a name and a URL.'], ['datePublished', 'Recommended', 'The release date, ISO 8601.'], ['dateModified', 'Recommended', 'The last correction or update date, ISO 8601.'], ['image', 'Recommended', 'A large image tied to the story.']],
+    example: { '@context': 'https://schema.org', '@type': 'NewsArticle', headline: '[Press release headline]', image: ['[https://example.com/release-16x9.jpg]'], datePublished: '[2026-10-14T08:00:00-04:00]', dateModified: '[2026-10-14T08:00:00-04:00]', author: { '@type': 'Organization', name: '[Company name]', url: '[https://example.com]' } },
+    notes: ['This markup does not make a page eligible for Google News. News inclusion is a separate matter with its own policies.', 'Every published release is also tracked in Search Everywhere as a content update, once the PR hand-offs are built.', 'Do not mark up wording the release does not say. No invented dates, authors or quotes.'],
+    src: ['Google: Article structured data', 'https://developers.google.com/search/docs/appearance/structured-data/article'] },
+  { type: 'FAQPage', short: 'FAQPage', status: 'warn', statusText: 'No Google rich result',
+    what: 'A page with a list of questions and their answers, written by the site itself.',
+    when: 'A page that really shows questions with a single answer each. The questions and answers must be visible on the page.',
+    fields: [['mainEntity', 'Required', 'A list of Question items, one per question on the page.'], ['name (on each Question)', 'Required', 'The question exactly as shown on the page.'], ['acceptedAnswer', 'Required', 'An Answer item holding the answer.'], ['text (on each Answer)', 'Required', 'The answer exactly as shown on the page.']],
+    example: { '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: [{ '@type': 'Question', name: '[Question as shown on the page]', acceptedAnswer: { '@type': 'Answer', text: '[Answer as shown on the page]' } }] },
+    notes: ['Google\'s FAQ documentation says the FAQ rich result is no longer shown in Google Search. The change was announced in May 2026 and the documentation was removed in June 2026.', 'The type is still valid schema.org. It gives no Google search benefit today. Whether other search or AI products read it is not established, so do not promise a result.', 'Verilume\'s Approved FAQs still offer "Copy as FAQ markup". Treat it as optional.', 'If you add it, the questions and answers must match the visible page word for word.'],
+    src: ['Google: FAQ structured data (status page)', 'https://developers.google.com/search/docs/appearance/structured-data/faqpage'] },
+  { type: 'HowTo', short: 'HowTo', status: 'warn', statusText: 'No Google rich result',
+    what: 'Step-by-step instructions for completing a task.',
+    when: 'A page that really is a set of steps, such as how to prepare for a voyage. The steps must be visible on the page.',
+    fields: [['name', 'Required', 'The title of the task.'], ['step', 'Required', 'A list of HowToStep items, in order.'], ['text (on each step)', 'Required', 'What to do in that step, as shown on the page.'], ['totalTime', 'Optional', 'How long the whole task takes, ISO 8601 (PT30M).'], ['supply, tool', 'Optional', 'Materials and tools needed.']],
+    example: { '@context': 'https://schema.org', '@type': 'HowTo', name: '[Task title]', totalTime: '[PT30M]', step: [{ '@type': 'HowToStep', name: '[Step 1 title]', text: '[What to do in step 1]' }, { '@type': 'HowToStep', name: '[Step 2 title]', text: '[What to do in step 2]' }] },
+    notes: ['Google removed How-to rich results: first on mobile, then on desktop on September 13, 2023. The markup still works as schema.org but gives no Google search benefit.', 'Do not prioritize this type. Put the effort into clear numbered steps on the page itself.'],
+    src: ['Search Engine Journal: Google removes How-to rich results', 'https://www.searchenginejournal.com/google-completely-removes-how-to-rich-results/496479/'] },
+  { type: 'VideoObject', short: 'VideoObject', status: 'ok', statusText: 'Supported by Google',
+    what: 'A page that features a video. Tells search engines what the video is, how long it runs and where to find it.',
+    when: 'A page where the video is a main part of the content: a destination film, a product tour, a how-it-works video.',
+    fields: [['name', 'Required', 'The video title. Use unique text for each video.'], ['thumbnailUrl', 'Required', 'The address of a thumbnail image.'], ['uploadDate', 'Required', 'When the video was published, ISO 8601.'], ['description', 'Recommended', 'Unique text describing what the video shows.'], ['duration', 'Recommended', 'The length, ISO 8601 (PT1M54S).'], ['contentUrl or embedUrl', 'Recommended', 'The address of the video file, or of the player.'], ['creator', 'Recommended', 'The person or organization that made it.'], ['interactionStatistic', 'Optional', 'View, like or comment counts, when you have them.']],
+    example: { '@context': 'https://schema.org', '@type': 'VideoObject', name: '[Video title]', description: '[What the video shows]', thumbnailUrl: ['[https://example.com/thumb.jpg]'], uploadDate: '[2026-10-05T09:00:00-04:00]', duration: '[PT1M54S]', embedUrl: '[https://example.com/player/123]' },
+    notes: ['Google lists name, thumbnailUrl and uploadDate as required. The others are recommended.', 'Google\'s guidance lists a minimum video length of 30 seconds, and says videos should support links to a point in time.', 'Key moments use Clip or SeekToAction markup. A LIVE badge uses BroadcastEvent. Both are optional extras.', 'Test the markup in Google\'s Rich Results Test before it goes live.'],
+    src: ['Google: Video structured data', 'https://developers.google.com/search/docs/appearance/structured-data/video'] }
+];
+const schemaLib = { type: 'Article', open: false, copied: '' };
+function schemaLibCode(t){ return '<scr' + 'ipt type="application/ld+json">\n' + JSON.stringify(t.example, null, 2).replace(/</g, '\\u003c') + '\n</scr' + 'ipt>'; }
+function schemaLibPick(type){ schemaLib.type = type; schemaLib.copied = ''; schemaLibRender(); }
+function schemaLibToggle(){ schemaLib.open = !schemaLib.open; schemaLibRender(); }
+function schemaLibCopy(){ const t = SCHEMA_LIB.find(x => x.type === schemaLib.type); if (!t) return; gscCopyText(schemaLibCode(t)); gscQ.copied = false; schemaLib.copied = 'Copied.'; schemaLibRender(); }
+function schemaLibRender(){
+  const el = document.getElementById('schemaLibrary'); if (!el) return;
+  const head = `<div class="gsc-head"><div class="gsc-title">Schema library ${aiThoughtIconHtml('AN')}</div><div class="gsc-sub">Content pages · checked ${SCHEMA_LIB_CHECKED} · <button type="button" class="gsc-link" aria-expanded="${schemaLib.open}" onclick="schemaLibToggle()">${schemaLib.open ? 'Hide' : 'Open'}</button></div></div>`;
+  if (!schemaLib.open){ el.innerHTML = `<div class="strat-card sl-card">${head}<div class="gsc-sub">${SCHEMA_LIB.map(t => escapeHtml(t.short)).join(' · ')}</div></div>`; return; }
+  const t = SCHEMA_LIB.find(x => x.type === schemaLib.type) || SCHEMA_LIB[0];
+  const chips = SCHEMA_LIB.map(x => `<button type="button" class="faq-topic-chip${x.type === t.type ? ' sl-on' : ''}" onclick="schemaLibPick('${x.type}')">${escapeHtml(x.short)}</button>`).join('');
+  const rows = t.fields.map(f => `<tr><td><b>${escapeHtml(f[0])}</b></td><td class="gsc-nw"><span class="sl-need sl-${f[1].toLowerCase()}">${escapeHtml(f[1])}</span></td><td>${escapeHtml(f[2])}</td></tr>`).join('');
+  el.innerHTML = `<div class="strat-card sl-card">${head}<div class="sl-chips">${chips}</div>
+  <div class="sl-top"><div><div class="sl-h">What it is</div><p>${escapeHtml(t.what)}</p><div class="sl-h">When to use it</div><p>${escapeHtml(t.when)}</p></div><div><span class="sl-st sl-st-${t.status}">${escapeHtml(t.statusText)}</span></div></div>
+  <div class="sl-h">Fields</div><div class="gsc-scroll"><table class="gsc-table"><thead><tr><th>Field</th><th>Need</th><th>What to put</th></tr></thead><tbody>${rows}</tbody></table></div>
+  <div class="sl-h">Copy-ready example <button type="button" class="gsc-link" onclick="schemaLibCopy()">Copy</button> ${schemaLib.copied ? `<span class="gsc-sub">${schemaLib.copied}</span>` : ''}</div><pre class="sl-code">${escapeHtml(schemaLibCode(t))}</pre><div class="gsc-sub">Square brackets mark text to replace with what is on your page. Nothing here is filled from your account.</div>
+  <div class="sl-h">Google and policy notes</div><ul class="sl-notes">${t.notes.map(n => `<li>${escapeHtml(n)}</li>`).join('')}</ul>
+  <div class="gsc-foot">Checked ${SCHEMA_LIB_CHECKED}. Source: <a href="${escapeHtml(t.src[1])}" target="_blank" rel="noopener">${escapeHtml(t.src[0])}</a></div></div>`;
+}
 function gscRender(){
   const el = document.getElementById('gscPage'); if (!el) return;
   if (!srchLive()){ el.innerHTML = ''; return; }
@@ -59338,7 +59515,7 @@ function gscPrioritiesHtml(d){
     const impact = x.impactBasis === 'calculated' ? `<b>${escapeHtml(x.impactLabel)}</b><div class="gsc-sub">Calculated</div>` : `<b>${escapeHtml(x.impactLabel)}</b><div class="gsc-sub">Rated</div>`;
     return `<tr><td class="gsc-nw">${escapeHtml(gscDay(x.date))}</td><td>${lvl}</td><td><b>${escapeHtml(x.title)}</b>${x.window ? ` <span class="gsc-win">${escapeHtml(x.window.label)}</span>` : ''}<div class="gsc-sub">${escapeHtml(x.detail || '')}</div></td><td class="gsc-nw">${impact}</td><td><span class="gsc-st gsc-st-${x.waiting ? 'waiting' : x.status}">${x.waiting ? 'Waiting' : (GSC_STATUS_LABEL[x.status] || x.status)}</span></td><td class="gsc-nw"><button type="button" class="gsc-link" aria-expanded="${open}" onclick="gsc.manage['${x.id}']=!gsc.manage['${x.id}']; gscRender();">Manage →</button></td></tr>${open ? `<tr class="gsc-manage"><td colspan="6">${gscManageHtml(x)}</td></tr>` : ''}`;
   }).join('');
-  return `<div class="strat-card gsc-prio"><div class="gsc-head"><div class="gsc-title">${gsc.viewAll ? 'All priorities' : 'Top ' + (p.limit || 5) + ' priorities'}</div><div class="gsc-sub">${p.totalOpen} open${p.waiting ? ' · ' + p.waiting + ' waiting' : ''}${p.all && p.all.length > p.top.length ? ` · <button type="button" class="gsc-link" onclick="gsc.viewAll=!gsc.viewAll; gscRender();">${gsc.viewAll ? 'Show top ' + (p.limit || 5) : 'View all'}</button>` : ''}</div></div>${rows ? `<div class="gsc-scroll"><table class="gsc-table"><thead><tr><th>Date</th><th></th><th>Priority</th><th>Business impact</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="strat-empty">Nothing open right now.</p>'}${gsc.saveMsg ? `<p class="strat-empty">${escapeHtml(gsc.saveMsg)}</p>` : ''}</div>`;
+  return `<div class="strat-card gsc-prio"><div class="gsc-head"><div class="gsc-title">${gsc.viewAll ? 'All priorities' : 'Top ' + (p.limit || 5) + ' priorities'} ${aiThoughtIconHtml('AJ')}</div><div class="gsc-sub">${p.totalOpen} open${p.waiting ? ' · ' + p.waiting + ' waiting' : ''}${p.all && p.all.length > p.top.length ? ` · <button type="button" class="gsc-link" onclick="gsc.viewAll=!gsc.viewAll; gscRender();">${gsc.viewAll ? 'Show top ' + (p.limit || 5) : 'View all'}</button>` : ''}</div></div>${rows ? `<div class="gsc-scroll"><table class="gsc-table"><thead><tr><th>Date</th><th></th><th>Priority</th><th>Business impact</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="strat-empty">Nothing open right now.</p>'}${gsc.saveMsg ? `<p class="strat-empty">${escapeHtml(gsc.saveMsg)}</p>` : ''}</div>`;
 }
 function gscManageHtml(x){
   const sel = (id, opts, cur) => `<select id="${id}-${x.id}">${opts.map(([v, l]) => `<option value="${v}"${v === cur ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
@@ -59448,7 +59625,7 @@ function gscQuestionsHtml(d){
     const act = !q.offered ? '' : `<button type="button" class="gsc-link" aria-expanded="${open}" onclick="gscQ.open['${escapeHtml(k).replace(/'/g, "\\'")}']=!gscQ.open['${escapeHtml(k).replace(/'/g, "\\'")}']; gscRender();">${open ? 'Close' : q.status === 'drafted' || q.status === 'approved' ? 'Review' : 'Draft answer →'}</button>`;
     return `<tr class="${q.offered ? '' : 'gsc-dim'}"><td>${escapeHtml(q.question)}</td><td>${grp}</td><td class="gsc-r">${gscInt(q.impressions)}</td><td class="gsc-r">${q.avgPosition ? q.avgPosition.toFixed(1) : '—'}</td><td>${q.offered ? gscQStatusTag(q) : ''}</td><td class="gsc-nw">${act}</td></tr>${open ? `<tr class="gsc-manage"><td colspan="6">${gscQPanelHtml(q)}</td></tr>` : ''}`;
   }).join('');
-  return `<div class="strat-card"><div class="gsc-head"><div class="gsc-title">Questions people ask</div><div class="gsc-sub">Searches that are questions, ${escapeHtml(d.range.label)}</div></div><div class="gsc-scroll"><table class="gsc-table"><thead><tr><th>Question</th><th>Group</th><th class="gsc-r">Impressions</th><th class="gsc-r">Position</th><th>FAQ</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  return `<div class="strat-card"><div class="gsc-head"><div class="gsc-title">Questions people ask ${aiThoughtIconHtml('AL')}</div><div class="gsc-sub">Searches that are questions, ${escapeHtml(d.range.label)}</div></div><div class="gsc-scroll"><table class="gsc-table"><thead><tr><th>Question</th><th>Group</th><th class="gsc-r">Impressions</th><th class="gsc-r">Position</th><th>FAQ</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
 function gscQPanelHtml(q){
   const k = q.queryKey; const ek = escapeHtml(k).replace(/'/g, "\\'"); const busy = gscQ.busy[k]; const msg = gscQ.msg[k];
@@ -59523,7 +59700,7 @@ function gscBrandChecksHtml(){
     return `<tr><td><b>${escapeHtml(c.title)}</b></td><td>${gscBCTag(c.status)}</td><td>${sum}${c.fixed ? ` <span class="gsc-sub">${c.fixed} marked ${c.key === 'faq' ? 'reviewed' : 'fixed'}.</span>` : ''}</td><td class="gsc-nw">${c.items.length || c.key === 'addons' ? `<button type="button" class="gsc-link" aria-expanded="${open}" onclick="gscBC.open['${c.key}']=!gscBC.open['${c.key}']; gscRender();">${open ? 'Hide' : 'See more'}</button>` : ''}${canAdd ? ` · <button type="button" class="gsc-link" onclick="gscBCPriority('${c.key}')">Add to priorities</button>` : ''}</td></tr>${open ? `<tr class="gsc-manage"><td colspan="4">${items || '<span class="gsc-sub">Nothing to list.</span>'}${extra}</td></tr>` : ''}`;
   }).join('');
   const scope = `${sc.checked} page${sc.checked === 1 ? '' : 's'} checked${sc.expanded ? ', all in the site check' : ', top ' + (sc.top || 10) + ' by search impressions'}${sc.notChecked ? ` · ${sc.notChecked} not in the site check` : ''}`;
-  return `<div class="strat-card has-share" style="position:relative;">${shareBtnHtml('search-brand')}<div class="gsc-head"><div class="gsc-title">Brand checks</div><div class="gsc-sub">${dayTxt ? 'Site check ' + escapeHtml(dayTxt) : 'No site check yet'}${D.gscThrough ? ' · Search Console through ' + escapeHtml(gscDay(D.gscThrough)) : ''}</div></div><div class="gsc-sub" style="margin-bottom:6px;">${escapeHtml(scope)} · <button type="button" class="gsc-link" onclick="gscBC.expanded=!gscBC.expanded; gscLoadBrandChecks();">${sc.expanded ? 'Top ' + (sc.top || 10) + ' only' : 'Check all pages in the site check'}</button></div><div class="gsc-scroll"><table class="gsc-table"><thead><tr><th>Check</th><th>Result</th><th>What we found</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>${gscBC.msg ? `<p class="strat-empty">${escapeHtml(gscBC.msg)}</p>` : ''}</div>`;
+  return `<div class="strat-card has-share" style="position:relative;">${shareBtnHtml('search-brand')}<div class="gsc-head"><div class="gsc-title">Brand checks ${aiThoughtIconHtml('AM')}</div><div class="gsc-sub">${dayTxt ? 'Site check ' + escapeHtml(dayTxt) : 'No site check yet'}${D.gscThrough ? ' · Search Console through ' + escapeHtml(gscDay(D.gscThrough)) : ''}</div></div><div class="gsc-sub" style="margin-bottom:6px;">${escapeHtml(scope)} · <button type="button" class="gsc-link" onclick="gscBC.expanded=!gscBC.expanded; gscLoadBrandChecks();">${sc.expanded ? 'Top ' + (sc.top || 10) + ' only' : 'Check all pages in the site check'}</button></div><div class="gsc-scroll"><table class="gsc-table"><thead><tr><th>Check</th><th>Result</th><th>What we found</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>${gscBC.msg ? `<p class="strat-empty">${escapeHtml(gscBC.msg)}</p>` : ''}</div>`;
 }
 async function gscBCFix(id, fixed){ try { await srchPost('/brand-checks/fix', { itemId: id, fixed }); } catch (e){} await gscLoadBrandChecks(); }
 async function gscBCPriority(key){ let r; try { r = await srchPost('/brand-checks/priority', { checkKey: key }); } catch (e){ r = { error: 'Could not reach the server.' }; } gscBC.msg = r.error ? r.error : 'Added to priorities.'; await gscLoad(); await gscLoadBrandChecks(); }
@@ -59553,7 +59730,7 @@ function gscGroupsHtml(d){
   const opts = '<option value="">Choose a group</option>' + (g.groupOptions || []).map(o => `<option value="${escapeHtml(o.type + '|' + o.value)}">${escapeHtml(o.value)}</option>`).join('');
   const unRow = un && un.queries ? `<tr class="gsc-unm"><td><b>Not in any product group</b></td><td></td><td class="gsc-r">${gscInt(un.queries)}</td><td class="gsc-r">${gscInt(un.impressions)}</td><td class="gsc-r"></td><td class="gsc-r"><button type="button" class="gsc-link" aria-expanded="${open}" onclick="gsc.more.unmatched=!gsc.more.unmatched; gscRender();">${open ? 'Hide' : 'See more'}</button></td><td></td></tr>${open ? `<tr class="gsc-manage"><td colspan="7">${un.top.map((t, i) => `<div class="gsc-assign"><span>${escapeHtml(t.query)} <span class="gsc-sub">${gscInt(t.impressions)} impressions</span></span><select id="gscAs-${i}" aria-label="Group for ${escapeHtml(t.query)}">${opts}</select><button type="button" class="btn-ghost" onclick="gscAssign(${i})">Assign</button></div>`).join('')}</td></tr>` : ''}` : '';
   const sug = (g.suggestions || []).map((x, i) => `<div class="gsc-sugrow"><div><b>${escapeHtml(x.groupValue)}</b> <span class="gsc-sub">${escapeHtml(x.groupTypeLabel)}</span><div class="gsc-sub">${gscInt(x.count)} search${x.count === 1 ? '' : 'es'} share “${escapeHtml(x.shared)}”, such as ${x.examples.map(e => '“' + escapeHtml(e) + '”').join(', ')}</div></div><div class="gsc-sugbtn"><button type="button" class="btn-primary" onclick="gscSuggest(${i}, 'accept')">Accept</button><button type="button" class="btn-ghost" onclick="gscSuggest(${i}, 'reject')">Not these</button></div></div>`).join('');
-  return `<div class="strat-card has-share" style="position:relative;">${shareBtnHtml('search-groups')}<div class="gsc-head"><div class="gsc-title">Search by product group</div><div class="gsc-sub">Non-brand searches, ${escapeHtml(d.range.label)}</div></div>${rows || un ? `<div class="gsc-scroll"><table class="gsc-table"><thead><tr><th>Group</th><th></th><th class="gsc-r">Searches</th><th class="gsc-r">Impressions</th><th class="gsc-r">Click rate</th><th class="gsc-r">Position</th><th>In market</th></tr></thead><tbody>${rows}${unRow}</tbody></table></div>` : '<p class="strat-empty">No non-brand searches to match yet.</p>'}${sug ? `<div class="gsc-suggest"><div class="gsc-title" style="font-size:0.875rem;">Suggested matches</div>${sug}</div>` : ''}${gsc.groupMsg ? `<p class="strat-empty">${escapeHtml(gsc.groupMsg)}</p>` : ''}</div>`;
+  return `<div class="strat-card has-share" style="position:relative;">${shareBtnHtml('search-groups')}<div class="gsc-head"><div class="gsc-title">Search by product group ${aiThoughtIconHtml('AK')}</div><div class="gsc-sub">Non-brand searches, ${escapeHtml(d.range.label)}</div></div>${rows || un ? `<div class="gsc-scroll"><table class="gsc-table"><thead><tr><th>Group</th><th></th><th class="gsc-r">Searches</th><th class="gsc-r">Impressions</th><th class="gsc-r">Click rate</th><th class="gsc-r">Position</th><th>In market</th></tr></thead><tbody>${rows}${unRow}</tbody></table></div>` : '<p class="strat-empty">No non-brand searches to match yet.</p>'}${sug ? `<div class="gsc-suggest"><div class="gsc-title" style="font-size:0.875rem;">Suggested matches</div>${sug}</div>` : ''}${gsc.groupMsg ? `<p class="strat-empty">${escapeHtml(gsc.groupMsg)}</p>` : ''}</div>`;
 }
 async function gscSuggest(i, action){
   const x = ((gsc.data.groups || {}).suggestions || [])[i]; if (!x) return;
@@ -59584,7 +59761,7 @@ function gscBrandHtml(d){
   const b = d.brand; const sug = b.suggested || [];
   const conf = b.confirmed.map(t => `<span class="gsc-chipt">${escapeHtml(t.term)}<button type="button" aria-label="Remove ${escapeHtml(t.term)}" onclick="gscBrandAct({action:'unconfirm',id:'${t.id}'})">×</button></span>`).join('');
   const list = sug.map(t => `<label class="gsc-sug"><input type="checkbox" class="gsc-sugcb" value="${t.id}"${t.pre ? ' checked' : ''}> <b>${escapeHtml(t.term)}</b> <span class="gsc-sub">${escapeHtml(t.source || '')}</span></label>`).join('');
-  return `<div class="strat-card gsc-brand"><div class="gsc-title">${b.confirmedCount ? 'Brand names' : 'Confirm your brand names'}</div><div class="gsc-sub" style="margin:2px 0 8px;">Searches that include these names count as brand searches.</div>${conf ? `<div class="gsc-chips">${conf}</div>` : ''}${list ? `<div class="gsc-suglist">${list}</div>` : ''}<div class="gsc-add"><input type="text" id="gscBrandAdd" maxlength="80" placeholder="Add a brand name" onkeydown="if(event.key==='Enter'){gscBrandAddTerm();}"><button type="button" class="btn-ghost" onclick="gscBrandAddTerm()">Add</button>${list ? `<button type="button" class="btn-primary" onclick="gscBrandConfirmChecked()">Confirm selected</button>` : ''}</div>${gsc.brandMsg ? `<p class="strat-empty">${escapeHtml(gsc.brandMsg)}</p>` : ''}</div>`;
+  return `<div class="strat-card gsc-brand"><div class="gsc-title">${b.confirmedCount ? 'Brand names' : 'Confirm your brand names'} ${aiThoughtIconHtml('AI')}</div><div class="gsc-sub" style="margin:2px 0 8px;">Searches that include these names count as brand searches.</div>${conf ? `<div class="gsc-chips">${conf}</div>` : ''}${list ? `<div class="gsc-suglist">${list}</div>` : ''}<div class="gsc-add"><input type="text" id="gscBrandAdd" maxlength="80" placeholder="Add a brand name" onkeydown="if(event.key==='Enter'){gscBrandAddTerm();}"><button type="button" class="btn-ghost" onclick="gscBrandAddTerm()">Add</button>${list ? `<button type="button" class="btn-primary" onclick="gscBrandConfirmChecked()">Confirm selected</button>` : ''}</div>${gsc.brandMsg ? `<p class="strat-empty">${escapeHtml(gsc.brandMsg)}</p>` : ''}</div>`;
 }
 async function gscBrandAct(body){ const r = await srchPost('/brand-terms', body); gsc.brandMsg = r.error || ''; await gscLoad(); }
 function gscBrandAddTerm(){ const e = document.getElementById('gscBrandAdd'); const v = e ? e.value.trim() : ''; if (!v){ gsc.brandMsg = 'Enter a name first.'; gscRender(); return; } gscBrandAct({ action: 'add', term: v }); }
@@ -59594,7 +59771,7 @@ function gscToggleUpload(){ gsc.up = gsc.up.stage === 'idle' ? { stage: 'pick', 
 function gscUploadHtml(first){
   const u = gsc.up; if (first && u.stage === 'idle') u.stage = 'pick';
   const pv = u.preview;
-  let h = `<div class="gsc-head"><div class="gsc-title">${first ? 'Add your Search Console files' : 'Update Search Console data'}</div></div><div class="gsc-sub" style="margin:2px 0 10px;">Select every CSV from a Search Console export. Each file is recognised automatically.</div>`;
+  let h = `<div class="gsc-head"><div class="gsc-title">${first ? 'Add your Search Console files' : 'Update Search Console data'} ${aiThoughtIconHtml('AH')}</div></div><div class="gsc-sub" style="margin:2px 0 10px;">Select every CSV from a Search Console export. Each file is recognised automatically.</div>`;
   h += `<input type="file" id="gscFiles" accept=".csv,text/csv" multiple onchange="gscPickFiles(this.files)">`;
   if (u.busy) h += '<p class="strat-empty">Working…</p>';
   if (pv){
@@ -62050,6 +62227,7 @@ function goToStep(step, arg, arg2, arg3){
     document.getElementById('step-collaboration').classList.add('active');
   } else if (step === 'searchOptimization'){
     renderSearchOptimizationStep();
+    schemaLibRender();
     // renderCfdWs() call removed 2026-08-25 — see cfdWsModule comment below.
     document.getElementById('step-searchOptimization').classList.add('active');
   } else if (step === 'reputation'){
