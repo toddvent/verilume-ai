@@ -1514,6 +1514,11 @@
 
   /* 2026-09-30 — Strategy page (CMO / VP view) */
   .stat-card-grid.four{grid-template-columns:repeat(4,1fr);}
+  .stat-card-grid.five{grid-template-columns:repeat(5,1fr);align-items:start;}
+  @media (max-width:1180px){ .stat-card-grid.five{grid-template-columns:1fr 1fr 1fr;} }
+  @media (max-width:900px){ .stat-card-grid.five{grid-template-columns:1fr 1fr;} }
+  @media (max-width:820px){ .stat-card-grid.five{grid-template-columns:1fr;} }
+  .stat-card.se-card{cursor:pointer;}
   @media (max-width:1100px){ .stat-card-grid.four{grid-template-columns:repeat(2,1fr);} }
   @media (max-width:820px){ .stat-card-grid.four{grid-template-columns:1fr;} }
   .stat-card .strat-sub{font-size:0.6875rem;color:var(--muted);margin-top:8px;}
@@ -23646,9 +23651,18 @@ async function cxLoad(){
   await cxLoadBriefs();
   if (activePrimaryTab === 'brand'){ cxRenderCoreRow(); cxRenderMedia(); }
 }
+function cxSearchCardHtml(){
+  const d = gsc && gsc.data, c = d && d.cards;
+  if (!c){
+    if (srchLive() && !gsc.loading && !cx.seTried){ cx.seTried = true; srchApi('/page').then(r => { if (r && !r.error){ gsc.data = r; if (activePrimaryTab === 'brand') cxRenderCoreRow(); } }).catch(() => {}); }
+    return `<div class="stat-card se-card" onclick="goToStep('searchOptimization')"><div class="sc-label">Search Everywhere</div><div class="sc-value">—</div><div class="sc-delta neutral">${srchLive() ? 'Loading' : 'Not on file yet'}</div><div class="strat-sub">Organic search, AI answers and priorities</div></div>`;
+  }
+  const nb = c.nonBrandShare, p = d.priorities || {};
+  return `<div class="stat-card se-card" onclick="goToStep('searchOptimization')"><div class="sc-label">Search Everywhere</div><div class="sc-value">${gscInt(c.clicks.value)}</div>${gscDeltaHtml(c.clicks.changePct)}<div class="strat-sub">Organic clicks · ${p.totalOpen || 0} open priorities</div></div>`;
+}
 function cxRenderCoreRow(){
   const el = document.getElementById('tabStatCardGrid'); if (!el) return;
-  el.classList.add('four');
+  el.classList.add('five');
   const rows = cxScheduleRows().filter(r => r.gate !== 'complete');
   const past = rows.filter(r => { const n = cxDaysUntil(r.due); return n != null && n < 0; }).length;
   const soon = rows.filter(r => { const n = cxDaysUntil(r.due); return n != null && n >= 0 && n <= 14; }).length;
@@ -23661,7 +23675,8 @@ function cxRenderCoreRow(){
     card('Assets due in 14 days', String(soon), soon ? '• Creative to deliver' : '• Nothing due soon', soon === 0, 'Campaigns with creative not yet complete') +
     card('Assets past due', String(past), past ? '▼ Act today' : '▲ On schedule', past === 0, 'Creative gate not complete') +
     card('Creative in QA', String(qa), qa ? '• Awaiting approval' : '• Nothing pending', qa === 0, 'Approve or send back') +
-    card('Cost per engagement', l ? `$${l.costPerEngagement.toFixed(2)}` : '—', dl != null ? `${stratPct(dl)} vs prior month` : (cx.data ? 'Not on file yet' : 'Loading'), dl != null && dl <= 0, l ? `Spend ÷ clicks · ${stratMonthLabel(l.month)}` : 'Digital performance upload');
+    card('Cost per engagement', l ? `$${l.costPerEngagement.toFixed(2)}` : '—', dl != null ? `${stratPct(dl)} vs prior month` : (cx.data ? 'Not on file yet' : 'Loading'), dl != null && dl <= 0, l ? `Spend ÷ clicks · ${stratMonthLabel(l.month)}` : 'Digital performance upload') +
+    cxSearchCardHtml();
 }
 async function cxLoadBriefs(){
   try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/creative-briefs`); if (r.ok){ const j = await r.json(); cx.briefs = j.briefs || []; } } catch (e){}
@@ -25885,7 +25900,7 @@ function cmpLiveStatCardOverride(label){
 // ---- Key tools (2026-10-05): the tools each tab leans on, as chips above the cards ----
 const KEY_TOOLS = {
   strategy: [{ l: 'Budgets', s: 'mediaplan' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaigns', s: 'campaignMgmt' }, { l: 'Competition & Positioning', s: 'competitivePositioning' }, { l: 'Marketing Tests', s: 'marketOptimization' }, { l: 'Forecasts', a: 'forecast' }],
-  brand: [{ l: 'Brand Voice', s: 'voice' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaign Creative', s: 'omniCreative' }, { l: 'PR', s: 'reputation' }, { l: 'Reputation Management', s: 'reputation' }],
+  brand: [{ l: 'Brand Voice', s: 'voice' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaign Creative', s: 'omniCreative' }, { l: 'Search Everywhere', s: 'searchOptimization' }, { l: 'PR', s: 'reputation' }, { l: 'Reputation Management', s: 'reputation' }],
   marketer: [{ l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Budgets', s: 'mediaplan' }, { l: 'Campaign Creation', s: 'campaignMgmt' }, { l: 'Forecasting', a: 'forecast' }, { l: 'Creative Assets', s: 'omniCreative' }],
   dataScientist: [{ l: 'Budgets', s: 'mediaplan' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaign Analysis', s: 'campaignMgmt' }, { l: 'Goal Setting + Forecasting', a: 'forecast' }, { l: 'Test Plans', s: 'marketOptimization' }]
 };
@@ -25908,7 +25923,7 @@ function renderStatCards(){
   const el = document.getElementById('tabStatCardGrid');
   if (!el) return;
   const tab = activePrimaryTab || 'dailyBrief';
-  el.classList.remove('four');
+  el.classList.remove('four'); el.classList.remove('five');
   const oldNote = document.getElementById('stratDemandNote'); if (oldNote) oldNote.remove();
   if (tab !== 'strategy'){ const bar = document.getElementById('drrBar'); if (bar) bar.remove(); }
   if (tab === 'dailyBrief' && bdIsLive()){ el.innerHTML = ''; return; }
@@ -75682,6 +75697,41 @@ async function posSetDecision(contributionId, status){
     console.error('portal.html: Init sequence threw before finishing — the page did not load correctly.', e);
     showPortalLoadCoverErrorFn('Something went wrong while loading the Portal.');
   }
+})();
+</script>
+<script>
+/* Verilume team "viewing as" bar (Wave 1.4). Only appears when a team member opened this client from platform.html. */
+(function () {
+  try {
+    var acct = new URLSearchParams(location.search).get('accountId');
+    if (!acct) return;
+    var raw = localStorage.getItem('verilume_platform_view_' + acct);
+    if (!raw) return;
+    var v = JSON.parse(raw);
+    var bar = document.createElement('div');
+    bar.id = 'verilumeTeamViewBar';
+    bar.setAttribute('style', 'position:fixed;left:0;right:0;bottom:0;z-index:2147483000;background:#1E2761;color:#fff;font:600 13px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;gap:14px;align-items:center;justify-content:center;padding:9px 16px;box-shadow:0 -2px 10px rgba(0,0,0,.25)');
+    var label = document.createElement('span');
+    var roleName = { owner: 'Owner', admin: 'Admin', support: 'Support', readonly: 'Read-only' }[v.role] || v.role;
+    label.textContent = 'Viewing ' + (v.company || acct) + ' as Verilume team: ' + (v.name || '') + ' (' + roleName + '). This visit is logged.';
+    var exit = document.createElement('a');
+    exit.textContent = 'Exit';
+    exit.href = 'platform.html';
+    exit.setAttribute('style', 'background:#D08A3E;color:#1E2761;padding:5px 14px;border-radius:6px;text-decoration:none;font-weight:700');
+    exit.addEventListener('click', function () {
+      try {
+        var tok = localStorage.getItem('verilume_session_' + acct);
+        if (tok) { fetch((location.protocol !== 'file:' ? '' : 'http://localhost:8787') + '/api/auth/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + tok } }).catch(function () {}); }
+        localStorage.removeItem('verilume_session_' + acct);
+        localStorage.removeItem('verilume_member_' + acct);
+        localStorage.removeItem('verilume_platform_view_' + acct);
+        if (localStorage.getItem('verilume_active_account') === acct) localStorage.removeItem('verilume_active_account');
+      } catch (e) {}
+    });
+    bar.appendChild(label); bar.appendChild(exit);
+    document.body.appendChild(bar);
+    document.body.style.paddingBottom = '48px';
+  } catch (e) {}
 })();
 </script>
 </body>
