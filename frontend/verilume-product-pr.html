@@ -1,0 +1,213 @@
+<title>PR & Corporate Communications — Verilume Product Docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ink:#161B22; --slate:#5B6472; --slate-soft:#8891A0; --paper:#FFFFFF; --paper-sunk:#F4F6F9;
+  --line:#E2E6EC; --brand:#2B5FE0; --brand-soft:#EDF2FE; --confirmed:#1F8A5F; --confirmed-soft:#E9F6EF;
+  --flagged:#B8391A; --flagged-soft:#FBEAE4; --warning:#B8791A; --warning-soft:#FBF1E1;
+  --mono-bg:#0F1720; --mono-ink:#D7DEE8;
+}
+:root:not([data-theme="light"]){
+  @media (prefers-color-scheme: dark){
+    --ink:#E7EAEF; --slate:#A8B1C0; --slate-soft:#7A8393; --paper:#12161D; --paper-sunk:#191F29;
+    --line:#2A3140; --brand:#7EA0FF; --brand-soft:#1B2740; --confirmed:#4FCC93; --confirmed-soft:#122A20;
+    --flagged:#FF8A68; --flagged-soft:#2E1710; --warning:#E5AC55; --warning-soft:#2C2110;
+    --mono-bg:#0A0E14; --mono-ink:#C6CEDA;
+  }
+}
+:root[data-theme="dark"]{
+  --ink:#E7EAEF; --slate:#A8B1C0; --slate-soft:#7A8393; --paper:#12161D; --paper-sunk:#191F29;
+  --line:#2A3140; --brand:#7EA0FF; --brand-soft:#1B2740; --confirmed:#4FCC93; --confirmed-soft:#122A20;
+  --flagged:#FF8A68; --flagged-soft:#2E1710; --warning:#E5AC55; --warning-soft:#2C2110;
+  --mono-bg:#0A0E14; --mono-ink:#C6CEDA;
+}
+*{box-sizing:border-box;}
+html{-webkit-text-size-adjust:100%;}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:15.5px;line-height:1.6;}
+::selection{background:var(--brand-soft);}
+a{color:var(--brand);}
+h1,h2,h3,h4{font-family:'Source Serif 4',Georgia,serif;font-weight:600;color:var(--ink);text-wrap:balance;line-height:1.25;}
+code, .mono{font-family:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;font-size:0.87em;}
+.shell{display:grid;grid-template-columns:272px minmax(0,1fr);max-width:1280px;margin:0 auto;}
+@media (max-width:900px){.shell{grid-template-columns:1fr;} .toc{position:static !important; height:auto !important; border-right:none !important; border-bottom:1px solid var(--line);}}
+.toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:28px 20px 40px 28px;border-right:1px solid var(--line);}
+.toc-brand{font-family:'Source Serif 4',serif;font-size:15px;font-weight:600;letter-spacing:0.01em;margin-bottom:2px;}
+.toc-sub{font-size:11.5px;color:var(--slate);margin-bottom:22px;}
+.toc-group{margin-bottom:18px;}
+.toc-group-label{font-size:10.5px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;color:var(--slate-soft);margin:0 0 8px;}
+.toc a{display:block;font-size:13px;color:var(--slate);text-decoration:none;padding:5px 0 5px 10px;border-left:2px solid transparent;margin-left:-1px;}
+.toc a:hover{color:var(--ink); border-left-color:var(--line);}
+.toc a.flag::after{content:" \2691"; color:var(--flagged);}
+.toc a.home{font-weight:600;color:var(--brand);}
+.main{padding:40px 48px 120px;min-width:0;}
+@media (max-width:640px){.main{padding:28px 20px 90px;}}
+.doc-header{margin-bottom:44px;}
+.doc-kicker{font-size:11.5px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--brand);margin-bottom:10px;}
+.doc-header h1{font-size:34px;margin:0 0 12px;}
+.doc-dek{font-size:16px;color:var(--slate);max-width:62ch;margin:0 0 20px;}
+.meta-row{display:flex;flex-wrap:wrap;gap:10px 22px;font-size:12.5px;color:var(--slate-soft);padding-top:16px;border-top:1px solid var(--line);}
+.meta-row b{color:var(--slate);font-weight:600;}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;letter-spacing:0.02em;padding:3px 10px 3px 8px;border-radius:99px;white-space:nowrap;}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;flex:none;}
+.pill--confirmed{background:var(--confirmed-soft);color:var(--confirmed);}
+.pill--confirmed::before{background:var(--confirmed);}
+.pill--flagged{background:var(--flagged-soft);color:var(--flagged);}
+.pill--flagged::before{background:var(--flagged);}
+.pill--warning{background:var(--warning-soft);color:var(--warning);}
+.pill--warning::before{background:var(--warning);}
+.pill--neutral{background:var(--paper-sunk);color:var(--slate);}
+.pill--neutral::before{background:var(--slate-soft);}
+section{margin-bottom:56px;scroll-margin-top:24px;}
+section > h2{font-size:22px;padding-bottom:12px;border-bottom:1px solid var(--line);margin:0 0 20px;display:flex;align-items:baseline;gap:12px;justify-content:space-between;}
+section > h2 .num{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--slate-soft);font-weight:400;}
+h3{font-size:16.5px;margin:28px 0 10px;}
+h4{font-size:14px;margin:20px 0 8px;color:var(--slate);}
+p{margin:0 0 14px;max-width:72ch;}
+ul,ol{margin:0 0 14px;padding-left:22px;max-width:70ch;}
+li{margin-bottom:5px;}
+.lede{font-size:15px;color:var(--slate);max-width:72ch;}
+.card{border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:16px 0;background:var(--paper-sunk);}
+.card--confirmed{background:var(--confirmed-soft);border-color:color-mix(in srgb, var(--confirmed) 30%, var(--line));}
+.card--flagged{background:var(--flagged-soft);border-color:color-mix(in srgb, var(--flagged) 30%, var(--line));}
+.card--warning{background:var(--warning-soft);border-color:color-mix(in srgb, var(--warning) 30%, var(--line));}
+.card-title{display:flex;align-items:center;gap:10px;font-weight:600;font-size:14px;margin-bottom:8px;color:var(--ink);}
+.card p:last-child{margin-bottom:0;}
+.card .cite{font-size:12px;color:var(--slate-soft);margin-top:8px;}
+.finding-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin:20px 0 8px;}
+.finding-tile{border:1px solid var(--line);border-radius:10px;padding:16px 18px;}
+.finding-tile .pill{margin-bottom:10px;}
+.finding-tile h4{margin:0 0 6px;font-size:13.5px;color:var(--ink);}
+.finding-tile p{font-size:13px;color:var(--slate);margin:0;}
+.flow{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:18px 0 24px;}
+.flow-step{display:grid;grid-template-columns:40px 1fr;gap:14px;padding:16px 20px;border-bottom:1px solid var(--line);}
+.flow-step:last-child{border-bottom:none;}
+.flow-step:nth-child(odd){background:var(--paper-sunk);}
+.flow-num{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--brand);font-weight:500;padding-top:2px;}
+.flow-step h4{margin:0 0 4px;font-size:14px;color:var(--ink);}
+.flow-step p{margin:0;font-size:13.5px;color:var(--slate);}
+.flow-step .endpoint{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--slate);background:var(--paper);border:1px solid var(--line);padding:1px 7px;border-radius:5px;margin-top:6px;}
+.table-wrap{overflow-x:auto;margin:16px 0 24px;border:1px solid var(--line);border-radius:10px;}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:560px;}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top;}
+thead th{background:var(--paper-sunk);font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--slate);white-space:nowrap;}
+tbody tr:last-child td{border-bottom:none;}
+td .mono{color:var(--slate);}
+.env-list{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 20px;}
+.env-badge{font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--mono-bg);color:var(--mono-ink);padding:5px 10px;border-radius:6px;}
+pre{background:var(--mono-bg);color:var(--mono-ink);border-radius:10px;padding:16px 18px;overflow-x:auto;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.6;margin:14px 0 20px;}
+hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+@media (max-width:700px){.two-col{grid-template-columns:1fr;}}
+.foot{margin-top:60px;padding-top:20px;border-top:1px solid var(--line);font-size:12px;color:var(--slate-soft);}
+</style>
+
+<div class="shell">
+
+  <nav class="toc">
+    <div class="toc-brand">Verilume — Internal Product Docs</div>
+    <div class="toc-sub">PR &amp; Corporate Communications</div>
+    <a class="home" href="verilume-product-docs.html">&larr; All Products</a>
+    <div class="toc-group" style="margin-top:18px;">
+      <p class="toc-group-label">Overview</p>
+      <a href="#overview">Product summary</a>
+      <a href="#state">What is real today</a>
+    </div>
+    <div class="toc-group">
+      <p class="toc-group-label">How it works</p>
+      <a href="#release">Press releases and the brief</a>
+      <a href="#draft">AI draft and LinkedIn post</a>
+      <a href="#optimize">Optimize for search</a>
+      <a href="#review">Approve, reject and status</a>
+      <a href="#contest">PR Contest</a>
+      <a href="#pitch">Pitches and corporate comms</a>
+      <a href="#monitor">Reputation Monitoring</a>
+    </div>
+    <div class="toc-group">
+      <p class="toc-group-label">Product ops</p>
+      <a href="#training">Training guide</a>
+      <a href="#gaps" class="flag">Known gaps &amp; open items</a>
+      <a href="#log">Decision log</a>
+      <a href="#roadmap">Planned, not built</a>
+    </div>
+  </nav>
+
+  <main class="main">
+    <header class="doc-header" id="overview">
+      <div class="doc-kicker">Product Documentation · Verilume</div>
+      <h1>PR &amp; Corporate Communications</h1>
+      <p class="doc-dek">The Reputation workstream: press releases, editorial pitches, corporate communications, brand mention monitoring and specialty partners. Writing is built from a brief the team controls; nothing is sent outside Verilume.</p>
+      <div class="meta-row">
+        <span><b>Owner</b> Todd Brown</span>
+        <span><b>System</b> <code>frontend/portal.html</code> (<code>#step-reputation</code>, <code>renderReputationStep</code>, <code>prcState</code>), <code>backend/server.js</code></span>
+        <span><b>Verified against</b> working tree and a scratch database, 2026-10-05</span>
+        <span><b>Status</b> Drafting, optimize, review, contest and weekly sweep built. Optimize tested against a stub model only; a live-model run still to do. Wire send, listening feeds and the Search Everywhere hand-offs not built.</span>
+      </div>
+    </header>
+
+    <section id="state">
+      <h2><span>What is real today</span><span class="num">&sect; 01</span></h2>
+      <div class="table-wrap"><table><thead><tr><th>Part</th><th>State</th></tr></thead><tbody><tr><td>Four-part brief, AI draft, edit, save</td><td>Built. Tool <code>submit_copy</code>; 250 to 400 words; placeholders for missing facts; earnings legal text only verbatim from the Content Library. No template fallback when <code>ANTHROPIC_API_KEY</code> is missing.</td></tr><tr><td>LinkedIn post</td><td>Built. 100 to 200 words from the saved release.</td></tr><tr><td>Optimize for search</td><td>Built 2026-10-04. SEO, AEO, GEO tags; accept or skip each; server drops suggestions not in the draft, with new numbers, or with Avoid terms.</td></tr><tr><td>Approve / Reject copy</td><td>Built. Reason required to reject; stored in <code>pr_corp_comm_decisions</code> and shown as history; feeds later drafts; does not change status.</td></tr><tr><td>PR Contest</td><td>Built (Ask dock). Drafts shown as Draft 1, 2, 3 in shuffled order since 2026-10-05.</td></tr><tr><td>Weekly sweep</td><td>Built. Perplexity plus GDELT, Monday early morning; Sweep now once an hour.</td></tr><tr><td>Mark Distributed</td><td>Flag and date only. Nothing is sent to a wire.</td></tr><tr><td>Editorial pitches</td><td>Draft only; Pending or Placed; nothing emailed.</td></tr><tr><td>Corporate communications</td><td>Key points are the only fact source; Draft or Approved.</td></tr><tr><td>Specialty Partners</td><td>On-screen buttons only; no vendor feed.</td></tr></tbody></table></div>
+    </section>
+
+    <section id="release">
+      <h2><span>Press releases and the brief</span><span class="num">&sect; 02</span></h2>
+      <p>Create with a title, a release type (Product Launch or Enhancement, Earnings Announcement, Strategic Partnership, Charity or Person Partnership, Significant Hire or Departure), an audience (Consumer or Business and Trade Network), an optional campaign and an optional call to action with a mode: Use for inspiration (default), Use exact copy, or Both. The brief has four parts, <em>1. The News</em>, <em>2. The Experience</em>, <em>3. The Details</em>, <em>4. The Next Step</em>, stored in <code>briefJson</code>; the row shows "Brief N of 4" or "Brief complete". The News part is required to draft or run a contest.</p>
+    </section>
+
+    <section id="draft">
+      <h2><span>AI draft and LinkedIn post</span><span class="num">&sect; 03</span></h2>
+      <p><code>draftPrCorpCommCopyViaAI</code> reads the Voice Guide, Vision, a long-form example, PR writing samples (category <code>pr</code>), past decisions, Terms to Avoid and the brand profile. Competitor positioning is internal-only and never named. The draft is editable; drafting again replaces the working copy.</p>
+    </section>
+
+    <section id="optimize">
+      <h2><span>Optimize for search</span><span class="num">&sect; 04</span></h2>
+      <p>Sits between Draft and Review and is optional. "Find search improvements" reads the Train the Brain Search keywords module (lists, CSV upload, Avoid always wins, top 500, volume bands). Suggestions are tagged SEO, AEO or GEO. Accepted edits apply with "Apply accepted edits to the draft". Search never blocks approval.</p>
+    </section>
+
+    <section id="review">
+      <h2><span>Approve, reject and status</span><span class="num">&sect; 05</span></h2>
+      <p>Approve and Reject copy record a decision with a reason. Status is separate: "Mark Distributed" sets Distributed plus <code>distributedDate</code>; "Revert to Draft" undoes it. Any signed-in team member can do all of this; the Enterprise tag is a label, not a lock.</p>
+    </section>
+
+    <section id="contest">
+      <h2><span>PR Contest</span><span class="num">&sect; 06</span></h2>
+      <p>Ask dock, Contest, "PR and corporate communications", Choose (<code>askDockContestOpenPr</code>). Each row shows a readiness label. "Run contest" calls <code>POST /api/accounts/:id/&lt;endpoint&gt;/:id/interview</code>: one draft from Anthropic plus one per configured AI vendor, built only from the brief (press), key points (corporate) or outlet and topic (editorial). It counts toward the weekly interview cap (429 when reached). "Use this draft" calls <code>.../interview/:interviewId/select</code>, saves the draft as the working copy and records the pick in <code>contest_rankings</code>. Add my own entry and scoring are not built for PR.</p>
+      <div class="card card--confirmed"><div class="card-title">Fixed 2026-10-05: drafts were named</div><p>The panel said drafts are numbered, not named, but showed vendor labels such as "Anthropic (baseline)", and the baseline was always first. The list is now labelled Draft N and shuffled once per contest. The server still returns vendor labels and keys in the response; the blinding is client-side only.</p></div>
+    </section>
+
+    <section id="pitch">
+      <h2><span>Editorial pitches and corporate communications</span><span class="num">&sect; 07</span></h2>
+      <p>A pitch is an outlet plus a topic; Draft with AI returns a subject and two or three paragraphs, under 200 words. Corporate communications take a title, a free-text audience and key points ("Save key points" is the only fact source).</p>
+    </section>
+
+    <section id="monitor">
+      <h2><span>Reputation Monitoring and Specialty Partners</span><span class="num">&sect; 08</span></h2>
+      <p>The weekly sweep runs Monday early morning and is ready by 8:00 AM. Needs Response comes only from Perplexity results. There is no listening vendor feed and no respond-to-mention workflow. Brandwatch, Meltwater and Mention buttons are in-memory UI state.</p>
+    </section>
+
+    <section id="training">
+      <h2><span>Training guide</span><span class="num">&sect; 09</span></h2>
+      <p><a href="training/Verilume-PR-Training.pdf" target="_blank" rel="noopener">Verilume-PR-Training.pdf</a>, v1.0, October 5, 2026, 15 pages with screenshots of the live page, including a PR Contest session and how to leverage it.</p>
+    </section>
+
+    <section id="gaps">
+      <h2><span>Known gaps &amp; open items</span><span class="num">&sect; 10 — for product awareness</span></h2>
+      <div class="card card--warning"><div class="card-title">Sample mentions are not tagged</div><p>Until the first sweep runs the page shows example mentions in the same style as real ones, with a note in the sweep sentence but no tag on each row.</p></div>
+      <div class="card card--warning"><div class="card-title">Optimize tested with a stub model only</div><p>The suggestion checks run in code, but a live-model run has not been read yet.</p></div>
+      <div class="card card--warning"><div class="card-title">Contest blinding is client-side</div><p>Vendor labels still travel in the response.</p></div>
+    </section>
+
+    <section id="log">
+      <h2><span>Decision log</span><span class="num">&sect; 11</span></h2>
+      <div class="table-wrap"><table><thead><tr><th>Date · topic</th><th>What Todd said</th><th>What it changed</th></tr></thead><tbody><tr><td>2026-10-05 · PR training guide</td><td>"We need to build out a PR training guide with images also. Update product docs as needed" and "The PR Contest and how to leverage should be part of the document".</td><td>15-page guide with screenshots, a PR Contest session, weekly routine and troubleshooting. This document built.</td></tr><tr><td>2026-10-05 · PR and Search Everywhere</td><td>Approved a dotted line: "Draft a Release", a strip on every published release, releases tracked as Search Everywhere content updates.</td><td>Planned, not built. See the scoping note.</td></tr><tr><td>2026-10-05 · Page copy honesty</td><td>Found while documenting: the Press section said a distributed release had gone out through a wire service.</td><td>Reworded: Verilume does not send releases; Mark Distributed records it.</td></tr><tr><td>2026-10-05 · Contest draft labels</td><td>Found while capturing screenshots.</td><td>Drafts labelled Draft N in shuffled order.</td></tr></tbody></table></div>
+    </section>
+
+    <section id="roadmap">
+      <h2><span>Planned, not built</span><span class="num">&sect; 12</span></h2>
+      <ol><li>Send to a wire or distribution service.</li><li>Licensed listening feeds (Brandwatch, Meltwater, Mention).</li><li>Press-contact database and distribution history rollup.</li><li>Respond-to-mention workflow.</li><li>PR and Search Everywhere hand-offs: "Draft a Release", search strip on published releases, content-update tracking.</li><li>Article or NewsArticle schema suggestion from the Schema library.</li><li>Row-level tag on sample mentions; true blinding on the server.</li></ol>
+    </section>
+
+    <div class="foot">PR &amp; Corporate Communications — Verilume internal product documentation. Update this document in place and add to the decision log; do not start a new dated notes file.</div>
+  </main>
+</div>

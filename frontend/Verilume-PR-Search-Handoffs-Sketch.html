@@ -1,0 +1,46 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PR and Search Everywhere hand-offs</title>
+<style>
+:root{--navy:#1E2761;--amber:#D08A3E;--ink:#1D1D1F;--mute:#6E6E73;--hair:#E8E8ED;--dim:#F5F5F7;--green:#1E6B44;--greenbg:#EAF7EF}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 -apple-system,BlinkMacSystemFont,'Inter','Segoe UI',Roboto,Arial,sans-serif;color:var(--ink);background:#fff}
+.band{background:var(--navy);color:#fff;padding:18px 28px}.band h1{margin:0;font-size:20px}.band p{margin:4px 0 0;color:#C9CEE6;font-size:13px}
+main{max-width:1100px;margin:0 auto;padding:22px 28px 40px}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-bottom:26px}@media(max-width:900px){.pair{grid-template-columns:1fr}}
+h2{font-size:15px;margin:0 0 4px}.lab{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--amber);margin-bottom:4px}
+.note{font-size:12.5px;color:var(--mute);margin:0 0 10px}
+.card{border:1px solid var(--hair);border-radius:12px;padding:16px;background:#fff}
+table{width:100%;border-collapse:collapse;font-size:12.5px}th{text-align:left;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--mute);padding:6px 6px;border-bottom:1px solid var(--hair)}td{padding:8px 6px;border-bottom:1px solid var(--hair);vertical-align:top}
+.p1{background:#B3261E;color:#fff;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700}
+.win{background:#FBEFDD;color:#8A5A1F;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:700}
+.btn{border:1px solid var(--navy);color:var(--navy);background:#fff;border-radius:999px;padding:4px 12px;font-size:12px;font-weight:700;white-space:nowrap}
+.btn.hot{background:var(--navy);color:#fff}
+.dot{border:1.5px dashed #9AA3D6;border-radius:10px;padding:10px 12px;background:#F7F8FD;font-size:12px;color:#3C4580;margin-top:10px}
+.strip{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}.strip div{background:var(--dim);border-radius:8px;padding:8px 10px}.strip b{display:block;font-size:15px}.strip span{font-size:11px;color:var(--mute)}
+.pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:11px;font-weight:700;border:1px solid var(--hair)}
+.pill.ok{background:var(--greenbg);color:var(--green);border-color:#BFE0CC}.pill.wait{background:var(--dim);color:var(--mute)}
+.steps{display:flex;gap:6px;align-items:center;font-size:12px;margin:8px 0 12px;flex-wrap:wrap}.steps span{padding:3px 10px;border-radius:999px;background:var(--dim)}.steps .on{background:var(--navy);color:#fff}
+.q{background:var(--greenbg);border:1px solid #BFE0CC;border-radius:12px;padding:12px 16px;margin-top:18px;font-size:13px}
+ul{margin:6px 0 0;padding-left:18px}li{margin:3px 0}
+</style></head><body>
+<div class="band"><h1>PR and Search Everywhere: the two hand-off points</h1><p>Sketch for approval. Dashed boxes are the new dotted-line pieces. Everything else already exists or is already scoped.</p></div>
+<main>
+<div class="pair">
+<div><div class="lab">Hand-off 1 · Search Everywhere to PR</div><h2>Draft a release from a priority or a question</h2><p class="note">A suggestion on rows that a release could address. It opens a PR draft with the topic filled in. Nothing starts on its own.</p>
+<div class="card"><div style="font-weight:700;margin-bottom:6px">Top 5 priorities</div>
+<table><thead><tr><th></th><th>Priority</th><th></th></tr></thead><tbody>
+<tr><td><span class="p1">P1</span></td><td><b>Get search ready for Antarctica Expeditions</b> <span class="win">In market now</span><div style="color:var(--mute)">219 matched searches average position 17.5.</div></td><td><span class="btn">Manage →</span> <span class="btn hot">Draft a release</span></td></tr>
+<tr><td><span class="p1">P1</span></td><td><b>Win page one for "antarctica"</b><div style="color:var(--mute)">239,532 impressions at position 13.1.</div></td><td><span class="btn">Manage →</span></td></tr></tbody></table>
+<div class="dot"><b>What "Draft a release" does.</b> Opens a new PR draft with the topic, the product or creative focus group, and the search terms from the Train the Brain keyword list. The writer takes it from there. The priority stays open until the team marks it done.</div></div>
+<div class="card" style="margin-top:12px"><div style="font-weight:700;margin-bottom:6px">Questions people ask</div>
+<table><tbody><tr><td>which cruise lines go to antarctica</td><td><span class="pill">Antarctica Expeditions</span></td><td><span class="btn">Draft answer →</span> <span class="btn hot">Draft a release</span></td></tr></tbody></table>
+<div class="dot">Shown only for questions that belong to a group and have no approved FAQ yet. The release brief carries the question and the approved facts that apply.</div></div></div>
+
+<div><div class="lab">Hand-off 2 · PR to Search Everywhere</div><h2>Search status on a published release</h2><p class="note">Once a release is published, it appears in Search Everywhere as a known page. The strip below shows on every published release, and the release is logged in Search Everywhere as a content update.</p>
+<div class="card"><div style="font-weight:700">Antarctica Expeditions opens a new season</div><div class="steps"><span>Draft</span><span>Optimize for search</span><span>Review and approve</span><span class="on">Published Oct 14</span></div>
+<div class="strip"><div><b>Yes</b><span>Page on your site</span></div><div><b>Indexed</b><span>Google, checked Oct 21</span></div><div><b>1,240</b><span>Impressions since publish</span></div><div><b>3 of 6</b><span>Suggestions accepted</span></div></div>
+<div class="dot"><b>AI answers and communities</b> <span class="pill wait">Planned · not measured</span><br>Whether this release is cited in AI answers, or discussed in community threads, will appear here when a licensed or official source is connected. Until then the strip shows only what Search Console reports.</div></div>
+<div class="card" style="margin-top:12px"><div style="font-weight:700;margin-bottom:6px">Search Everywhere: content updates</div><p class="note" style="margin:0 0 6px">Each published release is logged here by date, with what changed in search afterwards. No separate tag in the pages list.</p><table><thead><tr><th>Date</th><th>Update</th><th style="text-align:right">Impressions since</th></tr></thead><tbody>
+<tr><td>Oct 14</td><td><b>Press release published</b><div style="color:var(--mute)">Antarctica Expeditions opens a new season · Antarctica Expeditions group</div></td><td style="text-align:right">1,240</td></tr><tr><td>Oct 2</td><td><b>Gap filled: site page</b><div style="color:var(--mute)">/expeditions/antarctica · from the priority "Win page one for antarctica"</div></td><td style="text-align:right">310</td></tr></tbody></table><div class="dot">Releases join the list automatically when published. Other site content joins only when it was recommended as a gap and the team marks that priority done. Dates also mark the Search Console charts, so a change in clicks can be read against what was published.</div></div></div>
+</div>
+<div class="card"><div class="lab">Rules for both</div><ul><li>No PR approval ever waits on a search score, and Search Everywhere never edits or publishes a release.</li><li>Both sides read the same Train the Brain keyword list, negative list and approved facts. Neither keeps a private copy.</li><li>Release topics from priorities count as suggestions only. The five-item priority limit is unchanged.</li><li>Build status: the optimize step and keyword module are built; these two hand-offs are what remains (licensed keyword connectors also still to come).</li></ul></div>
+<div class="q"><b>Decided 2026-10-05.</b> The button reads "Draft a release". The search strip shows on every published release. Releases are not tagged in the pages list; instead each published release is tracked as a Search Everywhere content update. Site content is logged only when it was recommended as a gap; ordinary site edits are not tracked.</div>
+</main></body></html>
