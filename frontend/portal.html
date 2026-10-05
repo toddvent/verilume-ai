@@ -1584,6 +1584,7 @@
   .sl-st{display:inline-block;font-size:0.75rem;font-weight:700;border-radius:980px;padding:2px 10px;white-space:nowrap;} .sl-st-ok{background:#EAF7EF;color:#1E6B44;} .sl-st-warn{background:#FBF1E3;color:#8A5A1F;}
   .sl-need{font-size:0.6875rem;font-weight:700;border-radius:4px;padding:1px 6px;background:var(--dim,#F5F5F7);color:var(--muted);} .sl-need.sl-required{background:#1E2761;color:#fff;} .sl-need.sl-recommended{background:#EAF3EF;color:#1E6B44;}
   .sl-code{background:#F5F5F7;border:1px solid var(--line);border-radius:8px;padding:12px;font-size:0.75rem;line-height:1.5;overflow-x:auto;white-space:pre;margin:4px 0 6px;} .sl-notes{margin:4px 0 0;padding-left:18px;font-size:0.875rem;line-height:1.5;} .sl-notes li{margin:3px 0;}
+  .gsc-ai-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:4px;} .gsc-ai-tiles .sc-tile{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#fff;}
   .prc-strip{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:8px;background:#fff;}
   .prc-strip-t{font-size:0.6875rem;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted,#6B7280);margin-bottom:6px;}
   .prc-strip-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 14px;}
@@ -59382,6 +59383,7 @@ async function gscLoad(){
   try { await drrLoad(); drrOnChange(gscLoad); const d = await srchApi('/page'); if (d.error){ gsc.error = d.error; } else gsc.data = d; } catch (e){ gsc.error = 'Could not reach the server.'; }
   gsc.loading = false; gscRender();
   if (!gscQ.loaded) gscLoadQuestions();
+  if (!gscAic.loaded) gscLoadAic();
   if (!gscBC.loaded) gscLoadBrandChecks();
 }
 // ---- Schema library (reference for the team; content pages) ----
@@ -59468,6 +59470,7 @@ function gscRender(){
   h += gscAiHtml(d);
   h += gscGroupsHtml(d);
   h += gscQuestionsHtml(d);
+  h += gscAicHtml();
   h += gscApprovedHtml();
   h += gscBrandChecksHtml();
   h += `<div class="gsc-two">${gscTopNbHtml(d)}${gscHealthHtml(d)}</div>`;
@@ -59652,6 +59655,61 @@ function gscAiHtml(d){
   const tbl = (title, rows, key) => `<div><div class="gsc-sub" style="font-weight:700;margin-bottom:4px;">${title}</div><table class="gsc-table"><tbody>${rows.map(r => `<tr><td>${escapeHtml(r[key])}</td><td class="gsc-r">${gscInt(r.impressions)}</td></tr>`).join('')}</tbody></table></div>`;
   return `<div class="strat-card gsc-chart has-share" style="position:relative;">${shareBtnHtml('search-ai')}<div class="gsc-headline">${escapeHtml(head)}</div><div class="gsc-svg" style="max-width:640px;">${svg}</div><div class="gsc-ai-tables">${tbl('Top pages', a.pages, 'page')}${tbl('Top countries', a.countries, 'country')}</div><div class="gsc-foot">${escapeHtml('Source: Google Search Console, Google AI report · impressions only, Google reports no clicks · ' + gscDay(a.from) + ' to ' + gscDay(a.through) + ' · * partial month · top pages and countries are from the latest export')}</div></div>`;
 }
+// ---- AI answers (2026-10-05): which web pages AI assistants cite for the questions people ask ----
+const gscAic = { data: null, loaded: false, busy: false, msg: '', open: {}, detail: {}, timer: null };
+async function gscLoadAic(){
+  try { const d = await srchApi('/ai-citations'); gscAic.data = d.error ? null : d; } catch (e){ gscAic.data = null; }
+  gscAic.loaded = true; gscRender();
+  if (gscAic.data && gscAic.data.running){ clearTimeout(gscAic.timer); gscAic.timer = setTimeout(gscLoadAic, 4000); }
+}
+async function gscAicRun(key){
+  gscAic.busy = true; gscAic.msg = ''; gscRender();
+  let r; try { r = await srchPost('/ai-citations/run', key ? { query: key } : {}); } catch (e){ r = { error: 'Could not reach the server.' }; }
+  gscAic.busy = false;
+  gscAic.msg = r.error ? r.error : (r.note || (r.started ? `Checking ${r.queued} answer${r.queued === 1 ? '' : 's'}. This takes a few minutes.` : (r.running ? 'A check is already running.' : '')));
+  await gscLoadAic();
+}
+async function gscAicToggle(key){
+  gscAic.open[key] = !gscAic.open[key];
+  if (gscAic.open[key] && !gscAic.detail[key]){ try { const r = await srchPost('/ai-citations/detail', { query: key }); gscAic.detail[key] = r.checks || []; } catch (e){ gscAic.detail[key] = []; } }
+  gscRender();
+}
+function gscAicTag(k){
+  const A = gscAic.data; const st = A && A.state ? A.state[k] : null;
+  if (!A || !A.providers.length) return '';
+  if (st === 'cited') return '<span class="gsc-st gsc-st-done" title="An AI answer cited a page on your site">Cited</span>';
+  if (st === 'mentioned') return '<span class="gsc-st gsc-st-in_progress" title="Your name appears in the answer, but no page of yours is cited">Named, not cited</span>';
+  if (st === 'absent') return '<span class="gsc-st gsc-st-waiting" title="Checked, and your name and pages are not in the answer">Not cited</span>';
+  if (st === 'error') return '<span class="gsc-st gsc-st-waiting">Check failed</span>';
+  return '<span class="gsc-sub">Not checked</span>';
+}
+function gscAicHtml(){
+  const A = gscAic.data; if (!A) return '';
+  const Q = gscQ.data; if (!Q || !Q.questions.length) return '';
+  const head = `<div class="gsc-head"><div class="gsc-title">AI answers ${aiThoughtIconHtml('AL')}</div><div class="gsc-sub">Whether AI assistants cite your site when people ask these questions</div></div>`;
+  if (!A.providers.length) return `<div class="strat-card">${head}<p class="strat-empty" style="margin:0;">No AI assistant is connected yet. Ask your administrator to add a Perplexity or OpenAI key in the server settings. Nothing is checked until then.</p></div>`;
+  const t = A.totals; const run = A.running;
+  const dated = d => { try { return gscDay(String(d).slice(0, 10)); } catch (e){ return d; } };
+  const tile = (n, l, s) => `<div class="sc-tile"><div class="sc-value">${gscInt(n)}</div><div class="sc-label">${escapeHtml(l)}</div>${s ? `<div class="gsc-sub">${escapeHtml(s)}</div>` : ''}</div>`;
+  const tiles = t.questions ? `<div class="gsc-ai-tiles">${tile(t.questions, 'Questions checked', 'of ' + Q.questions.length + ' on the list')}${tile(t.cited, 'Cited', 'a page of yours is a source')}${tile(t.mentioned, 'Named, not cited', 'your name, no link to you')}${tile(t.absent, 'Not cited', 'neither name nor page')}</div>` : '';
+  const prov = A.perProvider.filter(p => p.checked).map(p => `${escapeHtml(p.label)}: cited in ${p.cited} of ${p.checked}`).join(' · ');
+  const hosts = A.topHosts.length ? `<div class="gsc-sub" style="font-weight:700;margin:10px 0 4px;">Sources the answers cite most</div><table class="gsc-table"><tbody>${A.topHosts.map(h => `<tr><td>${escapeHtml(h.host)}${h.site ? ' <span class="gsc-st gsc-st-done">Your site</span>' : h.community ? ' <span class="gsc-st gsc-st-planned">Community or review site</span>' : ''}</td><td class="gsc-r">${gscInt(h.answers)} answers</td></tr>`).join('')}</tbody></table>` : '';
+  const rows = Q.questions.filter(q => A.state[q.queryKey]).map(q => {
+    const k = q.queryKey; const ek = escapeHtml(k).replace(/'/g, "\\'"); const open = !!gscAic.open[k];
+    let panel = '';
+    if (open){
+      const ds = gscAic.detail[k];
+      panel = `<tr class="gsc-manage"><td colspan="3">${!ds ? '<span class="gsc-sub">Loading…</span>' : ds.map(c => `<div style="margin-bottom:10px;"><div class="gsc-sub" style="font-weight:700;">${escapeHtml(c.label)} · ${escapeHtml(dated(c.ranAt))}${c.ok ? '' : ' · failed: ' + escapeHtml(c.error || '')}</div>${c.ok ? `<p style="margin:4px 0;font-size:0.8125rem;white-space:pre-wrap;">${escapeHtml(c.answer || '')}</p><div class="gsc-sub">Cited: ${c.cited.length ? c.cited.map(x => `<a href="${escapeHtml(x.url)}" target="_blank" rel="noopener">${escapeHtml(repHostClient(x.url))}</a>`).join(' · ') : 'no sources listed'}</div>` : ''}</div>`).join('')}</td></tr>`;
+    }
+    return `<tr><td>${escapeHtml(q.question)}</td><td>${gscAicTag(k)}</td><td class="gsc-nw"><button type="button" class="gsc-link" aria-expanded="${open}" onclick="gscAicToggle('${ek}')">${open ? 'Close' : 'See answer'}</button> <button type="button" class="gsc-link" ${run || gscAic.busy ? 'disabled' : ''} onclick="gscAicRun('${ek}')">Check again</button></td></tr>${panel}`;
+  }).join('');
+  const btn = `<button type="button" class="btn-primary" ${run || gscAic.busy ? 'disabled' : ''} onclick="gscAicRun()">${run ? `Checking ${run.done} of ${run.total}…` : (t.questions ? 'Check new questions' : 'Check the top ' + Math.min(A.maxQuestions, Q.questions.length) + ' questions')}</button>`;
+  return `<div class="strat-card">${head}${tiles}${prov ? `<div class="gsc-sub" style="margin-top:6px;">${prov}</div>` : ''}${hosts}
+    ${rows ? `<div class="gsc-scroll" style="margin-top:10px;"><table class="gsc-table"><thead><tr><th>Question</th><th>AI answers</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
+    <div class="btn-row" style="margin-top:10px;">${btn}</div>${gscAic.msg ? `<p class="strat-empty" style="margin:6px 0 0;">${escapeHtml(gscAic.msg)}</p>` : ''}
+    <div class="gsc-foot">Each check asks ${A.providers.map(p => escapeHtml(p.label)).join(' and ')} the question through its official API with web search on, and records the pages it cites. An answer is one sample on one date, not a ranking, and answers change. ${t.questions ? 'Last checked ' + escapeHtml(dated(A.lastRun)) + '. ' : ''}Questions are re-checked after ${A.recheckDays} days. Up to ${A.maxQuestions} questions per run. Reddit and similar sites are shown only when an answer cites them; they are not searched.</div></div>`;
+}
+function repHostClient(u){ try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e){ return u; } }
 // ---- Questions and FAQ ----
 const gscQ = { data: null, open: {}, busy: {}, msg: {}, facts: {}, why: {}, loaded: false };
 async function gscLoadQuestions(){
@@ -59673,9 +59731,9 @@ function gscQuestionsHtml(d){
     const k = q.queryKey; const open = !!gscQ.open[k];
     const grp = q.offered ? `<span class="gsc-st">${escapeHtml(q.scope)}</span>${q.window ? ` <span class="gsc-win">${escapeHtml(q.window.label)}</span>` : ''}` : '<span class="gsc-sub">Not in any group</span>';
     const act = !q.offered ? '' : `<button type="button" class="gsc-link" aria-expanded="${open}" onclick="gscQ.open['${escapeHtml(k).replace(/'/g, "\\'")}']=!gscQ.open['${escapeHtml(k).replace(/'/g, "\\'")}']; gscRender();">${open ? 'Close' : q.status === 'drafted' || q.status === 'approved' ? 'Review' : 'Draft answer →'}</button>${q.status === 'approved' || q.brand || !(q.groups && q.groups[0]) ? '' : gscRelBtn('q:' + q.queryKey, { source: 'question', text: q.question, group: q.brand ? '' : (q.groups && q.groups[0] ? q.groups[0].value : ''), groupType: q.brand ? '' : (q.groups && q.groups[0] ? q.groups[0].type : ''), refId: q.queryKey })}`;
-    return `<tr class="${q.offered ? '' : 'gsc-dim'}"><td>${escapeHtml(q.question)}</td><td>${grp}</td><td class="gsc-r">${gscInt(q.impressions)}</td><td class="gsc-r">${q.avgPosition ? q.avgPosition.toFixed(1) : '—'}</td><td>${q.offered ? gscQStatusTag(q) : ''}</td><td class="gsc-nw">${act}</td></tr>${open ? `<tr class="gsc-manage"><td colspan="6">${gscQPanelHtml(q)}</td></tr>` : ''}`;
+    return `<tr class="${q.offered ? '' : 'gsc-dim'}"><td>${escapeHtml(q.question)}</td><td>${grp}</td><td class="gsc-r">${gscInt(q.impressions)}</td><td class="gsc-r">${q.avgPosition ? q.avgPosition.toFixed(1) : '—'}</td><td>${q.offered ? gscQStatusTag(q) : ''}</td><td>${gscAicTag(k)}</td><td class="gsc-nw">${act}</td></tr>${open ? `<tr class="gsc-manage"><td colspan="7">${gscQPanelHtml(q)}</td></tr>` : ''}`;
   }).join('');
-  return `<div class="strat-card"><div class="gsc-head"><div class="gsc-title">Questions people ask ${aiThoughtIconHtml('AL')}</div><div class="gsc-sub">Searches that are questions, ${escapeHtml(d.range.label)}</div></div><div class="gsc-scroll"><table class="gsc-table"><thead><tr><th>Question</th><th>Group</th><th class="gsc-r">Impressions</th><th class="gsc-r">Position</th><th>FAQ</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  return `<div class="strat-card"><div class="gsc-head"><div class="gsc-title">Questions people ask ${aiThoughtIconHtml('AL')}</div><div class="gsc-sub">Searches that are questions, ${escapeHtml(d.range.label)}</div></div><div class="gsc-scroll"><table class="gsc-table"><thead><tr><th>Question</th><th>Group</th><th class="gsc-r">Impressions</th><th class="gsc-r">Position</th><th>FAQ</th><th>AI answers</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
 function gscQPanelHtml(q){
   const k = q.queryKey; const ek = escapeHtml(k).replace(/'/g, "\\'"); const busy = gscQ.busy[k]; const msg = gscQ.msg[k];
@@ -60401,14 +60459,18 @@ function prcStripHtml(item){
     if (!pf){ seen = ['No Pages file', 'Upload a Pages export']; imps = ['Not measured', 'Upload a Pages export']; }
     else { seen = pf.seen ? ['Yes', 'In your Pages file'] : ['Not yet', 'Not in your Pages file']; const rng = pf.from && pf.to ? dated(pf.from) + ' to ' + dated(pf.to) : 'dates not in the file'; imps = pf.seen ? [n(pf.impressions), rng + (pf.includesDaysBeforePublish ? ' (includes days before publishing)' : '')] : ['0', rng]; }
   }
+  const ai = st.aiAnswers; let aiv;
+  if (!ai || !ai.configured) aiv = ['Not connected', 'AI answers · no AI assistant is set up'];
+  else if (!ai.checks) aiv = ['Not checked', 'AI answers · run a check on the Search Everywhere page'];
+  else aiv = [ai.cited + ' of ' + ai.checks, 'AI answers that cited this release' + (ai.cited && ai.questions.length ? ' · ' + ai.questions.join('; ') : '') + ' · as of ' + dated(String(ai.lastRun).slice(0, 10))];
   const sug = st.suggestions ? [st.suggestions.accepted + ' of ' + st.suggestions.total, 'Optimize suggestions accepted'] : ['Not run', 'Optimize for search was not used'];
   return `<div class="prc-strip"><div class="prc-strip-t">Search status · published ${escapeHtml(dated(st.publishedDate))}</div><div class="prc-strip-g">
     <div><b>${escapeHtml(onSite[0])}</b><span>On your site · ${escapeHtml(onSite[1])}</span></div>
     <div><b>${escapeHtml(seen[0])}</b><span>Seen in Search Console · ${escapeHtml(seen[1])}</span></div>
     <div><b>${escapeHtml(imps[0])}</b><span>Impressions · ${escapeHtml(imps[1])}</span></div>
     <div><b>${escapeHtml(sug[0])}</b><span>${escapeHtml(sug[1])}</span></div>
-    <div><b>Planned</b><span>AI answers and communities · not measured</span></div></div>${urlRow}
-    <div class="prc-strip-n">Search Console files carry no per-page daily data, so impressions are the figure in your latest Pages file, not a count since publishing.</div></div>`;
+    <div><b>${escapeHtml(aiv[0])}</b><span>${escapeHtml(aiv[1])}</span></div></div>${urlRow}
+    <div class="prc-strip-n">Search Console files carry no per-page daily data, so impressions are the figure in your latest Pages file, not a count since publishing. AI answer counts are samples from the checks run on the Search Everywhere page. Communities are not measured.</div></div>`;
 }
 async function prcSavePublishedUrl(id){
   const inp = document.getElementById('prcPubUrl-' + id), out = document.getElementById('prcPubUrlStatus-' + id); if (!inp) return;
