@@ -346,6 +346,32 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
       credential is set yet, so every account correctly reads
       <code>not_configured</code> today.</p>
 
+      <h3>Google Search Console</h3>
+      <p>Organic search performance for the client's own website: the searches that show their site, clicks, impressions, average position, the pages that earn them, indexing problems, and Google's AI report. It feeds the Search Everywhere page. It is free to the client and needs no license.</p>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">What Verilume does</div>
+          <ol>
+            <li><b>Today:</b> accept the CSV exports the client downloads from Search Console. Each file is recognized by its first column (Queries, Pages, Chart, Countries, Devices, Search appearance, Google AI, Page indexing, Links), shown in a preview, and saved only after the client confirms. No credential is held.</li>
+            <li>Confirm the client's brand names with the client before any brand and non-brand split is calculated.</li>
+            <li><b>Planned, not built:</b> a Google Cloud project with the Search Console API enabled, one service account for Verilume, and a weekly pull on the Monday early-morning sweep so results are ready by 8:00 AM. Pulled data would replace uploaded files for the same dates and never overwrite team decisions (brand names, group matches, priorities).</li>
+          </ol>
+        </div>
+        <div class="card">
+          <div class="card-title">What the client's team grants</div>
+          <ol>
+            <li><b>Today:</b> view access to their Search Console property, then Export, Download CSV on each report. Leave the file names as Google gives them.</li>
+            <li><b>For the planned automatic pull:</b> in Search Console, Settings, Users and permissions, add Verilume's service account email as a user. Restricted permission is enough because Verilume only reads.</li>
+            <li>Tell Verilume which property to read: a domain property or a URL-prefix property, exactly as it appears in Search Console.</li>
+          </ol>
+        </div>
+      </div>
+      <p class="cite">Auth model: single per-property user grant (same shape as GA4) &middot;
+      Typical lead time: same-day once the client adds the user &middot;
+      Why automate: the in-product export is capped at 1,000 rows per report, and the API returns many more, so the same page would see far more of the client's searches &middot;
+      Build status: <span class="pill pill--warning">Upload built; connector not built</span>
+      uploads feed the Search Everywhere page today (tables <code class="mono">gsc_uploads</code>, <code class="mono">gsc_rows</code>, <code class="mono">gsc_daily</code>). Whether Google's AI report is available through the API is not confirmed; until it is, that report stays an upload. Client training: <a href="training/Verilume-Search-Everywhere-Training.pdf" target="_blank" rel="noopener">Search Everywhere training PDF</a>.</p>
+
       <h3>Google Ads</h3>
       <p>Campaign/ad group/keyword-level spend, clicks, and conversions from
       a client's own Google Ads account.</p>
@@ -543,6 +569,10 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
         product doc decision log.</p>
       </div>
       <div class="card card--warning">
+        <div class="card-title">&#9873; Google Search Console — automatic pull not built</div>
+        <p>Search Everywhere runs on files the client uploads by hand. There is no Search Console API connector, no stored credential and no weekly refresh yet. Needs: a Google Cloud project with the Search Console API enabled, a service account, and the client adding that account as a user on each property. Brand-name confirmations, group matches and priorities must survive a pull. Until then the page says "uploaded files" and shows the date each report runs through.</p>
+      </div>
+      <div class="card card--warning">
         <div class="card-title">&#9888; Meta (Facebook/Instagram) — not found in code</div>
         <p>No Meta-related environment variable, API call, or account field
         exists anywhere in <code>server.js</code> today. Flagged here rather
@@ -584,6 +614,8 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
         <table>
           <thead><tr><th>Date</th><th>Trigger</th><th>Decision / change</th></tr></thead>
           <tbody>
+            <tr><td class="mono">2026-10-04</td><td>"This is another high level opportunity that could have integrations with Google Search Console, BrightEdge, Adobe, etc." (Search keywords in Train the Brain.)</td><td>Planned, not built. Search keywords works today from the account's own lists, typed entries and CSV upload. Next: Google Search Console as the free integration (queries the brand's own site already earns), then BrightEdge, Adobe and Semrush as licensed marketplace options, refreshed on the Monday early-morning sweep so results are ready by 8:00 AM. Pulled data would arrive as suggestions, never overwriting team edits. Same basic-service-plus-marketplace pattern as Reputation Monitoring.</td></tr>
+<tr><td class="mono">2026-10-05</td><td>"We need to update our partner integration guide to include Google Search Console."</td><td>Added a Google Search Console entry to the client setup procedures: what works today (CSV uploads recognized and previewed, brand names confirmed), the planned automatic pull (service account added as a user on the property, weekly Monday refresh, and why it matters: the in-product export is capped at 1,000 rows), and the open item that Google's AI report may not be available through the API. Linked to the new Search Everywhere training PDF. The planned item in the 2026-10-04 row is now partly built: the page and uploads exist, the connector does not.</td></tr>
             <tr><td class="mono">2026-09-29</td><td>"Let's go ahead and start the final ElevenLabs integration … all voice related activations across the platform."</td><td>Built as above. Agent kept; Require authentication ON ("every user inside the Portal who has logged in can engage"); key scoped to ElevenAgents: Write; webhooks to Railway so the Vercel password gate is not involved. Verified with a mocked ElevenLabs/Anthropic backend harness and a jsdom frontend flow; not yet verified live in a browser against ElevenLabs.</td></tr>
           </tbody>
         </table>
