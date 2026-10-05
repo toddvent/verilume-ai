@@ -23116,11 +23116,19 @@ async function drrLoad(){
     const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/preferences/date-range`);
     if (r.ok){ const j = await r.json(); drr.spec = j.spec; drr.resolved = j.resolved; }
   } catch (e){ /* the server falls back to this year to date */ }
+  // The default is Year to date. A different range holds for the browser session in which it was picked; the next visit starts on Year again.
+  try {
+    let touched = false; try { touched = sessionStorage.getItem('drrTouched') === '1'; } catch (e){}
+    if (!touched && drr.spec && drr.spec.preset && drr.spec.preset !== 'year'){
+      const r2 = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/preferences/date-range`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ preset: 'year' }) });
+      if (r2.ok){ const j2 = await r2.json(); drr.spec = j2.spec; drr.resolved = j2.resolved; }
+    }
+  } catch (e){ /* keep whatever was saved */ }
   drr.loaded = true;
 }
 function drrOnChange(fn){ if (!drr.listeners.includes(fn)) drr.listeners.push(fn); }
 async function drrSet(spec){
-  drr.error = '';
+  drr.error = ''; try { sessionStorage.setItem('drrTouched', '1'); } catch (e){}
   try {
     const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/preferences/date-range`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(spec) });
     const j = await r.json().catch(() => ({}));
@@ -23312,14 +23320,8 @@ function stratRenderDemandRow(){
     card('Gross revenue', o ? stratMoney(o.revenue) : '—', cmp(o && o.deltaPct.revenue, vt && vt.revenue, t && t.revenue != null ? stratMoney(t.revenue) : null, 'revenue'), !!(o && ((o.deltaPct.revenue != null && o.deltaPct.revenue >= 0) || (vt && vt.revenue != null && vt.revenue >= 0))), basisSub, 'revenue') +
     card('ROAS', o && o.roas != null ? `${o.roas.toFixed(2)}x` : '—', cmp(o && o.deltaPct.roas, vt && vt.roas, t && t.roas != null ? `${t.roas.toFixed(2)}x` : null, 'roas'), !!(o && ((o.deltaPct.roas != null && o.deltaPct.roas >= 0) || (vt && vt.roas != null && vt.roas >= 0))), 'Gross revenue ÷ marketing spend' + oldBasis, 'roas') +
     card('CAC', o && o.cac != null ? `$${o.cac.toLocaleString()}` : '—', cmp(o && o.deltaPct.cac, vt && vt.cac, t && t.cac != null ? `$${t.cac.toLocaleString()}` : null, 'cacTransaction'), !!(o && ((o.deltaPct.cac != null && o.deltaPct.cac <= 0) || (vt && vt.cac != null && vt.cac <= 0))), 'Spend ÷ unique transactions' + oldBasis, 'cac');
-  const msgs = [];
-  if (d.notOnFile && d.notOnFile.length) msgs.push(`Not on file yet: ${escapeHtml(d.notOnFile.join('; '))}.`);
-  if (d.estimated && d.estimated.length) d.estimated.forEach(n => msgs.push(escapeHtml(n)));
-  if (d.ratioMonths && d.ratioMonths.roas != null && d.ratioMonths.roas < d.ratioMonths.of) msgs.push(`ROAS uses the ${d.ratioMonths.roas} of ${d.ratioMonths.of} months that have both spend and revenue on file.`);
-  if (d.ratioMonths && d.ratioMonths.cac != null && d.ratioMonths.cac < d.ratioMonths.of) msgs.push(`CAC uses the ${d.ratioMonths.cac} of ${d.ratioMonths.of} months that have both spend and transactions on file.`);
-  msgs.push('Customer-level CAC needs a customer id on bookings.');
   bfRenderStrategy();
-  el.insertAdjacentHTML('afterend', `<div id="stratDemandNote"><p class="strat-empty">${msgs.join(' ')}</p>${stratSourceStampHtml(d.provenance)}${stratCoverageHtml(d.coverage)}</div>`);
+  el.insertAdjacentHTML('afterend', `<div id="stratDemandNote">${stratCoverageHtml(d.coverage)}</div>`);
 }
 async function stratLoadDemand(){
   if (!stratIsLive()) return;
