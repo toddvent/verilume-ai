@@ -25340,48 +25340,78 @@ async function handleRequest(req, res) {
     // needs. Only a real match WITH a phone on file actually sends
     // anything (or, pre-Twilio, returns the interim on-screen code).
     if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'auth' && parts[2] === 'request-password-reset'){
+      // Wave 1.1 (2026-10-05) — email is now the default recovery channel
+      // (text stays available, `channel: 'sms'`, when the account has a
+      // phone). Three rules shape this route:
+      //  1. No account enumeration: an unknown email gets the same reply,
+      //     the same fields and a real-looking verificationId, backed by a
+      //     decoy row that can never verify. The reply never says which
+      //     channel or phone was used.
+      //  2. Rate limits: per target (5/hour, decoys count too so the limit
+      //     itself reveals nothing) and per IP (10/hour).
+      //  3. A code is never returned in the response when it could not be
+      //     delivered, except on the local demo (no DATABASE_URL).
       const body = await readBody(req);
       if (!body.email){
         return sendJson(res, 400, { error: 'email is required' });
       }
-      const generic = { ok: true, message: 'If that email has a phone number on file, a verification code was sent to it.' };
-      // 2026-08-21 fix — same ORDER BY as login-user above, so this lookup
-      // and login-user's lookup always agree on which row is "the" member
-      // for a given email when duplicate rows exist. See the comment on
-      // login-user's query for the full explanation.
-      const member = db.prepare('SELECT id, phone FROM team_members WHERE lower(email) = lower(?) ORDER BY createdAt DESC LIMIT 1').get(body.email);
-      if (!member || !member.phone){
-        return sendJson(res, 200, generic);
+      const emailNorm = String(body.email).trim().toLowerCase();
+      const wantSms = body.channel === 'sms';
+      if (assessmentRateLimitExceeded(req, 'password-reset', 10)){
+        return sendJson(res, 429, { error: 'Too many reset requests from this network. Try again in an hour.' });
       }
-      let sendResult;
-      try {
-        sendResult = await sendVerificationCode(member.phone);
-      } catch (e){
-        console.warn('request-password-reset: sendVerificationCode failed', e.message);
-        return sendJson(res, 502, { error: 'Could not send a verification code right now — try again shortly.' });
+      const generic = { ok: true, message: 'If an account exists for that email, a code was sent.' };
+      const isLocalDemo = !process.env.DATABASE_URL;
+      // Same ORDER BY as login-user so both lookups agree on "the" row.
+      const member = db.prepare('SELECT id, phone FROM team_members WHERE lower(email) = lower(?) ORDER BY createdAt DESC LIMIT 1').get(emailNorm);
+      const channel = (wantSms && member && member.phone) ? 'sms' : 'email';
+      const target = channel === 'sms' ? member.phone : emailNorm;
+      const nowD = new Date();
+      const oneHourAgo = new Date(nowD.getTime() - 60 * 60 * 1000).toISOString();
+      const recent = db.prepare(`SELECT COUNT(*) AS c FROM phone_verifications WHERE purpose = 'password-reset' AND createdAt > ? AND (lower(phone) = ? OR memberId = ?)`).get(oneHourAgo, emailNorm, member ? member.id : '');
+      if (recent && Number(recent.c) >= 5){
+        return sendJson(res, 429, { error: 'Too many reset requests for this email. Try again in an hour.' });
       }
       const verificationId = generateId('VERIFY');
-      const now = new Date();
-      const expiresAt = new Date(now.getTime() + 10 * 60 * 1000).toISOString(); // 10 min
-      let codeHash = null, codeSalt = null;
-      if (sendResult.provider === 'interim'){
-        const hashed = hashAccessCode(sendResult.code);
-        codeHash = hashed.hash; codeSalt = hashed.salt;
+      const expiresAt = new Date(nowD.getTime() + 10 * 60 * 1000).toISOString(); // 10 min
+      const insertRow = (memberId, phoneCol, chan, provider, hash, salt) => db.prepare(`INSERT INTO phone_verifications
+        (id, memberId, phone, purpose, codeHash, codeSalt, provider, channel, createdAt, expiresAt)
+        VALUES (?,?,?,?,?,?,?,?,?,?)`).run(verificationId, memberId, phoneCol, 'password-reset', hash, salt, provider, chan, nowD.toISOString(), expiresAt);
+      if (!member){
+        // Decoy: counts toward the limit, can never verify.
+        const d = hashAccessCode(crypto.randomBytes(16).toString('hex'));
+        insertRow(null, emailNorm, 'email', 'decoy', d.hash, d.salt);
+        return sendJson(res, 200, Object.assign({}, generic, { verificationId }));
       }
-      db.prepare(`INSERT INTO phone_verifications
-        (id, memberId, phone, purpose, codeHash, codeSalt, provider, createdAt, expiresAt)
-        VALUES (?,?,?,?,?,?,?,?,?)`)
-        .run(verificationId, member.id, member.phone, 'password-reset', codeHash, codeSalt, sendResult.provider, now.toISOString(), expiresAt);
-      const response = Object.assign({}, generic, {
-        verificationId,
-        phoneLast4: member.phone.slice(-4),
-        provider: sendResult.provider
+      if (channel === 'sms'){
+        let sendResult;
+        try { sendResult = await sendVerificationCode(member.phone); }
+        catch (e){
+          console.warn('request-password-reset: sendVerificationCode failed', e.message);
+          return sendJson(res, 502, { error: 'Could not send a verification code right now — try again shortly.' });
+        }
+        let h = null, sl = null;
+        if (sendResult.provider === 'interim'){ const x = hashAccessCode(sendResult.code); h = x.hash; sl = x.salt; }
+        insertRow(member.id, member.phone, 'sms', sendResult.provider, h, sl);
+        const resp = Object.assign({}, generic, { verificationId });
+        if (sendResult.provider === 'interim' && isLocalDemo) resp.interimCode = sendResult.code;
+        return sendJson(res, 200, resp);
+      }
+      // Email channel: always a local code, delivered through Postmark.
+      const code = String(crypto.randomInt(100000, 999999));
+      const x = hashAccessCode(code);
+      const mail = await sendTransactionalEmail({
+        to: emailNorm,
+        subject: 'Reset your Verilume password',
+        textBody: `Your Verilume password reset code is ${code}. It expires in 10 minutes. If you didn't ask to reset your password, you can ignore this email and your password will stay the same.`,
+        htmlBody: `<p>Your Verilume password reset code is <strong>${code}</strong>.</p><p>It expires in 10 minutes. If you didn't ask to reset your password, you can ignore this email and your password will stay the same.</p>`
       });
-      // Interim-only: the code is shown here, once, since there's no real
-      // SMS provider configured yet (see sendVerificationCode()'s comment).
-      // Real Twilio Verify never puts the code in an API response at all.
-      if (sendResult.provider === 'interim') response.interimCode = sendResult.code;
-      return sendJson(res, 200, response);
+      const sent = mail.emailStatus === 'sent';
+      if (!sent) console.warn('request-password-reset: email not delivered —', mail.emailStatus, mail.emailError || '');
+      insertRow(member.id, emailNorm, 'email', sent ? 'postmark' : 'interim', x.hash, x.salt);
+      const resp = Object.assign({}, generic, { verificationId });
+      if (!sent && isLocalDemo) resp.interimCode = code; // local demo only, never on the live host
+      return sendJson(res, 200, resp);
     }
 
     // POST /api/auth/verify-phone-code — { verificationId, code } -> checks
@@ -25407,7 +25437,7 @@ async function handleRequest(req, res) {
       }
       let ok;
       try {
-        ok = await checkVerificationCode(row.phone, body.code, row.codeHash, row.codeSalt);
+        ok = (row.channel === 'email' || row.provider === 'decoy') ? verifyAccessCode(body.code, row.codeHash, row.codeSalt) : await checkVerificationCode(row.phone, body.code, row.codeHash, row.codeSalt);
       } catch (e){
         console.warn('verify-phone-code: checkVerificationCode failed', e.message);
         return sendJson(res, 502, { error: 'Could not verify that code right now — try again shortly.' });
