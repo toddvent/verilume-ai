@@ -21238,7 +21238,11 @@ const GSC_SETTINGS = {
   unmatchedShareMin: 0.3,        // share of non-brand impressions outside every group that is worth a priority
   questionMinImp: 50,            // a question search needs at least this many impressions to be listed
   activeLimit: 5,                // most items the team works on at once; new findings wait when this is full
-  maxGapPriorities: 5
+  maxGapPriorities: 5,
+  leadDays: 90,                  // a group starting within this many days is 'soon' and its search work is time-bound
+  urgentDays: 45,                // starting within this many days (or live) raises the priority one level
+  prepDays: 42,                  // suggested due date: this many days before the group goes into market (organic changes take weeks to show)
+  weakPosition: 8                // a group whose matched searches average below this position (a higher number) needs work before it goes into market
 };
 // Google's own reason text decides how each not-indexed reason is treated. Many are normal and not problems.
 const GSC_ISSUE_RULES = [
@@ -21560,12 +21564,21 @@ function gscFindings(accountId){
     const gaps = nb.map(r => { const pos = r.avgPosition || 0; const imp = r.impressions || 0; const ctr = r.ctr != null ? r.ctr : (imp ? (r.clicks || 0) / imp : 0); return { q: r.dimKey, pos, imp, ctr, gain: pos >= 4 ? Math.round(imp * Math.max(0, gscTargetCtr(pos) - ctr)) : 0 }; })
       .filter(g => g.imp >= GSC_SETTINGS.minImpForGap && g.gain > 0).sort((a, b) => b.gain - a.gain).slice(0, GSC_SETTINGS.maxGapPriorities);
     const gainSum = gaps.reduce((s, g) => s + g.gain, 0);
-    gaps.forEach(g => out.push({ key: 'gap:' + gscNorm(g.q), severity: 3, priority: { level: g.gain >= gainSum * 0.25 ? 'P1' : 'P2', title: `Win page one for "${g.q}"`, detail: `${gscFmt(g.imp)} impressions at position ${g.pos.toFixed(1)}, ${(g.ctr * 100).toFixed(2)}% click rate.`, basis: 'calculated', clicks: g.gain, label: `+${gscFmt(g.gain)} clicks`, assumption: `Assumes a ${(gscTargetCtr(g.pos) * 100).toFixed(0)}% click rate at the target position.` } }));
+    const gWins = gscGroupWindows(accountId); const gGroups = Object.keys(gWins).length ? gscGroups(accountId) : [];
+    gaps.forEach(g => { const tk = gscTokens(g.q); const hit = gGroups.find(gr => { const w = gscWindowFor(gWins, gr.type, gr.value); return gscTimeBound(w) && (gscMatchQuery(tk, gr) || {}).m === 'strong'; }); g.win = hit ? { value: hit.value, w: gscWindowFor(gWins, hit.type, hit.value) } : null; });
+    gaps.forEach(g => out.push({ key: 'gap:' + gscNorm(g.q), severity: 3, priority: { level: (g.gain >= gainSum * 0.25 || (g.win && (g.win.w.state === 'live' || g.win.w.days <= GSC_SETTINGS.urgentDays))) ? 'P1' : 'P2', title: `Win page one for "${g.q}"`, detail: `${gscFmt(g.imp)} impressions at position ${g.pos.toFixed(1)}, ${(g.ctr * 100).toFixed(2)}% click rate.${g.win ? ` Supports ${g.win.value}.` : ''}`, basis: 'calculated', clicks: g.gain, label: `+${gscFmt(g.gain)} clicks`, assumption: `Assumes a ${(gscTargetCtr(g.pos) * 100).toFixed(0)}% click rate at the target position.` } }));
   }
   if (q.length && brandKnown){
     const gm = gscGroupMatch(accountId);
     if (gm.hasGroups && gm.unmatched && gm.groups){
       if (gm.groups.length >= 2){ const t = gm.groups[0]; out.push({ key: 'group_demand', severity: 3, title: `${t.value} draws ${Math.round(t.share * 100)}% of non-brand search impressions.`, detail: `Average position ${t.avgPosition ? t.avgPosition.toFixed(1) : '—'}, ${(t.ctr * 100).toFixed(2)}% click rate across ${gscFmt(t.queries)} searches.`, more: gm.groups.slice(0, 5).map(g => `${g.value} (${g.typeLabel.toLowerCase()}): ${gscFmt(g.impressions)} impressions, position ${g.avgPosition ? g.avgPosition.toFixed(1) : '—'}`).concat(['Searches are matched to the groups in your Marketing Calendar by the words in each group name.']) }); }
+      const wins = gscGroupWindows(accountId);
+      gm.groups.concat((gm.noSearches || []).map(x => Object.assign({}, x, { queries: 0, impressions: 0, avgPosition: null }))).forEach(g => {
+        const w = gscWindowFor(wins, g.type, g.value); if (!gscTimeBound(w)) return;
+        const silent = !g.queries; const weak = !silent && g.avgPosition != null && g.avgPosition > GSC_SETTINGS.weakPosition; if (!silent && !weak) return;
+        const urgent = w.state === 'live' || w.days <= GSC_SETTINGS.urgentDays; const due = w.state === 'live' ? gscToday() : (() => { const d = new Date(w.nextStart + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - GSC_SETTINGS.prepDays); const x = d.toISOString().slice(0, 10); return x < gscToday() ? gscToday() : x; })();
+        out.push({ key: 'window:' + g.type + '|' + g.value, severity: 2, priority: { level: urgent ? 'P1' : 'P2', title: `Get search ready for ${g.value}`, detail: `${w.campaigns} campaign${w.campaigns === 1 ? '' : 's'} planned. ${silent ? 'No non-brand searches match this group yet.' : `Its ${gscFmt(g.queries)} matched searches average position ${g.avgPosition.toFixed(1)}.`}`, basis: 'rated', clicks: null, label: w.state === 'live' ? 'In market now' : `In ${w.days} days`, dueDate: due } });
+      });
       if (gm.unmatched.share >= GSC_SETTINGS.unmatchedShareMin && gm.unmatched.impressions >= GSC_SETTINGS.minImpForGap) out.push({ key: 'unmatched_demand', severity: 2, priority: { level: 'P2', title: 'Search demand that is not in any product group', detail: `${Math.round(gm.unmatched.share * 100)}% of non-brand impressions (${gscFmt(gm.unmatched.queries)} searches) match no Product Group or Creative Focus Group. Largest: ${gm.unmatched.top.slice(0, 3).map(x => '"' + x.query + '"').join(', ')}.`, basis: 'rated', clicks: null, label: gm.unmatched.share >= 0.6 ? 'High' : 'Medium' } });
     }
   }
@@ -21601,6 +21614,49 @@ const GSC_GENERIC_WORDS = new Set(['the', 'and', 'of', 'for', 'in', 'to', 'a', '
 function gscStem(w){ return w.length > 4 && w.endsWith('ies') ? w.slice(0, -3) + 'y' : w.length > 4 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w; }
 function gscTokens(s){ return gscNorm(s).split(' ').filter(Boolean).map(gscStem); }
 function gscTokenEq(a, b){ return a === b || (a.length >= 6 && b.length >= 6 && gscLev(a, b) <= 1); }
+
+// ---- date-aware: when each Product Group / Creative Focus Group is in market (from the Marketing Calendar) ----
+function gscToday(){ return new Date().toISOString().slice(0, 10); }
+function gscDayDiff(a, b){ return Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 86400000); }
+function gscGroupWindows(accountId, today){
+  today = today || gscToday(); const out = {};
+  let rows = [];
+  try {
+    rows = db.prepare('SELECT cpd.productGroup AS pg, cpd.creativeMarket AS cm, cpd.dropDate AS dd, cpd.hitDate AS hd, cpd.endDate AS ed, cpd.budget AS bu, cpd.campaignId AS cid FROM channel_planning_details cpd JOIN campaigns c ON c.id = cpd.campaignId WHERE c.accountId = ? AND COALESCE(c.cancelled,0) = 0 AND COALESCE(c.isAdHoc,0) = 0').all(accountId);
+  } catch (e){ return out; }
+  const iso = v => { const d = String(v || '').slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null; };
+  rows.forEach(r0 => {
+    const hd = iso(aliasVal(r0, 'hd')), dd = iso(aliasVal(r0, 'dd')), ed = iso(aliasVal(r0, 'ed'));
+    const start = hd || dd; if (!start) return; const end = ed && ed >= start ? ed : start;
+    [['productGroup', aliasVal(r0, 'pg')], ['creativeMarket', aliasVal(r0, 'cm')]].forEach(([t, v]) => {
+      v = String(v || '').trim(); if (!v) return; const k = t + '|' + v.toLowerCase();
+      const w = out[k] = out[k] || { type: t, value: v, start, end, budget: 0, campaigns: new Set(), spans: [] };
+      w.spans.push([start, end]); if (start < w.start) w.start = start; if (end > w.end) w.end = end;
+      w.budget += Number(aliasVal(r0, 'bu')) || 0; w.campaigns.add(aliasVal(r0, 'cid'));
+    });
+  });
+  Object.values(out).forEach(w => {
+    // Judge by the nearest flight that has not ended, so a finished flight does not hide the next one.
+    const open = w.spans.filter(sp => sp[1] >= today).sort((a, b) => a[0].localeCompare(b[0]));
+    const nxt = open[0]; w.campaigns = w.campaigns.size; delete w.spans;
+    if (!nxt){ w.state = 'ended'; w.nextStart = null; w.nextEnd = null; w.days = null; return; }
+    w.nextStart = nxt[0]; w.nextEnd = nxt[1];
+    if (nxt[0] <= today){ w.state = 'live'; w.days = 0; }
+    else { w.days = gscDayDiff(today, nxt[0]); w.state = w.days <= GSC_SETTINGS.leadDays ? 'soon' : 'later'; }
+  });
+  return out;
+}
+function gscWindowFor(windows, type, value){ return windows[type + '|' + String(value || '').trim().toLowerCase()] || null; }
+function gscWindowLabel(w){
+  if (!w) return '';
+  const f = d => dmFmt(d);
+  if (w.state === 'live') return `In market now, to ${f(w.nextEnd)}`;
+  if (w.state === 'soon') return `In market ${f(w.nextStart)} (${w.days} day${w.days === 1 ? '' : 's'})`;
+  if (w.state === 'later') return `In market ${f(w.nextStart)}`;
+  return `Ended ${f(w.end)}`;
+}
+function gscWindowTag(w){ return w ? { state: w.state, label: gscWindowLabel(w), start: w.nextStart, end: w.nextEnd, days: w.days } : null; }
+function gscTimeBound(w){ return !!w && (w.state === 'live' || w.state === 'soon'); }
 function gscGroups(accountId){
   const out = [];
   [['productGroup', 'Product group'], ['creativeMarket', 'Creative focus']].forEach(([key, label]) => {
@@ -21640,7 +21696,9 @@ function gscGroupMatch(accountId){
   });
   un.top.sort((a, b) => b.impressions - a.impressions); un.top = un.top.slice(0, 8); un.share = totImp ? un.impressions / totImp : 0;
   const list = Object.values(agg).filter(a => a.queries > 0).map(a => ({ type: a.type, typeLabel: a.typeLabel, value: a.value, queries: a.queries, clicks: a.clicks, impressions: a.impressions, ctr: a.impressions ? a.clicks / a.impressions : null, avgPosition: a.impressions ? a.posW / a.impressions : null, share: totImp ? a.impressions / totImp : 0 })).sort((a, b) => b.impressions - a.impressions);
-  const silent = Object.values(agg).filter(a => a.queries === 0).map(a => ({ type: a.type, typeLabel: a.typeLabel, value: a.value }));
+  const wins = gscGroupWindows(accountId); const winTag = x => gscWindowTag(gscWindowFor(wins, x.type, x.value));
+  list.forEach(x => { x.window = winTag(x); });
+  const silent = Object.values(agg).filter(a => a.queries === 0).map(a => ({ type: a.type, typeLabel: a.typeLabel, value: a.value, window: winTag(a) }));
   const sg = {}; sug.forEach(x => { if (decMap[x.queryKey + '|' + x.groupType + '|' + x.groupValue]) return; const k = x.groupType + '|' + x.groupValue + '|' + x.shared; const a = sg[k] = sg[k] || { groupType: x.groupType, groupTypeLabel: x.groupTypeLabel, groupValue: x.groupValue, shared: x.shared, count: 0, impressions: 0, examples: [], queryKeys: [] }; a.count++; a.impressions += x.impressions; a.queryKeys.push(x.queryKey); if (a.examples.length < 3) a.examples.push(x.query); });
   const allSuggestions = Object.values(sg).sort((a, b) => b.impressions - a.impressions);
   const suggestions = allSuggestions.slice(0, 6).map(a => ({ groupType: a.groupType, groupTypeLabel: a.groupTypeLabel, groupValue: a.groupValue, shared: a.shared, count: a.count, impressions: a.impressions, examples: a.examples }));
@@ -21713,7 +21771,7 @@ function gscFactsFor(accountId, groups){ // groups: [{type, value}]
 function gscQuestionList(accountId){
   const q = db.prepare("SELECT dimKey, clicks, impressions, ctr, avgPosition, isBrand FROM gsc_rows WHERE accountId = ? AND kind = 'queries' AND isBrand IS NOT NULL").all(accountId).filter(r => GSC_QUESTION_RE.test(r.dimKey) && (r.impressions || 0) >= GSC_SETTINGS.questionMinImp);
   if (!q.length) return [];
-  const groups = gscGroups(accountId);
+  const groups = gscGroups(accountId); const qWins = gscGroupWindows(accountId);
   const dec = db.prepare('SELECT queryKey, groupType, groupValue, status FROM search_group_matches WHERE accountId = ?').all(accountId); const decMap = {}; dec.forEach(d => { decMap[d.queryKey + '|' + d.groupType + '|' + d.groupValue] = d.status; });
   const stored = {}; db.prepare('SELECT * FROM search_questions WHERE accountId = ?').all(accountId).forEach(r => { stored[r.queryKey] = r; });
   let pages = []; try { const a = db.prepare('SELECT auditJson FROM website_audits WHERE accountId = ? ORDER BY ranAt DESC LIMIT 1').get(accountId); pages = a ? (JSON.parse(a.auditJson).pages || []) : []; } catch (e){}
@@ -21723,8 +21781,9 @@ function gscQuestionList(accountId){
     const scope = r.isBrand === 1 ? 'Brand' : (matched.length ? matched[0].value : null);
     const keyToks = toks.filter(t => !GSC_Q_STOP.has(t));
     let hint = null; if (keyToks.length >= 2) for (const p of pages){ const text = gscTokens([p.title, p.h1, p.metaDescription].filter(Boolean).join(' ')); if (keyToks.every(t => text.some(x => gscTokenEq(x, t)))){ try { hint = new URL(p.url).pathname; } catch (e){ hint = p.url; } break; } }
-    return { id: st ? st.id : null, question: r.dimKey, queryKey: key, impressions: r.impressions || 0, avgPosition: r.avgPosition, scope, groups: matched, brand: r.isBrand === 1, offered: !!scope, status: st ? st.status : 'open', answer: st ? st.answer : null, checks: st && st.checksJson ? JSON.parse(st.checksJson) : null, siteHint: hint, approvedAt: st ? st.approvedAt : null };
-  }).sort((a, b) => (b.offered - a.offered) || (b.impressions - a.impressions));
+    const qw = matched.map(m => gscWindowFor(qWins, m.type, m.value)).filter(gscTimeBound).sort((a, b) => a.days - b.days)[0] || null;
+    return { window: qw ? gscWindowTag(qw) : null, id: st ? st.id : null, question: r.dimKey, queryKey: key, impressions: r.impressions || 0, avgPosition: r.avgPosition, scope, groups: matched, brand: r.isBrand === 1, offered: !!scope, status: st ? st.status : 'open', answer: st ? st.answer : null, checks: st && st.checksJson ? JSON.parse(st.checksJson) : null, siteHint: hint, approvedAt: st ? st.approvedAt : null };
+  }).sort((a, b) => (b.offered - a.offered) || (a.window ? 0 : 1) - (b.window ? 0 : 1) || ((a.window && a.window.days) || 0) - ((b.window && b.window.days) || 0) || (b.impressions - a.impressions));
 }
 const GSC_ANSWER_SCHEMA = { type: 'object', properties: { answer: { type: 'string' }, factIds: { type: 'array', items: { type: 'string' } } }, required: ['answer', 'factIds'] };
 const GSC_ANSWER_BANNED = /\b(guarantee[sd]?|best|cheapest|lowest|cheap|number one|world-class|unbeatable|always|never)\b|#1|\$|€|£/i;
@@ -21770,7 +21829,7 @@ function gscSyncPriorities(accountId){
     seen.add(f.key); const p = f.priority;
     const ex = db.prepare('SELECT id, status FROM search_priorities WHERE accountId = ? AND sourceKey = ?').get(accountId, f.key);
     if (ex){ if (ex.status === 'dismissed') return; db.prepare('UPDATE search_priorities SET title = ?, detail = ?, impactBasis = ?, impactClicks = ?, impactLabel = ?, updatedAt = ? WHERE id = ?').run(p.title, p.detail, p.basis, p.clicks, p.label, now, ex.id); return; }
-    db.prepare('INSERT INTO search_priorities (id, accountId, sourceKey, priorityLevel, title, detail, impactBasis, impactClicks, impactLabel, status, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').run(generateId('SPR'), accountId, f.key, p.level, p.title, p.detail, p.basis, p.clicks, p.label, 'new', now, now);
+    db.prepare('INSERT INTO search_priorities (id, accountId, sourceKey, priorityLevel, title, detail, impactBasis, impactClicks, impactLabel, status, dueDate, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').run(generateId('SPR'), accountId, f.key, p.level, p.title, p.detail, p.basis, p.clicks, p.label, 'new', p.dueDate || null, now, now);
   });
   db.prepare("SELECT id, sourceKey FROM search_priorities WHERE accountId = ? AND status = 'new'").all(accountId).forEach(r => { if (!seen.has(r.sourceKey) && !String(r.sourceKey).startsWith('read:')) db.prepare('DELETE FROM search_priorities WHERE id = ?').run(r.id); });
 }
@@ -21778,8 +21837,15 @@ const GSC_PRIORITY_ORDER = { P1: 1, P2: 2, P3: 3 };
 function gscPrioritiesList(accountId){
   const rows = db.prepare('SELECT * FROM search_priorities WHERE accountId = ?').all(accountId);
   const stOrder = { in_progress: 0, planned: 1, new: 2, done: 3, dismissed: 4 };
-  return rows.map(r => ({ id: r.id, date: String(r.createdAt || '').slice(0, 10), priority: r.priorityLevel, title: r.title, detail: r.detail, impactBasis: r.impactBasis, impactClicks: r.impactClicks, impactLabel: r.impactLabel, status: r.status, ownerId: r.ownerId || null, dueDate: r.dueDate || null, dismissedReason: r.dismissedReason || null }))
-    .sort((a, b) => (stOrder[a.status] >= 3 ? 1 : 0) - (stOrder[b.status] >= 3 ? 1 : 0) || (GSC_PRIORITY_ORDER[a.priority] || 9) - (GSC_PRIORITY_ORDER[b.priority] || 9) || (b.impactClicks || 0) - (a.impactClicks || 0));
+  const wins = gscGroupWindows(accountId); const groups = Object.keys(wins).length ? gscGroups(accountId) : [];
+  const winOf = r => {
+    const k = String(r.sourceKey || '');
+    if (k.startsWith('window:')){ const [t, ...v] = k.slice(7).split('|'); return gscWindowFor(wins, t, v.join('|')); }
+    if (k.startsWith('gap:')){ const tk = gscTokens(k.slice(4)); const hit = groups.find(gr => { const w = gscWindowFor(wins, gr.type, gr.value); return gscTimeBound(w) && (gscMatchQuery(tk, gr) || {}).m === 'strong'; }); return hit ? gscWindowFor(wins, hit.type, hit.value) : null; }
+    return null;
+  };
+  return rows.map(r => { const w = winOf(r); return { id: r.id, date: String(r.createdAt || '').slice(0, 10), priority: r.priorityLevel, title: r.title, detail: r.detail, impactBasis: r.impactBasis, impactClicks: r.impactClicks, impactLabel: r.impactLabel, status: r.status, ownerId: r.ownerId || null, dueDate: r.dueDate || null, dismissedReason: r.dismissedReason || null, window: gscTimeBound(w) ? gscWindowTag(w) : null }; })
+    .sort((a, b) => (stOrder[a.status] >= 3 ? 1 : 0) - (stOrder[b.status] >= 3 ? 1 : 0) || (GSC_PRIORITY_ORDER[a.priority] || 9) - (GSC_PRIORITY_ORDER[b.priority] || 9) || (a.window ? 0 : 1) - (b.window ? 0 : 1) || ((a.window && a.window.days) || 0) - ((b.window && b.window.days) || 0) || (b.impactClicks || 0) - (a.impactClicks || 0));
 }
 
 // ---- KPI and chart payload ----
@@ -21895,7 +21961,7 @@ function gscCardExport(req, accountId, card){
   const healthT = () => T('Index issues', ['Reason', 'Pages', 'Action'], ((d.health && d.health.issues) || []).map(i => [i.reason, { v: i.pages, kind: 'int' }, i.tier === 'fix' ? 'Fix' : i.tier === 'check' ? 'Check' : i.tier === 'review' ? 'Review' : '']));
   const sumT = () => { const c = d.cards; return T('Summary', ['Metric', 'This period', 'Change vs same dates last year'], [['Organic clicks', { v: c.clicks.value, kind: 'int' }, c.clicks.changePct == null ? 'No prior year on file' : { v: c.clicks.changePct, kind: 'pct' }], ['Click rate', pc(c.ctr.value), c.ctr.changePts == null ? 'No prior year on file' : (c.ctr.changePts >= 0 ? '+' : '') + c.ctr.changePts.toFixed(2) + ' pts'], ['Impressions', { v: c.impressions.value, kind: 'int' }, c.impressions.changePct == null ? 'No prior year on file' : { v: c.impressions.changePct, kind: 'pct' }], ['Non-brand share of clicks', c.nonBrandShare ? c.nonBrandShare.value.toFixed(1) + '%' : 'Brand names not confirmed', '']]); };
   const prioT = () => T('Priorities', ['Date', 'Level', 'Priority', 'Detail', 'Business impact', 'Basis', 'Status'], (d.priorities.top || []).map(p => [p.date, p.priority, p.title, p.detail || '', p.impactLabel || '', p.impactBasis === 'calculated' ? 'Calculated' : 'Rated', p.status]));
-  const groupsT = () => d.groups && d.groups.hasGroups && d.groups.groups ? T('Non-brand searches by group', ['Group', 'Type', 'Searches', 'Clicks', 'Impressions', 'Click rate', 'Average position'], d.groups.groups.map(g => [g.value, g.typeLabel, { v: g.queries, kind: 'int' }, { v: g.clicks, kind: 'int' }, { v: g.impressions, kind: 'int' }, pc(g.ctr), g.avgPosition ? Number(g.avgPosition).toFixed(1) : '']).concat(d.groups.unmatched ? [['Not in any product group', '', { v: d.groups.unmatched.queries, kind: 'int' }, { v: d.groups.unmatched.clicks, kind: 'int' }, { v: d.groups.unmatched.impressions, kind: 'int' }, '', '']] : [])) : null;
+  const groupsT = () => d.groups && d.groups.hasGroups && d.groups.groups ? T('Non-brand searches by group', ['Group', 'Type', 'Searches', 'Clicks', 'Impressions', 'Click rate', 'Average position', 'In market'], d.groups.groups.map(g => [g.value, g.typeLabel, { v: g.queries, kind: 'int' }, { v: g.clicks, kind: 'int' }, { v: g.impressions, kind: 'int' }, pc(g.ctr), g.avgPosition ? Number(g.avgPosition).toFixed(1) : '', g.window ? g.window.label : '']).concat(d.groups.unmatched ? [['Not in any product group', '', { v: d.groups.unmatched.queries, kind: 'int' }, { v: d.groups.unmatched.clicks, kind: 'int' }, { v: d.groups.unmatched.impressions, kind: 'int' }, '', '', '']] : [])) : null;
   const aiT = () => d.ai ? T('Google AI impressions by month', ['Month', 'Impressions', 'Days of data'], d.ai.months.map(m => [m.month, { v: m.impressions, kind: 'int' }, { v: m.days, kind: 'int' }]).concat([['Top pages (latest export)', '', '']], d.ai.pages.map(p => [p.page, { v: p.impressions, kind: 'int' }, '']), [['Top countries (latest export)', '', '']], d.ai.countries.map(c => [c.country, { v: c.impressions, kind: 'int' }, '']))) : null;
   const faqT = () => { const rows = db.prepare("SELECT question, answer, approvedAt FROM search_questions WHERE accountId = ? AND status = 'approved' ORDER BY approvedAt DESC").all(accountId); return rows.length ? T('Approved FAQs', ['Question', 'Answer', 'Approved'], rows.map(r => [r.question, r.answer, String(r.approvedAt || '').slice(0, 10)])) : null; };
   let title, slug, tables;
