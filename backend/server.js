@@ -24335,13 +24335,15 @@ function platformViewAsGuard(req, parts){
   } catch (e){ console.warn('[platform] view-as guard lookup failed:', e.message); }
   return null;
 }
-async function platformSendCode(email, purpose, code){
+async function platformSendCode(email, purpose, code, link){
   const reset = purpose === 'platform-reset';
+  const linkText = reset && link ? ` Or open this link to choose your password without typing the code: ${link}` : '';
+  const linkHtml = reset && link ? `<p><a href="${link}">Choose your password</a> (the link carries the code for you).</p>` : '';
   return sendTransactionalEmail({
     to: email,
-    subject: reset ? 'Verilume team: your password code' : 'Verilume team: your sign-in code',
-    textBody: `Your Verilume team ${reset ? 'password' : 'sign-in'} code is ${code}. It expires in 10 minutes. If you did not ask for it, ignore this email.`,
-    htmlBody: `<p>Your Verilume team ${reset ? 'password' : 'sign-in'} code is <strong>${code}</strong>.</p><p>It expires in 10 minutes. If you did not ask for it, ignore this email.</p>`
+    subject: reset ? 'Verilume team: choose your password' : 'Verilume team: your sign-in code',
+    textBody: `Your Verilume team ${reset ? 'password' : 'sign-in'} code is ${code}. It expires in 10 minutes.${linkText} If you did not ask for it, ignore this email.`,
+    htmlBody: `${linkHtml}<p>Your Verilume team ${reset ? 'password' : 'sign-in'} code is <strong>${code}</strong>.</p><p>It expires in 10 minutes. If you did not ask for it, ignore this email.</p>`
   });
 }
 
@@ -24413,7 +24415,9 @@ async function handleRequest(req, res) {
         }
         const code = String(crypto.randomInt(100000, 999999));
         const x = hashAccessCode(code);
-        const mail = await platformSendCode(emailNorm, purpose, code);
+        const _base = process.env.PUBLIC_BASE_URL || ('https://' + (req.headers.host || ''));
+        const _link = purpose === 'platform-reset' ? `${_base}/platform.html?reset=1&v=${encodeURIComponent(verificationId)}&c=${code}` : '';
+        const mail = await platformSendCode(emailNorm, purpose, code, _link);
         const sent = mail.emailStatus === 'sent';
         if (!sent && process.env.DATABASE_URL) return { failed: true };
         insertCode(verificationId, user.id, emailNorm, purpose, sent ? 'postmark' : 'interim', x.hash, x.salt);
