@@ -9431,6 +9431,8 @@ ensureColumn('press_releases', 'linkedinCopy', 'TEXT');
 //   THE DETAILS: when, where, who, how it works.  THE NEXT STEP: why it matters (+ how to book, held in ctaText/ctaMode).
 // Stored as JSON on the release; campaignId is an optional link to a campaign (used to pre-fill, never required).
 ensureColumn('press_releases', 'briefJson', 'TEXT');
+ensureColumn('press_releases', 'searchSeedJson', 'TEXT');
+ensureColumn('press_releases', 'publishedUrl', 'TEXT');
 ensureColumn('press_releases', 'campaignId', 'TEXT');
 ensureColumn('corporate_comms', 'context', 'TEXT');
 ensureColumn('corporate_comms', 'campaignId', 'TEXT');
@@ -9472,7 +9474,56 @@ function prBriefToKeyFacts(brief){
   if (b.nextStep.matters) lines.push(`THE NEXT STEP, why it matters (supplied by the team): ${b.nextStep.matters}`);
   return lines.join('\n');
 }
-function prRowKeyFacts(row){ return prBriefToKeyFacts(prBriefParse(row && row.briefJson)); }
+function prCleanSeed(raw){
+  if (!raw || typeof raw !== 'object') return null;
+  const source = raw.source === 'question' ? 'question' : (raw.source === 'priority' ? 'priority' : null); if (!source) return null;
+  const text = String(raw.text || '').replace(/\s+/g, ' ').trim().slice(0, 300); if (!text) return null;
+  const terms = (Array.isArray(raw.terms) ? raw.terms : []).map(t => String(t || '').trim().slice(0, 60)).filter(Boolean).slice(0, 8);
+  return { source, text, group: String(raw.group || '').trim().slice(0, 120), groupType: String(raw.groupType || '').trim().slice(0, 40), terms, refId: String(raw.refId || '').trim().slice(0, 120) };
+}
+function prSeedParse(json){ try { return prCleanSeed(JSON.parse(json || 'null')); } catch (e){ return null; } }
+function prCleanUrl(u){
+  const s = String(u || '').trim(); if (!s) return null;
+  try { const x = new URL(/^https?:\/\//i.test(s) ? s : 'https://' + s); if (!/^https?:$/.test(x.protocol) || !x.hostname.includes('.')) return undefined; return x.toString().slice(0, 500); } catch (e){ return undefined; }
+}
+// Search terms for a release started from Search Everywhere: live Train the Brain keywords that share a word with the topic or group, never an Avoid term.
+function prSeedTerms(accountId, seed){
+  try {
+    const kw = srchKeywordsForAccount(accountId); const toks = gscTokens((seed.group || '') + ' ' + seed.text).filter(t => !GSC_Q_STOP.has(t) && !GSC_STOP.has(t));
+    const neg = (kw.negatives || []).map(n => String(n).toLowerCase()); const out = [];
+    (kw.targets || []).concat(kw.queries || []).forEach(r => {
+      const k = String(r.keyword || '').trim(); if (!k || out.includes(k) || neg.some(n => n && k.toLowerCase().includes(n))) return;
+      if (gscTokens(k).some(t => toks.some(x => gscTokenEq(x, t)))) out.push(k);
+    });
+    return out.slice(0, 6);
+  } catch (e){ return []; }
+}
+function prSeedLines(row){
+  const seed = prSeedParse(row && row.searchSeedJson); if (!seed) return '';
+  const lines = [`SEARCH TOPIC (a suggestion from Search Everywhere, not a fact about the brand): ${seed.source === 'question' ? 'people search "' + seed.text + '"' : seed.text}`];
+  if (seed.terms.length) lines.push(`SEARCH TERMS TO WORK IN ONLY WHERE THEY FIT NATURALLY (suggestions, not facts): ${seed.terms.join(', ')}`);
+  if (seed.source === 'question'){
+    try { const facts = gscFactsFor(row.accountId, seed.group ? [{ type: seed.groupType, value: seed.group }] : []); if (facts.length) lines.push('APPROVED FACTS ON FILE THAT APPLY (from Train the Brain): ' + facts.slice(0, 12).map(f => f.factText).join(' | ')); } catch (e){}
+  }
+  return lines.join('\n');
+}
+function prRowKeyFacts(row){ return [prBriefToKeyFacts(prBriefParse(row && row.briefJson)), prSeedLines(row)].filter(Boolean).join('\n'); }
+// What Search Console can say about a distributed release. Files carry no per-page daily data, so impressions are the figure in the latest Pages file with its date range stated.
+function prSearchStatus(accountId, row){
+  if (!row || row.status !== 'distributed') return null;
+  const published = String(row.distributedDate || '').slice(0, 10);
+  const run = db.prepare("SELECT acceptedCount, totalCount, createdAt FROM search_optimizations WHERE accountId = ? AND surface = 'press' AND targetRef = ? ORDER BY createdAt DESC LIMIT 1").get(accountId, row.id);
+  const out = { publishedDate: published, url: row.publishedUrl || null, suggestions: run ? { accepted: run.acceptedCount || 0, total: run.totalCount || 0 } : null, aiAnswers: 'planned' };
+  if (!row.publishedUrl) return Object.assign(out, { needsUrl: true });
+  const key = gscUrlKey(row.publishedUrl);
+  try { const a = db.prepare('SELECT auditJson, ranAt FROM website_audits WHERE accountId = ? ORDER BY ranAt DESC LIMIT 1').get(accountId); if (a){ const pages = JSON.parse(a.auditJson).pages || []; out.siteCheck = { checkedAt: String(a.ranAt || '').slice(0, 10), found: pages.some(p => p && p.url && gscUrlKey(p.url) === key) }; } } catch (e){}
+  const up = db.prepare("SELECT periodStart, periodEnd FROM gsc_uploads WHERE accountId = ? AND kind = 'pages' ORDER BY uploadedAt DESC LIMIT 1").get(accountId);
+  if (!up){ out.pagesFile = null; return out; }
+  const hit = db.prepare("SELECT dimKey, impressions, clicks FROM gsc_rows WHERE accountId = ? AND kind = 'pages'").all(accountId).filter(r => gscUrlKey(r.dimKey) === key);
+  out.pagesFile = { from: up.periodStart || null, to: up.periodEnd || null, seen: hit.length > 0, impressions: hit.reduce((s, r) => s + (r.impressions || 0), 0), clicks: hit.reduce((s, r) => s + (r.clicks || 0), 0), includesDaysBeforePublish: !!(up.periodStart && published && up.periodStart < published) };
+  return out;
+}
+function prPressStrips(accountId){ const m = {}; db.prepare("SELECT * FROM press_releases WHERE accountId = ? AND status = 'distributed'").all(accountId).forEach(r => { m[r.id] = prSearchStatus(accountId, r); }); return m; }
 function prCampaignOk(accountId, campaignId){
   if (!campaignId) return true;
   try { return !!db.prepare('SELECT 1 FROM campaigns WHERE id = ? AND accountId = ?').get(campaignId, accountId); } catch (e){ return false; }
@@ -13829,6 +13880,8 @@ const LEGACY_CASING_COLUMNS = [
   ['press_releases', 'ctaText'],
   ['press_releases', 'ctaMode'],
   ['press_releases', 'linkedinCopy'],
+  ['press_releases', 'searchSeedJson'],
+  ['press_releases', 'publishedUrl'],
   ['accounts', 'accountIntelligenceGeneratedAt'],
   ['accounts', 'accountIntelligenceJson'],
   ['accounts', 'accountAddressLabel'],
@@ -22020,6 +22073,27 @@ function gscSyncPriorities(accountId){
   db.prepare("SELECT id, sourceKey FROM search_priorities WHERE accountId = ? AND status = 'new'").all(accountId).forEach(r => { if (!seen.has(r.sourceKey) && !String(r.sourceKey).startsWith('read:') && !String(r.sourceKey).startsWith('brand:')) db.prepare('DELETE FROM search_priorities WHERE id = ?').run(r.id); });
 }
 const GSC_PRIORITY_ORDER = { P1: 1, P2: 2, P3: 3 };
+// A release can address "get search ready" (window) and "win page one" (gap) priorities; other kinds (health, brand checks) are not release topics.
+function gscPriorityReleaseSeed(r){
+  const k = String(r.sourceKey || ''); if (r.status === 'done' || r.status === 'dismissed') return null;
+  if (k.startsWith('window:')){ const [t, ...v] = k.slice(7).split('|'); return { source: 'priority', text: r.title, group: v.join('|'), groupType: t, refId: r.id }; }
+  if (k.startsWith('gap:')) return { source: 'priority', text: r.title, group: '', groupType: '', refId: r.id };
+  return null;
+}
+// Dated entries for the Content updates card: every Distributed release, plus gaps the team marked done. Other site edits are not tracked.
+function gscContentUpdates(accountId){
+  const out = [];
+  db.prepare("SELECT * FROM press_releases WHERE accountId = ? AND status = 'distributed'").all(accountId).forEach(r => {
+    const st = prSearchStatus(accountId, r); const seed = prSeedParse(r.searchSeedJson); const pf = st && st.pagesFile;
+    out.push({ kind: 'release', date: String(r.distributedDate || r.updatedAt || '').slice(0, 10), title: 'Press release published', detail: r.title + (seed && seed.group ? ' · ' + seed.group + ' group' : ''), url: r.publishedUrl || null, releaseId: r.id,
+      impressions: pf && pf.seen ? pf.impressions : null,
+      note: !r.publishedUrl ? 'Add the page address on the release to see search results.' : !pf ? 'No Pages file loaded yet.' : !pf.seen ? 'Not in your latest Pages file' + (pf.from && pf.to ? ' (' + pf.from + ' to ' + pf.to + ')' : '') + '.' : 'Latest Pages file' + (pf.from && pf.to ? ' (' + pf.from + ' to ' + pf.to + ')' : ', dates not in the file') + (pf.includesDaysBeforePublish ? ', includes days before publishing' : '') });
+  });
+  db.prepare("SELECT * FROM search_priorities WHERE accountId = ? AND status = 'done' AND (sourceKey LIKE 'gap:%' OR sourceKey LIKE 'window:%')").all(accountId).forEach(p => {
+    out.push({ kind: 'gap', date: String(p.doneAt || p.updatedAt || '').slice(0, 10), title: 'Gap marked done', detail: p.title, url: null, releaseId: null, impressions: null, note: 'Not measured: files carry no per-page dates.' });
+  });
+  return out.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
 function gscPrioritiesList(accountId){
   const rows = db.prepare('SELECT * FROM search_priorities WHERE accountId = ?').all(accountId);
   const stOrder = { in_progress: 0, planned: 1, new: 2, done: 3, dismissed: 4 };
@@ -22030,7 +22104,7 @@ function gscPrioritiesList(accountId){
     if (k.startsWith('gap:')){ const tk = gscTokens(k.slice(4)); const hit = groups.find(gr => { const w = gscWindowFor(wins, gr.type, gr.value); return gscTimeBound(w) && (gscMatchQuery(tk, gr) || {}).m === 'strong'; }); return hit ? gscWindowFor(wins, hit.type, hit.value) : null; }
     return null;
   };
-  return rows.map(r => { const w = winOf(r); return { id: r.id, date: String(r.createdAt || '').slice(0, 10), priority: r.priorityLevel, title: r.title, detail: r.detail, impactBasis: r.impactBasis, impactClicks: r.impactClicks, impactLabel: r.impactLabel, status: r.status, ownerId: r.ownerId || null, dueDate: r.dueDate || null, dismissedReason: r.dismissedReason || null, window: gscTimeBound(w) ? gscWindowTag(w) : null }; })
+  return rows.map(r => { const w = winOf(r); return { id: r.id, date: String(r.createdAt || '').slice(0, 10), priority: r.priorityLevel, title: r.title, detail: r.detail, impactBasis: r.impactBasis, impactClicks: r.impactClicks, impactLabel: r.impactLabel, status: r.status, ownerId: r.ownerId || null, dueDate: r.dueDate || null, dismissedReason: r.dismissedReason || null, window: gscTimeBound(w) ? gscWindowTag(w) : null, doneDate: r.doneAt ? String(r.doneAt).slice(0, 10) : null, sourceKind: String(r.sourceKey || '').split(':')[0], releaseSeed: gscPriorityReleaseSeed(r) }; })
     .sort((a, b) => (stOrder[a.status] >= 3 ? 1 : 0) - (stOrder[b.status] >= 3 ? 1 : 0) || (GSC_PRIORITY_ORDER[a.priority] || 9) - (GSC_PRIORITY_ORDER[b.priority] || 9) || (a.window ? 0 : 1) - (b.window ? 0 : 1) || ((a.window && a.window.days) || 0) - ((b.window && b.window.days) || 0) || (b.impactClicks || 0) - (a.impactClicks || 0));
 }
 
@@ -22070,6 +22144,7 @@ function gscPayload(req, accountId, account){
   const waitingList = fresh.filter(p => !shownIds.has(p.id));
   const todayMs = Date.now(); const ageDays = p => Math.max(0, Math.floor((todayMs - Date.parse(p.date + 'T00:00:00Z')) / 864e5));
   const oldest = active.length ? Math.max(...active.map(ageDays)) : null;
+  out.contentUpdates = gscContentUpdates(accountId);
   out.priorities = { top: shown, totalOpen: open.length, total: priorities.length, limit: lim, active: active.length, waiting: waitingList.length, done: priorities.filter(p => p.status === 'done').length, oldestActiveDays: oldest,
     all: priorities.filter(p => p.status !== 'dismissed').map(p => Object.assign({}, p, { waiting: waitingList.some(w => w.id === p.id) })) };
   if (range){
@@ -35869,9 +35944,11 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const now = new Date().toISOString();
       if (body.campaignId && !prCampaignOk(accountId, body.campaignId)) return sendJson(res, 400, { error: 'campaignId does not match a campaign on this account' });
       const briefJson = body.brief ? JSON.stringify(prCleanBrief(body.brief)) : null;
-      db.prepare(`INSERT INTO press_releases (id, accountId, title, workingCopy, status, distributedDate, createdBy, createdAt, updatedAt, releaseType, audience, ctaText, ctaMode, briefJson, campaignId)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-        .run(id, accountId, body.title.trim(), (body.workingCopy || '').trim() || null, 'draft', null, (body.createdBy || '').trim() || null, now, now, body.releaseType || null, body.audience || null, (body.ctaText || '').trim() || null, body.ctaMode || 'inspiration', briefJson, body.campaignId || null);
+      let seedJson = null; if (body.searchSeed){ const sd = prCleanSeed(body.searchSeed); if (!sd) return sendJson(res, 400, { error: 'searchSeed needs a source (priority or question) and text' }); if (!sd.terms.length) sd.terms = prSeedTerms(accountId, sd); seedJson = JSON.stringify(sd); }
+      const pubUrl = prCleanUrl(body.publishedUrl); if (pubUrl === undefined) return sendJson(res, 400, { error: 'publishedUrl must be a web address' });
+      db.prepare(`INSERT INTO press_releases (id, accountId, title, workingCopy, status, distributedDate, createdBy, createdAt, updatedAt, releaseType, audience, ctaText, ctaMode, briefJson, campaignId, searchSeedJson, publishedUrl)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(id, accountId, body.title.trim(), (body.workingCopy || '').trim() || null, 'draft', null, (body.createdBy || '').trim() || null, now, now, body.releaseType || null, body.audience || null, (body.ctaText || '').trim() || null, body.ctaMode || 'inspiration', briefJson, body.campaignId || null, seedJson, pubUrl);
       return sendJson(res, 201, { id, status: 'saved' });
     }
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'press-releases'){
@@ -35879,6 +35956,8 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (!requireAccount(req, res, accountId)) return;
       const rows = db.prepare('SELECT * FROM press_releases WHERE accountId = ? ORDER BY createdAt DESC').all(accountId)
         .map(r => { const brief = prBriefParse(r.briefJson); return Object.assign({}, r, { brief, briefStatus: prBriefStatus(brief, r.ctaText) }); });
+      const strips = prPressStrips(accountId);
+      rows.forEach(r => { r.searchSeed = prSeedParse(r.searchSeedJson); r.searchStatus = strips[r.id] || null; });
       return sendJson(res, 200, { pressReleases: rows, statuses: PRESS_RELEASE_STATUSES });
     }
     if (req.method === 'PATCH' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'press-releases'){
@@ -35910,11 +35989,12 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (body.campaignId && !prCampaignOk(accountId, body.campaignId)) return sendJson(res, 400, { error: 'campaignId does not match a campaign on this account' });
       const nextBriefJson = body.brief !== undefined ? JSON.stringify(prCleanBrief(body.brief)) : existing.briefJson;
       const nextCampaignId = body.campaignId !== undefined ? (body.campaignId || null) : existing.campaignId;
+      let nextPubUrl = existing.publishedUrl || null; if (body.publishedUrl !== undefined){ const u = prCleanUrl(body.publishedUrl); if (u === undefined) return sendJson(res, 400, { error: 'publishedUrl must be a web address' }); nextPubUrl = u; }
       // distributedDate follows status the same way copyApprovedAt/etc do elsewhere in this file —
       // stamped the moment status flips to 'distributed', never hand-entered.
       const nextDistributedDate = nextStatus === 'distributed' ? (existing.distributedDate || now) : (nextStatus === existing.status ? existing.distributedDate : null);
-      db.prepare('UPDATE press_releases SET title = ?, workingCopy = ?, status = ?, distributedDate = ?, updatedAt = ?, releaseType = ?, audience = ?, ctaText = ?, ctaMode = ?, linkedinCopy = ?, briefJson = ?, campaignId = ? WHERE id = ?')
-        .run(nextTitle, nextCopy, nextStatus, nextDistributedDate, now, nextReleaseType, nextAudience, nextCtaText, nextCtaMode, nextLinkedinCopy, nextBriefJson, nextCampaignId, prId);
+      db.prepare('UPDATE press_releases SET title = ?, workingCopy = ?, status = ?, distributedDate = ?, updatedAt = ?, releaseType = ?, audience = ?, ctaText = ?, ctaMode = ?, linkedinCopy = ?, briefJson = ?, campaignId = ?, publishedUrl = ? WHERE id = ?')
+        .run(nextTitle, nextCopy, nextStatus, nextDistributedDate, now, nextReleaseType, nextAudience, nextCtaText, nextCtaMode, nextLinkedinCopy, nextBriefJson, nextCampaignId, nextPubUrl, prId);
       return sendJson(res, 200, { updated: true });
     }
     if (req.method === 'DELETE' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'press-releases'){
