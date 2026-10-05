@@ -1577,7 +1577,7 @@
   .gsc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:6px;} .gsc-top .drr-bar{flex:1 1 420px;margin:0;} .gsc-tools{display:flex;gap:8px;flex-wrap:wrap;} .gsc-tools .btn-ghost{padding:6px 14px;font-size:0.8125rem;}
   .gsc-cards{margin-bottom:20px;} .gsc-reads{padding:14px 22px;} .gsc-read+.gsc-read{border-top:1px solid var(--line-hairline);margin-top:10px;padding-top:10px;} .gsc-read-l1{font-weight:700;} .gsc-read-l2{color:var(--muted);font-size:0.875rem;margin-top:2px;} .gsc-more{margin:6px 0 0 18px;padding:0;color:var(--muted);font-size:0.8125rem;}
   .gsc-read-acts{display:flex;gap:14px;margin-top:4px;} .gsc-link{font:inherit;font-size:0.8125rem;font-weight:600;color:var(--hdr-navy);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;}
-  .gsc-win{display:inline-block;font-size:0.6875rem;font-weight:600;color:#8A5A1F;background:#FBF1E3;border-radius:980px;padding:1px 8px;white-space:nowrap;vertical-align:middle;} .gsc-dim td{color:var(--muted);} .gsc-qgrid{display:grid;gap:12px;grid-template-columns:minmax(0,2fr) minmax(0,1fr);padding:8px 0;} @media (max-width:700px){.gsc-qgrid{grid-template-columns:minmax(0,1fr);}} #gscPage .btn-row button,#ttbSlot-brainFacts button,#ttbSlot-brainFacts select,#ttbSlot-brainFacts input{font-family:inherit;}
+  .gsc-st{white-space:nowrap;} .gsc-win{display:inline-block;font-size:0.6875rem;font-weight:600;color:#8A5A1F;background:#FBF1E3;border-radius:980px;padding:1px 8px;white-space:nowrap;vertical-align:middle;} .gsc-dim td{color:var(--muted);} .gsc-qgrid{display:grid;gap:12px;grid-template-columns:minmax(0,2fr) minmax(0,1fr);padding:8px 0;} @media (max-width:700px){.gsc-qgrid{grid-template-columns:minmax(0,1fr);}} #gscPage .btn-row button,#ttbSlot-brainFacts button,#ttbSlot-brainFacts select,#ttbSlot-brainFacts input{font-family:inherit;}
   .gsc-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:8px;} .gsc-title{font-size:1rem;font-weight:700;} .gsc-sub{font-size:0.75rem;color:var(--muted);}
   .gsc-scroll{overflow-x:auto;} .gsc-table{width:100%;border-collapse:collapse;font-size:0.875rem;} .gsc-table th{text-align:left;font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line);} .gsc-table td{padding:10px 8px;border-bottom:1px solid var(--line-hairline);vertical-align:top;} .gsc-r{text-align:right !important;font-variant-numeric:tabular-nums;} .gsc-nw{white-space:nowrap;}
   .gsc-lvl{display:inline-block;font-size:0.6875rem;font-weight:700;border-radius:5px;padding:1px 7px;color:#fff;background:#6E6E73;} .gsc-P1,.gsc-t-fix{background:#B42318;} .gsc-P2,.gsc-t-check{background:#B4620A;} .gsc-P3,.gsc-t-review{background:#6E6E73;}
@@ -59216,6 +59216,7 @@ async function gscLoad(){
   try { await drrLoad(); drrOnChange(gscLoad); const d = await srchApi('/page'); if (d.error){ gsc.error = d.error; } else gsc.data = d; } catch (e){ gsc.error = 'Could not reach the server.'; }
   gsc.loading = false; gscRender();
   if (!gscQ.loaded) gscLoadQuestions();
+  if (!gscBC.loaded) gscLoadBrandChecks();
 }
 function gscRender(){
   const el = document.getElementById('gscPage'); if (!el) return;
@@ -59236,6 +59237,7 @@ function gscRender(){
   h += gscGroupsHtml(d);
   h += gscQuestionsHtml(d);
   h += gscApprovedHtml();
+  h += gscBrandChecksHtml();
   h += `<div class="gsc-two">${gscTopNbHtml(d)}${gscHealthHtml(d)}</div>`;
   el.innerHTML = h; drrRenderBars();
   gscRefreshReads();
@@ -59448,6 +59450,40 @@ function gscApprovedHtml(){
   const Q = gscQ.data; if (!Q || !Q.approved.length) return '';
   return `<div class="strat-card has-share" style="position:relative;">${shareBtnHtml('search-faq')}<div class="gsc-head"><div class="gsc-title">Approved FAQs</div><div class="gsc-sub">${Q.approved.length} approved</div></div><div class="gsc-scroll"><table class="gsc-table"><thead><tr><th>Question</th><th>Answer</th><th>Approved</th><th></th></tr></thead><tbody>${Q.approved.map((x, i) => `<tr><td>${escapeHtml(gscQTitle(x.question))}</td><td>${escapeHtml(x.answer)}</td><td class="gsc-nw">${escapeHtml(gscDay(String(x.approvedAt || '').slice(0, 10)))}</td><td class="gsc-nw"><button type="button" class="gsc-link" onclick="gscFaqCopy(${i},'answer')">Copy answer</button> · <button type="button" class="gsc-link" onclick="gscFaqCopy(${i},'markup')">Copy as FAQ markup</button></td></tr>`).join('')}</tbody></table></div><div class="btn-row"><button type="button" class="btn-ghost" onclick="gscFaqCopy(null,'markup')">Copy all as FAQ markup</button><button type="button" class="btn-ghost" onclick="gscFaqCopy(null,'answer')">Copy all as text</button>${gscQ.msgCopy ? `<span class="gsc-sub">${gscQ.msgCopy}</span>` : ''}</div></div>`;
 }
+// ---- Brand checks ----
+const gscBC = { data: null, loaded: false, expanded: false, open: {}, msg: '', busy: false };
+async function gscLoadBrandChecks(){
+  try { const d = await srchApi('/brand-checks' + (gscBC.expanded ? '?expand=1' : '')); gscBC.data = d.error ? null : d; } catch (e){ gscBC.data = null; }
+  gscBC.loaded = true; gscRender();
+}
+function gscBCTag(st){ return st === 'ok' ? '<span class="gsc-st gsc-st-done">Pass</span>' : st === 'attention' ? '<span class="gsc-st gsc-st-in_progress">Needs attention</span>' : '<span class="gsc-st">Can\'t check yet</span>'; }
+function gscBrandChecksHtml(){
+  const D = gscBC.data; if (!D) return '';
+  const jq = v => escapeHtml(v).replace(/'/g, "\\'");
+  const dayTxt = D.auditAt ? gscDay(String(D.auditAt).slice(0, 10)) : null;
+  const sc = D.scope || {};
+  const rows = D.checks.map(c => {
+    const open = !!gscBC.open[c.key]; const canAdd = c.status === 'attention';
+    const items = c.items.map(i => {
+      const q = i.faq;
+      const act = q ? `<button type="button" class="gsc-link" onclick="gscBCReopen('${jq(q.queryKey)}')">Reopen FAQ</button> · <button type="button" class="gsc-link" onclick="gscBCFix('${jq(i.id)}', ${i.fixed ? 'false' : 'true'})">${i.fixed ? 'Undo' : 'Mark reviewed'}</button>` : `<button type="button" class="gsc-link" onclick="gscBCFix('${jq(i.id)}', ${i.fixed ? 'false' : 'true'})">${i.fixed ? 'Undo' : 'Mark fixed'}</button>`;
+      return `<div class="gsc-assign" style="${i.fixed ? 'opacity:.55;' : ''}"><span>${q ? `<b>${escapeHtml(gscQTitle(q.question))}</b> ` : ''}${i.page ? `<a href="${escapeHtml(i.page)}" target="_blank" rel="noopener">${escapeHtml(i.page.replace(/^https?:\/\/(www\.)?/, ''))}</a> ` : ''}<span class="gsc-sub">${escapeHtml(i.detail)}${i.fixed ? (q ? ' Reviewed.' : ' Marked fixed, re-checked on the next site check.') : ''}</span></span><span class="gsc-nw">${act}</span></div>`;
+    }).join('');
+    let extra = '';
+    if (c.key === 'addons'){
+      const ad = (D.addons || []).map(a => `<tr><td>${escapeHtml(a.text)}</td><td class="gsc-r">${gscInt(a.impressions)}</td><td>${a.kind === 'reputation' ? (a.answered ? '<span class="gsc-sub">Named on the site</span>' : '<span class="gsc-st gsc-st-in_progress">Not on the site</span>') : a.kind === 'competitor' ? '<span class="gsc-sub">Competitor</span>' : ''}</td></tr>`).join('');
+      extra = `${ad ? `<div class="gsc-scroll" style="margin-top:8px;"><table class="gsc-table"><thead><tr><th>Added to your name</th><th class="gsc-r">Impressions</th><th></th></tr></thead><tbody>${ad}</tbody></table></div>` : ''}<div class="gsc-brand" style="margin-top:8px;"><div class="gsc-sub">Words you also watch</div><div class="gsc-chips">${(D.words || []).map(w => `<span class="gsc-chipt">${escapeHtml(w.word)}<button type="button" aria-label="Remove ${escapeHtml(w.word)}" onclick="gscBCWord('remove','${w.id}')">&times;</button></span>`).join('') || '<span class="gsc-sub">None added.</span>'}</div><div class="gsc-add"><input type="text" id="gscBCw" maxlength="40" placeholder="Add a word"><button type="button" class="btn-ghost" onclick="gscBCWord('add')">Add</button></div></div>`;
+    }
+    const sum = c.status === 'attention' ? escapeHtml(c.summary) : `<span class="gsc-sub">${escapeHtml(c.summary)}</span>`;
+    return `<tr><td><b>${escapeHtml(c.title)}</b></td><td>${gscBCTag(c.status)}</td><td>${sum}${c.fixed ? ` <span class="gsc-sub">${c.fixed} marked ${c.key === 'faq' ? 'reviewed' : 'fixed'}.</span>` : ''}</td><td class="gsc-nw">${c.items.length || c.key === 'addons' ? `<button type="button" class="gsc-link" aria-expanded="${open}" onclick="gscBC.open['${c.key}']=!gscBC.open['${c.key}']; gscRender();">${open ? 'Hide' : 'See more'}</button>` : ''}${canAdd ? ` · <button type="button" class="gsc-link" onclick="gscBCPriority('${c.key}')">Add to priorities</button>` : ''}</td></tr>${open ? `<tr class="gsc-manage"><td colspan="4">${items || '<span class="gsc-sub">Nothing to list.</span>'}${extra}</td></tr>` : ''}`;
+  }).join('');
+  const scope = `${sc.checked} page${sc.checked === 1 ? '' : 's'} checked${sc.expanded ? ', all in the site check' : ', top ' + (sc.top || 10) + ' by search impressions'}${sc.notChecked ? ` · ${sc.notChecked} not in the site check` : ''}`;
+  return `<div class="strat-card has-share" style="position:relative;">${shareBtnHtml('search-brand')}<div class="gsc-head"><div class="gsc-title">Brand checks</div><div class="gsc-sub">${dayTxt ? 'Site check ' + escapeHtml(dayTxt) : 'No site check yet'}${D.gscThrough ? ' · Search Console through ' + escapeHtml(gscDay(D.gscThrough)) : ''}</div></div><div class="gsc-sub" style="margin-bottom:6px;">${escapeHtml(scope)} · <button type="button" class="gsc-link" onclick="gscBC.expanded=!gscBC.expanded; gscLoadBrandChecks();">${sc.expanded ? 'Top ' + (sc.top || 10) + ' only' : 'Check all pages in the site check'}</button></div><div class="gsc-scroll"><table class="gsc-table"><thead><tr><th>Check</th><th>Result</th><th>What we found</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>${gscBC.msg ? `<p class="strat-empty">${escapeHtml(gscBC.msg)}</p>` : ''}</div>`;
+}
+async function gscBCFix(id, fixed){ try { await srchPost('/brand-checks/fix', { itemId: id, fixed }); } catch (e){} await gscLoadBrandChecks(); }
+async function gscBCPriority(key){ let r; try { r = await srchPost('/brand-checks/priority', { checkKey: key }); } catch (e){ r = { error: 'Could not reach the server.' }; } gscBC.msg = r.error ? r.error : 'Added to priorities.'; await gscLoad(); await gscLoadBrandChecks(); }
+async function gscBCWord(action, id){ const e = document.getElementById('gscBCw'); let r; try { r = await srchPost('/brand-checks/words', { action, id, word: e ? e.value : '' }); } catch (x){ r = { error: 'Could not reach the server.' }; } gscBC.msg = r.error || ''; await gscLoadBrandChecks(); }
+async function gscBCReopen(k){ await gscQAct(k, 'reopen'); await gscLoadBrandChecks(); }
 // ---- Facts the Brain can use (Train the Brain module) ----
 const gscF = { data: null, edit: null, msg: '' };
 async function gscFactsLoad(){ try { gscF.data = await srchApi('/facts'); } catch (e){ gscF.data = { error: 'Could not reach the server.' }; } gscFactsRender(); }
