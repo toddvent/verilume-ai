@@ -13365,6 +13365,47 @@ createTableIfNeeded(`
 // cares WHICH person is acting (not just which account) has that to read.
 ensureColumn('sessions', 'memberId', 'TEXT');
 
+// Wave 1.4 (2026-10-05) — Verilume team login. One platform user per
+// Verilume team member, separate from every client's own team_members
+// roster. A platform user signs in at platform.html (password plus an
+// emailed code on every sign-in, no trusted-device shortcut) and can open
+// any client account through a "view as" session. Roles:
+//   owner    everything, including adding admins
+//   admin    everything in client accounts; adds support/read-only users
+//   support  view any client, plus edits except team, sign-in/security
+//            and billing/payment/invoice actions
+//   readonly view only (any non-GET request is refused)
+// Every view-as start is written to platform_access_log, which a client's
+// own admin can read (GET /api/accounts/:id/platform-access).
+createTableIfNeeded(`CREATE TABLE IF NOT EXISTS platform_users (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL,
+  passwordHash TEXT,
+  passwordSalt TEXT,
+  status TEXT DEFAULT 'active',
+  createdAt TEXT NOT NULL,
+  lastLoginAt TEXT
+)`);
+createTableIfNeeded(`CREATE TABLE IF NOT EXISTS platform_sessions (
+  token TEXT PRIMARY KEY,
+  platformUserId TEXT NOT NULL,
+  createdAt TEXT NOT NULL,
+  expiresAt TEXT NOT NULL
+)`);
+createTableIfNeeded(`CREATE TABLE IF NOT EXISTS platform_access_log (
+  id TEXT PRIMARY KEY,
+  platformUserId TEXT NOT NULL,
+  platformName TEXT,
+  platformRole TEXT,
+  accountId TEXT NOT NULL,
+  action TEXT NOT NULL,
+  ip TEXT,
+  createdAt TEXT NOT NULL
+)`);
+ensureColumn('sessions', 'platformUserId', 'TEXT');
+
 // Round 61 — Print Ad Specs (Print channel of the omni-channel creative
 // selection tree, cxmedia-creative-specs-tree.json). Per direct instruction:
 // the master Publication/Ad-Format/dimensions catalog Todd supplied
@@ -24238,6 +24279,74 @@ function getAccountRecord(accountId){
 // Node.js Serverless Functions receive the same (req, res) shape as Node's
 // native http module, so nothing about the routing logic below needed to
 // change for this to work in both places.
+// ---- Wave 1.4: Verilume team (platform) login helpers ----
+const PLATFORM_ROLES = ['owner', 'admin', 'support', 'readonly'];
+const PLATFORM_SESSION_MS = 12 * 60 * 60 * 1000;   // console session: 12 hours
+const PLATFORM_VIEW_AS_MS = 4 * 60 * 60 * 1000;    // view-as session in a client account: 4 hours
+let platformOwnerSeeded = false;
+// PLATFORM_OWNER_EMAIL (and optional PLATFORM_OWNER_NAME) create the first
+// Owner when no platform user exists yet. The Owner has no password until
+// they set one through the emailed-code reset on platform.html.
+function ensurePlatformOwnerSeed(){
+  if (platformOwnerSeeded) return;
+  platformOwnerSeeded = true;
+  const email = String(process.env.PLATFORM_OWNER_EMAIL || '').trim().toLowerCase();
+  if (!email) return;
+  try {
+    const any = db.prepare('SELECT id FROM platform_users LIMIT 1').get();
+    if (any) return;
+    db.prepare('INSERT INTO platform_users (id, email, name, role, status, createdAt) VALUES (?,?,?,?,?,?)')
+      .run(generateId('PLAT'), email, String(process.env.PLATFORM_OWNER_NAME || 'Verilume Owner').trim(), 'owner', 'active', new Date().toISOString());
+    console.log('[platform] first Owner created for', email);
+  } catch (e){ console.warn('[platform] owner seed failed:', e.message); platformOwnerSeeded = false; }
+}
+function platformAuth(req){
+  const m = String(req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/);
+  if (!m) return null;
+  let sess;
+  try { sess = db.prepare('SELECT * FROM platform_sessions WHERE token = ?').get(m[1].trim()); } catch (e){ return null; }
+  if (!sess) return null;
+  if (new Date(sess.expiresAt).getTime() < Date.now()){
+    try { db.prepare('DELETE FROM platform_sessions WHERE token = ?').run(sess.token); } catch (e){}
+    return null;
+  }
+  const user = db.prepare('SELECT * FROM platform_users WHERE id = ?').get(sess.platformUserId);
+  if (!user || user.status !== 'active') return null;
+  return { session: sess, user };
+}
+function platformPublicUser(u){ return { id: u.id, email: u.email, name: u.name, role: u.role, status: u.status, lastLoginAt: u.lastLoginAt || null }; }
+// Blocks writes made through a view-as session according to the Verilume
+// person's role. Returns an error message to refuse with, or null to allow.
+function platformViewAsGuard(req, parts){
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return null;
+  const m = String(req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/);
+  if (!m) return null;
+  try {
+    const s = db.prepare('SELECT platformUserId FROM sessions WHERE token = ?').get(m[1].trim());
+    if (!s || !s.platformUserId) return null;
+    const u = db.prepare('SELECT role, status FROM platform_users WHERE id = ?').get(s.platformUserId);
+    if (!u || u.status !== 'active') return 'This Verilume team access has been turned off.';
+    const path = '/' + parts.join('/');
+    const isLogout = path === '/api/auth/logout';
+    if (u.role === 'readonly' && !isLogout) return 'This is a read-only Verilume team session. Nothing can be changed.';
+    if (u.role === 'support' && !isLogout && (/^\/api\/(team|auth)(\/|$)/.test(path) || /billing|payment|invoice/i.test(path))){
+      return 'The Support role cannot change team members, sign-in settings or billing.';
+    }
+  } catch (e){ console.warn('[platform] view-as guard lookup failed:', e.message); }
+  return null;
+}
+async function platformSendCode(email, purpose, code){
+  const reset = purpose === 'platform-reset';
+  return sendTransactionalEmail({
+    to: email,
+    subject: reset ? 'Verilume team: your password code' : 'Verilume team: your sign-in code',
+    textBody: `Your Verilume team ${reset ? 'password' : 'sign-in'} code is ${code}. It expires in 10 minutes. If you did not ask for it, ignore this email.`,
+    htmlBody: `<p>Your Verilume team ${reset ? 'password' : 'sign-in'} code is <strong>${code}</strong>.</p><p>It expires in 10 minutes. If you did not ask for it, ignore this email.</p>`
+  });
+}
+
+function escapeHtmlBasic(t){ return String(t == null ? '' : t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
 async function handleRequest(req, res) {
   if (req.method === 'OPTIONS'){
     res.writeHead(204, {
@@ -24273,6 +24382,199 @@ async function handleRequest(req, res) {
         }
       });
     }
+    // Wave 1.4 — a Verilume team member's view-as session is limited by their role.
+    { const _platformDenied = platformViewAsGuard(req, parts); if (_platformDenied) return sendJson(res, 403, { error: _platformDenied }); }
+    // ---------------------------------------------------------------
+    // Wave 1.4 — Verilume team (platform) login. See platform_users' comment.
+    // ---------------------------------------------------------------
+    if (parts[0] === 'api' && parts[1] === 'accounts' && parts.length === 4 && parts[3] === 'platform-access' && req.method === 'GET'){
+      // A client's own admin can see every Verilume team visit to their account.
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAdminMember(req, res, accountId)) return;
+      const rows = db.prepare('SELECT platformName, platformRole, action, createdAt FROM platform_access_log WHERE accountId = ? ORDER BY createdAt DESC LIMIT 100').all(accountId);
+      return sendJson(res, 200, { visits: rows.map(r => ({ name: r.platformName, role: r.platformRole, action: r.action, at: r.createdAt })) });
+    }
+    if (parts[0] === 'api' && parts[1] === 'platform'){
+      ensurePlatformOwnerSeed();
+      const sub = parts[2] || '';
+      const nowIso = () => new Date().toISOString();
+      const tenMin = () => new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      // Stores a code row. phone column holds the email, per the channel convention.
+      const insertCode = (id, userId, email, purpose, provider, hash, salt) => db.prepare(`INSERT INTO phone_verifications
+        (id, memberId, phone, purpose, codeHash, codeSalt, provider, channel, createdAt, expiresAt)
+        VALUES (?,?,?,?,?,?,?,?,?,?)`).run(id, userId, email, purpose, hash, salt, provider, 'email', nowIso(), tenMin());
+      // Sends (or decoys) a code. Returns { verificationId, interimCode?, failed? }.
+      const issueCode = async (user, emailNorm, purpose) => {
+        const verificationId = generateId('VERIFY');
+        if (!user){
+          const d = hashAccessCode(crypto.randomBytes(16).toString('hex'));
+          insertCode(verificationId, null, emailNorm, purpose, 'decoy', d.hash, d.salt);
+          return { verificationId };
+        }
+        const code = String(crypto.randomInt(100000, 999999));
+        const x = hashAccessCode(code);
+        const mail = await platformSendCode(emailNorm, purpose, code);
+        const sent = mail.emailStatus === 'sent';
+        if (!sent && process.env.DATABASE_URL) return { failed: true };
+        insertCode(verificationId, user.id, emailNorm, purpose, sent ? 'postmark' : 'interim', x.hash, x.salt);
+        return sent ? { verificationId } : { verificationId, interimCode: code };
+      };
+      const checkCode = (row, code, purpose) => {
+        if (!row || row.purpose !== purpose) return { status: 404, error: 'verification not found or already used' };
+        if (row.verified) return { status: 409, error: 'this code was already used' };
+        if (new Date(row.expiresAt).getTime() < Date.now()) return { status: 410, error: 'this code has expired — request a new one' };
+        if (row.attempts >= 5) return { status: 429, error: 'too many incorrect attempts — request a new code' };
+        if (!verifyAccessCode(String(code || ''), row.codeHash, row.codeSalt)){
+          db.prepare('UPDATE phone_verifications SET attempts = attempts + 1 WHERE id = ?').run(row.id);
+          return { status: 401, error: 'incorrect code' };
+        }
+        db.prepare('UPDATE phone_verifications SET verified = 1 WHERE id = ?').run(row.id);
+        return { ok: true };
+      };
+
+      // POST /api/platform/login — { email, password } -> emails a code. No trusted-device shortcut.
+      if (req.method === 'POST' && parts.length === 3 && sub === 'login'){
+        const body = await readBody(req);
+        if (!body.email || !body.password) return sendJson(res, 400, { error: 'email and password are required' });
+        if (assessmentRateLimitExceeded(req, 'platform-login', 20)) return sendJson(res, 429, { error: 'Too many attempts from this network. Try again in an hour.' });
+        const emailNorm = String(body.email).trim().toLowerCase();
+        const user = db.prepare('SELECT * FROM platform_users WHERE lower(email) = ?').get(emailNorm);
+        const good = !!(user && user.status === 'active' && user.passwordHash && verifyAccessCode(String(body.password), user.passwordHash, user.passwordSalt));
+        if (!good) return sendJson(res, 401, { error: 'incorrect email or password' });
+        const recent = db.prepare(`SELECT COUNT(*) AS c FROM phone_verifications WHERE purpose = 'platform-login' AND memberId = ? AND createdAt > ?`).get(user.id, new Date(Date.now() - 3600000).toISOString());
+        if (recent && Number(recent.c) >= 5) return sendJson(res, 429, { error: 'Too many codes requested. Try again in an hour.' });
+        const r = await issueCode(user, emailNorm, 'platform-login');
+        if (r.failed) return sendJson(res, 502, { error: 'Could not send an email code right now. Try again shortly.' });
+        return sendJson(res, 200, { ok: true, verificationId: r.verificationId, email: emailNorm, interimCode: r.interimCode });
+      }
+      // POST /api/platform/verify — { verificationId, code } -> console session
+      if (req.method === 'POST' && parts.length === 3 && sub === 'verify'){
+        const body = await readBody(req);
+        if (!body.verificationId || !body.code) return sendJson(res, 400, { error: 'verificationId and code are required' });
+        const row = db.prepare('SELECT * FROM phone_verifications WHERE id = ?').get(body.verificationId);
+        const c = checkCode(row, body.code, 'platform-login');
+        if (!c.ok) return sendJson(res, c.status, { error: c.error });
+        const user = db.prepare('SELECT * FROM platform_users WHERE id = ?').get(row.memberId);
+        if (!user || user.status !== 'active') return sendJson(res, 403, { error: 'this Verilume team access has been turned off' });
+        const token = crypto.randomBytes(32).toString('hex');
+        const expiresAt = new Date(Date.now() + PLATFORM_SESSION_MS).toISOString();
+        db.prepare('INSERT INTO platform_sessions (token, platformUserId, createdAt, expiresAt) VALUES (?,?,?,?)').run(token, user.id, nowIso(), expiresAt);
+        db.prepare('UPDATE platform_users SET lastLoginAt = ? WHERE id = ?').run(nowIso(), user.id);
+        return sendJson(res, 200, { token, expiresAt, user: platformPublicUser(user) });
+      }
+      // POST /api/platform/request-reset — { email } -> emails a code (first password or forgotten password)
+      if (req.method === 'POST' && parts.length === 3 && sub === 'request-reset'){
+        const body = await readBody(req);
+        if (!body.email) return sendJson(res, 400, { error: 'email is required' });
+        if (assessmentRateLimitExceeded(req, 'platform-reset', 10)) return sendJson(res, 429, { error: 'Too many requests from this network. Try again in an hour.' });
+        const emailNorm = String(body.email).trim().toLowerCase();
+        const user = db.prepare('SELECT * FROM platform_users WHERE lower(email) = ?').get(emailNorm);
+        const recent = db.prepare(`SELECT COUNT(*) AS c FROM phone_verifications WHERE purpose = 'platform-reset' AND lower(phone) = ? AND createdAt > ?`).get(emailNorm, new Date(Date.now() - 3600000).toISOString());
+        if (recent && Number(recent.c) >= 5) return sendJson(res, 429, { error: 'Too many requests for this email. Try again in an hour.' });
+        const r = await issueCode(user && user.status === 'active' ? user : null, emailNorm, 'platform-reset');
+        const out = { ok: true, message: 'If that email is on the Verilume team, a code was sent.', verificationId: r.verificationId || generateId('VERIFY') };
+        if (r.interimCode) out.interimCode = r.interimCode;
+        return sendJson(res, 200, out);
+      }
+      // POST /api/platform/reset-password — { verificationId, code, newPassword }
+      if (req.method === 'POST' && parts.length === 3 && sub === 'reset-password'){
+        const body = await readBody(req);
+        if (!body.verificationId || !body.code || !body.newPassword || String(body.newPassword).length < 12) return sendJson(res, 400, { error: 'verificationId, code and a password of 12 or more characters are required' });
+        const row = db.prepare('SELECT * FROM phone_verifications WHERE id = ?').get(body.verificationId);
+        const c = checkCode(row, body.code, 'platform-reset');
+        if (!c.ok) return sendJson(res, c.status, { error: c.error });
+        const hp = hashAccessCode(String(body.newPassword));
+        db.prepare('UPDATE platform_users SET passwordHash = ?, passwordSalt = ? WHERE id = ?').run(hp.hash, hp.salt, row.memberId);
+        db.prepare('DELETE FROM platform_sessions WHERE platformUserId = ?').run(row.memberId);
+        return sendJson(res, 200, { ok: true });
+      }
+
+      // Everything below needs a signed-in team member.
+      const auth = platformAuth(req);
+      if (!auth) return sendJson(res, 401, { error: 'Sign in to the Verilume team console.' });
+      const me = auth.user;
+      const isOwnerOrAdmin = me.role === 'owner' || me.role === 'admin';
+
+      if (req.method === 'GET' && parts.length === 3 && sub === 'me') return sendJson(res, 200, { user: platformPublicUser(me) });
+      if (req.method === 'POST' && parts.length === 3 && sub === 'logout'){
+        db.prepare('DELETE FROM platform_sessions WHERE token = ?').run(auth.session.token);
+        return sendJson(res, 200, { ok: true });
+      }
+      // GET /api/platform/accounts — every client account
+      if (req.method === 'GET' && parts.length === 3 && sub === 'accounts'){
+        const rows = db.prepare('SELECT accountId, company, industry, createdAt FROM accounts ORDER BY company ASC').all();
+        return sendJson(res, 200, { accounts: rows });
+      }
+      // POST /api/platform/view-as — { accountId } -> a session inside that client account
+      if (req.method === 'POST' && parts.length === 3 && sub === 'view-as'){
+        const body = await readBody(req);
+        const acct = body.accountId ? db.prepare('SELECT accountId, company FROM accounts WHERE accountId = ?').get(body.accountId) : null;
+        if (!acct) return sendJson(res, 404, { error: 'account not found' });
+        const s = createSession(acct.accountId, null);
+        const expiresAt = new Date(Date.now() + PLATFORM_VIEW_AS_MS).toISOString();
+        db.prepare('UPDATE sessions SET platformUserId = ?, expiresAt = ? WHERE token = ?').run(me.id, expiresAt, s.token);
+        db.prepare('INSERT INTO platform_access_log (id, platformUserId, platformName, platformRole, accountId, action, ip, createdAt) VALUES (?,?,?,?,?,?,?,?)')
+          .run(generateId('PLOG'), me.id, me.name, me.role, acct.accountId, 'view_as_started', getClientIp(req) || null, nowIso());
+        return sendJson(res, 200, { token: s.token, expiresAt, accountId: acct.accountId, company: acct.company, role: me.role, name: me.name });
+      }
+      // GET /api/platform/access-log — owner/admin see all (optionally one account); others see their own
+      if (req.method === 'GET' && parts.length === 3 && sub === 'access-log'){
+        const aid = url.searchParams.get('accountId');
+        const rows = isOwnerOrAdmin
+          ? (aid ? db.prepare('SELECT * FROM platform_access_log WHERE accountId = ? ORDER BY createdAt DESC LIMIT 200').all(aid) : db.prepare('SELECT * FROM platform_access_log ORDER BY createdAt DESC LIMIT 200').all())
+          : db.prepare('SELECT * FROM platform_access_log WHERE platformUserId = ? ORDER BY createdAt DESC LIMIT 200').all(me.id);
+        return sendJson(res, 200, { visits: rows });
+      }
+      // Team management: owner and admin only.
+      if (parts.length >= 3 && sub === 'users'){
+        if (!isOwnerOrAdmin) return sendJson(res, 403, { error: 'Only Owners and Admins manage the Verilume team.' });
+        const canGrant = role => me.role === 'owner' || role === 'support' || role === 'readonly';
+        if (req.method === 'GET' && parts.length === 3){
+          return sendJson(res, 200, { users: db.prepare('SELECT * FROM platform_users ORDER BY createdAt ASC').all().map(platformPublicUser) });
+        }
+        if (req.method === 'POST' && parts.length === 3){
+          const body = await readBody(req);
+          const email = String(body.email || '').trim().toLowerCase();
+          const name = String(body.name || '').trim();
+          const role = String(body.role || '');
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !name || !PLATFORM_ROLES.includes(role)) return sendJson(res, 400, { error: 'a valid email, a name and a role are required' });
+          if (!canGrant(role)) return sendJson(res, 403, { error: 'Admins can add Support and Read-only users. Ask an Owner to add an Admin or Owner.' });
+          if (db.prepare('SELECT id FROM platform_users WHERE lower(email) = ?').get(email)) return sendJson(res, 409, { error: 'that email is already on the Verilume team' });
+          const id = generateId('PLAT');
+          db.prepare('INSERT INTO platform_users (id, email, name, role, status, createdAt) VALUES (?,?,?,?,?,?)').run(id, email, name, role, 'active', nowIso());
+          const base = process.env.PUBLIC_BASE_URL || ('https://' + (req.headers.host || ''));
+          const link = `${base}/platform.html?setup=1&email=${encodeURIComponent(email)}`;
+          const mail = await sendTransactionalEmail({
+            to: email, subject: 'You have been added to the Verilume team console',
+            textBody: `Hi ${name}, you have been added to the Verilume team console as ${role}. Set your password here: ${link}`,
+            htmlBody: `<p>Hi ${escapeHtmlBasic(name)},</p><p>You have been added to the Verilume team console as <strong>${role}</strong>.</p><p><a href="${link}">Set your password</a></p>`
+          });
+          return sendJson(res, 201, { user: platformPublicUser(db.prepare('SELECT * FROM platform_users WHERE id = ?').get(id)), inviteEmail: mail.emailStatus });
+        }
+        if (req.method === 'PATCH' && parts.length === 4){
+          const target = db.prepare('SELECT * FROM platform_users WHERE id = ?').get(decodeURIComponent(parts[3]));
+          if (!target) return sendJson(res, 404, { error: 'team member not found' });
+          const body = await readBody(req);
+          const newRole = body.role !== undefined ? String(body.role) : target.role;
+          const newStatus = body.status !== undefined ? String(body.status) : target.status;
+          if (!PLATFORM_ROLES.includes(newRole) || !['active', 'inactive'].includes(newStatus)) return sendJson(res, 400, { error: 'invalid role or status' });
+          if (!canGrant(target.role) || !canGrant(newRole)) return sendJson(res, 403, { error: 'Only an Owner can change an Admin or Owner.' });
+          const losesOwner = target.role === 'owner' && (newRole !== 'owner' || newStatus !== 'active');
+          if (losesOwner){
+            const others = db.prepare(`SELECT COUNT(*) AS c FROM platform_users WHERE role = 'owner' AND status = 'active' AND id <> ?`).get(target.id);
+            if (!others || Number(others.c) < 1) return sendJson(res, 409, { error: 'There must always be at least one active Owner.' });
+          }
+          db.prepare('UPDATE platform_users SET role = ?, status = ? WHERE id = ?').run(newRole, newStatus, target.id);
+          if (newStatus !== 'active'){
+            db.prepare('DELETE FROM platform_sessions WHERE platformUserId = ?').run(target.id);
+            db.prepare('DELETE FROM sessions WHERE platformUserId = ?').run(target.id);
+          }
+          return sendJson(res, 200, { user: platformPublicUser(db.prepare('SELECT * FROM platform_users WHERE id = ?').get(target.id)) });
+        }
+      }
+      return sendJson(res, 404, { error: 'not found' });
+    }
+
     // GET /r/:code — short link redirect (2026-09-30). Public on purpose: a person scanning a printed QR code
     // has no login. Bots and link previewers are not counted. ?q=1 marks a QR scan.
     if ((req.method === 'GET' || req.method === 'HEAD') && parts.length === 2 && parts[0] === 'r'){
