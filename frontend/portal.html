@@ -1490,6 +1490,12 @@
   .fd-out{border-top:1px solid var(--line);margin-top:14px;padding-top:6px;}
   .fd-sum{margin:0 0 10px;font-size:1rem;}
   .stat-card-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:32px;}
+  .key-tools{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px;}
+  .key-tools:empty{display:none;}
+  .kt-chip{display:inline-flex;align-items:center;gap:8px;font:inherit;font-size:0.8125rem;font-weight:600;color:var(--hdr-navy);background:var(--white);border:1px solid var(--line);border-radius:980px;padding:8px 15px 8px 12px;cursor:pointer;box-shadow:var(--shadow-sm);transition:border-color 0.15s ease,box-shadow 0.15s ease,transform 0.15s ease;}
+  .kt-chip::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--hdr-amber);flex-shrink:0;}
+  .kt-chip:hover{border-color:var(--hdr-amber);box-shadow:var(--shadow-md);transform:translateY(-1px);}
+  .kt-chip:focus-visible{outline:2px solid var(--hdr-navy);outline-offset:2px;}
   .stat-card.flow-card .exec-visual-row{flex-direction:column;align-items:center;gap:12px;margin-top:8px;}
   .stat-card.flow-card .donut-side-col{width:100%;gap:0;}
   .stat-card.flow-card .donut-legend{gap:6px;font-size:0.8125rem;}
@@ -4497,6 +4503,7 @@
          Management) still works unchanged. -->
       <div id="execChartsModule">
         <!-- 2026-10-04: the "Need something we don't show?" button moved up to the shared title row (#dashAskBtn) so every dashboard tab places it identically. -->
+        <div class="key-tools" id="tabKeyTools"></div>
         <div class="stat-card-grid" id="tabStatCardGrid"></div>
       </div>
 
@@ -23151,7 +23158,7 @@ function drrBarHtml(){
   const chip = (k, l) => `<button type="button" class="drr-chip${cur === k ? ' on' : ''}" onclick="drrPickPreset('${k}')">${l}</button>`;
   const custom = drr.customOpen ? `<span class="drr-custom"><input type="date" id="drrFrom" aria-label="Start date" value="${escapeHtml((drr.draft && drr.draft.from) || (drr.spec && drr.spec.from) || (rs && rs.from) || '')}"> to <input type="date" id="drrTo" aria-label="End date" value="${escapeHtml((drr.draft && drr.draft.to) || (drr.spec && drr.spec.to) || (rs && rs.through) || '')}"> <button type="button" class="drr-chip" onclick="drrApplyCustom()">Apply</button></span>` : '';
   return `<div class="drr-row"><span class="drr-lbl">Date range</span>${chip('week', 'Week')}${chip('month', 'Month')}${chip('quarter', 'Quarter')}${chip('year', 'Year')}${chip('custom', 'Calendar')}${custom}</div>
-    <div class="drr-note">${rs ? `${escapeHtml(rs.label)} &middot; ${escapeHtml(rs.compLabel)}` : ''} <span class="drr-hint">Applies to every analytics card until you change it. You can also ask Verilume for a range.</span></div>${drr.error ? `<div class="drr-err">${escapeHtml(drr.error)}</div>` : ''}`;
+    ${drr.error ? `<div class="drr-err">${escapeHtml(drr.error)}</div>` : ''}`;
 }
 function drrRenderBars(){ document.querySelectorAll('.drr-bar').forEach(b => { b.innerHTML = drrBarHtml(); }); }
 function shareBtnHtml(card){
@@ -25875,7 +25882,29 @@ function cmpLiveStatCardOverride(label){
   }
   return null;
 }
+// ---- Key tools (2026-10-05): the tools each tab leans on, as chips above the cards ----
+const KEY_TOOLS = {
+  strategy: [{ l: 'Budgets', s: 'mediaplan' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaigns', s: 'campaignMgmt' }, { l: 'Competition & Positioning', s: 'competitivePositioning' }, { l: 'Marketing Tests', s: 'marketOptimization' }, { l: 'Forecasts', a: 'forecast' }],
+  brand: [{ l: 'Brand Voice', s: 'voice' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaign Creative', s: 'omniCreative' }, { l: 'PR', s: 'reputation' }, { l: 'Reputation Management', s: 'reputation' }],
+  marketer: [{ l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Budgets', s: 'mediaplan' }, { l: 'Campaign Creation', s: 'campaignMgmt' }, { l: 'Forecasting', a: 'forecast' }, { l: 'Creative Assets', s: 'omniCreative' }],
+  dataScientist: [{ l: 'Budgets', s: 'mediaplan' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaign Analysis', s: 'campaignMgmt' }, { l: 'Goal Setting + Forecasting', a: 'forecast' }, { l: 'Test Plans', s: 'marketOptimization' }]
+};
+function ktGo(tab, i){
+  const it = (KEY_TOOLS[tab] || [])[i]; if (!it) return;
+  if (it.a === 'forecast'){
+    const scroll = () => { const t = document.getElementById('stratFcBody'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+    if (activePrimaryTab !== 'strategy'){ switchPrimaryTab('strategy'); setTimeout(scroll, 1800); } else scroll();
+    return;
+  }
+  goToStep(it.s);
+}
+function renderKeyTools(tab){
+  const el = document.getElementById('tabKeyTools'); if (!el) return;
+  const list = KEY_TOOLS[tab];
+  el.innerHTML = list ? list.map((it, i) => `<button type="button" class="kt-chip" onclick="ktGo('${tab}',${i})">${escapeHtml(it.l)}</button>`).join('') : '';
+}
 function renderStatCards(){
+  renderKeyTools(activePrimaryTab || 'dailyBrief');
   const el = document.getElementById('tabStatCardGrid');
   if (!el) return;
   const tab = activePrimaryTab || 'dailyBrief';
