@@ -17387,6 +17387,34 @@ function voiceResolveCampaign(accountId, ref){
   return partial.length === 1 ? partial[0] : null;
 }
 
+
+// ---- Search Everywhere context for Ask Verilume and the voice assistant ----
+const GSC_ASK_RE = /\b(search|seo|aeo|geo|organic|impression|impressions|click|clicks|ranking|rank|position|keyword|keywords|quer(?:y|ies)|google|search console|brand search|brand demand|demand|indexed|indexing|faq|faqs|priorit\w*|ai overview|ai answers?|click rate|ctr)\b/i;
+function gscContextBlock(accountId, question){
+  const has = db.prepare('SELECT COUNT(*) AS n FROM gsc_rows WHERE accountId = ?').get(accountId).n + db.prepare('SELECT COUNT(*) AS n FROM gsc_daily WHERE accountId = ?').get(accountId).n;
+  if (!has) return 'SEARCH EVERYWHERE: no Search Console data has been uploaded for this account.';
+  if (question && !GSC_ASK_RE.test(question)) return 'SEARCH EVERYWHERE: Search Console data is on file (organic clicks and impressions, brand and non-brand demand, product groups, priorities). Ask about search to see it.';
+  const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId) || {};
+  const d = gscPayload({ url: '/' }, accountId, account); const L = [];
+  const f = n => Math.round(Number(n) || 0).toLocaleString('en-US');
+  L.push(`SEARCH EVERYWHERE (organic Google search, from uploaded Search Console files; data through ${d.range && d.range.dataThrough || 'unknown'}; period ${d.range && d.range.label}). Numbers are from the account's records only; never estimate beyond them.`);
+  const c = d.cards || {};
+  if (c.clicks && c.impressions) L.push(`OVERALL WEB SEARCH: ${f(c.clicks.value)} clicks, ${f(c.impressions.value)} impressions, click rate ${(c.ctr.value * 100).toFixed(2)}%${c.clicks.prior != null ? `; same dates last year ${f(c.clicks.prior)} clicks, ${f(c.impressions.prior)} impressions` : '; no prior-year comparison covers this period'}.`);
+  const bs = d.brandSplit;
+  if (bs){ const tc = bs.brandClicks + bs.nonBrandClicks, ti = bs.brandImpressions + bs.nonBrandImpressions; L.push(`BRAND VS NON-BRAND (top queries in the export, not every query): brand ${f(bs.brandClicks)} clicks and ${f(bs.brandImpressions)} impressions (${tc ? Math.round(bs.brandClicks / tc * 100) : 0}% of clicks, ${ti ? Math.round(bs.brandImpressions / ti * 100) : 0}% of impressions); non-brand ${f(bs.nonBrandClicks)} clicks and ${f(bs.nonBrandImpressions)} impressions. Brand demand counts whether or not a searcher's words match a product group.`); }
+  else L.push('BRAND VS NON-BRAND: brand names are not confirmed yet, so no brand split is available.');
+  const br = db.prepare("SELECT dimKey, clicks, impressions, avgPosition FROM gsc_rows WHERE accountId = ? AND kind = 'queries' AND isBrand = 1 ORDER BY impressions DESC LIMIT 8").all(accountId);
+  if (br.length) L.push('TOP BRAND SEARCHES:\n' + br.map(r => `- ${r.dimKey}: ${f(r.impressions)} impressions, ${f(r.clicks)} clicks, position ${r.avgPosition ? Number(r.avgPosition).toFixed(1) : 'n/a'}`).join('\n'));
+  if (d.topNonBrand && d.topNonBrand.length) L.push('TOP NON-BRAND SEARCHES:\n' + d.topNonBrand.slice(0, 8).map(r => `- ${r.query}: ${f(r.impressions)} impressions, ${f(r.clicks)} clicks, position ${r.avgPosition ? Number(r.avgPosition).toFixed(1) : 'n/a'}`).join('\n'));
+  const g = d.groups;
+  if (g && g.hasGroups && g.groups){ L.push('NON-BRAND DEMAND BY PRODUCT GROUP / CREATIVE FOCUS (matched by words; the rest is shown as not in any group):\n' + g.groups.slice(0, 8).map(x => `- ${x.value} (${x.typeLabel.toLowerCase()}): ${f(x.impressions)} impressions, position ${x.avgPosition ? x.avgPosition.toFixed(1) : 'n/a'}${x.window ? ', ' + x.window.label : ''}`).join('\n') + (g.unmatched ? `\n- Not in any group: ${f(g.unmatched.impressions)} impressions (${Math.round(g.unmatched.share * 100)}% of non-brand)` : '')); }
+  if (d.ai && d.ai.impressions) L.push(`GOOGLE AI IMPRESSIONS (impressions only, no clicks, Google only): ${f(d.ai.impressions)} since ${d.ai.startedOn}, ${(d.ai.share * 100).toFixed(1)}% of web impressions.`);
+  const pr = d.priorities;
+  if (pr && pr.all && pr.all.length){ const act = pr.all.filter(x => !x.waiting && x.status !== 'done' && x.status !== 'dismissed').slice(0, 5); L.push(`SEARCH PRIORITIES: ${pr.active} active of limit ${pr.limit}, ${pr.waiting} waiting, ${pr.done} done.\n` + act.map(x => `- ${x.priority} ${x.title} [${x.status}${x.dueDate ? ', due ' + x.dueDate : ''}${x.window ? ', ' + x.window.label : ''}] ${x.impactLabel || ''}`).join('\n')); }
+  try { const bc = gscBrandCheckData(accountId, account, false); const att = bc.checks.filter(x => x.status === 'attention'); if (att.length) L.push('BRAND CHECKS NEEDING ATTENTION:\n' + att.map(x => `- ${x.title}: ${x.summary}`.slice(0, 220)).join('\n')); } catch (e){}
+  try { const fq = db.prepare("SELECT COUNT(*) AS n FROM search_questions WHERE accountId = ? AND status = 'approved'").get(accountId).n; const ft = db.prepare("SELECT COUNT(*) AS n FROM brain_facts WHERE accountId = ? AND status = 'active'").get(accountId).n; L.push(`FAQS AND FACTS: ${fq} approved FAQs, ${ft} approved facts.`); } catch (e){}
+  return L.join('\n');
+}
 function voiceContextBundle(accountId, opts){
   const o = opts || {};
   const blocks = [];
@@ -17398,6 +17426,7 @@ function voiceContextBundle(accountId, opts){
   blocks.push(`MOST URGENT (soonest assets due first):\n${urgent.length ? urgent.map(u => `- ${u.name} [${u.campaignCode || u.campaignId}] assets due ${u.assetsDue || '—'}, start ${u.startDate || '—'}, end ${u.endDate || '—'}, status ${u.status}, creative ${u.creativeDisposition || 'undecided'}`).join('\n') : '(no campaigns with due dates)'}`);
   try { blocks.push(buildAccountMonthlyKpiContextForPrompt(accountId).promptBlock); } catch (e){ blocks.push('(monthly KPI report unavailable)'); }
   try { blocks.push(dqContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] transaction context failed:', e.message); }
+  try { blocks.push(gscContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] search context failed:', e.message); }
   try {
     const dm = getDigitalMonthlyTotals(accountId);
     const months = Object.keys(dm.byMonth || dm.months || {}).sort().slice(-3);
