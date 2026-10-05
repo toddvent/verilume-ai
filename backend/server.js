@@ -16033,6 +16033,51 @@ async function cardToXlsx(x){
   });
   return wb.xlsx.writeBuffer();
 }
+
+// A dependency-light slide writer (JSZip ships with exceljs): one native table per slide, 14 rows a slide.
+async function cardToPptx(x){
+  const JSZip = require('jszip'); const z = new JSZip();
+  const W = 12192000, H = 6858000, MX = 457200; const emu = i => Math.round(i * 914400);
+  const xe = v => String(v == null ? '' : v).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const NS = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"';
+  const run = (t, sz, color, bold) => `<a:r><a:rPr lang="en-US" sz="${sz}"${bold ? ' b="1"' : ''} dirty="0"><a:solidFill><a:srgbClr val="${color}"/></a:solidFill><a:latin typeface="Arial"/><a:cs typeface="Arial"/></a:rPr><a:t>${xe(t)}</a:t></a:r>`;
+  const box = (id, name, x0, y0, w, h, paras) => `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="${name}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${x0}" y="${y0}"/><a:ext cx="${w}" cy="${h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t"><a:normAutofit/></a:bodyPr><a:lstStyle/>${paras}</p:txBody></p:sp>`;
+  const para = (t, sz, color, bold) => `<a:p>${run(t, sz, color, bold)}</a:p>`;
+  const ctx = (x.context || []).filter(([k]) => /^(Period|Source)$/i.test(k)).map(([k, v]) => `${k}: ${v}`).join('   ·   ');
+  const slides = [];
+  const PER = 11, MAXPAGES = 4;
+  (x.tables || []).forEach(t => {
+    const n = t.columns.length; const rows = t.rows; const pages = Math.max(1, Math.min(MAXPAGES, Math.ceil(rows.length / PER)));
+    for (let pg = 0; pg < pages; pg++){
+      const chunk = rows.slice(pg * PER, pg * PER + PER); const more = pg === pages - 1 && rows.length > pages * PER ? rows.length - pages * PER : 0;
+      const sz = n > 7 ? 900 : n > 5 ? 1000 : 1200; const first = n > 4 ? 2.6 : 3.4; const tw = W - 2 * MX; const restW = Math.floor((tw - emu(first)) / Math.max(1, n - 1));
+      const widths = t.columns.map((c, i) => i === 0 ? emu(first) : restW); widths[0] = tw - widths.slice(1).reduce((a, b) => a + b, 0);
+      const rowH = 340000;
+      const numCol = t.columns.map((c, i) => i > 0 && rows.length && rows.every(r => { const v = r[i]; const tx = cardCellText(v); return tx === '' || (v && typeof v === 'object' && 'kind' in v) || /^[\d$+\-.,%x\s]+$/.test(tx); }) && rows.some(r => cardCellText(r[i]) !== ''));
+      const cell = (c, head, ci) => { const txt = cardCellText(c); const right = numCol[ci]; return `<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:pPr algn="${right ? 'r' : 'l'}"/>${run(txt, sz, head ? '6E6E73' : '1D1D1F', !!head)}</a:p></a:txBody><a:tcPr marL="68580" marR="68580" marT="45720" marB="45720" anchor="ctr"><a:lnL w="0"><a:noFill/></a:lnL><a:lnR w="0"><a:noFill/></a:lnR><a:lnT w="0"><a:noFill/></a:lnT><a:lnB w="${head ? '12700' : '6350'}"><a:solidFill><a:srgbClr val="${head ? 'D2D2D7' : 'E8E8ED'}"/></a:solidFill></a:lnB>${head ? '<a:solidFill><a:srgbClr val="F5F5F7"/></a:solidFill>' : '<a:noFill/>'}</a:tcPr></a:tc>`; };
+      const trs = `<a:tr h="${rowH}">${t.columns.map((c, i) => cell(c.h, true, i)).join('')}</a:tr>` + chunk.map(r => `<a:tr h="${rowH}">${t.columns.map((c, i) => cell(r[i], false, i)).join('')}</a:tr>`).join('');
+      const tbl = `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="4" name="Table"/><p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="${MX}" y="1500000"/><a:ext cx="${tw}" cy="${rowH * (chunk.length + 1)}"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblPr firstRow="1"/><a:tblGrid>${widths.map(w => `<a:gridCol w="${w}"/>`).join('')}</a:tblGrid>${trs}</a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
+      const foot = [more ? `${more} more row${more === 1 ? '' : 's'} are in the Excel download.` : '', ...(pg === pages - 1 && slides.length >= 0 ? (x.notes || []).slice(0, 2) : [])].filter(Boolean).join('  ');
+      slides.push(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:sld ${NS}><p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:effectLst/></p:bgPr></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>${box(2, 'Title', MX, 380000, tw, 520000, para(x.title + (pages > 1 && pg > 0 ? ' (continued)' : ''), 2800, '1E2761', true))}${box(3, 'Subtitle', MX, 960000, tw, 420000, para(t.name + (ctx ? '   ·   ' + ctx : ''), 1100, '6E6E73', false))}${tbl}${foot ? box(5, 'Note', MX, H - 560000, tw, 360000, para(foot, 900, '6E6E73', false)) : ''}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`);
+    }
+  });
+  if (!slides.length) slides.push(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:sld ${NS}><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>${box(2, 'Title', MX, 380000, W - 2 * MX, 520000, para(x.title, 2800, '1E2761', true))}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`);
+  const X = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  const RT = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  z.file('[Content_Types].xml', `${X}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/><Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/><Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/><Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>${slides.map((_, i) => `<Override PartName="/ppt/slides/slide${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`).join('')}</Types>`);
+  z.file('_rels/.rels', `${X}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RT}/officeDocument" Target="ppt/presentation.xml"/></Relationships>`);
+  z.file('ppt/presentation.xml', `${X}<p:presentation ${NS}><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst><p:sldIdLst>${slides.map((_, i) => `<p:sldId id="${256 + i}" r:id="rId${i + 2}"/>`).join('')}</p:sldIdLst><p:sldSz cx="${W}" cy="${H}"/><p:notesSz cx="6858000" cy="9144000"/></p:presentation>`);
+  z.file('ppt/_rels/presentation.xml.rels', `${X}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RT}/slideMaster" Target="slideMasters/slideMaster1.xml"/>${slides.map((_, i) => `<Relationship Id="rId${i + 2}" Type="${RT}/slide" Target="slides/slide${i + 1}.xml"/>`).join('')}<Relationship Id="rId${slides.length + 2}" Type="${RT}/theme" Target="theme/theme1.xml"/></Relationships>`);
+  z.file('ppt/slideMasters/slideMaster1.xml', `${X}<p:sldMaster ${NS}><p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:effectLst/></p:bgPr></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld><p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/><p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst><p:txStyles><p:titleStyle><a:lvl1pPr><a:defRPr sz="2800"/></a:lvl1pPr></p:titleStyle><p:bodyStyle><a:lvl1pPr><a:defRPr sz="1400"/></a:lvl1pPr></p:bodyStyle><p:otherStyle><a:lvl1pPr><a:defRPr sz="1400"/></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`);
+  z.file('ppt/slideMasters/_rels/slideMaster1.xml.rels', `${X}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RT}/slideLayout" Target="../slideLayouts/slideLayout1.xml"/><Relationship Id="rId2" Type="${RT}/theme" Target="../theme/theme1.xml"/></Relationships>`);
+  z.file('ppt/slideLayouts/slideLayout1.xml', `${X}<p:sldLayout ${NS} type="blank" preserve="1"><p:cSld name="Blank"><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>`);
+  z.file('ppt/slideLayouts/_rels/slideLayout1.xml.rels', `${X}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RT}/slideMaster" Target="../slideMasters/slideMaster1.xml"/></Relationships>`);
+  const clr = (n, v) => `<a:${n}><a:srgbClr val="${v}"/></a:${n}>`; const ln = '<a:ln w="6350"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln>'; const fl = '<a:solidFill><a:schemeClr val="phClr"/></a:solidFill>';
+  z.file('ppt/theme/theme1.xml', `${X}<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Verilume"><a:themeElements><a:clrScheme name="Verilume"><a:dk1><a:srgbClr val="1D1D1F"/></a:dk1><a:lt1><a:srgbClr val="FFFFFF"/></a:lt1>${clr('dk2', '1E2761')}${clr('lt2', 'F5F5F7')}${clr('accent1', '1E2761')}${clr('accent2', 'D08A3E')}${clr('accent3', 'A9B0C8')}${clr('accent4', '1E8E4A')}${clr('accent5', 'C0273C')}${clr('accent6', '6E6E73')}${clr('hlink', '1E2761')}${clr('folHlink', '6E6E73')}</a:clrScheme><a:fontScheme name="Verilume"><a:majorFont><a:latin typeface="Arial"/><a:ea typeface=""/><a:cs typeface=""/></a:majorFont><a:minorFont><a:latin typeface="Arial"/><a:ea typeface=""/><a:cs typeface=""/></a:minorFont></a:fontScheme><a:fmtScheme name="Verilume"><a:fillStyleLst>${fl}${fl}${fl}</a:fillStyleLst><a:lnStyleLst>${ln}${ln}${ln}</a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst>${fl}${fl}${fl}</a:bgFillStyleLst></a:fmtScheme></a:themeElements></a:theme>`);
+  slides.forEach((sx, i) => { z.file(`ppt/slides/slide${i + 1}.xml`, sx); z.file(`ppt/slides/_rels/slide${i + 1}.xml.rels`, `${X}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RT}/slideLayout" Target="../slideLayouts/slideLayout1.xml"/></Relationships>`); });
+  return z.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+}
+function cardToJson(x){ return { title: x.title, context: x.context, notes: x.notes, tables: (x.tables || []).map(t => ({ name: t.name, columns: t.columns.map(c => c.h), numeric: t.columns.map((c, i) => i > 0 && t.rows.some(r => cardCellText(r[i]) !== '') && t.rows.every(r => { const v = r[i]; const tx = cardCellText(v); return tx === '' || (v && typeof v === 'object' && 'kind' in v) || /^[\d$+\-.,%x\s]+$/.test(tx); })), rows: t.rows.map(r => r.map(cardCellText)) })) }; }
 // A small dependency-free PDF writer: Helvetica text on Letter pages, tables wrapped in columns.
 function cardToPdf(x){
   const W = 792, H = 612, M = 40; // landscape Letter
@@ -28086,14 +28131,16 @@ async function handleRequest(req, res) {
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       const qs = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries());
-      const format = ['xlsx', 'csv', 'pdf'].includes(qs.format) ? qs.format : null;
-      if (!format) return sendJson(res, 400, { error: 'format must be xlsx, csv or pdf' });
+      const format = ['xlsx', 'csv', 'pdf', 'pptx', 'json'].includes(qs.format) ? qs.format : null;
+      if (!format) return sendJson(res, 400, { error: 'format must be xlsx, csv, pdf or pptx' });
       try {
         const range = dateRangeForRequest(req, accountId, qs);
         const x = String(qs.card || '').startsWith('search-') ? gscCardExport(req, accountId, qs.card) : buildStrategyCardExport(accountId, qs.card, range);
         if (!x) return sendJson(res, 404, { error: 'nothing to export for that card yet' });
         const base = `${x.fileSlug}-${range.from}-to-${range.through}`;
         if (format === 'csv'){ res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${base}.csv"`, 'Access-Control-Allow-Origin': '*' }); return res.end(cardToCsv(x)); }
+        if (format === 'json') return sendJson(res, 200, cardToJson(x));
+        if (format === 'pptx'){ const pb = await cardToPptx(x); res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'Content-Disposition': `attachment; filename="${base}.pptx"`, 'Access-Control-Allow-Origin': '*' }); return res.end(pb); }
         if (format === 'pdf'){ res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${base}.pdf"`, 'Access-Control-Allow-Origin': '*' }); return res.end(cardToPdf(x)); }
         const buf = await cardToXlsx(x);
         res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="${base}.xlsx"`, 'Access-Control-Allow-Origin': '*' });
