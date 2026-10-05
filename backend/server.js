@@ -9513,7 +9513,7 @@ function prSearchStatus(accountId, row){
   if (!row || row.status !== 'distributed') return null;
   const published = String(row.distributedDate || '').slice(0, 10);
   const run = db.prepare("SELECT acceptedCount, totalCount, createdAt FROM search_optimizations WHERE accountId = ? AND surface = 'press' AND targetRef = ? ORDER BY createdAt DESC LIMIT 1").get(accountId, row.id);
-  const out = { publishedDate: published, url: row.publishedUrl || null, suggestions: run ? { accepted: run.acceptedCount || 0, total: run.totalCount || 0 } : null, aiAnswers: 'planned' };
+  const out = { publishedDate: published, url: row.publishedUrl || null, suggestions: run ? { accepted: run.acceptedCount || 0, total: run.totalCount || 0 } : null, aiAnswers: aicReleaseSummary(accountId, row.id) };
   if (!row.publishedUrl) return Object.assign(out, { needsUrl: true });
   const key = gscUrlKey(row.publishedUrl);
   try { const a = db.prepare('SELECT auditJson, ranAt FROM website_audits WHERE accountId = ? ORDER BY ranAt DESC LIMIT 1').get(accountId); if (a){ const pages = JSON.parse(a.auditJson).pages || []; out.siteCheck = { checkedAt: String(a.ranAt || '').slice(0, 10), found: pages.some(p => p && p.url && gscUrlKey(p.url) === key) }; } } catch (e){}
@@ -21950,6 +21950,147 @@ function gscQuestionList(accountId){
     return { window: qw ? gscWindowTag(qw) : null, id: st ? st.id : null, question: r.dimKey, queryKey: key, impressions: r.impressions || 0, avgPosition: r.avgPosition, scope, groups: matched, brand: r.isBrand === 1, offered: !!scope, status: st ? st.status : 'open', answer: st ? st.answer : null, checks: st && st.checksJson ? JSON.parse(st.checksJson) : null, siteHint: hint, approvedAt: st ? st.approvedAt : null };
   }).sort((a, b) => (b.offered - a.offered) || (a.window ? 0 : 1) - (b.window ? 0 : 1) || ((a.window && a.window.days) || 0) - ((b.window && b.window.days) || 0) || (b.impressions - a.impressions));
 }
+
+// ---- AI answer citations (2026-10-05) ----
+// Asks the official APIs of AI assistants the same questions people search, with web search on, and records which web
+// addresses each answer cited. No scraping. A check is one answer on one date, a sample and not a ranking.
+// Perplexity returns its citations natively. OpenAI uses the Responses API web search tool (its shape is documented but
+// has not been run against a live key from here). A provider is used only when its key is set.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS ai_citation_checks (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    queryKey TEXT NOT NULL,
+    question TEXT NOT NULL,
+    providerKey TEXT NOT NULL,
+    ranAt TEXT NOT NULL,
+    ok INTEGER NOT NULL DEFAULT 0,
+    errorText TEXT,
+    answerText TEXT,
+    citedJson TEXT,
+    brandMentioned INTEGER NOT NULL DEFAULT 0,
+    siteCited INTEGER NOT NULL DEFAULT 0,
+    siteUrlsJson TEXT,
+    releaseIdsJson TEXT,
+    triggeredBy TEXT
+  );
+`);
+try { db.exec('CREATE INDEX IF NOT EXISTS idx_aic_account ON ai_citation_checks (accountId, queryKey, providerKey, ranAt)'); } catch (e){ /* index is an optimisation only */ }
+const AIC_PROVIDERS = [
+  { key: 'perplexity', label: 'Perplexity', envVar: 'PERPLEXITY_API_KEY' },
+  { key: 'openai', label: 'ChatGPT (OpenAI)', envVar: 'OPENAI_API_KEY' }
+];
+const AIC_MAX_QUESTIONS = 20;
+const AIC_RECHECK_DAYS = 7;
+const AIC_COMMUNITY_HOSTS = /(^|\.)(reddit\.com|quora\.com|facebook\.com|tripadvisor\.com|cruisecritic\.com|flyertalk\.com|trustpilot\.com|yelp\.com|youtube\.com|x\.com|twitter\.com|linkedin\.com|tiktok\.com)$/;
+const aicRunning = {};
+function aicProviders(){ return AIC_PROVIDERS.filter(p => !!process.env[p.envVar]); }
+function aicProviderLabel(k){ const p = AIC_PROVIDERS.find(x => x.key === k); return p ? p.label : k; }
+function aicHostMatches(host, siteHost){ return !!host && !!siteHost && (host === siteHost || host.endsWith('.' + siteHost)); }
+function aicSiteHost(account){ try { const b = String(account.websiteUrl || '').trim(); if (!b) return null; return new URL(/^https?:/i.test(b) ? b : 'https://' + b).hostname.replace(/^www\./, ''); } catch (e){ return null; } }
+// One question to one provider: returns { text, cited: [{url, title}] }. Throws on any failure.
+async function aicAsk(providerKey, question){
+  if (providerKey === 'perplexity'){
+    const resp = await fetchWithTimeout('https://api.perplexity.ai/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}` }, body: JSON.stringify({ model: process.env.PERPLEXITY_MODEL || 'sonar-pro', messages: [{ role: 'user', content: question }] }) }, 70000);
+    if (!resp.ok){ let b = ''; try { b = (await resp.text()).slice(0, 200); } catch (e2){} throw new Error('HTTP ' + resp.status + (b ? ': ' + b : '')); }
+    const data = await resp.json();
+    const text = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+    const cited = []; const seen = new Set();
+    const add = (u, t) => { const url = repSafeUrl(u); if (!url) return; const k = repUrlKey(url); if (seen.has(k)) return; seen.add(k); cited.push({ url, title: t ? String(t).slice(0, 160) : null }); };
+    (Array.isArray(data.search_results) ? data.search_results : []).forEach(r => add(r && r.url, r && r.title));
+    (Array.isArray(data.citations) ? data.citations : []).forEach(c => add(typeof c === 'string' ? c : (c && c.url), null));
+    return { text, cited };
+  }
+  if (providerKey === 'openai'){
+    const resp = await fetchWithTimeout('https://api.openai.com/v1/responses', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` }, body: JSON.stringify({ model: process.env.OPENAI_SEARCH_MODEL || 'gpt-4.1', tools: [{ type: 'web_search_preview' }], input: question }) }, 90000);
+    if (!resp.ok){ let b = ''; try { b = (await resp.text()).slice(0, 200); } catch (e2){} throw new Error('HTTP ' + resp.status + (b ? ': ' + b : '')); }
+    const data = await resp.json();
+    let text = ''; const cited = []; const seen = new Set();
+    (Array.isArray(data.output) ? data.output : []).forEach(o => { if (o && o.type === 'message') (o.content || []).forEach(c => { if (c && typeof c.text === 'string') text += c.text; (c && c.annotations || []).forEach(a => { if (a && a.type === 'url_citation'){ const url = repSafeUrl(a.url); if (url){ const k = repUrlKey(url); if (!seen.has(k)){ seen.add(k); cited.push({ url, title: a.title ? String(a.title).slice(0, 160) : null }); } } } }); }); });
+    if (!text && typeof data.output_text === 'string') text = data.output_text;
+    return { text, cited };
+  }
+  throw new Error('unknown provider');
+}
+function aicBrandTerms(accountId, account){
+  const t = new Set(); repBrandTerms(account).forEach(x => { x = String(x || '').toLowerCase().trim(); if (x.length >= 4) t.add(x); });
+  try { gscConfirmedTerms(accountId).forEach(x => { x = String(x || '').toLowerCase().trim(); if (x.length >= 4) t.add(x); }); } catch (e){}
+  return [...t];
+}
+function aicAnalyze(accountId, account, text, cited){
+  const siteHost = aicSiteHost(account);
+  const lower = String(text || '').toLowerCase();
+  const brandMentioned = aicBrandTerms(accountId, account).some(w => new RegExp('(^|[^a-z0-9])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^a-z0-9]|$)').test(lower));
+  const siteUrls = cited.filter(c => aicHostMatches(repHost(c.url), siteHost)).map(c => c.url);
+  const rel = db.prepare("SELECT id, publishedUrl FROM press_releases WHERE accountId = ? AND status = 'distributed' AND publishedUrl IS NOT NULL AND publishedUrl <> ''").all(accountId);
+  const keys = new Set(cited.map(c => gscUrlKey(c.url)));
+  const releaseIds = rel.filter(r => keys.has(gscUrlKey(r.publishedUrl))).map(r => r.id);
+  return { brandMentioned, siteCited: siteUrls.length > 0, siteUrls, releaseIds };
+}
+function aicLatest(accountId){
+  const rows = db.prepare('SELECT * FROM ai_citation_checks WHERE accountId = ? ORDER BY ranAt DESC').all(accountId);
+  const seen = {}; const out = [];
+  rows.forEach(r => { const k = r.queryKey + '|' + r.providerKey; if (seen[k]) return; seen[k] = 1; out.push(r); });
+  return out;
+}
+function aicSummary(accountId, account){
+  const provs = aicProviders(); const latest = aicLatest(accountId); const ok = latest.filter(r => r.ok === 1);
+  const siteHost = aicSiteHost(account);
+  const byQuery = {};
+  latest.forEach(r => { (byQuery[r.queryKey] = byQuery[r.queryKey] || []).push({ provider: r.providerKey, label: aicProviderLabel(r.providerKey), ranAt: r.ranAt, ok: r.ok === 1, error: r.ok === 1 ? null : r.errorText, siteCited: r.siteCited === 1, brandMentioned: r.brandMentioned === 1, citedCount: r.citedJson ? (JSON.parse(r.citedJson) || []).length : 0 }); });
+  const state = {};
+  Object.keys(byQuery).forEach(k => { const c = byQuery[k]; const good = c.filter(x => x.ok); state[k] = !good.length ? 'error' : good.some(x => x.siteCited) ? 'cited' : good.some(x => x.brandMentioned) ? 'mentioned' : 'absent'; });
+  const hosts = {};
+  ok.forEach(r => { let cited = []; try { cited = JSON.parse(r.citedJson || '[]'); } catch (e){} const seenH = new Set(); cited.forEach(c => { const h = repHost(c.url); if (!h || seenH.has(h)) return; seenH.add(h); hosts[h] = (hosts[h] || 0) + 1; }); });
+  const topHosts = Object.keys(hosts).map(h => ({ host: h, answers: hosts[h], site: aicHostMatches(h, siteHost), community: AIC_COMMUNITY_HOSTS.test(h) })).sort((a, b) => b.answers - a.answers).slice(0, 10);
+  const perProv = provs.map(p => { const mine = ok.filter(r => r.providerKey === p.key); return { key: p.key, label: p.label, checked: mine.length, cited: mine.filter(r => r.siteCited === 1).length, mentioned: mine.filter(r => r.brandMentioned === 1 && r.siteCited !== 1).length }; });
+  const states = Object.values(state);
+  const last = latest.length ? latest.map(r => r.ranAt).sort().slice(-1)[0] : null;
+  const run = aicRunning[accountId] || null;
+  return { providers: provs.map(p => ({ key: p.key, label: p.label })), allProviders: AIC_PROVIDERS.map(p => ({ key: p.key, label: p.label, configured: !!process.env[p.envVar] })), siteHost, byQuery, state,
+    totals: { questions: states.length, cited: states.filter(s => s === 'cited').length, mentioned: states.filter(s => s === 'mentioned').length, absent: states.filter(s => s === 'absent').length, error: states.filter(s => s === 'error').length },
+    perProvider: perProv, topHosts, lastRun: last, running: run ? { done: run.done, total: run.total } : null, maxQuestions: AIC_MAX_QUESTIONS, recheckDays: AIC_RECHECK_DAYS };
+}
+function aicReleaseSummary(accountId, releaseId){
+  const provs = aicProviders(); if (!provs.length) return { configured: false };
+  const ok = aicLatest(accountId).filter(r => r.ok === 1);
+  const hit = ok.filter(r => { try { return (JSON.parse(r.releaseIdsJson || '[]')).includes(releaseId); } catch (e){ return false; } });
+  return { configured: true, checks: ok.length, cited: hit.length, questions: [...new Set(hit.map(r => r.question))].slice(0, 3), lastRun: ok.length ? ok.map(r => r.ranAt).sort().slice(-1)[0] : null };
+}
+function aicStartRun(accountId, account, actor, onlyKey){
+  if (aicRunning[accountId]) return { running: true };
+  const provs = aicProviders(); if (!provs.length) return { error: 'No AI assistant is set up yet. Add a PERPLEXITY_API_KEY or OPENAI_API_KEY to the server settings.' };
+  let qs = gscQuestionList(accountId).filter(q => q.status !== 'skipped');
+  if (onlyKey) qs = qs.filter(q => q.queryKey === onlyKey); else qs = qs.slice(0, AIC_MAX_QUESTIONS);
+  if (!qs.length) return { error: onlyKey ? 'That question is not on the list.' : 'There are no questions to check yet. Upload a Search Console queries file first.' };
+  const cutoff = new Date(Date.now() - AIC_RECHECK_DAYS * 86400000).toISOString();
+  const latest = {}; aicLatest(accountId).forEach(r => { latest[r.queryKey + '|' + r.providerKey] = r; });
+  const jobs = [];
+  qs.forEach(q => provs.forEach(p => { const l = latest[q.queryKey + '|' + p.key]; if (!onlyKey && l && l.ok === 1 && l.ranAt > cutoff) return; jobs.push({ q, p }); }));
+  if (!jobs.length) return { started: false, queued: 0, note: `Every question was already checked in the last ${AIC_RECHECK_DAYS} days.` };
+  const st = { done: 0, total: jobs.length }; aicRunning[accountId] = st;
+  (async () => {
+    const ins = db.prepare('INSERT INTO ai_citation_checks (id, accountId, queryKey, question, providerKey, ranAt, ok, errorText, answerText, citedJson, brandMentioned, siteCited, siteUrlsJson, releaseIdsJson, triggeredBy) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+    let i = 0;
+    const worker = async () => {
+      while (i < jobs.length){
+        const j = jobs[i++]; const ran = new Date().toISOString();
+        try {
+          const r = await aicAsk(j.p.key, gscQTitleServer(j.q.question));
+          const a = aicAnalyze(accountId, account, r.text, r.cited);
+          ins.run(generateId('AIC'), accountId, j.q.queryKey, j.q.question, j.p.key, ran, 1, null, String(r.text || '').slice(0, 6000), JSON.stringify(r.cited), a.brandMentioned ? 1 : 0, a.siteCited ? 1 : 0, JSON.stringify(a.siteUrls), JSON.stringify(a.releaseIds), actor || 'user');
+        } catch (e){
+          ins.run(generateId('AIC'), accountId, j.q.queryKey, j.q.question, j.p.key, ran, 0, String(e && e.message ? e.message : e).slice(0, 240), null, null, 0, 0, null, null, actor || 'user');
+        }
+        st.done++;
+      }
+    };
+    try { await Promise.all([worker(), worker()]); } catch (e){ console.warn('aic run failed', e && e.message); }
+    delete aicRunning[accountId];
+  })();
+  return { started: true, queued: jobs.length };
+}
+function gscQTitleServer(q){ const t = String(q || '').trim(); return t.charAt(0).toUpperCase() + t.slice(1) + (t.endsWith('?') ? '' : '?'); }
 
 // ---- brand profile checks ----
 const GSC_REPUTATION_WORDS = ['reviews', 'review', 'complaints', 'complaint', 'cancel', 'cancellation', 'refund', 'problems', 'problem', 'scam', 'login', 'lawsuit', 'legit'];
@@ -36230,6 +36371,19 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
             return sendJson(res, 200, { ok: true });
           }
           return sendJson(res, 400, { error: 'unknown action' });
+        }
+      }
+      if (sub === 'ai-citations'){
+        if (req.method === 'GET' && parts.length === 5) return sendJson(res, 200, aicSummary(accountId, account));
+        if (req.method === 'POST' && parts.length === 6 && parts[5] === 'run'){
+          const body = await readBody(req); const r = aicStartRun(accountId, account, actor, body && body.query ? gscNorm(body.query) : null);
+          if (r.error) return sendJson(res, 400, { error: r.error });
+          return sendJson(res, 200, r);
+        }
+        if (req.method === 'POST' && parts.length === 6 && parts[5] === 'detail'){
+          const body = await readBody(req); const key = gscNorm(body.query || '');
+          const rows = aicLatest(accountId).filter(r => r.queryKey === key).map(r => { let cited = []; try { cited = JSON.parse(r.citedJson || '[]'); } catch (e){} return { provider: r.providerKey, label: aicProviderLabel(r.providerKey), ranAt: r.ranAt, ok: r.ok === 1, error: r.errorText, answer: r.answerText, cited, siteCited: r.siteCited === 1, brandMentioned: r.brandMentioned === 1 }; });
+          return sendJson(res, 200, { checks: rows });
         }
       }
       if (sub === 'priorities'){
