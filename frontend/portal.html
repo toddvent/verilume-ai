@@ -24820,8 +24820,7 @@ function askDockContestPrHtml(){
     const r = askDockPr.result;
     if (r && r.candidates && r.candidates.length){
       h += `<p class="hint" style="margin:4px 0 8px;">Read each draft and pick the one to keep. Drafts are numbered, not named, and are not scored: you decide.</p>`;
-      if (!askDockPr.order || askDockPr.orderFor !== r.interviewId){ const ks = r.candidates.filter(c => c.copy).map(c => c.key); for (let i = ks.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); [ks[i], ks[j]] = [ks[j], ks[i]]; } askDockPr.order = ks; askDockPr.orderFor = r.interviewId; }
-      h += askDockPr.order.map(k => r.candidates.find(c => c.key === k)).filter(Boolean).map((c, n) => `<div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;"><div style="font-weight:700;margin-bottom:6px;">Draft ${n + 1}</div><div style="white-space:pre-wrap;font-size:0.8125rem;max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:8px;">${escapeHtml(c.copy)}</div><div style="margin-top:8px;"><button type="button" class="btn-primary" ${askDockPr.picked ? 'disabled' : ''} onclick="askDockContestPrPick('${escapeHtml(c.key)}')">Use this draft →</button></div></div>`).join('');
+            h += r.candidates.filter(c => c.copy).map(c => `<div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;"><div style="font-weight:700;margin-bottom:6px;">${escapeHtml(c.label)}</div><div style="white-space:pre-wrap;font-size:0.8125rem;max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:8px;">${escapeHtml(c.copy)}</div><div style="margin-top:8px;"><button type="button" class="btn-primary" ${askDockPr.picked ? 'disabled' : ''} onclick="askDockContestPrPick('${escapeHtml(c.key)}')">Use this draft →</button></div></div>`).join('');
       if (askDockPr.picked) h += `<p class="hint">Saved as the working copy. <button type="button" class="btn-ghost" style="padding:2px 8px;" onclick="askDockContestPrOpen('${askDockPr.sel.type}','${askDockPr.sel.id}')">Open it to edit and approve</button></p>`;
     }
     h += `<div style="margin-top:6px;"><button type="button" class="btn-ghost" onclick="askDockPr.sel=null;askDockPr.result=null;askDockPr.note='';askDockContestRender()">Choose another</button></div>`;
@@ -59575,6 +59574,16 @@ function gscChartCard(key, headline, svg, legend, foot){
 }
 function gscNice(max){ if (max <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(max))); const n = max / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p; }
 function gscFmtShort(n){ return n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : n >= 1e3 ? (n / 1e3).toFixed(n >= 1e4 ? 0 : 1).replace(/\.0$/, '') + 'K' : String(Math.round(n)); }
+// Dated markers for press releases you distributed and gaps you marked done, so a change in clicks can be read against what was published. Drawn only inside months the chart shows.
+function gscMarksSvg(d, months, xFor, top, bottom){
+  const marks = (d.contentUpdates || []).filter(u => /^\d{4}-\d{2}-\d{2}$/.test(u.date || ''));
+  return marks.map(u => {
+    const i = months.findIndex(m => m.month === u.date.slice(0, 7)); if (i < 0) return '';
+    const dim = new Date(Number(u.date.slice(0, 4)), Number(u.date.slice(5, 7)), 0).getDate();
+    const x = xFor(i, Number(u.date.slice(8, 10)), dim);
+    return `<g><title>${escapeHtml(gscDay(u.date) + ': ' + u.title + ' · ' + (u.detail || ''))}</title><line x1="${x}" x2="${x}" y1="${top}" y2="${bottom}" stroke="${GSC_C.accent}" stroke-width="1.5" stroke-dasharray="3 3"/><path d="M${x} ${top - 1} l5 5 l-5 5 l-5 -5 z" fill="${GSC_C.accent}" stroke="#fff" stroke-width="1.5"/></g>`;
+  }).join('');
+}
 function gscChartsHtml(d){
   const ch = d.charts; if (!ch) return '';
   const src = `Source: Google Search Console · ${d.range.label}`;
@@ -59590,10 +59599,13 @@ function gscChartsHtml(d){
     if (anyPrior && m.priorClicks != null) s1 += `<rect x="${x1}" y="${gy(m.priorClicks)}" width="${bw}" height="${T + ih - gy(m.priorClicks)}" rx="3" fill="${GSC_C.prior}"><title>${gscMonthLong(m.month)} last year: ${gscInt(m.priorClicks)}</title></rect>`;
     s1 += `<rect x="${anyPrior ? x2 : x1}" y="${gy(m.clicks)}" width="${bw}" height="${Math.max(1, T + ih - gy(m.clicks))}" rx="3" fill="${GSC_C.now}"><title>${gscMonthLong(m.month)}: ${gscInt(m.clicks)}${m.partial ? ' (partial month)' : ''}</title></rect><text x="${cx}" y="${H - 8}" text-anchor="middle" font-size="11" fill="${GSC_C.muted}">${gscMonthLbl(m.month)}${m.partial ? '*' : ''}</text>`;
   });
+  s1 += gscMarksSvg(d, mo, (i, day, dim) => L + gp * i + gp * ((day - 0.5) / dim), T, T + ih);
   s1 += '</svg>';
   const cp = d.cards.clicks.changePct;
   const h1 = cp != null ? `Organic clicks are ${Math.abs(cp).toFixed(1)}% ${cp >= 0 ? 'above' : 'below'} the same dates last year` : 'Organic clicks by month';
-  const leg1 = anyPrior ? `<div class="gsc-legend"><span><i style="background:${GSC_C.now}"></i>This period</span><span><i style="background:${GSC_C.prior}"></i>Same dates last year</span></div>` : `<div class="gsc-legend"><span><i style="background:${GSC_C.now}"></i>This period</span></div>`;
+  const hasMarks = (d.contentUpdates || []).some(u => /^\d{4}-\d{2}-\d{2}$/.test(u.date || '') && mo.some(m => m.month === u.date.slice(0, 7)));
+  const markLeg = hasMarks ? `<span><i style="background:${GSC_C.accent};transform:rotate(45deg)"></i>Release or gap done</span>` : '';
+  const leg1 = anyPrior ? `<div class="gsc-legend"><span><i style="background:${GSC_C.now}"></i>This period</span><span><i style="background:${GSC_C.prior}"></i>Same dates last year</span>${markLeg}</div>` : `<div class="gsc-legend"><span><i style="background:${GSC_C.now}"></i>This period</span>${markLeg}</div>`;
   const partial = mo.some(m => m.partial) ? ' · * partial month' : '';
   // 2. monthly click rate (line)
   const cr = (ch.monthlyCtr || []).filter(m => m.days >= 15); let s2 = '', h2 = 'Click rate by month';
@@ -59603,6 +59615,7 @@ function gscChartsHtml(d){
     [0, 0.5, 1].forEach(f => { const y = yy(mx * f); s2 += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="${GSC_C.grid}"/><text x="${L - 6}" y="${y + 4}" text-anchor="end" font-size="11" fill="${GSC_C.muted}">${(mx * f * 100).toFixed(1)}%</text>`; });
     s2 += `<polyline fill="none" stroke="${GSC_C.now}" stroke-width="2" stroke-linejoin="round" points="${cr.map((m, i) => `${L + lp * i},${yy(m.ctr)}`).join(' ')}"/>`;
     cr.forEach((m, i) => { const x = L + lp * i; const last = i === cr.length - 1; s2 += `<circle cx="${x}" cy="${yy(m.ctr)}" r="${last ? 4.5 : 3}" fill="${GSC_C.now}" stroke="#fff" stroke-width="2"><title>${gscMonthLong(m.month)}: ${gscPct(m.ctr, 2)}</title></circle>`; if (i % Math.ceil(cr.length / 8) === 0 || last) s2 += `<text x="${x}" y="${H - 8}" text-anchor="middle" font-size="11" fill="${GSC_C.muted}">${gscMonthLbl(m.month)}</text>`; });
+    s2 += gscMarksSvg(d, cr, (i) => L + lp * i, T, T + ih);
     s2 += '</svg>'; const a = cr[0], z = cr[cr.length - 1];
     h2 = `Click rate is ${gscPct(z.ctr, 2)} in ${gscMonthLong(z.month)}, from ${gscPct(a.ctr, 2)} in ${gscMonthLong(a.month)}`;
   } else s2 = '<p class="strat-empty">Needs at least two full months of daily data.</p>';
@@ -60043,7 +60056,7 @@ function renderRepMentions(){
     return `
     <div class="seo-row">
       <div class="seo-row-main">
-        <div class="seo-row-title"><span class="rep-channel-tag">${escapeHtml(m.channel)}</span> · ${titleHtml}${src}${when}</div>
+        <div class="seo-row-title">${live ? '' : '<span class="seo-badge rep-badge info" style="margin-right:6px;">Sample</span>'}<span class="rep-channel-tag">${escapeHtml(m.channel)}</span> · ${titleHtml}${src}${when}</div>
         ${m.note ? `<div class="seo-row-detail">${escapeHtml(m.note)}</div>` : ''}
       </div>
       <span class="seo-badge rep-badge ${m.urgent ? 'urgent' : repSentimentBadgeClass(m.sentiment)}">${m.urgent ? 'Needs Response' : (m.sentiment.charAt(0).toUpperCase() + m.sentiment.slice(1))}</span>
@@ -60735,9 +60748,9 @@ function renderReputationStep(){
   const summaryEl = document.getElementById('repOverviewSummary');
   if (summaryEl){
     summaryEl.innerHTML = `
-      <div class="seo-stat-tile"><div class="seo-stat-num${urgent > 0 ? ' crit' : ''}">${urgent}</div><div class="seo-stat-label">Need Response</div></div>
-      <div class="seo-stat-tile"><div class="seo-stat-num">${REPUTATION_DATA.sentiment.label}</div><div class="seo-stat-label">Overall Sentiment (${REPUTATION_DATA.sentiment.score}/100)</div></div>
-      <div class="seo-stat-tile"><div class="seo-stat-num pos">${positive}</div><div class="seo-stat-label">Positive Mentions</div></div>
+      <div class="seo-stat-tile"><div class="seo-stat-num${urgent > 0 ? ' crit' : ''}">${urgent}</div><div class="seo-stat-label">Need Response${REPUTATION_DATA.live ? '' : ' (sample)'}</div></div>
+      <div class="seo-stat-tile"><div class="seo-stat-num">${REPUTATION_DATA.sentiment.label}</div><div class="seo-stat-label">Overall Sentiment (${REPUTATION_DATA.sentiment.score}/100)${REPUTATION_DATA.live ? '' : ' · sample'}</div></div>
+      <div class="seo-stat-tile"><div class="seo-stat-num pos">${positive}</div><div class="seo-stat-label">Positive Mentions${REPUTATION_DATA.live ? '' : ' (sample)'}</div></div>
       <div class="seo-stat-tile"><div class="seo-stat-num">${pendingPitches}</div><div class="seo-stat-label">Pending Pitches</div></div>`;
   }
   renderRepMentions();
