@@ -24987,6 +24987,15 @@ async function handleRequest(req, res) {
         console.warn('login-user: sendLoginMfaCode failed', e.message);
         return sendJson(res, 502, { error: 'Could not send a verification code right now — try again shortly.' });
       }
+      // Wave 1.2 — never hand a sign-in code back in the reply on the live
+      // host. 'interim' means the real sender (Postmark/Twilio) did not
+      // deliver; showing the code would let a password alone bypass the
+      // second factor.
+      if (sendResult.provider === 'interim' && process.env.DATABASE_URL){
+        return sendJson(res, 502, { error: channel === 'sms'
+          ? 'Could not send a text code right now. Try again shortly.'
+          : 'Could not send an email code right now. Try again shortly.' });
+      }
 
       let verificationId;
       try {
@@ -25004,7 +25013,8 @@ async function handleRequest(req, res) {
         memberId: member.id,
         channel,
         target: channel === 'sms' ? ('•••• ' + target.slice(-4)) : target,
-        provider: sendResult.provider
+        provider: sendResult.provider,
+        canSms: !!member.phone
       };
       if (sendResult.provider === 'interim') response.interimCode = sendResult.code;
       return sendJson(res, 200, response);
@@ -25084,6 +25094,13 @@ async function handleRequest(req, res) {
             : 'Could not send an email verification code right now — try again shortly.'
         });
       }
+      if (sendResult.provider === 'interim' && process.env.DATABASE_URL){
+        return sendJson(res, 502, {
+          error: body.channel === 'sms'
+            ? 'Could not send a text code right now. You can try email instead.'
+            : 'Could not send an email code right now. Try again shortly.'
+        });
+      }
       let verificationId;
       try {
         verificationId = useAsyncPg
@@ -25099,7 +25116,8 @@ async function handleRequest(req, res) {
         memberId: member.id,
         channel: body.channel,
         target: body.channel === 'sms' ? ('•••• ' + target.slice(-4)) : target,
-        provider: sendResult.provider
+        provider: sendResult.provider,
+        canSms: !!member.phone
       };
       if (sendResult.provider === 'interim') response.interimCode = sendResult.code;
       return sendJson(res, 200, response);
