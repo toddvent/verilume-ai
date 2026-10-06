@@ -1293,6 +1293,8 @@ createTableIfNeeded(`CREATE TABLE IF NOT EXISTS voice_tokens (
   lastUsedAt TEXT,
   FOREIGN KEY (accountId) REFERENCES accounts(accountId)
 )`);
+ensureColumn('voice_tokens', 'audience', 'TEXT');
+ensureColumn('voice_tokens', 'audience', 'TEXT');
 
 // Added 2026-07-25 (round 46) — HEO function 1 of 3, self-rating. One row
 // per skill per rating event (not one row per member) so a trend over time
@@ -12182,6 +12184,8 @@ function mbuBudgetStatusForCategoryMonth(accountId, year, scope, category, month
 // set an honest recommendationDataConfidenceNote when any is false) rather
 // than this function silently deciding what "enough data" means.
 function buildAccountBudgetAndPerformanceContextForPrompt(accountId, campaign){
+  // A person who cannot see account-wide budgets must not get them through the AI either.
+  if (!actorMay('budgets')) return { promptBlock: 'ACCOUNT-WIDE BUDGET AND PERFORMANCE: not available to this user\'s role. Do not state, estimate or hint at account-wide or full-year budget figures. Work only from the campaign itself.', hasAccountBudget: false, hasPerformanceData: false, hasMediaPlanMix: false };
   const year = (campaign.startDate ? new Date(campaign.startDate).getFullYear() : null) || new Date().getFullYear();
   const scope = 'domestic'; // no international campaign flag exists yet — matches every other MBU call site's default
   const upload = mbuConfirmedUploadForAccountYearScope(accountId, year, scope);
@@ -12429,6 +12433,7 @@ function buildAccountTopMarketsContextForPromptCached(accountId, timings){
   return value;
 }
 function buildAccountBudgetAndPerformanceContextForPromptCached(accountId, campaign, timings){
+  if (!actorMay('budgets')) return buildAccountBudgetAndPerformanceContextForPrompt(accountId, campaign); // never cached: the cache holds the full version
   const t = Date.now();
   const year = (campaign.startDate ? new Date(campaign.startDate).getFullYear() : null) || new Date().getFullYear();
   // The block excludes THIS campaign from the historical list, so the key
@@ -14926,12 +14931,12 @@ function checkTrustedDevice(memberId, token){
 // the call it was minted for isn't a meaningful standing credential.
 const VOICE_TOKEN_LIFETIME_MS = 20 * 60 * 1000;
 
-function createVoiceToken(accountId){
+function createVoiceToken(accountId, audience){
   const token = crypto.randomBytes(32).toString('hex');
   const now = new Date();
   const expiresAt = new Date(now.getTime() + VOICE_TOKEN_LIFETIME_MS).toISOString();
-  db.prepare('INSERT INTO voice_tokens (token, accountId, createdAt, expiresAt, lastUsedAt) VALUES (?,?,?,?,?)')
-    .run(token, accountId, now.toISOString(), expiresAt, now.toISOString());
+  db.prepare('INSERT INTO voice_tokens (token, accountId, createdAt, expiresAt, lastUsedAt, audience) VALUES (?,?,?,?,?,?)')
+    .run(token, accountId, now.toISOString(), expiresAt, now.toISOString(), audience || null);
   return { token, expiresAt };
 }
 
@@ -14939,6 +14944,10 @@ function createVoiceToken(accountId){
 // lastUsedAt) only for a token that exists, hasn't expired, and belongs to
 // THIS account — a voice token minted for one account's session can never
 // authenticate a call scoped to a different account.
+// Who the voice agent is speaking with, as an access audience. A token with no recorded speaker counts as ordinary staff, the safest default.
+function voiceTokenAudience(accountId, token){
+  try { const r = db.prepare('SELECT audience FROM voice_tokens WHERE token = ? AND accountId = ?').get(token, accountId); return (r && r.audience) || 'other'; } catch (e){ return 'other'; }
+}
 function checkVoiceToken(accountId, token){
   if (!token) return false;
   const row = db.prepare('SELECT * FROM voice_tokens WHERE token = ? AND accountId = ?').get(token, accountId);
@@ -18027,9 +18036,20 @@ function requireAccount(req, res, accountId){
 //   yes = full use, view = read only, no = closed. Items not listed here are unchanged.
 // ACCESS_ENFORCEMENT=off in the environment is an emergency switch that turns the whole check off.
 // ---------------------------------------------------------------
+const { AsyncLocalStorage: _ActorALS } = require('node:async_hooks');
+// Who is making this request, for the AI Brain, the Ask bar and the voice agent. Unset for system jobs, which are unrestricted.
+const actorContext = new _ActorALS();
+function actorMay(itemKey){
+  const st = actorContext.getStore();
+  if (!st || !st.audience || process.env.ACCESS_ENFORCEMENT === 'off') return true;
+  const item = ACCESS_ITEMS.find(i => i.key === itemKey);
+  if (!item) return true;
+  const lvl = item.rule[st.audience] || 'no';
+  return lvl === 'yes' || lvl === 'view';
+}
 const ACCESS_ITEMS = [
   { key: 'budgets', label: 'account-wide and full-year budgets',
-    match: /^\/api\/accounts\/[^/]+\/(marketing-budget-uploads|mbu-budget-status|media-plan|annual-plan)(\/|$)/,
+    match: /^\/api\/accounts\/[^/]+\/(marketing-budget-uploads|mbu-budget-status|media-plan|annual-plan|analytics\/rolling-budget|analytics\/budget-flow)(\/|$)/,
     rule: { admin: 'yes', lead: 'yes', analystManager: 'no', other: 'no', agency: 'no', creative: 'no', staff: 'view' } },
   { key: 'approve_budget', label: 'final campaign budget approval',
     match: /^\/api\/campaigns\/[^/]+\/approve-budget-overall$/,
@@ -24640,7 +24660,12 @@ async function handleRequest(req, res) {
     if (parts[0] === 'api' && req.method !== 'OPTIONS'){
       try {
         const _gs = authenticate(req);
+        const _vt = req.headers['x-voice-token'];
+        if (!_gs && _vt && parts[1] === 'accounts' && parts[2]){
+          actorContext.enterWith({ audience: voiceTokenAudience(decodeURIComponent(parts[2]), _vt) });
+        }
         if (_gs){
+          actorContext.enterWith({ audience: accessAudienceFor(_gs) });
           const _pathAcct = parts[1] === 'accounts' && parts[2] ? decodeURIComponent(parts[2]) : _gs.accountId;
           if (_pathAcct === _gs.accountId){
             const _dec = accessDecision(req, '/' + parts.join('/'), _gs);
@@ -29252,7 +29277,7 @@ async function handleRequest(req, res) {
       if (!requireAccount(req, res, accountId)) return;
       const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
       if (!account) return sendJson(res, 404, { error: 'account not found' });
-      const { token, expiresAt } = createVoiceToken(accountId);
+      const { token, expiresAt } = createVoiceToken(accountId, accessAudienceFor(authenticate(req)));
       let signed = { signedUrl: null, reason: null };
       try { signed = await getElevenLabsSignedUrl(ELEVENLABS_AGENT_ID); } catch (e){ signed = { signedUrl: null, reason: e.message }; }
       logAccountDataAccess({ accountId, resource: 'voice_session', action: 'create', actorType: 'member', actorId: (() => { const sess = authenticate(req); return (sess && sess.memberId) || 'account'; })(), recordCount: 1, detail: signed.signedUrl ? 'signed' : `unsigned: ${signed.reason}` });
@@ -29303,7 +29328,7 @@ async function handleRequest(req, res) {
       if (!requireAccount(req, res, accountId)) return;
       const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
       if (!account) return sendJson(res, 404, { error: 'account not found' });
-      const { token, expiresAt } = createVoiceToken(accountId);
+      const { token, expiresAt } = createVoiceToken(accountId, accessAudienceFor(authenticate(req)));
       return sendJson(res, 200, { token, expiresAt });
     }
 
