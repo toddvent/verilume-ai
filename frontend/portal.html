@@ -7426,6 +7426,11 @@
       </div>
       <div class="module-body">
         <div class="field">
+          <label for="teamPositionPick">Position <span style="font-weight:400;">(optional)</span></label>
+          <select id="teamPositionPick" onchange="applyPosition()"></select>
+          <div style="margin-top:6px;"><button type="button" class="link-btn" onclick="saveCustomPosition()">Save the role, level and function below as a position of our own</button> <button type="button" class="link-btn" id="teamPositionRemove" style="display:none;" onclick="removeCustomPosition()">Remove this saved position</button></div>
+        </div>
+        <div class="field">
           <label for="teamNewName">Name</label>
           <input type="text" id="teamNewName" placeholder="e.g. Priya Shah">
         </div>
@@ -21258,6 +21263,7 @@ async function loadAccountData(){
       // Plan tranche complexity) via applyOrgModel(), called once state is
       // fully loaded (end of Init).
       state.orgModel = record.account.orgModel || state.orgModel || 'team';
+      try { customPositions = JSON.parse(record.account.customlib || '[]') || []; } catch (e){ customPositions = []; }
       state.orgShape = record.account.orgshape || record.account.orgShape || state.orgShape || null;
       // Round 70 — Analytics Integration setup fields, read back so the
       // step re-opens showing the account's already-submitted pathway
@@ -61538,6 +61544,7 @@ function renderTeamCategoryBoxes(selected){
 }
 
 function resetTeamMemberForm(){
+  { const pp = document.getElementById('teamPositionPick'); if (pp) pp.value = ''; }
   document.getElementById('teamNewName').value = '';
   document.getElementById('teamNewEmail').value = '';
   document.getElementById('teamNewIsAdmin').checked = false;
@@ -61962,11 +61969,68 @@ function fillOrgSlot(path){
   const nm = document.getElementById('teamNewName'); if (nm) nm.focus();
 }
 
+const POSITION_LIBRARY = [{"id":"pos-head-of-marketing-cmo","track":"Leadership","label":"Head of Marketing / CMO","level":"CMO","fn":"Executive","kind":"internal","cats":[]},{"id":"pos-marketing-strategy-director","track":"Strategy & Budget","label":"Marketing Strategy Director","level":"Director","fn":"Research","kind":"internal","cats":["Strategy"]},{"id":"pos-brand-strategist","track":"Strategy & Budget","label":"Brand Strategist","level":"Manager","fn":"Research","kind":"internal","cats":["Strategy"]},{"id":"pos-market-research-analyst","track":"Strategy & Budget","label":"Market Research Analyst","level":"Specialist","fn":"Research","kind":"internal","cats":["Strategy"]},{"id":"pos-budget-finance-analyst","track":"Strategy & Budget","label":"Budget & Finance Analyst","level":"Specialist","fn":"Marketing Ops","kind":"internal","cats":["Marketing Ops"]},{"id":"pos-brand-director","track":"Brand & Voice","label":"Brand Director","level":"Director","fn":"Brand","kind":"internal","cats":["Design","Copywriting"]},{"id":"pos-brand-manager","track":"Brand & Voice","label":"Brand Manager","level":"Manager","fn":"Brand","kind":"internal","cats":["Design"]},{"id":"pos-style-brand-guardian","track":"Brand & Voice","label":"Style & Brand Guardian","level":"Specialist","fn":"Brand","kind":"internal","cats":["Design"]},{"id":"pos-content-strategist","track":"Brand & Voice","label":"Content Strategist","level":"Manager","fn":"Content Development","kind":"internal","cats":["Copywriting","Strategy"]},{"id":"pos-copywriter","track":"Brand & Voice","label":"Copywriter","level":"Specialist","fn":"Content Development","kind":"internal","cats":["Copywriting"]},{"id":"pos-creative-director","track":"Creative & Design","label":"Creative Director","level":"Director","fn":"Omni-Channel Creative","kind":"internal","cats":["Design"]},{"id":"pos-art-director","track":"Creative & Design","label":"Art Director","level":"Manager","fn":"Omni-Channel Creative","kind":"internal","cats":["Design"]},{"id":"pos-graphic-designer","track":"Creative & Design","label":"Graphic Designer","level":"Specialist","fn":"Omni-Channel Creative","kind":"internal","cats":["Design"]},{"id":"pos-motion-designer","track":"Creative & Design","label":"Motion Designer","level":"Specialist","fn":"Omni-Channel Creative","kind":"internal","cats":["Motion Graphics"]},{"id":"pos-video-producer","track":"Creative & Design","label":"Video Producer","level":"Specialist","fn":"Omni-Channel Creative","kind":"internal","cats":["Motion Graphics"]},{"id":"pos-creative-technologist","track":"Creative & Design","label":"Creative Technologist","level":"Specialist","fn":"Omni-Channel Creative","kind":"internal","cats":["Design"]},{"id":"pos-pr-director","track":"Communications & PR","label":"PR Director","level":"Director","fn":"PR","kind":"internal","cats":["PR"]},{"id":"pos-pr-manager","track":"Communications & PR","label":"PR Manager","level":"Manager","fn":"PR","kind":"internal","cats":["PR"]},{"id":"pos-communications-specialist","track":"Communications & PR","label":"Communications Specialist","level":"Specialist","fn":"PR","kind":"internal","cats":["PR"]},{"id":"pos-social-community-manager","track":"Communications & PR","label":"Social & Community Manager","level":"Manager","fn":"Content Development","kind":"internal","cats":["Copywriting","Customer Experiences"]},{"id":"pos-analytics-director","track":"Analytics & Data","label":"Analytics Director","level":"Director","fn":"Analysis","kind":"internal","cats":["Analysts"]},{"id":"pos-media-science-lead","track":"Analytics & Data","label":"Media Science Lead","level":"Manager","fn":"Analysis","kind":"internal","cats":["Media Science","Analysts"]},{"id":"pos-data-scientist","track":"Analytics & Data","label":"Data Scientist","level":"Specialist","fn":"Analysis","kind":"internal","cats":["Analysts","Media Science"]},{"id":"pos-marketing-analyst","track":"Analytics & Data","label":"Marketing Analyst","level":"Specialist","fn":"Analysis","kind":"internal","cats":["Analysts"]},{"id":"pos-tagging-measurement-specialist","track":"Analytics & Data","label":"Tagging & Measurement Specialist","level":"Specialist","fn":"Analysis","kind":"internal","cats":["Analysts","Marketing Ops"]},{"id":"pos-marketing-ops-director","track":"Marketing Ops & Platforms","label":"Marketing Ops Director","level":"Director","fn":"Marketing Ops","kind":"internal","cats":["Marketing Ops"]},{"id":"pos-marketing-ops-manager","track":"Marketing Ops & Platforms","label":"Marketing Ops Manager","level":"Manager","fn":"Marketing Ops","kind":"internal","cats":["Marketing Ops"]},{"id":"pos-marketing-automation-specialist","track":"Marketing Ops & Platforms","label":"Marketing Automation Specialist","level":"Specialist","fn":"Marketing Ops","kind":"internal","cats":["Marketing Ops"]},{"id":"pos-campaign-trafficker","track":"Marketing Ops & Platforms","label":"Campaign Trafficker","level":"Specialist","fn":"Marketing Ops","kind":"internal","cats":["Marketing Ops"]},{"id":"pos-performance-marketing-director","track":"Performance & Growth","label":"Performance Marketing Director","level":"Director","fn":"Performance Marketing","kind":"internal","cats":["Growth and Performance"]},{"id":"pos-growth-marketing-manager","track":"Performance & Growth","label":"Growth Marketing Manager","level":"Manager","fn":"Performance Marketing","kind":"internal","cats":["Growth and Performance"]},{"id":"pos-paid-search-manager","track":"Performance & Growth","label":"Paid Search Manager","level":"Manager","fn":"Performance Marketing","kind":"internal","cats":["Growth and Performance"]},{"id":"pos-paid-social-manager","track":"Performance & Growth","label":"Paid Social Manager","level":"Manager","fn":"Performance Marketing","kind":"internal","cats":["Growth and Performance"]},{"id":"pos-programmatic-specialist","track":"Performance & Growth","label":"Programmatic Specialist","level":"Specialist","fn":"Performance Marketing","kind":"internal","cats":["Growth and Performance"]},{"id":"pos-media-planner-buyer","track":"Performance & Growth","label":"Media Planner / Buyer","level":"Specialist","fn":"Performance Marketing","kind":"internal","cats":["Growth and Performance"]},{"id":"pos-customer-experience-director","track":"Customer Experience & Lifecycle","label":"Customer Experience Director","level":"Director","fn":"Lifecycle Marketing","kind":"internal","cats":["Customer Experiences"]},{"id":"pos-lifecycle-crm-manager","track":"Customer Experience & Lifecycle","label":"Lifecycle / CRM Manager","level":"Manager","fn":"Lifecycle Marketing","kind":"internal","cats":["Customer Experiences"]},{"id":"pos-email-marketing-specialist","track":"Customer Experience & Lifecycle","label":"Email Marketing Specialist","level":"Specialist","fn":"Lifecycle Marketing","kind":"internal","cats":["Customer Experiences"]},{"id":"pos-agency-creative","track":"External partners","label":"Agency: Creative","level":"Manager","fn":"Omni-Channel Creative","kind":"external","cats":["Design"]},{"id":"pos-agency-media","track":"External partners","label":"Agency: Media","level":"Manager","fn":"Performance Marketing","kind":"external","cats":["Growth and Performance"]},{"id":"pos-agency-pr","track":"External partners","label":"Agency: PR","level":"Manager","fn":"PR","kind":"external","cats":["PR"]},{"id":"pos-agency-analytics","track":"External partners","label":"Agency: Analytics","level":"Manager","fn":"Analysis","kind":"external","cats":["Analysts"]},{"id":"pos-freelance-designer","track":"External partners","label":"Freelance Designer","level":"Specialist","fn":"Omni-Channel Creative","kind":"external","cats":["Design"]},{"id":"pos-freelance-copywriter","track":"External partners","label":"Freelance Copywriter","level":"Specialist","fn":"Content Development","kind":"external","cats":["Copywriting"]},{"id":"pos-freelance-media-buyer","track":"External partners","label":"Freelance Media Buyer","level":"Specialist","fn":"Performance Marketing","kind":"external","cats":["Growth and Performance"]}];
+let customPositions = [];
+function allPositions(){ return POSITION_LIBRARY.concat(customPositions.map(c => Object.assign({ track: 'Your positions', custom: true }, c))); }
+function renderPositionPicker(){
+  const sel = document.getElementById('teamPositionPick');
+  if (!sel) return;
+  const all = allPositions();
+  const tracks = [];
+  all.forEach(p => { if (!tracks.includes(p.track)) tracks.push(p.track); });
+  const ordered = ['Your positions'].concat(tracks.filter(t => t !== 'Your positions'));
+  sel.innerHTML = '<option value="">— pick a standard position to fill the form —</option>' + ordered.filter(t => all.some(p => p.track === t)).map(t =>
+    `<optgroup label="${t}">${all.filter(p => p.track === t).map(p => `<option value="${p.id}">${p.label} — ${p.level}${p.kind === 'external' ? ', external' : ''}</option>`).join('')}</optgroup>`).join('');
+  onPositionPicked();
+}
+function onPositionPicked(){
+  const sel = document.getElementById('teamPositionPick');
+  const rm = document.getElementById('teamPositionRemove');
+  const p = sel && allPositions().find(x => x.id === sel.value);
+  if (rm) rm.style.display = p && p.custom ? '' : 'none';
+}
+function applyPosition(){
+  const sel = document.getElementById('teamPositionPick');
+  const p = sel && allPositions().find(x => x.id === sel.value);
+  onPositionPicked();
+  if (!p) return;
+  document.getElementById('teamNewLevel').value = p.level;
+  onTeamLevelChange();
+  document.getElementById('teamNewFunction').value = p.fn;
+  document.getElementById('teamNewKind').value = p.kind;
+  document.getElementById('teamNewRoleLabel').value = p.label;
+  renderTeamCategoryBoxes(p.cats || []);
+}
+async function persistCustomPositions(){
+  if (dataSourceLabel !== 'backend') return;
+  try { await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/positions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ positions: customPositions }) }); } catch (e){}
+}
+function saveCustomPosition(){
+  const flag = document.getElementById('teamAddFlag');
+  const f = readTeamMemberForm();
+  if (!f.roleLabel || !f.level || !f.functionGroup){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'To save a position, fill in the role label, level and function first.'; }
+    return;
+  }
+  customPositions = customPositions.filter(c => c.label.toLowerCase() !== f.roleLabel.toLowerCase());
+  customPositions.push({ id: 'custom-' + Date.now().toString(36), label: f.roleLabel, level: f.level, fn: f.functionGroup, kind: f.memberKind, cats: f.categories });
+  persistCustomPositions();
+  renderPositionPicker();
+  if (flag){ flag.style.color = 'var(--cx)'; flag.textContent = `Saved "${f.roleLabel}" to your positions.`; }
+}
+function removeCustomPosition(){
+  const sel = document.getElementById('teamPositionPick');
+  if (!sel || !sel.value) return;
+  customPositions = customPositions.filter(c => c.id !== sel.value);
+  persistCustomPositions();
+  renderPositionPicker();
+}
+
 function renderTeamRosterView(){
   const el = document.getElementById('teamRosterView');
   if (!el) return;
   if (!state.team.length){
-    renderOrgShapePicker(); renderOrgShapeLive();
+    renderOrgShapePicker(); renderOrgShapeLive(); renderPositionPicker();
     el.innerHTML = `<p class="hint">No team members on this account's chart yet — add the CMO first, then work down through Director, Manager, and Specialist so each new person has someone above them to report to.</p>`;
     return;
   }
@@ -61991,7 +62055,7 @@ function renderTeamRosterView(){
       }).join('')}
     </div>
   `).join('');
-  renderOrgShapePicker(); renderOrgShapeLive();
+  renderOrgShapePicker(); renderOrgShapeLive(); renderPositionPicker();
   const am = document.getElementById('agreementsModule');
   if (am && am.style.display === '' && typeof renderAgreements === 'function') renderAgreements(Object.keys(AGREEMENT_REPORT_LABELS));
 }
