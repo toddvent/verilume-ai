@@ -1085,6 +1085,31 @@ createTableIfNeeded(`CREATE TABLE IF NOT EXISTS member_activity (
   statuscode INTEGER,
   createdAt TEXT NOT NULL
 )`);
+// Build #5 — external guests. External members get a quarterly access window; an agency's reach is set by agreements.
+ensureColumn('team_members', 'accessexpiresat', 'TEXT');
+createTableIfNeeded(`CREATE TABLE IF NOT EXISTS agency_agreements (
+  id TEXT PRIMARY KEY,
+  accountId TEXT NOT NULL,
+  memberid TEXT,
+  name TEXT,
+  channels TEXT,
+  reports TEXT,
+  startsat TEXT,
+  endsat TEXT,
+  createdby TEXT,
+  createdAt TEXT NOT NULL
+)`);
+const AGREEMENT_REPORTS = ['story', 'forecast-vs-target', 'price-volume', 'audience-growth', 'media-science', 'creative-media', 'growth-performance'];
+function addMonthsIso(iso, n){ const d = new Date(iso); d.setUTCMonth(d.getUTCMonth() + n); return d.toISOString(); }
+function jsonList(v){ try { const a = JSON.parse(v || '[]'); return Array.isArray(a) ? a : []; } catch (e){ return []; } }
+// Agreements in force today for one external member.
+function activeAgreementsFor(accountId, memberId){
+  const now = new Date().toISOString();
+  let rows = [];
+  try { rows = db.prepare('SELECT * FROM agency_agreements WHERE accountId = ? AND memberid = ?').all(accountId, memberId); } catch (e){}
+  return rows.filter(r => (!r.startsat || r.startsat <= now) && (!r.endsat || r.endsat >= now));
+}
+function agreementShape(r){ return { id: r.id, memberId: r.memberid, name: r.name || '', channels: jsonList(r.channels), reports: jsonList(r.reports), startsAt: r.startsat || null, endsAt: r.endsat || null, createdAt: r.createdAt }; }
 createTableIfNeeded(`CREATE TABLE IF NOT EXISTS platform_settings (
   skey TEXT PRIMARY KEY,
   svalue TEXT,
@@ -17912,8 +17937,10 @@ function authenticate(req){
   // A removed or deactivated member's sessions stop working at once.
   if (session.memberId){
     try {
-      const mem = db.prepare('SELECT status FROM team_members WHERE id = ?').get(session.memberId);
+      const mem = db.prepare('SELECT status, memberkind, accessexpiresat FROM team_members WHERE id = ?').get(session.memberId);
       if (!mem || (mem.status && mem.status !== 'active')) return null;
+      // External guests need their quarterly access renewed by an Admin.
+      if (mem.memberkind === 'external' && mem.accessexpiresat && new Date(mem.accessexpiresat).getTime() < Date.now()) return null;
     } catch (e){ /* lookup failure falls through to the normal checks */ }
   }
   if (new Date(session.expiresAt).getTime() < Date.now()){
@@ -18050,7 +18077,7 @@ function actorMay(itemKey){
 const ACCESS_ITEMS = [
   { key: 'budgets', label: 'account-wide and full-year budgets',
     match: /^\/api\/accounts\/[^/]+\/(marketing-budget-uploads|mbu-budget-status|media-plan|annual-plan|analytics\/rolling-budget|analytics\/budget-flow)(\/|$)/,
-    rule: { admin: 'yes', lead: 'yes', analystManager: 'no', other: 'no', agency: 'no', creative: 'no', staff: 'view' } },
+    rule: { admin: 'yes', lead: 'yes', analystManager: 'no', other: 'no', agency: 'named', creative: 'no', staff: 'view' } },
   { key: 'approve_budget', label: 'final campaign budget approval',
     match: /^\/api\/campaigns\/[^/]+\/approve-budget-overall$/,
     rule: { admin: 'yes', lead: 'yes', analystManager: 'no', other: 'no', agency: 'no', creative: 'no', staff: 'no' } },
@@ -18079,15 +18106,51 @@ function accessAudienceFor(session){
   return 'other';
 }
 // Returns null when allowed, or { item, label, audience } when refused.
+const CREATIVE_ALLOWED = [
+  /^\/api\/auth\//,
+  /^\/api\/accounts\/[^/]+$/,
+  /^\/api\/accounts\/[^/]+\/(my-access|team|campaigns)$/,
+  /^\/api\/accounts\/[^/]+\/creative-[a-z-]+(\/|$)/,
+  /^\/api\/creative-(jobs|collections|requirements)(\/|$)/,
+  /^\/api\/campaigns\/[^/]+$/,
+  /^\/api\/campaigns\/[^/]+\/(creative|copy|messaging)[a-z-]*(\/|$)/
+];
+// Reaches an external guest has beyond the grid rows: creative guests see only the creative work; agency guests see only the reports their agreement names.
+function externalScopeDecision(req, path, session, audience){
+  if (audience === 'creative'){
+    if (CREATIVE_ALLOWED.some(rx => rx.test(path))) return null;
+    return { item: 'creative_scope', label: 'this part of the account (creative guests see the final brief and copy only)', audience };
+  }
+  if (audience === 'agency'){
+    const m = /^\/api\/accounts\/[^/]+\/analytics\/([a-z-]+)$/.exec(path);
+    if (m && AGREEMENT_REPORTS.includes(m[1])){
+      const reports = new Set(); activeAgreementsFor(session.accountId, session.memberId).forEach(a => jsonList(a.reports).forEach(r => reports.add(r)));
+      if (!reports.has(m[1])) return { item: 'agreement_report', label: 'this report (it is not named in your agency agreement)', audience };
+    }
+  }
+  return null;
+}
+// Channels an agency guest may see budgets for, from agreements in force. Empty when none.
+function agencyNamedChannels(session){
+  const set = new Set();
+  if (session && session.memberId) activeAgreementsFor(session.accountId, session.memberId).forEach(a => jsonList(a.channels).forEach(c => set.add(String(c).trim().toLowerCase())));
+  return set;
+}
+// Returns null when allowed, or { item, label, audience } when refused.
 function accessDecision(req, path, session){
   if (process.env.ACCESS_ENFORCEMENT === 'off') return null;
-  const item = ACCESS_ITEMS.find(i => i.match.test(path));
-  if (!item || !session) return null;
+  if (!session) return null;
   const audience = accessAudienceFor(session);
   if (!audience) return null;
+  const ext = externalScopeDecision(req, path, session, audience);
+  if (ext) return ext;
+  const item = ACCESS_ITEMS.find(i => i.match.test(path));
+  if (!item) return null;
   const level = item.rule[audience] || 'no';
   const readOnly = req.method === 'GET' || req.method === 'HEAD';
   if (level === 'yes' || (level === 'view' && readOnly)) return null;
+  // Named: an agency sees only the media plan, trimmed to the channels its agreement names.
+  if (level === 'named' && readOnly && /^\/api\/accounts\/[^/]+\/media-plan$/.test(path)) return null;
   return { item: item.key, label: item.label, audience };
 }
 function isStaffRequest(req){
@@ -26463,7 +26526,12 @@ async function handleRequest(req, res) {
       const audience = accessAudienceFor(sess);
       const items = {};
       ACCESS_ITEMS.forEach(i => { items[i.key] = (audience && i.rule[audience]) || 'no'; });
-      return sendJson(res, 200, { audience, items });
+      let accessExpiresAt = null, agreements = [];
+      if (sess && sess.memberId){
+        try { const m = db.prepare('SELECT accessexpiresat FROM team_members WHERE id = ?').get(sess.memberId); accessExpiresAt = (m && m.accessexpiresat) || null; } catch (e){}
+        if (audience === 'agency') agreements = activeAgreementsFor(accountId, sess.memberId).map(agreementShape);
+      }
+      return sendJson(res, 200, { audience, items, accessExpiresAt, agreements });
     }
 
     // POST /api/accounts/:id/upgrade-request — the Spark upgrade prompts post here; emails Sales (SALES_NOTIFY_EMAIL). Rate-limited to one per account per hour.
@@ -34507,6 +34575,12 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       try { plan.monthlyPct = plan.monthlyPctJson ? JSON.parse(plan.monthlyPctJson) : null; } catch (e) { plan.monthlyPct = null; }
       try { plan.goalBackwardSolve = plan.goalBackwardSolveJson ? JSON.parse(plan.goalBackwardSolveJson) : null; } catch (e) { plan.goalBackwardSolve = null; }
       delete plan.nonWorkingMediaJson; delete plan.monthlyPctJson; delete plan.goalBackwardSolveJson;
+      // An agency guest sees only the channels its agreement names, with no plan-wide totals.
+      const _st = actorContext.getStore();
+      if (_st && _st.audience === 'agency'){
+        const named = agencyNamedChannels(authenticate(req));
+        return sendJson(res, 200, { plan: { id: plan.id, year: plan.year, name: plan.name || null }, allocations: allocations.filter(a => named.has(String(a.channel || '').trim().toLowerCase())) });
+      }
       return sendJson(res, 200, { plan, allocations });
     }
 
@@ -41303,10 +41377,10 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       // Explicit column list (not SELECT *) as of 2026-08-18 — team_members
       // now carries passwordHash/passwordSalt (registration rebuild) and
       // those must never leave the server, hashed or not.
-      const team = db.prepare(`SELECT id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, phone, phoneVerifiedAt, mustChangePassword, memberkind, handle, rolelabel, categories FROM team_members WHERE accountId = ? ORDER BY createdAt ASC`).all(accountId);
+      const team = db.prepare(`SELECT id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, phone, phoneVerifiedAt, mustChangePassword, memberkind, handle, rolelabel, categories, accessexpiresat FROM team_members WHERE accountId = ? ORDER BY createdAt ASC`).all(accountId);
       team.forEach(m => {
         if (!m.handle){ m.handle = generateHandle(accountId, m.name, m.id); try { db.prepare('UPDATE team_members SET handle = ? WHERE id = ?').run(m.handle, m.id); } catch (e){} }
-        m.memberKind = m.memberkind || 'internal'; m.roleLabel = m.rolelabel || ''; let c = []; try { c = JSON.parse(m.categories || '[]'); } catch (e){} m.categories = c;
+        m.accessExpiresAt = m.accessexpiresat || null; delete m.accessexpiresat; m.memberKind = m.memberkind || 'internal'; m.roleLabel = m.rolelabel || ''; let c = []; try { c = JSON.parse(m.categories || '[]'); } catch (e){} m.categories = c;
         delete m.memberkind; delete m.rolelabel;
       });
       return sendJson(res, 200, { team });
@@ -41367,7 +41441,9 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const newHandle = generateHandle(accountId, body.name, memberId);
       db.prepare('UPDATE team_members SET memberkind = ?, handle = ?, rolelabel = ?, categories = ? WHERE id = ?')
         .run(newKind, newHandle, String(body.roleLabel || '').slice(0, 80) || null, cleanCategories(body.categories), memberId);
-      const response = { memberId, handle: newHandle, memberKind: newKind };
+      let accessExpiresAt = null;
+      if (newKind === 'external'){ accessExpiresAt = addMonthsIso(new Date().toISOString(), 3); db.prepare('UPDATE team_members SET accessexpiresat = ? WHERE id = ?').run(accessExpiresAt, memberId); }
+      const response = { memberId, handle: newHandle, memberKind: newKind, accessExpiresAt };
       if (tempPassword){
         response.tempPassword = tempPassword;
         response.mustChangePassword = true;
@@ -41451,12 +41527,65 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (body.memberKind !== undefined && MEMBER_KINDS.includes(body.memberKind)){
         if (!requireAdminMember(req, res, existing.accountId)) return;
         db.prepare('UPDATE team_members SET memberkind = ? WHERE id = ?').run(body.memberKind, memberId);
+        if (body.memberKind === 'external') db.prepare('UPDATE team_members SET accessexpiresat = COALESCE(accessexpiresat, ?) WHERE id = ?').run(addMonthsIso(new Date().toISOString(), 3), memberId);
+        else db.prepare('UPDATE team_members SET accessexpiresat = NULL WHERE id = ?').run(memberId);
       }
       const requestedIsAdmin = body.isAdmin !== undefined ? (body.isAdmin ? 1 : 0) : null;
       if (requestedIsAdmin !== null && requestedIsAdmin !== (existing.isAdmin ? 1 : 0)){
         if (!requireAdminMember(req, res, existing.accountId)) return;
         db.prepare('UPDATE team_members SET isAdmin = ? WHERE id = ?').run(requestedIsAdmin, memberId);
       }
+      return sendJson(res, 200, { updated: true });
+    }
+
+    // POST /api/accounts/:id/team/:memberId/renew — an Admin renews an external guest's access for another quarter.
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'team' && parts[5] === 'renew'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAdminMember(req, res, accountId)) return;
+      const mid = decodeURIComponent(parts[4]);
+      const m = db.prepare('SELECT id, memberkind, accessexpiresat FROM team_members WHERE id = ? AND accountId = ?').get(mid, accountId);
+      if (!m) return sendJson(res, 404, { error: 'team member not found' });
+      if (m.memberkind !== 'external') return sendJson(res, 400, { error: 'Only external guests need quarterly renewal.' });
+      const nowIsoStr = new Date().toISOString();
+      const from = m.accessexpiresat && m.accessexpiresat > nowIsoStr ? m.accessexpiresat : nowIsoStr;
+      const next = addMonthsIso(from, 3);
+      db.prepare('UPDATE team_members SET accessexpiresat = ? WHERE id = ?').run(next, mid);
+      return sendJson(res, 200, { memberId: mid, accessExpiresAt: next });
+    }
+    // Agency agreements: which channels' budgets and which reports an agency guest can see, and for how long. Admin only.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'agreements'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAdminMember(req, res, accountId)) return;
+      const rows = db.prepare('SELECT * FROM agency_agreements WHERE accountId = ? ORDER BY createdAt DESC').all(accountId);
+      return sendJson(res, 200, { agreements: rows.map(agreementShape), reportOptions: AGREEMENT_REPORTS });
+    }
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'agreements'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAdminMember(req, res, accountId)) return;
+      const body = await readBody(req);
+      const m = body.memberId ? db.prepare('SELECT id, memberkind FROM team_members WHERE id = ? AND accountId = ?').get(String(body.memberId), accountId) : null;
+      if (!m || m.memberkind !== 'external') return sendJson(res, 400, { error: 'An agreement belongs to an external guest on this account.' });
+      const channels = (Array.isArray(body.channels) ? body.channels : String(body.channels || '').split(',')).map(x => String(x).trim()).filter(Boolean).slice(0, 40);
+      const reports = (Array.isArray(body.reports) ? body.reports : []).filter(r => AGREEMENT_REPORTS.includes(r));
+      const endsAt = body.endsAt ? new Date(body.endsAt).toISOString() : null;
+      if (body.endsAt && isNaN(new Date(body.endsAt).getTime())) return sendJson(res, 400, { error: 'The end date is not a valid date.' });
+      const id = generateId('AGR');
+      const sess = authenticate(req);
+      db.prepare('INSERT INTO agency_agreements (id, accountId, memberid, name, channels, reports, startsat, endsat, createdby, createdAt) VALUES (?,?,?,?,?,?,?,?,?,?)')
+        .run(id, accountId, m.id, String(body.name || '').slice(0, 120) || null, JSON.stringify(channels), JSON.stringify(reports), body.startsAt ? new Date(body.startsAt).toISOString() : new Date().toISOString(), endsAt, (sess && sess.memberId) || 'account', new Date().toISOString());
+      return sendJson(res, 201, { id });
+    }
+    if ((req.method === 'PATCH' || req.method === 'DELETE') && parts.length === 3 && parts[0] === 'api' && parts[1] === 'agreements'){
+      const aid = decodeURIComponent(parts[2]);
+      const ex = db.prepare('SELECT * FROM agency_agreements WHERE id = ?').get(aid);
+      if (!ex) return sendJson(res, 404, { error: 'agreement not found' });
+      if (!requireAdminMember(req, res, ex.accountId)) return;
+      if (req.method === 'DELETE'){ db.prepare('DELETE FROM agency_agreements WHERE id = ?').run(aid); return sendJson(res, 200, { deleted: true }); }
+      const body = await readBody(req);
+      if (body.name !== undefined) db.prepare('UPDATE agency_agreements SET name = ? WHERE id = ?').run(String(body.name || '').slice(0, 120) || null, aid);
+      if (body.channels !== undefined) db.prepare('UPDATE agency_agreements SET channels = ? WHERE id = ?').run(JSON.stringify((Array.isArray(body.channels) ? body.channels : String(body.channels || '').split(',')).map(x => String(x).trim()).filter(Boolean).slice(0, 40)), aid);
+      if (body.reports !== undefined) db.prepare('UPDATE agency_agreements SET reports = ? WHERE id = ?').run(JSON.stringify((Array.isArray(body.reports) ? body.reports : []).filter(r => AGREEMENT_REPORTS.includes(r))), aid);
+      if (body.endsAt !== undefined){ const d = body.endsAt ? new Date(body.endsAt) : null; if (d && isNaN(d.getTime())) return sendJson(res, 400, { error: 'The end date is not a valid date.' }); db.prepare('UPDATE agency_agreements SET endsat = ? WHERE id = ?').run(d ? d.toISOString() : null, aid); }
       return sendJson(res, 200, { updated: true });
     }
 
