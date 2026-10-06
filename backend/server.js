@@ -1065,6 +1065,64 @@ createTableIfNeeded(`CREATE TABLE IF NOT EXISTS level_activations (
   salesnotified INTEGER DEFAULT 0,
   createdAt TEXT NOT NULL
 )`);
+// 2026-10-06 (access review build #3) — membership profile fields. Column
+// names are lowercase on purpose (see the Postgres camelCase note for the
+// platform_* tables): memberkind internal|external, handle unique per
+// account, rolelabel descriptive text, categories a JSON array.
+ensureColumn('team_members', 'memberkind', "TEXT DEFAULT 'internal'");
+ensureColumn('team_members', 'handle', 'TEXT');
+ensureColumn('team_members', 'rolelabel', 'TEXT');
+ensureColumn('team_members', 'categories', 'TEXT');
+createTableIfNeeded(`CREATE TABLE IF NOT EXISTS member_activity (
+  id TEXT PRIMARY KEY,
+  accountId TEXT NOT NULL,
+  memberid TEXT,
+  membername TEXT,
+  action TEXT NOT NULL,
+  statuscode INTEGER,
+  createdAt TEXT NOT NULL
+)`);
+createTableIfNeeded(`CREATE TABLE IF NOT EXISTS platform_settings (
+  skey TEXT PRIMARY KEY,
+  svalue TEXT,
+  updatedat TEXT
+)`);
+const MEMBER_KINDS = ['internal', 'external'];
+const MEMBER_CATEGORIES = ['Strategy', 'Customer Experiences', 'Growth and Performance', 'Media Science', 'PR', 'Copywriting', 'Design', 'Motion Graphics', 'Marketing Ops', 'Analysts'];
+function handleBase(name){
+  const first = String(name || '').trim().split(/\s+/)[0] || 'member';
+  return first.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20) || 'member';
+}
+function handleTaken(accountId, handle, exceptId){
+  return !!db.prepare('SELECT id FROM team_members WHERE accountId = ? AND lower(handle) = ? AND id != ?').get(accountId, String(handle).toLowerCase(), exceptId || '');
+}
+// Generated automatically: first name, then first name + last initial, then a number.
+function generateHandle(accountId, name, exceptId){
+  const base = handleBase(name);
+  const parts = String(name || '').trim().split(/\s+/);
+  const li = parts.length > 1 ? parts[parts.length - 1][0].toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+  const tries = [base]; if (li) tries.push(base + li);
+  for (const t of tries) if (!handleTaken(accountId, t, exceptId)) return t;
+  for (let n = 2; n < 1000; n++){ const c = (li ? base + li : base) + n; if (!handleTaken(accountId, c, exceptId)) return c; }
+  return base + Date.now();
+}
+function cleanCategories(v){
+  const arr = Array.isArray(v) ? v : [];
+  return JSON.stringify(arr.filter(x => MEMBER_CATEGORIES.includes(x)));
+}
+const SPARK_DEFAULTS = { trialDays: 7, starterMonthlyDrafts: 25 };
+let _sparkCache = null, _sparkCacheAt = 0;
+function getSparkSettings(){
+  if (_sparkCache && Date.now() - _sparkCacheAt < 30000) return _sparkCache;
+  let out = Object.assign({}, SPARK_DEFAULTS);
+  try {
+    const r = db.prepare('SELECT svalue FROM platform_settings WHERE skey = ?').get('spark');
+    if (r && r.svalue){ const j = JSON.parse(r.svalue); if (Number(j.trialDays) >= 1) out.trialDays = Math.floor(Number(j.trialDays)); if (Number(j.starterMonthlyDrafts) >= 1) out.starterMonthlyDrafts = Math.floor(Number(j.starterMonthlyDrafts)); }
+  } catch (e){}
+  out.sparkDrafts = Math.max(1, Math.ceil(out.starterMonthlyDrafts * out.trialDays / 30));
+  _sparkCache = out; _sparkCacheAt = Date.now();
+  return out;
+}
 // 2026-10-06 — placeholder tiers replaced by the illumination levels
 // (Packages & Investment slide) plus the $99 Starter Kit. Decided in the
 // access review: Spark and Starter Kit share the same functionality; Spark
@@ -1074,9 +1132,9 @@ createTableIfNeeded(`CREATE TABLE IF NOT EXISTS level_activations (
 // Kit are still placeholder. Activation happens in the Ops Console.
 const PAID_TIERS = [
   { key: 'spark',    rank: 1, name: 'Spark',       tagline: 'See where you stand',  maxStorefronts: 1,    monthlyDrafts: 6,    trialDays: 7, priceMonthly: 0,    selfServe: true,  description: 'Free for 7 days. Same functionality as the Starter Kit.' },
-  { key: 'starter',  rank: 2, name: 'Starter Kit', tagline: 'One storefront',       maxStorefronts: 1,    monthlyDrafts: 25,   trialDays: null, priceMonthly: 99, selfServe: true,  description: 'The paid continuation of Spark for a single storefront.' },
-  { key: 'glow',     rank: 3, name: 'Glow',        tagline: 'Understand',           maxStorefronts: 10,   monthlyDrafts: 100,  trialDays: null, priceMonthly: null, selfServe: true, description: 'Up to 10 storefronts. Pricing to be confirmed.' },
-  { key: 'radiance', rank: 4, name: 'Radiance',    tagline: 'Act',                  maxStorefronts: 20,   monthlyDrafts: 400,  trialDays: null, priceMonthly: null, selfServe: true, description: '11 to 20 storefronts. Pricing to be confirmed.' },
+  { key: 'starter',  rank: 2, name: 'Starter Kit', tagline: 'One storefront',       maxStorefronts: 1,    monthlyDrafts: 25,   trialDays: null, priceMonthly: 99, selfServe: false,  description: 'The paid continuation of Spark for a single storefront.' },
+  { key: 'glow',     rank: 3, name: 'Glow',        tagline: 'Understand',           maxStorefronts: 10,   monthlyDrafts: 100,  trialDays: null, priceMonthly: null, selfServe: false, description: 'Up to 10 storefronts. Pricing to be confirmed.' },
+  { key: 'radiance', rank: 4, name: 'Radiance',    tagline: 'Act',                  maxStorefronts: 20,   monthlyDrafts: 400,  trialDays: null, priceMonthly: null, selfServe: false, description: '11 to 20 storefronts. Pricing to be confirmed.' },
   { key: 'beacon',   rank: 5, name: 'Beacon',      tagline: 'Orchestrate',          maxStorefronts: null, monthlyDrafts: null, trialDays: null, priceMonthly: null, selfServe: false, description: 'Enterprise, above 20 storefronts. Custom quote.' }
 ];
 
@@ -1084,17 +1142,18 @@ const PAID_TIERS = [
 // Days 1-5: always-on upgrade prompt. Day 6: voice pitch. Day 7: final-day
 // pop-up. After day 7: read-only until the account upgrades (writes refused
 // in handleRequest). Stage names are what portal.html reads.
-const SPARK_DAYS = 7;
+const SPARK_DAYS = 7; // default only; live value comes from getSparkSettings().trialDays
 function levelStatusFor(acct){
   if (!acct || acct.paidTier !== 'spark') return null;
   const start = acct.paidTierActivatedAt ? new Date(acct.paidTierActivatedAt).getTime() : NaN;
   if (!isFinite(start)) return null;
+  const cfg = getSparkSettings(), TD = cfg.trialDays;
   const elapsedDays = Math.floor((Date.now() - start) / 86400000);
   const day = elapsedDays + 1;
-  const expired = day > SPARK_DAYS;
-  const daysLeft = Math.max(0, SPARK_DAYS - day + 1);
-  const stage = expired ? 'expired' : (day >= SPARK_DAYS ? 'final' : (day === SPARK_DAYS - 1 ? 'voice' : 'prompt'));
-  return { tier: 'spark', day: Math.min(day, SPARK_DAYS + 1), daysLeft: expired ? 0 : daysLeft, expired, stage, upgradeTo: 'starter', upgradePriceMonthly: 99 };
+  const expired = day > TD;
+  const daysLeft = Math.max(0, TD - day + 1);
+  const stage = expired ? 'expired' : (day >= TD ? 'final' : (day === TD - 1 && TD > 2 ? 'voice' : 'prompt'));
+  return { tier: 'spark', day: Math.min(day, TD + 1), trialDays: TD, draftAllowance: cfg.sparkDrafts, daysLeft: expired ? 0 : daysLeft, expired, stage, upgradeTo: 'starter', upgradePriceMonthly: 99 };
 }
 const upgradeRequestLast = new Map();
 
@@ -24423,6 +24482,22 @@ async function handleRequest(req, res) {
         }
       });
     }
+    // Automatic activity record: every successful change a signed-in client member makes is stored against their member id with a date and time.
+    if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS' && parts[0] === 'api' && parts[1] === 'accounts' && parts[2] && parts[3] !== 'member-activity'){
+      const _tok = (String(req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/) || [])[1];
+      const _acct = decodeURIComponent(parts[2]);
+      const _action = req.method + ' ' + parts.slice(3).map(x => x.length > 24 ? ':id' : x).join('/');
+      res.on('finish', () => {
+        try {
+          if (!_tok || res.statusCode >= 400) return;
+          const sess = db.prepare('SELECT memberId, platformuserid FROM sessions WHERE token = ?').get(_tok.trim());
+          if (!sess || !sess.memberId || sess.platformuserid) return;
+          const m = db.prepare('SELECT name FROM team_members WHERE id = ?').get(sess.memberId);
+          db.prepare('INSERT INTO member_activity (id, accountId, memberid, membername, action, statuscode, createdAt) VALUES (?,?,?,?,?,?,?)')
+            .run(generateId('ACT'), _acct, sess.memberId, m ? m.name : null, _action.slice(0, 200), res.statusCode, new Date().toISOString());
+        } catch (e){}
+      });
+    }
     // Spark expired -> read-only. Team view-as sessions and sign-out / upgrade requests are exempt.
     if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS' && parts[0] === 'api' && parts[1] === 'accounts' && parts[2]){
       try {
@@ -24571,6 +24646,23 @@ async function handleRequest(req, res) {
       if (req.method === 'GET' && parts.length === 3 && sub === 'accounts'){
         const rows = db.prepare('SELECT accountId, company, industry, createdAt, paidTier, paidTierActivatedAt FROM accounts ORDER BY company ASC').all();
         return sendJson(res, 200, { accounts: rows, levels: PAID_TIERS.map(t => ({ key: t.key, name: t.name, priceMonthly: t.priceMonthly, maxStorefronts: t.maxStorefronts })) });
+      }
+      // GET/POST /api/platform/spark-settings — trial length and the Starter Kit monthly draft allowance (Spark gets the prorated share).
+      if (parts.length === 3 && sub === 'spark-settings'){
+        if (req.method === 'GET') return sendJson(res, 200, getSparkSettings());
+        if (req.method === 'POST'){
+          if (!isOwnerOrAdmin) return sendJson(res, 403, { error: 'Only Owners and Admins change Spark settings.' });
+          const body = await readBody(req);
+          const td = Math.floor(Number(body.trialDays)), dr = Math.floor(Number(body.starterMonthlyDrafts));
+          if (!(td >= 1 && td <= 60) || !(dr >= 1 && dr <= 10000)) return sendJson(res, 400, { error: 'Trial days must be 1 to 60 and the monthly drafts a positive number.' });
+          const val = JSON.stringify({ trialDays: td, starterMonthlyDrafts: dr });
+          db.prepare('DELETE FROM platform_settings WHERE skey = ?').run('spark');
+          db.prepare('INSERT INTO platform_settings (skey, svalue, updatedat) VALUES (?,?,?)').run('spark', val, nowIso());
+          _sparkCache = null;
+          db.prepare('INSERT INTO platform_access_log (id, platformuserid, platformname, platformrole, accountId, action, ip, createdAt) VALUES (?,?,?,?,?,?,?,?)')
+            .run(generateId('PLOG'), me.id, me.name, me.role, 'platform', 'spark_settings:' + td + 'd/' + dr + 'drafts', getClientIp(req) || null, nowIso());
+          return sendJson(res, 200, getSparkSettings());
+        }
       }
       // POST /api/platform/accounts/:id/level — activate or change a client's level in the Ops Console. { tier: 'spark'|'starter'|'glow'|'radiance'|'beacon'|null }
       if (req.method === 'POST' && parts.length === 5 && sub === 'accounts' && parts[4] === 'level'){
@@ -25011,7 +25103,7 @@ async function handleRequest(req, res) {
       // this level" path. Optional — every existing caller that doesn't
       // send `tier` behaves exactly as before (paidTier stays null, the
       // existing free/unassigned state).
-      const paidTier = (body.tier && PAID_TIERS.some(t => t.key === body.tier)) ? body.tier : null;
+      const paidTier = (body.tier && PAID_TIERS.some(t => t.key === body.tier)) ? 'spark' : null; // any requested level starts on Spark; paid levels are activated by the Verilume team
       const paidTierActivatedAt = paidTier ? now : null;
       // 2026-08-27 fix — the free assessment already runs its own website
       // scan (assessment.html's assessmentWebsiteContext, via POST
@@ -26213,8 +26305,8 @@ async function handleRequest(req, res) {
         const r = await sendTransactionalEmail({
           to: salesTo,
           subject: `Spark upgrade request: ${a ? a.company : accountId}`,
-          textBody: `${a ? a.company : accountId} (${accountId}) asked to upgrade to the Starter Kit ($99/month) from the ${body.source || 'portal'} prompt. Spark day ${ls ? ls.day : 'n/a'} of ${SPARK_DAYS}${ls && ls.expired ? ' (expired, read-only)' : ''}.`,
-          htmlBody: `<p><strong>${escapeHtmlBasic(a ? a.company : accountId)}</strong> (${escapeHtmlBasic(accountId)}) asked to upgrade to the Starter Kit ($99/month) from the ${escapeHtmlBasic(body.source || 'portal')} prompt.</p><p>Spark day ${ls ? ls.day : 'n/a'} of ${SPARK_DAYS}${ls && ls.expired ? ' (expired, read-only)' : ''}.</p>`
+          textBody: `${a ? a.company : accountId} (${accountId}) asked to upgrade to the Starter Kit ($99/month) from the ${body.source || 'portal'} prompt. Spark day ${ls ? ls.day : 'n/a'} of ${ls ? ls.trialDays : SPARK_DAYS}${ls && ls.expired ? ' (expired, read-only)' : ''}.`,
+          htmlBody: `<p><strong>${escapeHtmlBasic(a ? a.company : accountId)}</strong> (${escapeHtmlBasic(accountId)}) asked to upgrade to the Starter Kit ($99/month) from the ${escapeHtmlBasic(body.source || 'portal')} prompt.</p><p>Spark day ${ls ? ls.day : 'n/a'} of ${ls ? ls.trialDays : SPARK_DAYS}${ls && ls.expired ? ' (expired, read-only)' : ''}.</p>`
         });
         sent = r && r.emailStatus === 'sent';
       }
@@ -26232,6 +26324,11 @@ async function handleRequest(req, res) {
       const body = await readBody(req);
       if (!body.tier || !PAID_TIERS.some(t => t.key === body.tier)){
         return sendJson(res, 400, { error: `tier must be one of: ${PAID_TIERS.map(t => t.key).join(', ')}` });
+      }
+      // Paid levels are activated by the Verilume team in the Ops Console with an updated IO. A client can only start Spark, and only once.
+      const _cur = db.prepare('SELECT paidTier FROM accounts WHERE accountId = ?').get(accountId);
+      if (body.tier !== 'spark' || (_cur && _cur.paidTier)){
+        return sendJson(res, 403, { error: 'Paid levels are activated by the Verilume team. Contact Sales at verilume@verilume.ai.' });
       }
       const now = new Date().toISOString();
       db.prepare('UPDATE accounts SET paidTier = ?, paidTierActivatedAt = ? WHERE accountId = ?').run(body.tier, now, accountId);
@@ -41029,7 +41126,12 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       // Explicit column list (not SELECT *) as of 2026-08-18 — team_members
       // now carries passwordHash/passwordSalt (registration rebuild) and
       // those must never leave the server, hashed or not.
-      const team = db.prepare(`SELECT id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, phone, phoneVerifiedAt, mustChangePassword FROM team_members WHERE accountId = ? ORDER BY createdAt ASC`).all(accountId);
+      const team = db.prepare(`SELECT id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, phone, phoneVerifiedAt, mustChangePassword, memberkind, handle, rolelabel, categories FROM team_members WHERE accountId = ? ORDER BY createdAt ASC`).all(accountId);
+      team.forEach(m => {
+        if (!m.handle){ m.handle = generateHandle(accountId, m.name, m.id); try { db.prepare('UPDATE team_members SET handle = ? WHERE id = ?').run(m.handle, m.id); } catch (e){} }
+        m.memberKind = m.memberkind || 'internal'; m.roleLabel = m.rolelabel || ''; let c = []; try { c = JSON.parse(m.categories || '[]'); } catch (e){} m.categories = c;
+        delete m.memberkind; delete m.rolelabel;
+      });
       return sendJson(res, 200, { team });
     }
 
@@ -41066,6 +41168,8 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       // team member (unchanged); only granting isAdmin on the new invite
       // itself requires the requester to already be an admin.
       if (body.isAdmin && !requireAdminMember(req, res, accountId)) return;
+      const newKind = MEMBER_KINDS.includes(body.memberKind) ? body.memberKind : 'internal';
+      if (newKind === 'external' && !requireAdminMember(req, res, accountId)) return;
       let passwordHash = null, passwordSalt = null, mustChangePassword = 0, tempPassword = null;
       if (body.email){
         const emailTaken = db.prepare('SELECT id FROM team_members WHERE lower(email) = lower(?)').get(body.email);
@@ -41083,7 +41187,10 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       db.prepare(
         'INSERT INTO team_members (id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, passwordHash, passwordSalt, mustChangePassword) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'
       ).run(memberId, accountId, body.name, body.functionGroup, body.level, body.reportsToId || null, now, body.email || null, body.isAdmin ? 1 : 0, body.status || 'active', passwordHash, passwordSalt, mustChangePassword);
-      const response = { memberId };
+      const newHandle = generateHandle(accountId, body.name, memberId);
+      db.prepare('UPDATE team_members SET memberkind = ?, handle = ?, rolelabel = ?, categories = ? WHERE id = ?')
+        .run(newKind, newHandle, String(body.roleLabel || '').slice(0, 80) || null, cleanCategories(body.categories), memberId);
+      const response = { memberId, handle: newHandle, memberKind: newKind };
       if (tempPassword){
         response.tempPassword = tempPassword;
         response.mustChangePassword = true;
@@ -41156,12 +41263,35 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       // have broken every non-admin's ability to edit their own name/
       // email/level, not just admin escalation. No-op writes (sending the
       // same value that's already stored) never require admin.
+      if (body.handle !== undefined){
+        const h = String(body.handle || '').trim().toLowerCase().replace(/^@/, '');
+        if (!/^[a-z0-9_.]{2,30}$/.test(h)) return sendJson(res, 400, { error: 'A handle is 2 to 30 letters, numbers, dots or underscores.' });
+        if (handleTaken(existing.accountId, h, memberId)) return sendJson(res, 409, { error: 'That handle is already used in this account.' });
+        db.prepare('UPDATE team_members SET handle = ? WHERE id = ?').run(h, memberId);
+      }
+      if (body.roleLabel !== undefined) db.prepare('UPDATE team_members SET rolelabel = ? WHERE id = ?').run(String(body.roleLabel || '').slice(0, 80) || null, memberId);
+      if (body.categories !== undefined) db.prepare('UPDATE team_members SET categories = ? WHERE id = ?').run(cleanCategories(body.categories), memberId);
+      if (body.memberKind !== undefined && MEMBER_KINDS.includes(body.memberKind)){
+        if (!requireAdminMember(req, res, existing.accountId)) return;
+        db.prepare('UPDATE team_members SET memberkind = ? WHERE id = ?').run(body.memberKind, memberId);
+      }
       const requestedIsAdmin = body.isAdmin !== undefined ? (body.isAdmin ? 1 : 0) : null;
       if (requestedIsAdmin !== null && requestedIsAdmin !== (existing.isAdmin ? 1 : 0)){
         if (!requireAdminMember(req, res, existing.accountId)) return;
         db.prepare('UPDATE team_members SET isAdmin = ? WHERE id = ?').run(requestedIsAdmin, memberId);
       }
       return sendJson(res, 200, { updated: true });
+    }
+
+    // GET /api/accounts/:id/member-activity — admin only. Every change a signed-in member made, with date and time. ?memberId= narrows to one person.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'member-activity'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAdminMember(req, res, accountId)) return;
+      const mid = url.searchParams.get('memberId');
+      const rows = mid
+        ? db.prepare('SELECT id, memberid, membername, action, statuscode, createdAt FROM member_activity WHERE accountId = ? AND memberid = ? ORDER BY createdAt DESC LIMIT 300').all(accountId, mid)
+        : db.prepare('SELECT id, memberid, membername, action, statuscode, createdAt FROM member_activity WHERE accountId = ? ORDER BY createdAt DESC LIMIT 300').all(accountId);
+      return sendJson(res, 200, { activity: rows.map(r => ({ id: r.id, memberId: r.memberid, memberName: r.membername, action: r.action, status: r.statuscode, at: r.createdAt })) });
     }
 
     // DELETE /api/team/:id — remove a team member. Any member who had
