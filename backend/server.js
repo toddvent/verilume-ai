@@ -11518,6 +11518,17 @@ createTableIfNeeded(`
   );
 `);
 
+// Who owns each Train the Brain setup card. All-lowercase columns so Postgres needs no identifier quoting.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS onboarding_assignments (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    itemkey TEXT NOT NULL,
+    memberid TEXT,
+    assignedby TEXT,
+    assignedat TEXT NOT NULL
+  );
+`);
 const MARKETING_BUDGET_MONTHS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
 const MARKETING_BUDGET_MONTH_LABELS = { jan:'January', feb:'February', mar:'March', apr:'April', may:'May', jun:'June', jul:'July', aug:'August', sep:'September', oct:'October', nov:'November', dec:'December' };
 // Round 2026-09-07, per direct bug report ("Server Error trying to upload
@@ -17491,7 +17502,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
+const CATALOG_EXEMPT = new Set(['onboarding_assignments', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -41508,6 +41519,35 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       return sendJson(res, 201, response);
     }
 
+    // Train the Brain card owners. GET lists them for anyone on the account; PUT (Admin only) sets or clears the owner of one or more cards.
+    // An owner with no login yet simply sees the task on first sign-in. memberId null means unassigned (the Admin does it).
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'onboarding-assignments'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (req.method === 'GET'){
+        if (!requireAccount(req, res, accountId)) return;
+        const rows = db.prepare('SELECT itemkey, memberid, assignedby, assignedat FROM onboarding_assignments WHERE accountid = ?').all(accountId);
+        return sendJson(res, 200, { assignments: rows.map(r => ({ item: r.itemkey, memberId: r.memberid || null, assignedBy: r.assignedby || null, assignedAt: r.assignedat })) });
+      }
+      if (req.method === 'PUT'){
+        if (!requireAdminMember(req, res, accountId)) return;
+        const body = await readBody(req);
+        const items = (Array.isArray(body.items) ? body.items : []).map(String).filter(k => /^[A-Za-z0-9_]{1,40}$/.test(k)).slice(0, 60);
+        if (!items.length) return sendJson(res, 400, { error: 'items is required' });
+        const memberId = body.memberId ? String(body.memberId) : null;
+        if (memberId){
+          const m = db.prepare('SELECT id FROM team_members WHERE id = ? AND accountId = ?').get(memberId, accountId);
+          if (!m) return sendJson(res, 404, { error: 'team member not found on this account' });
+        }
+        const sess = authenticate(req);
+        const now = new Date().toISOString();
+        items.forEach(k => {
+          db.prepare('DELETE FROM onboarding_assignments WHERE accountid = ? AND itemkey = ?').run(accountId, k);
+          if (memberId) db.prepare('INSERT INTO onboarding_assignments (id, accountid, itemkey, memberid, assignedby, assignedat) VALUES (?,?,?,?,?,?)').run(generateId('ASG'), accountId, k, memberId, (sess && sess.memberId) || null, now);
+        });
+        return sendJson(res, 200, { updated: items.length });
+      }
+    }
+
     // POST /api/team/:id/reissue-credentials — admin recovery path for a
     // team member's one-time-shown temp password. There's no real email
     // delivery in this build (same limitation as every other
@@ -41675,6 +41715,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (!existing) return sendJson(res, 404, { error: 'team member not found' });
       if (!requireAdminMember(req, res, existing.accountId)) return;
       db.prepare('DELETE FROM team_members WHERE id = ?').run(memberId);
+      try { db.prepare('DELETE FROM onboarding_assignments WHERE memberid = ?').run(memberId); } catch (e){}
       return sendJson(res, 200, { deleted: true });
     }
 
