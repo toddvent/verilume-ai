@@ -2771,6 +2771,7 @@ ensureColumn('campaigns', 'ctaOverride', 'TEXT');
 // the flag, same "front end decides what to render" pattern as everywhere
 // else.
 ensureColumn('accounts', 'orgModel', "TEXT DEFAULT 'team'");
+ensureColumn('accounts', 'orgshape', 'TEXT');
 
 // Added 2026-07-25 (round 55) — content library (saved boilerplate, legal
 // disclaimer language, testimonial bank), per the campaign audit's "no
@@ -27159,6 +27160,18 @@ async function handleRequest(req, res) {
       db.prepare('INSERT INTO score_history (accountId, stage, layer, score, source, recordedAt) VALUES (?,?,?,?,?,?)')
         .run(accountId, body.stage, body.layer, body.score, 'portal re-rating', now);
       return sendJson(res, 200, { recordedAt: now });
+    }
+
+    // POST /api/accounts/:id/org-shape — the org chart shape an Admin starts from (one of the assessment's sketches).
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'org-shape'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAdminMember(req, res, accountId)) return;
+      const body = await readBody(req);
+      const ORG_SHAPE_IDS = ['solo-generalist', 'solo-fractional', 'inhouse-flat', 'inhouse-functional', 'hybrid-lean', 'hybrid-embedded'];
+      const shape = body.shape === null || body.shape === '' ? null : String(body.shape);
+      if (shape && !ORG_SHAPE_IDS.includes(shape)) return sendJson(res, 400, { error: 'unknown org shape' });
+      db.prepare('UPDATE accounts SET orgshape = ? WHERE accountId = ?').run(shape, accountId);
+      return sendJson(res, 200, { orgShape: shape });
     }
 
     // POST /api/accounts/:id/org-model — round 53, solo/local-business flow.
