@@ -7388,8 +7388,8 @@
       <div class="module-body">
         <div class="field">
           <label for="teamPositionInput">Position</label>
-          <input type="text" id="teamPositionInput" list="teamPositionList" maxlength="80" placeholder="e.g. Head of Brand" oninput="onPositionTyped()" autocomplete="off">
-          <datalist id="teamPositionList"></datalist>
+          <select id="teamPositionPick" onchange="onPositionSelected()"></select>
+          <input type="text" id="teamPositionInput" maxlength="80" placeholder="Type the position name, e.g. Head of Brand" oninput="onPositionTyped()" autocomplete="off" style="display:none;margin-top:8px;">
           <div style="margin-top:6px;"><button type="button" class="link-btn" onclick="saveCustomPosition()">Save this position and its settings for next time</button> <button type="button" class="link-btn" id="teamPositionRemove" style="display:none;" onclick="removeCustomPosition()">Remove this saved position</button></div>
         </div>
         <div class="field">
@@ -61497,8 +61497,9 @@ function splitCats(cats){
   return { dash: uniqList(dash), creative: uniqList(creative), legacy: uniqList(legacy) };
 }
 function posTitle(label){
+  if (label === 'Head of Marketing / CMO') return 'Head of Marketing';
   const m = /^(.*) Director$/.exec(label || '');
-  if (m && !/^(Creative|Art)$/.test(m[1])) return 'Head of ' + m[1];
+  if (m) return 'Head of ' + (m[1] === 'Art' ? 'Art Direction' : m[1]);
   return label;
 }
 function memberDepth(id, seen){
@@ -61857,7 +61858,7 @@ function renderOrgShapePicker(){
   const color = (ORG_SHAPE_STYLES.find(x => x.key === orgShapeStyleTab) || {}).color || '#1E2761';
   el.innerHTML = `
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-      ${ORG_SHAPE_STYLES.map(x => `<button type="button" class="stage-tile${orgShapeStyleTab === x.key ? ' selected' : ''}" style="padding:6px 14px;" onclick="orgShapeStyleTab='${x.key}';renderOrgShapePicker();">${x.label}</button>`).join('')}
+      ${ORG_SHAPE_STYLES.map(x => `<button type="button" class="stage-tile${orgShapeStyleTab === x.key ? ' selected' : ''}" style="padding:6px 14px;" onclick="orgShapeStyleTab='${x.key}';renderOrgShapePicker();renderOrgChart();">${x.label}</button>`).join('')}
     </div>
     ${orgShapeStyleTab ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,260px));gap:12px;">
       ${ORG_SHAPES.filter(o => o.style === orgShapeStyleTab).map(o => `
@@ -61930,7 +61931,8 @@ function renderOrgChart(){
       ${unplaced.map(m => `<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:4px 0;"><strong>${escapeHtml(m.name)}</strong><span class="hint">${escapeHtml(m.email || '')}</span>${isAdmin ? `<button type="button" class="link-btn" style="color:#D08A3E;font-weight:600;" onclick="startEditTeamMember('${m.id}')">Place on chart</button>` : ''}</div>`).join('')}
     </div>` : '';
   const filled = assign ? (assign.top ? 1 : 0) + assign.kids.filter(Boolean).length : 0;
-  const head = shape ? `<div class="section-eyebrow" style="margin-bottom:10px;">${shape.label} · ${filled} of ${1 + shape.kids.length} seats filled</div>` : '';
+  const noShapeHint = (!shape && orgShapeStyleTab) ? `<p class="hint" style="margin:0 0 10px;">Choose one of the team shapes above and its open seats appear here.</p>` : '';
+  const head = noShapeHint + (shape ? `<div class="section-eyebrow" style="margin-bottom:10px;">${shape.label} · ${filled} of ${1 + shape.kids.length} seats filled</div>` : '');
   if (!roots.length && !rootOpen.length){
     el.innerHTML = tray + head + `<p class="hint">No one is on the chart yet. Pick a team shape above, or use Add a person.</p>`;
     return;
@@ -61968,10 +61970,22 @@ let customPositions = [];
 function allPositions(){ return POSITION_LIBRARY.concat(customPositions.map(c => Object.assign({ track: 'Your positions', custom: true }, c))); }
 function positionDisplay(p){ return p.custom ? p.label : posTitle(p.label); }
 function renderPositionPicker(){
-  const dl = document.getElementById('teamPositionList');
-  if (!dl) return;
-  dl.innerHTML = allPositions().map(p => `<option value="${escapeHtml(positionDisplay(p))}"></option>`).join('');
+  const sel = document.getElementById('teamPositionPick');
+  if (!sel) return;
+  const groups = {};
+  allPositions().forEach(p => { (groups[p.track] = groups[p.track] || []).push(p); });
+  const order = Object.keys(groups).sort((a, b) => (a === 'Your positions' ? -1 : b === 'Your positions' ? 1 : 0));
+  sel.innerHTML = '<option value="">Select a position…</option>' +
+    order.map(t => `<optgroup label="${escapeHtml(t)}">${groups[t].map(p => `<option value="${escapeHtml(positionDisplay(p))}">${escapeHtml(positionDisplay(p))}</option>`).join('')}</optgroup>`).join('') +
+    '<option value="__other">Something else (type your own)…</option>';
   onPositionPicked();
+}
+function onPositionSelected(){
+  const sel = document.getElementById('teamPositionPick');
+  const inp = document.getElementById('teamPositionInput');
+  if (sel.value === '__other'){ inp.value = ''; inp.style.display = ''; inp.focus(); }
+  else { inp.value = sel.value; inp.style.display = 'none'; }
+  onPositionTyped();
 }
 function matchedPosition(){
   const v = (document.getElementById('teamPositionInput') || {}).value;
@@ -61980,6 +61994,13 @@ function matchedPosition(){
   return allPositions().find(p => positionDisplay(p).toLowerCase() === t) || null;
 }
 function onPositionPicked(){
+  const sel = document.getElementById('teamPositionPick'), inp = document.getElementById('teamPositionInput');
+  if (sel && inp){
+    const v = inp.value.trim();
+    const has = v && Array.from(sel.options).some(o => o.value === v);
+    sel.value = has ? v : (v ? '__other' : '');
+    inp.style.display = (sel.value === '__other') ? '' : 'none';
+  }
   const rm = document.getElementById('teamPositionRemove');
   const p = matchedPosition();
   if (rm) rm.style.display = p && p.custom ? '' : 'none';
@@ -62051,7 +62072,7 @@ const ORG_SHAPES = [
             { label: 'Paid Media', level: 'Specialist', fn: 'Performance Marketing', kind: 'internal', cats: ['Growth and Performance'] },
             { label: 'Email/CRM', level: 'Specialist', fn: 'Lifecycle Marketing', kind: 'internal', cats: ['Customer Experiences'] } ] },
   { id: 'inhouse-functional', style: 'inhouse', label: 'Functional Team',
-    top: { label: 'CMO', level: 'CMO', fn: 'Executive', kind: 'internal', cats: [] },
+    top: { label: 'Head of Marketing', level: 'CMO', fn: 'Executive', kind: 'internal', cats: [] },
     kids: [ { label: 'Brand & Creative', level: 'Director', fn: 'Brand', kind: 'internal', cats: ['Design'] },
             { label: 'Growth/Paid', level: 'Director', fn: 'Performance Marketing', kind: 'internal', cats: ['Growth and Performance'] },
             { label: 'Lifecycle', level: 'Director', fn: 'Lifecycle Marketing', kind: 'internal', cats: ['Customer Experiences'] },
@@ -62061,7 +62082,7 @@ const ORG_SHAPES = [
     kids: [ { label: 'In-House Brand', level: 'Manager', fn: 'Brand', kind: 'internal', cats: ['Design'] },
             { label: 'Agency: Paid Media', level: 'Manager', fn: 'Performance Marketing', kind: 'external', cats: ['Growth and Performance'] } ] },
   { id: 'hybrid-embedded', style: 'inhouse-agency', label: 'Embedded Agency Pod',
-    top: { label: 'CMO', level: 'CMO', fn: 'Executive', kind: 'internal', cats: [] },
+    top: { label: 'Head of Marketing', level: 'CMO', fn: 'Executive', kind: 'internal', cats: [] },
     kids: [ { label: 'In-House Strategy', level: 'Director', fn: 'Research', kind: 'internal', cats: ['Strategy'] },
             { label: 'Agency: Creative', level: 'Manager', fn: 'Omni-Channel Creative', kind: 'external', cats: ['Design'] },
             { label: 'Agency: Media', level: 'Manager', fn: 'Performance Marketing', kind: 'external', cats: ['Growth and Performance'] } ] }
