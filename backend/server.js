@@ -18021,6 +18021,55 @@ function requireAccount(req, res, accountId){
 // send-the-401-itself convention as requireAccount() above.
 // Verilume staff only: the ADMIN_API_TOKEN, or a signed-in Verilume team member (platform session, any role except read-only).
 // A client session never passes, so no client can reach routes that touch shared platform data.
+// ---------------------------------------------------------------
+// Access grid (access review build #4). One shared check that every request passes through, so exports,
+// AI output and screens all follow the same rule. Rows are protected items; columns are audiences.
+//   yes = full use, view = read only, no = closed. Items not listed here are unchanged.
+// ACCESS_ENFORCEMENT=off in the environment is an emergency switch that turns the whole check off.
+// ---------------------------------------------------------------
+const ACCESS_ITEMS = [
+  { key: 'budgets', label: 'account-wide and full-year budgets',
+    match: /^\/api\/accounts\/[^/]+\/(marketing-budget-uploads|mbu-budget-status|media-plan|annual-plan)(\/|$)/,
+    rule: { admin: 'yes', lead: 'yes', analystManager: 'no', other: 'no', agency: 'no', creative: 'no', staff: 'view' } },
+  { key: 'approve_budget', label: 'final campaign budget approval',
+    match: /^\/api\/campaigns\/[^/]+\/approve-budget-overall$/,
+    rule: { admin: 'yes', lead: 'yes', analystManager: 'no', other: 'no', agency: 'no', creative: 'no', staff: 'no' } },
+  { key: 'mmm', label: 'marketing mix modeling and test development',
+    match: /^(\/api\/accounts\/[^/]+\/mmm-[a-z-]+|\/api\/campaigns\/[^/]+\/mmm-line-items|\/api\/mmm-inputs\/[^/]+)(\/|$)/,
+    rule: { admin: 'yes', lead: 'yes', analystManager: 'yes', other: 'no', agency: 'no', creative: 'no', staff: 'view' } },
+  { key: 'billing', label: 'billing and plan',
+    match: /^(\/api\/accounts\/[^/]+\/invoices|\/api\/invoices\/[^/]+)$/,
+    rule: { admin: 'yes', lead: 'no', analystManager: 'no', other: 'no', agency: 'no', creative: 'no', staff: 'no' } }
+];
+const ACCESS_LEAD_LEVELS = ['CMO', 'Director'];
+const ACCESS_CREATIVE_CATEGORIES = ['Design', 'Copywriting', 'Motion Graphics'];
+// Who is this session? admin | lead | analystManager | other | agency | creative | staff
+function accessAudienceFor(session){
+  if (!session) return null;
+  if (session.platformuserid) return 'staff';
+  if (!session.memberId) return 'admin'; // the account's own root login
+  let m = null;
+  try { m = db.prepare('SELECT isAdmin, level, functionGroup, memberkind, categories FROM team_members WHERE id = ?').get(session.memberId); } catch (e){}
+  if (!m) return null;
+  if (m.isAdmin) return 'admin';
+  let cats = []; try { cats = JSON.parse(m.categories || '[]'); } catch (e){}
+  if (m.memberkind === 'external') return (cats.length && cats.every(c => ACCESS_CREATIVE_CATEGORIES.includes(c))) ? 'creative' : 'agency';
+  if (ACCESS_LEAD_LEVELS.includes(m.level)) return 'lead';
+  if (m.level === 'Manager' && (cats.includes('Analysts') || m.functionGroup === 'Advanced Analytics')) return 'analystManager';
+  return 'other';
+}
+// Returns null when allowed, or { item, label, audience } when refused.
+function accessDecision(req, path, session){
+  if (process.env.ACCESS_ENFORCEMENT === 'off') return null;
+  const item = ACCESS_ITEMS.find(i => i.match.test(path));
+  if (!item || !session) return null;
+  const audience = accessAudienceFor(session);
+  if (!audience) return null;
+  const level = item.rule[audience] || 'no';
+  const readOnly = req.method === 'GET' || req.method === 'HEAD';
+  if (level === 'yes' || (level === 'view' && readOnly)) return null;
+  return { item: item.key, label: item.label, audience };
+}
 function isStaffRequest(req){
   if (ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN) return true;
   const pa = (typeof platformAuth === 'function') ? platformAuth(req) : null;
@@ -24587,6 +24636,22 @@ async function handleRequest(req, res) {
         }
       } catch (e){ console.warn('[spark] guard lookup failed:', e.message); }
     }
+    // Access grid: one shared check for every protected item (see ACCESS_ITEMS).
+    if (parts[0] === 'api' && req.method !== 'OPTIONS'){
+      try {
+        const _gs = authenticate(req);
+        if (_gs){
+          const _pathAcct = parts[1] === 'accounts' && parts[2] ? decodeURIComponent(parts[2]) : _gs.accountId;
+          if (_pathAcct === _gs.accountId){
+            const _dec = accessDecision(req, '/' + parts.join('/'), _gs);
+            if (_dec){
+              try { db.prepare('INSERT INTO member_activity (id, accountId, memberid, membername, action, statuscode, createdAt) VALUES (?,?,?,?,?,?,?)').run(generateId('ACT'), _gs.accountId, _gs.memberId || null, null, ('DENIED ' + _dec.item + ' ' + req.method).slice(0, 200), 403, new Date().toISOString()); } catch (e){}
+              return sendJson(res, 403, { error: 'Your role does not include ' + _dec.label + '. Ask an Admin if you need it.', code: 'access_denied', item: _dec.item });
+            }
+          }
+        }
+      } catch (e){ console.warn('[access] check failed:', e.message); }
+    }
     // Wave 1.4 — a Verilume team member's view-as session is limited by their role.
     { const _platformDenied = platformViewAsGuard(req, parts); if (_platformDenied) return sendJson(res, 403, { error: _platformDenied }); }
     // ---------------------------------------------------------------
@@ -26363,6 +26428,17 @@ async function handleRequest(req, res) {
     // purpose: this is shown to visitors who don't have an account yet.
     if (req.method === 'GET' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'paid-tiers'){
       return sendJson(res, 200, { tiers: PAID_TIERS.filter(t => t.selfServe) });
+    }
+
+    // GET /api/accounts/:id/my-access — what this sign-in may use, so screens can hide what is closed. The server check above is the real protection.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'my-access'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const sess = authenticate(req);
+      const audience = accessAudienceFor(sess);
+      const items = {};
+      ACCESS_ITEMS.forEach(i => { items[i.key] = (audience && i.rule[audience]) || 'no'; });
+      return sendJson(res, 200, { audience, items });
     }
 
     // POST /api/accounts/:id/upgrade-request — the Spark upgrade prompts post here; emails Sales (SALES_NOTIFY_EMAIL). Rate-limited to one per account per hour.
