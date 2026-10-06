@@ -17897,6 +17897,13 @@ function authenticate(req){
     return null;
   }
   if (!session) return null;
+  // A removed or deactivated member's sessions stop working at once.
+  if (session.memberId){
+    try {
+      const mem = db.prepare('SELECT status FROM team_members WHERE id = ?').get(session.memberId);
+      if (!mem || (mem.status && mem.status !== 'active')) return null;
+    } catch (e){ /* lookup failure falls through to the normal checks */ }
+  }
   if (new Date(session.expiresAt).getTime() < Date.now()){
     try {
       db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
@@ -18009,6 +18016,20 @@ function requireAccount(req, res, accountId){
 // X-Admin-Token/ADMIN_API_TOKEN is accepted immediately (staff, any
 // account); otherwise falls back to the normal session check. Same
 // send-the-401-itself convention as requireAccount() above.
+// Verilume staff only: the ADMIN_API_TOKEN, or a signed-in Verilume team member (platform session, any role except read-only).
+// A client session never passes, so no client can reach routes that touch shared platform data.
+function isStaffRequest(req){
+  if (ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN) return true;
+  const pa = (typeof platformAuth === 'function') ? platformAuth(req) : null;
+  return !!(pa && pa.user);
+}
+function requireStaff(req, res, opts){
+  if (ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN) return true;
+  const pa = (typeof platformAuth === 'function') ? platformAuth(req) : null;
+  if (pa && pa.user && (pa.user.role !== 'readonly' || (opts && opts.allowReadonly))) return true;
+  sendJson(res, 401, { error: 'unauthorized — Verilume team sign-in required' });
+  return false;
+}
 function requireAccountOrAdmin(req, res, accountId){
   if (ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN) return true;
   return requireAccount(req, res, accountId);
@@ -37580,7 +37601,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     // ============ Zip centroids + stores (2026-09-06) ============
     // POST /api/market-zip-centroids — { rows: [{zip, lat, lng}], sourceLabel }
     if (req.method === 'POST' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'market-zip-centroids'){
-      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      if (!requireStaff(req, res)) return;
       const body = await readBody(req);
       if (!Array.isArray(body.rows) || !body.rows.length) return sendJson(res, 400, { error: 'rows (array of {zip, lat, lng}) is required' });
       if (!body.sourceLabel || !String(body.sourceLabel).trim()) return sendJson(res, 400, { error: 'sourceLabel is required — where did these centroids come from?' });
@@ -37609,19 +37630,19 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       return sendJson(res, 200, { inserted: validRows.length, errors, totalZipsOnFile: db.prepare('SELECT COUNT(*) AS n FROM zip_centroid_master').get().n });
     }
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'market-zip-centroids' && parts[2] === 'status'){
-      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      if (!authenticate(req) && !isStaffRequest(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
       return sendJson(res, 200, centroidStatus());
     }
     // GET /api/market-country-packs — supported countries, units, market types
     if (req.method === 'GET' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'market-country-packs'){
-      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      if (!authenticate(req) && !isStaffRequest(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
       return sendJson(res, 200, { countries: Object.entries(GEO_COUNTRY_PACKS).map(([code, p]) => ({ code, name: p.name, unit: p.unit, marketType: p.marketType, marketNote: p.marketNote })) });
     }
     // GET /api/market-zip-centroids/lookup?key=CA:M5V — one centroid (used
     // to place a Canadian store by its postal code's FSA when no geocoder
     // is available; disclosed as approximate).
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'market-zip-centroids' && parts[2] === 'lookup'){
-      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      if (!authenticate(req) && !isStaffRequest(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
       const g = normalizeGeoKey(url.searchParams.get('key'), url.searchParams.get('country'));
       if (!g || /^DMA:/.test(g.key)) return sendJson(res, 400, { error: 'key must be a postal code of a supported country (US, CA, AU, GB, DE, FR, ES, IT)' });
       const c = db.prepare('SELECT zip, lat, lng, sourceLabel FROM zip_centroid_master WHERE zip = ?').get(g.key);
@@ -37748,7 +37769,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     //
     // POST /api/market-dma-master — { rows: [{zip, dmaCode, dmaName}], sourceLabel, method }
     if (req.method === 'POST' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'market-dma-master'){
-      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      if (!requireStaff(req, res)) return;
       const body = await readBody(req);
       if (!Array.isArray(body.rows) || !body.rows.length) return sendJson(res, 400, { error: 'rows (array of {zip, dmaCode, dmaName}) is required' });
       if (!body.sourceLabel || !String(body.sourceLabel).trim()) return sendJson(res, 400, { error: 'sourceLabel is required — where did this crosswalk come from?' });
@@ -37793,12 +37814,12 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     }
     // GET /api/ops/report-cards — 2026-10-01: catalog of every reporting card the portal produces, for staff testing.
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'report-cards'){
-      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      if (!requireStaff(req, res, { allowReadonly: true })) return;
       return sendJson(res, 200, { cards: REPORT_CARD_CATALOG.map(c => ({ dateAdded: c.added, scope: c.scope, client: null, tab: c.tab, name: c.name, formula: c.formula, sourceTables: c.tables })), clientAddedCount: 0, note: 'Client-added cards will list here with the client name once a saved-report library exists. None can be added yet.' });
     }
 
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'market-dma-master' && parts[2] === 'status'){
-      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      if (!authenticate(req) && !isStaffRequest(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
       return sendJson(res, 200, dmaMasterStatus());
     }
 
@@ -37818,7 +37839,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     // other endpoint here, not because the data is sensitive (it's public),
     // but so this can't be used as an open relay.
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'market-reference-data' && parts[2] === 'proxy' && parts[3] === 'population'){
-      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      if (!authenticate(req) && !isStaffRequest(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
       try {
         // 2026-09-09 follow-up #2 — Todd re-tested again after the
         // User-Agent fix and got a THIRD distinct failure, with the actual
@@ -37855,7 +37876,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       }
     }
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'market-reference-data' && parts[2] === 'proxy' && parts[3] === 'dma'){
-      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      if (!authenticate(req) && !isStaffRequest(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
       try {
         const upstream = await fetch('https://gist.githubusercontent.com/clarkenheim/023882f8d77741f4d5347f80d95bc259/raw', {
           headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CXMediaAI/1.0; +https://cxexperiences.com)', 'Accept': 'text/plain,*/*' },
@@ -37927,7 +37948,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     // waiting on all 52 areas, before trusting it for a full national
     // reload. Omit it for the full national pull.
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'market-reference-data' && parts[2] === 'proxy' && parts[3] === 'demographics'){
-      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      if (!authenticate(req) && !isStaffRequest(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
       try {
         // Same Census API key requirement discovered for the population
         // proxy above (decennial DHC dataset demanded one; ACS5 detailed
@@ -38130,7 +38151,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     // generic /api/market-demographic-master endpoint below — no new
     // table or endpoint needed there.
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'market-reference-data' && parts[2] === 'proxy' && parts[3] === 'irs-top-bracket-income'){
-      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      if (!authenticate(req) && !isStaffRequest(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
       try {
         const IRS_ZIP_CSV_URL = 'https://www.irs.gov/pub/irs-soi/22zpallagi.csv';
         const upstream = await fetch(IRS_ZIP_CSV_URL, {
@@ -38187,7 +38208,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     // safely re-run as fresher ACS data becomes available, same as the
     // population/DMA masters.
     if (req.method === 'POST' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'market-demographic-master'){
-      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      if (!requireStaff(req, res)) return;
       const body = await readBody(req);
       if (!Array.isArray(body.rows) || !body.rows.length) return sendJson(res, 400, { error: 'rows (array of {zip, attribute, value}) is required' });
       if (!body.sourceLabel || !String(body.sourceLabel).trim()) return sendJson(res, 400, { error: 'sourceLabel is required — where did this demographic data come from?' });
@@ -38223,7 +38244,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     // attributes are loaded, for how many zips, from what source), same
     // posture as market-population-master/status.
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'market-demographic-master' && parts[2] === 'status'){
-      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      if (!authenticate(req) && !isStaffRequest(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
       const attrs = db.prepare('SELECT attribute, COUNT(DISTINCT zip) AS zips, MAX(updatedAt) AS updatedAt FROM zip_demographic_master GROUP BY attribute ORDER BY attribute').all();
       const sources = db.prepare('SELECT DISTINCT sourceLabel FROM zip_demographic_master').all().map(r => r.sourceLabel);
       return sendJson(res, 200, { attributes: attrs, sources, totalRows: db.prepare('SELECT COUNT(*) AS n FROM zip_demographic_master').get().n });
@@ -38237,7 +38258,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     // rather than duplicating it, so this can be safely re-run as fresher
     // Census data becomes available.
     if (req.method === 'POST' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'market-population-master'){
-      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      if (!requireStaff(req, res)) return;
       const body = await readBody(req);
       if (!Array.isArray(body.rows) || !body.rows.length) return sendJson(res, 400, { error: 'rows (array of {zip, population}) is required' });
       if (!body.sourceLabel || !body.sourceLabel.trim()) return sendJson(res, 400, { error: 'sourceLabel is required — where did this population data come from?' });
