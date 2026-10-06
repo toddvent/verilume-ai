@@ -297,11 +297,38 @@ function levelSelect(c){
   const dis = me && me.role === 'readonly' ? ' disabled' : '';
   return `<select${dis} onchange="setLevel('${esc(c.accountId)}', this.value)"><option value="">Not activated</option>${levels.map(l => `<option value="${esc(l.key)}"${c.paidTier === l.key ? ' selected' : ''}>${esc(l.name)}${l.priceMonthly ? ' ($' + l.priceMonthly + '/mo)' : ''}</option>`).join('')}</select>`;
 }
-async function setLevel(accountId, tier){
+let pendingLevel = null;
+function setLevel(accountId, tier){
+  const c = clients.find(x => x.accountId === accountId);
   $('clientsErr').textContent = '';
-  const r = await api('POST', 'accounts/' + encodeURIComponent(accountId) + '/level', { tier: tier || null });
-  if (!r.ok){ $('clientsErr').textContent = r.data.error || 'Could not change the level.'; return loadClients(); }
+  if (tier === 'spark' || !tier){ return submitLevel(accountId, tier, '', ''); }
+  const l = levels.find(x => x.key === tier);
+  pendingLevel = { accountId, tier };
+  $('lvlTitle').textContent = (c ? c.company : accountId) + ' to ' + (l ? l.name : tier);
+  $('lvlIo').value = ''; $('lvlNote').value = ''; $('lvlErr').textContent = '';
+  $('lvlWho').textContent = me ? me.name : '';
+  $('lvlModal').classList.remove('hidden');
+}
+function cancelLevel(){ pendingLevel = null; $('lvlModal').classList.add('hidden'); loadClients(); }
+async function confirmLevel(){
+  const io = $('lvlIo').value.trim();
+  if (!io){ $('lvlErr').textContent = 'Enter the updated IO reference.'; return; }
+  const p = pendingLevel; if (!p) return;
+  const ok = await submitLevel(p.accountId, p.tier, io, $('lvlNote').value.trim(), true);
+  if (ok){ pendingLevel = null; $('lvlModal').classList.add('hidden'); }
+}
+async function submitLevel(accountId, tier, ioReference, note, inModal){
+  const r = await api('POST', 'accounts/' + encodeURIComponent(accountId) + '/level', { tier: tier || null, ioReference, note });
+  if (!r.ok){
+    if (inModal) $('lvlErr').textContent = r.data.error || 'Could not change the level.';
+    else { $('clientsErr').textContent = r.data.error || 'Could not change the level.'; loadClients(); }
+    return false;
+  }
   const c = clients.find(x => x.accountId === accountId); if (c) c.paidTier = r.data.paidTier;
+  if (tier){
+    $('clientsErr').textContent = r.data.salesNotified ? 'Level saved. Sales has been messaged.' : (r.data.salesConfigured ? 'Level saved, but the message to Sales did not send. Tell Sales directly.' : 'Level saved. No Sales address is set, so tell Sales directly.');
+  }
+  return true;
 }
 async function openClient(accountId){
   $('clientsErr').textContent = '';
@@ -374,5 +401,17 @@ async function doLogout(expired){
   show('signinView');
 })();
 </script>
+<div id="lvlModal" class="hidden" style="position:fixed;inset:0;background:rgba(30,39,97,.45);display:flex;align-items:center;justify-content:center;z-index:50">
+  <div style="background:#fff;border-radius:12px;padding:24px;width:min(440px,92vw)">
+    <h3 id="lvlTitle" style="margin:0 0 14px;color:#1E2761"></h3>
+    <label style="font-size:13px">Updated IO reference</label>
+    <input id="lvlIo" style="width:100%;margin:4px 0 12px;padding:9px;border:1px solid #d5d8e0;border-radius:8px;box-sizing:border-box">
+    <label style="font-size:13px">Note for Sales (optional)</label>
+    <textarea id="lvlNote" rows="3" style="width:100%;margin:4px 0 12px;padding:9px;border:1px solid #d5d8e0;border-radius:8px;box-sizing:border-box"></textarea>
+    <div style="font-size:13px;color:#555;margin-bottom:12px">Made by <strong id="lvlWho"></strong>. Saving messages Sales and logs the change.</div>
+    <div class="err" id="lvlErr"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end"><button class="btn small" onclick="cancelLevel()">Cancel</button><button class="btn small" style="background:#D08A3E;color:#fff" onclick="confirmLevel()">Activate and message Sales</button></div>
+  </div>
+</div>
 </body>
 </html>
