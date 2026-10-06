@@ -1053,10 +1053,19 @@ ensureColumn('accounts', 'paidTierActivatedAt', 'TEXT');
 // anywhere (accounts.paidTier) — name/description are display-only and
 // meant to be trivially swappable once real tiers are decided; nothing
 // downstream keys off the display text.
+// 2026-10-06 — placeholder tiers replaced by the illumination levels
+// (Packages & Investment slide) plus the $99 Starter Kit. Decided in the
+// access review: Spark and Starter Kit share the same functionality; Spark
+// expires after 7 days (countdown not built yet) with the Starter Kit
+// allowance prorated 7/30; storefront bands 1 / 1 / up to 10 / 11-20 / 20+.
+// Only `key` is stored (accounts.paidTier). Prices other than the Starter
+// Kit are still placeholder. Activation happens in the Ops Console.
 const PAID_TIERS = [
-  { key: 'tier-1', name: 'Level 1 (name TBD)', description: 'Placeholder — final scope and pricing not yet decided.' },
-  { key: 'tier-2', name: 'Level 2 (name TBD)', description: 'Placeholder — final scope and pricing not yet decided.' },
-  { key: 'tier-3', name: 'Level 3 (name TBD)', description: 'Placeholder — final scope and pricing not yet decided.' }
+  { key: 'spark',    rank: 1, name: 'Spark',       tagline: 'See where you stand',  maxStorefronts: 1,    monthlyDrafts: 6,    trialDays: 7, priceMonthly: 0,    selfServe: true,  description: 'Free for 7 days. Same functionality as the Starter Kit.' },
+  { key: 'starter',  rank: 2, name: 'Starter Kit', tagline: 'One storefront',       maxStorefronts: 1,    monthlyDrafts: 25,   trialDays: null, priceMonthly: 99, selfServe: true,  description: 'The paid continuation of Spark for a single storefront.' },
+  { key: 'glow',     rank: 3, name: 'Glow',        tagline: 'Understand',           maxStorefronts: 10,   monthlyDrafts: 100,  trialDays: null, priceMonthly: null, selfServe: true, description: 'Up to 10 storefronts. Pricing to be confirmed.' },
+  { key: 'radiance', rank: 4, name: 'Radiance',    tagline: 'Act',                  maxStorefronts: 20,   monthlyDrafts: 400,  trialDays: null, priceMonthly: null, selfServe: true, description: '11 to 20 storefronts. Pricing to be confirmed.' },
+  { key: 'beacon',   rank: 5, name: 'Beacon',      tagline: 'Orchestrate',          maxStorefronts: null, monthlyDrafts: null, trialDays: null, priceMonthly: null, selfServe: false, description: 'Enterprise, above 20 storefronts. Custom quote.' }
 ];
 
 // Added 2026-08-19 — one row per phone-verification attempt (recovery
@@ -24516,8 +24525,23 @@ async function handleRequest(req, res) {
       }
       // GET /api/platform/accounts — every client account
       if (req.method === 'GET' && parts.length === 3 && sub === 'accounts'){
-        const rows = db.prepare('SELECT accountId, company, industry, createdAt FROM accounts ORDER BY company ASC').all();
-        return sendJson(res, 200, { accounts: rows });
+        const rows = db.prepare('SELECT accountId, company, industry, createdAt, paidTier, paidTierActivatedAt FROM accounts ORDER BY company ASC').all();
+        return sendJson(res, 200, { accounts: rows, levels: PAID_TIERS.map(t => ({ key: t.key, name: t.name, priceMonthly: t.priceMonthly, maxStorefronts: t.maxStorefronts })) });
+      }
+      // POST /api/platform/accounts/:id/level — activate or change a client's level in the Ops Console. { tier: 'spark'|'starter'|'glow'|'radiance'|'beacon'|null }
+      if (req.method === 'POST' && parts.length === 5 && sub === 'accounts' && parts[4] === 'level'){
+        if (me.role === 'readonly') return sendJson(res, 403, { error: 'Read-only team members cannot change a client level.' });
+        const accountId = decodeURIComponent(parts[3]);
+        const acct = db.prepare('SELECT accountId, paidTier FROM accounts WHERE accountId = ?').get(accountId);
+        if (!acct) return sendJson(res, 404, { error: 'account not found' });
+        const body = await readBody(req);
+        const tier = body.tier == null || body.tier === '' ? null : String(body.tier);
+        if (tier && !PAID_TIERS.some(t => t.key === tier)) return sendJson(res, 400, { error: `level must be one of: ${PAID_TIERS.map(t => t.key).join(', ')}` });
+        const now = nowIso();
+        db.prepare('UPDATE accounts SET paidTier = ?, paidTierActivatedAt = ? WHERE accountId = ?').run(tier, tier ? now : null, accountId);
+        db.prepare('INSERT INTO platform_access_log (id, platformuserid, platformname, platformrole, accountId, action, ip, createdAt) VALUES (?,?,?,?,?,?,?,?)')
+          .run(generateId('PLOG'), me.id, me.name, me.role, accountId, 'level_set:' + (acct.paidTier || 'none') + '->' + (tier || 'none'), getClientIp(req) || null, now);
+        return sendJson(res, 200, { accountId, paidTier: tier, paidTierActivatedAt: tier ? now : null });
       }
       // POST /api/platform/view-as — { accountId } -> a session inside that client account
       if (req.method === 'POST' && parts.length === 3 && sub === 'view-as'){
@@ -26103,7 +26127,7 @@ async function handleRequest(req, res) {
     // list (PAID_TIERS above) for select-tier.html to render. Public on
     // purpose: this is shown to visitors who don't have an account yet.
     if (req.method === 'GET' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'paid-tiers'){
-      return sendJson(res, 200, { tiers: PAID_TIERS });
+      return sendJson(res, 200, { tiers: PAID_TIERS.filter(t => t.selfServe) });
     }
 
     // POST /api/accounts/:id/tier — activate a paid tier on an EXISTING,
