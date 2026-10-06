@@ -1053,6 +1053,18 @@ ensureColumn('accounts', 'paidTierActivatedAt', 'TEXT');
 // anywhere (accounts.paidTier) — name/description are display-only and
 // meant to be trivially swappable once real tiers are decided; nothing
 // downstream keys off the display text.
+createTableIfNeeded(`CREATE TABLE IF NOT EXISTS level_activations (
+  id TEXT PRIMARY KEY,
+  accountId TEXT NOT NULL,
+  tier TEXT,
+  previoustier TEXT,
+  ioreference TEXT,
+  note TEXT,
+  platformuserid TEXT,
+  platformname TEXT,
+  salesnotified INTEGER DEFAULT 0,
+  createdAt TEXT NOT NULL
+)`);
 // 2026-10-06 — placeholder tiers replaced by the illumination levels
 // (Packages & Investment slide) plus the $99 Starter Kit. Decided in the
 // access review: Spark and Starter Kit share the same functionality; Spark
@@ -24537,11 +24549,33 @@ async function handleRequest(req, res) {
         const body = await readBody(req);
         const tier = body.tier == null || body.tier === '' ? null : String(body.tier);
         if (tier && !PAID_TIERS.some(t => t.key === tier)) return sendJson(res, 400, { error: `level must be one of: ${PAID_TIERS.map(t => t.key).join(', ')}` });
+        const ioReference = String(body.ioReference || '').trim().slice(0, 200);
+        const note = String(body.note || '').trim().slice(0, 1000);
+        // Any level above free Spark needs an updated IO on file, and the
+        // Verilume team member making the change is recorded and messages Sales.
+        if (tier && tier !== 'spark' && !ioReference) return sendJson(res, 400, { error: 'An updated IO reference is required to activate this level.' });
         const now = nowIso();
         db.prepare('UPDATE accounts SET paidTier = ?, paidTierActivatedAt = ? WHERE accountId = ?').run(tier, tier ? now : null, accountId);
+        let salesNotified = false;
+        const salesTo = process.env.SALES_NOTIFY_EMAIL || '';
+        if (tier && salesTo){
+          try {
+            const co = db.prepare('SELECT company FROM accounts WHERE accountId = ?').get(accountId);
+            const lvl = PAID_TIERS.find(t => t.key === tier);
+            const r = await sendTransactionalEmail({
+              to: salesTo,
+              subject: `Level activation: ${co ? co.company : accountId} to ${lvl.name}`,
+              textBody: `${me.name} (${me.email}) set ${co ? co.company : accountId} (${accountId}) to ${lvl.name}${lvl.priceMonthly ? ' at $' + lvl.priceMonthly + '/month' : ''}.\nUpdated IO: ${ioReference || 'not required for this level'}\n${note ? 'Note: ' + note + '\n' : ''}Previous level: ${acct.paidTier || 'none'}`,
+              htmlBody: `<p><strong>${escapeHtmlBasic(me.name)}</strong> (${escapeHtmlBasic(me.email)}) set <strong>${escapeHtmlBasic(co ? co.company : accountId)}</strong> (${escapeHtmlBasic(accountId)}) to <strong>${escapeHtmlBasic(lvl.name)}</strong>${lvl.priceMonthly ? ' at $' + lvl.priceMonthly + '/month' : ''}.</p><p>Updated IO: ${escapeHtmlBasic(ioReference || 'not required for this level')}</p>${note ? '<p>Note: ' + escapeHtmlBasic(note) + '</p>' : ''}<p>Previous level: ${escapeHtmlBasic(acct.paidTier || 'none')}</p>`
+            });
+            salesNotified = !!(r && r.emailStatus === 'sent');
+          } catch (e){ salesNotified = false; }
+        }
+        db.prepare('INSERT INTO level_activations (id, accountId, tier, previoustier, ioreference, note, platformuserid, platformname, salesnotified, createdAt) VALUES (?,?,?,?,?,?,?,?,?,?)')
+          .run(generateId('LVL'), accountId, tier, acct.paidTier || null, ioReference || null, note || null, me.id, me.name, salesNotified ? 1 : 0, now);
         db.prepare('INSERT INTO platform_access_log (id, platformuserid, platformname, platformrole, accountId, action, ip, createdAt) VALUES (?,?,?,?,?,?,?,?)')
-          .run(generateId('PLOG'), me.id, me.name, me.role, accountId, 'level_set:' + (acct.paidTier || 'none') + '->' + (tier || 'none'), getClientIp(req) || null, now);
-        return sendJson(res, 200, { accountId, paidTier: tier, paidTierActivatedAt: tier ? now : null });
+          .run(generateId('PLOG'), me.id, me.name, me.role, accountId, 'level_set:' + (acct.paidTier || 'none') + '->' + (tier || 'none') + (ioReference ? ' IO ' + ioReference : ''), getClientIp(req) || null, now);
+        return sendJson(res, 200, { accountId, paidTier: tier, paidTierActivatedAt: tier ? now : null, salesNotified, salesConfigured: !!salesTo });
       }
       // POST /api/platform/view-as — { accountId } -> a session inside that client account
       if (req.method === 'POST' && parts.length === 3 && sub === 'view-as'){
