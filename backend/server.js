@@ -1123,6 +1123,39 @@ function getSparkSettings(){
   _sparkCache = out; _sparkCacheAt = Date.now();
   return out;
 }
+createTableIfNeeded(`CREATE TABLE IF NOT EXISTS draft_usage (
+  id TEXT PRIMARY KEY,
+  accountId TEXT NOT NULL,
+  memberid TEXT,
+  route TEXT,
+  createdAt TEXT NOT NULL
+)`);
+// Routes that produce one AI draft. Each successful call uses one draft from the account's allowance.
+const DRAFT_ROUTES = [
+  /^\/api\/accounts\/[^/]+\/voice-draft$/,
+  /^\/api\/campaigns\/[^/]+\/messaging-ai-draft$/,
+  /^\/api\/campaigns\/[^/]+\/copy-interview$/,
+  /^\/api\/campaigns\/[^/]+\/copy-interview\/[^/]+\/candidate\/[^/]+\/expand$/,
+  /^\/api\/accounts\/[^/]+\/press-releases\/[^/]+\/(generate-draft|generate-linkedin)$/,
+  /^\/api\/accounts\/[^/]+\/(editorial-pitches|corporate-comms)\/[^/]+\/generate-draft$/,
+  /^\/api\/accounts\/[^/]+\/[^/]+\/[^/]+\/draft$/
+];
+// Drafts allowed: Spark = prorated trial share counted since activation; other levels = per calendar month. No tier or Beacon = unlimited.
+function draftAllowanceFor(accountId){
+  const a = db.prepare('SELECT paidTier, paidTierActivatedAt FROM accounts WHERE accountId = ?').get(accountId);
+  if (!a || !a.paidTier) return null;
+  const cfg = getSparkSettings();
+  const now = new Date();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+  let limit = null, since = monthStart;
+  if (a.paidTier === 'spark'){ limit = cfg.sparkDrafts; since = a.paidTierActivatedAt || monthStart; }
+  else if (a.paidTier === 'starter') limit = cfg.starterMonthlyDrafts;
+  else { const t = PAID_TIERS.find(x => x.key === a.paidTier); limit = t ? t.monthlyDrafts : null; }
+  if (limit == null) return null;
+  let used = 0;
+  try { used = db.prepare('SELECT COUNT(*) AS n FROM draft_usage WHERE accountId = ? AND createdAt >= ?').get(accountId, since).n || 0; } catch (e){}
+  return { tier: a.paidTier, limit, used, remaining: Math.max(0, limit - used), since, period: a.paidTier === 'spark' ? 'trial' : 'month' };
+}
 // 2026-10-06 — placeholder tiers replaced by the illumination levels
 // (Packages & Investment slide) plus the $99 Starter Kit. Decided in the
 // access review: Spark and Starter Kit share the same functionality; Spark
@@ -24498,6 +24531,24 @@ async function handleRequest(req, res) {
         } catch (e){}
       });
     }
+    // Draft allowance: refuse a draft-producing request once the account's allowance is used; record each successful one.
+    if (req.method === 'POST' && parts[0] === 'api' && DRAFT_ROUTES.some(rx => rx.test('/' + parts.join('/')))){
+      try {
+        const _tk = (String(req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/) || [])[1];
+        const _ss = _tk ? db.prepare('SELECT accountId, memberId, platformuserid FROM sessions WHERE token = ?').get(_tk.trim()) : null;
+        if (_ss && _ss.accountId && !_ss.platformuserid){
+          const _al = draftAllowanceFor(_ss.accountId);
+          if (_al && _al.remaining <= 0){
+            const _msg = _al.tier === 'spark' ? 'You have used all the drafts in your Spark trial. Upgrade to the Starter Kit for 25 drafts a month.' : 'You have used all ' + _al.limit + ' drafts for this month. Contact Sales to add more.';
+            return sendJson(res, 403, { error: _msg, code: 'draft_allowance', limit: _al.limit, used: _al.used });
+          }
+          const _path = '/' + parts.join('/');
+          res.on('finish', () => {
+            try { if (res.statusCode < 400) db.prepare('INSERT INTO draft_usage (id, accountId, memberid, route, createdAt) VALUES (?,?,?,?,?)').run(generateId('DRF'), _ss.accountId, _ss.memberId || null, _path.replace(/\/[^/]{25,}/g, '/:id').slice(0, 200), new Date().toISOString()); } catch (e){}
+          });
+        }
+      } catch (e){ console.warn('[drafts] allowance check failed:', e.message); }
+    }
     // Spark expired -> read-only. Team view-as sessions and sign-out / upgrade requests are exempt.
     if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS' && parts[0] === 'api' && parts[1] === 'accounts' && parts[2]){
       try {
@@ -26278,6 +26329,7 @@ async function handleRequest(req, res) {
         try { record.account.websiteProfileRollup = websiteProfileRollup(record.account.accountId); }
         catch (e){ record.account.websiteProfileRollup = null; }
       }
+      try { record.draftAllowance = draftAllowanceFor(accountId); } catch (e){}
       try { record.levelStatus = levelStatusFor(db.prepare('SELECT paidTier, paidTierActivatedAt FROM accounts WHERE accountId = ?').get(accountId)); } catch (e){}
       return sendJson(res, 200, record);
     }
