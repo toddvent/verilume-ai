@@ -1037,6 +1037,7 @@ ensureColumn('team_members', 'passwordSalt', 'TEXT');
 ensureColumn('team_members', 'mustChangePassword', 'INTEGER DEFAULT 0');
 ensureColumn('team_members', 'phone', 'TEXT');
 ensureColumn('team_members', 'phoneVerifiedAt', 'TEXT');
+ensureColumn('team_members', 'phoneext', 'TEXT');
 
 // Added 2026-08-19 — paid tier/level plumbing (auth-path Path 4). Per
 // direct instruction: final tier names/pricing/inclusions are TBD — this
@@ -1116,7 +1117,7 @@ createTableIfNeeded(`CREATE TABLE IF NOT EXISTS platform_settings (
   updatedat TEXT
 )`);
 const MEMBER_KINDS = ['internal', 'external'];
-const MEMBER_CATEGORIES = ['Strategy', 'Customer Experiences', 'Growth and Performance', 'Media Science', 'PR', 'Copywriting', 'Design', 'Motion Graphics', 'Marketing Ops', 'Analysts'];
+const MEMBER_CATEGORIES = ['Brain Dump', 'Strategy', 'Customer Experiences', 'Growth and Performance', 'Media Science', 'Train the Brain', 'PR', 'Copywriting', 'Design', 'Motion Graphics', 'Marketing Ops', 'Analysts'];
 function handleBase(name){
   const first = String(name || '').trim().split(/\s+/)[0] || 'member';
   return first.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20) || 'member';
@@ -41413,10 +41414,10 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       // Explicit column list (not SELECT *) as of 2026-08-18 — team_members
       // now carries passwordHash/passwordSalt (registration rebuild) and
       // those must never leave the server, hashed or not.
-      const team = db.prepare(`SELECT id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, phone, phoneVerifiedAt, mustChangePassword, memberkind, handle, rolelabel, categories, accessexpiresat FROM team_members WHERE accountId = ? ORDER BY createdAt ASC`).all(accountId);
+      const team = db.prepare(`SELECT id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, phone, phoneVerifiedAt, mustChangePassword, memberkind, handle, rolelabel, categories, accessexpiresat, phoneext FROM team_members WHERE accountId = ? ORDER BY createdAt ASC`).all(accountId);
       team.forEach(m => {
         if (!m.handle){ m.handle = generateHandle(accountId, m.name, m.id); try { db.prepare('UPDATE team_members SET handle = ? WHERE id = ?').run(m.handle, m.id); } catch (e){} }
-        m.accessExpiresAt = m.accessexpiresat || null; delete m.accessexpiresat; m.memberKind = m.memberkind || 'internal'; m.roleLabel = m.rolelabel || ''; let c = []; try { c = JSON.parse(m.categories || '[]'); } catch (e){} m.categories = c;
+        m.accessExpiresAt = m.accessexpiresat || null; delete m.accessexpiresat; m.memberKind = m.memberkind || 'internal'; m.roleLabel = m.rolelabel || ''; m.phoneExt = m.phoneext || ''; delete m.phoneext; let c = []; try { c = JSON.parse(m.categories || '[]'); } catch (e){} m.categories = c;
         delete m.memberkind; delete m.rolelabel;
       });
       return sendJson(res, 200, { team });
@@ -41456,6 +41457,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       // itself requires the requester to already be an admin.
       if (body.isAdmin && !requireAdminMember(req, res, accountId)) return;
       const newKind = MEMBER_KINDS.includes(body.memberKind) ? body.memberKind : 'internal';
+      if (String(body.phone || '').replace(/\D/g, '').length < 10) return sendJson(res, 400, { error: 'a phone number (at least 10 digits) is required' });
       if (newKind === 'external' && !requireAdminMember(req, res, accountId)) return;
       let passwordHash = null, passwordSalt = null, mustChangePassword = 0, tempPassword = null;
       if (body.email){
@@ -41474,6 +41476,8 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       db.prepare(
         'INSERT INTO team_members (id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, passwordHash, passwordSalt, mustChangePassword) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'
       ).run(memberId, accountId, body.name, body.functionGroup, body.level, body.reportsToId || null, now, body.email || null, body.isAdmin ? 1 : 0, body.status || 'active', passwordHash, passwordSalt, mustChangePassword);
+      if (body.phone){ const ph = String(body.phone).replace(/[^0-9+]/g, '').slice(0, 20); if (ph) db.prepare('UPDATE team_members SET phone = ? WHERE id = ?').run(ph, memberId); }
+      if (body.phoneExt){ const ex = String(body.phoneExt).replace(/[^0-9]/g, '').slice(0, 8); if (ex) db.prepare('UPDATE team_members SET phoneext = ? WHERE id = ?').run(ex, memberId); }
       const newHandle = generateHandle(accountId, body.name, memberId);
       db.prepare('UPDATE team_members SET memberkind = ?, handle = ?, rolelabel = ?, categories = ? WHERE id = ?')
         .run(newKind, newHandle, String(body.roleLabel || '').slice(0, 80) || null, cleanCategories(body.categories), memberId);
@@ -41534,6 +41538,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (!existing) return sendJson(res, 404, { error: 'team member not found' });
       if (!requireAccount(req, res, existing.accountId)) return;
       const body = await readBody(req);
+      if (body.phoneExt !== undefined) db.prepare('UPDATE team_members SET phoneext = ? WHERE id = ?').run(String(body.phoneExt || '').replace(/[^0-9]/g, '').slice(0, 8) || null, memberId);
       const settable = { name: 'TEXT', email: 'TEXT', level: 'TEXT', functionGroup: 'TEXT', reportsToId: 'TEXT', status: 'TEXT', phone: 'TEXT' };
       Object.keys(settable).forEach(field => {
         if (body[field] !== undefined){
