@@ -3050,18 +3050,20 @@ async function finishOpsLogin(data){
 // On load: if a session token is already stashed for this tab, re-verify
 // it server-side (never trust it blindly) before showing the console.
 (async function initOpsLoginGate(){
+  // The Ops Console is for Verilume team members only. It uses the team console sign-in, never a client login.
   let token = '';
-  try { token = sessionStorage.getItem(OPS_TOKEN_STORAGE_KEY) || ''; } catch (e) {}
-  if (!token) return; // gate stays up, showing the login form
+  try { token = sessionStorage.getItem('verilume_platform_token') || ''; } catch (e) {}
+  if (!token){ location.replace('platform.html'); return; }
   try {
-    const resp = await fetch(`${BACKEND_URL}/api/auth/me`, { headers: { 'Authorization': `Bearer ${token}` } });
+    const resp = await fetch(`${BACKEND_URL}/api/platform/me`, { headers: { 'Authorization': `Bearer ${token}` } });
     const me = await resp.json().catch(() => ({}));
-    if (resp.ok && me.isAdmin){
-      showOpsApp(me.name || me.email);
+    if (resp.ok && me.user){
+      try { sessionStorage.setItem(OPS_TOKEN_STORAGE_KEY, token); } catch (e) {}
+      showOpsApp(me.user.name || me.user.email);
     } else {
-      try { sessionStorage.removeItem(OPS_TOKEN_STORAGE_KEY); } catch (e) {}
+      location.replace('platform.html');
     }
-  } catch (e){ /* backend unreachable — leave the gate up, don't fail open */ }
+  } catch (e){ /* backend unreachable: leave the gate up, do not fail open */ }
 })();
 </script>
 
