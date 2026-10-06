@@ -61567,6 +61567,7 @@ async function addTeamMember(){
   }
   const localMember = { id: `local-team-${Date.now()}`, accountId: state.companyId, name, email: email || null, isAdmin, functionGroup, level, reportsToId, status: 'active', createdAt: new Date().toISOString() , memberKind, roleLabel, categories};
   let persisted = false;
+  let tempPasswordOut = null;
   if (dataSourceLabel === 'backend'){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/team`, {
@@ -61578,6 +61579,7 @@ async function addTeamMember(){
         localMember.id = out.memberId;
         localMember.handle = out.handle || null;
         persisted = true;
+        tempPasswordOut = out.tempPassword || null;
       } else if (resp.status === 403 || resp.status === 409){
         const err = await resp.json().catch(() => ({}));
         if (flag){ flag.textContent = err.error || 'This could not be added.'; flag.style.color = 'var(--advocacy)'; }
@@ -61587,7 +61589,10 @@ async function addTeamMember(){
   }
   state.team.push(localMember);
   resetTeamMemberForm();
-  if (flag){
+  if (flag && persisted && tempPasswordOut){
+    flag.style.color = 'var(--cx)';
+    flag.innerHTML = `Added ${escapeHtml(name)}. They can sign in with ${escapeHtml(email)}. <strong>Temporary password, shown once. Save it before leaving this page:</strong> <code style="background:var(--paper-dim);padding:2px 6px;border-radius:3px;">${escapeHtml(tempPasswordOut)}</code> They set their own password on first sign-in.`;
+  } else if (flag){
     flag.style.color = 'var(--cx)';
     flag.textContent = persisted
       ? `Added ${name} — saved to this account's real backend record.`
@@ -62026,7 +62031,25 @@ function removeCustomPosition(){
   renderPositionPicker();
 }
 
+
+async function reissueMemberLogin(id){
+  const m = findTeamMember(id);
+  const flag = document.getElementById('teamAddFlag');
+  if (!m || !m.email) return;
+  if (!confirm(`Make a new temporary password for ${m.name}? Any password they have now, temporary or their own, stops working.`)) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/team/${encodeURIComponent(id)}/reissue-credentials`, { method: 'POST' });
+    const data = await resp.json().catch(() => ({}));
+    if (!flag) return;
+    if (!resp.ok){ flag.style.color = 'var(--advocacy)'; flag.textContent = data.error || `Could not reissue the login (${resp.status}).`; return; }
+    flag.style.color = 'var(--cx)';
+    flag.innerHTML = `New temporary password for ${escapeHtml(m.name)} (${escapeHtml(data.email)}), shown once: <code style="background:var(--paper-dim);padding:2px 6px;border-radius:3px;">${escapeHtml(data.tempPassword)}</code>`;
+    const mod = document.getElementById('teamAddModule'); if (mod) mod.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e){ if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Could not reach the server to reissue the login.'; } }
+}
+
 function renderTeamRosterView(){
+  const isAdminViewer = portalViewerIsAdmin !== false;
   const el = document.getElementById('teamRosterView');
   if (!el) return;
   if (!state.team.length){
@@ -62047,6 +62070,7 @@ function renderTeamRosterView(){
         return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);gap:10px;">
           <span><strong>${m.name}</strong>${m.handle ? ` <span class="hint" style="display:inline;">@${m.handle}</span>` : ''} — ${functionLabel(m.functionGroup)}${m.roleLabel ? ` (${m.roleLabel})` : ''}${m.memberKind === 'external' ? ' <span class="hint" style="display:inline;">External' + (m.accessExpiresAt ? (new Date(m.accessExpiresAt) < new Date() ? ' · access ended ' : ' · access ends ') + new Date(m.accessExpiresAt).toLocaleDateString() : '') + '</span>' : ''}${adminTag}${manager ? ` <span class="hint" style="display:inline;">→ reports to ${manager.name}</span>` : (m.level !== 'CMO' ? ` <span class="hint" style="display:inline;">→ no manager on file</span>` : '')}</span>
           <span style="display:flex;gap:12px;flex-shrink:0;">
+            ${m.email && isAdminViewer && !String(m.id).startsWith('local-team-') ? `<button type="button" class="link-btn" onclick="reissueMemberLogin('${m.id}')">Reissue login</button>` : ''}
             ${m.memberKind === 'external' ? `<button type="button" class="link-btn" onclick="renewExternalAccess('${m.id}')">Renew 3 months</button>` : ''}
             <button type="button" class="link-btn" onclick="startEditTeamMember('${m.id}')">Edit</button>
             <button type="button" class="link-btn" onclick="deleteTeamMember('${m.id}')">Remove</button>
