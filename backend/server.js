@@ -465,6 +465,9 @@ function createTableIfNeeded(sql){
   const existing = createTableBulkPrecheck();
   if (match && existing && existing.has(match[1])) return; // confirmed present — no round trip spent
   db.exec(sql);
+  // Every new table starts with row-level security on (no policies), so the public database roles can never read it.
+  // Only the app's own database role gets in. SQLite has no such command, so the error is ignored there.
+  if (match && existing){ try { db.exec('ALTER TABLE ' + match[1] + ' ENABLE ROW LEVEL SECURITY'); } catch (e){} }
   if (match && existing) existing.add(match[1]);
 }
 
