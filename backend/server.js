@@ -1116,7 +1116,9 @@ createTableIfNeeded(`CREATE TABLE IF NOT EXISTS platform_settings (
   svalue TEXT,
   updatedat TEXT
 )`);
-const MEMBER_KINDS = ['internal', 'external'];
+const MEMBER_KINDS = ['internal', 'external', 'viewer'];
+const ACCESS_LEVELS = ['view', 'edit'];
+ensureColumn('team_members', 'accesslevel', 'TEXT');
 const MEMBER_CATEGORIES = ['Brain Dump', 'Strategy', 'Customer Experiences', 'Growth and Performance', 'Media Science', 'Train the Brain', 'PR', 'Copywriting', 'Design', 'Motion Graphics', 'Marketing Ops', 'Analysts'];
 function handleBase(name){
   const first = String(name || '').trim().split(/\s+/)[0] || 'member';
@@ -18080,13 +18082,13 @@ function actorMay(itemKey){
 const ACCESS_ITEMS = [
   { key: 'budgets', label: 'account-wide and full-year budgets',
     match: /^\/api\/accounts\/[^/]+\/(marketing-budget-uploads|mbu-budget-status|media-plan|annual-plan|analytics\/rolling-budget|analytics\/budget-flow)(\/|$)/,
-    rule: { admin: 'yes', lead: 'yes', analystManager: 'no', other: 'no', agency: 'named', creative: 'no', staff: 'view' } },
+    rule: { admin: 'yes', lead: 'yes', analystManager: 'no', other: 'no', agency: 'named', creative: 'no', staff: 'view', viewer: 'view' } },
   { key: 'approve_budget', label: 'final campaign budget approval',
     match: /^\/api\/campaigns\/[^/]+\/approve-budget-overall$/,
     rule: { admin: 'yes', lead: 'yes', analystManager: 'no', other: 'no', agency: 'no', creative: 'no', staff: 'no' } },
   { key: 'mmm', label: 'marketing mix modeling and test development',
     match: /^(\/api\/accounts\/[^/]+\/mmm-[a-z-]+|\/api\/campaigns\/[^/]+\/mmm-line-items|\/api\/mmm-inputs\/[^/]+)(\/|$)/,
-    rule: { admin: 'yes', lead: 'yes', analystManager: 'yes', other: 'no', agency: 'no', creative: 'no', staff: 'view' } },
+    rule: { admin: 'yes', lead: 'yes', analystManager: 'yes', other: 'no', agency: 'no', creative: 'no', staff: 'view', viewer: 'view' } },
   { key: 'billing', label: 'billing and plan',
     match: /^(\/api\/accounts\/[^/]+\/invoices|\/api\/invoices\/[^/]+)$/,
     rule: { admin: 'yes', lead: 'no', analystManager: 'no', other: 'no', agency: 'no', creative: 'no', staff: 'no' } }
@@ -18102,6 +18104,7 @@ function accessAudienceFor(session){
   try { m = db.prepare('SELECT isAdmin, level, functionGroup, memberkind, categories FROM team_members WHERE id = ?').get(session.memberId); } catch (e){}
   if (!m) return null;
   if (m.isAdmin) return 'admin';
+  if (m.memberkind === 'viewer') return 'viewer';
   let cats = []; try { cats = JSON.parse(m.categories || '[]'); } catch (e){}
   if (m.memberkind === 'external') return (cats.length && cats.every(c => ACCESS_CREATIVE_CATEGORIES.includes(c))) ? 'creative' : 'agency';
   if (ACCESS_LEAD_LEVELS.includes(m.level)) return 'lead';
@@ -18139,12 +18142,25 @@ function agencyNamedChannels(session){
   if (session && session.memberId) activeAgreementsFor(session.accountId, session.memberId).forEach(a => jsonList(a.channels).forEach(c => set.add(String(c).trim().toLowerCase())));
   return set;
 }
+// Profile-level View / Edit. Executive viewers default to view; everyone else to edit. Read from the database on every call.
+function accessLevelFor(session){
+  if (!session || session.platformuserid || !session.memberId) return 'edit';
+  let m = null;
+  try { m = db.prepare('SELECT memberkind, accesslevel FROM team_members WHERE id = ?').get(session.memberId); } catch (e){}
+  if (!m) return 'edit';
+  if (m.accesslevel === 'view' || m.accesslevel === 'edit') return m.accesslevel;
+  return m.memberkind === 'viewer' ? 'view' : 'edit';
+}
+const READONLY_WRITE_OK = [/^\/api\/auth\//, /\/(ask|ask-export)$/, /\/voice\//];
 // Returns null when allowed, or { item, label, audience } when refused.
 function accessDecision(req, path, session){
   if (process.env.ACCESS_ENFORCEMENT === 'off') return null;
   if (!session) return null;
   const audience = accessAudienceFor(session);
   if (!audience) return null;
+  if (req.method !== 'GET' && req.method !== 'HEAD' && accessLevelFor(session) === 'view' && !READONLY_WRITE_OK.some(rx => rx.test(path))){
+    return { item: 'read_only', label: 'making changes (this profile is view only)', audience };
+  }
   const ext = externalScopeDecision(req, path, session, audience);
   if (ext) return ext;
   const item = ACCESS_ITEMS.find(i => i.match.test(path));
@@ -26534,7 +26550,7 @@ async function handleRequest(req, res) {
         try { const m = db.prepare('SELECT accessexpiresat FROM team_members WHERE id = ?').get(sess.memberId); accessExpiresAt = (m && m.accessexpiresat) || null; } catch (e){}
         if (audience === 'agency') agreements = activeAgreementsFor(accountId, sess.memberId).map(agreementShape);
       }
-      return sendJson(res, 200, { audience, items, accessExpiresAt, agreements });
+      return sendJson(res, 200, { audience, items, accessExpiresAt, agreements, accessLevel: accessLevelFor(sess) });
     }
 
     // POST /api/accounts/:id/upgrade-request — the Spark upgrade prompts post here; emails Sales (SALES_NOTIFY_EMAIL). Rate-limited to one per account per hour.
@@ -41414,10 +41430,10 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       // Explicit column list (not SELECT *) as of 2026-08-18 — team_members
       // now carries passwordHash/passwordSalt (registration rebuild) and
       // those must never leave the server, hashed or not.
-      const team = db.prepare(`SELECT id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, phone, phoneVerifiedAt, mustChangePassword, memberkind, handle, rolelabel, categories, accessexpiresat, phoneext FROM team_members WHERE accountId = ? ORDER BY createdAt ASC`).all(accountId);
+      const team = db.prepare(`SELECT id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, phone, phoneVerifiedAt, mustChangePassword, memberkind, handle, rolelabel, categories, accessexpiresat, phoneext, accesslevel FROM team_members WHERE accountId = ? ORDER BY createdAt ASC`).all(accountId);
       team.forEach(m => {
         if (!m.handle){ m.handle = generateHandle(accountId, m.name, m.id); try { db.prepare('UPDATE team_members SET handle = ? WHERE id = ?').run(m.handle, m.id); } catch (e){} }
-        m.accessExpiresAt = m.accessexpiresat || null; delete m.accessexpiresat; m.memberKind = m.memberkind || 'internal'; m.roleLabel = m.rolelabel || ''; m.phoneExt = m.phoneext || ''; delete m.phoneext; let c = []; try { c = JSON.parse(m.categories || '[]'); } catch (e){} m.categories = c;
+        m.accessExpiresAt = m.accessexpiresat || null; delete m.accessexpiresat; m.memberKind = m.memberkind || 'internal'; m.roleLabel = m.rolelabel || ''; m.phoneExt = m.phoneext || ''; delete m.phoneext; m.accessLevel = m.accesslevel || (m.memberKind === 'viewer' ? 'view' : 'edit'); delete m.accesslevel; let c = []; try { c = JSON.parse(m.categories || '[]'); } catch (e){} m.categories = c;
         delete m.memberkind; delete m.rolelabel;
       });
       return sendJson(res, 200, { team });
@@ -41458,7 +41474,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (body.isAdmin && !requireAdminMember(req, res, accountId)) return;
       const newKind = MEMBER_KINDS.includes(body.memberKind) ? body.memberKind : 'internal';
       if (String(body.phone || '').replace(/\D/g, '').length < 10) return sendJson(res, 400, { error: 'a phone number (at least 10 digits) is required' });
-      if (newKind === 'external' && !requireAdminMember(req, res, accountId)) return;
+      if ((newKind === 'external' || newKind === 'viewer' || body.accessLevel) && !requireAdminMember(req, res, accountId)) return;
       let passwordHash = null, passwordSalt = null, mustChangePassword = 0, tempPassword = null;
       if (body.email){
         const emailTaken = db.prepare('SELECT id FROM team_members WHERE lower(email) = lower(?)').get(body.email);
@@ -41479,6 +41495,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (body.phone){ const ph = String(body.phone).replace(/[^0-9+]/g, '').slice(0, 20); if (ph) db.prepare('UPDATE team_members SET phone = ? WHERE id = ?').run(ph, memberId); }
       if (body.phoneExt){ const ex = String(body.phoneExt).replace(/[^0-9]/g, '').slice(0, 8); if (ex) db.prepare('UPDATE team_members SET phoneext = ? WHERE id = ?').run(ex, memberId); }
       const newHandle = generateHandle(accountId, body.name, memberId);
+      { const lvl = ACCESS_LEVELS.includes(body.accessLevel) ? body.accessLevel : (newKind === 'viewer' ? 'view' : 'edit'); db.prepare('UPDATE team_members SET accesslevel = ? WHERE id = ?').run(lvl, memberId); }
       db.prepare('UPDATE team_members SET memberkind = ?, handle = ?, rolelabel = ?, categories = ? WHERE id = ?')
         .run(newKind, newHandle, String(body.roleLabel || '').slice(0, 80) || null, cleanCategories(body.categories), memberId);
       let accessExpiresAt = null;
@@ -41565,6 +41582,10 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       }
       if (body.roleLabel !== undefined) db.prepare('UPDATE team_members SET rolelabel = ? WHERE id = ?').run(String(body.roleLabel || '').slice(0, 80) || null, memberId);
       if (body.categories !== undefined) db.prepare('UPDATE team_members SET categories = ? WHERE id = ?').run(cleanCategories(body.categories), memberId);
+      if (body.accessLevel !== undefined && ACCESS_LEVELS.includes(body.accessLevel)){
+        if (!requireAdminMember(req, res, existing.accountId)) return;
+        db.prepare('UPDATE team_members SET accesslevel = ? WHERE id = ?').run(body.accessLevel, memberId);
+      }
       if (body.memberKind !== undefined && MEMBER_KINDS.includes(body.memberKind)){
         if (!requireAdminMember(req, res, existing.accountId)) return;
         db.prepare('UPDATE team_members SET memberkind = ? WHERE id = ?').run(body.memberKind, memberId);
