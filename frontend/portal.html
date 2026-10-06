@@ -5134,7 +5134,7 @@
         <span class="chevron">▸</span>
       </div>
       <div class="module-body">
-        <p style="font-size:0.875rem;color:var(--muted);margin:0 0 16px;max-width:620px;">Uses whoever's set as "Acting as" on <a class="flink" onclick="goToStep('team')">Team &amp; Org Chart</a>, and that person's own Level × Function skill set from Skill Sets above.</p>
+        <p style="font-size:0.875rem;color:var(--muted);margin:0 0 16px;max-width:620px;">Uses the signed-in person (or the person you pick below), and that person's own Level × Function skill set from Skill Sets above.</p>
         <div id="selfRateView"></div>
       </div>
     </div>
@@ -7327,89 +7327,50 @@
     </div>
 
     <div id="teamStepBody">
-    <div class="module open accent-media" id="actingAsModule">
-      <div class="module-head" onclick="toggleModule('actingAsModule')">
-        <span class="modnum">1</span>
-        <div class="titles">
-          <span class="tag">Acting as</span>
-          <h2>Who's using the Portal right now</h2>
-        </div>
-        <span class="chevron">▸</span>
-      </div>
-      <div class="module-body">
-        <p>This prototype has no real login, so QA requests need to know who "you" are to resolve your manager and skip-level manager correctly. Pick yourself from the roster below — this choice is remembered for the rest of this session (including on Project Detail's Validate &amp; QA panel) and reset on reload, the same as every other session-only choice in this build.</p>
-        <div class="field" style="max-width:420px;">
-          <label>I'm acting as</label>
-          <select id="actingAsSelect" onchange="setActingAs(this.value)"></select>
-        </div>
-      </div>
-    </div>
-
+    <style>
+      .oc-node{display:flex;flex-direction:column;align-items:center;position:relative}
+      .oc-card{width:210px;min-height:104px;box-sizing:border-box;background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;text-align:left}
+      .oc-card.open{border-style:dashed;background:transparent}
+      .oc-card .oc-name{font-weight:600;color:#1E2761;line-height:1.25}
+      .oc-card .oc-sub{font-size:0.75rem;color:var(--muted);line-height:1.3}
+      .oc-card .oc-acts{margin-top:auto;padding-top:6px;display:flex;flex-wrap:wrap;gap:2px 10px}
+      .oc-card .oc-acts .link-btn{font-size:0.75rem}
+      .oc-stub{width:1px;height:14px;background:var(--line)}
+      .oc-add{margin-top:6px}
+      .oc-add .link-btn{font-size:0.75rem;color:#D08A3E;font-weight:600}
+      .oc-kids{display:flex;gap:16px;justify-content:center;align-items:flex-start;border-top:1px solid var(--line);padding-top:14px;margin-top:0}
+      .oc-kids > .oc-node::before{content:'';position:absolute;top:-14px;left:50%;width:1px;height:14px;background:var(--line)}
+      .oc-pill{display:inline-block;font-size:0.6875rem;letter-spacing:0.04em;text-transform:uppercase;background:#EEF0FA;color:#1E2761;border-radius:4px;padding:1px 6px;margin-left:4px}
+    </style>
     <div class="module open accent-cx" id="orgShapeModule">
       <div class="module-head" onclick="toggleModule('orgShapeModule')">
         <span class="modnum">1</span>
         <div class="titles">
           <span class="tag">Org Chart</span>
-          <h2>Your org shape</h2>
+          <h2>How is your team set up?</h2>
         </div>
         <span class="chevron">▸</span>
       </div>
       <div class="module-body">
         <div id="orgShapePicker"></div>
-        <div id="orgShapeLive" style="margin-top:18px;"></div>
       </div>
     </div>
 
-    <div class="module open accent-cx" id="teamRosterModule">
-      <div class="module-head" onclick="toggleModule('teamRosterModule')">
+    <div class="module open accent-cx" id="orgChartModule">
+      <div class="module-head" onclick="toggleModule('orgChartModule')">
         <span class="modnum">2</span>
         <div class="titles">
           <span class="tag">Org Chart</span>
-          <h2>Roster, grouped by function and level</h2>
+          <h2>Your team</h2>
         </div>
         <span class="chevron">▸</span>
       </div>
       <div class="module-body">
-        <div id="teamRosterView"></div>
+        <div id="orgChartLive" style="overflow-x:auto;padding-bottom:8px;"></div>
+        <div class="btn-row" style="margin-top:12px;"><button type="button" class="btn-ghost" onclick="openTeamForm({})">+ Add a person</button></div>
       </div>
     </div>
 
-    <div class="module open accent-cx" id="agreementsModule" style="display:none;">
-      <div class="module-head" onclick="toggleModule('agreementsModule')">
-        <span class="modnum">2b</span>
-        <div class="titles">
-          <span class="tag">External access</span>
-          <h2>Agency agreements</h2>
-        </div>
-        <span class="chevron">▸</span>
-      </div>
-      <div class="module-body">
-        <div id="agreementsView"></div>
-        <div style="display:grid;gap:8px;max-width:560px;margin-top:14px;">
-          <label for="agrMember">Guest</label>
-          <select id="agrMember"></select>
-          <label for="agrName">Agreement name</label>
-          <input id="agrName" type="text" placeholder="Q4 media buying">
-          <label for="agrChannels">Channels whose budgets they may see (comma separated)</label>
-          <input id="agrChannels" type="text" placeholder="Paid Search, Paid Social">
-          <label>Reports they may see</label>
-          <div id="agrReports" style="display:flex;flex-wrap:wrap;gap:10px;"></div>
-          <label for="agrEnds">Agreement ends</label>
-          <input id="agrEnds" type="date">
-          <div><button type="button" class="btn" onclick="saveAgreement()">Save agreement</button> <span id="agrFlag" class="hint" style="display:inline;"></span></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Round 131 — Skill Sets and Self-Rating (HEO functions 2 and 1)
-         relocated to their own Team Development workstream
-         (step-teamDevelopment), per direct instruction that this
-         reorganization brings already-built team-member functionality
-         together in its own home rather than leaving it filed under org
-         structure. "Acting as" (module 1 above) stays here, since QA-
-         request routing elsewhere in the product depends on it staying
-         discoverable on this page — Team Development's Self-Rating module
-         reads whatever's set here. -->
     <p class="lede" style="margin:8px 0 0;">
       Rate yourself, look up any seat's critical skills, or build a development plan:
       <a class="flink" onclick="goToStep('teamDevelopment')">Team Development →</a>
@@ -7426,83 +7387,84 @@
       </div>
       <div class="module-body">
         <div class="field">
-          <label for="teamPositionPick">Position <span style="font-weight:400;">(optional)</span></label>
-          <select id="teamPositionPick" onchange="applyPosition()"></select>
-          <div style="margin-top:6px;"><button type="button" class="link-btn" onclick="saveCustomPosition()">Save the role, level and function below as a position of our own</button> <button type="button" class="link-btn" id="teamPositionRemove" style="display:none;" onclick="removeCustomPosition()">Remove this saved position</button></div>
+          <label for="teamPositionInput">Position</label>
+          <input type="text" id="teamPositionInput" list="teamPositionList" maxlength="80" placeholder="e.g. Head of Brand" oninput="onPositionTyped()" autocomplete="off">
+          <datalist id="teamPositionList"></datalist>
+          <div style="margin-top:6px;"><button type="button" class="link-btn" onclick="saveCustomPosition()">Save this position and its settings for next time</button> <button type="button" class="link-btn" id="teamPositionRemove" style="display:none;" onclick="removeCustomPosition()">Remove this saved position</button></div>
         </div>
         <div class="field">
           <label for="teamNewName">Name</label>
           <input type="text" id="teamNewName" placeholder="e.g. Priya Shah">
         </div>
         <div class="field">
-          <label for="teamNewEmail">Email <span style="font-weight:400;">(optional)</span></label>
+          <label for="teamNewEmail">Email</label>
           <input type="email" id="teamNewEmail" placeholder="priya@acmehospitality.com">
+          <div class="hint">This is their sign-in. A temporary password is shown once after you add them.</div>
         </div>
-        <!-- Round 43 — Admin is an account-permission flag, orthogonal to
-             Level/Function: it governs full account/billing access, not this
-             person's place in the reporting chart. A CMO isn't automatically
-             an Admin, and a Specialist isn't automatically excluded from
-             being one.
-             2026-08-22 update: this checkbox used to also be editable from
-             account.html's own Team Members section (invite form ~1450-1523,
-             roster ~1360+). 2026-08-23, per direct instruction ("Keep the
-             in-portal version" — this step is canonical, that was the
-             duplicate): account.html's Team Members section no longer
-             manages team members directly — it now points here. This
-             checkbox (and everything else on this step) is the one real
-             place team roster edits happen; team_members' backend table and
-             API routes are unchanged. -->
+        <div class="field">
+          <label for="teamNewPhone">Phone</label>
+          <div style="display:flex;gap:8px;">
+            <input type="tel" id="teamNewPhone" placeholder="(555) 123-4567" style="flex:1;">
+            <input type="text" id="teamNewPhoneExt" inputmode="numeric" placeholder="Ext." aria-label="Extension" style="width:80px;">
+          </div>
+          <div class="hint">Used for sign-in verification codes. Add an extension if the number needs one.</div>
+        </div>
+        <div class="field">
+          <label for="teamNewReportsTo">Reports to</label>
+          <select id="teamNewReportsTo"><option value="">— no one (leadership) —</option></select>
+          <div class="hint">Leave this empty and the position counts as leadership.</div>
+        </div>
+        <div class="field">
+          <label for="teamNewFunction">Function</label>
+          <select id="teamNewFunction"><option value="">Select a function…</option></select>
+        </div>
+        <div class="field">
+          <label>Dashboards</label>
+          <div id="teamNewCategories" style="display:flex;flex-wrap:wrap;gap:6px 16px;"></div>
+        </div>
         <div class="field">
           <label class="toggle-row" style="border:none;padding:0;align-items:center;">
             <input type="checkbox" id="teamNewIsAdmin" style="margin:0;width:18px;height:18px;">
-            <span class="body" style="display:inline;"><strong>Admin</strong> — full account access (billing, payment methods, inviting/removing team members), separate from their org-chart role below.</span>
+            <span class="body" style="display:inline;"><strong>Admin</strong> — full account access (billing, payment methods, inviting/removing team members), separate from their place on the chart.</span>
           </label>
-          <!-- 2026-08-22 — shown only when the logged-in session is a real,
-               non-admin team member (see applyIsAdminToggleGate()); a legacy
-               account-level session or a real admin never sees this. -->
           <div id="teamNewIsAdminGateHint" class="hint" style="display:none;color:var(--advocacy);">Only an Admin can change this. Editing every other field above is still fine — ask an Admin to change Admin status.</div>
-        </div>
-        <div class="field">
-          <label for="teamNewKind">Membership</label>
-          <select id="teamNewKind">
-            <option value="internal">Internal (this company's own staff)</option>
-            <option value="external">External (agency or freelance)</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="teamNewRoleLabel">Role label <span style="font-weight:400;">(optional)</span></label>
-          <input type="text" id="teamNewRoleLabel" maxlength="80" placeholder="e.g. Media Science lead">
-        </div>
-        <div class="field">
-          <label>Categories <span style="font-weight:400;">(optional, pick any that apply)</span></label>
-          <div id="teamNewCategories" style="display:flex;flex-wrap:wrap;gap:6px 16px;"></div>
         </div>
         <div class="field" id="teamNewHandleWrap" style="display:none;">
           <label for="teamNewHandle">Handle</label>
           <input type="text" id="teamNewHandle" maxlength="30" placeholder="@todd">
         </div>
         <div class="field">
-          <label for="teamNewLevel">Level</label>
-          <select id="teamNewLevel" onchange="onTeamLevelChange()">
-            <option value="">Select a level…</option>
-          </select>
-          <div class="hint">CMO sits at the top of this account's chart — there's normally only one. Director and Manager exist per function (Brand Director, Brand Manager, and so on). Specialists are the individual contributors doing the work.</div>
-        </div>
-        <div class="field">
-          <label for="teamNewFunction">Function</label>
-          <select id="teamNewFunction">
-            <option value="">Select a function…</option>
+          <label for="teamNewKind">Membership</label>
+          <select id="teamNewKind" onchange="onTeamKindChange()">
+            <option value="internal">Internal (this company's own staff)</option>
+            <option value="external">External (agency or freelance)</option>
           </select>
         </div>
-        <div class="field">
-          <label for="teamNewReportsTo">Reports to</label>
-          <select id="teamNewReportsTo">
-            <option value="">— none (top of this account's chart) —</option>
-          </select>
-          <div class="hint">Filtered to whoever's already above this level in the chart — add people top-down (CMO first, then Directors, then Managers, then Specialists) so this list has someone to point to.</div>
+        <div id="teamExtWrap" style="display:none;">
+          <div class="field">
+            <label>Creative specialty</label>
+            <div id="teamNewCreative" style="display:flex;flex-wrap:wrap;gap:6px 16px;"></div>
+          </div>
+          <div class="field">
+            <label for="agrName">Agency agreement</label>
+            <input type="text" id="agrName" placeholder="e.g. Q4 media buying">
+          </div>
+          <div class="field">
+            <label for="agrChannels">Channels whose budgets they may see</label>
+            <input type="text" id="agrChannels" placeholder="Paid Search, Paid Social">
+          </div>
+          <div class="field">
+            <label>Reports they may see</label>
+            <div id="agrReports" style="display:flex;flex-wrap:wrap;gap:6px 16px;"></div>
+          </div>
+          <div class="field">
+            <label for="agrEnds">Agreement ends</label>
+            <input type="date" id="agrEnds">
+          </div>
+          <div id="agreementsView"></div>
         </div>
         <div class="btn-row">
-          <button type="button" class="btn-primary" id="teamAddSubmitBtn" onclick="submitTeamMemberForm()">Add to roster →</button>
+          <button type="button" class="btn-primary" id="teamAddSubmitBtn" onclick="submitTeamMemberForm()">Add to chart →</button>
           <button type="button" class="btn-ghost" id="teamEditCancelBtn" style="display:none;" onclick="cancelEditTeamMember()">Cancel edit</button>
         </div>
         <div class="recorded visible" id="teamAddFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>
@@ -30665,6 +30627,7 @@ async function checkPortalViewerAdminStatus(){
     if (resp.ok){
       const me = await resp.json();
       portalViewerIsAdmin = !!me.isAdmin;
+      if (me.memberId && !actingAsId){ actingAsId = me.memberId; try { loadSelfRatings(actingAsId).then(renderSelfRateView); } catch (e){} }
     }
   } catch (e){ /* leave the safe default in place */ }
   applyIsAdminToggleGate();
@@ -61216,7 +61179,9 @@ function renderSelfRateView(){
   const el = document.getElementById('selfRateView');
   if (!el) return;
   if (!actingAsId){
-    el.innerHTML = `<p class="hint">Set "Acting as" on <a class="flink" onclick="goToStep('team')">Team &amp; Org Chart</a> first — self-rating needs to know who's rating themselves.</p>`;
+    el.innerHTML = state.team.length
+      ? `<div class="field" style="max-width:420px;"><label for="rateAsPick">Rating as</label><select id="rateAsPick" onchange="setActingAs(this.value)"><option value="">Pick who is rating</option>${state.team.map(m => `<option value="${m.id}">${escapeHtml(m.name)} — ${escapeHtml(m.roleLabel || functionLabel(m.functionGroup))}</option>`).join('')}</select><div class="hint">You are signed in with the account login, so pick the person. Signing in with your own login selects you automatically.</div></div>`
+      : `<p class="hint">Add your team on <a class="flink" onclick="goToStep('team')">Team &amp; Org Chart</a> first.</p>`;
     currentSelfRateMemberId = null;
     currentSelfRateSkills = [];
     return;
@@ -61467,281 +61432,29 @@ function buildCareerChecklistHTML(member, next, currentSkills, newSkills, rating
 </html>`;
 }
 
-function populateTeamLevelSelect(){
-  renderTeamCategoryBoxes();
-  const sel = document.getElementById('teamNewLevel');
-  if (!sel) return;
-  const current = sel.value;
-  sel.innerHTML = `<option value="">Select a level…</option>` +
-    ORG_LEVELS.map(l => `<option value="${l}">${l}</option>`).join('');
-  sel.value = current;
-}
 
-function populateTeamFunctionSelect(){
-  const sel = document.getElementById('teamNewFunction');
-  if (!sel) return;
-  const current = sel.value;
-  sel.innerHTML = `<option value="">Select a function…</option>` +
-    TEAM_FUNCTIONS.map(f => `<option value="${f}">${functionLabel(f)}</option>`).join('');
-  sel.value = current;
-}
 
 // CMO is Executive-only by definition in this chart — locks the Function
 // select to Executive and disables it whenever Level is set to CMO, rather
 // than letting someone create a "PR CMO." Also re-filters the Reports To
 // dropdown to the correct pool for whatever level is now selected.
-function onTeamLevelChange(){
-  const levelSel = document.getElementById('teamNewLevel');
-  const fnSel = document.getElementById('teamNewFunction');
-  const reportsToSel = document.getElementById('teamNewReportsTo');
-  if (!levelSel || !fnSel || !reportsToSel) return;
-  const level = levelSel.value;
-  if (level === 'CMO'){
-    fnSel.value = 'Executive';
-    fnSel.disabled = true;
-  } else {
-    fnSel.disabled = false;
-  }
-  const options = reportsToOptionsFor(level);
-  reportsToSel.innerHTML = (level === 'CMO'
-    ? `<option value="">— none (top of this account's chart) —</option>`
-    : `<option value="">— none on file yet —</option>`) +
-    options.map(m => `<option value="${m.id}">${m.name} — ${m.level}, ${functionLabel(m.functionGroup)}</option>`).join('');
-}
 
 // Round 44 — the Add Team Member form now doubles as the Edit form
 // (editingTeamMemberId set by startEditTeamMember() below). Both paths
 // share the same fields/validation; this just routes to add vs. save.
-async function submitTeamMemberForm(){
-  if (editingTeamMemberId) return saveTeamMemberEdit();
-  return addTeamMember();
-}
 
-function countActiveAdmins(excludeId){
-  return state.team.filter(m => m.isAdmin && m.status !== 'inactive' && m.id !== excludeId).length;
-}
 
-function readTeamMemberForm(){
-  return {
-    name: document.getElementById('teamNewName').value.trim(),
-    email: document.getElementById('teamNewEmail').value.trim(),
-    isAdmin: document.getElementById('teamNewIsAdmin').checked,
-    level: document.getElementById('teamNewLevel').value,
-    functionGroup: document.getElementById('teamNewFunction').value,
-    reportsToId: document.getElementById('teamNewReportsTo').value || null,
-    memberKind: document.getElementById('teamNewKind').value || 'internal',
-    roleLabel: document.getElementById('teamNewRoleLabel').value.trim(),
-    categories: Array.from(document.querySelectorAll('#teamNewCategories input:checked')).map(i => i.value),
-    handle: document.getElementById('teamNewHandle').value.trim().replace(/^@/, '')
-  };
-}
 const TEAM_CATEGORY_OPTIONS = ['Strategy', 'Customer Experiences', 'Growth and Performance', 'Media Science', 'PR', 'Copywriting', 'Design', 'Motion Graphics', 'Marketing Ops', 'Analysts'];
-function renderTeamCategoryBoxes(selected){
-  const box = document.getElementById('teamNewCategories');
-  if (!box) return;
-  const sel = selected || Array.from(box.querySelectorAll('input:checked')).map(i => i.value);
-  box.innerHTML = TEAM_CATEGORY_OPTIONS.map(c => `<label style="display:inline-flex;gap:6px;align-items:center;font-size:0.875rem;"><input type="checkbox" value="${c}"${sel.includes(c) ? ' checked' : ''} style="margin:0;"> ${c}</label>`).join('');
-}
 
-function resetTeamMemberForm(){
-  { const pp = document.getElementById('teamPositionPick'); if (pp) pp.value = ''; }
-  document.getElementById('teamNewName').value = '';
-  document.getElementById('teamNewEmail').value = '';
-  document.getElementById('teamNewIsAdmin').checked = false;
-  document.getElementById('teamNewLevel').value = '';
-  document.getElementById('teamNewFunction').value = '';
-  document.getElementById('teamNewKind').value = 'internal';
-  document.getElementById('teamNewRoleLabel').value = '';
-  document.getElementById('teamNewHandle').value = '';
-  document.getElementById('teamNewHandleWrap').style.display = 'none';
-  renderTeamCategoryBoxes([]);
-  onTeamLevelChange();
-}
 
-async function addTeamMember(){
-  const { name, email, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories } = readTeamMemberForm();
-  const flag = document.getElementById('teamAddFlag');
-  if (!name || !level || !functionGroup){
-    if (flag){ flag.textContent = 'Name, Level, and Function are all required.'; flag.style.color = 'var(--advocacy)'; }
-    return;
-  }
-  const localMember = { id: `local-team-${Date.now()}`, accountId: state.companyId, name, email: email || null, isAdmin, functionGroup, level, reportsToId, status: 'active', createdAt: new Date().toISOString() , memberKind, roleLabel, categories};
-  let persisted = false;
-  let tempPasswordOut = null;
-  if (dataSourceLabel === 'backend'){
-    try {
-      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/team`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, isAdmin, functionGroup, level, reportsToId, memberKind, roleLabel, categories })
-      });
-      if (resp.ok){
-        const out = await resp.json();
-        localMember.id = out.memberId;
-        localMember.handle = out.handle || null;
-        persisted = true;
-        tempPasswordOut = out.tempPassword || null;
-      } else if (resp.status === 403 || resp.status === 409){
-        const err = await resp.json().catch(() => ({}));
-        if (flag){ flag.textContent = err.error || 'This could not be added.'; flag.style.color = 'var(--advocacy)'; }
-        return;
-      }
-    } catch (e){ /* falls through to local-only, same convention as campaigns */ }
-  }
-  state.team.push(localMember);
-  resetTeamMemberForm();
-  if (flag && persisted && tempPasswordOut){
-    flag.style.color = 'var(--cx)';
-    flag.innerHTML = `Added ${escapeHtml(name)}. They can sign in with ${escapeHtml(email)}. <strong>Temporary password, shown once. Save it before leaving this page:</strong> <code style="background:var(--paper-dim);padding:2px 6px;border-radius:3px;">${escapeHtml(tempPasswordOut)}</code> They set their own password on first sign-in.`;
-  } else if (flag){
-    flag.style.color = 'var(--cx)';
-    flag.textContent = persisted
-      ? `Added ${name} — saved to this account's real backend record.`
-      : `Added ${name} — local only, this session (no backend record for this account, or the backend is unreachable).`;
-  }
-  populateTeamLevelSelect();
-  populateTeamFunctionSelect();
-  renderTeamRosterView();
-  renderActingAsSelect();
-}
 
 // Loads an existing member into the Add/Edit form and flips the module
 // into edit mode — same fields, same validation, "Add to roster" becomes
 // "Save changes" and a Cancel edit button appears.
-function startEditTeamMember(id){
-  const m = findTeamMember(id);
-  if (!m) return;
-  editingTeamMemberId = id;
-  document.getElementById('teamNewName').value = m.name || '';
-  document.getElementById('teamNewEmail').value = m.email || '';
-  document.getElementById('teamNewIsAdmin').checked = !!m.isAdmin;
-  document.getElementById('teamNewKind').value = m.memberKind || 'internal';
-  document.getElementById('teamNewRoleLabel').value = m.roleLabel || '';
-  document.getElementById('teamNewHandle').value = m.handle || '';
-  document.getElementById('teamNewHandleWrap').style.display = '';
-  renderTeamCategoryBoxes(Array.isArray(m.categories) ? m.categories : []);
-  populateTeamLevelSelect();
-  populateTeamFunctionSelect();
-  document.getElementById('teamNewLevel').value = m.level || '';
-  onTeamLevelChange();
-  document.getElementById('teamNewFunction').value = m.functionGroup || '';
-  // Reports To is filtered by the currently-selected Level (via
-  // onTeamLevelChange above) and always excludes this member themselves —
-  // reportsToOptionsFor() already can't return same-or-lower-ranked people,
-  // so the only self-reference risk is a same-level bug; this filter is a
-  // belt-and-suspenders exclusion, not a full cycle check across the whole
-  // chart (e.g. reassigning someone to report to their own report isn't
-  // caught) — a real build should validate that server-side.
-  const reportsToSel = document.getElementById('teamNewReportsTo');
-  Array.from(reportsToSel.options).forEach(o => { if (o.value === id) o.remove(); });
-  reportsToSel.value = m.reportsToId || '';
 
-  document.getElementById('teamAddTag').textContent = 'Edit';
-  document.getElementById('teamAddHeading').textContent = `Edit ${m.name}`;
-  document.getElementById('teamAddSubmitBtn').textContent = 'Save changes →';
-  document.getElementById('teamEditCancelBtn').style.display = 'inline-block';
-  const flag = document.getElementById('teamAddFlag');
-  if (flag){ flag.textContent = ''; }
-  const module = document.getElementById('teamAddModule');
-  if (module && !module.classList.contains('open')) toggleModule('teamAddModule');
-  module.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
 
-function cancelEditTeamMember(){
-  editingTeamMemberId = null;
-  resetTeamMemberForm();
-  document.getElementById('teamAddTag').textContent = 'Add';
-  document.getElementById('teamAddHeading').textContent = 'Add a team member';
-  document.getElementById('teamAddSubmitBtn').textContent = 'Add to roster →';
-  document.getElementById('teamEditCancelBtn').style.display = 'none';
-  const flag = document.getElementById('teamAddFlag');
-  if (flag){ flag.textContent = ''; }
-}
 
-async function saveTeamMemberEdit(){
-  const id = editingTeamMemberId;
-  const m = findTeamMember(id);
-  const flag = document.getElementById('teamAddFlag');
-  if (!m){ cancelEditTeamMember(); return; }
-  const { name, email, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, handle } = readTeamMemberForm();
-  if (!name || !level || !functionGroup){
-    if (flag){ flag.textContent = 'Name, Level, and Function are all required.'; flag.style.color = 'var(--advocacy)'; }
-    return;
-  }
-  if (reportsToId === id){
-    if (flag){ flag.textContent = "Someone can't report to themselves."; flag.style.color = 'var(--advocacy)'; }
-    return;
-  }
-  // Guard: don't let the account drop to zero active Admins from this
-  // form — Admin governs billing/payment/team access, so silently losing
-  // the last one would lock the account's own settings.
-  if (m.isAdmin && !isAdmin && countActiveAdmins(id) === 0){
-    if (flag){ flag.textContent = `${m.name} is this account's only Admin — promote someone else to Admin first.`; flag.style.color = 'var(--advocacy)'; }
-    return;
-  }
-  let persisted = false;
-  if (dataSourceLabel === 'backend' && !String(id).startsWith('local-team-')){
-    try {
-      const resp = await authedFetch(`${BACKEND_URL}/api/team/${encodeURIComponent(id)}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, handle: handle || undefined })
-      });
-      persisted = resp.ok;
-      if (!resp.ok && (resp.status === 403 || resp.status === 409 || resp.status === 400)){
-        const err = await resp.json().catch(() => ({}));
-        if (flag){ flag.textContent = err.error || 'This could not be saved.'; flag.style.color = 'var(--advocacy)'; }
-        return;
-      }
-    } catch (e){ /* state already reflects the change either way */ }
-  }
-  Object.assign(m, { name, email: email || null, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, handle: handle || m.handle });
-  cancelEditTeamMember();
-  if (flag){
-    flag.style.color = 'var(--cx)';
-    flag.textContent = persisted
-      ? `Saved changes to ${name} — updated in this account's real backend record.`
-      : `Saved changes to ${name} — local only, this session (no backend record for this account, or the backend is unreachable).`;
-  }
-  populateTeamLevelSelect();
-  populateTeamFunctionSelect();
-  renderTeamRosterView();
-  renderActingAsSelect();
-  // Round 46 — if the member just edited is the one currently "acting as"
-  // (their Level/Function may have just changed), refresh the self-rate
-  // card so it's showing skills for their current seat, not a stale one.
-  if (id === actingAsId) renderSelfRateView();
-}
 
-async function deleteTeamMember(id){
-  const m = findTeamMember(id);
-  const flag = document.getElementById('teamAddFlag');
-  if (m && m.isAdmin && countActiveAdmins(id) === 0){
-    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = `${m.name} is this account's only Admin — promote someone else to Admin before removing them.`; }
-    return;
-  }
-  if (!confirmDeleteAction(m ? `${m.name} from the team` : 'this team member')) return;
-  if (editingTeamMemberId === id) cancelEditTeamMember();
-  state.team = state.team.filter(m => m.id !== id);
-  const wasActingAs = actingAsId === id;
-  if (wasActingAs) actingAsId = null;
-  if (!id.startsWith('local-team-')){
-    try { await authedFetch(`${BACKEND_URL}/api/team/${encodeURIComponent(id)}`, { method: 'DELETE' }); }
-    catch (e){ /* best-effort — the row is already gone from state either way */ }
-  }
-  renderTeamRosterView();
-  renderActingAsSelect();
-  if (wasActingAs) renderSelfRateView();
-}
-
-function renderActingAsSelect(){
-  const sel = document.getElementById('actingAsSelect');
-  if (!sel) return;
-  if (!state.team.length){
-    sel.innerHTML = `<option value="">Add a team member below first</option>`;
-    return;
-  }
-  sel.innerHTML = `<option value="">— not set —</option>` +
-    state.team.map(m => `<option value="${m.id}"${m.id === actingAsId ? ' selected' : ''}>${m.name} — ${m.level}, ${functionLabel(m.functionGroup)}</option>`).join('');
-}
 
 // Round 46 — now async: picking someone to act as also loads their rating
 // history (if not already cached this session) before the self-rate card
@@ -61763,6 +61476,320 @@ async function setActingAs(id){
 
 
 const AGREEMENT_REPORT_LABELS = { 'story': 'Story', 'forecast-vs-target': 'Forecast vs target', 'price-volume': 'Price and volume', 'audience-growth': 'Audience growth', 'media-science': 'Media science', 'creative-media': 'Creative and media', 'growth-performance': 'Growth and performance' };
+
+
+/* ---------- Team page (2026-10-07 consolidation) ----------
+   One chart is the roster. Level is never typed in: it is derived from who a person reports to
+   (nobody above = leadership, then Director, Manager, Specialist tiers internally). */
+const DASHBOARD_OPTIONS = ['Brain Dump', 'Strategy', 'Customer Experiences', 'Growth and Performance', 'Media Science', 'Train the Brain'];
+const DASHBOARD_LABELS = { 'Growth and Performance': 'Growth & Performance' };
+const CREATIVE_SPECIALTIES = ['Design', 'Copywriting', 'Motion Graphics'];
+const LEGACY_TO_DASH = { 'PR': 'Customer Experiences', 'Marketing Ops': 'Growth and Performance', 'Analysts': 'Media Science' };
+let teamFormCarry = { legacy: [], creative: [] };
+function uniqList(a){ return a.filter((x, i) => a.indexOf(x) === i); }
+function splitCats(cats){
+  const dash = [], creative = [], legacy = [];
+  (Array.isArray(cats) ? cats : []).forEach(c => {
+    if (DASHBOARD_OPTIONS.includes(c)) dash.push(c);
+    else if (CREATIVE_SPECIALTIES.includes(c)) creative.push(c);
+    else if (LEGACY_TO_DASH[c]){ legacy.push(c); dash.push(LEGACY_TO_DASH[c]); }
+  });
+  return { dash: uniqList(dash), creative: uniqList(creative), legacy: uniqList(legacy) };
+}
+function posTitle(label){
+  const m = /^(.*) Director$/.exec(label || '');
+  if (m && !/^(Creative|Art)$/.test(m[1])) return 'Head of ' + m[1];
+  return label;
+}
+function memberDepth(id, seen){
+  seen = seen || {};
+  const m = findTeamMember(id);
+  if (!m || !m.reportsToId || seen[id]) return 0;
+  seen[id] = true;
+  if (!findTeamMember(m.reportsToId)) return 0;
+  return 1 + memberDepth(m.reportsToId, seen);
+}
+function levelForDepth(d){ return ORG_LEVELS[Math.min(d, ORG_LEVELS.length - 1)]; }
+function deriveLevelFor(reportsToId){ return reportsToId && findTeamMember(reportsToId) ? levelForDepth(1 + memberDepth(reportsToId)) : 'CMO'; }
+function descendantsOf(id){
+  const out = [], queue = [id];
+  while (queue.length){
+    const cur = queue.shift();
+    state.team.forEach(m => { if (m.reportsToId === cur && !out.includes(m.id) && m.id !== id){ out.push(m.id); queue.push(m.id); } });
+  }
+  return out;
+}
+async function patchMember(id, body){
+  if (dataSourceLabel !== 'backend' || String(id).startsWith('local-team-')) return true;
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/team/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    return r.ok;
+  } catch (e){ return false; }
+}
+// Recompute the derived level for one person and everyone under them, saving only the ones that changed.
+async function syncLevelsUnder(id){
+  const ids = [id].concat(descendantsOf(id));
+  for (const mid of ids){
+    const m = findTeamMember(mid);
+    if (!m) continue;
+    const lvl = levelForDepth(memberDepth(mid));
+    if (m.level !== lvl){ m.level = lvl; await patchMember(mid, { level: lvl }); }
+  }
+}
+
+function populateTeamLevelSelect(){ renderTeamCategoryBoxes(); populateReportsTo(); renderPositionPicker(); }
+function populateTeamFunctionSelect(){
+  const sel = document.getElementById('teamNewFunction');
+  if (!sel) return;
+  const current = sel.value;
+  sel.innerHTML = `<option value="">Select a function…</option>` +
+    TEAM_FUNCTIONS.map(f => `<option value="${f}">${functionLabel(f)}</option>`).join('');
+  sel.value = current;
+}
+function populateReportsTo(selectedId){
+  const sel = document.getElementById('teamNewReportsTo');
+  if (!sel) return;
+  const keep = selectedId !== undefined ? selectedId : sel.value;
+  const block = editingTeamMemberId ? [editingTeamMemberId].concat(descendantsOf(editingTeamMemberId)) : [];
+  sel.innerHTML = `<option value="">— no one (leadership) —</option>` +
+    state.team.filter(m => m.status !== 'inactive' && !block.includes(m.id))
+      .map(m => `<option value="${m.id}">${escapeHtml(m.name)} — ${escapeHtml(m.roleLabel || functionLabel(m.functionGroup))}</option>`).join('');
+  sel.value = keep || '';
+}
+function onTeamLevelChange(){ populateReportsTo(); }
+function onTeamKindChange(){
+  const ext = document.getElementById('teamNewKind').value === 'external';
+  const w = document.getElementById('teamExtWrap');
+  if (w) w.style.display = ext ? '' : 'none';
+  if (ext) renderAgreements();
+}
+
+function renderTeamCategoryBoxes(selected, creativeSelected){
+  const box = document.getElementById('teamNewCategories');
+  if (box){
+    const sel = selected || Array.from(box.querySelectorAll('input:checked')).map(i => i.value);
+    box.innerHTML = DASHBOARD_OPTIONS.map(c => `<label style="display:inline-flex;gap:6px;align-items:center;font-size:0.875rem;"><input type="checkbox" value="${c}"${sel.includes(c) ? ' checked' : ''}> ${DASHBOARD_LABELS[c] || c}</label>`).join('');
+  }
+  const cbox = document.getElementById('teamNewCreative');
+  if (cbox){
+    const csel = creativeSelected || Array.from(cbox.querySelectorAll('input:checked')).map(i => i.value);
+    cbox.innerHTML = CREATIVE_SPECIALTIES.map(c => `<label style="display:inline-flex;gap:6px;align-items:center;font-size:0.875rem;"><input type="checkbox" value="${c}"${csel.includes(c) ? ' checked' : ''}> ${c}</label>`).join('');
+  }
+}
+
+function resetTeamMemberForm(){
+  const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
+  set('teamPositionInput', ''); set('teamNewName', ''); set('teamNewEmail', ''); set('teamNewPhone', ''); set('teamNewPhoneExt', '');
+  set('teamNewFunction', ''); set('teamNewKind', 'internal'); set('teamNewHandle', '');
+  set('agrName', ''); set('agrChannels', ''); set('agrEnds', '');
+  const adm = document.getElementById('teamNewIsAdmin'); if (adm) adm.checked = false;
+  const hw = document.getElementById('teamNewHandleWrap'); if (hw) hw.style.display = 'none';
+  document.querySelectorAll('#agrReports input').forEach(i => i.checked = false);
+  teamFormCarry = { legacy: [], creative: [] };
+  renderTeamCategoryBoxes([], []);
+  populateReportsTo('');
+  onTeamKindChange();
+  onPositionPicked();
+}
+
+function readTeamMemberForm(){
+  const kind = document.getElementById('teamNewKind').value || 'internal';
+  const reportsToId = document.getElementById('teamNewReportsTo').value || null;
+  const level = deriveLevelFor(reportsToId);
+  let fn = document.getElementById('teamNewFunction').value;
+  if (!fn){
+    const parent = reportsToId ? findTeamMember(reportsToId) : null;
+    fn = parent && parent.functionGroup ? parent.functionGroup : 'Executive';
+  }
+  const dash = Array.from(document.querySelectorAll('#teamNewCategories input:checked')).map(i => i.value);
+  const creative = kind === 'external' ? Array.from(document.querySelectorAll('#teamNewCreative input:checked')).map(i => i.value) : teamFormCarry.creative;
+  return {
+    name: document.getElementById('teamNewName').value.trim(),
+    email: document.getElementById('teamNewEmail').value.trim(),
+    phone: document.getElementById('teamNewPhone').value.trim(),
+    phoneExt: document.getElementById('teamNewPhoneExt').value.replace(/[^0-9]/g, '').slice(0, 8),
+    isAdmin: document.getElementById('teamNewIsAdmin').checked,
+    level, functionGroup: fn, reportsToId, memberKind: kind,
+    roleLabel: document.getElementById('teamPositionInput').value.trim(),
+    categories: uniqList(dash.concat(creative, teamFormCarry.legacy)),
+    handle: document.getElementById('teamNewHandle').value.trim().replace(/^@/, '')
+  };
+}
+function teamFormProblem(f){
+  if (!f.name) return 'Name is required.';
+  if (!f.email || !/^\S+@\S+\.\S+$/.test(f.email)) return 'A valid email is required. It is how this person signs in.';
+  if (String(f.phone || '').replace(/\D/g, '').length < 10) return 'A phone number is required (at least 10 digits).';
+  return '';
+}
+function agreementFieldsFilled(){
+  return !!(document.getElementById('agrName').value.trim() || document.getElementById('agrChannels').value.trim() || document.querySelector('#agrReports input:checked'));
+}
+
+async function submitTeamMemberForm(){
+  if (editingTeamMemberId) return saveTeamMemberEdit();
+  return addTeamMember();
+}
+function countActiveAdmins(excludeId){
+  return state.team.filter(m => m.isAdmin && m.status !== 'inactive' && m.id !== excludeId).length;
+}
+
+async function addTeamMember(){
+  const f = readTeamMemberForm();
+  const flag = document.getElementById('teamAddFlag');
+  const problem = teamFormProblem(f);
+  if (problem){ if (flag){ flag.textContent = problem; flag.style.color = 'var(--advocacy)'; } return; }
+  const { name, email, phone, phoneExt, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories } = f;
+  const localMember = { id: `local-team-${Date.now()}`, accountId: state.companyId, name, email, phone: phone || null, phoneExt: phoneExt || null, isAdmin, functionGroup, level, reportsToId, status: 'active', createdAt: new Date().toISOString(), memberKind, roleLabel, categories };
+  let persisted = false, tempPasswordOut = null;
+  const wantsAgreement = memberKind === 'external' && agreementFieldsFilled();
+  const agreementBody = wantsAgreement ? readAgreementFields() : null;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/team`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, phone, phoneExt, isAdmin, functionGroup, level, reportsToId, memberKind, roleLabel, categories })
+      });
+      if (resp.ok){
+        const out = await resp.json();
+        localMember.id = out.memberId; localMember.handle = out.handle || null;
+        localMember.accessExpiresAt = out.accessExpiresAt || null;
+        persisted = true; tempPasswordOut = out.tempPassword || null;
+      } else if (resp.status === 403 || resp.status === 409){
+        const err = await resp.json().catch(() => ({}));
+        if (flag){ flag.textContent = err.error || 'This could not be added.'; flag.style.color = 'var(--advocacy)'; }
+        return;
+      }
+    } catch (e){ /* falls through to local-only */ }
+  }
+  state.team.push(localMember);
+  let agrNote = '';
+  if (wantsAgreement && persisted){ agrNote = (await postAgreement(localMember.id, agreementBody)) ? ' Agreement saved.' : ' The agreement could not be saved; add it by editing this person.'; }
+  resetTeamMemberForm();
+  if (flag && persisted && tempPasswordOut){
+    flag.style.color = 'var(--cx)';
+    flag.innerHTML = `Added ${escapeHtml(name)}. They can sign in with ${escapeHtml(email)}. <strong>Temporary password, shown once. Save it before leaving this page:</strong> <code style="background:var(--paper-dim);padding:2px 6px;border-radius:3px;">${escapeHtml(tempPasswordOut)}</code>${escapeHtml(agrNote)}`;
+  } else if (flag){
+    flag.style.color = 'var(--cx)';
+    flag.textContent = (persisted ? `Added ${name}, saved to this account's real backend record.` : `Added ${name}, local only for this session (no backend record for this account, or the backend is unreachable).`) + agrNote;
+  }
+  populateTeamFunctionSelect();
+  renderTeamRosterView();
+}
+
+function startEditTeamMember(id){
+  const m = findTeamMember(id);
+  if (!m) return;
+  editingTeamMemberId = id;
+  const set = (i, v) => { const e = document.getElementById(i); if (e) e.value = v; };
+  set('teamNewName', m.name || ''); set('teamNewEmail', m.email || ''); set('teamNewPhone', m.phone || ''); set('teamNewPhoneExt', m.phoneExt || '');
+  set('teamPositionInput', m.roleLabel || ''); set('teamNewHandle', m.handle || '');
+  set('teamNewKind', m.memberKind || 'internal');
+  document.getElementById('teamNewIsAdmin').checked = !!m.isAdmin;
+  document.getElementById('teamNewHandleWrap').style.display = '';
+  const sp = splitCats(m.categories);
+  teamFormCarry = { legacy: sp.legacy, creative: (m.memberKind === 'external') ? [] : sp.creative };
+  renderTeamCategoryBoxes(sp.dash, sp.creative);
+  populateTeamFunctionSelect();
+  set('teamNewFunction', m.functionGroup || '');
+  populateReportsTo(m.reportsToId || '');
+  onTeamKindChange();
+  onPositionPicked();
+  document.getElementById('teamAddTag').textContent = 'Edit';
+  document.getElementById('teamAddHeading').textContent = `Edit ${m.name}`;
+  document.getElementById('teamAddSubmitBtn').textContent = 'Save changes →';
+  document.getElementById('teamEditCancelBtn').style.display = 'inline-block';
+  const flag = document.getElementById('teamAddFlag'); if (flag) flag.textContent = '';
+  const module = document.getElementById('teamAddModule');
+  if (module && !module.classList.contains('open')) toggleModule('teamAddModule');
+  module.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function cancelEditTeamMember(){
+  editingTeamMemberId = null;
+  resetTeamMemberForm();
+  document.getElementById('teamAddTag').textContent = 'Add';
+  document.getElementById('teamAddHeading').textContent = 'Add a team member';
+  document.getElementById('teamAddSubmitBtn').textContent = 'Add to chart →';
+  document.getElementById('teamEditCancelBtn').style.display = 'none';
+  const flag = document.getElementById('teamAddFlag'); if (flag) flag.textContent = '';
+}
+
+async function saveTeamMemberEdit(){
+  const id = editingTeamMemberId;
+  const m = findTeamMember(id);
+  const flag = document.getElementById('teamAddFlag');
+  if (!m){ cancelEditTeamMember(); return; }
+  const f = readTeamMemberForm();
+  const problem = teamFormProblem(f);
+  if (problem){ if (flag){ flag.textContent = problem; flag.style.color = 'var(--advocacy)'; } return; }
+  const { name, email, phone, phoneExt, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, handle } = f;
+  if (reportsToId === id || (reportsToId && descendantsOf(id).includes(reportsToId))){
+    if (flag){ flag.textContent = "Someone can't report to themselves or to someone under them."; flag.style.color = 'var(--advocacy)'; }
+    return;
+  }
+  if (m.isAdmin && !isAdmin && countActiveAdmins(id) === 0){
+    if (flag){ flag.textContent = `${m.name} is this account's only Admin. Promote someone else to Admin first.`; flag.style.color = 'var(--advocacy)'; }
+    return;
+  }
+  let persisted = false;
+  if (dataSourceLabel === 'backend' && !String(id).startsWith('local-team-')){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/team/${encodeURIComponent(id)}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, phone, phoneExt, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, handle: handle || undefined })
+      });
+      persisted = resp.ok;
+      if (!resp.ok && (resp.status === 403 || resp.status === 409 || resp.status === 400)){
+        const err = await resp.json().catch(() => ({}));
+        if (flag){ flag.textContent = err.error || 'This could not be saved.'; flag.style.color = 'var(--advocacy)'; }
+        return;
+      }
+    } catch (e){ /* state reflects the change either way */ }
+  }
+  const wantsAgreement = memberKind === 'external' && agreementFieldsFilled();
+  const agreementBody = wantsAgreement ? readAgreementFields() : null;
+  Object.assign(m, { name, email, phone: phone || null, phoneExt: phoneExt || null, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, handle: handle || m.handle });
+  await syncLevelsUnder(id);
+  let agrNote = '';
+  if (wantsAgreement && persisted){ agrNote = (await postAgreement(id, agreementBody)) ? ' Agreement saved.' : ' The agreement could not be saved.'; }
+  cancelEditTeamMember();
+  if (flag){
+    flag.style.color = 'var(--cx)';
+    flag.textContent = (persisted ? `Saved changes to ${name}.` : `Saved changes to ${name}, local only for this session.`) + agrNote;
+  }
+  populateTeamFunctionSelect();
+  renderTeamRosterView();
+  if (id === actingAsId) renderSelfRateView();
+  if (wantsAgreement) loadAgreements();
+}
+
+async function deleteTeamMember(id){
+  const m = findTeamMember(id);
+  const flag = document.getElementById('teamAddFlag');
+  if (m && m.isAdmin && countActiveAdmins(id) === 0){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = `${m.name} is this account's only Admin. Promote someone else to Admin before removing them.`; }
+    return;
+  }
+  if (!confirmDeleteAction(m ? `${m.name} from the team` : 'this team member')) return;
+  if (editingTeamMemberId === id) cancelEditTeamMember();
+  // People under the removed person move up to that person's manager, so nobody silently becomes leadership.
+  const parentId = m ? (m.reportsToId || null) : null;
+  const kids = state.team.filter(x => x.reportsToId === id);
+  kids.forEach(k => { k.reportsToId = parentId; });
+  state.team = state.team.filter(x => x.id !== id);
+  if (actingAsId === id) actingAsId = null;
+  if (!String(id).startsWith('local-team-')){
+    try { await authedFetch(`${BACKEND_URL}/api/team/${encodeURIComponent(id)}`, { method: 'DELETE' }); } catch (e){}
+  }
+  for (const k of kids){ await patchMember(k.id, { reportsToId: parentId }); await syncLevelsUnder(k.id); }
+  renderTeamRosterView();
+  renderSelfRateView();
+}
+
+// Nobody picks "who am I" any more: the signed-in person is the profile.
+function renderActingAsSelect(){}
+
+/* ---------- Agreements (shown only when Membership is External) ---------- */
 let agreementsCache = [];
 async function renewExternalAccess(id){
   const m = findTeamMember(id);
@@ -61776,57 +61803,230 @@ async function renewExternalAccess(id){
   } catch (e){ alert('Could not reach the server to renew access.'); }
 }
 async function loadAgreements(){
-  const mod = document.getElementById('agreementsModule');
-  if (!mod || dataSourceLabel !== 'backend') return;
+  if (dataSourceLabel !== 'backend') return;
   try {
     const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/agreements`);
-    if (!r.ok){ mod.style.display = 'none'; return; }
+    if (!r.ok) return;
     const j = await r.json();
     agreementsCache = j.agreements || [];
-    mod.style.display = '';
-    renderAgreements(j.reportOptions || Object.keys(AGREEMENT_REPORT_LABELS));
-  } catch (e){ mod.style.display = 'none'; }
+    agreementReportOptions = j.reportOptions || Object.keys(AGREEMENT_REPORT_LABELS);
+    renderAgreements();
+  } catch (e){}
 }
-function renderAgreements(reportOptions){
-  const ext = state.team.filter(m => m.memberKind === 'external');
-  const sel = document.getElementById('agrMember');
-  if (sel) sel.innerHTML = ext.length ? ext.map(m => `<option value="${m.id}">${m.name}</option>`).join('') : '<option value="">Add an external guest on the team first</option>';
+let agreementReportOptions = null;
+function renderAgreements(){
   const box = document.getElementById('agrReports');
-  if (box && !box.dataset.built){ box.innerHTML = reportOptions.map(k => `<label style="display:flex;gap:5px;align-items:center;font-weight:400;"><input type="checkbox" value="${k}"> ${AGREEMENT_REPORT_LABELS[k] || k}</label>`).join(''); box.dataset.built = '1'; }
+  if (box && !box.dataset.built){
+    const opts = agreementReportOptions || Object.keys(AGREEMENT_REPORT_LABELS);
+    box.innerHTML = opts.map(k => `<label style="display:inline-flex;gap:6px;align-items:center;font-size:0.875rem;"><input type="checkbox" value="${k}"> ${AGREEMENT_REPORT_LABELS[k] || k}</label>`).join('');
+    box.dataset.built = '1';
+  }
   const v = document.getElementById('agreementsView');
   if (!v) return;
-  v.innerHTML = agreementsCache.length ? agreementsCache.map(a => {
-    const who = findTeamMember(a.memberId);
-    return `<div style="display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);">
-      <span><strong>${a.name || 'Agreement'}</strong> — ${who ? who.name : 'removed guest'}<br><span class="hint" style="display:inline;">Channels: ${a.channels.length ? a.channels.join(', ') : 'none'} · Reports: ${a.reports.length ? a.reports.map(k => AGREEMENT_REPORT_LABELS[k] || k).join(', ') : 'none'}${a.endsAt ? ' · ends ' + new Date(a.endsAt).toLocaleDateString() : ''}</span></span>
-      <button type="button" class="link-btn" onclick="deleteAgreement('${a.id}')">Remove</button></div>`;
-  }).join('') : '<p class="hint">No agreements yet. An agency guest sees nothing of budgets or reports until one names them.</p>';
+  const mine = editingTeamMemberId ? agreementsCache.filter(a => a.memberId === editingTeamMemberId) : [];
+  v.innerHTML = mine.length ? mine.map(a => `<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);">
+      <span><strong>${escapeHtml(a.name || 'Agreement')}</strong><br><span class="hint" style="display:inline;">Channels: ${a.channels.length ? escapeHtml(a.channels.join(', ')) : 'none'} · Reports: ${a.reports.length ? escapeHtml(a.reports.map(r => AGREEMENT_REPORT_LABELS[r] || r).join(', ')) : 'none'}${a.endsAt ? ' · ends ' + new Date(a.endsAt).toLocaleDateString() : ''}</span></span>
+      <button type="button" class="link-btn" onclick="deleteAgreement('${a.id}')">Remove</button></div>`).join('') : '';
 }
-async function saveAgreement(){
-  const flag = document.getElementById('agrFlag');
-  const memberId = document.getElementById('agrMember').value;
-  if (!memberId){ flag.textContent = 'Pick an external guest first.'; return; }
-  const body = {
-    memberId,
+function readAgreementFields(){
+  return {
     name: document.getElementById('agrName').value.trim(),
     channels: document.getElementById('agrChannels').value.split(',').map(x => x.trim()).filter(Boolean),
     reports: [...document.querySelectorAll('#agrReports input:checked')].map(i => i.value),
     endsAt: document.getElementById('agrEnds').value || null
   };
+}
+async function postAgreement(memberId, body){
   try {
-    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/agreements`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok){ flag.textContent = j.error || 'Could not save the agreement.'; return; }
-    flag.textContent = 'Saved.';
-    document.getElementById('agrName').value = ''; document.getElementById('agrChannels').value = ''; document.getElementById('agrEnds').value = '';
-    document.querySelectorAll('#agrReports input').forEach(i => i.checked = false);
-    loadAgreements();
-  } catch (e){ flag.textContent = 'Could not reach the server.'; }
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/agreements`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ memberId }, body)) });
+    return r.ok;
+  } catch (e){ return false; }
 }
 async function deleteAgreement(id){
   if (!confirm('Remove this agreement? The guest loses the access it named.')) return;
   try { await authedFetch(`${BACKEND_URL}/api/agreements/${encodeURIComponent(id)}`, { method: 'DELETE' }); } catch (e){}
   loadAgreements();
+}
+
+function renderOrgShapePicker(){
+  const el = document.getElementById('orgShapePicker');
+  if (!el) return;
+  const cur = currentOrgShape();
+  if (!orgShapeStyleTab && cur) orgShapeStyleTab = cur.style;
+  const isAdmin = portalViewerIsAdmin !== false;
+  const color = (ORG_SHAPE_STYLES.find(x => x.key === orgShapeStyleTab) || {}).color || '#1E2761';
+  el.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+      ${ORG_SHAPE_STYLES.map(x => `<button type="button" class="stage-tile${orgShapeStyleTab === x.key ? ' selected' : ''}" style="padding:6px 14px;" onclick="orgShapeStyleTab='${x.key}';renderOrgShapePicker();">${x.label}</button>`).join('')}
+    </div>
+    ${orgShapeStyleTab ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,260px));gap:12px;">
+      ${ORG_SHAPES.filter(o => o.style === orgShapeStyleTab).map(o => `
+        <button type="button" ${isAdmin ? '' : 'disabled'} onclick="pickOrgShape('${o.id}')" style="text-align:left;background:#fff;border:${cur && cur.id === o.id ? '2px solid #1E2761' : '1px solid var(--line)'};border-radius:10px;padding:10px;cursor:${isAdmin ? 'pointer' : 'default'};">
+          ${orgShapeSvg(o.top.label, o.kids.map(k => k.label), color)}
+          <div style="font-weight:600;margin-top:6px;">${o.label}${cur && cur.id === o.id ? ' · current' : ''}</div>
+        </button>`).join('')}
+    </div>` : ''}`;
+}
+async function pickOrgShape(id){
+  state.orgShape = id;
+  renderOrgShapePicker();
+  renderOrgChart();
+  if (dataSourceLabel === 'backend'){
+    try { await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/org-shape`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shape: id }) }); } catch (e){}
+  }
+}
+function renderOrgShapeLive(){ renderOrgChart(); }
+// The chart is the roster: everyone, by who they report to, with open seats from the chosen shape.
+function renderOrgChart(){
+  const el = document.getElementById('orgChartLive');
+  if (!el) return;
+  const isAdmin = portalViewerIsAdmin !== false;
+  const members = state.team.filter(m => m.status !== 'inactive');
+  const ids = new Set(members.map(m => m.id));
+  const shape = currentOrgShape();
+  const assign = shape ? orgShapeAssign(shape) : null;
+  const openFor = {};
+  const rootOpen = [];
+  if (shape && assign){
+    if (!assign.top) rootOpen.push({ slot: shape.top, path: 'top' });
+    shape.kids.forEach((k, i) => {
+      if (assign.kids[i]) return;
+      if (assign.top) (openFor[assign.top.id] = openFor[assign.top.id] || []).push({ slot: k, path: String(i) });
+      else rootOpen.push({ slot: k, path: String(i) });
+    });
+  }
+  const openCard = o => `<div class="oc-node"><div class="oc-card open">
+      <div class="oc-sub">${escapeHtml(o.slot.label)}${o.slot.kind === 'external' ? ' · external' : ''}</div>
+      <div class="oc-sub">Open seat</div>
+      <div class="oc-acts">${isAdmin ? `<button type="button" class="link-btn" style="color:#D08A3E;font-weight:600;" onclick="fillOrgSlot('${o.path}')">+ Add this seat</button>` : ''}</div></div></div>`;
+  const kidsOf = id => members.filter(m => m.reportsToId === id);
+  const node = (m, depth) => {
+    if (depth > 12) return '';
+    const kids = kidsOf(m.id);
+    const opens = openFor[m.id] || [];
+    const exp = m.accessExpiresAt ? ' · access ends ' + new Date(m.accessExpiresAt).toLocaleDateString() : '';
+    const acts = isAdmin ? `
+        ${m.email && !String(m.id).startsWith('local-team-') ? `<button type="button" class="link-btn" onclick="reissueMemberLogin('${m.id}')">Reissue login</button>` : ''}
+        ${m.memberKind === 'external' ? `<button type="button" class="link-btn" onclick="renewExternalAccess('${m.id}')">Renew 3 months</button>` : ''}
+        <button type="button" class="link-btn" onclick="startEditTeamMember('${m.id}')">Edit</button>
+        <button type="button" class="link-btn" onclick="deleteTeamMember('${m.id}')">Remove</button>` : '';
+    return `<div class="oc-node">
+      <div class="oc-card">
+        <div class="oc-name">${escapeHtml(m.name)}${m.isAdmin ? '<span class="oc-pill">Admin</span>' : ''}</div>
+        <div class="oc-sub">${escapeHtml(m.roleLabel || functionLabel(m.functionGroup))}</div>
+        <div class="oc-sub">${escapeHtml(functionLabel(m.functionGroup))}${m.memberKind === 'external' ? ' · external' : ''}${exp}</div>
+        <div class="oc-acts">${acts}</div>
+      </div>
+      ${isAdmin ? `<div class="oc-stub" style="height:6px;"></div><div class="oc-add"><button type="button" class="link-btn" onclick="openTeamForm({reportsToId:'${m.id}'})">+ Add reporting position</button></div>` : ''}
+      ${(kids.length || opens.length) ? `<div class="oc-stub"></div><div class="oc-kids">${kids.map(k => node(k, depth + 1)).join('')}${opens.map(openCard).join('')}</div>` : ''}
+    </div>`;
+  };
+  const isUnplaced = m => !m.isAdmin && !m.reportsToId && !m.roleLabel && m.memberKind !== 'external' && !String(m.id).startsWith('local-team-');
+  const unplaced = members.filter(isUnplaced);
+  const roots = members.filter(m => (!m.reportsToId || !ids.has(m.reportsToId)) && !isUnplaced(m));
+  const tray = unplaced.length ? `<div style="border:1px dashed #D08A3E;border-radius:8px;padding:12px 14px;margin-bottom:16px;background:var(--paper-dim);">
+      <div class="section-eyebrow" style="margin-bottom:6px;">Needs placement · ${unplaced.length}</div>
+      <p class="hint" style="margin:0 0 8px;">These people have an account but no position or reporting line yet. ${isAdmin ? 'Choose a position, who they report to, and their dashboards.' : 'An Admin will place them on the chart.'}</p>
+      ${unplaced.map(m => `<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:4px 0;"><strong>${escapeHtml(m.name)}</strong><span class="hint">${escapeHtml(m.email || '')}</span>${isAdmin ? `<button type="button" class="link-btn" style="color:#D08A3E;font-weight:600;" onclick="startEditTeamMember('${m.id}')">Place on chart</button>` : ''}</div>`).join('')}
+    </div>` : '';
+  const filled = assign ? (assign.top ? 1 : 0) + assign.kids.filter(Boolean).length : 0;
+  const head = shape ? `<div class="section-eyebrow" style="margin-bottom:10px;">${shape.label} · ${filled} of ${1 + shape.kids.length} seats filled</div>` : '';
+  if (!roots.length && !rootOpen.length){
+    el.innerHTML = tray + head + `<p class="hint">No one is on the chart yet. Pick a team shape above, or use Add a person.</p>`;
+    return;
+  }
+  el.innerHTML = tray + head + `<div style="display:flex;gap:24px;justify-content:center;align-items:flex-start;min-width:min-content;">${roots.map(r => node(r, 0)).join('')}${rootOpen.map(openCard).join('')}</div>`;
+}
+function openTeamForm(opts){
+  if (typeof cancelEditTeamMember === 'function') try { cancelEditTeamMember(); } catch (e){}
+  resetTeamMemberForm();
+  if (opts.slot){
+    document.getElementById('teamPositionInput').value = opts.slot.label;
+    populateTeamFunctionSelect();
+    document.getElementById('teamNewFunction').value = opts.slot.fn === 'Executive' && opts.reportsToId ? '' : opts.slot.fn;
+    document.getElementById('teamNewKind').value = opts.slot.kind;
+    const sp = splitCats(opts.slot.cats);
+    teamFormCarry = { legacy: sp.legacy, creative: opts.slot.kind === 'external' ? [] : sp.creative };
+    renderTeamCategoryBoxes(sp.dash, sp.creative);
+    onTeamKindChange();
+  }
+  populateReportsTo(opts.reportsToId || '');
+  const mod = document.getElementById('teamAddModule');
+  if (mod){ if (!mod.classList.contains('open')) mod.classList.add('open'); mod.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  const nm = document.getElementById('teamNewName'); if (nm) nm.focus();
+}
+function fillOrgSlot(path){
+  const shape = currentOrgShape();
+  if (!shape) return;
+  const slot = path === 'top' ? shape.top : shape.kids[Number(path)];
+  if (!slot) return;
+  const boss = path === 'top' ? null : orgShapeAssign(shape).top;
+  openTeamForm({ slot, reportsToId: boss ? boss.id : '' });
+}
+
+let customPositions = [];
+function allPositions(){ return POSITION_LIBRARY.concat(customPositions.map(c => Object.assign({ track: 'Your positions', custom: true }, c))); }
+function positionDisplay(p){ return p.custom ? p.label : posTitle(p.label); }
+function renderPositionPicker(){
+  const dl = document.getElementById('teamPositionList');
+  if (!dl) return;
+  dl.innerHTML = allPositions().map(p => `<option value="${escapeHtml(positionDisplay(p))}"></option>`).join('');
+  onPositionPicked();
+}
+function matchedPosition(){
+  const v = (document.getElementById('teamPositionInput') || {}).value;
+  if (!v) return null;
+  const t = v.trim().toLowerCase();
+  return allPositions().find(p => positionDisplay(p).toLowerCase() === t) || null;
+}
+function onPositionPicked(){
+  const rm = document.getElementById('teamPositionRemove');
+  const p = matchedPosition();
+  if (rm) rm.style.display = p && p.custom ? '' : 'none';
+}
+function onPositionTyped(){
+  onPositionPicked();
+  const p = matchedPosition();
+  if (!p) return;
+  populateTeamFunctionSelect();
+  document.getElementById('teamNewFunction').value = p.fn === 'Executive' && document.getElementById('teamNewReportsTo').value ? '' : p.fn;
+  document.getElementById('teamNewKind').value = p.kind;
+  const sp = splitCats(p.cats);
+  teamFormCarry = { legacy: sp.legacy, creative: p.kind === 'external' ? [] : sp.creative };
+  renderTeamCategoryBoxes(sp.dash, sp.creative);
+  onTeamKindChange();
+}
+function applyPosition(){ onPositionTyped(); }
+async function persistCustomPositions(){
+  if (dataSourceLabel !== 'backend') return;
+  try { await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/positions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ positions: customPositions }) }); } catch (e){}
+}
+function saveCustomPosition(){
+  const flag = document.getElementById('teamAddFlag');
+  const f = readTeamMemberForm();
+  if (!f.roleLabel){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Type a position name first.'; }
+    return;
+  }
+  customPositions = customPositions.filter(c => c.label.toLowerCase() !== f.roleLabel.toLowerCase());
+  customPositions.push({ id: 'custom-' + Date.now().toString(36), label: f.roleLabel, level: f.level, fn: f.functionGroup, kind: f.memberKind, cats: f.categories });
+  persistCustomPositions();
+  renderPositionPicker();
+  if (flag){ flag.style.color = 'var(--cx)'; flag.textContent = `Saved "${f.roleLabel}" to your positions.`; }
+}
+function removeCustomPosition(){
+  const p = matchedPosition();
+  if (!p || !p.custom) return;
+  customPositions = customPositions.filter(c => c.id !== p.id);
+  persistCustomPositions();
+  renderPositionPicker();
+}
+
+function renderTeamRosterView(){
+  renderOrgShapePicker();
+  renderOrgChart();
+  renderPositionPicker();
+  renderAgreements();
 }
 
 
@@ -61886,36 +62086,6 @@ function orgShapeSvg(top, kids, color){
   return `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">${lines}${boxes}</svg>`;
 }
 function currentOrgShape(){ return ORG_SHAPES.find(o => o.id === state.orgShape) || null; }
-function renderOrgShapePicker(){
-  const el = document.getElementById('orgShapePicker');
-  if (!el) return;
-  const cur = currentOrgShape();
-  if (!orgShapeStyleTab) orgShapeStyleTab = cur ? cur.style : (state.orgModel === 'solo' ? 'solo' : 'inhouse');
-  const isAdmin = portalViewerIsAdmin !== false;
-  const color = (ORG_SHAPE_STYLES.find(x => x.key === orgShapeStyleTab) || {}).color || '#1E2761';
-  el.innerHTML = `
-    <p class="hint" style="margin:0 0 10px;">Start from the shape that looks most like your team. You can change it any time; nobody is moved or removed.</p>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-      ${ORG_SHAPE_STYLES.map(x => `<button type="button" class="stage-tile${orgShapeStyleTab === x.key ? ' selected' : ''}" style="padding:6px 14px;" onclick="orgShapeStyleTab='${x.key}';renderOrgShapePicker();">${x.label}</button>`).join('')}
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,260px));gap:12px;">
-      ${ORG_SHAPES.filter(o => o.style === orgShapeStyleTab).map(o => `
-        <button type="button" ${isAdmin ? '' : 'disabled'} onclick="pickOrgShape('${o.id}')" style="text-align:left;background:#fff;border:${cur && cur.id === o.id ? '2px solid #1E2761' : '1px solid var(--line)'};border-radius:8px;padding:10px;cursor:${isAdmin ? 'pointer' : 'default'};">
-          ${orgShapeSvg(o.top.label, o.kids.map(k => k.label), color)}
-          <div style="font-weight:600;margin-top:6px;">${o.label}${cur && cur.id === o.id ? ' · current' : ''}</div>
-        </button>`).join('')}
-    </div>`;
-}
-async function pickOrgShape(id){
-  state.orgShape = id;
-  const shape = currentOrgShape();
-  if (shape && shape.style === 'solo' && state.orgModel !== 'solo'){ /* shape only guides; the solo/team flag is changed in its own control */ }
-  renderOrgShapePicker();
-  renderOrgShapeLive();
-  if (dataSourceLabel === 'backend'){
-    try { await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/org-shape`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shape: id }) }); } catch (e){}
-  }
-}
 // A person fills a slot when their role label matches the box, or their function and kind match and nobody else took it.
 function orgShapeAssign(shape){
   const used = new Set();
@@ -61929,107 +62099,8 @@ function orgShapeAssign(shape){
   const top = take(shape.top, true);
   return { top, kids: shape.kids.map(k => take(k, false)) };
 }
-function renderOrgShapeLive(){
-  const el = document.getElementById('orgShapeLive');
-  if (!el) return;
-  const shape = currentOrgShape();
-  if (!shape){ el.innerHTML = ''; return; }
-  const a = orgShapeAssign(shape);
-  const isAdmin = portalViewerIsAdmin !== false;
-  const card = (slot, who, path) => `<div style="background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:150px;max-width:210px;text-align:left;">
-      <div class="hint" style="margin:0;display:block;">${slot.label}${slot.kind === 'external' ? ' · external' : ''}</div>
-      ${who ? `<div style="font-weight:600;color:#1E2761;">${who.name}</div><div class="hint" style="margin:0;display:block;">${who.level}${who.accessExpiresAt ? ' · access ends ' + new Date(who.accessExpiresAt).toLocaleDateString() : ''}</div>`
-            : (isAdmin ? `<button type="button" class="link-btn" style="color:#D08A3E;font-weight:600;" onclick="fillOrgSlot('${path}')">+ Add this seat</button>` : '<div class="hint" style="margin:0;display:block;">Open seat</div>')}
-    </div>`;
-  const filled = (a.top ? 1 : 0) + a.kids.filter(Boolean).length, total = 1 + shape.kids.length;
-  el.innerHTML = `
-    <div class="section-eyebrow" style="margin-bottom:8px;">${shape.label} · ${filled} of ${total} seats filled</div>
-    <div style="display:flex;flex-direction:column;align-items:center;gap:0;">
-      ${card(shape.top, a.top, 'top')}
-      ${shape.kids.length ? `<div style="width:1px;height:16px;background:var(--line);"></div>
-      <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;border-top:1px solid var(--line);padding-top:16px;">
-        ${shape.kids.map((k, i) => card(k, a.kids[i], String(i))).join('')}
-      </div>` : ''}
-    </div>
-    <p class="hint" style="margin:12px 0 0;">People you add that don't match a box still appear in the roster below.</p>`;
-}
-function fillOrgSlot(path){
-  const shape = currentOrgShape();
-  if (!shape) return;
-  const slot = path === 'top' ? shape.top : shape.kids[Number(path)];
-  if (!slot) return;
-  if (typeof cancelEditTeamMember === 'function') try { cancelEditTeamMember(); } catch (e){}
-  resetTeamMemberForm();
-  document.getElementById('teamNewLevel').value = slot.level;
-  onTeamLevelChange();
-  document.getElementById('teamNewFunction').value = slot.fn;
-  document.getElementById('teamNewKind').value = slot.kind;
-  document.getElementById('teamNewRoleLabel').value = slot.label;
-  renderTeamCategoryBoxes(slot.cats);
-  const boss = path === 'top' ? null : orgShapeAssign(shape).top;
-  const rt = document.getElementById('teamNewReportsTo');
-  if (boss && rt) rt.value = boss.id;
-  const mod = document.getElementById('teamAddModule');
-  if (mod){ if (!mod.classList.contains('open')) mod.classList.add('open'); mod.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-  const nm = document.getElementById('teamNewName'); if (nm) nm.focus();
-}
 
 const POSITION_LIBRARY = [{"id":"pos-head-of-marketing-cmo","track":"Leadership","label":"Head of Marketing / CMO","level":"CMO","fn":"Executive","kind":"internal","cats":[]},{"id":"pos-marketing-strategy-director","track":"Strategy & Budget","label":"Marketing Strategy Director","level":"Director","fn":"Research","kind":"internal","cats":["Strategy"]},{"id":"pos-brand-strategist","track":"Strategy & Budget","label":"Brand Strategist","level":"Manager","fn":"Research","kind":"internal","cats":["Strategy"]},{"id":"pos-market-research-analyst","track":"Strategy & Budget","label":"Market Research Analyst","level":"Specialist","fn":"Research","kind":"internal","cats":["Strategy"]},{"id":"pos-budget-finance-analyst","track":"Strategy & Budget","label":"Budget & Finance Analyst","level":"Specialist","fn":"Marketing Ops","kind":"internal","cats":["Marketing Ops"]},{"id":"pos-brand-director","track":"Brand & Voice","label":"Brand Director","level":"Director","fn":"Brand","kind":"internal","cats":["Design","Copywriting"]},{"id":"pos-brand-manager","track":"Brand & Voice","label":"Brand Manager","level":"Manager","fn":"Brand","kind":"internal","cats":["Design"]},{"id":"pos-style-brand-guardian","track":"Brand & Voice","label":"Style & Brand Guardian","level":"Specialist","fn":"Brand","kind":"internal","cats":["Design"]},{"id":"pos-content-strategist","track":"Brand & Voice","label":"Content Strategist","level":"Manager","fn":"Content Development","kind":"internal","cats":["Copywriting","Strategy"]},{"id":"pos-copywriter","track":"Brand & Voice","label":"Copywriter","level":"Specialist","fn":"Content Development","kind":"internal","cats":["Copywriting"]},{"id":"pos-creative-director","track":"Creative & Design","label":"Creative Director","level":"Director","fn":"Omni-Channel Creative","kind":"internal","cats":["Design"]},{"id":"pos-art-director","track":"Creative & Design","label":"Art Director","level":"Manager","fn":"Omni-Channel Creative","kind":"internal","cats":["Design"]},{"id":"pos-graphic-designer","track":"Creative & Design","label":"Graphic Designer","level":"Specialist","fn":"Omni-Channel Creative","kind":"internal","cats":["Design"]},{"id":"pos-motion-designer","track":"Creative & Design","label":"Motion Designer","level":"Specialist","fn":"Omni-Channel Creative","kind":"internal","cats":["Motion Graphics"]},{"id":"pos-video-producer","track":"Creative & Design","label":"Video Producer","level":"Specialist","fn":"Omni-Channel Creative","kind":"internal","cats":["Motion Graphics"]},{"id":"pos-creative-technologist","track":"Creative & Design","label":"Creative Technologist","level":"Specialist","fn":"Omni-Channel Creative","kind":"internal","cats":["Design"]},{"id":"pos-pr-director","track":"Communications & PR","label":"PR Director","level":"Director","fn":"PR","kind":"internal","cats":["PR"]},{"id":"pos-pr-manager","track":"Communications & PR","label":"PR Manager","level":"Manager","fn":"PR","kind":"internal","cats":["PR"]},{"id":"pos-communications-specialist","track":"Communications & PR","label":"Communications Specialist","level":"Specialist","fn":"PR","kind":"internal","cats":["PR"]},{"id":"pos-social-community-manager","track":"Communications & PR","label":"Social & Community Manager","level":"Manager","fn":"Content Development","kind":"internal","cats":["Copywriting","Customer Experiences"]},{"id":"pos-analytics-director","track":"Analytics & Data","label":"Analytics Director","level":"Director","fn":"Analysis","kind":"internal","cats":["Analysts"]},{"id":"pos-media-science-lead","track":"Analytics & Data","label":"Media Science Lead","level":"Manager","fn":"Analysis","kind":"internal","cats":["Media Science","Analysts"]},{"id":"pos-data-scientist","track":"Analytics & Data","label":"Data Scientist","level":"Specialist","fn":"Analysis","kind":"internal","cats":["Analysts","Media Science"]},{"id":"pos-marketing-analyst","track":"Analytics & Data","label":"Marketing Analyst","level":"Specialist","fn":"Analysis","kind":"internal","cats":["Analysts"]},{"id":"pos-tagging-measurement-specialist","track":"Analytics & Data","label":"Tagging & Measurement Specialist","level":"Specialist","fn":"Analysis","kind":"internal","cats":["Analysts","Marketing Ops"]},{"id":"pos-marketing-ops-director","track":"Marketing Ops & Platforms","label":"Marketing Ops Director","level":"Director","fn":"Marketing Ops","kind":"internal","cats":["Marketing Ops"]},{"id":"pos-marketing-ops-manager","track":"Marketing Ops & Platforms","label":"Marketing Ops Manager","level":"Manager","fn":"Marketing Ops","kind":"internal","cats":["Marketing Ops"]},{"id":"pos-marketing-automation-specialist","track":"Marketing Ops & Platforms","label":"Marketing Automation Specialist","level":"Specialist","fn":"Marketing Ops","kind":"internal","cats":["Marketing Ops"]},{"id":"pos-campaign-trafficker","track":"Marketing Ops & Platforms","label":"Campaign Trafficker","level":"Specialist","fn":"Marketing Ops","kind":"internal","cats":["Marketing Ops"]},{"id":"pos-performance-marketing-director","track":"Performance & Growth","label":"Performance Marketing Director","level":"Director","fn":"Performance Marketing","kind":"internal","cats":["Growth and Performance"]},{"id":"pos-growth-marketing-manager","track":"Performance & Growth","label":"Growth Marketing Manager","level":"Manager","fn":"Performance Marketing","kind":"internal","cats":["Growth and Performance"]},{"id":"pos-paid-search-manager","track":"Performance & Growth","label":"Paid Search Manager","level":"Manager","fn":"Performance Marketing","kind":"internal","cats":["Growth and Performance"]},{"id":"pos-paid-social-manager","track":"Performance & Growth","label":"Paid Social Manager","level":"Manager","fn":"Performance Marketing","kind":"internal","cats":["Growth and Performance"]},{"id":"pos-programmatic-specialist","track":"Performance & Growth","label":"Programmatic Specialist","level":"Specialist","fn":"Performance Marketing","kind":"internal","cats":["Growth and Performance"]},{"id":"pos-media-planner-buyer","track":"Performance & Growth","label":"Media Planner / Buyer","level":"Specialist","fn":"Performance Marketing","kind":"internal","cats":["Growth and Performance"]},{"id":"pos-customer-experience-director","track":"Customer Experience & Lifecycle","label":"Customer Experience Director","level":"Director","fn":"Lifecycle Marketing","kind":"internal","cats":["Customer Experiences"]},{"id":"pos-lifecycle-crm-manager","track":"Customer Experience & Lifecycle","label":"Lifecycle / CRM Manager","level":"Manager","fn":"Lifecycle Marketing","kind":"internal","cats":["Customer Experiences"]},{"id":"pos-email-marketing-specialist","track":"Customer Experience & Lifecycle","label":"Email Marketing Specialist","level":"Specialist","fn":"Lifecycle Marketing","kind":"internal","cats":["Customer Experiences"]},{"id":"pos-agency-creative","track":"External partners","label":"Agency: Creative","level":"Manager","fn":"Omni-Channel Creative","kind":"external","cats":["Design"]},{"id":"pos-agency-media","track":"External partners","label":"Agency: Media","level":"Manager","fn":"Performance Marketing","kind":"external","cats":["Growth and Performance"]},{"id":"pos-agency-pr","track":"External partners","label":"Agency: PR","level":"Manager","fn":"PR","kind":"external","cats":["PR"]},{"id":"pos-agency-analytics","track":"External partners","label":"Agency: Analytics","level":"Manager","fn":"Analysis","kind":"external","cats":["Analysts"]},{"id":"pos-freelance-designer","track":"External partners","label":"Freelance Designer","level":"Specialist","fn":"Omni-Channel Creative","kind":"external","cats":["Design"]},{"id":"pos-freelance-copywriter","track":"External partners","label":"Freelance Copywriter","level":"Specialist","fn":"Content Development","kind":"external","cats":["Copywriting"]},{"id":"pos-freelance-media-buyer","track":"External partners","label":"Freelance Media Buyer","level":"Specialist","fn":"Performance Marketing","kind":"external","cats":["Growth and Performance"]}];
-let customPositions = [];
-function allPositions(){ return POSITION_LIBRARY.concat(customPositions.map(c => Object.assign({ track: 'Your positions', custom: true }, c))); }
-function renderPositionPicker(){
-  const sel = document.getElementById('teamPositionPick');
-  if (!sel) return;
-  const all = allPositions();
-  const tracks = [];
-  all.forEach(p => { if (!tracks.includes(p.track)) tracks.push(p.track); });
-  const ordered = ['Your positions'].concat(tracks.filter(t => t !== 'Your positions'));
-  sel.innerHTML = '<option value="">— pick a standard position to fill the form —</option>' + ordered.filter(t => all.some(p => p.track === t)).map(t =>
-    `<optgroup label="${t}">${all.filter(p => p.track === t).map(p => `<option value="${p.id}">${p.label} — ${p.level}${p.kind === 'external' ? ', external' : ''}</option>`).join('')}</optgroup>`).join('');
-  onPositionPicked();
-}
-function onPositionPicked(){
-  const sel = document.getElementById('teamPositionPick');
-  const rm = document.getElementById('teamPositionRemove');
-  const p = sel && allPositions().find(x => x.id === sel.value);
-  if (rm) rm.style.display = p && p.custom ? '' : 'none';
-}
-function applyPosition(){
-  const sel = document.getElementById('teamPositionPick');
-  const p = sel && allPositions().find(x => x.id === sel.value);
-  onPositionPicked();
-  if (!p) return;
-  document.getElementById('teamNewLevel').value = p.level;
-  onTeamLevelChange();
-  document.getElementById('teamNewFunction').value = p.fn;
-  document.getElementById('teamNewKind').value = p.kind;
-  document.getElementById('teamNewRoleLabel').value = p.label;
-  renderTeamCategoryBoxes(p.cats || []);
-}
-async function persistCustomPositions(){
-  if (dataSourceLabel !== 'backend') return;
-  try { await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/positions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ positions: customPositions }) }); } catch (e){}
-}
-function saveCustomPosition(){
-  const flag = document.getElementById('teamAddFlag');
-  const f = readTeamMemberForm();
-  if (!f.roleLabel || !f.level || !f.functionGroup){
-    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'To save a position, fill in the role label, level and function first.'; }
-    return;
-  }
-  customPositions = customPositions.filter(c => c.label.toLowerCase() !== f.roleLabel.toLowerCase());
-  customPositions.push({ id: 'custom-' + Date.now().toString(36), label: f.roleLabel, level: f.level, fn: f.functionGroup, kind: f.memberKind, cats: f.categories });
-  persistCustomPositions();
-  renderPositionPicker();
-  if (flag){ flag.style.color = 'var(--cx)'; flag.textContent = `Saved "${f.roleLabel}" to your positions.`; }
-}
-function removeCustomPosition(){
-  const sel = document.getElementById('teamPositionPick');
-  if (!sel || !sel.value) return;
-  customPositions = customPositions.filter(c => c.id !== sel.value);
-  persistCustomPositions();
-  renderPositionPicker();
-}
 
 
 async function reissueMemberLogin(id){
@@ -62048,41 +62119,6 @@ async function reissueMemberLogin(id){
   } catch (e){ if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Could not reach the server to reissue the login.'; } }
 }
 
-function renderTeamRosterView(){
-  const isAdminViewer = portalViewerIsAdmin !== false;
-  const el = document.getElementById('teamRosterView');
-  if (!el) return;
-  if (!state.team.length){
-    renderOrgShapePicker(); renderOrgShapeLive(); renderPositionPicker();
-    el.innerHTML = `<p class="hint">No team members on this account's chart yet — add the CMO first, then work down through Director, Manager, and Specialist so each new person has someone above them to report to.</p>`;
-    return;
-  }
-  const byLevel = ORG_LEVELS.map(level => ({
-    level,
-    members: state.team.filter(m => m.level === level).sort((a, b) => functionLabel(a.functionGroup).localeCompare(functionLabel(b.functionGroup)))
-  })).filter(g => g.members.length);
-  el.innerHTML = byLevel.map(g => `
-    <div style="margin-bottom:18px;">
-      <div class="section-eyebrow" style="margin-bottom:8px;">${g.level}${g.level !== 'CMO' ? ' (by function)' : ''}</div>
-      ${g.members.map(m => {
-        const manager = resolveManager(m.id);
-        const adminTag = m.isAdmin ? ` <span style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;letter-spacing:0.04em;text-transform:uppercase;background:var(--ink);color:#fff;border-radius:3px;padding:2px 7px;">Admin</span>` : '';
-        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);gap:10px;">
-          <span><strong>${m.name}</strong>${m.handle ? ` <span class="hint" style="display:inline;">@${m.handle}</span>` : ''} — ${functionLabel(m.functionGroup)}${m.roleLabel ? ` (${m.roleLabel})` : ''}${m.memberKind === 'external' ? ' <span class="hint" style="display:inline;">External' + (m.accessExpiresAt ? (new Date(m.accessExpiresAt) < new Date() ? ' · access ended ' : ' · access ends ') + new Date(m.accessExpiresAt).toLocaleDateString() : '') + '</span>' : ''}${adminTag}${manager ? ` <span class="hint" style="display:inline;">→ reports to ${manager.name}</span>` : (m.level !== 'CMO' ? ` <span class="hint" style="display:inline;">→ no manager on file</span>` : '')}</span>
-          <span style="display:flex;gap:12px;flex-shrink:0;">
-            ${m.email && isAdminViewer && !String(m.id).startsWith('local-team-') ? `<button type="button" class="link-btn" onclick="reissueMemberLogin('${m.id}')">Reissue login</button>` : ''}
-            ${m.memberKind === 'external' ? `<button type="button" class="link-btn" onclick="renewExternalAccess('${m.id}')">Renew 3 months</button>` : ''}
-            <button type="button" class="link-btn" onclick="startEditTeamMember('${m.id}')">Edit</button>
-            <button type="button" class="link-btn" onclick="deleteTeamMember('${m.id}')">Remove</button>
-          </span>
-        </div>`;
-      }).join('')}
-    </div>
-  `).join('');
-  renderOrgShapePicker(); renderOrgShapeLive(); renderPositionPicker();
-  const am = document.getElementById('agreementsModule');
-  if (am && am.style.display === '' && typeof renderAgreements === 'function') renderAgreements(Object.keys(AGREEMENT_REPORT_LABELS));
-}
 
 /* ---------- Output validation + QA requests (round 30) ----------
    Two coaching enhancements per direct instruction: (1) every generated
