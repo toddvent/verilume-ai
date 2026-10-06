@@ -2772,6 +2772,7 @@ ensureColumn('campaigns', 'ctaOverride', 'TEXT');
 // else.
 ensureColumn('accounts', 'orgModel', "TEXT DEFAULT 'team'");
 ensureColumn('accounts', 'orgshape', 'TEXT');
+ensureColumn('accounts', 'customlib', 'TEXT');
 
 // Added 2026-07-25 (round 55) — content library (saved boilerplate, legal
 // disclaimer language, testimonial bank), per the campaign audit's "no
@@ -27160,6 +27161,28 @@ async function handleRequest(req, res) {
       db.prepare('INSERT INTO score_history (accountId, stage, layer, score, source, recordedAt) VALUES (?,?,?,?,?,?)')
         .run(accountId, body.stage, body.layer, body.score, 'portal re-rating', now);
       return sendJson(res, 200, { recordedAt: now });
+    }
+
+    // POST /api/accounts/:id/positions — the account's own saved positions (added to Verilume's standard library). Whole-list save, Admin only.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'positions'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAdminMember(req, res, accountId)) return;
+      const body = await readBody(req);
+      const raw = Array.isArray(body.positions) ? body.positions : null;
+      if (!raw) return sendJson(res, 400, { error: 'positions must be a list' });
+      const clean = [];
+      for (const p of raw.slice(0, 40)){
+        const label = String((p && p.label) || '').trim().slice(0, 80);
+        if (!label) continue;
+        const level = ['CMO', 'Director', 'Manager', 'Specialist'].includes(p.level) ? p.level : 'Specialist';
+        const fn = String(p.fn || '').slice(0, 60);
+        if (!fn) continue;
+        clean.push({ id: String(p.id || ('custom-' + crypto.randomBytes(4).toString('hex'))).slice(0, 40), label, level, fn,
+          kind: p.kind === 'external' ? 'external' : 'internal',
+          cats: (Array.isArray(p.cats) ? p.cats : []).filter(c => MEMBER_CATEGORIES.includes(c)) });
+      }
+      db.prepare('UPDATE accounts SET customlib = ? WHERE accountId = ?').run(JSON.stringify(clean), accountId);
+      return sendJson(res, 200, { positions: clean });
     }
 
     // POST /api/accounts/:id/org-shape — the org chart shape an Admin starts from (one of the assessment's sketches).
