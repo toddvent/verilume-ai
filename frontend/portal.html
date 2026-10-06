@@ -1574,6 +1574,7 @@
 @media (max-width:900px){.bd-w-grid{grid-template-columns:1fr}.bd-welcome{padding:20px}}
   .ttb-hero{display:flex;align-items:center;gap:28px;flex-wrap:wrap;} .ttb-clock{color:var(--ink);display:block;} .ttb-big{font-size:1.3125rem;font-weight:500;line-height:1.2;}
   .ttb-group{margin-top:26px;} .ttb-group-h{display:flex;align-items:center;gap:14px;margin-bottom:8px;} .ttb-group-h h2{margin:0;font-size:1.3125rem;font-weight:500;} .ttb-mini{flex:none;}
+  .ttb-owner{display:inline-block;margin-top:4px;font-size:0.75rem;color:#1E2761;background:#EEF0FA;border-radius:4px;padding:1px 8px;} .ttb-assign{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:0.8125rem;} .ttb-assign select{flex:1;min-width:0;}
   .ttb-mod{border:1px solid var(--line);border-radius:14px;background:var(--white);margin:10px 0;} .ttb-mod.open{border-color:var(--ink);}
   .ttb-mod-h{display:flex;width:100%;align-items:center;gap:16px;padding:16px 18px;background:none;border:0;cursor:pointer;text-align:left;font:inherit;color:var(--ink);min-height:56px;} .ttb-mod-h:focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:14px;}
   .ttb-check{flex:none;width:30px;height:30px;border:2px solid var(--ink);border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:1.125rem;font-weight:800;} .ttb-mod.done .ttb-check{background:var(--ink);color:var(--white);}
@@ -7342,33 +7343,52 @@
       .oc-kids > .oc-node::before{content:'';position:absolute;top:-14px;left:50%;width:1px;height:14px;background:var(--line)}
       .oc-pill{display:inline-block;font-size:0.6875rem;letter-spacing:0.04em;text-transform:uppercase;background:#EEF0FA;color:#1E2761;border-radius:4px;padding:1px 6px;margin-left:4px}
     </style>
-    <div class="module open accent-cx" id="orgShapeModule">
-      <div class="module-head" onclick="toggleModule('orgShapeModule')">
-        <span class="modnum">1</span>
-        <div class="titles">
-          <span class="tag">Org Chart</span>
-          <h2>How is your team set up?</h2>
-        </div>
-        <span class="chevron">▸</span>
-      </div>
-      <div class="module-body">
-        <div id="orgShapePicker"></div>
-      </div>
+    <style>
+      .tf-hero{border:1px solid var(--line);border-radius:14px;background:var(--white);padding:18px 20px;margin:0 0 12px}
+      .tf-hero .tf-eyebrow{font-size:0.75rem;letter-spacing:0.08em;text-transform:uppercase;color:#D08A3E;font-weight:700}
+      .tf-hero h2{margin:4px 0 6px;font-size:1.375rem;color:#1E2761}
+      .tf-hero p{margin:0;color:var(--muted);max-width:68ch}
+      .tf-dots{display:flex;gap:8px;align-items:center;margin-top:14px;font-size:0.8125rem;color:var(--muted)}
+      .tf-dot{width:26px;height:26px;border-radius:50%;border:2px solid var(--line);display:inline-flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;color:var(--muted);background:var(--white);transition:all .25s}
+      .tf-dot.now{border-color:#1E2761;color:#1E2761;transform:scale(1.12)}
+      .tf-dot.done{background:#1E2761;border-color:#1E2761;color:#fff}
+      .tf-bar{flex:0 0 28px;height:2px;background:var(--line)} .tf-bar.done{background:#1E2761}
+      .tf-sum{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;background:var(--white);padding:10px 14px;margin:8px 0;font-size:0.875rem}
+      .tf-sum .tf-tick{width:20px;height:20px;border-radius:50%;background:#1E2761;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:0.75rem}
+      .tf-sum .link-btn{margin-left:auto}
+      .tf-step{border:1px solid #1E2761;border-radius:14px;background:var(--white);padding:18px 20px;margin:8px 0;animation:tfIn .3s ease}
+      @keyframes tfIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+      @media (prefers-reduced-motion:reduce){.tf-step{animation:none}.tf-dot{transition:none}}
+      .tf-step h3{margin:0 0 4px;font-size:1.125rem;color:#1E2761}
+      .tf-step .tf-q{margin:0 0 14px;color:var(--muted);font-size:0.875rem}
+      .tf-start{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:0 0 16px}
+      .tf-tile{text-align:left;border:1px dashed #D08A3E;border-radius:10px;background:var(--white);padding:10px 12px;cursor:pointer;font:inherit;color:var(--ink)}
+      .tf-tile.filled{border-style:solid;border-color:#1E2761}
+      .tf-tile b{display:block;color:#1E2761}
+      .tf-tile span{font-size:0.75rem;color:var(--muted)}
+      #teamAddModule .module-body{max-height:none !important;overflow:visible}
+      #teamAddModule .modnum,#teamAddModule .chevron{display:none}
+    </style>
+    <div id="teamFlowHead"></div>
+    <div id="tfSum1"></div>
+    <div class="tf-step" id="tfStep1">
+      <h3>What does your organization look like?</h3>
+      <p class="tf-q">Pick the one that is closest. You can change it later.</p>
+      <div id="orgShapePicker"></div>
     </div>
-
-    <div class="module open accent-cx" id="orgChartModule">
-      <div class="module-head" onclick="toggleModule('orgChartModule')">
-        <span class="modnum">2</span>
-        <div class="titles">
-          <span class="tag">Org Chart</span>
-          <h2>Your team</h2>
-        </div>
-        <span class="chevron">▸</span>
-      </div>
-      <div class="module-body">
-        <div id="orgChartLive" style="overflow-x:auto;padding-bottom:8px;"></div>
-        <div class="btn-row" style="margin-top:12px;"><button type="button" class="btn-ghost" onclick="openTeamForm({kind:'viewer'})">+ Add a stakeholder or partner</button></div>
-      </div>
+    <div id="tfSum2"></div>
+    <div class="tf-step" id="tfStep2">
+      <h3>Here is a sample diagram</h3>
+      <p class="tf-q">Choose the version that fits best. Open seats will appear on your own chart next.</p>
+      <div id="tfSample"></div>
+      <div class="btn-row" style="margin-top:14px;"><button type="button" class="btn-primary" id="tfProceedBtn" onclick="tfProceed()">Proceed →</button></div>
+    </div>
+    <div class="tf-step" id="tfStep3">
+      <h3>Your working diagram</h3>
+      <div id="tfStarters"></div>
+      <div id="orgChartLive" style="overflow-x:auto;padding-bottom:8px;"></div>
+      <div class="btn-row" style="margin-top:12px;"><button type="button" class="btn-ghost" onclick="openTeamForm({kind:'viewer'})">+ Add a stakeholder or partner</button></div>
+      <div class="recorded visible" id="teamAddFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;color:var(--cx);margin-top:10px;"></div>
     </div>
 
     <p class="lede" style="margin:8px 0 0;">
@@ -7376,7 +7396,7 @@
       <a class="flink" onclick="goToStep('teamDevelopment')">Team Development →</a>
     </p>
 
-    <div class="module open accent-advocacy" id="teamAddModule">
+    <div class="module open accent-advocacy" id="teamAddModule" style="display:none;">
       <div class="module-head" onclick="toggleModule('teamAddModule')">
         <span class="modnum">3</span>
         <div class="titles">
@@ -7477,7 +7497,6 @@
           <button type="button" class="btn-primary" id="teamAddSubmitBtn" onclick="submitTeamMemberForm()">Add to chart →</button>
           <button type="button" class="btn-ghost" id="teamEditCancelBtn" style="display:none;" onclick="cancelEditTeamMember()">Cancel edit</button>
         </div>
-        <div class="recorded visible" id="teamAddFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>
       </div>
     </div>
     </div>
@@ -28408,8 +28427,45 @@ async function ttbLoad(){
   ttb.loading = true; ttb.error = false; ttbRerender();
   try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/train-the-brain`); if (!r.ok) throw new Error(String(r.status)); ttb.data = await r.json(); }
   catch (e){ ttb.error = true; }
+  await ttbLoadAssignments();
   ttb.loading = false; ttbRerender();
 }
+// Who owns each setup card. Admins hand cards out; an owner with no login yet sees the task on first sign-in.
+async function ttbLoadAssignments(){
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/onboarding-assignments`);
+    if (!r.ok) return;
+    const j = await r.json(); ttb.assign = {};
+    (j.assignments || []).forEach(a => { ttb.assign[a.item] = a; });
+  } catch (e){}
+}
+async function ttbAssignMany(memberId, keys){
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/onboarding-assignments`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: keys, memberId: memberId || null }) });
+    if (!r.ok) return false;
+    ttb.assign = ttb.assign || {};
+    keys.forEach(k => { if (memberId) ttb.assign[k] = { item: k, memberId }; else delete ttb.assign[k]; });
+    ttbRerender();
+    return true;
+  } catch (e){ return false; }
+}
+function ttbSetAssign(key, memberId){ return ttbAssignMany(memberId || null, [key]); }
+function ttbOwnerName(key){ const a = (ttb.assign || {})[key]; if (!a || !a.memberId) return ''; const m = findTeamMember(a.memberId); return m ? m.name : ''; }
+function ttbAssignHtml(key){
+  if (portalViewerIsAdmin === false) return '';
+  const cur = ((ttb.assign || {})[key] || {}).memberId || '';
+  const opts = state.team.filter(m => m.status !== 'inactive' && m.memberKind !== 'viewer').map(m => `<option value="${m.id}"${m.id === cur ? ' selected' : ''}>${escapeHtml(m.name)}${m.roleLabel ? ' · ' + escapeHtml(posTitle(m.roleLabel)) : ''}</option>`).join('');
+  return `<div class="ttb-assign"><label for="ttbOwn-${key}">Owner</label><select id="ttbOwn-${key}" onchange="ttbSetAssign('${key}', this.value)"><option value="">Unassigned. The Admin does it</option>${opts}</select></div>`;
+}
+function ttbMyTasksHtml(d){
+  const me = typeof actingAsId !== 'undefined' ? actingAsId : null;
+  if (!me || !d || !d.setup) return '';
+  const items = [].concat(...d.setup.steps.map(st => st.items));
+  const mine = items.filter(i => !i.done && ((ttb.assign || {})[i.step] || {}).memberId === me);
+  if (!mine.length) return '';
+  return `<div class="strat-card" style="margin:0 0 12px;"><div class="strat-chart-label" style="margin:0 0 6px;">Assigned to you</div>${mine.map(i => `<div class="ttb-feed-row"><div><strong>${escapeHtml(i.label)}</strong></div><button type="button" class="btn-ghost" onclick="ttbOpenItem('${i.step}')">Open</button></div>`).join('')}</div>`;
+}
+function ttbOpenItem(key){ ttb.open = key; ttbRerender(); }
 function ttbRerender(){
   const stepEl = document.getElementById('step-manageAccount');
   if (!(stepEl && stepEl.classList.contains('active'))) return;
@@ -28421,7 +28477,8 @@ function ttbRerender(){
   const slotAfter = document.querySelector('#aipoMount .ttb-mod.open');
   if (topBefore != null && slotAfter){ const d = slotAfter.getBoundingClientRect().top - topBefore; if (Math.abs(d) > 1) window.scrollBy(0, d); }
 }
-function ttbGo(step, arg){ if (arg) goToStep(step, arg); else goToStep(step); }
+function ttbGo(step, arg){ if (arg) goToStep(step, arg); else goToStep(step); window.scrollTo(0, 0); }
+function ttbTeamJump(){ if (!tfStep || tfStep < 3) tfStep = currentOrgShape() ? 3 : (tfStep || 1); renderTeamFlow(); const t = document.getElementById('ttbTeamSlot'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 function ttbSetTab(t){ ttb.tab = t; ttbRerender(); }
 function ttbFmtDate(iso){ if (!iso) return ''; const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString([], { month: 'short', day: 'numeric' }); }
 async function ttbQuickStart(){
@@ -28500,7 +28557,7 @@ function ttbToggle(k){ ttb.open = ttb.open === k ? '' : k; ttbRerender(); }
 //   Add Manually  -> opens inside the row. The existing entry card is moved in here rather than copied, so it works exactly as before.
 //   Partner Integration -> the one Partner Integrations page.
 // View in Portal is greyed until the item has data, and only shown as a link where the data actually appears.
-const TTB_ALL_CARDS = ['kpiMetricsAdminModule', 'mbuWebsiteUsersCard', 'mbuMarketableSizesCard', 'mbuDmCostPerPieceCard', 'mbuDmFormatCostCard', 'mbuMagazineCostCard', 'mbuAnnualPlanCard', 'mbuDemandFulfillmentCard', 'mbuEngagementCard', 'mbuLeadCountsCard', 'mbuTransactionsCard', 'mbuDigitalCard'];
+const TTB_ALL_CARDS = ['teamStepBody', 'kpiMetricsAdminModule', 'mbuWebsiteUsersCard', 'mbuMarketableSizesCard', 'mbuDmCostPerPieceCard', 'mbuDmFormatCostCard', 'mbuMagazineCostCard', 'mbuAnnualPlanCard', 'mbuDemandFulfillmentCard', 'mbuEngagementCard', 'mbuLeadCountsCard', 'mbuTransactionsCard', 'mbuDigitalCard'];
 let ttbHomes = null;
 function ttbInitHomes(){
   if (ttbHomes) return; ttbHomes = {};
@@ -28530,7 +28587,7 @@ const TTB_CFG = {
   marketingBudgetUpload: { upload: { formats: '.xlsx or .csv, in any layout. Excel or CSV, in any layout.', direct: 'ttbBuPick', sample: { name: 'marketing-budget-sample.csv', cols: ['Category', 'Status', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Total'], rows: [['Paid Social', 'Working', 24000, 26000, 30000, 30000, 28000, 26000, 24000, 24000, 30000, 32000, 34000, 20000, 328000], ['Agency fees', 'Non-Working', 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 96000]] } }, manual: { step: 'marketingBudgetUpload', arg: 'configuration' }, view: { step: 'mediaplan', label: 'Budget and Plan' } },
   bulkUpload: { upload: { direct: 'ttbUpPick', alt: { label: 'Upload customer-level file', key: 'bulkUploadCustomer' }, formats: '.xlsx or .csv, one row per month and product group', handler: 'mbuHandleTxnFile', cards: ['mbuTransactionsCard'], sample: { name: 'transactions-by-month-sample.csv', cols: ['Year', 'Month', 'Product Group', 'Transactions', 'Revenue'], rows: [[2026, 'Jan', 'Mediterranean', 42, 268000], [2026, 'Feb', 'Mediterranean', 51, 322500]] } }, manual: { cards: ['mbuTransactionsCard'] }, integ: true, view: { tab: 'strategy', label: 'Strategy' } },
   partnerIntegrations: { integ: true, manual: { note: 'Prefer to type it? Every number on this page has an Add Manually option.' }, view: { tab: 'dataScientist', label: 'Media Science' } },
-  team: { manual: { step: 'team' }, view: { step: 'team', label: 'Team' } },
+  team: { manual: { teamFlow: true }, view: { step: 'team', label: 'Team' } },
   websiteUsers: { manual: { cards: ['mbuWebsiteUsersCard'] }, integ: true, view: { tab: 'strategy', label: 'Strategy' } },
   websiteEngagement: { upload: { direct: 'ttbUpPick', formats: 'The GA4 Traffic acquisition export (.xlsx or .csv), by Session default channel group', handler: 'mbuHandleEngagementFile', cards: ['mbuEngagementCard'], sample: { name: 'website-engagement-sample.csv', cols: ['Year', 'Month', 'Session default channel group', 'Sessions', 'Engaged sessions', 'Engagement rate', 'Average engagement time per engaged session'], rows: [[2026, 'Jan', 'Organic Search', 18400, 12100, '65.8%', 1.4], [2026, 'Jan', 'Paid Search', 9200, 5100, '55.4%', 1.1]] } }, manual: { cards: ['mbuEngagementCard'] }, integ: true, view: { tab: 'dataScientist', label: 'Media Science' } },
   leadCounts: { upload: { direct: 'ttbUpPick', formats: '.xlsx or .csv, one row per source, lead type and form', handler: 'mbuHandleLeadFile', cards: ['mbuLeadCountsCard'], sample: { name: 'leads-by-month-sample.csv', cols: ['Year', 'Month', 'Source', 'Lead Type', 'Form Name', 'Total Leads', 'Bookings', 'Avg Days to Convert'], rows: [[2026, 'Jan', 'Website', 'High Value', 'Request a brochure', 320, 18, 41], [2026, 'Jan', 'Meta', 'Growth', 'Sweepstakes', 1150, 9, 66]] } }, manual: { cards: ['mbuLeadCountsCard'] }, integ: true, view: { tab: 'marketer', label: 'Growth & Performance' } },
@@ -28981,6 +29038,9 @@ function ttbToggleManual(key){ ttb.manual[key] = !ttb.manual[key]; ttbRerender()
 function ttbOpenView(key){ const v = TTB_CFG[key].view; if (!v) return; if (v.tab) switchPrimaryTab(v.tab); else if (v.step) goToStep(v.step); }
 function ttbMountOpen(){
   ttbInitHomes();
+  const tslot = document.getElementById('ttbTeamSlot'), tbody = document.getElementById('teamStepBody');
+  if (tslot && tbody && tbody.parentNode !== tslot){ tbody.style.marginTop = '0'; tslot.appendChild(tbody); }
+  if (tslot && tbody){ try { applyTeamStepAdminGate(); renderTeamRosterView(); } catch (e){ console.warn('team flow mount failed', e); } }
   Object.keys(ttb.manual).forEach(k => {
     if (!ttb.manual[k] || ttb.open !== k) return; const c = TTB_CFG[k]; const cards = (c && c.manual && c.manual.cards) || (c && c.upload && c.upload.workspace) || []; const slot = document.getElementById('ttbSlot-' + k); if (!slot) return;
     cards.forEach(id => { const el = document.getElementById(id); if (!el) return; el.style.marginTop = '0'; slot.appendChild(el); });
@@ -29000,15 +29060,15 @@ function ttbModuleHtml(d, i){
   const btns = [];
   if (c.upload) btns.push(`<button type="button" class="btn-primary" onclick="${c.upload.direct ? `${c.upload.direct}('${i.step}')` : `ttbUploadOpen('${i.step}')`}">${c.upload.alt ? 'Upload monthly totals' : 'Upload File'}</button>`);
   if (c.upload && c.upload.alt) btns.push(`<button type="button" class="btn-primary" onclick="${c.upload.direct}('${c.upload.alt.key}')">${escapeHtml(c.upload.alt.label)}</button>`);
-  if (c.manual) btns.push(`<button type="button" class="btn-ghost" aria-expanded="${!!ttb.manual[i.step]}" onclick="${c.manual.cards || c.manual.profile ? `ttbToggleManual('${i.step}')` : c.manual.step ? `ttbGo('${c.manual.step}'${c.manual.arg ? `, '${c.manual.arg}'` : ''})` : `ttbToggleManual('${i.step}')`}">${ttb.manual[i.step] && (c.manual.cards || c.manual.profile) ? 'Hide manual entry' : 'Add Manually'}</button>`);
+  if (c.manual) btns.push(`<button type="button" class="btn-ghost" aria-expanded="${!!ttb.manual[i.step]}" onclick="${c.manual.teamFlow ? 'ttbTeamJump()' : c.manual.cards || c.manual.profile ? `ttbToggleManual('${i.step}')` : c.manual.step ? `ttbGo('${c.manual.step}'${c.manual.arg ? `, '${c.manual.arg}'` : ''})` : `ttbToggleManual('${i.step}')`}">${ttb.manual[i.step] && (c.manual.cards || c.manual.profile) ? 'Hide manual entry' : 'Add Manually'}</button>`);
   if (c.integ) btns.push(`<button type="button" class="btn-ghost" onclick="ttbGo('partnerIntegrations')">Partner Integration</button>`);
   const hasData = i.done;
   const viewHtml = c.view ? `<button type="button" class="btn-ghost ttb-view" ${hasData ? '' : 'disabled aria-disabled="true" title="Available once this is added"'} onclick="ttbOpenView('${i.step}')">View in Portal${hasData ? ' →' : ''}</button>` : `<span class="hint ttb-used">${escapeHtml(c.used || 'Trains the Brain only')}</span>`;
   const manualOpen = open && ttb.manual[i.step];
   const manualBody = manualOpen ? (c.manual && c.manual.profile ? ttbProfileManualHtml(d) : `<div id="ttbSlot-${i.step}" class="ttb-slot"></div>`) : '';
   const inlineSite = i.step === 'companyProfile' ? ttbQuickStartHtml(d, true) : '';
-  const body = open ? `<div class="ttb-mod-body">${status}<div class="ttb-mod-grid"><div><div class="ttb-tag">Example of what the Brain keeps</div><div class="ttb-sample">${sample}</div></div><div><div class="ttb-tag">Add it</div>${inlineSite}<div class="ttb-opts">${btns.join('')}</div>${c.upload && c.upload.direct ? `<p class="hint" style="margin:10px 0 0;">${escapeHtml(c.upload.formats)} ${c.upload.sample ? `<a class="flink" onclick="ttbDownloadSample('${i.step}')">Download a sample file</a>` : escapeHtml(c.upload.noSample || '')}</p>` : ''}<div class="ttb-viewrow">${viewHtml}</div></div></div>${manualBody ? `<div class="ttb-manual-wrap">${manualBody}</div>` : ''}</div>` : '';
-  return `<div class="ttb-mod ${i.done ? 'done' : ''} ${open ? 'open' : ''}"><button type="button" class="ttb-mod-h" aria-expanded="${open}" onclick="ttbToggle('${i.step}')"><span class="ttb-check" aria-label="${i.done ? 'Done' : 'Not done yet'}">${i.done ? '&#10003;' : ''}</span><span class="ttb-mod-t"><span class="ttb-name">${escapeHtml(i.label)}</span><span class="ttb-benefit">${escapeHtml(cfg.benefit)}</span></span><span class="ttb-chev" aria-hidden="true">${open ? '&#9652;' : '&#9662;'}</span></button>${body}</div>`;
+  const body = open ? `<div class="ttb-mod-body">${status}<div class="ttb-mod-grid"><div><div class="ttb-tag">Example of what the Brain keeps</div><div class="ttb-sample">${sample}</div></div><div><div class="ttb-tag">Add it</div>${inlineSite}<div class="ttb-opts">${btns.join('')}</div>${c.upload && c.upload.direct ? `<p class="hint" style="margin:10px 0 0;">${escapeHtml(c.upload.formats)} ${c.upload.sample ? `<a class="flink" onclick="ttbDownloadSample('${i.step}')">Download a sample file</a>` : escapeHtml(c.upload.noSample || '')}</p>` : ''}<div class="ttb-viewrow">${viewHtml}</div>${ttbAssignHtml(i.step)}</div></div>${manualBody ? `<div class="ttb-manual-wrap">${manualBody}</div>` : ''}</div>` : '';
+  return `<div class="ttb-mod ${i.done ? 'done' : ''} ${open ? 'open' : ''}"><button type="button" class="ttb-mod-h" aria-expanded="${open}" onclick="ttbToggle('${i.step}')"><span class="ttb-check" aria-label="${i.done ? 'Done' : 'Not done yet'}">${i.done ? '&#10003;' : ''}</span><span class="ttb-mod-t"><span class="ttb-name">${escapeHtml(i.label)}</span><span class="ttb-benefit">${escapeHtml(cfg.benefit)}</span>${ttbOwnerName(i.step) ? `<span class="ttb-owner">Owner: ${escapeHtml(ttbOwnerName(i.step))}</span>` : ''}</span><span class="ttb-chev" aria-hidden="true">${open ? '&#9652;' : '&#9662;'}</span></button>${body}</div>`;
 }
 function ttbSetupHtml(d){
   const S = d.setup;
@@ -29020,7 +29080,7 @@ function ttbSetupHtml(d){
   const doneItems = allItems.filter(i => i.done).length;
   const hero = `<div class="strat-card ttb-hero"><div class="ttb-clockwrap">${ttbClock(total, done, 132)}</div><div><div class="ttb-big">${left === 0 ? 'Setup is done' : `${left} minute${left === 1 ? '' : 's'} to go`}</div><p class="strat-reading" style="margin:4px 0 0;">${left === 0 ? `All ${allItems.length} items are done. Open any item to update it; the Brain keeps learning from what you add.` : `${doneItems} of ${allItems.length} items done. About ${total} minutes of setup in all. Pick any item, in any order; one now and one later is fine.`}</p></div></div>`;
   const groups = S.steps.map(st => `<div class="ttb-group"><div class="ttb-group-h"><span class="ttb-mini">${ttbClock(st.minutes, st.items.filter(i => i.done).length * st.minutes / st.items.length, 44, st.done ? st.title + ' done' : st.title + ', about ' + st.minutes + ' minutes')}</span><div><h2>${escapeHtml(st.title)}</h2><div class="strat-sub">${st.done ? 'Done' : `About ${st.minutes} min`}. ${escapeHtml(st.gain)}</div></div></div>${st.items.map(i => ttbModuleHtml(d, i)).join('')}</div>`).join('');
-  return `${hero}${groups}`;
+  return `${ttbMyTasksHtml(d)}<div id="ttbTeamSlot"></div>${hero}${groups}`;
 }
 function ttbLearningsHtml(d){
   if (!d.learnings.length) return `<div class="strat-card"><p class="strat-empty">Nothing recorded yet. As your team approves, applies or removes sources and decisions across the dashboards, they show up here.</p></div>`;
@@ -61654,6 +61714,7 @@ function countActiveAdmins(excludeId){
 }
 
 async function addTeamMember(){
+  const starter = tfStarter ? STARTER_ROLES.find(r => r.key === tfStarter) : null;
   const f = readTeamMemberForm();
   const flag = document.getElementById('teamAddFlag');
   const problem = teamFormProblem(f);
@@ -61685,6 +61746,9 @@ async function addTeamMember(){
   let agrNote = '';
   if (wantsAgreement && persisted){ agrNote = (await postAgreement(localMember.id, agreementBody)) ? ' Agreement saved.' : ' The agreement could not be saved; add it by editing this person.'; }
   resetTeamMemberForm();
+  tfStarter = null;
+  if (starter && persisted){ const ok = await ttbAssignMany(localMember.id, starter.tasks); if (ok) agrNote += ` ${starter.label} setup cards are now theirs.`; }
+  tfShowForm(false);
   if (flag && persisted && tempPasswordOut){
     flag.style.color = 'var(--cx)';
     flag.innerHTML = `Added ${escapeHtml(name)}. They can sign in with ${escapeHtml(email)}. <strong>Temporary password, shown once. Save it before leaving this page:</strong> <code style="background:var(--paper-dim);padding:2px 6px;border-radius:3px;">${escapeHtml(tempPasswordOut)}</code>${escapeHtml(agrNote)}`;
@@ -61721,8 +61785,8 @@ function startEditTeamMember(id){
   document.getElementById('teamEditCancelBtn').style.display = 'inline-block';
   const flag = document.getElementById('teamAddFlag'); if (flag) flag.textContent = '';
   const module = document.getElementById('teamAddModule');
-  if (module && !module.classList.contains('open')) toggleModule('teamAddModule');
-  module.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  tfShowForm(true);
+  module.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function cancelEditTeamMember(){
@@ -61733,6 +61797,7 @@ function cancelEditTeamMember(){
   document.getElementById('teamAddSubmitBtn').textContent = 'Add to chart →';
   document.getElementById('teamEditCancelBtn').style.display = 'none';
   const flag = document.getElementById('teamAddFlag'); if (flag) flag.textContent = '';
+  tfShowForm(false);
 }
 
 async function saveTeamMemberEdit(){
@@ -61875,18 +61940,9 @@ function renderOrgShapePicker(){
   const cur = currentOrgShape();
   if (!orgShapeStyleTab && cur) orgShapeStyleTab = cur.style;
   const isAdmin = portalViewerIsAdmin !== false;
-  const color = (ORG_SHAPE_STYLES.find(x => x.key === orgShapeStyleTab) || {}).color || '#1E2761';
-  el.innerHTML = `
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-      ${ORG_SHAPE_STYLES.map(x => `<button type="button" class="stage-tile${orgShapeStyleTab === x.key ? ' selected' : ''}" style="padding:6px 14px;" onclick="orgShapeStyleTab='${x.key}';renderOrgShapePicker();renderOrgChart();">${x.label}</button>`).join('')}
-    </div>
-    ${orgShapeStyleTab ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,260px));gap:12px;">
-      ${ORG_SHAPES.filter(o => o.style === orgShapeStyleTab).map(o => `
-        <button type="button" ${isAdmin ? '' : 'disabled'} onclick="pickOrgShape('${o.id}')" style="text-align:left;background:#fff;border:${cur && cur.id === o.id ? '2px solid #1E2761' : '1px solid var(--line)'};border-radius:10px;padding:10px;cursor:${isAdmin ? 'pointer' : 'default'};">
-          ${orgShapeSvg(o.top.label, o.kids.map(k => k.label), color)}
-          <div style="font-weight:600;margin-top:6px;">${o.label}${cur && cur.id === o.id ? ' · current' : ''}</div>
-        </button>`).join('')}
-    </div>` : ''}`;
+  el.innerHTML = `<div style="display:flex;gap:10px;flex-wrap:wrap;">
+    ${ORG_SHAPE_STYLES.map(x => `<button type="button" ${isAdmin ? '' : 'disabled'} class="stage-tile${orgShapeStyleTab === x.key ? ' selected' : ''}" style="padding:12px 22px;font-size:1rem;" onclick="tfPickStyle('${x.key}')">${x.label}</button>`).join('')}
+  </div>`;
 }
 async function pickOrgShape(id){
   state.orgShape = id;
@@ -61897,6 +61953,84 @@ async function pickOrgShape(id){
   }
 }
 function renderOrgShapeLive(){ renderOrgChart(); }
+
+/* ---------- Guided Team Experience: an accordion that only opens the current step ---------- */
+let tfStep = 0, tfSampleShape = null, tfStarter = null, tfSolo = false;
+const STARTER_ROLES = [
+  { key: 'brand', label: 'Brand', position: 'Head of Brand', blurb: 'Logo, fonts, positioning, brand facts', tasks: ['styleAssets', 'competitivePositioning', 'brainFacts'] },
+  { key: 'media', label: 'Media Science', position: 'Media Science Lead', blurb: 'Budgets, performance data, KPIs', tasks: ['marketingBudgetUpload', 'bulkUpload', 'digitalPerformance', 'partnerIntegrations', 'kpiMetrics', 'websiteEngagement', 'leadCounts', 'annualPlan'] },
+  { key: 'voice', label: 'Copywriting Voice', position: 'Content Strategist', blurb: 'Voice, writing samples, keywords', tasks: ['voice', 'brandWritingSamples', 'searchKeywords', 'websiteExamples'] }
+];
+function tfStarterOwner(r){
+  return state.team.find(m => m.status !== 'inactive' && m.roleLabel && posTitle(m.roleLabel).toLowerCase() === posTitle(r.position).toLowerCase()) || null;
+}
+function renderTeamFlow(){
+  const head = document.getElementById('teamFlowHead');
+  if (!head) return;
+  if (!tfStep) tfStep = (currentOrgShape() || state.team.filter(m => m.status !== 'inactive' && m.memberKind !== 'viewer').length > 1) ? 3 : 1;
+  const st = ORG_SHAPE_STYLES.find(x => x.key === orgShapeStyleTab);
+  const shape = currentOrgShape();
+  const dots = [1, 2, 3].map(n => `<span class="tf-dot ${n < tfStep ? 'done' : n === tfStep ? 'now' : ''}">${n < tfStep ? '&#10003;' : n}</span>${n < 3 ? `<span class="tf-bar ${n < tfStep ? 'done' : ''}"></span>` : ''}`).join('');
+  head.innerHTML = `<div class="tf-hero"><div class="tf-eyebrow">Collaboration begins now</div>
+    <h2>Build your team, then share the setup</h2>
+    <p>We have a few onboarding items that help your AI Brain train. Create Brand, Media Science and Copywriting Voice roles to get started, or work on your own.</p>
+    <div class="tf-dots">${dots}<span style="margin-left:8px;">Step ${tfStep} of 3</span></div></div>`;
+  const show = (id, on) => { const e = document.getElementById(id); if (e) e.style.display = on ? '' : 'none'; };
+  show('tfStep1', tfStep === 1); show('tfStep2', tfStep === 2); show('tfStep3', tfStep === 3);
+  const sum = (id, on, text, goto) => { const e = document.getElementById(id); if (e) e.innerHTML = on ? `<div class="tf-sum"><span class="tf-tick">&#10003;</span><span>${text}</span><button type="button" class="link-btn" onclick="tfGo(${goto})">Change</button></div>` : ''; };
+  sum('tfSum1', tfStep > 1, `My organization: <b>${escapeHtml(st ? st.label : 'Already set up')}</b>`, 1);
+  sum('tfSum2', tfStep > 2, `Team shape: <b>${escapeHtml(shape ? shape.label : 'Not chosen yet')}</b>`, 2);
+  if (tfStep === 1) renderOrgShapePicker();
+  if (tfStep === 2) renderTfSample();
+  if (tfStep === 3){ renderTfStarters(); renderOrgChart(); }
+}
+function tfGo(n){ tfStep = n; if (n === 1 || n === 2) tfSampleShape = tfSampleShape; renderTeamFlow(); }
+function tfPickStyle(key){ orgShapeStyleTab = key; tfSampleShape = null; tfStep = 2; renderTeamFlow(); }
+function renderTfSample(){
+  const el = document.getElementById('tfSample');
+  if (!el) return;
+  const st = ORG_SHAPE_STYLES.find(x => x.key === orgShapeStyleTab);
+  const list = ORG_SHAPES.filter(o => o.style === orgShapeStyleTab);
+  const cur = currentOrgShape();
+  if (!tfSampleShape) tfSampleShape = (cur && cur.style === orgShapeStyleTab) ? cur.id : (list[0] && list[0].id);
+  const color = (st && st.color) || '#1E2761';
+  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,280px));gap:12px;">
+    ${list.map(o => `<button type="button" onclick="tfPickSample('${o.id}')" style="text-align:left;background:#fff;border:${tfSampleShape === o.id ? '2px solid #1E2761' : '1px solid var(--line)'};border-radius:10px;padding:10px;cursor:pointer;">
+      ${orgShapeSvg(o.top.label, o.kids.map(k => k.label), color)}<div style="font-weight:600;margin-top:6px;">${escapeHtml(o.label)}${tfSampleShape === o.id ? ' &#10003;' : ''}</div></button>`).join('')}
+  </div>`;
+}
+function tfPickSample(id){ tfSampleShape = id; renderTfSample(); }
+async function tfProceed(){
+  const id = tfSampleShape || ((ORG_SHAPES.find(o => o.style === orgShapeStyleTab) || {}).id);
+  if (id) await pickOrgShape(id);
+  tfStep = 3; renderTeamFlow();
+}
+function tfShowForm(on){ const m = document.getElementById('teamAddModule'); if (m) m.style.display = on ? '' : 'none'; }
+function renderTfStarters(){
+  const el = document.getElementById('tfStarters');
+  if (!el) return;
+  const isAdmin = portalViewerIsAdmin !== false;
+  if (tfSolo){ el.innerHTML = `<p class="hint" style="margin:0 0 12px;">No problem. The setup cards below are yours. You can bring in the team any time with Add this seat.</p>`; return; }
+  const assigned = ttb.assign || {};
+  const tiles = STARTER_ROLES.map(r => {
+    const o = tfStarterOwner(r);
+    const n = o ? r.tasks.filter(k => assigned[k] && assigned[k].memberId === o.id).length : 0;
+    return `<button type="button" class="tf-tile${o ? ' filled' : ''}" ${isAdmin ? '' : 'disabled'} onclick="tfStartRole('${r.key}')"><b>${r.label}</b><span>${o ? escapeHtml(o.name) + (n ? ` · ${n} setup card${n === 1 ? '' : 's'}` : ' · tap to hand over their cards') : 'Open seat · ' + escapeHtml(r.blurb)}</span></button>`;
+  }).join('');
+  el.innerHTML = `<div class="tf-start">${tiles}</div><div style="margin:-6px 0 14px;"><button type="button" class="link-btn" onclick="tfSoloGo()">I'll work on these myself</button></div>`;
+}
+function tfSoloGo(){ tfSolo = true; renderTfStarters(); }
+function tfStartRole(key){
+  const r = STARTER_ROLES.find(x => x.key === key);
+  if (!r) return;
+  const owner = tfStarterOwner(r);
+  if (owner){ ttbAssignMany(owner.id, r.tasks).then(ok => { const f = document.getElementById('teamAddFlag'); if (f){ f.style.color = ok ? 'var(--cx)' : 'var(--advocacy)'; f.textContent = ok ? `${owner.name} now owns ${r.tasks.length} ${r.label} setup cards.` : 'That could not be saved. Try again.'; } renderTfStarters(); }); return; }
+  const root = state.team.find(m => m.status !== 'inactive' && m.memberKind === 'internal' && !m.reportsToId && (m.isAdmin || m.roleLabel));
+  openTeamForm({ reportsToId: root ? root.id : '' });
+  const inp = document.getElementById('teamPositionInput');
+  if (inp){ inp.value = r.position; onPositionPicked(); onPositionTyped(); }
+  tfStarter = r.key;
+}
 // The chart is the roster: everyone, by who they report to, with open seats from the chosen shape.
 function renderOrgChart(){
   const el = document.getElementById('orgChartLive');
@@ -61988,8 +62122,9 @@ function openTeamForm(opts){
   }
   if (opts.kind && !opts.slot){ document.getElementById('teamNewKind').value = opts.kind; onTeamKindChange(true); }
   populateReportsTo(opts.reportsToId || '');
+  tfStarter = null;
   const mod = document.getElementById('teamAddModule');
-  if (mod){ if (!mod.classList.contains('open')) mod.classList.add('open'); mod.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  if (mod){ tfShowForm(true); mod.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
   const nm = document.getElementById('teamNewName'); if (nm) nm.focus();
 }
 function fillOrgSlot(path){
@@ -62079,7 +62214,7 @@ function removeCustomPosition(){
 }
 
 function renderTeamRosterView(){
-  renderOrgShapePicker();
+  renderTeamFlow();
   renderOrgChart();
   renderPositionPicker();
   renderAgreements();
