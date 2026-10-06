@@ -134,6 +134,16 @@
     <div class="panel" id="paneClients">
       <h2>Client accounts</h2>
       <input class="search" id="clientSearch" placeholder="Search by name or ID" oninput="renderClients()">
+      <div id="sparkBox" style="border:1px solid #d9dce6;border-radius:12px;padding:14px 16px;margin:0 0 16px;background:#fff">
+        <strong style="color:#1E2761">Spark settings</strong>
+        <div style="display:flex;gap:14px;align-items:end;flex-wrap:wrap;margin-top:10px">
+          <label style="font-size:13px">Trial days<br><input id="spDays" type="number" min="1" max="60" style="width:90px;padding:7px;border:1px solid #d5d8e0;border-radius:8px"></label>
+          <label style="font-size:13px">Starter Kit drafts per month<br><input id="spDrafts" type="number" min="1" style="width:120px;padding:7px;border:1px solid #d5d8e0;border-radius:8px"></label>
+          <div style="font-size:13px;color:#555">Spark drafts for the trial: <strong id="spSpark">-</strong></div>
+          <button class="btn small" id="spSave" onclick="saveSpark()">Save</button>
+          <span id="spMsg" style="font-size:13px;color:#555"></span>
+        </div>
+      </div>
       <div id="clientsBody"></div>
       <div class="err" id="clientsErr"></div>
     </div>
@@ -280,10 +290,21 @@ function showTab(t){
   if (t === 'log') loadLog();
   if (t === 'team') loadTeam();
 }
+async function loadSpark(){
+  const r = await api('GET', 'spark-settings'); if (!r.ok) return;
+  $('spDays').value = r.data.trialDays; $('spDrafts').value = r.data.starterMonthlyDrafts; $('spSpark').textContent = r.data.sparkDrafts;
+  const ro = !(me && (me.role === 'owner' || me.role === 'admin')); $('spDays').disabled = ro; $('spDrafts').disabled = ro; $('spSave').disabled = ro;
+}
+async function saveSpark(){
+  $('spMsg').textContent = '';
+  const r = await api('POST', 'spark-settings', { trialDays: Number($('spDays').value), starterMonthlyDrafts: Number($('spDrafts').value) });
+  if (!r.ok){ $('spMsg').textContent = r.data.error || 'Could not save.'; return; }
+  $('spSpark').textContent = r.data.sparkDrafts; $('spMsg').textContent = 'Saved.';
+}
 async function loadClients(){
   const r = await api('GET', 'accounts');
   if (r.status === 401){ return doLogout(true); }
-  clients = (r.data && r.data.accounts) || []; levels = (r.data && r.data.levels) || []; renderClients();
+  loadSpark(); clients = (r.data && r.data.accounts) || []; levels = (r.data && r.data.levels) || []; renderClients();
 }
 function renderClients(){
   const q = $('clientSearch').value.trim().toLowerCase();
