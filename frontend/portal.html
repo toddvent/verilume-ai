@@ -7367,7 +7367,7 @@
       </div>
       <div class="module-body">
         <div id="orgChartLive" style="overflow-x:auto;padding-bottom:8px;"></div>
-        <div class="btn-row" style="margin-top:12px;"><button type="button" class="btn-ghost" onclick="openTeamForm({})">+ Add a person</button></div>
+        <div class="btn-row" style="margin-top:12px;"><button type="button" class="btn-ghost" onclick="openTeamForm({kind:'viewer'})">+ Add a stakeholder or partner</button></div>
       </div>
     </div>
 
@@ -7409,12 +7409,12 @@
           </div>
           <div class="hint">Used for sign-in verification codes. Add an extension if the number needs one.</div>
         </div>
-        <div class="field">
+        <div class="field" id="teamReportsWrap">
           <label for="teamNewReportsTo">Reports to</label>
           <select id="teamNewReportsTo"><option value="">— no one (leadership) —</option></select>
           <div class="hint">Leave this empty and the position counts as leadership.</div>
         </div>
-        <div class="field">
+        <div class="field" id="teamFunctionWrap">
           <label for="teamNewFunction">Function</label>
           <select id="teamNewFunction"><option value="">Select a function…</option></select>
         </div>
@@ -7435,10 +7435,20 @@
         </div>
         <div class="field">
           <label for="teamNewKind">Membership</label>
-          <select id="teamNewKind" onchange="onTeamKindChange()">
-            <option value="internal">Internal (this company's own staff)</option>
-            <option value="external">External (agency or freelance)</option>
+          <select id="teamNewKind" onchange="onTeamKindChange(true)">
+            <option value="internal">Marketing team (on the chart)</option>
+            <option value="viewer">Executive viewer (off the chart)</option>
+            <option value="external">External partner (agency or freelance)</option>
           </select>
+          <div class="hint" id="teamKindHint"></div>
+        </div>
+        <div class="field">
+          <label for="teamNewAccess">Access</label>
+          <select id="teamNewAccess">
+            <option value="edit">Can view and edit</option>
+            <option value="view">View only</option>
+          </select>
+          <div class="hint">View only means they can open dashboards and ask questions but cannot change anything. Edit is limited to the dashboards ticked above.</div>
         </div>
         <div id="teamExtWrap" style="display:none;">
           <div class="field">
@@ -61553,13 +61563,21 @@ function populateReportsTo(selectedId){
   const keep = selectedId !== undefined ? selectedId : sel.value;
   const block = editingTeamMemberId ? [editingTeamMemberId].concat(descendantsOf(editingTeamMemberId)) : [];
   sel.innerHTML = `<option value="">— no one (leadership) —</option>` +
-    state.team.filter(m => m.status !== 'inactive' && !block.includes(m.id))
+    state.team.filter(m => m.status !== 'inactive' && m.memberKind !== 'viewer' && !block.includes(m.id))
       .map(m => `<option value="${m.id}">${escapeHtml(m.name)} — ${escapeHtml(m.roleLabel || functionLabel(m.functionGroup))}</option>`).join('');
   sel.value = keep || '';
 }
 function onTeamLevelChange(){ populateReportsTo(); }
-function onTeamKindChange(){
-  const ext = document.getElementById('teamNewKind').value === 'external';
+function onTeamKindChange(userChanged){
+  const kind = document.getElementById('teamNewKind').value;
+  const ext = kind === 'external', viewer = kind === 'viewer';
+  const rw = document.getElementById('teamReportsWrap'), fw = document.getElementById('teamFunctionWrap');
+  if (rw) rw.style.display = viewer ? 'none' : '';
+  if (fw) fw.style.display = viewer ? 'none' : '';
+  const acc = document.getElementById('teamNewAccess');
+  if (acc && userChanged === true) acc.value = viewer ? 'view' : 'edit';
+  const hint = document.getElementById('teamKindHint');
+  if (hint) hint.textContent = viewer ? 'For executives who need to see the platform without being part of the marketing reporting line, such as the CTO, President, or Chief Sales Officer.' : ext ? 'Agencies and freelancers get access for 3 months at a time, with an agreement.' : '';
   const w = document.getElementById('teamExtWrap');
   if (w) w.style.display = ext ? '' : 'none';
   if (ext) renderAgreements();
@@ -61581,7 +61599,7 @@ function renderTeamCategoryBoxes(selected, creativeSelected){
 function resetTeamMemberForm(){
   const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
   set('teamPositionInput', ''); set('teamNewName', ''); set('teamNewEmail', ''); set('teamNewPhone', ''); set('teamNewPhoneExt', '');
-  set('teamNewFunction', ''); set('teamNewKind', 'internal'); set('teamNewHandle', '');
+  set('teamNewFunction', ''); set('teamNewKind', 'internal'); set('teamNewAccess', 'edit'); set('teamNewHandle', '');
   set('agrName', ''); set('agrChannels', ''); set('agrEnds', '');
   const adm = document.getElementById('teamNewIsAdmin'); if (adm) adm.checked = false;
   const hw = document.getElementById('teamNewHandleWrap'); if (hw) hw.style.display = 'none';
@@ -61595,9 +61613,9 @@ function resetTeamMemberForm(){
 
 function readTeamMemberForm(){
   const kind = document.getElementById('teamNewKind').value || 'internal';
-  const reportsToId = document.getElementById('teamNewReportsTo').value || null;
-  const level = deriveLevelFor(reportsToId);
-  let fn = document.getElementById('teamNewFunction').value;
+  const reportsToId = kind === 'viewer' ? null : (document.getElementById('teamNewReportsTo').value || null);
+  const level = kind === 'viewer' ? 'Specialist' : deriveLevelFor(reportsToId);
+  let fn = kind === 'viewer' ? 'Executive' : document.getElementById('teamNewFunction').value;
   if (!fn){
     const parent = reportsToId ? findTeamMember(reportsToId) : null;
     fn = parent && parent.functionGroup ? parent.functionGroup : 'Executive';
@@ -61611,6 +61629,7 @@ function readTeamMemberForm(){
     phoneExt: document.getElementById('teamNewPhoneExt').value.replace(/[^0-9]/g, '').slice(0, 8),
     isAdmin: document.getElementById('teamNewIsAdmin').checked,
     level, functionGroup: fn, reportsToId, memberKind: kind,
+    accessLevel: document.getElementById('teamNewAccess').value || 'edit',
     roleLabel: document.getElementById('teamPositionInput').value.trim(),
     categories: uniqList(dash.concat(creative, teamFormCarry.legacy)),
     handle: document.getElementById('teamNewHandle').value.trim().replace(/^@/, '')
@@ -61639,8 +61658,8 @@ async function addTeamMember(){
   const flag = document.getElementById('teamAddFlag');
   const problem = teamFormProblem(f);
   if (problem){ if (flag){ flag.textContent = problem; flag.style.color = 'var(--advocacy)'; } return; }
-  const { name, email, phone, phoneExt, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories } = f;
-  const localMember = { id: `local-team-${Date.now()}`, accountId: state.companyId, name, email, phone: phone || null, phoneExt: phoneExt || null, isAdmin, functionGroup, level, reportsToId, status: 'active', createdAt: new Date().toISOString(), memberKind, roleLabel, categories };
+  const { name, email, phone, phoneExt, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, accessLevel } = f;
+  const localMember = { id: `local-team-${Date.now()}`, accountId: state.companyId, name, email, phone: phone || null, phoneExt: phoneExt || null, isAdmin, functionGroup, level, reportsToId, status: 'active', createdAt: new Date().toISOString(), memberKind, accessLevel, roleLabel, categories };
   let persisted = false, tempPasswordOut = null;
   const wantsAgreement = memberKind === 'external' && agreementFieldsFilled();
   const agreementBody = wantsAgreement ? readAgreementFields() : null;
@@ -61648,7 +61667,7 @@ async function addTeamMember(){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/team`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, phone, phoneExt, isAdmin, functionGroup, level, reportsToId, memberKind, roleLabel, categories })
+        body: JSON.stringify({ name, email, phone, phoneExt, isAdmin, functionGroup, level, reportsToId, memberKind, accessLevel, roleLabel, categories })
       });
       if (resp.ok){
         const out = await resp.json();
@@ -61685,6 +61704,7 @@ function startEditTeamMember(id){
   set('teamNewName', m.name || ''); set('teamNewEmail', m.email || ''); set('teamNewPhone', m.phone || ''); set('teamNewPhoneExt', m.phoneExt || '');
   set('teamPositionInput', m.roleLabel || ''); set('teamNewHandle', m.handle || '');
   set('teamNewKind', m.memberKind || 'internal');
+  set('teamNewAccess', m.accessLevel || (m.memberKind === 'viewer' ? 'view' : 'edit'));
   document.getElementById('teamNewIsAdmin').checked = !!m.isAdmin;
   document.getElementById('teamNewHandleWrap').style.display = '';
   const sp = splitCats(m.categories);
@@ -61723,7 +61743,7 @@ async function saveTeamMemberEdit(){
   const f = readTeamMemberForm();
   const problem = teamFormProblem(f);
   if (problem){ if (flag){ flag.textContent = problem; flag.style.color = 'var(--advocacy)'; } return; }
-  const { name, email, phone, phoneExt, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, handle } = f;
+  const { name, email, phone, phoneExt, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, handle, accessLevel } = f;
   if (reportsToId === id || (reportsToId && descendantsOf(id).includes(reportsToId))){
     if (flag){ flag.textContent = "Someone can't report to themselves or to someone under them."; flag.style.color = 'var(--advocacy)'; }
     return;
@@ -61737,7 +61757,7 @@ async function saveTeamMemberEdit(){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/team/${encodeURIComponent(id)}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, phone, phoneExt, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, handle: handle || undefined })
+        body: JSON.stringify({ name, email, phone, phoneExt, isAdmin, level, functionGroup, reportsToId, memberKind, accessLevel, roleLabel, categories, handle: handle || undefined })
       });
       persisted = resp.ok;
       if (!resp.ok && (resp.status === 403 || resp.status === 409 || resp.status === 400)){
@@ -61749,7 +61769,7 @@ async function saveTeamMemberEdit(){
   }
   const wantsAgreement = memberKind === 'external' && agreementFieldsFilled();
   const agreementBody = wantsAgreement ? readAgreementFields() : null;
-  Object.assign(m, { name, email, phone: phone || null, phoneExt: phoneExt || null, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, handle: handle || m.handle });
+  Object.assign(m, { name, email, phone: phone || null, phoneExt: phoneExt || null, isAdmin, level, functionGroup, reportsToId, memberKind, accessLevel, roleLabel, categories, handle: handle || m.handle });
   await syncLevelsUnder(id);
   let agrNote = '';
   if (wantsAgreement && persisted){ agrNote = (await postAgreement(id, agreementBody)) ? ' Agreement saved.' : ' The agreement could not be saved.'; }
@@ -61882,7 +61902,10 @@ function renderOrgChart(){
   const el = document.getElementById('orgChartLive');
   if (!el) return;
   const isAdmin = portalViewerIsAdmin !== false;
-  const members = state.team.filter(m => m.status !== 'inactive');
+  const allActive = state.team.filter(m => m.status !== 'inactive');
+  const isSide = m => m.memberKind === 'viewer' || (m.memberKind === 'external' && !m.reportsToId);
+  const sideRow = allActive.filter(isSide);
+  const members = allActive.filter(m => !isSide(m));
   const ids = new Set(members.map(m => m.id));
   const shape = currentOrgShape();
   const assign = shape ? orgShapeAssign(shape) : null;
@@ -61914,15 +61937,15 @@ function renderOrgChart(){
     return `<div class="oc-node">
       <div class="oc-card">
         <div class="oc-name">${escapeHtml(m.name)}${m.isAdmin ? '<span class="oc-pill">Admin</span>' : ''}</div>
-        <div class="oc-sub">${escapeHtml(m.roleLabel || functionLabel(m.functionGroup))}</div>
-        <div class="oc-sub">${escapeHtml(functionLabel(m.functionGroup))}${m.memberKind === 'external' ? ' · external' : ''}${exp}</div>
+        <div class="oc-sub">${escapeHtml(m.roleLabel ? posTitle(m.roleLabel) : (!m.reportsToId && m.isAdmin ? 'Head of Marketing' : 'Position not set'))}</div>
+        <div class="oc-sub">${escapeHtml(m.functionGroup && m.functionGroup !== 'Executive' ? functionLabel(m.functionGroup) : '')}${m.memberKind === 'external' ? ' · external' : ''}${m.accessLevel === 'view' ? ' · view only' : ''}${exp}</div>
         <div class="oc-acts">${acts}</div>
       </div>
       ${isAdmin ? `<div class="oc-stub" style="height:6px;"></div><div class="oc-add"><button type="button" class="link-btn" onclick="openTeamForm({reportsToId:'${m.id}'})">+ Add reporting position</button></div>` : ''}
       ${(kids.length || opens.length) ? `<div class="oc-stub"></div><div class="oc-kids">${kids.map(k => node(k, depth + 1)).join('')}${opens.map(openCard).join('')}</div>` : ''}
     </div>`;
   };
-  const isUnplaced = m => !m.isAdmin && !m.reportsToId && !m.roleLabel && m.memberKind !== 'external' && !String(m.id).startsWith('local-team-');
+  const isUnplaced = m => !m.isAdmin && !m.reportsToId && !m.roleLabel && m.memberKind === 'internal' && !String(m.id).startsWith('local-team-');
   const unplaced = members.filter(isUnplaced);
   const roots = members.filter(m => (!m.reportsToId || !ids.has(m.reportsToId)) && !isUnplaced(m));
   const tray = unplaced.length ? `<div style="border:1px dashed #D08A3E;border-radius:8px;padding:12px 14px;margin-bottom:16px;background:var(--paper-dim);">
@@ -61933,11 +61956,22 @@ function renderOrgChart(){
   const filled = assign ? (assign.top ? 1 : 0) + assign.kids.filter(Boolean).length : 0;
   const noShapeHint = (!shape && orgShapeStyleTab) ? `<p class="hint" style="margin:0 0 10px;">Choose one of the team shapes above and its open seats appear here.</p>` : '';
   const head = noShapeHint + (shape ? `<div class="section-eyebrow" style="margin-bottom:10px;">${shape.label} · ${filled} of ${1 + shape.kids.length} seats filled</div>` : '');
+  const sideCard = m => `<div class="oc-node"><div class="oc-card">
+      <div class="oc-name">${escapeHtml(m.name)}${m.isAdmin ? '<span class="oc-pill">Admin</span>' : ''}</div>
+      <div class="oc-sub">${escapeHtml(m.roleLabel ? posTitle(m.roleLabel) : (m.memberKind === 'external' ? 'External partner' : 'Stakeholder'))}</div>
+      <div class="oc-sub">${m.accessLevel === 'view' || (!m.accessLevel && m.memberKind === 'viewer') ? 'View only' : 'Can edit'}${m.memberKind === 'external' ? ' · external' : ''}${m.accessExpiresAt ? ' · access ends ' + new Date(m.accessExpiresAt).toLocaleDateString() : ''}</div>
+      <div class="oc-acts">${isAdmin ? `${m.email && !String(m.id).startsWith('local-team-') ? `<button type="button" class="link-btn" onclick="reissueMemberLogin('${m.id}')">Reissue login</button>` : ''}${m.memberKind === 'external' ? `<button type="button" class="link-btn" onclick="renewExternalAccess('${m.id}')">Renew 3 months</button>` : ''}<button type="button" class="link-btn" onclick="startEditTeamMember('${m.id}')">Edit</button><button type="button" class="link-btn" onclick="deleteTeamMember('${m.id}')">Remove</button>` : ''}</div>
+    </div></div>`;
+  const side = (sideRow.length || isAdmin) ? `<div style="margin-top:28px;border-top:1px solid var(--line);padding-top:14px;">
+      <div class="section-eyebrow" style="margin-bottom:6px;">Stakeholders and partners · outside the reporting line</div>
+      <p class="hint" style="margin:0 0 10px;">Executives who need to see the platform, and agencies or consultants. They are not part of the marketing chart.</p>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">${sideRow.map(sideCard).join('') || '<span class="hint">No one here yet.</span>'}</div>
+    </div>` : '';
   if (!roots.length && !rootOpen.length){
-    el.innerHTML = tray + head + `<p class="hint">No one is on the chart yet. Pick a team shape above, or use Add a person.</p>`;
+    el.innerHTML = tray + head + `<p class="hint">No one is on the chart yet. Pick a team shape above.</p>` + side;
     return;
   }
-  el.innerHTML = tray + head + `<div style="display:flex;gap:24px;justify-content:center;align-items:flex-start;min-width:min-content;">${roots.map(r => node(r, 0)).join('')}${rootOpen.map(openCard).join('')}</div>`;
+  el.innerHTML = tray + head + `<div style="display:flex;gap:24px;justify-content:center;align-items:flex-start;min-width:min-content;">${roots.map(r => node(r, 0)).join('')}${rootOpen.map(openCard).join('')}</div>` + side;
 }
 function openTeamForm(opts){
   if (typeof cancelEditTeamMember === 'function') try { cancelEditTeamMember(); } catch (e){}
@@ -61952,6 +61986,7 @@ function openTeamForm(opts){
     renderTeamCategoryBoxes(sp.dash, sp.creative);
     onTeamKindChange();
   }
+  if (opts.kind && !opts.slot){ document.getElementById('teamNewKind').value = opts.kind; onTeamKindChange(true); }
   populateReportsTo(opts.reportsToId || '');
   const mod = document.getElementById('teamAddModule');
   if (mod){ if (!mod.classList.contains('open')) mod.classList.add('open'); mod.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
@@ -62111,8 +62146,8 @@ function currentOrgShape(){ return ORG_SHAPES.find(o => o.id === state.orgShape)
 function orgShapeAssign(shape){
   const used = new Set();
   const take = (slot, boss) => {
-    const pool = state.team.filter(m => !used.has(m.id) && m.status !== 'inactive');
-    let hit = pool.find(m => m.roleLabel && m.roleLabel.toLowerCase() === slot.label.toLowerCase());
+    const pool = state.team.filter(m => !used.has(m.id) && m.status !== 'inactive' && m.memberKind !== 'viewer');
+    let hit = pool.find(m => m.roleLabel && posTitle(m.roleLabel).toLowerCase() === posTitle(slot.label).toLowerCase());
     if (!hit) hit = pool.find(m => m.functionGroup === slot.fn && (m.memberKind || 'internal') === slot.kind && (boss || m.level === slot.level));
     if (hit) used.add(hit.id);
     return hit || null;
