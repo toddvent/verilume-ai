@@ -7416,6 +7416,25 @@
           <div id="teamNewIsAdminGateHint" class="hint" style="display:none;color:var(--advocacy);">Only an Admin can change this. Editing every other field above is still fine — ask an Admin to change Admin status.</div>
         </div>
         <div class="field">
+          <label for="teamNewKind">Membership</label>
+          <select id="teamNewKind">
+            <option value="internal">Internal (this company's own staff)</option>
+            <option value="external">External (agency or freelance)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="teamNewRoleLabel">Role label <span style="font-weight:400;">(optional)</span></label>
+          <input type="text" id="teamNewRoleLabel" maxlength="80" placeholder="e.g. Media Science lead">
+        </div>
+        <div class="field">
+          <label>Categories <span style="font-weight:400;">(optional, pick any that apply)</span></label>
+          <div id="teamNewCategories" style="display:flex;flex-wrap:wrap;gap:6px 16px;"></div>
+        </div>
+        <div class="field" id="teamNewHandleWrap" style="display:none;">
+          <label for="teamNewHandle">Handle</label>
+          <input type="text" id="teamNewHandle" maxlength="30" placeholder="@todd">
+        </div>
+        <div class="field">
           <label for="teamNewLevel">Level</label>
           <select id="teamNewLevel" onchange="onTeamLevelChange()">
             <option value="">Select a level…</option>
@@ -61399,6 +61418,7 @@ function buildCareerChecklistHTML(member, next, currentSkills, newSkills, rating
 }
 
 function populateTeamLevelSelect(){
+  renderTeamCategoryBoxes();
   const sel = document.getElementById('teamNewLevel');
   if (!sel) return;
   const current = sel.value;
@@ -61458,8 +61478,19 @@ function readTeamMemberForm(){
     isAdmin: document.getElementById('teamNewIsAdmin').checked,
     level: document.getElementById('teamNewLevel').value,
     functionGroup: document.getElementById('teamNewFunction').value,
-    reportsToId: document.getElementById('teamNewReportsTo').value || null
+    reportsToId: document.getElementById('teamNewReportsTo').value || null,
+    memberKind: document.getElementById('teamNewKind').value || 'internal',
+    roleLabel: document.getElementById('teamNewRoleLabel').value.trim(),
+    categories: Array.from(document.querySelectorAll('#teamNewCategories input:checked')).map(i => i.value),
+    handle: document.getElementById('teamNewHandle').value.trim().replace(/^@/, '')
   };
+}
+const TEAM_CATEGORY_OPTIONS = ['Strategy', 'Customer Experiences', 'Growth and Performance', 'Media Science', 'PR', 'Copywriting', 'Design', 'Motion Graphics', 'Marketing Ops', 'Analysts'];
+function renderTeamCategoryBoxes(selected){
+  const box = document.getElementById('teamNewCategories');
+  if (!box) return;
+  const sel = selected || Array.from(box.querySelectorAll('input:checked')).map(i => i.value);
+  box.innerHTML = TEAM_CATEGORY_OPTIONS.map(c => `<label style="display:inline-flex;gap:6px;align-items:center;font-size:0.875rem;"><input type="checkbox" value="${c}"${sel.includes(c) ? ' checked' : ''} style="margin:0;"> ${c}</label>`).join('');
 }
 
 function resetTeamMemberForm(){
@@ -61468,28 +61499,38 @@ function resetTeamMemberForm(){
   document.getElementById('teamNewIsAdmin').checked = false;
   document.getElementById('teamNewLevel').value = '';
   document.getElementById('teamNewFunction').value = '';
+  document.getElementById('teamNewKind').value = 'internal';
+  document.getElementById('teamNewRoleLabel').value = '';
+  document.getElementById('teamNewHandle').value = '';
+  document.getElementById('teamNewHandleWrap').style.display = 'none';
+  renderTeamCategoryBoxes([]);
   onTeamLevelChange();
 }
 
 async function addTeamMember(){
-  const { name, email, isAdmin, level, functionGroup, reportsToId } = readTeamMemberForm();
+  const { name, email, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories } = readTeamMemberForm();
   const flag = document.getElementById('teamAddFlag');
   if (!name || !level || !functionGroup){
     if (flag){ flag.textContent = 'Name, Level, and Function are all required.'; flag.style.color = 'var(--advocacy)'; }
     return;
   }
-  const localMember = { id: `local-team-${Date.now()}`, accountId: state.companyId, name, email: email || null, isAdmin, functionGroup, level, reportsToId, status: 'active', createdAt: new Date().toISOString() };
+  const localMember = { id: `local-team-${Date.now()}`, accountId: state.companyId, name, email: email || null, isAdmin, functionGroup, level, reportsToId, status: 'active', createdAt: new Date().toISOString() , memberKind, roleLabel, categories};
   let persisted = false;
   if (dataSourceLabel === 'backend'){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/team`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, isAdmin, functionGroup, level, reportsToId })
+        body: JSON.stringify({ name, email, isAdmin, functionGroup, level, reportsToId, memberKind, roleLabel, categories })
       });
       if (resp.ok){
-        const { memberId } = await resp.json();
-        localMember.id = memberId;
+        const out = await resp.json();
+        localMember.id = out.memberId;
+        localMember.handle = out.handle || null;
         persisted = true;
+      } else if (resp.status === 403 || resp.status === 409){
+        const err = await resp.json().catch(() => ({}));
+        if (flag){ flag.textContent = err.error || 'This could not be added.'; flag.style.color = 'var(--advocacy)'; }
+        return;
       }
     } catch (e){ /* falls through to local-only, same convention as campaigns */ }
   }
@@ -61517,6 +61558,11 @@ function startEditTeamMember(id){
   document.getElementById('teamNewName').value = m.name || '';
   document.getElementById('teamNewEmail').value = m.email || '';
   document.getElementById('teamNewIsAdmin').checked = !!m.isAdmin;
+  document.getElementById('teamNewKind').value = m.memberKind || 'internal';
+  document.getElementById('teamNewRoleLabel').value = m.roleLabel || '';
+  document.getElementById('teamNewHandle').value = m.handle || '';
+  document.getElementById('teamNewHandleWrap').style.display = '';
+  renderTeamCategoryBoxes(Array.isArray(m.categories) ? m.categories : []);
   populateTeamLevelSelect();
   populateTeamFunctionSelect();
   document.getElementById('teamNewLevel').value = m.level || '';
@@ -61560,7 +61606,7 @@ async function saveTeamMemberEdit(){
   const m = findTeamMember(id);
   const flag = document.getElementById('teamAddFlag');
   if (!m){ cancelEditTeamMember(); return; }
-  const { name, email, isAdmin, level, functionGroup, reportsToId } = readTeamMemberForm();
+  const { name, email, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, handle } = readTeamMemberForm();
   if (!name || !level || !functionGroup){
     if (flag){ flag.textContent = 'Name, Level, and Function are all required.'; flag.style.color = 'var(--advocacy)'; }
     return;
@@ -61576,17 +61622,22 @@ async function saveTeamMemberEdit(){
     if (flag){ flag.textContent = `${m.name} is this account's only Admin — promote someone else to Admin first.`; flag.style.color = 'var(--advocacy)'; }
     return;
   }
-  Object.assign(m, { name, email: email || null, isAdmin, level, functionGroup, reportsToId });
   let persisted = false;
   if (dataSourceLabel === 'backend' && !String(id).startsWith('local-team-')){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/team/${encodeURIComponent(id)}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, isAdmin, level, functionGroup, reportsToId })
+        body: JSON.stringify({ name, email, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, handle: handle || undefined })
       });
       persisted = resp.ok;
+      if (!resp.ok && (resp.status === 403 || resp.status === 409 || resp.status === 400)){
+        const err = await resp.json().catch(() => ({}));
+        if (flag){ flag.textContent = err.error || 'This could not be saved.'; flag.style.color = 'var(--advocacy)'; }
+        return;
+      }
     } catch (e){ /* state already reflects the change either way */ }
   }
+  Object.assign(m, { name, email: email || null, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, handle: handle || m.handle });
   cancelEditTeamMember();
   if (flag){
     flag.style.color = 'var(--cx)';
@@ -61672,7 +61723,7 @@ function renderTeamRosterView(){
         const manager = resolveManager(m.id);
         const adminTag = m.isAdmin ? ` <span style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;letter-spacing:0.04em;text-transform:uppercase;background:var(--ink);color:#fff;border-radius:3px;padding:2px 7px;">Admin</span>` : '';
         return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);gap:10px;">
-          <span><strong>${m.name}</strong> — ${functionLabel(m.functionGroup)}${adminTag}${manager ? ` <span class="hint" style="display:inline;">→ reports to ${manager.name}</span>` : (m.level !== 'CMO' ? ` <span class="hint" style="display:inline;">→ no manager on file</span>` : '')}</span>
+          <span><strong>${m.name}</strong>${m.handle ? ` <span class="hint" style="display:inline;">@${m.handle}</span>` : ''} — ${functionLabel(m.functionGroup)}${m.roleLabel ? ` (${m.roleLabel})` : ''}${m.memberKind === 'external' ? ' <span class="hint" style="display:inline;">External</span>' : ''}${adminTag}${manager ? ` <span class="hint" style="display:inline;">→ reports to ${manager.name}</span>` : (m.level !== 'CMO' ? ` <span class="hint" style="display:inline;">→ no manager on file</span>` : '')}</span>
           <span style="display:flex;gap:12px;flex-shrink:0;">
             <button type="button" class="link-btn" onclick="startEditTeamMember('${m.id}')">Edit</button>
             <button type="button" class="link-btn" onclick="deleteTeamMember('${m.id}')">Remove</button>
@@ -75749,7 +75800,7 @@ async function posSetDecision(contributionId, status){
     if (viewing(a)) return;
     fetch(base() + '/api/accounts/' + encodeURIComponent(a), { headers: { Authorization: 'Bearer ' + tok } })
       .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (acct) { if (acct && acct.levelStatus) render(a, tok, acct.levelStatus); })
+      .then(function (acct) { if (acct && acct.levelStatus) { acct.levelStatus.draft = acct.draftAllowance || null; render(a, tok, acct.levelStatus); } })
       .catch(function () {});
   }
   function requestUpgrade(a, tok, source, done) {
@@ -75760,7 +75811,7 @@ async function posSetDecision(contributionId, status){
     var expired = ls.expired, left = ls.daysLeft;
     var bar = el('div', 'position:fixed;left:0;right:0;top:0;z-index:2147482000;background:' + (expired ? '#8a2b2b' : NAVY) + ';color:#fff;font:600 13px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;gap:14px;align-items:center;justify-content:center;padding:9px 16px;flex-wrap:wrap');
     var msg = expired ? 'Your Spark trial has ended. This account is read-only until you upgrade to the Starter Kit, $99 a month.'
-      : 'Spark: ' + left + (left === 1 ? ' day' : ' days') + ' left. Keep everything you built with the Starter Kit, $99 a month.';
+      : 'Spark: ' + left + (left === 1 ? ' day' : ' days') + ' left' + (ls.draft ? ', ' + ls.draft.remaining + ' of ' + ls.draft.limit + ' drafts left' : '') + '. Keep everything you built with the Starter Kit, $99 a month.';
     var t = el('span', '', msg), btn = el('button', 'background:' + AMBER + ';color:' + NAVY + ';border:0;padding:6px 14px;border-radius:6px;font-weight:700;cursor:pointer', 'Upgrade');
     btn.onclick = function () { btn.disabled = true; requestUpgrade(a, tok, 'bar', function (ok) { t.textContent = ok ? 'Thanks. Our team will contact you about the Starter Kit.' : 'Could not send the request. Email verilume@verilume.ai.'; btn.remove(); }); };
     bar.appendChild(t); bar.appendChild(btn); document.body.appendChild(bar);
