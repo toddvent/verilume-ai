@@ -7359,6 +7359,33 @@
       </div>
     </div>
 
+    <div class="module open accent-cx" id="agreementsModule" style="display:none;">
+      <div class="module-head" onclick="toggleModule('agreementsModule')">
+        <span class="modnum">2b</span>
+        <div class="titles">
+          <span class="tag">External access</span>
+          <h2>Agency agreements</h2>
+        </div>
+        <span class="chevron">▸</span>
+      </div>
+      <div class="module-body">
+        <div id="agreementsView"></div>
+        <div style="display:grid;gap:8px;max-width:560px;margin-top:14px;">
+          <label for="agrMember">Guest</label>
+          <select id="agrMember"></select>
+          <label for="agrName">Agreement name</label>
+          <input id="agrName" type="text" placeholder="Q4 media buying">
+          <label for="agrChannels">Channels whose budgets they may see (comma separated)</label>
+          <input id="agrChannels" type="text" placeholder="Paid Search, Paid Social">
+          <label>Reports they may see</label>
+          <div id="agrReports" style="display:flex;flex-wrap:wrap;gap:10px;"></div>
+          <label for="agrEnds">Agreement ends</label>
+          <input id="agrEnds" type="date">
+          <div><button type="button" class="btn" onclick="saveAgreement()">Save agreement</button> <span id="agrFlag" class="hint" style="display:inline;"></span></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Round 131 — Skill Sets and Self-Rating (HEO functions 2 and 1)
          relocated to their own Team Development workstream
          (step-teamDevelopment), per direct instruction that this
@@ -30587,6 +30614,7 @@ async function loadTeam(){
     console.warn('loadTeam: backend not reachable, starting with an empty (local-only) team roster.', e);
   }
   checkPortalViewerAdminStatus();
+  loadAgreements();
 }
 
 // 2026-08-22 — closes the roster-UI half of the isAdmin gap fix (backend's
@@ -61705,6 +61733,74 @@ async function setActingAs(id){
   renderPlanPacingChart();
 }
 
+
+const AGREEMENT_REPORT_LABELS = { 'story': 'Story', 'forecast-vs-target': 'Forecast vs target', 'price-volume': 'Price and volume', 'audience-growth': 'Audience growth', 'media-science': 'Media science', 'creative-media': 'Creative and media', 'growth-performance': 'Growth and performance' };
+let agreementsCache = [];
+async function renewExternalAccess(id){
+  const m = findTeamMember(id);
+  if (!m || !confirm(`Renew ${m.name}'s access for another 3 months?`)) return;
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/team/${encodeURIComponent(id)}/renew`, { method: 'POST' });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok){ alert(j.error || 'Could not renew access.'); return; }
+    m.accessExpiresAt = j.accessExpiresAt;
+    renderTeamRosterView();
+  } catch (e){ alert('Could not reach the server to renew access.'); }
+}
+async function loadAgreements(){
+  const mod = document.getElementById('agreementsModule');
+  if (!mod || dataSourceLabel !== 'backend') return;
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/agreements`);
+    if (!r.ok){ mod.style.display = 'none'; return; }
+    const j = await r.json();
+    agreementsCache = j.agreements || [];
+    mod.style.display = '';
+    renderAgreements(j.reportOptions || Object.keys(AGREEMENT_REPORT_LABELS));
+  } catch (e){ mod.style.display = 'none'; }
+}
+function renderAgreements(reportOptions){
+  const ext = state.team.filter(m => m.memberKind === 'external');
+  const sel = document.getElementById('agrMember');
+  if (sel) sel.innerHTML = ext.length ? ext.map(m => `<option value="${m.id}">${m.name}</option>`).join('') : '<option value="">Add an external guest on the team first</option>';
+  const box = document.getElementById('agrReports');
+  if (box && !box.dataset.built){ box.innerHTML = reportOptions.map(k => `<label style="display:flex;gap:5px;align-items:center;font-weight:400;"><input type="checkbox" value="${k}"> ${AGREEMENT_REPORT_LABELS[k] || k}</label>`).join(''); box.dataset.built = '1'; }
+  const v = document.getElementById('agreementsView');
+  if (!v) return;
+  v.innerHTML = agreementsCache.length ? agreementsCache.map(a => {
+    const who = findTeamMember(a.memberId);
+    return `<div style="display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);">
+      <span><strong>${a.name || 'Agreement'}</strong> — ${who ? who.name : 'removed guest'}<br><span class="hint" style="display:inline;">Channels: ${a.channels.length ? a.channels.join(', ') : 'none'} · Reports: ${a.reports.length ? a.reports.map(k => AGREEMENT_REPORT_LABELS[k] || k).join(', ') : 'none'}${a.endsAt ? ' · ends ' + new Date(a.endsAt).toLocaleDateString() : ''}</span></span>
+      <button type="button" class="link-btn" onclick="deleteAgreement('${a.id}')">Remove</button></div>`;
+  }).join('') : '<p class="hint">No agreements yet. An agency guest sees nothing of budgets or reports until one names them.</p>';
+}
+async function saveAgreement(){
+  const flag = document.getElementById('agrFlag');
+  const memberId = document.getElementById('agrMember').value;
+  if (!memberId){ flag.textContent = 'Pick an external guest first.'; return; }
+  const body = {
+    memberId,
+    name: document.getElementById('agrName').value.trim(),
+    channels: document.getElementById('agrChannels').value.split(',').map(x => x.trim()).filter(Boolean),
+    reports: [...document.querySelectorAll('#agrReports input:checked')].map(i => i.value),
+    endsAt: document.getElementById('agrEnds').value || null
+  };
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/agreements`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok){ flag.textContent = j.error || 'Could not save the agreement.'; return; }
+    flag.textContent = 'Saved.';
+    document.getElementById('agrName').value = ''; document.getElementById('agrChannels').value = ''; document.getElementById('agrEnds').value = '';
+    document.querySelectorAll('#agrReports input').forEach(i => i.checked = false);
+    loadAgreements();
+  } catch (e){ flag.textContent = 'Could not reach the server.'; }
+}
+async function deleteAgreement(id){
+  if (!confirm('Remove this agreement? The guest loses the access it named.')) return;
+  try { await authedFetch(`${BACKEND_URL}/api/agreements/${encodeURIComponent(id)}`, { method: 'DELETE' }); } catch (e){}
+  loadAgreements();
+}
+
 function renderTeamRosterView(){
   const el = document.getElementById('teamRosterView');
   if (!el) return;
@@ -61723,8 +61819,9 @@ function renderTeamRosterView(){
         const manager = resolveManager(m.id);
         const adminTag = m.isAdmin ? ` <span style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;letter-spacing:0.04em;text-transform:uppercase;background:var(--ink);color:#fff;border-radius:3px;padding:2px 7px;">Admin</span>` : '';
         return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);gap:10px;">
-          <span><strong>${m.name}</strong>${m.handle ? ` <span class="hint" style="display:inline;">@${m.handle}</span>` : ''} — ${functionLabel(m.functionGroup)}${m.roleLabel ? ` (${m.roleLabel})` : ''}${m.memberKind === 'external' ? ' <span class="hint" style="display:inline;">External</span>' : ''}${adminTag}${manager ? ` <span class="hint" style="display:inline;">→ reports to ${manager.name}</span>` : (m.level !== 'CMO' ? ` <span class="hint" style="display:inline;">→ no manager on file</span>` : '')}</span>
+          <span><strong>${m.name}</strong>${m.handle ? ` <span class="hint" style="display:inline;">@${m.handle}</span>` : ''} — ${functionLabel(m.functionGroup)}${m.roleLabel ? ` (${m.roleLabel})` : ''}${m.memberKind === 'external' ? ' <span class="hint" style="display:inline;">External' + (m.accessExpiresAt ? (new Date(m.accessExpiresAt) < new Date() ? ' · access ended ' : ' · access ends ') + new Date(m.accessExpiresAt).toLocaleDateString() : '') + '</span>' : ''}${adminTag}${manager ? ` <span class="hint" style="display:inline;">→ reports to ${manager.name}</span>` : (m.level !== 'CMO' ? ` <span class="hint" style="display:inline;">→ no manager on file</span>` : '')}</span>
           <span style="display:flex;gap:12px;flex-shrink:0;">
+            ${m.memberKind === 'external' ? `<button type="button" class="link-btn" onclick="renewExternalAccess('${m.id}')">Renew 3 months</button>` : ''}
             <button type="button" class="link-btn" onclick="startEditTeamMember('${m.id}')">Edit</button>
             <button type="button" class="link-btn" onclick="deleteTeamMember('${m.id}')">Remove</button>
           </span>
@@ -61732,6 +61829,8 @@ function renderTeamRosterView(){
       }).join('')}
     </div>
   `).join('');
+  const am = document.getElementById('agreementsModule');
+  if (am && am.style.display === '' && typeof renderAgreements === 'function') renderAgreements(Object.keys(AGREEMENT_REPORT_LABELS));
 }
 
 /* ---------- Output validation + QA requests (round 30) ----------
