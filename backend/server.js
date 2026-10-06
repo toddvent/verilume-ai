@@ -1080,6 +1080,24 @@ const PAID_TIERS = [
   { key: 'beacon',   rank: 5, name: 'Beacon',      tagline: 'Orchestrate',          maxStorefronts: null, monthlyDrafts: null, trialDays: null, priceMonthly: null, selfServe: false, description: 'Enterprise, above 20 storefronts. Custom quote.' }
 ];
 
+// 2026-10-06 — Spark 7-day countdown. Spark runs 7 days from activation.
+// Days 1-5: always-on upgrade prompt. Day 6: voice pitch. Day 7: final-day
+// pop-up. After day 7: read-only until the account upgrades (writes refused
+// in handleRequest). Stage names are what portal.html reads.
+const SPARK_DAYS = 7;
+function levelStatusFor(acct){
+  if (!acct || acct.paidTier !== 'spark') return null;
+  const start = acct.paidTierActivatedAt ? new Date(acct.paidTierActivatedAt).getTime() : NaN;
+  if (!isFinite(start)) return null;
+  const elapsedDays = Math.floor((Date.now() - start) / 86400000);
+  const day = elapsedDays + 1;
+  const expired = day > SPARK_DAYS;
+  const daysLeft = Math.max(0, SPARK_DAYS - day + 1);
+  const stage = expired ? 'expired' : (day >= SPARK_DAYS ? 'final' : (day === SPARK_DAYS - 1 ? 'voice' : 'prompt'));
+  return { tier: 'spark', day: Math.min(day, SPARK_DAYS + 1), daysLeft: expired ? 0 : daysLeft, expired, stage, upgradeTo: 'starter', upgradePriceMonthly: 99 };
+}
+const upgradeRequestLast = new Map();
+
 // Added 2026-08-19 — one row per phone-verification attempt (recovery
 // flow and, later, the still-deferred registration anti-bot control).
 // Real Twilio Verify integration reads/writes this once TWILIO_ACCOUNT_SID/
@@ -24405,6 +24423,20 @@ async function handleRequest(req, res) {
         }
       });
     }
+    // Spark expired -> read-only. Team view-as sessions and sign-out / upgrade requests are exempt.
+    if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS' && parts[0] === 'api' && parts[1] === 'accounts' && parts[2]){
+      try {
+        const _aid = decodeURIComponent(parts[2]);
+        const _acct = db.prepare('SELECT paidTier, paidTierActivatedAt FROM accounts WHERE accountId = ?').get(_aid);
+        const _ls = levelStatusFor(_acct);
+        const _exempt = parts[3] === 'upgrade-request';
+        if (_ls && _ls.expired && !_exempt){
+          const _m = String(req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/);
+          const _s = _m ? db.prepare('SELECT platformuserid FROM sessions WHERE token = ?').get(_m[1].trim()) : null;
+          if (!(_s && _s.platformuserid)) return sendJson(res, 403, { error: 'Your Spark trial has ended, so this account is read-only. Upgrade to the Starter Kit to keep making changes.', code: 'spark_expired' });
+        }
+      } catch (e){ console.warn('[spark] guard lookup failed:', e.message); }
+    }
     // Wave 1.4 — a Verilume team member's view-as session is limited by their role.
     { const _platformDenied = platformViewAsGuard(req, parts); if (_platformDenied) return sendJson(res, 403, { error: _platformDenied }); }
     // ---------------------------------------------------------------
@@ -26154,6 +26186,7 @@ async function handleRequest(req, res) {
         try { record.account.websiteProfileRollup = websiteProfileRollup(record.account.accountId); }
         catch (e){ record.account.websiteProfileRollup = null; }
       }
+      try { record.levelStatus = levelStatusFor(db.prepare('SELECT paidTier, paidTierActivatedAt FROM accounts WHERE accountId = ?').get(accountId)); } catch (e){}
       return sendJson(res, 200, record);
     }
 
@@ -26162,6 +26195,30 @@ async function handleRequest(req, res) {
     // purpose: this is shown to visitors who don't have an account yet.
     if (req.method === 'GET' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'paid-tiers'){
       return sendJson(res, 200, { tiers: PAID_TIERS.filter(t => t.selfServe) });
+    }
+
+    // POST /api/accounts/:id/upgrade-request — the Spark upgrade prompts post here; emails Sales (SALES_NOTIFY_EMAIL). Rate-limited to one per account per hour.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'upgrade-request'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const last = upgradeRequestLast.get(accountId) || 0;
+      if (Date.now() - last < 3600000) return sendJson(res, 200, { ok: true, alreadyRequested: true });
+      upgradeRequestLast.set(accountId, Date.now());
+      const body = await readBody(req);
+      const a = db.prepare('SELECT company, paidTier, paidTierActivatedAt FROM accounts WHERE accountId = ?').get(accountId);
+      const ls = levelStatusFor(a);
+      const salesTo = process.env.SALES_NOTIFY_EMAIL || '';
+      let sent = false;
+      if (salesTo){
+        const r = await sendTransactionalEmail({
+          to: salesTo,
+          subject: `Spark upgrade request: ${a ? a.company : accountId}`,
+          textBody: `${a ? a.company : accountId} (${accountId}) asked to upgrade to the Starter Kit ($99/month) from the ${body.source || 'portal'} prompt. Spark day ${ls ? ls.day : 'n/a'} of ${SPARK_DAYS}${ls && ls.expired ? ' (expired, read-only)' : ''}.`,
+          htmlBody: `<p><strong>${escapeHtmlBasic(a ? a.company : accountId)}</strong> (${escapeHtmlBasic(accountId)}) asked to upgrade to the Starter Kit ($99/month) from the ${escapeHtmlBasic(body.source || 'portal')} prompt.</p><p>Spark day ${ls ? ls.day : 'n/a'} of ${SPARK_DAYS}${ls && ls.expired ? ' (expired, read-only)' : ''}.</p>`
+        });
+        sent = r && r.emailStatus === 'sent';
+      }
+      return sendJson(res, 200, { ok: true, salesNotified: sent });
     }
 
     // POST /api/accounts/:id/tier — activate a paid tier on an EXISTING,
