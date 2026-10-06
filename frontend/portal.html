@@ -7345,6 +7345,21 @@
       </div>
     </div>
 
+    <div class="module open accent-cx" id="orgShapeModule">
+      <div class="module-head" onclick="toggleModule('orgShapeModule')">
+        <span class="modnum">1</span>
+        <div class="titles">
+          <span class="tag">Org Chart</span>
+          <h2>Your org shape</h2>
+        </div>
+        <span class="chevron">▸</span>
+      </div>
+      <div class="module-body">
+        <div id="orgShapePicker"></div>
+        <div id="orgShapeLive" style="margin-top:18px;"></div>
+      </div>
+    </div>
+
     <div class="module open accent-cx" id="teamRosterModule">
       <div class="module-head" onclick="toggleModule('teamRosterModule')">
         <span class="modnum">2</span>
@@ -21243,6 +21258,7 @@ async function loadAccountData(){
       // Plan tranche complexity) via applyOrgModel(), called once state is
       // fully loaded (end of Init).
       state.orgModel = record.account.orgModel || state.orgModel || 'team';
+      state.orgShape = record.account.orgshape || record.account.orgShape || state.orgShape || null;
       // Round 70 — Analytics Integration setup fields, read back so the
       // step re-opens showing the account's already-submitted pathway
       // rather than a blank form every visit.
@@ -61801,10 +61817,156 @@ async function deleteAgreement(id){
   loadAgreements();
 }
 
+
+/* ---------- Org shapes — the assessment's six org chart sketches, built into the Team page ----------
+   Same shapes as assessment.html's ORG_CHARTS. Each box is a slot: the live chart shows who fills it, or an Add button
+   that opens the member form already set to that seat's level, function, kind and manager. */
+const ORG_SHAPE_STYLES = [
+  { key: 'solo', label: 'On My Own', color: '#4F46E5' },
+  { key: 'inhouse', label: 'In-House Team', color: '#0891B2' },
+  { key: 'inhouse-agency', label: 'In-House + Agency', color: '#2563EB' }
+];
+const ORG_SHAPES = [
+  { id: 'solo-generalist', style: 'solo', label: 'Solo Generalist',
+    top: { label: 'You', level: 'CMO', fn: 'Executive', kind: 'internal', cats: [] }, kids: [] },
+  { id: 'solo-fractional', style: 'solo', label: 'Solo + Fractional Help',
+    top: { label: 'You', level: 'CMO', fn: 'Executive', kind: 'internal', cats: [] },
+    kids: [ { label: 'Freelance Design', level: 'Specialist', fn: 'Omni-Channel Creative', kind: 'external', cats: ['Design'] },
+            { label: 'Freelance Media Buy', level: 'Specialist', fn: 'Performance Marketing', kind: 'external', cats: ['Growth and Performance'] } ] },
+  { id: 'inhouse-flat', style: 'inhouse', label: 'Flat Team',
+    top: { label: 'Marketing Lead', level: 'CMO', fn: 'Executive', kind: 'internal', cats: [] },
+    kids: [ { label: 'Content', level: 'Specialist', fn: 'Content Development', kind: 'internal', cats: ['Copywriting'] },
+            { label: 'Paid Media', level: 'Specialist', fn: 'Performance Marketing', kind: 'internal', cats: ['Growth and Performance'] },
+            { label: 'Email/CRM', level: 'Specialist', fn: 'Lifecycle Marketing', kind: 'internal', cats: ['Customer Experiences'] } ] },
+  { id: 'inhouse-functional', style: 'inhouse', label: 'Functional Team',
+    top: { label: 'CMO', level: 'CMO', fn: 'Executive', kind: 'internal', cats: [] },
+    kids: [ { label: 'Brand & Creative', level: 'Director', fn: 'Brand', kind: 'internal', cats: ['Design'] },
+            { label: 'Growth/Paid', level: 'Director', fn: 'Performance Marketing', kind: 'internal', cats: ['Growth and Performance'] },
+            { label: 'Lifecycle', level: 'Director', fn: 'Lifecycle Marketing', kind: 'internal', cats: ['Customer Experiences'] },
+            { label: 'Analytics', level: 'Director', fn: 'Analysis', kind: 'internal', cats: ['Analysts'] } ] },
+  { id: 'hybrid-lean', style: 'inhouse-agency', label: 'Lean In-House + Agency',
+    top: { label: 'Marketing Lead', level: 'CMO', fn: 'Executive', kind: 'internal', cats: [] },
+    kids: [ { label: 'In-House Brand', level: 'Manager', fn: 'Brand', kind: 'internal', cats: ['Design'] },
+            { label: 'Agency: Paid Media', level: 'Manager', fn: 'Performance Marketing', kind: 'external', cats: ['Growth and Performance'] } ] },
+  { id: 'hybrid-embedded', style: 'inhouse-agency', label: 'Embedded Agency Pod',
+    top: { label: 'CMO', level: 'CMO', fn: 'Executive', kind: 'internal', cats: [] },
+    kids: [ { label: 'In-House Strategy', level: 'Director', fn: 'Research', kind: 'internal', cats: ['Strategy'] },
+            { label: 'Agency: Creative', level: 'Manager', fn: 'Omni-Channel Creative', kind: 'external', cats: ['Design'] },
+            { label: 'Agency: Media', level: 'Manager', fn: 'Performance Marketing', kind: 'external', cats: ['Growth and Performance'] } ] }
+];
+let orgShapeStyleTab = null;
+function orgShapeSvg(top, kids, color){
+  const w = 220, h = 150, topW = 110, topH = 28, topX = (w - topW) / 2, topY = 10;
+  const n = Math.max(kids.length, 1);
+  const childW = Math.min(84, Math.floor((w - 20) / n) - 8);
+  const gap = (w - n * childW) / (n + 1);
+  const childY = 96, childH = 30;
+  const fontSize = Math.max(6, Math.min(7.6, childW / 9));
+  const maxChars = Math.max(8, Math.floor(childW / (fontSize * 0.62)));
+  let lines = '';
+  let boxes = `<rect x="${topX}" y="${topY}" width="${topW}" height="${topH}" rx="4" fill="${color}"/><text x="${w/2}" y="${topY + topH/2 + 4}" text-anchor="middle" font-size="10" fill="#fff" font-family="Inter, sans-serif">${top}</text>`;
+  kids.forEach((c, i) => {
+    const cx = gap + i * (childW + gap) + childW / 2;
+    lines += `<line x1="${w/2}" y1="${topY + topH}" x2="${cx}" y2="${childY}" stroke="#D2D2D7" stroke-width="1.5"/>`;
+    const label = c.length > maxChars ? c.slice(0, maxChars - 2) + '…' : c;
+    boxes += `<rect x="${cx - childW/2}" y="${childY}" width="${childW}" height="${childH}" rx="4" fill="#fff" stroke="${color}" stroke-width="1.5"/><text x="${cx}" y="${childY + childH/2 + 4}" text-anchor="middle" font-size="${fontSize}" fill="#2A2618" font-family="Inter, sans-serif">${label}</text>`;
+  });
+  return `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">${lines}${boxes}</svg>`;
+}
+function currentOrgShape(){ return ORG_SHAPES.find(o => o.id === state.orgShape) || null; }
+function renderOrgShapePicker(){
+  const el = document.getElementById('orgShapePicker');
+  if (!el) return;
+  const cur = currentOrgShape();
+  if (!orgShapeStyleTab) orgShapeStyleTab = cur ? cur.style : (state.orgModel === 'solo' ? 'solo' : 'inhouse');
+  const isAdmin = portalViewerIsAdmin !== false;
+  const color = (ORG_SHAPE_STYLES.find(x => x.key === orgShapeStyleTab) || {}).color || '#1E2761';
+  el.innerHTML = `
+    <p class="hint" style="margin:0 0 10px;">Start from the shape that looks most like your team. You can change it any time; nobody is moved or removed.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+      ${ORG_SHAPE_STYLES.map(x => `<button type="button" class="stage-tile${orgShapeStyleTab === x.key ? ' selected' : ''}" style="padding:6px 14px;" onclick="orgShapeStyleTab='${x.key}';renderOrgShapePicker();">${x.label}</button>`).join('')}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,260px));gap:12px;">
+      ${ORG_SHAPES.filter(o => o.style === orgShapeStyleTab).map(o => `
+        <button type="button" ${isAdmin ? '' : 'disabled'} onclick="pickOrgShape('${o.id}')" style="text-align:left;background:#fff;border:${cur && cur.id === o.id ? '2px solid #1E2761' : '1px solid var(--line)'};border-radius:8px;padding:10px;cursor:${isAdmin ? 'pointer' : 'default'};">
+          ${orgShapeSvg(o.top.label, o.kids.map(k => k.label), color)}
+          <div style="font-weight:600;margin-top:6px;">${o.label}${cur && cur.id === o.id ? ' · current' : ''}</div>
+        </button>`).join('')}
+    </div>`;
+}
+async function pickOrgShape(id){
+  state.orgShape = id;
+  const shape = currentOrgShape();
+  if (shape && shape.style === 'solo' && state.orgModel !== 'solo'){ /* shape only guides; the solo/team flag is changed in its own control */ }
+  renderOrgShapePicker();
+  renderOrgShapeLive();
+  if (dataSourceLabel === 'backend'){
+    try { await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/org-shape`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shape: id }) }); } catch (e){}
+  }
+}
+// A person fills a slot when their role label matches the box, or their function and kind match and nobody else took it.
+function orgShapeAssign(shape){
+  const used = new Set();
+  const take = (slot, boss) => {
+    const pool = state.team.filter(m => !used.has(m.id) && m.status !== 'inactive');
+    let hit = pool.find(m => m.roleLabel && m.roleLabel.toLowerCase() === slot.label.toLowerCase());
+    if (!hit) hit = pool.find(m => m.functionGroup === slot.fn && (m.memberKind || 'internal') === slot.kind && (boss || m.level === slot.level));
+    if (hit) used.add(hit.id);
+    return hit || null;
+  };
+  const top = take(shape.top, true);
+  return { top, kids: shape.kids.map(k => take(k, false)) };
+}
+function renderOrgShapeLive(){
+  const el = document.getElementById('orgShapeLive');
+  if (!el) return;
+  const shape = currentOrgShape();
+  if (!shape){ el.innerHTML = ''; return; }
+  const a = orgShapeAssign(shape);
+  const isAdmin = portalViewerIsAdmin !== false;
+  const card = (slot, who, path) => `<div style="background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:150px;max-width:210px;text-align:left;">
+      <div class="hint" style="margin:0;display:block;">${slot.label}${slot.kind === 'external' ? ' · external' : ''}</div>
+      ${who ? `<div style="font-weight:600;color:#1E2761;">${who.name}</div><div class="hint" style="margin:0;display:block;">${who.level}${who.accessExpiresAt ? ' · access ends ' + new Date(who.accessExpiresAt).toLocaleDateString() : ''}</div>`
+            : (isAdmin ? `<button type="button" class="link-btn" style="color:#D08A3E;font-weight:600;" onclick="fillOrgSlot('${path}')">+ Add this seat</button>` : '<div class="hint" style="margin:0;display:block;">Open seat</div>')}
+    </div>`;
+  const filled = (a.top ? 1 : 0) + a.kids.filter(Boolean).length, total = 1 + shape.kids.length;
+  el.innerHTML = `
+    <div class="section-eyebrow" style="margin-bottom:8px;">${shape.label} · ${filled} of ${total} seats filled</div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:0;">
+      ${card(shape.top, a.top, 'top')}
+      ${shape.kids.length ? `<div style="width:1px;height:16px;background:var(--line);"></div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;border-top:1px solid var(--line);padding-top:16px;">
+        ${shape.kids.map((k, i) => card(k, a.kids[i], String(i))).join('')}
+      </div>` : ''}
+    </div>
+    <p class="hint" style="margin:12px 0 0;">People you add that don't match a box still appear in the roster below.</p>`;
+}
+function fillOrgSlot(path){
+  const shape = currentOrgShape();
+  if (!shape) return;
+  const slot = path === 'top' ? shape.top : shape.kids[Number(path)];
+  if (!slot) return;
+  if (typeof cancelEditTeamMember === 'function') try { cancelEditTeamMember(); } catch (e){}
+  resetTeamMemberForm();
+  document.getElementById('teamNewLevel').value = slot.level;
+  onTeamLevelChange();
+  document.getElementById('teamNewFunction').value = slot.fn;
+  document.getElementById('teamNewKind').value = slot.kind;
+  document.getElementById('teamNewRoleLabel').value = slot.label;
+  renderTeamCategoryBoxes(slot.cats);
+  const boss = path === 'top' ? null : orgShapeAssign(shape).top;
+  const rt = document.getElementById('teamNewReportsTo');
+  if (boss && rt) rt.value = boss.id;
+  const mod = document.getElementById('teamAddModule');
+  if (mod){ if (!mod.classList.contains('open')) mod.classList.add('open'); mod.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  const nm = document.getElementById('teamNewName'); if (nm) nm.focus();
+}
+
 function renderTeamRosterView(){
   const el = document.getElementById('teamRosterView');
   if (!el) return;
   if (!state.team.length){
+    renderOrgShapePicker(); renderOrgShapeLive();
     el.innerHTML = `<p class="hint">No team members on this account's chart yet — add the CMO first, then work down through Director, Manager, and Specialist so each new person has someone above them to report to.</p>`;
     return;
   }
@@ -61829,6 +61991,7 @@ function renderTeamRosterView(){
       }).join('')}
     </div>
   `).join('');
+  renderOrgShapePicker(); renderOrgShapeLive();
   const am = document.getElementById('agreementsModule');
   if (am && am.style.display === '' && typeof renderAgreements === 'function') renderAgreements(Object.keys(AGREEMENT_REPORT_LABELS));
 }
