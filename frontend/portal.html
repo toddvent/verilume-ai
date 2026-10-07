@@ -7368,6 +7368,14 @@
       .tf-tile span{font-size:0.75rem;color:var(--muted)}
       #teamAddModule .module-body{max-height:none !important;overflow:visible}
       #teamAddModule .modnum,#teamAddModule .chevron{display:none}
+      .oc-tasks{margin-top:6px;border-top:1px solid var(--line);padding-top:6px;display:flex;flex-direction:column;gap:2px}
+      .oc-tasks-h{font-size:0.6875rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted)}
+      .oc-task{font-size:0.75rem;color:#1E2761;text-decoration:underline;cursor:pointer;line-height:1.35} .oc-task.done{color:var(--muted)}
+      #teamAddModule .tf-checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px 18px}
+      #teamAddModule .tf-checks label,#teamAddModule .toggle-row{display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-weight:500;font-size:0.875rem;color:var(--ink);margin:0;line-height:1.3}
+      #teamAddModule .toggle-row .body,#teamAddModule .toggle-row .body *{display:inline;text-transform:none;letter-spacing:0;font-size:0.875rem;color:var(--ink)} #teamAddModule .toggle-row strong{font-weight:700}
+      #teamAddModule .tf-checks input[type=checkbox],#teamAddModule .toggle-row input[type=checkbox]{flex:0 0 18px;width:18px;height:18px;margin:0}
+      #teamAddModule .toggle-row .body{display:block}
     </style>
     <div id="teamFlowHead"></div>
     <div id="tfSum1"></div>
@@ -7440,7 +7448,7 @@
         </div>
         <div class="field">
           <label>Dashboards</label>
-          <div id="teamNewCategories" style="display:flex;flex-wrap:wrap;gap:6px 16px;"></div>
+          <div id="teamNewCategories" class="tf-checks"></div>
         </div>
         <div class="field">
           <label class="toggle-row" style="border:none;padding:0;align-items:center;">
@@ -7473,7 +7481,7 @@
         <div id="teamExtWrap" style="display:none;">
           <div class="field">
             <label>Creative specialty</label>
-            <div id="teamNewCreative" style="display:flex;flex-wrap:wrap;gap:6px 16px;"></div>
+            <div id="teamNewCreative" class="tf-checks"></div>
           </div>
           <div class="field">
             <label for="agrName">Agency agreement</label>
@@ -7485,7 +7493,7 @@
           </div>
           <div class="field">
             <label>Reports they may see</label>
-            <div id="agrReports" style="display:flex;flex-wrap:wrap;gap:6px 16px;"></div>
+            <div id="agrReports" class="tf-checks"></div>
           </div>
           <div class="field">
             <label for="agrEnds">Agreement ends</label>
@@ -61714,7 +61722,7 @@ function countActiveAdmins(excludeId){
 }
 
 async function addTeamMember(){
-  const starter = tfStarter ? STARTER_ROLES.find(r => r.key === tfStarter) : null;
+  const assignKeys = tfAssignKeys;
   const f = readTeamMemberForm();
   const flag = document.getElementById('teamAddFlag');
   const problem = teamFormProblem(f);
@@ -61746,8 +61754,8 @@ async function addTeamMember(){
   let agrNote = '';
   if (wantsAgreement && persisted){ agrNote = (await postAgreement(localMember.id, agreementBody)) ? ' Agreement saved.' : ' The agreement could not be saved; add it by editing this person.'; }
   resetTeamMemberForm();
-  tfStarter = null;
-  if (starter && persisted){ const ok = await ttbAssignMany(localMember.id, starter.tasks); if (ok) agrNote += ` ${starter.label} setup cards are now theirs.`; }
+  tfAssignKeys = null;
+  if (assignKeys && assignKeys.length && persisted){ const ok = await ttbAssignMany(localMember.id, assignKeys); if (ok) agrNote += ` Their onboarding items are assigned.`; }
   tfShowForm(false);
   if (flag && persisted && tempPasswordOut){
     flag.style.color = 'var(--cx)';
@@ -61955,25 +61963,17 @@ async function pickOrgShape(id){
 function renderOrgShapeLive(){ renderOrgChart(); }
 
 /* ---------- Guided Team Experience: an accordion that only opens the current step ---------- */
-let tfStep = 0, tfSampleShape = null, tfStarter = null, tfSolo = false;
-const STARTER_ROLES = [
-  { key: 'brand', label: 'Brand', position: 'Head of Brand', blurb: 'Logo, fonts, positioning, brand facts', tasks: ['styleAssets', 'competitivePositioning', 'brainFacts'] },
-  { key: 'media', label: 'Media Science', position: 'Media Science Lead', blurb: 'Budgets, performance data, KPIs', tasks: ['marketingBudgetUpload', 'bulkUpload', 'digitalPerformance', 'partnerIntegrations', 'kpiMetrics', 'websiteEngagement', 'leadCounts', 'annualPlan'] },
-  { key: 'voice', label: 'Copywriting Voice', position: 'Content Strategist', blurb: 'Voice, writing samples, keywords', tasks: ['voice', 'brandWritingSamples', 'searchKeywords', 'websiteExamples'] }
-];
-function tfStarterOwner(r){
-  return state.team.find(m => m.status !== 'inactive' && m.roleLabel && posTitle(m.roleLabel).toLowerCase() === posTitle(r.position).toLowerCase()) || null;
-}
+let tfStep = 0, tfSampleShape = null, tfAssignKeys = null;
 function renderTeamFlow(){
   const head = document.getElementById('teamFlowHead');
   if (!head) return;
-  if (!tfStep) tfStep = (currentOrgShape() || state.team.filter(m => m.status !== 'inactive' && m.memberKind !== 'viewer').length > 1) ? 3 : 1;
+  if (!tfStep) tfStep = 1;
   const st = ORG_SHAPE_STYLES.find(x => x.key === orgShapeStyleTab);
   const shape = currentOrgShape();
   const dots = [1, 2, 3].map(n => `<span class="tf-dot ${n < tfStep ? 'done' : n === tfStep ? 'now' : ''}">${n < tfStep ? '&#10003;' : n}</span>${n < 3 ? `<span class="tf-bar ${n < tfStep ? 'done' : ''}"></span>` : ''}`).join('');
   head.innerHTML = `<div class="tf-hero"><div class="tf-eyebrow">Collaboration begins now</div>
     <h2>Build your team, then share the setup</h2>
-    <p>We have a few onboarding items that help your AI Brain train. Create Brand, Media Science and Copywriting Voice roles to get started, or work on your own.</p>
+    <p>We have a few onboarding items that help your AI Brain train. Add Brand, Growth &amp; Performance Marketing and Media Science roles to hand them over, or work on your own.</p>
     <div class="tf-dots">${dots}<span style="margin-left:8px;">Step ${tfStep} of 3</span></div></div>`;
   const show = (id, on) => { const e = document.getElementById(id); if (e) e.style.display = on ? '' : 'none'; };
   show('tfStep1', tfStep === 1); show('tfStep2', tfStep === 2); show('tfStep3', tfStep === 3);
@@ -61996,7 +61996,7 @@ function renderTfSample(){
   const color = (st && st.color) || '#1E2761';
   el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,280px));gap:12px;">
     ${list.map(o => `<button type="button" onclick="tfPickSample('${o.id}')" style="text-align:left;background:#fff;border:${tfSampleShape === o.id ? '2px solid #1E2761' : '1px solid var(--line)'};border-radius:10px;padding:10px;cursor:pointer;">
-      ${orgShapeSvg(o.top.label, o.kids.map(k => k.label), color)}<div style="font-weight:600;margin-top:6px;">${escapeHtml(o.label)}${tfSampleShape === o.id ? ' &#10003;' : ''}</div></button>`).join('')}
+      ${orgShapeSvg(o.top.title || o.top.label, o.kids.map(k => k.title || k.label), color)}<div style="font-weight:600;margin-top:6px;">${escapeHtml(o.label)}${tfSampleShape === o.id ? ' &#10003;' : ''}</div></button>`).join('')}
   </div>`;
 }
 function tfPickSample(id){ tfSampleShape = id; renderTfSample(); }
@@ -62009,27 +62009,7 @@ function tfShowForm(on){ const m = document.getElementById('teamAddModule'); if 
 function renderTfStarters(){
   const el = document.getElementById('tfStarters');
   if (!el) return;
-  const isAdmin = portalViewerIsAdmin !== false;
-  if (tfSolo){ el.innerHTML = `<p class="hint" style="margin:0 0 12px;">No problem. The setup cards below are yours. You can bring in the team any time with Add this seat.</p>`; return; }
-  const assigned = ttb.assign || {};
-  const tiles = STARTER_ROLES.map(r => {
-    const o = tfStarterOwner(r);
-    const n = o ? r.tasks.filter(k => assigned[k] && assigned[k].memberId === o.id).length : 0;
-    return `<button type="button" class="tf-tile${o ? ' filled' : ''}" ${isAdmin ? '' : 'disabled'} onclick="tfStartRole('${r.key}')"><b>${r.label}</b><span>${o ? escapeHtml(o.name) + (n ? ` · ${n} setup card${n === 1 ? '' : 's'}` : ' · tap to hand over their cards') : 'Open seat · ' + escapeHtml(r.blurb)}</span></button>`;
-  }).join('');
-  el.innerHTML = `<div class="tf-start">${tiles}</div><div style="margin:-6px 0 14px;"><button type="button" class="link-btn" onclick="tfSoloGo()">I'll work on these myself</button></div>`;
-}
-function tfSoloGo(){ tfSolo = true; renderTfStarters(); }
-function tfStartRole(key){
-  const r = STARTER_ROLES.find(x => x.key === key);
-  if (!r) return;
-  const owner = tfStarterOwner(r);
-  if (owner){ ttbAssignMany(owner.id, r.tasks).then(ok => { const f = document.getElementById('teamAddFlag'); if (f){ f.style.color = ok ? 'var(--cx)' : 'var(--advocacy)'; f.textContent = ok ? `${owner.name} now owns ${r.tasks.length} ${r.label} setup cards.` : 'That could not be saved. Try again.'; } renderTfStarters(); }); return; }
-  const root = state.team.find(m => m.status !== 'inactive' && m.memberKind === 'internal' && !m.reportsToId && (m.isAdmin || m.roleLabel));
-  openTeamForm({ reportsToId: root ? root.id : '' });
-  const inp = document.getElementById('teamPositionInput');
-  if (inp){ inp.value = r.position; onPositionPicked(); onPositionTyped(); }
-  tfStarter = r.key;
+  el.innerHTML = `<p class="tf-q" style="margin:0 0 12px;">Add the people who can take the onboarding items. Each seat lists what it owns. Fill a seat and those items become theirs. Prefer to do it all yourself? The setup cards below are always yours to complete.</p>`;
 }
 // The chart is the roster: everyone, by who they report to, with open seats from the chosen shape.
 function renderOrgChart(){
@@ -62053,9 +62033,12 @@ function renderOrgChart(){
       else rootOpen.push({ slot: k, path: String(i) });
     });
   }
+  const slotOf = {};
+  if (shape && assign){ if (assign.top) slotOf[assign.top.id] = shape.top; shape.kids.forEach((k, i) => { if (assign.kids[i]) slotOf[assign.kids[i].id] = k; }); }
   const openCard = o => `<div class="oc-node"><div class="oc-card open">
-      <div class="oc-sub">${escapeHtml(o.slot.label)}${o.slot.kind === 'external' ? ' · external' : ''}</div>
-      <div class="oc-sub">Open seat</div>
+      <div class="oc-name" style="color:var(--muted);">${escapeHtml(o.slot.title || o.slot.label)}</div>
+      <div class="oc-sub">Open seat${o.slot.kind === 'external' ? ' · external' : ''}</div>
+      ${tfTaskLinks(null, o.slot)}
       <div class="oc-acts">${isAdmin ? `<button type="button" class="link-btn" style="color:#D08A3E;font-weight:600;" onclick="fillOrgSlot('${o.path}')">+ Add this seat</button>` : ''}</div></div></div>`;
   const kidsOf = id => members.filter(m => m.reportsToId === id);
   const node = (m, depth) => {
@@ -62073,6 +62056,7 @@ function renderOrgChart(){
         <div class="oc-name">${escapeHtml(m.name)}${m.isAdmin ? '<span class="oc-pill">Admin</span>' : ''}</div>
         <div class="oc-sub">${escapeHtml(m.roleLabel ? posTitle(m.roleLabel) : (!m.reportsToId && m.isAdmin ? 'Head of Marketing' : 'Position not set'))}</div>
         <div class="oc-sub">${escapeHtml(m.functionGroup && m.functionGroup !== 'Executive' ? functionLabel(m.functionGroup) : '')}${m.memberKind === 'external' ? ' · external' : ''}${m.accessLevel === 'view' ? ' · view only' : ''}${exp}</div>
+        ${tfTaskLinks(m, slotOf[m.id])}
         <div class="oc-acts">${acts}</div>
       </div>
       ${isAdmin ? `<div class="oc-stub" style="height:6px;"></div><div class="oc-add"><button type="button" class="link-btn" onclick="openTeamForm({reportsToId:'${m.id}'})">+ Add reporting position</button></div>` : ''}
@@ -62107,6 +62091,29 @@ function renderOrgChart(){
   }
   el.innerHTML = tray + head + `<div style="display:flex;gap:24px;justify-content:center;align-items:flex-start;min-width:min-content;">${roots.map(r => node(r, 0)).join('')}${rootOpen.map(openCard).join('')}</div>` + side;
 }
+function tfTaskLinks(m, slot){
+  const A = ttb.assign || {};
+  const items = {};
+  try { [].concat(...ttb.data.setup.steps.map(st => st.items)).forEach(i => { items[i.step] = i; }); } catch (e){}
+  const mine = k => !!(m && A[k] && A[k].memberId === m.id);
+  const others = k => !!(A[k] && A[k].memberId && (!m || A[k].memberId !== m.id));
+  const ids = [];
+  ((slot && slot.tasks) || []).forEach(t => { const T = TF_TASKS[t]; if (T && !T.keys.some(others)) ids.push(t); });
+  if (m) Object.keys(TF_TASKS).forEach(t => { const T = TF_TASKS[t]; if (!ids.includes(t) && T.keys.length && T.keys.every(mine)) ids.push(t); });
+  const known = new Set(); Object.keys(TF_TASKS).forEach(t => TF_TASKS[t].keys.forEach(k => known.add(k)));
+  const extra = m ? Object.keys(A).filter(k => mine(k) && !known.has(k)) : [];
+  const links = ids.map(t => {
+    const T = TF_TASKS[t];
+    const done = T.keys.length && T.keys.every(k => items[k] && items[k].done);
+    return `<a class="oc-task${done ? ' done' : ''}" onclick="tfOpenTask('${T.go ? '@' + T.go : T.keys[0]}')">${done ? '&#10003; ' : ''}${escapeHtml(T.label)}</a>`;
+  }).concat(extra.map(k => `<a class="oc-task" onclick="tfOpenTask('${k}')">${escapeHtml((items[k] && items[k].label) || k)}</a>`));
+  return links.length ? `<div class="oc-tasks"><span class="oc-tasks-h">Onboarding</span>${links.join('')}</div>` : '';
+}
+function tfOpenTask(key){
+  if (key.charAt(0) === '@'){ goToStep(key.slice(1)); window.scrollTo(0, 0); return; }
+  ttb.open = key; ttbRerender();
+  setTimeout(() => { const el = document.querySelector('#aipoMount .ttb-mod.open'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60);
+}
 function openTeamForm(opts){
   if (typeof cancelEditTeamMember === 'function') try { cancelEditTeamMember(); } catch (e){}
   resetTeamMemberForm();
@@ -62122,7 +62129,7 @@ function openTeamForm(opts){
   }
   if (opts.kind && !opts.slot){ document.getElementById('teamNewKind').value = opts.kind; onTeamKindChange(true); }
   populateReportsTo(opts.reportsToId || '');
-  tfStarter = null;
+  tfAssignKeys = (opts.slot && opts.slot.tasks) ? tfSlotKeys(opts.slot) : null;
   const mod = document.getElementById('teamAddModule');
   if (mod){ tfShowForm(true); mod.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
   const nm = document.getElementById('teamNewName'); if (nm) nm.focus();
@@ -62229,7 +62236,35 @@ const ORG_SHAPE_STYLES = [
   { key: 'inhouse', label: 'In-House Team', color: '#0891B2' },
   { key: 'inhouse-agency', label: 'In-House + Agency', color: '#2563EB' }
 ];
+// Onboarding work that each seat owns. keys are Train the Brain card steps; a link opens the first one, assigning covers all of them.
+const TF_TASKS = {
+  budgets: { label: 'Budgets', keys: ['marketingBudgetUpload'] },
+  kpis: { label: 'KPIs', keys: ['kpiMetrics'] },
+  histCampaigns: { label: 'Historical Campaigns', keys: ['yearResults'] },
+  brandBooks: { label: 'Brand Books', keys: ['styleAssets'] },
+  voice: { label: 'Voice', keys: ['voice'] },
+  samples: { label: 'Sample Writings', keys: ['brandWritingSamples'] },
+  voiceContest: { label: 'Voice Contest', keys: [], go: 'voiceContest' },
+  histRevenue: { label: 'Historical Revenue', keys: ['bulkUpload'] },
+  histPerformance: { label: 'Historical Campaign Performance', keys: ['digitalPerformance'] },
+  leadsCalls: { label: 'Leads & Calls', keys: ['leadCounts'] },
+  website: { label: 'Website Performance', keys: ['websiteUsers', 'websiteEngagement'] },
+  partners: { label: 'Partner Integrations', keys: ['partnerIntegrations'] }
+};
+function tfSlotKeys(slot){ const out = []; ((slot && slot.tasks) || []).forEach(t => (TF_TASKS[t] ? TF_TASKS[t].keys : []).forEach(k => out.push(k))); return out; }
 const ORG_SHAPES = [
+  { id: 'start-solo', style: 'solo', label: 'Starting point: just me',
+    top: { label: 'Head of Marketing', title: 'You', level: 'CMO', fn: 'Executive', kind: 'internal', cats: [], tasks: ['budgets', 'kpis', 'histCampaigns', 'brandBooks', 'voice', 'samples', 'histRevenue', 'histPerformance', 'leadsCalls', 'website', 'partners'] }, kids: [] },
+  { id: 'start-inhouse', style: 'inhouse', label: 'Starting point: Admin and three roles',
+    top: { label: 'Head of Marketing', title: 'Admin, acting as Strategy', level: 'CMO', fn: 'Executive', kind: 'internal', cats: [], tasks: ['budgets', 'kpis'] },
+    kids: [ { label: 'Head of Brand', title: 'Brand', level: 'Director', fn: 'Brand', kind: 'internal', cats: ['Design', 'Copywriting'], tasks: ['brandBooks', 'voice', 'samples', 'voiceContest'] },
+            { label: 'Head of Performance Marketing', title: 'Growth & Performance Marketing', level: 'Director', fn: 'Performance Marketing', kind: 'internal', cats: ['Growth and Performance'], tasks: ['histCampaigns'] },
+            { label: 'Media Science Lead', title: 'Media Science', level: 'Director', fn: 'Analysis', kind: 'internal', cats: ['Media Science', 'Analysts'], tasks: ['histRevenue', 'histPerformance', 'leadsCalls', 'website', 'partners'] } ] },
+  { id: 'start-agency', style: 'inhouse-agency', label: 'Starting point: Admin, roles and an agency',
+    top: { label: 'Head of Marketing', title: 'Admin, acting as Strategy', level: 'CMO', fn: 'Executive', kind: 'internal', cats: [], tasks: ['budgets', 'kpis'] },
+    kids: [ { label: 'Head of Brand', title: 'Brand', level: 'Director', fn: 'Brand', kind: 'internal', cats: ['Design', 'Copywriting'], tasks: ['brandBooks', 'voice', 'samples', 'voiceContest'] },
+            { label: 'Agency: Media', title: 'Growth & Performance Marketing (agency)', level: 'Director', fn: 'Performance Marketing', kind: 'external', cats: ['Growth and Performance'], tasks: ['histCampaigns'] },
+            { label: 'Media Science Lead', title: 'Media Science', level: 'Director', fn: 'Analysis', kind: 'internal', cats: ['Media Science', 'Analysts'], tasks: ['histRevenue', 'histPerformance', 'leadsCalls', 'website', 'partners'] } ] },
   { id: 'solo-generalist', style: 'solo', label: 'Solo Generalist',
     top: { label: 'You', level: 'CMO', fn: 'Executive', kind: 'internal', cats: [] }, kids: [] },
   { id: 'solo-fractional', style: 'solo', label: 'Solo + Fractional Help',
@@ -62281,7 +62316,7 @@ function currentOrgShape(){ return ORG_SHAPES.find(o => o.id === state.orgShape)
 function orgShapeAssign(shape){
   const used = new Set();
   const take = (slot, boss) => {
-    const pool = state.team.filter(m => !used.has(m.id) && m.status !== 'inactive' && m.memberKind !== 'viewer');
+    const pool = state.team.filter(m => !used.has(m.id) && m.status !== 'inactive' && m.memberKind !== 'viewer' && !(m.memberKind === 'external' && !m.reportsToId) && !(m.memberKind !== 'external' && !m.isAdmin && !m.reportsToId && !m.roleLabel && !String(m.id).startsWith('local-team-')));
     let hit = pool.find(m => m.roleLabel && posTitle(m.roleLabel).toLowerCase() === posTitle(slot.label).toLowerCase());
     if (!hit) hit = pool.find(m => m.functionGroup === slot.fn && (m.memberKind || 'internal') === slot.kind && (boss || m.level === slot.level));
     if (hit) used.add(hit.id);
