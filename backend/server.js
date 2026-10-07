@@ -18699,7 +18699,7 @@ function adCopyContextBlock(accountId, question){
 // AI Thoughts is an extension of voice: the same how-to text the portal drawer shows is available to the voice agent, so a spoken
 // "how do I confirm a test result?" gets the same answer as the thought bubble. Keep in step with PU_THOUGHTS in portal.html.
 const PRODUCT_GUIDE = [
-  { letter: "AO", label: "Test Registry: getting started", keywords: ["test registry", "new test", "a/b", "variant", "lift", "p-value", "significance", "kpi", "hypothesis", "media science test"], text: "The Test Registry holds every test in one place: creative elements, offer, audience, frequency, channel, timing, landing page and market tests. To start, choose + New test, pick what you are testing, name it, choose one KPI and the smallest lift worth detecting. Enter impressions and conversions for each variant, or import a results CSV, and the readout shows each variant’s lift, its p-value and whether there is enough volume to call it. Link the test to a campaign if it belongs to one. A test only teaches the Brain after a person confirms it at the bottom of the test (see Confirming a result)." },
+  { letter: "AO", label: "Test Registry: getting started", keywords: ["test registry", "new test", "a/b", "variant", "lift", "p-value", "significance", "kpi", "hypothesis", "media science test"], text: "The Test Registry holds every test in one place: creative elements, offer, audience, frequency, channel, timing, landing page and market tests. To start an A/B test, describe the test you want in your own words at the top of the page and Verilume drafts it, or asks what it still needs; you then check the draft and save it. You can also choose + New test by hand, pick what you are testing, name it, choose one KPI and the smallest lift worth detecting. Enter impressions and conversions for each variant, or import a results CSV, and the readout shows each variant’s lift, its p-value and whether there is enough volume to call it. Link the test to a campaign if it belongs to one. A test only teaches the Brain after a person confirms it at the bottom of the test (see Confirming a result)." },
   { letter: "AP", label: "Match market tracking", keywords: ["match market", "test market", "control market", "holdout", "weekly", "difference", "pre period", "post period", "geo test", "media start"], text: "Plan the test in Geographic Optimization, then choose Save this plan to the Test Registry. That creates a draft with the test and control markets, channel, weeks and planned spend. When media starts, enter the start date, the spend in the test markets, and weekly bookings for all test markets added together and all control markets added together. You can type them or import a CSV with the columns week, test and control. You need at least 3 weeks before and 3 after the start date; 8 or more before is better. The readout compares the test-to-control ratio after media started with the ratio before, so season and market size cancel out. It shows the lift, its 95% range, extra bookings and cost per extra booking. A lift is only called clear when even the low end of the range is above zero." },
   { letter: "AQ", label: "Confirming a result and teaching the Brain", keywords: ["confirm", "confirmed", "teach the brain", "lesson", "ship", "kill", "iterate", "plan change", "accept", "dismiss", "campaign results"], text: "Confirming is a person’s decision, never automatic. Choose ship, kill or iterate, edit the lesson in your own words, and confirm. Verilume then saves the result with the linked campaign (or with the account when no campaign is linked), adds a Brain lesson, and proposes plan changes. An admin’s lesson is active at once; a lesson from anyone else waits for an admin to approve it. Proposed changes can be rolling the channel out to similar markets with an estimated cost, retesting, extending the test or adding markets, keeping it in the test markets, or stopping. Nothing in the plan changes until a person accepts each one. Accepted changes appear on the annual plan recommendation and in what Ask Verilume says, and every confirmed result stays on its campaign as history." },
   { letter: "AR", label: "Trade Territories", keywords: ["trade territories", "reseller", "agency", "storefront", "franchise", "territory", "radius", "local", "regional", "national", "trade file", "agency code"], text: "Trade Territories shows where each reseller’s guests actually live. Send a trade file on its own, separate from the booking file, with Agency Code, Agency Name, the reseller address columns and Guest Postal Code. A reseller is local when most of its guests are within 50 miles, regional when its typical guest is within 300 miles, national when it sells everywhere, and thin when it has under 10 U.S. bookings. A local reseller’s territory is the radius that holds 80% of its guests, capped at 100 miles for local and 300 for regional. Select a reseller to see the markets inside its territory, and download the list as a CSV. Territories change slowly, so refresh the file when resellers or territories change rather than on a schedule." },
@@ -18735,6 +18735,75 @@ function brainDumpContextBlock(accountId, question){
   const news = (d.external && Array.isArray(d.external.news)) ? d.external.news : [];
   if (news.length) lines.push('- News from outside (external sources, not this account\'s data): ' + news.slice(0, 6).map(x => `${x.title}${x.label ? ' (' + x.label + ')' : ''}`).join('; '));
   return lines.join('\n');
+}
+// ---- Test Registry: generative A/B test drafting (2026-10-07) ----
+const AB_ELEMENTS = {
+  headline: 'Headline', body: 'Body copy', cta: 'Call to action', image: 'Image or visual', format: 'Video or format',
+  offer: 'Offer or price', landing: 'Landing page', timing: 'Flight, day-part or send time'
+};
+const AB_KPIS = ['Conversion rate', 'Lead rate', 'Booking rate', 'Click-through rate', 'Visit rate', 'Call rate'];
+const AB_DRAFT_SCHEMA = {
+  type: 'object',
+  properties: {
+    kind: { type: 'string', enum: ['proposal', 'questions', 'redirect'], description: 'proposal when you have enough to draft the test; questions when something essential is missing; redirect when the request is not a one-change A/B test.' },
+    message: { type: 'string', description: 'One or two plain sentences to the person. For a proposal, say what you built and the one assumption that matters most. For questions, say why you are asking. For a redirect, say what kind of test it is and where to build it.' },
+    questions: { type: 'array', items: { type: 'string' }, description: 'At most two short questions, only when kind is questions.' },
+    proposal: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' }, element: { type: 'string', enum: Object.keys(AB_ELEMENTS) },
+        hypothesis: { type: 'string', description: 'We believe X will lift Y because Z.' },
+        primaryKpi: { type: 'string', enum: AB_KPIS }, mdePct: { type: 'number', description: 'Smallest lift worth detecting, in percent. Default 10.' },
+        controlLabel: { type: 'string' }, variantLabel: { type: 'string' },
+        controlDetail: { type: 'string', description: 'What the control is (the current version).' }, variantDetail: { type: 'string', description: 'What the one change is.' },
+        campaignId: { type: 'string', description: 'A campaign id from the list only if the person clearly named it; otherwise empty.' },
+        assumptions: { type: 'array', items: { type: 'string' }, description: 'Up to three things you assumed that the person should check.' }
+      }
+    }
+  },
+  required: ['kind', 'message']
+};
+function abKeywordElement(text){
+  const t = String(text || '').toLowerCase();
+  const rules = [['headline', /headline|title line/], ['cta', /call to action|\bcta\b|button/], ['image', /image|photo|picture|visual|creative asset|hero/], ['format', /video|carousel|format|static/], ['offer', /offer|price|pricing|discount|promo|% off|bundle|deal/], ['landing', /landing|page|website|web page|url/], ['timing', /timing|send time|day.?part|time of day|day of week|weekday|flight/], ['body', /body|copy|message|wording|text/]];
+  const hit = rules.find(r => r[1].test(t)); return hit ? hit[0] : '';
+}
+async function draftAbTest(accountId, statement, history){
+  const person = [...history.filter(h => h.role === 'person').map(h => h.text), statement].join(' ');
+  const campaigns = db.prepare("SELECT id, name FROM campaigns WHERE accountId = ? AND COALESCE(cancelled,0) = 0 AND COALESCE(isAdHoc,0) = 0 ORDER BY createdAt DESC LIMIT 25").all(accountId).map(c => ({ id: c.id, name: c.name }));
+  const account = db.prepare('SELECT company FROM accounts WHERE accountId = ?').get(accountId) || {};
+  if (!process.env.ANTHROPIC_API_KEY){
+    if (/market|dma|holdout|geo/i.test(person)) return { kind: 'redirect', message: 'That sounds like a market holdout, which is a match market test rather than an A/B test. Use the Match Market Builder to pick the markets, then record it here with the type DMA match market.', questions: [], proposal: null };
+    const el = abKeywordElement(person);
+    if (!el) return { kind: 'questions', message: 'I need to know the one thing you want to change.', questions: ['What is the single thing that differs between the two versions: the headline, body copy, call to action, image, format, offer, or landing page?'], proposal: null };
+    const label = AB_ELEMENTS[el];
+    return { kind: 'proposal', message: `I drafted a simple A/B test on the ${label.toLowerCase()}. Check the assumptions, then open it in the editor.`, questions: [], proposal: { name: `${label} A/B test`, element: el, hypothesis: `We believe a different ${label.toLowerCase()} will lift conversion because it matches what the audience wants. (Edit this.)`, primaryKpi: el === 'headline' || el === 'image' || el === 'format' ? 'Click-through rate' : 'Conversion rate', mdePct: 10, controlLabel: 'Control', variantLabel: 'Variant B', controlDetail: 'The version running today.', variantDetail: statement.slice(0, 200), campaignId: '', assumptions: ['Both versions run at the same time to the same audience.', 'Only the one element differs.'] } };
+  }
+  const prompt = `You help a marketer set up an A/B test in a Test Registry. An A/B test here means exactly one change between a control (the current version) and one variant, run at the same time to the same audience.
+
+Account: ${account.company || accountId}.
+Elements you may test: ${Object.entries(AB_ELEMENTS).map(([k, v]) => `${k} (${v})`).join(', ')}.
+Primary KPIs you may choose: ${AB_KPIS.join(', ')}. Pick the one that fits the element: click-through rate for headline, image or format; conversion, lead or booking rate for offer, landing page and call to action.
+Campaigns on file (use an id only if the person clearly named one): ${campaigns.length ? campaigns.map(c => `${c.id} = ${c.name}`).join('; ') : 'none'}.
+
+Rules:
+- If the person gives you enough to name the one thing that changes and what success means, return kind "proposal". Fill every field with sensible defaults (smallest lift worth detecting 10 percent unless they say otherwise) and list up to three assumptions for them to check. Do not invent numbers about their account.
+- If the one change or the goal is missing or ambiguous, return kind "questions" with at most two short, specific questions. Ask only what you cannot reasonably default. Never ask more than two rounds in total; after that, propose with stated assumptions.
+- If the request is really a market holdout or geographic test, an audience test, a frequency test, a channel substitution, or changes several things at once, return kind "redirect" and say in a sentence what kind of test it is and that it is built with the full editor (New test, then pick it under What are you testing?). Do not draft it.
+- Plain language, no jargon, no markdown, no emojis. Do not promise results.
+
+Conversation so far:
+${history.map(h => `${h.role === 'brain' ? 'Brain' : 'Person'}: ${h.text}`).join('\n') || '(none)'}
+Person now says: ${statement}`;
+  const out = await callClaudeForJSON({ model: MODEL_STANDARD, maxTokens: 900, content: prompt, toolName: 'submit_ab_test_draft', toolDescription: 'Submit an A/B test proposal, up to two questions, or a redirect.', schema: AB_DRAFT_SCHEMA, timeoutMs: 40000 });
+  const kind = ['proposal', 'questions', 'redirect'].includes(out.kind) ? out.kind : 'questions';
+  const res = { kind, message: String(out.message || '').slice(0, 600), questions: Array.isArray(out.questions) ? out.questions.filter(q => typeof q === 'string').slice(0, 2) : [], proposal: null };
+  if (kind === 'proposal' && out.proposal && AB_ELEMENTS[out.proposal.element]){
+    const p = out.proposal;
+    res.proposal = { name: String(p.name || (AB_ELEMENTS[p.element] + ' A/B test')).slice(0, 160), element: p.element, hypothesis: String(p.hypothesis || '').slice(0, 600), primaryKpi: AB_KPIS.includes(p.primaryKpi) ? p.primaryKpi : 'Conversion rate', mdePct: Number.isFinite(Number(p.mdePct)) && Number(p.mdePct) > 0 ? Math.min(100, Number(p.mdePct)) : 10, controlLabel: String(p.controlLabel || 'Control').slice(0, 80), variantLabel: String(p.variantLabel || 'Variant B').slice(0, 80), controlDetail: String(p.controlDetail || '').slice(0, 300), variantDetail: String(p.variantDetail || '').slice(0, 300), campaignId: campaigns.some(c => c.id === p.campaignId) ? p.campaignId : '', assumptions: Array.isArray(p.assumptions) ? p.assumptions.filter(a => typeof a === 'string').slice(0, 3).map(a => a.slice(0, 200)) : [] };
+  } else if (kind === 'proposal'){ res.kind = 'questions'; res.questions = res.questions.length ? res.questions : ['What is the one thing you want to change between the two versions?']; }
+  if (res.kind === 'questions' && !res.questions.length) res.questions = ['Can you say a little more about what you want to test and what you hope will improve?'];
+  return res;
 }
 function teamContextBlock(accountId, question){
   let mem = []; try { mem = db.prepare('SELECT * FROM team_members WHERE accountId = ?').all(accountId); } catch (e){ return ''; }
@@ -42875,6 +42944,18 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
 
     // Media Science Test Registry. One table for every test type (creative A/B, multi-variant, offer/audience, channel substitution, DMA match market)
     // so the Brain and analysts read the same keys. Variants carry allocation, impressions and conversions; the statistics are computed in the portal.
+    // 2026-10-07 — "Describe the test you want": the person writes a statement, the Brain proposes an A/B test or asks what it still needs. A/B only
+    // (one change, a control and one variant). It never saves anything; the person opens the proposal in the editor and saves it themselves.
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'media-tests' && parts[4] === 'draft'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const statement = String(body.statement || '').trim().slice(0, 1500);
+      if (statement.length < 6) return sendJson(res, 400, { error: 'Write a sentence about the test you want.' });
+      const history = (Array.isArray(body.history) ? body.history : []).slice(-8).map(h => ({ role: h && h.role === 'brain' ? 'brain' : 'person', text: String((h && h.text) || '').slice(0, 800) }));
+      try { return sendJson(res, 200, await draftAbTest(accountId, statement, history)); }
+      catch (e){ console.warn('[media-tests/draft] failed:', e.message); return sendJson(res, 500, { error: 'Could not draft the test just now. You can still build one by hand.' }); }
+    }
     if (parts.length >= 4 && parts.length <= 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'media-tests'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
