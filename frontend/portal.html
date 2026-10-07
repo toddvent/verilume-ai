@@ -1596,6 +1596,7 @@
   .stat-card .strat-sub{font-size:0.6875rem;color:var(--muted);margin-top:8px;}
   .bd-chip{display:inline-block;font-size:0.75rem;font-weight:700;border:1px solid var(--line-hairline);border-radius:980px;padding:2px 10px;}
   .bd-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start;} .bd-main{min-width:0;} .bd-side{position:sticky;top:16px;} .bd-side .strat-card{margin-bottom:0;} .bd-greet-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:-16px 0 16px;} .bd-g-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line-hairline);} .bd-g-row .strat-sub{margin:2px 0 0;} @media (max-width:980px){.bd-layout{grid-template-columns:1fr;} .bd-side{position:static;}}
+  .tr-ai textarea{width:100%;box-sizing:border-box;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--white);} .tr-ai-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;} .tr-ai-msg{padding:8px 0;font-size:0.875rem;line-height:1.5;border-top:1px solid var(--line-hairline);} .tr-ai-msg:first-child{border-top:0;} .tr-ai-msg.me{color:var(--muted);} .tr-ai-q{margin:6px 0 10px;padding-left:20px;font-size:0.875rem;} .tr-ai-prop{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:10px 0;background:var(--paper-dim);} .tr-ai-vs{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:6px 0;} @media (max-width:640px){.tr-ai-vs{grid-template-columns:1fr;}}
   .strat-card{grid-column:1/-1;background:var(--white);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-bottom:20px;box-shadow:var(--shadow-sm);}
   .strat-card h2{margin:0;font-size:1.0625rem;}
   .strat-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;}
@@ -31054,7 +31055,7 @@ function trPickElement(k){
   trRender();
 }
 const TR_KPIS = ['Conversion rate', 'Lead rate', 'Booking rate', 'Click-through rate', 'Visit rate', 'Call rate'];
-let tr = { tests: [], loaded: false, err: '', open: null, draft: null, saving: false, msg: '' };
+let tr = { tests: [], loaded: false, err: '', open: null, draft: null, saving: false, msg: '', ai: { text: '', reply: '', history: [], busy: false, result: null, err: '', rounds: 0 } };
 function trUrl(id){ return `${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/media-tests${id ? '/' + encodeURIComponent(id) : ''}`; }
 async function renderTestRegistryStep(){
   const el = document.getElementById('testRegistryBody'); if (!el) return;
@@ -31231,9 +31232,63 @@ function trRender(){
   if (tr.err && !tr.loaded){ el.innerHTML = `<div class="strat-card"><p class="strat-empty">${escapeHtml(tr.err)}</p></div>`; return; }
   if (tr.draft){ el.innerHTML = trEditorHtml(); trRefreshReadout(); return; }
   const rows = tr.tests;
-  el.innerHTML = `<div class="adlib-bar"><button type="button" class="btn-primary" onclick="trNew()">+ New test</button><button type="button" class="btn-ghost" onclick="trExport(null)">Export registry CSV</button></div>${tr.msg ? `<div class="hint" style="margin:0 0 10px;">${escapeHtml(tr.msg)}</div>` : ''}` + (rows.length ? rows.map(t => `<div class="adlib-card" style="cursor:pointer;" onclick="trOpen('${escapeHtml(t.id)}')"><div class="adlib-meta"><span class="adlib-pill ${t.status === 'complete' ? 'ok' : ''}">${escapeHtml(t.status)}</span><strong>${escapeHtml(t.name)}</strong> &middot; ${escapeHtml(((TR_ELEMENTS[(t.details || {}).element] || {}).label) || TR_TYPES[t.testType] || t.testType)}${t.primaryKpi ? ` &middot; ${escapeHtml(t.primaryKpi)}` : ''}<span class="adlib-camp">${t.confirmedAt ? 'Confirmed &middot; ' : ''}${t.decision ? 'Decision: ' + escapeHtml(t.decision) : (t.startDate ? escapeHtml(t.startDate) : '')}</span></div>${t.hypothesis ? `<div class="adlib-copy">${escapeHtml(t.hypothesis)}</div>` : ''}</div>`).join('') : '<div class="strat-card"><p class="strat-empty">No tests yet. Start with a creative A/B: two variants, one KPI, and the lift worth detecting.</p></div>');
+  el.innerHTML = `<div id="trAiMount">${trAiHtml()}</div><div class="adlib-bar"><button type="button" class="btn-ghost" onclick="trNew()">+ New test by hand</button><button type="button" class="btn-ghost" onclick="trExport(null)">Export registry CSV</button></div>${tr.msg ? `<div class="hint" style="margin:0 0 10px;">${escapeHtml(tr.msg)}</div>` : ''}` + (rows.length ? rows.map(t => `<div class="adlib-card" style="cursor:pointer;" onclick="trOpen('${escapeHtml(t.id)}')"><div class="adlib-meta"><span class="adlib-pill ${t.status === 'complete' ? 'ok' : ''}">${escapeHtml(t.status)}</span><strong>${escapeHtml(t.name)}</strong> &middot; ${escapeHtml(((TR_ELEMENTS[(t.details || {}).element] || {}).label) || TR_TYPES[t.testType] || t.testType)}${t.primaryKpi ? ` &middot; ${escapeHtml(t.primaryKpi)}` : ''}<span class="adlib-camp">${t.confirmedAt ? 'Confirmed &middot; ' : ''}${t.decision ? 'Decision: ' + escapeHtml(t.decision) : (t.startDate ? escapeHtml(t.startDate) : '')}</span></div>${t.hypothesis ? `<div class="adlib-copy">${escapeHtml(t.hypothesis)}</div>` : ''}</div>`).join('') : '<div class="strat-card"><p class="strat-empty">No tests yet. Start with a creative A/B: two variants, one KPI, and the lift worth detecting.</p></div>');
 }
-function trNew(){ tr.cf = null; tr.draft = trBlank(); tr.msg = ''; trRender(); }
+
+// ---- Describe the test you want (2026-10-07): the person writes a statement, the Brain drafts an A/B test or asks what it needs. A/B only. Nothing is saved until the person opens the draft and saves it. ----
+const TR_AI_EXAMPLES = ['Test a shorter headline against our current one on the summer sale ads', 'See whether "Book now" or "See dates" gets more clicks on the button', 'Compare a 10% discount with a free upgrade on the landing page'];
+function trAiHtml(){
+  const a = tr.ai, res = a.result;
+  const thread = a.history.map(h => `<div class="tr-ai-msg ${h.role === 'brain' ? 'brain' : 'me'}"><strong>${h.role === 'brain' ? 'Verilume' : 'You'}</strong><div>${escapeHtml(h.text)}</div></div>`).join('');
+  let body = '';
+  if (res && res.kind === 'proposal' && res.proposal){
+    const p = res.proposal, el = TR_ELEMENTS[p.element] || {};
+    body = `<div class="tr-ai-prop"><div class="strat-chart-label" style="margin:0 0 6px;">Proposed A/B test</div><h3 style="margin:0 0 4px;">${escapeHtml(p.name)}</h3>
+      <div class="tr-ai-vs"><div><span class="hint" style="margin:0;">Control</span><div><strong>${escapeHtml(p.controlLabel)}</strong></div><div class="hint" style="margin:2px 0 0;">${escapeHtml(p.controlDetail)}</div></div><div><span class="hint" style="margin:0;">Only change: ${escapeHtml(el.label || p.element)}</span><div><strong>${escapeHtml(p.variantLabel)}</strong></div><div class="hint" style="margin:2px 0 0;">${escapeHtml(p.variantDetail)}</div></div></div>
+      <p style="margin:8px 0 4px;"><strong>Hypothesis.</strong> ${escapeHtml(p.hypothesis)}</p>
+      <p class="hint" style="margin:0 0 6px;">Measured on ${escapeHtml(p.primaryKpi)}. Smallest lift worth detecting: ${escapeHtml(String(p.mdePct))}%.</p>
+      ${p.assumptions.length ? `<div class="hint" style="margin:0 0 8px;">Check these: ${p.assumptions.map(escapeHtml).join(' ')}</div>` : ''}
+      <div class="adlib-act"><button type="button" class="btn-primary" onclick="trAiOpen()">Open in the editor</button><button type="button" class="btn-ghost" onclick="document.getElementById('trAiReply').focus()">Change something</button><button type="button" class="btn-ghost" onclick="trAiReset()">Start over</button></div></div>`;
+  }
+  const asking = res && (res.kind === 'questions' || res.kind === 'redirect' || res.kind === 'proposal');
+  const qs = res && res.kind === 'questions' ? `<ul class="tr-ai-q">${res.questions.map(q => `<li>${escapeHtml(q)}</li>`).join('')}</ul>` : '';
+  const input = !res
+    ? `<textarea id="trAiText" rows="3" placeholder="Describe the test you want in your own words." oninput="tr.ai.text=this.value">${escapeHtml(a.text)}</textarea>
+       <div class="tr-ai-chips">${TR_AI_EXAMPLES.map((x, i) => `<button type="button" class="strat-chip" onclick="trAiExample(${i})">${escapeHtml(x)}</button>`).join('')}</div>
+       <div class="adlib-act" style="margin-top:10px;"><button type="button" class="btn-primary" onclick="trAiSend()"${a.busy ? ' disabled' : ''}>${a.busy ? 'Thinking…' : 'Draft my test'}</button><button type="button" class="btn-ghost" onclick="trNew()">Build one by hand</button><span class="hint">${escapeHtml(a.err)}</span></div>`
+    : `${thread}${qs}${res.kind === 'redirect' ? `<div class="adlib-act" style="margin-top:8px;"><button type="button" class="btn-primary" onclick="trNew()">Open the full editor</button><button type="button" class="btn-ghost" onclick="trAiReset()">Start over</button></div>` : ''}
+       ${body}
+       ${res.kind !== 'redirect' ? `<textarea id="trAiReply" rows="2" placeholder="${res.kind === 'questions' ? 'Your answer' : 'Want something different? Say what to change.'}" oninput="tr.ai.reply=this.value">${escapeHtml(a.reply)}</textarea><div class="adlib-act" style="margin-top:8px;"><button type="button" class="btn-ghost" onclick="trAiSend()"${a.busy ? ' disabled' : ''}>${a.busy ? 'Thinking…' : 'Send'}</button><span class="hint">${escapeHtml(a.err)}</span></div>` : ''}`;
+  return `<div class="strat-card tr-ai"><div class="strat-head"><h2>Describe the test you want</h2></div>
+    <p class="strat-sub" style="margin:0 0 10px;">For A/B tests: one change, a control and one variant. Say what you want to learn. Verilume will draft the test, or ask what it still needs. Nothing is saved until you open the draft and save it.</p>${input}</div>`;
+}
+function trAiRerender(){ const el = document.getElementById('trAiMount'); if (el) el.innerHTML = trAiHtml(); }
+function trAiExample(i){ tr.ai.text = TR_AI_EXAMPLES[i]; trAiRerender(); const t = document.getElementById('trAiText'); if (t) t.focus(); }
+function trAiReset(){ tr.ai = { text: '', reply: '', history: [], busy: false, result: null, err: '', rounds: 0 }; trAiRerender(); }
+async function trAiSend(){
+  const a = tr.ai; if (a.busy) return;
+  const text = (a.result ? a.reply : a.text).trim();
+  if (text.length < 6){ a.err = 'Write a sentence first.'; trAiRerender(); return; }
+  a.busy = true; a.err = ''; trAiRerender();
+  try {
+    const r = await authedFetch(trUrl('draft'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ statement: text, history: a.history }) });
+    const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || String(r.status));
+    a.history.push({ role: 'person', text });
+    a.history.push({ role: 'brain', text: [j.message].concat(j.kind === 'questions' ? j.questions : []).filter(Boolean).join(' ') });
+    a.result = j; a.reply = ''; a.rounds++; a.busy = false;
+  } catch (e){ a.busy = false; a.err = e.message || 'Could not draft that just now.'; }
+  trAiRerender();
+}
+function trAiOpen(){
+  const res = tr.ai.result; if (!res || !res.proposal) return; const p = res.proposal, e = TR_ELEMENTS[p.element]; if (!e) return;
+  const d = trBlank(); const k = e.key || 'setting';
+  d.name = p.name; d.hypothesis = p.hypothesis; d.testType = e.type; d.primaryKpi = p.primaryKpi; d.mdePct = p.mdePct; d.campaignId = p.campaignId || '';
+  d.details = { element: p.element, drafted: true, controlNote: p.controlDetail, variantNote: p.variantDetail };
+  d.variants = [{ key: 'control', label: p.controlLabel, assetId: '', setting: '', allocationPct: 50, impressions: '', conversions: '' }, { key: 'b', label: p.variantLabel, assetId: '', setting: '', allocationPct: 50, impressions: '', conversions: '' }];
+  d.variants[0][k] = p.controlDetail; d.variants[1][k] = p.variantDetail;
+  tr.pick = false; tr.cf = null; tr.draft = d; tr.msg = 'Drafted from your description. Check it, then save.'; trRender();
+}
+function trNew(){ tr.pick = false; tr.cf = null; tr.draft = trBlank(); tr.msg = ''; trRender(); }
 function trOpen(id){ const t = tr.tests.find(x => x.id === id); if (!t) return; tr.cf = null; tr.draft = JSON.parse(JSON.stringify(t)); tr.msg = ''; trRender(); }
 function trClose(){ tr.draft = null; trRender(); }
 function trSet(k, v){ tr.draft[k] = v; if (k === 'testType') trRender(); else trRefreshReadout(); }
@@ -31244,6 +31299,7 @@ function trDelVar(i){ if (tr.draft.variants.length <= 2) return; tr.draft.varian
 function trRefreshReadout(){ const el = document.getElementById('trReadout'); if (el && tr.draft) el.innerHTML = trReadoutHtml(tr.draft); }
 function trElementPickerHtml(t){
   const cur = (t.details || {}).element || '';
+  if ((t.details || {}).drafted && !tr.pick && TR_ELEMENTS[cur]) return `<p style="margin:0;"><strong>${escapeHtml(TR_ELEMENTS[cur].label)}</strong> <a class="flink" onclick="tr.pick=true;trRender()">Change what you are testing</a></p><p class="hint" style="margin:6px 0 0;">${escapeHtml(TR_ELEMENTS[cur].tip || '')}</p>`;
   const groups = {}; Object.keys(TR_ELEMENTS).forEach(k => { (groups[TR_ELEMENTS[k].g] = groups[TR_ELEMENTS[k].g] || []).push(k); });
   const chips = Object.keys(groups).map(g => `<div style="margin:0 0 6px;"><span class="hint" style="display:inline-block;min-width:84px;font-size:0.75rem;font-family:inherit;">${escapeHtml(g)}</span>${groups[g].map(k => `<button type="button" class="${k === cur ? 'btn-primary' : 'btn-ghost'}" style="padding:4px 12px;margin:0 6px 4px 0;font-size:0.8125rem;" onclick="trPickElement('${k}')">${escapeHtml(TR_ELEMENTS[k].label)}</button>`).join('')}</div>`).join('');
   const e = TR_ELEMENTS[cur];
@@ -31266,11 +31322,11 @@ function trEditorHtml(){
     <div class="tr-grid" style="margin-top:14px;">${f('Test name', inp('name', 'text', 'e.g. Polar hero image vs. ship image'))}${f('Type', sel('testType', typeOpts))}${f('Primary KPI', sel('primaryKpi', kpiOpts))}${f('Smallest lift worth detecting (%)', inp('mdePct', 'number'))}${f('Campaign', sel('campaignId', campOpts))}${f('Status', sel('status', stOpts))}${f('Start date', inp('startDate', 'date'))}${f('End date', inp('endDate', 'date'))}</div>
     <label class="tr-f" style="margin-top:10px;"><span>Hypothesis</span><textarea rows="2" oninput="trSet('hypothesis', this.value)" placeholder="We believe X will lift Y because Z.">${escapeHtml(t.hypothesis || '')}</textarea></label>
     <h3 style="margin:16px 0 8px;">${mm ? 'Markets and weekly bookings ' + aiThoughtIconHtml('AP') : 'Variants and results'}</h3>${vars}
-    <h3 style="margin:16px 0 8px;">Readout</h3><div id="trReadout"></div>
+    ${t.id ? `    <h3 style="margin:16px 0 8px;">Readout</h3><div id="trReadout"></div>
     <h3 style="margin:16px 0 8px;">Decision</h3><div class="tr-grid">${f('Decision', sel('decision', dOpts))}</div>
-    <label class="tr-f" style="margin-top:10px;"><span>What we learned</span><textarea rows="3" oninput="trSet('learning', this.value)" placeholder="What changed, what held, what to test next.">${escapeHtml(t.learning || '')}</textarea></label>
+    <label class="tr-f" style="margin-top:10px;"><span>What we learned</span><textarea rows="3" oninput="trSet('learning', this.value)" placeholder="What changed, what held, what to test next.">${escapeHtml(t.learning || '')}</textarea></label>` : '<p class="hint" style="margin:14px 0 0;">After you save, you can enter results, read the statistics, record a decision and confirm what was learned.</p>'}
     <div class="adlib-act" style="margin-top:14px;"><button type="button" class="btn-primary" onclick="trSave()"${tr.saving ? ' disabled' : ''}>${tr.saving ? 'Saving…' : 'Save test'}</button>${t.id ? '<button type="button" class="btn-ghost" onclick="trExport(tr.draft.id)">Export this test CSV</button><button type="button" class="btn-ghost" onclick="trDelete()">Delete</button>' : ''}<span class="hint" id="trSaveNote">${escapeHtml(tr.msg)}</span></div>
-    <h3 style="margin:20px 0 8px;">Confirm the result ${aiThoughtIconHtml('AQ')}</h3><div id="trConfirm">${trConfirmHtml(t)}</div></div>`;
+    ${t.id ? `<h3 style="margin:20px 0 8px;">Confirm the result ${aiThoughtIconHtml('AQ')}</h3><div id="trConfirm">${trConfirmHtml(t)}</div>` : ''}</div>`;
 }
 async function trSave(){
   const t = tr.draft; if (!t.name || !t.name.trim()){ tr.msg = 'Give the test a name first.'; trRender(); return; }
@@ -52350,7 +52406,7 @@ const SE_THOUGHTS = {
   AN: 'A reference for the team, covering Article, BlogPosting, NewsArticle, FAQPage, HowTo and VideoObject. Each entry says what the type is, when to use it, which fields are required or recommended, gives a copy-ready example with placeholders, and notes what Google does with it, checked on a stated date. Nothing here is filled from your account or generated for you. Note that Google no longer shows FAQ or How-to rich results, so those two give no search benefit today.'
 };
 const PU_THOUGHTS = {
-  AO: "The Test Registry holds every test in one place: creative elements, offer, audience, frequency, channel, timing, landing page and market tests. To start, choose + New test, pick what you are testing, name it, choose one KPI and the smallest lift worth detecting. Enter impressions and conversions for each variant, or import a results CSV, and the readout shows each variant’s lift, its p-value and whether there is enough volume to call it. Link the test to a campaign if it belongs to one. A test only teaches the Brain after a person confirms it at the bottom of the test (see Confirming a result).",
+  AO: "The Test Registry holds every test in one place: creative elements, offer, audience, frequency, channel, timing, landing page and market tests. To start an A/B test, describe the test you want in your own words at the top of the page and Verilume drafts it, or asks what it still needs; you then check the draft and save it. You can also choose + New test by hand, pick what you are testing, name it, choose one KPI and the smallest lift worth detecting. Enter impressions and conversions for each variant, or import a results CSV, and the readout shows each variant’s lift, its p-value and whether there is enough volume to call it. Link the test to a campaign if it belongs to one. A test only teaches the Brain after a person confirms it at the bottom of the test (see Confirming a result).",
   AP: "Plan the test in Geographic Optimization, then choose Save this plan to the Test Registry. That creates a draft with the test and control markets, channel, weeks and planned spend. When media starts, enter the start date, the spend in the test markets, and weekly bookings for all test markets added together and all control markets added together. You can type them or import a CSV with the columns week, test and control. You need at least 3 weeks before and 3 after the start date; 8 or more before is better. The readout compares the test-to-control ratio after media started with the ratio before, so season and market size cancel out. It shows the lift, its 95% range, extra bookings and cost per extra booking. A lift is only called clear when even the low end of the range is above zero.",
   AQ: "Confirming is a person’s decision, never automatic. Choose ship, kill or iterate, edit the lesson in your own words, and confirm. Verilume then saves the result with the linked campaign (or with the account when no campaign is linked), adds a Brain lesson, and proposes plan changes. An admin’s lesson is active at once; a lesson from anyone else waits for an admin to approve it. Proposed changes can be rolling the channel out to similar markets with an estimated cost, retesting, extending the test or adding markets, keeping it in the test markets, or stopping. Nothing in the plan changes until a person accepts each one. Accepted changes appear on the annual plan recommendation and in what Ask Verilume says, and every confirmed result stays on its campaign as history.",
   AR: "Trade Territories shows where each reseller’s guests actually live. Send a trade file on its own, separate from the booking file, with Agency Code, Agency Name, the reseller address columns and Guest Postal Code. A reseller is local when most of its guests are within 50 miles, regional when its typical guest is within 300 miles, national when it sells everywhere, and thin when it has under 10 U.S. bookings. A local reseller’s territory is the radius that holds 80% of its guests, capped at 100 miles for local and 300 for regional. Select a reseller to see the markets inside its territory, and download the list as a CSV. Territories change slowly, so refresh the file when resellers or territories change rather than on a schedule.",
