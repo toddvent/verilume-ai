@@ -10246,6 +10246,45 @@ createTableIfNeeded(`
 `);
 ensureColumn('market_customer_uploads', 'geoLevel', "TEXT DEFAULT 'zip'");
 ensureColumn('account_stores', 'country', "TEXT DEFAULT 'US'");
+// 2026-10-07 — Trade Territories: reseller (travel agency / storefront / franchise) columns found in booking files.
+// Aggregated in the browser to one row per reseller and one per reseller x guest postal code x status, so no guest names,
+// emails or phone numbers are ever sent. snake_case column names on purpose: they need no entry in schema-identifiers.json.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_resellers (
+    accountId TEXT NOT NULL,
+    agency_code TEXT NOT NULL,
+    agency_name TEXT,
+    street TEXT,
+    city TEXT,
+    state TEXT,
+    postal TEXT,
+    country TEXT,
+    consortia TEXT,
+    PRIMARY KEY (accountId, agency_code)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_reseller_zips (
+    accountId TEXT NOT NULL,
+    agency_code TEXT NOT NULL,
+    guest_zip TEXT NOT NULL,
+    guest_country TEXT NOT NULL,
+    status TEXT NOT NULL,
+    bookings INTEGER NOT NULL,
+    revenue REAL,
+    PRIMARY KEY (accountId, agency_code, guest_zip, guest_country, status)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_reseller_meta (
+    accountId TEXT PRIMARY KEY,
+    file_name TEXT,
+    uploaded_at TEXT,
+    resellers INTEGER,
+    bookings INTEGER
+  );
+`);
+
 // 2026-09-09, per direct instruction ("Primary key used to produce output
 // will be the zip code or international version. We should create the
 // ideal multiple storefront upload format.") — a store's zip/postal code
@@ -11254,6 +11293,95 @@ function geoCached(key, ttlMs, fn){
   const v = fn(); geoCache.set(key, { at: Date.now(), v });
   if (geoCache.size > 40){ const oldest = [...geoCache.entries()].sort((a, b) => a[1].at - b[1].at)[0]; if (oldest) geoCache.delete(oldest[0]); }
   return v;
+}
+
+// ---------- Trade Territories (2026-10-07) ----------
+// For each reseller: where do its guests actually live? A local storefront sells to its own market; a national or virtual
+// agency sells everywhere. Territory = the radius that holds 80% of a local reseller's guests, and the markets inside it.
+const TERR_MIN_N = 10;
+function terrZip5(raw, country){
+  const c = String(country || '').trim().toUpperCase();
+  if (c && c !== 'US' && c !== 'USA') return null;
+  const m = String(raw == null ? '' : raw).trim().match(/^(\d{3,5})(?:[-\s]?\d{4})?$/);
+  if (!m) return null;
+  return m[1].padStart(5, '0');
+}
+function terrMiles(a1, o1, a2, o2){
+  const R = Math.PI / 180, p1 = a1 * R, p2 = a2 * R, dl = (o2 - o1) * R;
+  const x = Math.sin(p1) * Math.sin(p2) + Math.cos(p1) * Math.cos(p2) * Math.cos(dl);
+  return 3958.8 * Math.acos(Math.max(-1, Math.min(1, x)));
+}
+function terrWeightedQ(pts, q){ // pts: [{d, w}] sorted by d
+  const tot = pts.reduce((a, x) => a + x.w, 0); if (!(tot > 0)) return null;
+  let run = 0; for (const x of pts){ run += x.w; if (run >= tot * q - 1e-9) return x.d; }
+  return pts[pts.length - 1].d;
+}
+function geoTerritoriesCompute(accountId, statusList){
+  const meta = db.prepare('SELECT file_name, uploaded_at, resellers, bookings FROM account_reseller_meta WHERE accountId = ?').get(accountId);
+  if (!meta) return { available: false };
+  const settings = getTransactionSettings(accountId);
+  const resRows = db.prepare('SELECT agency_code, agency_name, street, city, state, postal, country, consortia FROM account_resellers WHERE accountId = ?').all(accountId);
+  const allZipRows = db.prepare('SELECT agency_code, guest_zip, guest_country, status, bookings, revenue FROM account_reseller_zips WHERE accountId = ?').all(accountId);
+  const stCount = {}; allZipRows.forEach(r => { stCount[r.status] = (stCount[r.status] || 0) + (Number(r.bookings) || 0); });
+  const stAll = Object.keys(stCount);
+  const stUse = Array.isArray(statusList) && statusList.length ? statusList : stAll.filter(x => isValidTransactionStatus(x, settings));
+  const zipRows = allZipRows.filter(r => stUse.includes(r.status));
+  const zset = new Set();
+  resRows.forEach(r => { const z = terrZip5(r.postal, r.country); if (z) zset.add(z); });
+  zipRows.forEach(r => { const z = terrZip5(r.guest_zip, r.guest_country); if (z) zset.add(z); });
+  const zl = Array.from(zset), cen = {}, dma = {}, dmaName = {};
+  for (let i = 0; i < zl.length; i += 1000){
+    const chunk = zl.slice(i, i + 1000), ph = chunk.map(() => '?').join(',');
+    db.prepare(`SELECT zip, lat, lng FROM zip_centroid_master WHERE zip IN (${ph})`).all(...chunk).forEach(c => { cen[c.zip] = [Number(c.lat), Number(c.lng)]; });
+    db.prepare(`SELECT zip, dmaCode AS "dmaCode", dmaName AS "dmaName" FROM zip_dma_master WHERE zip IN (${ph})`).all(...chunk).forEach(f => { dma[f.zip] = f.dmaCode; if (f.dmaName) dmaName[f.dmaCode] = f.dmaName; });
+  }
+  const byAg = {}; zipRows.forEach(r => { (byAg[r.agency_code] = byAg[r.agency_code] || []).push(r); });
+  const out = []; const tot = { resellers: resRows.length, bookings: 0, usBookings: 0, nonUsBookings: 0, unplaced: 0, revenue: 0 };
+  const classes = { local: { resellers: 0, bookings: 0, revenue: 0 }, regional: { resellers: 0, bookings: 0, revenue: 0 }, national: { resellers: 0, bookings: 0, revenue: 0 }, thin: { resellers: 0, bookings: 0, revenue: 0 }, noaddress: { resellers: 0, bookings: 0, revenue: 0 } };
+  resRows.forEach(a => {
+    const rows = byAg[a.agency_code] || []; if (!rows.length) return;
+    const az = terrZip5(a.postal, a.country), ac = az ? cen[az] : null;
+    let bookings = 0, revenue = 0, us = 0, nonUs = 0, unplaced = 0; const pts = [], zmap = {}, dmaN = {};
+    rows.forEach(r => {
+      const n = Number(r.bookings) || 0, rev = Number(r.revenue) || 0; bookings += n; revenue += rev;
+      const z = terrZip5(r.guest_zip, r.guest_country);
+      if (!z){ if (String(r.guest_country || '').trim() && !/^(US|USA)$/i.test(String(r.guest_country).trim())) nonUs += n; else unplaced += n; return; }
+      const c = cen[z]; if (!c){ unplaced += n; return; }
+      us += n;
+      if (ac){ pts.push({ d: terrMiles(ac[0], ac[1], c[0], c[1]), w: n, z, lat: c[0], lng: c[1] }); }
+      const zz = zmap[z] = zmap[z] || { zip: z, n: 0, lat: c[0], lng: c[1] }; zz.n += n;
+      const dc = dma[z]; if (dc != null) dmaN[dc] = (dmaN[dc] || 0) + n;
+    });
+    tot.bookings += bookings; tot.usBookings += us; tot.nonUsBookings += nonUs; tot.unplaced += unplaced; tot.revenue += revenue;
+    const rec = { code: a.agency_code, name: a.agency_name || a.agency_code, city: a.city || '', state: a.state || '', zip: az || String(a.postal || ''), country: a.country || '', street: a.street || '', consortia: a.consortia || '', bookings, revenue: Math.round(revenue), usBookings: us, otherCountryBookings: nonUs, cls: null };
+    if (!ac){ rec.cls = 'noaddress'; }
+    else if (pts.length === 0 || pts.reduce((t, x) => t + x.w, 0) < TERR_MIN_N){ rec.cls = 'thin'; }
+    if (ac){ rec.lat = ac[0]; rec.lng = ac[1]; }
+    if (ac && pts.length){
+      pts.sort((x, y) => x.d - y.d);
+      const w = pts.reduce((t, x) => t + x.w, 0), share = mi => pts.filter(x => x.d <= mi).reduce((t, x) => t + x.w, 0) / w;
+      rec.medianMiles = Math.round(terrWeightedQ(pts, 0.5)); rec.within25 = Math.round(share(25) * 1000) / 10; rec.within50 = Math.round(share(50) * 1000) / 10; rec.within100 = Math.round(share(100) * 1000) / 10;
+      rec.radius80 = Math.round(terrWeightedQ(pts, 0.8));
+      if (!rec.cls) rec.cls = share(50) >= 0.5 ? 'local' : (rec.medianMiles <= 300 ? 'regional' : 'national');
+      else rec.thinHint = share(50) >= 0.5 ? 'local' : 'dispersed';
+      const home = dma[az]; rec.homeDma = home != null ? (dmaName[home] || String(home)) : null;
+      if (home != null && us > 0) rec.homeMarketShare = Math.round((dmaN[home] || 0) / us * 1000) / 10;
+      if (rec.cls === 'local' || rec.cls === 'regional'){
+        const rad = rec.cls === 'local' ? Math.max(15, Math.min(100, rec.radius80)) : Math.max(50, Math.min(300, rec.radius80)), inR = {}; rec.territoryMiles = rad; rec.territoryCoverage = Math.round(share(rad) * 1000) / 10;
+        pts.forEach(x => { if (x.d <= rad){ const dc = dma[x.z]; if (dc != null) inR[dc] = (inR[dc] || 0) + x.w; } });
+        const inTot = Object.values(inR).reduce((t, x) => t + x, 0) || 1;
+        rec.markets = Object.keys(inR).map(k => ({ code: k, name: dmaName[k] || String(k), n: inR[k], share: Math.round(inR[k] / inTot * 1000) / 10 })).sort((x, y) => y.n - x.n).slice(0, 5);
+        rec.zips = Object.values(zmap).sort((x, y) => y.n - x.n).slice(0, 40).map(x => ({ zip: x.zip, n: x.n, lat: x.lat, lng: x.lng }));
+      }
+    }
+    if (!rec.cls) rec.cls = 'thin';
+    const k = classes[rec.cls]; k.resellers++; k.bookings += bookings; k.revenue += revenue;
+    out.push(rec);
+  });
+  out.sort((x, y) => y.bookings - x.bookings);
+  Object.values(classes).forEach(k => { k.revenue = Math.round(k.revenue); });
+  tot.revenue = Math.round(tot.revenue);
+  return { available: true, uploadedAt: meta.uploaded_at, fileName: meta.file_name, minBookings: TERR_MIN_N, statuses: stAll.map(x => ({ status: x, bookings: stCount[x], counted: stUse.includes(x) })).sort((a, b) => b.bookings - a.bookings), statusDefault: settings.validStatuses ? 'account setting' : 'every status', totals: tot, classes, resellers: out };
 }
 function geoAnalysis(accountId, upload, withCost){
   return geoCached(`an|${accountId}|${upload.id}|${withCost ? 1 : 0}`, 600000, () => computeMarketUploadAnalysis(accountId, upload, { skipZipMatching: true, skipTradeAreas: true, skipCosting: !withCost }));
@@ -39465,6 +39593,38 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       return sendJson(res, 201, { id, rowCount: agg.rows.length, weightMode, geoLevel: 'zip', periodLabel, audit });
     }
 
+
+    // ---- Trade Territories (2026-10-07) ----
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'geo-territories'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      try {
+        const m = db.prepare('SELECT uploaded_at FROM account_reseller_meta WHERE accountId = ?').get(accountId);
+        const stq = (new URL(req.url, 'http://x').searchParams.get('statuses') || '').split(',').map(x => x.trim().toUpperCase()).filter(Boolean).slice(0, 20);
+        return sendJson(res, 200, geoCached(`terr|${accountId}|${m ? m.uploaded_at : 'none'}|${stq.join(',')}`, 600000, () => geoTerritoriesCompute(accountId, stq)));
+      } catch (e){ console.warn('[geo-territories] failed:', e.message); return sendJson(res, 500, { error: 'could not read the reseller data' }); }
+    }
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'reseller-file'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const rs = Array.isArray(body.resellers) ? body.resellers : [], zs = Array.isArray(body.zips) ? body.zips : [];
+      if (!rs.length || !zs.length) return sendJson(res, 400, { error: 'The file needs reseller (agency) rows and guest postal codes. Check that it has Agency Code and Guest Postal Code columns.' });
+      const t = v => (v == null ? '' : String(v).trim().slice(0, 200));
+      const seen = new Set(), rClean = [];
+      rs.forEach(r => { const code = t(r.code); if (!code || seen.has(code)) return; seen.add(code); rClean.push([accountId, code, t(r.name), t(r.street), t(r.city), t(r.state), t(r.postal), t(r.country).toUpperCase(), t(r.consortia)]); });
+      const zSeen = new Set(), zClean = []; let nBook = 0;
+      zs.forEach(z => { const code = t(z.code); if (!seen.has(code)) return; const zip = t(z.zip).toUpperCase(), ctry = t(z.country).toUpperCase(), st = t(z.status).toUpperCase() || '?'; const n = Math.round(Number(z.n)); if (!(n > 0)) return; const key = [code, zip, ctry, st].join('|'); if (zSeen.has(key)) return; zSeen.add(key); nBook += n; zClean.push([accountId, code, zip || '?', ctry || '?', st, n, Number.isFinite(Number(z.rev)) ? Math.round(Number(z.rev) * 100) / 100 : null]); });
+      if (!zClean.length) return sendJson(res, 400, { error: 'None of the guest rows matched a reseller code in the file.' });
+      const stmts = [{ sql: 'DELETE FROM account_reseller_zips WHERE accountId = ?', params: [accountId] }, { sql: 'DELETE FROM account_resellers WHERE accountId = ?', params: [accountId] }];
+      for (let i = 0; i < rClean.length; i += 100){ const ch = rClean.slice(i, i + 100); stmts.push({ sql: `INSERT INTO account_resellers (accountId, agency_code, agency_name, street, city, state, postal, country, consortia) VALUES ${ch.map(() => '(?,?,?,?,?,?,?,?,?)').join(',')}`, params: [].concat(...ch) }); }
+      for (let i = 0; i < zClean.length; i += 150){ const ch = zClean.slice(i, i + 150); stmts.push({ sql: `INSERT INTO account_reseller_zips (accountId, agency_code, guest_zip, guest_country, status, bookings, revenue) VALUES ${ch.map(() => '(?,?,?,?,?,?,?)').join(',')}`, params: [].concat(...ch) }); }
+      const now = new Date().toISOString();
+      stmts.push({ sql: 'DELETE FROM account_reseller_meta WHERE accountId = ?', params: [accountId] });
+      stmts.push({ sql: 'INSERT INTO account_reseller_meta (accountId, file_name, uploaded_at, resellers, bookings) VALUES (?,?,?,?,?)', params: [accountId, t(body.fileName), now, rClean.length, nBook] });
+      try { db.batch(stmts, 120000); } catch (e){ console.error('[reseller-file] failed:', e.message); return sendJson(res, 500, { error: `The reseller file was not saved: ${e.message}. Your existing data is unchanged.` }); }
+      return sendJson(res, 201, { resellers: rClean.length, rows: zClean.length, bookings: nBook, uploadedAt: now });
+    }
     // ---- Geographic Optimization page endpoints (2026-10-07) ----
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'geo-overview'){
       const accountId = decodeURIComponent(parts[2]);
