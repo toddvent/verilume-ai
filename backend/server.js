@@ -319,7 +319,10 @@ const CAMPAIGNS_LOWERCASE_FOLDED_COLUMNS = {
   funnelleadratepct: 'funnelLeadRatePct',
   funnelbookingratepct: 'funnelBookingRatePct',
   funnelregistrationratepct: 'funnelRegistrationRatePct',
-  actualrevenue: 'actualRevenue'
+  actualrevenue: 'actualRevenue',
+  copyversionassetsjson: 'copyVersionAssetsJson',
+  copyversionsizeusagejson: 'copyVersionSizeUsageJson',
+  copyversionssenttocreativeat: 'copyVersionsSentToCreativeAt'
   // campaignType/campaigntype deliberately NOT included: a real, currently-
   // correct "campaignType" column already exists (confirmed live — this is
   // the field rendering fine today as "Campaign Experience Focus") sitting
@@ -3290,6 +3293,12 @@ ensureColumn('channel_planning_details', 'stage', 'TEXT');
 // campaign.activityNotes, the same pattern already used for mediaMixJson/
 // channelCopyVersionsJson on that same endpoint).
 ensureColumn('campaigns', 'activityNotesJson', 'TEXT');
+// 2026-10-07 — same bug shape as activityNotesJson above: the Copy Versions stage has POSTed copyVersionAssetsJson /
+// copyVersionSizeUsageJson / copyVersionsSentToCreativeAt for many rounds, but no column or merge-update field existed, so
+// saved Copy Versions lived only in the browser tab. Closing it so they survive a reload and can feed the Ad Copy Library.
+ensureColumn('campaigns', 'copyVersionAssetsJson', 'TEXT');
+ensureColumn('campaigns', 'copyVersionSizeUsageJson', 'TEXT');
+ensureColumn('campaigns', 'copyVersionsSentToCreativeAt', 'TEXT');
 // 2026-09-22 — per Todd's direct instruction to stop campaign concepts
 // living redundantly across fields that drift apart: a direct query on
 // every real campaign in the account showed campaigns.objective is
@@ -13585,6 +13594,9 @@ createTableIfNeeded(`CREATE TABLE IF NOT EXISTS platform_access_log (
   createdAt TEXT NOT NULL
 )`);
 ensureColumn('sessions', 'platformuserid', 'TEXT');
+// Role preview: a Verilume team view-as session can follow a real team member's, or a named role's, access rules (read-only).
+ensureColumn('sessions', 'simmemberid', 'TEXT');
+ensureColumn('sessions', 'simrole', 'TEXT');
 
 // Round 61 — Print Ad Specs (Print channel of the omni-channel creative
 // selection tree, cxmedia-creative-specs-tree.json). Per direct instruction:
@@ -18105,11 +18117,30 @@ const ACCESS_ITEMS = [
     rule: { admin: 'yes', lead: 'no', analystManager: 'no', other: 'no', agency: 'no', creative: 'no', staff: 'no' } }
 ];
 const ACCESS_LEAD_LEVELS = ['CMO', 'Director'];
+// Roles a Verilume team member can preview from the platform console (read-only).
+const SIM_ROLES = [
+  { key: 'admin', label: 'Admin' },
+  { key: 'lead', label: 'Lead (CMO or Director)' },
+  { key: 'analystManager', label: 'Analyst Manager' },
+  { key: 'other', label: 'Other team member' },
+  { key: 'viewer', label: 'Executive viewer' },
+  { key: 'agency', label: 'Agency guest' },
+  { key: 'creative', label: 'Creative guest' }
+];
+// For a role-preview session, the person whose agreements and level apply. Everyone else is unchanged.
+function simEffectiveSession(session){
+  if (session && session.platformuserid && session.simmemberid) return Object.assign({}, session, { memberId: session.simmemberid, platformuserid: null });
+  return session;
+}
 const ACCESS_CREATIVE_CATEGORIES = ['Design', 'Copywriting', 'Motion Graphics'];
 // Who is this session? admin | lead | analystManager | other | agency | creative | staff
 function accessAudienceFor(session){
   if (!session) return null;
-  if (session.platformuserid) return 'staff';
+  if (session.platformuserid){
+    if (session.simrole && SIM_ROLES.some(r => r.key === session.simrole)) return session.simrole;
+    if (session.simmemberid) return accessAudienceFor({ accountId: session.accountId, memberId: session.simmemberid });
+    return 'staff';
+  }
   if (!session.memberId) return 'admin'; // the account's own root login
   let m = null;
   try { m = db.prepare('SELECT isAdmin, level, functionGroup, memberkind, categories FROM team_members WHERE id = ?').get(session.memberId); } catch (e){}
@@ -18169,6 +18200,7 @@ function accessDecision(req, path, session){
   if (!session) return null;
   const audience = accessAudienceFor(session);
   if (!audience) return null;
+  session = simEffectiveSession(session);
   if (req.method !== 'GET' && req.method !== 'HEAD' && accessLevelFor(session) === 'view' && !READONLY_WRITE_OK.some(rx => rx.test(path))){
     return { item: 'read_only', label: 'making changes (this profile is view only)', audience };
   }
@@ -18238,6 +18270,11 @@ function requireAdminMember(req, res, accountId){
   const session = authenticate(req);
   if (!session || session.accountId !== accountId){
     sendJson(res, 401, { error: 'unauthorized — a valid session token for this account is required' });
+    return false;
+  }
+  if (session.platformuserid && (session.simmemberid || session.simrole)){
+    if (accessAudienceFor(session) === 'admin') return true;
+    sendJson(res, 403, { error: 'admin access required for this action (role preview)' });
     return false;
   }
   if (!session.memberId) return true; // legacy account-level login — root access, same as requireAccount()
@@ -24645,6 +24682,8 @@ function platformViewAsGuard(req, parts){
     if (!u || u.status !== 'active') return 'This Verilume team access has been turned off.';
     const path = '/' + parts.join('/');
     const isLogout = path === '/api/auth/logout';
+    const sr = db.prepare('SELECT simmemberid, simrole FROM sessions WHERE token = ?').get(m[1].trim());
+    if (sr && (sr.simmemberid || sr.simrole) && !isLogout && !READONLY_WRITE_OK.some(rx => rx.test(path))) return 'This is a role preview. It is read-only, so nothing can be changed.';
     if (u.role === 'readonly' && !isLogout) return 'This is a read-only Verilume team session. Nothing can be changed.';
     if (u.role === 'support' && !isLogout && (/^\/api\/(team|auth)(\/|$)/.test(path) || /billing|payment|invoice/i.test(path))){
       return 'The Support role cannot change team members, sign-in settings or billing.';
@@ -24964,12 +25003,30 @@ async function handleRequest(req, res) {
         const body = await readBody(req);
         const acct = body.accountId ? db.prepare('SELECT accountId, company FROM accounts WHERE accountId = ?').get(body.accountId) : null;
         if (!acct) return sendJson(res, 404, { error: 'account not found' });
+        let simMember = null, simRole = null, simLabel = null;
+        if (body.memberId){
+          simMember = db.prepare('SELECT id, name, rolelabel, memberkind FROM team_members WHERE id = ? AND accountId = ?').get(String(body.memberId), acct.accountId);
+          if (!simMember) return sendJson(res, 404, { error: 'team member not found on this account' });
+          simLabel = simMember.name + (simMember.rolelabel ? ' · ' + simMember.rolelabel : '');
+        } else if (body.simRole){
+          const r = SIM_ROLES.find(x => x.key === body.simRole);
+          if (!r) return sendJson(res, 400, { error: 'unknown role' });
+          simRole = r.key; simLabel = r.label;
+        }
         const s = createSession(acct.accountId, null);
         const expiresAt = new Date(Date.now() + PLATFORM_VIEW_AS_MS).toISOString();
-        db.prepare('UPDATE sessions SET platformuserid = ?, expiresAt = ? WHERE token = ?').run(me.id, expiresAt, s.token);
+        db.prepare('UPDATE sessions SET platformuserid = ?, expiresAt = ?, simmemberid = ?, simrole = ? WHERE token = ?').run(me.id, expiresAt, simMember ? simMember.id : null, simRole, s.token);
         db.prepare('INSERT INTO platform_access_log (id, platformuserid, platformname, platformrole, accountId, action, ip, createdAt) VALUES (?,?,?,?,?,?,?,?)')
-          .run(generateId('PLOG'), me.id, me.name, me.role, acct.accountId, 'view_as_started', getClientIp(req) || null, nowIso());
-        return sendJson(res, 200, { token: s.token, expiresAt, accountId: acct.accountId, company: acct.company, role: me.role, name: me.name });
+          .run(generateId('PLOG'), me.id, me.name, me.role, acct.accountId, simLabel ? ('view_as_started (previewing ' + simLabel + ')').slice(0, 200) : 'view_as_started', getClientIp(req) || null, nowIso());
+        return sendJson(res, 200, { token: s.token, expiresAt, accountId: acct.accountId, company: acct.company, role: me.role, name: me.name, previewing: simLabel });
+      }
+      // GET /api/platform/view-as-options?accountId= — who and which roles a team member can preview in that account
+      if (req.method === 'GET' && parts.length === 3 && sub === 'view-as-options'){
+        const aid = url.searchParams.get('accountId');
+        const acct = aid ? db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(aid) : null;
+        if (!acct) return sendJson(res, 404, { error: 'account not found' });
+        const members = db.prepare("SELECT id, name, rolelabel, memberkind, level FROM team_members WHERE accountId = ? AND (status IS NULL OR status = 'active') ORDER BY createdAt ASC").all(aid);
+        return sendJson(res, 200, { roles: SIM_ROLES, members: members.map(m => ({ id: m.id, name: m.name, roleLabel: m.rolelabel || '', kind: m.memberkind || 'internal', level: m.level })) });
       }
       // GET /api/platform/access-log — owner/admin see all (optionally one account); others see their own
       if (req.method === 'GET' && parts.length === 3 && sub === 'access-log'){
@@ -26072,6 +26129,14 @@ async function handleRequest(req, res) {
     // immediately, not just at next login.
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'auth' && parts[2] === 'me'){
       const session = authenticate(req);
+      if (session && session.platformuserid && (session.simmemberid || session.simrole)){
+        // Role preview: report the previewed role so the portal hides what that role cannot use.
+        const aud = accessAudienceFor(session);
+        let nm = 'Role preview';
+        if (session.simmemberid){ try { const pm = db.prepare('SELECT name FROM team_members WHERE id = ?').get(session.simmemberid); if (pm) nm = pm.name; } catch (e){} }
+        else { const r = SIM_ROLES.find(x => x.key === session.simrole); if (r) nm = r.label; }
+        return sendJson(res, 200, { accountId: session.accountId, memberId: session.simmemberid || null, name: nm, email: null, isAdmin: aud === 'admin', previewing: true, audience: aud });
+      }
       if (!session || !session.memberId){
         return sendJson(res, 401, { error: 'unauthorized — a valid per-person session token is required' });
       }
@@ -26552,8 +26617,9 @@ async function handleRequest(req, res) {
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'my-access'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
-      const sess = authenticate(req);
-      const audience = accessAudienceFor(sess);
+      const sess0 = authenticate(req);
+      const audience = accessAudienceFor(sess0);
+      const sess = simEffectiveSession(sess0);
       const items = {};
       ACCESS_ITEMS.forEach(i => { items[i.key] = (audience && i.rule[audience]) || 'no'; });
       let accessExpiresAt = null, agreements = [];
@@ -26561,7 +26627,7 @@ async function handleRequest(req, res) {
         try { const m = db.prepare('SELECT accessexpiresat FROM team_members WHERE id = ?').get(sess.memberId); accessExpiresAt = (m && m.accessexpiresat) || null; } catch (e){}
         if (audience === 'agency') agreements = activeAgreementsFor(accountId, sess.memberId).map(agreementShape);
       }
-      return sendJson(res, 200, { audience, items, accessExpiresAt, agreements, accessLevel: accessLevelFor(sess) });
+      return sendJson(res, 200, { audience, items, accessExpiresAt, agreements, accessLevel: (sess0 && sess0.platformuserid && (sess0.simmemberid || sess0.simrole)) ? 'view' : accessLevelFor(sess) });
     }
 
     // POST /api/accounts/:id/upgrade-request — the Spark upgrade prompts post here; emails Sales (SALES_NOTIFY_EMAIL). Rate-limited to one per account per hour.
@@ -31624,6 +31690,9 @@ Submit your response via the campaign_intake_turn tool.`;
         // panels + the Workspace Hub Collaboration Center) genuinely
         // survives a reload, a different device, or a different teammate.
         activityNotesJson: body.activityNotesJson !== undefined ? body.activityNotesJson : existing.activityNotesJson,
+        copyVersionAssetsJson: body.copyVersionAssetsJson !== undefined ? body.copyVersionAssetsJson : existing.copyVersionAssetsJson,
+        copyVersionSizeUsageJson: body.copyVersionSizeUsageJson !== undefined ? body.copyVersionSizeUsageJson : existing.copyVersionSizeUsageJson,
+        copyVersionsSentToCreativeAt: body.copyVersionsSentToCreativeAt !== undefined ? body.copyVersionsSentToCreativeAt : existing.copyVersionsSentToCreativeAt,
         // 2026-09-18 — Campaign Brief & Analytics Requirements stage's two
         // editable CMO-to-team messages, same merge-update convention as
         // every field above.
@@ -31768,6 +31837,9 @@ Submit your response via the campaign_intake_turn tool.`;
       addCol('stage', body.stage !== undefined, merged.stage);
       addCol('segment', body.segment !== undefined, merged.segment);
       addCol('activityNotesJson', body.activityNotesJson !== undefined, merged.activityNotesJson);
+      addCol('copyVersionAssetsJson', body.copyVersionAssetsJson !== undefined, merged.copyVersionAssetsJson);
+      addCol('copyVersionSizeUsageJson', body.copyVersionSizeUsageJson !== undefined, merged.copyVersionSizeUsageJson);
+      addCol('copyVersionsSentToCreativeAt', body.copyVersionsSentToCreativeAt !== undefined, merged.copyVersionsSentToCreativeAt);
       addCol('cmoCopywriterBrief', body.cmoCopywriterBrief !== undefined, merged.cmoCopywriterBrief);
       addCol('cmoAnalyticsBrief', body.cmoAnalyticsBrief !== undefined, merged.cmoAnalyticsBrief);
       addCol('briefAnalyticsContinuedAt', body.briefAnalyticsContinuedAt !== undefined, merged.briefAnalyticsContinuedAt);
