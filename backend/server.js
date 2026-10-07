@@ -11150,6 +11150,38 @@ const GEO_NEW_CHANNELS = [
   { name: 'Radio', rx: /\bradio\b/i },
   { name: 'Out of home', rx: /out of home|\booh\b|billboard|transit/i }];
 const GEO_TEST_SHARE = 0.10;
+// Media economics per channel, used to price a market test from first principles:
+//   per market per week = target audience x weekly reach x weekly frequency x CPM / 1000
+//   direct mail          = mailable households x share mailed x drops x cost per piece
+// CPMs are this platform's planning rates (the same table as the Media Plan grid; streaming sits near the
+// published blended streaming CPM). Reach and frequency are planning defaults the team can edit.
+const GEO_ADULT_SHARE = 0.78, GEO_PERSONS_PER_HH = 2.5;
+const GEO_ECON = {
+  ctv: { name: 'Connected TV (CTV)', kind: 'cpm', cpm: 28, reach: 25, freq: 2.0, rx: /\bctv\b|connected tv|connected television|\bott\b|streaming tv|streaming television/i },
+  linear: { name: 'Linear TV', kind: 'cpm', cpm: 22, reach: 30, freq: 2.0, rx: /linear tv|broadcast|cable tv|television/i },
+  radio: { name: 'Radio', kind: 'cpm', cpm: 18, reach: 25, freq: 2.5, rx: /\bradio\b/i },
+  podcast: { name: 'Streaming audio and podcasts', kind: 'cpm', cpm: 20, reach: 10, freq: 1.5, rx: /podcast|streaming audio|spotify|pandora/i },
+  social: { name: 'Paid social', kind: 'cpm', cpm: 9, reach: 25, freq: 2.0, rx: /paid social|social|facebook|instagram|tiktok|meta ads/i },
+  video: { name: 'Online video (YouTube)', kind: 'cpm', cpm: 26, reach: 20, freq: 2.0, rx: /youtube|online video|\bolv\b|\botv\b/i },
+  display: { name: 'Programmatic display', kind: 'cpm', cpm: 7, reach: 30, freq: 3.0, rx: /programmatic|display/i },
+  ooh: { name: 'Out of home', kind: 'cpm', cpm: 14, reach: 40, freq: 3.0, rx: /out of home|out-of-home|\booh\b|billboard|transit/i },
+  print: { name: 'Print (magazines and newspapers)', kind: 'cpm', cpm: 37, reach: 12, freq: 1.0, rx: /magazine|newspaper|print/i },
+  mail: { name: 'Direct mail', kind: 'piece', perPiece: 0.75, coverage: 30, everyWeeks: 4, rx: /direct mail|\bmail\b|mailer|postcard|insert/i }
+};
+function geoEconFor(text){ const t = String(text || ''); const order = ['ctv', 'mail', 'podcast', 'video', 'linear', 'radio', 'social', 'display', 'ooh', 'print']; for (const k of order){ if (GEO_ECON[k].rx.test(t)) return Object.assign({ key: k }, GEO_ECON[k]); } return null; }
+function geoCleanAssumptions(a){ const o = {}; if (!a || typeof a !== 'object') return o; const n = (k, lo, hi) => { const v = Number(a[k]); if (Number.isFinite(v) && v >= lo && v <= hi && a[k] !== '' && a[k] !== null) o[k] = v; }; n('reach', 1, 100); n('freq', 0.5, 20); n('cpm', 0.5, 500); n('coverage', 1, 100); n('perPiece', 0.05, 10); n('everyWeeks', 1, 26); return o; }
+// Cost to run one channel in one market for W weeks, from the market's population and the editable assumptions.
+function geoMarketMediaCost(eco, pop, W, a){
+  const P = Number(pop) > 0 ? Number(pop) : 0;
+  if (eco.kind === 'piece'){
+    const hh = P / GEO_PERSONS_PER_HH, cov = (a.coverage != null ? a.coverage : eco.coverage) / 100, per = a.perPiece != null ? a.perPiece : eco.perPiece, every = a.everyWeeks != null ? a.everyWeeks : eco.everyWeeks;
+    const drops = Math.max(1, Math.ceil(W / every)), pieces = Math.round(hh * cov * drops);
+    return { audience: Math.round(hh), units: pieces, unitLabel: 'pieces', total: pieces * per, perWeek: pieces * per / W };
+  }
+  const reach = (a.reach != null ? a.reach : eco.reach) / 100, freq = a.freq != null ? a.freq : eco.freq, cpm = a.cpm != null ? a.cpm : eco.cpm;
+  const aud = P * GEO_ADULT_SHARE, wkImp = aud * reach * freq, wkCost = wkImp * cpm / 1000;
+  return { audience: Math.round(aud), units: Math.round(wkImp), unitLabel: 'impressions per week', total: wkCost * W, perWeek: wkCost };
+}
 const GEO_TIER_ORDER = ['Must Win', 'Growth', 'Opportunistic', 'Monitor'];
 function geoLatestUpload(accountId, uploadId){
   if (uploadId) return db.prepare('SELECT * FROM market_customer_uploads WHERE id = ? AND accountId = ?').get(uploadId, accountId) || null;
@@ -11299,9 +11331,26 @@ async function buildGeoPlan(accountId, upload, analysis, question, planOpts){
   const named = cats.find(c => intent.channels.includes(c.name));
   const newCh = named ? null : (GEO_NEW_CHANNELS.find(x => x.rx.test(String(question || ''))) || null);
   const allSpend0 = cats.reduce((a, c) => a + c.spend, 0);
+  // channels and cost
+  let selected = cats.filter(c => intent.channels.includes(c.name));
+  let channelNote = null;
+  if (newCh) selected = [];
+  else if (!selected.length){ selected = cats.filter(c => GEO_TARGETABLE_RX.test(c.name)); channelNote = selected.length ? 'No channel was named, so the plan uses the channels that can be bought by market.' : null; }
+  if (!selected.length && !newCh){ selected = cats; if (cats.length > 1) channelNote = 'No market-targetable channel was found in your budget, so the plan counts all working media.'; }
+  const allSpend = cats.reduce((a, c) => a + c.spend, 0), selSpend = selected.reduce((a, c) => a + c.spend, 0);
   const testFunds = intent.budget ? { amount: intent.budget, basis: 'the budget you gave' } : (allSpend0 > 0 ? { amount: Math.round(allSpend0 * GEO_TEST_SHARE), basis: `${Math.round(GEO_TEST_SHARE * 100)}% of the last 12 months of working media, a common size for a test` } : null);
+  // Price the named channel(s) from market size. Only when the question names a channel; otherwise the older estimate applies.
+  const ass = (planOpts && planOpts.assumptions) || {};
+  const modelEcos = newCh ? [geoEconFor(newCh.name)].filter(Boolean) : (intent.channels.length ? selected.map(c => geoEconFor(c.name)).filter(Boolean) : []);
+  const dmaList = (analysis.dmaExport && analysis.dmaExport.dmas) || [];
+  const popOf = code => { const d = dmaList.find(x => String(x.dmaCode) === String(code)); return d && Number(d.population) > 0 ? Number(d.population) : 0; };
+  // Where a pair is close in size, the smaller market gets the media: controls are never bought, so this keeps the test cheaper.
+  const swapPair = pr => (modelEcos.length && popOf(pr.controlDma) > 0 && popOf(pr.testDma) > 0 && popOf(pr.controlDma) < popOf(pr.testDma))
+    ? Object.assign({}, pr, { testDma: pr.controlDma, controlDma: pr.testDma, testName: pr.controlName, controlName: pr.testName, testVolume: pr.controlVolume, controlVolume: pr.testVolume, weeklyTest: pr.weeklyControl, weeklyControl: pr.weeklyTest }) : pr;
+  const sortedUse = sorted.map(swapPair);
+  const modelNeeded = (pairsK, Wk) => modelEcos.reduce((sum, e) => sum + pairsK.reduce((s2, pr) => s2 + geoMarketMediaCost(e, popOf(pr.testDma), Wk, ass).total, 0), 0);
   // Walk the market pairs from strongest to weakest and keep the number of test markets that finishes soonest while the weekly minimum stays affordable.
-  const opts2 = []; { let a2 = 0, c2 = 0; for (let k = 1; k <= Math.min(sorted.length, 12); k++){ a2 += sorted[k - 1].testVolume; c2 += sorted[k - 1].controlVolume; const w2 = need(a2, c2); if (w2 != null) opts2.push({ k, W: w2, nT: a2, nC: c2, needed: per * k * w2 }); } }
+  const opts2 = []; { let a2 = 0, c2 = 0; for (let k = 1; k <= Math.min(sortedUse.length, 12); k++){ a2 += sortedUse[k - 1].testVolume; c2 += sortedUse[k - 1].controlVolume; const w2 = need(a2, c2); if (w2 != null) opts2.push({ k, W: w2, nT: a2, nC: c2, needed: modelEcos.length ? modelNeeded(sortedUse.slice(0, k), w2) : per * k * w2 }); } }
   if (!opts2.length) return { ok: false, reason: 'The recommended markets have no volume in this window.' };
   const inTime = opts2.filter(o => o.W <= 26);
   const pool = inTime.length ? inTime : opts2;
@@ -11310,22 +11359,17 @@ async function buildGeoPlan(accountId, upload, analysis, question, planOpts){
   if (afford.length) pick = afford.slice().sort((x, y) => x.W - y.W || x.k - y.k)[0];
   else pick = pool.slice().sort((x, y) => x.needed - y.needed)[0];
   const fundingShort = !!(testFunds && !afford.length);
-  const chosen = sorted.slice(0, pick.k), nT = pick.nT, nC = pick.nC, W = pick.W;
+  const chosen = sortedUse.slice(0, pick.k), nT = pick.nT, nC = pick.nC, W = pick.W;
   const wT = nT / wk, wC = nC / wk;
-  // channels and cost
-  let selected = cats.filter(c => intent.channels.includes(c.name));
-  let channelNote = null;
-  if (newCh) selected = [];
-  else if (!selected.length){ selected = cats.filter(c => GEO_TARGETABLE_RX.test(c.name)); channelNote = selected.length ? 'No channel was named, so the plan uses the channels that can be bought by market.' : null; }
-  if (!selected.length && !newCh){ selected = cats; if (cats.length > 1) channelNote = 'No market-targetable channel was found in your budget, so the plan counts all working media.'; }
-  const allSpend = cats.reduce((a, c) => a + c.spend, 0), selSpend = selected.reduce((a, c) => a + c.spend, 0);
   let cpb = null;
   if (cost && newCh){ cpb = cost.costPerBooking != null ? cost.costPerBooking : null; }
   else if (cost){ cpb = (cost.basis === 'cards' && allSpend > 0) ? cost.costPerBooking * (selSpend / allSpend) : (cost.transactions > 0 && selSpend > 0 ? selSpend / cost.transactions : null); }
   const mult = 2; const bT = wT * W, bC = wC * W, inc = lift * bT;
-  const newNeeded = per * chosen.length * W;
+  const modelRows = [];
+  if (modelEcos.length) modelEcos.forEach(e => chosen.forEach(pr => { const c = geoMarketMediaCost(e, popOf(pr.testDma), W, ass); modelRows.push({ channel: e.name, market: pr.testName, population: popOf(pr.testDma), audience: c.audience, units: c.units, unitLabel: c.unitLabel, perWeek: Math.round(c.perWeek), total: Math.round(c.total) }); }));
+  const newNeeded = modelEcos.length ? Math.round(modelRows.reduce((a, x) => a + x.total, 0)) : per * chosen.length * W;
   const held = newCh ? 0 : (cpb != null ? cpb * bT : null);
-  const extra = newCh ? { low: null, expected: newNeeded, high: null } : ((cpb != null && !aov) ? { low: inc * cpb, expected: inc * cpb * mult, high: inc * cpb * mult * 1.5 } : null);
+  const extra = modelEcos.length ? { low: null, expected: newNeeded, high: null } : ((cpb != null && !aov) ? { low: inc * cpb, expected: inc * cpb * mult, high: inc * cpb * mult * 1.5 } : null);
   const total = held != null ? held + (extra ? extra.expected : 0) : null;
   let budgetCheck = null;
   if (intent.budget && total != null){
@@ -11334,7 +11378,7 @@ async function buildGeoPlan(accountId, upload, analysis, question, planOpts){
     if (!fits && !aov && cpb && !newCh) achievable = Math.max(0, Math.round((intent.budget - held) / (bT * cpb * mult) * 1000) / 10);
     budgetCheck = { budget: intent.budget, fits, shortBy: fits ? 0 : Math.round(total - intent.budget), achievableLiftPct: achievable, coversHeldMedia: intent.budget >= held };
   }
-  const media = newCh ? [{ channel: newCh.name, share: 100, held: 0, extra: newNeeded, isNew: true }] : selected.map(c => ({ channel: c.name, share: selSpend > 0 ? Math.round(c.spend / selSpend * 1000) / 10 : 100, held: held != null && selSpend > 0 ? Math.round(held * c.spend / selSpend) : null, extra: extra && selSpend > 0 ? Math.round(extra.expected * c.spend / selSpend) : null }));
+  const media = newCh ? [{ channel: newCh.name, share: 100, held: 0, extra: newNeeded, isNew: true }] : (modelEcos.length ? selected.map(c => { const e = geoEconFor(c.name); return { channel: c.name, share: selSpend > 0 ? Math.round(c.spend / selSpend * 1000) / 10 : 100, held: held != null && selSpend > 0 ? Math.round(held * c.spend / selSpend) : null, extra: e ? Math.round(modelRows.filter(x => x.channel === e.name).reduce((a, x) => a + x.total, 0)) : null }; }) : selected.map(c => ({ channel: c.name, share: selSpend > 0 ? Math.round(c.spend / selSpend * 1000) / 10 : 100, held: held != null && selSpend > 0 ? Math.round(held * c.spend / selSpend) : null, extra: extra && selSpend > 0 ? Math.round(extra.expected * c.spend / selSpend) : null })));
   // timeline
   const today = new Date(); const leadStart = geoMonday(today); const testStart = geoAddDays(leadStart, 14); const testEnd = geoAddDays(testStart, W * 7); const readoutEnd = geoAddDays(testEnd, 14);
   const pre = Math.max(4, Math.min(13, Math.round(W / 2)));
@@ -11350,7 +11394,7 @@ async function buildGeoPlan(accountId, upload, analysis, question, planOpts){
   const reasonable = W <= 26 ? { ok: true, why: fits13 ? 'The pooled markets can show this lift within one quarter.' : 'The pooled markets can show this lift within two quarters.' } : { ok: false, why: `At this size the test needs ${W} weeks to show a ${Math.round(lift * 100)}% ${aov ? 'change in order value' : 'lift'}. Pool more markets, accept a larger minimum lift, or test in larger geographies.` };
   const notes = []; if (channelNote) notes.push(channelNote);
   if (aov) notes.push('Average order value changes come from the offer, product mix or creative you test, so the plan shows the media you hold steady and no extra media.');
-  if (newCh) notes.push(`${newCh.name} is not an active channel in your budget. A market test is how new channels get explored, so it was included anyway. Your existing media keeps running as normal in all markets and is not part of the test cost. Weekly media per test market is a placeholder of $${per.toLocaleString()}; set the weekly impressions that give the reach and frequency you want and enter the matching dollars.`);
+  if (newCh) notes.push(`${newCh.name} is not an active channel in your budget. A market test is how new channels get explored, so it was included anyway. Your existing media keeps running as normal in all markets and is not part of the test cost. The weekly reach, frequency and CPM behind the budget are planning defaults; edit them under Media assumptions and ask again.`);
   if (fundingShort) notes.push('Even the smallest design costs more than the test funds, so the plan shows the cheapest option that can still be read.');
   if (cpb == null && !newCh) notes.push('No cost per booking could be found for this window, so cost is not shown.');
   if (!forecast.available) notes.push(forecast.reason);
@@ -11360,10 +11404,11 @@ async function buildGeoPlan(accountId, upload, analysis, question, planOpts){
   return { ok: true, intent, design: { metric: intent.metric, liftPct: Math.round(lift * 100), weeks: W, pairs: pairsOut, pooled: { testWeekly: Math.round(wT * 10) / 10, controlWeekly: Math.round(wC * 10) / 10, testBookings: Math.round(bT), controlBookings: Math.round(bC) }, cv: aov ? cv : null },
     cost: cost ? { costPerBooking: cpb != null ? Math.round(cpb * 100) / 100 : null, multiple: mult, held: held != null ? Math.round(held) : null, extra: extra ? { low: extra.low != null ? Math.round(extra.low) : null, expected: Math.round(extra.expected), high: extra.high != null ? Math.round(extra.high) : null } : null, total: total != null ? Math.round(total) : null, source: cost.source, avgOrderValue: cost.avgOrderValue } : null,
     floor: (() => {
-      const nM = chosen.length, needed = per * nM * W;
+      const nM = chosen.length, needed = modelEcos.length ? newNeeded : per * nM * W;
       const funding = testFunds ? testFunds.amount : null;
       const marketWeeks = funding != null ? Math.floor(funding / per) : null;
-      return { perMarketWeek: per, testMarkets: nM, weeks: W, needed, funding, fundingBasis: testFunds ? testFunds.basis : '', enough: funding != null ? funding >= needed : null, newChannel: newCh ? newCh.name : null,
+      return { model: modelEcos.length > 0, rows: modelRows, assumptionsUsed: modelEcos.map(e => e.kind === 'piece' ? { channel: e.name, kind: 'piece', perPiece: ass.perPiece != null ? ass.perPiece : e.perPiece, coverage: ass.coverage != null ? ass.coverage : e.coverage, everyWeeks: ass.everyWeeks != null ? ass.everyWeeks : e.everyWeeks } : { channel: e.name, kind: 'cpm', cpm: ass.cpm != null ? ass.cpm : e.cpm, reach: ass.reach != null ? ass.reach : e.reach, freq: ass.freq != null ? ass.freq : e.freq }),
+        perMarketWeek: modelEcos.length ? Math.round(needed / Math.max(1, nM * W)) : per, testMarkets: nM, weeks: W, needed, funding, fundingBasis: testFunds ? testFunds.basis : '', enough: funding != null ? funding >= needed : null, newChannel: newCh ? newCh.name : null,
         costPerIncremental: (!aov && inc > 0) ? Math.round(needed / inc) : null, incrementalBookings: Math.round(inc),
         affordableWeeks: marketWeeks != null && nM ? Math.floor(marketWeeks / nM) : null, affordableMarkets: marketWeeks != null && W ? Math.floor(marketWeeks / W) : null };
     })(),
@@ -39347,7 +39392,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const body = await readBody(req);
       const upload = geoLatestUpload(accountId, body.uploadId);
       if (!upload) return sendJson(res, 404, { error: 'no market data on this account yet' });
-      try { const analysis = geoAnalysis(accountId, upload, true); return sendJson(res, 200, Object.assign({ uploadId: upload.id }, await buildGeoPlan(accountId, upload, analysis, String(body.question || '').slice(0, 800), { floorPerMarketWeek: body.floorPerMarketWeek }))); }
+      try { const analysis = geoAnalysis(accountId, upload, true); return sendJson(res, 200, Object.assign({ uploadId: upload.id }, await buildGeoPlan(accountId, upload, analysis, String(body.question || '').slice(0, 800), { floorPerMarketWeek: body.floorPerMarketWeek, assumptions: geoCleanAssumptions(body.assumptions) }))); }
       catch (e){ console.warn('[geo-plan] failed:', e.message); return sendJson(res, 500, { error: 'could not build the test plan' }); }
     }
     // GET /api/accounts/:id/market-customer-uploads — lightweight list (no
