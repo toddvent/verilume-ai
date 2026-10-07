@@ -11169,6 +11169,7 @@
             <div id="cmpCopyVersionsHeaderRow" class="copyver-header-row"></div>
             <div id="cmpCopyVersionsPendingBanner" class="copyver-pending-banner"></div>
             <div id="cmpCopyVersionsPickup" style="margin-bottom:18px;"></div>
+            <div id="cmpCopyVersionsExport" style="margin-bottom:18px;"></div>
             <div id="cmpCopyVersionsBulkCta" style="margin-bottom:18px;"></div>
             <div id="cmpCopyVersionsQaBadge" style="margin-bottom:18px;"></div>
             <div id="cmpCopyVersionsBuilder"></div>
@@ -66422,7 +66423,7 @@ function renderAdCopyLibraryStep(keepFocus){
     <select onchange="adLibSet('channel',this.value)">${opt(uniq(r => r.a.channel), adLib.channel, 'All channels')}</select>
     <select onchange="adLibSet('status',this.value)">${opt(['Approved', 'Draft'], adLib.status, 'Any status')}</select>
     <select onchange="adLibSet('campaign',this.value)"><option value="">All campaigns</option>${camps.map(([id, n]) => `<option value="${escapeHtml(id)}"${id === adLib.campaign ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('')}</select>
-    <button type="button" class="btn-ghost" onclick="adLibExport()">Download CSV</button></div>
+    <button type="button" class="btn-ghost" onclick="adLibExport()">Download CSV</button><button type="button" class="btn-ghost" onclick="prodExportLibrary('csv')" title="Approved copy only">Production feed CSV</button><button type="button" class="btn-ghost" onclick="prodExportLibrary('json')" title="Approved copy only">Production feed JSON</button></div>
     <div id="adLibList"></div>`;
   adLibRefreshList();
   if (keepFocus){ const q = document.getElementById('adLibQ'); if (q && document.activeElement !== q && adLib.q){ q.focus(); } }
@@ -66492,9 +66493,65 @@ function cmpRenderCopyVersionsPickup(){
     <div class="adlib-pick-row"><span>${sug ? 'Or bring in' : 'Bring in'} copy from another campaign:</span><select id="cmpCopyPickupSel">${withCopy.map(x => `<option value="${escapeHtml(x.id)}">${escapeHtml(adLibCampName(x))} (${x.copyVersionAssets.length})</option>`).join('')}</select><button type="button" class="btn-ghost" onclick="cmpCopyPickupBringIn(document.getElementById('cmpCopyPickupSel').value)">Bring in as drafts</button><a class="flink" onclick="goToStep('adCopyLibrary')">Open Ad Copy Library &rarr;</a></div>
     ${cmpCopyPickupNote ? `<div class="hint" style="margin:6px 0 0;">${escapeHtml(cmpCopyPickupNote)}</div>` : ''}</div>`;
 }
+
+// 2026-10-07 — Production feed export (Enterprise). Generic CSV / JSON of APPROVED Copy Versions, one row per asset spec,
+// for feed-driven render tools (Adobe, Celtra, Abyssale, Bannerbear). Layer keys follow the common headline_text / body_text /
+// cta_button_text convention; template_id is left blank for the client to fill. Character limits are a default guide by unit size.
+const PROD_LAYER_KEYS = { headline: 'headline_text', body: 'body_text', cta: 'cta_button_text' };
+function prodSizeOf(a){ const m = String(a.sizeLabel || '').match(/(\d{2,5})\s*[x×]\s*(\d{2,5})/i); return m ? { w: Number(m[1]), h: Number(m[2]) } : { w: '', h: '' }; }
+function prodLimits(sz){
+  if (!sz.w) return { headline: 40, body: 125, cta: 20 };
+  const area = sz.w * sz.h;
+  if (area <= 120000) return { headline: 25, body: 60, cta: 15 };
+  if (area <= 600000) return { headline: 30, body: 90, cta: 20 };
+  return { headline: 40, body: 125, cta: 20 };
+}
+function prodVariant(c, a){
+  const sz = prodSizeOf(a), lim = prodLimits(sz);
+  const headline = a.headline || '', body = a.body || (a.headline ? '' : (a.copy || '')), cta = a.cta || '';
+  const over = [];
+  if (headline.length > lim.headline) over.push('headline');
+  if (body.length > lim.body) over.push('body');
+  if (cta.length > lim.cta) over.push('cta');
+  return { variant_id: `${c.id}_${a.id}`, campaign_id: c.id, campaign_name: adLibCampName(c), channel: a.channel || '', ad_format: a.creativeType && a.creativeType !== '(unspecified)' ? a.creativeType : '', size_label: a.sizeLabel || '', width: sz.w, height: sz.h,
+    headline, body_copy: body, cta_text: cta, headline_max_chars: lim.headline, body_max_chars: lim.body, cta_max_chars: lim.cta, over_limit: over.join('|'), template_id: '' };
+}
+function prodRows(pairs){ return pairs.filter(({ a }) => (a.status || 'Draft') === 'Approved').map(({ c, a }) => prodVariant(c, a)); }
+function prodDownload(name, mime, text){
+  const url = URL.createObjectURL(new Blob([text], { type: mime })); const l = document.createElement('a'); l.href = url; l.download = name; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function prodExport(kind, pairs, label){
+  const rows = prodRows(pairs);
+  if (!rows.length){ adLibFlash('No approved copy to export yet. Only approved Copy Versions go out.'); return; }
+  const over = rows.filter(r => r.over_limit).length;
+  if (kind === 'csv'){
+    const cols = Object.keys(rows[0]); const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+    prodDownload(`${label}-production-feed.csv`, 'text/csv', [cols.join(',')].concat(rows.map(r => cols.map(k => q(r[k])).join(','))).join('\r\n'));
+  } else {
+    const byC = new Map(); rows.forEach(r => { if (!byC.has(r.campaign_id)) byC.set(r.campaign_id, { campaign_id: r.campaign_id, campaign_name: r.campaign_name, variants: [] });
+      byC.get(r.campaign_id).variants.push({ variant_id: r.variant_id, channel: r.channel, ad_format: r.ad_format, format: r.width ? `${r.width}x${r.height}` : r.size_label, template_id: r.template_id,
+        copy: { headline: r.headline, body: r.body_copy, cta: r.cta_text }, layers: { [PROD_LAYER_KEYS.headline]: r.headline, [PROD_LAYER_KEYS.body]: r.body_copy, [PROD_LAYER_KEYS.cta]: r.cta_text },
+        limits: { headline: r.headline_max_chars, body: r.body_max_chars, cta: r.cta_max_chars }, over_limit: r.over_limit ? r.over_limit.split('|') : [] }); });
+    const out = byC.size === 1 ? Array.from(byC.values())[0] : { campaigns: Array.from(byC.values()) };
+    prodDownload(`${label}-production-feed.json`, 'application/json', JSON.stringify(out, null, 2));
+  }
+  adLibFlash(`${rows.length} approved version${rows.length === 1 ? '' : 's'} exported.${over ? ` ${over} over the default character limit; see over_limit.` : ''}`);
+}
+function prodExportCampaign(kind){
+  const c = cmpRailLoadedCampaign(); if (!c) return;
+  prodExport(kind, (c.copyVersionAssets || []).map(a => ({ c, a })), (c.id || 'campaign'));
+}
+function prodExportLibrary(kind){ prodExport(kind, adLibFiltered(), 'ad-copy-library'); }
+function cmpRenderCopyVersionsExport(){
+  const el = document.getElementById('cmpCopyVersionsExport'); if (!el) return;
+  const c = cmpRailLoadedCampaign(); const n = c ? (c.copyVersionAssets || []).filter(a => (a.status || 'Draft') === 'Approved').length : 0;
+  if (!c || !n){ el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="adlib-pick"><div class="adlib-pick-h">Export for production <span class="adlib-pill">Enterprise</span></div><div class="adlib-pick-row"><span>${n} approved version${n === 1 ? '' : 's'} as a feed for your render or template tool. Drafts are not included.</span><button type="button" class="btn-ghost" onclick="prodExportCampaign('csv')">Feed CSV</button><button type="button" class="btn-ghost" onclick="prodExportCampaign('json')">Feed JSON</button></div></div>`;
+}
 function cmpRenderCopyVersionsStage(){
   if (!document.getElementById('cmpCopyVersionsBuilder')) return;
   cmpRenderCopyVersionsPickup();
+  cmpRenderCopyVersionsExport();
   cmpRenderCopyVersionsHeaderRow();
   cmpRenderCopyVersionsBulkCta();
   cmpRenderCopyVersionsQaBadge();
