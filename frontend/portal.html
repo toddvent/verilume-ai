@@ -1578,6 +1578,7 @@
   .ttb-sec-n{flex:none;width:32px;height:32px;border-radius:50%;border:2px solid #1E2761;color:#1E2761;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:0.875rem;} .ttb-sec.done .ttb-sec-n{background:#1E2761;color:#fff;}
   .ttb-sec-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;} .ttb-sec-name{font-size:1.1875rem;font-weight:600;color:#1E2761;} .ttb-sec-sub{font-size:0.8125rem;color:var(--muted);}
   body.recipient-shell #primaryNav, body.recipient-shell .primary-nav, body.recipient-shell .app-header-gear, body.recipient-shell #askVerilumeBar{display:none !important;} body.recipient-shell #exportsCrumbHome{display:none;}
+  #testRegistryBody button,#mouBookingBody button,#mouBookingBody select,#mouBookingBody input{font-family:inherit;} #testRegistryBody .hint{font-size:0.8125rem;}
   .tr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;} .tr-f{display:flex;flex-direction:column;gap:4px;font-size:0.8125rem;color:var(--muted);} .tr-f input,.tr-f select,.tr-f textarea,.tr-vr input{padding:8px 10px;border:1px solid var(--line,#d9dee8);border-radius:8px;font:inherit;color:var(--ink,inherit);background:var(--white,#fff);width:100%;box-sizing:border-box;}
   .tr-vh,.tr-vr{display:grid;grid-template-columns:1.2fr 1.6fr 0.6fr 0.9fr 0.9fr auto;gap:8px;align-items:center;margin:0 0 6px;} .tr-vh{font-size:0.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;} .tr-vars{overflow-x:auto;} .tr-vr button{font-family:inherit;}
   .adlib-bar{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 14px;} .adlib-bar input,.adlib-bar select{padding:9px 12px;border:1px solid var(--line,#d9dee8);border-radius:8px;font:inherit;background:var(--white,#fff);color:inherit;} .adlib-bar input{flex:1 1 240px;}
@@ -5920,7 +5921,7 @@
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="switchPrimaryTab('dataScientist')">Media Science</a> / Test Registry</div>
     <div class="eyebrow">Media Science &middot; Test Registry</div>
     <h1>Test Registry</h1>
-    <p class="msg-lede">Every test in one place: creative A/B, multi-variant, offer or audience, channel substitution and DMA match market. Draft it here, enter or import results, read the statistics, record the decision and what was learned. Export any test for analysis.</p>
+    <p class="msg-lede">Every test in one place: creative elements, offer, audience, frequency, channel, timing, landing page and DMA match market. Draft it here, enter or import results, read the statistics, record the decision and what was learned. Export any test for analysis.</p>
     <div id="testRegistryBody"></div>
   </div>
 
@@ -8447,6 +8448,11 @@
                rather than leaving two lines that say the same thing. The
                .field wrapper still supplies the layout/spacing this row
                needs even with no <label> child. -->
+          <div id="mouBookingCard" style="border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:14px;background:var(--surface-2,transparent);">
+            <p style="margin:0 0 4px;font-weight:600;font-size:0.9rem;">Use my booking history</p>
+            <p class="hint" style="margin:0 0 8px;">No file needed. We roll the guest postal codes already on file up to markets, so you can go straight to test and control.</p>
+            <div id="mouBookingBody"><p class="hint">Checking what is on file…</p></div>
+          </div>
           <div class="btn-row">
             <label class="btn-ghost" for="mouFileInput" style="cursor:pointer;">Upload Customer File</label>
             <span id="mouFileChosenName" class="hint"></span>
@@ -30793,7 +30799,38 @@ async function loadTeam(){
 // 2026-10-07 — Exports page + Data recipient shell. Recipients sign in and see only this page; the server enforces it (RECIPIENT_ALLOWED).
 
 // 2026-10-07 — Media Science Test Registry (one table for every test type; see media_tests in server.js).
-const TR_TYPES = { ab: 'Creative A/B', multivariant: 'Multi-variant', offer: 'Offer or audience', channel: 'Channel substitution', matchmarket: 'DMA match market', other: 'Other' };
+const TR_TYPES = { ab: 'Creative A/B', multivariant: 'Multi-variant', offer: 'Offer or price', audience: 'Audience', frequency: 'Frequency', channel: 'Channel or placement', timing: 'Timing', landing: 'Landing page', matchmarket: 'DMA match market', other: 'Other' };
+// "What are you testing?" presets (2026-10-07). Each one sets the test type, a sensible KPI,
+// the column headings, a starting set of variants and a one-line design tip, so a client
+// picks the thing they want to learn about and the rest is filled in.
+const TR_ELEMENTS = {
+  headline: { g: 'Creative', label: 'Headline', type: 'ab', kpi: 'Click-through rate', key: 'assetId', col: 'Headline or copy version ID', denom: 'Impressions', tip: 'Change only the headline. Keep image, body, offer and audience identical.' },
+  body: { g: 'Creative', label: 'Body copy', type: 'ab', kpi: 'Click-through rate', key: 'assetId', col: 'Body copy or copy version ID', denom: 'Impressions', tip: 'Change only the body copy.' },
+  cta: { g: 'Creative', label: 'Call to action', type: 'ab', kpi: 'Conversion rate', key: 'assetId', col: 'Button text or copy version ID', denom: 'Impressions', tip: 'Change only the button text, for example "Book now" vs "See dates".' },
+  image: { g: 'Creative', label: 'Image or visual', type: 'ab', kpi: 'Click-through rate', key: 'assetId', col: 'Asset ID or file name', denom: 'Impressions', tip: 'Same copy and offer, different image. Use the asset ID from the Ad Copy Library or your asset system.' },
+  format: { g: 'Creative', label: 'Video or format', type: 'ab', kpi: 'Visit rate', key: 'assetId', col: 'Asset ID or format', denom: 'Impressions', tip: 'Static vs video vs carousel. Keep the message the same.' },
+  offer: { g: 'Offer', label: 'Offer or price', type: 'offer', kpi: 'Conversion rate', key: 'setting', col: 'Offer or price point', denom: 'Impressions', variants: ['Standard offer', 'Offer B'], tip: 'Compare on revenue per visitor as well as conversion rate: a deeper discount can convert more and earn less.' },
+  audience: { g: 'Audience', label: 'Audience segment', type: 'audience', kpi: 'Conversion rate', key: 'setting', col: 'Audience definition', denom: 'People reached', variants: ['Current audience', 'New audience'], tip: 'Keep creative, offer and frequency identical across segments, and count people reached rather than impressions.' },
+  lookalike: { g: 'Audience', label: 'Lookalike or prospect source', type: 'audience', kpi: 'Conversion rate', key: 'setting', col: 'Seed list or source', denom: 'People reached', variants: ['Control audience', 'Lookalike of past guests'], tip: 'Same budget and creative; only the audience source changes.' },
+  frequency: { g: 'Frequency', label: 'Frequency cap', type: 'frequency', kpi: 'Conversion rate', key: 'setting', col: 'Impressions per person per week', denom: 'People reached', variants: ['Control: 3 per week', '5 per week'], tip: 'Randomise people into each cap, not days. Count people reached, and watch cost per conversion because higher frequency usually has diminishing returns.' },
+  reach: { g: 'Frequency', label: 'Reach vs frequency', type: 'frequency', kpi: 'Conversion rate', key: 'setting', col: 'Delivery setup', denom: 'People reached', variants: ['Control: current delivery', 'Broader reach, lower frequency'], tip: 'Same budget, different spread. The question is whether more new people beats more repeats.' },
+  channel: { g: 'Channel', label: 'Channel substitution', type: 'channel', kpi: 'Conversion rate', key: 'setting', col: 'Channel and budget', denom: 'Impressions', variants: ['Control channel', 'Substitute channel'], tip: 'Move a fixed share of budget and keep everything else the same.' },
+  placement: { g: 'Channel', label: 'Placement or platform', type: 'channel', kpi: 'Click-through rate', key: 'setting', col: 'Placement', denom: 'Impressions', tip: 'For example Feed vs Stories, or two publishers.' },
+  timing: { g: 'Timing', label: 'Flight, day-part or send time', type: 'timing', kpi: 'Conversion rate', key: 'setting', col: 'Timing', denom: 'Impressions', variants: ['Control timing', 'New timing'], tip: 'Run both at the same time where you can; otherwise seasonality will look like a lift.' },
+  landing: { g: 'Landing', label: 'Landing page', type: 'landing', kpi: 'Conversion rate', key: 'setting', col: 'Page or URL', denom: 'Visits', variants: ['Current page', 'New page'], tip: 'Send traffic from the same ad to both pages and count visits as the base.' },
+  multi: { g: 'Combined', label: 'Several things at once', type: 'multivariant', kpi: 'Conversion rate', key: 'setting', col: 'What differs', denom: 'Impressions', tip: 'You will need much more volume. Prefer one change at a time unless volume is plentiful.' },
+  matchmarket: { g: 'Markets', label: 'Market holdout (DMA match market)', type: 'matchmarket', kpi: 'Conversion rate', key: 'setting', col: '', denom: '', tip: 'Pick pairs in the Match Market Builder, which now shows how long each pair needs to show a real lift.' },
+  other: { g: 'Other', label: 'Something else', type: 'other', kpi: 'Conversion rate', key: 'setting', col: 'What differs', denom: 'Impressions', tip: '' }
+};
+function trEl(t){ return TR_ELEMENTS[(t.details || {}).element] || null; }
+function trPickElement(k){
+  const e = TR_ELEMENTS[k]; if (!e || !tr.draft) return; const t = tr.draft;
+  t.details = t.details || {}; t.details.element = k; t.testType = e.type;
+  if (!t.primaryKpi || TR_KPIS.includes(t.primaryKpi)) t.primaryKpi = e.kpi;
+  const untouched = t.variants.every(v => v.impressions === '' && v.conversions === '' && !v.assetId && !v.setting);
+  if (untouched && e.variants){ t.variants = e.variants.map((l, i) => ({ key: i === 0 ? 'control' : 'v' + (i + 1), label: l, assetId: '', setting: '', allocationPct: Math.round(100 / e.variants.length), impressions: '', conversions: '' })); }
+  trRender();
+}
 const TR_KPIS = ['Conversion rate', 'Lead rate', 'Booking rate', 'Click-through rate', 'Visit rate', 'Call rate'];
 let tr = { tests: [], loaded: false, err: '', open: null, draft: null, saving: false, msg: '' };
 function trUrl(id){ return `${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/media-tests${id ? '/' + encodeURIComponent(id) : ''}`; }
@@ -30833,16 +30870,16 @@ function trReadoutHtml(t){
   const prog = s.need ? Math.min(100, Math.round(minN / s.need * 100)) : null;
   const best = s.rows.filter(r => r.sig === 'Beats control').sort((a, b) => b.lift - a.lift)[0];
   const verdict = best ? `${escapeHtml(best.label)} beats ${escapeHtml(s.rows[0].label)} (${trPct(best.lift, 1)} lift, p = ${best.p.toFixed(3)}).` : (prog != null && prog < 100 ? 'No clear winner yet, and there is not enough volume to call it.' : 'No clear winner at 95% confidence.');
-  return `<div class="strat-tablewrap"><table class="strat-table"><thead><tr><th>Variant</th><th>Impressions</th><th>Conversions</th><th>Rate</th><th>Lift vs control</th><th>p-value</th><th>Read</th></tr></thead><tbody>${s.rows.map((r, i) => `<tr><td>${escapeHtml(r.label)}${i === 0 ? ' <span class="hint">(control)</span>' : ''}</td><td>${r.n == null ? '—' : r.n.toLocaleString()}</td><td>${r.c == null ? '—' : r.c.toLocaleString()}</td><td>${trPct(r.rate)}</td><td>${i === 0 ? '' : trPct(r.lift, 1)}</td><td>${r.p == null ? '' : r.p.toFixed(3)}</td><td>${escapeHtml(r.sig)}</td></tr>`).join('')}</tbody></table></div>
+  return `<div class="strat-tablewrap"><table class="strat-table"><thead><tr><th>Variant</th><th>${escapeHtml(((trEl(t) || {}).denom) || 'Impressions')}</th><th>Conversions</th><th>Rate</th><th>Lift vs control</th><th>p-value</th><th>Read</th></tr></thead><tbody>${s.rows.map((r, i) => `<tr><td>${escapeHtml(r.label)}${i === 0 ? ' <span class="hint">(control)</span>' : ''}</td><td>${r.n == null ? '—' : r.n.toLocaleString()}</td><td>${r.c == null ? '—' : r.c.toLocaleString()}</td><td>${trPct(r.rate)}</td><td>${i === 0 ? '' : trPct(r.lift, 1)}</td><td>${r.p == null ? '' : r.p.toFixed(3)}</td><td>${escapeHtml(r.sig)}</td></tr>`).join('')}</tbody></table></div>
     <p style="margin:10px 0 4px;"><strong>${verdict}</strong></p>
-    ${s.need ? `<div class="hint">To detect a ${escapeHtml(String(t.mdePct))}% lift at 95% confidence and 80% power you need about ${s.need.toLocaleString()} impressions per variant. Smallest variant so far: ${minN.toLocaleString()} (${prog}%).</div>` : '<div class="hint">Add a minimum lift worth detecting to see how much volume the test needs.</div>'}`;
+    ${s.need ? `<div class="hint">To detect a ${escapeHtml(String(t.mdePct))}% lift at 95% confidence and 80% power you need about ${s.need.toLocaleString()} ${escapeHtml(((trEl(t) || {}).denom || 'impressions').toLowerCase())} per variant. Smallest variant so far: ${minN.toLocaleString()} (${prog}%).</div>` : '<div class="hint">Add a minimum lift worth detecting to see how much volume the test needs.</div>'}`;
 }
 function trRender(){
   const el = document.getElementById('testRegistryBody'); if (!el) return;
   if (tr.err && !tr.loaded){ el.innerHTML = `<div class="strat-card"><p class="strat-empty">${escapeHtml(tr.err)}</p></div>`; return; }
   if (tr.draft){ el.innerHTML = trEditorHtml(); trRefreshReadout(); return; }
   const rows = tr.tests;
-  el.innerHTML = `<div class="adlib-bar"><button type="button" class="btn-primary" onclick="trNew()">+ New test</button><button type="button" class="btn-ghost" onclick="trExport(null)">Export registry CSV</button></div>${tr.msg ? `<div class="hint" style="margin:0 0 10px;">${escapeHtml(tr.msg)}</div>` : ''}` + (rows.length ? rows.map(t => `<div class="adlib-card" style="cursor:pointer;" onclick="trOpen('${escapeHtml(t.id)}')"><div class="adlib-meta"><span class="adlib-pill ${t.status === 'complete' ? 'ok' : ''}">${escapeHtml(t.status)}</span><strong>${escapeHtml(t.name)}</strong> &middot; ${escapeHtml(TR_TYPES[t.testType] || t.testType)}${t.primaryKpi ? ` &middot; ${escapeHtml(t.primaryKpi)}` : ''}<span class="adlib-camp">${t.decision ? 'Decision: ' + escapeHtml(t.decision) : (t.startDate ? escapeHtml(t.startDate) : '')}</span></div>${t.hypothesis ? `<div class="adlib-copy">${escapeHtml(t.hypothesis)}</div>` : ''}</div>`).join('') : '<div class="strat-card"><p class="strat-empty">No tests yet. Start with a creative A/B: two variants, one KPI, and the lift worth detecting.</p></div>');
+  el.innerHTML = `<div class="adlib-bar"><button type="button" class="btn-primary" onclick="trNew()">+ New test</button><button type="button" class="btn-ghost" onclick="trExport(null)">Export registry CSV</button></div>${tr.msg ? `<div class="hint" style="margin:0 0 10px;">${escapeHtml(tr.msg)}</div>` : ''}` + (rows.length ? rows.map(t => `<div class="adlib-card" style="cursor:pointer;" onclick="trOpen('${escapeHtml(t.id)}')"><div class="adlib-meta"><span class="adlib-pill ${t.status === 'complete' ? 'ok' : ''}">${escapeHtml(t.status)}</span><strong>${escapeHtml(t.name)}</strong> &middot; ${escapeHtml(((TR_ELEMENTS[(t.details || {}).element] || {}).label) || TR_TYPES[t.testType] || t.testType)}${t.primaryKpi ? ` &middot; ${escapeHtml(t.primaryKpi)}` : ''}<span class="adlib-camp">${t.decision ? 'Decision: ' + escapeHtml(t.decision) : (t.startDate ? escapeHtml(t.startDate) : '')}</span></div>${t.hypothesis ? `<div class="adlib-copy">${escapeHtml(t.hypothesis)}</div>` : ''}</div>`).join('') : '<div class="strat-card"><p class="strat-empty">No tests yet. Start with a creative A/B: two variants, one KPI, and the lift worth detecting.</p></div>');
 }
 function trNew(){ tr.draft = trBlank(); tr.msg = ''; trRender(); }
 function trOpen(id){ const t = tr.tests.find(x => x.id === id); if (!t) return; tr.draft = JSON.parse(JSON.stringify(t)); tr.msg = ''; trRender(); }
@@ -30853,6 +30890,13 @@ function trSetVar(i, k, v){ tr.draft.variants[i][k] = v; trRefreshReadout(); }
 function trAddVar(){ const n = tr.draft.variants.length; tr.draft.variants.push({ key: 'v' + (n + 1), label: 'Variant ' + String.fromCharCode(65 + n), assetId: '', allocationPct: null, impressions: '', conversions: '' }); trRender(); }
 function trDelVar(i){ if (tr.draft.variants.length <= 2) return; tr.draft.variants.splice(i, 1); trRender(); }
 function trRefreshReadout(){ const el = document.getElementById('trReadout'); if (el && tr.draft) el.innerHTML = trReadoutHtml(tr.draft); }
+function trElementPickerHtml(t){
+  const cur = (t.details || {}).element || '';
+  const groups = {}; Object.keys(TR_ELEMENTS).forEach(k => { (groups[TR_ELEMENTS[k].g] = groups[TR_ELEMENTS[k].g] || []).push(k); });
+  const chips = Object.keys(groups).map(g => `<div style="margin:0 0 6px;"><span class="hint" style="display:inline-block;min-width:84px;font-size:0.75rem;font-family:inherit;">${escapeHtml(g)}</span>${groups[g].map(k => `<button type="button" class="${k === cur ? 'btn-primary' : 'btn-ghost'}" style="padding:4px 12px;margin:0 6px 4px 0;font-size:0.8125rem;" onclick="trPickElement('${k}')">${escapeHtml(TR_ELEMENTS[k].label)}</button>`).join('')}</div>`).join('');
+  const e = TR_ELEMENTS[cur];
+  return chips + (e && e.tip ? `<p class="hint" style="margin:6px 0 0;">${escapeHtml(e.tip)}</p>` : '');
+}
 function trEditorHtml(){
   const t = tr.draft; const mm = t.testType === 'matchmarket';
   const campOpts = '<option value="">None</option>' + (state.campaigns || []).map(c => `<option value="${escapeHtml(c.id)}"${c.id === t.campaignId ? ' selected' : ''}>${escapeHtml(adLibCampName(c))}</option>`).join('');
@@ -30864,9 +30908,10 @@ function trEditorHtml(){
   const stOpts = ['draft', 'running', 'complete'].map(k => `<option value="${k}"${k === t.status ? ' selected' : ''}>${k}</option>`).join('');
   const dOpts = [['', 'No decision yet'], ['ship', 'Ship the winner'], ['kill', 'Kill it'], ['iterate', 'Iterate and retest']].map(([k, l]) => `<option value="${k}"${k === t.decision ? ' selected' : ''}>${l}</option>`).join('');
   const vars = mm ? `<div class="tr-grid">${f('Test markets', `<input type="text" value="${escapeHtml((t.details || {}).testMarkets || '')}" placeholder="e.g. Tampa, Phoenix" oninput="trSetDetail('testMarkets', this.value)">`)}${f('Control markets', `<input type="text" value="${escapeHtml((t.details || {}).controlMarkets || '')}" placeholder="e.g. Orlando, Las Vegas" oninput="trSetDetail('controlMarkets', this.value)">`)}${f('Pre-period (weeks)', `<input type="number" value="${escapeHtml((t.details || {}).preWeeks || '')}" oninput="trSetDetail('preWeeks', this.value)">`)}</div>`
-    : `<div class="tr-vars"><div class="tr-vh"><span>Variant</span><span>Creative or asset reference</span><span>Share %</span><span>Impressions</span><span>Conversions</span><span></span></div>${t.variants.map((v, i) => `<div class="tr-vr"><input value="${escapeHtml(v.label)}" oninput="trSetVar(${i},'label',this.value)"><input value="${escapeHtml(v.assetId || '')}" placeholder="asset or copy version ID" oninput="trSetVar(${i},'assetId',this.value)"><input type="number" value="${v.allocationPct == null ? '' : v.allocationPct}" oninput="trSetVar(${i},'allocationPct',this.value)"><input type="number" value="${v.impressions == null ? '' : v.impressions}" oninput="trSetVar(${i},'impressions',this.value)"><input type="number" value="${v.conversions == null ? '' : v.conversions}" oninput="trSetVar(${i},'conversions',this.value)"><button type="button" class="btn-ghost" onclick="trDelVar(${i})"${t.variants.length <= 2 ? ' disabled' : ''}>Remove</button></div>`).join('')}</div><div class="adlib-act" style="margin-top:8px;"><button type="button" class="btn-ghost" onclick="trAddVar()">+ Variant</button><label class="btn-ghost" style="cursor:pointer;">Import results CSV<input type="file" accept=".csv,text/csv" style="display:none" onchange="trImport(this.files[0]);this.value=''"></label><button type="button" class="btn-ghost" onclick="trTemplateCsv()">Download results template</button></div>`;
+    : `<div class="tr-vars"><div class="tr-vh"><span>Variant</span><span>${escapeHtml(((trEl(t) || {}).col) || 'Creative or asset reference')}</span><span>Share %</span><span>${escapeHtml(((trEl(t) || {}).denom) || 'Impressions')}</span><span>Conversions</span><span></span></div>${t.variants.map((v, i) => `<div class="tr-vr"><input value="${escapeHtml(v.label)}" oninput="trSetVar(${i},'label',this.value)"><input value="${escapeHtml(v[((trEl(t) || {}).key) || 'assetId'] || '')}" placeholder="${escapeHtml(((trEl(t) || {}).col) || 'asset or copy version ID')}" oninput="trSetVar(${i},'${((trEl(t) || {}).key) || 'assetId'}',this.value)"><input type="number" value="${v.allocationPct == null ? '' : v.allocationPct}" oninput="trSetVar(${i},'allocationPct',this.value)"><input type="number" value="${v.impressions == null ? '' : v.impressions}" oninput="trSetVar(${i},'impressions',this.value)"><input type="number" value="${v.conversions == null ? '' : v.conversions}" oninput="trSetVar(${i},'conversions',this.value)"><button type="button" class="btn-ghost" onclick="trDelVar(${i})"${t.variants.length <= 2 ? ' disabled' : ''}>Remove</button></div>`).join('')}</div><div class="adlib-act" style="margin-top:8px;"><button type="button" class="btn-ghost" onclick="trAddVar()">+ Variant</button><label class="btn-ghost" style="cursor:pointer;">Import results CSV<input type="file" accept=".csv,text/csv" style="display:none" onchange="trImport(this.files[0]);this.value=''"></label><button type="button" class="btn-ghost" onclick="trTemplateCsv()">Download results template</button></div>`;
   return `<div class="strat-card"><div class="adlib-meta" style="margin-bottom:12px;"><strong>${t.id ? 'Edit test' : 'New test'}</strong><span class="adlib-camp"><a class="flink" onclick="trClose()">Back to all tests</a></span></div>
-    <div class="tr-grid">${f('Test name', inp('name', 'text', 'e.g. Polar hero image vs. ship image'))}${f('Type', sel('testType', typeOpts))}${f('Primary KPI', sel('primaryKpi', kpiOpts))}${f('Smallest lift worth detecting (%)', inp('mdePct', 'number'))}${f('Campaign', sel('campaignId', campOpts))}${f('Status', sel('status', stOpts))}${f('Start date', inp('startDate', 'date'))}${f('End date', inp('endDate', 'date'))}</div>
+    <h3 style="margin:0 0 6px;">What are you testing?</h3>${trElementPickerHtml(t)}
+    <div class="tr-grid" style="margin-top:14px;">${f('Test name', inp('name', 'text', 'e.g. Polar hero image vs. ship image'))}${f('Type', sel('testType', typeOpts))}${f('Primary KPI', sel('primaryKpi', kpiOpts))}${f('Smallest lift worth detecting (%)', inp('mdePct', 'number'))}${f('Campaign', sel('campaignId', campOpts))}${f('Status', sel('status', stOpts))}${f('Start date', inp('startDate', 'date'))}${f('End date', inp('endDate', 'date'))}</div>
     <label class="tr-f" style="margin-top:10px;"><span>Hypothesis</span><textarea rows="2" oninput="trSet('hypothesis', this.value)" placeholder="We believe X will lift Y because Z.">${escapeHtml(t.hypothesis || '')}</textarea></label>
     <h3 style="margin:16px 0 8px;">${mm ? 'Markets' : 'Variants and results'}</h3>${vars}
     <h3 style="margin:16px 0 8px;">Readout</h3><div id="trReadout"></div>
@@ -30918,10 +30963,10 @@ function trTemplateCsv(){
 function trExport(id){
   const list = id ? tr.tests.filter(x => x.id === id) : tr.tests;
   const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
-  const head = ['test_id', 'test_name', 'type', 'status', 'primary_kpi', 'min_lift_pct', 'campaign_id', 'start_date', 'end_date', 'variant', 'asset_ref', 'share_pct', 'impressions', 'conversions', 'rate', 'lift_vs_control', 'p_value', 'read', 'decision', 'learning'];
+  const head = ['test_id', 'test_name', 'type', 'element', 'status', 'primary_kpi', 'min_lift_pct', 'campaign_id', 'start_date', 'end_date', 'variant', 'asset_ref', 'share_pct', 'impressions', 'conversions', 'rate', 'lift_vs_control', 'p_value', 'read', 'decision', 'learning'];
   const out = [head.join(',')];
   list.forEach(t => { const s = trStats(t); const vs = t.variants && t.variants.length ? t.variants : [{}];
-    vs.forEach((v, i) => { const r = s.rows[i] || {}; out.push([t.id, t.name, TR_TYPES[t.testType] || t.testType, t.status, t.primaryKpi, t.mdePct, t.campaignId, t.startDate, t.endDate, v.label, v.assetId, v.allocationPct, v.impressions, v.conversions, r.rate == null ? '' : r.rate.toFixed(6), r.lift == null ? '' : r.lift.toFixed(6), r.p == null ? '' : r.p.toFixed(4), r.sig || '', t.decision, t.learning].map(q).join(',')); }); });
+    vs.forEach((v, i) => { const r = s.rows[i] || {}; out.push([t.id, t.name, TR_TYPES[t.testType] || t.testType, (TR_ELEMENTS[(t.details || {}).element] || {}).label || '', t.status, t.primaryKpi, t.mdePct, t.campaignId, t.startDate, t.endDate, v.label, (v.setting || v.assetId), v.allocationPct, v.impressions, v.conversions, r.rate == null ? '' : r.rate.toFixed(6), r.lift == null ? '' : r.lift.toFixed(6), r.p == null ? '' : r.p.toFixed(4), r.sig || '', t.decision, t.learning].map(q).join(',')); }); });
   const url = URL.createObjectURL(new Blob([out.join('\r\n')], { type: 'text/csv' })); const a = document.createElement('a'); a.href = url; a.download = id ? `test-${id}.csv` : 'test-registry.csv'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 let portalIsRecipient = false;
@@ -37571,6 +37616,82 @@ function mrfDmaSectionHtml(dma){
 // these downloads are built to match: one flat table, not a scrolling
 // page. mouLastAnalysis is kept so the export buttons know which upload
 // to ask for without a second round trip.
+
+// ---------- Booking history as the Match Market source (2026-10-07) ----------
+let mouBk = { info: null, from: '', to: '', groups: null, weight: 'count', countBy: 'transactions', busy: false };
+async function mouBkLoad(){
+  const el = document.getElementById('mouBookingBody');
+  if (!el || !state.companyId) return;
+  const qs = new URLSearchParams();
+  if (mouBk.from) qs.set('from', mouBk.from);
+  if (mouBk.to) qs.set('to', mouBk.to);
+  if (mouBk.groups && mouBk.groups.length) qs.set('productGroups', mouBk.groups.join('|'));
+  qs.set('countBy', mouBk.countBy);
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/market-customer-uploads/booking-preview?${qs}`);
+    if (!resp.ok){ el.innerHTML = '<p class="hint">Could not read booking history right now.</p>'; return; }
+    mouBk.info = await resp.json();
+    mouBkRender();
+  } catch (e){ el.innerHTML = '<p class="hint">Backend unreachable.</p>'; }
+}
+function mouBkRender(){
+  const el = document.getElementById('mouBookingBody'); const d = mouBk.info;
+  if (!el || !d) return;
+  if (!d.available){ el.innerHTML = `<p class="hint">${escapeHtml(d.note || 'No booking history on file yet.')} Upload your bookings in Data Management and this fills in by itself.</p>`; return; }
+  if (!mouBk.from && d.firstDate) mouBk.from = d.firstDate;
+  if (!mouBk.to && d.lastDate) mouBk.to = d.lastDate;
+  const pct = d.inScope ? Math.round(d.withPostalCode / d.inScope * 100) : 0;
+  const groups = d.productGroups || [];
+  const sel = mouBk.groups;
+  const groupHtml = groups.length > 1 ? `<div style="margin:8px 0;"><span class="hint" style="margin-right:6px;">Product groups:</span>${groups.map(g => `<label style="display:inline-flex;align-items:center;gap:4px;margin:0 10px 4px 0;font-size:0.8125rem;"><input type="checkbox" ${(!sel || sel.includes(g.name)) ? 'checked' : ''} onchange="mouBkToggleGroup('${escapeHtml(g.name).replace(/'/g, '&#39;')}', this.checked)"> ${escapeHtml(g.name)} <span class="hint">(${Number(g.n).toLocaleString()})</span></label>`).join('')}</div>` : '';
+  el.innerHTML = `
+    <p style="margin:0 0 8px;font-size:0.8125rem;"><strong>${d.countedRows.toLocaleString()}</strong> bookings on file counted under your transaction settings, ${d.firstDate ? `from ${escapeHtml(d.firstDate)} to ${escapeHtml(d.lastDate)}` : ''}. In this window: <strong>${d.inScope.toLocaleString()}</strong>, of which <strong>${pct}%</strong> have a postal code, covering <strong>${d.uniqueZips.toLocaleString()}</strong> postal codes.</p>
+    <div class="btn-row" style="gap:10px;align-items:center;margin-bottom:6px;">
+      <label class="hint" style="margin:0;">From <input type="date" value="${escapeHtml(mouBk.from || '')}" onchange="mouBk.from=this.value;mouBkLoad()" style="font:inherit;"></label>
+      <label class="hint" style="margin:0;">To <input type="date" value="${escapeHtml(mouBk.to || '')}" onchange="mouBk.to=this.value;mouBkLoad()" style="font:inherit;"></label>
+      <label class="hint" style="margin:0;">Count <select onchange="mouBk.countBy=this.value;mouBkLoad()" class="tbl-select"><option value="transactions" ${mouBk.countBy === 'transactions' ? 'selected' : ''}>Transactions</option><option value="guests" ${mouBk.countBy === 'guests' ? 'selected' : ''}>Guests</option></select></label>
+      <label class="hint" style="margin:0;">Weight by <select onchange="mouBk.weight=this.value" class="tbl-select"><option value="count" ${mouBk.weight === 'count' ? 'selected' : ''}>Volume</option><option value="revenue" ${mouBk.weight === 'revenue' ? 'selected' : ''}>Revenue</option></select></label>
+    </div>
+    ${groupHtml}
+    ${pct < 60 && d.inScope ? '<p class="hint" style="color:#b8860b;margin:4px 0;">Less than 60% of bookings in this window carry a postal code, so market volumes will read low.</p>' : ''}
+    <div class="btn-row" style="margin-top:8px;"><button type="button" class="btn-primary" id="mouBkGo" ${d.usable ? '' : 'disabled'} onclick="mouBkCommit()">Build test and control from bookings →</button></div>
+    <p class="hint" id="mouBkMsg" style="margin:6px 0 0;"></p>`;
+}
+function mouBkToggleGroup(name, on){
+  const all = ((mouBk.info && mouBk.info.productGroups) || []).map(g => g.name);
+  let cur = mouBk.groups ? mouBk.groups.slice() : all.slice();
+  cur = on ? Array.from(new Set(cur.concat([name]))) : cur.filter(x => x !== name);
+  mouBk.groups = cur.length === all.length ? null : cur;
+  mouBkLoad();
+}
+async function mouBkCommit(){
+  const msg = document.getElementById('mouBkMsg'); const btn = document.getElementById('mouBkGo');
+  if (!state.companyId || mouBk.busy) return;
+  mouBk.busy = true; if (btn) btn.disabled = true; if (msg) msg.textContent = 'Rolling bookings up to markets…';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/market-customer-uploads/from-bookings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 90000,
+      body: JSON.stringify({ from: mouBk.from || null, to: mouBk.to || null, productGroups: mouBk.groups, weightMode: mouBk.weight, countBy: mouBk.countBy }) });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){ if (msg) msg.textContent = data.error || 'Could not build from bookings.'; return; }
+    if (msg) msg.textContent = `Done — ${data.rowCount.toLocaleString()} postal codes rolled up. Results are below.`;
+    await mouLoadUploadPicker(data.id);
+    const card = document.getElementById('mouResultsCard'); if (card && card.scrollIntoView) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e){ if (msg) msg.textContent = 'Backend unreachable — try again.'; }
+  finally { mouBk.busy = false; if (btn) btn.disabled = false; }
+}
+function mouReadinessHtml(r){
+  if (!r || !r.pairs || !r.pairs.length) return '';
+  const col = g => ({ Strong: 'var(--cx)', Usable: '#2f7d4f', Thin: '#b8860b', 'Too small': 'var(--advocacy)' }[g] || 'var(--muted)');
+  const chips = ['Strong', 'Usable', 'Thin', 'Too small'].filter(g => r.summary[g]).map(g => `<span style="display:inline-block;margin:0 8px 4px 0;padding:2px 10px;border-radius:999px;background:color-mix(in srgb, ${col(g)} 14%, transparent);color:${col(g)};font-weight:600;font-size:0.75rem;">${r.summary[g]} ${g}</span>`).join('');
+  const pc = v => v == null ? '—' : v + '%';
+  const rows = r.pairs.map(p => `<tr><td>${escapeHtml(p.testName)}</td><td>${escapeHtml(p.controlName)}</td><td>${p.weeklyTest.toLocaleString()} / ${p.weeklyControl.toLocaleString()}</td><td>${pc(p.mdePct.w4)}</td><td>${pc(p.mdePct.w8)}</td><td>${pc(p.mdePct.w13)}</td><td>${p.weeksFor10Pct == null ? '—' : p.weeksFor10Pct + ' wk'}</td><td style="color:${col(p.grade)};font-weight:600;">${p.grade}</td></tr>`).join('');
+  return `<p style="font-size:0.8125rem;font-weight:600;margin:16px 0 6px;">Statistical readiness of each test/control pair</p>
+    <p class="hint" style="margin:0 0 8px;">Can this pair show a real lift? Smallest lift detectable after 4, 8 and 13 weeks. Lower is better.</p>
+    <div style="margin-bottom:8px;">${chips}</div>
+    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Test market</th><th>Control market</th><th>Weekly volume (test / control)</th><th>4 wk</th><th>8 wk</th><th>13 wk</th><th>Weeks to see 10%</th><th>Grade</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="hint" style="margin:6px 0 0;">${escapeHtml(r.periodNote)} ${escapeHtml(r.method)} Strong is 5% or better at 8 weeks, Usable 10%, Thin 20%. Anything above that is Too small for a market-level test, so pick larger markets or run it longer.</p>`;
+}
+
 let mouLastAnalysis = null;
 function mouRenderResults(data){
   const card = document.getElementById('mouResultsCard');
@@ -37611,6 +37732,7 @@ function mouRenderResults(data){
     <p style="font-size:0.8125rem;font-weight:600;margin:0 0 8px;">${sourceRows.length.toLocaleString()} ${isDma ? 'market' : 'zip'}${sourceRows.length === 1 ? '' : 's'} analyzed</p>
     <div style="margin-bottom:12px;">${tierChips || '<span class="hint">No tiers computed yet.</span>'}</div>
     <p class="hint" style="margin:0 0 16px;">${testControlCount} in Test/Control (${pairCount} matched pair${pairCount === 1 ? '' : 's'}), ${holdoutCount} in Holdout, ${notInTestCount} not in test.</p>
+    ${mouReadinessHtml(data.readiness)}
     <div class="btn-row" style="margin-bottom:8px;">
       <button type="button" class="btn-primary" onclick="mouExportXlsx()">Download full analysis (.xlsx) →</button>
       <button type="button" class="btn-ghost" onclick="mouExportDefinedCountriesXlsx()">Download defined countries only (.xlsx) →</button>
@@ -63532,6 +63654,7 @@ function goToStep(step, arg, arg2, arg3){
     mouResetImport();
     mouLoadHistory();
     if (typeof mouLoadUploadPicker === 'function') mouLoadUploadPicker();
+    if (typeof mouBkLoad === 'function') mouBkLoad();
     if (typeof mstLoad === 'function') mstLoad();
     document.getElementById('step-marketOptimization').classList.add('active');
   } else if (step === 'taxonomyManager'){
