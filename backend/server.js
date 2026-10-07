@@ -1119,7 +1119,7 @@ createTableIfNeeded(`CREATE TABLE IF NOT EXISTS platform_settings (
   svalue TEXT,
   updatedat TEXT
 )`);
-const MEMBER_KINDS = ['internal', 'external', 'viewer'];
+const MEMBER_KINDS = ['internal', 'external', 'viewer', 'recipient'];
 const ACCESS_LEVELS = ['view', 'edit'];
 ensureColumn('team_members', 'accesslevel', 'TEXT');
 const MEMBER_CATEGORIES = ['Brain Dump', 'Strategy', 'Customer Experiences', 'Growth and Performance', 'Media Science', 'Train the Brain', 'PR', 'Copywriting', 'Design', 'Motion Graphics', 'Marketing Ops', 'Analysts'];
@@ -3296,6 +3296,7 @@ ensureColumn('campaigns', 'activityNotesJson', 'TEXT');
 // 2026-10-07 — same bug shape as activityNotesJson above: the Copy Versions stage has POSTed copyVersionAssetsJson /
 // copyVersionSizeUsageJson / copyVersionsSentToCreativeAt for many rounds, but no column or merge-update field existed, so
 // saved Copy Versions lived only in the browser tab. Closing it so they survive a reload and can feed the Ad Copy Library.
+ensureColumn('team_members', 'exportfeeds', 'TEXT');
 ensureColumn('campaigns', 'copyVersionAssetsJson', 'TEXT');
 ensureColumn('campaigns', 'copyVersionSizeUsageJson', 'TEXT');
 ensureColumn('campaigns', 'copyVersionsSentToCreativeAt', 'TEXT');
@@ -11529,6 +11530,16 @@ createTableIfNeeded(`
 
 // Who owns each Train the Brain setup card. All-lowercase columns so Postgres needs no identifier quoting.
 createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS export_fetch_log (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    memberid TEXT,
+    membername TEXT,
+    feed TEXT NOT NULL,
+    format TEXT,
+    rowcount INTEGER,
+    createdat TEXT NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS onboarding_assignments (
     id TEXT PRIMARY KEY,
     accountid TEXT NOT NULL,
@@ -17514,7 +17525,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['onboarding_assignments', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
+const CATALOG_EXEMPT = new Set(['onboarding_assignments', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -18147,6 +18158,7 @@ function accessAudienceFor(session){
   if (!m) return null;
   if (m.isAdmin) return 'admin';
   if (m.memberkind === 'viewer') return 'viewer';
+  if (m.memberkind === 'recipient') return 'recipient';
   let cats = []; try { cats = JSON.parse(m.categories || '[]'); } catch (e){}
   if (m.memberkind === 'external') return (cats.length && cats.every(c => ACCESS_CREATIVE_CATEGORIES.includes(c))) ? 'creative' : 'agency';
   if (ACCESS_LEAD_LEVELS.includes(m.level)) return 'lead';
@@ -18164,7 +18176,18 @@ const CREATIVE_ALLOWED = [
   /^\/api\/campaigns\/[^/]+\/(creative|copy|messaging)[a-z-]*(\/|$)/
 ];
 // Reaches an external guest has beyond the grid rows: creative guests see only the creative work; agency guests see only the reports their agreement names.
+// Data recipients sign in to fetch the exports Verilume provides and nothing else.
+const RECIPIENT_ALLOWED = [
+  /^\/api\/auth\//,
+  /^\/api\/accounts\/[^/]+$/,
+  /^\/api\/accounts\/[^/]+\/my-access$/,
+  /^\/api\/accounts\/[^/]+\/exports(\/[a-z-]+)?$/
+];
 function externalScopeDecision(req, path, session, audience){
+  if (audience === 'recipient'){
+    if (RECIPIENT_ALLOWED.some(rx => rx.test(path))) return null;
+    return { item: 'recipient_scope', label: 'this part of the account (data recipients can only fetch the exports they were granted)', audience };
+  }
   if (audience === 'creative'){
     if (CREATIVE_ALLOWED.some(rx => rx.test(path))) return null;
     return { item: 'creative_scope', label: 'this part of the account (creative guests see the final brief and copy only)', audience };
@@ -18184,6 +18207,62 @@ function agencyNamedChannels(session){
   if (session && session.memberId) activeAgreementsFor(session.accountId, session.memberId).forEach(a => jsonList(a.channels).forEach(c => set.add(String(c).trim().toLowerCase())));
   return set;
 }
+
+// ---- Exports (data recipients and the production copy feed) ----
+const EXPORT_FEEDS = [
+  { key: 'copy', label: 'Production copy feed', desc: 'Approved Copy Versions by asset spec, for feed-driven render and template tools.', ready: true, formats: ['csv', 'json'] },
+  { key: 'mmm', label: 'MMM data file', desc: 'Channel, spend and impressions by period, with how each value was calculated.', ready: false, formats: ['csv'] },
+  { key: 'matchmarket', label: 'DMA match-market feed', desc: 'Test and control markets, match scores and test tracking.', ready: false, formats: ['csv'] }
+];
+function cleanExportFeeds(v){ const list = Array.isArray(v) ? v : []; return Array.from(new Set(list.map(String).filter(k => EXPORT_FEEDS.some(f => f.key === k)))); }
+function exportCaller(sess){
+  let name = 'Account login', recipient = false;
+  if (sess && sess.memberId){ try { const m = db.prepare('SELECT name, memberkind FROM team_members WHERE id = ?').get(sess.memberId); if (m){ name = m.name; recipient = m.memberkind === 'recipient'; } } catch (e){} }
+  else if (sess && sess.platformuserid) name = 'Verilume team';
+  return { name, recipient };
+}
+function exportFeedsGrantedFor(sess){
+  const all = EXPORT_FEEDS.map(f => f.key);
+  if (accessAudienceFor(sess) !== 'recipient') return all;
+  try { const m = db.prepare('SELECT exportfeeds FROM team_members WHERE id = ?').get(sess.memberId); return cleanExportFeeds(JSON.parse((m && m.exportfeeds) || '[]')); } catch (e){ return []; }
+}
+function copyFeedSize(label){ const m = String(label || '').match(/(\d{2,5})\s*[x×]\s*(\d{2,5})/i); return m ? { w: Number(m[1]), h: Number(m[2]) } : { w: '', h: '' }; }
+function copyFeedLimits(sz){
+  if (!sz.w) return { headline: 40, body: 125, cta: 20 };
+  const area = sz.w * sz.h;
+  if (area <= 120000) return { headline: 25, body: 60, cta: 15 };
+  if (area <= 600000) return { headline: 30, body: 90, cta: 20 };
+  return { headline: 40, body: 125, cta: 20 };
+}
+function copyFeedRows(accountId, campaignId){
+  const rows = [];
+  db.prepare('SELECT * FROM campaigns WHERE accountId = ? ORDER BY createdAt ASC').all(accountId).forEach(c => {
+    if (campaignId && c.id !== campaignId) return;
+    let assets = []; try { assets = JSON.parse(aliasVal(c, 'copyVersionAssetsJson') || '[]'); } catch (e){}
+    (Array.isArray(assets) ? assets : []).forEach(a => {
+      if ((a.status || 'Draft') !== 'Approved') return;
+      const sz = copyFeedSize(a.sizeLabel), lim = copyFeedLimits(sz);
+      const headline = a.headline || '', body = a.body || (a.headline ? '' : (a.copy || '')), cta = a.cta || '';
+      const over = []; if (headline.length > lim.headline) over.push('headline'); if (body.length > lim.body) over.push('body'); if (cta.length > lim.cta) over.push('cta');
+      rows.push({ variant_id: `${c.id}_${a.id}`, campaign_id: c.id, campaign_name: c.name || c.id, channel: a.channel || '', ad_format: a.creativeType && a.creativeType !== '(unspecified)' ? a.creativeType : '', size_label: a.sizeLabel || '', width: sz.w, height: sz.h,
+        headline, body_copy: body, cta_text: cta, headline_max_chars: lim.headline, body_max_chars: lim.body, cta_max_chars: lim.cta, over_limit: over.join('|'), template_id: '' });
+    });
+  });
+  return rows;
+}
+function copyFeedCsv(rows){
+  const cols = ['variant_id', 'campaign_id', 'campaign_name', 'channel', 'ad_format', 'size_label', 'width', 'height', 'headline', 'body_copy', 'cta_text', 'headline_max_chars', 'body_max_chars', 'cta_max_chars', 'over_limit', 'template_id'];
+  const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  return [cols.join(',')].concat(rows.map(r => cols.map(k => q(r[k])).join(','))).join('\r\n');
+}
+function copyFeedJson(rows){
+  const byC = new Map();
+  rows.forEach(r => { if (!byC.has(r.campaign_id)) byC.set(r.campaign_id, { campaign_id: r.campaign_id, campaign_name: r.campaign_name, variants: [] });
+    byC.get(r.campaign_id).variants.push({ variant_id: r.variant_id, channel: r.channel, ad_format: r.ad_format, format: r.width ? `${r.width}x${r.height}` : r.size_label, template_id: r.template_id,
+      copy: { headline: r.headline, body: r.body_copy, cta: r.cta_text }, layers: { headline_text: r.headline, body_text: r.body_copy, cta_button_text: r.cta_text },
+      limits: { headline: r.headline_max_chars, body: r.body_max_chars, cta: r.cta_max_chars }, over_limit: r.over_limit ? r.over_limit.split('|') : [] }); });
+  return { campaigns: Array.from(byC.values()) };
+}
 // Profile-level View / Edit. Executive viewers default to view; everyone else to edit. Read from the database on every call.
 function accessLevelFor(session){
   if (!session || session.platformuserid || !session.memberId) return 'edit';
@@ -18191,7 +18270,7 @@ function accessLevelFor(session){
   try { m = db.prepare('SELECT memberkind, accesslevel FROM team_members WHERE id = ?').get(session.memberId); } catch (e){}
   if (!m) return 'edit';
   if (m.accesslevel === 'view' || m.accesslevel === 'edit') return m.accesslevel;
-  return m.memberkind === 'viewer' ? 'view' : 'edit';
+  return (m.memberkind === 'viewer' || m.memberkind === 'recipient') ? 'view' : 'edit';
 }
 const READONLY_WRITE_OK = [/^\/api\/auth\//, /\/(ask|ask-export)$/, /\/voice\//];
 // Returns null when allowed, or { item, label, audience } when refused.
@@ -41513,10 +41592,10 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       // Explicit column list (not SELECT *) as of 2026-08-18 — team_members
       // now carries passwordHash/passwordSalt (registration rebuild) and
       // those must never leave the server, hashed or not.
-      const team = db.prepare(`SELECT id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, phone, phoneVerifiedAt, mustChangePassword, memberkind, handle, rolelabel, categories, accessexpiresat, phoneext, accesslevel FROM team_members WHERE accountId = ? ORDER BY createdAt ASC`).all(accountId);
+      const team = db.prepare(`SELECT id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, phone, phoneVerifiedAt, mustChangePassword, memberkind, handle, rolelabel, categories, accessexpiresat, phoneext, accesslevel, exportfeeds FROM team_members WHERE accountId = ? ORDER BY createdAt ASC`).all(accountId);
       team.forEach(m => {
         if (!m.handle){ m.handle = generateHandle(accountId, m.name, m.id); try { db.prepare('UPDATE team_members SET handle = ? WHERE id = ?').run(m.handle, m.id); } catch (e){} }
-        m.accessExpiresAt = m.accessexpiresat || null; delete m.accessexpiresat; m.memberKind = m.memberkind || 'internal'; m.roleLabel = m.rolelabel || ''; m.phoneExt = m.phoneext || ''; delete m.phoneext; m.accessLevel = m.accesslevel || (m.memberKind === 'viewer' ? 'view' : 'edit'); delete m.accesslevel; let c = []; try { c = JSON.parse(m.categories || '[]'); } catch (e){} m.categories = c;
+        m.accessExpiresAt = m.accessexpiresat || null; delete m.accessexpiresat; m.memberKind = m.memberkind || 'internal'; m.roleLabel = m.rolelabel || ''; m.phoneExt = m.phoneext || ''; delete m.phoneext; m.accessLevel = m.accesslevel || ((m.memberKind === 'viewer' || m.memberKind === 'recipient') ? 'view' : 'edit'); delete m.accesslevel; try { m.exportFeeds = JSON.parse(m.exportfeeds || '[]'); } catch (e){ m.exportFeeds = []; } delete m.exportfeeds; let c = []; try { c = JSON.parse(m.categories || '[]'); } catch (e){} m.categories = c;
         delete m.memberkind; delete m.rolelabel;
       });
       return sendJson(res, 200, { team });
@@ -41557,7 +41636,8 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (body.isAdmin && !requireAdminMember(req, res, accountId)) return;
       const newKind = MEMBER_KINDS.includes(body.memberKind) ? body.memberKind : 'internal';
       if (String(body.phone || '').replace(/\D/g, '').length < 10) return sendJson(res, 400, { error: 'a phone number (at least 10 digits) is required' });
-      if ((newKind === 'external' || newKind === 'viewer' || body.accessLevel) && !requireAdminMember(req, res, accountId)) return;
+      if ((newKind === 'external' || newKind === 'viewer' || newKind === 'recipient' || body.accessLevel) && !requireAdminMember(req, res, accountId)) return;
+      if (newKind === 'recipient' && !body.email) return sendJson(res, 400, { error: 'an email is required for a data recipient (it is how they sign in)' });
       let passwordHash = null, passwordSalt = null, mustChangePassword = 0, tempPassword = null;
       if (body.email){
         const emailTaken = db.prepare('SELECT id FROM team_members WHERE lower(email) = lower(?)').get(body.email);
@@ -41578,7 +41658,8 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (body.phone){ const ph = String(body.phone).replace(/[^0-9+]/g, '').slice(0, 20); if (ph) db.prepare('UPDATE team_members SET phone = ? WHERE id = ?').run(ph, memberId); }
       if (body.phoneExt){ const ex = String(body.phoneExt).replace(/[^0-9]/g, '').slice(0, 8); if (ex) db.prepare('UPDATE team_members SET phoneext = ? WHERE id = ?').run(ex, memberId); }
       const newHandle = generateHandle(accountId, body.name, memberId);
-      { const lvl = ACCESS_LEVELS.includes(body.accessLevel) ? body.accessLevel : (newKind === 'viewer' ? 'view' : 'edit'); db.prepare('UPDATE team_members SET accesslevel = ? WHERE id = ?').run(lvl, memberId); }
+      { const lvl = ACCESS_LEVELS.includes(body.accessLevel) ? body.accessLevel : ((newKind === 'viewer' || newKind === 'recipient') ? 'view' : 'edit'); db.prepare('UPDATE team_members SET accesslevel = ? WHERE id = ?').run(lvl, memberId); }
+      if (newKind === 'recipient') db.prepare('UPDATE team_members SET exportfeeds = ? WHERE id = ?').run(JSON.stringify(cleanExportFeeds(body.exportFeeds)), memberId);
       db.prepare('UPDATE team_members SET memberkind = ?, handle = ?, rolelabel = ?, categories = ? WHERE id = ?')
         .run(newKind, newHandle, String(body.roleLabel || '').slice(0, 80) || null, cleanCategories(body.categories), memberId);
       let accessExpiresAt = null;
@@ -41589,6 +41670,41 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         response.mustChangePassword = true;
       }
       return sendJson(res, 201, response);
+    }
+
+
+    // Exports. Feeds Verilume provides to people who sign in: GET lists what the caller may fetch, GET .../exports/copy downloads the
+    // production copy feed (approved Copy Versions only), GET .../exports/log is the admin audit trail. Every fetch is logged.
+    if (req.method === 'GET' && parts.length >= 4 && parts.length <= 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'exports'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const sess = authenticate(req);
+      const who = exportCaller(sess);
+      if (parts.length === 4){
+        const granted = exportFeedsGrantedFor(sess);
+        const feeds = EXPORT_FEEDS.map(f => ({ key: f.key, label: f.label, desc: f.desc, ready: f.ready, granted: granted.includes(f.key), formats: f.formats, count: f.key === 'copy' ? copyFeedRows(accountId, null).length : null }));
+        return sendJson(res, 200, { feeds, recipient: who.recipient, signedInAs: who.name });
+      }
+      if (parts[4] === 'log'){
+        if (!requireAdminMember(req, res, accountId)) return;
+        const rows = db.prepare('SELECT membername, memberid, feed, format, rowcount, createdat FROM export_fetch_log WHERE accountid = ? ORDER BY createdat DESC LIMIT 100').all(accountId);
+        return sendJson(res, 200, { log: rows.map(r => ({ who: r.membername || r.memberid || 'Account login', feed: r.feed, format: r.format, rows: r.rowcount, at: r.createdat })) });
+      }
+      const feed = EXPORT_FEEDS.find(f => f.key === parts[4]);
+      if (!feed) return sendJson(res, 404, { error: 'unknown export' });
+      if (!feed.ready) return sendJson(res, 409, { error: `${feed.label} is not available yet` });
+      if (!exportFeedsGrantedFor(sess).includes(feed.key)) return sendJson(res, 403, { error: `you have not been granted ${feed.label}` });
+      const u = new URL(req.url, 'http://x');
+      const format = u.searchParams.get('format') === 'json' ? 'json' : 'csv';
+      const rows = copyFeedRows(accountId, u.searchParams.get('campaignId') || null);
+      try { db.prepare('INSERT INTO export_fetch_log (id, accountid, memberid, membername, feed, format, rowcount, createdat) VALUES (?,?,?,?,?,?,?,?)').run(generateId('EXF'), accountId, sess && sess.memberId || null, who.name, feed.key, format, rows.length, new Date().toISOString()); } catch (e){ console.warn('export log failed', e.message); }
+      const stamp = new Date().toISOString().slice(0, 10);
+      if (format === 'json'){
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Disposition': `attachment; filename="${accountId}-copy-feed-${stamp}.json"`, 'Access-Control-Allow-Origin': res.getHeader('Access-Control-Allow-Origin') || '*', 'Access-Control-Expose-Headers': 'Content-Disposition' });
+        return res.end(JSON.stringify(copyFeedJson(rows), null, 2));
+      }
+      res.writeHead(200, { 'Content-Type': 'text/csv', 'Content-Disposition': `attachment; filename="${accountId}-copy-feed-${stamp}.csv"`, 'Access-Control-Allow-Origin': res.getHeader('Access-Control-Allow-Origin') || '*', 'Access-Control-Expose-Headers': 'Content-Disposition' });
+      return res.end(copyFeedCsv(rows));
     }
 
     // Train the Brain card owners. GET lists them for anyone on the account; PUT (Admin only) sets or clears the owner of one or more cards.
@@ -41697,6 +41813,10 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (body.accessLevel !== undefined && ACCESS_LEVELS.includes(body.accessLevel)){
         if (!requireAdminMember(req, res, existing.accountId)) return;
         db.prepare('UPDATE team_members SET accesslevel = ? WHERE id = ?').run(body.accessLevel, memberId);
+      }
+      if (body.exportFeeds !== undefined){
+        if (!requireAdminMember(req, res, existing.accountId)) return;
+        db.prepare('UPDATE team_members SET exportfeeds = ? WHERE id = ?').run(JSON.stringify(cleanExportFeeds(body.exportFeeds)), memberId);
       }
       if (body.memberKind !== undefined && MEMBER_KINDS.includes(body.memberKind)){
         if (!requireAdminMember(req, res, existing.accountId)) return;
