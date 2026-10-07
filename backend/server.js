@@ -10962,28 +10962,86 @@ function computeMatchedMarketPairs(penetrationRows, demographicResult, holdoutZi
 // booking over the same window as the upload (digital spend ÷ counted transactions), falling back to
 // the latest annual baseline (working media ÷ bookings). It is an AVERAGE; the client page applies a
 // multiplier because the next booking costs more than the average one.
-function getCostPerBookingForWindow(accountId, audit){
+function getCostPerBookingFromBudget(accountId, audit){
+  // 2026-10-07 revision: spend is ALL working media by channel, not digital only. Market tests and MMM
+  // cover every channel, and a geo test can run in anything that can be targeted by market (direct mail,
+  // magazine inserts, local TV, radio, outdoor, as well as digital). Returns the spend per channel for the
+  // window so the page can count all of it, or only the channels the client picks.
   try {
     let from = audit && audit.dateFrom, to = audit && audit.dateTo;
-    if (!to){ const d = new Date(); to = d.toISOString().slice(0, 10); const f = new Date(d.getTime() - 365 * 86400000); from = f.toISOString().slice(0, 10); }
+    if (!to){ const d = new Date(); to = d.toISOString().slice(0, 10); from = new Date(d.getTime() - 365 * 86400000).toISOString().slice(0, 10); }
     const fk = from.slice(0, 7), tk = to.slice(0, 7);
     const ym = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
-    const spendBy = {}, txBy = {}, revBy = {};
-    try { db.prepare("SELECT year, month, spend FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").all(accountId).forEach(r => { const k = ym(r.year, r.month); if (k >= fk && k <= tk) spendBy[k] = (spendBy[k] || 0) + (Number(r.spend) || 0); }); } catch (e){}
+    const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+    const txBy = {}, revBy = {};
     try { db.prepare('SELECT year, month, SUM(transactions) AS t, SUM(revenue) AS rv FROM account_transactions_monthly WHERE accountId = ? GROUP BY year, month').all(accountId).forEach(r => { const k = ym(r.year, r.month); if (k >= fk && k <= tk){ txBy[k] = Number(r.t) || 0; revBy[k] = Number(r.rv) || 0; } }); } catch (e){}
-    const both = Object.keys(spendBy).filter(k => spendBy[k] > 0 && txBy[k] > 0);
-    if (both.length >= 3){
-      const sp = both.reduce((a, k) => a + spendBy[k], 0), tx = both.reduce((a, k) => a + txBy[k], 0);
-      const rv = both.reduce((a, k) => a + (revBy[k] || 0), 0);
-      return { costPerBooking: Math.round(sp / tx * 100) / 100, avgOrderValue: rv > 0 ? Math.round(rv / tx * 100) / 100 : null, source: `Digital media spend ÷ counted transactions, ${both.length} months in the same window`, spend: Math.round(sp), bookings: tx, months: both.length };
+    // 1) the confirmed marketing budget, working media by channel and month
+    const spendByCat = {}; const spendMonths = new Set();
+    try {
+      const years = []; for (let y = Number(fk.slice(0, 4)); y <= Number(tk.slice(0, 4)); y++) years.push(y);
+      years.forEach(y => {
+        const up = db.prepare("SELECT id FROM marketing_budget_uploads WHERE accountId = ? AND year = ? AND status = 'confirmed' AND COALESCE(\"totalOnly\", 0) = 0 ORDER BY confirmedAt DESC LIMIT 1").get(accountId, y);
+        if (!up) return;
+        db.prepare('SELECT category, status, month, amount, "verilumeCategory" FROM marketing_budget_line_items WHERE uploadId = ?').all(up.id).forEach(r => {
+          if (!/^\s*working/i.test(String(r.status || ''))) return;
+          const mn = MONTHS[String(r.month || '').trim().slice(0, 3).toLowerCase()]; if (!mn) return;
+          const k = ym(y, mn); if (k < fk || k > tk) return;
+          const amt = Number(r.amount) || 0; if (!(amt > 0)) return;
+          const cat = String(aliasVal(r, 'verilumeCategory') || r.category || 'Other').trim();
+          (spendByCat[k] = spendByCat[k] || {})[cat] = ((spendByCat[k] || {})[cat] || 0) + amt; spendMonths.add(k);
+        });
+      });
+    } catch (e){}
+    const matched = Array.from(spendMonths).filter(k => txBy[k] > 0);
+    const fin = (cats, txM, extra) => {
+      const tx = txM.reduce((a, k) => a + txBy[k], 0), rv = txM.reduce((a, k) => a + (revBy[k] || 0), 0);
+      return Object.assign({ categories: cats, transactions: tx, months: txM.length, avgOrderValue: rv > 0 && tx > 0 ? Math.round(rv / tx * 100) / 100 : null }, extra);
+    };
+    if (matched.length >= 3){
+      const cat = {}; matched.forEach(k => Object.keys(spendByCat[k]).forEach(c => { cat[c] = (cat[c] || 0) + spendByCat[k][c]; }));
+      const cats = Object.keys(cat).map(c => ({ name: c, spend: Math.round(cat[c]) })).sort((a, b) => b.spend - a.spend);
+      return fin(cats, matched, { basis: 'budget', source: `Confirmed marketing budget, all working media, ${matched.length} months matched to counted transactions. These are budgeted amounts, not invoiced actuals.` });
     }
+    // 2) the latest annual baseline: all working media in one number
     try {
       const row = db.prepare("SELECT year, workingMedia, bookings FROM account_annual_plan WHERE accountId = ? AND kind = 'baseline' ORDER BY year DESC LIMIT 1").get(accountId);
       const wm = row && (row.workingMedia != null ? row.workingMedia : aliasVal(row, 'workingMedia')), bk = row && row.bookings;
-      if (wm > 0 && bk > 0) return { costPerBooking: Math.round(wm / bk * 100) / 100, source: `${row.year} baseline: working media ÷ bookings`, spend: Math.round(wm), bookings: bk, months: 12 };
+      if (wm > 0 && bk > 0) return { categories: [{ name: 'All working media (annual baseline)', spend: Math.round(wm) }], transactions: bk, months: 12, avgOrderValue: null, basis: 'baseline', source: `${row.year} baseline: all working media ÷ bookings` };
     } catch (e){}
+    // 3) digital actuals only, offered as a clearly labelled last resort, never the default claim of "all media"
+    const dig = {}; try { db.prepare("SELECT year, month, spend FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").all(accountId).forEach(r => { const k = ym(r.year, r.month); if (k >= fk && k <= tk) dig[k] = (dig[k] || 0) + (Number(r.spend) || 0); }); } catch (e){}
+    const dm = Object.keys(dig).filter(k => dig[k] > 0 && txBy[k] > 0);
+    if (dm.length >= 3){
+      const sp = dm.reduce((a, k) => a + dig[k], 0);
+      return fin([{ name: 'Digital only (reported actuals)', spend: Math.round(sp) }], dm, { basis: 'digital_only', source: `No all-channel spend on file for this window. Only digital actuals are available, ${dm.length} months, so this understates the cost per booking if the account runs other media.` });
+    }
   } catch (e){}
   return null;
+}
+
+
+// Cost per booking now comes from the SAME source as the Budgets cards (ROAS, CAC), so the Match Market plan
+// and the cards always agree. The marketing-budget channel mix is only used to split that spend by channel,
+// for picking the channels that can be targeted by market.
+function getCostPerBookingForWindow(accountId, audit){
+  let mix = null; try { mix = getCostPerBookingFromBudget(accountId, audit); } catch (e){ mix = null; }
+  try {
+    // Same path the Budgets cards take when a date range is chosen: daily media (campaigns, digital actuals,
+    // Media Mix entries) and daily transactions, over the window the upload covers.
+    let from = audit && audit.dateFrom, to = audit && audit.dateTo;
+    if (!to){ const d = new Date(); to = d.toISOString().slice(0, 10); from = new Date(d.getTime() - 365 * 86400000).toISOString().slice(0, 10); }
+    const range = resolveDateRange({ preset: 'custom', from, to });
+    const dm = buildStoryDemand(accountId, { asOf: new Date(), range });
+    const o = dm && dm.outcomes;
+    if (o && o.basis === 'monthly' && o.spend > 0 && o.transactions > 0){
+      const cats = (mix && mix.basis === 'budget' && mix.categories && mix.categories.length > 1) ? mix.categories : [{ name: 'All marketing spend', spend: Math.round(o.spend) }];
+      const cpb = o.cac != null ? o.cac : Math.round(o.spend / o.transactions * 100) / 100;
+      return { categories: cats, transactions: o.transactions, months: (dm.window && dm.window.months) || null, avgOrderValue: o.revenue > 0 ? Math.round(o.revenue / o.transactions * 100) / 100 : null,
+        spendTotal: Math.round(o.spend), costPerBooking: cpb, basis: 'cards', window: { from: range.from, to: range.through },
+        source: `Same figures as the Budgets cards (${o.basisLabel}): marketing spend ÷ unique transactions, the CAC card, over ${range.from} to ${range.through}.` };
+    }
+  } catch (e){}
+  return mix;
 }
 
 // 2026-10-07 — "statistically relevant" check for Match Market test/control
