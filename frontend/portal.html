@@ -1577,6 +1577,7 @@
   .ttb-sec-h{display:flex;width:100%;align-items:center;gap:16px;padding:16px 20px;background:none;border:0;cursor:pointer;text-align:left;font:inherit;color:var(--ink);min-height:64px;}
   .ttb-sec-n{flex:none;width:32px;height:32px;border-radius:50%;border:2px solid #1E2761;color:#1E2761;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:0.875rem;} .ttb-sec.done .ttb-sec-n{background:#1E2761;color:#fff;}
   .ttb-sec-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;} .ttb-sec-name{font-size:1.1875rem;font-weight:600;color:#1E2761;} .ttb-sec-sub{font-size:0.8125rem;color:var(--muted);}
+  body.recipient-shell #primaryNav, body.recipient-shell .primary-nav, body.recipient-shell .app-header-gear, body.recipient-shell #askVerilumeBar{display:none !important;} body.recipient-shell #exportsCrumbHome{display:none;}
   .adlib-bar{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 14px;} .adlib-bar input,.adlib-bar select{padding:9px 12px;border:1px solid var(--line,#d9dee8);border-radius:8px;font:inherit;background:var(--white,#fff);color:inherit;} .adlib-bar input{flex:1 1 240px;}
   .adlib-card{border:1px solid var(--line,#d9dee8);border-radius:12px;padding:14px 16px;margin:0 0 10px;background:var(--white,#fff);} .adlib-meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:0.8125rem;} .adlib-camp{margin-left:auto;color:var(--muted);}
   .adlib-pill{font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;padding:3px 8px;border-radius:999px;background:#eef0f4;color:#4a5568;} .adlib-pill.ok{background:#e3f4ee;color:#0f766e;}
@@ -5913,6 +5914,14 @@
        a field to fill in alongside Voice/Colors/Fonts. Still writes to the
        same account.visionStatement/longformVoiceExample columns via the
        same saveVisionLongformEdits(), unchanged. -->
+  <div class="step" id="step-exports">
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link" id="exportsCrumbHome">CMO Dashboard</a> / Exports</div>
+    <div class="eyebrow">Exports</div>
+    <h1>Exports</h1>
+    <p class="msg-lede">The data feeds Verilume provides. Every download is tied to the person signed in and logged.</p>
+    <div id="exportsBody"></div>
+  </div>
+
   <div class="step" id="step-adCopyLibrary">
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="switchPrimaryTab('brand')">Customer Experiences</a> / Ad Copy Library</div>
     <div class="eyebrow">Customer Experiences · Ad Copy Library</div>
@@ -7488,8 +7497,10 @@
             <option value="internal">Marketing team (on the chart)</option>
             <option value="viewer">Executive viewer (off the chart)</option>
             <option value="external">External partner (agency or freelance)</option>
+            <option value="recipient">Data recipient (exports only)</option>
           </select>
           <div class="hint" id="teamKindHint"></div>
+          <div id="teamExportWrap" style="display:none;margin-top:10px;"><div class="hint" style="margin:0 0 6px;">Exports this person can fetch after signing in:</div><div id="teamExportFeeds" class="tf-checks"></div></div>
         </div>
         <div class="field">
           <label for="teamNewAccess">Access</label>
@@ -24331,7 +24342,8 @@ const BRAND_SHELL_GROUPS = [
       // earlier draft sketch including one.
       render: voiceContestReportHtml
     },
-    { label: 'Ad Copy Library', step: 'adCopyLibrary', desc: 'Every Copy Version saved on any campaign, searchable and exportable. New campaigns can start from it.' }
+    { label: 'Ad Copy Library', step: 'adCopyLibrary', desc: 'Every Copy Version saved on any campaign, searchable and exportable. New campaigns can start from it.' },
+    { label: 'Exports', step: 'exports', badge: 'enterprise', desc: 'Data feeds for render tools and partners: production copy now, MMM and match-market as they are built. Who fetched what is logged.' }
   ]},
   { label: 'Creative Production', items: [
     { label: 'Experience Development' },
@@ -28486,7 +28498,7 @@ function ttbOwnerName(key){ const a = (ttb.assign || {})[key]; if (!a || !a.memb
 function ttbAssignHtml(key){
   if (portalViewerIsAdmin === false) return '';
   const cur = ((ttb.assign || {})[key] || {}).memberId || '';
-  const opts = state.team.filter(m => m.status !== 'inactive' && m.memberKind !== 'viewer').map(m => `<option value="${m.id}"${m.id === cur ? ' selected' : ''}>${escapeHtml(m.name)}${m.roleLabel ? ' · ' + escapeHtml(posTitle(m.roleLabel)) : ''}</option>`).join('');
+  const opts = state.team.filter(m => m.status !== 'inactive' && m.memberKind !== 'viewer' && m.memberKind !== 'recipient').map(m => `<option value="${m.id}"${m.id === cur ? ' selected' : ''}>${escapeHtml(m.name)}${m.roleLabel ? ' · ' + escapeHtml(posTitle(m.roleLabel)) : ''}</option>`).join('');
   return `<div class="ttb-assign"><label for="ttbOwn-${key}">Owner</label><select id="ttbOwn-${key}" onchange="ttbSetAssign('${key}', this.value)"><option value="">Unassigned. The Admin does it</option>${opts}</select></div>`;
 }
 function ttbMyTasksHtml(d){
@@ -30766,6 +30778,53 @@ async function loadTeam(){
 // login every portal.html session still uses today), and keeps this a pure
 // UX improvement rather than a second access-control layer: the backend
 // gate is still what actually protects anything here.
+
+// 2026-10-07 — Exports page + Data recipient shell. Recipients sign in and see only this page; the server enforces it (RECIPIENT_ALLOWED).
+let portalIsRecipient = false;
+let exportsState = { feeds: null, log: null, err: '' };
+async function renderExportsStep(){
+  const el = document.getElementById('exportsBody'); if (!el) return;
+  if (!exportsState.feeds) el.innerHTML = '<div class="strat-card"><p class="strat-empty">Loading exports…</p></div>';
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/exports`);
+    if (!r.ok) throw new Error(String(r.status));
+    exportsState.feeds = await r.json(); exportsState.err = '';
+  } catch (e){ exportsState.err = 'Could not load exports just now.'; }
+  if (!portalIsRecipient && portalViewerIsAdmin){
+    try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/exports/log`); if (r.ok) exportsState.log = (await r.json()).log; } catch (e){}
+  }
+  exportsRender();
+}
+function exportsRender(){
+  const el = document.getElementById('exportsBody'); if (!el) return;
+  const d = exportsState.feeds;
+  if (!d){ el.innerHTML = `<div class="strat-card"><p class="strat-empty">${escapeHtml(exportsState.err || 'No exports available.')}</p></div>`; return; }
+  const fmtBtn = (f, fmt) => `<button type="button" class="btn-ghost" onclick="exportsDownload('${f.key}','${fmt}')">Download ${fmt.toUpperCase()}</button>`;
+  const cards = d.feeds.filter(f => !d.recipient || f.granted).map(f => `<div class="adlib-card"><div class="adlib-meta"><strong>${escapeHtml(f.label)}</strong>${f.ready ? '' : '<span class="adlib-pill">Coming soon</span>'}${f.count != null ? `<span class="adlib-camp">${f.count} approved item${f.count === 1 ? '' : 's'}</span>` : ''}</div>
+    <div class="adlib-copy">${escapeHtml(f.desc)}</div>
+    <div class="adlib-act">${f.ready && f.granted ? f.formats.map(x => fmtBtn(f, x)).join('') : f.ready ? '<span class="hint">Not granted to this login.</span>' : ''}</div></div>`).join('');
+  const none = d.recipient && !d.feeds.some(f => f.granted) ? '<div class="strat-card"><p class="strat-empty">No exports have been granted to you yet. Ask the account Admin.</p></div>' : '';
+  const log = exportsState.log ? `<h3 style="margin:22px 0 8px;">Recent downloads</h3>` + (exportsState.log.length ? `<div class="strat-tablewrap"><table class="strat-table"><thead><tr><th>When</th><th>Who</th><th>Export</th><th>Format</th><th>Rows</th></tr></thead><tbody>${exportsState.log.map(l => `<tr><td>${escapeHtml(new Date(l.at).toLocaleString())}</td><td>${escapeHtml(l.who)}</td><td>${escapeHtml(l.feed)}</td><td>${escapeHtml(l.format || '')}</td><td>${l.rows == null ? '' : l.rows}</td></tr>`).join('')}</tbody></table></div>` : '<p class="hint">Nothing has been downloaded yet.</p>') : '';
+  el.innerHTML = `${d.signedInAs ? `<div class="hint" style="margin:0 0 12px;">Signed in as ${escapeHtml(d.signedInAs)}.</div>` : ''}${cards}${none}${log}`;
+}
+async function exportsDownload(feed, fmt){
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/exports/${encodeURIComponent(feed)}?format=${fmt}`, { timeoutMs: 60000 });
+    if (!r.ok){ const e = await r.json().catch(() => ({})); adLibFlash(e.error || 'Could not download that export.'); return; }
+    const blob = await r.blob(); const cd = r.headers.get('Content-Disposition') || ''; const m = /filename="([^"]+)"/.exec(cd);
+    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = m ? m[1] : `${feed}.${fmt}`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    renderExportsStep();
+  } catch (e){ adLibFlash('Could not download that export.'); }
+}
+async function checkPortalIsRecipient(){
+  if (dataSourceLabel !== 'backend') return;
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/my-access`);
+    if (!r.ok) return;
+    const a = await r.json();
+    if (a.audience === 'recipient'){ portalIsRecipient = true; document.body.classList.add('recipient-shell'); goToStep('exports'); }
+  } catch (e){}
+}
 let portalViewerIsAdmin = true;
 async function checkPortalViewerAdminStatus(){
   if (dataSourceLabel !== 'backend') return;
@@ -30782,6 +30841,7 @@ async function checkPortalViewerAdminStatus(){
       if (me.memberId && !actingAsId){ actingAsId = me.memberId; try { loadSelfRatings(actingAsId).then(renderSelfRateView); } catch (e){} }
     }
   } catch (e){ /* leave the safe default in place */ }
+  checkPortalIsRecipient();
   applyIsAdminToggleGate();
   applyTeamStepAdminGate(); // 2026-08-23 — same gate, applied to the whole step-team section; see its own comment.
 }
@@ -61707,26 +61767,35 @@ function populateReportsTo(selectedId){
   const keep = selectedId !== undefined ? selectedId : sel.value;
   const block = editingTeamMemberId ? [editingTeamMemberId].concat(descendantsOf(editingTeamMemberId)) : [];
   sel.innerHTML = `<option value="">— no one (leadership) —</option>` +
-    state.team.filter(m => m.status !== 'inactive' && m.memberKind !== 'viewer' && !block.includes(m.id))
+    state.team.filter(m => m.status !== 'inactive' && m.memberKind !== 'viewer' && m.memberKind !== 'recipient' && !block.includes(m.id))
       .map(m => `<option value="${m.id}">${escapeHtml(m.name)} — ${escapeHtml(m.roleLabel || functionLabel(m.functionGroup))}</option>`).join('');
   sel.value = keep || '';
 }
 function onTeamLevelChange(){ populateReportsTo(); }
 function onTeamKindChange(userChanged){
   const kind = document.getElementById('teamNewKind').value;
-  const ext = kind === 'external', viewer = kind === 'viewer';
+  const ext = kind === 'external', recip = kind === 'recipient', viewer = kind === 'viewer' || recip;
   const rw = document.getElementById('teamReportsWrap'), fw = document.getElementById('teamFunctionWrap');
   if (rw) rw.style.display = viewer ? 'none' : '';
   if (fw) fw.style.display = viewer ? 'none' : '';
   const acc = document.getElementById('teamNewAccess');
   if (acc && userChanged === true) acc.value = viewer ? 'view' : 'edit';
+  const ew = document.getElementById('teamExportWrap'); if (ew){ ew.style.display = recip ? '' : 'none'; if (recip) renderTeamExportBoxes(); }
   const hint = document.getElementById('teamKindHint');
-  if (hint) hint.textContent = viewer ? 'For executives who need to see the platform without being part of the marketing reporting line, such as the CTO, President, or Chief Sales Officer.' : ext ? 'Agencies and freelancers get access for 3 months at a time, with an agreement.' : '';
+  if (hint) hint.textContent = recip ? 'Signs in and sees only the Exports page: the feeds you tick below, nothing else. Every download is logged. For agencies, render tools and partners who need data, not the platform.' : viewer ? 'For executives who need to see the platform without being part of the marketing reporting line, such as the CTO, President, or Chief Sales Officer.' : ext ? 'Agencies and freelancers get access for 3 months at a time, with an agreement.' : '';
   const w = document.getElementById('teamExtWrap');
   if (w) w.style.display = ext ? '' : 'none';
   if (ext) renderAgreements();
 }
 
+
+// Data recipients: the feeds an admin can grant. Mirrors EXPORT_FEEDS in server.js.
+const EXPORT_FEED_OPTIONS = [['copy', 'Production copy feed'], ['mmm', 'MMM data file (when available)'], ['matchmarket', 'DMA match-market feed (when available)']];
+function renderTeamExportBoxes(selected){
+  const box = document.getElementById('teamExportFeeds'); if (!box) return;
+  const sel = selected || Array.from(box.querySelectorAll('input:checked')).map(i => i.value);
+  box.innerHTML = EXPORT_FEED_OPTIONS.map(([k, l]) => `<label style="display:inline-flex;gap:6px;align-items:center;font-size:0.875rem;"><input type="checkbox" value="${k}"${sel.includes(k) ? ' checked' : ''}> ${l}</label>`).join('');
+}
 function renderTeamCategoryBoxes(selected, creativeSelected){
   const box = document.getElementById('teamNewCategories');
   if (box){
@@ -61757,9 +61826,10 @@ function resetTeamMemberForm(){
 
 function readTeamMemberForm(){
   const kind = document.getElementById('teamNewKind').value || 'internal';
-  const reportsToId = kind === 'viewer' ? null : (document.getElementById('teamNewReportsTo').value || null);
-  const level = kind === 'viewer' ? 'Specialist' : deriveLevelFor(reportsToId);
-  let fn = kind === 'viewer' ? 'Executive' : document.getElementById('teamNewFunction').value;
+  const offChart = kind === 'viewer' || kind === 'recipient';
+  const reportsToId = offChart ? null : (document.getElementById('teamNewReportsTo').value || null);
+  const level = offChart ? 'Specialist' : deriveLevelFor(reportsToId);
+  let fn = offChart ? 'Executive' : document.getElementById('teamNewFunction').value;
   if (!fn){
     const parent = reportsToId ? findTeamMember(reportsToId) : null;
     fn = parent && parent.functionGroup ? parent.functionGroup : 'Executive';
@@ -61773,6 +61843,7 @@ function readTeamMemberForm(){
     phoneExt: document.getElementById('teamNewPhoneExt').value.replace(/[^0-9]/g, '').slice(0, 8),
     isAdmin: document.getElementById('teamNewIsAdmin').checked,
     level, functionGroup: fn, reportsToId, memberKind: kind,
+    exportFeeds: kind === 'recipient' ? Array.from(document.querySelectorAll('#teamExportFeeds input:checked')).map(i => i.value) : [],
     accessLevel: document.getElementById('teamNewAccess').value || 'edit',
     roleLabel: document.getElementById('teamPositionInput').value.trim(),
     categories: uniqList(dash.concat(creative, teamFormCarry.legacy)),
@@ -61803,8 +61874,8 @@ async function addTeamMember(){
   const flag = document.getElementById('teamAddFlag');
   const problem = teamFormProblem(f);
   if (problem){ if (flag){ flag.textContent = problem; flag.style.color = 'var(--advocacy)'; } return; }
-  const { name, email, phone, phoneExt, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, accessLevel } = f;
-  const localMember = { id: `local-team-${Date.now()}`, accountId: state.companyId, name, email, phone: phone || null, phoneExt: phoneExt || null, isAdmin, functionGroup, level, reportsToId, status: 'active', createdAt: new Date().toISOString(), memberKind, accessLevel, roleLabel, categories };
+  const { name, email, phone, phoneExt, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, accessLevel, exportFeeds } = f;
+  const localMember = { id: `local-team-${Date.now()}`, accountId: state.companyId, name, email, phone: phone || null, phoneExt: phoneExt || null, isAdmin, functionGroup, level, reportsToId, status: 'active', createdAt: new Date().toISOString(), memberKind, accessLevel, roleLabel, categories, exportFeeds };
   let persisted = false, tempPasswordOut = null;
   const wantsAgreement = memberKind === 'external' && agreementFieldsFilled();
   const agreementBody = wantsAgreement ? readAgreementFields() : null;
@@ -61812,7 +61883,7 @@ async function addTeamMember(){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/team`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, phone, phoneExt, isAdmin, functionGroup, level, reportsToId, memberKind, accessLevel, roleLabel, categories })
+        body: JSON.stringify({ name, email, phone, phoneExt, isAdmin, functionGroup, level, reportsToId, memberKind, accessLevel, roleLabel, categories, exportFeeds })
       });
       if (resp.ok){
         const out = await resp.json();
@@ -61852,7 +61923,8 @@ function startEditTeamMember(id){
   set('teamNewName', m.name || ''); set('teamNewEmail', m.email || ''); set('teamNewPhone', m.phone || ''); set('teamNewPhoneExt', m.phoneExt || '');
   set('teamPositionInput', m.roleLabel || ''); set('teamNewHandle', m.handle || '');
   set('teamNewKind', m.memberKind || 'internal');
-  set('teamNewAccess', m.accessLevel || (m.memberKind === 'viewer' ? 'view' : 'edit'));
+  set('teamNewAccess', m.accessLevel || ((m.memberKind === 'viewer' || m.memberKind === 'recipient') ? 'view' : 'edit'));
+  renderTeamExportBoxes(Array.isArray(m.exportFeeds) ? m.exportFeeds : []);
   document.getElementById('teamNewIsAdmin').checked = !!m.isAdmin;
   document.getElementById('teamNewHandleWrap').style.display = '';
   const sp = splitCats(m.categories);
@@ -61892,7 +61964,7 @@ async function saveTeamMemberEdit(){
   const f = readTeamMemberForm();
   const problem = teamFormProblem(f);
   if (problem){ if (flag){ flag.textContent = problem; flag.style.color = 'var(--advocacy)'; } return; }
-  const { name, email, phone, phoneExt, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, handle, accessLevel } = f;
+  const { name, email, phone, phoneExt, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, handle, accessLevel, exportFeeds } = f;
   if (reportsToId === id || (reportsToId && descendantsOf(id).includes(reportsToId))){
     if (flag){ flag.textContent = "Someone can't report to themselves or to someone under them."; flag.style.color = 'var(--advocacy)'; }
     return;
@@ -61906,7 +61978,7 @@ async function saveTeamMemberEdit(){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/team/${encodeURIComponent(id)}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, phone, phoneExt, isAdmin, level, functionGroup, reportsToId, memberKind, accessLevel, roleLabel, categories, handle: handle || undefined })
+        body: JSON.stringify({ name, email, phone, phoneExt, isAdmin, level, functionGroup, reportsToId, memberKind, accessLevel, roleLabel, categories, exportFeeds, handle: handle || undefined })
       });
       persisted = resp.ok;
       if (!resp.ok && (resp.status === 403 || resp.status === 409 || resp.status === 400)){
@@ -61918,7 +61990,7 @@ async function saveTeamMemberEdit(){
   }
   const wantsAgreement = memberKind === 'external' && agreementFieldsFilled();
   const agreementBody = wantsAgreement ? readAgreementFields() : null;
-  Object.assign(m, { name, email, phone: phone || null, phoneExt: phoneExt || null, isAdmin, level, functionGroup, reportsToId, memberKind, accessLevel, roleLabel, categories, handle: handle || m.handle });
+  Object.assign(m, { name, email, phone: phone || null, phoneExt: phoneExt || null, isAdmin, level, functionGroup, reportsToId, memberKind, accessLevel, exportFeeds, roleLabel, categories, handle: handle || m.handle });
   await syncLevelsUnder(id);
   let agrNote = '';
   if (wantsAgreement && persisted){ agrNote = (await postAgreement(id, agreementBody)) ? ' Agreement saved.' : ' The agreement could not be saved.'; }
@@ -62092,7 +62164,7 @@ function renderOrgChart(){
   if (!el) return;
   const isAdmin = portalViewerIsAdmin !== false;
   const allActive = state.team.filter(m => m.status !== 'inactive');
-  const isSide = m => m.memberKind === 'viewer' || (m.memberKind === 'external' && !m.reportsToId);
+  const isSide = m => m.memberKind === 'viewer' || m.memberKind === 'recipient' || (m.memberKind === 'external' && !m.reportsToId);
   const sideRow = allActive.filter(isSide);
   const members = allActive.filter(m => !isSide(m));
   const ids = new Set(members.map(m => m.id));
@@ -62152,7 +62224,7 @@ function renderOrgChart(){
   const sideCard = m => `<div class="oc-node"><div class="oc-card">
       <div class="oc-name">${escapeHtml(m.name)}${m.isAdmin ? '<span class="oc-pill">Admin</span>' : ''}</div>
       <div class="oc-sub">${escapeHtml(m.roleLabel ? posTitle(m.roleLabel) : (m.memberKind === 'external' ? 'External partner' : 'Stakeholder'))}</div>
-      <div class="oc-sub">${m.accessLevel === 'view' || (!m.accessLevel && m.memberKind === 'viewer') ? 'View only' : 'Can edit'}${m.memberKind === 'external' ? ' · external' : ''}${m.accessExpiresAt ? ' · access ends ' + new Date(m.accessExpiresAt).toLocaleDateString() : ''}</div>
+      <div class="oc-sub">${m.memberKind === 'recipient' ? 'Exports only' : m.accessLevel === 'view' || (!m.accessLevel && m.memberKind === 'viewer') ? 'View only' : 'Can edit'}${m.memberKind === 'external' ? ' · external' : ''}${m.accessExpiresAt ? ' · access ends ' + new Date(m.accessExpiresAt).toLocaleDateString() : ''}</div>
       <div class="oc-acts">${isAdmin ? `${m.email && !String(m.id).startsWith('local-team-') ? `<button type="button" class="link-btn" onclick="reissueMemberLogin('${m.id}')">Reissue login</button>` : ''}${m.memberKind === 'external' ? `<button type="button" class="link-btn" onclick="renewExternalAccess('${m.id}')">Renew 3 months</button>` : ''}<button type="button" class="link-btn" onclick="startEditTeamMember('${m.id}')">Edit</button><button type="button" class="link-btn" onclick="deleteTeamMember('${m.id}')">Remove</button>` : ''}</div>
     </div></div>`;
   const side = (sideRow.length || isAdmin) ? `<div style="margin-top:28px;border-top:1px solid var(--line);padding-top:14px;">
@@ -62399,7 +62471,7 @@ function currentOrgShape(){
 function orgShapeAssign(shape){
   const used = new Set();
   const take = (slot, boss) => {
-    const pool = state.team.filter(m => !used.has(m.id) && m.status !== 'inactive' && m.memberKind !== 'viewer' && !(m.memberKind === 'external' && !m.reportsToId) && !(m.memberKind !== 'external' && !m.isAdmin && !m.reportsToId && !m.roleLabel && !String(m.id).startsWith('local-team-')));
+    const pool = state.team.filter(m => !used.has(m.id) && m.status !== 'inactive' && m.memberKind !== 'viewer' && m.memberKind !== 'recipient' && !(m.memberKind === 'external' && !m.reportsToId) && !(m.memberKind !== 'external' && !m.isAdmin && !m.reportsToId && !m.roleLabel && !String(m.id).startsWith('local-team-')));
     let hit = pool.find(m => m.roleLabel && posTitle(m.roleLabel).toLowerCase() === posTitle(slot.label).toLowerCase());
     if (!hit) hit = pool.find(m => m.functionGroup === slot.fn && (m.memberKind || 'internal') === slot.kind && (boss || m.level === slot.level));
     if (hit) used.add(hit.id);
@@ -63095,6 +63167,7 @@ function jumpToCampaignSection(sectionId){
 
 let lastGroup = 'Brand';
 function goToStep(step, arg, arg2, arg3){
+  if (typeof portalIsRecipient !== 'undefined' && portalIsRecipient && step !== 'exports') step = 'exports';
   if (step !== 'manageAccount' && typeof ttbReturnCards === 'function') ttbReturnCards(); // entry cards borrowed by Train the Brain go back to their own page
   // 2026-09-28 fix, per direct report ("Tracking Links page: I can't scroll
   // down past the first campaign") — six full-screen workspace overlays
@@ -63162,6 +63235,9 @@ function goToStep(step, arg, arg2, arg3){
   } else if (step === 'voice'){
     renderVoiceStep();
     document.getElementById('step-voice').classList.add('active');
+  } else if (step === 'exports'){
+    renderExportsStep();
+    document.getElementById('step-exports').classList.add('active');
   } else if (step === 'adCopyLibrary'){
     renderAdCopyLibraryStep();
     document.getElementById('step-adCopyLibrary').classList.add('active');
