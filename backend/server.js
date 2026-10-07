@@ -1166,6 +1166,7 @@ createTableIfNeeded(`CREATE TABLE IF NOT EXISTS draft_usage (
 )`);
 // Routes that produce one AI draft. Each successful call uses one draft from the account's allowance.
 const DRAFT_ROUTES = [
+  /^\/api\/accounts\/[^/]+\/me\/(dump-triage|coach-message)$/,
   /^\/api\/accounts\/[^/]+\/voice-draft$/,
   /^\/api\/campaigns\/[^/]+\/messaging-ai-draft$/,
   /^\/api\/campaigns\/[^/]+\/copy-interview$/,
@@ -12392,6 +12393,88 @@ createTableIfNeeded(`
     day TEXT NOT NULL
   );
 `);
+// 2026-10-07 — AI Brain Coach (growth workstream). Everything here is private to the signed-in person; see coachWho().
+// Lowercase snake_case, accountid only in WHERE (pg-sync-bridge rules). Registered in CATALOG_EXEMPT: person data, never an account-level dataset.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS coach_needs (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    memberid TEXT NOT NULL,
+    skill TEXT NOT NULL,
+    rating INTEGER,
+    importance INTEGER,
+    note TEXT,
+    ratedat TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS coach_career (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    memberid TEXT NOT NULL,
+    kind TEXT,
+    targetlevel TEXT,
+    targetfunction TEXT,
+    timeframe TEXT,
+    why TEXT,
+    stopdoing TEXT,
+    updatedat TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS coach_plan_items (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    memberid TEXT NOT NULL,
+    skill TEXT,
+    title TEXT NOT NULL,
+    kind TEXT,
+    source TEXT,
+    link TEXT,
+    due TEXT,
+    status TEXT NOT NULL,
+    note TEXT,
+    createdat TEXT NOT NULL,
+    completedat TEXT
+  );
+  CREATE TABLE IF NOT EXISTS coach_tasks (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    memberid TEXT NOT NULL,
+    title TEXT NOT NULL,
+    due TEXT,
+    source TEXT,
+    reason TEXT,
+    status TEXT NOT NULL,
+    position INTEGER,
+    createdat TEXT NOT NULL,
+    doneat TEXT
+  );
+  CREATE TABLE IF NOT EXISTS coach_dumps (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    memberid TEXT NOT NULL,
+    body TEXT NOT NULL,
+    triagejson TEXT,
+    createdat TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS coach_sessions (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    memberid TEXT NOT NULL,
+    status TEXT NOT NULL,
+    agendajson TEXT,
+    messagesjson TEXT,
+    summary TEXT,
+    shared INTEGER DEFAULT 0,
+    createdat TEXT NOT NULL,
+    closedat TEXT
+  );
+  CREATE TABLE IF NOT EXISTS coach_sharing (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    memberid TEXT NOT NULL,
+    item TEXT NOT NULL,
+    shared INTEGER DEFAULT 0,
+    updatedat TEXT NOT NULL
+  );
+`);
 // 2026-10-07 — a person confirms a test result (never automatic): who, when, the numbers they confirmed, and the plan changes
 // the Brain proposed from it. Confirmed results are also stored with the campaign they ran under (campaign_results).
 ensureColumn('media_tests', 'confirmedby', 'TEXT');
@@ -18391,7 +18474,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['onboarding_assignments', 'search_guide_ratings', 'search_guide_history', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
+const CATALOG_EXEMPT = new Set(['onboarding_assignments', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -18786,7 +18869,7 @@ const PRODUCT_GUIDE = [
   { letter: "AT", label: "Team Experiences: self-assessment and development plan", keywords: ["team experiences", "self assessment", "skill sets", "development plan", "training", "next level", "critical skills", "position"], text: "Team Experiences has three jobs. Skill Sets shows what any position on the org chart is expected to hold. The self-assessment lets each person rate themselves against their own seat’s critical skills. The development plan builds steps toward the next level. A good first week is to look up your own seat, complete the self-assessment, then draft a development plan and review it with your manager. Ask Verilume can summarize team structure and training progress, but it never reads out emails, phone numbers or any one person’s self-ratings." },
   { letter: "AU", label: "Team and Org Chart", keywords: ["team", "org chart", "org", "invite", "member", "reports to", "role", "admin", "roster", "onboarding", "add a person", "add someone", "add people", "add a team", "who reports", "position"], text: "Team and Org Chart is where an admin adds each person, sets their position and who they report to. The chart drives skill sets, the self-assessment and the development plan, so keep reporting lines current. The page is admin-only today. Give each new person their position first, then have them complete the self-assessment in Team Experiences. Ask Verilume can answer who sits where and which seats lack a reporting line, without sharing contact details or individual self-ratings." },
   { letter: "AV", label: "Ask Verilume and voice: what you can ask", keywords: ["ask verilume", "voice", "ask", "question", "how do i", "how to", "what can i ask", "getting started", "where do i"], text: "AI Thoughts and voice share the same knowledge. Ask Verilume, typed or by voice, answers from your own data: campaigns, Media Science markets and the last test plan, Truth Lab results and confirmed learnings, Trade Territories, the Ad Copy Library and the team structure. It also explains how to use the product, so you can ask how do I save a match market test, how do I confirm a result, or what does a local reseller mean, and hear the same answer that appears in these thoughts. Voice never changes anything. Any change is proposed for a person to accept. It does not read out emails, phone numbers or individual self-ratings." },
-  { letter: "AW", label: "Brain Dump: your greeting and growth links", keywords: ["brain dump", "growth", "my growth", "assessment", "self assessment", "next career", "career", "training", "development plan", "private", "manager see", "who can see", "greeting", "1:1"], text: "The Brain Dump opens with a greeting and your seat, then the weekly business update: Strategy, Customer Experiences, Growth and Performance, Media Science, AI Brain learnings, and news from outside. Beside it, Your growth links to your own development: the position self-assessment, your next-career checklist, and your development plan, all in Team Experiences. Those pages are private to you. A manager sees nothing from them unless you choose to share it. You can also ask Verilume or the voice agent to read you the Brain Dump, and it presents each section in turn. The 1:1 with your Brain is coming later. On the Team Experiences page, Training Library Partners lists LinkedIn Learning and Coursiv as placeholder options: you can say you already have a license or ask for a new relationship, but nothing is connected yet." },
+  { letter: "AW", label: "Brain Dump: your greeting and growth links", keywords: ["brain dump", "growth", "my growth", "assessment", "self assessment", "next career", "career", "training", "development plan", "private", "manager see", "who can see", "greeting", "1:1"], text: "The Brain Dump opens with a greeting and your seat, then the weekly business update: Strategy, Customer Experiences, Growth and Performance, Media Science, AI Brain learnings, and news from outside. Beside it, Your growth links to your own development: the position self-assessment, your next-career checklist, and your development plan, all in Team Experiences. Those pages are private to you. A manager sees nothing from them unless you choose to share it. You can also ask Verilume or the voice agent to read you the Brain Dump, and it presents each section in turn. The 1:1 with your Brain is coming later. On the Team Experiences page, Training Library Partners lists LinkedIn Learning and Coursiv as placeholder options: you can say you already have a license or ask for a new relationship, but nothing is connected yet. Growth home is your private coaching space. Rate your seat's skills and drag them into the order you most need help with, and the coach ranks your key needs. Set a desired next career to see the skill gap and the closest three moves. Build a lesson plan from the training library, which holds only real, verified links. Sort a brain dump into tasks, things to learn and things to raise, and keep up to five active tasks that you choose and order yourself. Hold a short weekly 1:1 with the coach in text. Nothing is visible to your manager unless you switch sharing on for that item, and the coach is part of the Radiance and Beacon plans." },
   { letter: "AX", label: "Search Everywhere: illumination guides and light levels", keywords: ["search everywhere", "illumination guide", "view guide", "light level", "seo checklist", "aeo", "geo", "local business", "franchise", "call center", "ecommerce", "self rate", "self assessment search", "search checklist"], text: "Search Everywhere has three area cards: SEO (get found), AEO (be the answer) and GEO (be cited by AI). Each shows what drives it, a light level, and a View guide button that opens the guide on the page. The guide is a prioritized checklist written for your kind of business: a local business, a single-location call center or ecommerce, or a franchise with online sales and storefronts. You rate each item yourself as not started, in progress, done or does not apply. Items Verilume can read from your data, such as Search Console connected, indexing health, answered questions and AI citation checks, are filled in for you. The light level is Dark, Dim, Lit, Bright or Brilliant based on the weighted share of items done, and it is saved so you can see progress over time. You can also ask Ask Verilume or the voice agent to walk you through the assessment, or to judge a recommendation someone gave you, such as whether to add an FAQ hub to support AEO. It answers for your kind of business and your current status, and says plainly when the evidence for a tactic is thin. Ratings are set in the guide, not by voice." }
 ];
 const PRODUCT_ASK_RE = /\b(how (?:do|can|should|would) (?:i|we|you)|how to|where (?:do|can|is|are)|what (?:is|are|does|do) (?:a|an|the|my)?|walk me through|getting started|get started|train(?:ing)?|learn|guide|explain|help me (?:use|understand)|what can i ask|show me how|steps)\b/i;
@@ -18885,6 +18968,118 @@ Person now says: ${statement}`;
   if (res.kind === 'questions' && !res.questions.length) res.questions = ['Can you say a little more about what you want to test and what you hope will improve?'];
   return res;
 }
+// ---------- AI Brain Coach helpers (2026-10-07) ----------
+// Who is asking? The coach is personal: data is keyed to the signed-in team member. The account's root login has no member id and gets its own
+// private space ('owner'). Verilume staff sessions get nothing. Managers and admins never read another person's growth data through /me routes.
+function coachWho(sess){
+  if (!sess || sess.platformuserid) return null;
+  if (!sess.memberId){
+    let co = ''; try { co = (db.prepare('SELECT company FROM accounts WHERE accountId = ?').get(sess.accountId) || {}).company || ''; } catch (e){}
+    return { memberId: 'owner', name: co ? co + ' account owner' : 'Account owner', level: '', fn: '', isOwner: true };
+  }
+  let m = null; try { m = db.prepare('SELECT id, name, level, functionGroup FROM team_members WHERE id = ? AND accountId = ?').get(sess.memberId, sess.accountId); } catch (e){}
+  if (!m) return null;
+  return { memberId: m.id, name: m.name || 'Team member', level: aliasVal(m, 'level') || '', fn: aliasVal(m, 'functionGroup') || '', isOwner: false };
+}
+// The coach is part of Radiance, Beacon (Enterprise). Accounts with no tier on file (accounts that pre-date tiers) are not blocked.
+const COACH_TIERS = ['radiance', 'beacon'];
+function coachGate(accountId){
+  let a = null; try { a = db.prepare('SELECT paidTier FROM accounts WHERE accountId = ?').get(accountId); } catch (e){}
+  const tier = a && aliasVal(a, 'paidTier') ? String(aliasVal(a, 'paidTier')) : '';
+  if (!tier) return { allowed: true, tier: '', legacy: true };
+  const t = PAID_TIERS.find(x => x.key === tier);
+  return { allowed: COACH_TIERS.includes(tier), tier, tierName: t ? t.name : tier, legacy: false };
+}
+// Verified free training links only (research doc, "V" items). Open in a new tab; link only, never embedded or ingested.
+const COACH_LIBRARY = [
+  { id: 'lib_ga_academy', title: 'Google Analytics Academy on Skillshop', tags: ['analytics', 'measurement', 'data', 'reporting', 'ga4'], type: 'course', level: 'beginner', time: 'Self-paced', source: 'Google Skillshop', free: true, link: 'https://goo.gle/ga-courses' },
+  { id: 'lib_ga_demo', title: 'Google Analytics demo account for hands-on practice', tags: ['analytics', 'measurement', 'data', 'reporting', 'ga4'], type: 'practice', level: 'beginner', time: 'About 1 hour', source: 'Google', free: true, link: 'https://support.google.com/analytics/answer/6367342' },
+  { id: 'lib_gmp_academy', title: 'Google Marketing Platform Academy', tags: ['analytics', 'media', 'digital', 'measurement'], type: 'course', level: 'intermediate', time: 'Self-paced', source: 'Google', free: true, link: 'https://marketingplatformacademy.withgoogle.com/' },
+  { id: 'lib_gmp_learn', title: 'Learn with Google Marketing Platform', tags: ['media', 'digital', 'measurement', 'analytics'], type: 'course', level: 'intermediate', time: 'Self-paced', source: 'Google', free: true, link: 'https://marketingplatform.google.com/about/learn/' },
+  { id: 'lib_hs_content', title: 'HubSpot Content Marketing Certification', tags: ['content', 'copy', 'writing', 'brand', 'storytelling', 'communication'], type: 'course', level: 'beginner', time: 'About 8 hours', source: 'HubSpot Academy', free: true, link: 'https://academy.hubspot.com/courses/content-marketing' },
+  { id: 'lib_semrush', title: 'Semrush Academy', tags: ['search', 'seo', 'aeo', 'geo', 'content', 'keyword'], type: 'course', level: 'beginner', time: 'Self-paced', source: 'Semrush Academy', free: true, link: 'https://www.semrush.com/academy' },
+  { id: 'lib_semrush_seo', title: 'Semrush SEO courses', tags: ['search', 'seo', 'keyword', 'content'], type: 'course', level: 'beginner', time: 'Self-paced', source: 'Semrush Academy', free: true, link: 'https://semrush.com/academy/courses/seo' },
+  { id: 'lib_semrush_cert', title: 'Semrush certification', tags: ['search', 'seo', 'certification'], type: 'course', level: 'intermediate', time: 'Self-paced', source: 'Semrush Academy', free: true, link: 'https://www.semrush.com/academy/certification' },
+  { id: 'lib_mit_ocw', title: 'MIT OpenCourseWare management courses', tags: ['leadership', 'management', 'strategy', 'planning', 'people'], type: 'course', level: 'intermediate', time: 'Self-paced', source: 'MIT OpenCourseWare', free: true, link: 'https://ocw.mit.edu' },
+  { id: 'lib_biz_comm', title: 'Business Communication on Skillshop', tags: ['communication', 'writing', 'email', 'update', 'meeting', 'feedback'], type: 'course', level: 'beginner', time: 'About 1 hour', source: 'Goodwill Community Foundation on Skillshop', free: true, link: 'https://skillshop.exceedlms.com/student/activity/650554-business-communication' },
+  { id: 'lib_purdue', title: 'Purdue OWL: workplace writing resources', tags: ['communication', 'writing', 'update', 'email', 'report'], type: 'read', level: 'beginner', time: '30 minutes', source: 'Purdue OWL', free: true, link: 'https://owl.purdue.edu/owl/general_writing/the_writing_process/writing_task_resource_list.html' },
+  { id: 'lib_exec_summary', title: 'Guide to writing executive summaries', tags: ['communication', 'writing', 'executive', 'summary', 'report', 'present'], type: 'read', level: 'beginner', time: '20 minutes', source: 'University of Akron', free: true, link: 'https://asdweb.uakron.edu/cba/docs/communications/WritingExecutiveSummaries.pdf' },
+  { id: 'prac_recap', title: 'Practice: write this month\'s campaign recap in your own words, then compare it with the Brain\'s', tags: ['communication', 'writing', 'update', 'executive', 'summary', 'report'], type: 'practice', level: 'beginner', time: '30 minutes', source: 'In the portal', free: true, link: '', portalStep: 'dashboard' },
+  { id: 'prac_brief', title: 'Practice: write a one-paragraph brief for Ask Verilume and check what comes back', tags: ['communication', 'writing', 'ai', 'brief', 'prompt'], type: 'practice', level: 'beginner', time: '15 minutes', source: 'In the portal', free: true, link: '', portalStep: 'dashboard' },
+  { id: 'prac_search_guide', title: 'Practice: rate the SEO guide for your business and pick the three Do first items', tags: ['search', 'seo', 'aeo', 'geo', 'planning'], type: 'practice', level: 'beginner', time: '25 minutes', source: 'In the portal', free: true, link: '', portalStep: 'searchOptimization' }
+];
+const COACH_PRACTICE_SOURCES = new Set(['person', 'dump', 'coach', 'oneone']);
+function coachSharedMap(accountId, memberId){
+  const out = {}; try { db.prepare('SELECT item, shared FROM coach_sharing WHERE accountid = ? AND memberid = ?').all(accountId, memberId).forEach(r => { out[r.item] = !!r.shared; }); } catch (e){}
+  return out;
+}
+function coachActiveTaskCount(accountId, memberId){
+  try { return db.prepare("SELECT COUNT(*) AS n FROM coach_tasks WHERE accountid = ? AND memberid = ? AND status = 'accepted'").get(accountId, memberId).n || 0; } catch (e){ return 0; }
+}
+function coachTopNeeds(accountId, memberId, n){
+  let rows = []; try { rows = db.prepare('SELECT skill, rating, importance, note FROM coach_needs WHERE accountid = ? AND memberid = ?').all(accountId, memberId); } catch (e){}
+  // need score = gap to the expected level (4) times importance weight (rank 1 weighs most)
+  const total = rows.length || 1;
+  return rows.map(r => ({ skill: r.skill, rating: r.rating, importance: r.importance, note: r.note || '', score: (4 - (Number(r.rating) || 0)) * (total - ((Number(r.importance) || total) - 1)) }))
+    .sort((a, b) => b.score - a.score || (a.importance || 99) - (b.importance || 99)).slice(0, n || 3);
+}
+function coachRuleTriage(text){
+  const parts = String(text || '').split(/\n+|(?<=[.!?])\s+/).map(s => s.trim()).filter(s => s.length > 3).slice(0, 12);
+  return parts.map(p => {
+    let kind = 'task';
+    if (/\b(learn|understand|study|course|training|read up|figure out how|get better at|practice|how to)\b/i.test(p)) kind = 'learn';
+    else if (/\b(raise|ask|discuss|talk (to|with|about)|bring up|1:1|one on one|manager|concern|worried)\b/i.test(p)) kind = 'raise';
+    return { kind, text: p.slice(0, 240) };
+  });
+}
+async function coachTriage(text, who){
+  if (!process.env.ANTHROPIC_API_KEY) return { items: coachRuleTriage(text), mode: 'rules' };
+  try {
+    const out = await callClaudeForJSON({ model: MODEL_STANDARD, maxTokens: 700, toolName: 'submit_triage', toolDescription: 'Sort a personal brain dump into items.',
+      schema: { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { kind: { type: 'string', enum: ['task', 'learn', 'raise'] }, text: { type: 'string' } }, required: ['kind', 'text'] } } }, required: ['items'] },
+      content: `You sort one person's private brain dump into short items. kind "task" = something they need to do; "learn" = something they want to understand or get better at; "raise" = something to bring up in their next 1:1. Keep their meaning and their words where you can, one line each, no new items, no advice, plain text, no emojis. Skip anything that is not an item. At most 10 items.\nPerson: ${who.name}${who.level ? ', ' + who.level : ''}${who.fn ? ' in ' + who.fn : ''}.\nBrain dump:\n${String(text).slice(0, 3000)}` });
+    const items = (Array.isArray(out.items) ? out.items : []).filter(i => i && ['task', 'learn', 'raise'].includes(i.kind) && i.text).slice(0, 10).map(i => ({ kind: i.kind, text: String(i.text).slice(0, 240) }));
+    return { items: items.length ? items : coachRuleTriage(text), mode: 'ai' };
+  } catch (e){ console.warn('[coach] triage failed:', e.message); return { items: coachRuleTriage(text), mode: 'rules' }; }
+}
+// Recommended tasks: suggestions only. They enter the list of five when the person accepts them, and the person sets the order.
+function coachRecommend(accountId, who){
+  const needs = coachTopNeeds(accountId, who.memberId, 3);
+  const out = [];
+  needs.forEach((n, i) => out.push({ title: `Spend 30 minutes on ${n.skill}${i === 0 ? ': it is your biggest need right now' : ''}`, reason: `Ranked need ${i + 1}: rated ${n.rating || '?'} of 4.`, source: 'coach' }));
+  let c = null; try { c = db.prepare('SELECT targetlevel, targetfunction FROM coach_career WHERE accountid = ? AND memberid = ?').get(accountId, who.memberId); } catch (e){}
+  if (c && (c.targetlevel || c.targetfunction)) out.push({ title: `Open your next-career checklist and mark one skill gap to close`, reason: `You are aiming for ${[c.targetlevel, c.targetfunction].filter(Boolean).join(' ')}.`, source: 'coach' });
+  out.push({ title: 'Write a three-line update on your most important work this week', reason: 'Communication matters more as AI handles more of the work.', source: 'coach' });
+  return out;
+}
+function coachAgenda(accountId, who){
+  const tasks = (() => { try { return db.prepare("SELECT title FROM coach_tasks WHERE accountid = ? AND memberid = ? AND status = 'accepted' ORDER BY position ASC LIMIT 5").all(accountId, who.memberId); } catch (e){ return []; } })();
+  const need = coachTopNeeds(accountId, who.memberId, 1)[0];
+  const lesson = (() => { try { return db.prepare("SELECT title FROM coach_plan_items WHERE accountid = ? AND memberid = ? AND status != 'done' ORDER BY due ASC LIMIT 1").get(accountId, who.memberId); } catch (e){ return null; } })();
+  const raise = (() => { try { const d = db.prepare('SELECT triagejson FROM coach_dumps WHERE accountid = ? AND memberid = ? ORDER BY createdat DESC LIMIT 5').all(accountId, who.memberId); const r = []; d.forEach(x => { try { JSON.parse(x.triagejson || '[]').forEach(i => { if (i.kind === 'raise' && r.length < 3) r.push(i.text); }); } catch (e){} }); return r; } catch (e){ return []; } })();
+  return [
+    { step: 'Check in', text: 'How is the week going, in one sentence?' },
+    { step: 'Review tasks', text: tasks.length ? tasks.map(t => t.title).join('; ') : 'No accepted tasks yet. Pick up to five from the recommended list.' },
+    { step: 'One skill', text: need ? `${need.skill} is your top need.${lesson ? ' Next lesson: ' + lesson.title + '.' : ''}` : 'Rate yourself on your seat\'s skills so the coach can rank your needs.' },
+    { step: 'Career', text: raise.length ? 'You wanted to raise: ' + raise.join('; ') : 'One question about where you want to go next.' },
+    { step: 'Next step', text: 'Agree one thing to do before next time.' }
+  ];
+}
+async function coachReply(accountId, who, session, text){
+  const msgs = (() => { try { return JSON.parse(session.messagesjson || '[]'); } catch (e){ return []; } })();
+  const needs = coachTopNeeds(accountId, who.memberId, 3);
+  const tasks = (() => { try { return db.prepare("SELECT title FROM coach_tasks WHERE accountid = ? AND memberid = ? AND status = 'accepted' ORDER BY position ASC LIMIT 5").all(accountId, who.memberId).map(t => t.title); } catch (e){ return []; } })();
+  if (!process.env.ANTHROPIC_API_KEY){
+    const n = needs[0];
+    return n ? `Thanks. Your biggest need right now is ${n.skill}. What is one small thing you could do on it before we meet again?` : 'Thanks. Rate yourself on your seat\'s skills in Position assessment and I can help you focus. What is on your mind this week?';
+  }
+  try {
+    const out = await callClaudeForJSON({ model: MODEL_STANDARD, maxTokens: 450, toolName: 'submit_reply', toolDescription: 'Reply in a 1:1 coaching chat.',
+      schema: { type: 'object', properties: { reply: { type: 'string' } }, required: ['reply'] },
+      content: `You are ${who.name}'s AI Brain Coach in a short, private weekly 1:1. Be warm, brief (2 to 4 sentences) and practical. Ask at most one question. Never invent a course, a metric or a fact about the person's job. Only name training that is in this library: ${COACH_LIBRARY.map(l => l.title).join('; ')}. The person decides everything; you only suggest. Plain text, no markdown, no emojis. Never promise anything about pay, promotion or performance reviews.\nSeat: ${who.level || 'not set'} ${who.fn || ''}.\nTop needs: ${needs.map(n => `${n.skill} (rated ${n.rating}/4)`).join('; ') || 'none ranked yet'}.\nAccepted tasks: ${tasks.join('; ') || 'none'}.\nConversation so far:\n${msgs.slice(-8).map(m => `${m.role === 'coach' ? 'Coach' : 'Person'}: ${m.text}`).join('\n') || '(just started)'}\nPerson now says: ${String(text).slice(0, 1200)}` });
+    return String(out.reply || '').slice(0, 900) || 'Thanks. Tell me a bit more.';
+  } catch (e){ console.warn('[coach] reply failed:', e.message); return 'I could not answer just now. Your note is saved in this 1:1, so you can keep going or close it.'; }
+}
 function teamContextBlock(accountId, question){
   let mem = []; try { mem = db.prepare('SELECT * FROM team_members WHERE accountId = ?').all(accountId); } catch (e){ return ''; }
   const act = mem.filter(m => (aliasVal(m, 'status') || 'active') === 'active');
@@ -18901,6 +19096,19 @@ function teamContextBlock(accountId, question){
   L.push(`TEAM SETUP STATUS: admins: ${admins.length ? admins.join(', ') : 'none flagged'}. Function groups: ${Object.entries(fg).map(([k, n]) => `${k} ${n}`).join(', ')}. ${noBoss.length ? `${noBoss.length} member${noBoss.length === 1 ? ' has' : 's have'} no reporting line set (${noBoss.slice(0, 5).map(m => m.name).join(', ')}).` : 'Every non-executive member has a reporting line.'} Skill self-ratings: ${rated} of ${mem.length} members have rated themselves (counts only).`);
   L.push(`HOW TEAM SETUP WORKS (built features only): Team & Org Chart (under Team Experiences) holds the roster, reporting lines and the Acting As switch. Only an admin can invite a teammate: the invite takes name, org-chart level, function group and an admin yes/no, and the person gets a temporary login they must change on first sign-in. Admins can promote or demote other admins, reissue credentials, deactivate or delete a member; deactivation takes effect on the person's next request. There is no self-serve join: a new teammate must be invited. Each person rates their own skills on a 1 to 4 scale per skill, history is kept, and a printable next-level career checklist is built from those ratings. Not built yet: portal roles beyond admin or not, a saved learning plan, and manager-visible rollups of ratings. Say plainly when asked about a feature that is not built.`);
   return L.join('\n');
+}
+// Training scope: the signed-in person's own coach data (never anyone else's). Only built when the portal says the question came from Growth home.
+function trainingContextBlock(accountId, memberId){
+  if (!memberId) return '';
+  const lines = ['TRAINING SCOPE (this person only; use it to coach, never invent courses, only suggest items from the plan or the verified library):'];
+  try { const w = db.prepare('SELECT name, level, functionGroup FROM team_members WHERE id = ? AND accountId = ?').get(memberId, accountId); if (w) lines.push('Position: ' + [aliasVal(w, 'level'), aliasVal(w, 'functionGroup')].filter(Boolean).join(' / ')); } catch (e){}
+  const needs = coachTopNeeds(accountId, memberId, 5);
+  lines.push(needs.length ? 'Top skill needs (gap x importance): ' + needs.map(n => n.skill + ' (rated ' + n.rating + '/5)').join('; ') : 'No position assessment yet; suggest taking it on Growth home.');
+  try { const c = db.prepare('SELECT kind, targetlevel, targetfunction, timeframe FROM coach_career WHERE accountid = ? AND memberid = ?').get(accountId, memberId); if (c) lines.push('Desired next: ' + [c.kind, c.targetlevel, c.targetfunction, c.timeframe].filter(Boolean).join(' / ')); } catch (e){}
+  try { const pl = db.prepare("SELECT skill, title, kind, due, status FROM coach_plan_items WHERE accountid = ? AND memberid = ? AND status != 'done' ORDER BY due ASC LIMIT 8").all(accountId, memberId); if (pl.length) lines.push('Open plan items:\n' + pl.map(x => '- ' + x.title + (x.skill ? ' [' + x.skill + ']' : '') + (x.due ? ' due ' + x.due : '')).join('\n')); } catch (e){}
+  try { const t = db.prepare("SELECT title, status FROM coach_tasks WHERE accountid = ? AND memberid = ? AND status IN ('accepted','waiting') LIMIT 5").all(accountId, memberId); if (t.length) lines.push('Active tasks: ' + t.map(x => x.title).join('; ')); } catch (e){}
+  try { const lib = COACH_LIBRARY.slice(0, 15).map(l => l.title + (l.skill ? ' [' + l.skill + ']' : '')); lines.push('Verified library: ' + lib.join('; ')); } catch (e){}
+  return lines.join('\n');
 }
 function voiceContextBundle(accountId, opts){
   const o = opts || {};
@@ -18919,7 +19127,8 @@ function voiceContextBundle(accountId, opts){
   try { blocks.push(adCopyContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] ad copy context failed:', e.message); }
   try { const tb = teamContextBlock(accountId, o.question); if (tb) blocks.push(tb); } catch (e){ console.warn('[voice/ask] team context failed:', e.message); }
   try { blocks.push(brainDumpContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] brain dump context failed:', e.message); }
-  try { const pg = productGuideBlock(o.question); if (pg) blocks.push(pg); } catch (e){ console.warn('[voice/ask] product guide failed:', e.message); }
+  if (o.training && o.memberId){ try { const tb = trainingContextBlock(accountId, o.memberId); if (tb) blocks.push(tb); } catch (e){ console.warn('[voice/ask] training context failed:', e.message); } }
+  try { const pg = productGuideBlock(o.training ? 'Growth home training library skills assessment career plan 1:1 coach ' + (o.question || '') : o.question); if (pg) blocks.push(pg); } catch (e){ console.warn('[voice/ask] product guide failed:', e.message); }
   try {
     const dm = getDigitalMonthlyTotals(accountId);
     const months = Object.keys(dm.byMonth || dm.months || {}).sort().slice(-3);
@@ -19000,7 +19209,7 @@ async function voiceAsk(accountId, body, actorId, opts){
   if (!process.env.ANTHROPIC_API_KEY){
     return { answer: 'The AI Brain is not configured on this deployment yet (ANTHROPIC_API_KEY is missing), so I cannot answer from your data.', cards: [], proposal: null, followUps: [] };
   }
-  const context = voiceContextBundle(accountId, { campaignId, question });
+  const context = voiceContextBundle(accountId, { campaignId, question, training: body.scope === 'training' && !(opts && opts.viaVoice), memberId: opts && opts.coachMemberId });
   const content = `You are Verilume's AI Brain, speaking with a signed-in team member on the ${tab || 'portal'} ${surface === 'ask_bar' ? 'dashboard (Ask Verilume bar)' : surface}. Answer ONLY from the account data below. If the data does not cover the question, say what is not on file and which upload or page would fill it — never guess a number.
 Rules: spoken answers are short (1-4 sentences). Put lists and figures in cards, not in the spoken answer. If the user asks to change something (mark creative as not needed / external, mark creative as needed, cancel a campaign, add a note to a campaign), do NOT say it is done — return a proposal describing the change and say you need them to confirm on screen. If a campaign reference is ambiguous, ask which one.
 
@@ -26355,7 +26564,7 @@ async function handleRequest(req, res) {
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-07-training-partners',
+        buildStamp: '2026-10-07-growth-home',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
@@ -30715,7 +30924,7 @@ async function handleRequest(req, res) {
       const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
       if (!account){ console.warn('[voice/ask] 404 no account row for ' + accountId); return sendJson(res, 404, { error: 'account not found' }); }
       const viaVoice = !!req.headers['x-voice-token'];
-      const result = await voiceAsk(accountId, body || {}, viaVoice ? 'elevenlabs_agent' : (() => { const sess = authenticate(req); return (sess && sess.memberId) || 'portal'; })(), { range: (() => { try { return dateRangeForRequest(req, accountId, {}); } catch (e){ return null; } })() });
+      const result = await voiceAsk(accountId, body || {}, viaVoice ? 'elevenlabs_agent' : (() => { const sess = authenticate(req); return (sess && sess.memberId) || 'portal'; })(), { viaVoice, coachMemberId: (() => { if (viaVoice) return null; try { const w = coachWho(authenticate(req)); return w ? w.memberId : null; } catch (e){ return null; } })(), range: (() => { try { return dateRangeForRequest(req, accountId, {}); } catch (e){ return null; } })() });
       if (result.error) return sendJson(res, 400, result);
       return sendJson(res, 200, result);
     }
@@ -43025,6 +43234,197 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
 
     // Search Everywhere illumination guides. Self-ratings per checklist item (one row per account, business model and item) plus a daily
     // light-level history per area, so progress shows over time. Items our tools can read are computed in the portal and never stored here.
+    // ---------- AI Brain Coach: /api/accounts/:id/me/... (2026-10-07) ----------
+    // Private to the signed-in person. Nothing here returns another person's data. A manager sees only items the person chose to share
+    // (GET /api/accounts/:id/team-shared). The coach is a Radiance / Beacon feature (coachGate); coach AI calls count against the account's draft allowance.
+    if (parts.length >= 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'me'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const who = coachWho(authenticate(req));
+      if (!who) return sendJson(res, 403, { error: 'The coach is for signed-in team members.' });
+      const gate = coachGate(accountId);
+      const resName = parts[4] || '';
+      if (!gate.allowed) return sendJson(res, 403, { error: 'The AI Brain Coach is included in the Radiance and Beacon plans.', code: 'coach_plan', tier: gate.tier, tierName: gate.tierName || '', gate });
+      const mid = who.memberId, now = new Date().toISOString();
+      const MAX_ACTIVE = 5;
+      const one = (sql, ...a) => { try { return db.prepare(sql).get(...a); } catch (e){ return null; } };
+      const all = (sql, ...a) => { try { return db.prepare(sql).all(...a); } catch (e){ return []; } };
+      const clip = (v, n) => String(v == null ? '' : v).slice(0, n);
+      if (req.method === 'GET' && resName === 'growth' && parts.length === 5){
+        const needs = all('SELECT skill, rating, importance, note, ratedat FROM coach_needs WHERE accountid = ? AND memberid = ? ORDER BY importance ASC', accountId, mid);
+        const career = one('SELECT kind, targetlevel, targetfunction, timeframe, why, stopdoing, updatedat FROM coach_career WHERE accountid = ? AND memberid = ?', accountId, mid) || null;
+        const plan = all('SELECT id, skill, title, kind, source, link, due, status, note, createdat, completedat FROM coach_plan_items WHERE accountid = ? AND memberid = ? ORDER BY createdat ASC', accountId, mid);
+        const tasks = all("SELECT id, title, due, source, reason, status, position, createdat, doneat FROM coach_tasks WHERE accountid = ? AND memberid = ? AND status != 'dismissed' ORDER BY position ASC, createdat ASC", accountId, mid);
+        const dumps = all('SELECT id, body, triagejson, createdat FROM coach_dumps WHERE accountid = ? AND memberid = ? ORDER BY createdat DESC LIMIT 60', accountId, mid).map(d => ({ id: d.id, body: d.body, items: (() => { try { return JSON.parse(d.triagejson || '[]'); } catch (e){ return []; } })(), createdAt: aliasVal(d, 'createdat') }));
+        const sessions = all('SELECT id, status, agendajson, messagesjson, summary, shared, createdat, closedat FROM coach_sessions WHERE accountid = ? AND memberid = ? ORDER BY createdat DESC LIMIT 12', accountId, mid).map(s => ({ id: s.id, status: s.status, agenda: (() => { try { return JSON.parse(s.agendajson || '[]'); } catch (e){ return []; } })(), messages: (() => { try { return JSON.parse(s.messagesjson || '[]'); } catch (e){ return []; } })(), summary: s.summary || '', shared: !!s.shared, createdAt: aliasVal(s, 'createdat'), closedAt: aliasVal(s, 'closedat') }));
+        // archive view for year over year / month over month: counts per month and a year-ago comparison
+        const byMonth = {}; dumps.forEach(d => { const m = String(d.createdAt).slice(0, 7); byMonth[m] = (byMonth[m] || 0) + 1; });
+        const al = draftAllowanceFor(accountId);
+        return sendJson(res, 200, { me: { name: who.name, level: who.level, fn: who.fn, isOwner: who.isOwner }, gate, needs: needs.map(n => ({ skill: n.skill, rating: n.rating, importance: n.importance, note: n.note || '', ratedAt: aliasVal(n, 'ratedat') })), career, plan, tasks, taskLimit: MAX_ACTIVE, dumps, dumpMonths: byMonth, sessions, sharing: coachSharedMap(accountId, mid), topNeeds: coachTopNeeds(accountId, mid, 3), library: COACH_LIBRARY, allowance: al ? { tier: al.tier, limit: al.limit, used: al.used, remaining: al.remaining } : null });
+      }
+      if (req.method === 'PUT' && resName === 'needs' && parts.length === 5){
+        const body = await readBody(req);
+        const items = (Array.isArray(body.items) ? body.items : []).slice(0, 40);
+        for (const it of items){
+          const skill = clip(it && it.skill, 120).trim(); if (!skill) continue;
+          const rating = Math.max(1, Math.min(4, parseInt(it.rating, 10) || 0)) || null;
+          const imp = Math.max(1, Math.min(99, parseInt(it.importance, 10) || 0)) || null;
+          const id = accountId + '|' + mid + '|' + skill.toLowerCase();
+          db.prepare('DELETE FROM coach_needs WHERE id = ?').run(id);
+          db.prepare('INSERT INTO coach_needs (id, accountid, memberid, skill, rating, importance, note, ratedat) VALUES (?,?,?,?,?,?,?,?)').run(id, accountId, mid, skill, rating, imp, clip(it.note, 400), now);
+        }
+        return sendJson(res, 200, { saved: true, topNeeds: coachTopNeeds(accountId, mid, 3) });
+      }
+      if (req.method === 'PUT' && resName === 'career' && parts.length === 5){
+        const b = await readBody(req); const id = accountId + '|' + mid;
+        db.prepare('DELETE FROM coach_career WHERE id = ?').run(id);
+        const kind = ['next', 'lateral', 'function'].includes(b.kind) ? b.kind : 'next';
+        db.prepare('INSERT INTO coach_career (id, accountid, memberid, kind, targetlevel, targetfunction, timeframe, why, stopdoing, updatedat) VALUES (?,?,?,?,?,?,?,?,?,?)').run(id, accountId, mid, kind, clip(b.targetLevel, 80), clip(b.targetFunction, 80), clip(b.timeframe, 80), clip(b.why, 600), clip(b.stopDoing, 600), now);
+        return sendJson(res, 200, { saved: true });
+      }
+      if (resName === 'plan'){
+        if (req.method === 'POST' && parts.length === 5){
+          const b = await readBody(req); const title = clip(b.title, 240).trim(); if (!title) return sendJson(res, 400, { error: 'A plan item needs a title.' });
+          const id = generateId('CPL'); const lib = COACH_LIBRARY.find(l => l.id === b.libraryId);
+          db.prepare('INSERT INTO coach_plan_items (id, accountid, memberid, skill, title, kind, source, link, due, status, note, createdat) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').run(id, accountId, mid, clip(b.skill, 120), lib ? lib.title : title, lib ? lib.type : clip(b.kind || 'own', 30), lib ? lib.source : clip(b.source || 'Your own', 120), lib ? (lib.link || '') : clip(b.link, 400), clip(b.due, 20), 'planned', clip(b.note, 400), now);
+          return sendJson(res, 201, { id });
+        }
+        if ((req.method === 'PUT' || req.method === 'DELETE') && parts.length === 6){
+          const id = decodeURIComponent(parts[5]);
+          if (!one('SELECT id FROM coach_plan_items WHERE id = ? AND accountid = ? AND memberid = ?', id, accountId, mid)) return sendJson(res, 404, { error: 'not found' });
+          if (req.method === 'DELETE'){ db.prepare('DELETE FROM coach_plan_items WHERE id = ?').run(id); return sendJson(res, 200, { removed: true }); }
+          const b = await readBody(req); const st = ['planned', 'in_progress', 'done'].includes(b.status) ? b.status : 'planned';
+          db.prepare('UPDATE coach_plan_items SET status = ?, due = ?, note = ?, completedat = ? WHERE id = ?').run(st, clip(b.due, 20), clip(b.note, 400), st === 'done' ? now : null, id);
+          return sendJson(res, 200, { saved: true });
+        }
+      }
+      if (resName === 'tasks'){
+        if (req.method === 'POST' && parts.length === 5){
+          const b = await readBody(req); const title = clip(b.title, 240).trim(); if (!title) return sendJson(res, 400, { error: 'A task needs a title.' });
+          const src = COACH_PRACTICE_SOURCES.has(b.source) ? b.source : 'person';
+          // a task the person writes or confirms themselves is accepted at once, if there is room; otherwise it waits as a candidate
+          const st = b.status === 'recommended' ? 'recommended' : (coachActiveTaskCount(accountId, mid) < MAX_ACTIVE ? 'accepted' : 'waiting');
+          const id = generateId('CTK'); const pos = coachActiveTaskCount(accountId, mid) + 1;
+          db.prepare('INSERT INTO coach_tasks (id, accountid, memberid, title, due, source, reason, status, position, createdat) VALUES (?,?,?,?,?,?,?,?,?,?)').run(id, accountId, mid, title, clip(b.due, 20), src, clip(b.reason, 240), st, pos, now);
+          return sendJson(res, 201, { id, status: st });
+        }
+        if (req.method === 'POST' && parts.length === 6 && parts[5] === 'recommend'){
+          const have = new Set(all("SELECT title FROM coach_tasks WHERE accountid = ? AND memberid = ? AND status IN ('recommended','accepted','waiting')", accountId, mid).map(t => t.title));
+          const made = [];
+          coachRecommend(accountId, who).forEach(r => { if (have.has(r.title)) return; const id = generateId('CTK'); db.prepare('INSERT INTO coach_tasks (id, accountid, memberid, title, due, source, reason, status, position, createdat) VALUES (?,?,?,?,?,?,?,?,?,?)').run(id, accountId, mid, r.title, '', 'coach', r.reason, 'recommended', 99, now); made.push(id); });
+          return sendJson(res, 200, { added: made.length });
+        }
+        if (req.method === 'PUT' && parts.length === 6 && parts[5] === 'order'){
+          const b = await readBody(req); (Array.isArray(b.ids) ? b.ids : []).slice(0, 20).forEach((id, i) => { db.prepare("UPDATE coach_tasks SET position = ? WHERE id = ? AND accountid = ? AND memberid = ?").run(i + 1, String(id), accountId, mid); });
+          return sendJson(res, 200, { saved: true });
+        }
+        if (parts.length === 6 && (req.method === 'PUT' || req.method === 'DELETE')){
+          const id = decodeURIComponent(parts[5]); const t = one('SELECT id, status FROM coach_tasks WHERE id = ? AND accountid = ? AND memberid = ?', id, accountId, mid);
+          if (!t) return sendJson(res, 404, { error: 'not found' });
+          if (req.method === 'DELETE'){ db.prepare("UPDATE coach_tasks SET status = 'dismissed' WHERE id = ?").run(id); return sendJson(res, 200, { dismissed: true }); }
+          const b = await readBody(req); const want = String(b.status || '');
+          if (!['accepted', 'waiting', 'done', 'recommended'].includes(want)) return sendJson(res, 400, { error: 'unknown status' });
+          // activation belongs to the person: a recommended or waiting task becomes active only when they accept it, and only while there is room
+          if (want === 'accepted' && t.status !== 'accepted' && coachActiveTaskCount(accountId, mid) >= MAX_ACTIVE) return sendJson(res, 409, { error: 'You already have five active tasks. Finish or set one aside first.', code: 'task_limit' });
+          db.prepare('UPDATE coach_tasks SET status = ?, doneat = ?, due = COALESCE(?, due), position = ? WHERE id = ?').run(want, want === 'done' ? now : null, b.due != null ? clip(b.due, 20) : null, want === 'accepted' ? coachActiveTaskCount(accountId, mid) + 1 : 99, id);
+          return sendJson(res, 200, { saved: true });
+        }
+      }
+      if (req.method === 'POST' && resName === 'dump-triage' && parts.length === 5){
+        const b = await readBody(req); const text = clip(b.text, 3000).trim(); if (text.length < 4) return sendJson(res, 400, { error: 'Write a line or two first.' });
+        return sendJson(res, 200, await coachTriage(text, who));
+      }
+      if (req.method === 'POST' && resName === 'dump' && parts.length === 5){
+        // confirm: archive the dump text and save only the items the person kept
+        const b = await readBody(req); const text = clip(b.text, 3000).trim(); if (!text) return sendJson(res, 400, { error: 'Nothing to save.' });
+        const items = (Array.isArray(b.items) ? b.items : []).slice(0, 12).filter(i => i && ['task', 'learn', 'raise'].includes(i.kind) && i.text).map(i => ({ kind: i.kind, text: clip(i.text, 240) }));
+        db.prepare('INSERT INTO coach_dumps (id, accountid, memberid, body, triagejson, createdat) VALUES (?,?,?,?,?,?)').run(generateId('CDP'), accountId, mid, text, JSON.stringify(items), now);
+        let tasks = 0, learns = 0;
+        for (const it of items){
+          if (it.kind === 'task'){ const st = coachActiveTaskCount(accountId, mid) < MAX_ACTIVE ? 'accepted' : 'waiting'; db.prepare('INSERT INTO coach_tasks (id, accountid, memberid, title, due, source, reason, status, position, createdat) VALUES (?,?,?,?,?,?,?,?,?,?)').run(generateId('CTK'), accountId, mid, it.text, '', 'dump', '', st, coachActiveTaskCount(accountId, mid) + 1, now); tasks++; }
+          else if (it.kind === 'learn'){ db.prepare('INSERT INTO coach_plan_items (id, accountid, memberid, skill, title, kind, source, link, due, status, note, createdat) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').run(generateId('CPL'), accountId, mid, '', it.text, 'own', 'Your own', '', '', 'planned', '', now); learns++; }
+        }
+        return sendJson(res, 201, { saved: true, tasks, learns, raise: items.filter(i => i.kind === 'raise').length });
+      }
+      if (req.method === 'DELETE' && resName === 'dump' && parts.length === 6){
+        db.prepare('DELETE FROM coach_dumps WHERE id = ? AND accountid = ? AND memberid = ?').run(decodeURIComponent(parts[5]), accountId, mid);
+        return sendJson(res, 200, { removed: true });
+      }
+      if (resName === 'session'){
+        if (req.method === 'POST' && parts.length === 5){
+          let s = one("SELECT id FROM coach_sessions WHERE accountid = ? AND memberid = ? AND status = 'open' ORDER BY createdat DESC LIMIT 1", accountId, mid);
+          if (!s){ const id = generateId('CSN'); db.prepare('INSERT INTO coach_sessions (id, accountid, memberid, status, agendajson, messagesjson, summary, shared, createdat) VALUES (?,?,?,?,?,?,?,?,?)').run(id, accountId, mid, 'open', JSON.stringify(coachAgenda(accountId, who)), '[]', '', 0, now); s = { id }; }
+          return sendJson(res, 200, { id: s.id });
+        }
+        if (req.method === 'POST' && parts.length === 6 && parts[5] === 'close'){
+          const b = await readBody(req); const s = one("SELECT id, messagesjson FROM coach_sessions WHERE id = ? AND accountid = ? AND memberid = ?", clip(b.sessionId, 80), accountId, mid);
+          if (!s) return sendJson(res, 404, { error: 'not found' });
+          const msgs = (() => { try { return JSON.parse(s.messagesjson || '[]'); } catch (e){ return []; } })();
+          const mine = msgs.filter(m => m.role === 'person').map(m => m.text);
+          const summary = mine.length ? ('You talked about: ' + mine.slice(-2).join(' / ').slice(0, 220) + '.') : 'A short check-in with no notes.';
+          db.prepare("UPDATE coach_sessions SET status = 'closed', summary = ?, closedat = ? WHERE id = ?").run(summary, now, s.id);
+          return sendJson(res, 200, { summary });
+        }
+        if (req.method === 'PUT' && parts.length === 6 && (parts[5] === 'agenda' || parts[5] === 'summary')){
+          const b = await readBody(req); const sid = clip(b.sessionId, 80);
+          if (!one('SELECT id FROM coach_sessions WHERE id = ? AND accountid = ? AND memberid = ?', sid, accountId, mid)) return sendJson(res, 404, { error: 'not found' });
+          if (parts[5] === 'agenda'){
+            const ag = (Array.isArray(b.agenda) ? b.agenda : []).slice(0, 12).map(x => ({ step: clip(x && x.step, 60), text: clip(x && x.text, 300) })).filter(x => x.text);
+            db.prepare('UPDATE coach_sessions SET agendajson = ? WHERE id = ?').run(JSON.stringify(ag), sid);
+          } else db.prepare('UPDATE coach_sessions SET summary = ? WHERE id = ?').run(clip(b.summary, 400), sid);
+          return sendJson(res, 200, { saved: true });
+        }
+        if (req.method === 'DELETE' && parts.length === 6){
+          db.prepare('DELETE FROM coach_sessions WHERE id = ? AND accountid = ? AND memberid = ?').run(decodeURIComponent(parts[5]), accountId, mid);
+          return sendJson(res, 200, { removed: true });
+        }
+        if (req.method === 'PUT' && parts.length === 6 && parts[5] === 'share'){
+          const b = await readBody(req);
+          db.prepare('UPDATE coach_sessions SET shared = ? WHERE id = ? AND accountid = ? AND memberid = ?').run(b.shared ? 1 : 0, clip(b.sessionId, 80), accountId, mid);
+          return sendJson(res, 200, { saved: true });
+        }
+      }
+      if (req.method === 'POST' && resName === 'coach-message' && parts.length === 5){
+        const b = await readBody(req); const text = clip(b.text, 1500).trim(); if (!text) return sendJson(res, 400, { error: 'Write something first.' });
+        const s = one("SELECT id, messagesjson, status FROM coach_sessions WHERE id = ? AND accountid = ? AND memberid = ?", clip(b.sessionId, 80), accountId, mid);
+        if (!s || s.status !== 'open') return sendJson(res, 404, { error: 'Start a 1:1 first.' });
+        const msgs = (() => { try { return JSON.parse(s.messagesjson || '[]'); } catch (e){ return []; } })();
+        msgs.push({ role: 'person', text, at: now });
+        const reply = await coachReply(accountId, who, { messagesjson: JSON.stringify(msgs) }, text);
+        msgs.push({ role: 'coach', text: reply, at: new Date().toISOString() });
+        db.prepare('UPDATE coach_sessions SET messagesjson = ? WHERE id = ?').run(JSON.stringify(msgs.slice(-60)), s.id);
+        return sendJson(res, 200, { reply, messages: msgs });
+      }
+      if (req.method === 'PUT' && resName === 'sharing' && parts.length === 5){
+        const b = await readBody(req); const item = String(b.item || '');
+        if (!['needs', 'career', 'plan', 'tasks'].includes(item)) return sendJson(res, 400, { error: 'unknown item' });
+        const id = accountId + '|' + mid + '|' + item;
+        db.prepare('DELETE FROM coach_sharing WHERE id = ?').run(id);
+        db.prepare('INSERT INTO coach_sharing (id, accountid, memberid, item, shared, updatedat) VALUES (?,?,?,?,?,?)').run(id, accountId, mid, item, b.shared ? 1 : 0, now);
+        return sendJson(res, 200, { saved: true, sharing: coachSharedMap(accountId, mid) });
+      }
+      return sendJson(res, 404, { error: 'unknown coach route' });
+    }
+    // What a manager may see: only items each direct report chose to share. Never ratings notes, dump text or 1:1 messages.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'team-shared'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const sess = authenticate(req);
+      if (!sess || !sess.memberId || sess.platformuserid) return sendJson(res, 200, { reports: [] });
+      if (!coachGate(accountId).allowed) return sendJson(res, 200, { reports: [] });
+      const reps = db.prepare('SELECT id, name, level, functionGroup, reportsToId FROM team_members WHERE accountId = ?').all(accountId).filter(m => aliasVal(m, 'reportsToId') === sess.memberId);
+      const out = reps.map(m => {
+        const sh = coachSharedMap(accountId, m.id); const r = { memberId: m.id, name: m.name, shared: {} };
+        if (sh.career){ const c = db.prepare('SELECT targetlevel, targetfunction, timeframe FROM coach_career WHERE accountid = ? AND memberid = ?').get(accountId, m.id); if (c) r.shared.career = { targetLevel: c.targetlevel, targetFunction: c.targetfunction, timeframe: c.timeframe }; }
+        if (sh.needs) r.shared.topNeeds = coachTopNeeds(accountId, m.id, 3).map(n => ({ skill: n.skill }));
+        if (sh.plan){ const p = db.prepare('SELECT status FROM coach_plan_items WHERE accountid = ? AND memberid = ?').all(accountId, m.id); r.shared.planProgress = { total: p.length, done: p.filter(x => x.status === 'done').length }; }
+        if (sh.tasks){ r.shared.activeTasks = db.prepare("SELECT title, due FROM coach_tasks WHERE accountid = ? AND memberid = ? AND status = 'accepted' ORDER BY position ASC LIMIT 5").all(accountId, m.id); }
+        const s = db.prepare("SELECT summary, closedat FROM coach_sessions WHERE accountid = ? AND memberid = ? AND shared = 1 AND status = 'closed' ORDER BY closedat DESC LIMIT 1").get(accountId, m.id);
+        if (s) r.shared.oneOneSummary = { summary: s.summary, closedAt: aliasVal(s, 'closedat') };
+        return r;
+      }).filter(r => Object.keys(r.shared).length);
+      return sendJson(res, 200, { reports: out });
+    }
     if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'search-guide' && (req.method === 'GET' || req.method === 'PUT')){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
