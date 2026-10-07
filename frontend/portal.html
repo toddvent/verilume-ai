@@ -1577,6 +1577,13 @@
   .ttb-sec-h{display:flex;width:100%;align-items:center;gap:16px;padding:16px 20px;background:none;border:0;cursor:pointer;text-align:left;font:inherit;color:var(--ink);min-height:64px;}
   .ttb-sec-n{flex:none;width:32px;height:32px;border-radius:50%;border:2px solid #1E2761;color:#1E2761;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:0.875rem;} .ttb-sec.done .ttb-sec-n{background:#1E2761;color:#fff;}
   .ttb-sec-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;} .ttb-sec-name{font-size:1.1875rem;font-weight:600;color:#1E2761;} .ttb-sec-sub{font-size:0.8125rem;color:var(--muted);}
+  .adlib-bar{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 14px;} .adlib-bar input,.adlib-bar select{padding:9px 12px;border:1px solid var(--line,#d9dee8);border-radius:8px;font:inherit;background:var(--white,#fff);color:inherit;} .adlib-bar input{flex:1 1 240px;}
+  .adlib-card{border:1px solid var(--line,#d9dee8);border-radius:12px;padding:14px 16px;margin:0 0 10px;background:var(--white,#fff);} .adlib-meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:0.8125rem;} .adlib-camp{margin-left:auto;color:var(--muted);}
+  .adlib-pill{font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;padding:3px 8px;border-radius:999px;background:#eef0f4;color:#4a5568;} .adlib-pill.ok{background:#e3f4ee;color:#0f766e;}
+  .adlib-card button,.adlib-pick button,.adlib-bar button{font-family:inherit;}   .adlib-copy{margin:10px 0;line-height:1.5;} .adlib-h{font-weight:700;} .adlib-cta{font-weight:600;color:#0e8fb0;} .adlib-act{display:flex;gap:8px;flex-wrap:wrap;}
+  .adlib-pick{border:1px solid var(--line,#d9dee8);border-radius:12px;padding:14px 16px;background:var(--paper-dim,#f6f8fb);} .adlib-pick-h{font-weight:700;margin:0 0 8px;} .adlib-pick-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:6px 0;} .adlib-pick-row select{padding:8px 10px;border:1px solid var(--line,#d9dee8);border-radius:8px;font:inherit;}
+  .ttb-more{margin-top:14px;display:flex;flex-direction:column;gap:8px;} .ttb-more-h{font-size:0.75rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);font-weight:700;}
+  .ttb-more-row{display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;width:100%;padding:12px 14px;border:1px solid var(--border,#d9dee8);border-radius:10px;background:transparent;cursor:pointer;font:inherit;color:inherit;} .ttb-more-row:hover{border-color:#0e8fb0;} .ttb-more-t{display:flex;flex-direction:column;gap:2px;} .ttb-more-go{color:#0e8fb0;font-weight:600;white-space:nowrap;}
   .ttb-sec-meta{flex:none;font-size:0.8125rem;color:var(--muted);} .ttb-sec-b{padding:2px 20px 20px;}
   @media (max-width:700px){.ttb-sec-meta{display:none}}
   .ttb-group{margin-top:26px;} .ttb-group-h{display:flex;align-items:center;gap:14px;margin-bottom:8px;} .ttb-group-h h2{margin:0;font-size:1.3125rem;font-weight:500;} .ttb-mini{flex:none;}
@@ -5906,6 +5913,14 @@
        a field to fill in alongside Voice/Colors/Fonts. Still writes to the
        same account.visionStatement/longformVoiceExample columns via the
        same saveVisionLongformEdits(), unchanged. -->
+  <div class="step" id="step-adCopyLibrary">
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="switchPrimaryTab('brand')">Customer Experiences</a> / Ad Copy Library</div>
+    <div class="eyebrow">Customer Experiences · Ad Copy Library</div>
+    <h1>Ad Copy Library</h1>
+    <p class="msg-lede">Every Copy Version saved on any campaign, in one place &mdash; what you have actually shipped. Nothing to set up: it fills as campaigns save copy. Start a new campaign from an existing one and its copy comes along as drafts.</p>
+    <div id="adCopyLibraryBody"></div>
+  </div>
+
   <div class="step" id="step-voiceContest">
     <!-- 2026-09-14, per direct instruction ("Portal Breadcrumbs are: Brand >
          Voice Contest") — simplified to match the new IA below: this page is
@@ -11153,6 +11168,7 @@
                  desktop widths — see cmpRenderCopyVersionsHeaderRow(). -->
             <div id="cmpCopyVersionsHeaderRow" class="copyver-header-row"></div>
             <div id="cmpCopyVersionsPendingBanner" class="copyver-pending-banner"></div>
+            <div id="cmpCopyVersionsPickup" style="margin-bottom:18px;"></div>
             <div id="cmpCopyVersionsBulkCta" style="margin-bottom:18px;"></div>
             <div id="cmpCopyVersionsQaBadge" style="margin-bottom:18px;"></div>
             <div id="cmpCopyVersionsBuilder"></div>
@@ -24313,7 +24329,8 @@ const BRAND_SHELL_GROUPS = [
       // there's no "same model / different models" fun stat, despite an
       // earlier draft sketch including one.
       render: voiceContestReportHtml
-    }
+    },
+    { label: 'Ad Copy Library', step: 'adCopyLibrary', desc: 'Every Copy Version saved on any campaign, searchable and exportable. New campaigns can start from it.' }
   ]},
   { label: 'Creative Production', items: [
     { label: 'Experience Development' },
@@ -28154,17 +28171,17 @@ const AI_PARTNER_ONBOARDING_GROUPS = [
         title: 'Press Release Development &amp; Distribution History',
         category: 'reference',
         source: 'PR',
-        route: null,
+        route: 'reputation',
         desc: 'A record of what\'s actually been drafted and sent — press releases and trade/team distribution. Drafting exists as a generator today; nothing saves or rolls up a history of it.',
-        status(){ return { text: 'Not built yet — no rollup of generated/distributed releases exists', tone: 'notbuilt' }; }
+        status(){ return { text: 'Built — Reputation workstream', tone: 'ok' }; }
       },
       {
         title: 'Reputation &amp; Media Monitoring',
         category: 'reference',
         source: 'PR',
-        route: null,
+        route: 'reputation',
         desc: 'What\'s being said about this account across earned media and social — needs a live media/social listening feed this build doesn\'t have.',
-        status(){ return { text: 'Not built yet — needs a live media/social listening feed', tone: 'notbuilt' }; }
+        status(){ return { text: 'Built — Reputation workstream', tone: 'ok' }; }
       }
     ]
   },
@@ -29097,6 +29114,26 @@ function ttbSecToggle(key){
   }
   ttbRerender();
 }
+
+// 2026-10-07 — the old "All setup cards" list is folded into the five sections. Cards that duplicate a step item are dropped;
+// the rest show as link rows under the section they belong to. Not-built cards are left out.
+const TTB_MORE = {
+  team: ['Team Experiences', 'Assessment Rankings'],
+  'your company': ['View My Customers'],
+  'your voice': ['Press Release Development & Distribution History', 'Reputation & Media Monitoring', 'Wire Frame Development'],
+  'your numbers': ['Analytics Connections', 'Master UTM Configuration', 'MMM Data Inputs', 'Product Group & Creative Focus Group Taxonomy', 'Historical Campaigns & Media Plans', 'Marketing Calendar Bulk Upload', 'Manual KPI & Actuals Entry'],
+  'your plan': ['Budget & Channel Management'],
+  more: ['Account Settings']
+};
+function ttbMoreHtml(key){
+  const want = TTB_MORE[key]; if (!want) return '';
+  const all = [].concat(...AI_PARTNER_ONBOARDING_GROUPS.map(g => g.cards));
+  const rows = want.map(t => all.find(c => String(c.title).replace(/&amp;/g, '&') === t)).filter(c => c && c.route).map(c => {
+    let st = ''; try { st = c.status().text || ''; } catch (e){}
+    return `<button type="button" class="ttb-more-row" onclick="aipoOpenCard('${c.route}')"><span class="ttb-more-t"><span class="ttb-name">${c.title}</span>${st ? `<span class="ttb-benefit">${st}</span>` : ''}</span><span class="ttb-more-go">Open &rarr;</span></button>`;
+  });
+  return rows.length ? `<div class="ttb-more"><div class="ttb-more-h">Also in this section</div>${rows.join('')}</div>` : '';
+}
 function ttbSetupHtml(d){
   const S = d.setup;
   const company = (d.profile && d.profile.company) || state.company || 'your company';
@@ -29113,13 +29150,14 @@ function ttbSetupHtml(d){
   const teamItem = [].concat(...S.steps.map(st => st.items)).find(i => i.step === 'team');
   const teamDone = !!(teamItem && teamItem.done);
   const teamOpen = ttb.sec === 'team';
-  const sections = [sec('team', 1, 'Build Your Team', 'Add the people who can take the onboarding items, or work on your own.', teamDone ? 'Done' : 'Step ' + (tfStep || 1) + ' of 3', teamDone, `<div id="ttbTeamSlot" class="ttb-sec-b" style="${teamOpen ? '' : 'display:none;'}"></div>`, teamOpen)]
+  const sections = [sec('team', 1, 'Build Your Team', 'Add the people who can take the onboarding items, or work on your own.', teamDone ? 'Done' : 'Step ' + (tfStep || 1) + ' of 3', teamDone, `<div id="ttbTeamSlot" class="ttb-sec-b" style="${teamOpen ? '' : 'display:none;'}"></div>${teamOpen ? ttbMoreHtml('team') : ''}`, teamOpen)]
     .concat(groups.map((g, n) => {
       const st = g.st, open = ttb.sec === g.key, dn = st.items.filter(i => i.done).length;
       const t = TTB_SECTION_TITLES[String(st.title).trim().toLowerCase()];
       const title = t ? t(company) : st.title;
-      return sec(g.key, n + 2, title, st.gain || '', `${dn} of ${st.items.length} done · About ${st.minutes} min`, st.done, open ? `<div class="ttb-sec-b">${st.items.map(i => ttbModuleHtml(d, i)).join('')}</div>` : '', open);
-    }));
+      return sec(g.key, n + 2, title, st.gain || '', `${dn} of ${st.items.length} done · About ${st.minutes} min`, st.done, open ? `<div class="ttb-sec-b">${st.items.map(i => ttbModuleHtml(d, i)).join('')}${ttbMoreHtml(String(st.title).trim().toLowerCase())}</div>` : '', open);
+    }))
+    .concat([sec('more', groups.length + 2, 'Account & Privacy', 'Account settings and how this account\'s activity is used to improve our AI.', '', false, ttb.sec === 'more' ? `<div class="ttb-sec-b">${aipoRenderAiTrainingToggleMarkup()}${ttbMoreHtml('more')}</div>` : '', ttb.sec === 'more')]);
   return `${ttbMyTasksHtml(d)}${hero}${sections.join('')}`;
 }
 function ttbLearningsHtml(d){
@@ -29164,7 +29202,7 @@ function renderAiPartnerOnboardingHub(skipMmmFetch){
       }).join('')}
     </div>`).join('');
   if (typeof ttbReturnCards === 'function') ttbReturnCards(); // borrowed entry cards must leave before the hub is redrawn, or the redraw would delete them
-  if (ttbIsLive()){ ttbSetHeader(); mount.innerHTML = ttbHtml() + `<details class="ttb-all"><summary>All setup cards (the full list, by role)</summary>${oldHtml}</details>`; if (!ttb.data && !ttb.loading) ttbLoad(); }
+  if (ttbIsLive()){ ttbSetHeader(); mount.innerHTML = ttbHtml(); if (!ttb.data && !ttb.loading) ttbLoad(); }
   else mount.innerHTML = oldHtml;
   if (ttbIsLive() && typeof ttbMountOpen === 'function') ttbMountOpen();
   if (!skipMmmFetch && aipoMmmPeriodCount == null) aipoLoadMmmCount();
@@ -30665,6 +30703,9 @@ async function loadCampaigns(){
         // column and the merge-update endpoint field both exist for real,
         // hydrate it back into c.activityNotes here, same raw-string-column
         // pattern as mediaMixJson/channelCopyVersionsJson just above.
+        // 2026-10-07 — Copy Versions saved per campaign (see ensureColumn('campaigns','copyVersionAssetsJson') in server.js).
+        if (c.copyVersionAssetsJson){ try { c.copyVersionAssets = JSON.parse(c.copyVersionAssetsJson); } catch (e){ console.warn('loadCampaigns: could not parse copyVersionAssetsJson for', c.id, e); } }
+        if (c.copyVersionSizeUsageJson){ try { c.copyVersionSizeUsage = JSON.parse(c.copyVersionSizeUsageJson); } catch (e){} }
         if (c.activityNotesJson){
           try { c.activityNotes = JSON.parse(c.activityNotesJson); }
           catch (e){ console.warn('loadCampaigns: could not parse activityNotesJson for', c.id, e); }
@@ -44548,6 +44589,7 @@ function cmpApplyTemplate(campaignId){
   const source = state.campaigns.find(x => x.id === campaignId);
   const target = cmpRailLoadedCampaign();
   if (!source || !target) return;
+  target.copyPickupFromId = source.id;
   cmpPopulateFormFields(source, { isTemplate: true });
   const templatePayload = cmpBuildFormPayload();
   const TEMPLATE_STRUCTURAL_FIELDS = ['stage', 'segment', 'channels', 'channelGroups', 'productGroups', 'creativeFocusGroups', 'functions'];
@@ -45389,6 +45431,7 @@ async function cmpStartDialogueFromCampaign(campaignId){
   const campaign = cmpRailLoadedCampaign();
   if (!source || !campaign) return;
   cmpCloseTemplateSearchDropdown();
+  campaign.copyPickupFromId = source.id;
   const message = cmpCampaignOriginalCopy(source);
   cmpIntakeHistory.push({ role: 'user', text: message, sourceCampaignId: source.id });
   cmpRenderIntakeChat();
@@ -63118,6 +63161,9 @@ function goToStep(step, arg, arg2, arg3){
   } else if (step === 'voice'){
     renderVoiceStep();
     document.getElementById('step-voice').classList.add('active');
+  } else if (step === 'adCopyLibrary'){
+    renderAdCopyLibraryStep();
+    document.getElementById('step-adCopyLibrary').classList.add('active');
   } else if (step === 'voiceContest'){
     renderVoiceContestStep();
     document.getElementById('step-voiceContest').classList.add('active');
@@ -66345,8 +66391,110 @@ function cmpAlignRowMarkup(current, setterCall){
   return `<div class="wireframe-align-row"><span class="hint" style="margin-right:2px;">Copy position:</span>${['top', 'center', 'bottom'].map(a => `<button type="button" class="align-btn${cur === a ? ' selected' : ''}" onclick="${setterCall.replace('__ALIGN__', a)}">${a.charAt(0).toUpperCase() + a.slice(1)}</button>`).join('')}</div>`;
 }
 
+
+// 2026-10-07 — Ad Copy Library. Not a setup item: it reads the Copy Versions already saved on each campaign
+// (campaign.copyVersionAssets) and offers them back account-wide, and when a campaign was started from an
+// existing one (Pick Up Existing Campaign) its copy can come along as drafts.
+let adLib = { q: '', channel: '', status: '', campaign: '' };
+function adLibCampName(c){ return c.name || c.objective || c.id; }
+function adLibRows(){
+  const rows = [];
+  (state.campaigns || []).forEach(c => { (Array.isArray(c.copyVersionAssets) ? c.copyVersionAssets : []).forEach(a => rows.push({ c, a })); });
+  return rows;
+}
+function adLibText(a){ const parts = [a.headline, a.body, a.cta].filter(Boolean); return parts.length ? parts.join(' — ') : (a.copy || ''); }
+function adLibFiltered(){
+  const q = adLib.q.trim().toLowerCase();
+  return adLibRows().filter(({ c, a }) => (!adLib.channel || a.channel === adLib.channel) && (!adLib.status || (a.status || 'Draft') === adLib.status) && (!adLib.campaign || c.id === adLib.campaign)
+    && (!q || (adLibText(a) + ' ' + adLibCampName(c) + ' ' + (a.channel || '') + ' ' + (a.creativeType || '')).toLowerCase().includes(q)));
+}
+function adLibSet(k, v){ adLib[k] = v; renderAdCopyLibraryStep(true); }
+function renderAdCopyLibraryStep(keepFocus){
+  const el = document.getElementById('adCopyLibraryBody'); if (!el) return;
+  const all = adLibRows();
+  if (!all.length){ el.innerHTML = '<div class="strat-card"><p class="strat-empty">No copy saved yet. Save a Copy Version on any campaign and it appears here.</p></div>'; return; }
+  const rows = adLibFiltered();
+  const uniq = f => Array.from(new Set(all.map(f).filter(Boolean))).sort();
+  const opt = (arr, cur, label) => `<option value="">${label}</option>` + arr.map(v => `<option value="${escapeHtml(v)}"${v === cur ? ' selected' : ''}>${escapeHtml(v)}</option>`).join('');
+  const camps = Array.from(new Map(all.map(r => [r.c.id, adLibCampName(r.c)])).entries());
+  const target = cmpRailLoadedCampaign && cmpRailLoadedCampaign();
+  el.innerHTML = `<div class="adlib-bar"><input id="adLibQ" type="search" placeholder="Search copy, campaign, channel" value="${escapeHtml(adLib.q)}" oninput="adLib.q=this.value;adLibRefreshList()">
+    <select onchange="adLibSet('channel',this.value)">${opt(uniq(r => r.a.channel), adLib.channel, 'All channels')}</select>
+    <select onchange="adLibSet('status',this.value)">${opt(['Approved', 'Draft'], adLib.status, 'Any status')}</select>
+    <select onchange="adLibSet('campaign',this.value)"><option value="">All campaigns</option>${camps.map(([id, n]) => `<option value="${escapeHtml(id)}"${id === adLib.campaign ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('')}</select>
+    <button type="button" class="btn-ghost" onclick="adLibExport()">Download CSV</button></div>
+    <div id="adLibList"></div>`;
+  adLibRefreshList();
+  if (keepFocus){ const q = document.getElementById('adLibQ'); if (q && document.activeElement !== q && adLib.q){ q.focus(); } }
+}
+function adLibRefreshList(){
+  const list = document.getElementById('adLibList'); if (!list) return;
+  const rows = adLibFiltered();
+  const target = cmpRailLoadedCampaign && cmpRailLoadedCampaign();
+  list.innerHTML = `<div class="hint" style="margin:0 0 10px;">${rows.length} copy version${rows.length === 1 ? '' : 's'}</div>` + (rows.length ? rows.map(({ c, a }) => {
+    const approved = (a.status || 'Draft') === 'Approved';
+    const canUse = target && target.id !== c.id;
+    return `<div class="adlib-card"><div class="adlib-meta"><span class="adlib-pill ${approved ? 'ok' : ''}">${escapeHtml(a.status || 'Draft')}</span><strong>${escapeHtml(a.channel || '')}</strong>${a.creativeType && a.creativeType !== '(unspecified)' ? ` &middot; ${escapeHtml(a.creativeType)}` : ''}${a.sizeLabel ? ` &middot; ${escapeHtml(a.sizeLabel)}` : ''}<span class="adlib-camp">${escapeHtml(adLibCampName(c))} &middot; ${escapeHtml(c.id)}</span></div>
+      <div class="adlib-copy">${a.headline ? `<div class="adlib-h">${escapeHtml(a.headline)}</div>` : ''}${a.body ? `<div>${escapeHtml(a.body)}</div>` : ''}${a.cta ? `<div class="adlib-cta">${escapeHtml(a.cta)}</div>` : ''}${!a.headline && !a.body && !a.cta ? `<div>${escapeHtml(a.copy || '')}</div>` : ''}</div>
+      <div class="adlib-act"><button type="button" class="btn-ghost" onclick="adLibCopyText('${escapeHtml(c.id)}','${escapeHtml(a.id)}')">Copy text</button>${canUse ? `<button type="button" class="btn-ghost" onclick="cmpCopyPickupClone('${escapeHtml(c.id)}',['${escapeHtml(a.id)}']);adLibFlash('Added to ${escapeHtml(adLibCampName(target)).replace(/'/g, '')} as a draft.')">Use in ${escapeHtml(adLibCampName(target))}</button>` : ''}</div></div>`;
+  }).join('') : '<div class="strat-card"><p class="strat-empty">Nothing matches those filters.</p></div>');
+}
+function adLibFlash(msg){ try { askDockToast(msg); } catch (e){} }
+function adLibCopyText(cid, aid){
+  const c = (state.campaigns || []).find(x => x.id === cid); const a = c && (c.copyVersionAssets || []).find(x => x.id === aid); if (!a) return;
+  const t = adLibText(a);
+  try { navigator.clipboard.writeText(t); adLibFlash('Copy text copied.'); } catch (e){ adLibFlash('Could not copy automatically; select the text instead.'); }
+}
+function adLibExport(){
+  const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const head = ['Campaign', 'Campaign ID', 'Channel', 'Creative type', 'Size', 'Status', 'Headline', 'Body', 'CTA', 'Copy'];
+  const lines = [head.map(q).join(',')].concat(adLibFiltered().map(({ c, a }) => [adLibCampName(c), c.id, a.channel, a.creativeType, a.sizeLabel, a.status || 'Draft', a.headline, a.body, a.cta, a.copy].map(q).join(',')));
+  const blob = new Blob([lines.join('\r\n')], { type: 'text/csv' }); const url = URL.createObjectURL(blob);
+  const link = document.createElement('a'); link.href = url; link.download = 'ad-copy-library.csv'; document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+// Brings saved copy from another campaign into the loaded campaign as DRAFTS (never approved), once per source asset.
+function cmpCopyPickupClone(sourceCampaignId, assetIds){
+  const target = cmpRailLoadedCampaign(); const src = (state.campaigns || []).find(x => x.id === sourceCampaignId);
+  if (!target || !src || target.id === src.id) return 0;
+  if (!Array.isArray(target.copyVersionAssets)) target.copyVersionAssets = [];
+  let added = 0;
+  (src.copyVersionAssets || []).forEach(a => {
+    if (assetIds && assetIds.indexOf(a.id) < 0) return;
+    if (target.copyVersionAssets.some(x => x.pickedFrom === src.id && x.pickedAssetId === a.id)) return;
+    const copy = JSON.parse(JSON.stringify(a));
+    copy.id = `cv_pick_${Math.round(performance.now())}_${added}_${Math.random().toString(36).slice(2, 6)}`;
+    copy.status = 'Draft'; copy.pickedFrom = src.id; copy.pickedAssetId = a.id;
+    target.copyVersionAssets.push(copy); added++;
+  });
+  if (added){ cmpPersistCopyVersionAssetsToCampaign(); if (document.getElementById('cmpCopyVersionsBuilder')) cmpRenderCopyVersionsStage(); }
+  return added;
+}
+function cmpCopyPickupSuggestedId(c){
+  if (c.copyPickupFromId) return c.copyPickupFromId;
+  if (cmpIntakeCampaignId === c.id){ for (let i = cmpIntakeHistory.length - 1; i >= 0; i--){ if (cmpIntakeHistory[i].sourceCampaignId) return cmpIntakeHistory[i].sourceCampaignId; } }
+  return null;
+}
+let cmpCopyPickupNote = '';
+function cmpCopyPickupBringIn(sourceId){
+  const n = cmpCopyPickupClone(sourceId, null);
+  cmpCopyPickupNote = n ? `${n} copy version${n === 1 ? '' : 's'} brought in as drafts. Review and approve each one.` : 'Nothing new to bring in from that campaign.';
+  cmpRenderCopyVersionsPickup();
+}
+function cmpRenderCopyVersionsPickup(){
+  const el = document.getElementById('cmpCopyVersionsPickup'); if (!el) return;
+  const c = cmpRailLoadedCampaign(); if (!c){ el.innerHTML = ''; return; }
+  const withCopy = (state.campaigns || []).filter(x => x.id !== c.id && Array.isArray(x.copyVersionAssets) && x.copyVersionAssets.length);
+  if (!withCopy.length){ el.innerHTML = ''; return; }
+  const sugId = cmpCopyPickupSuggestedId(c); const sug = withCopy.find(x => x.id === sugId);
+  const pickedCount = id => (c.copyVersionAssets || []).filter(x => x.pickedFrom === id).length;
+  const sugHtml = sug ? `<div class="adlib-pick-row"><span>You started this campaign from <strong>${escapeHtml(adLibCampName(sug))}</strong>, which has ${sug.copyVersionAssets.length} saved copy version${sug.copyVersionAssets.length === 1 ? '' : 's'}.</span><button type="button" class="btn-primary" onclick="cmpCopyPickupBringIn('${escapeHtml(sug.id)}')"${pickedCount(sug.id) >= sug.copyVersionAssets.length ? ' disabled' : ''}>Bring in as drafts</button></div>` : '';
+  el.innerHTML = `<div class="adlib-pick"><div class="adlib-pick-h">Start from copy you have already used</div>${sugHtml}
+    <div class="adlib-pick-row"><span>${sug ? 'Or bring in' : 'Bring in'} copy from another campaign:</span><select id="cmpCopyPickupSel">${withCopy.map(x => `<option value="${escapeHtml(x.id)}">${escapeHtml(adLibCampName(x))} (${x.copyVersionAssets.length})</option>`).join('')}</select><button type="button" class="btn-ghost" onclick="cmpCopyPickupBringIn(document.getElementById('cmpCopyPickupSel').value)">Bring in as drafts</button><a class="flink" onclick="goToStep('adCopyLibrary')">Open Ad Copy Library &rarr;</a></div>
+    ${cmpCopyPickupNote ? `<div class="hint" style="margin:6px 0 0;">${escapeHtml(cmpCopyPickupNote)}</div>` : ''}</div>`;
+}
 function cmpRenderCopyVersionsStage(){
   if (!document.getElementById('cmpCopyVersionsBuilder')) return;
+  cmpRenderCopyVersionsPickup();
   cmpRenderCopyVersionsHeaderRow();
   cmpRenderCopyVersionsBulkCta();
   cmpRenderCopyVersionsQaBadge();
