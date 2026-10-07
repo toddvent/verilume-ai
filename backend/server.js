@@ -11169,17 +11169,77 @@ const GEO_ECON = {
   mail: { name: 'Direct mail', kind: 'piece', perPiece: 0.75, coverage: 30, everyWeeks: 4, rx: /direct mail|\bmail\b|mailer|postcard|insert/i }
 };
 function geoEconFor(text){ const t = String(text || ''); const order = ['ctv', 'mail', 'podcast', 'video', 'linear', 'radio', 'social', 'display', 'ooh', 'print']; for (const k of order){ if (GEO_ECON[k].rx.test(t)) return Object.assign({ key: k }, GEO_ECON[k]); } return null; }
+// ---- Target audience per market, from the client's own profile (selected generations + Verilume Wealth Index) ----
+// Same inputs and per-zip qualification test the trade-area "Qualified" count uses. Census coverage is partial, so each
+// market reports how much of its population was backed by real zip data; markets without any fall back to the national share.
+function geoNationalDemo(targetGens){
+  return geoCached('natdemo|' + targetGens.join(','), 3600000, () => {
+    const bracketAttrs = ACS_INCOME_BRACKET_MIDPOINTS.map(([code]) => `income_hh_${code}`);
+    const attrs = targetGens.map(g => `population_${g}`).concat(['income_hh_total', 'income_top_bracket_avg'], bracketAttrs);
+    const demoByZip = new Map();
+    db.prepare(`SELECT zip, attribute, value FROM zip_demographic_master WHERE attribute IN (${attrs.map(() => '?').join(',')})`).all(...attrs).forEach(r => { if (!demoByZip.has(r.zip)) demoByZip.set(r.zip, {}); demoByZip.get(r.zip)[r.attribute] = r.value; });
+    const zips = Array.from(demoByZip.keys()), population = new Map();
+    for (let i = 0; i < zips.length; i += 1000){ const ch = zips.slice(i, i + 1000); db.prepare(`SELECT zip, population FROM zip_population_master WHERE zip IN (${ch.map(() => '?').join(',')})`).all(...ch).forEach(r => population.set(r.zip, r.population)); }
+    let natPop = 0, natGen = 0, natIncW = 0, natIncP = 0;
+    demoByZip.forEach((a, z) => { const p = population.get(z); if (p == null) return; natPop += p; targetGens.forEach(g => { const v = a[`population_${g}`]; if (v != null) natGen += v; }); const inc = zipAvgIncomeBackend(a); if (inc != null){ natIncW += inc * p; natIncP += p; } });
+    return { demoByZip, population, nationalGenShare: natPop > 0 ? natGen / natPop : null, nationalAvgIncome: natIncP > 0 ? natIncW / natIncP : null, zipsWithDemo: demoByZip.size };
+  });
+}
+function geoAudienceProfile(accountId, dmaCodes){
+  let acct = {}; try { acct = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId) || {}; } catch (e){ acct = {}; }
+  const gens = parseAccountGenerations(acct), genMult = generationWealthMultiplierBackend(gens);
+  const nat = geoNationalDemo(gens);
+  const income = Number(aliasVal(acct, 'wealthIndexTargetIncome'));
+  const acctIdx = (income > 0 && nat.nationalAvgIncome) ? Math.round((income / nat.nationalAvgIncome) * genMult * 100) : null;
+  const rawGens = String(acct.audience || '').split(',').map(x => x.trim()).filter(Boolean);
+  const profile = { generations: rawGens.length ? gens : [], wealthIndex: acctIdx, hasProfile: rawGens.length > 0 || acctIdx != null, demoZips: nat.zipsWithDemo,
+    text: [rawGens.length ? `generations ${gens.join(', ')}` : 'all generations (none selected on the profile)', acctIdx != null ? `Verilume Wealth Index ${acctIdx}` : 'no wealth index set'].join('; ') };
+  const byDma = {};
+  const codes = Array.from(new Set((dmaCodes || []).map(String)));
+  if (!codes.length) return { profile, byDma };
+  const dz = {}; db.prepare(`SELECT zip, dmaCode AS "dmaCode" FROM zip_dma_master WHERE dmaCode IN (${codes.map(() => '?').join(',')})`).all(...codes).forEach(r => { (dz[r.dmaCode] = dz[r.dmaCode] || []).push(r.zip); });
+  const allZips = [].concat(...Object.values(dz)), pop = new Map();
+  for (let i = 0; i < allZips.length; i += 1000){ const ch = allZips.slice(i, i + 1000); db.prepare(`SELECT zip, population FROM zip_population_master WHERE zip IN (${ch.map(() => '?').join(',')})`).all(...ch).forEach(r => pop.set(r.zip, r.population)); }
+  // national share of target-generation people who live in zips that clear the account's wealth index
+  let natQual = null;
+  if (acctIdx != null){ let q = 0, t = 0; nat.demoByZip.forEach(a => { const inc = zipAvgIncomeBackend(a); if (inc == null) return; let g = 0; gens.forEach(k => { const v = a[`population_${k}`]; if (v != null) g += v; }); t += g; if (Math.round((inc / nat.nationalAvgIncome) * genMult * 100) >= acctIdx) q += g; }); natQual = t > 0 ? q / t : null; }
+  codes.forEach(code => {
+    const zs = dz[code] || []; let popAll = 0, popCov = 0, genCov = 0, genTested = 0, genQual = 0, tested = 0;
+    zs.forEach(z => { const p = pop.get(z) || 0; popAll += p; const a = nat.demoByZip.get(z); if (!a) return; popCov += p; let g = 0; gens.forEach(k => { const v = a[`population_${k}`]; if (v != null) g += v; }); genCov += g;
+      const inc = zipAvgIncomeBackend(a); if (inc != null && nat.nationalAvgIncome){ tested++; genTested += g; if (acctIdx != null && Math.round((inc / nat.nationalAvgIncome) * genMult * 100) >= acctIdx) genQual += g; } });
+    const local = popCov > 0;
+    const genShare = local ? genCov / popCov : nat.nationalGenShare;
+    let qual = null, qualBasis = null;
+    if (acctIdx != null){ if (tested > 0 && genTested > 0){ qual = genQual / genTested; qualBasis = 'market zips'; } else if (natQual != null){ qual = natQual; qualBasis = 'national'; } }
+    const share = genShare != null ? genShare * (qual != null ? qual : 1) : null;
+    byDma[code] = { genShare: genShare != null ? Math.round(genShare * 1000) / 10 : null, wealthQualified: qual != null ? Math.round(qual * 1000) / 10 : null, share, shareFinal: share != null ? share : null,
+      coveragePct: popAll > 0 ? Math.round(popCov / popAll * 100) : 0, basis: share == null ? 'adults 18+ (no profile data loaded)' : (local ? 'market zip data' : 'national share (no zip data for this market)') };
+  });
+  return { profile, byDma };
+}
+// The account's own buys, when it has entered them: effective CPM (or cost per piece for mail) per channel family.
+// Improves as more plans with impressions and budget go into Verilume; until then the platform blend applies.
+function geoAccountRates(accountId){
+  return geoCached(`rates|${accountId}`, 300000, () => {
+    let rows = []; try { rows = db.prepare('SELECT d.channel AS channel, d.budget AS budget, d.impressions AS impressions FROM channel_planning_details d JOIN campaigns c ON c.id = d.campaignId WHERE c.accountId = ? AND d.budget > 0 AND d.impressions > 0').all(accountId); } catch (e){ rows = []; }
+    const out = {};
+    Object.keys(GEO_ECON).forEach(k => { const e = GEO_ECON[k]; const m = rows.filter(r => e.rx.test(String(r.channel || ''))); const b = m.reduce((a, r) => a + Number(r.budget), 0), i = m.reduce((a, r) => a + Number(r.impressions), 0);
+      if (e.kind === 'piece'){ if (i >= 5000 && b / i >= 0.05 && b / i <= 10) out[k] = { perPiece: Math.round(b / i * 100) / 100, lines: m.length, volume: Math.round(i) }; }
+      else if (i >= 100000){ const cpm = b / i * 1000; if (cpm >= 0.5 && cpm <= 500) out[k] = { cpm: Math.round(cpm * 100) / 100, lines: m.length, volume: Math.round(i) }; } });
+    return out;
+  });
+}
 function geoCleanAssumptions(a){ const o = {}; if (!a || typeof a !== 'object') return o; const n = (k, lo, hi) => { const v = Number(a[k]); if (Number.isFinite(v) && v >= lo && v <= hi && a[k] !== '' && a[k] !== null) o[k] = v; }; n('reach', 1, 100); n('freq', 0.5, 20); n('cpm', 0.5, 500); n('coverage', 1, 100); n('perPiece', 0.05, 10); n('everyWeeks', 1, 26); return o; }
 // Cost to run one channel in one market for W weeks, from the market's population and the editable assumptions.
-function geoMarketMediaCost(eco, pop, W, a){
+function geoMarketMediaCost(eco, pop, W, a, share){
   const P = Number(pop) > 0 ? Number(pop) : 0;
   if (eco.kind === 'piece'){
-    const hh = P / GEO_PERSONS_PER_HH, cov = (a.coverage != null ? a.coverage : eco.coverage) / 100, per = a.perPiece != null ? a.perPiece : eco.perPiece, every = a.everyWeeks != null ? a.everyWeeks : eco.everyWeeks;
+    const hh = P / GEO_PERSONS_PER_HH * (share != null ? Math.min(1, share) : 1), cov = (a.coverage != null ? a.coverage : eco.coverage) / 100, per = a.perPiece != null ? a.perPiece : eco.perPiece, every = a.everyWeeks != null ? a.everyWeeks : eco.everyWeeks;
     const drops = Math.max(1, Math.ceil(W / every)), pieces = Math.round(hh * cov * drops);
     return { audience: Math.round(hh), units: pieces, unitLabel: 'pieces', total: pieces * per, perWeek: pieces * per / W };
   }
   const reach = (a.reach != null ? a.reach : eco.reach) / 100, freq = a.freq != null ? a.freq : eco.freq, cpm = a.cpm != null ? a.cpm : eco.cpm;
-  const aud = P * GEO_ADULT_SHARE, wkImp = aud * reach * freq, wkCost = wkImp * cpm / 1000;
+  const aud = P * (share != null ? share : GEO_ADULT_SHARE), wkImp = aud * reach * freq, wkCost = wkImp * cpm / 1000;
   return { audience: Math.round(aud), units: Math.round(wkImp), unitLabel: 'impressions per week', total: wkCost * W, perWeek: wkCost };
 }
 const GEO_TIER_ORDER = ['Must Win', 'Growth', 'Opportunistic', 'Monitor'];
@@ -11341,14 +11401,24 @@ async function buildGeoPlan(accountId, upload, analysis, question, planOpts){
   const testFunds = intent.budget ? { amount: intent.budget, basis: 'the budget you gave' } : (allSpend0 > 0 ? { amount: Math.round(allSpend0 * GEO_TEST_SHARE), basis: `${Math.round(GEO_TEST_SHARE * 100)}% of the last 12 months of working media, a common size for a test` } : null);
   // Price the named channel(s) from market size. Only when the question names a channel; otherwise the older estimate applies.
   const ass = (planOpts && planOpts.assumptions) || {};
-  const modelEcos = newCh ? [geoEconFor(newCh.name)].filter(Boolean) : (intent.channels.length ? selected.map(c => geoEconFor(c.name)).filter(Boolean) : []);
+  const acctRates = geoAccountRates(accountId);
+  const withRate = e => { if (!e) return e; const r = acctRates[e.key]; if (!r) return Object.assign({}, e, { rateSource: 'platform blend' }); return Object.assign({}, e, e.kind === 'piece' ? { perPiece: r.perPiece } : { cpm: r.cpm }, { rateSource: `your own buys (${r.lines} plan line${r.lines === 1 ? '' : 's'}, ${r.volume.toLocaleString()} ${e.kind === 'piece' ? 'pieces' : 'impressions'})` }); };
+  const modelEcos = (newCh ? [geoEconFor(newCh.name)].filter(Boolean) : (intent.channels.length ? selected.map(c => geoEconFor(c.name)).filter(Boolean) : [])).map(withRate);
   const dmaList = (analysis.dmaExport && analysis.dmaExport.dmas) || [];
+  const audCodes = []; sorted.slice(0, 12).forEach(pr => { audCodes.push(pr.testDma, pr.controlDma); });
+  const audience = modelEcos.length ? geoAudienceProfile(accountId, audCodes) : { profile: null, byDma: {} };
+  const shareOf = code => { const x = audience.byDma[String(code)]; return x && x.share != null ? x.share : null; };
   const popOf = code => { const d = dmaList.find(x => String(x.dmaCode) === String(code)); return d && Number(d.population) > 0 ? Number(d.population) : 0; };
   // Where a pair is close in size, the smaller market gets the media: controls are never bought, so this keeps the test cheaper.
-  const swapPair = pr => (modelEcos.length && popOf(pr.controlDma) > 0 && popOf(pr.testDma) > 0 && popOf(pr.controlDma) < popOf(pr.testDma))
+  const swapPair = pr => (modelEcos.length && popOf(pr.controlDma) > 0 && popOf(pr.testDma) > 0 && popOf(pr.controlDma) * (shareOf(pr.controlDma) || 1) < popOf(pr.testDma) * (shareOf(pr.testDma) || 1))
     ? Object.assign({}, pr, { testDma: pr.controlDma, controlDma: pr.testDma, testName: pr.controlName, controlName: pr.testName, testVolume: pr.controlVolume, controlVolume: pr.testVolume, weeklyTest: pr.weeklyControl, weeklyControl: pr.weeklyTest }) : pr;
-  const sortedUse = sorted.map(swapPair);
-  const modelNeeded = (pairsK, Wk) => modelEcos.reduce((sum, e) => sum + pairsK.reduce((s2, pr) => s2 + geoMarketMediaCost(e, popOf(pr.testDma), Wk, ass).total, 0), 0);
+  // A market with almost none of the client's target audience cannot read a test aimed at it, so such pairs are set aside.
+  const lowAud = code => { const x = shareOf(code); return x != null && x < 0.02; };
+  const keptPairs = (modelEcos.length && audience.profile && audience.profile.hasProfile) ? sorted.filter(pr => !lowAud(pr.testDma) && !lowAud(pr.controlDma)) : sorted;
+  const skippedPairs = sorted.length - keptPairs.length;
+  if (!keptPairs.length) return { ok: false, reason: 'None of the matched markets contain enough of your target audience for this channel. Check the audience generations and Wealth Index on Company Profile, or load Census demographics for more zip codes.' };
+  const sortedUse = keptPairs.map(swapPair);
+  const modelNeeded = (pairsK, Wk) => modelEcos.reduce((sum, e) => sum + pairsK.reduce((s2, pr) => s2 + geoMarketMediaCost(e, popOf(pr.testDma), Wk, ass, shareOf(pr.testDma)).total, 0), 0);
   // Walk the market pairs from strongest to weakest and keep the number of test markets that finishes soonest while the weekly minimum stays affordable.
   const opts2 = []; { let a2 = 0, c2 = 0; for (let k = 1; k <= Math.min(sortedUse.length, 12); k++){ a2 += sortedUse[k - 1].testVolume; c2 += sortedUse[k - 1].controlVolume; const w2 = need(a2, c2); if (w2 != null) opts2.push({ k, W: w2, nT: a2, nC: c2, needed: modelEcos.length ? modelNeeded(sortedUse.slice(0, k), w2) : per * k * w2 }); } }
   if (!opts2.length) return { ok: false, reason: 'The recommended markets have no volume in this window.' };
@@ -11366,7 +11436,7 @@ async function buildGeoPlan(accountId, upload, analysis, question, planOpts){
   else if (cost){ cpb = (cost.basis === 'cards' && allSpend > 0) ? cost.costPerBooking * (selSpend / allSpend) : (cost.transactions > 0 && selSpend > 0 ? selSpend / cost.transactions : null); }
   const mult = 2; const bT = wT * W, bC = wC * W, inc = lift * bT;
   const modelRows = [];
-  if (modelEcos.length) modelEcos.forEach(e => chosen.forEach(pr => { const c = geoMarketMediaCost(e, popOf(pr.testDma), W, ass); modelRows.push({ channel: e.name, market: pr.testName, population: popOf(pr.testDma), audience: c.audience, units: c.units, unitLabel: c.unitLabel, perWeek: Math.round(c.perWeek), total: Math.round(c.total) }); }));
+  if (modelEcos.length) modelEcos.forEach(e => chosen.forEach(pr => { const c = geoMarketMediaCost(e, popOf(pr.testDma), W, ass, shareOf(pr.testDma)); const au = audience.byDma[String(pr.testDma)] || {}; modelRows.push({ channel: e.name, market: pr.testName, population: popOf(pr.testDma), profileSharePct: au.share != null ? Math.round(au.share * 1000) / 10 : null, audienceBasis: au.basis || 'adults 18+', coveragePct: au.coveragePct != null ? au.coveragePct : null, audience: c.audience, units: c.units, unitLabel: c.unitLabel, perWeek: Math.round(c.perWeek), total: Math.round(c.total) }); }));
   const newNeeded = modelEcos.length ? Math.round(modelRows.reduce((a, x) => a + x.total, 0)) : per * chosen.length * W;
   const held = newCh ? 0 : (cpb != null ? cpb * bT : null);
   const extra = modelEcos.length ? { low: null, expected: newNeeded, high: null } : ((cpb != null && !aov) ? { low: inc * cpb, expected: inc * cpb * mult, high: inc * cpb * mult * 1.5 } : null);
@@ -11395,6 +11465,7 @@ async function buildGeoPlan(accountId, upload, analysis, question, planOpts){
   const notes = []; if (channelNote) notes.push(channelNote);
   if (aov) notes.push('Average order value changes come from the offer, product mix or creative you test, so the plan shows the media you hold steady and no extra media.');
   if (newCh) notes.push(`${newCh.name} is not an active channel in your budget. A market test is how new channels get explored, so it was included anyway. Your existing media keeps running as normal in all markets and is not part of the test cost. The weekly reach, frequency and CPM behind the budget are planning defaults; edit them under Media assumptions and ask again.`);
+  if (skippedPairs > 0) notes.push(`${skippedPairs} matched pair${skippedPairs === 1 ? ' was' : 's were'} set aside because one of the markets has almost none of your target audience.`);
   if (fundingShort) notes.push('Even the smallest design costs more than the test funds, so the plan shows the cheapest option that can still be read.');
   if (cpb == null && !newCh) notes.push('No cost per booking could be found for this window, so cost is not shown.');
   if (!forecast.available) notes.push(forecast.reason);
@@ -11407,7 +11478,7 @@ async function buildGeoPlan(accountId, upload, analysis, question, planOpts){
       const nM = chosen.length, needed = modelEcos.length ? newNeeded : per * nM * W;
       const funding = testFunds ? testFunds.amount : null;
       const marketWeeks = funding != null ? Math.floor(funding / per) : null;
-      return { model: modelEcos.length > 0, rows: modelRows, assumptionsUsed: modelEcos.map(e => e.kind === 'piece' ? { channel: e.name, kind: 'piece', perPiece: ass.perPiece != null ? ass.perPiece : e.perPiece, coverage: ass.coverage != null ? ass.coverage : e.coverage, everyWeeks: ass.everyWeeks != null ? ass.everyWeeks : e.everyWeeks } : { channel: e.name, kind: 'cpm', cpm: ass.cpm != null ? ass.cpm : e.cpm, reach: ass.reach != null ? ass.reach : e.reach, freq: ass.freq != null ? ass.freq : e.freq }),
+      return { model: modelEcos.length > 0, rows: modelRows, audienceProfile: audience.profile, assumptionsUsed: modelEcos.map(e => e.kind === 'piece' ? { rateSource: e.rateSource, channel: e.name, kind: 'piece', perPiece: ass.perPiece != null ? ass.perPiece : e.perPiece, coverage: ass.coverage != null ? ass.coverage : e.coverage, everyWeeks: ass.everyWeeks != null ? ass.everyWeeks : e.everyWeeks } : { rateSource: e.rateSource, channel: e.name, kind: 'cpm', cpm: ass.cpm != null ? ass.cpm : e.cpm, reach: ass.reach != null ? ass.reach : e.reach, freq: ass.freq != null ? ass.freq : e.freq }),
         perMarketWeek: modelEcos.length ? Math.round(needed / Math.max(1, nM * W)) : per, testMarkets: nM, weeks: W, needed, funding, fundingBasis: testFunds ? testFunds.basis : '', enough: funding != null ? funding >= needed : null, newChannel: newCh ? newCh.name : null,
         costPerIncremental: (!aov && inc > 0) ? Math.round(needed / inc) : null, incrementalBookings: Math.round(inc),
         affordableWeeks: marketWeeks != null && nM ? Math.floor(marketWeeks / nM) : null, affordableMarkets: marketWeeks != null && W ? Math.floor(marketWeeks / W) : null };
