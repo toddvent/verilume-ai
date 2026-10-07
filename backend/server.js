@@ -18707,7 +18707,7 @@ const PRODUCT_GUIDE = [
   { letter: "AT", label: "Team Experiences: self-assessment and development plan", keywords: ["team experiences", "self assessment", "skill sets", "development plan", "training", "next level", "critical skills", "position"], text: "Team Experiences has three jobs. Skill Sets shows what any position on the org chart is expected to hold. The self-assessment lets each person rate themselves against their own seat’s critical skills. The development plan builds steps toward the next level. A good first week is to look up your own seat, complete the self-assessment, then draft a development plan and review it with your manager. Ask Verilume can summarize team structure and training progress, but it never reads out emails, phone numbers or any one person’s self-ratings." },
   { letter: "AU", label: "Team and Org Chart", keywords: ["team", "org chart", "org", "invite", "member", "reports to", "role", "admin", "roster", "onboarding", "add a person", "add someone", "add people", "add a team", "who reports", "position"], text: "Team and Org Chart is where an admin adds each person, sets their position and who they report to. The chart drives skill sets, the self-assessment and the development plan, so keep reporting lines current. The page is admin-only today. Give each new person their position first, then have them complete the self-assessment in Team Experiences. Ask Verilume can answer who sits where and which seats lack a reporting line, without sharing contact details or individual self-ratings." },
   { letter: "AV", label: "Ask Verilume and voice: what you can ask", keywords: ["ask verilume", "voice", "ask", "question", "how do i", "how to", "what can i ask", "getting started", "where do i"], text: "AI Thoughts and voice share the same knowledge. Ask Verilume, typed or by voice, answers from your own data: campaigns, Media Science markets and the last test plan, Test Registry results and confirmed learnings, Trade Territories, the Ad Copy Library and the team structure. It also explains how to use the product, so you can ask how do I save a match market test, how do I confirm a result, or what does a local reseller mean, and hear the same answer that appears in these thoughts. Voice never changes anything. Any change is proposed for a person to accept. It does not read out emails, phone numbers or individual self-ratings." },
-  { letter: "AW", label: "Brain Dump: your greeting and growth links", keywords: ["brain dump", "growth", "my growth", "assessment", "self assessment", "next career", "career", "training", "development plan", "private", "manager see", "who can see", "greeting", "1:1"], text: "The Brain Dump opens with a greeting and your seat, then the weekly business update: Strategy, Customer Experiences, Growth and Performance, Media Science, AI Brain learnings, and news from outside. Beside it, Your growth links to your own development: the position self-assessment, your next-career checklist, and your development plan, all in Team Experiences. Those pages are private to you. A manager sees nothing from them unless you choose to share it. The 1:1 with your Brain is coming later." }
+  { letter: "AW", label: "Brain Dump: your greeting and growth links", keywords: ["brain dump", "growth", "my growth", "assessment", "self assessment", "next career", "career", "training", "development plan", "private", "manager see", "who can see", "greeting", "1:1"], text: "The Brain Dump opens with a greeting and your seat, then the weekly business update: Strategy, Customer Experiences, Growth and Performance, Media Science, AI Brain learnings, and news from outside. Beside it, Your growth links to your own development: the position self-assessment, your next-career checklist, and your development plan, all in Team Experiences. Those pages are private to you. A manager sees nothing from them unless you choose to share it. You can also ask Verilume or the voice agent to read you the Brain Dump, and it presents each section in turn. The 1:1 with your Brain is coming later." }
 ];
 const PRODUCT_ASK_RE = /\b(how (?:do|can|should|would) (?:i|we|you)|how to|where (?:do|can|is|are)|what (?:is|are|does|do) (?:a|an|the|my)?|walk me through|getting started|get started|train(?:ing)?|learn|guide|explain|help me (?:use|understand)|what can i ask|show me how|steps)\b/i;
 function productGuideBlock(question){
@@ -18718,6 +18718,24 @@ function productGuideBlock(question){
   return 'PRODUCT GUIDE (how to use the product; these are the same words the portal\'s AI Thoughts show, so answer from them and keep it short when spoken):\n' + scored.map(x => `- ${x.t.label}: ${x.t.text}`).join('\n');
 }
 const TEAM_ASK_RE = /\b(team|teammates?|members?|colleagues?|invite|invit\w*|roster|org chart|admins?|administrators?|roles?|permissions?|access|skills?|self[- ]?ratings?|career|learning|reports? to|onboarding|set ?up|log ?in|passwords?|deactivat\w*|who (?:is|are|works)|staff)\b/i;
+// 2026-10-07 — the posted Brain Dump edition as voice and Ask Verilume context, so the agent can present the commentary itself (section by section), not just describe the page. Always included when an edition is posted; it is small and static between runs.
+function brainDumpContextBlock(accountId, question){
+  const d = readBrainDump(accountId);
+  if (!d || !d.posted) return 'BRAIN DUMP: no edition posted yet. If asked to read it, say it has not been posted this week and offer to run it from the Brain Dump page.';
+  const titles = { strategy: 'Strategy', brand: 'Customer Experiences', growth: 'Growth and Performance', analysis: 'Media Science', learnings: 'AI Brain learnings' };
+  const lines = [`BRAIN DUMP (the weekly edition for the week of ${d.weekStart}, posted ${String(d.postedAt || '').slice(0, 10)}). When the person asks you to read, present, brief or summarize the Brain Dump, or what changed this week, present these sections in order in plain spoken sentences: Strategy, Customer Experiences, Growth and Performance, Media Science, AI Brain learnings, then news from outside. Lead each with its headline number, keep each to two or three sentences unless asked for more, say no markdown, and offer to go deeper on any section. Everything below is this account's own posted commentary; do not add figures that are not here.`];
+  Object.keys(titles).forEach(k => {
+    const f = (d.facts || {})[k]; const t = (d.text || {})[k] || (f && Array.isArray(f.lines) ? f.lines.join(' ') : '');
+    if (!f && !t) return;
+    const m = (f && f.metric) || {};
+    lines.push(`- ${titles[k]}${m.label ? ` (${m.label}: ${m.display || 'n/a'})` : ''}: ${String(t).slice(0, 900)}`);
+  });
+  const chg = (d.facts && d.facts._changes) || [];
+  if (chg.length) lines.push('- Since the last edition: ' + chg.slice(0, 6).join(' '));
+  const news = (d.external && Array.isArray(d.external.news)) ? d.external.news : [];
+  if (news.length) lines.push('- News from outside (external sources, not this account\'s data): ' + news.slice(0, 6).map(x => `${x.title}${x.label ? ' (' + x.label + ')' : ''}`).join('; '));
+  return lines.join('\n');
+}
 function teamContextBlock(accountId, question){
   let mem = []; try { mem = db.prepare('SELECT * FROM team_members WHERE accountId = ?').all(accountId); } catch (e){ return ''; }
   const act = mem.filter(m => (aliasVal(m, 'status') || 'active') === 'active');
@@ -18750,6 +18768,7 @@ function voiceContextBundle(accountId, opts){
   try { blocks.push(geoContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] media science context failed:', e.message); }
   try { blocks.push(adCopyContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] ad copy context failed:', e.message); }
   try { const tb = teamContextBlock(accountId, o.question); if (tb) blocks.push(tb); } catch (e){ console.warn('[voice/ask] team context failed:', e.message); }
+  try { blocks.push(brainDumpContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] brain dump context failed:', e.message); }
   try { const pg = productGuideBlock(o.question); if (pg) blocks.push(pg); } catch (e){ console.warn('[voice/ask] product guide failed:', e.message); }
   try {
     const dm = getDigitalMonthlyTotals(accountId);
