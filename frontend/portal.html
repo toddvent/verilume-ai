@@ -1680,6 +1680,14 @@
   .drr-custom{display:inline-flex;align-items:center;gap:6px;font-size:0.8125rem;color:var(--muted);} .drr-custom input{font:inherit;font-size:0.8125rem;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--white);color:var(--ink);}
   .drr-note{font-size:0.8125rem;color:var(--muted);margin-top:6px;line-height:1.5;} .drr-hint{display:block;} .drr-err{font-size:0.8125rem;color:var(--ink);margin-top:6px;}
   .gsc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:6px;} .gsc-top .drr-bar{flex:1 1 420px;margin:0;} .gsc-tools{display:flex;gap:8px;flex-wrap:wrap;} .gsc-tools .btn-ghost{padding:6px 14px;font-size:0.8125rem;}
+  /* 2026-10-07 — Search Everywhere path: SEO, AEO, GEO. */
+  .srch-pathbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 16px;} .srch-pathbar-l{font-size:0.75rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);} .srch-arrow{color:var(--muted);}
+  .srch-pathbtn{display:inline-flex;flex-direction:column;align-items:flex-start;gap:1px;padding:8px 16px;border:1px solid var(--line-hairline);border-radius:12px;background:var(--surface,transparent);color:inherit;font-family:inherit;cursor:pointer;text-align:left;} .srch-pathbtn:hover,.srch-pathbtn:focus-visible{border-color:var(--cx);} .srch-pathbtn b{font-size:0.9375rem;} .srch-pathbtn span{font-size:0.75rem;color:var(--muted);}
+  .srch-path{margin:34px 0 8px;scroll-margin-top:72px;} .srch-path-head{margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--line-hairline);} .srch-eyebrow{font-size:0.75rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--cx);} .srch-path-title{margin:2px 0 4px;font-size:1.5rem;} .srch-path-lede{margin:0;color:var(--muted);max-width:70ch;}
+  .srch-recap-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:4px 0 8px;} .srch-recap-h .gsc-title{font-size:1.125rem;} .srch-fc{margin:8px 0 0;font-size:0.875rem;color:var(--muted);}
+  .srch-tag{display:inline-block;font-size:0.6875rem;font-weight:700;letter-spacing:0.06em;border:1px solid var(--line-hairline);border-radius:980px;padding:0 8px;margin-right:6px;color:var(--cx);vertical-align:middle;}
+  .srch-monitor{margin-top:6px;} .srch-monitor .hint{margin-top:0;}
+  #gscSeo .btn-row button,#gscAeo .btn-row button,#gscGeo .btn-row button{font-family:inherit;}
   .gsc-cards{margin-bottom:20px;} .gsc-reads{padding:14px 22px;} .gsc-read+.gsc-read{border-top:1px solid var(--line-hairline);margin-top:10px;padding-top:10px;} .gsc-read-l1{font-weight:700;} .gsc-read-l2{color:var(--muted);font-size:0.875rem;margin-top:2px;} .gsc-more{margin:6px 0 0 18px;padding:0;color:var(--muted);font-size:0.8125rem;}
   .gsc-read-acts{display:flex;gap:14px;margin-top:4px;} .gsc-link{font:inherit;font-size:0.8125rem;font-weight:600;color:var(--hdr-navy);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;}
   .gsc-st{white-space:nowrap;} .gsc-win{display:inline-block;font-size:0.6875rem;font-weight:600;color:#8A5A1F;background:#FBF1E3;border-radius:980px;padding:1px 8px;white-space:nowrap;vertical-align:middle;} .gsc-dim td{color:var(--muted);} .gsc-qgrid{display:grid;gap:12px;grid-template-columns:minmax(0,2fr) minmax(0,1fr);padding:8px 0;} @media (max-width:700px){.gsc-qgrid{grid-template-columns:minmax(0,1fr);}} #gscPage .btn-row button,#ttbSlot-brainFacts button,#ttbSlot-brainFacts select,#ttbSlot-brainFacts input{font-family:inherit;}
@@ -4804,14 +4812,25 @@
 
     <div id="gscPage"></div>
 
-    <div id="schemaLibrary"></div>
+    <nav class="srch-pathbar" id="srchPathBar" aria-label="Search Everywhere path">
+      <span class="srch-pathbar-l">Path through the page</span>
+      <button type="button" class="srch-pathbtn" onclick="srchPathJump('srchPathSeo')"><b>SEO</b><span>Get found</span></button>
+      <span class="srch-arrow" aria-hidden="true">→</span>
+      <button type="button" class="srch-pathbtn" onclick="srchPathJump('srchPathAeo')"><b>AEO</b><span>Be the answer</span></button>
+      <span class="srch-arrow" aria-hidden="true">→</span>
+      <button type="button" class="srch-pathbtn" onclick="srchPathJump('srchPathGeo')"><b>GEO</b><span>Be cited by AI</span></button>
+    </nav>
 
-    <div id="srchMaster"></div>
+    <div class="srch-monitor">
     <p class="hint" style="margin:18px 0 6px;">Monitoring sections below show sample data until Search Console or a licensed tool is connected.</p>
-
     <div id="cfdWsModule-searchOptimization"></div>
+      <div class="seo-summary-bar" id="seoOverviewSummary"></div>
+    </div>
 
-    <div class="seo-summary-bar" id="seoOverviewSummary"></div>
+    <section class="srch-path" id="srchPathSeo" aria-labelledby="srchPathSeoH">
+      <div class="srch-path-head"><div class="srch-eyebrow">SEO &middot; Path 1 of 3</div><h2 id="srchPathSeoH" class="srch-path-title">Get found in search</h2><p class="srch-path-lede">Organic clicks, the searches behind them, site health and content. Start here: if people cannot find the pages, nothing after this matters.</p></div>
+      <div id="gscSeo"></div>
+      <div id="srchMaster"></div>
 
     <div class="seo-section" id="seoTechnicalSection">
       <div class="seo-section-head"><div class="seo-section-title">🛠 Site Health &amp; Technical SEO</div></div>
@@ -4857,15 +4876,7 @@
       <div class="seo-card-list" id="seoCannibalizationList"></div>
     </div>
 
-    <div class="seo-section" id="seoAeoGeoSection">
-      <div class="seo-section-head"><div class="seo-section-title">🤖 AEO / GEO Visibility</div></div>
-      <p class="seo-section-sub">Whether this brand is actually being cited when people ask AI answer engines the questions it should be showing up for — the newest layer of "search," running alongside classic SEO rather than replacing it.</p>
-      <div class="seo-card-list" id="seoAeoGeoList"></div>
-
-      <div class="seo-subhead">AI Citation Share of Voice</div>
-      <p class="seo-subhead-sub">How often this brand is cited versus named competitors across the same monitored engine set — not just a yes/no per engine.</p>
-      <div class="seo-card-list" id="seoShareOfVoiceList"></div>
-
+    <div class="seo-section srch-sub" id="seoBacklinkSection">
       <div class="seo-subhead">Backlink &amp; Authority Monitor</div>
       <p class="seo-subhead-sub">New and lost referring domains, with toxic links flagged — the link-graph signal search engines (and, increasingly, AI answer engines) still weigh heavily.</p>
       <div class="seo-summary-bar" id="seoBacklinkSummary" style="margin-bottom:16px;"></div>
@@ -4883,6 +4894,30 @@
       <p class="seo-subhead-sub">A sudden move flagged with a likely cause attached — cross-referenced against this workstream's own technical findings rather than left as a bare number.</p>
       <div class="seo-card-list" id="seoGa4AnomalyList"></div>
     </div>
+
+    </section>
+
+    <section class="srch-path" id="srchPathAeo" aria-labelledby="srchPathAeoH">
+      <div class="srch-path-head"><div class="srch-eyebrow">AEO &middot; Path 2 of 3</div><h2 id="srchPathAeoH" class="srch-path-title">Be the answer</h2><p class="srch-path-lede">Answer the questions people ask, in your own approved words, and mark the pages up so engines can read them.</p></div>
+      <div id="gscAeo"></div>
+      <div id="schemaLibrary"></div>
+    </section>
+
+    <section class="srch-path" id="srchPathGeo" aria-labelledby="srchPathGeoH">
+      <div class="srch-path-head"><div class="srch-eyebrow">GEO &middot; Path 3 of 3</div><h2 id="srchPathGeoH" class="srch-path-title">Be cited by AI</h2><p class="srch-path-lede">Whether Google&rsquo;s AI features and AI assistants show or cite your site, and how often against competitors.</p></div>
+      <div id="gscGeo"></div>
+    <div class="seo-section" id="seoAeoGeoSection">
+      <div class="seo-section-head"><div class="seo-section-title">🤖 AEO / GEO Visibility</div></div>
+      <p class="seo-section-sub">Whether this brand is actually being cited when people ask AI answer engines the questions it should be showing up for — the newest layer of "search," running alongside classic SEO rather than replacing it.</p>
+      <div class="seo-card-list" id="seoAeoGeoList"></div>
+
+      <div class="seo-subhead">AI Citation Share of Voice</div>
+      <p class="seo-subhead-sub">How often this brand is cited versus named competitors across the same monitored engine set — not just a yes/no per engine.</p>
+      <div class="seo-card-list" id="seoShareOfVoiceList"></div>
+
+    </div>
+
+    </section>
 
     <!-- Round 132bx (2026-08-15) — Specialty Partners, per direct
          instruction: "every workstream includes specialty partners... that
@@ -52262,7 +52297,7 @@ function renderFaqAF(){
   el.textContent = CMP_FIELD_HELP_TIPS.creativeFocusGroup;
 }
 const SE_THOUGHTS = {
-  AG: 'Search Everywhere covers organic search only: the unpaid results people reach through Google, and the answers Google writes for them. Read it top to bottom. The four cards give organic clicks, click rate, the share of clicks that are not brand searches, and the forecast from your open priorities. Up to five Brain reads follow, led by your progress on priorities. Brand demand is shown on its own, so searches for your name count as overall demand even when no product group is named. Every number comes from the files you uploaded. Nothing is collected from anywhere else, and nothing is changed on your website.',
+  AG: 'Search Everywhere covers organic search only: the unpaid results people reach through Google, and the answers Google writes for them. Read it top to bottom. The page follows a path: SEO, then AEO, then GEO. The four cards at the top give one focal point each: organic clicks, the share of clicks that are not brand searches, how many questions your site answers (AEO), and how many AI answers cite you (GEO). The agentic recap comes next, with up to five Brain reads, the forecast and your open priorities. The three sections below hold the details behind them. Brand demand is shown on its own, so searches for your name count as overall demand even when no product group is named. Every number comes from the files you uploaded. Nothing is collected from anywhere else, and nothing is changed on your website.',
   AH: 'In Search Console open a report, choose Export, then Download CSV. Do this for Queries, Pages and Chart (use the longest date range offered), plus Countries, Devices, Search appearance, the Google AI report and Page indexing if you want those cards. Choose all the files at once and leave the names as Google gives them. Verilume recognizes each one from its first column and shows a preview. Nothing is saved until you confirm it. Anything you leave out leaves that part of the page empty.',
   AI: 'Nothing counts as a brand search until your team confirms the name. Verilume suggests names from your company name and website; confirm the full names and your website name, add others such as a former name or common misspelling, and decline the rest. This one step decides the brand and non-brand split on every card, so a common word like "world" is never treated as your name by accident.',
   AJ: 'The list holds at most five active items, the same limit as campaigns. When the slots are full, new findings wait until one is done. Ranking uses level (P1 first), then groups going into market. When a Product Group or Creative Focus Group is live or starts within 90 days and its search is weak, a "Get search ready" item appears, due 42 days before the start. Impact is Calculated (impressions times the extra click rate if the search reached the target position) or Rated (High, Medium, Low), and the two are never added together.',
@@ -60874,29 +60909,35 @@ function schemaLibRender(){
 }
 function gscRender(){
   const el = document.getElementById('gscPage'); if (!el) return;
-  if (!srchLive()){ el.innerHTML = ''; return; }
+  const slots = { seo: document.getElementById('gscSeo'), aeo: document.getElementById('gscAeo'), geo: document.getElementById('gscGeo') };
+  const clearPaths = () => Object.values(slots).forEach(x => { if (x) x.innerHTML = ''; });
+  if (!srchLive()){ el.innerHTML = ''; clearPaths(); return; }
   const d = gsc.data;
-  if (!d){ el.innerHTML = gsc.error ? `<div class="strat-card"><p class="strat-empty" style="margin:0;">${escapeHtml(gsc.error)}</p><div class="btn-row"><button type="button" class="btn-ghost" onclick="gscLoad()">Try again</button></div></div>` : '<p class="hint">Loading…</p>'; return; }
-  if (d.empty){ el.innerHTML = `<div class="strat-card">${gscUploadHtml(true)}</div>`; return; }
+  if (!d){ clearPaths(); el.innerHTML = gsc.error ? `<div class="strat-card"><p class="strat-empty" style="margin:0;">${escapeHtml(gsc.error)}</p><div class="btn-row"><button type="button" class="btn-ghost" onclick="gscLoad()">Try again</button></div></div>` : '<p class="hint">Loading…</p>'; return; }
+  if (d.empty){ clearPaths(); el.innerHTML = `<div class="strat-card">${gscUploadHtml(true)}</div>`; return; }
   const brandReady = d.brand && d.brand.confirmedCount > 0;
   const showBrand = !brandReady || gsc.brandOpen;
+  // Top of the page: tools, the four cards (one per focal point across SEO, AEO and GEO), then the agentic recap.
   let h = `<div class="gsc-top"><div class="drr-bar" id="gscDrr"></div><div class="gsc-tools"><button type="button" class="btn-ghost" onclick="gsc.brandOpen=!gsc.brandOpen; gscRender();">Brand names${brandReady ? ' (' + d.brand.confirmedCount + ')' : ''}</button><button type="button" class="btn-ghost" onclick="gscToggleUpload()">${gsc.up.stage === 'idle' ? 'Update data' : 'Close upload'}</button></div></div>`;
   if (gsc.up.stage !== 'idle') h += `<div class="strat-card">${gscUploadHtml(false)}</div>`;
   if (showBrand) h += gscBrandHtml(d);
   h += gscCardsHtml(d);
-  h += gscReadsHtml(d);
-  h += gscPrioritiesHtml(d);
-  h += gscContentUpdatesHtml(d);
-  h += gscChartsHtml(d);
-  h += gscAiHtml(d);
-  h += gscGroupsHtml(d);
-  h += gscQuestionsHtml(d);
-  h += gscAicHtml();
-  h += gscApprovedHtml();
-  h += gscBrandChecksHtml();
-  h += `<div class="gsc-two">${gscTopNbHtml(d)}${gscHealthHtml(d)}</div>`;
+  h += gscRecapHtml(d);
   el.innerHTML = h; drrRenderBars();
+  // SEO details
+  if (slots.seo) slots.seo.innerHTML = gscChartsHtml(d) + gscGroupsHtml(d) + `<div class="gsc-two">${gscTopNbHtml(d)}${gscHealthHtml(d)}</div>` + gscContentUpdatesHtml(d) + gscBrandChecksHtml();
+  // AEO details
+  if (slots.aeo) slots.aeo.innerHTML = gscQuestionsHtml(d) + gscApprovedHtml();
+  // GEO details
+  if (slots.geo) slots.geo.innerHTML = gscAiHtml(d) + gscAicHtml();
   gscRefreshReads();
+}
+function srchPathJump(id){ const e = document.getElementById(id); if (e) e.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+// The agentic recap: what Verilume reads across SEO, AEO and GEO, the forecast, and the five open priorities.
+function gscRecapHtml(d){
+  const c = d.cards || {}, f = c.forecast;
+  const fc = f && f.clicks ? `<p class="srch-fc">If the ${f.calculated} calculated priorit${f.calculated === 1 ? 'y is' : 'ies are'} won, the forecast adds about ${gscInt(f.clicks)} organic clicks${f.rated ? `, with ${f.rated} more rated but not calculated` : ''}.</p>` : '';
+  return `<div class="srch-recap-h"><div class="gsc-title">Agentic recap</div><div class="gsc-sub">What Verilume sees across SEO, AEO and GEO right now, then the details that back it up</div></div>${gscReadsHtml(d)}${fc}${gscPrioritiesHtml(d)}`;
 }
 // ---- cards ----
 function gscDeltaHtml(pct, kind){
@@ -60906,15 +60947,22 @@ function gscDeltaHtml(pct, kind){
 }
 function gscCardsHtml(d){
   const c = d.cards; if (!c) return '';
-  const card = (label, value, delta, sub, key) => `<div class="stat-card has-share">${shareBtnHtml(key)}<div class="sc-label">${label}</div><div class="sc-value">${value}</div>${delta}<div class="strat-sub">${sub}</div></div>`;
+  const card = (tag, path, label, value, delta, sub, key) => `<div class="stat-card has-share">${shareBtnHtml(key)}<div class="sc-label"><span class="srch-tag">${tag}</span>${label}</div><div class="sc-value">${value}</div>${delta}<div class="strat-sub">${sub} <button type="button" class="gsc-link" onclick="srchPathJump('${path}')">See details</button></div></div>`;
   const per = escapeHtml(d.range.label);
   const nb = c.nonBrandShare;
-  const f = c.forecast;
+  const Q = gscQ.data, A = gscAic.data;
+  const qTot = Q && Q.questions ? Q.questions.length : null;
+  const qDone = Q && Q.questions ? Q.questions.filter(q => q.status === 'approved' || q.status === 'answered').length : null;
+  const aeo = qTot == null ? card('AEO', 'srchPathAeo', 'Questions answered', '—', '<div class="sc-delta neutral">Loading</div>', 'Questions people ask that your site answers', 'search-faq')
+    : card('AEO', 'srchPathAeo', 'Questions answered', `${qDone} of ${qTot}`, `<div class="sc-delta neutral">${Q.approved ? Q.approved.length : 0} approved FAQ${Q.approved && Q.approved.length === 1 ? '' : 's'}</div>`, 'Answered on your site or approved by your team', 'search-faq');
+  const t = A && A.totals;
+  const geo = t && t.questions ? card('GEO', 'srchPathGeo', 'Cited in AI answers', `${t.cited} of ${t.questions}`, `<div class="sc-delta neutral">${t.mentioned} named, not cited</div>`, 'Questions where an AI answer cites your site', 'search-ai')
+    : (d.ai ? card('GEO', 'srchPathGeo', 'Google AI impressions', gscInt(d.ai.impressions), `<div class="sc-delta neutral">${d.ai.share != null ? (d.ai.share * 100).toFixed(1) + '% of web search impressions' : 'Impressions only'}</div>`, 'Times Google AI features showed your site', 'search-ai')
+      : card('GEO', 'srchPathGeo', 'Cited in AI answers', '—', '<div class="sc-delta neutral">Not checked yet</div>', 'Check the question list to start', 'search-ai'));
   return `<div class="stat-card-grid gp-core four gsc-cards">` +
-    card('Organic clicks', gscInt(c.clicks.value), gscDeltaHtml(c.clicks.changePct), per, 'search-clicks') +
-    card('Click rate', gscPct(c.ctr.value, 2), gscDeltaHtml(c.ctr.changePts, 'pts'), `${gscInt(c.impressions.value)} impressions`, 'search-ctr') +
-    card('Non-brand share of clicks', nb ? nb.value.toFixed(1) + '%' : '—', nb ? `<div class="sc-delta neutral">Brand ${nb.brandValue.toFixed(1)}%</div>` : '<div class="sc-delta neutral">Confirm brand names</div>', nb ? `From the top ${gscInt(nb.queries)} searches` : 'Needed to split brand from non-brand', 'search-nonbrand') +
-    card('Forecast from open priorities', f && f.clicks ? '+' + gscInt(f.clicks) : '—', `<div class="sc-delta neutral">${f ? f.calculated : 0} calculated${f && f.rated ? ` · ${f.rated} rated` : ''}</div>`, 'Added clicks if the calculated priorities are won', 'search-forecast') + `</div>`;
+    card('SEO', 'srchPathSeo', 'Organic clicks', gscInt(c.clicks.value), gscDeltaHtml(c.clicks.changePct), per, 'search-clicks') +
+    card('SEO', 'srchPathSeo', 'Non-brand share of clicks', nb ? nb.value.toFixed(1) + '%' : '—', nb ? `<div class="sc-delta neutral">Brand ${nb.brandValue.toFixed(1)}%</div>` : '<div class="sc-delta neutral">Confirm brand names</div>', nb ? `From the top ${gscInt(nb.queries)} searches` : 'Needed to split brand from non-brand', 'search-nonbrand') +
+    aeo + geo + `</div>`;
 }
 // ---- Brain reads ----
 function gscReadsHtml(d){
