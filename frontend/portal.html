@@ -6029,10 +6029,10 @@
        same account.visionStatement/longformVoiceExample columns via the
        same saveVisionLongformEdits(), unchanged. -->
   <div class="step" id="step-testRegistry">
-    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="switchPrimaryTab('dataScientist')">Media Science</a> / Test Registry</div>
-    <div class="eyebrow">Media Science &middot; Test Registry</div>
-    <h1>Test Registry <span class="ai-thought-mount" data-topic="AO"></span></h1>
-    <p class="msg-lede">Every test in one place: creative elements, offer, audience, frequency, channel, timing, landing page and DMA match market. Draft it here, enter or import results, read the statistics, record the decision and what was learned. Export any test for analysis.</p>
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="switchPrimaryTab('dataScientist')">Media Science</a> / Truth Lab</div>
+    <div class="eyebrow">Media Science &middot; Truth Lab</div>
+    <h1>Truth Lab <span class="ai-thought-mount" data-topic="AO"></span></h1>
+    <p class="msg-lede">Maximize performance with tests that show what works. Start an A/B test by describing it, set up a market test, or build any other test by hand. Enter or import results, read the statistics, record the decision and what was learned. Export any test for analysis.</p>
     <div id="testRegistryBody"></div>
   </div>
 
@@ -11808,7 +11808,7 @@
       </div>
       <div class="faq-item">
         <div class="faq-head" id="bpFaqHeadAO" onclick="toggleFaqItem('AO')">
-          <span class="faq-label">Test Registry: getting started</span>
+          <span class="faq-label">Truth Lab: getting started</span>
           <span class="chevron">▸</span>
         </div>
         <div class="faq-body" id="bpFaqBodyAO">
@@ -24652,7 +24652,7 @@ function marketerShellHtml(){
 const DATA_SCIENTIST_SHELL_GROUPS = [
   { label: 'Media Science', items: [
     { label: 'Measurement Coverage & Confidence', step: 'measurementCoverage' },
-    { label: 'Test Registry', step: 'testRegistry', desc: 'A/B, multi-variant and match-market tests: setup, results, statistics, decision' },
+    { label: 'Truth Lab', step: 'testRegistry', desc: 'A/B, multi-variant and match-market tests: setup, results, statistics, decision' },
     { label: 'Match Market Builder', step: 'marketOptimization' },
     { label: 'Website Traffic Analysis', step: 'websiteTraffic' }
   ]},
@@ -26245,7 +26245,7 @@ const KEY_TOOLS = {
   strategy: [{ l: 'Budgets', s: 'mediaplan' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaigns', s: 'campaignMgmt' }, { l: 'Competition & Positioning', s: 'competitivePositioning' }, { l: 'Marketing Tests', s: 'marketOptimization' }, { l: 'Forecasts', a: 'forecast' }],
   brand: [{ l: 'Brand Voice', s: 'voice' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaign Creative', s: 'omniCreative' }, { l: 'Search Everywhere', s: 'searchOptimization' }, { l: 'PR', s: 'reputation' }, { l: 'Reputation Management', s: 'reputation' }],
   marketer: [{ l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Budgets', s: 'mediaplan' }, { l: 'Campaign Creation', s: 'campaignMgmt' }, { l: 'Forecasting', a: 'forecast' }, { l: 'Creative Assets', s: 'omniCreative' }],
-  dataScientist: [{ l: 'Budgets', s: 'mediaplan' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaign Analysis', s: 'campaignMgmt' }, { l: 'Goal Setting + Forecasting', a: 'forecast' }, { l: 'Test Registry', s: 'testRegistry' }, { l: 'Geographic Optimization', s: 'marketOptimization' }]
+  dataScientist: [{ l: 'Budgets', s: 'mediaplan' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaign Analysis', s: 'campaignMgmt' }, { l: 'Goal Setting + Forecasting', a: 'forecast' }, { l: 'Truth Lab', s: 'testRegistry' }, { l: 'Geographic Optimization', s: 'marketOptimization' }]
 };
 function ktGo(tab, i){
   const it = (KEY_TOOLS[tab] || [])[i]; if (!it) return;
@@ -31021,8 +31021,8 @@ async function loadTeam(){
 
 // 2026-10-07 — Exports page + Data recipient shell. Recipients sign in and see only this page; the server enforces it (RECIPIENT_ALLOWED).
 
-// 2026-10-07 — Media Science Test Registry (one table for every test type; see media_tests in server.js).
-const TR_TYPES = { ab: 'Creative A/B', multivariant: 'Multi-variant', offer: 'Offer or price', audience: 'Audience', frequency: 'Frequency', channel: 'Channel or placement', timing: 'Timing', landing: 'Landing page', matchmarket: 'DMA match market', other: 'Other' };
+// 2026-10-07 — Media Science Truth Lab (one table for every test type; see media_tests in server.js).
+const TR_TYPES = { ab: 'Creative A/B', multivariant: 'Multi-variant', offer: 'Offer or price', audience: 'Audience', frequency: 'Frequency', channel: 'Channel or placement', timing: 'Timing', landing: 'Landing page', matchmarket: 'Market test (DMA match market)', other: 'Other' };
 // "What are you testing?" presets (2026-10-07). Each one sets the test type, a sensible KPI,
 // the column headings, a starting set of variants and a one-line design tip, so a client
 // picks the thing they want to learn about and the rest is filled in.
@@ -31232,7 +31232,7 @@ function trRender(){
   if (tr.err && !tr.loaded){ el.innerHTML = `<div class="strat-card"><p class="strat-empty">${escapeHtml(tr.err)}</p></div>`; return; }
   if (tr.draft){ el.innerHTML = trEditorHtml(); trRefreshReadout(); return; }
   const rows = tr.tests;
-  el.innerHTML = `<div id="trAiMount">${trAiHtml()}</div><div class="adlib-bar"><button type="button" class="btn-ghost" onclick="trNew()">+ New test by hand</button><button type="button" class="btn-ghost" onclick="trExport(null)">Export registry CSV</button></div>${tr.msg ? `<div class="hint" style="margin:0 0 10px;">${escapeHtml(tr.msg)}</div>` : ''}` + (rows.length ? rows.map(t => `<div class="adlib-card" style="cursor:pointer;" onclick="trOpen('${escapeHtml(t.id)}')"><div class="adlib-meta"><span class="adlib-pill ${t.status === 'complete' ? 'ok' : ''}">${escapeHtml(t.status)}</span><strong>${escapeHtml(t.name)}</strong> &middot; ${escapeHtml(((TR_ELEMENTS[(t.details || {}).element] || {}).label) || TR_TYPES[t.testType] || t.testType)}${t.primaryKpi ? ` &middot; ${escapeHtml(t.primaryKpi)}` : ''}<span class="adlib-camp">${t.confirmedAt ? 'Confirmed &middot; ' : ''}${t.decision ? 'Decision: ' + escapeHtml(t.decision) : (t.startDate ? escapeHtml(t.startDate) : '')}</span></div>${t.hypothesis ? `<div class="adlib-copy">${escapeHtml(t.hypothesis)}</div>` : ''}</div>`).join('') : '<div class="strat-card"><p class="strat-empty">No tests yet. Start with a creative A/B: two variants, one KPI, and the lift worth detecting.</p></div>');
+  el.innerHTML = `<div id="trAiMount">${trAiHtml()}</div><div class="adlib-bar"><button type="button" class="btn-ghost" onclick="trExport(null)">Export tests CSV</button></div>${tr.msg ? `<div class="hint" style="margin:0 0 10px;">${escapeHtml(tr.msg)}</div>` : ''}${rows.length ? '<h3 style="margin:6px 0 10px;">Your tests</h3>' : ''}` + (rows.length ? rows.map(t => `<div class="adlib-card" style="cursor:pointer;" onclick="trOpen('${escapeHtml(t.id)}')"><div class="adlib-meta"><span class="adlib-pill ${t.status === 'complete' ? 'ok' : ''}">${escapeHtml(t.status)}</span><strong>${escapeHtml(t.name)}</strong> &middot; ${escapeHtml(((TR_ELEMENTS[(t.details || {}).element] || {}).label) || TR_TYPES[t.testType] || t.testType)}${t.primaryKpi ? ` &middot; ${escapeHtml(t.primaryKpi)}` : ''}<span class="adlib-camp">${t.confirmedAt ? 'Confirmed &middot; ' : ''}${t.decision ? 'Decision: ' + escapeHtml(t.decision) : (t.startDate ? escapeHtml(t.startDate) : '')}</span></div>${t.hypothesis ? `<div class="adlib-copy">${escapeHtml(t.hypothesis)}</div>` : ''}</div>`).join('') : '<div class="strat-card"><p class="strat-empty">No tests yet. Start with a creative A/B: two variants, one KPI, and the lift worth detecting.</p></div>');
 }
 
 // ---- Describe the test you want (2026-10-07): the person writes a statement, the Brain drafts an A/B test or asks what it needs. A/B only. Nothing is saved until the person opens the draft and saves it. ----
@@ -31255,12 +31255,12 @@ function trAiHtml(){
   const input = !res
     ? `<textarea id="trAiText" rows="3" placeholder="Describe the test you want in your own words." oninput="tr.ai.text=this.value">${escapeHtml(a.text)}</textarea>
        <div class="tr-ai-chips">${TR_AI_EXAMPLES.map((x, i) => `<button type="button" class="strat-chip" onclick="trAiExample(${i})">${escapeHtml(x)}</button>`).join('')}</div>
-       <div class="adlib-act" style="margin-top:10px;"><button type="button" class="btn-primary" onclick="trAiSend()"${a.busy ? ' disabled' : ''}>${a.busy ? 'Thinking…' : 'Draft my test'}</button><button type="button" class="btn-ghost" onclick="trNew()">Build one by hand</button><span class="hint">${escapeHtml(a.err)}</span></div>`
+       <div class="adlib-act" style="margin-top:10px;"><button type="button" class="btn-primary" onclick="trAiSend()"${a.busy ? ' disabled' : ''}>${a.busy ? 'Thinking…' : 'Draft my test'}</button><button type="button" class="btn-ghost" onclick="trNewKind('matchmarket')">Set up a market test</button><button type="button" class="btn-ghost" onclick="trNew()">Something else</button><span class="hint">${escapeHtml(a.err)}</span></div>`
     : `${thread}${qs}${res.kind === 'redirect' ? `<div class="adlib-act" style="margin-top:8px;"><button type="button" class="btn-primary" onclick="trNew()">Open the full editor</button><button type="button" class="btn-ghost" onclick="trAiReset()">Start over</button></div>` : ''}
        ${body}
        ${res.kind !== 'redirect' ? `<textarea id="trAiReply" rows="2" placeholder="${res.kind === 'questions' ? 'Your answer' : 'Want something different? Say what to change.'}" oninput="tr.ai.reply=this.value">${escapeHtml(a.reply)}</textarea><div class="adlib-act" style="margin-top:8px;"><button type="button" class="btn-ghost" onclick="trAiSend()"${a.busy ? ' disabled' : ''}>${a.busy ? 'Thinking…' : 'Send'}</button><span class="hint">${escapeHtml(a.err)}</span></div>` : ''}`;
-  return `<div class="strat-card tr-ai"><div class="strat-head"><h2>Describe the test you want</h2></div>
-    <p class="strat-sub" style="margin:0 0 10px;">For A/B tests: one change, a control and one variant. Say what you want to learn. Verilume will draft the test, or ask what it still needs. Nothing is saved until you open the draft and save it.</p>${input}</div>`;
+  return `<div class="strat-card tr-ai"><div class="strat-head"><h2>Start an A/B test</h2></div>
+    <p class="strat-sub" style="margin:0 0 10px;">Describe what you want to compare: one change, a control and one variant. Verilume drafts the test, or asks what it still needs. Nothing is saved until you open the draft and save it.</p>${input}</div>`;
 }
 function trAiRerender(){ const el = document.getElementById('trAiMount'); if (el) el.innerHTML = trAiHtml(); }
 function trAiExample(i){ tr.ai.text = TR_AI_EXAMPLES[i]; trAiRerender(); const t = document.getElementById('trAiText'); if (t) t.focus(); }
@@ -31288,6 +31288,7 @@ function trAiOpen(){
   d.variants[0][k] = p.controlDetail; d.variants[1][k] = p.variantDetail;
   tr.pick = false; tr.cf = null; tr.draft = d; tr.msg = 'Drafted from your description. Check it, then save.'; trRender();
 }
+function trNewKind(k){ trNew(); trPickElement(k); }
 function trNew(){ tr.pick = false; tr.cf = null; tr.draft = trBlank(); tr.msg = ''; trRender(); }
 function trOpen(id){ const t = tr.tests.find(x => x.id === id); if (!t) return; tr.cf = null; tr.draft = JSON.parse(JSON.stringify(t)); tr.msg = ''; trRender(); }
 function trClose(){ tr.draft = null; trRender(); }
@@ -38354,7 +38355,7 @@ function geoRenderResult(){
     ${(p.notes || []).filter(n => !(f && !f.available && n === f.reason)).map(n => `<p class="geo-cap">${escapeHtml(n)}</p>`).join('')}
     <div class="geo-h" style="margin:18px 0 6px;">Test and control markets</div>
     <div class="geo-scroll"><table class="geo-t"><thead><tr><th>#</th><th>Test market</th><th>Control market</th><th class="r">Test per week</th><th class="r">Control per week</th><th>Readiness</th></tr></thead><tbody>${pairRows}</tbody></table></div>
-    <div class="geo-dl"><button type="button" class="geo-btn" onclick="geoSaveToRegistry()">Save this plan to the Test Registry</button> <span class="geo-cap" id="geoSaveNote"></span></div>
+    <div class="geo-dl"><button type="button" class="geo-btn" onclick="geoSaveToRegistry()">Save this plan to the Truth Lab</button> <span class="geo-cap" id="geoSaveNote"></span></div>
     <div class="geo-dl"><button type="button" class="geo-btn" onclick="geoDownload()">Download all markets with statistical detail (Excel)</button><button type="button" class="geo-link" onclick="geoToggleDetail()">${geo.detailOpen ? 'Hide' : 'Show'} readiness by market pair</button> <span class="geo-cap" id="geoDlNote"></span></div>
     <div id="geoDetail"></div></div>`;
   if (geo.detailOpen) geoShowDetail();
@@ -38372,7 +38373,7 @@ async function geoSaveToRegistry(){
     const r = await authedFetch(trUrl(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || String(r.status));
     tr.loaded = false;
-    if (note) note.innerHTML = 'Saved as a draft test. <a class="flink" onclick="goToStep(\'testRegistry\')">Open the Test Registry</a> to add the start date and weekly bookings.';
+    if (note) note.innerHTML = 'Saved as a draft test. <a class="flink" onclick="goToStep(\'testRegistry\')">Open the Truth Lab</a> to add the start date and weekly bookings.';
   } catch (e){ if (note) note.textContent = 'Could not save: ' + e.message; }
 }
 async function geoDownload(){
@@ -48275,7 +48276,7 @@ async function cmpLoadCampaignResults(campaign, anchor){
     const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/campaign-results?campaignId=${encodeURIComponent(campaign.id)}`);
     if (!r.ok) { box.innerHTML = ''; return; }
     const rows = (await r.json()).results || [];
-    box.innerHTML = rows.length ? `<div class="cmp-wf-stat-label" style="margin-bottom:6px;">Confirmed results saved with this campaign</div>` + rows.map(x => { const m = x.metrics || {}; return `<div style="padding:8px 0;border-top:1px solid var(--line);"><strong>${escapeHtml(x.title)}</strong> <span class="hint">${escapeHtml(x.decision || '')} &middot; ${escapeHtml(String(x.recordedAt || '').slice(0, 10))} &middot; ${escapeHtml(x.recordedBy || '')}</span><div class="hint" style="margin:2px 0 0;">${escapeHtml(x.summary || '')}${m.lift != null ? '' : ''}</div></div>`; }).join('') : '<div class="hint">No confirmed test results are saved with this campaign yet. Confirm a test in the Test Registry and link it to this campaign to add one.</div>';
+    box.innerHTML = rows.length ? `<div class="cmp-wf-stat-label" style="margin-bottom:6px;">Confirmed results saved with this campaign</div>` + rows.map(x => { const m = x.metrics || {}; return `<div style="padding:8px 0;border-top:1px solid var(--line);"><strong>${escapeHtml(x.title)}</strong> <span class="hint">${escapeHtml(x.decision || '')} &middot; ${escapeHtml(String(x.recordedAt || '').slice(0, 10))} &middot; ${escapeHtml(x.recordedBy || '')}</span><div class="hint" style="margin:2px 0 0;">${escapeHtml(x.summary || '')}${m.lift != null ? '' : ''}</div></div>`; }).join('') : '<div class="hint">No confirmed test results are saved with this campaign yet. Confirm a test in the Truth Lab and link it to this campaign to add one.</div>';
   } catch (e){ box.innerHTML = ''; }
 }
 function cmpRenderAnalysisActuals(campaign){
@@ -51570,7 +51571,7 @@ const BP_FAQ_TOPICS = [
   { letter: 'AL', label: 'Questions and FAQs', keywords: ['faq', 'questions', 'answer', 'facts', 'train the brain', 'draft answer'] },
   { letter: 'AM', label: 'Brand checks', keywords: ['brand check', 'page titles', 'voice', 'avoided terms', 'watch word', 'change report'] },
   { letter: 'AN', label: 'Schema library', keywords: ['schema','structured data','json-ld','article','blogposting','newsarticle','faqpage','howto','videoobject','rich results'] },
-  { letter: "AO", label: "Test Registry: getting started", keywords: ["test registry", "new test", "a/b", "variant", "lift", "p-value", "significance", "kpi", "hypothesis", "media science test"] },
+  { letter: "AO", label: "Truth Lab: getting started", keywords: ["truth lab", "test registry", "new test", "a/b", "variant", "lift", "p-value", "significance", "kpi", "hypothesis", "media science test"] },
   { letter: "AP", label: "Match market tracking", keywords: ["match market", "test market", "control market", "holdout", "weekly", "difference", "pre period", "post period", "geo test", "media start"] },
   { letter: "AQ", label: "Confirming a result and teaching the Brain", keywords: ["confirm", "confirmed", "teach the brain", "lesson", "ship", "kill", "iterate", "plan change", "accept", "dismiss", "campaign results"] },
   { letter: "AR", label: "Trade Territories", keywords: ["trade territories", "reseller", "agency", "storefront", "franchise", "territory", "radius", "local", "regional", "national", "trade file", "agency code"] },
@@ -52406,14 +52407,14 @@ const SE_THOUGHTS = {
   AN: 'A reference for the team, covering Article, BlogPosting, NewsArticle, FAQPage, HowTo and VideoObject. Each entry says what the type is, when to use it, which fields are required or recommended, gives a copy-ready example with placeholders, and notes what Google does with it, checked on a stated date. Nothing here is filled from your account or generated for you. Note that Google no longer shows FAQ or How-to rich results, so those two give no search benefit today.'
 };
 const PU_THOUGHTS = {
-  AO: "The Test Registry holds every test in one place: creative elements, offer, audience, frequency, channel, timing, landing page and market tests. To start an A/B test, describe the test you want in your own words at the top of the page and Verilume drafts it, or asks what it still needs; you then check the draft and save it. You can also choose + New test by hand, pick what you are testing, name it, choose one KPI and the smallest lift worth detecting. Enter impressions and conversions for each variant, or import a results CSV, and the readout shows each variant’s lift, its p-value and whether there is enough volume to call it. Link the test to a campaign if it belongs to one. A test only teaches the Brain after a person confirms it at the bottom of the test (see Confirming a result).",
-  AP: "Plan the test in Geographic Optimization, then choose Save this plan to the Test Registry. That creates a draft with the test and control markets, channel, weeks and planned spend. When media starts, enter the start date, the spend in the test markets, and weekly bookings for all test markets added together and all control markets added together. You can type them or import a CSV with the columns week, test and control. You need at least 3 weeks before and 3 after the start date; 8 or more before is better. The readout compares the test-to-control ratio after media started with the ratio before, so season and market size cancel out. It shows the lift, its 95% range, extra bookings and cost per extra booking. A lift is only called clear when even the low end of the range is above zero.",
+  AO: "The Truth Lab holds every test in one place: creative elements, offer, audience, frequency, channel, timing, landing page and market tests. To start an A/B test, describe the test you want in your own words at the top of the page and Verilume drafts it, or asks what it still needs; you then check the draft and save it. You can also choose Set up a market test or Something else, pick what you are testing, name it, choose one KPI and the smallest lift worth detecting. Enter impressions and conversions for each variant, or import a results CSV, and the readout shows each variant’s lift, its p-value and whether there is enough volume to call it. Link the test to a campaign if it belongs to one. A test only teaches the Brain after a person confirms it at the bottom of the test (see Confirming a result).",
+  AP: "Plan the test in Geographic Optimization, then choose Save this plan to the Truth Lab. That creates a draft with the test and control markets, channel, weeks and planned spend. When media starts, enter the start date, the spend in the test markets, and weekly bookings for all test markets added together and all control markets added together. You can type them or import a CSV with the columns week, test and control. You need at least 3 weeks before and 3 after the start date; 8 or more before is better. The readout compares the test-to-control ratio after media started with the ratio before, so season and market size cancel out. It shows the lift, its 95% range, extra bookings and cost per extra booking. A lift is only called clear when even the low end of the range is above zero.",
   AQ: "Confirming is a person’s decision, never automatic. Choose ship, kill or iterate, edit the lesson in your own words, and confirm. Verilume then saves the result with the linked campaign (or with the account when no campaign is linked), adds a Brain lesson, and proposes plan changes. An admin’s lesson is active at once; a lesson from anyone else waits for an admin to approve it. Proposed changes can be rolling the channel out to similar markets with an estimated cost, retesting, extending the test or adding markets, keeping it in the test markets, or stopping. Nothing in the plan changes until a person accepts each one. Accepted changes appear on the annual plan recommendation and in what Ask Verilume says, and every confirmed result stays on its campaign as history.",
   AR: "Trade Territories shows where each reseller’s guests actually live. Send a trade file on its own, separate from the booking file, with Agency Code, Agency Name, the reseller address columns and Guest Postal Code. A reseller is local when most of its guests are within 50 miles, regional when its typical guest is within 300 miles, national when it sells everywhere, and thin when it has under 10 U.S. bookings. A local reseller’s territory is the radius that holds 80% of its guests, capped at 100 miles for local and 300 for regional. Select a reseller to see the markets inside its territory, and download the list as a CSV. Territories change slowly, so refresh the file when resellers or territories change rather than on a schedule.",
   AS: "The Ad Copy Library lists every Copy Version saved on any campaign, so you can see what has actually shipped. There is nothing to set up: it fills as campaigns save copy. When you start a new campaign from an existing one, its copy comes along as drafts, so you edit rather than start over. Ask Verilume, typed or by voice, can answer questions about what copy has run, and a production copy feed can be exported from the Exports page when a partner needs it.",
   AT: "Team Experiences has three jobs. Skill Sets shows what any position on the org chart is expected to hold. The self-assessment lets each person rate themselves against their own seat’s critical skills. The development plan builds steps toward the next level. A good first week is to look up your own seat, complete the self-assessment, then draft a development plan and review it with your manager. Ask Verilume can summarize team structure and training progress, but it never reads out emails, phone numbers or any one person’s self-ratings.",
   AU: "Team and Org Chart is where an admin adds each person, sets their position and who they report to. The chart drives skill sets, the self-assessment and the development plan, so keep reporting lines current. The page is admin-only today. Give each new person their position first, then have them complete the self-assessment in Team Experiences. Ask Verilume can answer who sits where and which seats lack a reporting line, without sharing contact details or individual self-ratings.",
-  AV: "AI Thoughts and voice share the same knowledge. Ask Verilume, typed or by voice, answers from your own data: campaigns, Media Science markets and the last test plan, Test Registry results and confirmed learnings, Trade Territories, the Ad Copy Library and the team structure. It also explains how to use the product, so you can ask how do I save a match market test, how do I confirm a result, or what does a local reseller mean, and hear the same answer that appears in these thoughts. Voice never changes anything. Any change is proposed for a person to accept. It does not read out emails, phone numbers or individual self-ratings.",
+  AV: "AI Thoughts and voice share the same knowledge. Ask Verilume, typed or by voice, answers from your own data: campaigns, Media Science markets and the last test plan, Truth Lab results and confirmed learnings, Trade Territories, the Ad Copy Library and the team structure. It also explains how to use the product, so you can ask how do I save a match market test, how do I confirm a result, or what does a local reseller mean, and hear the same answer that appears in these thoughts. Voice never changes anything. Any change is proposed for a person to accept. It does not read out emails, phone numbers or individual self-ratings.",
   AW: "The Brain Dump opens with a greeting and your seat, then the weekly business update: Strategy, Customer Experiences, Growth and Performance, Media Science, AI Brain learnings, and news from outside. Beside it, Your growth links to your own development: the position self-assessment, your next-career checklist, and your development plan, all in Team Experiences. Those pages are private to you. A manager sees nothing from them unless you choose to share it. You can also ask Verilume or the voice agent to read you the Brain Dump, and it presents each section in turn. The 1:1 with your Brain is coming later."
 };
 // 2026-10-07 — product utilization and team training. Same wording is mirrored in server.js (PRODUCT_GUIDE) so voice and Ask Verilume say what these thoughts say.
