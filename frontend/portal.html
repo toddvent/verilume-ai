@@ -24366,13 +24366,12 @@ function bdGrowthHtml(){
 }
 function bdGrowthRender(){
   const el = document.getElementById('bdGrowth'); if (el) { el.innerHTML = bdGrowthHtml(); if (typeof mountAiThoughtIcons === 'function') { try { mountAiThoughtIcons(); } catch (e) {} } }
-  const meta = document.getElementById('bdGreetMeta'); if (meta){ const s = bdSeat(); meta.innerHTML = s ? `<span class="bd-chip">${escapeHtml(s.level)}</span> <span class="bd-chip">${escapeHtml(s.fn)}</span> <span class="strat-sub">Here is the business update for ${escapeHtml(state.company || 'your account')}.</span>` : `<span class="strat-sub">Here is the business update for ${escapeHtml(state.company || 'your account')}.</span>`; }
 }
 function brainDumpShellHtml(){
   const wrap = body => `<div class="bd-layout" style="grid-column:1/-1;"><div class="bd-main">${body}</div><aside id="bdGrowth" class="bd-side"></aside></div>`;
   setTimeout(() => { try { bdGrowthRender(); } catch (e) {} }, 0);
-  if (!bdIsLive()) return `<div id="bdGreetMeta" class="bd-greet-meta" style="grid-column:1/-1;"></div>` + wrap(dailyBriefExtraHtml());
-  return `<div id="bdGreetMeta" class="bd-greet-meta" style="grid-column:1/-1;"></div>` + wrap('<div id="brainDumpBody"></div>');
+  if (!bdIsLive()) return wrap(dailyBriefExtraHtml());
+  return wrap('<div id="brainDumpBody"></div>');
 }
 function brainDumpPageInit(){ if (!bdIsLive()) return; if (bd.data) bdRender(); bdLoad(); bdWelcomeLoad(); }
 
@@ -52359,7 +52358,7 @@ const PU_THOUGHTS = {
   AT: "Team Experiences has three jobs. Skill Sets shows what any position on the org chart is expected to hold. The self-assessment lets each person rate themselves against their own seat’s critical skills. The development plan builds steps toward the next level. A good first week is to look up your own seat, complete the self-assessment, then draft a development plan and review it with your manager. Ask Verilume can summarize team structure and training progress, but it never reads out emails, phone numbers or any one person’s self-ratings.",
   AU: "Team and Org Chart is where an admin adds each person, sets their position and who they report to. The chart drives skill sets, the self-assessment and the development plan, so keep reporting lines current. The page is admin-only today. Give each new person their position first, then have them complete the self-assessment in Team Experiences. Ask Verilume can answer who sits where and which seats lack a reporting line, without sharing contact details or individual self-ratings.",
   AV: "AI Thoughts and voice share the same knowledge. Ask Verilume, typed or by voice, answers from your own data: campaigns, Media Science markets and the last test plan, Test Registry results and confirmed learnings, Trade Territories, the Ad Copy Library and the team structure. It also explains how to use the product, so you can ask how do I save a match market test, how do I confirm a result, or what does a local reseller mean, and hear the same answer that appears in these thoughts. Voice never changes anything. Any change is proposed for a person to accept. It does not read out emails, phone numbers or individual self-ratings.",
-  AW: "The Brain Dump opens with a greeting and your seat, then the weekly business update: Strategy, Customer Experiences, Growth and Performance, Media Science, AI Brain learnings, and news from outside. Beside it, Your growth links to your own development: the position self-assessment, your next-career checklist, and your development plan, all in Team Experiences. Those pages are private to you. A manager sees nothing from them unless you choose to share it. The 1:1 with your Brain is coming later."
+  AW: "The Brain Dump opens with a greeting and your seat, then the weekly business update: Strategy, Customer Experiences, Growth and Performance, Media Science, AI Brain learnings, and news from outside. Beside it, Your growth links to your own development: the position self-assessment, your next-career checklist, and your development plan, all in Team Experiences. Those pages are private to you. A manager sees nothing from them unless you choose to share it. You can also ask Verilume or the voice agent to read you the Brain Dump, and it presents each section in turn. The 1:1 with your Brain is coming later."
 };
 // 2026-10-07 — product utilization and team training. Same wording is mirrored in server.js (PRODUCT_GUIDE) so voice and Ask Verilume say what these thoughts say.
 function renderFaqPU(){
