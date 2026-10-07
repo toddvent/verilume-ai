@@ -37679,19 +37679,42 @@ async function mouBkCommit(){
   } catch (e){ if (msg) msg.textContent = 'Backend unreachable — try again.'; }
   finally { mouBk.busy = false; if (btn) btn.disabled = false; }
 }
+let mouRd = { metric: 'bookings', view: 'weekly' };
+function mouRdSet(k, v){ mouRd[k] = v; const el = document.getElementById('mouReadinessWrap'); if (el && mouLastAnalysis) el.innerHTML = mouReadinessInner(mouLastAnalysis.readiness); }
+function mouReadinessInner(r){
+  const Z = 2.8, DESIGN = 2;
+  const pd = r.periodDays || 365, wk = pd / 7;
+  const aov = mouRd.metric === 'aov'; const cv = aov ? (r.aovCv || 0.8) : 1;
+  const unit = { weekly: ['week', 1, 8], quarterly: ['quarter', 13, 13], annual: ['year', 52, 52] }[mouRd.view];
+  const mde = (nT, nC, w) => { const eT = nT / wk * w, eC = nC / wk * w; return (eT > 0 && eC > 0) ? Z * cv * Math.sqrt(DESIGN * (1 / eT + 1 / eC)) : null; };
+  const weeksFor = (nT, nC, lift) => { const wT = nT / wk, wC = nC / wk; return (wT > 0 && wC > 0) ? Math.ceil(DESIGN * (1 / wT + 1 / wC) * Math.pow(Z * cv / lift, 2)) : null; };
+  const grade = m => m == null ? 'Too small' : (m <= 0.05 ? 'Strong' : (m <= 0.10 ? 'Usable' : (m <= 0.20 ? 'Thin' : 'Too small')));
+  const col = g => ({ Strong: 'var(--cx)', Usable: '#2f7d4f', Thin: '#b8860b', 'Too small': 'var(--advocacy)' }[g] || 'var(--muted)');
+  const pc = v => v == null ? '—' : (v * 100).toFixed(v < 0.1 ? 1 : 0) + '%';
+  const wkTxt = w => w == null ? '—' : (w > 156 ? 'over 3 yr' : (w > 52 ? (w / 52).toFixed(1) + ' yr' : w + ' wk'));
+  const rows = (r.pairs || []).map(p => ({ t: p.testName, c: p.controlName, nT: p.testVolume, nC: p.controlVolume }));
+  if (r.pooled) rows.push({ t: `All ${r.pooled.pairs} test markets together`, c: `All ${r.pooled.pairs} control markets together`, nT: r.pooled.testVolume, nC: r.pooled.controlVolume, pooled: true });
+  const calc = rows.map(x => ({ ...x, m4: mde(x.nT, x.nC, 4), m13: mde(x.nT, x.nC, 13), m26: mde(x.nT, x.nC, 26), m52: mde(x.nT, x.nC, 52), g: grade(mde(x.nT, x.nC, unit[2])), need: weeksFor(x.nT, x.nC, 0.10), per: x.nT / wk * unit[1], perC: x.nC / wk * unit[1] }));
+  const counts = { Strong: 0, Usable: 0, Thin: 0, 'Too small': 0 }; calc.filter(x => !x.pooled).forEach(x => counts[x.g]++);
+  const chips = ['Strong', 'Usable', 'Thin', 'Too small'].filter(g => counts[g]).map(g => `<span style="display:inline-block;margin:0 8px 4px 0;padding:2px 10px;border-radius:999px;background:color-mix(in srgb, ${col(g)} 14%, transparent);color:${col(g)};font-weight:600;font-size:0.75rem;">${counts[g]} ${g}</span>`).join('');
+  const hl = k => (unit[2] === k ? 'font-weight:700;' : '');
+  const tr = calc.map(x => `<tr style="${x.pooled ? 'border-top:2px solid var(--line);' : ''}"><td>${escapeHtml(x.t)}</td><td>${escapeHtml(x.c)}</td><td>${Math.round(x.per).toLocaleString()} / ${Math.round(x.perC).toLocaleString()}</td><td>${pc(x.m4)}</td><td style="${hl(13)}">${pc(x.m13)}</td><td>${pc(x.m26)}</td><td style="${hl(52)}">${pc(x.m52)}</td><td>${wkTxt(x.need)}</td><td style="color:${col(x.g)};font-weight:600;">${x.g}</td></tr>`).join('');
+  const btn = (grp, k, label) => `<button type="button" class="${mouRd[grp] === k ? 'btn-primary' : 'btn-ghost'}" style="padding:4px 12px;font-size:0.8125rem;margin-right:6px;font-family:inherit;" onclick="mouRdSet('${grp}','${k}')">${label}</button>`;
+  const worst = calc.filter(x => !x.pooled).length && calc.filter(x => !x.pooled).every(x => x.g === 'Too small');
+  const pooledRow = calc.find(x => x.pooled);
+  const advice = worst ? (pooledRow && pooledRow.g !== 'Too small' ? `Single markets are too small, but all the test markets together and all the control markets together grade ${pooledRow.g}. Run one pooled test group against one pooled control group.` : 'No single market has enough volume. Pool the test markets into one group and the controls into another, test for a longer period, or move to a larger market such as a state or region.') : '';
+  return `<div style="margin:0 0 8px;"><span class="hint" style="margin-right:6px;">Measure</span>${btn('metric', 'bookings', 'Bookings')}${btn('metric', 'aov', 'Average order value')}<span class="hint" style="margin:0 6px 0 14px;">View</span>${btn('view', 'weekly', 'Weekly')}${btn('view', 'quarterly', 'Quarterly')}${btn('view', 'annual', 'Annual')}</div>
+    <p class="hint" style="margin:0 0 8px;">${aov ? `Can this pair show a real change in average order value? Order values vary (spread of ${(r.aovCv || 0.8).toFixed(2)} ${r.aovCvAssumed ? 'assumed — this upload has no order-level data' : 'measured from your bookings'}), and more variation needs more volume.` : 'Can this pair show a real lift in bookings?'} Volumes are per ${unit[0]}. Grades use a ${unit[2] === 8 ? '8-week' : (unit[2] === 13 ? 'quarter-long' : 'year-long')} test. Lower detectable lift is better.</p>
+    <div style="margin-bottom:8px;">${chips}</div>
+    ${advice ? `<p style="margin:0 0 8px;font-size:0.8125rem;font-weight:600;">${escapeHtml(advice)}</p>` : ''}
+    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Test market</th><th>Control market</th><th>Volume per ${unit[0]} (test / control)</th><th>4 wk</th><th>Quarter</th><th>6 mo</th><th>Year</th><th>Time to see 10%</th><th>Grade</th></tr></thead><tbody>${tr}</tbody></table></div>`;
+}
 function mouReadinessHtml(r){
   if (!r || !r.pairs || !r.pairs.length) return '';
-  const col = g => ({ Strong: 'var(--cx)', Usable: '#2f7d4f', Thin: '#b8860b', 'Too small': 'var(--advocacy)' }[g] || 'var(--muted)');
-  const chips = ['Strong', 'Usable', 'Thin', 'Too small'].filter(g => r.summary[g]).map(g => `<span style="display:inline-block;margin:0 8px 4px 0;padding:2px 10px;border-radius:999px;background:color-mix(in srgb, ${col(g)} 14%, transparent);color:${col(g)};font-weight:600;font-size:0.75rem;">${r.summary[g]} ${g}</span>`).join('');
-  const pc = v => v == null ? '—' : v + '%';
-  const rows = r.pairs.map(p => `<tr><td>${escapeHtml(p.testName)}</td><td>${escapeHtml(p.controlName)}</td><td>${p.weeklyTest.toLocaleString()} / ${p.weeklyControl.toLocaleString()}</td><td>${pc(p.mdePct.w4)}</td><td>${pc(p.mdePct.w8)}</td><td>${pc(p.mdePct.w13)}</td><td>${p.weeksFor10Pct == null ? '—' : p.weeksFor10Pct + ' wk'}</td><td style="color:${col(p.grade)};font-weight:600;">${p.grade}</td></tr>`).join('');
   return `<p style="font-size:0.8125rem;font-weight:600;margin:16px 0 6px;">Statistical readiness of each test/control pair</p>
-    <p class="hint" style="margin:0 0 8px;">Can this pair show a real lift? Smallest lift detectable after 4, 8 and 13 weeks. Lower is better.</p>
-    <div style="margin-bottom:8px;">${chips}</div>
-    <div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Test market</th><th>Control market</th><th>Weekly volume (test / control)</th><th>4 wk</th><th>8 wk</th><th>13 wk</th><th>Weeks to see 10%</th><th>Grade</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="hint" style="margin:6px 0 0;">${escapeHtml(r.periodNote)} ${escapeHtml(r.method)} Strong is 5% or better at 8 weeks, Usable 10%, Thin 20%. Anything above that is Too small for a market-level test, so pick larger markets or run it longer.</p>`;
+    <div id="mouReadinessWrap">${mouReadinessInner(r)}</div>
+    <p class="hint" style="margin:6px 0 0;">${escapeHtml(r.periodNote)} ${escapeHtml(r.method)} Strong is 5% or better, Usable 10%, Thin 20%. Anything above that is Too small for a market-level test.</p>`;
 }
-
 let mouLastAnalysis = null;
 function mouRenderResults(data){
   const card = document.getElementById('mouResultsCard');
