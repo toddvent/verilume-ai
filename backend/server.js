@@ -10276,6 +10276,15 @@ createTableIfNeeded(`
   );
 `);
 createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_geo_snapshot (
+    accountId TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    payload TEXT,
+    updated_at TEXT,
+    PRIMARY KEY (accountId, kind)
+  );
+`);
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS account_reseller_meta (
     accountId TEXT PRIMARY KEY,
     file_name TEXT,
@@ -11295,6 +11304,64 @@ function geoCached(key, ttlMs, fn){
   return v;
 }
 
+
+// 2026-10-07 — Geographic Optimization, last overview and last test plan, kept as a small snapshot so Ask Verilume (typed and
+// voice) can answer without re-running the market analysis, which can take many seconds on a large account.
+function geoSnapshotSave(accountId, kind, obj){
+  try {
+    const now = new Date().toISOString(), json = JSON.stringify(obj).slice(0, 20000);
+    db.batch([{ sql: 'DELETE FROM account_geo_snapshot WHERE accountId = ? AND kind = ?', params: [accountId, kind] }, { sql: 'INSERT INTO account_geo_snapshot (accountId, kind, payload, updated_at) VALUES (?,?,?,?)', params: [accountId, kind, json, now] }], 20000);
+  } catch (e){ console.warn('[geo-snapshot] not saved:', e.message); }
+}
+function geoSnapshotRead(accountId, kind){
+  try { const r = db.prepare('SELECT payload, updated_at FROM account_geo_snapshot WHERE accountId = ? AND kind = ?').get(accountId, kind); return r ? { at: r.updated_at, v: JSON.parse(r.payload) } : null; } catch (e){ return null; }
+}
+// ---- Test results to plan changes (2026-10-07) ----
+// After a person confirms a match market result, the Brain proposes what to change in the plan: roll the channel out to similar
+// markets, extend or add markets when the read is unclear, or stop. Nothing is applied until a person accepts each item.
+function testRecommendations(accountId, test, result){
+  const out = []; const d = test.details || {}; const lift = Number(result && result.lift), lo = Number(result && result.lo), hi = Number(result && result.hi);
+  const channel = String(d.channel || '').trim() || 'the tested channel'; const weeks = Math.max(1, Number(result && result.postWeeks) || Number(d.plannedWeeks) || 8);
+  const used = new Set([].concat(d.testDmaCodes || [], d.controlDmaCodes || []).map(String));
+  let dmas = [], wk = 52, cpb = null;
+  try {
+    const upload = geoLatestUpload(accountId); if (upload){ const an = geoAnalysis(accountId, upload, true); dmas = (an.dmaExport && an.dmaExport.dmas) || []; wk = ((an.readiness && an.readiness.periodDays) || 365) / 7; cpb = an.readiness && an.readiness.costing ? an.readiness.costing.costPerBooking : null; }
+  } catch (e){ dmas = []; }
+  const eco = geoEconFor(channel);
+  const cand = dmas.filter(x => !used.has(String(x.dmaCode)) && x.relevant && (x.country || 'US') === 'US' && Number(x.population) > 0 && (x.opportunityTier === 'Must Win' || x.opportunityTier === 'Growth')).sort((a, b) => (b.countVolume || 0) - (a.countVolume || 0));
+  const money = n => '$' + Math.round(n).toLocaleString('en-US');
+  const price = list => { let cost = 0, inc = 0; list.forEach(m => { if (eco) cost += geoMarketMediaCost(eco, m.population, weeks, {}, null).total; inc += Math.max(0, lo > 0 ? lo : 0) * ((m.countVolume || 0) / wk) * weeks; }); return { cost: eco ? Math.round(cost) : null, inc: Math.round(inc) }; };
+  const names = list => list.map(m => m.dmaName);
+  const rid = n => generateId('REC') + n;
+  const dec = test.decision;
+  if (dec === 'ship' && Number.isFinite(lift) && lift > 0){
+    const pick = cand.slice(0, 8), pr = price(pick), per = pr.inc > 0 && pr.cost != null ? pr.cost / pr.inc : null;
+    if (pick.length){
+      const dear = per != null && cpb != null && per > cpb * 1.5;
+      out.push({ id: rid('a'), kind: dear ? 'retest' : 'rollout', status: 'proposed', markets: names(pick), estCost: pr.cost, estIncremental: pr.inc,
+        title: dear ? `Retest ${channel} at a lower cost before rolling out` : `Roll ${channel} out to ${pick.length} similar markets`,
+        detail: `The test showed a ${(lift * 100).toFixed(1)}% lift (95% range ${(lo * 100).toFixed(1)}% to ${(hi * 100).toFixed(1)}%). Using the low end of that range, ${pick.length} Must Win and Growth markets that were not in the test (${names(pick).slice(0, 5).join(', ')}${pick.length > 5 ? ' and more' : ''}) could add about ${pr.inc.toLocaleString('en-US')} bookings over ${weeks} weeks${pr.cost != null ? ` for about ${money(pr.cost)} of media` : ''}${per != null ? `, or ${money(per)} per extra booking` : ''}${cpb != null ? ` against ${money(cpb)} per booking today` : ''}.${dear ? ' That is well above the current cost per booking, so it needs a lower CPM or lighter weight first.' : ''}` });
+    }
+    if (d.testMarkets) out.push({ id: rid('b'), kind: 'keep', status: 'proposed', markets: String(d.testMarkets).split(',').map(x => x.trim()).filter(Boolean), estCost: null, estIncremental: null, title: `Keep ${channel} running in the test markets`, detail: 'The lift was measured there, so switching it off would give it back. Fold it into the plan as always-on for those markets.' });
+  } else if (dec === 'iterate'){
+    const pick = cand.slice(0, 4);
+    out.push({ id: rid('c'), kind: 'extend', status: 'proposed', markets: names(pick), estCost: price(pick).cost, estIncremental: null, title: `Extend the test or add ${pick.length || 'more'} similar markets`, detail: `The read was not clear enough to call (${Number.isFinite(lift) ? (lift * 100).toFixed(1) + '% lift, range ' + (lo * 100).toFixed(1) + '% to ' + (hi * 100).toFixed(1) + '%' : 'no usable lift'}). Run 4 to 8 more weeks, or add similar markets such as ${names(pick).join(', ') || 'the next-largest relevant markets'}, then read it again.` });
+  } else if (dec === 'kill'){
+    out.push({ id: rid('d'), kind: 'stop', status: 'proposed', markets: [], estCost: null, estIncremental: null, title: `Do not roll ${channel} out on this evidence`, detail: 'Record it as tested with no reliable lift for this audience and these markets. Hold the budget it would have used for channels with a proven return, and revisit only with a different creative, offer or weight.' });
+  }
+  return out;
+}
+// Confirmed test results and accepted plan changes, as text for recommendation prompts, Ask Verilume and the annual plan.
+function confirmedTestFindings(accountId){
+  let rows = []; try { rows = db.prepare("SELECT * FROM media_tests WHERE accountid = ? AND confirmedat IS NOT NULL ORDER BY confirmedat DESC LIMIT 12").all(accountId); } catch (e){ return []; }
+  return rows.map(r => { const j = (k, dflt) => { try { return JSON.parse(aliasVal(r, k) || ''); } catch (e){ return dflt; } };
+    return { id: r.id, name: r.name, type: aliasVal(r, 'testtype'), decision: r.decision || '', learning: r.learning || '', confirmedAt: aliasVal(r, 'confirmedat'), confirmedBy: aliasVal(r, 'confirmedby') || '', campaignId: aliasVal(r, 'campaignid') || '', result: j('resultjson', null), accepted: (j('recjson', []) || []).filter(x => x.status === 'accepted'), details: j('detailsjson', {}) }; });
+}
+function confirmedTestFindingsBlock(accountId){
+  const f = confirmedTestFindings(accountId); if (!f.length) return '';
+  const lines = f.slice(0, 8).map(x => { const r = x.result || {}; return `- ${x.name} (${x.type}, confirmed ${String(x.confirmedAt).slice(0, 10)} by ${x.confirmedBy || 'a team member'}): decision ${x.decision || 'none'}${r.lift != null ? `, lift ${(r.lift * 100).toFixed(1)}% (95% range ${(r.lo * 100).toFixed(1)}% to ${(r.hi * 100).toFixed(1)}%)` : ''}${x.learning ? `. Learned: ${String(x.learning).slice(0, 220)}` : ''}${x.accepted.length ? `. Plan changes accepted: ${x.accepted.map(a => a.title).join('; ')}` : ''}`; });
+  return 'CONFIRMED TEST RESULTS (a person confirmed each one; use them when recommending channels, markets and budget, and say when a recommendation departs from one):\n' + lines.join('\n');
+}
 // ---------- Trade Territories (2026-10-07) ----------
 // For each reseller: where do its guests actually live? A local storefront sells to its own market; a national or virtual
 // agency sells everywhere. Territory = the radius that holds 80% of a local reseller's guests, and the markets inside it.
@@ -12278,6 +12345,28 @@ createTableIfNeeded(`
     assignedat TEXT NOT NULL
   );
 `);
+// 2026-10-07 — a person confirms a test result (never automatic): who, when, the numbers they confirmed, and the plan changes
+// the Brain proposed from it. Confirmed results are also stored with the campaign they ran under (campaign_results).
+ensureColumn('media_tests', 'confirmedby', 'TEXT');
+ensureColumn('media_tests', 'confirmedat', 'TEXT');
+ensureColumn('media_tests', 'resultjson', 'TEXT');
+ensureColumn('media_tests', 'recjson', 'TEXT');
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS campaign_results (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    campaign_id TEXT,
+    source_type TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    title TEXT,
+    decision TEXT,
+    summary TEXT,
+    metrics_json TEXT,
+    recorded_by TEXT,
+    recorded_at TEXT NOT NULL
+  );
+`);
+
 const MARKETING_BUDGET_MONTHS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
 const MARKETING_BUDGET_MONTH_LABELS = { jan:'January', feb:'February', mar:'March', apr:'April', may:'May', jun:'June', jul:'July', aug:'August', sep:'September', oct:'October', nov:'November', dec:'December' };
 // Round 2026-09-07, per direct bug report ("Server Error trying to upload
@@ -17570,7 +17659,8 @@ function buildAnnualPlanRecommendation(accountId, year, asOfDate){
   const target = { year, kind: 'target', label: `Recommended ${year} plan (not approved)`, workingMedia: tBudget ? tBudget.workingMedia : null, impressions: bImps != null ? Math.round(bImps * g) : null, websiteUsers: tUsers, prospectLeads: tLeads.Prospect, growthLeads: tLeads.Growth, valueLeads: tLeads.Value,
     directCalls: bCalls != null ? Math.round(bCalls * g) : null, bookings: tBookings, directBookings: (bDirect != null && leadRatio != null) ? Math.round(bDirect * leadRatio) : null, grossRevenue: (tBookings != null && rpb != null) ? Math.round(tBookings * rpb) : null };
   const missing = []; if (!tBudget) missing.push(`confirmed ${year} marketing budget with working media`); if (!bBudget) missing.push(`confirmed ${py} marketing budget`); if (bRevenue == null) missing.push(`${py} gross revenue (Annual results or transactions)`); if (bUsers == null) missing.push(`${py} website users`); if (bL === 0) missing.push(`${py} lead counts`);
-  return { year, baseline, target, method: used.concat(['Impressions and direct calls scale with the media budget. Impressions are digital only (print is not in the monthly history).']), budget: { target: tBudget, baseline: bBudget }, missing, recommended: true };
+  let testFindings = []; try { testFindings = confirmedTestFindings(accountId).filter(x => x.accepted.length).slice(0, 6).map(x => ({ test: x.name, decision: x.decision, confirmedAt: x.confirmedAt, lift: x.result && x.result.lift, changes: x.accepted.map(a => ({ title: a.title, detail: a.detail, markets: a.markets, estCost: a.estCost, estIncremental: a.estIncremental })) })); } catch (e){}
+  return { year, baseline, target, testFindings, method: used.concat(['Impressions and direct calls scale with the media budget. Impressions are digital only (print is not in the monthly history).']), budget: { target: tBudget, baseline: bBudget }, missing, recommended: true };
 }
 
 // A one-line account of where the numbers came from: rows, months covered and the last write per source table,
@@ -18502,6 +18592,97 @@ function gscContextBlock(accountId, question){
   try { const fq = db.prepare("SELECT COUNT(*) AS n FROM search_questions WHERE accountId = ? AND status = 'approved'").get(accountId).n; const ft = db.prepare("SELECT COUNT(*) AS n FROM brain_facts WHERE accountId = ? AND status = 'active'").get(accountId).n; L.push(`FAQS AND FACTS: ${fq} approved FAQs, ${ft} approved facts.`); } catch (e){}
   return L.join('\n');
 }
+
+// ---- Media Science, Ad Copy Library and Team context for Ask Verilume and the voice assistant (2026-10-07) ----
+const GEO_ASK_RE = /\b(markets?|dmas?|geograph\w*|geo|match market\w*|test markets?|control markets?|territor\w*|resellers?|storefronts?|franchis\w*|travel agen\w*|agenc\w*|regions?|tiers?|must win|opportunistic|incrementality|lift test|market test\w*|test registry|tests?|mmm|media mix|measurement|media science|ctv test|geo test)\b/i;
+const TERR_ASK_RE = /\b(resellers?|storefronts?|franchis\w*|territor\w*|travel agen\w*|agenc(?:y|ies)|local (?:stores?|shops?|agents?)|trade areas?)\b/i;
+function geoContextBlock(accountId, question){
+  const L = [];
+  const ov = geoSnapshotRead(accountId, 'overview'), plan = geoSnapshotRead(accountId, 'plan');
+  let tests = [], testCount = 0;
+  try { tests = db.prepare('SELECT name, testtype, status, decision, learning, startdate, enddate FROM media_tests WHERE accountid = ? ORDER BY createdat DESC LIMIT 6').all(accountId); testCount = db.prepare('SELECT COUNT(*) AS n FROM media_tests WHERE accountid = ?').get(accountId).n; } catch (e){}
+  let meta = null; try { meta = db.prepare('SELECT file_name, uploaded_at, resellers, bookings FROM account_reseller_meta WHERE accountId = ?').get(accountId); } catch (e){}
+  const terrNorm = x => String(x || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\b(llc|inc|ltd|co|corp|the)\b/g, ' ').replace(/\s+/g, ' ').trim();
+  let namedReseller = false;
+  if (meta && question && !GEO_ASK_RE.test(question)){ // a reseller named without any keyword ("tell me about Baird Tours"): only when the territories are already computed
+    const hit0 = geoCache.get(`terr|${accountId}|${meta.uploaded_at}|`); const qq = ' ' + terrNorm(question) + ' ';
+    if (hit0 && hit0.v && hit0.v.available) namedReseller = hit0.v.resellers.some(r => r.name && terrNorm(r.name).length > 4 && qq.includes(' ' + terrNorm(r.name) + ' '));
+  }
+  if (question && !GEO_ASK_RE.test(question) && !namedReseller){
+    return `MEDIA SCIENCE (Geographic Optimization, Trade Territories, Test Registry): ${ov ? 'market analysis on file' : 'no market analysis on file'}${plan ? ', a recommended match market test on file' : ''}${meta ? ', reseller file on file' : ''}, ${testCount} test${testCount === 1 ? '' : 's'} in the Test Registry. Ask about markets, tests or resellers to see them.`;
+  }
+  const f = n => Math.round(Number(n) || 0).toLocaleString('en-US'), usd = n => '$' + f(n);
+  L.push('MEDIA SCIENCE (from the account\'s own market upload, test plans and reseller file; say so if something is not on file):');
+  if (ov){
+    const o = ov.v, t = o.tiers || {};
+    L.push(`MARKETS (upload "${o.uploadLabel}", ${String(o.createdAt || '').slice(0, 10)}; figures as of ${String(ov.at).slice(0, 10)}): ${f(o.marketCount)} markets analyzed, ${f(o.relevantCount)} statistically relevant. Market types: ${Object.keys(t).map(k => `${k} ${t[k]}`).join(', ')}.`);
+    if ((o.topMarkets || []).length) L.push('TOP STATISTICALLY RELEVANT MARKETS (population index = share of customers vs share of population, 100 = even): ' + o.topMarkets.map(m => `${m.dmaName} (index ${m.populationIndex}, ${f(m.customers)} customers)`).join('; ') + '.');
+    if ((o.underIndexing || []).length) L.push('UNDER-INDEXING MARKETS: ' + o.underIndexing.map(m => `${m.name} (index ${m.index})`).join('; ') + '.');
+    if ((o.mustWin || []).length) L.push('MUST WIN MARKETS (largest first): ' + o.mustWin.join(', ') + '.');
+    const r = o.regions; if (r) L.push('CUSTOMERS BY COUNTRY: ' + Object.keys(r).map(k => `${k} ${r[k] && r[k].share != null ? r[k].share + '%' : ''}`).join(', ') + '.');
+  } else L.push('MARKETS: the market analysis has not been opened yet on this account (or no customer file has been loaded). Tell the user to open Geographic Optimization once, then ask again.');
+  if (plan){
+    const p = plan.v;
+    L.push(`LAST RECOMMENDED MATCH MARKET TEST (asked ${String(p.askedAt || plan.at).slice(0, 10)}: "${p.question}"): ${p.testMarkets.length} test markets (${p.testMarkets.slice(0, 8).join(', ')}) matched to ${p.controlMarkets.length} control markets (${p.controlMarkets.slice(0, 8).join(', ')}); ${p.weeks} weeks; detects a lift of ${p.liftPct}% in ${p.metric}${p.liftAsked != null && p.liftAsked !== p.liftPct ? ` (raised from the ${p.liftAsked}% asked for to fit the funds)` : ''}; media ${(p.channels || []).join(', ') || 'held steady'}${p.newChannel ? ` (${p.newChannel} is a new channel, included on purpose)` : ''}; test budget ${p.needed != null ? usd(p.needed) : 'n/a'} against funds of ${p.funding != null ? usd(p.funding) : 'n/a'}${p.fundingBasis ? ' (' + p.fundingBasis + ')' : ''}; funds ${p.enough === false ? 'do NOT cover it' : 'cover it'}.${p.reasonable && p.reasonable.why ? ' ' + p.reasonable.why : ''}`);
+  } else L.push('MATCH MARKET TEST: no test has been planned yet. The user can ask the AI Brain on the Geographic Optimization page what they would like to test.');
+  if (testCount) L.push(`TEST REGISTRY (${testCount} tests; newest first):\n` + tests.map(t => `- ${t.name} [${t.testtype}] ${t.status || 'status not set'}${t.decision ? ', decision: ' + String(t.decision).slice(0, 80) : ''}${t.learning ? ', learning: ' + String(t.learning).slice(0, 120) : ''}`).join('\n'));
+  else L.push('TEST REGISTRY: no tests are registered yet.');
+  try { const tf = confirmedTestFindingsBlock(accountId); if (tf) L.push(tf); } catch (e){}
+  if (meta && (!question || TERR_ASK_RE.test(question) || namedReseller)){
+    try {
+      const m0 = meta; const d = geoCached(`terr|${accountId}|${m0.uploaded_at}|`, 600000, () => geoTerritoriesCompute(accountId, []));
+      if (d && d.available){
+        const C = d.classes, loc = r => [r.city, r.state].filter(Boolean).join(', ');
+        L.push(`TRADE TERRITORIES (file ${d.fileName}, ${f(d.totals.resellers)} resellers, ${f(d.totals.bookings)} bookings; a reseller is local when at least half its guests live within 50 miles, regional when its typical guest is within 300 miles, national or virtual beyond that; territory = radius holding 80% of guests, capped at 100 miles local and 300 regional): local ${C.local.resellers} resellers (${f(C.local.bookings)} bookings), regional ${C.regional.resellers} (${f(C.regional.bookings)}), national or virtual ${C.national.resellers} (${f(C.national.bookings)}), not classified ${C.thin.resellers + C.noaddress.resellers}. Booking statuses counted: ${(d.statuses || []).filter(x => x.counted).map(x => x.status).join(', ') || 'all'}.`);
+        const loc10 = d.resellers.filter(r => r.cls === 'local' || r.cls === 'regional').slice(0, 10);
+        if (loc10.length) L.push('LARGEST LOCAL AND REGIONAL RESELLERS:\n' + loc10.map(r => `- ${r.name} (${r.cls}, ${loc(r)}): ${f(r.bookings)} bookings, typical guest ${f(r.medianMiles)} miles away, ${f(r.territoryMiles)}-mile territory${r.homeDma ? ', home market ' + r.homeDma : ''}${(r.markets || []).length ? ', covers ' + r.markets.slice(0, 3).map(x => x.name + ' ' + Math.round(x.share) + '%').join(', ') : ''}`).join('\n'));
+        const nat5 = d.resellers.filter(r => r.cls === 'national').slice(0, 5); if (nat5.length) L.push('LARGEST NATIONAL OR VIRTUAL RESELLERS (no local territory): ' + nat5.map(r => `${r.name} (${f(r.bookings)} bookings)`).join('; ') + '.');
+        // a named reseller or city in the question gets its own line
+        const norm = x => String(x || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\b(llc|inc|ltd|co|corp|the)\b/g, ' ').replace(/\s+/g, ' ').trim(); const qn = String(question || '').toLowerCase(), qnn = ' ' + norm(question) + ' '; const hit = d.resellers.filter(r => (r.name && norm(r.name).length > 4 && qnn.includes(' ' + norm(r.name) + ' ')) || (r.city && r.city.length > 3 && qn.includes(r.city.toLowerCase()) && (r.cls === 'local' || r.cls === 'regional'))).slice(0, 5);
+        if (hit.length) L.push('RESELLERS MATCHING THE QUESTION:\n' + hit.map(r => `- ${r.name} (${r.cls}, ${loc(r)}): ${f(r.bookings)} bookings, ${usd(r.revenue)} revenue${r.medianMiles != null ? ', typical guest ' + f(r.medianMiles) + ' miles away, ' + r.within50 + '% within 50 miles' : ''}${r.territoryMiles ? ', ' + f(r.territoryMiles) + '-mile territory' : ''}`).join('\n'));
+      }
+    } catch (e){ L.push('TRADE TERRITORIES: reseller data could not be read right now.'); }
+  } else if (!meta) L.push('TRADE TERRITORIES: no reseller file has been uploaded yet. It is added on the Trade Territories tab of Geographic Optimization (a booking file with Agency Code, address columns and Guest Postal Code).');
+  return L.join('\n');
+}
+
+const ADLIB_ASK_RE = /\b(ad copy|copy versions?|copy library|ad library|library|headlines?|taglines?|slogans?|ctas?|call to action|body copy|wording|messaging|approved copy|draft copy|subject lines?|copy)\b/i;
+function adCopyContextBlock(accountId, question){
+  const rows = [];
+  db.prepare('SELECT * FROM campaigns WHERE accountId = ? AND COALESCE(cancelled,0) = 0 ORDER BY createdAt DESC').all(accountId).forEach(c => {
+    let assets = []; try { assets = JSON.parse(aliasVal(c, 'copyVersionAssetsJson') || '[]'); } catch (e){}
+    (Array.isArray(assets) ? assets : []).forEach(a => rows.push({ campaign: c.name || c.objective || c.id, code: c.campaignCode || '', channel: a.channel || '', type: a.creativeType && a.creativeType !== '(unspecified)' ? a.creativeType : '', size: a.sizeLabel || '', status: a.status || 'Draft', headline: a.headline || '', body: a.body || '', cta: a.cta || '', copy: a.copy || '' }));
+  });
+  if (!rows.length) return 'AD COPY LIBRARY: no Copy Versions have been saved on any campaign yet. They appear in the Ad Copy Library once saved on a campaign.';
+  const approved = rows.filter(r => r.status === 'Approved').length;
+  const tally = (k) => { const m = {}; rows.forEach(r => { const v = r[k] || '(none)'; m[v] = (m[v] || 0) + 1; }); return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([x, n]) => `${x} ${n}`).join(', '); };
+  const head = `AD COPY LIBRARY (every Copy Version saved on any campaign): ${rows.length} versions, ${approved} approved, ${rows.length - approved} draft. By channel: ${tally('channel')}. By campaign: ${tally('campaign')}.`;
+  if (question && !ADLIB_ASK_RE.test(question)) return head + ' Ask about copy to see examples.';
+  const text = r => [r.headline, r.body, r.cta].filter(Boolean).join(' | ') || r.copy;
+  const toks = String(question || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(w => w.length > 3 && !/^(copy|that|this|with|what|which|have|from|about|show|tell|library|approved|draft|versions?|campaign|campaigns|headline|headlines)$/.test(w));
+  const score = r => { const hay = (text(r) + ' ' + r.campaign + ' ' + r.channel + ' ' + r.type).toLowerCase(); return toks.reduce((n, w) => n + (hay.includes(w) ? 1 : 0), 0) + (r.status === 'Approved' ? 0.5 : 0); };
+  const pick = rows.map(r => ({ r, s: score(r) })).sort((a, b) => b.s - a.s).slice(0, 12).map(x => x.r);
+  return head + '\nMOST RELEVANT COPY (approved first; up to 12 of ' + rows.length + '):\n' + pick.map(r => `- [${r.status}] ${r.campaign}${r.code ? ' [' + r.code + ']' : ''}, ${r.channel}${r.type ? ', ' + r.type : ''}${r.size ? ' ' + r.size : ''}: ${text(r).slice(0, 220)}`).join('\n');
+}
+
+const TEAM_ASK_RE = /\b(team|teammates?|members?|colleagues?|invite|invit\w*|roster|org chart|admins?|administrators?|roles?|permissions?|access|skills?|self[- ]?ratings?|career|learning|reports? to|onboarding|set ?up|log ?in|passwords?|deactivat\w*|who (?:is|are|works)|staff)\b/i;
+function teamContextBlock(accountId, question){
+  let mem = []; try { mem = db.prepare('SELECT * FROM team_members WHERE accountId = ?').all(accountId); } catch (e){ return ''; }
+  const act = mem.filter(m => (aliasVal(m, 'status') || 'active') === 'active');
+  const head = `TEAM: ${mem.length} team member${mem.length === 1 ? '' : 's'} on this account (${act.length} active).`;
+  if (question && !TEAM_ASK_RE.test(question)) return head + ' Ask about the team, roles or setup to see details.';
+  const byId = {}; mem.forEach(m => { byId[m.id] = m; });
+  const g = (m, k) => aliasVal(m, k);
+  const admins = mem.filter(m => g(m, 'isAdmin')).map(m => m.name);
+  const noBoss = mem.filter(m => !g(m, 'reportsToId') && !/^(executive|cmo)$/i.test(String(g(m, 'level') || '')) && !/^executive$/i.test(String(g(m, 'functionGroup') || '')));
+  const fg = {}; mem.forEach(m => { const k = g(m, 'functionGroup') || 'unset'; fg[k] = (fg[k] || 0) + 1; });
+  let rated = 0; try { rated = db.prepare('SELECT COUNT(DISTINCT memberId) AS n FROM self_ratings WHERE accountId = ?').get(accountId).n; } catch (e){}
+  const L = [head];
+  L.push(`ROSTER (names, seats and reporting lines only; emails, phone numbers and individual skill ratings are never shared by voice):\n` + mem.slice(0, 25).map(m => `- ${m.name}: ${g(m, 'level') || 'level not set'}, ${g(m, 'functionGroup') || 'function not set'}${g(m, 'isAdmin') ? ', admin' : ''}${(g(m, 'status') || 'active') !== 'active' ? ', ' + g(m, 'status') : ''}${g(m, 'reportsToId') && byId[g(m, 'reportsToId')] ? ', reports to ' + byId[g(m, 'reportsToId')].name : ''}`).join('\n'));
+  L.push(`TEAM SETUP STATUS: admins: ${admins.length ? admins.join(', ') : 'none flagged'}. Function groups: ${Object.entries(fg).map(([k, n]) => `${k} ${n}`).join(', ')}. ${noBoss.length ? `${noBoss.length} member${noBoss.length === 1 ? ' has' : 's have'} no reporting line set (${noBoss.slice(0, 5).map(m => m.name).join(', ')}).` : 'Every non-executive member has a reporting line.'} Skill self-ratings: ${rated} of ${mem.length} members have rated themselves (counts only).`);
+  L.push(`HOW TEAM SETUP WORKS (built features only): Team & Org Chart (under Team Experiences) holds the roster, reporting lines and the Acting As switch. Only an admin can invite a teammate: the invite takes name, org-chart level, function group and an admin yes/no, and the person gets a temporary login they must change on first sign-in. Admins can promote or demote other admins, reissue credentials, deactivate or delete a member; deactivation takes effect on the person's next request. There is no self-serve join: a new teammate must be invited. Each person rates their own skills on a 1 to 4 scale per skill, history is kept, and a printable next-level career checklist is built from those ratings. Not built yet: portal roles beyond admin or not, a saved learning plan, and manager-visible rollups of ratings. Say plainly when asked about a feature that is not built.`);
+  return L.join('\n');
+}
 function voiceContextBundle(accountId, opts){
   const o = opts || {};
   const blocks = [];
@@ -18514,6 +18695,9 @@ function voiceContextBundle(accountId, opts){
   try { blocks.push(buildAccountMonthlyKpiContextForPrompt(accountId).promptBlock); } catch (e){ blocks.push('(monthly KPI report unavailable)'); }
   try { blocks.push(dqContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] transaction context failed:', e.message); }
   try { blocks.push(gscContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] search context failed:', e.message); }
+  try { blocks.push(geoContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] media science context failed:', e.message); }
+  try { blocks.push(adCopyContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] ad copy context failed:', e.message); }
+  try { const tb = teamContextBlock(accountId, o.question); if (tb) blocks.push(tb); } catch (e){ console.warn('[voice/ask] team context failed:', e.message); }
   try {
     const dm = getDigitalMonthlyTotals(accountId);
     const months = Object.keys(dm.byMonth || dm.months || {}).sort().slice(-3);
@@ -33728,7 +33912,8 @@ Submit your response via the recommendation_dialogue_reply tool.`;
 - Target generation(s): ${audienceLabel || '(not set — assume a broad, general audience)'}
 - Net-worth / wealth tier(s): ${wealthLabel || '(not set — assume a general, mixed-income audience)'}`;
         const { promptBlock: monthlyKpiBlock } = buildAccountMonthlyKpiContextForPromptCached(campaign.accountId, timings);
-        const lessonsInfo = brainLessonsPromptBlock(campaign.accountId, campaignId); const lessonsBlock = lessonsInfo.block; brainLessonsMarkUsed(lessonsInfo.ids);
+        const lessonsInfo = brainLessonsPromptBlock(campaign.accountId, campaignId); let lessonsBlock = lessonsInfo.block; brainLessonsMarkUsed(lessonsInfo.ids);
+        try { const tf = confirmedTestFindingsBlock(campaign.accountId); if (tf) lessonsBlock = (lessonsBlock ? lessonsBlock + '\n\n' : '') + tf; } catch (e){}
         const priorNotes = Array.isArray(body.priorNotes) ? body.priorNotes.slice(-10) : [];
         const priorText = priorNotes.map(n => `${n.isAi ? 'AI Brain' : (n.author || 'Team member')}: ${n.text}`).join('\n');
         // Channel plan lines are read LIVE every turn (one query) — they're
@@ -39632,7 +39817,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const sp = new URL(req.url, 'http://x').searchParams;
       const upload = geoLatestUpload(accountId, sp.get('uploadId'));
       if (!upload) return sendJson(res, 200, { needsBuild: true });
-      try { return sendJson(res, 200, geoOverviewPayload(accountId, upload)); }
+      try { const ov = geoOverviewPayload(accountId, upload); geoCached(`snap|${accountId}|${upload.id}`, 300000, () => { geoSnapshotSave(accountId, 'overview', { uploadLabel: upload.label || upload.periodLabel || upload.id, createdAt: upload.createdAt, marketCount: ov.marketCount, relevantCount: ov.relevantCount, tiers: ov.tiers, regions: ov.regions, topMarkets: (ov.topMarkets || []).slice(0, 5), underIndexing: (ov.markets || []).filter(m => m.relevant && m.zScore < 0).sort((a, b) => a.zScore - b.zScore).slice(0, 5).map(m => ({ name: m.dmaName, index: m.populationIndex })), mustWin: (ov.markets || []).filter(m => m.tier === 'Must Win').sort((a, b) => (b.customers || 0) - (a.customers || 0)).slice(0, 8).map(m => m.dmaName) }); return 1; }); return sendJson(res, 200, ov); }
       catch (e){ console.warn('[geo-overview] failed:', e.message); return sendJson(res, 500, { error: 'could not read the market data' }); }
     }
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'geo-insights'){
@@ -39650,7 +39835,12 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const body = await readBody(req);
       const upload = geoLatestUpload(accountId, body.uploadId);
       if (!upload) return sendJson(res, 404, { error: 'no market data on this account yet' });
-      try { const analysis = geoAnalysis(accountId, upload, true); return sendJson(res, 200, Object.assign({ uploadId: upload.id }, await buildGeoPlan(accountId, upload, analysis, String(body.question || '').slice(0, 800), { floorPerMarketWeek: body.floorPerMarketWeek, assumptions: geoCleanAssumptions(body.assumptions) }))); }
+      try {
+        const analysis = geoAnalysis(accountId, upload, true);
+        const planOut = Object.assign({ uploadId: upload.id }, await buildGeoPlan(accountId, upload, analysis, String(body.question || '').slice(0, 800), { floorPerMarketWeek: body.floorPerMarketWeek, assumptions: geoCleanAssumptions(body.assumptions) }));
+        if (planOut.ok && planOut.design){ const d = planOut.design, f = planOut.floor || {}; geoSnapshotSave(accountId, 'plan', { question: String(body.question || '').slice(0, 300), askedAt: new Date().toISOString(), metric: d.metric, liftAsked: d.liftAsked, liftPct: d.liftPct, weeks: d.weeks, testMarkets: (d.pairs || []).map(x => x.test), controlMarkets: (d.pairs || []).map(x => x.control), channels: (planOut.media || []).map(x => x.channel), newChannel: f.newChannel || null, needed: f.needed != null ? Math.round(f.needed) : null, funding: f.funding != null ? Math.round(f.funding) : null, fundingBasis: f.fundingBasis || null, enough: f.enough, reasonable: planOut.reasonable || null }); }
+        return sendJson(res, 200, planOut);
+      }
       catch (e){ console.warn('[geo-plan] failed:', e.message); return sendJson(res, 500, { error: 'could not build the test plan' }); }
     }
     // GET /api/accounts/:id/market-customer-uploads — lightweight list (no
@@ -42551,13 +42741,71 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
 
 
 
+
+    // Confirm a test result (a person does this, never automatic): records who and when, stores the numbers they confirmed, saves the
+    // result with the campaign, teaches the Brain (account-wide lessons still wait for an admin when a non-admin confirms), and returns
+    // the plan changes proposed from the result.
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'media-tests' && parts[5] === 'confirm'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const testId = decodeURIComponent(parts[4]);
+      const row = db.prepare('SELECT * FROM media_tests WHERE id = ? AND accountid = ?').get(testId, accountId);
+      if (!row) return sendJson(res, 404, { error: 'test not found' });
+      const body = (await readBody(req)) || {};
+      const decision = ['ship', 'kill', 'iterate'].includes(body.decision) ? body.decision : null;
+      if (!decision) return sendJson(res, 400, { error: 'choose a decision: ship the winner, kill it, or iterate and retest' });
+      const learning = String(body.learning || '').trim().slice(0, 4000);
+      if (learning.length < 8) return sendJson(res, 400, { error: 'write what was learned (at least a short sentence) before confirming' });
+      const rs = body.result && typeof body.result === 'object' ? body.result : null;
+      const num = v => (Number.isFinite(Number(v)) && v !== null && v !== '' ? Number(v) : null);
+      const result = rs ? { kind: String(rs.kind || '').slice(0, 30), lift: num(rs.lift), lo: num(rs.lo), hi: num(rs.hi), p: num(rs.p), incremental: num(rs.incremental), costPerIncremental: num(rs.costPerIncremental), spend: num(rs.spend), postWeeks: num(rs.postWeeks), preWeeks: num(rs.preWeeks), winner: String(rs.winner || '').slice(0, 120), summary: String(rs.summary || '').slice(0, 600) } : null;
+      const actor = brainLessonActor(req, accountId); const now = new Date().toISOString();
+      const t0 = { testType: aliasVal(row, 'testtype'), name: row.name, details: (() => { try { return JSON.parse(aliasVal(row, 'detailsjson') || '{}'); } catch (e){ return {}; } })(), decision };
+      const recs = result && t0.testType === 'matchmarket' ? testRecommendations(accountId, t0, result) : [];
+      const cid = aliasVal(row, 'campaignid') || null;
+      const stmts = [{ sql: 'UPDATE media_tests SET decision = ?, learning = ?, status = ?, confirmedby = ?, confirmedat = ?, resultjson = ?, recjson = ?, updatedat = ? WHERE id = ?', params: [decision, learning, 'complete', actor.name, now, result ? JSON.stringify(result) : null, JSON.stringify(recs), now, testId] }];
+      const summary = (result && result.summary) || learning.slice(0, 300);
+      stmts.push({ sql: 'DELETE FROM campaign_results WHERE accountId = ? AND source_type = ? AND source_id = ?', params: [accountId, 'test', testId] });
+      stmts.push({ sql: 'INSERT INTO campaign_results (id, accountId, campaign_id, source_type, source_id, title, decision, summary, metrics_json, recorded_by, recorded_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)', params: [generateId('CRES'), accountId, cid, 'test', testId, row.name, decision, summary, JSON.stringify(result || {}), actor.name, now] });
+      const lessonText = `Test "${row.name}" (${t0.testType}) was confirmed by ${actor.name} on ${now.slice(0, 10)}: decision ${decision}.${result && result.lift != null ? ` Measured lift ${(result.lift * 100).toFixed(1)}% (95% range ${(result.lo * 100).toFixed(1)}% to ${(result.hi * 100).toFixed(1)}%).` : ''} ${learning}`.slice(0, 1000);
+      const lstatus = actor.isAdmin ? 'active' : 'pending'; const lid = generateId('BL');
+      stmts.push({ sql: 'DELETE FROM brain_lessons WHERE accountId = ? AND contextJson = ?', params: [accountId, JSON.stringify({ source: 'media-test', testId })] });
+      stmts.push({ sql: 'INSERT INTO brain_lessons (id, accountId, kind, agree, whyJson, whyText, lesson, scope, campaignId, contextJson, status, taughtBy, taughtByName, createdAt, decidedBy, decidedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', params: [lid, accountId, 'Business fact', null, '[]', null, lessonText, 'account', null, JSON.stringify({ source: 'media-test', testId }), lstatus, actor.id, actor.name, now, lstatus === 'active' ? (actor.id || 'account admin') : null, lstatus === 'active' ? now : null] });
+      try { db.batch(stmts, 30000); } catch (e){ console.warn('[media-test confirm] failed:', e.message); return sendJson(res, 500, { error: 'The result could not be saved. Nothing was changed.' }); }
+      brainWrite(accountId, { dashboard: 'Media Science', action: 'Confirmed test result', subject: String(row.name).slice(0, 120), refId: testId, actor: actor.id || null });
+      return sendJson(res, 200, { confirmed: true, confirmedBy: actor.name, confirmedAt: now, recommendations: recs, lessonStatus: lstatus });
+    }
+    if (req.method === 'POST' && parts.length === 7 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'media-tests' && parts[5] === 'recommendations'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const testId = decodeURIComponent(parts[4]), recId = decodeURIComponent(parts[6]);
+      const row = db.prepare('SELECT * FROM media_tests WHERE id = ? AND accountid = ?').get(testId, accountId);
+      if (!row) return sendJson(res, 404, { error: 'test not found' });
+      const body = (await readBody(req)) || {};
+      if (!['accepted', 'dismissed', 'proposed'].includes(body.status)) return sendJson(res, 400, { error: 'status must be accepted, dismissed or proposed' });
+      let recs = []; try { recs = JSON.parse(aliasVal(row, 'recjson') || '[]'); } catch (e){}
+      const rec = recs.find(x => x.id === recId); if (!rec) return sendJson(res, 404, { error: 'recommendation not found' });
+      const actor = brainLessonActor(req, accountId);
+      rec.status = body.status; rec.decidedBy = actor.name; rec.decidedAt = new Date().toISOString();
+      db.prepare('UPDATE media_tests SET recjson = ?, updatedat = ? WHERE id = ?').run(JSON.stringify(recs), rec.decidedAt, testId);
+      brainWrite(accountId, { dashboard: 'Media Science', action: body.status === 'accepted' ? 'Accepted plan change' : 'Updated plan change', subject: String(rec.title).slice(0, 120), refId: testId, actor: actor.id || null });
+      return sendJson(res, 200, { recommendations: recs });
+    }
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'campaign-results'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const cid = new URL(req.url, 'http://x').searchParams.get('campaignId');
+      const rows = cid ? db.prepare('SELECT * FROM campaign_results WHERE accountId = ? AND campaign_id = ? ORDER BY recorded_at DESC').all(accountId, cid) : db.prepare('SELECT * FROM campaign_results WHERE accountId = ? ORDER BY recorded_at DESC LIMIT 200').all(accountId);
+      return sendJson(res, 200, { results: rows.map(r => { let m = {}; try { m = JSON.parse(r.metrics_json || '{}'); } catch (e){} return { id: r.id, campaignId: r.campaign_id, sourceType: r.source_type, sourceId: r.source_id, title: r.title, decision: r.decision, summary: r.summary, metrics: m, recordedBy: r.recorded_by, recordedAt: r.recorded_at }; }) });
+    }
+
     // Media Science Test Registry. One table for every test type (creative A/B, multi-variant, offer/audience, channel substitution, DMA match market)
     // so the Brain and analysts read the same keys. Variants carry allocation, impressions and conversions; the statistics are computed in the portal.
     if (parts.length >= 4 && parts.length <= 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'media-tests'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       const shape = r => { const j = (k, d) => { try { return JSON.parse(aliasVal(r, k) || ''); } catch (e){ return d; } };
-        return { id: r.id, testType: aliasVal(r, 'testtype'), name: r.name, hypothesis: r.hypothesis || '', primaryKpi: aliasVal(r, 'primarykpi') || '', mdePct: aliasVal(r, 'mdepct'), variants: j('variantsjson', []), details: j('detailsjson', {}), startDate: aliasVal(r, 'startdate') || '', endDate: aliasVal(r, 'enddate') || '', status: r.status || 'draft', decision: r.decision || '', learning: r.learning || '', campaignId: aliasVal(r, 'campaignid') || '', createdBy: aliasVal(r, 'createdby') || '', createdAt: aliasVal(r, 'createdat'), updatedAt: aliasVal(r, 'updatedat') || '' }; };
+        return { id: r.id, testType: aliasVal(r, 'testtype'), name: r.name, hypothesis: r.hypothesis || '', primaryKpi: aliasVal(r, 'primarykpi') || '', mdePct: aliasVal(r, 'mdepct'), variants: j('variantsjson', []), details: j('detailsjson', {}), startDate: aliasVal(r, 'startdate') || '', endDate: aliasVal(r, 'enddate') || '', status: r.status || 'draft', decision: r.decision || '', learning: r.learning || '', campaignId: aliasVal(r, 'campaignid') || '', createdBy: aliasVal(r, 'createdby') || '', createdAt: aliasVal(r, 'createdat'), updatedAt: aliasVal(r, 'updatedat') || '', confirmedBy: aliasVal(r, 'confirmedby') || '', confirmedAt: aliasVal(r, 'confirmedat') || '', result: j('resultjson', null), recommendations: j('recjson', []) }; };
       const TYPES = ['ab', 'multivariant', 'offer', 'audience', 'frequency', 'channel', 'timing', 'landing', 'matchmarket', 'other'], STATUSES = ['draft', 'running', 'complete'], DECISIONS = ['', 'ship', 'kill', 'iterate'];
       const cleanVariants = v => (Array.isArray(v) ? v : []).slice(0, 12).map((x, i) => ({ key: String((x && x.key) || ('v' + (i + 1))).slice(0, 20), label: String((x && x.label) || ('Variant ' + (i + 1))).slice(0, 80), assetId: String((x && x.assetId) || '').slice(0, 80), setting: String((x && x.setting) || '').slice(0, 200), allocationPct: Number.isFinite(Number(x && x.allocationPct)) ? Number(x.allocationPct) : null, impressions: Number.isFinite(Number(x && x.impressions)) && x.impressions !== '' && x.impressions != null ? Number(x.impressions) : null, conversions: Number.isFinite(Number(x && x.conversions)) && x.conversions !== '' && x.conversions != null ? Number(x.conversions) : null }));
       const who = () => { const sess = authenticate(req); return exportCaller(sess).name; };
