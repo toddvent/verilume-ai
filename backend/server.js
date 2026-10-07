@@ -10957,6 +10957,47 @@ function computeMatchedMarketPairs(penetrationRows, demographicResult, holdoutZi
 // comment) compute the exact same numbers instead of two versions that
 // could quietly drift apart. Same shape this endpoint has always
 // returned; behavior is unchanged, just relocated.
+
+// 2026-10-07 — "statistically relevant" check for Match Market test/control
+// pairs, per Todd. Markets are only worth testing in if they carry enough
+// volume to see a lift. For each matched pair we turn the volume the client's
+// own history shows (customers/transactions per period) into an expected
+// weekly count, then report the smallest relative lift that would be
+// detectable (95% confidence, 80% power) over 4, 8 and 13 weeks, and how many
+// weeks it takes to see a 10% lift. Poisson approximation on counts with a
+// x2 design factor for the pre-period (difference-in-differences) baseline;
+// it does NOT include market-to-market noise, so treat it as a best case.
+function buildPairReadiness(rows, geoLevel, pairs, dmaNames, audit){
+  const Z = 1.96 + 0.84, DESIGN = 2;
+  let counts = {};
+  try { const r = computeDmaRollup(rows, 'count'); ((r && r.dmas) || []).forEach(d => { counts[d.dmaCode] = Number(d.volume) || 0; }); } catch (e){ counts = {}; }
+  const periodDays = audit && Number(audit.periodDays) > 0 ? Number(audit.periodDays) : 365;
+  const assumedPeriod = !(audit && Number(audit.periodDays) > 0);
+  const weeksInPeriod = periodDays / 7;
+  const mdeFor = (nT, nC, weeks) => {
+    const eT = nT / weeksInPeriod * weeks, eC = nC / weeksInPeriod * weeks;
+    if (!(eT > 0) || !(eC > 0)) return null;
+    return Z * Math.sqrt(DESIGN * (1 / eT + 1 / eC));
+  };
+  const grade = m => m == null ? 'Too small' : (m <= 0.05 ? 'Strong' : (m <= 0.10 ? 'Usable' : (m <= 0.20 ? 'Thin' : 'Too small')));
+  const out = (pairs || []).map(p => {
+    const nT = counts[p.testDma] || 0, nC = counts[p.controlDma] || 0;
+    const wT = nT / weeksInPeriod, wC = nC / weeksInPeriod;
+    const m4 = mdeFor(nT, nC, 4), m8 = mdeFor(nT, nC, 8), m13 = mdeFor(nT, nC, 13);
+    const weeksFor10 = (wT > 0 && wC > 0) ? Math.ceil(DESIGN * (1 / wT + 1 / wC) * Math.pow(Z / 0.10, 2)) : null;
+    const r1 = v => v == null ? null : Math.round(v * 1000) / 10;
+    return { testDma: p.testDma, testName: dmaNames[p.testDma] || p.testDma, controlDma: p.controlDma, controlName: dmaNames[p.controlDma] || p.controlDma,
+      testVolume: Math.round(nT), controlVolume: Math.round(nC), weeklyTest: Math.round(wT * 10) / 10, weeklyControl: Math.round(wC * 10) / 10,
+      mdePct: { w4: r1(m4), w8: r1(m8), w13: r1(m13) }, weeksFor10Pct: weeksFor10, grade: grade(m8) };
+  });
+  const summary = { Strong: 0, Usable: 0, Thin: 0, 'Too small': 0 };
+  out.forEach(x => { summary[x.grade]++; });
+  return { pairs: out, summary, periodDays: Math.round(periodDays), assumedPeriod,
+    method: 'Detectable lift at 95% confidence / 80% power, Poisson counts with a x2 allowance for the pre-period baseline. Market-to-market noise is not included, so real tests need somewhat more volume than shown.',
+    periodNote: assumedPeriod ? 'This upload does not say what period it covers, so its counts are treated as one year. Enter the period on the upload for tighter numbers.' : `Volumes are the ${Math.round(periodDays)} days this upload covers, converted to a weekly rate.` };
+}
+function dmaNameMap(dmas){ const m = {}; (dmas || []).forEach(d => { m[d.dmaCode] = d.dmaName || d.dmaCode; }); return m; }
+
 function computeMarketUploadAnalysis(accountId, upload, options){
   const opts = options || {};
   const volumeWeight = opts.volumeWeight != null ? opts.volumeWeight : (2 / 3);
@@ -10981,7 +11022,8 @@ function computeMarketUploadAnalysis(accountId, upload, options){
     // already computed above, aliased into that shared shape rather than
     // duplicated logic.
     const dmaExport = { available: dmaMatch.dmasScored.length > 0, dmas: dmaOnly.dmas, holdout: { dmaCodes: dmaMatch.holdout.dmaCodes }, matching: dmaMatch.matching };
-    return { uploadId: upload.id, label: upload.label, rowCount: rows.length, weightMode: upload.weightMode, geoLevel: 'dma',
+    let readinessDma = null; try { readinessDma = buildPairReadiness(rows, 'dma', (dmaMatch.matching && dmaMatch.matching.pairs) || [], dmaNameMap(dmaOnly.dmas), upload.auditJson ? JSON.parse(upload.auditJson) : null); } catch (e){ readinessDma = null; }
+    return { readiness: readinessDma, uploadId: upload.id, label: upload.label, rowCount: rows.length, weightMode: upload.weightMode, geoLevel: 'dma',
       confidence: 'lower — DMA-level upload: no zip-level penetration. Test/Control/Holdout and matched pairs below are computed at the market (DMA) level instead of zip level.',
       penetration: [], compositeWeights: null, holdout: { zips: [], dmaCodes: dmaMatch.holdout.dmaCodes, fraction: dmaMatch.holdout.fraction, note: dmaMatch.holdout.note }, demographic: { flag: 'no_demographic_data' }, matching: dmaMatch.matching,
       audit: upload.auditJson ? JSON.parse(upload.auditJson) : null, dma: dmaOnly, dmaExport,
@@ -11031,8 +11073,10 @@ function computeMarketUploadAnalysis(accountId, upload, options){
   } catch (e){
     storeTradeArea = { available: false, note: `Store trade area not readable (${String(e && e.message || e).slice(0, 120)})`, stores: [] };
   }
+  let readiness = null;
+  try { readiness = buildPairReadiness(rows, 'zip', (dmaExport.matching && dmaExport.matching.pairs) || [], dmaNameMap(dmaExport.dmas), audit); } catch (e){ readiness = null; }
   return {
-    uploadId: upload.id, label: upload.label, rowCount: rows.length, weightMode: upload.weightMode,
+    readiness, uploadId: upload.id, label: upload.label, rowCount: rows.length, weightMode: upload.weightMode,
     penetration: composite.rows, compositeWeights: composite.weights,
     holdout: { zips: holdout.holdoutZips, fraction: holdoutFraction, note: holdout.note },
     demographic, matching, audit, dma, dmaExport, geoLevel: 'zip', storeTradeArea
@@ -38796,6 +38840,86 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       }
       return sendJson(res, 201, { id, rowCount: body.rows.length, weightMode, geoLevel, periodLabel });
     }
+
+    // 2026-10-07 — build a Match Market upload straight from the booking
+    // history already on file, so nobody re-exports and re-uploads the same
+    // zips. Preview first (what is in scope), then commit.
+    const bkScope = (accountId, q) => {
+      const settings = getTransactionSettings(accountId);
+      const all = db.prepare('SELECT year, month, "bookingDate", "bookingCode", "bookingStatus", "bookingType", "promoType", "productGroup", "creativeFocus", "guestPostalCode", "guestCountry", "grossRevenue" FROM account_guest_bookings WHERE accountId = ?').all(accountId);
+      const from = q.from ? String(q.from).slice(0, 10) : null, to = q.to ? String(q.to).slice(0, 10) : null;
+      const groups = q.productGroups ? String(q.productGroups).split('|').filter(Boolean).map(x => x.trim().toLowerCase()) : null;
+      const dateOf = r => { const d = String(aliasVal(r, 'bookingDate') || ''); if (/^\d{4}-\d{2}-\d{2}/.test(d)) return d.slice(0, 10); if (r.year && r.month) return `${r.year}-${String(r.month).padStart(2, '0')}-15`; return null; };
+      const rows = [];
+      let minD = null, maxD = null; const pg = {}; let counted = 0;
+      all.forEach(r => {
+        if (!rowCounts(r, settings)) return;
+        counted++;
+        const d = dateOf(r);
+        if (d){ if (!minD || d < minD) minD = d; if (!maxD || d > maxD) maxD = d; }
+        const g = String(aliasVal(r, 'productGroup') || '').trim() || '(none)';
+        pg[g] = (pg[g] || 0) + 1;
+        if (from && (!d || d < from)) return;
+        if (to && (!d || d > to)) return;
+        if (groups && !groups.includes(g.toLowerCase())) return;
+        rows.push({ code: aliasVal(r, 'bookingCode'), zip: aliasVal(r, 'guestPostalCode'), country: aliasVal(r, 'guestCountry'), rev: Number(aliasVal(r, 'grossRevenue')) || 0 });
+      });
+      return { total: all.length, counted, rows, minD, maxD, productGroups: Object.keys(pg).sort().map(k => ({ name: k, n: pg[k] })) };
+    };
+    const bkAggregate = (rows, defaultCountry, countBy) => {
+      const by = {}; const excl = { missing_zip: 0, malformed_zip: 0 }; const cache = {}; const byCountry = {};
+      rows.forEach(r => {
+        const raw = String(r.zip == null ? '' : r.zip).trim();
+        if (!raw){ excl.missing_zip++; return; }
+        const ck = raw + '|' + (r.country || '');
+        if (!(ck in cache)) cache[ck] = normalizeGeoKey(raw, r.country || defaultCountry);
+        const g = cache[ck];
+        if (!g || /^DMA:/.test(g.key)){ excl.malformed_zip++; return; }
+        const a = by[g.key] = by[g.key] || { codes: new Set(), n: 0, rev: 0, country: g.country };
+        if (r.code != null) a.codes.add(String(r.code)); a.n++; a.rev += r.rev;
+      });
+      const out = Object.keys(by).map(k => { byCountry[by[k].country] = (byCountry[by[k].country] || 0) + 1; return { zip: k, customerCount: countBy === 'guests' ? by[k].n : (by[k].codes.size || by[k].n), revenue: Math.round(by[k].rev * 100) / 100 }; });
+      return { rows: out, excl, byCountry };
+    };
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'market-customer-uploads' && parts[4] === 'booking-preview'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const sp = new URL(req.url, 'http://x').searchParams;
+      const sc = bkScope(accountId, { from: sp.get('from'), to: sp.get('to'), productGroups: sp.get('productGroups') });
+      if (!sc.total) return sendJson(res, 200, { available: false, note: 'No booking history is on file yet for this account.' });
+      const agg = bkAggregate(sc.rows, sp.get('country') || 'US', sp.get('countBy') === 'guests' ? 'guests' : 'transactions');
+      const withZip = sc.rows.length - agg.excl.missing_zip - agg.excl.malformed_zip;
+      return sendJson(res, 200, { available: true, totalBookingRows: sc.total, countedRows: sc.counted, inScope: sc.rows.length, withPostalCode: withZip, uniqueZips: agg.rows.length, excluded: agg.excl, byCountry: agg.byCountry, firstDate: sc.minD, lastDate: sc.maxD, productGroups: sc.productGroups, usable: agg.rows.length > 0 });
+    }
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'market-customer-uploads' && parts[4] === 'from-bookings'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const sc = bkScope(accountId, { from: body.from, to: body.to, productGroups: Array.isArray(body.productGroups) ? body.productGroups.join('|') : null });
+      const countBy = body.countBy === 'guests' ? 'guests' : 'transactions';
+      const agg = bkAggregate(sc.rows, body.defaultCountry || 'US', countBy);
+      if (!agg.rows.length) return sendJson(res, 400, { error: 'No bookings in that window carry a usable postal code. Widen the dates or check that the booking file includes guest postal codes.' });
+      const weightMode = body.weightMode === 'revenue' ? 'revenue' : 'count';
+      const ds = (sc.rows.length ? (body.from || sc.minD) : null), de = (body.to || sc.maxD);
+      let periodDays = null;
+      if (ds && de){ const d = Math.round((new Date(de) - new Date(ds)) / 86400000) + 1; if (d > 0 && d < 4000) periodDays = d; }
+      const audit = { source: 'bookings', countBy, totalRowsProvided: sc.rows.length, mappedRowCount: sc.rows.length - agg.excl.missing_zip - agg.excl.malformed_zip,
+        excludedByReason: { missing_zip: agg.excl.missing_zip, malformed_zip: agg.excl.malformed_zip }, uniqueZipsMapped: agg.rows.length, byCountry: agg.byCountry,
+        dateFrom: ds, dateTo: de, periodDays, productGroups: Array.isArray(body.productGroups) && body.productGroups.length ? body.productGroups : null };
+      const now = new Date().toISOString();
+      const id = generateId('MKTUP');
+      const label = String(body.label || `Booking history ${ds || ''}${ds && de ? ' to ' : ''}${de || ''}`).slice(0, 120);
+      const periodLabel = body.periodLabel ? String(body.periodLabel).slice(0, 100) : (ds && de ? `${ds} to ${de}` : null);
+      db.prepare('INSERT INTO market_customer_uploads (id, accountId, uploadedFileId, label, createdAt, weightMode, auditJson, geoLevel, periodLabel) VALUES (?,?,?,?,?,?,?,?,?)')
+        .run(id, accountId, null, label, now, weightMode, JSON.stringify(audit), 'zip', periodLabel);
+      for (let i = 0; i < agg.rows.length; i += 100){
+        const chunk = agg.rows.slice(i, i + 100);
+        const ph = chunk.map(() => '(?,?,?,?,?)').join(',');
+        const params = []; chunk.forEach(r => { params.push(generateId('MKTROW'), id, String(r.zip), Number(r.customerCount), Number(r.revenue)); });
+        db.prepare(`INSERT INTO market_customer_rows (id, marketUploadId, zip, customerCount, revenue) VALUES ${ph}`).run(...params);
+      }
+      return sendJson(res, 201, { id, rowCount: agg.rows.length, weightMode, geoLevel: 'zip', periodLabel, audit });
+    }
     // GET /api/accounts/:id/market-customer-uploads — lightweight list (no
     // analysis computation) of this account's committed customer uploads,
     // for the View My Customers page's National/Global branch to show what's
@@ -41701,8 +41825,8 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (!requireAccount(req, res, accountId)) return;
       const shape = r => { const j = (k, d) => { try { return JSON.parse(aliasVal(r, k) || ''); } catch (e){ return d; } };
         return { id: r.id, testType: aliasVal(r, 'testtype'), name: r.name, hypothesis: r.hypothesis || '', primaryKpi: aliasVal(r, 'primarykpi') || '', mdePct: aliasVal(r, 'mdepct'), variants: j('variantsjson', []), details: j('detailsjson', {}), startDate: aliasVal(r, 'startdate') || '', endDate: aliasVal(r, 'enddate') || '', status: r.status || 'draft', decision: r.decision || '', learning: r.learning || '', campaignId: aliasVal(r, 'campaignid') || '', createdBy: aliasVal(r, 'createdby') || '', createdAt: aliasVal(r, 'createdat'), updatedAt: aliasVal(r, 'updatedat') || '' }; };
-      const TYPES = ['ab', 'multivariant', 'offer', 'channel', 'matchmarket', 'other'], STATUSES = ['draft', 'running', 'complete'], DECISIONS = ['', 'ship', 'kill', 'iterate'];
-      const cleanVariants = v => (Array.isArray(v) ? v : []).slice(0, 12).map((x, i) => ({ key: String((x && x.key) || ('v' + (i + 1))).slice(0, 20), label: String((x && x.label) || ('Variant ' + (i + 1))).slice(0, 80), assetId: String((x && x.assetId) || '').slice(0, 80), allocationPct: Number.isFinite(Number(x && x.allocationPct)) ? Number(x.allocationPct) : null, impressions: Number.isFinite(Number(x && x.impressions)) && x.impressions !== '' && x.impressions != null ? Number(x.impressions) : null, conversions: Number.isFinite(Number(x && x.conversions)) && x.conversions !== '' && x.conversions != null ? Number(x.conversions) : null }));
+      const TYPES = ['ab', 'multivariant', 'offer', 'audience', 'frequency', 'channel', 'timing', 'landing', 'matchmarket', 'other'], STATUSES = ['draft', 'running', 'complete'], DECISIONS = ['', 'ship', 'kill', 'iterate'];
+      const cleanVariants = v => (Array.isArray(v) ? v : []).slice(0, 12).map((x, i) => ({ key: String((x && x.key) || ('v' + (i + 1))).slice(0, 20), label: String((x && x.label) || ('Variant ' + (i + 1))).slice(0, 80), assetId: String((x && x.assetId) || '').slice(0, 80), setting: String((x && x.setting) || '').slice(0, 200), allocationPct: Number.isFinite(Number(x && x.allocationPct)) ? Number(x.allocationPct) : null, impressions: Number.isFinite(Number(x && x.impressions)) && x.impressions !== '' && x.impressions != null ? Number(x.impressions) : null, conversions: Number.isFinite(Number(x && x.conversions)) && x.conversions !== '' && x.conversions != null ? Number(x.conversions) : null }));
       const who = () => { const sess = authenticate(req); return exportCaller(sess).name; };
       if (req.method === 'GET' && parts.length === 4){
         const rows = db.prepare('SELECT * FROM media_tests WHERE accountid = ? ORDER BY createdat DESC').all(accountId);
