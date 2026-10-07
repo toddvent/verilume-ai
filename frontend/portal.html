@@ -1685,6 +1685,21 @@
   .gsc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:6px;} .gsc-top .drr-bar{flex:1 1 420px;margin:0;} .gsc-tools{display:flex;gap:8px;flex-wrap:wrap;} .gsc-tools .btn-ghost{padding:6px 14px;font-size:0.8125rem;}
   label.btn-primary,label.btn-ghost{font-family:inherit;display:inline-flex;align-items:center;}
   /* 2026-10-07 — Search Everywhere path: SEO, AEO, GEO. */
+  /* 2026-10-07 — Search Everywhere area cards and illumination guides. */
+  .sg-head{margin:6px 0 12px;} .sg-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;} @media(max-width:900px){.sg-cards{grid-template-columns:1fr;}}
+  .sg-card{border:1px solid var(--line-hairline);border-radius:14px;padding:16px 18px;background:var(--surface,transparent);display:flex;flex-direction:column;gap:6px;} .sg-card.open{border-color:var(--cx);}
+  .sg-card-top{display:flex;align-items:center;gap:10px;} .sg-name{font-size:1.125rem;font-weight:700;} .sg-line{margin:0;color:var(--muted);font-size:0.875rem;}
+  .sg-h{font-size:0.6875rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);margin-top:6px;} .sg-drivers{margin:0;padding-left:18px;font-size:0.875rem;display:grid;gap:2px;}
+  .sg-level,.sg-g-score{display:flex;align-items:center;gap:12px;margin-top:8px;} .sg-lvl-n{font-weight:700;font-size:1rem;} .sg-lvl-n span{font-weight:500;color:var(--muted);margin-left:4px;font-variant-numeric:tabular-nums;} .sg-lvl-s{font-size:0.8125rem;color:var(--muted);}
+  .sg-meter{display:inline-flex;gap:4px;align-items:flex-end;} .sg-meter i{display:block;width:9px;border-radius:3px;background:var(--line-hairline);} .sg-meter i:nth-child(1){height:10px}.sg-meter i:nth-child(2){height:16px}.sg-meter i:nth-child(3){height:22px}.sg-meter i:nth-child(4){height:28px}.sg-meter i:nth-child(5){height:34px} .sg-meter i.on{background:var(--cx);}
+  .sg-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto;padding-top:10px;}
+  .sg-guide{margin:16px 0 8px;border:1px solid var(--cx);border-radius:14px;padding:18px 20px;background:var(--surface,transparent);} .sg-g-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;} .sg-g-title{margin:2px 0 0;font-size:1.25rem;}
+  .sg-g-models{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 4px;} .sg-m,.sg-r{font-family:inherit;font-size:0.8125rem;border:1px solid var(--line-hairline);border-radius:999px;padding:6px 12px;background:transparent;color:inherit;cursor:pointer;} .sg-m.on,.sg-r.on{border-color:var(--cx);background:var(--cx);color:#fff;} .sg-m:focus-visible,.sg-r:focus-visible{outline:2px solid var(--cx);outline-offset:2px;}
+  .sg-m-line,.sg-note{margin:4px 0 8px;font-size:0.8125rem;color:var(--muted);max-width:70ch;}
+  .sg-tier{margin-top:14px;} .sg-tier-h{font-size:0.75rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);padding-bottom:6px;border-bottom:1px solid var(--line-hairline);}
+  .sg-item{padding:12px 0;border-bottom:1px solid var(--line-hairline);} .sg-it-t{font-weight:600;} .sg-it-w{margin:2px 0 8px;font-size:0.875rem;color:var(--muted);max-width:75ch;} .sg-i-na .sg-it-t{opacity:.55;}
+  .sg-rate{display:flex;gap:6px;flex-wrap:wrap;} .sg-it-l{margin-top:6px;display:flex;gap:14px;flex-wrap:wrap;font-size:0.8125rem;} .sg-how{margin:6px 0 0;font-size:0.875rem;max-width:75ch;}
+  .sg-auto{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:0.8125rem;} .sg-pill{display:inline-block;border-radius:999px;padding:3px 10px;font-weight:600;border:1px solid var(--line-hairline);} .sg-pill.sg-done{border-color:var(--cx);color:var(--cx);} .sg-from{color:var(--muted);}
   .srch-pathbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 16px;} .srch-pathbar-l{font-size:0.75rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);} .srch-arrow{color:var(--muted);}
   .srch-pathbtn{display:inline-flex;flex-direction:column;align-items:flex-start;gap:1px;padding:8px 16px;border:1px solid var(--line-hairline);border-radius:12px;background:var(--surface,transparent);color:inherit;font-family:inherit;cursor:pointer;text-align:left;} .srch-pathbtn:hover,.srch-pathbtn:focus-visible{border-color:var(--cx);} .srch-pathbtn b{font-size:0.9375rem;} .srch-pathbtn span{font-size:0.75rem;color:var(--muted);}
   .srch-path{margin:34px 0 8px;scroll-margin-top:72px;} .srch-path-head{margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--line-hairline);} .srch-eyebrow{font-size:0.75rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--cx);} .srch-path-title{margin:2px 0 4px;font-size:1.5rem;} .srch-path-lede{margin:0;color:var(--muted);max-width:70ch;}
@@ -4816,14 +4831,7 @@
 
     <div id="gscPage"></div>
 
-    <nav class="srch-pathbar" id="srchPathBar" aria-label="Search Everywhere path">
-      <span class="srch-pathbar-l">Path through the page</span>
-      <button type="button" class="srch-pathbtn" onclick="srchPathJump('srchPathSeo')"><b>SEO</b><span>Get found</span></button>
-      <span class="srch-arrow" aria-hidden="true">→</span>
-      <button type="button" class="srch-pathbtn" onclick="srchPathJump('srchPathAeo')"><b>AEO</b><span>Be the answer</span></button>
-      <span class="srch-arrow" aria-hidden="true">→</span>
-      <button type="button" class="srch-pathbtn" onclick="srchPathJump('srchPathGeo')"><b>GEO</b><span>Be cited by AI</span></button>
-    </nav>
+    <div id="srchAreas"></div>
 
     <div class="srch-monitor">
     <p class="hint" style="margin:18px 0 6px;">Monitoring sections below show sample data until Search Console or a licensed tool is connected.</p>
@@ -52397,7 +52405,7 @@ function renderFaqAF(){
   el.textContent = CMP_FIELD_HELP_TIPS.creativeFocusGroup;
 }
 const SE_THOUGHTS = {
-  AG: 'Search Everywhere covers organic search only: the unpaid results people reach through Google, and the answers Google writes for them. Read it top to bottom. The page follows a path: SEO, then AEO, then GEO. The four cards at the top give one focal point each: organic clicks, the share of clicks that are not brand searches, how many questions your site answers (AEO), and how many AI answers cite you (GEO). The agentic recap comes next, with up to five Brain reads, the forecast and your open priorities. The three sections below hold the details behind them. Brand demand is shown on its own, so searches for your name count as overall demand even when no product group is named. Every number comes from the files you uploaded. Nothing is collected from anywhere else, and nothing is changed on your website.',
+  AG: 'Search Everywhere covers organic search only: the unpaid results people reach through Google, and the answers Google writes for them. Read it top to bottom. The page follows a path: SEO, then AEO, then GEO. The four cards at the top give one focal point each: organic clicks, the share of clicks that are not brand searches, how many questions your site answers (AEO), and how many AI answers cite you (GEO). The agentic recap comes next, with up to five Brain reads, the forecast and your open priorities. The three sections below hold the details behind them. Under the cards, three area cards (SEO, AEO and GEO) each open a guide. Pick your kind of business (local, single-location call center or ecommerce, or franchise with online and storefronts) and the guide lists the priorities in order. Rate each item yourself; items Verilume can read from your data are filled in for you. The light level (Dark, Dim, Lit, Bright, Brilliant) is the share of weighted items done, and it is saved so you can see progress. Brand demand is shown on its own, so searches for your name count as overall demand even when no product group is named. Every number comes from the files you uploaded. Nothing is collected from anywhere else, and nothing is changed on your website.',
   AH: 'In Search Console open a report, choose Export, then Download CSV. Do this for Queries, Pages and Chart (use the longest date range offered), plus Countries, Devices, Search appearance, the Google AI report and Page indexing if you want those cards. Choose all the files at once and leave the names as Google gives them. Verilume recognizes each one from its first column and shows a preview. Nothing is saved until you confirm it. Anything you leave out leaves that part of the page empty.',
   AI: 'Nothing counts as a brand search until your team confirms the name. Verilume suggests names from your company name and website; confirm the full names and your website name, add others such as a former name or common misspelling, and decline the rest. This one step decides the brand and non-brand split on every card, so a common word like "world" is never treated as your name by accident.',
   AJ: 'The list holds at most five active items, the same limit as campaigns. When the slots are full, new findings wait until one is done. Ranking uses level (P1 first), then groups going into market. When a Product Group or Creative Focus Group is live or starts within 90 days and its search is weak, a "Get search ready" item appears, due 42 days before the start. Impact is Calculated (impressions times the extra click rate if the search reached the target position) or Rated (High, Medium, Low), and the two are never added together.',
@@ -61031,9 +61039,142 @@ function gscRender(){
   if (slots.aeo) slots.aeo.innerHTML = gscQuestionsHtml(d) + gscApprovedHtml();
   // GEO details
   if (slots.geo) slots.geo.innerHTML = gscAiHtml(d) + gscAicHtml();
-  gscRefreshReads();
+  gscRefreshReads(); sgRender();
 }
 function srchPathJump(id){ const e = document.getElementById(id); if (e) e.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+// ===== Search Everywhere: area cards and illumination guides (2026-10-07) =====
+// Three areas (SEO, AEO, GEO), each with a prioritized checklist per business model. Items our tools can read are filled from the page's own
+// data (shown as "From your data"); the rest are self-rated. The light level is the weighted share of items done, so progress is measurable.
+const SG = { open: '', model: 'local', ratings: { local: {}, single: {}, franchise: {} }, hist: [], loaded: false, msg: '', how: {} };
+try { const m = localStorage.getItem('verilume_sg_model'); if (m && ['local', 'single', 'franchise'].indexOf(m) >= 0) SG.model = m; } catch (e){}
+const SG_MODELS = [
+  { key: 'local', label: 'Local business', line: 'One or a few places where customers come to you, and most searches carry a place name or "near me".' },
+  { key: 'single', label: 'Single-location call center or ecommerce', line: 'One home base. Customers reach you by phone or by buying online, so product, service and answer pages carry the load.' },
+  { key: 'franchise', label: 'Franchise, ecommerce and storefronts', line: 'A national brand with many locations and an online store. The brand and each location both have to be found, and they must agree.' }
+];
+const SG_AREAS = {
+  seo: { tag: 'SEO', name: 'Get found', line: 'People searching for what you sell find your pages in the regular results.',
+    drivers: [['Site health and schema', 'seoTechnicalSection'], ['Keywords and content', 'seoKeywordsSection'], ['Backlinks and authority', 'seoBacklinkSection'], ['Organic traffic', 'seoGa4Section']], jump: 'srchPathSeo' },
+  aeo: { tag: 'AEO', name: 'Be the answer', line: 'Search shows your answer, in your words, when someone asks a question.',
+    drivers: [['Questions people ask', 'gscAeo'], ['Approved FAQ answers', 'gscAeo'], ['Schema markup library', 'schemaLibrary']], jump: 'srchPathAeo' },
+  geo: { tag: 'GEO', name: 'Be cited by AI', line: 'AI assistants and Google AI features name your business and link to your site.',
+    drivers: [['AI citation checks', 'gscGeo'], ['Share of voice against competitors', 'seoAeoGeoSection'], ['Brand mentions and listings', 'gscGeo']], jump: 'srchPathGeo' }
+};
+const SG_LEVELS = [[85, 'Brilliant'], [65, 'Bright'], [40, 'Lit'], [15, 'Dim'], [0, 'Dark']];
+const SG_ALL = ['local', 'single', 'franchise'], SG_LF = ['local', 'franchise'], SG_SF = ['single', 'franchise'];
+// w: 3 = do first, 2 = next, 1 = then.
+const SG_ITEMS = [
+  // ---- SEO ----
+  { key: 'seo_gsc', area: 'seo', w: 3, m: SG_ALL, title: 'Connect Google Search Console', why: 'It is the only first-party record of what people searched and clicked. Every other check leans on it.', how: 'Verify the site in Search Console, then upload the performance export here with Update data.', tool: ['Open the data panel', 'gscPage'],
+    auto: c => c.d ? { r: 'done', note: 'Search data is loaded for ' + (c.d.range ? c.d.range.label : 'this account') + '.' } : { r: 'none', note: 'No Search Console data on file yet.' } },
+  { key: 'seo_health', area: 'seo', w: 3, m: SG_ALL, title: 'Key pages are indexed and the site has no blocking errors', why: 'A page that is not indexed cannot be found, however good it is.', how: 'Work the Fix and Check items in the health check first. Confirm sitemap and robots.txt do not block pages you want found.', tool: ['Open site health', 'seoTechnicalSection'],
+    auto: c => { const h = c.d && c.d.health; if (!h || h.indexed == null) return null; const tot = (h.indexed || 0) + (h.notIndexed || 0); const pct = tot ? h.indexed / tot * 100 : null; if (pct == null) return null; const fix = (h.issues || []).filter(i => i.tier === 'fix').length; return { r: pct >= 90 && !fix ? 'done' : pct >= 60 ? 'started' : 'none', note: Math.round(pct) + '% of checked pages indexed' + (fix ? ', ' + fix + ' to fix' : '') + '.' }; } },
+  { key: 'seo_gbp', area: 'seo', w: 3, m: SG_LF, title: 'Google Business Profile claimed and complete', why: 'It drives the map results and the local panel, which is where most local searches end.', how: 'Claim it, pick the right primary category, add hours, services, photos and a link to the page for that location. For franchises, one profile per location, managed under one account.' },
+  { key: 'seo_nap', area: 'seo', w: 3, m: SG_LF, title: 'Name, address and phone match everywhere', why: 'Conflicting listings make engines less sure which facts are right.', how: 'Pick one spelling of the name, address and phone. Fix the website, Google, Apple Maps, Bing Places, Yelp and the main directories to match.' },
+  { key: 'seo_loc_pages', area: 'seo', w: 3, m: ['franchise'], title: 'Every location has its own page with real local content', why: 'A location page is the page that can win "near me" searches for that store.', how: 'One crawlable page per location: address, hours, services, team, local photos, reviews and a map. No duplicate copy with only the city swapped.' },
+  { key: 'seo_pages', area: 'seo', w: 3, m: ['single'], title: 'Product, service and category pages match what buyers search', why: 'This is where call center and ecommerce traffic is won or lost.', how: 'One page per product or service line, titled with the words buyers use, with specific copy, photos, price or a plain next step.' },
+  { key: 'seo_titles', area: 'seo', w: 2, m: SG_ALL, title: 'Unique titles and descriptions on key pages', why: 'The title is the headline in the results and the clearest topic signal.', how: 'Give each important page a title under about 60 characters that leads with the topic, and a description that earns the click.' },
+  { key: 'seo_content', area: 'seo', w: 2, m: SG_ALL, title: 'A page for each of your top non-brand searches', why: 'Brand searches come to you anyway. Growth comes from searches that do not name you.', how: 'Take the top non-brand searches and keyword opportunities, and publish or improve one page for each.', tool: ['Open keyword opportunities', 'seoKeywordsSection'],
+    auto: c => { const nb = c.d && c.d.cards && c.d.cards.nonBrandShare; if (!nb) return null; return { r: nb.value >= 50 ? 'done' : nb.value >= 25 ? 'started' : 'none', note: nb.value.toFixed(1) + '% of clicks come from non-brand searches.' }; } },
+  { key: 'seo_vitals', area: 'seo', w: 2, m: SG_ALL, title: 'Pages load fast and work on a phone', why: 'Most searches happen on phones, and slow pages lose visitors before they read.', how: 'Check Core Web Vitals for the home page, top landing pages and checkout or booking pages. Fix the slowest first.', tool: ['Open site health', 'seoTechnicalSection'] },
+  { key: 'seo_reviews', area: 'seo', w: 2, m: SG_LF, title: 'A steady flow of reviews, and you answer them', why: 'Reviews influence both ranking in the map results and the choice a customer makes.', how: 'Ask every happy customer, make the link one tap, and reply to every review, good or bad, within a few days.' },
+  { key: 'seo_calls', area: 'seo', w: 2, m: ['single'], title: 'Click-to-call and call tracking on search landing pages', why: 'For a call center, a call is the conversion. Without tracking you cannot tell which pages produce it.', how: 'Put a tappable number on every landing page, use a tracking number per source, and send calls to analytics as conversions.' },
+  { key: 'seo_store_locator', area: 'seo', w: 2, m: ['franchise'], title: 'Store locator and pickup pages can be crawled', why: 'A locator that only works with scripts can hide every location from search.', how: 'Make sure each location has a normal link and page. Show pickup or in-stock status on the page when you can.' },
+  { key: 'seo_brand', area: 'seo', w: 1, m: SG_ALL, title: 'Brand names confirmed so brand and non-brand are separated', why: 'Without it, branded clicks make growth look better than it is.', how: 'Open Brand names at the top of the page and confirm every spelling people use for you.', tool: ['Open the data panel', 'gscPage'],
+    auto: c => c.d && c.d.brand ? { r: c.d.brand.confirmedCount > 0 ? 'done' : 'none', note: c.d.brand.confirmedCount + ' brand name' + (c.d.brand.confirmedCount === 1 ? '' : 's') + ' confirmed.' } : null },
+  { key: 'seo_links', area: 'seo', w: 1, m: SG_ALL, title: 'Earn links and local citations from sites that matter', why: 'Links from trusted sites still count, and for local they confirm you are real and nearby.', how: 'Local chambers, suppliers, partners, press and community sponsorships. Skip bought links.', tool: ['Open backlinks', 'seoBacklinkSection'] },
+  // ---- AEO ----
+  { key: 'aeo_faq', area: 'aeo', w: 3, m: SG_ALL, title: 'Your site answers the questions people actually ask', why: 'Engines show the page that answers the question most directly.', how: 'Work through the question list. Mark each one answered on your site, or draft an answer for your team to approve.', tool: ['Open the question list', 'gscAeo'],
+    auto: c => { const Q = c.Q; if (!Q || !Q.questions || !Q.questions.length) return null; const n = Q.questions.filter(q => q.status === 'approved' || q.status === 'answered').length, t = Q.questions.length; return { r: n / t >= 0.6 ? 'done' : n > 0 ? 'started' : 'none', note: n + ' of ' + t + ' questions answered.' }; } },
+  { key: 'aeo_facts', area: 'aeo', w: 3, m: SG_LF, title: 'Hours, services, prices and areas served are in plain text and current', why: 'Voice assistants and answer boxes lift these facts straight from the page.', how: 'State them on the page as text, not only in an image or a script. Update the same day anything changes, including holidays.' },
+  { key: 'aeo_direct', area: 'aeo', w: 3, m: SG_ALL, title: 'Each page opens with a direct answer', why: 'A clear first two sentences are the part most often quoted.', how: 'Put the plain answer first, then the detail. Use the question as the heading when the page answers one.' },
+  { key: 'aeo_approved', area: 'aeo', w: 2, m: SG_ALL, title: 'Approved FAQ answers published in your own words', why: 'Approved answers keep what engines repeat accurate and on message.', how: 'Approve answers in the question list, then publish them on the page that fits.', tool: ['Open approved FAQs', 'gscAeo'],
+    auto: c => { const Q = c.Q; if (!Q || !Q.questions) return null; const n = Q.approved ? Q.approved.length : 0; return { r: n >= 5 ? 'done' : n > 0 ? 'started' : 'none', note: n + ' approved FAQ' + (n === 1 ? '' : 's') + '.' }; } },
+  { key: 'aeo_local_schema', area: 'aeo', w: 3, m: SG_LF, title: 'LocalBusiness markup on each location page', why: 'It tells machines the address, hours, phone and category without guessing.', how: 'Use the LocalBusiness example in the schema library on every location page, with real hours and the map position.', tool: ['Open the schema library', 'schemaLibrary'] },
+  { key: 'aeo_org_schema', area: 'aeo', w: 2, m: SG_ALL, title: 'Organization markup on the home page', why: 'It names the business, logo and official profiles in a form engines read reliably.', how: 'Add Organization markup with your logo, contact and the links to your official profiles.', tool: ['Open the schema library', 'schemaLibrary'] },
+  { key: 'aeo_product_schema', area: 'aeo', w: 2, m: SG_SF, title: 'Product and offer markup with price and availability', why: 'It makes products eligible for richer results and keeps price and stock facts accurate.', how: 'Mark up each product page with name, image, price, currency and availability, and keep it in step with the page.', tool: ['Open the schema library', 'schemaLibrary'] },
+  { key: 'aeo_call_answers', area: 'aeo', w: 2, m: ['single'], title: 'The top questions callers ask are answered on pages', why: 'Your calls are a free list of the questions your customers have.', how: 'Ask the team for the ten questions heard most. Publish a short page or FAQ for each.' },
+  { key: 'aeo_loc_faq', area: 'aeo', w: 2, m: ['franchise'], title: 'Each location page has its own questions and answers', why: 'Local questions, such as parking, pickup or same-day service, differ by store.', how: 'Give each location three to five answers specific to that store, written or approved by the location.' },
+  // ---- GEO ----
+  { key: 'geo_crawl', area: 'geo', w: 3, m: SG_ALL, title: 'You have decided which AI crawlers may read the site', why: 'If robots.txt or a firewall blocks them, assistants cannot cite you.', how: 'Review robots.txt and any bot protection. Allow the search crawlers from the AI assistants you want citing you, and write the decision down.' },
+  { key: 'geo_cited', area: 'geo', w: 3, m: SG_ALL, title: 'You check whether AI answers cite you', why: 'You cannot improve what you do not measure, and results differ by assistant.', how: 'Run the AI citation check on your question list and review which answers name you and which link to you.', tool: ['Open AI citation checks', 'gscGeo'],
+    auto: c => { const t = c.A && c.A.totals; if (!t || !t.questions) return { r: 'none', note: 'No AI citation check has been run yet.' }; return { r: t.cited / t.questions >= 0.5 ? 'done' : 'started', note: t.cited + ' of ' + t.questions + ' answers cite your site, ' + t.mentioned + ' name you without a link.' }; } },
+  { key: 'geo_listings', area: 'geo', w: 3, m: SG_LF, title: 'Listings on Google, Apple Maps, Bing Places and Yelp are accurate', why: 'Assistants draw local facts from these listings.', how: 'Match the name, address, hours, phone and category on each. For franchises, push location data from one master record.' },
+  { key: 'geo_facts', area: 'geo', w: 3, m: SG_ALL, title: 'The facts about your business agree everywhere they appear', why: 'AI answers blend many sources. Mismatches cause wrong or missing mentions.', how: 'Keep one approved description, founding year, services and leadership. Check your about page, LinkedIn, directories and press pages against it.' },
+  { key: 'geo_third', area: 'geo', w: 2, m: SG_ALL, title: 'Trusted third-party sites mention you', why: 'Assistants lean on reviews, press, industry sites and forums more than on your own claims.', how: 'See which sites the AI answers cite for your questions. Earn honest coverage and reviews on those, not paid or fake posts.' },
+  { key: 'geo_fresh', area: 'geo', w: 2, m: SG_ALL, title: 'Key pages show a current date and are updated on a schedule', why: 'Engines prefer fresh, dated facts, especially for prices, hours and policies.', how: 'Name an owner and a quarterly review for each key page, and show the last updated date.' },
+  { key: 'geo_feeds', area: 'geo', w: 2, m: SG_SF, title: 'Product feed submitted to Google Merchant Center', why: 'Shopping results and AI shopping answers read your feed.', how: 'Submit a feed with accurate price, stock and identifiers, and fix any disapproved items.' },
+  { key: 'geo_central', area: 'geo', w: 2, m: ['franchise'], title: 'Brand facts and location facts agree and are managed centrally', why: 'Assistants must match the brand to the right store, or they skip you.', how: 'One owner at the brand for names, categories and descriptions, with location managers editing only hours, photos and local details.' },
+  { key: 'geo_compare', area: 'geo', w: 1, m: SG_ALL, title: 'You track your share of AI answers against competitors', why: 'The goal is to be named more often than the alternatives.', how: 'Review share of voice monthly and note which competitors are named where you are not.', tool: ['Open share of voice', 'seoAeoGeoSection'] }
+];
+function sgCtx(){ return { d: gsc.data && !gsc.data.empty ? gsc.data : null, Q: gscQ.data, A: gscAic.data }; }
+function sgItems(area, model){ return SG_ITEMS.filter(i => i.area === area && i.m.indexOf(model) >= 0); }
+function sgState(it, model, ctx){
+  const a = it.auto ? it.auto(ctx) : null;
+  if (a) return { r: a.r, note: a.note, auto: true };
+  return { r: (SG.ratings[model] || {})[it.key] || 'none', note: '', auto: false };
+}
+function sgScore(area, model, ctx){
+  let got = 0, tot = 0, done = 0, n = 0;
+  sgItems(area, model).forEach(it => { const s = sgState(it, model, ctx); if (s.r === 'na') return; tot += it.w; n++; const v = s.r === 'done' ? 1 : s.r === 'started' ? 0.5 : 0; got += it.w * v; if (s.r === 'done') done++; });
+  return { pct: tot ? Math.round(got / tot * 100) : 0, done, n };
+}
+function sgLevel(pct){ for (const l of SG_LEVELS) if (pct >= l[0]) return l[1]; return 'Dark'; }
+function sgMeterHtml(pct){
+  const lit = pct >= 85 ? 5 : pct >= 65 ? 4 : pct >= 40 ? 3 : pct >= 15 ? 2 : 1;
+  let h = '<span class="sg-meter" aria-hidden="true">'; for (let i = 1; i <= 5; i++) h += `<i class="${i <= lit && pct > 0 ? 'on' : ''}"></i>`; return h + '</span>';
+}
+async function sgLoad(){
+  if (!srchLive() || SG.loaded) return; SG.loaded = true;
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/search-guide`); const d = await r.json().catch(() => ({}));
+    if (r.ok){ (d.ratings || []).forEach(x => { if (SG.ratings[x.model]) SG.ratings[x.model][x.item] = x.rating; }); SG.hist = d.history || []; }
+  } catch (e){}
+  sgRender();
+}
+function sgRender(){
+  const el = document.getElementById('srchAreas'); if (!el) return;
+  const ctx = sgCtx(), model = SG.model;
+  el.innerHTML = `<div class="sg-head"><div class="gsc-title">What drives Search Everywhere</div><div class="gsc-sub">Three areas, each with a guide, a checklist for your kind of business and a light level that shows progress</div></div><div class="sg-cards">` + ['seo', 'aeo', 'geo'].map(a => {
+    const A = SG_AREAS[a], sc = sgScore(a, model, ctx), lvl = sgLevel(sc.pct), open = SG.open === a;
+    return `<div class="sg-card${open ? ' open' : ''}"><div class="sg-card-top"><span class="srch-tag">${A.tag}</span><span class="sg-name">${A.name}</span></div><p class="sg-line">${A.line}</p>
+      <div class="sg-h">What drives it</div><ul class="sg-drivers">${A.drivers.map(x => `<li><button type="button" class="gsc-link" onclick="srchPathJump('${x[1]}')">${x[0]}</button></li>`).join('')}</ul>
+      <div class="sg-level">${sgMeterHtml(sc.pct)}<div><div class="sg-lvl-n">${lvl} <span>${sc.pct}%</span></div><div class="sg-lvl-s">${sc.done} of ${sc.n} checklist items done</div></div></div>
+      <div class="sg-btns"><button type="button" class="btn-primary" aria-expanded="${open}" onclick="sgOpen('${a}')">${open ? 'Close guide' : 'View guide'}</button><button type="button" class="btn-ghost" onclick="srchPathJump('${A.jump}')">See the data</button></div></div>`;
+  }).join('') + `</div><div id="srchGuide">${SG.open ? sgGuideHtml(SG.open, ctx) : ''}</div>`;
+}
+function sgOpen(a){ SG.open = SG.open === a ? '' : a; sgRender(); if (SG.open){ const g = document.getElementById('srchGuide'); if (g) g.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } }
+function sgModel(k){ SG.model = k; try { localStorage.setItem('verilume_sg_model', k); } catch (e){} sgRender(); }
+function sgHowToggle(k){ SG.how[k] = !SG.how[k]; sgRender(); }
+function sgGuideHtml(a, ctx){
+  const A = SG_AREAS[a], model = SG.model, M = SG_MODELS.find(x => x.key === model), sc = sgScore(a, model, ctx), items = sgItems(a, model);
+  const pri = [[3, 'Do first'], [2, 'Do next'], [1, 'Then']];
+  const hist = SG.hist.filter(h => h.model === model && h.area === a);
+  const trend = hist.length > 1 ? `Started at ${Math.round(hist[0].score)}% on ${escapeHtml(hist[0].day)}. Last saved ${Math.round(hist[hist.length - 1].score)}% on ${escapeHtml(hist[hist.length - 1].day)}.` : 'Rate each item and your starting point is saved. Come back to see the change.';
+  const row = it => {
+    const s = sgState(it, model, ctx), k = it.key;
+    const opts = [['none', 'Not started'], ['started', 'In progress'], ['done', 'Done'], ['na', 'Does not apply']];
+    const ctl = s.auto ? `<div class="sg-auto"><span class="sg-pill sg-${s.r}">${s.r === 'done' ? 'Done' : s.r === 'started' ? 'In progress' : 'Not started'}</span> <span class="sg-from">From your data: ${escapeHtml(s.note)}</span></div>`
+      : `<div class="sg-rate" role="radiogroup" aria-label="Your rating">${opts.map(o => `<button type="button" role="radio" aria-checked="${s.r === o[0]}" class="sg-r${s.r === o[0] ? ' on' : ''}" onclick="sgRate('${k}','${o[0]}')">${o[1]}</button>`).join('')}</div>`;
+    return `<div class="sg-item sg-i-${s.r}"><div class="sg-it-t">${escapeHtml(it.title)}</div><p class="sg-it-w">${escapeHtml(it.why)}</p>${ctl}<div class="sg-it-l"><button type="button" class="gsc-link" aria-expanded="${!!SG.how[k]}" onclick="sgHowToggle('${k}')">${SG.how[k] ? 'Hide how' : 'How to do it'}</button>${it.tool ? ` <button type="button" class="gsc-link" onclick="srchPathJump('${it.tool[1]}')">${escapeHtml(it.tool[0])}</button>` : ''}</div>${SG.how[k] ? `<p class="sg-how">${escapeHtml(it.how)}</p>` : ''}</div>`;
+  };
+  return `<section class="sg-guide" aria-label="${A.tag} guide"><div class="sg-g-head"><div><div class="srch-eyebrow">${A.tag} guide &middot; ${A.name}</div><h3 class="sg-g-title">${A.tag} checklist for your business</h3></div><button type="button" class="btn-ghost" onclick="sgOpen('${a}')">Close</button></div>
+    <div class="sg-g-models" role="radiogroup" aria-label="Your kind of business">${SG_MODELS.map(m => `<button type="button" role="radio" aria-checked="${m.key === model}" class="sg-m${m.key === model ? ' on' : ''}" onclick="sgModel('${m.key}')">${m.label}</button>`).join('')}</div><p class="sg-m-line">${M.line}</p>
+    <div class="sg-g-score">${sgMeterHtml(sc.pct)}<div><div class="sg-lvl-n">${sgLevel(sc.pct)} <span>${sc.pct}%</span></div><div class="sg-lvl-s">${trend}</div></div></div>
+    <p class="sg-note">Items marked From your data are filled in by Verilume from what it can read. The rest are yours to rate. Most important items come first, and items that do not fit your business can be set to Does not apply.</p>
+    ${pri.map(p => { const li = items.filter(i => i.w === p[0]); return li.length ? `<div class="sg-tier"><div class="sg-tier-h">${p[1]}</div>${li.map(row).join('')}</div>` : ''; }).join('')}
+    <div class="gsc-foot">Practices checked Oct 7, 2026. Search engines and AI assistants change how they choose sources, so treat the checklist as priorities, not guarantees.${SG.msg ? ' ' + escapeHtml(SG.msg) : ''}</div></section>`;
+}
+async function sgRate(key, r){
+  SG.ratings[SG.model][key] = r; sgRender();
+  if (!srchLive()){ SG.msg = 'Ratings are kept for this visit only because no account data is connected.'; return; }
+  const ctx = sgCtx(), scores = {}; ['seo', 'aeo', 'geo'].forEach(a => scores[a] = sgScore(a, SG.model, ctx).pct);
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/search-guide`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: SG.model, ratings: { [key]: r }, scores }) });
+    if (resp.ok){ const day = new Date().toISOString().slice(0, 10); ['seo', 'aeo', 'geo'].forEach(a => { SG.hist = SG.hist.filter(h => !(h.model === SG.model && h.area === a && h.day === day)); SG.hist.push({ model: SG.model, area: a, score: scores[a], day }); }); SG.msg = ''; } else SG.msg = 'Could not save that rating.';
+  } catch (e){ SG.msg = 'Could not save that rating.'; }
+  sgRender();
+}
 // The agentic recap: what Verilume reads across SEO, AEO and GEO, the forecast, and the five open priorities.
 function gscRecapHtml(d){
   const c = d.cards || {}, f = c.forecast;
@@ -61630,6 +61771,7 @@ function srchKwRender(){
 
 function renderSearchOptimizationStep(){
   try { srchMasterLoad(); } catch (e){}
+  try { sgRender(); sgLoad(); } catch (e){}
   try { gscLoad(); } catch (e){}
   const critical = SEO_DATA.crawlIssues.filter(i => i.severity === 'critical').length;
   const warnings = SEO_DATA.crawlIssues.filter(i => i.severity === 'warning').length;
