@@ -10958,6 +10958,34 @@ function computeMatchedMarketPairs(penetrationRows, demographicResult, holdoutZi
 // could quietly drift apart. Same shape this endpoint has always
 // returned; behavior is unchanged, just relocated.
 
+// 2026-10-07 — what a booking costs this account, for pricing a market test. Average media cost per
+// booking over the same window as the upload (digital spend ÷ counted transactions), falling back to
+// the latest annual baseline (working media ÷ bookings). It is an AVERAGE; the client page applies a
+// multiplier because the next booking costs more than the average one.
+function getCostPerBookingForWindow(accountId, audit){
+  try {
+    let from = audit && audit.dateFrom, to = audit && audit.dateTo;
+    if (!to){ const d = new Date(); to = d.toISOString().slice(0, 10); const f = new Date(d.getTime() - 365 * 86400000); from = f.toISOString().slice(0, 10); }
+    const fk = from.slice(0, 7), tk = to.slice(0, 7);
+    const ym = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
+    const spendBy = {}, txBy = {}, revBy = {};
+    try { db.prepare("SELECT year, month, spend FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").all(accountId).forEach(r => { const k = ym(r.year, r.month); if (k >= fk && k <= tk) spendBy[k] = (spendBy[k] || 0) + (Number(r.spend) || 0); }); } catch (e){}
+    try { db.prepare('SELECT year, month, SUM(transactions) AS t, SUM(revenue) AS rv FROM account_transactions_monthly WHERE accountId = ? GROUP BY year, month').all(accountId).forEach(r => { const k = ym(r.year, r.month); if (k >= fk && k <= tk){ txBy[k] = Number(r.t) || 0; revBy[k] = Number(r.rv) || 0; } }); } catch (e){}
+    const both = Object.keys(spendBy).filter(k => spendBy[k] > 0 && txBy[k] > 0);
+    if (both.length >= 3){
+      const sp = both.reduce((a, k) => a + spendBy[k], 0), tx = both.reduce((a, k) => a + txBy[k], 0);
+      const rv = both.reduce((a, k) => a + (revBy[k] || 0), 0);
+      return { costPerBooking: Math.round(sp / tx * 100) / 100, avgOrderValue: rv > 0 ? Math.round(rv / tx * 100) / 100 : null, source: `Digital media spend ÷ counted transactions, ${both.length} months in the same window`, spend: Math.round(sp), bookings: tx, months: both.length };
+    }
+    try {
+      const row = db.prepare("SELECT year, workingMedia, bookings FROM account_annual_plan WHERE accountId = ? AND kind = 'baseline' ORDER BY year DESC LIMIT 1").get(accountId);
+      const wm = row && (row.workingMedia != null ? row.workingMedia : aliasVal(row, 'workingMedia')), bk = row && row.bookings;
+      if (wm > 0 && bk > 0) return { costPerBooking: Math.round(wm / bk * 100) / 100, source: `${row.year} baseline: working media ÷ bookings`, spend: Math.round(wm), bookings: bk, months: 12 };
+    } catch (e){}
+  } catch (e){}
+  return null;
+}
+
 // 2026-10-07 — "statistically relevant" check for Match Market test/control
 // pairs, per Todd. Markets are only worth testing in if they carry enough
 // volume to see a lift. For each matched pair we turn the volume the client's
@@ -11024,7 +11052,7 @@ function computeMarketUploadAnalysis(accountId, upload, options){
     // already computed above, aliased into that shared shape rather than
     // duplicated logic.
     const dmaExport = { available: dmaMatch.dmasScored.length > 0, dmas: dmaOnly.dmas, holdout: { dmaCodes: dmaMatch.holdout.dmaCodes }, matching: dmaMatch.matching };
-    let readinessDma = null; try { readinessDma = buildPairReadiness(rows, 'dma', (dmaMatch.matching && dmaMatch.matching.pairs) || [], dmaNameMap(dmaOnly.dmas), upload.auditJson ? JSON.parse(upload.auditJson) : null); } catch (e){ readinessDma = null; }
+    let readinessDma = null; try { const aud = upload.auditJson ? JSON.parse(upload.auditJson) : null; readinessDma = buildPairReadiness(rows, 'dma', (dmaMatch.matching && dmaMatch.matching.pairs) || [], dmaNameMap(dmaOnly.dmas), aud); if (readinessDma) readinessDma.costing = getCostPerBookingForWindow(accountId, aud); } catch (e){ readinessDma = null; }
     return { readiness: readinessDma, uploadId: upload.id, label: upload.label, rowCount: rows.length, weightMode: upload.weightMode, geoLevel: 'dma',
       confidence: 'lower — DMA-level upload: no zip-level penetration. Test/Control/Holdout and matched pairs below are computed at the market (DMA) level instead of zip level.',
       penetration: [], compositeWeights: null, holdout: { zips: [], dmaCodes: dmaMatch.holdout.dmaCodes, fraction: dmaMatch.holdout.fraction, note: dmaMatch.holdout.note }, demographic: { flag: 'no_demographic_data' }, matching: dmaMatch.matching,
@@ -11076,7 +11104,7 @@ function computeMarketUploadAnalysis(accountId, upload, options){
     storeTradeArea = { available: false, note: `Store trade area not readable (${String(e && e.message || e).slice(0, 120)})`, stores: [] };
   }
   let readiness = null;
-  try { readiness = buildPairReadiness(rows, 'zip', (dmaExport.matching && dmaExport.matching.pairs) || [], dmaNameMap(dmaExport.dmas), audit); } catch (e){ readiness = null; }
+  try { readiness = buildPairReadiness(rows, 'zip', (dmaExport.matching && dmaExport.matching.pairs) || [], dmaNameMap(dmaExport.dmas), audit); if (readiness) readiness.costing = getCostPerBookingForWindow(accountId, audit); } catch (e){ readiness = null; }
   return {
     readiness, uploadId: upload.id, label: upload.label, rowCount: rows.length, weightMode: upload.weightMode,
     penetration: composite.rows, compositeWeights: composite.weights,
@@ -38866,7 +38894,9 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         if (groups && !groups.includes(g.toLowerCase())) return;
         rows.push({ code: aliasVal(r, 'bookingCode'), zip: aliasVal(r, 'guestPostalCode'), country: aliasVal(r, 'guestCountry'), rev: Number(aliasVal(r, 'grossRevenue')) || 0 });
       });
-      return { total: all.length, counted, rows, minD, maxD, productGroups: Object.keys(pg).sort().map(k => ({ name: k, n: pg[k] })) };
+      const monthly = {};
+      all.forEach(r => { if (!rowCounts(r, settings)) return; if (!String(aliasVal(r, 'guestPostalCode') || '').trim()) return; const d = dateOf(r); if (!d) return; const k = d.slice(0, 7); monthly[k] = (monthly[k] || 0) + 1; });
+      return { monthly: Object.keys(monthly).sort().map(k => ({ m: k, n: monthly[k] })), total: all.length, counted, rows, minD, maxD, productGroups: Object.keys(pg).sort().map(k => ({ name: k, n: pg[k] })) };
     };
     const bkAggregate = (rows, defaultCountry, countBy) => {
       const by = {}; const excl = { missing_zip: 0, malformed_zip: 0 }; const cache = {}; const byCountry = {};
@@ -38891,7 +38921,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (!sc.total) return sendJson(res, 200, { available: false, note: 'No booking history is on file yet for this account.' });
       const agg = bkAggregate(sc.rows, sp.get('country') || 'US', sp.get('countBy') === 'guests' ? 'guests' : 'transactions');
       const withZip = sc.rows.length - agg.excl.missing_zip - agg.excl.malformed_zip;
-      return sendJson(res, 200, { available: true, totalBookingRows: sc.total, countedRows: sc.counted, inScope: sc.rows.length, withPostalCode: withZip, uniqueZips: agg.rows.length, excluded: agg.excl, byCountry: agg.byCountry, firstDate: sc.minD, lastDate: sc.maxD, productGroups: sc.productGroups, usable: agg.rows.length > 0 });
+      return sendJson(res, 200, { available: true, totalBookingRows: sc.total, countedRows: sc.counted, inScope: sc.rows.length, withPostalCode: withZip, uniqueZips: agg.rows.length, excluded: agg.excl, byCountry: agg.byCountry, monthly: sc.monthly, firstDate: sc.minD, lastDate: sc.maxD, productGroups: sc.productGroups, usable: agg.rows.length > 0 });
     }
     if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'market-customer-uploads' && parts[4] === 'from-bookings'){
       const accountId = decodeURIComponent(parts[2]);
