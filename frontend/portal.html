@@ -1496,6 +1496,66 @@
   .kt-chip::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--hdr-amber);flex-shrink:0;}
   .kt-chip:hover{border-color:var(--hdr-amber);box-shadow:var(--shadow-md);transform:translateY(-1px);}
   .kt-chip:focus-visible{outline:2px solid var(--hdr-navy);outline-offset:2px;}
+  /* Geographic Optimization working area (2026-10-07): neutral dashboard look */
+  #geoPage{margin-top:6px;}
+  #geoPage button,#geoPage textarea{font-family:inherit;}
+  .geo-bar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0 0 14px;flex-wrap:wrap;}
+  .geo-src{font-size:0.8125rem;color:var(--muted);}
+  .geo-link{background:none;border:0;padding:0;font:inherit;font-size:0.8125rem;font-weight:600;color:var(--hdr-navy);cursor:pointer;text-decoration:underline;text-underline-offset:3px;}
+  .geo-card{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:20px 22px;box-shadow:var(--shadow-sm);}
+  .geo-note{color:var(--muted);font-size:0.875rem;}
+  .geo-grid{margin-bottom:0;align-items:stretch;}
+  .geo-h{font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;}
+  .geo-title{font-size:1.125rem;font-weight:700;color:var(--ink);line-height:1.35;margin:6px 0 12px;text-wrap:balance;}
+  .geo-sub{font-size:0.8125rem;font-weight:700;color:var(--ink);margin-bottom:3px;}
+  .geo-p{font-size:0.875rem;line-height:1.55;color:var(--ink);margin:8px 0;max-width:78ch;}
+  .geo-cap{font-size:0.75rem;line-height:1.45;color:var(--muted);margin-top:10px;}
+  .geo-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;}
+  .geo-pill{font-size:0.6875rem;font-weight:700;padding:4px 10px;border-radius:980px;background:var(--paper-dim);color:var(--ink);border:1px solid var(--line);}
+  .geo-pill.warn{background:#FFF4E5;border-color:var(--hdr-amber);}
+  .geo-row{display:grid;grid-template-columns:minmax(92px,auto) 1fr auto;gap:10px;align-items:center;margin:9px 0;font-size:0.8125rem;}
+  .geo-row-l{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .geo-track{height:8px;border-radius:4px;background:var(--paper-dim);overflow:hidden;}
+  .geo-track span{display:block;height:100%;border-radius:4px;}
+  .geo-row-v{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;text-align:right;}
+  .geo-row-v small{font-weight:500;color:var(--muted);margin-left:3px;}
+  .geo-thumb{width:100%;max-width:210px;display:block;margin:2px auto 0;}
+  .geo-cols{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;}
+  .geo-cols p,.geo-pracs p{font-size:0.8125rem;line-height:1.5;color:var(--ink);margin:0;}
+  .geo-pracs{display:grid;grid-template-columns:repeat(2,1fr);gap:14px 24px;}
+  .geo-prac{display:flex;gap:10px;align-items:flex-start;}
+  .geo-dot{display:inline-block;width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:4px;}
+  .geo-leg .geo-dot{margin-top:0;}
+  .geo-watch{margin:16px 0 0;padding-left:18px;font-size:0.8125rem;color:var(--muted);line-height:1.5;}
+  .geo-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  .geo-tile{text-align:left;background:var(--white);border:1px solid var(--line);border-radius:14px;padding:18px 20px;box-shadow:var(--shadow-sm);cursor:pointer;display:flex;flex-direction:column;gap:6px;transition:border-color .15s ease,box-shadow .15s ease;}
+  .geo-tile:hover{box-shadow:var(--shadow-md);}
+  .geo-tile.on{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink);}
+  .geo-tile:focus-visible{outline:2px solid var(--hdr-navy);outline-offset:2px;}
+  .geo-tile-t{font-size:0.9375rem;font-weight:700;color:var(--ink);display:flex;gap:8px;align-items:center;}
+  .geo-tile-t em{font-style:normal;font-size:0.625rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);border-radius:980px;padding:2px 8px;}
+  .geo-tile-d{font-size:0.8125rem;color:var(--muted);line-height:1.45;}
+  .geo-q{width:100%;box-sizing:border-box;font-size:0.9375rem;line-height:1.5;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--white);color:var(--ink);resize:vertical;}
+  .geo-q:focus{outline:2px solid var(--hdr-navy);outline-offset:1px;}
+  .geo-ex{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+  .geo-btn{font:inherit;font-size:0.875rem;font-weight:700;color:#fff;background:var(--ink);border:0;border-radius:980px;padding:10px 20px;cursor:pointer;}
+  .geo-btn.sm{padding:7px 14px;font-size:0.8125rem;}
+  .geo-btn:disabled{opacity:.5;cursor:default;}
+  .geo-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+  .geo-kpi{background:var(--paper-dim);border-radius:10px;padding:12px 14px;}
+  .geo-kpi .geo-h{margin-bottom:4px;}
+  .geo-kv{font-size:1.25rem;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;}
+  .geo-scroll{overflow-x:auto;}
+  .geo-t{width:100%;border-collapse:collapse;font-size:0.8125rem;}
+  .geo-t th{text-align:left;font-size:0.6875rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);padding:6px 10px;border-bottom:1px solid var(--line);}
+  .geo-t td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top;}
+  .geo-t .r{text-align:right;font-variant-numeric:tabular-nums;}
+  .geo-tl,.geo-map{width:100%;height:auto;display:block;}
+  .geo-dl{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-top:20px;padding-top:16px;border-top:1px solid var(--line);}
+  .geo-legend{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0;}
+  .geo-leg{display:inline-flex;gap:8px;align-items:center;font:inherit;font-size:0.8125rem;font-weight:600;color:var(--ink);background:var(--white);border:1px solid var(--line);border-radius:980px;padding:6px 13px;cursor:pointer;}
+  .geo-leg.off{opacity:.45;text-decoration:line-through;}
+  @media (max-width:1100px){ .geo-cols,.geo-tiles{grid-template-columns:1fr;} .geo-pracs{grid-template-columns:1fr;} .geo-kpis{grid-template-columns:1fr 1fr;} }
   .stat-card.flow-card .exec-visual-row{flex-direction:column;align-items:center;gap:12px;margin-top:8px;}
   .stat-card.flow-card .donut-side-col{width:100%;gap:0;}
   .stat-card.flow-card .donut-legend{gap:6px;font-size:0.8125rem;}
@@ -8214,6 +8274,8 @@
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('group','Analysis')">Analysis</a> / Geographic Agentic Optimization</div>
     <div class="eyebrow">Analysis</div>
     <h1>Geographic Agentic Optimization</h1>
+    <div id="geoPage"></div>
+    <div id="mouLegacy" style="display:none;">
     <p class="lede" style="margin-bottom:6px;">Your customers are your most valuable asset. Upload your customer postal codes — no PII please — individual store location or multiple storefronts to help your Agentic partners optimize your media plans.</p>
     <!-- 2026-09-09, per direct instruction ("The top paragraph should be
          replaced with three cards that explain the use cases briefly with a
@@ -8541,6 +8603,7 @@
         <div id="mouHistoryBody"><p class="hint">Loading…</p></div>
       </div>
     </div>
+    </div><!-- /mouLegacy -->
   </div>
 
   <!-- Round 132by — Measurement Coverage & Confidence (recommendation-
@@ -26022,7 +26085,7 @@ const KEY_TOOLS = {
   strategy: [{ l: 'Budgets', s: 'mediaplan' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaigns', s: 'campaignMgmt' }, { l: 'Competition & Positioning', s: 'competitivePositioning' }, { l: 'Marketing Tests', s: 'marketOptimization' }, { l: 'Forecasts', a: 'forecast' }],
   brand: [{ l: 'Brand Voice', s: 'voice' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaign Creative', s: 'omniCreative' }, { l: 'Search Everywhere', s: 'searchOptimization' }, { l: 'PR', s: 'reputation' }, { l: 'Reputation Management', s: 'reputation' }],
   marketer: [{ l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Budgets', s: 'mediaplan' }, { l: 'Campaign Creation', s: 'campaignMgmt' }, { l: 'Forecasting', a: 'forecast' }, { l: 'Creative Assets', s: 'omniCreative' }],
-  dataScientist: [{ l: 'Budgets', s: 'mediaplan' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaign Analysis', s: 'campaignMgmt' }, { l: 'Goal Setting + Forecasting', a: 'forecast' }, { l: 'Test Plans', s: 'marketOptimization' }]
+  dataScientist: [{ l: 'Budgets', s: 'mediaplan' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaign Analysis', s: 'campaignMgmt' }, { l: 'Goal Setting + Forecasting', a: 'forecast' }, { l: 'Test Registry', s: 'testRegistry' }, { l: 'Geographic Optimization', s: 'marketOptimization' }]
 };
 function ktGo(tab, i){
   const it = (KEY_TOOLS[tab] || [])[i]; if (!it) return;
@@ -37616,6 +37679,258 @@ function mrfDmaSectionHtml(dma){
 // these downloads are built to match: one flat table, not a scrolling
 // page. mouLastAnalysis is kept so the export buttons know which upload
 // to ask for without a second round trip.
+
+// ---------- Geographic Optimization working area (2026-10-07, Round 1) ----------
+// A working page, not part of Train the Brain: counts by region, statistically relevant markets, market
+// types, trade areas, AI notes, then three paths (Match Market Testing, Trade Territories, Visualize Markets).
+// Reads the booking history already on the account; the old upload form lives in #mouLegacy (hidden).
+const GEO_TIERS = ['Must Win', 'Growth', 'Opportunistic', 'Monitor'];
+const GEO_TIER_COL = { 'Must Win': '#1D1D1F', 'Growth': '#D08A3E', 'Opportunistic': '#8E8E93', 'Monitor': '#D2D2D7' };
+const GEO_TIER_HINT = { 'Must Win': 'Largest, most reliable markets. Defend and use as test anchors.', 'Growth': 'Room to grow. Test added spend here first.', 'Opportunistic': 'Smaller markets. Use low-cost, geo-targetable media.', 'Monitor': 'Too little volume to act on. Watch.' };
+const GEO_US_SHAPE = 'M612,404L612,404L612,404ZM721,383L726,399L733,411L741,420L743,429L754,447L756,455L757,471L755,471L753,481L743,484L738,475L731,473L726,463L719,457L709,445L713,438L708,435L710,439L706,438L705,432L707,427L706,419L703,415L700,415L693,409L688,403L681,400L677,400L677,404L674,404L666,411L661,410L660,406L651,401L639,399L625,402L621,403L617,395L615,402L611,402L603,402L593,407L588,410L591,413L594,409L596,412L595,416L591,417L594,422L599,422L601,428L589,423L583,428L579,423L573,429L565,425L560,417L555,415L548,421L534,417L524,419L519,420L508,425L510,418L505,420L507,426L509,426L499,435L485,442L472,453L473,449L481,445L476,444L475,447L469,449L472,450L469,454L465,453L468,456L465,463L464,473L465,479L469,489L465,491L458,487L451,487L447,483L436,479L434,472L431,468L431,459L424,453L424,450L418,444L412,429L400,415L391,415L387,413L381,415L376,424L372,428L356,419L351,414L348,409L349,403L345,394L339,390L331,380L327,378L323,371L296,368L295,376L282,374L250,370L196,338L198,334L161,330L159,327L160,318L158,314L150,303L146,303L146,297L142,297L136,293L132,286L119,282L117,279L120,269L113,257L108,240L111,234L105,225L106,214L110,221L108,211L106,213L100,208L102,203L95,187L99,171L94,161L94,158L100,152L104,141L106,131L104,128L106,120L106,114L115,101L126,75L129,66L130,61L132,57L137,57L131,55L136,48L133,46L134,41L134,26L133,19L135,15L142,21L153,26L157,26L157,31L151,35L158,31L158,34L154,43L158,42L159,33L162,30L160,25L162,25L163,16L161,15L161,11L230,29L242,31L389,53L473,57L499,57L499,50L503,52L506,62L516,64L516,66L522,64L526,64L532,67L534,71L535,68L542,71L544,74L548,73L553,69L555,72L562,71L566,74L569,73L565,76L558,79L551,85L546,91L539,97L540,99L546,97L553,94L556,95L554,100L556,98L561,100L568,95L573,94L588,82L594,82L588,87L585,91L585,95L588,92L595,93L599,98L610,98L615,94L624,93L630,90L630,96L636,96L640,94L643,101L646,103L649,101L650,104L643,104L639,105L636,103L634,107L631,104L624,104L623,106L616,107L614,110L610,113L612,110L605,110L599,125L595,132L595,136L599,130L602,128L606,121L606,124L602,135L602,142L599,148L600,151L598,160L601,174L601,177L606,188L610,189L615,186L618,183L622,173L621,162L616,150L617,148L615,143L618,137L618,131L620,127L623,125L625,121L626,128L628,125L628,119L634,116L631,113L635,108L642,110L645,113L652,114L656,120L654,122L657,126L657,133L654,138L651,140L650,145L654,147L659,139L663,137L667,141L670,152L672,156L672,163L668,164L666,170L665,176L662,181L669,185L671,183L676,186L682,183L686,183L695,174L701,171L710,164L718,157L721,152L717,144L724,140L734,139L737,140L745,138L751,132L753,132L753,124L749,123L750,119L754,115L760,105L766,100L785,96L808,90L809,85L812,83L815,84L816,78L820,70L818,62L819,55L824,38L827,38L830,42L837,36L844,40L851,65L856,65L858,71L862,71L866,77L863,80L861,86L858,85L856,90L850,93L850,98L846,93L845,90L843,102L834,107L830,113L828,123L827,126L831,129L827,135L834,140L836,145L840,145L843,143L845,144L836,150L836,147L830,152L827,153L828,149L828,149L825,148L826,156L821,158L807,163L798,170L801,171L812,167L815,163L819,165L806,175L796,179L794,177L794,178L792,181L797,183L797,194L796,201L789,212L789,208L779,204L778,202L778,201L778,200L778,204L782,211L788,215L790,221L789,230L785,236L784,247L781,246L781,240L783,233L780,234L779,228L775,229L771,225L775,222L769,218L770,209L767,212L769,224L771,231L766,231L762,227L759,230L760,224L759,230L762,229L763,232L769,232L775,235L774,245L778,250L775,254L782,253L786,259L783,260L786,265L776,273L789,270L791,277L786,282L773,282L782,285L779,292L783,288L786,290L783,297L781,296L776,297L769,303L766,309L765,315L756,317L753,318L749,325L746,335L738,344L731,348L732,350L726,357L723,363L722,373L720,375ZM170,448L170,448L170,448ZM169,459L169,459L169,459ZM167,461L167,461L167,461ZM166,461L166,461L166,461ZM165,461L165,461L165,461ZM166,467L166,467L166,467ZM165,462L165,462L165,462ZM164,453L164,453L164,453ZM164,462L164,462L164,462ZM163,454L163,454L163,454ZM160,468L161,468L162,466L162,467L163,465L164,464L163,466L165,466L165,467L163,467L162,469ZM160,459L160,459L160,459ZM158,477L158,477L158,477ZM157,478L158,478L158,478ZM156,473L158,471L158,471L159,469L161,469L160,469L164,469L164,471L165,471L164,472L163,472L163,473L162,473L158,477L159,474L157,476L156,475L156,474ZM155,479L155,479L155,479ZM152,483L152,483L152,483ZM148,481L148,481L148,481ZM148,480L148,480L148,480ZM146,478L146,478L146,478ZM144,479L144,479L144,479ZM140,482L140,482L140,482ZM139,482L139,482L139,482ZM138,488L138,488L138,488ZM139,482L139,482L139,482ZM138,488L138,488L138,488ZM137,488L137,488L137,488ZM137,486L137,486L137,486ZM136,488L136,488L136,488ZM136,487L136,487L136,487ZM136,485L136,485L136,485ZM135,487L136,486L136,487ZM137,463L137,463L137,463ZM135,484L135,484L135,484ZM137,463L137,463L137,463ZM133,485L134,485L134,486L133,486ZM134,463L134,463L136,462L135,463ZM131,485L131,485L131,485ZM130,485L130,485L130,485ZM129,486L129,486L129,486ZM127,487L127,487L127,487ZM133,430L133,430L133,430ZM125,489L125,489L125,489ZM124,483L124,483L124,483ZM117,490L117,490L117,490ZM115,490L115,490L115,490ZM114,490L114,490L114,490ZM114,490L114,490L114,490ZM114,489L114,489L114,489ZM112,489L113,489L114,490L112,490ZM112,490L112,490L112,490ZM115,450L117,450L118,449L119,449L120,450L121,450L121,453L119,453L119,453L115,451ZM104,493L107,493L109,492L108,491L108,490L110,490L110,491L112,491L110,492L112,491L109,494L107,493L105,494ZM120,414L125,412L129,411L131,410L133,411L132,413L132,414L135,414L137,415L138,413L140,414L139,412L138,413L138,411L136,409L137,409L138,410L137,411L139,412L139,412L138,410L139,409L138,408L137,408L134,407L133,404L131,401L129,400L129,399L128,398L129,397L129,395L131,395L134,395L136,394L137,393L138,390L140,388L141,387L142,387L143,387L145,386L146,384L147,384L147,385L149,385L151,384L152,382L153,382L155,383L155,383L154,384L155,385L156,383L157,384L157,385L158,385L159,384L160,384L162,385L162,386L163,386L163,387L165,388L166,387L166,387L168,386L171,388L171,387L173,388L177,388L179,389L182,387L182,387L187,389L188,389L200,449L202,449L202,449L203,449L204,448L206,448L206,449L208,450L209,451L212,454L213,456L215,453L216,453L216,450L218,448L220,449L221,451L222,451L224,453L225,453L228,455L229,456L234,461L234,462L235,462L235,463L236,463L236,464L237,464L239,465L243,465L244,466L244,468L246,470L245,473L245,475L243,474L242,472L242,471L242,470L242,472L241,472L239,472L238,469L238,471L237,470L237,469L236,470L235,469L234,469L235,467L235,467L234,464L232,463L230,463L229,462L228,459L225,457L224,457L221,454L219,451L219,452L220,453L221,455L223,458L221,457L219,458L219,456L218,455L218,456L215,455L218,456L219,458L217,459L213,458L212,456L210,455L205,453L205,453L205,451L203,453L201,453L199,452L195,452L194,452L190,453L190,452L188,452L188,450L186,451L185,451L184,451L184,451L182,452L182,451L184,450L182,450L181,448L181,448L180,447L179,449L179,447L178,449L177,449L178,447L177,448L177,448L176,450L177,450L176,451L177,451L178,452L177,453L178,454L177,455L177,454L176,455L174,455L173,454L173,457L172,455L172,457L172,457L170,459L170,458L169,459L168,460L167,460L166,461L165,460L165,459L167,458L168,457L167,458L165,457L166,455L167,454L167,452L167,450L168,450L170,448L171,449L172,448L171,447L171,447L169,447L167,448L166,449L165,450L164,452L164,453L163,454L163,455L161,457L160,458L159,459L158,459L157,461L160,462L160,464L159,465L158,468L155,468L155,469L153,470L152,471L151,471L149,473L150,474L149,475L148,475L147,476L146,476L144,477L144,478L143,478L142,479L143,480L142,481L138,482L137,482L135,483L134,484L133,483L132,484L131,484L131,483L130,483L129,486L124,486L122,488L120,488L119,489L117,489L117,487L118,487L119,485L123,485L123,486L124,485L125,485L128,482L130,481L133,480L133,481L136,482L134,480L135,479L137,477L141,475L142,476L142,474L143,473L145,471L147,465L148,464L148,463L144,464L143,463L143,461L142,463L142,465L141,465L140,463L139,462L138,462L137,461L137,460L134,462L132,463L131,463L132,461L132,458L133,457L131,453L131,454L129,454L127,454L125,454L125,453L124,451L123,449L123,449L122,449L124,448L123,446L124,446L123,445L122,445L122,444L121,442L121,441L122,441L121,440L123,440L123,438L126,435L127,433L129,432L131,433L132,433L134,431L136,431L138,431L139,430L139,427L138,424L139,425L139,423L138,422L138,423L137,423L134,424L134,425L133,424L131,423L129,423L127,424L124,422L124,421L124,420L123,418L124,419L125,418L124,417L122,416L121,415ZM99,495L101,494L102,493L103,492L104,492L105,493L103,494L102,495ZM98,496L98,496L98,496ZM97,494L97,494L97,494ZM102,471L102,471L102,471ZM97,493L97,493L97,493ZM96,495L96,495L96,495ZM95,494L95,494L95,494ZM95,495L95,495L95,495ZM101,467L101,467L101,467ZM92,495L92,495L92,495ZM91,495L91,495L91,495ZM90,495L90,495L90,495ZM107,425L108,424L108,424L110,426L111,425L112,426L112,427L113,428L116,429L115,430L113,429L112,431L111,428L109,426L108,427L107,426ZM85,495L85,495L85,495ZM98,443L99,443L100,445L99,445ZM98,442L98,442L98,442ZM79,495L80,495L83,496L81,496ZM74,494L78,494L79,493L79,494L76,495ZM73,494L73,494L73,494ZM73,493L73,493L73,493ZM72,494L72,494L72,494ZM71,493L71,493L71,493ZM70,492L70,492L70,492ZM70,494L70,494L70,494ZM66,494L68,492L68,493L70,493L67,494ZM65,492L65,492L65,492ZM64,493L67,492L66,493ZM62,491L63,491L63,492ZM60,492L60,492L60,492ZM59,492L59,492L59,492ZM60,490L60,490L60,490ZM58,493L58,493L58,493ZM57,493L57,493L57,493ZM54,487L54,487L54,487ZM50,487L50,487L50,487ZM50,485L50,485L50,485ZM49,486L49,486L49,486ZM49,484L49,484L49,484ZM45,483L45,483L45,483ZM42,478L42,478L42,478ZM36,473L36,473L36,473ZM36,473L36,473L36,473ZM36,472L36,472L36,472ZM33,474L34,473L34,475ZM31,469L34,470L34,471L32,470ZM242,473L242,473L242,473ZM241,474L241,474L241,474ZM241,474L241,474L241,474ZM240,474L240,472L241,474ZM239,472L240,472L240,473ZM234,466L234,466L234,466ZM234,467L234,467L234,467ZM234,466L234,466L234,466ZM236,476L236,476L236,476ZM233,468L233,468L233,468ZM233,467L233,467L234,467L234,468ZM234,473L234,473L234,473ZM234,477L234,477L234,477ZM232,473L232,473L232,473ZM232,472L232,472L232,472ZM232,474L233,473L233,474L233,475ZM231,471L231,469L231,468L232,468L234,469L235,470L236,471L238,472L236,472L239,473L240,476L238,477L238,476L237,475L235,474L236,476L237,476L238,477L237,477L235,476L234,475L234,475L235,473L232,472ZM228,462L228,462L228,462ZM231,471L231,471L231,471ZM229,472L229,472L229,472ZM227,466L227,465L229,465L228,464L228,464L231,463L234,465L233,466L232,466L231,467L230,467L230,470L229,470ZM222,457L224,457L225,457L227,460L226,459L228,461L228,462L227,465L226,464L226,462L224,461L224,460ZM222,456L222,456L222,456ZM220,453L220,453L220,453ZM222,464L222,462L225,463L227,467L228,470L224,467L224,467L223,464ZM220,458L220,458L220,458ZM222,465L223,465L223,466L222,466ZM218,456L218,456L218,456ZM219,458L219,458L219,458ZM218,461L218,460L220,458L221,459L223,459L223,460L225,462L224,463L222,462L222,464L220,463ZM185,451L185,451L185,451ZM184,451L184,451L184,451ZM179,448L179,448L179,448ZM179,450L179,450L179,450ZM179,453L179,453L179,453ZM178,456L180,454L180,452L181,452L179,455ZM178,453L179,451L179,453ZM177,450L177,450L177,450ZM749,488L749,488L749,488ZM748,489L748,489L748,489ZM743,492L743,492L743,492ZM732,496L738,491L741,493ZM729,497L729,497L729,497ZM726,497L726,497L726,497ZM719,458L719,458L719,458ZM713,498L713,498L713,498ZM672,407L672,407L672,407ZM852,93L852,93L852,93ZM851,95L851,95L851,95ZM849,91L849,91L849,91ZM846,94L846,94L846,94ZM847,102L847,102L847,102ZM845,97L845,97L845,97ZM844,95L844,95L844,95ZM842,153L842,153L842,153ZM835,154L837,151L840,153ZM790,270L790,270L790,270ZM789,287L789,287L789,287ZM142,307L142,307L142,307ZM140,315L140,315L140,315ZM136,305L136,305L136,305ZM132,294L132,294L132,294ZM127,307L127,307L127,307ZM125,291L125,291L125,291ZM120,291L120,291L120,291ZM117,290L117,290L117,290ZM330,480L334,475L333,470L344,475L347,480L352,484L349,487L340,491L337,495L333,493L333,487ZM319,458L325,458L331,460L330,463L323,464L323,461ZM319,465L319,465L319,465ZM312,458L312,458L312,458ZM308,455L309,453L319,454L316,456ZM291,446L297,443L302,451L294,451ZM265,437L268,434L273,436L273,439L268,440ZM257,441L257,441L257,441ZM778,234L778,234L778,234ZM776,231L776,231L776,231ZM769,220L769,220L769,220ZM636,107L636,107L636,107ZM627,109L627,109L627,109ZM625,109L625,109L625,109ZM624,113L624,113L624,113ZM623,111L623,111L623,111ZM621,116L621,116L621,116ZM619,122L619,122L619,122ZM618,125L618,125L618,125ZM610,114L610,114L610,114ZM574,75L581,70L581,72L575,76ZM609,405L609,405L609,405ZM605,405L605,405L605,405ZM602,405L602,405L602,405ZM599,405L599,405L599,405ZM819,160L819,160L819,160ZM818,163L818,163L818,163ZM817,162L817,162L817,162ZM750,126L750,126L750,126ZM749,125L749,125L749,125ZM672,183L672,183L672,183ZM670,182L670,182L670,182ZM779,235L779,235L779,235ZM155,41L155,41L155,41ZM160,19L160,19L160,19ZM160,16L160,16L160,16ZM159,18L159,18L159,18ZM157,24L161,29L159,31ZM157,14L157,14L157,14ZM156,15L156,15L156,15ZM157,10L157,10L157,10ZM154,16L160,17L158,21ZM154,15L154,15L154,15ZM607,119L607,119L607,119ZM602,123L602,123L602,123ZM559,92L559,92L559,92ZM559,95L559,95L559,95ZM557,94L557,94L557,94ZM556,95L556,95L556,95ZM556,93L556,93L556,93ZM555,92L555,92L555,92ZM555,96L555,96L555,96ZM553,93L553,93L553,93ZM604,408L604,408L604,408ZM596,409L596,409L596,409ZM592,419L592,419L592,419ZM580,428L580,428L580,428ZM577,428L577,428L577,428ZM574,429L574,429L574,429ZM553,420L553,420L553,420ZM826,150L826,150L826,150ZM826,154L826,154L826,154ZM825,160L825,160L825,160Z|M611,402L607,373L609,317L607,315L646,311L657,350L663,361L660,364L660,369L662,375L662,382L664,385L623,389L622,392L626,395L627,399L625,402M198,334L201,334L202,329L200,327L201,321L205,317L207,310L213,307L210,303L208,292L210,272L216,272L219,275L221,272L224,257L297,269L282,374M664,385L667,390L709,387L712,390L713,382L721,383M646,311L665,309L684,307L681,313L688,316L695,325L706,333L709,338L714,340L716,347L718,348L722,356L726,357M615,186L643,183L643,184L649,233L650,239L641,241L641,245L636,250L635,255L630,255L627,258L623,257L618,261L611,258L605,262L604,260L611,244L608,236L610,232L606,188M403,223L498,225L505,229L501,234L505,240L509,242L509,282L427,281L399,279M828,123L823,118L822,114L812,83M828,149L824,144L819,145L796,150L796,137L806,135L822,131L827,126M830,152L828,149M540,99L536,100L537,111L531,114L529,120L533,123L531,125L531,135L535,139L543,143L544,145L550,149L552,152L553,158L483,160L483,126L477,120L481,114L481,107L478,100L478,83L474,73L475,63L473,57M778,200L779,198L787,189L781,185L778,181L778,175L782,167L795,171L794,177M794,178L792,181M778,202L778,201M665,309L665,305L669,303L672,297L677,297L683,292L688,286L688,287L694,283L697,283L701,274L721,271L786,259M756,317L736,302L719,305L714,299L695,301L684,307M481,114L384,110L389,53M509,282L509,291L512,312L512,345L506,343L501,339L491,342L486,342L484,344L475,339L471,344L470,340L466,342L463,339L459,339L452,335L451,337L440,331L432,330L428,327L429,290L385,288L385,278M710,164L711,169L771,157L775,159L776,163L782,167M779,198L774,200L723,210L708,213L705,196L701,171M483,160L480,175L483,179L479,176L471,171L464,171L461,173L455,169L379,164L382,127L384,110M512,345L519,347L519,347L519,357L520,376L523,383L528,391L528,398L525,407L526,412L522,417L524,419M323,371L322,367L377,372L380,336L384,288L385,288M379,164L376,202M307,194L376,202L404,204L403,223L399,279L385,278L328,273L297,269L307,194L279,190L282,171L289,126L291,116L382,127M819,145L821,158M798,170L798,164L796,150M498,225L494,220L492,214L508,215L549,213L553,217L552,223L554,229L564,238L565,244L573,245L570,254L571,257L583,266L585,271L584,273L588,279L590,279L590,285L586,288L585,288L585,288L585,292L582,298L573,299L577,293L576,289L509,291M723,210L724,220L733,210L737,212L741,208L745,209L749,213L748,217L739,212L740,218L734,227L732,225L729,234L724,232L724,235L717,250L718,254L705,261L703,259L699,262L695,260L694,257L689,255L682,247L682,242L686,241L687,234L689,229L691,232L692,226L696,221L699,221L704,214L705,202L703,197L705,196M553,217L554,213L557,211L559,203L557,200L557,197L567,193L569,189L569,183L566,182L562,176L601,174M605,262L605,268L599,270L600,276L593,274L590,279M582,298L584,300L579,303L581,305L577,309L578,314L575,317L572,321L572,328L569,329L567,335L564,337L566,340L562,345L564,347L564,355L519,357M106,131L120,135L161,146L161,146L147,201L171,237L189,264L208,292M790,221L781,223L774,200M553,158L555,163L554,165L556,172L561,174L562,176M492,214L490,198L487,197L488,192L485,187L483,179M649,233L654,232L658,238L666,240L672,240L677,236L682,242M694,257L689,263L684,266L679,274L671,278L644,281L628,282L609,284L606,283L607,287L586,288M585,288L585,288M778,234L778,234M789,230L783,233M760,224L760,221M759,219L760,221L759,219L752,216L749,213M662,181L643,184M599,125L595,121L595,121L596,114L591,112L591,110L582,109L578,107L565,104L561,101L561,101L561,100M575,317L607,315M593,407L587,398L588,392L558,393L560,383L568,368L565,365L565,358L564,355M289,126L286,120L284,123L274,121L272,123L264,122L263,115L259,113L260,109L257,104L257,99L255,96L250,100L248,97L248,94L254,79L247,73L244,65L240,60L241,56L238,50L242,31M806,135L804,119L806,108L805,104L810,99L808,95L808,90M785,96L786,103L788,106L788,114L792,122L796,137M137,57L142,60L145,65L144,70L149,74L160,74L163,77L172,77L176,78L180,77L191,78L193,77L219,83L223,92L216,101L214,105L209,110L208,113L212,116L209,123L201,156L161,146M671,278L701,274M224,257L242,164L282,171M230,29L219,75L219,83M242,164L201,156';
+let geo = { over: null, ins: null, plan: null, path: 'match', q: '', loading: false, building: false, asking: false, err: '', hide: {}, detailOpen: false };
+function geoProjMake(k, tx, ty){
+  const R = Math.PI / 180;
+  const mk = (rot, cLon, cLat, p0, p1, kk, x0, y0) => {
+    const s0 = Math.sin(p0 * R), n = (s0 + Math.sin(p1 * R)) / 2, c = 1 + s0 * (2 * n - s0), r0 = Math.sqrt(c) / n;
+    const rawR = (lonR, lat) => { const l = lonR * R, r = Math.sqrt(c - 2 * n * Math.sin(lat * R)) / n; return [r * Math.sin(l * n), r0 - r * Math.cos(l * n)]; };
+    const cc = rawR(cLon, cLat);
+    return (lon, lat) => { const p = rawR(lon + rot, lat); return [x0 - cc[0] * kk + p[0] * kk, y0 + cc[1] * kk - p[1] * kk]; };
+  };
+  const l48 = mk(96, -0.6, 38.7, 29.5, 45.5, k, tx, ty), ak = mk(154, -2, 58.5, 55, 65, k * 0.35, tx - 0.307 * k, ty + 0.201 * k), hi = mk(157, -3, 19.9, 8, 18, k, tx - 0.205 * k, ty + 0.212 * k);
+  return (lng, lat) => { if (lat >= 51 && lat <= 72 && lng >= -171 && lng <= -129) return ak(lng, lat); if (lat >= 18 && lat <= 23 && lng >= -161 && lng <= -154) return hi(lng, lat); return l48(lng, lat); };
+}
+const geoProj = geoProjMake(1070, 480, 250);
+function geoMoney(n){ return n == null ? '—' : '$' + Math.round(n).toLocaleString(); }
+function geoNum(n){ return n == null ? '—' : Math.round(n).toLocaleString(); }
+function geoUrl(p){ return `${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/${p}`; }
+function geoShell(){
+  const host = document.getElementById('geoPage'); if (!host || host.dataset.ready) return;
+  host.dataset.ready = '1';
+  host.innerHTML = `
+    <div class="geo-bar"><div id="geoSource" class="geo-src"></div><div class="geo-bar-r"><button type="button" class="geo-link" onclick="geoRefresh()">Refresh from latest bookings</button></div></div>
+    <div id="geoTop"></div>
+    <div id="geoAi"></div>
+    <div class="geo-h" style="margin:26px 0 10px;">Select your path</div>
+    <div id="geoTiles"></div>
+    <div id="geoBody"></div>`;
+}
+async function geoOpen(){
+  if (!state.companyId) return;
+  geoShell(); geo.err = ''; geo.loading = true; geoRenderAll();
+  try {
+    const r = await authedFetch(geoUrl('geo-overview'), { timeoutMs: 60000 });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok){ geo.loading = false; geo.err = d.error || 'Could not read your market data.'; geoRenderAll(); return; }
+    if (d.needsBuild){ geo.over = null; geo.loading = false; await geoBuild(); return; }
+    geo.over = d; geo.loading = false; geoRenderAll(); geoLoadInsights();
+  } catch (e){ geo.loading = false; geo.err = 'Backend unreachable. Try again in a moment.'; geoRenderAll(); }
+}
+function geoRefresh(){ geoBuild(true); }
+// Builds the market file from the account's own bookings with the automatic, volume-based window.
+async function geoBuild(){
+  if (geo.building) return; geo.building = true; geo.err = ''; geoRenderAll();
+  try {
+    const qs = new URLSearchParams({ countBy: mouBk.countBy || 'transactions' });
+    const pr = await authedFetch(geoUrl('market-customer-uploads/booking-preview?' + qs));
+    const info = await pr.json().catch(() => ({}));
+    if (!pr.ok || !info.available || !info.usable){
+      geo.building = false; geo.err = (info && info.note) || 'No booking history with postal codes is on file yet. Upload bookings in Data Management and this page fills in by itself.'; geoRenderAll(); return;
+    }
+    mouBk.info = info; mouBk.biz = 'auto'; mouBk.presetDone = false; mouBk.from = ''; mouBk.to = ''; mouBkApplyPreset();
+    const r = await authedFetch(geoUrl('market-customer-uploads/from-bookings'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 120000,
+      body: JSON.stringify({ from: mouBk.from || null, to: mouBk.to || null, productGroups: null, weightMode: 'count', countBy: mouBk.countBy || 'transactions' }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok){ geo.building = false; geo.err = d.error || 'Could not build the market file from bookings.'; geoRenderAll(); return; }
+    geo.building = false; geo.plan = null; geo.ins = null; geo.detailOpen = false; await geoOpen();
+  } catch (e){ geo.building = false; geo.err = 'Backend unreachable. Try again in a moment.'; geoRenderAll(); }
+}
+async function geoLoadInsights(){
+  if (!geo.over || !geo.over.upload) return;
+  try {
+    const r = await authedFetch(geoUrl('geo-insights'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 45000, body: JSON.stringify({ uploadId: geo.over.upload.id }) });
+    if (r.ok){ geo.ins = await r.json(); geoRenderAi(); }
+  } catch (e){ /* the page works without the notes */ }
+}
+function geoRenderAll(){ geoRenderSource(); geoRenderTop(); geoRenderAi(); geoRenderTiles(); geoRenderBody(); }
+function geoRenderSource(){
+  const el = document.getElementById('geoSource'); if (!el) return;
+  if (geo.building){ el.textContent = 'Rolling your bookings up to markets…'; return; }
+  if (geo.loading){ el.textContent = 'Reading your market data…'; return; }
+  const o = geo.over; if (!o){ el.textContent = ''; return; }
+  const a = o.upload.audit || {};
+  el.textContent = `Built from your bookings, ${a.dateFrom || ''} to ${a.dateTo || ''} · ${geoNum(a.mappedRowCount)} transactions placed in ${geoNum(o.marketCount)} markets`;
+}
+function geoBars(rows, fmt){
+  const max = Math.max(1, ...rows.map(r => r.v));
+  return rows.map(r => `<div class="geo-row"><div class="geo-row-l">${r.l}</div><div class="geo-track"><span style="width:${Math.max(1.5, r.v / max * 100)}%;background:${r.c || 'var(--ink)'}"></span></div><div class="geo-row-v">${fmt ? fmt(r) : r.v.toLocaleString()}</div></div>`).join('');
+}
+function geoStoreThumb(o){
+  const n = (o && o.stores && o.stores.count) || 0;
+  const rings = [10, 5, 3];
+  const circles = rings.map((m, i) => `<circle cx="70" cy="52" r="${m * 4.6}" fill="${i === 2 ? 'rgba(208,138,62,0.18)' : 'none'}" stroke="${i === 2 ? '#D08A3E' : '#B4B4BA'}" stroke-width="1.2" ${i === 0 ? 'stroke-dasharray="3 3"' : ''}/>`).join('');
+  const lbl = '';
+  return `<svg viewBox="0 0 150 104" class="geo-thumb" role="img" aria-label="Trade area rings around a store">${circles}${lbl}<circle cx="70" cy="52" r="3.4" fill="#1D1D1F"/></svg>
+    <div class="geo-cap">${n ? `${n} store${n === 1 ? '' : 's'} on file. Rings show the 3, 5 and 10 mile areas used in the analysis.` : 'No stores on file yet. Rings show the 3, 5 and 10 mile areas used in the analysis.'}</div>`;
+}
+function geoRenderTop(){
+  const el = document.getElementById('geoTop'); if (!el) return;
+  if (geo.building || geo.loading){ el.innerHTML = '<div class="geo-card geo-note">' + (geo.building ? 'Building your market file from bookings. This takes a few seconds.' : 'Loading…') + '</div>'; return; }
+  if (geo.err && !geo.over){ el.innerHTML = `<div class="geo-card geo-note">${escapeHtml(geo.err)}</div>`; return; }
+  const o = geo.over; if (!o){ el.innerHTML = ''; return; }
+  const reg = o.regions || {};
+  const regRows = [['US', 'United States'], ['CAN', 'Canada'], ['INTL', 'International']].map(([k, l]) => { const r = reg[k] || { customers: 0, share: 0 }; return { l, v: r.customers || 0, share: r.share || 0, c: 'var(--ink)' }; });
+  const top = (o.topMarkets || []).map(m => ({ l: escapeHtml(m.dmaName || m.dmaCode), v: m.populationIndex, sub: m.customers, c: 'var(--hdr-amber)' }));
+  const tiers = GEO_TIERS.map(t => ({ l: t, v: (o.tiers || {})[t] || 0, c: GEO_TIER_COL[t] }));
+  el.innerHTML = `<div class="stat-card-grid four geo-grid">
+    <div class="geo-card"><div class="geo-h">Customer counts by region</div>${geoBars(regRows, r => `${r.v.toLocaleString()} <small>${r.share}%</small>`)}<div class="geo-cap">Transactions with a postal code, grouped by the country of the postal code.</div></div>
+    <div class="geo-card"><div class="geo-h">Top 5 statistically relevant markets</div>${top.length ? geoBars(top, r => `${r.v}`) : '<div class="geo-cap" style="margin-top:6px;">No market over-indexes with enough volume to be statistically reliable yet.</div>'}<div class="geo-cap">Population index: share of your customers divided by share of population, times 100. 100 means in proportion to size.</div></div>
+    <div class="geo-card"><div class="geo-h">Markets by sales classification</div>${geoBars(tiers, r => r.v.toLocaleString())}<div class="geo-cap">${geoNum(o.marketCount)} markets in total, ${geoNum(o.relevantCount)} statistically relevant.</div></div>
+    <div class="geo-card"><div class="geo-h">Sales territories</div>${geoStoreThumb(o)}</div></div>`;
+}
+function geoRenderAi(){
+  const el = document.getElementById('geoAi'); if (!el) return;
+  if (!geo.over){ el.innerHTML = ''; return; }
+  const i = geo.ins;
+  if (!i){ el.innerHTML = '<div class="geo-card" style="margin-top:16px;"><div class="geo-h">Geographic sales trends and best practices</div><div class="geo-cap">Reading your market figures…</div></div>'; return; }
+  const trends = (i.trends || []).map(t => `<div class="geo-col"><div class="geo-sub">${escapeHtml(t.title)}</div><p>${escapeHtml(t.body)}</p></div>`).join('');
+  const prac = (i.practices || []).map(p => `<div class="geo-prac"><span class="geo-dot" style="background:${GEO_TIER_COL[p.marketType] || '#8E8E93'}"></span><div><div class="geo-sub">${escapeHtml(p.marketType)}</div><p>${escapeHtml(p.body)}</p></div></div>`).join('');
+  const watch = (i.watchouts || []).map(w => `<li>${escapeHtml(w)}</li>`).join('');
+  el.innerHTML = `<div class="geo-card" style="margin-top:16px;">
+    <div class="geo-head"><div class="geo-h" style="margin:0;">Geographic sales trends and best practices</div><span class="geo-pill">${i.source === 'ai' ? 'Written by AI Brain from your figures' : 'Summary from your figures'}</span></div>
+    <h3 class="geo-title">${escapeHtml(i.headline || '')}</h3>
+    <div class="geo-cols">${trends}</div>
+    <div class="geo-h" style="margin:18px 0 8px;">Best practice by market type</div>
+    <div class="geo-pracs">${prac}</div>
+    ${watch ? `<ul class="geo-watch">${watch}</ul>` : ''}</div>`;
+}
+function geoRenderTiles(){
+  const el = document.getElementById('geoTiles'); if (!el) return;
+  const T = [
+    { k: 'match', t: 'Match Market Testing', d: 'Ask what you want to test. Get test and control markets, budget, media and timeline.' },
+    { k: 'trade', t: 'Trade Territories', d: 'Resellers and franchise stores that sell to customers inside your trade areas.', badge: 'Next round' },
+    { k: 'map', t: 'Visualize Markets', d: 'A map of your markets, colored by what kind of market each one is.' }];
+  el.innerHTML = `<div class="geo-tiles">${T.map(x => `<button type="button" class="geo-tile ${geo.path === x.k ? 'on' : ''}" onclick="geoPick('${x.k}')"><span class="geo-tile-t">${x.t}${x.badge ? `<em>${x.badge}</em>` : ''}</span><span class="geo-tile-d">${x.d}</span></button>`).join('')}</div>`;
+}
+function geoPick(k){ geo.path = k; geoRenderTiles(); geoRenderBody(); const b = document.getElementById('geoBody'); if (b && b.scrollIntoView) b.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+function geoRenderBody(){
+  const el = document.getElementById('geoBody'); if (!el) return;
+  if (!geo.over){ el.innerHTML = ''; return; }
+  if (geo.path === 'match') el.innerHTML = geoMatchHtml();
+  else if (geo.path === 'map') el.innerHTML = geoMapHtml();
+  else el.innerHTML = geoTradeHtml();
+  if (geo.path === 'match'){ const q = document.getElementById('geoQ'); if (q) q.value = geo.q; geoRenderResult(); }
+}
+function geoTradeHtml(){
+  return `<div class="geo-card" style="margin-top:12px;"><div class="geo-h">Trade Territories</div><h3 class="geo-title">Coming in the next round</h3>
+    <p class="geo-p">For sales organizations that sell through resellers or franchise stores. You will add each location with store name, state, zip and country, and see which resellers and storefronts sell to customers inside the same 3, 5 and 10 mile rings used above.</p>
+    <p class="geo-p">Rings are straight-line distance. Drive-time areas need a routing source and will follow after that.</p></div>`;
+}
+// ---- Match Market Testing ----
+const GEO_EXAMPLES = ['Does direct mail lift bookings 10% in our top markets?', 'Can we raise average order value 5% with a new offer?', 'Test more frequency in Growth markets. We have $75,000.'];
+function geoMatchHtml(){
+  return `<div class="geo-card" style="margin-top:12px;">
+    <div class="geo-h">Ask AI Brain</div><h3 class="geo-title">What would you like to test?</h3>
+    <textarea id="geoQ" class="geo-q" rows="2" oninput="geo.q=this.value" placeholder="For example: Does direct mail lift bookings 10% in our top markets? We have $60,000 to spend."></textarea>
+    <div class="geo-ex">${GEO_EXAMPLES.map((x, i) => `<button type="button" class="kt-chip" onclick="geoUseExample(${i})">${escapeHtml(x)}</button>`).join('')}</div>
+    <div style="margin-top:12px;"><button type="button" class="geo-btn" id="geoAskBtn" onclick="geoAsk()">Ask AI Brain</button> <span class="geo-cap" id="geoAskMsg"></span></div></div>
+    <div id="geoResult"></div>`;
+}
+function geoUseExample(i){ geo.q = GEO_EXAMPLES[i]; const q = document.getElementById('geoQ'); if (q) q.value = geo.q; }
+async function geoAsk(){
+  if (geo.asking || !geo.over) return;
+  const q = (document.getElementById('geoQ') || {}).value || geo.q; geo.q = q;
+  geo.asking = true; const m = document.getElementById('geoAskMsg'), b = document.getElementById('geoAskBtn'); if (m) m.textContent = 'Working out markets, budget and timeline…'; if (b) b.disabled = true;
+  try {
+    const r = await authedFetch(geoUrl('geo-plan'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 90000, body: JSON.stringify({ question: q, uploadId: geo.over.upload.id }) });
+    const d = await r.json().catch(() => ({}));
+    geo.plan = r.ok ? d : { ok: false, reason: d.error || 'Could not build the plan.' };
+  } catch (e){ geo.plan = { ok: false, reason: 'Backend unreachable. Try again in a moment.' }; }
+  geo.asking = false; const m2 = document.getElementById('geoAskMsg'), b2 = document.getElementById('geoAskBtn'); if (m2) m2.textContent = ''; if (b2) b2.disabled = false;
+  geoRenderResult();
+  const rs = document.getElementById('geoResult'); if (rs && rs.scrollIntoView) rs.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function geoTimelineSvg(tl){
+  if (!tl || !tl.phases || !tl.phases.length) return '';
+  const t0 = new Date(tl.phases[0].start).getTime(), t1 = new Date(tl.phases[tl.phases.length - 1].end).getTime(), span = Math.max(1, t1 - t0);
+  const W = 1000, L = 140, R = 10, rows = 1 + (tl.flights || []).length, H = 46 + rows * 30;
+  const X = d => L + (new Date(d).getTime() - t0) / span * (W - L - R);
+  const col = { baseline: '#D2D2D7', setup: '#8E8E93', test: '#D08A3E', readout: '#1D1D1F' };
+  const mo = []; const d0 = new Date(t0); d0.setUTCDate(1); for (let d = new Date(d0); d.getTime() <= t1; d.setUTCMonth(d.getUTCMonth() + 1)){ if (d.getTime() >= t0) mo.push(new Date(d)); }
+  const grid = mo.map(d => { const x = X(d); return `<line x1="${x}" x2="${x}" y1="22" y2="${H - 6}" stroke="#E8E8ED"/><text x="${x + 3}" y="14" font-size="10" fill="#6E6E73">${d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })}</text>`; }).join('');
+  const ph = tl.phases.map(p => { const x = X(p.start), w = Math.max(2, X(p.end) - x); const dark = p.key === 'readout' || p.key === 'setup';
+    return `<rect x="${x}" y="30" width="${w}" height="22" rx="3" fill="${col[p.key] || '#8E8E93'}"><title>${escapeHtml(p.label)}: ${p.start} to ${p.end}</title></rect><text x="${x + 6}" y="45" font-size="10.5" font-weight="600" fill="${dark ? '#fff' : '#1D1D1F'}">${w > 70 ? escapeHtml(p.key === 'test' ? p.label : p.label.split(' (')[0]) : ''}</text>`; }).join('');
+  const fl = (tl.flights || []).map((f, i) => { const y = 62 + i * 30, x = X(f.start), w = Math.max(2, X(f.end) - x);
+    return `<text x="${L - 8}" y="${y + 15}" font-size="11" fill="#1D1D1F" text-anchor="end">${escapeHtml(f.channel.length > 18 ? f.channel.slice(0, 17) + '…' : f.channel)}</text><rect x="${x}" y="${y}" width="${w}" height="20" rx="3" fill="#D08A3E" opacity="0.85"><title>${escapeHtml(f.channel)}: ${f.start} to ${f.end}</title></rect>`; }).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" class="geo-tl" role="img" aria-label="Test timeline">${grid}<text x="${L - 8}" y="45" font-size="11" fill="#6E6E73" text-anchor="end">Phases</text>${ph}${fl}</svg>`;
+}
+function geoRenderResult(){
+  const el = document.getElementById('geoResult'); if (!el) return;
+  const p = geo.plan; if (!p){ el.innerHTML = ''; return; }
+  if (!p.ok){ el.innerHTML = `<div class="geo-card" style="margin-top:12px;"><div class="geo-h">Verilume result</div><p class="geo-p">${escapeHtml(p.reason || 'No plan could be built.')}</p></div>`; return; }
+  const d = p.design, c = p.cost, tl = p.timeline, f = p.forecast, rs = p.reasonable;
+  const metricTxt = d.metric === 'aov' ? 'average order value' : 'bookings';
+  const tests = d.pairs.map(x => x.test).join(', '), ctrls = d.pairs.map(x => x.control).join(', ');
+  const pairRows = d.pairs.map(x => `<tr><td>${x.n}</td><td><strong>${escapeHtml(x.test)}</strong><div class="geo-cap">${escapeHtml(x.testTier || '')}</div></td><td><strong>${escapeHtml(x.control)}</strong><div class="geo-cap">${escapeHtml(x.controlTier || '')}</div></td><td class="r">${x.testWeekly}</td><td class="r">${x.controlWeekly}</td><td>${escapeHtml(x.grade || '')}</td></tr>`).join('');
+  const costBlock = c ? `<div class="geo-kpis">
+      <div class="geo-kpi"><div class="geo-h">Cost per booking</div><div class="geo-kv">${geoMoney(c.costPerBooking)}</div></div>
+      <div class="geo-kpi"><div class="geo-h">Media held steady</div><div class="geo-kv">${geoMoney(c.held)}</div></div>
+      <div class="geo-kpi"><div class="geo-h">Extra media</div><div class="geo-kv">${c.extra ? geoMoney(c.extra.expected) : '—'}</div>${c.extra ? `<div class="geo-cap">range ${geoMoney(c.extra.low)} to ${geoMoney(c.extra.high)}</div>` : ''}</div>
+      <div class="geo-kpi"><div class="geo-h">Total test budget</div><div class="geo-kv">${geoMoney(c.total)}</div></div></div>
+    <div class="geo-cap" style="margin-top:6px;">${escapeHtml(c.source || '')}</div>` : '<p class="geo-p">No cost per booking could be found for this window, so budget is not shown.</p>';
+  const bc = p.budgetCheck; const bcHtml = bc ? `<p class="geo-p"><strong>${bc.fits ? 'Fits your budget.' : 'Does not fit your budget.'}</strong> ${bc.fits ? `Your ${geoMoney(bc.budget)} covers the plan.` : `The plan needs about ${geoMoney(bc.shortBy)} more than your ${geoMoney(bc.budget)}.${bc.achievableLiftPct != null ? ` With your budget you could aim for about a ${bc.achievableLiftPct}% lift instead.` : ''}${bc.coversHeldMedia ? '' : ' It does not cover the media you already hold in the test markets.'}`}</p>` : '';
+  const mediaRows = (p.media || []).map(m => `<tr><td>${escapeHtml(m.channel)}</td><td class="r">${m.share}%</td><td class="r">${geoMoney(m.held)}</td><td class="r">${geoMoney(m.extra)}</td></tr>`).join('');
+  const fc = f && f.available ? `<p class="geo-p"><strong>Forecast.</strong> Without the test, these markets would be expected to book about ${geoNum(f.baselineBookings)} over the test weeks (range ${geoNum(f.low)} to ${geoNum(f.high)}). A ${d.liftPct}% lift would add about ${geoNum(f.expectedIncremental)}.</p>`
+    : `<p class="geo-p"><strong>Forecast.</strong> ${escapeHtml((f && f.reason) || 'There is not enough history to forecast.')} ${rs && rs.ok ? 'The test is still reasonable to run: it does not need a forecast, because the control markets provide the comparison.' : ''}</p>`;
+  el.innerHTML = `<div class="geo-card" style="margin-top:12px;">
+    <div class="geo-head"><div class="geo-h" style="margin:0;">Verilume result</div><span class="geo-pill ${rs && rs.ok ? '' : 'warn'}">${rs && rs.ok ? 'Reasonable to run' : 'Needs a rethink'}</span></div>
+    <h3 class="geo-title">Run in ${escapeHtml(tests)} against ${escapeHtml(ctrls)} for ${d.weeks} weeks to see a ${d.liftPct}% lift in ${metricTxt}.</h3>
+    <p class="geo-p">${escapeHtml(rs ? rs.why : '')}</p>
+    <div class="geo-h" style="margin:16px 0 6px;">Test and control markets</div>
+    <div class="geo-scroll"><table class="geo-t"><thead><tr><th>#</th><th>Test market</th><th>Control market</th><th class="r">Test per week</th><th class="r">Control per week</th><th>Readiness</th></tr></thead><tbody>${pairRows}</tbody></table></div>
+    <div class="geo-h" style="margin:18px 0 6px;">Budget</div>${costBlock}${bcHtml}
+    ${mediaRows ? `<div class="geo-h" style="margin:16px 0 6px;">Media to include</div><div class="geo-scroll"><table class="geo-t"><thead><tr><th>Channel</th><th class="r">Share</th><th class="r">Held steady</th><th class="r">Extra</th></tr></thead><tbody>${mediaRows}</tbody></table></div>` : ''}
+    <div class="geo-h" style="margin:18px 0 6px;">Timeline</div>${geoTimelineSvg(tl)}
+    <div class="geo-h" style="margin:12px 0 4px;">Forecast</div>${fc}
+    ${(p.notes || []).filter(n => !(f && !f.available && n === f.reason)).map(n => `<p class="geo-cap">${escapeHtml(n)}</p>`).join('')}
+    <div class="geo-dl"><button type="button" class="geo-btn" onclick="geoDownload()">Download all markets with statistical detail (Excel)</button><button type="button" class="geo-link" onclick="geoToggleDetail()">${geo.detailOpen ? 'Hide' : 'Show'} readiness by market pair</button> <span class="geo-cap" id="geoDlNote"></span></div>
+    <div id="geoDetail"></div></div>`;
+  if (geo.detailOpen) geoShowDetail();
+}
+async function geoDownload(){
+  const note = document.getElementById('geoDlNote'); if (!geo.over) return;
+  if (note) note.textContent = 'Building your Excel file…';
+  try {
+    const r = await authedFetch(geoUrl(`market-customer-uploads/${encodeURIComponent(geo.over.upload.id)}/export.xlsx`), { timeoutMs: 90000 });
+    if (!r.ok){ if (note) note.textContent = 'Could not build the Excel file right now.'; return; }
+    const blob = await r.blob(), url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = 'Verilume-all-markets-detail.xlsx'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    if (note) note.textContent = 'Downloaded. Check your downloads folder.';
+  } catch (e){ if (note) note.textContent = 'Backend unreachable. Try again.'; }
+}
+function geoToggleDetail(){ geo.detailOpen = !geo.detailOpen; geoRenderResult(); }
+function geoShowDetail(){
+  const host = document.getElementById('geoDetail'), card = document.getElementById('mouResultsCard'); if (!host || !card || !geo.over) return;
+  host.appendChild(card); card.style.display = 'block'; card.style.marginTop = '14px';
+  if (typeof mouLoadUploadPicker === 'function') mouLoadUploadPicker(geo.over.upload.id);
+}
+// ---- Visualize Markets ----
+function geoMapHtml(){
+  const o = geo.over, ms = o.markets || [];
+  const us = ms.filter(m => (m.country || 'US') === 'US'), placed = us.filter(m => m.lat != null && m.lng != null), other = ms.length - us.length, unplaced = us.length - placed.length;
+  const parts = GEO_US_SHAPE.split('|'), maxC = Math.max(1, ...placed.map(m => m.customers || 0));
+  const dots = placed.filter(m => !geo.hide[m.tier]).sort((a, b) => (b.customers || 0) - (a.customers || 0)).map(m => {
+    const [x, y] = geoProj(m.lng, m.lat), r = 4 + Math.sqrt((m.customers || 0) / maxC) * 20, col = GEO_TIER_COL[m.tier] || '#8E8E93';
+    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(1)}" fill="${col}" fill-opacity="${m.relevant ? 0.82 : 0.32}" stroke="${m.tier === 'Monitor' ? '#8E8E93' : '#fff'}" stroke-width="1"><title>${escapeHtml(m.dmaName)}: ${escapeHtml(m.tier)}, ${geoNum(m.customers)} customers, population index ${m.populationIndex == null ? 'n/a' : m.populationIndex}${m.relevant ? ', statistically relevant' : ', not statistically relevant'}</title></circle>`;
+  }).join('');
+  const leg = GEO_TIERS.map(t => `<button type="button" class="geo-leg ${geo.hide[t] ? 'off' : ''}" onclick="geoToggleTier('${t}')"><span class="geo-dot" style="background:${GEO_TIER_COL[t]}"></span>${t}</button>`).join('');
+  return `<div class="geo-card" style="margin-top:12px;"><div class="geo-head"><div class="geo-h" style="margin:0;">Visualize markets</div><button type="button" class="geo-btn sm" onclick="geoDownload()">Excel with all markets</button></div>
+    <p class="geo-p" style="margin-top:8px;">Each bubble is a market. Color is the market type, size is customers. Solid bubbles are statistically relevant; faded bubbles do not have enough volume to be sure.</p>
+    <div class="geo-legend">${leg}</div>
+    ${placed.length ? `<svg viewBox="0 0 960 500" class="geo-map" role="img" aria-label="Map of markets"><path d="${parts[0]}" fill="#EEEEF1"/><path d="${parts[1] || ''}" fill="none" stroke="#fff" stroke-width="1"/>${dots}</svg>` : '<div class="geo-cap" style="margin:16px 0;">No markets could be placed on the map yet. The zip location reference is needed to place them.</div>'}
+    <div class="geo-cap">${placed.length} markets on the map${unplaced ? `, ${unplaced} could not be placed` : ''}${other ? `, ${other} outside the US are in the Excel file` : ''}. <span id="geoDlNote"></span></div></div>`;
+}
+function geoToggleTier(t){ geo.hide[t] = !geo.hide[t]; geoRenderBody(); }
 
 // ---------- Booking history as the Match Market source (2026-10-07) ----------
 let mouBk = { info: null, from: '', to: '', groups: null, weight: 'count', countBy: 'transactions', busy: false, biz: 'auto', presetDone: false, auto: null };
@@ -63758,10 +64073,7 @@ function goToStep(step, arg, arg2, arg3){
     document.getElementById('step-websiteTraffic').classList.add('active');
   } else if (step === 'marketOptimization'){
     mouResetImport();
-    mouLoadHistory();
-    if (typeof mouLoadUploadPicker === 'function') mouLoadUploadPicker();
-    if (typeof mouBkLoad === 'function') mouBkLoad();
-    if (typeof mstLoad === 'function') mstLoad();
+    if (typeof geoOpen === 'function') geoOpen();
     document.getElementById('step-marketOptimization').classList.add('active');
   } else if (step === 'taxonomyManager'){
     // 2026-09-11 — step-taxonomyManager no longer exists; Product Groups &
