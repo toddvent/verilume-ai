@@ -10992,7 +10992,9 @@ function buildPairReadiness(rows, geoLevel, pairs, dmaNames, audit){
   });
   const summary = { Strong: 0, Usable: 0, Thin: 0, 'Too small': 0 };
   out.forEach(x => { summary[x.grade]++; });
-  return { pairs: out, summary, periodDays: Math.round(periodDays), assumedPeriod,
+  const pooled = out.length > 1 ? { pairs: out.length, testVolume: out.reduce((a, x) => a + x.testVolume, 0), controlVolume: out.reduce((a, x) => a + x.controlVolume, 0) } : null;
+  const aovCv = audit && Number(audit.aovCv) > 0 ? Number(audit.aovCv) : null;
+  return { pairs: out, summary, pooled, aovCv: aovCv != null ? aovCv : 0.8, aovCvAssumed: aovCv == null, periodDays: Math.round(periodDays), assumedPeriod,
     method: 'Detectable lift at 95% confidence / 80% power, Poisson counts with a x2 allowance for the pre-period baseline. Market-to-market noise is not included, so real tests need somewhat more volume than shown.',
     periodNote: assumedPeriod ? 'This upload does not say what period it covers, so its counts are treated as one year. Enter the period on the upload for tighter numbers.' : `Volumes are the ${Math.round(periodDays)} days this upload covers, converted to a weekly rate.` };
 }
@@ -38903,7 +38905,12 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const ds = (sc.rows.length ? (body.from || sc.minD) : null), de = (body.to || sc.maxD);
       let periodDays = null;
       if (ds && de){ const d = Math.round((new Date(de) - new Date(ds)) / 86400000) + 1; if (d > 0 && d < 4000) periodDays = d; }
-      const audit = { source: 'bookings', countBy, totalRowsProvided: sc.rows.length, mappedRowCount: sc.rows.length - agg.excl.missing_zip - agg.excl.malformed_zip,
+      // order-value spread (coefficient of variation of revenue per booking) so the AOV readiness uses this client's own variability
+      let aovCv = null;
+      try { const byCode = {}; sc.rows.forEach(r => { if (r.code != null) byCode[r.code] = (byCode[r.code] || 0) + r.rev; });
+        const vals = Object.keys(byCode).map(k => byCode[k]).filter(v => v > 0);
+        if (vals.length > 30){ const m = vals.reduce((a, b) => a + b, 0) / vals.length; const v = vals.reduce((a, b) => a + (b - m) * (b - m), 0) / (vals.length - 1); aovCv = m > 0 ? Math.round(Math.sqrt(v) / m * 1000) / 1000 : null; } } catch (e){ aovCv = null; }
+      const audit = { source: 'bookings', aovCv, countBy, totalRowsProvided: sc.rows.length, mappedRowCount: sc.rows.length - agg.excl.missing_zip - agg.excl.malformed_zip,
         excludedByReason: { missing_zip: agg.excl.missing_zip, malformed_zip: agg.excl.malformed_zip }, uniqueZipsMapped: agg.rows.length, byCountry: agg.byCountry,
         dateFrom: ds, dateTo: de, periodDays, productGroups: Array.isArray(body.productGroups) && body.productGroups.length ? body.productGroups : null };
       const now = new Date().toISOString();
