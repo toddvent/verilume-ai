@@ -11149,7 +11149,7 @@ const GEO_NEW_CHANNELS = [
   { name: 'Paid search', rx: /paid search|\bsem\b|google ads/i },
   { name: 'Radio', rx: /\bradio\b/i },
   { name: 'Out of home', rx: /out of home|\booh\b|billboard|transit/i }];
-const GEO_TEST_SHARE = 0.10;
+const GEO_TEST_SHARE = 0.10, GEO_MAX_WEEKS = 13;
 // Media economics per channel, used to price a market test from first principles:
 //   per market per week = target audience x weekly reach x weekly frequency x CPM / 1000
 //   direct mail          = mailable households x share mailed x drops x cost per piece
@@ -11234,11 +11234,11 @@ function geoCleanAssumptions(a){ const o = {}; if (!a || typeof a !== 'object') 
 function geoMarketMediaCost(eco, pop, W, a, share){
   const P = Number(pop) > 0 ? Number(pop) : 0;
   if (eco.kind === 'piece'){
-    const hh = P / GEO_PERSONS_PER_HH * (share != null ? Math.min(1, share) : 1), cov = (a.coverage != null ? a.coverage : eco.coverage) / 100, per = a.perPiece != null ? a.perPiece : eco.perPiece, every = a.everyWeeks != null ? a.everyWeeks : eco.everyWeeks;
+    const sc = a.scale != null ? a.scale : 1, hh = P / GEO_PERSONS_PER_HH * (share != null ? Math.min(1, share) : 1), cov = (sc < 1 ? Math.max(15, (a.coverage != null ? a.coverage : eco.coverage) * sc) : (a.coverage != null ? a.coverage : eco.coverage)) / 100, per = a.perPiece != null ? a.perPiece : eco.perPiece, every = a.everyWeeks != null ? a.everyWeeks : eco.everyWeeks;
     const drops = Math.max(1, Math.ceil(W / every)), pieces = Math.round(hh * cov * drops);
     return { audience: Math.round(hh), units: pieces, unitLabel: 'pieces', total: pieces * per, perWeek: pieces * per / W };
   }
-  const reach = (a.reach != null ? a.reach : eco.reach) / 100, freq = a.freq != null ? a.freq : eco.freq, cpm = a.cpm != null ? a.cpm : eco.cpm;
+  const sc2 = a.scale != null ? a.scale : 1, reach = (sc2 < 1 ? Math.max(8, (a.reach != null ? a.reach : eco.reach) * sc2) : (a.reach != null ? a.reach : eco.reach)) / 100, freq = a.freq != null ? a.freq : eco.freq, cpm = a.cpm != null ? a.cpm : eco.cpm;
   const aud = P * (share != null ? share : GEO_ADULT_SHARE), wkImp = aud * reach * freq, wkCost = wkImp * cpm / 1000;
   return { audience: Math.round(aud), units: Math.round(wkImp), unitLabel: 'impressions per week', total: wkCost * W, perWeek: wkCost };
 }
@@ -11382,10 +11382,10 @@ async function buildGeoPlan(accountId, upload, analysis, question, planOpts){
   if (!r || !r.pairs || !r.pairs.length) return { ok: false, reason: 'There are not enough markets with volume to form test and control pairs yet. Add more booking history or widen the window.' };
   const cost = r.costing || null; const cats = cost && cost.categories ? cost.categories : [];
   const intent = await geoParseIntent(question, cats.map(c => c.name));
-  const aov = intent.metric === 'aov'; const cv = aov ? (r.aovCv || 0.8) : 1; const lift = (intent.liftPct || 10) / 100;
+  const aov = intent.metric === 'aov'; const cv = aov ? (r.aovCv || 0.8) : 1; let lift = (intent.liftPct || 10) / 100; const askedLift = lift;
   const wk = (r.periodDays || 365) / 7;
   const sorted = r.pairs.slice().sort((a, b) => ((a.mdePct.w13 == null ? 9e9 : a.mdePct.w13) - (b.mdePct.w13 == null ? 9e9 : b.mdePct.w13)));
-  const need = (nT, nC) => { const a = nT / wk, b = nC / wk; return (a > 0 && b > 0) ? Math.max(4, Math.ceil(GEO_DESIGN * (1 / a + 1 / b) * Math.pow(GEO_Z * cv / lift, 2))) : null; };
+  const need = (nT, nC, L) => { const a = nT / wk, b = nC / wk; const LL = L != null ? L : lift; return (a > 0 && b > 0) ? Math.max(4, Math.ceil(GEO_DESIGN * (1 / a + 1 / b) * Math.pow(GEO_Z * cv / LL, 2))) : null; };
   const per = Math.max(100, Number(planOpts && planOpts.floorPerMarketWeek) || 1000);
   // Which new channel (if any) the question names, when it is not already in the budget.
   const named = cats.find(c => intent.channels.includes(c.name));
@@ -11418,25 +11418,46 @@ async function buildGeoPlan(accountId, upload, analysis, question, planOpts){
   const skippedPairs = sorted.length - keptPairs.length;
   if (!keptPairs.length) return { ok: false, reason: 'None of the matched markets contain enough of your target audience for this channel. Check the audience generations and Wealth Index on Company Profile, or load Census demographics for more zip codes.' };
   const sortedUse = keptPairs.map(swapPair);
-  const modelNeeded = (pairsK, Wk) => modelEcos.reduce((sum, e) => sum + pairsK.reduce((s2, pr) => s2 + geoMarketMediaCost(e, popOf(pr.testDma), Wk, ass, shareOf(pr.testDma)).total, 0), 0);
-  // Walk the market pairs from strongest to weakest and keep the number of test markets that finishes soonest while the weekly minimum stays affordable.
-  const opts2 = []; { let a2 = 0, c2 = 0; for (let k = 1; k <= Math.min(sortedUse.length, 12); k++){ a2 += sortedUse[k - 1].testVolume; c2 += sortedUse[k - 1].controlVolume; const w2 = need(a2, c2); if (w2 != null) opts2.push({ k, W: w2, nT: a2, nC: c2, needed: modelEcos.length ? modelNeeded(sortedUse.slice(0, k), w2) : per * k * w2 }); } }
-  if (!opts2.length) return { ok: false, reason: 'The recommended markets have no volume in this window.' };
-  const inTime = opts2.filter(o => o.W <= 26);
-  const pool = inTime.length ? inTime : opts2;
-  const afford = testFunds ? pool.filter(o => o.needed <= testFunds.amount) : pool;
-  let pick;
-  if (afford.length) pick = afford.slice().sort((x, y) => x.W - y.W || x.k - y.k)[0];
-  else pick = pool.slice().sort((x, y) => x.needed - y.needed)[0];
-  const fundingShort = !!(testFunds && !afford.length);
-  const chosen = sortedUse.slice(0, pick.k), nT = pick.nT, nC = pick.nC, W = pick.W;
+  const modelNeeded = (pairsK, Wk, assX) => modelEcos.reduce((sum, e) => sum + pairsK.reduce((s2, pr) => s2 + geoMarketMediaCost(e, popOf(pr.testDma), Wk, assX, shareOf(pr.testDma)).total, 0), 0);
+  // Candidate designs. With a priced channel, the pairs are ordered by readable volume per media dollar, not by size: the biggest markets
+  // read best but cost the most, and the test has to fit what the client would actually set aside for it. If nothing fits at full weight,
+  // reach is stepped down (never below a minimum credible weight) before the plan is called unfundable.
+  const designFor = (list, assX, L) => { const o = []; let a2 = 0, c2 = 0; for (let k = 1; k <= Math.min(list.length, 12); k++){ a2 += list[k - 1].testVolume; c2 += list[k - 1].controlVolume; const w2 = need(a2, c2, L); if (w2 != null) o.push({ L, k, W: w2, nT: a2, nC: c2, needed: modelEcos.length ? modelNeeded(list.slice(0, k), w2, assX) : per * k * w2 }); } return o; };
+  let sortedPick = sortedUse, assUse = ass, intensityScale = 1, opts2 = [], pick = null, fundingShort = false, refAsked = null;
+  const choose = o => { const inT = o.filter(x => x.W <= 26), pl = inT.length ? inT : o; const af = testFunds ? pl.filter(x => x.needed <= testFunds.amount) : pl; return { pl, af }; };
+  if (modelEcos.length){
+    const weeklyAt = pr => modelEcos.reduce((sum, e) => sum + geoMarketMediaCost(e, popOf(pr.testDma), 13, ass, shareOf(pr.testDma)).perWeek, 0) || 1;
+    sortedPick = sortedUse.slice().sort((x, y) => ((y.testVolume + y.controlVolume) / weeklyAt(y)) - ((x.testVolume + x.controlVolume) / weeklyAt(x)));
+    // First choice: the lift that was asked for. If it cannot be read inside one quarter within the test funds, the lift the funds can
+    // read in one quarter is offered instead, so the plan is always one a client could actually run.
+    const liftSteps = Array.from(new Set([askedLift, 0.15, 0.20, 0.25, 0.30].filter(x => x >= askedLift - 1e-9))).sort((x, y) => x - y);
+    let found = false;
+    for (const L of liftSteps){
+      for (const sc of [1, 0.75, 0.5, 0.35]){
+        const a3 = Object.assign({}, ass, { scale: sc }); const o = designFor(sortedPick, a3, L); if (!o.length) continue;
+        const af = o.filter(x => x.W <= GEO_MAX_WEEKS && (!testFunds || x.needed <= testFunds.amount));
+        if (L === askedLift && sc === 1 && !refAsked){ const cheap = o.slice().sort((x, y) => x.needed - y.needed)[0]; refAsked = { W: cheap.W, needed: Math.round(cheap.needed) }; const fast = o.filter(x => x.W <= GEO_MAX_WEEKS).sort((x, y) => x.needed - y.needed)[0]; if (fast) refAsked.quarterNeeded = Math.round(fast.needed); }
+        if (af.length){ opts2 = o; assUse = a3; intensityScale = sc; pick = af.slice().sort((x, y) => x.needed - y.needed || x.W - y.W)[0]; lift = L; found = true; break; }
+      }
+      if (found) break;
+    }
+    if (!found){ const o = designFor(sortedPick, Object.assign({}, ass, { scale: 1 }), askedLift); if (o.length){ opts2 = o; assUse = Object.assign({}, ass, { scale: 1 }); pick = o.slice().sort((x, y) => x.needed - y.needed)[0]; } }
+    fundingShort = !!(testFunds && pick && pick.needed > testFunds.amount);
+    if (fundingShort){ assUse = Object.assign({}, ass, { scale: 1 }); intensityScale = 1; }
+  } else {
+    opts2 = designFor(sortedUse, ass, lift); const { pl, af } = choose(opts2);
+    if (opts2.length){ if (af.length) pick = af.slice().sort((x, y) => x.W - y.W || x.k - y.k)[0]; else pick = pl.slice().sort((x, y) => x.needed - y.needed)[0]; }
+    fundingShort = !!(testFunds && pick && !af.length);
+  }
+  if (!pick) return { ok: false, reason: 'The recommended markets have no volume in this window.' };
+  const chosen = sortedPick.slice(0, pick.k), nT = pick.nT, nC = pick.nC, W = pick.W;
   const wT = nT / wk, wC = nC / wk;
   let cpb = null;
   if (cost && newCh){ cpb = cost.costPerBooking != null ? cost.costPerBooking : null; }
   else if (cost){ cpb = (cost.basis === 'cards' && allSpend > 0) ? cost.costPerBooking * (selSpend / allSpend) : (cost.transactions > 0 && selSpend > 0 ? selSpend / cost.transactions : null); }
   const mult = 2; const bT = wT * W, bC = wC * W, inc = lift * bT;
   const modelRows = [];
-  if (modelEcos.length) modelEcos.forEach(e => chosen.forEach(pr => { const c = geoMarketMediaCost(e, popOf(pr.testDma), W, ass, shareOf(pr.testDma)); const au = audience.byDma[String(pr.testDma)] || {}; modelRows.push({ channel: e.name, market: pr.testName, population: popOf(pr.testDma), profileSharePct: au.share != null ? Math.round(au.share * 1000) / 10 : null, audienceBasis: au.basis || 'adults 18+', coveragePct: au.coveragePct != null ? au.coveragePct : null, audience: c.audience, units: c.units, unitLabel: c.unitLabel, perWeek: Math.round(c.perWeek), total: Math.round(c.total) }); }));
+  if (modelEcos.length) modelEcos.forEach(e => chosen.forEach(pr => { const c = geoMarketMediaCost(e, popOf(pr.testDma), W, assUse, shareOf(pr.testDma)); const au = audience.byDma[String(pr.testDma)] || {}; modelRows.push({ channel: e.name, market: pr.testName, population: popOf(pr.testDma), profileSharePct: au.share != null ? Math.round(au.share * 1000) / 10 : null, audienceBasis: au.basis || 'adults 18+', coveragePct: au.coveragePct != null ? au.coveragePct : null, audience: c.audience, units: c.units, unitLabel: c.unitLabel, perWeek: Math.round(c.perWeek), total: Math.round(c.total) }); }));
   const newNeeded = modelEcos.length ? Math.round(modelRows.reduce((a, x) => a + x.total, 0)) : per * chosen.length * W;
   const held = newCh ? 0 : (cpb != null ? cpb * bT : null);
   const extra = modelEcos.length ? { low: null, expected: newNeeded, high: null } : ((cpb != null && !aov) ? { low: inc * cpb, expected: inc * cpb * mult, high: inc * cpb * mult * 1.5 } : null);
@@ -11462,6 +11483,12 @@ async function buildGeoPlan(accountId, upload, analysis, question, planOpts){
   const forecast = geoForecast(accountId, testCodes, controlCodes, W, geoIso(testStart), lift);
   const fits13 = W <= 13, fits26 = W <= 26;
   const reasonable = W <= 26 ? { ok: true, why: fits13 ? 'The pooled markets can show this lift within one quarter.' : 'The pooled markets can show this lift within two quarters.' } : { ok: false, why: `At this size the test needs ${W} weeks to show a ${Math.round(lift * 100)}% ${aov ? 'change in order value' : 'lift'}. Pool more markets, accept a larger minimum lift, or test in larger geographies.` };
+  const liftAdjusted = modelEcos.length > 0 && Math.abs(lift - askedLift) > 1e-9;
+  if (modelEcos.length){
+    if (fundingShort) reasonable.ok = false, reasonable.why = `Even the smallest readable design costs about ${'$' + Math.round(newNeeded).toLocaleString()} against test funds of ${testFunds ? '$' + Math.round(testFunds.amount).toLocaleString() : 'the amount you set'}. Raise the test budget, or run it as a smaller pilot in fewer markets.`;
+    else if (liftAdjusted) reasonable.ok = true, reasonable.why = `A ${Math.round(askedLift * 100)}% lift would need ${refAsked && refAsked.W <= 52 ? refAsked.W + ' weeks' : 'far more than a quarter'}${refAsked && refAsked.quarterNeeded ? ' or about $' + refAsked.quarterNeeded.toLocaleString() + ' to do it in a quarter' : ''} at full weight, more than the test funds allow. Inside ${testFunds ? '$' + Math.round(testFunds.amount).toLocaleString() : 'the funds'}, a ${W}-week test can reliably show a lift of ${Math.round(lift * 100)}% or more.`;
+    else reasonable.why = `A ${W}-week test can show a ${Math.round(lift * 100)}% lift within the test funds.`;
+  }
   const notes = []; if (channelNote) notes.push(channelNote);
   if (aov) notes.push('Average order value changes come from the offer, product mix or creative you test, so the plan shows the media you hold steady and no extra media.');
   if (newCh) notes.push(`${newCh.name} is not an active channel in your budget. A market test is how new channels get explored, so it was included anyway. Your existing media keeps running as normal in all markets and is not part of the test cost. The weekly reach, frequency and CPM behind the budget are planning defaults; edit them under Media assumptions and ask again.`);
@@ -11472,14 +11499,14 @@ async function buildGeoPlan(accountId, upload, analysis, question, planOpts){
   const nm = analysis.dmaExport && analysis.dmaExport.dmas ? analysis.dmaExport.dmas : [];
   const info = c => { const d = nm.find(x => String(x.dmaCode) === String(c)); return d ? { tier: d.opportunityTier, relevant: !!d.relevant, populationIndex: d.populationIndex } : {}; };
   const pairsOut = chosen.map((p, i) => ({ n: i + 1, test: p.testName, control: p.controlName, testDma: p.testDma, controlDma: p.controlDma, testWeekly: p.weeklyTest, controlWeekly: p.weeklyControl, grade: p.grade, mde8: p.mdePct && p.mdePct.w8, testTier: info(p.testDma).tier || null, controlTier: info(p.controlDma).tier || null }));
-  return { ok: true, intent, design: { metric: intent.metric, liftPct: Math.round(lift * 100), weeks: W, pairs: pairsOut, pooled: { testWeekly: Math.round(wT * 10) / 10, controlWeekly: Math.round(wC * 10) / 10, testBookings: Math.round(bT), controlBookings: Math.round(bC) }, cv: aov ? cv : null },
+  return { ok: true, intent, design: { liftAsked: Math.round(askedLift * 100), liftAdjusted: liftAdjusted, intensityScale: intensityScale, metric: intent.metric, liftPct: Math.round(lift * 100), weeks: W, pairs: pairsOut, pooled: { testWeekly: Math.round(wT * 10) / 10, controlWeekly: Math.round(wC * 10) / 10, testBookings: Math.round(bT), controlBookings: Math.round(bC) }, cv: aov ? cv : null },
     cost: cost ? { costPerBooking: cpb != null ? Math.round(cpb * 100) / 100 : null, multiple: mult, held: held != null ? Math.round(held) : null, extra: extra ? { low: extra.low != null ? Math.round(extra.low) : null, expected: Math.round(extra.expected), high: extra.high != null ? Math.round(extra.high) : null } : null, total: total != null ? Math.round(total) : null, source: cost.source, avgOrderValue: cost.avgOrderValue } : null,
     floor: (() => {
       const nM = chosen.length, needed = modelEcos.length ? newNeeded : per * nM * W;
       const funding = testFunds ? testFunds.amount : null;
       const marketWeeks = funding != null ? Math.floor(funding / per) : null;
       return { model: modelEcos.length > 0, rows: modelRows, audienceProfile: audience.profile, assumptionsUsed: modelEcos.map(e => e.kind === 'piece' ? { rateSource: e.rateSource, channel: e.name, kind: 'piece', perPiece: ass.perPiece != null ? ass.perPiece : e.perPiece, coverage: ass.coverage != null ? ass.coverage : e.coverage, everyWeeks: ass.everyWeeks != null ? ass.everyWeeks : e.everyWeeks } : { rateSource: e.rateSource, channel: e.name, kind: 'cpm', cpm: ass.cpm != null ? ass.cpm : e.cpm, reach: ass.reach != null ? ass.reach : e.reach, freq: ass.freq != null ? ass.freq : e.freq }),
-        perMarketWeek: modelEcos.length ? Math.round(needed / Math.max(1, nM * W)) : per, testMarkets: nM, weeks: W, needed, funding, fundingBasis: testFunds ? testFunds.basis : '', enough: funding != null ? funding >= needed : null, newChannel: newCh ? newCh.name : null,
+        perMarketWeek: modelEcos.length ? Math.round(needed / Math.max(1, nM * W)) : per, testMarkets: nM, weeks: W, needed, funding, fundingBasis: testFunds ? testFunds.basis : '', enough: funding != null ? funding >= needed : null, newChannel: newCh ? newCh.name : null, annualMedia: allSpend0 > 0 ? Math.round(allSpend0) : null, intensityScale: intensityScale,
         costPerIncremental: (!aov && inc > 0) ? Math.round(needed / inc) : null, incrementalBookings: Math.round(inc),
         affordableWeeks: marketWeeks != null && nM ? Math.floor(marketWeeks / nM) : null, affordableMarkets: marketWeeks != null && W ? Math.floor(marketWeeks / W) : null };
     })(),
