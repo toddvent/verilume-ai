@@ -11143,8 +11143,22 @@ function geoLatestUpload(accountId, uploadId){
   if (uploadId) return db.prepare('SELECT * FROM market_customer_uploads WHERE id = ? AND accountId = ?').get(uploadId, accountId) || null;
   return db.prepare('SELECT * FROM market_customer_uploads WHERE accountId = ? ORDER BY createdAt DESC LIMIT 1').get(accountId) || null;
 }
+// Uploads never change after they are written, so the heavy roll-up is computed once per upload and kept for ten minutes.
+const geoCache = new Map();
+function geoCached(key, ttlMs, fn){
+  const hit = geoCache.get(key); if (hit && Date.now() - hit.at < ttlMs) return hit.v;
+  const v = fn(); geoCache.set(key, { at: Date.now(), v });
+  if (geoCache.size > 40){ const oldest = [...geoCache.entries()].sort((a, b) => a[1].at - b[1].at)[0]; if (oldest) geoCache.delete(oldest[0]); }
+  return v;
+}
+function geoAnalysis(accountId, upload, withCost){
+  return geoCached(`an|${accountId}|${upload.id}|${withCost ? 1 : 0}`, 600000, () => computeMarketUploadAnalysis(accountId, upload, { skipZipMatching: true, skipTradeAreas: true, skipCosting: !withCost }));
+}
 function geoOverviewPayload(accountId, upload){
-  const analysis = computeMarketUploadAnalysis(accountId, upload, {});
+  return geoCached(`ov|${accountId}|${upload.id}`, 300000, () => geoOverviewCompute(accountId, upload));
+}
+function geoOverviewCompute(accountId, upload){
+  const analysis = geoAnalysis(accountId, upload, false);
   const dmas = (analysis.dmaExport && analysis.dmaExport.dmas) || [];
   const tiers = {}; GEO_TIER_ORDER.forEach(t => { tiers[t] = 0; }); dmas.forEach(d => { if (tiers[d.opportunityTier] != null) tiers[d.opportunityTier]++; });
   const relevantTop = dmas.filter(d => d.relevant && d.zScore > 0 && d.populationIndex != null).sort((a, b) => b.populationIndex - a.populationIndex).slice(0, 5)
@@ -11355,7 +11369,8 @@ function computeMarketUploadAnalysis(accountId, upload, options){
   const composite = computeCompositeScore(penetration, { volumeWeight, indexWeight });
   const holdout = computeHoldoutSplit(composite.rows, holdoutFraction);
   const demographic = computeDemographicIndex(rows.map(r => r.zip));
-  const matching = computeMatchedMarketPairs(composite.rows, demographic, holdout.holdoutZips);
+  // The zip-pair search is quadratic in zips; the Geographic Optimization page never reads it, so it can opt out.
+  const matching = opts.skipZipMatching ? { pairs: [], note: 'Zip-level pairing skipped for this view.' } : computeMatchedMarketPairs(composite.rows, demographic, holdout.holdoutZips);
   const audit = upload.auditJson ? JSON.parse(upload.auditJson) : null;
   let dma = null;
   try { dma = computeDmaRollup(rows, upload.weightMode); } catch (e){ dma = { available: false, note: `DMA roll-up not readable (${String(e && e.message || e).slice(0, 120)})`, dmas: [] }; }
@@ -11391,12 +11406,12 @@ function computeMarketUploadAnalysis(accountId, upload, options){
   let storeTradeArea = null;
   try {
     const acctStores = db.prepare('SELECT id, storeId AS "storeId", name, address, lat, lng FROM account_stores WHERE accountId = ?').all(accountId);
-    if (acctStores.length) storeTradeArea = computeStoreTradeAreas(rows, acctStores, radii, upload.weightMode);
+    if (acctStores.length && !opts.skipTradeAreas) storeTradeArea = computeStoreTradeAreas(rows, acctStores, radii, upload.weightMode);
   } catch (e){
     storeTradeArea = { available: false, note: `Store trade area not readable (${String(e && e.message || e).slice(0, 120)})`, stores: [] };
   }
   let readiness = null;
-  try { readiness = buildPairReadiness(rows, 'zip', (dmaExport.matching && dmaExport.matching.pairs) || [], dmaNameMap(dmaExport.dmas), audit); if (readiness) readiness.costing = getCostPerBookingForWindow(accountId, audit); } catch (e){ readiness = null; }
+  try { readiness = buildPairReadiness(rows, 'zip', (dmaExport.matching && dmaExport.matching.pairs) || [], dmaNameMap(dmaExport.dmas), audit); if (readiness && !opts.skipCosting) readiness.costing = getCostPerBookingForWindow(accountId, audit); } catch (e){ readiness = null; }
   return {
     readiness, regions: geoRegionCounts(rows), uploadId: upload.id, label: upload.label, rowCount: rows.length, weightMode: upload.weightMode,
     penetration: composite.rows, compositeWeights: composite.weights,
@@ -39293,7 +39308,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const body = await readBody(req);
       const upload = geoLatestUpload(accountId, body.uploadId);
       if (!upload) return sendJson(res, 404, { error: 'no market data on this account yet' });
-      try { const analysis = computeMarketUploadAnalysis(accountId, upload, {}); return sendJson(res, 200, Object.assign({ uploadId: upload.id }, await buildGeoPlan(accountId, upload, analysis, String(body.question || '').slice(0, 800)))); }
+      try { const analysis = geoAnalysis(accountId, upload, true); return sendJson(res, 200, Object.assign({ uploadId: upload.id }, await buildGeoPlan(accountId, upload, analysis, String(body.question || '').slice(0, 800)))); }
       catch (e){ console.warn('[geo-plan] failed:', e.message); return sendJson(res, 500, { error: 'could not build the test plan' }); }
     }
     // GET /api/accounts/:id/market-customer-uploads — lightweight list (no
