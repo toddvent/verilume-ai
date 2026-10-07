@@ -5275,6 +5275,17 @@
         <div id="selfRateView"></div>
       </div>
     </div>
+
+    <!-- 2026-10-07 — Training Library partners, per Todd: LinkedIn Learning and
+         Coursiv as PLACEHOLDER marketplace options, same treatment as the Search
+         Everywhere specialty partners (PARTNER_DIRECTORY / activatePartner /
+         renderSpecialtyPartners, key 'training'). No integration exists and no
+         agreement is in place with either; the buttons only record interest. -->
+    <div class="seo-section" id="trainingPartnersSection" style="margin-top:24px;">
+      <div class="seo-section-head"><div class="seo-section-title">🤝 Training Library Partners <span class="ai-thought-mount" data-topic="AW"></span></div></div>
+      <p class="seo-section-sub">Courses and lessons come from outside partners, so Verilume does not write or host training. Activate a license you already have, or request a new relationship, and Verilume handles the vetting. These two are placeholders while the library partner is chosen.</p>
+      <div id="partnerDirectory-training"></div>
+    </div>
   </div>
 
   <!-- ================= WORKSTREAM E: MANAGE ACCOUNT → AI PARTNER ONBOARDING & TRAINING =================
@@ -13240,7 +13251,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-07-search-guide-voice';
+const CXMEDIA_BUILD_STAMP = '2026-10-07-training-partners';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -22978,6 +22989,13 @@ const PARTNER_DIRECTORY = {
       { name: 'Brandwatch', model: 'both', note: 'Broad cross-platform listening, including Reddit/X/TikTok at volume — the licensed tier the Competitor Monitoring evaluation flagged as a future paid add-on.' },
       { name: 'Meltwater', model: 'both', note: 'PR-industry-standard media monitoring plus a press-contact database — a natural fit alongside Editorial Solicitation above.' },
       { name: 'Mention', model: 'both', note: 'A lighter-weight, lower-cost listening tier ($29-150/mo) for accounts that want broader coverage without Brandwatch/Meltwater\'s enterprise price point.' }
+    ]
+  },
+  training: {
+    dataFeedback: 'Placeholder marketplace options. Nothing is connected today and no agreement is in place with either one. Once a partner is live, the courses it offers appear in each person\'s development plan, and completions stay private to the person unless they choose to share them.',
+    partners: [
+      { name: 'LinkedIn Learning', model: 'both', note: 'Large business, communication and marketing course catalog. Many accounts already hold seats, so bringing an existing license is the likely path. Placeholder only.' },
+      { name: 'Coursiv', model: 'referral', note: 'AI skills training, a fit for the working-with-AI side of the Communication path. Placeholder only.' }
     ]
   },
   competitivePositioning: {
@@ -52423,7 +52441,7 @@ const PU_THOUGHTS = {
   AT: "Team Experiences has three jobs. Skill Sets shows what any position on the org chart is expected to hold. The self-assessment lets each person rate themselves against their own seat’s critical skills. The development plan builds steps toward the next level. A good first week is to look up your own seat, complete the self-assessment, then draft a development plan and review it with your manager. Ask Verilume can summarize team structure and training progress, but it never reads out emails, phone numbers or any one person’s self-ratings.",
   AU: "Team and Org Chart is where an admin adds each person, sets their position and who they report to. The chart drives skill sets, the self-assessment and the development plan, so keep reporting lines current. The page is admin-only today. Give each new person their position first, then have them complete the self-assessment in Team Experiences. Ask Verilume can answer who sits where and which seats lack a reporting line, without sharing contact details or individual self-ratings.",
   AV: "AI Thoughts and voice share the same knowledge. Ask Verilume, typed or by voice, answers from your own data: campaigns, Media Science markets and the last test plan, Truth Lab results and confirmed learnings, Trade Territories, the Ad Copy Library and the team structure. It also explains how to use the product, so you can ask how do I save a match market test, how do I confirm a result, or what does a local reseller mean, and hear the same answer that appears in these thoughts. Voice never changes anything. Any change is proposed for a person to accept. It does not read out emails, phone numbers or individual self-ratings.",
-  AW: "The Brain Dump opens with a greeting and your seat, then the weekly business update: Strategy, Customer Experiences, Growth and Performance, Media Science, AI Brain learnings, and news from outside. Beside it, Your growth links to your own development: the position self-assessment, your next-career checklist, and your development plan, all in Team Experiences. Those pages are private to you. A manager sees nothing from them unless you choose to share it. You can also ask Verilume or the voice agent to read you the Brain Dump, and it presents each section in turn. The 1:1 with your Brain is coming later."
+  AW: "The Brain Dump opens with a greeting and your seat, then the weekly business update: Strategy, Customer Experiences, Growth and Performance, Media Science, AI Brain learnings, and news from outside. Beside it, Your growth links to your own development: the position self-assessment, your next-career checklist, and your development plan, all in Team Experiences. Those pages are private to you. A manager sees nothing from them unless you choose to share it. You can also ask Verilume or the voice agent to read you the Brain Dump, and it presents each section in turn. The 1:1 with your Brain is coming later. On the Team Experiences page, Training Library Partners lists LinkedIn Learning and Coursiv as placeholder options: you can say you already have a license or ask for a new relationship, but nothing is connected yet."
 };
 // 2026-10-07 — product utilization and team training. Same wording is mirrored in server.js (PRODUCT_GUIDE) so voice and Ask Verilume say what these thoughts say.
 function renderFaqPU(){
@@ -60559,6 +60577,7 @@ function renderTeamDevelopmentStep(){
   populateSkillSelects();
   renderSkillSetCard();
   renderSelfRateView();
+  renderSpecialtyPartners('training');
 }
 
 /* ---------- Search Optimization (SEO · AEO · GEO) — Round 132bx (2026-08-14) ----------
