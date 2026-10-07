@@ -11530,6 +11530,26 @@ createTableIfNeeded(`
 
 // Who owns each Train the Brain setup card. All-lowercase columns so Postgres needs no identifier quoting.
 createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS media_tests (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    testtype TEXT NOT NULL,
+    name TEXT NOT NULL,
+    hypothesis TEXT,
+    primarykpi TEXT,
+    mdepct REAL,
+    variantsjson TEXT,
+    detailsjson TEXT,
+    startdate TEXT,
+    enddate TEXT,
+    status TEXT,
+    decision TEXT,
+    learning TEXT,
+    campaignid TEXT,
+    createdby TEXT,
+    createdat TEXT NOT NULL,
+    updatedat TEXT
+  );
   CREATE TABLE IF NOT EXISTS export_fetch_log (
     id TEXT PRIMARY KEY,
     accountid TEXT NOT NULL,
@@ -17525,7 +17545,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['onboarding_assignments', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
+const CATALOG_EXEMPT = new Set(['onboarding_assignments', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -41672,6 +41692,59 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       return sendJson(res, 201, response);
     }
 
+
+
+    // Media Science Test Registry. One table for every test type (creative A/B, multi-variant, offer/audience, channel substitution, DMA match market)
+    // so the Brain and analysts read the same keys. Variants carry allocation, impressions and conversions; the statistics are computed in the portal.
+    if (parts.length >= 4 && parts.length <= 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'media-tests'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const shape = r => { const j = (k, d) => { try { return JSON.parse(aliasVal(r, k) || ''); } catch (e){ return d; } };
+        return { id: r.id, testType: aliasVal(r, 'testtype'), name: r.name, hypothesis: r.hypothesis || '', primaryKpi: aliasVal(r, 'primarykpi') || '', mdePct: aliasVal(r, 'mdepct'), variants: j('variantsjson', []), details: j('detailsjson', {}), startDate: aliasVal(r, 'startdate') || '', endDate: aliasVal(r, 'enddate') || '', status: r.status || 'draft', decision: r.decision || '', learning: r.learning || '', campaignId: aliasVal(r, 'campaignid') || '', createdBy: aliasVal(r, 'createdby') || '', createdAt: aliasVal(r, 'createdat'), updatedAt: aliasVal(r, 'updatedat') || '' }; };
+      const TYPES = ['ab', 'multivariant', 'offer', 'channel', 'matchmarket', 'other'], STATUSES = ['draft', 'running', 'complete'], DECISIONS = ['', 'ship', 'kill', 'iterate'];
+      const cleanVariants = v => (Array.isArray(v) ? v : []).slice(0, 12).map((x, i) => ({ key: String((x && x.key) || ('v' + (i + 1))).slice(0, 20), label: String((x && x.label) || ('Variant ' + (i + 1))).slice(0, 80), assetId: String((x && x.assetId) || '').slice(0, 80), allocationPct: Number.isFinite(Number(x && x.allocationPct)) ? Number(x.allocationPct) : null, impressions: Number.isFinite(Number(x && x.impressions)) && x.impressions !== '' && x.impressions != null ? Number(x.impressions) : null, conversions: Number.isFinite(Number(x && x.conversions)) && x.conversions !== '' && x.conversions != null ? Number(x.conversions) : null }));
+      const who = () => { const sess = authenticate(req); return exportCaller(sess).name; };
+      if (req.method === 'GET' && parts.length === 4){
+        const rows = db.prepare('SELECT * FROM media_tests WHERE accountid = ? ORDER BY createdat DESC').all(accountId);
+        return sendJson(res, 200, { tests: rows.map(shape) });
+      }
+      if (req.method === 'POST' && parts.length === 4){
+        const body = await readBody(req);
+        if (!body.name || !String(body.name).trim()) return sendJson(res, 400, { error: 'a test name is required' });
+        const type = TYPES.includes(body.testType) ? body.testType : 'ab';
+        const id = generateId('TST'); const now = new Date().toISOString();
+        db.prepare('INSERT INTO media_tests (id, accountid, testtype, name, hypothesis, primarykpi, mdepct, variantsjson, detailsjson, startdate, enddate, status, decision, learning, campaignid, createdby, createdat, updatedat) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+          .run(id, accountId, type, String(body.name).trim().slice(0, 160), String(body.hypothesis || '').slice(0, 2000) || null, String(body.primaryKpi || '').slice(0, 80) || null, Number.isFinite(Number(body.mdePct)) && body.mdePct !== '' ? Number(body.mdePct) : null, JSON.stringify(cleanVariants(body.variants)), JSON.stringify(body.details && typeof body.details === 'object' ? body.details : {}), String(body.startDate || '').slice(0, 10) || null, String(body.endDate || '').slice(0, 10) || null, STATUSES.includes(body.status) ? body.status : 'draft', '', null, String(body.campaignId || '').slice(0, 80) || null, who(), now, now);
+        return sendJson(res, 201, { id });
+      }
+      if (parts.length === 5){
+        const testId = decodeURIComponent(parts[4]);
+        const row = db.prepare('SELECT * FROM media_tests WHERE id = ? AND accountid = ?').get(testId, accountId);
+        if (!row) return sendJson(res, 404, { error: 'test not found' });
+        if (req.method === 'GET') return sendJson(res, 200, shape(row));
+        if (req.method === 'DELETE'){ db.prepare('DELETE FROM media_tests WHERE id = ?').run(testId); return sendJson(res, 200, { deleted: true }); }
+        if (req.method === 'PATCH'){
+          const b = await readBody(req); const sets = [], vals = [];
+          const put = (col, v) => { sets.push(col + ' = ?'); vals.push(v); };
+          if (b.name !== undefined){ if (!String(b.name).trim()) return sendJson(res, 400, { error: 'a test name is required' }); put('name', String(b.name).trim().slice(0, 160)); }
+          if (b.testType !== undefined && TYPES.includes(b.testType)) put('testtype', b.testType);
+          if (b.hypothesis !== undefined) put('hypothesis', String(b.hypothesis || '').slice(0, 2000) || null);
+          if (b.primaryKpi !== undefined) put('primarykpi', String(b.primaryKpi || '').slice(0, 80) || null);
+          if (b.mdePct !== undefined) put('mdepct', Number.isFinite(Number(b.mdePct)) && b.mdePct !== '' && b.mdePct !== null ? Number(b.mdePct) : null);
+          if (b.variants !== undefined) put('variantsjson', JSON.stringify(cleanVariants(b.variants)));
+          if (b.details !== undefined && b.details && typeof b.details === 'object') put('detailsjson', JSON.stringify(b.details));
+          if (b.startDate !== undefined) put('startdate', String(b.startDate || '').slice(0, 10) || null);
+          if (b.endDate !== undefined) put('enddate', String(b.endDate || '').slice(0, 10) || null);
+          if (b.status !== undefined && STATUSES.includes(b.status)) put('status', b.status);
+          if (b.decision !== undefined && DECISIONS.includes(b.decision)) put('decision', b.decision);
+          if (b.learning !== undefined) put('learning', String(b.learning || '').slice(0, 4000) || null);
+          if (b.campaignId !== undefined) put('campaignid', String(b.campaignId || '').slice(0, 80) || null);
+          put('updatedat', new Date().toISOString());
+          db.prepare(`UPDATE media_tests SET ${sets.join(', ')} WHERE id = ?`).run(...vals, testId);
+          return sendJson(res, 200, { updated: true });
+        }
+      }
+    }
 
     // Exports. Feeds Verilume provides to people who sign in: GET lists what the caller may fetch, GET .../exports/copy downloads the
     // production copy feed (approved Copy Versions only), GET .../exports/log is the admin audit trail. Every fetch is logged.
