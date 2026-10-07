@@ -5186,7 +5186,7 @@
   <div class="step" id="step-teamDevelopment">
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / Team Experiences</div>
     <div class="eyebrow">Workstream · Team Experiences</div>
-    <h1>Self-assessment, skill sets, and a development plan.</h1>
+    <h1>Self-assessment, skill sets, and a development plan. <span class="ai-thought-mount" data-topic="AT"></span> <span class="ai-thought-mount" data-topic="AV"></span></h1>
     <p class="lede">Rate yourself against your own seat's critical skills, look up what any position on the chart is expected to hold, and build a development plan toward the next level. Need to switch who you're acting as, or see the roster? <a class="flink" onclick="goToStep('team')">Team &amp; Org Chart →</a></p>
 
     <div class="module open accent-cx" id="skillSetsModule">
@@ -5992,7 +5992,7 @@
   <div class="step" id="step-testRegistry">
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="switchPrimaryTab('dataScientist')">Media Science</a> / Test Registry</div>
     <div class="eyebrow">Media Science &middot; Test Registry</div>
-    <h1>Test Registry</h1>
+    <h1>Test Registry <span class="ai-thought-mount" data-topic="AO"></span></h1>
     <p class="msg-lede">Every test in one place: creative elements, offer, audience, frequency, channel, timing, landing page and DMA match market. Draft it here, enter or import results, read the statistics, record the decision and what was learned. Export any test for analysis.</p>
     <div id="testRegistryBody"></div>
   </div>
@@ -6008,7 +6008,7 @@
   <div class="step" id="step-adCopyLibrary">
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="switchPrimaryTab('brand')">Customer Experiences</a> / Ad Copy Library</div>
     <div class="eyebrow">Customer Experiences · Ad Copy Library</div>
-    <h1>Ad Copy Library</h1>
+    <h1>Ad Copy Library <span class="ai-thought-mount" data-topic="AS"></span></h1>
     <p class="msg-lede">Every Copy Version saved on any campaign, in one place &mdash; what you have actually shipped. Nothing to set up: it fills as campaigns save copy. Start a new campaign from an existing one and its copy comes along as drafts.</p>
     <div id="adCopyLibraryBody"></div>
   </div>
@@ -7428,7 +7428,7 @@
          current changes since we haven't activated team roles."). -->
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Team &amp; Org Chart</div>
     <div class="eyebrow">Configuration · Team &amp; Org Chart</div>
-    <h1>Who's on this account, and who they report to.</h1>
+    <h1>Who's on this account, and who they report to. <span class="ai-thought-mount" data-topic="AU"></span></h1>
     <p class="lede">A modern marketing org chart — CMO at the top, a Director and Manager per function underneath, Specialists doing the work. This isn't just a roster: it's what a Project Detail's "Request QA" panel uses to find the right reviewer, by walking this account's actual reporting line rather than asking who to send it to every time.</p>
 
     <!-- Shown only for a non-admin viewer (portalViewerIsAdmin === false —
@@ -11765,6 +11765,78 @@
         </div>
         <div class="faq-body" id="bpFaqBodyAN">
           <p id="bpFaqTextAN"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadAO" onclick="toggleFaqItem('AO')">
+          <span class="faq-label">Test Registry: getting started</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyAO">
+          <p id="bpFaqTextAO"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadAP" onclick="toggleFaqItem('AP')">
+          <span class="faq-label">Match market tracking</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyAP">
+          <p id="bpFaqTextAP"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadAQ" onclick="toggleFaqItem('AQ')">
+          <span class="faq-label">Confirming a result and teaching the Brain</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyAQ">
+          <p id="bpFaqTextAQ"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadAR" onclick="toggleFaqItem('AR')">
+          <span class="faq-label">Trade Territories</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyAR">
+          <p id="bpFaqTextAR"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadAS" onclick="toggleFaqItem('AS')">
+          <span class="faq-label">Ad Copy Library</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyAS">
+          <p id="bpFaqTextAS"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadAT" onclick="toggleFaqItem('AT')">
+          <span class="faq-label">Team Experiences: self-assessment and development plan</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyAT">
+          <p id="bpFaqTextAT"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadAU" onclick="toggleFaqItem('AU')">
+          <span class="faq-label">Team and Org Chart</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyAU">
+          <p id="bpFaqTextAU"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadAV" onclick="toggleFaqItem('AV')">
+          <span class="faq-label">Ask Verilume and voice: what you can ask</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyAV">
+          <p id="bpFaqTextAV"></p>
         </div>
       </div>
   </div>
@@ -31118,12 +31190,12 @@ function trEditorHtml(){
     <h3 style="margin:0 0 6px;">What are you testing?</h3>${trElementPickerHtml(t)}
     <div class="tr-grid" style="margin-top:14px;">${f('Test name', inp('name', 'text', 'e.g. Polar hero image vs. ship image'))}${f('Type', sel('testType', typeOpts))}${f('Primary KPI', sel('primaryKpi', kpiOpts))}${f('Smallest lift worth detecting (%)', inp('mdePct', 'number'))}${f('Campaign', sel('campaignId', campOpts))}${f('Status', sel('status', stOpts))}${f('Start date', inp('startDate', 'date'))}${f('End date', inp('endDate', 'date'))}</div>
     <label class="tr-f" style="margin-top:10px;"><span>Hypothesis</span><textarea rows="2" oninput="trSet('hypothesis', this.value)" placeholder="We believe X will lift Y because Z.">${escapeHtml(t.hypothesis || '')}</textarea></label>
-    <h3 style="margin:16px 0 8px;">${mm ? 'Markets' : 'Variants and results'}</h3>${vars}
+    <h3 style="margin:16px 0 8px;">${mm ? 'Markets and weekly bookings ' + aiThoughtIconHtml('AP') : 'Variants and results'}</h3>${vars}
     <h3 style="margin:16px 0 8px;">Readout</h3><div id="trReadout"></div>
     <h3 style="margin:16px 0 8px;">Decision</h3><div class="tr-grid">${f('Decision', sel('decision', dOpts))}</div>
     <label class="tr-f" style="margin-top:10px;"><span>What we learned</span><textarea rows="3" oninput="trSet('learning', this.value)" placeholder="What changed, what held, what to test next.">${escapeHtml(t.learning || '')}</textarea></label>
     <div class="adlib-act" style="margin-top:14px;"><button type="button" class="btn-primary" onclick="trSave()"${tr.saving ? ' disabled' : ''}>${tr.saving ? 'Saving…' : 'Save test'}</button>${t.id ? '<button type="button" class="btn-ghost" onclick="trExport(tr.draft.id)">Export this test CSV</button><button type="button" class="btn-ghost" onclick="trDelete()">Delete</button>' : ''}<span class="hint" id="trSaveNote">${escapeHtml(tr.msg)}</span></div>
-    <h3 style="margin:20px 0 8px;">Confirm the result</h3><div id="trConfirm">${trConfirmHtml(t)}</div></div>`;
+    <h3 style="margin:20px 0 8px;">Confirm the result ${aiThoughtIconHtml('AQ')}</h3><div id="trConfirm">${trConfirmHtml(t)}</div></div>`;
 }
 async function trSave(){
   const t = tr.draft; if (!t.name || !t.name.trim()){ tr.msg = 'Give the test a name first.'; trRender(); return; }
@@ -37969,7 +38041,7 @@ function geoTradeHtml(){
   const upload = `<div class="geo-up"><div><strong>${d && d.available ? 'Replace the reseller file' : 'Add a booking file with reseller columns'}</strong><div class="geo-cap" style="margin:2px 0 0;">Needs Agency Code, Agency Name and address columns plus Guest Postal Code (Booking Code, Booking Status and Gross Revenue are used when present). .xlsx or .csv. Only reseller addresses and guest postal codes are sent. Guest names, emails and phone numbers stay in your browser.</div></div>
     <label class="geo-btn sm" style="cursor:pointer;">Choose file<input type="file" accept=".xlsx,.csv" style="display:none" onchange="geoTerrFile(event)"></label></div>
     <div class="geo-cap" id="geoTerrMsg" style="margin:6px 0 0;">${escapeHtml(t.msg || '')}</div>`;
-  const head = `<div class="geo-head"><div><div class="geo-h" style="margin:0;">Trade Territories</div><h3 class="geo-title" style="margin:2px 0 0;">Which resellers sell inside your markets</h3></div>${d && d.available ? `<button type="button" class="geo-btn sm" onclick="geoTerrCsv()">Download all resellers (CSV)</button>` : ''}</div>`;
+  const head = `<div class="geo-head"><div><div class="geo-h" style="margin:0;">Trade Territories</div><h3 class="geo-title" style="margin:2px 0 0;">Which resellers sell inside your markets ${aiThoughtIconHtml('AR')}</h3></div>${d && d.available ? `<button type="button" class="geo-btn sm" onclick="geoTerrCsv()">Download all resellers (CSV)</button>` : ''}</div>`;
   if (t.loading && !d) return `<div class="geo-card" style="margin-top:12px;">${head}<p class="geo-p">Reading your reseller data…</p></div>`;
   if (!d || !d.available) return `<div class="geo-card" style="margin-top:12px;">${head}<p class="geo-p">A local storefront or franchise sells to customers in its own market. Upload a booking file that includes each reseller's address and the guest postal code, and the brain works out which resellers are truly local, how far their guests live from them, and which markets each one covers. National and virtual agencies are listed separately because they sell everywhere.</p>${upload}</div>`;
   const C = d.classes, T = d.totals, pct = n => T.bookings > 0 ? Math.round(n / T.bookings * 1000) / 10 : 0;
@@ -51367,6 +51439,14 @@ const BP_FAQ_TOPICS = [
   { letter: 'AL', label: 'Questions and FAQs', keywords: ['faq', 'questions', 'answer', 'facts', 'train the brain', 'draft answer'] },
   { letter: 'AM', label: 'Brand checks', keywords: ['brand check', 'page titles', 'voice', 'avoided terms', 'watch word', 'change report'] },
   { letter: 'AN', label: 'Schema library', keywords: ['schema','structured data','json-ld','article','blogposting','newsarticle','faqpage','howto','videoobject','rich results'] },
+  { letter: "AO", label: "Test Registry: getting started", keywords: ["test registry", "new test", "a/b", "variant", "lift", "p-value", "significance", "kpi", "hypothesis", "media science test"] },
+  { letter: "AP", label: "Match market tracking", keywords: ["match market", "test market", "control market", "holdout", "weekly", "difference", "pre period", "post period", "geo test", "media start"] },
+  { letter: "AQ", label: "Confirming a result and teaching the Brain", keywords: ["confirm", "confirmed", "teach the brain", "lesson", "ship", "kill", "iterate", "plan change", "accept", "dismiss", "campaign results"] },
+  { letter: "AR", label: "Trade Territories", keywords: ["trade territories", "reseller", "agency", "storefront", "franchise", "territory", "radius", "local", "regional", "national", "trade file", "agency code"] },
+  { letter: "AS", label: "Ad Copy Library", keywords: ["ad copy library", "copy version", "copy library", "shipped copy", "production feed", "copy feed"] },
+  { letter: "AT", label: "Team Experiences: self-assessment and development plan", keywords: ["team experiences", "self assessment", "skill sets", "development plan", "training", "next level", "critical skills", "position"] },
+  { letter: "AU", label: "Team and Org Chart", keywords: ["team", "org chart", "org", "invite", "member", "reports to", "role", "admin", "roster", "onboarding", "add a person", "add someone", "add people", "add a team", "who reports", "position"] },
+  { letter: "AV", label: "Ask Verilume and voice: what you can ask", keywords: ["ask verilume", "voice", "ask", "question", "how do i", "how to", "what can i ask", "getting started", "where do i"] },
   { letter: 'F', label: 'Past campaigns', keywords: ['learned','history','previous','analysis','pattern','overspend','underspend','delivered'] },
   // Round 132uu (2026-08-11), per direct instruction: "We should have a
   // speech bubble next to Lifecycle-loop stage explaining what this is and
@@ -51546,7 +51626,9 @@ const BP_FAQ_TOPIC_TAB = {
   // classification/setup topics rather than "strategy".
   AE: 'marketer', AF: 'marketer',
   // 2026-10-05 — Search Everywhere page topics, text taken from its client training guide.
-AG: 'marketer', AN: 'marketer', AH: 'marketer', AI: 'marketer', AJ: 'marketer', AK: 'marketer', AL: 'marketer', AM: 'marketer'
+AG: 'marketer', AN: 'marketer', AH: 'marketer', AI: 'marketer', AJ: 'marketer', AK: 'marketer', AL: 'marketer', AM: 'marketer',
+  // 2026-10-07 — product utilization and team training topics.
+  AO: 'dataScientist', AP: 'dataScientist', AQ: 'dataScientist', AR: 'dataScientist', AS: 'brand', AT: 'accountManagement', AU: 'accountManagement', AV: 'accountManagement'
 };
 
 // 2026-10-04 (Todd): too many chips at once. Show the five most relevant to the page the person is on
@@ -51768,7 +51850,15 @@ const AI_THOUGHT_PREVIEWS = {
   AK: 'How searches are matched to your groups, and what to do with the ones that do not fit.',
   AL: 'How a question becomes an approved answer, using only facts you approved.',
   AM: 'What the five brand checks look for, and how to act on a result.',
-  AN: 'The structured-data types for blogs, press releases, FAQs, how-tos and videos: what each needs, a copy-ready example, and what Google does with it.'
+  AN: 'The structured-data types for blogs, press releases, FAQs, how-tos and videos: what each needs, a copy-ready example, and what Google does with it.',
+  AO: "How to start a test and read it, in one place.",
+  AP: "How to track a market test week by week and read the lift.",
+  AQ: "What happens when you confirm a test result, and what changes in the plan.",
+  AR: "How reseller territories are worked out, and the file to send.",
+  AS: "Where every saved Copy Version lives, and how it gets reused.",
+  AT: "How to use the self-assessment, skill sets and development plan for team training.",
+  AU: "How to add people, set who reports to whom, and who can see what.",
+  AV: "What Ask Verilume and voice can answer, and what they will not do."
 };
 function aiThoughtRoleLabel(letter){
   const tabKey = BP_FAQ_TOPIC_TAB[letter];
@@ -52016,6 +52106,7 @@ function renderBestPracticeFaq(){
   renderFaqAE();
   renderFaqAF();
   renderFaqSE();
+  renderFaqPU();
   renderFaqF();
   renderFaqK();
   renderFaqM();
@@ -52180,6 +52271,20 @@ const SE_THOUGHTS = {
   AM: 'Five rule-based checks against your confirmed names, avoided terms, approved facts and latest site check: name used the same way, pages say what they are, pages match your voice and facts, what people add to your name, and approved FAQs against current facts. By default the top 10 pages by impressions are checked, and you can widen it. A page outside the site check shows as not checked, never as a pass. Mark fixed after a correction, or add the item to priorities.',
   AN: 'A reference for the team, covering Article, BlogPosting, NewsArticle, FAQPage, HowTo and VideoObject. Each entry says what the type is, when to use it, which fields are required or recommended, gives a copy-ready example with placeholders, and notes what Google does with it, checked on a stated date. Nothing here is filled from your account or generated for you. Note that Google no longer shows FAQ or How-to rich results, so those two give no search benefit today.'
 };
+const PU_THOUGHTS = {
+  AO: "The Test Registry holds every test in one place: creative elements, offer, audience, frequency, channel, timing, landing page and market tests. To start, choose + New test, pick what you are testing, name it, choose one KPI and the smallest lift worth detecting. Enter impressions and conversions for each variant, or import a results CSV, and the readout shows each variant’s lift, its p-value and whether there is enough volume to call it. Link the test to a campaign if it belongs to one. A test only teaches the Brain after a person confirms it at the bottom of the test (see Confirming a result).",
+  AP: "Plan the test in Geographic Optimization, then choose Save this plan to the Test Registry. That creates a draft with the test and control markets, channel, weeks and planned spend. When media starts, enter the start date, the spend in the test markets, and weekly bookings for all test markets added together and all control markets added together. You can type them or import a CSV with the columns week, test and control. You need at least 3 weeks before and 3 after the start date; 8 or more before is better. The readout compares the test-to-control ratio after media started with the ratio before, so season and market size cancel out. It shows the lift, its 95% range, extra bookings and cost per extra booking. A lift is only called clear when even the low end of the range is above zero.",
+  AQ: "Confirming is a person’s decision, never automatic. Choose ship, kill or iterate, edit the lesson in your own words, and confirm. Verilume then saves the result with the linked campaign (or with the account when no campaign is linked), adds a Brain lesson, and proposes plan changes. An admin’s lesson is active at once; a lesson from anyone else waits for an admin to approve it. Proposed changes can be rolling the channel out to similar markets with an estimated cost, retesting, extending the test or adding markets, keeping it in the test markets, or stopping. Nothing in the plan changes until a person accepts each one. Accepted changes appear on the annual plan recommendation and in what Ask Verilume says, and every confirmed result stays on its campaign as history.",
+  AR: "Trade Territories shows where each reseller’s guests actually live. Send a trade file on its own, separate from the booking file, with Agency Code, Agency Name, the reseller address columns and Guest Postal Code. A reseller is local when most of its guests are within 50 miles, regional when its typical guest is within 300 miles, national when it sells everywhere, and thin when it has under 10 U.S. bookings. A local reseller’s territory is the radius that holds 80% of its guests, capped at 100 miles for local and 300 for regional. Select a reseller to see the markets inside its territory, and download the list as a CSV. Territories change slowly, so refresh the file when resellers or territories change rather than on a schedule.",
+  AS: "The Ad Copy Library lists every Copy Version saved on any campaign, so you can see what has actually shipped. There is nothing to set up: it fills as campaigns save copy. When you start a new campaign from an existing one, its copy comes along as drafts, so you edit rather than start over. Ask Verilume, typed or by voice, can answer questions about what copy has run, and a production copy feed can be exported from the Exports page when a partner needs it.",
+  AT: "Team Experiences has three jobs. Skill Sets shows what any position on the org chart is expected to hold. The self-assessment lets each person rate themselves against their own seat’s critical skills. The development plan builds steps toward the next level. A good first week is to look up your own seat, complete the self-assessment, then draft a development plan and review it with your manager. Ask Verilume can summarize team structure and training progress, but it never reads out emails, phone numbers or any one person’s self-ratings.",
+  AU: "Team and Org Chart is where an admin adds each person, sets their position and who they report to. The chart drives skill sets, the self-assessment and the development plan, so keep reporting lines current. The page is admin-only today. Give each new person their position first, then have them complete the self-assessment in Team Experiences. Ask Verilume can answer who sits where and which seats lack a reporting line, without sharing contact details or individual self-ratings.",
+  AV: "AI Thoughts and voice share the same knowledge. Ask Verilume, typed or by voice, answers from your own data: campaigns, Media Science markets and the last test plan, Test Registry results and confirmed learnings, Trade Territories, the Ad Copy Library and the team structure. It also explains how to use the product, so you can ask how do I save a match market test, how do I confirm a result, or what does a local reseller mean, and hear the same answer that appears in these thoughts. Voice never changes anything. Any change is proposed for a person to accept. It does not read out emails, phone numbers or individual self-ratings."
+};
+// 2026-10-07 — product utilization and team training. Same wording is mirrored in server.js (PRODUCT_GUIDE) so voice and Ask Verilume say what these thoughts say.
+function renderFaqPU(){
+  Object.keys(PU_THOUGHTS).forEach(l => { const el = document.getElementById('bpFaqText' + l); if (el) el.textContent = PU_THOUGHTS[l]; });
+}
 function renderFaqSE(){
   Object.keys(SE_THOUGHTS).forEach(l => { const el = document.getElementById('bpFaqText' + l); if (el) el.textContent = SE_THOUGHTS[l]; });
 }
