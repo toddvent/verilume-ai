@@ -10285,6 +10285,15 @@ createTableIfNeeded(`
   );
 `);
 createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_geo_cache (
+    accountId TEXT NOT NULL,
+    cache_key TEXT NOT NULL,
+    payload TEXT,
+    updated_at TEXT,
+    PRIMARY KEY (accountId, cache_key)
+  );
+`);
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS account_reseller_meta (
     accountId TEXT PRIMARY KEY,
     file_name TEXT,
@@ -11453,8 +11462,27 @@ function geoTerritoriesCompute(accountId, statusList){
 function geoAnalysis(accountId, upload, withCost){
   return geoCached(`an|${accountId}|${upload.id}|${withCost ? 1 : 0}`, 600000, () => computeMarketUploadAnalysis(accountId, upload, { skipZipMatching: true, skipTradeAreas: true, skipCosting: !withCost }));
 }
+// 2026-10-07 — an upload never changes after it is written, so its market overview is computed once and kept in the database.
+// It survives restarts and cold starts, which is what made the page open slowly. A new upload has a new id, so nothing goes stale.
+const GEO_CACHE_V = 'v1';
+function geoDbCacheGet(accountId, key){
+  try { const r = db.prepare('SELECT payload FROM account_geo_cache WHERE accountId = ? AND cache_key = ?').get(accountId, key); return r && r.payload ? JSON.parse(r.payload) : null; } catch (e){ return null; }
+}
+function geoDbCachePut(accountId, key, obj, maxBytes){
+  try {
+    const json = JSON.stringify(obj); if (json.length > (maxBytes || 4000000)) return;
+    db.batch([{ sql: 'DELETE FROM account_geo_cache WHERE accountId = ? AND cache_key = ?', params: [accountId, key] }, { sql: 'INSERT INTO account_geo_cache (accountId, cache_key, payload, updated_at) VALUES (?,?,?,?)', params: [accountId, key, json, new Date().toISOString()] }], 30000);
+    // keep only the newest few overviews per account
+    const old = db.prepare("SELECT cache_key FROM account_geo_cache WHERE accountId = ? AND cache_key LIKE ? ORDER BY updated_at DESC").all(accountId, key.split(':')[0] + ':%');
+    if (old.length > 4) old.slice(4).forEach(o => { try { db.prepare('DELETE FROM account_geo_cache WHERE accountId = ? AND cache_key = ?').run(accountId, o.cache_key); } catch (e){} });
+  } catch (e){ console.warn('[geo-cache] not saved:', e.message); }
+}
 function geoOverviewPayload(accountId, upload){
-  return geoCached(`ov|${accountId}|${upload.id}`, 300000, () => geoOverviewCompute(accountId, upload));
+  return geoCached(`ov|${accountId}|${upload.id}`, 3600000, () => {
+    const key = `ov:${GEO_CACHE_V}:${upload.id}`;
+    const hit = geoDbCacheGet(accountId, key); if (hit) return hit;
+    const v = geoOverviewCompute(accountId, upload); geoDbCachePut(accountId, key, v); return v;
+  });
 }
 function geoOverviewCompute(accountId, upload){
   const analysis = geoAnalysis(accountId, upload, false);
@@ -11476,6 +11504,7 @@ const geoInsightCache = new Map();
 async function geoInsights(accountId, upload, overview){
   const key = upload.id + '|' + (overview.marketCount || 0) + '|' + JSON.stringify(overview.tiers);
   if (geoInsightCache.has(key)) return geoInsightCache.get(key);
+  { const saved = geoDbCacheGet(accountId, `ins:${GEO_CACHE_V}:${upload.id}:${key.length}:${String(key).split('').reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7)}`); if (saved){ geoInsightCache.set(key, saved); return saved; } }
   const topNames = (overview.topMarkets || []).map(m => `${m.dmaName} (index ${m.populationIndex})`);
   const under = (overview.markets || []).filter(m => m.relevant && m.zScore < 0).sort((a, b) => a.zScore - b.zScore).slice(0, 5).map(m => `${m.dmaName} (index ${m.populationIndex})`);
   const reg = overview.regions || {};
@@ -11506,6 +11535,7 @@ async function geoInsights(accountId, upload, overview){
   }
   if (!out) out = rules();
   geoInsightCache.set(key, out);
+  if (out.source === 'ai') geoDbCachePut(accountId, `ins:${GEO_CACHE_V}:${upload.id}:${key.length}:${String(key).split('').reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7)}`, out, 100000);
   return out;
 }
 // ---- Match Market planner ----
@@ -39797,6 +39827,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         const params = []; chunk.forEach(r => { params.push(generateId('MKTROW'), id, String(r.zip), Number(r.customerCount), Number(r.revenue)); });
         db.prepare(`INSERT INTO market_customer_rows (id, marketUploadId, zip, customerCount, revenue) VALUES ${ph}`).run(...params);
       }
+      try { const row = geoLatestUpload(accountId, id); if (row) geoOverviewPayload(accountId, row); } catch (e){ console.warn('[geo] overview precompute failed:', e.message); }
       return sendJson(res, 201, { id, rowCount: agg.rows.length, weightMode, geoLevel: 'zip', periodLabel, audit });
     }
 
@@ -39808,7 +39839,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       try {
         const m = db.prepare('SELECT uploaded_at FROM account_reseller_meta WHERE accountId = ?').get(accountId);
         const stq = (new URL(req.url, 'http://x').searchParams.get('statuses') || '').split(',').map(x => x.trim().toUpperCase()).filter(Boolean).slice(0, 20);
-        return sendJson(res, 200, geoCached(`terr|${accountId}|${m ? m.uploaded_at : 'none'}|${stq.join(',')}`, 600000, () => geoTerritoriesCompute(accountId, stq)));
+        return sendJson(res, 200, geoCached(`terr|${accountId}|${m ? m.uploaded_at : 'none'}|${stq.join(',')}`, 3600000, () => { if (!m) return geoTerritoriesCompute(accountId, stq); const tk = `terr:${GEO_CACHE_V}:${m.uploaded_at}:${stq.join(',')}`; const hit = geoDbCacheGet(accountId, tk); if (hit) return hit; const v = geoTerritoriesCompute(accountId, stq); geoDbCachePut(accountId, tk, v, 6000000); return v; }));
       } catch (e){ console.warn('[geo-territories] failed:', e.message); return sendJson(res, 500, { error: 'could not read the reseller data' }); }
     }
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'reseller-file'){
@@ -39830,6 +39861,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       stmts.push({ sql: 'DELETE FROM account_reseller_meta WHERE accountId = ?', params: [accountId] });
       stmts.push({ sql: 'INSERT INTO account_reseller_meta (accountId, file_name, uploaded_at, resellers, bookings) VALUES (?,?,?,?,?)', params: [accountId, t(body.fileName), now, rClean.length, nBook] });
       try { db.batch(stmts, 120000); } catch (e){ console.error('[reseller-file] failed:', e.message); return sendJson(res, 500, { error: `The reseller file was not saved: ${e.message}. Your existing data is unchanged.` }); }
+      try { geoDbCachePut(accountId, `terr:${GEO_CACHE_V}:${now}:`, geoTerritoriesCompute(accountId, []), 6000000); } catch (e){ console.warn('[reseller-file] precompute failed:', e.message); }
       return sendJson(res, 201, { resellers: rClean.length, rows: zClean.length, bookings: nBook, uploadedAt: now });
     }
     // ---- Geographic Optimization page endpoints (2026-10-07) ----
