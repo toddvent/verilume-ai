@@ -11084,6 +11084,239 @@ function buildPairReadiness(rows, geoLevel, pairs, dmaNames, audit){
     method: 'Detectable lift at 95% confidence / 80% power, Poisson counts with a x2 allowance for the pre-period baseline. Market-to-market noise is not included, so real tests need somewhat more volume than shown.',
     periodNote: assumedPeriod ? 'This upload does not say what period it covers, so its counts are treated as one year. Enter the period on the upload for tighter numbers.' : `Volumes are the ${Math.round(periodDays)} days this upload covers, converted to a weekly rate.` };
 }
+
+// ============ Geographic Optimization page (2026-10-07) ============
+// One working area: customers by region, statistically relevant markets, market classes, a map, and a
+// Match Market test planner. Everything below reads the same market upload analysis the Excel export uses.
+function geoCountryGroup(zipKey){ const c = geoKeyCountry(zipKey); return c === 'US' ? 'US' : (c === 'CA' ? 'CAN' : 'INTL'); }
+function geoRegionCounts(rows){
+  const out = { US: { customers: 0, revenue: 0, postalCodes: 0 }, CAN: { customers: 0, revenue: 0, postalCodes: 0 }, INTL: { customers: 0, revenue: 0, postalCodes: 0 } };
+  (rows || []).forEach(r => { const g = geoCountryGroup(r.zip); out[g].customers += Number(r.customerCount) || 0; out[g].revenue += Number(r.revenue) || 0; out[g].postalCodes += 1; });
+  const tot = out.US.customers + out.CAN.customers + out.INTL.customers;
+  Object.keys(out).forEach(k => { out[k].customers = Math.round(out[k].customers); out[k].revenue = Math.round(out[k].revenue); out[k].share = tot > 0 ? Math.round(out[k].customers / tot * 1000) / 10 : 0; });
+  return out;
+}
+function geoNormP(z){ const t = 1 / (1 + 0.2316419 * Math.abs(z)); const d = 0.3989423 * Math.exp(-z * z / 2); const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return z > 0 ? 1 - p : p; }
+// Adds the statistics a planner needs to each scored market: share of the client's customers vs share of the
+// population (a proportion z-test), whether the difference is statistically reliable, and a centroid for the map.
+function enrichDmasForGeo(rows, dmas){
+  if (!dmas || !dmas.length) return dmas || [];
+  let countBy = {};
+  try { const r = computeDmaRollup(rows, 'count'); ((r && r.dmas) || []).forEach(d => { countBy[d.dmaCode] = Number(d.volume) || 0; }); } catch (e){ countBy = {}; }
+  const groups = {};
+  dmas.forEach(d => { const g = d.country || 'US'; const gg = groups[g] = groups[g] || { N: 0, P: 0 }; gg.N += countBy[d.dmaCode] || 0; gg.P += Number(d.population) > 0 ? Number(d.population) : 0; });
+  // centroid: customer-weighted average of the postal-code centroids that map to each market
+  const cen = {};
+  try {
+    const zips = Array.from(new Set((rows || []).filter(r => !/^DMA:/.test(String(r.zip || '')) && geoKeyCountry(r.zip) === 'US').map(r => String(r.zip).padStart(5, '0'))));
+    const w = {}; (rows || []).forEach(r => { w[String(r.zip).padStart(5, '0')] = (w[String(r.zip).padStart(5, '0')] || 0) + (Number(r.customerCount) || 0); });
+    for (let i = 0; i < zips.length; i += 200){
+      const chunk = zips.slice(i, i + 200); const ph = chunk.map(() => '?').join(',');
+      const dm = {}; db.prepare(`SELECT zip, dmaCode AS "dmaCode" FROM zip_dma_master WHERE zip IN (${ph})`).all(...chunk).forEach(f => { dm[f.zip] = f.dmaCode; });
+      db.prepare(`SELECT zip, lat, lng FROM zip_centroid_master WHERE zip IN (${ph})`).all(...chunk).forEach(c => {
+        const code = dm[c.zip]; if (code == null) return; const wt = w[c.zip] || 0; if (!(wt > 0)) return;
+        const a = cen[code] = cen[code] || { lat: 0, lng: 0, w: 0 }; a.lat += c.lat * wt; a.lng += c.lng * wt; a.w += wt;
+      });
+    }
+  } catch (e){ /* map falls back to no coordinates */ }
+  return dmas.map(d => {
+    const g = groups[d.country || 'US'] || { N: 0, P: 0 };
+    const V = countBy[d.dmaCode] || 0;
+    const p0 = g.P > 0 && Number(d.population) > 0 ? Number(d.population) / g.P : null;
+    let z = null, pv = null, relevant = false, idx = null;
+    if (p0 != null && g.N > 0 && p0 < 1){
+      const se = Math.sqrt(g.N * p0 * (1 - p0)); z = se > 0 ? (V - g.N * p0) / se : null;
+      if (z != null){ pv = 2 * (1 - geoNormP(Math.abs(z))); relevant = V >= 30 && Math.abs(z) >= 1.96; }
+      idx = Math.round((V / g.N) / p0 * 100);
+    }
+    const c = cen[d.dmaCode];
+    return { ...d, countVolume: Math.round(V), popShare: p0 != null ? Math.round(p0 * 100000) / 1000 : null, countIndex: idx, zScore: z != null ? Math.round(z * 100) / 100 : null, pValue: pv != null ? Math.round(pv * 10000) / 10000 : null, relevant, lat: c && c.w > 0 ? Math.round(c.lat / c.w * 1000) / 1000 : null, lng: c && c.w > 0 ? Math.round(c.lng / c.w * 1000) / 1000 : null };
+  });
+}
+
+
+// ---- Geographic Optimization: overview, insights and the Match Market planner (2026-10-07) ----
+const GEO_Z = 2.8, GEO_DESIGN = 2;
+const GEO_TARGETABLE_RX = /direct mail|mail|print|magazine|newspaper|insert|outdoor|ooh|billboard|out of home|radio|local|spot|transit|cinema|door/i;
+const GEO_TIER_ORDER = ['Must Win', 'Growth', 'Opportunistic', 'Monitor'];
+function geoLatestUpload(accountId, uploadId){
+  if (uploadId) return db.prepare('SELECT * FROM market_customer_uploads WHERE id = ? AND accountId = ?').get(uploadId, accountId) || null;
+  return db.prepare('SELECT * FROM market_customer_uploads WHERE accountId = ? ORDER BY createdAt DESC LIMIT 1').get(accountId) || null;
+}
+function geoOverviewPayload(accountId, upload){
+  const analysis = computeMarketUploadAnalysis(accountId, upload, {});
+  const dmas = (analysis.dmaExport && analysis.dmaExport.dmas) || [];
+  const tiers = {}; GEO_TIER_ORDER.forEach(t => { tiers[t] = 0; }); dmas.forEach(d => { if (tiers[d.opportunityTier] != null) tiers[d.opportunityTier]++; });
+  const relevantTop = dmas.filter(d => d.relevant && d.zScore > 0 && d.populationIndex != null).sort((a, b) => b.populationIndex - a.populationIndex).slice(0, 5)
+    .map(d => ({ dmaCode: d.dmaCode, dmaName: d.dmaName, populationIndex: d.populationIndex, countIndex: d.countIndex, customers: d.countVolume, zScore: d.zScore, pValue: d.pValue }));
+  const allMarkets = dmas.map(d => ({ dmaCode: d.dmaCode, dmaName: d.dmaName, country: d.country || 'US', tier: d.opportunityTier, composite: d.compositeScore, customers: d.countVolume, volume: d.volume, populationIndex: d.populationIndex, zScore: d.zScore, pValue: d.pValue, relevant: !!d.relevant, lat: d.lat, lng: d.lng }));
+  let stores = { count: 0, first: null };
+  try { const rows = db.prepare('SELECT storeId AS "storeId", name, address, lat, lng FROM account_stores WHERE accountId = ?').all(accountId); stores = { count: rows.length, first: rows[0] || null, sample: rows.slice(0, 5) }; } catch (e){}
+  const audit = upload.auditJson ? JSON.parse(upload.auditJson) : null;
+  return { upload: { id: upload.id, label: upload.label, periodLabel: upload.periodLabel || null, createdAt: upload.createdAt, geoLevel: upload.geoLevel || 'zip', weightMode: upload.weightMode, audit },
+    regions: analysis.regions || null, tiers, topMarkets: relevantTop, markets: allMarkets, marketCount: allMarkets.length, relevantCount: allMarkets.filter(m => m.relevant).length, stores,
+    readinessSummary: analysis.readiness ? { summary: analysis.readiness.summary, pooled: analysis.readiness.pooled, periodDays: analysis.readiness.periodDays } : null,
+    note: dmas.length ? null : 'No markets could be placed yet: the zip-to-market reference may not be loaded, or no postal codes matched it.' };
+}
+// ---- AI text: geographic sales trends and best practices, written from this account's own market figures
+const geoInsightCache = new Map();
+async function geoInsights(accountId, upload, overview){
+  const key = upload.id + '|' + (overview.marketCount || 0) + '|' + JSON.stringify(overview.tiers);
+  if (geoInsightCache.has(key)) return geoInsightCache.get(key);
+  const topNames = (overview.topMarkets || []).map(m => `${m.dmaName} (index ${m.populationIndex})`);
+  const under = (overview.markets || []).filter(m => m.relevant && m.zScore < 0).sort((a, b) => a.zScore - b.zScore).slice(0, 5).map(m => `${m.dmaName} (index ${m.populationIndex})`);
+  const reg = overview.regions || {};
+  const facts = { regions: reg, tiers: overview.tiers, marketsAnalyzed: overview.marketCount, statisticallyRelevant: overview.relevantCount, topOverIndexing: topNames, underIndexing: under };
+  const rules = () => {
+    const t = overview.tiers || {};
+    const usShare = reg.US ? reg.US.share : null;
+    return { source: 'rules', headline: topNames.length ? `Your customers concentrate in ${topNames.slice(0, 3).map(x => x.replace(/ \(index.*\)/, '')).join(', ')}.` : 'Your market picture is still forming.',
+      trends: [
+        { title: 'Where customers over-index', body: topNames.length ? `${topNames.join(', ')} hold more of your customers than their population alone would predict, and the gap is large enough to be statistically reliable.` : 'No market stands out statistically yet. A longer history or more volume will sharpen this.' },
+        { title: 'Where you under-index', body: under.length ? `${under.join(', ')} show fewer customers than their size suggests. These are the clearest room to grow if the product fits them.` : 'No large market is clearly under-indexing on the volume available.' },
+        { title: 'Geographic mix', body: usShare != null ? `${usShare}% of customers are in the US${reg.CAN ? `, ${reg.CAN.share}% in Canada` : ''}${reg.INTL ? `, ${reg.INTL.share}% elsewhere` : ''}.` : 'Regional mix is not available for this data.' }],
+      practices: [
+        { marketType: 'Must Win', body: 'Defend and deepen. Use these markets for always-on coverage and as the base for incrementality tests, because volume here gives the clearest reads.' },
+        { marketType: 'Growth', body: 'Invest ahead of demand. Test added spend and new channels here first, and read results against a matched control.' },
+        { marketType: 'Opportunistic', body: 'Use targeted, lower-cost channels that can be bought by market, such as direct mail, inserts and local placements, and scale only on proof.' },
+        { marketType: 'Monitor', body: 'Keep a light presence and watch for change. Do not use these as test markets until volume builds.' }],
+      watchouts: ['Markets with few customers give noisy reads. Only markets flagged statistically relevant should drive decisions.', 'A market that over-indexes may already be saturated. Test added spend before assuming it scales.'] };
+  };
+  let out = null;
+  if (process.env.ANTHROPIC_API_KEY){
+    try {
+      const parsed = await callClaudeForJSON({ model: MODEL_STANDARD, maxTokens: 1400, timeoutMs: 25000, toolName: 'submit_geo_insights', toolDescription: 'Submit geographic sales trends and best practices for this account.',
+        content: `You are the market analyst for a marketing platform. Write short, plain-language guidance for a CMO from ONLY the figures below. Rules: do not invent numbers, dates, competitors or studies; refer to markets and figures that appear below; give general, well-established principles for geographic media planning; no hype. "index" means the market's share of this account's customers divided by its share of the population, times 100 (100 = proportional). "Statistically relevant" means the difference is unlikely to be chance.\n\nFigures:\n${JSON.stringify(facts)}`,
+        schema: { type: 'object', properties: { headline: { type: 'string' }, trends: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, body: { type: 'string' } }, required: ['title', 'body'] } }, practices: { type: 'array', items: { type: 'object', properties: { marketType: { type: 'string', enum: GEO_TIER_ORDER }, body: { type: 'string' } }, required: ['marketType', 'body'] } }, watchouts: { type: 'array', items: { type: 'string' } } }, required: ['headline', 'trends', 'practices', 'watchouts'] } });
+      if (parsed && parsed.headline) out = { source: 'ai', headline: String(parsed.headline).slice(0, 240), trends: (parsed.trends || []).slice(0, 4).map(x => ({ title: String(x.title).slice(0, 80), body: String(x.body).slice(0, 420) })), practices: (parsed.practices || []).slice(0, 4).map(x => ({ marketType: x.marketType, body: String(x.body).slice(0, 420) })), watchouts: (parsed.watchouts || []).slice(0, 3).map(x => String(x).slice(0, 300)) };
+    } catch (e){ out = null; }
+  }
+  if (!out) out = rules();
+  geoInsightCache.set(key, out);
+  return out;
+}
+// ---- Match Market planner ----
+function geoMonday(d){ const x = new Date(d.getTime()); x.setUTCHours(0, 0, 0, 0); x.setUTCDate(x.getUTCDate() + ((8 - x.getUTCDay()) % 7 || 7)); return x; }
+function geoIso(d){ return d.toISOString().slice(0, 10); }
+function geoAddDays(d, n){ return new Date(d.getTime() + n * 86400000); }
+function geoWeekStart(isoOrDate){ const d = new Date(isoOrDate); if (isNaN(d)) return null; d.setUTCHours(0, 0, 0, 0); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return geoIso(d); }
+async function geoParseIntent(question, categoryNames){
+  const q = String(question || '');
+  const out = { metric: /order value|aov|basket|ticket|revenue per|spend per/i.test(q) ? 'aov' : 'bookings', liftPct: null, budget: null, channels: [], parsedBy: 'rules' };
+  const lm = q.match(/(\d{1,2}(?:\.\d+)?)\s?%/); if (lm) out.liftPct = Math.min(50, Math.max(1, Number(lm[1])));
+  const bm = q.match(/\$\s?([\d,]+(?:\.\d+)?)\s?(k|m|mm|thousand|million)?/i);
+  if (bm){ let v = Number(bm[1].replace(/,/g, '')); const u = (bm[2] || '').toLowerCase(); if (u === 'k' || u === 'thousand') v *= 1e3; else if (u === 'm' || u === 'mm' || u === 'million') v *= 1e6; if (v > 0) out.budget = v; }
+  const lower = q.toLowerCase(); const skip = new Set(['total', 'unspecified', 'advertising', 'consumer', 'media', 'marketing', 'working']);
+  (categoryNames || []).forEach(n => { const toks = String(n).toLowerCase().split(/[^a-z]+/).filter(t => t.length >= 4 && !skip.has(t)); if (toks.some(t => lower.includes(t))) out.channels.push(n); });
+  if (process.env.ANTHROPIC_API_KEY && q.trim().length > 8){
+    try {
+      const p = await callClaudeForJSON({ model: MODEL_STANDARD, maxTokens: 400, timeoutMs: 12000, toolName: 'submit_test_intent', toolDescription: 'Extract what the marketer wants to test.',
+        content: `A marketer typed what they want to test with a geographic (market vs market) test. Extract: the measure (bookings = how many people buy, aov = average order value), the lift they hope to detect in percent if stated, a budget in dollars if stated, and which of these channels they mention (choose only from the list). Question: "${q.replace(/"/g, "'").slice(0, 600)}"\nChannels: ${JSON.stringify(categoryNames || [])}`,
+        schema: { type: 'object', properties: { metric: { type: 'string', enum: ['bookings', 'aov'] }, liftPct: { type: ['number', 'null'] }, budget: { type: ['number', 'null'] }, channels: { type: 'array', items: { type: 'string' } } }, required: ['metric', 'channels'] } });
+      if (p){ if (p.metric) out.metric = p.metric; if (p.liftPct > 0) out.liftPct = Math.min(50, p.liftPct); if (p.budget > 0) out.budget = p.budget; const ok = (p.channels || []).filter(c => (categoryNames || []).includes(c)); if (ok.length) out.channels = ok; out.parsedBy = 'ai'; }
+    } catch (e){ /* the rule-based reading stands */ }
+  }
+  return out;
+}
+// Weekly booking counts for a group of markets, from the booking history (distinct bookings per Monday week).
+function geoWeeklyBookings(accountId, testCodes, controlCodes){
+  const settings = getTransactionSettings(accountId);
+  const rows = db.prepare('SELECT year, month, "bookingDate", "bookingCode", "bookingStatus", "bookingType", "promoType", "productGroup", "creativeFocus", "guestPostalCode" FROM account_guest_bookings WHERE accountId = ?').all(accountId);
+  const zips = new Set(); rows.forEach(r => { const z = String(aliasVal(r, 'guestPostalCode') || '').trim(); if (z) zips.add(z); });
+  const keyOf = {}; const normZ = Array.from(zips); normZ.forEach(z => { const g = normalizeGeoKey(z, 'US'); if (g && !/^DMA:/.test(g.key)) keyOf[z] = g.key; });
+  const keys = Array.from(new Set(Object.values(keyOf))).map(k => String(k).padStart(5, '0'));
+  const dmaOf = {};
+  for (let i = 0; i < keys.length; i += 200){ const ch = keys.slice(i, i + 200); db.prepare(`SELECT zip, dmaCode AS "dmaCode" FROM zip_dma_master WHERE zip IN (${ch.map(() => '?').join(',')})`).all(...ch).forEach(f => { dmaOf[f.zip] = String(f.dmaCode); }); }
+  const T = new Set(testCodes.map(String)), C = new Set(controlCodes.map(String));
+  const seenT = {}, seenC = {}, wT = {}, wC = {}; let minW = null, maxW = null;
+  rows.forEach(r => {
+    if (!rowCounts(r, settings)) return;
+    const z = String(aliasVal(r, 'guestPostalCode') || '').trim(); const k = keyOf[z]; if (!k) return; const dc = dmaOf[String(k).padStart(5, '0')]; if (dc == null) return;
+    const inT = T.has(dc), inC = C.has(dc); if (!inT && !inC) return;
+    const bd = String(aliasVal(r, 'bookingDate') || ''); const w = /^\d{4}-\d{2}-\d{2}/.test(bd) ? geoWeekStart(bd.slice(0, 10)) : null; if (!w) return;
+    const code = String(aliasVal(r, 'bookingCode')); const tag = code + '|' + w;
+    if (inT && !seenT[tag]){ seenT[tag] = 1; wT[w] = (wT[w] || 0) + 1; }
+    if (inC && !seenC[tag]){ seenC[tag] = 1; wC[w] = (wC[w] || 0) + 1; }
+    if (!minW || w < minW) minW = w; if (!maxW || w > maxW) maxW = w;
+  });
+  return { test: wT, control: wC, firstWeek: minW, lastWeek: maxW };
+}
+function geoForecast(accountId, testCodes, controlCodes, W, testStartIso, lift){
+  let ser; try { ser = geoWeeklyBookings(accountId, testCodes, controlCodes); } catch (e){ return { available: false, reason: 'Booking dates could not be read for these markets.', weeksOnFile: 0 }; }
+  if (!ser.firstWeek) return { available: false, reason: 'No dated bookings fall in the recommended markets.', weeksOnFile: 0 };
+  const weeksOnFile = Math.round((new Date(ser.lastWeek) - new Date(ser.firstWeek)) / (7 * 86400000)) + 1;
+  if (weeksOnFile < 78) return { available: false, weeksOnFile, reason: `A seasonal forecast needs about 18 months of dated bookings in these markets (a full year to compare against, plus a quarter to calibrate). There are ${weeksOnFile} weeks on file.` };
+  // seasonal-naive: same week last year, scaled by the trailing 13-week year-over-year ratio
+  const get = (o, iso) => o[iso] || 0;
+  const wkIso = (iso, n) => geoIso(geoAddDays(new Date(iso), n * 7));
+  const last = ser.lastWeek;
+  let cur13 = 0, prev13 = 0; for (let i = 0; i < 13; i++){ cur13 += get(ser.test, wkIso(last, -i)); prev13 += get(ser.test, wkIso(last, -i - 52)); }
+  const ratio = prev13 > 0 ? cur13 / prev13 : 1;
+  const resid = []; for (let i = 0; i < 13; i++){ const w = wkIso(last, -i); const pred = get(ser.test, wkIso(w, -52)) * ratio; resid.push(get(ser.test, w) - pred); }
+  const mean = resid.reduce((a, b) => a + b, 0) / resid.length; const sd = Math.sqrt(resid.reduce((a, b) => a + (b - mean) * (b - mean), 0) / Math.max(1, resid.length - 1));
+  let base = 0; for (let i = 0; i < W; i++){ base += get(ser.test, wkIso(geoWeekStart(testStartIso), i - 52)) * ratio; }
+  const band = 1.28 * sd * Math.sqrt(W);
+  return { available: true, weeksOnFile, baselineBookings: Math.round(base), low: Math.max(0, Math.round(base - band)), high: Math.round(base + band), expectedIncremental: Math.round(base * lift), yoyRatio: Math.round(ratio * 100) / 100,
+    method: 'Same weeks last year, scaled by the latest 13-week year-over-year change, with an 80% range from how well that method tracked the last 13 weeks.' };
+}
+async function buildGeoPlan(accountId, upload, analysis, question){
+  const r = analysis.readiness;
+  if (!r || !r.pairs || !r.pairs.length) return { ok: false, reason: 'There are not enough markets with volume to form test and control pairs yet. Add more booking history or widen the window.' };
+  const cost = r.costing || null; const cats = cost && cost.categories ? cost.categories : [];
+  const intent = await geoParseIntent(question, cats.map(c => c.name));
+  const aov = intent.metric === 'aov'; const cv = aov ? (r.aovCv || 0.8) : 1; const lift = (intent.liftPct || 10) / 100;
+  const wk = (r.periodDays || 365) / 7;
+  const sorted = r.pairs.slice().sort((a, b) => ((a.mdePct.w13 == null ? 9e9 : a.mdePct.w13) - (b.mdePct.w13 == null ? 9e9 : b.mdePct.w13)));
+  const need = (nT, nC) => { const a = nT / wk, b = nC / wk; return (a > 0 && b > 0) ? Math.max(4, Math.ceil(GEO_DESIGN * (1 / a + 1 / b) * Math.pow(GEO_Z * cv / lift, 2))) : null; };
+  let chosen = [], nT = 0, nC = 0, W = null;
+  for (let k = 0; k < Math.min(sorted.length, 12); k++){ chosen.push(sorted[k]); nT += sorted[k].testVolume; nC += sorted[k].controlVolume; W = need(nT, nC); if (W != null && W <= 13) break; }
+  if (W == null) return { ok: false, reason: 'The recommended markets have no volume in this window.' };
+  const wT = nT / wk, wC = nC / wk;
+  // channels and cost
+  let selected = cats.filter(c => intent.channels.includes(c.name));
+  let channelNote = null;
+  if (!selected.length){ selected = cats.filter(c => GEO_TARGETABLE_RX.test(c.name)); channelNote = selected.length ? 'No channel was named, so the plan uses the channels that can be bought by market.' : null; }
+  if (!selected.length){ selected = cats; if (cats.length > 1) channelNote = 'No market-targetable channel was found in your budget, so the plan counts all working media.'; }
+  const allSpend = cats.reduce((a, c) => a + c.spend, 0), selSpend = selected.reduce((a, c) => a + c.spend, 0);
+  let cpb = null;
+  if (cost){ cpb = (cost.basis === 'cards' && allSpend > 0) ? cost.costPerBooking * (selSpend / allSpend) : (cost.transactions > 0 && selSpend > 0 ? selSpend / cost.transactions : null); }
+  const mult = 2; const bT = wT * W, bC = wC * W, inc = lift * bT;
+  const held = cpb != null ? cpb * bT : null;
+  const extra = (cpb != null && !aov) ? { low: inc * cpb, expected: inc * cpb * mult, high: inc * cpb * mult * 1.5 } : null;
+  const total = held != null ? held + (extra ? extra.expected : 0) : null;
+  let budgetCheck = null;
+  if (intent.budget && total != null){
+    const fits = total <= intent.budget;
+    let achievable = null;
+    if (!fits && !aov && cpb) achievable = Math.max(0, Math.round((intent.budget - held) / (bT * cpb * mult) * 1000) / 10);
+    budgetCheck = { budget: intent.budget, fits, shortBy: fits ? 0 : Math.round(total - intent.budget), achievableLiftPct: achievable, coversHeldMedia: intent.budget >= held };
+  }
+  const media = selected.map(c => ({ channel: c.name, share: selSpend > 0 ? Math.round(c.spend / selSpend * 1000) / 10 : 100, held: held != null && selSpend > 0 ? Math.round(held * c.spend / selSpend) : null, extra: extra && selSpend > 0 ? Math.round(extra.expected * c.spend / selSpend) : null }));
+  // timeline
+  const today = new Date(); const leadStart = geoMonday(today); const testStart = geoAddDays(leadStart, 14); const testEnd = geoAddDays(testStart, W * 7); const readoutEnd = geoAddDays(testEnd, 14);
+  const pre = Math.max(4, Math.min(13, Math.round(W / 2)));
+  const timeline = { phases: [
+    { key: 'baseline', label: `Baseline (${pre} weeks of history)`, start: geoIso(geoAddDays(leadStart, -pre * 7)), end: geoIso(leadStart), weeks: pre, note: 'Already on file. Used to confirm test and control move together.' },
+    { key: 'setup', label: 'Setup and buying', start: geoIso(leadStart), end: geoIso(testStart), weeks: 2, note: 'Creative, buys and market targeting.' },
+    { key: 'test', label: `Test (${W} weeks)`, start: geoIso(testStart), end: geoIso(testEnd), weeks: W, note: 'Media runs in test markets only.' },
+    { key: 'readout', label: 'Readout', start: geoIso(testEnd), end: geoIso(readoutEnd), weeks: 2, note: 'Allow late bookings to land, then compare.' }],
+    flights: media.map(m => ({ channel: m.channel, start: geoIso(testStart), end: geoIso(testEnd) })) };
+  const testCodes = chosen.map(p => p.testDma), controlCodes = chosen.map(p => p.controlDma);
+  const forecast = geoForecast(accountId, testCodes, controlCodes, W, geoIso(testStart), lift);
+  const fits13 = W <= 13, fits26 = W <= 26;
+  const reasonable = W <= 26 ? { ok: true, why: fits13 ? 'The pooled markets can show this lift within one quarter.' : 'The pooled markets can show this lift within two quarters.' } : { ok: false, why: `At this size the test needs ${W} weeks to show a ${Math.round(lift * 100)}% ${aov ? 'change in order value' : 'lift'}. Pool more markets, accept a larger minimum lift, or test in larger geographies.` };
+  const notes = []; if (channelNote) notes.push(channelNote);
+  if (aov) notes.push('Average order value changes come from the offer, product mix or creative you test, so the plan shows the media you hold steady and no extra media.');
+  if (cpb == null) notes.push('No cost per booking could be found for this window, so cost is not shown.');
+  if (!forecast.available) notes.push(forecast.reason);
+  const nm = analysis.dmaExport && analysis.dmaExport.dmas ? analysis.dmaExport.dmas : [];
+  const info = c => { const d = nm.find(x => String(x.dmaCode) === String(c)); return d ? { tier: d.opportunityTier, relevant: !!d.relevant, populationIndex: d.populationIndex } : {}; };
+  const pairsOut = chosen.map((p, i) => ({ n: i + 1, test: p.testName, control: p.controlName, testDma: p.testDma, controlDma: p.controlDma, testWeekly: p.weeklyTest, controlWeekly: p.weeklyControl, grade: p.grade, mde8: p.mdePct && p.mdePct.w8, testTier: info(p.testDma).tier || null, controlTier: info(p.controlDma).tier || null }));
+  return { ok: true, intent, design: { metric: intent.metric, liftPct: Math.round(lift * 100), weeks: W, pairs: pairsOut, pooled: { testWeekly: Math.round(wT * 10) / 10, controlWeekly: Math.round(wC * 10) / 10, testBookings: Math.round(bT), controlBookings: Math.round(bC) }, cv: aov ? cv : null },
+    cost: cost ? { costPerBooking: cpb != null ? Math.round(cpb * 100) / 100 : null, multiple: mult, held: held != null ? Math.round(held) : null, extra: extra ? { low: Math.round(extra.low), expected: Math.round(extra.expected), high: Math.round(extra.high) } : null, total: total != null ? Math.round(total) : null, source: cost.source, avgOrderValue: cost.avgOrderValue } : null,
+    budgetCheck, media, timeline, forecast, reasonable, notes };
+}
+
 function dmaNameMap(dmas){ const m = {}; (dmas || []).forEach(d => { m[d.dmaCode] = d.dmaName || d.dmaCode; }); return m; }
 
 function computeMarketUploadAnalysis(accountId, upload, options){
@@ -11151,6 +11384,7 @@ function computeMarketUploadAnalysis(accountId, upload, options){
       }
     }
   } catch (e){ /* leave dmaExport unavailable — export falls back to zip rows */ }
+  try { if (dmaExport.available) dmaExport.dmas = enrichDmasForGeo(rows, dmaExport.dmas); } catch (e){ /* statistics are an extra, never block the analysis */ }
   // "By store trade area" — computed against this account's flat store
   // list (see GET/POST /api/accounts/:id/stores) whenever it has any
   // stores at all; omitted entirely for an account with none yet.
@@ -11164,7 +11398,7 @@ function computeMarketUploadAnalysis(accountId, upload, options){
   let readiness = null;
   try { readiness = buildPairReadiness(rows, 'zip', (dmaExport.matching && dmaExport.matching.pairs) || [], dmaNameMap(dmaExport.dmas), audit); if (readiness) readiness.costing = getCostPerBookingForWindow(accountId, audit); } catch (e){ readiness = null; }
   return {
-    readiness, uploadId: upload.id, label: upload.label, rowCount: rows.length, weightMode: upload.weightMode,
+    readiness, regions: geoRegionCounts(rows), uploadId: upload.id, label: upload.label, rowCount: rows.length, weightMode: upload.weightMode,
     penetration: composite.rows, compositeWeights: composite.weights,
     holdout: { zips: holdout.holdoutZips, fraction: holdoutFraction, note: holdout.note },
     demographic, matching, audit, dma, dmaExport, geoLevel: 'zip', storeTradeArea
@@ -11241,7 +11475,12 @@ function buildMarketUploadXlsxMarketRows(analysis){
       opportunityTier: r.opportunityTier || null,
       compositeScore: r.compositeScore != null ? Number(r.compositeScore) : null,
       testControlAssignment: assignment,
-      matchPair: pairLabelByKey[key] || (holdoutKeys.has(key) ? 'Holdout' : null)
+      matchPair: pairLabelByKey[key] || (holdoutKeys.has(key) ? 'Holdout' : null),
+      popSharePct: r.popShare != null ? r.popShare : null, countIndex: r.countIndex != null ? r.countIndex : null, zScore: r.zScore != null ? r.zScore : null, pValue: r.pValue != null ? r.pValue : null, relevant: r.relevant == null ? null : !!r.relevant,
+      pairDistance: (() => { const p = pairs.find(x => x.testDma === key || x.controlDma === key); return p && p.similarityDistance != null ? Math.round(p.similarityDistance * 100) / 100 : null; })(),
+      pairMde8: (() => { const rp = analysis.readiness && analysis.readiness.pairs && analysis.readiness.pairs.find(x => x.testDma === key || x.controlDma === key); return rp && rp.mdePct ? rp.mdePct.w8 : null; })(),
+      pairGrade: (() => { const rp = analysis.readiness && analysis.readiness.pairs && analysis.readiness.pairs.find(x => x.testDma === key || x.controlDma === key); return rp ? rp.grade : null; })(),
+      lat: r.lat != null ? r.lat : null, lng: r.lng != null ? r.lng : null
     };
   }).sort((a, b) => ((b.customerCount || b.revenue || 0) - (a.customerCount || a.revenue || 0)));
 }
@@ -11421,7 +11660,17 @@ async function buildMarketUploadXlsx(analysis, upload, opts){
     { header: 'Opportunity_Tier', width: 18 },
     { header: 'Composite_Score', width: 16 },
     { header: 'Test_Control_Assignment', width: 22 },
-    { header: 'Match_Pair', width: 14 }
+    { header: 'Match_Pair', width: 14 },
+    { header: 'Population_Share_Pct', width: 20 },
+    { header: 'Customer_Index_vs_Population', width: 28 },
+    { header: 'Z_Score', width: 10 },
+    { header: 'P_Value', width: 10 },
+    { header: 'Statistically_Relevant', width: 22 },
+    { header: 'Pair_Similarity_Distance', width: 24 },
+    { header: 'Detectable_Lift_8wk_Pct', width: 24 },
+    { header: 'Pair_Readiness', width: 16 },
+    { header: 'Latitude', width: 10 },
+    { header: 'Longitude', width: 10 }
   ];
   marketSheet.columns = marketColumns.map(c => ({ width: c.width }));
   marketSheet.mergeCells(1, 1, 1, marketColumns.length);
@@ -11447,6 +11696,9 @@ async function buildMarketUploadXlsx(analysis, upload, opts){
     row.getCell(7).value = r.compositeScore;
     row.getCell(8).value = r.testControlAssignment;
     row.getCell(9).value = r.matchPair;
+    row.getCell(10).value = r.popSharePct; row.getCell(11).value = r.countIndex; row.getCell(12).value = r.zScore; row.getCell(13).value = r.pValue;
+    row.getCell(14).value = r.relevant == null ? null : (r.relevant ? 'Yes' : 'No'); row.getCell(15).value = r.pairDistance; row.getCell(16).value = r.pairMde8; row.getCell(17).value = r.pairGrade;
+    row.getCell(18).value = r.lat; row.getCell(19).value = r.lng;
   });
 
   // ---- Sheet 2: By Postal Code — reference detail only, not a second test
@@ -39014,6 +39266,35 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         db.prepare(`INSERT INTO market_customer_rows (id, marketUploadId, zip, customerCount, revenue) VALUES ${ph}`).run(...params);
       }
       return sendJson(res, 201, { id, rowCount: agg.rows.length, weightMode, geoLevel: 'zip', periodLabel, audit });
+    }
+
+    // ---- Geographic Optimization page endpoints (2026-10-07) ----
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'geo-overview'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const sp = new URL(req.url, 'http://x').searchParams;
+      const upload = geoLatestUpload(accountId, sp.get('uploadId'));
+      if (!upload) return sendJson(res, 200, { needsBuild: true });
+      try { return sendJson(res, 200, geoOverviewPayload(accountId, upload)); }
+      catch (e){ console.warn('[geo-overview] failed:', e.message); return sendJson(res, 500, { error: 'could not read the market data' }); }
+    }
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'geo-insights'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const upload = geoLatestUpload(accountId, body.uploadId);
+      if (!upload) return sendJson(res, 404, { error: 'no market data on this account yet' });
+      try { const ov = geoOverviewPayload(accountId, upload); return sendJson(res, 200, await geoInsights(accountId, upload, ov)); }
+      catch (e){ console.warn('[geo-insights] failed:', e.message); return sendJson(res, 500, { error: 'could not write the market notes' }); }
+    }
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'geo-plan'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const upload = geoLatestUpload(accountId, body.uploadId);
+      if (!upload) return sendJson(res, 404, { error: 'no market data on this account yet' });
+      try { const analysis = computeMarketUploadAnalysis(accountId, upload, {}); return sendJson(res, 200, Object.assign({ uploadId: upload.id }, await buildGeoPlan(accountId, upload, analysis, String(body.question || '').slice(0, 800)))); }
+      catch (e){ console.warn('[geo-plan] failed:', e.message); return sendJson(res, 500, { error: 'could not build the test plan' }); }
     }
     // GET /api/accounts/:id/market-customer-uploads — lightweight list (no
     // analysis computation) of this account's committed customer uploads,
