@@ -30936,9 +30936,139 @@ function trStats(t){
   });
   return out;
 }
+
+// ---- Match market tracking (2026-10-07): weekly test vs control, pre/post, difference in differences ----
+const TR_T95 = [12.71, 4.30, 3.18, 2.78, 2.57, 2.45, 2.36, 2.31, 2.26, 2.23, 2.20, 2.18, 2.16, 2.14, 2.13, 2.12, 2.11, 2.10, 2.09, 2.09, 2.08, 2.07, 2.07, 2.06, 2.06, 2.06, 2.05, 2.05, 2.04, 2.04];
+function trT95(df){ df = Math.max(1, Math.floor(df)); return df <= 30 ? TR_T95[df - 1] : (df <= 60 ? 2.0 : 1.96); }
+function trTP(t, df){ const z = Math.abs(t) * (1 - 1 / (4 * df)) / Math.sqrt(1 + t * t / (2 * df)); return 2 * (1 - trNormCdf(z)); }
+function trIsoDate(raw){
+  const x = String(raw == null ? '' : raw).trim(); let m;
+  if ((m = x.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  if ((m = x.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/))) { const y = m[3].length === 2 ? '20' + m[3] : m[3]; return `${y}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`; }
+  return '';
+}
+function trMmCalc(t){
+  const d = t.details || {};
+  const w = (d.weekly || []).map(x => ({ wk: trIsoDate(x.week), t: Number(x.test), c: Number(x.control) })).filter(x => x.wk && x.t > 0 && x.c > 0).sort((a, b) => a.wk < b.wk ? -1 : 1);
+  const iv = trIsoDate(d.interventionDate || t.startDate);
+  if (!w.length) return { err: 'Add weekly bookings for the test and control markets, or import a CSV with the columns week, test and control.' };
+  if (!iv) return { err: 'Set the date the media started in the test markets.', w };
+  const pre = w.filter(x => x.wk < iv), post = w.filter(x => x.wk >= iv);
+  if (pre.length < 3 || post.length < 3) return { err: `Needs at least 3 weeks before and 3 weeks after the start date. There are ${pre.length} before and ${post.length} after.`, w, iv, pre, post };
+  const lr = a => a.map(x => Math.log(x.t / x.c)), mean = a => a.reduce((s2, x) => s2 + x, 0) / a.length;
+  const vr = a => { const m = mean(a); return a.reduce((s2, x) => s2 + (x - m) * (x - m), 0) / (a.length - 1); };
+  const a = lr(pre), b = lr(post), m0 = mean(a), m1 = mean(b), v0 = vr(a) / a.length, v1 = vr(b) / b.length, se = Math.sqrt(v0 + v1), diff = m1 - m0;
+  const df = se > 0 ? Math.pow(v0 + v1, 2) / ((v0 * v0) / (a.length - 1) + (v1 * v1) / (b.length - 1)) : a.length + b.length - 2, tc = trT95(df);
+  const lift = Math.exp(diff) - 1, lo = Math.exp(diff - tc * se) - 1, hi = Math.exp(diff + tc * se) - 1, pv = se > 0 ? trTP(diff / se, df) : null;
+  const postTest = post.reduce((s2, x) => s2 + x.t, 0), inc = postTest * (1 - 1 / (1 + lift)), incLo = Math.max(0, postTest * (1 - 1 / (1 + lo)));
+  const spend = Number(d.spend) > 0 ? Number(d.spend) : null, cpi = spend && inc > 0 ? spend / inc : null;
+  const clear = pv != null && pv < 0.05 && lo > 0, neg = pv != null && pv < 0.05 && hi < 0;
+  return { w, iv, pre, post, preRatio: Math.exp(m0), postRatio: Math.exp(m1), lift, lo, hi, p: pv, incremental: inc, incrementalLow: incLo, spend, cpi, clear, neg, df };
+}
+function trMmChart(c){
+  const W = 560, H = 150, pad = 28, rs = c.w.map(x => x.t / x.c), mn = Math.min.apply(null, rs) * 0.97, mx = Math.max.apply(null, rs) * 1.03, n = c.w.length;
+  const X = i => pad + (W - pad * 2) * (n === 1 ? 0 : i / (n - 1)), Y = v => H - 22 - (H - 40) * ((v - mn) / ((mx - mn) || 1));
+  const iv = c.w.findIndex(x => x.wk >= c.iv), ix = X(Math.max(0, iv));
+  const line = rs.map((v, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+  const seg = (v, a, b) => `<line x1="${X(a)}" x2="${X(b)}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--muted, #888)" stroke-dasharray="4 3" stroke-width="1.5"/>`;
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:640px;height:auto;" role="img" aria-label="Test to control ratio by week"><line x1="${ix}" x2="${ix}" y1="8" y2="${H - 22}" stroke="currentColor" stroke-opacity=".35"/><text x="${ix + 4}" y="16" font-size="10" fill="currentColor" fill-opacity=".7">Media starts</text>${seg(c.preRatio, 0, Math.max(0, iv - 1))}${iv > 0 ? seg(c.postRatio, iv, n - 1) : ''}<path d="${line}" fill="none" stroke="var(--accent, #0a6cff)" stroke-width="2"/>${rs.map((v, i) => `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="2.5" fill="var(--accent, #0a6cff)"/>`).join('')}<text x="${pad}" y="${H - 6}" font-size="10" fill="currentColor" fill-opacity=".7">${escapeHtml(c.w[0].wk)}</text><text x="${W - pad}" y="${H - 6}" font-size="10" text-anchor="end" fill="currentColor" fill-opacity=".7">${escapeHtml(c.w[n - 1].wk)}</text></svg>`;
+}
+function trMmResult(t){
+  const c = trMmCalc(t); if (c.err) return null;
+  const pc = v => (v * 100).toFixed(1) + '%';
+  return { kind: 'matchmarket', lift: c.lift, lo: c.lo, hi: c.hi, p: c.p, incremental: Math.round(c.incremental), costPerIncremental: c.cpi, spend: c.spend, postWeeks: c.post.length, preWeeks: c.pre.length,
+    winner: c.clear ? 'Test markets' : (c.neg ? 'Control markets' : ''), suggest: c.clear ? 'ship' : (c.neg ? 'kill' : 'iterate'),
+    summary: `Test markets ${c.lift >= 0 ? 'ahead' : 'behind'} by ${pc(Math.abs(c.lift))} after media started (95% range ${pc(c.lo)} to ${pc(c.hi)}, p = ${c.p == null ? 'n/a' : c.p.toFixed(3)}), about ${Math.round(c.incremental).toLocaleString()} extra bookings over ${c.post.length} weeks.` };
+}
+function trMmReadoutHtml(t){
+  const c = trMmCalc(t);
+  if (c.err) return `<div class="hint">${escapeHtml(c.err)} Build the market pairs in <a class="flink" onclick="goToStep('marketOptimization')">Match Market Builder</a>, then record weekly bookings here.</div>`;
+  const pc = v => (v * 100).toFixed(1) + '%', money = v => v == null ? '—' : '$' + Math.round(v).toLocaleString('en-US');
+  const verdict = c.clear ? `The test markets pulled ahead. Lift of ${pc(c.lift)}, and even the low end of the range (${pc(c.lo)}) is above zero.` : (c.neg ? `The test markets fell behind the control markets (${pc(c.lift)}).` : `No clear difference yet. The lift is ${pc(c.lift)}, but the range runs from ${pc(c.lo)} to ${pc(c.hi)}, which includes zero.`);
+  return `<div class="strat-tablewrap"><table class="strat-table"><thead><tr><th>Before media</th><th>After media</th><th>Lift</th><th>95% range</th><th>p-value</th><th>Extra bookings</th><th>Cost per extra booking</th></tr></thead><tbody><tr><td>${c.preRatio.toFixed(3)} test per control<div class="hint">${c.pre.length} weeks</div></td><td>${c.postRatio.toFixed(3)} test per control<div class="hint">${c.post.length} weeks</div></td><td><strong>${pc(c.lift)}</strong></td><td>${pc(c.lo)} to ${pc(c.hi)}</td><td>${c.p == null ? '—' : c.p.toFixed(3)}</td><td>${Math.round(c.incremental).toLocaleString()}</td><td>${money(c.cpi)}</td></tr></tbody></table></div>
+    <p style="margin:10px 0 4px;"><strong>${escapeHtml(verdict)}</strong></p>${trMmChart(c)}
+    <div class="hint">Lift is the change in the test-to-control ratio after the media start date compared with before it, so seasonality and market size cancel out. It assumes the weekly ratio is steady before media starts; 8 or more weeks before is better than 3. Extra bookings are the test markets' after-period bookings minus what the earlier ratio would have predicted.${c.spend ? '' : ' Enter the media spend to see cost per extra booking.'}</div>`;
+}
+function trMmSetWeek(i, k, v){ const d = tr.draft.details = tr.draft.details || {}; d.weekly = d.weekly || []; d.weekly[i][k] = v; trRefreshReadout(); }
+function trMmAddWeek(){ const d = tr.draft.details = tr.draft.details || {}; d.weekly = d.weekly || []; const last = d.weekly.length ? trIsoDate(d.weekly[d.weekly.length - 1].week) : ''; let nx = ''; if (last){ const dt = new Date(last + 'T00:00:00Z'); dt.setUTCDate(dt.getUTCDate() + 7); nx = dt.toISOString().slice(0, 10); } d.weekly.push({ week: nx, test: '', control: '' }); trRender(); }
+function trMmDelWeek(i){ tr.draft.details.weekly.splice(i, 1); trRender(); }
+function trMmImport(file){
+  if (!file || !tr.draft) return; const rd = new FileReader();
+  rd.onload = () => {
+    const rows = trCsvParse(String(rd.result || '')); if (rows.length < 2){ tr.msg = 'That file has no weekly rows.'; trRender(); return; }
+    const head = rows[0].map(h => h.trim().toLowerCase()), ci = n => head.findIndex(h => n.some(k => h.includes(k)));
+    const iw = ci(['week', 'date']), it = ci(['test']), ic = ci(['control']);
+    if (iw < 0 || it < 0 || ic < 0){ tr.msg = 'Needs columns named week, test and control.'; trRender(); return; }
+    const num = v => Number(String(v == null ? '' : v).replace(/[^0-9.\-]/g, '')) || 0;
+    const wk = rows.slice(1).map(r => ({ week: trIsoDate(r[iw]), test: num(r[it]), control: num(r[ic]) })).filter(x => x.week);
+    tr.draft.details = tr.draft.details || {}; tr.draft.details.weekly = wk;
+    tr.msg = wk.length ? `Imported ${wk.length} weeks. Save to keep them.` : 'No usable weeks in that file. Dates should look like 2026-03-02 or 3/2/2026.'; trRender();
+  };
+  rd.readAsText(file);
+}
+function trMmTemplateCsv(){
+  const url = URL.createObjectURL(new Blob(['week,test,control\r\n2026-03-02,,\r\n2026-03-09,,\r\n'], { type: 'text/csv' })); const a = document.createElement('a'); a.href = url; a.download = 'match-market-weekly-template.csv'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function trMmEditorHtml(t){
+  const d = t.details || {}, f = (label, inner) => `<label class="tr-f"><span>${label}</span>${inner}</label>`;
+  const di = (k, type, ph) => `<input type="${type || 'text'}" value="${escapeHtml(d[k] == null ? '' : d[k])}" placeholder="${ph || ''}" oninput="trSetDetail('${k}', this.value); trRefreshReadout()">`;
+  const wk = d.weekly || [];
+  return `<div class="tr-grid">${f('Channel tested', di('channel', 'text', 'e.g. Paid social'))}${f('Test markets', di('testMarkets', 'text', 'e.g. Tampa, Phoenix'))}${f('Control markets', di('controlMarkets', 'text', 'e.g. Orlando, Las Vegas'))}${f('Media start date', di('interventionDate', 'date'))}${f('Media spend in test markets ($)', di('spend', 'number'))}</div>
+    <div class="adlib-act" style="margin:12px 0 6px;"><span class="hint" style="margin:0;"><strong>Weekly bookings</strong>, all test markets added together and all control markets added together.</span><label class="btn-ghost" style="cursor:pointer;">Import CSV<input type="file" accept=".csv,text/csv" style="display:none" onchange="trMmImport(this.files[0]); this.value=''"></label><button type="button" class="btn-ghost" onclick="trMmTemplateCsv()">Template</button><button type="button" class="btn-ghost" onclick="trMmAddWeek()">+ Add week</button></div>
+    ${wk.length ? `<div class="strat-tablewrap"><table class="strat-table"><thead><tr><th>Week starting</th><th>Test markets</th><th>Control markets</th><th></th></tr></thead><tbody>${wk.map((x, i) => `<tr><td><input type="date" value="${escapeHtml(trIsoDate(x.week))}" oninput="trMmSetWeek(${i},'week',this.value)"></td><td><input type="number" value="${x.test === '' || x.test == null ? '' : x.test}" oninput="trMmSetWeek(${i},'test',this.value)"></td><td><input type="number" value="${x.control === '' || x.control == null ? '' : x.control}" oninput="trMmSetWeek(${i},'control',this.value)"></td><td><button type="button" class="btn-ghost" onclick="trMmDelWeek(${i})" aria-label="Remove week">Remove</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="hint">No weeks yet. Import a CSV or add them one at a time.</div>'}`;
+}
+
+// ---- Confirm a result (a person does this) -> campaign results, Brain lesson, plan changes ----
+function trResultFor(t){
+  if (t.testType === 'matchmarket') return trMmResult(t);
+  const s = trStats(t); const best = s.rows.filter(r => r.sig === 'Beats control').sort((a, b) => b.lift - a.lift)[0]; const any = s.rows.slice(1).find(r => r.lift != null);
+  const r = best || any; if (!r) return null;
+  return { kind: 'ab', lift: r.lift, lo: null, hi: null, p: r.p, winner: best ? best.label : '', suggest: best ? 'ship' : 'iterate', summary: `${r.label} vs ${s.rows[0].label}: ${trPct(r.lift, 1)} lift, p = ${r.p == null ? 'n/a' : r.p.toFixed(3)}.` };
+}
+function trRecHtml(t){
+  const recs = t.recommendations || []; if (!recs.length) return '';
+  const money = v => v == null ? '' : '$' + Math.round(v).toLocaleString('en-US');
+  return `<h3 style="margin:16px 0 6px;">Proposed plan changes</h3><div class="hint" style="margin:0 0 8px;">The Brain proposes these from the confirmed result. Nothing changes in the plan until you accept it. Accepted items are carried into the media plan recommendation and what Ask Verilume says.</div>` + recs.map(r => `<div class="adlib-card"><div class="adlib-meta"><span class="adlib-pill ${r.status === 'accepted' ? 'ok' : ''}">${escapeHtml(r.status === 'proposed' ? 'proposed' : r.status)}</span><strong>${escapeHtml(r.title)}</strong></div><div class="adlib-copy">${escapeHtml(r.detail)}</div>${(r.markets || []).length ? `<div class="hint">Markets: ${escapeHtml(r.markets.join(', '))}</div>` : ''}${r.estCost != null || r.estIncremental != null ? `<div class="hint">${r.estCost != null ? 'About ' + money(r.estCost) + ' of media. ' : ''}${r.estIncremental != null ? 'About ' + Number(r.estIncremental).toLocaleString() + ' extra bookings (low end of the range).' : ''}</div>` : ''}<div class="adlib-act"><button type="button" class="btn-primary" onclick="trRec('${escapeHtml(r.id)}','accepted')"${r.status === 'accepted' ? ' disabled' : ''}>Accept</button><button type="button" class="btn-ghost" onclick="trRec('${escapeHtml(r.id)}','dismissed')"${r.status === 'dismissed' ? ' disabled' : ''}>Dismiss</button>${r.decidedBy ? `<span class="hint">${escapeHtml(r.decidedBy)}</span>` : ''}</div></div>`).join('');
+}
+function trConfirmHtml(t){
+  if (!t.id) return '<div class="hint">Save the test first. Then you can confirm the result and teach the Brain.</div>';
+  const r = trResultFor(t);
+  if (!tr.cf || tr.cf.id !== t.id) tr.cf = { id: t.id, decision: t.decision || (r && r.suggest) || '', learning: t.learning || (r ? r.summary : ''), busy: false, msg: '' };
+  const cf = tr.cf;
+  const dOpts = [['', 'Choose a decision'], ['ship', 'Ship the winner'], ['kill', 'Kill it'], ['iterate', 'Iterate and retest']].map(([k, l]) => `<option value="${k}"${k === cf.decision ? ' selected' : ''}>${l}</option>`).join('');
+  const banner = t.confirmedAt ? `<div class="hint" style="margin:0 0 8px;"><strong>Confirmed</strong> by ${escapeHtml(t.confirmedBy || 'a team member')} on ${escapeHtml(String(t.confirmedAt).slice(0, 10))}. Confirming again replaces the saved result and lesson.</div>` : '';
+  return `${banner}<div class="hint" style="margin:0 0 8px;">Confirming is a person's call. When you confirm, Verilume saves this result with ${t.campaignId ? 'the campaign' : 'the account results (no campaign is linked to this test)'}, adds a Brain lesson (an account-wide lesson from a non-admin waits for an admin to approve it), and proposes plan changes below.${r ? '' : ' There is no computed result yet, so only your written learning is saved.'}</div>
+    ${r ? `<div class="hint" style="margin:0 0 8px;">Result being confirmed: ${escapeHtml(r.summary)}</div>` : ''}
+    <div class="tr-grid"><label class="tr-f"><span>Decision</span><select onchange="tr.cf.decision=this.value">${dOpts}</select></label></div>
+    <label class="tr-f" style="margin-top:10px;"><span>What the Brain should remember (edit it)</span><textarea rows="3" oninput="tr.cf.learning=this.value">${escapeHtml(cf.learning)}</textarea></label>
+    <div class="adlib-act" style="margin-top:10px;"><button type="button" class="btn-primary" onclick="trConfirm()"${cf.busy ? ' disabled' : ''}>${cf.busy ? 'Confirming…' : (t.confirmedAt ? 'Confirm again' : 'Confirm result and teach the Brain')}</button><span class="hint" id="trCfMsg">${escapeHtml(cf.msg)}</span></div>${trRecHtml(t)}`;
+}
+async function trConfirm(){
+  const t = tr.draft, cf = tr.cf; if (!t || !t.id || !cf) return;
+  if (!cf.decision){ cf.msg = 'Choose ship, kill or iterate first.'; const m = document.getElementById('trCfMsg'); if (m) m.textContent = cf.msg; return; }
+  if (String(cf.learning || '').trim().length < 8){ cf.msg = 'Write what was learned in a short sentence first.'; const m = document.getElementById('trCfMsg'); if (m) m.textContent = cf.msg; return; }
+  cf.busy = true; cf.msg = ''; trRender();
+  try {
+    const sv = await authedFetch(trUrl(t.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(t) });
+    if (!sv.ok) throw new Error('could not save the test first');
+    const res = trResultFor(t);
+    const r = await authedFetch(trUrl(t.id) + '/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision: cf.decision, learning: cf.learning, result: res }) });
+    const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || String(r.status));
+    Object.assign(t, { decision: cf.decision, learning: cf.learning, status: 'complete', confirmedAt: j.confirmedAt, confirmedBy: j.confirmedBy, result: res, recommendations: j.recommendations || [] });
+    cf.busy = false; cf.msg = j.lessonStatus === 'pending' ? 'Confirmed. The Brain lesson is waiting for an admin to approve it.' : 'Confirmed. The Brain has the lesson.'; tr.loaded = false; trRender();
+  } catch (e){ cf.busy = false; cf.msg = 'Could not confirm: ' + e.message; trRender(); }
+}
+async function trRec(recId, status){
+  const t = tr.draft; if (!t || !t.id) return;
+  try {
+    const r = await authedFetch(trUrl(t.id) + '/recommendations/' + encodeURIComponent(recId), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+    const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || String(r.status));
+    t.recommendations = j.recommendations || []; tr.loaded = false; trRender();
+  } catch (e){ if (tr.cf) tr.cf.msg = 'Could not update: ' + e.message; trRender(); }
+}
 function trPct(v, d){ return v == null || !isFinite(v) ? '—' : (v * 100).toFixed(d == null ? 2 : d) + '%'; }
 function trReadoutHtml(t){
-  if (t.testType === 'matchmarket') return '<div class="hint">Match-market tracking (weekly test vs control, difference-in-differences) is the next template. Build the market pairs in <a class="flink" onclick="goToStep(\'marketOptimization\')">Match Market Builder</a> and record the test here.</div>';
+  if (t.testType === 'matchmarket') return trMmReadoutHtml(t);
   const s = trStats(t);
   if (!s.rows.some(r => r.n != null)) return '<div class="hint">Enter impressions and conversions per variant, or import a results CSV, to see the readout.</div>';
   const minN = Math.min.apply(null, s.rows.filter(r => r.n != null).map(r => r.n));
@@ -30954,10 +31084,10 @@ function trRender(){
   if (tr.err && !tr.loaded){ el.innerHTML = `<div class="strat-card"><p class="strat-empty">${escapeHtml(tr.err)}</p></div>`; return; }
   if (tr.draft){ el.innerHTML = trEditorHtml(); trRefreshReadout(); return; }
   const rows = tr.tests;
-  el.innerHTML = `<div class="adlib-bar"><button type="button" class="btn-primary" onclick="trNew()">+ New test</button><button type="button" class="btn-ghost" onclick="trExport(null)">Export registry CSV</button></div>${tr.msg ? `<div class="hint" style="margin:0 0 10px;">${escapeHtml(tr.msg)}</div>` : ''}` + (rows.length ? rows.map(t => `<div class="adlib-card" style="cursor:pointer;" onclick="trOpen('${escapeHtml(t.id)}')"><div class="adlib-meta"><span class="adlib-pill ${t.status === 'complete' ? 'ok' : ''}">${escapeHtml(t.status)}</span><strong>${escapeHtml(t.name)}</strong> &middot; ${escapeHtml(((TR_ELEMENTS[(t.details || {}).element] || {}).label) || TR_TYPES[t.testType] || t.testType)}${t.primaryKpi ? ` &middot; ${escapeHtml(t.primaryKpi)}` : ''}<span class="adlib-camp">${t.decision ? 'Decision: ' + escapeHtml(t.decision) : (t.startDate ? escapeHtml(t.startDate) : '')}</span></div>${t.hypothesis ? `<div class="adlib-copy">${escapeHtml(t.hypothesis)}</div>` : ''}</div>`).join('') : '<div class="strat-card"><p class="strat-empty">No tests yet. Start with a creative A/B: two variants, one KPI, and the lift worth detecting.</p></div>');
+  el.innerHTML = `<div class="adlib-bar"><button type="button" class="btn-primary" onclick="trNew()">+ New test</button><button type="button" class="btn-ghost" onclick="trExport(null)">Export registry CSV</button></div>${tr.msg ? `<div class="hint" style="margin:0 0 10px;">${escapeHtml(tr.msg)}</div>` : ''}` + (rows.length ? rows.map(t => `<div class="adlib-card" style="cursor:pointer;" onclick="trOpen('${escapeHtml(t.id)}')"><div class="adlib-meta"><span class="adlib-pill ${t.status === 'complete' ? 'ok' : ''}">${escapeHtml(t.status)}</span><strong>${escapeHtml(t.name)}</strong> &middot; ${escapeHtml(((TR_ELEMENTS[(t.details || {}).element] || {}).label) || TR_TYPES[t.testType] || t.testType)}${t.primaryKpi ? ` &middot; ${escapeHtml(t.primaryKpi)}` : ''}<span class="adlib-camp">${t.confirmedAt ? 'Confirmed &middot; ' : ''}${t.decision ? 'Decision: ' + escapeHtml(t.decision) : (t.startDate ? escapeHtml(t.startDate) : '')}</span></div>${t.hypothesis ? `<div class="adlib-copy">${escapeHtml(t.hypothesis)}</div>` : ''}</div>`).join('') : '<div class="strat-card"><p class="strat-empty">No tests yet. Start with a creative A/B: two variants, one KPI, and the lift worth detecting.</p></div>');
 }
-function trNew(){ tr.draft = trBlank(); tr.msg = ''; trRender(); }
-function trOpen(id){ const t = tr.tests.find(x => x.id === id); if (!t) return; tr.draft = JSON.parse(JSON.stringify(t)); tr.msg = ''; trRender(); }
+function trNew(){ tr.cf = null; tr.draft = trBlank(); tr.msg = ''; trRender(); }
+function trOpen(id){ const t = tr.tests.find(x => x.id === id); if (!t) return; tr.cf = null; tr.draft = JSON.parse(JSON.stringify(t)); tr.msg = ''; trRender(); }
 function trClose(){ tr.draft = null; trRender(); }
 function trSet(k, v){ tr.draft[k] = v; if (k === 'testType') trRender(); else trRefreshReadout(); }
 function trSetDetail(k, v){ tr.draft.details = tr.draft.details || {}; tr.draft.details[k] = v; }
@@ -30982,7 +31112,7 @@ function trEditorHtml(){
   const kpiOpts = TR_KPIS.concat(TR_KPIS.includes(t.primaryKpi) || !t.primaryKpi ? [] : [t.primaryKpi]).map(k => `<option${k === t.primaryKpi ? ' selected' : ''}>${escapeHtml(k)}</option>`).join('');
   const stOpts = ['draft', 'running', 'complete'].map(k => `<option value="${k}"${k === t.status ? ' selected' : ''}>${k}</option>`).join('');
   const dOpts = [['', 'No decision yet'], ['ship', 'Ship the winner'], ['kill', 'Kill it'], ['iterate', 'Iterate and retest']].map(([k, l]) => `<option value="${k}"${k === t.decision ? ' selected' : ''}>${l}</option>`).join('');
-  const vars = mm ? `<div class="tr-grid">${f('Test markets', `<input type="text" value="${escapeHtml((t.details || {}).testMarkets || '')}" placeholder="e.g. Tampa, Phoenix" oninput="trSetDetail('testMarkets', this.value)">`)}${f('Control markets', `<input type="text" value="${escapeHtml((t.details || {}).controlMarkets || '')}" placeholder="e.g. Orlando, Las Vegas" oninput="trSetDetail('controlMarkets', this.value)">`)}${f('Pre-period (weeks)', `<input type="number" value="${escapeHtml((t.details || {}).preWeeks || '')}" oninput="trSetDetail('preWeeks', this.value)">`)}</div>`
+  const vars = mm ? trMmEditorHtml(t)
     : `<div class="tr-vars"><div class="tr-vh"><span>Variant</span><span>${escapeHtml(((trEl(t) || {}).col) || 'Creative or asset reference')}</span><span>Share %</span><span>${escapeHtml(((trEl(t) || {}).denom) || 'Impressions')}</span><span>Conversions</span><span></span></div>${t.variants.map((v, i) => `<div class="tr-vr"><input value="${escapeHtml(v.label)}" oninput="trSetVar(${i},'label',this.value)"><input value="${escapeHtml(v[((trEl(t) || {}).key) || 'assetId'] || '')}" placeholder="${escapeHtml(((trEl(t) || {}).col) || 'asset or copy version ID')}" oninput="trSetVar(${i},'${((trEl(t) || {}).key) || 'assetId'}',this.value)"><input type="number" value="${v.allocationPct == null ? '' : v.allocationPct}" oninput="trSetVar(${i},'allocationPct',this.value)"><input type="number" value="${v.impressions == null ? '' : v.impressions}" oninput="trSetVar(${i},'impressions',this.value)"><input type="number" value="${v.conversions == null ? '' : v.conversions}" oninput="trSetVar(${i},'conversions',this.value)"><button type="button" class="btn-ghost" onclick="trDelVar(${i})"${t.variants.length <= 2 ? ' disabled' : ''}>Remove</button></div>`).join('')}</div><div class="adlib-act" style="margin-top:8px;"><button type="button" class="btn-ghost" onclick="trAddVar()">+ Variant</button><label class="btn-ghost" style="cursor:pointer;">Import results CSV<input type="file" accept=".csv,text/csv" style="display:none" onchange="trImport(this.files[0]);this.value=''"></label><button type="button" class="btn-ghost" onclick="trTemplateCsv()">Download results template</button></div>`;
   return `<div class="strat-card"><div class="adlib-meta" style="margin-bottom:12px;"><strong>${t.id ? 'Edit test' : 'New test'}</strong><span class="adlib-camp"><a class="flink" onclick="trClose()">Back to all tests</a></span></div>
     <h3 style="margin:0 0 6px;">What are you testing?</h3>${trElementPickerHtml(t)}
@@ -30992,7 +31122,8 @@ function trEditorHtml(){
     <h3 style="margin:16px 0 8px;">Readout</h3><div id="trReadout"></div>
     <h3 style="margin:16px 0 8px;">Decision</h3><div class="tr-grid">${f('Decision', sel('decision', dOpts))}</div>
     <label class="tr-f" style="margin-top:10px;"><span>What we learned</span><textarea rows="3" oninput="trSet('learning', this.value)" placeholder="What changed, what held, what to test next.">${escapeHtml(t.learning || '')}</textarea></label>
-    <div class="adlib-act" style="margin-top:14px;"><button type="button" class="btn-primary" onclick="trSave()"${tr.saving ? ' disabled' : ''}>${tr.saving ? 'Saving…' : 'Save test'}</button>${t.id ? '<button type="button" class="btn-ghost" onclick="trExport(tr.draft.id)">Export this test CSV</button><button type="button" class="btn-ghost" onclick="trDelete()">Delete</button>' : ''}<span class="hint" id="trSaveNote">${escapeHtml(tr.msg)}</span></div></div>`;
+    <div class="adlib-act" style="margin-top:14px;"><button type="button" class="btn-primary" onclick="trSave()"${tr.saving ? ' disabled' : ''}>${tr.saving ? 'Saving…' : 'Save test'}</button>${t.id ? '<button type="button" class="btn-ghost" onclick="trExport(tr.draft.id)">Export this test CSV</button><button type="button" class="btn-ghost" onclick="trDelete()">Delete</button>' : ''}<span class="hint" id="trSaveNote">${escapeHtml(tr.msg)}</span></div>
+    <h3 style="margin:20px 0 8px;">Confirm the result</h3><div id="trConfirm">${trConfirmHtml(t)}</div></div>`;
 }
 async function trSave(){
   const t = tr.draft; if (!t.name || !t.name.trim()){ tr.msg = 'Give the test a name first.'; trRender(); return; }
@@ -38020,9 +38151,26 @@ function geoRenderResult(){
     ${(p.notes || []).filter(n => !(f && !f.available && n === f.reason)).map(n => `<p class="geo-cap">${escapeHtml(n)}</p>`).join('')}
     <div class="geo-h" style="margin:18px 0 6px;">Test and control markets</div>
     <div class="geo-scroll"><table class="geo-t"><thead><tr><th>#</th><th>Test market</th><th>Control market</th><th class="r">Test per week</th><th class="r">Control per week</th><th>Readiness</th></tr></thead><tbody>${pairRows}</tbody></table></div>
+    <div class="geo-dl"><button type="button" class="geo-btn" onclick="geoSaveToRegistry()">Save this plan to the Test Registry</button> <span class="geo-cap" id="geoSaveNote"></span></div>
     <div class="geo-dl"><button type="button" class="geo-btn" onclick="geoDownload()">Download all markets with statistical detail (Excel)</button><button type="button" class="geo-link" onclick="geoToggleDetail()">${geo.detailOpen ? 'Hide' : 'Show'} readiness by market pair</button> <span class="geo-cap" id="geoDlNote"></span></div>
     <div id="geoDetail"></div></div>`;
   if (geo.detailOpen) geoShowDetail();
+}
+async function geoSaveToRegistry(){
+  const p = geo.plan, note = document.getElementById('geoSaveNote'); if (!p || !p.ok) return;
+  const d = p.design, c = p.cost || {}, f = p.floor || {};
+  const channel = f.newChannel || ((p.media || []).find(m => m.isNew) || (p.media || [])[0] || {}).channel || '';
+  const spend = f.needed != null ? f.needed : (c.extra ? c.extra.expected : null);
+  const body = { name: `Match market: ${channel || 'media'} in ${d.pairs.slice(0, 3).map(x => x.test).join(', ')}${d.pairs.length > 3 ? ' and more' : ''}`.slice(0, 150), testType: 'matchmarket', primaryKpi: 'Booking rate', mdePct: d.liftPct, status: 'draft',
+    hypothesis: `${channel || 'The tested media'} raises bookings in the test markets by at least ${d.liftPct}% compared with matched control markets over ${d.weeks} weeks.`,
+    details: { source: 'geo-plan', channel, plannedWeeks: d.weeks, plannedSpend: spend, spend: spend, testMarkets: d.pairs.map(x => x.test).join(', '), controlMarkets: d.pairs.map(x => x.control).join(', '), testDmaCodes: d.pairs.map(x => String(x.testDma)), controlDmaCodes: d.pairs.map(x => String(x.controlDma)), weekly: [] } };
+  if (note) note.textContent = 'Saving…';
+  try {
+    const r = await authedFetch(trUrl(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || String(r.status));
+    tr.loaded = false;
+    if (note) note.innerHTML = 'Saved as a draft test. <a class="flink" onclick="goToStep(\'testRegistry\')">Open the Test Registry</a> to add the start date and weekly bookings.';
+  } catch (e){ if (note) note.textContent = 'Could not save: ' + e.message; }
 }
 async function geoDownload(){
   const note = document.getElementById('geoDlNote'); if (!geo.over) return;
@@ -47914,9 +48062,23 @@ function cmpAnalysisPacingNote(campaign){
   const verdict = Math.abs(diff) <= 8 ? 'On pace' : (diff > 0 ? 'Ahead of pace' : 'Behind pace');
   return `${verdict} — ${spendPct}% spent, ${windowPct}% of window elapsed`;
 }
+// 2026-10-07 — results stored with the campaign (confirmed tests, learnings) so they build history.
+async function cmpLoadCampaignResults(campaign, anchor){
+  if (!campaign || !anchor || !campaign.id) return;
+  let box = document.getElementById('cmpAnalysisResults');
+  if (!box){ anchor.insertAdjacentHTML('afterend', '<div id="cmpAnalysisResults" style="margin-top:14px;"></div>'); box = document.getElementById('cmpAnalysisResults'); }
+  if (!box) return;
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/campaign-results?campaignId=${encodeURIComponent(campaign.id)}`);
+    if (!r.ok) { box.innerHTML = ''; return; }
+    const rows = (await r.json()).results || [];
+    box.innerHTML = rows.length ? `<div class="cmp-wf-stat-label" style="margin-bottom:6px;">Confirmed results saved with this campaign</div>` + rows.map(x => { const m = x.metrics || {}; return `<div style="padding:8px 0;border-top:1px solid var(--line);"><strong>${escapeHtml(x.title)}</strong> <span class="hint">${escapeHtml(x.decision || '')} &middot; ${escapeHtml(String(x.recordedAt || '').slice(0, 10))} &middot; ${escapeHtml(x.recordedBy || '')}</span><div class="hint" style="margin:2px 0 0;">${escapeHtml(x.summary || '')}${m.lift != null ? '' : ''}</div></div>`; }).join('') : '<div class="hint">No confirmed test results are saved with this campaign yet. Confirm a test in the Test Registry and link it to this campaign to add one.</div>';
+  } catch (e){ box.innerHTML = ''; }
+}
 function cmpRenderAnalysisActuals(campaign){
   const el = document.getElementById('cmpAnalysisActuals');
   if (!el || !campaign) return;
+  cmpLoadCampaignResults(campaign, el);
   const hasActuals = [campaign.actualSpend, campaign.actualImpressions, campaign.actualConversions].some(v => v !== undefined && v !== null && v !== '');
   if (!hasActuals){
     el.innerHTML = `<p class="cmp-stage-note" style="padding:0;">No actuals logged yet.</p><a class="flink" onclick="goToStep('campaign','${campaign.id}','campaignAnalyticsCard')">Log actuals on this campaign's detail page →</a>`;
@@ -74675,6 +74837,7 @@ async function mbuRecommendAnnualPlan(){
   ['baseline', 'target'].forEach(kind => { const row = rec[kind]; body.querySelectorAll(`input[data-kind="${kind}"]`).forEach(inp => { const v = row[inp.dataset.key]; if (v != null) inp.value = v; }); });
   box.style.display = 'block';
   box.innerHTML = `<b>Recommended, not saved yet.</b> Edit any number, then approve. How it was built:<ul style="margin:6px 0 0 18px;">${(rec.method || []).map(m => `<li>${escapeHtml(m)}</li>`).join('')}</ul>${(rec.missing || []).length ? `<div style="margin-top:6px;color:#C0273C;">Not on file, so left blank: ${rec.missing.map(escapeHtml).join('; ')}.</div>` : ''}`;
+  if ((rec.testFindings || []).length) box.innerHTML += `<div style="margin-top:8px;"><b>Confirmed test results behind this plan.</b> Plan changes your team accepted from tests:<ul style="margin:6px 0 0 18px;">${rec.testFindings.map(f => `<li>${escapeHtml(f.test)}${f.lift != null ? ` (${(f.lift * 100).toFixed(1)}% lift)` : ''}: ${f.changes.map(c => escapeHtml(c.title)).join('; ')}</li>`).join('')}</ul><div style="margin-top:4px;opacity:.75;">These are carried as notes; the numbers above come from your actuals, so adjust them yourself if an accepted change moves the year.</div></div>`;
   const btn = document.getElementById('mbuApprovePlanBtn'); if (btn) btn.style.display = '';
   if (status) status.textContent = 'Recommendation loaded. Review and approve.';
 }
