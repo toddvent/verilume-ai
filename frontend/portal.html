@@ -1573,6 +1573,12 @@
 .bd-welcome-min{grid-column:1/-1;margin:0 0 10px}
 @media (max-width:900px){.bd-w-grid{grid-template-columns:1fr}.bd-welcome{padding:20px}}
   .ttb-hero{display:flex;align-items:center;gap:28px;flex-wrap:wrap;} .ttb-clock{color:var(--ink);display:block;} .ttb-big{font-size:1.3125rem;font-weight:500;line-height:1.2;}
+  .ttb-sec{border:1px solid var(--line);border-radius:14px;background:var(--white);margin:12px 0;} .ttb-sec.open{border-color:var(--ink);}
+  .ttb-sec-h{display:flex;width:100%;align-items:center;gap:16px;padding:16px 20px;background:none;border:0;cursor:pointer;text-align:left;font:inherit;color:var(--ink);min-height:64px;}
+  .ttb-sec-n{flex:none;width:32px;height:32px;border-radius:50%;border:2px solid #1E2761;color:#1E2761;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:0.875rem;} .ttb-sec.done .ttb-sec-n{background:#1E2761;color:#fff;}
+  .ttb-sec-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;} .ttb-sec-name{font-size:1.1875rem;font-weight:600;color:#1E2761;} .ttb-sec-sub{font-size:0.8125rem;color:var(--muted);}
+  .ttb-sec-meta{flex:none;font-size:0.8125rem;color:var(--muted);} .ttb-sec-b{padding:2px 20px 20px;}
+  @media (max-width:700px){.ttb-sec-meta{display:none}}
   .ttb-group{margin-top:26px;} .ttb-group-h{display:flex;align-items:center;gap:14px;margin-bottom:8px;} .ttb-group-h h2{margin:0;font-size:1.3125rem;font-weight:500;} .ttb-mini{flex:none;}
   .ttb-owner{display:inline-block;margin-top:4px;font-size:0.75rem;color:#1E2761;background:#EEF0FA;border-radius:4px;padding:1px 8px;} .ttb-assign{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:0.8125rem;} .ttb-assign select{flex:1;min-width:0;}
   .ttb-mod{border:1px solid var(--line);border-radius:14px;background:var(--white);margin:10px 0;} .ttb-mod.open{border-color:var(--ink);}
@@ -7503,7 +7509,7 @@
         </div>
         <div class="btn-row">
           <button type="button" class="btn-primary" id="teamAddSubmitBtn" onclick="submitTeamMemberForm()">Add to chart →</button>
-          <button type="button" class="btn-ghost" id="teamEditCancelBtn" style="display:none;" onclick="cancelEditTeamMember()">Cancel edit</button>
+          <button type="button" class="btn-ghost" id="teamEditCancelBtn" onclick="cancelEditTeamMember()">Close</button>
         </div>
       </div>
     </div>
@@ -28426,7 +28432,7 @@ async function saveSurveyCoreField(key, value){
   } catch (e){ return null; }
 }
 // ---- Train the Brain page (2026-09-30): four short sittings, recent Brain learnings, data consumed ----
-const ttb = { data: null, loading: false, error: false, tab: 'setup', open: null, manual: {}, loaded: {}, qs: { busy: false, result: null, error: '' } };
+const ttb = { data: null, loading: false, error: false, tab: 'setup', open: null, sec: null, manual: {}, loaded: {}, qs: { busy: false, result: null, error: '' } };
 function ttbIsLive(){ return stratIsLive(); }
 function ttbSetHeader(){ const h = document.getElementById('ttbH1'), l = document.getElementById('ttbLede'); if (h) h.textContent = 'TRAIN THE BRAIN IN 24 HOURS'; if (l) l.textContent = 'About twenty minutes of setup in all, in any order. The Brain starts learning from each thing you give it as soon as you give it.'; }
 async function ttbLoad(){
@@ -28473,7 +28479,7 @@ function ttbMyTasksHtml(d){
   if (!mine.length) return '';
   return `<div class="strat-card" style="margin:0 0 12px;"><div class="strat-chart-label" style="margin:0 0 6px;">Assigned to you</div>${mine.map(i => `<div class="ttb-feed-row"><div><strong>${escapeHtml(i.label)}</strong></div><button type="button" class="btn-ghost" onclick="ttbOpenItem('${i.step}')">Open</button></div>`).join('')}</div>`;
 }
-function ttbOpenItem(key){ ttb.open = key; ttbRerender(); }
+function ttbOpenItem(key){ if (ttb.data) ttb.sec = ttbSecFor(ttb.data, key); ttb.open = key; ttbRerender(); }
 function ttbRerender(){
   const stepEl = document.getElementById('step-manageAccount');
   if (!(stepEl && stepEl.classList.contains('active'))) return;
@@ -28486,7 +28492,7 @@ function ttbRerender(){
   if (topBefore != null && slotAfter){ const d = slotAfter.getBoundingClientRect().top - topBefore; if (Math.abs(d) > 1) window.scrollBy(0, d); }
 }
 function ttbGo(step, arg){ if (arg) goToStep(step, arg); else goToStep(step); window.scrollTo(0, 0); }
-function ttbTeamJump(){ if (!tfStep || tfStep < 3) tfStep = currentOrgShape() ? 3 : (tfStep || 1); renderTeamFlow(); const t = document.getElementById('ttbTeamSlot'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+function ttbTeamJump(){ ttb.sec = 'team'; ttbRerender(); if (!tfStep || tfStep < 3) tfStep = currentOrgShape() ? 3 : (tfStep || 1); renderTeamFlow(); const t = document.getElementById('ttbTeamSlot'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 function ttbSetTab(t){ ttb.tab = t; ttbRerender(); }
 function ttbFmtDate(iso){ if (!iso) return ''; const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString([], { month: 'short', day: 'numeric' }); }
 async function ttbQuickStart(){
@@ -29046,12 +29052,13 @@ function ttbToggleManual(key){ ttb.manual[key] = !ttb.manual[key]; ttbRerender()
 function ttbOpenView(key){ const v = TTB_CFG[key].view; if (!v) return; if (v.tab) switchPrimaryTab(v.tab); else if (v.step) goToStep(v.step); }
 function ttbMountOpen(){
   ttbInitHomes();
+  TTB_ALL_CARDS.forEach(id => { const el = document.getElementById(id); if (el && el.id !== 'teamStepBody' && ttbHomes && ttbHomes[id] && el.parentNode === ttbHomes[id].parent && el.closest('#step-manageAccount')) el.style.display = 'none'; });
   const tslot = document.getElementById('ttbTeamSlot'), tbody = document.getElementById('teamStepBody');
   if (tslot && tbody && tbody.parentNode !== tslot){ tbody.style.marginTop = '0'; tslot.appendChild(tbody); }
   if (tslot && tbody){ try { applyTeamStepAdminGate(); renderTeamRosterView(); } catch (e){ console.warn('team flow mount failed', e); } }
   Object.keys(ttb.manual).forEach(k => {
     if (!ttb.manual[k] || ttb.open !== k) return; const c = TTB_CFG[k]; const cards = (c && c.manual && c.manual.cards) || (c && c.upload && c.upload.workspace) || []; const slot = document.getElementById('ttbSlot-' + k); if (!slot) return;
-    cards.forEach(id => { const el = document.getElementById(id); if (!el) return; el.style.marginTop = '0'; slot.appendChild(el); });
+    cards.forEach(id => { const el = document.getElementById(id); if (!el) return; el.style.marginTop = '0'; el.style.display = ''; slot.appendChild(el); });
     if (k === 'marketingBudgetUpload'){ ttbBuRender(); return; }
     if (k === 'searchKeywords'){ srchKwRender(); return; }
     if (k === 'brainFacts'){ gscFactsRender(); return; }
@@ -29076,19 +29083,44 @@ function ttbModuleHtml(d, i){
   const manualBody = manualOpen ? (c.manual && c.manual.profile ? ttbProfileManualHtml(d) : `<div id="ttbSlot-${i.step}" class="ttb-slot"></div>`) : '';
   const inlineSite = i.step === 'companyProfile' ? ttbQuickStartHtml(d, true) : '';
   const body = open ? `<div class="ttb-mod-body">${status}<div class="ttb-mod-grid"><div><div class="ttb-tag">Example of what the Brain keeps</div><div class="ttb-sample">${sample}</div></div><div><div class="ttb-tag">Add it</div>${inlineSite}<div class="ttb-opts">${btns.join('')}</div>${c.upload && c.upload.direct ? `<p class="hint" style="margin:10px 0 0;">${escapeHtml(c.upload.formats)} ${c.upload.sample ? `<a class="flink" onclick="ttbDownloadSample('${i.step}')">Download a sample file</a>` : escapeHtml(c.upload.noSample || '')}</p>` : ''}<div class="ttb-viewrow">${viewHtml}</div>${ttbAssignHtml(i.step)}</div></div>${manualBody ? `<div class="ttb-manual-wrap">${manualBody}</div>` : ''}</div>` : '';
-  return `<div class="ttb-mod ${i.done ? 'done' : ''} ${open ? 'open' : ''}"><button type="button" class="ttb-mod-h" aria-expanded="${open}" onclick="ttbToggle('${i.step}')"><span class="ttb-check" aria-label="${i.done ? 'Done' : 'Not done yet'}">${i.done ? '&#10003;' : ''}</span><span class="ttb-mod-t"><span class="ttb-name">${escapeHtml(i.label)}</span><span class="ttb-benefit">${escapeHtml(cfg.benefit)}</span>${ttbOwnerName(i.step) ? `<span class="ttb-owner">Owner: ${escapeHtml(ttbOwnerName(i.step))}</span>` : ''}</span><span class="ttb-chev" aria-hidden="true">${open ? '&#9652;' : '&#9662;'}</span></button>${body}</div>`;
+  return `<div class="ttb-mod ${i.done ? 'done' : ''} ${open ? 'open' : ''}"><button type="button" class="ttb-mod-h" aria-expanded="${open}" onclick="ttbToggle('${i.step}')"><span class="ttb-check" aria-label="${i.done ? 'Done' : 'Not done yet'}">${i.done ? '&#10003;' : ''}</span><span class="ttb-mod-t"><span class="ttb-name">${escapeHtml(i.label)}</span><span class="ttb-benefit">${escapeHtml(cfg.benefit)}</span>${ttbOwnerName(i.step) ? `<span class="ttb-owner">Owner: ${escapeHtml(ttbOwnerName(i.step))}</span>` : ''}</span><span class="ttb-chev" aria-hidden="true">${open ? 'Close &#9652;' : '&#9662;'}</span></button>${body}</div>`;
+}
+const TTB_SECTION_TITLES = { 'your company': c => 'Who is ' + c, 'your voice': c => 'The ' + c + ' Voice', 'your numbers': () => 'Historical Building Blocks', 'your plan': () => 'Strategy & Success' };
+function ttbGroups(d){ return d.setup.steps.map((st, i) => ({ key: 'g' + i, st })).filter(g => !/team/i.test(g.st.title)); }
+function ttbSecFor(d, item){ const g = ttbGroups(d).find(x => x.st.items.some(i => i.step === item)); return g ? g.key : 'team'; }
+function ttbSecToggle(key){
+  const opening = ttb.sec !== key;
+  ttb.sec = opening ? key : '';
+  if (opening && ttb.data && key !== 'team'){
+    const g = ttbGroups(ttb.data).find(x => x.key === key);
+    if (g){ const first = g.st.items.find(i => !i.done); ttb.open = first ? first.step : ''; }
+  }
+  ttbRerender();
 }
 function ttbSetupHtml(d){
   const S = d.setup;
+  const company = (d.profile && d.profile.company) || state.company || 'your company';
+  const groups = ttbGroups(d);
   let total = 0, done = 0;
-  S.steps.forEach(st => { const per = st.minutes / st.items.length; total += st.minutes; st.items.forEach(i => { if (i.done) done += per; }); });
+  groups.forEach(({ st }) => { const per = st.minutes / st.items.length; total += st.minutes; st.items.forEach(i => { if (i.done) done += per; }); });
   const left = Math.max(0, Math.ceil(total - done - 0.001));
-  const allItems = [].concat(...S.steps.map(st => st.items));
+  const allItems = [].concat(...groups.map(g => g.st.items));
   if (ttb.open === null){ const first = allItems.find(i => !i.done); ttb.open = first ? first.step : ''; }
+  if (ttb.sec === null) ttb.sec = 'team';
   const doneItems = allItems.filter(i => i.done).length;
   const hero = `<div class="strat-card ttb-hero"><div class="ttb-clockwrap">${ttbClock(total, done, 132)}</div><div><div class="ttb-big">${left === 0 ? 'Setup is done' : `${left} minute${left === 1 ? '' : 's'} to go`}</div><p class="strat-reading" style="margin:4px 0 0;">${left === 0 ? `All ${allItems.length} items are done. Open any item to update it; the Brain keeps learning from what you add.` : `${doneItems} of ${allItems.length} items done. About ${total} minutes of setup in all. Pick any item, in any order; one now and one later is fine.`}</p></div></div>`;
-  const groups = S.steps.map(st => `<div class="ttb-group"><div class="ttb-group-h"><span class="ttb-mini">${ttbClock(st.minutes, st.items.filter(i => i.done).length * st.minutes / st.items.length, 44, st.done ? st.title + ' done' : st.title + ', about ' + st.minutes + ' minutes')}</span><div><h2>${escapeHtml(st.title)}</h2><div class="strat-sub">${st.done ? 'Done' : `About ${st.minutes} min`}. ${escapeHtml(st.gain)}</div></div></div>${st.items.map(i => ttbModuleHtml(d, i)).join('')}</div>`).join('');
-  return `${ttbMyTasksHtml(d)}<div id="ttbTeamSlot"></div>${hero}${groups}`;
+  const sec = (key, num, title, sub, meta, isDone, bodyHtml, open) => `<div class="ttb-sec${open ? ' open' : ''}${isDone ? ' done' : ''}"><button type="button" class="ttb-sec-h" aria-expanded="${open}" onclick="ttbSecToggle('${key}')"><span class="ttb-sec-n">${isDone ? '&#10003;' : num}</span><span class="ttb-sec-t"><span class="ttb-sec-name">${escapeHtml(title)}</span><span class="ttb-sec-sub">${escapeHtml(sub)}</span></span><span class="ttb-sec-meta">${escapeHtml(meta)}</span><span class="ttb-chev" aria-hidden="true">${open ? 'Close &#9652;' : 'Open &#9662;'}</span></button>${bodyHtml}</div>`;
+  const teamItem = [].concat(...S.steps.map(st => st.items)).find(i => i.step === 'team');
+  const teamDone = !!(teamItem && teamItem.done);
+  const teamOpen = ttb.sec === 'team';
+  const sections = [sec('team', 1, 'Build Your Team', 'Add the people who can take the onboarding items, or work on your own.', teamDone ? 'Done' : 'Step ' + (tfStep || 1) + ' of 3', teamDone, `<div id="ttbTeamSlot" class="ttb-sec-b" style="${teamOpen ? '' : 'display:none;'}"></div>`, teamOpen)]
+    .concat(groups.map((g, n) => {
+      const st = g.st, open = ttb.sec === g.key, dn = st.items.filter(i => i.done).length;
+      const t = TTB_SECTION_TITLES[String(st.title).trim().toLowerCase()];
+      const title = t ? t(company) : st.title;
+      return sec(g.key, n + 2, title, st.gain || '', `${dn} of ${st.items.length} done · About ${st.minutes} min`, st.done, open ? `<div class="ttb-sec-b">${st.items.map(i => ttbModuleHtml(d, i)).join('')}</div>` : '', open);
+    }));
+  return `${ttbMyTasksHtml(d)}${hero}${sections.join('')}`;
 }
 function ttbLearningsHtml(d){
   if (!d.learnings.length) return `<div class="strat-card"><p class="strat-empty">Nothing recorded yet. As your team approves, applies or removes sources and decisions across the dashboards, they show up here.</p></div>`;
@@ -61790,7 +61822,7 @@ function startEditTeamMember(id){
   document.getElementById('teamAddTag').textContent = 'Edit';
   document.getElementById('teamAddHeading').textContent = `Edit ${m.name}`;
   document.getElementById('teamAddSubmitBtn').textContent = 'Save changes →';
-  document.getElementById('teamEditCancelBtn').style.display = 'inline-block';
+  document.getElementById('teamEditCancelBtn').textContent = 'Cancel edit';
   const flag = document.getElementById('teamAddFlag'); if (flag) flag.textContent = '';
   const module = document.getElementById('teamAddModule');
   tfShowForm(true);
@@ -61803,7 +61835,7 @@ function cancelEditTeamMember(){
   document.getElementById('teamAddTag').textContent = 'Add';
   document.getElementById('teamAddHeading').textContent = 'Add a team member';
   document.getElementById('teamAddSubmitBtn').textContent = 'Add to chart →';
-  document.getElementById('teamEditCancelBtn').style.display = 'none';
+  document.getElementById('teamEditCancelBtn').textContent = 'Close';
   const flag = document.getElementById('teamAddFlag'); if (flag) flag.textContent = '';
   tfShowForm(false);
 }
@@ -61972,7 +62004,6 @@ function renderTeamFlow(){
   const shape = currentOrgShape();
   const dots = [1, 2, 3].map(n => `<span class="tf-dot ${n < tfStep ? 'done' : n === tfStep ? 'now' : ''}">${n < tfStep ? '&#10003;' : n}</span>${n < 3 ? `<span class="tf-bar ${n < tfStep ? 'done' : ''}"></span>` : ''}`).join('');
   head.innerHTML = `<div class="tf-hero"><div class="tf-eyebrow">Collaboration begins now</div>
-    <h2>Build your team, then share the setup</h2>
     <p>We have a few onboarding items that help your AI Brain train. Add Brand, Growth &amp; Performance Marketing and Media Science roles to hand them over, or work on your own.</p>
     <div class="tf-dots">${dots}<span style="margin-left:8px;">Step ${tfStep} of 3</span></div></div>`;
   const show = (id, on) => { const e = document.getElementById(id); if (e) e.style.display = on ? '' : 'none'; };
@@ -61990,7 +62021,7 @@ function renderTfSample(){
   const el = document.getElementById('tfSample');
   if (!el) return;
   const st = ORG_SHAPE_STYLES.find(x => x.key === orgShapeStyleTab);
-  const list = ORG_SHAPES.filter(o => o.style === orgShapeStyleTab);
+  const list = ORG_SHAPES.filter(o => o.style === orgShapeStyleTab && o.id.indexOf('start-') === 0);
   const cur = currentOrgShape();
   if (!tfSampleShape) tfSampleShape = (cur && cur.style === orgShapeStyleTab) ? cur.id : (list[0] && list[0].id);
   const color = (st && st.color) || '#1E2761';
@@ -62001,7 +62032,7 @@ function renderTfSample(){
 }
 function tfPickSample(id){ tfSampleShape = id; renderTfSample(); }
 async function tfProceed(){
-  const id = tfSampleShape || ((ORG_SHAPES.find(o => o.style === orgShapeStyleTab) || {}).id);
+  const id = tfSampleShape || ((ORG_SHAPES.find(o => o.style === orgShapeStyleTab && o.id.indexOf('start-') === 0) || {}).id);
   if (id) await pickOrgShape(id);
   tfStep = 3; renderTeamFlow();
 }
@@ -62111,7 +62142,7 @@ function tfTaskLinks(m, slot){
 }
 function tfOpenTask(key){
   if (key.charAt(0) === '@'){ goToStep(key.slice(1)); window.scrollTo(0, 0); return; }
-  ttb.open = key; ttbRerender();
+  ttbOpenItem(key);
   setTimeout(() => { const el = document.querySelector('#aipoMount .ttb-mod.open'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60);
 }
 function openTeamForm(opts){
@@ -62311,7 +62342,15 @@ function orgShapeSvg(top, kids, color){
   });
   return `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">${lines}${boxes}</svg>`;
 }
-function currentOrgShape(){ return ORG_SHAPES.find(o => o.id === state.orgShape) || null; }
+// Shapes saved earlier (assessment sketches) now show the matching starting point: the Admin plus Brand, Growth & Performance Marketing and Media Science.
+function currentOrgShape(){
+  let sh = ORG_SHAPES.find(o => o.id === state.orgShape) || null;
+  if (sh && sh.id.indexOf('start-') !== 0){
+    const to = { solo: 'start-solo', inhouse: 'start-inhouse', 'inhouse-agency': 'start-agency' }[sh.style];
+    sh = ORG_SHAPES.find(o => o.id === to) || sh;
+  }
+  return sh;
+}
 // A person fills a slot when their role label matches the box, or their function and kind match and nobody else took it.
 function orgShapeAssign(shape){
   const used = new Set();
@@ -76376,7 +76415,7 @@ async function posSetDecision(contributionId, status){
     bar.setAttribute('style', 'position:fixed;left:0;right:0;bottom:0;z-index:2147483000;background:#1E2761;color:#fff;font:600 13px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;gap:14px;align-items:center;justify-content:center;padding:9px 16px;box-shadow:0 -2px 10px rgba(0,0,0,.25)');
     var label = document.createElement('span');
     var roleName = { owner: 'Owner', admin: 'Admin', support: 'Support', readonly: 'Read-only' }[v.role] || v.role;
-    label.textContent = 'Viewing ' + (v.company || acct) + ' as Verilume team: ' + (v.name || '') + ' (' + roleName + '). This visit is logged.';
+    label.textContent = v.previewing ? ('Previewing ' + (v.company || acct) + ' as ' + v.previewing + '. Read-only, follows that access. Logged to ' + (v.name || 'your') + ' (' + roleName + ').') : ('Viewing ' + (v.company || acct) + ' as Verilume team: ' + (v.name || '') + ' (' + roleName + '). This visit is logged.');
     var exit = document.createElement('a');
     exit.textContent = 'Exit';
     exit.href = 'platform.html';
