@@ -37699,7 +37699,10 @@ async function mouBkCommit(){
   } catch (e){ if (msg) msg.textContent = 'Backend unreachable — try again.'; }
   finally { mouBk.busy = false; if (btn) btn.disabled = false; }
 }
-let mouRd = { metric: 'bookings', view: 'weekly', sel: 'pooled', lift: 10, mult: 2, cpb: '' };
+let mouRd = { metric: 'bookings', view: 'weekly', sel: 'pooled', lift: 10, mult: 2, cpb: '', cats: null };
+const MOU_GEO_RX = /direct mail|mail|print|magazine|newspaper|insert|outdoor|ooh|billboard|out of home|radio|local|spot|transit|cinema|door/i;
+function mouRdToggleCat(name, on){ const all = ((mouLastAnalysis && mouLastAnalysis.readiness && mouLastAnalysis.readiness.costing && mouLastAnalysis.readiness.costing.categories) || []).map(c => c.name); let cur = mouRd.cats ? mouRd.cats.slice() : all.slice(); cur = on ? Array.from(new Set(cur.concat([name]))) : cur.filter(x => x !== name); mouRd.cats = cur.length === all.length ? null : cur; mouRd.cpb = ''; mouRdSet('cats', mouRd.cats); }
+function mouRdCatPreset(kind){ const all = ((mouLastAnalysis && mouLastAnalysis.readiness && mouLastAnalysis.readiness.costing && mouLastAnalysis.readiness.costing.categories) || []).map(c => c.name); mouRd.cats = kind === 'all' ? null : all.filter(n => MOU_GEO_RX.test(n)); mouRd.cpb = ''; mouRdSet('cats', mouRd.cats); }
 function mouRdSet(k, v){ mouRd[k] = v; const el = document.getElementById('mouReadinessWrap'); if (el && mouLastAnalysis) el.innerHTML = mouReadinessInner(mouLastAnalysis.readiness); }
 function mouPlanHtml(r, calc, cv, wk, Z, DESIGN, aov){
   if (!calc.length) return '';
@@ -37708,12 +37711,19 @@ function mouPlanHtml(r, calc, cv, wk, Z, DESIGN, aov){
   if (!(sel >= 0 && sel < calc.length)) sel = 0;
   const x = calc[sel]; const lift = Number(mouRd.lift) / 100;
   const cost = r.costing || null;
-  const cpb = Number(mouRd.cpb) > 0 ? Number(mouRd.cpb) : (cost ? cost.costPerBooking : null);
+  const cats = cost && cost.categories ? cost.categories : [];
+  const picked = mouRd.cats ? cats.filter(c => mouRd.cats.includes(c.name)) : cats;
+  const pickedSpend = picked.reduce((a, c) => a + c.spend, 0);
+  const allSpend = cats.reduce((a, c) => a + c.spend, 0);
+  const autoCpb = cost && cost.transactions > 0 && pickedSpend > 0 ? (cost.basis === 'cards' && allSpend > 0 ? cost.costPerBooking * (pickedSpend / allSpend) : pickedSpend / cost.transactions) : null;
+  const cpb = Number(mouRd.cpb) > 0 ? Number(mouRd.cpb) : autoCpb;
   const wT = x.nT / wk, wC = x.nC / wk;
   const need = (wT > 0 && wC > 0) ? Math.ceil(DESIGN * (1 / wT + 1 / wC) * Math.pow(Z * cv / lift, 2)) : null;
   const fmt$ = v => '$' + Math.round(v).toLocaleString();
   const opts = calc.map((c, i) => `<option value="${i}" ${i === sel ? 'selected' : ''}>${c.pooled ? 'All markets combined' : escapeHtml(c.t) + ' vs ' + escapeHtml(c.c)}</option>`).join('');
   const sl = (k, vals, cur, suffix) => `<select class="tbl-select" onchange="mouRdSet('${k}', this.value)" style="font-family:inherit;">${vals.map(v => `<option value="${v}" ${String(v) === String(cur) ? 'selected' : ''}>${v}${suffix}</option>`).join('')}</select>`;
+
+  const catUi = cats.length > 1 ? `<div style="margin:10px 0 0;"><span class="hint" style="margin-right:6px;">Spend counted</span><button type="button" class="${!mouRd.cats ? 'btn-primary' : 'btn-ghost'}" style="padding:3px 10px;font-size:0.8125rem;margin-right:6px;font-family:inherit;" onclick="mouRdCatPreset('all')">All working media</button><button type="button" class="btn-ghost" style="padding:3px 10px;font-size:0.8125rem;margin-right:10px;font-family:inherit;" onclick="mouRdCatPreset('geo')">Channels targetable by market</button>${cats.map(c => `<label style="display:inline-flex;align-items:center;gap:4px;margin:0 10px 4px 0;font-size:0.8125rem;"><input type="checkbox" ${(!mouRd.cats || mouRd.cats.includes(c.name)) ? 'checked' : ''} onchange="mouRdToggleCat('${escapeHtml(c.name).replace(/'/g, '&#39;')}', this.checked)"> ${escapeHtml(c.name)} <span class="hint">($${Math.round(c.spend).toLocaleString()})</span></label>`).join('')}</div>` : (cats.length === 1 && cost.basis === 'digital_only' ? `<p class="hint" style="color:#b8860b;margin:10px 0 0;">${escapeHtml(cost.source)}</p>` : '');
   let body;
   if (need == null){ body = '<p class="hint">This pair has no volume in the window, so no plan can be sized.</p>'; }
   else {
@@ -37738,7 +37748,7 @@ function mouPlanHtml(r, calc, cv, wk, Z, DESIGN, aov){
         ${aov ? `<tr><td>Extra media to create the change</td><td>Not needed</td><td>An order-value change comes from the offer, mix or creative you are testing. Its cost is the margin you give up, not media.</td></tr>` : `<tr><td>Extra media to create a ${mouRd.lift}% lift</td><td>${fmt$(incBk * cpb)} to ${fmt$(incBk * cpb * m * 1.5)}</td><td>${Math.round(incBk).toLocaleString()} extra bookings × ${fmt$(cpb)} × 1 (best case) up to ${(m * 1.5).toFixed(1)} (high). Expected: ${fmt$(incBk * cpb * m)} at ${m}×, because the next booking costs more than the average one.</td></tr>
         <tr><td><strong>Total expected</strong></td><td><strong>${fmt$(held + incBk * cpb * m)}</strong></td><td>Range ${fmt$(held + incBk * cpb)} to ${fmt$(held + incBk * cpb * m * 1.5)}</td></tr>`}
       </tbody></table></div>
-      <p class="hint" style="margin:6px 0 0;">Cost per booking: ${cost && cpb === cost.costPerBooking ? escapeHtml(cost.source) : 'entered by you'}. It is an average of all media, not a measured response to extra spend, so treat the extra-media range as a planning figure and confirm it with your media partner.</p>`;
+      <p class="hint" style="margin:6px 0 0;">Cost per booking: ${cost && cpb === autoCpb ? escapeHtml(cost.source) : 'entered by you'} It is an average of the spend counted, not a measured response to extra spend, so treat the extra-media range as a planning figure and confirm it with your media partner.</p>`;
     body = `<p style="margin:10px 0 4px;font-size:0.875rem;"><strong>Run it for ${len}</strong>, with at least ${pre} weeks of pre-period data before it starts. <span style="color:${vcol};font-weight:600;">${verdict}</span></p>
       <p class="hint" style="margin:0;">Expected bookings in the window: about ${Math.round(bT).toLocaleString()} in test and ${Math.round(bC).toLocaleString()} in control, enough to show a ${mouRd.lift}% ${aov ? 'change in order value' : 'lift'} at 95% confidence and 80% power.</p>${alt}${spendHtml}`;
   }
@@ -37750,6 +37760,7 @@ function mouPlanHtml(r, calc, cv, wk, Z, DESIGN, aov){
       <label class="hint" style="margin:0;">Cost per booking <input type="number" min="0" step="1" value="${cpb != null ? Math.round(cpb * 100) / 100 : ''}" placeholder="enter" onchange="mouRdSet('cpb', this.value)" style="width:90px;font:inherit;padding:4px 6px;"></label>
       <label class="hint" style="margin:0;">Marginal cost multiple ${sl('mult', [1.5, 2, 3], mouRd.mult, '×')}</label>
     </div>
+    ${catUi}
     ${body}
   </div>`;
 }
