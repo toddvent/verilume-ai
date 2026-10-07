@@ -1578,10 +1578,12 @@
   .ttb-sec-n{flex:none;width:32px;height:32px;border-radius:50%;border:2px solid #1E2761;color:#1E2761;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:0.875rem;} .ttb-sec.done .ttb-sec-n{background:#1E2761;color:#fff;}
   .ttb-sec-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;} .ttb-sec-name{font-size:1.1875rem;font-weight:600;color:#1E2761;} .ttb-sec-sub{font-size:0.8125rem;color:var(--muted);}
   body.recipient-shell #primaryNav, body.recipient-shell .primary-nav, body.recipient-shell .app-header-gear, body.recipient-shell #askVerilumeBar{display:none !important;} body.recipient-shell #exportsCrumbHome{display:none;}
+  .tr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;} .tr-f{display:flex;flex-direction:column;gap:4px;font-size:0.8125rem;color:var(--muted);} .tr-f input,.tr-f select,.tr-f textarea,.tr-vr input{padding:8px 10px;border:1px solid var(--line,#d9dee8);border-radius:8px;font:inherit;color:var(--ink,inherit);background:var(--white,#fff);width:100%;box-sizing:border-box;}
+  .tr-vh,.tr-vr{display:grid;grid-template-columns:1.2fr 1.6fr 0.6fr 0.9fr 0.9fr auto;gap:8px;align-items:center;margin:0 0 6px;} .tr-vh{font-size:0.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;} .tr-vars{overflow-x:auto;} .tr-vr button{font-family:inherit;}
   .adlib-bar{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 14px;} .adlib-bar input,.adlib-bar select{padding:9px 12px;border:1px solid var(--line,#d9dee8);border-radius:8px;font:inherit;background:var(--white,#fff);color:inherit;} .adlib-bar input{flex:1 1 240px;}
   .adlib-card{border:1px solid var(--line,#d9dee8);border-radius:12px;padding:14px 16px;margin:0 0 10px;background:var(--white,#fff);} .adlib-meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:0.8125rem;} .adlib-camp{margin-left:auto;color:var(--muted);}
   .adlib-pill{font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;padding:3px 8px;border-radius:999px;background:#eef0f4;color:#4a5568;} .adlib-pill.ok{background:#e3f4ee;color:#0f766e;}
-  .adlib-card button,.adlib-pick button,.adlib-bar button{font-family:inherit;}   .adlib-copy{margin:10px 0;line-height:1.5;} .adlib-h{font-weight:700;} .adlib-cta{font-weight:600;color:#0e8fb0;} .adlib-act{display:flex;gap:8px;flex-wrap:wrap;}
+  .adlib-card button,.adlib-pick button,.adlib-bar button,.adlib-act button,.adlib-act label,.tr-f button{font-family:inherit;}   .adlib-copy{margin:10px 0;line-height:1.5;} .adlib-h{font-weight:700;} .adlib-cta{font-weight:600;color:#0e8fb0;} .adlib-act{display:flex;gap:8px;flex-wrap:wrap;}
   .adlib-pick{border:1px solid var(--line,#d9dee8);border-radius:12px;padding:14px 16px;background:var(--paper-dim,#f6f8fb);} .adlib-pick-h{font-weight:700;margin:0 0 8px;} .adlib-pick-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:6px 0;} .adlib-pick-row select{padding:8px 10px;border:1px solid var(--line,#d9dee8);border-radius:8px;font:inherit;}
   .ttb-more{margin-top:14px;display:flex;flex-direction:column;gap:8px;} .ttb-more-h{font-size:0.75rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);font-weight:700;}
   .ttb-more-row{display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;width:100%;padding:12px 14px;border:1px solid var(--border,#d9dee8);border-radius:10px;background:transparent;cursor:pointer;font:inherit;color:inherit;} .ttb-more-row:hover{border-color:#0e8fb0;} .ttb-more-t{display:flex;flex-direction:column;gap:2px;} .ttb-more-go{color:#0e8fb0;font-weight:600;white-space:nowrap;}
@@ -5914,6 +5916,14 @@
        a field to fill in alongside Voice/Colors/Fonts. Still writes to the
        same account.visionStatement/longformVoiceExample columns via the
        same saveVisionLongformEdits(), unchanged. -->
+  <div class="step" id="step-testRegistry">
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="switchPrimaryTab('dataScientist')">Media Science</a> / Test Registry</div>
+    <div class="eyebrow">Media Science &middot; Test Registry</div>
+    <h1>Test Registry</h1>
+    <p class="msg-lede">Every test in one place: creative A/B, multi-variant, offer or audience, channel substitution and DMA match market. Draft it here, enter or import results, read the statistics, record the decision and what was learned. Export any test for analysis.</p>
+    <div id="testRegistryBody"></div>
+  </div>
+
   <div class="step" id="step-exports">
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link" id="exportsCrumbHome">CMO Dashboard</a> / Exports</div>
     <div class="eyebrow">Exports</div>
@@ -24416,6 +24426,7 @@ function marketerShellHtml(){
 const DATA_SCIENTIST_SHELL_GROUPS = [
   { label: 'Media Science', items: [
     { label: 'Measurement Coverage & Confidence', step: 'measurementCoverage' },
+    { label: 'Test Registry', step: 'testRegistry', desc: 'A/B, multi-variant and match-market tests: setup, results, statistics, decision' },
     { label: 'Match Market Builder', step: 'marketOptimization' },
     { label: 'Website Traffic Analysis', step: 'websiteTraffic' }
   ]},
@@ -30780,6 +30791,139 @@ async function loadTeam(){
 // gate is still what actually protects anything here.
 
 // 2026-10-07 — Exports page + Data recipient shell. Recipients sign in and see only this page; the server enforces it (RECIPIENT_ALLOWED).
+
+// 2026-10-07 — Media Science Test Registry (one table for every test type; see media_tests in server.js).
+const TR_TYPES = { ab: 'Creative A/B', multivariant: 'Multi-variant', offer: 'Offer or audience', channel: 'Channel substitution', matchmarket: 'DMA match market', other: 'Other' };
+const TR_KPIS = ['Conversion rate', 'Lead rate', 'Booking rate', 'Click-through rate', 'Visit rate', 'Call rate'];
+let tr = { tests: [], loaded: false, err: '', open: null, draft: null, saving: false, msg: '' };
+function trUrl(id){ return `${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/media-tests${id ? '/' + encodeURIComponent(id) : ''}`; }
+async function renderTestRegistryStep(){
+  const el = document.getElementById('testRegistryBody'); if (!el) return;
+  if (!tr.loaded) el.innerHTML = '<div class="strat-card"><p class="strat-empty">Loading tests…</p></div>';
+  try { const r = await authedFetch(trUrl()); if (!r.ok) throw new Error(String(r.status)); tr.tests = (await r.json()).tests || []; tr.loaded = true; tr.err = ''; }
+  catch (e){ tr.err = 'Could not load tests just now.'; }
+  trRender();
+}
+function trBlank(){ return { id: null, testType: 'ab', name: '', hypothesis: '', primaryKpi: 'Conversion rate', mdePct: 10, variants: [{ key: 'control', label: 'Control', assetId: '', allocationPct: 50, impressions: '', conversions: '' }, { key: 'b', label: 'Variant B', assetId: '', allocationPct: 50, impressions: '', conversions: '' }], details: {}, startDate: '', endDate: '', status: 'draft', decision: '', learning: '', campaignId: '' }; }
+function trNormCdf(z){ const t = 1 / (1 + 0.2316419 * Math.abs(z)); const d = 0.3989423 * Math.exp(-z * z / 2); const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return z > 0 ? 1 - p : p; }
+// Two-proportion z-test of each variant against the first (control). Rates are conversions / impressions.
+function trStats(t){
+  const v = (t.variants || []).map(x => ({ ...x, n: Number(x.impressions), c: Number(x.conversions), has: x.impressions !== '' && x.impressions != null && x.conversions !== '' && x.conversions != null && Number(x.impressions) > 0 }));
+  const ctl = v[0]; const out = { rows: [], need: null, ctlRate: null };
+  if (ctl && ctl.has){ out.ctlRate = ctl.c / ctl.n; }
+  const mde = Number(t.mdePct) > 0 ? Number(t.mdePct) / 100 : null;
+  if (out.ctlRate && mde){ const p1 = out.ctlRate, p2 = Math.min(0.999, p1 * (1 + mde)); out.need = Math.ceil(Math.pow(1.96 + 0.84, 2) * (p1 * (1 - p1) + p2 * (1 - p2)) / Math.pow(p2 - p1, 2)); }
+  v.forEach((x, i) => {
+    const row = { label: x.label, n: x.has ? x.n : null, c: x.has ? x.c : null, rate: x.has ? x.c / x.n : null, lift: null, p: null, sig: '' };
+    if (i > 0 && x.has && ctl && ctl.has){
+      const p1 = ctl.c / ctl.n, p2 = x.c / x.n, pool = (ctl.c + x.c) / (ctl.n + x.n), se = Math.sqrt(pool * (1 - pool) * (1 / ctl.n + 1 / x.n));
+      if (se > 0){ const z = (p2 - p1) / se; row.p = 2 * (1 - trNormCdf(Math.abs(z))); row.sig = row.p < 0.05 ? (p2 > p1 ? 'Beats control' : 'Below control') : 'No clear difference'; }
+      row.lift = p1 > 0 ? (p2 - p1) / p1 : null;
+    }
+    out.rows.push(row);
+  });
+  return out;
+}
+function trPct(v, d){ return v == null || !isFinite(v) ? '—' : (v * 100).toFixed(d == null ? 2 : d) + '%'; }
+function trReadoutHtml(t){
+  if (t.testType === 'matchmarket') return '<div class="hint">Match-market tracking (weekly test vs control, difference-in-differences) is the next template. Build the market pairs in <a class="flink" onclick="goToStep(\'marketOptimization\')">Match Market Builder</a> and record the test here.</div>';
+  const s = trStats(t);
+  if (!s.rows.some(r => r.n != null)) return '<div class="hint">Enter impressions and conversions per variant, or import a results CSV, to see the readout.</div>';
+  const minN = Math.min.apply(null, s.rows.filter(r => r.n != null).map(r => r.n));
+  const prog = s.need ? Math.min(100, Math.round(minN / s.need * 100)) : null;
+  const best = s.rows.filter(r => r.sig === 'Beats control').sort((a, b) => b.lift - a.lift)[0];
+  const verdict = best ? `${escapeHtml(best.label)} beats ${escapeHtml(s.rows[0].label)} (${trPct(best.lift, 1)} lift, p = ${best.p.toFixed(3)}).` : (prog != null && prog < 100 ? 'No clear winner yet, and there is not enough volume to call it.' : 'No clear winner at 95% confidence.');
+  return `<div class="strat-tablewrap"><table class="strat-table"><thead><tr><th>Variant</th><th>Impressions</th><th>Conversions</th><th>Rate</th><th>Lift vs control</th><th>p-value</th><th>Read</th></tr></thead><tbody>${s.rows.map((r, i) => `<tr><td>${escapeHtml(r.label)}${i === 0 ? ' <span class="hint">(control)</span>' : ''}</td><td>${r.n == null ? '—' : r.n.toLocaleString()}</td><td>${r.c == null ? '—' : r.c.toLocaleString()}</td><td>${trPct(r.rate)}</td><td>${i === 0 ? '' : trPct(r.lift, 1)}</td><td>${r.p == null ? '' : r.p.toFixed(3)}</td><td>${escapeHtml(r.sig)}</td></tr>`).join('')}</tbody></table></div>
+    <p style="margin:10px 0 4px;"><strong>${verdict}</strong></p>
+    ${s.need ? `<div class="hint">To detect a ${escapeHtml(String(t.mdePct))}% lift at 95% confidence and 80% power you need about ${s.need.toLocaleString()} impressions per variant. Smallest variant so far: ${minN.toLocaleString()} (${prog}%).</div>` : '<div class="hint">Add a minimum lift worth detecting to see how much volume the test needs.</div>'}`;
+}
+function trRender(){
+  const el = document.getElementById('testRegistryBody'); if (!el) return;
+  if (tr.err && !tr.loaded){ el.innerHTML = `<div class="strat-card"><p class="strat-empty">${escapeHtml(tr.err)}</p></div>`; return; }
+  if (tr.draft){ el.innerHTML = trEditorHtml(); trRefreshReadout(); return; }
+  const rows = tr.tests;
+  el.innerHTML = `<div class="adlib-bar"><button type="button" class="btn-primary" onclick="trNew()">+ New test</button><button type="button" class="btn-ghost" onclick="trExport(null)">Export registry CSV</button></div>${tr.msg ? `<div class="hint" style="margin:0 0 10px;">${escapeHtml(tr.msg)}</div>` : ''}` + (rows.length ? rows.map(t => `<div class="adlib-card" style="cursor:pointer;" onclick="trOpen('${escapeHtml(t.id)}')"><div class="adlib-meta"><span class="adlib-pill ${t.status === 'complete' ? 'ok' : ''}">${escapeHtml(t.status)}</span><strong>${escapeHtml(t.name)}</strong> &middot; ${escapeHtml(TR_TYPES[t.testType] || t.testType)}${t.primaryKpi ? ` &middot; ${escapeHtml(t.primaryKpi)}` : ''}<span class="adlib-camp">${t.decision ? 'Decision: ' + escapeHtml(t.decision) : (t.startDate ? escapeHtml(t.startDate) : '')}</span></div>${t.hypothesis ? `<div class="adlib-copy">${escapeHtml(t.hypothesis)}</div>` : ''}</div>`).join('') : '<div class="strat-card"><p class="strat-empty">No tests yet. Start with a creative A/B: two variants, one KPI, and the lift worth detecting.</p></div>');
+}
+function trNew(){ tr.draft = trBlank(); tr.msg = ''; trRender(); }
+function trOpen(id){ const t = tr.tests.find(x => x.id === id); if (!t) return; tr.draft = JSON.parse(JSON.stringify(t)); tr.msg = ''; trRender(); }
+function trClose(){ tr.draft = null; trRender(); }
+function trSet(k, v){ tr.draft[k] = v; if (k === 'testType') trRender(); else trRefreshReadout(); }
+function trSetDetail(k, v){ tr.draft.details = tr.draft.details || {}; tr.draft.details[k] = v; }
+function trSetVar(i, k, v){ tr.draft.variants[i][k] = v; trRefreshReadout(); }
+function trAddVar(){ const n = tr.draft.variants.length; tr.draft.variants.push({ key: 'v' + (n + 1), label: 'Variant ' + String.fromCharCode(65 + n), assetId: '', allocationPct: null, impressions: '', conversions: '' }); trRender(); }
+function trDelVar(i){ if (tr.draft.variants.length <= 2) return; tr.draft.variants.splice(i, 1); trRender(); }
+function trRefreshReadout(){ const el = document.getElementById('trReadout'); if (el && tr.draft) el.innerHTML = trReadoutHtml(tr.draft); }
+function trEditorHtml(){
+  const t = tr.draft; const mm = t.testType === 'matchmarket';
+  const campOpts = '<option value="">None</option>' + (state.campaigns || []).map(c => `<option value="${escapeHtml(c.id)}"${c.id === t.campaignId ? ' selected' : ''}>${escapeHtml(adLibCampName(c))}</option>`).join('');
+  const f = (label, inner) => `<label class="tr-f"><span>${label}</span>${inner}</label>`;
+  const inp = (k, type, ph) => `<input type="${type || 'text'}" value="${escapeHtml(t[k] == null ? '' : t[k])}" placeholder="${ph || ''}" oninput="trSet('${k}', this.value)">`;
+  const sel = (k, opts) => `<select onchange="trSet('${k}', this.value)">${opts}</select>`;
+  const typeOpts = Object.keys(TR_TYPES).map(k => `<option value="${k}"${k === t.testType ? ' selected' : ''}>${TR_TYPES[k]}</option>`).join('');
+  const kpiOpts = TR_KPIS.concat(TR_KPIS.includes(t.primaryKpi) || !t.primaryKpi ? [] : [t.primaryKpi]).map(k => `<option${k === t.primaryKpi ? ' selected' : ''}>${escapeHtml(k)}</option>`).join('');
+  const stOpts = ['draft', 'running', 'complete'].map(k => `<option value="${k}"${k === t.status ? ' selected' : ''}>${k}</option>`).join('');
+  const dOpts = [['', 'No decision yet'], ['ship', 'Ship the winner'], ['kill', 'Kill it'], ['iterate', 'Iterate and retest']].map(([k, l]) => `<option value="${k}"${k === t.decision ? ' selected' : ''}>${l}</option>`).join('');
+  const vars = mm ? `<div class="tr-grid">${f('Test markets', `<input type="text" value="${escapeHtml((t.details || {}).testMarkets || '')}" placeholder="e.g. Tampa, Phoenix" oninput="trSetDetail('testMarkets', this.value)">`)}${f('Control markets', `<input type="text" value="${escapeHtml((t.details || {}).controlMarkets || '')}" placeholder="e.g. Orlando, Las Vegas" oninput="trSetDetail('controlMarkets', this.value)">`)}${f('Pre-period (weeks)', `<input type="number" value="${escapeHtml((t.details || {}).preWeeks || '')}" oninput="trSetDetail('preWeeks', this.value)">`)}</div>`
+    : `<div class="tr-vars"><div class="tr-vh"><span>Variant</span><span>Creative or asset reference</span><span>Share %</span><span>Impressions</span><span>Conversions</span><span></span></div>${t.variants.map((v, i) => `<div class="tr-vr"><input value="${escapeHtml(v.label)}" oninput="trSetVar(${i},'label',this.value)"><input value="${escapeHtml(v.assetId || '')}" placeholder="asset or copy version ID" oninput="trSetVar(${i},'assetId',this.value)"><input type="number" value="${v.allocationPct == null ? '' : v.allocationPct}" oninput="trSetVar(${i},'allocationPct',this.value)"><input type="number" value="${v.impressions == null ? '' : v.impressions}" oninput="trSetVar(${i},'impressions',this.value)"><input type="number" value="${v.conversions == null ? '' : v.conversions}" oninput="trSetVar(${i},'conversions',this.value)"><button type="button" class="btn-ghost" onclick="trDelVar(${i})"${t.variants.length <= 2 ? ' disabled' : ''}>Remove</button></div>`).join('')}</div><div class="adlib-act" style="margin-top:8px;"><button type="button" class="btn-ghost" onclick="trAddVar()">+ Variant</button><label class="btn-ghost" style="cursor:pointer;">Import results CSV<input type="file" accept=".csv,text/csv" style="display:none" onchange="trImport(this.files[0]);this.value=''"></label><button type="button" class="btn-ghost" onclick="trTemplateCsv()">Download results template</button></div>`;
+  return `<div class="strat-card"><div class="adlib-meta" style="margin-bottom:12px;"><strong>${t.id ? 'Edit test' : 'New test'}</strong><span class="adlib-camp"><a class="flink" onclick="trClose()">Back to all tests</a></span></div>
+    <div class="tr-grid">${f('Test name', inp('name', 'text', 'e.g. Polar hero image vs. ship image'))}${f('Type', sel('testType', typeOpts))}${f('Primary KPI', sel('primaryKpi', kpiOpts))}${f('Smallest lift worth detecting (%)', inp('mdePct', 'number'))}${f('Campaign', sel('campaignId', campOpts))}${f('Status', sel('status', stOpts))}${f('Start date', inp('startDate', 'date'))}${f('End date', inp('endDate', 'date'))}</div>
+    <label class="tr-f" style="margin-top:10px;"><span>Hypothesis</span><textarea rows="2" oninput="trSet('hypothesis', this.value)" placeholder="We believe X will lift Y because Z.">${escapeHtml(t.hypothesis || '')}</textarea></label>
+    <h3 style="margin:16px 0 8px;">${mm ? 'Markets' : 'Variants and results'}</h3>${vars}
+    <h3 style="margin:16px 0 8px;">Readout</h3><div id="trReadout"></div>
+    <h3 style="margin:16px 0 8px;">Decision</h3><div class="tr-grid">${f('Decision', sel('decision', dOpts))}</div>
+    <label class="tr-f" style="margin-top:10px;"><span>What we learned</span><textarea rows="3" oninput="trSet('learning', this.value)" placeholder="What changed, what held, what to test next.">${escapeHtml(t.learning || '')}</textarea></label>
+    <div class="adlib-act" style="margin-top:14px;"><button type="button" class="btn-primary" onclick="trSave()"${tr.saving ? ' disabled' : ''}>${tr.saving ? 'Saving…' : 'Save test'}</button>${t.id ? '<button type="button" class="btn-ghost" onclick="trExport(tr.draft.id)">Export this test CSV</button><button type="button" class="btn-ghost" onclick="trDelete()">Delete</button>' : ''}<span class="hint" id="trSaveNote">${escapeHtml(tr.msg)}</span></div></div>`;
+}
+async function trSave(){
+  const t = tr.draft; if (!t.name || !t.name.trim()){ tr.msg = 'Give the test a name first.'; trRender(); return; }
+  tr.saving = true; trRender();
+  try {
+    const r = await authedFetch(trUrl(t.id), { method: t.id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(t) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || String(r.status));
+    tr.msg = 'Saved.'; tr.saving = false; tr.draft = null; tr.loaded = false; await renderTestRegistryStep();
+  } catch (e){ tr.saving = false; tr.msg = 'Could not save: ' + e.message; trRender(); }
+}
+async function trDelete(){
+  const t = tr.draft; if (!t || !t.id) return; if (!confirm('Delete this test and its results?')) return;
+  try { const r = await authedFetch(trUrl(t.id), { method: 'DELETE' }); if (!r.ok) throw new Error(String(r.status)); tr.draft = null; tr.loaded = false; tr.msg = 'Deleted.'; await renderTestRegistryStep(); } catch (e){ tr.msg = 'Could not delete.'; trRender(); }
+}
+function trCsvParse(text){
+  const rows = []; let row = [], cur = '', q = false;
+  for (let i = 0; i < text.length; i++){ const ch = text[i];
+    if (q){ if (ch === '"' && text[i + 1] === '"'){ cur += '"'; i++; } else if (ch === '"') q = false; else cur += ch; }
+    else if (ch === '"') q = true; else if (ch === ',') { row.push(cur); cur = ''; } else if (ch === '\n' || ch === '\r'){ if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cur); cur = ''; if (row.some(x => x !== '')) rows.push(row); row = []; } else cur += ch; }
+  row.push(cur); if (row.some(x => x !== '')) rows.push(row); return rows;
+}
+function trImport(file){
+  if (!file || !tr.draft) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    const rows = trCsvParse(String(rd.result || '')); if (rows.length < 2){ tr.msg = 'That file has no result rows.'; trRender(); return; }
+    const head = rows[0].map(h => h.trim().toLowerCase());
+    const ci = n => head.findIndex(h => n.includes(h));
+    const iv = ci(['variant', 'label', 'name']), ii = ci(['impressions', 'impr', 'sessions', 'visitors']), ic = ci(['conversions', 'conv', 'leads', 'bookings']);
+    if (iv < 0 || ii < 0 || ic < 0){ tr.msg = 'Needs columns named variant, impressions and conversions.'; trRender(); return; }
+    let hit = 0;
+    rows.slice(1).forEach(r => { const name = (r[iv] || '').trim().toLowerCase(); const v = tr.draft.variants.find(x => x.label.trim().toLowerCase() === name || x.key.toLowerCase() === name);
+      if (v){ v.impressions = Number(String(r[ii]).replace(/[^0-9.]/g, '')) || 0; v.conversions = Number(String(r[ic]).replace(/[^0-9.]/g, '')) || 0; hit++; } });
+    tr.msg = hit ? `Imported results for ${hit} variant${hit === 1 ? '' : 's'}. Save to keep them.` : 'No variant names in the file matched this test.'; trRender();
+  };
+  rd.readAsText(file);
+}
+function trTemplateCsv(){
+  const t = tr.draft; const lines = ['variant,impressions,conversions'].concat((t.variants || []).map(v => `"${String(v.label).replace(/"/g, '""')}",,`));
+  const url = URL.createObjectURL(new Blob([lines.join('\r\n')], { type: 'text/csv' })); const a = document.createElement('a'); a.href = url; a.download = 'ab-test-results-template.csv'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function trExport(id){
+  const list = id ? tr.tests.filter(x => x.id === id) : tr.tests;
+  const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const head = ['test_id', 'test_name', 'type', 'status', 'primary_kpi', 'min_lift_pct', 'campaign_id', 'start_date', 'end_date', 'variant', 'asset_ref', 'share_pct', 'impressions', 'conversions', 'rate', 'lift_vs_control', 'p_value', 'read', 'decision', 'learning'];
+  const out = [head.join(',')];
+  list.forEach(t => { const s = trStats(t); const vs = t.variants && t.variants.length ? t.variants : [{}];
+    vs.forEach((v, i) => { const r = s.rows[i] || {}; out.push([t.id, t.name, TR_TYPES[t.testType] || t.testType, t.status, t.primaryKpi, t.mdePct, t.campaignId, t.startDate, t.endDate, v.label, v.assetId, v.allocationPct, v.impressions, v.conversions, r.rate == null ? '' : r.rate.toFixed(6), r.lift == null ? '' : r.lift.toFixed(6), r.p == null ? '' : r.p.toFixed(4), r.sig || '', t.decision, t.learning].map(q).join(',')); }); });
+  const url = URL.createObjectURL(new Blob([out.join('\r\n')], { type: 'text/csv' })); const a = document.createElement('a'); a.href = url; a.download = id ? `test-${id}.csv` : 'test-registry.csv'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 let portalIsRecipient = false;
 let exportsState = { feeds: null, log: null, err: '' };
 async function renderExportsStep(){
@@ -63235,6 +63379,9 @@ function goToStep(step, arg, arg2, arg3){
   } else if (step === 'voice'){
     renderVoiceStep();
     document.getElementById('step-voice').classList.add('active');
+  } else if (step === 'testRegistry'){
+    renderTestRegistryStep();
+    document.getElementById('step-testRegistry').classList.add('active');
   } else if (step === 'exports'){
     renderExportsStep();
     document.getElementById('step-exports').classList.add('active');
