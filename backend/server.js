@@ -26292,7 +26292,7 @@ async function handleRequest(req, res) {
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-09-27-health-integrations-full',
+        buildStamp: '2026-10-07-search-guides',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
