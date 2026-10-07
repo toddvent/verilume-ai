@@ -12374,6 +12374,23 @@ createTableIfNeeded(`
     assignedby TEXT,
     assignedat TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS search_guide_ratings (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    modelkey TEXT NOT NULL,
+    itemkey TEXT NOT NULL,
+    rating TEXT NOT NULL,
+    updatedby TEXT,
+    updatedat TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS search_guide_history (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    modelkey TEXT NOT NULL,
+    area TEXT NOT NULL,
+    score REAL NOT NULL,
+    day TEXT NOT NULL
+  );
 `);
 // 2026-10-07 — a person confirms a test result (never automatic): who, when, the numbers they confirmed, and the plan changes
 // the Brain proposed from it. Confirmed results are also stored with the campaign they ran under (campaign_results).
@@ -18374,7 +18391,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['onboarding_assignments', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
+const CATALOG_EXEMPT = new Set(['onboarding_assignments', 'search_guide_ratings', 'search_guide_history', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -18707,7 +18724,8 @@ const PRODUCT_GUIDE = [
   { letter: "AT", label: "Team Experiences: self-assessment and development plan", keywords: ["team experiences", "self assessment", "skill sets", "development plan", "training", "next level", "critical skills", "position"], text: "Team Experiences has three jobs. Skill Sets shows what any position on the org chart is expected to hold. The self-assessment lets each person rate themselves against their own seat’s critical skills. The development plan builds steps toward the next level. A good first week is to look up your own seat, complete the self-assessment, then draft a development plan and review it with your manager. Ask Verilume can summarize team structure and training progress, but it never reads out emails, phone numbers or any one person’s self-ratings." },
   { letter: "AU", label: "Team and Org Chart", keywords: ["team", "org chart", "org", "invite", "member", "reports to", "role", "admin", "roster", "onboarding", "add a person", "add someone", "add people", "add a team", "who reports", "position"], text: "Team and Org Chart is where an admin adds each person, sets their position and who they report to. The chart drives skill sets, the self-assessment and the development plan, so keep reporting lines current. The page is admin-only today. Give each new person their position first, then have them complete the self-assessment in Team Experiences. Ask Verilume can answer who sits where and which seats lack a reporting line, without sharing contact details or individual self-ratings." },
   { letter: "AV", label: "Ask Verilume and voice: what you can ask", keywords: ["ask verilume", "voice", "ask", "question", "how do i", "how to", "what can i ask", "getting started", "where do i"], text: "AI Thoughts and voice share the same knowledge. Ask Verilume, typed or by voice, answers from your own data: campaigns, Media Science markets and the last test plan, Truth Lab results and confirmed learnings, Trade Territories, the Ad Copy Library and the team structure. It also explains how to use the product, so you can ask how do I save a match market test, how do I confirm a result, or what does a local reseller mean, and hear the same answer that appears in these thoughts. Voice never changes anything. Any change is proposed for a person to accept. It does not read out emails, phone numbers or individual self-ratings." },
-  { letter: "AW", label: "Brain Dump: your greeting and growth links", keywords: ["brain dump", "growth", "my growth", "assessment", "self assessment", "next career", "career", "training", "development plan", "private", "manager see", "who can see", "greeting", "1:1"], text: "The Brain Dump opens with a greeting and your seat, then the weekly business update: Strategy, Customer Experiences, Growth and Performance, Media Science, AI Brain learnings, and news from outside. Beside it, Your growth links to your own development: the position self-assessment, your next-career checklist, and your development plan, all in Team Experiences. Those pages are private to you. A manager sees nothing from them unless you choose to share it. You can also ask Verilume or the voice agent to read you the Brain Dump, and it presents each section in turn. The 1:1 with your Brain is coming later." }
+  { letter: "AW", label: "Brain Dump: your greeting and growth links", keywords: ["brain dump", "growth", "my growth", "assessment", "self assessment", "next career", "career", "training", "development plan", "private", "manager see", "who can see", "greeting", "1:1"], text: "The Brain Dump opens with a greeting and your seat, then the weekly business update: Strategy, Customer Experiences, Growth and Performance, Media Science, AI Brain learnings, and news from outside. Beside it, Your growth links to your own development: the position self-assessment, your next-career checklist, and your development plan, all in Team Experiences. Those pages are private to you. A manager sees nothing from them unless you choose to share it. You can also ask Verilume or the voice agent to read you the Brain Dump, and it presents each section in turn. The 1:1 with your Brain is coming later." },
+  { letter: "AX", label: "Search Everywhere: illumination guides and light levels", keywords: ["search everywhere", "illumination guide", "view guide", "light level", "seo checklist", "aeo", "geo", "local business", "franchise", "call center", "ecommerce", "self rate", "self assessment search", "search checklist"], text: "Search Everywhere has three area cards: SEO (get found), AEO (be the answer) and GEO (be cited by AI). Each shows what drives it, a light level, and a View guide button that opens the guide on the page. The guide is a prioritized checklist written for your kind of business: a local business, a single-location call center or ecommerce, or a franchise with online sales and storefronts. You rate each item yourself as not started, in progress, done or does not apply. Items Verilume can read from your data, such as Search Console connected, indexing health, answered questions and AI citation checks, are filled in for you. The light level is Dark, Dim, Lit, Bright or Brilliant based on the weighted share of items done, and it is saved so you can see progress over time." }
 ];
 const PRODUCT_ASK_RE = /\b(how (?:do|can|should|would) (?:i|we|you)|how to|where (?:do|can|is|are)|what (?:is|are|does|do) (?:a|an|the|my)?|walk me through|getting started|get started|train(?:ing)?|learn|guide|explain|help me (?:use|understand)|what can i ask|show me how|steps)\b/i;
 function productGuideBlock(question){
@@ -42942,6 +42960,37 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       return sendJson(res, 200, { results: rows.map(r => { let m = {}; try { m = JSON.parse(r.metrics_json || '{}'); } catch (e){} return { id: r.id, campaignId: r.campaign_id, sourceType: r.source_type, sourceId: r.source_id, title: r.title, decision: r.decision, summary: r.summary, metrics: m, recordedBy: r.recorded_by, recordedAt: r.recorded_at }; }) });
     }
 
+    // Search Everywhere illumination guides. Self-ratings per checklist item (one row per account, business model and item) plus a daily
+    // light-level history per area, so progress shows over time. Items our tools can read are computed in the portal and never stored here.
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'search-guide' && (req.method === 'GET' || req.method === 'PUT')){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const MODELS = ['local', 'single', 'franchise'], RATINGS = ['none', 'started', 'done', 'na'], AREAS = ['seo', 'aeo', 'geo'];
+      if (req.method === 'GET'){
+        const ratings = db.prepare('SELECT modelkey, itemkey, rating, updatedby, updatedat FROM search_guide_ratings WHERE accountid = ?').all(accountId);
+        const history = db.prepare('SELECT modelkey, area, score, day FROM search_guide_history WHERE accountid = ? ORDER BY day ASC LIMIT 400').all(accountId);
+        return sendJson(res, 200, { ratings: ratings.map(r => ({ model: aliasVal(r, 'modelkey'), item: aliasVal(r, 'itemkey'), rating: r.rating, updatedBy: aliasVal(r, 'updatedby') || '', updatedAt: aliasVal(r, 'updatedat') })), history: history.map(h => ({ model: aliasVal(h, 'modelkey'), area: h.area, score: h.score, day: h.day })) });
+      }
+      const body = await readBody(req);
+      const model = String(body.model || '');
+      if (!MODELS.includes(model)) return sendJson(res, 400, { error: 'unknown business model' });
+      const sess = authenticate(req); const who = exportCaller(sess).name; const now = new Date().toISOString(); const day = now.slice(0, 10);
+      const ratings = body.ratings && typeof body.ratings === 'object' ? body.ratings : {};
+      for (const k of Object.keys(ratings).slice(0, 80)){
+        const v = String(ratings[k]); if (!RATINGS.includes(v) || !/^[a-z0-9_]{2,40}$/.test(k)) continue;
+        const id = accountId + '|' + model + '|' + k;
+        db.prepare('DELETE FROM search_guide_ratings WHERE id = ?').run(id);
+        db.prepare('INSERT INTO search_guide_ratings (id, accountid, modelkey, itemkey, rating, updatedby, updatedat) VALUES (?,?,?,?,?,?,?)').run(id, accountId, model, k, v, who, now);
+      }
+      const scores = body.scores && typeof body.scores === 'object' ? body.scores : {};
+      for (const a of AREAS){
+        const sc = Number(scores[a]); if (!Number.isFinite(sc) || sc < 0 || sc > 100) continue;
+        const id = accountId + '|' + model + '|' + a + '|' + day;
+        db.prepare('DELETE FROM search_guide_history WHERE id = ?').run(id);
+        db.prepare('INSERT INTO search_guide_history (id, accountid, modelkey, area, score, day) VALUES (?,?,?,?,?,?)').run(id, accountId, model, a, Math.round(sc * 10) / 10, day);
+      }
+      return sendJson(res, 200, { saved: true });
+    }
     // Media Science Truth Lab. One table for every test type (creative A/B, multi-variant, offer/audience, channel substitution, DMA match market)
     // so the Brain and analysts read the same keys. Variants carry allocation, impressions and conversions; the statistics are computed in the portal.
     // 2026-10-07 — "Describe the test you want": the person writes a statement, the Brain proposes an A/B test or asks what it still needs. A/B only
