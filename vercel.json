@@ -45,6 +45,22 @@
       "destination": "/frontend/index.html"
     },
     {
+      "source": "/media-cx.html",
+      "destination": "/frontend/media-cx.html"
+    },
+    {
+      "source": "/aiteam.html",
+      "destination": "/frontend/aiteam.html"
+    },
+    {
+      "source": "/execution.html",
+      "destination": "/frontend/execution.html"
+    },
+    {
+      "source": "/packages.html",
+      "destination": "/frontend/packages.html"
+    },
+    {
       "source": "/account.html",
       "destination": "/frontend/account.html"
     },
