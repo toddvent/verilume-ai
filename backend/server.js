@@ -17687,7 +17687,8 @@ function planWorkingMediaBudget(accountId, year){
   let wm = 0, tot = 0; rows.forEach(r => { const a = Number(r.amount) || 0; tot += a; if (/^\s*working/i.test(String(r.status || ''))) wm += a; });
   return wm > 0 ? { uploadId: up.id, workingMedia: Math.round(wm), total: Math.round(tot) } : null;
 }
-function buildAnnualPlanRecommendation(accountId, year, asOfDate){
+function buildAnnualPlanRecommendation(accountId, year, asOfDate, basisIn){
+  const basis = basisIn === 'ttm' ? 'ttm' : 'calendar';
   const asOf = asOfDate || new Date(); const py = year - 1; const mk = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
   const lastComplete = storyMonthKeys(asOf, 1)[0];
   const users = {}, leads = { Prospect: {}, Growth: {}, Value: {} }, bk = {}, imps = {}, calls = {};
@@ -17698,11 +17699,27 @@ function buildAnnualPlanRecommendation(accountId, year, asOfDate){
     bk[k] = (bk[k] || 0) + (Number(r.bookings) || 0);
   });
   db.prepare("SELECT * FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").all(accountId).forEach(r => { const k = mk(r.year, r.month); imps[k] = (imps[k] || 0) + (Number(r.impressions) || 0); calls[k] = (calls[k] || 0) + (Number(r.calls) || 0); });
-  const yearTotal = (m, y) => { let n = 0, any = false; Object.keys(m).forEach(k => { if (k.startsWith(String(y))){ n += m[k]; any = true; } }); return any ? n : null; };
-  const matched = (m) => { const ks = Object.keys(m).filter(k => k.startsWith(String(year)) && k <= lastComplete && m[k] > 0 && m[storyShiftYear(k, -1)] > 0); if (ks.length < 3) return null; const a = ks.reduce((n, k) => n + m[k], 0), b = ks.reduce((n, k) => n + m[storyShiftYear(k, -1)], 0); return b > 0 ? { ratio: a / b, months: ks.length } : null; };
-  let audited = null; try { audited = db.prepare('SELECT * FROM account_year_results WHERE accountId = ? AND year = ?').get(accountId, py); } catch (e){}
-  const txRows = storyTxnRows(accountId).rows.filter(r => r.year === py);
-  const bBudget = planWorkingMediaBudget(accountId, py), tBudget = planWorkingMediaBudget(accountId, year);
+  const yearTotalCal = (m, y) => { let n = 0, any = false; Object.keys(m).forEach(k => { if (k.startsWith(String(y))){ n += m[k]; any = true; } }); return any ? n : null; };
+  // Last 12 months basis: the 12 months ending at the latest month that has leads or website users (never later than the last complete month).
+  let W = null, win = null;
+  if (basis === 'ttm'){
+    const have = Array.from(new Set(Object.keys(users).concat(Object.keys(leads.Prospect), Object.keys(leads.Growth), Object.keys(leads.Value)))).filter(k => k <= lastComplete).sort();
+    const endK = have.length ? have[have.length - 1] : lastComplete;
+    W = []; let ey = Number(endK.slice(0, 4)), em = Number(endK.slice(5, 7)); for (let i = 0; i < 12; i++){ W.unshift(mk(ey, em)); em -= 1; if (em < 1){ em = 12; ey -= 1; } }
+    win = { from: W[0], to: W[11] };
+  }
+  const yearTotal = (m, y) => { if (!W) return yearTotalCal(m, y); let n = 0, any = false; W.forEach(k => { if (m[k] != null){ n += m[k]; any = true; } }); return any ? n : null; };
+  const matchedCal = (m) => { const ks = Object.keys(m).filter(k => k.startsWith(String(year)) && k <= lastComplete && m[k] > 0 && m[storyShiftYear(k, -1)] > 0); if (ks.length < 3) return null; const a = ks.reduce((n, k) => n + m[k], 0), b = ks.reduce((n, k) => n + m[storyShiftYear(k, -1)], 0); return b > 0 ? { ratio: a / b, months: ks.length } : null; };
+  const matched = (m) => W ? null : matchedCal(m);
+  let audited = null; if (!W) try { audited = db.prepare('SELECT * FROM account_year_results WHERE accountId = ? AND year = ?').get(accountId, py); } catch (e){}
+  const txRows = storyTxnRows(accountId).rows.filter(r => W ? W.indexOf(mk(r.year, r.month)) >= 0 : r.year === py);
+  let bBudget = null, budgetNote = null; const tBudget = planWorkingMediaBudget(accountId, year);
+  if (!W) bBudget = planWorkingMediaBudget(accountId, py);
+  else {
+    // Spend over the window from media actuals when at least 9 of the 12 months have spend; otherwise a prorated confirmed budget, flagged as estimated.
+    try { const SS = buildForecastSeries(accountId); const sp = W.map(k => Number(SS.spend[k]) || 0); if (sp.filter(v => v > 0).length >= 9){ bBudget = { workingMedia: Math.round(sp.reduce((n, v) => n + v, 0)), total: null, estimated: true }; budgetNote = 'Last-12-months media spend is the sum of monthly media spend actuals.'; } } catch (e){}
+    if (!bBudget){ let acc = 0, any = false; [Number(W[0].slice(0, 4)), Number(W[11].slice(0, 4))].filter((v, i, a) => a.indexOf(v) === i).forEach(y => { const b = planWorkingMediaBudget(accountId, y); if (b){ const n = W.filter(k => k.startsWith(String(y))).length; acc += b.workingMedia * n / 12; any = true; } }); if (any){ bBudget = { workingMedia: Math.round(acc), total: null, estimated: true }; budgetNote = 'Last-12-months working media is estimated by prorating confirmed annual budgets (monthly spend actuals were incomplete).'; } }
+  }
   const g = (bBudget && tBudget) ? tBudget.workingMedia / bBudget.workingMedia : 1;
   const used = [];
   const scaled = (name, base, m) => { if (base == null) return null; const mm = matched(m); if (mm){ used.push(`${name}: run rate ${Math.round((mm.ratio - 1) * 1000) / 10}% vs the same ${mm.months} months last year`); return Math.round(base * mm.ratio); } used.push(`${name}: scaled with the media budget (${Math.round((g - 1) * 1000) / 10}%)`); return Math.round(base * g); };
@@ -17711,7 +17728,8 @@ function buildAnnualPlanRecommendation(accountId, year, asOfDate){
   const bBookings = audited && audited.transactions != null ? Number(audited.transactions) : (txRows.length ? txRows.reduce((n, r) => n + r.transactions, 0) : null);
   const bRevenue = audited && audited.grossRevenue != null ? Number(audited.grossRevenue) : (txRows.length ? txRows.reduce((n, r) => n + r.revenue, 0) : null);
   const bDirect = (bBookings != null && bLeadBookings != null) ? Math.max(0, Math.round(bBookings - bLeadBookings)) : null;
-  const baseline = { year: py, kind: 'baseline', label: `${py} actuals${audited ? ' (audited result)' : ''}`, workingMedia: bBudget ? bBudget.workingMedia : null, impressions: bImps != null ? Math.round(bImps) : null, websiteUsers: bUsers != null ? Math.round(bUsers) : null,
+  const periodTxt = W ? `last 12 months (${W[0]} to ${W[11]})` : String(py);
+  const baseline = { year: py, kind: 'baseline', label: W ? `Last 12 months actuals (${W[0]} to ${W[11]})` : `${py} actuals${audited ? ' (audited result)' : ''}`, workingMedia: bBudget ? bBudget.workingMedia : null, impressions: bImps != null ? Math.round(bImps) : null, websiteUsers: bUsers != null ? Math.round(bUsers) : null,
     prospectLeads: bLeads.Prospect != null ? Math.round(bLeads.Prospect) : null, growthLeads: bLeads.Growth != null ? Math.round(bLeads.Growth) : null, valueLeads: bLeads.Value != null ? Math.round(bLeads.Value) : null, directCalls: bCalls != null ? Math.round(bCalls) : null,
     bookings: bBookings, directBookings: bDirect, grossRevenue: bRevenue != null ? Math.round(bRevenue) : null };
   const tLeads = { Prospect: scaled('Prospect leads', bLeads.Prospect, leads.Prospect), Growth: scaled('Growth leads', bLeads.Growth, leads.Growth), Value: scaled('Value leads', bLeads.Value, leads.Value) };
@@ -17720,13 +17738,13 @@ function buildAnnualPlanRecommendation(accountId, year, asOfDate){
   const tUsers = scaled('Website users', bUsers, users);
   const tBookings = (bBookings != null && leadRatio != null) ? Math.round(bBookings * leadRatio) : null;
   const rpb = (bRevenue != null && bBookings) ? bRevenue / bBookings : null;
-  if (tBookings != null) used.push(`Bookings: ${py} bookings × the change in total leads (${Math.round((leadRatio - 1) * 1000) / 10}%)`);
-  if (rpb != null) used.push(`Revenue: bookings × ${py} revenue per booking ($${Math.round(rpb).toLocaleString('en-US')})`);
+  if (tBookings != null) used.push(`Bookings: ${periodTxt} bookings × the change in total leads (${Math.round((leadRatio - 1) * 1000) / 10}%)`);
+  if (rpb != null) used.push(`Revenue: bookings × ${periodTxt} revenue per booking ($${Math.round(rpb).toLocaleString('en-US')})`);
   const target = { year, kind: 'target', label: `Recommended ${year} plan (not approved)`, workingMedia: tBudget ? tBudget.workingMedia : null, impressions: bImps != null ? Math.round(bImps * g) : null, websiteUsers: tUsers, prospectLeads: tLeads.Prospect, growthLeads: tLeads.Growth, valueLeads: tLeads.Value,
     directCalls: bCalls != null ? Math.round(bCalls * g) : null, bookings: tBookings, directBookings: (bDirect != null && leadRatio != null) ? Math.round(bDirect * leadRatio) : null, grossRevenue: (tBookings != null && rpb != null) ? Math.round(tBookings * rpb) : null };
-  const missing = []; if (!tBudget) missing.push(`confirmed ${year} marketing budget with working media`); if (!bBudget) missing.push(`confirmed ${py} marketing budget`); if (bRevenue == null) missing.push(`${py} gross revenue (Annual results or transactions)`); if (bUsers == null) missing.push(`${py} website users`); if (bL === 0) missing.push(`${py} lead counts`);
+  const missing = []; if (!tBudget) missing.push(`confirmed ${year} marketing budget with working media`); if (!bBudget) missing.push(W ? 'media spend or confirmed budgets covering the last 12 months' : `confirmed ${py} marketing budget`); if (bRevenue == null) missing.push(`${periodTxt} gross revenue (${W ? 'transactions' : 'Annual results or transactions'})`); if (bUsers == null) missing.push(`${periodTxt} website users`); if (bL === 0) missing.push(`${periodTxt} lead counts`);
   let testFindings = []; try { testFindings = confirmedTestFindings(accountId).filter(x => x.accepted.length).slice(0, 6).map(x => ({ test: x.name, decision: x.decision, confirmedAt: x.confirmedAt, lift: x.result && x.result.lift, changes: x.accepted.map(a => ({ title: a.title, detail: a.detail, markets: a.markets, estCost: a.estCost, estIncremental: a.estIncremental })) })); } catch (e){}
-  return { year, baseline, target, testFindings, method: used.concat(['Impressions and direct calls scale with the media budget. Impressions are digital only (print is not in the monthly history).']), budget: { target: tBudget, baseline: bBudget }, missing, recommended: true };
+  return { year, basis, window: win, baseline, target, testFindings, method: (W ? ['Basis: the last 12 months of loaded actuals (' + W[0] + ' to ' + W[11] + '), so run-rate comparisons with last year are not used; the target follows the media budget change.'].concat(budgetNote ? [budgetNote] : []) : []).concat(used).concat(['Impressions and direct calls scale with the media budget. Impressions are digital only (print is not in the monthly history).']), budget: { target: tBudget, baseline: bBudget }, missing, recommended: true };
 }
 
 // A one-line account of where the numbers came from: rows, months covered and the last write per source table,
@@ -42129,7 +42147,8 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (!requireAccount(req, res, accountId)) return;
       const y = parseInt(new URL(req.url, 'http://localhost').searchParams.get('year'), 10);
       const year = Number.isFinite(y) ? y : new Date().getUTCFullYear();
-      return sendJson(res, 200, buildAnnualPlanRecommendation(accountId, year, new Date()));
+      const bq = new URL(req.url, 'http://localhost').searchParams.get('basis');
+      return sendJson(res, 200, buildAnnualPlanRecommendation(accountId, year, new Date(), bq === 'ttm' ? 'ttm' : 'calendar'));
     }
     // GET /api/accounts/:id/annual-plan[?year=YYYY] — annual baseline &
     // target rows (see account_annual_plan's own comment). Without ?year,
