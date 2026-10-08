@@ -1630,6 +1630,7 @@
 /* 2026-10-08 — Brain Dump is the Portal Home: greeting, dashboard link, growth and training links, then the welcome and the weekly edition. */
 #brainDumpBody .bd-home{padding:24px 28px;background:linear-gradient(180deg,#FFFDF7 0%,#fff 100%);border-color:rgba(244,182,63,.4)}
 #brainDumpBody .bd-home h2{margin:0;font-size:1.625rem;line-height:1.2}
+#brainDumpBody .bd-home .bd-home-lead{margin:4px 0 0;font-size:1.0625rem}
 #brainDumpBody .bd-home .bd-home-date{margin:4px 0 16px;font-size:.9375rem;color:var(--muted)}
 #brainDumpBody .bd-home-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
 #brainDumpBody .bd-home-tile{display:flex;flex-direction:column;gap:6px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:#fff}
@@ -24359,12 +24360,13 @@ function bdWelcomeHtml(){
 function bdFirstName(){ const n = String(state.userName || '').trim(); return n ? n.split(/\s+/)[0] : ''; }
 // Portal Home header: greeting, one link to the person's dashboard (tasks and approvals live there), and the growth and training links.
 function bdHomeHtml(){
-  const now = new Date(), h = now.getHours(), part = h < 12 ? 'morning' : (h < 18 ? 'afternoon' : 'evening'), nm = bdFirstName();
+  const now = new Date(), nm = bdFirstName();
   const fs = (bd.welcome && bd.welcome.firstSteps) || {}, total = fs.total || 0, done = fs.doneCount || 0, left = fs.minutesLeft;
   const nextLabel = (fs.next || [])[0] && fs.next[0].label;
   const setup = total ? `${done} of ${total} setup items done${left ? `, about ${left} minutes to go` : ''}.${nextLabel ? ` Next: ${escapeHtml(nextLabel)}.` : ''}` : 'Teach the Brain about your business so every recommendation fits.';
   return `<div class="strat-card bd-home" id="bdHome">
-    <h2>Good ${part}${nm ? ', ' + escapeHtml(nm) : ''}.</h2>
+    <h2>Welcome${nm ? ', ' + escapeHtml(nm) : ''}.</h2>
+    <p class="bd-home-lead">Your brief is below.</p>
     <p class="bd-home-date">${now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}${state.company ? ' · ' + escapeHtml(state.company) : ''}</p>
     <div class="bd-home-grid">
       <div class="bd-home-tile"><b>Your dashboard</b><p class="strat-sub">Your tasks, approvals and the work in motion.</p><button type="button" class="strat-chip" onclick="goToStep('dashboard')">Open your dashboard →</button></div>
