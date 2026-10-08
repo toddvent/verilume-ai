@@ -699,6 +699,8 @@
      placement round) — the report's main title, and the numbered-section
      heading convention (glance grid / quadrant / role-gap) used throughout
      the rest of the step below. */
+  .report-sub{font-family:'DM Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#6b6759;margin:-8px 0 18px;}
+  .print-only{display:none;}
   .report-main-title{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-weight:600;font-size:1.75rem;color:var(--ink);margin:0 0 18px;}
   .report-section-head{display:flex;align-items:baseline;gap:10px;margin:36px 0 4px;}
   .report-section-head .section-num{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;font-weight:700;color:var(--white);background:var(--ink);border-radius:50%;width:24px;height:24px;flex:none;display:inline-flex;align-items:center;justify-content:center;}
@@ -810,8 +812,14 @@
      its shared .recap-note class, since that class also carries real
      methodology notes elsewhere in the report that should keep printing. */
   @media print{
-    header, footer, nav, .report-actions, #freeTrialCta, .enhance-section, .product-cta-grid, .paid-interstitial-actions, #portalHandoffNote{ display:none !important; }
+    header, footer, nav, #utilityNav, #assessBackNav, #siteHeader, #paidCtaLink, #paidCtaLinkInterstitial, #paidCtaLinkStartOnboarding, #portalHandoffBtn, .report-actions, #freeTrialCta, .enhance-section, .product-cta-grid, .paid-interstitial-actions, #portalHandoffNote{ display:none !important; }
     body{ background:#fff; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .report-sub{ display:none !important; }
+    .print-only{ display:block !important; }
+    .print-head{ display:flex !important; align-items:baseline; justify-content:space-between; border-bottom:2px solid #F4B63F; padding:0 0 10px; margin:0 0 18px; }
+    .print-head b{ font-family:'Bricolage Grotesque',-apple-system,'Inter',sans-serif; font-size:20px; letter-spacing:-.01em; color:#0B1017; }
+    .print-head span{ font-family:'DM Mono',ui-monospace,monospace; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:#6b6759; }
+    .print-foot{ margin-top:28px; padding-top:10px; border-top:1px solid #D9D4C6; font-family:'DM Mono',ui-monospace,monospace; font-size:10px; letter-spacing:.08em; color:#6b6759; display:flex !important; justify-content:space-between; }
 
     /* 2026-09-01, per direct instruction ("we're breaking core content
        across pages") — window.print()'s default pagination splits mid-block
@@ -1531,7 +1539,6 @@ footer:not(:has(.footer-inner)){justify-content:center!important;}
         <p class="lede" style="margin-top:12px;font-size:0.9em;color:#6B6350;"><i>Veri</i> — truth. <i>Lume</i> — light. This assessment exists to surface the truth in your own data — where attribution is honest and where it's noise — and illuminate exactly what to do about it.</p>
         <div class="btn-row">
           <button class="btn-primary" id="beginBtn" onclick="goToStep('company')">Begin →</button>
-          <a class="btn-ghost" href="assessment-framework.html" style="text-decoration:none;display:inline-block;">See the full rubric first</a>
         </div>
       </div>
       <!-- Round 104, module 1 — quadrant teaser. Same q1-q4 cells and marker
@@ -1628,7 +1635,7 @@ footer:not(:has(.footer-inner)){justify-content:center!important;}
     <div class="eyebrow">Step 1 of 5</div>
     <div class="mat-slide-grid">
       <div>
-        <h2>Begin Your Human Experience Optimization.</h2>
+        <h2>Begin your free assessment.</h2>
         <p class="lede">Just provide your Company Name, URL and how you sell. We'll take an initial stab at your customer audience profile.</p>
         <div class="intake-card">
           <div class="field-row">
@@ -1716,7 +1723,7 @@ footer:not(:has(.footer-inner)){justify-content:center!important;}
           <li>The full Marketing Loop, Awareness through Advocacy, self-rated stage by stage against best practice.</li>
           <li>Your organization's structure and how work actually gets done.</li>
           <li>A market snapshot — population, income, and competitive context grounded in your real footprint.</li>
-          <li>A final position on the CX Quadrant — your strongest and weakest areas, named plainly.</li>
+          <li>A final position on the Quadrant — your strongest and weakest areas, named plainly.</li>
         </ul>
       </aside>
     </div>
@@ -1852,7 +1859,7 @@ footer:not(:has(.footer-inner)){justify-content:center!important;}
           <li>Best-practice guidance tailored to your industry, surfaced at every step ahead.</li>
           <li>A benchmark read on how your target generations actually discover, decide, and buy.</li>
           <li>Wealth-tier context woven into the Purchase and Loyalty stage guidance.</li>
-          <li>Everything above feeding directly into your final CX Quadrant position.</li>
+          <li>Everything above feeding directly into your final Quadrant position.</li>
         </ul>
       </aside>
     </div>
@@ -2008,8 +2015,8 @@ footer:not(:has(.footer-inner)){justify-content:center!important;}
        submitContact()'s comment for how that's handled. -->
   <section class="step" data-step="contact">
     <div class="eyebrow">Step 5 of 5</div>
-    <h2>Light up your results. Activate your free trial.</h2>
-    <p class="lede">Tell us where to send your assessment and your seven-day free trial starts with it. You get an honest read on where your brand stands and where the light needs to go next, as soon as it is ready.</p>
+    <h2>Light up your results. Start your free week.</h2>
+    <p class="lede">Tell us where to send your assessment and your free week starts with it. You get an honest read on where your brand stands and where the light needs to go next, as soon as it is ready.</p>
     <div class="contact-grid">
     <div class="intake-card">
       <!-- Round 69 — Company name, per direct instruction. Step 1 already
@@ -2075,7 +2082,7 @@ footer:not(:has(.footer-inner)){justify-content:center!important;}
            rest of what came out with it. -->
       <label class="agree-row">
         <input type="checkbox" id="inConsent" onchange="checkContactReady()">
-        <span>I agree to be contacted by Verilume about my assessment results and the paid program — no spam, just this.</span>
+        <span>I agree to be contacted by Verilume about my assessment results and Illumination Packages — no spam, just this.</span>
       </label>
     </div>
     <!-- Round 104, module (e) — sample-output thumbnail. Opens a real
@@ -2191,7 +2198,7 @@ footer:not(:has(.footer-inner)){justify-content:center!important;}
        deleted entirely — see finishAssess()/renderFullReport() and
        startRecapStep()'s null-guarded DOM writes respectively. Report
        download is now window.print()-based PDF (Copy summary removed);
-       the portal-handoff button reads "Begin Your One Week Free Trial."
+       the portal-handoff button reads "Start Your Free Week."
        #reportSynthesisText and #reportLearnedGrid are gone too — a
        same-day intermediate correction (Round 135b) had restored
        #reportSynthesisText here, but the client's final clarification,
@@ -2200,8 +2207,10 @@ footer:not(:has(.footer-inner)){justify-content:center!important;}
        archive entry (cxmedia-assessment-report-4section-rebuild-2026-08-31)
        for the full history. -->
   <section class="step" data-step="report">
+    <div class="print-only print-head"><b>Verilume</b><span id="printHeadMeta">Illumination report</span></div>
     <div class="eyebrow" style="margin-bottom:8px;">Your free results</div>
-    <h1 class="report-main-title">Humanizing Agentic Marketing</h1>
+    <h1 class="report-main-title">Your Illumination report</h1>
+    <p class="report-sub" id="reportSub"></p>
     <p class="recap-note" id="crmSyncNote" style="margin:0 0 16px;"></p>
 
     <!-- 2026-08-21, per direct instruction — shown only to visitors who
@@ -2210,9 +2219,9 @@ footer:not(:has(.footer-inner)){justify-content:center!important;}
          actually designed. -->
     <div id="freeTrialCta" style="display:none;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;background:var(--ink);color:#fff;border-radius:12px;padding:18px 22px;margin:0 0 22px;">
       <div style="font-size:0.95rem;line-height:1.5;">
-        <strong>Like what you see?</strong> Start your 1-week free trial of the full Verilume Portal.
+        <strong>Like what you see?</strong> Start your free week in the full Verilume Portal.
       </div>
-      <a href="free-trial.html" style="flex:none;font-size:12.5px;font-weight:600;color:var(--ink);background:#fff;text-decoration:none;padding:10px 20px;border-radius:999px;white-space:nowrap;">Start Free Trial →</a>
+      <a href="free-trial.html" style="flex:none;font-size:12.5px;font-weight:600;color:var(--ink);background:#fff;text-decoration:none;padding:10px 20px;border-radius:999px;white-space:nowrap;">Start your free week →</a>
     </div>
 
     <div class="first-deliverable" id="firstDeliverable">
@@ -2325,9 +2334,9 @@ footer:not(:has(.footer-inner)){justify-content:center!important;}
     </div>
 
     <div class="paid-interstitial">
-      <span class="tag">This is the free read — here's what the paid program adds</span>
-      <h2 class="paid-headline">The Human Agentic Platform</h2>
-      <p class="paid-subhead">Improved productivity. Better results.</p>
+      <span class="tag">This is the free read — here's what Illumination Packages add</span>
+      <h2 class="paid-headline">Humanizing Agentic Marketing</h2>
+      <p class="paid-subhead">Humans decide. AI recommends.</p>
       <p class="human-ai-note"><b>Partnership, not replacement.</b> Verilume doesn't replace whoever holds a seat on your marketing team — an employee, a fractional hire, or a role you haven't filled yet. It gives that seat a standing AI assistant for the always-on, first-draft work, so your team spends its time on judgment, relationships, and the final word.</p>
 
       <!-- 2026-09-01, per direct instruction — the 3 KPI cards (Cost/
@@ -2379,7 +2388,7 @@ footer:not(:has(.footer-inner)){justify-content:center!important;}
 
     <div class="report-actions">
       <button class="btn-ghost" onclick="window.print()">Download Report (PDF) ↓</button>
-      <button class="btn-primary" id="portalHandoffBtn" onclick="activateInPortal()">Begin Your One Week Free Trial</button>
+      <button class="btn-primary" id="portalHandoffBtn" onclick="activateInPortal()">Start Your Free Week</button>
     </div>
     <!-- 2026-08-19 fix — this note used to describe the old access-code-only
          path, which created an account but no real per-person login and no
@@ -2390,14 +2399,16 @@ footer:not(:has(.footer-inner)){justify-content:center!important;}
 
     <div class="paid-cta-band">
       <div class="paid-cta-copy">
-        <span class="tag">Where a paid engagement picks up</span>
+        <span class="tag">Illumination Packages</span>
         <h3>Want the SWOT and a campaign brief built off this?</h3>
-        <p>That's the paid engagement — that's also where the NDA and contract come in, as part of the sales process, ahead of your account getting its own isolated workbook. Takes a few minutes to set up.</p>
+        <p>Packages are activated in the portal, and every account starts with a free week. This is also where the NDA and contract come in, as part of the sales process, ahead of your account getting its own isolated workbook. Takes a few minutes to set up.</p>
+        <p id="chosenPackageLine" style="display:none;font-size:0.95rem;color:var(--lamp,#F4B63F);margin:10px 0 0;font-weight:600;"></p>
         <p style="font-size:0.85rem;color:#C9C4B2;margin:10px 0 0;">Our working estimate: a live account gets its first draft against a weak cell like this one 1-3 weeks faster than a typical campaign cycle — the agent's part of the work, not the review time that stays yours.</p>
       </div>
       <a class="btn-primary" id="paidCtaLink" href="onboarding.html">Continue to onboarding →</a>
     </div>
 
+    <div class="print-only print-foot"><span>Verilume · Veri, truth. Lume, light.</span><span>verilume.ai</span></div>
   </section>
 
 </div>
@@ -4442,7 +4453,7 @@ const STEP_RAIL_BULLETS = {
   // so it no longer "unlocks your results" immediately; several more steps
   // still follow before the final report.
   contact: [
-    "Your details save your progress and open your seven-day free trial. Your results arrive as soon as they are ready.",
+    "Your details save your progress and open your free week. Your results arrive as soon as they are ready.",
     "The sample report on the right is a real dummy account, not a mockup — see the format before you register."
   ]
 };
@@ -4458,7 +4469,7 @@ const PRODUCT_VISUALS = {
   contest: { title:'Contest', cap:'Three blind drafts. A person picks. Truth and light scored.', svg:
     `<svg viewBox="0 0 280 150"><rect width="280" height="150" fill="#0B1017"/>${[0,1,2].map(i=>`<g transform="translate(${16+i*88} 14)"><rect width="76" height="70" rx="8" fill="#141c27" stroke="${i===1?'#F4B63F':'#2a3544'}" stroke-width="${i===1?2.5:1}"/><rect x="9" y="12" width="${[52,58,44][i]}" height="4" rx="2" fill="#5b6878"/><rect x="9" y="22" width="${[40,48,56][i]}" height="4" rx="2" fill="#3a4757"/><rect x="9" y="32" width="${[56,34,48][i]}" height="4" rx="2" fill="#3a4757"/></g>`).join('')}<g font-family="monospace" font-size="8" fill="#9aa6b6"><text x="16" y="108">TRUTH</text><rect x="62" y="101" width="200" height="8" rx="4" fill="#1b2430"/><rect x="62" y="101" width="162" height="8" rx="4" fill="#4DD6C0"/><text x="16" y="130">LIGHT</text><rect x="62" y="123" width="200" height="8" rx="4" fill="#1b2430"/><rect x="62" y="123" width="176" height="8" rx="4" fill="#F4B63F"/></g></svg>` },
   brain: { title:'Train the Brain', cap:'Twenty minutes of setup. Every correction stays with the company.', svg:
-    `<svg viewBox="0 0 280 150"><rect width="280" height="150" fill="#0B1017"/>${[[50,32],[230,32],[34,92],[246,92],[90,128],[190,128]].map((p,i)=>`<line x1="140" y1="76" x2="${p[0]}" y2="${p[1]}" stroke="${i<4?'#F4B63F':'#2a3544'}" stroke-width="1.5"/><circle cx="${p[0]}" cy="${p[1]}" r="${i<4?9:7}" fill="${i<4?'#F4B63F':'#141c27'}" stroke="${i<4?'#F4B63F':'#3a4757'}"/>`).join('')}<circle cx="140" cy="76" r="22" fill="#141c27" stroke="#4DD6C0" stroke-width="2"/><text x="140" y="80" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#fff">Brain</text></svg>` },
+    `<svg viewBox="0 0 280 150"><rect width="280" height="150" fill="#0B1017"/>${[[50,32],[230,32],[34,92],[246,92],[90,128],[190,128]].map((p,i)=>`<line x1="140" y1="76" x2="${p[0]}" y2="${p[1]}" stroke="${i<4?'#F4B63F':'#2a3544'}" stroke-width="1.5"/><circle cx="${p[0]}" cy="${p[1]}" r="${i<4?9:7}" fill="${i<4?'#F4B63F':'#141c27'}" stroke="${i<4?'#F4B63F':'#3a4757'}"/>`).join('')}<circle cx="140" cy="76" r="22" fill="#141c27" stroke="#4DD6C0" stroke-width="2"/><text x="140" y="80" text-anchor="middle" font-family="sans-serif" font-size="9.5" fill="#fff">AI Brain</text></svg>` },
   match: { title:'Match Market Testing', cap:'Test in one market. Read it against a matched twin.', svg:
     `<svg viewBox="0 0 280 150"><rect width="280" height="150" fill="#0B1017"/><rect x="170" y="14" width="96" height="104" fill="#F4B63F" opacity=".14"/><g stroke="#1f2a37"><line x1="16" x2="266" y1="38" y2="38"/><line x1="16" x2="266" y1="72" y2="72"/><line x1="16" x2="266" y1="106" y2="106"/></g><path d="M16 84 C50 60 70 100 100 78 S150 74 170 70 S215 44 266 34" fill="none" stroke="#F4B63F" stroke-width="3"/><path d="M16 86 C50 62 70 102 100 80 S150 76 170 74 S215 70 266 66" fill="none" stroke="#4DD6C0" stroke-width="3"/><text x="176" y="28" font-family="monospace" font-size="8" fill="#9aa6b6">TEST WINDOW</text><text x="16" y="136" font-family="monospace" font-size="8" fill="#9aa6b6">TEST MARKET  vs  MATCHED CONTROL</text></svg>` },
   coach: { title:'AI Brain Coach', cap:'Every team member is an A player, with a proposed next step.', svg:
@@ -4739,7 +4750,7 @@ function renderJourneyBP(){
   // Assessment recap — Media vs. CX comparison, framed as the two axes
   // Verilume actually sells against, not a templated "weak/strong" label.
   const gapClause = s.mediaPct === s.cxPct
-    ? ` Your own ratings show Media and CX moving together today — ${s.mediaPct}% each — which is the harder position to build and the easier one to defend.`
+    ? ` Your own ratings show Media and Delivery moving together today — ${s.mediaPct}% each — which is the harder position to build and the easier one to defend.`
     : s.mediaPct > s.cxPct
       ? ` Your own ratings show Media running ahead of delivery (${s.mediaPct}% vs. ${s.cxPct}%) — you're earning attention faster than the experience is currently keeping the promise that attention makes.`
       : ` Your own ratings show Delivery running ahead of Media (${s.cxPct}% vs. ${s.mediaPct}%) — the experience is already strong; reach is the lever with the most room to move.`;
@@ -7141,6 +7152,18 @@ function renderFullReport(){
   document.getElementById('cxScoreVal').textContent = s.cxPct + '%';
   const onboardingUrl = buildOnboardingHandoffUrl();
   document.getElementById('paidCtaLink').href = onboardingUrl;
+  try {
+    const co = (state && (state.company || state.companyName || (state.profile && state.profile.name))) || '';
+    const d = new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+    const sub = (co ? co + ' · ' : '') + d;
+    const rs = document.getElementById('reportSub'); if (rs) rs.textContent = sub;
+    const ph = document.getElementById('printHeadMeta'); if (ph) ph.textContent = 'Illumination report · ' + sub;
+    const pk = (sessionStorage.getItem('vl_package')||'').toLowerCase();
+    if (['starter','spark','glow','radiance','beacon'].indexOf(pk) > -1) {
+      const pl = document.getElementById('chosenPackageLine');
+      if (pl) { pl.textContent = 'You chose ' + pk.charAt(0).toUpperCase() + pk.slice(1) + '. Your free week starts it.'; pl.style.display = 'block'; }
+    }
+  } catch(e) {}
   const interstitialLink = document.getElementById('paidCtaLinkInterstitial');
   if (interstitialLink) interstitialLink.href = onboardingUrl;
   const startOnboardingLink = document.getElementById('paidCtaLinkStartOnboarding');
