@@ -73289,6 +73289,7 @@ async function mbuSaveMagazineCost(){
 // transcribe a row straight across. Value/Growth/Prospect leads and
 // Direct calls are the workbook's four lead pools; the app's own tiles
 // map Value → High-Value Leads and Growth → Registrations.
+const ANNUAL_PLAN_OPTIONAL = { workingMedia: 1, impressions: 1, websiteUsers: 1, directCalls: 1, directBookings: 1 };
 const ANNUAL_PLAN_FIELDS = [
   { key: 'workingMedia', label: 'Working media (spend)', money: true },
   { key: 'impressions', label: 'Impressions & pieces' },
@@ -73301,6 +73302,12 @@ const ANNUAL_PLAN_FIELDS = [
   { key: 'directBookings', label: 'Direct bookings' },
   { key: 'grossRevenue', label: 'Marketing-attributed gross revenue', money: true }
 ];
+let mbuPlanOptOpen = false;
+function mbuToggleAnnualPlanOptional(){
+  mbuPlanOptOpen = !mbuPlanOptOpen;
+  document.querySelectorAll('#mbuAnnualPlanBody .mbu-plan-opt').forEach(r => { r.style.display = mbuPlanOptOpen ? '' : 'none'; });
+  const b = document.getElementById('mbuPlanOptToggle'); if (b){ b.textContent = (mbuPlanOptOpen ? 'Hide' : 'Show') + ' optional details (reach, frequency, call types, transaction channels)'; b.setAttribute('aria-expanded', mbuPlanOptOpen); }
+}
 let mbuAnnualPlanRows = {}; // { baseline: row|null, target: row|null } for the selected year
 async function mbuLoadAnnualPlan(){
   const body = document.getElementById('mbuAnnualPlanBody');
@@ -73323,17 +73330,107 @@ async function mbuLoadAnnualPlan(){
       if (resp.ok){ const data = await resp.json(); (data.rows || []).forEach(r => { mbuAnnualPlanRows[r.kind] = r; }); }
     } catch (e){ console.warn('mbuLoadAnnualPlan: fetch failed', e); }
   }
-  const val = (kind, key) => { const r = mbuAnnualPlanRows[kind]; return (r && r[key] != null) ? r[key] : ''; };
-  const input = (kind, key, step) => `<input type="number" min="0" step="${step}" class="tbl-input" style="width:160px;" value="${val(kind, key)}" data-kind="${kind}" data-key="${key}" onchange="mbuQueueAnnualPlanSave()">`;
-  body.innerHTML = `
-    <tr><td>Label <span class="hint">(e.g. "TTM Sep-25–Aug-26" / "$10.2M optimized ’27")</span></td>
-      <td><input type="text" class="tbl-input" style="width:220px;" value="${escapeHtml(val('baseline', 'label'))}" data-kind="baseline" data-key="label" onchange="mbuQueueAnnualPlanSave()"></td>
-      <td><input type="text" class="tbl-input" style="width:220px;" value="${escapeHtml(val('target', 'label'))}" data-kind="target" data-key="label" onchange="mbuQueueAnnualPlanSave()"></td></tr>
-    ${ANNUAL_PLAN_FIELDS.map(f => `<tr><td>${escapeHtml(f.label)}</td><td>${input('baseline', f.key, f.money ? '1000' : '1')}</td><td>${input('target', f.key, f.money ? '1000' : '1')}</td></tr>`).join('')}
-    ${mbuAnnualPlanDerivedRowsHtml()}`;
+  mbuPlanChannels = mbuPlanChannelsFrom(mbuAnnualPlanRows);
+  mbuRenderAnnualPlanTable();
   if (status) status.textContent = '';
   mbuRenderAnnualRollup();
   if (typeof mbuRenderDemandFulfillmentForecast === 'function') mbuRenderDemandFulfillmentForecast();
+}
+let mbuPlanChannels = [];
+function mbuPlanChannelsFrom(rows){
+  const set = []; ['baseline', 'target'].forEach(k => { const d = rows[k] && rows[k].details; if (!d) return; ['channelMix', 'reachByChannel'].forEach(f => Object.keys(d[f] || {}).forEach(ch => { if (set.indexOf(ch) < 0) set.push(ch); })); });
+  return set;
+}
+function mbuAddPlanChannel(){
+  const el = document.getElementById('mbuPlanNewChannel'); const name = el ? el.value.trim().slice(0, 80) : ''; if (!name) return;
+  mbuSnapshotAnnualPlanInputs();
+  if (mbuPlanChannels.indexOf(name) < 0) mbuPlanChannels.push(name);
+  mbuRenderAnnualPlanTable();
+}
+// Keep what is typed when the table is redrawn (a channel added, a recommendation loaded).
+function mbuSnapshotAnnualPlanInputs(){
+  const body = document.getElementById('mbuAnnualPlanBody'); if (!body) return;
+  const rows = { baseline: Object.assign({}, mbuAnnualPlanRows.baseline || {}), target: Object.assign({}, mbuAnnualPlanRows.target || {}) };
+  ['baseline', 'target'].forEach(k => { rows[k].details = JSON.parse(JSON.stringify(rows[k].details || {})); });
+  body.querySelectorAll('input[data-kind][data-key]').forEach(inp => {
+    const r = rows[inp.dataset.kind]; const v = inp.value;
+    if (inp.dataset.key === 'label'){ r.label = v; return; }
+    const num = v === '' ? null : Number(v);
+    if (inp.dataset.d){ const d = r.details; if (inp.dataset.chan){ d[inp.dataset.d] = d[inp.dataset.d] || {}; if (num == null) delete d[inp.dataset.d][inp.dataset.chan]; else d[inp.dataset.d][inp.dataset.chan] = num; } else d[inp.dataset.d] = num; }
+    else r[inp.dataset.key] = num;
+  });
+  mbuAnnualPlanRows = rows;
+}
+function mbuRenderAnnualPlanTable(){
+  const body = document.getElementById('mbuAnnualPlanBody'); if (!body) return;
+  const R = mbuAnnualPlanRows; const chans = mbuPlanChannels;
+  const getv = (kind, key) => { const r = R[kind]; return r && r[key] != null ? r[key] : ''; };
+  const dval = (kind, d, chan) => { const r = R[kind]; const o = r && r.details && r.details[d]; if (o == null) return ''; const v = chan ? o[chan] : o; return v != null && typeof v !== 'object' ? v : ''; };
+  const inp = (kind, key, step) => `<input type="number" min="0" step="${step}" class="tbl-input" style="width:160px;" value="${getv(kind, key)}" data-kind="${kind}" data-key="${key}" oninput="mbuRecalcAnnualPlan()" onchange="mbuQueueAnnualPlanSave()">`;
+  const din = (kind, d, chan, step) => `<input type="number" min="0" step="${step}" class="tbl-input" style="width:160px;" value="${dval(kind, d, chan)}" data-kind="${kind}" data-key="d:${d}${chan ? ':' + escapeHtml(chan) : ''}" data-d="${d}"${chan ? ` data-chan="${escapeHtml(chan)}"` : ''} oninput="mbuRecalcAnnualPlan()" onchange="mbuQueueAnnualPlanSave()">`;
+  const row = (label, f, opt, cls) => `<tr${opt ? ` class="mbu-plan-opt" style="display:${mbuPlanOptOpen ? '' : 'none'}"` : ''}><td${cls ? ` class="${cls}"` : ''}>${label}</td><td>${f('baseline')}</td><td>${f('target')}</td></tr>`;
+  const head = (t, opt) => `<tr${opt ? ` class="mbu-plan-opt" style="display:${mbuPlanOptOpen ? '' : 'none'}"` : ''}><td colspan="3" style="font-weight:700;padding-top:14px;">${t}</td></tr>`;
+  const calc = (id, label) => `<tr><td class="hint">${label}</td><td class="hint" id="mbuCalc-baseline-${id}">—</td><td class="hint" id="mbuCalc-target-${id}">—</td></tr>`;
+  const col = (key, step) => k => inp(k, key, step);
+  let h = '';
+  h += `<tr><td>Label <span class="hint">(e.g. "TTM Sep-25–Aug-26" / "$10.2M optimized ’27")</span></td>
+      <td><input type="text" class="tbl-input" style="width:220px;" value="${escapeHtml(getv('baseline', 'label'))}" data-kind="baseline" data-key="label" onchange="mbuQueueAnnualPlanSave()"></td>
+      <td><input type="text" class="tbl-input" style="width:220px;" value="${escapeHtml(getv('target', 'label'))}" data-kind="target" data-key="label" onchange="mbuQueueAnnualPlanSave()"></td></tr>`;
+  h += head('Core: needed for the forecast');
+  h += row('Working media spend', col('workingMedia', '1000'));
+  h += head('Media mix: channel allocations (spend)');
+  if (!chans.length) h += `<tr><td colspan="3" class="hint">No channels yet. Click “Recommend a plan” to load them from your media totals, or add one below.</td></tr>`;
+  chans.forEach(ch => { h += row(`<span style="padding-left:14px;">${escapeHtml(ch)}</span>`, k => din(k, 'channelMix', ch, '1000')); });
+  h += `<tr><td class="hint"><span style="padding-left:14px;">Allocated total</span></td><td class="hint" id="mbuCalc-baseline-mixTotal">—</td><td class="hint" id="mbuCalc-target-mixTotal">—</td></tr>`;
+  h += `<tr><td colspan="3"><input type="text" id="mbuPlanNewChannel" class="tbl-input" style="width:220px;" placeholder="Add a channel (e.g. Paid Search)"> <button type="button" class="btn-ghost" onclick="mbuAddPlanChannel()">Add channel</button></td></tr>`;
+  h += row('Media impressions', col('impressions', '1'));
+  h += row('Website sessions', col('websiteUsers', '1'));
+  h += head('Leads (all types, or by type)');
+  h += row('High-Value leads (talk to expert / quote / request info)', col('valueLeads', '1'));
+  h += row('Growth leads (subscribe / brochure / popup / share / contact) — Registrations', col('growthLeads', '1'));
+  h += row('Prospect leads (Meta lead forms)', col('prospectLeads', '1'));
+  h += row('Total leads <span class="hint">(enter only if not split by type)</span>', k => din(k, 'totalLeads', null, '1'));
+  h += row('Total leads used in the calculations', k => `<span class="hint" id="mbuCalc-${k}-leadsUsed">—</span>`);
+  h += row('Transactions', col('bookings', '1'));
+  h += row('Gross revenue', col('grossRevenue', '1000'));
+  h += head('Calculated (not entered)');
+  h += calc('roas', 'Marketing ROAS (gross revenue ÷ working media)');
+  h += calc('cac', 'Marketing CAC (working media ÷ transactions)');
+  h += calc('cpv', 'Cost per website visitor (working media ÷ sessions)');
+  h += calc('cpl', 'Cost per lead (working media ÷ total leads)');
+  h += `<tr><td colspan="3" style="padding-top:14px;"><button type="button" class="btn-ghost" id="mbuPlanOptToggle" onclick="mbuToggleAnnualPlanOptional()" aria-expanded="${mbuPlanOptOpen}">${mbuPlanOptOpen ? 'Hide' : 'Show'} optional details (reach, frequency, call types, transaction channels)</button></td></tr>`;
+  h += head('Total unique reach per channel', true);
+  if (!chans.length) h += `<tr class="mbu-plan-opt" style="display:${mbuPlanOptOpen ? '' : 'none'}"><td colspan="3" class="hint">Channels appear once added above.</td></tr>`;
+  chans.forEach(ch => { h += row(`<span style="padding-left:14px;">${escapeHtml(ch)}</span>`, k => din(k, 'reachByChannel', ch, '1'), true); });
+  h += head('Frequency', true);
+  h += row('Digital', k => din(k, 'frequency', 'digital', '0.1'), true);
+  h += row('TV', k => din(k, 'frequency', 'tv', '0.1'), true);
+  h += head('Call types', true);
+  h += row('Direct sales', col('directCalls', '1'), true);
+  h += row('Reseller sales', k => din(k, 'callTypes', 'reseller', '1'), true);
+  h += row('Customer service', k => din(k, 'callTypes', 'service', '1'), true);
+  h += head('Transaction channels', true);
+  h += row('Direct', col('directBookings', '1'), true);
+  h += row('Reseller', k => din(k, 'transactionChannels', 'reseller', '1'), true);
+  h += row('Non-revenue', k => din(k, 'transactionChannels', 'nonRevenue', '1'), true);
+  body.innerHTML = h;
+  mbuRecalcAnnualPlan();
+}
+function mbuRecalcAnnualPlan(){
+  const body = document.getElementById('mbuAnnualPlanBody'); if (!body) return;
+  const n = (kind, key, d) => { const el = body.querySelector(`input[data-kind="${kind}"][data-key="${d ? 'd:' + d : key}"]`); if (!el || el.value === '') return null; const v = Number(el.value); return Number.isFinite(v) ? v : null; };
+  const fmt = (v, kindOf) => v == null ? '—' : kindOf === 'x' ? v.toFixed(2) + '×' : '$' + v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  ['baseline', 'target'].forEach(kind => {
+    const wm = n(kind, 'workingMedia'), tx = n(kind, 'bookings'), ws = n(kind, 'websiteUsers'), rev = n(kind, 'grossRevenue');
+    const parts = [n(kind, 'valueLeads'), n(kind, 'growthLeads'), n(kind, 'prospectLeads')]; const anyPart = parts.some(v => v != null);
+    const leads = anyPart ? parts.reduce((a, v) => a + (v || 0), 0) : n(kind, null, 'totalLeads');
+    const div = (a, b) => (a != null && b != null && b > 0) ? a / b : null;
+    const set = (id, t) => { const el = document.getElementById(`mbuCalc-${kind}-${id}`); if (el) el.textContent = t; };
+    set('leadsUsed', leads == null ? '—' : Math.round(leads).toLocaleString('en-US'));
+    set('roas', fmt(div(rev, wm), 'x')); set('cac', fmt(div(wm, tx))); set('cpv', fmt(div(wm, ws))); set('cpl', fmt(div(wm, leads)));
+    let mix = 0, any = false; body.querySelectorAll(`input[data-kind="${kind}"][data-d="channelMix"]`).forEach(el => { if (el.value !== ''){ mix += Number(el.value) || 0; any = true; } });
+    set('mixTotal', !any ? '—' : '$' + Math.round(mix).toLocaleString('en-US') + (wm ? ` (${Math.round(mix / wm * 100)}% of working media)` : ''));
+  });
 }
 // Read-only derived rates under the inputs — the exact ratios the Campaign
 // Summary model uses, shown so a person can sanity-check them against the
@@ -73364,10 +73461,17 @@ async function mbuRecommendAnnualPlan(){
   if (!yearSel || !box) return; const year = parseInt(yearSel.value, 10);
   if (status) status.textContent = 'Building a recommendation…';
   let rec = null;
-  try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/annual-plan/recommendation?year=${year}&basis=${encodeURIComponent((document.getElementById('mbuAnnualPlanBasis') || {}).value || 'calendar')}`); if (r.ok) rec = await r.json(); } catch (e){}
-  if (!rec){ if (status) status.textContent = 'Could not build a recommendation just now.'; return; }
-  const body = document.getElementById('mbuAnnualPlanBody');
-  ['baseline', 'target'].forEach(kind => { const row = rec[kind]; body.querySelectorAll(`input[data-kind="${kind}"]`).forEach(inp => { const v = row[inp.dataset.key]; if (v != null) inp.value = v; }); });
+  let recErr = '';
+  try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/annual-plan/recommendation?year=${year}&basis=${encodeURIComponent((document.getElementById('mbuAnnualPlanBasis') || {}).value || 'calendar')}`); if (r.ok) rec = await r.json(); else { let j = null; try { j = await r.json(); } catch (e2){} recErr = (j && j.error) ? j.error : `The server answered ${r.status}.`; } } catch (e){ recErr = 'Could not reach the server.'; }
+  if (!rec){ if (status) status.textContent = recErr || 'Could not build a recommendation just now.'; box.style.display = 'block'; box.innerHTML = `<span style="color:#C0273C;">${escapeHtml(recErr || 'Could not build a recommendation just now.')}</span>`; return; }
+  mbuSnapshotAnnualPlanInputs();
+  ['baseline', 'target'].forEach(kind => {
+    const cur = mbuAnnualPlanRows[kind] || (mbuAnnualPlanRows[kind] = {}); const r = rec[kind] || {};
+    Object.keys(r).forEach(k => { if (k !== 'details' && k !== 'year' && k !== 'kind' && r[k] != null) cur[k] = r[k]; });
+    cur.details = cur.details || {}; if (r.details && r.details.channelMix) cur.details.channelMix = r.details.channelMix;
+  });
+  mbuPlanChannels = mbuPlanChannelsFrom(mbuAnnualPlanRows);
+  mbuRenderAnnualPlanTable();
   const bth = document.getElementById('mbuBaselineTh'); if (bth) bth.textContent = rec.basis === 'ttm' && rec.window ? `Baseline (last 12 months, ${rec.window.from} to ${rec.window.to})` : `Baseline (${year - 1} actuals)`;
   box.style.display = 'block';
   box.innerHTML = `<b>Recommended, not saved yet.</b> Edit any number, then approve. How it was built:<ul style="margin:6px 0 0 18px;">${(rec.method || []).map(m => `<li>${escapeHtml(m)}</li>`).join('')}</ul>${(rec.missing || []).length ? `<div style="margin-top:6px;color:#C0273C;">Not on file, so left blank: ${rec.missing.map(escapeHtml).join('; ')}.</div>` : ''}`;
@@ -73397,10 +73501,8 @@ async function mbuSaveAnnualPlan(){
   if (!body || !yearSel) return;
   const year = parseInt(yearSel.value, 10);
   const rows = { baseline: { year, kind: 'baseline' }, target: { year, kind: 'target' } };
-  body.querySelectorAll('input[data-kind][data-key]').forEach(inp => {
-    const v = inp.value;
-    rows[inp.dataset.kind][inp.dataset.key] = inp.dataset.key === 'label' ? v : (v === '' ? null : Number(v));
-  });
+  mbuSnapshotAnnualPlanInputs();
+  ['baseline', 'target'].forEach(k => { const r = mbuAnnualPlanRows[k] || {}; const out = rows[k]; ['label', 'workingMedia', 'impressions', 'websiteUsers', 'prospectLeads', 'growthLeads', 'valueLeads', 'directCalls', 'bookings', 'directBookings', 'grossRevenue'].forEach(f => { out[f] = r[f] != null && r[f] !== '' ? r[f] : null; }); out.details = r.details || {}; });
   let persisted = false;
   if (dataSourceLabel === 'backend'){
     try {
