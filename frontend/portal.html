@@ -845,6 +845,13 @@
   /* 2026-09-25 — Creative Asset Selection with fitted copy (see cmpAssetCopyPanelHtml) */
   .cmp-asset-row-card{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--paper-dim,#FBFBFC);margin-bottom:10px;}
   .cmp-asset-copy-pending{margin-top:2px;}
+  /* 2026-10-08, per Todd ("creative asset section should be full width or place the wireframe in the white space when selected"):
+     on wide screens the fitted-copy block is two columns — fields left, live wireframe preview right (sticky while you edit). */
+  @media (min-width:1100px){
+    .cmp-asset-copy-block{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,380px);column-gap:24px;align-items:start;}
+    .cmp-asset-copy-block > .cmp-asset-wf{grid-column:2;grid-row:1 / span 6;margin-top:0 !important;position:sticky;top:8px;}
+    .cmp-asset-copy-block > :not(.cmp-asset-wf){grid-column:1;}
+  }
   .cmp-asset-copy-block{border-top:1px dashed var(--line);padding-top:10px;margin-top:6px;}
   .cmp-asset-copy-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
   .cmp-asset-copy-title{font-weight:700;font-size:0.8438rem;}
@@ -13144,7 +13151,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-08-pickup-budget';
+const CXMEDIA_BUILD_STAMP = '2026-10-08-contest-loader';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -46821,6 +46828,7 @@ async function cmpRunAudienceContest(idx){
   // existed.
   if (status){ status.style.color = ''; status.textContent = 'Drafting copy for this audience — three independent angles plus every configured vendor…'; }
   if (btn) btn.disabled = true;
+  cmpSunriseLoaderShow({ headline: CMP_CONTEST_LOADER_HEAD, note: CMP_CONTEST_LOADER_NOTE });
   try {
     // 2026-09-23 fix — same silent-retry convention as
     // cmpRunCampaignCopyContest()'s own fix, applied here too so a slow
@@ -46854,6 +46862,7 @@ async function cmpRunAudienceContest(idx){
   } catch (e){
     if (status){ status.style.color = 'var(--advocacy)'; status.textContent = 'Backend unreachable — try again.'; }
   } finally {
+    cmpSunriseLoaderHide();
     if (btn) btn.disabled = false;
     cmpRenderStep0RunContest(campaign);
   }
@@ -64910,6 +64919,43 @@ const CMP_BRAND_MESSAGING_CONTEST_SOURCE_KEY = 'brand-messaging-longform';
 // own call sites (button below and any other caller) are unchanged in
 // behavior — the defaults are exactly Brand Messaging's original element
 // ids, so an argument-less call still targets Brand Messaging's own panel.
+// 2026-10-08, per direct instruction ("The campaign copy test takes 30-45 seconds.. We should use our loading screen with
+// custom content replacing our default"): reusable full-screen sunrise loader for long AI runs. Same look as #portalLoadCover
+// (class .portal-load-cover + level classes l1-l4), with a custom headline and note. The sun climbs Starter -> Radiance across
+// roughly `spanMs`, then holds. Call cmpSunriseLoaderHide() in a finally block.
+let cmpSunriseLoaderTimers = [];
+function cmpSunriseLoaderShow(opts){
+  opts = opts || {};
+  cmpSunriseLoaderHide(true);
+  const el = document.createElement('div');
+  el.id = 'cmpSunriseLoader';
+  el.className = 'portal-load-cover l1';
+  el.style.zIndex = '2000';
+  el.setAttribute('role', 'status');
+  el.setAttribute('aria-live', 'polite');
+  el.innerHTML = '<div class="plc-sky"></div><div class="plc-rays"></div><div class="plc-sun"></div>' +
+    '<div class="portal-load-cover-mark">Veri<b>lume</b></div>' +
+    '<div class="plc-head">' + escapeHtml(opts.headline || "We're powering up.") + '</div>' +
+    '<div class="plc-levels"><span class="plc-lv on">Starter</span><span class="plc-lv">Spark</span><span class="plc-lv">Glow</span><span class="plc-lv">Radiance</span></div>' +
+    '<div class="portal-load-cover-note" style="text-transform:none;letter-spacing:.04em;max-width:420px;line-height:1.5;">' + escapeHtml(opts.note || '') + '</div>';
+  document.body.appendChild(el);
+  const chips = el.querySelectorAll('.plc-lv');
+  const span = opts.spanMs || 36000;
+  const setLevel = (n) => { el.className = 'portal-load-cover l' + n; el.style.zIndex = '2000'; chips.forEach((c, j) => c.classList.toggle('on', j === n - 1)); };
+  let reduce = false; try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e){}
+  if (reduce){ setLevel(4); return; }
+  [2, 3, 4].forEach((lv, i) => cmpSunriseLoaderTimers.push(setTimeout(() => setLevel(lv), (i + 1) * span / 4)));
+}
+function cmpSunriseLoaderHide(immediate){
+  cmpSunriseLoaderTimers.forEach(clearTimeout); cmpSunriseLoaderTimers = [];
+  const el = document.getElementById('cmpSunriseLoader');
+  if (!el) return;
+  if (immediate){ el.remove(); return; }
+  el.classList.add('fading');
+  setTimeout(() => { if (el.classList.contains('fading')) el.remove(); }, 300);
+}
+const CMP_CONTEST_LOADER_HEAD = 'Anthropic · Gemini · OpenAI · Grok · Perplexity';
+const CMP_CONTEST_LOADER_NOTE = 'are working on your campaign options.';
 async function cmpRunCampaignCopyContest(panelId, btnId, flagId){
   panelId = panelId || 'cmpCopyContestPanel';
   btnId = btnId || 'cmpCopyContestBtn';
@@ -64931,6 +64977,7 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId){
   }
   panel.innerHTML = renderAiStatusBubble("Getting one response to this campaign's Long Form Copy from each AI partner — grounded in the campaign's writing style, objective, KPI, brand voice, and channels — then scoring each one blind before ranking them.", INTERVIEW_STATUS_TIPS);
   if (btn) btn.disabled = true;
+  cmpSunriseLoaderShow({ headline: CMP_CONTEST_LOADER_HEAD, note: CMP_CONTEST_LOADER_NOTE });
   try {
     // 2026-09-23 fix, same report — switched from a single authedFetch
     // attempt to cmpFetchJsonWithRetry()'s existing silent-retry convention
@@ -64995,6 +65042,7 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId){
   } catch (e){
     panel.innerHTML = `<div class="hint" style="color:var(--advocacy);font-weight:600;background:#FDECEC;border:1px solid #F3B8B8;border-radius:8px;padding:10px 12px;margin:0;">⚠ Couldn't run the copy contest: ${escapeHtml(e.message || 'backend unreachable')}. Try again.</div>`;
   } finally {
+    cmpSunriseLoaderHide();
     if (btn) btn.disabled = false;
   }
 }
@@ -69670,7 +69718,7 @@ function cmpAssetCopyPanelHtml(channel, slug, i, row){
           ${input}
         </div>`;
     }).join('');
-    const wfOpen = !!cmpAssetWireframeOpen[kid];
+    const wfOpen = cmpAssetWireframeOpen[kid] !== false; // 2026-10-08: open by default — shows in the right-hand space beside the fields
     return `
       <div class="cmp-asset-copy-block" id="${kid}_block">
         <div class="cmp-asset-copy-head">
@@ -69793,7 +69841,7 @@ function cmpAssetCopyDrawAllForChannel(channel){
   const slug = cmpCreativeAssetChannelSlug(channel);
   (cmpCreativeAssetGridRows[channel] || []).forEach((row, i) => {
     if (!(row.partner && row.mediaType && row.size)) return;
-    cmpAssetCopyKeys(c, channel).forEach(key => { const kid = `cmpCAG_${slug}_${i}_${cmpAssetCopyKeyId(key)}`; if (cmpAssetWireframeOpen[kid]) cmpAssetCopyDrawWireframe(channel, row, key, kid); });
+    cmpAssetCopyKeys(c, channel).forEach(key => { const kid = `cmpCAG_${slug}_${i}_${cmpAssetCopyKeyId(key)}`; if (cmpAssetWireframeOpen[kid] !== false) cmpAssetCopyDrawWireframe(channel, row, key, kid); });
   });
 }
 function cmpAssetCopyRefreshBadge(r){
@@ -69890,7 +69938,7 @@ function cmpAssetCopyFieldChanged(slug, i, keyId, fieldKey, idx, value){
     return; // the cascade (debounced/flushed above) still re-renders every OTHER asset's badges
   }
   cmpAssetCopyRefreshBadge(r);
-  if (cmpAssetWireframeOpen[r.kid]) cmpAssetCopyDrawWireframe(r.channel, r.row, r.key, r.kid);
+  if (cmpAssetWireframeOpen[r.kid] !== false) cmpAssetCopyDrawWireframe(r.channel, r.row, r.key, r.kid);
   cmpSyncCreativeAssetRequestsFromGrid();
 }
 // skipGridRerender=true (only ever passed by the debounce timer firing
@@ -69973,7 +70021,7 @@ function cmpAssetCopyRemoveItem(slug, i, keyId, fieldKey, idx){
 }
 function cmpAssetCopyToggleWireframe(slug, i, keyId){
   const kid = `cmpCAG_${slug}_${i}_${keyId}`;
-  cmpAssetWireframeOpen[kid] = !cmpAssetWireframeOpen[kid];
+  cmpAssetWireframeOpen[kid] = (cmpAssetWireframeOpen[kid] === false);
   const r = cmpAssetCopyResolve(slug, i, keyId);
   const wrap = document.getElementById(`${kid}_wfwrap`);
   const btn = document.querySelector(`#${kid}_block [onclick^="cmpAssetCopyToggleWireframe"]`);
