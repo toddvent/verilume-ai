@@ -2445,6 +2445,22 @@ function rollupGuestBookings(accountId, periods){
   return { periods: touched.size, rows: Object.keys(agg).length };
 }
 const ANNUAL_PLAN_KINDS = ['baseline', 'target'];
+// Numbers only, bounded: { totalLeads, channelMix{channel: spend}, reachByChannel{channel: n}, frequency{digital, tv}, callTypes{reseller, service}, transactionChannels{reseller, nonRevenue} }
+function annualPlanCleanDetails(d){
+  const num = v => { if (v === null || v === undefined || v === '') return null; const n = Number(v); return Number.isFinite(n) && n >= 0 ? n : NaN; };
+  const out = {}; let err = null;
+  const one = (obj, k) => { const n = num(obj && obj[k]); if (Number.isNaN(n)) err = `${k} must be a non-negative number or blank`; return n; };
+  const map = (obj, name) => { const m = {}; if (obj && typeof obj === 'object') Object.keys(obj).slice(0, 40).forEach(ch => { const n = num(obj[ch]); if (Number.isNaN(n)) err = `${name} for ${ch} must be a non-negative number or blank`; else if (n != null) m[String(ch).slice(0, 80)] = n; }); return m; };
+  out.totalLeads = one(d, 'totalLeads');
+  out.channelMix = map(d.channelMix, 'Channel allocation');
+  out.reachByChannel = map(d.reachByChannel, 'Reach');
+  out.frequency = { digital: one(d.frequency, 'digital'), tv: one(d.frequency, 'tv') };
+  out.callTypes = { reseller: one(d.callTypes, 'reseller'), service: one(d.callTypes, 'service') };
+  out.transactionChannels = { reseller: one(d.transactionChannels, 'reseller'), nonRevenue: one(d.transactionChannels, 'nonRevenue') };
+  if (err) return { error: err };
+  const text = JSON.stringify(out); if (text.length > 20000) return { error: 'The plan details are too large.' };
+  return { value: out };
+}
 const ANNUAL_PLAN_NUMERIC_FIELDS = ['workingMedia', 'impressions', 'websiteUsers', 'prospectLeads', 'growthLeads', 'valueLeads', 'directCalls', 'bookings', 'directBookings', 'grossRevenue'];
 // 2026-09-28 — Magazine equivalent, per direct instruction: magazine ad
 // rates are negotiated per publication (a Vogue full page and a
@@ -6281,6 +6297,8 @@ createTableIfNeeded(`
 // row shape (spend/outcome stay as they were, still optional) rather than
 // replacing it, per direct instruction.
 ensureColumn('mmm_inputs', 'reach', 'REAL');
+// 2026-10-08 — Annual plan: channel mix, reach, frequency, call types, transaction channels and total leads live in one JSON object.
+ensureColumn('account_annual_plan', 'detailsJson', 'TEXT');
 ensureColumn('mmm_inputs', 'impressions', 'REAL');
 
 // The fixed 18-category taxonomy itself (typos in the original request
@@ -17692,13 +17710,14 @@ function buildAnnualPlanRecommendation(accountId, year, asOfDate, basisIn){
   const asOf = asOfDate || new Date(); const py = year - 1; const mk = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
   const lastComplete = storyMonthKeys(asOf, 1)[0];
   const users = {}, leads = { Prospect: {}, Growth: {}, Value: {} }, bk = {}, imps = {}, calls = {};
-  db.prepare('SELECT year, month, users FROM account_website_users_monthly WHERE accountId = ?').all(accountId).forEach(r => { const k = mk(r.year, r.month); users[k] = (users[k] || 0) + (Number(r.users) || 0); });
-  db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId).forEach(r => {
+  const safeAll = (sql) => { try { return db.prepare(sql).all(accountId); } catch (e){ console.warn('[annual-plan rec] query failed:', e.message); return []; } };
+  safeAll('SELECT year, month, users FROM account_website_users_monthly WHERE accountId = ?').forEach(r => { const k = mk(r.year, r.month); users[k] = (users[k] || 0) + (Number(r.users) || 0); });
+  safeAll('SELECT * FROM account_lead_counts WHERE accountId = ?').forEach(r => {
     const k = mk(r.year, r.month); const t = String(aliasVal(r, 'leadType') || ''); const g = t === 'High Value' ? 'Value' : (t === 'Registration' || t === 'Growth') ? 'Growth' : t === 'Prospect' ? 'Prospect' : null;
     if (g) leads[g][k] = (leads[g][k] || 0) + (Number(r.count) || 0);
     bk[k] = (bk[k] || 0) + (Number(r.bookings) || 0);
   });
-  db.prepare("SELECT * FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").all(accountId).forEach(r => { const k = mk(r.year, r.month); imps[k] = (imps[k] || 0) + (Number(r.impressions) || 0); calls[k] = (calls[k] || 0) + (Number(r.calls) || 0); });
+  safeAll("SELECT * FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").forEach(r => { const k = mk(r.year, r.month); imps[k] = (imps[k] || 0) + (Number(r.impressions) || 0); calls[k] = (calls[k] || 0) + (Number(r.calls) || 0); });
   const yearTotalCal = (m, y) => { let n = 0, any = false; Object.keys(m).forEach(k => { if (k.startsWith(String(y))){ n += m[k]; any = true; } }); return any ? n : null; };
   // Last 12 months basis: the 12 months ending at the latest month that has leads or website users (never later than the last complete month).
   let W = null, win = null;
@@ -17712,19 +17731,27 @@ function buildAnnualPlanRecommendation(accountId, year, asOfDate, basisIn){
   const matchedCal = (m) => { const ks = Object.keys(m).filter(k => k.startsWith(String(year)) && k <= lastComplete && m[k] > 0 && m[storyShiftYear(k, -1)] > 0); if (ks.length < 3) return null; const a = ks.reduce((n, k) => n + m[k], 0), b = ks.reduce((n, k) => n + m[storyShiftYear(k, -1)], 0); return b > 0 ? { ratio: a / b, months: ks.length } : null; };
   const matched = (m) => W ? null : matchedCal(m);
   let audited = null; if (!W) try { audited = db.prepare('SELECT * FROM account_year_results WHERE accountId = ? AND year = ?').get(accountId, py); } catch (e){}
-  const txRows = storyTxnRows(accountId).rows.filter(r => W ? W.indexOf(mk(r.year, r.month)) >= 0 : r.year === py);
-  let bBudget = null, budgetNote = null; const tBudget = planWorkingMediaBudget(accountId, year);
-  if (!W) bBudget = planWorkingMediaBudget(accountId, py);
+  let txAll = []; try { txAll = storyTxnRows(accountId).rows; } catch (e){ console.warn('[annual-plan rec] transactions failed:', e.message); }
+  const txRows = txAll.filter(r => W ? W.indexOf(mk(r.year, r.month)) >= 0 : r.year === py);
+  const pwm = (y) => { try { return planWorkingMediaBudget(accountId, y); } catch (e){ return null; } };
+  let bBudget = null, budgetNote = null; const tBudget = pwm(year);
+  if (!W) bBudget = pwm(py);
   else {
     // Spend over the window from media actuals when at least 9 of the 12 months have spend; otherwise a prorated confirmed budget, flagged as estimated.
     try { const SS = buildForecastSeries(accountId); const sp = W.map(k => Number(SS.spend[k]) || 0); if (sp.filter(v => v > 0).length >= 9){ bBudget = { workingMedia: Math.round(sp.reduce((n, v) => n + v, 0)), total: null, estimated: true }; budgetNote = 'Last-12-months media spend is the sum of monthly media spend actuals.'; } } catch (e){}
-    if (!bBudget){ let acc = 0, any = false; [Number(W[0].slice(0, 4)), Number(W[11].slice(0, 4))].filter((v, i, a) => a.indexOf(v) === i).forEach(y => { const b = planWorkingMediaBudget(accountId, y); if (b){ const n = W.filter(k => k.startsWith(String(y))).length; acc += b.workingMedia * n / 12; any = true; } }); if (any){ bBudget = { workingMedia: Math.round(acc), total: null, estimated: true }; budgetNote = 'Last-12-months working media is estimated by prorating confirmed annual budgets (monthly spend actuals were incomplete).'; } }
+    if (!bBudget){ let acc = 0, any = false; [Number(W[0].slice(0, 4)), Number(W[11].slice(0, 4))].filter((v, i, a) => a.indexOf(v) === i).forEach(y => { const b = pwm(y); if (b){ const n = W.filter(k => k.startsWith(String(y))).length; acc += b.workingMedia * n / 12; any = true; } }); if (any){ bBudget = { workingMedia: Math.round(acc), total: null, estimated: true }; budgetNote = 'Last-12-months working media is estimated by prorating confirmed annual budgets (monthly spend actuals were incomplete).'; } }
   }
   const g = (bBudget && tBudget) ? tBudget.workingMedia / bBudget.workingMedia : 1;
   const used = [];
   const scaled = (name, base, m) => { if (base == null) return null; const mm = matched(m); if (mm){ used.push(`${name}: run rate ${Math.round((mm.ratio - 1) * 1000) / 10}% vs the same ${mm.months} months last year`); return Math.round(base * mm.ratio); } used.push(`${name}: scaled with the media budget (${Math.round((g - 1) * 1000) / 10}%)`); return Math.round(base * g); };
   const bLeads = { Prospect: yearTotal(leads.Prospect, py), Growth: yearTotal(leads.Growth, py), Value: yearTotal(leads.Value, py) };
-  const bUsers = yearTotal(users, py), bImps = yearTotal(imps, py), bCalls = yearTotal(calls, py), bLeadBookings = yearTotal(bk, py);
+  // Media mix and impressions across every channel (print and digital) from the media totals, over the same period as the baseline.
+  let mixSpend = {}, mixImps = 0;
+  try { const inP = (lab) => W ? W.indexOf(lab) >= 0 : String(lab).startsWith(String(py));
+    getEffectiveMmmTotals(accountId).totals.forEach(t => { if (!/^\d{4}-\d{2}$/.test(String(t.periodLabel || '')) || !inP(t.periodLabel)) return; const ch = String(t.category || t.channel || '').trim(); if (!ch) return; if (t.spend != null) mixSpend[ch] = (mixSpend[ch] || 0) + (Number(t.spend) || 0); if (t.impressions != null) mixImps += Number(t.impressions) || 0; }); } catch (e){ mixSpend = {}; mixImps = 0; }
+  Object.keys(mixSpend).forEach(ch => { if (!(mixSpend[ch] > 0)) delete mixSpend[ch]; });
+  const mixTotal = Object.keys(mixSpend).reduce((n, ch) => n + mixSpend[ch], 0);
+  const bUsers = yearTotal(users, py), bImps = mixImps > 0 ? mixImps : yearTotal(imps, py), bCalls = yearTotal(calls, py), bLeadBookings = yearTotal(bk, py);
   const bBookings = audited && audited.transactions != null ? Number(audited.transactions) : (txRows.length ? txRows.reduce((n, r) => n + r.transactions, 0) : null);
   const bRevenue = audited && audited.grossRevenue != null ? Number(audited.grossRevenue) : (txRows.length ? txRows.reduce((n, r) => n + r.revenue, 0) : null);
   const bDirect = (bBookings != null && bLeadBookings != null) ? Math.max(0, Math.round(bBookings - bLeadBookings)) : null;
@@ -17742,9 +17769,15 @@ function buildAnnualPlanRecommendation(accountId, year, asOfDate, basisIn){
   if (rpb != null) used.push(`Revenue: bookings × ${periodTxt} revenue per booking ($${Math.round(rpb).toLocaleString('en-US')})`);
   const target = { year, kind: 'target', label: `Recommended ${year} plan (not approved)`, workingMedia: tBudget ? tBudget.workingMedia : null, impressions: bImps != null ? Math.round(bImps * g) : null, websiteUsers: tUsers, prospectLeads: tLeads.Prospect, growthLeads: tLeads.Growth, valueLeads: tLeads.Value,
     directCalls: bCalls != null ? Math.round(bCalls * g) : null, bookings: tBookings, directBookings: (bDirect != null && leadRatio != null) ? Math.round(bDirect * leadRatio) : null, grossRevenue: (tBookings != null && rpb != null) ? Math.round(tBookings * rpb) : null };
+  const tWm = tBudget ? tBudget.workingMedia : null;
+  const mixShare = {}; Object.keys(mixSpend).forEach(ch => { mixShare[ch] = mixSpend[ch] / mixTotal; });
+  baseline.details = { channelMix: Object.keys(mixSpend).reduce((o, ch) => { o[ch] = Math.round(mixSpend[ch]); return o; }, {}) };
+  target.details = { channelMix: Object.keys(mixShare).reduce((o, ch) => { o[ch] = Math.round(mixShare[ch] * (tWm != null ? tWm : mixTotal * g)); return o; }, {}) };
+  if (mixTotal > 0) used.push('Media mix: the baseline channel spend; the target keeps the same shares of the plan-year working media (change them to run a different mix).');
+  if (mixImps > 0) used.push('Impressions: all channels, print and digital, from the media totals.');
   const missing = []; if (!tBudget) missing.push(`confirmed ${year} marketing budget with working media`); if (!bBudget) missing.push(W ? 'media spend or confirmed budgets covering the last 12 months' : `confirmed ${py} marketing budget`); if (bRevenue == null) missing.push(`${periodTxt} gross revenue (${W ? 'transactions' : 'Annual results or transactions'})`); if (bUsers == null) missing.push(`${periodTxt} website users`); if (bL === 0) missing.push(`${periodTxt} lead counts`);
   let testFindings = []; try { testFindings = confirmedTestFindings(accountId).filter(x => x.accepted.length).slice(0, 6).map(x => ({ test: x.name, decision: x.decision, confirmedAt: x.confirmedAt, lift: x.result && x.result.lift, changes: x.accepted.map(a => ({ title: a.title, detail: a.detail, markets: a.markets, estCost: a.estCost, estIncremental: a.estIncremental })) })); } catch (e){}
-  return { year, basis, window: win, baseline, target, testFindings, method: (W ? ['Basis: the last 12 months of loaded actuals (' + W[0] + ' to ' + W[11] + '), so run-rate comparisons with last year are not used; the target follows the media budget change.'].concat(budgetNote ? [budgetNote] : []) : []).concat(used).concat(['Impressions and direct calls scale with the media budget. Impressions are digital only (print is not in the monthly history).']), budget: { target: tBudget, baseline: bBudget }, missing, recommended: true };
+  return { year, basis, window: win, baseline, target, testFindings, method: (W ? ['Basis: the last 12 months of loaded actuals (' + W[0] + ' to ' + W[11] + '), so run-rate comparisons with last year are not used; the target follows the media budget change.'].concat(budgetNote ? [budgetNote] : []) : []).concat(used).concat(['Impressions and direct calls scale with the media budget.']), budget: { target: tBudget, baseline: bBudget }, missing, recommended: true };
 }
 
 // A one-line account of where the numbers came from: rows, months covered and the last write per source table,
@@ -42148,7 +42181,8 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const y = parseInt(new URL(req.url, 'http://localhost').searchParams.get('year'), 10);
       const year = Number.isFinite(y) ? y : new Date().getUTCFullYear();
       const bq = new URL(req.url, 'http://localhost').searchParams.get('basis');
-      return sendJson(res, 200, buildAnnualPlanRecommendation(accountId, year, new Date(), bq === 'ttm' ? 'ttm' : 'calendar'));
+      try { return sendJson(res, 200, buildAnnualPlanRecommendation(accountId, year, new Date(), bq === 'ttm' ? 'ttm' : 'calendar')); }
+      catch (e){ console.error('[annual-plan recommendation] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'Could not build the recommendation: ' + (e && e.message || 'unknown error') }); }
     }
     // GET /api/accounts/:id/annual-plan[?year=YYYY] — annual baseline &
     // target rows (see account_annual_plan's own comment). Without ?year,
@@ -42171,6 +42205,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const ratio = (a, b) => (a != null && b != null && b > 0) ? a / b : null;
       const out = rows.map(r => ({
         ...r,
+        details: (() => { try { return r.detailsJson ? JSON.parse(r.detailsJson) : null; } catch (e){ return null; } })(),
         derived: {
           costPerWebsiteUser: ratio(r.workingMedia, r.websiteUsers),
           valueLeadRate: ratio(r.valueLeads, r.websiteUsers),
@@ -42199,8 +42234,8 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       // Check every row first, then write them all as one transaction: a bad row leaves everything as it was.
       const stmts = [];
       const planCols = ANNUAL_PLAN_NUMERIC_FIELDS.map(f => `"${f}"`).join(', ');
-      const planSql = `INSERT INTO account_annual_plan (accountId, year, kind, label, ${planCols}, notes, updatedAt) VALUES (?, ?, ?, ?, ${ANNUAL_PLAN_NUMERIC_FIELDS.map(() => '?').join(', ')}, ?, ?)
-        ON CONFLICT(accountId, year, kind) DO UPDATE SET label = excluded.label, ${ANNUAL_PLAN_NUMERIC_FIELDS.map(f => `"${f}" = excluded."${f}"`).join(', ')}, notes = excluded.notes, updatedAt = excluded.updatedAt`;
+      const planSql = `INSERT INTO account_annual_plan (accountId, year, kind, label, ${planCols}, notes, "detailsJson", updatedAt) VALUES (?, ?, ?, ?, ${ANNUAL_PLAN_NUMERIC_FIELDS.map(() => '?').join(', ')}, ?, ?, ?)
+        ON CONFLICT(accountId, year, kind) DO UPDATE SET label = excluded.label, ${ANNUAL_PLAN_NUMERIC_FIELDS.map(f => `"${f}" = excluded."${f}"`).join(', ')}, notes = excluded.notes, "detailsJson" = CASE WHEN excluded."detailsJson" IS NULL THEN account_annual_plan."detailsJson" ELSE excluded."detailsJson" END, updatedAt = excluded.updatedAt`;
       for (const row of rowsIn){
         const year = parseInt(row.year, 10);
         const kind = String(row.kind || '').trim();
@@ -42216,7 +42251,13 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         }
         const label = row.label != null ? String(row.label).slice(0, 200) : null;
         const notes = row.notes != null ? String(row.notes).slice(0, 4000) : null;
-        stmts.push({ sql: planSql, params: [accountId, year, kind, label, ...ANNUAL_PLAN_NUMERIC_FIELDS.map(f => vals[f]), notes, now] });
+        let detailsJson = null;
+        if (row.details && typeof row.details === 'object'){
+          const clean = annualPlanCleanDetails(row.details);
+          if (clean.error) return sendJson(res, 400, { error: clean.error });
+          detailsJson = JSON.stringify(clean.value);
+        }
+        stmts.push({ sql: planSql, params: [accountId, year, kind, label, ...ANNUAL_PLAN_NUMERIC_FIELDS.map(f => vals[f]), notes, detailsJson, now] });
       }
       try { db.batch(stmts, 60000); }
       catch (e){ console.error('[annual-plan] save failed, nothing changed:', e.message); return sendJson(res, 500, { error: `Not saved: ${e.message}. Your existing plan is unchanged.` }); }
