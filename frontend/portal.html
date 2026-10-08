@@ -1858,12 +1858,32 @@
      markup says. hidePortalLoadCover()/showPortalLoadCoverError() (see the
      Init IIFE) remove it once real data lands, or swap it to a retry state
      if the watchdog timer (also in the Init IIFE) fires first. */
-  .portal-load-cover{position:fixed;inset:0;z-index:900;background:var(--hdr-navy);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:18px;transition:opacity 0.25s ease;}
+  /* loading-sunrise-2026-10-08, per direct instruction ("Darkness to Light, We're Powering Up"): the sun comes up through
+     four Illumination levels (Starter, Spark, Glow, Radiance) while the account loads. Same ids and hide/error behavior as
+     before; only the look changed. */
+  .portal-load-cover{position:fixed;inset:0;z-index:900;background:#07090D;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;text-align:center;overflow:hidden;transition:opacity 0.25s ease;}
   .portal-load-cover.fading{opacity:0;pointer-events:none;}
-  .portal-load-cover-mark{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.375rem;font-weight:650;color:#fff;letter-spacing:-0.01em;}
-  .portal-load-cover-mark b{color:var(--hdr-amber);font-weight:650;}
-  .portal-load-cover-spinner{width:34px;height:34px;border-radius:50%;border:3px solid rgba(255,255,255,0.22);border-top-color:var(--hdr-amber);animation:portalLoadSpin 0.85s linear infinite;}
-  @media (prefers-reduced-motion: reduce){ .portal-load-cover-spinner{animation-duration:2.4s;} }
+  .plc-sky{position:absolute;inset:0;background:linear-gradient(180deg,#FBFAF6 0%,#F6E3B8 55%,#F4B63F 100%);opacity:0;transition:opacity 1.6s ease-in-out;}
+  .plc-sun{position:absolute;left:50%;bottom:0;width:min(300px,70vw);aspect-ratio:1;margin-left:calc(min(300px,70vw) / -2);border-radius:50%;background:radial-gradient(circle,#fff8e0 0%,#FBD36E 38%,#F4B63F 58%,rgba(244,182,63,0) 72%);transform:translateY(40vh) scale(.5);opacity:.35;transition:transform 1.6s ease-in-out,opacity 1.6s ease-in-out;}
+  .plc-rays{position:absolute;left:50%;bottom:-24vh;width:min(720px,150vw);aspect-ratio:1;margin-left:calc(min(720px,150vw) / -2);border-radius:50%;background:repeating-conic-gradient(from 0deg,rgba(255,236,170,0) 0 8deg,rgba(255,236,170,.35) 8deg 12deg);-webkit-mask:radial-gradient(circle,#000 0%,transparent 66%);mask:radial-gradient(circle,#000 0%,transparent 66%);opacity:0;transition:opacity 1.6s ease-in-out;animation:plcSpin 40s linear infinite;}
+  @keyframes plcSpin{to{transform:rotate(360deg);}}
+  .portal-load-cover-mark,.plc-head,.portal-load-cover-note,.plc-levels{position:relative;}
+  .portal-load-cover-mark{font-family:'Instrument Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:1.75rem;font-weight:600;color:#fff;letter-spacing:-0.01em;transition:color 1s;}
+  .portal-load-cover-mark b{color:#F4B63F;font-weight:600;transition:color 1s;}
+  .plc-head{font-family:'Bricolage Grotesque','Instrument Sans',-apple-system,sans-serif;font-size:1.35rem;font-weight:600;letter-spacing:-.01em;color:#EDEAE0;transition:color 1s;}
+  .portal-load-cover-note{font-family:'DM Mono',ui-monospace,monospace;font-size:0.75rem;letter-spacing:.1em;text-transform:uppercase;color:#9aa6b6;min-height:1.4em;transition:color 1s;}
+  .plc-levels{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:4px;}
+  .plc-lv{font-family:'DM Mono',ui-monospace,monospace;font-size:11px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.18);color:#6e7a8a;transition:all .5s;}
+  .plc-lv.on{color:#10141B;background:#F4B63F;border-color:#F4B63F;box-shadow:0 0 18px rgba(244,182,63,.6);}
+  .portal-load-cover.l1 .plc-sky{opacity:.12}.portal-load-cover.l1 .plc-sun{transform:translateY(26vh) scale(.7);opacity:.6}
+  .portal-load-cover.l2 .plc-sky{opacity:.38}.portal-load-cover.l2 .plc-sun{transform:translateY(9vh) scale(.9);opacity:.8}
+  .portal-load-cover.l3 .plc-sky{opacity:.72}.portal-load-cover.l3 .plc-sun{transform:translateY(-6vh) scale(1.15);opacity:1}.portal-load-cover.l3 .plc-rays{opacity:.5}
+  .portal-load-cover.l4 .plc-sky{opacity:1}.portal-load-cover.l4 .plc-sun{transform:translateY(-12vh) scale(1.5);opacity:1}.portal-load-cover.l4 .plc-rays{opacity:1}
+  .portal-load-cover.l3 .portal-load-cover-mark,.portal-load-cover.l4 .portal-load-cover-mark,.portal-load-cover.l3 .plc-head,.portal-load-cover.l4 .plc-head{color:#10141B;}
+  .portal-load-cover.l3 .portal-load-cover-mark b,.portal-load-cover.l4 .portal-load-cover-mark b{color:#A8680A;}
+  .portal-load-cover.l3 .portal-load-cover-note,.portal-load-cover.l4 .portal-load-cover-note{color:#625E52;}
+  .portal-load-cover.l3 .plc-lv:not(.on),.portal-load-cover.l4 .plc-lv:not(.on){border-color:rgba(16,20,27,.25);color:#625E52;}
+  @media (prefers-reduced-motion: reduce){ .plc-sky,.plc-sun,.plc-rays,.portal-load-cover-mark,.plc-head,.portal-load-cover-note,.plc-lv{transition:none;animation:none;} }
   @keyframes portalLoadSpin{ to{ transform:rotate(360deg); } }
   /* 2026-08-27, per direct instruction ("this does take a while so I would
      incorporate a smaller version of our loading screen above the area that
@@ -1882,10 +1902,10 @@
   .contest-usage-counter{border:1px solid var(--line);border-radius:12px;padding:12px 18px;text-align:center;min-width:230px;}
   .contest-usage-counter-label{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:4px;}
   .contest-usage-counter-value{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1.375rem;font-weight:700;font-variant-numeric:tabular-nums;margin-top:4px;}
-  .portal-load-cover-note{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;color:rgba(255,255,255,0.68);}
   .portal-load-cover-error{display:none;text-align:center;max-width:360px;padding:0 24px;}
   .portal-load-cover-error.show{display:block;}
-  .portal-load-cover-error p{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.875rem;color:rgba(255,255,255,0.85);line-height:1.5;margin:0 0 14px;}
+  .portal-load-cover-error{position:relative;}
+  .portal-load-cover-error p{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.875rem;color:#10141B;line-height:1.5;margin:0 0 14px;}
   .portal-load-cover-retry{display:inline-block;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;font-weight:700;color:#2A1B05;background:var(--hdr-amber);padding:9px 20px;border-radius:999px;text-decoration:none;}
   .portal-load-cover-retry:hover{background:var(--hdr-amber-dim);}
   /* Round 60 — login gate (Deliverable 14/auth). */
@@ -4001,14 +4021,30 @@
      this until the Init IIFE either finishes loading real data or the
      watchdog timer decides it's stuck. -->
 <div class="portal-load-cover" id="portalLoadCover">
+  <div class="plc-sky"></div><div class="plc-rays"></div><div class="plc-sun"></div>
   <div class="portal-load-cover-mark">Veri<b>lume</b></div>
-  <div class="portal-load-cover-spinner" id="portalLoadCoverSpinner"></div>
-  <div class="portal-load-cover-note" id="portalLoadCoverNote">Loading your Portal…</div>
+  <div class="plc-head">We're powering up.</div>
+  <div class="plc-levels" id="portalLoadCoverSpinner"><span class="plc-lv">Starter</span><span class="plc-lv">Spark</span><span class="plc-lv">Glow</span><span class="plc-lv">Radiance</span></div>
+  <div class="portal-load-cover-note" id="portalLoadCoverNote">Reading your account…</div>
   <div class="portal-load-cover-error" id="portalLoadCoverError">
     <p id="portalLoadCoverErrorText">This is taking longer than expected. The Portal didn't finish loading your account.</p>
     <a href="#" class="portal-load-cover-retry" id="portalLoadCoverRetry">Retry</a>
   </div>
 </div>
+<script>
+// loading-sunrise-2026-10-08: ramp the sun through four levels while the account loads; holds on Radiance until the
+// Portal is ready. Reduced-motion visitors get the lit state at once.
+(function(){
+  var c=document.getElementById('portalLoadCover'); if(!c) return;
+  var chips=c.querySelectorAll('.plc-lv'), note=document.getElementById('portalLoadCoverNote');
+  var steps=[['Reading your account…',1],['Lining up your team…',2],['Lighting your Portal…',3],['Almost there…',4]];
+  function setLevel(n,msg){ c.className='portal-load-cover l'+n; chips.forEach(function(e,j){ e.classList.toggle('on', j===n-1); }); if(note&&msg) note.textContent=msg; }
+  var reduce=false; try{ reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){}
+  if(reduce){ setLevel(4,'Loading your Portal…'); window.__plcLit=true; return; }
+  steps.forEach(function(st,i){ setTimeout(function(){ if(c.style.display!=='none' && !c.classList.contains('fading') && !window.__plcLit) setLevel(st[1],st[0]); }, 400+i*1500); });
+  window.__plcFinish=function(done){ if(window.__plcLit){ done(); return; } window.__plcLit=true; setLevel(4,'Ready.'); setTimeout(done,320); };
+})();
+</script>
 <div class="utility-nav" id="utilityNav">
   <div class="utility-nav-inner">
     <!-- 2026-09-20 — "← Back to Dashboard", per Todd's direct instruction:
@@ -75895,8 +75931,8 @@ async function posSetDecision(contributionId, status){
   const hidePortalLoadCoverFn = () => {
     const coverEl = document.getElementById('portalLoadCover');
     if (!coverEl) return;
-    coverEl.classList.add('fading');
-    setTimeout(() => { coverEl.style.display = 'none'; }, 260);
+    const go = () => { coverEl.classList.add('fading'); setTimeout(() => { coverEl.style.display = 'none'; }, 260); };
+    if (window.__plcFinish) window.__plcFinish(go); else go();
   };
   const showPortalLoadCoverErrorFn = (message) => {
     const coverEl = document.getElementById('portalLoadCover');
