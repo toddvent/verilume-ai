@@ -1023,6 +1023,20 @@ createTableIfNeeded(`
 ensureColumn('team_members', 'email', 'TEXT');
 ensureColumn('team_members', 'isAdmin', 'INTEGER DEFAULT 0');
 ensureColumn('team_members', 'status', "TEXT DEFAULT 'active'");
+// 2026-10-08 — per-person voice permission (ElevenLabs). Each person agrees for themselves, once; Y is recorded with the date
+// and the wording version, so changing the wording (bump VOICE_CONSENT_VERSION) asks everyone again. Withdrawing clears it.
+ensureColumn('team_members', 'voiceConsent', 'TEXT');
+ensureColumn('team_members', 'voiceConsentAt', 'TEXT');
+ensureColumn('team_members', 'voiceConsentVersion', 'TEXT');
+const VOICE_CONSENT_VERSION = 'v1';
+function voiceConsentFor(session){
+  // sessions with no member (the older shared access-code login) cannot hold a personal consent; the browser keeps it, as before
+  if (!session || !session.memberId) return { scope: 'browser', consented: false };
+  let r = null;
+  try { r = db.prepare('SELECT voiceConsent, voiceConsentAt, voiceConsentVersion FROM team_members WHERE id = ?').get(session.memberId); } catch (e){}
+  const ok = !!(r && r.voiceConsent === 'Y' && r.voiceConsentVersion === VOICE_CONSENT_VERSION);
+  return { scope: 'member', consented: ok, at: ok ? r.voiceConsentAt : null, version: VOICE_CONSENT_VERSION };
+}
 
 // Added 2026-08-18 — real per-person username/password auth (registration
 // rebuild), per direct instruction: individually memorable credentials
@@ -30531,6 +30545,24 @@ async function handleRequest(req, res) {
       } catch (e){ console.warn('[analytics/' + parts[4] + '] failed:', e.message); return sendJson(res, 500, { error: 'could not build ' + parts[4] }); }
     }
 
+    // GET / POST / DELETE /api/accounts/:id/voice/consent — 2026-10-08. The signed-in person's own voice permission
+    // (ElevenLabs Permission = Y on their profile). POST records agreement; DELETE withdraws it.
+    if (['GET', 'POST', 'DELETE'].includes(req.method) && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice' && parts[4] === 'consent'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const sess = authenticate(req);
+      if (req.method !== 'GET'){
+        if (!sess.memberId) return sendJson(res, 200, voiceConsentFor(sess));
+        if (req.method === 'POST'){
+          db.prepare('UPDATE team_members SET voiceConsent = ?, voiceConsentAt = ?, voiceConsentVersion = ? WHERE id = ? AND accountId = ?').run('Y', new Date().toISOString(), VOICE_CONSENT_VERSION, sess.memberId, accountId);
+        } else {
+          db.prepare('UPDATE team_members SET voiceConsent = NULL, voiceConsentAt = NULL, voiceConsentVersion = NULL WHERE id = ? AND accountId = ?').run(sess.memberId, accountId);
+        }
+        try { logAccountDataAccess({ accountId, resource: 'voice_consent', action: req.method === 'POST' ? 'grant' : 'withdraw', actorType: 'member', actorId: sess.memberId, requestPath: req.url }); } catch (e){}
+      }
+      return sendJson(res, 200, voiceConsentFor(sess));
+    }
+
     // GET /api/accounts/:id/voice/session — 2026-09-29, ElevenLabs final
     // integration. Portal session only (requireAccount). Mints a voice token
     // and, when ELEVENLABS_API_KEY is set, a signed URL for the agent (the
@@ -30542,6 +30574,7 @@ async function handleRequest(req, res) {
       if (!requireAccount(req, res, accountId)) return;
       const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
       if (!account) return sendJson(res, 404, { error: 'account not found' });
+      { const vc = voiceConsentFor(authenticate(req)); if (vc.scope === 'member' && !vc.consented) return sendJson(res, 403, { error: 'voice permission required — agree to voice on your profile first', consentRequired: true }); }
       const { token, expiresAt } = createVoiceToken(accountId, accessAudienceFor(authenticate(req)));
       let signed = { signedUrl: null, reason: null };
       try { signed = await getElevenLabsSignedUrl(ELEVENLABS_AGENT_ID); } catch (e){ signed = { signedUrl: null, reason: e.message }; }
