@@ -6423,8 +6423,11 @@ function computeQuickScores(){
   const meanAbs = ratedPairs ? stageGaps.reduce((t, g) => t + Math.abs(g.gap), 0) / ratedPairs : 0;
   const gap = ratedPairs ? stageGaps.reduce((t, g) => t + g.gap, 0) / ratedPairs : 0;
   const alignmentPct = ratedPairs ? Math.round(100 * (1 - meanAbs / 4)) : 0;
-  const avg = (mW || cW) ? (mediaPct + cxPct) / 2 : 0;
-  const index = Math.round(avg * (1 - 0.5 * (meanAbs / 4)));
+  // Built only from the numbers shown on the page (rounded Media, Customer
+  // experience and Alignment), so anyone can reproduce the total by hand:
+  // average x (50% + half of alignment).
+  const avg = (mW || cW) ? Math.round((mediaPct + cxPct) / 2) : 0;
+  const index = ratedPairs ? Math.round(avg * (0.5 + 0.5 * alignmentPct / 100)) : Math.round(avg);
   return { mediaPct, cxPct, index, alignmentPct, gap, ratedPairs, stageGaps, isQuick: true };
 }
 // Whichever score set is currently authoritative — the real, function-by-
@@ -7034,7 +7037,9 @@ function computeScores(){
   // POS-Team/Product Delivery) already captures CX-vs-media nuance a
   // different, more granular way. Revisit if/when these two scoring paths
   // get unified.
-  const index = (mediaPct || cxPct) ? Math.round((mediaPct + cxPct) / 2) : 0;
+  let index = (mediaPct || cxPct) ? Math.round((mediaPct + cxPct) / 2) : 0;
+  // Same alignment adjustment as the quick estimate, so the total never changes basis after Assess.
+  try { const qa = computeQuickScores(); if (qa.ratedPairs) index = Math.round(index * (0.5 + 0.5 * qa.alignmentPct / 100)); } catch (e){}
 
   scores = { stageAverages, layerAverages, mediaPct, cxPct, index, worst, best, stagePoints };
 }
@@ -7261,7 +7266,7 @@ function renderFullReport(){
   const eq=document.getElementById('scoreEquation');
   if(eq){ const avg=Math.round((s.mediaPct+s.cxPct)/2);
     eq.textContent = qa.ratedPairs
-      ? `Media ${s.mediaPct}% and Customer experience ${s.cxPct}% average ${avg}%. Alignment of ${qa.alignmentPct}% adjusts that to your ${s.index}% score. The dot on the map shows Media against Customer experience.`
+      ? `Media ${s.mediaPct}% and Customer experience ${s.cxPct}% average ${avg}%. Alignment of ${qa.alignmentPct}% scales that by ${Math.round((0.5 + 0.5 * qa.alignmentPct / 100) * 100)}%, which gives your ${s.index}% score. The dot on the map shows Media against Customer experience.`
       : `Media ${s.mediaPct}% and Customer experience ${s.cxPct}% average ${avg}%.`; }
   const onboardingUrl = buildOnboardingHandoffUrl();
   document.getElementById('paidCtaLink').href = onboardingUrl;
@@ -7294,8 +7299,9 @@ function renderFullReport(){
   }
 
   const marker = document.getElementById('quadMarker');
-  marker.style.left = s.mediaPct + '%';
-  marker.style.bottom = s.cxPct + '%';
+  const inside = v => Math.max(3, Math.min(97, v));
+  marker.style.left = inside(s.mediaPct) + '%';
+  marker.style.bottom = inside(s.cxPct) + '%';
   marker.title = `Overall — ${s.mediaPct}% Media Strength / ${s.cxPct}% Customer Experience Strength — ${q.name}${s.isQuick ? ' (estimate)' : ''}`;
 
   // Per-stage dots (round 34, direct instruction) — see computeScores()'s
