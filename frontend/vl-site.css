@@ -91,3 +91,18 @@ footer .footer-inner{color:rgba(237,234,224,.55)!important;}
 /* heading weight: the old pages used 300 display; the new system sets 600 */
 html body h1, html body h2{font-weight:600;}
 html body h3{font-weight:600;}
+
+/* footer bar inside a page wrapper (inner pages): bleed the night ground edge to edge,
+   keep the content on the page container's edges, never clip text */
+.wrap > footer, .page > footer, main + footer, footer:not(:has(.footer-inner)){
+  position:relative; box-shadow:0 0 0 100vmax var(--night); clip-path:inset(0 -100vmax);
+  margin-top:80px!important; padding:28px 0 32px!important; line-height:1.6!important;
+  font-size:12px!important; align-items:center; overflow:visible!important; min-height:0!important; height:auto!important;
+}
+footer:not(:has(.footer-inner)) .footer-nav a{color:rgba(237,234,224,.62)!important;}
+footer:not(:has(.footer-inner)) > span{color:rgba(237,234,224,.55)!important;}
+.wrap:has(> footer){padding-bottom:0!important;margin-bottom:0!important;}
+
+/* ghost buttons: a full pill outline (they were rendering a lone bottom arc) */
+.btn-ghost{border:1.5px solid currentColor!important;padding:15px 26px!important;border-radius:999px!important;display:inline-block;}
+.hero .btn-ghost{border-color:rgba(255,255,255,.5)!important;}

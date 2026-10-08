@@ -433,12 +433,13 @@
     <a class="logo" href="index.html">Veri<b>lume</b></a>
     <div class="nav-group">
       <div class="navlinks" id="navLinks">
-      <a href="human-ai-agents.html" class="active">Human &amp; AI Agents</a>
-      <a href="assessment-framework.html">Assessment Framework</a>
-      <a href="marketing-performance.html">Marketing Performance</a>
-      <a href="customer-journey.html">Customer Journey</a>
-      <a href="industry-solutions.html">Industry Solutions</a>
-      <a class="nav-cta" href="assessment.html">Start free assessment</a>
+        <a href="index.html#human">Who We Are</a>
+        <a href="index.html#breaks">Problems We Solve</a>
+        <a href="index.html#levels">Illumination Packages</a>
+        <a href="index.html#loop">Managing the Loop</a>
+        <a href="index.html#train-the-brain">Train the Brain</a>
+        <a href="index.html#team">Team + AI Brain</a>
+        <a class="nav-cta" href="assessment.html">Start free assessment</a>
       </div>
       <div class="nav-right">
         <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
@@ -509,15 +510,37 @@
     <p class="band-intro full-width">Each function group keeps its human judgment calls and relationships exactly where they are today. The AI layer takes on the continuous iteration, repetitive execution, and analysis groundwork — always grounded in that seat's own strategy and campaign input, and always a draft the team reviews before it ships. Hover or step through each function below to see the split.</p>
 
     <div class="symphony-wrap">
-      <div class="symphony-circle" id="symphonyCircle">
-        <div class="symphony-center"><span class="sc-label">Customer</span><span class="sc-sub">journey stage</span></div>
-        <button type="button" class="symphony-node active" data-i="0" style="--angle:0deg">Brand</button>
-        <button type="button" class="symphony-node" data-i="1" style="--angle:60deg">Performance<br>Marketing</button>
-        <button type="button" class="symphony-node" data-i="2" style="--angle:120deg">Omni-Channel<br>Creative</button>
-        <button type="button" class="symphony-node" data-i="3" style="--angle:180deg">PR</button>
-        <button type="button" class="symphony-node" data-i="4" style="--angle:240deg">Advanced<br>Analytics</button>
-        <button type="button" class="symphony-node" data-i="5" style="--angle:300deg">Media Ops</button>
-      </div>
+      <figure class="symphony-fig" style="margin:0;background:#0E141B;border-radius:20px;padding:14px">
+        <svg id="wholeLoop" viewBox="0 0 760 680" style="width:100%;height:auto;display:block" role="group" aria-label="The whole marketing loop with six function groups around the customer. Select a function to see its human and AI split."></svg>
+        <figcaption style="text-align:center;color:rgba(237,234,224,.85);font-size:.9rem;padding:4px 8px 6px"><b style="color:#F4B63F">One loop, six functions.</b> Always on, always relevant, always measured.</figcaption>
+      </figure>
+      <script>(function(){
+  var svg=document.getElementById('wholeLoop'); if(!svg) return;
+  var cx=380,cy=330,R=165,RF=275,h='';
+  var ST=['Awareness','Consideration','Purchase','Loyalty','Advocacy'];
+  var FN=['Brand','Performance Marketing','Omni-Channel Creative','PR','Advanced Analytics','Media Ops'];
+  h+='<circle cx="'+cx+'" cy="'+cy+'" r="'+RF+'" fill="none" stroke="rgba(237,234,224,.16)" stroke-dasharray="2 7"/>';
+  h+='<circle cx="'+cx+'" cy="'+cy+'" r="'+R+'" fill="none" stroke="#F4B63F" stroke-width="2" opacity=".75"/>';
+  FN.forEach(function(f,i){
+    var a=-Math.PI/3+i*Math.PI/3, x=cx+RF*Math.cos(a), y=cy+RF*Math.sin(a);
+    h+='<line x1="'+(cx+R*Math.cos(a)).toFixed(1)+'" y1="'+(cy+R*Math.sin(a)).toFixed(1)+'" x2="'+x.toFixed(1)+'" y2="'+y.toFixed(1)+'" stroke="rgba(77,214,192,.35)"/>';
+    var w=f.length>13?158:104, parts=f.split(' ');
+    var lab = parts.length>1 && f.length>13 ? [parts.slice(0,-1).join(' '),parts[parts.length-1]] : [f];
+    h+='<g class="fnode" data-i="'+i+'" tabindex="0" role="button" aria-label="'+f+'" style="cursor:pointer"><rect class="fr" x="'+(x-w/2).toFixed(1)+'" y="'+(y-22).toFixed(1)+'" width="'+w+'" height="44" rx="22" fill="#0E141B" stroke="#4DD6C0"/>';
+    lab.forEach(function(t,k){ h+='<text x="'+x.toFixed(1)+'" y="'+(y+(lab.length>1?(k?9:-4):5)).toFixed(1)+'" text-anchor="middle" font-size="12.5" fill="#EDEAE0" style="font-weight:600;pointer-events:none">'+t+'</text>'; });
+    h+='</g>';
+  });
+  ST.forEach(function(s,i){
+    var a=-Math.PI/2+i*2*Math.PI/5, x=cx+R*Math.cos(a), y=cy+R*Math.sin(a);
+    var a2=a+Math.PI/5, mx=cx+R*Math.cos(a2), my=cy+R*Math.sin(a2), d=(a2+Math.PI/2)*180/Math.PI;
+    h+='<polygon points="-6,-6 7,0 -6,6" fill="#F4B63F" transform="translate('+mx.toFixed(1)+' '+my.toFixed(1)+') rotate('+d.toFixed(1)+')"/>';
+    h+='<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="47" fill="#F4B63F"/><text x="'+x.toFixed(1)+'" y="'+(y+4).toFixed(1)+'" text-anchor="middle" font-size="10.5" fill="#10141B" style="font-weight:600">'+s+'</text>';
+  });
+  h+='<text x="'+cx+'" y="'+(cy-6)+'" text-anchor="middle" font-size="22" fill="#fff" style="font-family:var(--vl-display);font-weight:600">Customer</text><text x="'+cx+'" y="'+(cy+16)+'" text-anchor="middle" font-size="12" fill="#4DD6C0">no finish line</text>';
+  svg.innerHTML=h;
+  document.querySelectorAll('.flip').forEach(function(f){ f.addEventListener('click',function(){ f.classList.toggle('on'); }); });
+})();
+</script>
 
       <div class="symphony-card" id="symphonyCard">
         <div class="rm-head"><h4 id="symTitle">Brand</h4></div>
@@ -663,7 +686,7 @@
       <a href="#faq">FAQ</a>
 
     </nav>
-    <span>Website prototype — Deliverable 2 · static, no backend</span>
+    <span>Humanizing Agentic Marketing · verilume.ai</span>
   </div>
 </footer>
 
@@ -781,7 +804,7 @@
     }
   ];
 
-  const symNodes = document.querySelectorAll('.symphony-node');
+  const symNodes = document.querySelectorAll('#wholeLoop .fnode');
   const symTitle = document.getElementById('symTitle');
   const symHuman = document.getElementById('symHuman');
   const symAI = document.getElementById('symAI');
@@ -796,13 +819,14 @@
     symAI.innerHTML = d.ai.map(x => `<li>${x}</li>`).join('');
     symNote.innerHTML = d.note;
     symCounter.textContent = (i + 1) + ' / ' + SYM_DATA.length;
-    symNodes.forEach((n, ni) => n.classList.toggle('active', ni === i));
+    symNodes.forEach((n, ni) => { n.classList.toggle('active', ni === i); const r=n.querySelector('.fr'); r.setAttribute('fill', ni===i ? '#4DD6C0' : '#0E141B'); n.querySelector('text') && n.querySelectorAll('text').forEach(t=>t.setAttribute('fill', ni===i ? '#07090D' : '#EDEAE0')); });
     symIndex = i;
   }
 
   symNodes.forEach(n => {
     const i = parseInt(n.dataset.i, 10);
     n.addEventListener('mouseenter', () => renderSym(i));
+    n.addEventListener('keydown', e => { if(e.key==='Enter'||e.key===' '){ e.preventDefault(); renderSym(i);} });
     n.addEventListener('click', () => renderSym(i));
     n.addEventListener('focus', () => renderSym(i));
   });

@@ -41,7 +41,7 @@
         {
           "@type": "Question",
           "name": "What do I get at the end of the free assessment?",
-          "acceptedAnswer": { "@type": "Answer", "text": "A quadrant placement (where your Media effectiveness and CX consistency intersect), your estimated market opportunity, a role-by-role map of where a Verilume AI agent would pick up the specific gaps you rated weak, and a downloadable PDF — all before any paid engagement or contract." }
+          "acceptedAnswer": { "@type": "Answer", "text": "A quadrant placement (where your Media effectiveness and Delivery intersect), your estimated market opportunity, a role-by-role map of where a Verilume AI agent would pick up the specific gaps you rated weak, and a downloadable PDF — all before any paid engagement or contract." }
         },
         {
           "@type": "Question",
@@ -601,7 +601,7 @@
   @media (max-width:640px){ .mat-level-grid{grid-template-columns:1fr 1fr;} }
   @media (max-width:420px){ .mat-level-grid{grid-template-columns:1fr;} }
 
-  .mat-visual{background:var(--paper-dim);border:1px solid var(--line);border-radius:16px;padding:22px 22px 24px;display:flex;flex-direction:column;justify-content:center;}
+  .mat-visual{background:var(--paper-dim);border:1px solid var(--line);border-radius:16px;padding:22px 22px 24px;display:flex;flex-direction:column;justify-content:flex-start;}
   .mat-visual .teaser-label{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin:0 0 14px;}
   /* Round 104 — shared image frame for every module's right-side visual
      (maturity ladder, org chart preview, loop diagram, function circle).
@@ -971,12 +971,12 @@
   .pv-strip .pv{margin:0;}
   .pv-strip .pv-cap{padding:7px 10px 9px;font-size:.7rem;}
   .pv-strip .pv-cap b{font-size:.62rem;}
-  .survey-rail{position:fixed;top:150px;right:36px;width:270px;background:var(--paper-dim);border:1px solid var(--line);border-radius:16px;padding:20px 22px;display:none;}
+  .survey-rail{position:fixed;top:150px;display:none;flex-direction:column;justify-content:flex-start;align-items:stretch;right:36px;width:270px;background:var(--paper-dim);border:1px solid var(--line);border-radius:16px;padding:20px 22px;display:none;}
   .survey-rail .teaser-label{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin:0 0 12px;}
   .survey-rail ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px;}
   .survey-rail li{font-size:0.8125rem;line-height:1.5;color:#3A3428;padding-left:15px;position:relative;}
   .survey-rail li::before{content:'';position:absolute;left:0;top:6px;width:5px;height:5px;border-radius:50%;background:var(--cx);}
-  @media (min-width:1500px){ .survey-rail.show{display:block;} }
+  @media (min-width:1500px){ .survey-rail.show{display:flex;} }
 
   /* Round 104 — every module below (orgstyle, loop, channels) now shares
      the exact same shape as the maturity carousel's slides: .mat-slide-grid
@@ -1073,9 +1073,40 @@
      that variable at all. */
   .utility-nav-inner a{font-size:12.5px;font-weight:600;color:rgba(255,255,255,0.92);text-decoration:none;padding:8px 16px;border:1px solid rgba(255,255,255,0.38);border-radius:999px;white-space:nowrap;transition:border-color 0.2s ease, background 0.2s ease;}
   .utility-nav-inner a:hover{border-color:#fff;background:rgba(255,255,255,0.08);}
+  .step[data-step="contact"] > .lede{max-width:none!important;width:100%;}
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="vl-site.css">
+<style>
+/* assessment, in the public-site light system: night bar on top, night footer, light-ramp result bands */
+.back-nav{max-width:none!important;margin:0!important;padding:18px max(28px,calc(50% - 520px))!important;background:var(--night)!important;border-bottom:1px solid rgba(255,255,255,.08)!important;}
+.back-nav .wordmark{color:#fff!important;font-weight:600!important;font-size:1.4rem!important;text-decoration:none!important;}
+.back-nav .wordmark b{color:var(--lamp)!important;font-weight:600!important;}
+.back-nav .restart{background:transparent!important;color:#fff!important;border-color:rgba(255,255,255,.35)!important;}
+.back-nav .restart:hover{background:#fff!important;color:#10141B!important;}
+.progress-fill{background:var(--lamp)!important;}
+.progress-track{background:var(--night-2)!important;}
+.result-band.q1{background:radial-gradient(120% 140% at 85% 0%,#FFE7A6 0%,#F4B63F 45%,#C98A14 100%)!important;color:#10141B!important;}
+.result-band.q2{background:linear-gradient(135deg,#0B6F62 0%,#18212C 100%)!important;}
+.result-band.q4{background:linear-gradient(135deg,#C98A14 0%,#18212C 100%)!important;}
+.result-band.q3{background:linear-gradient(135deg,#223041 0%,#07090D 100%)!important;}
+.result-band.q1 *{color:#10141B!important;}
+.step[data-step="report"] > .eyebrow{color:var(--truth-deep)!important;}
+.step[data-step="report"] h2{font-size:clamp(2rem,4vw,3rem);}
+.step[data-step="report"] .intake-card,.step[data-step="report"] .stat-tile,.step[data-step="report"] .score-pill,.step[data-step="report"] .value-stat-card{border-radius:14px;border-color:var(--line);background:#fff;}
+.step[data-step="report"] .paid-interstitial{background:var(--night)!important;color:#EDEAE0;border-color:transparent!important;}
+.step[data-step="report"] .paid-interstitial .tag{color:var(--lamp)!important;}
+.step[data-step="report"] .glance-card .glance-label,.step[data-step="report"] .role-gap-table .rg-stage{color:var(--lamp-deep)!important;}
+.step[data-step="report"] .paid-interstitial h2,.step[data-step="report"] .paid-interstitial h3,.step[data-step="report"] .paid-interstitial h4{color:#fff!important;}
+.step[data-step="report"] .paid-interstitial p{color:rgba(237,234,224,.78);}
+.step[data-step="report"] .paid-interstitial .human-ai-note p,.step[data-step="report"] .paid-interstitial .human-ai-note{color:#10141B!important;}
+.step[data-step="report"] .paid-interstitial h4,.step[data-step="report"] .paid-interstitial a{}
+.step[data-step="report"] .paid-interstitial [class*="card"],.step[data-step="report"] .paid-interstitial [class*="card"] h4{color:#10141B!important;}
+.step[data-step="report"] .product-cta-card h3{color:#10141B!important;}
+.step[data-step="report"] .product-cta-card p{color:#4a4638!important;}
+.step[data-step="report"] .paid-cta-copy{border-radius:18px;}
+footer:not(:has(.footer-inner)){justify-content:center!important;}
+</style>
 </head>
 <body>
 <div class="sticky-nav-wrap">
@@ -1185,12 +1216,13 @@
     <a class="logo" href="index.html">Veri<b>lume</b></a>
     <div class="nav-group">
       <div class="navlinks" id="navLinks">
-      <a href="human-ai-agents.html">Human &amp; AI Agents</a>
-      <a href="assessment-framework.html">Assessment Framework</a>
-      <a href="marketing-performance.html">Marketing Performance</a>
-      <a href="customer-journey.html">Customer Journey</a>
-      <a href="industry-solutions.html">Industry Solutions</a>
-      <a class="nav-cta" href="assessment.html">Start free assessment</a>
+        <a href="index.html#human">Who We Are</a>
+        <a href="index.html#breaks">Problems We Solve</a>
+        <a href="index.html#levels">Illumination Packages</a>
+        <a href="index.html#loop">Managing the Loop</a>
+        <a href="index.html#train-the-brain">Train the Brain</a>
+        <a href="index.html#team">Team + AI Brain</a>
+        <a class="nav-cta" href="assessment.html">Start free assessment</a>
       </div>
       <div class="nav-right">
         <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
@@ -1401,10 +1433,10 @@
       <aside class="mat-visual">
         <div class="teaser-label">What you'll get</div>
         <div class="quad-visual mini" aria-hidden="true">
-          <div class="qcell q2">Hidden Gem</div>
-          <div class="qcell q1">Compounding Brand</div>
-          <div class="qcell q3">Foundational Stage</div>
-          <div class="qcell q4">Reach Outpacing Delivery</div>
+          <div class="qcell q2">Lit Within</div>
+          <div class="qcell q1">Radiant</div>
+          <div class="qcell q3">Dim Room</div>
+          <div class="qcell q4">Glare</div>
           <div class="quad-marker" style="left:68%;bottom:62%;" title="Illustrative example — your own position plots here"></div>
         </div>
         <div class="quad-axis-x" style="margin-bottom:14px;"><span>Emerging Media</span><span>Strong Media →</span></div>
@@ -1452,7 +1484,7 @@
         <div class="faq-item">
           <h3 onclick="toggleFaqItem(this)">What do I get at the end of the free assessment? <span class="faq-chevron">▸</span></h3>
           <div class="faq-body">
-            <p>A quadrant placement (where your Media effectiveness and CX consistency intersect), your estimated market opportunity, a role-by-role map of where a Verilume AI agent would pick up the specific gaps you rated weak, and a downloadable PDF — all before any paid engagement or contract. Want to see one filled out first? <a href="sample-assessment.html">View a sample report →</a></p>
+            <p>A quadrant placement (where your Media effectiveness and Delivery intersect), your estimated market opportunity, a role-by-role map of where a Verilume AI agent would pick up the specific gaps you rated weak, and a downloadable PDF — all before any paid engagement or contract. Want to see one filled out first? <a href="sample-assessment.html">View a sample report →</a></p>
           </div>
         </div>
         <div class="faq-item">
@@ -1736,7 +1768,7 @@
        see advancePastLoopStep() near finishLoopStep().) -->
 
   <section class="step" data-step="orgstyle">
-    <div class="eyebrow">Step 3 of 5</div>
+    <div class="eyebrow">Step 4 of 5</div>
     <h2>How is marketing staffed today?</h2>
     <div class="mat-slide-grid">
       <div>
@@ -1772,7 +1804,7 @@
       </aside>
     </div>
     <div class="btn-row">
-      <button class="btn-ghost" onclick="goToStep('profile-guess')">← Back</button>
+      <button class="btn-ghost" onclick="goToStep('loop')">← Back</button>
       <button class="btn-primary" id="orgStyleNext" disabled onclick="finishOrgStyleStep()">Continue →</button>
     </div>
   </section>
@@ -1791,7 +1823,7 @@
        'loop'. -->
 
   <section class="step" data-step="loop">
-    <div class="eyebrow">Step 4 of 5</div>
+    <div class="eyebrow">Step 3 of 5</div>
     <h2>The Marketing Loop, stage by stage</h2>
     <div class="mat-slide-grid">
       <div>
@@ -1812,7 +1844,7 @@
       <!-- Round 133, direct instruction — the loop-diagram SVG (formerly
            #loopVisual, loopDiagramSvg()) replaced with the real Magic
            Quadrant preview, since this is the page whose 6 questions
-           (5 stage ratings + the CX consistency question right above)
+           (5 stage ratings + the Delivery question right above)
            directly compute the free assessment's quadrant position (see
            computeQuickScores()). Reuses .quad-visual.mini/.qcell/
            .quad-marker/.quad-axis-x verbatim from the landing-page teaser
@@ -1826,18 +1858,18 @@
       <aside class="mat-visual">
         <div class="teaser-label">Your free assessment includes</div>
         <div class="quad-visual mini" aria-hidden="true">
-          <div class="qcell q2">Hidden Gem</div>
-          <div class="qcell q1">Compounding Brand</div>
-          <div class="qcell q3">Foundational Stage</div>
-          <div class="qcell q4">Reach Outpacing Delivery</div>
+          <div class="qcell q2">Lit Within</div>
+          <div class="qcell q1">Radiant</div>
+          <div class="qcell q3">Dim Room</div>
+          <div class="qcell q4">Glare</div>
           <div class="quad-marker" style="left:68%;bottom:62%;" title="Illustrative example — your own position plots here"></div>
         </div>
         <div class="quad-axis-x" style="margin-bottom:14px;"><span>Emerging Media</span><span>Strong Media →</span></div>
         <ul class="landing-teaser-bullets">
-          <li><b>Compounding Brand</b> — reach and delivery both firing, so loyalty compounds and advocacy funds the next cycle for free.</li>
-          <li><b>Hidden Gem</b> — the experience is genuinely true to your promise, but that truth isn't reaching enough people yet.</li>
-          <li><b>Reach Outpacing Delivery</b> — reach and creative are working, but delivery hasn't caught up to the promise yet.</li>
-          <li><b>Foundational Stage</b> — real room to grow on both discovery and delivery. A foundational build, not a quick fix — and the biggest gains are still on the table.</li>
+          <li><b>Radiant</b> — reach and delivery both firing, so loyalty compounds and advocacy funds the next cycle for free.</li>
+          <li><b>Lit Within</b> — the experience is genuinely true to your promise, but that truth isn't reaching enough people yet.</li>
+          <li><b>Glare</b> — reach and creative are working, but delivery hasn't caught up to the promise yet.</li>
+          <li><b>Dim Room</b> — real room to grow on both discovery and delivery. A foundational build, not a quick fix — and the biggest gains are still on the table.</li>
         </ul>
       </aside>
     </div>
@@ -1850,7 +1882,7 @@
          finishLoopStep()'s validation below. -->
     <div id="loopValidationError" style="display:none;font-size:0.82rem;color:#B3261E;margin-bottom:14px;"></div>
     <div class="btn-row">
-      <button class="btn-ghost" onclick="goToStep('orgstyle')">← Back</button>
+      <button class="btn-ghost" onclick="goToStep('profile-guess')">← Back</button>
       <button class="btn-primary" onclick="finishLoopStep()">Continue →</button>
     </div>
   </section>
@@ -1867,8 +1899,8 @@
        submitContact()'s comment for how that's handled. -->
   <section class="step" data-step="contact">
     <div class="eyebrow">Step 5 of 5</div>
-    <h2>Register to receive your Free Assessment.</h2>
-    <p class="lede">This is the only place this flow asks for contact info — no NDA, no contract, just how to reach you. This creates a real lead record in the local demo backend, and syncs to HubSpot automatically once a Verilume HubSpot account is connected — you'll see exactly which of those two happened on the results page.</p>
+    <h2>Light up your results. Activate your free trial.</h2>
+    <p class="lede">Tell us where to send your assessment and your seven-day free trial starts with it. You get an honest read on where your brand stands and where the light needs to go next, as soon as it is ready.</p>
     <div class="contact-grid">
     <div class="intake-card">
       <!-- Round 69 — Company name, per direct instruction. Step 1 already
@@ -1954,10 +1986,10 @@
       <a class="sample-thumb-frame" href="sample-assessment.html" target="_blank" rel="noopener" style="display:block;text-decoration:none;color:inherit;">
         <div class="sf-row"><span>Atlas Ocean Voyages</span><span>Sample · Dummy Account</span></div>
         <div class="quad-visual mini" style="margin:2px 0 10px;">
-          <div class="qcell q2">Hidden Gem</div>
-          <div class="qcell q1">Compounding Brand</div>
-          <div class="qcell q3">Foundational Stage</div>
-          <div class="qcell q4">Reach Outpacing Delivery</div>
+          <div class="qcell q2">Lit Within</div>
+          <div class="qcell q1">Radiant</div>
+          <div class="qcell q3">Dim Room</div>
+          <div class="qcell q4">Glare</div>
           <div class="quad-marker" style="left:78%;bottom:71%;"></div>
         </div>
         <div class="stat-grid" style="margin-top:0;gap:8px;">
@@ -1976,7 +2008,7 @@
     </aside>
     </div>
     <div class="btn-row">
-      <button class="btn-ghost" onclick="goToStep('loop')">← Back</button>
+      <button class="btn-ghost" onclick="goToStep('orgstyle')">← Back</button>
       <button class="btn-primary" id="contactNext" disabled onclick="submitContact()">Continue →</button>
     </div>
   </section>
@@ -2040,7 +2072,7 @@
        Journey For [Company]") a 4-card glance grid (Industry Revenue /
        Estimated Market Size / Verilume Wealth Index / Your Organization
        Score), no body copy beyond the labels; Section 2 (Magic Quadrant
-       Assessment Results) with Media/CX Strength pills below the quadrant;
+       Assessment Results) with Media/Delivery Strength pills below the quadrant;
        Section 3 ("Where Verilume's Agentic Team Fills Your Gaps") — a
        role-gap grid computed solely from the 6 quick-assessment inputs
        (STAGE_TO_ROLE/renderAgenticRoleMapping()), plus the 3 unconditional
@@ -2096,11 +2128,11 @@
 
       <!-- Section 2 — Magic Quadrant Assessment Results. .quad-visual's
            reduced footprint (max-width:420px) is the existing global CSS
-           rule above, untouched. Media Strength / CX Strength live here,
+           rule above, untouched. Media Strength / Delivery Strength live here,
            below the quadrant, as a pair of pills — the blended total
            (Your Organization Score) is not re-listed; it only appears once,
            in Section 1's glance grid above. -->
-      <h2 class="report-section-head"><span class="section-heading">How is your Media &amp; CX Performance Today?</span></h2>
+      <h2 class="report-section-head"><span class="section-heading">How bright is your marketing today?</span></h2>
       <!-- 2026-09-01 — plot and title/description sit SIDE BY SIDE
            (.quad-layout) instead of stacked, per direct instruction: a
            narrow, centered, stacked block looked broken next to the rest
@@ -2125,12 +2157,12 @@
           </div>
         </div>
         <div class="quad-plot-col">
-          <div class="quad-axis-y">CX Strength ↑</div>
+          <div class="quad-axis-y">Delivery Strength ↑</div>
           <div class="quad-visual" id="quadVisual">
-            <div class="qcell q2">Hidden Gem</div>
-            <div class="qcell q1">Compounding Brand</div>
-            <div class="qcell q3">Foundational Stage</div>
-            <div class="qcell q4">Reach Outpacing Delivery</div>
+            <div class="qcell q2">Lit Within</div>
+            <div class="qcell q1">Radiant</div>
+            <div class="qcell q3">Dim Room</div>
+            <div class="qcell q4">Glare</div>
             <div class="quad-marker" id="quadMarker" title="Overall"></div>
             <div id="quadStageMarkers"></div>
           </div>
@@ -2140,7 +2172,7 @@
 
       <div class="score-pair">
         <div class="score-pill"><div class="lbl">Media Strength</div><div class="val" id="mediaScoreVal"></div></div>
-        <div class="score-pill"><div class="lbl">CX Strength</div><div class="val" id="cxScoreVal"></div></div>
+        <div class="score-pill"><div class="lbl">Delivery Strength</div><div class="val" id="cxScoreVal"></div></div>
       </div>
 
       <!-- Section 3 — "Where Verilume's Agentic Team Fills Your Gaps." Per
@@ -2503,7 +2535,7 @@ const PRODUCTS = [
   //
   // LAYERS FIELD (added 2026-07-21, scoring-engine rebuild): every product
   // now also carries a `layers` array naming which CX-layer row(s) of RUBRIC
-  // it actually feeds, so CX Strength can be computed from real per-product
+  // it actually feeds, so Delivery Strength can be computed from real per-product
   // ratings instead of a stage-level collapse — see buildAnswersFromProductRatings()
   // below. The 4 Omni-Channel Creative products are tagged Creative Visuals
   // (they ARE the creative-consistency layer, by definition). The 7 Analytics
@@ -3759,7 +3791,7 @@ let state = {
   // 2026-08-20 (strategic scoring round, follow-up) — the Marketing Loop
   // step's 6th question, a 1-5 self-rating of cross-channel customer
   // experience consistency. Real, independent input for the free
-  // assessment's CX Strength axis (see computeQuickScores()'s comment) —
+  // assessment's Delivery Strength axis (see computeQuickScores()'s comment) —
   // not derived from stageEffectiveness above.
   cxConsistencyRating: 0,
   // Round 104, module (d) — Channel Reviews function-group ratings, new
@@ -4240,7 +4272,7 @@ function updateProgress(step){
   // object key is harmless (order[step] just never looks it up), and
   // removing it buys nothing but a merge conflict if the interstitial is
   // ever wired back up.
-  const order = { landing:0, company:5, 'site-review':8, 'profile-guess':11, orgstyle:16, recap:22, loop:28, maturity:40, 'quick-reveal':62, contact:68, report:70 };
+  const order = { landing:0, company:5, 'site-review':8, 'profile-guess':11, loop:16, recap:22, orgstyle:28, maturity:40, 'quick-reveal':62, contact:68, report:70 };
   document.getElementById('progressFill').style.width = (order[step] ?? 0) + '%';
 }
 
@@ -4301,7 +4333,7 @@ const STEP_RAIL_BULLETS = {
   // so it no longer "unlocks your results" immediately; several more steps
   // still follow before the final report.
   contact: [
-    "No NDA, no contract — just your info, so we can save your progress and send your results once they're ready.",
+    "Your details save your progress and open your seven-day free trial. Your results arrive as soon as they are ready.",
     "The sample report on the right is a real dummy account, not a mockup — see the format before you register."
   ]
 };
@@ -4354,7 +4386,9 @@ function renderSurveyRail(step){
 // Profile/recap (which reads it via industryOf()) runs.
 function finishProfileGuessStep(){
   syncProfileGuessState();
-  goToStep('orgstyle');
+  startRecapStep();
+  goToStep('loop');
+  startLoopStep();
 }
 
 // Round 125 — "who are you" step (staffing). Advances to the Marketing
@@ -4365,9 +4399,7 @@ function finishProfileGuessStep(){
 // (folding in what finishRecapStep() used to do). See the comment where
 // the data-step="recap" section used to live.
 function finishOrgStyleStep(){
-  startRecapStep();
-  goToStep('loop');
-  startLoopStep();
+  advancePastLoopStep();
 }
 // Round 125 — "strategy" step. 2026-08-19 (strategic scoring round), per
 // direct instruction: "keep Marketing Loop and eliminate How advanced is
@@ -4394,7 +4426,7 @@ function finishOrgStyleStep(){
 // otherwise skip past unrated questions.
 function loopStepMissingAnswers(){
   const missing = RUBRIC.filter(r => !state.stageEffectiveness[r.stage]).map(r => r.stage);
-  if (!(state.cxConsistencyRating > 0)) missing.push('Customer Experience');
+  if (!(state.cxConsistencyRating > 0)) missing.push('Delivery on the promise');
   return missing;
 }
 function finishLoopStep(){
@@ -4415,7 +4447,7 @@ function finishLoopStep(){
   // (quick-reveal step + its 2s auto-advance) is removed from the flow;
   // this now hands off straight to the real-account/Contact branching logic
   // that used to sit behind it. See advancePastLoopStep()'s own comment.
-  advancePastLoopStep();
+  goToStep('orgstyle');
 }
 
 document.getElementById('restartBtn').addEventListener('click', () => {
@@ -4600,8 +4632,8 @@ function renderJourneyBP(){
   const gapClause = s.mediaPct === s.cxPct
     ? ` Your own ratings show Media and CX moving together today — ${s.mediaPct}% each — which is the harder position to build and the easier one to defend.`
     : s.mediaPct > s.cxPct
-      ? ` Your own ratings show Media running ahead of CX (${s.mediaPct}% vs. ${s.cxPct}%) — you're earning attention faster than the experience is currently keeping the promise that attention makes.`
-      : ` Your own ratings show CX running ahead of Media (${s.cxPct}% vs. ${s.mediaPct}%) — the experience is already strong; reach is the lever with the most room to move.`;
+      ? ` Your own ratings show Media running ahead of delivery (${s.mediaPct}% vs. ${s.cxPct}%) — you're earning attention faster than the experience is currently keeping the promise that attention makes.`
+      : ` Your own ratings show Delivery running ahead of Media (${s.cxPct}% vs. ${s.mediaPct}%) — the experience is already strong; reach is the lever with the most room to move.`;
 
   // Audience recap — plain business terms, no consumer-marketing framing
   const audienceClause = aud.length
@@ -4609,7 +4641,7 @@ function renderJourneyBP(){
     : ` Your audience isn't narrowed down yet, so this stays general until that's set.`;
 
   // Human + AI, reinforcing Media + CX expertise specifically
-  const aiClause = ` Verilume pairs a real person with a standing AI partner across that full journey — AI carries the always-on, first-draft work; your team keeps the judgment and the final word. That partnership is built specifically to close the gap between the Media work that earns attention and the CX work that keeps what Media promised.`;
+  const aiClause = ` Verilume pairs a real person with a standing AI partner across that full journey — AI carries the always-on, first-draft work; your team keeps the judgment and the final word. That partnership is built specifically to close the gap between the Media work that earns attention and the delivery work that keeps what Media promised.`;
 
   target.innerHTML = bpPanel(`Where ${company} stands today`, brandClause + gapClause + audienceClause + aiClause);
 }
@@ -5004,7 +5036,7 @@ function renderLoopStep(){
     </div>`;
   }).join('');
 
-  // 2026-08-20 — the one real, independent CX Strength input. Same
+  // 2026-08-20 — the one real, independent Delivery Strength input. Same
   // loop-stage-row markup/loop-rank buttons as the 5 rows above, so it
   // reads as one more row in the same list, not a bolted-on extra module.
   // 2026-08-20 (direct QA feedback) — aligned to match the 5 stage rows
@@ -5013,13 +5045,13 @@ function renderLoopStep(){
   // "Light level today" instead of "Consistency today", since that's the
   // term the other 5 rows use for the same kind of self-rating. Importance
   // is fixed at 5/5, non-self-reported like the stage rows' own Importance
-  // badge — CX consistency touches every stage of the loop, so it's never
+  // badge — Delivery touches every stage of the loop, so it's never
   // "less important" than any one stage. No Ideal Budget badge — that
   // concept (media spend allocation) doesn't apply to CX.
   const cxCurrent = state.cxConsistencyRating || 0;
   const cxRanks = [1,2,3,4,5].map(n => lightLever(n, cxCurrent, `rateLoopCx(${n})`)).join('');
   document.getElementById('loopCxRow').innerHTML = `<div class="loop-stage-row">
-      <div><div class="stage-name">Customer Experience</div><div class="stage-sub">How consistent is the customer experience across every channel.</div></div>
+      <div><div class="stage-name">Delivery on the promise</div><div class="stage-sub">How consistently the experience matches what your marketing promises, across every channel.</div></div>
       <div class="loop-stage-metrics">
         <div class="loop-metric"><div class="num">5/5</div><div class="lbl">Importance</div></div>
         <div><div class="stage-sub" style="margin-bottom:4px;">Light level today</div><div class="loop-rank">${cxRanks}</div>${lightLeverName(cxCurrent)}</div>
@@ -6020,7 +6052,7 @@ const PRODUCT_RATING_VALUE = { behind: 1, onpar: 2.5, ahead: 4 };
 // handful, not all ~35), so most cells in every "assessed" stage were
 // silently padded with a fabricated 4 — confirmed by direct test: rating
 // every single selected product "Behind" (the worst possible input) still
-// produced 67%/78% and landed in "Compounding Brand," the best quadrant,
+// produced 67%/78% and landed in "Radiant," the best quadrant,
 // because 12 of 17 cells got the fabricated default. state.answers still
 // carries a value for every cell (4 when unscoped) so buildScorecardPayload()
 // and the full stage-by-stage reference table below are unaffected — but
@@ -6126,7 +6158,7 @@ async function submitContact(){
 // average of the visitor's 5 Loop-stage effectiveness ratings
 // (state.stageEffectiveness) — the same signal computeScores() itself uses
 // for the real Media axis once Extended evaluation runs, so this reads
-// accurately from the start. CX Strength (Y) is the visitor's own answer
+// accurately from the start. Delivery Strength (Y) is the visitor's own answer
 // to the Loop step's 6th question ("How consistent is your customer
 // experience across every channel?" — state.cxConsistencyRating,
 // rateLoopCx()) — a real, separately-asked question, not the stage ratings
@@ -6201,7 +6233,7 @@ function computeQuickScores(){
   });
   const mediaPct = mediaWeightTotal ? Math.round((mediaWeightedSum / mediaWeightTotal) * 100) : 0;
 
-  // Weighted by CX_PRIORITY_BY_STAGE, PLUS the standalone CX consistency
+  // Weighted by CX_PRIORITY_BY_STAGE, PLUS the standalone Delivery
   // question — that question is the one input with no stage-specific
   // media-selects component at all (touches every stage per its own
   // Importance 5/5 framing), so it's folded in at a fixed weight of 1.0,
@@ -6618,7 +6650,7 @@ async function syncEnhancedProfileToBackend(){
 
 /* ---------- Scoring ----------
    Media Strength = mean of per-STAGE averages (how consistent you are across the journey)
-   CX Strength    = mean of per-LAYER averages (how consistent each operational layer is)
+   Delivery Strength    = mean of per-LAYER averages (how consistent each operational layer is)
    The roll-up FORMULA itself (mean-of-stage-averages vs. mean-of-layer-averages) is still
    a proposed methodology, not yet confirmed — see the flag in
    cxmedia-conversion-path-map.md and the companion prompts/data doc; that's unchanged by
@@ -6651,7 +6683,7 @@ function computeScores(){
 
   // Round 34, direct instruction — a stage the visitor never picked in Step
   // 3 (Step A, state.assessStages) has no real ratings behind any of its
-  // cells, so it must never count toward Media/CX Strength.
+  // cells, so it must never count toward Media/Delivery Strength.
   //
   // FIX (2026-08-04, Todd QA report) — that same "don't fabricate" rule now
   // extends one level deeper. Previously, every cell *within* a picked stage
@@ -6760,7 +6792,7 @@ function computeScores(){
 
   // Per-stage quadrant points (round 34, direct instruction) — each
   // assessed stage's own Media Strength plotted against the account's one
-  // overall CX Strength (held constant across every stage dot, per direct
+  // overall Delivery Strength (held constant across every stage dot, per direct
   // confirmation that a stage's cells don't split into an independent
   // second axis of their own).
   const stagePoints = stageAverages.map(s => ({
@@ -6944,10 +6976,10 @@ function quadrantFor(mediaPct, cxPct){
   // diagnosis, especially for a visitor who rates every stage low. Same
   // 50%/50% split as before — only the names and framing changed, not the
   // scoring.
-  if (mediaStrong && cxStrong) return { key:'q1', name:'Compounding Brand', desc:'Reach and delivery are both firing, and loyalty is compounding as a result — advocacy is funding the next cycle for free. The work now is sustaining and scaling that across every channel and location, not standing still.' };
-  if (!mediaStrong && cxStrong) return { key:'q2', name:'Hidden Gem', desc:'The experience is genuinely true to your promise — but that truth isn\'t reaching enough people yet, or your advocacy and loyalty mechanics aren\'t illuminating the goodwill you\'ve already earned.' };
-  if (mediaStrong && !cxStrong) return { key:'q4', name:'Reach Outpacing Delivery', desc:'Reach and creative are working — but somewhere in call center, at the point of sale, or in fulfillment, delivery hasn\'t caught up to the promise yet. Guests arrive excited and the follow-through doesn\'t match.' };
-  return { key:'q3', name:'Foundational Stage', desc:'Reach and delivery both have real room to grow — the brand isn\'t yet consistently found or consistently delivering once someone arrives. This is a foundational build, not a quick fix, but it also means the biggest gains are still on the table.' };
+  if (mediaStrong && cxStrong) return { key:'q1', name:'Radiant', desc:'Reach and delivery are both firing, and loyalty is compounding as a result — advocacy is funding the next cycle for free. The work now is sustaining and scaling that across every channel and location, not standing still.' };
+  if (!mediaStrong && cxStrong) return { key:'q2', name:'Lit Within', desc:'The experience is genuinely true to your promise — but that truth isn\'t reaching enough people yet, or your advocacy and loyalty mechanics aren\'t illuminating the goodwill you\'ve already earned.' };
+  if (mediaStrong && !cxStrong) return { key:'q4', name:'Glare', desc:'Reach and creative are working — but somewhere in call center, at the point of sale, or in fulfillment, delivery hasn\'t caught up to the promise yet. Guests arrive excited and the follow-through doesn\'t match.' };
+  return { key:'q3', name:'Dim Room', desc:'Reach and delivery both have real room to grow — the brand isn\'t yet consistently found or consistently delivering once someone arrives. This is a foundational build, not a quick fix, but it also means the biggest gains are still on the table.' };
 }
 
 /* ---------- Full report (quadrant + scorecard render together). Round 121
@@ -7019,7 +7051,7 @@ function renderFullReport(){
   const marker = document.getElementById('quadMarker');
   marker.style.left = s.mediaPct + '%';
   marker.style.bottom = s.cxPct + '%';
-  marker.title = `Overall — ${s.mediaPct}% Media Strength / ${s.cxPct}% CX Strength — ${q.name}${s.isQuick ? ' (estimate)' : ''}`;
+  marker.title = `Overall — ${s.mediaPct}% Media Strength / ${s.cxPct}% Delivery Strength — ${q.name}${s.isQuick ? ' (estimate)' : ''}`;
 
   // Per-stage dots (round 34, direct instruction) — see computeScores()'s
   // stagePoints comment for the math. Numbered 1-5 in RUBRIC order rather
@@ -7046,7 +7078,7 @@ function renderFullReport(){
       dot.className = 'quad-marker stage-dot';
       dot.style.left = sp.pct + '%';
       dot.style.bottom = scores.cxPct + '%';
-      dot.title = `${sp.stage} — ${sp.pct}% Media Strength / ${scores.cxPct}% CX Strength — ${sq.name}`;
+      dot.title = `${sp.stage} — ${sp.pct}% Media Strength / ${scores.cxPct}% Delivery Strength — ${sq.name}`;
       dot.textContent = String(num);
       stageMarkersEl.appendChild(dot);
     });
@@ -7071,7 +7103,7 @@ function renderFullReport(){
 // attribute, never as visible text. "Your Organization Score" is the
 // Verilume Media CX Index total (activeScores().index) — the SAME blended
 // number the old standalone .vmcx-index-card used to show; it's not
-// re-listed a second time below the quadrant (Media/CX Strength pills there
+// re-listed a second time below the quadrant (Media/Delivery Strength pills there
 // show the two component axes only, not the blended total).
 function renderReportOpportunity(){
   const opp = state.opportunity || {};
@@ -7154,7 +7186,7 @@ function renderAgenticRoleMapping(){
     ? `${STAGE_EFF_LABEL[cxRating] || 'Not yet rated'} (${cxRating}/5)`
     : `Not yet self-rated`;
   rows.push(`<tr>
-    <td><span class="rg-stage">CX Consistency</span><span class="rg-score">${cxScoreLine}</span></td>
+    <td><span class="rg-stage">Delivery</span><span class="rg-score">${cxScoreLine}</span></td>
     <td><h4 class="rg-role">${CX_CONSISTENCY_ROLE}</h4><p>Verilume's ${CX_CONSISTENCY_ROLE} role keeps measurement and attribution consistent across every channel.</p></td>
   </tr>`);
   gridEl.innerHTML = rows.join('');
