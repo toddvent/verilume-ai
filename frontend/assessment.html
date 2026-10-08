@@ -41,7 +41,7 @@
         {
           "@type": "Question",
           "name": "What do I get at the end of the free assessment?",
-          "acceptedAnswer": { "@type": "Answer", "text": "A quadrant placement (where your Media effectiveness and Delivery intersect), your estimated market opportunity, a role-by-role map of where a Verilume AI agent would pick up the specific gaps you rated weak, and a downloadable PDF — all before any paid engagement or contract." }
+          "acceptedAnswer": { "@type": "Answer", "text": "A quadrant placement (where your Media effectiveness and Delivery intersect), your estimated market opportunity, a role-by-role map of where a Verilume AI agent would pick up the specific gaps you rated weak, and a downloadable PDF — all before any package or contract." }
         },
         {
           "@type": "Question",
@@ -1224,6 +1224,22 @@ footer:not(:has(.footer-inner)) > span{color:rgba(237,234,224,.55)!important;}
 .step[data-step="report"] .product-cta-card p{color:#4a4638!important;}
 .step[data-step="report"] .paid-cta-copy{border-radius:18px;}
 footer:not(:has(.footer-inner)){justify-content:center!important;}
+/* header-parity-2026-10-08: identical header metrics to the public pages (index.html) */
+header#siteHeader{padding:16px 0!important;background:#07090D!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;}
+header#siteHeader .nav{padding:0 28px!important;}
+.nav-group{gap:20px;}
+header#siteHeader .logo,.navlinks,.navlinks a{font-family:var(--vl-body,'Instrument Sans','Avenir Next',system-ui,sans-serif)!important;}
+.nav-cta{font-family:var(--vl-mono,'DM Mono',monospace)!important;white-space:nowrap;}
+.navlinks{gap:22px;}
+.nav-cta{padding:10px 18px!important;font-size:11px;font-weight:600;}
+@media (min-width:821px){
+.navlinks{flex:1;justify-content:center;gap:22px;flex-wrap:nowrap}
+.navlinks a{white-space:nowrap}
+.navlinks a{font-size:clamp(13px,1.22vw,15.5px)!important}
+.navlinks a:first-child{margin-left:auto}
+.navlinks a:nth-last-child(2){margin-right:auto}
+.navlinks a.nav-cta{font-size:11.5px!important}
+}
 </style>
 </head>
 <body>
@@ -1535,7 +1551,7 @@ footer:not(:has(.footer-inner)){justify-content:center!important;}
       <div class="landing-copy">
         <div class="eyebrow">Verilume — Free Assessment</div>
         <h1>See your own experience, <span class="accent">honestly, in minutes.</span><span class="h1-sub">Best-practice guidance at every step — no email required to start.</span></h1>
-        <p class="lede">Build a quick brand profile — no contact info required to start. At each step we'll surface best practices for your industry, audience, and footprint before you tell us where the gaps are. No NDA, no contract, nothing to sign — that's only part of the picture if you move forward into a paid engagement.</p>
+        <p class="lede">Build a quick brand profile — no contact info required to start. At each step we'll surface best practices for your industry, audience, and footprint before you tell us where the gaps are. No NDA, no contract, nothing to sign — that's only part of the picture if you move forward into Illumination Packages.</p>
         <p class="lede" style="margin-top:12px;font-size:0.9em;color:#6B6350;"><i>Veri</i> — truth. <i>Lume</i> — light. This assessment exists to surface the truth in your own data — where attribution is honest and where it's noise — and illuminate exactly what to do about it.</p>
         <div class="btn-row">
           <button class="btn-primary" id="beginBtn" onclick="goToStep('company')">Begin →</button>
@@ -1600,7 +1616,7 @@ footer:not(:has(.footer-inner)){justify-content:center!important;}
         <div class="faq-item">
           <h3 onclick="toggleFaqItem(this)">What do I get at the end of the free assessment? <span class="faq-chevron">▸</span></h3>
           <div class="faq-body">
-            <p>A quadrant placement (where your Media effectiveness and Delivery intersect), your estimated market opportunity, a role-by-role map of where a Verilume AI agent would pick up the specific gaps you rated weak, and a downloadable PDF — all before any paid engagement or contract. Want to see one filled out first? <a href="sample-assessment.html">View a sample report →</a></p>
+            <p>A quadrant placement (where your Media effectiveness and Delivery intersect), your estimated market opportunity, a role-by-role map of where a Verilume AI agent would pick up the specific gaps you rated weak, and a downloadable PDF — all before any package or contract. Want to see one filled out first? <a href="sample-assessment.html">View a sample report →</a></p>
           </div>
         </div>
         <div class="faq-item">
