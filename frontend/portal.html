@@ -13144,7 +13144,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-08-pptx-local';
+const CXMEDIA_BUILD_STAMP = '2026-10-08-pickup-budget';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -44960,6 +44960,10 @@ function cmpApplyTemplate(campaignId){
   const templatePayload = cmpBuildFormPayload();
   const TEMPLATE_STRUCTURAL_FIELDS = ['stage', 'segment', 'channels', 'channelGroups', 'productGroups', 'creativeFocusGroups', 'functions'];
   TEMPLATE_STRUCTURAL_FIELDS.forEach(k => { target[k] = templatePayload[k]; });
+  // The form was just filled with the SOURCE campaign's values (budget, dates, name, funding). Put this
+  // campaign's own record back into the form now, so a later save can never carry the old campaign's
+  // budget into the new one. The structural fields copied above are already on `target`.
+  try { cmpPopulateFormFields(target); } catch (e){ console.warn('cmpApplyTemplate: could not restore the form from this campaign', e); }
   document.getElementById('newCampaignHint').textContent =
     `Structure pre-filled from "${source.name || source.objective}" (${source.id}) — Lifecycle Stage, Audience, Channels, Product Group and Creative Focus Group only. This campaign's own budget, dates, name, KPI and goals stay exactly what you already entered.`;
   renderCmpPickupStage();
@@ -49287,7 +49291,12 @@ function cmpRenderPitchLeft(campaign){
         </div>
         <div class="cmp-objectives-recap-row">
           <span class="cmp-objectives-recap-label">Total Spend</span>
-          <span class="cmp-objectives-recap-value">${fmtMoney(summary.totalSpend)}</span>
+          <span class="cmp-objectives-recap-value">${fmtMoney(summary.totalSpend)}${(() => {
+            const cb = Number(campaign.budget) || 0, ts = Number(summary.totalSpend) || 0;
+            if (cb <= 0 || Math.abs(ts - cb) <= Math.max(1, cb * 0.01)) return '';
+            const diff = ts - cb;
+            return ` <span class="illustrative-tag" style="${diff > 0 ? 'background:#FDECEC;color:#B42318;' : ''}" title="The lines below should add up to this campaign's own budget.">campaign budget ${fmtMoney(cb)} · plan is ${fmtMoney(Math.abs(diff))} ${diff > 0 ? 'over' : 'under'}</span>`;
+          })()}</span>
         </div>
         <div class="cmp-objectives-recap-row">
           <!-- 2026-09-21 fix, per direct report: "You know spend so
