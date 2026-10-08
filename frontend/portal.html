@@ -1570,6 +1570,33 @@
   .strat-tag.benchmark,.strat-tag.low{background:#FFF4E5;border-color:#F0C98F;color:#8A5A12;}
   .bd-card .strat-head{align-items:flex-start;} .bd-metric{display:flex;flex-direction:column;align-items:flex-end;gap:2px;} .bd-metric-lbl{font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);} .bd-metric-val{font-size:1.375rem;font-weight:700;}
   .strat-tablewrap{overflow-x:auto;} .cx-brief{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line-hairline);font-size:0.875rem;} .strat-field-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;} .strat-field-row{padding:6px 0;font-size:0.875rem;} @media (max-width:720px){.strat-field-grid{grid-template-columns:1fr;}} .ttb-step.done{opacity:0.75;} .ttb-min{font-size:0.75rem;color:var(--muted);} .ttb-items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;} .ttb-items li{display:flex;gap:10px;align-items:flex-start;} .ttb-mark{width:18px;height:18px;border:1.5px solid var(--line-hairline);border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:0.6875rem;margin-top:2px;} .ttb-items li.done .ttb-mark{background:var(--ink,#222);color:var(--paper,#fff);border-color:transparent;} .ttb-feed-row{display:flex;justify-content:space-between;gap:16px;padding:8px 0;border-top:1px solid var(--line-hairline);font-size:0.875rem;} .ttb-feed-row:first-child{border-top:0;} .ttb-all{margin-top:20px;} .ttb-all>summary{cursor:pointer;font-size:0.875rem;color:var(--muted);padding:8px 0;} .bd-working{display:flex;align-items:center;gap:14px;} .bd-failed{border-color:var(--line-strong,#999);} .bd-spin{width:18px;height:18px;border-radius:50%;border:2px solid var(--line-hairline);border-top-color:var(--ink,#222);animation:portalLoadSpin 0.9s linear infinite;flex:none;} .bd-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;} .bd-thread{margin-top:14px;border-top:1px solid var(--line-hairline);padding-top:10px;} .bd-comment{font-size:0.8125rem;line-height:1.5;padding:6px 0;} .bd-comment.brain{background:var(--paper-dim);border-radius:10px;padding:8px 10px;margin:4px 0;}
+
+  /* Brain Dump light-theme lift (2026-10-08): same sections and wording, a dawn wash, a colored marker per section, a calmer metric panel. */
+  #brainDumpBody{position:relative;--bd-lamp:#F4B63F;--bd-lamp-deep:#8A5A00;}
+  #brainDumpBody::before{content:"";position:absolute;right:-6%;top:-70px;width:62%;height:420px;background:radial-gradient(closest-side,rgba(244,182,63,.20),rgba(244,182,63,0));pointer-events:none;z-index:0;}
+  #brainDumpBody > *{position:relative;z-index:1;}
+  #brainDumpBody .strat-card{border-radius:16px;border-color:#E6E1D3;box-shadow:0 1px 2px rgba(16,20,27,.05),0 8px 24px rgba(16,20,27,.04);}
+  #brainDumpBody .bd-head{display:flex;justify-content:space-between;align-items:center;gap:16px;background:linear-gradient(135deg,#FFF8E6 0%,#FFFFFF 62%);border-color:#EBDDB8;}
+  #brainDumpBody .bd-head .strat-chart-label{display:inline-flex;align-items:center;gap:8px;padding:4px 12px;border-radius:999px;background:#fff;border:1px solid #EBDDB8;color:var(--bd-lamp-deep);margin:0 0 8px!important;}
+  #brainDumpBody .bd-head .strat-chart-label::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--bd-lamp);box-shadow:0 0 8px rgba(244,182,63,.9);}
+  #brainDumpBody .bd-card{--dot:#4C5FD5;--tint:#EAEDFB;}
+  #brainDumpBody .bd-card[data-sec="strategy"]{--dot:#E0A020;--tint:#FFF3D3;}
+  #brainDumpBody .bd-card[data-sec="brand"]{--dot:#0B6F62;--tint:#DDF3EE;}
+  #brainDumpBody .bd-card[data-sec="growth"]{--dot:#C8512D;--tint:#FBE7DF;}
+  #brainDumpBody .bd-card[data-sec="analysis"]{--dot:#4C5FD5;--tint:#EAEDFB;}
+  #brainDumpBody .bd-card[data-sec="learnings"]{--dot:#223041;--tint:#E8ECF1;}
+  #brainDumpBody .bd-card .strat-head h2{display:flex;align-items:center;gap:10px;}
+  #brainDumpBody .bd-card .strat-head h2::before{content:"";width:12px;height:12px;border-radius:50%;background:var(--dot);box-shadow:0 0 0 5px var(--tint);flex:none;}
+  #brainDumpBody .bd-metric{align-items:flex-end;background:var(--tint);border-radius:12px;padding:8px 14px;min-width:150px;}
+  #brainDumpBody .bd-metric-lbl{color:#3d4552;} #brainDumpBody .bd-metric-val{font-size:1.25rem;}
+  #brainDumpBody .bd-metric.bd-metric-empty{background:#F4F2EA;} #brainDumpBody .bd-metric.bd-metric-empty .bd-metric-val{color:#6b6657;font-weight:600;}
+  #brainDumpBody .bd-card .strat-reading{font-size:0.9375rem;line-height:1.65;max-width:84ch;}
+  #brainDumpBody .bd-card .strat-actions .flink{font-weight:600;}
+  #brainDumpBody .bd-compose input{border-radius:999px;background:#FBFAF6;padding:9px 16px;}
+  #brainDumpBody .bd-compose input:focus{outline:2px solid rgba(244,182,63,.55);outline-offset:1px;border-color:var(--bd-lamp);}
+  #brainDumpBody .strat-chip{background:#fff;}
+  #brainDumpBody .strat-chip:hover:not(:disabled){border-color:var(--bd-lamp);background:#FFF8E6;}
+  @media (max-width:720px){#brainDumpBody .bd-head{flex-direction:column;align-items:flex-start;}#brainDumpBody .bd-card .strat-head{flex-direction:column;gap:10px;}#brainDumpBody .bd-metric{align-items:flex-start;width:100%;}}
   .bd-compose{display:flex;gap:8px;margin-top:8px;} .bd-compose input{flex:1;font:inherit;font-size:0.8125rem;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--white);color:var(--ink);}
   .strat-trust{margin:0 0 0 18px;padding:0;font-size:0.8125rem;color:var(--muted);line-height:1.7;}
   .strat-foot,.strat-empty{font-size:0.8125rem;color:var(--muted);margin:10px 0 0;line-height:1.5;}
@@ -24268,7 +24295,7 @@ function bdRenderMain(){
   const by = d.writtenBy === 'brain' ? 'Written by the Brain from that week\'s numbers' : 'Assembled from that week\'s numbers';
   const posted = d.postedAt ? new Date(d.postedAt).toLocaleString([], { weekday: 'long', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
   const sections = BD_SECTIONS.map(s => { const f = d.facts[s.key]; if (!f) return ''; const m = f.metric || {};
-    return `<div class="strat-card bd-card"><div class="strat-head"><h2>${escapeHtml(s.title)}</h2><div class="bd-metric"><span class="bd-metric-lbl">${escapeHtml(m.label || '')}</span><span class="bd-metric-val">${escapeHtml(m.display || '—')}</span></div></div>
+    return `<div class="strat-card bd-card" data-sec="${s.key}"><div class="strat-head"><h2>${escapeHtml(s.title)}</h2><div class="bd-metric${/not on file|^—$/i.test(String(m.display || '—')) ? ' bd-metric-empty' : ''}"><span class="bd-metric-lbl">${escapeHtml(m.label || '')}</span><span class="bd-metric-val">${escapeHtml(m.display || '—')}</span></div></div>
       <p class="strat-reading">${escapeHtml((d.text && d.text[s.key]) || (f.lines || []).join(' '))}</p>
       <div class="strat-actions">${(f.links || []).map(bdLinkHtml).join(' · ')}</div>${bdRenderComments(s.key)}</div>`; }).join('');
   const chgList = (d.facts && d.facts._changes) || [];
