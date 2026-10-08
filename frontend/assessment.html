@@ -685,6 +685,8 @@
 
   .score-pair{display:flex;gap:24px;margin:20px 0;}
   .score-pill{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:16px 20px;flex:1;}
+  .score-pill.total{background:#FFF8E1;border-color:#F4B63F;}
+  .quad-visual #quadMarker{width:22px;height:22px;background:#F4B63F;box-shadow:0 0 0 1px var(--ink),0 0 18px 6px rgba(244,182,63,.55);z-index:3;}
   .score-pill .lbl{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.7188rem;text-transform:uppercase;letter-spacing:0.06em;color:#6B6350;}
   .score-pill .val{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-style:normal;font-size:1.75rem;margin-top:4px;}
   /* Round 133 — the Verilume Media CX Index headline stat, deliberately
@@ -2250,6 +2252,7 @@ header#siteHeader .logo,.navlinks,.navlinks a{font-family:var(--vl-body,'Instrum
            with this panel per that same clarification). renderJourneyBP()
            itself is untouched; only its target's position in the page
            moved. See renderReportSynthesis()/renderInitialReport(). -->
+      <div id="pitchSignals"></div>
       <div id="journeyBP"></div>
 
       <!-- Section 1 — "Your opportunity, at a glance." Per direct
@@ -2310,7 +2313,9 @@ header#siteHeader .logo,.navlinks,.navlinks a{font-family:var(--vl-body,'Instrum
         <div class="score-pill"><div class="lbl">Media Strength</div><div class="val" id="mediaScoreVal"></div></div>
         <div class="score-pill"><div class="lbl">Customer Experience Strength</div><div class="val" id="cxScoreVal"></div></div>
         <div class="score-pill"><div class="lbl">Alignment</div><div class="val" id="alignScoreVal"></div><div class="hint" id="alignScoreNote" style="margin:4px 0 0;font-size:0.8125rem;"></div></div>
+        <div class="score-pill total"><div class="lbl">Your Organization Score</div><div class="val" id="totalScoreVal"></div></div>
       </div>
+      <p class="hint" id="scoreEquation" style="margin:8px 0 0;"></p>
       <div class="align-strip" id="alignStrip"></div>
 
       <!-- Section 3 — "Where Verilume's Agentic Team Fills Your Gaps." Per
@@ -3110,6 +3115,8 @@ const INDUSTRY_KEYWORDS = {
 // a visitor's website — this is the real thing, not a second guess layered
 // on top of the old one.
 let assessmentWebsiteContext = null;
+let assessmentPitchSignals = [];
+let assessmentPitchPromise = null;
 
 // 2026-09-03 fix, per direct correction — the site-content industry guess
 // (guessProfileFromInput()'s industryIdx, computed at Step 2 entry) used to
@@ -3236,6 +3243,16 @@ function startSiteReview(){
         if (data && !data.error) assessmentWebsiteContext = data;
       }).catch(() => {})
     : Promise.resolve();
+
+  // Pitch research (newsroom, wire releases, news) runs in the background; the
+  // flow never waits on it. The readout picks it up at the end.
+  assessmentPitchSignals = [];
+  assessmentPitchPromise = (state.company && /^https?:\/\/.+/i.test(fetchUrl))
+    ? fetch(`${BACKEND_URL}/api/assessment/pitch-research`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company: state.company, url: fetchUrl })
+      }).then(r => r.json()).then(d => { if (d && Array.isArray(d.signals)) assessmentPitchSignals = d.signals; }).catch(() => {})
+    : null;
 
   Promise.all([minFloor, fetchPromise]).then(enterProfileGuess);
 }
@@ -6458,8 +6475,22 @@ function renderReportSynthesis(){
 // an HTTP error, and this function just leaves the templated copy already
 // on screen exactly as it is. The free tool never shows a blank or broken
 // state over this either way.
+function renderPitchSignals(){
+  const el = document.getElementById('pitchSignals'); if (!el) return;
+  const sig = assessmentPitchSignals || [];
+  if (!sig.length){ el.innerHTML = ''; return; }
+  const esc = t => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  el.innerHTML = `<div class="intake-card" style="margin:0 0 18px;padding:18px 22px;"><div class="section-eyebrow" style="font-size:0.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);">What we found in public sources</div>` +
+    sig.map(x => `<p style="margin:10px 0 0;"><strong>${esc(x.typeLabel)}.</strong> <a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.headline)}</a><span class="hint" style="display:block;margin:2px 0 0;">${esc(x.takeaway)}${x.source ? ' · ' + esc(x.source) : ''}${x.date ? ' · ' + esc(x.date) : ''}</span></p>`).join('') +
+    `<p class="hint" style="margin:12px 0 0;">From the newsroom, wire releases and news coverage. Tell us if anything is off.</p></div>`;
+}
+
 async function applyAiGeneratedReadout(){
   try {
+    if (assessmentPitchPromise){
+      await Promise.race([assessmentPitchPromise, new Promise(r => setTimeout(r, 12000))]);
+    }
+    renderPitchSignals();
     const s = activeScores();
     const stages = RUBRIC.map(r => ({
       stage: r.stage,
@@ -6478,6 +6509,7 @@ async function applyAiGeneratedReadout(){
         wealth: wealthLabels(),
         buyerType: state.buyerType || '',
         websiteContext: assessmentWebsiteContext,
+        pitchSignals: assessmentPitchSignals,
         stages,
         mediaPct: s.mediaPct,
         cxPct: s.cxPct
@@ -7160,6 +7192,12 @@ function renderFullReport(){
   if (av){ av.textContent = qa.ratedPairs ? qa.alignmentPct + '%' : '—'; }
   if (an){ an.textContent = alignmentWords(qa); }
   renderAlignStrip(qa);
+  const tv=document.getElementById('totalScoreVal'); if(tv) tv.textContent=(typeof s.index==='number'?s.index:Math.round((s.mediaPct+s.cxPct)/2))+'%';
+  const eq=document.getElementById('scoreEquation');
+  if(eq){ const avg=Math.round((s.mediaPct+s.cxPct)/2);
+    eq.textContent = qa.ratedPairs
+      ? `Media ${s.mediaPct}% and Customer experience ${s.cxPct}% average ${avg}%. Alignment of ${qa.alignmentPct}% adjusts that to your ${s.index}% score. The dot on the map shows Media against Customer experience.`
+      : `Media ${s.mediaPct}% and Customer experience ${s.cxPct}% average ${avg}%.`; }
   const onboardingUrl = buildOnboardingHandoffUrl();
   document.getElementById('paidCtaLink').href = onboardingUrl;
   try {
@@ -7211,32 +7249,7 @@ function renderFullReport(){
   // used to run alongside it (removed) does not.
   const stageMarkersEl = document.getElementById('quadStageMarkers');
   stageMarkersEl.innerHTML = '';
-  if (!s.isQuick){
-    scores.stagePoints.forEach((sp, i) => {
-      if (!sp.assessed) return;
-      const num = i + 1;
-      const sq = quadrantFor(sp.pct, scores.cxPct);
-      const dot = document.createElement('div');
-      dot.className = 'quad-marker stage-dot';
-      dot.style.left = sp.pct + '%';
-      dot.style.bottom = scores.cxPct + '%';
-      dot.title = `${sp.stage} — ${sp.pct}% Media Strength / ${scores.cxPct}% Delivery Strength — ${sq.name}`;
-      dot.textContent = String(num);
-      stageMarkersEl.appendChild(dot);
-    });
-  }
-  if (s.isQuick){
-    qa.stageGaps.forEach(g => {
-      const i = RUBRIC.findIndex(r => r.stage === g.stage);
-      const dot = document.createElement('div');
-      dot.className = 'quad-marker stage-dot';
-      dot.style.left = (g.media / 5 * 100) + '%';
-      dot.style.bottom = (g.cx / 5 * 100) + '%';
-      dot.title = `${g.stage} — Media ${g.media}/5, Customer experience ${g.cx}/5`;
-      dot.textContent = String(i + 1);
-      stageMarkersEl.appendChild(dot);
-    });
-  }
+  // One point on the quadrant: the overall position. Stage-by-stage detail lives in the paired strip below.
   renderReportOpportunity();
   renderAgenticRoleMapping();
 }
