@@ -2295,6 +2295,15 @@
   .cch-score-circle .scr-track{fill:none;stroke:#EEE9DA;stroke-width:4;}
   .cch-score-circle .scr-arc{fill:none;stroke:url(#cchScrGrad);stroke-width:4;stroke-linecap:round;transition:stroke-dashoffset .6s ease;}
   .cch-score-circle .scr-num{position:relative;z-index:1;font-size:1rem;letter-spacing:-.01em;}
+  /* 2026-10-08, per direct instruction ("the header needs some energy ...
+     shades of light"; "View Comments" removed — the dock covers it): a warm
+     lamp-light header — pale amber wash with a glow behind the Illumination
+     gauge, lit progress segments (amber while in progress, teal when
+     complete), and an amber active step — the same lamp/truth pair the
+     public Media + CX pages use. */
+  .cmp-campaign-header{background:radial-gradient(60% 150% at 100% 55%, rgba(244,182,63,0.30) 0%, rgba(244,182,63,0) 62%), linear-gradient(120deg,#FFFFFF 0%,#FFFBF1 55%,#FFF2D2 100%);border:1px solid rgba(184,118,11,0.24);box-shadow:0 24px 54px -20px rgba(184,118,11,0.34), 0 2px 8px rgba(15,23,42,0.05);}
+  .cch-meta{display:none;}
+  .cch-status-pill.pending{background:#FFE9B5;color:#7A5200;}
   .cch-score-circle.unscored{box-shadow:0 0 0 1px rgba(15,23,42,0.08), 0 2px 6px rgba(15,23,42,0.08);color:var(--muted);}
   @media (max-width:600px){
     .cch-score-circle{width:44px;height:44px;font-size:0.75rem;}
@@ -2368,6 +2377,10 @@
   .cch-progress-seg{flex:1;min-width:0;height:4px;border-radius:3px;background:var(--line-hairline);}
   .cch-progress-seg.in-progress{background:var(--media);}
   .cch-progress-seg.complete{background:var(--cx);}
+  /* 2026-10-08 lamp-light override (see the header block above) */
+  .cmp-campaign-header .cch-progress-seg{height:6px;background:#EFE8D3;}
+  .cmp-campaign-header .cch-progress-seg.in-progress{background:linear-gradient(90deg,#F4B63F,#FFD27A);box-shadow:0 0 12px rgba(244,182,63,0.65);}
+  .cmp-campaign-header .cch-progress-seg.complete{background:#0B6F62;}
   @media (max-width:600px){
     /* Matches the 44px score circle at this breakpoint (see
        .cch-score-circle's own max-width:600px override above) — smaller
@@ -2497,6 +2510,9 @@
   .cmp-breadcrumb-step.status-in-progress{color:var(--media);}
   .cmp-breadcrumb-step.status-complete{color:var(--cx);}
   .cmp-breadcrumb-step.active{background:#1E2761;color:#FFFFFF;}
+  .cmp-campaign-header .cmp-breadcrumb-step.status-in-progress{color:#9A5F00;}
+  .cmp-campaign-header .cmp-breadcrumb-step.status-complete{color:#0B6F62;}
+  .cmp-campaign-header .cmp-breadcrumb-step.active{background:#F4B63F;color:#1B1405;box-shadow:0 4px 14px -4px rgba(244,182,63,0.8);}
   .cmp-breadcrumb-step.disabled{color:var(--line);cursor:default;}
   .cmp-breadcrumb-sep{color:var(--line);font-size:0.875rem;}
   /* 2026-09-21 fix, per direct report: couldn't scroll to the bottom of the
@@ -4007,6 +4023,7 @@
   body.ask-dock #cmpObjectivesCollabMount{display:none;}
   body.ask-dock #cmpPerfMarketingCollabMount{display:none;}
   body.ask-dock #cmpWorkspaceCollab,body.ask-dock #cmpCreationCollabMount{display:none !important;}
+  body.ask-dock .cmp-creation-collab-col{display:none !important;}
   body.ask-dock .cmp-workspace-hub,body.ask-dock #cmpCreationTwoCol{max-width:none;margin-left:0;margin-right:0;}
   body.ask-dock #cmpCreativeCollabMount{display:none;}
   body.ask-dock #cmpCreativePanel .cmp-pitch-body{grid-template-columns:minmax(0,1fr);}
@@ -9066,7 +9083,7 @@
                see the CSS comment above .cch-score-marker for that history).
                The circle's own title="Campaign Relevance Score" still
                carries the same info on hover. -->
-          <div class="cch-score-circle" id="cchScoreCircle" title="Campaign Relevance Score">—</div>
+          <div class="cch-score-circle" id="cchScoreCircle" title="Illumination score">—</div>
         </div>
       </div>
       <!-- 2026-09-24, per direct instruction ("Move primary campaign
@@ -9096,7 +9113,6 @@
              type interface." Campaign-wide (not per-stage) comment thread —
              see .cmp-team-chat / cmpToggleTeamChat() / campaign.teamComments
              below. -->
-        <a class="cch-comments-link" id="cchCommentsLink" onclick="cmpToggleTeamChat()">💬 View Comments<span id="cchCommentsCount"></span></a>
         <div class="cch-step" id="cchStepToggle" onclick="cmpToggleHeaderStepsPanel()">
           <span id="cchLastStep">—</span>
           <span class="chevron">▸</span>
@@ -9888,7 +9904,7 @@
              main form next to Campaign Audiences (#cmpStage-lifecycle,
              #cmpCreationBudgetRow), not beside the Collaboration Center.
              This right column is the Collaboration Center only now. -->
-        <div style="width:340px;flex-shrink:0;display:flex;flex-direction:column;gap:16px;">
+        <div class="cmp-creation-collab-col" style="width:340px;flex-shrink:0;display:flex;flex-direction:column;gap:16px;">
           <div class="cmp-workspace-collab" id="cmpCreationCollabMount"></div>
         </div>
         </div>
@@ -11522,7 +11538,7 @@
            on the campaign header's relevance score, expanded logic here. -->
       <div class="faq-item">
         <div class="faq-head" id="bpFaqHeadN" onclick="toggleFaqItem('N')">
-          <span class="faq-label">Campaign Relevance Score</span>
+          <span class="faq-label">Illumination Score</span>
           <span class="chevron">▸</span>
         </div>
         <div class="faq-body" id="bpFaqBodyN">
@@ -13113,7 +13129,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-08-campaign-width-score';
+const CXMEDIA_BUILD_STAMP = '2026-10-08-illumination-score';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -15862,7 +15878,7 @@ function cmpRenderCampaignHeader(campaign){
     if (circle){
       circle.classList.add('unscored');
       circle.textContent = '—';
-      circle.title = 'Not yet scored — create this campaign to begin';
+      circle.title = 'Illumination score — create this campaign to begin';
     }
     const progressMount = document.getElementById('cchProgress');
     if (progressMount) progressMount.innerHTML = CMP_STAGE_CATEGORY_ORDER.map(() => `<div class="cch-progress-seg" title="Not started"></div>`).join('');
@@ -15915,6 +15931,8 @@ function cmpRenderCampaignHeader(campaign){
     else if (campaign.startDate) startDateEl.textContent = `In Market From ${campaign.startDate}`;
     else startDateEl.textContent = 'In Market date not set';
   }
+  cmpLoadMediaAlignment(campaign);
+  cmpLoadDraftQualityScore(campaign);
   const score = computeCampaignRelevanceScore(campaign);
   // Round 132bx follow-up, per direct instruction: "the score in a circle
   // filled with client brand color." Falls back to the app's own teal
@@ -15934,17 +15952,17 @@ function cmpRenderCampaignHeader(campaign){
   // underlying weighting/threshold math itself is still open (see
   // cxmedia-campaign-creation-live-walkthrough-findings-2026-09-15.md) —
   // this is a display-level hold, not the full fix.
-  const cxStarted = cmpModuleStatus('messaging') !== 'not-started';
-  if (cxStarted && score.overall !== null){
+  if (score.overall !== null){
     const pct = Math.max(0, Math.min(100, Math.round(score.overall)));
     const C = 2 * Math.PI * 29;
     circle.classList.remove('unscored');
     circle.innerHTML = `<svg viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="cchScrGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#B8760B"/><stop offset="1" stop-color="#0B6F62"/></linearGradient></defs><circle class="scr-track" cx="32" cy="32" r="29"/><circle class="scr-arc" cx="32" cy="32" r="29" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${(C * (1 - pct / 100)).toFixed(1)}"/></svg><span class="scr-num">${pct}%</span>`;
-    circle.title = 'Campaign Relevance Score';
+    const bits = [`Media plan ${score.mediaPlanPct !== null ? score.mediaPlanPct + '%' : '—'} (40%)`, `Copy fit ${score.copyFitPct !== null ? score.copyFitPct + '%' : '—'} (40%)`, `Brand ${score.brandAuditPct !== null ? score.brandAuditPct + '%' : '—'} (20%)`];
+    circle.title = `Illumination score — ${bits.join(' · ')}${score.illuminationInputs < 3 ? `. Based on ${score.illuminationInputs} of 3 inputs so far.` : ''}`;
   } else {
     circle.classList.add('unscored');
     circle.textContent = '—';
-    circle.title = 'Not yet scored — relevance scoring begins once Brand Messaging (CX) starts';
+    circle.title = 'Illumination score — not scored yet. It needs a budgeted media plan with a Primary KPI and dates, then scored copy.'
   }
   // Keep the expandable steps panel in sync if it's currently open (a
   // stage change while it's open shouldn't require closing/reopening to
@@ -47689,7 +47707,7 @@ async function cmpLoadApprovedPlanTotals(campaign){
     return plan;
   } catch (e){ console.warn('cmpLoadApprovedPlanTotals failed', e); return null; }
 }
-function cmpInvalidateApprovedPlan(campaignId){ if (campaignId) delete cmpApprovedPlanCache[campaignId]; else cmpApprovedPlanCache = {}; }
+function cmpInvalidateApprovedPlan(campaignId){ if (campaignId) delete cmpApprovedPlanCache[campaignId]; else cmpApprovedPlanCache = {}; (state.campaigns || []).forEach(c => { if (c && (!campaignId || c.id === campaignId)) c._mediaAlignment = undefined; }); }
 // The campaign-level model. Source precedence, per input, most-real first:
 //   Target spend / impressions: approved channel plan (Campaign Budget
 //     stage) → draft channel plan → creation-form budget / planned.
@@ -50675,7 +50693,7 @@ const BP_FAQ_TOPICS = [
   // (channel mix, creative/messaging, budget logic, landing page relevance
   // & performance, brand groundwork) rather than inventing a second
   // explanation of the same score — see renderFaqN() below.
-  { letter: 'N', label: 'Campaign Relevance Score', keywords: ['relevance','relevance score','channel mix','budget logic','landing page','brand groundwork','score'] },
+  { letter: 'N', label: 'Illumination Score', keywords: ['illumination','illumination score','relevance','relevance score','channel mix','budget logic','landing page','brand groundwork','score'] },
   // 2026-08-22 — per direct instruction, "work on the next copywriting
   // priority": wire the two newest copy-workspace features (Draft Scoring,
   // the Blind Test Interview panel) into this same system, so they explain
@@ -51012,7 +51030,7 @@ const AI_THOUGHT_PREVIEWS = {
   I: 'Why generic tone anchors produce generic drafts — and specific ones don’t.',
   J: 'Naming the competitor your customers actually compare you to, not just the biggest name.',
   L: 'Demand Fulfillment categories are always on with budgets not allocated to a specific campaign.',
-  N: 'What the score on this campaign\'s header actually measures — and which of its six inputs is dragging it down right now.',
+  N: 'What the Illumination score on this campaign\'s header measures: media plan alignment, copy alignment and brand, and which one is dragging it down.',
   O: 'What Draft Scoring is actually checking in the copy above — and whether this deployment is scoring it with AI or a fallback heuristic.',
   P: 'What the Blind Test Interview panel does: gets one response each from every AI partner on this brief, scores each one the same way, and ranks them.',
   Q: 'What connecting Meta actually requires — and who needs to grant access.',
@@ -51086,7 +51104,7 @@ function aiThoughtDynamicPreview(letter){
     if (c){
       const score = computeCampaignRelevanceScore(c);
       return score.overall !== null
-        ? `This campaign is at ${score.overall}% — see which of the 6 inputs is dragging it down.`
+        ? `This campaign's illumination is ${score.overall}%. See which of the 3 inputs is dragging it down.`
         : AI_THOUGHT_PREVIEWS.N;
     }
     return AI_THOUGHT_PREVIEWS.N;
@@ -51865,24 +51883,17 @@ function renderFaqN(){
   const c = ((typeof cmpRailLoadedCampaign === 'function') ? cmpRailLoadedCampaign() : null)
     || ((typeof currentCampaignId !== 'undefined') ? findCampaign(currentCampaignId) : null);
   if (!c){
-    el.textContent = 'Once a campaign is loaded, this explains what the circle in its header is actually measuring: not step completion, but whether its real channel mix, budget, creative/messaging, and landing page actually serve its stated objective and KPI.';
+    el.textContent = 'Once a campaign is loaded, this explains the Illumination score in its header: media plan alignment (40%), copy alignment with the media (40%) and brand (20%).';
     return;
   }
   const score = computeCampaignRelevanceScore(c);
-  const components = [
-    { label: 'Channel mix vs. this campaign\'s own recommendation', pct: score.channelRelevancePct },
-    { label: 'Creative & messaging quality (Campaign Fit / Brand Fit)', pct: score.creativeMessagingRelevancePct },
-    { label: 'Budget logic coherence', pct: score.budgetRelevancePct },
-    { label: 'Landing page relevance (content & imagery)', pct: score.landingPageRelevancePct },
-    { label: 'Landing page performance (CTA path)', pct: score.landingPagePerformancePct },
-    { label: 'Account Brand Groundwork (Voice / Style Assets / Positioning)', pct: score.brandFoundationPct }
-  ].filter(x => x.pct !== null);
-  let detail = 'Not enough of this campaign is filled in yet to compute a relevance picture — channel mix, budget, creative, and the landing page each add a real input as they\'re set.';
-  if (components.length){
-    const weakest = components.reduce((w, x) => (!w || x.pct < w.pct) ? x : w, null);
-    detail = `Right now: ${components.map(x => `${x.label} — ${x.pct}%`).join('; ')}. The weakest input is ${weakest.label} (${weakest.pct}%) — the highest-leverage place to focus.`;
-  }
-  el.textContent = `This campaign's header score (currently ${score.overall !== null ? score.overall + '%' : '—'}) measures whether its real channel mix, budget logic, creative/messaging, and landing page actually serve its stated objective and KPI — not whether steps are checked off. ${detail} See the full breakdown below, in this campaign's own Campaign Relevance Score panel.`;
+  const ma = score.mediaAlignment;
+  const parts = [
+    `Media plan alignment (40%): ${score.mediaPlanPct !== null ? score.mediaPlanPct + '%' : 'not scored yet' + (ma && ma.reason ? ' (' + ma.reason + ')' : '')}`,
+    `Copy alignment with the media (40%): ${score.copyFitPct !== null ? score.copyFitPct + '%' : 'not scored yet'}`,
+    `Brand (20%): ${score.brandAuditPct !== null ? score.brandAuditPct + '%' : 'not scored yet'}`
+  ];
+  el.textContent = `This campaign's Illumination score is ${score.overall !== null ? score.overall + '%' : 'not scored yet'}. It asks three things. Will the media plan reach this campaign's share of the annual KPI target, compared with the year's other campaigns, inside its in-market dates (or those dates plus the analytics window when the KPI is transactions, ROAS or CAC)? Does the copy line up with the media? Does the copy hold to the brand voice and exclusions? Right now: ${parts.join('; ')}.${score.illuminationInputs && score.illuminationInputs < 3 ? ` Based on ${score.illuminationInputs} of 3 inputs so far.` : ''} See the full breakdown in this campaign's Illumination Score panel.`;
 }
 
 // 2026-08-22 — Draft Scoring's own drawer topic. Reads lastDraftScoreCache
@@ -58155,10 +58166,23 @@ function computeCampaignRelevanceScore(campaign){
     if (checks.length) budgetRelevancePct = Math.round(100 * checks.filter(Boolean).length / checks.length);
   }
 
-  const parts = [channelRelevancePct, creativeMessagingRelevancePct, budgetRelevancePct, landingPageRelevancePct, landingPagePerformancePct, brandFoundationPct].filter(v => v !== null);
-  const overall = parts.length ? Math.round(parts.reduce((a, b) => a + b, 0) / parts.length) : null;
+  // 2026-10-08, per direct instruction — the header score is now the
+  // ILLUMINATION score: Media plan alignment 40% (will this campaign's
+  // forecast reach its share of the annual KPI target in its window —
+  // cmpLoadMediaAlignment()), Copy alignment with the media 40% (the
+  // existing Campaign Fit measurement), Brand 20% (the auditor's Brand Fit
+  // readout). A missing input drops out and the weights re-spread over what
+  // is available (illuminationInputs says how many of the 3 are in).
+  const mediaAlignment = campaign._mediaAlignment || null;
+  const mediaPlanPct = (mediaAlignment && typeof mediaAlignment.pct === 'number') ? mediaAlignment.pct : null;
+  const dq = campaign._draftQualityScore || null;
+  const copyFitPct = (dq && typeof dq.fitPct === 'number') ? dq.fitPct : null;
+  const brandAuditPct = (dq && typeof dq.brandPct === 'number') ? dq.brandPct : null;
+  const illum = [[mediaPlanPct, 40], [copyFitPct, 40], [brandAuditPct, 20]].filter(x => x[0] !== null);
+  const illuminationInputs = illum.length;
+  const overall = illum.length ? Math.round(illum.reduce((t, x) => t + x[0] * x[1], 0) / illum.reduce((t, x) => t + x[1], 0)) : null;
 
-  return { required, statuses, completionPct, channelRelevancePct, creativeMessagingRelevancePct, budgetRelevancePct, landingPageRelevancePct, landingPagePerformancePct, brandFoundationPct, overall, richAudit,
+  return { required, statuses, completionPct, mediaPlanPct, copyFitPct, brandAuditPct, illuminationInputs, mediaAlignment, channelRelevancePct, creativeMessagingRelevancePct, budgetRelevancePct, landingPageRelevancePct, landingPagePerformancePct, brandFoundationPct, overall, richAudit,
     // Back-compat aliases — anything still reading the pre-132cc field
     // names (functionPct/brandPct/urlPct) keeps working rather than
     // silently reading undefined. functionPct now points at completionPct
@@ -58184,6 +58208,93 @@ const FUNCTION_STATUS_ICON = { complete: '✓', 'needs-qa': '⚠', 'in-progress'
 // activated functions actually complete and QA'd" is still a real,
 // separate question worth answering plainly — it's just no longer framed
 // as the score itself.
+// 2026-10-08 — Media plan alignment (40% of the Illumination score). Asks:
+// given this campaign's approved plan (spend, impressions, channels) and
+// dates, will its modeled result reach its fair share of the annual KPI
+// target, compared with every other campaign in the plan year?
+//   efficiency E = (forecast KPI ÷ annual KPI target) ÷ (campaign spend ÷
+//   annual working media). E >= 1 means it earns at least its budget share.
+//   Score = E capped at 100, blended 70/30 with this campaign's rank among
+//   the year's other campaigns on the same measure (when 2+ peers exist),
+//   times coverage: the share of the measurement window that falls inside
+//   the plan year. Traffic / leads / impressions are measured over the
+//   in-market dates; transactions / ROAS / CAC over the dates plus the
+//   campaign's analytics window (transactionWindowDays, else the stage
+//   default, else 90).
+function cmpMediaAlignmentMetric(campaign){
+  const k = String(campaign.primaryKpi || '');
+  if (/roas|return on ad|revenue/i.test(k)) return { key: 'roas', label: 'ROAS', long: true };
+  if (/cac|cost per acq/i.test(k)) return { key: 'cac', label: 'CAC', long: true, lowerIsBetter: true };
+  if (/transaction|booking|sale|purchase/i.test(k)) return { key: 'transactions', label: 'Transactions', long: true };
+  if (/lead/i.test(k)) return { key: 'leads', label: 'Leads', long: false };
+  if (/click|visit|traffic|user/i.test(k)) return { key: 'websiteUsers', label: 'Website traffic', long: false };
+  if (/impression|reach|view/i.test(k)) return { key: 'impressions', label: k, long: false };
+  return null;
+}
+function cmpMediaAlignmentEfficiency(m, metric, t){
+  const spend = m.target && m.target.spend, annualSpend = t && t.workingMedia;
+  if (!(spend > 0) || !(annualSpend > 0)) return null;
+  const rev = m.target.grossRevenue;
+  if (metric.key === 'roas'){
+    const aRoas = t.grossRevenue > 0 ? t.grossRevenue / annualSpend : null, cRoas = rev > 0 ? rev / spend : null;
+    return (aRoas && cRoas) ? cRoas / aRoas : null;
+  }
+  if (metric.key === 'cac'){
+    const aCac = t.bookings > 0 ? annualSpend / t.bookings : null, cCac = m.target.transactions > 0 ? spend / m.target.transactions : null;
+    return (aCac && cCac) ? aCac / cCac : null;
+  }
+  const map = { transactions: ['transactions', 'bookings'], leads: ['leads', 'valueLeads'], websiteUsers: ['websiteUsers', 'websiteUsers'], impressions: ['impressions', 'impressions'] };
+  const pair = map[metric.key];
+  const f = m.target[pair[0]], a = t[pair[1]];
+  if (!(f > 0) || !(a > 0)) return null;
+  return (f / a) / (spend / annualSpend);
+}
+async function cmpLoadMediaAlignment(campaign){
+  if (!campaign || campaign.localOnly || dataSourceLabel !== 'backend' || campaign.isAdHoc) return;
+  const key = [campaign.budget, campaign.plannedImpressions, campaign.startDate, campaign.endDate, campaign.primaryKpi, campaign.kpiGoal, campaign.transactionWindowDays].join('|');
+  if (campaign._mediaAlignmentKey !== key){ campaign._mediaAlignmentKey = key; campaign._mediaAlignment = undefined; }
+  if (campaign._mediaAlignment !== undefined) return;
+  campaign._mediaAlignment = null;
+  let out = { pct: null, reason: 'Not enough set up yet to judge the media plan.' };
+  try {
+    const metric = cmpMediaAlignmentMetric(campaign);
+    const ctx = await cmpLoadCampaignSummaryContext();
+    const plan = await cmpLoadApprovedPlanTotals(campaign);
+    const m = cmpCampaignSummaryModel(campaign, ctx, plan);
+    const t = m.annualTarget;
+    if (!campaign.startDate || !campaign.endDate) out.reason = 'Set the campaign start and end dates.';
+    else if (!metric) out.reason = 'Pick a Primary KPI (Impressions, Reach, Clicks, Leads, Transactions) so the plan can be measured against its annual target.';
+    else if (!(m.target.spend > 0)) out.reason = 'Add a budget or approve a channel plan.';
+    else if (!t || !(t.workingMedia > 0)) out.reason = `No ${m.year || ''} annual target is loaded yet, so there is nothing to measure this plan against.`.replace('  ', ' ');
+    else {
+      const E = cmpMediaAlignmentEfficiency(m, metric, t);
+      if (E === null) out.reason = `The ${m.year} annual target has no ${metric.label} figure to compare against, or the model cannot forecast it yet.`;
+      else {
+        const peerCampaigns = (state.campaigns || []).filter(c => c && c.id !== campaign.id && c.startDate && !c.isAdHoc && !c.cancelled && new Date(c.startDate).getFullYear() === m.year).slice(0, 30);
+        const peerPlans = await Promise.all(peerCampaigns.map(c => cmpLoadApprovedPlanTotals(c)));
+        const peerE = peerCampaigns.map((c, i) => cmpMediaAlignmentEfficiency(cmpCampaignSummaryModel(c, ctx, peerPlans[i]), metric, t)).filter(v => v !== null);
+        const percentile = peerE.length >= 2 ? peerE.filter(v => v <= E).length / peerE.length : null;
+        const stage = campaign.stage;
+        const windowDays = metric.long ? (Number(campaign.transactionWindowDays) > 0 ? Number(campaign.transactionWindowDays) : (TRANSACTION_WINDOW_DAYS_BY_STAGE[stage] || 90)) : 0;
+        const start = new Date(campaign.startDate), end = new Date(campaign.endDate);
+        const winEnd = new Date(end.getTime() + windowDays * 86400000);
+        const yearEnd = new Date(m.year, 11, 31);
+        const total = winEnd - start;
+        const coverage = total > 0 ? Math.max(0, Math.min(1, (Math.min(winEnd, yearEnd) - start) / total)) : 1;
+        const escore = Math.min(100, Math.max(0, E * 100));
+        const base = percentile !== null ? 0.7 * escore + 0.3 * percentile * 100 : escore;
+        out = { pct: Math.round(base * coverage), E, escore: Math.round(escore), percentile, peers: peerE.length, coverage, windowDays, kpiLabel: metric.label, year: m.year,
+          spendShare: m.target.spend / t.workingMedia, windowEnd: winEnd.toISOString().slice(0, 10), reason: null };
+      }
+    }
+  } catch (e){ console.warn('cmpLoadMediaAlignment failed', e); out = { pct: null, reason: 'The media plan check could not run just now.' }; }
+  campaign._mediaAlignment = out;
+  try {
+    if (typeof cmpRailLoadedCampaign === 'function' && cmpRailLoadedCampaign() === campaign) cmpRenderCampaignHeader(campaign);
+    if (document.getElementById('campaignQaPanel') && currentCampaignId === campaign.id) renderCampaignQaPanel();
+    if (typeof renderFaqN === 'function') renderFaqN();
+  } catch (e){ /* a re-render is a nicety, never a failure */ }
+}
 // 2026-09-23 — populates campaign._draftQualityScore (read by
 // computeCampaignRelevanceScore() above), fired from renderCampaignQaPanel()
 // below every time this panel opens for a backend-saved campaign that
@@ -58199,29 +58310,34 @@ async function cmpLoadDraftQualityScore(campaign){
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/score-history`);
     const data = await resp.json();
-    if (!resp.ok || !Array.isArray(data.history)){ campaign._draftQualityScore = { pct: null, count: 0 }; return; }
+    if (!resp.ok || !Array.isArray(data.history)){ campaign._draftQualityScore = { pct: null, fitPct: null, brandPct: null, count: 0 }; return; }
     // Rows arrive scoredAt DESC from the endpoint, so the first one seen
     // per sourceKey is the latest judgment for that piece of copy — a
     // draft rescored after edits shouldn't have its earlier, weaker (or
     // stronger) score still counted alongside the current one.
     const latestBySourceKey = {};
     data.history.forEach(h => { if (!latestBySourceKey[h.sourceKey]) latestBySourceKey[h.sourceKey] = h; });
-    const combined = Object.values(latestBySourceKey)
-      .filter(h => typeof h.relevanceScore === 'number' && typeof h.complianceScore === 'number')
-      .map(h => (h.relevanceScore + h.complianceScore) / 2);
-    campaign._draftQualityScore = combined.length
-      ? { pct: Math.round(combined.reduce((a, b) => a + b, 0) / combined.length), count: combined.length }
-      : { pct: null, count: 0 };
+    const scored = Object.values(latestBySourceKey)
+      .filter(h => typeof h.relevanceScore === 'number' && typeof h.complianceScore === 'number');
+    const avg = arr => Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
+    // 2026-10-08 — Campaign Fit (copy aligned with the media plan) and Brand
+    // Fit (the auditor readout) are now scored separately in the
+    // Illumination Score (40% / 20%); pct stays the old combined average.
+    campaign._draftQualityScore = scored.length
+      ? { pct: avg(scored.map(h => (h.relevanceScore + h.complianceScore) / 2)), fitPct: avg(scored.map(h => h.relevanceScore)), brandPct: avg(scored.map(h => h.complianceScore)), count: scored.length }
+      : { pct: null, fitPct: null, brandPct: null, count: 0 };
   } catch (e){
-    campaign._draftQualityScore = { pct: null, count: 0 };
+    campaign._draftQualityScore = { pct: null, fitPct: null, brandPct: null, count: 0 };
   }
   renderCampaignQaPanel();
+  try { if (typeof cmpRailLoadedCampaign === 'function' && cmpRailLoadedCampaign() === campaign) cmpRenderCampaignHeader(campaign); } catch (e){ /* header refresh is a nicety */ }
 }
 function renderCampaignQaPanel(){
   const c = findCampaign(currentCampaignId);
   const panel = document.getElementById('campaignQaPanel');
   if (!c || !panel) return;
   cmpLoadDraftQualityScore(c);
+  cmpLoadMediaAlignment(c);
   const score = computeCampaignRelevanceScore(c);
 
   const allComplete = score.statuses.length && score.statuses.every(s => s.status === 'complete');
@@ -58238,26 +58354,25 @@ function renderCampaignQaPanel(){
         <div style="background:var(--paper-dim);border-radius:4px;height:8px;overflow:hidden;"><div style="background:var(--cx);height:100%;width:${pct}%;"></div></div>
       </div>`;
 
-  // A short synthesis naming whichever component is dragging the score
-  // down, rather than leaving the CMO to eyeball five bars — same
-  // "synthesize, don't just display" convention as the Dashboard's Focus
-  // Grid / Priority Fix card.
-  const components = [
-    { label: 'Channel mix vs. this campaign\'s own recommendation', pct: score.channelRelevancePct },
-    { label: 'Creative & messaging quality (Campaign Fit / Brand Fit)', pct: score.creativeMessagingRelevancePct },
-    { label: 'Budget logic coherence', pct: score.budgetRelevancePct },
-    { label: 'Landing page relevance (content & imagery)', pct: score.landingPageRelevancePct },
-    { label: 'Landing page performance (CTA path)', pct: score.landingPagePerformancePct },
-    { label: 'Account Brand Groundwork (Voice / Style Assets / Positioning)', pct: score.brandFoundationPct }
+  // 2026-10-08 — the score is the three-part Illumination score; the older
+  // channel / budget / landing-page checks stay below as reference only.
+  const ma = score.mediaAlignment;
+  const illumComponents = [
+    { label: 'Media plan alignment', weight: 40, pct: score.mediaPlanPct },
+    { label: 'Copy alignment with the media', weight: 40, pct: score.copyFitPct },
+    { label: 'Brand (auditor readout)', weight: 20, pct: score.brandAuditPct }
   ].filter(x => x.pct !== null);
-  let synthesis = 'Not enough of this campaign is filled in yet to synthesize a relevance picture — channel mix, budget, creative, and the landing page each add a real input as they\'re set.';
-  if (components.length){
-    const weakest = components.reduce((w, x) => (!w || x.pct < w.pct) ? x : w, null);
-    synthesis = components.every(x => x.pct >= 70)
-      ? `Every available input is strong — this campaign's channel mix, budget logic, creative/messaging, and landing page are all pointing at the same objective.`
-      : `The weakest input right now is ${weakest.label} (${weakest.pct}%) — that's the highest-leverage place to focus to make this campaign genuinely relevant to its KPI, not just "done."`;
+  let synthesis = 'Nothing to score yet. Illumination needs a budgeted media plan with a Primary KPI and dates, then scored copy.';
+  if (illumComponents.length){
+    const weakest = illumComponents.reduce((w, x) => (!w || x.pct < w.pct) ? x : w, null);
+    synthesis = illumComponents.every(x => x.pct >= 70)
+      ? 'Every available input is strong: the plan, the copy and the brand read are pointing the same way.'
+      : `The weakest input right now is ${weakest.label} (${weakest.pct}%). That is the highest-leverage place to work.`;
+    if (score.illuminationInputs < 3) synthesis += ` Based on ${score.illuminationInputs} of 3 inputs so far; the score will move as the rest come in.`;
   }
-
+  const mediaNote = !ma ? 'checking the plan…' : (ma.reason || '');
+  const mediaDetail = (ma && ma.pct !== null)
+    ? `<p class="hint" style="margin:-4px 0 10px;">${escapeHtml(ma.kpiLabel)}: this plan earns ${Math.round(ma.E * 100)}% of its budget share of the ${ma.year} target${ma.percentile !== null ? `, ahead of ${Math.round(ma.percentile * 100)}% of the year's ${ma.peers} other campaigns` : ''}. ${ma.coverage < 1 ? `Only ${Math.round(ma.coverage * 100)}% of its measurement window falls inside ${ma.year}. ` : ''}${ma.windowDays ? `Measured to ${escapeHtml(ma.windowEnd)} (end date + ${ma.windowDays}-day analytics window).` : 'Measured across the in-market dates.'}</p>` : '';
   panel.innerHTML = `
     <div style="margin-bottom:16px;">
       <div class="section-eyebrow" style="margin-bottom:8px;">Activated marketing functions</div>
@@ -58265,14 +58380,17 @@ function renderCampaignQaPanel(){
       ${score.statuses.length ? `<p class="hint" style="margin-top:8px;">${allComplete ? 'All activated functions are complete and passing QA.' : 'This campaign is not yet fully QA\'d — see above for which function(s) still need work.'}</p>` : ''}
     </div>
     <div>
-      <div class="section-eyebrow" style="margin-bottom:8px;">Campaign Relevance Score${score.overall !== null ? ` — ${score.overall}%` : ''}</div>
-      <p class="hint" style="margin:0 0 10px;">Measures whether this campaign's real channel mix, budget, creative/messaging, and landing page actually serve its stated objective and KPI — not whether steps are checked off.</p>
+      <div class="section-eyebrow" style="margin-bottom:8px;">Illumination Score${score.overall !== null ? ` — ${score.overall}%` : ''}</div>
+      <p class="hint" style="margin:0 0 10px;">How well lit this campaign is: whether the plan will reach its share of the annual target in its window (40%), whether the copy lines up with the media (40%), and whether it holds to the brand voice and exclusions (20%).</p>
+      ${scoreBar('Media plan alignment · 40%', score.mediaPlanPct, mediaNote)}
+      ${mediaDetail}
+      ${scoreBar('Copy alignment with the media · 40%', score.copyFitPct, 'score a draft in Creative to add this')}
+      ${scoreBar('Brand · 20%', score.brandAuditPct, 'the auditor reads the same scored drafts')}
+      <div class="section-eyebrow" style="margin:14px 0 8px;">Supporting checks <span class="hint" style="font-weight:400;text-transform:none;letter-spacing:0;">(for reference, not part of the score)</span></div>
       ${scoreBar('Channel mix vs. this campaign\'s own recommendation', score.channelRelevancePct, 'no Recommended Channels captured for this campaign')}
-      ${scoreBar('Creative & messaging quality (Campaign Fit / Brand Fit)', score.creativeMessagingRelevancePct)}
       ${scoreBar('Budget logic coherence', score.budgetRelevancePct, 'set a Funding source and Budget on this campaign')}
       ${scoreBar('Landing page relevance (content & imagery)', score.landingPageRelevancePct, 'run "Audit URL" or the full "Landing page audit" above')}
       ${scoreBar('Landing page performance (CTA path)', score.landingPagePerformancePct, 'run the full "Landing page audit" above')}
-      ${scoreBar('Account Brand Groundwork (Voice / Style Assets / Positioning)', score.brandFoundationPct)}
       <p class="hint" style="margin-top:10px;">${synthesis}</p>
     </div>
   `;
