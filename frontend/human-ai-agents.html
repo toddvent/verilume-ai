@@ -323,7 +323,117 @@
   .utility-nav-inner a:hover{border-color:#fff;background:rgba(255,255,255,0.08);}
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="vl-site.css">
+<style id="vl-site-inline">
+/* Verilume public site layer — "from the dark to the brightest light".
+   Loaded LAST on every public page (index, platform, journey, solution pages…).
+   It re-points the old design tokens (--ink/--paper/--media/--cx/--advocacy) at the
+   new light-system palette, swaps the type, and gives nav + footer the night bookends.
+   Light is the only motion: nothing here spins, bounces or glows without a reason. */
+
+:root{
+  --night:#07090D; --night-2:#0E141B; --dusk:#18212C; --dusk-2:#223041;
+  --day:#FBFAF6; --day-2:#F2F0E9; --day-3:#E7E3D8;
+  --lamp:#F4B63F;         /* Lume: warm light */
+  --lamp-deep:#A8680A;    /* lamp for text on light grounds */
+  --truth:#4DD6C0;        /* Veri: cool signal */
+  --truth-deep:#0B6F62;   /* truth for text on light grounds */
+  --ember:#C8512D;
+  --vl-display:'Bricolage Grotesque','Avenir Next','Segoe UI',system-ui,sans-serif;
+  --vl-body:'Instrument Sans','Avenir Next','Segoe UI',system-ui,sans-serif;
+  --vl-mono:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+
+  /* old tokens, re-pointed so every existing page re-inks without edits */
+  --ink:#10141B; --paper:#FBFAF6; --paper-dim:#F2F0E9; --white:#FFFFFF;
+  --media:#B8760B; --cx:#0B6F62; --advocacy:#B4472B;
+  --line:#D9D4C6; --line-hairline:#E7E3D8; --line-strong:#BDB6A3; --muted:#625E52;
+  --media-tint:#FBEBC8; --cx-tint:#D3F1EB; --advocacy-tint:#F5DDD2;
+  --radius-sm:8px; --radius-md:12px; --radius-lg:18px;
+  --shadow-sm:0 1px 2px rgba(16,20,27,.06); --shadow-md:0 6px 20px rgba(16,20,27,.08); --shadow-lg:0 22px 56px rgba(16,20,27,.16);
+}
+
+/* ---- type ---- */
+html body, html body *:not(code):not(pre):not(kbd):not(samp):not(.vl-mono){font-family:var(--vl-body)!important;}
+html body h1, html body h2, html body h3, html body .logo, html body .vl-display,
+html body h1 *, html body h2 *, html body .stat-num, html body .big-num{font-family:var(--vl-display)!important;font-optical-sizing:auto;}
+html body h1, html body h2{letter-spacing:-0.02em;}
+html body .vl-mono, html body .eyebrow, html body .hero-eyebrow, html body .band-label, html body .teaser-label{font-family:var(--vl-mono)!important;letter-spacing:.08em;}
+body{background:var(--day);color:var(--ink);}
+::selection{background:var(--lamp);color:#10141B;}
+
+/* ---- nav: night bookend ---- */
+.utility-nav{background:#000!important;}
+.utility-nav-inner a{border-color:rgba(255,255,255,.28)!important;font-family:var(--vl-mono)!important;font-size:11px!important;letter-spacing:.06em;text-transform:uppercase;}
+header, header#siteHeader{background:rgba(7,9,13,.88)!important;backdrop-filter:blur(14px) saturate(140%);-webkit-backdrop-filter:blur(14px) saturate(140%);border-bottom:1px solid rgba(255,255,255,.08)!important;}
+header .logo, .logo{text-decoration:none!important;color:#fff!important;font-weight:600!important;font-size:24px!important;letter-spacing:-.01em!important;}
+header .logo b, .logo b{color:var(--lamp)!important;font-weight:600!important;}
+.navlinks a{color:rgba(255,255,255,.66)!important;}
+.navlinks a:hover{color:#fff!important;}
+.navlinks .nav-cta, .nav-cta{background:var(--lamp)!important;color:#10141B!important;font-family:var(--vl-mono)!important;letter-spacing:.06em!important;border-radius:999px!important;}
+.nav-cta:hover{box-shadow:0 0 0 6px rgba(244,182,63,.22)!important;transform:none!important;}
+.nav-toggle{color:#fff!important;}
+.nav-login{color:#fff!important;border-color:rgba(255,255,255,.3)!important;}
+@media (max-width:1180px){
+  .navlinks{background:var(--night)!important;border-bottom:1px solid rgba(255,255,255,.1)!important;}
+}
+
+/* ---- buttons ---- */
+.btn-primary, button.btn-primary{background:var(--lamp)!important;color:#10141B!important;border:0!important;border-radius:999px!important;font-weight:600!important;box-shadow:none!important;}
+.btn-primary:hover{box-shadow:0 0 0 6px rgba(244,182,63,.25)!important;transform:none!important;}
+.btn-ghost{border-color:var(--ink)!important;color:var(--ink)!important;border-radius:999px!important;background:transparent!important;}
+.btn-ghost:hover{background:var(--ink)!important;color:var(--day)!important;}
+
+/* ---- hero blocks on inner pages: they open dark, like the story does ---- */
+.hero{background:radial-gradient(120% 90% at 78% -10%, #1b2a3a 0%, #0b1118 46%, #07090D 100%)!important;color:#EDEAE0!important;border-bottom:0!important;}
+.hero h1, .hero .accent{color:#fff!important;}
+.hero .accent{color:var(--lamp)!important;}
+.hero .h1-sub{color:rgba(255,255,255,.72)!important;}
+.hero .lede, .hero p{color:rgba(237,234,224,.82)!important;}
+.hero .hero-eyebrow, .hero .eyebrow{color:var(--truth)!important;}
+.hero .hero-eyebrow .dot{background:var(--truth)!important;}
+.hero .btn-ghost{border-color:rgba(255,255,255,.5)!important;color:#fff!important;}
+.hero .btn-ghost:hover{background:#fff!important;color:#10141B!important;}
+
+/* ---- the lightness scale used by cards, bands and pills on inner pages ---- */
+.band{background:var(--day);}
+.band-label h2{color:var(--ink);}
+
+/* ---- footer: night again ---- */
+footer{background:var(--night)!important;border-top:1px solid rgba(255,255,255,.08)!important;color:rgba(237,234,224,.7)!important;}
+footer .footer-faq{border-bottom-color:rgba(255,255,255,.12)!important;}
+footer .footer-faq h2, footer h2{color:#fff!important;}
+footer .faq-item{border-top-color:rgba(255,255,255,.12)!important;}
+footer .faq-item h3{color:#fff!important;}
+footer .faq-item p{color:rgba(237,234,224,.74)!important;}
+footer .faq-item a{color:var(--truth)!important;}
+footer .footer-nav a{color:rgba(237,234,224,.62)!important;}
+footer .footer-nav a:hover{color:var(--lamp)!important;}
+footer .footer-inner{color:rgba(237,234,224,.55)!important;}
+
+/* ---- motion rules ---- */
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important;}
+}
+
+/* heading weight: the old pages used 300 display; the new system sets 600 */
+html body h1, html body h2{font-weight:600;}
+html body h3{font-weight:600;}
+
+/* footer bar inside a page wrapper (inner pages): bleed the night ground edge to edge,
+   keep the content on the page container's edges, never clip text */
+.wrap > footer, .page > footer, main + footer, footer:not(:has(.footer-inner)){
+  position:relative; box-shadow:0 0 0 100vmax var(--night); clip-path:inset(0 -100vmax);
+  margin-top:80px!important; padding:28px 0 32px!important; line-height:1.6!important;
+  font-size:12px!important; align-items:center; overflow:visible!important; min-height:0!important; height:auto!important;
+}
+footer:not(:has(.footer-inner)) .footer-nav a{color:rgba(237,234,224,.62)!important;}
+footer:not(:has(.footer-inner)) > span{color:rgba(237,234,224,.55)!important;}
+.wrap:has(> footer){padding-bottom:0!important;margin-bottom:0!important;}
+
+/* ghost buttons: a full pill outline (they were rendering a lone bottom arc) */
+.btn-ghost{border:1.5px solid currentColor!important;padding:15px 26px!important;border-radius:999px!important;display:inline-block;}
+.hero .btn-ghost{border-color:rgba(255,255,255,.5)!important;}
+
+</style>
 </head>
 <body>
 <div class="sticky-nav-wrap">
@@ -433,8 +543,6 @@
     <a class="logo" href="index.html">Veri<b>lume</b></a>
     <div class="nav-group">
       <div class="navlinks" id="navLinks">
-        <a href="index.html#human">Who We Are</a>
-        <a href="index.html#breaks">Problems We Solve</a>
         <a href="index.html#levels">Illumination Packages</a>
         <a href="index.html#loop">Managing the Loop</a>
         <a href="index.html#train-the-brain">Train the Brain</a>
