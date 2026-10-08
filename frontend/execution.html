@@ -947,6 +947,32 @@ footer{padding:64px 0 36px;}
 .th p{margin:2px 0 0}
 .thc{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
 @media(max-width:900px){.bi .n{width:auto}.silos{grid-template-columns:1fr 1fr}.silos:not(.joined) .silo{margin:0}.tour{grid-template-columns:1fr}.crow{grid-template-columns:1fr 1fr 1fr}.crow.hd{display:none}.crow b{grid-column:1/-1}.bi{grid-template-columns:1fr}}
+
+/* The Brief: light-theme lift, same four rows. Dawn wash behind the list, a status chip per row, a sunrise progress bar. */
+#brief{position:relative;overflow:hidden;background:linear-gradient(180deg,var(--day) 0%,#FFF6E2 100%);}
+#brief::before{content:"";position:absolute;right:-8%;top:-30%;width:62%;aspect-ratio:1;background:radial-gradient(closest-side,rgba(244,182,63,.28),rgba(244,182,63,0));pointer-events:none}
+#brief .wrap{position:relative}
+#brief .brief{border:0;background:none;overflow:visible;border-radius:0;gap:12px}
+#brief .bi{grid-template-columns:150px 1fr auto;border:1px solid var(--line);border-radius:14px;background:#fff;box-shadow:var(--shadow-sm);padding:16px 18px;transition:box-shadow .25s,transform .25s,border-color .25s,background .25s}
+#brief .bi:hover{box-shadow:var(--shadow-md);transform:translateY(-1px)}
+#brief .bi .n{width:auto;justify-self:start;display:inline-flex;align-items:center;gap:8px;padding:5px 11px;border-radius:999px;background:var(--cx-tint);color:var(--truth-deep);font-size:10.5px;white-space:nowrap}
+#brief .bi .n::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+#brief .bi[data-k="Stuck"] .n{background:var(--media-tint);color:var(--lamp-deep)}
+#brief .bi[data-k="Needs a person"] .n{background:var(--advocacy-tint);color:var(--advocacy)}
+#brief .bi[data-k="Learned"] .n{background:var(--day-3);color:#3d4552}
+#brief .bi p b{font-weight:600}
+#brief .bi button{border-color:var(--line-strong);background:#fff;transition:background .2s,color .2s,border-color .2s}
+#brief .bi button:hover{border-color:var(--ink);background:var(--day-2)}
+#brief .bi.done{opacity:1;background:linear-gradient(90deg,#F2FAF7,#fff);border-color:#BFE3DB}
+#brief .bi.done button{background:var(--cx-tint);border-color:#9fd5ca;color:var(--truth-deep)}
+#brief .bi.done button::before{content:"\2713\00a0"}
+#brief .bmeta{margin-top:4px}
+#brief .bmeta .bar{height:10px;background:#E9E2CF}
+#brief .bmeta .bar i{background:linear-gradient(90deg,#223041 0%,#0B6F62 35%,#F4B63F 100%);transition:width .6s cubic-bezier(.2,.8,.2,1),box-shadow .6s}
+#brief .bmeta.complete .bar i{box-shadow:0 0 14px rgba(244,182,63,.7)}
+#brief .bmeta.complete #bTime{color:var(--lamp-deep);font-weight:600}
+@media (prefers-reduced-motion:reduce){#brief .bi,#brief .bmeta .bar i{transition:none}#brief .bi:hover{transform:none}}
+@media(max-width:900px){#brief .bi{grid-template-columns:1fr;gap:10px}#brief .bi button{justify-self:start}}
 @media(max-width:520px){.silos{grid-template-columns:1fr}}
 </style>
 
@@ -1250,8 +1276,8 @@ footer{padding:64px 0 36px;}
   nt.addEventListener('click',function(){setOpen(!nl.classList.contains('open'))});
   /* brief */
   var BR=[['Moved','Search conversion reached 3.1%','Headroom to add budget. A person decides how much.'],['Stuck','Holiday creative is waiting on legal','Approval needed from your PR lead by Thursday.'],['Needs a person','Checkout drop-off rose after the site update','Customer experience and media should look together.'],['Learned','Two headlines were corrected last week','Both rules now apply to every draft.']],bd=0;
-  $('#briefList').innerHTML=BR.map(function(b,i){return '<div class="bi" data-i="'+i+'"><span class="n">'+b[0]+'</span><div><p><b>'+esc(b[1])+'</b></p><small>'+esc(b[2])+'</small></div><button>Reviewed</button></div>'}).join('');
-  $('#briefList').onclick=function(e){var b=e.target.closest('button');if(!b)return;var r=b.closest('.bi');if(r.classList.contains('done'))return;r.classList.add('done');b.textContent='Done';bd++;$('#bCount').textContent=bd+' of 4 reviewed';$('#bBar').style.width=bd*25+'%';$('#bTime').textContent=bd===4?'Standup done. Under five minutes.':'About '+(5-bd)+' minutes left'};
+  $('#briefList').innerHTML=BR.map(function(b,i){return '<div class="bi" data-i="'+i+'" data-k="'+esc(b[0])+'"><span class="n">'+b[0]+'</span><div><p><b>'+esc(b[1])+'</b></p><small>'+esc(b[2])+'</small></div><button>Reviewed</button></div>'}).join('');
+  $('#briefList').onclick=function(e){var b=e.target.closest('button');if(!b)return;var r=b.closest('.bi');if(r.classList.contains('done'))return;r.classList.add('done');b.textContent='Done';bd++;$('#bCount').textContent=bd+' of 4 reviewed';$('#bBar').style.width=bd*25+'%';$('#bTime').textContent=bd===4?'Standup done. Under five minutes.':'About '+(5-bd)+' minutes left';var bm=document.querySelector('#brief .bmeta');if(bm)bm.classList.toggle('complete',bd===4)};
   /* tour */
   var TS=[['Monday: the plan','Budgets, impressions and targets sit in one place. The AI recommends a move; you approve it.','$10K','moved from paid social into search, recommended and waiting for you'],
           ['Tuesday: the calendar','Every campaign is read across five functions, and the one that needs you rises to the top.','3 flags','on the holiday campaign: creative, legal and budget'],
