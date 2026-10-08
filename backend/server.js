@@ -22381,6 +22381,136 @@ const ASSESSMENT_RUBRIC_STAGES = [
 ];
 const ASSESSMENT_STAGE_EFF_LABEL = { 1: 'Needs Prioritization', 2: 'Early Progress', 3: 'Accurate Experiences', 4: 'Proactive & Personalized', 5: 'Shareable Moments' };
 
+// ---------- Pitch research for the free assessment ----------
+// 2026-10-08, per direct instruction: a sales pitch rests on more than the
+// homepage. This gathers what is public and recent about the company: its own
+// newsroom/press pages, wire releases (PR Newswire, Business Wire, GlobeNewswire),
+// news coverage, and, when a Perplexity key is set, a cited web search for
+// competitor moves, promotions and cost cutting. Every signal handed back
+// points at a real item we fetched or a cited page; the model only sorts and
+// summarizes evidence, it never supplies facts.
+const PITCH_NEWSROOM_PATHS = ['/newsroom', '/press', '/news', '/media', '/press-releases', '/about/news', '/about/press', '/company/news', '/company/press', '/media-center', '/investors/news'];
+const PITCH_SIGNAL_TYPES = { growth: 'Growth and launches', competitor: 'Competitor moves', promo: 'Promotions', cost: 'Cost and efficiency' };
+function pitchOrigin(url){ try { return new URL(url).origin; } catch (e){ return null; } }
+function pitchHostWords(url){ try { return new URL(url).hostname.replace(/^www\./, '').split('.')[0]; } catch (e){ return ''; } }
+
+async function pitchNewsroomItems(siteUrl){
+  const origin = pitchOrigin(siteUrl); if (!origin) return [];
+  const results = await Promise.all(PITCH_NEWSROOM_PATHS.map(async p => {
+    try {
+      const ctx = await fetchAndExtractPage(origin + p);
+      const heads = (ctx.headings || []).filter(h => h && h.length > 24 && h.length < 220);
+      if (heads.length < 2) return null;
+      return { path: p, url: origin + p, heads: heads.slice(0, 8) };
+    } catch (e){ return null; }
+  }));
+  const seen = new Set(); const out = [];
+  for (const r of results){
+    if (!r) continue;
+    for (const h of r.heads){
+      const k = h.toLowerCase(); if (seen.has(k)) continue; seen.add(k);
+      out.push({ origin: 'newsroom', title: h, url: r.url, sourceName: repHost(r.url), date: null });
+    }
+    if (out.length >= 10) break;
+  }
+  return out.slice(0, 10);
+}
+
+async function pitchGdeltFetch(query, timespan){
+  const url = 'https://api.gdeltproject.org/api/v2/doc/doc?mode=artlist&format=json&timespan=' + timespan + '&sort=datedesc&maxrecords=15&query=' + encodeURIComponent(query);
+  const resp = await fetchWithTimeout(url, { headers: { 'Accept': 'application/json' } }, 15000);
+  if (!resp.ok) throw new Error('GDELT HTTP ' + resp.status);
+  const raw = await resp.text(); if (!raw.trim()) return [];
+  let j; try { j = JSON.parse(raw); } catch (e){ return []; }
+  return Array.isArray(j.articles) ? j.articles : [];
+}
+function pitchGdeltItem(a, origin){
+  const url = repSafeUrl(a && a.url); if (!url) return null;
+  const sd = String(a.seendate || '');
+  return { origin, title: String(a.title || '').trim().slice(0, 220), url, sourceName: a.domain || repHost(url), date: /^\d{8}T/.test(sd) ? `${sd.slice(0, 4)}-${sd.slice(4, 6)}-${sd.slice(6, 8)}` : null };
+}
+async function pitchWireAndNews(company){
+  const name = String(company || '').replace(/"/g, '').trim(); if (name.length < 2) return [];
+  const out = [];
+  try {
+    const wires = await pitchGdeltFetch('"' + name + '" (domain:prnewswire.com OR domain:businesswire.com OR domain:globenewswire.com) sourcelang:english', '6months');
+    wires.forEach(a => { const it = pitchGdeltItem(a, 'wire'); if (it) out.push(it); });
+  } catch (e){ /* wire search is best-effort */ }
+  await repSleep(5200);
+  try {
+    const news = await pitchGdeltFetch('"' + name + '" sourcelang:english', '3months');
+    news.forEach(a => { const it = pitchGdeltItem(a, 'news'); if (it) out.push(it); });
+  } catch (e){ /* news search is best-effort */ }
+  return out;
+}
+
+async function pitchPerplexity(company, industry, siteUrl){
+  if (!process.env.PERPLEXITY_API_KEY) return [];
+  const host = repHost(siteUrl) || '';
+  const prompt = `Research for a sales conversation with ${company}${host ? ' (' + host + ')' : ''}${industry ? ', in ' + industry : ''}. Find recent public items (last 6 months) in four groups: (growth) new product, service, location or ship launches and expansion; (competitor) a named competitor gaining or losing market share, or a major competitor move; (promo) promotions, pricing offers or campaigns by ${company} or its competitors; (cost) cost cutting, layoffs, restructuring or efficiency programs at ${company} or its industry peers. Prefer PR Newswire, Business Wire and GlobeNewswire releases, the company's own newsroom, and reputable news.\nRules: only include items you can link to a real page; never invent an item, quote or URL; if nothing is found, return an empty list.\nReturn ONLY JSON: {"items":[{"type":"growth|competitor|promo|cost","title":"...","url":"https://...","date":"YYYY-MM-DD or empty"}]}`;
+  try {
+    const resp = await fetchWithTimeout('https://api.perplexity.ai/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}` },
+      body: JSON.stringify({ model: process.env.PERPLEXITY_MODEL || 'sonar-pro', messages: [{ role: 'user', content: prompt }] })
+    }, 40000);
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    const text = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+    const parsed = parseJsonBlock(text);
+    const allowed = new Set();
+    (Array.isArray(data.citations) ? data.citations : []).forEach(c => { const u = repSafeUrl(typeof c === 'string' ? c : (c && c.url)); if (u) allowed.add(repUrlKey(u)); });
+    (Array.isArray(data.search_results) ? data.search_results : []).forEach(r => { const u = repSafeUrl(r && r.url); if (u) allowed.add(repUrlKey(u)); });
+    const out = [];
+    for (const m of ((parsed && Array.isArray(parsed.items)) ? parsed.items : [])){
+      const url = repSafeUrl(m && m.url);
+      if (!url || !allowed.has(repUrlKey(url))) continue;
+      out.push({ origin: 'search', hintType: PITCH_SIGNAL_TYPES[m.type] ? m.type : null, title: String(m.title || '').trim().slice(0, 220), url, sourceName: repHost(url), date: /^\d{4}-\d{2}-\d{2}$/.test(String(m.date || '')) ? m.date : null });
+    }
+    return out;
+  } catch (e){ return []; }
+}
+
+async function gatherPitchResearch({ company, url, industryLabel }){
+  const started = Date.now();
+  const [room, wireNews, search] = await Promise.all([
+    pitchNewsroomItems(url).catch(() => []),
+    pitchWireAndNews(company).catch(() => []),
+    pitchPerplexity(company, industryLabel, url).catch(() => [])
+  ]);
+  const seen = new Set(); const evidence = [];
+  [...search, ...wireNews, ...room].forEach(it => {
+    if (!it || !it.title) return;
+    const k = repUrlKey(it.url) + '|' + it.title.toLowerCase().slice(0, 60);
+    if (seen.has(k)) return; seen.add(k);
+    evidence.push(it);
+  });
+  const items = evidence.slice(0, 30).map((it, i) => ({ id: 'e' + i, ...it }));
+  const counts = { newsroom: items.filter(i => i.origin === 'newsroom').length, wire: items.filter(i => i.origin === 'wire').length, news: items.filter(i => i.origin === 'news').length, search: items.filter(i => i.origin === 'search').length };
+  if (!items.length || !process.env.ANTHROPIC_API_KEY){
+    return { signals: [], counts, evidenceCount: items.length, note: items.length ? 'Signals need ANTHROPIC_API_KEY to be sorted.' : 'No recent public items found for this company.', ms: Date.now() - started };
+  }
+  try {
+    const list = items.map(i => `${i.id} | ${i.origin} | ${i.date || 'n.d.'} | ${i.sourceName || ''} | ${i.title}${i.hintType ? ' | hint:' + i.hintType : ''}`).join('\n');
+    const parsed = await callClaudeForJSON({
+      model: 'claude-sonnet-4-5', maxTokens: 900, timeoutMs: 40000,
+      content: `Below are real public items about ${company}${industryLabel ? ' (' + industryLabel + ')' : ''}, one per line as: id | where found | date | source | headline. Choose up to 5 that would help a seller open a conversation, each in one of four types: growth (new product, service, location or ship launches, expansion), competitor (a competitor taking or losing market share or making a notable move), promo (promotions, offers, campaigns), cost (cost cutting, layoffs, restructuring, efficiency). Judge only from the headline; never add facts that are not in it. Skip items that are not about ${company} or its market, and skip anything you cannot place in a type. Each "takeaway" is one plain sentence about what the headline tells a seller, no hype.\n\n${list}\n\nSubmit via the submit_signals tool.`,
+      toolName: 'submit_signals', toolDescription: 'Submit the selected pitch signals.',
+      schema: { type: 'object', properties: { signals: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, type: { type: 'string', enum: ['growth', 'competitor', 'promo', 'cost'] }, takeaway: { type: 'string' } }, required: ['id', 'type', 'takeaway'] } } }, required: ['signals'] }
+    });
+    const byId = new Map(items.map(i => [i.id, i]));
+    const signals = [];
+    for (const s of ((parsed && parsed.signals) || [])){
+      const ev = byId.get(s && s.id); if (!ev || !PITCH_SIGNAL_TYPES[s.type]) continue;
+      signals.push({ type: s.type, typeLabel: PITCH_SIGNAL_TYPES[s.type], headline: ev.title, takeaway: String(s.takeaway || '').slice(0, 260), url: ev.url, source: ev.sourceName, date: ev.date, via: ev.origin });
+      if (signals.length >= 5) break;
+    }
+    return { signals, counts, evidenceCount: items.length, note: signals.length ? null : 'Public items were found but none were useful for a pitch.', ms: Date.now() - started };
+  } catch (e){
+    return { signals: [], counts, evidenceCount: items.length, note: 'Could not sort the public items right now.', ms: Date.now() - started };
+  }
+}
+
 function buildAssessmentReadoutPrompt(input){
   const stageLines = (input.stages || []).map(s =>
     `- ${s.stage}: self-rated "${s.ratingLabel || 'not yet rated'}"${typeof s.rating === 'number' ? ` (${s.rating}/5)` : ''}${s.sub ? ` — ${s.sub}` : ''}`
@@ -22394,6 +22524,13 @@ Headings: ${(site.headings || []).slice(0, 10).join(' | ') || '(none found)'}
 Excerpt: ${(site.excerpt || '').slice(0, 600) || '(none found)'}`
     : `No real website content was available for this read (the site could not be reached, or no URL was supplied) — do not claim to have read their website; work only from the profile answers below.`;
 
+  const sig = Array.isArray(input.pitchSignals) ? input.pitchSignals.filter(x => x && x.headline).slice(0, 5) : [];
+  const pitchBlock = sig.length
+    ? `RECENT PUBLIC SIGNALS (real items found in the company's newsroom, wire releases such as PR Newswire, and news; each has a source):
+${sig.map(x => `- [${x.typeLabel}] ${x.headline}${x.source ? ' (' + x.source + (x.date ? ', ' + x.date : '') + ')' : ''}${x.takeaway ? ' — ' + x.takeaway : ''}`).join('\n')}
+Weave the one or two most relevant into the synthesis the way a prepared seller would (a launch, a competitor gaining share, a promotion, cost pressure), attributing them naturally ("a recent release shows..."). Use only what is stated above; never add details, numbers or dates that are not listed.`
+    : `No recent public signals were found beyond the website; do not mention news, releases or launches.`;
+
   return `You are a senior consultant from a top-tier marketing and customer-experience advisory firm, presenting a first-look assessment readout to a company's leadership. This readout may be read aloud in a room that includes the client's own marketing team — every sentence must land as constructive and forward-looking, never as a criticism of decisions this team has already made or capability they lack. Frame every finding as an opportunity, never a deficiency.
 
 COMPANY PROFILE:
@@ -22405,6 +22542,8 @@ Target wealth tier: ${(input.wealth || []).join(', ') || '(not provided)'}
 Business model: ${input.buyerType || '(not provided)'}
 
 ${siteBlock}
+
+${pitchBlock}
 
 MARKETING LOOP SELF-RATINGS (Behind / On par / Ahead, per stage, as this company rated itself):
 ${stageLines || '(no stage ratings yet)'}
@@ -26432,7 +26571,7 @@ async function handleRequest(req, res) {
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-08-account-packages',
+        buildStamp: '2026-10-08-pitch-research',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
@@ -28504,6 +28643,21 @@ async function handleRequest(req, res) {
       }
     }
 
+    // POST /api/assessment/pitch-research — 2026-10-08. Public, pre-account,
+    // rate-limited by IP like website-scan. Never an error status: an empty
+    // result just means the readout runs on the website alone.
+    if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'assessment' && parts[2] === 'pitch-research'){
+      if (assessmentRateLimitExceeded(req, 'pitch-research', 4)){
+        return sendJson(res, 200, { signals: [], counts: {}, evidenceCount: 0, note: 'Too many research requests from this connection in the last hour.' });
+      }
+      const body = await readBody(req);
+      const company = typeof body.company === 'string' ? body.company.trim().slice(0, 120) : '';
+      const url = typeof body.url === 'string' ? body.url.trim() : '';
+      if (!company || !/^https?:\/\//i.test(url)) return sendJson(res, 200, { signals: [], counts: {}, evidenceCount: 0, note: 'A company name and website are needed.' });
+      const result = await gatherPitchResearch({ company, url, industryLabel: typeof body.industryLabel === 'string' ? body.industryLabel.slice(0, 120) : '' });
+      return sendJson(res, 200, result);
+    }
+
     // POST /api/assessment/generate-readout — 2026-08-25, the free
     // assessment's AI-generated readout. See buildAssessmentReadoutPrompt()
     // above for the full framing rationale (consultant voice, never
@@ -28530,6 +28684,7 @@ async function handleRequest(req, res) {
         buyerType: typeof body.buyerType === 'string' ? body.buyerType.slice(0, 50) : '',
         websiteContext: body.websiteContext && typeof body.websiteContext === 'object' ? body.websiteContext : null,
         stages: Array.isArray(body.stages) ? body.stages.slice(0, 10) : [],
+        pitchSignals: Array.isArray(body.pitchSignals) ? body.pitchSignals.slice(0, 5).map(x => ({ type: String(x && x.type || '').slice(0, 20), typeLabel: String(x && x.typeLabel || '').slice(0, 40), headline: String(x && x.headline || '').slice(0, 220), source: String(x && x.source || '').slice(0, 80), date: String(x && x.date || '').slice(0, 10), takeaway: String(x && x.takeaway || '').slice(0, 260) })) : [],
         mediaPct: typeof body.mediaPct === 'number' ? body.mediaPct : null,
         cxPct: typeof body.cxPct === 'number' ? body.cxPct : null
       });
