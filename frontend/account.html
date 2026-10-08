@@ -485,6 +485,11 @@
       <input type="checkbox" id="commMarketing" onchange="saveCommPrefs()">
       <span class="body"><h4>Product &amp; marketing updates</h4><p>New Verilume features, research, and content — not required to use the product.</p></span>
     </label>
+    <label class="toggle-row" id="voiceConsentRow">
+      <input type="checkbox" id="commVoice" onchange="saveVoiceConsent()">
+      <span class="body"><h4>Voice (microphone) with ElevenLabs</h4><p>Lets you talk to Verilume. Your audio is processed by ElevenLabs and the transcript is kept with this account's conversation history. This is your own permission; each person agrees for themselves. Turn it off to stop voice for you.</p></span>
+    </label>
+    <div class="status-note ok" id="voiceConsentStatus" style="margin-top:6px;"></div>
     <div class="status-note ok" id="commStatus" style="margin-top:14px;"></div>
   </section>
 
@@ -839,6 +844,7 @@ async function init(){
   await loadAccountRecord();
   await loadTeamData();
   renderTeam();
+  loadVoiceConsent();
   renderMyProfile();
   applyInviteIsAdminGate();
   await loadInvoices();
@@ -1113,6 +1119,33 @@ async function changePassword(){
 }
 
 /* ---------- Communication permissions ---------- */
+async function loadVoiceConsent(){
+  const box = document.getElementById('commVoice'), st = document.getElementById('voiceConsentStatus'), row = document.getElementById('voiceConsentRow');
+  if (!box || !state.companyId) return;
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice/consent`);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error('no consent record');
+    if (d.scope !== 'member'){ row.style.display = 'none'; return; } // shared access-code login has no personal profile
+    box.checked = !!d.consented;
+    st.textContent = d.consented && d.at ? 'Agreed on ' + new Date(d.at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) + '.' : '';
+  } catch (e){ row.style.display = 'none'; }
+}
+async function saveVoiceConsent(){
+  const box = document.getElementById('commVoice'), st = document.getElementById('voiceConsentStatus');
+  if (box.checked){
+    if (!window.confirm('Talking uses your microphone. Your audio is processed by ElevenLabs so Verilume can understand and answer you, and the transcript is kept with this account\'s conversation history. Turn voice on for you?')){ box.checked = false; return; }
+  }
+  box.disabled = true; st.textContent = 'Saving…';
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice/consent`, { method: box.checked ? 'POST' : 'DELETE' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error('save failed');
+    box.checked = !!d.consented;
+    st.textContent = d.consented ? '✓ Voice is on for you.' : '✓ Voice is off for you.';
+  } catch (e){ box.checked = !box.checked; st.textContent = 'Could not save. Try again.'; }
+  box.disabled = false;
+}
 function saveCommPrefs(){
   state.commPrefs.email = document.getElementById('commEmail').checked;
   state.commPrefs.sms = document.getElementById('commSms').checked;
