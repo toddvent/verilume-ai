@@ -2313,8 +2313,8 @@
   .cmp-campaign-header[data-tone="dark"] .cch-status-pill.pending{background:rgba(244,182,63,0.2);color:#FFD27A;}
   .cmp-campaign-header[data-tone="dark"] .cch-progress-seg{background:rgba(255,255,255,0.16);}
   .cmp-campaign-header[data-tone="dark"] .cmp-breadcrumb-step{color:rgba(237,234,224,0.62);}
-  .cmp-campaign-header[data-tone="dark"] .cmp-breadcrumb-step.status-in-progress{color:#FFD27A;}
-  .cmp-campaign-header[data-tone="dark"] .cmp-breadcrumb-step.status-complete{color:#4FD1B8;}
+  .cmp-campaign-header[data-tone="dark"] .cmp-breadcrumb-step.status-in-progress{color:rgba(237,234,224,0.62);}
+  .cmp-campaign-header[data-tone="dark"] .cmp-breadcrumb-step.status-complete{color:#FFE6A8;text-shadow:0 0 10px rgba(255,210,122,.55);}
   .cmp-campaign-header[data-tone="dark"] .cmp-breadcrumb-step.disabled{color:rgba(255,255,255,0.28);}
   .cmp-campaign-header[data-tone="dark"] .cmp-breadcrumb-step:not(.disabled):not(.active):hover{background:rgba(255,255,255,0.1);}
   .cmp-campaign-header[data-tone="dark"] .cmp-breadcrumb-step.active{background:#F4B63F;color:#1B1405;}
@@ -2525,7 +2525,7 @@
   .cmp-breadcrumb-step.status-in-progress{color:var(--media);}
   .cmp-breadcrumb-step.status-complete{color:var(--cx);}
   .cmp-breadcrumb-step.active{background:#1E2761;color:#FFFFFF;}
-  .cmp-campaign-header .cmp-breadcrumb-step.status-in-progress{color:#9A5F00;}
+  .cmp-campaign-header .cmp-breadcrumb-step.status-in-progress{color:var(--muted);}
   .cmp-campaign-header .cmp-breadcrumb-step.status-complete{color:#0B6F62;}
   .cmp-campaign-header .cmp-breadcrumb-step.active{background:#F4B63F;color:#1B1405;box-shadow:0 4px 14px -4px rgba(244,182,63,0.8);}
   .cmp-breadcrumb-step.disabled{color:var(--line);cursor:default;}
@@ -13144,7 +13144,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-08-illumination-score-c';
+const CXMEDIA_BUILD_STAMP = '2026-10-08-cpm-teach-brain';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -45944,6 +45944,7 @@ let cmpRecoState = { campaignId: null, summary: null, loading: false, error: nul
 // — see POST /api/campaigns/:id/ai-brain-reply's own comment for how the
 // suggestion field was folded in there instead of being dropped.
 async function cmpOpenRecommendationPitch(){
+  try { await loadLearnedCpms(); } catch (e){}
   const campaign = cmpRailLoadedCampaign();
   const overlay = document.getElementById('cmpPitchOverlay');
   const panel = document.getElementById('cmpPitchPanel');
@@ -48852,8 +48853,63 @@ async function cmpRecoApproveOverall(){
     approved = true;
   } catch (e){ console.warn('cmpRecoApproveOverall failed:', e); }
   cmpRecoState.campaignId = null;
-  if (approved){ cmpCloseRecommendationPitch(); cmpOpenCxVisionWorkspace(); }
+  if (approved){
+    // Offer to teach the Brain the approved CPMs before moving on; skipping goes straight to Media + CX Vision.
+    const offered = await cmpRecoOfferTeachBrain(campaign);
+    if (offered) return;
+    cmpCloseRecommendationPitch(); cmpOpenCxVisionWorkspace();
+  }
   else cmpOpenRecommendationPitch();
+}
+function cmpRecoTeachDone(){
+  const m = document.getElementById('cmpTeachBrainModal'); if (m) m.remove();
+  cmpCloseRecommendationPitch(); cmpOpenCxVisionWorkspace();
+}
+async function cmpRecoOfferTeachBrain(campaign){
+  let entries = [];
+  try { const r = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning`); if (r.ok){ const d = await r.json(); entries = d.entries || []; } } catch (e){ return false; }
+  const agg = {};
+  entries.forEach(e => {
+    const b = Number(e.budget) || 0, im = Number(e.impressions) || 0;
+    if (b <= 0 || im <= 0 || (typeof NON_IMPRESSION_CHANNELS !== 'undefined' && NON_IMPRESSION_CHANNELS.has && NON_IMPRESSION_CHANNELS.has(e.channel))) return;
+    (agg[e.channel] = agg[e.channel] || { b: 0, im: 0 }); agg[e.channel].b += b; agg[e.channel].im += im;
+  });
+  const chans = Object.keys(agg);
+  if (!chans.length) return false;
+  await loadLearnedCpms();
+  const rows = chans.map(ch => {
+    const cpm = Math.round(agg[ch].b / agg[ch].im * 1000 * 100) / 100;
+    const known = learnedCpms[ch] ? `$${learnedCpms[ch].cpm} taught so far` : 'nothing taught yet';
+    return `<label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);"><input type="checkbox" class="cmpTeachChan" value="${escapeHtml(ch)}" checked><span style="flex:1;font-weight:600;">${escapeHtml(ch)}</span><span>$${cpm.toLocaleString()} CPM</span><span class="hint" style="margin:0;min-width:130px;text-align:right;">${known}</span></label>`;
+  }).join('');
+  const modal = document.createElement('div');
+  modal.id = 'cmpTeachBrainModal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(10,12,20,.55);display:flex;align-items:center;justify-content:center;padding:16px;';
+  modal.innerHTML = `<div style="background:var(--white,#fff);border-radius:16px;max-width:560px;width:100%;padding:24px 26px;max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.35);">
+    <h3 style="margin:0 0 6px;">Budget approved. Teach the Brain?</h3>
+    <p class="lede" style="margin:0 0 12px;">These are the CPMs in the plan you just approved. The Brain will use them as the starting CPM for this account's next plans, instead of its general defaults. Untick any you don't want it to learn.</p>
+    <div id="cmpTeachRows">${rows}</div>
+    <p id="cmpTeachMsg" class="hint" style="margin:10px 0 0;"></p>
+    <div class="btn-row" style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end;">
+      <button type="button" class="btn-ghost" onclick="cmpRecoTeachDone()">Skip</button>
+      <button type="button" class="btn-primary" id="cmpTeachBtn" onclick="cmpRecoTeachBrain('${escapeHtml(campaign.id)}')">Teach the Brain</button>
+    </div></div>`;
+  document.body.appendChild(modal);
+  return true;
+}
+async function cmpRecoTeachBrain(campaignId){
+  const picked = Array.from(document.querySelectorAll('#cmpTeachBrainModal .cmpTeachChan')).filter(x => x.checked).map(x => x.value);
+  const msg = document.getElementById('cmpTeachMsg'), btn = document.getElementById('cmpTeachBtn');
+  if (!picked.length){ if (msg) msg.textContent = 'Choose at least one channel, or Skip.'; return; }
+  if (btn){ btn.disabled = true; btn.textContent = 'Teaching…'; }
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaignId)}/teach-cpm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channels: picked }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok){ if (msg) msg.textContent = d.error || 'Could not teach the Brain right now.'; if (btn){ btn.disabled = false; btn.textContent = 'Teach the Brain'; } return; }
+    learnedCpmsLoadedFor = null; await loadLearnedCpms();
+    if (msg) msg.textContent = 'Taught: ' + (d.taught || []).map(t => t.channel + ' $' + t.cpm).join(', ') + '. You can review it in Train the Brain.';
+    if (btn){ btn.textContent = 'Continue'; btn.disabled = false; btn.onclick = cmpRecoTeachDone; }
+  } catch (e){ if (msg) msg.textContent = 'Could not teach the Brain right now.'; if (btn){ btn.disabled = false; btn.textContent = 'Teach the Brain'; } }
 }
 
 // 2026-09-16 — the bespoke recommendation-comments dialogue (cmpRecoSendComment/
@@ -49355,12 +49411,24 @@ function cmpRenderPitchLeft(campaign){
 // per-ad-impression, per NON_IMPRESSION_CHANNELS's own comment) still has
 // a real per-piece "CPM-equivalent" rate in the same table, so it renders
 // the same way rather than reading as blank.
+let learnedCpms = {};
+let learnedCpmsLoadedFor = null;
+async function loadLearnedCpms(){
+  if (typeof dataSourceLabel !== 'undefined' && dataSourceLabel !== 'backend') return;
+  if (!state.companyId || learnedCpmsLoadedFor === state.companyId) return;
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/learned-cpm`);
+    if (r.ok){ const d = await r.json(); learnedCpms = d.cpms || {}; learnedCpmsLoadedFor = state.companyId; }
+  } catch (e){}
+}
 function cmpRecoLineCpm(l){
   const budget = Number(l.budget) || 0;
   const impressions = Number(l.impressions) || 0;
   if (budget > 0 && impressions > 0){
     return { value: (budget / impressions) * 1000, source: 'actual' };
   }
+  const lc = learnedCpms[l.channel];
+  if (lc && lc.cpm > 0) return { value: lc.cpm, source: 'learned' };
   const cpm = ILLUSTRATIVE_CHANNEL_CPM[l.channel];
   if (typeof cpm === 'number') return { value: cpm, source: 'default' };
   return { value: null, source: 'none' };
@@ -49369,6 +49437,7 @@ function cmpRecoLineCpmHtml(l){
   const c = cmpRecoLineCpm(l);
   if (c.value == null) return '—';
   const formatted = `$${c.value.toLocaleString(undefined, { maximumFractionDigits: c.value < 10 ? 2 : 0 })}`;
+  if (c.source === 'learned') return `${formatted} <span class="illustrative-tag">taught</span>`;
   return c.source === 'actual' ? formatted : `${formatted} <span class="illustrative-tag">default</span>`;
 }
 function cmpRecoChannelTableHtml(summary, regionFilter){
@@ -49411,12 +49480,10 @@ function cmpRecoChannelTableHtml(summary, regionFilter){
           <td><div class="field" style="margin:0;"><select id="cmpRecoEditChannel_${l.id}">${CHANNEL_OPTIONS.map(c => `<option value="${escapeHtml(c)}" ${c === l.channel ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select></div></td>
           <td><div class="field" style="margin:0;"><select id="cmpRecoEditStage_${l.id}">${stageOptionsForRow(l.stage || '')}</select></div></td>
           <td><div class="field" style="margin:0;"><select id="cmpRecoEditRegion_${l.id}">${regionOptionsHtml(l.region || 'US')}</select></div></td>
-          <td><div class="field" style="margin:0;"><input type="number" id="cmpRecoEditBudget_${l.id}" value="${Number(l.budget) || 0}" min="0" step="1"></div></td>
-          <!-- CPM is derived (budget ÷ impressions, or this channel's
-               illustrative default) — not independently editable; it
-               updates on its own once Budget/Impressions are saved. -->
-          <td>${cmpRecoLineCpmHtml(l)}</td>
-          <td><div class="field" style="margin:0;"><input type="number" id="cmpRecoEditImpressions_${l.id}" value="${Math.round(Number(l.impressions) || 0)}" min="0" step="1"></div></td>
+          <td><div class="field" style="margin:0;"><input type="number" id="cmpRecoEditBudget_${l.id}" value="${Number(l.budget) || 0}" min="0" step="1" oninput="cmpRecoEditSync('${l.id}','budget')"></div></td>
+          <!-- CPM is editable: enter it and Impressions follow from Budget; edit Impressions and CPM follows. -->
+          <td><div class="field" style="margin:0;"><input type="number" id="cmpRecoEditCpm_${l.id}" value="${(() => { const c = cmpRecoLineCpm(l); return c.value == null ? '' : Math.round(c.value * 100) / 100; })()}" min="0" step="0.01" oninput="cmpRecoEditSync('${l.id}','cpm')"></div></td>
+          <td><div class="field" style="margin:0;"><input type="number" id="cmpRecoEditImpressions_${l.id}" value="${Math.round(Number(l.impressions) || 0)}" min="0" step="1" oninput="cmpRecoEditSync('${l.id}','imp')"></div></td>
           <td>
             <button type="button" class="btn-primary" onclick="cmpRecoSaveLineEdit('${l.id}')">Save</button>
             <button type="button" class="btn-ghost" onclick="cmpRecoCancelEditLine()">Cancel</button>
@@ -49749,7 +49816,7 @@ async function cmpRecoRegenerateForStageChange(campaign, oldStage, newStage){
     try {
       await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channel: row.channel, budget: row.amount || 0, status: 'draft' })
+        body: JSON.stringify({ channel: row.channel, budget: row.amount || 0, status: 'draft', autoSeed: true })
       });
     } catch (err){ console.warn('cmpRecoRegenerateForStageChange: save failed', row.channel, err); }
   }
@@ -49865,6 +49932,15 @@ function cmpRecoCancelEditLine(){
   cmpRecoState.editingLineItemId = null;
   const campaign = cmpRailLoadedCampaign();
   if (campaign) cmpRenderPitchLeft(campaign);
+}
+// Budget, CPM and Impressions stay consistent while editing: CPM or Budget changes
+// recompute Impressions; an Impressions change recomputes CPM.
+function cmpRecoEditSync(id, changed){
+  const b = document.getElementById('cmpRecoEditBudget_' + id), c = document.getElementById('cmpRecoEditCpm_' + id), i = document.getElementById('cmpRecoEditImpressions_' + id);
+  if (!b || !c || !i) return;
+  const budget = Number(b.value) || 0, cpm = Number(c.value) || 0, imp = Number(i.value) || 0;
+  if (changed === 'imp'){ if (budget > 0 && imp > 0) c.value = Math.round(budget / imp * 1000 * 100) / 100; }
+  else if (cpm > 0 && budget >= 0){ i.value = Math.round(budget / cpm * 1000); }
 }
 async function cmpRecoSaveLineEdit(entryId){
   const campaign = cmpRailLoadedCampaign();
@@ -50190,7 +50266,7 @@ async function cmpGenerateAndPersistRecommendation(campaign){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/channel-planning`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channel: row.channel, budget: row.amount || 0, status: 'draft' })
+        body: JSON.stringify({ channel: row.channel, budget: row.amount || 0, status: 'draft', autoSeed: true })
       });
       if (resp.ok) anySaved = true;
     } catch (e){ console.warn('cmpGenerateAndPersistRecommendation: channel save failed', row.channel, e); }
