@@ -33,7 +33,7 @@
        same brand hues, lightened just enough to read on near-black. Same
        family as --cx/--media, not new colors. See the "Truth & Light" panel
        below and the approved design mockup this was built from. */
-    --cx-night:#4CD4E8; --media-night:#7DA6FF;
+    --cx-night:#4DD6C0; --media-night:#F4B63F;
   }
   *{box-sizing:border-box;}
   body{margin:0;min-height:100vh;background:var(--paper);color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;}
@@ -45,9 +45,9 @@
      duality, so the split literalizes it — light (the form, clarity,
      action) beside dark (the story) — rather than reskinning the whole
      page dark. Approved from a design mockup before this was built. */
-  .split-wrap{display:flex;min-height:calc(100vh - 41px);}
+  .split-wrap{display:flex;min-height:100vh;}
 
-  .login-brand-panel{position:relative;width:42%;min-width:440px;flex-shrink:0;background:#0A0F1A;overflow:hidden;display:flex;flex-direction:column;padding:44px 48px;}
+  .login-brand-panel{position:relative;width:42%;min-width:440px;flex-shrink:0;background:#07090D;overflow:hidden;display:flex;flex-direction:column;padding:44px 48px;}
   .login-brand-panel .glow{position:absolute;border-radius:50%;filter:blur(10px);}
   .login-brand-panel .wordmark{font-size:20px;font-weight:500;color:#FFFFFF;text-decoration:none;position:relative;}
   .login-brand-panel .wordmark b{color:var(--cx-night);font-weight:500;}
@@ -60,7 +60,7 @@
   .login-brand-panel .brand-sub{margin:0;font-size:15px;line-height:1.65;color:rgba(255,255,255,0.72);max-width:420px;}
   .login-brand-panel .brand-footnote{position:relative;margin:0;font-size:12.5px;font-style:italic;color:rgba(255,255,255,0.42);line-height:1.5;}
 
-  .login-form-panel{flex:1;display:flex;align-items:center;justify-content:center;background:var(--paper);padding:24px;}
+  .login-form-panel{position:relative;flex:1;display:flex;align-items:center;justify-content:center;background:var(--paper);padding:24px;}
   .login-card{width:100%;max-width:360px;}
   .login-card h1{margin:0 0 6px;font-size:24px;font-weight:600;}
   .login-card .lede{margin:0 0 28px;font-size:14px;line-height:1.55;color:var(--muted);}
@@ -236,15 +236,17 @@ footer:not(:has(.footer-inner)) > span{color:rgba(237,234,224,.55)!important;}
 .btn-ghost{border:1.5px solid currentColor!important;padding:15px 26px!important;border-radius:999px!important;display:inline-block;}
 .hero .btn-ghost{border-color:rgba(255,255,255,.5)!important;}
 
+/* login-refresh-2026-10-08: brand-aligned panel, back link */
+.login-brand-panel .wordmark{font-size:24px;font-weight:600;letter-spacing:-.01em;}
+.login-brand-panel h1{font-family:var(--vl-display,'Bricolage Grotesque',system-ui,sans-serif);}
+.login-brand-panel .eyebrow span.dot{background:var(--lamp);}
+.back-site{position:absolute;top:28px;right:32px;font-family:var(--vl-mono,'DM Mono',monospace);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-decoration:none;}
+.back-site:hover{color:var(--ink);}
+.login-brand-panel .wordmark b{color:var(--lamp);font-weight:600;}
+@media (max-width:900px){.back-site{top:16px;right:20px}.login-form-panel .login-card{padding-top:36px}}
 </style>
 </head>
 <body>
-<div class="utility-nav" id="utilityNav">
-  <div class="utility-nav-inner">
-    <a href="portal.html" id="utilNavPortalLink" style="display:none;">Access My Portal</a>
-    <a href="login.html" id="utilNavAuthLink">Log in</a>
-  </div>
-</div>
 <script>
 // 2026-08-21 — shared utility-nav logic, identical on every page (see the
 // .utility-nav CSS comment for why). Reads a single sessionStorage pointer
@@ -347,16 +349,16 @@ footer:not(:has(.footer-inner)) > span{color:rgba(237,234,224,.55)!important;}
        panel below still carries the wordmark and full functionality on
        its own at that width. -->
   <div class="login-brand-panel">
-    <div class="glow" style="left:-160px;top:-140px;width:560px;height:560px;background:radial-gradient(circle, rgba(8,145,178,0.32) 0%, rgba(8,145,178,0) 70%);"></div>
-    <div class="glow" style="right:-220px;top:280px;width:640px;height:640px;background:radial-gradient(circle, rgba(37,99,235,0.28) 0%, rgba(37,99,235,0) 68%);"></div>
-    <div class="glow" style="left:-120px;bottom:-200px;width:520px;height:520px;background:radial-gradient(circle, rgba(79,70,229,0.24) 0%, rgba(79,70,229,0) 70%);"></div>
+    <div class="glow" style="left:-160px;top:-140px;width:560px;height:560px;background:radial-gradient(circle, rgba(77,214,192,0.16) 0%, rgba(77,214,192,0) 70%);"></div>
+    <div class="glow" style="right:-220px;top:280px;width:640px;height:640px;background:radial-gradient(circle, rgba(244,182,63,0.10) 0%, rgba(244,182,63,0) 68%);"></div>
+    <div class="glow" style="left:-120px;bottom:-200px;width:520px;height:520px;background:radial-gradient(circle, rgba(244,182,63,0.14) 0%, rgba(244,182,63,0) 70%);"></div>
 
-    <a class="wordmark" href="index.html">Veri<b>lume</b></a>
+    <a class="wordmark" href="index.html" aria-label="Verilume home">Veri<b>lume</b></a>
 
     <div class="brand-body">
       <p class="eyebrow"><span class="dot"></span> Truth &amp; Light</p>
-      <h1>The clarity to see what's <span class="hl-cx">working</span> — and what <span class="hl-media">isn't yet</span>.</h1>
-      <p class="brand-sub">Human + AI Agents, working together — the same people doing the work that matters, with nothing falling through the gaps.</p>
+      <h1>Humans <span class="hl-cx">decide.</span> AI <span class="hl-media">recommends.</span></h1>
+      <p class="brand-sub">Sign in to see what's working, and what isn't yet. Your team keeps every decision; the AI does the always-on work in between.</p>
     </div>
 
     <p class="brand-footnote">Veri, Latin for truth. Lume, light.</p>
@@ -366,6 +368,7 @@ footer:not(:has(.footer-inner)) > span{color:rgba(237,234,224,.55)!important;}
        before (login, forced password change, step-up MFA); just
        re-hosted in this split layout instead of a centered card. -->
   <div class="login-form-panel">
+  <a class="back-site" href="index.html">← Back to site</a>
   <div class="login-card">
 
     <div id="loginStep">
@@ -385,11 +388,11 @@ footer:not(:has(.footer-inner)) > span{color:rgba(237,234,224,.55)!important;}
         </button>
       </div>
       <div class="link-row align-right">
-        <a href="#" id="forgotPasswordLink">Forgot Your Password?</a>
+        <a href="#" id="forgotPasswordLink">Forgot your password?</a>
       </div>
       <button class="btn-primary" id="loginBtn" onclick="submitLogin()">Log in</button>
       <div class="error-note" id="loginError"></div>
-      <p class="signup-note">New to Verilume? <a href="assessment.html">Create your account →</a></p>
+      <p class="signup-note">New to Verilume? <a href="packages.html">Start your free week →</a></p>
     </div>
 
     <div id="passwordChangeStep">
