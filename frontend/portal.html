@@ -2284,7 +2284,18 @@
      the updated CampaignHeader.dc.html wireframe exactly, rather than the
      larger circle from the prior round's "larger than the header height"
      instruction — Todd's latest approved artboard supersedes that sizing. */
-  .cch-score-circle{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.0625rem;font-weight:700;margin:0;border:3px solid var(--white);box-shadow:0 12px 28px -8px rgba(15,23,42,0.35), 0 2px 6px rgba(15,23,42,0.14);flex-shrink:0;color:#FFFFFF;}
+  /* 2026-10-08, per direct instruction ("change our relevance score look to
+     something light/conductor"): the filled brand-color disc is replaced by a
+     light "lamp gauge" echoing the public Media + CX conductor page — a white
+     face, a faint amber glow, and a thin arc that fills with the score
+     (amber at the low end through teal at the high end, the same pair the
+     public infinity loop uses). Score number sits in ink in the middle. */
+  .cch-score-circle{position:relative;width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.0625rem;font-weight:700;margin:0;background:#FFFFFF;border:0;box-shadow:0 0 0 1px rgba(15,23,42,0.08), 0 8px 26px -6px rgba(244,182,63,0.55), 0 2px 6px rgba(15,23,42,0.10);flex-shrink:0;color:var(--ink);font-variant-numeric:tabular-nums;}
+  .cch-score-circle svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);}
+  .cch-score-circle .scr-track{fill:none;stroke:#EEE9DA;stroke-width:4;}
+  .cch-score-circle .scr-arc{fill:none;stroke:url(#cchScrGrad);stroke-width:4;stroke-linecap:round;transition:stroke-dashoffset .6s ease;}
+  .cch-score-circle .scr-num{position:relative;z-index:1;font-size:1rem;letter-spacing:-.01em;}
+  .cch-score-circle.unscored{box-shadow:0 0 0 1px rgba(15,23,42,0.08), 0 2px 6px rgba(15,23,42,0.08);color:var(--muted);}
   @media (max-width:600px){
     .cch-score-circle{width:44px;height:44px;font-size:0.75rem;}
     .cch-score-caption{font-size:0.5625rem;}
@@ -3992,27 +4003,27 @@
   body.ask-dock #cmpPitchPanel .adc-ask-cta{display:flex;align-items:center;gap:12px;justify-content:space-between;margin:0 28px;padding:10px 14px;border:1px solid #BFC4F5;background:#EEF0FF;border-radius:10px;font-size:0.8125rem;}
   body.ask-dock #cmpPitchCollabMount{display:none;}
   body.ask-dock #cmpPitchPanel .cmp-pitch-body{grid-template-columns:minmax(0,1fr);}
-  body.ask-dock #cmpPitchPanel .cmp-pitch-left{border-right:0;padding-left:max(28px,calc((100% - 1240px) / 2));padding-right:max(28px,calc((100% - 1240px) / 2));padding-bottom:110px;}
+  body.ask-dock #cmpPitchPanel .cmp-pitch-left{border-right:0;padding-left:28px;padding-right:28px;padding-bottom:110px;}
   body.ask-dock #cmpObjectivesCollabMount{display:none;}
   body.ask-dock #cmpPerfMarketingCollabMount{display:none;}
   body.ask-dock #cmpWorkspaceCollab,body.ask-dock #cmpCreationCollabMount{display:none !important;}
-  body.ask-dock .cmp-workspace-hub,body.ask-dock #cmpCreationTwoCol{max-width:1240px;margin-left:auto;margin-right:auto;}
+  body.ask-dock .cmp-workspace-hub,body.ask-dock #cmpCreationTwoCol{max-width:none;margin-left:0;margin-right:0;}
   body.ask-dock #cmpCreativeCollabMount{display:none;}
   body.ask-dock #cmpCreativePanel .cmp-pitch-body{grid-template-columns:minmax(0,1fr);}
-  body.ask-dock #cmpCreativePanel .cmp-pitch-left{border-right:0;padding-left:max(28px,calc((100% - 1240px) / 2));padding-right:max(28px,calc((100% - 1240px) / 2));padding-bottom:110px;}
+  body.ask-dock #cmpCreativePanel .cmp-pitch-left{border-right:0;padding-left:28px;padding-right:28px;padding-bottom:110px;}
   body.ask-dock #cmpTraffickingCollabMount{display:none;}
   body.ask-dock #cmpTraffickingPanel .cmp-pitch-body{grid-template-columns:minmax(0,1fr);}
-  body.ask-dock #cmpTraffickingPanel .cmp-pitch-left{border-right:0;padding-left:max(28px,calc((100% - 1240px) / 2));padding-right:max(28px,calc((100% - 1240px) / 2));padding-bottom:110px;}
+  body.ask-dock #cmpTraffickingPanel .cmp-pitch-left{border-right:0;padding-left:28px;padding-right:28px;padding-bottom:110px;}
   body.ask-dock #cmpAnalysisCollabMount{display:none;}
   body.ask-dock #cmpAnalysisPanel .cmp-pitch-body{grid-template-columns:minmax(0,1fr);}
-  body.ask-dock #cmpAnalysisPanel .cmp-pitch-left{border-right:0;padding-left:max(28px,calc((100% - 1240px) / 2));padding-right:max(28px,calc((100% - 1240px) / 2));padding-bottom:110px;}
+  body.ask-dock #cmpAnalysisPanel .cmp-pitch-left{border-right:0;padding-left:28px;padding-right:28px;padding-bottom:110px;}
   body.ask-dock #cmpCxVisionCollabMount{display:none;}
   body.ask-dock #cmpCxVisionPanel .cmp-pitch-body{grid-template-columns:minmax(0,1fr);}
-  body.ask-dock #cmpCxVisionPanel .cmp-pitch-left{border-right:0;padding-left:max(28px,calc((100% - 1240px) / 2));padding-right:max(28px,calc((100% - 1240px) / 2));padding-bottom:110px;}
-  body.ask-dock .cmp-perfmarketing-layout{max-width:1240px;margin-left:auto;margin-right:auto;}
+  body.ask-dock #cmpCxVisionPanel .cmp-pitch-left{border-right:0;padding-left:28px;padding-right:28px;padding-bottom:110px;}
+  body.ask-dock .cmp-perfmarketing-layout{max-width:none;margin-left:0;margin-right:0;}
   body.ask-dock #cmpObjectivesPanel .cmp-pitch-body{grid-template-columns:minmax(0,1fr);}
   body.ask-dock #cmpObjectivesPanel .cmp-pitch-left{border-right:0;}
-  body.ask-dock #cmpObjectivesPanel .cmp-pitch-left{padding-left:max(28px,calc((100% - 1040px) / 2));padding-right:max(28px,calc((100% - 1040px) / 2));}
+  body.ask-dock #cmpObjectivesPanel .cmp-pitch-left{padding-left:28px;padding-right:28px;}
   body.ask-dock #cmpObjectivesPanel .cmp-pitch-left{padding-bottom:110px;}
   #askDockCamp{margin-top:10px;}
   .adc-teach{margin:-2px 0 10px;font-size:0.75rem;}
@@ -15849,9 +15860,7 @@ function cmpRenderCampaignHeader(campaign){
     if (startDateEl) startDateEl.textContent = '';
     const circle = document.getElementById('cchScoreCircle');
     if (circle){
-      const brandColor = (state.styleAssets && state.styleAssets.primaryColorHex) || '#0891B2';
-      circle.style.background = brandColor;
-      circle.style.color = cmpContrastTextColor(brandColor);
+      circle.classList.add('unscored');
       circle.textContent = '—';
       circle.title = 'Not yet scored — create this campaign to begin';
     }
@@ -15912,9 +15921,6 @@ function cmpRenderCampaignHeader(campaign){
   // (--cx) for an account with no brand color on file yet, rather than an
   // undifferentiated grey circle.
   const circle = document.getElementById('cchScoreCircle');
-  const brandColor = (state.styleAssets && state.styleAssets.primaryColorHex) || '#0891B2';
-  circle.style.background = brandColor;
-  circle.style.color = cmpContrastTextColor(brandColor);
   // 2026-09-15, per direct instruction ("we'll hold off on a relevance
   // score until the CX steps begin") — a brand-new campaign has no
   // channel/creative/budget/URL signal yet, so an unweighted average was
@@ -15930,9 +15936,13 @@ function cmpRenderCampaignHeader(campaign){
   // this is a display-level hold, not the full fix.
   const cxStarted = cmpModuleStatus('messaging') !== 'not-started';
   if (cxStarted && score.overall !== null){
-    circle.textContent = `${score.overall}%`;
+    const pct = Math.max(0, Math.min(100, Math.round(score.overall)));
+    const C = 2 * Math.PI * 29;
+    circle.classList.remove('unscored');
+    circle.innerHTML = `<svg viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="cchScrGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#B8760B"/><stop offset="1" stop-color="#0B6F62"/></linearGradient></defs><circle class="scr-track" cx="32" cy="32" r="29"/><circle class="scr-arc" cx="32" cy="32" r="29" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${(C * (1 - pct / 100)).toFixed(1)}"/></svg><span class="scr-num">${pct}%</span>`;
     circle.title = 'Campaign Relevance Score';
   } else {
+    circle.classList.add('unscored');
     circle.textContent = '—';
     circle.title = 'Not yet scored — relevance scoring begins once Brand Messaging (CX) starts';
   }
