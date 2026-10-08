@@ -1543,6 +1543,10 @@
   .strat-key i.dash{display:inline-block;width:16px;border-top:2px dashed #1D1D1F;vertical-align:middle;margin-right:4px;}
 
   /* Scenario planner (2026-10-08) */
+  button.strat-chip.strat-chip-rec{display:inline-flex;align-items:center;gap:8px;background:var(--ink);color:#fff;border-color:var(--ink);font-weight:600;padding:7px 16px 7px 8px;margin-right:12px;}
+  button.strat-chip.strat-chip-rec:hover{background:#2c2c30;border-color:#2c2c30;color:#fff;}
+  .strat-chip-rec .rec-tag{font-size:0.625rem;font-weight:800;letter-spacing:0.05em;text-transform:uppercase;background:#F4B63F;color:#10141B;border-radius:980px;padding:3px 9px;}
+  #stratScnBody{border-top:1px solid var(--line-hairline);padding-top:14px;}
   .scn-presets{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:12px 0 4px;}
   .scn-preset{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--paper);display:flex;flex-direction:column;gap:6px;}
   .scn-preset h3{margin:0;font-size:1rem;} .scn-preset .b{font-size:0.78rem;color:var(--muted);line-height:1.4;}
@@ -1550,7 +1554,10 @@
   .scn-editor{border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-top:14px;}
   .scn-row{display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-bottom:10px;} .scn-row label{display:block;font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);margin-bottom:3px;}
   .scn-row input,.scn-row select{font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--white);}
-  .scn-mix td input{width:130px;} .scn-pill{display:inline-block;font-size:0.6875rem;font-weight:700;border-radius:980px;padding:2px 9px;border:1px solid var(--line);background:var(--paper-dim);}
+  .scn-mix td input,.scn-row input,.scn-row select{font:inherit;font-size:0.875rem;color:var(--ink);padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--white);box-sizing:border-box;}
+  .scn-mix td input{width:180px;text-align:right;font-variant-numeric:tabular-nums;}
+  .scn-row input:focus,.scn-row select:focus,.scn-mix td input:focus{outline:2px solid rgba(0,113,227,0.35);outline-offset:1px;border-color:#0071E3;}
+  .scn-row input[type=text]{min-width:200px;} .scn-row input[type=number]{width:170px;font-variant-numeric:tabular-nums;} .scn-pill{display:inline-block;font-size:0.6875rem;font-weight:700;border-radius:980px;padding:2px 9px;border:1px solid var(--line);background:var(--paper-dim);}
   .scn-pill.active{background:var(--cx-tint);border-color:#9fd5ca;color:var(--cx);} .scn-pill.pending{background:var(--media-tint);border-color:#e8cd8f;color:var(--media);}
   .scn-msg{font-size:0.8125rem;margin:8px 0;} .scn-msg.err{color:#C0273C;} .scn-msg.ok{color:var(--cx);}
   .scn-list .strat-table td{vertical-align:middle;}
@@ -1619,6 +1626,19 @@
 .bd-w-next{margin:0 0 10px;padding-left:18px;font-size:.9375rem}
 .bd-w-next li{margin:0 0 6px}
 .bd-welcome-min{grid-column:1/-1;margin:0 0 10px}
+
+/* 2026-10-08 — Brain Dump is the Portal Home: greeting, dashboard link, growth and training links, then the welcome and the weekly edition. */
+#brainDumpBody .bd-home{padding:24px 28px;background:linear-gradient(180deg,#FFFDF7 0%,#fff 100%);border-color:rgba(244,182,63,.4)}
+#brainDumpBody .bd-home h2{margin:0;font-size:1.625rem;line-height:1.2}
+#brainDumpBody .bd-home .bd-home-date{margin:4px 0 16px;font-size:.9375rem;color:var(--muted)}
+#brainDumpBody .bd-home-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+#brainDumpBody .bd-home-tile{display:flex;flex-direction:column;gap:6px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:#fff}
+#brainDumpBody .bd-home-tile b{font-size:1rem}
+#brainDumpBody .bd-home-tile .strat-sub{margin:0;flex:1}
+#brainDumpBody .bd-home-tile .strat-chip{align-self:flex-start;margin-top:6px;font-weight:600}
+#brainDumpBody .bd-w-fold{margin:0 0 14px}
+#brainDumpBody .bd-w-fold>summary{cursor:pointer;font-weight:600;padding:10px 4px}
+@media (max-width:900px){#brainDumpBody .bd-home-grid{grid-template-columns:1fr}#brainDumpBody .bd-home{padding:18px}}
 @media (max-width:900px){.bd-w-grid{grid-template-columns:1fr}.bd-welcome{padding:20px}}
   .ttb-hero{display:flex;align-items:center;gap:28px;flex-wrap:wrap;} .ttb-clock{color:var(--ink);display:block;} .ttb-big{font-size:1.3125rem;font-weight:500;line-height:1.2;}
   .ttb-group{margin-top:26px;} .ttb-group-h{display:flex;align-items:center;gap:14px;margin-bottom:8px;} .ttb-group-h h2{margin:0;font-size:1.3125rem;font-weight:500;} .ttb-mini{flex:none;}
@@ -10573,6 +10593,7 @@
                    and the channels + spend already on this grid — it never
                    re-derives a plan of its own, only narrates the one above
                    it, so it can't drift out of sync with real approval data. -->
+              <div id="cmpPtTrainLinks"></div>
               <a href="javascript:void(0)" id="cmpChannelPlanRationaleLink" onclick="cmpToggleChannelPlanRationale();" class="hint" style="display:inline-block;text-decoration:underline;cursor:pointer;margin-bottom:10px;">💭 Why this channel plan? →</a>
               <div id="cmpChannelPlanRationalePanel" style="display:none;margin:0 0 12px;padding:10px 12px;background:var(--media-tint);border-radius:8px;"></div>
               <!-- 2026-09-18, per Todd's direct clarification on the
@@ -12395,12 +12416,16 @@
          custom print specs). -->
     <div class="sk-card" id="mbuMagazineCostCard" style="margin-top:18px;">
       <div class="sk-card-head ink">
-        <div class="htext"><div class="kicker">Account setting — manual reach input</div><h3>Magazine cost per insertion</h3></div>
+        <div class="htext"><div class="kicker">Account setting — manual input</div><h3>Rate card minimums</h3></div>
         <div class="hicon">📖</div>
       </div>
       <div class="sk-card-body">
-        <p class="hint" style="margin-top:0;">Cost per insertion, by publication and ad format — magazine rates are negotiated per title, so there's no benchmark to seed from; enter your real negotiated cost for each format you actually run. Saves as you go.</p>
+        <p class="hint" style="margin-top:0;">Many media owners won't take a buy below a minimum. Enter the smallest buy for each channel that has one. The plan treats it as a floor: a channel the plan wants is raised to its minimum, and the extra dollars come from other channels. A channel with no entry here uses an illustrative minimum. Saves as you go.</p>
         <span class="hint" id="mbuMagazineCostStatus" style="margin:0 0 8px;display:block;"></span>
+        <div style="font-weight:700;margin:0 0 6px;">Minimum buy by channel</div>
+        <div id="mbuRateCardMinBody"><p class="hint">Loading…</p></div>
+        <div style="font-weight:700;margin:18px 0 4px;">Magazine cost per insertion</div>
+        <p class="hint" style="margin:0 0 8px;">By publication and ad format. Magazine rates are negotiated per title, so enter your real cost for each format you run. A magazine minimum set in insertions uses the lowest rate here.</p>
         <div id="mbuMagazineCostBody"><p class="hint">Loading…</p></div>
       </div>
     </div>
@@ -16151,6 +16176,7 @@ async function cmpConfirmCancelCampaign(){
 function openCmpStage(key){
   const s = CMP_STAGE_RAIL.find(x => x.key === key);
   if (!s) return;
+  if (key === 'perfMarketing') ptFillStageLinks();
   if (!s.editable && !cmpRailLoadedCampaign()) return; // locked, shouldn't be clickable, defensive no-op
   // Refresh the scroll-clearance var right before any scrollIntoView below
   // — cheap, and guarantees it reflects the sticky headers' real current
@@ -19199,7 +19225,7 @@ function computeSuggestedRecommendedChannels(){
   }
   if (budget > 0 && typeof channelMinViableSpend === 'function'){
     const weightSum = eligibleChannels.reduce((s, ch) => s + weights[ch], 0) || 1;
-    const viable = eligibleChannels.filter(ch => (budget * (weights[ch] / weightSum)) >= channelMinViableSpend(ch));
+    const viable = eligibleChannels.filter(ch => (budget * (weights[ch] / weightSum)) >= channelMinViableSpend(ch) || !!(typeof mpChannelPool === 'function' && mpChannelPool(ch)));
     // Never suggest an empty list just because every channel is individually
     // too thin at this budget — fall back to the single least-expensive
     // channel in the stage so there's still a starting point to react to.
@@ -20700,7 +20726,37 @@ const CHANNEL_MIN_VIABLE_SPEND_BY_FOOTPRINT = {
 // by default so this never silently changes an existing account's
 // recommended mix.
 let mswMinViableSpendCalibration = { enabled: false, multiplier: null };
+// 2026-10-08 — "Keep the Brain current" links on Performance Marketing: Active Channels and Rate Card Minimums feed every channel recommendation.
+function ptTrainingLinksHtml(){
+  const nAct = state.activeChannels ? state.activeChannels.size : 0, nMin = (rateCardMins.rows || []).length;
+  return `<div class="pt-train" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;background:var(--surface, #fff);border:1px solid var(--line, #e3e1dc);border-radius:10px;padding:12px 14px;margin:0 0 16px;">
+    <div style="flex:1 1 260px;"><strong>Keep the channel recommendations current</strong><div class="hint" style="margin:2px 0 0;">Recommendations use your Active channels and the minimum buy for each channel. Update them when a plan, rate card or media owner changes.</div></div>
+    <a class="btn-ghost" role="button" tabindex="0" onclick="ptGoActiveChannels()" onkeydown="if(event.key==='Enter')ptGoActiveChannels()">Update Active channels${nAct ? ` (${nAct} on)` : ''}</a>
+    <a class="btn-ghost" role="button" tabindex="0" onclick="ptGoRateCard()" onkeydown="if(event.key==='Enter')ptGoRateCard()">Update rate card minimums${nMin ? ` (${nMin} set)` : ''}</a>
+  </div>`;
+}
+function ptFillStageLinks(){ const el = document.getElementById('cmpPtTrainLinks'); if (el) el.innerHTML = ptTrainingLinksHtml(); }
+function ptScrollTo(id, tries){ const el = document.getElementById(id); if (el && el.offsetParent !== null){ el.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; } if ((tries || 0) < 12) setTimeout(() => ptScrollTo(id, (tries || 0) + 1), 250); }
+function ptGoActiveChannels(){ goToStep('marketingBudgetUpload', 'configuration'); ptScrollTo('mbuActiveChannelsCard'); }
+function ptGoRateCard(){
+  ttb.open = 'magazineCost'; ttb.manual = Object.assign(ttb.manual || {}, { magazineCost: true });
+  ttb.tab = 'setup'; goToStep('manageAccount');
+  ptScrollTo('mbuMagazineCostCard');
+}
+// 2026-10-08 — Rate Card Minimums (Train the Brain). A minimum the account has entered wins over the illustrative table.
+let rateCardMins = { rows: [], minimums: {}, lowestInsertionCost: null, loaded: false };
+function rateCardMinimumFor(channel){ const m = rateCardMins.minimums; return m && Object.prototype.hasOwnProperty.call(m, channel) ? Number(m[channel]) : null; }
+async function loadRateCardMinimums(){
+  if (dataSourceLabel !== 'backend' || !state.companyId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/rate-card-minimums`);
+    if (!resp.ok) return; const d = await resp.json();
+    rateCardMins = { rows: d.rows || [], minimums: d.minimums || {}, lowestInsertionCost: d.lowestInsertionCost, loaded: true };
+    try { ptFillStageLinks(); } catch (e){}
+  } catch (e){}
+}
 function channelMinViableSpend(channel){
+  const rc = rateCardMinimumFor(channel); if (rc != null && isFinite(rc)) return rc;
   const byFootprint = CHANNEL_MIN_VIABLE_SPEND_BY_FOOTPRINT[channel];
   const base = byFootprint ? (byFootprint[state.footprint] != null ? byFootprint[state.footprint] : byFootprint.Local) : (CHANNEL_MIN_VIABLE_SPEND[channel] || 0);
   if (mswMinViableSpendCalibration.enabled && mswMinViableSpendCalibration.multiplier != null){
@@ -22225,6 +22281,7 @@ function newsRerender(){
   try { if (document.getElementById('dailyNewsList')) renderDailyNews(); } catch (e){}
   try { if (document.getElementById('curatedNewsCardGrid')) renderCuratedNewsCards(); } catch (e){}
   try { cxRenderRep(); } catch (e){}
+  try { if (document.getElementById('brainDumpBody') && typeof bd !== 'undefined' && bd.data) bdRender(); } catch (e){}
 }
 async function loadNewsFeed(){
   if (dataSourceLabel !== 'backend' || !state.companyId) return;
@@ -23632,12 +23689,12 @@ function stratRenderForecast(){
     <div class="strat-fc-grid">${cards.join('') || '<p class="strat-empty">Nothing to compare yet.</p>'}</div>
     <p class="strat-foot"><span class="strat-tag ${d.confidence}">${escapeHtml(conf)}</span> Low and high assume every stage of the funnel lands at its own 25th and 75th percentile together: a planning band, not a statistical interval. Only months with planned media count.</p>
     ${stratNotOnFile(d.notOnFile)}
-    <div class="strat-actions"><a class="flink" onclick="goToStep('mediaplan')">Open the Annual Plan →</a> <button type="button" class="strat-chip" onclick="stratAsk('What ROAS should we expect from the rest of this year’s plan, and what does one more million impressions buy?')">Ask Verilume about the forecast</button></div>`;
+    <div class="strat-actions"><button type="button" class="strat-chip strat-chip-rec" id="scnToggleBtn" onclick="scnToggle()" aria-expanded="${scn.open ? 'true' : 'false'}"><span class="rec-tag">Recommended</span>${scn.open ? 'Hide the scenario planner' : 'Create new scenarios'}</button> <a class="flink" onclick="goToStep('mediaplan')">Open the Annual Plan →</a></div>`;
 }
 function stratAsk(q){ try { askVerilumeOpenLive(); } catch (e){} askVerilumeAsk(q); }
 
 // ---- Scenario planner (2026-10-08): run what-ifs on budget and media mix; activating one for the account needs an admin or CMO ----
-const scn = { year: new Date().getFullYear(), data: null, draft: null, result: null, msg: '', msgKind: '', busy: false, showAssume: false };
+const scn = { open: false, year: new Date().getFullYear(), data: null, draft: null, result: null, msg: '', msgKind: '', busy: false, showAssume: false };
 function scnBase(){ return `${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/plan-scenarios`; }
 async function scnCall(path, method, body){
   const r = await authedFetch(scnBase() + path, { method: method || 'GET', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
@@ -23645,11 +23702,22 @@ async function scnCall(path, method, body){
   if (!r.ok) throw new Error((j && j.error) || `The server answered ${r.status}.`);
   return j;
 }
+function scnToggle(){
+  scn.open = !scn.open;
+  const box = document.getElementById('stratScnBody'); if (box) box.style.display = scn.open ? 'block' : 'none';
+  const btn = document.getElementById('scnToggleBtn'); if (btn){ btn.setAttribute('aria-expanded', scn.open ? 'true' : 'false'); btn.innerHTML = `<span class="rec-tag">Recommended</span>${scn.open ? 'Hide the scenario planner' : 'Create new scenarios'}`; }
+  if (scn.open){
+    // plan the same year the forecast above is showing (the target's year)
+    const fy = strat.fcData && strat.fcData.year; if (fy && !scn.data) scn.year = fy;
+    if (!scn.data){ if (box) box.innerHTML = '<p class="strat-empty">Loading…</p>'; scnLoad(); } else scnRender();
+  }
+}
 async function scnLoad(){
-  if (!stratIsLive()) return; const box = document.getElementById('stratScnBody'); if (!box) return;
+  if (!stratIsLive()) return; const box = document.getElementById('stratScnBody'); if (!box || !scn.open) return;
   try { scn.data = await scnCall(`?year=${scn.year}`); } catch (e){ box.innerHTML = `<p class="scn-msg err">${escapeHtml(e.message)}</p>`; return; }
   scnRender();
 }
+function scnToggleReopen(){ const box = document.getElementById('stratScnBody'); if (box) box.style.display = 'block'; if (scn.data) scnRender(); else scnLoad(); }
 function scnSetYear(v){ scn.year = parseInt(v, 10); scn.draft = null; scn.result = null; scn.msg = ''; scnLoad(); }
 function scnMsg(t, k){ scn.msg = t; scn.msgKind = k || ''; const el = document.getElementById('scnMsg'); if (el){ el.textContent = t; el.className = 'scn-msg ' + (k || ''); } }
 function scnFmt(v, kind){ if (v == null || isNaN(v)) return '—'; if (kind === 'money') return stratMoney(v); if (kind === 'x') return Number(v).toFixed(2) + '×'; if (kind === 'money2') return '$' + Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 }); return stratNum(v); }
@@ -23680,7 +23748,7 @@ function scnReadEditor(){
   const mix = {}; document.querySelectorAll('#scnMix input[data-ch]').forEach(i => { if (i.value !== '' && Number(i.value) > 0) mix[i.dataset.ch] = Number(i.value); }); d.mix = mix;
   return d;
 }
-function scnMixTotal(){ let t = 0; document.querySelectorAll('#scnMix input[data-ch]').forEach(i => { t += Number(i.value) || 0; }); const wm = document.getElementById('scnBudget'); const el = document.getElementById('scnMixTotal'); if (el){ const w = wm && wm.value ? Number(wm.value) : null; el.textContent = stratMoneyFull(t) + (w ? ` (${Math.round(t / w * 100)}% of working media)` : '') + (w && Math.abs(t - w) > 1 ? ' — the mix is scaled to the budget when you run it' : ''); } }
+function scnMixTotal(){ let t = 0; document.querySelectorAll('#scnMix input[data-ch]').forEach(i => { const v = Number(i.value) || 0; t += v; const m = channelMinViableSpend(i.dataset.ch); const note = i.closest('tr') && i.closest('tr').querySelector('.scn-min'); if (note) note.textContent = m > 0 && v > 0 && v < m ? 'Below its ' + fmtMoney(m) + (rateCardMinimumFor(i.dataset.ch) != null ? ' rate card' : '') + ' minimum buy' : ''; }); const wm = document.getElementById('scnBudget'); const el = document.getElementById('scnMixTotal'); if (el){ const w = wm && wm.value ? Number(wm.value) : null; el.textContent = stratMoneyFull(t) + (w ? ` (${Math.round(t / w * 100)}% of working media)` : '') + (w && Math.abs(t - w) > 1 ? ' — the mix is scaled to the budget when you run it' : ''); } }
 function scnAddChannel(){ const el = document.getElementById('scnNewCh'); const n = el ? el.value.trim().slice(0, 80) : ''; if (!n) return; scnReadEditor(); if (!(n in scn.draft.mix)) scn.draft.mix[n] = 0; scnRender(); }
 async function scnRun(){
   const d = scnReadEditor(); if (!d) return; scnMsg('Running…');
@@ -23696,7 +23764,7 @@ async function scnSave(submit){
 async function scnAct(id, act){
   if (act === 'activate' && !confirm('Activate this scenario for the whole account? It replaces the current ' + scn.year + ' target that the dashboards and the Weekly Brain read.')) return;
   scnMsg('Working…');
-  try { await scnCall(`/${encodeURIComponent(id)}/${act}`, 'POST', {}); await scnLoad(); scnMsg(act === 'activate' ? 'Activated. It is now the ' + scn.year + ' target.' : act === 'submit' ? 'Sent for approval.' : 'Archived.', 'ok'); }
+  try { await scnCall(`/${encodeURIComponent(id)}/${act}`, 'POST', {}); await scnLoad(); if (act === 'activate' && typeof stratLoadForecast === 'function') stratLoadForecast(); scnMsg(act === 'activate' ? 'Activated. It is now the ' + scn.year + ' target.' : act === 'submit' ? 'Sent for approval.' : 'Archived.', 'ok'); }
   catch (e){ scnMsg(e.message, 'err'); }
 }
 function scnOpen(id){
@@ -23719,7 +23787,7 @@ function scnResultHtml(r){
 function scnEditorHtml(){
   const d = scn.draft; if (!d) return `<div class="strat-actions" style="margin-top:14px;"><button type="button" class="strat-chip" onclick="scnNewBlank()">Start a new scenario</button></div>`;
   const chans = Object.keys(d.mix);
-  const mixRows = chans.map(c => `<tr><td>${escapeHtml(c)}</td><td><input type="number" min="0" step="1000" value="${d.mix[c] != null ? Math.round(d.mix[c]) : ''}" data-ch="${escapeHtml(c)}" oninput="scnMixTotal()"></td></tr>`).join('');
+  const mixRows = chans.map(c => `<tr><td>${escapeHtml(c)}</td><td><input type="number" min="0" step="1000" value="${d.mix[c] != null ? Math.round(d.mix[c]) : ''}" data-ch="${escapeHtml(c)}" oninput="scnMixTotal()"></td><td class="strat-sub scn-min" data-min-for="${escapeHtml(c)}"></td></tr>`).join('');
   return `<div class="scn-editor"><div class="scn-row">
       <div><label for="scnName">Scenario name</label><input id="scnName" type="text" maxlength="80" value="${escapeHtml(d.name)}" placeholder="e.g. More search in Q2"></div>
       <div><label for="scnBudget">Working media</label><input id="scnBudget" type="number" min="0" step="1000" value="${d.workingMedia != null ? Math.round(d.workingMedia) : ''}" oninput="scnMixTotal()"></div>
@@ -23744,7 +23812,7 @@ function scnSavedHtml(){
 function scnRender(){
   const box = document.getElementById('stratScnBody'); if (!box || !scn.data) return;
   const yrs = []; const y0 = new Date().getFullYear(); for (let y = y0 - 1; y <= y0 + 2; y++) yrs.push(y);
-  box.innerHTML = `<p class="strat-sub" style="margin:0 0 6px;">Try a budget and media mix, see leads, transactions and revenue against the last 12 months and the approved target. Anyone can run and save scenarios. Activating one for the account takes an admin or a CMO, and replaces the target the dashboards and the Weekly Brain read.</p>
+  box.innerHTML = `<div class="strat-chart-label" style="margin:0 0 6px;">Scenario planner</div><p class="strat-sub" style="margin:0 0 6px;">Try a budget and media mix, see leads, transactions and revenue against the last 12 months and the approved target. Anyone can run and save scenarios. Activating one for the account takes an admin or a CMO, and replaces the target the dashboards and the Weekly Brain read.</p>
     <div class="scn-row"><div><label for="scnYear">Plan year</label><select id="scnYear" onchange="scnSetYear(this.value)">${yrs.map(y => `<option value="${y}"${y === scn.year ? ' selected' : ''}>${y}</option>`).join('')}</select></div></div>
     <div class="scn-presets">${(scn.data.presets || []).map(scnPresetCard).join('')}</div>
     <div id="scnMsg" class="scn-msg ${scn.msgKind}">${escapeHtml(scn.msg)}</div>
@@ -23788,8 +23856,7 @@ function strategyShellHtml(){
         <select onchange="stratSetCompare(this.value)" aria-label="Comparison"><option value="yoy">Compare: year over year</option><option value="none">No comparison</option></select>
       </div></div><div id="stratPriceBody"></div></div>
     <div class="strat-card"><div class="strat-head"><h2>Database growth by audience type</h2></div><div id="stratAudBody"></div></div>
-    <div class="strat-card"><div class="strat-head"><h2>Forecast against the plan target</h2></div><div id="stratFcBody"></div></div>
-    <div class="strat-card" id="stratScnCard"><div class="strat-head"><h2>Scenario planner</h2></div><div id="stratScnBody"><p class="strat-empty">Loading…</p></div></div>
+    <div class="strat-card" id="stratScnCard"><div class="strat-head"><h2>Forecast against the plan target</h2></div><div id="stratFcBody"></div><div id="stratScnBody" style="display:none;margin-top:6px;"></div></div>
     <div class="strat-card"><div class="strat-head"><h2>Rolling 18 months: budget and spend</h2></div><div id="stratRollBody"></div></div>
     ${stratFieldHtml()}
     ${stratToolsHtml()}`;
@@ -24232,6 +24299,12 @@ function bdExternalItems(){
   const ext = bd.data && bd.data.external;
   const picks = ext && Array.isArray(ext.news) ? ext.news.map((x, n) => ({ id: 'bdn' + n, title: x.title, url: x.url, meta: [x.label, x.meta].filter(Boolean).join(' · ') })) : [];
   const hasComp = ext && Array.isArray(ext.news) && ext.news.some(x => x.lane === 'competitors');
+  // The edition's frozen picks can be empty (posted before the weekly feed ran). Fall back to the live feed's top item per lane.
+  if (!picks.length && newsFeed.lanes){
+    const L = newsFeed.lanes, add = (label, it) => { if (it && it.url) picks.push({ id: 'bdl' + picks.length, title: it.title, url: it.url, meta: [label, newsMeta(it)].filter(Boolean).join(' · ') }); };
+    add('Your brand', (L.brand || [])[0]); add('Competitors', (L.competitors || [])[0]);
+    add((L.industry && L.industry.label) || 'Industry', L.industry && (L.industry.items || [])[0]); add('AI & marketing', (L.aiMarketing || [])[0]);
+  }
   const watch = (!hasComp && ext && ext.items) ? ext.items.slice(0, 1).map((x, n) => ({ id: 'bdx' + n, title: x.title, meta: `Worth watching — ${x.competitor}` })) : [];
   return [...picks, ...watch];
 }
@@ -24283,7 +24356,33 @@ function bdWelcomeHtml(){
   </div>`;
 }
 // 2026-10-01 — a published Brain Dump is a FULL REFRESH of the page: the Welcome is the first-run introduction and shows only until the first edition posts, so it never stacks above the weekly edition.
-function bdRender(){ bdRenderMain(); const box = document.getElementById('brainDumpBody'); if (!box) return; if (bd.data && bd.data.posted) return; const wh = bdWelcomeHtml(); if (wh) box.insertAdjacentHTML('afterbegin', wh); }
+function bdFirstName(){ const n = String(state.userName || '').trim(); return n ? n.split(/\s+/)[0] : ''; }
+// Portal Home header: greeting, one link to the person's dashboard (tasks and approvals live there), and the growth and training links.
+function bdHomeHtml(){
+  const now = new Date(), h = now.getHours(), part = h < 12 ? 'morning' : (h < 18 ? 'afternoon' : 'evening'), nm = bdFirstName();
+  const fs = (bd.welcome && bd.welcome.firstSteps) || {}, total = fs.total || 0, done = fs.doneCount || 0, left = fs.minutesLeft;
+  const nextLabel = (fs.next || [])[0] && fs.next[0].label;
+  const setup = total ? `${done} of ${total} setup items done${left ? `, about ${left} minutes to go` : ''}.${nextLabel ? ` Next: ${escapeHtml(nextLabel)}.` : ''}` : 'Teach the Brain about your business so every recommendation fits.';
+  return `<div class="strat-card bd-home" id="bdHome">
+    <h2>Good ${part}${nm ? ', ' + escapeHtml(nm) : ''}.</h2>
+    <p class="bd-home-date">${now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}${state.company ? ' · ' + escapeHtml(state.company) : ''}</p>
+    <div class="bd-home-grid">
+      <div class="bd-home-tile"><b>Your dashboard</b><p class="strat-sub">Your tasks, approvals and the work in motion.</p><button type="button" class="strat-chip" onclick="goToStep('dashboard')">Open your dashboard →</button></div>
+      <div class="bd-home-tile"><b>Grow your skills</b><p class="strat-sub">Self-assessment, the key skills for your seat and your career plan.</p><button type="button" class="strat-chip" onclick="goToStep('teamDevelopment')">Open Team Experiences →</button></div>
+      <div class="bd-home-tile"><b>Train the Brain</b><p class="strat-sub">${setup}</p><button type="button" class="strat-chip" onclick="goToStep('manageAccount')">${done && total && done >= total ? 'Review your setup →' : 'Continue your setup →'}</button></div>
+    </div>
+  </div>`;
+}
+function bdRender(){
+  bdRenderMain(); const box = document.getElementById('brainDumpBody'); if (!box) return;
+  const w = bd.welcome, wh = bdWelcomeHtml(), posted = bd.data && bd.data.posted;
+  let pre = bdHomeHtml();
+  if (wh){
+    if (posted && w && !w.dismissed){ const fs = w.firstSteps || {}; pre += `<details class="bd-w-fold"><summary>Your Verilume account: what we remember, your opportunities and your training path${fs.total ? ` (${fs.doneCount || 0} of ${fs.total} setup items done)` : ''}</summary>${wh}</details>`; }
+    else pre += wh;
+  }
+  box.insertAdjacentHTML('afterbegin', pre);
+}
 function bdRenderMain(){
   const box = document.getElementById('brainDumpBody'); if (!box) return;
   if (bd.loading && !bd.data){ box.innerHTML = '<div class="strat-card"><p class="strat-empty">The Brain is reading this week\'s numbers…</p></div>'; return; }
@@ -24302,7 +24401,7 @@ function bdRenderMain(){
   const chg = chgList.length ? `<div class="strat-card"><div class="strat-chart-label" style="margin:0 0 6px;">Since the last edition</div>${chgList.map(c => `<p class="strat-sub" style="margin:0 0 4px;">${escapeHtml(c)}</p>`).join('')}</div>` : '';
   const ext = bdExternalItems();
   const extHtml = `<div class="strat-card"><div class="strat-head"><h2>From outside</h2><span class="strat-tag benchmark">External sources, not this account's data</span></div>
-    <div class="curated-news-grid">${!ext.length ? `<p class="hint" style="grid-column:1/-1;margin:0;">Nothing new in the last ${NEWS_FRESH_DAYS} days.</p>` : ext.map(i => i.url ? `<a class="curated-news-card" href="${escapeHtml(repSafeHref(i.url))}" target="_blank" rel="noopener noreferrer"><div class="cn-meta">${escapeHtml(i.meta)}</div><div class="cn-title">${escapeHtml(i.title)}</div></a>` : `<div class="curated-news-card"><div class="cn-meta">${escapeHtml(i.meta)} <span class="illustrative-tag">AI reasoning</span></div><div class="cn-title">${escapeHtml(i.title)}</div></div>`).join('')}</div>
+    <div class="curated-news-grid">${!ext.length ? `<p class="hint" style="grid-column:1/-1;margin:0;">Nothing new in the last ${NEWS_FRESH_DAYS} days. <a class="flink" onclick="newsRefreshNow()">${newsFeed.refreshing ? 'Refreshing…' : 'Refresh the news feed'}</a> ${escapeHtml(newsFeed.msg || '')}</p>` : ext.map(i => i.url ? `<a class="curated-news-card" href="${escapeHtml(repSafeHref(i.url))}" target="_blank" rel="noopener noreferrer"><div class="cn-meta">${escapeHtml(i.meta)}</div><div class="cn-title">${escapeHtml(i.title)}</div></a>` : `<div class="curated-news-card"><div class="cn-meta">${escapeHtml(i.meta)} <span class="illustrative-tag">AI reasoning</span></div><div class="cn-title">${escapeHtml(i.title)}</div></div>`).join('')}</div>
     <p class="strat-foot">Auto-selected each Monday from the last ${NEWS_FRESH_DAYS} days: your brand, competitors, your industry group, and AI and marketing. Links go to the publisher.</p></div>`;
   box.innerHTML = `<div class="strat-card bd-head"><div><div class="strat-chart-label" style="margin:0 0 4px;">Week of ${bdWeekLabel(d.weekStart)}</div><p class="strat-reading" style="margin:0;">Posted ${escapeHtml(posted)}. ${by}, and it stays fixed until the next run. Comment under any section, or mention @AIBrain to dig deeper.</p></div>${runBtn}</div>${runNote}${chg}${sections}${extHtml}`;
 }
@@ -24317,7 +24416,7 @@ function strategyPageInit(){
   if (!stratIsLive()) return;
   stratSyncPriceControls();
   stratLoadPrice().then(stratFillPgSelect); stratLoadAudience();
-  stratLoadDemand().then(() => stratLoadForecast()); stratLoadRolling(); bfRenderStrategy(); scnLoad();
+  stratLoadDemand().then(() => stratLoadForecast()); stratLoadRolling(); bfRenderStrategy(); if (scn.open) scnToggleReopen();
 }
 function stratFillPgSelect(){
   const sel = document.getElementById('stratPgSel'); const d = strat.priceData; if (!sel || !d) return;
@@ -28832,7 +28931,7 @@ const TTB_PLAN_SAMPLES = {
   demandFulfillment: { benefit: 'How demand grows with website traffic rather than media spend.', sample: `<div class="ttb-srow"><span>Traffic to lead rate</span><span>0.85%</span></div><div class="ttb-srow"><span>Lead to booking rate</span><span>4.2%</span></div><div class="ttb-srow"><span>Remarketing pool rate</span><span>0.22</span></div>` },
   marketableSizes: { benefit: 'Direct mail and email list counts by audience, so campaigns can size their reach.', sample: `<div class="ttb-srow ttb-head"><span>Audience</span><span>Direct mail</span><span>Email</span></div><div class="ttb-srow"><span>Past guests</span><span>18,400</span><span>26,900</span></div><div class="ttb-srow"><span>Prospects</span><span>52,000</span><span>71,300</span></div>` },
   dmCost: { benefit: 'Turns an audience size into a direct mail budget.', sample: `<div class="ttb-srow ttb-head"><span>Format</span><span>Cost per piece</span></div><div class="ttb-srow"><span>Oversize postcard</span><span>$0.71</span></div><div class="ttb-srow"><span>Brochure mailer</span><span>$1.94</span></div>` },
-  magazineCost: { benefit: 'Your negotiated print rates by title and format.', sample: `<div class="ttb-srow ttb-head"><span>Title · format</span><span>Per insertion</span></div><div class="ttb-srow"><span>Travel Monthly · full page</span><span>$18,500</span></div><div class="ttb-srow"><span>Travel Monthly · half page</span><span>$11,200</span></div>` }
+  magazineCost: { benefit: 'The smallest buy each media owner will take, plus your negotiated print rates by title and format.', sample: `<div class="ttb-srow ttb-head"><span>Title · format</span><span>Per insertion</span></div><div class="ttb-srow"><span>Travel Monthly · full page</span><span>$18,500</span></div><div class="ttb-srow"><span>Travel Monthly · half page</span><span>$11,200</span></div>` }
 };
 Object.keys(TTB_PLAN_SAMPLES).forEach(k => { TTB_ITEMS[k] = TTB_PLAN_SAMPLES[k]; });
 TTB_ITEMS.brainFacts = { benefit: 'Confirmed facts about your brand, products and destinations. Answers to customer questions are written only from these.', sample: `<div class="ttb-srow ttb-head"><span>Applies to</span><span>Fact</span></div><div class="ttb-srow"><span>Brand</span><span>Every departure carries a naturalist guide.</span></div><div class="ttb-srow"><span>Faroe Islands</span><span>An archipelago of 18 islands.</span></div>` };
@@ -30676,13 +30775,13 @@ function renderGroup(groupKey){
   const gateBannerEl = document.getElementById('groupGateBanner');
   const brandBlocked = campaignCreationBlockedByBrand();
   if (gateBannerEl){
-    gateBannerEl.innerHTML = (brandBlocked && g.sections.some(s => s.gate === 'brandFoundations'))
+    gateBannerEl.innerHTML = (g.key === 'Performance Marketing' ? ptTrainingLinksHtml() : '') + ((brandBlocked && g.sections.some(s => s.gate === 'brandFoundations'))
       ? `<div style="background:rgba(180,60,60,0.08);border:1px solid var(--advocacy);border-radius:8px;padding:14px 16px;margin:0 0 20px;">
           <strong style="color:var(--advocacy);">⚠ Brand work isn't complete yet.</strong>
           <p style="margin:6px 0 0;font-size:0.875rem;">Account brand always stays with the Brand team first — Style Guide Voice, Style Guide Colors &amp; Fonts, and Competitive Positioning need to be approved before this account's first campaign can be created. Campaign Creation &amp; Editing is deactivated below until that's done.</p>
           <a class="flink" onclick="goToStep('voice')" style="display:inline-block;margin-top:8px;">Go to Brand Foundations →</a>
         </div>`
-      : '';
+      : '');
   }
   document.getElementById('sectionList').innerHTML = g.sections.map(s => {
     const badge = `<span class="tier-badge ${s.tier}">${TIER_LABEL[s.tier]}</span>`;
@@ -32350,6 +32449,16 @@ function renderCampaignAllocationDrawsSummary(c){
 function cmpEffectiveBudgetForRollup(c){
   return c.cancelled ? 0 : (Number(c.budget) || 0);
 }
+// 2026-10-08 — a channel the annual plan carries is a shared buy: its minimum is met by the plan's pool across campaigns, not by any one
+// campaign's budget. Returns null when the plan does not carry the channel.
+function mpChannelPool(channel){
+  const plan = state.mediaPlan; if (!plan || !(plan.allocations || []).length) return null;
+  const allocs = plan.allocations.filter(a => a.channel === channel && Number(a.approvedAmount) > 0);
+  if (!allocs.length) return null;
+  const approved = allocs.reduce((n, a) => n + (Number(a.approvedAmount) || 0), 0);
+  const committed = allocs.reduce((n, a) => n + mediaPlanCommittedForAllocation(a.id), 0);
+  return { approved, committed, remaining: Math.max(0, approved - committed), minimum: channelMinViableSpend(channel) };
+}
 function mediaPlanCommittedForAllocation(allocationId){
   return state.campaigns.reduce((sum, c) => {
     if (c.cancelled) return sum;
@@ -32397,6 +32506,46 @@ function mpHistoricalChannelShares(){
   const shares = {};
   Object.entries(channelSums).forEach(([ch, amt]) => { shares[ch] = totalSum > 0 ? amt / totalSum : 0; });
   return { shares, yearsUsed: years.length };
+}
+
+// 2026-10-08 — Rate card minimums as a floor on each channel's ANNUAL total, not a per-stage gate. A channel the weighting wants (at least
+// MIN_LIFT_EARN_FRACTION of its minimum) is raised to its minimum, and the extra dollars come from the other channels that sit above their own
+// minimums, pro rata to their headroom, never taking a donor below its own minimum. If the donors cannot cover every lift, the smallest
+// under-minimum channel is held back as "not affordable this year" and its dollars go to the rest of its stage. Mutates rows (float amounts).
+const MIN_LIFT_EARN_FRACTION = 0.25;
+function mpApplyChannelMinimums(rows, excluded, raised){
+  const tot = ch => rows.filter(r => r.channel === ch).reduce((s, r) => s + r.recommendedAmount, 0);
+  const minSrc = ch => rateCardMinimumFor(ch) != null ? 'rate card' : 'illustrative';
+  const dropChannel = (ch, reason, minimum) => {
+    rows.filter(r => r.channel === ch).forEach(r => {
+      excluded.push({ stage: r.stage, channel: ch, amount: Math.round(r.recommendedAmount), minimum, reason, source: minSrc(ch) });
+      rows.splice(rows.indexOf(r), 1);
+      const sib = rows.filter(x => x.stage === r.stage); const sum = sib.reduce((s, x) => s + x.recommendedAmount, 0);
+      if (sib.length && sum > 0) sib.forEach(x => { x.recommendedAmount += r.recommendedAmount * (x.recommendedAmount / sum); });
+    });
+  };
+  for (let guard = 0; guard < 40; guard++){
+    const info = [...new Set(rows.map(r => r.channel))].map(ch => ({ ch, total: tot(ch), min: channelMinViableSpend(ch) }));
+    const under = info.filter(i => i.min > 0 && i.total < i.min - 0.5);
+    if (!under.length) return;
+    const unearned = under.filter(i => i.total < i.min * MIN_LIFT_EARN_FRACTION);
+    if (unearned.length){ unearned.forEach(i => dropChannel(i.ch, 'below-earn', i.min)); continue; }
+    const deficit = under.reduce((s, i) => s + (i.min - i.total), 0);
+    const donors = info.filter(i => i.total > i.min + 0.5 && !under.includes(i));
+    const headroom = donors.reduce((s, i) => s + (i.total - i.min), 0);
+    if (deficit > headroom){
+      const smallest = under.slice().sort((x, y) => x.total - y.total)[0];
+      dropChannel(smallest.ch, 'unaffordable', smallest.min); continue;
+    }
+    const takes = donors.map(d => ({ channel: d.ch, amount: deficit * (d.total - d.min) / headroom, total: d.total }));
+    takes.forEach(t => { const f = (t.total - t.amount) / t.total; rows.filter(r => r.channel === t.channel).forEach(r => { r.recommendedAmount *= f; }); });
+    under.forEach(u => {
+      const f = u.min / u.total; rows.filter(r => r.channel === u.ch).forEach(r => { r.recommendedAmount *= f; });
+      raised.push({ channel: u.ch, from: Math.round(u.total), to: Math.round(u.min), source: minSrc(u.ch),
+        fundedBy: takes.filter(t => t.amount >= 1).map(t => ({ channel: t.channel, amount: Math.round(t.amount * (u.min - u.total) / deficit) })).filter(t => t.amount > 0) });
+    });
+    return;
+  }
 }
 
 // Honest heuristic recommendation — driven by total budget and the account's
@@ -32470,22 +32619,11 @@ function computeRecommendedMix(totalBudget){
       const blendedFrac = heuristicFrac * (1 - blendFactor) + histFrac * blendFactor;
       return { channel, amount: stageTotal * blendedFrac };
     });
-    const viable = candidates.filter(c => c.amount >= channelMinViableSpend(c.channel));
-    const dropped = candidates.filter(c => !viable.includes(c));
-    if (dropped.length){
-      dropped.forEach(c => excluded.push({ stage, channel: c.channel, amount: Math.round(c.amount), minimum: channelMinViableSpend(c.channel) }));
-      const droppedTotal = dropped.reduce((s, c) => s + c.amount, 0);
-      const viableSum = viable.reduce((s, c) => s + c.amount, 0);
-      if (viable.length && droppedTotal > 0 && viableSum > 0){
-        candidates = viable.map(c => ({ channel: c.channel, amount: c.amount + droppedTotal * (c.amount / viableSum) }));
-      } else {
-        candidates = viable; // nothing left to redistribute onto — this stage just recommends less than the full stageTotal
-      }
-    } else {
-      candidates = viable;
-    }
-    candidates.forEach(c => rows.push({ stage, channel: c.channel, recommendedAmount: Math.round(c.amount) }));
+    // 2026-10-08 — minimums are applied once, on each channel's annual total, after every stage is split (see mpApplyChannelMinimums()).
+    candidates.forEach(c => rows.push({ stage, channel: c.channel, recommendedAmount: c.amount }));
   });
+  const raised = [];
+  mpApplyChannelMinimums(rows, excluded, raised);
   // Round 32, follow-on — demand-fulfillment gate: Brand Search captures
   // demand created by other media, so don't recommend it at all until the
   // plan already has a meaningful amount flowing to demand-generating
@@ -32504,8 +32642,9 @@ function computeRecommendedMix(totalBudget){
       }
     });
   }
+  rows.forEach(r => { r.recommendedAmount = Math.round(r.recommendedAmount); });
   return {
-    rows, excluded, historyBlend: { yearsUsed: hist.yearsUsed, blendFactor },
+    rows, excluded, raised, historyBlend: { yearsUsed: hist.yearsUsed, blendFactor },
     yearBudgetRestriction: yearRestriction
       ? { active: true, channelCount: yearRestriction.size, fileName: (mpYearActiveChannelsMeta || {}).uploadFileName || null }
       : { active: false }
@@ -32624,6 +32763,11 @@ function renderMediaMixCard(){
   const ownedRows = mix.channels.filter(r => r.owned);
   const paidTotal = paidRows.reduce((s, r) => s + (r.amount || 0), 0);
 
+  const poolNote = r => {
+    const pool = mpChannelPool(r.channel); if (!pool) return '';
+    const short = pool.committed < pool.minimum;
+    return `<div class="hint" style="margin:0 0 10px;">${fmtMoney(r.amount || 0)} is below the ~${fmtMoney(pool.minimum)} minimum buy for ${r.channel}, but the annual plan carries ${fmtMoney(pool.approved)} for it, so this campaign can be one part of a shared buy. ${fmtMoney(pool.committed)} is drawn by campaigns so far${short ? `, ${fmtMoney(pool.minimum - pool.committed)} short of the minimum, so other campaigns need to draw on it too` : ', which meets the minimum'}.</div>`;
+  };
   const channelRowsHtml = paidRows.length ? paidRows.map(r => {
     const pct = paidTotal ? Math.round((r.amount || 0) / paidTotal * 1000) / 10 : 0;
     // Round 32, follow-on — recompute belowMinimum live (a hand-edited
@@ -32646,7 +32790,8 @@ function renderMediaMixCard(){
         <input type="number" min="0" step="50" value="${r.amount || 0}" oninput="updateMediaMixChannelAmount('${r.channel}', this.value)">
       </div>
     </div>
-    ${belowMin ? `<div class="hint" style="color:var(--advocacy);margin:0 0 10px;">⚠ ${fmtMoney(r.amount || 0)} is below the ~${fmtMoney(channelMinViableSpend(r.channel))} illustrative minimum for ${r.channel}${CHANNEL_MIN_VIABLE_SPEND_BY_FOOTPRINT[r.channel] ? ` at a ${state.footprint} footprint` : ''} to buy meaningful reach/frequency — consider consolidating into fewer channels or raising this campaign's budget.</div>` : ''}
+    ${belowMin && poolNote(r) ? poolNote(r) : ''}
+    ${belowMin && !poolNote(r) ? `<div class="hint" style="color:var(--advocacy);margin:0 0 10px;">⚠ ${fmtMoney(r.amount || 0)} is below the ~${fmtMoney(channelMinViableSpend(r.channel))} ${rateCardMinimumFor(r.channel) != null ? 'rate card' : 'illustrative'} minimum for ${r.channel}${CHANNEL_MIN_VIABLE_SPEND_BY_FOOTPRINT[r.channel] ? ` at a ${state.footprint} footprint` : ''} to buy meaningful reach/frequency — consider consolidating into fewer channels or raising this campaign's budget.</div>` : ''}
     ${demandFulfillmentGated ? `<div class="hint" style="color:var(--advocacy);margin:0 0 10px;">⚠ ${r.channel} captures demand other media creates — this campaign only has ${fmtMoney(otherPaidTotal)} in other paid channels, below the ~${fmtMoney(DEMAND_FULFILLMENT_MIN_GENERATION_BUDGET)} this needs to have an audience worth fulfilling.</div>` : ''}
     ${(!belowMin && !demandFulfillmentGated) ? `<div style="margin:0 0 6px;"></div>` : ''}`;
   }).join('') : `<p class="hint" style="margin:0 0 10px;">No paid channels selected on this campaign yet — <a class="flink" onclick="openCampaignInEditForm('${c.id}','cmpPerfMarketingAssetsWrap')">pick channels on Campaign Creation →</a> to get a spend split here.</p>`;
@@ -34457,6 +34602,7 @@ function mpRefitStagesKeepChannels(){
   plan.allocations = next;
   plan.totalBudget = working;
   plan.lastExcludedFromMix = [];
+  plan.lastRaisedInMix = [];
   renderMediaPlanGrid();
   renderMpFooter();
   mbdRenderBudgetChartGrid();
@@ -34617,6 +34763,7 @@ function mpTplBuildFromActiveChannels(){
     plan.allocations.push(mpTplNewRow(mpTplPrimaryStage(ch), ch, 0));
   });
   plan.lastExcludedFromMix = [];
+  plan.lastRaisedInMix = [];
   renderMediaPlanGrid();
   renderMpFooter();
   if (typeof mpRenderPlanSteps === 'function') mpRenderPlanSteps();
@@ -34865,6 +35012,7 @@ function mpApplyKaizenStep(){
   });
   plan.allocations = next;
   plan.lastExcludedFromMix = [];
+  plan.lastRaisedInMix = [];
   renderMediaPlanGrid();
   renderMpFooter();
   mbdRenderBudgetChartGrid();
@@ -34893,7 +35041,7 @@ function applyRecommendedMix(){
     if (input) input.focus();
     return;
   }
-  const { rows: recommended, excluded, historyBlend, yearBudgetRestriction } = computeRecommendedMix(total);
+  const { rows: recommended, excluded, raised, historyBlend, yearBudgetRestriction } = computeRecommendedMix(total);
   if (!state.mediaPlan) state.mediaPlan = { id: null, accountId: state.companyId, year: mpSelectedYear, totalBudget: total, allocations: [] };
   state.mediaPlan.totalBudget = total;
   ensurePlanMonthlyDefaults();
@@ -34925,6 +35073,7 @@ function applyRecommendedMix(){
   // under their minimum viable spend, and why, rather than letting them
   // silently vanish from the recommendation.
   state.mediaPlan.lastExcludedFromMix = excluded;
+  state.mediaPlan.lastRaisedInMix = raised || [];
   renderMediaPlanGrid();
   renderMpFooter();
   // Round 114 (2026-08-08) — this was the real cause behind "Apply
@@ -35234,14 +35383,23 @@ function renderMediaPlanGrid(){
   // Round 32, follow-on — name what "Apply recommended mix" left out for
   // falling under a channel's minimum viable spend, rather than letting it
   // vanish silently.
+  const raisedList = plan.lastRaisedInMix || [];
+  const raisedHtml = raisedList.length ? `
+    <div class="sk-card" style="margin-top:16px;">
+      <div class="sk-card-head ink"><div class="htext"><h3>Minimums applied</h3><div class="kicker">${raisedList.length} channel${raisedList.length === 1 ? '' : 's'} raised to a minimum buy</div></div></div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin:0;">These channels have a minimum buy, so the plan raised them to it and took the difference from channels with room above their own minimums. The total budget did not change. Edit any line below if you disagree.</p>
+        <ul style="margin:10px 0 0;padding-left:18px;">${raisedList.map(x => `<li class="hint"><strong>${escapeHtml(x.channel)}</strong> raised from ${fmtMoney(x.from)} to ${fmtMoney(x.to)} (${x.source === 'rate card' ? 'rate card minimum' : 'illustrative minimum'})${x.fundedBy && x.fundedBy.length ? `, funded by ${x.fundedBy.map(f => `${escapeHtml(f.channel)} ${fmtMoney(f.amount)}`).join(', ')}` : ''}.</li>`).join('')}</ul>
+      </div>
+    </div>` : '';
   const excluded = plan.lastExcludedFromMix || [];
   const excludedHtml = excluded.length ? `
     <div class="sk-card" style="margin-top:16px;">
       <div class="sk-card-head ink"><div class="htext"><h3>Not recommended this pass</h3><div class="kicker">${excluded.length} channel${excluded.length === 1 ? '' : 's'} held back</div></div></div>
       <div class="sk-card-body">
-        <p class="hint" style="margin:0;">These channels would have received too little budget to buy meaningful reach/frequency, or (for Brand Search) capture demand this plan isn't yet generating elsewhere — either way their share went to the rest of that stage's mix instead. Add channels by hand if you still want to run them at this budget.</p>
+        <p class="hint" style="margin:0;">These channels were held back because their minimum buy does not fit this budget, or (for Brand Search) capture demand this plan isn't yet generating elsewhere — either way their share went to the rest of that stage's mix instead. Add channels by hand if you still want to run them at this budget.</p>
         <ul style="margin:10px 0 0;padding-left:18px;">
-          ${excluded.map(x => `<li class="hint">${x.stage} · ${x.channel} — ${x.reason === 'demand-fulfillment' ? `held back as a demand-fulfillment channel — it captures demand created by other media, and this plan doesn't yet have ~${fmtMoney(x.minimum)} flowing to demand-generating channels elsewhere.` : `would have gotten ~${fmtMoney(x.amount)}, below the ~${fmtMoney(x.minimum)} illustrative minimum.`}</li>`).join('')}
+          ${excluded.map(x => `<li class="hint">${x.stage} · ${x.channel} — ${x.reason === 'demand-fulfillment' ? `held back as a demand-fulfillment channel — it captures demand created by other media, and this plan doesn't yet have ~${fmtMoney(x.minimum)} flowing to demand-generating channels elsewhere.` : (x.reason === 'unaffordable' ? `its ~${fmtMoney(x.minimum)} ${x.source === 'rate card' ? 'rate card ' : ''}minimum could not be funded without pushing other channels below their own minimums at this budget. It stays available to add by hand.` : `would have gotten ~${fmtMoney(x.amount)}, less than a quarter of its ~${fmtMoney(x.minimum)} ${x.source === 'rate card' ? 'rate card ' : 'illustrative '}minimum, too little to justify lifting it.`)}</li>`).join('')}
         </ul>
       </div>
     </div>` : '';
@@ -35354,7 +35512,7 @@ function renderMediaPlanGrid(){
       </div>
       <div class="sk-card-footer">Humans can adjust any amount here — the recommended split is a starting point, not a constraint.</div>
     </div>`;
-  }).join('') + excludedHtml + mpRenderAddChannelCard();
+  }).join('') + raisedHtml + excludedHtml + mpRenderAddChannelCard();
   renderMpFooter();
 }
 
@@ -41638,6 +41796,7 @@ async function mpSeedPlanFromUpload(detail, opts){
     return { id: `alloc-${mpSelectedYear}-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`, stage, channel, recommendedAmount: rounded, approvedAmount: rounded, cpm: ILLUSTRATIVE_CHANNEL_CPM[channel] || DEFAULT_BLENDED_CPM, audienceType: defaultAudienceTypeForChannel(channel), periods: computePlanMonthlyPeriods(rounded) };
   });
   plan.lastExcludedFromMix = [];
+  plan.lastRaisedInMix = [];
   plan.seededFromUpload = { uploadId: detail.id, fileName: detail.fileName || null, skipped };
   mpSeededFromUploadId = detail.id;
   // Non-working lines from the upload (fill-if-empty, existing helper)
@@ -73382,7 +73541,46 @@ async function mbuSaveDmFormatCost(){
 // comment above). One sub-table per publication, one row per ad format —
 // no seeded defaults (no external per-publication rate benchmark exists),
 // every row starts blank.
+const RC_CHANNELS = ['Magazines','Newspapers','Linear TV','OTV','CTV','Out-of-Home','Radio','Podcasts','Programmatic Display','Paid Social','Non-Brand Search','PR','Partner Media','Direct Mail — Prospects','Direct Mail — Past Guests','Direct Mail — Inquiries','Email — Remarketing','Retail Media'];
+let rcDraft = null;
+function rcRender(){
+  const el = document.getElementById('mbuRateCardMinBody'); if (!el) return;
+  if (!rcDraft) rcDraft = (rateCardMins.rows || []).map(r => Object.assign({}, r));
+  const lo = rateCardMins.lowestInsertionCost;
+  const opts = cur => RC_CHANNELS.concat(RC_CHANNELS.indexOf(cur) < 0 && cur ? [cur] : []).map(c => `<option value="${escapeHtml(c)}" ${c === cur ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('');
+  const rows = rcDraft.map((r, i) => {
+    const mag = /^magazines?$/i.test(r.channel);
+    const basis = mag ? `<select class="tbl-input" onchange="rcSet(${i},'basis',this.value)"><option value="dollars" ${r.basis !== 'insertions' ? 'selected' : ''}>Dollars</option><option value="insertions" ${r.basis === 'insertions' ? 'selected' : ''}>Insertions</option></select>` : 'Dollars';
+    const val = r.basis === 'insertions' && mag ? `<input type="number" min="1" step="1" class="tbl-input" style="width:90px;" value="${r.minUnits == null ? '' : r.minUnits}" onchange="rcSet(${i},'minUnits',this.value)"> <span class="hint" style="margin:0;">${lo ? '× ' + fmtMoney(lo) + ' = ' + fmtMoney(lo * (Number(r.minUnits) || 0)) : 'enter a cost per insertion below'}</span>` : `<input type="number" min="0" step="100" class="tbl-input" style="width:120px;" value="${r.minSpend == null ? '' : r.minSpend}" onchange="rcSet(${i},'minSpend',this.value)">`;
+    return `<tr><td><select class="tbl-input" onchange="rcSet(${i},'channel',this.value)">${opts(r.channel)}</select></td><td>${basis}</td><td>${val}</td><td><input type="text" class="tbl-input" style="width:100%;min-width:140px;" maxlength="300" value="${escapeHtml(r.note || '')}" placeholder="Optional" onchange="rcSet(${i},'note',this.value)"></td><td><a class="flink" onclick="rcRemove(${i})" aria-label="Remove">Remove</a></td></tr>`;
+  }).join('');
+  el.innerHTML = `${rcDraft.length ? `<div style="overflow-x:auto;"><table class="data-table" style="min-width:560px;"><thead><tr><th>Channel</th><th>Minimum is in</th><th>Minimum buy</th><th>Note</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="hint" style="margin:0 0 8px;">No minimums entered yet. Illustrative minimums are in use.</p>'}<button type="button" class="strat-chip" style="margin-top:8px;" onclick="rcAdd()">+ Add a channel</button>`;
+}
+function rcAdd(){ if (!rcDraft) rcDraft = []; const used = rcDraft.map(r => r.channel); const ch = RC_CHANNELS.find(c => used.indexOf(c) < 0) || ''; rcDraft.push({ channel: ch, basis: 'dollars', minSpend: null, minUnits: null, note: '' }); rcRender(); }
+function rcRemove(i){ rcDraft.splice(i, 1); rcRender(); rcQueueSave(); }
+function rcSet(i, k, v){
+  const r = rcDraft[i]; if (!r) return;
+  if (k === 'minSpend' || k === 'minUnits') r[k] = v === '' ? null : Number(v); else r[k] = v;
+  if (k === 'channel' && !/^magazines?$/i.test(v)) r.basis = 'dollars';
+  if (k === 'basis' || k === 'channel') rcRender();
+  rcQueueSave();
+}
+let rcSaveTimer = null;
+function rcQueueSave(){ const st = document.getElementById('mbuMagazineCostStatus'); if (st) st.textContent = 'Saving…'; clearTimeout(rcSaveTimer); rcSaveTimer = setTimeout(rcSave, 600); }
+async function rcSave(){
+  const st = document.getElementById('mbuMagazineCostStatus');
+  const rows = (rcDraft || []).filter(r => r.channel && (r.basis === 'insertions' ? r.minUnits > 0 : r.minSpend != null));
+  if (dataSourceLabel !== 'backend'){ if (st) st.textContent = 'Not saved. Sign in to save minimums.'; return; }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/rate-card-minimums`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows }) });
+    const d = await resp.json().catch(() => ({}));
+    if (!resp.ok){ if (st) st.textContent = d.error || 'Could not save the minimums.'; return; }
+    rateCardMins = { rows: d.rows || [], minimums: d.minimums || {}, lowestInsertionCost: d.lowestInsertionCost, loaded: true };
+    if (st) st.textContent = `Saved ${new Date().toLocaleTimeString()}.`;
+  } catch (e){ if (st) st.textContent = 'Could not save the minimums.'; }
+}
 async function mbuLoadMagazineCost(){
+  rcDraft = null; await loadRateCardMinimums(); rcRender();
   const wrap = document.getElementById('mbuMagazineCostBody');
   const status = document.getElementById('mbuMagazineCostStatus');
   if (!wrap) return;
@@ -76335,6 +76533,7 @@ async function posSetDecision(contributionId, status){
     loadPrCorpCommData(),
     loadReputationLive(),
     loadNewsFeed(),
+    loadRateCardMinimums(),
     loadMediaPlan(),
     loadContentLibrary(),
     loadAccountIntelligence(),
