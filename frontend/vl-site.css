@@ -106,3 +106,12 @@ footer:not(:has(.footer-inner)) > span{color:rgba(237,234,224,.55)!important;}
 /* ghost buttons: a full pill outline (they were rendering a lone bottom arc) */
 .btn-ghost{border:1.5px solid currentColor!important;padding:15px 26px!important;border-radius:999px!important;display:inline-block;}
 .hero .btn-ghost{border-color:rgba(255,255,255,.5)!important;}
+
+/* nav-centered-2026-10-08: primary links centered between logo and CTA, larger */
+@media (min-width:821px){
+.navlinks{flex:1;justify-content:center;gap:6px 28px}
+.navlinks a{font-size:clamp(13px,1.22vw,15.5px)!important}
+.navlinks a:first-child{margin-left:auto}
+.navlinks a:nth-last-child(2){margin-right:auto}
+.navlinks a.nav-cta{font-size:11.5px!important}
+}
