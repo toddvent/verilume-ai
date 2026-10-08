@@ -362,17 +362,17 @@
     <div class="field-row">
       <div class="field">
         <label for="ctFirst">First name</label>
-        <input type="text" id="ctFirst" value="Jane">
+        <input type="text" id="ctFirst" value="">
       </div>
       <div class="field">
         <label for="ctLast">Last name</label>
-        <input type="text" id="ctLast" value="Doe">
+        <input type="text" id="ctLast" value="">
       </div>
     </div>
     <div class="field-row">
       <div class="field">
         <label for="ctEmail">Work email</label>
-        <input type="email" id="ctEmail" value="jane@acmehospitality.com">
+        <input type="email" id="ctEmail" value="" placeholder="you@company.com">
       </div>
       <div class="field">
         <label for="ctCompany">Company name</label>
@@ -404,7 +404,7 @@
           <option value="+65">+65 · Singapore</option>
           <option value="+27">+27 · South Africa</option>
         </select>
-        <input type="tel" id="ctPhone" value="(555) 123-4567">
+        <input type="tel" id="ctPhone" value="" placeholder="Phone number">
       </div>
     </div>
     <div class="btn-row">
@@ -846,9 +846,33 @@ async function init(){
   renderTeam();
   loadVoiceConsent();
   renderMyProfile();
+  prefillContactFromMember();
   applyInviteIsAdminGate();
   await loadInvoices();
   await loadFinancialSummary();
+}
+
+// 2026-10-08 — the Contact card showed seeded demo values (Jane Doe, jane@acmehospitality.com, (555) 123-4567) instead of the person signed in.
+// It now fills from the signed-in team member's own record (name, work email, phone) and saves back to it. With no backend, the demo values stay.
+function prefillContactFromMember(){
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  if (dataSourceLabel !== 'backend'){
+    set('ctFirst', state.contact.firstName); set('ctLast', state.contact.lastName); set('ctEmail', state.contact.email); set('ctPhone', state.contact.phone);
+    return;
+  }
+  const me = currentMemberId ? findTeamMember(currentMemberId) : null;
+  if (!me){ set('ctFirst', ''); set('ctLast', ''); set('ctEmail', ''); set('ctPhone', ''); return; }
+  const parts = String(me.name || '').trim().split(/\s+/);
+  set('ctFirst', parts[0] || ''); set('ctLast', parts.slice(1).join(' '));
+  set('ctEmail', me.email || '');
+  let phone = String(me.phone || '').trim();
+  const sel = document.getElementById('ctPhoneCode');
+  if (phone.charAt(0) === '+' && sel){
+    const opts = [...sel.options].map(o => o.value).sort((a, b) => b.length - a.length);
+    const code = opts.find(c => phone.indexOf(c) === 0);
+    if (code){ sel.value = code; phone = phone.slice(code.length).trim(); }
+  }
+  set('ctPhone', phone);
 }
 
 function escapeHtml(s){
@@ -1060,7 +1084,7 @@ async function saveContact(){
   document.getElementById('acctCoName').textContent = state.companyName;
   document.getElementById('acctCoNameEyebrow').textContent = state.companyName;
   const el = document.getElementById('contactStatus');
-  let persisted = false;
+  let persisted = false, personSaved = false, personError = '';
   if (dataSourceLabel === 'backend'){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/profile`, {
@@ -1069,11 +1093,26 @@ async function saveContact(){
       });
       persisted = resp.ok;
     } catch (e){ console.warn('saveContact: backend write failed, Company name saved locally only.', e); }
+    if (currentMemberId && findTeamMember(currentMemberId)){
+      try {
+        const name = [state.contact.firstName, state.contact.lastName].filter(Boolean).join(' ');
+        const phone = state.contact.phone ? `${state.contact.phoneCountry} ${state.contact.phone}`.trim() : '';
+        const r2 = await authedFetch(`${BACKEND_URL}/api/team/${encodeURIComponent(currentMemberId)}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email: state.contact.email, phone })
+        });
+        personSaved = r2.ok;
+        if (!r2.ok){ const d = await r2.json().catch(() => ({})); personError = d.error || ''; }
+        else { const me = findTeamMember(currentMemberId); if (me){ me.name = name; me.email = state.contact.email; me.phone = phone; } renderTeam(); renderMyProfile(); }
+      } catch (e){ personError = 'Could not reach the server.'; }
+    }
   }
-  el.textContent = persisted
-    ? '✓ Company name saved to the backend. First/last name, email, and phone are session-only — this build has no contact record to write those to yet.'
-    : '✓ Company name saved locally only (no backend record for this account, or the backend is unreachable). First/last name, email, and phone are session-only either way.';
-  el.classList.add('ok');
+  el.textContent = personSaved
+    ? '✓ Contact information saved.'
+    : (persisted
+      ? `✓ Company name saved. Your name, email and phone were not saved${personError ? ': ' + personError : ' (no team member record is tied to this login)'}.`
+      : '✓ Saved locally only (the backend is unreachable). Nothing was written to your account.');
+  el.classList.toggle('ok', personSaved || persisted);
 }
 
 /* ---------- Password / security (UI mockup only — see card-sub note) ---------- */
