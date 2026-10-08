@@ -6299,6 +6299,32 @@ createTableIfNeeded(`
 ensureColumn('mmm_inputs', 'reach', 'REAL');
 // 2026-10-08 — Annual plan: channel mix, reach, frequency, call types, transaction channels and total leads live in one JSON object.
 ensureColumn('account_annual_plan', 'detailsJson', 'TEXT');
+// 2026-10-08 — Strategy scenario planner: named what-if plans (budget + channel mix) run through the forecast engine.
+// Anyone with Strategy access can run and save; only an admin or a CMO-level member can activate one as the account target.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS account_plan_scenarios (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    status TEXT NOT NULL,
+    band TEXT NOT NULL,
+    workingMedia REAL,
+    mixJson TEXT,
+    resultJson TEXT,
+    notes TEXT,
+    createdById TEXT,
+    createdByName TEXT,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL,
+    submittedAt TEXT,
+    activatedById TEXT,
+    activatedByName TEXT,
+    activatedAt TEXT,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
 ensureColumn('mmm_inputs', 'impressions', 'REAL');
 
 // The fixed 18-category taxonomy itself (typos in the original request
@@ -17780,6 +17806,84 @@ function buildAnnualPlanRecommendation(accountId, year, asOfDate, basisIn){
   return { year, basis, window: win, baseline, target, testFindings, method: (W ? ['Basis: the last 12 months of loaded actuals (' + W[0] + ' to ' + W[11] + '), so run-rate comparisons with last year are not used; the target follows the media budget change.'].concat(budgetNote ? [budgetNote] : []) : []).concat(used).concat(['Impressions and direct calls scale with the media budget.']), budget: { target: tBudget, baseline: bBudget }, missing, recommended: true };
 }
 
+// ---- Strategy scenario planner (2026-10-08) -------------------------------------
+// A scenario is a plan year, a working media budget and a channel mix. Impressions per channel = spend ÷ that channel's own
+// trailing-12-month cost per thousand impressions; the total goes through the same forecast engine as the Growth & Performance
+// cards (impressions → visits → leads → bookings → revenue). Mix therefore moves the result through delivery cost only: the
+// engine has no channel-level conversion rates, and the response says so. Band: low / mid / high of the engine's planning band.
+const PLAN_SCENARIO_PRESETS = [
+  { kind: 'hold', name: 'Hold', band: 1, bandLabel: 'low', blurb: 'Confirmed budget and the current mix, with every funnel stage at its own 25th percentile.' },
+  { kind: 'expected', name: 'Expected', band: 1, bandLabel: 'mid', blurb: 'Confirmed budget and the current mix, with the funnel at what this account has typically done.' },
+  { kind: 'stretch', name: 'Stretch', band: 2, bandLabel: 'high', blurb: 'Confirmed budget and the current mix, with every funnel stage at its own 75th percentile. A stretch, not a promise.' }
+];
+function planScenarioBand(b){ return b === 'low' ? 0 : b === 'high' ? 2 : 1; }
+function planScenarioCompute(accountId, input){
+  const year = Number(input.year) || new Date().getUTCFullYear();
+  const bandName = input.band === 'low' || input.band === 'high' ? input.band : 'mid'; const bi = planScenarioBand(bandName);
+  const asOf = new Date();
+  const S = buildForecastSeries(accountId);
+  const cal = forecastEngine.calibrate(S, { asOf, fallbackAov: storyFallbackAov(accountId, year) });
+  const W12 = storyMonthKeys(asOf, 12);
+  // baseline channel facts over the last 12 complete months
+  const ch = {}; let anyMix = false;
+  try { getEffectiveMmmTotals(accountId).totals.forEach(t => { if (W12.indexOf(t.periodLabel) < 0) return; const c = String(t.category || t.channel || '').trim(); if (!c) return; const o = ch[c] || (ch[c] = { spend: 0, impressions: 0 }); o.spend += Number(t.spend) || 0; o.impressions += Number(t.impressions) || 0; }); } catch (e){}
+  Object.keys(ch).forEach(c => { if (!(ch[c].spend > 0)) delete ch[c]; });
+  const baseTotalSpend = Object.keys(ch).reduce((n, c) => n + ch[c].spend, 0), baseTotalImps = Object.keys(ch).reduce((n, c) => n + ch[c].impressions, 0);
+  const blendedCpm = baseTotalImps > 0 ? baseTotalSpend / baseTotalImps * 1000 : (cal.blendedCpm || null);
+  const planBudget = (() => { try { return planWorkingMediaBudget(accountId, year); } catch (e){ return null; } })();
+  const W = input.workingMedia != null && input.workingMedia !== '' && Number(input.workingMedia) >= 0 ? Number(input.workingMedia) : (planBudget ? planBudget.workingMedia : (baseTotalSpend || null));
+  if (!(W > 0)) return { error: 'No working media budget to run. Enter one, or confirm the ' + year + ' marketing budget.' };
+  // mix: given spend per channel (any scale), else the baseline shares
+  const given = {}; let givenSum = 0;
+  if (input.mix && typeof input.mix === 'object') Object.keys(input.mix).forEach(c => { const v = Number(input.mix[c]); if (Number.isFinite(v) && v > 0){ given[c] = v; givenSum += v; } });
+  let shares = {};
+  if (givenSum > 0){ Object.keys(given).forEach(c => { shares[c] = given[c] / givenSum; }); anyMix = true; }
+  else if (baseTotalSpend > 0){ Object.keys(ch).forEach(c => { shares[c] = ch[c].spend / baseTotalSpend; }); }
+  const chRows = []; let totalImps = 0; const notes = [];
+  const chNames = Object.keys(shares);
+  if (!chNames.length){ totalImps = blendedCpm ? W / blendedCpm * 1000 : 0; notes.push('No channel history on file, so the whole budget is converted at one blended cost per thousand impressions.'); }
+  chNames.forEach(c => {
+    const spend = W * shares[c]; const hist = ch[c]; let cpm = hist && hist.impressions > 0 ? hist.spend / hist.impressions * 1000 : null, src = 'this channel\'s last 12 months';
+    if (!cpm){ cpm = blendedCpm; src = hist ? 'blended cost (no impressions logged for this channel)' : 'blended cost (channel has no history)'; }
+    const imps = cpm ? spend / cpm * 1000 : 0; totalImps += imps;
+    chRows.push({ channel: c, spend: Math.round(spend), share: Math.round(shares[c] * 1000) / 10, cpm: cpm ? Math.round(cpm * 100) / 100 : null, cpmSource: src, impressions: Math.round(imps), baselineSpend: hist ? Math.round(hist.spend) : 0 });
+  });
+  // monthly shape: last year's impression pattern, else even
+  const py = year - 1; const pyKeys = Object.keys(S.impressions).filter(k => k.startsWith(String(py)));
+  const pyTot = pyKeys.reduce((n, k) => n + (S.impressions[k] || 0), 0); const seasonal = pyKeys.length >= 9 && pyTot > 0;
+  const months = []; for (let m = 1; m <= 12; m++){ const k = `${year}-${String(m).padStart(2, '0')}`; const sh = seasonal ? (S.impressions[`${py}-${String(m).padStart(2, '0')}`] || 0) / pyTot : 1 / 12; months.push({ month: k, impressions: totalImps * sh, spend: W * sh }); }
+  notes.push(seasonal ? `Monthly shape follows ${py}'s impressions.` : 'Monthly shape is even across the year (no full prior-year impressions).');
+  const f = forecastEngine.forecast(cal, { months });
+  const T = f.totals; const pick = a => a ? a[bi] : null;
+  const leadsTotal = pick(T.leads), booked = pick(T.bookings), rev = T.revenue ? pick(T.revenue) : null, visits = pick(T.visits);
+  const typeMix = cal.leadTypeMix || {}; const typeSum = Object.keys(typeMix).reduce((n, t) => n + typeMix[t], 0) || 0;
+  const leadTypes = {}; if (typeSum > 0) Object.keys(typeMix).forEach(t => { leadTypes[t] = Math.round(leadsTotal * typeMix[t] / typeSum); });
+  const div = (a, b) => (a != null && b != null && b > 0) ? Math.round(a / b * 100) / 100 : null;
+  const outcome = { workingMedia: Math.round(W), impressions: Math.round(totalImps), sessions: visits, leads: leadsTotal, leadTypes, transactions: booked, revenue: rev, roas: div(rev, W), cac: div(W, booked), costPerVisitor: div(W, visits), costPerLead: div(W, leadsTotal) };
+  const bands = { low: { leads: T.leads[0], transactions: T.bookings[0], revenue: T.revenue ? T.revenue[0] : null }, mid: { leads: T.leads[1], transactions: T.bookings[1], revenue: T.revenue ? T.revenue[1] : null }, high: { leads: T.leads[2], transactions: T.bookings[2], revenue: T.revenue ? T.revenue[2] : null } };
+  // against what is on file
+  let target = null; try { const { target: tr } = storyPlanRows(accountId, year); if (tr && tr.year === year) target = { label: tr.label || null, workingMedia: tr.workingMedia, leads: (Number(tr.prospectLeads) || 0) + (Number(tr.growthLeads) || 0) + (Number(tr.valueLeads) || 0) || null, transactions: tr.bookings, revenue: tr.grossRevenue }; } catch (e){}
+  const sumKeys = (m, ks) => { let n = 0, any = false; ks.forEach(k => { if (m[k] != null){ n += m[k]; any = true; } }); return any ? n : null; };
+  const base = { window: `${W12[0]} to ${W12[11]}`, workingMedia: Math.round(baseTotalSpend) || null, impressions: Math.round(baseTotalImps) || null, sessions: sumKeys(S.visits, W12), leads: (() => { let n = 0, any = false; W12.forEach(k => { if (S.leads[k]){ n += S.leads[k].total; any = true; } }); return any ? Math.round(n) : null; })(), transactions: sumKeys(S.transactions, W12), revenue: sumKeys(S.revenue, W12) };
+  base.roas = div(base.revenue, base.workingMedia); base.cac = div(base.workingMedia, base.transactions); base.costPerVisitor = div(base.workingMedia, base.sessions); base.costPerLead = div(base.workingMedia, base.leads);
+  if (!planBudget && input.workingMedia == null) notes.push('No confirmed ' + year + ' working media budget, so the last 12 months of spend is used.');
+  return { year, band: bandName, outcome, bands, channels: chRows, baseline: base, target, confidence: f.confidence, rangeNote: f.rangeNote,
+    assumptions: ['Impressions per channel = spend ÷ that channel\'s own cost per thousand over the last 12 complete months.', 'Funnel rates (visits, leads, transactions, revenue per transaction) are this account\'s own where there is history; the engine labels any benchmark.', 'The mix moves results only through cost per thousand impressions. Channels are not given different conversion rates until media mix model results are available.'].concat(notes).concat(f.notes || []),
+    customMix: anyMix, usedBudget: planBudget ? 'confirmed ' + year + ' budget' : 'last 12 months of spend' };
+}
+function planScenarioActor(req, accountId){
+  const session = authenticate(req); let m = null;
+  if (session && session.memberId){ try { m = db.prepare('SELECT name, isAdmin, level FROM team_members WHERE id = ? AND accountId = ?').get(session.memberId, accountId); } catch (e){} }
+  if (!session) return null;
+  if (!session.memberId) return { id: null, name: 'Account admin', canActivate: true };
+  if (!m) return { id: session.memberId, name: 'Team member', canActivate: false };
+  return { id: session.memberId, name: m.name || 'Team member', canActivate: !!(m.isAdmin || m.isadmin) || String(m.level || '') === 'CMO' };
+}
+function planScenarioOut(r){
+  let result = null, mix = null; try { result = r.resultJson ? JSON.parse(r.resultJson) : null; } catch (e){} try { mix = r.mixJson ? JSON.parse(r.mixJson) : null; } catch (e){}
+  return { id: r.id, year: r.year, name: r.name, kind: r.kind, status: r.status, band: r.band, workingMedia: r.workingMedia, mix, result, notes: r.notes, createdByName: aliasVal(r, 'createdByName'), createdAt: aliasVal(r, 'createdAt'), submittedAt: aliasVal(r, 'submittedAt'), activatedByName: aliasVal(r, 'activatedByName'), activatedAt: aliasVal(r, 'activatedAt') };
+}
+
 // A one-line account of where the numbers came from: rows, months covered and the last write per source table,
 // plus the latest upload receipt. Attached to the dashboard analytics so every card can show its source.
 function buildProvenance(accountId){
@@ -18461,7 +18565,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['onboarding_assignments', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
+const CATALOG_EXEMPT = new Set(['account_plan_scenarios', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -42183,6 +42287,74 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const bq = new URL(req.url, 'http://localhost').searchParams.get('basis');
       try { return sendJson(res, 200, buildAnnualPlanRecommendation(accountId, year, new Date(), bq === 'ttm' ? 'ttm' : 'calendar')); }
       catch (e){ console.error('[annual-plan recommendation] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'Could not build the recommendation: ' + (e && e.message || 'unknown error') }); }
+    }
+    // ---- Strategy scenario planner (2026-10-08) -------------------------------------------------
+    // GET  /api/accounts/:id/plan-scenarios?year=      saved scenarios + the Hold / Expected / Stretch starting points
+    // POST /api/accounts/:id/plan-scenarios/run        run one scenario, nothing saved
+    // POST /api/accounts/:id/plan-scenarios            save one (draft, or pending when submit is true)
+    // POST /api/accounts/:id/plan-scenarios/:sid/submit | activate | archive
+    // Anyone with access can run and save; activate (writes the account target) needs an admin or a CMO-level member.
+    if (parts.length >= 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'plan-scenarios' && parts.length <= 6){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const actor = planScenarioActor(req, accountId) || { id: null, name: 'Team member', canActivate: false };
+      try {
+        if (req.method === 'GET' && parts.length === 4){
+          const y = parseInt(new URL(req.url, 'http://localhost').searchParams.get('year'), 10); const year = Number.isFinite(y) ? y : new Date().getUTCFullYear();
+          const rows = db.prepare("SELECT * FROM account_plan_scenarios WHERE accountId = ? AND year = ? AND status <> 'archived' ORDER BY createdAt DESC").all(accountId, year).map(planScenarioOut);
+          const presets = PLAN_SCENARIO_PRESETS.map(p => { const r = planScenarioCompute(accountId, { year, band: p.bandLabel }); return { kind: p.kind, name: p.name, blurb: p.blurb, band: p.bandLabel, result: r.error ? null : r, error: r.error || null }; });
+          return sendJson(res, 200, { year, canActivate: actor.canActivate, actorName: actor.name, scenarios: rows, presets });
+        }
+        if (req.method === 'POST' && parts.length === 5 && parts[4] === 'run'){
+          const body = await readBody(req); const r = planScenarioCompute(accountId, body || {});
+          return sendJson(res, r.error ? 400 : 200, r);
+        }
+        if (req.method === 'POST' && parts.length === 4){
+          const body = await readBody(req) || {};
+          const name = String(body.name || '').trim().slice(0, 80); if (!name) return sendJson(res, 400, { error: 'Give the scenario a name.' });
+          const kind = ['hold', 'expected', 'stretch'].includes(body.kind) ? body.kind : 'custom'; const band = ['low', 'high'].includes(body.band) ? body.band : 'mid';
+          const r = planScenarioCompute(accountId, body); if (r.error) return sendJson(res, 400, r);
+          const id = generateId('SCN'); const now = new Date().toISOString(); const status = body.submit ? 'pending' : 'draft';
+          const mix = {}; r.channels.forEach(c => { mix[c.channel] = c.spend; });
+          db.prepare('INSERT INTO account_plan_scenarios (id, accountId, year, name, kind, status, band, workingMedia, mixJson, resultJson, notes, createdById, createdByName, createdAt, updatedAt, submittedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(id, accountId, r.year, name, kind, status, band, r.outcome.workingMedia, JSON.stringify(mix), JSON.stringify(r), body.notes ? String(body.notes).slice(0, 2000) : null, actor.id, actor.name, now, now, status === 'pending' ? now : null);
+          return sendJson(res, 200, { saved: true, scenario: planScenarioOut(db.prepare('SELECT * FROM account_plan_scenarios WHERE id = ?').get(id)) });
+        }
+        if (req.method === 'POST' && parts.length === 6){
+          const sid = decodeURIComponent(parts[4]); const act = parts[5];
+          const row = db.prepare('SELECT * FROM account_plan_scenarios WHERE id = ? AND accountId = ?').get(sid, accountId);
+          if (!row) return sendJson(res, 404, { error: 'Scenario not found.' });
+          const now = new Date().toISOString();
+          if (act === 'submit'){
+            if (row.status !== 'draft') return sendJson(res, 400, { error: 'Only a draft can be sent for approval.' });
+            db.prepare("UPDATE account_plan_scenarios SET status = 'pending', submittedAt = ?, updatedAt = ? WHERE id = ?").run(now, now, sid);
+          } else if (act === 'archive'){
+            const mine = actor.id && actor.id === aliasVal(row, 'createdById');
+            if (!actor.canActivate && !mine) return sendJson(res, 403, { error: 'Only the person who made it, an admin or a CMO can archive a scenario.' });
+            if (row.status === 'active') return sendJson(res, 400, { error: 'Activate another scenario first; the active one is replaced, not archived.' });
+            db.prepare("UPDATE account_plan_scenarios SET status = 'archived', updatedAt = ? WHERE id = ?").run(now, sid);
+          } else if (act === 'activate'){
+            if (!actor.canActivate) return sendJson(res, 403, { error: 'Only an admin or a CMO can activate a scenario for the account. Send it for approval instead.' });
+            let result = null; try { result = JSON.parse(row.resultJson); } catch (e){}
+            if (!result || !result.outcome) return sendJson(res, 400, { error: 'This scenario has no saved result to activate.' });
+            const o = result.outcome, lt = o.leadTypes || {};
+            const lead = k => { const m = Object.keys(lt).find(t => (k === 'value' ? /high|value/i : k === 'growth' ? /regist|growth/i : /prospect/i).test(t)); return m != null ? lt[m] : null; };
+            const existing = db.prepare("SELECT * FROM account_annual_plan WHERE accountId = ? AND year = ? AND kind = 'target'").get(accountId, row.year);
+            let details = {}; try { details = existing && existing.detailsJson ? JSON.parse(existing.detailsJson) : {}; } catch (e){}
+            const mix = {}; (result.channels || []).forEach(c => { mix[c.channel] = c.spend; }); details.channelMix = mix;
+            const label = `Scenario "${row.name}" (${row.band} band), activated by ${actor.name} ${now.slice(0, 10)}`;
+            const vals = { workingMedia: o.workingMedia, impressions: o.impressions, websiteUsers: o.sessions != null ? Math.round(o.sessions) : null, valueLeads: lead('value'), growthLeads: lead('growth'), prospectLeads: lead('prospect'), bookings: o.transactions != null ? Math.round(o.transactions) : null, grossRevenue: o.revenue != null ? Math.round(o.revenue) : null };
+            const stmts = [];
+            if (existing){ stmts.push({ sql: `UPDATE account_plan_scenarios SET status = 'archived', updatedAt = ? WHERE accountId = ? AND year = ? AND status = 'active'`, params: [now, accountId, row.year] });
+              stmts.push({ sql: `UPDATE account_annual_plan SET label = ?, workingMedia = ?, impressions = ?, websiteUsers = ?, valueLeads = ?, growthLeads = ?, prospectLeads = ?, bookings = ?, grossRevenue = ?, "detailsJson" = ?, updatedAt = ? WHERE accountId = ? AND year = ? AND kind = 'target'`, params: [label, vals.workingMedia, vals.impressions, vals.websiteUsers, vals.valueLeads, vals.growthLeads, vals.prospectLeads, vals.bookings, vals.grossRevenue, JSON.stringify(details), now, accountId, row.year] }); }
+            else { stmts.push({ sql: `UPDATE account_plan_scenarios SET status = 'archived', updatedAt = ? WHERE accountId = ? AND year = ? AND status = 'active'`, params: [now, accountId, row.year] });
+              stmts.push({ sql: `INSERT INTO account_annual_plan (accountId, year, kind, label, workingMedia, impressions, websiteUsers, valueLeads, growthLeads, prospectLeads, bookings, grossRevenue, "detailsJson", updatedAt) VALUES (?, ?, 'target', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, params: [accountId, row.year, label, vals.workingMedia, vals.impressions, vals.websiteUsers, vals.valueLeads, vals.growthLeads, vals.prospectLeads, vals.bookings, vals.grossRevenue, JSON.stringify(details), now] }); }
+            stmts.push({ sql: `UPDATE account_plan_scenarios SET status = 'active', activatedById = ?, activatedByName = ?, activatedAt = ?, updatedAt = ? WHERE id = ?`, params: [actor.id, actor.name, now, now, sid] });
+            db.batch(stmts, 60000);
+          } else return sendJson(res, 404, { error: 'Unknown action.' });
+          return sendJson(res, 200, { ok: true, scenario: planScenarioOut(db.prepare('SELECT * FROM account_plan_scenarios WHERE id = ?').get(sid)) });
+        }
+      } catch (e){ console.error('[plan-scenarios] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'Scenario request failed: ' + (e && e.message || 'unknown error') }); }
     }
     // GET /api/accounts/:id/annual-plan[?year=YYYY] — annual baseline &
     // target rows (see account_annual_plan's own comment). Without ?year,
