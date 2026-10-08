@@ -12387,13 +12387,15 @@
           <label for="mbuAnnualPlanYear" style="margin:0;">Plan year</label>
           <select id="mbuAnnualPlanYear" class="tbl-select" onchange="mbuLoadAnnualPlan()"></select>
           <span class="hint" id="mbuAnnualPlanStatus" style="margin:0;"></span>
+          <label for="mbuAnnualPlanBasis" style="margin:0;">Forecast from</label>
+          <select id="mbuAnnualPlanBasis" class="tbl-select" title="Which actuals the recommended plan is built on"><option value="calendar">Previous calendar year</option><option value="ttm">Last 12 months</option></select>
           <button type="button" class="btn-ghost" onclick="mbuRecommendAnnualPlan()">Recommend a plan</button>
           <button type="button" class="btn-primary" id="mbuApprovePlanBtn" onclick="mbuApproveAnnualPlan()" style="display:none;">Approve this plan</button>
         </div>
         <div id="mbuAnnualPlanRec" class="hint" style="display:none;margin:0 0 10px;"></div>
         <div style="overflow-x:auto;">
           <table class="data-table" id="mbuAnnualPlanTable" style="min-width:640px;">
-            <thead><tr><th>Metric</th><th>Baseline (trailing 12 mo.)</th><th>Target (approved scenario)</th></tr></thead>
+            <thead><tr><th>Metric</th><th id="mbuBaselineTh">Baseline (trailing 12 mo.)</th><th>Target (approved scenario)</th></tr></thead>
             <tbody id="mbuAnnualPlanBody"></tbody>
           </table>
         </div>
@@ -73362,10 +73364,11 @@ async function mbuRecommendAnnualPlan(){
   if (!yearSel || !box) return; const year = parseInt(yearSel.value, 10);
   if (status) status.textContent = 'Building a recommendation…';
   let rec = null;
-  try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/annual-plan/recommendation?year=${year}`); if (r.ok) rec = await r.json(); } catch (e){}
+  try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/annual-plan/recommendation?year=${year}&basis=${encodeURIComponent((document.getElementById('mbuAnnualPlanBasis') || {}).value || 'calendar')}`); if (r.ok) rec = await r.json(); } catch (e){}
   if (!rec){ if (status) status.textContent = 'Could not build a recommendation just now.'; return; }
   const body = document.getElementById('mbuAnnualPlanBody');
   ['baseline', 'target'].forEach(kind => { const row = rec[kind]; body.querySelectorAll(`input[data-kind="${kind}"]`).forEach(inp => { const v = row[inp.dataset.key]; if (v != null) inp.value = v; }); });
+  const bth = document.getElementById('mbuBaselineTh'); if (bth) bth.textContent = rec.basis === 'ttm' && rec.window ? `Baseline (last 12 months, ${rec.window.from} to ${rec.window.to})` : `Baseline (${year - 1} actuals)`;
   box.style.display = 'block';
   box.innerHTML = `<b>Recommended, not saved yet.</b> Edit any number, then approve. How it was built:<ul style="margin:6px 0 0 18px;">${(rec.method || []).map(m => `<li>${escapeHtml(m)}</li>`).join('')}</ul>${(rec.missing || []).length ? `<div style="margin-top:6px;color:#C0273C;">Not on file, so left blank: ${rec.missing.map(escapeHtml).join('; ')}.</div>` : ''}`;
   const btn = document.getElementById('mbuApprovePlanBtn'); if (btn) btn.style.display = '';
