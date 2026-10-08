@@ -2303,6 +2303,21 @@
      public Media + CX pages use. */
   .cmp-campaign-header{background:radial-gradient(60% 150% at 100% 55%, rgba(244,182,63,0.30) 0%, rgba(244,182,63,0) 62%), linear-gradient(120deg,#FFFFFF 0%,#FFFBF1 55%,#FFF2D2 100%);border:1px solid rgba(184,118,11,0.24);box-shadow:0 24px 54px -20px rgba(184,118,11,0.34), 0 2px 8px rgba(15,23,42,0.05);}
   .cch-meta{display:none;}
+  /* Lamp-up header: starts dark with nothing completed and warms toward the
+     light as steps complete (cmpApplyHeaderLight() sets the background inline
+     and data-tone). Dark tone flips the text to light ink. */
+  .cmp-campaign-header{transition:background .6s ease,border-color .6s ease;}
+  .cmp-campaign-header[data-tone="dark"] .cch-name,.cmp-campaign-header[data-tone="dark"] .cch-inmarket{color:#F5EFE0;}
+  .cmp-campaign-header[data-tone="dark"] .cch-code{color:rgba(237,234,224,0.62);}
+  .cmp-campaign-header[data-tone="dark"] .cch-cancel-link{color:rgba(237,234,224,0.7);}
+  .cmp-campaign-header[data-tone="dark"] .cch-status-pill.pending{background:rgba(244,182,63,0.2);color:#FFD27A;}
+  .cmp-campaign-header[data-tone="dark"] .cch-progress-seg{background:rgba(255,255,255,0.16);}
+  .cmp-campaign-header[data-tone="dark"] .cmp-breadcrumb-step{color:rgba(237,234,224,0.62);}
+  .cmp-campaign-header[data-tone="dark"] .cmp-breadcrumb-step.status-in-progress{color:#FFD27A;}
+  .cmp-campaign-header[data-tone="dark"] .cmp-breadcrumb-step.status-complete{color:#4FD1B8;}
+  .cmp-campaign-header[data-tone="dark"] .cmp-breadcrumb-step.disabled{color:rgba(255,255,255,0.28);}
+  .cmp-campaign-header[data-tone="dark"] .cmp-breadcrumb-step:not(.disabled):not(.active):hover{background:rgba(255,255,255,0.1);}
+  .cmp-campaign-header[data-tone="dark"] .cmp-breadcrumb-step.active{background:#F4B63F;color:#1B1405;}
   .cch-status-pill.pending{background:#FFE9B5;color:#7A5200;}
   .cch-score-circle.unscored{box-shadow:0 0 0 1px rgba(15,23,42,0.08), 0 2px 6px rgba(15,23,42,0.08);color:var(--muted);}
   @media (max-width:600px){
@@ -13129,7 +13144,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-08-illumination-score';
+const CXMEDIA_BUILD_STAMP = '2026-10-08-illumination-score-c';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -15882,6 +15897,7 @@ function cmpRenderCampaignHeader(campaign){
     }
     const progressMount = document.getElementById('cchProgress');
     if (progressMount) progressMount.innerHTML = CMP_STAGE_CATEGORY_ORDER.map(() => `<div class="cch-progress-seg" title="Not started"></div>`).join('');
+    cmpApplyHeaderLight(0);
     document.getElementById('cchStepsPanel').classList.remove('open');
     const commentsCountEl = document.getElementById('cchCommentsCount');
     if (commentsCountEl) commentsCountEl.textContent = '';
@@ -15991,9 +16007,35 @@ function cmpRenderCampaignHeader(campaign){
 // default), so only 'in-progress'/'complete' need a class here; the
 // category name/status that used to be visible ON the bar is still
 // available via the same title tooltip.
+// Header lamp-up: 0 = nothing complete (near-black), 1 = every workstream
+// complete (full light). Each complete category adds a fifth; one in
+// progress adds a little, so the shade moves as work happens.
+function cmpApplyHeaderLight(lit){
+  const h = document.getElementById('cmpCampaignHeader');
+  if (!h) return;
+  const t = Math.max(0, Math.min(1, lit));
+  const hex = c => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16));
+  const mix = (a, b, k) => { const A = hex(a), B = hex(b); return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * k).toString(16).padStart(2, '0')).join(''); };
+  const stops = [
+    { t: 0,    a: '#07090D', b: '#0E141B', g: 0.10 },
+    { t: 0.45, a: '#2A2112', b: '#5B4418', g: 0.42 },
+    { t: 0.75, a: '#D9A83E', b: '#F4C96A', g: 0.50 },
+    { t: 1,    a: '#FFFFFF', b: '#FFF2D2', g: 0.34 }
+  ];
+  let i = 0; while (i < stops.length - 2 && t > stops[i + 1].t) i++;
+  const A = stops[i], B = stops[i + 1], k = Math.max(0, Math.min(1, (t - A.t) / (B.t - A.t)));
+  const c1 = mix(A.a, B.a, k), c2 = mix(A.b, B.b, k), g = (A.g + (B.g - A.g) * k).toFixed(2);
+  h.style.background = `radial-gradient(60% 150% at 100% 55%, rgba(244,182,63,${g}) 0%, rgba(244,182,63,0) 62%), linear-gradient(120deg, ${c1} 0%, ${c2} 100%)`;
+  h.style.borderColor = `rgba(184,118,11,${(0.18 + 0.12 * t).toFixed(2)})`;
+  h.setAttribute('data-tone', t >= 0.75 ? 'light' : 'dark');
+}
 function cmpRenderProgressBar(campaign){
   const mount = document.getElementById('cchProgress');
   if (!mount) return;
+  {
+    const sts = CMP_STAGE_CATEGORY_ORDER.map(cat => cmpCategoryStatus(cat));
+    cmpApplyHeaderLight((sts.filter(x => x === 'complete').length + 0.35 * sts.filter(x => x === 'in-progress').length) / Math.max(1, sts.length));
+  }
   mount.innerHTML = CMP_STAGE_CATEGORY_ORDER.map(cat => {
     const status = cmpCategoryStatus(cat);
     const label = CMP_STAGE_CATEGORY_DISPLAY_LABEL[cat] || cat;
@@ -58221,11 +58263,26 @@ const FUNCTION_STATUS_ICON = { complete: '✓', 'needs-qa': '⚠', 'in-progress'
 //   in-market dates; transactions / ROAS / CAC over the dates plus the
 //   campaign's analytics window (transactionWindowDays, else the stage
 //   default, else 90).
+function metric_isTxn(ma){ return !!(ma && /ROAS|CAC/.test(ma.kpiLabel || '')); }
 function cmpMediaAlignmentMetric(campaign){
+  // 2026-10-08 — Media Science Primary Focus (campaign.businessInitiative)
+  // is the metric the campaign is optimized and measured against, so it
+  // decides what the plan is graded on; Primary KPI is the fallback.
+  const bi = {
+    acquisition_cost: { key: 'cac', label: 'Acquisition Cost (CAC)', long: true, lowerIsBetter: true },
+    roas: { key: 'roas', label: 'ROAS', long: true },
+    website_visits: { key: 'websiteUsers', label: 'Website Visits', long: false },
+    website_engagement: { key: 'websiteUsers', label: 'Website Engagement (scored on traffic volume)', long: false },
+    qualified_leads: { key: 'leads', label: 'Qualified Leads', long: false },
+    total_registrations: { key: 'registrations', label: 'Total Registrations', long: false },
+    brand_recognition: { key: 'impressions', label: 'Brand Recognition (scored on impressions)', long: false },
+    net_promoter_score: { key: null, label: 'Net Promoter Score', unsupported: 'Net Promoter Score is not forecast from media spend, so the plan is not graded on it. Copy and brand carry this campaign\'s score.' }
+  }[campaign.businessInitiative];
+  if (bi) return bi;
   const k = String(campaign.primaryKpi || '');
   if (/roas|return on ad|revenue/i.test(k)) return { key: 'roas', label: 'ROAS', long: true };
   if (/cac|cost per acq/i.test(k)) return { key: 'cac', label: 'CAC', long: true, lowerIsBetter: true };
-  if (/transaction|booking|sale|purchase/i.test(k)) return { key: 'transactions', label: 'Transactions', long: true };
+  if (/transaction|booking|sale|purchase/i.test(k)) return { key: 'transactions', label: 'Transactions (ROAS and CAC)', long: true };
   if (/lead/i.test(k)) return { key: 'leads', label: 'Leads', long: false };
   if (/click|visit|traffic|user/i.test(k)) return { key: 'websiteUsers', label: 'Website traffic', long: false };
   if (/impression|reach|view/i.test(k)) return { key: 'impressions', label: k, long: false };
@@ -58243,7 +58300,7 @@ function cmpMediaAlignmentEfficiency(m, metric, t){
     const aCac = t.bookings > 0 ? annualSpend / t.bookings : null, cCac = m.target.transactions > 0 ? spend / m.target.transactions : null;
     return (aCac && cCac) ? aCac / cCac : null;
   }
-  const map = { transactions: ['transactions', 'bookings'], leads: ['leads', 'valueLeads'], websiteUsers: ['websiteUsers', 'websiteUsers'], impressions: ['impressions', 'impressions'] };
+  const map = { registrations: ['registrations', 'growthLeads'], transactions: ['transactions', 'bookings'], leads: ['leads', 'valueLeads'], websiteUsers: ['websiteUsers', 'websiteUsers'], impressions: ['impressions', 'impressions'] };
   const pair = map[metric.key];
   const f = m.target[pair[0]], a = t[pair[1]];
   if (!(f > 0) || !(a > 0)) return null;
@@ -58251,7 +58308,7 @@ function cmpMediaAlignmentEfficiency(m, metric, t){
 }
 async function cmpLoadMediaAlignment(campaign){
   if (!campaign || campaign.localOnly || dataSourceLabel !== 'backend' || campaign.isAdHoc) return;
-  const key = [campaign.budget, campaign.plannedImpressions, campaign.startDate, campaign.endDate, campaign.primaryKpi, campaign.kpiGoal, campaign.transactionWindowDays].join('|');
+  const key = [campaign.budget, campaign.plannedImpressions, campaign.startDate, campaign.endDate, campaign.primaryKpi, campaign.businessInitiative, campaign.kpiGoal, campaign.transactionWindowDays].join('|');
   if (campaign._mediaAlignmentKey !== key){ campaign._mediaAlignmentKey = key; campaign._mediaAlignment = undefined; }
   if (campaign._mediaAlignment !== undefined) return;
   campaign._mediaAlignment = null;
@@ -58263,7 +58320,8 @@ async function cmpLoadMediaAlignment(campaign){
     const m = cmpCampaignSummaryModel(campaign, ctx, plan);
     const t = m.annualTarget;
     if (!campaign.startDate || !campaign.endDate) out.reason = 'Set the campaign start and end dates.';
-    else if (!metric) out.reason = 'Pick a Primary KPI (Impressions, Reach, Clicks, Leads, Transactions) so the plan can be measured against its annual target.';
+    else if (metric && metric.unsupported) out.reason = metric.unsupported;
+    else if (!metric) out.reason = 'Pick a Media Science Primary Focus (or a Primary KPI) so the plan can be measured against its annual target.';
     else if (!(m.target.spend > 0)) out.reason = 'Add a budget or approve a channel plan.';
     else if (!t || !(t.workingMedia > 0)) out.reason = `No ${m.year || ''} annual target is loaded yet, so there is nothing to measure this plan against.`.replace('  ', ' ');
     else {
@@ -58284,7 +58342,10 @@ async function cmpLoadMediaAlignment(campaign){
         const escore = Math.min(100, Math.max(0, E * 100));
         const base = percentile !== null ? 0.7 * escore + 0.3 * percentile * 100 : escore;
         out = { pct: Math.round(base * coverage), E, escore: Math.round(escore), percentile, peers: peerE.length, coverage, windowDays, kpiLabel: metric.label, year: m.year,
-          spendShare: m.target.spend / t.workingMedia, windowEnd: winEnd.toISOString().slice(0, 10), reason: null };
+          spendShare: m.target.spend / t.workingMedia,
+          roas: m.target.grossRevenue > 0 ? m.target.grossRevenue / m.target.spend : null, annualRoas: t.grossRevenue > 0 ? t.grossRevenue / t.workingMedia : null,
+          cac: m.target.transactions > 0 ? m.target.spend / m.target.transactions : null, annualCac: t.bookings > 0 ? t.workingMedia / t.bookings : null,
+          windowEnd: winEnd.toISOString().slice(0, 10), reason: null };
       }
     }
   } catch (e){ console.warn('cmpLoadMediaAlignment failed', e); out = { pct: null, reason: 'The media plan check could not run just now.' }; }
@@ -58372,7 +58433,7 @@ function renderCampaignQaPanel(){
   }
   const mediaNote = !ma ? 'checking the plan…' : (ma.reason || '');
   const mediaDetail = (ma && ma.pct !== null)
-    ? `<p class="hint" style="margin:-4px 0 10px;">${escapeHtml(ma.kpiLabel)}: this plan earns ${Math.round(ma.E * 100)}% of its budget share of the ${ma.year} target${ma.percentile !== null ? `, ahead of ${Math.round(ma.percentile * 100)}% of the year's ${ma.peers} other campaigns` : ''}. ${ma.coverage < 1 ? `Only ${Math.round(ma.coverage * 100)}% of its measurement window falls inside ${ma.year}. ` : ''}${ma.windowDays ? `Measured to ${escapeHtml(ma.windowEnd)} (end date + ${ma.windowDays}-day analytics window).` : 'Measured across the in-market dates.'}</p>` : '';
+    ? `<p class="hint" style="margin:-4px 0 10px;">${escapeHtml(ma.kpiLabel)}: this plan earns ${Math.round(ma.E * 100)}% of its budget share of the ${ma.year} target${ma.percentile !== null ? `, ahead of ${Math.round(ma.percentile * 100)}% of the year's ${ma.peers} other campaigns` : ''}. ${metric_isTxn(ma) ? `Forecast ROAS ${ma.roas ? ma.roas.toFixed(2) + '×' : '—'} vs ${ma.annualRoas ? ma.annualRoas.toFixed(2) + '×' : '—'} annual; CAC ${ma.cac ? fmtMoney(ma.cac) : '—'} vs ${ma.annualCac ? fmtMoney(ma.annualCac) : '—'} annual. ` : ''}${ma.coverage < 1 ? `Only ${Math.round(ma.coverage * 100)}% of its measurement window falls inside ${ma.year}. ` : ''}${ma.windowDays ? `Measured to ${escapeHtml(ma.windowEnd)} (end date + ${ma.windowDays}-day analytics window).` : 'Measured across the in-market dates.'}</p>` : '';
   panel.innerHTML = `
     <div style="margin-bottom:16px;">
       <div class="section-eyebrow" style="margin-bottom:8px;">Activated marketing functions</div>
