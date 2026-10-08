@@ -1128,6 +1128,30 @@
   .utility-nav-inner a{font-size:12.5px;font-weight:600;color:rgba(255,255,255,0.92);text-decoration:none;padding:8px 16px;border:1px solid rgba(255,255,255,0.38);border-radius:999px;white-space:nowrap;transition:border-color 0.2s ease, background 0.2s ease;}
   .utility-nav-inner a:hover{border-color:#fff;background:rgba(255,255,255,0.08);}
   .step[data-step="contact"] > .lede{max-width:none!important;width:100%;}
+  /* Sunrise loader, same as the Portal's ("We're powering up"). */
+  .plc-cover{position:fixed;inset:0;z-index:99999;background:#07090D;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;text-align:center;overflow:hidden;transition:opacity 0.25s ease;}
+  .plc-cover.fading{opacity:0;pointer-events:none;}
+  .plc-sky{position:absolute;inset:0;background:linear-gradient(180deg,#FBFAF6 0%,#F6E3B8 55%,#F4B63F 100%);opacity:0;transition:opacity 1.6s ease-in-out;}
+  .plc-sun{position:absolute;left:50%;bottom:0;width:min(300px,70vw);aspect-ratio:1;margin-left:calc(min(300px,70vw) / -2);border-radius:50%;background:radial-gradient(circle,#fff8e0 0%,#FBD36E 38%,#F4B63F 58%,rgba(244,182,63,0) 72%);transform:translateY(40vh) scale(.5);opacity:.35;transition:transform 1.6s ease-in-out,opacity 1.6s ease-in-out;}
+  .plc-rays{position:absolute;left:50%;bottom:-24vh;width:min(720px,150vw);aspect-ratio:1;margin-left:calc(min(720px,150vw) / -2);border-radius:50%;background:repeating-conic-gradient(from 0deg,rgba(255,236,170,0) 0 8deg,rgba(255,236,170,.35) 8deg 12deg);-webkit-mask:radial-gradient(circle,#000 0%,transparent 66%);mask:radial-gradient(circle,#000 0%,transparent 66%);opacity:0;transition:opacity 1.6s ease-in-out;animation:plcSpin 40s linear infinite;}
+  @keyframes plcSpin{to{transform:rotate(360deg);}}
+  .plc-mark,.plc-head,.plc-note,.plc-levels{position:relative;}
+  .plc-mark{font-family:'Instrument Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:1.75rem;font-weight:600;color:#fff;letter-spacing:-0.01em;transition:color 1s;}
+  .plc-mark b{color:#F4B63F;font-weight:600;transition:color 1s;}
+  .plc-head{font-family:'Bricolage Grotesque','Instrument Sans',-apple-system,sans-serif;font-size:1.35rem;font-weight:600;letter-spacing:-.01em;color:#EDEAE0;transition:color 1s;}
+  .plc-note{font-family:'DM Mono',ui-monospace,monospace;font-size:0.75rem;letter-spacing:.1em;text-transform:uppercase;color:#9aa6b6;min-height:1.4em;transition:color 1s;}
+  .plc-levels{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:4px;}
+  .plc-lv{font-family:'DM Mono',ui-monospace,monospace;font-size:11px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.18);color:#6e7a8a;transition:all .5s;}
+  .plc-lv.on{color:#10141B;background:#F4B63F;border-color:#F4B63F;box-shadow:0 0 18px rgba(244,182,63,.6);}
+  .plc-cover.l1 .plc-sky{opacity:.12}.plc-cover.l1 .plc-sun{transform:translateY(26vh) scale(.7);opacity:.6}
+  .plc-cover.l2 .plc-sky{opacity:.38}.plc-cover.l2 .plc-sun{transform:translateY(9vh) scale(.9);opacity:.8}
+  .plc-cover.l3 .plc-sky{opacity:.72}.plc-cover.l3 .plc-sun{transform:translateY(-6vh) scale(1.15);opacity:1}.plc-cover.l3 .plc-rays{opacity:.5}
+  .plc-cover.l4 .plc-sky{opacity:1}.plc-cover.l4 .plc-sun{transform:translateY(-12vh) scale(1.5);opacity:1}.plc-cover.l4 .plc-rays{opacity:1}
+  .plc-cover.l3 .plc-mark,.plc-cover.l4 .plc-mark,.plc-cover.l3 .plc-head,.plc-cover.l4 .plc-head{color:#10141B;}
+  .plc-cover.l3 .plc-mark b,.plc-cover.l4 .plc-mark b{color:#A8680A;}
+  .plc-cover.l3 .plc-note,.plc-cover.l4 .plc-note{color:#625E52;}
+  .plc-cover.l3 .plc-lv:not(.on),.plc-cover.l4 .plc-lv:not(.on){border-color:rgba(16,20,27,.25);color:#625E52;}
+  @media (prefers-reduced-motion: reduce){ .plc-sky,.plc-sun,.plc-rays,.plc-mark,.plc-head,.plc-note,.plc-lv{transition:none;animation:none;} }
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style id="vl-site-inline">
@@ -6546,6 +6570,8 @@ async function applyAiGeneratedReadout(){
     // rendered synchronously in renderInitialReport() before this was
     // called stays exactly as-is. Nothing user-facing to report here that
     // the standard reading doesn't already cover.
+  } finally {
+    hideReadoutLoading();
   }
 }
 
@@ -6574,11 +6600,50 @@ function renderAudienceRecapChips(){
 // have something real to read, then renders the quadrant using whichever
 // score set is authoritative right now (the coarse estimate, since Assess
 // hasn't run yet).
+// Full-screen loading state shown from the first report paint until the generated
+// readout is in place (or has definitively failed), so the standard wording never
+// flashes before the generated paragraph.
+let readoutLoadingTimer = null, readoutLoadingMsgTimer = null;
+const READOUT_LOADING_LINES = ['Reading your website', 'Looking through your newsroom and wire releases', 'Checking recent news about your company', 'Sizing your market', 'Writing your first read'];
+function showReadoutLoading(){
+  if (document.getElementById('readoutLoading')) return;
+  const el = document.createElement('div');
+  el.id = 'readoutLoading'; el.className = 'plc-cover';
+  el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite');
+  el.innerHTML = `<div class="plc-sky"></div><div class="plc-rays"></div><div class="plc-sun"></div><div class="plc-mark">Veri<b>lume</b></div><div class="plc-head">We're powering up.</div><div class="plc-levels"><span class="plc-lv">Starter</span><span class="plc-lv">Spark</span><span class="plc-lv">Glow</span><span class="plc-lv">Radiance</span></div><div class="plc-note" id="readoutLoadingLine"></div>`;
+  document.body.appendChild(el);
+  const chips = el.querySelectorAll('.plc-lv'), note = el.querySelector('#readoutLoadingLine');
+  const setLevel = (n, msg) => { el.className = 'plc-cover l' + n; chips.forEach((c, j) => c.classList.toggle('on', j === n - 1)); if (note && msg) note.textContent = msg; };
+  let reduce = false; try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e){}
+  if (reduce){ setLevel(4, 'Writing your first read…'); }
+  else {
+    const steps = [['Reading your website', 1], ['Looking through your newsroom and wire releases', 1], ['Checking recent news about your company', 2], ['Sizing your market', 2], ['Writing your first read', 3], ['Almost there…', 3]];
+    let n = 0; setLevel(steps[0][1], steps[0][0]);
+    readoutLoadingMsgTimer = setInterval(() => { n = Math.min(n + 1, steps.length - 1); setLevel(steps[n][1], steps[n][0]); }, 4500);
+  }
+  // Never trap a visitor: after 60s show whatever is on the page.
+  readoutLoadingTimer = setTimeout(() => hideReadoutLoading(true), 60000);
+}
+function hideReadoutLoading(immediate){
+  if (readoutLoadingTimer){ clearTimeout(readoutLoadingTimer); readoutLoadingTimer = null; }
+  if (readoutLoadingMsgTimer){ clearInterval(readoutLoadingMsgTimer); readoutLoadingMsgTimer = null; }
+  const el = document.getElementById('readoutLoading'); if (!el) return;
+  try { window.scrollTo(0, 0); } catch (e){}
+  if (immediate){ el.remove(); return; }
+  // The sun finishes rising on Radiance, then the loader fades to the report.
+  el.className = 'plc-cover l4';
+  el.querySelectorAll('.plc-lv').forEach((c, j) => c.classList.toggle('on', j === 3));
+  const note = el.querySelector('#readoutLoadingLine'); if (note) note.textContent = 'Ready.';
+  setTimeout(() => { el.classList.add('fading'); setTimeout(() => el.remove(), 300); }, 700);
+}
 function renderInitialReport(){
-  startRecapStep(); // seeds state.opportunity + the Company Profile accordion item's fields
-  renderReportSynthesis();
-  renderAudienceRecapChips();
-  renderFullReport();
+  showReadoutLoading();
+  try {
+    startRecapStep(); // seeds state.opportunity + the Company Profile accordion item's fields
+    renderReportSynthesis();
+    renderAudienceRecapChips();
+    renderFullReport();
+  } catch (e){ console.warn('renderInitialReport: first paint failed', e); }
   // 2026-08-25 — fires the AI-generated readout (see
   // applyAiGeneratedReadout()'s own comment below) after the templated
   // synthesis/journeyBP content above has already rendered synchronously,
