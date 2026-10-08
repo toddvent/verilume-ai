@@ -7049,11 +7049,31 @@ const SERVER_NON_IMPRESSION_CHANNELS = new Set(['Direct Mail — Prospects', 'Di
 // null here (0 budget-implied impressions is honest; a fabricated per-
 // piece "impressions" count is not), same as they're excluded from every
 // blended-CPM computation on the frontend.
-function estimateImpressionsFromBudget(channel, budget){
+// 2026-10-08 — CPMs the Brain has been taught. Written only when a person approves a budget and chooses
+// "Teach the Brain"; read as the default CPM before the illustrative table.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_learned_cpm (
+    accountId TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    cpm REAL NOT NULL,
+    samples INTEGER NOT NULL DEFAULT 1,
+    "lastCampaignId" TEXT,
+    "updatedAt" TEXT NOT NULL,
+    PRIMARY KEY (accountId, channel)
+  );
+`);
+function learnedCpmsFor(accountId){
+  const out = {};
+  try { db.prepare('SELECT channel, cpm, samples, "updatedAt" FROM account_learned_cpm WHERE accountId = ?').all(accountId).forEach(r => { out[r.channel] = { cpm: Number(r.cpm), samples: Number(r.samples) || 1, updatedAt: r.updatedAt || r.updatedat || null }; }); } catch (e){}
+  return out;
+}
+function estimateImpressionsFromBudget(channel, budget, accountId){
   if (SERVER_NON_IMPRESSION_CHANNELS.has(channel)) return null;
   const amt = Number(budget) || 0;
   if (amt <= 0) return null;
-  const cpm = SERVER_CHANNEL_CPM[channel] || SERVER_DEFAULT_BLENDED_CPM;
+  let learned = null;
+  if (accountId){ const l = learnedCpmsFor(accountId)[channel]; if (l && l.cpm > 0) learned = l.cpm; }
+  const cpm = learned || SERVER_CHANNEL_CPM[channel] || SERVER_DEFAULT_BLENDED_CPM;
   return Math.round((amt / cpm) * 1000);
 }
 
@@ -18620,7 +18640,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['account_plan_scenarios', 'account_rate_card_minimums', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
+const CATALOG_EXEMPT = new Set(['account_plan_scenarios', 'account_rate_card_minimums', 'account_learned_cpm', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -26571,7 +26591,7 @@ async function handleRequest(req, res) {
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-08-pitch-research',
+        buildStamp: '2026-10-08-cpm-teach-brain',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
@@ -33618,6 +33638,14 @@ Submit your response via the campaign_intake_turn tool.`;
       // insertChannelPlanningRow(), the same function the bulk uploader
       // uses, so single-entry and bulk creation can never drift apart.
       try {
+        // 2026-10-08 — placeholder seeds (autoSeed, sent by the fallback plan
+        // builders) never add a second line for a channel the plan already
+        // carries; Brand Search is always-on, so the seed used to land beside
+        // the AI Brain's own Brand Search line and show twice.
+        if (body && body.autoSeed){
+          const dup = db.prepare('SELECT id FROM channel_planning_details WHERE campaignId = ? AND channel = ? LIMIT 1').get(campaignId, String(body.channel || ''));
+          if (dup) return sendJson(res, 200, { entryId: dup.id, deduped: true });
+        }
         const { entryId } = insertChannelPlanningRow({ ...body, campaignId });
         syncCampaignProductCreativeGroupsFromChannelPlanning(campaignId);
         return sendJson(res, 201, { entryId });
@@ -34032,6 +34060,13 @@ Submit via the recommendation_from_intake tool.`;
       }
       let savedCount = 0;
       const stageBudgets = {};
+      // 2026-10-08 — the extracted plan replaces any unstaged, zero-impression
+      // draft placeholder for the same channel (fallback seeds, e.g. the
+      // always-on Brand Search), so a channel never appears twice.
+      try {
+        const clearPlaceholder = db.prepare("DELETE FROM channel_planning_details WHERE campaignId = ? AND channel = ? AND status = 'draft' AND (stage IS NULL OR stage = '') AND (impressions IS NULL OR impressions = 0)");
+        [...new Set(channels.map(c => c && c.channel).filter(Boolean))].forEach(ch => clearPlaceholder.run(campaignId, ch));
+      } catch (e){ console.warn('placeholder cleanup skipped', e.message); }
       for (const c of channels){
         const lineStage = normalizeChannelPlanningStage(c.stage);
         // 2026-09-22 fix, per Todd's direct report — see
@@ -34044,7 +34079,7 @@ Submit via the recommendation_from_intake tool.`;
         // silently reading as 0 despite carrying real budget.
         const lineImpressions = typeof c.impressions === 'number'
           ? c.impressions
-          : estimateImpressionsFromBudget(c.channel, c.budget);
+          : estimateImpressionsFromBudget(c.channel, c.budget, campaign.accountId);
         try {
           insertChannelPlanningRow({
             campaignId, channel: c.channel,
@@ -34130,6 +34165,56 @@ Submit via the recommendation_from_intake tool.`;
       const now = new Date().toISOString();
       db.prepare('UPDATE campaigns SET budgetApprovedAt = ?, budgetApprovedBy = ? WHERE id = ?').run(now, actorName, campaignId);
       return sendJson(res, 200, { budgetApprovedAt: now, budgetApprovedBy: actorName });
+    }
+
+    // GET /api/accounts/:id/learned-cpm — CPMs this account has taught the Brain.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'learned-cpm'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      return sendJson(res, 200, { cpms: learnedCpmsFor(accountId) });
+    }
+
+    // POST /api/campaigns/:id/teach-cpm — after the budget is approved, a person chooses which
+    // channel CPMs the Brain should learn. Numbers come from the saved plan lines, never the request.
+    // Body: { channels: [names] }. Each channel's CPM is its spend-weighted CPM in this plan, then
+    // folded into a running average with what the Brain already knew.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'teach-cpm'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      if (!campaign.budgetApprovedAt) return sendJson(res, 409, { error: 'Approve the budget first, then teach the Brain.' });
+      const body = (await readBody(req)) || {};
+      const wanted = new Set((Array.isArray(body.channels) ? body.channels : []).map(x => String(x)));
+      if (!wanted.size) return sendJson(res, 400, { error: 'Choose at least one channel.' });
+      const lines = db.prepare('SELECT channel, budget, impressions FROM channel_planning_details WHERE campaignId = ?').all(campaignId);
+      const agg = {};
+      lines.forEach(l => {
+        const ch = l.channel; const b = Number(l.budget) || 0, im = Number(l.impressions) || 0;
+        if (!wanted.has(ch) || SERVER_NON_IMPRESSION_CHANNELS.has(ch) || b <= 0 || im <= 0) return;
+        (agg[ch] = agg[ch] || { b: 0, im: 0 }); agg[ch].b += b; agg[ch].im += im;
+      });
+      const known = learnedCpmsFor(campaign.accountId);
+      const now = new Date().toISOString(); const taught = [];
+      Object.keys(agg).forEach(ch => {
+        const cpm = Math.round((agg[ch].b / agg[ch].im) * 1000 * 100) / 100;
+        if (!(cpm > 0 && isFinite(cpm))) return;
+        const k = known[ch];
+        const samples = k ? k.samples + 1 : 1;
+        const blended = k ? Math.round(((k.cpm * k.samples + cpm) / samples) * 100) / 100 : cpm;
+        db.prepare('DELETE FROM account_learned_cpm WHERE accountId = ? AND channel = ?').run(campaign.accountId, ch);
+        db.prepare('INSERT INTO account_learned_cpm (accountId, channel, cpm, samples, "lastCampaignId", "updatedAt") VALUES (?,?,?,?,?,?)').run(campaign.accountId, ch, blended, samples, campaignId, now);
+        taught.push({ channel: ch, cpm: blended, planCpm: cpm, samples });
+      });
+      if (!taught.length) return sendJson(res, 400, { error: 'None of those channels has both a budget and impressions to learn from.' });
+      const lessonText = 'Approved CPMs (' + (campaign.name || campaignId) + '): ' + taught.map(t => t.channel + ' $' + t.cpm).join(', ') + '. Use these as the starting CPM for this account.';
+      try {
+        const actor = brainLessonActor(req, campaign.accountId);
+        db.prepare(`INSERT INTO brain_lessons (id, accountId, kind, agree, whyJson, whyText, lesson, scope, campaignId, contextJson, status, taughtBy, taughtByName, createdAt, decidedBy, decidedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+          .run(generateId('BL'), campaign.accountId, 'Business fact', 'yes', '[]', null, lessonText.slice(0, 1000), 'account', null, JSON.stringify({ source: 'budget approval', campaignId }).slice(0, 2000), 'active', actor.id || null, actor.name || null, now, actor.id || 'budget approval', now);
+        brainWrite(campaign.accountId, { dashboard: 'Brain Train', action: 'Taught', subject: lessonText.slice(0, 120), refId: campaignId, actor: actor.id || null });
+      } catch (e){ console.warn('teach-cpm lesson write skipped:', e.message); }
+      return sendJson(res, 200, { taught });
     }
 
     // GET /api/campaigns/:id/recommendation-comments — 2026-09-15. Built
