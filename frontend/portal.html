@@ -1541,6 +1541,20 @@
   .strat-chart-label{font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 4px;}
   .strat-key{font-size:0.75rem;color:var(--muted);font-weight:500;text-transform:none;letter-spacing:0;margin-left:8px;}
   .strat-key i.dash{display:inline-block;width:16px;border-top:2px dashed #1D1D1F;vertical-align:middle;margin-right:4px;}
+
+  /* Scenario planner (2026-10-08) */
+  .scn-presets{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:12px 0 4px;}
+  .scn-preset{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--paper);display:flex;flex-direction:column;gap:6px;}
+  .scn-preset h3{margin:0;font-size:1rem;} .scn-preset .b{font-size:0.78rem;color:var(--muted);line-height:1.4;}
+  .scn-kv{display:grid;grid-template-columns:auto auto;gap:2px 14px;font-size:0.8125rem;font-variant-numeric:tabular-nums;} .scn-kv span:nth-child(odd){color:var(--muted);}
+  .scn-editor{border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-top:14px;}
+  .scn-row{display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-bottom:10px;} .scn-row label{display:block;font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);margin-bottom:3px;}
+  .scn-row input,.scn-row select{font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--white);}
+  .scn-mix td input{width:130px;} .scn-pill{display:inline-block;font-size:0.6875rem;font-weight:700;border-radius:980px;padding:2px 9px;border:1px solid var(--line);background:var(--paper-dim);}
+  .scn-pill.active{background:var(--cx-tint);border-color:#9fd5ca;color:var(--cx);} .scn-pill.pending{background:var(--media-tint);border-color:#e8cd8f;color:var(--media);}
+  .scn-msg{font-size:0.8125rem;margin:8px 0;} .scn-msg.err{color:#C0273C;} .scn-msg.ok{color:var(--cx);}
+  .scn-list .strat-table td{vertical-align:middle;}
+  @media (max-width:760px){.scn-presets{grid-template-columns:1fr;}}
   .strat-table-wrap{overflow-x:auto;margin-top:12px;}
   .strat-table{width:100%;border-collapse:collapse;font-size:0.8125rem;font-variant-numeric:tabular-nums;}
   .strat-table th{text-align:left;font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);padding:6px 10px;border-bottom:1px solid var(--line);}
@@ -23595,6 +23609,122 @@ function stratRenderForecast(){
 }
 function stratAsk(q){ try { askVerilumeOpenLive(); } catch (e){} askVerilumeAsk(q); }
 
+// ---- Scenario planner (2026-10-08): run what-ifs on budget and media mix; activating one for the account needs an admin or CMO ----
+const scn = { year: new Date().getFullYear(), data: null, draft: null, result: null, msg: '', msgKind: '', busy: false, showAssume: false };
+function scnBase(){ return `${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/plan-scenarios`; }
+async function scnCall(path, method, body){
+  const r = await authedFetch(scnBase() + path, { method: method || 'GET', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  let j = null; try { j = await r.json(); } catch (e){}
+  if (!r.ok) throw new Error((j && j.error) || `The server answered ${r.status}.`);
+  return j;
+}
+async function scnLoad(){
+  if (!stratIsLive()) return; const box = document.getElementById('stratScnBody'); if (!box) return;
+  try { scn.data = await scnCall(`?year=${scn.year}`); } catch (e){ box.innerHTML = `<p class="scn-msg err">${escapeHtml(e.message)}</p>`; return; }
+  scnRender();
+}
+function scnSetYear(v){ scn.year = parseInt(v, 10); scn.draft = null; scn.result = null; scn.msg = ''; scnLoad(); }
+function scnMsg(t, k){ scn.msg = t; scn.msgKind = k || ''; const el = document.getElementById('scnMsg'); if (el){ el.textContent = t; el.className = 'scn-msg ' + (k || ''); } }
+function scnFmt(v, kind){ if (v == null || isNaN(v)) return '—'; if (kind === 'money') return stratMoney(v); if (kind === 'x') return Number(v).toFixed(2) + '×'; if (kind === 'money2') return '$' + Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 }); return stratNum(v); }
+const SCN_ROWS = [['Working media', 'workingMedia', 'money'], ['Media impressions', 'impressions', 'num'], ['Website sessions', 'sessions', 'num'], ['Leads', 'leads', 'num'], ['Transactions', 'transactions', 'num'], ['Gross revenue', 'revenue', 'money'], ['Marketing ROAS', 'roas', 'x'], ['Marketing CAC', 'cac', 'money2'], ['Cost per website visitor', 'costPerVisitor', 'money2'], ['Cost per lead', 'costPerLead', 'money2']];
+function scnPresetCard(p){
+  if (!p.result) return `<div class="scn-preset"><h3>${escapeHtml(p.name)}</h3><div class="b">${escapeHtml(p.error || 'Not available yet.')}</div></div>`;
+  const o = p.result.outcome;
+  return `<div class="scn-preset"><h3>${escapeHtml(p.name)}</h3><div class="b">${escapeHtml(p.blurb)}</div>
+    <div class="scn-kv"><span>Leads</span><span>${scnFmt(o.leads)}</span><span>Transactions</span><span>${scnFmt(o.transactions)}</span><span>Gross revenue</span><span>${scnFmt(o.revenue, 'money')}</span><span>ROAS</span><span>${scnFmt(o.roas, 'x')}</span></div>
+    <div><button type="button" class="strat-chip" onclick="scnUsePreset('${p.kind}')">Use as my starting point</button></div></div>`;
+}
+function scnUsePreset(kind){
+  const p = (scn.data.presets || []).find(x => x.kind === kind); if (!p || !p.result) return;
+  const mix = {}; p.result.channels.forEach(c => { mix[c.channel] = c.spend; });
+  scn.draft = { name: p.name, kind: p.kind, band: p.band, workingMedia: p.result.outcome.workingMedia, mix };
+  scn.result = p.result; scn.msg = ''; scnRender();
+}
+function scnNewBlank(){
+  const p = (scn.data.presets || []).find(x => x.kind === 'expected'); const mix = {}; let w = null;
+  if (p && p.result){ p.result.channels.forEach(c => { mix[c.channel] = c.spend; }); w = p.result.outcome.workingMedia; }
+  scn.draft = { name: '', kind: 'custom', band: 'mid', workingMedia: w, mix }; scn.result = p && p.result ? p.result : null; scn.msg = ''; scnRender();
+}
+function scnReadEditor(){
+  const d = scn.draft; if (!d) return null;
+  const nm = document.getElementById('scnName'); if (nm) d.name = nm.value;
+  const bd = document.getElementById('scnBand'); if (bd) d.band = bd.value;
+  const wm = document.getElementById('scnBudget'); if (wm) d.workingMedia = wm.value === '' ? null : Number(wm.value);
+  const mix = {}; document.querySelectorAll('#scnMix input[data-ch]').forEach(i => { if (i.value !== '' && Number(i.value) > 0) mix[i.dataset.ch] = Number(i.value); }); d.mix = mix;
+  return d;
+}
+function scnMixTotal(){ let t = 0; document.querySelectorAll('#scnMix input[data-ch]').forEach(i => { t += Number(i.value) || 0; }); const wm = document.getElementById('scnBudget'); const el = document.getElementById('scnMixTotal'); if (el){ const w = wm && wm.value ? Number(wm.value) : null; el.textContent = stratMoneyFull(t) + (w ? ` (${Math.round(t / w * 100)}% of working media)` : '') + (w && Math.abs(t - w) > 1 ? ' — the mix is scaled to the budget when you run it' : ''); } }
+function scnAddChannel(){ const el = document.getElementById('scnNewCh'); const n = el ? el.value.trim().slice(0, 80) : ''; if (!n) return; scnReadEditor(); if (!(n in scn.draft.mix)) scn.draft.mix[n] = 0; scnRender(); }
+async function scnRun(){
+  const d = scnReadEditor(); if (!d) return; scnMsg('Running…');
+  try { scn.result = await scnCall('/run', 'POST', { year: scn.year, workingMedia: d.workingMedia, mix: d.mix, band: d.band }); scn.msg = ''; scnRender(); }
+  catch (e){ scnMsg(e.message, 'err'); }
+}
+async function scnSave(submit){
+  const d = scnReadEditor(); if (!d) return; if (!d.name.trim()){ scnMsg('Give the scenario a name first.', 'err'); return; }
+  scnMsg('Saving…');
+  try { await scnCall('', 'POST', { year: scn.year, name: d.name.trim(), kind: d.kind, band: d.band, workingMedia: d.workingMedia, mix: d.mix, submit: !!submit }); scn.draft = null; scn.result = null; await scnLoad(); scnMsg(submit ? 'Saved and sent for approval.' : 'Saved.', 'ok'); }
+  catch (e){ scnMsg(e.message, 'err'); }
+}
+async function scnAct(id, act){
+  if (act === 'activate' && !confirm('Activate this scenario for the whole account? It replaces the current ' + scn.year + ' target that the dashboards and the Weekly Brain read.')) return;
+  scnMsg('Working…');
+  try { await scnCall(`/${encodeURIComponent(id)}/${act}`, 'POST', {}); await scnLoad(); scnMsg(act === 'activate' ? 'Activated. It is now the ' + scn.year + ' target.' : act === 'submit' ? 'Sent for approval.' : 'Archived.', 'ok'); }
+  catch (e){ scnMsg(e.message, 'err'); }
+}
+function scnOpen(id){
+  const r = (scn.data.scenarios || []).find(x => x.id === id); if (!r) return;
+  scn.draft = { name: r.name + ' (copy)', kind: 'custom', band: r.band, workingMedia: r.workingMedia, mix: r.mix || {} }; scn.result = r.result; scn.msg = ''; scnRender();
+}
+function scnResultHtml(r){
+  if (!r) return '<p class="strat-empty">Run the scenario to see the forecast.</p>';
+  const o = r.outcome, b = r.baseline || {}, t = r.target;
+  const tmap = t ? { workingMedia: t.workingMedia, leads: t.leads, transactions: t.transactions, revenue: t.revenue } : {};
+  const rows = SCN_ROWS.map(([lab, k, kind]) => `<tr><td>${lab}</td><td>${scnFmt(b[k], kind)}</td><td><b>${scnFmt(o[k], kind)}</b></td><td>${t ? scnFmt(tmap[k], kind) : '—'}</td></tr>`).join('');
+  const bd = r.bands || {};
+  const rng = bd.low ? `<p class="strat-sub" style="margin:8px 0 0;">Range for the year, low to high: leads ${scnFmt(bd.low.leads)} to ${scnFmt(bd.high.leads)}, transactions ${scnFmt(bd.low.transactions)} to ${scnFmt(bd.high.transactions)}${bd.low.revenue != null ? `, gross revenue ${scnFmt(bd.low.revenue, 'money')} to ${scnFmt(bd.high.revenue, 'money')}` : ''}. The scenario column shows the ${escapeHtml(r.band)} end.</p>` : '';
+  const ch = (r.channels || []).map(c => `<tr><td>${escapeHtml(c.channel)}</td><td>${stratMoneyFull(c.spend)}</td><td>${c.share}%</td><td>${c.cpm != null ? '$' + c.cpm : '—'}</td><td>${stratNum(c.impressions)}</td></tr>`).join('');
+  return `<div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Metric</th><th>Last 12 months${b.window ? ' (' + escapeHtml(b.window) + ')' : ''}</th><th>This scenario</th><th>${t ? 'Approved target' + (t.label ? '' : '') : 'Approved target'}</th></tr></thead><tbody>${rows}</tbody></table></div>${rng}
+    ${ch ? `<div class="strat-chart-label">What each channel delivers at its own cost</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Channel</th><th>Spend</th><th>Share</th><th>Cost per thousand</th><th>Impressions</th></tr></thead><tbody>${ch}</tbody></table></div>` : ''}
+    <p class="strat-foot"><span class="strat-tag ${escapeHtml(r.confidence || '')}">${escapeHtml(r.confidence || '')} confidence</span> <a class="flink" onclick="scn.showAssume=!scn.showAssume;scnRender()">${scn.showAssume ? 'Hide' : 'How this was calculated'}</a></p>
+    ${scn.showAssume ? `<ul class="strat-sub" style="margin:4px 0 0 18px;">${(r.assumptions || []).map(a => `<li>${escapeHtml(a)}</li>`).join('')}</ul>` : ''}`;
+}
+function scnEditorHtml(){
+  const d = scn.draft; if (!d) return `<div class="strat-actions" style="margin-top:14px;"><button type="button" class="strat-chip" onclick="scnNewBlank()">Start a new scenario</button></div>`;
+  const chans = Object.keys(d.mix);
+  const mixRows = chans.map(c => `<tr><td>${escapeHtml(c)}</td><td><input type="number" min="0" step="1000" value="${d.mix[c] != null ? Math.round(d.mix[c]) : ''}" data-ch="${escapeHtml(c)}" oninput="scnMixTotal()"></td></tr>`).join('');
+  return `<div class="scn-editor"><div class="scn-row">
+      <div><label for="scnName">Scenario name</label><input id="scnName" type="text" maxlength="80" value="${escapeHtml(d.name)}" placeholder="e.g. More search in Q2"></div>
+      <div><label for="scnBudget">Working media</label><input id="scnBudget" type="number" min="0" step="1000" value="${d.workingMedia != null ? Math.round(d.workingMedia) : ''}" oninput="scnMixTotal()"></div>
+      <div><label for="scnBand">Funnel assumption</label><select id="scnBand"><option value="low"${d.band === 'low' ? ' selected' : ''}>Low end (every stage at its 25th percentile)</option><option value="mid"${d.band === 'mid' ? ' selected' : ''}>Typical for this account</option><option value="high"${d.band === 'high' ? ' selected' : ''}>High end (every stage at its 75th percentile)</option></select></div></div>
+    <div class="strat-chart-label" style="margin-top:4px;">Media mix: spend by channel</div>
+    <table class="strat-table scn-mix" id="scnMix"><tbody>${mixRows || '<tr><td class="strat-sub">No channels yet. Add one below.</td></tr>'}<tr><td class="strat-sub">Allocated total</td><td class="strat-sub" id="scnMixTotal"></td></tr></tbody></table>
+    <div class="scn-row" style="margin-top:8px;"><div><input id="scnNewCh" type="text" placeholder="Add a channel"> <button type="button" class="strat-chip" onclick="scnAddChannel()">Add</button></div></div>
+    <div class="strat-actions"><button type="button" class="strat-chip" style="background:var(--ink);color:#fff;" onclick="scnRun()">Run scenario</button> <button type="button" class="strat-chip" onclick="scnSave(false)">Save</button> ${scn.data.canActivate ? '' : `<button type="button" class="strat-chip" onclick="scnSave(true)">Save and send for approval</button>`} <button type="button" class="strat-chip" onclick="scn.draft=null;scn.result=null;scnRender()">Close</button></div>
+    <div id="scnResult" style="margin-top:12px;">${scnResultHtml(scn.result)}</div></div>`;
+}
+function scnSavedHtml(){
+  const rows = scn.data.scenarios || []; if (!rows.length) return '<p class="strat-sub" style="margin:12px 0 0;">No saved scenarios for ' + scn.year + ' yet.</p>';
+  const can = scn.data.canActivate;
+  const label = s => s === 'active' ? 'Active target' : s === 'pending' ? 'Waiting for approval' : 'Draft';
+  const trs = rows.map(r => { const o = r.result && r.result.outcome || {}; return `<tr><td><b>${escapeHtml(r.name)}</b><div class="strat-sub">${escapeHtml(r.createdByName || '')}${r.activatedByName ? ' · activated by ' + escapeHtml(r.activatedByName) : ''}</div></td><td><span class="scn-pill ${escapeHtml(r.status)}">${label(r.status)}</span></td><td>${scnFmt(o.workingMedia, 'money')}</td><td>${scnFmt(o.leads)}</td><td>${scnFmt(o.transactions)}</td><td>${scnFmt(o.revenue, 'money')}</td><td style="white-space:nowrap;">
+      <a class="flink" onclick="scnOpen('${r.id}')">Open a copy</a>
+      ${r.status !== 'active' && can ? ` · <a class="flink" onclick="scnAct('${r.id}','activate')">Activate for the account</a>` : ''}
+      ${r.status === 'draft' && !can ? ` · <a class="flink" onclick="scnAct('${r.id}','submit')">Send for approval</a>` : ''}
+      ${r.status !== 'active' ? ` · <a class="flink" onclick="scnAct('${r.id}','archive')">Archive</a>` : ''}</td></tr>`; }).join('');
+  return `<div class="strat-chart-label">Saved scenarios</div><div class="strat-table-wrap scn-list"><table class="strat-table"><thead><tr><th>Scenario</th><th>Status</th><th>Working media</th><th>Leads</th><th>Transactions</th><th>Gross revenue</th><th></th></tr></thead><tbody>${trs}</tbody></table></div>`;
+}
+function scnRender(){
+  const box = document.getElementById('stratScnBody'); if (!box || !scn.data) return;
+  const yrs = []; const y0 = new Date().getFullYear(); for (let y = y0 - 1; y <= y0 + 2; y++) yrs.push(y);
+  box.innerHTML = `<p class="strat-sub" style="margin:0 0 6px;">Try a budget and media mix, see leads, transactions and revenue against the last 12 months and the approved target. Anyone can run and save scenarios. Activating one for the account takes an admin or a CMO, and replaces the target the dashboards and the Weekly Brain read.</p>
+    <div class="scn-row"><div><label for="scnYear">Plan year</label><select id="scnYear" onchange="scnSetYear(this.value)">${yrs.map(y => `<option value="${y}"${y === scn.year ? ' selected' : ''}>${y}</option>`).join('')}</select></div></div>
+    <div class="scn-presets">${(scn.data.presets || []).map(scnPresetCard).join('')}</div>
+    <div id="scnMsg" class="scn-msg ${scn.msgKind}">${escapeHtml(scn.msg)}</div>
+    ${scnEditorHtml()}${scnSavedHtml()}`;
+  scnMixTotal();
+}
+
 // ---- Tools as text links ----
 function stratToolsHtml(){
   const go = it => it.step ? `goToStep('${it.step}'${it.stepArg ? `,'${jsStrEscape(it.stepArg)}'` : ''})` : `goToStep('pendingFeature','${jsStrEscape(it.label)}','Strategy','strategy')`;
@@ -23632,6 +23762,7 @@ function strategyShellHtml(){
       </div></div><div id="stratPriceBody"></div></div>
     <div class="strat-card"><div class="strat-head"><h2>Database growth by audience type</h2></div><div id="stratAudBody"></div></div>
     <div class="strat-card"><div class="strat-head"><h2>Forecast against the plan target</h2></div><div id="stratFcBody"></div></div>
+    <div class="strat-card" id="stratScnCard"><div class="strat-head"><h2>Scenario planner</h2></div><div id="stratScnBody"><p class="strat-empty">Loading…</p></div></div>
     <div class="strat-card"><div class="strat-head"><h2>Rolling 18 months: budget and spend</h2></div><div id="stratRollBody"></div></div>
     ${stratFieldHtml()}
     ${stratToolsHtml()}`;
@@ -24159,7 +24290,7 @@ function strategyPageInit(){
   if (!stratIsLive()) return;
   stratSyncPriceControls();
   stratLoadPrice().then(stratFillPgSelect); stratLoadAudience();
-  stratLoadDemand().then(() => stratLoadForecast()); stratLoadRolling(); bfRenderStrategy();
+  stratLoadDemand().then(() => stratLoadForecast()); stratLoadRolling(); bfRenderStrategy(); scnLoad();
 }
 function stratFillPgSelect(){
   const sel = document.getElementById('stratPgSel'); const d = strat.priceData; if (!sel || !d) return;
