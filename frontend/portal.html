@@ -13144,7 +13144,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-08-cpm-teach-brain';
+const CXMEDIA_BUILD_STAMP = '2026-10-08-pptx-local';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -48993,13 +48993,24 @@ let cmpPptxJsPromise = null;
 function cmpLoadPptxJs(){
   if (window.PptxGenJS) return Promise.resolve(window.PptxGenJS);
   if (cmpPptxJsPromise) return cmpPptxJsPromise;
-  cmpPptxJsPromise = new Promise((resolve, reject) => {
+  // Our own copy first (frontend/vendor, same convention as the voice client), then public CDNs, so a
+  // blocked CDN or a locked-down network does not stop the export.
+  const sources = ['vendor/pptxgen.bundle.js', '/frontend/vendor/pptxgen.bundle.js', 'https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js', 'https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js'];
+  const tryLoad = (src) => new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js';
-    script.onload = () => window.PptxGenJS ? resolve(window.PptxGenJS) : reject(new Error('The PowerPoint export library failed to load.'));
-    script.onerror = () => reject(new Error('Could not load the PowerPoint export library — this needs an internet connection the first time it\'s used.'));
+    script.src = src;
+    script.onload = () => window.PptxGenJS ? resolve(window.PptxGenJS) : reject(new Error('loaded but empty: ' + src));
+    script.onerror = () => { script.remove(); reject(new Error('could not load ' + src)); };
     document.head.appendChild(script);
   });
+  cmpPptxJsPromise = (async () => {
+    for (const src of sources){
+      try { return await tryLoad(src); } catch (e){ console.warn('PowerPoint library:', e.message); }
+    }
+    cmpPptxJsPromise = null; // allow a retry on the next click
+    throw new Error('Could not load the PowerPoint export library. Try again, or use Export CSV.');
+  })();
+  cmpPptxJsPromise.catch(() => { cmpPptxJsPromise = null; });
   return cmpPptxJsPromise;
 }
 async function cmpRecoExportPpt(){
