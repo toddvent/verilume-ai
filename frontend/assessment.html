@@ -946,6 +946,31 @@
      swaps per step via renderSurveyRail(step); hidden entirely on landing
      (which already has its own teaser aside) and on report (which has its
      own dense layout). */
+
+  /* 2026-10-07 — lightness levers: five lamps, dim to radiant. Same 1-5 values underneath. */
+  .loop-rank{gap:8px;}
+  .loop-rank button.lv{width:38px;height:38px;border-radius:50%;background:#10141B;border:1px solid #10141B;display:grid;place-items:center;padding:0;cursor:pointer;transition:transform .2s,box-shadow .25s;}
+  .loop-rank button.lv i{display:block;border-radius:50%;transition:.25s;}
+  .loop-rank button.lv1 i{width:6px;height:6px;background:#5b6472;}
+  .loop-rank button.lv2 i{width:9px;height:9px;background:#9b8f6a;}
+  .loop-rank button.lv3 i{width:13px;height:13px;background:#d9a93c;box-shadow:0 0 5px rgba(217,169,60,.7);}
+  .loop-rank button.lv4 i{width:17px;height:17px;background:#F4B63F;box-shadow:0 0 10px rgba(244,182,63,.9);}
+  .loop-rank button.lv5 i{width:22px;height:22px;background:#FFD98A;box-shadow:0 0 16px 4px rgba(255,205,110,.95);}
+  .loop-rank button.lv:hover{transform:translateY(-2px);}
+  .loop-rank button.lv.active{box-shadow:0 0 0 3px #FBFAF6,0 0 0 5px #10141B;background:#10141B;}
+  .lv-name{margin-top:8px;font-size:.8125rem;color:var(--ink);min-height:1.2em;}
+  .lv-name b{font-weight:600;}
+  .lv-name.muted{color:var(--muted);}
+  /* product vignettes in the sidebar and aside panels */
+  .pv{border-radius:12px;overflow:hidden;background:#0B1017;border:1px solid #1b2430;margin:0 0 14px;}
+  .pv svg{display:block;width:100%;height:auto;}
+  .pv-cap{padding:10px 14px 12px;color:#EDEAE0;font-size:.78rem;line-height:1.4;background:#0B1017;}
+  .pv-cap b{display:block;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:#F4B63F;margin-bottom:3px;font-weight:500;}
+  .mod-visual-frame.pvframe{height:auto;display:block;}
+  .pv-strip{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;}
+  .pv-strip .pv{margin:0;}
+  .pv-strip .pv-cap{padding:7px 10px 9px;font-size:.7rem;}
+  .pv-strip .pv-cap b{font-size:.62rem;}
   .survey-rail{position:fixed;top:150px;right:36px;width:270px;background:var(--paper-dim);border:1px solid var(--line);border-radius:16px;padding:20px 22px;display:none;}
   .survey-rail .teaser-label{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin:0 0 12px;}
   .survey-rail ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px;}
@@ -1049,6 +1074,8 @@
   .utility-nav-inner a{font-size:12.5px;font-weight:600;color:rgba(255,255,255,0.92);text-decoration:none;padding:8px 16px;border:1px solid rgba(255,255,255,0.38);border-radius:999px;white-space:nowrap;transition:border-color 0.2s ease, background 0.2s ease;}
   .utility-nav-inner a:hover{border-color:#fff;background:rgba(255,255,255,0.08);}
 </style>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vl-site.css">
 </head>
 <body>
 <div class="sticky-nav-wrap">
@@ -1347,6 +1374,7 @@
      fixed-position and desktop-only (>=1500px). Content swaps per step via
      renderSurveyRail(step), called from goToStep(). -->
 <aside class="survey-rail" id="surveyRail">
+  <div id="surveyRailVisual"></div>
   <div class="teaser-label">Why we ask</div>
   <ul id="surveyRailBullets"></ul>
 </aside>
@@ -1387,6 +1415,8 @@
           <li>Your strongest and weakest area named plainly — what to defend, what to fix first.</li>
           <li>No email required to start — registration is a quick step partway through, well before your results are built.</li>
         </ul>
+        <div class="teaser-label" style="margin-top:18px;">Inside the full product</div>
+        <div class="pv-strip" id="pvStrip"></div>
       </aside>
     </div>
 
@@ -1540,7 +1570,7 @@
       </div>
       <aside class="mat-visual">
         <div class="teaser-label">What this assessment covers</div>
-        <div class="mod-visual-frame"><div class="placeholder">Visual — TBD</div></div>
+        <div class="mod-visual-frame pvframe" data-pv="brief"></div>
         <ul class="landing-teaser-bullets">
           <li>The full Marketing Loop, Awareness through Advocacy, self-rated stage by stage against best practice.</li>
           <li>Your organization's structure and how work actually gets done.</li>
@@ -1676,7 +1706,7 @@
       </div>
       <aside class="mat-visual">
         <div class="teaser-label">What this feeds into</div>
-        <div class="mod-visual-frame"><div class="placeholder">Visual — TBD</div></div>
+        <div class="mod-visual-frame pvframe" data-pv="match"></div>
         <ul class="landing-teaser-bullets">
           <li>Best-practice guidance tailored to your industry, surfaced at every step ahead.</li>
           <li>A benchmark read on how your target generations actually discover, decide, and buy.</li>
@@ -4276,6 +4306,35 @@ const STEP_RAIL_BULLETS = {
   ]
 };
 
+
+// 2026-10-07 — product vignettes for the sidebar and aside panels. Drawn in SVG (no screenshots, no demo data), each reflecting a real portal product.
+const PV_COLORS = { night:'#0B1017', line:'#2a3544', lamp:'#F4B63F', truth:'#4DD6C0', txt:'#9aa6b6' };
+const PRODUCT_VISUALS = {
+  brief: { title:'The Brief', cap:'One objective, written once. Every stage reads from it.', svg:
+    `<svg viewBox="0 0 280 150"><rect width="280" height="150" fill="#0B1017"/>${[0,1,2,3].map(i=>`<g transform="translate(18 ${16+i*31})"><rect width="244" height="24" rx="6" fill="#141c27" stroke="#2a3544"/><circle cx="13" cy="12" r="4" fill="${i===0?'#F4B63F':'#2a3544'}"/><rect x="26" y="8" width="${[120,96,140,84][i]}" height="3.5" rx="2" fill="${i===0?'#EDEAE0':'#5b6878'}"/><rect x="26" y="15" width="${[70,110,60,98][i]}" height="3" rx="2" fill="#2f3b4b"/></g>`).join('')}</svg>` },
+  search: { title:'Search Everywhere', cap:'Findable in search, in AI answers and out loud.', svg:
+    `<svg viewBox="0 0 280 150"><rect width="280" height="150" fill="#0B1017"/><circle cx="82" cy="70" r="34" fill="none" stroke="#F4B63F" stroke-width="5"/><line x1="107" y1="95" x2="132" y2="120" stroke="#F4B63F" stroke-width="7" stroke-linecap="round"/><g font-family="monospace" font-size="9" fill="#9aa6b6"><rect x="158" y="34" width="104" height="22" rx="6" fill="#141c27" stroke="#2a3544"/><circle cx="170" cy="45" r="4" fill="#4DD6C0"/><text x="180" y="48">search</text><rect x="158" y="64" width="104" height="22" rx="6" fill="#141c27" stroke="#2a3544"/><circle cx="170" cy="75" r="4" fill="#4DD6C0"/><text x="180" y="78">AI answers</text><rect x="158" y="94" width="104" height="22" rx="6" fill="#141c27" stroke="#2a3544"/><circle cx="170" cy="105" r="4" fill="#F4B63F"/><text x="180" y="108">voice, local</text></g></svg>` },
+  contest: { title:'Contest', cap:'Three blind drafts. A person picks. Truth and light scored.', svg:
+    `<svg viewBox="0 0 280 150"><rect width="280" height="150" fill="#0B1017"/>${[0,1,2].map(i=>`<g transform="translate(${16+i*88} 14)"><rect width="76" height="70" rx="8" fill="#141c27" stroke="${i===1?'#F4B63F':'#2a3544'}" stroke-width="${i===1?2.5:1}"/><rect x="9" y="12" width="${[52,58,44][i]}" height="4" rx="2" fill="#5b6878"/><rect x="9" y="22" width="${[40,48,56][i]}" height="4" rx="2" fill="#3a4757"/><rect x="9" y="32" width="${[56,34,48][i]}" height="4" rx="2" fill="#3a4757"/></g>`).join('')}<g font-family="monospace" font-size="8" fill="#9aa6b6"><text x="16" y="108">TRUTH</text><rect x="62" y="101" width="200" height="8" rx="4" fill="#1b2430"/><rect x="62" y="101" width="162" height="8" rx="4" fill="#4DD6C0"/><text x="16" y="130">LIGHT</text><rect x="62" y="123" width="200" height="8" rx="4" fill="#1b2430"/><rect x="62" y="123" width="176" height="8" rx="4" fill="#F4B63F"/></g></svg>` },
+  brain: { title:'Train the Brain', cap:'Twenty minutes of setup. Every correction stays with the company.', svg:
+    `<svg viewBox="0 0 280 150"><rect width="280" height="150" fill="#0B1017"/>${[[50,32],[230,32],[34,92],[246,92],[90,128],[190,128]].map((p,i)=>`<line x1="140" y1="76" x2="${p[0]}" y2="${p[1]}" stroke="${i<4?'#F4B63F':'#2a3544'}" stroke-width="1.5"/><circle cx="${p[0]}" cy="${p[1]}" r="${i<4?9:7}" fill="${i<4?'#F4B63F':'#141c27'}" stroke="${i<4?'#F4B63F':'#3a4757'}"/>`).join('')}<circle cx="140" cy="76" r="22" fill="#141c27" stroke="#4DD6C0" stroke-width="2"/><text x="140" y="80" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#fff">Brain</text></svg>` },
+  match: { title:'Match Market Testing', cap:'Test in one market. Read it against a matched twin.', svg:
+    `<svg viewBox="0 0 280 150"><rect width="280" height="150" fill="#0B1017"/><rect x="170" y="14" width="96" height="104" fill="#F4B63F" opacity=".14"/><g stroke="#1f2a37"><line x1="16" x2="266" y1="38" y2="38"/><line x1="16" x2="266" y1="72" y2="72"/><line x1="16" x2="266" y1="106" y2="106"/></g><path d="M16 84 C50 60 70 100 100 78 S150 74 170 70 S215 44 266 34" fill="none" stroke="#F4B63F" stroke-width="3"/><path d="M16 86 C50 62 70 102 100 80 S150 76 170 74 S215 70 266 66" fill="none" stroke="#4DD6C0" stroke-width="3"/><text x="176" y="28" font-family="monospace" font-size="8" fill="#9aa6b6">TEST WINDOW</text><text x="16" y="136" font-family="monospace" font-size="8" fill="#9aa6b6">TEST MARKET  vs  MATCHED CONTROL</text></svg>` },
+  coach: { title:'AI Brain Coach', cap:'Every team member is an A player, with a proposed next step.', svg:
+    `<svg viewBox="0 0 280 150"><rect width="280" height="150" fill="#0B1017"/>${(()=>{let o='';for(let r=0;r<7;r++)for(let c=0;c<16;c++){const k=r*16+c;const person=[19,38,53,70,89].indexOf(k)>=0;const lit=((k*37+11)%10)<8;o+=`<rect x="${16+c*15.5}" y="${12+r*17.5}" width="11" height="13" rx="1.5" fill="${person?'#FFF6DC':(lit?'#F4B63F':'#18222e')}"${person?' stroke="#fff"':''}/>`;}return o;})()}</svg>` }
+};
+function pvHtml(key, withCap){
+  const v = PRODUCT_VISUALS[key]; if (!v) return '';
+  return `<div class="pv" role="img" aria-label="${v.title}: ${v.cap}">${v.svg}${withCap === false ? '' : `<div class="pv-cap"><b>${v.title}</b>${v.cap}</div>`}</div>`;
+}
+const STEP_RAIL_VISUAL = { company:'brief', maturity:'search', orgstyle:'coach', recap:'match', loop:'contest', channels:'match', assess:'brain', contact:'contest' };
+function hydrateProductVisuals(){
+  document.querySelectorAll('[data-pv]').forEach(el => { el.innerHTML = pvHtml(el.getAttribute('data-pv')); });
+  const strip = document.getElementById('pvStrip');
+  if (strip) strip.innerHTML = ['contest','brain','match','brief'].map(k => pvHtml(k)).join('');
+}
+document.addEventListener('DOMContentLoaded', hydrateProductVisuals);
+
 function renderSurveyRail(step){
   const rail = document.getElementById('surveyRail');
   const bullets = STEP_RAIL_BULLETS[step];
@@ -4284,6 +4343,7 @@ function renderSurveyRail(step){
     return;
   }
   document.getElementById('surveyRailBullets').innerHTML = bullets.map(b => `<li>${b}</li>`).join('');
+  const rv = document.getElementById('surveyRailVisual'); if (rv) rv.innerHTML = pvHtml(STEP_RAIL_VISUAL[step] || 'contest');
   rail.classList.add('show');
 }
 
@@ -4934,12 +4994,12 @@ function renderLoopStep(){
     // only the public, pre-account free-assessment display is removed.
     const importance = loopStageImportance(r.stage);
     const current = state.stageEffectiveness[r.stage] || 0;
-    const ranks = [1,2,3,4,5].map(n => `<button type="button" class="${n === current ? 'active' : ''}" onclick="rateLoopStage('${r.stage}',${n})">${n}</button>`).join('');
+    const ranks = [1,2,3,4,5].map(n => lightLever(n, current, `rateLoopStage('${r.stage}',${n})`)).join('');
     return `<div class="loop-stage-row">
       <div><div class="stage-name">${r.stage}</div><div class="stage-sub">${r.sub}</div></div>
       <div class="loop-stage-metrics">
         <div class="loop-metric"><div class="num">${importance}/5</div><div class="lbl">Importance</div></div>
-        <div><div class="stage-sub" style="margin-bottom:4px;">Effectiveness today</div><div class="loop-rank">${ranks}</div></div>
+        <div><div class="stage-sub" style="margin-bottom:4px;">Light level today</div><div class="loop-rank">${ranks}</div>${lightLeverName(current)}</div>
       </div>
     </div>`;
   }).join('');
@@ -4950,19 +5010,19 @@ function renderLoopStep(){
   // 2026-08-20 (direct QA feedback) — aligned to match the 5 stage rows
   // exactly: an "Importance" badge (same loop-metric style as Importance/
   // Ideal Budget above) and the self-report ranking relabeled
-  // "Effectiveness today" instead of "Consistency today", since that's the
+  // "Light level today" instead of "Consistency today", since that's the
   // term the other 5 rows use for the same kind of self-rating. Importance
   // is fixed at 5/5, non-self-reported like the stage rows' own Importance
   // badge — CX consistency touches every stage of the loop, so it's never
   // "less important" than any one stage. No Ideal Budget badge — that
   // concept (media spend allocation) doesn't apply to CX.
   const cxCurrent = state.cxConsistencyRating || 0;
-  const cxRanks = [1,2,3,4,5].map(n => `<button type="button" class="${n === cxCurrent ? 'active' : ''}" onclick="rateLoopCx(${n})">${n}</button>`).join('');
+  const cxRanks = [1,2,3,4,5].map(n => lightLever(n, cxCurrent, `rateLoopCx(${n})`)).join('');
   document.getElementById('loopCxRow').innerHTML = `<div class="loop-stage-row">
       <div><div class="stage-name">Customer Experience</div><div class="stage-sub">How consistent is the customer experience across every channel.</div></div>
       <div class="loop-stage-metrics">
         <div class="loop-metric"><div class="num">5/5</div><div class="lbl">Importance</div></div>
-        <div><div class="stage-sub" style="margin-bottom:4px;">Effectiveness today</div><div class="loop-rank">${cxRanks}</div></div>
+        <div><div class="stage-sub" style="margin-bottom:4px;">Light level today</div><div class="loop-rank">${cxRanks}</div>${lightLeverName(cxCurrent)}</div>
       </div>
     </div>`;
 }
@@ -5825,9 +5885,9 @@ function updateScopePickerNext(){
 // key ('behind') and its numeric value (PRODUCT_RATING_VALUE.behind = 1)
 // are unchanged — only the visible label changed.
 const RATING_OPTIONS = [
-  { key: 'behind', label: 'Needs Prioritization' },
-  { key: 'onpar', label: 'On par' },
-  { key: 'ahead', label: 'Ahead' }
+  { key: 'behind', label: 'Dim' },
+  { key: 'onpar', label: 'Steady' },
+  { key: 'ahead', label: 'Bright' }
 ];
 
 // Round 122 — no longer a goToStep() target; seeds the Assess accordion
@@ -6198,7 +6258,16 @@ function activeScores(){
 // & Personalized / Shareable Moments), replacing the older, milder-but-
 // still-negative 'Needs attention'/'Inconsistent' labels. One vocabulary
 // for the same 1-5 concept everywhere it appears.
-const STAGE_EFF_LABEL = { 1: 'Needs Prioritization', 2: 'Early Progress', 3: 'Accurate Experiences', 4: 'Proactive & Personalized', 5: 'Shareable Moments' };
+// 2026-10-07 — the five effectiveness levers are now lightness levels (Veri/Lume: truth and light). Numeric values 1-5 are unchanged, so scoring is untouched;
+// the earlier descriptive names are kept as the plain-English meaning shown beside each level.
+const STAGE_EFF_LABEL = { 1: 'Dark', 2: 'Flickering', 3: 'Steady', 4: 'Bright', 5: 'Radiant' };
+const STAGE_EFF_MEANING = { 1: 'Needs prioritization', 2: 'Early progress', 3: 'Accurate experiences', 4: 'Proactive and personalized', 5: 'Shareable moments' };
+function lightLever(n, current, onclickJs){
+  return `<button type="button" class="lv lv${n}${n === current ? ' active' : ''}" title="${STAGE_EFF_LABEL[n]}: ${STAGE_EFF_MEANING[n]}" aria-label="${STAGE_EFF_LABEL[n]}: ${STAGE_EFF_MEANING[n]}" aria-pressed="${n === current}" onclick="${onclickJs}"><i></i></button>`;
+}
+function lightLeverName(current){
+  return current ? `<div class="lv-name"><b>${STAGE_EFF_LABEL[current]}</b> · ${STAGE_EFF_MEANING[current]}</div>` : `<div class="lv-name muted">Choose a light level</div>`;
+}
 
 // 2026-09-01 — rebuilt per the report step's corrected 3-section structure.
 // #reportSynthesisText (the short "This company is a national cruise
