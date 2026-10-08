@@ -16805,6 +16805,9 @@ function dqParse(text, ctx){
   DQ_FILTER_DIMS.forEach(d => {
     (ctx.values[d] || []).forEach(v => {
       const n = dqNorm(v); if (n.trim().length < 2) return;
+      // short codes (state IN, country US) are also ordinary words ("in", "us"), so they only count as a filter when typed in the
+      // same case as the code on file, as a word of their own
+      if (n.trim().length <= 3 && !new RegExp('(^|[^A-Za-z0-9])' + String(v).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^A-Za-z0-9]|$)').test(String(text || ''))) return;
       if (tv.includes(n) && !spec.filters.some(f => f.field === d && f.values.includes(v))){
         let f = spec.filters.find(x => x.field === d); if (!f){ f = { field: d, values: [] }; spec.filters.push(f); } f.values.push(v);
         // a filter value is not also a breakdown for that field unless the field was named
@@ -17186,7 +17189,15 @@ async function dqAnswerPayload(accountId, input, range, opts){
   else if (text){
     const p = dqParse(text, ctx);
     if (p.spec.measure){ spec = dqValidateSpec(p.spec, ctx); assumptions = p.assumptions; source = 'words'; }
-    else if (opts.allowModel !== false){ const m = await dqPlanWithModel(text, ctx); if (m){ spec = dqValidateSpec(m, ctx); source = 'model'; } }
+    else if (opts.allowModel !== false){
+      const m = await dqPlanWithModel(text, ctx);
+      if (m){
+        // the same short-code rule as the word parser: "in" or "us" in a sentence is not the state IN or country US
+        const codeOk = v => { const x = String(v).trim(); return x.length > 3 || new RegExp('(^|[^A-Za-z0-9])' + x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^A-Za-z0-9]|$)').test(text); };
+        m.filters = (Array.isArray(m.filters) ? m.filters : []).map(f => ({ field: f.field, values: (Array.isArray(f.values) ? f.values : []).filter(codeOk) })).filter(f => f.values.length);
+        spec = dqValidateSpec(m, ctx); source = 'model';
+      }
+    }
   }
   if (!spec){
     const words = dqNorm(text).trim().split(' ').filter(w => w.length > 3);
