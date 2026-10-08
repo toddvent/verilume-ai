@@ -1166,7 +1166,6 @@ createTableIfNeeded(`CREATE TABLE IF NOT EXISTS draft_usage (
 )`);
 // Routes that produce one AI draft. Each successful call uses one draft from the account's allowance.
 const DRAFT_ROUTES = [
-  /^\/api\/accounts\/[^/]+\/me\/(dump-triage|coach-message)$/,
   /^\/api\/accounts\/[^/]+\/voice-draft$/,
   /^\/api\/campaigns\/[^/]+\/messaging-ai-draft$/,
   /^\/api\/campaigns\/[^/]+\/copy-interview$/,
@@ -12375,105 +12374,6 @@ createTableIfNeeded(`
     assignedby TEXT,
     assignedat TEXT NOT NULL
   );
-  CREATE TABLE IF NOT EXISTS search_guide_ratings (
-    id TEXT PRIMARY KEY,
-    accountid TEXT NOT NULL,
-    modelkey TEXT NOT NULL,
-    itemkey TEXT NOT NULL,
-    rating TEXT NOT NULL,
-    updatedby TEXT,
-    updatedat TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS search_guide_history (
-    id TEXT PRIMARY KEY,
-    accountid TEXT NOT NULL,
-    modelkey TEXT NOT NULL,
-    area TEXT NOT NULL,
-    score REAL NOT NULL,
-    day TEXT NOT NULL
-  );
-`);
-// 2026-10-07 — AI Brain Coach (growth workstream). Everything here is private to the signed-in person; see coachWho().
-// Lowercase snake_case, accountid only in WHERE (pg-sync-bridge rules). Registered in CATALOG_EXEMPT: person data, never an account-level dataset.
-createTableIfNeeded(`
-  CREATE TABLE IF NOT EXISTS coach_needs (
-    id TEXT PRIMARY KEY,
-    accountid TEXT NOT NULL,
-    memberid TEXT NOT NULL,
-    skill TEXT NOT NULL,
-    rating INTEGER,
-    importance INTEGER,
-    note TEXT,
-    ratedat TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS coach_career (
-    id TEXT PRIMARY KEY,
-    accountid TEXT NOT NULL,
-    memberid TEXT NOT NULL,
-    kind TEXT,
-    targetlevel TEXT,
-    targetfunction TEXT,
-    timeframe TEXT,
-    why TEXT,
-    stopdoing TEXT,
-    updatedat TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS coach_plan_items (
-    id TEXT PRIMARY KEY,
-    accountid TEXT NOT NULL,
-    memberid TEXT NOT NULL,
-    skill TEXT,
-    title TEXT NOT NULL,
-    kind TEXT,
-    source TEXT,
-    link TEXT,
-    due TEXT,
-    status TEXT NOT NULL,
-    note TEXT,
-    createdat TEXT NOT NULL,
-    completedat TEXT
-  );
-  CREATE TABLE IF NOT EXISTS coach_tasks (
-    id TEXT PRIMARY KEY,
-    accountid TEXT NOT NULL,
-    memberid TEXT NOT NULL,
-    title TEXT NOT NULL,
-    due TEXT,
-    source TEXT,
-    reason TEXT,
-    status TEXT NOT NULL,
-    position INTEGER,
-    createdat TEXT NOT NULL,
-    doneat TEXT
-  );
-  CREATE TABLE IF NOT EXISTS coach_dumps (
-    id TEXT PRIMARY KEY,
-    accountid TEXT NOT NULL,
-    memberid TEXT NOT NULL,
-    body TEXT NOT NULL,
-    triagejson TEXT,
-    createdat TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS coach_sessions (
-    id TEXT PRIMARY KEY,
-    accountid TEXT NOT NULL,
-    memberid TEXT NOT NULL,
-    status TEXT NOT NULL,
-    agendajson TEXT,
-    messagesjson TEXT,
-    summary TEXT,
-    shared INTEGER DEFAULT 0,
-    createdat TEXT NOT NULL,
-    closedat TEXT
-  );
-  CREATE TABLE IF NOT EXISTS coach_sharing (
-    id TEXT PRIMARY KEY,
-    accountid TEXT NOT NULL,
-    memberid TEXT NOT NULL,
-    item TEXT NOT NULL,
-    shared INTEGER DEFAULT 0,
-    updatedat TEXT NOT NULL
-  );
 `);
 // 2026-10-07 — a person confirms a test result (never automatic): who, when, the numbers they confirmed, and the plan changes
 // the Brain proposed from it. Confirmed results are also stored with the campaign they ran under (campaign_results).
@@ -16899,11 +16799,13 @@ function dqParse(text, ctx){
   });
   // "how many transactions" style: the count word with no other measure
   if (!spec.measure && spec.agg === 'count') spec.measure = 'transactions';
-  // known values in the question become filters ("in Polar")
+  // known values in the question become filters ("in Polar"). Words already used to name a field are blanked out first,
+  // so the "group" inside "product group" is never mistaken for the transaction type GROUP.
+  let tv = t; claimed.forEach(c => { tv = tv.slice(0, c[0]) + ' '.repeat(c[1] - c[0]) + tv.slice(c[1]); });
   DQ_FILTER_DIMS.forEach(d => {
     (ctx.values[d] || []).forEach(v => {
       const n = dqNorm(v); if (n.trim().length < 2) return;
-      if (t.includes(n) && !spec.filters.some(f => f.field === d && f.values.includes(v))){
+      if (tv.includes(n) && !spec.filters.some(f => f.field === d && f.values.includes(v))){
         let f = spec.filters.find(x => x.field === d); if (!f){ f = { field: d, values: [] }; spec.filters.push(f); } f.values.push(v);
         // a filter value is not also a breakdown for that field unless the field was named
       }
@@ -17059,7 +16961,16 @@ function dqRun(accountId, specIn, range, preloaded){
   }
   // one sentence, written only from the computed numbers
   let summary;
-  if (!cur.length) summary = `No counted transactions fall in ${per.label}.`;
+  if (!cur.length){
+    const unfiltered = per.cur.filter(pre).length;
+    summary = spec.filters.length && unfiltered > 0
+      ? `No counted transactions fall in ${per.label} once the filter is applied. Without it there are ${unfiltered.toLocaleString('en-US')}.`
+      : `No counted transactions fall in ${per.label}.`;
+    if (!unfiltered){
+      const yrs = Array.from(new Set(L.txs.map(t => spec.basis === 'delivered' ? t.serviceYear : t.year).filter(Boolean))).sort();
+      if (yrs.length) notes.push(`Years on file for this view: ${yrs.join(', ')}.`);
+    }
+  }
   else if (!spec.by.length) summary = `${mTitle} was ${dqFmt(all.v, kind)} across ${cur.length.toLocaleString('en-US')} transactions in ${per.label}.`;
   else {
     const ranked = rows.filter(r => r.v !== null && r.n >= DQ_SMALL_N).sort((a, b) => b.v - a.v);
@@ -18474,7 +18385,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['onboarding_assignments', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
+const CATALOG_EXEMPT = new Set(['onboarding_assignments', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -18723,68 +18634,6 @@ function gscContextBlock(accountId, question){
   return L.join('\n');
 }
 
-// ---- Search Everywhere illumination guides as voice and Ask Verilume context (2026-10-07) ----
-// Mirrors SG_ITEMS in portal.html (keep the two in step). Gives the agent the checklist, this account's ratings and tool-read status, and rules for
-// judging a recommendation or walking someone through the assessment. Nothing here is saved by voice; ratings are set in the guide on the page.
-const SG_GUIDE = [{"key":"seo_gsc","area":"seo","w":3,"m":["local","single","franchise"],"title":"Connect Google Search Console","why":"It is the only first-party record of what people searched and clicked. Every other check leans on it.","how":"Verify the site in Search Console, then upload the performance export here with Update data.","auto":true},{"key":"seo_health","area":"seo","w":3,"m":["local","single","franchise"],"title":"Key pages are indexed and the site has no blocking errors","why":"A page that is not indexed cannot be found, however good it is.","how":"Work the Fix and Check items in the health check first. Confirm sitemap and robots.txt do not block pages you want found.","auto":true},{"key":"seo_gbp","area":"seo","w":3,"m":["local","franchise"],"title":"Google Business Profile claimed and complete","why":"It drives the map results and the local panel, which is where most local searches end.","how":"Claim it, pick the right primary category, add hours, services, photos and a link to the page for that location. For franchises, one profile per location, managed under one account.","auto":false},{"key":"seo_nap","area":"seo","w":3,"m":["local","franchise"],"title":"Name, address and phone match everywhere","why":"Conflicting listings make engines less sure which facts are right.","how":"Pick one spelling of the name, address and phone. Fix the website, Google, Apple Maps, Bing Places, Yelp and the main directories to match.","auto":false},{"key":"seo_loc_pages","area":"seo","w":3,"m":["franchise"],"title":"Every location has its own page with real local content","why":"A location page is the page that can win \"near me\" searches for that store.","how":"One crawlable page per location: address, hours, services, team, local photos, reviews and a map. No duplicate copy with only the city swapped.","auto":false},{"key":"seo_pages","area":"seo","w":3,"m":["single"],"title":"Product, service and category pages match what buyers search","why":"This is where call center and ecommerce traffic is won or lost.","how":"One page per product or service line, titled with the words buyers use, with specific copy, photos, price or a plain next step.","auto":false},{"key":"seo_titles","area":"seo","w":2,"m":["local","single","franchise"],"title":"Unique titles and descriptions on key pages","why":"The title is the headline in the results and the clearest topic signal.","how":"Give each important page a title under about 60 characters that leads with the topic, and a description that earns the click.","auto":false},{"key":"seo_content","area":"seo","w":2,"m":["local","single","franchise"],"title":"A page for each of your top non-brand searches","why":"Brand searches come to you anyway. Growth comes from searches that do not name you.","how":"Take the top non-brand searches and keyword opportunities, and publish or improve one page for each.","auto":true},{"key":"seo_vitals","area":"seo","w":2,"m":["local","single","franchise"],"title":"Pages load fast and work on a phone","why":"Most searches happen on phones, and slow pages lose visitors before they read.","how":"Check Core Web Vitals for the home page, top landing pages and checkout or booking pages. Fix the slowest first.","auto":false},{"key":"seo_reviews","area":"seo","w":2,"m":["local","franchise"],"title":"A steady flow of reviews, and you answer them","why":"Reviews influence both ranking in the map results and the choice a customer makes.","how":"Ask every happy customer, make the link one tap, and reply to every review, good or bad, within a few days.","auto":false},{"key":"seo_calls","area":"seo","w":2,"m":["single"],"title":"Click-to-call and call tracking on search landing pages","why":"For a call center, a call is the conversion. Without tracking you cannot tell which pages produce it.","how":"Put a tappable number on every landing page, use a tracking number per source, and send calls to analytics as conversions.","auto":false},{"key":"seo_store_locator","area":"seo","w":2,"m":["franchise"],"title":"Store locator and pickup pages can be crawled","why":"A locator that only works with scripts can hide every location from search.","how":"Make sure each location has a normal link and page. Show pickup or in-stock status on the page when you can.","auto":false},{"key":"seo_brand","area":"seo","w":1,"m":["local","single","franchise"],"title":"Brand names confirmed so brand and non-brand are separated","why":"Without it, branded clicks make growth look better than it is.","how":"Open Brand names at the top of the page and confirm every spelling people use for you.","auto":true},{"key":"seo_links","area":"seo","w":1,"m":["local","single","franchise"],"title":"Earn links and local citations from sites that matter","why":"Links from trusted sites still count, and for local they confirm you are real and nearby.","how":"Local chambers, suppliers, partners, press and community sponsorships. Skip bought links.","auto":false},{"key":"aeo_faq","area":"aeo","w":3,"m":["local","single","franchise"],"title":"Your site answers the questions people actually ask","why":"Engines show the page that answers the question most directly.","how":"Work through the question list. Mark each one answered on your site, or draft an answer for your team to approve.","auto":true},{"key":"aeo_facts","area":"aeo","w":3,"m":["local","franchise"],"title":"Hours, services, prices and areas served are in plain text and current","why":"Voice assistants and answer boxes lift these facts straight from the page.","how":"State them on the page as text, not only in an image or a script. Update the same day anything changes, including holidays.","auto":false},{"key":"aeo_direct","area":"aeo","w":3,"m":["local","single","franchise"],"title":"Each page opens with a direct answer","why":"A clear first two sentences are the part most often quoted.","how":"Put the plain answer first, then the detail. Use the question as the heading when the page answers one.","auto":false},{"key":"aeo_approved","area":"aeo","w":2,"m":["local","single","franchise"],"title":"Approved FAQ answers published in your own words","why":"Approved answers keep what engines repeat accurate and on message.","how":"Approve answers in the question list, then publish them on the page that fits.","auto":true},{"key":"aeo_local_schema","area":"aeo","w":3,"m":["local","franchise"],"title":"LocalBusiness markup on each location page","why":"It tells machines the address, hours, phone and category without guessing.","how":"Use the LocalBusiness example in the schema library on every location page, with real hours and the map position.","auto":false},{"key":"aeo_org_schema","area":"aeo","w":2,"m":["local","single","franchise"],"title":"Organization markup on the home page","why":"It names the business, logo and official profiles in a form engines read reliably.","how":"Add Organization markup with your logo, contact and the links to your official profiles.","auto":false},{"key":"aeo_product_schema","area":"aeo","w":2,"m":["single","franchise"],"title":"Product and offer markup with price and availability","why":"It makes products eligible for richer results and keeps price and stock facts accurate.","how":"Mark up each product page with name, image, price, currency and availability, and keep it in step with the page.","auto":false},{"key":"aeo_call_answers","area":"aeo","w":2,"m":["single"],"title":"The top questions callers ask are answered on pages","why":"Your calls are a free list of the questions your customers have.","how":"Ask the team for the ten questions heard most. Publish a short page or FAQ for each.","auto":false},{"key":"aeo_loc_faq","area":"aeo","w":2,"m":["franchise"],"title":"Each location page has its own questions and answers","why":"Local questions, such as parking, pickup or same-day service, differ by store.","how":"Give each location three to five answers specific to that store, written or approved by the location.","auto":false},{"key":"geo_crawl","area":"geo","w":3,"m":["local","single","franchise"],"title":"You have decided which AI crawlers may read the site","why":"If robots.txt or a firewall blocks them, assistants cannot cite you.","how":"Review robots.txt and any bot protection. Allow the search crawlers from the AI assistants you want citing you, and write the decision down.","auto":false},{"key":"geo_cited","area":"geo","w":3,"m":["local","single","franchise"],"title":"You check whether AI answers cite you","why":"You cannot improve what you do not measure, and results differ by assistant.","how":"Run the AI citation check on your question list and review which answers name you and which link to you.","auto":true},{"key":"geo_listings","area":"geo","w":3,"m":["local","franchise"],"title":"Listings on Google, Apple Maps, Bing Places and Yelp are accurate","why":"Assistants draw local facts from these listings.","how":"Match the name, address, hours, phone and category on each. For franchises, push location data from one master record.","auto":false},{"key":"geo_facts","area":"geo","w":3,"m":["local","single","franchise"],"title":"The facts about your business agree everywhere they appear","why":"AI answers blend many sources. Mismatches cause wrong or missing mentions.","how":"Keep one approved description, founding year, services and leadership. Check your about page, LinkedIn, directories and press pages against it.","auto":false},{"key":"geo_third","area":"geo","w":2,"m":["local","single","franchise"],"title":"Trusted third-party sites mention you","why":"Assistants lean on reviews, press, industry sites and forums more than on your own claims.","how":"See which sites the AI answers cite for your questions. Earn honest coverage and reviews on those, not paid or fake posts.","auto":false},{"key":"geo_fresh","area":"geo","w":2,"m":["local","single","franchise"],"title":"Key pages show a current date and are updated on a schedule","why":"Engines prefer fresh, dated facts, especially for prices, hours and policies.","how":"Name an owner and a quarterly review for each key page, and show the last updated date.","auto":false},{"key":"geo_feeds","area":"geo","w":2,"m":["single","franchise"],"title":"Product feed submitted to Google Merchant Center","why":"Shopping results and AI shopping answers read your feed.","how":"Submit a feed with accurate price, stock and identifiers, and fix any disapproved items.","auto":false},{"key":"geo_central","area":"geo","w":2,"m":["franchise"],"title":"Brand facts and location facts agree and are managed centrally","why":"Assistants must match the brand to the right store, or they skip you.","how":"One owner at the brand for names, categories and descriptions, with location managers editing only hours, photos and local details.","auto":false},{"key":"geo_compare","area":"geo","w":1,"m":["local","single","franchise"],"title":"You track your share of AI answers against competitors","why":"The goal is to be named more often than the alternatives.","how":"Review share of voice monthly and note which competitors are named where you are not.","auto":false}];
-const SG_MODEL_LABEL = { local: 'a local business', single: 'a single-location call center or ecommerce business', franchise: 'a franchise with online sales and storefronts' };
-const SG_AREA_LABEL = { seo: 'SEO (get found)', aeo: 'AEO (be the answer)', geo: 'GEO (be cited by AI)' };
-const SG_ASK_RE = /\b(seo|aeo|geo|search everywhere|assessment|checklist|illumination|light level|schema|structured data|faqs?|citations?|cited|google business|gbp|local search|near me|ai answers?|ai overviews?|answer engines?|generative|llms?|chatgpt|perplexity|robots\.txt|crawlers?|listings?|backlinks?|best practices?|search guide)\b/i;
-function sgServerState(accountId, account){
-  const ratings = {}; let count = { local: 0, single: 0, franchise: 0 };
-  try { db.prepare('SELECT modelkey, itemkey, rating FROM search_guide_ratings WHERE accountid = ?').all(accountId).forEach(r => { const mk = aliasVal(r, 'modelkey'), ik = aliasVal(r, 'itemkey'); (ratings[mk] = ratings[mk] || {})[ik] = r.rating; if (count[mk] != null) count[mk]++; }); } catch (e){}
-  let model = Object.keys(count).sort((a, b) => count[b] - count[a])[0]; let basis = 'the model they have been rating';
-  if (!count[model]){
-    model = null; basis = '';
-    let resellers = 0; try { const m = db.prepare('SELECT resellers FROM account_reseller_meta WHERE accountId = ?').get(accountId); resellers = m ? Number(m.resellers) || 0 : 0; } catch (e){}
-    const text = ((account && (account.industry || '')) + ' ' + ((account && account.footprint) || '')).toLowerCase();
-    if (resellers > 3 || /franchis|dealer|storefront|reseller|travel agen/.test(text)){ model = 'franchise'; basis = resellers > 3 ? `${resellers} resellers or storefronts are on file` : 'the account profile mentions franchises, dealers or storefronts'; }
-  }
-  const sig = {};
-  try {
-    const d = gscPayload({ url: '/' }, accountId, account || {});
-    if (d && !d.empty){
-      sig.seo_gsc = { r: 'done', note: 'Search Console data is loaded' };
-      const h = d.health; if (h && h.indexed != null){ const tot = (h.indexed || 0) + (h.notIndexed || 0); if (tot){ const pct = h.indexed / tot * 100; const fix = (h.issues || []).filter(i => i.tier === 'fix').length; sig.seo_health = { r: pct >= 90 && !fix ? 'done' : pct >= 60 ? 'started' : 'none', note: Math.round(pct) + '% of checked pages indexed' + (fix ? ', ' + fix + ' to fix' : '') }; } }
-      const nb = d.cards && d.cards.nonBrandShare; if (nb) sig.seo_content = { r: nb.value >= 50 ? 'done' : nb.value >= 25 ? 'started' : 'none', note: nb.value.toFixed(1) + '% of clicks are non-brand' };
-      if (d.brand) sig.seo_brand = { r: d.brand.confirmedCount > 0 ? 'done' : 'none', note: d.brand.confirmedCount + ' brand names confirmed' };
-    } else sig.seo_gsc = { r: 'none', note: 'no Search Console data on file' };
-  } catch (e){}
-  try {
-    const qs = gscQuestionList(accountId); if (qs && qs.length){ const done = qs.filter(q => q.status === 'approved' || q.status === 'answered').length; sig.aeo_faq = { r: done / qs.length >= 0.6 ? 'done' : done > 0 ? 'started' : 'none', note: done + ' of ' + qs.length + ' questions answered' }; }
-    const ap = db.prepare("SELECT COUNT(*) AS n FROM search_questions WHERE accountId = ? AND status = 'approved'").get(accountId).n;
-    sig.aeo_approved = { r: ap >= 5 ? 'done' : ap > 0 ? 'started' : 'none', note: ap + ' approved FAQs' };
-  } catch (e){}
-  try { const t = aicSummary(accountId, account || {}).totals; sig.geo_cited = !t || !t.questions ? { r: 'none', note: 'no AI citation check has been run' } : { r: t.cited / t.questions >= 0.5 ? 'done' : 'started', note: t.cited + ' of ' + t.questions + ' checked answers cite the site, ' + t.mentioned + ' name the brand without a link' }; } catch (e){}
-  return { model, basis, ratings, sig };
-}
-function searchGuideContextBlock(accountId, question){
-  if (question && !SG_ASK_RE.test(question)) return 'SEARCH EVERYWHERE GUIDES: each of SEO, AEO and GEO has a View guide checklist on the Search Everywhere page, with a light level. Ask about SEO, AEO, GEO or the search assessment to hear this account\'s status and recommendations.';
-  const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId) || {};
-  const st = sgServerState(accountId, account);
-  const modelKey = st.model || 'single';
-  const items = SG_GUIDE.filter(i => i.m.indexOf(modelKey) >= 0);
-  const rate = it => { const sg = st.sig[it.key]; if (sg) return { r: sg.r, src: 'from their data: ' + sg.note }; const v = (st.ratings[modelKey] || {})[it.key]; return { r: v || 'none', src: v ? 'self-rated' : 'not rated yet' }; };
-  const word = { done: 'done', started: 'in progress', none: 'not started', na: 'does not apply' };
-  const L = [];
-  L.push('SEARCH EVERYWHERE GUIDES (illumination guides). The Search Everywhere page has a guide for each area, SEO (get found), AEO (be the answer) and GEO (be cited by AI): a prioritized checklist for the kind of business, items the person rates themselves, items Verilume fills from their data, and a light level (Dark, Dim, Lit, Bright, Brilliant) saved over time. Three business models: a local business; a single-location call center or ecommerce business; a franchise with online sales and storefronts. The agent cannot save ratings by voice: say the person sets them in the guide (Search Everywhere, View guide), and offer to keep track of what they tell you during the conversation.');
-  L.push(st.model ? `BUSINESS MODEL ASSUMED: ${SG_MODEL_LABEL[st.model]} (basis: ${st.basis}). If it sounds wrong, ask which of the three fits and use that one.` : 'BUSINESS MODEL: not known. Ask which of the three fits (local business; single-location call center or ecommerce; franchise with online sales and storefronts) before giving model-specific advice. Until then the items below are the ones common to all three.');
-  L.push(`ACCOUNT: ${account.company || accountId}${account.industry ? ', industry ' + account.industry : ''}${account.footprint ? ', footprint ' + account.footprint : ''}.`);
-  const levels = {}; ['seo', 'aeo', 'geo'].forEach(a => {
-    const li = (st.model ? items : SG_GUIDE.filter(i => i.m.length === 3)).filter(i => i.area === a); let got = 0, tot = 0, done = 0, n = 0;
-    li.forEach(it => { const r = rate(it).r; if (r === 'na') return; tot += it.w; n++; got += it.w * (r === 'done' ? 1 : r === 'started' ? 0.5 : 0); if (r === 'done') done++; });
-    levels[a] = { pct: tot ? Math.round(got / tot * 100) : 0, done, n };
-  });
-  const lv = p => p >= 85 ? 'Brilliant' : p >= 65 ? 'Bright' : p >= 40 ? 'Lit' : p >= 15 ? 'Dim' : 'Dark';
-  L.push('LIGHT LEVELS NOW: ' + ['seo', 'aeo', 'geo'].map(a => `${SG_AREA_LABEL[a]} ${lv(levels[a].pct)} ${levels[a].pct}% (${levels[a].done} of ${levels[a].n} items done)`).join('; ') + '. The level is the weighted share of items done; in progress counts half.');
-  const tier = w => w === 3 ? 'do first' : w === 2 ? 'do next' : 'then';
-  const pool = st.model ? items : SG_GUIDE.filter(i => i.m.length === 3);
-  ['seo', 'aeo', 'geo'].forEach(a => { L.push(`CHECKLIST ${SG_AREA_LABEL[a]}:\n` + pool.filter(i => i.area === a).map(it => { const r = rate(it); return `- [${tier(it.w)}] ${it.title}: ${word[r.r]} (${r.src})`; }).join('\n')); });
-  const gaps = pool.filter(it => { const r = rate(it).r; return r !== 'done' && r !== 'na'; }).sort((a, b) => b.w - a.w).slice(0, 8);
-  if (gaps.length) L.push('BIGGEST GAPS, with why it matters and how to do it:\n' + gaps.map(it => `- ${it.title} (${it.area.toUpperCase()}, ${tier(it.w)}). Why: ${it.why} How: ${it.how}`).join('\n'));
-  L.push('HOW TO ANSWER. (1) When someone says another person recommended a tactic, for example "someone recommended we do a function to support AEO", first say in a sentence what the tactic is and which checklist item it supports, or that it is not on the checklist. Then give this brand a verdict in plain words: do it now, do it after a named item, or skip for now, and the reason, tied to this account\'s business model and the status above (what is already done, what the biggest gaps are, what their search and AI-citation data shows). Say what it would take and where to start in the portal. Do not call any tactic guaranteed to get the brand cited or ranked; where the evidence for a tactic is thin or unproven, say so. If the data above cannot settle it, say which item to check or run first. (2) When asked to walk through the assessment or best practices, go in checklist order, do first before next before then, one item at a time: say what the item is and why it matters in a sentence, say what their data already shows if it is marked from their data, otherwise ask whether it is not started, in progress, done or does not apply, and keep a running tally to read back. After a few items, offer to stop and summarize the light level and the top three next steps. (3) Speak briefly. Lead with the recommendation, then the reason. One item at a time unless asked for the full list. Offer to open the guide on the Search Everywhere page for the detail. Never invent figures; use only the numbers above.');
-  return L.join('\n');
-}
 // ---- Media Science, Ad Copy Library and Team context for Ask Verilume and the voice assistant (2026-10-07) ----
 const GEO_ASK_RE = /\b(markets?|dmas?|geograph\w*|geo|match market\w*|test markets?|control markets?|territor\w*|resellers?|storefronts?|franchis\w*|travel agen\w*|agenc\w*|regions?|tiers?|must win|opportunistic|incrementality|lift test|market test\w*|test registry|tests?|mmm|media mix|measurement|media science|ctv test|geo test)\b/i;
 const TERR_ASK_RE = /\b(resellers?|storefronts?|franchis\w*|territor\w*|travel agen\w*|agenc(?:y|ies)|local (?:stores?|shops?|agents?)|trade areas?)\b/i;
@@ -18801,7 +18650,7 @@ function geoContextBlock(accountId, question){
     if (hit0 && hit0.v && hit0.v.available) namedReseller = hit0.v.resellers.some(r => r.name && terrNorm(r.name).length > 4 && qq.includes(' ' + terrNorm(r.name) + ' '));
   }
   if (question && !GEO_ASK_RE.test(question) && !namedReseller){
-    return `MEDIA SCIENCE (Geographic Optimization, Trade Territories, Truth Lab): ${ov ? 'market analysis on file' : 'no market analysis on file'}${plan ? ', a recommended match market test on file' : ''}${meta ? ', reseller file on file' : ''}, ${testCount} test${testCount === 1 ? '' : 's'} in the Truth Lab. Ask about markets, tests or resellers to see them.`;
+    return `MEDIA SCIENCE (Geographic Optimization, Trade Territories, Test Registry): ${ov ? 'market analysis on file' : 'no market analysis on file'}${plan ? ', a recommended match market test on file' : ''}${meta ? ', reseller file on file' : ''}, ${testCount} test${testCount === 1 ? '' : 's'} in the Test Registry. Ask about markets, tests or resellers to see them.`;
   }
   const f = n => Math.round(Number(n) || 0).toLocaleString('en-US'), usd = n => '$' + f(n);
   L.push('MEDIA SCIENCE (from the account\'s own market upload, test plans and reseller file; say so if something is not on file):');
@@ -18861,16 +18710,15 @@ function adCopyContextBlock(accountId, question){
 // AI Thoughts is an extension of voice: the same how-to text the portal drawer shows is available to the voice agent, so a spoken
 // "how do I confirm a test result?" gets the same answer as the thought bubble. Keep in step with PU_THOUGHTS in portal.html.
 const PRODUCT_GUIDE = [
-  { letter: "AO", label: "Truth Lab: getting started", keywords: ["truth lab", "test registry", "new test", "a/b", "variant", "lift", "p-value", "significance", "kpi", "hypothesis", "media science test"], text: "The Truth Lab holds every test in one place: creative elements, offer, audience, frequency, channel, timing, landing page and market tests. To start an A/B test, describe the test you want in your own words at the top of the page and Verilume drafts it, or asks what it still needs; you then check the draft and save it. You can also choose + New test by hand, pick what you are testing, name it, choose one KPI and the smallest lift worth detecting. Enter impressions and conversions for each variant, or import a results CSV, and the readout shows each variant’s lift, its p-value and whether there is enough volume to call it. Link the test to a campaign if it belongs to one. A test only teaches the Brain after a person confirms it at the bottom of the test (see Confirming a result)." },
-  { letter: "AP", label: "Match market tracking", keywords: ["match market", "test market", "control market", "holdout", "weekly", "difference", "pre period", "post period", "geo test", "media start"], text: "Plan the test in Geographic Optimization, then choose Save this plan to the Truth Lab. That creates a draft with the test and control markets, channel, weeks and planned spend. When media starts, enter the start date, the spend in the test markets, and weekly bookings for all test markets added together and all control markets added together. You can type them or import a CSV with the columns week, test and control. You need at least 3 weeks before and 3 after the start date; 8 or more before is better. The readout compares the test-to-control ratio after media started with the ratio before, so season and market size cancel out. It shows the lift, its 95% range, extra bookings and cost per extra booking. A lift is only called clear when even the low end of the range is above zero." },
+  { letter: "AO", label: "Test Registry: getting started", keywords: ["test registry", "new test", "a/b", "variant", "lift", "p-value", "significance", "kpi", "hypothesis", "media science test"], text: "The Test Registry holds every test in one place: creative elements, offer, audience, frequency, channel, timing, landing page and market tests. To start, choose + New test, pick what you are testing, name it, choose one KPI and the smallest lift worth detecting. Enter impressions and conversions for each variant, or import a results CSV, and the readout shows each variant’s lift, its p-value and whether there is enough volume to call it. Link the test to a campaign if it belongs to one. A test only teaches the Brain after a person confirms it at the bottom of the test (see Confirming a result)." },
+  { letter: "AP", label: "Match market tracking", keywords: ["match market", "test market", "control market", "holdout", "weekly", "difference", "pre period", "post period", "geo test", "media start"], text: "Plan the test in Geographic Optimization, then choose Save this plan to the Test Registry. That creates a draft with the test and control markets, channel, weeks and planned spend. When media starts, enter the start date, the spend in the test markets, and weekly bookings for all test markets added together and all control markets added together. You can type them or import a CSV with the columns week, test and control. You need at least 3 weeks before and 3 after the start date; 8 or more before is better. The readout compares the test-to-control ratio after media started with the ratio before, so season and market size cancel out. It shows the lift, its 95% range, extra bookings and cost per extra booking. A lift is only called clear when even the low end of the range is above zero." },
   { letter: "AQ", label: "Confirming a result and teaching the Brain", keywords: ["confirm", "confirmed", "teach the brain", "lesson", "ship", "kill", "iterate", "plan change", "accept", "dismiss", "campaign results"], text: "Confirming is a person’s decision, never automatic. Choose ship, kill or iterate, edit the lesson in your own words, and confirm. Verilume then saves the result with the linked campaign (or with the account when no campaign is linked), adds a Brain lesson, and proposes plan changes. An admin’s lesson is active at once; a lesson from anyone else waits for an admin to approve it. Proposed changes can be rolling the channel out to similar markets with an estimated cost, retesting, extending the test or adding markets, keeping it in the test markets, or stopping. Nothing in the plan changes until a person accepts each one. Accepted changes appear on the annual plan recommendation and in what Ask Verilume says, and every confirmed result stays on its campaign as history." },
   { letter: "AR", label: "Trade Territories", keywords: ["trade territories", "reseller", "agency", "storefront", "franchise", "territory", "radius", "local", "regional", "national", "trade file", "agency code"], text: "Trade Territories shows where each reseller’s guests actually live. Send a trade file on its own, separate from the booking file, with Agency Code, Agency Name, the reseller address columns and Guest Postal Code. A reseller is local when most of its guests are within 50 miles, regional when its typical guest is within 300 miles, national when it sells everywhere, and thin when it has under 10 U.S. bookings. A local reseller’s territory is the radius that holds 80% of its guests, capped at 100 miles for local and 300 for regional. Select a reseller to see the markets inside its territory, and download the list as a CSV. Territories change slowly, so refresh the file when resellers or territories change rather than on a schedule." },
   { letter: "AS", label: "Ad Copy Library", keywords: ["ad copy library", "copy version", "copy library", "shipped copy", "production feed", "copy feed"], text: "The Ad Copy Library lists every Copy Version saved on any campaign, so you can see what has actually shipped. There is nothing to set up: it fills as campaigns save copy. When you start a new campaign from an existing one, its copy comes along as drafts, so you edit rather than start over. Ask Verilume, typed or by voice, can answer questions about what copy has run, and a production copy feed can be exported from the Exports page when a partner needs it." },
   { letter: "AT", label: "Team Experiences: self-assessment and development plan", keywords: ["team experiences", "self assessment", "skill sets", "development plan", "training", "next level", "critical skills", "position"], text: "Team Experiences has three jobs. Skill Sets shows what any position on the org chart is expected to hold. The self-assessment lets each person rate themselves against their own seat’s critical skills. The development plan builds steps toward the next level. A good first week is to look up your own seat, complete the self-assessment, then draft a development plan and review it with your manager. Ask Verilume can summarize team structure and training progress, but it never reads out emails, phone numbers or any one person’s self-ratings." },
   { letter: "AU", label: "Team and Org Chart", keywords: ["team", "org chart", "org", "invite", "member", "reports to", "role", "admin", "roster", "onboarding", "add a person", "add someone", "add people", "add a team", "who reports", "position"], text: "Team and Org Chart is where an admin adds each person, sets their position and who they report to. The chart drives skill sets, the self-assessment and the development plan, so keep reporting lines current. The page is admin-only today. Give each new person their position first, then have them complete the self-assessment in Team Experiences. Ask Verilume can answer who sits where and which seats lack a reporting line, without sharing contact details or individual self-ratings." },
-  { letter: "AV", label: "Ask Verilume and voice: what you can ask", keywords: ["ask verilume", "voice", "ask", "question", "how do i", "how to", "what can i ask", "getting started", "where do i"], text: "AI Thoughts and voice share the same knowledge. Ask Verilume, typed or by voice, answers from your own data: campaigns, Media Science markets and the last test plan, Truth Lab results and confirmed learnings, Trade Territories, the Ad Copy Library and the team structure. It also explains how to use the product, so you can ask how do I save a match market test, how do I confirm a result, or what does a local reseller mean, and hear the same answer that appears in these thoughts. Voice never changes anything. Any change is proposed for a person to accept. It does not read out emails, phone numbers or individual self-ratings." },
-  { letter: "AW", label: "Brain Dump: your greeting and growth links", keywords: ["brain dump", "growth", "my growth", "assessment", "self assessment", "next career", "career", "training", "development plan", "private", "manager see", "who can see", "greeting", "1:1"], text: "The Brain Dump opens with a greeting and your seat, then the weekly business update: Strategy, Customer Experiences, Growth and Performance, Media Science, AI Brain learnings, and news from outside. Beside it, Your growth links to your own development: the position self-assessment, your next-career checklist, and your development plan, all in Team Experiences. Those pages are private to you. A manager sees nothing from them unless you choose to share it. You can also ask Verilume or the voice agent to read you the Brain Dump, and it presents each section in turn. The 1:1 with your Brain is coming later. On the Team Experiences page, Training Library Partners lists LinkedIn Learning and Coursiv as placeholder options: you can say you already have a license or ask for a new relationship, but nothing is connected yet. Growth home is your private coaching space. Rate your seat's skills and drag them into the order you most need help with, and the coach ranks your key needs. Set a desired next career to see the skill gap and the closest three moves. Build a lesson plan from the training library, which holds only real, verified links. Sort a brain dump into tasks, things to learn and things to raise, and keep up to five active tasks that you choose and order yourself. Hold a short weekly 1:1 with the coach in text. Nothing is visible to your manager unless you switch sharing on for that item, and the coach is part of the Radiance and Beacon plans." },
-  { letter: "AX", label: "Search Everywhere: illumination guides and light levels", keywords: ["search everywhere", "illumination guide", "view guide", "light level", "seo checklist", "aeo", "geo", "local business", "franchise", "call center", "ecommerce", "self rate", "self assessment search", "search checklist"], text: "Search Everywhere has three area cards: SEO (get found), AEO (be the answer) and GEO (be cited by AI). Each shows what drives it, a light level, and a View guide button that opens the guide on the page. The guide is a prioritized checklist written for your kind of business: a local business, a single-location call center or ecommerce, or a franchise with online sales and storefronts. You rate each item yourself as not started, in progress, done or does not apply. Items Verilume can read from your data, such as Search Console connected, indexing health, answered questions and AI citation checks, are filled in for you. The light level is Dark, Dim, Lit, Bright or Brilliant based on the weighted share of items done, and it is saved so you can see progress over time. You can also ask Ask Verilume or the voice agent to walk you through the assessment, or to judge a recommendation someone gave you, such as whether to add an FAQ hub to support AEO. It answers for your kind of business and your current status, and says plainly when the evidence for a tactic is thin. Ratings are set in the guide, not by voice." }
+  { letter: "AV", label: "Ask Verilume and voice: what you can ask", keywords: ["ask verilume", "voice", "ask", "question", "how do i", "how to", "what can i ask", "getting started", "where do i"], text: "AI Thoughts and voice share the same knowledge. Ask Verilume, typed or by voice, answers from your own data: campaigns, Media Science markets and the last test plan, Test Registry results and confirmed learnings, Trade Territories, the Ad Copy Library and the team structure. It also explains how to use the product, so you can ask how do I save a match market test, how do I confirm a result, or what does a local reseller mean, and hear the same answer that appears in these thoughts. Voice never changes anything. Any change is proposed for a person to accept. It does not read out emails, phone numbers or individual self-ratings." },
+  { letter: "AW", label: "Brain Dump: your greeting and growth links", keywords: ["brain dump", "growth", "my growth", "assessment", "self assessment", "next career", "career", "training", "development plan", "private", "manager see", "who can see", "greeting", "1:1"], text: "The Brain Dump opens with a greeting and your seat, then the weekly business update: Strategy, Customer Experiences, Growth and Performance, Media Science, AI Brain learnings, and news from outside. Beside it, Your growth links to your own development: the position self-assessment, your next-career checklist, and your development plan, all in Team Experiences. Those pages are private to you. A manager sees nothing from them unless you choose to share it. The 1:1 with your Brain is coming later." }
 ];
 const PRODUCT_ASK_RE = /\b(how (?:do|can|should|would) (?:i|we|you)|how to|where (?:do|can|is|are)|what (?:is|are|does|do) (?:a|an|the|my)?|walk me through|getting started|get started|train(?:ing)?|learn|guide|explain|help me (?:use|understand)|what can i ask|show me how|steps)\b/i;
 function productGuideBlock(question){
@@ -18881,205 +18729,6 @@ function productGuideBlock(question){
   return 'PRODUCT GUIDE (how to use the product; these are the same words the portal\'s AI Thoughts show, so answer from them and keep it short when spoken):\n' + scored.map(x => `- ${x.t.label}: ${x.t.text}`).join('\n');
 }
 const TEAM_ASK_RE = /\b(team|teammates?|members?|colleagues?|invite|invit\w*|roster|org chart|admins?|administrators?|roles?|permissions?|access|skills?|self[- ]?ratings?|career|learning|reports? to|onboarding|set ?up|log ?in|passwords?|deactivat\w*|who (?:is|are|works)|staff)\b/i;
-// 2026-10-07 — the posted Brain Dump edition as voice and Ask Verilume context, so the agent can present the commentary itself (section by section), not just describe the page. Always included when an edition is posted; it is small and static between runs.
-function brainDumpContextBlock(accountId, question){
-  const d = readBrainDump(accountId);
-  if (!d || !d.posted) return 'BRAIN DUMP: no edition posted yet. If asked to read it, say it has not been posted this week and offer to run it from the Brain Dump page.';
-  const titles = { strategy: 'Strategy', brand: 'Customer Experiences', growth: 'Growth and Performance', analysis: 'Media Science', learnings: 'AI Brain learnings' };
-  const lines = [`BRAIN DUMP (the weekly edition for the week of ${d.weekStart}, posted ${String(d.postedAt || '').slice(0, 10)}). When the person asks you to read, present, brief or summarize the Brain Dump, or what changed this week, present these sections in order in plain spoken sentences: Strategy, Customer Experiences, Growth and Performance, Media Science, AI Brain learnings, then news from outside. Lead each with its headline number, keep each to two or three sentences unless asked for more, say no markdown, and offer to go deeper on any section. Everything below is this account's own posted commentary; do not add figures that are not here.`];
-  Object.keys(titles).forEach(k => {
-    const f = (d.facts || {})[k]; const t = (d.text || {})[k] || (f && Array.isArray(f.lines) ? f.lines.join(' ') : '');
-    if (!f && !t) return;
-    const m = (f && f.metric) || {};
-    lines.push(`- ${titles[k]}${m.label ? ` (${m.label}: ${m.display || 'n/a'})` : ''}: ${String(t).slice(0, 900)}`);
-  });
-  const chg = (d.facts && d.facts._changes) || [];
-  if (chg.length) lines.push('- Since the last edition: ' + chg.slice(0, 6).join(' '));
-  const news = (d.external && Array.isArray(d.external.news)) ? d.external.news : [];
-  if (news.length) lines.push('- News from outside (external sources, not this account\'s data): ' + news.slice(0, 6).map(x => `${x.title}${x.label ? ' (' + x.label + ')' : ''}`).join('; '));
-  return lines.join('\n');
-}
-// ---- Truth Lab: generative A/B test drafting (2026-10-07) ----
-const AB_ELEMENTS = {
-  headline: 'Headline', body: 'Body copy', cta: 'Call to action', image: 'Image or visual', format: 'Video or format',
-  offer: 'Offer or price', landing: 'Landing page', timing: 'Flight, day-part or send time'
-};
-const AB_KPIS = ['Conversion rate', 'Lead rate', 'Booking rate', 'Click-through rate', 'Visit rate', 'Call rate'];
-const AB_DRAFT_SCHEMA = {
-  type: 'object',
-  properties: {
-    kind: { type: 'string', enum: ['proposal', 'questions', 'redirect'], description: 'proposal when you have enough to draft the test; questions when something essential is missing; redirect when the request is not a one-change A/B test.' },
-    message: { type: 'string', description: 'One or two plain sentences to the person. For a proposal, say what you built and the one assumption that matters most. For questions, say why you are asking. For a redirect, say what kind of test it is and where to build it.' },
-    questions: { type: 'array', items: { type: 'string' }, description: 'At most two short questions, only when kind is questions.' },
-    proposal: {
-      type: 'object',
-      properties: {
-        name: { type: 'string' }, element: { type: 'string', enum: Object.keys(AB_ELEMENTS) },
-        hypothesis: { type: 'string', description: 'We believe X will lift Y because Z.' },
-        primaryKpi: { type: 'string', enum: AB_KPIS }, mdePct: { type: 'number', description: 'Smallest lift worth detecting, in percent. Default 10.' },
-        controlLabel: { type: 'string' }, variantLabel: { type: 'string' },
-        controlDetail: { type: 'string', description: 'What the control is (the current version).' }, variantDetail: { type: 'string', description: 'What the one change is.' },
-        campaignId: { type: 'string', description: 'A campaign id from the list only if the person clearly named it; otherwise empty.' },
-        assumptions: { type: 'array', items: { type: 'string' }, description: 'Up to three things you assumed that the person should check.' }
-      }
-    }
-  },
-  required: ['kind', 'message']
-};
-function abKeywordElement(text){
-  const t = String(text || '').toLowerCase();
-  const rules = [['headline', /headline|title line/], ['cta', /call to action|\bcta\b|button/], ['image', /image|photo|picture|visual|creative asset|hero/], ['format', /video|carousel|format|static/], ['offer', /offer|price|pricing|discount|promo|% off|bundle|deal/], ['landing', /landing|page|website|web page|url/], ['timing', /timing|send time|day.?part|time of day|day of week|weekday|flight/], ['body', /body|copy|message|wording|text/]];
-  const hit = rules.find(r => r[1].test(t)); return hit ? hit[0] : '';
-}
-async function draftAbTest(accountId, statement, history){
-  const person = [...history.filter(h => h.role === 'person').map(h => h.text), statement].join(' ');
-  const campaigns = db.prepare("SELECT id, name FROM campaigns WHERE accountId = ? AND COALESCE(cancelled,0) = 0 AND COALESCE(isAdHoc,0) = 0 ORDER BY createdAt DESC LIMIT 25").all(accountId).map(c => ({ id: c.id, name: c.name }));
-  const account = db.prepare('SELECT company FROM accounts WHERE accountId = ?').get(accountId) || {};
-  if (!process.env.ANTHROPIC_API_KEY){
-    if (/market|dma|holdout|geo/i.test(person)) return { kind: 'redirect', message: 'That sounds like a market holdout, which is a match market test rather than an A/B test. Use the Match Market Builder to pick the markets, then record it here with the type DMA match market.', questions: [], proposal: null };
-    const el = abKeywordElement(person);
-    if (!el) return { kind: 'questions', message: 'I need to know the one thing you want to change.', questions: ['What is the single thing that differs between the two versions: the headline, body copy, call to action, image, format, offer, or landing page?'], proposal: null };
-    const label = AB_ELEMENTS[el];
-    return { kind: 'proposal', message: `I drafted a simple A/B test on the ${label.toLowerCase()}. Check the assumptions, then open it in the editor.`, questions: [], proposal: { name: `${label} A/B test`, element: el, hypothesis: `We believe a different ${label.toLowerCase()} will lift conversion because it matches what the audience wants. (Edit this.)`, primaryKpi: el === 'headline' || el === 'image' || el === 'format' ? 'Click-through rate' : 'Conversion rate', mdePct: 10, controlLabel: 'Control', variantLabel: 'Variant B', controlDetail: 'The version running today.', variantDetail: statement.slice(0, 200), campaignId: '', assumptions: ['Both versions run at the same time to the same audience.', 'Only the one element differs.'] } };
-  }
-  const prompt = `You help a marketer set up an A/B test in a Truth Lab. An A/B test here means exactly one change between a control (the current version) and one variant, run at the same time to the same audience.
-
-Account: ${account.company || accountId}.
-Elements you may test: ${Object.entries(AB_ELEMENTS).map(([k, v]) => `${k} (${v})`).join(', ')}.
-Primary KPIs you may choose: ${AB_KPIS.join(', ')}. Pick the one that fits the element: click-through rate for headline, image or format; conversion, lead or booking rate for offer, landing page and call to action.
-Campaigns on file (use an id only if the person clearly named one): ${campaigns.length ? campaigns.map(c => `${c.id} = ${c.name}`).join('; ') : 'none'}.
-
-Rules:
-- If the person gives you enough to name the one thing that changes and what success means, return kind "proposal". Fill every field with sensible defaults (smallest lift worth detecting 10 percent unless they say otherwise) and list up to three assumptions for them to check. Do not invent numbers about their account.
-- If the one change or the goal is missing or ambiguous, return kind "questions" with at most two short, specific questions. Ask only what you cannot reasonably default. Never ask more than two rounds in total; after that, propose with stated assumptions.
-- If the request is really a market holdout or geographic test, an audience test, a frequency test, a channel substitution, or changes several things at once, return kind "redirect" and say in a sentence what kind of test it is and that it is set up with Set up a market test or Something else on the Truth Lab page. Do not draft it.
-- Plain language, no jargon, no markdown, no emojis. Do not promise results.
-
-Conversation so far:
-${history.map(h => `${h.role === 'brain' ? 'Brain' : 'Person'}: ${h.text}`).join('\n') || '(none)'}
-Person now says: ${statement}`;
-  const out = await callClaudeForJSON({ model: MODEL_STANDARD, maxTokens: 900, content: prompt, toolName: 'submit_ab_test_draft', toolDescription: 'Submit an A/B test proposal, up to two questions, or a redirect.', schema: AB_DRAFT_SCHEMA, timeoutMs: 40000 });
-  const kind = ['proposal', 'questions', 'redirect'].includes(out.kind) ? out.kind : 'questions';
-  const res = { kind, message: String(out.message || '').slice(0, 600), questions: Array.isArray(out.questions) ? out.questions.filter(q => typeof q === 'string').slice(0, 2) : [], proposal: null };
-  if (kind === 'proposal' && out.proposal && AB_ELEMENTS[out.proposal.element]){
-    const p = out.proposal;
-    res.proposal = { name: String(p.name || (AB_ELEMENTS[p.element] + ' A/B test')).slice(0, 160), element: p.element, hypothesis: String(p.hypothesis || '').slice(0, 600), primaryKpi: AB_KPIS.includes(p.primaryKpi) ? p.primaryKpi : 'Conversion rate', mdePct: Number.isFinite(Number(p.mdePct)) && Number(p.mdePct) > 0 ? Math.min(100, Number(p.mdePct)) : 10, controlLabel: String(p.controlLabel || 'Control').slice(0, 80), variantLabel: String(p.variantLabel || 'Variant B').slice(0, 80), controlDetail: String(p.controlDetail || '').slice(0, 300), variantDetail: String(p.variantDetail || '').slice(0, 300), campaignId: campaigns.some(c => c.id === p.campaignId) ? p.campaignId : '', assumptions: Array.isArray(p.assumptions) ? p.assumptions.filter(a => typeof a === 'string').slice(0, 3).map(a => a.slice(0, 200)) : [] };
-  } else if (kind === 'proposal'){ res.kind = 'questions'; res.questions = res.questions.length ? res.questions : ['What is the one thing you want to change between the two versions?']; }
-  if (res.kind === 'questions' && !res.questions.length) res.questions = ['Can you say a little more about what you want to test and what you hope will improve?'];
-  return res;
-}
-// ---------- AI Brain Coach helpers (2026-10-07) ----------
-// Who is asking? The coach is personal: data is keyed to the signed-in team member. The account's root login has no member id and gets its own
-// private space ('owner'). Verilume staff sessions get nothing. Managers and admins never read another person's growth data through /me routes.
-function coachWho(sess){
-  if (!sess || sess.platformuserid) return null;
-  if (!sess.memberId){
-    let co = ''; try { co = (db.prepare('SELECT company FROM accounts WHERE accountId = ?').get(sess.accountId) || {}).company || ''; } catch (e){}
-    return { memberId: 'owner', name: co ? co + ' account owner' : 'Account owner', level: '', fn: '', isOwner: true };
-  }
-  let m = null; try { m = db.prepare('SELECT id, name, level, functionGroup FROM team_members WHERE id = ? AND accountId = ?').get(sess.memberId, sess.accountId); } catch (e){}
-  if (!m) return null;
-  return { memberId: m.id, name: m.name || 'Team member', level: aliasVal(m, 'level') || '', fn: aliasVal(m, 'functionGroup') || '', isOwner: false };
-}
-// The coach is part of Radiance, Beacon (Enterprise). Accounts with no tier on file (accounts that pre-date tiers) are not blocked.
-const COACH_TIERS = ['radiance', 'beacon'];
-function coachGate(accountId){
-  let a = null; try { a = db.prepare('SELECT paidTier FROM accounts WHERE accountId = ?').get(accountId); } catch (e){}
-  const tier = a && aliasVal(a, 'paidTier') ? String(aliasVal(a, 'paidTier')) : '';
-  if (!tier) return { allowed: true, tier: '', legacy: true };
-  const t = PAID_TIERS.find(x => x.key === tier);
-  return { allowed: COACH_TIERS.includes(tier), tier, tierName: t ? t.name : tier, legacy: false };
-}
-// Verified free training links only (research doc, "V" items). Open in a new tab; link only, never embedded or ingested.
-const COACH_LIBRARY = [
-  { id: 'lib_ga_academy', title: 'Google Analytics Academy on Skillshop', tags: ['analytics', 'measurement', 'data', 'reporting', 'ga4'], type: 'course', level: 'beginner', time: 'Self-paced', source: 'Google Skillshop', free: true, link: 'https://goo.gle/ga-courses' },
-  { id: 'lib_ga_demo', title: 'Google Analytics demo account for hands-on practice', tags: ['analytics', 'measurement', 'data', 'reporting', 'ga4'], type: 'practice', level: 'beginner', time: 'About 1 hour', source: 'Google', free: true, link: 'https://support.google.com/analytics/answer/6367342' },
-  { id: 'lib_gmp_academy', title: 'Google Marketing Platform Academy', tags: ['analytics', 'media', 'digital', 'measurement'], type: 'course', level: 'intermediate', time: 'Self-paced', source: 'Google', free: true, link: 'https://marketingplatformacademy.withgoogle.com/' },
-  { id: 'lib_gmp_learn', title: 'Learn with Google Marketing Platform', tags: ['media', 'digital', 'measurement', 'analytics'], type: 'course', level: 'intermediate', time: 'Self-paced', source: 'Google', free: true, link: 'https://marketingplatform.google.com/about/learn/' },
-  { id: 'lib_hs_content', title: 'HubSpot Content Marketing Certification', tags: ['content', 'copy', 'writing', 'brand', 'storytelling', 'communication'], type: 'course', level: 'beginner', time: 'About 8 hours', source: 'HubSpot Academy', free: true, link: 'https://academy.hubspot.com/courses/content-marketing' },
-  { id: 'lib_semrush', title: 'Semrush Academy', tags: ['search', 'seo', 'aeo', 'geo', 'content', 'keyword'], type: 'course', level: 'beginner', time: 'Self-paced', source: 'Semrush Academy', free: true, link: 'https://www.semrush.com/academy' },
-  { id: 'lib_semrush_seo', title: 'Semrush SEO courses', tags: ['search', 'seo', 'keyword', 'content'], type: 'course', level: 'beginner', time: 'Self-paced', source: 'Semrush Academy', free: true, link: 'https://semrush.com/academy/courses/seo' },
-  { id: 'lib_semrush_cert', title: 'Semrush certification', tags: ['search', 'seo', 'certification'], type: 'course', level: 'intermediate', time: 'Self-paced', source: 'Semrush Academy', free: true, link: 'https://www.semrush.com/academy/certification' },
-  { id: 'lib_mit_ocw', title: 'MIT OpenCourseWare management courses', tags: ['leadership', 'management', 'strategy', 'planning', 'people'], type: 'course', level: 'intermediate', time: 'Self-paced', source: 'MIT OpenCourseWare', free: true, link: 'https://ocw.mit.edu' },
-  { id: 'lib_biz_comm', title: 'Business Communication on Skillshop', tags: ['communication', 'writing', 'email', 'update', 'meeting', 'feedback'], type: 'course', level: 'beginner', time: 'About 1 hour', source: 'Goodwill Community Foundation on Skillshop', free: true, link: 'https://skillshop.exceedlms.com/student/activity/650554-business-communication' },
-  { id: 'lib_purdue', title: 'Purdue OWL: workplace writing resources', tags: ['communication', 'writing', 'update', 'email', 'report'], type: 'read', level: 'beginner', time: '30 minutes', source: 'Purdue OWL', free: true, link: 'https://owl.purdue.edu/owl/general_writing/the_writing_process/writing_task_resource_list.html' },
-  { id: 'lib_exec_summary', title: 'Guide to writing executive summaries', tags: ['communication', 'writing', 'executive', 'summary', 'report', 'present'], type: 'read', level: 'beginner', time: '20 minutes', source: 'University of Akron', free: true, link: 'https://asdweb.uakron.edu/cba/docs/communications/WritingExecutiveSummaries.pdf' },
-  { id: 'prac_recap', title: 'Practice: write this month\'s campaign recap in your own words, then compare it with the Brain\'s', tags: ['communication', 'writing', 'update', 'executive', 'summary', 'report'], type: 'practice', level: 'beginner', time: '30 minutes', source: 'In the portal', free: true, link: '', portalStep: 'dashboard' },
-  { id: 'prac_brief', title: 'Practice: write a one-paragraph brief for Ask Verilume and check what comes back', tags: ['communication', 'writing', 'ai', 'brief', 'prompt'], type: 'practice', level: 'beginner', time: '15 minutes', source: 'In the portal', free: true, link: '', portalStep: 'dashboard' },
-  { id: 'prac_search_guide', title: 'Practice: rate the SEO guide for your business and pick the three Do first items', tags: ['search', 'seo', 'aeo', 'geo', 'planning'], type: 'practice', level: 'beginner', time: '25 minutes', source: 'In the portal', free: true, link: '', portalStep: 'searchOptimization' }
-];
-const COACH_PRACTICE_SOURCES = new Set(['person', 'dump', 'coach', 'oneone']);
-function coachSharedMap(accountId, memberId){
-  const out = {}; try { db.prepare('SELECT item, shared FROM coach_sharing WHERE accountid = ? AND memberid = ?').all(accountId, memberId).forEach(r => { out[r.item] = !!r.shared; }); } catch (e){}
-  return out;
-}
-function coachActiveTaskCount(accountId, memberId){
-  try { return db.prepare("SELECT COUNT(*) AS n FROM coach_tasks WHERE accountid = ? AND memberid = ? AND status = 'accepted'").get(accountId, memberId).n || 0; } catch (e){ return 0; }
-}
-function coachTopNeeds(accountId, memberId, n){
-  let rows = []; try { rows = db.prepare('SELECT skill, rating, importance, note FROM coach_needs WHERE accountid = ? AND memberid = ?').all(accountId, memberId); } catch (e){}
-  // need score = gap to the expected level (4) times importance weight (rank 1 weighs most)
-  const total = rows.length || 1;
-  return rows.map(r => ({ skill: r.skill, rating: r.rating, importance: r.importance, note: r.note || '', score: (4 - (Number(r.rating) || 0)) * (total - ((Number(r.importance) || total) - 1)) }))
-    .sort((a, b) => b.score - a.score || (a.importance || 99) - (b.importance || 99)).slice(0, n || 3);
-}
-function coachRuleTriage(text){
-  const parts = String(text || '').split(/\n+|(?<=[.!?])\s+/).map(s => s.trim()).filter(s => s.length > 3).slice(0, 12);
-  return parts.map(p => {
-    let kind = 'task';
-    if (/\b(learn|understand|study|course|training|read up|figure out how|get better at|practice|how to)\b/i.test(p)) kind = 'learn';
-    else if (/\b(raise|ask|discuss|talk (to|with|about)|bring up|1:1|one on one|manager|concern|worried)\b/i.test(p)) kind = 'raise';
-    return { kind, text: p.slice(0, 240) };
-  });
-}
-async function coachTriage(text, who){
-  if (!process.env.ANTHROPIC_API_KEY) return { items: coachRuleTriage(text), mode: 'rules' };
-  try {
-    const out = await callClaudeForJSON({ model: MODEL_STANDARD, maxTokens: 700, toolName: 'submit_triage', toolDescription: 'Sort a personal brain dump into items.',
-      schema: { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { kind: { type: 'string', enum: ['task', 'learn', 'raise'] }, text: { type: 'string' } }, required: ['kind', 'text'] } } }, required: ['items'] },
-      content: `You sort one person's private brain dump into short items. kind "task" = something they need to do; "learn" = something they want to understand or get better at; "raise" = something to bring up in their next 1:1. Keep their meaning and their words where you can, one line each, no new items, no advice, plain text, no emojis. Skip anything that is not an item. At most 10 items.\nPerson: ${who.name}${who.level ? ', ' + who.level : ''}${who.fn ? ' in ' + who.fn : ''}.\nBrain dump:\n${String(text).slice(0, 3000)}` });
-    const items = (Array.isArray(out.items) ? out.items : []).filter(i => i && ['task', 'learn', 'raise'].includes(i.kind) && i.text).slice(0, 10).map(i => ({ kind: i.kind, text: String(i.text).slice(0, 240) }));
-    return { items: items.length ? items : coachRuleTriage(text), mode: 'ai' };
-  } catch (e){ console.warn('[coach] triage failed:', e.message); return { items: coachRuleTriage(text), mode: 'rules' }; }
-}
-// Recommended tasks: suggestions only. They enter the list of five when the person accepts them, and the person sets the order.
-function coachRecommend(accountId, who){
-  const needs = coachTopNeeds(accountId, who.memberId, 3);
-  const out = [];
-  needs.forEach((n, i) => out.push({ title: `Spend 30 minutes on ${n.skill}${i === 0 ? ': it is your biggest need right now' : ''}`, reason: `Ranked need ${i + 1}: rated ${n.rating || '?'} of 4.`, source: 'coach' }));
-  let c = null; try { c = db.prepare('SELECT targetlevel, targetfunction FROM coach_career WHERE accountid = ? AND memberid = ?').get(accountId, who.memberId); } catch (e){}
-  if (c && (c.targetlevel || c.targetfunction)) out.push({ title: `Open your next-career checklist and mark one skill gap to close`, reason: `You are aiming for ${[c.targetlevel, c.targetfunction].filter(Boolean).join(' ')}.`, source: 'coach' });
-  out.push({ title: 'Write a three-line update on your most important work this week', reason: 'Communication matters more as AI handles more of the work.', source: 'coach' });
-  return out;
-}
-function coachAgenda(accountId, who){
-  const tasks = (() => { try { return db.prepare("SELECT title FROM coach_tasks WHERE accountid = ? AND memberid = ? AND status = 'accepted' ORDER BY position ASC LIMIT 5").all(accountId, who.memberId); } catch (e){ return []; } })();
-  const need = coachTopNeeds(accountId, who.memberId, 1)[0];
-  const lesson = (() => { try { return db.prepare("SELECT title FROM coach_plan_items WHERE accountid = ? AND memberid = ? AND status != 'done' ORDER BY due ASC LIMIT 1").get(accountId, who.memberId); } catch (e){ return null; } })();
-  const raise = (() => { try { const d = db.prepare('SELECT triagejson FROM coach_dumps WHERE accountid = ? AND memberid = ? ORDER BY createdat DESC LIMIT 5').all(accountId, who.memberId); const r = []; d.forEach(x => { try { JSON.parse(x.triagejson || '[]').forEach(i => { if (i.kind === 'raise' && r.length < 3) r.push(i.text); }); } catch (e){} }); return r; } catch (e){ return []; } })();
-  return [
-    { step: 'Check in', text: 'How is the week going, in one sentence?' },
-    { step: 'Review tasks', text: tasks.length ? tasks.map(t => t.title).join('; ') : 'No accepted tasks yet. Pick up to five from the recommended list.' },
-    { step: 'One skill', text: need ? `${need.skill} is your top need.${lesson ? ' Next lesson: ' + lesson.title + '.' : ''}` : 'Rate yourself on your seat\'s skills so the coach can rank your needs.' },
-    { step: 'Career', text: raise.length ? 'You wanted to raise: ' + raise.join('; ') : 'One question about where you want to go next.' },
-    { step: 'Next step', text: 'Agree one thing to do before next time.' }
-  ];
-}
-async function coachReply(accountId, who, session, text){
-  const msgs = (() => { try { return JSON.parse(session.messagesjson || '[]'); } catch (e){ return []; } })();
-  const needs = coachTopNeeds(accountId, who.memberId, 3);
-  const tasks = (() => { try { return db.prepare("SELECT title FROM coach_tasks WHERE accountid = ? AND memberid = ? AND status = 'accepted' ORDER BY position ASC LIMIT 5").all(accountId, who.memberId).map(t => t.title); } catch (e){ return []; } })();
-  if (!process.env.ANTHROPIC_API_KEY){
-    const n = needs[0];
-    return n ? `Thanks. Your biggest need right now is ${n.skill}. What is one small thing you could do on it before we meet again?` : 'Thanks. Rate yourself on your seat\'s skills in Position assessment and I can help you focus. What is on your mind this week?';
-  }
-  try {
-    const out = await callClaudeForJSON({ model: MODEL_STANDARD, maxTokens: 450, toolName: 'submit_reply', toolDescription: 'Reply in a 1:1 coaching chat.',
-      schema: { type: 'object', properties: { reply: { type: 'string' } }, required: ['reply'] },
-      content: `You are ${who.name}'s AI Brain Coach in a short, private weekly 1:1. Be warm, brief (2 to 4 sentences) and practical. Ask at most one question. Never invent a course, a metric or a fact about the person's job. Only name training that is in this library: ${COACH_LIBRARY.map(l => l.title).join('; ')}. The person decides everything; you only suggest. Plain text, no markdown, no emojis. Never promise anything about pay, promotion or performance reviews.\nSeat: ${who.level || 'not set'} ${who.fn || ''}.\nTop needs: ${needs.map(n => `${n.skill} (rated ${n.rating}/4)`).join('; ') || 'none ranked yet'}.\nAccepted tasks: ${tasks.join('; ') || 'none'}.\nConversation so far:\n${msgs.slice(-8).map(m => `${m.role === 'coach' ? 'Coach' : 'Person'}: ${m.text}`).join('\n') || '(just started)'}\nPerson now says: ${String(text).slice(0, 1200)}` });
-    return String(out.reply || '').slice(0, 900) || 'Thanks. Tell me a bit more.';
-  } catch (e){ console.warn('[coach] reply failed:', e.message); return 'I could not answer just now. Your note is saved in this 1:1, so you can keep going or close it.'; }
-}
 function teamContextBlock(accountId, question){
   let mem = []; try { mem = db.prepare('SELECT * FROM team_members WHERE accountId = ?').all(accountId); } catch (e){ return ''; }
   const act = mem.filter(m => (aliasVal(m, 'status') || 'active') === 'active');
@@ -19097,19 +18746,6 @@ function teamContextBlock(accountId, question){
   L.push(`HOW TEAM SETUP WORKS (built features only): Team & Org Chart (under Team Experiences) holds the roster, reporting lines and the Acting As switch. Only an admin can invite a teammate: the invite takes name, org-chart level, function group and an admin yes/no, and the person gets a temporary login they must change on first sign-in. Admins can promote or demote other admins, reissue credentials, deactivate or delete a member; deactivation takes effect on the person's next request. There is no self-serve join: a new teammate must be invited. Each person rates their own skills on a 1 to 4 scale per skill, history is kept, and a printable next-level career checklist is built from those ratings. Not built yet: portal roles beyond admin or not, a saved learning plan, and manager-visible rollups of ratings. Say plainly when asked about a feature that is not built.`);
   return L.join('\n');
 }
-// Training scope: the signed-in person's own coach data (never anyone else's). Only built when the portal says the question came from Growth home.
-function trainingContextBlock(accountId, memberId){
-  if (!memberId) return '';
-  const lines = ['TRAINING SCOPE (this person only; use it to coach, never invent courses, only suggest items from the plan or the verified library):'];
-  try { const w = db.prepare('SELECT name, level, functionGroup FROM team_members WHERE id = ? AND accountId = ?').get(memberId, accountId); if (w) lines.push('Position: ' + [aliasVal(w, 'level'), aliasVal(w, 'functionGroup')].filter(Boolean).join(' / ')); } catch (e){}
-  const needs = coachTopNeeds(accountId, memberId, 5);
-  lines.push(needs.length ? 'Top skill needs (gap x importance): ' + needs.map(n => n.skill + ' (rated ' + n.rating + '/5)').join('; ') : 'No position assessment yet; suggest taking it on Growth home.');
-  try { const c = db.prepare('SELECT kind, targetlevel, targetfunction, timeframe FROM coach_career WHERE accountid = ? AND memberid = ?').get(accountId, memberId); if (c) lines.push('Desired next: ' + [c.kind, c.targetlevel, c.targetfunction, c.timeframe].filter(Boolean).join(' / ')); } catch (e){}
-  try { const pl = db.prepare("SELECT skill, title, kind, due, status FROM coach_plan_items WHERE accountid = ? AND memberid = ? AND status != 'done' ORDER BY due ASC LIMIT 8").all(accountId, memberId); if (pl.length) lines.push('Open plan items:\n' + pl.map(x => '- ' + x.title + (x.skill ? ' [' + x.skill + ']' : '') + (x.due ? ' due ' + x.due : '')).join('\n')); } catch (e){}
-  try { const t = db.prepare("SELECT title, status FROM coach_tasks WHERE accountid = ? AND memberid = ? AND status IN ('accepted','waiting') LIMIT 5").all(accountId, memberId); if (t.length) lines.push('Active tasks: ' + t.map(x => x.title).join('; ')); } catch (e){}
-  try { const lib = COACH_LIBRARY.slice(0, 15).map(l => l.title + (l.skill ? ' [' + l.skill + ']' : '')); lines.push('Verified library: ' + lib.join('; ')); } catch (e){}
-  return lines.join('\n');
-}
 function voiceContextBundle(accountId, opts){
   const o = opts || {};
   const blocks = [];
@@ -19122,13 +18758,10 @@ function voiceContextBundle(accountId, opts){
   try { blocks.push(buildAccountMonthlyKpiContextForPrompt(accountId).promptBlock); } catch (e){ blocks.push('(monthly KPI report unavailable)'); }
   try { blocks.push(dqContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] transaction context failed:', e.message); }
   try { blocks.push(gscContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] search context failed:', e.message); }
-  try { blocks.push(searchGuideContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] search guide context failed:', e.message); }
   try { blocks.push(geoContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] media science context failed:', e.message); }
   try { blocks.push(adCopyContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] ad copy context failed:', e.message); }
   try { const tb = teamContextBlock(accountId, o.question); if (tb) blocks.push(tb); } catch (e){ console.warn('[voice/ask] team context failed:', e.message); }
-  try { blocks.push(brainDumpContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] brain dump context failed:', e.message); }
-  if (o.training && o.memberId){ try { const tb = trainingContextBlock(accountId, o.memberId); if (tb) blocks.push(tb); } catch (e){ console.warn('[voice/ask] training context failed:', e.message); } }
-  try { const pg = productGuideBlock(o.training ? 'Growth home training library skills assessment career plan 1:1 coach ' + (o.question || '') : o.question); if (pg) blocks.push(pg); } catch (e){ console.warn('[voice/ask] product guide failed:', e.message); }
+  try { const pg = productGuideBlock(o.question); if (pg) blocks.push(pg); } catch (e){ console.warn('[voice/ask] product guide failed:', e.message); }
   try {
     const dm = getDigitalMonthlyTotals(accountId);
     const months = Object.keys(dm.byMonth || dm.months || {}).sort().slice(-3);
@@ -19209,7 +18842,7 @@ async function voiceAsk(accountId, body, actorId, opts){
   if (!process.env.ANTHROPIC_API_KEY){
     return { answer: 'The AI Brain is not configured on this deployment yet (ANTHROPIC_API_KEY is missing), so I cannot answer from your data.', cards: [], proposal: null, followUps: [] };
   }
-  const context = voiceContextBundle(accountId, { campaignId, question, training: body.scope === 'training' && !(opts && opts.viaVoice), memberId: opts && opts.coachMemberId });
+  const context = voiceContextBundle(accountId, { campaignId, question });
   const content = `You are Verilume's AI Brain, speaking with a signed-in team member on the ${tab || 'portal'} ${surface === 'ask_bar' ? 'dashboard (Ask Verilume bar)' : surface}. Answer ONLY from the account data below. If the data does not cover the question, say what is not on file and which upload or page would fill it — never guess a number.
 Rules: spoken answers are short (1-4 sentences). Put lists and figures in cards, not in the spoken answer. If the user asks to change something (mark creative as not needed / external, mark creative as needed, cancel a campaign, add a note to a campaign), do NOT say it is done — return a proposal describing the change and say you need them to confirm on screen. If a campaign reference is ambiguous, ask which one.
 
@@ -26564,7 +26197,7 @@ async function handleRequest(req, res) {
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-07-growth-home',
+        buildStamp: '2026-09-27-health-integrations-full',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
@@ -30924,7 +30557,7 @@ async function handleRequest(req, res) {
       const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
       if (!account){ console.warn('[voice/ask] 404 no account row for ' + accountId); return sendJson(res, 404, { error: 'account not found' }); }
       const viaVoice = !!req.headers['x-voice-token'];
-      const result = await voiceAsk(accountId, body || {}, viaVoice ? 'elevenlabs_agent' : (() => { const sess = authenticate(req); return (sess && sess.memberId) || 'portal'; })(), { viaVoice, coachMemberId: (() => { if (viaVoice) return null; try { const w = coachWho(authenticate(req)); return w ? w.memberId : null; } catch (e){ return null; } })(), range: (() => { try { return dateRangeForRequest(req, accountId, {}); } catch (e){ return null; } })() });
+      const result = await voiceAsk(accountId, body || {}, viaVoice ? 'elevenlabs_agent' : (() => { const sess = authenticate(req); return (sess && sess.memberId) || 'portal'; })(), { range: (() => { try { return dateRangeForRequest(req, accountId, {}); } catch (e){ return null; } })() });
       if (result.error) return sendJson(res, 400, result);
       return sendJson(res, 200, result);
     }
@@ -43232,242 +42865,8 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       return sendJson(res, 200, { results: rows.map(r => { let m = {}; try { m = JSON.parse(r.metrics_json || '{}'); } catch (e){} return { id: r.id, campaignId: r.campaign_id, sourceType: r.source_type, sourceId: r.source_id, title: r.title, decision: r.decision, summary: r.summary, metrics: m, recordedBy: r.recorded_by, recordedAt: r.recorded_at }; }) });
     }
 
-    // Search Everywhere illumination guides. Self-ratings per checklist item (one row per account, business model and item) plus a daily
-    // light-level history per area, so progress shows over time. Items our tools can read are computed in the portal and never stored here.
-    // ---------- AI Brain Coach: /api/accounts/:id/me/... (2026-10-07) ----------
-    // Private to the signed-in person. Nothing here returns another person's data. A manager sees only items the person chose to share
-    // (GET /api/accounts/:id/team-shared). The coach is a Radiance / Beacon feature (coachGate); coach AI calls count against the account's draft allowance.
-    if (parts.length >= 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'me'){
-      const accountId = decodeURIComponent(parts[2]);
-      if (!requireAccount(req, res, accountId)) return;
-      const who = coachWho(authenticate(req));
-      if (!who) return sendJson(res, 403, { error: 'The coach is for signed-in team members.' });
-      const gate = coachGate(accountId);
-      const resName = parts[4] || '';
-      if (!gate.allowed) return sendJson(res, 403, { error: 'The AI Brain Coach is included in the Radiance and Beacon plans.', code: 'coach_plan', tier: gate.tier, tierName: gate.tierName || '', gate });
-      const mid = who.memberId, now = new Date().toISOString();
-      const MAX_ACTIVE = 5;
-      const one = (sql, ...a) => { try { return db.prepare(sql).get(...a); } catch (e){ return null; } };
-      const all = (sql, ...a) => { try { return db.prepare(sql).all(...a); } catch (e){ return []; } };
-      const clip = (v, n) => String(v == null ? '' : v).slice(0, n);
-      if (req.method === 'GET' && resName === 'growth' && parts.length === 5){
-        const needs = all('SELECT skill, rating, importance, note, ratedat FROM coach_needs WHERE accountid = ? AND memberid = ? ORDER BY importance ASC', accountId, mid);
-        const career = one('SELECT kind, targetlevel, targetfunction, timeframe, why, stopdoing, updatedat FROM coach_career WHERE accountid = ? AND memberid = ?', accountId, mid) || null;
-        const plan = all('SELECT id, skill, title, kind, source, link, due, status, note, createdat, completedat FROM coach_plan_items WHERE accountid = ? AND memberid = ? ORDER BY createdat ASC', accountId, mid);
-        const tasks = all("SELECT id, title, due, source, reason, status, position, createdat, doneat FROM coach_tasks WHERE accountid = ? AND memberid = ? AND status != 'dismissed' ORDER BY position ASC, createdat ASC", accountId, mid);
-        const dumps = all('SELECT id, body, triagejson, createdat FROM coach_dumps WHERE accountid = ? AND memberid = ? ORDER BY createdat DESC LIMIT 60', accountId, mid).map(d => ({ id: d.id, body: d.body, items: (() => { try { return JSON.parse(d.triagejson || '[]'); } catch (e){ return []; } })(), createdAt: aliasVal(d, 'createdat') }));
-        const sessions = all('SELECT id, status, agendajson, messagesjson, summary, shared, createdat, closedat FROM coach_sessions WHERE accountid = ? AND memberid = ? ORDER BY createdat DESC LIMIT 12', accountId, mid).map(s => ({ id: s.id, status: s.status, agenda: (() => { try { return JSON.parse(s.agendajson || '[]'); } catch (e){ return []; } })(), messages: (() => { try { return JSON.parse(s.messagesjson || '[]'); } catch (e){ return []; } })(), summary: s.summary || '', shared: !!s.shared, createdAt: aliasVal(s, 'createdat'), closedAt: aliasVal(s, 'closedat') }));
-        // archive view for year over year / month over month: counts per month and a year-ago comparison
-        const byMonth = {}; dumps.forEach(d => { const m = String(d.createdAt).slice(0, 7); byMonth[m] = (byMonth[m] || 0) + 1; });
-        const al = draftAllowanceFor(accountId);
-        return sendJson(res, 200, { me: { name: who.name, level: who.level, fn: who.fn, isOwner: who.isOwner }, gate, needs: needs.map(n => ({ skill: n.skill, rating: n.rating, importance: n.importance, note: n.note || '', ratedAt: aliasVal(n, 'ratedat') })), career, plan, tasks, taskLimit: MAX_ACTIVE, dumps, dumpMonths: byMonth, sessions, sharing: coachSharedMap(accountId, mid), topNeeds: coachTopNeeds(accountId, mid, 3), library: COACH_LIBRARY, allowance: al ? { tier: al.tier, limit: al.limit, used: al.used, remaining: al.remaining } : null });
-      }
-      if (req.method === 'PUT' && resName === 'needs' && parts.length === 5){
-        const body = await readBody(req);
-        const items = (Array.isArray(body.items) ? body.items : []).slice(0, 40);
-        for (const it of items){
-          const skill = clip(it && it.skill, 120).trim(); if (!skill) continue;
-          const rating = Math.max(1, Math.min(4, parseInt(it.rating, 10) || 0)) || null;
-          const imp = Math.max(1, Math.min(99, parseInt(it.importance, 10) || 0)) || null;
-          const id = accountId + '|' + mid + '|' + skill.toLowerCase();
-          db.prepare('DELETE FROM coach_needs WHERE id = ?').run(id);
-          db.prepare('INSERT INTO coach_needs (id, accountid, memberid, skill, rating, importance, note, ratedat) VALUES (?,?,?,?,?,?,?,?)').run(id, accountId, mid, skill, rating, imp, clip(it.note, 400), now);
-        }
-        return sendJson(res, 200, { saved: true, topNeeds: coachTopNeeds(accountId, mid, 3) });
-      }
-      if (req.method === 'PUT' && resName === 'career' && parts.length === 5){
-        const b = await readBody(req); const id = accountId + '|' + mid;
-        db.prepare('DELETE FROM coach_career WHERE id = ?').run(id);
-        const kind = ['next', 'lateral', 'function'].includes(b.kind) ? b.kind : 'next';
-        db.prepare('INSERT INTO coach_career (id, accountid, memberid, kind, targetlevel, targetfunction, timeframe, why, stopdoing, updatedat) VALUES (?,?,?,?,?,?,?,?,?,?)').run(id, accountId, mid, kind, clip(b.targetLevel, 80), clip(b.targetFunction, 80), clip(b.timeframe, 80), clip(b.why, 600), clip(b.stopDoing, 600), now);
-        return sendJson(res, 200, { saved: true });
-      }
-      if (resName === 'plan'){
-        if (req.method === 'POST' && parts.length === 5){
-          const b = await readBody(req); const title = clip(b.title, 240).trim(); if (!title) return sendJson(res, 400, { error: 'A plan item needs a title.' });
-          const id = generateId('CPL'); const lib = COACH_LIBRARY.find(l => l.id === b.libraryId);
-          db.prepare('INSERT INTO coach_plan_items (id, accountid, memberid, skill, title, kind, source, link, due, status, note, createdat) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').run(id, accountId, mid, clip(b.skill, 120), lib ? lib.title : title, lib ? lib.type : clip(b.kind || 'own', 30), lib ? lib.source : clip(b.source || 'Your own', 120), lib ? (lib.link || '') : clip(b.link, 400), clip(b.due, 20), 'planned', clip(b.note, 400), now);
-          return sendJson(res, 201, { id });
-        }
-        if ((req.method === 'PUT' || req.method === 'DELETE') && parts.length === 6){
-          const id = decodeURIComponent(parts[5]);
-          if (!one('SELECT id FROM coach_plan_items WHERE id = ? AND accountid = ? AND memberid = ?', id, accountId, mid)) return sendJson(res, 404, { error: 'not found' });
-          if (req.method === 'DELETE'){ db.prepare('DELETE FROM coach_plan_items WHERE id = ?').run(id); return sendJson(res, 200, { removed: true }); }
-          const b = await readBody(req); const st = ['planned', 'in_progress', 'done'].includes(b.status) ? b.status : 'planned';
-          db.prepare('UPDATE coach_plan_items SET status = ?, due = ?, note = ?, completedat = ? WHERE id = ?').run(st, clip(b.due, 20), clip(b.note, 400), st === 'done' ? now : null, id);
-          return sendJson(res, 200, { saved: true });
-        }
-      }
-      if (resName === 'tasks'){
-        if (req.method === 'POST' && parts.length === 5){
-          const b = await readBody(req); const title = clip(b.title, 240).trim(); if (!title) return sendJson(res, 400, { error: 'A task needs a title.' });
-          const src = COACH_PRACTICE_SOURCES.has(b.source) ? b.source : 'person';
-          // a task the person writes or confirms themselves is accepted at once, if there is room; otherwise it waits as a candidate
-          const st = b.status === 'recommended' ? 'recommended' : (coachActiveTaskCount(accountId, mid) < MAX_ACTIVE ? 'accepted' : 'waiting');
-          const id = generateId('CTK'); const pos = coachActiveTaskCount(accountId, mid) + 1;
-          db.prepare('INSERT INTO coach_tasks (id, accountid, memberid, title, due, source, reason, status, position, createdat) VALUES (?,?,?,?,?,?,?,?,?,?)').run(id, accountId, mid, title, clip(b.due, 20), src, clip(b.reason, 240), st, pos, now);
-          return sendJson(res, 201, { id, status: st });
-        }
-        if (req.method === 'POST' && parts.length === 6 && parts[5] === 'recommend'){
-          const have = new Set(all("SELECT title FROM coach_tasks WHERE accountid = ? AND memberid = ? AND status IN ('recommended','accepted','waiting')", accountId, mid).map(t => t.title));
-          const made = [];
-          coachRecommend(accountId, who).forEach(r => { if (have.has(r.title)) return; const id = generateId('CTK'); db.prepare('INSERT INTO coach_tasks (id, accountid, memberid, title, due, source, reason, status, position, createdat) VALUES (?,?,?,?,?,?,?,?,?,?)').run(id, accountId, mid, r.title, '', 'coach', r.reason, 'recommended', 99, now); made.push(id); });
-          return sendJson(res, 200, { added: made.length });
-        }
-        if (req.method === 'PUT' && parts.length === 6 && parts[5] === 'order'){
-          const b = await readBody(req); (Array.isArray(b.ids) ? b.ids : []).slice(0, 20).forEach((id, i) => { db.prepare("UPDATE coach_tasks SET position = ? WHERE id = ? AND accountid = ? AND memberid = ?").run(i + 1, String(id), accountId, mid); });
-          return sendJson(res, 200, { saved: true });
-        }
-        if (parts.length === 6 && (req.method === 'PUT' || req.method === 'DELETE')){
-          const id = decodeURIComponent(parts[5]); const t = one('SELECT id, status FROM coach_tasks WHERE id = ? AND accountid = ? AND memberid = ?', id, accountId, mid);
-          if (!t) return sendJson(res, 404, { error: 'not found' });
-          if (req.method === 'DELETE'){ db.prepare("UPDATE coach_tasks SET status = 'dismissed' WHERE id = ?").run(id); return sendJson(res, 200, { dismissed: true }); }
-          const b = await readBody(req); const want = String(b.status || '');
-          if (!['accepted', 'waiting', 'done', 'recommended'].includes(want)) return sendJson(res, 400, { error: 'unknown status' });
-          // activation belongs to the person: a recommended or waiting task becomes active only when they accept it, and only while there is room
-          if (want === 'accepted' && t.status !== 'accepted' && coachActiveTaskCount(accountId, mid) >= MAX_ACTIVE) return sendJson(res, 409, { error: 'You already have five active tasks. Finish or set one aside first.', code: 'task_limit' });
-          db.prepare('UPDATE coach_tasks SET status = ?, doneat = ?, due = COALESCE(?, due), position = ? WHERE id = ?').run(want, want === 'done' ? now : null, b.due != null ? clip(b.due, 20) : null, want === 'accepted' ? coachActiveTaskCount(accountId, mid) + 1 : 99, id);
-          return sendJson(res, 200, { saved: true });
-        }
-      }
-      if (req.method === 'POST' && resName === 'dump-triage' && parts.length === 5){
-        const b = await readBody(req); const text = clip(b.text, 3000).trim(); if (text.length < 4) return sendJson(res, 400, { error: 'Write a line or two first.' });
-        return sendJson(res, 200, await coachTriage(text, who));
-      }
-      if (req.method === 'POST' && resName === 'dump' && parts.length === 5){
-        // confirm: archive the dump text and save only the items the person kept
-        const b = await readBody(req); const text = clip(b.text, 3000).trim(); if (!text) return sendJson(res, 400, { error: 'Nothing to save.' });
-        const items = (Array.isArray(b.items) ? b.items : []).slice(0, 12).filter(i => i && ['task', 'learn', 'raise'].includes(i.kind) && i.text).map(i => ({ kind: i.kind, text: clip(i.text, 240) }));
-        db.prepare('INSERT INTO coach_dumps (id, accountid, memberid, body, triagejson, createdat) VALUES (?,?,?,?,?,?)').run(generateId('CDP'), accountId, mid, text, JSON.stringify(items), now);
-        let tasks = 0, learns = 0;
-        for (const it of items){
-          if (it.kind === 'task'){ const st = coachActiveTaskCount(accountId, mid) < MAX_ACTIVE ? 'accepted' : 'waiting'; db.prepare('INSERT INTO coach_tasks (id, accountid, memberid, title, due, source, reason, status, position, createdat) VALUES (?,?,?,?,?,?,?,?,?,?)').run(generateId('CTK'), accountId, mid, it.text, '', 'dump', '', st, coachActiveTaskCount(accountId, mid) + 1, now); tasks++; }
-          else if (it.kind === 'learn'){ db.prepare('INSERT INTO coach_plan_items (id, accountid, memberid, skill, title, kind, source, link, due, status, note, createdat) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').run(generateId('CPL'), accountId, mid, '', it.text, 'own', 'Your own', '', '', 'planned', '', now); learns++; }
-        }
-        return sendJson(res, 201, { saved: true, tasks, learns, raise: items.filter(i => i.kind === 'raise').length });
-      }
-      if (req.method === 'DELETE' && resName === 'dump' && parts.length === 6){
-        db.prepare('DELETE FROM coach_dumps WHERE id = ? AND accountid = ? AND memberid = ?').run(decodeURIComponent(parts[5]), accountId, mid);
-        return sendJson(res, 200, { removed: true });
-      }
-      if (resName === 'session'){
-        if (req.method === 'POST' && parts.length === 5){
-          let s = one("SELECT id FROM coach_sessions WHERE accountid = ? AND memberid = ? AND status = 'open' ORDER BY createdat DESC LIMIT 1", accountId, mid);
-          if (!s){ const id = generateId('CSN'); db.prepare('INSERT INTO coach_sessions (id, accountid, memberid, status, agendajson, messagesjson, summary, shared, createdat) VALUES (?,?,?,?,?,?,?,?,?)').run(id, accountId, mid, 'open', JSON.stringify(coachAgenda(accountId, who)), '[]', '', 0, now); s = { id }; }
-          return sendJson(res, 200, { id: s.id });
-        }
-        if (req.method === 'POST' && parts.length === 6 && parts[5] === 'close'){
-          const b = await readBody(req); const s = one("SELECT id, messagesjson FROM coach_sessions WHERE id = ? AND accountid = ? AND memberid = ?", clip(b.sessionId, 80), accountId, mid);
-          if (!s) return sendJson(res, 404, { error: 'not found' });
-          const msgs = (() => { try { return JSON.parse(s.messagesjson || '[]'); } catch (e){ return []; } })();
-          const mine = msgs.filter(m => m.role === 'person').map(m => m.text);
-          const summary = mine.length ? ('You talked about: ' + mine.slice(-2).join(' / ').slice(0, 220) + '.') : 'A short check-in with no notes.';
-          db.prepare("UPDATE coach_sessions SET status = 'closed', summary = ?, closedat = ? WHERE id = ?").run(summary, now, s.id);
-          return sendJson(res, 200, { summary });
-        }
-        if (req.method === 'PUT' && parts.length === 6 && (parts[5] === 'agenda' || parts[5] === 'summary')){
-          const b = await readBody(req); const sid = clip(b.sessionId, 80);
-          if (!one('SELECT id FROM coach_sessions WHERE id = ? AND accountid = ? AND memberid = ?', sid, accountId, mid)) return sendJson(res, 404, { error: 'not found' });
-          if (parts[5] === 'agenda'){
-            const ag = (Array.isArray(b.agenda) ? b.agenda : []).slice(0, 12).map(x => ({ step: clip(x && x.step, 60), text: clip(x && x.text, 300) })).filter(x => x.text);
-            db.prepare('UPDATE coach_sessions SET agendajson = ? WHERE id = ?').run(JSON.stringify(ag), sid);
-          } else db.prepare('UPDATE coach_sessions SET summary = ? WHERE id = ?').run(clip(b.summary, 400), sid);
-          return sendJson(res, 200, { saved: true });
-        }
-        if (req.method === 'DELETE' && parts.length === 6){
-          db.prepare('DELETE FROM coach_sessions WHERE id = ? AND accountid = ? AND memberid = ?').run(decodeURIComponent(parts[5]), accountId, mid);
-          return sendJson(res, 200, { removed: true });
-        }
-        if (req.method === 'PUT' && parts.length === 6 && parts[5] === 'share'){
-          const b = await readBody(req);
-          db.prepare('UPDATE coach_sessions SET shared = ? WHERE id = ? AND accountid = ? AND memberid = ?').run(b.shared ? 1 : 0, clip(b.sessionId, 80), accountId, mid);
-          return sendJson(res, 200, { saved: true });
-        }
-      }
-      if (req.method === 'POST' && resName === 'coach-message' && parts.length === 5){
-        const b = await readBody(req); const text = clip(b.text, 1500).trim(); if (!text) return sendJson(res, 400, { error: 'Write something first.' });
-        const s = one("SELECT id, messagesjson, status FROM coach_sessions WHERE id = ? AND accountid = ? AND memberid = ?", clip(b.sessionId, 80), accountId, mid);
-        if (!s || s.status !== 'open') return sendJson(res, 404, { error: 'Start a 1:1 first.' });
-        const msgs = (() => { try { return JSON.parse(s.messagesjson || '[]'); } catch (e){ return []; } })();
-        msgs.push({ role: 'person', text, at: now });
-        const reply = await coachReply(accountId, who, { messagesjson: JSON.stringify(msgs) }, text);
-        msgs.push({ role: 'coach', text: reply, at: new Date().toISOString() });
-        db.prepare('UPDATE coach_sessions SET messagesjson = ? WHERE id = ?').run(JSON.stringify(msgs.slice(-60)), s.id);
-        return sendJson(res, 200, { reply, messages: msgs });
-      }
-      if (req.method === 'PUT' && resName === 'sharing' && parts.length === 5){
-        const b = await readBody(req); const item = String(b.item || '');
-        if (!['needs', 'career', 'plan', 'tasks'].includes(item)) return sendJson(res, 400, { error: 'unknown item' });
-        const id = accountId + '|' + mid + '|' + item;
-        db.prepare('DELETE FROM coach_sharing WHERE id = ?').run(id);
-        db.prepare('INSERT INTO coach_sharing (id, accountid, memberid, item, shared, updatedat) VALUES (?,?,?,?,?,?)').run(id, accountId, mid, item, b.shared ? 1 : 0, now);
-        return sendJson(res, 200, { saved: true, sharing: coachSharedMap(accountId, mid) });
-      }
-      return sendJson(res, 404, { error: 'unknown coach route' });
-    }
-    // What a manager may see: only items each direct report chose to share. Never ratings notes, dump text or 1:1 messages.
-    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'team-shared'){
-      const accountId = decodeURIComponent(parts[2]);
-      if (!requireAccount(req, res, accountId)) return;
-      const sess = authenticate(req);
-      if (!sess || !sess.memberId || sess.platformuserid) return sendJson(res, 200, { reports: [] });
-      if (!coachGate(accountId).allowed) return sendJson(res, 200, { reports: [] });
-      const reps = db.prepare('SELECT id, name, level, functionGroup, reportsToId FROM team_members WHERE accountId = ?').all(accountId).filter(m => aliasVal(m, 'reportsToId') === sess.memberId);
-      const out = reps.map(m => {
-        const sh = coachSharedMap(accountId, m.id); const r = { memberId: m.id, name: m.name, shared: {} };
-        if (sh.career){ const c = db.prepare('SELECT targetlevel, targetfunction, timeframe FROM coach_career WHERE accountid = ? AND memberid = ?').get(accountId, m.id); if (c) r.shared.career = { targetLevel: c.targetlevel, targetFunction: c.targetfunction, timeframe: c.timeframe }; }
-        if (sh.needs) r.shared.topNeeds = coachTopNeeds(accountId, m.id, 3).map(n => ({ skill: n.skill }));
-        if (sh.plan){ const p = db.prepare('SELECT status FROM coach_plan_items WHERE accountid = ? AND memberid = ?').all(accountId, m.id); r.shared.planProgress = { total: p.length, done: p.filter(x => x.status === 'done').length }; }
-        if (sh.tasks){ r.shared.activeTasks = db.prepare("SELECT title, due FROM coach_tasks WHERE accountid = ? AND memberid = ? AND status = 'accepted' ORDER BY position ASC LIMIT 5").all(accountId, m.id); }
-        const s = db.prepare("SELECT summary, closedat FROM coach_sessions WHERE accountid = ? AND memberid = ? AND shared = 1 AND status = 'closed' ORDER BY closedat DESC LIMIT 1").get(accountId, m.id);
-        if (s) r.shared.oneOneSummary = { summary: s.summary, closedAt: aliasVal(s, 'closedat') };
-        return r;
-      }).filter(r => Object.keys(r.shared).length);
-      return sendJson(res, 200, { reports: out });
-    }
-    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'search-guide' && (req.method === 'GET' || req.method === 'PUT')){
-      const accountId = decodeURIComponent(parts[2]);
-      if (!requireAccount(req, res, accountId)) return;
-      const MODELS = ['local', 'single', 'franchise'], RATINGS = ['none', 'started', 'done', 'na'], AREAS = ['seo', 'aeo', 'geo'];
-      if (req.method === 'GET'){
-        const ratings = db.prepare('SELECT modelkey, itemkey, rating, updatedby, updatedat FROM search_guide_ratings WHERE accountid = ?').all(accountId);
-        const history = db.prepare('SELECT modelkey, area, score, day FROM search_guide_history WHERE accountid = ? ORDER BY day ASC LIMIT 400').all(accountId);
-        return sendJson(res, 200, { ratings: ratings.map(r => ({ model: aliasVal(r, 'modelkey'), item: aliasVal(r, 'itemkey'), rating: r.rating, updatedBy: aliasVal(r, 'updatedby') || '', updatedAt: aliasVal(r, 'updatedat') })), history: history.map(h => ({ model: aliasVal(h, 'modelkey'), area: h.area, score: h.score, day: h.day })) });
-      }
-      const body = await readBody(req);
-      const model = String(body.model || '');
-      if (!MODELS.includes(model)) return sendJson(res, 400, { error: 'unknown business model' });
-      const sess = authenticate(req); const who = exportCaller(sess).name; const now = new Date().toISOString(); const day = now.slice(0, 10);
-      const ratings = body.ratings && typeof body.ratings === 'object' ? body.ratings : {};
-      for (const k of Object.keys(ratings).slice(0, 80)){
-        const v = String(ratings[k]); if (!RATINGS.includes(v) || !/^[a-z0-9_]{2,40}$/.test(k)) continue;
-        const id = accountId + '|' + model + '|' + k;
-        db.prepare('DELETE FROM search_guide_ratings WHERE id = ?').run(id);
-        db.prepare('INSERT INTO search_guide_ratings (id, accountid, modelkey, itemkey, rating, updatedby, updatedat) VALUES (?,?,?,?,?,?,?)').run(id, accountId, model, k, v, who, now);
-      }
-      const scores = body.scores && typeof body.scores === 'object' ? body.scores : {};
-      for (const a of AREAS){
-        const sc = Number(scores[a]); if (!Number.isFinite(sc) || sc < 0 || sc > 100) continue;
-        const id = accountId + '|' + model + '|' + a + '|' + day;
-        db.prepare('DELETE FROM search_guide_history WHERE id = ?').run(id);
-        db.prepare('INSERT INTO search_guide_history (id, accountid, modelkey, area, score, day) VALUES (?,?,?,?,?,?)').run(id, accountId, model, a, Math.round(sc * 10) / 10, day);
-      }
-      return sendJson(res, 200, { saved: true });
-    }
-    // Media Science Truth Lab. One table for every test type (creative A/B, multi-variant, offer/audience, channel substitution, DMA match market)
+    // Media Science Test Registry. One table for every test type (creative A/B, multi-variant, offer/audience, channel substitution, DMA match market)
     // so the Brain and analysts read the same keys. Variants carry allocation, impressions and conversions; the statistics are computed in the portal.
-    // 2026-10-07 — "Describe the test you want": the person writes a statement, the Brain proposes an A/B test or asks what it still needs. A/B only
-    // (one change, a control and one variant). It never saves anything; the person opens the proposal in the editor and saves it themselves.
-    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'media-tests' && parts[4] === 'draft'){
-      const accountId = decodeURIComponent(parts[2]);
-      if (!requireAccount(req, res, accountId)) return;
-      const body = await readBody(req);
-      const statement = String(body.statement || '').trim().slice(0, 1500);
-      if (statement.length < 6) return sendJson(res, 400, { error: 'Write a sentence about the test you want.' });
-      const history = (Array.isArray(body.history) ? body.history : []).slice(-8).map(h => ({ role: h && h.role === 'brain' ? 'brain' : 'person', text: String((h && h.text) || '').slice(0, 800) }));
-      try { return sendJson(res, 200, await draftAbTest(accountId, statement, history)); }
-      catch (e){ console.warn('[media-tests/draft] failed:', e.message); return sendJson(res, 500, { error: 'Could not draft the test just now. You can still build one by hand.' }); }
-    }
     if (parts.length >= 4 && parts.length <= 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'media-tests'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
