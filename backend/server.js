@@ -26591,7 +26591,7 @@ async function handleRequest(req, res) {
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-08-cpm-teach-brain',
+        buildStamp: '2026-10-08-pickup-budget',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
@@ -33958,6 +33958,8 @@ ${acctContextBlock}
 
 FULL OBJECTIVES CONVERSATION:
 ${transcript}
+
+PICKED-UP CAMPAIGNS: if the conversation says this campaign was started from, or built on, an earlier campaign, that earlier campaign is reference only. Its channels and mix may guide this plan, but its dollar amounts are never added to this campaign's budget and never become lines of their own. This plan's lines add up to the Total campaign budget on file above and no more.
 
 VIDEO — this platform's real channel taxonomy groups Linear TV, OTV, and CTV together as "Video"; YouTube and Facebook/Instagram video both run under Paid Social. When the conversation mentions video in any general form ("digital and video," "streaming," "YouTube," "CTV," "intent-signal" or "conquesting" targeting, "FB video"), extract it as its own OTV, CTV, or Paid Social line (whichever the conversation's wording best maps to) rather than folding it into another channel or dropping it — video is real signal the team specifically raised and should not disappear from the extracted plan.
 
