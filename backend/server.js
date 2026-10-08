@@ -6325,6 +6325,35 @@ db.exec(`
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
 `);
+// 2026-10-08 — Rate Card Minimums: the smallest buy a media owner will take, by channel. Magazines can be set as a number of insertions at the
+// account's own cost per insertion; any other channel is a dollar minimum. Used as a floor in the plan, never as a reason to drop a channel.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_rate_card_minimums (
+    accountId TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    basis TEXT NOT NULL,
+    minSpend REAL,
+    minUnits REAL,
+    note TEXT,
+    updatedAt TEXT NOT NULL,
+    PRIMARY KEY (accountId, channel),
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+function rateCardMinimumsFor(accountId){
+  const rows = db.prepare('SELECT channel, basis, "minSpend", "minUnits", note, "updatedAt" FROM account_rate_card_minimums WHERE accountId = ? ORDER BY channel').all(accountId);
+  let lowest = null;
+  try { db.prepare('SELECT "costPerInsertion" FROM account_magazine_cost WHERE accountId = ?').all(accountId).forEach(r => { const c = Number(r.costPerInsertion); if (c > 0 && (lowest == null || c < lowest)) lowest = c; }); } catch (e){}
+  const out = rows.map(r => {
+    const aliasV = k => (r[k] !== undefined ? r[k] : r[k.toLowerCase()]);
+    const basis = aliasV('basis') === 'insertions' ? 'insertions' : 'dollars';
+    const minSpend = aliasV('minSpend'), minUnits = aliasV('minUnits');
+    const resolved = basis === 'insertions' ? (lowest != null && Number(minUnits) > 0 ? Math.round(lowest * Number(minUnits)) : null) : (Number(minSpend) >= 0 && minSpend != null ? Math.round(Number(minSpend)) : null);
+    return { channel: r.channel, basis, minSpend: minSpend == null ? null : Number(minSpend), minUnits: minUnits == null ? null : Number(minUnits), note: r.note || '', resolved, updatedAt: aliasV('updatedAt') };
+  });
+  const minimums = {}; out.forEach(r => { if (r.resolved != null) minimums[r.channel] = r.resolved; });
+  return { rows: out, minimums, lowestInsertionCost: lowest };
+}
 ensureColumn('mmm_inputs', 'impressions', 'REAL');
 
 // The fixed 18-category taxonomy itself (typos in the original request
@@ -17764,7 +17793,7 @@ function buildAnnualPlanRecommendation(accountId, year, asOfDate, basisIn){
   if (!W) bBudget = pwm(py);
   else {
     // Spend over the window from media actuals when at least 9 of the 12 months have spend; otherwise a prorated confirmed budget, flagged as estimated.
-    try { const SS = buildForecastSeries(accountId); const sp = W.map(k => Number(SS.spend[k]) || 0); if (sp.filter(v => v > 0).length >= 9){ bBudget = { workingMedia: Math.round(sp.reduce((n, v) => n + v, 0)), total: null, estimated: true }; budgetNote = 'Last-12-months media spend is the sum of monthly media spend actuals.'; } } catch (e){}
+    try { const SS = buildForecastSeries(accountId); const sb = planSpendOverMonths(accountId, W, SS); if (sb && (sb.fromBudget + sb.fromActual) >= 9){ bBudget = { workingMedia: sb.total, total: null, estimated: true }; budgetNote = sb.fromBudget > 0 ? `Last-12-months working media uses the confirmed budget for ${sb.fromBudget} of ${W.length} months where logged spend is lower, and logged spend for the rest, because campaign and channel actuals are not loaded for the full period.` : 'Last-12-months working media is the sum of monthly media spend actuals.'; } } catch (e){}
     if (!bBudget){ let acc = 0, any = false; [Number(W[0].slice(0, 4)), Number(W[11].slice(0, 4))].filter((v, i, a) => a.indexOf(v) === i).forEach(y => { const b = pwm(y); if (b){ const n = W.filter(k => k.startsWith(String(y))).length; acc += b.workingMedia * n / 12; any = true; } }); if (any){ bBudget = { workingMedia: Math.round(acc), total: null, estimated: true }; budgetNote = 'Last-12-months working media is estimated by prorating confirmed annual budgets (monthly spend actuals were incomplete).'; } }
   }
   const g = (bBudget && tBudget) ? tBudget.workingMedia / bBudget.workingMedia : 1;
@@ -17817,6 +17846,30 @@ const PLAN_SCENARIO_PRESETS = [
   { kind: 'stretch', name: 'Stretch', band: 2, bandLabel: 'high', blurb: 'Confirmed budget and the current mix, with every funnel stage at its own 75th percentile. A stretch, not a promise.' }
 ];
 function planScenarioBand(b){ return b === 'low' ? 0 : b === 'high' ? 2 : 1; }
+
+// Working media by month from the latest confirmed Marketing Budget upload of each year (monthly lines only).
+function planWorkingMediaBudgetByMonth(accountId){
+  const out = {};
+  try {
+    const ups = db.prepare("SELECT id, year, confirmedAt FROM marketing_budget_uploads WHERE accountId = ? AND status = 'confirmed' AND COALESCE(\"totalOnly\", 0) = 0 ORDER BY confirmedAt ASC").all(accountId);
+    const latest = {}; ups.forEach(u => { latest[u.year] = u; });
+    Object.keys(latest).forEach(yr => {
+      db.prepare('SELECT status, month, amount FROM marketing_budget_line_items WHERE uploadId = ?').all(latest[yr].id).forEach(r => {
+        if (!/^\s*working/i.test(String(r.status || ''))) return;
+        const mi = MARKETING_BUDGET_MONTHS.indexOf(String(r.month || '').toLowerCase()); const a = Number(r.amount); if (mi < 0 || !isFinite(a)) return;
+        const k = `${yr}-${String(mi + 1).padStart(2, '0')}`; out[k] = (out[k] || 0) + a;
+      });
+    });
+  } catch (e){ /* no monthly budget */ }
+  return out;
+}
+// Spend over a list of months for baselines. Campaign and channel actuals are often loaded for only part of what was spent, while the
+// confirmed budget covers the full year, so each month uses the larger of the two and the result says how many months leaned on the budget.
+function planSpendOverMonths(accountId, keys, S){
+  const bud = planWorkingMediaBudgetByMonth(accountId); let total = 0, any = false, fromBudget = 0, fromActual = 0;
+  keys.forEach(k => { const a = Number(S.spend[k]) || 0, b = Number(bud[k]) || 0; const v = Math.max(a, b); if (v > 0){ any = true; total += v; if (b > a) fromBudget++; else fromActual++; } });
+  return any ? { total: Math.round(total), months: keys.length, fromBudget, fromActual, actualOnly: keys.reduce((n, k) => n + (Number(S.spend[k]) || 0), 0) } : null;
+}
 function planScenarioCompute(accountId, input){
   const year = Number(input.year) || new Date().getUTCFullYear();
   const bandName = input.band === 'low' || input.band === 'high' ? input.band : 'mid'; const bi = planScenarioBand(bandName);
@@ -17864,8 +17917,10 @@ function planScenarioCompute(accountId, input){
   // against what is on file
   let target = null; try { const { target: tr } = storyPlanRows(accountId, year); if (tr && tr.year === year) target = { label: tr.label || null, workingMedia: tr.workingMedia, leads: (Number(tr.prospectLeads) || 0) + (Number(tr.growthLeads) || 0) + (Number(tr.valueLeads) || 0) || null, transactions: tr.bookings, revenue: tr.grossRevenue }; } catch (e){}
   const sumKeys = (m, ks) => { let n = 0, any = false; ks.forEach(k => { if (m[k] != null){ n += m[k]; any = true; } }); return any ? n : null; };
-  const base = { window: `${W12[0]} to ${W12[11]}`, workingMedia: Math.round(baseTotalSpend) || null, impressions: Math.round(baseTotalImps) || null, sessions: sumKeys(S.visits, W12), leads: (() => { let n = 0, any = false; W12.forEach(k => { if (S.leads[k]){ n += S.leads[k].total; any = true; } }); return any ? Math.round(n) : null; })(), transactions: sumKeys(S.transactions, W12), revenue: sumKeys(S.revenue, W12) };
+  const spendBasis = planSpendOverMonths(accountId, W12, S);
+  const base = { window: `${W12[0]} to ${W12[11]}`, workingMedia: spendBasis ? spendBasis.total : (Math.round(baseTotalSpend) || null), impressions: Math.round(baseTotalImps) || null, sessions: sumKeys(S.visits, W12), leads: (() => { let n = 0, any = false; W12.forEach(k => { if (S.leads[k]){ n += S.leads[k].total; any = true; } }); return any ? Math.round(n) : null; })(), transactions: sumKeys(S.transactions, W12), revenue: sumKeys(S.revenue, W12) };
   base.roas = div(base.revenue, base.workingMedia); base.cac = div(base.workingMedia, base.transactions); base.costPerVisitor = div(base.workingMedia, base.sessions); base.costPerLead = div(base.workingMedia, base.leads);
+  if (spendBasis && spendBasis.fromBudget > 0) notes.push(`Last-12-months working media uses the confirmed budget for ${spendBasis.fromBudget} of ${W12.length} months where logged spend is lower (logged spend alone is ${Math.round(spendBasis.actualOnly).toLocaleString('en-US')}), because campaign and channel actuals are not loaded for the full period.`);
   if (!planBudget && input.workingMedia == null) notes.push('No confirmed ' + year + ' working media budget, so the last 12 months of spend is used.');
   return { year, band: bandName, outcome, bands, channels: chRows, baseline: base, target, confidence: f.confidence, rangeNote: f.rangeNote,
     assumptions: ['Impressions per channel = spend ÷ that channel\'s own cost per thousand over the last 12 complete months.', 'Funnel rates (visits, leads, transactions, revenue per transaction) are this account\'s own where there is history; the engine labels any benchmark.', 'The mix moves results only through cost per thousand impressions. Channels are not given different conversion rates until media mix model results are available.'].concat(notes).concat(f.notes || []),
@@ -18469,7 +18524,7 @@ const DATA_CATALOG = [
   { key: 'marketable_sizes', label: 'Marketable audience sizes', table: 'account_marketable_sizes', period: null, dashboard: 'Strategy', grain: 'audience type', kind: 'manual', keywords: ['audience size','marketable','addressable'], usedBy: ['forecast', 'ask'], status: 'current' },
   { key: 'dm_cost_per_piece', label: 'Direct mail cost per piece', table: 'account_dm_cost_per_piece', period: null, dashboard: 'Growth & Performance', grain: 'format', kind: 'manual', keywords: ['direct mail','print cost','cost per piece'], usedBy: ['forecast'], status: 'current' },
   { key: 'dm_format_cost', label: 'Direct mail format costs', table: 'account_dm_format_cost', period: null, dashboard: 'Growth & Performance', grain: 'format', kind: 'manual', keywords: ['direct mail','format','postage'], usedBy: ['forecast'], status: 'current' },
-  { key: 'magazine_cost', label: 'Magazine costs', table: 'account_magazine_cost', period: null, dashboard: 'Growth & Performance', grain: 'title', kind: 'manual', keywords: ['magazine','print','rate card'], usedBy: ['forecast'], status: 'current' },
+  { key: 'magazine_cost', label: 'Rate card minimums and magazine costs', table: 'account_magazine_cost', period: null, dashboard: 'Growth & Performance', grain: 'title', kind: 'manual', keywords: ['magazine','print','rate card','minimum','minimum spend'], usedBy: ['forecast'], status: 'current' },
   { key: 'stores', label: 'Store locations', table: 'account_stores', period: null, dashboard: 'Growth & Performance', grain: 'store', kind: 'manual', keywords: ['stores','locations','trade area','address'], usedBy: ['ask'], status: 'current' },
   { key: 'website_examples', label: 'Website examples', table: 'brand_copy_website_examples', period: null, dashboard: 'Customer Experiences', grain: 'page', kind: 'manual', keywords: ['website','pages','copy examples','sitemap'], usedBy: ['copywriting'], status: 'current' },
   { key: 'copy_library', label: 'Copy library', table: 'copy_library', period: null, dashboard: 'Customer Experiences', grain: 'copy block', kind: 'manual', keywords: ['copy','library','approved copy','headline'], usedBy: ['copywriting', 'ask'], status: 'current' },
@@ -18565,7 +18620,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['account_plan_scenarios', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
+const CATALOG_EXEMPT = new Set(['account_plan_scenarios', 'account_rate_card_minimums', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -18616,7 +18671,7 @@ function buildTrainTheBrain(accountId){
       { label: 'Demand fulfillment assumptions', done: rowsOf('account_demand_fulfillment') > 0, rows: rowsOf('account_demand_fulfillment'), gain: 'How demand grows with website traffic.', step: 'demandFulfillment' },
       { label: 'Marketable audience sizes', done: rowsOf('account_marketable_sizes') > 0, rows: rowsOf('account_marketable_sizes'), gain: 'Direct mail and email list counts by audience.', step: 'marketableSizes' },
       { label: 'Direct mail cost per piece', done: rowsOf('account_dm_cost_per_piece') + rowsOf('account_dm_format_cost') > 0, rows: rowsOf('account_dm_cost_per_piece') + rowsOf('account_dm_format_cost'), gain: 'Turns audience size into a direct mail budget.', step: 'dmCost' },
-      { label: 'Magazine cost per insertion', done: rowsOf('account_magazine_cost') > 0, rows: rowsOf('account_magazine_cost'), gain: 'Your negotiated print rates by title and format.', step: 'magazineCost' } ] },
+      { label: 'Rate card minimums and magazine rates', done: rowsOf('account_magazine_cost') > 0, rows: rowsOf('account_magazine_cost'), gain: 'Your negotiated print rates by title and format.', step: 'magazineCost' } ] },
     { key: 'team', title: 'Your team', minutes: 2, gain: 'Everyone works from the same picture and can comment in the Brain Dump.', items: [
       { label: 'Team and org chart', done: team >= 2, gain: team ? `${team} on the chart.` : 'Add the people who use this account.', step: 'team' } ] }
   ];
@@ -27846,6 +27901,9 @@ async function handleRequest(req, res) {
     // list (PAID_TIERS above) for select-tier.html to render. Public on
     // purpose: this is shown to visitors who don't have an account yet.
     if (req.method === 'GET' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'paid-tiers'){
+      // ?all=1 (account page) lists every level so a client can see what is above their own. Prices stay out of the public list.
+      const allQ = new URL(req.url, 'http://localhost').searchParams.get('all');
+      if (allQ) return sendJson(res, 200, { tiers: PAID_TIERS.map(t => ({ key: t.key, rank: t.rank, name: t.name, tagline: t.tagline, maxStorefronts: t.maxStorefronts, monthlyDrafts: t.monthlyDrafts, trialDays: t.trialDays, selfServe: t.selfServe, description: t.description.replace(/\s*Pricing to be confirmed\.?/i, '').trim() })) });
       return sendJson(res, 200, { tiers: PAID_TIERS.filter(t => t.selfServe) });
     }
 
@@ -27876,14 +27934,15 @@ async function handleRequest(req, res) {
       const body = await readBody(req);
       const a = db.prepare('SELECT company, paidTier, paidTierActivatedAt FROM accounts WHERE accountId = ?').get(accountId);
       const ls = levelStatusFor(a);
+      const wantTier = PAID_TIERS.find(t => t.key === body.tier && t.key !== 'spark') || PAID_TIERS.find(t => t.key === 'starter');
       const salesTo = process.env.SALES_NOTIFY_EMAIL || '';
       let sent = false;
       if (salesTo){
         const r = await sendTransactionalEmail({
           to: salesTo,
-          subject: `Spark upgrade request: ${a ? a.company : accountId}`,
-          textBody: `${a ? a.company : accountId} (${accountId}) asked to upgrade to the Starter Kit ($99/month) from the ${body.source || 'portal'} prompt. Spark day ${ls ? ls.day : 'n/a'} of ${ls ? ls.trialDays : SPARK_DAYS}${ls && ls.expired ? ' (expired, read-only)' : ''}.`,
-          htmlBody: `<p><strong>${escapeHtmlBasic(a ? a.company : accountId)}</strong> (${escapeHtmlBasic(accountId)}) asked to upgrade to the Starter Kit ($99/month) from the ${escapeHtmlBasic(body.source || 'portal')} prompt.</p><p>Spark day ${ls ? ls.day : 'n/a'} of ${ls ? ls.trialDays : SPARK_DAYS}${ls && ls.expired ? ' (expired, read-only)' : ''}.</p>`
+          subject: `Level activation request: ${a ? a.company : accountId} to ${wantTier.name}`,
+          textBody: `${a ? a.company : accountId} (${accountId}) asked to activate ${wantTier.name} (current level: ${a && a.paidTier ? a.paidTier : 'none'}) from the ${body.source || 'portal'} prompt. Spark day ${ls ? ls.day : 'n/a'} of ${ls ? ls.trialDays : SPARK_DAYS}${ls && ls.expired ? ' (expired, read-only)' : ''}.`,
+          htmlBody: `<p><strong>${escapeHtmlBasic(a ? a.company : accountId)}</strong> (${escapeHtmlBasic(accountId)}) asked to activate ${wantTier.name} (current level: ${a && a.paidTier ? a.paidTier : 'none'}) from the ${escapeHtmlBasic(body.source || 'portal')} prompt.</p><p>Spark day ${ls ? ls.day : 'n/a'} of ${ls ? ls.trialDays : SPARK_DAYS}${ls && ls.expired ? ' (expired, read-only)' : ''}.</p>`
         });
         sent = r && r.emailStatus === 'sent';
       }
@@ -41521,6 +41580,30 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       return sendJson(res, 200, { accountId, saved: rowsIn.length, updatedAt: now });
     }
 
+    // GET/POST /api/accounts/:id/rate-card-minimums — the smallest buy per channel (2026-10-08). POST replaces the whole list.
+    if ((req.method === 'GET' || req.method === 'POST') && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'rate-card-minimums'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      if (req.method === 'POST'){
+        const body = await readBody(req); const rowsIn = Array.isArray(body.rows) ? body.rows : null;
+        if (!rowsIn) return sendJson(res, 400, { error: 'rows is required' });
+        const now = new Date().toISOString(); const clean = []; const seen = new Set();
+        for (const r of rowsIn){
+          const channel = String(r.channel || '').trim().slice(0, 80); if (!channel) return sendJson(res, 400, { error: 'channel is required' });
+          if (seen.has(channel.toLowerCase())) return sendJson(res, 400, { error: 'Each channel can appear once: ' + channel });
+          seen.add(channel.toLowerCase());
+          const basis = r.basis === 'insertions' && /^magazines?$/i.test(channel) ? 'insertions' : 'dollars';
+          const num = v => (v === null || v === undefined || v === '' ? null : Number(v));
+          const minSpend = num(r.minSpend), minUnits = num(r.minUnits);
+          if (basis === 'dollars' && !(minSpend != null && Number.isFinite(minSpend) && minSpend >= 0)) return sendJson(res, 400, { error: 'Enter a minimum dollar amount for ' + channel });
+          if (basis === 'insertions' && !(minUnits != null && Number.isFinite(minUnits) && minUnits > 0)) return sendJson(res, 400, { error: 'Enter the minimum number of insertions for ' + channel });
+          clean.push({ channel, basis, minSpend: basis === 'dollars' ? minSpend : null, minUnits: basis === 'insertions' ? minUnits : null, note: String(r.note || '').slice(0, 300) || null });
+        }
+        db.prepare('DELETE FROM account_rate_card_minimums WHERE accountId = ?').run(accountId);
+        clean.forEach(c => db.prepare('INSERT INTO account_rate_card_minimums (accountId, channel, basis, "minSpend", "minUnits", note, "updatedAt") VALUES (?, ?, ?, ?, ?, ?, ?)').run(accountId, c.channel, c.basis, c.minSpend, c.minUnits, c.note, now));
+      }
+      return sendJson(res, 200, Object.assign({ accountId }, rateCardMinimumsFor(accountId)));
+    }
     // GET /api/accounts/:id/magazine-cost — cost-per-insertion by real
     // publication + ad format (2026-09-28, same direct instruction as
     // dm-format-cost above). Magazine rates are negotiated per publication
