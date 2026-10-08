@@ -51,6 +51,44 @@
   .back-nav .wordmark b{color:var(--media);font-weight:500;}
 
   main{padding:40px 0 100px;}
+  /* 2026-10-08 — header and layout match the portal: night wordmark bar, navy client bar with initials badge, section tabs. */
+  :root{--hdr-navy:#1E2761;--hdr-navy-dim:#161C4A;--hdr-navy-line:rgba(255,255,255,0.14);--hdr-amber:#D08A3E;--hdr-ink-on-navy:#FFFFFF;--hdr-muted-on-navy:rgba(255,255,255,0.62);}
+  .back-nav{background:#07090D;border-bottom:1px solid rgba(255,255,255,.08);padding:16px 28px;box-shadow:0 -3px 0 #07090D;display:flex;justify-content:flex-start;align-items:center;max-width:none;margin:0;}
+  .back-nav .wordmark{font-family:'Instrument Sans','Avenir Next','Segoe UI',system-ui,sans-serif;font-size:24px;font-weight:600;letter-spacing:-.01em;color:#fff;text-decoration:none;}
+  .back-nav .wordmark b{color:#F4B63F;font-weight:600;}
+  .acct-bar{background:var(--hdr-navy);color:var(--hdr-ink-on-navy);position:sticky;top:0;z-index:30;}
+  .acct-bar-in{max-width:1240px;margin:0 auto;padding:0 28px;}
+  .acct-bar-top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:12px 0 6px;}
+  .acct-bar-id{display:flex;align-items:center;gap:14px;min-width:0;}
+  .acct-bar-avatar{width:40px;height:40px;border-radius:10px;background:var(--hdr-amber);color:#2A1B05;font-size:.8125rem;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .acct-bar .co-name{font-size:1.875rem;line-height:1.15;font-weight:700;margin:0;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .acct-bar-right{display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:.75rem;font-weight:600;color:var(--hdr-muted-on-navy);}
+  .acct-bar-plan{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--hdr-navy-line);background:var(--hdr-navy-dim);border-radius:999px;padding:5px 12px;color:#fff;font-weight:700;letter-spacing:.02em;}
+  .acct-bar-back{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:8px;background:var(--hdr-navy-dim);border:1px solid var(--hdr-navy-line);color:#fff;text-decoration:none;font-weight:600;}
+  .acct-bar-back:hover{border-color:rgba(255,255,255,.4);}
+  .acct-bar-nav{display:flex;gap:2px;overflow-x:auto;margin:0 -10px;}
+  .acct-bar-nav a{font-size:.9375rem;font-weight:600;letter-spacing:.01em;color:var(--hdr-muted-on-navy);text-decoration:none;border-bottom:2px solid transparent;padding:10px 14px 12px;white-space:nowrap;}
+  .acct-bar-nav a:hover{color:#fff;}
+  .acct-bar-nav a.active{color:#fff;font-weight:700;border-bottom-color:var(--hdr-amber);}
+  main{padding:32px 0 100px;}
+  /* Package cards */
+  .plan-now{display:flex;flex-wrap:wrap;gap:16px 28px;align-items:center;justify-content:space-between;}
+  .plan-now h3{margin:0;font-size:1.5rem;font-weight:700;}
+  .plan-now .plan-tag{font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--cx);font-weight:700;}
+  .plan-facts{display:flex;gap:22px;flex-wrap:wrap;font-size:.875rem;color:var(--muted);}
+  .plan-facts b{color:var(--ink);display:block;font-size:1rem;}
+  .plan-up-head{margin:22px 0 10px;font-size:.8125rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;}
+  .plan-up-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;}
+  .plan-up{border:1px solid var(--line);border-radius:16px;padding:16px 18px;background:var(--white);display:flex;flex-direction:column;gap:6px;}
+  .plan-up.next{border-color:var(--media);box-shadow:0 0 0 3px rgba(37,99,235,.08);}
+  .plan-up b{font-size:1.0625rem;}
+  .plan-up .tl{font-size:.8125rem;color:var(--cx);font-weight:700;}
+  .plan-up p{margin:0;font-size:.875rem;color:var(--muted);flex:1;}
+  .plan-up .btn-primary,.plan-up .btn-ghost{align-self:flex-start;margin-top:6px;}
+  .plan-msg{font-size:.875rem;margin:12px 0 0;color:var(--muted);}
+  .plan-msg.ok{color:#0B7A4B;}
+  @media (max-width:680px){.acct-bar .co-name{font-size:1.375rem;}}
+
   .eyebrow{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:var(--cx);margin-bottom:14px;}
   h1{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:clamp(26px,3.8vw,36px);line-height:1.15;margin:0 0 10px;letter-spacing:-0.01em;}
   h2{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:600;font-style:normal;font-size:21px;margin:0 0 4px;}
@@ -311,49 +349,47 @@
 
 <div class="back-nav">
   <a class="wordmark" href="index.html">Veri<b>lume</b></a>
-  <a href="onboarding.html">← Onboarding</a>
-  <!-- Round 58 — portal.html's gear icon links here (?accountId=...), but
-       until now this page had no link back, a dead end for anyone arriving
-       from the real Client Portal rather than the onboarding flow. href is
-       set to the sample account by default and overwritten with this
-       page's real ?accountId= below, once params is parsed. -->
-  <a href="portal.html" id="backToPortalLink">← Back to Client Portal</a>
 </div>
+
+<header class="acct-bar">
+  <div class="acct-bar-in">
+    <div class="acct-bar-top">
+      <div class="acct-bar-id">
+        <div class="acct-bar-avatar" id="acctAvatar">—</div>
+        <div class="co-name" id="acctCoName">Loading…</div>
+      </div>
+      <div class="acct-bar-right">
+        <span class="acct-bar-plan" id="acctPlanChip" title="Your current package">Package</span>
+        <span>Client ID · <span id="acctCoId"></span></span>
+        <!-- Round 58 — back to this same account's portal (href set from ?accountId= in the script below). -->
+        <a class="acct-bar-back" href="portal.html" id="backToPortalLink">← Back to portal</a>
+      </div>
+    </div>
+    <nav class="acct-bar-nav" id="acctNav" aria-label="Account sections">
+      <a href="#plan" class="active">Package</a>
+      <a href="#contact">Contact</a>
+      <a href="#security">Security</a>
+      <a href="#comms">Communication</a>
+      <a href="#payment">Payment methods</a>
+      <a href="#invoices">Invoices</a>
+      <a href="#team">Team</a>
+    </nav>
+  </div>
+</header>
+<span id="acctCoNameEyebrow" style="display:none;"></span>
 
 <main>
 <div class="wrap">
 
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
-    <span style="width:28px;height:28px;border-radius:8px;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">⚙</span>
-    <span class="eyebrow" style="margin-bottom:0;" id="acctCoNameEyebrow"></span>
-  </div>
   <h1>Your Verilume account.</h1>
-  <p class="lede">Contact info, security, communication preferences, payment methods, invoices, and who on your team has access — all in one place. Prototype note: Contact info, communication preferences, payment methods, and invoices still run entirely in-session with sample data. Password &amp; security and Team Members both now read from and write to this build's real local backend (same login/roster the Portal uses).</p>
+  <p class="lede">Your package, contact info, security, communication preferences, payment methods, invoices, and who on your team has access.</p>
 
-  <div class="account-summary">
-    <div>
-      <div class="co-name" id="acctCoName">Acme Hospitality Group</div>
-      <div class="co-id"><span class="tag">Client ID</span> &nbsp;<span id="acctCoId">CXM-NAT-2026-700</span></div>
-    </div>
-    <div style="text-align:right;">
-      <div class="tag">Plan</div>
-      <div style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:15px;color:var(--media);">Self-Service</div>
-    </div>
-    <!-- 2026-08-21 — Logout briefly lived here, then in .back-nav before
-         that. Superseded the same day, per direct instruction ("Logout is
-         in the wrong place... utility nav above the main nav"): Logout now
-         lives exclusively in the sitewide #utilityNav strip (see that div
-         right after <body>), consistent across every page. -->
-  </div>
-
-  <div class="quicknav">
-    <a href="#contact">Contact</a>
-    <a href="#security">Security</a>
-    <a href="#comms">Communication</a>
-    <a href="#payment">Payment methods</a>
-    <a href="#invoices">Invoices</a>
-    <a href="#team">Team</a>
-  </div>
+  <!-- PACKAGE -->
+  <section class="acct-card" id="plan">
+    <h2>Your package</h2>
+    <p class="card-sub">The package this account is on, and what you can move up to.</p>
+    <div id="planBody"><p class="card-sub">Loading…</p></div>
+  </section>
 
   <!-- CONTACT INFORMATION -->
   <section class="acct-card" id="contact">
@@ -813,6 +849,7 @@ document.getElementById('backToPortalLink').href = `portal.html?accountId=${enco
 if (document.getElementById('teamPortalLink')) document.getElementById('teamPortalLink').href = `portal.html?accountId=${encodeURIComponent(params.get('accountId') || 'CXM-NAT-2026-700')}&step=team`;
 
 let state = {
+  paidTier: null, levelStatus: null,
   companyId: params.get('accountId') || 'CXM-NAT-2026-700',
   companyName: 'Acme Hospitality Group',
   contact: { firstName: 'Jane', lastName: 'Doe', email: 'jane@acmehospitality.com', phoneCountry: '+1', phone: '(555) 123-4567' },
@@ -842,6 +879,8 @@ async function init(){
   renderPaymentMethods();
   populateInviteFormSelects();
   await loadAccountRecord();
+  { const av = document.getElementById('acctAvatar'); if (av) av.textContent = initialsOf(state.companyName); }
+  loadPlan();
   await loadTeamData();
   renderTeam();
   loadVoiceConsent();
@@ -875,6 +914,77 @@ function prefillContactFromMember(){
   set('ctPhone', phone);
 }
 
+
+// 2026-10-08 — Package: the current level, then only the levels above it, each with an activation option. Levels are activated by the
+// Verilume team (updated IO on file), so a client sends a request; only Spark can be started here. Prices are not shown.
+const PLAN_FALLBACK = [
+  { key: 'spark', rank: 1, name: 'Spark', tagline: 'See where you stand', description: 'Free for 7 days. Same functionality as the Starter Kit.', maxStorefronts: 1, monthlyDrafts: 6, trialDays: 7, selfServe: true },
+  { key: 'starter', rank: 2, name: 'Starter Kit', tagline: 'One storefront', description: 'The paid continuation of Spark for a single storefront.', maxStorefronts: 1, monthlyDrafts: 25, selfServe: false },
+  { key: 'glow', rank: 3, name: 'Glow', tagline: 'Understand', description: 'Up to 10 storefronts.', maxStorefronts: 10, monthlyDrafts: 100, selfServe: false },
+  { key: 'radiance', rank: 4, name: 'Radiance', tagline: 'Act', description: '11 to 20 storefronts.', maxStorefronts: 20, monthlyDrafts: 400, selfServe: false },
+  { key: 'beacon', rank: 5, name: 'Beacon', tagline: 'Orchestrate', description: 'Enterprise, above 20 storefronts. Custom quote.', maxStorefronts: null, monthlyDrafts: null, selfServe: false }
+];
+let planTiers = PLAN_FALLBACK;
+async function loadPlan(){
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/paid-tiers?all=1`);
+    if (r.ok){ const d = await r.json(); if (Array.isArray(d.tiers) && d.tiers.length) planTiers = d.tiers; }
+  } catch (e){}
+  renderPlan();
+}
+function renderPlan(msg, ok){
+  const el = document.getElementById('planBody'); if (!el) return;
+  const cur = planTiers.find(t => t.key === state.paidTier) || null;
+  const chip = document.getElementById('acctPlanChip'); if (chip) chip.textContent = cur ? cur.name : 'No package yet';
+  const ls = state.levelStatus;
+  const limit = t => t.maxStorefronts == null ? 'Unlimited' : t.maxStorefronts;
+  const drafts = t => t.monthlyDrafts == null ? 'Unlimited' : t.monthlyDrafts;
+  const nowHtml = cur
+    ? `<div class="plan-now"><div><div class="plan-tag">Current package</div><h3>${escapeHtml(cur.name)} <span style="font-weight:500;color:var(--muted);font-size:1rem;">· ${escapeHtml(cur.tagline || '')}</span></h3><p class="card-sub" style="margin:6px 0 0;">${escapeHtml(cur.description || '')}</p></div>
+        <div class="plan-facts"><div><b>${limit(cur)}</b>storefronts</div><div><b>${drafts(cur)}</b>AI drafts a month</div>${cur.key === 'spark' && ls ? `<div><b>${ls.expired ? 'Ended' : ls.daysLeft + ' day' + (ls.daysLeft === 1 ? '' : 's')}</b>${ls.expired ? 'trial is read-only' : 'left in your trial'}</div>` : ''}</div></div>`
+    : `<div class="plan-now"><div><div class="plan-tag">Current package</div><h3>No package activated yet</h3><p class="card-sub" style="margin:6px 0 0;">Start with Spark, free for 7 days, or ask Verilume to activate a package.</p></div></div>`;
+  const above = planTiers.filter(t => !cur || t.rank > cur.rank).sort((a, b) => a.rank - b.rank);
+  const upHtml = above.length ? `<div class="plan-up-head">${cur ? 'Move up' : 'Choose a package'}</div><div class="plan-up-grid">${above.map((t, i) => {
+      const canStart = t.key === 'spark' && !state.paidTier;
+      const btn = canStart
+        ? `<button type="button" class="btn-primary" onclick="planStartSpark(this)">Start Spark</button>`
+        : `<button type="button" class="btn-${i === 0 ? 'primary' : 'ghost'}" onclick="planRequest('${t.key}', this)">${t.key === 'beacon' ? 'Talk to Sales' : 'Request activation'}</button>`;
+      return `<div class="plan-up${i === 0 && cur ? ' next' : ''}"><b>${escapeHtml(t.name)}</b><span class="tl">${escapeHtml(t.tagline || '')}</span><p>${escapeHtml(t.description || '')}</p>${btn}</div>`;
+    }).join('')}</div>${cur ? '<p class="card-sub" style="margin:12px 0 0;">Packages above yours are activated by the Verilume team once the updated order is on file. Requesting one sends your details to Sales.</p>' : ''}`
+    : `<p class="card-sub" style="margin:14px 0 0;">You are on our top package.</p>`;
+  el.innerHTML = nowHtml + upHtml + (msg ? `<p class="plan-msg${ok ? ' ok' : ''}" role="status">${escapeHtml(msg)}</p>` : '');
+}
+async function planRequest(tier, btn){
+  if (btn) btn.disabled = true;
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/upgrade-request`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tier, source: 'account page' }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || 'The request could not be sent.');
+    renderPlan(d.alreadyRequested ? 'A request was already sent in the last hour. Sales will be in touch.' : 'Request sent. Verilume Sales will confirm and activate the package with you.', true);
+  } catch (e){ renderPlan(e.message || 'The request could not be sent. Email verilume@verilume.ai.'); }
+}
+async function planStartSpark(btn){
+  if (btn) btn.disabled = true;
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/tier`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tier: 'spark' }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || 'Spark could not be started.');
+    state.paidTier = 'spark'; await loadAccountRecord(); renderPlan('Spark started.', true);
+  } catch (e){ renderPlan(e.message || 'Spark could not be started.'); }
+}
+function initialsOf(name){ const w = String(name || '').replace(/\(.*?\)/g, '').trim().split(/\s+/).filter(Boolean); return ((w[0] || '')[0] || '—').toUpperCase() + ((w[1] || '')[0] || '').toUpperCase(); }
+// Section tabs follow the page, like the portal's primary nav.
+(function(){
+  const nav = document.getElementById('acctNav'); if (!nav) return;
+  const links = [...nav.querySelectorAll('a')];
+  function sync(){
+    let cur = links[0];
+    links.forEach(a => { const sec = document.querySelector(a.getAttribute('href')); if (sec && sec.getBoundingClientRect().top < 140) cur = a; });
+    links.forEach(a => a.classList.toggle('active', a === cur));
+  }
+  window.addEventListener('scroll', sync, { passive: true }); setTimeout(sync, 400);
+})();
+
 function escapeHtml(s){
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
@@ -902,6 +1012,8 @@ async function loadAccountRecord(){
         document.getElementById('acctCoNameEyebrow').textContent = state.companyName;
         document.getElementById('ctCompany').value = state.companyName;
       }
+      state.paidTier = (record.account && record.account.paidTier) || null; state.levelStatus = record.levelStatus || null;
+      const av = document.getElementById('acctAvatar'); if (av) av.textContent = initialsOf(state.companyName);
       dataSourceLabel = 'backend';
       return;
     }
