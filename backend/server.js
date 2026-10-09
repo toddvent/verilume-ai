@@ -7062,6 +7062,143 @@ createTableIfNeeded(`
     PRIMARY KEY (accountId, channel)
   );
 `);
+// ============================================================
+// 2026-10-09 — Spend Authority, budget approvals and the financial audit trail.
+// Built for clients whose auditors ask about separation of duties (SOX-style review).
+//   * Each team profile can carry a Spend Authority (dollars, or unlimited). The CMO level is unlimited unless set otherwise.
+//   * When an account turns spend controls on, a campaign budget needs a Yes from a DIFFERENT person whose authority covers
+//     the campaign total. The request goes to the next person up the reporting line with enough authority, escalating after 3 days.
+//   * Planning and creative work are never blocked. Sending to Trafficking is blocked until the budget is approved. A budget that
+//     later goes up beyond the approved amount needs a fresh approval (a decrease does not).
+//   * financial_audit_log is append-only: this server has no route that edits or deletes a row.
+// Column names are lower-case on purpose (same behaviour in SQLite and Postgres).
+// ============================================================
+ensureColumn('team_members', 'spendauthority', 'REAL');
+ensureColumn('team_members', 'spendunlimited', 'INTEGER DEFAULT 0');
+ensureColumn('accounts', 'spendapprovalrequired', 'INTEGER DEFAULT 0');
+ensureColumn('campaigns', 'spendapprovedat', 'TEXT');
+ensureColumn('campaigns', 'spendapprovedby', 'TEXT');
+ensureColumn('campaigns', 'spendapprovedamount', 'REAL');
+ensureColumn('campaigns', 'spendapprovalid', 'TEXT');
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS financial_audit_log (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    campaignid TEXT,
+    eventtype TEXT NOT NULL,
+    actortype TEXT NOT NULL,
+    actorid TEXT,
+    actorname TEXT,
+    detailjson TEXT,
+    occurredat TEXT NOT NULL
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS budget_approval_requests (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    campaignid TEXT NOT NULL,
+    amount REAL NOT NULL,
+    requestedbyid TEXT,
+    requestedbyname TEXT,
+    approverid TEXT,
+    approvername TEXT,
+    status TEXT NOT NULL,
+    createdat TEXT NOT NULL,
+    decidedat TEXT,
+    decidedbyid TEXT,
+    decidedbyname TEXT,
+    comment TEXT,
+    escalatedtoid TEXT,
+    escalatedat TEXT
+  );
+`);
+const SPEND_ESCALATE_AFTER_MS = 3 * 24 * 60 * 60 * 1000;
+function finActor(req, accountId){
+  const session = authenticate(req);
+  if (!session) return { type: 'system', id: null, name: 'System' };
+  if (session.platformuserid) return { type: 'staff', id: String(session.platformuserid), name: 'Verilume staff' };
+  if (session.memberId){
+    let m = null; try { m = db.prepare('SELECT name FROM team_members WHERE id = ? AND accountId = ?').get(session.memberId, accountId); } catch (e){}
+    return { type: 'member', id: session.memberId, name: (m && m.name) || 'Team member' };
+  }
+  return { type: 'account', id: null, name: 'Account login' };
+}
+function finLog(accountId, campaignId, eventType, actor, detail){
+  try {
+    db.prepare('INSERT INTO financial_audit_log (id, accountid, campaignid, eventtype, actortype, actorid, actorname, detailjson, occurredat) VALUES (?,?,?,?,?,?,?,?,?)')
+      .run(generateId('FAL'), accountId, campaignId || null, eventType, (actor && actor.type) || 'system', (actor && actor.id) || null, (actor && actor.name) || null, JSON.stringify(detail || {}).slice(0, 4000), new Date().toISOString());
+  } catch (e){ console.warn('[finLog] failed to write audit row:', e.message); }
+}
+function spendControlsOn(accountId){
+  try { const a = db.prepare('SELECT spendapprovalrequired FROM accounts WHERE accountId = ?').get(accountId); return !!(a && Number(a.spendapprovalrequired) === 1); } catch (e){ return false; }
+}
+function memberSpendAuthority(m){
+  if (!m) return 0;
+  if (Number(m.spendunlimited) === 1) return Infinity;
+  if (m.spendauthority !== null && m.spendauthority !== undefined && m.spendauthority !== '') return Number(m.spendauthority) || 0;
+  return String(m.level || '') === 'CMO' ? Infinity : 0;
+}
+function campaignPlanAmount(campaignId, campaign){
+  let sum = 0;
+  try { db.prepare('SELECT budget FROM channel_planning_details WHERE campaignId = ?').all(campaignId).forEach(r => { sum += Number(r.budget) || 0; }); } catch (e){}
+  if (sum > 0) return Math.round(sum * 100) / 100;
+  return Math.round((Number(campaign && campaign.budget) || 0) * 100) / 100;
+}
+function spendTeam(accountId){
+  try { return db.prepare("SELECT id, name, email, level, reportsToId, status, spendauthority, spendunlimited FROM team_members WHERE accountId = ?").all(accountId).filter(m => !m.status || m.status === 'active'); } catch (e){ return []; }
+}
+function reportsToOf(m){ return aliasVal(m, 'reportsToId') || null; }
+// Walks up the reporting line from `startId`, then falls back to anyone else with enough authority (lowest sufficient first).
+function findSpendApprover(team, requesterId, startId, amount, skipIds){
+  const byId = {}; team.forEach(m => { byId[m.id] = m; });
+  const skip = new Set([requesterId, ...(skipIds || [])].filter(Boolean));
+  let cur = startId; let hops = 0;
+  while (cur && byId[cur] && hops < 12){
+    const m = byId[cur];
+    if (!skip.has(m.id) && memberSpendAuthority(m) >= amount) return m;
+    cur = reportsToOf(m); hops++;
+  }
+  const rest = team.filter(m => !skip.has(m.id) && memberSpendAuthority(m) >= amount).sort((a, b) => memberSpendAuthority(a) - memberSpendAuthority(b));
+  return rest[0] || null;
+}
+function spendLatestRequest(campaignId){
+  try { return db.prepare('SELECT * FROM budget_approval_requests WHERE campaignid = ? ORDER BY createdat DESC LIMIT 1').get(campaignId) || null; } catch (e){ return null; }
+}
+// 'not_required' | 'none' | 'pending' | 'needs_approver' | 'approved' | 'stale' | 'declined'
+function spendStatusFor(campaign){
+  const accountId = campaign.accountId;
+  const amount = campaignPlanAmount(campaign.id, campaign);
+  if (!spendControlsOn(accountId)) return { required: false, status: 'not_required', amount };
+  const approvedAt = aliasVal(campaign, 'spendapprovedat'); const approvedAmt = Number(aliasVal(campaign, 'spendapprovedamount')) || 0;
+  const last = spendLatestRequest(campaign.id);
+  const sameAmt = last && Math.abs(Number(last.amount) - amount) < 0.005;
+  if (last && sameAmt && (last.status === 'pending' || last.status === 'needs_approver')) return { required: true, status: last.status, amount, requestId: last.id, approverName: last.approvername || null };
+  if (approvedAt && amount <= approvedAmt + 0.005) return { required: true, status: 'approved', amount, approvedAmount: approvedAmt, approvedAt, approvedBy: aliasVal(campaign, 'spendapprovedby') };
+  if (last && sameAmt && last.status === 'declined') return { required: true, status: 'declined', amount, requestId: last.id, decidedByName: last.decidedbyname, comment: last.comment };
+  if (approvedAt) return { required: true, status: 'stale', amount, approvedAmount: approvedAmt };
+  return { required: true, status: 'none', amount };
+}
+function spendMemberFromSession(req, accountId){
+  const session = authenticate(req);
+  if (!session || session.accountId !== accountId || session.platformuserid || !session.memberId) return null;
+  try { return db.prepare('SELECT id, name, email, level, reportsToId, status, spendauthority, spendunlimited FROM team_members WHERE id = ? AND accountId = ?').get(session.memberId, accountId) || null; } catch (e){ return null; }
+}
+function spendNotify(to, subject, text){
+  if (!to) return;
+  try { sendTransactionalEmail({ to, subject, textBody: text, htmlBody: '<p>' + escapeHtmlBasic(text).replace(/\n/g, '<br>') + '</p>' }).catch(() => {}); } catch (e){}
+}
+function csvCell(v){ const s = v === null || v === undefined ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+function csvOf(rows, cols){ return [cols.join(',')].concat(rows.map(r => cols.map(c => csvCell(r[c])).join(','))).join('\n'); }
+function sendCsv(res, name, body){
+  res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="' + name + '"', 'Cache-Control': 'no-store' });
+  res.end(body);
+}
+function spendRequestOut(r){
+  return { id: r.id, campaignId: r.campaignid, amount: Number(r.amount), status: r.status, requestedById: r.requestedbyid, requestedByName: r.requestedbyname, approverId: r.approverid, approverName: r.approvername,
+    createdAt: r.createdat, decidedAt: r.decidedat, decidedByName: r.decidedbyname, comment: r.comment, escalatedToId: r.escalatedtoid, escalatedAt: r.escalatedat };
+}
+
 function learnedCpmsFor(accountId){
   const out = {};
   try { db.prepare('SELECT channel, cpm, samples, "updatedAt" FROM account_learned_cpm WHERE accountId = ?').all(accountId).forEach(r => { out[r.channel] = { cpm: Number(r.cpm), samples: Number(r.samples) || 1, updatedAt: r.updatedAt || r.updatedat || null }; }); } catch (e){}
@@ -18640,7 +18777,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['account_plan_scenarios', 'account_rate_card_minimums', 'account_learned_cpm', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps']);
+const CATALOG_EXEMPT = new Set(['account_plan_scenarios', 'account_rate_card_minimums', 'account_learned_cpm', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -20693,14 +20830,32 @@ function getCampaignsForAccount(accountId){
 // API response now explicitly opts out of caching — this API has no
 // endpoint where a stale cached response (a 404, or worse, another
 // account's data) is ever correct to serve.
+// 2026-10-09 — CORS is an allow-list, not '*'. The portal calls the API from
+// the same origin (Vercel rewrites /api to Railway), so it never needs CORS;
+// the list only covers Verilume's own sites, local development, and anything
+// added in CORS_ALLOWED_ORIGINS (comma separated).
+const CORS_ALLOWED = new Set(['https://www.verilume.ai', 'https://verilume.ai', 'https://www.cxmedia.ai', 'https://cxmedia.ai'].concat(String(process.env.CORS_ALLOWED_ORIGINS || '').split(',').map(x => x.trim().replace(/\/+$/, '')).filter(Boolean)));
+function corsOriginFor(req){
+  const o = String((req && req.headers && req.headers.origin) || '');
+  if (!o) return null;
+  if (CORS_ALLOWED.has(o)) return o;
+  if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o)) return o;
+  return null;
+}
+function applyApiSecurityHeaders(req, res){
+  const o = corsOriginFor(req);
+  if (o){ res.setHeader('Access-Control-Allow-Origin', o); res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS'); res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Admin-Token'); }
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+}
 function sendJson(res, status, obj){
   const body = JSON.stringify(obj);
   res.writeHead(status, {
     'Content-Type': 'application/json',
     'Cache-Control': 'no-store, must-revalidate',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Admin-Token'
+    'X-Content-Type-Options': 'nosniff'
   });
   res.end(body);
 }
@@ -26157,12 +26312,9 @@ async function platformSendCode(email, purpose, code, link){
 function escapeHtmlBasic(t){ return String(t == null ? '' : t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 async function handleRequest(req, res) {
+  applyApiSecurityHeaders(req, res);
   if (req.method === 'OPTIONS'){
-    res.writeHead(204, {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Admin-Token'
-    });
+    res.writeHead(204);
     return res.end();
   }
 
@@ -26592,7 +26744,7 @@ async function handleRequest(req, res) {
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-09-key-hardening',
+        buildStamp: '2026-10-09-spend-authority',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
@@ -29204,8 +29356,7 @@ async function handleRequest(req, res) {
         const typeSlug = loaded.contentType.replace(/_/g, '-');
         res.writeHead(200, {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          'Content-Disposition': `attachment; filename="voice-contest-${typeSlug}-${interviewId}.xlsx"`,
-          'Access-Control-Allow-Origin': '*'
+          'Content-Disposition': `attachment; filename="voice-contest-${typeSlug}-${interviewId}.xlsx"`
         });
         return res.end(Buffer.from(buf));
       } catch (e){
@@ -29232,8 +29383,7 @@ async function handleRequest(req, res) {
       const typeSlug = loaded.contentType.replace(/_/g, '-');
       res.writeHead(200, {
         'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': `attachment; filename="voice-contest-${typeSlug}-${interviewId}.csv"`,
-        'Access-Control-Allow-Origin': '*'
+        'Content-Disposition': `attachment; filename="voice-contest-${typeSlug}-${interviewId}.csv"`
       });
       return res.end(csv);
     }
@@ -30843,10 +30993,10 @@ async function handleRequest(req, res) {
         const r = dqRun(accountId, specIn, range);
         if (!r.x) return sendJson(res, 404, { error: 'nothing to export for that question' });
         const x = r.x; const base = `${x.fileSlug}-${new Date().toISOString().slice(0, 10)}`;
-        if (format === 'csv'){ res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${base}.csv"`, 'Access-Control-Allow-Origin': '*' }); return res.end(cardToCsv(x)); }
-        if (format === 'pdf'){ res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${base}.pdf"`, 'Access-Control-Allow-Origin': '*' }); return res.end(cardToPdf(x)); }
+        if (format === 'csv'){ res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${base}.csv"` }); return res.end(cardToCsv(x)); }
+        if (format === 'pdf'){ res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${base}.pdf"` }); return res.end(cardToPdf(x)); }
         const buf = await cardToXlsx(x);
-        res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="${base}.xlsx"`, 'Access-Control-Allow-Origin': '*' });
+        res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="${base}.xlsx"` });
         return res.end(Buffer.from(buf));
       } catch (e){ console.warn('[fire-drill/ask-export] failed:', e.message); return sendJson(res, 500, { error: 'could not build the export' }); }
     }
@@ -30881,10 +31031,10 @@ async function handleRequest(req, res) {
         const r = fdRun(accountId, card, range);
         if (!r.x) return sendJson(res, 404, { error: 'nothing to export for that request' });
         const x = r.x; const base = `${x.fileSlug}-${range.from}-to-${range.through}`;
-        if (format === 'csv'){ res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${base}.csv"`, 'Access-Control-Allow-Origin': '*' }); return res.end(cardToCsv(x)); }
-        if (format === 'pdf'){ res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${base}.pdf"`, 'Access-Control-Allow-Origin': '*' }); return res.end(cardToPdf(x)); }
+        if (format === 'csv'){ res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${base}.csv"` }); return res.end(cardToCsv(x)); }
+        if (format === 'pdf'){ res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${base}.pdf"` }); return res.end(cardToPdf(x)); }
         const buf = await cardToXlsx(x);
-        res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="${base}.xlsx"`, 'Access-Control-Allow-Origin': '*' });
+        res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="${base}.xlsx"` });
         return res.end(Buffer.from(buf));
       } catch (e){ console.warn('[fire-drill/export] failed:', e.message); return sendJson(res, 500, { error: 'could not build the export' }); }
     }
@@ -30901,12 +31051,12 @@ async function handleRequest(req, res) {
         const x = String(qs.card || '').startsWith('search-') ? gscCardExport(req, accountId, qs.card) : buildStrategyCardExport(accountId, qs.card, range);
         if (!x) return sendJson(res, 404, { error: 'nothing to export for that card yet' });
         const base = `${x.fileSlug}-${range.from}-to-${range.through}`;
-        if (format === 'csv'){ res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${base}.csv"`, 'Access-Control-Allow-Origin': '*' }); return res.end(cardToCsv(x)); }
+        if (format === 'csv'){ res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${base}.csv"` }); return res.end(cardToCsv(x)); }
         if (format === 'json') return sendJson(res, 200, cardToJson(x));
-        if (format === 'pptx'){ const pb = await cardToPptx(x); res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'Content-Disposition': `attachment; filename="${base}.pptx"`, 'Access-Control-Allow-Origin': '*' }); return res.end(pb); }
-        if (format === 'pdf'){ res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${base}.pdf"`, 'Access-Control-Allow-Origin': '*' }); return res.end(cardToPdf(x)); }
+        if (format === 'pptx'){ const pb = await cardToPptx(x); res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'Content-Disposition': `attachment; filename="${base}.pptx"` }); return res.end(pb); }
+        if (format === 'pdf'){ res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${base}.pdf"` }); return res.end(cardToPdf(x)); }
         const buf = await cardToXlsx(x);
-        res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="${base}.xlsx"`, 'Access-Control-Allow-Origin': '*' });
+        res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="${base}.xlsx"` });
         return res.end(Buffer.from(buf));
       } catch (e){ console.warn('[analytics/export] failed:', e.message); return sendJson(res, 500, { error: 'could not build the export' }); }
     }
@@ -32598,8 +32748,7 @@ Submit your response via the campaign_intake_turn tool.`;
         res.writeHead(200, {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           'Content-Disposition': 'attachment; filename="marketing-calendar.xlsx"',
-          'Content-Length': buf.length,
-          'Access-Control-Allow-Origin': '*'
+          'Content-Length': buf.length
         });
         return res.end(buf);
       } catch (e){
@@ -32634,8 +32783,7 @@ Submit your response via the campaign_intake_turn tool.`;
       const csv = '﻿' + lines.join('\r\n') + '\r\n'; // BOM so Excel/Sheets reliably detect UTF-8
       res.writeHead(200, {
         'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': 'attachment; filename="marketing-calendar.csv"',
-        'Access-Control-Allow-Origin': '*'
+        'Content-Disposition': 'attachment; filename="marketing-calendar.csv"'
       });
       return res.end(csv);
     }
@@ -33649,6 +33797,7 @@ Submit your response via the campaign_intake_turn tool.`;
         }
         const { entryId } = insertChannelPlanningRow({ ...body, campaignId });
         syncCampaignProductCreativeGroupsFromChannelPlanning(campaignId);
+        finLog(campaign.accountId, campaignId, 'budget_line_added', finActor(req, campaign.accountId), { entryId, channel: body.channel || null, budget: body.budget === undefined ? null : body.budget });
         return sendJson(res, 201, { entryId });
       } catch (e){
         if (e && e.status) return sendJson(res, e.status, { error: e.error });
@@ -33706,6 +33855,7 @@ Submit your response via the campaign_intake_turn tool.`;
       };
       const actualsTouched = ['actualCalls', 'actualQrScans', 'actualUrlVisits', 'actualLeads'].some(k => body[k] !== undefined);
       const now = new Date().toISOString();
+      if (body.budget !== undefined && Number(body.budget) !== Number(existing.budget)) finLog(campaign.accountId, campaignId, 'budget_line_changed', finActor(req, campaign.accountId), { entryId, channel: merged.channel, before: existing.budget, after: merged.budget });
       db.prepare(`UPDATE channel_planning_details SET
           allocationId = ?, channel = ?, partner = ?, audience = ?, buyType = ?, mediaType = ?, impressions = ?,
           dropDate = ?, hitDate = ?, endDate = ?, productYear = ?, productGroup = ?, creativeMarket = ?, budget = ?, region = ?, stage = ?,
@@ -34153,6 +34303,185 @@ Submit via the recommendation_from_intake tool.`;
       return sendJson(res, 200, { clientApprovedAt: now, clientApprovedBy: actorName });
     }
 
+    // ---------- Spend Authority, budget approvals, audit trail (2026-10-09) ----------
+    // GET/PATCH /api/accounts/:id/spend-controls — whether this account requires a Yes on campaign budgets. Admin sets it.
+    if ((req.method === 'GET' || req.method === 'PATCH') && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'spend-controls'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (req.method === 'GET'){
+        if (!requireAccount(req, res, accountId)) return;
+        return sendJson(res, 200, { required: spendControlsOn(accountId) });
+      }
+      if (!requireAdminMember(req, res, accountId)) return;
+      const body = (await readBody(req)) || {};
+      const before = spendControlsOn(accountId); const after = !!body.required;
+      db.prepare('UPDATE accounts SET spendapprovalrequired = ? WHERE accountId = ?').run(after ? 1 : 0, accountId);
+      if (before !== after) finLog(accountId, null, 'spend_controls_changed', finActor(req, accountId), { before, after });
+      return sendJson(res, 200, { required: after });
+    }
+
+    // GET /api/campaigns/:id/spend-approval — status plus the full request history for this campaign.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'spend-approval'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const history = db.prepare('SELECT * FROM budget_approval_requests WHERE campaignid = ? ORDER BY createdat DESC LIMIT 25').all(campaignId).map(spendRequestOut);
+      return sendJson(res, 200, { ...spendStatusFor(campaign), history });
+    }
+
+    // POST /api/campaigns/:id/spend-approval/request — ask for a Yes on this campaign's current budget total.
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'spend-approval' && parts[4] === 'request'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const accountId = campaign.accountId;
+      if (!spendControlsOn(accountId)) return sendJson(res, 200, { required: false, status: 'not_required' });
+      const cur = spendStatusFor(campaign);
+      if (cur.status === 'approved' || cur.status === 'pending') return sendJson(res, 200, cur);
+      const amount = cur.amount;
+      if (!(amount > 0)) return sendJson(res, 400, { error: 'Add budget lines to this campaign first, then request approval.' });
+      const requester = spendMemberFromSession(req, accountId);
+      const actor = finActor(req, accountId);
+      const team = spendTeam(accountId);
+      const approver = findSpendApprover(team, requester && requester.id, requester ? reportsToOf(requester) : null, amount);
+      const now = new Date().toISOString();
+      db.prepare("UPDATE budget_approval_requests SET status = 'superseded' WHERE campaignid = ? AND status IN ('pending','needs_approver')").run(campaignId);
+      const id = generateId('BAR');
+      const status = approver ? 'pending' : 'needs_approver';
+      db.prepare('INSERT INTO budget_approval_requests (id, accountid, campaignid, amount, requestedbyid, requestedbyname, approverid, approvername, status, createdat) VALUES (?,?,?,?,?,?,?,?,?,?)')
+        .run(id, accountId, campaignId, amount, requester ? requester.id : null, requester ? requester.name : actor.name, approver ? approver.id : null, approver ? approver.name : null, status, now);
+      finLog(accountId, campaignId, 'spend_approval_requested', actor, { requestId: id, amount, approver: approver ? approver.name : null, status });
+      if (approver) spendNotify(approver.email, 'Budget approval needed: ' + (campaign.name || campaignId) + ' (' + campaignId + ')',
+        (requester ? requester.name : actor.name) + ' asked for your Yes or No on the budget for campaign ' + (campaign.name || '') + ' (ID ' + campaignId + '): $' + amount.toLocaleString('en-US') + '.\nSign in to Verilume and open Approvals to respond. The campaign can keep moving while you decide; it cannot be sent to Trafficking until it is approved.');
+      const row = db.prepare('SELECT * FROM budget_approval_requests WHERE id = ?').get(id);
+      return sendJson(res, 201, { ...spendStatusFor(db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId)), request: spendRequestOut(row),
+        message: approver ? undefined : 'No one other than you has enough Spend Authority for this amount. An Admin needs to set Spend Authority on a team profile (for example the CMO) first.' });
+    }
+
+    // POST /api/campaigns/:id/spend-approval/:reqId/decision — { decision: 'yes' | 'no', comment }
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'spend-approval' && parts[5] === 'decision'){
+      const campaignId = decodeURIComponent(parts[2]); const reqId = decodeURIComponent(parts[4]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const accountId = campaign.accountId;
+      const body = (await readBody(req)) || {};
+      const decision = body.decision === 'yes' ? 'yes' : body.decision === 'no' ? 'no' : null;
+      if (!decision) return sendJson(res, 400, { error: 'decision must be yes or no' });
+      const comment = String(body.comment || '').trim().slice(0, 1000);
+      if (decision === 'no' && comment.length < 3) return sendJson(res, 400, { error: 'Add a short reason when answering No.' });
+      const me = spendMemberFromSession(req, accountId);
+      if (!me) return sendJson(res, 403, { error: 'Only a named team member can answer an approval. Sign in as yourself.' });
+      const reqRow = db.prepare('SELECT * FROM budget_approval_requests WHERE id = ? AND campaignid = ?').get(reqId, campaignId);
+      if (!reqRow) return sendJson(res, 404, { error: 'approval request not found' });
+      if (reqRow.status !== 'pending') return sendJson(res, 409, { error: 'This request is already ' + reqRow.status + '.' });
+      const actor = { type: 'member', id: me.id, name: me.name };
+      if (reqRow.requestedbyid && reqRow.requestedbyid === me.id){
+        finLog(accountId, campaignId, 'spend_approval_denied_self', actor, { requestId: reqId, reason: 'requester cannot approve own request' });
+        return sendJson(res, 403, { error: 'You asked for this approval, so someone else has to answer it (separation of duties).' });
+      }
+      const now = campaignPlanAmount(campaignId, campaign);
+      if (Math.abs(now - Number(reqRow.amount)) > 0.005){
+        db.prepare("UPDATE budget_approval_requests SET status = 'superseded' WHERE id = ?").run(reqId);
+        finLog(accountId, campaignId, 'spend_approval_superseded', actor, { requestId: reqId, requestedAmount: Number(reqRow.amount), currentAmount: now });
+        return sendJson(res, 409, { error: 'The budget changed from $' + Number(reqRow.amount).toLocaleString('en-US') + ' to $' + now.toLocaleString('en-US') + '. Request approval again.' });
+      }
+      if (decision === 'yes' && memberSpendAuthority(me) < now){
+        finLog(accountId, campaignId, 'spend_approval_denied_authority', actor, { requestId: reqId, amount: now, authority: memberSpendAuthority(me) });
+        return sendJson(res, 403, { error: 'Your Spend Authority does not cover $' + now.toLocaleString('en-US') + '. It needs someone with a higher limit.' });
+      }
+      const decidedAt = new Date().toISOString();
+      db.prepare('UPDATE budget_approval_requests SET status = ?, decidedat = ?, decidedbyid = ?, decidedbyname = ?, comment = ? WHERE id = ?')
+        .run(decision === 'yes' ? 'approved' : 'declined', decidedAt, me.id, me.name, comment || null, reqId);
+      if (decision === 'yes') db.prepare('UPDATE campaigns SET spendapprovedat = ?, spendapprovedby = ?, spendapprovedamount = ?, spendapprovalid = ? WHERE id = ?').run(decidedAt, me.name, now, reqId, campaignId);
+      finLog(accountId, campaignId, decision === 'yes' ? 'spend_approved' : 'spend_declined', actor, { requestId: reqId, amount: now, comment, requestedBy: reqRow.requestedbyname });
+      try {
+        const reqr = reqRow.requestedbyid ? db.prepare('SELECT email FROM team_members WHERE id = ?').get(reqRow.requestedbyid) : null;
+        if (reqr) spendNotify(reqr.email, 'Budget ' + (decision === 'yes' ? 'approved' : 'declined') + ': ' + (campaign.name || campaignId) + ' (' + campaignId + ')', me.name + ' answered ' + (decision === 'yes' ? 'Yes' : 'No') + ' on $' + now.toLocaleString('en-US') + ' for campaign ' + campaignId + '.' + (comment ? '\nNote: ' + comment : ''));
+      } catch (e){}
+      return sendJson(res, 200, spendStatusFor(db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId)));
+    }
+
+    // GET /api/accounts/:id/spend-approvals — what is waiting on me, what I asked for, and recent answers.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'spend-approvals'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const me = spendMemberFromSession(req, accountId);
+      const on = spendControlsOn(accountId);
+      const team = spendTeam(accountId);
+      const nowMs = Date.now();
+      // Lazy escalation: a request that has waited 3 days also goes to the next person up with enough authority.
+      try {
+        db.prepare("SELECT * FROM budget_approval_requests WHERE accountid = ? AND status = 'pending' AND escalatedtoid IS NULL").all(accountId).forEach(r => {
+          if (nowMs - new Date(r.createdat).getTime() < SPEND_ESCALATE_AFTER_MS) return;
+          const from = team.find(m => m.id === r.approverid);
+          const next = findSpendApprover(team, r.requestedbyid, from ? reportsToOf(from) : null, Number(r.amount), [r.approverid]);
+          if (!next) return;
+          db.prepare('UPDATE budget_approval_requests SET escalatedtoid = ?, escalatedat = ? WHERE id = ?').run(next.id, new Date().toISOString(), r.id);
+          finLog(accountId, r.campaignid, 'spend_approval_escalated', { type: 'system', id: null, name: 'System' }, { requestId: r.id, to: next.name, afterDays: 3 });
+          spendNotify(next.email, 'Budget approval waiting 3 days: ' + r.campaignid, 'A budget approval for campaign ' + r.campaignid + ' ($' + Number(r.amount).toLocaleString('en-US') + ') has been waiting 3 days on ' + (r.approvername || 'its approver') + '. Sign in to Verilume and open Approvals to respond.');
+        });
+      } catch (e){ console.warn('spend escalation skipped:', e.message); }
+      const rows = db.prepare('SELECT * FROM budget_approval_requests WHERE accountid = ? ORDER BY createdat DESC LIMIT 100').all(accountId);
+      const names = {}; try { db.prepare('SELECT id, name FROM campaigns WHERE accountId = ?').all(accountId).forEach(c => { names[c.id] = c.name; }); } catch (e){}
+      const out = r => ({ ...spendRequestOut(r), campaignName: names[r.campaignid] || null });
+      const awaitingMe = me ? rows.filter(r => r.status === 'pending' && r.requestedbyid !== me.id && memberSpendAuthority(me) >= Number(r.amount) && (r.approverid === me.id || r.escalatedtoid === me.id)).map(out) : [];
+      const mine = me ? rows.filter(r => r.requestedbyid === me.id).slice(0, 20).map(out) : [];
+      return sendJson(res, 200, { controlsOn: on, member: me ? { id: me.id, name: me.name, authority: memberSpendAuthority(me) === Infinity ? 'unlimited' : memberSpendAuthority(me) } : null, awaitingMe, mine, recent: rows.filter(r => r.status === 'approved' || r.status === 'declined').slice(0, 20).map(out) });
+    }
+
+    // GET /api/accounts/:id/financial-audit-log[?campaignId=&format=csv] — append-only trail. Admin only.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'financial-audit-log'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAdminMember(req, res, accountId)) return;
+      const q = new URL(req.url, 'http://x').searchParams;
+      const cid = q.get('campaignId');
+      const rows = (cid
+        ? db.prepare('SELECT * FROM financial_audit_log WHERE accountid = ? AND campaignid = ? ORDER BY occurredat DESC LIMIT 2000').all(accountId, cid)
+        : db.prepare('SELECT * FROM financial_audit_log WHERE accountid = ? ORDER BY occurredat DESC LIMIT 2000').all(accountId))
+        .map(r => ({ id: r.id, occurredAt: r.occurredat, eventType: r.eventtype, campaignId: r.campaignid, actorType: r.actortype, actorName: r.actorname, actorId: r.actorid, detail: r.detailjson }));
+      logAccountDataAccess({ accountId, resource: 'financial_audit_log', action: 'read', actorType: 'member', actorId: (authenticate(req) || {}).memberId || null, recordCount: rows.length, requestPath: '/api/accounts/' + accountId + '/financial-audit-log' });
+      if (q.get('format') === 'csv') return sendCsv(res, 'financial-audit-log.csv', csvOf(rows, ['occurredAt', 'eventType', 'campaignId', 'actorType', 'actorName', 'actorId', 'detail', 'id']));
+      return sendJson(res, 200, { events: rows });
+    }
+
+    // GET /api/accounts/:id/access-review[?format=csv] — everyone with access, their role and spend authority, for the quarterly review. Admin only.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'access-review'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAdminMember(req, res, accountId)) return;
+      const members = db.prepare('SELECT * FROM team_members WHERE accountId = ?').all(accountId);
+      const lastLogin = {}; try { db.prepare('SELECT memberId, MAX(createdAt) AS last FROM sessions WHERE accountId = ? GROUP BY memberId').all(accountId).forEach(s => { lastLogin[aliasVal(s, 'memberId')] = s.last; }); } catch (e){}
+      const rows = members.map(m => ({
+        name: m.name, email: m.email || '', level: m.level, function: aliasVal(m, 'functionGroup') || '', role: (Number(aliasVal(m, 'isAdmin')) === 1 ? 'Admin' : 'Team member'),
+        memberKind: aliasVal(m, 'memberkind') || 'internal', status: m.status || 'active', accessLevel: aliasVal(m, 'accesslevel') || '',
+        spendAuthority: memberSpendAuthority(m) === Infinity ? 'unlimited' : memberSpendAuthority(m), reportsToId: aliasVal(m, 'reportsToId') || '',
+        accessExpiresAt: aliasVal(m, 'accessexpiresat') || '', addedAt: aliasVal(m, 'createdAt') || '', lastSignIn: lastLogin[m.id] || ''
+      }));
+      finLog(accountId, null, 'access_review_exported', finActor(req, accountId), { people: rows.length });
+      const q = new URL(req.url, 'http://x').searchParams;
+      if (q.get('format') === 'csv') return sendCsv(res, 'access-review.csv', csvOf(rows, ['name', 'email', 'level', 'function', 'role', 'memberKind', 'status', 'accessLevel', 'spendAuthority', 'reportsToId', 'accessExpiresAt', 'addedAt', 'lastSignIn']));
+      return sendJson(res, 200, { generatedAt: new Date().toISOString(), people: rows });
+    }
+
+    // GET /api/accounts/:id/spend-exceptions — campaigns that are in market or already sent to Trafficking without a valid approval. Admin only.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'spend-exceptions'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAdminMember(req, res, accountId)) return;
+      if (!spendControlsOn(accountId)) return sendJson(res, 200, { controlsOn: false, exceptions: [] });
+      const today = new Date().toISOString().slice(0, 10);
+      const exceptions = [];
+      db.prepare('SELECT * FROM campaigns WHERE accountId = ?').all(accountId).forEach(c => {
+        const sent = !!aliasVal(c, 'trafficSentAt'); const sd = String(aliasVal(c, 'startDate') || '').slice(0, 10), ed = String(aliasVal(c, 'endDate') || '').slice(0, 10);
+        const inMarket = sd && sd <= today && (!ed || today <= ed);
+        if (!sent && !inMarket) return;
+        const st = spendStatusFor(c);
+        if (st.status !== 'approved') exceptions.push({ campaignId: c.id, name: c.name, amount: st.amount, status: st.status, sentToTrafficking: sent, inMarket: !!inMarket });
+      });
+      return sendJson(res, 200, { controlsOn: true, exceptions });
+    }
+
+
     // POST /api/campaigns/:id/approve-budget-overall — 2026-09-15, the AI
     // Brain Recommendation screen's second/overall approval step (Todd:
     // "line by line and then overall as the next step"), distinct from any
@@ -34167,6 +34496,7 @@ Submit via the recommendation_from_intake tool.`;
       const actorName = typeof body.actorName === 'string' ? body.actorName : '';
       const now = new Date().toISOString();
       db.prepare('UPDATE campaigns SET budgetApprovedAt = ?, budgetApprovedBy = ? WHERE id = ?').run(now, actorName, campaignId);
+      finLog(campaign.accountId, campaignId, 'plan_signed_off', finActor(req, campaign.accountId), { name: actorName });
       return sendJson(res, 200, { budgetApprovedAt: now, budgetApprovedBy: actorName });
     }
 
@@ -34636,10 +34966,7 @@ Reply directly to this, following the instructions you were given. Submit your r
             'Cache-Control': 'no-cache, no-store, no-transform',
             'Connection': 'keep-alive',
             'X-Accel-Buffering': 'no',
-            'Server-Timing': serverTimingHeader(),
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Admin-Token'
+            'Server-Timing': serverTimingHeader()
           });
           if (typeof res.flushHeaders === 'function') res.flushHeaders();
           streamOpen = true;
@@ -35207,6 +35534,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       if (!requireAccount(req, res, campaign.accountId)) return;
       const existing = db.prepare('SELECT id FROM channel_planning_details WHERE id = ? AND campaignId = ?').get(entryId, campaignId);
       if (!existing) return sendJson(res, 404, { error: 'channel planning entry not found' });
+      { const _d = db.prepare('SELECT channel, budget FROM channel_planning_details WHERE id = ?').get(entryId) || {}; finLog(campaign.accountId, campaignId, 'budget_line_deleted', finActor(req, campaign.accountId), { entryId, channel: _d.channel || null, budget: _d.budget === undefined ? null : _d.budget }); }
       db.prepare('DELETE FROM channel_planning_details WHERE id = ?').run(entryId);
       // Round 132x (2026-08-10) — recompute off whatever rows remain (see
       // syncCampaignProductCreativeGroupsFromChannelPlanning's own comment
@@ -36194,8 +36522,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
         res.writeHead(200, {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           'Content-Disposition': `attachment; filename="media-plan-${plan.year}.xlsx"`,
-          'Content-Length': buf.length,
-          'Access-Control-Allow-Origin': '*'
+          'Content-Length': buf.length
         });
         return res.end(buf);
       } catch (e){
@@ -36229,8 +36556,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       const csv = '﻿' + lines.join('\r\n') + '\r\n'; // BOM so Excel/Sheets reliably detect UTF-8
       res.writeHead(200, {
         'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': `attachment; filename="media-plan-${plan.year}.csv"`,
-        'Access-Control-Allow-Origin': '*'
+        'Content-Disposition': `attachment; filename="media-plan-${plan.year}.csv"`
       });
       return res.end(csv);
     }
@@ -37486,6 +37812,14 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       const campaign = db.prepare('SELECT id, accountId FROM campaigns WHERE id = ?').get(campaignId);
       if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
       if (!requireAccount(req, res, campaign.accountId)) return;
+      if (spendControlsOn(campaign.accountId)){
+        const full = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+        const st = spendStatusFor(full);
+        if (st.status !== 'approved'){
+          finLog(campaign.accountId, campaignId, 'send_to_trafficking_blocked', finActor(req, campaign.accountId), { spendStatus: st.status });
+          return sendJson(res, 409, { error: 'Budget spend approval is required before this campaign can be sent to trafficking.', code: 'spend_approval_required', spendStatus: st.status });
+        }
+      }
       const jobs = db.prepare('SELECT * FROM creative_jobs WHERE campaignId = ?').all(campaignId);
       if (!jobs.length){
         return sendJson(res, 400, { error: 'No creative jobs on this campaign yet — nothing to send to trafficking.' });
@@ -37504,6 +37838,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       }));
       db.prepare('UPDATE campaigns SET trafficSentAt = ?, trafficPackageJson = ? WHERE id = ?')
         .run(now, JSON.stringify(trafficPackage), campaignId);
+      finLog(campaign.accountId, campaignId, 'sent_to_trafficking', finActor(req, campaign.accountId), { jobs: jobs.length });
       return sendJson(res, 200, { trafficSentAt: now, package: trafficPackage });
     }
 
@@ -43327,11 +43662,12 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       // Explicit column list (not SELECT *) as of 2026-08-18 — team_members
       // now carries passwordHash/passwordSalt (registration rebuild) and
       // those must never leave the server, hashed or not.
-      const team = db.prepare(`SELECT id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, phone, phoneVerifiedAt, mustChangePassword, memberkind, handle, rolelabel, categories, accessexpiresat, phoneext, accesslevel, exportfeeds FROM team_members WHERE accountId = ? ORDER BY createdAt ASC`).all(accountId);
+      const team = db.prepare(`SELECT id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, phone, phoneVerifiedAt, mustChangePassword, memberkind, handle, rolelabel, categories, accessexpiresat, phoneext, accesslevel, exportfeeds, spendauthority, spendunlimited FROM team_members WHERE accountId = ? ORDER BY createdAt ASC`).all(accountId);
       team.forEach(m => {
         if (!m.handle){ m.handle = generateHandle(accountId, m.name, m.id); try { db.prepare('UPDATE team_members SET handle = ? WHERE id = ?').run(m.handle, m.id); } catch (e){} }
         m.accessExpiresAt = m.accessexpiresat || null; delete m.accessexpiresat; m.memberKind = m.memberkind || 'internal'; m.roleLabel = m.rolelabel || ''; m.phoneExt = m.phoneext || ''; delete m.phoneext; m.accessLevel = m.accesslevel || ((m.memberKind === 'viewer' || m.memberKind === 'recipient') ? 'view' : 'edit'); delete m.accesslevel; try { m.exportFeeds = JSON.parse(m.exportfeeds || '[]'); } catch (e){ m.exportFeeds = []; } delete m.exportfeeds; let c = []; try { c = JSON.parse(m.categories || '[]'); } catch (e){} m.categories = c;
         delete m.memberkind; delete m.rolelabel;
+        m.spendAuthority = (m.spendauthority === null || m.spendauthority === undefined) ? null : Number(m.spendauthority); m.spendUnlimited = Number(m.spendunlimited) === 1; delete m.spendauthority; delete m.spendunlimited;
       });
       return sendJson(res, 200, { team });
     }
@@ -43546,10 +43882,10 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       try { db.prepare('INSERT INTO export_fetch_log (id, accountid, memberid, membername, feed, format, rowcount, createdat) VALUES (?,?,?,?,?,?,?,?)').run(generateId('EXF'), accountId, sess && sess.memberId || null, who.name, feed.key, format, rows.length, new Date().toISOString()); } catch (e){ console.warn('export log failed', e.message); }
       const stamp = new Date().toISOString().slice(0, 10);
       if (format === 'json'){
-        res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Disposition': `attachment; filename="${accountId}-copy-feed-${stamp}.json"`, 'Access-Control-Allow-Origin': res.getHeader('Access-Control-Allow-Origin') || '*', 'Access-Control-Expose-Headers': 'Content-Disposition' });
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Disposition': `attachment; filename="${accountId}-copy-feed-${stamp}.json"`, 'Access-Control-Expose-Headers': 'Content-Disposition' });
         return res.end(JSON.stringify(copyFeedJson(rows), null, 2));
       }
-      res.writeHead(200, { 'Content-Type': 'text/csv', 'Content-Disposition': `attachment; filename="${accountId}-copy-feed-${stamp}.csv"`, 'Access-Control-Allow-Origin': res.getHeader('Access-Control-Allow-Origin') || '*', 'Access-Control-Expose-Headers': 'Content-Disposition' });
+      res.writeHead(200, { 'Content-Type': 'text/csv', 'Content-Disposition': `attachment; filename="${accountId}-copy-feed-${stamp}.csv"`, 'Access-Control-Expose-Headers': 'Content-Disposition' });
       return res.end(copyFeedCsv(rows));
     }
 
@@ -43669,6 +44005,22 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         db.prepare('UPDATE team_members SET memberkind = ? WHERE id = ?').run(body.memberKind, memberId);
         if (body.memberKind === 'external') db.prepare('UPDATE team_members SET accessexpiresat = COALESCE(accessexpiresat, ?) WHERE id = ?').run(addMonthsIso(new Date().toISOString(), 3), memberId);
         else db.prepare('UPDATE team_members SET accessexpiresat = NULL WHERE id = ?').run(memberId);
+      }
+      if (body.spendAuthority !== undefined || body.spendUnlimited !== undefined){
+        const cur = db.prepare('SELECT spendauthority, spendunlimited FROM team_members WHERE id = ?').get(memberId) || {};
+        const curA = (cur.spendauthority === null || cur.spendauthority === undefined) ? null : Number(cur.spendauthority);
+        const curU = Number(cur.spendunlimited) === 1 ? 1 : 0;
+        let nextA = curA, nextU = curU;
+        if (body.spendAuthority !== undefined){
+          if (body.spendAuthority === null || body.spendAuthority === ''){ nextA = null; }
+          else { const n = Number(body.spendAuthority); if (!isFinite(n) || n < 0) return sendJson(res, 400, { error: 'Spend authority must be a dollar amount of 0 or more.' }); nextA = n; }
+        }
+        if (body.spendUnlimited !== undefined) nextU = body.spendUnlimited ? 1 : 0;
+        if (nextA !== curA || nextU !== curU){
+          if (!requireAdminMember(req, res, existing.accountId)) return;
+          db.prepare('UPDATE team_members SET spendauthority = ?, spendunlimited = ? WHERE id = ?').run(nextA, nextU, memberId);
+          finLog(existing.accountId, null, 'spend_authority_changed', finActor(req, existing.accountId), { memberId, before: { amount: curA, unlimited: !!curU }, after: { amount: nextA, unlimited: !!nextU } });
+        }
       }
       const requestedIsAdmin = body.isAdmin !== undefined ? (body.isAdmin ? 1 : 0) : null;
       if (requestedIsAdmin !== null && requestedIsAdmin !== (existing.isAdmin ? 1 : 0)){
