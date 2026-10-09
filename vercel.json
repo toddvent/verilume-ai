@@ -201,6 +201,14 @@
       "destination": "/frontend/training/:file"
     },
     {
+      "source": "/assessment-framework.html",
+      "destination": "/frontend/assessment-framework.html"
+    },
+    {
+      "source": "/docs/security/:file(.+\\.pdf)",
+      "destination": "/frontend/security/:file"
+    },
+    {
       "source": "/docs/:file(.+\\.html)",
       "destination": "/frontend/:file"
     }
