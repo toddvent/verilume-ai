@@ -351,16 +351,39 @@ async function submitLevel(accountId, tier, ioReference, note, inModal){
   }
   return true;
 }
+let simPending = null;
 async function openClient(accountId){
   $('clientsErr').textContent = '';
-  const r = await api('POST', 'view-as', { accountId });
+  const r0 = await api('GET', 'view-as-options?accountId=' + encodeURIComponent(accountId));
+  if (!r0.ok){ $('clientsErr').textContent = (r0.data && r0.data.error) || 'Could not open that account.'; return; }
+  simPending = accountId;
+  const c = clients.find(x => x.accountId === accountId);
+  $('simTitle').textContent = 'Open ' + (c ? c.company : accountId);
+  $('simMember').innerHTML = '<option value="">Choose a person…</option>' + r0.data.members.map(m => `<option value="${esc(m.id)}">${esc(m.name)}${m.roleLabel ? ' · ' + esc(m.roleLabel) : ''}${m.kind !== 'internal' ? ' (' + esc(m.kind) + ')' : ''}</option>`).join('');
+  $('simRole').innerHTML = '<option value="">Choose a role…</option>' + r0.data.roles.map(x => `<option value="${esc(x.key)}">${esc(x.label)}</option>`).join('');
+  document.querySelector('input[name=simMode][value=self]').checked = true;
+  $('simErr').textContent = '';
+  $('simModal').classList.remove('hidden');
+}
+function cancelSim(){ simPending = null; $('simModal').classList.add('hidden'); }
+async function confirmSim(){
+  const mode = document.querySelector('input[name=simMode]:checked').value;
+  const body = { accountId: simPending };
+  if (mode === 'member'){ body.memberId = $('simMember').value; if (!body.memberId){ $('simErr').textContent = 'Choose a person.'; return; } }
+  if (mode === 'role'){ body.simRole = $('simRole').value; if (!body.simRole){ $('simErr').textContent = 'Choose a role.'; return; } }
+  $('simModal').classList.add('hidden');
+  await startView(body);
+}
+async function startView(body){
+  const accountId = body.accountId;
+  const r = await api('POST', 'view-as', body);
   if (!r.ok){ $('clientsErr').textContent = r.data.error || 'Could not open that account.'; return; }
   const d = r.data;
   try {
     localStorage.setItem('verilume_session_' + d.accountId, d.token);
     localStorage.removeItem('verilume_member_' + d.accountId);
     localStorage.setItem('verilume_active_account', d.accountId);
-    localStorage.setItem('verilume_platform_view_' + d.accountId, JSON.stringify({ name: d.name, role: d.role, company: d.company, at: Date.now() }));
+    localStorage.setItem('verilume_platform_view_' + d.accountId, JSON.stringify({ name: d.name, role: d.role, company: d.company, previewing: d.previewing || null, at: Date.now() }));
   } catch (e){ $('clientsErr').textContent = 'This browser blocked saving the session.'; return; }
   location.href = 'portal.html?accountId=' + encodeURIComponent(d.accountId);
 }
@@ -422,6 +445,19 @@ async function doLogout(expired){
   show('signinView');
 })();
 </script>
+<div id="simModal" class="hidden" style="position:fixed;inset:0;background:rgba(30,39,97,.45);display:flex;align-items:center;justify-content:center;z-index:50">
+  <div style="background:#fff;border-radius:12px;padding:24px;width:min(460px,92vw)">
+    <h3 id="simTitle" style="margin:0 0 6px;color:#1E2761"></h3>
+    <div style="font-size:13px;color:#555;margin-bottom:14px">Choose how to open this account. Previews follow that person's or role's real access rules and are read-only. Every visit is logged.</div>
+    <label style="display:block;font-size:14px;margin:8px 0"><input type="radio" name="simMode" value="self" checked> As Verilume team (my role)</label>
+    <label style="display:block;font-size:14px;margin:8px 0"><input type="radio" name="simMode" value="member"> Preview as a team member</label>
+    <select id="simMember" onfocus="document.querySelector('input[name=simMode][value=member]').checked=true" style="width:100%;margin:0 0 8px;padding:9px;border:1px solid #d5d8e0;border-radius:8px"></select>
+    <label style="display:block;font-size:14px;margin:8px 0"><input type="radio" name="simMode" value="role"> Preview as a role</label>
+    <select id="simRole" onfocus="document.querySelector('input[name=simMode][value=role]').checked=true" style="width:100%;margin:0 0 12px;padding:9px;border:1px solid #d5d8e0;border-radius:8px"></select>
+    <div class="err" id="simErr"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end"><button class="btn small" onclick="cancelSim()">Cancel</button><button class="btn small" style="background:#D08A3E;color:#fff" onclick="confirmSim()">Open</button></div>
+  </div>
+</div>
 <div id="lvlModal" class="hidden" style="position:fixed;inset:0;background:rgba(30,39,97,.45);display:flex;align-items:center;justify-content:center;z-index:50">
   <div style="background:#fff;border-radius:12px;padding:24px;width:min(440px,92vw)">
     <h3 id="lvlTitle" style="margin:0 0 14px;color:#1E2761"></h3>
