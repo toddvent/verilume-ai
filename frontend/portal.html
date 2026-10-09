@@ -7576,6 +7576,7 @@
       <a class="flink" onclick="goToStep('teamDevelopment')">Team Development →</a>
     </p>
 
+    <div id="spendControlsCard"></div>
     <div class="module open accent-advocacy" id="teamAddModule">
       <div class="module-head" onclick="toggleModule('teamAddModule')">
         <span class="modnum">3</span>
@@ -7622,6 +7623,12 @@
                non-admin team member (see applyIsAdminToggleGate()); a legacy
                account-level session or a real admin never sees this. -->
           <div id="teamNewIsAdminGateHint" class="hint" style="display:none;color:var(--advocacy);">Only an Admin can change this. Editing every other field above is still fine — ask an Admin to change Admin status.</div>
+        </div>
+        <div class="field" id="teamNewSpendWrap" style="display:none;">
+          <label for="teamNewSpend">Spend Authority (USD)</label>
+          <input type="number" id="teamNewSpend" min="0" step="1000" placeholder="e.g. 25000">
+          <label class="toggle-row" style="border:none;padding:0;align-items:center;margin-top:6px;"><input type="checkbox" id="teamNewSpendUnlimited" style="margin:0;width:18px;height:18px;"><span class="body" style="display:inline;">No limit</span></label>
+          <div class="hint">The largest campaign budget this person can say Yes to. Authority ladders up the org chart; CMO level has no limit unless you set one. Only an Admin can change this.</div>
         </div>
         <div class="field">
           <label for="teamNewKind">Membership</label>
@@ -13155,7 +13162,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-09-ttb-cards';
+const CXMEDIA_BUILD_STAMP = '2026-10-09-spend-authority';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -31121,6 +31128,7 @@ async function checkPortalViewerAdminStatus(){
   } catch (e){ /* leave the safe default in place */ }
   applyIsAdminToggleGate();
   applyTeamStepAdminGate(); // 2026-08-23 — same gate, applied to the whole step-team section; see its own comment.
+  try { spendRefresh(); } catch (e){}
 }
 // Disables the shared Admin checkbox (Add/Edit Team Member form) and shows
 // why, for a non-admin viewer only — never hides it outright, since "you
@@ -44232,6 +44240,123 @@ function renderTraffickingJobsSummary(){
   </tbody></table></div>`;
 }
 
+// ---------- Spend Authority & budget approvals (2026-10-09) ----------
+// A budget is requested for a Yes/No once the plan is signed off; planning and
+// creative carry on. Trafficking opens once someone with enough Spend Authority
+// (and who is not the requester) answers Yes.
+const spendUi = { controlsOn: false, awaiting: [], member: null, loaded: false };
+function spendFmt(n){ return '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }); }
+function spendToast(msg){
+  let t = document.getElementById('spendToast');
+  if (!t){ t = document.createElement('div'); t.id = 'spendToast'; t.setAttribute('role', 'status'); t.style.cssText = 'position:fixed;left:50%;bottom:28px;transform:translateX(-50%);max-width:min(560px,92vw);background:#1F2A5C;color:#fff;padding:12px 18px;border-radius:10px;font-size:0.9rem;box-shadow:0 8px 28px rgba(0,0,0,.28);z-index:100001;'; document.body.appendChild(t); }
+  t.textContent = msg; t.style.display = 'block';
+  clearTimeout(t._h); t._h = setTimeout(() => { t.style.display = 'none'; }, 7000);
+}
+async function spendRefresh(){
+  if (typeof dataSourceLabel !== 'undefined' && dataSourceLabel !== 'backend') return;
+  const acct = state && state.companyId; if (!acct) return;
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(acct)}/spend-approvals`);
+    if (!r.ok) return;
+    const d = await r.json();
+    spendUi.controlsOn = !!d.controlsOn; spendUi.awaiting = d.awaitingMe || []; spendUi.member = d.member || null; spendUi.loaded = true;
+  } catch (e){ return; }
+  spendRenderPill();
+}
+function spendRenderPill(){
+  let p = document.getElementById('spendPill');
+  const n = spendUi.awaiting.length;
+  if (!spendUi.controlsOn || !n){ if (p) p.style.display = 'none'; return; }
+  if (!p){ p = document.createElement('button'); p.id = 'spendPill'; p.type = 'button'; p.onclick = spendOpenApprovals; p.style.cssText = 'position:fixed;left:18px;bottom:18px;background:#B7791F;color:#fff;border:0;border-radius:999px;padding:10px 18px;font-weight:600;font-size:0.875rem;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);z-index:9000;'; document.body.appendChild(p); }
+  p.style.display = 'block';
+  p.textContent = n === 1 ? '1 budget needs your Yes / No' : `${n} budgets need your Yes / No`;
+}
+function spendOpenApprovals(){
+  let m = document.getElementById('spendModal'); if (m) m.remove();
+  m = document.createElement('div'); m.id = 'spendModal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(15,20,40,.55);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;';
+  const rows = spendUi.awaiting.map(r => `<div style="border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px;background:var(--surface,#fff);">
+    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;"><div><strong>${escapeHtml(r.campaignName || r.campaignId)}</strong><div class="hint" style="margin:2px 0 0;">Campaign ID ${escapeHtml(r.campaignId)} · requested by ${escapeHtml(r.requestedByName || 'a teammate')} · ${new Date(r.createdAt).toLocaleDateString()}</div></div><div style="font-size:1.25rem;font-weight:700;">${spendFmt(r.amount)}</div></div>
+    <textarea id="spendNote_${escapeHtml(r.id)}" rows="2" placeholder="Reason (required for No, optional for Yes)" style="width:100%;margin-top:10px;box-sizing:border-box;"></textarea>
+    <div style="display:flex;gap:10px;margin-top:10px;align-items:center;"><button type="button" class="btn-primary" onclick="spendDecide('${escapeHtml(r.id)}','${escapeHtml(r.campaignId)}','yes')">Yes, approve</button><button type="button" class="btn-ghost" onclick="spendDecide('${escapeHtml(r.id)}','${escapeHtml(r.campaignId)}','no')">No</button><span id="spendMsg_${escapeHtml(r.id)}" class="hint" style="margin:0;"></span></div></div>`).join('');
+  m.innerHTML = `<div style="background:var(--bg,#fff);color:var(--ink,#111);border-radius:14px;max-width:640px;width:100%;max-height:86vh;overflow:auto;padding:22px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><h3 style="margin:0;">Budget approvals waiting on you</h3><button type="button" onclick="document.getElementById('spendModal').remove()" aria-label="Close" style="background:none;border:0;font-size:1.4rem;cursor:pointer;color:inherit;">×</button></div>
+    <p class="hint" style="margin-top:0;">Your Spend Authority: ${spendUi.member ? (spendUi.member.authority === 'unlimited' ? 'no limit' : spendFmt(spendUi.member.authority)) : 'not set'}. Work on the campaign continues either way; Trafficking opens once a Yes is recorded.</p>
+    ${rows || '<p>Nothing is waiting on you.</p>'}</div>`;
+  document.body.appendChild(m);
+}
+async function spendDecide(reqId, campaignId, decision){
+  const note = (document.getElementById('spendNote_' + reqId) || {}).value || '';
+  const msg = document.getElementById('spendMsg_' + reqId);
+  if (decision === 'no' && note.trim().length < 3){ if (msg) msg.textContent = 'Add a short reason for No.'; return; }
+  if (msg) msg.textContent = 'Saving…';
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaignId)}/spend-approval/${encodeURIComponent(reqId)}/decision`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision, comment: note }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok){ if (msg) msg.textContent = d.error || 'Could not save that answer.'; if (r.status === 409) spendRefresh(); return; }
+  } catch (e){ if (msg) msg.textContent = 'Backend unreachable.'; return; }
+  await spendRefresh();
+  if (spendUi.awaiting.length) spendOpenApprovals(); else { const m = document.getElementById('spendModal'); if (m) m.remove(); }
+  spendToast(decision === 'yes' ? 'Approved. The requester has been told.' : 'Declined. The requester has been told your reason.');
+}
+// Called right after the overall budget sign-off. Never blocks the user.
+async function spendRequestAfterPlan(campaign){
+  if (!campaign || (typeof dataSourceLabel !== 'undefined' && dataSourceLabel !== 'backend')) return;
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/spend-approval/request`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok){ if (d && d.error) spendToast(d.error); return; }
+    if (d.status === 'pending') spendToast(`Budget ${spendFmt(d.amount)} sent to ${d.approverName || 'an approver'} for Yes / No (campaign ${campaign.id}). You can keep working; Trafficking opens once it is approved.`);
+    else if (d.status === 'needs_approver') spendToast(`No one on the team has Spend Authority for ${spendFmt(d.amount)} yet. Ask an Admin to set it in Your Team.`);
+  } catch (e){ /* non-blocking */ }
+}
+async function spendRequestNow(){
+  const c = (typeof findCampaign === 'function') ? findCampaign(currentCampaignId) : null;
+  if (c) await spendRequestAfterPlan(c);
+}
+async function spendDownload(path, filename){
+  const acct = state.companyId;
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(acct)}/${path}`);
+    if (!r.ok){ const d = await r.json().catch(() => ({})); spendToast(d.error || 'Could not download that report.'); return; }
+    const b = await r.blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  } catch (e){ spendToast('Backend unreachable.'); }
+}
+async function spendRenderControlsCard(){
+  const host = document.getElementById('spendControlsCard'); if (!host) return;
+  if (typeof dataSourceLabel !== 'undefined' && dataSourceLabel !== 'backend'){ host.innerHTML = ''; return; }
+  let on = false;
+  try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/spend-controls`); if (r.ok) on = !!(await r.json()).required; else { host.innerHTML = ''; return; } } catch (e){ host.innerHTML = ''; return; }
+  host.innerHTML = `<div class="module open accent-advocacy"><div class="module-body" style="padding:18px;">
+    <h3 style="margin:0 0 6px;">Financial controls</h3>
+    <p class="hint" style="margin-top:0;">Give each person a Spend Authority below (Edit a team member). When this is on, a campaign budget needs a Yes from someone with enough authority, other than the person who asked, before it can go to Trafficking. Planning and creative are never held up.</p>
+    <label class="toggle-row" style="border:none;padding:0;align-items:center;"><input type="checkbox" id="spendRequiredToggle" ${on ? 'checked' : ''} onchange="spendSetRequired(this.checked)" style="margin:0;width:18px;height:18px;"><span class="body" style="display:inline;"><strong>Require budget approval before Trafficking</strong></span></label>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;">
+      <button type="button" class="btn-ghost" onclick="spendDownload('financial-audit-log?format=csv','verilume-financial-change-history.csv')">Download change history (CSV)</button>
+      <button type="button" class="btn-ghost" onclick="spendDownload('access-review?format=csv','verilume-access-review.csv')">Download access review (CSV)</button>
+      <button type="button" class="btn-ghost" onclick="spendShowExceptions()">Show exceptions</button></div>
+    <div id="spendExceptions" style="margin-top:12px;"></div></div></div>`;
+}
+async function spendSetRequired(v){
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/spend-controls`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ required: !!v }) });
+    if (!r.ok){ const d = await r.json().catch(() => ({})); spendToast(d.error || 'Could not change that setting.'); return spendRenderControlsCard(); }
+    spendToast(v ? 'Budget approval is now required before Trafficking.' : 'Budget approval is no longer required.');
+    spendRefresh();
+  } catch (e){ spendToast('Backend unreachable.'); }
+}
+async function spendShowExceptions(){
+  const box = document.getElementById('spendExceptions'); if (!box) return;
+  box.textContent = 'Checking…';
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/spend-exceptions`);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok){ box.textContent = d.error || 'Could not load exceptions.'; return; }
+    if (!d.controlsOn){ box.textContent = 'Turn on budget approval to track exceptions.'; return; }
+    box.innerHTML = d.exceptions.length ? `<table style="width:100%;border-collapse:collapse;font-size:0.875rem;"><thead><tr><th align="left">Campaign</th><th align="left">Budget</th><th align="left">Approval</th><th align="left">Where it is</th></tr></thead><tbody>${d.exceptions.map(e => `<tr><td>${escapeHtml(e.name || e.campaignId)} <span class="hint" style="margin:0;">${escapeHtml(e.campaignId)}</span></td><td>${spendFmt(e.amount)}</td><td>${escapeHtml(e.status)}</td><td>${e.sentToTrafficking ? 'Sent to Trafficking' : 'In market by dates'}</td></tr>`).join('')}</tbody></table>` : 'No exceptions. Every campaign in market or sent to Trafficking has a valid approval.';
+  } catch (e){ box.textContent = 'Backend unreachable.'; }
+}
+
 // The campaign-wide handoff — gated server-side (not just here) on every
 // job having both an approved asset and a built tracking link.
 async function sendToTrafficking(){
@@ -44243,7 +44368,13 @@ async function sendToTrafficking(){
     });
     const data = await resp.json();
     if (!resp.ok){
-      if (status) status.textContent = data.error || "Couldn't send to trafficking.";
+      if (status){
+        status.textContent = data.error || "Couldn't send to trafficking.";
+        if (data.code === 'spend_approval_required'){
+          const b = document.createElement('button'); b.type = 'button'; b.className = 'btn-ghost'; b.style.marginLeft = '10px'; b.textContent = data.spendStatus === 'pending' ? 'Remind approver' : 'Request budget approval';
+          b.onclick = async () => { b.disabled = true; await spendRequestNow(); b.disabled = false; }; status.appendChild(b);
+        }
+      }
       return;
     }
     if (status) status.textContent = `Sent ${new Date(data.trafficSentAt).toLocaleString()} — ${data.package.length} creative asset(s) with their tracking links bundled and marked ready for your trafficking team.`;
@@ -48891,6 +49022,7 @@ async function cmpRecoApproveOverall(){
   } catch (e){ console.warn('cmpRecoApproveOverall failed:', e); }
   cmpRecoState.campaignId = null;
   if (approved){
+    spendRequestAfterPlan(campaign);
     // Offer to teach the Brain the approved CPMs before moving on; skipping goes straight to Media + CX Vision.
     const offered = await cmpRecoOfferTeachBrain(campaign);
     if (offered) return;
@@ -59856,6 +59988,7 @@ function renderTeamStep(){
   onTeamLevelChange();
   renderActingAsSelect();
   renderTeamRosterView();
+  try { spendRenderControlsCard(); } catch (e){}
   // Round 131 — Skill Sets and Self-Rating moved to their own Team
   // Development workstream; see renderTeamDevelopmentStep() below.
   applyTeamStepAdminGate(); // 2026-08-23 — admin-only visibility, see its own comment below.
@@ -62261,7 +62394,9 @@ function readTeamMemberForm(){
     memberKind: document.getElementById('teamNewKind').value || 'internal',
     roleLabel: document.getElementById('teamNewRoleLabel').value.trim(),
     categories: Array.from(document.querySelectorAll('#teamNewCategories input:checked')).map(i => i.value),
-    handle: document.getElementById('teamNewHandle').value.trim().replace(/^@/, '')
+    handle: document.getElementById('teamNewHandle').value.trim().replace(/^@/, ''),
+    spendAuthority: (document.getElementById('teamNewSpend').value || '').trim() === '' ? null : Number(document.getElementById('teamNewSpend').value),
+    spendUnlimited: !!document.getElementById('teamNewSpendUnlimited').checked
   };
 }
 const TEAM_CATEGORY_OPTIONS = ['Strategy', 'Customer Experiences', 'Growth and Performance', 'Media Science', 'PR', 'Copywriting', 'Design', 'Motion Graphics', 'Marketing Ops', 'Analysts'];
@@ -62283,6 +62418,7 @@ function resetTeamMemberForm(){
   document.getElementById('teamNewRoleLabel').value = '';
   document.getElementById('teamNewHandle').value = '';
   document.getElementById('teamNewHandleWrap').style.display = 'none';
+  { const w = document.getElementById('teamNewSpendWrap'); if (w) w.style.display = 'none'; document.getElementById('teamNewSpend').value = ''; document.getElementById('teamNewSpendUnlimited').checked = false; }
   renderTeamCategoryBoxes([]);
   onTeamLevelChange();
 }
@@ -62347,6 +62483,7 @@ function startEditTeamMember(id){
   document.getElementById('teamNewRoleLabel').value = m.roleLabel || '';
   document.getElementById('teamNewHandle').value = m.handle || '';
   document.getElementById('teamNewHandleWrap').style.display = '';
+  { document.getElementById('teamNewSpendWrap').style.display = ''; document.getElementById('teamNewSpend').value = (m.spendAuthority === null || m.spendAuthority === undefined) ? '' : m.spendAuthority; document.getElementById('teamNewSpendUnlimited').checked = !!m.spendUnlimited; const dis = !portalViewerIsAdmin; document.getElementById('teamNewSpend').disabled = dis; document.getElementById('teamNewSpendUnlimited').disabled = dis; }
   renderTeamCategoryBoxes(Array.isArray(m.categories) ? m.categories : []);
   populateTeamLevelSelect();
   populateTeamFunctionSelect();
@@ -62391,7 +62528,7 @@ async function saveTeamMemberEdit(){
   const m = findTeamMember(id);
   const flag = document.getElementById('teamAddFlag');
   if (!m){ cancelEditTeamMember(); return; }
-  const { name, email, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, handle } = readTeamMemberForm();
+  const { name, email, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, handle, spendAuthority, spendUnlimited } = readTeamMemberForm();
   if (!name || !level || !functionGroup){
     if (flag){ flag.textContent = 'Name, Level, and Function are all required.'; flag.style.color = 'var(--advocacy)'; }
     return;
@@ -62412,7 +62549,7 @@ async function saveTeamMemberEdit(){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/team/${encodeURIComponent(id)}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, handle: handle || undefined })
+        body: JSON.stringify({ name, email, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, handle: handle || undefined, spendAuthority, spendUnlimited })
       });
       persisted = resp.ok;
       if (!resp.ok && (resp.status === 403 || resp.status === 409 || resp.status === 400)){
@@ -62422,7 +62559,7 @@ async function saveTeamMemberEdit(){
       }
     } catch (e){ /* state already reflects the change either way */ }
   }
-  Object.assign(m, { name, email: email || null, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, handle: handle || m.handle });
+  Object.assign(m, { name, email: email || null, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, handle: handle || m.handle, spendAuthority, spendUnlimited });
   cancelEditTeamMember();
   if (flag){
     flag.style.color = 'var(--cx)';
