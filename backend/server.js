@@ -23922,7 +23922,7 @@ async function aicAsk(providerKey, question){
     return { text, cited };
   }
   if (providerKey === 'openai'){
-    const resp = await fetchWithTimeout('https://api.openai.com/v1/responses', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` }, body: JSON.stringify({ model: process.env.OPENAI_SEARCH_MODEL || 'gpt-4.1', tools: [{ type: 'web_search_preview' }], input: question }) }, 90000);
+    const resp = await fetchWithTimeout('https://api.openai.com/v1/responses', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` }, body: JSON.stringify({ model: process.env.OPENAI_SEARCH_MODEL || 'gpt-4.1', tools: [{ type: 'web_search_preview' }], input: question, store: false }) }, 90000);
     if (!resp.ok){ let b = ''; try { b = (await resp.text()).slice(0, 200); } catch (e2){} throw new Error('HTTP ' + resp.status + (b ? ': ' + b : '')); }
     const data = await resp.json();
     let text = ''; const cited = []; const seen = new Set();
@@ -25159,7 +25159,7 @@ async function callVendorForText(vendorKey, prompt, timeoutMs){
     const resp = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
-      body: JSON.stringify({ model: v.model, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({ model: v.model, messages: [{ role: 'user', content: prompt }], store: false }) // store:false — OpenAI does not keep the response as application state
     }, ms);
     if (!resp.ok) throw await vendorHttpError(resp);
     const data = await resp.json();
@@ -25176,9 +25176,10 @@ async function callVendorForText(vendorKey, prompt, timeoutMs){
     // GEMINI_MODEL is env-overridable specifically so this can be corrected
     // without a code change once vendorHttpError()'s response body below
     // names the actual bad model string.
-    const resp = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(v.model)}:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+    const resp = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(v.model)}:generateContent`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      // 2026-10-09 — key sent in a header, not the URL, so it never lands in request logs or error text.
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': String(process.env.GEMINI_API_KEY || '') },
       body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
     }, ms);
     if (!resp.ok) throw await vendorHttpError(resp);
@@ -26591,7 +26592,7 @@ async function handleRequest(req, res) {
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-08-pickup-budget',
+        buildStamp: '2026-10-09-key-hardening',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
