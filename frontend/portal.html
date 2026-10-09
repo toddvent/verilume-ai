@@ -1649,6 +1649,10 @@
 @media (max-width:900px){#brainDumpBody .bd-home-grid{grid-template-columns:1fr}#brainDumpBody .bd-home{padding:18px}}
 @media (max-width:900px){.bd-w-grid{grid-template-columns:1fr}.bd-welcome{padding:20px}}
   .ttb-hero{display:flex;align-items:center;gap:28px;flex-wrap:wrap;} .ttb-clock{color:var(--ink);display:block;} .ttb-big{font-size:1.3125rem;font-weight:500;line-height:1.2;}
+  #step-manageAccount.ttb-live > #kpiMetricsAdminModule{display:none;}
+  .ttb-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-top:22px;}
+  .ttb-card{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;font:inherit;color:var(--ink);background:var(--white);border:1px solid var(--line);border-radius:16px;padding:20px;cursor:pointer;min-height:210px;transition:border-color .15s ease,box-shadow .15s ease;} .ttb-card:hover{border-color:var(--ink);box-shadow:var(--shadow-sm);} .ttb-card:focus-visible{outline:2px solid var(--ink);outline-offset:2px;} .ttb-card.done{background:var(--paper-dim);}
+  .ttb-card-top{display:flex;width:100%;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;} .ttb-card-state{font-size:0.75rem;font-weight:600;color:var(--muted);} .ttb-card-kicker{font-size:0.6875rem;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);} .ttb-card-name{font-size:1.3125rem;font-weight:500;line-height:1.2;} .ttb-card-desc{font-size:0.9375rem;line-height:1.45;color:var(--muted);flex:1;} .ttb-card-open{font-size:0.875rem;font-weight:600;margin-top:8px;} .ttb-back{margin-bottom:14px;}
   .ttb-group{margin-top:26px;} .ttb-group-h{display:flex;align-items:center;gap:14px;margin-bottom:8px;} .ttb-group-h h2{margin:0;font-size:1.3125rem;font-weight:500;} .ttb-mini{flex:none;}
   .ttb-mod{border:1px solid var(--line);border-radius:14px;background:var(--white);margin:10px 0;} .ttb-mod.open{border-color:var(--ink);}
   .ttb-mod-h{display:flex;width:100%;align-items:center;gap:16px;padding:16px 18px;background:none;border:0;cursor:pointer;text-align:left;font:inherit;color:var(--ink);min-height:56px;} .ttb-mod-h:focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:14px;}
@@ -13151,7 +13155,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-08-contest-loader';
+const CXMEDIA_BUILD_STAMP = '2026-10-09-ttb-cards';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -28855,9 +28859,9 @@ async function saveSurveyCoreField(key, value){
   } catch (e){ return null; }
 }
 // ---- Train the Brain page (2026-09-30): four short sittings, recent Brain learnings, data consumed ----
-const ttb = { data: null, loading: false, error: false, tab: 'setup', open: null, manual: {}, loaded: {}, qs: { busy: false, result: null, error: '' } };
+const ttb = { data: null, loading: false, error: false, tab: 'setup', open: null, group: '', manual: {}, loaded: {}, qs: { busy: false, result: null, error: '' } };
 function ttbIsLive(){ return stratIsLive(); }
-function ttbSetHeader(){ const h = document.getElementById('ttbH1'), l = document.getElementById('ttbLede'); if (h) h.textContent = 'TRAIN THE BRAIN IN 24 HOURS'; if (l) l.textContent = 'About twenty minutes of setup in all, in any order. The Brain starts learning from each thing you give it as soon as you give it.'; }
+function ttbSetHeader(){ const h = document.getElementById('ttbH1'), l = document.getElementById('ttbLede'); if (h) h.textContent = 'TRAIN THE BRAIN'; if (l) l.textContent = 'HUMANS CREATED AI. THE BEST AND BRIGHTEST TRAINED AI. NOBODY KNOWS HOW TO TRAIN AI EXCEPT FOR YOU AND YOUR TEAM. IN ABOUT 20 MINUTES YOU WILL HAVE A TRAINED AI TEAM SUPPORTING YOU.'; }
 async function ttbLoad(){
   if (!ttbIsLive()) return;
   ttbInitHomes();
@@ -28949,6 +28953,8 @@ const TTB_ITEMS = {
     sample: `<div class="ttb-srow"><b>Dana Reyes</b><span>CMO</span></div><div class="ttb-srow"><b>Sam Ortiz</b><span>Director, Growth</span></div><div class="ttb-srow"><b>Priya Shah</b><span>Brand manager</span></div>`,
     opts: [['manual', 'Add Manually', 'team']] }
 };
+function ttbOpenGroup(k){ ttb.group = k; ttb.open = ''; ttbRerender(); try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e){} }
+function ttbCloseGroup(){ ttb.group = ''; ttb.open = ''; ttbRerender(); }
 function ttbToggle(k){ ttb.open = ttb.open === k ? '' : k; ttbRerender(); }
 // ---- Train the Brain rebuild (2026-09-30, build-j): every input on one page --------------------------------------------
 // Each item: what it is, a sample of what the Brain keeps, then up to three ways in.
@@ -29464,7 +29470,7 @@ function ttbModuleHtml(d, i){
   const manualBody = manualOpen ? (c.manual && c.manual.profile ? ttbProfileManualHtml(d) : `<div id="ttbSlot-${i.step}" class="ttb-slot"></div>`) : '';
   const inlineSite = i.step === 'companyProfile' ? ttbQuickStartHtml(d, true) : '';
   const body = open ? `<div class="ttb-mod-body">${status}<div class="ttb-mod-grid"><div><div class="ttb-tag">Example of what the Brain keeps</div><div class="ttb-sample">${sample}</div></div><div><div class="ttb-tag">Add it</div>${inlineSite}<div class="ttb-opts">${btns.join('')}</div>${c.upload && c.upload.direct ? `<p class="hint" style="margin:10px 0 0;">${escapeHtml(c.upload.formats)} ${c.upload.sample ? `<a class="flink" onclick="ttbDownloadSample('${i.step}')">Download a sample file</a>` : escapeHtml(c.upload.noSample || '')}</p>` : ''}<div class="ttb-viewrow">${viewHtml}</div></div></div>${manualBody ? `<div class="ttb-manual-wrap">${manualBody}</div>` : ''}</div>` : '';
-  return `<div class="ttb-mod ${i.done ? 'done' : ''} ${open ? 'open' : ''}"><button type="button" class="ttb-mod-h" aria-expanded="${open}" onclick="ttbToggle('${i.step}')"><span class="ttb-check" aria-label="${i.done ? 'Done' : 'Not done yet'}">${i.done ? '&#10003;' : ''}</span><span class="ttb-mod-t"><span class="ttb-name">${escapeHtml(i.label)}</span><span class="ttb-benefit">${escapeHtml(cfg.benefit)}</span></span><span class="ttb-chev" aria-hidden="true">${open ? '&#9652;' : '&#9662;'}</span></button>${body}</div>`;
+  return `<div class="ttb-mod ${i.done ? 'done' : ''} ${open ? 'open' : ''}"><button type="button" class="ttb-mod-h" aria-expanded="${open}" onclick="ttbToggle('${i.step}')"><span class="ttb-check" aria-label="${i.done ? 'Done' : 'Not done yet'}">${i.done ? '&#10003;' : ''}</span><span class="ttb-mod-t"><span class="ttb-name">${escapeHtml(i.step === 'kpiMetrics' ? 'Monthly KPI Metrics' : i.label)}</span><span class="ttb-benefit">${escapeHtml(cfg.benefit)}</span></span><span class="ttb-chev" aria-hidden="true">${open ? '&#9652;' : '&#9662;'}</span></button>${body}</div>`;
 }
 function ttbSetupHtml(d){
   const S = d.setup;
@@ -29472,10 +29478,27 @@ function ttbSetupHtml(d){
   S.steps.forEach(st => { const per = st.minutes / st.items.length; total += st.minutes; st.items.forEach(i => { if (i.done) done += per; }); });
   const left = Math.max(0, Math.ceil(total - done - 0.001));
   const allItems = [].concat(...S.steps.map(st => st.items));
-  if (ttb.open === null){ const first = allItems.find(i => !i.done); ttb.open = first ? first.step : ''; }
+  if (ttb.open === null) ttb.open = '';
+  // An outside jump straight to one item (e.g. a link that sets ttb.open) opens the card that holds it.
+  if (ttb.open && !ttb.group){ const holder = S.steps.find(st => st.items.some(i => i.step === ttb.open)); if (holder) ttb.group = holder.key; }
   const doneItems = allItems.filter(i => i.done).length;
   const hero = `<div class="strat-card ttb-hero"><div class="ttb-clockwrap">${ttbClock(total, done, 132)}</div><div><div class="ttb-big">${left === 0 ? 'Setup is done' : `${left} minute${left === 1 ? '' : 's'} to go`}</div><p class="strat-reading" style="margin:4px 0 0;">${left === 0 ? `All ${allItems.length} items are done. Open any item to update it; the Brain keeps learning from what you add.` : `${doneItems} of ${allItems.length} items done. About ${total} minutes of setup in all. Pick any item, in any order; one now and one later is fine.`}</p></div></div>`;
-  const groups = S.steps.map(st => `<div class="ttb-group"><div class="ttb-group-h"><span class="ttb-mini">${ttbClock(st.minutes, st.items.filter(i => i.done).length * st.minutes / st.items.length, 44, st.done ? st.title + ' done' : st.title + ', about ' + st.minutes + ' minutes')}</span><div><h2>${escapeHtml(st.title)}</h2><div class="strat-sub">${st.done ? 'Done' : `About ${st.minutes} min`}. ${escapeHtml(st.gain)}</div></div></div>${st.items.map(i => ttbModuleHtml(d, i)).join('')}</div>`).join('');
+  const COPY = {
+    company: { title: 'Your Company', kicker: '', desc: 'What does your company sell, who are your customers and what is your competitive positioning?' },
+    voice: { title: 'Your Voice', kicker: '', desc: 'How do you speak to customers across the marketing loop?' },
+    numbers: { title: 'Your Numbers', kicker: 'Success Metrics', desc: 'Upload historical sales, KPI targets and lead details to create your baseline.' },
+    plan: { title: 'Your Plan', kicker: '', desc: 'How do your success metrics translate into budgets and growth strategies?' },
+    team: { title: 'Your Team', kicker: '', desc: 'How should we organize your team experience and communication?' }
+  };
+  const cp = st => COPY[st.key] || { title: st.title, kicker: '', desc: st.gain };
+  const active = S.steps.find(st => st.key === ttb.group);
+  if (active){
+    const c = cp(active);
+    const head = `<div class="ttb-group-h"><span class="ttb-mini">${ttbClock(active.minutes, active.items.filter(i => i.done).length * active.minutes / active.items.length, 44, c.title)}</span><div><h2>${escapeHtml(c.title)}</h2><div class="strat-sub">${escapeHtml(c.desc)}</div></div></div>`;
+    return `${hero}<div class="ttb-group"><button type="button" class="strat-chip ttb-back" onclick="ttbCloseGroup()">&larr; All setup cards</button>${head}${active.items.map(i => ttbModuleHtml(d, i)).join('')}</div>`;
+  }
+  const cards = S.steps.map(st => { const c = cp(st); const n = st.items.filter(i => i.done).length; return `<button type="button" class="ttb-card${st.done ? ' done' : ''}" onclick="ttbOpenGroup('${st.key}')"><span class="ttb-card-top"><span class="ttb-mini">${ttbClock(st.minutes, n * st.minutes / st.items.length, 44, c.title)}</span><span class="ttb-card-state">${st.done ? '&#10003; Done' : `${n} of ${st.items.length} done`}</span></span><span class="ttb-card-kicker">${c.kicker ? escapeHtml(c.kicker) : '&nbsp;'}</span><span class="ttb-card-name">${escapeHtml(c.title)}</span><span class="ttb-card-desc">${escapeHtml(c.desc)}</span><span class="ttb-card-open">Open &rarr;</span></button>`; }).join('');
+  const groups = `<div class="ttb-cards">${cards}</div>`;
   return `${hero}${groups}`;
 }
 function ttbLearningsHtml(d){
@@ -29520,6 +29543,7 @@ function renderAiPartnerOnboardingHub(skipMmmFetch){
       }).join('')}
     </div>`).join('');
   if (typeof ttbReturnCards === 'function') ttbReturnCards(); // borrowed entry cards must leave before the hub is redrawn, or the redraw would delete them
+  const stepEl = document.getElementById('step-manageAccount'); if (stepEl) stepEl.classList.toggle('ttb-live', !!ttbIsLive());
   if (ttbIsLive()){ ttbSetHeader(); mount.innerHTML = ttbHtml() + `<details class="ttb-all"><summary>All setup cards (the full list, by role)</summary>${oldHtml}</details>`; if (!ttb.data && !ttb.loading) ttbLoad(); }
   else mount.innerHTML = oldHtml;
   if (ttbIsLive() && typeof ttbMountOpen === 'function') ttbMountOpen();
