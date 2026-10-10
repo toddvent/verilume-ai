@@ -6327,6 +6327,34 @@ db.exec(`
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
 `);
+// 2026-10-10 — Scenario plan lines: a plan uploaded INTO a scenario (month, partner, channel, stage, audience / ad group, spend, CPM,
+// impressions, optional CTR). Belongs to the scenario only; nothing here is read by the account budget, campaigns or targets.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS plan_scenario_lines (
+    id TEXT PRIMARY KEY,
+    scenarioId TEXT NOT NULL,
+    accountId TEXT NOT NULL,
+    lineNo INTEGER,
+    tab TEXT,
+    year INTEGER,
+    month INTEGER,
+    partner TEXT,
+    channel TEXT,
+    rawStage TEXT,
+    loopStage TEXT,
+    stageSource TEXT,
+    audience TEXT,
+    dma TEXT,
+    productGroup TEXT,
+    creativeType TEXT,
+    spend REAL,
+    cpm REAL,
+    impressions REAL,
+    ctr REAL,
+    createdAt TEXT NOT NULL
+  );
+`);
+try { db.exec('CREATE INDEX IF NOT EXISTS idx_plan_scenario_lines_sid ON plan_scenario_lines (scenarioId)'); } catch (e){}
 // 2026-10-08 — Rate Card Minimums: the smallest buy a media owner will take, by channel. Magazines can be set as a number of insertions at the
 // account's own cost per insertion; any other channel is a dollar minimum. Used as a floor in the plan, never as a reason to drop a channel.
 createTableIfNeeded(`
@@ -18321,6 +18349,66 @@ function planScenarioCompute(accountId, input){
     assumptions: ['Impressions per channel = spend ÷ that channel\'s own cost per thousand over the last 12 complete months.', 'Funnel rates (visits, leads, transactions, revenue per transaction) are this account\'s own where there is history; the engine labels any benchmark.', 'The mix moves results only through cost per thousand impressions. Channels are not given different conversion rates until media mix model results are available.'].concat(notes).concat(f.notes || []),
     customMix: anyMix, usedBudget: planBudget ? 'confirmed ' + year + ' budget' : 'last 12 months of spend' };
 }
+// ---- Scenario plan upload (2026-10-10) ----
+const PLAN_UPLOAD_MONTHS = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+function planUploadNum(v){ if (v == null || v === '') return null; const n = Number(String(v).replace(/[,$\s]/g, '')); return Number.isFinite(n) ? n : null; }
+function planUploadCtr(v){ if (v == null || v === '') return null; const raw = String(v).trim(); const hasPct = raw.indexOf('%') >= 0; const n = Number(raw.replace(/[%,\s]/g, '')); if (!Number.isFinite(n) || n < 0) return null; if (hasPct) return n / 100; return n > 1 ? n / 100 : n; }
+function planUploadMonth(v){
+  const t = String(v == null ? '' : v).trim().toLowerCase(); if (!t) return null;
+  let m = /^(\d{4})-(\d{1,2})/.exec(t); if (m && +m[2] >= 1 && +m[2] <= 12) return { year: +m[1], month: +m[2] };
+  m = /^(\d{1,2})\/\d{1,2}\/(\d{2,4})/.exec(t); if (m && +m[1] >= 1 && +m[1] <= 12) return { year: m[2].length === 2 ? 2000 + +m[2] : +m[2], month: +m[1] };
+  const letters = t.replace(/[^a-z]/g, ''); const i = letters.length >= 3 ? PLAN_UPLOAD_MONTHS.findIndex(n => n.startsWith(letters.slice(0, 3))) : -1;
+  if (i >= 0){ const ym = /(\d{4})/.exec(t); return { year: ym ? +ym[1] : null, month: i + 1 }; }
+  const n = Number(t); if (Number.isInteger(n) && n >= 1 && n <= 12) return { year: null, month: n };
+  return null;
+}
+function planUploadStageFromRaw(raw){
+  const t = String(raw || '').toLowerCase().trim(); if (!t) return null;
+  if (/retarget|remarket/.test(t) && !/^(awareness|consideration)/.test(t)) return 'Purchase';
+  const first = t.split('/')[0].trim();
+  for (const st of ['awareness', 'consideration', 'purchase', 'loyalty', 'advocacy']) if (first.startsWith(st)) return st.charAt(0).toUpperCase() + st.slice(1);
+  for (const st of ['awareness', 'consideration', 'purchase', 'loyalty', 'advocacy']) if (t.indexOf(st) >= 0) return st.charAt(0).toUpperCase() + st.slice(1);
+  return null;
+}
+function planUploadLoopStage(line){
+  const ch = String(line.channel || ''); const aud = String(line.audience || ''); const raw = String(line.rawStage || '');
+  let ruleChannel = ch;
+  if (/^sem$|search/i.test(ch) && /^brand\b/i.test(aud.trim()) && !/non[- ]?brand/i.test(aud)) ruleChannel = 'Brand Search';
+  else if (/retarget|remarket/i.test(raw) || /retarget|remarket/i.test(aud)) ruleChannel = 'Remarketing';
+  let r = null; try { r = loopStageForLine({ channel: ruleChannel, audience: '' }); } catch (e){ r = null; }
+  if (r && r.stage && (ruleChannel !== ch || /rule|brand|remarket/i.test(String(r.rule || '')))) return { stage: r.stage, source: 'rule' };
+  const fromRaw = planUploadStageFromRaw(raw); if (fromRaw) return { stage: fromRaw, source: 'file' };
+  if (r && r.stage) return { stage: r.stage, source: 'channel default' };
+  return { stage: null, source: 'none' };
+}
+function planUploadNormalize(tabs, fallbackYear){
+  const lines = []; const errors = []; let lineNo = 0;
+  (Array.isArray(tabs) ? tabs : []).slice(0, 12).forEach(tab => {
+    const tabName = String(tab && tab.name || '').slice(0, 60); const ty = /^(\d{4})$/.exec(tabName.trim());
+    (Array.isArray(tab && tab.rows) ? tab.rows : []).slice(0, 5000).forEach((r, idx) => {
+      const rowNo = Number(r && r.rowNo) || (idx + 2); const bad = reason => errors.push({ tab: tabName, row: rowNo, reason });
+      if (!String(r.month == null ? '' : r.month).trim() && !String(r.channel || '').trim() && planUploadNum(r.spend) == null) return; // blank or total-only row
+      const mo = planUploadMonth(r.month); if (!mo) return bad('Month not recognised: "' + String(r.month == null ? '' : r.month).slice(0, 30) + '".');
+      const channel = String(r.channel || '').trim().slice(0, 80); if (!channel) return bad('No channel.');
+      const spend = planUploadNum(r.spend); if (spend == null || spend < 0) return bad('Spend is missing or not a number.');
+      const year = mo.year || (ty ? +ty[1] : (Number(fallbackYear) || new Date().getUTCFullYear()));
+      let cpm = planUploadNum(r.cpm); let imps = planUploadNum(r.impressions); const ctr = planUploadCtr(r.ctr);
+      if ((imps == null || imps <= 0) && cpm > 0) imps = spend / cpm * 1000;
+      if ((cpm == null || cpm <= 0) && imps > 0) cpm = spend / imps * 1000;
+      const line = { tab: tabName, year, month: mo.month, partner: String(r.partner || '').trim().slice(0, 60), channel, rawStage: String(r.stage || '').trim().slice(0, 80), audience: String(r.audience || '').trim().slice(0, 160), dma: String(r.dma || '').trim().slice(0, 80), productGroup: String(r.productGroup || '').trim().slice(0, 80), creativeType: String(r.creativeType || '').trim().slice(0, 80), spend: Math.round(spend * 100) / 100, cpm: cpm != null ? Math.round(cpm * 100) / 100 : null, impressions: imps != null ? Math.round(imps) : null, ctr: ctr };
+      const ls = planUploadLoopStage(line); line.loopStage = ls.stage; line.stageSource = ls.source; line.lineNo = ++lineNo; line.rowNo = rowNo;
+      lines.push(line);
+    });
+  });
+  return { lines, errors };
+}
+function planUploadSummary(lines){
+  const by = (keyFn) => { const o = {}; lines.forEach(l => { const k = keyFn(l) || '(none)'; const x = o[k] || (o[k] = { lines: 0, spend: 0, impressions: 0 }); x.lines++; x.spend += l.spend || 0; x.impressions += l.impressions || 0; }); Object.keys(o).forEach(k => { o[k].spend = Math.round(o[k].spend); o[k].impressions = Math.round(o[k].impressions); }); return o; };
+  return { lines: lines.length, spend: Math.round(lines.reduce((n, l) => n + (l.spend || 0), 0)), impressions: Math.round(lines.reduce((n, l) => n + (l.impressions || 0), 0)),
+    byChannel: by(l => l.partner ? l.channel + ' · ' + l.partner : l.channel), byLoopStage: by(l => l.loopStage), byMonth: by(l => l.year + '-' + String(l.month).padStart(2, '0')),
+    noImpressions: lines.filter(l => !(l.impressions > 0)).length, withCtr: lines.filter(l => l.ctr != null).length, unmappedStage: lines.filter(l => !l.loopStage).length };
+}
+function planUploadLineOut(r){ const g = k => aliasVal(r, k); return { id: r.id, lineNo: g('lineNo'), tab: r.tab, year: r.year, month: r.month, partner: r.partner, channel: r.channel, rawStage: g('rawStage'), loopStage: g('loopStage'), stageSource: g('stageSource'), audience: r.audience, dma: r.dma, productGroup: g('productGroup'), creativeType: g('creativeType'), spend: r.spend, cpm: r.cpm, impressions: r.impressions, ctr: r.ctr }; }
 function planScenarioActor(req, accountId){
   const session = authenticate(req); let m = null;
   if (session && session.memberId){ try { m = db.prepare('SELECT name, isAdmin, level FROM team_members WHERE id = ? AND accountId = ?').get(session.memberId, accountId); } catch (e){} }
@@ -43575,6 +43663,42 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         if (req.method === 'POST' && parts.length === 5 && parts[4] === 'run'){
           const body = await readBody(req); const r = planScenarioCompute(accountId, body || {});
           return sendJson(res, r.error ? 400 : 200, r);
+        }
+        // POST /api/accounts/:id/plan-scenarios/upload { fileName, name?, year?, tabs:[{name, rows:[...]}], preview? } — a plan uploaded INTO scenarios (one per year).
+        // preview:true validates and summarises without saving. Nothing here touches the account budget, campaigns or targets.
+        if (req.method === 'POST' && parts.length === 5 && parts[4] === 'upload'){
+          const body = await readBody(req) || {};
+          const norm = planUploadNormalize(body.tabs, body.year);
+          if (!norm.lines.length) return sendJson(res, 400, { error: 'No usable plan lines were found in the file.', errors: norm.errors.slice(0, 50) });
+          const years = {}; norm.lines.forEach(l => { (years[l.year] || (years[l.year] = [])).push(l); });
+          const yearKeys = Object.keys(years).map(Number).sort();
+          const base = String(body.name || String(body.fileName || 'Uploaded plan').replace(/\.[a-z0-9]+$/i, '')).trim().slice(0, 50) || 'Uploaded plan';
+          const labelFor = (yr, ls) => { const ms = ls.map(l => l.month); return ms.length && Math.min.apply(null, ms) >= 10 ? 'Q4 ' + yr : (ms.length && Math.max.apply(null, ms) <= 3 ? 'Q1 ' + yr : String(yr)); };
+          const plan = yearKeys.map(yr => ({ year: yr, name: (base + ' — ' + labelFor(yr, years[yr])).slice(0, 80), lines: years[yr], summary: planUploadSummary(years[yr]) }));
+          if (body.preview) return sendJson(res, 200, { preview: true, scenarios: plan.map(p => ({ year: p.year, name: p.name, summary: p.summary })), errors: norm.errors.slice(0, 50), errorCount: norm.errors.length });
+          const created = []; const now = new Date().toISOString();
+          try {
+            plan.forEach(p => {
+              const id = generateId('SCN'); const mix = {}; p.lines.forEach(l => { mix[l.channel] = (mix[l.channel] || 0) + l.spend; });
+              db.prepare('INSERT INTO account_plan_scenarios (id, accountId, year, name, kind, status, band, workingMedia, mixJson, resultJson, notes, createdById, createdByName, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                .run(id, accountId, p.year, p.name, 'upload', 'draft', 'mid', Math.round(p.summary.spend), JSON.stringify(mix), null, 'Uploaded plan: ' + String(body.fileName || '').slice(0, 120) + '. Lines are stored with the scenario only.', actor.id, actor.name, now, now);
+              p.lines.forEach(l => { db.prepare('INSERT INTO plan_scenario_lines (id, scenarioId, accountId, lineNo, tab, year, month, partner, channel, rawStage, loopStage, stageSource, audience, dma, productGroup, creativeType, spend, cpm, impressions, ctr, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                .run(generateId('SPL'), id, accountId, l.lineNo, l.tab, l.year, l.month, l.partner, l.channel, l.rawStage, l.loopStage, l.stageSource, l.audience, l.dma, l.productGroup, l.creativeType, l.spend, l.cpm, l.impressions, l.ctr, now); });
+              created.push({ id, year: p.year, name: p.name, summary: p.summary });
+            });
+          } catch (e){
+            created.forEach(c => { try { db.prepare('DELETE FROM plan_scenario_lines WHERE scenarioId = ?').run(c.id); db.prepare('DELETE FROM account_plan_scenarios WHERE id = ?').run(c.id); } catch (e2){} });
+            console.error('[plan-scenarios/upload] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'The plan could not be saved: ' + (e && e.message || 'unknown error') });
+          }
+          return sendJson(res, 200, { saved: true, scenarios: created, errors: norm.errors.slice(0, 50), errorCount: norm.errors.length });
+        }
+        // GET /api/accounts/:id/plan-scenarios/:sid/lines — the stored plan lines of one scenario, with a summary.
+        if (req.method === 'GET' && parts.length === 6 && parts[5] === 'lines'){
+          const sid = decodeURIComponent(parts[4]);
+          const row = db.prepare('SELECT id, name, year FROM account_plan_scenarios WHERE id = ? AND accountId = ?').get(sid, accountId);
+          if (!row) return sendJson(res, 404, { error: 'Scenario not found.' });
+          const lines = db.prepare('SELECT * FROM plan_scenario_lines WHERE scenarioId = ? AND accountId = ?').all(sid, accountId).map(planUploadLineOut).sort((a, b) => (a.year - b.year) || (a.month - b.month) || ((a.lineNo || 0) - (b.lineNo || 0)));
+          return sendJson(res, 200, { scenarioId: sid, name: row.name, year: row.year, lines, summary: planUploadSummary(lines) });
         }
         if (req.method === 'POST' && parts.length === 4){
           const body = await readBody(req) || {};
