@@ -3928,6 +3928,7 @@
   .cd-select-option:hover{background:var(--panel, #F5F3EF);}
   .cd-select-option input[type="checkbox"]{margin:0;width:16px;height:16px;flex-shrink:0;accent-color:var(--advocacy);}
   .cd-select-option.cd-select-option-disabled{opacity:0.42;cursor:not-allowed;}
+  .cmp-stage select:disabled,.cmp-stage input:disabled:not([type=checkbox]):not([type=radio]),.cmp-stage textarea:disabled{background:var(--paper-dim);color:var(--muted);cursor:not-allowed;opacity:.75;}
   .cd-select-option.cd-select-option-disabled:hover{background:none;}
 
   /* Buttons — border-radius:999px always yields a full pill regardless of
@@ -5278,67 +5279,35 @@
          (Completed/Active/Starting Soon/Cancelled) still shows its own
          plain-text title, since those aren't the "nothing filtered" case
          this button replaces. See renderCampaignMgmtStep(). -->
-    <div style="margin:24px 0 10px;display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-      <div id="campaignMgmtTableTitle" style="margin:0;"></div>
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <!-- Round 132bx (2026-08-15), per direct review comment (Aug 15
-             tracker row 25): "110 TOTAL CAMPAIGNS LOOKS LOST ON PORTAL
-             HOME... a simple filter next to section titles allowing user
-             to filter based on in progress, complete, pending, starting
-             start date, active, completed, cancelled would add value." A
-             raw total count next to a section title doesn't tell anyone
-             anything actionable on its own — this select does. Distinct
-             from round 132bw's earlier removal of a combined Sort+Status
-             dropdown (that one duplicated the column-header sort arrows in
-             a confusing way); this is a single-purpose status filter, no
-             sort behavior attached. Options map onto real fields only —
-             campaign.status, campaign.cancelled, campaign.startDate — none
-             invented. See cmgmtSetStatusFilter()/renderCampaignMgmtStep(). -->
-        <select id="campaignMgmtStatusSelect" onchange="cmgmtSetStatusFilter(this.value)" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--white);color:var(--ink);">
+    <!-- 2026-10-10, per direct instruction: the Marketing Calendar's filters (Channel, Product Group, Creative Market) join the Status and
+         Allocation filters here. Row one holds Create New Campaign with the search beside it; every filter sits on the row below. -->
+    <div style="margin:24px 0 12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+      <div id="campaignMgmtTableTitle" style="margin:0;flex:0 0 auto;"></div>
+      <div style="flex:1 1 320px;min-width:240px;max-width:520px;"><input type="text" id="campaignMgmtSearchInput" class="cmgmt-search-input" placeholder="Search by campaign code or name…" value="" oninput="cmgmtSetSearch(this.value)" style="width:100%;max-width:none;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.875rem;padding:9px 14px;border-radius:20px;border:1px solid var(--line);background:var(--white);color:var(--ink);"></div>
+    </div>
+    <div class="mktcal-filters" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));max-width:none;align-items:end;margin-bottom:14px;">
+      <div class="mktcal-filter-field"><label for="campaignMgmtStatusSelect">Status</label>
+        <select id="campaignMgmtStatusSelect" onchange="cmgmtSetStatusFilter(this.value)">
           <option value="all">All Campaigns</option>
           <option value="pending">Pending</option>
           <option value="active">Active (In Market)</option>
           <option value="startingSoon">Starting Soon (next 14 days)</option>
           <option value="historical">Completed</option>
           <option value="cancelled">Cancelled</option>
-        </select>
-        <!-- Round 132bx (2026-08-15), per direct review comment (Aug 15
-             tracker: "unplanned campaigns"): "Unplanned campaigns uses a
-             different template than create campaign and manage campaign...
-             Maintain Unplanned Campaign designations within the Manage
-             Campaign Section as a Filter. It should look identical to the
-             manage campaign grid with a status as unallocated. Add another
-             filter next to the Campaign Status that includes Allocated and
-             Unallocated view options." The Media Plan page's old standalone
-             "Unplanned campaigns" list (a different <li> template) is
-             retired in favor of this — same grid, same row template,
-             combined (AND) with the status filter above. See
-             cmgmtSetAllocationFilter()/renderCampaignMgmtStep(). -->
-        <select id="campaignMgmtAllocationSelect" onchange="cmgmtSetAllocationFilter(this.value)" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--white);color:var(--ink);">
+        </select></div>
+      <div class="mktcal-filter-field"><label for="campaignMgmtAllocationSelect">Allocation</label>
+        <select id="campaignMgmtAllocationSelect" onchange="cmgmtSetAllocationFilter(this.value)">
           <option value="all">Allocated + Unallocated</option>
           <option value="allocated">Allocated</option>
           <option value="unallocated">Unallocated</option>
-        </select>
-        <span class="count" id="campaignMgmtActiveCount" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;"></span>
-      </div>
-    </div>
-    <!-- Round 132bv (2026-08-13) — with the standalone search box gone, a
-         name search now comes from the natural-language ask box above
-         (cfdWsSubmit()'s name-match fallback) and just filters this same
-         table in place. This banner is the only remaining on-page sign that
-         a name filter is active, plus a one-click way to clear it. -->
-    <!-- 2026-08-25, per direct instruction: "add a search feature centered
-         across the table for someone to type in a campaign code or name to
-         view campaign options that can be selected." Reuses cmgmtSetSearch()
-         (already wired to cmgmtSearch/renderCampaignMgmtStep() — round 132bv
-         built this exact filter for the natural-language ask box's
-         name-match fallback, see cfdWsSubmit()) rather than a new search
-         path; typing here filters the table in place the same way, and each
-         matching row's own "Manage Campaign" link is the "select it" step —
-         no separate dropdown/typeahead needed since the table below IS the
-         result list. -->
-    <div style="display:flex;justify-content:center;margin:4px 0 14px;">
-      <input type="text" id="campaignMgmtSearchInput" class="cmgmt-search-input" placeholder="Search by campaign code or name…" value="" oninput="cmgmtSetSearch(this.value)" style="width:100%;max-width:420px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.875rem;padding:9px 14px;border-radius:20px;border:1px solid var(--line);background:var(--white);color:var(--ink);">
+        </select></div>
+      <div class="mktcal-filter-field"><label for="campaignMgmtChannelSelect">Channel</label>
+        <select id="campaignMgmtChannelSelect" onchange="cmgmtSetFacetFilter('channel', this.value)"><option value="">All channels</option></select></div>
+      <div class="mktcal-filter-field"><label for="campaignMgmtProductGroupSelect">Product Group</label>
+        <select id="campaignMgmtProductGroupSelect" onchange="cmgmtSetFacetFilter('productGroup', this.value)"><option value="">All product groups</option></select></div>
+      <div class="mktcal-filter-field"><label for="campaignMgmtCreativeMarketSelect">Creative Market</label>
+        <select id="campaignMgmtCreativeMarketSelect" onchange="cmgmtSetFacetFilter('creativeMarket', this.value)"><option value="">All creative markets</option></select></div>
+      <div class="mktcal-filter-field" style="display:flex;align-items:center;justify-content:flex-end;"><span class="count" id="campaignMgmtActiveCount" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;"></span></div>
     </div>
     <div class="cmgmt-search-banner" id="campaignMgmtSearchBanner" style="display:none;"></div>
     <!-- Round 132bx (2026-08-13) — the Cancel report, shown only while
@@ -5396,6 +5365,7 @@
          cmgmtToggleColumnSort state this page's column-header sorting
          already uses, not a new sort mechanism. See
          cmgmtViewAllSortedByDate(). -->
+    <div id="campaignMgmtMoreRow" style="display:none;justify-content:center;align-items:center;gap:16px;margin-top:12px;flex-wrap:wrap;"></div>
     <div style="text-align:center;margin-top:10px;display:none;" id="campaignMgmtViewAllRow">
       <a class="flink" onclick="cmgmtViewAllSortedByDate()">View All Campaigns →</a>
     </div>
@@ -10279,6 +10249,7 @@
           <div class="module-body">
             <p class="cmp-stage-note" id="cmpLifecycleLockNote" style="padding:0 0 14px;">Unlocks once this campaign is created above — real data, not a placeholder screen, the moment there's a campaign to show it for.</p>
             <div id="cmpLifecycleFields" style="display:none;">
+              <div id="cmpReadOnlyEditNote" class="hint" style="display:none;margin:0 0 14px;padding:10px 12px;border-radius:8px;background:var(--paper-dim);border:1px solid var(--line);">This campaign has started, so it is view only. Lifecycle-Loop Stage, Campaign Audiences, Primary KPI and the KPI goal can still be completed or corrected here, so reporting and the Marketing Loop stay accurate.</div>
               <!-- Round 132yy (2026-08-11) fix — per direct feedback: "The
                    brief builder should follow the same format throughout
                    the area." This was a plain unstyled <div>+<p>, visually
@@ -10703,6 +10674,7 @@
 
               <div class="btn-row" style="margin-top:14px;">
                 <button type="button" class="btn-primary" onclick="cmpSaveLifecycleAndContinue()">Continue to Channels →</button>
+              <div id="cmpReadOnlySaveBar" style="display:none;align-items:center;gap:12px;flex-wrap:wrap;"><button type="button" class="btn-primary" onclick="cmpSaveLoopFieldsOnly()">Save stage, audience and KPI</button><span class="hint" id="cmpReadOnlySaveMsg" style="margin:0;"></span></div>
               </div>
             </div>
           </div>
@@ -14708,6 +14680,21 @@ function cmpApplyReadOnlyMode(readOnly){
     });
     stageEl.classList.toggle('cmp-stage-readonly', readOnly);
   });
+  // 2026-10-10, per direct instruction: a campaign that has started stays view-only except Lifecycle-Loop Stage, Campaign Audiences, Primary KPI and the KPI goal,
+  // so uploaded or historical campaigns can be completed. Saved with the narrow button below, never the full Lifecycle save.
+  const lcEl = document.getElementById('cmpStage-lifecycle');
+  if (lcEl){
+    const keep = ['#stageRow button', '#stageRow input', '#cmpSegmentRow button', '#cmpPrimaryKpi', '#cmpPrimaryKpiOther', '#cmpKpiGoal'];
+    keep.forEach(sel => lcEl.querySelectorAll(sel).forEach(el => { el.disabled = false; }));
+    const note = document.getElementById('cmpReadOnlyEditNote');
+    if (note) note.style.display = readOnly ? 'block' : 'none';
+    const bar = document.getElementById('cmpReadOnlySaveBar');
+    if (bar) bar.style.display = readOnly ? 'flex' : 'none';
+    const cont = lcEl.querySelector('button[onclick^="cmpSaveLifecycleAndContinue"]');
+    if (cont) cont.style.display = readOnly ? 'none' : '';
+    if (readOnly && typeof renderSegmentRow === 'function') renderSegmentRow(); // rebuilds the options with only the stage rule disabling any of them
+    if (typeof cmpUpdateKpiGateUI === 'function') cmpUpdateKpiGateUI();
+  }
   // Round 132bx (cont'd), per direct feedback: "we don't need the view
   // campaign with copy below" — once the campaign header (name/ID/status)
   // is showing above, this module is a fully-disabled restatement of that
@@ -31230,8 +31217,32 @@ let cmgmtStatusFilter = 'all';
 // drop out of both specific views, same behavior as before.
 let cmgmtAllocationFilter = 'all';
 let cmgmtSearch = '';
-let cmgmtSortKey = 'name';
+let cmgmtFacetFilter = { channel: '', productGroup: '', creativeMarket: '' };
+let cmgmtFacets = null, cmgmtFacetsLoading = false;
+// Per-campaign Channel / Product Group / Creative Market values from the plan lines, the same fields the Marketing Calendar filters on.
+async function cmgmtLoadFacets(){
+  if (cmgmtFacetsLoading || !state.companyId || dataSourceLabel !== 'backend') return;
+  cmgmtFacetsLoading = true;
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/campaign-line-facets`);
+    if (r.ok){ cmgmtFacets = await r.json(); cmgmtFillFacetSelects(); renderCampaignMgmtStep(); }
+  } catch (e){ console.warn('campaign facets not loaded', e); }
+  finally { cmgmtFacetsLoading = false; }
+}
+function cmgmtFillFacetSelects(){
+  const o = (cmgmtFacets && cmgmtFacets.options) || {};
+  const fill = (id, vals, all, key) => { const el = document.getElementById(id); if (!el) return; const cur = cmgmtFacetFilter[key]; el.innerHTML = `<option value="">${all}</option>` + (vals || []).map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join(''); el.value = (vals || []).includes(cur) ? cur : ''; };
+  fill('campaignMgmtChannelSelect', o.channels, 'All channels', 'channel');
+  fill('campaignMgmtProductGroupSelect', o.productGroups, 'All product groups', 'productGroup');
+  fill('campaignMgmtCreativeMarketSelect', o.creativeMarkets, 'All creative markets', 'creativeMarket');
+}
+function cmgmtSetFacetFilter(key, v){ cmgmtFacetFilter[key] = v || ''; renderCampaignMgmtStep(); }
+
+let cmgmtSortKey = 'startDate';
 let cmgmtSortDir = 'asc';
+// 2026-10-10: ten rows at a time, soonest start date first counting from today. cmgmtShown grows with Show 10 more and resets whenever a filter, search or sort changes.
+let cmgmtShown = 10, cmgmtSig = '';
+function cmgmtShowMore(all){ cmgmtShown = all ? 100000 : cmgmtShown + 10; renderCampaignMgmtStep(); }
 function cmgmtSetStatusFilter(key){
   cmgmtStatusFilter = key;
   renderCampaignMgmtStep();
@@ -31267,6 +31278,7 @@ function cmgmtSetSearch(v){
 function cmgmtViewAllSortedByDate(){
   cmgmtStatusFilter = 'all';
   cmgmtAllocationFilter = 'all';
+  cmgmtFacetFilter = { channel: '', productGroup: '', creativeMarket: '' };
   cmgmtSearch = '';
   cmgmtSortKey = 'startDate';
   cmgmtSortDir = 'asc';
@@ -31461,7 +31473,7 @@ function cmgmtSortValue(c, key){
   if (key === 'name') return (c.name || c.objective || '').toLowerCase();
   if (key === 'completedStep') return cmgmtLastCompletedStepIndex(c);
   if (key === 'dueDate') return cmgmtCampaignDueDate(c) || '';
-  if (key === 'startDate') return c.startDate || '';
+  if (key === 'startDate'){ const sd = c.startDate || ''; const today = new Date().toISOString().slice(0, 10); return (!sd ? '2_' : (sd >= today ? '0_' : '1_')) + sd; }
   if (key === 'endDate') return c.endDate || '';
   if (key === 'risk') return (cmgmtIsAtRisk(c) ? '0' : '1') + '_' + (c.startDate || '9999');
   return '';
@@ -31471,6 +31483,8 @@ function renderCampaignMgmtStep(){
   const listEl = document.getElementById('campaignMgmtList');
   if (!listEl) return;
   const all = state.campaigns.filter(c => !c.isAdHoc);
+  if (!cmgmtFacets && !cmgmtFacetsLoading) cmgmtLoadFacets();
+  { const m0 = document.getElementById('campaignMgmtMoreRow'); if (m0){ m0.style.display = 'none'; m0.innerHTML = ''; } }
 
   // Round 132bw (2026-08-13) fix — the Status dropdown/Overdue checkbox
   // that used to live in the column headers are gone; sync the new
@@ -31502,7 +31516,7 @@ function renderCampaignMgmtStep(){
   // headings, not the "nothing filtered yet" case the button replaces.
   if (titleEl){
     const filterTitle = CMGMT_TITLE_BY_FILTER[cmgmtStatusFilter];
-    const isDefaultView = !filterTitle && cmgmtAllocationFilter === 'all' && !cmgmtSearch.trim();
+    const isDefaultView = true; // 2026-10-10: the Create button stays put beside the search; the filter row below shows what is active
     if (isDefaultView){
       titleEl.innerHTML = `<button type="button" class="btn-primary" onclick="startNewCampaign()">＋ Create New Campaign</button>`;
     } else {
@@ -31523,6 +31537,7 @@ function renderCampaignMgmtStep(){
   // itself, or a hand-off like goToCampaignsAtRisk()/cmgmtSwitchToStatus()).
   const statusSelectEl = document.getElementById('campaignMgmtStatusSelect');
   if (statusSelectEl && statusSelectEl.value !== cmgmtStatusFilter) statusSelectEl.value = cmgmtStatusFilter;
+  if (cmgmtFacets){ const ch = document.getElementById('campaignMgmtChannelSelect'); if (ch && !ch.options.length || (ch && ch.options.length <= 1 && ((cmgmtFacets.options || {}).channels || []).length)) cmgmtFillFacetSelects(); }
   const allocationSelectEl = document.getElementById('campaignMgmtAllocationSelect');
   if (allocationSelectEl && allocationSelectEl.value !== cmgmtAllocationFilter) allocationSelectEl.value = cmgmtAllocationFilter;
   const searchBannerEl = document.getElementById('campaignMgmtSearchBanner');
@@ -31589,7 +31604,7 @@ function renderCampaignMgmtStep(){
     // Round 132bx (2026-08-15) — the "no filter active" fast path now
     // requires BOTH filters at their defaults, since the allocation filter
     // can narrow the result even while Status stays "All Campaigns."
-    const noFilterActive = cmgmtStatusFilter === 'all' && cmgmtAllocationFilter === 'all';
+    const noFilterActive = cmgmtStatusFilter === 'all' && cmgmtAllocationFilter === 'all' && !cmgmtFacetFilter.channel && !cmgmtFacetFilter.productGroup && !cmgmtFacetFilter.creativeMarket;
     const n = noFilterActive ? activeCampaignCount() : campaigns.length;
     const noun = noFilterActive ? 'active campaign' : 'campaign';
     countEl.textContent = `${n} ${noun}${n === 1 ? '' : 's'}`;
@@ -31613,9 +31628,15 @@ function renderCampaignMgmtStep(){
   // cfdWsSubmit()'s name-match fallback) but the underlying filter stays,
   // since a name search there works by setting this same state and
   // re-rendering.
+  { const ff = cmgmtFacetFilter; const fc = (cmgmtFacets && cmgmtFacets.campaigns) || {};
+    const pick = [['channel', 'channels'], ['productGroup', 'productGroups'], ['creativeMarket', 'creativeMarkets']];
+    if (ff.channel || ff.productGroup || ff.creativeMarket){
+      campaigns = campaigns.filter(c => pick.every(([k, f]) => !ff[k] || ((fc[c.id] || {})[f] || []).includes(ff[k])));
+    } }
   const q = cmgmtSearch.trim().toLowerCase();
   if (q) campaigns = campaigns.filter(c => (c.name || c.objective || '').toLowerCase().includes(q) || c.id.toLowerCase().includes(q));
 
+  { const sig = [cmgmtStatusFilter, cmgmtAllocationFilter, cmgmtSearch, cmgmtFacetFilter.channel, cmgmtFacetFilter.productGroup, cmgmtFacetFilter.creativeMarket, cmgmtSortKey, cmgmtSortDir].join('|'); if (sig !== cmgmtSig){ cmgmtSig = sig; cmgmtShown = 10; } }
   campaigns = campaigns.slice().sort((a, b) => {
     const av = cmgmtSortValue(a, cmgmtSortKey), bv = cmgmtSortValue(b, cmgmtSortKey);
     const cmp = av < bv ? -1 : av > bv ? 1 : 0;
@@ -31636,6 +31657,13 @@ function renderCampaignMgmtStep(){
   // CSS card-collapse rule below (.active-camp-table on narrow viewports)
   // — a standard responsive-table pattern, not a second parallel view to
   // keep in sync: same td markup, same data, CSS alone reflows it.
+  const cmgmtTotalRows = campaigns.length;
+  campaigns = campaigns.slice(0, cmgmtShown);
+  const moreEl = document.getElementById('campaignMgmtMoreRow');
+  if (moreEl){
+    if (cmgmtTotalRows > campaigns.length){ moreEl.style.display = 'flex'; moreEl.innerHTML = `<span class="hint" style="margin:0;">Showing ${campaigns.length} of ${cmgmtTotalRows}</span><a class="flink" onclick="cmgmtShowMore(false)">Show 10 more</a><a class="flink" onclick="cmgmtShowMore(true)">Show all</a>`; }
+    else { moreEl.style.display = cmgmtTotalRows > 10 ? 'flex' : 'none'; moreEl.innerHTML = cmgmtTotalRows > 10 ? `<span class="hint" style="margin:0;">Showing all ${cmgmtTotalRows}</span><a class="flink" onclick="cmgmtShown = 10; renderCampaignMgmtStep()">Show first 10</a>` : ''; }
+  }
   listEl.innerHTML = campaigns.map(c => `<tr>
       <td class="num" data-label="Campaign ID">${c.id}</td>
       <td class="name" data-label="Campaign Name">${c.name || c.objective}${c.cancelled ? ` <span class="badge" style="margin-left:6px;background:var(--paper-dim);color:var(--muted);border:1px solid var(--line);">Cancelled</span>` : (cmgmtIsAtRisk(c) ? ` <span class="badge weak" style="margin-left:6px;">At risk</span>` : '')}</td>
@@ -46758,7 +46786,7 @@ function loadExistingCampaignIntoForm(campaignId){
   // Profile), same honest-fallback convention as everywhere else here.
   const idLabel = c.campaignCode ? `${c.campaignCode} / ${c.id}` : c.id;
   document.getElementById('newCampaignHint').textContent = historical
-    ? `Viewing "${c.name || c.objective}" (${idLabel}) — read only, this campaign's start date has passed. Every step is expanded below for review.`
+    ? `Viewing "${c.name || c.objective}" (${idLabel}) — read only, this campaign's start date has passed. Every step is expanded below for review. Loop stage, audience and KPI can still be completed.`
     : `Editing "${c.name || c.objective}" (${idLabel}) — saved changes update this session's copy only (no backend update endpoint yet for these fields).`;
   // Round 30 (2026-08-05), per direct instruction: Create and Edit are now
   // the same card — this title/button swap is the only visible difference
@@ -73212,6 +73240,24 @@ function cmpRenderPerfMarketingApproveUI(){
 // Same "local only, this session" honesty convention as every other
 // existing-campaign edit here (see loadExistingCampaignIntoForm()'s own
 // comment) — no backend PATCH endpoint for these fields yet.
+async function cmpSaveLoopFieldsOnly(){
+  const msg = document.getElementById('cmpReadOnlySaveMsg');
+  const campaignId = document.getElementById('cmpExistingCampaign') ? document.getElementById('cmpExistingCampaign').value : '';
+  const existing = campaignId ? state.campaigns.find(c => c.id === campaignId) : null;
+  if (!existing){ if (msg) msg.textContent = 'No campaign is loaded.'; return; }
+  if (!selectedSegments.size){ const er = document.getElementById('cmpSegmentError'); if (er) er.textContent = 'Select at least one segment — required.'; return; }
+  const kpi = resolveSelectValue('cmpPrimaryKpi', 'cmpPrimaryKpiOther');
+  const goalRaw = document.getElementById('cmpKpiGoal').value;
+  const patch = { stage: selectedStage || '', segment: [...selectedSegments].join(', '), primaryKpi: kpi || '', kpiGoal: goalRaw ? Number(goalRaw) : null };
+  Object.assign(existing, patch);
+  if (msg) msg.textContent = 'Saving…';
+  let ok = true;
+  if (!existing.localOnly && dataSourceLabel === 'backend'){
+    try { const r = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(existing.id)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) }); ok = r.ok; } catch (e){ ok = false; }
+  }
+  try { renderCampaignsList(); renderActiveCampaigns(); renderCmpStageRail(); } catch (e){}
+  if (msg) msg.textContent = ok ? `Saved ${new Date().toLocaleTimeString()}. Run Preview in the Loop stage rules card to see the effect.` : 'Could not save. Check the connection and try again.';
+}
 function cmpSaveLifecycleAndContinue(){
   const campaignId = document.getElementById('cmpExistingCampaign').value;
   const existing = campaignId ? state.campaigns.find(c => c.id === campaignId) : null;
