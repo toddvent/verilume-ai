@@ -24250,11 +24250,86 @@ function scnSavedHtml(){
   const can = scn.data.canActivate;
   const label = s => s === 'active' ? 'Active target' : s === 'pending' ? 'Waiting for approval' : 'Draft';
   const trs = rows.map(r => { const o = r.result && r.result.outcome || {}; return `<tr><td><b>${escapeHtml(r.name)}</b><div class="strat-sub">${escapeHtml(r.createdByName || '')}${r.activatedByName ? ' · activated by ' + escapeHtml(r.activatedByName) : ''}</div></td><td><span class="scn-pill ${escapeHtml(r.status)}">${label(r.status)}</span></td><td>${scnFmt(o.workingMedia, 'money')}</td><td>${scnFmt(o.leads)}</td><td>${scnFmt(o.transactions)}</td><td>${scnFmt(o.revenue, 'money')}</td><td style="white-space:nowrap;">
-      <a class="flink" onclick="scnOpen('${r.id}')">Open a copy</a>
+      <a class="flink" onclick="scnOpen('${r.id}')">Open a copy</a>${r.kind === 'upload' ? ` · <a class="flink" onclick="scnViewLines('${r.id}')">${scn.lines && scn.lines.scenarioId === r.id ? 'Hide' : 'View'} plan lines</a>` : ''}
       ${r.status !== 'active' && can ? ` · <a class="flink" onclick="scnAct('${r.id}','activate')">Activate for the account</a>` : ''}
       ${r.status === 'draft' && !can ? ` · <a class="flink" onclick="scnAct('${r.id}','submit')">Send for approval</a>` : ''}
       ${r.status !== 'active' ? ` · <a class="flink" onclick="scnAct('${r.id}','archive')">Archive</a>` : ''}</td></tr>`; }).join('');
   return `<div class="strat-chart-label">Saved scenarios</div><div class="strat-table-wrap scn-list"><table class="strat-table"><thead><tr><th>Scenario</th><th>Status</th><th>Working media</th><th>Leads</th><th>Transactions</th><th>Gross revenue</th><th></th></tr></thead><tbody>${trs}</tbody></table></div>`;
+}
+// ---- Scenario plan upload (2026-10-10): a plan file goes INTO a scenario only; nothing touches the account budget, campaigns or targets ----
+const SCN_UPL_SPEC = [['month', ['month', 'period'], true], ['channel', ['channel'], true], ['spend', ['spend', 'budget'], true], ['partner', ['partner', 'vendor', 'publisher'], false], ['stage', ['marketing stage', 'stage'], false], ['audience', ['audience', 'ad group'], false], ['dma', ['dma'], false], ['productGroup', ['product group', 'product'], false], ['creativeType', ['creative'], false], ['cpm', ['cpm'], false], ['impressions', ['impression'], false], ['ctr', ['ctr', 'click-through', 'click through'], false]];
+async function scnReadPlanTabs(file){
+  const ext = (file.name.split('.').pop() || '').toLowerCase(); const grids = [];
+  if (ext === 'csv'){ grids.push({ name: '', grid: await mbuReadFileGrid(file) }); }
+  else if (ext === 'xlsx' || ext === 'xls'){
+    const XLSX = await cfiLoadSheetJs(); const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+    wb.SheetNames.forEach(n => grids.push({ name: n, grid: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false, defval: '' }).map(r => r.map(c => (c == null ? '' : String(c)))) }));
+  } else throw new Error('"' + file.name + '" is not a .csv or .xlsx file.');
+  const tabs = []; const skipped = [];
+  grids.forEach(g => {
+    const hit = mbuFindHeaderRow(g.grid, SCN_UPL_SPEC);
+    if (!hit){ skipped.push(g.name || 'the sheet'); return; }
+    const rows = [];
+    for (let i = hit.headerIndex + 1; i < g.grid.length; i++){
+      const r = g.grid[i] || []; if (!r.some(c => String(c || '').trim() !== '')) continue;
+      const o = { rowNo: i + 1 }; Object.keys(hit.colIndex).forEach(k => { o[k] = r[hit.colIndex[k]]; }); rows.push(o);
+    }
+    tabs.push({ name: g.name, rows });
+  });
+  return { tabs, skipped };
+}
+async function scnUploadPick(input){
+  const file = input && input.files && input.files[0]; if (!file) return; input.value = '';
+  scnMsg('Reading ' + file.name + '…');
+  try {
+    const { tabs, skipped } = await scnReadPlanTabs(file);
+    if (!tabs.length) throw new Error('No sheet in the file has Month, Channel and Spend columns.');
+    const j = await scnCall('/upload', 'POST', { fileName: file.name, tabs, year: scn.year, preview: true });
+    scn.upl = { fileName: file.name, tabs, skipped, preview: j }; scn.msg = ''; scnRender();
+  } catch (e){ scn.upl = null; scnMsg(e.message, 'err'); scnRender(); }
+}
+async function scnUploadConfirm(){
+  const u = scn.upl; if (!u) return; scnMsg('Saving the plan…');
+  try {
+    const j = await scnCall('/upload', 'POST', { fileName: u.fileName, tabs: u.tabs, year: scn.year });
+    const names = (j.scenarios || []).map(x => x.name).join(' and '); scn.upl = null;
+    if (j.scenarios && j.scenarios.length){ scn.year = j.scenarios[0].year; }
+    await scnLoad(); scnMsg('Created ' + names + '. They are drafts that belong to the scenario planner only; the account budget and targets are unchanged.', 'ok');
+  } catch (e){ scnMsg(e.message, 'err'); }
+}
+function scnUploadCancel(){ scn.upl = null; scn.msg = ''; scnRender(); }
+async function scnViewLines(id){
+  if (scn.lines && scn.lines.scenarioId === id){ scn.lines = null; scnRender(); return; }
+  scnMsg('Loading the plan lines…');
+  try { scn.lines = await scnCall('/' + encodeURIComponent(id) + '/lines', 'GET'); scn.msg = ''; scnRender(); }
+  catch (e){ scnMsg(e.message, 'err'); }
+}
+function scnSummaryTable(map, label){
+  const keys = Object.keys(map || {}); if (!keys.length) return '';
+  return `<div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>${label}</th><th>Lines</th><th>Spend</th><th>Impressions</th></tr></thead><tbody>${keys.sort((a, b) => map[b].spend - map[a].spend).map(k => `<tr><td>${escapeHtml(k)}</td><td>${map[k].lines}</td><td>${stratMoneyFull(map[k].spend)}</td><td>${stratNum(map[k].impressions)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+function scnUploadHtml(){
+  const u = scn.upl;
+  const btn = `<div class="strat-actions" style="margin-top:14px;"><button type="button" class="strat-chip" onclick="document.getElementById('scnUplFile').click()">Upload a plan</button><input id="scnUplFile" type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="scnUploadPick(this)"> <span class="strat-sub">.xlsx or .csv with Month, Partner, Channel, Marketing Stage, Audience | Ad Group, Spend, CPM and Impressions (CTR optional). Each tab or year becomes its own scenario. Nothing is added to the account budget.</span></div>`;
+  if (!u) return btn;
+  const p = u.preview || {}; const errs = (p.errors || []).slice(0, 8);
+  const cards = (p.scenarios || []).map(x => { const sm = x.summary || {}; return `<div style="margin:12px 0 0;"><p style="margin:0 0 4px;"><b>${escapeHtml(x.name)}</b> &middot; ${sm.lines} lines &middot; ${stratMoneyFull(sm.spend)} &middot; ${stratNum(sm.impressions)} impressions</p>
+      ${scnSummaryTable(sm.byChannel, 'Channel · partner')}${scnSummaryTable(sm.byLoopStage, 'Loop stage')}
+      ${sm.noImpressions ? `<p class="hint">${sm.noImpressions} line${sm.noImpressions === 1 ? ' has' : 's have'} no impressions and no CPM to work them out from.</p>` : ''}
+      <p class="hint" style="margin:4px 0 0;">${sm.withCtr ? sm.withCtr + ' lines carry a CTR.' : 'No CTR in the file. The forecast will use your historical CTR by channel and say so.'}</p></div>`; }).join('');
+  return `<div class="scn-editor" style="margin-top:14px;"><p style="margin:0 0 4px;"><b>Plan upload: ${escapeHtml(u.fileName)}</b></p>
+    <p class="strat-sub" style="margin:0;">Check the totals against your file. Nothing is saved until you create the scenarios.</p>${cards}
+    ${u.skipped && u.skipped.length ? `<p class="hint">Skipped (no Month, Channel and Spend columns): ${u.skipped.map(escapeHtml).join(', ')}.</p>` : ''}
+    ${p.errorCount ? `<p class="hint" style="color:var(--bad,#b42318);">${p.errorCount} row${p.errorCount === 1 ? '' : 's'} could not be read and will be left out: ${errs.map(e => escapeHtml((e.tab ? e.tab + ' row ' : 'Row ') + e.row + ': ' + e.reason)).join('; ')}${p.errorCount > errs.length ? '…' : ''}</p>` : ''}
+    <div class="strat-actions"><button type="button" class="strat-chip" style="background:var(--ink);color:#fff;" onclick="scnUploadConfirm()">Create ${(p.scenarios || []).length === 1 ? 'the scenario' : (p.scenarios || []).length + ' scenarios'}</button> <button type="button" class="strat-chip" onclick="scnUploadCancel()">Cancel</button></div></div>`;
+}
+function scnLinesHtml(){
+  const L = scn.lines; if (!L) return '';
+  const MN = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']; const sm = L.summary || {};
+  const rows = (L.lines || []).map(l => `<tr><td>${MN[l.month] || l.month} ${l.year}</td><td>${escapeHtml(l.partner || '')}</td><td>${escapeHtml(l.channel || '')}</td><td>${escapeHtml(l.rawStage || '')}</td><td>${l.loopStage ? escapeHtml(l.loopStage) + (l.stageSource && l.stageSource !== 'rule' ? ' <span class="strat-sub">(' + escapeHtml(l.stageSource) + ')</span>' : '') : '—'}</td><td>${escapeHtml(l.audience || '')}</td><td>${escapeHtml(l.productGroup || '')}</td><td>${stratMoneyFull(l.spend)}</td><td>${l.cpm != null ? '$' + Number(l.cpm).toFixed(2) : '—'}</td><td>${l.impressions != null ? stratNum(l.impressions) : '—'}</td><td>${l.ctr != null ? (l.ctr * 100).toFixed(2) + '%' : '—'}</td></tr>`).join('');
+  return `<div class="strat-chart-label" style="margin-top:14px;">Plan lines: ${escapeHtml(L.name || '')} &middot; ${sm.lines || 0} lines &middot; ${stratMoneyFull(sm.spend || 0)}</div>
+    <div class="strat-table-wrap" style="max-height:440px;overflow:auto;"><table class="strat-table"><thead><tr><th>Month</th><th>Partner</th><th>Channel</th><th>Stage in file</th><th>Loop stage</th><th>Audience | ad group</th><th>Product group</th><th>Spend</th><th>CPM</th><th>Impressions</th><th>CTR</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="hint" style="margin:6px 0 0;">Stored with this scenario only. To change the plan, upload the corrected file as a new scenario and archive this one.</p>`;
 }
 function scnRender(){
   const box = document.getElementById('stratScnBody'); if (!box || !scn.data) return;
@@ -24263,7 +24338,7 @@ function scnRender(){
     <div class="scn-row"><div><label for="scnYear">Plan year</label><select id="scnYear" onchange="scnSetYear(this.value)">${yrs.map(y => `<option value="${y}"${y === scn.year ? ' selected' : ''}>${y}</option>`).join('')}</select></div></div>
     <div class="scn-presets">${(scn.data.presets || []).map(scnPresetCard).join('')}</div>
     <div id="scnMsg" class="scn-msg ${scn.msgKind}">${escapeHtml(scn.msg)}</div>
-    ${scnEditorHtml()}${scnSavedHtml()}`;
+    ${scnUploadHtml()}${scnEditorHtml()}${scnSavedHtml()}${scnLinesHtml()}`;
   scnMixTotal();
 }
 
