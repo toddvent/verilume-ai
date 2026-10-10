@@ -23874,10 +23874,15 @@ async function bfRenderStrategy(){
 async function bfRenderBudget(){
   const card = document.getElementById('budgetFlowChartCard'); if (!card) return;
   const y = (typeof mbuSelectedYear !== 'undefined' && mbuSelectedYear) ? Number(mbuSelectedYear) : new Date().getFullYear();
-  card.innerHTML = `<div class="exec-chart-head"><h3>${y} Budget Flow</h3></div><p class="hint">Loading…</p>`;
   if (!(typeof dataSourceLabel !== 'undefined' && dataSourceLabel === 'backend' && state.companyId)){ card.innerHTML = ''; return; }
+  // Paint from cache straight away; only show Loading when nothing is cached for this year (no flash on repeat renders).
+  const seq = (bf.seq = (bf.seq || 0) + 1);
+  const head = `<div class="exec-chart-head"><h3>${y} Budget Flow</h3></div>`;
+  if (bf.cache[y]){ const h = head + bfBodyHtml(bf.cache[y]); if (card.innerHTML !== h) card.innerHTML = h; return; }
+  if (!card.querySelector('.donut-svg-wrap')) card.innerHTML = head + '<p class="hint">Loading…</p>';
   const d = await bfLoad(y);
-  card.innerHTML = `<div class="exec-chart-head"><h3>${y} Budget Flow</h3></div>${bfBodyHtml(d)}`;
+  if (seq !== bf.seq) return; // a newer render (e.g. year chip change) owns the card now
+  const h2 = head + bfBodyHtml(d); if (card.innerHTML !== h2) card.innerHTML = h2;
 }
 function stratNotOnFile(list){ return list && list.length ? `<p class="strat-empty">Not on file yet: ${escapeHtml(list.join('; '))}.</p>` : ''; }
 
