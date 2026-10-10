@@ -1768,7 +1768,7 @@
   .ttb-sec-meta{flex:none;font-size:0.8125rem;color:var(--muted);} .ttb-sec-b{padding:2px 20px 20px;}
   @media (max-width:700px){.ttb-sec-meta{display:none}}
   .ttb-group{margin-top:26px;} .ttb-group-h{display:flex;align-items:center;gap:14px;margin-bottom:8px;} .ttb-group-h h2{margin:0;font-size:1.3125rem;font-weight:500;} .ttb-mini{flex:none;}
-  .ttb-owner{display:inline-block;margin-top:4px;font-size:0.75rem;color:#1E2761;background:#EEF0FA;border-radius:4px;padding:1px 8px;} .ttb-assign{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:0.8125rem;} .ttb-assign select{flex:1;min-width:0;}
+  .ttb-owner{display:inline-block;align-self:flex-start;margin-top:6px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6562rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--cx);background:rgba(8,145,178,0.10);border:1px solid rgba(8,145,178,0.22);border-radius:999px;padding:3px 10px;white-space:nowrap;} .ttb-assign{margin-top:14px;max-width:420px;} .ttb-assign label{margin-bottom:6px;}
   .ttb-mod{border:1px solid var(--line);border-radius:14px;background:var(--white);margin:10px 0;} .ttb-mod.open{border-color:var(--ink);}
   .ttb-mod-h{display:flex;width:100%;align-items:center;gap:16px;padding:16px 18px;background:none;border:0;cursor:pointer;text-align:left;font:inherit;color:var(--ink);min-height:56px;} .ttb-mod-h:focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:14px;}
   .ttb-check{flex:none;width:30px;height:30px;border:2px solid var(--ink);border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:1.125rem;font-weight:800;} .ttb-mod.done .ttb-check{background:var(--ink);color:var(--white);}
@@ -29583,7 +29583,7 @@ function ttbAssignHtml(key){
   if (portalViewerIsAdmin === false) return '';
   const cur = ((ttb.assign || {})[key] || {}).memberId || '';
   const opts = state.team.filter(m => m.status !== 'inactive' && m.memberKind !== 'viewer' && m.memberKind !== 'recipient').map(m => `<option value="${m.id}"${m.id === cur ? ' selected' : ''}>${escapeHtml(m.name)}${m.roleLabel ? ' · ' + escapeHtml(posTitle(m.roleLabel)) : ''}</option>`).join('');
-  return `<div class="ttb-assign"><label for="ttbOwn-${key}">Owner</label><select id="ttbOwn-${key}" onchange="ttbSetAssign('${key}', this.value)"><option value="">Unassigned. The Admin does it</option>${opts}</select></div>`;
+  return `<div class="field ttb-assign"><label for="ttbOwn-${key}">Owner</label><select id="ttbOwn-${key}" onchange="ttbSetAssign('${key}', this.value)"><option value="">Unassigned. The Admin does it</option>${opts}</select></div>`;
 }
 function ttbMyTasksHtml(d){
   const me = typeof actingAsId !== 'undefined' ? actingAsId : null;
