@@ -24262,8 +24262,10 @@ async function scnReadPlanTabs(file){
   const ext = (file.name.split('.').pop() || '').toLowerCase(); const grids = [];
   if (ext === 'csv'){ grids.push({ name: '', grid: await mbuReadFileGrid(file) }); }
   else if (ext === 'xlsx' || ext === 'xls'){
-    const XLSX = await cfiLoadSheetJs(); const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
-    wb.SheetNames.forEach(n => grids.push({ name: n, grid: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false, defval: '' }).map(r => r.map(c => (c == null ? '' : String(c)))) }));
+    const XLSX = await cfiLoadSheetJs(); const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
+    const cellText = c => (c instanceof Date ? c.getFullYear() + '-' + String(c.getMonth() + 1).padStart(2, '0') + '-' + String(c.getDate()).padStart(2, '0') : (c == null ? '' : String(c)));
+    // raw values (not the cell's display format) so dollars and CPMs keep their full precision
+    wb.SheetNames.forEach(n => grids.push({ name: n, grid: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: '' }).map(r => r.map(cellText)) }));
   } else throw new Error('"' + file.name + '" is not a .csv or .xlsx file.');
   const tabs = []; const skipped = [];
   grids.forEach(g => {
@@ -24284,14 +24286,14 @@ async function scnUploadPick(input){
   try {
     const { tabs, skipped } = await scnReadPlanTabs(file);
     if (!tabs.length) throw new Error('No sheet in the file has Month, Channel and Spend columns.');
-    const j = await scnCall('/upload', 'POST', { fileName: file.name, tabs, year: scn.year, preview: true });
+    const j = await scnCall('/upload', 'POST', { fileName: file.name, tabs, preview: true });
     scn.upl = { fileName: file.name, tabs, skipped, preview: j }; scn.msg = ''; scnRender();
   } catch (e){ scn.upl = null; scnMsg(e.message, 'err'); scnRender(); }
 }
 async function scnUploadConfirm(){
   const u = scn.upl; if (!u) return; scnMsg('Saving the plan…');
   try {
-    const j = await scnCall('/upload', 'POST', { fileName: u.fileName, tabs: u.tabs, year: scn.year });
+    const j = await scnCall('/upload', 'POST', { fileName: u.fileName, tabs: u.tabs });
     const names = (j.scenarios || []).map(x => x.name).join(' and '); scn.upl = null;
     if (j.scenarios && j.scenarios.length){ scn.year = j.scenarios[0].year; }
     await scnLoad(); scnMsg('Created ' + names + '. They are drafts that belong to the scenario planner only; the account budget and targets are unchanged.', 'ok');
