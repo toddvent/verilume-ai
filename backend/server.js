@@ -34761,7 +34761,19 @@ Submit via the recommendation_from_intake tool.`;
         const clearPlaceholder = db.prepare("DELETE FROM channel_planning_details WHERE campaignId = ? AND channel = ? AND status = 'draft' AND (stage IS NULL OR stage = '') AND (impressions IS NULL OR impressions = 0)");
         [...new Set(channels.map(c => c && c.channel).filter(Boolean))].forEach(ch => clearPlaceholder.run(campaignId, ch));
       } catch (e){ console.warn('placeholder cleanup skipped', e.message); }
+      // 2026-10-10 — regeneration only ADDS channels this campaign does not already have a live line for;
+      // existing lines (approved or draft) are never touched or duplicated.
+      const existingChannelKeys = new Set();
+      try {
+        db.prepare("SELECT channel, status FROM channel_planning_details WHERE campaignId = ?").all(campaignId).forEach(r => {
+          const st = String(r.status || '').toLowerCase();
+          if (st === 'cancelled' || st === 'rejected') return;
+          existingChannelKeys.add(String(r.channel || '').trim().toLowerCase());
+        });
+      } catch (e){ console.warn('existing channel check skipped', e.message); }
+      const skippedExisting = [];
       for (const c of channels){
+        if (c && c.channel && existingChannelKeys.has(String(c.channel).trim().toLowerCase())){ skippedExisting.push(c.channel); continue; }
         const lineStage = normalizeChannelPlanningStage(c.stage);
         // 2026-09-22 fix, per Todd's direct report — see
         // estimateImpressionsFromBudget()'s own comment. The model's own
@@ -34798,7 +34810,7 @@ Submit via the recommendation_from_intake tool.`;
       for (const [st, amt] of Object.entries(stageBudgets)){
         if (amt > topBudget){ topBudget = amt; stage = st; }
       }
-      if (stage && stage !== campaign.stage){
+      if (stage && stage !== campaign.stage && !skippedExisting.length){ // rollup only when nothing pre-existed
         db.prepare('UPDATE campaigns SET stage = ? WHERE id = ?').run(stage, campaignId);
       }
       // 2026-09-21 fix, per direct report: "We have an empty audience area
@@ -34816,7 +34828,7 @@ Submit via the recommendation_from_intake tool.`;
       }
       try { applyLoopStageRules(campaign.accountId, { apply: true, campaignId }); } catch (e){ console.warn('loop-stage rules after intake failed', e && e.message); }
       syncCampaignProductCreativeGroupsFromChannelPlanning(campaignId);
-      return sendJson(res, 200, { generated: savedCount > 0, savedCount, stageApplied: stage, stagesUsed: Object.keys(stageBudgets), audienceApplied: audienceSegments.length ? audienceSegments : null });
+      return sendJson(res, 200, { generated: savedCount > 0, savedCount, skippedExistingChannels: skippedExisting, stageApplied: stage, stagesUsed: Object.keys(stageBudgets), audienceApplied: audienceSegments.length ? audienceSegments : null });
     }
 
     // POST /api/campaigns/:id/channel-planning/:entryId/client-approve —
