@@ -18038,6 +18038,53 @@ function applyLoopStageRules(accountId, opts){
   });
   return out;
 }
+// Refresh view (2026-10-10): how current each data set is against a weekly cadence, plus the loop-stage gaps. Reads only; the Refresh now button reuses the stage-rule apply.
+const REFRESH_DATASETS = [
+  { key: 'digitalPerformance', label: 'Digital performance', table: 'account_digital_performance', cadence: 7, step: 'digitalPerformance' },
+  { key: 'websiteEngagement', label: 'Website engagement by channel group', table: 'account_website_engagement', cadence: 7, step: 'websiteEngagement' },
+  { key: 'leadCounts', label: 'Leads by type, by month', table: 'account_lead_counts', cadence: 7, step: 'leadCounts' },
+  { key: 'websiteUsers', label: 'Website users by month', table: 'account_website_users_monthly', cadence: 7, step: 'websiteUsers' },
+  { key: 'kpiMetrics', label: 'Monthly KPI report', table: 'account_kpi_metrics', cadence: 7, step: 'kpiMetrics' },
+  { key: 'transactions', label: 'Transactions (monthly)', table: 'account_transactions_monthly', cadence: 7, step: 'bulkUpload' },
+  { key: 'bookings', label: 'Guest bookings', table: 'account_guest_bookings', cadence: 7, step: 'bulkUpload' },
+  { key: 'planLines', label: 'Plan lines (Marketing Calendar)', table: 'channel_planning_details', cadence: 7, step: 'planLines', byCampaign: true },
+  { key: 'marketingBudget', label: 'Marketing budget upload', table: 'marketing_budget_uploads', cadence: 90, step: 'marketingBudgetUpload' },
+  { key: 'annualPlan', label: 'Annual plan: baseline and targets', table: 'account_annual_plan', cadence: 90, step: 'annualPlan' },
+  { key: 'yearResults', label: 'Prior-year results', table: 'account_year_results', cadence: 90, step: 'yearResults' },
+  { key: 'demandFulfillment', label: 'Demand fulfillment assumptions', table: 'account_demand_fulfillment', cadence: 90, step: 'demandFulfillment' },
+  { key: 'marketableSizes', label: 'Marketable audience sizes', table: 'account_marketable_sizes', cadence: 90, step: 'marketableSizes' },
+  { key: 'dmCost', label: 'Direct mail cost per piece', table: 'account_dm_cost_per_piece', cadence: 90, step: 'dmCost' },
+  { key: 'magazineCost', label: 'Rate card minimums and magazine rates', table: 'account_magazine_cost', cadence: 90, step: 'magazineCost' }
+];
+function buildRefreshStatus(accountId){
+  const now = Date.now(); const out = { asOf: new Date(now).toISOString(), weeklyCadence: true, datasets: [], summary: { current: 0, due: 0, overdue: 0, empty: 0 }, loop: null };
+  REFRESH_DATASETS.forEach(d => {
+    const where = d.byCampaign ? 'campaignId IN (SELECT id FROM campaigns WHERE accountId = ?)' : 'accountId = ?';
+    let rows = 0, last = null;
+    try { rows = Number(db.prepare(`SELECT COUNT(*) AS n FROM ${d.table} WHERE ${where}`).get(accountId).n) || 0; } catch (e) { rows = 0; }
+    if (rows > 0){
+      for (const col of ['updatedAt', 'createdAt', 'uploadedAt', 'confirmedAt']){
+        try { const r = db.prepare(`SELECT MAX(${col}) AS m FROM ${d.table} WHERE ${where}`).get(accountId); const v = r && (r.m !== undefined ? r.m : Object.values(r)[0]); if (v){ last = String(v); break; } } catch (e) {}
+      }
+    }
+    let ageDays = null, status = 'empty';
+    if (rows > 0){
+      const t = last ? Date.parse(last) : NaN;
+      if (isFinite(t)){ ageDays = Math.max(0, Math.floor((now - t) / 86400000)); status = ageDays <= d.cadence ? 'current' : (ageDays <= d.cadence * 2 ? 'due' : 'overdue'); }
+      else status = 'current';
+    }
+    out.summary[status] += 1;
+    out.datasets.push({ key: d.key, label: d.label, step: d.step, cadenceDays: d.cadence, rows, lastUpdated: last, ageDays, status });
+  });
+  try {
+    const pv = applyLoopStageRules(accountId, { apply: false });
+    let lastRun = null;
+    try { const r = db.prepare("SELECT MAX(updatedAt) AS m FROM channel_planning_details WHERE campaignId IN (SELECT id FROM campaigns WHERE accountId = ?) AND detailsJson LIKE '%\"stageSource\":\"rule\"%'").get(accountId); lastRun = r && (r.m !== undefined ? r.m : Object.values(r)[0]) || null; } catch (e) {}
+    const gapLines = Object.values(pv.gaps || {}).reduce((n, g) => n + g.lines, 0), gapBudget = Object.values(pv.gaps || {}).reduce((n, g) => n + g.budget, 0);
+    out.loop = { lines: pv.lines, pendingChanges: pv.changed, manualKept: pv.manualKept, gapLines, gapBudget, lastRuleRun: lastRun, after: pv.after };
+  } catch (e) { out.loop = null; }
+  return out;
+}
 // DEFAULT channel to loop stage map (editable later). The campaign and plan lines carry no loop stage today.
 const GP_LOOP_BY_CHANNEL = [
   [/search|remarket|retarget|lead|website|landing/i, 'Consideration'],
@@ -43455,6 +43502,13 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (wantApply){ const actor = planScenarioActor(req, accountId); if (!actor || !actor.canActivate) return sendJson(res, 403, { error: 'Only an admin or a CMO can apply the loop-stage rules. Preview is open to everyone.' }); }
       try { return sendJson(res, 200, applyLoopStageRules(accountId, { apply: wantApply, campaignId: body.campaignId || null })); }
       catch (e){ console.error('[loop-stage-rules] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'Could not run the loop-stage rules: ' + (e && e.message || 'unknown error') }); }
+    }
+    // GET /api/accounts/:id/refresh-status — 2026-10-10. Freshness of each data set against a weekly cadence, plus loop-stage state. Reads only.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'refresh-status'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      try { return sendJson(res, 200, buildRefreshStatus(accountId)); }
+      catch (e){ console.error('[refresh-status] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'Could not read the refresh status: ' + (e && e.message || 'unknown error') }); }
     }
     // GET /api/accounts/:id/campaign-line-facets — 2026-10-10. Per campaign, the distinct Channel, Product Group and Creative Market values on its plan lines,
     // so the Campaign Management list can filter the same way the Marketing Calendar does.
