@@ -41074,6 +41074,14 @@ function setMbuYear(year){
   // detail card waits on that promise so it paints once, as version B.
   const mpYearLoad = (typeof setMpYear === 'function') ? setMpYear(year) : null;
   if (typeof mbuRenderPlanSetup === 'function') mbuRenderPlanSetup();
+  // 2026-10-10 — the four chart cards (Budget Flow, Tracking, Pacing, Loop Distribution) kept the previous year's figures when the year chip
+  // changed, because they were not repainted once the chosen year's plan finished loading. Repaint them for the year now selected.
+  if (mpYearLoad && typeof mpYearLoad.then === 'function'){
+    mpYearLoad.then(function(){
+      if (Number(mbuSelectedYear) !== Number(year)) return;
+      try { if (typeof mbdHistoricalMode === 'function' && mbdHistoricalMode()) mbdRenderHistoricalCharts(); else mbdRenderBudgetChartGrid(); } catch (e){ console.warn('[budget] chart repaint failed', e); }
+    }).catch(function(){});
+  }
   // Round 2026-09-05 (Plan Setup reorg), per direct instruction: "A single
   // year selector" — this Plan Setup year chip row is now the ONE year
   // control for the whole page (the old, separate #mpYearRow chip row in
@@ -43070,8 +43078,18 @@ function mbdRenderHistoricalCharts(){
     const plan = (state.mediaPlan && Number(state.mediaPlan.year) === Number(mbuSelectedYear) && (state.mediaPlan.allocations || []).length) ? state.mediaPlan : null;
     return plan ? mbdModelFromPlan(plan) : (detail && detail.status === 'confirmed' ? mbdModelFromUpload(detail) : null);
   })();
-  if (!model){ mbdHistoricalChart = null; return; }
+  if (!model){
+    // The selected closed year's plan has not loaded yet. Never leave another year's cards on screen: show a loading line under this year's
+    // title, then repaint once the plan is in (setMbuYear repaints after its plan load).
+    mbdHistoricalChart = null;
+    [['planPacingChartCard', 'Plan Pacing'], ['budgetTrackingChartCard', 'Budget Tracking'], ['channelMixChartCard', 'Channel Media Mix'], ['marketingLoopChartCard', 'Marketing Loop Spend Distribution'], ['roasChartCard', 'ROAS']].forEach(function(x){
+      const el = document.getElementById(x[0]); if (el) el.innerHTML = '<div class="exec-chart-head"><h3>' + mbdChartYearPrefix() + x[1] + '</h3></div><p class="hint">Loading…</p>';
+    });
+    try { if (typeof bfRenderBudget === 'function') bfRenderBudget(); } catch (e){}
+    return;
+  }
   mbdHistoricalChart = model;
+  try { if (typeof bfRenderBudget === 'function') bfRenderBudget(); } catch (e){}
   const working = model.channels.reduce((s, g) => s + g.total, 0);
   const nonWorking = model.nonWorking.reduce((s, r) => s + r.total, 0);
   const legendOf = (segs, total) => segs.map(x => `<div class="donut-legend-item"><span class="swatch" style="background:${x.color};"></span><span class="lname">${escapeHtml(x.label)}</span><span class="lval">${fmtMoney(Math.round(x.value))} (${total > 0 ? Math.round((x.value / total) * 100) : 0}%)</span></div>`).join('');
