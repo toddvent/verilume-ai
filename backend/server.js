@@ -33780,6 +33780,9 @@ Submit your response via the campaign_intake_turn tool.`;
         // summary can actually be edited and saved in place, not just
         // displayed read-only.
         stage: body.stage !== undefined ? body.stage : existing.stage,
+        // 2026-10-10: Primary KPI and its goal can be corrected after a campaign has started (with Audience and Loop stage), so they join this update path.
+        primaryKpi: body.primaryKpi !== undefined ? body.primaryKpi : existing.primaryKpi,
+        kpiGoal: body.kpiGoal !== undefined ? (body.kpiGoal === null || body.kpiGoal === '' ? null : Number(body.kpiGoal)) : existing.kpiGoal,
         // 2026-09-16 follow-on — same gap, same fix, for Audience
         // (campaign.segment): also creation-only until now. Per direct
         // instruction, the Recommendation pitch screen's top summary
@@ -33943,6 +33946,8 @@ Submit your response via the campaign_intake_turn tool.`;
       addCol('campaignAssetTypesJson', body.campaignAssetTypes !== undefined, merged.campaignAssetTypesJson);
       addCol('businessInitiative', body.businessInitiative !== undefined, merged.businessInitiative);
       addCol('stage', body.stage !== undefined, merged.stage);
+      addCol('primaryKpi', body.primaryKpi !== undefined, merged.primaryKpi);
+      addCol('kpiGoal', body.kpiGoal !== undefined, merged.kpiGoal);
       addCol('segment', body.segment !== undefined, merged.segment);
       addCol('activityNotesJson', body.activityNotesJson !== undefined, merged.activityNotesJson);
       addCol('copyVersionAssetsJson', body.copyVersionAssetsJson !== undefined, merged.copyVersionAssetsJson);
@@ -43450,6 +43455,23 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (wantApply){ const actor = planScenarioActor(req, accountId); if (!actor || !actor.canActivate) return sendJson(res, 403, { error: 'Only an admin or a CMO can apply the loop-stage rules. Preview is open to everyone.' }); }
       try { return sendJson(res, 200, applyLoopStageRules(accountId, { apply: wantApply, campaignId: body.campaignId || null })); }
       catch (e){ console.error('[loop-stage-rules] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'Could not run the loop-stage rules: ' + (e && e.message || 'unknown error') }); }
+    }
+    // GET /api/accounts/:id/campaign-line-facets — 2026-10-10. Per campaign, the distinct Channel, Product Group and Creative Market values on its plan lines,
+    // so the Campaign Management list can filter the same way the Marketing Calendar does.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'campaign-line-facets'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const rows = db.prepare('SELECT campaignId, channel, productGroup, creativeMarket FROM channel_planning_details WHERE campaignId IN (SELECT id FROM campaigns WHERE accountId = ?)').all(accountId);
+      const by = {}; const all = { channels: new Set(), productGroups: new Set(), creativeMarkets: new Set() };
+      const split = v => String(v || '').split(',').map(x => x.trim()).filter(Boolean);
+      rows.forEach(r => {
+        const cid = aliasVal(r, 'campaignId'); const f = by[cid] || (by[cid] = { channels: new Set(), productGroups: new Set(), creativeMarkets: new Set() });
+        split(r.channel).forEach(v => { f.channels.add(v); all.channels.add(v); });
+        split(aliasVal(r, 'productGroup')).forEach(v => { f.productGroups.add(v); all.productGroups.add(v); });
+        split(aliasVal(r, 'creativeMarket')).forEach(v => { f.creativeMarkets.add(v); all.creativeMarkets.add(v); });
+      });
+      const out = {}; Object.keys(by).forEach(k => { out[k] = { channels: [...by[k].channels], productGroups: [...by[k].productGroups], creativeMarkets: [...by[k].creativeMarkets] }; });
+      return sendJson(res, 200, { campaigns: out, options: { channels: [...all.channels].sort(), productGroups: [...all.productGroups].sort(), creativeMarkets: [...all.creativeMarkets].sort() } });
     }
     // POST /api/accounts/:id/loop-stage-rules/check  { rows:[{ campaignName, channel, audience, productGroup, budget }] } — 2026-10-10. Runs the same audience-gap
     // check on rows that are about to be uploaded, so the upload screen can explain what is missing before anything is saved. Writes nothing.
