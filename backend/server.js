@@ -6387,8 +6387,16 @@ createTableIfNeeded(`
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
 `);
+// Same casing problem as account_plan_scenarios: on Postgres the table may have lowercase minspend/minunits/updatedat. Rename them to the names the
+// translator quotes, once, then retry. Reads use SELECT * so they never depend on the casing.
+function rateCardHealCasing(){
+  [['minspend', 'minSpend'], ['minunits', 'minUnits'], ['updatedat', 'updatedAt']].forEach(([lo, camel]) => { try { db.exec('ALTER TABLE account_rate_card_minimums RENAME COLUMN ' + lo + ' TO "' + camel + '"'); } catch (e){} });
+}
+function rateCardRun(fn){
+  try { return fn(); } catch (e){ if (/account_rate_card_minimums/i.test(String(e && e.message)) || /does not exist/i.test(String(e && e.message))){ rateCardHealCasing(); return fn(); } throw e; }
+}
 function rateCardMinimumsFor(accountId){
-  const rows = db.prepare('SELECT channel, basis, "minSpend", "minUnits", note, "updatedAt" FROM account_rate_card_minimums WHERE accountId = ? ORDER BY channel').all(accountId);
+  const rows = db.prepare('SELECT * FROM account_rate_card_minimums WHERE accountId = ? ORDER BY channel').all(accountId).sort((a, b) => String(a.channel).localeCompare(String(b.channel)));
   let lowest = null;
   try { db.prepare('SELECT "costPerInsertion" FROM account_magazine_cost WHERE accountId = ?').all(accountId).forEach(r => { const c = Number(r.costPerInsertion); if (c > 0 && (lowest == null || c < lowest)) lowest = c; }); } catch (e){}
   const out = rows.map(r => {
@@ -42839,8 +42847,10 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
           if (basis === 'insertions' && !(minUnits != null && Number.isFinite(minUnits) && minUnits > 0)) return sendJson(res, 400, { error: 'Enter the minimum number of insertions for ' + channel });
           clean.push({ channel, basis, minSpend: basis === 'dollars' ? minSpend : null, minUnits: basis === 'insertions' ? minUnits : null, note: String(r.note || '').slice(0, 300) || null });
         }
-        db.prepare('DELETE FROM account_rate_card_minimums WHERE accountId = ?').run(accountId);
-        clean.forEach(c => db.prepare('INSERT INTO account_rate_card_minimums (accountId, channel, basis, "minSpend", "minUnits", note, "updatedAt") VALUES (?, ?, ?, ?, ?, ?, ?)').run(accountId, c.channel, c.basis, c.minSpend, c.minUnits, c.note, now));
+        rateCardRun(() => {
+          db.prepare('DELETE FROM account_rate_card_minimums WHERE accountId = ?').run(accountId);
+          clean.forEach(c => db.prepare('INSERT INTO account_rate_card_minimums (accountId, channel, basis, "minSpend", "minUnits", note, "updatedAt") VALUES (?, ?, ?, ?, ?, ?, ?)').run(accountId, c.channel, c.basis, c.minSpend, c.minUnits, c.note, now));
+        });
       }
       return sendJson(res, 200, Object.assign({ accountId }, rateCardMinimumsFor(accountId)));
     }
