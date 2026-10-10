@@ -29581,6 +29581,39 @@ async function ttbLoad(){
   catch (e){ ttb.error = true; }
   await ttbLoadAssignments();
   ttb.loading = false; ttbRerender();
+  ttbLoadRefresh();
+}
+async function ttbLoadRefresh(){
+  try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/refresh-status`, { timeoutMs: 30000 }); if (r.ok){ ttb.refresh = await r.json(); ttbRerender(); } }
+  catch (e){ console.warn('refresh status not loaded', e); }
+}
+async function ttbRefreshNow(){
+  ttb.refreshBusy = true; ttb.refreshMsg = 'Refreshing…'; ttbRerender();
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/loop-stage-rules`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apply: true }), timeoutMs: 60000 });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `The server answered ${r.status}.`);
+    ttb.refreshMsg = `Refreshed ${new Date().toLocaleTimeString()}. ${j.changed} line${j.changed === 1 ? '' : 's'} changed stage, ${j.manualKept} kept as set by hand.`;
+  } catch (e){ ttb.refreshMsg = e.message; }
+  ttb.refreshBusy = false;
+  await ttbLoadRefresh(); ttbRerender();
+}
+function ttbRefreshHtml(){
+  const R = ttb.refresh;
+  if (!R) return '<div class="strat-card" style="margin:0 0 14px;"><p class="hint" style="margin:0;">Checking how current your data is…</p></div>';
+  const sm = R.summary || {}; const L = R.loop;
+  const lbl = { current: 'Current', due: 'Due', overdue: 'Overdue', empty: 'Not loaded' };
+  const col = { current: '#0B6F62', due: '#B26A00', overdue: '#B42318', empty: 'var(--muted)' };
+  const chip = k => `<span style="display:inline-block;padding:3px 10px;border-radius:999px;border:1px solid var(--line);font-size:0.75rem;font-weight:700;color:${col[k]};">${sm[k] || 0} ${lbl[k]}</span>`;
+  const ago = d => d.ageDays == null ? '—' : (d.ageDays === 0 ? 'today' : d.ageDays + ' day' + (d.ageDays === 1 ? '' : 's') + ' ago');
+  const rows = (R.datasets || []).filter(d => d.status !== 'empty').sort((a, b) => ({ overdue: 0, due: 1, current: 2 }[a.status] - { overdue: 0, due: 1, current: 2 }[b.status])).map(d => `<tr><td>${escapeHtml(d.label)}</td><td>${escapeHtml(ago(d))}</td><td>${d.cadenceDays <= 7 ? 'Weekly' : 'Quarterly'}</td><td style="color:${col[d.status]};font-weight:700;">${lbl[d.status]}</td><td>${d.step && d.step !== 'planLines' ? `<a class="flink" onclick="ttbToggle('${d.step}')">Update →</a>` : ''}</td></tr>`).join('');
+  const missing = (R.datasets || []).filter(d => d.status === 'empty').map(d => d.label);
+  const money = n => '$' + Math.round(n || 0).toLocaleString();
+  const loopLine = L ? `<p style="margin:10px 0 0;"><b>Marketing Loop:</b> ${L.lines} plan lines, ${L.pendingChanges} would change stage on a refresh, ${L.gapLines ? `<span style="color:#B26A00;font-weight:700;">${L.gapLines} lines (${money(L.gapBudget)}) missing audience details</span>` : 'no audience gaps'}${L.lastRuleRun ? `. Rules last applied ${new Date(L.lastRuleRun).toLocaleDateString()}` : '. Rules not applied yet'}.</p>` : '';
+  return `<div class="strat-card" style="margin:0 0 14px;"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;"><div><div class="kicker">Refresh view</div><h3 style="margin:2px 0 0;">Is everything current?</h3></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">${chip('current')}${chip('due')}${chip('overdue')}${chip('empty')}<button type="button" class="btn-primary" onclick="ttbRefreshNow()" ${ttb.refreshBusy ? 'disabled' : ''}>Refresh now</button></div></div>
+    <p class="hint" style="margin:8px 0 0;">Performance data is expected weekly. Setup data such as the annual plan and rate cards is checked quarterly. Refresh now applies the Marketing Loop stage rules to every plan line and re-reads everything that depends on them. Stages you set by hand are kept.</p>
+    ${ttb.refreshMsg ? `<p style="margin:8px 0 0;font-weight:600;">${escapeHtml(ttb.refreshMsg)}</p>` : ''}${loopLine}
+    <details style="margin-top:10px;" ${sm.overdue || sm.due ? 'open' : ''}><summary style="cursor:pointer;font-weight:600;">Data freshness</summary><div style="overflow-x:auto;margin-top:8px;"><table class="data-table"><thead><tr><th>Data set</th><th>Last updated</th><th>Expected</th><th>Status</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="5">Nothing loaded yet.</td></tr>'}</tbody></table></div>${missing.length ? `<p class="hint" style="margin:8px 0 0;">Not loaded yet: ${escapeHtml(missing.join(', '))}.</p>` : ''}</details></div>`;
 }
 // Who owns each setup card. Admins hand cards out; an owner with no login yet sees the task on first sign-in.
 async function ttbLoadAssignments(){
@@ -30304,7 +30337,7 @@ function ttbHtml(){
   if (ttb.error || !ttb.data) return '<div class="strat-card"><p class="strat-empty">Could not load Train the Brain just now. <a class="flink" onclick="ttbLoad()">Try again</a></p></div>';
   const tabs = [['setup', 'Getting started'], ['learnings', 'Recent learnings'], ['data', 'Data consumed']];
   const body = ttb.tab === 'learnings' ? ttbLearningsHtml(ttb.data) : ttb.tab === 'data' ? ttbConsumedHtml(ttb.data) : ttbSetupHtml(ttb.data);
-  return `<div class="ttb-page"><div class="strat-ctl" style="margin:0 0 12px;"><span class="strat-seg">${tabs.map(t => `<button type="button" class="${ttb.tab === t[0] ? 'on' : ''}" onclick="ttbSetTab('${t[0]}')">${t[1]}</button>`).join('')}</span></div>${body}</div>`;
+  return `<div class="ttb-page">${ttbRefreshHtml()}<div class="strat-ctl" style="margin:0 0 12px;"><span class="strat-seg">${tabs.map(t => `<button type="button" class="${ttb.tab === t[0] ? 'on' : ''}" onclick="ttbSetTab('${t[0]}')">${t[1]}</button>`).join('')}</span></div>${body}</div>`;
 }
 function renderAiPartnerOnboardingHub(skipMmmFetch){
   const mount = document.getElementById('aipoMount');
