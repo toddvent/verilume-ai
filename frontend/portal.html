@@ -26233,12 +26233,16 @@ async function vxVoiceStart(opts){
   if (!(await vxVoiceAskConsent())) return false;
   vxVoice.state = 'connecting'; vxVoice.surface = o.surface || 'ask_bar'; vxVoice.onMessage = o.onMessage || null; vxVoice.onEnd = o.onEnd || null;
   if (o.onState) o.onState('connecting');
+  let vxStage = 'microphone';
   try {
     await navigator.mediaDevices.getUserMedia({ audio: true });
+    vxStage = 'session';
     const sess = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice/session`, { method: 'GET' }, 3, 700);
     if (!sess || !sess.token) throw new Error('voice session response had no token');
     if (!sess.signedUrl) console.warn('[voice] no signed URL (' + (sess.signedUrlReason || 'unknown') + ') — falling back to agentId; this only works if the agent does not require authentication.');
+    vxStage = 'client';
     const { Conversation } = await vxLoadElevenLabsClient();
+    vxStage = 'connect';
     const clientTools = {
       // The ElevenLabs tool editor cannot save a nested array-of-objects
       // schema, so the agent sends the cards as a JSON string (cards_json);
@@ -26259,10 +26263,26 @@ async function vxVoiceStart(opts){
     vxVoice.conversation = await Conversation.startSession(startArgs);
     return true;
   } catch (e){
-    console.warn('[voice] start failed:', e);
+    console.warn('[voice] start failed at', vxStage, ':', e);
     vxVoice.state = 'idle'; vxVoice.conversation = null;
     if (o.onState) o.onState('idle');
-    const msg = /Permission|NotAllowed/i.test(String(e && (e.name || e.message))) ? 'Microphone permission was declined. Allow the mic in your browser, or type your question.' : (/concurren|limit|429/i.test(String(e && e.message)) ? 'Verilume is busy talking with others right now. Type your question and it will answer in text.' : 'Could not start voice. Check your microphone and try again, or type your question.');
+    const en = String(e && e.name || ''), em = String(e && e.message || '');
+    let msg;
+    if (vxStage === 'microphone'){
+      if (/NotAllowed|Permission|Security/i.test(en + em)) msg = 'Microphone permission was declined. Click the lock icon in the address bar, allow the microphone for this site, then try again.';
+      else if (/NotFound|Overconstrained|DevicesNotFound/i.test(en + em)) msg = 'No microphone was found on this device. Plug one in or pick one in your system sound settings, then try again.';
+      else if (/NotReadable|TrackStart|Abort/i.test(en + em)) msg = 'The microphone is in use by another app or tab. Close it and try again.';
+      else if (!navigator.mediaDevices) msg = 'This page cannot reach the microphone (it needs a secure https page).';
+      else msg = 'The browser could not open the microphone (' + (en || em || 'unknown') + ').';
+    } else if (vxStage === 'session'){
+      msg = /401|403|sign/i.test(em) ? 'Your sign-in expired. Refresh the page and try again.' : 'The voice service did not answer (' + (em.slice(0, 80) || 'no response') + '). Try again in a moment, or type your question.';
+    } else if (vxStage === 'client'){
+      msg = 'The voice component did not load. Refresh the page; if it persists your network may be blocking it.';
+    } else if (/concurren|limit|429/i.test(em)){
+      msg = 'Verilume is busy talking with others right now. Type your question and it will answer in text.';
+    } else {
+      msg = 'Voice connected to the microphone but could not open the call (' + (en || em.slice(0, 80) || 'unknown') + '). Try again, or type your question.';
+    }
     if (o.onStatus) o.onStatus(msg);
     return false;
   }
