@@ -23844,12 +23844,12 @@ async function bfLoad(year){
   const y = Number(year) || new Date().getFullYear();
   if (bf.cache[y]) return bf.cache[y];
   if (bf.loading[y]) return bf.loading[y];
-  bf.loading[y] = (async () => { try { const d = await stratGet('budget-flow?year=' + y); bf.cache[y] = d; return d; } catch (e){ return null; } finally { delete bf.loading[y]; } })();
+  bf.loading[y] = (async () => { try { let d; try { d = await stratGet('budget-flow?year=' + y); } catch (e1){ await new Promise(r => setTimeout(r, 1500)); d = await stratGet('budget-flow?year=' + y); } bf.cache[y] = d; return d; } catch (e){ bf.lastError = String((e && e.message) || e); return null; } finally { delete bf.loading[y]; } })();
   return bf.loading[y];
 }
 function bfInvalidate(){ bf.cache = {}; }
 function bfBodyHtml(d){
-  if (!d) return '<p class="strat-empty" style="margin:0;">Could not load the budget just now.</p>';
+  if (!d) return '<p class="strat-empty" style="margin:0;">Could not load the budget just now' + (bf.lastError ? ' (' + escapeHtml(bf.lastError) + ')' : '') + '. <a href="#" onclick="bfInvalidate();bfRenderBudget();return false;">Try again</a></p>';
   const M = v => fmtMoney(Math.round(v));
   if (d.planned == null) return `<p class="strat-empty" style="margin:0;">Not on file yet: a confirmed ${d.year} budget upload with working media.</p>`;
   const segs = [
