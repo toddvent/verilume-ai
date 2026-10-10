@@ -12190,6 +12190,18 @@
       </div>
     </div>
 
+    <div class="sk-card" id="lsrCard" style="margin-bottom:18px;">
+      <div class="sk-card-head cx">
+        <div class="htext"><div class="kicker">Marketing Loop</div><h3>Loop stage rules</h3></div>
+        <div class="hicon">🔁</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">Each plan line gets its Marketing Loop stage from its channel and audience. Past Customers spend is <b>Loyalty</b>. Brand Search and Remarketing (anonymous visitors) are <b>Purchase</b>. Hand-Raisers are <b>Consideration</b>. New to Brand (Prospects) is <b>Awareness</b> unless the line targets a brand or product group, then <b>Consideration</b>. PR, Partner Media and anything marked Advocacy are <b>Advocacy</b>. A stage you set by hand on a line is kept.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn-ghost" id="lsrPreviewBtn" onclick="lsrRun(false)">Preview changes</button><button class="btn-primary" id="lsrApplyBtn" onclick="lsrRun(true)" style="display:none;">Apply to all lines</button></div>
+        <div id="lsrOut" style="margin-top:10px;"></div>
+      </div>
+    </div>
+
     <div class="sk-card" id="mbuUploadCard" style="display:none;margin-top:18px;">
       <div class="sk-card-head cx">
         <div class="htext"><div class="kicker">Setup — Upload</div><h3>Upload your budget file</h3></div>
@@ -24090,6 +24102,24 @@ async function scnCall(path, method, body){
   if (!r.ok) throw new Error((j && j.error) || `The server answered ${r.status}.`);
   return j;
 }
+async function lsrRun(apply){
+  const out = document.getElementById('lsrOut'); const ab = document.getElementById('lsrApplyBtn'); if (!out) return;
+  out.innerHTML = '<p class="hint">Working…</p>';
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/loop-stage-rules`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apply: !!apply }), timeoutMs: 60000 });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `The server answered ${r.status}.`);
+    const stages = ['Awareness','Consideration','Purchase','Loyalty','Advocacy'];
+    const money = n => '$' + Math.round(n || 0).toLocaleString();
+    const rows = stages.map(st => { const b = (j.before[st] || {lines:0,budget:0}), a = (j.after[st] || {lines:0,budget:0}); return `<tr><td>${st}</td><td>${b.lines} · ${money(b.budget)}</td><td>${a.lines} · ${money(a.budget)}</td></tr>`; }).join('');
+    const ex = (j.examples || []).slice(0, 10).map(e => `<li>${escapeHtml(e.channel || '')}${e.audience ? ' · ' + escapeHtml(e.audience) : ''}: ${escapeHtml(e.from || '(none)')} → <b>${escapeHtml(e.to)}</b> <span class="hint">${escapeHtml(e.why)}</span></li>`).join('');
+    out.innerHTML = `<p style="margin:0 0 8px;"><b>${j.dryRun ? 'Preview' : 'Applied'}:</b> ${j.changed} of ${j.lines} lines ${j.dryRun ? 'would change' : 'changed'}, ${j.manualKept} kept as manual overrides, ${j.unchanged} already correct.</p>
+      <div style="overflow-x:auto;"><table class="data-table"><thead><tr><th>Stage</th><th>Before (lines · budget)</th><th>${j.dryRun ? 'After' : 'Now'} (lines · budget)</th></tr></thead><tbody>${rows}</tbody></table></div>
+      ${ex ? `<ul style="margin:8px 0 0 18px;">${ex}</ul>` : ''}`;
+    if (ab) ab.style.display = (j.dryRun && j.changed > 0) ? '' : 'none';
+    if (!j.dryRun){ try { if (typeof mbdRenderBudgetChartGrid === 'function') mbdRenderBudgetChartGrid(); } catch (e){} }
+  } catch (e){ out.innerHTML = `<p class="scn-msg err">${escapeHtml(e.message)}</p>`; }
+}
 function scnToggle(){
   scn.open = !scn.open;
   const box = document.getElementById('stratScnBody'); if (box) box.style.display = scn.open ? 'block' : 'none';
@@ -29637,7 +29667,7 @@ function ttbToggle(k){ ttb.open = ttb.open === k ? '' : k; ttbRerender(); }
 //   Add Manually  -> opens inside the row. The existing entry card is moved in here rather than copied, so it works exactly as before.
 //   Partner Integration -> the one Partner Integrations page.
 // View in Portal is greyed until the item has data, and only shown as a link where the data actually appears.
-const TTB_ALL_CARDS = ['teamStepBody', 'kpiMetricsAdminModule', 'mbuWebsiteUsersCard', 'mbuMarketableSizesCard', 'mbuDmCostPerPieceCard', 'mbuDmFormatCostCard', 'mbuMagazineCostCard', 'mbuAnnualPlanCard', 'mbuDemandFulfillmentCard', 'mbuEngagementCard', 'mbuLeadCountsCard', 'mbuTransactionsCard', 'mbuDigitalCard'];
+const TTB_ALL_CARDS = ['teamStepBody', 'kpiMetricsAdminModule', 'mbuWebsiteUsersCard', 'mbuMarketableSizesCard', 'mbuDmCostPerPieceCard', 'mbuDmFormatCostCard', 'mbuMagazineCostCard', 'lsrCard', 'mbuAnnualPlanCard', 'mbuDemandFulfillmentCard', 'mbuEngagementCard', 'mbuLeadCountsCard', 'mbuTransactionsCard', 'mbuDigitalCard'];
 let ttbHomes = null;
 function ttbInitHomes(){
   if (ttbHomes) return; ttbHomes = {};
@@ -29678,7 +29708,8 @@ const TTB_CFG = {
   demandFulfillment: { manual: { cards: ['mbuDemandFulfillmentCard'] }, view: { tab: 'strategy', label: 'Strategy' } },
   marketableSizes: { manual: { cards: ['mbuMarketableSizesCard'] }, used: 'Used by campaign forecasts' },
   dmCost: { manual: { cards: ['mbuDmCostPerPieceCard', 'mbuDmFormatCostCard'] }, used: 'Used by campaign budgets' },
-  magazineCost: { manual: { cards: ['mbuMagazineCostCard'] }, used: 'Used by campaign budgets' }
+  magazineCost: { manual: { cards: ['mbuMagazineCostCard'] }, used: 'Used by campaign budgets' },
+  loopRules: { manual: { cards: ['lsrCard'] }, used: 'Used by the Marketing Loop views' }
 };
 const TTB_PLAN_SAMPLES = {
   websiteUsers: { benefit: 'Sets the reach and cost per website user the forecast starts from.', sample: `<div class="ttb-srow ttb-head"><span>Month</span><span>US</span><span>Canada</span><span>Intl</span></div><div class="ttb-srow"><span>Jan</span><span>182,000</span><span>21,400</span><span>9,800</span></div><div class="ttb-srow"><span>Feb</span><span>176,500</span><span>20,900</span><span>10,200</span></div>` },
@@ -29691,7 +29722,8 @@ const TTB_PLAN_SAMPLES = {
   demandFulfillment: { benefit: 'How demand grows with website traffic rather than media spend.', sample: `<div class="ttb-srow"><span>Traffic to lead rate</span><span>0.85%</span></div><div class="ttb-srow"><span>Lead to booking rate</span><span>4.2%</span></div><div class="ttb-srow"><span>Remarketing pool rate</span><span>0.22</span></div>` },
   marketableSizes: { benefit: 'Direct mail and email list counts by audience, so campaigns can size their reach.', sample: `<div class="ttb-srow ttb-head"><span>Audience</span><span>Direct mail</span><span>Email</span></div><div class="ttb-srow"><span>Past guests</span><span>18,400</span><span>26,900</span></div><div class="ttb-srow"><span>Prospects</span><span>52,000</span><span>71,300</span></div>` },
   dmCost: { benefit: 'Turns an audience size into a direct mail budget.', sample: `<div class="ttb-srow ttb-head"><span>Format</span><span>Cost per piece</span></div><div class="ttb-srow"><span>Oversize postcard</span><span>$0.71</span></div><div class="ttb-srow"><span>Brochure mailer</span><span>$1.94</span></div>` },
-  magazineCost: { benefit: 'The smallest buy each media owner will take, plus your negotiated print rates by title and format.', sample: `<div class="ttb-srow ttb-head"><span>Title · format</span><span>Per insertion</span></div><div class="ttb-srow"><span>Travel Monthly · full page</span><span>$18,500</span></div><div class="ttb-srow"><span>Travel Monthly · half page</span><span>$11,200</span></div>` }
+  magazineCost: { benefit: 'The smallest buy each media owner will take, plus your negotiated print rates by title and format.', sample: `<div class="ttb-srow ttb-head"><span>Title · format</span><span>Per insertion</span></div><div class="ttb-srow"><span>Travel Monthly · full page</span><span>$18,500</span></div><div class="ttb-srow"><span>Travel Monthly · half page</span><span>$11,200</span></div>` },
+  loopRules: { benefit: 'Sets each plan line\'s Marketing Loop stage from its channel and audience: Past Customers are Loyalty, Brand Search and Remarketing are Purchase, New to Brand is Awareness or Consideration.', sample: `<div class="ttb-srow ttb-head"><span>Channel · audience</span><span>Stage</span></div><div class="ttb-srow"><span>CTV · Prospects</span><span>Awareness</span></div><div class="ttb-srow"><span>Brand Search</span><span>Purchase</span></div><div class="ttb-srow"><span>Email · Past Customers</span><span>Loyalty</span></div>` }
 };
 Object.keys(TTB_PLAN_SAMPLES).forEach(k => { TTB_ITEMS[k] = TTB_PLAN_SAMPLES[k]; });
 TTB_ITEMS.brainFacts = { benefit: 'Confirmed facts about your brand, products and destinations. Answers to customer questions are written only from these.', sample: `<div class="ttb-srow ttb-head"><span>Applies to</span><span>Fact</span></div><div class="ttb-srow"><span>Brand</span><span>Every departure carries a naturalist guide.</span></div><div class="ttb-srow"><span>Faroe Islands</span><span>An archipelago of 18 islands.</span></div>` };
