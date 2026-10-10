@@ -18001,28 +18001,34 @@ function loopStageForLine(line){
   return { stage: null, rule: 'none', reason: 'No rule matched; the stage is left as set.' };
 }
 
+const LOOP_GAP_LABEL = { no_audience: 'No audience on the line, so the channel default stage is used', unrecognized_audience: 'Audience not recognised (use Past Customers, Hand-Raisers, Prospects, Future Customers or Anonymous Website Traffic)', mixed_audience: 'Past Customers mixed with another audience, so the spend cannot be split', new_no_intent: 'New to Brand with no brand or product group, so Awareness is assumed' };
+function loopGapKind(audience, rs){
+  if (!rs || rs.rule === 'advocacy') return null;
+  const aud = String(audience || '').trim(); const kk = loopAudienceKinds(aud);
+  if (!aud) return 'no_audience';
+  if (!kk.size) return 'unrecognized_audience';
+  if (kk.has('past') && kk.size > 1) return 'mixed_audience';
+  if (rs.rule === 'new_to_brand_no_intent') return 'new_no_intent';
+  return null;
+}
 // Re-runs the loop-stage rules over an account's campaign lines. Lines marked as a manual override keep their stage. dryRun only counts.
 function applyLoopStageRules(accountId, opts){
   const o = opts || {}; const dry = o.apply !== true;
   const camps = db.prepare('SELECT id FROM campaigns WHERE accountId = ? AND COALESCE(cancelled, 0) = 0').all(accountId).map(r => r.id).filter(id => !o.campaignId || id === o.campaignId);
   const out = { version: LOOP_STAGE_RULES_VERSION, dryRun: dry, lines: 0, changed: 0, manualKept: 0, unchanged: 0, noRule: 0, before: {}, after: {}, examples: [], gaps: {} };
-  const GAP_LABEL = { no_audience: 'No audience on the line, so the channel default stage is used', unrecognized_audience: 'Audience not recognised (use Past Customers, Hand-Raisers, Prospects, Future Customers or Anonymous Website Traffic)', mixed_audience: 'Past Customers mixed with another audience, so the spend cannot be split', new_no_intent: 'New to Brand with no brand or product group, so Awareness is assumed' };
-  const noteGap = (kind, r, cid, cname, amt, assumed) => { const g = out.gaps[kind] || (out.gaps[kind] = { label: GAP_LABEL[kind], lines: 0, budget: 0, examples: [] }); g.lines++; g.budget += amt; if (g.examples.length < 12) g.examples.push({ lineId: r.id, campaignId: cid, campaign: cname, channel: r.channel, audience: r.audience || null, productGroup: aliasVal(r, 'productGroup') || null, assumed }); };
+  const GAP_LABEL = LOOP_GAP_LABEL; out.gapRows = [];
+  const noteGap = (kind, r, cid, cname, amt, assumed, ccode) => { const g = out.gaps[kind] || (out.gaps[kind] = { label: GAP_LABEL[kind], lines: 0, budget: 0, examples: [] }); g.lines++; g.budget += amt; const row = { lineId: r.id, campaignId: cid, campaign: cname, campaignCode: ccode, channel: r.channel, audience: r.audience || null, productGroup: aliasVal(r, 'productGroup') || null, budget: amt, kind, assumed }; if (g.examples.length < 12) g.examples.push(row); if (out.gapRows.length < 1000) out.gapRows.push(row); };
   const bump = (m, st, amt) => { const k = st || '(none)'; const x = m[k] || (m[k] = { lines: 0, budget: 0 }); x.lines += 1; x.budget += amt; };
   const upd = db.prepare('UPDATE channel_planning_details SET stage = ?, detailsJson = ?, updatedAt = ? WHERE id = ?');
   const now = new Date().toISOString();
   camps.forEach(cid => {
-    const cname = (db.prepare('SELECT name FROM campaigns WHERE id = ?').get(cid) || {}).name || cid;
+    const crow = db.prepare('SELECT name, campaignCode FROM campaigns WHERE id = ?').get(cid) || {}; const cname = crow.name || cid; const ccode = aliasVal(crow, 'campaignCode') || null;
     db.prepare('SELECT id, channel, audience, productGroup, budget, stage, detailsJson FROM channel_planning_details WHERE campaignId = ?').all(cid).forEach(r => {
       const amt = Number(r.budget) || 0; let d = {}; try { const dj = aliasVal(r, 'detailsJson'); d = dj ? JSON.parse(dj) : {}; } catch (e){ d = {}; }
       const curRaw = aliasVal(r, 'stage'); const cur = LOOP_STAGES_SET.has(curRaw) ? curRaw : null; out.lines++; bump(out.before, cur, amt);
       if (d.stageSource === 'manual'){ out.manualKept++; bump(out.after, cur, amt); return; }
       const rs = loopStageForLine({ channel: r.channel, audience: r.audience, productGroup: aliasVal(r, 'productGroup'), detailsJson: d });
-      if (rs.rule !== 'advocacy'){ const kk = loopAudienceKinds(r.audience); const aud = String(r.audience || '').trim();
-        if (!aud) noteGap('no_audience', r, cid, cname, amt, rs.stage || null);
-        else if (!kk.size) noteGap('unrecognized_audience', r, cid, cname, amt, rs.stage || null);
-        else if (kk.has('past') && kk.size > 1) noteGap('mixed_audience', r, cid, cname, amt, rs.stage || null);
-        else if (rs.rule === 'new_to_brand_no_intent') noteGap('new_no_intent', r, cid, cname, amt, rs.stage); }
+      { const gk = loopGapKind(r.audience, rs); if (gk) noteGap(gk, r, cid, cname, amt, rs.stage || null, ccode); }
       if (!rs.stage){ out.noRule++; bump(out.after, cur, amt); return; }
       if (rs.stage === cur){ out.unchanged++; bump(out.after, rs.stage, amt); if (!dry && d.stageSource !== 'rule'){ d.stageSource = 'rule'; d.stageRule = rs.rule; upd.run(rs.stage, JSON.stringify(d), now, r.id); } return; }
       out.changed++; bump(out.after, rs.stage, amt);
@@ -43444,6 +43450,23 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (wantApply){ const actor = planScenarioActor(req, accountId); if (!actor || !actor.canActivate) return sendJson(res, 403, { error: 'Only an admin or a CMO can apply the loop-stage rules. Preview is open to everyone.' }); }
       try { return sendJson(res, 200, applyLoopStageRules(accountId, { apply: wantApply, campaignId: body.campaignId || null })); }
       catch (e){ console.error('[loop-stage-rules] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'Could not run the loop-stage rules: ' + (e && e.message || 'unknown error') }); }
+    }
+    // POST /api/accounts/:id/loop-stage-rules/check  { rows:[{ campaignName, channel, audience, productGroup, budget }] } — 2026-10-10. Runs the same audience-gap
+    // check on rows that are about to be uploaded, so the upload screen can explain what is missing before anything is saved. Writes nothing.
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'loop-stage-rules' && parts[4] === 'check'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req).catch(() => ({})) || {};
+      const rows = Array.isArray(body.rows) ? body.rows.slice(0, 2000) : [];
+      const gaps = {}; let flagged = 0;
+      rows.forEach(r => {
+        const rs = loopStageForLine({ channel: r.channel, audience: r.audience, productGroup: r.productGroup, detailsJson: {} });
+        const k = loopGapKind(r.audience, rs); if (!k) return; flagged++;
+        const g = gaps[k] || (gaps[k] = { label: LOOP_GAP_LABEL[k], lines: 0, budget: 0, examples: [] });
+        g.lines++; g.budget += Number(r.budget) || 0;
+        if (g.examples.length < 5) g.examples.push({ campaign: r.campaignName || '', channel: r.channel || '', audience: r.audience || null });
+      });
+      return sendJson(res, 200, { rows: rows.length, flagged, gaps });
     }
     // GET  /api/accounts/:id/plan-scenarios?year=      saved scenarios + the Hold / Expected / Stretch starting points
     // POST /api/accounts/:id/plan-scenarios/run        run one scenario, nothing saved
