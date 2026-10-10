@@ -31599,7 +31599,7 @@ async function handleRequest(req, res) {
           : buildStoryAudienceGrowth(accountId, opts);
         if (data && (parts[4] === 'story' || parts[4] === 'growth-performance')){ try { data.provenance = buildProvenance(accountId); } catch (e){ data.provenance = null; } }
         return sendJson(res, 200, data);
-      } catch (e){ console.warn('[analytics/' + parts[4] + '] failed:', e.message); return sendJson(res, 500, { error: 'could not build ' + parts[4] }); }
+      } catch (e){ console.warn('[analytics/' + parts[4] + '] failed:', e.message, (e.stack || '').split('\n').slice(1, 3).join(' | ')); return sendJson(res, 500, { error: 'could not build ' + parts[4] }); }
     }
 
     // GET / POST / DELETE /api/accounts/:id/voice/consent — 2026-10-08. The signed-in person's own voice permission
