@@ -18005,16 +18005,24 @@ function loopStageForLine(line){
 function applyLoopStageRules(accountId, opts){
   const o = opts || {}; const dry = o.apply !== true;
   const camps = db.prepare('SELECT id FROM campaigns WHERE accountId = ? AND COALESCE(cancelled, 0) = 0').all(accountId).map(r => r.id).filter(id => !o.campaignId || id === o.campaignId);
-  const out = { version: LOOP_STAGE_RULES_VERSION, dryRun: dry, lines: 0, changed: 0, manualKept: 0, unchanged: 0, noRule: 0, before: {}, after: {}, examples: [] };
+  const out = { version: LOOP_STAGE_RULES_VERSION, dryRun: dry, lines: 0, changed: 0, manualKept: 0, unchanged: 0, noRule: 0, before: {}, after: {}, examples: [], gaps: {} };
+  const GAP_LABEL = { no_audience: 'No audience on the line, so the channel default stage is used', unrecognized_audience: 'Audience not recognised (use Past Customers, Hand-Raisers, Prospects, Future Customers or Anonymous Website Traffic)', mixed_audience: 'Past Customers mixed with another audience, so the spend cannot be split', new_no_intent: 'New to Brand with no brand or product group, so Awareness is assumed' };
+  const noteGap = (kind, r, cid, cname, amt, assumed) => { const g = out.gaps[kind] || (out.gaps[kind] = { label: GAP_LABEL[kind], lines: 0, budget: 0, examples: [] }); g.lines++; g.budget += amt; if (g.examples.length < 12) g.examples.push({ lineId: r.id, campaignId: cid, campaign: cname, channel: r.channel, audience: r.audience || null, productGroup: aliasVal(r, 'productGroup') || null, assumed }); };
   const bump = (m, st, amt) => { const k = st || '(none)'; const x = m[k] || (m[k] = { lines: 0, budget: 0 }); x.lines += 1; x.budget += amt; };
   const upd = db.prepare('UPDATE channel_planning_details SET stage = ?, detailsJson = ?, updatedAt = ? WHERE id = ?');
   const now = new Date().toISOString();
   camps.forEach(cid => {
+    const cname = (db.prepare('SELECT name FROM campaigns WHERE id = ?').get(cid) || {}).name || cid;
     db.prepare('SELECT id, channel, audience, productGroup, budget, stage, detailsJson FROM channel_planning_details WHERE campaignId = ?').all(cid).forEach(r => {
       const amt = Number(r.budget) || 0; let d = {}; try { const dj = aliasVal(r, 'detailsJson'); d = dj ? JSON.parse(dj) : {}; } catch (e){ d = {}; }
       const curRaw = aliasVal(r, 'stage'); const cur = LOOP_STAGES_SET.has(curRaw) ? curRaw : null; out.lines++; bump(out.before, cur, amt);
       if (d.stageSource === 'manual'){ out.manualKept++; bump(out.after, cur, amt); return; }
       const rs = loopStageForLine({ channel: r.channel, audience: r.audience, productGroup: aliasVal(r, 'productGroup'), detailsJson: d });
+      if (rs.rule !== 'advocacy'){ const kk = loopAudienceKinds(r.audience); const aud = String(r.audience || '').trim();
+        if (!aud) noteGap('no_audience', r, cid, cname, amt, rs.stage || null);
+        else if (!kk.size) noteGap('unrecognized_audience', r, cid, cname, amt, rs.stage || null);
+        else if (kk.has('past') && kk.size > 1) noteGap('mixed_audience', r, cid, cname, amt, rs.stage || null);
+        else if (rs.rule === 'new_to_brand_no_intent') noteGap('new_no_intent', r, cid, cname, amt, rs.stage); }
       if (!rs.stage){ out.noRule++; bump(out.after, cur, amt); return; }
       if (rs.stage === cur){ out.unchanged++; bump(out.after, rs.stage, amt); if (!dry && d.stageSource !== 'rule'){ d.stageSource = 'rule'; d.stageRule = rs.rule; upd.run(rs.stage, JSON.stringify(d), now, r.id); } return; }
       out.changed++; bump(out.after, rs.stage, amt);
