@@ -19072,6 +19072,14 @@ async function submitBulkCreateCampaigns(){
       }, {})
   }));
   try {
+    const cr = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/loop-stage-rules/check`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows: rows.map(r => ({ campaignName: r.campaignName, channel: r.channel, audience: r.audience, productGroup: r.productGroup, budget: r.budget })) }), timeoutMs: 20000 });
+    const chk = cr.ok ? await cr.json() : null;
+    if (chk && chk.flagged > 0){
+      const choice = await lsrGapPrompt(chk);
+      if (choice !== 'go'){ resultEl.textContent = 'Upload paused. Nothing was saved. Add the missing audience to your file and upload again, or choose Continue next time to fix it later.'; return; }
+    }
+  } catch (e){ console.warn('loop audience check skipped', e); }
+  try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/channel-planning/bulk-create-campaigns`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ actorName, fileName: fileNameMatch ? fileNameMatch[1] : '', dateRangeStart, dateRangeEnd, skippedRows: Math.max(0, bccRows.length - validRows.length), rows })
@@ -24096,6 +24104,32 @@ async function scnCall(path, method, body){
   if (!r.ok) throw new Error((j && j.error) || `The server answered ${r.status}.`);
   return j;
 }
+function lsrOpenCampaign(campaignId){
+  try { cmpManageExistingCampaign(campaignId); setTimeout(() => { try { openCmpStage('audience'); } catch (e){} }, 450); } catch (e){ console.warn('lsrOpenCampaign failed', e); }
+}
+// Pre-upload check: explains why audience data matters for the Marketing Loop, and lets the person exit or continue and fix it later.
+function lsrGapPrompt(chk){
+  return new Promise(resolve => {
+    const kindShort = { no_audience: 'No audience on the line', unrecognized_audience: 'Audience not recognised', mixed_audience: 'Past Customers mixed with another audience', new_no_intent: 'New to Brand with no brand or product group' };
+    const money = n => '$' + Math.round(n || 0).toLocaleString();
+    const wrap = document.createElement('div');
+    wrap.setAttribute('role', 'dialog'); wrap.setAttribute('aria-modal', 'true'); wrap.setAttribute('aria-label', 'Audience data missing');
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:2000;background:rgba(7,9,13,.6);display:flex;align-items:center;justify-content:center;padding:20px;';
+    const rows = Object.keys(chk.gaps || {}).map(k => { const g = chk.gaps[k]; return `<li style="margin:0 0 6px;"><b>${g.lines} line${g.lines === 1 ? '' : 's'}</b> (${money(g.budget)}) — ${escapeHtml(kindShort[k] || k)}<div class="hint" style="margin:0;">${(g.examples || []).slice(0, 3).map(e => escapeHtml((e.campaign ? e.campaign + ' · ' : '') + e.channel + (e.audience ? ' · ' + e.audience : ''))).join('; ')}</div></li>`; }).join('');
+    wrap.innerHTML = `<div style="background:var(--white,#fff);color:var(--ink,#10141B);max-width:560px;width:100%;max-height:90vh;overflow:auto;border-radius:16px;padding:26px 28px 22px;box-shadow:0 20px 60px rgba(0,0,0,.35);">
+      <div class="kicker" style="margin-bottom:6px;">Marketing Loop</div>
+      <h3 style="margin:0 0 10px;">Some lines are missing audience details</h3>
+      <p style="margin:0 0 10px;line-height:1.5;">Each line's Marketing Loop stage comes from its channel and its audience. Past Customers spend is Loyalty, Brand Search and Remarketing are Purchase, and New to Brand spend is Awareness or Consideration. Where the audience is missing or unclear, the stage is a guess from the channel alone, so Loyalty, Purchase and Awareness reporting and the forecast can be wrong.</p>
+      <ul style="margin:0 0 12px 18px;padding:0;">${rows}</ul>
+      <p class="hint" style="margin:0 0 16px;">You can continue now and fix this later. The Loop stage rules card in Train the Brain lists every line that needs an audience, with a link to the campaign.</p>
+      <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;"><button type="button" class="btn-ghost" data-v="exit">Exit and fix the file</button><button type="button" class="btn-primary" data-v="go">Continue, fix later</button></div></div>`;
+    const done = v => { wrap.remove(); resolve(v); };
+    wrap.addEventListener('click', e => { const v = e.target && e.target.getAttribute && e.target.getAttribute('data-v'); if (v) done(v); });
+    wrap.addEventListener('keydown', e => { if (e.key === 'Escape') done('exit'); });
+    document.body.appendChild(wrap);
+    const b = wrap.querySelector('[data-v="go"]'); if (b) b.focus();
+  });
+}
 async function lsrRun(apply){
   const out = document.getElementById('lsrOut'); const ab = document.getElementById('lsrApplyBtn'); if (!out) return;
   out.innerHTML = '<p class="hint">Working…</p>';
@@ -24108,7 +24142,12 @@ async function lsrRun(apply){
     const rows = stages.map(st => { const b = (j.before[st] || {lines:0,budget:0}), a = (j.after[st] || {lines:0,budget:0}); return `<tr><td>${st}</td><td>${b.lines} · ${money(b.budget)}</td><td>${a.lines} · ${money(a.budget)}</td></tr>`; }).join('');
     const ex = (j.examples || []).slice(0, 10).map(e => `<li>${escapeHtml(e.channel || '')}${e.audience ? ' · ' + escapeHtml(e.audience) : ''}: ${escapeHtml(e.from || '(none)')} → <b>${escapeHtml(e.to)}</b> <span class="hint">${escapeHtml(e.why)}</span></li>`).join('');
     const gapKeys = Object.keys(j.gaps || {});
-    const gapHtml = gapKeys.length ? `<div style="margin-top:14px;"><p style="margin:0 0 6px;"><b>Missing audience data that affects the stage</b></p>${gapKeys.map(k => { const g = j.gaps[k]; return `<div style="margin:0 0 10px;"><div><b>${g.lines} line${g.lines === 1 ? '' : 's'}</b> · ${money(g.budget)} — ${escapeHtml(g.label)}</div><ul style="margin:4px 0 0 18px;">${(g.examples || []).slice(0, 6).map(e => `<li>${escapeHtml(e.campaign || '')} · ${escapeHtml(e.channel || '')}${e.audience ? ' · ' + escapeHtml(e.audience) : ''}${e.assumed ? ` <span class="hint">counted as ${escapeHtml(e.assumed)}</span>` : ''}</li>`).join('')}${g.lines > 6 ? `<li class="hint">and ${g.lines - 6} more</li>` : ''}</ul></div>`; }).join('')}<p class="hint" style="margin:0;">Add or correct the Audience on these plan lines, then run Preview again.</p></div>` : '<p class="hint" style="margin-top:12px;">No audience gaps found. Every line has an audience the rules recognise.</p>';
+    const gapRows = j.gapRows || [];
+    const kindShort = { no_audience: 'No audience', unrecognized_audience: 'Audience not recognised', mixed_audience: 'Mixed audience', new_no_intent: 'No brand or product group' };
+    const gapHtml = gapKeys.length ? `<div style="margin-top:16px;"><p style="margin:0 0 4px;"><b>Audience gap report</b></p>
+      <p class="hint" style="margin:0 0 8px;">The loop stage depends on who each line targets. Where the audience is missing or unclear, the stage is a guess from the channel alone, and Loyalty, Purchase and Awareness reporting can be wrong. ${gapKeys.map(k => `${j.gaps[k].lines} line${j.gaps[k].lines === 1 ? '' : 's'} · ${escapeHtml(kindShort[k] || k)}`).join(' · ')}.</p>
+      <div style="overflow-x:auto;"><table class="data-table"><thead><tr><th>Campaign</th><th>Channel</th><th>Audience</th><th>Product group</th><th>Issue</th><th>Counted as</th><th></th></tr></thead><tbody>${gapRows.slice(0, 200).map(g => `<tr><td><a class="flink" onclick="lsrOpenCampaign('${escapeHtml(String(g.campaignId))}')">${escapeHtml(g.campaignCode || g.campaignId)}</a><div class="hint" style="margin:0;">${escapeHtml(g.campaign || '')}</div></td><td>${escapeHtml(g.channel || '')}</td><td>${escapeHtml(g.audience || '—')}</td><td>${escapeHtml(g.productGroup || '—')}</td><td>${escapeHtml(kindShort[g.kind] || g.kind)}</td><td>${escapeHtml(g.assumed || '—')}</td><td><a class="flink" onclick="lsrOpenCampaign('${escapeHtml(String(g.campaignId))}')">Fix audience →</a></td></tr>`).join('')}</tbody></table></div>
+      ${gapRows.length > 200 ? `<p class="hint">Showing the first 200 of ${gapRows.length} lines.</p>` : ''}<p class="hint" style="margin:8px 0 0;">The link opens the campaign's Audience stage. Run Preview again afterwards to confirm the gap is closed.</p></div>` : '<p class="hint" style="margin-top:12px;">No audience gaps found. Every line has an audience the rules recognise.</p>';
     out.innerHTML = `<p style="margin:0 0 8px;"><b>${j.dryRun ? 'Preview' : 'Applied'}:</b> ${j.changed} of ${j.lines} lines ${j.dryRun ? 'would change' : 'changed'}, ${j.manualKept} kept as manual overrides, ${j.unchanged} already correct.</p>
       <div style="overflow-x:auto;"><table class="data-table"><thead><tr><th>Stage</th><th>Before (lines · budget)</th><th>${j.dryRun ? 'After' : 'Now'} (lines · budget)</th></tr></thead><tbody>${rows}</tbody></table></div>
       ${ex ? `<ul style="margin:8px 0 0 18px;">${ex}</ul>` : ''}${gapHtml}`;
