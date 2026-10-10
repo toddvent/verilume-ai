@@ -19004,7 +19004,8 @@ function buildTrainTheBrain(accountId){
       { label: 'Demand fulfillment assumptions', done: rowsOf('account_demand_fulfillment') > 0, rows: rowsOf('account_demand_fulfillment'), gain: 'How demand grows with website traffic.', step: 'demandFulfillment' },
       { label: 'Marketable audience sizes', done: rowsOf('account_marketable_sizes') > 0, rows: rowsOf('account_marketable_sizes'), gain: 'Direct mail and email list counts by audience.', step: 'marketableSizes' },
       { label: 'Direct mail cost per piece', done: rowsOf('account_dm_cost_per_piece') + rowsOf('account_dm_format_cost') > 0, rows: rowsOf('account_dm_cost_per_piece') + rowsOf('account_dm_format_cost'), gain: 'Turns audience size into a direct mail budget.', step: 'dmCost' },
-      { label: 'Rate card minimums and magazine rates', done: rowsOf('account_magazine_cost') > 0, rows: rowsOf('account_magazine_cost'), gain: 'Your negotiated print rates by title and format.', step: 'magazineCost' } ] },
+      { label: 'Rate card minimums and magazine rates', done: rowsOf('account_magazine_cost') > 0, rows: rowsOf('account_magazine_cost'), gain: 'Your negotiated print rates by title and format.', step: 'magazineCost' },
+      { label: 'Marketing Loop stage rules', done: (() => { try { return db.prepare("SELECT COUNT(*) AS n FROM channel_planning_details WHERE campaignId IN (SELECT id FROM campaigns WHERE accountId = ?) AND detailsJson LIKE '%\"stageSource\":\"rule\"%'").get(accountId).n > 0; } catch (e) { return false; } })(), gain: 'Sets each plan line\'s loop stage from its channel and audience.', step: 'loopRules' } ] },
     { key: 'team', title: 'Your team', minutes: 2, gain: 'Everyone works from the same picture and can comment in the Brain Dump.', items: [
       { label: 'Team and org chart', done: team >= 2, gain: team ? `${team} on the chart.` : 'Add the people who use this account.', step: 'team' } ] }
   ];
