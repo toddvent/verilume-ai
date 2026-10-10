@@ -1034,8 +1034,9 @@ function voiceConsentFor(session){
   if (!session || !session.memberId) return { scope: 'browser', consented: false };
   let r = null;
   try { r = db.prepare('SELECT voiceConsent, voiceConsentAt, voiceConsentVersion FROM team_members WHERE id = ?').get(session.memberId); } catch (e){}
-  const ok = !!(r && r.voiceConsent === 'Y' && r.voiceConsentVersion === VOICE_CONSENT_VERSION);
-  return { scope: 'member', consented: ok, at: ok ? r.voiceConsentAt : null, version: VOICE_CONSENT_VERSION };
+  // Postgres folds unquoted camelCase column names to lowercase, so read through aliasVal; a plain r.voiceConsent was undefined in production and the saved agreement never counted.
+  const ok = !!(r && aliasVal(r, 'voiceConsent') === 'Y' && aliasVal(r, 'voiceConsentVersion') === VOICE_CONSENT_VERSION);
+  return { scope: 'member', consented: ok, at: ok ? aliasVal(r, 'voiceConsentAt') : null, version: VOICE_CONSENT_VERSION };
 }
 
 // Added 2026-08-18 — real per-person username/password auth (registration
