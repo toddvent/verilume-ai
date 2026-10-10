@@ -18011,8 +18011,8 @@ function applyLoopStageRules(accountId, opts){
   const now = new Date().toISOString();
   camps.forEach(cid => {
     db.prepare('SELECT id, channel, audience, productGroup, budget, stage, detailsJson FROM channel_planning_details WHERE campaignId = ?').all(cid).forEach(r => {
-      const amt = Number(r.budget) || 0; let d = {}; try { d = r.detailsJson ? JSON.parse(r.detailsJson) : {}; } catch (e){ d = {}; }
-      const cur = normalizeChannelPlanningStage(r.stage); out.lines++; bump(out.before, cur, amt);
+      const amt = Number(r.budget) || 0; let d = {}; try { const dj = aliasVal(r, 'detailsJson'); d = dj ? JSON.parse(dj) : {}; } catch (e){ d = {}; }
+      const curRaw = aliasVal(r, 'stage'); const cur = LOOP_STAGES_SET.has(curRaw) ? curRaw : null; out.lines++; bump(out.before, cur, amt);
       if (d.stageSource === 'manual'){ out.manualKept++; bump(out.after, cur, amt); return; }
       const rs = loopStageForLine({ channel: r.channel, audience: r.audience, productGroup: aliasVal(r, 'productGroup'), detailsJson: d });
       if (!rs.stage){ out.noRule++; bump(out.after, cur, amt); return; }
