@@ -12190,16 +12190,10 @@
       </div>
     </div>
 
-    <div class="sk-card" id="lsrCard" style="margin-bottom:18px;">
-      <div class="sk-card-head cx">
-        <div class="htext"><div class="kicker">Marketing Loop</div><h3>Loop stage rules</h3></div>
-        <div class="hicon">🔁</div>
-      </div>
-      <div class="sk-card-body">
-        <p class="hint" style="margin-top:0;">Each plan line gets its Marketing Loop stage from its channel and audience. Past Customers spend is <b>Loyalty</b>. Brand Search and Remarketing (anonymous visitors) are <b>Purchase</b>. Hand-Raisers are <b>Consideration</b>. New to Brand (Prospects) is <b>Awareness</b> unless the line targets a brand or product group, then <b>Consideration</b>. PR, Partner Media and anything marked Advocacy are <b>Advocacy</b>. A stage you set by hand on a line is kept.</p>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn-ghost" id="lsrPreviewBtn" onclick="lsrRun(false)">Preview changes</button><button class="btn-primary" id="lsrApplyBtn" onclick="lsrRun(true)" style="display:none;">Apply to all lines</button></div>
-        <div id="lsrOut" style="margin-top:10px;"></div>
-      </div>
+    <div id="lsrCard" class="lsr-wrap" style="margin-bottom:18px;">
+      <p class="hint" style="margin-top:0;">Each plan line gets its Marketing Loop stage from its channel and audience. Past Customers spend is <b>Loyalty</b>. Brand Search and Remarketing (anonymous visitors) are <b>Purchase</b>. Hand-Raisers are <b>Consideration</b>. New to Brand (Prospects) is <b>Awareness</b> unless the line targets a brand or product group, then <b>Consideration</b>. PR, Partner Media and anything marked Advocacy are <b>Advocacy</b>. A stage you set by hand on a line is kept.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn-ghost" id="lsrPreviewBtn" onclick="lsrRun(false)">Preview changes</button><button class="btn-primary" id="lsrApplyBtn" onclick="lsrRun(true)" style="display:none;">Apply to all lines</button></div>
+      <div id="lsrOut" style="margin-top:12px;"></div>
     </div>
 
     <div class="sk-card" id="mbuUploadCard" style="display:none;margin-top:18px;">
@@ -24113,10 +24107,14 @@ async function lsrRun(apply){
     const money = n => '$' + Math.round(n || 0).toLocaleString();
     const rows = stages.map(st => { const b = (j.before[st] || {lines:0,budget:0}), a = (j.after[st] || {lines:0,budget:0}); return `<tr><td>${st}</td><td>${b.lines} · ${money(b.budget)}</td><td>${a.lines} · ${money(a.budget)}</td></tr>`; }).join('');
     const ex = (j.examples || []).slice(0, 10).map(e => `<li>${escapeHtml(e.channel || '')}${e.audience ? ' · ' + escapeHtml(e.audience) : ''}: ${escapeHtml(e.from || '(none)')} → <b>${escapeHtml(e.to)}</b> <span class="hint">${escapeHtml(e.why)}</span></li>`).join('');
+    const gapKeys = Object.keys(j.gaps || {});
+    const gapHtml = gapKeys.length ? `<div style="margin-top:14px;"><p style="margin:0 0 6px;"><b>Missing audience data that affects the stage</b></p>${gapKeys.map(k => { const g = j.gaps[k]; return `<div style="margin:0 0 10px;"><div><b>${g.lines} line${g.lines === 1 ? '' : 's'}</b> · ${money(g.budget)} — ${escapeHtml(g.label)}</div><ul style="margin:4px 0 0 18px;">${(g.examples || []).slice(0, 6).map(e => `<li>${escapeHtml(e.campaign || '')} · ${escapeHtml(e.channel || '')}${e.audience ? ' · ' + escapeHtml(e.audience) : ''}${e.assumed ? ` <span class="hint">counted as ${escapeHtml(e.assumed)}</span>` : ''}</li>`).join('')}${g.lines > 6 ? `<li class="hint">and ${g.lines - 6} more</li>` : ''}</ul></div>`; }).join('')}<p class="hint" style="margin:0;">Add or correct the Audience on these plan lines, then run Preview again.</p></div>` : '<p class="hint" style="margin-top:12px;">No audience gaps found. Every line has an audience the rules recognise.</p>';
     out.innerHTML = `<p style="margin:0 0 8px;"><b>${j.dryRun ? 'Preview' : 'Applied'}:</b> ${j.changed} of ${j.lines} lines ${j.dryRun ? 'would change' : 'changed'}, ${j.manualKept} kept as manual overrides, ${j.unchanged} already correct.</p>
       <div style="overflow-x:auto;"><table class="data-table"><thead><tr><th>Stage</th><th>Before (lines · budget)</th><th>${j.dryRun ? 'After' : 'Now'} (lines · budget)</th></tr></thead><tbody>${rows}</tbody></table></div>
-      ${ex ? `<ul style="margin:8px 0 0 18px;">${ex}</ul>` : ''}`;
+      ${ex ? `<ul style="margin:8px 0 0 18px;">${ex}</ul>` : ''}${gapHtml}`;
     if (ab) ab.style.display = (j.dryRun && j.changed > 0) ? '' : 'none';
+    if (j.dryRun && j.changed === 0) out.insertAdjacentHTML('beforeend', '<p class="hint" style="margin-top:8px;">Every line already follows the rules, so there is nothing to change.</p>');
+    if (j.dryRun && j.changed > 0) out.insertAdjacentHTML('beforeend', '<p class="hint" style="margin-top:8px;">Nothing has changed yet. Choose Apply to all lines to make these changes. Lines you set by hand are kept. Applying needs an admin or CMO.</p>');
     if (!j.dryRun){ try { if (typeof mbdRenderBudgetChartGrid === 'function') mbdRenderBudgetChartGrid(); } catch (e){} }
   } catch (e){ out.innerHTML = `<p class="scn-msg err">${escapeHtml(e.message)}</p>`; }
 }
