@@ -6329,32 +6329,49 @@ db.exec(`
 `);
 // 2026-10-10 — Scenario plan lines: a plan uploaded INTO a scenario (month, partner, channel, stage, audience / ad group, spend, CPM,
 // impressions, optional CTR). Belongs to the scenario only; nothing here is read by the account budget, campaigns or targets.
+// Column names are deliberately plain lowercase (except accountId) so Postgres identifier folding / schema-identifiers.json drift can never split them.
 db.exec(`
-  CREATE TABLE IF NOT EXISTS plan_scenario_lines (
+  CREATE TABLE IF NOT EXISTS scenario_plan_lines (
     id TEXT PRIMARY KEY,
-    scenarioId TEXT NOT NULL,
+    scenario TEXT NOT NULL,
     accountId TEXT NOT NULL,
-    lineNo INTEGER,
+    seq INTEGER,
     tab TEXT,
     year INTEGER,
     month INTEGER,
     partner TEXT,
     channel TEXT,
-    rawStage TEXT,
-    loopStage TEXT,
-    stageSource TEXT,
+    stagefile TEXT,
+    loopstage TEXT,
+    stagesrc TEXT,
     audience TEXT,
     dma TEXT,
-    productGroup TEXT,
-    creativeType TEXT,
+    prodgroup TEXT,
+    creative TEXT,
     spend REAL,
     cpm REAL,
     impressions REAL,
     ctr REAL,
-    createdAt TEXT NOT NULL
+    created TEXT NOT NULL
   );
 `);
-try { db.exec('CREATE INDEX IF NOT EXISTS idx_plan_scenario_lines_sid ON plan_scenario_lines (scenarioId)'); } catch (e){}
+try { db.exec('CREATE INDEX IF NOT EXISTS idx_scenario_plan_lines_scn ON scenario_plan_lines (scenario)'); } catch (e){}
+// Self-heal for account_plan_scenarios on Postgres: if the table was created before its camelCase names were in schema-identifiers.json its columns are
+// stored lowercase while queries quote them. Rename only the columns this table owns, only when a write fails for that reason, then retry once.
+const PLAN_SCENARIO_CAMEL_COLS = ['accountId', 'workingMedia', 'mixJson', 'resultJson', 'createdById', 'createdByName', 'createdAt', 'updatedAt', 'submittedAt', 'activatedById', 'activatedByName', 'activatedAt'];
+function planScenarioHealCasing(){
+  let n = 0;
+  PLAN_SCENARIO_CAMEL_COLS.forEach(c => { try { db.exec('ALTER TABLE account_plan_scenarios RENAME COLUMN ' + c.toLowerCase() + ' TO "' + c + '"'); n++; } catch (e){ /* already correct, or not present */ } });
+  return n;
+}
+function planScenarioRun(fn){
+  try { return fn(); }
+  catch (e){
+    const msg = String((e && e.message) || '');
+    if (/account_plan_scenarios/.test(msg) && /does not exist/i.test(msg)){ const n = planScenarioHealCasing(); console.log('[plan-scenarios] repaired column casing on account_plan_scenarios (' + n + ' renamed); retrying'); return fn(); }
+    throw e;
+  }
+}
 // 2026-10-08 — Rate Card Minimums: the smallest buy a media owner will take, by channel. Magazines can be set as a number of insertions at the
 // account's own cost per insertion; any other channel is a dollar minimum. Used as a floor in the plan, never as a reason to drop a channel.
 createTableIfNeeded(`
@@ -18385,13 +18402,16 @@ function planUploadNormalize(tabs, fallbackYear){
   const lines = []; const errors = []; let lineNo = 0;
   (Array.isArray(tabs) ? tabs : []).slice(0, 12).forEach(tab => {
     const tabName = String(tab && tab.name || '').slice(0, 60); const ty = /^(\d{4})$/.exec(tabName.trim());
+    // A tab with no year in its name (e.g. "Q4"): the plan is the next time those months come around, so the current year unless its earliest month has already passed.
+    const tabMonths = (Array.isArray(tab && tab.rows) ? tab.rows : []).map(r => planUploadMonth(r.month)).filter(Boolean).map(m => m.month);
+    const nowD = new Date(); const tabYearGuess = tabMonths.length && Math.min.apply(null, tabMonths) < nowD.getUTCMonth() + 1 ? nowD.getUTCFullYear() + 1 : nowD.getUTCFullYear();
     (Array.isArray(tab && tab.rows) ? tab.rows : []).slice(0, 5000).forEach((r, idx) => {
       const rowNo = Number(r && r.rowNo) || (idx + 2); const bad = reason => errors.push({ tab: tabName, row: rowNo, reason });
       if (!String(r.month == null ? '' : r.month).trim() && !String(r.channel || '').trim() && planUploadNum(r.spend) == null) return; // blank or total-only row
       const mo = planUploadMonth(r.month); if (!mo) return bad('Month not recognised: "' + String(r.month == null ? '' : r.month).slice(0, 30) + '".');
       const channel = String(r.channel || '').trim().slice(0, 80); if (!channel) return bad('No channel.');
       const spend = planUploadNum(r.spend); if (spend == null || spend < 0) return bad('Spend is missing or not a number.');
-      const year = mo.year || (ty ? +ty[1] : (Number(fallbackYear) || new Date().getUTCFullYear()));
+      const year = mo.year || (ty ? +ty[1] : (Number(fallbackYear) || tabYearGuess));
       let cpm = planUploadNum(r.cpm); let imps = planUploadNum(r.impressions); const ctr = planUploadCtr(r.ctr);
       if ((imps == null || imps <= 0) && cpm > 0) imps = spend / cpm * 1000;
       if ((cpm == null || cpm <= 0) && imps > 0) cpm = spend / imps * 1000;
@@ -18408,7 +18428,7 @@ function planUploadSummary(lines){
     byChannel: by(l => l.partner ? l.channel + ' · ' + l.partner : l.channel), byLoopStage: by(l => l.loopStage), byMonth: by(l => l.year + '-' + String(l.month).padStart(2, '0')),
     noImpressions: lines.filter(l => !(l.impressions > 0)).length, withCtr: lines.filter(l => l.ctr != null).length, unmappedStage: lines.filter(l => !l.loopStage).length };
 }
-function planUploadLineOut(r){ const g = k => aliasVal(r, k); return { id: r.id, lineNo: g('lineNo'), tab: r.tab, year: r.year, month: r.month, partner: r.partner, channel: r.channel, rawStage: g('rawStage'), loopStage: g('loopStage'), stageSource: g('stageSource'), audience: r.audience, dma: r.dma, productGroup: g('productGroup'), creativeType: g('creativeType'), spend: r.spend, cpm: r.cpm, impressions: r.impressions, ctr: r.ctr }; }
+function planUploadLineOut(r){ return { id: r.id, lineNo: r.seq, tab: r.tab, year: r.year, month: r.month, partner: r.partner, channel: r.channel, rawStage: r.stagefile, loopStage: r.loopstage, stageSource: r.stagesrc, audience: r.audience, dma: r.dma, productGroup: r.prodgroup, creativeType: r.creative, spend: r.spend, cpm: r.cpm, impressions: r.impressions, ctr: r.ctr }; }
 function planScenarioActor(req, accountId){
   const session = authenticate(req); let m = null;
   if (session && session.memberId){ try { m = db.prepare('SELECT name, isAdmin, level FROM team_members WHERE id = ? AND accountId = ?').get(session.memberId, accountId); } catch (e){} }
@@ -19103,7 +19123,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['account_plan_scenarios', 'plan_scenario_lines', 'account_rate_card_minimums', 'account_learned_cpm', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
+const CATALOG_EXEMPT = new Set(['account_plan_scenarios', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'account_learned_cpm', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -43680,14 +43700,14 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
           try {
             plan.forEach(p => {
               const id = generateId('SCN'); const mix = {}; p.lines.forEach(l => { mix[l.channel] = (mix[l.channel] || 0) + l.spend; });
-              db.prepare('INSERT INTO account_plan_scenarios (id, accountId, year, name, kind, status, band, workingMedia, mixJson, resultJson, notes, createdById, createdByName, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-                .run(id, accountId, p.year, p.name, 'upload', 'draft', 'mid', Math.round(p.summary.spend), JSON.stringify(mix), null, 'Uploaded plan: ' + String(body.fileName || '').slice(0, 120) + '. Lines are stored with the scenario only.', actor.id, actor.name, now, now);
-              p.lines.forEach(l => { db.prepare('INSERT INTO plan_scenario_lines (id, scenarioId, accountId, lineNo, tab, year, month, partner, channel, rawStage, loopStage, stageSource, audience, dma, productGroup, creativeType, spend, cpm, impressions, ctr, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-                .run(generateId('SPL'), id, accountId, l.lineNo, l.tab, l.year, l.month, l.partner, l.channel, l.rawStage, l.loopStage, l.stageSource, l.audience, l.dma, l.productGroup, l.creativeType, l.spend, l.cpm, l.impressions, l.ctr, now); });
+              planScenarioRun(() => db.prepare('INSERT INTO account_plan_scenarios (id, accountId, year, name, kind, status, band, workingMedia, mixJson, resultJson, notes, createdById, createdByName, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                .run(id, accountId, p.year, p.name, 'upload', 'draft', 'mid', Math.round(p.summary.spend), JSON.stringify(mix), null, 'Uploaded plan: ' + String(body.fileName || '').slice(0, 120) + '. Lines are stored with the scenario only.', actor.id, actor.name, now, now));
               created.push({ id, year: p.year, name: p.name, summary: p.summary });
+              p.lines.forEach(l => { db.prepare('INSERT INTO scenario_plan_lines (id, scenario, accountId, seq, tab, year, month, partner, channel, stagefile, loopstage, stagesrc, audience, dma, prodgroup, creative, spend, cpm, impressions, ctr, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                .run(generateId('SPL'), id, accountId, l.lineNo, l.tab, l.year, l.month, l.partner, l.channel, l.rawStage, l.loopStage, l.stageSource, l.audience, l.dma, l.productGroup, l.creativeType, l.spend, l.cpm, l.impressions, l.ctr, now); });
             });
           } catch (e){
-            created.forEach(c => { try { db.prepare('DELETE FROM plan_scenario_lines WHERE scenarioId = ?').run(c.id); db.prepare('DELETE FROM account_plan_scenarios WHERE id = ?').run(c.id); } catch (e2){} });
+            created.forEach(c => { try { db.prepare('DELETE FROM scenario_plan_lines WHERE scenario = ?').run(c.id); db.prepare('DELETE FROM account_plan_scenarios WHERE id = ?').run(c.id); } catch (e2){} });
             console.error('[plan-scenarios/upload] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'The plan could not be saved: ' + (e && e.message || 'unknown error') });
           }
           return sendJson(res, 200, { saved: true, scenarios: created, errors: norm.errors.slice(0, 50), errorCount: norm.errors.length });
@@ -43697,7 +43717,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
           const sid = decodeURIComponent(parts[4]);
           const row = db.prepare('SELECT id, name, year FROM account_plan_scenarios WHERE id = ? AND accountId = ?').get(sid, accountId);
           if (!row) return sendJson(res, 404, { error: 'Scenario not found.' });
-          const lines = db.prepare('SELECT * FROM plan_scenario_lines WHERE scenarioId = ? AND accountId = ?').all(sid, accountId).map(planUploadLineOut).sort((a, b) => (a.year - b.year) || (a.month - b.month) || ((a.lineNo || 0) - (b.lineNo || 0)));
+          const lines = db.prepare('SELECT * FROM scenario_plan_lines WHERE scenario = ? AND accountId = ?').all(sid, accountId).map(planUploadLineOut).sort((a, b) => (a.year - b.year) || (a.month - b.month) || ((a.lineNo || 0) - (b.lineNo || 0)));
           return sendJson(res, 200, { scenarioId: sid, name: row.name, year: row.year, lines, summary: planUploadSummary(lines) });
         }
         if (req.method === 'POST' && parts.length === 4){
@@ -43707,8 +43727,8 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
           const r = planScenarioCompute(accountId, body); if (r.error) return sendJson(res, 400, r);
           const id = generateId('SCN'); const now = new Date().toISOString(); const status = body.submit ? 'pending' : 'draft';
           const mix = {}; r.channels.forEach(c => { mix[c.channel] = c.spend; });
-          db.prepare('INSERT INTO account_plan_scenarios (id, accountId, year, name, kind, status, band, workingMedia, mixJson, resultJson, notes, createdById, createdByName, createdAt, updatedAt, submittedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-            .run(id, accountId, r.year, name, kind, status, band, r.outcome.workingMedia, JSON.stringify(mix), JSON.stringify(r), body.notes ? String(body.notes).slice(0, 2000) : null, actor.id, actor.name, now, now, status === 'pending' ? now : null);
+          planScenarioRun(() => db.prepare('INSERT INTO account_plan_scenarios (id, accountId, year, name, kind, status, band, workingMedia, mixJson, resultJson, notes, createdById, createdByName, createdAt, updatedAt, submittedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(id, accountId, r.year, name, kind, status, band, r.outcome.workingMedia, JSON.stringify(mix), JSON.stringify(r), body.notes ? String(body.notes).slice(0, 2000) : null, actor.id, actor.name, now, now, status === 'pending' ? now : null));
           return sendJson(res, 200, { saved: true, scenario: planScenarioOut(db.prepare('SELECT * FROM account_plan_scenarios WHERE id = ?').get(id)) });
         }
         if (req.method === 'POST' && parts.length === 6){
