@@ -17947,6 +17947,82 @@ function buildCreativeMedia(accountId, opts){
 // Active = start <= today <= end; Completed YTD = ended this calendar year;
 // Pending = starts after today. Rates are the account's own trailing history,
 // and every expected number is labelled as an estimate by the front end.
+// 2026-10-10 — Loop-stage rules (Todd). A line's Marketing Loop stage comes from its channel plus its audience, in this order:
+//   1. Advocacy is only ever an explicit designation (a person or the plan said Advocacy), or an Advocacy-only channel (PR, Partner Media).
+//   2. Past Customer spend is always Loyalty.
+//   3. Remarketing and Brand Search are Purchase (a Remarketing channel or an Anonymous Visitors audience).
+//   4. Hand-Raisers are Consideration.
+//   5. New to Brand (Prospects, Future Customers): Awareness when no known brand or product-group intent is targeted, Consideration when
+//      a brand or product group is. Brand Search is excluded from this (rule 3 already made it Purchase).
+//   6. No recognised audience: the channel's own default.
+// A stage a person set by hand that differs from the rule is kept and marked as a manual override.
+const LOOP_STAGE_RULES_VERSION = '2026-10-10';
+const LOOP_STAGES_SET = new Set(['Awareness','Consideration','Purchase','Loyalty','Advocacy']);
+const LOOP_CHANNEL_DEFAULT = {
+  'linear tv': 'Awareness', 'otv': 'Awareness', 'ctv': 'Awareness', 'out-of-home': 'Awareness', 'radio': 'Awareness', 'magazines': 'Awareness',
+  'direct mail — prospects': 'Awareness', 'non-brand search': 'Consideration', 'paid social': 'Consideration', 'programmatic display': 'Consideration',
+  'newspapers': 'Consideration', 'podcasts': 'Consideration', 'direct mail — inquiries': 'Consideration', 'direct mail — identity resolution': 'Consideration',
+  'brand search': 'Purchase', 'email — remarketing': 'Purchase', 'remarketing': 'Purchase', 'retail media': 'Purchase', 'field / abm': 'Purchase',
+  'internal email': 'Loyalty', 'direct mail — past guests': 'Loyalty', 'pr': 'Advocacy', 'partner media': 'Advocacy'
+};
+function loopAudienceKinds(audience){
+  const s = String(audience || ''); const k = new Set();
+  if (/past (customer|guest)|loyal|house list|existing customer|alumni/i.test(s)) k.add('past');
+  if (/hand[- ]?raiser|inquir|brochure/i.test(s)) k.add('hand');
+  if (/anonymous|website traffic|site visitor|visitors?\b|retarget|remarket/i.test(s)) k.add('anon');
+  if (/prospect|new[- ]to[- ]brand|future customer|cold|lookalike|in-market/i.test(s)) k.add('new');
+  return k;
+}
+function loopHasIntent(productGroup){
+  const pg = String(productGroup || '').trim();
+  return !!pg && !/^(all|n\/?a|none|general|unspecified|-+)$/i.test(pg);
+}
+function loopStageForLine(line){
+  const l = line || {}; const ch = String(l.channel || '').trim(); const chKey = ch.toLowerCase();
+  const kinds = loopAudienceKinds(l.audience);
+  const isBrandSearch = /brand search/i.test(ch) && !/non[- ]?brand/i.test(ch);
+  const isRemarketing = /remarket|retarget/i.test(ch);
+  let d = {}; try { d = (l.detailsJson && typeof l.detailsJson === 'object') ? l.detailsJson : (l.detailsJson ? JSON.parse(l.detailsJson) : {}); } catch (e){ d = {}; }
+  if (d && (d.advocacy === true || d.explicitStage === 'Advocacy')) return { stage: 'Advocacy', rule: 'advocacy', reason: 'Explicitly designated as Advocacy.' };
+  if (chKey === 'pr' || chKey === 'partner media') return { stage: 'Advocacy', rule: 'advocacy', reason: ch + ' is an Advocacy channel.' };
+  const nonPast = new Set(kinds); nonPast.delete('past');
+  if (kinds.has('past') && !nonPast.size) return { stage: 'Loyalty', rule: 'past_customer', reason: 'Past Customer spend is always Loyalty.' };
+  if (isBrandSearch) return { stage: 'Purchase', rule: 'brand_search', reason: 'Brand Search is Purchase.' };
+  if (isRemarketing || nonPast.has('anon')) return { stage: 'Purchase', rule: 'remarketing', reason: 'Remarketing (anonymous visitors) is Purchase.' };
+  if (nonPast.has('hand')) return { stage: 'Consideration', rule: 'hand_raisers', reason: 'Hand-Raisers are Consideration.' };
+  if (nonPast.has('new')){
+    const intent = loopHasIntent(l.productGroup);
+    return intent
+      ? { stage: 'Consideration', rule: 'new_to_brand_intent', reason: 'New to Brand with a brand or product-group intent is Consideration.' }
+      : { stage: 'Awareness', rule: 'new_to_brand_no_intent', reason: 'New to Brand with no brand or product-group intent is Awareness.' };
+  }
+  if (LOOP_CHANNEL_DEFAULT[chKey]) return { stage: LOOP_CHANNEL_DEFAULT[chKey], rule: 'channel_default', reason: 'No recognised audience, so the channel default applies.' };
+  return { stage: null, rule: 'none', reason: 'No rule matched; the stage is left as set.' };
+}
+
+// Re-runs the loop-stage rules over an account's campaign lines. Lines marked as a manual override keep their stage. dryRun only counts.
+function applyLoopStageRules(accountId, opts){
+  const o = opts || {}; const dry = o.apply !== true;
+  const camps = db.prepare('SELECT id FROM campaigns WHERE accountId = ? AND COALESCE(cancelled, 0) = 0').all(accountId).map(r => r.id).filter(id => !o.campaignId || id === o.campaignId);
+  const out = { version: LOOP_STAGE_RULES_VERSION, dryRun: dry, lines: 0, changed: 0, manualKept: 0, unchanged: 0, noRule: 0, before: {}, after: {}, examples: [] };
+  const bump = (m, st, amt) => { const k = st || '(none)'; const x = m[k] || (m[k] = { lines: 0, budget: 0 }); x.lines += 1; x.budget += amt; };
+  const upd = db.prepare('UPDATE channel_planning_details SET stage = ?, detailsJson = ?, updatedAt = ? WHERE id = ?');
+  const now = new Date().toISOString();
+  camps.forEach(cid => {
+    db.prepare('SELECT id, channel, audience, productGroup, budget, stage, detailsJson FROM channel_planning_details WHERE campaignId = ?').all(cid).forEach(r => {
+      const amt = Number(r.budget) || 0; let d = {}; try { d = r.detailsJson ? JSON.parse(r.detailsJson) : {}; } catch (e){ d = {}; }
+      const cur = normalizeChannelPlanningStage(r.stage); out.lines++; bump(out.before, cur, amt);
+      if (d.stageSource === 'manual'){ out.manualKept++; bump(out.after, cur, amt); return; }
+      const rs = loopStageForLine({ channel: r.channel, audience: r.audience, productGroup: aliasVal(r, 'productGroup'), detailsJson: d });
+      if (!rs.stage){ out.noRule++; bump(out.after, cur, amt); return; }
+      if (rs.stage === cur){ out.unchanged++; bump(out.after, rs.stage, amt); if (!dry && d.stageSource !== 'rule'){ d.stageSource = 'rule'; d.stageRule = rs.rule; upd.run(rs.stage, JSON.stringify(d), now, r.id); } return; }
+      out.changed++; bump(out.after, rs.stage, amt);
+      if (out.examples.length < 25) out.examples.push({ lineId: r.id, campaignId: cid, channel: r.channel, audience: r.audience || null, from: cur, to: rs.stage, why: rs.reason });
+      if (!dry){ d.stageSource = 'rule'; d.stageRule = rs.rule; upd.run(rs.stage, JSON.stringify(d), now, r.id); }
+    });
+  });
+  return out;
+}
 // DEFAULT channel to loop stage map (editable later). The campaign and plan lines carry no loop stage today.
 const GP_LOOP_BY_CHANNEL = [
   [/search|remarket|retarget|lead|website|landing/i, 'Consideration'],
@@ -17967,8 +18043,8 @@ function buildGrowthOutlook(accountId, asOfDate, totals, leadToBooking, dpRows){
     .map(r => ({ id: r.id, start: String(aliasVal(r, 'startDate') || '').slice(0, 10), end: String(aliasVal(r, 'endDate') || '').slice(0, 10), planned: Number(aliasVal(r, 'plannedImpressions')) || 0 }));
   const lineBy = {};
   if (camps.length){
-    const lines = db.prepare('SELECT campaignId, channel, impressions FROM channel_planning_details WHERE campaignId IN (SELECT id FROM campaigns WHERE accountId = ? AND isAdHoc = 0)').all(accountId);
-    lines.forEach(l => { const k = aliasVal(l, 'campaignId'); (lineBy[k] = lineBy[k] || []).push({ channel: l.channel, imps: Number(l.impressions) || 0 }); });
+    const lines = db.prepare('SELECT campaignId, channel, impressions, stage FROM channel_planning_details WHERE campaignId IN (SELECT id FROM campaigns WHERE accountId = ? AND isAdHoc = 0)').all(accountId);
+    lines.forEach(l => { const k = aliasVal(l, 'campaignId'); (lineBy[k] = lineBy[k] || []).push({ channel: l.channel, imps: Number(l.impressions) || 0, stage: l.stage || '' }); });
   }
   const O = { asOf: today, active: { campaigns: 0, impressions: 0 }, completedYtd: { campaigns: 0, impressions: 0 }, pending: { campaigns: 0, impressions: 0 }, undated: 0 };
   const byLoop = {};
@@ -17980,7 +18056,7 @@ function buildGrowthOutlook(accountId, asOfDate, totals, leadToBooking, dpRows){
     else if (c.end < today && c.end >= jan1) bucket = O.completedYtd;
     else if (c.start > today){
       bucket = O.pending;
-      (lines.length ? lines : [{ channel: '', imps }]).forEach(l => { const st = gpLoopStageOfChannel(l.channel); byLoop[st] = (byLoop[st] || 0) + l.imps; });
+      (lines.length ? lines : [{ channel: '', imps }]).forEach(l => { const st = (LOOP_STAGES_SET.has(l.stage) ? l.stage : gpLoopStageOfChannel(l.channel)); byLoop[st] = (byLoop[st] || 0) + l.imps; });
     }
     if (bucket){ bucket.campaigns++; bucket.impressions += imps; }
   });
@@ -34044,7 +34120,15 @@ Submit your response via the campaign_intake_turn tool.`;
       const entryId = generateId('CPD');
       const now = new Date().toISOString();
       const region = normalizeChannelPlanningRegion(body.region);
-      const stage = normalizeChannelPlanningStage(body.stage);
+      let stage = normalizeChannelPlanningStage(body.stage);
+      // 2026-10-10 loop-stage rules: a stage that differs from the rule is a manual override; otherwise the rule decides.
+      try {
+        const rs = loopStageForLine({ channel: body.channel, audience: body.audience, productGroup: body.productGroup, detailsJson });
+        if (rs.stage){
+          if (stage && stage !== rs.stage && !body.stageFromAi){ detailsJson.stageSource = 'manual'; detailsJson.stageRuleWas = rs.stage; }
+          else { stage = rs.stage; detailsJson.stageSource = 'rule'; detailsJson.stageRule = rs.rule; }
+        }
+      } catch (e){ console.warn('loop-stage rule skipped', e.message); }
       const sql = `INSERT INTO channel_planning_details
         (id, campaignId, allocationId, channel, partner, audience, buyType, mediaType, impressions,
          dropDate, hitDate, endDate, productYear, productGroup, creativeMarket, budget, detailsJson,
@@ -34231,6 +34315,17 @@ Submit your response via the campaign_intake_turn tool.`;
         actualUrlVisits: body.actualUrlVisits !== undefined ? body.actualUrlVisits : existing.actualUrlVisits,
         actualLeads: body.actualLeads !== undefined ? body.actualLeads : existing.actualLeads
       };
+      // 2026-10-10 loop-stage rules on edit: a stage the person sets by hand that differs from the rule is kept as a manual override;
+      // otherwise the rule re-runs (channel, audience or product group may have changed). A line already marked manual keeps its stage.
+      try {
+        const rs = loopStageForLine({ channel: merged.channel, audience: merged.audience, productGroup: merged.productGroup, detailsJson: mergedDetails });
+        if (rs.stage){
+          const stageSent = body.stage !== undefined ? normalizeChannelPlanningStage(body.stage) : null;
+          if (stageSent && stageSent !== rs.stage){ mergedDetails.stageSource = 'manual'; mergedDetails.stageRuleWas = rs.stage; merged.stage = stageSent; }
+          else if (mergedDetails.stageSource === 'manual' && !stageSent){ /* keep the existing manual stage */ }
+          else { merged.stage = rs.stage; mergedDetails.stageSource = 'rule'; mergedDetails.stageRule = rs.rule; delete mergedDetails.stageRuleWas; }
+        }
+      } catch (e){ console.warn('loop-stage rule skipped', e.message); }
       const actualsTouched = ['actualCalls', 'actualQrScans', 'actualUrlVisits', 'actualLeads'].some(k => body[k] !== undefined);
       const now = new Date().toISOString();
       if (body.budget !== undefined && Number(body.budget) !== Number(existing.budget)) finLog(campaign.accountId, campaignId, 'budget_line_changed', finActor(req, campaign.accountId), { entryId, channel: merged.channel, before: existing.budget, after: merged.budget });
@@ -34617,8 +34712,8 @@ Submit via the recommendation_from_intake tool.`;
             budget: Number(c.budget) || 0,
             impressions: lineImpressions,
             status: 'draft',
-            stage: lineStage,
-            detailsJson: Object.assign({}, c.assumptionNote ? { assumptionNote: c.assumptionNote } : {}, c.audiencePastCustomers ? { audiencePastCustomers: true } : {}, c.exactFromConversation ? { exactFromConversation: true } : {})
+            stage: lineStage, stageFromAi: true,
+            detailsJson: Object.assign({}, lineStage === 'Advocacy' ? { explicitStage: 'Advocacy' } : {}, c.assumptionNote ? { assumptionNote: c.assumptionNote } : {}, c.audiencePastCustomers ? { audiencePastCustomers: true } : {}, c.exactFromConversation ? { exactFromConversation: true } : {})
           });
           savedCount++;
           if (lineStage) stageBudgets[lineStage] = (stageBudgets[lineStage] || 0) + (Number(c.budget) || 0);
@@ -34651,6 +34746,7 @@ Submit via the recommendation_from_intake tool.`;
       if (audienceSegments.length && !(campaign.segment || '').trim()){
         db.prepare('UPDATE campaigns SET segment = ? WHERE id = ?').run(audienceSegments.join(', '), campaignId);
       }
+      try { applyLoopStageRules(campaign.accountId, { apply: true, campaignId }); } catch (e){ console.warn('loop-stage rules after intake failed', e && e.message); }
       syncCampaignProductCreativeGroupsFromChannelPlanning(campaignId);
       return sendJson(res, 200, { generated: savedCount > 0, savedCount, stageApplied: stage, stagesUsed: Object.keys(stageBudgets), audienceApplied: audienceSegments.length ? audienceSegments : null });
     }
@@ -43328,6 +43424,17 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       catch (e){ console.error('[annual-plan recommendation] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'Could not build the recommendation: ' + (e && e.message || 'unknown error') }); }
     }
     // ---- Strategy scenario planner (2026-10-08) -------------------------------------------------
+    // POST /api/accounts/:id/loop-stage-rules  { apply: true|false, campaignId? } — 2026-10-10. Preview (default) or apply the loop-stage rules to
+    // every campaign line of the account. Manual overrides are kept. Applying needs an admin or a CMO.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'loop-stage-rules'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req).catch(() => ({})) || {};
+      const wantApply = body.apply === true;
+      if (wantApply){ const actor = planScenarioActor(req, accountId); if (!actor || !actor.canActivate) return sendJson(res, 403, { error: 'Only an admin or a CMO can apply the loop-stage rules. Preview is open to everyone.' }); }
+      try { return sendJson(res, 200, applyLoopStageRules(accountId, { apply: wantApply, campaignId: body.campaignId || null })); }
+      catch (e){ console.error('[loop-stage-rules] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'Could not run the loop-stage rules: ' + (e && e.message || 'unknown error') }); }
+    }
     // GET  /api/accounts/:id/plan-scenarios?year=      saved scenarios + the Hold / Expected / Stretch starting points
     // POST /api/accounts/:id/plan-scenarios/run        run one scenario, nothing saved
     // POST /api/accounts/:id/plan-scenarios            save one (draft, or pending when submit is true)
