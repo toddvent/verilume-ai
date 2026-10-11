@@ -856,6 +856,7 @@ ensureColumn('campaigns', 'pmValidatedAt', 'TEXT');
 // channel_planning_details rows instead, which have always carried
 // productGroup/creativeMarket per line item).
 ensureColumn('campaigns', 'productGroups', 'TEXT');
+ensureColumn('campaigns', 'excludeSegments', 'TEXT'); // 2026-10-11 audiences the campaign must not reach; empty = No Audiences
 ensureColumn('campaigns', 'creativeFocusGroups', 'TEXT');
 
 // Round 132aa (2026-08-10) — Performance Marketing asset-selection rework,
@@ -32121,6 +32122,7 @@ THIS CAMPAIGN'S DETAILS, ALREADY CAPTURED AT CAMPAIGN CREATION (real — never a
 - Campaign Name: ${activeCampaign.name || '(not set)'}
 - Campaign Experience Focus: ${campaignTypeLabel || '(not set)'}
 - Media Science Primary Focus (this campaign's primary KPI): ${businessInitiativeLabel || '(not set)'}
+- Excluded audiences: ${activeCampaign.excludeSegments || 'None'}
 - Product Group: ${activeCampaign.productGroups || '(not set)'}
 - Creative Focus Group: ${activeCampaign.creativeFocusGroups || '(not set)'}
 - Estimated Budget: ${activeCampaign.budget ? `$${Number(activeCampaign.budget).toLocaleString()}` : '(not set)'}
@@ -33931,6 +33933,10 @@ Submit your response via the campaign_intake_turn tool.`;
       if (typeof body.createdByUser === 'string' && body.createdByUser.trim()){
         db.prepare('UPDATE campaigns SET createdByUser = ? WHERE id = ?').run(body.createdByUser.trim(), campaignId);
       }
+      // 2026-10-11 — audiences this campaign must not reach (UPDATE, same reason as createdByUser above).
+      if (typeof body.excludeSegments === 'string' && body.excludeSegments.trim()){
+        db.prepare('UPDATE campaigns SET excludeSegments = ? WHERE id = ?').run(body.excludeSegments.trim().slice(0, 500), campaignId);
+      }
       // 2026-09-28 — funnel assumptions (see the ensureColumn() comment).
       // Same follow-up-UPDATE convention as createdByUser just above rather
       // than four more placeholders in the long INSERT.
@@ -34201,6 +34207,7 @@ Submit your response via the campaign_intake_turn tool.`;
         // — see cmpBuildFormPayload()), so this accepts exactly that shape
         // back.
         segment: body.segment !== undefined ? body.segment : existing.segment,
+        excludeSegments: body.excludeSegments !== undefined ? body.excludeSegments : existing.excludeSegments,
         // 2026-09-16 — real bug fix, see ensureColumn('campaigns',
         // 'activityNotesJson', ...)'s own comment above: this field was
         // never actually part of this merge-update endpoint despite the
@@ -34357,6 +34364,7 @@ Submit your response via the campaign_intake_turn tool.`;
       addCol('primaryKpi', body.primaryKpi !== undefined, merged.primaryKpi);
       addCol('kpiGoal', body.kpiGoal !== undefined, merged.kpiGoal);
       addCol('segment', body.segment !== undefined, merged.segment);
+      addCol('excludeSegments', body.excludeSegments !== undefined, body.excludeSegments);
       addCol('activityNotesJson', body.activityNotesJson !== undefined, merged.activityNotesJson);
       addCol('copyVersionAssetsJson', body.copyVersionAssetsJson !== undefined, merged.copyVersionAssetsJson);
       addCol('copyVersionSizeUsageJson', body.copyVersionSizeUsageJson !== undefined, merged.copyVersionSizeUsageJson);
