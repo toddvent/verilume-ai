@@ -54920,6 +54920,14 @@ function briefBuild(){
 }
 
 // ---- 2026-10-11 — exclusion audiences, 8-digit goal, and the budget check on the target number ----
+// The audience / exclusion / asset dropdowns are <details> lists: close any that is open when the person clicks
+// elsewhere, tabs away, or presses Escape (they used to stay open over the fields below).
+(function(){
+  const closeOthers = keep => document.querySelectorAll('details.brf-aud[open]').forEach(d => { if (d !== keep) d.open = false; });
+  document.addEventListener('click', e => closeOthers(e.target && e.target.closest ? e.target.closest('details.brf-aud') : null), true);
+  document.addEventListener('focusin', e => closeOthers(e.target && e.target.closest ? e.target.closest('details.brf-aud') : null));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeOthers(null); });
+})();
 function briefToggleExcl(v){
   if (v === '__none__') excludedSegments = new Set();
   else if (excludedSegments.has(v)) excludedSegments.delete(v);
