@@ -1666,6 +1666,28 @@
   .scn-msg{font-size:0.8125rem;margin:8px 0;} .scn-msg.err{color:#C0273C;} .scn-msg.ok{color:var(--cx);}
   .scn-list .strat-table td{vertical-align:middle;}
   @media (max-width:760px){.scn-presets{grid-template-columns:1fr;}}
+  /* 2026-10-11 — interactive campaign brief at the top of Create a Campaign */
+  .cmp-brief{background:var(--paper-dim);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:0 0 18px;}
+  .cmp-brief-head{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;margin-bottom:10px;}
+  .cmp-brief-title{font-size:0.6875rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);}
+  .cmp-brief-sub{font-size:0.8125rem;color:var(--muted);}
+  .cmp-brief-sentence{font-size:1.0625rem;line-height:2.5;color:var(--ink);}
+  .cmp-brief .brf-in{font:inherit;font-size:0.9375rem;font-weight:600;color:var(--ink);background:var(--white,#fff);border:1px solid var(--line);border-radius:8px;padding:3px 10px;margin:0 2px;max-width:100%;}
+  .cmp-brief .brf-in.filled{border-color:var(--cx);}
+  .cmp-brief .brf-num{width:96px;}
+  .cmp-brief details.brf-aud{display:inline-block;position:relative;vertical-align:middle;}
+  .cmp-brief details.brf-aud>summary{cursor:pointer;list-style:none;display:inline-block;}
+  .cmp-brief details.brf-aud>summary::-webkit-details-marker{display:none;}
+  .cmp-brief .brf-aud-list{position:absolute;z-index:30;top:100%;left:0;min-width:240px;background:var(--white,#fff);border:1px solid var(--line);border-radius:10px;padding:8px 10px;box-shadow:0 10px 24px -8px rgba(0,0,0,.25);line-height:1.5;}
+  .cmp-brief .brf-aud-list label{display:flex;gap:8px;align-items:center;font-size:0.875rem;padding:3px 0;font-weight:500;}
+  .cmp-brief .brf-aud-list label.off{color:var(--muted);}
+  .cmp-brief-voice{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;}
+  .cmp-brief-mic{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--white,#fff);color:var(--ink);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:none;}
+  .cmp-brief-mic.listening{background:#B23A48;border-color:#B23A48;color:#fff;}
+  .cmp-brief .brf-text{flex:1;min-width:220px;font:inherit;font-size:0.875rem;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--white,#fff);color:var(--ink);}
+  .cmp-brief-msg{font-size:0.8125rem;color:var(--muted);margin-top:8px;min-height:1em;}
+  .cmp-brief-msg.warn{color:var(--advocacy);}
+  #newCampaignHint:empty{display:none;}
   .strat-table-wrap{overflow-x:auto;margin-top:12px;}
   .strat-table{width:100%;border-collapse:collapse;font-size:0.8125rem;font-variant-numeric:tabular-nums;}
   .strat-table th{text-align:left;font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);padding:6px 10px;border-bottom:1px solid var(--line);}
@@ -9897,7 +9919,37 @@
             </div>
           </div>
           <div class="module-body">
-            <p class="lede" style="margin-bottom:14px;" id="newCampaignHint">Campaign start and end date are required below — everything else here sharpens what Projects inside it will generate. Campaign Audiences, Objective, and the rest of Lifecycle Stage & Goals come next, once this campaign is created.</p>
+            <!-- 2026-10-11, per Todd: the intro text became an interactive campaign brief. Speak, type or fill the sentence; it populates the fields below.
+                 "Create" = set the campaign up yourself (also the manual path for a single asset, no AI Brain walk-through).
+                 "Recommend" = after the campaign is created the AI Brain recommends budget, channel mix and creative assets. -->
+            <div class="cmp-brief" id="cmpBrief">
+              <div class="cmp-brief-head">
+                <span class="cmp-brief-title">Campaign brief</span>
+                <span class="cmp-brief-sub">Fill in the sentence, or say it. The fields below fill in as you go.</span>
+              </div>
+              <div class="cmp-brief-sentence">
+                <select id="briefMode" class="brf-in" aria-label="Create or Recommend" onchange="briefSetMode(this.value)"><option value="create">Create</option><option value="recommend">Recommend</option></select>
+                a
+                <select id="briefStage" class="brf-in" aria-label="Marketing Loop stage" onchange="briefPickStage(this.value)"><option value="">Marketing Loop stage</option></select>
+                campaign targeting
+                <details class="brf-aud" id="briefAudWrap"><summary class="brf-in" id="briefAudSummary">audiences</summary><div class="brf-aud-list" id="briefAudList"></div></details>
+                between
+                <input type="date" id="briefStart" class="brf-in" aria-label="Start date" oninput="briefPickDate('cmpStartDate',this.value)">
+                and
+                <input type="date" id="briefEnd" class="brf-in" aria-label="End date" oninput="briefPickDate('cmpEndDate',this.value)">
+                with a goal to generate
+                <input type="number" id="briefGoal" class="brf-in brf-num" min="0" step="1" placeholder="value" aria-label="Goal value" oninput="briefPickGoal(this.value)">
+                <select id="briefKpi" class="brf-in" aria-label="Primary KPI" onchange="briefPickKpi(this.value)"><option value="">Primary KPI</option></select>.
+                <span id="briefTail"></span>
+              </div>
+              <div class="cmp-brief-voice">
+                <button type="button" class="cmp-brief-mic" id="briefMic" onclick="briefVoiceToggle()" aria-label="Speak your brief" title="Speak your brief"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg></button>
+                <input type="text" id="briefText" class="brf-text" placeholder="Or say or type it: “Create a Purchase campaign for Hand-Raisers from November 3 to December 15, goal 500 leads”" onkeydown="if(event.key==='Enter'){event.preventDefault();briefApplyText();}">
+                <button type="button" class="btn-ghost" onclick="briefApplyText()">Fill the brief</button>
+              </div>
+              <div class="cmp-brief-msg" id="briefMsg" aria-live="polite"></div>
+            </div>
+            <p class="lede" style="margin-bottom:14px;" id="newCampaignHint"></p>
 
             <!-- Round 132c (2026-08-09), per direct correction — Create
                  Campaign's field list, exact order: Campaign ID (pending
@@ -32529,6 +32581,7 @@ function populateCampaignFormSelects(){
   // cmpPendingCampaignType/-BusinessInitiative, themselves reset to '' by
   // resetCampaignForm() just above this call).
   if (typeof cmpRenderCreationTypeInitiativeFields === 'function') cmpRenderCreationTypeInitiativeFields(findCampaign(currentCampaignId) || null);
+  if (typeof briefRender === 'function') briefRender();
 }
 
 // Round 132ae (2026-08-11), per direct instruction: "We can remove the
@@ -46930,6 +46983,7 @@ function loadExistingCampaignIntoForm(campaignId){
   if (formTitleEl) formTitleEl.textContent = historical ? 'View Campaign (read only)' : 'Edit Campaign';
   const submitBtnEl = document.getElementById('cmpSubmitBtn');
   if (submitBtnEl) submitBtnEl.textContent = historical ? 'Read only — past start date' : 'Save Changes →';
+  if (typeof briefRender === 'function') briefRender();
   // Round 132 (2026-08-09) — an existing campaign is now loaded, so the
   // downstream stages (QR Code & UTM, Creative, QA Rating, Trafficking, In
   // Market, Analysis) have a real campaign to compute status from and unlock.
@@ -52857,11 +52911,12 @@ function resetCampaignForm(){
   cmpPendingCampaignType = '';
   cmpPendingBusinessInitiative = '';
   populateCampaignFormSelects();
-  document.getElementById('newCampaignHint').textContent = 'Campaign start and end date are required below — everything else here sharpens what Projects inside it will generate. Campaign Audiences, Objective, and the rest of Lifecycle Stage & Goals come next, once this campaign is created.';
+  document.getElementById('newCampaignHint').textContent = '';
   const formTitleEl = document.getElementById('cmpFormTitle');
   if (formTitleEl) formTitleEl.textContent = 'Create a Campaign';
   const submitBtnEl = document.getElementById('cmpSubmitBtn');
   if (submitBtnEl) submitBtnEl.textContent = 'Create Campaign →';
+  if (typeof briefRender === 'function') briefRender();
   // Round 132 (2026-08-09) — back to no campaign loaded; downstream stages
   // (Creative, QA Rating, etc.) re-lock since there's nothing to compute
   // their status from yet. Pick Up Existing Campaign (Round 132d follow-on)
@@ -54314,6 +54369,112 @@ function resolveSelectValue(selectId, otherId){
 // option once this new campaign is created — that flow (cmpApplyTemplate())
 // already existed and needed no change; this fix just guarantees step 1
 // actually starts blank so step 2's copy option isn't moot.
+// ===== 2026-10-11 — Interactive campaign brief (Create a Campaign) =====
+// One sentence: Create|Recommend a [Loop stage] campaign targeting [audiences] between [start] and [end] with a goal to generate [value] [Primary KPI].
+// It writes into the real fields (selectedStage, selectedSegments, #cmpStartDate/#cmpEndDate, #cmpPrimaryKpi, #cmpKpiGoal) so nothing is a second source of truth.
+// Create = set up by hand (the manual / single-asset path: no AI Brain walk-through afterwards). Recommend = the Objectives AI Brain opens after creation.
+let briefMode = 'recommend';
+let briefVoiceRec = null;
+function briefEl(id){ return document.getElementById(id); }
+function briefMsg(t, warn){ const m = briefEl('briefMsg'); if (m){ m.textContent = t || ''; m.className = 'cmp-brief-msg' + (warn ? ' warn' : ''); } }
+function briefInit(){
+  const st = briefEl('briefStage'); if (st && st.options.length < 2) st.innerHTML = '<option value="">Marketing Loop stage</option>' + MEDIA_LOOP_STAGES.map(s => `<option value="${s}">${s}</option>`).join('');
+  const kp = briefEl('briefKpi'); if (kp && kp.options.length < 2) kp.innerHTML = '<option value="">Primary KPI</option>' + PRIMARY_KPI_OPTIONS.filter(k => !/^Other/i.test(k)).map(k => `<option value="${k}">${k}</option>`).join('');
+}
+function briefRender(){
+  const box = briefEl('cmpBrief'); if (!box) return;
+  const existing = briefEl('cmpExistingCampaign'); box.style.display = (existing && existing.value) ? 'none' : '';
+  briefInit();
+  const set = (id, v) => { const e = briefEl(id); if (e && document.activeElement !== e) e.value = v == null ? '' : v; if (e) e.classList.toggle('filled', !!e.value); };
+  set('briefMode', briefMode); set('briefStage', selectedStage || '');
+  set('briefStart', (briefEl('cmpStartDate') || {}).value); set('briefEnd', (briefEl('cmpEndDate') || {}).value);
+  set('briefGoal', (briefEl('cmpKpiGoal') || {}).value); set('briefKpi', (briefEl('cmpPrimaryKpi') || {}).value);
+  const disabled = (typeof cmpSegmentDisabledSet === 'function') ? cmpSegmentDisabledSet() : new Set();
+  const list = briefEl('briefAudList');
+  if (list) list.innerHTML = ACCOUNT_SEGMENTS.map(s => `<label class="${disabled.has(s) ? 'off' : ''}" title="${escapeHtml(disabled.has(s) && typeof cmpSegmentDisabledReason === 'function' ? cmpSegmentDisabledReason(s) : '')}"><input type="checkbox" ${selectedSegments.has(s) ? 'checked' : ''} ${disabled.has(s) ? 'disabled' : ''} onchange="briefToggleAud('${s}')">${escapeHtml(s)}</label>`).join('');
+  const sum = briefEl('briefAudSummary'); if (sum){ const n = [...selectedSegments]; sum.textContent = n.length ? n.join(', ') : 'audiences'; sum.classList.toggle('filled', n.length > 0); }
+  const tail = briefEl('briefTail');
+  if (tail) tail.textContent = briefMode === 'recommend' ? 'Recommend the budget, channel mix and creative assets for the team.' : 'I will set the budget, channel mix and creative assets myself, or add a single asset.';
+  const btn = briefEl('cmpSubmitBtn'); if (btn && !/Save Changes|Read only/.test(btn.textContent)) btn.textContent = briefMode === 'recommend' ? 'Create and recommend →' : 'Create Campaign →';
+}
+function briefSetMode(m){ briefMode = m === 'create' ? 'create' : 'recommend'; briefRender(); }
+function briefPickStage(s){ if (!s){ if (selectedStage) toggleStage(selectedStage); } else if (selectedStage !== s) toggleStage(s); markCampaignFormTouched(); briefRender(); }
+function briefToggleAud(s){ toggleSegment(s); briefRender(); const w = briefEl('briefAudWrap'); if (w) w.open = true; }
+function briefPickDate(id, v){ const e = briefEl(id); if (!e) return; e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); }
+function briefPickGoal(v){ const e = briefEl('cmpKpiGoal'); if (!e) return; e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); }
+function briefPickKpi(v){ const e = briefEl('cmpPrimaryKpi'); if (!e) return; e.value = v; e.dispatchEvent(new Event('change', { bubbles: true })); briefRender(); }
+document.addEventListener('click', function(ev){ const w = briefEl('briefAudWrap'); if (w && w.open && !(ev.target.closest && ev.target.closest('#briefAudWrap'))) w.open = false; });
+document.addEventListener('input', function(ev){ const t = ev.target; if (t && (t.id === 'cmpStartDate' || t.id === 'cmpEndDate')) briefRender(); });
+// ---- Reading a spoken/typed brief. Plain pattern matching against the account's real stages, audiences and KPI list; nothing is guessed. ----
+const BRIEF_MONTHS = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+function briefIso(y, m, d){ return y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0'); }
+function briefDates(text){
+  const found = []; const now = new Date(); const todayIso = briefIso(now.getFullYear(), now.getMonth(), now.getDate());
+  const yearFor = (m, d, y) => { if (y) return y < 100 ? 2000 + y : y; const cand = briefIso(now.getFullYear(), m, d); return cand < todayIso ? now.getFullYear() + 1 : now.getFullYear(); };
+  const mon = '(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+  const re = new RegExp('(\\d{4})-(\\d{1,2})-(\\d{1,2})|\\b' + mon + '\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?|\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?' + mon + '\\.?(?:,?\\s+(\\d{4}))?|\\b(\\d{1,2})/(\\d{1,2})(?:/(\\d{2,4}))?', 'gi');
+  const idx = s => BRIEF_MONTHS.findIndex(n => n.indexOf(s.toLowerCase().slice(0, 3)) === 0);
+  let rest = text.replace(re, (all, iy, im, id, m1, d1, y1, d2, m2, y2, nm, nd, ny, offset) => {
+    let iso = null;
+    if (iy) iso = briefIso(+iy, +im - 1, +id);
+    else if (m1) iso = briefIso(yearFor(idx(m1), +d1, y1 ? +y1 : 0), idx(m1), +d1);
+    else if (m2) iso = briefIso(yearFor(idx(m2), +d2, y2 ? +y2 : 0), idx(m2), +d2);
+    else if (nm) iso = briefIso(yearFor(+nm - 1, +nd, ny ? +ny : 0), +nm - 1, +nd);
+    if (iso) found.push({ pos: offset, iso });
+    return ' ';
+  });
+  found.sort((a, b) => a.pos - b.pos);
+  return { dates: found.map(f => f.iso), rest };
+}
+function briefParse(raw){
+  const out = { mode: null, stage: null, segments: [], start: null, end: null, goal: null, kpi: null };
+  let text = ' ' + String(raw || '').replace(/(\d),(\d{3})\b/g, '$1$2').replace(/(\d),(\d{3})\b/g, '$1$2').replace(/,/g, ' ').replace(/\s+/g, ' ') + ' ';
+  const low = text.toLowerCase();
+  const iC = low.search(/\b(create|build|make|set up|add)\b/), iR = low.search(/\b(recommend|suggest|plan)\b/);
+  if (iC >= 0 && (iR < 0 || iC < iR)) out.mode = 'create'; else if (iR >= 0) out.mode = 'recommend';
+  out.stage = MEDIA_LOOP_STAGES.find(s => low.indexOf(s.toLowerCase()) >= 0) || null;
+  const SEG_SYN = { 'Past Customers': ['past customer', 'past guest', 'previous customer'], 'Hand-Raisers': ['hand-raiser', 'hand raiser', 'handraiser'], 'Prospects': ['prospect'], 'Future Customers': ['future customer'], 'Cancelled Orders': ['cancelled order', 'canceled order', 'cancelled customer'], 'Anonymous Website Traffic': ['anonymous', 'website traffic'] };
+  ACCOUNT_SEGMENTS.forEach(s => { const keys = [s.toLowerCase()].concat(SEG_SYN[s] || []); if (keys.some(k => low.indexOf(k) >= 0)) out.segments.push(s); });
+  const d = briefDates(text); if (d.dates[0]) out.start = d.dates[0]; if (d.dates[1]) out.end = d.dates[1];
+  const KPI = [['video view', 'Video Views'], ['transaction', 'Transactions'], ['booking', 'Transactions'], ['sale', 'Transactions'], ['lead', 'Leads'], ['impression', 'Impressions'], ['click', 'Clicks'], ['reach', 'Reach']];
+  const rl = d.rest.toLowerCase();
+  const m = rl.match(/(\d+(?:\.\d+)?)\s*(k|m|thousand|million)?\s+(?:new\s+|more\s+|qualified\s+|total\s+)?(video views?|transactions?|bookings?|sales?|leads?|impressions?|clicks?|reach)\b/);
+  if (m){ let n = parseFloat(m[1]); if (/^(k|thousand)$/.test(m[2] || '')) n *= 1000; if (/^(m|million)$/.test(m[2] || '')) n *= 1e6; out.goal = Math.round(n); const k = KPI.find(x => m[3].indexOf(x[0]) === 0); if (k) out.kpi = k[1]; }
+  else { const k = KPI.find(x => rl.indexOf(x[0]) >= 0); if (k) out.kpi = k[1]; }
+  return out;
+}
+function briefApplyText(){
+  const inp = briefEl('briefText'); const txt = inp ? inp.value.trim() : ''; if (!txt){ briefMsg('Say or type the brief first.', true); return; }
+  const p = briefParse(txt); const done = [], missing = [], blocked = [];
+  if (p.mode){ briefMode = p.mode; done.push(p.mode === 'create' ? 'Create' : 'Recommend'); }
+  if (p.stage){ if (selectedStage !== p.stage) toggleStage(p.stage); done.push(p.stage); } else missing.push('Marketing Loop stage');
+  if (p.segments.length){
+    const dis = cmpSegmentDisabledSet();
+    p.segments.forEach(s => { if (dis.has(s)) blocked.push(s + ' (' + (cmpSegmentDisabledReason(s) || 'not available for this stage') + ')'); else if (!selectedSegments.has(s)) toggleSegment(s); });
+    const ok = p.segments.filter(s => selectedSegments.has(s)); if (ok.length) done.push(ok.join(', '));
+  } else missing.push('audiences');
+  if (p.start){ briefPickDate('cmpStartDate', p.start); done.push('start ' + p.start); } else missing.push('start date');
+  if (p.end){ briefPickDate('cmpEndDate', p.end); done.push('end ' + p.end); } else missing.push('end date');
+  if (p.kpi){ const sel = briefEl('cmpPrimaryKpi'); if (sel && [...sel.options].some(o => o.value === p.kpi)){ briefPickKpi(p.kpi); done.push(p.kpi); } else missing.push('Primary KPI (' + p.kpi + ' is not available for this stage)'); } else missing.push('Primary KPI');
+  if (p.goal != null){ briefPickGoal(String(p.goal)); done.push('goal ' + p.goal.toLocaleString('en-US')); } else missing.push('goal value');
+  const nameEl = briefEl('cmpName');
+  if (nameEl && !nameEl.value.trim() && p.stage){ const mm = p.start ? BRIEF_MONTHS[+p.start.slice(5, 7) - 1] : ''; nameEl.value = (p.stage + ' campaign' + (mm ? ' ' + mm.charAt(0).toUpperCase() + mm.slice(1) + ' ' + p.start.slice(0, 4) : '')).slice(0, 80); if (typeof updateCmpNameCounter === 'function') updateCmpNameCounter(); done.push('suggested a name'); }
+  markCampaignFormTouched(); briefRender();
+  briefMsg((done.length ? 'Filled in: ' + done.join('; ') + '.' : 'Nothing could be read from that.') + (blocked.length ? ' Not applied: ' + blocked.join('; ') + '.' : '') + (missing.length ? ' Still to add: ' + missing.join(', ') + '.' : ''), !done.length || blocked.length > 0);
+}
+function briefVoiceToggle(){
+  const mic = briefEl('briefMic'); const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR){ briefMsg("Voice input needs Chrome or Edge. You can type the brief in the box instead.", true); return; }
+  if (briefVoiceRec){ try { briefVoiceRec.stop(); } catch (e){} return; }
+  const inp = briefEl('briefText'); const rec = new SR(); rec.lang = 'en-US'; rec.interimResults = true; rec.maxAlternatives = 1; briefVoiceRec = rec;
+  if (mic){ mic.classList.add('listening'); mic.title = 'Listening… click to stop'; } if (inp) inp.value = ''; briefMsg('Listening…');
+  const end = () => { briefVoiceRec = null; if (mic){ mic.classList.remove('listening'); mic.title = 'Speak your brief'; } };
+  rec.onresult = ev => { let t = ''; for (let i = 0; i < ev.results.length; i++) t += ev.results[i][0].transcript; if (inp) inp.value = t; if (ev.results[ev.results.length - 1].isFinal){ end(); try { rec.stop(); } catch (e){} briefApplyText(); } };
+  rec.onerror = ev => { end(); briefMsg(ev.error === 'not-allowed' || ev.error === 'service-not-allowed' ? 'Microphone access was blocked. Allow it in your browser site settings, or type the brief.' : ev.error === 'no-speech' ? "Didn't catch that. Click the mic and try again." : 'Voice input hit an error (' + ev.error + '). Try again or type it.', true); };
+  rec.onend = end;
+  try { rec.start(); } catch (e){ end(); }
+}
+
 function startNewCampaign(){
   resetCampaignForm();
   goToStep('campaigns');
@@ -55210,7 +55371,7 @@ async function createCampaign(){
   // 2026-09-16 — opens the standalone Objectives overlay now, not the old
   // accordion's Campaign Objectives stage, so a freshly-created campaign
   // lands straight in the real conversational template.
-  if (typeof cmpOpenObjectivesIntake === 'function') cmpOpenObjectivesIntake();
+  if (briefMode === 'recommend' && typeof cmpOpenObjectivesIntake === 'function') cmpOpenObjectivesIntake();
 }
 
 // Point 2 — not every activity is tied to a Campaign. This lazily finds or
