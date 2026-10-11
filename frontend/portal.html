@@ -1696,6 +1696,47 @@
   .brf-wide{max-width:100%;}
   .brf-modal{position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;}
   .brf-modal-card{background:var(--white,#fff);color:var(--ink);border-radius:12px;padding:20px 22px;max-width:520px;width:100%;max-height:85vh;overflow:auto;box-shadow:0 12px 40px rgba(0,0,0,.3);}
+  .pj-wrap{margin:0 0 18px;}
+  .pj-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:8px;}
+  .pj-ctl{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  .pj-chk{font-weight:500;font-size:0.8125rem;display:inline-flex;gap:6px;align-items:center;}
+  .pj-add{display:flex;gap:8px;margin:0 0 10px;}
+  .pj-add input{flex:1;min-width:0;font:inherit;font-size:0.875rem;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--white,#fff);color:var(--ink);}
+  .pj-board{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(210px,1fr);gap:10px;overflow-x:auto;padding-bottom:6px;}
+  .pj-col{background:rgba(0,0,0,.035);border:1px solid var(--line-hairline,var(--line));border-radius:10px;padding:8px;min-height:140px;display:flex;flex-direction:column;gap:8px;}
+  .pj-col.over{outline:2px dashed var(--cx);background:rgba(0,0,0,.06);}
+  .pj-col-h{display:flex;justify-content:space-between;font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);font-weight:700;}
+  .pj-count{background:var(--white,#fff);border:1px solid var(--line);border-radius:999px;padding:0 7px;}
+  .pj-empty{font-size:0.75rem;color:var(--muted);text-align:center;padding:14px 4px;}
+  .pj-card{background:var(--white,#fff);border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:grab;display:flex;flex-direction:column;gap:3px;box-shadow:0 1px 2px rgba(16,20,27,.06);}
+  .pj-card:hover,.pj-card:focus{border-color:var(--cx);outline:none;}
+  .pj-card.drag{opacity:.45;}
+  .pj-card-top{display:flex;justify-content:space-between;align-items:center;}
+  .pj-rank{font-size:0.6875rem;font-weight:700;color:var(--muted);}
+  .pj-score{font-size:0.75rem;font-weight:700;background:var(--ink);color:var(--white,#fff);border-radius:999px;padding:1px 8px;}
+  .pj-name{font-weight:600;font-size:0.875rem;line-height:1.3;}
+  .pj-meta,.pj-sub{font-size:0.75rem;color:var(--muted);}
+  .pj-late{color:#B23A48;font-weight:600;}
+  .pj-bar{height:5px;border-radius:3px;background:rgba(0,0,0,.1);overflow:hidden;margin-top:3px;}
+  .pj-bar i{display:block;height:100%;background:var(--cx);}
+  .pj-mini{font:inherit;font-size:0.6875rem;padding:1px 4px;border:1px solid var(--line);border-radius:6px;margin-top:4px;align-self:flex-start;background:var(--white,#fff);color:var(--ink);}
+  .pj-in-name{font-weight:600;width:100%;min-width:170px;}
+  .pj-toast{margin-top:8px;font-size:0.8125rem;color:#B23A48;}
+  .pj-detail{max-width:720px;}
+  .pj-d-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+  .pj-d-name{width:100%;font:inherit;font-size:1.125rem;font-weight:700;padding:6px 8px;border:1px solid var(--line);border-radius:8px;margin-bottom:10px;background:var(--white,#fff);color:var(--ink);box-sizing:border-box;}
+  .pj-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 10px;margin-bottom:8px;}
+  .pj-f{display:flex;flex-direction:column;gap:2px;font-size:0.75rem;color:var(--muted);margin-bottom:6px;}
+  .pj-f input,.pj-f select,.pj-f textarea{font:inherit;font-size:0.875rem;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--white,#fff);color:var(--ink);box-sizing:border-box;width:100%;}
+  .pj-task{display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;}
+  .pj-task.done .pj-t-title{text-decoration:line-through;color:var(--muted);}
+  .pj-task input,.pj-task select{font:inherit;font-size:0.8125rem;padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:var(--white,#fff);color:var(--ink);}
+  .pj-t-title{flex:1;min-width:140px;}
+  .pj-x{border:0;background:none;font-size:1.25rem;line-height:1;cursor:pointer;color:var(--muted);}
+  .pj-chips{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 6px;}
+  .pj-chip{font:inherit;font-size:0.75rem;padding:3px 10px;border:1px solid var(--line);border-radius:999px;background:var(--white,#fff);color:var(--ink);cursor:pointer;}
+  .pj-chip.on{background:var(--ink);color:var(--white,#fff);border-color:var(--ink);}
+  .pj-d-foot{display:flex;justify-content:flex-end;margin-top:12px;}
   .brf-kinds{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center;}
   .brf-kind{font:inherit;font-size:0.75rem;font-weight:600;color:var(--muted);background:transparent;border:1px solid var(--line);border-radius:999px;padding:3px 11px;cursor:pointer;}
   .brf-kind.on{background:var(--ink);border-color:var(--ink);color:#fff;}
@@ -5062,6 +5103,8 @@
     <div id="gscPage"></div>
 
     <div id="srchAreas"></div>
+
+    <div class="pj-host" data-area="search" style="margin:18px 0;"></div>
 
     <div class="srch-monitor">
     <p class="hint" style="margin:18px 0 6px;">Monitoring sections below show sample data until Search Console or a licensed tool is connected.</p>
@@ -9959,7 +10002,7 @@
               <div class="cmp-brief-msg" id="briefMsg" aria-live="polite"></div>
               <div class="btn-row" id="briefAction" style="margin:12px 0 0;display:none;"></div>
             </div>
-            <div id="cmpProjectSheet" style="display:none;"></div>
+            <div id="cmpProjectSheet" class="pj-host" data-area="project" style="display:none;"></div>
             <p class="lede" style="margin-bottom:14px;" id="newCampaignHint"></p>
             <div id="cmpCampaignFields">
 
@@ -25004,6 +25047,7 @@ function bdRender(){
     else pre += wh;
   }
   box.insertAdjacentHTML('afterbegin', pre);
+  box.insertAdjacentHTML('beforeend', '<div class="strat-card"><div class="pj-host" data-area="all"></div></div>'); setTimeout(pjMountAll, 0);
 }
 function bdRenderMain(){
   const box = document.getElementById('brainDumpBody'); if (!box) return;
@@ -30514,8 +30558,8 @@ function ttbConsumedHtml(d){
 function ttbHtml(){
   if (ttb.loading && !ttb.data) return '<div class="strat-card"><p class="strat-empty">Reading what the Brain has so far…</p></div>';
   if (ttb.error || !ttb.data) return '<div class="strat-card"><p class="strat-empty">Could not load Train the Brain just now. <a class="flink" onclick="ttbLoad()">Try again</a></p></div>';
-  const tabs = [['setup', 'Getting started'], ['learnings', 'Recent learnings'], ['data', 'Data consumed']];
-  const body = ttb.tab === 'learnings' ? ttbLearningsHtml(ttb.data) : ttb.tab === 'data' ? ttbConsumedHtml(ttb.data) : ttbSetupHtml(ttb.data);
+  const tabs = [['setup', 'Getting started'], ['learnings', 'Recent learnings'], ['data', 'Data consumed'], ['projects', 'Projects']];
+  const body = ttb.tab === 'projects' ? (setTimeout(pjMountAll, 0), '<div class="strat-card"><div class="pj-host" data-area="train"></div></div>') : ttb.tab === 'learnings' ? ttbLearningsHtml(ttb.data) : ttb.tab === 'data' ? ttbConsumedHtml(ttb.data) : ttbSetupHtml(ttb.data);
   return `<div class="ttb-page">${ttbRefreshHtml()}<div class="strat-ctl" style="margin:0 0 12px;"><span class="strat-seg">${tabs.map(t => `<button type="button" class="${ttb.tab === t[0] ? 'on' : ''}" onclick="ttbSetTab('${t[0]}')">${t[1]}</button>`).join('')}</span></div>${body}</div>`;
 }
 function renderAiPartnerOnboardingHub(skipMmmFetch){
@@ -54395,6 +54439,138 @@ function resolveSelectValue(selectId, otherId){
 // option once this new campaign is created — that flow (cmpApplyTemplate())
 // already existed and needed no change; this fix just guarantees step 1
 // actually starts blank so step 2's copy option isn't moot.
+// ===== 2026-10-11 — Projects board (list + JIRA-style board + subtasks) =====
+// One component, mounted wherever a <div class="pj-host" data-area="..."> exists: Create Campaign (project), Brain Dump (all three areas, tabbed),
+// Search Everywhere (search) and Train the Brain (train). Every area keeps its own list, its own ratings and its own priority order.
+const PJ_AREAS = [{ key: 'project', label: 'Marketing Project' }, { key: 'search', label: 'Search Everywhere' }, { key: 'train', label: 'Train the Brain' }];
+const pj = { hub: 'project', synced: false, projects: null, meta: null, error: '', loading: false, open: null, hideDone: true, drag: null, views: {} };
+function pjUrl(extra){ return `${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-projects${extra || ''}`; }
+function pjAreaLabel(k){ const a = PJ_AREAS.find(x => x.key === k); return a ? a.label : k; }
+function pjView(area){ if (pj.views[area]) return pj.views[area]; let v = 'board'; try { v = localStorage.getItem('verilume_pj_view_' + area) || 'board'; } catch (e){} return pj.views[area] = v === 'list' ? 'list' : 'board'; }
+function pjSetView(area, v){ pj.views[area] = v; try { localStorage.setItem('verilume_pj_view_' + area, v); } catch (e){} pjMountAll(); }
+async function pjLoad(){
+  if (pj.loading) return; pj.loading = true;
+  try { const r = await authedFetch(pjUrl()); if (!r.ok) throw new Error(r.status); const j = await r.json(); pj.projects = j.projects || []; pj.meta = { statuses: j.statuses || ['Backlog', 'In progress', 'Blocked', 'Done', 'Archived'], taskStatuses: j.taskStatuses || ['To do', 'In progress', 'Blocked', 'Done'], scoring: j.scoring || '' }; pj.error = ''; }
+  catch (e){ pj.error = 'The projects could not be loaded just now.'; }
+  pj.loading = false; pjMountAll(); if (!pj.synced && !pj.error){ pj.synced = true; pjSync(true); }
+}
+// Pull unfinished Train the Brain setup items and open Search Everywhere priorities onto the sheet (each is added once; a finished need moves to Done).
+async function pjSync(quiet){
+  const j = await pjCall('/sync-needs', 'POST', {}); if (!j) return; pjMountAll();
+  if (!quiet) pjToast(j.added || j.closed ? (j.added ? j.added + ' new from identified needs. ' : '') + (j.closed ? j.closed + ' marked done.' : '') : 'Nothing new. The sheet already has every identified need.');
+}
+async function pjCall(path, method, body){
+  try {
+    const r = await authedFetch(pjUrl(path), { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+    const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'Not saved.');
+    if (j.projects) pj.projects = j.projects; return j;
+  } catch (e){ pjToast(e.message || 'Not saved.'); pjLoad(); return null; }
+}
+function pjToast(t){ const ms = document.querySelectorAll('.pj-toast'); if (ms.length){ ms.forEach(m => { m.textContent = t; m.style.display = ''; }); setTimeout(() => { document.querySelectorAll('.pj-toast').forEach(m => { m.style.display = 'none'; }); }, 4000); } else console.warn(t); }
+function pjMountAll(){ document.querySelectorAll('.pj-host').forEach(pjRender); pjModalRender(); }
+function pjTypeList(str){ let rest = String(str || ''); const sel = []; briefAssetTypes().forEach(k => { if (rest.includes(k)){ sel.push(k); rest = rest.replace(k, ''); } }); return sel.concat(rest.split(/[;,]/).map(x => x.trim()).filter(Boolean)); }
+function pjToggleType(id, t){ const p = pjFind(id); if (!p) return; const l = pjTypeList(p.assetTypes); const i = l.indexOf(t); if (i >= 0) l.splice(i, 1); else l.push(t); pjPatch(id, 'assetTypes', l.join('; ')); }
+function pjFind(id){ return (pj.projects || []).find(p => p.id === id); }
+function pjOpenStatus(p){ return p.status !== 'Done' && p.status !== 'Archived'; }
+function pjDueClass(d, done){ return d && !done && d < new Date().toISOString().slice(0, 10) ? ' pj-late' : ''; }
+function pjCardHtml(p){
+  const ratings = (p.impact || p.effort || p.urgency) ? `I${p.impact || '–'} · E${p.effort || '–'} · U${p.urgency || '–'}` : 'unrated';
+  const bar = p.taskCount ? `<div class="pj-bar" title="${p.taskDone} of ${p.taskCount} subtasks done"><i style="width:${Math.round(100 * p.taskDone / p.taskCount)}%"></i></div><div class="pj-sub">${p.taskDone}/${p.taskCount} subtasks</div>` : '';
+  return `<div class="pj-card" draggable="true" ondragstart="pjDragStart(event,'${escapeHtml(p.id)}')" ondragend="pjDragEnd()" onclick="pjOpenDetail('${escapeHtml(p.id)}')" tabindex="0" onkeydown="if(event.key==='Enter')pjOpenDetail('${escapeHtml(p.id)}')">
+    <div class="pj-card-top"><span class="pj-rank">${p.rank == null ? '' : '#' + p.rank}</span><span class="pj-score" title="Impact x Urgency / Effort. Unrated items score as 3.">${p.score}</span></div>
+    <div class="pj-name">${escapeHtml(p.name)}</div>
+    <div class="pj-meta">${escapeHtml(ratings)}${p.owner ? ' · ' + escapeHtml(p.owner) : ''}</div>
+    ${p.delivery ? `<div class="pj-meta${pjDueClass(p.delivery, !pjOpenStatus(p))}">Due ${escapeHtml(p.delivery)}</div>` : ''}${p.assetTypes ? `<div class="pj-meta" title="Creative types">${escapeHtml(pjTypeList(p.assetTypes).join(' · '))}</div>` : ''}${bar}
+    <select class="pj-mini" aria-label="Move ${escapeHtml(p.name)} to another column" onclick="event.stopPropagation()" onchange="pjSetStatus('${escapeHtml(p.id)}',this.value)">${(pj.meta.statuses).map(s => `<option${s === p.status ? ' selected' : ''}>${s}</option>`).join('')}</select>
+  </div>`;
+}
+function pjBoardHtml(area, rows){
+  const cols = pj.hideDone ? pj.meta.statuses.filter(s => s !== 'Archived') : pj.meta.statuses;
+  return `<div class="pj-board">${cols.map(s => { const c = rows.filter(p => p.status === s);
+    return `<div class="pj-col" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="pjDrop(event,'${s}')"><div class="pj-col-h"><span>${s}</span><span class="pj-count">${c.length}</span></div>${c.map(pjCardHtml).join('') || '<div class="pj-empty">Drop a project here</div>'}</div>`; }).join('')}</div>`;
+}
+function pjListHtml(area, rows){
+  const sel = (p, f, v, opts) => `<select onchange="pjPatch('${escapeHtml(p.id)}','${f}',this.value)">${opts.map(o => `<option value="${o}"${String(v) === String(o) ? ' selected' : ''}>${o === '' ? '—' : o}</option>`).join('')}</select>`;
+  const body = rows.map(p => `<tr class="${pjOpenStatus(p) ? '' : 'done'}"><td>${p.rank == null ? '' : p.rank}</td>
+    <td><input type="text" class="pj-in-name" value="${escapeHtml(p.name)}" maxlength="120" aria-label="Project name" onchange="pjPatch('${escapeHtml(p.id)}','name',this.value)"><div class="strat-sub">${escapeHtml([p.supports && 'Supports ' + p.supports, p.assetTypes].filter(Boolean).join(' · '))}</div></td>
+    <td><input type="text" value="${escapeHtml(p.assetTypes)}" maxlength="400" style="min-width:150px" placeholder="e.g. Video ads" aria-label="Creative types" onchange="pjPatch('${escapeHtml(p.id)}','assetTypes',this.value)"></td>
+    <td><input type="date" value="${escapeHtml(p.delivery)}" onchange="pjPatch('${escapeHtml(p.id)}','delivery',this.value)"></td>
+    <td>${sel(p, 'impact', p.impact == null ? '' : p.impact, ['', 1, 2, 3, 4, 5])}</td><td>${sel(p, 'effort', p.effort == null ? '' : p.effort, ['', 1, 2, 3, 4, 5])}</td><td>${sel(p, 'urgency', p.urgency == null ? '' : p.urgency, ['', 1, 2, 3, 4, 5])}</td>
+    <td class="pj-score-cell">${p.scored ? p.score : '<span class="strat-sub" title="Unrated items are scored as 3 / 3 / 3">' + p.score + ' (unrated)</span>'}</td>
+    <td>${sel(p, 'status', p.status, pj.meta.statuses)}</td>
+    <td><input type="text" value="${escapeHtml(p.owner)}" maxlength="80" style="width:110px" placeholder="owner" aria-label="Owner" onchange="pjPatch('${escapeHtml(p.id)}','owner',this.value)"></td>
+    <td><button type="button" class="strat-chip" onclick="pjOpenDetail('${escapeHtml(p.id)}')">${p.taskCount ? p.taskDone + '/' + p.taskCount : 'Add'} subtasks</button></td></tr>`).join('');
+  return rows.length ? `<div class="strat-table-wrap" style="margin-top:0;"><table><thead><tr><th>#</th><th>Project</th><th>Creative types</th><th>Delivery target</th><th>Impact</th><th>Effort</th><th>Urgency</th><th>Score</th><th>Status</th><th>Owner</th><th>Subtasks</th></tr></thead><tbody>${body}</tbody></table></div>` : '';
+}
+function pjRender(host){
+  if (!host || !host.isConnected) return; const hubMode = host.dataset.area === 'all'; const area = hubMode ? pj.hub : (host.dataset.area || 'project');
+  if (!pj.projects){ host.innerHTML = pj.error ? `<p class="hint" style="color:var(--advocacy);">${escapeHtml(pj.error)} <a class="flink" onclick="pjLoad()">Try again</a></p>` : '<p class="hint">Loading the projects…</p>'; if (!pj.loading && !pj.error) pjLoad(); return; }
+  const all = pj.projects.filter(p => p.area === area);
+  const rows = all.filter(p => !pj.hideDone || pjOpenStatus(p)); const view = pjView(area); const label = pjAreaLabel(area);
+  const openN = all.filter(pjOpenStatus).length;
+  const tabs = hubMode ? `<div class="strat-ctl" style="margin:0 0 10px;"><span class="strat-seg">${PJ_AREAS.map(a => `<button type="button" class="${a.key === area ? 'on' : ''}" onclick="pjHub('${a.key}')">${a.label}</button>`).join('')}</span></div>` : '';
+  const needsBtn = area === 'train' || area === 'search' ? `<button type="button" class="btn-ghost" onclick="pjSync(false)" title="Add any new identified needs from ${area === 'train' ? 'Train the Brain setup' : 'Search Everywhere priorities'}">Refresh identified needs</button>` : '';
+  host.innerHTML = `${tabs}<div class="brf-sheet pj-wrap"><div class="pj-head"><div><div class="strat-chart-label" style="margin:0;">Projects · ${escapeHtml(label)}</div><p class="strat-sub" style="margin:2px 0 0;">${openN} open. Ranked on its own within ${escapeHtml(label)}: Impact x Urgency / Effort, each rated 1 to 5, unrated counts as 3. Highest score is worked first.</p></div>
+    <div class="pj-ctl"><span class="strat-seg"><button type="button" class="${view === 'board' ? 'on' : ''}" onclick="pjSetView('${area}','board')">Board</button><button type="button" class="${view === 'list' ? 'on' : ''}" onclick="pjSetView('${area}','list')">List</button></span>
+    ${needsBtn}<label class="pj-chk"><input type="checkbox" ${pj.hideDone ? 'checked' : ''} onchange="pjHideDone(this.checked)"> Hide done and archived</label></div></div>
+    <div class="pj-add"><input type="text" id="pjNew-${area}" maxlength="120" placeholder="${area === 'project' ? 'Add a marketing project' : 'Add a ' + escapeHtml(label) + ' project'} and press Enter" aria-label="New project name" onkeydown="if(event.key==='Enter')pjAdd('${area}')"><button type="button" class="btn-ghost" onclick="pjAdd('${area}')">Add</button></div>
+    ${area === 'train' || area === 'search' ? `<p class="strat-sub" style="margin:0 0 8px;">Project names fill in automatically from ${area === 'train' ? 'the unfinished items in Train the Brain setup' : 'your open Search Everywhere priorities'}. You can also add your own.</p>` : ''}${rows.length || view === 'board' ? (view === 'board' ? pjBoardHtml(area, rows) : pjListHtml(area, rows)) : ''}${all.length ? '' : '<p class="hint">No projects here yet. Add the first one above.</p>'}<div class="pj-toast" style="display:none;" role="status"></div></div>`;
+}
+function pjHub(a){ pj.hub = a; pjMountAll(); }
+function pjHideDone(v){ pj.hideDone = !!v; pjMountAll(); }
+async function pjAdd(area){
+  const inp = document.getElementById('pjNew-' + area); if (!inp || !inp.value.trim()) return; const name = inp.value.trim(); inp.disabled = true;
+  const j = await pjCall('', 'POST', { name, area }); pjMountAll(); if (j) { const again = document.getElementById('pjNew-' + area); if (again) again.focus(); }
+}
+async function pjPatch(id, field, value){ const j = await pjCall('/' + encodeURIComponent(id), 'PATCH', { [field]: value }); if (j) pjMountAll(); }
+function pjSetStatus(id, s){ pjPatch(id, 'status', s); }
+function pjDragStart(ev, id){ pj.drag = id; try { ev.dataTransfer.setData('text/plain', id); ev.dataTransfer.effectAllowed = 'move'; } catch (e){} ev.currentTarget.classList.add('drag'); }
+function pjDragEnd(){ pj.drag = null; document.querySelectorAll('.pj-card.drag,.pj-col.over').forEach(e => e.classList.remove('drag', 'over')); }
+function pjDrop(ev, status){ ev.preventDefault(); const id = pj.drag || (ev.dataTransfer && ev.dataTransfer.getData('text/plain')); pjDragEnd(); const p = id && pjFind(id); if (p && p.status !== status) pjPatch(id, 'status', status); }
+// ---- detail (fields + subtasks) ----
+function pjOpenDetail(id){ pj.open = id; pjModalRender(true); }
+function pjCloseDetail(){ pj.open = null; pjModalRender(); }
+function pjModalRender(focus){
+  let m = document.getElementById('pjModal');
+  const p = pj.open && pjFind(pj.open);
+  if (!p){ if (m) m.remove(); return; }
+  if (!m){ m = document.createElement('div'); m.id = 'pjModal'; m.className = 'brf-modal'; m.addEventListener('click', ev => { if (ev.target === m) pjCloseDetail(); }); document.body.appendChild(m); }
+  const act = document.activeElement; if (!focus && act && m.contains(act) && /INPUT|TEXTAREA|SELECT/.test(act.tagName) && act.id !== 'pjNewTask') return; // do not steal focus while editing
+  const id = escapeHtml(p.id); const rate = f => `<select onchange="pjPatch('${id}','${f}',this.value)">${['', 1, 2, 3, 4, 5].map(o => `<option value="${o}"${String(p[f] == null ? '' : p[f]) === String(o) ? ' selected' : ''}>${o === '' ? '—' : o}</option>`).join('')}</select>`;
+  const fld = (label, inner) => `<label class="pj-f"><span>${label}</span>${inner}</label>`;
+  const tasks = (p.tasks || []).map(t => `<div class="pj-task${t.status === 'Done' ? ' done' : ''}"><input type="checkbox" ${t.status === 'Done' ? 'checked' : ''} aria-label="Done" onchange="pjTaskPatch('${id}','${escapeHtml(t.id)}','status',this.checked?'Done':'To do')">
+    <input type="text" class="pj-t-title" value="${escapeHtml(t.title)}" maxlength="160" aria-label="Subtask" onchange="pjTaskPatch('${id}','${escapeHtml(t.id)}','title',this.value)">
+    <select onchange="pjTaskPatch('${id}','${escapeHtml(t.id)}','status',this.value)" aria-label="Subtask status">${pj.meta.taskStatuses.map(s => `<option${s === t.status ? ' selected' : ''}>${s}</option>`).join('')}</select>
+    <input type="text" value="${escapeHtml(t.assignee)}" maxlength="80" placeholder="who" aria-label="Assignee" style="width:90px" onchange="pjTaskPatch('${id}','${escapeHtml(t.id)}','assignee',this.value)">
+    <input type="date" value="${escapeHtml(t.due)}" aria-label="Due" class="${pjDueClass(t.due, t.status === 'Done').trim()}" onchange="pjTaskPatch('${id}','${escapeHtml(t.id)}','due',this.value)">
+    <button type="button" class="pj-x" aria-label="Remove subtask" title="Remove subtask" onclick="pjTaskDel('${id}','${escapeHtml(t.id)}')">×</button></div>`).join('');
+  m.innerHTML = `<div class="brf-modal-card pj-detail" role="dialog" aria-label="Project">
+    <div class="pj-d-head"><div><span class="pj-rank">${p.rank == null ? '' : '#' + p.rank + ' in ' + escapeHtml(pjAreaLabel(p.area))}</span> <span class="pj-score">${p.score}</span></div><button type="button" class="btn-ghost" onclick="pjCloseDetail()">Close</button></div>
+    <input type="text" class="pj-d-name" value="${escapeHtml(p.name)}" maxlength="120" aria-label="Project name" onchange="pjPatch('${id}','name',this.value)">
+    <div class="pj-grid">
+      ${fld('Status', `<select onchange="pjPatch('${id}','status',this.value)">${pj.meta.statuses.map(s => `<option${s === p.status ? ' selected' : ''}>${s}</option>`).join('')}</select>`)}
+      ${fld('Area', `<select onchange="pjPatch('${id}','area',this.value)">${PJ_AREAS.map(a => `<option value="${a.key}"${a.key === p.area ? ' selected' : ''}>${a.label}</option>`).join('')}</select>`)}
+      ${fld('Owner', `<input type="text" value="${escapeHtml(p.owner)}" maxlength="80" onchange="pjPatch('${id}','owner',this.value)">`)}
+      ${fld('Delivery target', `<input type="date" value="${escapeHtml(p.delivery)}" onchange="pjPatch('${id}','delivery',this.value)">`)}
+      ${fld('Impact', rate('impact'))}${fld('Effort', rate('effort'))}${fld('Urgency', rate('urgency'))}
+      ${fld('Supports', `<input type="text" value="${escapeHtml(p.supports)}" maxlength="200" onchange="pjPatch('${id}','supports',this.value)">`)}
+    </div>
+    <div class="pj-f"><span>Creative types</span><div class="pj-chips">${briefAssetTypes().map(t => `<button type="button" class="pj-chip${pjTypeList(p.assetTypes).includes(t) ? ' on' : ''}" onclick="pjToggleType('${id}',this.dataset.t)" data-t="${escapeHtml(t)}">${escapeHtml(t)}</button>`).join('')}</div>
+      <input type="text" value="${escapeHtml(p.assetTypes)}" maxlength="400" placeholder="Or type your own, separated by semicolons" onchange="pjPatch('${id}','assetTypes',this.value)"></div>
+    ${fld('Notes', `<textarea rows="3" maxlength="1000" onchange="pjPatch('${id}','notes',this.value)">${escapeHtml(p.notes)}</textarea>`)}
+    <div class="strat-chart-label" style="margin:12px 0 6px;">Subtasks ${p.taskCount ? '· ' + p.taskDone + ' of ' + p.taskCount + ' done' : ''}</div>
+    ${tasks || '<p class="hint" style="margin:0 0 6px;">No subtasks yet.</p>'}
+    <div class="pj-add"><input type="text" id="pjNewTask" maxlength="160" placeholder="Add a subtask and press Enter" aria-label="New subtask" onkeydown="if(event.key==='Enter')pjTaskAdd('${id}')"><button type="button" class="btn-ghost" onclick="pjTaskAdd('${id}')">Add</button></div>
+    <div class="pj-d-foot">${p.status === 'Archived' ? '' : `<button type="button" class="btn-ghost" onclick="pjPatch('${id}','status','Archived');pjCloseDetail()">Archive project</button>`}</div></div>`;
+  if (focus){ const n = m.querySelector('.pj-d-name'); if (n) n.focus(); }
+}
+async function pjTaskAdd(pid){ const inp = document.getElementById('pjNewTask'); if (!inp || !inp.value.trim()) return; const title = inp.value.trim(); inp.disabled = true; const j = await pjCall('/' + encodeURIComponent(pid) + '/tasks', 'POST', { title }); pjMountAll(); const again = document.getElementById('pjNewTask'); if (again && j) again.focus(); }
+async function pjTaskPatch(pid, tid, field, value){ const j = await pjCall('/' + encodeURIComponent(pid) + '/tasks/' + encodeURIComponent(tid), 'PATCH', { [field]: value }); if (j){ if (field === 'status') pjModalRender(true); pjMountAll(); } }
+async function pjTaskDel(pid, tid){ const j = await pjCall('/' + encodeURIComponent(pid) + '/tasks/' + encodeURIComponent(tid), 'DELETE'); if (j) pjMountAll(); }
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && pj.open) pjCloseDetail(); });
+// Re-mount the boards whenever the person lands on a page that hosts one.
+(function(){ const g = goToStep; goToStep = function(){ const r = g.apply(this, arguments); setTimeout(pjMountAll, 80); return r; }; })();
+
 // ===== 2026-10-11 — Interactive brief (Create a Campaign page) =====
 // Three kinds. 'campaign' (default): Create|Recommend a [stage] campaign ... fills the real fields below (selectedStage, selectedSegments, #cmpStartDate etc.).
 // 'placement': Stand alone media placement, saved as a line on a chosen campaign, or on a one-line campaign made for it.
@@ -54404,7 +54580,7 @@ let briefKind = 'campaign';
 let briefMode = 'recommend';
 const briefS = {
   placement: { assoc: 'no', campaignId: '', name: '', channel: '', partner: '', start: '', end: '', reach: '', budget: '', pg: new Set(), cg: new Set() },
-  project: { name: '', supports: '', assets: new Set(), delivery: '', pg: new Set(), cg: new Set() }
+  project: { name: '', supports: '', assets: new Set(), delivery: '', area: 'project', pg: new Set(), cg: new Set() }
 };
 let briefProjects = null, briefProjectsHideDone = true;
 function briefEl(id){ return document.getElementById(id); }
@@ -54468,40 +54644,22 @@ async function briefSavePlacement(){
 }
 // ---- Marketing project sheet ----
 function briefProjUrl(extra){ return `${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-projects${extra || ''}`; }
-async function briefLoadProjects(){
-  try { const r = await authedFetch(briefProjUrl()); if (!r.ok) throw new Error(r.status); briefProjects = await r.json(); } catch (e){ briefProjects = { error: 'The project sheet could not be loaded just now.' }; }
-  briefSheetRender();
-}
+async function briefLoadProjects(){ await pjLoad(); }
 async function briefSaveProject(){
   const s = briefS.project; const btn = briefEl('briefSaveBtn');
   if (!s.name.trim()){ briefMsg('Give the project a name.', true); return; }
   if (btn) btn.disabled = true; briefMsg('Saving the project…');
   try {
-    const r = await authedFetch(briefProjUrl(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: s.name.trim(), supports: s.supports.trim(), assetTypes: [...s.assets].join(', '), delivery: s.delivery || '', productGroup: [...s.pg].join(', '), creativeGroup: [...s.cg].join(', ') }) });
+    const r = await authedFetch(briefProjUrl(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: s.name.trim(), supports: s.supports.trim(), assetTypes: [...s.assets].join('; '), delivery: s.delivery || '', productGroup: [...s.pg].join(', '), creativeGroup: [...s.cg].join(', '), area: s.area || 'project' }) });
     const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'The project could not be saved.');
-    briefS.project = { name: '', supports: '', assets: new Set(), delivery: '', pg: new Set(), cg: new Set() };
-    briefProjects = j; briefBuild(); briefMsg('Added to the project sheet below. Rate its impact, effort and urgency to place it in the priority order.');
+    const savedArea = s.area || 'project';
+    briefS.project = { name: '', supports: '', assets: new Set(), delivery: '', area: 'project', pg: new Set(), cg: new Set() };
+    if (j.projects) pj.projects = j.projects; briefBuild(); pjMountAll(); briefMsg('Added to the ' + pjAreaLabel(savedArea) + ' board. Open it to rate impact, effort and urgency and to add subtasks.');
   } catch (e){ briefMsg(e.message, true); } finally { const b2 = briefEl('briefSaveBtn'); if (b2) b2.disabled = false; }
 }
-async function briefPatchProject(id, field, value){
-  try { const r = await authedFetch(briefProjUrl('/' + encodeURIComponent(id)), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: value }) }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'Not saved.'); briefProjects = j; briefSheetRender(); }
-  catch (e){ briefMsg(e.message, true); briefLoadProjects(); }
-}
-function briefToggleDone(v){ briefProjectsHideDone = !!v; briefSheetRender(); }
 function briefSheetRender(){
   const host = briefEl('cmpProjectSheet'); if (!host) return;
-  const d = briefProjects; if (!d){ host.innerHTML = '<p class="hint">Loading the project sheet…</p>'; return; }
-  if (d.error){ host.innerHTML = `<p class="hint" style="color:var(--advocacy);">${escapeHtml(d.error)} <a class="flink" onclick="briefLoadProjects()">Try again</a></p>`; return; }
-  const sel = (id, f, v, opts) => `<select onchange="briefPatchProject('${id}','${f}',this.value)">${opts.map(o => `<option value="${o}"${String(v) === String(o) ? ' selected' : ''}>${o === '' ? '—' : o}</option>`).join('')}</select>`;
-  const rows = (d.projects || []).filter(p => !briefProjectsHideDone || (p.status !== 'Done' && p.status !== 'Archived'));
-  const body = rows.map(p => `<tr class="${p.status === 'Done' || p.status === 'Archived' ? 'done' : ''}"><td>${p.rank == null ? '' : p.rank}</td><td><b>${escapeHtml(p.name)}</b><div class="strat-sub">${escapeHtml([p.supports && 'Supports ' + p.supports, p.assetTypes].filter(Boolean).join(' · '))}</div></td>
-    <td><input type="date" value="${escapeHtml(p.delivery)}" onchange="briefPatchProject('${p.id}','delivery',this.value)"></td>
-    <td>${sel(p.id, 'impact', p.impact == null ? '' : p.impact, ['', 1, 2, 3, 4, 5])}</td><td>${sel(p.id, 'effort', p.effort == null ? '' : p.effort, ['', 1, 2, 3, 4, 5])}</td><td>${sel(p.id, 'urgency', p.urgency == null ? '' : p.urgency, ['', 1, 2, 3, 4, 5])}</td>
-    <td class="brf-score">${p.scored ? p.score : '<span class="strat-sub" title="Unrated items are scored as 3 / 3 / 3">' + p.score + ' (unrated)</span>'}</td>
-    <td>${sel(p.id, 'status', p.status, d.statuses || [])}</td><td><input type="text" value="${escapeHtml(p.owner)}" maxlength="80" style="width:110px" placeholder="owner" onchange="briefPatchProject('${p.id}','owner',this.value)"></td></tr>`).join('');
-  host.innerHTML = `<div class="brf-sheet"><div class="strat-chart-label" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline;"><span>Marketing project sheet</span><label style="font-weight:500;font-size:0.8125rem;text-transform:none;letter-spacing:0;"><input type="checkbox" ${briefProjectsHideDone ? 'checked' : ''} onchange="briefToggleDone(this.checked)"> Hide done and archived</label></div>
-    <p class="strat-sub" style="margin:2px 0 8px;">${escapeHtml(d.scoring || '')} Highest score is worked first; ties go to the earlier delivery date.</p>
-    ${rows.length ? `<div class="strat-table-wrap" style="margin-top:0;"><table><thead><tr><th>#</th><th>Project</th><th>Delivery target</th><th>Impact</th><th>Effort</th><th>Urgency</th><th>Score</th><th>Status</th><th>Owner</th></tr></thead><tbody>${body}</tbody></table></div>` : '<p class="hint">No projects yet. Fill in the sentence above to add the first one.</p>'}</div>`;
+  host.classList.add('pj-host'); host.dataset.area = 'project'; pjRender(host);
 }
 // ---- Reading a spoken/typed brief (plain pattern matching against this account's real lists; nothing is guessed) ----
 const BRIEF_MONTHS = ['january','february','march','april','may','june','july','august','september','october','november','december'];
@@ -54610,7 +54768,7 @@ function briefBuild(){
     if (title) title.textContent = 'Marketing project';
     if (lede) lede.textContent = 'A stand-alone asset set that supports many campaigns over time, such as a digital tool kit. Projects go on one prioritized sheet.';
     h = `We're creating a <input type="text" id="briefProjName" class="brf-in brf-text-in" maxlength="120" placeholder="project name" oninput="briefSetJ('name',this.value)"> to support <input type="text" id="briefSupports" class="brf-in brf-text-in" maxlength="200" placeholder="e.g. Video Ads" oninput="briefSetJ('supports',this.value)">.
-      The project includes ${briefMultiHtml('briefAssets', 'creative asset types')} with a delivery date target on <input type="date" id="briefDeliver" class="brf-in" oninput="briefSetJ('delivery',this.value)"> subject to prioritization.${BRIEF_CX}`;
+      The project includes ${briefMultiHtml('briefAssets', 'creative asset types')} with a delivery date target on <input type="date" id="briefDeliver" class="brf-in" oninput="briefSetJ('delivery',this.value)"> subject to prioritization. It belongs to ${briefSelectHtml('briefProjArea', PJ_AREAS.map(x => ({ v: x.key, l: x.label })), '', 'briefSetJ(\'area\',this.value)')}.${BRIEF_CX}`;
     if (act){ act.style.display = ''; act.innerHTML = '<button type="button" class="btn-primary" id="briefSaveBtn" onclick="briefSaveProject()">Add to the project sheet →</button>'; }
   }
   box.innerHTML = h;
@@ -54651,7 +54809,7 @@ function briefRender(){
     briefFillSpecs();
   } else {
     const s = briefS.project;
-    set('briefProjName', s.name); set('briefSupports', s.supports); set('briefDeliver', s.delivery);
+    set('briefProjName', s.name); set('briefSupports', s.supports); set('briefDeliver', s.delivery); set('briefProjArea', s.area || 'project');
     briefMultiFill('briefAssets', briefAssetTypes(), s.assets, 'briefToggleAsset', 'creative asset types');
   }
   briefMultiFill('briefPg', briefTax('productGroup'), sets.pg, 'briefTogglePg', 'product group');
