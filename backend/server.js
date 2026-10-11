@@ -33001,7 +33001,12 @@ Submit your response via the campaign_intake_turn tool.`;
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       const rows = db.prepare('SELECT * FROM account_taxonomies WHERE accountId = ? ORDER BY taxonomyKey ASC').all(accountId);
-      return sendJson(res, 200, { taxonomies: rows.map(r => ({ ...r, valuesJson: JSON.parse(r.valuesJson) })) });
+      const outRows = rows.map(r => ({ ...r, valuesJson: JSON.parse(r.valuesJson) }));
+      // 2026-10-11, per Todd: "Brand" is a Product Group option across the site, whatever the account's own list holds.
+      const pgRow = outRows.find(r => r.taxonomyKey === 'productGroup');
+      if (pgRow){ if (Array.isArray(pgRow.valuesJson) && !pgRow.valuesJson.some(v => String(v).toLowerCase() === 'brand')) pgRow.valuesJson.push('Brand'); }
+      else outRows.push({ accountId, taxonomyKey: 'productGroup', label: 'Product Group', valuesJson: ['Brand'] });
+      return sendJson(res, 200, { taxonomies: outRows });
     }
 
     // PUT /api/accounts/:accountId/taxonomies/:taxonomyKey — upsert one
