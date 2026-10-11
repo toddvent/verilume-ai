@@ -54836,10 +54836,32 @@ function briefIvSteps(){
   ];
 }
 function briefIvMark(id){ document.querySelectorAll('.brf-active').forEach(e => e.classList.remove('brf-active')); const e = id && briefEl(id); if (e){ e.classList.add('brf-active'); try { e.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (x){} } }
-function briefIvSay(text, cb){
-  briefMsg(text);
+// 2026-10-11, per Todd: the interview speaks in his ElevenLabs voice (POST .../voice/speak, voice taken from the Verilume agent).
+// Falls back to the browser voice if the server has no key or the call fails.
+let briefAudio = null, briefElOff = false; const briefAudioCache = {};
+function briefSpeakBrowser(text, cb){
   const syn = window.speechSynthesis; if (!syn || typeof SpeechSynthesisUtterance === 'undefined'){ setTimeout(cb, 600); return; }
   try { syn.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = 'en-US'; u.rate = 1.02; u.onend = () => cb(); u.onerror = () => cb(); syn.speak(u); } catch (e){ cb(); }
+}
+async function briefIvSay(text, cb){
+  briefMsg(text);
+  const iv = briefIv;
+  if (briefElOff){ briefSpeakBrowser(text, cb); return; }
+  let url = briefAudioCache[text];
+  try {
+    if (!url){
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice/speak`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+      if (!resp.ok) throw new Error('speak ' + resp.status);
+      url = briefAudioCache[text] = URL.createObjectURL(await resp.blob());
+    }
+  } catch (e){ briefElOff = true; if (!iv || briefIv === iv) briefSpeakBrowser(text, cb); return; }
+  if (iv && briefIv !== iv){ return; } // stopped while loading
+  try {
+    if (briefAudio){ briefAudio.pause(); }
+    const a = briefAudio = new Audio(url); let done = false; const fin = () => { if (!done){ done = true; cb(); } };
+    a.onended = fin; a.onerror = () => { briefElOff = true; briefSpeakBrowser(text, cb); };
+    const pr = a.play(); if (pr && pr.catch) pr.catch(() => { briefElOff = true; briefSpeakBrowser(text, cb); });
+  } catch (e){ briefElOff = true; briefSpeakBrowser(text, cb); }
 }
 function briefIvNext(){
   const iv = briefIv; if (!iv || !iv.active) return;
@@ -54875,6 +54897,7 @@ function briefIvStop(silent){
   const iv = briefIv; briefIv = null; briefIvMark(null);
   if (iv){ iv.active = false; try { if (iv.rec) iv.rec.stop(); } catch (e){} }
   try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e){}
+  try { if (briefAudio){ briefAudio.onended = null; briefAudio.pause(); } } catch (e){}
   const mic = briefEl('briefMic'); if (mic){ mic.classList.remove('listening'); mic.title = 'Talk through the brief'; }
   if (silent) briefIvKeep = null;
 }
