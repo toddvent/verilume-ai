@@ -15118,7 +15118,9 @@ const CMP_BREADCRUMB_BUILT_CARDS = new Set(['objectives', 'budget', 'cxVision', 
 // The active step keeps its existing navy-pill treatment regardless of its
 // own status (see .cmp-breadcrumb-step.active's source order in the CSS —
 // it's declared after the status rules so it always wins).
-function cmpRenderWorkspaceBreadcrumb(activeKey){
+function cmpRenderWorkspaceBreadcrumb(activeKey, allInactive){
+  // 2026-10-11, per Todd: on the initial Create Campaign step the full set of steps stays visible but every one is inactive (no campaign yet).
+  if (allInactive) return `<div class="cmp-breadcrumb" data-inactive="1">${CMP_WORKSPACE_CARDS.map(card => `<span class="cmp-breadcrumb-step disabled" title="Available once the campaign is created">${escapeHtml(card.label)}</span>`).join('<span class="cmp-breadcrumb-sep">›</span>')}</div>`;
   return `<div class="cmp-breadcrumb">${CMP_WORKSPACE_CARDS.map(card => {
     const built = CMP_BREADCRUMB_BUILT_CARDS.has(card.key);
     const active = card.key === activeKey;
@@ -16198,6 +16200,8 @@ function cmpRenderCampaignHeader(campaign){
       circle.textContent = '—';
       circle.title = 'Illumination score — create this campaign to begin';
     }
+    const crumbMount = document.getElementById('cmpCampaignHeaderBreadcrumb');
+    if (crumbMount) crumbMount.innerHTML = cmpRenderWorkspaceBreadcrumb(null, true);
     const progressMount = document.getElementById('cchProgress');
     if (progressMount) progressMount.innerHTML = CMP_STAGE_CATEGORY_ORDER.map(() => `<div class="cch-progress-seg" title="Not started"></div>`).join('');
     cmpApplyHeaderLight(0);
@@ -16208,6 +16212,7 @@ function cmpRenderCampaignHeader(campaign){
     if (chatNameEl) chatNameEl.textContent = 'Create Campaign';
     return;
   }
+  { const cm = document.getElementById('cmpCampaignHeaderBreadcrumb'); if (cm && cm.querySelector('[data-inactive]')) cm.innerHTML = ''; } // drop the Create Campaign placeholder steps once a campaign exists
   document.getElementById('cchName').textContent = campaign.name || 'Untitled campaign';
   document.getElementById('cchCode').textContent = campaign.id;
   const status = cmpLifecycleStatus(campaign);
