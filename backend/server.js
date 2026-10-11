@@ -6389,6 +6389,30 @@ createTableIfNeeded(`
 `);
 // Same casing problem as account_plan_scenarios: on Postgres the table may have lowercase minspend/minunits/updatedat. Rename them to the names the
 // translator quotes, once, then retry. Reads use SELECT * so they never depend on the casing.
+// 2026-10-11 — Marketing Projects: stand-alone assets that support many campaigns over time (e.g. a Digital Tool Kit), with one simple
+// prioritization sheet. Priority score = Impact x Urgency / Effort (each 1-5). Plain lowercase columns (except accountId) so Postgres casing can't bite.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS marketing_projects (
+    id TEXT PRIMARY KEY, accountId TEXT NOT NULL, name TEXT NOT NULL, supports TEXT, assettypes TEXT, delivery TEXT,
+    productgroup TEXT, creativegroup TEXT, impact INTEGER, effort INTEGER, urgency INTEGER, status TEXT, owner TEXT, notes TEXT,
+    createdby TEXT, created TEXT NOT NULL, updated TEXT NOT NULL
+  );
+`);
+const MARKETING_PROJECT_STATUSES = ['Backlog', 'In progress', 'Blocked', 'Done', 'Archived'];
+function marketingProjectOut(r){
+  const n = v => { const x = Number(v); return Number.isFinite(x) && x >= 1 && x <= 5 ? Math.round(x) : null; };
+  const impact = n(r.impact), effort = n(r.effort), urgency = n(r.urgency);
+  const score = Math.round(((impact || 3) * (urgency || 3) / (effort || 3)) * 10) / 10;
+  return { id: r.id, name: r.name, supports: r.supports || '', assetTypes: r.assettypes || '', delivery: r.delivery || '', productGroup: r.productgroup || '', creativeGroup: r.creativegroup || '',
+    impact, effort, urgency, scored: !!(impact && effort && urgency), score, status: r.status || 'Backlog', owner: r.owner || '', notes: r.notes || '', createdBy: r.createdby || '', created: r.created, updated: r.updated };
+}
+function marketingProjectsFor(accountId){
+  const rows = db.prepare('SELECT * FROM marketing_projects WHERE accountId = ?').all(accountId).map(marketingProjectOut);
+  const open = r => r.status !== 'Done' && r.status !== 'Archived';
+  rows.sort((a, b) => (open(b) - open(a)) || (b.score - a.score) || String(a.delivery || '9999').localeCompare(String(b.delivery || '9999')) || String(a.name).localeCompare(String(b.name)));
+  let rank = 0; rows.forEach(r => { r.rank = open(r) ? ++rank : null; });
+  return rows;
+}
 function rateCardHealCasing(){
   [['minspend', 'minSpend'], ['minunits', 'minUnits'], ['updatedat', 'updatedAt']].forEach(([lo, camel]) => { try { db.exec('ALTER TABLE account_rate_card_minimums RENAME COLUMN ' + lo + ' TO "' + camel + '"'); } catch (e){} });
 }
@@ -19131,7 +19155,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['account_plan_scenarios', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'account_learned_cpm', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
+const CATALOG_EXEMPT = new Set(['account_plan_scenarios', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'marketing_projects', 'account_learned_cpm', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -42828,6 +42852,39 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       return sendJson(res, 200, { accountId, saved: rowsIn.length, updatedAt: now });
     }
 
+    // GET/POST /api/accounts/:id/marketing-projects and PATCH .../:pid — the Marketing Project sheet (2026-10-11). No hard delete: set status to Archived.
+    if (parts.length >= 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'marketing-projects' && parts.length <= 5 && (req.method === 'GET' || req.method === 'POST' || req.method === 'PATCH')){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const clean = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
+      const rate = v => { if (v === '' || v == null) return null; const x = Math.round(Number(v)); return Number.isFinite(x) && x >= 1 && x <= 5 ? x : undefined; };
+      try {
+        if (req.method === 'GET' && parts.length === 4) return sendJson(res, 200, { projects: marketingProjectsFor(accountId), statuses: MARKETING_PROJECT_STATUSES, scoring: 'Priority score = Impact x Urgency / Effort (each rated 1 to 5). Unrated items are scored as 3.' });
+        const body = await readBody(req); const now = new Date().toISOString();
+        if (req.method === 'POST' && parts.length === 4){
+          const name = clean(body.name, 120); if (!name) return sendJson(res, 400, { error: 'Give the project a name.' });
+          const im = rate(body.impact), ef = rate(body.effort), ur = rate(body.urgency); if (im === undefined || ef === undefined || ur === undefined) return sendJson(res, 400, { error: 'Impact, effort and urgency are 1 to 5.' });
+          const delivery = clean(body.delivery, 10); if (delivery && !/^\d{4}-\d{2}-\d{2}$/.test(delivery)) return sendJson(res, 400, { error: 'Delivery date must be a valid date.' });
+          const status = MARKETING_PROJECT_STATUSES.includes(body.status) ? body.status : 'Backlog'; const actor = planScenarioActor(req, accountId); const id = generateId('MPJ');
+          db.prepare('INSERT INTO marketing_projects (id, accountId, name, supports, assettypes, delivery, productgroup, creativegroup, impact, effort, urgency, status, owner, notes, createdby, created, updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(id, accountId, name, clean(body.supports, 200), clean(body.assetTypes, 400), delivery, clean(body.productGroup, 300), clean(body.creativeGroup, 300), im, ef, ur, status, clean(body.owner, 80), clean(body.notes, 1000), actor ? actor.name : '', now, now);
+          return sendJson(res, 201, { id, projects: marketingProjectsFor(accountId) });
+        }
+        if (req.method === 'PATCH' && parts.length === 5){
+          const pid = decodeURIComponent(parts[4]); const row = db.prepare('SELECT * FROM marketing_projects WHERE id = ? AND accountId = ?').get(pid, accountId);
+          if (!row) return sendJson(res, 404, { error: 'project not found' });
+          const set = {};
+          if (body.name !== undefined){ const nm = clean(body.name, 120); if (!nm) return sendJson(res, 400, { error: 'Give the project a name.' }); set.name = nm; }
+          [['supports', 'supports', 200], ['assetTypes', 'assettypes', 400], ['productGroup', 'productgroup', 300], ['creativeGroup', 'creativegroup', 300], ['owner', 'owner', 80], ['notes', 'notes', 1000]].forEach(([k, col, max]) => { if (body[k] !== undefined) set[col] = clean(body[k], max); });
+          if (body.delivery !== undefined){ const d = clean(body.delivery, 10); if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) return sendJson(res, 400, { error: 'Delivery date must be a valid date.' }); set.delivery = d; }
+          ['impact', 'effort', 'urgency'].forEach(k => { if (body[k] !== undefined){ const v = rate(body[k]); if (v === undefined) set.__bad = true; else set[k] = v; } });
+          if (set.__bad) return sendJson(res, 400, { error: 'Impact, effort and urgency are 1 to 5.' });
+          if (body.status !== undefined){ if (!MARKETING_PROJECT_STATUSES.includes(body.status)) return sendJson(res, 400, { error: 'Unknown status.' }); set.status = body.status; }
+          const cols = Object.keys(set); if (cols.length){ db.prepare('UPDATE marketing_projects SET ' + cols.map(c => c + ' = ?').join(', ') + ', updated = ? WHERE id = ? AND accountId = ?').run(...cols.map(c => set[c]), now, pid, accountId); }
+          return sendJson(res, 200, { projects: marketingProjectsFor(accountId) });
+        }
+      } catch (e){ console.error('[marketing-projects] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'Marketing projects could not be saved: ' + (e && e.message || 'unknown error') }); }
+    }
     // GET/POST /api/accounts/:id/rate-card-minimums — the smallest buy per channel (2026-10-08). POST replaces the whole list.
     if ((req.method === 'GET' || req.method === 'POST') && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'rate-card-minimums'){
       const accountId = decodeURIComponent(parts[2]);
