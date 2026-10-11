@@ -2604,6 +2604,8 @@
   .cch-confirm{margin-top:14px;padding:12px 14px;border-radius:10px;background:#FFF4DE;border:1px solid #F0D89B;font-size:0.8125rem;display:none;}
   .cch-confirm.open{display:block;}
   .cch-confirm button{margin-right:10px;margin-top:8px;}
+  .cch-return-chip{display:inline-block;padding:6px 14px;border-radius:999px;border:1px solid #1F6F4A;background:#E8F5EE;color:#14543A;font-weight:600;font-size:0.8125rem;cursor:pointer;}
+  .cch-return-chip:hover{background:#D3EEDF;}
   /* 2026-09-15, per direct instruction — color-coded completion bar for the
      5 workstream categories, always visible in the header (not only inside
      the expand panel). Same three-status palette as .cmp-module-status
@@ -9432,9 +9434,15 @@
         <div class="cch-steps-panel-list" id="cchStepsPanelList"></div>
       </div>
       <div class="cch-confirm" id="cchCancelConfirm">
-        <div>Cancel this campaign? Its budget will come out of the Media Plan's committed total and Budget Mix — no cancellation fee is applied. This can't be undone from here.</div>
-        <button type="button" class="btn-primary" onclick="cmpConfirmCancelCampaign()">Yes, cancel campaign</button>
-        <button type="button" class="btn-ghost" onclick="cmpToggleCancelConfirm()">Never mind</button>
+        <div id="cchCancelAsk">
+          <div>Cancel this campaign? Its budget will come out of the Media Plan's committed total and Budget Mix — no cancellation fee is applied. This can't be undone from here.</div>
+          <button type="button" class="btn-primary" onclick="cmpConfirmCancelCampaign()">Yes, cancel campaign</button>
+          <button type="button" class="btn-ghost" onclick="cmpToggleCancelConfirm()">Never mind</button>
+        </div>
+        <div id="cchCancelDone" style="display:none;">
+          <div><strong>Campaign cancelled.</strong> Its budget has been removed from the Media Plan's committed total and Budget Mix. No cancellation fee was applied.</div>
+          <button type="button" class="cch-return-chip" onclick="cmpCancelReturnToCreation()">← Return to Campaign Creation</button>
+        </div>
       </div>
     </div>
     </div>
@@ -16623,7 +16631,16 @@ function cmpToggleHeaderStepsPanel(){
 }
 
 function cmpToggleCancelConfirm(){
+  const ask=document.getElementById('cchCancelAsk'), done=document.getElementById('cchCancelDone');
+  if (ask) ask.style.display=''; if (done) done.style.display='none';
   document.getElementById('cchCancelConfirm').classList.toggle('open');
+}
+// After a client cancels: the confirmation chip returns them to Campaign Creation.
+function cmpCancelReturnToCreation(){
+  const c=document.getElementById('cchCancelConfirm'); if (c) c.classList.remove('open');
+  const ask=document.getElementById('cchCancelAsk'), done=document.getElementById('cchCancelDone');
+  if (ask) ask.style.display=''; if (done) done.style.display='none';
+  startNewCampaign();
 }
 
 // Manual, date-independent cancel action, per direct instruction: "cancel
@@ -16664,7 +16681,9 @@ async function cmpConfirmCancelCampaign(){
     campaign.messagingTrainingExample = false;
     campaign.messagingTrainingExampleAt = null;
   }
-  document.getElementById('cchCancelConfirm').classList.remove('open');
+  // Swap the Yes/Never-mind prompt for a confirmation + return chip (panel stays open).
+  { const ask=document.getElementById('cchCancelAsk'), done=document.getElementById('cchCancelDone');
+    if (ask) ask.style.display='none'; if (done) done.style.display=''; }
   cmpRenderCampaignHeader(campaign);
   if (typeof cmpRenderMessagingTrainingUI === 'function') cmpRenderMessagingTrainingUI();
   if (dataSourceLabel === 'backend'){
@@ -21619,9 +21638,31 @@ function cmpSeedBudgetFromChannelsFloor(){
 // checks that flag instead of field-has-a-value. While Impressions is still
 // on auto it now re-seeds and recomputes on every channel-mix change, same
 // as Budget already does; a real typed value still fully overrides it.
+// 2026-10-11 — when a countable Primary KPI and a target are on the form, THAT is what sizes Estimated Impressions and
+// (through the account's blended CPM) the Budget. Without this, every later stage/date/channel change re-seeded both from
+// the channel-mix floor and silently discarded the target. Returns the required impressions, or null when there is no
+// usable KPI + target (then the old channel-floor behavior applies).
+function cmpGoalRequiredImpressions(){
+  try {
+    const kpi = document.getElementById('cmpPrimaryKpi') ? document.getElementById('cmpPrimaryKpi').value : '';
+    const goalRaw = document.getElementById('cmpKpiGoal') ? document.getElementById('cmpKpiGoal').value : '';
+    const goal = goalRaw ? Number(goalRaw) : 0;
+    if (!goal || !kpi) return null;
+    if (!(kpi === 'Impressions' || kpi === 'Reach' || kpi === 'Video Views' || FUNNEL_KPIS.includes(kpi))) return null;
+    const r = computeRequiredImpressions(kpi, goal);
+    return r && r.impressions > 0 ? Math.round(r.impressions) : null;
+  } catch (e){ return null; }
+}
 function cmpReconcileImpressionsBudget(){
   if (cmpSuppressReconcile) return;
   if (cmpPlannedImpressionsAuto){
+    const fromGoal = cmpGoalRequiredImpressions();
+    const fs = document.getElementById('cmpFundingSource') ? document.getElementById('cmpFundingSource').value : 'unplanned';
+    if (fromGoal && fs !== 'plan'){
+      const f = document.getElementById('cmpPlannedImpressions'); if (f) f.value = fromGoal;
+      if (typeof updateBudgetFromImpressions === 'function') updateBudgetFromImpressions();
+      return;
+    }
     if (typeof cmpSeedBudgetFromChannelsFloor === 'function') cmpSeedBudgetFromChannelsFloor();
     if (typeof updatePlannedImpressionsEstimate === 'function') updatePlannedImpressionsEstimate();
     if (typeof updateBudgetFromImpressions === 'function') updateBudgetFromImpressions();
@@ -32964,6 +33005,10 @@ function updatePlannedImpressionsEstimate(){
   const field = document.getElementById('cmpPlannedImpressions');
   if (!field) return;
   const fundingSource = document.getElementById('cmpFundingSource') ? document.getElementById('cmpFundingSource').value : 'unplanned';
+  if (fundingSource !== 'plan' && cmpPlannedImpressionsAuto){
+    const g = cmpGoalRequiredImpressions();
+    if (g){ field.value = g; cmpSetTruncatableHint(hintEl, 'Sized from your Primary KPI target (' + Number(document.getElementById('cmpKpiGoal').value).toLocaleString() + ').'); return; }
+  }
   if (fundingSource === 'plan'){
     const estimate = estimatePlannedImpressionsFromDraws();
     if (estimate == null){
@@ -47581,6 +47626,8 @@ const CMP_OBJ_RECAP_FIELDS = [
   { key: 'businessInitiative', label: 'Media Science Primary Focus', type: 'select', registry: () => (typeof BUSINESS_INITIATIVE_REGISTRY_CLIENT !== 'undefined' ? BUSINESS_INITIATIVE_REGISTRY_CLIENT : {}) },
   { key: 'productGroups', label: 'Product Group', type: 'multi', options: () => cmpTaxonomyValues('productGroup') || [] },
   { key: 'creativeFocusGroups', label: 'Creative Focus Group', type: 'multi', options: () => cmpTaxonomyValues('creativeMarket') || [] },
+  { key: 'primaryKpi', label: 'Primary KPI', type: 'select', rawFallback: true, registry: () => { const o = {}; (typeof PRIMARY_KPI_OPTIONS !== 'undefined' ? PRIMARY_KPI_OPTIONS : []).filter(x => !/^Other/i.test(x)).forEach(x => { o[x] = { label: x }; }); return o; } },
+  { key: 'kpiGoal', label: 'Target', type: 'number' },
   { key: 'budget', label: 'Estimated Budget', type: 'money' },
   { key: 'startDate', label: 'Campaign Start Date', type: 'date' },
   { key: 'endDate', label: 'Campaign End Date', type: 'date' }
@@ -47602,8 +47649,9 @@ function cmpObjRecapDisplayValue(c, field){
   const raw = cmpObjRecapFieldValue(c, field.key);
   if (field.type === 'select'){
     const entry = raw ? field.registry()[raw] : null;
-    return entry ? entry.label : '—';
+    return entry ? entry.label : (field.rawFallback && raw ? raw : '—');
   }
+  if (field.type === 'number') return (raw !== '' && raw !== null && !isNaN(Number(raw))) ? Number(raw).toLocaleString('en-US') : 'Not set yet';
   if (field.type === 'multi') return raw.length ? raw.join(', ') : '—';
   if (field.type === 'money') return (raw !== '' && raw !== null) ? `$${Number(raw).toLocaleString()}` : 'Not set yet';
   if (field.type === 'date') return raw || '—';
@@ -47693,7 +47741,7 @@ async function cmpObjRecapSave(){
   CMP_OBJ_RECAP_FIELDS.forEach(field => {
     let v = draft[field.key];
     if (field.type === 'multi') v = (v || []).join(', ');
-    if (field.type === 'money') v = (v === '' || v === null || v === undefined) ? null : Number(v);
+    if (field.type === 'money' || field.type === 'number') v = (v === '' || v === null || v === undefined) ? null : Number(v);
     payload[field.key] = v;
   });
   cmpObjRecapState.saving = true;
@@ -47782,7 +47830,7 @@ function cmpRenderObjectivesRecap(c){
       editorHtml = options.length
         ? `<div id="${cmpObjRecapMultiContainerId(field.key)}"></div>`
         : `<p class="hint" style="margin:0;">No ${escapeHtml(field.label.toLowerCase())} options are set up for this account yet — add them under Configuration.</p>`;
-    } else if (field.type === 'money'){
+    } else if (field.type === 'money' || field.type === 'number'){
       editorHtml = `<input type="number" min="0" step="1" id="${cmpObjRecapInputId(field.key)}" value="${draftVal === null || draftVal === undefined ? '' : escapeHtml(String(draftVal))}" ${s.saving ? 'disabled' : ''}>`;
     } else if (field.type === 'date'){
       editorHtml = `<input type="date" id="${cmpObjRecapInputId(field.key)}" value="${escapeHtml(draftVal || '')}" ${s.saving ? 'disabled' : ''}>`;
@@ -47836,7 +47884,9 @@ function cmpObjectivesAutoStartLine(c){
   if (initiativeEntry) known.push(`Media Science Primary Focus ${initiativeEntry.label}`);
   if (c.startDate) known.push(`Start Date ${c.startDate}`);
   if (c.endDate) known.push(`End Date ${c.endDate}`);
-  known.push((c.budget !== null && c.budget !== undefined && c.budget !== '') ? `Estimated Budget $${Number(c.budget).toLocaleString()}` : 'no Estimated Budget set yet');
+  if (c.primaryKpi && c.kpiGoal) known.push(`Target ${Number(c.kpiGoal).toLocaleString('en-US')} ${c.primaryKpi}`);
+  const budgetSet = c.budget !== null && c.budget !== undefined && c.budget !== '';
+  known.push(budgetSet ? `Estimated Budget $${Number(c.budget).toLocaleString()}${(c.budgetAuto !== false && c.primaryKpi && c.kpiGoal) ? ' (estimated from the target at the blended CPM)' : ''}` : 'no Estimated Budget set yet');
   return `Here's what we already set up for "${c.name || c.id}" in Campaign Creation: ${known.join(', ')}. What do you still need from me to put together a budget recommendation?`;
 }
 // Fires once per campaign (cmpMaybeResetIntake() only calls this when the
