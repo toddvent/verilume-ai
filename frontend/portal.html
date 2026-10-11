@@ -1772,6 +1772,18 @@
   .strat-legend{font:inherit;font-size:0.8125rem;border:1px solid var(--line);background:var(--white);border-radius:980px;padding:4px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;color:var(--ink);}
   .strat-legend i{width:9px;height:9px;border-radius:50%;display:inline-block;} .strat-legend.on{border-color:var(--ink);font-weight:600;}
   .strat-reading{font-size:0.875rem;margin:0 0 6px;line-height:1.5;}
+  /* 2026-10-11, per direct instruction: shade the Top 5 module (every dashboard renders into #topUrgentModule) so it reads as its own
+     module; larger Manage Campaign button in the toggle teal (var(--cx)); status pills larger, tinted by status with the Verilume light tints. */
+  #topUrgentModule{background:linear-gradient(180deg,#EEF6F9 0%,#F6FAFC 100%);border:1px solid #CFE3EA;border-top:3px solid var(--cx);border-radius:var(--radius-md);padding:16px 18px 14px;box-shadow:var(--shadow-sm);}
+  #topUrgentModule .table-scroll{background:var(--white);border:1px solid var(--line-hairline);border-radius:12px;padding:2px 10px 4px;}
+  .cmp-manage-btn,#topUrgentModule .btn-ghost{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif;display:inline-block;padding:8px 18px !important;font-size:0.8125rem !important;font-weight:700;line-height:1.2;border-radius:999px;border:1px solid var(--cx) !important;background:var(--cx) !important;color:var(--white) !important;cursor:pointer;white-space:nowrap;transition:filter var(--dur-fast) var(--ease);}
+  .cmp-manage-btn:hover,#topUrgentModule .btn-ghost:hover{filter:brightness(0.92);}
+  #topUrgentModule .strat-tag,#topUrgentModule .status-badge{font-size:0.8125rem;font-weight:700;padding:5px 12px;border-radius:999px;white-space:nowrap;}
+  .top5-st-market{background:var(--media-tint) !important;border-color:#93B4F5 !important;color:#1D4ED8 !important;}
+  .top5-st-analysis{background:var(--advocacy-tint) !important;border-color:#A5B0F0 !important;color:#3730A3 !important;}
+  .top5-st-done{background:#E3F4EA !important;border-color:#9DD3B3 !important;color:#1E7A45 !important;}
+  .top5-st-progress,.top5-st-pre{background:var(--enterprise-tint) !important;border-color:#E2C193 !important;color:#8A5A12 !important;}
+  .top5-st-notstarted{background:#FCE8EA !important;border-color:#EDB1B9 !important;color:#B0233A !important;}
   .strat-tag{display:inline-block;font-size:0.6875rem;font-weight:700;background:var(--paper-dim);border:1px solid var(--line);border-radius:980px;padding:2px 8px;margin-right:6px;color:var(--muted);}
   .strat-tag.benchmark,.strat-tag.low{background:#FFF4E5;border-color:#F0C98F;color:#8A5A12;}
   .bd-card .strat-head{align-items:flex-start;} .bd-metric{display:flex;flex-direction:column;align-items:flex-end;gap:2px;} .bd-metric-lbl{font-size:0.6875rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);} .bd-metric-val{font-size:1.375rem;font-weight:700;}
@@ -27035,6 +27047,19 @@ function renderExecChartsVisibility(){
   moduleEl.style.display = activePrimaryTab === 'accountManagement' ? 'none' : '';
   const askBtn = document.getElementById('dashAskBtn'); if (askBtn) askBtn.style.display = activePrimaryTab === 'accountManagement' ? 'none' : '';
 }
+// Tint the status pills in the Top 5 module by what they say (all dashboards render into #topUrgentBody).
+(function(){
+  function tint(root){
+    root.querySelectorAll('.strat-tag,.status-badge').forEach(el => {
+      const t = (el.textContent || '').trim().toLowerCase(); let c = '';
+      if (t === 'in market') c = 'market'; else if (t === 'analysis') c = 'analysis'; else if (/complete/.test(t)) c = 'done';
+      else if (/in progress/.test(t)) c = 'progress'; else if (/not started/.test(t)) c = 'notstarted'; else if (t) c = 'pre';
+      el.className = el.className.replace(/\btop5-st-\S+/g, '').trim() + (c ? ' top5-st-' + c : '');
+    });
+  }
+  function boot(){ const b = document.getElementById('topUrgentBody'); if (!b) return; tint(b); new MutationObserver(() => { tint(b); }).observe(b, { childList: true, subtree: true }); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+})();
 function renderTopUrgentModule(){
   const moduleEl = document.getElementById('topUrgentModule');
   const bodyEl = document.getElementById('topUrgentBody');
@@ -32031,7 +32056,7 @@ function renderCampaignMgmtStep(){
       <td class="num" data-label="Due Date">${fmtDate(cmgmtCampaignDueDate(c))}</td>
       <td class="num" data-label="Start Date">${fmtDate(c.startDate)}</td>
       <td class="num" data-label="End Date">${fmtDate(c.endDate)}</td>
-      <td data-label=""><button type="button" class="btn-ghost" style="padding:6px 14px;font-size:0.75rem;" onclick="cmpManageExistingCampaign('${c.id}')">Manage Campaign →</button></td>
+      <td data-label=""><button type="button" class="cmp-manage-btn" onclick="cmpManageExistingCampaign('${c.id}')">Manage Campaign →</button></td>
     </tr>`).join('');
 }
 
