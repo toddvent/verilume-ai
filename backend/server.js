@@ -4132,7 +4132,104 @@ const BRAND_VOICE_PRIMARY_BRIEF = {
 // 90s leaves headroom under Vercel's 120s function ceiling as long as the
 // vendor calls in a given panel run in parallel (one Promise.all) rather
 // than stacked — see each panel's own call site for confirmation of that.
+// ===== 2026-10-11 — Per-account queue for AI and voice vendor calls =====
+// Why: one ElevenLabs key and one Anthropic/OpenAI/Gemini/xAI key serve every client, each vendor caps simultaneous
+// requests, and the database bridge blocks this process while it waits. Without a queue, a busy client (or a panel
+// that fans out several model calls) can use all the capacity and make everyone else fail. Each vendor class has a
+// global cap and a per-account cap; waiting calls are served round-robin across accounts, so one client cannot
+// starve the others. A call that waits too long, or arrives when the line is full, fails fast with a clear message
+// (HTTP 429, err.queueReject) instead of piling up. Tune with env vars; defaults are conservative.
+const { AsyncLocalStorage: _QueueALS } = require('node:async_hooks');
+const queueAccountStore = new _QueueALS();
+function makeFairLimiter({ name, maxGlobal, maxPerAccount, maxWaitingPerAccount, waitMs }){
+  let active = 0;
+  const accts = new Map();      // accountId -> { active, queue: [] }
+  const rotation = [];          // accountIds with waiters, served round-robin
+  const stats = { started: 0, queued: 0, rejectedFull: 0, rejectedTimeout: 0, maxWaitMs: 0, peakActive: 0 };
+  const acct = id => { let a = accts.get(id); if (!a){ a = { active: 0, queue: [] }; accts.set(id, a); } return a; };
+  const cleanup = (id, a) => { if (!a.active && !a.queue.length) accts.delete(id); };
+  function start(id, a, w){
+    a.active++; active++; stats.started++; if (active > stats.peakActive) stats.peakActive = active;
+    const waited = Date.now() - w.at; if (waited > stats.maxWaitMs) stats.maxWaitMs = waited;
+    let released = false;
+    w.resolve(() => { if (released) return; released = true; a.active--; active--; cleanup(id, a); pump(); });
+  }
+  function pump(){
+    let guard = rotation.length + 1;
+    while (active < maxGlobal && rotation.length && guard-- > 0){
+      const id = rotation.shift(); const a = accts.get(id);
+      if (!a || !a.queue.length) continue;
+      if (a.active >= maxPerAccount){ rotation.push(id); continue; }
+      const w = a.queue.shift(); clearTimeout(w.timer);
+      if (a.queue.length) rotation.push(id);
+      guard = rotation.length + 1;
+      start(id, a, w);
+    }
+  }
+  function rejection(kind, id){
+    const e = new Error(kind === 'full'
+      ? `The ${name} line for this account is full right now. Please try again in a moment.`
+      : `The ${name} line is busy (waited ${Math.round(waitMs / 1000)}s). Please try again in a moment.`);
+    e.queueReject = true; e.httpStatus = 429; e.queueName = name; e.queueKind = kind; e.accountId = id;
+    return e;
+  }
+  return {
+    name,
+    acquire(rawId){
+      const id = rawId || '_anon'; const a = acct(id);
+      if (active < maxGlobal && a.active < maxPerAccount && !a.queue.length){
+        return new Promise(resolve => start(id, a, { at: Date.now(), resolve }));
+      }
+      if (a.queue.length >= maxWaitingPerAccount){ stats.rejectedFull++; return Promise.reject(rejection('full', id)); }
+      stats.queued++;
+      return new Promise((resolve, reject) => {
+        const w = { at: Date.now(), resolve, timer: null };
+        w.timer = setTimeout(() => {
+          const i = a.queue.indexOf(w); if (i >= 0) a.queue.splice(i, 1);
+          const r = rotation.indexOf(id); if (r >= 0 && !a.queue.length) rotation.splice(r, 1);
+          cleanup(id, a); stats.rejectedTimeout++; reject(rejection('timeout', id));
+        }, waitMs);
+        a.queue.push(w); if (rotation.indexOf(id) < 0) rotation.push(id);
+        pump();
+      });
+    },
+    snapshot(){
+      let waiting = 0; accts.forEach(a => { waiting += a.queue.length; });
+      return { active, waiting, accountsActive: accts.size, maxGlobal, maxPerAccount, waitMs, ...stats };
+    }
+  };
+}
+const _qInt = (k, d) => { const n = parseInt(process.env[k], 10); return n > 0 ? n : d; };
+const _aiCfg = () => ({ maxGlobal: _qInt('AI_MAX_CONCURRENT', 8), maxPerAccount: _qInt('AI_PER_ACCOUNT', 3), maxWaitingPerAccount: _qInt('AI_MAX_WAITING_PER_ACCOUNT', 20), waitMs: _qInt('AI_QUEUE_WAIT_MS', 60000) });
+// One line per AI vendor (each has its own rate limit, and a copy contest calls four of them at once).
+const aiQueues = {
+  anthropic: makeFairLimiter({ name: 'AI (Claude)', ..._aiCfg() }),
+  openai: makeFairLimiter({ name: 'AI (OpenAI)', ..._aiCfg() }),
+  xai: makeFairLimiter({ name: 'AI (xAI)', ..._aiCfg() }),
+  gemini: makeFairLimiter({ name: 'AI (Gemini)', ..._aiCfg() })
+};
+const aiQueue = aiQueues.anthropic;
+const voiceQueue = makeFairLimiter({ name: 'voice', maxGlobal: _qInt('VOICE_MAX_CONCURRENT', 8), maxPerAccount: _qInt('VOICE_PER_ACCOUNT', 2), maxWaitingPerAccount: _qInt('VOICE_MAX_WAITING_PER_ACCOUNT', 6), waitMs: _qInt('VOICE_QUEUE_WAIT_MS', 6000) });
+function queueForUrl(url){
+  const u = String(url || '');
+  if (/^https:\/\/api\.elevenlabs\.io\//.test(u)) return voiceQueue;
+  if (/^https:\/\/api\.anthropic\.com\//.test(u)) return aiQueues.anthropic;
+  if (/^https:\/\/api\.openai\.com\//.test(u)) return aiQueues.openai;
+  if (/^https:\/\/api\.x\.ai\//.test(u)) return aiQueues.xai;
+  if (/^https:\/\/generativelanguage\.googleapis\.com\//.test(u)) return aiQueues.gemini;
+  return null;
+}
+async function withQueueSlot(queue, fn){
+  const store = queueAccountStore.getStore();
+  const release = await queue.acquire(store && store.accountId);
+  try { return await fn(); } finally { release(); }
+}
 async function fetchWithTimeout(url, options, ms = 90000){
+  const _q = queueForUrl(url);
+  if (_q) return withQueueSlot(_q, () => fetchWithTimeoutRaw(url, options, ms));
+  return fetchWithTimeoutRaw(url, options, ms);
+}
+async function fetchWithTimeoutRaw(url, options, ms){
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
   try {
@@ -4290,7 +4387,8 @@ async function callClaudeForJSON({ model, maxTokens, content, schema, toolName, 
 // `system` may be a string or an array of content blocks (so callers can
 // attach `cache_control` to the static instruction block — see
 // AI_BRAIN_REPLY_SYSTEM's own comment for why that matters for latency).
-async function callClaudeToolStream({ model, maxTokens, system, messages, schema, toolName, toolDescription, onReplyDelta, onFirstToken, firstByteMs = 20000, idleMs = 15000, maxMs = 110000 }){
+function callClaudeToolStream(opts){ return withQueueSlot(aiQueue, () => callClaudeToolStreamInner(opts)); }
+async function callClaudeToolStreamInner({ model, maxTokens, system, messages, schema, toolName, toolDescription, onReplyDelta, onFirstToken, firstByteMs = 20000, idleMs = 15000, maxMs = 110000 }){
   const controller = new AbortController();
   let phase = 'connect';
   let idleTimer = null;
@@ -27053,7 +27151,12 @@ async function platformSendCode(email, purpose, code, link){
 
 function escapeHtmlBasic(t){ return String(t == null ? '' : t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-async function handleRequest(req, res) {
+function handleRequest(req, res){
+  const m = /^\/api\/accounts\/([^\/?#]+)/.exec(req.url || '');
+  let accountId = null; try { accountId = m ? decodeURIComponent(m[1]) : null; } catch (e){}
+  return queueAccountStore.run({ accountId }, () => handleRequestInner(req, res));
+}
+async function handleRequestInner(req, res) {
   applyApiSecurityHeaders(req, res);
   if (req.method === 'OPTIONS'){
     res.writeHead(204);
@@ -27485,6 +27588,7 @@ async function handleRequest(req, res) {
         ok: !PRODUCTION_DB_MISCONFIGURED && dbReachable,
         db: process.env.DATABASE_URL ? 'Supabase/Postgres (DATABASE_URL set)' : DB_PATH,
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
+        queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
         buildStamp: '2026-10-09-merged-spend',
         // 2026-09-27 — which vendor integrations this running instance has
@@ -31869,7 +31973,7 @@ async function handleRequest(req, res) {
         const buf = Buffer.from(await r.arrayBuffer());
         res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Content-Length': buf.length, 'Cache-Control': 'private, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
         return res.end(buf);
-      } catch (e){ return sendJson(res, 502, { error: 'voice unavailable: ' + e.message }); }
+      } catch (e){ if (e && e.queueReject) return sendJson(res, 429, { error: e.message, busy: true }); return sendJson(res, 502, { error: 'voice unavailable: ' + e.message }); }
     }
 
     // GET /api/accounts/:id/voice/session — 2026-09-29, ElevenLabs final
@@ -45692,6 +45796,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
 
     sendJson(res, 404, { error: 'not found' });
   } catch (e){
+    if (e && e.queueReject){ console.warn('[queue] rejected', e.queueName, e.queueKind, e.accountId); return sendJson(res, 429, { error: e.message, busy: true, retryAfterSeconds: 10 }); }
     console.error(e);
     sendJson(res, 500, { error: 'server error', detail: e.message });
   }
