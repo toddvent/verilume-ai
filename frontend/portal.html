@@ -1696,6 +1696,11 @@
   .brf-wide{max-width:100%;}
   .brf-modal{position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;}
   .brf-modal-card{background:var(--white,#fff);color:var(--ink);border-radius:12px;padding:20px 22px;max-width:520px;width:100%;max-height:85vh;overflow:auto;box-shadow:0 12px 40px rgba(0,0,0,.3);}
+  .gsc-tiers{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0 4px;}
+  .gsc-tier{font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;padding:1px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap;vertical-align:middle;}
+  .gsc-tier-best_practice{background:#EAEDFB;border-color:#C9D0F3;color:#33408F;}
+  .gsc-tier-site_scan{background:#DDF3EE;border-color:#B5E1D8;color:#0B5A50;}
+  .gsc-tier-manual{background:#FFF3D3;border-color:#F0DBA0;color:#7A5200;}
   .pj-wrap{margin:0 0 18px;}
   .pj-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:8px;}
   .pj-ctl{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
@@ -29967,7 +29972,7 @@ function ttbToggle(k){ ttb.open = ttb.open === k ? '' : k; ttbRerender(); }
 //   Add Manually  -> opens inside the row. The existing entry card is moved in here rather than copied, so it works exactly as before.
 //   Partner Integration -> the one Partner Integrations page.
 // View in Portal is greyed until the item has data, and only shown as a link where the data actually appears.
-const TTB_ALL_CARDS = ['teamStepBody', 'kpiMetricsAdminModule', 'mbuWebsiteUsersCard', 'mbuMarketableSizesCard', 'mbuDmCostPerPieceCard', 'mbuDmFormatCostCard', 'mbuMagazineCostCard', 'lsrCard', 'mbuAnnualPlanCard', 'mbuDemandFulfillmentCard', 'mbuEngagementCard', 'mbuLeadCountsCard', 'mbuTransactionsCard', 'mbuDigitalCard'];
+const TTB_ALL_CARDS = ['teamStepBody', 'kpiMetricsAdminModule', 'mbuWebsiteUsersCard', 'mbuMarketableSizesCard', 'mbuDmCostPerPieceCard', 'mbuDmFormatCostCard', 'mbuMagazineCostCard', 'mbuActiveChannelsCard', 'mpNonWorkingCard', 'lsrCard', 'mbuAnnualPlanCard', 'mbuDemandFulfillmentCard', 'mbuEngagementCard', 'mbuLeadCountsCard', 'mbuTransactionsCard', 'mbuDigitalCard'];
 let ttbHomes = null;
 function ttbInitHomes(){
   if (ttbHomes) return; ttbHomes = {};
@@ -30003,6 +30008,8 @@ const TTB_CFG = {
   leadCounts: { upload: { direct: 'ttbUpPick', formats: '.xlsx or .csv, one row per source, lead type and form', handler: 'mbuHandleLeadFile', cards: ['mbuLeadCountsCard'], sample: { name: 'leads-by-month-sample.csv', cols: ['Year', 'Month', 'Source', 'Lead Type', 'Form Name', 'Total Leads', 'Bookings', 'Avg Days to Convert'], rows: [[2026, 'Jan', 'Website', 'High Value', 'Request a brochure', 320, 18, 41], [2026, 'Jan', 'Meta', 'Growth', 'Sweepstakes', 1150, 9, 66]] } }, manual: { cards: ['mbuLeadCountsCard'] }, integ: true, view: { tab: 'marketer', label: 'Growth & Performance' } },
   digitalPerformance: { upload: { direct: 'ttbUpPick', formats: 'The agency workbook as it comes (.xlsx or .csv). Sheets with a year and month layout are read automatically.', handler: 'dpHandleWorkbookFile', cards: ['mbuDigitalCard'], noSample: 'No sample needed. Send the workbook your agency already gives you.' }, manual: { cards: ['mbuDigitalCard'] }, integ: true, view: { tab: 'dataScientist', label: 'Media Science' } },
   kpiMetrics: { manual: { cards: ['kpiMetricsAdminModule'] }, view: { step: 'analyticsSetup', label: 'CMO View' } },
+  activeChannels: { manual: { cards: ['mbuActiveChannelsCard'] }, used: 'Used by Campaign Creation and the Media Plan' },
+  nonWorkingMedia: { manual: { cards: ['mpNonWorkingCard'] }, used: 'Used by the Media Plan budget' },
   annualPlan: { manual: { cards: ['mbuAnnualPlanCard'] }, view: { tab: 'strategy', label: 'Strategy' } },
   yearResults: { manual: { step: 'mediaplan' }, view: { step: 'mediaplan', label: 'Budget and Plan' } },
   demandFulfillment: { manual: { cards: ['mbuDemandFulfillmentCard'] }, view: { tab: 'strategy', label: 'Strategy' } },
@@ -30025,6 +30032,8 @@ const TTB_PLAN_SAMPLES = {
   magazineCost: { benefit: 'The smallest buy each media owner will take, plus your negotiated print rates by title and format.', sample: `<div class="ttb-srow ttb-head"><span>Title · format</span><span>Per insertion</span></div><div class="ttb-srow"><span>Travel Monthly · full page</span><span>$18,500</span></div><div class="ttb-srow"><span>Travel Monthly · half page</span><span>$11,200</span></div>` },
   loopRules: { benefit: 'Sets each plan line\'s Marketing Loop stage from its channel and audience: Past Customers are Loyalty, Brand Search and Remarketing are Purchase, New to Brand is Awareness or Consideration.', sample: `<div class="ttb-srow ttb-head"><span>Channel · audience</span><span>Stage</span></div><div class="ttb-srow"><span>CTV · Prospects</span><span>Awareness</span></div><div class="ttb-srow"><span>Brand Search</span><span>Purchase</span></div><div class="ttb-srow"><span>Email · Past Customers</span><span>Loyalty</span></div>` }
 };
+TTB_PLAN_SAMPLES.activeChannels = { benefit: 'Only the channels you switch on are offered when you create a campaign and recommended on the Media Plan.', sample: `<div class="ttb-srow ttb-head"><span>Channel</span><span>Status</span></div><div class="ttb-srow"><span>Paid Search</span><span>On</span></div><div class="ttb-srow"><span>Direct Mail</span><span>On</span></div><div class="ttb-srow"><span>Radio</span><span>Off</span></div>` };
+TTB_PLAN_SAMPLES.nonWorkingMedia = { benefit: 'Keeps agency, analytics and production spend out of the channel media totals, so the plan is not overstated.', sample: `<div class="ttb-srow ttb-head"><span>Vendor</span><span>Supports</span><span>Spend</span></div><div class="ttb-srow"><span>Agency retainer</span><span>Creative</span><span>$180,000</span></div><div class="ttb-srow"><span>Analytics platform</span><span>Measurement</span><span>$42,000</span></div>` };
 Object.keys(TTB_PLAN_SAMPLES).forEach(k => { TTB_ITEMS[k] = TTB_PLAN_SAMPLES[k]; });
 TTB_ITEMS.brainFacts = { benefit: 'Confirmed facts about your brand, products and destinations. Answers to customer questions are written only from these.', sample: `<div class="ttb-srow ttb-head"><span>Applies to</span><span>Fact</span></div><div class="ttb-srow"><span>Brand</span><span>Every departure carries a naturalist guide.</span></div><div class="ttb-srow"><span>Faroe Islands</span><span>An archipelago of 18 islands.</span></div>` };
 TTB_ITEMS.searchKeywords = { benefit: 'The queries your customers use. Press releases and website copy are optimized toward them.', sample: `<div class="ttb-srow ttb-head"><span>Keyword</span><span>Volume</span><span>Intent</span></div><div class="ttb-srow"><span>world cruise</span><span>High</span><span>Commercial</span></div><div class="ttb-srow"><span>how long is a world cruise</span><span>Medium</span><span>Informational</span></div>` };
@@ -30458,11 +30467,41 @@ function ttbMountOpen(){
     if (!ttb.manual[k] || ttb.open !== k) return; const c = TTB_CFG[k]; const cards = (c && c.manual && c.manual.cards) || (c && c.upload && c.upload.workspace) || []; const slot = document.getElementById('ttbSlot-' + k); if (!slot) return;
     cards.forEach(id => { const el = document.getElementById(id); if (!el) return; el.style.marginTop = '0'; el.style.display = ''; slot.appendChild(el); });
     if (k === 'marketingBudgetUpload'){ ttbBuRender(); return; }
+    if (k === 'activeChannels'){ try { mbuRenderActiveChannels(); } catch (e){ console.warn(e); } return; }
+    if (k === 'nonWorkingMedia'){ ttbNwmMount(slot); return; }
     if (k === 'searchKeywords'){ srchKwRender(); return; }
     if (k === 'brainFacts'){ gscFactsRender(); return; }
     if (TTB_UP[k] && !TTB_UP[k].legacy && ttbUp.key === k){ ttbUpRender(); }
     if (cards.length && !ttb.loaded[k]){ ttb.loaded[k] = true; try { if (cards[0] === 'kpiMetricsAdminModule') loadKpiMetricsAdminTable(); else mbuLoadReachInputs(); } catch (e){ console.warn('ttb: loading entry card failed', e); } }
   });
+}
+// 2026-10-11 — Non-working media inside Train the Brain: make sure the year's plan is loaded, draw the vendor table, and give it its own Save (the card normally saves with the whole plan).
+async function ttbNwmMount(slot){
+  try {
+    if (!state.mediaPlan && typeof loadMediaPlan === 'function') await loadMediaPlan(typeof mpSelectedYear === 'number' ? mpSelectedYear : undefined);
+    if (typeof ensureNonWorkingMedia === 'function') ensureNonWorkingMedia();
+    if (state.mediaPlan && Array.isArray(state.mediaPlan.nonWorkingMedia) && !state.mediaPlan.nonWorkingMedia.length && typeof state.mediaPlan.nonWorkingMediaJson === 'string'){ try { state.mediaPlan.nonWorkingMedia = JSON.parse(state.mediaPlan.nonWorkingMediaJson) || []; } catch (e){} }
+    renderNonWorkingMedia();
+  } catch (e){ console.warn('ttb: non-working media mount failed', e); }
+  const card = document.getElementById('mpNonWorkingCard'); const body = card && card.querySelector('.sk-card-body');
+  if (!body || body.querySelector('.ttb-nwm-save')) return;
+  const row = document.createElement('div'); row.className = 'btn-row ttb-nwm-save'; row.style.marginTop = '10px';
+  row.innerHTML = '<button type="button" class="btn-primary" onclick="ttbNwmSave()">Save non-working media</button><span class="hint" id="ttbNwmMsg" style="margin-left:10px;"></span>';
+  body.appendChild(row);
+}
+async function ttbNwmSave(){
+  const msg = document.getElementById('ttbNwmMsg'); const say = t => { if (msg) msg.textContent = t; };
+  if (!state.mediaPlan || !Array.isArray(state.mediaPlan.nonWorkingMedia)){ say('No plan is loaded for this year yet.'); return; }
+  if (!ttbIsLive()){ say('Saved in this session only (no backend connected).'); return; }
+  say('Saving…');
+  try {
+    const year = state.mediaPlan.year || (typeof mpSelectedYear === 'number' ? mpSelectedYear : new Date().getFullYear());
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/media-plan/non-working`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ year, nonWorkingMedia: state.mediaPlan.nonWorkingMedia }) });
+    if (r.status === 409){ say('Set the Annual Marketing Budget for ' + year + ' first (Budget and Plan), then add these lines.'); return; }
+    if (!r.ok) throw new Error(String(r.status));
+    say('Saved ' + new Date().toLocaleTimeString() + '.');
+    try { const rr = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/train-the-brain`); if (rr.ok){ ttb.data = await rr.json(); } } catch (e){}
+  } catch (e){ say('Could not save. Try again.'); }
 }
 function ttbModuleHtml(d, i){
   const cfg = TTB_ITEMS[i.step] || { benefit: i.gain, sample: '' };
@@ -44606,7 +44645,7 @@ let mbuSetupPath = null;
 function mbuApplyPageMode(){
   const exists = mbuBudgetExists();
   const path = exists ? null : mbuSetupPath;
-  const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
+  const show = (id, on) => { const el = document.getElementById(id); if (el && el.closest && el.closest('.ttb-slot')) return; if (el) el.style.display = on ? '' : 'none'; };
   show('mbuUploadCard', !exists && path === 'upload');
   // Round 2026-09-07 (Todd, direct: "we merged the upload and manual budget
   // development process instead of figuring out a consistent process" —
@@ -63159,7 +63198,8 @@ function srchCopyOut(key){ const ta = document.getElementById('srchOut-' + key);
 // Top of the page: date range, four executive cards, Brain read, Top 5 Priorities, slide-ready charts,
 // top non-brand searches and the index health check. Data comes from GET /search-everywhere/page.
 const gscRelSeeds = {};
-const gsc = { relMsg: '', disagree: {}, readNote: '', readMsg: '', refreshed: '', viewAll: false, data: null, loading: false, error: '', manage: {}, more: {}, brandOpen: false, brandMsg: '', up: { stage: 'idle', files: [], preview: null, busy: false, msg: '' }, saveMsg: '', groupMsg: '' };
+const gsc = { tier: 'all', addOpen: false, relMsg: '', disagree: {}, readNote: '', readMsg: '', refreshed: '', viewAll: false, data: null, loading: false, error: '', manage: {}, more: {}, brandOpen: false, brandMsg: '', up: { stage: 'idle', files: [], preview: null, busy: false, msg: '' }, saveMsg: '', groupMsg: '' };
+const GSC_TIER_LABEL = { best_practice: 'Best practice', site_scan: 'Site scan', manual: 'Added by team' };
 const GSC_STATUS_LABEL = { new: 'New', planned: 'Planned', in_progress: 'In progress', done: 'Done', dismissed: 'Dismissed' };
 const gscInt = n => (n == null || isNaN(n)) ? '—' : Math.round(n).toLocaleString();
 const gscPct = (n, d) => (n == null || isNaN(n)) ? '—' : (n * 100).toFixed(d == null ? 1 : d) + '%';
@@ -63355,6 +63395,7 @@ async function sgLoad(){
     if (r.ok){ (d.ratings || []).forEach(x => { if (SG.ratings[x.model]) SG.ratings[x.model][x.item] = x.rating; }); SG.hist = d.history || []; }
   } catch (e){}
   sgRender();
+  if (!SG.modelSent){ SG.modelSent = true; sgPushModel(true); }
 }
 function sgRender(){
   const el = document.getElementById('srchAreas'); if (!el) return;
@@ -63368,7 +63409,9 @@ function sgRender(){
   }).join('') + `</div><div id="srchGuide">${SG.open ? sgGuideHtml(SG.open, ctx) : ''}</div>`;
 }
 function sgOpen(a){ SG.open = SG.open === a ? '' : a; sgRender(); if (SG.open){ const g = document.getElementById('srchGuide'); if (g) g.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } }
-function sgModel(k){ SG.model = k; try { localStorage.setItem('verilume_sg_model', k); } catch (e){} sgRender(); }
+function sgModel(k){ SG.model = k; try { localStorage.setItem('verilume_sg_model', k); } catch (e){} sgRender(); sgPushModel(false); }
+// The server seeds best-practice priorities for the chosen kind of business.
+async function sgPushModel(first){ try { await srchPost('/priorities', { action: 'model', model: SG.model, ifUnset: !!first }); if (typeof gscLoad === 'function') gscLoad(); } catch (e){} }
 function sgHowToggle(k){ SG.how[k] = !SG.how[k]; sgRender(); }
 function sgGuideHtml(a, ctx){
   const A = SG_AREAS[a], model = SG.model, M = SG_MODELS.find(x => x.key === model), sc = sgScore(a, model, ctx), items = sgItems(a, model);
@@ -63463,13 +63506,25 @@ function gscContentUpdatesHtml(d){
 // ---- priorities ----
 function gscPrioritiesHtml(d){
   const p = d.priorities || { top: [], totalOpen: 0 };
-  const list = gsc.viewAll && p.all ? p.all : p.top;
+  const list0 = gsc.viewAll && p.all ? p.all : p.top;
+  const tierN = t => (p.all || p.top || []).filter(x => x.tier === t && x.status !== 'done' && x.status !== 'dismissed').length;
+  const list = gsc.tier === 'all' ? list0 : (gsc.viewAll && p.all ? p.all : (p.all || p.top)).filter(x => x.tier === gsc.tier);
   const rows = list.map(x => {
     const open = !!gsc.manage[x.id]; const lvl = `<span class="gsc-lvl gsc-${x.priority}">${x.priority}</span>`;
     const impact = x.impactBasis === 'calculated' ? `<b>${escapeHtml(x.impactLabel)}</b><div class="gsc-sub">Calculated</div>` : `<b>${escapeHtml(x.impactLabel)}</b><div class="gsc-sub">Rated</div>`;
-    return `<tr><td class="gsc-nw">${escapeHtml(gscDay(x.date))}</td><td>${lvl}</td><td><b>${escapeHtml(x.title)}</b>${x.window ? ` <span class="gsc-win">${escapeHtml(x.window.label)}</span>` : ''}<div class="gsc-sub">${escapeHtml(x.detail || '')}</div></td><td class="gsc-nw">${impact}</td><td><span class="gsc-st gsc-st-${x.waiting ? 'waiting' : x.status}">${x.waiting ? 'Waiting' : (GSC_STATUS_LABEL[x.status] || x.status)}</span></td><td class="gsc-nw"><button type="button" class="gsc-link" aria-expanded="${open}" onclick="gsc.manage['${x.id}']=!gsc.manage['${x.id}']; gscRender();">Manage →</button>${gscRelBtn('p:' + x.id, x.releaseSeed)}</td></tr>${open ? `<tr class="gsc-manage"><td colspan="6">${gscManageHtml(x)}</td></tr>` : ''}`;
+    return `<tr><td class="gsc-nw">${escapeHtml(gscDay(x.date))}</td><td>${lvl}</td><td><b>${escapeHtml(x.title)}</b> <span class="gsc-tier gsc-tier-${x.tier || 'site_scan'}">${GSC_TIER_LABEL[x.tier] || 'Site scan'}</span>${x.window ? ` <span class="gsc-win">${escapeHtml(x.window.label)}</span>` : ''}<div class="gsc-sub">${escapeHtml(x.detail || '')}</div></td><td class="gsc-nw">${impact}</td><td><span class="gsc-st gsc-st-${x.waiting ? 'waiting' : x.status}">${x.waiting ? 'Waiting' : (GSC_STATUS_LABEL[x.status] || x.status)}</span></td><td class="gsc-nw"><button type="button" class="gsc-link" aria-expanded="${open}" onclick="gsc.manage['${x.id}']=!gsc.manage['${x.id}']; gscRender();">Manage →</button>${gscRelBtn('p:' + x.id, x.releaseSeed)}</td></tr>${open ? `<tr class="gsc-manage"><td colspan="6">${gscManageHtml(x)}</td></tr>` : ''}`;
   }).join('');
-  return `<div class="strat-card gsc-prio"><div class="gsc-head"><div class="gsc-title">${gsc.viewAll ? 'All priorities' : 'Top ' + (p.limit || 5) + ' priorities'} ${aiThoughtIconHtml('AJ')}</div><div class="gsc-sub">${p.totalOpen} open${p.waiting ? ' · ' + p.waiting + ' waiting' : ''}${p.all && p.all.length > p.top.length ? ` · <button type="button" class="gsc-link" onclick="gsc.viewAll=!gsc.viewAll; gscRender();">${gsc.viewAll ? 'Show top ' + (p.limit || 5) : 'View all'}</button>` : ''}</div></div>${rows ? `<div class="gsc-scroll"><table class="gsc-table"><thead><tr><th>Date</th><th></th><th>Priority</th><th>Business impact</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="strat-empty">Nothing open right now.</p>'}${gsc.saveMsg ? `<p class="strat-empty">${escapeHtml(gsc.saveMsg)}</p>` : ''}</div>`;
+  return `<div class="strat-card gsc-prio"><div class="gsc-head"><div class="gsc-title">${gsc.viewAll ? 'All priorities' : 'Top ' + (p.limit || 5) + ' priorities'} ${aiThoughtIconHtml('AJ')}</div><div class="gsc-sub">${p.totalOpen} open${p.waiting ? ' · ' + p.waiting + ' waiting' : ''}${p.all && p.all.length > p.top.length ? ` · <button type="button" class="gsc-link" onclick="gsc.viewAll=!gsc.viewAll; gscRender();">${gsc.viewAll ? 'Show top ' + (p.limit || 5) : 'View all'}</button>` : ''}</div></div><div class="gsc-tiers" role="group" aria-label="Where priorities come from">${[['all', 'All'], ['best_practice', 'Best practices'], ['site_scan', 'Site scan'], ['manual', 'Added by team']].map(([k, l]) => `<button type="button" class="strat-chip${gsc.tier === k ? ' on' : ''}" onclick="gsc.tier='${k}'; gscRender();">${l}${k === 'all' ? '' : ' (' + tierN(k) + ')'}</button>`).join('')}<button type="button" class="gsc-link" onclick="gsc.addOpen=!gsc.addOpen; gscRender();">${gsc.addOpen ? 'Cancel' : '+ Add a priority'}</button></div><p class="gsc-sub" style="margin:4px 0 8px;">Best practices are the starting point for your kind of business. Site scan findings come from your Search Console data and the site scan. Add your own for anything else.</p>${gsc.addOpen ? gscAddFormHtml() : ''}${rows ? `<div class="gsc-scroll"><table class="gsc-table"><thead><tr><th>Date</th><th></th><th>Priority</th><th>Business impact</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="strat-empty">Nothing open right now.</p>'}${gsc.saveMsg ? `<p class="strat-empty">${escapeHtml(gsc.saveMsg)}</p>` : ''}</div>`;
+}
+function gscAddFormHtml(){
+  return `<div class="gsc-mg" style="margin:0 0 10px;"><label>Priority <input type="text" id="gscNewTitle" maxlength="160" placeholder="What needs doing" style="min-width:240px"></label><label>Level <select id="gscNewLevel"><option>P1</option><option selected>P2</option><option>P3</option></select></label><label>Due <input type="date" id="gscNewDue"></label><label>Details <input type="text" id="gscNewDetail" maxlength="600" placeholder="Optional" style="min-width:200px"></label><button type="button" class="btn-primary" onclick="gscAddPriority()">Add</button></div>`;
+}
+async function gscAddPriority(){
+  const v = id => { const e = document.getElementById(id); return e ? e.value : ''; };
+  const title = v('gscNewTitle').trim(); if (!title){ gsc.saveMsg = 'Give the priority a title.'; gscRender(); return; }
+  let r; try { r = await srchPost('/priorities', { action: 'add', title, priorityLevel: v('gscNewLevel'), dueDate: v('gscNewDue') || null, detail: v('gscNewDetail') }); } catch (e){ r = { error: 'Could not reach the server.' }; }
+  gsc.saveMsg = r.error || ''; if (!r.error){ gsc.addOpen = false; gsc.tier = 'manual'; }
+  gscRender(); if (!r.error) gscLoad();
 }
 function gscRelBtn(key, seed){
   if (!seed) return '';
