@@ -1675,6 +1675,9 @@
   .cmp-brief .brf-in{font:inherit;font-size:0.9375rem;font-weight:600;color:var(--ink);background:var(--white,#fff);border:1px solid var(--line);border-radius:8px;padding:3px 10px;margin:0 2px;max-width:100%;}
   .cmp-brief .brf-in.filled{border-color:var(--cx);}
   .cmp-brief .brf-num{width:96px;}
+  .cmp-brief .brf-goal{width:150px;font-variant-numeric:tabular-nums;}
+  .brf-check{margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--paper-dim,#f6f6f8);font-size:0.875rem;line-height:1.5;}
+  .brf-check.warn{border-color:#c0392b;background:#fdf1ef;}
   .cmp-brief details.brf-aud{display:inline-block;position:relative;vertical-align:middle;}
   .cmp-brief details.brf-aud>summary{cursor:pointer;list-style:none;display:inline-block;}
   .cmp-brief details.brf-aud>summary::-webkit-details-marker{display:none;}
@@ -10004,6 +10007,7 @@
                 <span class="cmp-brief-sub" id="briefLede"></span>
               </div>
               <div class="cmp-brief-sentence" id="briefSentence"></div>
+              <div class="brf-check" id="briefBudgetCheck" style="display:none;" aria-live="polite"></div>
               <div class="cmp-brief-msg" id="briefMsg" aria-live="polite"></div>
               <div class="btn-row" id="briefAction" style="margin:12px 0 0;display:none;"></div>
             </div>
@@ -17628,6 +17632,8 @@ const CAMPAIGN_OBJECTIVE_GOAL_TEXT = {
 // to do for them") disabled at the Awareness stage too.
 const ACCOUNT_SEGMENTS = ['Past Customers', 'Hand-Raisers', 'Prospects', 'Future Customers', 'Cancelled Orders', 'Anonymous Website Traffic'];
 let selectedSegments = new Set();
+// 2026-10-11 — audiences this campaign must NOT reach. Empty means "No Audiences" (nothing excluded).
+let excludedSegments = new Set();
 
 // 2026-09-20, per Todd's direct copy: shown once, as the first AI Brain
 // message in the Objectives conversation, only for THIS USER's very first
@@ -46889,6 +46895,7 @@ function cmpPopulateFormFields(c, opts){
   cmpPlannedImpressionsAuto = c.plannedImpressionsAuto !== false;
   cmpBudgetAuto = c.budgetAuto !== false;
   selectedSegments = new Set((c.segment || '').split(',').map(s => s.trim()).filter(Boolean));
+  excludedSegments = new Set((c.excludeSegments || '').split(',').map(s => s.trim()).filter(Boolean));
   renderSegmentRow();
   selectedChannels = new Set(cmpCreativeChannelsText(c).split(',').map(s => s.trim()).filter(Boolean));
   renderCmpChannelRow();
@@ -52970,6 +52977,7 @@ function resetCampaignForm(){
   renderStageRow();
   cmpUpdateKpiGateUI();
   selectedSegments = new Set();
+  excludedSegments = new Set();
   renderSegmentRow();
   selectedChannels = new Set();
   renderCmpChannelRow();
@@ -54639,7 +54647,7 @@ function briefAssetTypes(){ const s = new Set(); Object.keys(CMP_CHANNEL_CREATIV
 function briefSetMode(m){ briefMode = m === 'create' ? 'create' : 'recommend'; briefRender(); }
 function briefPickName(v){ const e = briefEl('cmpName'); if (!e) return; e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); }
 function briefPickStage(s){ if (!s){ if (selectedStage) toggleStage(selectedStage); } else if (selectedStage !== s) toggleStage(s); markCampaignFormTouched(); briefRender(); }
-function briefToggleAud(s){ toggleSegment(s); briefRender(); const w = briefEl('briefAudWrap'); if (w) w.open = true; }
+function briefToggleAud(s){ excludedSegments.delete(s); toggleSegment(s); briefRender(); const w = briefEl('briefAudWrap'); if (w) w.open = true; }
 function briefTogglePg(v){ const st = briefSets().pg; if (briefKind === 'campaign') toggleProductGroup(v); else { if (st.has(v)) st.delete(v); else st.add(v); } briefRender(); const w = briefEl('briefPgWrap'); if (w) w.open = true; }
 function briefToggleCg(v){ const st = briefSets().cg; if (briefKind === 'campaign') toggleCreativeFocusGroup(v); else { if (st.has(v)) st.delete(v); else st.add(v); } briefRender(); const w = briefEl('briefCgWrap'); if (w) w.open = true; }
 function briefToggleAsset(v){ const st = briefS.project.assets; if (st.has(v)) st.delete(v); else st.add(v); briefRender(); const w = briefEl('briefAssetsWrap'); if (w) w.open = true; }
@@ -54785,9 +54793,9 @@ function briefBuild(){
     const exp = Object.keys(CAMPAIGN_TYPE_REGISTRY_CLIENT).map(x => ({ v: x, l: CAMPAIGN_TYPE_REGISTRY_CLIENT[x].label }));
     h = `I have a <input type="text" id="briefName" class="brf-in brf-text-in" maxlength="80" placeholder="campaign name" aria-label="Campaign name" oninput="briefPickName(this.value)">.
       <select id="briefMode" class="brf-in" aria-label="Create or Recommend" onchange="briefSetMode(this.value)"><option value="create">Create</option><option value="recommend">Recommend</option></select>
-      a ${briefSelectHtml('briefStage', MEDIA_LOOP_STAGES.map(x => ({ v: x, l: x })), 'Marketing Loop stage', 'briefPickStage(this.value)')} campaign targeting ${briefMultiHtml('briefAud', 'audiences')}
+      a ${briefSelectHtml('briefStage', MEDIA_LOOP_STAGES.map(x => ({ v: x, l: x })), 'Marketing Loop stage', 'briefPickStage(this.value)')} campaign targeting ${briefMultiHtml('briefAud', 'audiences')} while excluding ${briefMultiHtml('briefExcl', 'No Audiences')}
       between <input type="date" id="briefStart" class="brf-in" aria-label="Start date" oninput="briefPickDate('cmpStartDate',this.value)"> and <input type="date" id="briefEnd" class="brf-in" aria-label="End date" oninput="briefPickDate('cmpEndDate',this.value)">
-      with a goal to generate <input type="number" id="briefGoal" class="brf-in brf-num" min="0" step="1" placeholder="value" aria-label="Goal value" oninput="briefPickGoal(this.value)"> ${briefSelectHtml('briefKpi', kpis, 'Primary KPI', 'briefPickKpi(this.value)')},
+      with a goal to generate <input type="text" inputmode="numeric" autocomplete="off" id="briefGoal" class="brf-in brf-goal" maxlength="12" placeholder="e.g. 10,000,000" aria-label="Goal value" oninput="briefGoalInput(this)"> ${briefSelectHtml('briefKpi', kpis, 'Primary KPI', 'briefPickKpi(this.value)')},
       optimized for ${briefSelectHtml('briefFocus', foc, 'Media Science primary focus', 'briefPickFocus(this.value)')}.
       The campaign experience focus is ${briefSelectHtml('briefExp', exp, 'campaign experience focus', 'briefPickExp(this.value)')}.${BRIEF_CX}
       My estimated budget is $<input type="number" id="briefBudgetIn" class="brf-in brf-num" min="0" step="100" placeholder="optional" aria-label="Estimated budget" oninput="briefPickBudget(this.value)">.
@@ -54817,6 +54825,59 @@ function briefBuild(){
   briefRender();
   if (k === 'project') briefLoadProjects();
 }
+
+// ---- 2026-10-11 — exclusion audiences, 8-digit goal, and the budget check on the target number ----
+function briefToggleExcl(v){
+  if (v === '__none__') excludedSegments = new Set();
+  else if (excludedSegments.has(v)) excludedSegments.delete(v);
+  else { excludedSegments.add(v); selectedSegments.delete(v); }
+  markCampaignFormTouched(); briefRender(); const w = briefEl('briefExclWrap'); if (w) w.open = true;
+}
+function briefExclFill(){
+  const list = briefEl('briefExclList'), sum = briefEl('briefExclSum'); if (!list || !sum) return;
+  const rows = [`<label><input type="checkbox" ${excludedSegments.size ? '' : 'checked'} onchange="briefToggleExcl('__none__')">No Audiences</label>`].concat(ACCOUNT_SEGMENTS.map(v => {
+    const off = selectedSegments.has(v);
+    return `<label class="${off ? 'off' : ''}"><input type="checkbox" ${excludedSegments.has(v) ? 'checked' : ''} ${off ? 'disabled' : ''} onchange="briefToggleExcl(this.dataset.v)" data-v="${escapeHtml(v)}">${escapeHtml(v)}</label>`;
+  }));
+  list.innerHTML = rows.join('');
+  const n = [...excludedSegments]; sum.textContent = n.length ? n.join(', ') : 'No Audiences'; sum.classList.add('filled');
+}
+function briefGoalFmt(v){ const d = String(v == null ? '' : v).replace(/\D/g, '').slice(0, 10); return d ? Number(d).toLocaleString('en-US') : ''; }
+function briefGoalInput(el){
+  const raw = String(el.value || '').replace(/\D/g, '').slice(0, 10);
+  el.value = raw ? Number(raw).toLocaleString('en-US') : '';
+  briefPickGoal(raw); briefBudgetCheck();
+}
+// Budget check: sizes the target number into the budget it would take, then compares that with the estimated budget typed
+// in the brief and with the annual marketing budget on the Media Plan. It only reports; it never changes a field.
+function briefBudgetCheck(){
+  const box = briefEl('briefBudgetCheck'); if (!box) return;
+  const goal = Number((briefEl('cmpKpiGoal') || {}).value) || 0; const kpi = (briefEl('cmpPrimaryKpi') || {}).value || '';
+  if (!goal){ box.style.display = 'none'; box.textContent = ''; return; }
+  const money = n => (typeof fmtMoney === 'function' ? fmtMoney(n) : '$' + Math.round(n).toLocaleString('en-US'));
+  const parts = []; let level = 'info';
+  let need = null; try { need = computeSuggestedBudget(); } catch (e){}
+  if (!kpi){ parts.push('Pick what the ' + goal.toLocaleString('en-US') + ' counts (the Primary KPI) and I will check it against budget.'); }
+  else if (need == null){ parts.push('I cannot size ' + kpi + ' from a target number yet. Add your estimated budget and I will use that.'); }
+  else {
+    let cpm = null; try { cpm = computeBlendedCpm(); } catch (e){}
+    parts.push('To reach ' + goal.toLocaleString('en-US') + ' ' + kpi + ', plan on about <b>' + money(need) + '</b>' + (cpm ? ' (blended CPM ' + money(cpm) + ')' : '') + '. This is an illustrative estimate.');
+    const est = Number((briefEl('cmpCreationBudget') || {}).value) || 0;
+    if (est){
+      const pct = Math.round(est / need * 100);
+      if (est < need * 0.8){ level = 'warn'; parts.push('Your estimated budget of ' + money(est) + ' is about ' + pct + '% of that, so the target is a stretch.'); }
+      else if (est > need * 1.25){ parts.push('Your estimated budget of ' + money(est) + ' is above that, so there is room to spare or to raise the target.'); }
+      else parts.push('Your estimated budget of ' + money(est) + ' is in line with the target.');
+    }
+    const plan = (state.mediaPlan && Number(state.mediaPlan.totalBudget)) || 0;
+    if (plan){
+      const share = Math.round(need / plan * 100);
+      if (need > plan){ level = 'warn'; parts.push('That is more than your entire ' + (state.mediaPlan.year || '') + ' annual marketing budget of ' + money(plan) + '.'); }
+      else parts.push('That is about ' + share + '% of your ' + (state.mediaPlan.year || '') + ' annual marketing budget of ' + money(plan) + '.');
+    }
+  }
+  box.className = 'brf-check' + (level === 'warn' ? ' warn' : ''); box.innerHTML = parts.join(' '); box.style.display = '';
+}
 function briefRender(){
   const box = briefEl('cmpBrief'); if (!box) return;
   const existing = briefEl('cmpExistingCampaign'); const editing = !!(existing && existing.value); box.style.display = editing ? 'none' : '';
@@ -54829,13 +54890,15 @@ function briefRender(){
   if (briefKind === 'campaign'){
     set('briefMode', briefMode); set('briefStage', selectedStage || ''); set('briefName', (briefEl('cmpName') || {}).value);
     set('briefStart', (briefEl('cmpStartDate') || {}).value); set('briefEnd', (briefEl('cmpEndDate') || {}).value);
-    set('briefGoal', (briefEl('cmpKpiGoal') || {}).value); set('briefKpi', (briefEl('cmpPrimaryKpi') || {}).value);
+    { const g = briefEl('briefGoal'); if (g && document.activeElement !== g){ g.value = briefGoalFmt((briefEl('cmpKpiGoal') || {}).value); g.classList.toggle('filled', !!g.value); } }
+    set('briefKpi', (briefEl('cmpPrimaryKpi') || {}).value);
     set('briefFocus', (briefEl('cmpCreationBusinessInitiativeSelect') || {}).value || cmpPendingBusinessInitiative || '');
     set('briefExp', (briefEl('cmpCreationCampaignTypeSelect') || {}).value || cmpPendingCampaignType || '');
     set('briefBudgetIn', (briefEl('cmpCreationBudget') || {}).value);
     set('cmpCreationKpi', (briefEl('cmpPrimaryKpi') || {}).value); set('cmpCreationKpiGoal', (briefEl('cmpKpiGoal') || {}).value);
     const disabled = (typeof cmpSegmentDisabledSet === 'function') ? cmpSegmentDisabledSet() : new Set();
     briefMultiFill('briefAud', ACCOUNT_SEGMENTS, selectedSegments, 'briefToggleAud', 'audiences', disabled);
+    briefExclFill(); briefBudgetCheck();
     const tail = briefEl('briefTail'); if (tail) tail.textContent = '';
     const btn = briefEl('cmpSubmitBtn'); if (btn && !/Save Changes|Read only/.test(btn.textContent)) btn.textContent = briefMode === 'recommend' ? 'Create and recommend →' : 'Create Campaign →';
   } else if (briefKind === 'placement'){
@@ -54855,7 +54918,7 @@ function briefRender(){
   briefMultiFill('briefCg', briefTax('creativeMarket'), sets.cg, 'briefToggleCg', 'creative focus group');
 }
 function briefPickExp(v){ const e = briefEl('cmpCreationCampaignTypeSelect'); if (e && [...e.options].some(o => o.value === v)){ e.value = v; e.dispatchEvent(new Event('change', { bubbles: true })); } else { cmpPendingCampaignType = v; } briefRender(); }
-function briefPickBudget(v){ const e = briefEl('cmpCreationBudget'); if (!e) return; e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); }
+function briefPickBudget(v){ const e = briefEl('cmpCreationBudget'); if (!e) return; e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); briefBudgetCheck(); }
 // ---- partners and specs (placement) ----
 function briefPartnerOptions(channel, saved){
   let out = []; try { out = channel ? cmpPartnerOptionsForChannel(channel, saved) : cmpAccountCustomPartners().concat(['Meta', 'Google Ads', 'The Trade Desk']); } catch (e){}
@@ -54995,6 +55058,7 @@ function briefIvSteps(){
       { id: 'briefMode', say: 'Should I recommend the budget, channel mix and creative for you, or will you create it yourself? Say recommend or create.', apply: t => { const l = t.toLowerCase(); if (/recommend|suggest|you do|help|plan/.test(l)){ briefSetMode('recommend'); return true; } if (/create|myself|manual|i will|i'll|single/.test(l)){ briefSetMode('create'); return true; } return false; } },
       { id: 'briefStage', say: 'Which Marketing Loop stage? ' + say(MEDIA_LOOP_STAGES) + '.', apply: t => { const s = briefIvPick(t, MEDIA_LOOP_STAGES); if (!s) return false; briefPickStage(s); return true; }, help: 'Please say one of the loop stages.' },
       { id: 'briefAudSum', say: 'Who is it targeting? ' , dyn: () => 'Who is it targeting? Say one or more of ' + say(ACCOUNT_SEGMENTS.filter(s => !cmpSegmentDisabledSet().has(s))) + '.', apply: t => { const p = briefParse(t); if (!p.segments.length) return false; const dis = cmpSegmentDisabledSet(); let n = 0; p.segments.forEach(s => { if (!dis.has(s)){ if (!selectedSegments.has(s)) toggleSegment(s); n++; } }); briefRender(); return n > 0; }, help: 'I need at least one audience that is available for this stage.' },
+      { id: 'briefExclSum', optional: true, say: 'Should I exclude any audiences? Say none, or name them.', dyn: () => 'Should I exclude any audiences? Say none, or say one or more of ' + say(ACCOUNT_SEGMENTS.filter(x => !selectedSegments.has(x))) + '.', apply: t => { const l = t.toLowerCase(); if (/\b(none|no one|nobody|no audiences?|nothing|skip|no)\b/.test(l) && !briefParse(t).segments.length){ excludedSegments = new Set(); briefRender(); return true; } const p = briefParse(t); const segs = p.segments.filter(x => !selectedSegments.has(x)); if (!segs.length) return false; segs.forEach(x => excludedSegments.add(x)); markCampaignFormTouched(); briefRender(); return true; }, help: 'Say none, or name the audiences to leave out.' },
       { id: 'briefStart', say: 'When does it start?', apply: t => { const d = briefDates(briefClean(t)).dates[0]; if (!d) return false; briefPickDate('cmpStartDate', d); return true; }, help: 'Try a date like November third.' },
       { id: 'briefEnd', say: 'And when does it end?', apply: t => { const d = briefDates(briefClean(t)).dates[0]; if (!d) return false; const st = (briefEl('cmpStartDate') || {}).value; if (st && d < st) return false; briefPickDate('cmpEndDate', d); return true; }, help: 'The end date has to be on or after the start date.' },
       { id: 'briefGoal', say: 'What is the goal? For example, five hundred leads.', apply: t => { const p = briefParse(t); if (p.goal == null || !p.kpi) return false; briefPickGoal(String(p.goal)); briefPickKpi(p.kpi); return true; }, help: 'Give me a number and what it counts, like 500 leads.' },
@@ -55700,6 +55764,7 @@ function cmpBuildFormPayload(){
     createdByUser: (state.userName || '').trim() || null,
     name: name || objective || 'Untitled Campaign',
     segment: [...selectedSegments].join(', '),
+    excludeSegments: [...excludedSegments].join(', '),
     stage: selectedStage || '',
     functions: [...selectedFunctions].join(', '),
     channels: [...selectedChannels].join(', '),
@@ -74192,7 +74257,7 @@ async function cmpSaveLoopFieldsOnly(){
   if (!selectedSegments.size){ const er = document.getElementById('cmpSegmentError'); if (er) er.textContent = 'Select at least one segment — required.'; return; }
   const kpi = resolveSelectValue('cmpPrimaryKpi', 'cmpPrimaryKpiOther');
   const goalRaw = document.getElementById('cmpKpiGoal').value;
-  const patch = { stage: selectedStage || '', segment: [...selectedSegments].join(', '), primaryKpi: kpi || '', kpiGoal: goalRaw ? Number(goalRaw) : null };
+  const patch = { stage: selectedStage || '', segment: [...selectedSegments].join(', '), excludeSegments: [...excludedSegments].join(', '), primaryKpi: kpi || '', kpiGoal: goalRaw ? Number(goalRaw) : null };
   Object.assign(existing, patch);
   if (msg) msg.textContent = 'Saving…';
   let ok = true;
@@ -74251,6 +74316,7 @@ function cmpSaveLifecycleAndContinue(){
     // stage/primaryKpi already used; createCampaign() (step 1) no longer
     // touches it at all.
     segment: [...selectedSegments].join(', '),
+    excludeSegments: [...excludedSegments].join(', '),
     primaryKpi: primaryKpi || '',
     kpiGoal: kpiGoalRaw ? Number(kpiGoalRaw) : null,
     reachFrequencyAssumption: reachFrequencyRaw ? Number(reachFrequencyRaw) : null,
