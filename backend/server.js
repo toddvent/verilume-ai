@@ -6398,20 +6398,65 @@ createTableIfNeeded(`
     createdby TEXT, created TEXT NOT NULL, updated TEXT NOT NULL
   );
 `);
+ensureColumn('marketing_projects', 'area', 'TEXT');
+ensureColumn('marketing_projects', 'sourcekey', 'TEXT');
+db.exec(`
+  CREATE TABLE IF NOT EXISTS marketing_project_tasks (
+    id TEXT PRIMARY KEY, accountId TEXT NOT NULL, projectid TEXT NOT NULL, title TEXT NOT NULL, status TEXT, assignee TEXT, due TEXT,
+    created TEXT NOT NULL, updated TEXT NOT NULL
+  );
+`);
 const MARKETING_PROJECT_STATUSES = ['Backlog', 'In progress', 'Blocked', 'Done', 'Archived'];
-function marketingProjectOut(r){
+const MARKETING_TASK_STATUSES = ['To do', 'In progress', 'Blocked', 'Done'];
+// 2026-10-11, per Todd: the board is reachable from Create Campaign, Brain Dump, Search Everywhere and Train the Brain, each ranked on its own.
+// 2026-10-11, later the same day, per Todd: the sheet is for marketing projects, not campaigns. Three areas. Older rows saved as
+// 'campaigns' or 'braindump' read as Marketing Project.
+const MARKETING_PROJECT_AREAS = [
+  { key: 'project', label: 'Marketing Project' }, { key: 'search', label: 'Search Everywhere' }, { key: 'train', label: 'Train the Brain' }
+];
+function marketingProjectArea(a){ return a === 'search' || a === 'train' ? a : 'project'; }
+function marketingProjectOut(r, tasks){
   const n = v => { const x = Number(v); return Number.isFinite(x) && x >= 1 && x <= 5 ? Math.round(x) : null; };
   const impact = n(r.impact), effort = n(r.effort), urgency = n(r.urgency);
   const score = Math.round(((impact || 3) * (urgency || 3) / (effort || 3)) * 10) / 10;
   return { id: r.id, name: r.name, supports: r.supports || '', assetTypes: r.assettypes || '', delivery: r.delivery || '', productGroup: r.productgroup || '', creativeGroup: r.creativegroup || '',
-    impact, effort, urgency, scored: !!(impact && effort && urgency), score, status: r.status || 'Backlog', owner: r.owner || '', notes: r.notes || '', createdBy: r.createdby || '', created: r.created, updated: r.updated };
+    impact, effort, urgency, scored: !!(impact && effort && urgency), score, status: r.status || 'Backlog', owner: r.owner || '', notes: r.notes || '', createdBy: r.createdby || '', created: r.created, updated: r.updated,
+    area: marketingProjectArea(r.area), sourceKey: r.sourcekey || '',
+    tasks: (tasks || []).map(t => ({ id: t.id, title: t.title, status: MARKETING_TASK_STATUSES.includes(t.status) ? t.status : 'To do', assignee: t.assignee || '', due: t.due || '' })),
+    taskCount: (tasks || []).length, taskDone: (tasks || []).filter(t => t.status === 'Done').length };
 }
 function marketingProjectsFor(accountId){
-  const rows = db.prepare('SELECT * FROM marketing_projects WHERE accountId = ?').all(accountId).map(marketingProjectOut);
+  const taskRows = db.prepare('SELECT * FROM marketing_project_tasks WHERE accountId = ?').all(accountId);
+  const byProject = {}; taskRows.sort((a, b) => String(a.created).localeCompare(String(b.created))).forEach(t => { (byProject[t.projectid] = byProject[t.projectid] || []).push(t); });
+  const rows = db.prepare('SELECT * FROM marketing_projects WHERE accountId = ?').all(accountId).map(r => marketingProjectOut(r, byProject[r.id]));
   const open = r => r.status !== 'Done' && r.status !== 'Archived';
   rows.sort((a, b) => (open(b) - open(a)) || (b.score - a.score) || String(a.delivery || '9999').localeCompare(String(b.delivery || '9999')) || String(a.name).localeCompare(String(b.name)));
-  let rank = 0; rows.forEach(r => { r.rank = open(r) ? ++rank : null; });
+  // Each area keeps its own priority order.
+  const rankBy = {}; rows.forEach(r => { r.rank = open(r) ? (rankBy[r.area] = (rankBy[r.area] || 0) + 1) : null; });
   return rows;
+}
+// Identified needs become project rows: unfinished Train the Brain setup items and open Search Everywhere priorities.
+// Each carries a sourcekey so it is added once; when the need is met the row moves to Done. Ratings on search rows are seeded from the
+// priority (P1 urgency 5, P2 3, P3 2; High/Medium/Low impact 5/3/1) and can be changed by the team.
+function syncMarketingProjectNeeds(accountId, actorName){
+  const now = new Date().toISOString(); let added = 0, closed = 0;
+  const existing = {}; db.prepare('SELECT * FROM marketing_projects WHERE accountId = ?').all(accountId).forEach(r => { if (r.sourcekey) existing[r.sourcekey] = r; });
+  const upsert = (key, area, name, supports, notes, impact, urgency, met) => {
+    const ex = existing[key];
+    if (ex){ if (met && ex.status !== 'Done' && ex.status !== 'Archived'){ db.prepare('UPDATE marketing_projects SET status = ?, updated = ? WHERE id = ? AND accountId = ?').run('Done', now, ex.id, accountId); closed++; } return; }
+    if (met) return;
+    db.prepare('INSERT INTO marketing_projects (id, accountId, name, supports, assettypes, delivery, productgroup, creativegroup, impact, effort, urgency, status, owner, notes, createdby, created, updated, area, sourcekey) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(generateId('MPJ'), accountId, String(name).slice(0, 120), String(supports || '').slice(0, 200), '', '', '', '', impact || null, null, urgency || null, 'Backlog', '', String(notes || '').slice(0, 1000), actorName || 'Verilume', now, now, area, key);
+    added++;
+  };
+  try { buildTrainTheBrain(accountId).setup.steps.forEach(st => st.items.forEach(i => upsert('ttb:' + st.key + ':' + i.label, 'train', st.title + ': ' + i.label, st.title, i.gain, null, null, !!i.done))); } catch (e){ console.warn('[marketing-projects] train needs skipped:', e.message); }
+  try {
+    gscPrioritiesList(accountId).forEach(pr => {
+      const met = pr.status === 'done' || pr.status === 'dismissed';
+      upsert('srch:' + pr.id, 'search', pr.title, 'Search Everywhere ' + (pr.priority || ''), pr.detail, { High: 5, Medium: 3, Low: 1 }[pr.impactLabel] || null, { P1: 5, P2: 3, P3: 2 }[pr.priority] || null, met);
+    });
+  } catch (e){ console.warn('[marketing-projects] search needs skipped:', e.message); }
+  return { added, closed };
 }
 function rateCardHealCasing(){
   [['minspend', 'minSpend'], ['minunits', 'minUnits'], ['updatedat', 'updatedAt']].forEach(([lo, camel]) => { try { db.exec('ALTER TABLE account_rate_card_minimums RENAME COLUMN ' + lo + ' TO "' + camel + '"'); } catch (e){} });
@@ -19166,7 +19211,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['account_plan_scenarios', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'marketing_projects', 'account_learned_cpm', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
+const CATALOG_EXEMPT = new Set(['account_plan_scenarios', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'marketing_projects', 'marketing_project_tasks', 'account_learned_cpm', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -42895,6 +42940,48 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       return sendJson(res, 200, { accountId, saved: rowsIn.length, updatedAt: now });
     }
 
+    // POST /api/accounts/:id/marketing-projects/sync-needs — pull identified Train the Brain and Search Everywhere needs onto the sheet.
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'marketing-projects' && parts[4] === 'sync-needs'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      try { const actor = planScenarioActor(req, accountId); const r = syncMarketingProjectNeeds(accountId, actor ? actor.name : ''); return sendJson(res, 200, { ...r, projects: marketingProjectsFor(accountId) }); }
+      catch (e){ console.error('[marketing-projects] sync failed:', e && e.stack || e); return sendJson(res, 500, { error: 'Identified needs could not be added: ' + (e && e.message || 'unknown error') }); }
+    }
+    // Subtasks: POST .../marketing-projects/:pid/tasks, PATCH/DELETE .../marketing-projects/:pid/tasks/:tid (2026-10-11).
+    if ((parts.length === 6 || parts.length === 7) && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'marketing-projects' && parts[5] === 'tasks' && (req.method === 'POST' || req.method === 'PATCH' || req.method === 'DELETE')){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const pid = decodeURIComponent(parts[4]); const clean = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
+      try {
+        const proj = db.prepare('SELECT id FROM marketing_projects WHERE id = ? AND accountId = ?').get(pid, accountId);
+        if (!proj) return sendJson(res, 404, { error: 'project not found' });
+        const now = new Date().toISOString();
+        if (req.method === 'DELETE' && parts.length === 7){
+          db.prepare('DELETE FROM marketing_project_tasks WHERE id = ? AND projectid = ? AND accountId = ?').run(decodeURIComponent(parts[6]), pid, accountId);
+          return sendJson(res, 200, { projects: marketingProjectsFor(accountId) });
+        }
+        const body = await readBody(req);
+        const due = body.due === undefined ? undefined : clean(body.due, 10); if (due && !/^\d{4}-\d{2}-\d{2}$/.test(due)) return sendJson(res, 400, { error: 'Due date must be a valid date.' });
+        if (body.status !== undefined && !MARKETING_TASK_STATUSES.includes(body.status)) return sendJson(res, 400, { error: 'Unknown subtask status.' });
+        if (req.method === 'POST' && parts.length === 6){
+          const title = clean(body.title, 160); if (!title) return sendJson(res, 400, { error: 'Give the subtask a title.' });
+          db.prepare('INSERT INTO marketing_project_tasks (id, accountId, projectid, title, status, assignee, due, created, updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(generateId('MPT'), accountId, pid, title, body.status || 'To do', clean(body.assignee, 80), due || '', now, now);
+          return sendJson(res, 201, { projects: marketingProjectsFor(accountId) });
+        }
+        if (req.method === 'PATCH' && parts.length === 7){
+          const tid = decodeURIComponent(parts[6]); const row = db.prepare('SELECT id FROM marketing_project_tasks WHERE id = ? AND projectid = ? AND accountId = ?').get(tid, pid, accountId);
+          if (!row) return sendJson(res, 404, { error: 'subtask not found' });
+          const set = {};
+          if (body.title !== undefined){ const t = clean(body.title, 160); if (!t) return sendJson(res, 400, { error: 'Give the subtask a title.' }); set.title = t; }
+          if (body.status !== undefined) set.status = body.status;
+          if (body.assignee !== undefined) set.assignee = clean(body.assignee, 80);
+          if (due !== undefined) set.due = due;
+          const cols = Object.keys(set); if (cols.length) db.prepare('UPDATE marketing_project_tasks SET ' + cols.map(c => c + ' = ?').join(', ') + ', updated = ? WHERE id = ? AND accountId = ?').run(...cols.map(c => set[c]), now, tid, accountId);
+          return sendJson(res, 200, { projects: marketingProjectsFor(accountId) });
+        }
+      } catch (e){ console.error('[marketing-project-tasks] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'The subtask could not be saved: ' + (e && e.message || 'unknown error') }); }
+    }
     // GET/POST /api/accounts/:id/marketing-projects and PATCH .../:pid — the Marketing Project sheet (2026-10-11). No hard delete: set status to Archived.
     if (parts.length >= 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'marketing-projects' && parts.length <= 5 && (req.method === 'GET' || req.method === 'POST' || req.method === 'PATCH')){
       const accountId = decodeURIComponent(parts[2]);
@@ -42902,15 +42989,15 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const clean = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
       const rate = v => { if (v === '' || v == null) return null; const x = Math.round(Number(v)); return Number.isFinite(x) && x >= 1 && x <= 5 ? x : undefined; };
       try {
-        if (req.method === 'GET' && parts.length === 4) return sendJson(res, 200, { projects: marketingProjectsFor(accountId), statuses: MARKETING_PROJECT_STATUSES, scoring: 'Priority score = Impact x Urgency / Effort (each rated 1 to 5). Unrated items are scored as 3.' });
+        if (req.method === 'GET' && parts.length === 4) return sendJson(res, 200, { projects: marketingProjectsFor(accountId), statuses: MARKETING_PROJECT_STATUSES, areas: MARKETING_PROJECT_AREAS, taskStatuses: MARKETING_TASK_STATUSES, scoring: 'Priority score = Impact x Urgency / Effort (each rated 1 to 5). Unrated items are scored as 3. Each area is ranked on its own.' });
         const body = await readBody(req); const now = new Date().toISOString();
         if (req.method === 'POST' && parts.length === 4){
           const name = clean(body.name, 120); if (!name) return sendJson(res, 400, { error: 'Give the project a name.' });
           const im = rate(body.impact), ef = rate(body.effort), ur = rate(body.urgency); if (im === undefined || ef === undefined || ur === undefined) return sendJson(res, 400, { error: 'Impact, effort and urgency are 1 to 5.' });
           const delivery = clean(body.delivery, 10); if (delivery && !/^\d{4}-\d{2}-\d{2}$/.test(delivery)) return sendJson(res, 400, { error: 'Delivery date must be a valid date.' });
           const status = MARKETING_PROJECT_STATUSES.includes(body.status) ? body.status : 'Backlog'; const actor = planScenarioActor(req, accountId); const id = generateId('MPJ');
-          db.prepare('INSERT INTO marketing_projects (id, accountId, name, supports, assettypes, delivery, productgroup, creativegroup, impact, effort, urgency, status, owner, notes, createdby, created, updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-            .run(id, accountId, name, clean(body.supports, 200), clean(body.assetTypes, 400), delivery, clean(body.productGroup, 300), clean(body.creativeGroup, 300), im, ef, ur, status, clean(body.owner, 80), clean(body.notes, 1000), actor ? actor.name : '', now, now);
+          db.prepare('INSERT INTO marketing_projects (id, accountId, name, supports, assettypes, delivery, productgroup, creativegroup, impact, effort, urgency, status, owner, notes, createdby, created, updated, area) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(id, accountId, name, clean(body.supports, 200), clean(body.assetTypes, 400), delivery, clean(body.productGroup, 300), clean(body.creativeGroup, 300), im, ef, ur, status, clean(body.owner, 80), clean(body.notes, 1000), actor ? actor.name : '', now, now, marketingProjectArea(body.area));
           return sendJson(res, 201, { id, projects: marketingProjectsFor(accountId) });
         }
         if (req.method === 'PATCH' && parts.length === 5){
@@ -42923,6 +43010,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
           ['impact', 'effort', 'urgency'].forEach(k => { if (body[k] !== undefined){ const v = rate(body[k]); if (v === undefined) set.__bad = true; else set[k] = v; } });
           if (set.__bad) return sendJson(res, 400, { error: 'Impact, effort and urgency are 1 to 5.' });
           if (body.status !== undefined){ if (!MARKETING_PROJECT_STATUSES.includes(body.status)) return sendJson(res, 400, { error: 'Unknown status.' }); set.status = body.status; }
+          if (body.area !== undefined){ if (body.area !== 'project' && body.area !== 'search' && body.area !== 'train') return sendJson(res, 400, { error: 'Unknown area.' }); set.area = body.area; }
           const cols = Object.keys(set); if (cols.length){ db.prepare('UPDATE marketing_projects SET ' + cols.map(c => c + ' = ?').join(', ') + ', updated = ? WHERE id = ? AND accountId = ?').run(...cols.map(c => set[c]), now, pid, accountId); }
           return sendJson(res, 200, { projects: marketingProjectsFor(accountId) });
         }
