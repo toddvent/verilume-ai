@@ -54593,7 +54593,7 @@ function briefBuild(){
       with a goal to generate <input type="number" id="briefGoal" class="brf-in brf-num" min="0" step="1" placeholder="value" aria-label="Goal value" oninput="briefPickGoal(this.value)"> ${briefSelectHtml('briefKpi', kpis, 'Primary KPI', 'briefPickKpi(this.value)')},
       optimized for ${briefSelectHtml('briefFocus', foc, 'Media Science primary focus', 'briefPickFocus(this.value)')}.
       The campaign experience focus is ${briefSelectHtml('briefExp', exp, 'campaign experience focus', 'briefPickExp(this.value)')}.${BRIEF_CX}
-      My estimated budget is $<input type="number" id="briefBudgetIn" class="brf-in brf-num" min="0" step="100" placeholder="optional" aria-label="Estimated budget" oninput="briefPickBudget(this.value)">, to be included in the final recommendation. Leave it blank and I will estimate it from the data provided, then refine it when I give the final recommendation.
+      My estimated budget is $<input type="number" id="briefBudgetIn" class="brf-in brf-num" min="0" step="100" placeholder="optional" aria-label="Estimated budget" oninput="briefPickBudget(this.value)">.
       <span id="briefTail"></span>`;
     if (act) act.style.display = 'none';
   } else if (k === 'placement'){
@@ -54639,7 +54639,7 @@ function briefRender(){
     set('cmpCreationKpi', (briefEl('cmpPrimaryKpi') || {}).value); set('cmpCreationKpiGoal', (briefEl('cmpKpiGoal') || {}).value);
     const disabled = (typeof cmpSegmentDisabledSet === 'function') ? cmpSegmentDisabledSet() : new Set();
     briefMultiFill('briefAud', ACCOUNT_SEGMENTS, selectedSegments, 'briefToggleAud', 'audiences', disabled);
-    const tail = briefEl('briefTail'); if (tail) tail.textContent = briefMode === 'recommend' ? 'Recommend the budget, channel mix and creative assets for the team.' : 'I will set the budget, channel mix and creative assets myself, or add a single asset.';
+    const tail = briefEl('briefTail'); if (tail) tail.textContent = '';
     const btn = briefEl('cmpSubmitBtn'); if (btn && !/Save Changes|Read only/.test(btn.textContent)) btn.textContent = briefMode === 'recommend' ? 'Create and recommend →' : 'Create Campaign →';
   } else if (briefKind === 'placement'){
     const s = briefS.placement;
