@@ -3020,6 +3020,13 @@
      .cmgmt-sortable comment above); .cmgmt-th-filter/.cmgmt-th-checkbox
      had no other users, so their rules are removed rather than left dead.
      .cmgmt-search-banner is still used (name search) and stays. */
+  .cmgmt-results-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:2px 0 14px;padding:10px 14px;border-top:3px solid var(--line);border-bottom:1px solid var(--line);background:var(--paper-dim);border-radius:0 0 10px 10px;font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif;}
+  .cmgmt-results-label{font-size:0.9375rem;font-weight:600;color:var(--ink);display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
+  .cmgmt-export-msg{font-size:0.75rem;font-weight:400;color:var(--muted);}
+  .cmgmt-export-chips{display:inline-flex;gap:8px;flex-wrap:wrap;}
+  .cmgmt-export-chip{padding:6px 14px;border-radius:999px;border:1px solid var(--line);background:var(--white);color:var(--ink);font-size:0.8125rem;font-weight:600;cursor:pointer;font-family:inherit;}
+  .cmgmt-export-chip:hover{border-color:#1F6F4A;background:#E8F5EE;color:#14543A;}
+  .cmgmt-export-chip:focus-visible{outline:2px solid #1F6F4A;outline-offset:2px;}
   .cmgmt-search-banner{margin:0 0 12px;padding:8px 12px;background:var(--paper-dim);border-radius:8px;font-size:0.8125rem;color:var(--muted);}
 
   /* Section tiles (within a function group) */
@@ -5406,7 +5413,16 @@
         <select id="campaignMgmtProductGroupSelect" onchange="cmgmtSetFacetFilter('productGroup', this.value)"><option value="">All product groups</option></select></div>
       <div class="mktcal-filter-field"><label for="campaignMgmtCreativeMarketSelect">Creative Market</label>
         <select id="campaignMgmtCreativeMarketSelect" onchange="cmgmtSetFacetFilter('creativeMarket', this.value)"><option value="">All creative markets</option></select></div>
-      <div class="mktcal-filter-field" style="display:flex;align-items:center;justify-content:flex-end;"><span class="count" id="campaignMgmtActiveCount" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;"></span></div>
+    </div>
+    <!-- 2026-10-11, per direct instruction: a divider band between the filters and the campaign list, and the
+         "208 active campaigns" chip becomes the export chips (Google Sheet / CSV / XLSX) for whatever the filters show. -->
+    <div class="cmgmt-results-bar">
+      <span class="cmgmt-results-label"><span id="campaignMgmtActiveCount"></span><span id="campaignMgmtExportMsg" class="cmgmt-export-msg" aria-live="polite"></span></span>
+      <span class="cmgmt-export-chips" role="group" aria-label="Download these campaigns">
+        <button type="button" class="cmgmt-export-chip" onclick="cmgmtExport('sheet')" title="Copies the list and opens a new Google Sheet to paste into">&#x2197; Google Sheet</button>
+        <button type="button" class="cmgmt-export-chip" onclick="cmgmtExport('csv')">&#x2193; CSV</button>
+        <button type="button" class="cmgmt-export-chip" onclick="cmgmtExport('xlsx')">&#x2193; XLSX</button>
+      </span>
     </div>
     <div class="cmgmt-search-banner" id="campaignMgmtSearchBanner" style="display:none;"></div>
     <!-- Round 132bx (2026-08-13) — the Cancel report, shown only while
@@ -31986,6 +32002,7 @@ function renderCampaignMgmtStep(){
   });
 
   if (!campaigns.length){
+    cmgmtExportRows = [];
     listEl.innerHTML = `<tr><td colspan="7"><div class="cmgmt-empty">No campaigns match ${q ? `"${cmgmtSearch}"` : 'this filter'}${q && cmgmtStatusFilter !== 'all' ? ` within ${cmgmtStatusFilter}` : ''}.${q ? ` <a class="flink" onclick="cmgmtClearSearch()">Clear search</a>` : ''}</div></td></tr>`;
     return;
   }
@@ -32000,6 +32017,7 @@ function renderCampaignMgmtStep(){
   // — a standard responsive-table pattern, not a second parallel view to
   // keep in sync: same td markup, same data, CSS alone reflows it.
   const cmgmtTotalRows = campaigns.length;
+  cmgmtExportRows = campaigns.slice();
   campaigns = campaigns.slice(0, cmgmtShown);
   const moreEl = document.getElementById('campaignMgmtMoreRow');
   if (moreEl){
@@ -32015,6 +32033,31 @@ function renderCampaignMgmtStep(){
       <td class="num" data-label="End Date">${fmtDate(c.endDate)}</td>
       <td data-label=""><button type="button" class="btn-ghost" style="padding:6px 14px;font-size:0.75rem;" onclick="cmpManageExistingCampaign('${c.id}')">Manage Campaign →</button></td>
     </tr>`).join('');
+}
+
+let cmgmtExportRows = [];
+function cmgmtExportGrid(){
+  const head = ['Campaign ID','Campaign Name','Status','Completed Step','Due Date','Start Date','End Date'];
+  const rows = cmgmtExportRows.map(c => [c.id, c.name || c.objective || '', c.cancelled ? 'Cancelled' : (typeof cmpLifecycleStatus === 'function' ? cmpLifecycleStatus(c) : (c.status || '')), cmgmtLastCompletedStep(c), cmgmtCampaignDueDate(c) || '', c.startDate || '', c.endDate || '']);
+  return [head].concat(rows);
+}
+async function cmgmtExport(kind){
+  const grid = cmgmtExportGrid();
+  const msgEl = document.getElementById('campaignMgmtExportMsg');
+  const say = t => { if (msgEl){ msgEl.textContent = t; setTimeout(() => { if (msgEl.textContent === t) msgEl.textContent = ''; }, 6000); } };
+  if (grid.length < 2){ say('Nothing to export for this filter.'); return; }
+  const stamp = new Date().toISOString().slice(0, 10), name = `campaigns-${stamp}`;
+  const n = grid.length - 1, label = `${n} campaign${n === 1 ? '' : 's'}`;
+  if (kind === 'csv'){ downloadCsvFile(`${name}.csv`, grid); say(`Downloaded ${label} as CSV.`); return; }
+  if (kind === 'xlsx'){
+    try { await cfiLoadSheetJs(); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(grid), 'Campaigns'); XLSX.writeFile(wb, `${name}.xlsx`); say(`Downloaded ${label} as XLSX.`); }
+    catch (e){ downloadCsvFile(`${name}.csv`, grid); say('XLSX library unavailable — downloaded CSV instead.'); }
+    return;
+  }
+  // Google Sheet: tab-separated text on the clipboard pastes straight into a new sheet.
+  const tsv = grid.map(r => r.map(v => String(v).replace(/[\t\r\n]+/g, ' ')).join('\t')).join('\n');
+  try { await navigator.clipboard.writeText(tsv); window.open('https://sheets.new', '_blank', 'noopener'); say(`Copied ${label} — paste into the new Google Sheet (Ctrl/Cmd+V).`); }
+  catch (e){ downloadCsvFile(`${name}.csv`, grid); say('Clipboard blocked — downloaded CSV; import it into Google Sheets.'); }
 }
 
 function renderGroup(groupKey){
