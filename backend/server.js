@@ -16314,6 +16314,17 @@ function checkVoiceToken(accountId, token){
 const ELEVENLABS_AGENT_ID = process.env.ELEVENLABS_AGENT_ID || 'agent_1901m2jpy694em5v6nkc249vs0ec';
 const VOICE_ASK_MODEL = 'claude-sonnet-4-5';
 
+let _elevenVoiceId = null;
+async function elevenLabsVoiceId(key){
+  if (process.env.ELEVENLABS_VOICE_ID) return process.env.ELEVENLABS_VOICE_ID;
+  if (_elevenVoiceId) return _elevenVoiceId;
+  const r = await fetchWithTimeout(`https://api.elevenlabs.io/v1/convai/agents/${encodeURIComponent(ELEVENLABS_AGENT_ID)}`, { method: 'GET', headers: { 'xi-api-key': key } }, 15000);
+  if (!r.ok) return null;
+  const d = await r.json();
+  _elevenVoiceId = (d && d.conversation_config && d.conversation_config.tts && d.conversation_config.tts.voice_id) || null;
+  return _elevenVoiceId;
+}
+
 async function getElevenLabsSignedUrl(agentId){
   const key = process.env.ELEVENLABS_API_KEY;
   if (!key) return { signedUrl: null, reason: 'ELEVENLABS_API_KEY not set on this deployment' };
@@ -31758,6 +31769,33 @@ async function handleRequest(req, res) {
         try { logAccountDataAccess({ accountId, resource: 'voice_consent', action: req.method === 'POST' ? 'grant' : 'withdraw', actorType: 'member', actorId: sess.memberId, requestPath: req.url }); } catch (e){}
       }
       return sendJson(res, 200, voiceConsentFor(sess));
+    }
+
+    // POST /api/accounts/:id/voice/speak — 2026-10-11, per Todd: the brief interview speaks in HIS ElevenLabs voice.
+    // Portal session only, same voice-permission check as voice/session. Body { text } (max 400 chars). The voice is the
+    // one set on the Verilume agent (read once from the agent's config), or ELEVENLABS_VOICE_ID if that env var is set.
+    // Returns audio/mpeg. No key or an ElevenLabs error returns JSON so the page falls back to the browser voice.
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice' && parts[4] === 'speak'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      { const vc = voiceConsentFor(authenticate(req)); if (vc.scope === 'member' && !vc.consented) return sendJson(res, 403, { error: 'voice permission required — agree to voice on your profile first', consentRequired: true }); }
+      const body = await readBody(req);
+      const text = String((body && body.text) || '').replace(/\s+/g, ' ').trim().slice(0, 400);
+      if (!text) return sendJson(res, 400, { error: 'text required' });
+      const key = process.env.ELEVENLABS_API_KEY;
+      if (!key) return sendJson(res, 503, { error: 'ELEVENLABS_API_KEY not set on this deployment' });
+      try {
+        const voiceId = await elevenLabsVoiceId(key);
+        if (!voiceId) return sendJson(res, 503, { error: 'no ElevenLabs voice found — set ELEVENLABS_VOICE_ID on Railway' });
+        const r = await fetchWithTimeout(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_64`, {
+          method: 'POST', headers: { 'xi-api-key': key, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+          body: JSON.stringify({ text, model_id: process.env.ELEVENLABS_TTS_MODEL || 'eleven_flash_v2_5' })
+        }, 20000);
+        if (!r.ok){ const t = await r.text(); return sendJson(res, 502, { error: `ElevenLabs TTS HTTP ${r.status}: ${t.slice(0, 200)}` }); }
+        const buf = Buffer.from(await r.arrayBuffer());
+        res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Content-Length': buf.length, 'Cache-Control': 'private, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
+        return res.end(buf);
+      } catch (e){ return sendJson(res, 502, { error: 'voice unavailable: ' + e.message }); }
     }
 
     // GET /api/accounts/:id/voice/session — 2026-09-29, ElevenLabs final
