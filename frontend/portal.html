@@ -55225,7 +55225,9 @@ function briefIvSteps(){
 function briefIvMark(id){ document.querySelectorAll('.brf-active').forEach(e => e.classList.remove('brf-active')); const e = id && briefEl(id); if (e){ e.classList.add('brf-active'); try { e.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (x){} } }
 // 2026-10-11, per Todd: the interview speaks in his ElevenLabs voice (POST .../voice/speak, voice taken from the Verilume agent).
 // Falls back to the browser voice if the server has no key or the call fails.
-let briefAudio = null, briefElOff = false; const briefAudioCache = {};
+let briefAudio = null, briefElOff = false, briefElWhy = ''; const briefAudioCache = {};
+// When the ElevenLabs voice can't be used, say why on screen (and in the console) instead of silently using the browser voice.
+function briefElFail(why){ briefElOff = true; briefElWhy = String(why || 'unknown'); try { console.warn('Brief voice: ElevenLabs unavailable —', briefElWhy); } catch (e){} const m = briefEl('briefMsg'); if (m) m.textContent = (m.textContent || '') + '  [Browser voice used. ElevenLabs: ' + briefElWhy + ']'; }
 function briefSpeakBrowser(text, cb){
   const syn = window.speechSynthesis; if (!syn || typeof SpeechSynthesisUtterance === 'undefined'){ setTimeout(cb, 600); return; }
   try { syn.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = 'en-US'; u.rate = 1.02; u.onend = () => cb(); u.onerror = () => cb(); syn.speak(u); } catch (e){ cb(); }
@@ -55238,17 +55240,17 @@ async function briefIvSay(text, cb){
   try {
     if (!url){
       const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice/speak`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
-      if (!resp.ok) throw new Error('speak ' + resp.status);
+      if (!resp.ok){ let why = 'HTTP ' + resp.status; try { const j = await resp.json(); if (j && j.error) why += ' ' + j.error; } catch (e){} throw new Error(why); }
       url = briefAudioCache[text] = URL.createObjectURL(await resp.blob());
     }
-  } catch (e){ briefElOff = true; if (!iv || briefIv === iv) briefSpeakBrowser(text, cb); return; }
+  } catch (e){ briefElFail(e && e.message); if (!iv || briefIv === iv) briefSpeakBrowser(text, cb); return; }
   if (iv && briefIv !== iv){ return; } // stopped while loading
   try {
     if (briefAudio){ briefAudio.pause(); }
     const a = briefAudio = new Audio(url); let done = false; const fin = () => { if (!done){ done = true; cb(); } };
-    a.onended = fin; a.onerror = () => { briefElOff = true; briefSpeakBrowser(text, cb); };
-    const pr = a.play(); if (pr && pr.catch) pr.catch(() => { briefElOff = true; briefSpeakBrowser(text, cb); });
-  } catch (e){ briefElOff = true; briefSpeakBrowser(text, cb); }
+    a.onended = fin; a.onerror = () => { briefElFail('audio could not be played'); briefSpeakBrowser(text, cb); };
+    const pr = a.play(); if (pr && pr.catch) pr.catch(err => { briefElFail('browser blocked audio playback (' + ((err && err.name) || 'error') + ')'); briefSpeakBrowser(text, cb); });
+  } catch (e){ briefElFail(e && e.message); briefSpeakBrowser(text, cb); }
 }
 function briefIvNext(){
   const iv = briefIv; if (!iv || !iv.active) return;
@@ -55294,7 +55296,7 @@ function briefVoiceToggle(){
   if (briefIv && briefIv.active){ briefIvStop(false); briefMsg('Stopped. Everything filled in so far is kept.'); return; }
   const mic = briefEl('briefMic'); if (mic){ mic.classList.add('listening'); mic.title = 'Click to stop'; }
   if (briefIvKeep && briefIvKeep.kind === briefKind && briefIvKeep.i < briefIvKeep.steps.length){ briefIv = briefIvKeep; briefIv.active = true; briefIvKeep = null; briefIv.paused = false; briefIvNext(); return; }
-  briefIv = { kind: briefKind, steps: briefIvSteps(), i: 0, active: true, retry: 0 };
+  briefElOff = false; briefIv = { kind: briefKind, steps: briefIvSteps(), i: 0, active: true, retry: 0 };
   briefIvSay(briefKind === 'campaign' ? "Let's build your campaign brief. I'll ask for each blank in order. Say skip to leave an optional one blank, back to repeat the last, or stop to finish." : "Let's fill this in. I'll ask for each blank in order. Say skip, back or stop any time.", () => briefIvNext());
 }
 
