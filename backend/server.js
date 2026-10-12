@@ -13893,7 +13893,7 @@ ${mediaMixLines}
 THIS ACCOUNT'S HISTORICAL CAMPAIGN PERFORMANCE (real actuals from past campaigns, best conversions/$1k first):
 ${performanceLines}
 
-${buildMixMemoryBlock(accountId, campaign)}${buildChannelScorecardBlock(accountId)}`;
+${buildMixMemoryBlock(accountId, campaign)}${buildChannelScorecardBlock(accountId)}${buildGa4SourceBlock(accountId)}`;
   return { promptBlock, hasAccountBudget, hasPerformanceData, hasMediaPlanMix };
 }
 
@@ -14103,7 +14103,7 @@ function warmAiBrainContextForCampaign(campaign){
 // field save (which happens on every Team note) must never force the
 // 100-300 round-trip Match Market rebuild, only the cheap budget/history one.
 const AI_BRAIN_ACCOUNT_WRITE_RESOURCES = {
-  'marketing-budget-uploads': ['budgetPerf'], 'media-plan': ['budgetPerf'], 'campaigns': ['budgetPerf'], 'channel-planning': ['budgetPerf'],
+  'marketing-budget-uploads': ['budgetPerf'], 'media-plan': ['budgetPerf'], 'campaigns': ['budgetPerf'], 'channel-planning': ['budgetPerf'], 'ga4-sources': ['budgetPerf'], 'ga4-search': ['budgetPerf'],
   'kpi-metrics': ['monthlyKpi'],
   'stores': ['topMarkets'], 'market-customer-uploads': ['topMarkets']
 };
@@ -18420,6 +18420,8 @@ function applyLoopStageRules(accountId, opts){
 const REFRESH_DATASETS = [
   { key: 'digitalPerformance', label: 'Digital performance', table: 'account_digital_performance', cadence: 7, step: 'digitalPerformance' },
   { key: 'websiteEngagement', label: 'Website engagement by channel group', table: 'account_website_engagement', cadence: 7, step: 'websiteEngagement' },
+  { key: 'ga4Sources', label: 'GA4 sources and key events', table: 'account_ga4_sources', cadence: 7, step: 'ga4Sources' },
+  { key: 'ga4Search', label: 'GA4 Google Ads search', table: 'account_ga4_search', cadence: 7, step: 'ga4Search' },
   { key: 'leadCounts', label: 'Leads by type, by month', table: 'account_lead_counts', cadence: 7, step: 'leadCounts' },
   { key: 'websiteUsers', label: 'Website users by month', table: 'account_website_users_monthly', cadence: 7, step: 'websiteUsers' },
   { key: 'kpiMetrics', label: 'Monthly KPI report', table: 'account_kpi_metrics', cadence: 7, step: 'kpiMetrics' },
@@ -19003,6 +19005,136 @@ function buildBudgetBenchmarksRaw(accountId, opts){
   return out;
 }
 
+
+// ---- GA4 source / key-event uploads (2026-10-12) --------------------------------------------------------------
+// Two GA4 free-form exports Todd already had: (1) UTM EXPLORE: year, week, campaign, source / medium, event name, sessions,
+// engaged sessions, key events (event-level rows); (2) SEARCH: Google Ads campaign, ad group, keyword, network by week with
+// sessions, key events, engaged sessions. The browser reduces them to weekly rows before sending (the event file is ~100,000
+// rows). Replace-all per account: these are whole-range exports. Column names are plain lowercase (except accountId, updatedAt)
+// so Postgres identifier folding / schema-identifiers.json drift can never split them.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_ga4_sources (
+    accountId TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    campaign TEXT NOT NULL DEFAULT '',
+    sourcemedium TEXT NOT NULL DEFAULT '',
+    sessions REAL,
+    engaged REAL,
+    keyevents REAL,
+    updatedAt TEXT NOT NULL,
+    PRIMARY KEY (accountId, year, week, campaign, sourcemedium)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_ga4_keyevents (
+    accountId TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    sourcemedium TEXT NOT NULL DEFAULT '',
+    eventname TEXT NOT NULL DEFAULT '',
+    keyevents REAL,
+    updatedAt TEXT NOT NULL,
+    PRIMARY KEY (accountId, year, week, sourcemedium, eventname)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_ga4_search (
+    accountId TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    adcampaign TEXT NOT NULL DEFAULT '',
+    adgroup TEXT NOT NULL DEFAULT '',
+    keyword TEXT NOT NULL DEFAULT '',
+    network TEXT NOT NULL DEFAULT '',
+    sessions REAL,
+    engaged REAL,
+    keyevents REAL,
+    updatedAt TEXT NOT NULL,
+    PRIMARY KEY (accountId, year, week, adcampaign, adgroup, keyword, network)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_ga4_meta (
+    accountId TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    filename TEXT,
+    rowsin INTEGER,
+    truncated INTEGER,
+    rangefrom TEXT,
+    rangeto TEXT,
+    note TEXT,
+    updatedAt TEXT NOT NULL,
+    PRIMARY KEY (accountId, kind)
+  );
+`);
+const GA4_ROW_CAP = 100000;
+function ga4MediumClass(sm){
+  const s = String(sm || '').toLowerCase(); const med = s.split('/').pop().trim(); const src = s.split('/')[0].trim();
+  if (/^\(direct\)/.test(s) || med === '(none)' && /direct/.test(src)) return 'direct';
+  if (med === 'organic' || med === 'referral' || /organic/.test(med)) return 'organic';
+  if (/email|newsletter/.test(med)) return 'email';
+  if (/^(cpc|ppc|paidsearch|paid search|cpm|display|paidsocial|paid social|paid|ad|cpv|banner|video)$/.test(med) || /paid/.test(med)) return 'paid';
+  if (/social/.test(med) || /facebook|instagram|linkedin|tiktok|pinterest/.test(src)) return 'social';
+  return 'other';
+}
+function ga4SearchKind(campaign){
+  const c = String(campaign || '');
+  if (!c || /^\(not set\)$/i.test(c)) return 'Unattributed';
+  if (/brand/i.test(c) && !/non[-_ ]?brand/i.test(c)) return 'Brand Search';
+  return 'Non-Brand Search';
+}
+function buildGa4Scorecard(accountId){
+  const src = db.prepare('SELECT * FROM account_ga4_sources WHERE accountId = ?').all(accountId);
+  const evs = db.prepare('SELECT * FROM account_ga4_keyevents WHERE accountId = ?').all(accountId);
+  const srch = db.prepare('SELECT * FROM account_ga4_search WHERE accountId = ?').all(accountId);
+  const meta = {}; db.prepare('SELECT * FROM account_ga4_meta WHERE accountId = ?').all(accountId).forEach(m => { meta[m.kind] = { fileName: m.filename, rows: m.rowsin, truncated: !!m.truncated, from: m.rangefrom, to: m.rangeto, updatedAt: m.updatedAt, note: m.note }; });
+  const n = v => Number(v) || 0; const r1 = x => Math.round(x * 10) / 10; const r3 = x => Math.round(x * 1000) / 1000;
+  const by = {}; src.forEach(r => { const k = r.sourcemedium; const o = by[k] = by[k] || { sourceMedium: k, sessions: 0, engaged: 0, keyEvents: 0 }; o.sessions += n(r.sessions); o.engaged += n(r.engaged); o.keyEvents += n(r.keyevents); });
+  const sources = Object.values(by).map(o => Object.assign(o, { cls: ga4MediumClass(o.sourceMedium), keyRatePct: o.sessions ? r3(o.keyEvents / o.sessions * 100) : null, engagedPct: o.sessions ? r1(o.engaged / o.sessions * 100) : null })).sort((a, b) => b.sessions - a.sessions);
+  const evBy = {}; evs.forEach(r => { evBy[r.eventname] = (evBy[r.eventname] || 0) + n(r.keyevents); });
+  const keyEventNames = Object.keys(evBy).map(k => ({ event: k, keyEvents: Math.round(evBy[k]) })).sort((a, b) => b.keyEvents - a.keyEvents);
+  // key events by event name for each source (top few), for the Brain
+  const evBySrc = {}; evs.forEach(r => { const o = evBySrc[r.sourcemedium] = evBySrc[r.sourcemedium] || {}; o[r.eventname] = (o[r.eventname] || 0) + n(r.keyevents); });
+  const sk = {}; srch.forEach(r => { const k = ga4SearchKind(r.adcampaign); const o = sk[k] = sk[k] || { kind: k, sessions: 0, engaged: 0, keyEvents: 0 }; o.sessions += n(r.sessions); o.engaged += n(r.engaged); o.keyEvents += n(r.keyevents); });
+  const searchKinds = Object.values(sk).map(o => Object.assign(o, { keyRatePct: o.sessions ? r3(o.keyEvents / o.sessions * 100) : null })).sort((a, b) => b.sessions - a.sessions);
+  const cb = {}; srch.forEach(r => { const k = r.adcampaign; if (!k || /^\(not set\)$/i.test(k)) return; const o = cb[k] = cb[k] || { campaign: k, kind: ga4SearchKind(k), sessions: 0, keyEvents: 0 }; o.sessions += n(r.sessions); o.keyEvents += n(r.keyevents); });
+  const campaigns = Object.values(cb).map(o => Object.assign(o, { keyRatePct: o.sessions ? r3(o.keyEvents / o.sessions * 100) : null })).sort((a, b) => b.sessions - a.sessions);
+  const kb = {}; srch.forEach(r => { const k = r.keyword; if (!k || /^\(not set\)$/i.test(k) || ga4SearchKind(r.adcampaign) !== 'Non-Brand Search') return; const o = kb[k] = kb[k] || { keyword: k, sessions: 0, keyEvents: 0 }; o.sessions += n(r.sessions); o.keyEvents += n(r.keyevents); });
+  const keywords = Object.values(kb).map(o => Object.assign(o, { keyRatePct: o.sessions ? r3(o.keyEvents / o.sessions * 100) : null })).sort((a, b) => b.keyEvents - a.keyEvents);
+  return { available: src.length > 0 || srch.length > 0, meta, sources, keyEventNames, evBySrc, searchKinds, campaigns, keywords,
+    totals: { sessions: Math.round(sources.reduce((t, o) => t + o.sessions, 0)), keyEvents: Math.round(sources.reduce((t, o) => t + o.keyEvents, 0)) } };
+}
+function buildGa4SourceBlock(accountId){
+  try {
+    const g = buildGa4Scorecard(accountId); if (!g.available) return '\nGA4 SOURCE AND KEY-EVENT DATA: no GA4 source / medium or Google Ads search upload on file, so source-level engagement and key events are not available. Say so instead of guessing.';
+    const pct = x => (x == null ? 'n/a' : x.toFixed(2) + '%');
+    const num = x => Math.round(x).toLocaleString('en-US');
+    const lines = [];
+    const cand = g.sources.filter(o => ['paid', 'email', 'social', 'other'].includes(o.cls) && o.sessions >= 1000).sort((a, b) => (b.keyRatePct || 0) - (a.keyRatePct || 0)).slice(0, 8);
+    if (cand.length){
+      lines.push('Paid, email and social sources by key event rate (sources with at least 1,000 sessions; Direct and Organic are excluded as not buyable):');
+      cand.forEach(o => { const top = Object.entries(g.evBySrc[o.sourceMedium] || {}).sort((a, b) => b[1] - a[1]).slice(0, 3).map(e => `${e[0]} ${num(e[1])}`).join(', '); lines.push(`- ${o.sourceMedium}: ${num(o.sessions)} sessions, ${num(o.keyEvents)} key events (${pct(o.keyRatePct)}), ${o.engagedPct}% engaged${top ? '; top key events: ' + top : ''}`); });
+    }
+    const organic = g.sources.filter(o => o.cls === 'organic' || o.cls === 'direct').slice(0, 3);
+    if (organic.length) lines.push('Not buyable, for context only: ' + organic.map(o => `${o.sourceMedium} ${num(o.sessions)} sessions, ${pct(o.keyRatePct)} key event rate`).join('; ') + '.');
+    if (g.searchKinds.length){
+      lines.push('Google Ads search, Brand vs Non-Brand (from the Google Ads campaign names):');
+      g.searchKinds.forEach(o => lines.push(`- ${o.kind}: ${num(o.sessions)} sessions, ${num(o.keyEvents)} key events (${pct(o.keyRatePct)})${o.kind === 'Brand Search' ? ' — demand capture, do not scale as a lead source' : o.kind === 'Unattributed' ? ' — campaign not set in GA4' : ''}`));
+      const nb = g.campaigns.filter(c => c.kind === 'Non-Brand Search' && c.sessions >= 500).sort((a, b) => (b.keyRatePct || 0) - (a.keyRatePct || 0)).slice(0, 4);
+      if (nb.length) lines.push('Best Non-Brand Search campaigns by key event rate: ' + nb.map(c => `${c.campaign.slice(0, 70)} (${pct(c.keyRatePct)}, ${num(c.sessions)} sessions)`).join('; ') + '.');
+      const kw = g.keywords.slice(0, 5); if (kw.length) lines.push('Non-Brand keywords with the most key events: ' + kw.map(k => `${k.keyword} (${num(k.keyEvents)})`).join('; ') + '.');
+    }
+    const names = g.keyEventNames.slice(0, 8).map(e => `${e.event} ${num(e.keyEvents)}`).join(', ');
+    const warn = []; Object.keys(g.meta).forEach(k => { if (g.meta[k].truncated) warn.push(k === 'sources' ? 'the source / medium export hit GA4\'s 100,000-row cap, so small sources and rare events are missing' : 'the search export hit a row cap'); });
+    return `
+GA4 SOURCE AND KEY-EVENT DATA (the account's own GA4 uploads${g.meta.sources ? ', ' + g.meta.sources.from + ' to ' + g.meta.sources.to : ''}):
+${lines.join('\n')}
+Key events counted: ${names || 'none on file'}. NOTE: key events include phone calls (Invoca), popups and phone clicks, so they measure engagement quality and intent, not only form leads and not revenue; they carry no spend, so combine them with the cost per lead scorecard, never replace it.${warn.length ? ' WARNING: ' + warn.join('; ') + '.' : ''}
+HOW TO USE THIS: when ranking lead sources outside Brand Search and Remarketing, prefer sources with a high key event rate AND a low cost per lead, and say which of the two evidence you used. Do not name a source that is not listed here.`;
+  } catch (e){ return ''; }
+}
+
 // ---- Brain Dump (weekly standup, 2026-09-30) ------------------------------
 // The Daily Brief becomes the Brain Dump: one paragraph per area, one key metric each,
 // every number computed from the dashboard builders and the Brain only writes the prose.
@@ -19376,6 +19508,9 @@ const DATA_CATALOG = [
   { key: 'leads', label: 'Leads by month', table: 'account_lead_counts', period: 'ym', dashboard: 'Media Science', grain: 'month by source, lead type and form', kind: 'manual', keywords: ['leads', 'forms', 'prospect', 'growth', 'value leads', 'cpl'], usedBy: ['forecast', 'ask', 'voice', 'brain dump'], status: 'current' },
   { key: 'digital', label: 'Digital actuals', table: 'account_digital_performance', period: 'ym', dashboard: 'Media Science', grain: 'month by channel, publisher and tactic', kind: 'manual', keywords: ['impressions', 'clicks', 'spend', 'channel', 'search', 'social', 'display'], usedBy: ['forecast', 'ask', 'voice'], status: 'current' },
   { key: 'web_engagement', label: 'Website engagement', table: 'account_website_engagement', period: 'ym', dashboard: 'Media Science', grain: 'month by channel group', kind: 'manual', keywords: ['sessions', 'traffic', 'engagement', 'ga4'], usedBy: ['forecast', 'ask'], status: 'current' },
+  { key: 'ga4_sources', label: 'GA4 sources and key events (weekly)', table: 'account_ga4_sources', period: null, dashboard: 'Media Science', grain: 'week by campaign and source / medium', kind: 'manual', keywords: ['ga4', 'utm', 'source medium', 'key events', 'sessions', 'engaged sessions'], usedBy: ['ask'], status: 'current' },
+  { key: 'ga4_keyevents', label: 'GA4 key events by name (weekly)', table: 'account_ga4_keyevents', period: null, dashboard: 'Media Science', grain: 'week by source / medium and key event', kind: 'manual', keywords: ['ga4', 'key events', 'phone calls', 'form submissions'], usedBy: ['ask'], status: 'current' },
+  { key: 'ga4_search', label: 'GA4 Google Ads search (weekly)', table: 'account_ga4_search', period: null, dashboard: 'Media Science', grain: 'week by campaign, ad group and keyword', kind: 'manual', keywords: ['ga4', 'google ads', 'keyword', 'brand', 'non-brand', 'key events'], usedBy: ['ask'], status: 'current' },
   { key: 'web_users', label: 'Website users', table: 'account_website_users_monthly', period: 'ym', dashboard: 'Media Science', grain: 'month by region', kind: 'manual', keywords: ['visits', 'users', 'region', 'website'], usedBy: ['forecast', 'ask'], status: 'current' },
   { key: 'annual_plan', label: 'Annual plan and targets', table: 'account_annual_plan', period: 'year', dashboard: 'Strategy', grain: 'year by plan kind', kind: 'manual', keywords: ['plan', 'target', 'goal', 'baseline', 'budget vs target'], usedBy: ['forecast', 'ask', 'brain dump'], status: 'current' },
   { key: 'budget_lines', label: 'Marketing budget lines', table: 'marketing_budget_line_items', period: null, dashboard: 'Strategy', grain: 'budget line', kind: 'manual', keywords: ['budget', 'spend plan', 'allocation', 'category'], usedBy: ['forecast', 'ask'], status: 'current' },
@@ -19488,7 +19623,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['account_plan_scenarios', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'marketing_projects', 'marketing_project_tasks', 'account_learned_cpm', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
+const CATALOG_EXEMPT = new Set(['account_ga4_meta', 'account_plan_scenarios', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'marketing_projects', 'marketing_project_tasks', 'account_learned_cpm', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -19529,6 +19664,8 @@ function buildTrainTheBrain(accountId){
       { label: 'Transactions or booking file', done: txnDone, gain: 'Lets the forecast learn from what actually sold.', step: 'bulkUpload' },
       { label: 'Website users by month', done: rowsOf('account_website_users_monthly') > 0, rows: rowsOf('account_website_users_monthly'), gain: 'Sets the reach and cost per website user the forecast starts from.', step: 'websiteUsers' },
       { label: 'Website engagement by channel group', done: rowsOf('account_website_engagement') > 0, rows: rowsOf('account_website_engagement'), gain: 'Shows which channels bring visitors who stay.', step: 'websiteEngagement' },
+      { label: 'GA4 sources and key events (weekly)', done: rowsOf('account_ga4_sources') > 0, rows: rowsOf('account_ga4_sources'), gain: 'Shows which sources bring visits that take action, beyond brand search and remarketing.', step: 'ga4Sources' },
+      { label: 'GA4 Google Ads search (weekly)', done: rowsOf('account_ga4_search') > 0, rows: rowsOf('account_ga4_search'), gain: 'Splits brand from non-brand search and ranks keywords by key events.', step: 'ga4Search' },
       { label: 'Leads by type, by month', done: rowsOf('account_lead_counts') > 0, rows: rowsOf('account_lead_counts'), gain: 'Follows leads through to bookings.', step: 'leadCounts' },
       { label: 'Digital performance', done: rowsOf('account_digital_performance') > 0, rows: rowsOf('account_digital_performance'), gain: 'Spend, impressions and clicks by channel, publisher and tactic.', step: 'digitalPerformance' },
       { label: 'Monthly KPI report', done: rowsOf('account_kpi_metrics') > 0, rows: rowsOf('account_kpi_metrics'), gain: 'Feeds the KPI grid and trend line on the CMO Dashboard.', step: 'kpiMetrics' },
@@ -43467,6 +43604,54 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         else db.prepare('INSERT INTO account_magazine_cost (accountId, publication, "adFormat", "costPerInsertion", updatedAt) VALUES (?, ?, ?, ?, ?)').run(accountId, publication, adFormat, cost, now);
       }
       return sendJson(res, 200, { accountId, saved: rowsIn.length, updatedAt: now });
+    }
+
+
+    // GA4 source / key-event uploads (2026-10-12). GET summary; POST replace-all from the browser's weekly roll-up; DELETE clears.
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && (parts[3] === 'ga4-sources' || parts[3] === 'ga4-search') && ['GET', 'POST', 'DELETE'].includes(req.method)){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const isSrc = parts[3] === 'ga4-sources';
+      if (req.method === 'GET'){
+        try { const g = buildGa4Scorecard(accountId); return sendJson(res, 200, isSrc ? { available: g.available, meta: g.meta.sources || null, totals: g.totals, sources: g.sources.slice(0, 25), keyEventNames: g.keyEventNames.slice(0, 20) } : { available: g.available, meta: g.meta.search || null, searchKinds: g.searchKinds, campaigns: g.campaigns.slice(0, 15), keywords: g.keywords.slice(0, 15) }); }
+        catch (e){ console.warn('[ga4] read failed:', e.message); return sendJson(res, 500, { error: 'could not read the GA4 data' }); }
+      }
+      if (req.method === 'DELETE'){
+        const tabs = isSrc ? ['account_ga4_sources', 'account_ga4_keyevents'] : ['account_ga4_search'];
+        tabs.forEach(t => db.prepare(`DELETE FROM ${t} WHERE accountId = ?`).run(accountId));
+        db.prepare('DELETE FROM account_ga4_meta WHERE accountId = ? AND kind = ?').run(accountId, isSrc ? 'sources' : 'search');
+        return sendJson(res, 200, { accountId, cleared: true });
+      }
+      const body = await readBody(req);
+      const rowsIn = Array.isArray(body.rows) ? body.rows : [];
+      if (!rowsIn.length) return sendJson(res, 400, { error: 'rows is required' });
+      const now = new Date().toISOString();
+      const num = v => { const x = Number(v); return Number.isFinite(x) && x >= 0 ? x : 0; };
+      const str = v => String(v == null ? '' : v).trim().slice(0, 300);
+      const stmts = []; const fileMap = new Map(); let skipped = 0;
+      if (isSrc){
+        stmts.push({ sql: 'DELETE FROM account_ga4_sources WHERE accountId = ?', params: [accountId] }, { sql: 'DELETE FROM account_ga4_keyevents WHERE accountId = ?', params: [accountId] });
+        const agg = new Map();
+        for (const r of rowsIn){ const y = parseInt(r.year, 10), w = parseInt(r.week, 10); if (!(y >= 2000 && y <= 2100) || !(w >= 0 && w <= 53) || !str(r.sourcemedium)){ skipped++; continue; } const k = [y, w, str(r.campaign), str(r.sourcemedium)].join('||'); const o = agg.get(k) || { y, w, c: str(r.campaign), s: str(r.sourcemedium), se: 0, en: 0, ke: 0 }; o.se += num(r.sessions); o.en += num(r.engaged); o.ke += num(r.keyevents); agg.set(k, o); }
+        agg.forEach((o, k) => { stmts.push({ sql: 'INSERT INTO account_ga4_sources (accountId, year, week, campaign, sourcemedium, sessions, engaged, keyevents, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', params: [accountId, o.y, o.w, o.c, o.s, o.se, o.en, o.ke, now] }); fileMap.set(k, { sessions: o.se, keyevents: o.ke }); });
+        const eagg = new Map();
+        for (const r of (Array.isArray(body.events) ? body.events : [])){ const y = parseInt(r.year, 10), w = parseInt(r.week, 10); if (!(y >= 2000 && y <= 2100) || !str(r.eventname) || !str(r.sourcemedium)){ continue; } const k = [y, w, str(r.sourcemedium), str(r.eventname)].join('||'); const o = eagg.get(k) || { y, w, s: str(r.sourcemedium), e: str(r.eventname), ke: 0 }; o.ke += num(r.keyevents); eagg.set(k, o); }
+        eagg.forEach(o => stmts.push({ sql: 'INSERT INTO account_ga4_keyevents (accountId, year, week, sourcemedium, eventname, keyevents, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)', params: [accountId, o.y, o.w, o.s, o.e, o.ke, now] }));
+      } else {
+        stmts.push({ sql: 'DELETE FROM account_ga4_search WHERE accountId = ?', params: [accountId] });
+        const agg = new Map();
+        for (const r of rowsIn){ const y = parseInt(r.year, 10), w = parseInt(r.week, 10); if (!(y >= 2000 && y <= 2100) || !(w >= 0 && w <= 53)){ skipped++; continue; } const k = [y, w, str(r.adcampaign), str(r.adgroup), str(r.keyword), str(r.network)].join('||'); const o = agg.get(k) || { y, w, c: str(r.adcampaign), g: str(r.adgroup), kw: str(r.keyword), nw: str(r.network), se: 0, en: 0, ke: 0 }; o.se += num(r.sessions); o.en += num(r.engaged); o.ke += num(r.keyevents); agg.set(k, o); }
+        agg.forEach((o, k) => { stmts.push({ sql: 'INSERT INTO account_ga4_search (accountId, year, week, adcampaign, adgroup, keyword, network, sessions, engaged, keyevents, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', params: [accountId, o.y, o.w, o.c, o.g, o.kw, o.nw, o.se, o.en, o.ke, now] }); fileMap.set(k, { sessions: o.se, keyevents: o.ke }); });
+      }
+      if (!fileMap.size) return sendJson(res, 400, { error: 'No usable rows. Check the file has Year/Week and the source or campaign columns.' });
+      const weeks = rowsIn.map(r => `${parseInt(r.year, 10)}-${String(parseInt(r.week, 10)).padStart(2, '0')}`).filter(k => /^\d{4}-\d{2}$/.test(k)).sort();
+      stmts.push({ sql: 'INSERT INTO account_ga4_meta (accountId, kind, filename, rowsin, truncated, rangefrom, rangeto, note, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(accountId, kind) DO UPDATE SET filename = excluded.filename, rowsin = excluded.rowsin, truncated = excluded.truncated, rangefrom = excluded.rangefrom, rangeto = excluded.rangeto, note = excluded.note, updatedAt = excluded.updatedAt', params: [accountId, isSrc ? 'sources' : 'search', body.fileName || null, Math.round(num(body.sourceRows) || rowsIn.length), body.truncated ? 1 : 0, weeks[0] || null, weeks[weeks.length - 1] || null, str(body.note), now] });
+      const tab = isSrc ? 'account_ga4_sources' : 'account_ga4_search';
+      const readBack = () => { const m = new Map(); db.prepare(`SELECT * FROM ${tab} WHERE accountId = ?`).all(accountId).forEach(r => { const k = isSrc ? [r.year, r.week, r.campaign, r.sourcemedium].join('||') : [r.year, r.week, r.adcampaign, r.adgroup, r.keyword, r.network].join('||'); m.set(k, { sessions: Number(r.sessions) || 0, keyevents: Number(r.keyevents) || 0 }); }); return m; };
+      const out = commitMonthlyUpload(accountId, isSrc ? 'ga4_sources' : 'ga4_search', body.fileName, stmts, fileMap, readBack, [{ key: 'sessions', label: 'Sessions' }, { key: 'keyevents', label: 'Key events' }], skipped, now);
+      if (out.error) return sendJson(res, 500, { error: out.error });
+      try { aiBrainCtxInvalidatePrefix(`acct:${accountId}:budgetPerf:`); } catch (e){}
+      return sendJson(res, 200, { accountId, saved: fileMap.size, updatedAt: now, receipt: out.receipt, truncated: !!body.truncated });
     }
 
     // GET /api/accounts/:id/website-engagement[?year=YYYY] — GA4 channel-
