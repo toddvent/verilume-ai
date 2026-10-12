@@ -270,6 +270,10 @@
      buttons and card styling as the rest of the portal. */
   .ask-mic[data-state="connecting"]{opacity:0.6;}
   .ask-mic[data-state="live"]{background:#1E8E4A;box-shadow:0 0 0 4px rgba(30,142,74,0.18);}
+  .ask-voice-pill{display:none;margin:8px auto 0;max-width:560px;padding:8px 14px;border-radius:999px;background:var(--white);border:1px solid #CDD1DB;font-size:0.8125rem;color:var(--navy,#1a1f4b);box-shadow:0 6px 18px rgba(20,30,70,.12);cursor:pointer;text-align:center;line-height:1.35;}
+  .ask-voice-pill.on{display:block;}
+  .ask-voice-pill.warn{border-color:#E0B4A8;background:#FFF6F3;}
+  body.ask-dock .ask-voice-pill{position:absolute;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%);width:max-content;max-width:min(540px,92vw);margin:0;z-index:5;}
   .ask-live{margin-top:12px;display:none;}
   .ask-live.open{display:block;}
   .ask-input-row{display:flex;gap:8px;align-items:center;}
@@ -4750,6 +4754,7 @@
       <span class="ask-badge">Voice · Enterprise</span>
       <div class="ask-toggle" id="askVerilumeToggle" role="button" tabindex="0" onclick="toggleAskVerilumePrompts()">Suggested prompts <span class="chev">▾</span></div>
     </div>
+    <div class="ask-voice-pill" id="askVerilumeVoicePill" role="status" aria-live="polite" title="Click to dismiss" onclick="askVerilumeVoiceSay('')"></div>
     <div class="ask-expand" id="askVerilumeExpand">
       <div class="ask-expand-label" id="askVerilumeExpandLabel">Suggested — scoped to Daily Brief</div>
       <div class="prompt-row" id="askVerilumePromptRow"></div>
@@ -26566,7 +26571,7 @@ async function vxVoiceStart(opts){
     vxStage = 'session';
     const sess = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice/session`, { method: 'GET' }, 3, 700);
     if (!sess || !sess.token) throw new Error('voice session response had no token');
-    if (!sess.signedUrl) console.warn('[voice] no signed URL (' + (sess.signedUrlReason || 'unknown') + ') — falling back to agentId; this only works if the agent does not require authentication.');
+    vxVoice.lastSignedReason = sess.signedUrl ? '' : String(sess.signedUrlReason || 'no reason given'); if (!sess.signedUrl) console.warn('[voice] no signed URL (' + (sess.signedUrlReason || 'unknown') + ') — falling back to agentId; this only works if the agent does not require authentication.');
     vxStage = 'client';
     const { Conversation } = await vxLoadElevenLabsClient();
     vxStage = 'connect';
@@ -26608,7 +26613,7 @@ async function vxVoiceStart(opts){
     } else if (/concurren|limit|429/i.test(em)){
       msg = 'Verilume is busy talking with others right now. Type your question and it will answer in text.';
     } else {
-      msg = 'Voice connected to the microphone but could not open the call (' + (em.slice(0, 160) || vxVoice.lastClose || en || 'unknown') + '). Try again, or type your question.';
+      if (vxVoice.lastSignedReason) msg = 'Voice could not get permission to open the call. ElevenLabs said: ' + vxVoice.lastSignedReason.slice(0, 260) + ' Type your question for now.'; else msg = 'Voice connected to the microphone but could not open the call (' + (em.slice(0, 160) || vxVoice.lastClose || en || 'unknown') + '). Try again, or type your question.';
     }
     if (o.onStatus) o.onStatus(msg);
     return false;
@@ -26734,17 +26739,23 @@ async function askVerilumeAsk(question){
   }
 }
 function askVerilumeSubmitTyped(){ const i = document.getElementById('askVerilumeInput'); if (!i) return; const q = i.value; i.value = ''; if (ASK_DOCK_ON && askDockScopeNow() === 'campaign'){ askDockCampSend(q); return; } askVerilumeAsk(q); }
+function askVerilumeVoiceSay(t, warn){
+  const el = document.getElementById('askVerilumeVoicePill'); if (!el) return;
+  el.textContent = t || ''; el.classList.toggle('on', !!t); el.classList.toggle('warn', !!(t && warn && !/^(Connecting|Listening)/.test(t)));
+  clearTimeout(askVerilumeVoiceSay._t);
+  if (t && warn && !/^(Connecting|Listening)/.test(t)) askVerilumeVoiceSay._t = setTimeout(() => { el.classList.remove('on'); }, 20000);
+}
 async function askVerilumeToggleVoice(){
   if (ASK_DOCK_ON && askDockIsMobile() && !askDockSheetMicFlag && vxVoice.state === 'idle'){ askVerilumeOpenTyped(); return; }
   if (ASK_DOCK_ON && (askDockScopeNow() === 'campaign' || (vxVoice.state !== 'idle' && vxVoice.surface === 'collab'))){ return askDockCampToggleVoice(); }
-  if (vxVoice.state !== 'idle' && vxVoice.surface === 'ask_bar'){ await vxVoiceStop(); askVerilumeSetMic('idle'); askVerilumeSetStatus(''); return; }
-  if (vxVoice.state !== 'idle'){ askVerilumeSetStatus('Voice is already in use on another panel.'); return; }
-  askVerilumeOpenLive();
-  askVerilumeSetStatus('Connecting…');
+  if (vxVoice.state !== 'idle' && vxVoice.surface === 'ask_bar'){ await vxVoiceStop(); askVerilumeSetMic('idle'); askVerilumeVoiceSay(''); return; }
+  if (vxVoice.state !== 'idle'){ askVerilumeVoiceSay('Voice is already in use on another panel.', true); return; }
+  // 2026-10-12: the mic no longer opens the prompts panel; a slim status pill above the bar carries connecting, listening and errors.
+  askVerilumeVoiceSay('Connecting…');
   await vxVoiceStart({
     surface: 'ask_bar',
-    onState: (st) => { askVerilumeSetMic(st); if (st === 'live') askVerilumeSetStatus('Listening. Talk to Verilume; click the mic to stop.'); if (st === 'idle') askVerilumeSetStatus(''); },
-    onStatus: askVerilumeSetStatus,
+    onState: (st) => { askVerilumeSetMic(st); if (st === 'live') askVerilumeVoiceSay('Listening. Talk to Verilume; click the mic to stop.'); if (st === 'idle') askVerilumeVoiceSay(''); },
+    onStatus: (t) => askVerilumeVoiceSay(t, true),
     // Spoken words are not shown or kept (Todd, 2026-09-29): only the on-screen
     // cards, proposal and status appear. In-memory history only, for context.
     onMessage: (role, text) => { askVerilumeHistory.push({ role, text }); if (askVerilumeHistory.length > 20) askVerilumeHistory.shift(); },
