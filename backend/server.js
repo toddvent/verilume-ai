@@ -13687,6 +13687,49 @@ const MIX_MEMORY_BANDS = [
   { key: 'over500', label: 'over $500,000', lo: 500000, hi: Infinity }
 ];
 function mixMemoryBandOf(budget){ const b = Number(budget) || 0; if (b <= 0) return null; return MIX_MEMORY_BANDS.find(x => b >= x.lo && b < x.hi) || null; }
+// ---- Channel scorecard for the AI Brain (2026-10-12) ---------------------------------------------------
+// Todd: "are we looking at ... the best possible lead source performance outside of brand search and remarketing when
+// providing recommendations ... based on CPL, CAC or ROAS media science targets?" Until now the Brain saw campaign-level
+// conversions per $1k only. This block gives it the same trailing-12-month channel table the Media Science "Core
+// elements" card shows, with Brand Search and Remarketing set apart as demand capture, plus lead-to-booking by audience
+// type as the quality signal. CAC and ROAS by channel are not computed (revenue is not split by channel); it says so.
+function buildChannelScorecardBlock(accountId){
+  try {
+    const key = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
+    const rows = db.prepare('SELECT * FROM account_digital_performance WHERE accountId = ?').all(accountId).map(r => ({ k: key(r.year, r.month), grain: r.grain, channel: aliasVal(r, 'channel'), impressions: Number(r.impressions) || 0, clicks: Number(r.clicks) || 0, spend: Number(r.spend) || 0, leads: Number(r.leads) || 0 }));
+    if (!rows.length) return '\nCHANNEL PERFORMANCE SCORECARD: no digital performance upload on file for this account, so there is no channel-level cost per lead to rank sources by. Say so plainly instead of inventing one.';
+    const latest = rows.map(r => r.k).sort().pop();
+    const win = new Set(storyWindowEndingAtData(new Date(), 12, latest));
+    const inWin = rows.filter(r => win.has(r.k));
+    // one grain per channel (the one with the most spend) so overview, split and detail rows never double count
+    const byCh = {}; inWin.forEach(r => { const c = byCh[r.channel] = byCh[r.channel] || {}; const g = c[r.grain] = c[r.grain] || { spend: 0, leads: 0, impressions: 0, clicks: 0 }; g.spend += r.spend; g.leads += r.leads; g.impressions += r.impressions; g.clicks += r.clicks; });
+    const list = Object.keys(byCh).map(ch => { const gs = Object.values(byCh[ch]); gs.sort((a, b) => b.spend - a.spend); const g = gs[0]; return { channel: ch, spend: g.spend, leads: g.leads, impressions: g.impressions, clicks: g.clicks, cpl: g.leads ? g.spend / g.leads : null, cpm: g.impressions ? g.spend / g.impressions * 1000 : null }; }).filter(c => c.spend > 0);
+    if (!list.length) return '\nCHANNEL PERFORMANCE SCORECARD: the digital performance upload has no spend in the last 12 months.';
+    const isCapture = ch => /^(brand search|remarketing)$/i.test(ch);
+    const money = n => '$' + (n >= 1000 ? Math.round(n).toLocaleString('en-US') : n.toFixed(2));
+    const line = c => `- ${c.channel}: spend ${money(c.spend)}, ${Math.round(c.leads).toLocaleString('en-US')} leads, cost per lead ${c.cpl != null ? money(c.cpl) : 'n/a'}, CPM ${c.cpm != null ? money(c.cpm) : 'n/a'}`;
+    const hasSplitEarly = list.some(c => /^non-brand search$/i.test(c.channel));
+    const prospect = list.filter(c => !isCapture(c.channel) && !(hasSplitEarly && /^paid search \(total\)$/i.test(c.channel))).sort((a, b) => (a.cpl == null) - (b.cpl == null) || a.cpl - b.cpl);
+    const capture = list.filter(c => isCapture(c.channel));
+    const hasSplit = list.some(c => /^non-brand search$/i.test(c.channel));
+    const blendedSearch = !hasSplit && list.some(c => /^paid search \(total\)$/i.test(c.channel));
+    let l2b = '';
+    try {
+      const lc = db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId).filter(r => win.has(key(r.year, r.month)));
+      const by = {}; lc.forEach(r => { const t = String(aliasVal(r, 'leadType') || 'Other') === 'Registration' ? 'Growth' : String(aliasVal(r, 'leadType') || 'Other'); const x = by[t] = by[t] || { leads: 0, bookings: 0 }; x.leads += Number(r.count) || 0; x.bookings += Number(r.bookings) || 0; });
+      const ls = Object.keys(by).filter(t => by[t].leads > 0).map(t => `${t} ${Math.round(by[t].bookings / by[t].leads * 1000) / 10}% (${Math.round(by[t].bookings).toLocaleString('en-US')} of ${Math.round(by[t].leads).toLocaleString('en-US')})`);
+      if (ls.length) l2b = `\nLEAD TO BOOKING BY AUDIENCE TYPE (quality of a lead, trailing 12 months): ${ls.join('; ')}. A cheap lead of a type that rarely books is not a cheap booking; weigh cost per lead against these rates.`;
+    } catch (e){}
+    return `
+CHANNEL PERFORMANCE SCORECARD (this account's own digital performance upload, trailing 12 months to ${latest}; same figures as the Media Science Core elements card):
+Prospecting channels, lowest cost per lead first (rank new-audience recommendations on these):
+${prospect.length ? prospect.map(line).join('\n') : '(none on file)'}
+Demand capture, kept as maintenance and NOT ranked or scaled as lead sources:
+${capture.length ? capture.map(line).join('\n') : '(Brand Search and Remarketing are not split out in the upload)'}${blendedSearch ? '\nNOTE: Paid Search is only on file as a total, so its cost per lead blends Brand Search (cheap, demand capture) with Non-Brand. Do not treat it as a prospecting cost per lead.' : ''}${l2b}
+HOW TO USE THIS: when the campaign target is cost per lead, rank the prospecting channels above, then adjust for lead quality. CAC and ROAS are not available by channel (revenue is not split by channel on this account), so for those targets use cost per lead plus the lead-to-booking rates as the proxy and say that it is a proxy. Do not recommend a channel this account is not active in without noting it needs permission to expand and a match-market test to measure incrementality. Quote these numbers; never invent a channel figure that is not listed.`;
+  } catch (e){ return ''; }
+}
+
 function buildMixMemoryBlock(accountId, campaign){
   const head = `WHAT THIS ACCOUNT PLANNED, WHAT RAN, AND HOW IT PERFORMED, BY BUDGET LEVEL (real campaigns on this account; budget size changes which channels fit, so compare like with like):`;
   try {
@@ -13850,7 +13893,7 @@ ${mediaMixLines}
 THIS ACCOUNT'S HISTORICAL CAMPAIGN PERFORMANCE (real actuals from past campaigns, best conversions/$1k first):
 ${performanceLines}
 
-${buildMixMemoryBlock(accountId, campaign)}`;
+${buildMixMemoryBlock(accountId, campaign)}${buildChannelScorecardBlock(accountId)}`;
   return { promptBlock, hasAccountBudget, hasPerformanceData, hasMediaPlanMix };
 }
 
