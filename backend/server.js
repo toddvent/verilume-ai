@@ -18927,6 +18927,38 @@ function buildGrowthPerformance(accountId, opts){
     outlook: (() => { try { return buildGrowthOutlook(accountId, asOfDate, fin(perfTot(wset)), l.leads ? { ratePct: Math.round((l.bookings / l.leads) * 1000) / 10 } : null, dp); } catch (e){ console.warn('[growth outlook] failed:', e.message); return null; } })() };
 }
 
+// ---- Budget benchmarks (2026-10-12) ---------------------------------------------------------------------
+// The campaign brief's budget check prices a target with the account's OWN trailing-12-month digital results when
+// they exist: cost per lead (spend / leads), CPM (spend / impressions x 1000) and the impressions-to-lead rate.
+// Light read of account_digital_performance only; the same window rule as the Growth and Performance report.
+const _benchCache = new Map();
+function buildBudgetBenchmarks(accountId, opts){
+  const ck = accountId + '|' + (opts && opts.outcomes ? 1 : 0); const hit = _benchCache.get(ck); if (hit && Date.now() - hit.t < 300000) return hit.v;
+  const v = buildBudgetBenchmarksRaw(accountId, opts); _benchCache.set(ck, { t: Date.now(), v }); return v;
+}
+function buildBudgetBenchmarksRaw(accountId, opts){
+  const asOfDate = (opts && opts.asOf) || new Date(); const key = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
+  const r2 = n => Math.round(n * 100) / 100;
+  const dp = db.prepare("SELECT * FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").all(accountId).map(r => ({ k: key(r.year, r.month), channel: aliasVal(r, 'channel'), impressions: Number(r.impressions) || 0, spend: Number(r.spend) || 0, leads: Number(r.leads) || 0 }));
+  const users = db.prepare('SELECT year, month, users FROM account_website_users_monthly WHERE accountId = ?').all(accountId).map(r => ({ k: key(r.year, r.month), users: Number(r.users) || 0 }));
+  const out = { available: false, window: null, cpl: null, costPerVisit: null, cac: null, roas: null, cpm: null, spend: null, leads: null, visits: null, outcomesBasis: null };
+  if (dp.length){
+    const latest = dp.map(r => r.k).sort().pop();
+    const wset = new Set(storyWindowEndingAtData(asOfDate, 12, latest));
+    const rows = dp.filter(r => wset.has(r.k));
+    const t = rows.reduce((a, r) => { a.spend += r.spend; a.impressions += r.impressions; a.leads += r.leads; return a; }, { spend: 0, impressions: 0, leads: 0 });
+    const vis = users.filter(u => wset.has(u.k)).reduce((n, u) => n + u.users, 0);
+    out.window = { from: [...wset].sort()[0], to: latest, months: wset.size };
+    out.spend = Math.round(t.spend); out.leads = Math.round(t.leads); out.visits = Math.round(vis);
+    out.cpl = t.leads ? r2(t.spend / t.leads) : null;
+    out.costPerVisit = vis ? r2(t.spend / vis) : null;
+    out.cpm = t.impressions ? r2(t.spend / t.impressions * 1000) : null;
+    out.available = t.spend > 0;
+  }
+  // CAC and ROAS: the same figures as the Budgets cards (spend / unique transactions, revenue / spend). Heavier to build, so only on request (?outcomes=1).
+  if (opts && opts.outcomes) try { const d = buildStoryDemand(accountId, { asOf: asOfDate, months: 12 }); const o = d && d.outcomes; if (o){ out.cac = o.cac != null ? o.cac : null; out.roas = o.roas != null ? o.roas : null; out.outcomesBasis = o.basisLabel || null; if (out.cac != null || out.roas != null) out.available = true; } } catch (e){}
+  return out;
+}
 
 // ---- Brain Dump (weekly standup, 2026-09-30) ------------------------------
 // The Daily Brief becomes the Brain Dump: one paragraph per area, one key metric each,
@@ -32017,11 +32049,11 @@ async function handleRequestInner(req, res) {
     // GET /api/accounts/:id/analytics/(story|forecast-vs-target|price-volume|audience-growth)
     // 2026-09-30 — the Strategy dashboard's data (see buildStory* above).
     // Read-only; portal session required. Query: months, dim, productGroup, asOf (YYYY-MM, testing).
-    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'analytics' && ['story', 'forecast-vs-target', 'price-volume', 'audience-growth', 'media-science', 'creative-media', 'growth-performance', 'rolling-budget', 'budget-flow'].includes(parts[4])){
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'analytics' && ['story', 'forecast-vs-target', 'price-volume', 'audience-growth', 'media-science', 'creative-media', 'growth-performance', 'rolling-budget', 'budget-flow', 'budget-benchmarks'].includes(parts[4])){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       const qs = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries());
-      const opts = { asOf: storyAsOf(qs), months: qs.months, dim: qs.dim, productGroup: qs.productGroup };
+      const opts = { asOf: storyAsOf(qs), months: qs.months, dim: qs.dim, productGroup: qs.productGroup, outcomes: qs.outcomes === '1' };
       if (parts[4] === 'story' && !qs.months){ try { opts.range = dateRangeForRequest(req, accountId, qs); } catch (e){ opts.range = null; } }
       try {
         const data = parts[4] === 'story' ? buildStoryDemand(accountId, opts)
@@ -32032,6 +32064,7 @@ async function handleRequestInner(req, res) {
           : parts[4] === 'growth-performance' ? buildGrowthPerformance(accountId, opts)
           : parts[4] === 'rolling-budget' ? buildRollingBudget(accountId, opts)
           : parts[4] === 'budget-flow' ? budgetFlowCached(accountId, qs.year)
+          : parts[4] === 'budget-benchmarks' ? buildBudgetBenchmarks(accountId, opts)
           : buildStoryAudienceGrowth(accountId, opts);
         if (data && (parts[4] === 'story' || parts[4] === 'growth-performance')){ try { data.provenance = buildProvenance(accountId); } catch (e){ data.provenance = null; } }
         return sendJson(res, 200, data);
