@@ -26582,9 +26582,9 @@ async function vxVoiceStart(opts){
       dynamicVariables: Object.assign({ account_id: state.companyId, secret__voice_token: sess.token, surface: vxVoice.surface, tab: activePrimaryTab || 'dailyBrief', campaign_id: o.campaignId || '', member_name: (state.member && (state.member.name || state.member.email)) || '' }, o.dynamicVariables || {}),
       clientTools,
       onConnect: () => { vxVoice.state = 'live'; if (o.onState) o.onState('live'); },
-      onDisconnect: () => { vxVoice.state = 'idle'; vxVoice.conversation = null; if (o.onState) o.onState('idle'); if (vxVoice.onEnd) vxVoice.onEnd(); },
+      onDisconnect: (d) => { try { const why = d && (d.message || d.reason); if (why && vxVoice.state !== 'live' || (d && d.reason === 'error')){ console.warn('[voice] call closed:', d); vxVoice.lastClose = String((d && (d.message || d.reason)) || ''); if (o.onStatus) o.onStatus('Voice call closed: ' + vxVoice.lastClose.slice(0, 160) + '. Try again, or type your question.'); } } catch (e2){} vxVoice.state = 'idle'; vxVoice.conversation = null; if (o.onState) o.onState('idle'); if (vxVoice.onEnd) vxVoice.onEnd(); },
       onMessage: (msg) => { const role = msg && msg.source === 'user' ? 'user' : 'assistant'; const text = (msg && msg.message) || ''; if (text && vxVoice.onMessage) vxVoice.onMessage(role, text); },
-      onError: (err) => { console.warn('[voice] session error:', err); if (o.onStatus) o.onStatus('Voice connection had a problem. Try again, or type your question.'); }
+      onError: (err) => { console.warn('[voice] session error:', err); const em2 = String((err && (err.message || err)) || '').slice(0, 160); if (o.onStatus) o.onStatus('Voice connection had a problem' + (em2 ? ' (' + em2 + ')' : '') + '. Try again, or type your question.'); }
     };
     if (sess.signedUrl) startArgs.signedUrl = sess.signedUrl; else startArgs.agentId = sess.agentId;
     vxVoice.conversation = await Conversation.startSession(startArgs);
@@ -26608,7 +26608,7 @@ async function vxVoiceStart(opts){
     } else if (/concurren|limit|429/i.test(em)){
       msg = 'Verilume is busy talking with others right now. Type your question and it will answer in text.';
     } else {
-      msg = 'Voice connected to the microphone but could not open the call (' + (en || em.slice(0, 80) || 'unknown') + '). Try again, or type your question.';
+      msg = 'Voice connected to the microphone but could not open the call (' + (em.slice(0, 160) || vxVoice.lastClose || en || 'unknown') + '). Try again, or type your question.';
     }
     if (o.onStatus) o.onStatus(msg);
     return false;
@@ -32870,13 +32870,37 @@ function cmpCollapseTruncatableHint(link){
   if (!el) return;
   cmpSetTruncatableHint(el, el.dataset.fullText);
 }
+// 2026-10-12: the Primary KPI list follows the Marketing Loop stage. A KPI that stage is not built to deliver (Leads on
+// Awareness) is not offered. Editing an existing campaign keeps whatever it already has.
+const STAGE_KPI_FIT = {
+  'Awareness': ['Impressions', 'Reach', 'Video Views'],
+  'Consideration': ['Clicks', 'Video Views', 'Leads'],
+  'Purchase': ['Leads', 'Transactions', 'Clicks'],
+  'Loyalty': ['Transactions', 'Leads'],
+  'Advocacy': ['Leads', 'Reach']
+};
+let cmpKpiDropNote = '';
+function kpisForStage(stage, keepOther){
+  const fit = STAGE_KPI_FIT[stage];
+  const all = PRIMARY_KPI_OPTIONS.filter(k => keepOther || !/^Other/i.test(k));
+  if (!fit) return all;
+  return all.filter(k => fit.includes(k) || (keepOther && /^Other/i.test(k)));
+}
 function renderCmpPrimaryKpiOptions(){
   const sel = document.getElementById('cmpPrimaryKpi');
   if (!sel) return;
   const current = sel.value;
+  const editing = !!((document.getElementById('cmpExistingCampaign') || {}).value);
+  let list = kpisForStage(selectedStage, true);
+  if (editing && current && !list.includes(current) && PRIMARY_KPI_OPTIONS.includes(current)) list = list.concat([current]);
   sel.innerHTML = `<option value="">— select a primary KPI —</option>` +
-    PRIMARY_KPI_OPTIONS.map(k => `<option value="${k}">${k}</option>`).join('');
+    list.map(k => `<option value="${k}">${k}</option>`).join('');
+  cmpKpiDropNote = '';
   if (current && [...sel.options].some(o => o.value === current)) sel.value = current;
+  else if (current && selectedStage && PRIMARY_KPI_OPTIONS.includes(current)){
+    cmpKpiDropNote = current + ' is not offered for ' + (/^[AEIOU]/i.test(selectedStage) ? 'an ' : 'a ') + selectedStage + ' campaign (' + (STAGE_KPI_FIT[selectedStage] || []).join(', ') + ' fit this stage), so the Primary KPI was cleared. Pick one that fits.';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  }
   const perfHint = document.getElementById('cmpPrimaryKpiPerformanceMetricsHint');
   cmpSetTruncatableHint(perfHint, `Metrics we report on (Campaign QA, Analysis) but that can't set a Target KPI Goal or drive a budget forecast here: ${PERFORMANCE_METRICS_REPORTED.join(', ')}.`);
   cmpUpdateKpiGoalBenchmarkHint();
@@ -54974,34 +54998,59 @@ function briefGoalInput(el){
   el.value = raw ? Number(raw).toLocaleString('en-US') : '';
   briefPickGoal(raw); briefBudgetCheck();
 }
-// Budget check: sizes the target number into the budget it would take, then compares that with the estimated budget typed
-// in the brief and with the annual marketing budget on the Media Plan. It only reports; it never changes a field.
+// Account benchmarks (2026-10-12): the account's own trailing-12-month results, read once per company.
+const briefBench = { co: null, data: null, loading: false };
+function briefBenchLoad(){
+  if (briefBench.co === state.companyId && (briefBench.data || briefBench.loading)) return;
+  briefBench.co = state.companyId; briefBench.data = null; briefBench.loading = true;
+  stratGet('budget-benchmarks', 15000).then(d => { briefBench.data = d && d.available ? d : { available: false }; }).catch(() => { briefBench.data = { available: false }; }).finally(() => { briefBench.loading = false; briefBudgetCheck(); });
+}
+// Budget check: prices the target with the account's own history only. No channels are chosen at this step, so nothing here
+// uses a channel CPM or a blended rate; the recommendation step prices the real channel mix. It only reports; it never
+// changes a field. KPI -> the account metric that prices it.
 function briefBudgetCheck(){
   const box = briefEl('briefBudgetCheck'); if (!box) return;
   const goal = Number((briefEl('cmpKpiGoal') || {}).value) || 0; const kpi = (briefEl('cmpPrimaryKpi') || {}).value || '';
-  if (!goal){ box.style.display = 'none'; box.textContent = ''; return; }
-  const money = n => (typeof fmtMoney === 'function' ? fmtMoney(n) : '$' + Math.round(n).toLocaleString('en-US'));
-  const parts = []; let level = 'info';
-  let need = null; try { need = computeSuggestedBudget(); } catch (e){}
-  if (!kpi){ parts.push('Pick what the ' + goal.toLocaleString('en-US') + ' counts (the Primary KPI) and I will check it against budget.'); }
-  else if (need == null){ parts.push('I cannot size ' + kpi + ' from a target number yet. Add your estimated budget and I will use that.'); }
-  else {
-    let cpm = null; try { cpm = computeBlendedCpm(); } catch (e){}
-    parts.push('To reach ' + goal.toLocaleString('en-US') + ' ' + kpi + ', plan on about <b>' + money(need) + '</b>' + (cpm ? ' (blended CPM ' + money(cpm) + ')' : '') + '. This is an illustrative estimate.');
-    const est = Number((briefEl('cmpCreationBudget') || {}).value) || 0;
-    if (est){
-      const pct = Math.round(est / need * 100);
-      if (est < need * 0.8){ level = 'warn'; parts.push('Your estimated budget of ' + money(est) + ' is about ' + pct + '% of that, so the target is a stretch.'); }
-      else if (est > need * 1.25){ parts.push('Your estimated budget of ' + money(est) + ' is above that, so there is room to spare or to raise the target.'); }
-      else parts.push('Your estimated budget of ' + money(est) + ' is in line with the target.');
-    }
-    const plan = (state.mediaPlan && Number(state.mediaPlan.totalBudget)) || 0;
-    if (plan){
-      const share = Math.round(need / plan * 100);
-      if (need > plan){ level = 'warn'; parts.push('That is more than your entire ' + (state.mediaPlan.year || '') + ' annual marketing budget of ' + money(plan) + '.'); }
-      else parts.push('That is about ' + share + '% of your ' + (state.mediaPlan.year || '') + ' annual marketing budget of ' + money(plan) + '.');
-    }
+  if (!goal){
+    if (cmpKpiDropNote){ box.className = 'brf-check warn'; box.textContent = cmpKpiDropNote; box.style.display = ''; } else { box.style.display = 'none'; box.textContent = ''; }
+    return;
   }
+  briefBenchLoad();
+  const money = n => (typeof fmtMoney === 'function' ? fmtMoney(n) : '$' + Math.round(n).toLocaleString('en-US'));
+  const gtxt = goal.toLocaleString('en-US'); const b = briefBench.data && briefBench.data.available ? briefBench.data : null;
+  const parts = []; let level = 'info'; let ref = null;
+  const METRIC = { 'Leads': { key: 'cpl', per: 'cost per lead', unit: 'leads' }, 'Clicks': { key: 'costPerVisit', per: 'cost per website visit', unit: 'clicks' },
+    'Transactions': { key: 'cac', per: 'customer acquisition cost (CAC)', unit: 'transactions' }, 'Impressions': { key: 'cpm', per: 'CPM', unit: 'impressions', cpm: true } };
+  const m = METRIC[kpi];
+  if (!kpi){ if (cmpKpiDropNote){ level = 'warn'; parts.push(cmpKpiDropNote); } else parts.push('Pick what the ' + gtxt + ' counts (the Primary KPI) and I will check it against your history.'); }
+  else if (!m){ parts.push('I do not price ' + kpi + ' from your history at this step. The recommendation step sizes it from the channels it picks.'); }
+  else if (!b){
+    parts.push(briefBench.loading ? 'Checking your history…' : 'I do not have ' + m.per + ' history on this account yet, so I cannot size ' + gtxt + ' ' + m.unit + '. Add your estimated budget and I will compare it with your annual plan.');
+  } else if (b[m.key] == null){
+    parts.push('Your uploaded history has no ' + m.per + ' yet, so I cannot size ' + gtxt + ' ' + m.unit + '. Add your estimated budget and I will compare it with your annual plan.');
+  } else {
+    ref = m.cpm ? Math.round(goal / 1000 * b.cpm) : Math.round(goal * b[m.key]);
+    parts.push('At your trailing-12-month ' + m.per + ' of <b>' + money(b[m.key]) + '</b>, ' + gtxt + ' ' + m.unit + ' would cost about <b>' + money(ref) + '</b>.');
+    if (kpi === 'Transactions' && b.roas) parts.push('At your ROAS of ' + b.roas + 'x, that spend would return about ' + money(ref * b.roas) + ' in revenue.');
+    parts.push('This is your history, not a forecast for this audience or channel mix; the recommendation step prices the real mix.');
+  }
+  const est = Number((briefEl('cmpCreationBudget') || {}).value) || 0;
+  if (est && ref){
+    const pct = Math.round(est / ref * 100);
+    if (est < ref * 0.8){ level = 'warn'; parts.push('Your estimated budget of ' + money(est) + ' is about ' + pct + '% of that, so the target is a stretch. Options: lower the target, raise the budget, or choose a KPI that costs less per result.'); }
+    else if (est > ref * 1.25) parts.push('Your estimated budget of ' + money(est) + ' is above that, so there is room to spare or to raise the target.');
+    else parts.push('Your estimated budget of ' + money(est) + ' is in line with the target.');
+  }
+  const plan = (state.mediaPlan && Number(state.mediaPlan.totalBudget)) || 0;
+  if (plan && ref){
+    if (ref > plan){ level = 'warn'; parts.push('That is more than your entire ' + (state.mediaPlan.year || '') + ' annual marketing budget of ' + money(plan) + '.'); }
+    else parts.push('That is about ' + Math.round(ref / plan * 100) + '% of your ' + (state.mediaPlan.year || '') + ' annual marketing budget of ' + money(plan) + '.');
+  }
+  // Only channels the person picked by hand count here; a channel the account is not active in needs approval to expand.
+  try {
+    const off = [...selectedChannels].filter(ch => typeof isChannelActive === 'function' && !isChannelActive(ch));
+    if (off.length){ level = 'warn'; parts.push(off.join(', ') + (off.length > 1 ? ' are' : ' is') + ' not active on this account. Using ' + (off.length > 1 ? 'them' : 'it') + ' means asking for permission to expand, and building a match-market test to measure incrementality.'); }
+  } catch (e){}
   box.className = 'brf-check' + (level === 'warn' ? ' warn' : ''); box.innerHTML = parts.join(' '); box.style.display = '';
 }
 function briefRender(){
@@ -55017,6 +55066,7 @@ function briefRender(){
     set('briefMode', briefMode); set('briefStage', selectedStage || ''); set('briefName', (briefEl('cmpName') || {}).value);
     set('briefStart', (briefEl('cmpStartDate') || {}).value); set('briefEnd', (briefEl('cmpEndDate') || {}).value);
     { const g = briefEl('briefGoal'); if (g && document.activeElement !== g){ g.value = briefGoalFmt((briefEl('cmpKpiGoal') || {}).value); g.classList.toggle('filled', !!g.value); } }
+    { const ks = briefEl('briefKpi'); if (ks){ const want = kpisForStage(selectedStage, false); const have = [...ks.options].slice(1).map(o => o.value).join('|'); if (have !== want.join('|')){ const cur = ks.value; ks.innerHTML = '<option value="">Primary KPI</option>' + want.map(k => `<option value="${escapeHtml(k)}">${escapeHtml(k)}</option>`).join(''); if (cur && want.includes(cur)) ks.value = cur; } } }
     set('briefKpi', (briefEl('cmpPrimaryKpi') || {}).value);
     set('briefFocus', (briefEl('cmpCreationBusinessInitiativeSelect') || {}).value || cmpPendingBusinessInitiative || '');
     set('briefExp', (briefEl('cmpCreationCampaignTypeSelect') || {}).value || cmpPendingCampaignType || '');
