@@ -55010,11 +55010,17 @@ function briefGoalInput(el){
   briefPickGoal(raw); briefBudgetCheck();
 }
 // Account benchmarks (2026-10-12): the account's own trailing-12-month results, read once per company.
-const briefBench = { co: null, data: null, loading: false };
-function briefBenchLoad(){
-  if (briefBench.co === state.companyId && (briefBench.data || briefBench.loading)) return;
-  briefBench.co = state.companyId; briefBench.data = null; briefBench.loading = true;
-  stratGet('budget-benchmarks', 15000).then(d => { briefBench.data = d && d.available ? d : { available: false }; }).catch(() => { briefBench.data = { available: false }; }).finally(() => { briefBench.loading = false; briefBudgetCheck(); });
+const briefBench = { co: null, data: null, loading: false, err: false, outcomes: false, oLoading: false };
+function briefBenchLoad(needOutcomes){
+  if (briefBench.co !== state.companyId){ briefBench.co = state.companyId; briefBench.data = null; briefBench.loading = false; briefBench.err = false; briefBench.outcomes = false; briefBench.oLoading = false; }
+  if (!briefBench.data && !briefBench.loading){
+    briefBench.loading = true; briefBench.err = false;
+    stratGet('budget-benchmarks', 25000).then(d => { briefBench.data = d || { available: false }; }).catch(() => { briefBench.err = true; }).finally(() => { briefBench.loading = false; briefBudgetCheck(); });
+  }
+  if (needOutcomes && briefBench.data && !briefBench.outcomes && !briefBench.oLoading){
+    briefBench.oLoading = true;
+    stratGet('budget-benchmarks?outcomes=1', 40000).then(d => { if (d && briefBench.data){ briefBench.data.cac = d.cac; briefBench.data.roas = d.roas; if (d.cac != null || d.roas != null) briefBench.data.available = true; } briefBench.outcomes = true; }).catch(() => { briefBench.outcomes = true; }).finally(() => { briefBench.oLoading = false; briefBudgetCheck(); });
+  }
 }
 // Budget check: prices the target with the account's own history only. No channels are chosen at this step, so nothing here
 // uses a channel CPM or a blended rate; the recommendation step prices the real channel mix. It only reports; it never
@@ -55026,7 +55032,7 @@ function briefBudgetCheck(){
     if (cmpKpiDropNote){ box.className = 'brf-check warn'; box.textContent = cmpKpiDropNote; box.style.display = ''; } else { box.style.display = 'none'; box.textContent = ''; }
     return;
   }
-  briefBenchLoad();
+  briefBenchLoad(kpi === 'Transactions');
   const money = n => (typeof fmtMoney === 'function' ? fmtMoney(n) : '$' + Math.round(n).toLocaleString('en-US'));
   const gtxt = goal.toLocaleString('en-US'); const b = briefBench.data && briefBench.data.available ? briefBench.data : null;
   const parts = []; let level = 'info'; let ref = null;
@@ -55036,7 +55042,9 @@ function briefBudgetCheck(){
   if (!kpi){ if (cmpKpiDropNote){ level = 'warn'; parts.push(cmpKpiDropNote); } else parts.push('Pick what the ' + gtxt + ' counts (the Primary KPI) and I will check it against your history.'); }
   else if (!m){ parts.push('I do not price ' + kpi + ' from your history at this step. The recommendation step sizes it from the channels it picks.'); }
   else if (!b){
-    parts.push(briefBench.loading ? 'Checking your history…' : 'I do not have ' + m.per + ' history on this account yet, so I cannot size ' + gtxt + ' ' + m.unit + '. Add your estimated budget and I will compare it with your annual plan.');
+    parts.push((briefBench.loading || (!briefBench.data && !briefBench.err)) ? 'Checking your history…' : briefBench.err ? 'I could not load your account history just now, so I cannot size ' + gtxt + ' ' + m.unit + ' yet. Reload and try again, or add your estimated budget.' : 'I do not have ' + m.per + ' history on this account yet, so I cannot size ' + gtxt + ' ' + m.unit + '. Add your estimated budget and I will compare it with your annual plan.');
+  } else if (b[m.key] == null && m.key === 'cac' && (briefBench.oLoading || !briefBench.outcomes)){
+    parts.push('Checking your CAC history…');
   } else if (b[m.key] == null){
     parts.push('Your uploaded history has no ' + m.per + ' yet, so I cannot size ' + gtxt + ' ' + m.unit + '. Add your estimated budget and I will compare it with your annual plan.');
   } else {
