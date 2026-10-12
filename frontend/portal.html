@@ -24039,8 +24039,8 @@ async function analyticsImage(card){
     a.href = url; a.download = String(card).replace(/[^a-z0-9-]/gi, '') + '.png'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
   } catch (e){ drr.error = 'Could not build that image right now.'; drrRenderBars(); }
 }
-async function stratGet(path){
-  const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/analytics/${path}`);
+async function stratGet(path, timeoutMs){
+  const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/analytics/${path}`, timeoutMs ? { timeoutMs } : {});
   if (!resp.ok) throw new Error(String(resp.status));
   return resp.json();
 }
@@ -24050,7 +24050,7 @@ async function bfLoad(year){
   const y = Number(year) || new Date().getFullYear();
   if (bf.cache[y]) return bf.cache[y];
   if (bf.loading[y]) return bf.loading[y];
-  bf.loading[y] = (async () => { try { let d; try { d = await stratGet('budget-flow?year=' + y); } catch (e1){ await new Promise(r => setTimeout(r, 1500)); d = await stratGet('budget-flow?year=' + y); } bf.cache[y] = d; return d; } catch (e){ bf.lastError = String((e && e.message) || e); return null; } finally { delete bf.loading[y]; } })();
+  bf.loading[y] = (async () => { try { let d; try { d = await stratGet('budget-flow?year=' + y, 30000); } catch (e1){ await new Promise(r => setTimeout(r, 1500)); d = await stratGet('budget-flow?year=' + y, 30000); } bf.cache[y] = d; return d; } catch (e){ bf.lastError = (e && e.name === 'AbortError') ? 'took longer than 30 seconds' : String((e && e.message) || e); return null; } finally { delete bf.loading[y]; } })();
   return bf.loading[y];
 }
 function bfInvalidate(){ bf.cache = {}; }
