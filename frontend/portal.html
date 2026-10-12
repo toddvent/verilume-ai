@@ -33410,7 +33410,7 @@ function cmpToggleFunnelFields(){
       : `No Industry-specific mix on file${state.industry ? ` for ${state.industry}` : ''} — defaults to 0% direct-purchase (100% Lead path, same as before this field existed). Set a Company Profile Industry for a starting estimate, or enter your own mix directly if you know the split.`;
   }
   const stageNote = document.getElementById('cmpFunnelAssumptionsStageNote');
-  const hasIndustry = state.industry && INDUSTRY_FUNNEL_MULTIPLIER[state.industry];
+  const hasIndustry = !!(state.industry && (STANDALONE_INDUSTRY_FUNNEL_MULTIPLIER[state.industry] || industryCluster(state.industry) !== 'generic'));
   const measuredNote = seed.bookingRateSource && seed.bookingRateSource.startsWith('measured') ? ` Leads → Bookings is ${seed.bookingRateSource} (Leads by type, by month) — not a seed.` : '';
   if (stageNote) stageNote.textContent = stage
     ? `Seeded for the ${stage} stage${hasIndustry ? ` and this account's Industry (${state.industry})` : ''} — from published, cross-channel funnel-benchmark studies (not tied to any single media platform), mapped to the closest matching category (see the funnel-hierarchy doc for sourcing).${measuredNote} Always yours to edit from your own research — saved with this campaign, so your numbers are exactly what's here the next time you open it.`
