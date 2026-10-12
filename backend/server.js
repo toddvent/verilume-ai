@@ -13674,6 +13674,65 @@ function mbuBudgetStatusForCategoryMonth(accountId, year, scope, category, month
 // hasMediaPlanMix } — the caller decides what to do with the booleans (e.g.
 // set an honest recommendationDataConfidenceNote when any is false) rather
 // than this function silently deciding what "enough data" means.
+// 2026-10-12, per Todd: "the brain should remember the approved media plan mix based on budget levels as the clients build and execute
+// new campaigns" — it should learn what was planned, what ran, and then how it performed. Loop-stage campaigns at different budgets
+// carry different channels (a $50,000 plan looks different from a $500,000 plan). This reads the account's own past campaigns and
+// their channel lines, groups them by budget size band, and shows for the current campaign's stage and budget: which channels were
+// planned, how much of the budget each took, which of those campaigns actually ran, and the conversions per $1,000 they returned.
+// Every figure is a real stored value; a section with too little history says so instead of guessing.
+const MIX_MEMORY_BANDS = [
+  { key: 'under50', label: 'under $50,000', lo: 0, hi: 50000 },
+  { key: '50to150', label: '$50,000 to $150,000', lo: 50000, hi: 150000 },
+  { key: '150to500', label: '$150,000 to $500,000', lo: 150000, hi: 500000 },
+  { key: 'over500', label: 'over $500,000', lo: 500000, hi: Infinity }
+];
+function mixMemoryBandOf(budget){ const b = Number(budget) || 0; if (b <= 0) return null; return MIX_MEMORY_BANDS.find(x => b >= x.lo && b < x.hi) || null; }
+function buildMixMemoryBlock(accountId, campaign){
+  const head = `WHAT THIS ACCOUNT PLANNED, WHAT RAN, AND HOW IT PERFORMED, BY BUDGET LEVEL (real campaigns on this account; budget size changes which channels fit, so compare like with like):`;
+  try {
+    const myBudget = Number(campaign && campaign.budget) || 0;
+    const myBand = mixMemoryBandOf(myBudget);
+    const myStage = String((campaign && campaign.stage) || '').trim().toLowerCase();
+    const past = db.prepare("SELECT id, name, stage, status, budget, actualSpend, actualConversions FROM campaigns WHERE accountId = ? AND isAdHoc = 0 AND COALESCE(cancelled, 0) = 0 AND id != ? AND budget > 0 ORDER BY createdAt DESC LIMIT 80").all(accountId, (campaign && campaign.id) || '');
+    if (!past.length) return `${head}\n(no other campaign on this account has a budget on file yet, so there is no planned-versus-ran history to learn from)`;
+    const lineStmt = db.prepare("SELECT channel, audience, budget, status FROM channel_planning_details WHERE campaignId = ?");
+    const rows = past.map(c => {
+      const lines = lineStmt.all(c.id).filter(l => { const st = String(l.status || '').toLowerCase(); return Number(l.budget) > 0 && st !== 'cancelled' && st !== 'rejected'; });
+      const total = lines.reduce((sum, l) => sum + Number(l.budget), 0);
+      const byCh = {}; lines.forEach(l => { byCh[l.channel] = (byCh[l.channel] || 0) + Number(l.budget); });
+      const ran = ['In Market', 'Analysis'].includes(String(c.status || '')) || (Number(c.actualSpend) > 0);
+      const perf = (Number(c.actualSpend) > 0 && c.actualConversions != null) ? Number(c.actualConversions) / (Number(c.actualSpend) / 1000) : null;
+      return { c, total, byCh, ran, perf, band: mixMemoryBandOf(c.budget), stageMatch: !!myStage && String(c.stage || '').trim().toLowerCase() === myStage };
+    }).filter(r => r.total > 0);
+    if (!rows.length) return `${head}\n(past campaigns exist but none has channel lines with budgets yet, so there is no planned mix to learn from)`;
+    const mixText = byCh => Object.entries(byCh).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([ch, amt]) => `${ch} ${Math.round(amt / Object.values(byCh).reduce((x, y) => x + y, 0) * 100)}%`).join(', ');
+    const lines = [];
+    // 1. Same budget level (same band), same stage first.
+    const sameBand = rows.filter(r => myBand && r.band && r.band.key === myBand.key);
+    const pickSame = sameBand.filter(r => r.stageMatch).length >= 2 ? sameBand.filter(r => r.stageMatch) : sameBand;
+    if (myBand){
+      lines.push(`This campaign's budget ${myBudget ? '$' + Math.round(myBudget).toLocaleString('en-US') : '(not set)'} falls in the ${myBand.label} level${myStage ? `; stage ${campaign.stage}` : ''}.`);
+    } else lines.push('This campaign has no budget yet, so budget-level comparison is not possible; the history below is shown across all sizes.');
+    let show = (myBand ? pickSame : rows).slice(0, 6);
+    let nearNote = '';
+    if (myBand && !show.length){ show = rows.filter(r => r.c.budget >= myBudget * 0.5 && r.c.budget <= myBudget * 2).slice(0, 6); if (show.length) nearNote = ' (none at exactly this level, so these are within half to double this budget)'; }
+    if (show.length){
+      lines.push(myBand ? `Campaigns at this budget level${pickSame.length && pickSame[0].stageMatch ? ' and stage' : ''} (planned mix, whether it ran, performance):` : 'Past campaigns (planned mix, whether it ran, performance):');
+      show.forEach(r => lines.push(`- "${r.c.name || r.c.id}" $${Math.round(r.c.budget).toLocaleString('en-US')}, stage ${r.c.stage || 'not set'}: planned ${mixText(r.byCh)}; ${r.ran ? 'ran' : 'not run yet'}${r.perf != null ? `; ${r.perf.toFixed(2)} conversions per $1,000` : ''}`));
+    } else if (myBand) lines.push(`No past campaign on this account sits at, or within half to double of, this budget level yet.`);
+    if (nearNote) lines.push('Note' + nearNote + '.');
+    // 2. Channels seen at each budget level, so a small budget is not given channels that only appear at large ones.
+    const prevalence = {};
+    rows.forEach(r => { if (!r.band) return; const b = prevalence[r.band.key] || (prevalence[r.band.key] = { label: r.band.label, n: 0, ch: {} }); b.n++; Object.keys(r.byCh).forEach(ch => { b.ch[ch] = (b.ch[ch] || 0) + 1; }); });
+    const bandLines = MIX_MEMORY_BANDS.filter(b => prevalence[b.key]).map(b => { const p = prevalence[b.key]; return `- ${p.label} (${p.n} campaign${p.n === 1 ? '' : 's'}): ${Object.entries(p.ch).sort((a, b2) => b2[1] - a[1]).slice(0, 7).map(([ch, n]) => `${ch} (${n})`).join(', ')}`; });
+    if (bandLines.length){ lines.push('Channels used at each budget level on this account (number of campaigns that used each):'); lines.push(...bandLines); }
+    lines.push('Use this as memory, not a rule: favor channels this account has actually run at a budget like this one, say so when the recommendation adds a channel only seen at much larger budgets, and weigh the conversions-per-$1,000 figures when choosing between channels. The approved Media Plan mix above is still the plan; this shows what the account really did against it.');
+    return `${head}\n${lines.join('\n')}`;
+  } catch (e){
+    return `${head}\n(could not be read right now: ${String(e && e.message || e).slice(0, 120)})`;
+  }
+}
+
 function buildAccountBudgetAndPerformanceContextForPrompt(accountId, campaign){
   // A person who cannot see account-wide budgets must not get them through the AI either.
   if (!actorMay('budgets')) return { promptBlock: 'ACCOUNT-WIDE BUDGET AND PERFORMANCE: not available to this user\'s role. Do not state, estimate or hint at account-wide or full-year budget figures. Work only from the campaign itself.', hasAccountBudget: false, hasPerformanceData: false, hasMediaPlanMix: false };
@@ -13789,7 +13848,9 @@ ACCOUNT-LEVEL MEDIA MIX PLAN (Account Management's forward-looking target channe
 ${mediaMixLines}
 
 THIS ACCOUNT'S HISTORICAL CAMPAIGN PERFORMANCE (real actuals from past campaigns, best conversions/$1k first):
-${performanceLines}`;
+${performanceLines}
+
+${buildMixMemoryBlock(accountId, campaign)}`;
   return { promptBlock, hasAccountBudget, hasPerformanceData, hasMediaPlanMix };
 }
 
