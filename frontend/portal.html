@@ -13132,6 +13132,33 @@
          Campaign Summary actuals + MMM inputs (monthly channel totals),
          Demand Fulfillment (measured brand-search CPC / clicks per visitor,
          remarketing CPM), and the campaign allocation by creative market. -->
+
+    <div class="sk-card" id="mbuGa4SourcesCard" style="margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Manual bridge — until GA4 is integrated</div><h3>GA4 sources and key events (UTM export, by week)</h3></div>
+        <div class="hicon">🧭</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">GA4 → Explore → Free form: Year, Week, Session campaign, Session source / medium, Event name, Sessions, Engaged sessions, Key events. Upload the .csv as it comes. We keep sessions, engaged sessions and key events by week, campaign and source, and key events by name (calls, popups, forms). GA4 stops a free-form export at 100,000 rows, so for a long range export it in shorter date ranges or filter to key events.</p>
+        <div id="ga4SourcesPreview"></div>
+        <div id="ga4SourcesReceipt"></div>
+        <div id="ga4SourcesSummary" class="hint" style="margin:8px 0 0;">Loading…</div>
+      </div>
+    </div>
+
+    <div class="sk-card" id="mbuGa4SearchCard" style="margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Manual bridge — until GA4 is integrated</div><h3>GA4 Google Ads search (campaign, ad group, keyword, by week)</h3></div>
+        <div class="hicon">🔎</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">GA4 → Explore → Free form: Week, Session Google Ads campaign, ad group name, keyword text, ad network type, Sessions, Key events, Engaged sessions. Brand and Non-Brand search are told apart from the Google Ads campaign name, so the Brain can set Brand Search aside and rank the rest.</p>
+        <div id="ga4SearchPreview"></div>
+        <div id="ga4SearchReceipt"></div>
+        <div id="ga4SearchSummary" class="hint" style="margin:8px 0 0;">Loading…</div>
+      </div>
+    </div>
+
     <div class="sk-card" id="mbuDigitalCard" style="margin-top:18px;">
       <div class="sk-card-head ink">
         <div class="htext"><div class="kicker">Manual bridge — until ad-platform integrations</div><h3>Digital performance (agency exports: search, social, display)</h3></div>
@@ -30071,7 +30098,7 @@ function ttbToggle(k){ ttb.open = ttb.open === k ? '' : k; ttbRerender(); }
 //   Add Manually  -> opens inside the row. The existing entry card is moved in here rather than copied, so it works exactly as before.
 //   Partner Integration -> the one Partner Integrations page.
 // View in Portal is greyed until the item has data, and only shown as a link where the data actually appears.
-const TTB_ALL_CARDS = ['teamStepBody', 'kpiMetricsAdminModule', 'mbuWebsiteUsersCard', 'mbuMarketableSizesCard', 'mbuDmCostPerPieceCard', 'mbuDmFormatCostCard', 'mbuMagazineCostCard', 'mbuActiveChannelsCard', 'mpNonWorkingCard', 'lsrCard', 'mbuAnnualPlanCard', 'mbuDemandFulfillmentCard', 'mbuEngagementCard', 'mbuLeadCountsCard', 'mbuTransactionsCard', 'mbuDigitalCard'];
+const TTB_ALL_CARDS = ['teamStepBody', 'kpiMetricsAdminModule', 'mbuWebsiteUsersCard', 'mbuMarketableSizesCard', 'mbuDmCostPerPieceCard', 'mbuDmFormatCostCard', 'mbuMagazineCostCard', 'mbuActiveChannelsCard', 'mpNonWorkingCard', 'lsrCard', 'mbuAnnualPlanCard', 'mbuDemandFulfillmentCard', 'mbuEngagementCard', 'mbuGa4SourcesCard', 'mbuGa4SearchCard', 'mbuLeadCountsCard', 'mbuTransactionsCard', 'mbuDigitalCard'];
 let ttbHomes = null;
 function ttbInitHomes(){
   if (ttbHomes) return; ttbHomes = {};
@@ -30104,6 +30131,8 @@ const TTB_CFG = {
   team: { manual: { teamFlow: true }, view: { step: 'team', label: 'Team' } },
   websiteUsers: { manual: { cards: ['mbuWebsiteUsersCard'] }, integ: true, view: { tab: 'strategy', label: 'Strategy' } },
   websiteEngagement: { upload: { direct: 'ttbUpPick', formats: 'The GA4 Traffic acquisition export (.xlsx or .csv), by Session default channel group', handler: 'mbuHandleEngagementFile', cards: ['mbuEngagementCard'], sample: { name: 'website-engagement-sample.csv', cols: ['Year', 'Month', 'Session default channel group', 'Sessions', 'Engaged sessions', 'Engagement rate', 'Average engagement time per engaged session'], rows: [[2026, 'Jan', 'Organic Search', 18400, 12100, '65.8%', 1.4], [2026, 'Jan', 'Paid Search', 9200, 5100, '55.4%', 1.1]] } }, manual: { cards: ['mbuEngagementCard'] }, integ: true, view: { tab: 'dataScientist', label: 'Media Science' } },
+  ga4Sources: { upload: { direct: 'ttbUpPick', formats: 'The GA4 free-form export (.csv): Year, Week, Session campaign, Session source / medium, Event name, Sessions, Engaged sessions, Key events', handler: 'ga4SourcesHandleFile', cards: ['mbuGa4SourcesCard'], noSample: 'No sample needed. Upload the GA4 free-form export as it comes.' }, manual: { cards: ['mbuGa4SourcesCard'] }, integ: true, view: { tab: 'dataScientist', label: 'Media Science' } },
+  ga4Search: { upload: { direct: 'ttbUpPick', formats: 'The GA4 free-form export (.csv): Week, Session Google Ads campaign, ad group name, keyword text, ad network type, Sessions, Key events, Engaged sessions', handler: 'ga4SearchHandleFile', cards: ['mbuGa4SearchCard'], noSample: 'No sample needed. Upload the GA4 free-form export as it comes.' }, manual: { cards: ['mbuGa4SearchCard'] }, integ: true, view: { tab: 'dataScientist', label: 'Media Science' } },
   leadCounts: { upload: { direct: 'ttbUpPick', formats: '.xlsx or .csv, one row per source, lead type and form', handler: 'mbuHandleLeadFile', cards: ['mbuLeadCountsCard'], sample: { name: 'leads-by-month-sample.csv', cols: ['Year', 'Month', 'Source', 'Lead Type', 'Form Name', 'Total Leads', 'Bookings', 'Avg Days to Convert'], rows: [[2026, 'Jan', 'Website', 'High Value', 'Request a brochure', 320, 18, 41], [2026, 'Jan', 'Meta', 'Growth', 'Sweepstakes', 1150, 9, 66]] } }, manual: { cards: ['mbuLeadCountsCard'] }, integ: true, view: { tab: 'marketer', label: 'Growth & Performance' } },
   digitalPerformance: { upload: { direct: 'ttbUpPick', formats: 'The agency workbook as it comes (.xlsx or .csv). Sheets with a year and month layout are read automatically.', handler: 'dpHandleWorkbookFile', cards: ['mbuDigitalCard'], noSample: 'No sample needed. Send the workbook your agency already gives you.' }, manual: { cards: ['mbuDigitalCard'] }, integ: true, view: { tab: 'dataScientist', label: 'Media Science' } },
   kpiMetrics: { manual: { cards: ['kpiMetricsAdminModule'] }, view: { step: 'analyticsSetup', label: 'CMO View' } },
@@ -30120,6 +30149,8 @@ const TTB_CFG = {
 const TTB_PLAN_SAMPLES = {
   websiteUsers: { benefit: 'Sets the reach and cost per website user the forecast starts from.', sample: `<div class="ttb-srow ttb-head"><span>Month</span><span>US</span><span>Canada</span><span>Intl</span></div><div class="ttb-srow"><span>Jan</span><span>182,000</span><span>21,400</span><span>9,800</span></div><div class="ttb-srow"><span>Feb</span><span>176,500</span><span>20,900</span><span>10,200</span></div>` },
   websiteEngagement: { benefit: 'Shows which channels bring visitors who stay.', sample: `<div class="ttb-srow ttb-head"><span>Channel group</span><span>Sessions</span><span>Engaged</span></div><div class="ttb-srow"><span>Organic Search</span><span>18,400</span><span>65.8%</span></div><div class="ttb-srow"><span>Paid Search</span><span>9,200</span><span>55.4%</span></div>` },
+  ga4Sources: { benefit: 'Shows which sources bring visits that take action, beyond brand search and remarketing.', sample: `<div class="ttb-srow ttb-head"><span>Source / medium</span><span>Sessions</span><span>Key events</span></div><div class="ttb-srow"><span>google / cpc</span><span>329,865</span><span>13,049</span></div><div class="ttb-srow"><span>Facebook / PaidSocial</span><span>7,033</span><span>248</span></div>` },
+  ga4Search: { benefit: 'Splits brand from non-brand search and ranks keywords by key events.', sample: `<div class="ttb-srow ttb-head"><span>Campaign</span><span>Sessions</span><span>Key events</span></div><div class="ttb-srow"><span>…Non-Brand_CPC…</span><span>110,298</span><span>2,802</span></div><div class="ttb-srow"><span>…Brand_CPC…</span><span>138,773</span><span>8,260</span></div>` },
   leadCounts: { benefit: 'Follows leads through to bookings, by source and lead type.', sample: `<div class="ttb-srow ttb-head"><span>Source · type</span><span>Leads</span><span>Bookings</span></div><div class="ttb-srow"><span>Website · High Value</span><span>320</span><span>18</span></div><div class="ttb-srow"><span>Meta · Growth</span><span>1,150</span><span>9</span></div>` },
   digitalPerformance: { benefit: 'Spend, impressions and clicks by channel, publisher and tactic.', sample: `<div class="ttb-srow ttb-head"><span>Channel</span><span>Spend</span><span>Impressions</span></div><div class="ttb-srow"><span>Non-Brand Search</span><span>$42,300</span><span>1.9M</span></div><div class="ttb-srow"><span>Paid Social</span><span>$28,900</span><span>3.4M</span></div>` },
   kpiMetrics: { benefit: 'Feeds the KPI grid and trend line on the CMO View.', sample: `<div class="ttb-srow ttb-head"><span>Metric</span><span>Month</span><span>Value</span></div><div class="ttb-srow"><span>Marketing ROAS</span><span>2026-08</span><span>13.5</span></div><div class="ttb-srow"><span>Cost per booking</span><span>2026-08</span><span>$1,240</span></div>` },
@@ -30458,7 +30489,9 @@ const TTB_UP = {
     async save(rows){ return await mbuSaveTransactions(rows); }
   },
   bulkUploadCustomer: { legacy: 'mbuHandleGuestBookingsFile', row: 'bulkUpload' },
-  digitalPerformance: { legacy: 'dpHandleWorkbookFile' }
+  digitalPerformance: { legacy: 'dpHandleWorkbookFile' },
+  ga4Sources: { legacy: 'ga4SourcesHandleFile' },
+  ga4Search: { legacy: 'ga4SearchHandleFile' }
 };
 const ttbUp = { key: null, stage: 'idle', fileName: '', grid: null, hi: 0, assign: {}, chosen: {}, year: null, month: null, reviewed: false, msg: '', result: '' };
 function ttbUpReset(){ Object.assign(ttbUp, { key: null, stage: 'idle', fileName: '', grid: null, hi: 0, assign: {}, chosen: {}, year: null, month: null, reviewed: false, msg: '', result: '' }); }
@@ -66312,7 +66345,7 @@ const TF_TASKS = {
   histRevenue: { label: 'Historical Revenue', keys: ['bulkUpload'] },
   histPerformance: { label: 'Historical Campaign Performance', keys: ['digitalPerformance'] },
   leadsCalls: { label: 'Leads & Calls', keys: ['leadCounts'] },
-  website: { label: 'Website Performance', keys: ['websiteUsers', 'websiteEngagement'] },
+  website: { label: 'Website Performance', keys: ['websiteUsers', 'websiteEngagement', 'ga4Sources', 'ga4Search'] },
   partners: { label: 'Partner Integrations', keys: ['partnerIntegrations'] }
 };
 function tfSlotKeys(slot){ const out = []; ((slot && slot.tasks) || []).forEach(t => (TF_TASKS[t] ? TF_TASKS[t].keys : []).forEach(k => out.push(k))); return out; }
@@ -77402,7 +77435,7 @@ function mbuLoadReachInputs(){
   mbuRenderCostPerWebsiteUser();
   mbuLoadAnnualPlan();
   mbuLoadDemandFulfillment();
-  mbuLoadEngagement();
+  mbuLoadEngagement(); try { ga4LoadSummaries(); } catch (e){}
   mbuLoadLeadCounts();
   mbuLoadTransactions();
   dpLoad();
@@ -78220,6 +78253,133 @@ async function mbuSaveEngagement(replace, fileName){
   if (persisted) mbuLoadEngagement();
   return persisted;
 }
+
+// ---- GA4 source / key-event uploads (2026-10-12) -------------------------------------------------------------
+// Two GA4 free-form CSVs. They carry "# ..." comment lines above the header and a "Grand total" row, and the event file can
+// run to 100,000 rows, so they are read here, reduced to weekly rows and sent compact. Replace-all per account.
+function ga4ParseCsv(text){
+  const rows = []; let row = [], cur = '', q = false;
+  for (let i = 0; i < text.length; i++){
+    const c = text[i];
+    if (q){ if (c === '"'){ if (text[i + 1] === '"'){ cur += '"'; i++; } else q = false; } else cur += c; }
+    else if (c === '"') q = true;
+    else if (c === ','){ row.push(cur); cur = ''; }
+    else if (c === '\n'){ row.push(cur); rows.push(row); row = []; cur = ''; }
+    else if (c !== '\r') cur += c;
+  }
+  if (cur !== '' || row.length){ row.push(cur); rows.push(row); }
+  return rows;
+}
+function ga4ReadHeader(rows, need){
+  const norm = v => String(v || '').trim().toLowerCase();
+  const comment = []; let hi = -1; let col = null;
+  for (let i = 0; i < Math.min(rows.length, 40); i++){
+    const r = rows[i]; const first = String(r[0] || '');
+    if (first.startsWith('#')){ comment.push(first); continue; }
+    const hs = r.map(norm);
+    const found = {}; let ok = true;
+    for (const k of Object.keys(need)){ const idx = hs.findIndex(h => need[k].some(n => h === n || h.startsWith(n))); if (idx < 0){ ok = false; break; } found[k] = idx; }
+    if (ok){ hi = i; col = found; break; }
+  }
+  return { hi, col, comment };
+}
+function ga4WeekYear(week, range){
+  // GA4 weeks carry no year in the search export: weeks at or after the start week belong to the start year.
+  if (range && range.sy && range.ey && range.sy !== range.ey) return week >= range.sw ? range.sy : range.ey;
+  return range && range.sy ? range.sy : new Date().getFullYear();
+}
+function ga4Range(comment){
+  const m = (comment || []).map(c => /(\d{8})\s*-\s*(\d{8})/.exec(c)).find(Boolean); if (!m) return null;
+  const d = s => new Date(Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8)));
+  const isoWeek = dt => { const t = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate())); const day = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - day); const y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1)); return Math.ceil((((t - y0) / 86400000) + 1) / 7); };
+  const a = d(m[1]), b = d(m[2]);
+  return { sy: a.getUTCFullYear(), ey: b.getUTCFullYear(), sw: isoWeek(a), from: m[1], to: m[2] };
+}
+const ga4N = v => { const x = Number(String(v == null ? '' : v).replace(/[,$%\s]/g, '')); return Number.isFinite(x) ? x : 0; };
+const ga4Pending = { sources: null, search: null };
+async function ga4Read(file){ return ga4ParseCsv(await file.text()); }
+async function ga4SourcesHandleFile(event){
+  const file = event.target.files && event.target.files[0]; const box = document.getElementById('ga4SourcesPreview'); if (!file || !box) return;
+  box.innerHTML = '<p class="hint">Reading ' + escapeHtml(file.name) + '…</p>';
+  try {
+    const rows = await ga4Read(file);
+    const { hi, col, comment } = ga4ReadHeader(rows, { year: ['year'], week: ['week'], campaign: ['session campaign', 'campaign'], sm: ['session source / medium', 'source / medium', 'session source'], event: ['event name'], sessions: ['sessions'], engaged: ['engaged sessions'], key: ['key events'] });
+    if (hi < 0) throw new Error('Could not find a header row with Year, Week, Session campaign, Session source / medium, Event name, Sessions, Engaged sessions and Key events. Check the export columns.');
+    const agg = new Map(), ev = new Map(); let src = 0, startRows = 0, keyTotal = 0;
+    for (let i = hi + 1; i < rows.length; i++){
+      const r = rows[i]; if (!r || r.length < 4) continue; const yr = parseInt(r[col.year], 10), wk = parseInt(r[col.week], 10);
+      if (!(yr > 2000) || !(wk >= 0)) continue; src++;
+      const sm = String(r[col.sm] || '').trim(), camp = String(r[col.campaign] || '').trim(), en = String(r[col.event] || '').trim(), ke = ga4N(r[col.key]);
+      if (!sm) continue;
+      const k = yr + '|' + wk + '|' + camp + '|' + sm; const o = agg.get(k) || { year: yr, week: wk, campaign: camp, sourcemedium: sm, sessions: 0, engaged: 0, keyevents: 0 };
+      if (en === 'session_start'){ o.sessions += ga4N(r[col.sessions]); o.engaged += ga4N(r[col.engaged]); startRows++; }
+      if (ke > 0){ o.keyevents += ke; keyTotal += ke; const k2 = yr + '|' + wk + '|' + sm + '|' + en; const e = ev.get(k2) || { year: yr, week: wk, sourcemedium: sm, eventname: en, keyevents: 0 }; e.keyevents += ke; ev.set(k2, e); }
+      agg.set(k, o);
+    }
+    const out = [...agg.values()].filter(o => o.sessions > 0 || o.keyevents > 0);
+    if (!out.length) throw new Error('No session or key-event rows were found under that header.');
+    const capped = src >= 99990; const range = ga4Range(comment);
+    ga4Pending.sources = { rows: out, events: [...ev.values()], fileName: file.name, truncated: capped, sourceRows: src, note: range ? range.from + '-' + range.to : '' };
+    const names = [...new Set([...ev.values()].map(e => e.eventname))].length, srcs = new Set(out.map(o => o.sourcemedium)).size;
+    box.innerHTML = `<div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:10px 12px;margin:0 0 10px;font-size:0.8125rem;"><b>${src.toLocaleString('en-US')} rows</b> read from ${escapeHtml(file.name)}: ${srcs.toLocaleString('en-US')} sources, ${names} key events, ${keyTotal.toLocaleString('en-US')} key events in total.${range ? ' Range ' + range.from + ' to ' + range.to + '.' : ''}
+      ${capped ? '<div style="margin-top:6px;color:#9A5B00;font-weight:600;">This file has exactly 100,000 rows, GA4\'s limit for a free-form export. The smallest sources and rarest events are missing. Export shorter date ranges, or filter to key events, for the full picture. You can still save it.</div>' : ''}
+      <div class="btn-row" style="margin-top:8px;"><button type="button" class="btn-primary" onclick="ga4Save('sources')">Save — replace the GA4 source data</button><button type="button" class="btn-ghost" onclick="ga4Cancel('sources')">Cancel</button></div></div>`;
+  } catch (e){ box.innerHTML = '<p class="hint" style="color:var(--advocacy);">' + escapeHtml(e.message || 'Could not read that file.') + '</p>'; }
+}
+async function ga4SearchHandleFile(event){
+  const file = event.target.files && event.target.files[0]; const box = document.getElementById('ga4SearchPreview'); if (!file || !box) return;
+  box.innerHTML = '<p class="hint">Reading ' + escapeHtml(file.name) + '…</p>';
+  try {
+    const rows = await ga4Read(file);
+    const { hi, col, comment } = ga4ReadHeader(rows, { week: ['week'], campaign: ['session google ads campaign'], group: ['session google ads ad group'], keyword: ['session google ads keyword'], network: ['session google ads ad network'], sessions: ['sessions'], key: ['key events'], engaged: ['engaged sessions'] });
+    if (hi < 0) throw new Error('Could not find a header row with Week, Session Google Ads campaign, ad group name, keyword text, ad network type, Sessions, Key events and Engaged sessions.');
+    const range = ga4Range(comment); const out = []; let src = 0;
+    for (let i = hi + 1; i < rows.length; i++){
+      const r = rows[i]; if (!r || r.length < 5) continue; const wk = parseInt(r[col.week], 10); if (!(wk >= 0)) continue; src++;
+      out.push({ year: ga4WeekYear(wk, range), week: wk, adcampaign: String(r[col.campaign] || '').trim(), adgroup: String(r[col.group] || '').trim(), keyword: String(r[col.keyword] || '').trim(), network: String(r[col.network] || '').trim(), sessions: ga4N(r[col.sessions]), engaged: ga4N(r[col.engaged]), keyevents: ga4N(r[col.key]) });
+    }
+    if (!out.length) throw new Error('No weekly rows were found under that header.');
+    ga4Pending.search = { rows: out, fileName: file.name, sourceRows: src, note: range ? range.from + '-' + range.to : '' };
+    const camps = new Set(out.map(o => o.adcampaign)).size, kws = new Set(out.map(o => o.keyword)).size, kt = out.reduce((a, o) => a + o.keyevents, 0);
+    box.innerHTML = `<div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:10px 12px;margin:0 0 10px;font-size:0.8125rem;"><b>${src.toLocaleString('en-US')} rows</b> read from ${escapeHtml(file.name)}: ${camps} Google Ads campaigns, ${kws.toLocaleString('en-US')} keywords, ${kt.toLocaleString('en-US')} key events.${range ? ' Range ' + range.from + ' to ' + range.to + '; weeks from week ' + range.sw + ' are filed under ' + range.sy + '.' : ' The export has no date range line, so weeks are filed under this year.'}
+      <div class="btn-row" style="margin-top:8px;"><button type="button" class="btn-primary" onclick="ga4Save('search')">Save — replace the GA4 search data</button><button type="button" class="btn-ghost" onclick="ga4Cancel('search')">Cancel</button></div></div>`;
+  } catch (e){ box.innerHTML = '<p class="hint" style="color:var(--advocacy);">' + escapeHtml(e.message || 'Could not read that file.') + '</p>'; }
+}
+function ga4Cancel(kind){ ga4Pending[kind] = null; const b = document.getElementById(kind === 'sources' ? 'ga4SourcesPreview' : 'ga4SearchPreview'); if (b) b.innerHTML = ''; }
+async function ga4Save(kind){
+  const pend = ga4Pending[kind]; const box = document.getElementById(kind === 'sources' ? 'ga4SourcesPreview' : 'ga4SearchPreview'); if (!pend || !box) return;
+  box.innerHTML = '<p class="hint">Saving ' + pend.rows.length.toLocaleString('en-US') + ' weekly rows…</p>';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/${kind === 'sources' ? 'ga4-sources' : 'ga4-search'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(pend), timeoutMs: 120000 });
+    const d = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(d.error || ('HTTP ' + resp.status));
+    ga4Pending[kind] = null; box.innerHTML = '<p class="hint" style="color:var(--cx);font-weight:700;">Saved ' + (d.saved || 0).toLocaleString('en-US') + ' weekly rows.' + (d.truncated ? ' Note: the file was at GA4\'s 100,000-row limit.' : '') + '</p>';
+    if (d.receipt) mbuRenderUploadReceipt(d.receipt, kind === 'sources' ? 'ga4SourcesReceipt' : 'ga4SearchReceipt');
+    try { if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext(); } catch (e){}
+    ga4LoadSummaries();
+  } catch (e){ box.innerHTML = '<p class="hint" style="color:var(--advocacy);">Not saved: ' + escapeHtml(e.message || 'try again') + '. Your existing data is unchanged.</p>'; }
+}
+async function ga4Clear(kind){
+  if (!confirm('Remove the saved GA4 ' + (kind === 'sources' ? 'source and key-event' : 'search') + ' data for this account?')) return;
+  try { await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/${kind === 'sources' ? 'ga4-sources' : 'ga4-search'}`, { method: 'DELETE' }); } catch (e){}
+  ga4LoadSummaries();
+}
+async function ga4LoadSummaries(){
+  if (dataSourceLabel !== 'backend' || !state.companyId) return;
+  const base = `${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/`; const f = n => Number(n || 0).toLocaleString('en-US');
+  const mk = (id, kind, line) => { const el = document.getElementById(id); if (el) el.innerHTML = line; };
+  try {
+    const d = await (await authedFetch(base + 'ga4-sources')).json();
+    if (!d.available) mk('ga4SourcesSummary', 'sources', 'Nothing uploaded yet.');
+    else { const top = (d.sources || []).slice(0, 5).map(s => escapeHtml(s.sourceMedium) + ' ' + f(s.sessions) + ' sessions, ' + (s.keyRatePct == null ? 'n/a' : s.keyRatePct + '%') + ' key event rate').join(' · '); mk('ga4SourcesSummary', 'sources', '<b>On file:</b> ' + escapeHtml((d.meta && d.meta.fileName) || '') + ', weeks ' + escapeHtml((d.meta && d.meta.from) || '') + ' to ' + escapeHtml((d.meta && d.meta.to) || '') + ', ' + f(d.totals && d.totals.sessions) + ' sessions, ' + f(d.totals && d.totals.keyEvents) + ' key events.' + (d.meta && d.meta.truncated ? ' <span style="color:#9A5B00;font-weight:600;">Hit GA4\'s 100,000-row limit; small sources are missing.</span>' : '') + '<br>Top sources: ' + top + '<br><a class="flink" onclick="ga4Clear(\'sources\')">Remove this data</a>'); }
+  } catch (e){ mk('ga4SourcesSummary', 'sources', 'Could not load what is on file just now.'); }
+  try {
+    const d = await (await authedFetch(base + 'ga4-search')).json();
+    if (!d.available) mk('ga4SearchSummary', 'search', 'Nothing uploaded yet.');
+    else { const k = (d.searchKinds || []).map(s => escapeHtml(s.kind) + ' ' + f(s.sessions) + ' sessions, ' + (s.keyRatePct == null ? 'n/a' : s.keyRatePct + '%') + ' key event rate').join(' · '); mk('ga4SearchSummary', 'search', '<b>On file:</b> ' + escapeHtml((d.meta && d.meta.fileName) || '') + ', weeks ' + escapeHtml((d.meta && d.meta.from) || '') + ' to ' + escapeHtml((d.meta && d.meta.to) || '') + '.<br>' + k + '<br><a class="flink" onclick="ga4Clear(\'search\')">Remove this data</a>'); }
+  } catch (e){ mk('ga4SearchSummary', 'search', 'Could not load what is on file just now.'); }
+}
+
 async function mbuHandleEngagementFile(event){
   const file = event.target.files && event.target.files[0];
   const status = document.getElementById('mbuEngagementStatus');
