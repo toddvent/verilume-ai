@@ -4336,6 +4336,22 @@ async function withSingleRetryOnTimeout(attemptFn, retryFn){
 // overview (Claude Opus 5, $5/$25 per million input/output tokens — ~2.5x
 // MODEL_STANDARD's per-token cost, real and worth knowing, not hidden in a
 // constant).
+// ===== 2026-10-11 — Excluded audiences (per campaign) =====
+// A campaign can name audiences it must NOT reach (campaigns.excludeSegments, comma-separated; empty = none). Every helper
+// below reads ONLY the campaign object it is handed, so the rule applies to that campaign id and nothing else.
+const EXCLUDED_AUDIENCE_CHANNELS = { 'Past Customers': ['Direct Mail \u2014 Past Guests'], 'Prospects': ['Direct Mail \u2014 Prospects'], 'Hand-Raisers': ['Direct Mail \u2014 Inquiries'] };
+function campaignExcludedAudiences(c){ return String((c && c.excludeSegments) || '').split(',').map(x => x.trim()).filter(Boolean); }
+function audienceIsExcluded(c, label){
+  const t = String(label || '').toLowerCase().trim(); if (!t) return false;
+  return campaignExcludedAudiences(c).some(x => { const e = x.toLowerCase(); return t === e || t.indexOf(e) >= 0 || e.indexOf(t) >= 0; });
+}
+function exclusionPromptLine(c){
+  const ex = campaignExcludedAudiences(c); if (!ex.length) return '';
+  return `\nEXCLUDED AUDIENCES (hard rule for this one campaign): ${ex.join(', ')}. Never target, address, name or write for these audiences, and do not recommend any channel, tactic, offer or message aimed at them.`;
+}
+function stripExcludedFromSegments(c, segmentText){
+  return String(segmentText || '').split(',').map(x => x.trim()).filter(x => x && !audienceIsExcluded(c, x)).join(', ');
+}
 const MODEL_STANDARD = 'claude-sonnet-4-5';
 const MODEL_REASONING = 'claude-opus-5';
 async function callClaudeForJSON({ model, maxTokens, content, schema, toolName, toolDescription, timeoutMs }){
@@ -13666,6 +13682,7 @@ function buildAccountBudgetAndPerformanceContextForPrompt(accountId, campaign){
   const upload = mbuConfirmedUploadForAccountYearScope(accountId, year, scope);
   let budgetLines = '(no confirmed marketing budget upload on file for this account for ' + year + ' — the AI Brain cannot check this recommendation against real account-wide headroom right now)';
   let hasAccountBudget = false;
+  let budgetMixRows = []; // category -> confirmed dollars, kept to derive a base-case mix when no Media Plan exists (2026-10-12)
   if (upload){
     const byCategory = computeByVerilumeCategoryForUpload(upload.id);
     const committedRows = db.prepare('SELECT verilumeCategory as category, SUM(amount) as total FROM campaign_mbu_draws WHERE accountId = ? AND year = ? AND scope = ? GROUP BY verilumeCategory').all(accountId, year, scope);
@@ -13678,6 +13695,7 @@ function buildAccountBudgetAndPerformanceContextForPrompt(accountId, campaign){
       .slice(0, 15); // keep the prompt bounded — the 15 largest categories cover every account seen so far
     if (rows.length){
       hasAccountBudget = true;
+      budgetMixRows = rows.map(r => ({ category: r.category, budget: r.budget }));
       budgetLines = rows.map(r => `- ${r.category}: $${Math.round(r.budget).toLocaleString()} confirmed for ${year}, $${Math.round(r.committed).toLocaleString()} already committed by other campaigns, ~$${Math.round(Math.max(0, r.budget - r.committed)).toLocaleString()} remaining`).join('\n');
     } else {
       budgetLines = '(a confirmed marketing budget upload exists for this account/year but has no working-media category totals yet)';
@@ -13751,6 +13769,17 @@ function buildAccountBudgetAndPerformanceContextForPrompt(accountId, campaign){
       }
     } else {
       mediaMixLines = '(a Media Plan exists for this account/year but has no channel allocations yet)';
+    }
+  }
+  // 2026-10-12, per Todd: the recap said "no existing media mix template to follow" even though the detailed 2026 budget was
+  // loaded. When the campaign's own year has no Media Plan allocations (none at all, or only a prior-year fallback), the
+  // confirmed budget's own category split is the account's mix: use it as the base case, and say plainly where it came from.
+  if ((!hasMediaPlanMix || isFallbackYearMediaPlan) && budgetMixRows.length >= 2){
+    const tot = budgetMixRows.reduce((sum, r) => sum + r.budget, 0);
+    if (tot > 0){
+      const bits = budgetMixRows.map(r => `${r.category} ${Math.round((r.budget / tot) * 100)}%`).join(', ');
+      mediaMixLines = `(no Media Plan with channel allocations is on file for ${year} yet — this is the category split of the account's confirmed ${year} marketing budget, which is the account's own planned mix. Use it as the base case for the channel split of a line at any stage, then adjust for anything the conversation specifically named. It is NOT missing: do not say there is no media mix to follow.)\n- All stages: ${bits}`;
+      hasMediaPlanMix = true;
     }
   }
   const promptBlock = `ACCOUNT-WIDE MARKETING BUDGET (from Account Management's confirmed budget upload, real dollars across this account's WHOLE year, not just this campaign):
@@ -16726,6 +16755,17 @@ function buildStoryDemand(accountId, opts){
 // Completed = spend to date from the same series the Strategy spend card uses.
 // Pending = scheduled media from the channel planning uploads dated today or later in the year,
 // split into client-approved and still-draft rows. Remaining = planned less completed and pending.
+// 60-second cache per account and year: the card is requested by several pages at once, and the build reads uploads, spend and every scheduled line.
+const _budgetFlowCache = new Map();
+function budgetFlowCached(accountId, year){
+  const key = accountId + '|' + (year || '');
+  const hit = _budgetFlowCache.get(key);
+  if (hit && Date.now() - hit.at < 60000) return hit.data;
+  const data = buildBudgetFlow(accountId, { year });
+  _budgetFlowCache.set(key, { at: Date.now(), data });
+  if (_budgetFlowCache.size > 200){ const k0 = _budgetFlowCache.keys().next().value; _budgetFlowCache.delete(k0); }
+  return data;
+}
 function buildBudgetFlow(accountId, opts){
   const now = new Date(); const curY = now.getUTCFullYear();
   const year = Math.max(2000, Math.min(2100, Number(opts && opts.year) || curY));
@@ -16745,7 +16785,7 @@ function buildBudgetFlow(accountId, opts){
   let completed = null;
   try {
     const from = `${year}-01-01`; const to = year < curY ? `${year}-12-31` : (year > curY ? null : todayIso);
-    if (to){ const src = dmLoadSources(accountId); const dm = dmDailyMetrics(src, from, to); const v = dmSum(dm.days, 'spend'); completed = Math.round(v); }
+    if (to){ const src = dmLoadSources(accountId, { spendOnly: true }); const dm = dmDailyMetrics(src, from, to); const v = dmSum(dm.days, 'spend'); completed = Math.round(v); }
     else completed = 0;
   } catch (e){ completed = null; }
   // Pending: scheduled media dated from today (or the whole year when the year is still ahead).
@@ -16906,7 +16946,9 @@ function campaignMonthlyFromDaily(byCat){
   return Object.values(out);
 }
 
-function dmLoadSources(accountId){
+function dmLoadSources(accountId, opts){
+  // opts.spendOnly (2026-10-12): the Budget Flow card only needs spend, so skip reading every guest booking row for the account.
+  const spendOnly = !!(opts && opts.spendOnly);
   const manualBy = {};
   db.prepare('SELECT * FROM mmm_inputs WHERE accountId = ?').all(accountId).forEach(r => {
     const pl = String(r.periodLabel || ''); if (!/^\d{4}-\d{2}$/.test(pl)) return;
@@ -16919,7 +16961,7 @@ function dmLoadSources(accountId){
   const camp = getCampaignDailyMedia(accountId);
   const cats = new Set(Object.keys(camp));
   Object.keys(manualBy).concat(Object.keys(digitalBy)).forEach(k => cats.add(k.split('||')[1]));
-  const txn = storyTxnRows(accountId);
+  const txn = spendOnly ? { source: null, rows: [] } : storyTxnRows(accountId);
   const guestByDate = {}, guestUndated = {}, monthlyTxn = {};
   if (txn.source === 'account_guest_bookings'){
     const settings = getTransactionSettings(accountId);
@@ -22160,7 +22202,7 @@ async function scoreMessagingBusinessOutcomeRelevance(campaign, draftCopy, keyMe
 
 Campaign Loop Stage: ${campaign.stage || '(not set)'} — this stage's real job: ${stageJob}
 Campaign Objective: ${campaignObjectiveText(campaign) || '(not set)'}
-Audience/Segment: ${campaign.segment || '(not set)'}
+Audience/Segment: ${campaign.segment || '(not set)'}${exclusionPromptLine(campaign)}
 Primary KPI this campaign is measured on: ${campaign.primaryKpi || '(not set)'}
 Key Message (if the human supplied one): ${keyMessage || '(none supplied)'}
 
@@ -23067,7 +23109,7 @@ ${competitorContext || '(none on file)'}
 CAMPAIGN CONTEXT:
 - Loop Stage: ${campaign.stage || '(not set)'} — this stage's real job: ${stageJob}
 - Objective: ${campaignObjectiveText(campaign) || '(not set)'}
-- Audience/Segment: ${campaign.segment || '(not set)'}
+- Audience/Segment: ${campaign.segment || '(not set)'}${exclusionPromptLine(campaign)}
 - Target generation(s) (from this account's Verilume assessment): ${humanizeAudienceKeys(account.audience, GENERATION_LABELS_FOR_COPY) || '(not set — assume a broad, general audience)'}
 - Target wealth tier (Verilume Wealth Index-derived): ${humanizeAudienceKeys(account.wealth, WEALTH_TIER_LABELS_FOR_COPY) || '(not set — assume a broad, general audience)'} — calibrate vocabulary and appeals accordingly: High Net-Worth reads restrained and specific (never lead with price or urgency language), Mainstream/Value-Conscious can lead with clear value and practical benefit, and a generation skew (e.g. Gen Z vs. Baby Boomers) should shift register and reference points, not just word choice
 - Primary KPI this campaign is measured on: ${campaign.primaryKpi || '(not set)'} — the call to action must genuinely drive this outcome, specifically, not a generic "learn more"
@@ -26010,7 +26052,7 @@ async function scoreDraftCopy(copyText, campaign, account){
 
 RELEVANCE (0-100): how well this copy serves the campaign's stated objective, audience/segment, and primary KPI below. 100 = precisely on-brief; 0 = unrelated.
 - Objective: ${campaignObjectiveText(campaign) || '(not set)'}
-- Audience/Segment: ${campaign.segment || '(not set)'}
+- Audience/Segment: ${campaign.segment || '(not set)'}${exclusionPromptLine(campaign)}
 - Primary KPI: ${campaign.primaryKpi || '(not set)'}
 - Key Message: ${campaign.keyMessage || '(not set)'}
 
@@ -26387,7 +26429,7 @@ ${styleNotes || '(none on file)'}
 CAMPAIGN CONTEXT:
 - Loop Stage: ${campaign.stage || '(not set)'} — this stage's real job: ${stageJob}
 - Objective: ${campaignObjectiveText(campaign) || '(not set)'}
-- Audience/Segment: ${campaign.segment || '(not set)'}
+- Audience/Segment: ${campaign.segment || '(not set)'}${exclusionPromptLine(campaign)}
 ${audienceLabel ? `- THIS DRAFT IS FOR ONE SPECIFIC AUDIENCE, NOT THE WHOLE CAMPAIGN: "${audienceLabel}" -- write to speak directly to this audience, not a generic campaign-wide reader. If this audience implies a different angle, urgency, or level of familiarity with the brand than a first-time visitor, reflect that.\n` : ''}- Primary KPI: ${campaign.primaryKpi || '(not set)'}
 - Key Message, if any${campaign.keyMessageMode === 'descriptive' ? ' (a DESCRIPTIVE brief -- write real copy that captures this direction in your own words, do not quote it verbatim)' : ''}: ${campaign.keyMessage || '(none supplied)'}
 - Campaign writing style, if the account has one on file: ${campaign.roleStyle || '(none set -- use your own best judgment, grounded in the brand voice guide above)'}
@@ -26897,6 +26939,9 @@ function checkInterviewWeeklyCap(accountId){
 // that a configured vendor now runs for real instead of being permanently
 // unconfigured.
 async function runCandidateInterview(campaign, account, audienceLabel){
+  if (audienceLabel && audienceIsExcluded(campaign, audienceLabel)){
+    return { available: false, note: 'This campaign excludes the "' + audienceLabel + '" audience, so no copy is drafted for it. Remove it from the exclusions to write for it.', recommendedKey: null, candidates: [] };
+  }
   if (!process.env.ANTHROPIC_API_KEY){
     return {
       available: false,
@@ -31925,7 +31970,7 @@ async function handleRequestInner(req, res) {
           : parts[4] === 'creative-media' ? buildCreativeMedia(accountId, opts)
           : parts[4] === 'growth-performance' ? buildGrowthPerformance(accountId, opts)
           : parts[4] === 'rolling-budget' ? buildRollingBudget(accountId, opts)
-          : parts[4] === 'budget-flow' ? buildBudgetFlow(accountId, { year: qs.year })
+          : parts[4] === 'budget-flow' ? budgetFlowCached(accountId, qs.year)
           : buildStoryAudienceGrowth(accountId, opts);
         if (data && (parts[4] === 'story' || parts[4] === 'growth-performance')){ try { data.provenance = buildProvenance(accountId); } catch (e){ data.provenance = null; } }
         return sendJson(res, 200, data);
@@ -33863,7 +33908,7 @@ Submit your response via the campaign_intake_turn tool.`;
         `INSERT INTO campaigns (id, accountId, objective, segment, stage, keyMessage, name, budget, plannedImpressions, startDate, endDate, isAdHoc, functions, campaignUrl, conversionType, channels, fundingSource, allocationId, demandSignalRef, primaryKpi, kpiGoal, transactionWindowDays, productGroups, creativeFocusGroups, productCode, productName, campaignCode, roleStyle, keyMessageMode, messageType, mandatoryPhrase, campaignType, campaignTypeDetailsJson, campaignTypeDetailModesJson, audienceSharedExperience, status, createdAt)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).run(
-        campaignId, accountId, body.objective || '', body.segment || '', body.stage || '', body.keyMessage || '',
+        campaignId, accountId, body.objective || '', stripExcludedFromSegments({ excludeSegments: body.excludeSegments }, body.segment), body.stage || '', body.keyMessage || '',
         body.name || body.objective || 'Untitled Campaign',
         typeof body.budget === 'number' ? body.budget : null,
         typeof body.plannedImpressions === 'number' ? body.plannedImpressions : null,
@@ -34363,6 +34408,10 @@ Submit your response via the campaign_intake_turn tool.`;
       addCol('stage', body.stage !== undefined, merged.stage);
       addCol('primaryKpi', body.primaryKpi !== undefined, merged.primaryKpi);
       addCol('kpiGoal', body.kpiGoal !== undefined, merged.kpiGoal);
+      // 2026-10-11 — an audience cannot be both targeted and excluded: on this campaign only, any excluded audience is removed from its segment.
+      { const exNow = body.excludeSegments !== undefined ? body.excludeSegments : existing.excludeSegments;
+        const segNow = body.segment !== undefined ? body.segment : existing.segment;
+        if (String(exNow || '').trim() && (body.segment !== undefined || body.excludeSegments !== undefined)){ const cleaned = stripExcludedFromSegments({ excludeSegments: exNow }, segNow); if (cleaned !== String(segNow || '')){ merged.segment = cleaned; body.segment = cleaned; } } }
       addCol('segment', body.segment !== undefined, merged.segment);
       addCol('excludeSegments', body.excludeSegments !== undefined, body.excludeSegments);
       addCol('activityNotesJson', body.activityNotesJson !== undefined, merged.activityNotesJson);
@@ -35025,6 +35074,7 @@ PICKED-UP CAMPAIGNS: if the conversation says this campaign was started from, or
 VIDEO — this platform's real channel taxonomy groups Linear TV, OTV, and CTV together as "Video"; YouTube and Facebook/Instagram video both run under Paid Social. When the conversation mentions video in any general form ("digital and video," "streaming," "YouTube," "CTV," "intent-signal" or "conquesting" targeting, "FB video"), extract it as its own OTV, CTV, or Paid Social line (whichever the conversation's wording best maps to) rather than folding it into another channel or dropping it — video is real signal the team specifically raised and should not disappear from the extracted plan.
 
 Extract every distinct channel/tactic this conversation named or clearly implied (including consideration-stage tactics mentioned only in general terms, like "magazines, digital and video" — split those into separate line items). For each line: give a real dollar budget (use the exact number if the conversation gave one, or compute one from a stated unit cost × quantity, otherwise make a reasonable estimate from the remaining budget and note the assumption), and identify the Lifecycle Stage that specific line serves. Every line's budget should sum to no more than the total campaign budget above. Where a line clearly maps to one of the ACCOUNT-WIDE MARKETING BUDGET categories above, weigh the real remaining headroom for that category — don't recommend a number that quietly blows through it without saying so in assumptionNote. When the conversation named a general tactic without pinning down exact channels or a split between them, use the ACCOUNT-LEVEL MEDIA MIX PLAN's percentages for that specific Lifecycle Stage as the base-case split — a Loyalty line follows the account's own Loyalty mix, a Consideration line follows its Consideration mix, never one blended account-wide average — and say so in assumptionNote; when the conversation was specific about channels or amounts, that specific instruction always wins over the account's general mix. Where HISTORICAL CAMPAIGN PERFORMANCE shows real results for a comparable channel, let that inform which channels get emphasis, and say so in assumptionNote when it does. Also extract the campaign-level audienceSegments per that field's own instructions — this is a separate, whole-campaign rollup, not one value per channel line. Set dataConfidenceNote per its own instructions.
+${exclusionPromptLine(campaign)}
 
 Submit via the recommendation_from_intake tool.`;
       let parsed;
@@ -35039,6 +35089,19 @@ Submit via the recommendation_from_intake tool.`;
         return sendJson(res, 200, { generated: false, reason: 'AI Brain could not extract a recommendation right now — try again' });
       }
       let channels = Array.isArray(parsed.channels) ? parsed.channels.filter(c => c && RECO_GENERATION_CHANNELS.includes(c.channel)) : [];
+      // 2026-10-11 — excluded audiences, enforced in code for THIS campaign only: drop any line aimed at an excluded audience
+      // (a past-customer line, or a channel that exists only for that audience), whatever the model returned.
+      const exclusionRemoved = [];
+      if (campaignExcludedAudiences(campaign).length){
+        const blockedChannels = new Set();
+        campaignExcludedAudiences(campaign).forEach(a => (EXCLUDED_AUDIENCE_CHANNELS[a] || []).forEach(ch => blockedChannels.add(ch)));
+        const excludesPast = audienceIsExcluded(campaign, 'Past Customers');
+        channels = channels.filter(c => {
+          const hit = blockedChannels.has(c.channel) || (excludesPast && c.audiencePastCustomers);
+          if (hit) exclusionRemoved.push({ channel: c.channel, budget: Number(c.budget) || 0 });
+          return !hit;
+        });
+      }
       // 2026-09-20, per Todd's direct structural instruction ("All past
       // customer audience spend should fall into the Loyalty loop stage
       // regardless of what the loop stage is" — refined moments later to
@@ -35191,13 +35254,13 @@ Submit via the recommendation_from_intake tool.`;
       // collects no Audience field — see CMP_OBJ_RECAP_FIELDS's own
       // comment on the frontend — so this screen's Audience row starts
       // genuinely empty until either a human sets it or this runs).
-      const audienceSegments = Array.isArray(parsed.audienceSegments) ? parsed.audienceSegments.filter(s => RECO_GENERATION_SEGMENTS.includes(s)) : [];
+      const audienceSegments = Array.isArray(parsed.audienceSegments) ? parsed.audienceSegments.filter(s => RECO_GENERATION_SEGMENTS.includes(s) && !audienceIsExcluded(campaign, s)) : [];
       if (audienceSegments.length && !(campaign.segment || '').trim()){
         db.prepare('UPDATE campaigns SET segment = ? WHERE id = ?').run(audienceSegments.join(', '), campaignId);
       }
       try { applyLoopStageRules(campaign.accountId, { apply: true, campaignId }); } catch (e){ console.warn('loop-stage rules after intake failed', e && e.message); }
       syncCampaignProductCreativeGroupsFromChannelPlanning(campaignId);
-      return sendJson(res, 200, { generated: savedCount > 0, savedCount, skippedExistingChannels: skippedExisting, stageApplied: stage, stagesUsed: Object.keys(stageBudgets), audienceApplied: audienceSegments.length ? audienceSegments : null });
+      return sendJson(res, 200, { generated: savedCount > 0, savedCount, excludedAudiencesRemoved: exclusionRemoved, skippedExistingChannels: skippedExisting, stageApplied: stage, stagesUsed: Object.keys(stageBudgets), audienceApplied: audienceSegments.length ? audienceSegments : null });
     }
 
     // POST /api/campaigns/:id/channel-planning/:entryId/client-approve —
@@ -35573,7 +35636,7 @@ Submit via the recommendation_from_intake tool.`;
 
 CAMPAIGN: ${campaign.name || campaignId}
 Lifecycle/Loop Stage: ${campaign.stage || '(not set)'}
-Audience: ${campaign.segment || '(not set)'}
+Audience: ${campaign.segment || '(not set)'}${exclusionPromptLine(campaign)}
 Objective: ${campaignObjectiveText(campaign) || '(not set)'}
 ${formatCampaignDatesForPrompt(campaign)}
 
@@ -35802,7 +35865,7 @@ Submit your response via the recommendation_dialogue_reply tool.`;
         const campaignDataBlock = `CAMPAIGN: ${campaign.name || campaignId} (${campaign.campaignCode || campaignId})
 Lifecycle/Loop Stage: ${campaign.stage || '(not set)'}
 Objective: ${campaignObjectiveText(campaign) || '(not set)'}
-Audience: ${campaign.segment || '(not set)'}
+Audience: ${campaign.segment || '(not set)'}${exclusionPromptLine(campaign)}
 Channels selected: ${campaign.channels || '(none yet)'}
 Status: ${deriveCampaignStatusFromDates(campaign)}
 ${formatCampaignDatesForPrompt(campaign)}
@@ -36266,7 +36329,7 @@ Submit your response via the messaging_intake_turn tool.`;
 
 Campaign objective: ${campaignObjectiveText(campaign) || '(not set)'}
 Lifecycle/Loop Stage: ${campaign.stage || '(not set)'}
-Audience: ${campaign.segment || '(not set)'}
+Audience: ${campaign.segment || '(not set)'}${exclusionPromptLine(campaign)}
 Channels: ${channelList}
 ${formatCampaignDatesForPrompt(campaign)}
 Total planned spend: $${Math.round(totalSpend).toLocaleString()}
@@ -36379,7 +36442,7 @@ Write 2-4 sentences a CMO would read before approving this budget: what this cam
       const sharedFacts = `Campaign objective: ${campaignObjectiveText(campaign) || '(not set)'}
 Lifecycle/Loop Stage: ${campaign.stage || '(not set)'}
 Campaign Experience Focus: ${campaign.campaignType || 'General'}
-Audience: ${campaign.segment || '(not set)'}
+Audience: ${campaign.segment || '(not set)'}${exclusionPromptLine(campaign)}
 Channels: ${channelList}
 ${formatCampaignDatesForPrompt(campaign)}
 Primary KPI: ${campaign.primaryKpi || '(not set)'}${campaign.kpiGoal ? ` — goal of ${campaign.kpiGoal}` : ''}
