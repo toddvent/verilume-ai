@@ -319,7 +319,7 @@ const CAMPAIGNS_LOWERCASE_FOLDED_COLUMNS = {
   funnelleadratepct: 'funnelLeadRatePct',
   funnelbookingratepct: 'funnelBookingRatePct',
   funnelregistrationratepct: 'funnelRegistrationRatePct',
-  websitevisitgoal: 'websiteVisitGoal',
+  revenuegoal: 'revenueGoal',
   actualrevenue: 'actualRevenue',
   copyversionassetsjson: 'copyVersionAssetsJson',
   copyversionsizeusagejson: 'copyVersionSizeUsageJson',
@@ -2710,15 +2710,14 @@ ensureColumn('campaigns', 'funnelVisitRatePct', 'REAL');
 ensureColumn('campaigns', 'funnelLeadRatePct', 'REAL');
 ensureColumn('campaigns', 'funnelBookingRatePct', 'REAL');
 ensureColumn('campaigns', 'funnelRegistrationRatePct', 'REAL');
-// 2026-10-13 — websiteVisitGoal: the campaign's website-visit target, set
-// in conversation with the AI Brain after Campaign Creation (live case:
-// CMP-mv6ny2tw-106-3, "Build the plan based on 100,000 visits using our
-// overall cost per visit KPI"). Kept separate from primaryKpi/kpiGoal on
-// purpose: Primary KPI is the results KPI (Leads etc. — PRIMARY_KPI_OPTIONS
-// has no visit option, and every budget/funnel path keys off it), while a
-// visit goal is the traffic target a Website Engagement campaign is sized
-// against at the account's cost per website visit. Nullable = not set.
-ensureColumn('campaigns', 'websiteVisitGoal', 'INTEGER');
+// 2026-10-13 — revenueGoal (USD): a campaign revenue target, set by hand
+// on the Objectives recap card or by applying an AI Brain proposal, that
+// the budget can be sized against at the account's ROAS. Kept separate
+// from primaryKpi/kpiGoal: revenue isn't a Primary KPI unit (every
+// budget/funnel path keys off those), it's an outcome the budget is
+// checked against. Nullable = not set. (Website visits, by contrast, ARE a
+// Primary KPI as of today — 'Website Visits' replaced 'Impressions'.)
+ensureColumn('campaigns', 'revenueGoal', 'REAL');
 // 2026-09-28 — actualRevenue: logged revenue for the Analysis stage's
 // Executive Campaign Summary (Revenue / ROAS rows, Target vs Actual vs
 // Variance). Hand-entered alongside actualConversions until a booking/
@@ -14129,6 +14128,8 @@ async function warmAiBrainContextForCampaign(campaign){
   buildAccountBudgetAndPerformanceContextForPromptCached(campaign.accountId, campaign, timings);
   await yieldToOthers();
   buildAccountMonthlyKpiContextForPromptCached(campaign.accountId, timings);
+  await yieldToOthers();
+  computeAccountBudgetKpisCached(campaign.accountId, timings);
   timings.totalMs = Date.now() - t0;
   return timings;
 }
@@ -14151,8 +14152,10 @@ async function warmAiBrainContextForCampaign(campaign){
 // field save (which happens on every Team note) must never force the
 // 100-300 round-trip Match Market rebuild, only the cheap budget/history one.
 const AI_BRAIN_ACCOUNT_WRITE_RESOURCES = {
-  'marketing-budget-uploads': ['budgetPerf'], 'media-plan': ['budgetPerf'], 'campaigns': ['budgetPerf'], 'channel-planning': ['budgetPerf'], 'ga4-sources': ['budgetPerf'], 'ga4-search': ['budgetPerf'],
+  'marketing-budget-uploads': ['budgetPerf', 'kpis'], 'media-plan': ['budgetPerf', 'kpis'], 'campaigns': ['budgetPerf', 'kpis'], 'channel-planning': ['budgetPerf'], 'ga4-sources': ['budgetPerf'], 'ga4-search': ['budgetPerf'],
   'kpi-metrics': ['monthlyKpi'],
+  // 2026-10-13 — every source behind computeAccountBudgetKpis().
+  'website-users-monthly': ['kpis'], 'lead-counts': ['kpis'], 'transactions-monthly': ['kpis'], 'transactions-by-service-year': ['kpis'], 'annual-plan': ['kpis'], 'year-results': ['kpis'], 'mmm-inputs': ['kpis'], 'mmm-line-items': ['kpis'], 'guest-bookings': ['kpis'], 'digital-performance': ['budgetPerf', 'kpis'],
   'stores': ['topMarkets'], 'market-customer-uploads': ['topMarkets']
 };
 const AI_BRAIN_CAMPAIGN_WRITE_SUBRESOURCES = new Set(['channel-planning', 'approve-budget-overall', 'generate-recommendation-from-intake', 'mmm-line-items']);
@@ -14175,7 +14178,7 @@ function aiBrainContextInvalidationForRequest(method, parts){
       accountId = row && row.accountId;
     } catch (e){ console.warn('[ai-brain-cache] campaign-write invalidation lookup failed:', e.message); }
     if (!accountId) return null;
-    return () => aiBrainCtxInvalidatePrefix(`acct:${accountId}:budgetPerf:`);
+    return () => { aiBrainCtxInvalidatePrefix(`acct:${accountId}:budgetPerf:`); aiBrainCtxInvalidatePrefix(`acct:${accountId}:kpis:`); };
   }
   return null;
 }
@@ -14488,86 +14491,194 @@ function computeAccountCostPerWebsiteVisit(accountId){
 }
 const fmtUsd0 = n => `$${Math.round(Number(n) || 0).toLocaleString('en-US')}`;
 const fmtUsd2 = n => `$${(Number(n) || 0).toFixed(2)}`;
-// Prompt block: the campaign's CURRENT budget and targets (which the
-// ai-brain-reply data block never actually carried before — the Brain only
-// knew the budget if someone typed it into the chat), plus the account's
-// real cost per website visit and what the current budget buys at it.
-function buildCampaignTargetsPromptBlock(campaign, cpv){
+const fmtInt = n => Math.round(Number(n) || 0).toLocaleString('en-US');
+// ===== 2026-10-13 (later) — every KPI that drives a budget =====
+// Per Todd: "make sure that AI Brain has all of KPIs that drive budget:
+// Cost-per-visit, Cost-per-lead, cost-per-impression, CAC, ROAS." These are
+// EXACTLY the figures the campaign brief's budget check already prices
+// targets with (buildBudgetBenchmarks(), GET .../analytics/budget-benchmarks)
+// — one source, so the brief and the AI Brain can never quote different
+// numbers for the same account:
+//   Cost per website visit — overall (Account Management cost per website
+//                            user; prices a Website Visits target) and the
+//                            digital-only trailing-12-month rate.
+//   Cost per lead / CPM    — digital spend ÷ leads / ÷ impressions × 1,000,
+//                            trailing 12 months of the digital performance
+//                            upload.
+//   CAC / ROAS             — the Strategy dashboard's outcomes (spend ÷
+//                            unique transactions; revenue ÷ spend), trailing
+//                            12 months → Annual Plan baseline → closed-year
+//                            results, plus the Annual Plan target if any.
+// All rates arrive rounded (cents; CAC whole dollars) and that rounded
+// figure is what the prompt shows and budget sizing multiplies by, so the
+// Brain's own arithmetic always matches the Apply card.
+function computeAccountBudgetKpis(accountId){
+  const out = { cpv: null, digitalCpv: null, cpm: null, cpl: null, cac: null, roas: null, targets: null, window: null };
+  try { out.cpv = computeAccountCostPerWebsiteVisit(accountId); } catch (e){ console.warn('[budget-kpis] cost per visit:', e.message); }
+  let bb = null;
+  try { bb = buildBudgetBenchmarks(accountId, { asOf: new Date(), outcomes: true }); } catch (e){ console.warn('[budget-kpis] benchmarks:', e.message); }
+  if (bb){
+    out.window = bb.window;
+    if (bb.costPerVisit != null) out.digitalCpv = { value: bb.costPerVisit, spend: bb.spend, visits: bb.visits };
+    if (bb.cpl != null) out.cpl = { value: bb.cpl, spend: bb.spend, leads: bb.leads };
+    if (bb.cpm != null) out.cpm = { value: bb.cpm, spend: bb.spend };
+    if (bb.cac != null) out.cac = { value: Math.round(bb.cac), basisLabel: bb.outcomesBasis || '', definition: 'spend ÷ unique transactions (transaction level)' };
+    if (bb.roas != null) out.roas = { value: Math.round(bb.roas * 100) / 100, basisLabel: bb.outcomesBasis || '' };
+    if (bb.targets) out.targets = bb.targets;
+  }
+  return out;
+}
+// Cached front, same pattern/TTL as the other account-level blocks
+// (aiBrainCtxGet/Set), invalidated by the writes listed in
+// AI_BRAIN_ACCOUNT_WRITE_RESOURCES under 'kpis'.
+function computeAccountBudgetKpisCached(accountId, timings){
+  const t = Date.now();
+  const key = `acct:${accountId}:kpis:all`;
+  let value = aiBrainCtxGet(key, AI_BRAIN_CTX_MAX_AGE.monthlyKpi);
+  const hit = !!value;
+  if (!value){ value = computeAccountBudgetKpis(accountId); aiBrainCtxSet(key, value); }
+  if (timings) timings.budgetKpis = { ms: Date.now() - t, cache: hit ? 'hit' : 'miss' };
+  return value;
+}
+const cpvRate = k => (k && k.cpv && k.cpv.blended) ? k.cpv.blended : null;
+// Prompt block: the campaign's CURRENT budget and targets plus every
+// budget-driving KPI, and what the current budget buys at each one.
+function buildCampaignTargetsPromptBlock(campaign, k){
+  k = k || {};
   const budget = Number(campaign.budget) || 0;
-  const visitGoal = Number(campaign.websiteVisitGoal) || 0;
+  const revenueGoal = Number(campaign.revenueGoal) || 0;
+  const win = k.window ? `${k.window.from} to ${k.window.to}` : 'trailing 12 months';
   const lines = [
     `- Estimated Budget: ${budget ? fmtUsd0(budget) : '(not set)'}${campaign.budgetApprovedAt ? ' (overall budget already approved)' : ''}${campaign.fundingSource === 'plan' ? ' (drawn from a Media Plan allocation)' : ''}`,
-    `- Primary KPI: ${campaign.primaryKpi || '(not set)'}${campaign.kpiGoal ? ` — Target ${Number(campaign.kpiGoal).toLocaleString('en-US')}` : ' — no target set'}`,
-    `- Website Visit Goal: ${visitGoal ? visitGoal.toLocaleString('en-US') + ' visits' : '(not set)'}`
+    `- Primary KPI: ${campaign.primaryKpi || '(not set)'}${campaign.kpiGoal ? ` — Target ${fmtInt(campaign.kpiGoal)}` : ' — no target set'}${campaign.primaryKpi === 'Impressions' ? ' (legacy KPI — Impressions is no longer a selectable goal; impressions are now planned FROM the goal. If the team revisits targets, suggest moving to Website Visits or Reach.)' : ''}`,
+    `- Revenue Goal: ${revenueGoal ? fmtUsd0(revenueGoal) : '(not set)'}`,
+    '',
+    "THIS ACCOUNT'S BUDGET-DRIVING KPIs (the same figures the campaign brief's budget check uses; \"not on file\" means say so and point to where it's loaded — never invent one):"
   ];
-  if (cpv && cpv.blended){
-    const perYear = cpv.rows.filter(r => r.costPerVisit != null).map(r => `${r.year}: ${fmtUsd2(r.costPerVisit)} (${fmtUsd0(r.budget)} ${r.budgetSource} ÷ ${r.users.toLocaleString('en-US')} website visits)`).join('; ');
-    lines.push(`- THIS ACCOUNT'S OVERALL COST PER WEBSITE VISIT (its cost-per-visit KPI, from Account Management — working media ÷ website users): ${fmtUsd2(cpv.blended)} blended across ${cpv.yearsWithData} year${cpv.yearsWithData === 1 ? '' : 's'} [${perYear}]`);
-    if (budget) lines.push(`- At that rate the current ${fmtUsd0(budget)} budget buys about ${Math.round(budget / cpv.blended).toLocaleString('en-US')} website visits.`);
-    if (visitGoal) lines.push(`- At that rate the ${visitGoal.toLocaleString('en-US')}-visit goal needs about ${fmtUsd0(visitGoal * cpv.blended)}.`);
-  } else {
-    lines.push(`- THIS ACCOUNT'S OVERALL COST PER WEBSITE VISIT: not computable yet — no Website Users by month have been entered in Account Management${cpv && cpv.rows.length ? '' : ', and there is no Media Plan or dated campaign budget to divide'}. Say so plainly and point the team to Account Management → Website users by month; do not invent a cost per visit.`);
+  const cpv = cpvRate(k);
+  if (cpv){
+    const perYear = k.cpv.rows.filter(r => r.costPerVisit != null).map(r => `${r.year}: ${fmtUsd2(r.costPerVisit)}`).join('; ');
+    lines.push(`- COST PER WEBSITE VISIT (overall — prices a Website Visits target): ${fmtUsd2(cpv)} — Account Management cost per website user, working media ÷ website users, blended across ${k.cpv.yearsWithData} year${k.cpv.yearsWithData === 1 ? '' : 's'} [${perYear}]${k.digitalCpv ? `. Digital-only, ${win}: ${fmtUsd2(k.digitalCpv.value)} (digital spend ${fmtUsd0(k.digitalCpv.spend)} ÷ ${fmtInt(k.digitalCpv.visits)} visits) — use this one only when the team asks about digital/click cost specifically` : ''}.`);
+  } else if (k.digitalCpv){
+    lines.push(`- COST PER WEBSITE VISIT: no overall rate (no Website users by year in Account Management to pair with working media); digital-only, ${win}: ${fmtUsd2(k.digitalCpv.value)}. Say which one you're using.`);
+  } else lines.push('- COST PER WEBSITE VISIT: not on file — no Website users by month in Account Management.');
+  if (k.cpl) lines.push(`- COST PER LEAD: ${fmtUsd2(k.cpl.value)} — digital spend ${fmtUsd0(k.cpl.spend)} ÷ ${fmtInt(k.cpl.leads)} leads, ${win}. Channel-level cost per lead is in the CHANNEL PERFORMANCE SCORECARD when uploaded.`);
+  else lines.push('- COST PER LEAD: not on file — needs the digital performance upload (spend and leads).');
+  if (k.cpm) lines.push(`- COST PER THOUSAND IMPRESSIONS (CPM): ${fmtUsd2(k.cpm.value)} — digital spend ÷ impressions × 1,000, ${win}. Impressions are a planning decision that follows from the goal (Website Visits, Leads, …) and the channel mix, not a goal themselves; use CPM to say what a budget buys and to sanity-check channel plans.`);
+  else lines.push("- CPM: no account actuals on file — channel plans use the platform's default per-channel CPM benchmarks.");
+  if (k.cac) lines.push(`- CAC (customer acquisition cost): ${fmtUsd0(k.cac.value)} per transaction — ${k.cac.definition}, ${k.cac.basisLabel}${k.targets && k.targets.cac != null ? `; Annual Plan ${k.targets.year} target ${fmtUsd0(k.targets.cac)}` : ''}. Customer-level CAC isn't computable yet (bookings carry no customer id).`);
+  else lines.push('- CAC: not on file — needs transactions (monthly transactions, Annual Plan baseline, or year results) alongside spend.');
+  if (k.roas) lines.push(`- ROAS: ${k.roas.value.toFixed(2)}x — gross revenue ÷ marketing spend, ${k.roas.basisLabel}${k.targets && k.targets.roas != null ? `; Annual Plan ${k.targets.year} target ${k.targets.roas.toFixed(2)}x` : ''}. Account-level only — revenue isn't split by channel.`);
+  else lines.push('- ROAS: not on file — needs revenue (monthly transactions, Annual Plan baseline, or year results) alongside spend.');
+  if (budget){
+    const buys = [];
+    if (cpv) buys.push(`~${fmtInt(budget / cpv)} website visits`);
+    if (k.cpl) buys.push(`~${fmtInt(budget / k.cpl.value)} leads`);
+    if (k.cpm) buys.push(`~${fmtInt(budget / k.cpm.value * 1000)} impressions`);
+    if (k.cac) buys.push(`~${fmtInt(budget / k.cac.value)} transactions`);
+    if (k.roas) buys.push(`~${fmtUsd0(budget * k.roas.value)} revenue`);
+    if (buys.length) lines.push(`- At these account rates the current ${fmtUsd0(budget)} budget buys: ${buys.join(', ')}. These are account-wide averages, not a channel-specific forecast — say so when it matters.`);
   }
-  return `CAMPAIGN BUDGET, TARGETS & COST-PER-VISIT KPI (code-computed — use these numbers exactly, never recompute or round them differently):\n${lines.join('\n')}`;
+  return `CAMPAIGN BUDGET, TARGETS & BUDGET-DRIVING KPIs (code-computed — use these numbers exactly, never recompute or round them differently):\n${lines.join('\n')}`;
 }
-const CAMPAIGN_UPDATE_PRIMARY_KPIS = ['Impressions', 'Reach', 'Clicks', 'Leads', 'Video Views', 'Transactions'];
-// Shared instruction text for both conversations that can now change a
-// live campaign's budget/targets (Objectives intake + Collaboration Center).
-const CAMPAIGN_UPDATE_INSTRUCTIONS = `CHANGING THE CAMPAIGN'S BUDGET AND TARGETS — after Campaign Creation, the team can change this campaign's Estimated Budget, Primary KPI target, and Website Visit Goal right here in conversation. When the team states or agrees to a new target or budget (e.g. "build the plan on 100,000 visits using our overall cost per visit KPI", "make the budget $250k", "raise the lead target to 15,000"), propose it in the campaignUpdate field so the team can click Apply — never claim it is already saved. Rules:
-- A website-visit target goes in websiteVisitGoal (never in newKpiGoal — the Primary KPI target is in the Primary KPI's own unit, e.g. Leads).
-- When the budget should follow a visit target ("using our cost per visit", "what will it take", or the team just gives a visit number and wants the plan sized to it), set budgetBasis to "cost_per_visit" and leave newBudget out — the platform computes the budget itself as visits × this account's overall cost per website visit from the CAMPAIGN BUDGET, TARGETS & COST-PER-VISIT KPI block. In your reply, state that figure and the math in one line (e.g. "100,000 visits × $5.23 = $523,000"). Never ask the team for their cost per visit when that block has it, and never give a vague range like "$5+" when an exact figure is given.
-- When the team names a dollar budget themselves, set newBudget to it and budgetBasis to "team_stated", and use the cost per visit to tell them how many visits it buys.
-- If the block says cost per visit isn't computable, say so plainly, point to Account Management → Website users by month, and only propose what the team stated directly.
-- newPrimaryKpi only when the team explicitly changes the KPI itself, and only to one of: ${CAMPAIGN_UPDATE_PRIMARY_KPIS.join(', ')}.
+// Mirrors portal.html's PRIMARY_KPI_OPTIONS (minus 'Other'). 2026-10-13, per
+// Todd: 'Website Visits' replaced 'Impressions' — "Impressions isn't really
+// a goal, it's a decision that should drive the target."
+const CAMPAIGN_UPDATE_PRIMARY_KPIS = ['Reach', 'Website Visits', 'Clicks', 'Leads', 'Video Views', 'Transactions'];
+// budgetBasis -> how the platform sizes the budget from a goal.
+const CAMPAIGN_BUDGET_BASES = ['cost_per_visit', 'cost_per_lead', 'cac', 'roas', 'team_stated'];
+const CAMPAIGN_UPDATE_INSTRUCTIONS = `CHANGING THE CAMPAIGN'S BUDGET AND TARGETS — after Campaign Creation, the team can change this campaign's Estimated Budget, Primary KPI and its Target, and Revenue Goal right here in conversation. When the team states or agrees to a new target or budget (e.g. "build the plan on 100,000 visits using our overall cost per visit KPI", "size it to 2,000 leads at our cost per lead", "we need $3M in revenue at our ROAS", "make the budget $250k"), propose it in the campaignUpdate field so the team can click Apply — never claim it is already saved. Rules:
+- Size the budget from whichever KPI the team's goal is expressed in, using the BUDGET-DRIVING KPIs block — never ask the team for a rate that block has, and never give a vague range like "$5+" when an exact figure is given:
+  • website visits → Primary KPI "Website Visits" + newKpiGoal + budgetBasis "cost_per_visit" (budget = visits × overall cost per website visit)
+  • leads → Primary KPI "Leads" + newKpiGoal (or the existing Leads target) + budgetBasis "cost_per_lead" (budget = leads × cost per lead)
+  • transactions / bookings / customers → Primary KPI "Transactions" + newKpiGoal + budgetBasis "cac" (budget = transactions × CAC)
+  • revenue → revenueGoal + budgetBasis "roas" (budget = revenue ÷ ROAS)
+  For these, leave newBudget out — the platform computes the budget itself. In your reply, state the figure and the math in one line (e.g. "100,000 visits × $5.14 = $514,000").
+- If the team's goal is in a different unit from the campaign's current Primary KPI (e.g. a visits goal on a Leads campaign), propose newPrimaryKpi for that unit together with newKpiGoal, and say plainly that the Primary KPI changes. Impressions are never a goal: if the team gives an impressions number, explain that impressions are planned from the goal and the channel mix, and ask which outcome they're buying (visits, reach, leads…); CPM tells them what a budget buys in impressions.
+- A revenue target goes in revenueGoal — never in newKpiGoal, which is always in the Primary KPI's own unit.
+- When the team names a dollar budget themselves, set newBudget + budgetBasis "team_stated", and tell them what it buys at the relevant KPI(s).
+- If the KPI needed is "not on file", say so plainly, say where it's loaded, and only propose what the team stated directly.
+- When two KPIs give very different budgets for the same campaign (e.g. visits vs. leads), say so in one line — that gap is real signal.
+- newPrimaryKpi only to one of: ${CAMPAIGN_UPDATE_PRIMARY_KPIS.join(', ')}.
 - If the overall budget is already approved or drawn from a Media Plan allocation, mention that applying the change will need re-approval / moves it off the plan amount.
 - Otherwise leave campaignUpdate null.`;
 const CAMPAIGN_UPDATE_SCHEMA_PROP = {
   type: ['object', 'null'],
   description: 'A change to THIS campaign\'s own budget/targets the team stated or agreed to in this conversation, for them to Apply — or null. Include only the fields that change.',
   properties: {
-    websiteVisitGoal: { type: 'number', description: 'New website-visit target (visits). Omit if not changing.' },
-    newKpiGoal: { type: 'number', description: 'New target for the campaign\'s Primary KPI, in that KPI\'s own unit (e.g. leads). Never a visit count. Omit if not changing.' },
-    newPrimaryKpi: { type: 'string', enum: CAMPAIGN_UPDATE_PRIMARY_KPIS, description: 'Only when the team explicitly changes the Primary KPI itself.' },
-    newBudget: { type: 'number', description: 'Only with budgetBasis "team_stated": the dollar budget the team named. Omit when budgetBasis is "cost_per_visit" — the platform computes it.' },
-    budgetBasis: { type: 'string', enum: ['cost_per_visit', 'team_stated'], description: '"cost_per_visit" = size the budget from the visit goal × the account\'s cost per website visit (computed by the platform). "team_stated" = the team named the dollar figure.' },
+    revenueGoal: { type: 'number', description: 'New revenue target in USD. Omit if not changing.' },
+    newKpiGoal: { type: 'number', description: 'New target for the campaign\'s Primary KPI, in that KPI\'s own unit (website visits, leads, transactions…) — if the unit differs from the current Primary KPI, also set newPrimaryKpi. Never a revenue amount. Omit if not changing.' },
+    newPrimaryKpi: { type: 'string', enum: CAMPAIGN_UPDATE_PRIMARY_KPIS, description: 'When the team changes what the campaign is measured on, including when their new goal is in a different unit from the current Primary KPI.' },
+    newBudget: { type: 'number', description: 'Only with budgetBasis "team_stated": the dollar budget the team named. Omit for every KPI-based basis — the platform computes it.' },
+    budgetBasis: { type: 'string', enum: CAMPAIGN_BUDGET_BASES, description: 'How the budget is set: from a goal at one of the account KPIs (cost_per_visit, cost_per_lead, cac, roas — computed by the platform), or team_stated.' },
     rationale: { type: 'string', description: 'One sentence on why, grounded in the real numbers given.' }
   }
 };
 // Turns the model's proposal into the real, applyable update — the budget
 // arithmetic is done HERE, in code, never taken from the model. Drops
 // anything invalid or unchanged; returns null when nothing real is left.
-function finalizeCampaignUpdate(raw, campaign, cpv){
+function finalizeCampaignUpdate(raw, campaign, k){
   if (!raw || typeof raw !== 'object') return null;
+  k = k || {};
   const pos = v => (typeof v === 'number' && Number.isFinite(v) && v > 0) ? v : null;
   const out = {};
-  const visitGoal = pos(raw.websiteVisitGoal) ? Math.round(raw.websiteVisitGoal) : null;
-  if (visitGoal && visitGoal !== Number(campaign.websiteVisitGoal)) out.websiteVisitGoal = visitGoal;
-  const kpiGoal = pos(raw.newKpiGoal) ? Math.round(raw.newKpiGoal) : null;
-  if (kpiGoal && kpiGoal !== Number(campaign.kpiGoal)) out.kpiGoal = kpiGoal;
+  const revenueGoal = pos(raw.revenueGoal) ? Math.round(raw.revenueGoal) : null;
+  if (revenueGoal && revenueGoal !== Number(campaign.revenueGoal)) out.revenueGoal = revenueGoal;
   if (raw.newPrimaryKpi && CAMPAIGN_UPDATE_PRIMARY_KPIS.includes(raw.newPrimaryKpi) && raw.newPrimaryKpi !== campaign.primaryKpi) out.primaryKpi = raw.newPrimaryKpi;
-  const effectiveVisitGoal = visitGoal || Number(campaign.websiteVisitGoal) || null;
-  let note = null;
-  if (raw.budgetBasis === 'cost_per_visit'){
-    if (effectiveVisitGoal && cpv && cpv.blended){
-      out.budget = Math.round(effectiveVisitGoal * cpv.blended);
-      out.budgetBasis = 'cost_per_visit';
-      out.costPerVisit = Math.round(cpv.blended * 100) / 100;
-      out.computation = `${effectiveVisitGoal.toLocaleString('en-US')} visits × ${fmtUsd2(cpv.blended)} cost per website visit = ${fmtUsd0(out.budget)}`;
-    } else {
-      note = 'Budget not changed — this account has no cost per website visit on file yet (Account Management → Website users by month).';
+  const kpiGoal = pos(raw.newKpiGoal) ? Math.round(raw.newKpiGoal) : null;
+  // A goal is saved when it changed — or whenever the KPI itself changes
+  // (the old number was in the old unit, so it must be restated).
+  if (kpiGoal && (out.primaryKpi || kpiGoal !== Number(campaign.kpiGoal))) out.kpiGoal = kpiGoal;
+  const primary = out.primaryKpi || campaign.primaryKpi || null;
+  // Never size from the OLD goal when the KPI is changing — it's in the old unit.
+  const goalOfPrimary = kpiGoal || (out.primaryKpi ? null : (Number(campaign.kpiGoal) || null));
+  if (out.primaryKpi && !kpiGoal){ delete out.primaryKpi; return finalizeCampaignUpdate(Object.assign({}, raw, { newPrimaryKpi: null }), campaign, k); }
+  const notes = [];
+  const sized = (budget, rate, computation, rateLabel) => { out.budget = Math.round(budget); out.budgetRate = rate; out.budgetRateLabel = rateLabel; out.computation = computation; };
+  const basis = CAMPAIGN_BUDGET_BASES.includes(raw.budgetBasis) ? raw.budgetBasis : (pos(raw.newBudget) ? 'team_stated' : null);
+  const needPrimary = (want, kpiLabel) => {
+    if (primary !== want){ notes.push(`Budget not changed — sizing by ${kpiLabel} needs the Primary KPI to be ${want} (it's ${primary || 'not set'}).`); return false; }
+    if (!goalOfPrimary){ notes.push(`Budget not changed — no ${want} target to size from.`); return false; }
+    return true;
+  };
+  if (basis === 'cost_per_visit'){
+    const r = cpvRate(k);
+    if (needPrimary('Website Visits', 'cost per website visit')){
+      if (!r) notes.push('Budget not changed — no overall cost per website visit on file (Account Management → Website users by month).');
+      else sized(goalOfPrimary * r, r, `${fmtInt(goalOfPrimary)} visits × ${fmtUsd2(r)} cost per website visit = ${fmtUsd0(goalOfPrimary * r)}`, 'cost per website visit');
     }
-  } else if (pos(raw.newBudget)){
+  } else if (basis === 'cost_per_lead'){
+    if (needPrimary('Leads', 'cost per lead')){
+      if (!k.cpl) notes.push('Budget not changed — no cost per lead on file (needs the digital performance upload).');
+      else sized(goalOfPrimary * k.cpl.value, k.cpl.value, `${fmtInt(goalOfPrimary)} leads × ${fmtUsd2(k.cpl.value)} cost per lead = ${fmtUsd0(goalOfPrimary * k.cpl.value)}`, 'cost per lead');
+    }
+  } else if (basis === 'cac'){
+    if (needPrimary('Transactions', 'CAC')){
+      if (!k.cac) notes.push('Budget not changed — no CAC on file (needs transactions alongside spend).');
+      else sized(goalOfPrimary * k.cac.value, k.cac.value, `${fmtInt(goalOfPrimary)} transactions × ${fmtUsd0(k.cac.value)} CAC = ${fmtUsd0(goalOfPrimary * k.cac.value)}`, 'CAC');
+    }
+  } else if (basis === 'roas'){
+    const g = revenueGoal || Number(campaign.revenueGoal) || null;
+    if (!g) notes.push('Budget not changed — no revenue goal to size from.');
+    else if (!k.roas) notes.push('Budget not changed — no ROAS on file (needs revenue alongside spend).');
+    else sized(g / k.roas.value, k.roas.value, `${fmtUsd0(g)} revenue ÷ ${k.roas.value.toFixed(2)}x ROAS = ${fmtUsd0(g / k.roas.value)}`, 'ROAS');
+  } else if (basis === 'team_stated' && pos(raw.newBudget)){
     out.budget = Math.round(raw.newBudget);
-    out.budgetBasis = 'team_stated';
-    if (cpv && cpv.blended) out.computation = `${fmtUsd0(out.budget)} ÷ ${fmtUsd2(cpv.blended)} cost per website visit ≈ ${Math.round(out.budget / cpv.blended).toLocaleString('en-US')} visits`;
+    const buys = [];
+    if (cpvRate(k)) buys.push(`~${fmtInt(out.budget / cpvRate(k))} visits`);
+    if (k.cpl) buys.push(`~${fmtInt(out.budget / k.cpl.value)} leads`);
+    if (k.cac) buys.push(`~${fmtInt(out.budget / k.cac.value)} transactions`);
+    if (k.roas) buys.push(`~${fmtUsd0(out.budget * k.roas.value)} revenue`);
+    if (buys.length) out.computation = `${fmtUsd0(out.budget)} buys ${buys.join(', ')} at this account's rates`;
   }
-  if (out.budget != null && Math.round(Number(campaign.budget) || 0) === out.budget){ delete out.budget; delete out.budgetBasis; delete out.computation; delete out.costPerVisit; }
-  if (!['websiteVisitGoal', 'kpiGoal', 'primaryKpi', 'budget'].some(k => out[k] != null)) return null;
-  out.previous = { budget: campaign.budget != null ? Number(campaign.budget) : null, kpiGoal: campaign.kpiGoal != null ? Number(campaign.kpiGoal) : null, primaryKpi: campaign.primaryKpi || null, websiteVisitGoal: campaign.websiteVisitGoal != null ? Number(campaign.websiteVisitGoal) : null };
+  if (out.budget != null) out.budgetBasis = basis;
+  if (out.budget != null && Math.round(Number(campaign.budget) || 0) === out.budget){ ['budget', 'budgetBasis', 'budgetRate', 'budgetRateLabel', 'computation'].forEach(f => delete out[f]); }
+  if (!['revenueGoal', 'kpiGoal', 'primaryKpi', 'budget'].some(f => out[f] != null)) return null;
+  out.previous = { budget: campaign.budget != null ? Number(campaign.budget) : null, kpiGoal: campaign.kpiGoal != null ? Number(campaign.kpiGoal) : null, primaryKpi: campaign.primaryKpi || null, revenueGoal: campaign.revenueGoal != null ? Number(campaign.revenueGoal) : null };
   out.needsReapproval = !!(out.budget != null && campaign.budgetApprovedAt);
   out.fromMediaPlan = !!(out.budget != null && campaign.fundingSource === 'plan');
   if (raw.rationale) out.rationale = String(raw.rationale).slice(0, 400);
-  if (note) out.note = note;
+  if (notes.length) out.note = notes.join(' ');
   return out;
 }
 function fmtAccountKpiValueForPrompt(v, fmt){
@@ -15559,7 +15670,7 @@ const LEGACY_CASING_COLUMNS = [
   ['campaigns', 'funnelLeadRatePct'],
   ['campaigns', 'funnelBookingRatePct'],
   ['campaigns', 'funnelRegistrationRatePct'],
-  ['campaigns', 'websiteVisitGoal'],
+  ['campaigns', 'revenueGoal'],
   ['campaigns', 'isAdHoc'],
   ['campaigns', 'keyMessage'],
   ['campaigns', 'kpiGoal'],
@@ -19167,7 +19278,12 @@ function buildBudgetBenchmarksRaw(accountId, opts){
   const r2 = n => Math.round(n * 100) / 100;
   const dp = db.prepare("SELECT * FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").all(accountId).map(r => ({ k: key(r.year, r.month), channel: aliasVal(r, 'channel'), impressions: Number(r.impressions) || 0, spend: Number(r.spend) || 0, leads: Number(r.leads) || 0 }));
   const users = db.prepare('SELECT year, month, users FROM account_website_users_monthly WHERE accountId = ?').all(accountId).map(r => ({ k: key(r.year, r.month), users: Number(r.users) || 0 }));
-  const out = { available: false, window: null, cpl: null, costPerVisit: null, cac: null, roas: null, cpm: null, spend: null, leads: null, visits: null, outcomesBasis: null };
+  const out = { available: false, window: null, cpl: null, costPerVisit: null, overallCostPerVisit: null, cac: null, roas: null, cpm: null, spend: null, leads: null, visits: null, outcomesBasis: null, targets: null };
+  // 2026-10-13 — the account's OVERALL cost per website visit (Account
+  // Management: working media ÷ website users, blended across years), which
+  // prices a 'Website Visits' Primary KPI target. costPerVisit below stays the
+  // digital-only trailing-12-month rate the 'Clicks' check has always used.
+  try { const cpvAll = computeAccountCostPerWebsiteVisit(accountId); if (cpvAll && cpvAll.blended){ out.overallCostPerVisit = cpvAll.blended; out.overallCostPerVisitYears = cpvAll.rows.filter(r => r.costPerVisit != null).map(r => r.year); out.available = true; } } catch (e){}
   if (dp.length){
     const latest = dp.map(r => r.k).sort().pop();
     const wset = new Set(storyWindowEndingAtData(asOfDate, 12, latest));
@@ -19182,7 +19298,7 @@ function buildBudgetBenchmarksRaw(accountId, opts){
     out.available = t.spend > 0;
   }
   // CAC and ROAS: the same figures as the Budgets cards (spend / unique transactions, revenue / spend). Heavier to build, so only on request (?outcomes=1).
-  if (opts && opts.outcomes) try { const d = buildStoryDemand(accountId, { asOf: asOfDate, months: 12 }); const o = d && d.outcomes; if (o){ out.cac = o.cac != null ? o.cac : null; out.roas = o.roas != null ? o.roas : null; out.outcomesBasis = o.basisLabel || null; if (out.cac != null || out.roas != null) out.available = true; } } catch (e){}
+  if (opts && opts.outcomes) try { const d = buildStoryDemand(accountId, { asOf: asOfDate, months: 12 }); const o = d && d.outcomes; if (o){ out.cac = o.cac != null ? o.cac : null; out.roas = o.roas != null ? o.roas : null; out.outcomesBasis = o.basisLabel || null; if (o.target) out.targets = { year: o.target.year, label: o.target.label || null, cac: o.target.cac != null ? Math.round(o.target.cac) : null, roas: o.target.roas != null ? Math.round(o.target.roas * 100) / 100 : null }; if (out.cac != null || out.roas != null) out.available = true; } } catch (e){}
   return out;
 }
 
@@ -28090,7 +28206,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-13-brain-campaign-updates',
+        buildStamp: '2026-10-13-brain-budget-kpis',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
@@ -32618,11 +32734,11 @@ async function handleRequestInner(req, res) {
       // account's cost per website visit (see buildCampaignTargetsPromptBlock();
       // Primary KPI/Target were never in this prompt before), plus the
       // ability to propose changing them (campaignUpdate).
-      let intakeCpv = null;
+      let intakeKpis = null;
       let campaignTargetsBlock = '';
       if (activeCampaign){
-        try { intakeCpv = computeAccountCostPerWebsiteVisit(accountId); } catch (e){ console.warn('[campaign-intake] cost per visit unavailable:', e.message); }
-        campaignTargetsBlock = buildCampaignTargetsPromptBlock(activeCampaign, intakeCpv);
+        try { intakeKpis = computeAccountBudgetKpisCached(accountId); } catch (e){ console.warn('[campaign-intake] budget KPIs unavailable:', e.message); }
+        campaignTargetsBlock = buildCampaignTargetsPromptBlock(activeCampaign, intakeKpis);
       }
       if (activeCampaign){
         const campaignTypeLabel = (activeCampaign.campaignType && CAMPAIGN_TYPE_REGISTRY[activeCampaign.campaignType]) ? CAMPAIGN_TYPE_REGISTRY[activeCampaign.campaignType].label : null;
@@ -32753,7 +32869,7 @@ Submit your response via the campaign_intake_turn tool.`;
             goalSummary: parsed.goalSummary || null
           } : null,
           recommendedCampaigns,
-          campaignUpdate: activeCampaign ? finalizeCampaignUpdate(parsed.campaignUpdate, activeCampaign, intakeCpv) : null
+          campaignUpdate: activeCampaign ? finalizeCampaignUpdate(parsed.campaignUpdate, activeCampaign, intakeKpis) : null
         });
       } catch (e){
         console.error('[POST /api/accounts/:id/campaign-intake] generation failed:', e.message);
@@ -34777,8 +34893,8 @@ Submit your response via the campaign_intake_turn tool.`;
         funnelBookingRatePct: body.funnelBookingRatePct !== undefined ? ((typeof body.funnelBookingRatePct === 'number' && body.funnelBookingRatePct >= 0) ? body.funnelBookingRatePct : null) : existing.funnelBookingRatePct,
         funnelRegistrationRatePct: body.funnelRegistrationRatePct !== undefined ? ((typeof body.funnelRegistrationRatePct === 'number' && body.funnelRegistrationRatePct >= 0) ? body.funnelRegistrationRatePct : null) : existing.funnelRegistrationRatePct,
         actualRevenue: body.actualRevenue !== undefined ? ((typeof body.actualRevenue === 'number' && body.actualRevenue >= 0) ? body.actualRevenue : null) : existing.actualRevenue,
-        // 2026-10-13 — see ensureColumn('campaigns','websiteVisitGoal')'s comment.
-        websiteVisitGoal: body.websiteVisitGoal !== undefined ? ((body.websiteVisitGoal === null || body.websiteVisitGoal === '' || !(Number(body.websiteVisitGoal) > 0)) ? null : Math.round(Number(body.websiteVisitGoal))) : existing.websiteVisitGoal
+        // 2026-10-13 — see ensureColumn('campaigns','revenueGoal')'s comment.
+        revenueGoal: body.revenueGoal !== undefined ? ((body.revenueGoal === null || body.revenueGoal === '' || !(Number(body.revenueGoal) > 0)) ? null : Math.round(Number(body.revenueGoal))) : existing.revenueGoal
       };
       // 2026-09-16 — status derived from the dates this save ends up with
       // (see deriveCampaignStatusFromDates()'s comment above), computed
@@ -34909,7 +35025,7 @@ Submit your response via the campaign_intake_turn tool.`;
       addCol('funnelBookingRatePct', body.funnelBookingRatePct !== undefined, merged.funnelBookingRatePct);
       addCol('funnelRegistrationRatePct', body.funnelRegistrationRatePct !== undefined, merged.funnelRegistrationRatePct);
       addCol('actualRevenue', body.actualRevenue !== undefined, merged.actualRevenue);
-      addCol('websiteVisitGoal', body.websiteVisitGoal !== undefined, merged.websiteVisitGoal);
+      addCol('revenueGoal', body.revenueGoal !== undefined, merged.revenueGoal);
       if (setCols.length){
         setVals.push(campaignId);
         db.prepare(`UPDATE campaigns SET ${setCols.join(', ')} WHERE id = ?`).run(...setVals);
@@ -36361,11 +36477,9 @@ Submit your response via the recommendation_dialogue_reply tool.`;
         // conversation reuses turn N's processed prefix (part 3).
         // 2026-10-13 — the campaign's own budget/targets + the account's
         // cost per website visit (see buildCampaignTargetsPromptBlock()).
-        const tCpv = Date.now();
-        let cpv = null;
-        try { cpv = computeAccountCostPerWebsiteVisit(campaign.accountId); } catch (e){ console.warn('[ai-brain-reply] cost per visit unavailable:', e.message); }
-        timings.costPerVisit = { ms: Date.now() - tCpv };
-        const campaignTargetsBlock = buildCampaignTargetsPromptBlock(campaign, cpv);
+        let budgetKpis = null;
+        try { budgetKpis = computeAccountBudgetKpisCached(campaign.accountId, timings); } catch (e){ console.warn('[ai-brain-reply] budget KPIs unavailable:', e.message); }
+        const campaignTargetsBlock = buildCampaignTargetsPromptBlock(campaign, budgetKpis);
         const campaignDataBlock = `CAMPAIGN: ${campaign.name || campaignId} (${campaign.campaignCode || campaignId})
 Lifecycle/Loop Stage: ${campaign.stage || '(not set)'}
 Objective: ${campaignObjectiveText(campaign) || '(not set)'}
@@ -36443,7 +36557,7 @@ Reply directly to this, following the instructions you were given. Submit your r
           if (parsed._truncated) timings.truncated = true;
           return {
             reply: parsed.reply || "Sorry, I didn't get a response — try again.", suggestion,
-            campaignUpdate: finalizeCampaignUpdate(parsed.campaignUpdate, campaign, cpv),
+            campaignUpdate: finalizeCampaignUpdate(parsed.campaignUpdate, campaign, budgetKpis),
             matchMarketSuggestion: showMatchMarketCard ? matchMarketSuggestion : null,
             matchMarketNewlyAttached,
             timings
