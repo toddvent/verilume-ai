@@ -13627,7 +13627,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-13-brain-budget-kpis';
+const CXMEDIA_BUILD_STAMP = '2026-10-13-budget-card-audience';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -51892,20 +51892,9 @@ function cmpRenderPitchLeft(campaign){
             ${s.editingCard
               ? `<div class="field" style="width:auto;min-width:160px;margin:0;"><select id="cmpRecoCardStageSelect" onchange="cmpRecoCardStageChanged(this.value)" ${s.cardSaving ? 'disabled' : ''}>${MEDIA_LOOP_STAGES.map(st => `<option value="${escapeHtml(st)}" ${st === (s.cardDraft ? s.cardDraft.stage : '') ? 'selected' : ''}>${escapeHtml(st)}</option>`).join('')}</select></div>`
               : escapeHtml(campaign.stage || '(not set)')}
-            <!-- 2026-09-17 — per Todd's direct correction: this campaign's
-                 real media mix can span more than one Lifecycle Stage at
-                 once (his example: a Loyalty allocation AND a Consideration
-                 allocation in the same campaign). The single "Loop Stage"
-                 field above stays as the campaign-level rollup label, but
-                 whenever more than one stage actually carries budget
-                 (summary.stageTotals, computed per line item server-side),
-                 show the real breakdown here rather than letting the single
-                 label imply the whole campaign is one stage. -->
-            ${(() => {
-              const stEntries = Object.entries(summary.stageTotals || {}).filter(([, v]) => v > 0);
-              if (stEntries.length < 2) return '';
-              return `<div class="hint" style="margin-top:6px;">Media mix spans ${stEntries.length} stages: ${stEntries.map(([st, v]) => `${escapeHtml(st)} (${fmtMoney(v)})`).join(', ')}</div>`;
-            })()}
+            <!-- 2026-10-13, per Todd: the "Media mix spans N stages: …" line
+                 that sat here (added 2026-09-17) is removed — the Loop Stage
+                 Distribution chart below already shows the same split. -->
           </div>
         </div>
         <div class="cmp-objectives-recap-row">
