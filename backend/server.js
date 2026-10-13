@@ -4367,6 +4367,37 @@ async function withSingleRetryOnTimeout(attemptFn, retryFn){
 // below reads ONLY the campaign object it is handed, so the rule applies to that campaign id and nothing else.
 const EXCLUDED_AUDIENCE_CHANNELS = { 'Past Customers': ['Direct Mail \u2014 Past Guests'], 'Prospects': ['Direct Mail \u2014 Prospects'], 'Hand-Raisers': ['Direct Mail \u2014 Inquiries'] };
 function campaignExcludedAudiences(c){ return String((c && c.excludeSegments) || '').split(',').map(x => x.trim()).filter(Boolean); }
+// 2026-10-13, per Todd ("Target audiences does not populate on the budget
+// screen", CMP-mv6ny2tw-106-3 — the Objectives dialogue plainly said "new
+// prospects"): Campaign Creation collects no Audience, so the only thing
+// that ever filled campaigns.segment was the model's audienceSegments
+// extraction in generate-recommendation-from-intake, and when that came
+// back empty the budget card said "(not set)" forever. This is the code
+// fallback: read only what the TEAM said (user turns + the goal summary —
+// never the AI Brain's own turns, which list every audience as options
+// when asking "who are you trying to reach?") and map plain wording onto
+// the platform's audience vocabulary. Returns [] when nothing clearly
+// matches — an empty audience beats a guessed one.
+const AUDIENCE_TEXT_RULES = [
+  ['Past Customers', /\b(past|previous|former|repeat|returning|existing)\s+(customers?|guests?|bookers?|travell?ers?|clients?)\b|\bre-?engag\w*\s+(past|previous|existing)\b|\breactivat\w*/i],
+  ['Hand-Raisers', /\bhand[\s-]?raisers?\b|\binquir(y|ies|ers?)\b|\benquir(y|ies|ers?)\b|\bbrochure\b|\bpast leads\b|\balready (shown|showed) interest\b/i],
+  ['Prospects', /\bprospect(s|ing)?\b|\bnew (customers?|guests?|audiences?|travell?ers?|to (the )?brand)\b|\bnet[\s-]?new\b|\bnever (engaged|travell?ed|booked|purchased)\b|\bconquest\w*/i],
+  ['Future Customers', /\bfuture (customers?|guests?|travell?ers?)\b|\bin[\s-]market planners?\b/i],
+  ['Anonymous Website Traffic', /\banonymous\b|\bretarget\w*|\bremarket\w* (site|website) visitors\b/i]
+];
+function inferAudienceSegmentsFromCampaignConversation(campaign){
+  if (!campaign) return [];
+  let text = '';
+  try {
+    const notes = campaign.activityNotesJson ? JSON.parse(campaign.activityNotesJson) : null;
+    if (notes){
+      if (notes.objectivesGoalSummary) text += ' ' + notes.objectivesGoalSummary;
+      (Array.isArray(notes.objectivesIntake) ? notes.objectivesIntake : []).forEach(m => { if (m && m.role === 'user' && !m.recapUpdate && typeof m.text === 'string') text += ' ' + m.text; });
+    }
+  } catch (e){ /* malformed notes — nothing to read */ }
+  if (!text.trim()) return [];
+  return AUDIENCE_TEXT_RULES.filter(([label, re]) => re.test(text) && !audienceIsExcluded(campaign, label)).map(([label]) => label);
+}
 function audienceIsExcluded(c, label){
   const t = String(label || '').toLowerCase().trim(); if (!t) return false;
   return campaignExcludedAudiences(c).some(x => { const e = x.toLowerCase(); return t === e || t.indexOf(e) >= 0 || e.indexOf(t) >= 0; });
@@ -28206,7 +28237,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-13-brain-budget-kpis',
+        buildStamp: '2026-10-13-budget-card-audience',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
@@ -35846,7 +35877,8 @@ Submit via the recommendation_from_intake tool.`;
       // collects no Audience field — see CMP_OBJ_RECAP_FIELDS's own
       // comment on the frontend — so this screen's Audience row starts
       // genuinely empty until either a human sets it or this runs).
-      const audienceSegments = Array.isArray(parsed.audienceSegments) ? parsed.audienceSegments.filter(s => RECO_GENERATION_SEGMENTS.includes(s) && !audienceIsExcluded(campaign, s)) : [];
+      let audienceSegments = Array.isArray(parsed.audienceSegments) ? parsed.audienceSegments.filter(s => RECO_GENERATION_SEGMENTS.includes(s) && !audienceIsExcluded(campaign, s)) : [];
+      if (!audienceSegments.length) audienceSegments = inferAudienceSegmentsFromCampaignConversation(campaign).filter(s => RECO_GENERATION_SEGMENTS.includes(s)); // 2026-10-13 code fallback
       if (audienceSegments.length && !(campaign.segment || '').trim()){
         db.prepare('UPDATE campaigns SET segment = ? WHERE id = ?').run(audienceSegments.join(', '), campaignId);
       }
@@ -36893,6 +36925,19 @@ Submit your response via the messaging_intake_turn tool.`;
         // similar campaign" — the similar-campaign lookup (Stage match +
         // conversion efficiency, same scoring as campaign-intake) was
         // removed from this response entirely, not just hidden client-side.
+        // 2026-10-13 — write-through backfill for campaigns whose
+        // recommendation ran before (or without) an audience extraction:
+        // same "only when nothing is set, never overwrite a human's choice"
+        // rule as generate-recommendation-from-intake. See
+        // inferAudienceSegmentsFromCampaignConversation().
+        if (!String(campaign.segment || '').trim()){
+          const inferred = inferAudienceSegmentsFromCampaignConversation(campaign);
+          if (inferred.length){
+            campaign.segment = inferred.join(', ');
+            try { db.prepare('UPDATE campaigns SET segment = ? WHERE id = ?').run(campaign.segment, campaignId); }
+            catch (e){ console.warn('[pitch-summary] audience backfill not saved:', e.message); }
+          }
+        }
         return sendJson(res, 200, {
           campaignId,
           loopStage: campaign.stage || null,
