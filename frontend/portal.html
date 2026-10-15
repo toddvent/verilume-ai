@@ -17868,10 +17868,10 @@ function cmpChannelKpiMismatchNote(channel, campaign){
   if (!channel || !campaign || !CHANNELS_WITHOUT_DIRECT_VISIT_TRACKING.includes(channel)) return null;
   const narrativeObjective = (typeof cmpCreativeObjectiveText === 'function' ? cmpCreativeObjectiveText(campaign) : '') || '';
   const visitLanguage = /\bvisits?\b|\btraffic\b|\bclicks?\b/i.test(narrativeObjective);
-  const clicksKpi = campaign.primaryKpi === 'Clicks';
+  const clicksKpi = campaign.primaryKpi === 'Clicks' || campaign.primaryKpi === 'Website Visits';
   if (!visitLanguage && !clicksKpi) return null;
-  const basis = clicksKpi && visitLanguage ? 'the Primary KPI (Clicks) and the stated objective'
-    : clicksKpi ? 'the Primary KPI (Clicks)' : 'the stated objective';
+  const basis = clicksKpi && visitLanguage ? 'the Primary KPI (' + campaign.primaryKpi + ') and the stated objective'
+    : clicksKpi ? 'the Primary KPI (' + campaign.primaryKpi + ')' : 'the stated objective';
   return `${channel} has no direct click/visit-level tracking, but ${basis} ${clicksKpi && visitLanguage ? 'are' : 'is'} visit/click-based — this line's performance can't be measured the same way as the campaign's other trackable channels.`;
 }
 
@@ -20777,7 +20777,7 @@ function wealthTierAdjustmentLabel(){
 // tied to a numeric Target KPI Goal / budget forecast. 'Clicks' and 'Video
 // Views' are genuinely new — see FUNNEL_KPIS and DEFAULT_VIDEO_VIEW_RATE
 // below for how each forecasts.
-const PRIMARY_KPI_OPTIONS = ['Impressions', 'Reach', 'Clicks', 'Leads', 'Video Views', 'Transactions', 'Other (describe below)'];
+const PRIMARY_KPI_OPTIONS = ['Website Visits', 'Reach', 'Clicks', 'Leads', 'Video Views', 'Transactions', 'Other (describe below)'];
 
 // Rate/relationship metrics this account still tracks and reports on
 // (Analysis, Campaign QA) but that can't drive a budget forecast — they're
@@ -20804,7 +20804,7 @@ const PERFORMANCE_METRICS_REPORTED = [
 // default to the closest countable result: repeat business is still
 // Transactions, and advocacy still runs through Leads (referral sign-ups).
 const KPI_BY_OBJECTIVE = {
-  'Brand Awareness': 'Impressions',
+  'Brand Awareness': 'Website Visits',
   'Consideration': 'Clicks',
   'Purchase / Conversion': 'Transactions',
   'Brand Loyalty': 'Transactions',
@@ -20816,6 +20816,7 @@ const KPI_BY_OBJECTIVE = {
 // guidance — the KPI Goal field itself stays a free-typed number; nothing
 // here overwrites it.
 const KPI_TARGET_BENCHMARK = {
+  'Website Visits': 'Drive 25,000 website visits in the campaign window, sized from your account\'s cost per website visit.',
   'Impressions': 'Achieve 500,000 targeted impressions within a specific geographic or demographic segment per quarter.',
   'Reach': 'Expose 50,000 unique target users to the campaign assets over a 30-day period.',
   'Clicks': 'Drive 10,000 clicks with a target cost-per-click that keeps the resulting traffic within budget.',
@@ -21001,7 +21002,7 @@ const DEFAULT_REGISTRATION_RATE = 0.030;
 // 'Sales Volume / Conversions'. Internal variable names (visitRate, visits,
 // leads, bookings) are unchanged throughout this file — only the
 // user-facing KPI string and its display labels moved.
-const FUNNEL_KPIS = ['Clicks', 'Leads', 'Transactions'];
+const FUNNEL_KPIS = ['Website Visits', 'Clicks', 'Leads', 'Transactions'];
 
 // Round 132q follow-on (2026-08-09) — per-industry multipliers on top of the
 // FUNNEL_CONVERSION_BY_STAGE baseline.
@@ -28503,7 +28504,8 @@ const CFD_CAMPAIGN_KPI_WORDS = [
   { re: /transaction|booking|sale|order|purchase|customer/i, kpi: 'Transactions', noun: 'transactions' },
   { re: /lead|download|sign-?up/i, kpi: 'Leads', noun: 'leads' },
   { re: /video\s*view|watch/i, kpi: 'Video Views', noun: 'video views' },
-  { re: /visit|traffic|click/i, kpi: 'Clicks', noun: 'clicks' },
+  { re: /website\s*visit|visit|traffic/i, kpi: 'Website Visits', noun: 'website visits' },
+  { re: /click/i, kpi: 'Clicks', noun: 'clicks' },
   { re: /reach/i, kpi: 'Reach', noun: 'reach' },
   { re: /impression/i, kpi: 'Impressions', noun: 'impressions' },
 ];
@@ -32917,8 +32919,8 @@ function cmpCollapseTruncatableHint(link){
 // 2026-10-12: the Primary KPI list follows the Marketing Loop stage. A KPI that stage is not built to deliver (Leads on
 // Awareness) is not offered. Editing an existing campaign keeps whatever it already has.
 const STAGE_KPI_FIT = {
-  'Awareness': ['Impressions', 'Reach', 'Video Views'],
-  'Consideration': ['Clicks', 'Video Views', 'Leads'],
+  'Awareness': ['Website Visits', 'Reach', 'Video Views'],
+  'Consideration': ['Website Visits', 'Clicks', 'Video Views', 'Leads'],
   'Purchase': ['Leads', 'Transactions', 'Clicks'],
   'Loyalty': ['Transactions', 'Leads'],
   'Advocacy': ['Leads', 'Reach']
@@ -32936,7 +32938,7 @@ function renderCmpPrimaryKpiOptions(){
   const current = sel.value;
   const editing = !!((document.getElementById('cmpExistingCampaign') || {}).value);
   let list = kpisForStage(selectedStage, true);
-  if (editing && current && !list.includes(current) && PRIMARY_KPI_OPTIONS.includes(current)) list = list.concat([current]);
+  if (editing && current && !list.includes(current) && (PRIMARY_KPI_OPTIONS.includes(current) || current === 'Impressions')) list = list.concat([current]);
   sel.innerHTML = `<option value="">— select a primary KPI —</option>` +
     list.map(k => `<option value="${k}">${k}</option>`).join('');
   cmpKpiDropNote = '';
@@ -33456,7 +33458,7 @@ function computeRequiredImpressions(kpi, goal){
   const rates = getFunnelRates();
   if (!rates.visitRate || !rates.leadRate || !rates.bookingRate) return null;
   let bookings, leads, visits, impressions;
-  if (kpi === 'Clicks'){
+  if (kpi === 'Clicks' || kpi === 'Website Visits'){
     visits = goal;
     impressions = visits / rates.visitRate;
     return {
@@ -54929,9 +54931,9 @@ function briefParse(raw){
   const SEG_SYN = { 'Past Customers': ['past customer', 'past guest', 'previous customer'], 'Hand-Raisers': ['hand-raiser', 'hand raiser', 'handraiser'], 'Prospects': ['prospect'], 'Future Customers': ['future customer'], 'Cancelled Orders': ['cancelled order', 'canceled order', 'cancelled customer'], 'Anonymous Website Traffic': ['anonymous', 'website traffic'] };
   ACCOUNT_SEGMENTS.forEach(s => { const keys = [s.toLowerCase()].concat(SEG_SYN[s] || []); if (keys.some(k => low.indexOf(k) >= 0)) out.segments.push(s); });
   const d = briefDates(text); if (d.dates[0]) out.start = d.dates[0]; if (d.dates[1]) out.end = d.dates[1];
-  const KPI = [['video view', 'Video Views'], ['transaction', 'Transactions'], ['booking', 'Transactions'], ['sale', 'Transactions'], ['lead', 'Leads'], ['impression', 'Impressions'], ['click', 'Clicks'], ['reach', 'Reach']];
+  const KPI = [['video view', 'Video Views'], ['transaction', 'Transactions'], ['booking', 'Transactions'], ['sale', 'Transactions'], ['lead', 'Leads'], ['website visit', 'Website Visits'], ['visit', 'Website Visits'], ['click', 'Clicks'], ['reach', 'Reach']];
   const rl = d.rest.toLowerCase();
-  const m = rl.match(/(\d+(?:\.\d+)?)\s*(k|m|thousand|million)?\s+(?:new\s+|more\s+|qualified\s+|total\s+)?(video views?|transactions?|bookings?|sales?|leads?|impressions?|clicks?|reach)\b/);
+  const m = rl.match(/(\d+(?:\.\d+)?)\s*(k|m|thousand|million)?\s+(?:new\s+|more\s+|qualified\s+|total\s+)?(video views?|transactions?|bookings?|sales?|leads?|website visits?|visits?|clicks?|reach)\b/);
   if (m){ out.goal = briefNum(m[1], m[2]); const k = KPI.find(x => m[3].indexOf(x[0]) === 0); if (k) out.kpi = k[1]; }
   else { const k = KPI.find(x => rl.indexOf(x[0]) >= 0); if (k) out.kpi = k[1]; }
   const foc = Object.keys(BUSINESS_INITIATIVE_REGISTRY_CLIENT).find(key => rl.indexOf(BUSINESS_INITIATIVE_REGISTRY_CLIENT[key].label.toLowerCase()) >= 0); if (foc) out.focus = foc;
@@ -55069,7 +55071,7 @@ function briefBudgetCheck(){
   const money = n => (typeof fmtMoney === 'function' ? fmtMoney(n) : '$' + Math.round(n).toLocaleString('en-US'));
   const gtxt = goal.toLocaleString('en-US'); const b = briefBench.data && briefBench.data.available ? briefBench.data : null;
   const parts = []; let level = 'info'; let ref = null;
-  const METRIC = { 'Leads': { key: 'cpl', per: 'cost per lead', unit: 'leads' }, 'Clicks': { key: 'costPerVisit', per: 'cost per website visit', unit: 'clicks' },
+  const METRIC = { 'Leads': { key: 'cpl', per: 'cost per lead', unit: 'leads' }, 'Clicks': { key: 'costPerVisit', per: 'cost per website visit', unit: 'clicks' }, 'Website Visits': { key: 'costPerVisit', per: 'cost per website visit', unit: 'website visits' },
     'Transactions': { key: 'cac', per: 'customer acquisition cost (CAC)', unit: 'transactions' }, 'Impressions': { key: 'cpm', per: 'CPM', unit: 'impressions', cpm: true } };
   const m = METRIC[kpi];
   if (!kpi){ if (cmpKpiDropNote){ level = 'warn'; parts.push(cmpKpiDropNote); } else parts.push('Pick what the ' + gtxt + ' counts (the Primary KPI) and I will check it against your history.'); }
@@ -67810,6 +67812,7 @@ const CAMPAIGN_OBJECTIVE_COPY = {
 // metric now under PERFORMANCE_METRICS_REPORTED, falls back to the
 // Objective-level ask in cmpAssembleLongFormCopy() below, unchanged.
 const PRIMARY_KPI_ANGLE = {
+  'Website Visits': { ask: 'Take a closer look', mechanism: 'site visits - the ask needs a clear reason to come to the site now, with the landing page promised in the message' },
   'Impressions': { ask: 'Take notice', mechanism: 'pure reach - no conversion pressure; the win is being seen and remembered' },
   'Reach': { ask: 'Take a first look', mechanism: 'reach - the ask should cost the reader nothing but attention' },
   'Clicks': { ask: 'Explore this further', mechanism: 'click-through - the ask needs its own small hook that earns the click, not a generic "learn more"' },
