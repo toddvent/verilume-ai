@@ -1475,6 +1475,20 @@
   .gpc-d{font-size:0.75rem;font-weight:600;} .gpc-d.good{color:#1E8E4A;} .gpc-d.bad{color:#C0273C;} .gpc-d.neutral{color:var(--muted);font-weight:500;}
   .gpc-abs{margin-top:12px;font-size:0.875rem;line-height:1.45;font-weight:600;} .gpc-abs.good{color:#1E8E4A;} .gpc-abs.bad{color:#C0273C;} .gpc-abs.neutral{color:var(--ink);}
   .gpc-dates{margin-top:8px;font-size:0.6875rem;color:var(--muted);line-height:1.5;} .gpc-dates span{opacity:.85;}
+  /* 2026-10-15 cards are charts under a topline abstract, all one size */
+  .gpc{height:430px;display:flex;flex-direction:column;overflow:visible;} .gpc-head{min-height:40px;} .gpc-range{margin:6px 0 8px;min-height:30px;}
+  .gpc-abs{margin:0 0 10px;font-size:0.8125rem;line-height:1.4;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;min-height:3.4em;}
+  .gpc-chart{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:space-between;gap:8px;overflow:hidden;} .gpc-chart.big{overflow:visible;gap:16px;margin-top:6px;}
+  .gpc-svg{width:100%;display:block;} .gpc-row{display:flex;flex-direction:column;gap:2px;}
+  .gpc-rh{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 8px;font-size:0.75rem;color:var(--muted);} .gpc-rh b{color:var(--ink);font-size:0.9375rem;font-variant-numeric:tabular-nums;}
+  .gpc-ax{display:flex;justify-content:space-between;font-size:0.6875rem;color:var(--muted);} .gpc-sub{font-size:0.6875rem;color:var(--muted);}
+  .gpc-key{font-size:0.6875rem;color:var(--muted);display:flex;gap:6px;align-items:center;} .gpc-key i{display:inline-block;width:16px;height:0;border-top:2px solid var(--ink);} .gpc-key i.dash{border-top:2px dashed #94A3B8;margin-left:8px;}
+  .gpc-pairs{display:flex;flex-direction:column;gap:6px;} .gpc-pl{font-size:0.75rem;font-weight:600;margin-bottom:2px;} .gpc-p2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .gpc-bars{display:flex;flex-direction:column;gap:8px;} .gpc-bar{display:grid;grid-template-columns:96px 1fr 28px;align-items:center;gap:8px;font-size:0.75rem;} .gpc-bar b{text-align:right;font-variant-numeric:tabular-nums;}
+  .gpc-track{height:12px;background:#EEF2F6;border-radius:6px;overflow:hidden;} .gpc-track.big{height:16px;} .gpc-track i{display:block;height:100%;border-radius:6px;} .gpc-tr{margin-top:6px;}
+  .gpc-empty{font-size:0.8125rem;color:var(--muted);padding:18px 0;}
+  .gpc-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px;padding-top:8px;border-top:1px solid var(--line);} .gpc-foot .gpc-dates{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:0.6875rem;color:var(--muted);} .gpc-foot a{font-size:0.75rem;white-space:nowrap;cursor:pointer;}
+  .gpc-panel .gpc-abs{display:block;min-height:0;-webkit-line-clamp:unset;font-size:0.9375rem;}
   .gpc-modal{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:3000;display:flex;align-items:flex-start;justify-content:center;padding:4vh 16px;overflow:auto;}
   .gpc-panel{background:var(--white);color:var(--ink);border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.35);width:min(980px,100%);padding:24px 28px 28px;} .gpc-panel .gpc-face{flex-direction:row;flex-wrap:wrap;gap:18px 40px;} .gpc-panel .gpc-face.ops{display:flex;} .gpc-panel .gpc-mv{font-size:2rem;}
   .gpc-phead{display:flex;align-items:center;justify-content:space-between;gap:12px;} .gpc-phead h2{margin:0;font-size:1.25rem;}
@@ -25084,6 +25098,7 @@ function gpcOpsData(){
   const rangeLabel = st.preset === 'custom' && R.name === 'Custom range' ? `Campaigns running between ${stratDay(R.from)} and ${stratDay(R.through)}` : `Campaigns running or starting from ${stratDay(R.from)} (${R.name.toLowerCase()})`;
   const c4 = { key: 'ops', title: 'Ops', thought: 'GD', rangeLabel, compLabel: 'Next 30 days: ' + stratDay(today) + ' to ' + stratDay(horizon),
     face: ['completed', 'qa', 'creative', 'planning'].map(k => ({ label: labelOf[k], value: n(k), kind: 'int' })), abstract, status,
+    chart: { kind: 'ops', stages: [{ label: 'In Planning', value: n('planning'), color: '#94A3B8' }, { label: 'In Copy / Creative', value: n('creative'), color: '#0891B2' }, { label: 'In QA', value: n('qa'), color: '#D08A3E' }, { label: 'Completed', value: n('completed'), color: '#1E2761' }], traffic: { done, total: drop.length } },
     large: { tables: [
       { name: 'Campaigns by stage', columns: ['Stage', 'Campaigns'], rows: ['completed', 'qa', 'creative', 'planning'].map(k => [labelOf[k], String(n(k))]) },
       { name: 'Dropping in the next 30 days', columns: ['Campaign code', 'Campaign', 'Starts', 'Days to go', 'Trafficking'], rows: drop.map(c => [String(c.campaignCode || c.id), String(c.name || c.objective || 'Untitled Campaign'), String(c.startDate).slice(0, 10), String(gpDaysTo(c.startDate)), c.trafficSentAt ? 'Completed ' + String(c.trafficSentAt).slice(0, 10) : 'Not sent yet']) },
@@ -25134,11 +25149,44 @@ function gpcExpandBtn(key){ return `<button type="button" class="share-btn" aria
 function gpcFaceHtml(c){
   return `<div class="gpc-face${c.key === 'ops' ? ' ops' : ''}">${c.face.map(f => `<div class="gpc-m"><div class="gpc-ml">${escapeHtml(f.label)}</div><div class="gpc-mv">${gpcFmt(f.value, f.kind)}${f.delta !== undefined ? ' ' + gpcDelta(f.delta, f.goodWhen) : ''}</div>${f.sub ? `<div class="strat-sub">${escapeHtml(f.sub)}</div>` : ''}${f.cost ? `<div class="gpc-cost"><span>${escapeHtml(f.cost.label)}</span> <b>${gpcFmt(f.cost.value, f.cost.kind)}</b> ${gpcDelta(f.cost.delta, f.cost.goodWhen)}</div>` : ''}</div>`).join('')}</div>`;
 }
+
+// Charts for the four cards (2026-10-15, Todd: analytics cards are visual charts under a topline abstract, all one size).
+function gpcSpark(vals, o){
+  o = o || {}; const W = 240, H = o.h || 54, padT = 6, padB = 4, padX = 3; const pts = (vals || []).map(v => (v == null || isNaN(v)) ? null : Number(v));
+  const ex = o.expected && o.expected.length ? o.expected.map(v => v == null ? null : Number(v)) : null;
+  const all = pts.concat(ex || []).filter(v => v != null); if (!all.length) return `<div class="gpc-empty">Not on file for these dates</div>`;
+  let lo = o.zero ? 0 : Math.min(...all), hi = Math.max(...all); if (o.zero) lo = Math.min(0, lo); if (hi === lo){ hi = lo + 1; }
+  const n = Math.max(pts.length, 1), x = i => n === 1 ? W / 2 : padX + i * (W - 2 * padX) / (n - 1), y = v => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
+  let body = '';
+  if (o.bars){ const bw = Math.max(2, (W - 2 * padX) / n * 0.62); body = pts.map((v, i) => v == null ? '' : `<rect x="${(padX + (i + 0.5) * (W - 2 * padX) / n - bw / 2).toFixed(1)}" y="${y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1, H - padB - y(v)).toFixed(1)}" rx="2" fill="${o.color || '#1E2761'}"/>`).join(''); }
+  else {
+    const path = arr => { let d = '', pen = false; arr.forEach((v, i) => { if (v == null){ pen = false; return; } d += `${pen ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`; pen = true; }); return d; };
+    if (ex) body += `<path d="${path(ex)}" fill="none" stroke="#94A3B8" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="round"/>`;
+    const d = path(pts); const first = pts.findIndex(v => v != null), last = pts.length - 1 - pts.slice().reverse().findIndex(v => v != null);
+    if (o.area && d && first >= 0 && pts.slice(first, last + 1).every(v => v != null)) body += `<path d="${d}L${x(last).toFixed(1)} ${H - padB}L${x(first).toFixed(1)} ${H - padB}Z" fill="${o.color || '#1E2761'}" opacity="0.10"/>`;
+    body += `<path d="${d}" fill="none" stroke="${o.color || '#1E2761'}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    if (last >= 0 && last < pts.length) body += `<circle cx="${x(last).toFixed(1)}" cy="${y(pts[last]).toFixed(1)}" r="3.5" fill="${o.color || '#1E2761'}" stroke="var(--white)" stroke-width="2"/>`;
+  }
+  return `<svg class="gpc-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${escapeHtml(o.aria || 'Trend')}"><line x1="0" x2="${W}" y1="${H - padB}" y2="${H - padB}" stroke="var(--line)" stroke-width="1"/>${body}</svg>`;
+}
+function gpcAxis(labels){ if (!labels || !labels.length) return ''; const a = labels[0], b = labels[labels.length - 1]; return `<div class="gpc-ax"><span>${escapeHtml(a)}</span><span>${labels.length > 1 ? escapeHtml(b) : ''}</span></div>`; }
+function gpcChartHtml(c, big){
+  const ch = c.chart; if (!ch) return '<div class="gpc-empty">Loading</div>';
+  const h = big ? 110 : null;
+  if (ch.kind === 'sparks') return ch.rows.map((r, i) => `<div class="gpc-row"><div class="gpc-rh"><span>${escapeHtml(r.label)}</span><b>${escapeHtml(r.end)}</b>${gpcDelta(r.delta, r.goodWhen)}</div>${gpcSpark(r.vals, { color: i ? '#0891B2' : '#1E2761', area: true, h: h || 54, aria: r.label + ' over the dates' })}</div>`).join('') + gpcAxis(ch.labels);
+  if (ch.kind === 'pace') return ch.rows.map((r, i) => `<div class="gpc-row"><div class="gpc-rh"><span>${escapeHtml(r.label)}</span><b>${escapeHtml(r.end)}</b>${r.pct != null ? `<span class="gpc-d ${r.pct >= 95 && r.pct <= 105 ? 'good' : r.pct > 105 ? 'neutral' : r.pct >= 85 ? 'neutral' : 'bad'}">${r.pct}% of pace</span>` : '<span class="gpc-d neutral">no pace target</span>'}</div>${gpcSpark(r.actual, { color: i ? '#0891B2' : '#1E2761', expected: r.expected, h: h || 54, aria: r.label + ' against pace' })}</div>`).join('') + `<div class="gpc-key"><i></i> Actual <i class="dash"></i> Expected pace</div>` + gpcAxis(ch.labels);
+  if (ch.kind === 'pairs') return `<div class="gpc-pairs">${ch.rows.map(r => `<div class="gpc-pair"><div class="gpc-pl">${escapeHtml(r.label)}</div><div class="gpc-p2"><div><div class="gpc-rh"><b>${escapeHtml(r.vol.end)}</b>${gpcDelta(r.vol.delta, r.vol.goodWhen)}</div>${gpcSpark(r.vol.vals, { bars: true, zero: true, color: '#1E2761', h: h || 26, aria: r.label + ' volume' })}</div><div><div class="gpc-rh"><b>${escapeHtml(r.cost.end)}</b>${gpcDelta(r.cost.delta, r.cost.goodWhen)}</div>${gpcSpark(r.cost.vals, { color: '#0891B2', h: h || 26, aria: r.cost.label })}<div class="gpc-sub">${escapeHtml(r.cost.label)}</div></div></div></div>`).join('')}</div>` + gpcAxis(ch.labels);
+  if (ch.kind === 'ops'){
+    const mx = Math.max(1, ...ch.stages.map(s => s.value)); const t = ch.traffic;
+    return `<div class="gpc-bars">${ch.stages.map(s => `<div class="gpc-bar"><span>${escapeHtml(s.label)}</span><div class="gpc-track"><i style="width:${(s.value / mx * 100).toFixed(1)}%;background:${s.color}"></i></div><b>${s.value}</b></div>`).join('')}</div><div class="gpc-tr"><div class="gpc-rh"><span>Dropping in the next 30 days, trafficked</span><b>${t.total ? t.done + ' of ' + t.total : '—'}</b></div><div class="gpc-track big"><i style="width:${t.total ? (t.done / t.total * 100).toFixed(1) : 0}%;background:${t.total && t.done / t.total >= 0.9 ? '#1E8E4A' : (t.total && t.done / t.total >= 0.6 ? '#D08A3E' : '#C0273C')}"></i></div></div>`;
+  }
+  return '';
+}
 function gpcCardHtml(key){
   const m = GPC_META[key], st = gpc[key], c = gpcCardData(key);
   const head = `<div class="gpc-head"><div class="sc-label">${m.n} · ${escapeHtml(m.title)}</div><div class="gpc-tools">${aiThoughtIconHtml(m.thought)}${gpcShareHtml(key, 'card')}${gpcExpandBtn(key)}</div></div>${gpcRangeHtml(key, 'card')}`;
-  if (!c) return `<div class="stat-card gpc" data-gpc="${key}">${head}<div class="strat-sub" style="margin-top:12px;">${st.err ? escapeHtml(st.err) : (st.loading || !gpc.started ? 'Loading' : 'Choose both dates and apply.')}</div></div>`;
-  return `<div class="stat-card gpc${st.loading ? ' loading' : ''}" data-gpc="${key}">${head}${st.err ? `<div class="drr-err">${escapeHtml(st.err)}</div>` : ''}${gpcFaceHtml(c)}<div class="gpc-abs ${c.status || 'neutral'}">${escapeHtml(c.abstract)}</div><div class="gpc-dates">${escapeHtml(stratHumanDates(c.rangeLabel))}<br><span>${escapeHtml(stratHumanDates(c.compLabel))}</span></div></div>`;
+  if (!c) return `<div class="stat-card gpc" data-gpc="${key}">${head}<div class="gpc-empty">${st.err ? escapeHtml(st.err) : (st.loading || !gpc.started ? 'Loading' : 'Choose both dates and apply.')}</div></div>`;
+  return `<div class="stat-card gpc${st.loading ? ' loading' : ''}" data-gpc="${key}">${head}<div class="gpc-abs ${c.status || 'neutral'}">${escapeHtml(c.abstract)}</div>${st.err ? `<div class="drr-err">${escapeHtml(st.err)}</div>` : ''}<div class="gpc-chart">${gpcChartHtml(c, false)}</div><div class="gpc-foot"><span class="gpc-dates" title="${escapeHtml(stratHumanDates(c.rangeLabel) + ' · ' + stratHumanDates(c.compLabel))}">${escapeHtml(stratHumanDates(c.rangeLabel))}</span><a class="flink" onclick="gpcOpen('${key}')">Details →</a></div></div>`;
 }
 function gpcCardsHtml(){ return ['roas', 'pacing', 'kpi', 'ops'].map(gpcCardHtml).join(''); }
 function gpcRender(){
@@ -25154,7 +25202,7 @@ function gpcRenderModal(){
   if (!host){ host = document.createElement('div'); host.id = 'gpcModal'; host.className = 'gpc-modal'; host.addEventListener('click', e => { if (e.target === host) gpcClose(); }); document.body.appendChild(host); }
   const tables = c ? c.large.tables.map(t => `<div class="strat-chart-label" style="margin:14px 0 4px;">${escapeHtml(t.name)}</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr>${t.columns.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead><tbody>${t.rows.length ? t.rows.map(r => `<tr>${r.map(v => `<td>${escapeHtml(v)}</td>`).join('')}</tr>`).join('') : `<tr class="empty-state-row"><td colspan="${t.columns.length}">None</td></tr>`}</tbody></table></div>`).join('') : '';
   host.innerHTML = `<div class="gpc-panel" role="dialog" aria-modal="true" aria-label="${escapeHtml(m.title)}"><div class="gpc-phead"><h2>${m.n} · ${escapeHtml(m.title)}</h2><div class="gpc-tools">${aiThoughtIconHtml(m.thought)}${gpcShareHtml(key, 'modal')}<button type="button" class="share-btn" aria-label="Close the large view" onclick="gpcClose()">✕</button></div></div>${gpcRangeHtml(key, 'modal')}
-    ${c ? `${st.err ? `<div class="drr-err">${escapeHtml(st.err)}</div>` : ''}${gpcFaceHtml(c)}<div class="gpc-abs ${c.status || 'neutral'}">${escapeHtml(c.abstract)}</div><div class="gpc-dates">${escapeHtml(stratHumanDates(c.rangeLabel))} · ${escapeHtml(stratHumanDates(c.compLabel))}</div>${tables}${(c.large.notes || []).map(n => `<p class="strat-sub">${escapeHtml(stratHumanDates(n))}</p>`).join('')}<details class="fd-hint" style="margin-top:12px;"><summary>How this is counted</summary>${(c.large.definitions || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}<p class="fd-hint"><a class="flink" onclick="gpcClose();aiThoughtOpen('${m.thought}')">Read more in AI Thoughts</a></p></details>` : `<p class="strat-sub" style="margin-top:14px;">${st && st.err ? escapeHtml(st.err) : 'Loading'}</p>`}</div>`;
+    ${c ? `${st.err ? `<div class="drr-err">${escapeHtml(st.err)}</div>` : ''}<div class="gpc-abs ${c.status || 'neutral'}">${escapeHtml(c.abstract)}</div><div class="gpc-chart big">${gpcChartHtml(c, true)}</div><div class="gpc-dates">${escapeHtml(stratHumanDates(c.rangeLabel))} · ${escapeHtml(stratHumanDates(c.compLabel))}</div>${tables}${(c.large.notes || []).map(n => `<p class="strat-sub">${escapeHtml(stratHumanDates(n))}</p>`).join('')}<details class="fd-hint" style="margin-top:12px;"><summary>How this is counted</summary>${(c.large.definitions || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}<p class="fd-hint"><a class="flink" onclick="gpcClose();aiThoughtOpen('${m.thought}')">Read more in AI Thoughts</a></p></details>` : `<p class="strat-sub" style="margin-top:14px;">${st && st.err ? escapeHtml(st.err) : 'Loading'}</p>`}</div>`;
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && gpc.open) gpcClose(); });
 async function gpcExport(key, format){
