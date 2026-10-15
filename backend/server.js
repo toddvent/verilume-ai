@@ -17476,8 +17476,43 @@ function dqValuesByDim(txs){
 }
 function dqDefaultAgg(measure){ return { undeliveredRevenue: 'sum', deliveredRevenue: 'sum', marketing: 'ratio', revenue: 'sum', netRevenue: 'sum', orderSize: 'avg', leadDays: 'avg', transactions: 'count', customers: 'sum', revenuePerUnit: 'ratio' }[measure]; }
 // ---- words to spec (no model)
+// ---- date phrases ("since January 1, 2025", "from Jan 2025 to March 2026", "between 2024 and 2025")
+const DQ_MON_RE = '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+const DQ_DATE_RE = `(?:${DQ_MON_RE}\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?,?\\s+20\\d\\d|${DQ_MON_RE}\\.?,?\\s+20\\d\\d|\\d{1,2}/\\d{1,2}/20\\d\\d|20\\d\\d-\\d{2}-\\d{2}|20\\d\\d)`;
+const DQ_WHEN_RES = [
+  new RegExp(`\\b(?:since|starting(?:\\s+from)?|beginning(?:\\s+in)?|from|after)\\s+(${DQ_DATE_RE})(?:\\s*(?:,|and|to|through|thru|until|till|-)\\s*(${DQ_DATE_RE}))?`, 'i'),
+  new RegExp(`\\bbetween\\s+(${DQ_DATE_RE})\\s+(?:and|to)\\s+(${DQ_DATE_RE})`, 'i'),
+  new RegExp(`\\b(${DQ_DATE_RE})\\s*(?:to|through|thru|until|-)\\s*(${DQ_DATE_RE})`, 'i')
+];
+function dqToIso(tok, asEnd){
+  const t = String(tok).trim().toLowerCase().replace(/,/g, '');
+  const pad = n => String(n).padStart(2, '0'); const last = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+  let m;
+  if ((m = /^(20\d\d)-(\d{2})-(\d{2})$/.exec(t))) return t;
+  if ((m = /^(\d{1,2})\/(\d{1,2})\/(20\d\d)$/.exec(t))) return `${m[3]}-${pad(m[1])}-${pad(m[2])}`;
+  if ((m = /^([a-z]+)\.?\s+(\d{1,2})(?:st|nd|rd|th)?\s+(20\d\d)$/.exec(t))){ const i = DQ_MONTH_NAMES.indexOf(m[1].slice(0, 3)); if (i >= 0) return `${m[3]}-${pad(i + 1)}-${pad(m[2])}`; }
+  if ((m = /^([a-z]+)\.?\s+(20\d\d)$/.exec(t))){ const i = DQ_MONTH_NAMES.indexOf(m[1].slice(0, 3)); if (i >= 0) return `${m[2]}-${pad(i + 1)}-${asEnd ? pad(last(Number(m[2]), i + 1)) : '01'}`; }
+  if ((m = /^(20\d\d)$/.exec(t))) return asEnd ? `${m[1]}-12-31` : `${m[1]}-01-01`;
+  return null;
+}
+function dqDayLabel(iso){ const d = new Date(iso + 'T00:00:00Z'); return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }); }
+// Returns { from, through (null = up to the latest data on file), rest } or null.
+function dqParseWhen(text){
+  const src = String(text || '');
+  for (let i = 0; i < DQ_WHEN_RES.length; i++){
+    const m = DQ_WHEN_RES[i].exec(src); if (!m) continue;
+    const a = dqToIso(m[1], false); if (!a) continue;
+    const b = m[2] ? dqToIso(m[2], true) : null;
+    if (b && b < a) continue;
+    return { from: a, through: b, rest: (src.slice(0, m.index) + ' ' + src.slice(m.index + m[0].length)).replace(/\s+(up to|through|until|to)\s+(today|now|the latest|the last day[^.?]*|date|the end)\b/ig, ' ') };
+  }
+  return null;
+}
+function dqWhenLabel(p){ return `${dqDayLabel(p.from)} to ${p.through ? dqDayLabel(p.through) : 'the latest data on file'}`; }
+function dqCleanDates(p){ const ok = x => typeof x === 'string' && /^20\d\d-\d{2}-\d{2}$/.test(x); return p && p.kind === 'dates' && ok(p.from) && (p.through === null || p.through === undefined || ok(p.through)) ? { kind: 'dates', from: p.from, through: p.through || null } : null; }
 function dqParse(text, ctx){
-  const raw = dqNorm(text); let t = raw; const assumptions = [];
+  const when = dqParseWhen(text);
+  const raw = dqNorm(when ? when.rest : text); let t = raw; const assumptions = [];
   const spec = { measure: null, agg: null, by: [], filters: [], period: { kind: 'range' }, basis: 'booked', compare: null, top: null, order: 'desc' };
   const now = new Date(); const thisYear = now.getUTCFullYear();
   // comparison and period words first, so "last year" is not mistaken for the Year breakdown
@@ -17487,6 +17522,7 @@ function dqParse(text, ctx){
   else if (/ this year /.test(t)){ spec.period = { kind: 'year', year: thisYear }; t = t.replace(/ this year /, ' '); }
   const ym = / (20\d\d) /.exec(t); if (ym){ spec.period = { kind: 'year', year: Number(ym[1]) }; t = t.replace(ym[0], ' '); }
   if (/ (all time|overall|ever|all years|full history|since the beginning|every year on file) /.test(t)){ spec.period = { kind: 'all' }; t = t.replace(/ (all time|overall|ever|all years|full history|since the beginning|every year on file) /, ' '); }
+  if (when){ spec.period = { kind: 'dates', from: when.from, through: when.through }; spec.compare = null; assumptions.push('Counting ' + dqWhenLabel(spec.period) + '.'); }
   const topM = / top (\d+|three|five|ten|3|5|10) /.exec(t); if (topM){ const w = { three: 3, five: 5, ten: 10 }[topM[1]] || Number(topM[1]); spec.top = Math.min(50, w); t = t.replace(topM[0], ' '); }
   if (/ (lowest|smallest|fewest|bottom|least) /.test(t)) spec.order = 'asc';
   // booked vs delivered basis
@@ -17564,9 +17600,10 @@ function dqValidateSpec(s, ctx){
   let period = { kind: 'range' };
   if (s.period && s.period.kind === 'all') period = { kind: 'all' };
   else if (s.period && s.period.kind === 'year' && Number(s.period.year) >= 2000 && Number(s.period.year) <= 2100) period = { kind: 'year', year: Number(s.period.year) };
+  else if (dqCleanDates(s.period)) period = dqCleanDates(s.period);
   const top = Number(s.top) > 0 ? Math.min(50, Math.floor(Number(s.top))) : null;
   const basis = s.basis === 'delivered' ? 'delivered' : 'booked';
-  return { measure: s.measure, agg, by, filters, period, basis, compare: s.compare === 'priorYear' && !by.includes('year') && period.kind !== 'all' ? 'priorYear' : null, top, order: s.order === 'asc' ? 'asc' : 'desc' };
+  return { measure: s.measure, agg, by, filters, period, basis, compare: s.compare === 'priorYear' && !by.includes('year') && period.kind !== 'all' && period.kind !== 'dates' ? 'priorYear' : null, top, order: s.order === 'asc' ? 'asc' : 'desc' };
 }
 // ---- the rules that decide which transactions count, in words
 function dqCountingRule(settings){
@@ -17599,6 +17636,7 @@ function dqPeriodTx(txs, spec, range){
   const sfx = dl ? ' (by service date)' : '';
   if (spec.period.kind === 'all') return { cur: dl ? txs.filter(t => Y(t)) : txs, prev: [], label: 'All years on file' + sfx };
   if (spec.period.kind === 'year'){ const y = spec.period.year; const cur = txs.filter(t => Y(t) === y); const prev = txs.filter(t => Y(t) === y - 1); return { cur, prev, label: String(y) + sfx, prevLabel: String(y - 1) + sfx }; }
+  if (spec.period.kind === 'dates'){ const f = spec.period.from, th = spec.period.through; return { cur: txs.filter(t => D(t) && D(t) >= f && (!th || D(t) <= th)), prev: [], label: dqWhenLabel(spec.period) + sfx }; }
   const inR = (t, a, b) => D(t) && D(t) >= a && D(t) <= b;
   return { cur: txs.filter(t => inR(t, range.from, range.through)), prev: txs.filter(t => inR(t, range.compFrom, range.compThrough)), label: range.label + sfx, prevLabel: range.compLabel + sfx };
 }
@@ -17743,6 +17781,7 @@ function dqMarketingRun(accountId, spec, range, L, vocab){
   const inPeriod = key => {
     if (spec.period.kind === 'all') return true;
     if (spec.period.kind === 'year') return key.slice(0, 4) === String(spec.period.year);
+    if (spec.period.kind === 'dates') return key >= spec.period.from.slice(0, 7) && (!spec.period.through || key <= spec.period.through.slice(0, 7));
     return key >= range.from.slice(0, 7) && key <= range.through.slice(0, 7);
   };
   const M = new Map(); const slot = k => { let o = M.get(k); if (!o) { o = { spend: null, leads: null, tx: 0, rev: 0, days: 0, revD: 0, noSize: 0 }; M.set(k, o); } return o; };
@@ -18207,9 +18246,10 @@ function dqSetValidate(s, accountId){
   let period = { kind: 'range' };
   if (s.period && s.period.kind === 'all') period = { kind: 'all' };
   else if (s.period && s.period.kind === 'year' && Number(s.period.year) >= 2000 && Number(s.period.year) <= 2100) period = { kind: 'year', year: Number(s.period.year) };
+  else if (dqCleanDates(s.period)) period = dqCleanDates(s.period);
   const top = Number(s.top) > 0 ? Math.min(50, Math.floor(Number(s.top))) : null;
   const timeDim = by.some(d => ['year', 'quarter', 'month', 'week'].includes(d));
-  return { set: s.set, measure: s.measure, agg, by, filters, period, basis: 'booked', compare: s.compare === 'priorYear' && !timeDim && period.kind !== 'all' ? 'priorYear' : null, top, order: s.order === 'asc' ? 'asc' : 'desc' };
+  return { set: s.set, measure: s.measure, agg, by, filters, period, basis: 'booked', compare: s.compare === 'priorYear' && !timeDim && period.kind !== 'all' && period.kind !== 'dates' ? 'priorYear' : null, top, order: s.order === 'asc' ? 'asc' : 'desc' };
 }
 // ---- words to spec for the data sets (no model)
 // Everyday ways of saying a value that is stored as a short code or a shorthand (US, Intl).
@@ -18226,7 +18266,8 @@ function dqUsInContext(norm){
     || / us (vs|versus|and|or|compared with|compared to) (canada|intl|international|the world) /.test(norm) || / (canada|intl|international) (vs|versus|and|or) us /.test(norm);
 }
 function dqSetParse(text, accountId){
-  const raw = dqNorm(text); let t = raw; const assumptions = [];
+  const when = dqParseWhen(text);
+  const raw = dqNorm(when ? when.rest : text); let t = raw; const assumptions = [];
   const have = dqSetsWithData(accountId);
   const ph = [];
   Object.keys(DQ_SETS).forEach(sk => Object.entries(DQ_SETS[sk].measures).forEach(([mk, m]) => m.syn.concat([m.label.toLowerCase()]).forEach(p => ph.push({ set: sk, key: mk, p }))));
@@ -18244,6 +18285,7 @@ function dqSetParse(text, accountId){
   else if (/ this year /.test(t)){ spec.period = { kind: 'year', year: thisYear }; t = t.replace(/ this year /, ' '); }
   const ym = / (20\d\d) /.exec(t); if (ym){ spec.period = { kind: 'year', year: Number(ym[1]) }; t = t.replace(ym[0], ' '); }
   if (/ (all time|overall|ever|all years|full history|since the beginning|every year on file) /.test(t)){ spec.period = { kind: 'all' }; t = t.replace(/ (all time|overall|ever|all years|full history|since the beginning|every year on file) /, ' '); }
+  if (when){ spec.period = { kind: 'dates', from: when.from, through: when.through }; spec.compare = null; assumptions.push('Counting ' + dqWhenLabel(spec.period) + '.'); }
   const topM = / top (\d+|three|five|ten|3|5|10) /.exec(t); if (topM){ spec.top = Math.min(50, { three: 3, five: 5, ten: 10 }[topM[1]] || Number(topM[1])); t = t.replace(topM[0], ' '); }
   if (/ (lowest|smallest|fewest|bottom|least) /.test(t)) spec.order = 'asc';
   if (/ (average|averages|avg|mean|typical|on average|per month on average) /.test(t)) spec.agg = 'avg';
@@ -18293,9 +18335,10 @@ function dqSetRun(accountId, specIn, range){
   const yearOf = r => r.year;
   if (spec.period.kind === 'all'){ cur = rows; label = 'All periods on file'; }
   else if (spec.period.kind === 'year'){ const y = spec.period.year; cur = rows.filter(r => yearOf(r) === y); prev = rows.filter(r => yearOf(r) === y - 1); label = String(y); prevLabel = String(y - 1); }
+  else if (spec.period.kind === 'dates'){ const f = spec.period.from, th = spec.period.through; cur = rows.filter(r => { const k = r.ym || (r.year ? String(r.year) + '-01' : null); return k && k >= f.slice(0, 7) && (!th || k <= th.slice(0, 7)); }); label = dqWhenLabel(spec.period); }
   else { cur = rows.filter(r => inRange(r, range.from, range.through)); prev = rows.filter(r => inRange(r, range.compFrom, range.compThrough)); label = range.label; prevLabel = range.compLabel; }
   // nothing in the dashboard range: say so and use every period on file, rather than answering with an empty table
-  if (!cur.length && spec.period.kind !== 'all' && rows.length){ cur = rows; prev = []; label = 'All periods on file'; spec.period = { kind: 'all' }; spec.compare = null; notes.push(`Nothing in ${spec.period.kind === 'year' ? 'that year' : 'the dashboard date range'} for this data set, so this shows every period on file.`); }
+  if (!cur.length && spec.period.kind !== 'all' && rows.length){ const was = spec.period.kind; cur = rows; prev = []; label = 'All periods on file'; spec.period = { kind: 'all' }; spec.compare = null; notes.push(`Nothing in ${was === 'year' ? 'that year' : was === 'dates' ? 'those dates' : 'the dashboard date range'} for this data set, so this shows every period on file.`); }
   if (!cur.length) return { x: null, notOnFile: set.need };
   const periodsInfo = (() => { const ks = Array.from(new Set(rows.map(r => r.ym || String(r.year)))).sort(); return ks.length ? `${ks[0]} to ${ks[ks.length - 1]}` : ''; })();
   const dimVal = (r, d) => {
