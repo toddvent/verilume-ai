@@ -26708,6 +26708,33 @@ async function askVerilumeConfirmProposal(key, elId){
   }
 }
 let askVerilumeDqLast = null;
+// Share menu for a data-question answer (2026-10-15): the same share icon the analytics cards use, with Excel, CSV and Google Sheets (plus PDF).
+function dqShareHtml(who){
+  const items = [['xlsx', 'Excel (.xlsx)'], ['csv', 'CSV'], ['sheets', 'Google Sheets'], ['pdf', 'PDF']].map(([f, l]) => `<button type="button" role="menuitem" onclick="dqShareAction('${who}','${f}')">${l}</button>`).join('');
+  return `<span class="fd-hint">Share or download:</span><span class="share-wrap" style="position:relative;top:auto;right:auto;display:inline-block;"><button type="button" class="share-btn" aria-label="Share or download this answer" aria-haspopup="menu" onclick="shareToggle(event,'dq-${who}')"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg></button><div class="share-menu" id="shareMenu-dq-${who}" role="menu" hidden style="right:auto;left:0;">${items}</div></span><span class="fd-hint" id="dqShareMsg-${who}" role="status" aria-live="polite"></span>`;
+}
+function dqShareSay(who, t){ const el = document.getElementById('dqShareMsg-' + who); if (el){ el.textContent = t; setTimeout(() => { if (el.textContent === t) el.textContent = ''; }, 7000); } }
+function dqAnswerGrid(r){
+  const clean = v => String(v == null ? '' : v).replace(/[\t\r\n]+/g, ' ');
+  const grid = [[r.title], [r.summary], []];
+  (r.tables || []).forEach(t => { if ((r.tables || []).length > 1) grid.push([t.name]); grid.push(t.columns.slice()); t.rows.forEach(row => grid.push(row.slice())); grid.push([]); });
+  (r.definitions || []).forEach(n => grid.push([n]));
+  return grid.map(row => row.map(clean));
+}
+async function dqShareAction(who, format){
+  document.querySelectorAll('.share-menu').forEach(m => { m.hidden = true; });
+  const a = who === 'fd' ? fd.dq : askVerilumeDqLast; if (!a || !a.result) return;
+  if (format !== 'sheets'){ return who === 'fd' ? fdExportAsk(format) : askVerilumeExportDq(format); }
+  // Google Sheets has no push API here: tab-separated text on the clipboard pastes straight into a new sheet.
+  const grid = dqAnswerGrid(a.result); const tsv = grid.map(r => r.join('\t')).join('\n');
+  try { await navigator.clipboard.writeText(tsv); window.open('https://sheets.new', '_blank', 'noopener'); dqShareSay(who, 'Copied. Paste into the new Google Sheet with Ctrl/Cmd+V.'); }
+  catch (e){
+    const csv = grid.map(r => r.map(v => /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' }); const url = URL.createObjectURL(blob); const el = document.createElement('a');
+    el.href = url; el.download = 'data-question-' + new Date().toISOString().slice(0, 10) + '.csv'; document.body.appendChild(el); el.click(); el.remove(); URL.revokeObjectURL(url);
+    dqShareSay(who, 'Clipboard blocked, so a CSV was downloaded. In Google Sheets use File, Import.');
+  }
+}
 function askVerilumeRenderDq(a){
   askVerilumeDqLast = a || null;
   const el = document.getElementById('askVerilumeDq'); if (!el) return;
@@ -26719,7 +26746,7 @@ function askVerilumeRenderDq(a){
     ${(r.tables || []).map(t => `<div class="strat-table-wrap"><table class="strat-table"><thead><tr>${t.columns.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead><tbody>${t.rows.map(row => `<tr>${row.map(c => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`).join('')}
     ${(r.notes || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}${drafts}
     <details class="fd-hint"><summary>How this was counted</summary>${(r.definitions || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}</details>
-    <div class="fd-actions"><button type="button" class="btn-ghost" onclick="askVerilumeOpenGuided(true)">Change this in the guided view</button><span class="fd-hint">Download:</span><button type="button" class="btn-ghost" onclick="askVerilumeExportDq('xlsx')">Excel</button><button type="button" class="btn-ghost" onclick="askVerilumeExportDq('csv')">CSV</button><button type="button" class="btn-ghost" onclick="askVerilumeExportDq('pdf')">PDF</button></div></div>`;
+    <div class="fd-actions"><button type="button" class="btn-ghost" onclick="askVerilumeOpenGuided(true)">Change this in the guided view</button>${dqShareHtml('av')}</div></div>`;
 }
 async function askVerilumeExportDq(format){
   const a = askVerilumeDqLast; if (!a || !a.spec) return;
@@ -26936,7 +26963,7 @@ function fdAnswerHtml(){
     ${(r.tables || []).map(t => `<div class="strat-table-wrap"><table class="strat-table"><thead><tr>${t.columns.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead><tbody>${t.rows.map(row => `<tr>${row.map(c => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`).join('')}
     ${(r.notes || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}${drafts}
     <details class="fd-hint"><summary>How this was counted</summary>${(r.definitions || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}</details>
-    <div class="fd-actions"><span class="fd-hint">Just this once:</span><button type="button" class="btn-ghost" onclick="fdExportAsk('xlsx')">Excel</button><button type="button" class="btn-ghost" onclick="fdExportAsk('csv')">CSV</button><button type="button" class="btn-ghost" onclick="fdExportAsk('pdf')">PDF</button></div></div>`;
+    <div class="fd-actions">${dqShareHtml('fd')}</div></div>`;
 }
 function fdPick(key, v){ fd.card[key] = v; fd.view = null; fd.notOnFile = ''; fd.unmet = false; fdTurn(''); }
 function fdChange(key){ fd.card[key] = null; fd.view = null; fd.notOnFile = ''; fd.unmet = false; fdTurn(''); }
