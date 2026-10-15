@@ -25822,11 +25822,19 @@ async function newsPerplexityLane(feedKey){
   const prompt = `Today is ${today}. List up to 6 news articles or analyses published in the last ${NEWS_FRESH_DAYS} days about ${topic}.\n\nRules:\n- Only articles from established trade, business or research publications. Skip press-release wires, vendor promotions and listicles.\n- Only include items you can link to a real page. Never invent an article, a date or a URL. If you find nothing, return an empty list.\n- "date" is the publication date as YYYY-MM-DD. If you do not know it, leave it empty.\n- "summary" is one short factual sentence.\n\nReturn ONLY a JSON object: {"items":[{"title":"...","url":"https://...","source":"...","date":"YYYY-MM-DD","summary":"..."}]}`;
   let data;
   try {
-    const resp = await fetchWithTimeout('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}` },
-      body: JSON.stringify({ model: process.env.PERPLEXITY_MODEL || 'sonar-pro', search_recency_filter: 'month', messages: [{ role: 'user', content: prompt }] })
-    }, 60000);
+    // 2026-10-15: Perplexity answers HTTP 429 (rate limit) when several lanes
+    // call at once, so a 429 is retried after a growing pause (4s, 8s, 12s)
+    // before the lane is reported as failed.
+    let resp = null;
+    for (let attempt = 0; attempt < 4; attempt++){
+      resp = await fetchWithTimeout('https://api.perplexity.ai/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}` },
+        body: JSON.stringify({ model: process.env.PERPLEXITY_MODEL || 'sonar-pro', search_recency_filter: 'month', messages: [{ role: 'user', content: prompt }] })
+      }, 60000);
+      if (resp.status !== 429 || attempt === 3) break;
+      await new Promise(r => setTimeout(r, 4000 * (attempt + 1)));
+    }
     if (!resp.ok){ let b = ''; try { b = (await resp.text()).slice(0, 200); } catch (e2){} throw new Error('HTTP ' + resp.status + (b ? ': ' + b : '')); }
     data = await resp.json();
   } catch (e){ return { items: [], note: 'Perplexity search failed: ' + String(e.message || e).slice(0, 160) }; }
@@ -27909,7 +27917,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-09-merged-spend',
+        buildStamp: '2026-10-15-news-feed-rate-limit',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
@@ -33451,7 +33459,8 @@ Submit your response via the campaign_intake_turn tool.`;
       db.prepare('DELETE FROM news_feed_runs WHERE id = ?').run(key);
       db.prepare('INSERT INTO news_feed_runs (id, feedKey, feedWeek, ranAt, status, note, itemCount) VALUES (?,?,?,?,?,?,?)').run(key, 'manual', bdWeekStart(new Date()), new Date().toISOString(), 'ok', null, 0);
       const group = newsGroupForIndustry(account.industry);
-      const results = await Promise.all([newsRefreshFeed('ai_marketing'), group ? newsRefreshFeed(group) : Promise.resolve(null)]);
+      const results = [await newsRefreshFeed('ai_marketing')];
+      if (group){ await new Promise(r => setTimeout(r, 2500)); results.push(await newsRefreshFeed(group)); }
       results.push(await newsRefreshCompetitors(accountId));
       return sendJson(res, 200, Object.assign({ results: results.filter(Boolean) }, newsFeedForAccount(accountId)));
     }
@@ -33461,7 +33470,11 @@ Submit your response via the campaign_intake_turn tool.`;
       const out = { feeds: [], competitors: { swept: 0, failed: [], remaining: 0 } };
       const deadline = Date.now() + 95000;
       // Shared lanes first (six Perplexity calls, run together), then competitors per account (GDELT, spaced).
-      out.feeds = await Promise.all(['ai_marketing', ...Object.keys(NEWS_GROUPS)].map(k => newsRefreshFeed(k).catch(e => ({ feedKey: k, status: 'failed', note: e.message }))));
+      // One lane at a time with a short pause: all six at once tripped Perplexity's rate limit (HTTP 429) on 2026-10-15.
+      for (const k of ['ai_marketing', ...Object.keys(NEWS_GROUPS)]){
+        out.feeds.push(await newsRefreshFeed(k).catch(e => ({ feedKey: k, status: 'failed', note: e.message })));
+        await new Promise(r => setTimeout(r, 2500));
+      }
       const week = bdWeekStart(new Date());
       const accts = db.prepare('SELECT accountId FROM accounts WHERE paidTier IS NOT NULL').all().map(a => aliasVal(a, 'accountId'))
         .filter(id => !db.prepare('SELECT id FROM news_feed_runs WHERE id = ?').get('competitors:' + id + '|' + week));
