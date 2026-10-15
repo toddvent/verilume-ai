@@ -1505,7 +1505,7 @@
   .fd-existing{background:var(--paper-dim);border-radius:12px;padding:4px 14px 10px;margin:10px 0;}
   .fd-ex{display:flex;justify-content:space-between;gap:12px;padding:5px 0;}
   .fd-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0 4px;}
-  .fd-out{border-top:1px solid var(--line);margin-top:14px;padding-top:6px;}
+  .fd-out{border-top:1px solid var(--line);margin-top:14px;padding-top:6px;position:relative;} .fd-out > .share-wrap + .fd-hint{padding-right:44px;}
   .fd-sum{margin:0 0 10px;font-size:1rem;}
   .stat-card-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:32px;}
   .key-tools{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px;}
@@ -26711,7 +26711,7 @@ let askVerilumeDqLast = null;
 // Share menu for a data-question answer (2026-10-15): the same share icon the analytics cards use, with Excel, CSV and Google Sheets (plus PDF).
 function dqShareHtml(who){
   const items = [['xlsx', 'Excel (.xlsx)'], ['csv', 'CSV'], ['sheets', 'Google Sheets'], ['pdf', 'PDF']].map(([f, l]) => `<button type="button" role="menuitem" onclick="dqShareAction('${who}','${f}')">${l}</button>`).join('');
-  return `<span class="fd-hint">Share or download:</span><span class="share-wrap" style="position:relative;top:auto;right:auto;display:inline-block;"><button type="button" class="share-btn" aria-label="Share or download this answer" aria-haspopup="menu" onclick="shareToggle(event,'dq-${who}')"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg></button><div class="share-menu" id="shareMenu-dq-${who}" role="menu" hidden style="right:auto;left:0;">${items}</div></span><span class="fd-hint" id="dqShareMsg-${who}" role="status" aria-live="polite"></span>`;
+  return `<span class="share-wrap" style="top:10px;right:0;"><button type="button" class="share-btn" aria-label="Share or download this answer" aria-haspopup="menu" onclick="shareToggle(event,'dq-${who}')"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg></button><div class="share-menu" id="shareMenu-dq-${who}" role="menu" hidden>${items}</div></span>`;
 }
 function dqShareSay(who, t){ const el = document.getElementById('dqShareMsg-' + who); if (el){ el.textContent = t; setTimeout(() => { if (el.textContent === t) el.textContent = ''; }, 7000); } }
 function dqAnswerGrid(r){
@@ -26741,12 +26741,12 @@ function askVerilumeRenderDq(a){
   if (!a || !a.result){ el.innerHTML = ''; return; }
   const r = a.result;
   const drafts = (a.buckets || []).filter(b => !b.saved).map(b => `<p class="fd-hint">${escapeHtml(b.label)}: the groups are a draft drawn from your data. <button type="button" class="btn-ghost" onclick="askVerilumeApproveGroups('${escapeHtml(b.field)}')">Approve these groups</button> so every period is compared on the same ones.</p>`).join('');
-  el.innerHTML = `<div class="fd-out"><p class="fd-hint">How I read it: ${escapeHtml(a.sentence || '')}</p>${(a.assumptions || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}
+  el.innerHTML = `<div class="fd-out">${dqShareHtml('av')}<p class="fd-hint">How I read it: ${escapeHtml(a.sentence || '')}</p>${(a.assumptions || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}
     <p class="fd-ask">${escapeHtml(r.title)}</p><p class="fd-sum">${escapeHtml(r.summary)}</p>
     ${(r.tables || []).map(t => `<div class="strat-table-wrap"><table class="strat-table"><thead><tr>${t.columns.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead><tbody>${t.rows.map(row => `<tr>${row.map(c => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`).join('')}
     ${(r.notes || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}${drafts}
     <details class="fd-hint"><summary>How this was counted</summary>${(r.definitions || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}</details>
-    <div class="fd-actions"><button type="button" class="btn-ghost" onclick="askVerilumeOpenGuided(true)">Change this in the guided view</button>${dqShareHtml('av')}</div></div>`;
+    <div class="fd-actions"><button type="button" class="btn-ghost" onclick="askVerilumeOpenGuided(true)">Change this in the guided view</button><span class="fd-hint" id="dqShareMsg-av" role="status" aria-live="polite"></span></div></div>`;
 }
 async function askVerilumeExportDq(format){
   const a = askVerilumeDqLast; if (!a || !a.spec) return;
@@ -26958,12 +26958,12 @@ function fdAnswerHtml(){
   const a = fd.dq; if (!a || !a.result) return '';
   const r = a.result;
   const drafts = (a.buckets || []).filter(b => !b.saved).map(b => `<p class="fd-hint">${escapeHtml(b.label)}: the groups are a draft drawn from your data. <button type="button" class="btn-ghost" onclick="fdApproveGroups('${b.field}')">Approve these groups</button> so every period is compared on the same ones.</p>`).join('');
-  return `<div class="fd-out"><p class="fd-hint">How I read it: ${escapeHtml(a.sentence || '')}${a.source === 'model' ? ' (words matched to your data by Verilume)' : ''}</p>${(a.assumptions || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}
+  return `<div class="fd-out">${dqShareHtml('fd')}<p class="fd-hint">How I read it: ${escapeHtml(a.sentence || '')}${a.source === 'model' ? ' (words matched to your data by Verilume)' : ''}</p>${(a.assumptions || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}
     <p class="fd-ask">${escapeHtml(r.title)}</p><p class="fd-sum">${escapeHtml(r.summary)}</p>
     ${(r.tables || []).map(t => `<div class="strat-table-wrap"><table class="strat-table"><thead><tr>${t.columns.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead><tbody>${t.rows.map(row => `<tr>${row.map(c => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`).join('')}
     ${(r.notes || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}${drafts}
     <details class="fd-hint"><summary>How this was counted</summary>${(r.definitions || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}</details>
-    <div class="fd-actions">${dqShareHtml('fd')}</div></div>`;
+    <div class="fd-actions"><span class="fd-hint" id="dqShareMsg-fd" role="status" aria-live="polite"></span></div></div>`;
 }
 function fdPick(key, v){ fd.card[key] = v; fd.view = null; fd.notOnFile = ''; fd.unmet = false; fdTurn(''); }
 function fdChange(key){ fd.card[key] = null; fd.view = null; fd.notOnFile = ''; fd.unmet = false; fdTurn(''); }
