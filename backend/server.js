@@ -319,7 +319,6 @@ const CAMPAIGNS_LOWERCASE_FOLDED_COLUMNS = {
   funnelleadratepct: 'funnelLeadRatePct',
   funnelbookingratepct: 'funnelBookingRatePct',
   funnelregistrationratepct: 'funnelRegistrationRatePct',
-  revenuegoal: 'revenueGoal',
   actualrevenue: 'actualRevenue',
   copyversionassetsjson: 'copyVersionAssetsJson',
   copyversionsizeusagejson: 'copyVersionSizeUsageJson',
@@ -2710,14 +2709,6 @@ ensureColumn('campaigns', 'funnelVisitRatePct', 'REAL');
 ensureColumn('campaigns', 'funnelLeadRatePct', 'REAL');
 ensureColumn('campaigns', 'funnelBookingRatePct', 'REAL');
 ensureColumn('campaigns', 'funnelRegistrationRatePct', 'REAL');
-// 2026-10-13 — revenueGoal (USD): a campaign revenue target, set by hand
-// on the Objectives recap card or by applying an AI Brain proposal, that
-// the budget can be sized against at the account's ROAS. Kept separate
-// from primaryKpi/kpiGoal: revenue isn't a Primary KPI unit (every
-// budget/funnel path keys off those), it's an outcome the budget is
-// checked against. Nullable = not set. (Website visits, by contrast, ARE a
-// Primary KPI as of today — 'Website Visits' replaced 'Impressions'.)
-ensureColumn('campaigns', 'revenueGoal', 'REAL');
 // 2026-09-28 — actualRevenue: logged revenue for the Analysis stage's
 // Executive Campaign Summary (Revenue / ROAS rows, Target vs Actual vs
 // Variance). Hand-entered alongside actualConversions until a booking/
@@ -4185,18 +4176,9 @@ function makeFairLimiter({ name, maxGlobal, maxPerAccount, maxWaitingPerAccount,
   }
   return {
     name,
-    // 2026-10-13 — `opts.priority` is for interactive, someone-is-watching
-    // calls (the AI Brain reply). Live turn on TEST - TODD FLOW took ~85s
-    // to answer one question: the per-account cap of 3 meant a person's
-    // question could sit behind background jobs for up to waitMs (60s)
-    // before the model was even called. A priority call gets one reserved
-    // slot above the per-account cap (still inside the global cap, so the
-    // vendor limit is respected) and, if it must wait at all, goes to the
-    // front of its account's line instead of the back.
-    acquire(rawId, opts = {}){
+    acquire(rawId){
       const id = rawId || '_anon'; const a = acct(id);
-      const perAcctCap = opts.priority ? maxPerAccount + 1 : maxPerAccount;
-      if (active < maxGlobal && a.active < perAcctCap && (opts.priority || !a.queue.length)){
+      if (active < maxGlobal && a.active < maxPerAccount && !a.queue.length){
         return new Promise(resolve => start(id, a, { at: Date.now(), resolve }));
       }
       if (a.queue.length >= maxWaitingPerAccount){ stats.rejectedFull++; return Promise.reject(rejection('full', id)); }
@@ -4208,13 +4190,7 @@ function makeFairLimiter({ name, maxGlobal, maxPerAccount, maxWaitingPerAccount,
           const r = rotation.indexOf(id); if (r >= 0 && !a.queue.length) rotation.splice(r, 1);
           cleanup(id, a); stats.rejectedTimeout++; reject(rejection('timeout', id));
         }, waitMs);
-        if (opts.priority){
-          a.queue.unshift(w);
-          const r = rotation.indexOf(id); if (r >= 0) rotation.splice(r, 1);
-          rotation.unshift(id);
-        } else {
-          a.queue.push(w); if (rotation.indexOf(id) < 0) rotation.push(id);
-        }
+        a.queue.push(w); if (rotation.indexOf(id) < 0) rotation.push(id);
         pump();
       });
     },
@@ -4244,11 +4220,9 @@ function queueForUrl(url){
   if (/^https:\/\/generativelanguage\.googleapis\.com\//.test(u)) return aiQueues.gemini;
   return null;
 }
-async function withQueueSlot(queue, fn, opts = {}){
+async function withQueueSlot(queue, fn){
   const store = queueAccountStore.getStore();
-  const tWait = Date.now();
-  const release = await queue.acquire(store && store.accountId, { priority: !!opts.priority });
-  if (typeof opts.onAcquired === 'function'){ try { opts.onAcquired(Date.now() - tWait); } catch (e){ /* timing hook only */ } }
+  const release = await queue.acquire(store && store.accountId);
   try { return await fn(); } finally { release(); }
 }
 async function fetchWithTimeout(url, options, ms = 90000){
@@ -4367,37 +4341,6 @@ async function withSingleRetryOnTimeout(attemptFn, retryFn){
 // below reads ONLY the campaign object it is handed, so the rule applies to that campaign id and nothing else.
 const EXCLUDED_AUDIENCE_CHANNELS = { 'Past Customers': ['Direct Mail \u2014 Past Guests'], 'Prospects': ['Direct Mail \u2014 Prospects'], 'Hand-Raisers': ['Direct Mail \u2014 Inquiries'] };
 function campaignExcludedAudiences(c){ return String((c && c.excludeSegments) || '').split(',').map(x => x.trim()).filter(Boolean); }
-// 2026-10-13, per Todd ("Target audiences does not populate on the budget
-// screen", CMP-mv6ny2tw-106-3 — the Objectives dialogue plainly said "new
-// prospects"): Campaign Creation collects no Audience, so the only thing
-// that ever filled campaigns.segment was the model's audienceSegments
-// extraction in generate-recommendation-from-intake, and when that came
-// back empty the budget card said "(not set)" forever. This is the code
-// fallback: read only what the TEAM said (user turns + the goal summary —
-// never the AI Brain's own turns, which list every audience as options
-// when asking "who are you trying to reach?") and map plain wording onto
-// the platform's audience vocabulary. Returns [] when nothing clearly
-// matches — an empty audience beats a guessed one.
-const AUDIENCE_TEXT_RULES = [
-  ['Past Customers', /\b(past|previous|former|repeat|returning|existing)\s+(customers?|guests?|bookers?|travell?ers?|clients?)\b|\bre-?engag\w*\s+(past|previous|existing)\b|\breactivat\w*/i],
-  ['Hand-Raisers', /\bhand[\s-]?raisers?\b|\binquir(y|ies|ers?)\b|\benquir(y|ies|ers?)\b|\bbrochure\b|\bpast leads\b|\balready (shown|showed) interest\b/i],
-  ['Prospects', /\bprospect(s|ing)?\b|\bnew (customers?|guests?|audiences?|travell?ers?|to (the )?brand)\b|\bnet[\s-]?new\b|\bnever (engaged|travell?ed|booked|purchased)\b|\bconquest\w*/i],
-  ['Future Customers', /\bfuture (customers?|guests?|travell?ers?)\b|\bin[\s-]market planners?\b/i],
-  ['Anonymous Website Traffic', /\banonymous\b|\bretarget\w*|\bremarket\w* (site|website) visitors\b/i]
-];
-function inferAudienceSegmentsFromCampaignConversation(campaign){
-  if (!campaign) return [];
-  let text = '';
-  try {
-    const notes = campaign.activityNotesJson ? JSON.parse(campaign.activityNotesJson) : null;
-    if (notes){
-      if (notes.objectivesGoalSummary) text += ' ' + notes.objectivesGoalSummary;
-      (Array.isArray(notes.objectivesIntake) ? notes.objectivesIntake : []).forEach(m => { if (m && m.role === 'user' && !m.recapUpdate && typeof m.text === 'string') text += ' ' + m.text; });
-    }
-  } catch (e){ /* malformed notes — nothing to read */ }
-  if (!text.trim()) return [];
-  return AUDIENCE_TEXT_RULES.filter(([label, re]) => re.test(text) && !audienceIsExcluded(campaign, label)).map(([label]) => label);
-}
 function audienceIsExcluded(c, label){
   const t = String(label || '').toLowerCase().trim(); if (!t) return false;
   return campaignExcludedAudiences(c).some(x => { const e = x.toLowerCase(); return t === e || t.indexOf(e) >= 0 || e.indexOf(t) >= 0; });
@@ -4461,7 +4404,7 @@ async function callClaudeForJSON({ model, maxTokens, content, schema, toolName, 
 // `system` may be a string or an array of content blocks (so callers can
 // attach `cache_control` to the static instruction block — see
 // AI_BRAIN_REPLY_SYSTEM's own comment for why that matters for latency).
-function callClaudeToolStream(opts){ return withQueueSlot(aiQueue, () => callClaudeToolStreamInner(opts), { priority: opts.priority, onAcquired: opts.onQueueAcquired }); }
+function callClaudeToolStream(opts){ return withQueueSlot(aiQueue, () => callClaudeToolStreamInner(opts)); }
 async function callClaudeToolStreamInner({ model, maxTokens, system, messages, schema, toolName, toolDescription, onReplyDelta, onFirstToken, firstByteMs = 20000, idleMs = 15000, maxMs = 110000 }){
   const controller = new AbortController();
   let phase = 'connect';
@@ -4632,14 +4575,6 @@ CHANNEL/KPI FIT — a REAL CHANNEL PLAN LINES row carries a trailing " | flag: .
 VIDEO CHANNELS — this platform's real channel taxonomy groups Linear TV, OTV, and CTV together as "Video"; YouTube and Facebook/Instagram video run under Paid Social (CTV can carry intent-signal/conquesting targeting when the team asks about that specifically). If asked why video isn't being recommended, or whether YouTube/CTV-with-intent-signals/FB video should be added, answer using this real taxonomy — explain which existing channel(s) already cover it, and if none of OTV/CTV/Paid Social appear in the REAL CHANNEL PLAN LINES yet, say so plainly and, if the team is asking for or clearly implying adding one, propose it via newLineChannel + newLineBudget (paired with entryId + newBudget on whichever existing line you're proposing to fund it from, if any) rather than saying the platform has no video capability. If a MISSING CHANNEL GAP line is present, it already answers "is video missing and does it matter for this stage" with a real number — lead with that instead of reasoning it out fresh, and proactively raise it (don't wait to be asked) the same way the CHANNEL/KPI FIT flag does.
 
 BUDGET RECOMMENDATIONS — never ask the team to supply inputs this platform already provides. Target CPM and frequency assumptions come from this platform's own default per-channel CPM benchmarks, which stay in effect until the client overrides them in Account Management — do not ask the team for CPM, cost-per-visit, or frequency benchmarks, and do not ask them for the population size of any market; that population/DMA data is already given in TOP MARKETS / DMA INDEXING when it's on file. When asked for a budget or channel recommendation, your job is to recommend the ideal CHANNEL MIX that best serves the stated Primary KPI, weighing (in this order): this account's real historical campaign performance (ACCOUNT-WIDE MARKETING BUDGET / HISTORICAL CAMPAIGN PERFORMANCE) — if it says no other campaign has real recorded performance yet, tell the team plainly that you checked this account's historical KPI performance and there isn't enough data on file yet to be predictive, rather than treating that gap as a reason to ask them for benchmarks instead; the account's own Media Mix Plan for the relevant Lifecycle Stage, when on file; this account's real monthly performance report (THIS ACCOUNT'S REAL MONTHLY PERFORMANCE REPORT), when on file — trend direction on CPV/CPL/ROAS and similar account-wide metrics is real signal for whether to lean into or away from a channel; and this account's real generation/wealth-tier targeting data, which supports a segmented recommendation. Only ask a clarifying question when something genuinely isn't covered by any of this (e.g. the team's own budget ceiling, or a hard channel exclusion) — never for CPM, frequency, or population benchmarks the platform already supplies. If — and only if — the team is asking for or clearly implying a specific budget change, propose it via the suggestion field: use entryId + newBudget for a change to an EXISTING line (a real id from the REAL CHANNEL PLAN LINES list), and/or newLineChannel + newLineBudget when the recommendation requires a channel that has NO existing line yet — for example, "shift $30k from Programmatic Display into a new CTV line" is BOTH parts at once (entryId/newBudget on the real Programmatic Display line reducing it, AND newLineChannel/newLineBudget creating the new CTV line), never entryId alone with the new channel's name stuffed into the channel field — that would only rename the old line's label without moving any budget or creating anything. Otherwise leave suggestion null. Never invent a line item, channel, or number not shown. Keep it conversational, not a report.`;
-// The CAMPAIGN_UPDATE_* constants live further down this file (next to the
-// cost-per-visit helpers), so they're attached here at first use rather
-// than at declaration — see aiBrainReplySystemText()/aiBrainReplySchema().
-function aiBrainReplySystemText(){ return `${AI_BRAIN_REPLY_SYSTEM}\n\n${CAMPAIGN_UPDATE_INSTRUCTIONS}`; }
-function aiBrainReplySchema(){
-  if (!AI_BRAIN_REPLY_SCHEMA.properties.campaignUpdate) AI_BRAIN_REPLY_SCHEMA.properties.campaignUpdate = CAMPAIGN_UPDATE_SCHEMA_PROP;
-  return AI_BRAIN_REPLY_SCHEMA;
-}
 // 2026-09-22 fix, per direct report: a suggestion that read "Shift $30k
 // from Programmatic Display into a new CTV line" only ever reduced
 // Programmatic Display — no CTV line was created. The schema now has two
@@ -4664,10 +4599,6 @@ const AI_BRAIN_REPLY_SCHEMA = {
         rationale: { type: 'string', description: 'One sentence on why, grounded in the real numbers given.' }
       }
     }
-    // 2026-10-13 — `campaignUpdate` (a campaign-level budget/target change,
-    // separate from the channel-line `suggestion` above) is attached by
-    // aiBrainReplySchema() below at first use: its shared definition lives
-    // further down this file, next to the cost-per-visit helpers.
   },
   required: ['reply']
 };
@@ -14144,23 +14075,12 @@ function buildAccountMonthlyKpiContextForPromptCached(accountId, timings){
 // into the Workspace (loadExistingCampaignIntoForm) — so by the time the
 // person has read the screen and typed a first question, the expensive
 // inputs are already sitting in cache and the turn only pays for the model.
-// 2026-10-13 — async, yielding between blocks: each block runs through the
-// synchronous Postgres bridge and blocks this process, so building all
-// three back-to-back starved every other request on page load (live
-// console showed the Team-notes save and the 2027 website-users fetch both
-// hitting the browser's 12s abort while the warm-up ran). Yielding lets
-// queued requests through between blocks.
-async function warmAiBrainContextForCampaign(campaign){
+function warmAiBrainContextForCampaign(campaign){
   const timings = {};
   const t0 = Date.now();
-  const yieldToOthers = () => new Promise(r => setImmediate(r));
   buildAccountTopMarketsContextForPromptCached(campaign.accountId, timings);
-  await yieldToOthers();
   buildAccountBudgetAndPerformanceContextForPromptCached(campaign.accountId, campaign, timings);
-  await yieldToOthers();
   buildAccountMonthlyKpiContextForPromptCached(campaign.accountId, timings);
-  await yieldToOthers();
-  computeAccountBudgetKpisCached(campaign.accountId, timings);
   timings.totalMs = Date.now() - t0;
   return timings;
 }
@@ -14183,10 +14103,8 @@ async function warmAiBrainContextForCampaign(campaign){
 // field save (which happens on every Team note) must never force the
 // 100-300 round-trip Match Market rebuild, only the cheap budget/history one.
 const AI_BRAIN_ACCOUNT_WRITE_RESOURCES = {
-  'marketing-budget-uploads': ['budgetPerf', 'kpis'], 'media-plan': ['budgetPerf', 'kpis'], 'campaigns': ['budgetPerf', 'kpis'], 'channel-planning': ['budgetPerf'], 'ga4-sources': ['budgetPerf'], 'ga4-search': ['budgetPerf'],
+  'marketing-budget-uploads': ['budgetPerf'], 'media-plan': ['budgetPerf'], 'campaigns': ['budgetPerf'], 'channel-planning': ['budgetPerf'], 'ga4-sources': ['budgetPerf'], 'ga4-search': ['budgetPerf'],
   'kpi-metrics': ['monthlyKpi'],
-  // 2026-10-13 — every source behind computeAccountBudgetKpis().
-  'website-users-monthly': ['kpis'], 'lead-counts': ['kpis'], 'transactions-monthly': ['kpis'], 'transactions-by-service-year': ['kpis'], 'annual-plan': ['kpis'], 'year-results': ['kpis'], 'mmm-inputs': ['kpis'], 'mmm-line-items': ['kpis'], 'guest-bookings': ['kpis'], 'digital-performance': ['budgetPerf', 'kpis'],
   'stores': ['topMarkets'], 'market-customer-uploads': ['topMarkets']
 };
 const AI_BRAIN_CAMPAIGN_WRITE_SUBRESOURCES = new Set(['channel-planning', 'approve-budget-overall', 'generate-recommendation-from-intake', 'mmm-line-items']);
@@ -14209,7 +14127,7 @@ function aiBrainContextInvalidationForRequest(method, parts){
       accountId = row && row.accountId;
     } catch (e){ console.warn('[ai-brain-cache] campaign-write invalidation lookup failed:', e.message); }
     if (!accountId) return null;
-    return () => { aiBrainCtxInvalidatePrefix(`acct:${accountId}:budgetPerf:`); aiBrainCtxInvalidatePrefix(`acct:${accountId}:kpis:`); };
+    return () => aiBrainCtxInvalidatePrefix(`acct:${accountId}:budgetPerf:`);
   }
   return null;
 }
@@ -14471,246 +14389,6 @@ function buildAccountMonthlyKpiContextForPrompt(accountId){
     promptBlock: `THIS ACCOUNT'S REAL MONTHLY PERFORMANCE REPORT (from Account Management's account-level report, not this one campaign — use for account-wide trend context, e.g. whether CPV/CPL/ROAS are improving or worsening):\n${lines.join('\n')}`,
     hasMonthlyKpiData: true
   };
-}
-// ===== 2026-10-13 — Campaign targets & cost-per-visit, for the AI Brain =====
-// Per Todd, on a live Objectives dialogue (CMP-mv6ny2tw-106-3): the team
-// said "Build the plan based on 100,000 visits using our overall cost per
-// visit KPI" and the AI Brain could only say "$5+ per visit" — it had no
-// real cost-per-visit figure, and no way to change the campaign's budget or
-// targets once Campaign Creation was done. These helpers close both gaps.
-//
-// computeAccountCostPerWebsiteVisit() is the SAME math as Account
-// Management's "Average cost per website user" table
-// (computeCostPerWebsiteUserByYear() in portal.html), so the AI Brain and
-// that table can never disagree: per year, working media = the saved Media
-// Plan's totalBudget (fallback: Σ that year's campaign budgets when no Media
-// Plan exists), ÷ the Website users entered by month for that year; the
-// blended rate pools every year that has website users. Years with no
-// website users are excluded from the blend, never filled with a guess.
-function computeAccountCostPerWebsiteVisit(accountId){
-  const planBudgetByYear = {};
-  db.prepare('SELECT year, totalBudget FROM media_plans WHERE accountId = ?').all(accountId).forEach(p => {
-    const tb = Number(p.totalBudget != null ? p.totalBudget : p.totalbudget) || 0;
-    if (tb > 0) planBudgetByYear[p.year] = tb; // one plan per (account, year)
-  });
-  const campaignBudgetByYear = {};
-  db.prepare('SELECT budget, startDate, isAdHoc FROM campaigns WHERE accountId = ?').all(accountId).forEach(c => {
-    const sd = c.startDate || c.startdate;
-    if (!sd || Number(c.isAdHoc != null ? c.isAdHoc : c.isadhoc)) return;
-    const y = new Date(sd).getFullYear();
-    if (Number.isFinite(y)) campaignBudgetByYear[y] = (campaignBudgetByYear[y] || 0) + (Number(c.budget) || 0);
-  });
-  const usersByYear = {};
-  db.prepare('SELECT year, SUM(users) AS users FROM account_website_users_monthly WHERE accountId = ? GROUP BY year').all(accountId).forEach(r => {
-    usersByYear[r.year] = Number(r.users) || 0;
-  });
-  const years = [...new Set([...Object.keys(planBudgetByYear), ...Object.keys(campaignBudgetByYear)].map(Number))].filter(Number.isFinite).sort((a, b) => b - a);
-  let totalBudget = 0, totalUsers = 0;
-  const rows = years.map(y => {
-    const fromPlan = planBudgetByYear[y] > 0;
-    const budget = fromPlan ? planBudgetByYear[y] : (campaignBudgetByYear[y] || 0);
-    const users = usersByYear[y] || 0;
-    if (users > 0 && budget > 0){ totalBudget += budget; totalUsers += users; }
-    return { year: y, budget, budgetSource: fromPlan ? 'Media Plan working budget' : 'sum of campaign budgets (no Media Plan that year)', users, costPerVisit: (users > 0 && budget > 0) ? budget / users : null };
-  });
-  // Rounded to the cent ONCE, here, and that exact figure is what the
-  // prompt shows and what every budget computation multiplies by — so the
-  // AI Brain's own "100,000 × $5.14 = $514,000" in its reply text always
-  // matches the Apply card to the dollar.
-  const blended = totalUsers > 0 ? Math.round((totalBudget / totalUsers) * 100) / 100 : null;
-  return { rows, blended, totalBudget, totalUsers, yearsWithData: rows.filter(r => r.costPerVisit != null).length };
-}
-const fmtUsd0 = n => `$${Math.round(Number(n) || 0).toLocaleString('en-US')}`;
-const fmtUsd2 = n => `$${(Number(n) || 0).toFixed(2)}`;
-const fmtInt = n => Math.round(Number(n) || 0).toLocaleString('en-US');
-// ===== 2026-10-13 (later) — every KPI that drives a budget =====
-// Per Todd: "make sure that AI Brain has all of KPIs that drive budget:
-// Cost-per-visit, Cost-per-lead, cost-per-impression, CAC, ROAS." These are
-// EXACTLY the figures the campaign brief's budget check already prices
-// targets with (buildBudgetBenchmarks(), GET .../analytics/budget-benchmarks)
-// — one source, so the brief and the AI Brain can never quote different
-// numbers for the same account:
-//   Cost per website visit — overall (Account Management cost per website
-//                            user; prices a Website Visits target) and the
-//                            digital-only trailing-12-month rate.
-//   Cost per lead / CPM    — digital spend ÷ leads / ÷ impressions × 1,000,
-//                            trailing 12 months of the digital performance
-//                            upload.
-//   CAC / ROAS             — the Strategy dashboard's outcomes (spend ÷
-//                            unique transactions; revenue ÷ spend), trailing
-//                            12 months → Annual Plan baseline → closed-year
-//                            results, plus the Annual Plan target if any.
-// All rates arrive rounded (cents; CAC whole dollars) and that rounded
-// figure is what the prompt shows and budget sizing multiplies by, so the
-// Brain's own arithmetic always matches the Apply card.
-function computeAccountBudgetKpis(accountId){
-  const out = { cpv: null, digitalCpv: null, cpm: null, cpl: null, cac: null, roas: null, targets: null, window: null };
-  try { out.cpv = computeAccountCostPerWebsiteVisit(accountId); } catch (e){ console.warn('[budget-kpis] cost per visit:', e.message); }
-  let bb = null;
-  try { bb = buildBudgetBenchmarks(accountId, { asOf: new Date(), outcomes: true }); } catch (e){ console.warn('[budget-kpis] benchmarks:', e.message); }
-  if (bb){
-    out.window = bb.window;
-    if (bb.costPerVisit != null) out.digitalCpv = { value: bb.costPerVisit, spend: bb.spend, visits: bb.visits };
-    if (bb.cpl != null) out.cpl = { value: bb.cpl, spend: bb.spend, leads: bb.leads };
-    if (bb.cpm != null) out.cpm = { value: bb.cpm, spend: bb.spend };
-    if (bb.cac != null) out.cac = { value: Math.round(bb.cac), basisLabel: bb.outcomesBasis || '', definition: 'spend ÷ unique transactions (transaction level)' };
-    if (bb.roas != null) out.roas = { value: Math.round(bb.roas * 100) / 100, basisLabel: bb.outcomesBasis || '' };
-    if (bb.targets) out.targets = bb.targets;
-  }
-  return out;
-}
-// Cached front, same pattern/TTL as the other account-level blocks
-// (aiBrainCtxGet/Set), invalidated by the writes listed in
-// AI_BRAIN_ACCOUNT_WRITE_RESOURCES under 'kpis'.
-function computeAccountBudgetKpisCached(accountId, timings){
-  const t = Date.now();
-  const key = `acct:${accountId}:kpis:all`;
-  let value = aiBrainCtxGet(key, AI_BRAIN_CTX_MAX_AGE.monthlyKpi);
-  const hit = !!value;
-  if (!value){ value = computeAccountBudgetKpis(accountId); aiBrainCtxSet(key, value); }
-  if (timings) timings.budgetKpis = { ms: Date.now() - t, cache: hit ? 'hit' : 'miss' };
-  return value;
-}
-const cpvRate = k => (k && k.cpv && k.cpv.blended) ? k.cpv.blended : null;
-// Prompt block: the campaign's CURRENT budget and targets plus every
-// budget-driving KPI, and what the current budget buys at each one.
-function buildCampaignTargetsPromptBlock(campaign, k){
-  k = k || {};
-  const budget = Number(campaign.budget) || 0;
-  const revenueGoal = Number(campaign.revenueGoal) || 0;
-  const win = k.window ? `${k.window.from} to ${k.window.to}` : 'trailing 12 months';
-  const lines = [
-    `- Estimated Budget: ${budget ? fmtUsd0(budget) : '(not set)'}${campaign.budgetApprovedAt ? ' (overall budget already approved)' : ''}${campaign.fundingSource === 'plan' ? ' (drawn from a Media Plan allocation)' : ''}`,
-    `- Primary KPI: ${campaign.primaryKpi || '(not set)'}${campaign.kpiGoal ? ` — Target ${fmtInt(campaign.kpiGoal)}` : ' — no target set'}${campaign.primaryKpi === 'Impressions' ? ' (legacy KPI — Impressions is no longer a selectable goal; impressions are now planned FROM the goal. If the team revisits targets, suggest moving to Website Visits or Reach.)' : ''}`,
-    `- Revenue Goal: ${revenueGoal ? fmtUsd0(revenueGoal) : '(not set)'}`,
-    '',
-    "THIS ACCOUNT'S BUDGET-DRIVING KPIs (the same figures the campaign brief's budget check uses; \"not on file\" means say so and point to where it's loaded — never invent one):"
-  ];
-  const cpv = cpvRate(k);
-  if (cpv){
-    const perYear = k.cpv.rows.filter(r => r.costPerVisit != null).map(r => `${r.year}: ${fmtUsd2(r.costPerVisit)}`).join('; ');
-    lines.push(`- COST PER WEBSITE VISIT (overall — prices a Website Visits target): ${fmtUsd2(cpv)} — Account Management cost per website user, working media ÷ website users, blended across ${k.cpv.yearsWithData} year${k.cpv.yearsWithData === 1 ? '' : 's'} [${perYear}]${k.digitalCpv ? `. Digital-only, ${win}: ${fmtUsd2(k.digitalCpv.value)} (digital spend ${fmtUsd0(k.digitalCpv.spend)} ÷ ${fmtInt(k.digitalCpv.visits)} visits) — use this one only when the team asks about digital/click cost specifically` : ''}.`);
-  } else if (k.digitalCpv){
-    lines.push(`- COST PER WEBSITE VISIT: no overall rate (no Website users by year in Account Management to pair with working media); digital-only, ${win}: ${fmtUsd2(k.digitalCpv.value)}. Say which one you're using.`);
-  } else lines.push('- COST PER WEBSITE VISIT: not on file — no Website users by month in Account Management.');
-  if (k.cpl) lines.push(`- COST PER LEAD: ${fmtUsd2(k.cpl.value)} — digital spend ${fmtUsd0(k.cpl.spend)} ÷ ${fmtInt(k.cpl.leads)} leads, ${win}. Channel-level cost per lead is in the CHANNEL PERFORMANCE SCORECARD when uploaded.`);
-  else lines.push('- COST PER LEAD: not on file — needs the digital performance upload (spend and leads).');
-  if (k.cpm) lines.push(`- COST PER THOUSAND IMPRESSIONS (CPM): ${fmtUsd2(k.cpm.value)} — digital spend ÷ impressions × 1,000, ${win}. Impressions are a planning decision that follows from the goal (Website Visits, Leads, …) and the channel mix, not a goal themselves; use CPM to say what a budget buys and to sanity-check channel plans.`);
-  else lines.push("- CPM: no account actuals on file — channel plans use the platform's default per-channel CPM benchmarks.");
-  if (k.cac) lines.push(`- CAC (customer acquisition cost): ${fmtUsd0(k.cac.value)} per transaction — ${k.cac.definition}, ${k.cac.basisLabel}${k.targets && k.targets.cac != null ? `; Annual Plan ${k.targets.year} target ${fmtUsd0(k.targets.cac)}` : ''}. Customer-level CAC isn't computable yet (bookings carry no customer id).`);
-  else lines.push('- CAC: not on file — needs transactions (monthly transactions, Annual Plan baseline, or year results) alongside spend.');
-  if (k.roas) lines.push(`- ROAS: ${k.roas.value.toFixed(2)}x — gross revenue ÷ marketing spend, ${k.roas.basisLabel}${k.targets && k.targets.roas != null ? `; Annual Plan ${k.targets.year} target ${k.targets.roas.toFixed(2)}x` : ''}. Account-level only — revenue isn't split by channel.`);
-  else lines.push('- ROAS: not on file — needs revenue (monthly transactions, Annual Plan baseline, or year results) alongside spend.');
-  if (budget){
-    const buys = [];
-    if (cpv) buys.push(`~${fmtInt(budget / cpv)} website visits`);
-    if (k.cpl) buys.push(`~${fmtInt(budget / k.cpl.value)} leads`);
-    if (k.cpm) buys.push(`~${fmtInt(budget / k.cpm.value * 1000)} impressions`);
-    if (k.cac) buys.push(`~${fmtInt(budget / k.cac.value)} transactions`);
-    if (k.roas) buys.push(`~${fmtUsd0(budget * k.roas.value)} revenue`);
-    if (buys.length) lines.push(`- At these account rates the current ${fmtUsd0(budget)} budget buys: ${buys.join(', ')}. These are account-wide averages, not a channel-specific forecast — say so when it matters.`);
-  }
-  return `CAMPAIGN BUDGET, TARGETS & BUDGET-DRIVING KPIs (code-computed — use these numbers exactly, never recompute or round them differently):\n${lines.join('\n')}`;
-}
-// Mirrors portal.html's PRIMARY_KPI_OPTIONS (minus 'Other'). 2026-10-13, per
-// Todd: 'Website Visits' replaced 'Impressions' — "Impressions isn't really
-// a goal, it's a decision that should drive the target."
-const CAMPAIGN_UPDATE_PRIMARY_KPIS = ['Reach', 'Website Visits', 'Clicks', 'Leads', 'Video Views', 'Transactions'];
-// budgetBasis -> how the platform sizes the budget from a goal.
-const CAMPAIGN_BUDGET_BASES = ['cost_per_visit', 'cost_per_lead', 'cac', 'roas', 'team_stated'];
-const CAMPAIGN_UPDATE_INSTRUCTIONS = `CHANGING THE CAMPAIGN'S BUDGET AND TARGETS — after Campaign Creation, the team can change this campaign's Estimated Budget, Primary KPI and its Target, and Revenue Goal right here in conversation. When the team states or agrees to a new target or budget (e.g. "build the plan on 100,000 visits using our overall cost per visit KPI", "size it to 2,000 leads at our cost per lead", "we need $3M in revenue at our ROAS", "make the budget $250k"), propose it in the campaignUpdate field so the team can click Apply — never claim it is already saved. Rules:
-- Size the budget from whichever KPI the team's goal is expressed in, using the BUDGET-DRIVING KPIs block — never ask the team for a rate that block has, and never give a vague range like "$5+" when an exact figure is given:
-  • website visits → Primary KPI "Website Visits" + newKpiGoal + budgetBasis "cost_per_visit" (budget = visits × overall cost per website visit)
-  • leads → Primary KPI "Leads" + newKpiGoal (or the existing Leads target) + budgetBasis "cost_per_lead" (budget = leads × cost per lead)
-  • transactions / bookings / customers → Primary KPI "Transactions" + newKpiGoal + budgetBasis "cac" (budget = transactions × CAC)
-  • revenue → revenueGoal + budgetBasis "roas" (budget = revenue ÷ ROAS)
-  For these, leave newBudget out — the platform computes the budget itself. In your reply, state the figure and the math in one line (e.g. "100,000 visits × $5.14 = $514,000").
-- If the team's goal is in a different unit from the campaign's current Primary KPI (e.g. a visits goal on a Leads campaign), propose newPrimaryKpi for that unit together with newKpiGoal, and say plainly that the Primary KPI changes. Impressions are never a goal: if the team gives an impressions number, explain that impressions are planned from the goal and the channel mix, and ask which outcome they're buying (visits, reach, leads…); CPM tells them what a budget buys in impressions.
-- A revenue target goes in revenueGoal — never in newKpiGoal, which is always in the Primary KPI's own unit.
-- When the team names a dollar budget themselves, set newBudget + budgetBasis "team_stated", and tell them what it buys at the relevant KPI(s).
-- If the KPI needed is "not on file", say so plainly, say where it's loaded, and only propose what the team stated directly.
-- When two KPIs give very different budgets for the same campaign (e.g. visits vs. leads), say so in one line — that gap is real signal.
-- newPrimaryKpi only to one of: ${CAMPAIGN_UPDATE_PRIMARY_KPIS.join(', ')}.
-- If the overall budget is already approved or drawn from a Media Plan allocation, mention that applying the change will need re-approval / moves it off the plan amount.
-- Otherwise leave campaignUpdate null.`;
-const CAMPAIGN_UPDATE_SCHEMA_PROP = {
-  type: ['object', 'null'],
-  description: 'A change to THIS campaign\'s own budget/targets the team stated or agreed to in this conversation, for them to Apply — or null. Include only the fields that change.',
-  properties: {
-    revenueGoal: { type: 'number', description: 'New revenue target in USD. Omit if not changing.' },
-    newKpiGoal: { type: 'number', description: 'New target for the campaign\'s Primary KPI, in that KPI\'s own unit (website visits, leads, transactions…) — if the unit differs from the current Primary KPI, also set newPrimaryKpi. Never a revenue amount. Omit if not changing.' },
-    newPrimaryKpi: { type: 'string', enum: CAMPAIGN_UPDATE_PRIMARY_KPIS, description: 'When the team changes what the campaign is measured on, including when their new goal is in a different unit from the current Primary KPI.' },
-    newBudget: { type: 'number', description: 'Only with budgetBasis "team_stated": the dollar budget the team named. Omit for every KPI-based basis — the platform computes it.' },
-    budgetBasis: { type: 'string', enum: CAMPAIGN_BUDGET_BASES, description: 'How the budget is set: from a goal at one of the account KPIs (cost_per_visit, cost_per_lead, cac, roas — computed by the platform), or team_stated.' },
-    rationale: { type: 'string', description: 'One sentence on why, grounded in the real numbers given.' }
-  }
-};
-// Turns the model's proposal into the real, applyable update — the budget
-// arithmetic is done HERE, in code, never taken from the model. Drops
-// anything invalid or unchanged; returns null when nothing real is left.
-function finalizeCampaignUpdate(raw, campaign, k){
-  if (!raw || typeof raw !== 'object') return null;
-  k = k || {};
-  const pos = v => (typeof v === 'number' && Number.isFinite(v) && v > 0) ? v : null;
-  const out = {};
-  const revenueGoal = pos(raw.revenueGoal) ? Math.round(raw.revenueGoal) : null;
-  if (revenueGoal && revenueGoal !== Number(campaign.revenueGoal)) out.revenueGoal = revenueGoal;
-  if (raw.newPrimaryKpi && CAMPAIGN_UPDATE_PRIMARY_KPIS.includes(raw.newPrimaryKpi) && raw.newPrimaryKpi !== campaign.primaryKpi) out.primaryKpi = raw.newPrimaryKpi;
-  const kpiGoal = pos(raw.newKpiGoal) ? Math.round(raw.newKpiGoal) : null;
-  // A goal is saved when it changed — or whenever the KPI itself changes
-  // (the old number was in the old unit, so it must be restated).
-  if (kpiGoal && (out.primaryKpi || kpiGoal !== Number(campaign.kpiGoal))) out.kpiGoal = kpiGoal;
-  const primary = out.primaryKpi || campaign.primaryKpi || null;
-  // Never size from the OLD goal when the KPI is changing — it's in the old unit.
-  const goalOfPrimary = kpiGoal || (out.primaryKpi ? null : (Number(campaign.kpiGoal) || null));
-  if (out.primaryKpi && !kpiGoal){ delete out.primaryKpi; return finalizeCampaignUpdate(Object.assign({}, raw, { newPrimaryKpi: null }), campaign, k); }
-  const notes = [];
-  const sized = (budget, rate, computation, rateLabel) => { out.budget = Math.round(budget); out.budgetRate = rate; out.budgetRateLabel = rateLabel; out.computation = computation; };
-  const basis = CAMPAIGN_BUDGET_BASES.includes(raw.budgetBasis) ? raw.budgetBasis : (pos(raw.newBudget) ? 'team_stated' : null);
-  const needPrimary = (want, kpiLabel) => {
-    if (primary !== want){ notes.push(`Budget not changed — sizing by ${kpiLabel} needs the Primary KPI to be ${want} (it's ${primary || 'not set'}).`); return false; }
-    if (!goalOfPrimary){ notes.push(`Budget not changed — no ${want} target to size from.`); return false; }
-    return true;
-  };
-  if (basis === 'cost_per_visit'){
-    const r = cpvRate(k);
-    if (needPrimary('Website Visits', 'cost per website visit')){
-      if (!r) notes.push('Budget not changed — no overall cost per website visit on file (Account Management → Website users by month).');
-      else sized(goalOfPrimary * r, r, `${fmtInt(goalOfPrimary)} visits × ${fmtUsd2(r)} cost per website visit = ${fmtUsd0(goalOfPrimary * r)}`, 'cost per website visit');
-    }
-  } else if (basis === 'cost_per_lead'){
-    if (needPrimary('Leads', 'cost per lead')){
-      if (!k.cpl) notes.push('Budget not changed — no cost per lead on file (needs the digital performance upload).');
-      else sized(goalOfPrimary * k.cpl.value, k.cpl.value, `${fmtInt(goalOfPrimary)} leads × ${fmtUsd2(k.cpl.value)} cost per lead = ${fmtUsd0(goalOfPrimary * k.cpl.value)}`, 'cost per lead');
-    }
-  } else if (basis === 'cac'){
-    if (needPrimary('Transactions', 'CAC')){
-      if (!k.cac) notes.push('Budget not changed — no CAC on file (needs transactions alongside spend).');
-      else sized(goalOfPrimary * k.cac.value, k.cac.value, `${fmtInt(goalOfPrimary)} transactions × ${fmtUsd0(k.cac.value)} CAC = ${fmtUsd0(goalOfPrimary * k.cac.value)}`, 'CAC');
-    }
-  } else if (basis === 'roas'){
-    const g = revenueGoal || Number(campaign.revenueGoal) || null;
-    if (!g) notes.push('Budget not changed — no revenue goal to size from.');
-    else if (!k.roas) notes.push('Budget not changed — no ROAS on file (needs revenue alongside spend).');
-    else sized(g / k.roas.value, k.roas.value, `${fmtUsd0(g)} revenue ÷ ${k.roas.value.toFixed(2)}x ROAS = ${fmtUsd0(g / k.roas.value)}`, 'ROAS');
-  } else if (basis === 'team_stated' && pos(raw.newBudget)){
-    out.budget = Math.round(raw.newBudget);
-    const buys = [];
-    if (cpvRate(k)) buys.push(`~${fmtInt(out.budget / cpvRate(k))} visits`);
-    if (k.cpl) buys.push(`~${fmtInt(out.budget / k.cpl.value)} leads`);
-    if (k.cac) buys.push(`~${fmtInt(out.budget / k.cac.value)} transactions`);
-    if (k.roas) buys.push(`~${fmtUsd0(out.budget * k.roas.value)} revenue`);
-    if (buys.length) out.computation = `${fmtUsd0(out.budget)} buys ${buys.join(', ')} at this account's rates`;
-  }
-  if (out.budget != null) out.budgetBasis = basis;
-  if (out.budget != null && Math.round(Number(campaign.budget) || 0) === out.budget){ ['budget', 'budgetBasis', 'budgetRate', 'budgetRateLabel', 'computation'].forEach(f => delete out[f]); }
-  if (!['revenueGoal', 'kpiGoal', 'primaryKpi', 'budget'].some(f => out[f] != null)) return null;
-  out.previous = { budget: campaign.budget != null ? Number(campaign.budget) : null, kpiGoal: campaign.kpiGoal != null ? Number(campaign.kpiGoal) : null, primaryKpi: campaign.primaryKpi || null, revenueGoal: campaign.revenueGoal != null ? Number(campaign.revenueGoal) : null };
-  out.needsReapproval = !!(out.budget != null && campaign.budgetApprovedAt);
-  out.fromMediaPlan = !!(out.budget != null && campaign.fundingSource === 'plan');
-  if (raw.rationale) out.rationale = String(raw.rationale).slice(0, 400);
-  if (notes.length) out.note = notes.join(' ');
-  return out;
 }
 function fmtAccountKpiValueForPrompt(v, fmt){
   if (v === null || v === undefined) return '—';
@@ -15701,7 +15379,6 @@ const LEGACY_CASING_COLUMNS = [
   ['campaigns', 'funnelLeadRatePct'],
   ['campaigns', 'funnelBookingRatePct'],
   ['campaigns', 'funnelRegistrationRatePct'],
-  ['campaigns', 'revenueGoal'],
   ['campaigns', 'isAdHoc'],
   ['campaigns', 'keyMessage'],
   ['campaigns', 'kpiGoal'],
@@ -19309,12 +18986,7 @@ function buildBudgetBenchmarksRaw(accountId, opts){
   const r2 = n => Math.round(n * 100) / 100;
   const dp = db.prepare("SELECT * FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").all(accountId).map(r => ({ k: key(r.year, r.month), channel: aliasVal(r, 'channel'), impressions: Number(r.impressions) || 0, spend: Number(r.spend) || 0, leads: Number(r.leads) || 0 }));
   const users = db.prepare('SELECT year, month, users FROM account_website_users_monthly WHERE accountId = ?').all(accountId).map(r => ({ k: key(r.year, r.month), users: Number(r.users) || 0 }));
-  const out = { available: false, window: null, cpl: null, costPerVisit: null, overallCostPerVisit: null, cac: null, roas: null, cpm: null, spend: null, leads: null, visits: null, outcomesBasis: null, targets: null };
-  // 2026-10-13 — the account's OVERALL cost per website visit (Account
-  // Management: working media ÷ website users, blended across years), which
-  // prices a 'Website Visits' Primary KPI target. costPerVisit below stays the
-  // digital-only trailing-12-month rate the 'Clicks' check has always used.
-  try { const cpvAll = computeAccountCostPerWebsiteVisit(accountId); if (cpvAll && cpvAll.blended){ out.overallCostPerVisit = cpvAll.blended; out.overallCostPerVisitYears = cpvAll.rows.filter(r => r.costPerVisit != null).map(r => r.year); out.available = true; } } catch (e){}
+  const out = { available: false, window: null, cpl: null, costPerVisit: null, cac: null, roas: null, cpm: null, spend: null, leads: null, visits: null, outcomesBasis: null };
   if (dp.length){
     const latest = dp.map(r => r.k).sort().pop();
     const wset = new Set(storyWindowEndingAtData(asOfDate, 12, latest));
@@ -19329,7 +19001,7 @@ function buildBudgetBenchmarksRaw(accountId, opts){
     out.available = t.spend > 0;
   }
   // CAC and ROAS: the same figures as the Budgets cards (spend / unique transactions, revenue / spend). Heavier to build, so only on request (?outcomes=1).
-  if (opts && opts.outcomes) try { const d = buildStoryDemand(accountId, { asOf: asOfDate, months: 12 }); const o = d && d.outcomes; if (o){ out.cac = o.cac != null ? o.cac : null; out.roas = o.roas != null ? o.roas : null; out.outcomesBasis = o.basisLabel || null; if (o.target) out.targets = { year: o.target.year, label: o.target.label || null, cac: o.target.cac != null ? Math.round(o.target.cac) : null, roas: o.target.roas != null ? Math.round(o.target.roas * 100) / 100 : null }; if (out.cac != null || out.roas != null) out.available = true; } } catch (e){}
+  if (opts && opts.outcomes) try { const d = buildStoryDemand(accountId, { asOf: asOfDate, months: 12 }); const o = d && d.outcomes; if (o){ out.cac = o.cac != null ? o.cac : null; out.roas = o.roas != null ? o.roas : null; out.outcomesBasis = o.basisLabel || null; if (out.cac != null || out.roas != null) out.available = true; } } catch (e){}
   return out;
 }
 
@@ -28237,7 +27909,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-13-budget-card-audience',
+        buildStamp: '2026-10-09-merged-spend',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
@@ -32761,16 +32433,6 @@ async function handleRequestInner(req, res) {
       const activeCampaign = campaignId ? db.prepare('SELECT * FROM campaigns WHERE id = ? AND accountId = ?').get(campaignId, accountId) : null;
       let activeCampaignContextBlock = '';
       let acctBudgetMixContextBlock = '';
-      // 2026-10-13 — budget, Primary KPI target, Website Visit Goal and the
-      // account's cost per website visit (see buildCampaignTargetsPromptBlock();
-      // Primary KPI/Target were never in this prompt before), plus the
-      // ability to propose changing them (campaignUpdate).
-      let intakeKpis = null;
-      let campaignTargetsBlock = '';
-      if (activeCampaign){
-        try { intakeKpis = computeAccountBudgetKpisCached(accountId); } catch (e){ console.warn('[campaign-intake] budget KPIs unavailable:', e.message); }
-        campaignTargetsBlock = buildCampaignTargetsPromptBlock(activeCampaign, intakeKpis);
-      }
       if (activeCampaign){
         const campaignTypeLabel = (activeCampaign.campaignType && CAMPAIGN_TYPE_REGISTRY[activeCampaign.campaignType]) ? CAMPAIGN_TYPE_REGISTRY[activeCampaign.campaignType].label : null;
         const businessInitiativeLabel = (activeCampaign.businessInitiative && BUSINESS_INITIATIVE_REGISTRY[activeCampaign.businessInitiative]) ? BUSINESS_INITIATIVE_REGISTRY[activeCampaign.businessInitiative].label : null;
@@ -32782,9 +32444,8 @@ THIS CAMPAIGN'S DETAILS, ALREADY CAPTURED AT CAMPAIGN CREATION (real — never a
 - Excluded audiences: ${activeCampaign.excludeSegments || 'None'}
 - Product Group: ${activeCampaign.productGroups || '(not set)'}
 - Creative Focus Group: ${activeCampaign.creativeFocusGroups || '(not set)'}
+- Estimated Budget: ${activeCampaign.budget ? `$${Number(activeCampaign.budget).toLocaleString()}` : '(not set)'}
 - Dates: ${activeCampaign.startDate && activeCampaign.endDate ? `${activeCampaign.startDate} to ${activeCampaign.endDate}` : '(not set)'}
-
-${campaignTargetsBlock}
 `;
         const { promptBlock: acctContext } = buildAccountBudgetAndPerformanceContextForPrompt(accountId, activeCampaign);
         acctBudgetMixContextBlock = `
@@ -32814,9 +32475,7 @@ ${acctContext}`;
       const prompt = `You are the AI Brain inside a marketing platform, helping a real marketer start a new campaign by understanding what they want to accomplish — through real conversation, not a form. Ask one focused follow-up at a time; don't interrogate. Once you genuinely understand the goal well enough to be useful (usually 2-4 exchanges), say so and set readyToRecommend to true — don't drag the conversation out past that point.
 ${activeCampaign ? `
 This conversation is happening on the Campaign Objectives screen for a campaign that ALREADY EXISTS — Campaign Creation already captured real details below. NEVER ask the user for anything already listed in "THIS CAMPAIGN'S DETAILS" — that would make you look like you weren't paying attention to what they already told the platform. Instead, open by acknowledging what you already know about this specific campaign in plain language, and use it (plus the account's real budget/media mix context below) to ask about what's genuinely still unknown — audience specifics, channel preferences, timing considerations, anything not already captured.
-${activeCampaignContextBlock}${acctBudgetMixContextBlock}
-
-${CAMPAIGN_UPDATE_INSTRUCTIONS}` : ''}
+${activeCampaignContextBlock}${acctBudgetMixContextBlock}` : ''}
 THIS ACCOUNT'S CORPORATE GOALS (real, on file — weigh these whenever the conversation touches strategy or KPI choice):
 ${(account.corporateGoals || '').trim() || '(none on file for this account yet)'}
 
@@ -32828,7 +32487,7 @@ ${conversationText || '(nothing yet — this is the first message)'}
 
 The user just said: "${message}"
 
-Respond with your next message (specific and real, never generic filler)${activeCampaign ? ', a campaignUpdate whenever the team set or agreed to a new budget/target this turn,' : ''} and, once you have enough to be useful: your best-guess Lifecycle-Loop Stage (exactly one of Awareness, Consideration, Purchase, Loyalty, Advocacy — or null if genuinely unclear), a Primary KPI in plain words if one came up in conversation, and a 1-2 sentence goal summary in your own words. Never fabricate a specific the user didn't actually say.
+Respond with your next message (specific and real, never generic filler), and, once you have enough to be useful: your best-guess Lifecycle-Loop Stage (exactly one of Awareness, Consideration, Purchase, Loyalty, Advocacy — or null if genuinely unclear), a Primary KPI in plain words if one came up in conversation, and a 1-2 sentence goal summary in your own words. Never fabricate a specific the user didn't actually say.
 
 Submit your response via the campaign_intake_turn tool.`;
       try {
@@ -32845,10 +32504,6 @@ Submit your response via the campaign_intake_turn tool.`;
         // non-retryable failure (e.g. a malformed schema — a code bug, not
         // a transient condition) still fails fast on the second attempt
         // rather than looping.
-        // campaignUpdate only exists once there's a real campaign to update.
-        const intakeSchema = activeCampaign
-          ? Object.assign({}, CAMPAIGN_INTAKE_TURN_SCHEMA, { properties: Object.assign({}, CAMPAIGN_INTAKE_TURN_SCHEMA.properties, { campaignUpdate: CAMPAIGN_UPDATE_SCHEMA_PROP }) })
-          : CAMPAIGN_INTAKE_TURN_SCHEMA;
         let parsed;
         try {
           parsed = await callClaudeForJSON({
@@ -32857,7 +32512,7 @@ Submit your response via the campaign_intake_turn tool.`;
             content: prompt,
             toolName: 'campaign_intake_turn',
             toolDescription: 'Submit this turn of the campaign-intake conversation.',
-            schema: intakeSchema
+            schema: CAMPAIGN_INTAKE_TURN_SCHEMA
           });
         } catch (firstErr){
           console.warn('[POST /api/accounts/:id/campaign-intake] first attempt failed, retrying once:', firstErr.message);
@@ -32868,7 +32523,7 @@ Submit your response via the campaign_intake_turn tool.`;
             content: prompt,
             toolName: 'campaign_intake_turn',
             toolDescription: 'Submit this turn of the campaign-intake conversation.',
-            schema: intakeSchema
+            schema: CAMPAIGN_INTAKE_TURN_SCHEMA
           });
         }
         const VALID_STAGES = ['Awareness', 'Consideration', 'Purchase', 'Loyalty', 'Advocacy'];
@@ -32899,8 +32554,7 @@ Submit your response via the campaign_intake_turn tool.`;
             primaryKpiRecommendation: parsed.primaryKpiRecommendation || null,
             goalSummary: parsed.goalSummary || null
           } : null,
-          recommendedCampaigns,
-          campaignUpdate: activeCampaign ? finalizeCampaignUpdate(parsed.campaignUpdate, activeCampaign, intakeKpis) : null
+          recommendedCampaigns
         });
       } catch (e){
         console.error('[POST /api/accounts/:id/campaign-intake] generation failed:', e.message);
@@ -34923,9 +34577,7 @@ Submit your response via the campaign_intake_turn tool.`;
         funnelLeadRatePct: body.funnelLeadRatePct !== undefined ? ((typeof body.funnelLeadRatePct === 'number' && body.funnelLeadRatePct >= 0) ? body.funnelLeadRatePct : null) : existing.funnelLeadRatePct,
         funnelBookingRatePct: body.funnelBookingRatePct !== undefined ? ((typeof body.funnelBookingRatePct === 'number' && body.funnelBookingRatePct >= 0) ? body.funnelBookingRatePct : null) : existing.funnelBookingRatePct,
         funnelRegistrationRatePct: body.funnelRegistrationRatePct !== undefined ? ((typeof body.funnelRegistrationRatePct === 'number' && body.funnelRegistrationRatePct >= 0) ? body.funnelRegistrationRatePct : null) : existing.funnelRegistrationRatePct,
-        actualRevenue: body.actualRevenue !== undefined ? ((typeof body.actualRevenue === 'number' && body.actualRevenue >= 0) ? body.actualRevenue : null) : existing.actualRevenue,
-        // 2026-10-13 — see ensureColumn('campaigns','revenueGoal')'s comment.
-        revenueGoal: body.revenueGoal !== undefined ? ((body.revenueGoal === null || body.revenueGoal === '' || !(Number(body.revenueGoal) > 0)) ? null : Math.round(Number(body.revenueGoal))) : existing.revenueGoal
+        actualRevenue: body.actualRevenue !== undefined ? ((typeof body.actualRevenue === 'number' && body.actualRevenue >= 0) ? body.actualRevenue : null) : existing.actualRevenue
       };
       // 2026-09-16 — status derived from the dates this save ends up with
       // (see deriveCampaignStatusFromDates()'s comment above), computed
@@ -35056,7 +34708,6 @@ Submit your response via the campaign_intake_turn tool.`;
       addCol('funnelBookingRatePct', body.funnelBookingRatePct !== undefined, merged.funnelBookingRatePct);
       addCol('funnelRegistrationRatePct', body.funnelRegistrationRatePct !== undefined, merged.funnelRegistrationRatePct);
       addCol('actualRevenue', body.actualRevenue !== undefined, merged.actualRevenue);
-      addCol('revenueGoal', body.revenueGoal !== undefined, merged.revenueGoal);
       if (setCols.length){
         setVals.push(campaignId);
         db.prepare(`UPDATE campaigns SET ${setCols.join(', ')} WHERE id = ?`).run(...setVals);
@@ -35877,8 +35528,7 @@ Submit via the recommendation_from_intake tool.`;
       // collects no Audience field — see CMP_OBJ_RECAP_FIELDS's own
       // comment on the frontend — so this screen's Audience row starts
       // genuinely empty until either a human sets it or this runs).
-      let audienceSegments = Array.isArray(parsed.audienceSegments) ? parsed.audienceSegments.filter(s => RECO_GENERATION_SEGMENTS.includes(s) && !audienceIsExcluded(campaign, s)) : [];
-      if (!audienceSegments.length) audienceSegments = inferAudienceSegmentsFromCampaignConversation(campaign).filter(s => RECO_GENERATION_SEGMENTS.includes(s)); // 2026-10-13 code fallback
+      const audienceSegments = Array.isArray(parsed.audienceSegments) ? parsed.audienceSegments.filter(s => RECO_GENERATION_SEGMENTS.includes(s) && !audienceIsExcluded(campaign, s)) : [];
       if (audienceSegments.length && !(campaign.segment || '').trim()){
         db.prepare('UPDATE campaigns SET segment = ? WHERE id = ?').run(audienceSegments.join(', '), campaignId);
       }
@@ -36326,7 +35976,7 @@ Submit your response via the recommendation_dialogue_reply tool.`;
         const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
         if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
         if (!requireAccount(req, res, campaign.accountId)) return;
-        const timings = await warmAiBrainContextForCampaign(campaign);
+        const timings = warmAiBrainContextForCampaign(campaign);
         return sendJson(res, 200, { ok: true, timings });
       } catch (e){
         console.error(`[POST /api/campaigns/:id/ai-brain-warm] campaignId=${campaignId}:`, e);
@@ -36402,27 +36052,6 @@ Submit your response via the recommendation_dialogue_reply tool.`;
         const message = typeof body.message === 'string' ? body.message.trim() : '';
         if (!message) return sendJson(res, 400, { error: 'message is required' });
         if (!process.env.ANTHROPIC_API_KEY) return sendJson(res, 503, { error: 'AI Brain is not configured on this environment.' });
-        // 2026-10-13 — open the stream BEFORE building context. The context
-        // blocks below run through the synchronous Postgres bridge, which
-        // blocks this whole process (the 4s pings can't fire while it
-        // does); until now the browser got no byte at all until every
-        // block was built AND the model had started, so a cache-miss turn
-        // looked dead for a minute-plus. Sending headers + a `building`
-        // event first proves the request landed; the frontend keeps its
-        // long pre-answer budget until the `start` event (context ready)
-        // arrives — see cmpAiBrainStream().
-        if (wantsStream){
-          res.writeHead(200, {
-            'Content-Type': 'text/event-stream; charset=utf-8',
-            'Cache-Control': 'no-cache, no-store, no-transform',
-            'Connection': 'keep-alive',
-            'X-Accel-Buffering': 'no'
-          });
-          if (typeof res.flushHeaders === 'function') res.flushHeaders();
-          streamOpen = true;
-          sse({ type: 'building' });
-          await new Promise(r => setImmediate(r)); // let the socket write go out before the sync DB work starts
-        }
         // 2026-09-20, per Todd's direct correction on a real budget-
         // recommendation turn: the AI Brain asked the team to supply target
         // CPM/cost-per-visit benchmarks, expected frequency, and DMA
@@ -36507,11 +36136,6 @@ Submit your response via the recommendation_dialogue_reply tool.`;
         // campaign and account. It changes only when the plan changes, so it
         // gets its own cache_control breakpoint: turn N+1 of the same
         // conversation reuses turn N's processed prefix (part 3).
-        // 2026-10-13 — the campaign's own budget/targets + the account's
-        // cost per website visit (see buildCampaignTargetsPromptBlock()).
-        let budgetKpis = null;
-        try { budgetKpis = computeAccountBudgetKpisCached(campaign.accountId, timings); } catch (e){ console.warn('[ai-brain-reply] budget KPIs unavailable:', e.message); }
-        const campaignTargetsBlock = buildCampaignTargetsPromptBlock(campaign, budgetKpis);
         const campaignDataBlock = `CAMPAIGN: ${campaign.name || campaignId} (${campaign.campaignCode || campaignId})
 Lifecycle/Loop Stage: ${campaign.stage || '(not set)'}
 Objective: ${campaignObjectiveText(campaign) || '(not set)'}
@@ -36520,9 +36144,6 @@ Channels selected: ${campaign.channels || '(none yet)'}
 Status: ${deriveCampaignStatusFromDates(campaign)}
 ${formatCampaignDatesForPrompt(campaign)}
 Budget overall approved: ${campaign.budgetApprovedAt ? 'yes' : 'no'}
-
-${campaignTargetsBlock}
-
 Creative complete: ${campaign.creativeComplete ? 'yes' : 'no'}
 QA approved: ${campaign.qaApproved ? 'yes' : 'no'}
 Cancelled: ${campaign.cancelled ? 'yes' : 'no'}
@@ -36553,18 +36174,13 @@ Reply directly to this, following the instructions you were given. Submit your r
         timings.model = model;
         const request = {
           model, maxTokens: 900,
-          system: [{ type: 'text', text: aiBrainReplySystemText(), cache_control: { type: 'ephemeral' } }],
+          system: [{ type: 'text', text: AI_BRAIN_REPLY_SYSTEM, cache_control: { type: 'ephemeral' } }],
           messages: [{ role: 'user', content: [
             { type: 'text', text: campaignDataBlock, cache_control: { type: 'ephemeral' } },
             { type: 'text', text: turnBlock }
           ] }],
           toolName: 'ai_brain_reply', toolDescription: 'Submit this turn of the Collaboration Center AI Brain conversation.',
-          schema: aiBrainReplySchema(),
-          // A person is waiting on this turn — jump the account's AI line
-          // (see makeFairLimiter's acquire() comment) and record how long
-          // the line itself took, separately from the model's own time.
-          priority: true,
-          onQueueAcquired: (ms) => { timings.queueWaitMs = (timings.queueWaitMs || 0) + ms; }
+          schema: AI_BRAIN_REPLY_SCHEMA
         };
         // Suggestion validation — the model is instructed not to invent an
         // entryId; this is the enforcement (each part validated on its own,
@@ -36589,7 +36205,6 @@ Reply directly to this, following the instructions you were given. Submit your r
           if (parsed._truncated) timings.truncated = true;
           return {
             reply: parsed.reply || "Sorry, I didn't get a response — try again.", suggestion,
-            campaignUpdate: finalizeCampaignUpdate(parsed.campaignUpdate, campaign, budgetKpis),
             matchMarketSuggestion: showMatchMarketCard ? matchMarketSuggestion : null,
             matchMarketNewlyAttached,
             timings
@@ -36606,9 +36221,15 @@ Reply directly to this, following the instructions you were given. Submit your r
           // connection while the model is still thinking. Errors after
           // headers are sent become an `error` event (an HTTP status can't
           // change once streaming has begun).
-          // Headers already went out above (before the context build); the
-          // context timings that used to ride in Server-Timing are carried
-          // by this `start` event instead.
+          res.writeHead(200, {
+            'Content-Type': 'text/event-stream; charset=utf-8',
+            'Cache-Control': 'no-cache, no-store, no-transform',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no',
+            'Server-Timing': serverTimingHeader()
+          });
+          if (typeof res.flushHeaders === 'function') res.flushHeaders();
+          streamOpen = true;
           sse({ type: 'start', model, timings: { contextMs: timings.contextMs, topMarkets: timings.topMarkets, budgetPerf: timings.budgetPerf, monthlyKpi: timings.monthlyKpi } });
           const ping = setInterval(() => { try { if (streamOpen) res.write(': ping\n\n'); } catch (e){ /* client gone */ } }, 4000);
           const tModel = Date.now();
@@ -36637,7 +36258,7 @@ Reply directly to this, following the instructions you were given. Submit your r
           clearInterval(ping);
           timings.modelMs = Date.now() - tModel;
           const payload = finishPayload(parsed);
-          console.log(`[ai-brain-reply] campaign=${campaignId} model=${model} context=${timings.contextMs}ms queue=${timings.queueWaitMs || 0}ms firstToken=${timings.modelFirstTokenMs || '?'}ms model=${timings.modelMs}ms total=${timings.totalMs}ms cache=${['topMarkets','budgetPerf','monthlyKpi'].map(k => timings[k] ? `${k}:${timings[k].cache}` : '').filter(Boolean).join(',')}`);
+          console.log(`[ai-brain-reply] campaign=${campaignId} model=${model} context=${timings.contextMs}ms firstToken=${timings.modelFirstTokenMs || '?'}ms model=${timings.modelMs}ms total=${timings.totalMs}ms cache=${['topMarkets','budgetPerf','monthlyKpi'].map(k => timings[k] ? `${k}:${timings[k].cache}` : '').filter(Boolean).join(',')}`);
           sse(Object.assign({ type: 'done' }, payload));
           return res.end();
         }
@@ -36658,7 +36279,7 @@ Reply directly to this, following the instructions you were given. Submit your r
         }
         timings.modelMs = Date.now() - tModel;
         const payload = finishPayload(parsed);
-        console.log(`[ai-brain-reply] campaign=${campaignId} model=${model} context=${timings.contextMs}ms queue=${timings.queueWaitMs || 0}ms firstToken=${timings.modelFirstTokenMs || '?'}ms model=${timings.modelMs}ms total=${timings.totalMs}ms (json path)`);
+        console.log(`[ai-brain-reply] campaign=${campaignId} model=${model} context=${timings.contextMs}ms firstToken=${timings.modelFirstTokenMs || '?'}ms model=${timings.modelMs}ms total=${timings.totalMs}ms (json path)`);
         res.setHeader('Server-Timing', `${serverTimingHeader()}, model;dur=${timings.modelMs}, total;dur=${timings.totalMs}`);
         return sendJson(res, 200, payload);
       } catch (e){
@@ -36925,19 +36546,6 @@ Submit your response via the messaging_intake_turn tool.`;
         // similar campaign" — the similar-campaign lookup (Stage match +
         // conversion efficiency, same scoring as campaign-intake) was
         // removed from this response entirely, not just hidden client-side.
-        // 2026-10-13 — write-through backfill for campaigns whose
-        // recommendation ran before (or without) an audience extraction:
-        // same "only when nothing is set, never overwrite a human's choice"
-        // rule as generate-recommendation-from-intake. See
-        // inferAudienceSegmentsFromCampaignConversation().
-        if (!String(campaign.segment || '').trim()){
-          const inferred = inferAudienceSegmentsFromCampaignConversation(campaign);
-          if (inferred.length){
-            campaign.segment = inferred.join(', ');
-            try { db.prepare('UPDATE campaigns SET segment = ? WHERE id = ?').run(campaign.segment, campaignId); }
-            catch (e){ console.warn('[pitch-summary] audience backfill not saved:', e.message); }
-          }
-        }
         return sendJson(res, 200, {
           campaignId,
           loopStage: campaign.stage || null,
@@ -46622,10 +46230,29 @@ process.on('unhandledRejection', (reason) => {
 // module), it skips straight to the module.exports below instead — no port
 // ever gets bound, which is correct, since Vercel's platform handles
 // listening/routing itself and just calls handleRequest per request.
+// 2026-10-13 — Supabase flagged 11 tables with row-level security off (rls_disabled_in_public). createTableIfNeeded() turns it on for
+// the tables it creates, but tables made by a plain db.exec(CREATE TABLE...) block skipped that step. This sweep runs once after start-up
+// on Postgres: it turns RLS on (no policies, same as every other table) for any public table that still has it off, so a table added
+// the old way can never be left open. The app's own database role is unaffected, as it is for the tables already protected.
+function enforceRlsOnPublicTables(){
+  if (!process.env.DATABASE_URL) return;
+  try {
+    const rows = db.prepare(`SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND rowsecurity = false`).all();
+    let done = 0;
+    for (const r of rows){
+      const t = String(r.tablename || '');
+      if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(t)) continue;
+      try { db.exec('ALTER TABLE "' + t + '" ENABLE ROW LEVEL SECURITY'); done++; } catch (e) { console.error('[rls-sweep] could not enable RLS on ' + t + ':', (e && e.message) || e); }
+    }
+    if (rows.length) console.log('[rls-sweep] row-level security was off on ' + rows.length + ' public table(s); enabled on ' + done + '.');
+  } catch (e) { console.error('[rls-sweep] check failed:', (e && e.message) || e); }
+}
+
 if (require.main === module) {
   const server = http.createServer(handleRequest);
   const PORT = process.env.PORT || 8787;
   server.listen(PORT, () => console.log(`CXMedia.AI demo backend listening on http://localhost:${PORT}`));
+  setTimeout(enforceRlsOnPublicTables, 5000);
 }
 
 // 2026-08-23 fix — module load (and all ~230 top-level schema-setup
