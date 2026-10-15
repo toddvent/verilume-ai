@@ -18212,6 +18212,19 @@ function dqSetValidate(s, accountId){
   return { set: s.set, measure: s.measure, agg, by, filters, period, basis: 'booked', compare: s.compare === 'priorYear' && !timeDim && period.kind !== 'all' ? 'priorYear' : null, top, order: s.order === 'asc' ? 'asc' : 'desc' };
 }
 // ---- words to spec for the data sets (no model)
+// Everyday ways of saying a value that is stored as a short code or a shorthand (US, Intl).
+function dqValueAliases(v){
+  const x = String(v).trim(); const k = x.toLowerCase().replace(/[^a-z]/g, ''); const out = [x];
+  if (['us', 'usa', 'unitedstates', 'unitedstatesofamerica'].includes(k)) out.push('US', 'USA', 'United States', 'United States of America', 'America', 'U.S.');
+  else if (['intl', 'international', 'int', 'global', 'rowrestofworld', 'restofworld'].includes(k)) out.push('International', 'Intl', 'outside the US', 'outside the United States', 'rest of world');
+  else if (['ca', 'canada'].includes(k)) out.push('Canada', 'Canadian');
+  return out;
+}
+// Spoken questions arrive in lower case. "us" counts as the country when it sits beside a data word, a place word or another region.
+function dqUsInContext(norm){
+  return /( in| from| for| within| across| of)( the)? us( |$)/.test(norm) || / us (website|web|traffic|users?|visitors?|visits|sessions|leads|region|market|audience|customers?) /.test(norm) || / (website|web|traffic|users?|visitors?|visits|sessions|leads) (for|in|from) us /.test(norm)
+    || / us (vs|versus|and|or|compared with|compared to) (canada|intl|international|the world) /.test(norm) || / (canada|intl|international) (vs|versus|and|or) us /.test(norm);
+}
 function dqSetParse(text, accountId){
   const raw = dqNorm(text); let t = raw; const assumptions = [];
   const have = dqSetsWithData(accountId);
@@ -18247,10 +18260,19 @@ function dqSetParse(text, accountId){
   // known values in the question become filters, with the words already used for field names blanked out
   let tv = t; claimed.forEach(c => { tv = tv.slice(0, c[0]) + ' '.repeat(c[1] - c[0]) + tv.slice(c[1]); });
   const known = dqSetValues(accountId, best.set);
+  const textRaw = String(text || '');
   Object.keys(known).forEach(d => known[d].forEach(v => {
-    const n = dqNorm(v); if (n.trim().length < 3) return;
-    if (tv.includes(n) && !spec.filters.some(f => f.field === d && f.values.includes(v))){ let f = spec.filters.find(x => x.field === d); if (!f){ f = { field: d, values: [] }; spec.filters.push(f); } f.values.push(v); }
+    const phrases = dqValueAliases(v); let hit = false;
+    phrases.forEach(ph => {
+      const n = dqNorm(ph); const w = n.trim(); if (!w) return;
+      // short codes (US, IN) are also ordinary words, so they only count when typed in capitals as a word of their own
+      if (w.length <= 3 && !new RegExp('(^|[^A-Za-z0-9])' + w.toUpperCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^A-Za-z0-9]|$)').test(textRaw.replace(/\bU\.S\.?A?\.?/gi, m => m.replace(/[^A-Za-z]/g, '').toUpperCase())) && !(w === 'us' && dqUsInContext(raw))) return;
+      if (tv.includes(n)) hit = true;
+    });
+    if (hit && !spec.filters.some(f => f.field === d && f.values.includes(v))){ let f = spec.filters.find(x => x.field === d); if (!f){ f = { field: d, values: [] }; spec.filters.push(f); } f.values.push(v); }
   }));
+  // two or more values of one field ("US vs Canada") are a comparison, so show them side by side rather than as one combined number
+  spec.filters.forEach(f => { if (f.values.length > 1 && !spec.by.includes(f.field) && spec.by.length < 2){ spec.by.unshift(f.field); assumptions.push('You named more than one ' + (dqSetDims(best.set)[f.field] || { label: f.field }).label.toLowerCase() + ', so I show them side by side.'); } });
   if (!spec.agg){ spec.agg = dqSetDefaultAgg(m); if (m.aggs.length > 1) assumptions.push(`No "average" or "total" was said, so I used ${spec.agg === 'sum' ? 'the total' : 'the average'}.`); }
   if (!m.aggs.includes(spec.agg)){ spec.agg = dqSetDefaultAgg(m); }
   if (spec.by.length > 2){ assumptions.push(`Only two breakdowns fit in one view; I used ${spec.by.slice(0, 2).map(k => dims[k].label).join(' and ')}.`); spec.by = spec.by.slice(0, 2); }
