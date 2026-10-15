@@ -1067,6 +1067,10 @@ ensureColumn('team_members', 'phoneext', 'TEXT');
 // selected is the existing free/unassigned state, unchanged.
 ensureColumn('accounts', 'paidTier', 'TEXT');
 ensureColumn('accounts', 'paidTierActivatedAt', 'TEXT');
+// 2026-10-15 — archive before delete. An archived account is hidden in the team
+// console, its client sessions stop working, and the Monday jobs skip it.
+ensureColumn('accounts', 'archivedAt', 'TEXT');
+ensureColumn('accounts', 'archivedBy', 'TEXT');
 
 // Added 2026-08-19 — placeholder paid tiers, per direct instruction: final
 // names/pricing/inclusions are still TBD, but the login-facing plumbing
@@ -20471,6 +20475,11 @@ function authenticate(req){
     return null;
   }
   if (!session) return null;
+  // 2026-10-15 — an archived account's sessions stop working at once.
+  try {
+    const arch = db.prepare('SELECT archivedAt FROM accounts WHERE accountId = ?').get(session.accountId);
+    if (arch && aliasVal(arch, 'archivedAt')) return null;
+  } catch (e){ /* column lookup failure falls through to the normal checks */ }
   // A removed or deactivated member's sessions stop working at once.
   if (session.memberId){
     try {
@@ -27407,7 +27416,7 @@ function getAccountRecord(accountId){
 // native http module, so nothing about the routing logic below needed to
 // change for this to work in both places.
 // ---- Wave 1.4: Verilume team (platform) login helpers ----
-const PLATFORM_ROLES = ['owner', 'admin', 'support', 'readonly'];
+const PLATFORM_ROLES = ['owner', 'admin', 'it', 'support', 'readonly']; // 'it' (2026-10-15): may archive, restore and delete client accounts, like the Owner
 const PLATFORM_SESSION_MS = 12 * 60 * 60 * 1000;   // console session: 12 hours
 const PLATFORM_VIEW_AS_MS = 4 * 60 * 60 * 1000;    // view-as session in a client account: 4 hours
 let platformOwnerSeeded = false;
@@ -27716,7 +27725,7 @@ async function handleRequestInner(req, res) {
       }
       // GET /api/platform/accounts — every client account
       if (req.method === 'GET' && parts.length === 3 && sub === 'accounts'){
-        const rows = db.prepare('SELECT accountId, company, industry, createdAt, paidTier, paidTierActivatedAt FROM accounts ORDER BY company ASC').all();
+        const rows = db.prepare('SELECT accountId, company, industry, createdAt, paidTier, paidTierActivatedAt, archivedAt, archivedBy FROM accounts ORDER BY company ASC').all();
         return sendJson(res, 200, { accounts: rows, levels: PAID_TIERS.map(t => ({ key: t.key, name: t.name, priceMonthly: t.priceMonthly, maxStorefronts: t.maxStorefronts })) });
       }
       // GET/POST /api/platform/spark-settings — trial length and the Starter Kit monthly draft allowance (Spark gets the prorated share).
@@ -27735,6 +27744,65 @@ async function handleRequestInner(req, res) {
             .run(generateId('PLOG'), me.id, me.name, me.role, 'platform', 'spark_settings:' + td + 'd/' + dr + 'drafts', getClientIp(req) || null, nowIso());
           return sendJson(res, 200, getSparkSettings());
         }
+      }
+      // 2026-10-15 — archive, restore and permanently delete a client account.
+      // Owner and IT only. Delete requires the account to be archived first and
+      // the company name typed exactly. Audit tables are kept (see KEEP below).
+      const canManageAccounts = me.role === 'owner' || me.role === 'it';
+      if (req.method === 'POST' && parts.length === 5 && sub === 'accounts' && (parts[4] === 'archive' || parts[4] === 'delete')){
+        if (!canManageAccounts) return sendJson(res, 403, { error: 'Only the Owner and IT can archive, restore or delete a client account.' });
+        const accountId = decodeURIComponent(parts[3]);
+        const acct = db.prepare('SELECT accountId, company, archivedAt FROM accounts WHERE accountId = ?').get(accountId);
+        if (!acct) return sendJson(res, 404, { error: 'account not found' });
+        const body = await readBody(req) || {};
+        const logIt = (action) => db.prepare('INSERT INTO platform_access_log (id, platformuserid, platformname, platformrole, accountId, action, ip, createdAt) VALUES (?,?,?,?,?,?,?,?)')
+          .run(generateId('PLOG'), me.id, me.name, me.role, accountId, action, getClientIp(req) || null, nowIso());
+        if (parts[4] === 'archive'){
+          const restore = body.archive === false;
+          if (restore){
+            db.prepare('UPDATE accounts SET archivedAt = NULL, archivedBy = NULL WHERE accountId = ?').run(accountId);
+            logIt('account_restored');
+            return sendJson(res, 200, { accountId, archivedAt: null });
+          }
+          const now = nowIso();
+          db.prepare('UPDATE accounts SET archivedAt = ?, archivedBy = ? WHERE accountId = ?').run(now, me.name, accountId);
+          try { db.prepare('DELETE FROM sessions WHERE accountId = ?').run(accountId); } catch (e){}
+          logIt('account_archived');
+          return sendJson(res, 200, { accountId, archivedAt: now });
+        }
+        // permanent delete
+        if (!aliasVal(acct, 'archivedAt')) return sendJson(res, 400, { error: 'Archive the account first. Permanent delete only works on an archived account.' });
+        if (String(body.confirmName || '').trim() !== String(aliasVal(acct, 'company') || '').trim() || !String(body.confirmName || '').trim()) return sendJson(res, 400, { error: 'Type the company name exactly as shown to confirm.' });
+        // Billing and audit history is kept after a delete.
+        const KEEP = new Set(['accounts', 'platform_access_log', 'financial_audit_log', 'level_activations', 'invoices']);
+        let targets = [];
+        try {
+          if (process.env.DATABASE_URL){
+            targets = db.prepare("SELECT table_name AS t, column_name AS c FROM information_schema.columns WHERE table_schema = 'public' AND lower(column_name) = 'accountid'").all().map(r => ({ t: aliasVal(r, 't'), c: aliasVal(r, 'c') }));
+          } else {
+            const tabs = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map(r => r.name);
+            for (const t of tabs){
+              if (!/^[A-Za-z0-9_]+$/.test(t)) continue;
+              const col = db.prepare('PRAGMA table_info("' + t + '")').all().find(c => String(c.name).toLowerCase() === 'accountid');
+              if (col) targets.push({ t, c: col.name });
+            }
+          }
+        } catch (e){ return sendJson(res, 500, { error: 'Could not list the account tables: ' + String(e.message || e).slice(0, 160) }); }
+        const deleted = {}; let total = 0;
+        try {
+          for (const x of targets){
+            if (KEEP.has(x.t) || !/^[A-Za-z0-9_]+$/.test(x.t) || !/^[A-Za-z0-9_]+$/.test(x.c)) continue;
+            const before = db.prepare('SELECT count(*) AS n FROM "' + x.t + '" WHERE "' + x.c + '" = ?').get(accountId);
+            const n = Number(aliasVal(before, 'n')) || 0;
+            if (n > 0){ db.prepare('DELETE FROM "' + x.t + '" WHERE "' + x.c + '" = ?').run(accountId); deleted[x.t] = n; total += n; }
+          }
+          db.prepare('DELETE FROM accounts WHERE accountId = ?').run(accountId);
+        } catch (e){
+          // The account stays archived, so the same delete can simply be run again.
+          return sendJson(res, 500, { error: 'The delete stopped part way (' + String(e.message || e).slice(0, 160) + '). The account is still archived; run Delete again to finish.', deletedSoFar: deleted });
+        }
+        logIt('account_deleted:' + String(aliasVal(acct, 'company') || '').slice(0, 80) + ':' + total + 'rows');
+        return sendJson(res, 200, { accountId, deleted: true, rowsDeleted: total, tables: Object.keys(deleted).length });
       }
       // POST /api/platform/accounts/:id/level — activate or change a client's level in the Ops Console. { tier: 'spark'|'starter'|'glow'|'radiance'|'beacon'|null }
       if (req.method === 'POST' && parts.length === 5 && sub === 'accounts' && parts[4] === 'level'){
@@ -32767,7 +32835,7 @@ Submit your response via the campaign_intake_turn tool.`;
       if (!SNOWFLAKE_CONFIGURED){
         return sendJson(res, 200, { configured: false, processed: 0 });
       }
-      const snowflakeAccounts = db.prepare("SELECT * FROM accounts WHERE analyticsPathway = 'snowflake'").all();
+      const snowflakeAccounts = db.prepare("SELECT * FROM accounts WHERE analyticsPathway = 'snowflake' AND archivedAt IS NULL").all();
       const results = { configured: true, processed: snowflakeAccounts.length, succeeded: 0, failed: [] };
       for (const account of snowflakeAccounts){
         try {
@@ -33373,7 +33441,7 @@ Submit your response via the campaign_intake_turn tool.`;
       if (authHeader !== `Bearer ${process.env.CRON_SECRET}`){
         return sendJson(res, 401, { error: 'unauthorized' });
       }
-      const paidAccounts = db.prepare('SELECT * FROM accounts WHERE paidTier IS NOT NULL').all();
+      const paidAccounts = db.prepare('SELECT * FROM accounts WHERE paidTier IS NOT NULL AND archivedAt IS NULL').all();
       const results = { processed: paidAccounts.length, succeeded: 0, failed: [] };
       for (const account of paidAccounts){
         try {
@@ -33420,7 +33488,7 @@ Submit your response via the campaign_intake_turn tool.`;
       if ((req.headers['authorization'] || '') !== `Bearer ${process.env.CRON_SECRET}`) return sendJson(res, 401, { error: 'unauthorized' });
       // Oldest sweep first; skip accounts already swept in the last 6 days so a
       // second run the same morning picks up whatever the time limit cut off.
-      const accts = db.prepare('SELECT accountId FROM accounts WHERE paidTier IS NOT NULL').all().map(a => aliasVal(a, 'accountId'));
+      const accts = db.prepare('SELECT accountId FROM accounts WHERE paidTier IS NOT NULL AND archivedAt IS NULL').all().map(a => aliasVal(a, 'accountId'));
       const lastRun = id => { const r = db.prepare('SELECT ranAt FROM reputation_sweeps WHERE accountId = ? ORDER BY ranAt DESC').get(id); return r ? new Date(r.ranAt).getTime() : 0; };
       const due = accts.map(id => ({ id, t: lastRun(id) })).filter(x => Date.now() - x.t > 6 * 86400 * 1000).sort((a, b) => a.t - b.t);
       const deadline = Date.now() + 95000;
@@ -33476,7 +33544,7 @@ Submit your response via the campaign_intake_turn tool.`;
         await new Promise(r => setTimeout(r, 2500));
       }
       const week = bdWeekStart(new Date());
-      const accts = db.prepare('SELECT accountId FROM accounts WHERE paidTier IS NOT NULL').all().map(a => aliasVal(a, 'accountId'))
+      const accts = db.prepare('SELECT accountId FROM accounts WHERE paidTier IS NOT NULL AND archivedAt IS NULL').all().map(a => aliasVal(a, 'accountId'))
         .filter(id => !db.prepare('SELECT id FROM news_feed_runs WHERE id = ?').get('competitors:' + id + '|' + week));
       for (let i = 0; i < accts.length; i++){
         if (Date.now() > deadline){ out.competitors.remaining = accts.length - i; break; }
@@ -33492,7 +33560,7 @@ Submit your response via the campaign_intake_turn tool.`;
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'cron' && parts[2] === 'brain-dump'){
       if (!process.env.CRON_SECRET) return sendJson(res, 501, { error: 'CRON_SECRET is not configured — refusing to run an unauthenticated cron endpoint.' });
       if ((req.headers['authorization'] || '') !== `Bearer ${process.env.CRON_SECRET}`) return sendJson(res, 401, { error: 'unauthorized' });
-      const accts = db.prepare('SELECT accountId FROM accounts WHERE paidTier IS NOT NULL').all(); const results = { processed: accts.length, posted: 0, failed: [] };
+      const accts = db.prepare('SELECT accountId FROM accounts WHERE paidTier IS NOT NULL AND archivedAt IS NULL').all(); const results = { processed: accts.length, posted: 0, failed: [] };
       for (const a of accts){ try { await postBrainDump(aliasVal(a, 'accountId')); results.posted++; } catch (e){ results.failed.push({ accountId: aliasVal(a, 'accountId'), note: e.message }); } }
       return sendJson(res, 200, results);
     }
