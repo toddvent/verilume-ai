@@ -17603,6 +17603,7 @@ function dqPeriodTx(txs, spec, range){
   return { cur: txs.filter(t => inR(t, range.from, range.through)), prev: txs.filter(t => inR(t, range.compFrom, range.compThrough)), label: range.label + sfx, prevLabel: range.compLabel + sfx };
 }
 function dqRun(accountId, specIn, range, preloaded){
+  if (specIn && specIn.set) return dqSetRun(accountId, specIn, range);
   const L = preloaded || dqLoadTransactions(accountId);
   const vocab = dqVocab(accountId);
   const ctx = { vocab, values: dqValuesByDim(L.txs) };
@@ -17833,8 +17834,9 @@ function dqRecipes(vocab){
 function dqCatalog(accountId){
   const vocab = dqVocab(accountId); const L = dqLoadTransactions(accountId);
   const values = dqValuesByDim(L.txs);
+  const sets = dqSetsCatalog(accountId);
   return {
-    hasData: L.txs.length > 0, transactions: L.txs.length, orderSizeLabel: vocab.orderSizeLabel, industry: vocab.industryKey, orderSizeNames: vocab.orderSizeSyn.slice(0, 6),
+    hasData: L.txs.length > 0 || sets.length > 0, hasCustomerFile: L.txs.length > 0, sets, setRecipes: dqSetRecipes(accountId), transactions: L.txs.length, orderSizeLabel: vocab.orderSizeLabel, industry: vocab.industryKey, orderSizeNames: vocab.orderSizeSyn.slice(0, 6),
     measures: Object.keys(DQ_MEASURES).map(k => ({ key: k, label: dqFieldLabel(k, vocab), aggs: DQ_MEASURES[k].aggs.map(a => ({ key: a, label: DQ_AGG_LABEL[a] || 'Per' })) })),
     dims: Object.keys(DQ_DIMS).map(k => ({ key: k, label: dqFieldLabel(k, vocab) })),
     values, years: Array.from(new Set(L.txs.map(t => t.year).filter(Boolean))).sort(),
@@ -17908,15 +17910,30 @@ function dqContextBlock(accountId, question){
 async function dqAnswerPayload(accountId, input, range, opts){
   opts = opts || {};
   const L = dqLoadTransactions(accountId);
-  if (!L.txs.length) return { notOnFile: 'the customer-level transaction file (Train the Brain, Transactions card)' };
   const vocab = dqVocab(accountId); const ctx = { vocab, values: dqValuesByDim(L.txs) };
-  let spec = null, source = 'spec', assumptions = [];
   const text = String(input.text || '').slice(0, 600);
+  const setAnswer = (spec, assumptions, source) => {
+    const r = dqSetRun(accountId, spec, range);
+    if (r.error) return { needMore: true, message: r.error, suggestions: dqSetRecipes(accountId).slice(0, 4) };
+    if (r.notOnFile) return { notOnFile: r.notOnFile };
+    const x = r.x;
+    return { source, spec: r.spec, sentence: dqSetSentence(r.spec, r.period), period: r.period, assumptions: assumptions || [],
+      result: { title: x.title, summary: x.summary, tables: x.tables.map(t => ({ name: t.name, columns: t.columns.map(c => c.h), rows: t.rows })), notes: x.notes.filter(n => !r.definitions.includes(n)), definitions: r.definitions }, buckets: [] };
+  };
+  // a tapped or saved question for one of the other uploaded data sets
+  if (input.spec && input.spec.set) return setAnswer(input.spec, [], 'spec');
+  let spec = null, source = 'spec', assumptions = [];
   if (input.spec) spec = dqValidateSpec(input.spec, ctx);
   else if (text){
     const p = dqParse(text, ctx);
-    if (p.spec.measure){ spec = dqValidateSpec(p.spec, ctx); assumptions = p.assumptions; source = 'words'; }
-    else if (opts.allowModel !== false){
+    const sp = dqSetParse(text, accountId);
+    // when both could answer, the more specific phrase wins; the customer file wins a tie
+    if (sp && (!p.spec.measure || sp.len > dqCustMatchLen(text, p.spec.measure, vocab))) return setAnswer(sp.spec, sp.assumptions, 'words');
+    if (p.spec.measure){
+      if (!L.txs.length){ const fb = dqRollupFallback(accountId, p.spec); if (fb) return setAnswer(fb, ['There is no customer-level file, so this uses the monthly transactions roll-up.'], 'words'); }
+      spec = dqValidateSpec(p.spec, ctx); assumptions = p.assumptions; source = 'words';
+    }
+    else if (opts.allowModel !== false && L.txs.length){
       const m = await dqPlanWithModel(text, ctx);
       if (m){
         // the same short-code rule as the word parser: "in" or "us" in a sentence is not the state IN or country US
@@ -17928,9 +17945,12 @@ async function dqAnswerPayload(accountId, input, range, opts){
   }
   if (!spec){
     const words = dqNorm(text).trim().split(' ').filter(w => w.length > 3);
-    const sug = dqRecipes(vocab).map(r => ({ r, s: words.filter(w => dqNorm(r.title).includes(' ' + w)).length })).sort((a, b) => b.s - a.s).slice(0, 4).map(x => x.r);
+    const pool = (L.txs.length ? dqRecipes(vocab) : []).concat(dqSetRecipes(accountId));
+    if (!pool.length) return { notOnFile: 'a customer transaction file or one of the other Train the Brain uploads' };
+    const sug = pool.map(r => ({ r, s: words.filter(w => dqNorm(r.title).includes(' ' + w)).length })).sort((a, b) => b.s - a.s).slice(0, 4).map(x => x.r);
     return { needMore: true, message: 'I could not tell which number you meant. Pick a measure and a breakdown below, or tap one of these.', suggestions: sug };
   }
+  if (!L.txs.length) return { notOnFile: 'the customer-level transaction file (Train the Brain, Transactions card)' };
   const r = dqRun(accountId, spec, range, L);
   if (r.error) return { needMore: true, message: r.error, suggestions: dqRecipes(vocab).slice(0, 4) };
   if (r.notOnFile) return { notOnFile: r.notOnFile };
@@ -17939,15 +17959,456 @@ async function dqAnswerPayload(accountId, input, range, opts){
     result: { title: x.title, summary: x.summary, tables: x.tables.map(t => ({ name: t.name, columns: t.columns.map(c => c.h), rows: t.rows })), notes: x.notes.filter(n => !r.definitions.includes(n)), definitions: r.definitions },
     buckets: r.bucketInfo };
 }
+// How specific was the customer-file measure in the words? Used only to decide between the two engines.
+function dqCustMatchLen(text, measure, vocab){
+  const t = dqNorm(text); if (measure === 'revenuePerUnit') return 40;
+  const syn = measure === 'orderSize' ? vocab.orderSizeSyn : (DQ_MEASURES[measure] ? DQ_MEASURES[measure].syn : []);
+  return syn.reduce((n, p) => t.includes(dqNorm(p)) ? Math.max(n, p.length) : n, 0);
+}
+// With no customer-level file, revenue and transactions questions fall back to the monthly roll-up when it is loaded.
+function dqRollupFallback(accountId, spec){
+  if (!['revenue', 'transactions'].includes(spec.measure)) return null;
+  if (!dqSetLoad(accountId, 'monthlyTx').length) return null;
+  const by = (spec.by || []).filter(d => ['productGroup', 'year', 'month'].includes(d));
+  if ((spec.by || []).length && !by.length) return null;
+  const filters = (spec.filters || []).filter(f => f.field === 'productGroup');
+  return { set: 'monthlyTx', measure: spec.measure === 'revenue' ? 'rollupRevenue' : 'rollupTransactions', agg: 'sum', by, filters, period: spec.period, compare: spec.compare, top: spec.top, order: spec.order };
+}
 // Does this question belong to the data engine? A measure the engine knows, and not a question about a named campaign.
 function dqLooksLikeDataQuestion(accountId, question){
   try {
     if (/\bcampaigns?\b/i.test(question)) return false;
-    const L = dqLoadCached(accountId); if (!L.txs.length) return false;
+    const L = dqLoadCached(accountId);
+    const sp = dqSetParse(question, accountId);
+    if (sp && dqSetsWithData(accountId).includes(sp.spec.set)) return true;
+    if (!L.txs.length) return false;
     const p = dqParse(question, { vocab: dqVocab(accountId), values: dqValuesByDim(L.txs) });
     return !!p.spec.measure;
   } catch (e){ return false; }
 }
+// ---- Second wave (2026-10-15): every other uploaded Train the Brain data set can be asked about, by taps, typing or voice.
+// A data set is a small description (table, how to read its rows, measures, breakdowns). The same spec shape is used,
+// with an extra `set` key: { set, measure, agg, by[], filters[], period, compare, top, order }. Numbers always come from dqSetRun.
+const dqNum = v => (v === null || v === undefined || v === '') ? null : (Number.isFinite(Number(v)) ? Number(v) : null);
+const dqStr = v => (v === null || v === undefined) ? '' : String(v).trim();
+function dqIsoWeekStart(y, w){ const jan4 = new Date(Date.UTC(y, 0, 4)); const dow = (jan4.getUTCDay() + 6) % 7; return new Date(jan4.getTime() - dow * 86400000 + (w - 1) * 7 * 86400000); }
+const DQ_MONTH_NAMES = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+const DQ_SET_COMMON_DIMS = {
+  year: { label: 'Year', syn: ['year over year', 'by year', 'each year', 'yearly', 'annual', 'year'], natural: true },
+  quarter: { label: 'Quarter', syn: ['quarterly', 'by quarter', 'each quarter', 'quarter', 'quarters'], natural: true },
+  month: { label: 'Month', syn: ['monthly', 'by month', 'each month', 'month', 'months'], natural: true },
+  week: { label: 'Week', syn: ['weekly', 'by week', 'each week', 'week', 'weeks'], natural: true }
+};
+const DQ_SETS = {
+  webUsers: {
+    label: 'Website users', table: 'account_website_users_monthly', unit: 'month', need: 'the website users by month file (Train the Brain, Website users card)',
+    measures: { users: { label: 'Website users', syn: ['website users', 'website user', 'website visitors', 'website visits', 'site users', 'site visitors', 'web users', 'web traffic', 'website traffic', 'visitors', 'users'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int' } },
+    dims: { region: { label: 'Region', syn: ['region', 'regions'], filter: true } }, dimsOk: ['year', 'quarter', 'month'],
+    load(id){ return dqSelect('SELECT * FROM account_website_users_monthly WHERE accountId = ?', id).map(r => ({ year: dqNum(aliasVal(r, 'year')), month: dqNum(aliasVal(r, 'month')) || 0, region: dqStr(aliasVal(r, 'region')), users: dqNum(aliasVal(r, 'users')) })); },
+    note: 'Website users come from the monthly website users file, one number per month and region.'
+  },
+  webEngagement: {
+    label: 'Website engagement', table: 'account_website_engagement', unit: 'month', need: 'the website engagement file (Train the Brain, Website engagement card)',
+    measures: {
+      sessions: { label: 'Website sessions', syn: ['website sessions', 'sessions', 'visits by channel'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int' },
+      engagedSessions: { label: 'Engaged sessions', syn: ['engaged sessions', 'engaged visits'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int' },
+      engagementRate: { label: 'Engagement rate', syn: ['engagement rate', 'engaged rate'], aggs: ['avg'], kind: 'pct', weight: 'sessions' },
+      engagementTime: { label: 'Average engagement time (minutes)', syn: ['engagement time', 'average engagement time', 'time on site', 'time engaged'], aggs: ['avg'], kind: 'num1', weight: 'sessions', field: 'avgEngagementTimeMin' }
+    },
+    dims: { channelGroup: { label: 'Website channel group', syn: ['channel group', 'channel groups', 'traffic channel', 'traffic channels', 'traffic source', 'traffic sources'], filter: true } }, dimsOk: ['year', 'quarter', 'month'],
+    load(id){
+      const rows = dqSelect('SELECT * FROM account_website_engagement WHERE accountId = ?', id).map(r => ({ year: dqNum(aliasVal(r, 'year')), month: dqNum(aliasVal(r, 'month')) || 0, channelGroup: dqStr(aliasVal(r, 'channelGroup')), sessions: dqNum(aliasVal(r, 'sessions')), engagedSessions: dqNum(aliasVal(r, 'engagedSessions')), engagementRate: dqNum(aliasVal(r, 'engagementRate')), avgEngagementTimeMin: dqNum(aliasVal(r, 'avgEngagementTimeMin')) }));
+      // a year with monthly rows does not also count its whole-year rows (month 0), or the same visits would be added twice
+      const monthly = new Set(rows.filter(r => r.month > 0).map(r => r.year));
+      return rows.filter(r => r.month > 0 || !monthly.has(r.year)).map(r => Object.assign(r, { engagementRate: r.engagementRate !== null && r.engagementRate <= 1.5 ? r.engagementRate * 100 : r.engagementRate }));
+    },
+    note: 'Website engagement is the monthly website engagement file by channel group. Rates and times are weighted by sessions.'
+  },
+  leads: {
+    label: 'Leads', table: 'account_lead_counts', unit: 'month', need: 'the lead counts file (Train the Brain, Leads card)',
+    measures: {
+      leads: { label: 'Leads', syn: ['lead counts', 'leads', 'lead count', 'inquiries', 'enquiries', 'prospects'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int', field: 'count' },
+      leadBookings: { label: 'Bookings from leads', syn: ['bookings from leads', 'lead bookings', 'leads that booked', 'converted leads', 'lead conversions'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int', field: 'bookings' },
+      daysToConvert: { label: 'Days from lead to booking', syn: ['days to convert', 'days from lead to booking', 'lead to booking days', 'time to convert', 'lead conversion time'], aggs: ['avg'], kind: 'num1', weight: 'leads', field: 'avgDaysToConvert' },
+      leadConversion: { label: 'Lead to booking rate', syn: ['lead to booking rate', 'lead conversion rate', 'lead close rate', 'leads that became bookings'], aggs: ['ratio'], kind: 'pct', ratio: ['leadBookings', 'leads'], mult: 100 }
+    },
+    dims: { source: { label: 'Lead source', syn: ['lead source', 'lead sources', 'source', 'sources'], filter: true }, leadType: { label: 'Lead type', syn: ['lead type', 'lead types', 'type of lead'], filter: true }, formName: { label: 'Lead form', syn: ['lead form', 'lead forms', 'form', 'forms'], filter: true } }, dimsOk: ['year', 'quarter', 'month'],
+    load(id){ return dqSelect('SELECT * FROM account_lead_counts WHERE accountId = ?', id).map(r => ({ year: dqNum(aliasVal(r, 'year')), month: dqNum(aliasVal(r, 'month')) || 0, source: dqStr(aliasVal(r, 'source')), leadType: dqStr(aliasVal(r, 'leadType')), formName: dqStr(aliasVal(r, 'formName')), count: dqNum(aliasVal(r, 'count')), bookings: dqNum(aliasVal(r, 'bookings')), avgDaysToConvert: dqNum(aliasVal(r, 'avgDaysToConvert')) })); },
+    note: 'Leads come from the monthly lead counts file by source, lead type and form.'
+  },
+  digital: {
+    label: 'Digital performance', table: 'account_digital_performance', unit: 'month', need: 'the digital performance file (Train the Brain, Digital actuals card)',
+    measures: {
+      spend: { label: 'Media spend', syn: ['digital media spend', 'media spend', 'ad spend', 'digital spend', 'advertising spend', 'spend'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'money' },
+      impressions: { label: 'Impressions', syn: ['impressions', 'ad impressions'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int' },
+      clicks: { label: 'Clicks', syn: ['ad clicks', 'clicks'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int' },
+      agencyLeads: { label: 'Leads reported by the digital file', syn: ['digital leads', 'agency leads', 'leads from digital', 'digital agency leads'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int' },
+      calls: { label: 'Phone calls', syn: ['phone calls', 'calls from digital', 'calls'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int' },
+      costPerLead: { label: 'Cost per lead (digital)', syn: ['digital cost per lead', 'cost per lead', 'cpl'], aggs: ['ratio'], kind: 'money2', ratio: ['spend', 'agencyLeads'] },
+      costPerClick: { label: 'Cost per click', syn: ['cost per click', 'cpc'], aggs: ['ratio'], kind: 'money2', ratio: ['spend', 'clicks'] },
+      cpm: { label: 'Cost per thousand impressions', syn: ['cost per thousand impressions', 'cost per thousand', 'cpm'], aggs: ['ratio'], kind: 'money2', ratio: ['spend', 'impressions'], mult: 1000 },
+      clickRate: { label: 'Click-through rate', syn: ['click through rate', 'click rate', 'ctr'], aggs: ['ratio'], kind: 'pct2', ratio: ['clicks', 'impressions'], mult: 100 }
+    },
+    dims: {
+      channel: { label: 'Digital channel', syn: ['digital channel', 'digital channels', 'media channel', 'media channels', 'channel', 'channels'], filter: true },
+      publisher: { label: 'Publisher', syn: ['publisher', 'publishers', 'platform', 'platforms'], filter: true, grain: 'detail' },
+      tactic: { label: 'Tactic', syn: ['tactic', 'tactics', 'ad name', 'ad names'], filter: true, grain: 'detail' },
+      adRegion: { label: 'Ad region', syn: ['ad region', 'ad regions', 'target region', 'geo'], filter: true, grain: 'detail', col: 'region' },
+      creativeOffer: { label: 'Creative offer', syn: ['creative offer', 'creative offers', 'ad offer', 'ad offers'], filter: true, grain: 'detail' },
+      keywordType: { label: 'Keyword type', syn: ['keyword type', 'keyword types', 'brand versus non brand', 'brand vs non brand', 'brand and non brand'], filter: true, grain: 'split' }
+    }, dimsOk: ['year', 'quarter', 'month'],
+    load(id){ return dqSelect('SELECT * FROM account_digital_performance WHERE accountId = ?', id).map(r => ({ year: dqNum(aliasVal(r, 'year')), month: dqNum(aliasVal(r, 'month')) || 0, grain: dqStr(aliasVal(r, 'grain')), channel: dqStr(aliasVal(r, 'channel')), publisher: dqStr(aliasVal(r, 'publisher')), tactic: dqStr(aliasVal(r, 'tactic')), keywordType: dqStr(aliasVal(r, 'keywordType')), adRegion: dqStr(aliasVal(r, 'region')), creativeOffer: dqStr(aliasVal(r, 'creativeOffer')), spend: dqNum(aliasVal(r, 'spend')), impressions: dqNum(aliasVal(r, 'impressions')), clicks: dqNum(aliasVal(r, 'clicks')), agencyLeads: dqNum(aliasVal(r, 'leads')), calls: dqNum(aliasVal(r, 'calls')) })); },
+    // The same spend is loaded at several levels of detail. Rows from one level are used, never added to another level's.
+    prepare(rows, spec, notes){
+      const need = spec.by.concat(spec.filters.map(f => f.field)).map(k => (DQ_SETS.digital.dims[k] || {}).grain).filter(Boolean);
+      const grain = need.includes('detail') ? 'detail' : need.includes('split') ? 'split' : 'overview';
+      let use = rows.filter(r => r.grain === grain);
+      if (!use.length){ return { error: `No ${grain === 'detail' ? 'publisher / tactic detail' : grain === 'split' ? 'brand and non-brand search' : 'channel overview'} rows are loaded in the digital performance file, so I cannot break it down that way.` }; }
+      notes.push(`Digital performance is read at the ${grain === 'overview' ? 'channel overview' : grain === 'split' ? 'brand / non-brand search' : 'publisher and tactic detail'} level. Levels are never added together, because the same spend appears at each one.`);
+      return { rows: use };
+    },
+    note: 'Digital performance comes from the agency digital actuals file, by month, channel, publisher and tactic.'
+  },
+  annualPlan: {
+    label: 'Annual plan and targets', table: 'account_annual_plan', unit: 'year', need: 'the annual plan and targets (Strategy, Annual Plan)',
+    measures: {
+      planMedia: { label: 'Planned working media', syn: ['planned working media', 'working media plan', 'working media target', 'planned media', 'media target', 'media plan total'], aggs: ['sum', 'avg'], kind: 'money', field: 'workingMedia' },
+      planImpressions: { label: 'Planned impressions', syn: ['planned impressions', 'impression target', 'impressions target'], aggs: ['sum', 'avg'], kind: 'int', field: 'impressions' },
+      planUsers: { label: 'Planned website users', syn: ['planned website users', 'website user target', 'website users target', 'website user plan'], aggs: ['sum', 'avg'], kind: 'int', field: 'websiteUsers' },
+      planProspect: { label: 'Planned prospect leads', syn: ['planned prospect leads', 'prospect lead target', 'prospect leads target'], aggs: ['sum', 'avg'], kind: 'int', field: 'prospectLeads' },
+      planGrowth: { label: 'Planned growth leads', syn: ['planned growth leads', 'growth lead target', 'growth leads target'], aggs: ['sum', 'avg'], kind: 'int', field: 'growthLeads' },
+      planValue: { label: 'Planned value leads', syn: ['planned value leads', 'value lead target', 'value leads target'], aggs: ['sum', 'avg'], kind: 'int', field: 'valueLeads' },
+      planCalls: { label: 'Planned direct calls', syn: ['planned direct calls', 'direct calls target', 'direct call target'], aggs: ['sum', 'avg'], kind: 'int', field: 'directCalls' },
+      planBookings: { label: 'Planned transactions', syn: ['planned transactions', 'planned bookings', 'transaction target', 'transactions target', 'bookings target', 'booking target'], aggs: ['sum', 'avg'], kind: 'int', field: 'bookings' },
+      planRevenue: { label: 'Planned gross revenue', syn: ['planned gross revenue', 'planned revenue', 'revenue target', 'revenue goal', 'revenue plan', 'plan revenue'], aggs: ['sum', 'avg'], kind: 'money', field: 'grossRevenue' }
+    },
+    dims: { kind: { label: 'Plan version (baseline or target)', syn: ['plan version', 'plan versions', 'baseline or target', 'baseline versus target', 'baseline vs target', 'plan kind'], filter: true } }, dimsOk: ['year'], requireDim: 'kind',
+    load(id){ return dqSelect('SELECT * FROM account_annual_plan WHERE accountId = ?', id).map(r => ({ year: dqNum(aliasVal(r, 'year')), month: 0, kind: dqStr(aliasVal(r, 'kind')) || '(blank)', workingMedia: dqNum(aliasVal(r, 'workingMedia')), impressions: dqNum(aliasVal(r, 'impressions')), websiteUsers: dqNum(aliasVal(r, 'websiteUsers')), prospectLeads: dqNum(aliasVal(r, 'prospectLeads')), growthLeads: dqNum(aliasVal(r, 'growthLeads')), valueLeads: dqNum(aliasVal(r, 'valueLeads')), directCalls: dqNum(aliasVal(r, 'directCalls')), bookings: dqNum(aliasVal(r, 'bookings')), grossRevenue: dqNum(aliasVal(r, 'grossRevenue')) })); },
+    note: 'The annual plan holds one row per year and version: the baseline (trailing actuals) and the target.'
+  },
+  yearResults: {
+    label: 'Prior-year results', table: 'account_year_results', unit: 'year', need: 'the prior-year results (Strategy, Budget and Plan)',
+    measures: { resultsRevenue: { label: 'Gross revenue (prior-year results)', syn: ['prior year results', 'prior year result', 'year results', 'annual results', 'audited results', 'audited revenue', 'results revenue', 'historical revenue'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'money', field: 'grossRevenue' } },
+    dims: {}, dimsOk: ['year'],
+    load(id){ return dqSelect('SELECT * FROM account_year_results WHERE accountId = ?', id).map(r => ({ year: dqNum(aliasVal(r, 'year')), month: 0, grossRevenue: dqNum(aliasVal(r, 'grossRevenue')) })); },
+    note: 'Prior-year results are the whole-year gross revenue figures entered for the account.'
+  },
+  budget: {
+    label: 'Marketing budget', table: 'marketing_budget_line_items', unit: 'month', need: 'a confirmed marketing budget upload (Train the Brain, Budget card)',
+    measures: { budgetAmount: { label: 'Budgeted amount', syn: ['marketing budget', 'budgeted amount', 'budget amount', 'budget dollars', 'budgeted spend', 'budget'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'money', field: 'amount' } },
+    dims: { category: { label: 'Budget category', syn: ['budget category', 'budget categories', 'category', 'categories', 'budget line', 'budget lines'], filter: true }, budgetStatus: { label: 'Working or non-working', syn: ['working or non working', 'working versus non working', 'working media status', 'working status'], filter: true, col: 'status' } }, dimsOk: ['year', 'quarter', 'month'],
+    load(id){
+      const ups = dqSelect("SELECT id, year, scope, confirmedAt FROM marketing_budget_uploads WHERE accountId = ? AND status = 'confirmed' ORDER BY confirmedAt DESC", id);
+      const seen = new Set(), out = [];
+      ups.forEach(u => {
+        const key = aliasVal(u, 'year') + '|' + (aliasVal(u, 'scope') || 'domestic'); if (seen.has(key)) return; seen.add(key);
+        const uy = dqNum(aliasVal(u, 'year'));
+        dqSelect('SELECT category, status, month, amount FROM marketing_budget_line_items WHERE uploadId = ?', aliasVal(u, 'id')).forEach(r => {
+          const ms = dqStr(aliasVal(r, 'month')); let y = uy, m = 0; let mm;
+          if ((mm = /^(\d{4})-(\d{1,2})/.exec(ms))){ y = Number(mm[1]); m = Number(mm[2]); }
+          else { const i = DQ_MONTH_NAMES.indexOf(ms.slice(0, 3).toLowerCase()); if (i >= 0) m = i + 1; else if (/^\d{1,2}$/.test(ms)) m = Number(ms); }
+          out.push({ year: y, month: m, category: dqStr(aliasVal(r, 'category')), budgetStatus: dqStr(aliasVal(r, 'status')), amount: dqNum(aliasVal(r, 'amount')) });
+        });
+      });
+      return out;
+    },
+    note: 'The marketing budget is the latest confirmed budget upload for each year.'
+  },
+  ga4Sources: {
+    label: 'GA4 sources and key events', table: 'account_ga4_sources', unit: 'week', need: 'the weekly GA4 sources and key events file (Train the Brain, GA4 card)',
+    measures: {
+      ga4Sessions: { label: 'GA4 sessions', syn: ['ga4 sessions', 'ga4 visits'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int', field: 'sessions' },
+      ga4Engaged: { label: 'GA4 engaged sessions', syn: ['ga4 engaged sessions', 'ga4 engaged'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int', field: 'engaged' },
+      ga4KeyEvents: { label: 'GA4 key events', syn: ['ga4 key events', 'key events', 'key event conversions', 'ga4 conversions'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int', field: 'keyevents' }
+    },
+    dims: { campaign: { label: 'UTM campaign', syn: ['utm campaign', 'utm campaigns', 'ga4 campaign', 'ga4 campaigns'], filter: true }, sourceMedium: { label: 'Source / medium', syn: ['source medium', 'source and medium', 'utm source', 'utm medium', 'sources and mediums'], filter: true } }, dimsOk: ['year', 'quarter', 'month', 'week'],
+    load(id){ return dqSelect('SELECT * FROM account_ga4_sources WHERE accountId = ?', id).map(r => ({ year: dqNum(aliasVal(r, 'year')), week: dqNum(aliasVal(r, 'week')) || 0, campaign: dqStr(aliasVal(r, 'campaign')), sourceMedium: dqStr(aliasVal(r, 'sourcemedium')), sessions: dqNum(aliasVal(r, 'sessions')), engaged: dqNum(aliasVal(r, 'engaged')), keyevents: dqNum(aliasVal(r, 'keyevents')) })); },
+    note: 'GA4 sources come from the weekly GA4 export by campaign and source / medium.'
+  },
+  ga4Events: {
+    label: 'GA4 key events by name', table: 'account_ga4_keyevents', unit: 'week', need: 'the weekly GA4 key events by name file (Train the Brain, GA4 card)',
+    measures: { ga4EventCount: { label: 'GA4 key events by name', syn: ['key events by name', 'key event names', 'phone call events', 'form submit events', 'event counts'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int', field: 'keyevents' } },
+    dims: { eventName: { label: 'Key event name', syn: ['key event name', 'event name', 'event names', 'event'], filter: true }, sourceMedium: { label: 'Source / medium', syn: ['source medium', 'source and medium'], filter: true } }, dimsOk: ['year', 'quarter', 'month', 'week'],
+    load(id){ return dqSelect('SELECT * FROM account_ga4_keyevents WHERE accountId = ?', id).map(r => ({ year: dqNum(aliasVal(r, 'year')), week: dqNum(aliasVal(r, 'week')) || 0, sourceMedium: dqStr(aliasVal(r, 'sourcemedium')), eventName: dqStr(aliasVal(r, 'eventname')), keyevents: dqNum(aliasVal(r, 'keyevents')) })); },
+    note: 'GA4 key events by name come from the weekly GA4 export by source / medium and event name.'
+  },
+  ga4Search: {
+    label: 'GA4 Google Ads search', table: 'account_ga4_search', unit: 'week', need: 'the weekly GA4 Google Ads search file (Train the Brain, GA4 card)',
+    measures: {
+      searchSessions: { label: 'Paid search sessions (GA4)', syn: ['paid search sessions', 'google ads sessions', 'keyword sessions', 'search sessions'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int', field: 'sessions' },
+      searchEngaged: { label: 'Paid search engaged sessions (GA4)', syn: ['paid search engaged sessions', 'google ads engaged sessions', 'keyword engaged sessions'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int', field: 'engaged' },
+      searchKeyEvents: { label: 'Paid search key events (GA4)', syn: ['paid search key events', 'google ads key events', 'keyword key events', 'search key events'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int', field: 'keyevents' }
+    },
+    dims: { adCampaign: { label: 'Google Ads campaign', syn: ['google ads campaign', 'google ads campaigns', 'ad campaign', 'ad campaigns'], filter: true }, adGroup: { label: 'Ad group', syn: ['ad group', 'ad groups'], filter: true }, keyword: { label: 'Keyword', syn: ['keyword', 'keywords', 'search term', 'search terms'], filter: true }, network: { label: 'Network', syn: ['network', 'networks'], filter: true } }, dimsOk: ['year', 'quarter', 'month', 'week'],
+    load(id){ return dqSelect('SELECT * FROM account_ga4_search WHERE accountId = ?', id).map(r => ({ year: dqNum(aliasVal(r, 'year')), week: dqNum(aliasVal(r, 'week')) || 0, adCampaign: dqStr(aliasVal(r, 'adcampaign')), adGroup: dqStr(aliasVal(r, 'adgroup')), keyword: dqStr(aliasVal(r, 'keyword')), network: dqStr(aliasVal(r, 'network')), sessions: dqNum(aliasVal(r, 'sessions')), engaged: dqNum(aliasVal(r, 'engaged')), keyevents: dqNum(aliasVal(r, 'keyevents')) })); },
+    note: 'GA4 paid search comes from the weekly GA4 Google Ads export by campaign, ad group, keyword and network.'
+  },
+  monthlyTx: {
+    label: 'Monthly transactions roll-up', table: 'account_transactions_monthly', unit: 'month', need: 'the monthly transactions file (Train the Brain, Transactions card)',
+    measures: {
+      rollupTransactions: { label: 'Transactions (monthly roll-up)', syn: ['monthly roll up transactions', 'roll up transactions', 'rollup transactions', 'monthly transactions roll up'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int', field: 'transactions' },
+      rollupRevenue: { label: 'Revenue (monthly roll-up)', syn: ['monthly roll up revenue', 'roll up revenue', 'rollup revenue', 'monthly revenue roll up'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'money', field: 'revenue' }
+    },
+    dims: { productGroup: { label: 'Product group', syn: ['product group', 'product groups'], filter: true } }, dimsOk: ['year', 'quarter', 'month'],
+    load(id){ return dqSelect('SELECT * FROM account_transactions_monthly WHERE accountId = ?', id).map(r => ({ year: dqNum(aliasVal(r, 'year')), month: dqNum(aliasVal(r, 'month')) || 0, productGroup: dqStr(aliasVal(r, 'productGroup')) || '(blank)', transactions: dqNum(aliasVal(r, 'transactions')), revenue: dqNum(aliasVal(r, 'revenue')) })); },
+    note: 'The monthly roll-up is the transactions-by-month-and-product-group file (used when there is no customer-level file).'
+  }
+};
+function dqSelect(sql, ...args){ try { return db.prepare(sql).all(...args); } catch (e){ return []; } }
+function dqSetDims(key){ const s = DQ_SETS[key]; const d = {}; (s.dimsOk || []).forEach(k => { d[k] = DQ_SET_COMMON_DIMS[k]; }); Object.assign(d, s.dims); return d; }
+function dqSetMeasureField(m, k){ return m.field || k; }
+// rows get a year-month and a label before any question runs
+function dqSetPrep(setKey, rows){
+  const s = DQ_SETS[setKey];
+  return rows.filter(r => r.year).map(r => {
+    let ym = null;
+    if (s.unit === 'week' && r.week){ const d = dqIsoWeekStart(r.year, r.week); ym = d.toISOString().slice(0, 7); r.weekStart = d.toISOString().slice(0, 10); }
+    else if (r.month) ym = `${r.year}-${String(r.month).padStart(2, '0')}`;
+    r.ym = ym; r.q = r.month ? Math.floor((r.month - 1) / 3) + 1 : (ym ? Math.floor((Number(ym.slice(5, 7)) - 1) / 3) + 1 : 0);
+    return r;
+  });
+}
+const dqSetCache = new Map();
+function dqSetLoad(accountId, key){
+  const ck = accountId + '|' + key; const hit = dqSetCache.get(ck);
+  if (hit && Date.now() - hit.t < 15000) return hit.rows;
+  let rows = []; try { rows = dqSetPrep(key, DQ_SETS[key].load(accountId)); } catch (e){ console.warn('[data-question] could not read', key, e.message); }
+  dqSetCache.set(ck, { t: Date.now(), rows }); return rows;
+}
+function dqSetsWithData(accountId){ return Object.keys(DQ_SETS).filter(k => dqSetLoad(accountId, k).length); }
+function dqSetValues(accountId, key){
+  const s = DQ_SETS[key]; const rows = dqSetLoad(accountId, key); const out = {};
+  Object.entries(s.dims).forEach(([d, def]) => { if (!def.filter) return; const set = new Map(); rows.forEach(r => { const v = dqStr(r[d]); if (v) set.set(v.toLowerCase(), v); }); out[d] = Array.from(set.values()).slice(0, 300); });
+  return out;
+}
+function dqSetFmt(v, kind){
+  if (v === null || v === undefined || !Number.isFinite(v)) return '—';
+  if (kind === 'money') return '$' + Math.round(v).toLocaleString('en-US');
+  if (kind === 'money2') return '$' + (Math.round(v * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (kind === 'int') return Math.round(v).toLocaleString('en-US');
+  if (kind === 'pct') return (Math.round(v * 10) / 10).toLocaleString('en-US') + '%';
+  if (kind === 'pct2') return (Math.round(v * 100) / 100).toLocaleString('en-US') + '%';
+  return (Math.round(v * 10) / 10).toLocaleString('en-US');
+}
+const DQ_SET_AGG_LABEL = { sum: 'Total', avg: 'Average', min: 'Lowest', max: 'Highest', ratio: '' };
+function dqSetDefaultAgg(m){ return m.aggs[0]; }
+function dqSetValidate(s, accountId){
+  if (!s || typeof s !== 'object' || !DQ_SETS[s.set]) return null;
+  const set = DQ_SETS[s.set]; const m = set.measures[s.measure]; if (!m) return null;
+  const agg = m.aggs.includes(s.agg) ? s.agg : dqSetDefaultAgg(m);
+  const dims = dqSetDims(s.set);
+  const by = (Array.isArray(s.by) ? s.by : []).filter((k, i, a) => dims[k] && a.indexOf(k) === i).slice(0, 2);
+  const known = dqSetValues(accountId, s.set); const filters = [];
+  (Array.isArray(s.filters) ? s.filters : []).forEach(f => {
+    if (!f || !set.dims[f.field] || !set.dims[f.field].filter) return;
+    const vals = (Array.isArray(f.values) ? f.values : []).map(v => (known[f.field] || []).find(k => k.toLowerCase() === String(v).trim().toLowerCase())).filter(Boolean);
+    if (vals.length) filters.push({ field: f.field, values: vals });
+  });
+  let period = { kind: 'range' };
+  if (s.period && s.period.kind === 'all') period = { kind: 'all' };
+  else if (s.period && s.period.kind === 'year' && Number(s.period.year) >= 2000 && Number(s.period.year) <= 2100) period = { kind: 'year', year: Number(s.period.year) };
+  const top = Number(s.top) > 0 ? Math.min(50, Math.floor(Number(s.top))) : null;
+  const timeDim = by.some(d => ['year', 'quarter', 'month', 'week'].includes(d));
+  return { set: s.set, measure: s.measure, agg, by, filters, period, basis: 'booked', compare: s.compare === 'priorYear' && !timeDim && period.kind !== 'all' ? 'priorYear' : null, top, order: s.order === 'asc' ? 'asc' : 'desc' };
+}
+// ---- words to spec for the data sets (no model)
+function dqSetParse(text, accountId){
+  const raw = dqNorm(text); let t = raw; const assumptions = [];
+  const have = dqSetsWithData(accountId);
+  const ph = [];
+  Object.keys(DQ_SETS).forEach(sk => Object.entries(DQ_SETS[sk].measures).forEach(([mk, m]) => m.syn.concat([m.label.toLowerCase()]).forEach(p => ph.push({ set: sk, key: mk, p }))));
+  ph.sort((a, b) => b.p.length - a.p.length);
+  let best = null;
+  for (const x of ph){ const n = dqNorm(x.p); const i = t.indexOf(n); if (i >= 0){ if (!best || n.length > best.len || (n.length === best.len && have.includes(x.set) && !have.includes(best.set))) best = { set: x.set, key: x.key, len: n.trim().length, at: i, n }; } }
+  if (!best) return null;
+  const set = DQ_SETS[best.set]; const m = set.measures[best.key];
+  const spec = { set: best.set, measure: best.key, agg: null, by: [], filters: [], period: { kind: 'range' }, basis: 'booked', compare: null, top: null, order: 'desc' };
+  t = t.slice(0, best.at) + ' ' + t.slice(best.at + best.n.length - 1);
+  const thisYear = new Date().getUTCFullYear();
+  if (/ (vs|versus|against|compared with|compared to|compare to|compare with) (the )?(same period )?(last|prior|previous) year /.test(t)){ spec.compare = 'priorYear'; t = t.replace(/ (vs|versus|against|compared with|compared to|compare to|compare with) (the )?(same period )?(last|prior|previous) year /, ' '); }
+  if (/ year over year | yoy /.test(t)){ spec.by.push('year'); t = t.replace(/ year over year | yoy /, ' '); }
+  if (/ (last|prior|previous) year /.test(t)){ spec.period = { kind: 'year', year: thisYear - 1 }; t = t.replace(/ (last|prior|previous) year /, ' '); }
+  else if (/ this year /.test(t)){ spec.period = { kind: 'year', year: thisYear }; t = t.replace(/ this year /, ' '); }
+  const ym = / (20\d\d) /.exec(t); if (ym){ spec.period = { kind: 'year', year: Number(ym[1]) }; t = t.replace(ym[0], ' '); }
+  if (/ (all time|overall|ever|all years|full history|since the beginning|every year on file) /.test(t)){ spec.period = { kind: 'all' }; t = t.replace(/ (all time|overall|ever|all years|full history|since the beginning|every year on file) /, ' '); }
+  const topM = / top (\d+|three|five|ten|3|5|10) /.exec(t); if (topM){ spec.top = Math.min(50, { three: 3, five: 5, ten: 10 }[topM[1]] || Number(topM[1])); t = t.replace(topM[0], ' '); }
+  if (/ (lowest|smallest|fewest|bottom|least) /.test(t)) spec.order = 'asc';
+  if (/ (average|averages|avg|mean|typical|on average|per month on average) /.test(t)) spec.agg = 'avg';
+  else if (/ (total|totals|sum|combined|add up|how much|how many) /.test(t)) spec.agg = 'sum';
+  else if (/ (lowest|smallest|fewest|minimum) /.test(t)) spec.agg = 'min';
+  else if (/ (highest|largest|most|maximum|peak) /.test(t)) spec.agg = 'max';
+  // breakdowns that belong to this data set, longest phrase first, no overlap
+  const dims = dqSetDims(best.set); const dph = [];
+  Object.entries(dims).forEach(([k, d]) => d.syn.forEach(p => dph.push({ key: k, p })));
+  dph.sort((a, b) => b.p.length - a.p.length);
+  const claimed = [], found = [];
+  dph.forEach(x => { const n = dqNorm(x.p); let from = 0; while (true){ const i = t.indexOf(n, from); if (i < 0) break; const s = i + 1, e = i + n.length - 1; if (!claimed.some(c => s < c[1] && e > c[0])){ claimed.push([s, e]); found.push({ key: x.key, pos: s }); } from = i + 1; } });
+  found.sort((a, b) => a.pos - b.pos); found.forEach(f => { if (!spec.by.includes(f.key)) spec.by.push(f.key); });
+  // known values in the question become filters, with the words already used for field names blanked out
+  let tv = t; claimed.forEach(c => { tv = tv.slice(0, c[0]) + ' '.repeat(c[1] - c[0]) + tv.slice(c[1]); });
+  const known = dqSetValues(accountId, best.set);
+  Object.keys(known).forEach(d => known[d].forEach(v => {
+    const n = dqNorm(v); if (n.trim().length < 3) return;
+    if (tv.includes(n) && !spec.filters.some(f => f.field === d && f.values.includes(v))){ let f = spec.filters.find(x => x.field === d); if (!f){ f = { field: d, values: [] }; spec.filters.push(f); } f.values.push(v); }
+  }));
+  if (!spec.agg){ spec.agg = dqSetDefaultAgg(m); if (m.aggs.length > 1) assumptions.push(`No "average" or "total" was said, so I used ${spec.agg === 'sum' ? 'the total' : 'the average'}.`); }
+  if (!m.aggs.includes(spec.agg)){ spec.agg = dqSetDefaultAgg(m); }
+  if (spec.by.length > 2){ assumptions.push(`Only two breakdowns fit in one view; I used ${spec.by.slice(0, 2).map(k => dims[k].label).join(' and ')}.`); spec.by = spec.by.slice(0, 2); }
+  return { spec, assumptions, len: best.len };
+}
+function dqSetRun(accountId, specIn, range){
+  const spec = dqSetValidate(specIn, accountId); if (!spec) return { error: 'That question is not one I can run.' };
+  const set = DQ_SETS[spec.set]; const meas = set.measures[spec.measure]; const dims = dqSetDims(spec.set);
+  let rows = dqSetLoad(accountId, spec.set).slice();
+  if (!rows.length) return { notOnFile: set.need };
+  const notes = []; const assumptionNotes = [];
+  if (set.prepare){ const p = set.prepare(rows, spec, notes); if (p.error) return { error: p.error }; rows = p.rows; }
+  if (set.requireDim && !spec.by.includes(set.requireDim) && !spec.filters.some(f => f.field === set.requireDim)){ spec.by = [set.requireDim].concat(spec.by).slice(0, 2); assumptionNotes.push(`This data set holds more than one ${dims[set.requireDim].label.toLowerCase()} per year, so I kept them apart instead of adding them together.`); }
+  const passFilters = r => spec.filters.every(f => f.values.some(v => dqStr(r[f.field]).toLowerCase() === v.toLowerCase()));
+  rows = rows.filter(passFilters);
+  const inRange = (r, a, b) => { const k = r.ym || (r.year ? String(r.year) + '-01' : null); return k && k >= a.slice(0, 7) && k <= b.slice(0, 7); };
+  let label, prevLabel = null, cur, prev = [];
+  const yearOf = r => r.year;
+  if (spec.period.kind === 'all'){ cur = rows; label = 'All periods on file'; }
+  else if (spec.period.kind === 'year'){ const y = spec.period.year; cur = rows.filter(r => yearOf(r) === y); prev = rows.filter(r => yearOf(r) === y - 1); label = String(y); prevLabel = String(y - 1); }
+  else { cur = rows.filter(r => inRange(r, range.from, range.through)); prev = rows.filter(r => inRange(r, range.compFrom, range.compThrough)); label = range.label; prevLabel = range.compLabel; }
+  // nothing in the dashboard range: say so and use every period on file, rather than answering with an empty table
+  if (!cur.length && spec.period.kind !== 'all' && rows.length){ cur = rows; prev = []; label = 'All periods on file'; spec.period = { kind: 'all' }; spec.compare = null; notes.push(`Nothing in ${spec.period.kind === 'year' ? 'that year' : 'the dashboard date range'} for this data set, so this shows every period on file.`); }
+  if (!cur.length) return { x: null, notOnFile: set.need };
+  const periodsInfo = (() => { const ks = Array.from(new Set(rows.map(r => r.ym || String(r.year)))).sort(); return ks.length ? `${ks[0]} to ${ks[ks.length - 1]}` : ''; })();
+  const dimVal = (r, d) => {
+    if (d === 'year') return String(r.year);
+    if (d === 'quarter') return r.q ? `${r.year} Q${r.q}` : `${r.year}`;
+    if (d === 'month') return r.ym || `${r.year} (whole year)`;
+    if (d === 'week') return r.weekStart || `${r.year}-W${r.week}`;
+    const v = dqStr(r[d]); return v === '' ? '(blank)' : v;
+  };
+  const unitOf = r => set.unit === 'month' ? (r.ym || String(r.year)) : set.unit === 'week' ? (r.weekStart || String(r.year) + r.week) : set.unit === 'year' ? String(r.year) : Math.random();
+  const val = (r, k) => { const mm = set.measures[k]; return r[dqSetMeasureField(mm, k)]; };
+  const sumOf = (list, k) => { let s = 0, n = 0; list.forEach(r => { const v = val(r, k); if (v !== null && v !== undefined && Number.isFinite(v)){ s += v; n++; } }); return n ? s : null; };
+  const reduce = (list) => {
+    if (!list.length) return { v: null, units: 0 };
+    if (meas.ratio){ const a = sumOf(list, meas.ratio[0]), b = sumOf(list, meas.ratio[1]); return { v: a !== null && b ? a / b * (meas.mult || 1) : null, units: new Set(list.map(unitOf)).size }; }
+    if (meas.weight){
+      const f = dqSetMeasureField(meas, spec.measure); let ws = 0, vs = 0, plain = [];
+      list.forEach(r => { const v = r[f]; if (v === null || v === undefined || !Number.isFinite(v)) return; plain.push(v); const w = val(r, meas.weight); if (w && w > 0){ ws += w; vs += v * w; } });
+      return { v: ws > 0 ? vs / ws : (plain.length ? plain.reduce((a, b) => a + b, 0) / plain.length : null), units: new Set(list.map(unitOf)).size };
+    }
+    const byUnit = new Map(); list.forEach(r => { const v = val(r, spec.measure); if (v === null || v === undefined || !Number.isFinite(v)) return; const u = unitOf(r); byUnit.set(u, (byUnit.get(u) || 0) + v); });
+    const vals = Array.from(byUnit.values()); if (!vals.length) return { v: null, units: 0 };
+    let v; if (spec.agg === 'sum') v = vals.reduce((a, b) => a + b, 0); else if (spec.agg === 'avg') v = vals.reduce((a, b) => a + b, 0) / vals.length; else if (spec.agg === 'min') v = Math.min(...vals); else v = Math.max(...vals);
+    return { v, units: vals.length };
+  };
+  const groupBy = list => { const g = new Map(); list.forEach(r => { const labels = spec.by.map(d => dimVal(r, d)); const k = labels.join('\u0001'); if (!g.has(k)) g.set(k, { labels, list: [] }); g.get(k).list.push(r); }); return g; };
+  const gCur = groupBy(cur), gPrev = spec.compare ? groupBy(prev) : new Map();
+  let out = Array.from(gCur.values()).map(g => { const r = reduce(g.list); const p = spec.compare ? reduce((gPrev.get(g.labels.join('\u0001')) || { list: [] }).list) : null; return { labels: g.labels, v: r.v, units: r.units, prev: p ? p.v : null }; });
+  const firstNatural = spec.by.length && dims[spec.by[0]].natural;
+  if (firstNatural && !spec.top) out.sort((a, b) => a.labels.join(' ').localeCompare(b.labels.join(' ')));
+  else out.sort((a, b) => (spec.order === 'asc' ? 1 : -1) * ((a.v === null ? -Infinity : a.v) - (b.v === null ? -Infinity : b.v)));
+  if (spec.top) out = out.slice(0, spec.top);
+  else if (out.length > DQ_MAX_ROWS){ notes.push(`Showing the first ${DQ_MAX_ROWS} of ${out.length} groups. Narrow the question to see the rest.`); out = out.slice(0, DQ_MAX_ROWS); }
+  const all = reduce(cur); const allPrev = spec.compare ? reduce(prev) : null;
+  const aggWord = meas.ratio ? '' : (DQ_SET_AGG_LABEL[spec.agg] || '');
+  const unitWord = set.unit === 'week' ? 'week' : set.unit === 'year' ? 'year' : 'month';
+  const title = meas.ratio || meas.weight ? meas.label : `${aggWord} ${meas.label.toLowerCase()}${spec.agg === 'avg' ? ' per ' + unitWord : ''}`.trim();
+  const fmt = v => dqSetFmt(v, meas.kind);
+  const chg = (a, b) => a === null || b === null || !b ? '—' : (a / b - 1 >= 0 ? '+' : '') + (Math.round((a / b - 1) * 1000) / 10) + '%';
+  const cols = spec.by.map(d => ({ h: dims[d].label })).concat([{ h: title }]);
+  if (spec.compare){ cols.push({ h: prevLabel || 'Prior year' }); cols.push({ h: 'Change' }); }
+  cols.push({ h: set.unit === 'year' ? 'Years counted' : set.unit === 'week' ? 'Weeks counted' : 'Months counted' });
+  const rowsOut = out.map(r => r.labels.concat([fmt(r.v)]).concat(spec.compare ? [fmt(r.prev), chg(r.v, r.prev)] : []).concat([String(r.units)]));
+  if (spec.by.length && !spec.top) rowsOut.push(['All'].concat(spec.by.slice(1).map(() => '')).concat([fmt(all.v)]).concat(spec.compare ? [fmt(allPrev && allPrev.v), chg(all.v, allPrev && allPrev.v)] : []).concat([String(all.units)]));
+  let summary = `${title}${spec.by.length ? '' : ''} for ${label}: ${fmt(all.v)}.`;
+  if (spec.compare && allPrev) summary += ` ${prevLabel || 'Last year'}: ${fmt(allPrev.v)} (${chg(all.v, allPrev.v)}).`;
+  if (spec.by.length && out.length > 1 && !(firstNatural && !spec.top)){ const top = out.slice().sort((a, b) => (b.v === null ? -Infinity : b.v) - (a.v === null ? -Infinity : a.v))[0]; if (top && top.v !== null) summary += ` Highest: ${top.labels.join(', ')} (${fmt(top.v)}).`; }
+  else if (firstNatural && out.length > 1){ const vv = out.filter(r => r.v !== null); if (vv.length){ const hi = vv.reduce((a, b) => b.v > a.v ? b : a), lo = vv.reduce((a, b) => b.v < a.v ? b : a); summary += ` Highest: ${hi.labels.join(', ')} (${fmt(hi.v)}); lowest: ${lo.labels.join(', ')} (${fmt(lo.v)}).`; } }
+  const definitions = [
+    `${set.note} Data on file covers ${periodsInfo}.`,
+    meas.ratio ? `${meas.label} = ${set.measures[meas.ratio[0]].label.toLowerCase()} ÷ ${set.measures[meas.ratio[1]].label.toLowerCase()}${meas.mult && meas.mult !== 100 ? ' × ' + meas.mult : ''}${meas.mult === 100 ? ' (as a percent)' : ''}, using the totals for each group.`
+      : meas.weight ? `${meas.label} is an average weighted by ${set.measures[meas.weight] ? set.measures[meas.weight].label.toLowerCase() : meas.weight}, so busy months count for more.`
+      : spec.agg === 'sum' ? `Total = every ${unitWord} in the period added up.` : spec.agg === 'avg' ? `Average = the ${unitWord}ly total for the group, averaged across the ${unitWord}s in the period.` : `${spec.agg === 'min' ? 'Lowest' : 'Highest'} = the ${spec.agg === 'min' ? 'smallest' : 'largest'} ${unitWord}ly total in the period.`
+  ];
+  const x = { title: title + (spec.by.length ? ' by ' + spec.by.map(d => dims[d].label.toLowerCase()).join(' and ') : ''), fileSlug: 'data-question', summary,
+    context: [['Account', accountId], ['Data set', set.label], ['Period', label], ['Generated', new Date().toISOString().slice(0, 10)]],
+    tables: [{ name: set.label, columns: cols, rows: rowsOut }], notes: notes.concat(assumptionNotes).concat(definitions) };
+  return { spec, x, bucketInfo: [], period: label, definitions, counted: cur.length, setLabel: set.label };
+}
+function dqSetSentence(spec, periodLabel){
+  const set = DQ_SETS[spec.set], m = set.measures[spec.measure], dims = dqSetDims(spec.set);
+  const by = spec.by.length ? ' by ' + spec.by.map(d => dims[d].label.toLowerCase()).join(' and ') : '';
+  const f = spec.filters.length ? ', only ' + spec.filters.map(x => x.values.join(' or ')).join(', ') : '';
+  return `${m.label}${by}${f}, for ${periodLabel}${spec.compare ? ', compared with last year' : ''} (from ${set.label.toLowerCase()}).`;
+}
+function dqSetRecipes(accountId){
+  const have = dqSetsWithData(accountId);
+  const R = (set, title, spec) => ({ title, set, spec: Object.assign({ set, agg: null, by: [], filters: [], period: { kind: 'all' }, basis: 'booked', compare: null, top: null, order: 'desc' }, spec) });
+  const all = [
+    R('webUsers', 'Website users by month', { measure: 'users', agg: 'sum', by: ['month'] }),
+    R('webUsers', 'Website users by region', { measure: 'users', agg: 'sum', by: ['region'] }),
+    R('webUsers', 'Website users by year and region', { measure: 'users', agg: 'sum', by: ['year', 'region'] }),
+    R('webEngagement', 'Website sessions by channel group', { measure: 'sessions', agg: 'sum', by: ['channelGroup'] }),
+    R('webEngagement', 'Engagement rate by channel group', { measure: 'engagementRate', agg: 'avg', by: ['channelGroup'] }),
+    R('leads', 'Leads by month', { measure: 'leads', agg: 'sum', by: ['month'] }),
+    R('leads', 'Leads by source', { measure: 'leads', agg: 'sum', by: ['source'] }),
+    R('leads', 'Leads by lead type and year', { measure: 'leads', agg: 'sum', by: ['leadType', 'year'] }),
+    R('leads', 'Lead to booking rate by source', { measure: 'leadConversion', agg: 'ratio', by: ['source'] }),
+    R('digital', 'Media spend by month', { measure: 'spend', agg: 'sum', by: ['month'] }),
+    R('digital', 'Media spend and cost per lead by channel', { measure: 'costPerLead', agg: 'ratio', by: ['channel'] }),
+    R('digital', 'Click-through rate by channel', { measure: 'clickRate', agg: 'ratio', by: ['channel'] }),
+    R('digital', 'Media spend by publisher', { measure: 'spend', agg: 'sum', by: ['publisher'] }),
+    R('annualPlan', 'Planned revenue, baseline versus target', { measure: 'planRevenue', agg: 'sum', by: ['year', 'kind'] }),
+    R('annualPlan', 'Planned website users, baseline versus target', { measure: 'planUsers', agg: 'sum', by: ['year', 'kind'] }),
+    R('yearResults', 'Prior-year gross revenue by year', { measure: 'resultsRevenue', agg: 'sum', by: ['year'] }),
+    R('budget', 'Marketing budget by category', { measure: 'budgetAmount', agg: 'sum', by: ['category'] }),
+    R('budget', 'Marketing budget by month', { measure: 'budgetAmount', agg: 'sum', by: ['month'] }),
+    R('ga4Sources', 'GA4 sessions by source / medium', { measure: 'ga4Sessions', agg: 'sum', by: ['sourceMedium'] }),
+    R('ga4Events', 'GA4 key events by name', { measure: 'ga4EventCount', agg: 'sum', by: ['eventName'] }),
+    R('ga4Search', 'GA4 paid search sessions by keyword', { measure: 'searchSessions', agg: 'sum', by: ['keyword'], top: 10 }),
+    R('monthlyTx', 'Monthly roll-up revenue by product group', { measure: 'rollupRevenue', agg: 'sum', by: ['productGroup'] })
+  ];
+  return all.filter(r => have.includes(r.set));
+}
+function dqSetsCatalog(accountId){
+  return dqSetsWithData(accountId).map(k => {
+    const s = DQ_SETS[k], rows = dqSetLoad(accountId, k), dims = dqSetDims(k);
+    return { key: k, label: s.label, rows: rows.length, years: Array.from(new Set(rows.map(r => r.year))).sort(),
+      measures: Object.entries(s.measures).map(([mk, m]) => ({ key: mk, label: m.label, aggs: m.aggs.map(a => ({ key: a, label: DQ_SET_AGG_LABEL[a] || 'Per' })) })),
+      dims: Object.entries(dims).map(([dk, d]) => ({ key: dk, label: d.label })) };
+  });
+}
+// A short inventory for the voice agent and Ask bar: what each loaded data set holds, by year, plus an exact answer when the question names one.
+function dqSetsContextBlock(accountId, question){
+  const have = dqSetsWithData(accountId);
+  if (!have.length) return 'UPLOADED DATA SETS (Train the Brain): none of the uploaded data sets (website users, website engagement, leads, digital performance, annual plan, budget, GA4) are on file yet.';
+  const lines = ['UPLOADED DATA SETS (Train the Brain). These are the account\'s own uploads; answer from them.'];
+  have.forEach(k => {
+    const s = DQ_SETS[k], rows = dqSetLoad(accountId, k), dims = dqSetDims(k);
+    const yrs = Array.from(new Set(rows.map(r => r.year))).sort();
+    lines.push(`- ${s.label}: ${rows.length.toLocaleString('en-US')} rows, ${yrs[0]} to ${yrs[yrs.length - 1]}. Measures: ${Object.values(s.measures).map(m => m.label).join(', ')}. Breakdowns: ${Object.values(dims).map(d => d.label).join(', ')}.`);
+    const first = Object.keys(s.measures)[0], fm = s.measures[first];
+    if (!fm.ratio && !fm.weight){
+      const byY = {}; rows.forEach(r => { const v = r[dqSetMeasureField(fm, first)]; if (v !== null && v !== undefined) byY[r.year] = (byY[r.year] || 0) + v; });
+      lines.push('  ' + fm.label + ' by year: ' + Object.keys(byY).sort().map(y => `${y} ${dqSetFmt(byY[y], fm.kind)}`).join('; '));
+      if (s.unit === 'month' && !s.dims.channel){
+        const byM = {}; rows.forEach(r => { const v = r[dqSetMeasureField(fm, first)]; if (v !== null && v !== undefined && r.ym) byM[r.ym] = (byM[r.ym] || 0) + v; });
+        const ms = Object.keys(byM).sort().slice(-24); if (ms.length) lines.push('  ' + fm.label + ' by month (latest ' + ms.length + '): ' + ms.map(m => `${m} ${dqSetFmt(byM[m], fm.kind)}`).join('; '));
+      }
+    }
+  });
+  if (question){
+    try {
+      const p = dqSetParse(question, accountId);
+      if (p){
+        if (p.spec.period.kind === 'range') p.spec.period = { kind: 'all' };
+        const r = dqSetRun(accountId, p.spec, resolveDateRange(null));
+        if (r && r.x){ const t = r.x.tables[0]; lines.push(`COMPUTED ANSWER TO THIS QUESTION (exact; read it back, do not recompute): ${r.x.title} for ${r.period}. ${r.x.summary}`); lines.push(t.columns.map(c => c.h).join(' | ')); t.rows.slice(0, 30).forEach(row => lines.push(row.join(' | '))); r.x.notes.slice(0, 3).forEach(n => lines.push('Note: ' + n)); }
+      }
+    } catch (e){ /* the inventory above still stands */ }
+  }
+  lines.push('RULE: for any question about website users, sessions, engagement, leads, digital spend or performance, annual plan or targets, prior-year results, marketing budget or GA4, answer from this block. Never say an uploaded data set is unavailable if it is listed here; if a number is not here, say it needs the Need something we don\'t show? panel.');
+  return lines.join('\n');
+}
+
 // ==== DQ END ====
 
 function cardCellText(c){ if (c && typeof c === 'object' && 'kind' in c) return cardFmt(c.v, c.kind); return c == null ? '' : String(c); }
@@ -20279,6 +20740,7 @@ function voiceContextBundle(accountId, opts){
   blocks.push(`MOST URGENT (soonest assets due first):\n${urgent.length ? urgent.map(u => `- ${u.name} [${u.campaignCode || u.campaignId}] assets due ${u.assetsDue || '—'}, start ${u.startDate || '—'}, end ${u.endDate || '—'}, status ${u.status}, creative ${u.creativeDisposition || 'undecided'}`).join('\n') : '(no campaigns with due dates)'}`);
   try { blocks.push(buildAccountMonthlyKpiContextForPrompt(accountId).promptBlock); } catch (e){ blocks.push('(monthly KPI report unavailable)'); }
   try { blocks.push(dqContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] transaction context failed:', e.message); }
+  try { blocks.push(dqSetsContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] uploaded data sets context failed:', e.message); }
   try { blocks.push(gscContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] search context failed:', e.message); }
   try { blocks.push(searchGuideContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] search guide context failed:', e.message); }
   try { blocks.push(geoContextBlock(accountId, o.question)); } catch (e){ console.warn('[voice/ask] media science context failed:', e.message); }
@@ -27985,7 +28447,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-15-news-feed-rate-limit',
+        buildStamp: '2026-10-15-ask-all-uploaded-data',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
