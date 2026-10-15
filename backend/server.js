@@ -16858,6 +16858,171 @@ function buildStoryDemand(accountId, opts){
 }
 
 
+// ===========================================================================
+// 2026-10-15 — Growth & Performance reporting cards (Todd): ROAS and CAC, Spend and Impression
+// Pacing, and the KPI Story, each over its own date range. Ranges: YTD (default), WoW (last 7
+// days against the 7 before), MoM (month to date against the same days last month), YoY (last 12
+// months against the 12 before) and Custom (against the same dates one year earlier).
+// Spend, impressions, revenue and transactions come from the daily media model; website visits,
+// engaged visits and leads are monthly totals divided evenly by day, and said to be estimated.
+// A change is shown only when both periods have the figure on file for every month they touch.
+// ===========================================================================
+const GP_PRESETS = ['ytd', 'wow', 'mom', 'yoy', 'custom'];
+function gpResolveRange(spec, now){
+  const t = now || new Date(); const y = t.getUTCFullYear(), mo = t.getUTCMonth(), d = t.getUTCDate();
+  const todayMs = Date.UTC(y, mo, d), today = dmIso(todayMs);
+  let preset = spec && GP_PRESETS.includes(spec.preset) ? spec.preset : 'ytd';
+  let from, through, compFrom, compThrough, name, compName;
+  if (preset === 'custom'){
+    const f = dmParse(spec.from), e = dmParse(spec.to);
+    if (f != null && e != null && e >= f && (e - f) / 864e5 <= 366 * 5){ from = dmIso(f); through = dmIso(e); compFrom = dmShiftYear(from, -1); compThrough = dmShiftYear(through, -1); name = 'Custom range'; compName = 'the same dates last year'; }
+    else preset = 'ytd';
+  }
+  if (preset === 'wow'){ from = dmIso(todayMs - 6 * 864e5); through = today; compFrom = dmIso(todayMs - 13 * 864e5); compThrough = dmIso(todayMs - 7 * 864e5); name = 'Last 7 days'; compName = 'the 7 days before'; }
+  else if (preset === 'mom'){
+    from = dmIso(Date.UTC(y, mo, 1)); through = today; const pm = Date.UTC(y, mo - 1, 1), pdim = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+    compFrom = dmIso(pm); compThrough = dmIso(pm + (Math.min(d, pdim) - 1) * 864e5); name = 'Month to date'; compName = 'the same days last month';
+  } else if (preset === 'yoy'){
+    through = today; from = dmIso(Date.UTC(y - 1, mo, d + 1)); compThrough = dmIso(Date.UTC(y - 1, mo, d)); compFrom = dmIso(Date.UTC(y - 2, mo, d + 1)); name = 'Last 12 months'; compName = 'the 12 months before';
+  } else if (preset === 'ytd'){
+    from = `${y}-01-01`; through = today; compFrom = dmShiftYear(from, -1); compThrough = dmShiftYear(through, -1); name = 'Year to date'; compName = 'the same dates last year';
+  }
+  return { preset, from, through, compFrom, compThrough, name, label: `${name}: ${dmFmt(from)} to ${dmFmt(through)}`, compLabel: `Compared with ${compName}: ${dmFmt(compFrom)} to ${dmFmt(compThrough)}`, today };
+}
+function gpCleanSpec(q){
+  const preset = q && GP_PRESETS.includes(q.preset) ? q.preset : 'ytd';
+  return preset === 'custom' ? { preset, from: q.from, to: q.to } : { preset };
+}
+// Monthly total spread evenly by day over the days of the window. `partial` lists months only partly covered.
+function gpMonthlyIn(map, from, to){
+  const s = dmParse(from), e = dmParse(to); let n = 0, any = false; const partial = []; const months = dmMonthsOf(from, to); let have = 0;
+  months.forEach(k => {
+    const v = map[k]; if (v == null) return; have++;
+    const y = Number(k.slice(0, 4)), m = Number(k.slice(5, 7)), dim = dmDim(y, m);
+    const a = Math.max(s, Date.UTC(y, m - 1, 1)), b = Math.min(e, Date.UTC(y, m - 1, dim)); const days = Math.round((b - a) / 864e5) + 1;
+    n += v * days / dim; any = true; if (days < dim) partial.push(k);
+  });
+  return { v: any ? n : null, partial, full: months.length > 0 && have === months.length };
+}
+function gpDaysCover(days, f){ const ms = {}; Object.keys(days).forEach(d => { const k = d.slice(0, 7); ms[k] = ms[k] || false; if (days[d][f] != null) ms[k] = true; }); const ks = Object.keys(ms); return ks.length > 0 && ks.every(k => ms[k]); }
+function gpEngagedMonthly(accountId){
+  const out = {}; try { db.prepare('SELECT * FROM account_website_engagement WHERE accountId = ?').all(accountId).forEach(r => { const m = Number(r.month); if (!m) return; const k = `${r.year}-${dmPad(m)}`; const v = Number(aliasVal(r, 'engagedSessions')); if (isFinite(v)) out[k] = (out[k] || 0) + v; }); } catch (e){ /* none on file */ }
+  return out;
+}
+function gpPackOf(src, S, E, from, to){
+  const dd = dmDailyMetrics(src, from, to); const days = dd.days;
+  const f = k => Object.keys(days).some(d => days[d][k] != null) ? dmSum(days, k) : null;
+  const spend = f('spend'), impressions = f('impressions'), revenue = f('revenue'), transactions = f('transactions');
+  const vis = gpMonthlyIn(S.visits, from, to), eng = gpMonthlyIn(E, from, to);
+  const leadMap = {}; Object.keys(S.leads).forEach(k => { leadMap[k] = S.leads[k].total; });
+  const ld = gpMonthlyIn(leadMap, from, to);
+  const div = (a, b, mult) => (a != null && b != null && b > 0) ? (a / b) * (mult || 1) : null;
+  const p = { spend, impressions, revenue, transactions, visits: vis.v, engaged: eng.v, leads: ld.v,
+    roas: div(revenue, spend), cac: div(spend, transactions), cpm: div(spend, impressions, 1000), costPerVisit: div(spend, vis.v), costPerEngaged: div(spend, eng.v), costPerLead: div(spend, ld.v) };
+  p.cover = { spend: gpDaysCover(days, 'spend'), impressions: gpDaysCover(days, 'impressions'), revenue: gpDaysCover(days, 'revenue'), transactions: gpDaysCover(days, 'transactions'), visits: vis.full, engaged: eng.full, leads: ld.full };
+  p.estimated = { media: dd.estimated.filter(x => x.startsWith('media|')).map(x => x.slice(6)), txn: dd.estimated.filter(x => x.startsWith('txn|')).map(x => x.slice(4)), visits: vis.partial, engaged: eng.partial, leads: ld.partial };
+  return p;
+}
+function gpChange(cur, prev, needs){
+  const key = { roas: ['spend', 'revenue'], cac: ['spend', 'transactions'], cpm: ['spend', 'impressions'], costPerVisit: ['spend', 'visits'], costPerEngaged: ['spend', 'engaged'], costPerLead: ['spend', 'leads'] };
+  return (name) => {
+    const a = cur[name], b = prev[name]; if (a == null || b == null) return null;
+    const need = key[name] || [name];
+    if (!need.every(n => cur.cover[n] !== false && prev.cover[n] !== false)) return null;
+    return storyPct(a, b);
+  };
+}
+function gpPlanYearTargets(accountId, year){
+  let wm = null, imps = null, wmFrom = null;
+  try { const b = planWorkingMediaBudget(accountId, year); if (b){ wm = b.workingMedia; wmFrom = 'the confirmed ' + year + ' marketing budget (working media)'; } } catch (e){}
+  try { const { target } = storyPlanRows(accountId, year); if (target && target.year === year){ if (wm == null && target.workingMedia != null){ wm = Number(target.workingMedia); wmFrom = 'the ' + year + ' annual plan'; } if (target.impressions != null) imps = Number(target.impressions); } } catch (e){}
+  if (imps == null){ try { const rec = buildAnnualPlanRecommendation(accountId, year, new Date()); if (rec && rec.target && rec.target.impressions != null) imps = Number(rec.target.impressions); } catch (e){} }
+  return { wm, imps, wmFrom };
+}
+// Share of the plan year's budget (or impressions) that belongs to the dates, by days in the calendar year.
+function gpExpectedShare(accountId, from, to){
+  const out = { spend: 0, impressions: 0, anySpend: false, anyImps: false, missing: [] };
+  const ys = []; for (let y = Number(from.slice(0, 4)); y <= Number(to.slice(0, 4)); y++) ys.push(y);
+  const from0 = dmParse(from), to0 = dmParse(to);
+  ys.forEach(y => {
+    const a = Math.max(from0, Date.UTC(y, 0, 1)), b = Math.min(to0, Date.UTC(y, 11, 31)); const days = Math.round((b - a) / 864e5) + 1; const diy = (Date.UTC(y, 11, 31) - Date.UTC(y, 0, 1)) / 864e5 + 1;
+    const t = gpPlanYearTargets(accountId, y);
+    if (t.wm != null){ out.spend += t.wm * days / diy; out.anySpend = true; } else out.missing.push(`${y} working media budget`);
+    if (t.imps != null){ out.impressions += t.imps * days / diy; out.anyImps = true; } else out.missing.push(`${y} impressions target`);
+    if (y === Number(to.slice(0, 4))) out.wmFrom = t.wmFrom;
+  });
+  return out;
+}
+function gpFmtVal(v, kind){
+  if (v == null) return '—';
+  if (kind === 'x') return Number(v).toFixed(2) + 'x';
+  if (kind === 'money') return '$' + Math.round(v).toLocaleString('en-US');
+  if (kind === 'money2') return '$' + Number(v).toFixed(2);
+  if (kind === 'pct') return (v >= 0 ? '+' : '') + Number(v).toFixed(1) + '%';
+  return Math.round(v).toLocaleString('en-US');
+}
+function buildGpCards(accountId, spec){
+  const R = gpResolveRange(spec);
+  const src = dmLoadSources(accountId); const S = buildForecastSeries(accountId); const E = gpEngagedMonthly(accountId);
+  const cur = gpPackOf(src, S, E, R.from, R.through), prev = gpPackOf(src, S, E, R.compFrom, R.compThrough);
+  const chg = gpChange(cur, prev);
+  const estNotes = [];
+  const mn = a => Array.from(new Set(a)).map(dmMonthName).join(', ');
+  const media = cur.estimated.media.concat(prev.estimated.media), txn = cur.estimated.txn.concat(prev.estimated.txn);
+  if (media.length) estNotes.push(`Spend and impressions for ${mn(media)} are estimated from monthly totals divided evenly by day (campaign days are exact).`);
+  if (txn.length) estNotes.push(`Transactions and revenue for ${mn(txn)} are estimated from monthly totals divided evenly by day.`);
+  const ctx = [['Account', accountId], ['Period', R.label], [R.compLabel.split(':')[0], R.compLabel.split(': ').slice(1).join(': ')], ['Generated', R.today]];
+  const row = (label, c, p, kind) => [label, gpFmtVal(c, kind), gpFmtVal(p, kind), (c != null && p != null && storyPct(c, p) != null) ? gpFmtVal(storyPct(c, p), 'pct') : '—'];
+  const cols = ['Measure', 'This period', 'Compared period', 'Change'];
+  // ---- Card 1: ROAS and CAC ----
+  const c1 = { key: 'roas', title: 'ROAS and CAC', thought: 'AX',
+    face: [{ label: 'ROAS', value: cur.roas, kind: 'x', delta: chg('roas'), goodWhen: 'up' }, { label: 'CAC', value: cur.cac, kind: 'money', delta: chg('cac'), goodWhen: 'down' }] };
+  c1.abstract = cur.roas != null || cur.cac != null
+    ? `${cur.roas != null ? `Each $1 of spend returned $${cur.roas.toFixed(2)} in revenue` : 'Revenue is not on file for these dates'}${cur.cac != null ? `, at ${gpFmtVal(cur.cac, 'money')} to win each transaction` : ''}${chg('roas') != null ? `; ROAS is ${Math.abs(chg('roas'))}% ${chg('roas') >= 0 ? 'above' : 'below'} the compared period` : ''}.`
+    : 'Spend, revenue or transactions are not on file for these dates yet.';
+  c1.status = chg('roas') == null ? 'neutral' : (chg('roas') >= 0 ? 'good' : 'bad');
+  c1.large = { tables: [{ name: 'ROAS and CAC', columns: cols, rows: [row('Marketing spend', cur.spend, prev.spend, 'money'), row('Gross revenue', cur.revenue, prev.revenue, 'money'), row('Transactions', cur.transactions, prev.transactions, 'int'), row('ROAS (revenue / spend)', cur.roas, prev.roas, 'x'), row('CAC (spend / transactions)', cur.cac, prev.cac, 'money')] }],
+    notes: estNotes.slice() , definitions: ['ROAS is gross revenue divided by marketing spend.', 'CAC is marketing spend divided by unique transactions. Bookings carry no customer id yet, so this is spend per transaction, not per new customer.'] };
+  // ---- Card 2: spend and impression pacing ----
+  const ex = gpExpectedShare(accountId, R.from, R.through);
+  const spendPace = ex.anySpend && ex.spend > 0 && cur.spend != null ? Math.round(cur.spend / ex.spend * 1000) / 10 : null;
+  const impPace = ex.anyImps && ex.impressions > 0 && cur.impressions != null ? Math.round(cur.impressions / ex.impressions * 1000) / 10 : null;
+  const verdict = p => p == null ? 'neutral' : (p >= 95 && p <= 105 ? 'good' : (p > 105 ? 'neutral' : (p >= 85 ? 'neutral' : 'bad')));
+  const word = (p, nm) => p == null ? null : `${nm} ${p >= 95 && p <= 105 ? 'on pace' : p > 105 ? 'ahead of pace' : 'behind pace'} at ${p}%`;
+  const c2 = { key: 'pacing', title: 'Spend and Impression Pacing', thought: 'AY',
+    face: [{ label: 'Spend', value: cur.spend, kind: 'money', delta: chg('spend'), goodWhen: 'neutral', sub: ex.anySpend ? `${spendPace != null ? spendPace + '% of the ' : ''}${gpFmtVal(ex.spend, 'money')} budget pace` : 'No budget on file' },
+      { label: 'Impressions', value: cur.impressions, kind: 'int', delta: chg('impressions'), goodWhen: 'neutral', sub: ex.anyImps ? `${impPace != null ? impPace + '% of the ' : ''}${gpFmtVal(ex.impressions, 'int')} impression pace` : 'No impressions target on file' }] };
+  const wb = [word(spendPace, 'Spend is'), word(impPace, 'impressions are')].filter(Boolean);
+  c2.abstract = wb.length ? wb.join(' and ').replace(/^./, c => c.toUpperCase()) + '.' : (cur.spend != null ? 'Spend is on file, but there is no budget or impressions target to pace it against yet.' : 'Spend and impressions are not on file for these dates yet.');
+  c2.status = verdict(spendPace) === 'bad' || verdict(impPace) === 'bad' ? 'bad' : (verdict(spendPace) === 'good' && (impPace == null || verdict(impPace) === 'good') ? 'good' : 'neutral');
+  c2.large = { tables: [{ name: 'Pacing', columns: ['Measure', 'Actual to date', 'Expected pace', '% of pace'], rows: [['Spend', gpFmtVal(cur.spend, 'money'), ex.anySpend ? gpFmtVal(ex.spend, 'money') : '—', spendPace != null ? spendPace + '%' : '—'], ['Impressions', gpFmtVal(cur.impressions, 'int'), ex.anyImps ? gpFmtVal(ex.impressions, 'int') : '—', impPace != null ? impPace + '%' : '—']] },
+      { name: 'Against the compared period', columns: cols, rows: [row('Spend', cur.spend, prev.spend, 'money'), row('Impressions', cur.impressions, prev.impressions, 'int'), row('Cost per 1,000 impressions', cur.cpm, prev.cpm, 'money2')] }],
+    notes: estNotes.concat(ex.missing.length ? [`Not on file: ${Array.from(new Set(ex.missing)).join(', ')}.`] : []),
+    definitions: [`Expected pace is the annual plan figure spread evenly by day: budget x days in the dates / days in the year.${ex.wmFrom ? ' Budget comes from ' + ex.wmFrom + '.' : ''}`, 'Within 5% of pace reads as on pace. Below 85% reads as behind.'] };
+  // ---- Card 3: KPI story ----
+  const c3 = { key: 'kpi', title: 'KPI Story', thought: 'AZ',
+    face: [{ label: 'Impressions', value: cur.impressions, kind: 'int', delta: chg('impressions'), goodWhen: 'up', cost: { label: 'Cost per 1,000', value: cur.cpm, kind: 'money2', delta: chg('cpm'), goodWhen: 'down' } },
+      { label: 'Website visits', value: cur.visits, kind: 'int', delta: chg('visits'), goodWhen: 'up', cost: { label: 'Cost per engaged visitor', value: cur.costPerEngaged, kind: 'money2', delta: chg('costPerEngaged'), goodWhen: 'down' } },
+      { label: 'Leads', value: cur.leads, kind: 'int', delta: chg('leads'), goodWhen: 'up', cost: { label: 'Cost per lead', value: cur.costPerLead, kind: 'money2', delta: chg('costPerLead'), goodWhen: 'down' } }] };
+  const dirs = [['cpm', 'cost per 1,000 impressions'], ['costPerEngaged', 'cost per engaged visitor'], ['costPerLead', 'cost per lead']].filter(([k]) => chg(k) != null);
+  const better = dirs.filter(([k]) => chg(k) < 0).length;
+  c3.abstract = dirs.length ? `${better} of ${dirs.length} cost measures are cheaper than the compared period: ${dirs.map(([k, l]) => chg(k) === 0 ? `${l} flat` : `${l} ${chg(k) < 0 ? 'down' : 'up'} ${Math.abs(chg(k))}%`).join(', ')}.` : (cur.impressions != null || cur.visits != null || cur.leads != null ? 'Volumes are on file; there is not enough on file for the compared period to show a change.' : 'Impressions, website visits and leads are not on file for these dates yet.');
+  c3.status = !dirs.length ? 'neutral' : (better === dirs.length ? 'good' : (better === 0 ? 'bad' : 'neutral'));
+  c3.large = { tables: [{ name: 'KPI story', columns: cols, rows: [row('Impressions', cur.impressions, prev.impressions, 'int'), row('Cost per 1,000 impressions', cur.cpm, prev.cpm, 'money2'), row('Website visits (users)', cur.visits, prev.visits, 'int'), row('Engaged website visits', cur.engaged, prev.engaged, 'int'), row('Cost per engaged website visitor', cur.costPerEngaged, prev.costPerEngaged, 'money2'), row('Leads', cur.leads, prev.leads, 'int'), row('Cost per lead', cur.costPerLead, prev.costPerLead, 'money2')] }],
+    notes: estNotes.concat([['Website visits', cur.estimated.visits.concat(prev.estimated.visits)], ['Engaged website visits', cur.estimated.engaged.concat(prev.estimated.engaged)], ['Leads', cur.estimated.leads.concat(prev.estimated.leads)]].filter(x => x[1].length).map(x => `${x[0]} for ${mn(x[1])} are estimated from monthly totals divided evenly by day.`)),
+    definitions: ['Cost per impression is shown per 1,000 impressions (CPM), since a single impression costs a fraction of a cent.', 'Cost per engaged website visitor is marketing spend divided by engaged sessions.', 'Cost per lead is marketing spend divided by leads. Website visits are the monthly website users on file.'] };
+  const cards = [c1, c2, c3];
+  cards.forEach(c => { c.export = { title: c.title, fileSlug: 'growth-' + c.key, context: ctx, tables: c.large.tables.map(t => ({ name: t.name, columns: t.columns, rows: t.rows })), notes: c.large.notes.concat(c.large.definitions) }; });
+  return { range: R, cards, estimated: estNotes };
+}
+function gpExportFromPayload(accountId, b){
+  const clean = v => String(v == null ? '' : v).slice(0, 400);
+  const tables = (Array.isArray(b.tables) ? b.tables : []).slice(0, 8).map(t => ({ name: clean(t.name), columns: (Array.isArray(t.columns) ? t.columns : []).slice(0, 20).map(c => ({ h: clean(c) })), rows: (Array.isArray(t.rows) ? t.rows : []).slice(0, 500).map(r => (Array.isArray(r) ? r : []).slice(0, 20).map(clean)) }));
+  if (!tables.length) return null;
+  const title = clean(b.title) || 'Growth and Performance'; const slug = String(b.fileSlug || 'growth').replace(/[^a-z0-9-]+/gi, '-').slice(0, 40) || 'growth';
+  return { title, fileSlug: slug, context: (Array.isArray(b.context) ? b.context : []).slice(0, 12).map(r => [clean(r[0]), clean(r[1])]), tables, notes: (Array.isArray(b.notes) ? b.notes : []).slice(0, 20).map(clean) };
+}
+
 // 2026-10-05 — Budget flow: the donut at the top of Strategy and the Budget page.
 // Planned = working media on the confirmed budget upload for the year (non-working media excluded).
 // Completed = spend to date from the same series the Strategy spend card uses.
@@ -20554,6 +20719,10 @@ const PRODUCT_GUIDE = [
   { letter: "AU", label: "Team and Org Chart", keywords: ["team", "org chart", "org", "invite", "member", "reports to", "role", "admin", "roster", "onboarding", "add a person", "add someone", "add people", "add a team", "who reports", "position"], text: "Team and Org Chart is where an admin adds each person, sets their position and who they report to. The chart drives skill sets, the self-assessment and the development plan, so keep reporting lines current. The page is admin-only today. Give each new person their position first, then have them complete the self-assessment in Team Experiences. Ask Verilume can answer who sits where and which seats lack a reporting line, without sharing contact details or individual self-ratings." },
   { letter: "AV", label: "Ask Verilume and voice: what you can ask", keywords: ["ask verilume", "voice", "ask", "question", "how do i", "how to", "what can i ask", "getting started", "where do i"], text: "AI Thoughts and voice share the same knowledge. Ask Verilume, typed or by voice, answers from your own data: campaigns, Media Science markets and the last test plan, Truth Lab results and confirmed learnings, Trade Territories, the Ad Copy Library and the team structure. It also explains how to use the product, so you can ask how do I save a match market test, how do I confirm a result, or what does a local reseller mean, and hear the same answer that appears in these thoughts. Voice never changes anything. Any change is proposed for a person to accept. It does not read out emails, phone numbers or individual self-ratings." },
   { letter: "AW", label: "Brain Dump: your greeting and growth links", keywords: ["brain dump", "growth", "my growth", "assessment", "self assessment", "next career", "career", "training", "development plan", "private", "manager see", "who can see", "greeting", "1:1"], text: "The Brain Dump opens with a greeting and your seat, then the weekly business update: Strategy, Customer Experiences, Growth and Performance, Media Science, AI Brain learnings, and news from outside. Beside it, Your growth links to your own development: the position self-assessment, your next-career checklist, and your development plan, all in Team Experiences. Those pages are private to you. A manager sees nothing from them unless you choose to share it. You can also ask Verilume or the voice agent to read you the Brain Dump, and it presents each section in turn. The 1:1 with your Brain is coming later. On the Team Experiences page, Training Library Partners lists LinkedIn Learning and Coursiv as placeholder options: you can say you already have a license or ask for a new relationship, but nothing is connected yet. Growth home is your private coaching space. Rate your seat's skills and drag them into the order you most need help with, and the coach ranks your key needs. Set a desired next career to see the skill gap and the closest three moves. Build a lesson plan from the training library, which holds only real, verified links. Sort a brain dump into tasks, things to learn and things to raise, and keep up to five active tasks that you choose and order yourself. Hold a short weekly 1:1 with the coach in text. Nothing is visible to your manager unless you switch sharing on for that item, and the coach is part of the Radiance and Beacon plans." },
+  { letter: "GA", label: "Growth and Performance: ROAS and CAC", keywords: ["roas", "cac", "return on ad spend", "customer acquisition cost", "revenue per dollar", "growth and performance", "reporting card", "wow", "mom", "yoy", "ytd", "custom range"], text: "This card answers one question: what did each marketing dollar return, and what did each transaction cost to win. ROAS is gross revenue divided by marketing spend. CAC is marketing spend divided by unique transactions. Bookings do not carry a customer id yet, so CAC is spend per transaction, not per brand-new customer. The date list starts on YTD, January 1 to today, set against the same dates last year. WoW is the last 7 days against the 7 before. MoM is the month so far against the same days last month. YoY is the last 12 months against the 12 before. Custom is any two dates, set against the same dates a year earlier. Each card keeps its own range. A change is shown only when both periods have the figure on file for every month they touch; otherwise it says there is no comparison rather than guess. Spend and revenue held only as monthly totals are divided evenly by day, and the large view says which months were estimated. Open the large view for the full table, or use the share icon for Excel, CSV, Google Sheets, PDF or a slide." },
+  { letter: "GB", label: "Growth and Performance: spend and impression pacing", keywords: ["pacing", "pace", "budget pace", "impression pace", "behind pace", "ahead of pace", "on pace", "spend vs budget", "growth and performance", "reporting card"], text: "This card shows whether spend and impressions are moving at the speed the plan needs. Expected pace is the annual figure spread evenly across the days of the year: the confirmed working media budget for spend, and the annual plan impressions target for impressions. Expected pace for the dates you pick is that annual figure times the days in the dates divided by the days in the year. Within 5% of pace reads as on pace, above that is ahead, and below 85% reads as behind. Pacing is a straight-line check, not a forecast; a campaign that front-loads its spend will look ahead early and behind later. If there is no confirmed budget or impressions target for the year, the card says so and still shows what was spent and delivered with its change against the compared period. The date list works the same on every card: YTD by default, then WoW, MoM, YoY and Custom." },
+  { letter: "GC", label: "Growth and Performance: KPI story", keywords: ["kpi story", "impressions volume", "cost per impression", "cpm", "website visits", "engaged visitor", "cost per engaged", "leads", "cost per lead", "growth and performance", "reporting card"], text: "The KPI story reads left to right, from attention to action: impressions and what they cost, website visits and what each engaged visitor cost, and leads and what each lead cost. Cost per impression is shown per 1,000 impressions, the usual CPM, since a single impression costs a fraction of a cent. Website visits are the monthly website users on file. Cost per engaged website visitor is marketing spend divided by engaged sessions. Cost per lead is marketing spend divided by leads. Lower costs show in green and higher costs in red. Website visits, engaged sessions and leads are monthly totals, so for a week or a part month they are divided evenly by day and marked as estimated in the large view. A change appears only where both periods have the figure for every month they touch." },
+  { letter: "GD", label: "Growth and Performance: Ops", keywords: ["ops", "campaigns completed", "in qa", "copy creative", "in planning", "trafficking", "completed trafficking", "next 30 days", "growth and performance", "reporting card"], text: "The Ops card counts campaigns by where they are in the build: In Planning, In Copy and Creative, In QA, and Completed. Completed means Brand, Marketing Functions, Creative and QA and Approval are all done. The headline is the share of campaigns dropping in the next 30 days that have completed trafficking, meaning the campaign has been sent to the trafficking team with its creative and tracking links. The date list chooses which campaigns are counted: a campaign is in view if it has not ended before the start of the range, so campaigns still ahead of us always count. Custom keeps only campaigns that run between the two dates. The trafficking headline always looks 30 days forward from today, whatever the range. Ad hoc and cancelled campaigns are left out. The large view lists every campaign dropping in the next 30 days with its trafficking status." },
   { letter: "AX", label: "Search Everywhere: illumination guides and light levels", keywords: ["search everywhere", "illumination guide", "view guide", "light level", "seo checklist", "aeo", "geo", "local business", "franchise", "call center", "ecommerce", "self rate", "self assessment search", "search checklist"], text: "Search Everywhere has three area cards: SEO (get found), AEO (be the answer) and GEO (be cited by AI). Each shows what drives it, a light level, and a View guide button that opens the guide on the page. The guide is a prioritized checklist written for your kind of business: a local business, a single-location call center or ecommerce, or a franchise with online sales and storefronts. You rate each item yourself as not started, in progress, done or does not apply. Items Verilume can read from your data, such as Search Console connected, indexing health, answered questions and AI citation checks, are filled in for you. The light level is Dark, Dim, Lit, Bright or Brilliant based on the weighted share of items done, and it is saved so you can see progress over time. You can also ask Ask Verilume or the voice agent to walk you through the assessment, or to judge a recommendation someone gave you, such as whether to add an FAQ hub to support AEO. It answers for your kind of business and your current status, and says plainly when the evidence for a tactic is thin. Ratings are set in the guide, not by voice." }
 ];
 const PRODUCT_ASK_RE = /\b(how (?:do|can|should|would) (?:i|we|you)|how to|where (?:do|can|is|are)|what (?:is|are|does|do) (?:a|an|the|my)?|walk me through|getting started|get started|train(?:ing)?|learn|guide|explain|help me (?:use|understand)|what can i ask|show me how|steps)\b/i;
@@ -28512,7 +28681,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-15-ask-all-uploaded-data',
+        buildStamp: '2026-10-15-gp-reporting-cards',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
@@ -32827,6 +32996,33 @@ async function handleRequestInner(req, res) {
         res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="${base}.xlsx"` });
         return res.end(Buffer.from(buf));
       } catch (e){ console.warn('[analytics/export] failed:', e.message); return sendJson(res, 500, { error: 'could not build the export' }); }
+    }
+
+    // GET /api/accounts/:id/analytics/gp-cards?preset=ytd|wow|mom|yoy|custom&from=&to= — the three Growth & Performance reporting cards over their own range (2026-10-15).
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'analytics' && parts[4] === 'gp-cards'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const qs = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries());
+      try { return sendJson(res, 200, buildGpCards(accountId, gpCleanSpec(qs))); }
+      catch (e){ console.warn('[analytics/gp-cards] failed:', e.message); return sendJson(res, 500, { error: 'could not build the cards' }); }
+    }
+    // POST /api/accounts/:id/analytics/card-file — turns a card's own tables (the ones on screen) into xlsx, csv, pdf or pptx.
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'analytics' && parts[4] === 'card-file'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      let b; try { b = await readBody(req); } catch (e){ return sendJson(res, 400, { error: 'bad request' }); }
+      const format = ['xlsx', 'csv', 'pdf', 'pptx'].includes(b && b.format) ? b.format : null;
+      const x = format && gpExportFromPayload(accountId, b || {});
+      if (!x) return sendJson(res, 400, { error: 'nothing to export' });
+      try {
+        const base = `${x.fileSlug}-${new Date().toISOString().slice(0, 10)}`;
+        if (format === 'csv'){ res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${base}.csv"` }); return res.end(cardToCsv(x)); }
+        if (format === 'pptx'){ const pb = await cardToPptx(x); res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'Content-Disposition': `attachment; filename="${base}.pptx"` }); return res.end(Buffer.from(pb)); }
+        if (format === 'pdf'){ res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${base}.pdf"` }); return res.end(cardToPdf(x)); }
+        const buf = await cardToXlsx(x);
+        res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="${base}.xlsx"` });
+        return res.end(Buffer.from(buf));
+      } catch (e){ console.warn('[analytics/card-file] failed:', e.message); return sendJson(res, 500, { error: 'could not build the file' }); }
     }
 
     // GET /api/accounts/:id/analytics/(story|forecast-vs-target|price-volume|audience-growth)
