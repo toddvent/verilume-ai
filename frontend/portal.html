@@ -1462,6 +1462,23 @@
   .gp-stamp{margin:-6px 0 14px;font-size:0.75rem;line-height:1.5;}
   .gp-mini th,.gp-mini td{padding:3px 6px;white-space:nowrap;}
   .sc-delta.bad{color:#C0273C;}
+  /* 2026-10-15 Growth & Performance reporting cards */
+  .gpc{position:relative;} .gpc.loading{opacity:.6;}
+  .gpc-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;}
+  .gpc-tools{display:inline-flex;align-items:center;gap:6px;flex:none;} .gpc-tools .share-wrap{position:relative;top:auto;right:auto;display:inline-flex;}
+  .gpc-range{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0 10px;font-size:0.75rem;color:var(--muted);}
+  .gpc-sel{font:inherit;font-size:0.8125rem;border:1px solid var(--line);background:var(--white);color:var(--ink);border-radius:8px;padding:5px 8px;cursor:pointer;}
+  .gpc-custom{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px;} .gpc-custom input{font:inherit;font-size:0.75rem;border:1px solid var(--line);border-radius:6px;padding:3px 4px;background:var(--white);color:var(--ink);}
+  .gpc-face{display:flex;flex-direction:column;gap:10px;} .gpc-face.ops{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;}
+  .gpc-ml{font-size:0.75rem;color:var(--muted);} .gpc-mv{font-size:1.5rem;font-weight:700;line-height:1.2;display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px;font-variant-numeric:tabular-nums;}
+  .gpc-cost{font-size:0.8125rem;display:flex;flex-wrap:wrap;gap:2px 6px;align-items:baseline;margin-top:2px;} .gpc-cost span{color:var(--muted);}
+  .gpc-d{font-size:0.75rem;font-weight:600;} .gpc-d.good{color:#1E8E4A;} .gpc-d.bad{color:#C0273C;} .gpc-d.neutral{color:var(--muted);font-weight:500;}
+  .gpc-abs{margin-top:12px;font-size:0.875rem;line-height:1.45;font-weight:600;} .gpc-abs.good{color:#1E8E4A;} .gpc-abs.bad{color:#C0273C;} .gpc-abs.neutral{color:var(--ink);}
+  .gpc-dates{margin-top:8px;font-size:0.6875rem;color:var(--muted);line-height:1.5;} .gpc-dates span{opacity:.85;}
+  .gpc-modal{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:3000;display:flex;align-items:flex-start;justify-content:center;padding:4vh 16px;overflow:auto;}
+  .gpc-panel{background:var(--white);color:var(--ink);border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.35);width:min(980px,100%);padding:24px 28px 28px;} .gpc-panel .gpc-face{flex-direction:row;flex-wrap:wrap;gap:18px 40px;} .gpc-panel .gpc-face.ops{display:flex;} .gpc-panel .gpc-mv{font-size:2rem;}
+  .gpc-phead{display:flex;align-items:center;justify-content:space-between;gap:12px;} .gpc-phead h2{margin:0;font-size:1.25rem;}
+  @media (max-width:820px){ .gpc-panel{padding:18px 16px 22px;} }
   @media (max-width:1400px){ .gp-core.stat-card-grid.four{grid-template-columns:1fr 1fr;} }
   @media (max-width:820px){ .gp-core.stat-card-grid.four{grid-template-columns:1fr;} }
   .gp-bar{display:flex;height:14px;border-radius:7px;overflow:hidden;background:rgba(0,0,0,.06);margin:8px 0 6px;}
@@ -12241,6 +12258,42 @@
         </div>
         <div class="faq-body" id="bpFaqBodyAW">
           <p id="bpFaqTextAW"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadGA" onclick="toggleFaqItem('GA')">
+          <span class="faq-label">Growth and Performance: ROAS and CAC</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyGA">
+          <p id="bpFaqTextGA"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadGB" onclick="toggleFaqItem('GB')">
+          <span class="faq-label">Growth and Performance: spend and impression pacing</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyGB">
+          <p id="bpFaqTextGB"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadGC" onclick="toggleFaqItem('GC')">
+          <span class="faq-label">Growth and Performance: KPI story</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyGC">
+          <p id="bpFaqTextGC"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadGD" onclick="toggleFaqItem('GD')">
+          <span class="faq-label">Growth and Performance: Ops</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyGD">
+          <p id="bpFaqTextGD"></p>
         </div>
       </div>
   </div>
@@ -24976,9 +25029,156 @@ function gpStoryCards(d){
     'Same calendar months, one year earlier. Months with no data on file show a dash.');
   return c1 + c2 + c3 + c4;
 }
+// ---- Growth & Performance reporting cards (2026-10-15, Todd) ----
+// Four cards, left to right: 1 ROAS and CAC, 2 Spend and Impression Pacing, 3 KPI Story, 4 Ops. Each carries its own
+// date range (YTD by default, then WoW, MoM, YoY, Custom), a share menu, an expand-to-large view and a speech bubble that
+// opens AI Thoughts. The face shows only the performance abstract and the dates; the working lives in the large view and in
+// the AI Thoughts topic. Cards 1-3 come from /analytics/gp-cards (one server build, daily media model); card 4 is built here
+// from the campaigns already loaded. This replaces the earlier four story cards on this tab; Strategy is untouched.
+const GPC_PRESETS = [['ytd', 'YTD'], ['wow', 'WoW'], ['mom', 'MoM'], ['yoy', 'YoY'], ['custom', 'Custom']];
+const GPC_META = { roas: { n: 1, title: 'ROAS and CAC', thought: 'GA' }, pacing: { n: 2, title: 'Spend and Impression Pacing', thought: 'GB' }, kpi: { n: 3, title: 'KPI Story', thought: 'GC' }, ops: { n: 4, title: 'Ops', thought: 'GD' } };
+const gpc = { roas: { preset: 'ytd', from: '', to: '', data: null, range: null, err: '', loading: false, seq: 0 }, pacing: { preset: 'ytd', from: '', to: '', data: null, range: null, err: '', loading: false, seq: 0 }, kpi: { preset: 'ytd', from: '', to: '', data: null, range: null, err: '', loading: false, seq: 0 }, ops: { preset: 'ytd', from: '', to: '' }, open: null, started: false };
+function gpcIso(t){ const d = new Date(t); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`; }
+function gpcRange(st){
+  const [y, m, d] = cxToday().split('-').map(Number); const today = Date.UTC(y, m - 1, d);
+  let preset = st.preset, from, through = gpcIso(today), name;
+  if (preset === 'custom' && st.from && st.to && st.to >= st.from){ from = st.from; through = st.to; name = 'Custom range'; }
+  else if (preset === 'wow'){ from = gpcIso(today - 6 * 864e5); name = 'Last 7 days'; }
+  else if (preset === 'mom'){ from = gpcIso(Date.UTC(y, m - 1, 1)); name = 'Month to date'; }
+  else if (preset === 'yoy'){ from = gpcIso(Date.UTC(y - 1, m - 1, d + 1)); name = 'Last 12 months'; }
+  else { from = `${y}-01-01`; name = 'Year to date'; }
+  return { from, through, name, label: `${name}: ${stratDay(from)} to ${stratDay(through)}` };
+}
+function gpcFmt(v, kind){
+  if (v == null || isNaN(v)) return '—';
+  if (kind === 'x') return Number(v).toFixed(2) + 'x';
+  if (kind === 'money') return Math.abs(v) >= 1e6 ? stratMoney(v) : stratMoneyFull(v);
+  if (kind === 'money2') return '$' + Number(v).toFixed(2);
+  return stratNum(v);
+}
+function gpcDelta(p, goodWhen){
+  if (p == null) return `<span class="gpc-d neutral" title="Not enough on file for the compared period">no comparison</span>`;
+  const cls = p === 0 || goodWhen === 'neutral' ? 'neutral' : ((goodWhen === 'down') === (p < 0) ? 'good' : 'bad');
+  return `<span class="gpc-d ${cls}">${p > 0 ? '▲' : p < 0 ? '▼' : '•'} ${Math.abs(p).toFixed(1)}%</span>`;
+}
+function gpcOpsStage(c){
+  try { const by = {}; computeStageStatuses(c).forEach(x => { by[x.key] = x.status; });
+    if (by.brand !== 'complete' || by.functions !== 'complete') return 'planning';
+    if (by.creative !== 'complete') return 'creative';
+    if (by.qa !== 'complete') return 'qa';
+    return 'completed'; } catch (e){ return 'planning'; }
+}
+// Card 4. A campaign is in view when it has not ended before the start of the range (so campaigns still ahead of us, the ones in Planning, always count); Custom keeps only campaigns that overlap the two dates.
+function gpcOpsData(){
+  const st = gpc.ops, R = gpcRange(st), today = cxToday();
+  const all = gpCampaigns().map(r => r.c);
+  const inView = all.filter(c => { const sd = String(c.startDate || '').slice(0, 10), ed = String(c.endDate || '').slice(0, 10); const last = ed || sd || '9999-12-31'; if (last < R.from) return false; return st.preset === 'custom' && sd ? sd <= R.through : true; });
+  const labelOf = { completed: 'Completed', qa: 'In QA', creative: 'In Copy / Creative', planning: 'In Planning' };
+  const rows = inView.map(c => ({ c, s: gpcOpsStage(c) }));
+  const n = k => rows.filter(r => r.s === k).length;
+  const [ty, tm, td] = today.split('-').map(Number); const horizon = gpcIso(Date.UTC(ty, tm - 1, td) + 30 * 864e5);
+  const drop = all.filter(c => { const sd = String(c.startDate || '').slice(0, 10); return sd && sd >= today && sd <= horizon; }).sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
+  const done = drop.filter(c => !!c.trafficSentAt).length, pct = drop.length ? Math.round(done / drop.length * 100) : null;
+  const abstract = drop.length ? `${done} of ${drop.length} campaign${drop.length === 1 ? '' : 's'} dropping in the next 30 days ${done === 1 ? 'has' : 'have'} completed trafficking (${pct}%).` : 'No campaigns are scheduled to drop in the next 30 days.';
+  const status = pct == null ? 'neutral' : (pct >= 90 ? 'good' : (pct >= 60 ? 'neutral' : 'bad'));
+  const rangeLabel = st.preset === 'custom' && R.name === 'Custom range' ? `Campaigns running between ${stratDay(R.from)} and ${stratDay(R.through)}` : `Campaigns running or starting from ${stratDay(R.from)} (${R.name.toLowerCase()})`;
+  const c4 = { key: 'ops', title: 'Ops', thought: 'GD', rangeLabel, compLabel: 'Next 30 days: ' + stratDay(today) + ' to ' + stratDay(horizon),
+    face: ['completed', 'qa', 'creative', 'planning'].map(k => ({ label: labelOf[k], value: n(k), kind: 'int' })), abstract, status,
+    large: { tables: [
+      { name: 'Campaigns by stage', columns: ['Stage', 'Campaigns'], rows: ['completed', 'qa', 'creative', 'planning'].map(k => [labelOf[k], String(n(k))]) },
+      { name: 'Dropping in the next 30 days', columns: ['Campaign code', 'Campaign', 'Starts', 'Days to go', 'Trafficking'], rows: drop.map(c => [String(c.campaignCode || c.id), String(c.name || c.objective || 'Untitled Campaign'), String(c.startDate).slice(0, 10), String(gpDaysTo(c.startDate)), c.trafficSentAt ? 'Completed ' + String(c.trafficSentAt).slice(0, 10) : 'Not sent yet']) },
+      { name: 'Campaigns in view', columns: ['Campaign code', 'Campaign', 'Stage', 'Starts', 'Ends'], rows: rows.map(r => [String(r.c.campaignCode || r.c.id), String(r.c.name || r.c.objective || 'Untitled Campaign'), labelOf[r.s], String(r.c.startDate || '').slice(0, 10) || '—', String(r.c.endDate || '').slice(0, 10) || '—']) }
+    ], notes: [], definitions: ['Completed means Brand, Marketing Functions, Creative and QA & Approval are all complete. In QA means creative is done and approval is not. In Copy / Creative means brand and marketing functions are done and creative is not. Everything earlier is In Planning.', 'Completed trafficking means the campaign has been sent to the trafficking team (its Send to Trafficking Team step).', 'Ad hoc and cancelled campaigns are left out.'] } };
+  c4.export = { title: 'Ops', fileSlug: 'growth-ops', context: [['Account', state.companyId], ['Campaigns in view', rangeLabel], ['Trafficking window', c4.compLabel], ['Generated', today]], tables: c4.large.tables, notes: c4.large.notes.concat(c4.large.definitions) };
+  return c4;
+}
+function gpcCardData(key){
+  if (key === 'ops') return gpcOpsData();
+  const st = gpc[key]; if (!st.data) return null;
+  const r = st.range || {}; return Object.assign({}, st.data, { rangeLabel: r.label || '', compLabel: r.compLabel || '' });
+}
+async function gpcLoad(key){
+  const st = gpc[key]; if (!st || key === 'ops') return gpcRender();
+  if (st.preset === 'custom' && !(st.from && st.to && st.to >= st.from)) return gpcRender();
+  const seq = ++st.seq; st.loading = true; st.err = ''; gpcRender();
+  try {
+    const q = new URLSearchParams({ preset: st.preset }); if (st.preset === 'custom'){ q.set('from', st.from); q.set('to', st.to); }
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/analytics/gp-cards?${q}`);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json(); if (seq !== st.seq) return;
+    st.data = (j.cards || []).find(c => c.key === key) || null; st.range = j.range || null;
+  } catch (e){ if (seq !== st.seq) return; st.err = 'Could not load this card right now.'; }
+  if (seq === st.seq){ st.loading = false; gpcRender(); }
+}
+function gpcEnsure(){ if (gpc.started || !gpIsLive()) return; gpc.started = true; ['roas', 'pacing', 'kpi'].forEach(k => gpcLoad(k)); }
+function gpcSetPreset(key, v){
+  const st = gpc[key]; st.preset = v;
+  if (v === 'custom' && !(st.from && st.to)){ const d = gpcRange({ preset: 'ytd' }); st.from = st.from || d.from; st.to = st.to || d.through; gpcRender(); return; }
+  gpcLoad(key);
+}
+function gpcApplyCustom(key, ctx){
+  const f = (document.getElementById(`gpcFrom-${key}-${ctx}`) || {}).value, t = (document.getElementById(`gpcTo-${key}-${ctx}`) || {}).value; const st = gpc[key];
+  if (!f || !t || t < f){ st.err = !f || !t ? 'Choose a start and an end date.' : 'The start date must be on or before the end date.'; gpcRender(); return; }
+  st.from = f; st.to = t; st.err = ''; gpcLoad(key);
+}
+function gpcRangeHtml(key, ctx){
+  const st = gpc[key];
+  const custom = st.preset === 'custom' ? `<span class="gpc-custom"><input type="date" id="gpcFrom-${key}-${ctx}" aria-label="Start date" value="${escapeHtml(st.from)}"> <span>to</span> <input type="date" id="gpcTo-${key}-${ctx}" aria-label="End date" value="${escapeHtml(st.to)}"> <button type="button" class="drr-chip" onclick="gpcApplyCustom('${key}','${ctx}')">Apply</button></span>` : '';
+  return `<span class="gpc-range"><select class="gpc-sel" aria-label="Date range for ${escapeHtml(GPC_META[key].title)}" onchange="gpcSetPreset('${key}',this.value)">${GPC_PRESETS.map(([k, l]) => `<option value="${k}"${st.preset === k ? ' selected' : ''}>${l}</option>`).join('')}</select>${custom}</span>`;
+}
+function gpcShareHtml(key, ctx){
+  const id = `gpc-${key}-${ctx}`; const items = [['xlsx', 'Excel (.xlsx)'], ['csv', 'CSV'], ['sheets', 'Google Sheets'], ['pdf', 'PDF'], ['pptx', 'Slide (.pptx)']].map(([f, l]) => `<button type="button" role="menuitem" onclick="gpcExport('${key}','${f}')">${l}</button>`).join('');
+  return `<span class="share-wrap"><button type="button" class="share-btn" aria-label="Share or download ${escapeHtml(GPC_META[key].title)}" aria-haspopup="menu" onclick="shareToggle(event,'${id}')"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg></button><div class="share-menu" id="shareMenu-${id}" role="menu" hidden>${items}</div></span>`;
+}
+function gpcExpandBtn(key){ return `<button type="button" class="share-btn" aria-label="Open ${escapeHtml(GPC_META[key].title)} in a large view" title="Large view" onclick="gpcOpen('${key}')"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg></button>`; }
+function gpcFaceHtml(c){
+  return `<div class="gpc-face${c.key === 'ops' ? ' ops' : ''}">${c.face.map(f => `<div class="gpc-m"><div class="gpc-ml">${escapeHtml(f.label)}</div><div class="gpc-mv">${gpcFmt(f.value, f.kind)}${f.delta !== undefined ? ' ' + gpcDelta(f.delta, f.goodWhen) : ''}</div>${f.sub ? `<div class="strat-sub">${escapeHtml(f.sub)}</div>` : ''}${f.cost ? `<div class="gpc-cost"><span>${escapeHtml(f.cost.label)}</span> <b>${gpcFmt(f.cost.value, f.cost.kind)}</b> ${gpcDelta(f.cost.delta, f.cost.goodWhen)}</div>` : ''}</div>`).join('')}</div>`;
+}
+function gpcCardHtml(key){
+  const m = GPC_META[key], st = gpc[key], c = gpcCardData(key);
+  const head = `<div class="gpc-head"><div class="sc-label">${m.n} · ${escapeHtml(m.title)}</div><div class="gpc-tools">${aiThoughtIconHtml(m.thought)}${gpcShareHtml(key, 'card')}${gpcExpandBtn(key)}</div></div>${gpcRangeHtml(key, 'card')}`;
+  if (!c) return `<div class="stat-card gpc" data-gpc="${key}">${head}<div class="strat-sub" style="margin-top:12px;">${st.err ? escapeHtml(st.err) : (st.loading || !gpc.started ? 'Loading' : 'Choose both dates and apply.')}</div></div>`;
+  return `<div class="stat-card gpc${st.loading ? ' loading' : ''}" data-gpc="${key}">${head}${st.err ? `<div class="drr-err">${escapeHtml(st.err)}</div>` : ''}${gpcFaceHtml(c)}<div class="gpc-abs ${c.status || 'neutral'}">${escapeHtml(c.abstract)}</div><div class="gpc-dates">${escapeHtml(stratHumanDates(c.rangeLabel))}<br><span>${escapeHtml(stratHumanDates(c.compLabel))}</span></div></div>`;
+}
+function gpcCardsHtml(){ return ['roas', 'pacing', 'kpi', 'ops'].map(gpcCardHtml).join(''); }
+function gpcRender(){
+  if (activePrimaryTab === 'marketer'){ const el = document.getElementById('tabStatCardGrid'); if (el && el.classList.contains('gp-core')){ el.innerHTML = gpcCardsHtml(); } }
+  gpcRenderModal();
+}
+function gpcOpen(key){ gpc.open = key; gpcRenderModal(); }
+function gpcClose(){ gpc.open = null; gpcRenderModal(); }
+function gpcRenderModal(){
+  let host = document.getElementById('gpcModal');
+  if (!gpc.open){ if (host) host.remove(); return; }
+  const key = gpc.open, m = GPC_META[key], c = gpcCardData(key), st = gpc[key];
+  if (!host){ host = document.createElement('div'); host.id = 'gpcModal'; host.className = 'gpc-modal'; host.addEventListener('click', e => { if (e.target === host) gpcClose(); }); document.body.appendChild(host); }
+  const tables = c ? c.large.tables.map(t => `<div class="strat-chart-label" style="margin:14px 0 4px;">${escapeHtml(t.name)}</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr>${t.columns.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead><tbody>${t.rows.length ? t.rows.map(r => `<tr>${r.map(v => `<td>${escapeHtml(v)}</td>`).join('')}</tr>`).join('') : `<tr class="empty-state-row"><td colspan="${t.columns.length}">None</td></tr>`}</tbody></table></div>`).join('') : '';
+  host.innerHTML = `<div class="gpc-panel" role="dialog" aria-modal="true" aria-label="${escapeHtml(m.title)}"><div class="gpc-phead"><h2>${m.n} · ${escapeHtml(m.title)}</h2><div class="gpc-tools">${aiThoughtIconHtml(m.thought)}${gpcShareHtml(key, 'modal')}<button type="button" class="share-btn" aria-label="Close the large view" onclick="gpcClose()">✕</button></div></div>${gpcRangeHtml(key, 'modal')}
+    ${c ? `${st.err ? `<div class="drr-err">${escapeHtml(st.err)}</div>` : ''}${gpcFaceHtml(c)}<div class="gpc-abs ${c.status || 'neutral'}">${escapeHtml(c.abstract)}</div><div class="gpc-dates">${escapeHtml(stratHumanDates(c.rangeLabel))} · ${escapeHtml(stratHumanDates(c.compLabel))}</div>${tables}${(c.large.notes || []).map(n => `<p class="strat-sub">${escapeHtml(stratHumanDates(n))}</p>`).join('')}<details class="fd-hint" style="margin-top:12px;"><summary>How this is counted</summary>${(c.large.definitions || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}<p class="fd-hint"><a class="flink" onclick="gpcClose();aiThoughtOpen('${m.thought}')">Read more in AI Thoughts</a></p></details>` : `<p class="strat-sub" style="margin-top:14px;">${st && st.err ? escapeHtml(st.err) : 'Loading'}</p>`}</div>`;
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && gpc.open) gpcClose(); });
+async function gpcExport(key, format){
+  document.querySelectorAll('.share-menu').forEach(m => { m.hidden = true; });
+  const c = gpcCardData(key); if (!c) return; const x = c.export || {};
+  const say = t => { const st = gpc[key]; if (st){ st.err = t; gpcRender(); setTimeout(() => { if (st.err === t){ st.err = ''; gpcRender(); } }, 6000); } };
+  const grid = [[c.title], ...(x.context || []), [], ...(x.tables || []).flatMap(t => [[t.name], t.columns.slice(), ...t.rows, []]), ...(x.notes || []).map(n => [n])].map(r => r.map(v => String(v == null ? '' : v).replace(/[\t\r\n]+/g, ' ')));
+  if (format === 'sheets'){
+    try { await navigator.clipboard.writeText(grid.map(r => r.join('\t')).join('\n')); window.open('https://sheets.new', '_blank', 'noopener'); say('Copied. Paste into the new Google Sheet with Ctrl/Cmd+V.'); }
+    catch (e){ const csv = grid.map(r => r.map(v => /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v).join(',')).join('\n'); const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); const a = document.createElement('a'); a.href = url; a.download = `${x.fileSlug || 'growth'}.csv`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); say('Clipboard blocked, so a CSV was downloaded. In Google Sheets use File, Import.'); }
+    return;
+  }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/analytics/card-file`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ format, title: c.title, fileSlug: x.fileSlug, context: x.context, tables: x.tables, notes: x.notes }) });
+    if (!resp.ok){ say('Could not build that download right now.'); return; }
+    const blob = await resp.blob(); const cd = resp.headers.get('Content-Disposition') || ''; const m = /filename="([^"]+)"/.exec(cd);
+    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = m ? m[1] : `${x.fileSlug || 'growth'}.${format}`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  } catch (e){ say('Could not build that download right now.'); }
+}
+
 function gpRenderCoreRow(){
   const el = document.getElementById('tabStatCardGrid'); if (!el) return; el.classList.add('four');
-  el.classList.add('gp-core'); el.innerHTML = gpStoryCards(gp.data);
+  // 2026-10-15: the four reporting cards (ROAS and CAC, Pacing, KPI Story, Ops) replace the earlier four story cards. gpStoryCards() stays defined, unused.
+  el.classList.add('gp-core'); el.innerHTML = gpcCardsHtml(); gpcEnsure();
   const oldS = document.getElementById('gpSourceStamp'); if (oldS) oldS.remove();
   if (gp.data && gp.data.provenance) el.insertAdjacentHTML('afterend', `<div id="gpSourceStamp">${stratSourceStampHtml(gp.data.provenance)}</div>`);
   const rows = gpCampaigns(); const risk = rows.filter(r => r.stage !== 'Complete' && r.stage !== 'Analysis' && cmgmtIsAtRisk(r.c)).length;
@@ -25023,7 +25223,7 @@ function growthPerformanceShellHtml(){
   return `<div class="gp-actions"><button type="button" class="btn-primary" onclick="startNewCampaign()">＋ Create New Campaign</button><button type="button" class="btn-ghost gp-right" onclick="goToStep('campaignMgmt')">View All Campaigns →</button></div><div class="gp-motion">${gpCalendarTileHtml()}<div class="strat-card"><div class="strat-head"><h2>Campaigns in motion</h2></div><div id="gpRiskLine" class="strat-sub" style="margin-bottom:8px;"></div>${gpPipelineHtml()}</div></div>
     <div class="strat-card"><div class="strat-head"><h2>Performance and lifecycle</h2><div class="strat-ctl"><span class="strat-seg"><button type="button" data-gp-view="performance" class="${gp.view === 'performance' ? 'on' : ''}" onclick="gpSetView('performance')">Performance</button><button type="button" data-gp-view="lifecycle" class="${gp.view === 'lifecycle' ? 'on' : ''}" onclick="gpSetView('lifecycle')">Lifecycle</button></span></div></div><div id="gpViewBody"><p class="strat-empty">Loading…</p></div></div>` + gpToolsHtml();
 }
-function growthPerformancePageInit(){ if (gpIsLive()) gpLoad(); }
+function growthPerformancePageInit(){ gpc.started = false; if (gpIsLive()) gpLoad(); }
 
 
 // ---- Brain Dump (2026-09-30): the weekly standup that replaces the Daily Brief ----
@@ -26881,11 +27081,11 @@ async function fdLoadCatalog(){
 }
 function fdSyncSlots(spec){
   if (!spec) return;
-  fd.slot = { set: spec.set || '', measure: spec.measure, agg: spec.agg, by1: (spec.by || [])[0] || '', by2: (spec.by || [])[1] || '', period: spec.period && spec.period.kind === 'year' ? 'y' + spec.period.year : (spec.period && spec.period.kind === 'all' ? 'all' : 'range'), basis: spec.basis === 'delivered' ? 'delivered' : 'booked', compare: spec.compare === 'priorYear' };
+  fd.slot = { set: spec.set || '', measure: spec.measure, agg: spec.agg, by1: (spec.by || [])[0] || '', by2: (spec.by || [])[1] || '', period: spec.period && spec.period.kind === 'year' ? 'y' + spec.period.year : (spec.period && spec.period.kind === 'all' ? 'all' : (spec.period && spec.period.kind === 'dates' ? 'dates' : 'range')), dates: spec.period && spec.period.kind === 'dates' ? { from: spec.period.from, through: spec.period.through || null } : null, basis: spec.basis === 'delivered' ? 'delivered' : 'booked', compare: spec.compare === 'priorYear' };
 }
 function fdSlotSpec(){
   const sl = fd.slot; const by = [sl.by1, sl.by2].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
-  const period = sl.period === 'all' ? { kind: 'all' } : /^y\d{4}$/.test(sl.period) ? { kind: 'year', year: Number(sl.period.slice(1)) } : { kind: 'range' };
+  const period = sl.period === 'dates' && sl.dates ? { kind: 'dates', from: sl.dates.from, through: sl.dates.through } : sl.period === 'all' ? { kind: 'all' } : /^y\d{4}$/.test(sl.period) ? { kind: 'year', year: Number(sl.period.slice(1)) } : { kind: 'range' };
   return { set: sl.set || undefined, measure: sl.measure, agg: sl.agg, by, filters: [], period, basis: sl.basis === 'delivered' ? 'delivered' : 'booked', compare: sl.compare ? 'priorYear' : null, top: null, order: 'desc' };
 }
 function fdGroupOf(setKey){
@@ -26947,7 +27147,7 @@ function fdBuilderHtml(){
   const dimOpts = (cur) => opt('', '(nothing, one overall number)', cur) + grp.dims.map(d => opt(d.key, d.label.toLowerCase(), cur)).join('');
   const by1 = `<select class="tbl-select" aria-label="Break it down by" onchange="fdSlotSet('by1', this.value)">${dimOpts(sl.by1)}</select>`;
   const by2 = sl.by1 ? ` and by <select class="tbl-select" aria-label="Then by" onchange="fdSlotSet('by2', this.value)">${dimOpts(sl.by2)}</select>` : '';
-  const per = `<select class="tbl-select" aria-label="Period" onchange="fdSlotSet('period', this.value)">${opt('range', 'the dashboard date range', sl.period)}${(grp.years || []).slice().reverse().map(y => opt('y' + y, String(y), sl.period)).join('')}${opt('all', 'all years on file', sl.period)}</select>`;
+  const per = `<select class="tbl-select" aria-label="Period" onchange="fdSlotSet('period', this.value)">${opt('range', 'the dashboard date range', sl.period)}${sl.period === 'dates' && sl.dates ? opt('dates', 'the dates you asked for (' + sl.dates.from + ' to ' + (sl.dates.through || 'latest') + ')', sl.period) : ''}${(grp.years || []).slice().reverse().map(y => opt('y' + y, String(y), sl.period)).join('')}${opt('all', 'all years on file', sl.period)}</select>`;
   const recipes = (c.hasCustomerFile ? (c.recipes || []).map((r, i) => `<button type="button" class="fd-chip" onclick="fdRunRecipe(${i})">${escapeHtml(r.title)}</button>`) : []).concat((c.setRecipes || []).map((r, i) => `<button type="button" class="fd-chip" onclick="fdRunSetRecipe(${i})">${escapeHtml(r.title)}</button>`)).join('');
   const vocabNote = (!c.hasCustomerFile || c.orderSizeLabel) ? '' : `<p class="fd-hint">Order size is being read as ${escapeHtml((c.orderSizeNames || []).slice(0, 3).join(', ') || 'order size')} for your industry. You can set your own word when you upload the file.</p>`;
   return `<div class="fd-card"><div class="fd-cardhead">Ask about your data</div>
@@ -53334,6 +53534,10 @@ const BP_FAQ_TOPICS = [
   { letter: "AU", label: "Team and Org Chart", keywords: ["team", "org chart", "org", "invite", "member", "reports to", "role", "admin", "roster", "onboarding", "add a person", "add someone", "add people", "add a team", "who reports", "position"] },
   { letter: "AV", label: "Ask Verilume and voice: what you can ask", keywords: ["ask verilume", "voice", "ask", "question", "how do i", "how to", "what can i ask", "getting started", "where do i"] },
   { letter: "AW", label: "Brain Dump: your greeting and growth links", keywords: ["brain dump", "growth", "my growth", "assessment", "self assessment", "next career", "career", "training", "development plan", "private", "manager see", "who can see", "greeting", "1:1"] },
+  { letter: "GA", label: "Growth and Performance: ROAS and CAC", keywords: ["roas", "cac", "return on ad spend", "customer acquisition cost", "revenue per dollar", "growth and performance", "reporting card", "wow", "mom", "yoy", "ytd", "custom range"] },
+  { letter: "GB", label: "Growth and Performance: spend and impression pacing", keywords: ["pacing", "pace", "budget pace", "impression pace", "behind pace", "ahead of pace", "on pace", "spend vs budget", "growth and performance", "reporting card"] },
+  { letter: "GC", label: "Growth and Performance: KPI story", keywords: ["kpi story", "impressions volume", "cost per impression", "cpm", "website visits", "engaged visitor", "cost per engaged", "leads", "cost per lead", "growth and performance", "reporting card"] },
+  { letter: "GD", label: "Growth and Performance: Ops", keywords: ["ops", "campaigns completed", "in qa", "copy creative", "in planning", "trafficking", "completed trafficking", "next 30 days", "growth and performance", "reporting card"] },
   { letter: 'F', label: 'Past campaigns', keywords: ['learned','history','previous','analysis','pattern','overspend','underspend','delivered'] },
   // Round 132uu (2026-08-11), per direct instruction: "We should have a
   // speech bubble next to Lifecycle-loop stage explaining what this is and
@@ -53516,7 +53720,7 @@ const BP_FAQ_TOPIC_TAB = {
   // 2026-10-05 — Search Everywhere page topics, text taken from its client training guide.
 AG: 'marketer', AN: 'marketer', AH: 'marketer', AI: 'marketer', AJ: 'marketer', AK: 'marketer', AL: 'marketer', AM: 'marketer',
   // 2026-10-07 — product utilization and team training topics.
-  AO: 'dataScientist', AP: 'dataScientist', AQ: 'dataScientist', AR: 'dataScientist', AS: 'brand', AT: 'accountManagement', AU: 'accountManagement', AV: 'accountManagement', AW: 'dailyBrief'
+  AO: 'dataScientist', AP: 'dataScientist', AQ: 'dataScientist', AR: 'dataScientist', AS: 'brand', AT: 'accountManagement', AU: 'accountManagement', AV: 'accountManagement', AW: 'dailyBrief', GA: 'marketer', GB: 'marketer', GC: 'marketer', GD: 'marketer'
 };
 
 // 2026-10-04 (Todd): too many chips at once. Show the five most relevant to the page the person is on
@@ -53748,7 +53952,11 @@ const AI_THOUGHT_PREVIEWS = {
   AT: "How to use the self-assessment, skill sets and development plan for team training.",
   AU: "How to add people, set who reports to whom, and who can see what.",
   AV: "What Ask Verilume and voice can answer, and what they will not do.",
-  AW: "What is on the Brain Dump, where your growth links go, and who can see them."
+  AW: "What is on the Brain Dump, where your growth links go, and who can see them.",
+  GA: "How ROAS and CAC are worked out, and what the date choices mean.",
+  GB: "How spend and impressions are paced against the plan.",
+  GC: "The volume and the cost of impressions, website visits and leads.",
+  GD: "Where campaigns are in the build, and how many dropping soon are trafficked."
 };
 function aiThoughtRoleLabel(letter){
   const tabKey = BP_FAQ_TOPIC_TAB[letter];
@@ -54170,7 +54378,11 @@ const PU_THOUGHTS = {
   AT: "Team Experiences has three jobs. Skill Sets shows what any position on the org chart is expected to hold. The self-assessment lets each person rate themselves against their own seat’s critical skills. The development plan builds steps toward the next level. A good first week is to look up your own seat, complete the self-assessment, then draft a development plan and review it with your manager. Ask Verilume can summarize team structure and training progress, but it never reads out emails, phone numbers or any one person’s self-ratings.",
   AU: "Team and Org Chart is where an admin adds each person, sets their position and who they report to. The chart drives skill sets, the self-assessment and the development plan, so keep reporting lines current. The page is admin-only today. Give each new person their position first, then have them complete the self-assessment in Team Experiences. Ask Verilume can answer who sits where and which seats lack a reporting line, without sharing contact details or individual self-ratings.",
   AV: "AI Thoughts and voice share the same knowledge. Ask Verilume, typed or by voice, answers from your own data: campaigns, Media Science markets and the last test plan, Truth Lab results and confirmed learnings, Trade Territories, the Ad Copy Library and the team structure. It also explains how to use the product, so you can ask how do I save a match market test, how do I confirm a result, or what does a local reseller mean, and hear the same answer that appears in these thoughts. Voice never changes anything. Any change is proposed for a person to accept. It does not read out emails, phone numbers or individual self-ratings.",
-  AW: "The Brain Dump opens with a greeting and your seat, then the weekly business update: Strategy, Customer Experiences, Growth and Performance, Media Science, AI Brain learnings, and news from outside. Beside it, Your growth links to your own development: the position self-assessment, your next-career checklist, and your development plan, all in Team Experiences. Those pages are private to you. A manager sees nothing from them unless you choose to share it. You can also ask Verilume or the voice agent to read you the Brain Dump, and it presents each section in turn. The 1:1 with your Brain is coming later. On the Team Experiences page, Training Library Partners lists LinkedIn Learning and Coursiv as placeholder options: you can say you already have a license or ask for a new relationship, but nothing is connected yet. Growth home is your private coaching space. Rate your seat's skills and drag them into the order you most need help with, and the coach ranks your key needs. Set a desired next career to see the skill gap and the closest three moves. Build a lesson plan from the training library, which holds only real, verified links. Sort a brain dump into tasks, things to learn and things to raise, and keep up to five active tasks that you choose and order yourself. Hold a short weekly 1:1 with the coach in text. Nothing is visible to your manager unless you switch sharing on for that item, and the coach is part of the Radiance and Beacon plans."
+  AW: "The Brain Dump opens with a greeting and your seat, then the weekly business update: Strategy, Customer Experiences, Growth and Performance, Media Science, AI Brain learnings, and news from outside. Beside it, Your growth links to your own development: the position self-assessment, your next-career checklist, and your development plan, all in Team Experiences. Those pages are private to you. A manager sees nothing from them unless you choose to share it. You can also ask Verilume or the voice agent to read you the Brain Dump, and it presents each section in turn. The 1:1 with your Brain is coming later. On the Team Experiences page, Training Library Partners lists LinkedIn Learning and Coursiv as placeholder options: you can say you already have a license or ask for a new relationship, but nothing is connected yet. Growth home is your private coaching space. Rate your seat's skills and drag them into the order you most need help with, and the coach ranks your key needs. Set a desired next career to see the skill gap and the closest three moves. Build a lesson plan from the training library, which holds only real, verified links. Sort a brain dump into tasks, things to learn and things to raise, and keep up to five active tasks that you choose and order yourself. Hold a short weekly 1:1 with the coach in text. Nothing is visible to your manager unless you switch sharing on for that item, and the coach is part of the Radiance and Beacon plans.",
+  GA: "This card answers one question: what did each marketing dollar return, and what did each transaction cost to win. ROAS is gross revenue divided by marketing spend. CAC is marketing spend divided by unique transactions. Bookings do not carry a customer id yet, so CAC is spend per transaction, not per brand-new customer. The date list starts on YTD, January 1 to today, set against the same dates last year. WoW is the last 7 days against the 7 before. MoM is the month so far against the same days last month. YoY is the last 12 months against the 12 before. Custom is any two dates, set against the same dates a year earlier. Each card keeps its own range. A change is shown only when both periods have the figure on file for every month they touch; otherwise it says there is no comparison rather than guess. Spend and revenue held only as monthly totals are divided evenly by day, and the large view says which months were estimated. Open the large view for the full table, or use the share icon for Excel, CSV, Google Sheets, PDF or a slide.",
+  GB: "This card shows whether spend and impressions are moving at the speed the plan needs. Expected pace is the annual figure spread evenly across the days of the year: the confirmed working media budget for spend, and the annual plan impressions target for impressions. Expected pace for the dates you pick is that annual figure times the days in the dates divided by the days in the year. Within 5% of pace reads as on pace, above that is ahead, and below 85% reads as behind. Pacing is a straight-line check, not a forecast; a campaign that front-loads its spend will look ahead early and behind later. If there is no confirmed budget or impressions target for the year, the card says so and still shows what was spent and delivered with its change against the compared period. The date list works the same on every card: YTD by default, then WoW, MoM, YoY and Custom.",
+  GC: "The KPI story reads left to right, from attention to action: impressions and what they cost, website visits and what each engaged visitor cost, and leads and what each lead cost. Cost per impression is shown per 1,000 impressions, the usual CPM, since a single impression costs a fraction of a cent. Website visits are the monthly website users on file. Cost per engaged website visitor is marketing spend divided by engaged sessions. Cost per lead is marketing spend divided by leads. Lower costs show in green and higher costs in red. Website visits, engaged sessions and leads are monthly totals, so for a week or a part month they are divided evenly by day and marked as estimated in the large view. A change appears only where both periods have the figure for every month they touch.",
+  GD: "The Ops card counts campaigns by where they are in the build: In Planning, In Copy and Creative, In QA, and Completed. Completed means Brand, Marketing Functions, Creative and QA and Approval are all done. The headline is the share of campaigns dropping in the next 30 days that have completed trafficking, meaning the campaign has been sent to the trafficking team with its creative and tracking links. The date list chooses which campaigns are counted: a campaign is in view if it has not ended before the start of the range, so campaigns still ahead of us always count. Custom keeps only campaigns that run between the two dates. The trafficking headline always looks 30 days forward from today, whatever the range. Ad hoc and cancelled campaigns are left out. The large view lists every campaign dropping in the next 30 days with its trafficking status."
 };
 // 2026-10-07 — product utilization and team training. Same wording is mirrored in server.js (PRODUCT_GUIDE) so voice and Ask Verilume say what these thoughts say.
 function renderFaqPU(){
