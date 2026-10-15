@@ -83,9 +83,18 @@ export const config = {
 // disallow-all robots.txt and noindex headers regardless, and per "not
 // public at all" there's no reason a crawler should be able to fetch even
 // that file unauthenticated.
+//   - /api/cron/*: Vercel's own scheduler calls these (news-feed, brain-dump,
+//     reputation-sweep, refresh-intelligence, sync-snowflake) with no browser,
+//     no Basic Auth and no session cookie, so the gate was answering every
+//     scheduled run with a 401 before it reached the function (found
+//     2026-10-15: the weekly news feed had never run). Each endpoint has real
+//     auth of its own and fails closed: it returns 501 if CRON_SECRET is not
+//     set and 401 unless the request carries `Authorization: Bearer
+//     <CRON_SECRET>`, which Vercel adds automatically to its cron calls.
 const PUBLIC_PATHS = [
   /^\/twiliodomainverification183151a4\.txt$/,
   /^\/api\/ops\/docs-search$/,
+  /^\/api\/cron\/(news-feed|brain-dump|reputation-sweep|refresh-intelligence|sync-snowflake)$/,
 ];
 
 // Session cookie the gate mints once Basic Auth succeeds. HttpOnly (no
