@@ -16961,6 +16961,34 @@ function gpFmtVal(v, kind){
   if (kind === 'pct') return (v >= 0 ? '+' : '') + Number(v).toFixed(1) + '%';
   return Math.round(v).toLocaleString('en-US');
 }
+// Chart series for the cards (2026-10-15): the same figures as the cards, bucketed by day (up to 14 days), week (up to 100 days) or month.
+function gpBuckets(from, to){
+  const s = dmParse(from), e = dmParse(to), span = Math.round((e - s) / 864e5) + 1; const out = [];
+  if (span <= 14){ for (let t = s; t <= e; t += 864e5){ const d = dmIso(t); out.push({ from: d, to: d, label: dmFmt(d).replace(/, \d{4}$/, '') }); } }
+  else if (span <= 100){ for (let t = s; t <= e; t += 7 * 864e5){ const b = Math.min(e, t + 6 * 864e5); out.push({ from: dmIso(t), to: dmIso(b), label: dmFmt(dmIso(t)).replace(/, \d{4}$/, '') }); } }
+  else { dmMonthsOf(from, to).forEach(k => { const y = Number(k.slice(0, 4)), m = Number(k.slice(5, 7)); const a = Math.max(s, Date.UTC(y, m - 1, 1)), b = Math.min(e, Date.UTC(y, m - 1, dmDim(y, m))); out.push({ from: dmIso(a), to: dmIso(b), label: DM_MON[m - 1] + (k.slice(2, 4) !== to.slice(2, 4) || k.slice(2, 4) !== from.slice(2, 4) ? " '" + k.slice(2, 4) : '') }); }); }
+  return { unit: span <= 14 ? 'day' : span <= 100 ? 'week' : 'month', buckets: out };
+}
+function gpSeries(accountId, src, S, E, from, to){
+  const dd = dmDailyMetrics(src, from, to).days; const B = gpBuckets(from, to);
+  const leadMap = {}; Object.keys(S.leads).forEach(k => { leadMap[k] = S.leads[k].total; });
+  const per = (map, iso) => { const v = map[iso.slice(0, 7)]; return v == null ? null : v / dmDim(Number(iso.slice(0, 4)), Number(iso.slice(5, 7))); };
+  const tg = {}; const tgt = y => tg[y] || (tg[y] = gpPlanYearTargets(accountId, y));
+  const rows = B.buckets.map(b => {
+    const r = { label: b.label, spend: null, impressions: null, revenue: null, transactions: null, visits: null, engaged: null, leads: null, expSpend: null, expImps: null };
+    const add = (k, v) => { if (v != null && isFinite(v)) r[k] = (r[k] || 0) + v; };
+    for (let t = dmParse(b.from); t <= dmParse(b.to); t += 864e5){
+      const d = dmIso(t), c = dd[d] || {}; const y = Number(d.slice(0, 4)), diy = (Date.UTC(y, 11, 31) - Date.UTC(y, 0, 1)) / 864e5 + 1;
+      add('spend', c.spend); add('impressions', c.impressions); add('revenue', c.revenue); add('transactions', c.transactions);
+      add('visits', per(S.visits, d)); add('engaged', per(E, d)); add('leads', per(leadMap, d));
+      const T = tgt(y); if (T.wm != null) add('expSpend', T.wm / diy); if (T.imps != null) add('expImps', T.imps / diy);
+    }
+    const dv = (a, c, m) => (a != null && c != null && c > 0) ? a / c * (m || 1) : null;
+    r.roas = dv(r.revenue, r.spend); r.cac = dv(r.spend, r.transactions); r.cpm = dv(r.spend, r.impressions, 1000); r.costPerEngaged = dv(r.spend, r.engaged); r.costPerLead = dv(r.spend, r.leads);
+    return r;
+  });
+  return { unit: B.unit, rows };
+}
 function buildGpCards(accountId, spec){
   const R = gpResolveRange(spec);
   const src = dmLoadSources(accountId); const S = buildForecastSeries(accountId); const E = gpEngagedMonthly(accountId);
@@ -17006,11 +17034,20 @@ function buildGpCards(accountId, spec){
       { label: 'Leads', value: cur.leads, kind: 'int', delta: chg('leads'), goodWhen: 'up', cost: { label: 'Cost per lead', value: cur.costPerLead, kind: 'money2', delta: chg('costPerLead'), goodWhen: 'down' } }] };
   const dirs = [['cpm', 'cost per 1,000 impressions'], ['costPerEngaged', 'cost per engaged visitor'], ['costPerLead', 'cost per lead']].filter(([k]) => chg(k) != null);
   const better = dirs.filter(([k]) => chg(k) < 0).length;
-  c3.abstract = dirs.length ? `${better} of ${dirs.length} cost measures are cheaper than the compared period: ${dirs.map(([k, l]) => chg(k) === 0 ? `${l} flat` : `${l} ${chg(k) < 0 ? 'down' : 'up'} ${Math.abs(chg(k))}%`).join(', ')}.` : (cur.impressions != null || cur.visits != null || cur.leads != null ? 'Volumes are on file; there is not enough on file for the compared period to show a change.' : 'Impressions, website visits and leads are not on file for these dates yet.');
+  c3.abstract = dirs.length ? `${better} of ${dirs.length} cost measures (per 1,000 impressions, per engaged visitor, per lead) are cheaper than the compared period.` : (cur.impressions != null || cur.visits != null || cur.leads != null ? 'Volumes are on file; there is not enough on file for the compared period to show a change.' : 'Impressions, website visits and leads are not on file for these dates yet.');
   c3.status = !dirs.length ? 'neutral' : (better === dirs.length ? 'good' : (better === 0 ? 'bad' : 'neutral'));
   c3.large = { tables: [{ name: 'KPI story', columns: cols, rows: [row('Impressions', cur.impressions, prev.impressions, 'int'), row('Cost per 1,000 impressions', cur.cpm, prev.cpm, 'money2'), row('Website visits (users)', cur.visits, prev.visits, 'int'), row('Engaged website visits', cur.engaged, prev.engaged, 'int'), row('Cost per engaged website visitor', cur.costPerEngaged, prev.costPerEngaged, 'money2'), row('Leads', cur.leads, prev.leads, 'int'), row('Cost per lead', cur.costPerLead, prev.costPerLead, 'money2')] }],
     notes: estNotes.concat([['Website visits', cur.estimated.visits.concat(prev.estimated.visits)], ['Engaged website visits', cur.estimated.engaged.concat(prev.estimated.engaged)], ['Leads', cur.estimated.leads.concat(prev.estimated.leads)]].filter(x => x[1].length).map(x => `${x[0]} for ${mn(x[1])} are estimated from monthly totals divided evenly by day.`)),
     definitions: ['Cost per impression is shown per 1,000 impressions (CPM), since a single impression costs a fraction of a cent.', 'Cost per engaged website visitor is marketing spend divided by engaged sessions.', 'Cost per lead is marketing spend divided by leads. Website visits are the monthly website users on file.'] };
+  const SR = gpSeries(accountId, src, S, E, R.from, R.through); const col = k => SR.rows.map(r => r[k] == null ? null : Math.round(r[k] * 100) / 100); const labels = SR.rows.map(r => r.label);
+  const cum = k => { let n = 0, any = false; return SR.rows.map(r => { if (r[k] != null){ n += r[k]; any = true; } return any ? Math.round(n) : null; }); };
+  const cumExp = k => { let n = 0, any = false; return SR.rows.map(r => { if (r[k] != null){ n += r[k]; any = true; } return any ? Math.round(n) : null; }); };
+  c1.chart = { kind: 'sparks', unit: SR.unit, labels, rows: [{ label: 'ROAS', mark: 'line', vals: col('roas'), vkind: 'x', end: gpFmtVal(cur.roas, 'x'), delta: chg('roas'), goodWhen: 'up' }, { label: 'CAC', mark: 'line', vals: col('cac'), vkind: 'money', end: gpFmtVal(cur.cac, 'money'), delta: chg('cac'), goodWhen: 'down' }] };
+  c2.chart = { kind: 'pace', unit: SR.unit, labels, rows: [{ label: 'Spend, cumulative', vkind: 'money', actual: cum('spend'), expected: ex.anySpend ? cumExp('expSpend') : null, end: gpFmtVal(cur.spend, 'money'), pct: spendPace }, { label: 'Impressions, cumulative', vkind: 'int', actual: cum('impressions'), expected: ex.anyImps ? cumExp('expImps') : null, end: gpFmtVal(cur.impressions, 'int'), pct: impPace }] };
+  c3.chart = { kind: 'pairs', unit: SR.unit, labels, rows: [
+    { label: 'Impressions', vol: { vals: col('impressions'), vkind: 'int', end: gpFmtVal(cur.impressions, 'int'), delta: chg('impressions'), goodWhen: 'up' }, cost: { label: 'Cost per 1,000', vals: col('cpm'), vkind: 'money2', end: gpFmtVal(cur.cpm, 'money2'), delta: chg('cpm'), goodWhen: 'down' } },
+    { label: 'Website visits', vol: { vals: col('visits'), vkind: 'int', end: gpFmtVal(cur.visits, 'int'), delta: chg('visits'), goodWhen: 'up' }, cost: { label: 'Cost per engaged visitor', vals: col('costPerEngaged'), vkind: 'money2', end: gpFmtVal(cur.costPerEngaged, 'money2'), delta: chg('costPerEngaged'), goodWhen: 'down' } },
+    { label: 'Leads', vol: { vals: col('leads'), vkind: 'int', end: gpFmtVal(cur.leads, 'int'), delta: chg('leads'), goodWhen: 'up' }, cost: { label: 'Cost per lead', vals: col('costPerLead'), vkind: 'money2', end: gpFmtVal(cur.costPerLead, 'money2'), delta: chg('costPerLead'), goodWhen: 'down' } }] };
   const cards = [c1, c2, c3];
   cards.forEach(c => { c.export = { title: c.title, fileSlug: 'growth-' + c.key, context: ctx, tables: c.large.tables.map(t => ({ name: t.name, columns: t.columns, rows: t.rows })), notes: c.large.notes.concat(c.large.definitions) }; });
   return { range: R, cards, estimated: estNotes };
