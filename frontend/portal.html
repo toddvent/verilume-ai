@@ -1492,6 +1492,8 @@
   .gpc-donut{display:flex;align-items:center;gap:14px;justify-content:center;height:100%;} .gpc-donut svg{width:150px;height:150px;flex:none;color:var(--ink);} .gpc-donut.big svg{width:220px;height:220px;}
   .gpc-leg{display:flex;flex-direction:column;gap:8px;font-size:0.75rem;min-width:0;} .gpc-leg div{display:grid;grid-template-columns:10px 1fr auto;align-items:center;gap:8px;} .gpc-leg i{width:10px;height:10px;border-radius:50%;} .gpc-leg b{font-variant-numeric:tabular-nums;font-size:0.875rem;}
   .gpc-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:8px;} .gpc-tools{flex-wrap:nowrap;white-space:nowrap;justify-self:end;}
+  .gpc-src{margin:-14px 0 20px;font-size:0.8125rem;} .gpc-src a{cursor:pointer;}
+  .gpc-srclist{margin:4px 0 8px;padding-left:18px;font-size:0.8125rem;line-height:1.55;} .gpc-srccard{border-top:1px solid var(--line);}
   .gpc-modal{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:3000;display:flex;align-items:flex-start;justify-content:center;padding:4vh 16px;overflow:auto;}
   .gpc-panel{background:var(--white);color:var(--ink);border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.35);width:min(980px,100%);padding:24px 28px 28px;} .gpc-panel .gpc-face{flex-direction:row;flex-wrap:wrap;gap:18px 40px;} .gpc-panel .gpc-face.ops{display:flex;} .gpc-panel .gpc-mv{font-size:2rem;}
   .gpc-phead{display:flex;align-items:center;justify-content:space-between;gap:12px;} .gpc-phead h2{margin:0;font-size:1.25rem;}
@@ -25118,20 +25120,30 @@ function gpcCardData(key){
   const st = gpc[key]; if (!st.data) return null;
   const r = st.range || {}; return Object.assign({}, st.data, { rangeLabel: r.label || '', compLabel: r.compLabel || '' });
 }
+async function gpcFetch(st){
+  const q = new URLSearchParams({ preset: st.preset }); if (st.preset === 'custom'){ q.set('from', st.from); q.set('to', st.to); }
+  for (let attempt = 0; attempt < 2; attempt++){
+    try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/analytics/gp-cards?${q}`); if (r.ok) return await r.json(); } catch (e){ /* retry once */ }
+    await new Promise(res => setTimeout(res, 1200));
+  }
+  return null;
+}
 async function gpcLoad(key){
   const st = gpc[key]; if (!st || key === 'ops') return gpcRender();
   if (st.preset === 'custom' && !(st.from && st.to && st.to >= st.from)) return gpcRender();
   const seq = ++st.seq; st.loading = true; st.err = ''; gpcRender();
-  try {
-    const q = new URLSearchParams({ preset: st.preset }); if (st.preset === 'custom'){ q.set('from', st.from); q.set('to', st.to); }
-    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/analytics/gp-cards?${q}`);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const j = await r.json(); if (seq !== st.seq) return;
-    st.data = (j.cards || []).find(c => c.key === key) || null; st.range = j.range || null;
-  } catch (e){ if (seq !== st.seq) return; st.err = 'Could not load this card right now.'; }
-  if (seq === st.seq){ st.loading = false; gpcRender(); }
+  const j = await gpcFetch(st); if (seq !== st.seq) return;
+  if (j){ st.data = (j.cards || []).find(c => c.key === key) || null; st.range = j.range || null; } else st.err = 'Could not load this card right now. Change the date range to try again.';
+  st.loading = false; gpcRender();
 }
-function gpcEnsure(){ if (gpc.started || !gpIsLive()) return; gpc.started = true; ['roas', 'pacing', 'kpi'].forEach(k => gpcLoad(k)); }
+// First load is one request for all three cards (they share one build on the server).
+async function gpcLoadAll(){
+  const keys = ['roas', 'pacing', 'kpi']; const seqs = keys.map(k => { const st = gpc[k]; st.loading = true; st.err = ''; return ++st.seq; }); gpcRender();
+  const j = await gpcFetch(gpc.roas);
+  keys.forEach((k, i) => { const st = gpc[k]; if (seqs[i] !== st.seq) return; if (j){ st.data = (j.cards || []).find(c => c.key === k) || null; st.range = j.range || null; } else st.err = 'Could not load this card right now. Change the date range to try again.'; st.loading = false; });
+  gpcRender();
+}
+function gpcEnsure(){ if (gpc.started || !gpIsLive()) return; gpc.started = true; gpcLoadAll(); }
 function gpcSetPreset(key, v){
   const st = gpc[key]; st.preset = v;
   if (v === 'custom' && !(st.from && st.to)){ const d = gpcRange({ preset: 'ytd' }); st.from = st.from || d.from; st.to = st.to || d.through; gpcRender(); return; }
@@ -25207,9 +25219,23 @@ function gpcRender(){
 }
 function gpcOpen(key){ gpc.open = key; gpcRenderModal(); }
 function gpcClose(){ gpc.open = null; gpcRenderModal(); }
+function gpcOpenSources(){ gpc.open = 'sources'; gpcRenderModal(); }
+function gpcSourcesHtml(){
+  const prov = gp.data && gp.data.provenance; let list = '';
+  if (prov && prov.sources){ const used = prov.sources.filter(s => s.rows > 0); list = used.length ? `<ul class="gpc-srclist">${used.map(s => `<li><b>${escapeHtml(s.label)}</b> ${Number(s.rows).toLocaleString()} rows${s.from ? ` (${escapeHtml(s.from)}${s.to && s.to !== s.from ? ' to ' + escapeHtml(s.to) : ''})` : ''}${s.lastWritten ? `, written ${escapeHtml(s.lastWritten)}` : ''}</li>`).join('')}</ul>` : '<p class="strat-sub">Nothing on file yet for this account.</p>';
+    const r = prov.lastReceipt; if (r) list += `<p class="strat-sub">Last upload ${escapeHtml(r.fileName || r.kind)} ${escapeHtml(String(r.createdAt).slice(0, 10))}: ${r.matched === 1 ? 'file and database match' : r.matched === 0 ? '<span style="color:#C0273C;font-weight:600;">file and database differ, see Train the Brain › Transactions</span>' : 'not compared'}</p>`; }
+  else list = '<p class="strat-sub">Source details are still loading.</p>';
+  const cards = ['roas', 'pacing', 'kpi', 'ops'].map(k => { const c = gpcCardData(k); if (!c) return ''; return `<div class="gpc-srccard"><div class="strat-chart-label" style="margin:14px 0 2px;">${GPC_META[k].n} · ${escapeHtml(GPC_META[k].title)}</div><div class="strat-sub">${escapeHtml(stratHumanDates(c.rangeLabel))}</div>${(c.large.definitions || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}${(c.large.notes || []).map(n => `<p class="fd-hint">${escapeHtml(stratHumanDates(n))}</p>`).join('')}</div>`; }).join('');
+  return `<div class="strat-chart-label" style="margin:10px 0 4px;">Data behind these cards</div>${list}${cards}`;
+}
 function gpcRenderModal(){
   let host = document.getElementById('gpcModal');
   if (!gpc.open){ if (host) host.remove(); return; }
+  if (gpc.open === 'sources'){
+    if (!host){ host = document.createElement('div'); host.id = 'gpcModal'; host.className = 'gpc-modal'; host.addEventListener('click', e => { if (e.target === host) gpcClose(); }); document.body.appendChild(host); }
+    host.innerHTML = `<div class="gpc-panel" role="dialog" aria-modal="true" aria-label="Source details"><div class="gpc-phead"><h2>Source details</h2><div class="gpc-tools"><button type="button" class="share-btn" aria-label="Close source details" onclick="gpcClose()">✕</button></div></div>${gpcSourcesHtml()}</div>`;
+    return;
+  }
   const key = gpc.open, m = GPC_META[key], c = gpcCardData(key), st = gpc[key];
   if (!host){ host = document.createElement('div'); host.id = 'gpcModal'; host.className = 'gpc-modal'; host.addEventListener('click', e => { if (e.target === host) gpcClose(); }); document.body.appendChild(host); }
   const tables = c ? c.large.tables.map(t => `<div class="strat-chart-label" style="margin:14px 0 4px;">${escapeHtml(t.name)}</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr>${t.columns.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead><tbody>${t.rows.length ? t.rows.map(r => `<tr>${r.map(v => `<td>${escapeHtml(v)}</td>`).join('')}</tr>`).join('') : `<tr class="empty-state-row"><td colspan="${t.columns.length}">None</td></tr>`}</tbody></table></div>`).join('') : '';
@@ -25240,7 +25266,7 @@ function gpRenderCoreRow(){
   // 2026-10-15: the four reporting cards (ROAS and CAC, Pacing, KPI Story, Ops) replace the earlier four story cards. gpStoryCards() stays defined, unused.
   el.classList.add('gp-core'); el.innerHTML = gpcCardsHtml(); gpcEnsure();
   const oldS = document.getElementById('gpSourceStamp'); if (oldS) oldS.remove();
-  if (gp.data && gp.data.provenance) el.insertAdjacentHTML('afterend', `<div id="gpSourceStamp">${stratSourceStampHtml(gp.data.provenance)}</div>`);
+  el.insertAdjacentHTML('afterend', `<div id="gpSourceStamp" class="gpc-src"><a class="flink" onclick="gpcOpenSources()">View source details →</a></div>`);
   const rows = gpCampaigns(); const risk = rows.filter(r => r.stage !== 'Complete' && r.stage !== 'Analysis' && cmgmtIsAtRisk(r.c)).length;
   const rb = document.getElementById('gpRiskLine'); if (rb) rb.innerHTML = risk ? `<span style="color:#C0273C;font-weight:600;">${risk} campaign${risk === 1 ? '' : 's'} starting within 2 weeks, not approved</span> · QA &amp; Approval pending` : '';
 }
