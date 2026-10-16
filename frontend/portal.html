@@ -1497,7 +1497,9 @@
   .gpc-head{height:40px;} .gpc-spacer{height:26px;} .gpc-tail{margin-top:auto;display:flex;flex-direction:column;gap:6px;} .gpc-tail .gpc-key{min-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .gpc-tg{position:relative;} .gpc-hit{position:absolute;top:0;bottom:0;transform:translateX(-50%);outline:none;} .gpc-pt{position:absolute;left:50%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;border-radius:50%;border:1.5px solid var(--white);box-sizing:content-box;} .gpc-tg.sparse .gpc-pt{opacity:0;} .gpc-hit:hover .gpc-pt,.gpc-hit:focus .gpc-pt{opacity:1;width:9px;height:9px;margin:-4.5px 0 0 -4.5px;} .gpc-hit:hover,.gpc-hit:focus{background:rgba(100,116,139,.08);}
   .gpc-tip{display:none;position:absolute;top:2px;z-index:5;min-width:116px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--white);color:var(--ink);box-shadow:0 4px 14px rgba(15,23,42,.14);font-size:0.6875rem;line-height:1.5;white-space:nowrap;pointer-events:none;text-align:left;font-variant-numeric:tabular-nums;} .gpc-tip b{display:block;font-size:0.75rem;margin-bottom:2px;} .gpc-tip i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;} .gpc-hit:hover .gpc-tip,.gpc-hit:focus .gpc-tip{display:block;} .gpc-tip.l{left:0;} .gpc-tip.r{right:0;} .gpc-tip.m{left:50%;transform:translateX(-50%);}
-  .gpc-key i.s{border-top-width:3px;margin-left:8px;} .gpc-key i.s:first-child{margin-left:0;}
+  .gpc-key.wrap{flex-wrap:wrap;gap:2px 10px;} .gpc-kk{display:inline-flex;align-items:center;gap:5px;} .gpc-key i.s{border-top-width:3px;margin-left:8px;} .gpc-key .gpc-kk i.s{margin-left:0;} .gpc-key i.s.dash{border-top-style:dashed;}
+  .gpc-donut.stack{flex-direction:column;gap:8px;} .gpc-donut.stack svg{width:128px;height:128px;} .gpc-donut.stack .gpc-leg{width:100%;} .gpc-donut.stack .gpc-leg div{grid-template-columns:10px 1fr auto;}
+  .gpc-mix{display:flex;flex-direction:column;gap:9px;} .gpc-mixh{display:flex;justify-content:space-between;gap:8px;font-size:0.75rem;} .gpc-mixh span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;} .gpc-mixh b{font-variant-numeric:tabular-nums;white-space:nowrap;font-size:0.75rem;} .gpc-mixtrack{position:relative;height:10px;background:#EEF2F6;border-radius:5px;margin-top:3px;} .gpc-mixtrack i{display:block;height:100%;background:#1E2761;border-radius:5px;} .gpc-mixtrack u{position:absolute;top:-3px;width:2px;height:16px;background:#0f172a;text-decoration:none;} .gpc-key i.s:first-child{margin-left:0;}
   .gpc-srclist{margin:4px 0 8px;padding-left:18px;font-size:0.8125rem;line-height:1.55;} .gpc-srccard{border-top:1px solid var(--line);}
   .gpc-modal{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:3000;display:flex;align-items:flex-start;justify-content:center;padding:4vh 16px;overflow:auto;}
   .gpc-panel{background:var(--white);color:var(--ink);border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.35);width:min(980px,100%);padding:24px 28px 28px;} .gpc-panel .gpc-face{flex-direction:row;flex-wrap:wrap;gap:18px 40px;} .gpc-panel .gpc-face.ops{display:flex;} .gpc-panel .gpc-mv{font-size:2rem;}
@@ -12318,6 +12320,42 @@
         </div>
         <div class="faq-body" id="bpFaqBodyGD">
           <p id="bpFaqTextGD"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadGE" onclick="toggleFaqItem('GE')">
+          <span class="faq-label">Strategy: Booked Revenue Trends</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyGE">
+          <p id="bpFaqTextGE"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadGF" onclick="toggleFaqItem('GF')">
+          <span class="faq-label">Strategy: Budget Allocations</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyGF">
+          <p id="bpFaqTextGF"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadGG" onclick="toggleFaqItem('GG')">
+          <span class="faq-label">Strategy: Media Mix Allocations</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyGG">
+          <p id="bpFaqTextGG"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadGH" onclick="toggleFaqItem('GH')">
+          <span class="faq-label">Strategy: Forecasted Future Revenue</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyGH">
+          <p id="bpFaqTextGH"></p>
         </div>
       </div>
   </div>
@@ -24230,39 +24268,20 @@ function stratSourceStampHtml(prov){
   return `<p class="strat-sub gp-stamp"><b>Source:</b> ${parts.join(' · ')}${rc}</p>`;
 }
 function stratRenderDemandRow(){
+  // 2026-10-16 (Todd): the top row is four reporting cards on the Growth & Performance card template: Booked Revenue Trends,
+  // Budget Allocations, Media Mix Allocations and Forecasted Future Revenue. Each has its own date list, share menu, enlarge and speech bubble.
   const el = document.getElementById('tabStatCardGrid'); if (!el) return;
-  el.classList.add('four');
+  el.classList.add('four'); el.classList.remove('gp-core'); el.classList.add('gs-core');
   const oldN = document.getElementById('stratDemandNote'); if (oldN) oldN.remove();
-  if (!document.getElementById('drrBar')) el.insertAdjacentHTML('beforebegin', '<div class="drr-bar" id="drrBar"></div>');
-  drrRenderBars();
-  const d = strat.demand;
-  if (!d){ el.innerHTML = ['Budget flow', 'Gross revenue', 'ROAS', 'CAC'].map(l => `<div class="stat-card"><div class="sc-label">${l}</div><div class="sc-value">…</div><div class="sc-delta neutral">Loading</div></div>`).join(''); return; }
-  const c = d.current, dl = d.deltaPct, w = d.window, o = d.outcomes;
-  const per = d.range ? stratHumanDates(d.range.label) : `${stratRangeText(w.from, w.to)}`;
-  const card = (label, value, delta, good, sub, key) => `<div class="stat-card has-share">${shareBtnHtml(key)}<div class="sc-label">${label}</div><div class="sc-value">${value}</div><div class="sc-delta ${good ? 'good' : 'neutral'}">${delta}</div><div class="strat-sub">${sub}</div></div>`;
-  // Show the current number always; a comparison only where one exists.
-  const cmp = (pct, vsTarget, tgtText, mkey) => {
-    if (pct != null) return `${stratPct(pct)} vs prior year${stratMatchedNote(d, mkey)}`;
-    if (vsTarget != null && tgtText) return `${stratPct(vsTarget)} vs plan target ${tgtText}`;
-    if (tgtText) return `Plan target ${tgtText}`;
-    return 'No prior year on file';
-  };
-  const basisSub = o ? escapeHtml(stratHumanDates(o.basisLabel)) + (o.outsideRange ? ' · not the selected dates' : '') : 'Not on file yet';
-  const oldBasis = o && o.outsideRange ? ' · ' + escapeHtml(o.basis === 'annual_results' ? 'closed-year figures' : 'plan baseline') : '';
-  const t = o && o.target, vt = o && o.vsTargetPct;
-  el.innerHTML =
-    `<div class="stat-card flow-card"><div class="sc-label">Budget flow · working media</div><div id="stratFlowBody"><p class="hint">Loading…</p></div></div>` +
-    card('Gross revenue', o ? stratMoney(o.revenue) : '—', cmp(o && o.deltaPct.revenue, vt && vt.revenue, t && t.revenue != null ? stratMoney(t.revenue) : null, 'revenue'), !!(o && ((o.deltaPct.revenue != null && o.deltaPct.revenue >= 0) || (vt && vt.revenue != null && vt.revenue >= 0))), basisSub, 'revenue') +
-    card('ROAS', o && o.roas != null ? `${o.roas.toFixed(2)}x` : '—', cmp(o && o.deltaPct.roas, vt && vt.roas, t && t.roas != null ? `${t.roas.toFixed(2)}x` : null, 'roas'), !!(o && ((o.deltaPct.roas != null && o.deltaPct.roas >= 0) || (vt && vt.roas != null && vt.roas >= 0))), 'Gross revenue ÷ marketing spend' + oldBasis, 'roas') +
-    card('CAC', o && o.cac != null ? `$${o.cac.toLocaleString()}` : '—', cmp(o && o.deltaPct.cac, vt && vt.cac, t && t.cac != null ? `$${t.cac.toLocaleString()}` : null, 'cacTransaction'), !!(o && ((o.deltaPct.cac != null && o.deltaPct.cac <= 0) || (vt && vt.cac != null && vt.cac <= 0))), 'Spend ÷ unique transactions' + oldBasis, 'cac');
-  bfRenderStrategy();
-  el.insertAdjacentHTML('afterend', `<div id="stratDemandNote">${stratCoverageHtml(d.coverage)}</div>`);
+  const bar = document.getElementById('drrBar'); if (bar) bar.remove();
+  el.innerHTML = gpcCardsHtml(GS_KEYS); gscEnsure();
+  const d = strat.demand; if (d && d.coverage) el.insertAdjacentHTML('afterend', `<div id="stratDemandNote">${stratCoverageHtml(d.coverage)}</div>`);
 }
 async function stratLoadDemand(){
   if (!stratIsLive()) return;
   await drrLoad(); drrOnChange(stratLoadDemand);
   try { strat.demand = await stratGet('story'); } catch (e){ strat.demand = null; }
-  if (activePrimaryTab === 'strategy'){ const n = document.getElementById('stratDemandNote'); if (n) n.remove(); if (strat.demand) stratRenderDemandRow(); else { const el = document.getElementById('tabStatCardGrid'); if (el) el.innerHTML = '<p class="strat-empty">Could not load the demand row just now.</p>'; } }
+  if (activePrimaryTab === 'strategy'){ const n = document.getElementById('stratDemandNote'); if (n) n.remove(); stratRenderDemandRow(); }
 }
 
 // ---- SVG helpers ----
@@ -25060,8 +25079,11 @@ function gpStoryCards(d){
 // the AI Thoughts topic. Cards 1-3 come from /analytics/gp-cards (one server build, daily media model); card 4 is built here
 // from the campaigns already loaded. This replaces the earlier four story cards on this tab; Strategy is untouched.
 const GPC_PRESETS = [['ytd', 'YTD'], ['wow', 'WoW'], ['mom', 'MoM'], ['yoy', 'YoY'], ['custom', 'Custom']];
-const GPC_META = { roas: { n: 1, title: 'Performance', thought: 'GA' }, pacing: { n: 2, title: 'Demand Pacing', thought: 'GB' }, kpi: { n: 3, title: 'KPI Story', thought: 'GC' }, ops: { n: 4, title: 'Execution', thought: 'GD' } };
-const gpc = { roas: { preset: 'ytd', from: '', to: '', data: null, range: null, err: '', loading: false, seq: 0 }, pacing: { preset: 'ytd', from: '', to: '', data: null, range: null, err: '', loading: false, seq: 0 }, kpi: { preset: 'ytd', from: '', to: '', data: null, range: null, err: '', loading: false, seq: 0 }, ops: { preset: 'ytd', from: '', to: '' }, open: null, started: false };
+const GPC_META = { roas: { n: 1, title: 'Performance', thought: 'GA' }, pacing: { n: 2, title: 'Demand Pacing', thought: 'GB' }, kpi: { n: 3, title: 'KPI Story', thought: 'GC' }, ops: { n: 4, title: 'Execution', thought: 'GD' },
+  sbook: { title: 'Booked Revenue Trends', thought: 'GE', ep: 'strategy-cards' }, sbud: { title: 'Budget Allocations', thought: 'GF', ep: 'strategy-cards' }, smix: { title: 'Media Mix Allocations', thought: 'GG', ep: 'strategy-cards' }, sfore: { title: 'Forecasted Future Revenue', thought: 'GH', ep: 'strategy-cards' } };
+const GS_KEYS = ['sbook', 'sbud', 'smix', 'sfore'];
+const gpc = { roas: { preset: 'ytd', from: '', to: '', data: null, range: null, err: '', loading: false, seq: 0 }, pacing: { preset: 'ytd', from: '', to: '', data: null, range: null, err: '', loading: false, seq: 0 }, kpi: { preset: 'ytd', from: '', to: '', data: null, range: null, err: '', loading: false, seq: 0 }, ops: { preset: 'ytd', from: '', to: '' }, open: null, started: false, startedS: false };
+GS_KEYS.forEach(k => { gpc[k] = { preset: 'ytd', from: '', to: '', data: null, range: null, err: '', loading: false, seq: 0 }; });
 function gpcIso(t){ const d = new Date(t); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`; }
 function gpcRange(st){
   const [y, m, d] = cxToday().split('-').map(Number); const today = Date.UTC(y, m - 1, d);
@@ -25123,12 +25145,12 @@ function gpcOpsData(){
 function gpcCardData(key){
   if (key === 'ops') return gpcOpsData();
   const st = gpc[key]; if (!st.data) return null;
-  const r = st.range || {}; return Object.assign({}, st.data, { rangeLabel: r.label || '', compLabel: r.compLabel || '' });
+  const r = st.range || {}; return Object.assign({}, st.data, { rangeLabel: st.data.rangeLabel || r.label || '', compLabel: st.data.compLabel || r.compLabel || '' });
 }
-async function gpcFetch(st){
-  const q = new URLSearchParams({ preset: st.preset }); if (st.preset === 'custom'){ q.set('from', st.from); q.set('to', st.to); }
+async function gpcFetch(st, ep, only){
+  const q = new URLSearchParams({ preset: st.preset }); if (st.preset === 'custom'){ q.set('from', st.from); q.set('to', st.to); } if (only) q.set('only', only);
   for (let attempt = 0; attempt < 2; attempt++){
-    try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/analytics/gp-cards?${q}`); if (r.ok) return await r.json(); } catch (e){ /* retry once */ }
+    try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/analytics/${ep || 'gp-cards'}?${q}`); if (r.ok) return await r.json(); } catch (e){ /* retry once */ }
     await new Promise(res => setTimeout(res, 1200));
   }
   return null;
@@ -25137,7 +25159,7 @@ async function gpcLoad(key){
   const st = gpc[key]; if (!st || key === 'ops') return gpcRender();
   if (st.preset === 'custom' && !(st.from && st.to && st.to >= st.from)) return gpcRender();
   const seq = ++st.seq; st.loading = true; st.err = ''; gpcRender();
-  const j = await gpcFetch(st); if (seq !== st.seq) return;
+  const ep = GPC_META[key].ep; const j = await gpcFetch(st, ep, ep ? key : null); if (seq !== st.seq) return;
   if (j){ st.data = (j.cards || []).find(c => c.key === key) || null; st.range = j.range || null; } else st.err = 'Could not load this card right now. Change the date range to try again.';
   st.loading = false; gpcRender();
 }
@@ -25148,6 +25170,13 @@ async function gpcLoadAll(){
   keys.forEach((k, i) => { const st = gpc[k]; if (seqs[i] !== st.seq) return; if (j){ st.data = (j.cards || []).find(c => c.key === k) || null; st.range = j.range || null; } else st.err = 'Could not load this card right now. Change the date range to try again.'; st.loading = false; });
   gpcRender();
 }
+async function gscLoadAll(){
+  const seqs = GS_KEYS.map(k => { const st = gpc[k]; st.loading = true; st.err = ''; return ++st.seq; }); gpcRender();
+  const j = await gpcFetch(gpc.sbook, 'strategy-cards');
+  GS_KEYS.forEach((k, i) => { const st = gpc[k]; if (seqs[i] !== st.seq) return; if (j){ st.data = (j.cards || []).find(c => c.key === k) || null; st.range = j.range || null; } else st.err = 'Could not load this card right now. Change the date range to try again.'; st.loading = false; });
+  gpcRender();
+}
+function gscEnsure(){ if (gpc.startedS || !stratIsLive()) return; gpc.startedS = true; gscLoadAll(); }
 function gpcEnsure(){ if (gpc.started || !gpIsLive()) return; gpc.started = true; gpcLoadAll(); }
 function gpcSetPreset(key, v){
   const st = gpc[key]; st.preset = v;
@@ -25217,18 +25246,64 @@ function gpcTogether(ch, big){
   }).join('');
   return `<div class="gpc-key"><i class="s" style="border-top-color:${cols[0]}"></i> ROAS <i class="s" style="border-top-color:${cols[1]}"></i> CAC <i class="dash"></i> First period = 100</div><div class="gpc-tg${n > 24 ? ' sparse' : ''}">${svg}${hits}</div>` + gpcTail(`<div class="gpc-key">Both lines share one scale. Hover a dot for values.</div>`, labels);
 }
+// Several lines on ONE scale (all dollars), with a hover column per period. series: [{label, vals, dash, thin, noDots}].
+function gpcMulti(ch, big, o){
+  o = o || {}; const labels = ch.labels || [], n = labels.length, S = ch.series || []; const W = big ? 640 : 240, H = o.h || (big ? 190 : 110), padT = 8, padB = 6, padX = 6;
+  const cols = o.colors || ['#1E2761', '#0891B2', '#D08A3E', '#7C5CBF', '#94A3B8'];
+  const all = S.flatMap(q => q.vals || []).filter(v => v != null && isFinite(v));
+  if (n < 2 || !all.length) return '<div class="gpc-empty">Not enough periods on file to chart yet.</div>';
+  const lo = 0; let hi = Math.max(...all); if (hi <= lo) hi = lo + 1; hi *= 1.06;
+  const x = i => padX + i * (W - 2 * padX) / (n - 1), y = v => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
+  const path = arr => { let d = '', pen = false; arr.forEach((v, i) => { if (v == null){ pen = false; return; } d += `${pen ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`; pen = true; }); return d; };
+  const lines = S.map((q, k) => `<path d="${path(q.vals || [])}" fill="none" stroke="${q.color || cols[k % cols.length]}" stroke-width="${q.thin ? 1 : 2}" ${q.dash ? 'stroke-dasharray="5 4"' : ''} stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`).join('');
+  const svg = `<svg class="gpc-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${escapeHtml(o.aria || 'Trend')}"><line x1="0" x2="${W}" y1="${H - padB}" y2="${H - padB}" stroke="var(--line)" stroke-width="1"/>${lines}</svg>`;
+  const fm = (q, v) => v == null ? 'not on file' : gpcFmt(v, q.vkind || 'money');
+  const hits = labels.map((l, i) => {
+    const dots = S.map((q, k) => (q.noDots || q.thin || (q.vals || [])[i] == null) ? '' : `<i class="gpc-pt" style="top:${(y(q.vals[i]) / H * 100).toFixed(2)}%;background:${q.color || cols[k % cols.length]}"></i>`).join('');
+    const side = i < n / 3 ? 'l' : (i >= n * 2 / 3 ? 'r' : 'm');
+    const tip = `<span class="gpc-tip ${side}"><b>${escapeHtml(l)}</b>${(o.tipRows ? o.tipRows(i) : S.filter(q => !q.thin).map((q, k) => `${escapeHtml(q.label)} ${escapeHtml(fm(q, (q.vals || [])[i]))}`)).map((t, k) => `<span>${o.tipDots === false ? '' : `<i style="background:${(S[k] && (S[k].color || cols[k % cols.length])) || '#94A3B8'}"></i>`}${t}</span><br>`).join('')}${o.tipExtra ? o.tipExtra(i) : ''}</span>`;
+    return `<div class="gpc-hit" tabindex="0" style="left:${(x(i) / W * 100).toFixed(2)}%;width:${(100 / n).toFixed(2)}%" aria-label="${escapeHtml(l)}">${dots}${tip}</div>`;
+  }).join('');
+  return `<div class="gpc-tg${n > 24 ? ' sparse' : ''}">${svg}${hits}</div>`;
+}
+function gpcGroups(ch, big){
+  const S = (ch.series || []); const cols = ['#1E2761', '#0891B2', '#D08A3E', '#7C5CBF', '#94A3B8']; S.forEach((q, k) => { q.color = cols[k % cols.length]; });
+  const key = `<div class="gpc-key wrap">${S.map(q => `<span class="gpc-kk"><i class="s" style="border-top-color:${q.color}"></i>${escapeHtml(q.label)}</span>`).join('')}</div>`;
+  const plot = gpcMulti(ch, big, { h: big ? 190 : 130, aria: 'Booked revenue by product group', tipRows: i => S.map(q => `${escapeHtml(q.label)} ${escapeHtml(gpcFmt((q.vals || [])[i], 'money'))}`), tipExtra: i => `<span><b style="display:inline">Total</b> ${escapeHtml(gpcFmt((ch.total.vals || [])[i], 'money'))}</span><br><span>Average per transaction ${escapeHtml(gpcFmt((ch.avg.vals || [])[i], 'money2'))}</span>` });
+  const a = ch.avg;
+  const avg = `<div class="gpc-row"><div class="gpc-rh"><span>${escapeHtml(a.label)}</span>${gpcEnd(a.end)}${gpcDelta(a.delta, 'neutral')}</div>${gpcSpark(a.vals, { color: '#0891B2', h: big ? 110 : 40, aria: a.label })}</div>`;
+  return key + plot + avg + gpcTail('', ch.labels);
+}
+function gpcForecast(ch, big){
+  const S = ch.series || []; const cols = { Booked: '#1E2761', Forecast: '#0891B2', High: '#94A3B8', Low: '#94A3B8' }; S.forEach(q => { q.color = cols[q.label] || '#94A3B8'; });
+  const key = `<div class="gpc-key wrap"><span class="gpc-kk"><i class="s" style="border-top-color:#1E2761"></i>Booked</span><span class="gpc-kk"><i class="s dash" style="border-top-color:#0891B2"></i>Forecast</span><span class="gpc-kk"><i class="dash"></i>Low and high</span></div>`;
+  const by = {}; S.forEach(q => { by[q.label] = q; });
+  const plot = gpcMulti(ch, big, { h: big ? 190 : 170, aria: 'Booked and forecast revenue', tipDots: false, tipRows: i => [by.Booked && by.Booked.vals[i] != null ? 'Booked ' + gpcFmt(by.Booked.vals[i], 'money') : null, by.Forecast && by.Forecast.vals[i] != null && (!by.Booked || by.Booked.vals[i] == null || true) ? 'Forecast ' + gpcFmt(by.Forecast.vals[i], 'money') : null, by.Low && by.Low.vals[i] != null && by.High.vals[i] != null && by.Low.vals[i] !== by.High.vals[i] ? 'Range ' + gpcFmt(by.Low.vals[i], 'money') + ' to ' + gpcFmt(by.High.vals[i], 'money') : null].filter(Boolean) });
+  const head = `<div class="gpc-rh"><span>Dates in view</span>${gpcEnd(ch.end)}${gpcDelta(ch.delta, 'up')}</div>`;
+  return key + head + plot + gpcTail('', ch.labels);
+}
+function gpcMix(ch, big){
+  const rows = ch.rows || []; if (!rows.length) return '<div class="gpc-empty">Nothing on file to compare yet.</div>';
+  const mx = Math.max(10, ...rows.map(r => Math.max(r.actual || 0, r.plan || 0))) * 1.05;
+  const body = rows.map(r => `<div class="gpc-mixrow"><div class="gpc-mixh"><span>${escapeHtml(r.label)}</span><b>${escapeHtml(r.text || '')}</b></div><div class="gpc-mixtrack"><i style="width:${((r.actual || 0) / mx * 100).toFixed(1)}%"></i>${r.plan != null ? `<u style="left:${(r.plan / mx * 100).toFixed(1)}%" title="Plan ${r.plan}%"></u>` : ''}</div></div>`).join('');
+  return `<div class="gpc-mix">${body}</div>` + gpcTail(`<div class="gpc-key">Bar is share of spend${ch.hasPlan ? ' · tick is share of plan' : ''}</div>`, null);
+}
 function gpcTail(note, labels){ return `<div class="gpc-tail">${note || ''}${gpcAxis(labels)}</div>`; }
 function gpcAxis(labels){ if (!labels || !labels.length) return ''; const a = labels[0], b = labels[labels.length - 1]; return `<div class="gpc-ax"><span>${escapeHtml(a)}</span><span>${labels.length > 1 ? escapeHtml(b) : ''}</span></div>`; }
 function gpcEnd(t){ return t && t !== '—' ? `<b>${escapeHtml(t)}</b>` : ''; }
-function gpcDonut(stages, big){
+function gpcDonut(stages, big, center){
   const tot = stages.reduce((n, s) => n + s.value, 0), R = 52, C = 2 * Math.PI * R; let off = 0;
   const segs = tot ? stages.filter(s => s.value > 0).map(s => { const len = s.value / tot * C; const seg = `<circle cx="70" cy="70" r="${R}" fill="none" stroke="${s.color}" stroke-width="22" stroke-dasharray="${Math.max(0, len - 2).toFixed(2)} ${(C - Math.max(0, len - 2)).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 70 70)"/>`; off += len; return seg; }).join('') : '';
-  return `<div class="gpc-donut${big ? ' big' : ''}"><svg viewBox="0 0 140 140" role="img" aria-label="Campaigns by stage"><circle cx="70" cy="70" r="${R}" fill="none" stroke="#EEF2F6" stroke-width="22"/>${segs}<text x="70" y="68" text-anchor="middle" font-size="26" font-weight="700" fill="currentColor">${tot || ''}</text><text x="70" y="86" text-anchor="middle" font-size="10" fill="#64748B">${tot ? 'campaigns' : ''}</text></svg><div class="gpc-leg">${stages.map(s => `<div><i style="background:${s.color}"></i><span>${escapeHtml(s.label)}</span><b>${s.value}</b></div>`).join('')}</div></div>`;
+  return `<div class="gpc-donut${big ? ' big' : ''}${center ? ' stack' : ''}"><svg viewBox="0 0 140 140" role="img" aria-label="Campaigns by stage"><circle cx="70" cy="70" r="${R}" fill="none" stroke="#EEF2F6" stroke-width="22"/>${segs}<text x="70" y="68" text-anchor="middle" font-size="26" font-weight="700" fill="currentColor">${center ? escapeHtml(center.big) : (tot || '')}</text><text x="70" y="86" text-anchor="middle" font-size="10" fill="#64748B">${center ? escapeHtml(center.small) : (tot ? 'campaigns' : '')}</text></svg><div class="gpc-leg">${stages.map(s => `<div><i style="background:${s.color}"></i><span>${escapeHtml(s.label)}</span><b>${s.text ? escapeHtml(s.text) : s.value}</b></div>`).join('')}</div></div>`;
 }
 function gpcChartHtml(c, big){
   const ch = c.chart; if (!ch) return '<div class="gpc-empty">Loading</div>';
   const h = big ? 110 : null;
   if (ch.kind === 'together') return gpcTogether(ch, big);
+  if (ch.kind === 'groups') return gpcGroups(ch, big);
+  if (ch.kind === 'forecast') return gpcForecast(ch, big);
+  if (ch.kind === 'mix') return gpcMix(ch, big);
+  if (ch.kind === 'donut') return gpcDonut(ch.stages, big, ch.center);
   if (ch.kind === 'sparks') return ch.rows.map((r, i) => `<div class="gpc-row"><div class="gpc-rh"><span>${escapeHtml(r.label)}</span>${gpcEnd(r.end)}${gpcDelta(r.delta, r.goodWhen)}</div>${gpcSpark(r.vals, { color: i ? '#0891B2' : '#1E2761', area: true, h: h || 54, aria: r.label + ' over the dates' })}</div>`).join('') + gpcAxis(ch.labels);
   if (ch.kind === 'pace') return ch.rows.map((r, i) => `<div class="gpc-row"><div class="gpc-rh"><span>${escapeHtml(r.label)}</span>${gpcEnd(r.end)}${r.pct != null ? `<span class="gpc-d ${r.pct >= 95 && r.pct <= 105 ? 'good' : r.pct > 105 ? 'neutral' : r.pct >= 85 ? 'neutral' : 'bad'}">${r.pct}% of pace</span>` : ''}</div>${gpcSpark(r.actual, { color: i ? '#0891B2' : '#1E2761', expected: r.expected, h: h || 54, aria: r.label + ' against pace' })}</div>`).join('') + gpcTail(`<div class="gpc-key"><i></i> Actual <i class="dash"></i> Expected pace</div>`, ch.labels);
   if (ch.kind === 'pairs') return `<div class="gpc-pairs">${ch.rows.map(r => `${r.step ? `<div class="gpc-step"><span>↓</span> ${escapeHtml(r.step)}</div>` : ''}<div class="gpc-pair"><div class="gpc-p2">${r.cols.map(k => `<div><div class="gpc-rh"><span>${escapeHtml(k.label)}</span></div><div class="gpc-rh">${gpcEnd(k.end)}${gpcDelta(k.delta, k.goodWhen)}</div>${k.mark === 'value' ? (big ? '' : '<div class="gpc-spacer"></div>') : gpcSpark(k.vals, { bars: k.mark === 'bars', zero: k.mark === 'bars', color: k.mark === 'bars' ? '#1E2761' : '#0891B2', h: h || 26, aria: k.label })}</div>`).join('')}</div></div>`).join('')}</div>` + gpcTail('', ch.labels);
@@ -25241,9 +25316,10 @@ function gpcCardHtml(key){
   if (!c) return `<div class="stat-card gpc" data-gpc="${key}">${head}<div class="gpc-empty">${st.err ? escapeHtml(st.err) : (st.loading || !gpc.started ? 'Loading' : 'Choose both dates and apply.')}</div></div>`;
   return `<div class="stat-card gpc${st.loading ? ' loading' : ''}" data-gpc="${key}">${head}<div class="gpc-abs">${escapeHtml(c.abstract)}</div>${st.err ? `<div class="drr-err">${escapeHtml(st.err)}</div>` : ''}<div class="gpc-chart">${gpcChartHtml(c, false)}</div><div class="gpc-foot"><span class="gpc-dates" title="${escapeHtml(stratHumanDates(c.rangeLabel) + ' · ' + stratHumanDates(c.compLabel))}">${escapeHtml(stratHumanDates(c.rangeLabel))}</span></div></div>`;
 }
-function gpcCardsHtml(){ return ['roas', 'pacing', 'kpi', 'ops'].map(gpcCardHtml).join(''); }
+function gpcCardsHtml(keys){ return (keys || ['roas', 'pacing', 'kpi', 'ops']).map(gpcCardHtml).join(''); }
 function gpcRender(){
   if (activePrimaryTab === 'marketer'){ const el = document.getElementById('tabStatCardGrid'); if (el && el.classList.contains('gp-core')){ el.innerHTML = gpcCardsHtml(); } }
+  if (activePrimaryTab === 'strategy'){ const el = document.getElementById('tabStatCardGrid'); if (el && el.classList.contains('gs-core')){ el.innerHTML = gpcCardsHtml(GS_KEYS); } }
   gpcRenderModal();
 }
 function gpcOpen(key){ gpc.open = key; gpcRenderModal(); }
@@ -53654,6 +53730,10 @@ const BP_FAQ_TOPICS = [
   { letter: "GB", label: "Growth and Performance: Demand Pacing", keywords: ["demand pacing", "pacing", "pace", "budget pace", "impression pace", "behind pace", "ahead of pace", "on pace", "spend vs budget", "growth and performance", "reporting card"] },
   { letter: "GC", label: "Growth and Performance: KPI Story", keywords: ["kpi story", "impressions volume", "cost per impression", "cpm", "website visits", "engaged visitor", "cost per engaged", "leads", "cost per lead", "growth and performance", "reporting card"] },
   { letter: "GD", label: "Growth and Performance: Execution", keywords: ["execution", "ops", "campaigns completed", "in qa", "copy creative", "in planning", "trafficking", "completed trafficking", "next 30 days", "growth and performance", "reporting card"] },
+  { letter: "GE", label: "Strategy: Booked Revenue Trends", keywords: ["booked revenue", "product group", "average revenue per transaction", "price", "trend", "strategy", "reporting card"], text: "This card shows booked revenue by product group over the dates you pick, with the average revenue per transaction beneath it. Booked revenue is gross revenue on transactions, from the monthly transactions or the guest bookings upload. Average revenue per transaction is booked revenue divided by unique transactions (booking codes), so a rise with flat transactions points to price or mix, and a rise in revenue with a flat average points to volume. The four largest product groups are drawn, and the rest fold into Other; the large view lists all of them. Hover a dot for the period's figures. The date list is YTD by default, then WoW, MoM, YoY and Custom, and the change is against the same dates one year earlier. Monthly totals are divided evenly by day for a week or a part month and marked as estimated in the large view. Which story it tells: the change against last year when last year has the figures, otherwise the trend across the dates." },
+  { letter: "GF", label: "Strategy: Budget Allocations", keywords: ["budget allocations", "working media", "committed", "scheduled", "not yet scheduled", "over plan", "strategy", "reporting card"], text: "This card shows how much of the working media budget for the dates is committed. The plan for the dates is the confirmed working media budget spread evenly by day; YTD shows the whole plan year so that media scheduled later in the year counts. Spent is spend actuals in the dates, up to today. Scheduled is media on the channel planning uploads dated today or later in the dates, excluding cancelled or rejected lines, and the large view splits it into approved and still draft. Not yet scheduled is what is left of the plan, and Over plan appears when spend plus scheduled media passes it. If no confirmed budget is on file for the dates, the card says so and still shows what was spent. Which story it tells: how much is committed and what is still open." },
+  { letter: "GG", label: "Strategy: Media Mix Allocations", keywords: ["media mix", "allocation", "channel share", "share of spend", "share of plan", "search", "social", "direct mail", "strategy", "reporting card"], text: "This card compares where the money went with where the plan said it would go. Share of spend is each budget category's spend divided by all spend in the dates; channels roll up to the budget categories, so Brand Search and Non-Brand Search both count as Search. Share of plan is each category's working media in the confirmed budget divided by all working media in it. Each bar is the share of spend, with a tick for the share of the plan. A budget line with no matching channel shows its plan share only, and a channel with no matching budget line shows its spend share only. The large view lists every category with the points over or under plan and last year's share, then every channel. Which story it tells: the widest gap between spend and plan, otherwise what leads spend." },
+  { letter: "GH", label: "Strategy: Forecasted Future Revenue", keywords: ["forecast", "future revenue", "booked to date", "low expected high", "year end", "target", "strategy", "reporting card"], text: "This card shows revenue booked so far and what the forecast expects for the rest of the dates. The forecast takes the planned impressions and spend by month and runs them through the calibrated chain of impressions to visits, visits to leads, leads to bookings and bookings to revenue, giving a low, expected and high figure. The low and high assume every stage lands at its own 25th and 75th percentile together, so they are a planning band, not a statistical confidence interval. YTD shows the whole year, booked to date plus the forecast to December, and sets it against the annual revenue target. WoW is the last and next 7 days, MoM is this month, YoY is the last and next 12 months, and Custom is any dates. Months with no planned media have no forecast. Which story it tells: where revenue lands against the same dates last year and against the target." },
   { letter: 'F', label: 'Past campaigns', keywords: ['learned','history','previous','analysis','pattern','overspend','underspend','delivered'] },
   // Round 132uu (2026-08-11), per direct instruction: "We should have a
   // speech bubble next to Lifecycle-loop stage explaining what this is and
@@ -53836,7 +53916,7 @@ const BP_FAQ_TOPIC_TAB = {
   // 2026-10-05 — Search Everywhere page topics, text taken from its client training guide.
 AG: 'marketer', AN: 'marketer', AH: 'marketer', AI: 'marketer', AJ: 'marketer', AK: 'marketer', AL: 'marketer', AM: 'marketer',
   // 2026-10-07 — product utilization and team training topics.
-  AO: 'dataScientist', AP: 'dataScientist', AQ: 'dataScientist', AR: 'dataScientist', AS: 'brand', AT: 'accountManagement', AU: 'accountManagement', AV: 'accountManagement', AW: 'dailyBrief', GA: 'marketer', GB: 'marketer', GC: 'marketer', GD: 'marketer'
+  AO: 'dataScientist', AP: 'dataScientist', AQ: 'dataScientist', AR: 'dataScientist', AS: 'brand', AT: 'accountManagement', AU: 'accountManagement', AV: 'accountManagement', AW: 'dailyBrief', GA: 'marketer', GB: 'marketer', GC: 'marketer', GD: 'marketer', GE: 'strategy', GF: 'strategy', GG: 'strategy', GH: 'strategy'
 };
 
 // 2026-10-04 (Todd): too many chips at once. Show the five most relevant to the page the person is on
@@ -54072,7 +54152,11 @@ const AI_THOUGHT_PREVIEWS = {
   GA: "How Performance (ROAS and CAC) is worked out, and what the date choices mean.",
   GB: "How Demand Pacing measures spend and impressions against the plan.",
   GC: "The volume and the cost of impressions, engaged visitors, leads and transactions.",
-  GD: "Execution: where campaigns are in the build, and how many dropping soon are trafficked."
+  GD: "Execution: where campaigns are in the build, and how many dropping soon are trafficked.",
+  GE: "How booked revenue moves by product group, and what average revenue per transaction shows.",
+  GF: "How much of the working media budget is spent, scheduled and still open.",
+  GG: "Where spend went by category against the plan.",
+  GH: "What the forecast expects revenue to reach, against last year and the target."
 };
 function aiThoughtRoleLabel(letter){
   const tabKey = BP_FAQ_TOPIC_TAB[letter];
@@ -54498,7 +54582,11 @@ const PU_THOUGHTS = {
   GA: "This card, titled Performance, answers one question: what did each marketing dollar return, and what did each transaction cost to win. ROAS and CAC are drawn together on one scale, with the first period shown set to 100, so you can see whether a rise in CAC, for example after a price increase, came with a rise in ROAS. Hover a dot to see the actual ROAS, CAC and revenue per transaction for that period; revenue per transaction stands in for price. ROAS is gross revenue divided by marketing spend. CAC is marketing spend divided by unique transactions. Bookings do not carry a customer id yet, so CAC is spend per transaction, not per brand-new customer. The date list starts on YTD, January 1 to today, set against the same dates last year. WoW is the last 7 days against the 7 before. MoM is the month so far against the same days last month. YoY is the last 12 months against the 12 before. Custom is any two dates, set against the same dates a year earlier. Each card keeps its own range. A change is shown only when both periods have the figure on file for every month they touch; otherwise it says there is no comparison rather than guess. Spend and revenue held only as monthly totals are divided evenly by day, and the large view says which months were estimated. Open the large view for the full table, or use the share icon for Excel, CSV, Google Sheets, PDF or a slide. Which story it tells: when the compared period has the figures, the card leads with the change against it. When it does not, the card reads the trend across the selected dates instead, leaving out a month that is only partly elapsed so it does not look like a drop. When there is no trend either, it looks ahead: what the working media budget still left would bring at today's CAC and ROAS. The large view lists all three.",
   GB: "This card shows whether spend and impressions are moving at the speed the plan needs. Expected pace is the annual figure spread evenly across the days of the year: the confirmed working media budget for spend, and the annual plan impressions target for impressions. Expected pace for the dates you pick is that annual figure times the days in the dates divided by the days in the year. Within 5% of pace reads as on pace, above that is ahead, and below 85% reads as behind. Pacing is a straight-line check, not a forecast; a campaign that front-loads its spend will look ahead early and behind later. If there is no confirmed budget or impressions target for the year, the card says so and still shows what was spent and delivered with its change against the compared period. The date list works the same on every card: YTD by default, then WoW, MoM, YoY and Custom. Which story it tells: pace against the plan comes first, with where the year closes at the current rate. With no budget or impressions target on file, the card reads the trend in spend and impressions across the dates instead.",
   GC: "The KPI Story reads from attention to action: impressions and CPM, Engaged Visitors and CPEV, leads and CPL, transactions and CAC. CPM is marketing spend per 1,000 impressions. CPEV is marketing spend divided by engaged sessions. CPL is marketing spend divided by leads. CAC is marketing spend divided by unique transactions. A lower cost is better. Website visits, engaged sessions and leads are monthly totals, so for a week or a part month they are divided evenly by day and marked as estimated in the large view. A change appears only where both periods have the figure for every month they touch. Which story it tells: when the compared period has the figures, the card counts how many cost measures are cheaper. When it does not, it reads the trend in the cost measures across the dates, and failing that looks ahead at the leads or transactions the remaining budget would bring at today's cost. A figure that is not on file is left blank.",
-  GD: "The Execution card counts campaigns by where they are in the build: In Planning, In Copy and Creative, In QA, and Completed. Completed means Brand, Marketing Functions, Creative and QA and Approval are all done. The headline is the share of campaigns dropping in the next 30 days that have completed trafficking, meaning the campaign has been sent to the trafficking team with its creative and tracking links. The date list chooses which campaigns are counted: a campaign is in view if it has not ended before the start of the range, so campaigns still ahead of us always count. Custom keeps only campaigns that run between the two dates. The trafficking headline always looks 30 days forward from today, whatever the range. Ad hoc and cancelled campaigns are left out. The large view lists every campaign dropping in the next 30 days with its trafficking status. Which story it tells: the headline is the trafficking share for the next 30 days, followed by the next campaign still waiting to be trafficked. When nothing drops in the next 30 days, it names the next campaign to start and where it is in the build."
+  GD: "The Execution card counts campaigns by where they are in the build: In Planning, In Copy and Creative, In QA, and Completed. Completed means Brand, Marketing Functions, Creative and QA and Approval are all done. The headline is the share of campaigns dropping in the next 30 days that have completed trafficking, meaning the campaign has been sent to the trafficking team with its creative and tracking links. The date list chooses which campaigns are counted: a campaign is in view if it has not ended before the start of the range, so campaigns still ahead of us always count. Custom keeps only campaigns that run between the two dates. The trafficking headline always looks 30 days forward from today, whatever the range. Ad hoc and cancelled campaigns are left out. The large view lists every campaign dropping in the next 30 days with its trafficking status. Which story it tells: the headline is the trafficking share for the next 30 days, followed by the next campaign still waiting to be trafficked. When nothing drops in the next 30 days, it names the next campaign to start and where it is in the build.",
+  GE: "This card shows booked revenue by product group over the dates you pick, with the average revenue per transaction beneath it. Booked revenue is gross revenue on transactions, from the monthly transactions or the guest bookings upload. Average revenue per transaction is booked revenue divided by unique transactions (booking codes), so a rise with flat transactions points to price or mix, and a rise in revenue with a flat average points to volume. The four largest product groups are drawn, and the rest fold into Other; the large view lists all of them. Hover a dot for the period's figures. The date list is YTD by default, then WoW, MoM, YoY and Custom, and the change is against the same dates one year earlier. Monthly totals are divided evenly by day for a week or a part month and marked as estimated in the large view. Which story it tells: the change against last year when last year has the figures, otherwise the trend across the dates.",
+  GF: "This card shows how much of the working media budget for the dates is committed. The plan for the dates is the confirmed working media budget spread evenly by day; YTD shows the whole plan year so that media scheduled later in the year counts. Spent is spend actuals in the dates, up to today. Scheduled is media on the channel planning uploads dated today or later in the dates, excluding cancelled or rejected lines, and the large view splits it into approved and still draft. Not yet scheduled is what is left of the plan, and Over plan appears when spend plus scheduled media passes it. If no confirmed budget is on file for the dates, the card says so and still shows what was spent. Which story it tells: how much is committed and what is still open.",
+  GG: "This card compares where the money went with where the plan said it would go. Share of spend is each budget category's spend divided by all spend in the dates; channels roll up to the budget categories, so Brand Search and Non-Brand Search both count as Search. Share of plan is each category's working media in the confirmed budget divided by all working media in it. Each bar is the share of spend, with a tick for the share of the plan. A budget line with no matching channel shows its plan share only, and a channel with no matching budget line shows its spend share only. The large view lists every category with the points over or under plan and last year's share, then every channel. Which story it tells: the widest gap between spend and plan, otherwise what leads spend.",
+  GH: "This card shows revenue booked so far and what the forecast expects for the rest of the dates. The forecast takes the planned impressions and spend by month and runs them through the calibrated chain of impressions to visits, visits to leads, leads to bookings and bookings to revenue, giving a low, expected and high figure. The low and high assume every stage lands at its own 25th and 75th percentile together, so they are a planning band, not a statistical confidence interval. YTD shows the whole year, booked to date plus the forecast to December, and sets it against the annual revenue target. WoW is the last and next 7 days, MoM is this month, YoY is the last and next 12 months, and Custom is any dates. Months with no planned media have no forecast. Which story it tells: where revenue lands against the same dates last year and against the target."
 };
 // 2026-10-07 — product utilization and team training. Same wording is mirrored in server.js (PRODUCT_GUIDE) so voice and Ask Verilume say what these thoughts say.
 function renderFaqPU(){
