@@ -16867,7 +16867,16 @@ function buildStoryDemand(accountId, opts){
 // engaged visits and leads are monthly totals divided evenly by day, and said to be estimated.
 // A change is shown only when both periods have the figure on file for every month they touch.
 // ===========================================================================
+// Short caches (2026-10-16): the three cards each asked for the same heavy build, one after another on a single thread, so the third timed out. Sources, series and plan targets are kept for a minute or five; a card build is kept for a minute.
+const _gpCache = new Map();
+function gpCached(key, ttl, fn){
+  const h = _gpCache.get(key); if (h && Date.now() - h.t < ttl) return h.v;
+  const v = fn(); _gpCache.set(key, { t: Date.now(), v });
+  if (_gpCache.size > 80){ const oldest = Array.from(_gpCache.entries()).sort((a, b) => a[1].t - b[1].t).slice(0, 20); oldest.forEach(e => _gpCache.delete(e[0])); }
+  return v;
+}
 const GP_PRESETS = ['ytd', 'wow', 'mom', 'yoy', 'custom'];
+function gpDm(src, from, to){ const m = src.__dm || (src.__dm = {}); const k = from + '|' + to; return m[k] || (m[k] = dmDailyMetrics(src, from, to)); }
 function gpResolveRange(spec, now){
   const t = now || new Date(); const y = t.getUTCFullYear(), mo = t.getUTCMonth(), d = t.getUTCDate();
   const todayMs = Date.UTC(y, mo, d), today = dmIso(todayMs);
@@ -16920,7 +16929,7 @@ function gpEngagedMonthly(accountId, S){
   return out;
 }
 function gpPackOf(src, S, E, from, to){
-  const dd = dmDailyMetrics(src, from, to); const days = dd.days;
+  const dd = gpDm(src, from, to); const days = dd.days;
   const f = k => Object.keys(days).some(d => days[d][k] != null) ? dmSum(days, k) : null;
   const spend = f('spend'), impressions = f('impressions'), revenue = f('revenue'), transactions = f('transactions');
   const vis = gpMonthlyIn(S.visits, from, to), eng = gpMonthlyIn(E, from, to);
@@ -16942,7 +16951,8 @@ function gpChange(cur, prev, needs){
     return storyPct(a, b);
   };
 }
-function gpPlanYearTargets(accountId, year){
+function gpPlanYearTargets(accountId, year){ return gpCached('tg|' + accountId + '|' + year, 300000, () => gpPlanYearTargetsRaw(accountId, year)); }
+function gpPlanYearTargetsRaw(accountId, year){
   let wm = null, imps = null, wmFrom = null;
   try { const b = planWorkingMediaBudget(accountId, year); if (b){ wm = b.workingMedia; wmFrom = 'the confirmed ' + year + ' marketing budget (working media)'; } } catch (e){}
   try { const { target } = storyPlanRows(accountId, year); if (target && target.year === year){ if (wm == null && target.workingMedia != null){ wm = Number(target.workingMedia); wmFrom = 'the ' + year + ' annual plan'; } if (target.impressions != null) imps = Number(target.impressions); } } catch (e){}
@@ -16980,7 +16990,7 @@ function gpBuckets(from, to){
   return { unit: span <= 14 ? 'day' : span <= 100 ? 'week' : 'month', buckets: out };
 }
 function gpSeries(accountId, src, S, E, from, to){
-  const dd = dmDailyMetrics(src, from, to).days; const B = gpBuckets(from, to);
+  const dd = gpDm(src, from, to).days; const B = gpBuckets(from, to);
   const leadMap = {}; Object.keys(S.leads).forEach(k => { leadMap[k] = S.leads[k].total; });
   const per = (map, iso) => { const v = map[iso.slice(0, 7)]; return v == null ? null : v / dmDim(Number(iso.slice(0, 4)), Number(iso.slice(5, 7))); };
   const tg = {}; const tgt = y => tg[y] || (tg[y] = gpPlanYearTargets(accountId, y));
@@ -17001,7 +17011,7 @@ function gpSeries(accountId, src, S, E, from, to){
 }
 function buildGpCards(accountId, spec){
   const R = gpResolveRange(spec);
-  const src = dmLoadSources(accountId); const S = buildForecastSeries(accountId); const E = gpEngagedMonthly(accountId, S);
+  const src = gpCached('src|' + accountId, 60000, () => dmLoadSources(accountId)); const S = gpCached('S|' + accountId, 60000, () => buildForecastSeries(accountId)); const E = gpCached('E|' + accountId, 60000, () => gpEngagedMonthly(accountId, S));
   const cur = gpPackOf(src, S, E, R.from, R.through), prev = gpPackOf(src, S, E, R.compFrom, R.compThrough);
   const chg = gpChange(cur, prev);
   // Which story to tell (2026-10-15, Todd): the comparison when the compared period has the figures; otherwise the trend across the dates
@@ -17019,7 +17029,7 @@ function buildGpCards(accountId, spec){
     return { dir: absP(t.pct) < 3 ? 0 : (t.pct > 0 ? 1 : -1), text: absP(t.pct) < 3 ? `${name} has held steady near ${f(t.last)} from ${t.from} to ${t.to}.` : `${name} has ${t.pct > 0 ? 'risen' : 'fallen'} ${absP(t.pct)}%, from ${f(t.first)} to ${f(t.last)}, between ${t.from} and ${t.to}.` }; };
   const yrNow = Number(R.today.slice(0, 4));
   let remaining = null, ytdSpendAll = null, planWm = null;
-  try { const Tn = gpPlanYearTargets(accountId, yrNow); planWm = Tn.wm; const dm0 = dmDailyMetrics(src, `${yrNow}-01-01`, R.today).days; if (Object.keys(dm0).some(d => dm0[d].spend != null)) ytdSpendAll = dmSum(dm0, 'spend'); if (Tn.wm != null && ytdSpendAll != null && Tn.wm - ytdSpendAll > 0) remaining = Tn.wm - ytdSpendAll; } catch (e){ remaining = null; }
+  try { const Tn = gpPlanYearTargets(accountId, yrNow); planWm = Tn.wm; const dm0 = gpDm(src, `${yrNow}-01-01`, R.today).days; if (Object.keys(dm0).some(d => dm0[d].spend != null)) ytdSpendAll = dmSum(dm0, 'spend'); if (Tn.wm != null && ytdSpendAll != null && Tn.wm - ytdSpendAll > 0) remaining = Tn.wm - ytdSpendAll; } catch (e){ remaining = null; }
   const futureFor = (name, unitCost, noun, mult) => (remaining != null && unitCost != null && unitCost > 0) ? `At today's ${name} of ${gpFmtVal(unitCost, unitCost < 100 ? 'money2' : 'money')}, the ${gpFmtVal(remaining, 'money')} left in the ${yrNow} working media budget would bring about ${Math.round(remaining / unitCost).toLocaleString('en-US')} more ${noun}${mult || ''}.` : null;
   const whyStory = k => k === 'comparison' ? 'This card leads with the comparison because the compared period has the figures on file.' : k === 'trend' ? 'The compared period does not have enough on file, so this card reads the trend across the selected dates instead.' : k === 'future' ? 'There is no comparison or trend to read, so this card looks ahead at what the budget still left would do.' : 'Not enough is on file for a comparison, a trend or a look ahead yet.';
   const estNotes = [];
@@ -33085,8 +33095,8 @@ async function handleRequestInner(req, res) {
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       const qs = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries());
-      try { return sendJson(res, 200, buildGpCards(accountId, gpCleanSpec(qs))); }
-      catch (e){ console.warn('[analytics/gp-cards] failed:', e.message); return sendJson(res, 500, { error: 'could not build the cards' }); }
+      try { const sp = gpCleanSpec(qs); return sendJson(res, 200, gpCached('cards|' + accountId + '|' + JSON.stringify(sp), 60000, () => buildGpCards(accountId, sp))); }
+      catch (e){ console.warn('[analytics/gp-cards] failed:', e.stack || e.message); return sendJson(res, 500, { error: 'could not build the cards' }); }
     }
     // POST /api/accounts/:id/analytics/card-file — turns a card's own tables (the ones on screen) into xlsx, csv, pdf or pptx.
     if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'analytics' && parts[4] === 'card-file'){
