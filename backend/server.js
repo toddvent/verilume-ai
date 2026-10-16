@@ -16977,6 +16977,7 @@ function gpFmtVal(v, kind){
   if (v == null) return '—';
   if (kind === 'x') return Number(v).toFixed(2) + 'x';
   if (kind === 'money') return '$' + Math.round(v).toLocaleString('en-US');
+  if (kind === 'mk') return Math.abs(v) >= 1e6 ? '$' + (v / 1e6).toFixed(1) + 'M' : (Math.abs(v) >= 1e4 ? '$' + Math.round(v / 1e3) + 'K' : '$' + Math.round(v).toLocaleString('en-US'));
   if (kind === 'money2') return '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   if (kind === 'pct') return (v >= 0 ? '+' : '') + Number(v).toFixed(1) + '%';
   return Math.round(v).toLocaleString('en-US');
@@ -17119,6 +17120,232 @@ function gpExportFromPayload(accountId, b){
   if (!tables.length) return null;
   const title = clean(b.title) || 'Growth and Performance'; const slug = String(b.fileSlug || 'growth').replace(/[^a-z0-9-]+/gi, '-').slice(0, 40) || 'growth';
   return { title, fileSlug: slug, context: (Array.isArray(b.context) ? b.context : []).slice(0, 12).map(r => [clean(r[0]), clean(r[1])]), tables, notes: (Array.isArray(b.notes) ? b.notes : []).slice(0, 20).map(clean) };
+}
+
+// ===========================================================================
+// 2026-10-16 — Strategy reporting cards (Todd): the Strategy dashboard's top row becomes four charts under a topline
+// abstract, on the same card template as Growth & Performance (date drop-down, share, enlarge, speech bubble).
+//   1 Booked Revenue Trends by product group, with average revenue per transaction
+//   2 Budget Allocations (committed working media against the plan for the dates)
+//   3 Media Mix Allocations (share of spend by category against the share of the plan)
+//   4 Forecasted Future Revenue (booked to date, then the forecast engine's low / expected / high)
+// ===========================================================================
+const SG_GROUP_COLORS = 5;
+// Monthly transaction rows by product group, spread evenly by day for any dates. Returns per-bucket revenue and transactions by group.
+function sgGroupBuckets(rows, buckets){
+  const byMonth = {}; rows.forEach(r => { const k = `${r.year}-${dmPad(r.month)}`; (byMonth[k] || (byMonth[k] = [])).push(r); });
+  const est = new Set(); const groups = {};
+  const out = buckets.map(b => {
+    const cell = { revenue: 0, transactions: 0, any: false, byGroup: {} };
+    const bs = dmParse(b.from), be = dmParse(b.to);
+    dmMonthsOf(b.from, b.to).forEach(k => {
+      const y = Number(k.slice(0, 4)), m = Number(k.slice(5, 7)), dim = dmDim(y, m);
+      const a = Math.max(bs, Date.UTC(y, m - 1, 1)), z = Math.min(be, Date.UTC(y, m - 1, dim)); if (z < a) return;
+      const w = ((z - a) / 864e5 + 1) / dim; if (w < 0.9999) est.add(k);
+      (byMonth[k] || []).forEach(r => { const g = r.productGroup || 'Unassigned'; const c = cell.byGroup[g] || (cell.byGroup[g] = { revenue: 0, transactions: 0 }); c.revenue += r.revenue * w; c.transactions += r.transactions * w; cell.revenue += r.revenue * w; cell.transactions += r.transactions * w; cell.any = true; groups[g] = (groups[g] || 0) + r.revenue * w; });
+    });
+    return cell;
+  });
+  return { cells: out, groups, estimated: Array.from(est).sort() };
+}
+// Spend by MMM channel for any dates, using the same day rules as the daily media model.
+function sgSpendByChannel(src, from, to){
+  const out = {}; const s = dmParse(from), e = dmParse(to); if (s == null || e == null || e < s) return out;
+  for (let t = s; t <= e; t += 864e5){
+    const d = dmIso(t), pl = d.slice(0, 7), dim = dmDim(Number(d.slice(0, 4)), Number(d.slice(5, 7)));
+    src.cats.forEach(cat => {
+      const man = src.manualBy[`${pl}||${cat}`], dig = src.digitalBy[`${pl}||${cat}`]; const cc = !dig && src.camp[cat] && src.camp[cat][d];
+      let v = null; if (cc){ v = cc.spend; } else { const b = man || dig; if (b && b.spend != null) v = b.spend / dim; }
+      if (v != null && isFinite(v) && v > 0) out[cat] = (out[cat] || 0) + v;
+    });
+  }
+  return out;
+}
+const SG_CHANNEL_TO_CATEGORY = (() => { const m = {}; Object.keys(VERILUME_TO_MMM_CHANNEL_MAP).forEach(cat => { if (cat === 'Video/CTV') return; VERILUME_TO_MMM_CHANNEL_MAP[cat].forEach(ch => { if (!m[ch]) m[ch] = cat; }); }); return m; })();
+function sgPlanMixByCategory(accountId, year){
+  let up = null;
+  try { up = db.prepare("SELECT id FROM marketing_budget_uploads WHERE accountId = ? AND year = ? AND status = 'confirmed' AND COALESCE(\"totalOnly\", 0) = 0 ORDER BY confirmedAt DESC LIMIT 1").get(accountId, year); } catch (e){ up = null; }
+  if (!up) return null;
+  let by = null; try { by = computeByVerilumeCategoryForUpload(up.id); } catch (e){ by = null; }
+  if (!by) return null;
+  const out = {}; let tot = 0; Object.keys(by).forEach(k => { const v = Number(by[k]) || 0; if (v > 0){ out[k] = v; tot += v; } });
+  return tot > 0 ? { byCategory: out, total: tot } : null;
+}
+function sgMonthKeyNow(today){ return today.slice(0, 7); }
+function buildStrategyCards(accountId, spec, only){
+  const want = k => !only || only.includes(k);
+  const R = gpResolveRange(spec); const today = R.today; const yrNow = Number(today.slice(0, 4));
+  const src = gpCached('src|' + accountId, 60000, () => dmLoadSources(accountId));
+  const fmt = gpFmtVal; const absP = v => Math.abs(v);
+  const ctx = [['Account', accountId], ['Period', R.label], [R.compLabel.split(':')[0], R.compLabel.split(': ').slice(1).join(': ')], ['Generated', today]];
+  const cards = []; const estimatedAll = [];
+  const mn = a => Array.from(new Set(a)).map(dmMonthName).join(', ');
+  const pctTxt = (p, up, down) => p == null ? null : `${absP(p)}% ${p >= 0 ? up : down}`;
+  // ---------- Card 1: booked revenue trends by product group ----------
+  if (want('sbook')){
+    const tx = gpCached('txn|' + accountId, 60000, () => storyTxnRows(accountId));
+    const B = gpBuckets(R.from, R.through);
+    const cur = sgGroupBuckets(tx.rows, B.buckets);
+    const whole = sgGroupBuckets(tx.rows, [{ from: R.from, to: R.through }]).cells[0], prior = sgGroupBuckets(tx.rows, [{ from: R.compFrom, to: R.compThrough }]);
+    const priorCell = prior.cells[0];
+    const rank = Object.keys(cur.groups).sort((a, b) => cur.groups[b] - cur.groups[a]);
+    const top = rank.slice(0, 4), rest = rank.slice(4);
+    const labels = B.buckets.map(b => b.label);
+    const rd = v => Math.round(v);
+    const series = top.map(g => ({ label: g, vals: cur.cells.map(c => c.any && c.byGroup[g] ? rd(c.byGroup[g].revenue) : (c.any ? 0 : null)), vkind: 'money' }));
+    if (rest.length) series.push({ label: 'Other', vals: cur.cells.map(c => c.any ? rd(rest.reduce((n, g) => n + (c.byGroup[g] ? c.byGroup[g].revenue : 0), 0)) : null), vkind: 'money' });
+    const avgOf = c => (c.any && c.transactions > 0) ? Math.round(c.revenue / c.transactions * 100) / 100 : null;
+    const avgVals = cur.cells.map(avgOf);
+    const rev = whole.any ? whole.revenue : null, tn = whole.any ? whole.transactions : null, avg = avgOf(whole);
+    const pRev = priorCell.any ? priorCell.revenue : null, pAvg = avgOf(priorCell);
+    const revChg = (rev != null && pRev != null) ? storyPct(rev, pRev) : null, avgChg = (avg != null && pAvg != null) ? storyPct(avg, pAvg) : null;
+    const lead = rank.length ? rank[0] : null; const leadRev = lead ? cur.groups[lead] : null;
+    const grpChg = g => { const a = cur.groups[g], p = prior.groups[g]; return (a != null && p) ? storyPct(a, p) : null; };
+    let abstract, storyKind;
+    if (rev == null){ abstract = 'Booked revenue by product group is not on file for these dates yet.'; storyKind = 'none'; }
+    else if (revChg != null){ storyKind = 'comparison'; abstract = `Booked revenue is ${fmt(rev, 'mk')}, ${pctTxt(revChg, 'above', 'below')} last year${lead ? `, led by ${lead} at ${fmt(leadRev, 'mk')}` : ''}.${avg != null ? ` Average per transaction is ${fmt(avg, 'mk')}${avgChg != null ? ', ' + pctTxt(avgChg, 'up', 'down') : ''}.` : ''}`; }
+    else {
+      storyKind = 'trend'; const vs = cur.cells.map(c => c.any ? c.revenue : null).filter(v => v != null); const th = Math.max(1, Math.floor(vs.length / 3)); const av = a => a.reduce((n, x) => n + x, 0) / a.length;
+      const tp = (vs.length >= 4 && av(vs.slice(0, th)) > 0) ? Math.round((av(vs.slice(-th)) - av(vs.slice(0, th))) / av(vs.slice(0, th)) * 1000) / 10 : null;
+      abstract = `Booked revenue is ${fmt(rev, 'mk')}${lead ? `, led by ${lead} at ${fmt(leadRev, 'mk')}` : ''}.${tp != null ? ` It has ${tp >= 0 ? 'risen' : 'fallen'} ${absP(tp)}% across the dates.` : ''}${avg != null ? ` Average revenue per transaction is ${fmt(avg, 'mk')}.` : ''}`;
+    }
+    const c1 = { key: 'sbook', title: 'Booked Revenue Trends', thought: 'GE', storyKind, abstract, rangeLabel: R.label, compLabel: R.compLabel,
+      chart: { kind: 'groups', unit: B.unit, labels, series, avg: { label: 'Avg revenue per transaction', vals: avgVals, end: fmt(avg, 'money'), delta: avgChg }, total: { vals: cur.cells.map(c => c.any ? rd(c.revenue) : null), end: fmt(rev, 'money'), delta: revChg } } };
+    const rows = rank.map(g => { const w2 = whole.byGroup[g]; const p = priorCell.byGroup[g]; return [g, fmt(w2 ? w2.revenue : null, 'money'), fmt(w2 ? w2.transactions : null, 'int'), (w2 && w2.transactions > 0) ? fmt(w2.revenue / w2.transactions, 'money2') : '—', fmt(p ? p.revenue : null, 'money'), grpChg(g) != null ? fmt(grpChg(g), 'pct') : '—']; });
+    const perRows = B.buckets.map((b, i) => { const c = cur.cells[i]; return [b.label, fmt(c.any ? c.revenue : null, 'money'), fmt(c.any ? c.transactions : null, 'int'), c.any && c.transactions > 0 ? fmt(c.revenue / c.transactions, 'money2') : '—']; });
+    const estN = cur.estimated.concat(prior.estimated);
+    c1.large = { tables: [
+      { name: 'By product group', columns: ['Product group', 'Booked revenue', 'Transactions', 'Average revenue per transaction', 'Same dates last year', 'Change'], rows: rows.concat([['All product groups', fmt(rev, 'money'), fmt(tn, 'int'), avg != null ? fmt(avg, 'money2') : '—', fmt(pRev, 'money'), revChg != null ? fmt(revChg, 'pct') : '—']]) },
+      { name: 'By period', columns: ['Period', 'Booked revenue', 'Transactions', 'Average revenue per transaction'], rows: perRows }],
+      notes: (estN.length ? [`Revenue and transactions for ${mn(estN)} are estimated from monthly totals divided evenly by day.`] : []).concat(tx.source ? [] : ['No transactions by product group are on file yet (Annual Media Plan > transactions by month, or a guest-bookings upload).']).concat(rest.length ? [`The chart shows the four largest product groups and folds ${rest.length} more into Other. The table lists all of them.`] : []),
+      definitions: ['Booked revenue is gross revenue on transactions, by product group, from the monthly transactions or the guest bookings upload.', 'Average revenue per transaction is booked revenue divided by unique transactions (booking codes).', 'The comparison is the same dates one year earlier.'] };
+    cards.push(c1); estimatedAll.push(...estN);
+  }
+  // ---------- Card 2: budget allocations ----------
+  if (want('sbud')){
+    const wEnd = R.preset === 'ytd' ? `${yrNow}-12-31` : R.through;
+    const ex = gpExpectedShare(accountId, R.from, wEnd);
+    const planned = ex.anySpend ? Math.round(ex.spend) : null;
+    const spentThrough = R.through > today ? today : R.through;
+    let completed = null; try { completed = Math.round(dmSum(gpDm(src, R.from, spentThrough).days, 'spend')); } catch (e){ completed = null; }
+    let pendA = 0, pendD = 0, pendRows = 0; const pendFiles = new Set();
+    try {
+      db.prepare(`SELECT d.budget AS budget, d.hitDate AS hitDate, d.dropDate AS dropDate, d.status AS status, d.clientApprovedAt AS approvedAt, b.fileName AS fileName FROM channel_planning_details d JOIN channel_planning_upload_batches b ON b.id = d.uploadBatchId WHERE b.accountId = ?`).all(accountId).forEach(r => {
+        const bgt = Number(r.budget) || 0; if (bgt <= 0) return; const st = String(r.status || '').toLowerCase(); if (st === 'cancelled' || st === 'rejected') return;
+        const dt = String(aliasVal(r, 'hitDate') || aliasVal(r, 'dropDate') || '').slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(dt) || dt < today || dt < R.from || dt > wEnd) return;
+        pendRows++; pendFiles.add(r.fileName); if (aliasVal(r, 'approvedAt')) pendA += bgt; else pendD += bgt;
+      });
+    } catch (e){ /* no channel planning rows */ }
+    const pending = Math.round(pendA + pendD); let remaining = null, over = 0;
+    if (planned != null && completed != null){ const u = completed + pending; remaining = Math.max(0, planned - u); over = Math.max(0, u - planned); }
+    const spentPart = completed != null ? Math.min(completed, planned != null ? planned : completed) : 0, pendPart = planned != null ? Math.min(pending, Math.max(0, planned - (completed || 0))) : pending;
+    const stages = planned != null ? [{ label: 'Spent', value: spentPart, color: '#1E2761' }, { label: 'Scheduled', value: pendPart, color: '#D08A3E' }, { label: 'Not yet scheduled', value: remaining || 0, color: '#94A3B8' }].concat(over > 0 ? [{ label: 'Over plan', value: over, color: '#C0273C' }] : []) : [];
+    const totS = stages.reduce((n, s) => n + s.value, 0) || 1; stages.forEach(s => { s.text = `${fmt(s.value, 'money')} (${Math.round(s.value / totS * 100)}%)`; });
+    const committed = planned ? Math.round(((completed || 0) + pending) / planned * 100) : null;
+    let abstract, storyKind;
+    if (planned == null){ storyKind = 'none'; abstract = completed != null && completed > 0 ? `No working media budget is on file for these dates yet. ${fmt(completed, 'mk')} has been spent in them.` : 'No working media budget is on file for these dates yet.'; }
+    else { storyKind = 'comparison'; abstract = `${fmt((completed || 0) + pending, 'mk')} of the ${fmt(planned, 'mk')} working media is committed (${committed}%): ${fmt(completed || 0, 'mk')} spent, ${fmt(pending, 'mk')} scheduled.${over > 0 ? ` That is ${fmt(over, 'mk')} over plan.` : remaining ? ` ${fmt(remaining, 'mk')} not yet scheduled.` : ''}`; }
+    const c2 = { key: 'sbud', title: 'Budget Allocations', thought: 'GF', storyKind, abstract, rangeLabel: `${R.preset === 'ytd' ? 'Plan year' : R.name}: ${dmFmt(R.from)} to ${dmFmt(wEnd)}`, compLabel: R.compLabel,
+      chart: { kind: 'donut', stages, center: { big: committed != null ? committed + '%' : '', small: committed != null ? 'committed' : '' } } };
+    const monthBud = planWorkingMediaBudgetByMonth(accountId); const S0 = gpCached('S|' + accountId, 60000, () => buildForecastSeries(accountId));
+    const mRows = dmMonthsOf(R.from, wEnd).map(k => [dmMonthName(k), fmt(monthBud[k] != null ? monthBud[k] : null, 'money'), fmt(S0.spend[k] != null ? S0.spend[k] : null, 'money')]);
+    c2.large = { tables: [
+      { name: 'Where the working media sits', columns: ['Stage', 'Amount', 'Share of plan'], rows: [['Plan for these dates', fmt(planned, 'money'), planned ? '100%' : '—'], ['Spent', fmt(completed, 'money'), planned && completed != null ? Math.round(completed / planned * 100) + '%' : '—'], ['Scheduled, approved', fmt(Math.round(pendA), 'money'), planned ? Math.round(pendA / planned * 100) + '%' : '—'], ['Scheduled, still draft', fmt(Math.round(pendD), 'money'), planned ? Math.round(pendD / planned * 100) + '%' : '—'], ['Not yet scheduled', fmt(remaining, 'money'), planned && remaining != null ? Math.round(remaining / planned * 100) + '%' : '—'], ['Over plan', fmt(over, 'money'), planned ? Math.round(over / planned * 100) + '%' : '—']] },
+      { name: 'Budget and spend by month', columns: ['Month', 'Confirmed working media', 'Media totals on file'], rows: mRows }],
+      notes: (ex.missing.length ? [`Not on file: ${Array.from(new Set(ex.missing)).join(', ')}.`] : []).concat(pendRows ? [`Scheduled media comes from ${pendRows} channel planning rows in ${Array.from(pendFiles).join(', ')}.`] : ['No scheduled media is dated inside these dates on the channel planning uploads.']),
+      definitions: [`The plan for the dates is the confirmed working media budget spread evenly by day${ex.wmFrom ? ' (' + ex.wmFrom + ')' : ''}. YTD shows the whole plan year, so scheduled media later in the year counts.`, 'Spent is spend actuals in the dates, up to today. Scheduled is channel planning media dated today or later, not cancelled or rejected. Not yet scheduled is what is left of the plan.'] };
+    cards.push(c2);
+  }
+  // ---------- Card 3: media mix allocations ----------
+  if (want('smix')){
+    const act = sgSpendByChannel(src, R.from, R.through), pri = sgSpendByChannel(src, R.compFrom, R.compThrough);
+    const cat = ch => SG_CHANNEL_TO_CATEGORY[ch] || 'Other/Uncategorized';
+    const toCat = m => { const o = {}; Object.keys(m).forEach(ch => { const c = cat(ch); o[c] = (o[c] || 0) + m[ch]; }); return o; };
+    const aC = toCat(act), pC = toCat(pri); const aT = Object.values(aC).reduce((n, v) => n + v, 0), pT = Object.values(pC).reduce((n, v) => n + v, 0);
+    const plan = sgPlanMixByCategory(accountId, Number(R.through.slice(0, 4)));
+    const names = Array.from(new Set(Object.keys(aC).concat(plan ? Object.keys(plan.byCategory) : []))).filter(n => (aC[n] || 0) > 0 || (plan && plan.byCategory[n] > 0));
+    const share = (m, tot, n) => (tot > 0 && m[n] > 0) ? Math.round(m[n] / tot * 1000) / 10 : null;
+    let rows = names.map(n => ({ label: n, actual: share(aC, aT, n) , plan: plan ? share(plan.byCategory, plan.total, n) : null, prior: share(pC, pT, n), amount: aC[n] || 0 }));
+    rows.forEach(r => { r.gap = (r.actual != null && r.plan != null) ? Math.round((r.actual - r.plan) * 10) / 10 : (r.actual == null && r.plan != null ? -r.plan : (r.plan == null && r.actual != null && plan ? r.actual : null)); });
+    rows.sort((a, b) => Math.max(b.actual || 0, b.plan || 0) - Math.max(a.actual || 0, a.plan || 0));
+    const shown = rows.slice(0, 7), more = rows.slice(7);
+    if (more.length) shown.push({ label: 'All other', actual: Math.round(more.reduce((n, r) => n + (r.actual || 0), 0) * 10) / 10 || null, plan: plan ? Math.round(more.reduce((n, r) => n + (r.plan || 0), 0) * 10) / 10 || null : null });
+    shown.forEach(r => { r.text = r.actual != null ? `${r.actual}%` + (r.plan != null ? ` · plan ${r.plan}%` : '') : (r.plan != null ? `plan ${r.plan}%` : ''); });
+    let abstract, storyKind;
+    const gaps = rows.filter(r => r.gap != null).sort((a, b) => absP(b.gap) - absP(a.gap));
+    if (!aT && !plan){ storyKind = 'none'; abstract = 'Neither spend by channel nor a confirmed budget is on file for these dates yet.'; }
+    else if (aT && plan && gaps.length){ storyKind = 'comparison'; const g1 = gaps[0], g2 = gaps[1]; abstract = `${g1.label} is ${g1.actual || 0}% of spend against ${g1.plan || 0}% in the plan, the widest gap.${g2 && absP(g2.gap) >= 1 ? ` ${g2.label} is ${absP(g2.gap)} points ${g2.gap > 0 ? 'over' : 'under'} plan.` : ''}`; }
+    else if (aT){ storyKind = 'trend'; const t2 = rows.filter(r => r.actual != null).slice(0, 2); abstract = `Spend is led by ${t2.map(r => `${r.label} at ${r.actual}%`).join(' and ')}.${plan ? '' : ' No confirmed budget by category is on file to compare against.'}`; }
+    else { storyKind = 'future'; const t2 = rows.filter(r => r.plan != null).slice(0, 2); abstract = `The plan puts the most in ${t2.map(r => `${r.label} (${r.plan}%)`).join(' and ')}. No spend by channel is on file for these dates yet.`; }
+    const c3 = { key: 'smix', title: 'Media Mix Allocations', thought: 'GG', storyKind, abstract, rangeLabel: R.label, compLabel: R.compLabel,
+      chart: { kind: 'mix', rows: shown, hasPlan: !!plan } };
+    const chRows = Object.keys(act).sort((a, b) => act[b] - act[a]).map(ch => [ch, cat(ch), fmt(act[ch], 'money'), aT ? (Math.round(act[ch] / aT * 1000) / 10) + '%' : '—']);
+    c3.large = { tables: [
+      { name: 'Share of spend against share of plan, by category', columns: ['Category', 'Spend', 'Share of spend', 'Share of plan', 'Points over or under plan', 'Share last year'], rows: rows.map(r => [r.label, fmt(r.amount || 0, 'money'), r.actual != null ? r.actual + '%' : '—', r.plan != null ? r.plan + '%' : '—', r.gap != null ? (r.gap > 0 ? '+' : '') + r.gap : '—', r.prior != null ? r.prior + '%' : '—']) },
+      { name: 'Spend by channel', columns: ['Channel', 'Category', 'Spend', 'Share of spend'], rows: chRows }],
+      notes: [plan ? `Plan shares come from the confirmed ${R.through.slice(0, 4)} budget, working media only.` : `No confirmed ${R.through.slice(0, 4)} budget by category is on file, so spend is shown without a plan.`].concat(aC['Other/Uncategorized'] ? ['Some channels do not map to a budget category and are grouped as Other/Uncategorized.'] : []),
+      definitions: ['Share of spend is each category\'s spend divided by all spend in the dates. Channels roll up to budget categories (for example Brand Search and Non-Brand Search roll up to Search).', 'Share of plan is each category\'s working media in the confirmed budget divided by all working media in it.', 'A budget line with no matching channel shows its plan share only; a channel with no matching budget line shows its spend share only.'] };
+    cards.push(c3);
+  }
+  // ---------- Card 4: forecasted future revenue ----------
+  if (want('sfore')){
+    const t = dmParse(today); let from, to, name;
+    if (R.preset === 'wow'){ from = dmIso(t - 6 * 864e5); to = dmIso(t + 7 * 864e5); name = 'Last 7 and next 7 days'; }
+    else if (R.preset === 'mom'){ from = `${today.slice(0, 7)}-01`; to = `${today.slice(0, 7)}-${dmPad(dmDim(yrNow, Number(today.slice(5, 7))))}`; name = 'This month'; }
+    else if (R.preset === 'yoy'){ from = dmShiftYear(dmIso(t + 864e5), -1); to = dmShiftYear(dmIso(t), 1); name = 'Last and next 12 months'; }
+    else if (R.preset === 'custom'){ from = R.from; to = R.through; name = 'Custom range'; }
+    else { from = `${yrNow}-01-01`; to = `${yrNow}-12-31`; name = 'This year'; }
+    const compFrom = dmShiftYear(from, -1), compTo = dmShiftYear(to, -1);
+    const S = gpCached('S|' + accountId, 60000, () => buildForecastSeries(accountId));
+    const dd = gpDm(src, from, to < today ? to : today).days;
+    const monthsAll = dmMonthsOf(from, to);
+    const curKey = today.slice(0, 7);
+    // Booked to date per month (daily model, through today).
+    const bookedOf = k => { let n = 0, any = false; Object.keys(dd).forEach(d => { if (d.slice(0, 7) === k && d <= today && dd[d].revenue != null){ n += dd[d].revenue; any = true; } }); return any ? n : null; };
+    const cal = gpCached('cal|' + accountId, 300000, () => forecastEngine.calibrate(S, { asOf: new Date(today + 'T00:00:00Z'), fallbackAov: storyFallbackAov(accountId, yrNow) }));
+    const planMonths = monthsAll.filter(k => k >= curKey).map(k => ({ month: k, impressions: Math.round(S.impressions[k] || 0), spend: Math.round(S.spend[k] || 0) })).filter(m => m.impressions > 0 || m.spend > 0);
+    const f = planMonths.length ? forecastEngine.forecast(cal, { months: planMonths }) : null;
+    const fm = {}; if (f) f.months.forEach(m => { if (m.revenue) fm[m.month] = m.revenue; });
+    const labels = [], booked = [], exp = [], lo = [], hi = []; const rowsT = []; let anyF = false;
+    let sumBooked = 0, sumLo = 0, sumExp = 0, sumHi = 0, lastActualIdx = -1;
+    monthsAll.forEach((k, i) => {
+      const y = Number(k.slice(0, 4)), m = Number(k.slice(5, 7)), dim = dmDim(y, m);
+      const a = Math.max(dmParse(from), Date.UTC(y, m - 1, 1)), z = Math.min(dmParse(to), Date.UTC(y, m - 1, dim)); const share = ((z - a) / 864e5 + 1) / dim;
+      labels.push(DM_MON[m - 1] + (monthsAll.some(q => q.slice(0, 4) !== monthsAll[0].slice(0, 4)) ? " '" + k.slice(2, 4) : ''));
+      let bk = null, e1 = null, l1 = null, h1 = null;
+      if (k < curKey){ bk = bookedOf(k); }
+      else {
+        const b0 = k === curKey ? bookedOf(k) : null; bk = b0;
+        const r3 = fm[k];
+        if (r3){ const fa = Math.max(dmParse(from), Date.UTC(y, m - 1, 1), dmParse(today) + 864e5), fz = Math.min(dmParse(to), Date.UTC(y, m - 1, dim)); const win = fz >= fa ? ((fz - fa) / 864e5 + 1) / dim : 0; anyF = true; e1 = (b0 || 0) + r3[1] * win; l1 = (b0 || 0) + r3[0] * win; h1 = (b0 || 0) + r3[2] * win; }
+      }
+      booked.push(bk != null ? Math.round(bk) : null); exp.push(e1 != null ? Math.round(e1) : null); lo.push(l1 != null ? Math.round(l1) : null); hi.push(h1 != null ? Math.round(h1) : null);
+      if (bk != null) lastActualIdx = i;
+      sumBooked += bk || 0; const e2 = e1 != null ? e1 : (bk || 0), l2 = l1 != null ? l1 : (bk || 0), h2 = h1 != null ? h1 : (bk || 0); sumExp += e2; sumLo += l2; sumHi += h2;
+      rowsT.push([dmMonthName(k), fmt(bk, 'money'), e1 != null ? fmt(l1, 'money') : '—', e1 != null ? fmt(e1, 'money') : '—', e1 != null ? fmt(h1, 'money') : '—']);
+    });
+    // Join the dashed forecast line to the last booked month so the two read as one story.
+    const expLine = exp.slice(); if (anyF && lastActualIdx >= 0 && expLine[lastActualIdx] == null) expLine[lastActualIdx] = booked[lastActualIdx];
+    const loLine = lo.slice(), hiLine = hi.slice(); if (anyF && lastActualIdx >= 0){ if (loLine[lastActualIdx] == null) loLine[lastActualIdx] = booked[lastActualIdx]; if (hiLine[lastActualIdx] == null) hiLine[lastActualIdx] = booked[lastActualIdx]; }
+    const compRev = (() => { const w = gpDm(src, compFrom, compTo); const v = dmSum(w.days, 'revenue'); return Object.keys(w.days).some(d => w.days[d].revenue != null) ? v : null; })();
+    const total = anyF ? Math.round(sumExp) : (booked.some(v => v != null) ? Math.round(sumBooked) : null);
+    const vsLast = (total != null && compRev) ? storyPct(total, compRev) : null;
+    const tgt = (R.preset === 'ytd') ? (() => { try { const { target } = storyPlanRows(accountId, yrNow); return target && target.year === yrNow && target.grossRevenue ? Number(target.grossRevenue) : null; } catch (e){ return null; } })() : null;
+    let abstract, storyKind;
+    if (anyF){ storyKind = 'comparison'; abstract = `Revenue is on track for ${fmt(total, 'mk')} by ${to.slice(0, 4) === today.slice(0, 4) ? dmFmt(to).replace(/, \d{4}$/, '') : dmFmt(to)}, between ${fmt(Math.round(sumLo), 'mk')} and ${fmt(Math.round(sumHi), 'mk')}.${vsLast != null ? ` That is ${pctTxt(vsLast, 'above', 'below')} the same dates last year.` : ''}${tgt ? ` Against the ${fmt(tgt, 'mk')} target: ${total - tgt >= 0 ? '+' : '-'}${fmt(Math.abs(total - tgt), 'mk')}.` : ''}`; }
+    else if (total != null){ storyKind = 'trend'; abstract = `There is no planned media after today to forecast from yet. Booked revenue so far in these dates is ${fmt(total, 'mk')}.`; }
+    else { storyKind = 'none'; abstract = 'Neither booked revenue nor planned media is on file for these dates yet.'; }
+    const c4 = { key: 'sfore', title: 'Forecasted Future Revenue', thought: 'GH', storyKind, abstract, rangeLabel: `${name}: ${dmFmt(from)} to ${dmFmt(to)} (booked to ${dmFmt(today < to ? today : to)}, forecast after)`, compLabel: `Compared with the same dates last year: ${dmFmt(compFrom)} to ${dmFmt(compTo)}`,
+      chart: { kind: 'forecast', unit: 'month', labels, series: [{ label: 'Booked', vals: booked, vkind: 'money' }, { label: 'Forecast', vals: expLine, vkind: 'money', dash: true }, { label: 'High', vals: hiLine, vkind: 'money', dash: true, thin: true }, { label: 'Low', vals: loLine, vkind: 'money', dash: true, thin: true }], end: fmt(total, 'money'), delta: vsLast } };
+    c4.large = { tables: [
+      { name: 'Booked and forecast revenue by month', columns: ['Month', 'Booked to date', 'Forecast low', 'Forecast expected', 'Forecast high'], rows: rowsT },
+      { name: 'Window total', columns: ['Measure', 'Amount'], rows: [['Booked to date', fmt(Math.round(sumBooked), 'money')], ['Forecast low', anyF ? fmt(Math.round(sumLo), 'money') : '—'], ['Forecast expected', anyF ? fmt(total, 'money') : '—'], ['Forecast high', anyF ? fmt(Math.round(sumHi), 'money') : '—'], ['Same dates last year', fmt(compRev != null ? Math.round(compRev) : null, 'money')], ['Annual revenue target', tgt ? fmt(tgt, 'money') : '—']] }],
+      notes: [`Forecast confidence: ${cal.confidence}.`, f ? f.rangeNote : null, planMonths.length ? `Planned media is on file for ${planMonths[0].month} to ${planMonths[planMonths.length - 1].month}; months with no planned media have no forecast.` : 'No planned media is on file from this month on, so there is no forecast.'].filter(Boolean),
+      definitions: ['Booked is gross revenue on transactions to date from the daily media model.', 'The forecast takes the planned impressions and spend by month through the calibrated chain: visits, leads, bookings, then revenue per booking, and gives a low, expected and high figure. Revenue is attributed to the month of the media.', 'YTD shows the whole year, booked to date plus the forecast to December. WoW is the last and next 7 days, MoM is this month, YoY is the last and next 12 months, and Custom is any dates.'] };
+    cards.push(c4);
+  }
+  cards.forEach(c => { c.export = { title: c.title, fileSlug: 'strategy-' + c.key, context: ctx, tables: c.large.tables.map(t => ({ name: t.name, columns: t.columns, rows: t.rows })), notes: c.large.notes.concat(c.large.definitions) }; });
+  return { range: R, cards, estimated: estimatedAll };
 }
 
 // 2026-10-05 — Budget flow: the donut at the top of Strategy and the Budget page.
@@ -20821,6 +21048,10 @@ const PRODUCT_GUIDE = [
   { letter: "GB", label: "Growth and Performance: Demand Pacing", keywords: ["demand pacing", "pacing", "pace", "budget pace", "impression pace", "behind pace", "ahead of pace", "on pace", "spend vs budget", "growth and performance", "reporting card"], text: "This card shows whether spend and impressions are moving at the speed the plan needs. Expected pace is the annual figure spread evenly across the days of the year: the confirmed working media budget for spend, and the annual plan impressions target for impressions. Expected pace for the dates you pick is that annual figure times the days in the dates divided by the days in the year. Within 5% of pace reads as on pace, above that is ahead, and below 85% reads as behind. Pacing is a straight-line check, not a forecast; a campaign that front-loads its spend will look ahead early and behind later. If there is no confirmed budget or impressions target for the year, the card says so and still shows what was spent and delivered with its change against the compared period. The date list works the same on every card: YTD by default, then WoW, MoM, YoY and Custom. Which story it tells: pace against the plan comes first, with where the year closes at the current rate. With no budget or impressions target on file, the card reads the trend in spend and impressions across the dates instead." },
   { letter: "GC", label: "Growth and Performance: KPI Story", keywords: ["kpi story", "impressions volume", "cost per impression", "cpm", "website visits", "engaged visitor", "cost per engaged", "leads", "cost per lead", "growth and performance", "reporting card"], text: "The KPI Story reads from attention to action: impressions and CPM, Engaged Visitors and CPEV, leads and CPL, transactions and CAC. CPM is marketing spend per 1,000 impressions. CPEV is marketing spend divided by engaged sessions. CPL is marketing spend divided by leads. CAC is marketing spend divided by unique transactions. A lower cost is better. Website visits, engaged sessions and leads are monthly totals, so for a week or a part month they are divided evenly by day and marked as estimated in the large view. A change appears only where both periods have the figure for every month they touch. Which story it tells: when the compared period has the figures, the card counts how many cost measures are cheaper. When it does not, it reads the trend in the cost measures across the dates, and failing that looks ahead at the leads or transactions the remaining budget would bring at today's cost. A figure that is not on file is left blank." },
   { letter: "GD", label: "Growth and Performance: Execution", keywords: ["execution", "ops", "campaigns completed", "in qa", "copy creative", "in planning", "trafficking", "completed trafficking", "next 30 days", "growth and performance", "reporting card"], text: "The Execution card counts campaigns by where they are in the build: In Planning, In Copy and Creative, In QA, and Completed. Completed means Brand, Marketing Functions, Creative and QA and Approval are all done. The headline is the share of campaigns dropping in the next 30 days that have completed trafficking, meaning the campaign has been sent to the trafficking team with its creative and tracking links. The date list chooses which campaigns are counted: a campaign is in view if it has not ended before the start of the range, so campaigns still ahead of us always count. Custom keeps only campaigns that run between the two dates. The trafficking headline always looks 30 days forward from today, whatever the range. Ad hoc and cancelled campaigns are left out. The large view lists every campaign dropping in the next 30 days with its trafficking status. Which story it tells: the headline is the trafficking share for the next 30 days, followed by the next campaign still waiting to be trafficked. When nothing drops in the next 30 days, it names the next campaign to start and where it is in the build." },
+  { letter: "GE", label: "Strategy: Booked Revenue Trends", keywords: ["booked revenue", "product group", "average revenue per transaction", "price", "trend", "strategy", "reporting card"], text: "This card shows booked revenue by product group over the dates you pick, with the average revenue per transaction beneath it. Booked revenue is gross revenue on transactions, from the monthly transactions or the guest bookings upload. Average revenue per transaction is booked revenue divided by unique transactions (booking codes), so a rise with flat transactions points to price or mix, and a rise in revenue with a flat average points to volume. The four largest product groups are drawn, and the rest fold into Other; the large view lists all of them. Hover a dot for the period's figures. The date list is YTD by default, then WoW, MoM, YoY and Custom, and the change is against the same dates one year earlier. Monthly totals are divided evenly by day for a week or a part month and marked as estimated in the large view. Which story it tells: the change against last year when last year has the figures, otherwise the trend across the dates." },
+  { letter: "GF", label: "Strategy: Budget Allocations", keywords: ["budget allocations", "working media", "committed", "scheduled", "not yet scheduled", "over plan", "strategy", "reporting card"], text: "This card shows how much of the working media budget for the dates is committed. The plan for the dates is the confirmed working media budget spread evenly by day; YTD shows the whole plan year so that media scheduled later in the year counts. Spent is spend actuals in the dates, up to today. Scheduled is media on the channel planning uploads dated today or later in the dates, excluding cancelled or rejected lines, and the large view splits it into approved and still draft. Not yet scheduled is what is left of the plan, and Over plan appears when spend plus scheduled media passes it. If no confirmed budget is on file for the dates, the card says so and still shows what was spent. Which story it tells: how much is committed and what is still open." },
+  { letter: "GG", label: "Strategy: Media Mix Allocations", keywords: ["media mix", "allocation", "channel share", "share of spend", "share of plan", "search", "social", "direct mail", "strategy", "reporting card"], text: "This card compares where the money went with where the plan said it would go. Share of spend is each budget category's spend divided by all spend in the dates; channels roll up to the budget categories, so Brand Search and Non-Brand Search both count as Search. Share of plan is each category's working media in the confirmed budget divided by all working media in it. Each bar is the share of spend, with a tick for the share of the plan. A budget line with no matching channel shows its plan share only, and a channel with no matching budget line shows its spend share only. The large view lists every category with the points over or under plan and last year's share, then every channel. Which story it tells: the widest gap between spend and plan, otherwise what leads spend." },
+  { letter: "GH", label: "Strategy: Forecasted Future Revenue", keywords: ["forecast", "future revenue", "booked to date", "low expected high", "year end", "target", "strategy", "reporting card"], text: "This card shows revenue booked so far and what the forecast expects for the rest of the dates. The forecast takes the planned impressions and spend by month and runs them through the calibrated chain of impressions to visits, visits to leads, leads to bookings and bookings to revenue, giving a low, expected and high figure. The low and high assume every stage lands at its own 25th and 75th percentile together, so they are a planning band, not a statistical confidence interval. YTD shows the whole year, booked to date plus the forecast to December, and sets it against the annual revenue target. WoW is the last and next 7 days, MoM is this month, YoY is the last and next 12 months, and Custom is any dates. Months with no planned media have no forecast. Which story it tells: where revenue lands against the same dates last year and against the target." },
   { letter: "AX", label: "Search Everywhere: illumination guides and light levels", keywords: ["search everywhere", "illumination guide", "view guide", "light level", "seo checklist", "aeo", "geo", "local business", "franchise", "call center", "ecommerce", "self rate", "self assessment search", "search checklist"], text: "Search Everywhere has three area cards: SEO (get found), AEO (be the answer) and GEO (be cited by AI). Each shows what drives it, a light level, and a View guide button that opens the guide on the page. The guide is a prioritized checklist written for your kind of business: a local business, a single-location call center or ecommerce, or a franchise with online sales and storefronts. You rate each item yourself as not started, in progress, done or does not apply. Items Verilume can read from your data, such as Search Console connected, indexing health, answered questions and AI citation checks, are filled in for you. The light level is Dark, Dim, Lit, Bright or Brilliant based on the weighted share of items done, and it is saved so you can see progress over time. You can also ask Ask Verilume or the voice agent to walk you through the assessment, or to judge a recommendation someone gave you, such as whether to add an FAQ hub to support AEO. It answers for your kind of business and your current status, and says plainly when the evidence for a tactic is thin. Ratings are set in the guide, not by voice." }
 ];
 const PRODUCT_ASK_RE = /\b(how (?:do|can|should|would) (?:i|we|you)|how to|where (?:do|can|is|are)|what (?:is|are|does|do) (?:a|an|the|my)?|walk me through|getting started|get started|train(?:ing)?|learn|guide|explain|help me (?:use|understand)|what can i ask|show me how|steps)\b/i;
@@ -33103,6 +33334,15 @@ async function handleRequestInner(req, res) {
       const qs = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries());
       try { const sp = gpCleanSpec(qs); return sendJson(res, 200, gpCached('cards|' + accountId + '|' + JSON.stringify(sp), 60000, () => buildGpCards(accountId, sp))); }
       catch (e){ console.warn('[analytics/gp-cards] failed:', e.stack || e.message); return sendJson(res, 500, { error: 'could not build the cards' }); }
+    }
+    // GET /api/accounts/:id/analytics/strategy-cards?preset=&from=&to=&only= — the four Strategy reporting cards (2026-10-16).
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'analytics' && parts[4] === 'strategy-cards'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const qs = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries());
+      const only = qs.only ? String(qs.only).split(',').filter(k => ['sbook', 'sbud', 'smix', 'sfore'].includes(k)) : null;
+      try { const sp = gpCleanSpec(qs); return sendJson(res, 200, gpCached('scards|' + accountId + '|' + JSON.stringify(sp) + '|' + (only ? only.join(',') : ''), 60000, () => buildStrategyCards(accountId, sp, only && only.length ? only : null))); }
+      catch (e){ console.warn('[analytics/strategy-cards] failed:', e.stack || e.message); return sendJson(res, 500, { error: 'could not build the cards' }); }
     }
     // POST /api/accounts/:id/analytics/card-file — turns a card's own tables (the ones on screen) into xlsx, csv, pdf or pptx.
     if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'analytics' && parts[4] === 'card-file'){
