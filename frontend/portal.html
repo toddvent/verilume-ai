@@ -24059,7 +24059,7 @@ const STRATEGY_SHELL_GROUPS = [
 // zero. Tools stay as plain text links underneath. Colour tokens are the
 // app's own (--cx, navy, amber); nothing new in the style system.
 // ---------------------------------------------------------------------------
-const strat = { dim: 'productGroup', pg: '', compare: 'yoy', audType: 'High Value', priceData: null, audData: null, fcData: null, demand: null, loading: {} };
+const strat = { dim: 'productGroup', pg: '', cf: '', compare: 'yoy', audType: 'High Value', priceData: null, audData: null, fcData: null, demand: null, loading: {} };
 const STRAT_COLORS = { 'High Value': '#1E2761', 'Growth': '#0891B2', 'Prospect': '#D08A3E' };
 function stratMoney(n){ if (n == null || isNaN(n)) return '—'; const a = Math.abs(n); const s = n < 0 ? '-' : ''; if (a >= 1e9) return `${s}$${(a / 1e9).toFixed(2)}B`; if (a >= 1e6) return `${s}$${(a / 1e6).toFixed(a >= 1e7 ? 1 : 2)}M`; if (a >= 1e3) return `${s}$${Math.round(a / 1e3)}K`; return `${s}$${Math.round(a)}`; }
 function stratMoneyFull(n){ return n == null || isNaN(n) ? '—' : `$${Math.round(n).toLocaleString()}`; }
@@ -24321,10 +24321,10 @@ async function stratLoadPrice(){
   if (!stratIsLive()) return; const box = document.getElementById('stratPriceBody'); if (!box) return;
   box.innerHTML = '<p class="strat-empty">Loading…</p>';
   try {
-    const q = `price-volume?dim=${strat.dim}&months=18${strat.dim === 'creativeFocus' && strat.pg ? `&productGroup=${encodeURIComponent(strat.pg)}` : ''}`;
+    const pick = strat.dim === 'creativeFocus' ? strat.cf : strat.pg; const q = `price-volume?dim=${strat.dim}&months=18${pick ? `&${strat.dim === 'creativeFocus' ? 'creativeFocus' : 'productGroup'}=${encodeURIComponent(pick)}` : ''}`;
     strat.priceData = await stratGet(q);
   } catch (e){ strat.priceData = null; box.innerHTML = '<p class="strat-empty">Could not load price and volume just now.</p>'; return; }
-  stratRenderPrice();
+  stratRenderPrice(); stratFillPgSelect();
 }
 function stratPriceReading(d){
   const rows = d.months.filter(m => m.gross != null); if (!rows.length) return '';
@@ -24352,11 +24352,12 @@ function stratRenderPrice(){
     <p class="strat-foot">Gross price is the sum of gross revenue by month. ${escapeHtml(d.eventsNote)}</p>
     <div class="strat-actions"><button type="button" class="strat-chip" onclick="stratAsk('What is driving the change in gross price and transaction volume this month versus last year?')">Ask Verilume why</button></div>`;
 }
-function stratSetDim(dim){ strat.dim = dim; if (dim === 'productGroup') strat.pg = ''; stratSyncPriceControls(); stratLoadPrice(); }
-function stratSetPg(pg){ strat.pg = pg; stratLoadPrice(); }
+function stratSetDim(dim){ strat.dim = dim; stratSyncPriceControls(); stratFillPgSelect(); stratLoadPrice(); }
+function stratSetPg(pg){ if (strat.dim === 'creativeFocus') strat.cf = pg; else strat.pg = pg; stratLoadPrice(); }
 function stratSetCompare(c){ strat.compare = c; stratRenderPrice(); stratRenderAudience(); }
 function stratSyncPriceControls(){
-  const wrap = document.getElementById('stratPgWrap'); if (wrap) wrap.style.display = strat.dim === 'creativeFocus' ? '' : 'none';
+  const wrap = document.getElementById('stratPgWrap'); if (wrap) wrap.style.display = '';
+  const sel0 = document.getElementById('stratPgSel'); if (sel0) sel0.setAttribute('aria-label', strat.dim === 'creativeFocus' ? 'Creative focus' : 'Product group');
   document.querySelectorAll('[data-strat-dim]').forEach(b => b.classList.toggle('on', b.dataset.stratDim === strat.dim));
 }
 
@@ -24725,7 +24726,7 @@ function strategyShellHtml(){
     <div class="strat-card"><div class="strat-head"><h2>Price and volume</h2>
       <div class="strat-ctl">
         <span class="strat-seg"><button type="button" data-strat-dim="productGroup" class="on" onclick="stratSetDim('productGroup')">Product group</button><button type="button" data-strat-dim="creativeFocus" onclick="stratSetDim('creativeFocus')">Creative focus</button></span>
-        <span id="stratPgWrap" style="display:none;"><select id="stratPgSel" onchange="stratSetPg(this.value)" aria-label="Product group"><option value="">All product groups</option></select></span>
+        <span id="stratPgWrap"><select id="stratPgSel" onchange="stratSetPg(this.value)" aria-label="Product group"><option value="">All product groups</option></select></span>
         <select onchange="stratSetCompare(this.value)" aria-label="Comparison"><option value="yoy">Compare: year over year</option><option value="none">No comparison</option></select>
       </div></div><div id="stratPriceBody"></div></div>
     <div class="strat-card"><div class="strat-head"><h2>Database growth by audience type</h2></div><div id="stratAudBody"></div></div>
@@ -25912,8 +25913,11 @@ function strategyPageInit(){
   stratLoadDemand().then(() => stratLoadForecast()); stratLoadRolling(); bfRenderStrategy(); if (scn.open) scnToggleReopen();
 }
 function stratFillPgSelect(){
-  const sel = document.getElementById('stratPgSel'); const d = strat.priceData; if (!sel || !d) return;
-  sel.innerHTML = '<option value="">All product groups</option>' + d.productGroups.map(p => `<option value="${escapeHtml(p)}" ${p === strat.pg ? 'selected' : ''}>${escapeHtml(p)}</option>`).join('');
+  const sel = document.getElementById('stratPgSel'); if (!sel) return;
+  const cf = strat.dim === 'creativeFocus'; const d = strat.priceData; const cur = cf ? strat.cf : strat.pg;
+  // Options belong to the tab: product groups on Product group, creative focus on Creative focus. Only trust the loaded data when it is for this tab.
+  const list = (d && d.dim === strat.dim && d.options) ? d.options : (cur ? [cur] : []);
+  sel.innerHTML = `<option value="">${cf ? 'All creative focus' : 'All product groups'}</option>` + list.map(p => `<option value="${escapeHtml(p)}" ${p === cur ? 'selected' : ''}>${escapeHtml(p)}</option>`).join('');
 }
 // 2026-08-23 (nav redesign, round 15), per directive 1 (nav-structure.html
 // §1/§2) and Todd's direct instruction to prioritize the front-end build
@@ -31149,7 +31153,8 @@ function ttbSetupHtml(d){
   }
   const cards = S.steps.map(st => { const c = cp(st); const n = st.items.filter(i => i.done).length; return `<button type="button" class="ttb-card${st.done ? ' done' : ''}" onclick="ttbOpenGroup('${st.key}')"><span class="ttb-card-top"><span class="ttb-mini">${ttbClock(st.minutes, n * st.minutes / st.items.length, 44, c.title)}</span><span class="ttb-card-state">${st.done ? '&#10003; Done' : `${n} of ${st.items.length} done`}</span></span><span class="ttb-card-kicker">${c.kicker ? escapeHtml(c.kicker) : '&nbsp;'}</span><span class="ttb-card-name">${escapeHtml(c.title)}</span><span class="ttb-card-desc">${escapeHtml(c.desc)}</span><span class="ttb-card-open">Open &rarr;</span></button>`; }).join('');
   const cardsHtml = `<div class="ttb-cards">${cards}</div>`;
-  return `${hero}${cardsHtml}`;
+  // 2026-10-16 — data freshness is one content feature under the five cards, not part of the page header.
+  return `${hero}${cardsHtml}<div style="margin-top:18px;">${ttbRefreshHtml()}</div>`;
 }
 function ttbLearningsHtml(d){
   if (!d.learnings.length) return `<div class="strat-card"><p class="strat-empty">Nothing recorded yet. As your team approves, applies or removes sources and decisions across the dashboards, they show up here.</p></div>`;
@@ -31165,7 +31170,7 @@ function ttbHtml(){
   if (ttb.error || !ttb.data) return '<div class="strat-card"><p class="strat-empty">Could not load Train the Brain just now. <a class="flink" onclick="ttbLoad()">Try again</a></p></div>';
   const tabs = [['setup', 'Getting started'], ['learnings', 'Recent learnings'], ['data', 'Data consumed'], ['projects', 'Projects']];
   const body = ttb.tab === 'projects' ? (setTimeout(pjMountAll, 0), '<div class="strat-card"><div class="pj-host" data-area="train"></div></div>') : ttb.tab === 'learnings' ? ttbLearningsHtml(ttb.data) : ttb.tab === 'data' ? ttbConsumedHtml(ttb.data) : ttbSetupHtml(ttb.data);
-  return `<div class="ttb-page">${ttbRefreshHtml()}<div class="strat-ctl" style="margin:0 0 12px;"><span class="strat-seg">${tabs.map(t => `<button type="button" class="${ttb.tab === t[0] ? 'on' : ''}" onclick="ttbSetTab('${t[0]}')">${t[1]}</button>`).join('')}</span></div>${body}</div>`;
+  return `<div class="ttb-page"><div class="strat-ctl" style="margin:0 0 12px;"><span class="strat-seg">${tabs.map(t => `<button type="button" class="${ttb.tab === t[0] ? 'on' : ''}" onclick="ttbSetTab('${t[0]}')">${t[1]}</button>`).join('')}</span></div>${body}</div>`;
 }
 function renderAiPartnerOnboardingHub(skipMmmFetch){
   const mount = document.getElementById('aipoMount');
