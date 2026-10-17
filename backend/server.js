@@ -7447,13 +7447,28 @@ function learnedCpmsFor(accountId){
   try { db.prepare('SELECT channel, cpm, samples, "updatedAt" FROM account_learned_cpm WHERE accountId = ?').all(accountId).forEach(r => { out[r.channel] = { cpm: Number(r.cpm), samples: Number(r.samples) || 1, updatedAt: r.updatedAt || r.updatedat || null }; }); } catch (e){}
   return out;
 }
+// 2026-10-17 — trailing-12-month CPM from this account's own digital performance (spend ÷ impressions × 1000).
+// Beats a single taught sample (e.g. a one-off $4 or $600 CPM) and the illustrative table.
+function measuredCpmFor(accountId, channel){
+  try {
+    const rows = db.prepare('SELECT year, month, SUM(impressions) AS imp, SUM(spend) AS sp FROM account_digital_performance WHERE accountId = ? AND channel = ? GROUP BY year, month ORDER BY year DESC, month DESC LIMIT 12').all(accountId, channel);
+    const imp = rows.reduce((s, r) => s + (Number(r.imp) || 0), 0), sp = rows.reduce((s, r) => s + (Number(r.sp) || 0), 0);
+    if (rows.length >= 3 && imp > 0 && sp > 0) return sp / imp * 1000;
+  } catch (e){}
+  return null;
+}
 function estimateImpressionsFromBudget(channel, budget, accountId){
-  if (SERVER_NON_IMPRESSION_CHANNELS.has(channel)) return null;
+  // Field / ABM is priced per contact, not per ad; every other line gets an estimate. Direct Mail counts pieces
+  // delivered (budget ÷ cost per thousand pieces) so the row is never blank.
+  if (channel === 'Field / ABM') return null;
   const amt = Number(budget) || 0;
   if (amt <= 0) return null;
-  let learned = null;
-  if (accountId){ const l = learnedCpmsFor(accountId)[channel]; if (l && l.cpm > 0) learned = l.cpm; }
-  const cpm = learned || SERVER_CHANNEL_CPM[channel] || SERVER_DEFAULT_BLENDED_CPM;
+  let cpm = null;
+  if (accountId){
+    cpm = measuredCpmFor(accountId, channel);
+    if (!cpm){ const l = learnedCpmsFor(accountId)[channel]; if (l && l.cpm > 0 && l.samples >= 3) cpm = l.cpm; }
+  }
+  cpm = cpm || SERVER_CHANNEL_CPM[channel] || SERVER_DEFAULT_BLENDED_CPM;
   return Math.round((amt / cpm) * 1000);
 }
 
@@ -33671,7 +33686,7 @@ Submit your response via the campaign_intake_turn tool.`;
             const stageMatch = !!(stage && c.stage === stage);
             const perfScore = (c.actualConversions != null && c.actualSpend) ? (c.actualConversions / (c.actualSpend / 1000)) : null;
             return { c, stageMatch, perfScore };
-          }).filter(x => x.stageMatch || x.perfScore !== null)
+          }).filter(x => x.perfScore !== null) // 2026-10-17 — only completed campaigns that have metrics added
             .sort((a, b) => (a.stageMatch !== b.stageMatch) ? (a.stageMatch ? -1 : 1) : ((b.perfScore || 0) - (a.perfScore || 0)))
             .slice(0, 3);
           recommendedCampaigns = scored.map(x => ({
@@ -36326,6 +36341,12 @@ Submit your response via the campaign_intake_turn tool.`;
             const suffix = (m[2] || '').toLowerCase();
             if (suffix === 'k') amount *= 1000;
             if (suffix === 'm') amount *= 1000000;
+            // 2026-10-17 — a unit-cost figure ("$15.59 CPL", "$9 CPM", "$40 per lead", "cost per lead of $15.59")
+            // is NOT a channel budget. Skip it so it can never overwrite a line's budget.
+            const after = sentence.slice(m.index + m[0].length, m.index + m[0].length + 24);
+            const before = sentence.slice(Math.max(0, m.index - 28), m.index);
+            if (/^\s*(?:\/|per\b|a\s+lead|each\b)|^\s*(?:cpl|cpm|cpa|cpc|cpi|cac|roas)\b/i.test(after) ||
+                /(?:cpl|cpm|cpa|cpc|cac|cost\s+per\s+\w+|per\s+lead|\bcost\s+of)\W*(?:of|is|was|at|about|around|~|=|:)?\s*$/i.test(before)) continue;
             dollarAmounts.push(amount);
           }
           if (dollarAmounts.length !== 1) return; // 0 = nothing to attach; 2+ = ambiguous which figure goes with which channel, skip rather than guess
@@ -36581,11 +36602,25 @@ Submit via the recommendation_from_intake tool.`;
       // made). Only if Loyalty spend alone already exceeds the total
       // budget — a genuine conflict, not the normal case — does it get
       // scaled too, as the last resort.
-      const totalBudget = Number(campaign.budget) || 0;
-      const loyaltyChannels = channels.filter(c => c && c.audiencePastCustomers);
-      const otherChannels = channels.filter(c => !(c && c.audiencePastCustomers));
+      // 2026-10-17 — lines this campaign already carries (kept, never re-added below) use up part of the
+      // approved budget, so new lines are clamped to what is LEFT, and a channel that will be skipped as
+      // already-present is not counted again. Previously the total across all lines could pass the budget.
+      let existingLiveSum = 0; const existingKeysForClamp = new Set();
+      try {
+        db.prepare("SELECT channel, budget, status FROM channel_planning_details WHERE campaignId = ?").all(campaignId).forEach(r => {
+          const st = String(r.status || '').toLowerCase();
+          if (st === 'cancelled' || st === 'rejected') return;
+          existingLiveSum += Number(r.budget) || 0; existingKeysForClamp.add(String(r.channel || '').trim().toLowerCase());
+        });
+      } catch (e){}
+      const totalBudget = Math.max(0, (Number(campaign.budget) || 0) - existingLiveSum);
+      const keptChannels = channels.filter(c => c && c.channel && existingKeysForClamp.has(String(c.channel).trim().toLowerCase()));
+      const clampable = channels.filter(c => !(c && c.channel && existingKeysForClamp.has(String(c.channel).trim().toLowerCase())));
+      const loyaltyChannels = clampable.filter(c => c && c.audiencePastCustomers);
+      const otherChannels = clampable.filter(c => !(c && c.audiencePastCustomers));
       const loyaltySum = loyaltyChannels.reduce((s, c) => s + (Number(c.budget) || 0), 0);
       const otherSum = otherChannels.reduce((s, c) => s + (Number(c.budget) || 0), 0);
+      channels = clampable;
       if (totalBudget > 0 && loyaltySum > totalBudget){
         const scale = totalBudget / loyaltySum;
         channels = [
@@ -36600,6 +36635,7 @@ Submit via the recommendation_from_intake tool.`;
           ...otherChannels.map(c => ({ ...c, budget: Math.round((Number(c.budget) || 0) * scale) }))
         ];
       }
+      channels = [...channels, ...keptChannels];
       let savedCount = 0;
       const stageBudgets = {};
       // 2026-10-08 — the extracted plan replaces any unstaged, zero-impression
@@ -36647,6 +36683,11 @@ Submit via the recommendation_from_intake tool.`;
           if (lineStage) stageBudgets[lineStage] = (stageBudgets[lineStage] || 0) + (Number(c.budget) || 0);
         } catch (e){ console.warn('[POST /api/campaigns/:id/generate-recommendation-from-intake] channel save failed', c.channel, e); }
       }
+      // 2026-10-17 — planned impressions on the campaign follow the lines (was a stale figure from the first estimate).
+      try {
+        const sumImp = Number(db.prepare("SELECT COALESCE(SUM(impressions),0) AS n FROM channel_planning_details WHERE campaignId = ? AND LOWER(COALESCE(status,'')) NOT IN ('cancelled','rejected')").get(campaignId).n) || 0;
+        if (sumImp > 0 && savedCount > 0) db.prepare('UPDATE campaigns SET plannedImpressions = ? WHERE id = ?').run(sumImp, campaignId);
+      } catch (e){ console.warn('plannedImpressions rollup skipped', e.message); }
       // campaigns.stage stays a single rollup label for the views that
       // still key off one value (list filters, the Objectives screen's
       // "Loop Stage" summary before line items exist) — set to whichever
