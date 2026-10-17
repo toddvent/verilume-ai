@@ -1493,12 +1493,18 @@ const DRAFT_ROUTES = [
   /^\/api\/accounts\/[^/]+\/voice-draft$/,
   /^\/api\/campaigns\/[^/]+\/messaging-ai-draft$/,
   /^\/api\/campaigns\/[^/]+\/copy-interview$/,
+  /^\/api\/campaigns\/[^/]+\/copy-interview\/[^/]+\/contest$/,
   /^\/api\/campaigns\/[^/]+\/copy-interview\/[^/]+\/candidate\/[^/]+\/expand$/,
   /^\/api\/accounts\/[^/]+\/press-releases\/[^/]+\/(generate-draft|generate-linkedin)$/,
   /^\/api\/accounts\/[^/]+\/(editorial-pitches|corporate-comms)\/[^/]+\/generate-draft$/,
   /^\/api\/accounts\/[^/]+\/[^/]+\/[^/]+\/draft$/
 ];
 // Drafts allowed: Spark = prorated trial share counted since activation; other levels = per calendar month. No tier or Beacon = unlimited.
+// What the contest card shows: drafts used out of the allowance for the period, or null when the account has no metered allowance.
+// The response is read AFTER the request finishes recording its own use, so callers add 0 here; the client re-reads it.
+function allowanceForClient(accountId){
+  try { const a = draftAllowanceFor(accountId); return a ? { tier: a.tier, limit: a.limit, used: a.used, remaining: a.remaining, period: a.period } : null; } catch (e){ return null; }
+}
 function draftAllowanceFor(accountId){
   const a = db.prepare('SELECT paidTier, paidTierActivatedAt FROM accounts WHERE accountId = ?').get(accountId);
   if (!a || !a.paidTier) return null;
@@ -5845,7 +5851,7 @@ async function runBrandVoiceContest(account, extra){
   const anthropicCandidate = buildCandidate(BRAND_VOICE_PRIMARY_BRIEF.key, BRAND_VOICE_PRIMARY_BRIEF.label, BRAND_VOICE_PRIMARY_BRIEF.vendor, BRAND_VOICE_PRIMARY_BRIEF.model, anthropicGenerated);
   const liveVendorCandidates = configuredVendors.map((v, i) => buildCandidate(v.key, v.label, v.vendor, v.model, vendorGenerated[i]));
 
-  const unconfiguredCandidates = INTERVIEW_VENDOR_REGISTRY.filter(v => !process.env[v.envVar]).map(v => ({
+  const unconfiguredCandidates = (defaultOnly ? [] : INTERVIEW_VENDOR_REGISTRY.filter(v => !process.env[v.envVar])).map(v => ({
     key: v.key, label: v.label, vendor: v.vendor, model: null, configured: false,
     visionStatement: null, longformExample: null, error: `${v.envVar} not configured on this deployment.`,
     // Never pending — a missing API key isn't retryable by a second pass.
@@ -24748,7 +24754,7 @@ CAMPAIGN CONTEXT:
 - Target wealth tier (Verilume Wealth Index-derived): ${humanizeAudienceKeys(account.wealth, WEALTH_TIER_LABELS_FOR_COPY) || '(not set — assume a broad, general audience)'} — calibrate vocabulary and appeals accordingly: High Net-Worth reads restrained and specific (never lead with price or urgency language), Mainstream/Value-Conscious can lead with clear value and practical benefit, and a generation skew (e.g. Gen Z vs. Baby Boomers) should shift register and reference points, not just word choice
 - Primary KPI this campaign is measured on: ${campaign.primaryKpi || '(not set)'} — the call to action must genuinely drive this outcome, specifically, not a generic "learn more"
 - Key Message the human supplied, if any${campaign.keyMessageMode === 'descriptive' ? ' (a DESCRIPTIVE brief, not a sentence to quote verbatim -- write real, finished copy that captures this direction in your own words; do not reproduce it as-is)' : ' (weave this in as the real anchor of the copy if present, as close to verbatim as reads naturally)'}: ${opts.keyMessage || '(none supplied — establish your own opening line grounded in the brand voice and style facts above)'}
-- Role/Style approach: ${opts.style || 'Storytelling'}
+${keyMessageHeadlineRule(campaign)}- Role/Style approach: ${opts.style || 'Storytelling'}
 - Product/Focus: ${opts.focus || '(not set)'}
 ${campaign.mandatoryPhrase ? `- MANDATORY PHRASE (required verbatim, word-for-word, somewhere in the copy -- this is not optional, its absence is a compliance failure): "${campaign.mandatoryPhrase}"\n` : ''}${campaignTypeBriefContext(campaign)}${businessInitiativeBriefContext(campaign)}
 Write 3-5 short paragraphs of real Long Form Copy (120-220 words). It must read as something a real luxury travel brand would actually publish — specific, sensory where appropriate, never generic "unforgettable journey" language, and it must end with a call to action that genuinely serves the stated Primary KPI for this Loop Stage.
@@ -27663,6 +27669,8 @@ function scoreComplianceHeuristically(copyText, account, campaign){
   // not a relevance one.
   if (campaign && campaign.keyMessageMode === 'exact' && campaign.keyMessage && !copyText.includes(campaign.keyMessage)){
     flags.push(`Key Message is set to exact/verbatim mode but this draft doesn't use it word-for-word: "${campaign.keyMessage}".`);
+  } else if (campaign && campaign.keyMessageMode === 'exact' && campaign.keyMessage && copyText.indexOf(campaign.keyMessage) > Math.max(120, campaign.keyMessage.length + 40)){
+    flags.push(`Key Message is set to exact/verbatim mode and is required as the headline, but it isn't the opening line of this draft: "${campaign.keyMessage}".`);
   }
   const complianceScore = Math.max(0, 100 - flags.length * 20);
   return { complianceScore, flags, mode: 'heuristic' };
@@ -28074,7 +28082,7 @@ CAMPAIGN CONTEXT:
 - Audience/Segment: ${campaign.segment || '(not set)'}${exclusionPromptLine(campaign)}
 ${audienceLabel ? `- THIS DRAFT IS FOR ONE SPECIFIC AUDIENCE, NOT THE WHOLE CAMPAIGN: "${audienceLabel}" -- write to speak directly to this audience, not a generic campaign-wide reader. If this audience implies a different angle, urgency, or level of familiarity with the brand than a first-time visitor, reflect that.\n` : ''}- Primary KPI: ${campaign.primaryKpi || '(not set)'}
 - Key Message, if any${campaign.keyMessageMode === 'descriptive' ? ' (a DESCRIPTIVE brief -- write real copy that captures this direction in your own words, do not quote it verbatim)' : ''}: ${campaign.keyMessage || '(none supplied)'}
-- Campaign writing style, if the account has one on file: ${campaign.roleStyle || '(none set -- use your own best judgment, grounded in the brand voice guide above)'}
+${keyMessageHeadlineRule(campaign)}- Campaign writing style, if the account has one on file: ${campaign.roleStyle || '(none set -- use your own best judgment, grounded in the brand voice guide above)'}
 - Channels this copy will run on: ${channelsText || '(not yet set on this campaign -- write copy that reads naturally across channels)'}
 - Creative Focus / destination${campaign.creativeFocusGroups && campaign.creativeFocusGroups.includes(',') ? 's' : ''}, if set: ${campaign.creativeFocusGroups || '(none set)'}
 ${campaign.mandatoryPhrase ? `- MANDATORY PHRASE (required verbatim, word-for-word, somewhere in the copy -- this is not optional, its absence is a compliance failure): "${campaign.mandatoryPhrase}"\n` : ''}${campaignTypeBriefContext(campaign)}${businessInitiativeBriefContext(campaign)}
@@ -28580,7 +28588,16 @@ function checkInterviewWeeklyCap(accountId){
 // configured" placeholder, same as before this round — the only change is
 // that a configured vendor now runs for real instead of being permanently
 // unconfigured.
-async function runCandidateInterview(campaign, account, audienceLabel){
+// 2026-10-17 — when a campaign's Key Message is set to "use exactly as written", that wording is the HEADLINE of every piece of copy
+// (copy brief, Long Form Copy, each contest candidate), word for word. Empty when the mode is descriptive or no Key Message is set.
+function keyMessageHeadlineRule(campaign){
+  if (!campaign || campaign.keyMessageMode === 'descriptive' || !campaign.keyMessage || !String(campaign.keyMessage).trim()) return '';
+  return `- HEADLINE REQUIREMENT (the human chose "use exactly as written"): the copy's headline / opening line MUST be this text, word for word, with the same capitalization, numbers and symbols — do not shorten, reorder, soften or paraphrase it, and keep every other line consistent with it: "${String(campaign.keyMessage).trim()}"\n`;
+}
+async function runCandidateInterview(campaign, account, audienceLabel, runOpts){
+  // 2026-10-17 — runOpts.mode === 'default': the Anthropic draft only (one drafting call, one scoring call). The other partners run later,
+  // when the person asks for the contest (see extendCandidateInterviewWithContest).
+  const defaultOnly = !!(runOpts && runOpts.mode === 'default');
   if (audienceLabel && audienceIsExcluded(campaign, audienceLabel)){
     return { available: false, note: 'This campaign excludes the "' + audienceLabel + '" audience, so no copy is drafted for it. Remove it from the exclusions to write for it.', recommendedKey: null, candidates: [] };
   }
@@ -28603,7 +28620,7 @@ async function runCandidateInterview(campaign, account, audienceLabel){
   // job decisions only) by standing convention, not an oversight. A
   // candidate for a future round, not this one.
   const sampleContext = (await brandWritingSampleContext(account.accountId, { creativeMarket: campaignCreativeMarketScope(campaign) })) + (await creativeJobDecisionContext(account.accountId));
-  const configuredVendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar]);
+  const configuredVendors = defaultOnly ? [] : INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar]);
   // 2026-09-23 fix, per Todd's report ("signal is aborted... took much
   // longer this time" after the client timeout was already raised to
   // 100s) — the Anthropic call and every vendor call used to run
@@ -28697,6 +28714,29 @@ async function runCandidateInterview(campaign, account, audienceLabel){
 
   const recommendedKey = pickRecommendedCopyInterviewCandidate(allLive);
   return { available: true, note: null, recommendedKey, candidates: allCandidates };
+}
+// 2026-10-17 — the contest step on top of a default (Anthropic-only) draft: every configured partner drafts once, in parallel, is scored,
+// and is appended to the interview with the next "Option N" labels (shuffled among themselves). Already-stored candidates are untouched.
+async function extendCandidateInterviewWithContest(campaign, account, audienceLabel, existing){
+  const sampleContext = (await brandWritingSampleContext(account.accountId, { creativeMarket: campaignCreativeMarketScope(campaign) })) + (await creativeJobDecisionContext(account.accountId));
+  const have = new Set((existing || []).map(c => c.key));
+  const vendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar] && !have.has(v.key));
+  const generated = await Promise.all(vendors.map(v => generateVendorInterviewCopy(v.key, campaign, account, sampleContext, audienceLabel)));
+  const scored = await Promise.all(generated.map(g => (g.copy ? scoreDraftCopy(g.copy, campaign, account) : Promise.resolve(null))));
+  const fresh = vendors.map((v, i) => {
+    const score = scored[i], gen = generated[i];
+    const rel = score ? score.relevanceScore : null, comp = score ? score.complianceScore : null;
+    return {
+      key: v.key, label: v.label, vendor: v.vendor, model: v.model, configured: true,
+      copy: gen.copy, approach: gen.approach || null, error: gen.error, pending: !!gen.error,
+      relevanceScore: rel, complianceScore: comp, combinedScore: (typeof rel === 'number' && typeof comp === 'number') ? Math.round((rel + comp) / 2) : null,
+      note: score ? score.note : null, flags: score ? score.flags : [], scoreMode: score ? score.mode : null, longCopy: null
+    };
+  });
+  for (let i = fresh.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); [fresh[i], fresh[j]] = [fresh[j], fresh[i]]; }
+  let n = (existing || []).reduce((m, c) => Math.max(m, parseInt(String(c.blindLabel || '').replace(/\D/g, ''), 10) || 0), 0);
+  fresh.forEach(c => { c.blindLabel = `Option ${++n}`; });
+  return [...(existing || []), ...fresh];
 }
 // Shared ranking logic — used both by the first pass above and by POST
 // .../copy-interview/:id/retry-pending (the second pass) so a candidate
@@ -38365,7 +38405,7 @@ Channels: ${channelList}
 ${formatCampaignDatesForPrompt(campaign)}
 Primary KPI: ${campaign.primaryKpi || '(not set)'}${campaign.kpiGoal ? ` — goal of ${campaign.kpiGoal}` : ''}
 Total planned spend: $${Math.round(totalSpend).toLocaleString()}
-Key Message: ${campaign.keyMessage || '(not set)'}${campaign.longformCopy ? `\nLong-Form Copy: ${campaign.longformCopy}` : ''}`;
+Key Message: ${campaign.keyMessage || '(not set)'}${campaign.keyMessage && campaign.keyMessageMode !== 'descriptive' ? ' (set to "use exactly as written": it is the required headline)' : ''}${campaign.longformCopy ? `\nLong-Form Copy: ${campaign.longformCopy}` : ''}`;
       const prompt = audience === 'analytics'
         ? `Write a short message, in the voice of a CMO briefing the Analytics team on one specific campaign, based only on the real data below. Do not invent numbers, UTM parameter counts, or cost ceilings not given here.
 
@@ -38377,7 +38417,7 @@ Write 2-4 sentences telling Analytics what to track for this campaign and why it
 
 ${sharedFacts}
 
-Write 2-4 sentences telling the Copywriter team the shape of this campaign — who it's for, what tone fits its Campaign Type and Lifecycle Stage, and which channels their copy needs to fit. Plain, confident, no jargon, no bullet points.`;
+Write 2-4 sentences telling the Copywriter team the shape of this campaign — who it's for, what tone fits its Campaign Type and Lifecycle Stage, and which channels their copy needs to fit.${campaign.keyMessage && campaign.keyMessageMode !== 'descriptive' ? ' Then add one sentence stating the headline requirement: the Key Message is set to "use exactly as written", so it is the headline of the copy and long-form content that follow, word for word.' : ''} Plain, confident, no jargon, no bullet points.`;
       let parsed;
       try {
         parsed = await callClaudeForJSON({
@@ -40047,7 +40087,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       }
       const capCheck2 = checkInterviewWeeklyCap(campaign.accountId);
       if (capCheck2) return sendJson(res, 429, capCheck2);
-      const result = await runCandidateInterview(campaignForPrompt, account, audienceLabel);
+      const result = await runCandidateInterview(campaignForPrompt, account, audienceLabel, { mode: body.mode === 'default' ? 'default' : 'contest' });
       if (!result.available){
         return sendJson(res, 200, { available: false, note: result.note, interviewId: null, recommendedKey: null, candidates: [] });
       }
@@ -40058,8 +40098,37 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
         VALUES (?,?,?,?,?,?,?,?)`)
         .run(interviewId, campaignId, campaign.accountId, body.sourceKey, requestedBy, JSON.stringify(result.candidates), now, audienceLabel);
       return sendJson(res, 200, {
-        available: true, interviewId, recommendedKey: result.recommendedKey, candidates: redactCandidatesForClient(result.candidates), createdAt: now, audience: audienceLabel
+        available: true, interviewId, recommendedKey: result.recommendedKey, candidates: redactCandidatesForClient(result.candidates), createdAt: now, audience: audienceLabel,
+        mode: body.mode === 'default' ? 'default' : 'contest', allowance: allowanceForClient(campaign.accountId)
       });
+    }
+
+    // GET /api/accounts/:id/contest-usage — 2026-10-17, the account's draft allowance (used / limit for the period) for the contest card.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'contest-usage'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      return sendJson(res, 200, { allowance: allowanceForClient(accountId) });
+    }
+    // POST /api/campaigns/:id/copy-interview/:interviewId/contest — runs the other partners against an existing default draft and
+    // adds their options to the same interview. Counts as one draft against the account's allowance (see DRAFT_ROUTES).
+    if (req.method === 'POST' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'copy-interview' && parts[5] === 'contest'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const interviewId = decodeURIComponent(parts[4]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(campaign.accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const interview = db.prepare('SELECT * FROM campaign_copy_interviews WHERE id = ? AND campaignId = ?').get(interviewId, campaignId);
+      if (!interview) return sendJson(res, 404, { error: 'copy interview not found for this campaign' });
+      let existing = []; try { existing = JSON.parse(interview.candidatesJson) || []; } catch (e){ existing = []; }
+      const capCheck = checkInterviewWeeklyCap(campaign.accountId);
+      if (capCheck) return sendJson(res, 429, capCheck);
+      const audienceLabel = interview.audience || null;
+      const all = await extendCandidateInterviewWithContest(campaign, account, audienceLabel, existing);
+      db.prepare('UPDATE campaign_copy_interviews SET candidatesJson = ? WHERE id = ?').run(JSON.stringify(all), interviewId);
+      const live = all.filter(c => c.configured !== false && !c.pending);
+      return sendJson(res, 200, { available: true, interviewId, recommendedKey: pickRecommendedCopyInterviewCandidate(all.filter(c => c.configured)), candidates: redactCandidatesForClient(all), audience: audienceLabel, allowance: allowanceForClient(campaign.accountId), liveCount: live.length });
     }
 
     // POST /api/campaigns/:id/copy-interview/:interviewId/retry-pending —
