@@ -70856,7 +70856,7 @@ const AD_UNIT_SPECS = {
   'Linear TV': [{ label: ':15 Spot (16:9)', ratio: 16/9, hasImage: true, frames: 3 }, { label: ':30 Spot (16:9)', ratio: 16/9, hasImage: true, frames: 3 }],
   'OTV': [{ label: ':15 Spot (16:9)', ratio: 16/9, hasImage: true, frames: 3 }, { label: ':30 Spot (16:9)', ratio: 16/9, hasImage: true, frames: 3 }],
   'CTV': [{ label: ':15 Spot (16:9)', ratio: 16/9, hasImage: true, frames: 3 }, { label: ':30 Spot (16:9)', ratio: 16/9, hasImage: true, frames: 3 }],
-  'Paid Social': [{ label: 'Feed Square (1080×1080)', ratio: 1, hasImage: true }, { label: 'Story / Reel (1080×1920, animated)', ratio: 1080/1920, hasImage: true, frames: 3 }, { label: 'Feed Landscape (1200×628)', ratio: 1200/628, hasImage: true }],
+  'Paid Social': [{ label: 'Lead Form Card (1200×628)', ratio: 1200/628, hasImage: true }, { label: 'Click-to-Message (1080×1080)', ratio: 1, hasImage: true }, { label: 'Feed Square (1080×1080)', ratio: 1, hasImage: true }, { label: 'Story / Reel (1080×1920, animated)', ratio: 1080/1920, hasImage: true, frames: 3 }, { label: 'Feed Landscape (1200×628)', ratio: 1200/628, hasImage: true }],
   'Brand Search': [{ label: 'Expanded Text Ad', ratio: 3/1, hasImage: false }],
   'Non-Brand Search': [{ label: 'Expanded Text Ad', ratio: 3/1, hasImage: false }],
   // Round 132as, per direct feedback: "Display ads are animated we need copy
@@ -73567,15 +73567,20 @@ async function cmpLoadApprovedChannelsFromPlan(campaign){
     // Same rule as the Recap row: any line with a real channel name counts,
     // budget or not — "which channels are in this campaign's plan," not
     // "which channels have spend."
-    const names = cmpSortChannelsByTaxonomy([...new Set(entries.map(e => (e.channel || '').trim()).filter(Boolean))]);
+    // 2026-10-17 — a channel is offered here only when it has budget on this plan. A plan with no budget on any line keeps the old
+    // rule (every named channel) so nothing disappears before budgets are entered.
+    const anyBudget = entries.some(e => (Number(e.budget) || 0) > 0);
+    const names = cmpSortChannelsByTaxonomy([...new Set(entries.filter(e => !anyBudget || (Number(e.budget) || 0) > 0).map(e => (e.channel || '').trim()).filter(Boolean))]);
     // 2026-09-29 — keep the lines themselves: the Creative grid prefills
     // Partner (and Size, for print) from the campaign's own plan rows, so a
     // partner that arrived by upload (e.g. a publication not in the global
     // print catalog) is always offered.
     const lines = entries.map(e => ({
       channel: (e.channel || '').trim(), partner: (e.partner || '').trim(),
-      size: (e.detailsJson && e.detailsJson.creativeSize) ? String(e.detailsJson.creativeSize).trim() : ''
-    })).filter(l => l.channel);
+      size: (e.detailsJson && e.detailsJson.creativeSize) ? String(e.detailsJson.creativeSize).trim() : '',
+      budget: Number(e.budget) || 0,
+      product: (e.detailsJson && e.detailsJson.partnerProduct) ? String(e.detailsJson.partnerProduct) : ''
+    })).filter(l => l.channel && (!anyBudget || l.budget > 0));
     cmpApprovedChannelsFromPlan = { campaignId: campaign.id, channels: names, lines };
     return names;
   } catch (e){
@@ -73584,7 +73589,40 @@ async function cmpLoadApprovedChannelsFromPlan(campaign){
     return null;
   }
 }
+// 2026-10-17 — creative formats that belong to each ad product (Meta, Google, Yahoo and the media families). A channel's Format list
+// is the union of the formats for the products that have budget on this campaign's plan. If any budgeted line has no product tag,
+// or no product is known, the channel's full list is kept so an older plan is never cut short.
+const PRODUCT_CREATIVE_FORMATS = {
+  meta_lead_form: ['Lead form ad'],
+  meta_web_conversion: ['Feed post', 'Story / Reel', 'Carousel'],
+  meta_click_to_message: ['Click-to-message ad'],
+  meta_advantage_awareness: ['Feed post', 'Story / Reel', 'Carousel'],
+  google_brand_search: ['Responsive search ad', 'Call-only ad'],
+  google_non_brand_search: ['Responsive search ad', 'Call-only ad'],
+  google_pmax: ['Performance Max asset group'],
+  google_demand_gen: ['Demand Gen image ad', 'YouTube video ad'],
+  google_display: ['Responsive display ad'],
+  google_remarketing: ['Dynamic product/offer ad', 'Static retargeting ad'],
+  yahoo_dsp_display: ['Standard banner', 'Rich media'],
+  yahoo_native: ['Native ad'],
+  yahoo_ctv_video: [':15 Spot', ':30 Spot'],
+  yahoo_search: ['Responsive search ad'],
+  yahoo_mail: ['Standalone send'],
+  prog_prospecting: ['Standard banner', 'Rich media'], prog_retargeting: ['Standard banner', 'Rich media'], prog_native: ['Native ad'], prog_video: ['Online video'], prog_audio: ['Audio spot'],
+  mag_full_page: ['Full Page'], mag_half_page: ['Half Page'], mag_insert: ['Two-Page Spread', 'Inside Cover'], mag_digital: ['Newsletter sponsorship'],
+  dm_postcard: ['Postcard'], dm_letter_pack: ['Letter Package', 'Self-Mailer'], dm_catalog: ['Catalog / Booklet'], dm_triggered: ['Postcard', 'Letter Package']
+};
+const CMP_PARTNER_BOUND_CHANNELS = new Set(['Paid Social', 'Brand Search', 'Non-Brand Search', 'Remarketing', 'Programmatic Display']);
+function cmpBudgetedPlanLines(channel){ return cmpPlanLinesForChannel(channel).filter(l => !(l.budget === 0)); }
+function cmpProductFormatsForChannel(channel){
+  const lines = cmpBudgetedPlanLines(channel);
+  if (!lines.length || lines.some(l => !l.product || !PRODUCT_CREATIVE_FORMATS[l.product])) return [];
+  const out = []; lines.forEach(l => PRODUCT_CREATIVE_FORMATS[l.product].forEach(f => { if (!out.includes(f)) out.push(f); }));
+  return out;
+}
 function cmpAssetFormatOptions(channel){
+  const byProduct = channel ? cmpProductFormatsForChannel(channel) : [];
+  if (byProduct.length) return byProduct;
   // filtered to this channel's own real creative types where this file
   // already has them (CREATIVE_TYPES_BY_CHANNEL); falls back to the
   // generic taxonomy/starter list for a channel with no per-channel entry
@@ -74643,6 +74681,11 @@ function cmpPartnerOptionsForChannel(channel, savedValue){
   const push = (v) => { if (v && !out.includes(v)) out.push(v); };
   // This campaign's own plan partners lead the list.
   cmpPlanLinesForChannel(channel).forEach(l => push(l.partner));
+  // 2026-10-17 — Meta, Google, Yahoo and the other partner-bought channels: only partners that have budget on this plan are offered.
+  if (CMP_PARTNER_BOUND_CHANNELS.has(channel)){
+    const budgeted = [...new Set(cmpBudgetedPlanLines(channel).map(l => l.partner).filter(Boolean))];
+    if (budgeted.length){ const only = []; budgeted.forEach(v => only.push(v)); if (savedValue && !only.includes(savedValue)) only.push(savedValue); return only; }
+  }
   if (CMP_IN_HOUSE_CHANNELS.has(channel)) push(cmpInHousePartnerLabel());
   (CMP_PARTNERS_BY_CHANNEL[channel] || []).forEach(push);
   if (cmpPublisherNamesByMedium[channel]) cmpPublisherNamesByMedium[channel].forEach(push);
