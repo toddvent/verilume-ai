@@ -18325,10 +18325,18 @@ function renderCmpChannelGroupRow(){
 // taxonomy hasn't loaded yet (this page reached before the Marketing
 // Calendar ever fetched it, or the backend has no rows) the tile row says so
 // honestly instead of silently substituting fabricated options.
+let cmpTaxonomyFetchInFlight = false;
 function cmpTaxonomyValues(key){
   const row = state.calendarTaxonomies && state.calendarTaxonomies[key];
   let vals = row && row.valuesJson ? row.valuesJson : null;
-  // 2026-10-11, per Todd: Brand is a Product Group option across the site.
+  if (typeof vals === 'string'){ try { vals = JSON.parse(vals); } catch (e){ vals = null; } }
+  // 2026-10-17 (test note 1): the list comes from the database (account_taxonomies). If it has not been fetched
+  // yet, fetch it now and report "not loaded" rather than showing a Brand-only list that hides the real values.
+  if (!state.calendarTaxonomies){
+    try { if (state.companyId && typeof mktCalLoadTaxonomies === 'function' && !cmpTaxonomyFetchInFlight){ cmpTaxonomyFetchInFlight = true; mktCalLoadTaxonomies().finally(() => { cmpTaxonomyFetchInFlight = false; }); } } catch (e){ cmpTaxonomyFetchInFlight = false; }
+    return null;
+  }
+  // 2026-10-11, per Todd: Brand is a Product Group option across the site (the server adds it too).
   if (key === 'productGroup'){ vals = Array.isArray(vals) ? vals.slice() : []; if (!vals.some(v => String(v).toLowerCase() === 'brand')) vals.push('Brand'); }
   return vals;
 }
@@ -18347,7 +18355,7 @@ function renderCmpProductGroupRow(){
     // 2026-08-23 — Product Groups & Creative Focus Group setup moved out of
     // Marketing Calendar into the Configuration workstream (step-
     // taxonomyManager); this pointer now goes there instead.
-    row.innerHTML = `<p class="hint" style="margin:0;">No Product Group taxonomy loaded for this account yet — <a onclick="goToStep('bulkUpload')" style="cursor:pointer;">set it up under Marketing Calendar Bulk Upload</a>.</p>`;
+    row.innerHTML = `<p class="hint" style="margin:0;">Loading your saved Product Groups… If they don't appear, <a onclick="goToStep('bulkUpload')" style="cursor:pointer;">check the list under Marketing Calendar Bulk Upload</a>.</p>`;
     return;
   }
   // Round 132bt (2026-08-13) fix, per direct instruction: "remove Multi-
@@ -18379,7 +18387,7 @@ function renderCmpCreativeFocusGroupRow(){
   let values = cmpTaxonomyValues('creativeMarket');
   if (!values){
     // 2026-08-23 — same move as Product Group above.
-    row.innerHTML = `<p class="hint" style="margin:0;">No Creative Market taxonomy loaded for this account yet — <a onclick="goToStep('bulkUpload')" style="cursor:pointer;">set it up under Marketing Calendar Bulk Upload</a>.</p>`;
+    row.innerHTML = `<p class="hint" style="margin:0;">Loading your saved Creative Focus Groups… If they don't appear, <a onclick="goToStep('bulkUpload')" style="cursor:pointer;">check the list under Marketing Calendar Bulk Upload</a>.</p>`;
     return;
   }
   // Round 132bt (2026-08-13) fix — same as Product Group above: MULTI-
@@ -30514,6 +30522,12 @@ const TTB_ITEMS = {
   competitivePositioning: { benefit: 'Sets who you are measured against. Ongoing tracking lives in Strategy.',
     sample: `<div class="ttb-srow"><b>Competitor A</b><span>Premium, all-inclusive</span></div><div class="ttb-srow"><b>Competitor B</b><span>Value, families</span></div><div class="ttb-srow"><b>You</b><span>Small ship, expedition</span></div>`,
     opts: [['manual', 'Add Manually', 'competitivePositioning']] },
+  taxonomy: { benefit: 'Your Product Groups and Creative Focus Groups. Campaign Creation, the Marketing Calendar and every report read these lists.',
+    sample: `<div class="ttb-srow"><b>Product Group</b><span>Polar, Epicurean, Cultural</span></div><div class="ttb-srow"><b>Creative Focus Group</b><span>Arctic, Antarctica, Mediterranean</span></div>`,
+    opts: [['manual', 'Add Manually', 'bulkUpload']] },
+  calendarUpload: { benefit: 'Past campaigns and plan lines loaded in bulk, so the Marketing Calendar and Analysis start with history.',
+    sample: `<div class="ttb-srow"><b>Antarctica Fall Push</b><span>Paid Social · $12,000</span></div><div class="ttb-srow"><b>Past Guest Mailer</b><span>Direct Mail · $8,500</span></div>`,
+    opts: [['manual', 'Open the upload', 'bulkUpload']] },
   brandWritingSamples: { benefit: 'Two or three writings are enough. The Brain learns how you sound from them.',
     sample: `<div class="ttb-srow"><b>Spring email to past guests</b><span>420 words</span></div><div class="ttb-srow"><b>Brochure page, Antarctica</b><span>610 words</span></div><div class="ttb-srow"><b>CEO welcome speech</b><span>780 words</span></div>`,
     opts: [['upload', 'Upload File', 'brandWritingSamples'], ['manual', 'Add Manually', 'brandWritingSamples']] },
@@ -30567,6 +30581,8 @@ const TTB_CFG = {
   brainFacts: { manual: { cards: [] }, view: { step: 'searchOptimization', label: 'Search Everywhere' } },
   searchKeywords: { upload: { direct: 'srchKwPick', formats: 'A CSV export from Semrush, BrightEdge, Search Console or Keyword Planner, or a plain list with one keyword per row.', sample: { name: 'search-keywords-sample.csv', cols: ['Keyword', 'Search Volume', 'Intent', 'Product Group'], rows: [['world cruise', 12100, 'Commercial', 'World Voyage'], ['how long is a world cruise', 880, 'Informational', 'World Voyage']] } }, manual: { cards: [] }, view: { step: 'searchOptimization', label: 'Search Everywhere' } },
   competitivePositioning: { manual: { step: 'competitivePositioning' }, view: { tab: 'strategy', label: 'Strategy' } },
+  taxonomy: { manual: { step: 'bulkUpload' }, used: 'Used by Campaign Creation and the Marketing Calendar' },
+  calendarUpload: { manual: { step: 'bulkUpload' }, used: 'Used by the Marketing Calendar and Analysis' },
   brandWritingSamples: { upload: { formats: 'Word, PDF or text files', go: 'brandWritingSamples' }, manual: { step: 'brandWritingSamples' }, used: 'Used by Copywriting' },
   voice: { manual: { step: 'voice' }, view: { tab: 'brand', label: 'Customer Experiences' } },
   marketingBudgetUpload: { upload: { formats: '.xlsx or .csv, in any layout. Excel or CSV, in any layout.', direct: 'ttbBuPick', sample: { name: 'marketing-budget-sample.csv', cols: ['Category', 'Status', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Total'], rows: [['Paid Social', 'Working', 24000, 26000, 30000, 30000, 28000, 26000, 24000, 24000, 30000, 32000, 34000, 20000, 328000], ['Agency fees', 'Non-Working', 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 96000]] } }, manual: { step: 'marketingBudgetUpload', arg: 'configuration' }, view: { step: 'mediaplan', label: 'Budget and Plan' } },
@@ -31117,7 +31133,7 @@ const TTB_MORE = {
   team: ['Team Experiences', 'Assessment Rankings'],
   'your company': ['View My Customers'],
   'your voice': ['Press Release Development & Distribution History', 'Reputation & Media Monitoring', 'Wire Frame Development'],
-  'your numbers': ['Analytics Connections', 'Master UTM Configuration', 'MMM Data Inputs', 'Product Group & Creative Focus Group Taxonomy', 'Historical Campaigns & Media Plans', 'Marketing Calendar Bulk Upload', 'Manual KPI & Actuals Entry'],
+  'your numbers': ['Analytics Connections', 'Master UTM Configuration', 'MMM Data Inputs', 'Historical Campaigns & Media Plans', 'Manual KPI & Actuals Entry'],
   'your plan': ['Budget & Channel Management'],
   more: ['Account Settings']
 };
@@ -31155,7 +31171,7 @@ function ttbSetupHtml(d){
   if (active){
     const c = cp(active);
     const head = `<div class="ttb-group-h"><span class="ttb-mini">${ttbClock(active.minutes, active.items.filter(i => i.done).length * active.minutes / active.items.length, 44, c.title)}</span><div><h2>${escapeHtml(c.title)}</h2><div class="strat-sub">${escapeHtml(c.desc)}</div></div></div>`;
-    return `${hero}<div class="ttb-group"><button type="button" class="strat-chip ttb-back" onclick="ttbCloseGroup()">&larr; All setup cards</button>${head}${active.items.map(i => ttbModuleHtml(d, i)).join('')}</div>`;
+    return `${hero}<div class="ttb-group"><button type="button" class="strat-chip ttb-back" onclick="ttbCloseGroup()">&larr; All setup cards</button>${head}${active.items.map(i => ttbModuleHtml(d, i)).join('')}${ttbMoreHtml(String(c.title).toLowerCase())}</div>`;
   }
   const cards = S.steps.map(st => { const c = cp(st); const n = st.items.filter(i => i.done).length; return `<button type="button" class="ttb-card${st.done ? ' done' : ''}" onclick="ttbOpenGroup('${st.key}')"><span class="ttb-card-top"><span class="ttb-mini">${ttbClock(st.minutes, n * st.minutes / st.items.length, 44, c.title)}</span><span class="ttb-card-state">${st.done ? '&#10003; Done' : `${n} of ${st.items.length} done`}</span></span><span class="ttb-card-kicker">${c.kicker ? escapeHtml(c.kicker) : '&nbsp;'}</span><span class="ttb-card-name">${escapeHtml(c.title)}</span><span class="ttb-card-desc">${escapeHtml(c.desc)}</span><span class="ttb-card-open">Open &rarr;</span></button>`; }).join('');
   const cardsHtml = `<div class="ttb-cards">${cards}</div>`;
@@ -47919,6 +47935,22 @@ function cmpSkipPickupAndContinue(){
 // renders the intake chat thread, exactly as it already did the moment
 // #cmpStage-pickup became visible in the old accordion — this just calls
 // it from a different container.
+async function cmpRefreshObjectivesFromDb(campaignId){
+  if (dataSourceLabel !== 'backend' || (cmpObjRecapState && cmpObjRecapState.editing)) return;
+  try {
+    const before = state.campaigns.find(c => c.id === campaignId);
+    const localNotes = before && before.activityNotes;
+    await loadCampaigns();
+    const fresh = state.campaigns.find(c => c.id === campaignId);
+    if (fresh && localNotes && !fresh.activityNotes) fresh.activityNotes = localNotes; // never drop an unsaved local thread
+    const sel = document.getElementById('cmpExistingCampaign');
+    const open = document.getElementById('cmpObjectivesPanel');
+    if (fresh && sel && sel.value === campaignId && open && open.classList.contains('open')){
+      cmpRenderObjectivesRecap(fresh);
+      renderCmpPickupStage();
+    }
+  } catch (e){ console.warn('cmpRefreshObjectivesFromDb failed:', e); }
+}
 function cmpOpenObjectivesIntake(){
   const campaign = cmpRailLoadedCampaign();
   const overlay = document.getElementById('cmpObjectivesOverlay');
@@ -47933,6 +47965,9 @@ function cmpOpenObjectivesIntake(){
   if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('objectives');
   renderCmpPickupStage();
   renderCmpStageRail();
+  // 2026-10-17 (test note 5): the recap and the AI Brain must read what is SAVED in the database, not this
+  // browser session's copy. Re-read this campaign from the backend each time the dialogue opens.
+  cmpRefreshObjectivesFromDb(campaign.id);
   // 2026-09-16 — Collaboration Center moves into this overlay while it's
   // open (see cmpRenderCollabCenter()'s own comment); clear the Hub's mount
   // first so nothing stale flashes there when the overlay closes.
@@ -48212,6 +48247,9 @@ const CMP_OBJ_RECAP_FIELDS = [
   { key: 'businessInitiative', label: 'Media Science Primary Focus', type: 'select', registry: () => (typeof BUSINESS_INITIATIVE_REGISTRY_CLIENT !== 'undefined' ? BUSINESS_INITIATIVE_REGISTRY_CLIENT : {}) },
   { key: 'productGroups', label: 'Product Group', type: 'multi', options: () => cmpTaxonomyValues('productGroup') || [] },
   { key: 'creativeFocusGroups', label: 'Creative Focus Group', type: 'multi', options: () => cmpTaxonomyValues('creativeMarket') || [] },
+  // 2026-10-17 (test note 5): the audiences chosen in Campaign Creation now show in the recap, so the AI Brain
+  // never asks about something that was already selected.
+  { key: 'segment', label: 'Audience', type: 'multi', options: () => ACCOUNT_SEGMENTS.slice() },
   { key: 'primaryKpi', label: 'Primary KPI', type: 'select', rawFallback: true, registry: () => { const o = {}; (typeof PRIMARY_KPI_OPTIONS !== 'undefined' ? PRIMARY_KPI_OPTIONS : []).filter(x => !/^Other/i.test(x)).forEach(x => { o[x] = { label: x }; }); return o; } },
   { key: 'kpiGoal', label: 'Target', type: 'number' },
   { key: 'budget', label: 'Estimated Budget', type: 'money' },
@@ -48226,7 +48264,7 @@ function cmpObjRecapInputId(key){ return `cmpObjRecapField_${key}`; }
 // the last save's {ok, text}, same shape as cmpRecoState.stageSaveBanner.
 let cmpObjRecapState = { editing: false, draft: null, saving: false, banner: null, multiSets: null };
 function cmpObjRecapFieldValue(c, key){
-  if (key === 'productGroups' || key === 'creativeFocusGroups'){
+  if (key === 'productGroups' || key === 'creativeFocusGroups' || key === 'segment'){
     return (c[key] || '').split(',').map(s => s.trim()).filter(Boolean);
   }
   return c[key] !== undefined && c[key] !== null ? c[key] : '';
@@ -48269,7 +48307,8 @@ function cmpObjRecapStartEdit(){
   // — see cmpObjRecapRenderMultiField()/cmpObjRecapToggle*Groups() below.
   cmpObjRecapState.multiSets = {
     productGroups: new Set(draft.productGroups || []),
-    creativeFocusGroups: new Set(draft.creativeFocusGroups || [])
+    creativeFocusGroups: new Set(draft.creativeFocusGroups || []),
+    segment: new Set(draft.segment || [])
   };
   cmpObjRecapState.editing = true;
   cmpObjRecapState.draft = draft;
@@ -48298,7 +48337,7 @@ function cmpObjRecapRenderMultiField(key){
   const field = CMP_OBJ_RECAP_FIELDS.find(f => f.key === key);
   if (!field || !document.getElementById(cmpObjRecapMultiContainerId(key))) return;
   const options = (field.options() || []).map(v => ({ value: v, label: v }));
-  const toggleFn = key === 'productGroups' ? 'cmpObjRecapToggleProductGroups' : 'cmpObjRecapToggleCreativeFocusGroups';
+  const toggleFn = key === 'productGroups' ? 'cmpObjRecapToggleProductGroups' : (key === 'segment' ? 'cmpObjRecapToggleSegment' : 'cmpObjRecapToggleCreativeFocusGroups');
   cmpRenderCdSelect(cmpObjRecapMultiContainerId(key), options, s.multiSets[key], toggleFn, `Select ${field.label.toLowerCase()}(s)`);
 }
 function cmpObjRecapToggleProductGroups(v){
@@ -48306,6 +48345,12 @@ function cmpObjRecapToggleProductGroups(v){
   if (set.has(v)) set.delete(v); else set.add(v);
   cmpObjRecapState.draft.productGroups = Array.from(set);
   cmpObjRecapRenderMultiField('productGroups');
+}
+function cmpObjRecapToggleSegment(v){
+  const set = cmpObjRecapState.multiSets.segment;
+  if (set.has(v)) set.delete(v); else set.add(v);
+  cmpObjRecapState.draft.segment = Array.from(set);
+  cmpObjRecapRenderMultiField('segment');
 }
 function cmpObjRecapToggleCreativeFocusGroups(v){
   const set = cmpObjRecapState.multiSets.creativeFocusGroups;
@@ -48445,6 +48490,7 @@ function cmpRenderObjectivesRecap(c){
   if (s.editing){
     cmpObjRecapRenderMultiField('productGroups');
     cmpObjRecapRenderMultiField('creativeFocusGroups');
+    cmpObjRecapRenderMultiField('segment');
   }
 }
 // Builds the auto-started opening line — same "real field summary, not
@@ -48462,7 +48508,9 @@ function cmpObjectivesAutoStartLine(c){
   const cfg = (c.creativeFocusGroups || '').split(',').map(s => s.trim()).filter(Boolean).join(', ');
   const typeEntry = (typeof CAMPAIGN_TYPE_REGISTRY_CLIENT !== 'undefined' && c.campaignType) ? CAMPAIGN_TYPE_REGISTRY_CLIENT[c.campaignType] : null;
   const initiativeEntry = (typeof BUSINESS_INITIATIVE_REGISTRY_CLIENT !== 'undefined' && c.businessInitiative) ? BUSINESS_INITIATIVE_REGISTRY_CLIENT[c.businessInitiative] : null;
+  const seg = (c.segment || '').split(',').map(s => s.trim()).filter(Boolean).join(', ');
   const known = [
+    `Audience ${seg || 'TBD'}`,
     `Product Group ${pg || 'TBD'}`,
     `Creative Focus Group ${cfg || 'TBD'}`
   ];
@@ -48481,6 +48529,9 @@ function cmpObjectivesAutoStartLine(c){
 // the user or a teammate already started.
 async function cmpAutoStartObjectivesDialogueIfNeeded(campaign){
   if (!campaign || cmpIntakeHistory.length || cmpIntakeBusy) return;
+  // 2026-10-17 (test note 5): build the opening line from the SAVED campaign (database), not this session's copy.
+  try { await loadCampaigns(); const fresh = state.campaigns.find(x => x.id === campaign.id); if (fresh) campaign = fresh; } catch (e){}
+  if (cmpIntakeHistory.length || cmpIntakeBusy) return;
   const message = cmpObjectivesAutoStartLine(campaign);
   if (!message) return;
   cmpIntakeHistory.push({ role: 'user', text: message, autoStarted: true });
@@ -59537,7 +59588,7 @@ async function mktCalLoadTaxonomies(){
   mktCal.taxonomiesLoaded = true; // set first so a failure doesn't retry-loop every render
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/taxonomies`);
-    if (!resp.ok) return;
+    if (!resp.ok){ mktCal.taxonomiesLoaded = false; return; }
     const data = await resp.json();
     const byKey = {};
     (data.taxonomies || []).forEach(t => { byKey[t.taxonomyKey] = t; });
