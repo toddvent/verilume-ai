@@ -1480,6 +1480,17 @@ function getSparkSettings(){
   _sparkCache = out; _sparkCacheAt = Date.now();
   return out;
 }
+// 2026-10-17 — the approved Loop Stage media mix for one campaign: per stage, its share of the campaign budget and each channel's share
+// of that stage. Proposed from the account's own stage-level plan when it has one, otherwise from the best-practice weights; a person
+// approves or edits it here. The AI Brain reads it ahead of the account-level blend.
+createTableIfNeeded(`CREATE TABLE IF NOT EXISTS campaign_stage_mix (
+  campaignId TEXT PRIMARY KEY,
+  accountId TEXT NOT NULL,
+  mixJson TEXT NOT NULL,
+  approvedBy TEXT,
+  approvedAt TEXT,
+  updatedAt TEXT NOT NULL
+)`);
 createTableIfNeeded(`CREATE TABLE IF NOT EXISTS draft_usage (
   id TEXT PRIMARY KEY,
   accountId TEXT NOT NULL,
@@ -1500,6 +1511,61 @@ const DRAFT_ROUTES = [
   /^\/api\/accounts\/[^/]+\/[^/]+\/[^/]+\/draft$/
 ];
 // Drafts allowed: Spark = prorated trial share counted since activation; other levels = per calendar month. No tier or Beacon = unlimited.
+// 2026-10-17 — best-practice stage x channel weights (the same tables the portal's Media Plan uses; keep them in step). Used as the base
+// case for a campaign's stage mix whenever the account has no stage-level plan of its own. Rows are renormalized within each stage.
+const BEST_PRACTICE_STAGE_CHANNEL_WEIGHTS = {"generic":{"Awareness":{"Linear TV":0.18,"OTV":0.14,"CTV":0.1,"Paid Social":0.16,"Out-of-Home":0.08,"Radio":0.06,"Magazines":0.05,"PR":0.07,"Direct Mail — Prospects":0.16},"Consideration":{"Non-Brand Search":0.24,"Brand Search":0.14,"Paid Social":0.14,"CTV":0.07,"OTV":0.05,"Podcasts":0.05,"Programmatic Display":0.13,"Newspapers":0.06,"Direct Mail — Inquiries":0.07,"Direct Mail — Past Guests":0.03,"Email — Remarketing":0.05,"Retail Media":0.09,"Field / ABM":0.04},"Purchase":{"Non-Brand Search":0.28,"Brand Search":0.19,"Programmatic Display":0.14,"Paid Social":0.1,"CTV":0.06,"OTV":0.04,"Direct Mail — Inquiries":0.16,"Direct Mail — Past Guests":0.04,"Email — Remarketing":0.05,"Retail Media":0.14,"Field / ABM":0.05},"Loyalty":{"Internal Email":0.4,"Direct Mail — Past Guests":0.28,"Partner Media":0.14,"Paid Social":0.18},"Advocacy":{"PR":0.36,"Paid Social":0.24,"Internal Email":0.22,"Partner Media":0.18}},"Automotive Sales & Service":{"Awareness":{"Linear TV":0.35,"OTV":0.1406,"CTV":0.1004,"Paid Social":0.1635,"Radio":0.23,"Direct Mail — Prospects":0.0626},"Consideration":{"OTV":0.0502,"CTV":0.0703,"Paid Social":0.143,"Non-Brand Search":0.4456,"Brand Search":0.1406,"Podcasts":0.0502,"Programmatic Display":0.1306,"Newspapers":0.0974,"Direct Mail — Inquiries":0.0274,"Direct Mail — Past Guests":0.0117,"Email — Remarketing":0.0502,"Retail Media":0.0904,"Field / ABM":0.0402},"Purchase":{"OTV":0.0402,"CTV":0.0603,"Paid Social":0.1022,"Non-Brand Search":0.5198,"Brand Search":0.1908,"Programmatic Display":0.1406,"Direct Mail — Inquiries":0.0626,"Direct Mail — Past Guests":0.0156,"Email — Remarketing":0.0502,"Retail Media":0.1406,"Field / ABM":0.0502},"Loyalty":{"Paid Social":0.1839,"Direct Mail — Past Guests":0.1095,"Internal Email":0.4018},"Advocacy":{"Paid Social":0.2452,"Internal Email":0.221}},"Financial Services / Banking":{"Awareness":{"Linear TV":0.1965,"OTV":0.1331,"CTV":0.0951,"Paid Social":0.1522,"Out-of-Home":0.0873,"Radio":0.0655,"Magazines":0.0546,"PR":0.0764,"Direct Mail — Prospects":0.1747},"Consideration":{"OTV":0.0476,"CTV":0.0666,"Paid Social":0.1331,"Non-Brand Search":0.2282,"Brand Search":0.1331,"Podcasts":0.0476,"Programmatic Display":0.1236,"Newspapers":0.0655,"Direct Mail — Inquiries":0.0764,"Direct Mail — Past Guests":0.0328,"Email — Remarketing":0.0476,"Retail Media":0.0856,"Field / ABM":0.038},"Purchase":{"OTV":0.038,"CTV":0.0571,"Paid Social":0.0951,"Non-Brand Search":0.2663,"Brand Search":0.1807,"Programmatic Display":0.1331,"Direct Mail — Inquiries":0.1747,"Direct Mail — Past Guests":0.0437,"Email — Remarketing":0.0476,"Retail Media":0.1331,"Field / ABM":0.0476},"Loyalty":{"Paid Social":0.1712,"Direct Mail — Past Guests":0.3057,"Internal Email":0.3804,"Partner Media":0.1528},"Advocacy":{"Paid Social":0.2282,"PR":0.393,"Internal Email":0.2092,"Partner Media":0.1965}},"Cruise Lines — Luxury":{"Awareness":{"Direct Mail — Prospects":0.22,"Magazines":0.16,"Linear TV":0.14,"PR":0.12,"OTV":0.08,"CTV":0.08,"Paid Social":0.08,"Newspapers":0.06,"Out-of-Home":0.03,"Radio":0.03},"Consideration":{"Direct Mail — Prospects":0.16,"Direct Mail — Inquiries":0.16,"Magazines":0.1,"Brand Search":0.1,"Non-Brand Search":0.1,"Programmatic Display":0.08,"Partner Media":0.08,"Paid Social":0.07,"Newspapers":0.05,"OTV":0.05,"CTV":0.05},"Purchase":{"Direct Mail — Inquiries":0.24,"Direct Mail — Past Guests":0.14,"Brand Search":0.14,"Field / ABM":0.12,"Internal Email":0.1,"Non-Brand Search":0.08,"Programmatic Display":0.06,"Email — Remarketing":0.05,"Paid Social":0.04,"Partner Media":0.03},"Loyalty":{"Direct Mail — Past Guests":0.4,"Internal Email":0.3,"Partner Media":0.1,"Magazines":0.08,"Paid Social":0.06,"PR":0.06},"Advocacy":{"PR":0.34,"Internal Email":0.2,"Direct Mail — Past Guests":0.16,"Partner Media":0.16,"Paid Social":0.14}}};
+const BEST_PRACTICE_STAGE_BUDGET_WEIGHTS = { Awareness: 0.30, Consideration: 0.25, Purchase: 0.25, Loyalty: 0.12, Advocacy: 0.08 };
+function bestPracticeStageMixLines(industry, allowedChannels){
+  const table = BEST_PRACTICE_STAGE_CHANNEL_WEIGHTS[industry] || BEST_PRACTICE_STAGE_CHANNEL_WEIGHTS.generic;
+  const allow = allowedChannels && allowedChannels.size ? allowedChannels : null;
+  return Object.keys(BEST_PRACTICE_STAGE_BUDGET_WEIGHTS).map(st => {
+    const row = Object.entries(table[st] || {}).filter(([ch]) => !allow || allow.has(ch));
+    const sum = row.reduce((t, [, w]) => t + w, 0); if (!sum) return null;
+    return `- ${st} (${Math.round(BEST_PRACTICE_STAGE_BUDGET_WEIGHTS[st] * 100)}% of a full-funnel budget): ` + row.sort((a, b) => b[1] - a[1]).map(([ch, w]) => `${ch} ${Math.round(w / sum * 100)}%`).join(', ');
+  }).filter(Boolean).join('\n');
+}
+function loadCampaignStageMix(campaignId){
+  try {
+    const r = db.prepare('SELECT * FROM campaign_stage_mix WHERE campaignId = ?').get(campaignId);
+    if (!r) return null;
+    const mix = JSON.parse(aliasVal(r, 'mixJson') || 'null');
+    if (!mix || !mix.stages) return null;
+    return { mix, approvedBy: aliasVal(r, 'approvedBy') || null, approvedAt: aliasVal(r, 'approvedAt') || null, updatedAt: aliasVal(r, 'updatedAt') };
+  } catch (e){ return null; }
+}
+// Checks and normalizes a posted mix. Stage shares and each stage's channel shares are percentages that must each total about 100.
+function validateStageMix(body){
+  const STAGES = ['Awareness', 'Consideration', 'Purchase', 'Loyalty', 'Advocacy'];
+  if (!body || typeof body.stages !== 'object' || !body.stages) return { error: 'stages is required.' };
+  const out = { stages: {}, note: typeof body.note === 'string' ? body.note.slice(0, 400) : '' };
+  let stageTotal = 0;
+  for (const st of Object.keys(body.stages)){
+    if (!STAGES.includes(st)) return { error: 'Unknown stage: ' + st };
+    const v = body.stages[st] || {};
+    const share = Number(v.share);
+    if (!isFinite(share) || share < 0 || share > 100) return { error: st + ' stage share must be between 0 and 100.' };
+    const chans = {}; let sum = 0;
+    for (const ch of Object.keys(v.channels || {})){
+      const n = Number(v.channels[ch]);
+      if (!isFinite(n) || n < 0 || n > 100) return { error: st + ' / ' + ch + ' must be between 0 and 100.' };
+      if (n > 0){ chans[ch] = n; sum += n; }
+    }
+    if (share > 0 && (sum < 98 || sum > 102)) return { error: st + ' channel shares add up to ' + Math.round(sum * 10) / 10 + '%. They need to total 100%.' };
+    if (sum > 0) Object.keys(chans).forEach(ch => { chans[ch] = Math.round(chans[ch] / sum * 1000) / 10; });
+    out.stages[st] = { share, basis: ['account_plan', 'best_practice', 'human'].includes(v.basis) ? v.basis : 'human', channels: chans };
+    stageTotal += share;
+  }
+  if (!Object.keys(out.stages).length) return { error: 'Add at least one stage.' };
+  if (stageTotal < 98 || stageTotal > 102) return { error: 'Stage shares add up to ' + Math.round(stageTotal * 10) / 10 + '%. They need to total 100%.' };
+  return { mix: out };
+}
+// The prompt text for an approved stage mix, replacing the account-level blend as the base case for this campaign.
+function stageMixPromptLines(rec){
+  if (!rec || !rec.mix) return '';
+  const basisText = { account_plan: "this account's own stage-level media plan", best_practice: 'best-practice weights (the account had no stage-level plan to use)', human: 'edited by a person' };
+  const lines = Object.entries(rec.mix.stages).map(([st, v]) => `- ${st} (${Math.round(v.share)}% of this campaign's budget; ${basisText[v.basis] || 'edited'}): ` + Object.entries(v.channels).sort((a, b) => b[1] - a[1]).map(([ch, p]) => `${ch} ${Math.round(p)}%`).join(', '));
+  return `(a person approved this stage mix for THIS campaign${rec.approvedAt ? ' on ' + String(rec.approvedAt).slice(0, 10) : ''}; it replaces the account-level blend as the base case. Weigh each line against its own stage's channel split.)\n${lines.join('\n')}`;
+}
 // What the contest card shows: drafts used out of the allowance for the period, or null when the account has no metered allowance.
 // The response is read AFTER the request finishes recording its own use, so callers add 0 here; the client re-reads it.
 function allowanceForClient(accountId){
@@ -14215,6 +14281,21 @@ function buildAccountBudgetAndPerformanceContextForPrompt(accountId, campaign){
       hasMediaPlanMix = true;
     }
   }
+  // 2026-10-17, per Todd: where the account has no stage-level plan of its own, best-practice weights fill the gap (restricted to the channels
+  // this account actually budgets, when its confirmed budget names them), labelled as best practice and not as the account's own data.
+  if (!hasMediaPlanMix || isFallbackYearMediaPlan || /no stage-level Media Plan/.test(mediaMixLines)){
+    try {
+      const acctRow = db.prepare('SELECT industry FROM accounts WHERE accountId = ?').get(accountId);
+      const allowed = new Set(); (budgetMixRows || []).forEach(r => { if (r && r.category) allowed.add(r.category); });
+      const bpLines = bestPracticeStageMixLines(acctRow && acctRow.industry, allowed.size >= 3 ? allowed : null) || bestPracticeStageMixLines(acctRow && acctRow.industry, null);
+      if (bpLines) mediaMixLines += `\n\nBEST-PRACTICE STAGE MIX (industry reference weights, NOT this account's own data. Use it as the base case for each stage where the account has no stage-level plan, say plainly that it is best practice, and expect the person to approve or edit it):\n${bpLines}`;
+    } catch (e){}
+  }
+  // 2026-10-17 — an approved campaign stage mix wins over every account-level source above.
+  try {
+    const approvedMix = campaign && campaign.id ? loadCampaignStageMix(campaign.id) : null;
+    if (approvedMix){ mediaMixLines = stageMixPromptLines(approvedMix); hasMediaPlanMix = true; }
+  } catch (e){}
   const promptBlock = `ACCOUNT-WIDE MARKETING BUDGET (from Account Management's confirmed budget upload, real dollars across this account's WHOLE year, not just this campaign):
 ${budgetLines}
 
@@ -38247,6 +38328,7 @@ Submit your response via the messaging_intake_turn tool.`;
           totalImpressions,
           lineItems: lines,
           partnerGroups,
+          stageMix: (() => { const r = loadCampaignStageMix(campaignId); return r ? { mix: r.mix, approvedAt: r.approvedAt, approvedBy: r.approvedBy } : null; })(),
           audienceTotals,
           regionTotals,
           stageTotals,
@@ -40103,6 +40185,32 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       });
     }
 
+    // GET /api/campaigns/:id/stage-mix — the approved Loop Stage mix for this campaign, or { mix: null } when none is saved.
+    // POST /api/campaigns/:id/stage-mix — approve (save) a mix: { stages: { Stage: { share, basis, channels: { Channel: pct } } } }.
+    // { clear: true } removes it so the account-level mix applies again. Shares are percentages; each level must total about 100.
+    if ((req.method === 'GET' || req.method === 'POST') && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'stage-mix'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      if (req.method === 'GET'){
+        const rec = loadCampaignStageMix(campaignId);
+        return sendJson(res, 200, { mix: rec ? rec.mix : null, approvedAt: rec ? rec.approvedAt : null, approvedBy: rec ? rec.approvedBy : null });
+      }
+      const body = (await readBody(req)) || {};
+      if (body.clear){
+        db.prepare('DELETE FROM campaign_stage_mix WHERE campaignId = ?').run(campaignId);
+        return sendJson(res, 200, { mix: null });
+      }
+      const v = validateStageMix(body);
+      if (v.error) return sendJson(res, 400, { error: v.error });
+      const session = authenticate(req);
+      const who = session ? (session.memberId || (session.accountId + ':admin')) : null;
+      const now = new Date().toISOString();
+      db.prepare('DELETE FROM campaign_stage_mix WHERE campaignId = ?').run(campaignId);
+      db.prepare('INSERT INTO campaign_stage_mix (campaignId, accountId, mixJson, approvedBy, approvedAt, updatedAt) VALUES (?,?,?,?,?,?)').run(campaignId, campaign.accountId, JSON.stringify(v.mix), who, now, now);
+      return sendJson(res, 200, { mix: v.mix, approvedAt: now, approvedBy: who });
+    }
     // GET /api/accounts/:id/contest-usage — 2026-10-17, the account's draft allowance (used / limit for the period) for the contest card.
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'contest-usage'){
       const accountId = decodeURIComponent(parts[2]);
