@@ -11493,7 +11493,7 @@
                          single-draft AI button, using its own sourceKey
                          ('brand-messaging-longform') so its history stays
                          distinct from any MFP project's contest history. -->
-                    <button type="button" class="btn-ghost" id="cmpCopyContestBtn" onclick="cmpRunCampaignCopyContest();">✦ Run copy contest (multi-model) →</button>
+                    <span style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;"><button type="button" class="btn-ghost" id="cmpCopyContestBtn" onclick="cmpRunCampaignCopyContest();">✦ Draft Campaign Copy →</button><span class="hint cmp-contest-credit" style="margin:0 0 0 auto;display:none;"></span></span>
                   </div>
                   <div id="cmpAiDraftPanel" style="display:none;margin-top:8px;padding:10px 12px;background:var(--paper-dim);border-radius:6px;"></div>
                   <div id="cmpCopyContestPanel" style="display:none;margin-top:8px;padding:10px 12px;background:var(--paper-dim);border-radius:6px;"></div>
@@ -49813,8 +49813,9 @@ function cmpRenderStep0RunContest(c){
     cmpStep1AudienceNames = [];
     holder.innerHTML = `
       <div class="hint" style="margin-bottom:10px;">One shared contest, applied campaign-wide — writes into this campaign's Long Form Copy.</div>
-      <button type="button" class="btn-primary" id="cmpStep0SharedContestBtn">✦ Run Campaign Copy Contest →</button>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;"><button type="button" class="btn-primary" id="cmpStep0SharedContestBtn">${escapeHtml(cmpContestButtonLabel('cmpStep0SharedContestPanel'))}</button><span class="hint cmp-contest-credit" style="margin:0 0 0 auto;display:none;"></span></div>
       <div id="cmpStep0SharedContestPanel" style="margin-top:12px;"></div>`;
+    cmpContestLoadAllowance();
     return;
   }
   const audiences = cmpParseAudienceList(cmpCreativeAudienceText(c));
@@ -49866,7 +49867,7 @@ async function cmpRunAudienceContest(idx){
   // existed.
   if (status){ status.style.color = ''; status.textContent = 'Drafting copy for this audience — three independent angles plus every configured vendor…'; }
   if (btn) btn.disabled = true;
-  cmpSunriseLoaderShow({ headline: CMP_CONTEST_LOADER_HEAD, note: CMP_CONTEST_LOADER_NOTE });
+  cmpSunriseLoaderShow({ headline: CMP_CONTEST_LOADER_HEAD, note: CMP_CONTEST_LOADER_NOTE, countdownSec: 100, countdownLabel: 'Contest running. Time left before timeout' });
   try {
     // 2026-09-23 fix — same silent-retry convention as
     // cmpRunCampaignCopyContest()'s own fix, applied here too so a slow
@@ -51835,18 +51836,18 @@ function cmpBriefAnalyticsBody(c){
       <p class="cmp-stage-note" style="padding:0;">A copy relevance score will appear in the header helping you align your creative and media plans. Use the summary below as you plan asset selections and copy.</p>
     </div>
     <div class="cmp-brief-tabs">
-      <button type="button" class="cmp-brief-tab${s.mobileTab === 'copywriter' ? ' active' : ''}" onclick="cmpBriefSetMobileTab('copywriter')">To Copywriter</button>
-      <button type="button" class="cmp-brief-tab${s.mobileTab === 'analytics' ? ' active' : ''}" onclick="cmpBriefSetMobileTab('analytics')">To Analytics</button>
+      <button type="button" class="cmp-brief-tab${s.mobileTab === 'copywriter' ? ' active' : ''}" onclick="cmpBriefSetMobileTab('copywriter')">Campaign Copy Brief</button>
+      <button type="button" class="cmp-brief-tab${s.mobileTab === 'analytics' ? ' active' : ''}" onclick="cmpBriefSetMobileTab('analytics')">Campaign Analytics Brief</button>
     </div>
     <div class="cmp-brief-cmo-grid">
       <div class="cmp-brief-cmo-card${s.mobileTab !== 'copywriter' ? ' cmp-brief-tab-hidden' : ''}">
         ${cmpBriefEditTag('copywriter', c)}
-        <div class="cmp-brief-cmo-label"><span class="cmp-brief-cmo-avatar">AI</span>From the CMO — to Brand Copywriter</div>
+        <div class="cmp-brief-cmo-label"><span class="cmp-brief-cmo-avatar">AI</span>Campaign Copy Brief</div>
         ${cmpBriefCmoCardBody('copywriter', c)}
       </div>
       <div class="cmp-brief-cmo-card${s.mobileTab !== 'analytics' ? ' cmp-brief-tab-hidden' : ''}">
         ${cmpBriefEditTag('analytics', c)}
-        <div class="cmp-brief-cmo-label"><span class="cmp-brief-cmo-avatar">AI</span>From the CMO — to the Analytics Team</div>
+        <div class="cmp-brief-cmo-label"><span class="cmp-brief-cmo-avatar">AI</span>Campaign Analytics Brief</div>
         ${cmpBriefCmoCardBody('analytics', c)}
       </div>
     </div>
@@ -69236,6 +69237,7 @@ const CMP_BRAND_MESSAGING_CONTEST_SOURCE_KEY = 'brand-messaging-longform';
 // (class .portal-load-cover + level classes l1-l4), with a custom headline and note. The sun climbs Starter -> Radiance across
 // roughly `spanMs`, then holds. Call cmpSunriseLoaderHide() in a finally block.
 let cmpSunriseLoaderTimers = [];
+let cmpSunriseCountdownTimer = null;
 function cmpSunriseLoaderShow(opts){
   opts = opts || {};
   cmpSunriseLoaderHide(true);
@@ -69249,10 +69251,22 @@ function cmpSunriseLoaderShow(opts){
     '<div class="portal-load-cover-mark">Veri<b>lume</b></div>' +
     '<div class="plc-head">' + escapeHtml(opts.headline || "We're powering up.") + '</div>' +
     '<div class="plc-levels"><span class="plc-lv on">Starter</span><span class="plc-lv">Spark</span><span class="plc-lv">Glow</span><span class="plc-lv">Radiance</span></div>' +
-    '<div class="portal-load-cover-note" style="text-transform:none;letter-spacing:.04em;max-width:420px;line-height:1.5;">' + escapeHtml(opts.note || '') + '</div>';
+    '<div class="portal-load-cover-note" style="text-transform:none;letter-spacing:.04em;max-width:420px;line-height:1.5;">' + escapeHtml(opts.note || '') + '</div>' +
+    (opts.countdownSec ? '<div class="portal-load-cover-note plc-count" id="cmpSunriseCountdown" style="text-transform:none;letter-spacing:.04em;margin-top:10px;font-variant-numeric:tabular-nums;font-weight:600;"></div>' : '');
   document.body.appendChild(el);
+  if (opts.countdownSec){
+    // 2026-10-17 — counts down from the longest the request is allowed to take before it times out.
+    const endAt = Date.now() + opts.countdownSec * 1000;
+    const label = opts.countdownLabel || 'Time left before timeout';
+    const tick = () => {
+      const c = document.getElementById('cmpSunriseCountdown'); if (!c) return;
+      const left = Math.max(0, Math.round((endAt - Date.now()) / 1000));
+      c.textContent = left > 0 ? `${label} ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : 'Still working. Finishing a second pass…';
+    };
+    tick(); cmpSunriseCountdownTimer = setInterval(tick, 1000);
+  }
   const chips = el.querySelectorAll('.plc-lv');
-  const span = opts.spanMs || 36000;
+  const span = opts.spanMs || (opts.countdownSec ? opts.countdownSec * 1000 : 36000);
   const setLevel = (n) => { el.className = 'portal-load-cover l' + n; el.style.zIndex = '2000'; chips.forEach((c, j) => c.classList.toggle('on', j === n - 1)); };
   let reduce = false; try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e){}
   if (reduce){ setLevel(4); return; }
@@ -69260,6 +69274,7 @@ function cmpSunriseLoaderShow(opts){
 }
 function cmpSunriseLoaderHide(immediate){
   cmpSunriseLoaderTimers.forEach(clearTimeout); cmpSunriseLoaderTimers = [];
+  if (cmpSunriseCountdownTimer){ clearInterval(cmpSunriseCountdownTimer); cmpSunriseCountdownTimer = null; }
   const el = document.getElementById('cmpSunriseLoader');
   if (!el) return;
   if (immediate){ el.remove(); return; }
@@ -69268,7 +69283,35 @@ function cmpSunriseLoaderHide(immediate){
 }
 const CMP_CONTEST_LOADER_HEAD = 'Anthropic · Gemini · OpenAI · Grok · Perplexity';
 const CMP_CONTEST_LOADER_NOTE = 'are working on your campaign options.';
-async function cmpRunCampaignCopyContest(panelId, btnId, flagId){
+// 2026-10-17 — three steps on one button. First click: the default draft (one partner, fast). With a default draft on screen: the contest
+// adds the other partners' options to it. After a contest: "Run Another Contest" runs a fresh contest. `forceMode` overrides.
+let cmpContestAllowance = null;
+function cmpContestNextMode(panelId){
+  const last = cmpCopyContestLastResult[panelId];
+  if (!last || !last.interviewId) return 'default';
+  return last.mode === 'default' ? 'extend' : 'fresh';
+}
+function cmpContestButtonLabel(panelId){
+  const m = cmpContestNextMode(panelId);
+  return m === 'default' ? '✦ Draft Campaign Copy →' : (m === 'extend' ? '✦ Run Contest for More Options →' : '↻ Run Another Contest →');
+}
+function cmpContestSyncButtons(){
+  [['cmpCopyContestPanel', 'cmpCopyContestBtn'], ['cmpStep0SharedContestPanel', 'cmpStep0SharedContestBtn'], ['askDockContestPanel', 'askDockContestBtn'], ['copyverCopyContestPanel', 'copyverCopyContestBtn']].forEach(([pid, bid]) => {
+    const b = document.getElementById(bid); if (b) b.textContent = cmpContestButtonLabel(pid);
+  });
+  const a = cmpContestAllowance;
+  const txt = a && a.limit ? `Drafts used: ${a.used} of ${a.limit} this ${a.period === 'trial' ? 'trial' : 'month'}` : '';
+  document.querySelectorAll('.cmp-contest-credit').forEach(el => { el.textContent = txt; el.style.display = txt ? '' : 'none'; });
+}
+async function cmpContestLoadAllowance(){
+  if (!state.companyId || dataSourceLabel !== 'backend') return;
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/contest-usage`);
+    if (r.ok){ const d = await r.json(); cmpContestAllowance = d.allowance || null; }
+  } catch (e){}
+  cmpContestSyncButtons();
+}
+async function cmpRunCampaignCopyContest(panelId, btnId, flagId, forceMode){
   panelId = panelId || 'cmpCopyContestPanel';
   btnId = btnId || 'cmpCopyContestBtn';
   flagId = flagId || 'cmpCopyContestSelectFlag';
@@ -69289,7 +69332,12 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId){
   }
   panel.innerHTML = renderAiStatusBubble("Getting one response to this campaign's Long Form Copy from each AI partner — grounded in the campaign's writing style, objective, KPI, brand voice, and channels — then scoring each one blind before ranking them.", INTERVIEW_STATUS_TIPS);
   if (btn) btn.disabled = true;
-  cmpSunriseLoaderShow({ headline: CMP_CONTEST_LOADER_HEAD, note: CMP_CONTEST_LOADER_NOTE });
+  const runMode = forceMode || cmpContestNextMode(panelId);
+  const isDefaultRun = runMode === 'default';
+  const timeoutMs = isDefaultRun ? 60000 : 100000;
+  cmpSunriseLoaderShow(isDefaultRun
+    ? { headline: 'Anthropic', note: 'is drafting your campaign copy.', countdownSec: timeoutMs / 1000, countdownLabel: 'Time left before timeout' }
+    : { headline: CMP_CONTEST_LOADER_HEAD, note: runMode === 'extend' ? 'are adding more options to your draft.' : CMP_CONTEST_LOADER_NOTE, countdownSec: timeoutMs / 1000, countdownLabel: 'Contest running. Time left before timeout' });
   try {
     // 2026-09-23 fix, same report — switched from a single authedFetch
     // attempt to cmpFetchJsonWithRetry()'s existing silent-retry convention
@@ -69333,16 +69381,22 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId){
     // too (same as cmpRunAudienceContest()), now that the backend narrows
     // the drafting prompt's channels for the shared contest as well, not
     // just per-audience ones — see the copy-interview endpoint's comment.
-    const result = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sourceKey: CMP_BRAND_MESSAGING_CONTEST_SOURCE_KEY, assetTypes: cmpCampaignAssetTypes }),
-      timeoutMs: 100000
-    }, 2, 700);
+    const base = `${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview`;
+    const prior = cmpCopyContestLastResult[panelId];
+    const result = runMode === 'extend'
+      ? await cmpFetchJsonWithRetry(`${base}/${encodeURIComponent(prior.interviewId)}/contest`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', timeoutMs }, 2, 700)
+      : await cmpFetchJsonWithRetry(base, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sourceKey: CMP_BRAND_MESSAGING_CONTEST_SOURCE_KEY, assetTypes: cmpCampaignAssetTypes, mode: isDefaultRun ? 'default' : 'contest' }),
+          timeoutMs
+        }, 2, 700);
+    result.mode = isDefaultRun ? 'default' : 'contest';
     if (!result.available){
       panel.innerHTML = `<div class="hint">${escapeHtml(result.note || 'Copy contest unavailable.')}</div>`;
       return;
     }
     cmpCopyContestLastResult[panelId] = result;
+    setTimeout(cmpContestLoadAllowance, 700);
     panel.innerHTML = renderCmpCopyContestPanel(result, flagId, panelId);
     // 2026-09-23 — if any candidate came back pending (still generating,
     // or a first-pass failure), fire the second pass automatically instead
@@ -69356,6 +69410,7 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId){
   } finally {
     cmpSunriseLoaderHide();
     if (btn) btn.disabled = false;
+    cmpContestSyncButtons();
   }
 }
 // 2026-09-23 — mobile-friendly cosmetic pass on every candidate card, per
