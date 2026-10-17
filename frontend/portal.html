@@ -52580,6 +52580,122 @@ function cmpRecoScenarioHtml(summary){
     return `<div style="margin:0 0 14px"><div style="font-weight:600;margin-bottom:4px">${escapeHtml(g.partner)}: ways to spend ${m(g.budget)}</div><div class="table-scroll" style="overflow-x:auto"><table class="active-camp-table" style="width:100%"><thead><tr><th>Scenario</th><th>Mix</th><th>Leads</th><th>Cost per lead</th><th>Bookings</th><th>Cost per booking</th><th>Days to convert</th></tr></thead><tbody>${rows}</tbody></table></div>${fit}${flags ? `<ul class="hint">${flags}</ul>` : ''}${notes ? `<ul class="hint">${notes}</ul>` : ''}</div>`;
   }).join('');
 }
+
+// 2026-10-17, per Todd (Test 2, note 1): a stage mix for this campaign. Proposed from the account's own stage-level media plan when it
+// has one, otherwise from the best-practice weights (industry, audience generation and wealth), limited to channels the account runs and
+// can afford at this budget. A person edits and approves it; the approved mix is saved on the campaign and the AI Brain uses it from then on.
+let cmpStageMixUi = { campaignId: null, draft: null, saved: null, summary: null, msg: '', busy: false, mpTried: false };
+const CMP_SM_STAGES = ['Awareness', 'Consideration', 'Purchase', 'Loyalty', 'Advocacy'];
+function cmpStageMixPlanSpend(summary){
+  const byStage = {};
+  (summary.lineItems || []).forEach(l => {
+    const st = l.stage; const b = Number(l.budget) || 0; if (!st || b <= 0) return;
+    const o = byStage[st] || (byStage[st] = { total: 0, channels: {} });
+    o.total += b; o.channels[l.channel] = (o.channels[l.channel] || 0) + b;
+  });
+  return byStage;
+}
+function cmpStageMixProposal(summary){
+  const plan = cmpStageMixPlanSpend(summary);
+  const campaign = (typeof cmpRailLoadedCampaign === 'function') ? cmpRailLoadedCampaign() : null;
+  const total = Number(summary.totalSpend) || Number(campaign && campaign.budget) || 0;
+  let stages = CMP_SM_STAGES.filter(st => plan[st]);
+  if (!stages.length){ const cs = campaign && campaign.stage; stages = CMP_SM_STAGES.includes(cs) ? [cs] : CMP_SM_STAGES.slice(); }
+  const sw = getIndustryStageWeights(state.industry); const swSum = stages.reduce((t, st) => t + (sw[st] || 0), 0) || 1;
+  const out = { stages: {}, note: '' };
+  let used = 0;
+  stages.forEach((st, i) => {
+    const share = i === stages.length - 1 ? Math.round((100 - used) * 10) / 10 : Math.round((sw[st] || 0) / swSum * 1000) / 10;
+    used += share;
+    const acct = masterBudgetStageChannelWeights(st);
+    const base = acct || effectiveStageChannelWeights(st) || {};
+    const stageBudget = total * share / 100;
+    const pick = (list) => list.filter(([ch]) => isChannelActive(ch));
+    let rows = pick(Object.entries(base));
+    const sum0 = rows.reduce((t, [, w]) => t + w, 0);
+    const viable = rows.filter(([ch, w]) => !(stageBudget > 0) || (stageBudget * w / (sum0 || 1)) >= channelMinViableSpend(ch));
+    if (viable.length) rows = viable;
+    if (!rows.length) rows = Object.entries(base);
+    const sum = rows.reduce((t, [, w]) => t + w, 0) || 1;
+    const channels = {}; let cu = 0;
+    rows.sort((a, b) => b[1] - a[1]).forEach(([ch, w], j) => { const v = j === rows.length - 1 ? Math.round((100 - cu) * 10) / 10 : Math.round(w / sum * 1000) / 10; cu += v; if (v > 0) channels[ch] = v; });
+    out.stages[st] = { share, basis: acct ? 'account_plan' : 'best_practice', channels };
+  });
+  return out;
+}
+function cmpStageMixEnsure(summary){
+  const c = (typeof cmpRailLoadedCampaign === 'function') ? cmpRailLoadedCampaign() : null;
+  const id = c && c.id; if (!id) return null;
+  const saved = summary.stageMix && summary.stageMix.mix ? summary.stageMix : null;
+  const savedKey = saved ? saved.approvedAt : '';
+  if (cmpStageMixUi.campaignId !== id || cmpStageMixUi.savedKey !== savedKey){
+    cmpStageMixUi = { ...cmpStageMixUi, campaignId: id, savedKey, saved, summary, draft: JSON.parse(JSON.stringify(saved ? saved.mix : cmpStageMixProposal(summary))), msg: '', busy: false };
+  } else { cmpStageMixUi.summary = summary; }
+  if (!state.mediaPlan && !cmpStageMixUi.mpTried && typeof loadMediaPlan === 'function' && dataSourceLabel === 'backend'){
+    cmpStageMixUi.mpTried = true;
+    Promise.resolve(loadMediaPlan()).then(() => { if (!cmpStageMixUi.saved){ cmpStageMixUi.draft = JSON.parse(JSON.stringify(cmpStageMixProposal(cmpStageMixUi.summary))); } cmpStageMixRerender(); }).catch(() => {});
+  }
+  return cmpStageMixUi;
+}
+function cmpStageMixSum(o){ return Math.round(Object.values(o || {}).reduce((t, x) => t + (Number(x) || 0), 0) * 10) / 10; }
+function cmpStageMixCardHtml(summary){
+  if (!summary) return '';
+  let ui; try { ui = cmpStageMixEnsure(summary); } catch (e){ console.warn('stage mix proposal failed', e); return ''; }
+  if (!ui || !ui.draft) return '';
+  const plan = cmpStageMixPlanSpend(summary);
+  const basisChip = b => ({ account_plan: 'Your stage plan', best_practice: 'Best practice', human: 'Edited' }[b] || 'Edited');
+  const stages = Object.keys(ui.draft.stages);
+  const stageTotal = cmpStageMixSum(Object.fromEntries(stages.map(st => [st, ui.draft.stages[st].share])));
+  const planTotal = Object.values(plan).reduce((t, x) => t + x.total, 0);
+  const body = stages.map(st => {
+    const v = ui.draft.stages[st]; const pl = plan[st];
+    const chans = Array.from(new Set([...Object.keys(v.channels), ...(pl ? Object.keys(pl.channels) : [])]));
+    const sum = cmpStageMixSum(v.channels);
+    const rows = chans.map(ch => {
+      const tgt = v.channels[ch] != null ? v.channels[ch] : 0;
+      const act = pl && pl.total ? Math.round((pl.channels[ch] || 0) / pl.total * 1000) / 10 : null;
+      const off = act != null && Math.abs(act - tgt) >= 10;
+      return `<tr><td style="padding:2px 6px 2px 22px">${escapeHtml(ch)}</td><td style="padding:2px 6px"><input type="number" min="0" max="100" step="0.1" value="${tgt}" aria-label="${escapeHtml(st)} ${escapeHtml(ch)} target percent" style="width:76px" oninput="cmpStageMixEdit('${escapeHtml(st)}','${escapeHtml(ch).replace(/'/g, "\\'")}',this.value)"> %</td><td style="padding:2px 6px${off ? ';font-weight:600' : ''}">${act == null ? 'n/a' : act + '%'}${off ? ' <span class="illustrative-tag">differs</span>' : ''}</td></tr>`;
+    }).join('');
+    return `<tr style="background:var(--surface-2,#f4f5f8);font-weight:600"><td style="padding:4px 6px">${escapeHtml(st)} <span class="illustrative-tag">${basisChip(v.basis)}</span></td><td style="padding:4px 6px"><input type="number" min="0" max="100" step="0.1" value="${v.share}" aria-label="${escapeHtml(st)} share of budget percent" style="width:76px" oninput="cmpStageMixEdit('${escapeHtml(st)}','__share',this.value)"> % of budget</td><td style="padding:4px 6px">${pl && planTotal ? Math.round(pl.total / planTotal * 1000) / 10 + '% of plan' : 'not in plan'}</td></tr>${rows}<tr><td></td><td style="padding:2px 6px" class="hint">Channels total ${sum}%${Math.abs(sum - 100) > 2 ? ' (needs 100%)' : ''}</td><td></td></tr>`;
+  }).join('');
+  const saved = ui.saved;
+  const status = saved ? `Approved ${escapeHtml(String(saved.approvedAt || '').slice(0, 10))}. The AI Brain uses this mix for this campaign.` : 'Proposed, not approved yet. The AI Brain still uses the account-level mix until you approve this.';
+  const basisAll = stages.map(st => ui.draft.stages[st].basis);
+  const why = basisAll.every(b => b === 'account_plan') ? "From this account's own stage-level media plan." : (basisAll.some(b => b === 'account_plan') ? "From this account's stage plan where it has one, and best practice for the other stages." : "This account has no stage-level media plan for these stages, so this is built from best-practice weights for the industry, adjusted for your audience's generation and wealth tier, and limited to channels you run that this budget can support.");
+  return `<div id="cmpStageMixCard" style="margin:0 0 14px;padding:12px;border:1px solid var(--border,#d0d5dd);border-radius:8px"><div style="font-weight:600;margin-bottom:2px">Stage mix for this campaign</div><div class="hint" style="margin:0 0 8px">${escapeHtml(why)} Edit any percentage, then approve.</div><div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:0.85rem"><thead><tr style="text-align:left"><th style="padding:4px 6px">Stage / channel</th><th style="padding:4px 6px">Target</th><th style="padding:4px 6px">Current plan</th></tr></thead><tbody>${body}</tbody></table></div><div class="hint" style="margin:6px 0">Stage shares total ${stageTotal}%${Math.abs(stageTotal - 100) > 2 ? ' (needs 100%)' : ''}.</div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button type="button" class="btn-primary" ${ui.busy ? 'disabled' : ''} onclick="cmpStageMixApprove()">${saved ? 'Save changes' : 'Approve stage mix'}</button><button type="button" class="btn-ghost" onclick="cmpStageMixReset()">Reset to ${saved ? 'saved' : 'proposal'}</button>${saved ? '<button type="button" class="btn-ghost" onclick="cmpStageMixClear()">Remove approval</button>' : ''}<span class="hint" id="cmpStageMixMsg" role="status" style="margin:0">${escapeHtml(ui.msg || status)}</span></div></div>`;
+}
+function cmpStageMixRerender(){
+  const el = document.getElementById('cmpStageMixCard'); if (!el || !cmpStageMixUi.summary) return;
+  const tmp = document.createElement('div'); tmp.innerHTML = cmpStageMixCardHtml(cmpStageMixUi.summary);
+  if (tmp.firstElementChild) el.replaceWith(tmp.firstElementChild);
+}
+function cmpStageMixEdit(stage, key, val){
+  const st = cmpStageMixUi.draft && cmpStageMixUi.draft.stages[stage]; if (!st) return;
+  const n = val === '' ? 0 : Number(val); if (!isFinite(n)) return;
+  if (key === '__share') st.share = n; else { if (n > 0) st.channels[key] = n; else delete st.channels[key]; }
+  st.basis = 'human'; cmpStageMixUi.msg = '';
+  const m = document.getElementById('cmpStageMixMsg'); if (m) m.textContent = 'Edited, not saved yet.';
+}
+function cmpStageMixReset(){
+  const ui = cmpStageMixUi; if (!ui.summary) return;
+  ui.draft = JSON.parse(JSON.stringify(ui.saved ? ui.saved.mix : cmpStageMixProposal(ui.summary))); ui.msg = ''; cmpStageMixRerender();
+}
+async function cmpStageMixPost(body, doneMsg){
+  const ui = cmpStageMixUi; const c = cmpRailLoadedCampaign(); if (!c) return;
+  ui.busy = true; ui.msg = 'Saving…'; cmpStageMixRerender();
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}/stage-mix`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok){ ui.busy = false; ui.msg = d.error || 'Could not save. Try again.'; cmpStageMixRerender(); return; }
+    ui.saved = d.mix ? { mix: d.mix, approvedAt: d.approvedAt, approvedBy: d.approvedBy } : null;
+    ui.savedKey = ui.saved ? ui.saved.approvedAt : '';
+    ui.draft = JSON.parse(JSON.stringify(d.mix || cmpStageMixProposal(ui.summary)));
+    ui.busy = false; ui.msg = doneMsg; cmpStageMixRerender();
+  } catch (e){ ui.busy = false; ui.msg = 'Could not save. Try again.'; cmpStageMixRerender(); }
+}
+function cmpStageMixApprove(){ cmpStageMixPost({ stages: cmpStageMixUi.draft.stages }, 'Approved. The AI Brain will use this mix for this campaign.'); }
+function cmpStageMixClear(){ cmpStageMixPost({ clear: true }, 'Approval removed. The account-level mix applies again.'); }
 function cmpRecoChannelTableHtml(summary, regionFilter){
   const allItems = summary.lineItems || [];
   // 2026-09-16 — region filter, per Todd's "toggle between budget
@@ -52681,7 +52797,7 @@ function cmpRecoChannelTableHtml(summary, regionFilter){
       <tbody>${cmpRecoPartnerRowsHtml(items, rowHtml)}${addRowHtml}</tbody>
     </table></div>` : emptyMessage;
   const addBtn = s.addingLine ? '' : `<div class="btn-row" style="margin-bottom:10px;"><button type="button" class="btn-ghost" onclick="cmpRecoStartAddChannel()">+ Add Channel</button></div>`;
-  return table + cmpRecoScenarioHtml(summary) + addBtn;
+  return table + cmpRecoScenarioHtml(summary) + cmpStageMixCardHtml(summary) + addBtn;
 }
 // Audience mode — read-only, per wireframe spec (edit/delete/Add Channel
 // is specifically for the channel table; there's no per-audience
