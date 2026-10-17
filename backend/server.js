@@ -951,6 +951,89 @@ ensureColumn('accounts', 'marketUpdatedAt', 'TEXT');
 // front end defaults to everything active rather than treating that as
 // nothing active.
 ensureColumn('accounts', 'activeChannels', 'TEXT');
+// 2026-10-17 — Train the Brain activation layer inside each channel family: which ad products / formats this
+// account actually uses. JSON {familyKey: [productKey, ...]}. A family with no entry means "never configured":
+// every product is offered. A family set to [] means the account uses none of it.
+ensureColumn('accounts', 'activeChannelProducts', 'TEXT');
+const CHANNEL_PRODUCT_FAMILIES = [
+  { key: 'meta', label: 'Meta', kind: 'partner', channels: ['Paid Social'], defaults: { 'Paid Social': 'meta_lead_form' },
+    note: 'Facebook, Instagram and WhatsApp. Meta Prospect Leads are Lead Form ads for every client.',
+    products: [
+      { key: 'meta_lead_form', label: 'Lead Form ads (Facebook + Instagram)', resultType: 'Lead Form' },
+      { key: 'meta_web_conversion', label: 'Feed / Reels / Stories web conversion', resultType: 'Web conversion' },
+      { key: 'meta_click_to_message', label: 'Click-to-WhatsApp / Messenger', resultType: 'Other Meta' },
+      { key: 'meta_advantage_awareness', label: 'Advantage+ / traffic / awareness', resultType: 'Other Meta' }
+    ] },
+  { key: 'google', label: 'Google', kind: 'partner', channels: ['Brand Search', 'Non-Brand Search', 'Remarketing'],
+    defaults: { 'Brand Search': 'google_brand_search', 'Non-Brand Search': 'google_non_brand_search', 'Remarketing': 'google_remarketing' },
+    note: 'Search, Performance Max, YouTube and Display.',
+    products: [
+      { key: 'google_brand_search', label: 'Brand Search', resultType: 'Brand capture' },
+      { key: 'google_non_brand_search', label: 'Non-Brand Search', resultType: 'Non-brand prospecting' },
+      { key: 'google_pmax', label: 'Performance Max', resultType: 'Lead form' },
+      { key: 'google_demand_gen', label: 'Demand Gen / YouTube', resultType: 'Other Google' },
+      { key: 'google_display', label: 'Display', resultType: 'Other Google' },
+      { key: 'google_remarketing', label: 'Remarketing', resultType: 'Remarketing' }
+    ] },
+  { key: 'yahoo', label: 'Yahoo', kind: 'partner', channels: [], defaults: {},
+    note: 'Yahoo DSP, native, connected TV, search and mail ads.',
+    products: [
+      { key: 'yahoo_dsp_display', label: 'Yahoo DSP display', resultType: 'Prospecting' },
+      { key: 'yahoo_native', label: 'Native', resultType: 'Prospecting' },
+      { key: 'yahoo_ctv_video', label: 'Connected TV / video', resultType: 'Other Yahoo' },
+      { key: 'yahoo_search', label: 'Yahoo Search (Bing Network)', resultType: 'Other Yahoo' },
+      { key: 'yahoo_mail', label: 'Email / Mail ads', resultType: 'Retargeting' }
+    ] },
+  { key: 'programmatic', label: 'Programmatic', kind: 'media', channels: ['Programmatic Display'], defaults: { 'Programmatic Display': 'prog_prospecting' },
+    note: 'Display, native and video bought through a trading desk or DSP.',
+    products: [
+      { key: 'prog_prospecting', label: 'Prospecting display', resultType: 'Prospecting' },
+      { key: 'prog_retargeting', label: 'Retargeting', resultType: 'Retargeting' },
+      { key: 'prog_native', label: 'Native', resultType: 'Prospecting' },
+      { key: 'prog_video', label: 'Online video', resultType: 'Other' },
+      { key: 'prog_audio', label: 'Audio', resultType: 'Other' }
+    ] },
+  { key: 'magazines', label: 'Magazines', kind: 'media', channels: ['Magazines'], defaults: { 'Magazines': 'mag_full_page' },
+    note: 'Print formats and the digital extensions that come with them.',
+    products: [
+      { key: 'mag_full_page', label: 'Full page', resultType: 'Print' },
+      { key: 'mag_half_page', label: 'Half page / fractional', resultType: 'Print' },
+      { key: 'mag_insert', label: 'Insert / bound-in card', resultType: 'Print' },
+      { key: 'mag_digital', label: 'Digital edition / newsletter sponsor', resultType: 'Digital' }
+    ] },
+  { key: 'directMail', label: 'Direct Mail', kind: 'media', channels: ['Direct Mail — Prospects', 'Direct Mail — Past Guests', 'Direct Mail — Inquiries'],
+    defaults: { 'Direct Mail — Prospects': 'dm_postcard', 'Direct Mail — Past Guests': 'dm_letter_pack', 'Direct Mail — Inquiries': 'dm_triggered' },
+    note: 'Formats mailed to prospects, past guests and inquiries.',
+    products: [
+      { key: 'dm_postcard', label: 'Postcard', resultType: 'Print' },
+      { key: 'dm_letter_pack', label: 'Letter / brochure pack', resultType: 'Print' },
+      { key: 'dm_catalog', label: 'Catalog', resultType: 'Print' },
+      { key: 'dm_triggered', label: 'Triggered follow-up', resultType: 'Print' }
+    ] }
+];
+function channelProductConfig(accountId){
+  let saved = null;
+  try { const r = db.prepare('SELECT activeChannelProducts FROM accounts WHERE accountId = ?').get(accountId); if (r && r.activeChannelProducts) saved = JSON.parse(r.activeChannelProducts); } catch (e){ saved = null; }
+  const out = {};
+  CHANNEL_PRODUCT_FAMILIES.forEach(f => {
+    const all = f.products.map(p => p.key);
+    const has = saved && Array.isArray(saved[f.key]);
+    out[f.key] = { configured: !!has, active: has ? saved[f.key].filter(k => all.includes(k)) : all.slice() };
+  });
+  return out;
+}
+// The product tag for a plan line in this channel, or null when the channel is not part of a family.
+// suppressed = the account switched every product in the family off.
+function channelProductTag(accountId, channel, cfg){
+  const fam = CHANNEL_PRODUCT_FAMILIES.find(f => f.channels.includes(channel));
+  if (!fam) return null;
+  const c = (cfg || channelProductConfig(accountId))[fam.key];
+  if (!c.active.length) return { suppressed: true, family: fam.key };
+  const wanted = fam.defaults[channel];
+  const key = c.active.includes(wanted) ? wanted : c.active[0];
+  const prod = fam.products.find(p => p.key === key);
+  return { suppressed: false, family: fam.key, partner: fam.kind === 'partner' ? fam.label : null, group: fam.label, product: prod.key, productLabel: prod.label, resultType: prod.resultType, resultTypeSource: 'default', economicsBasis: 'blended' };
+}
 
 // Added 2026-07-23 (round 20) — Style Guide: Colors & Fonts (Brand
 // Foundations). Per cxmedia-brand-foundations-plan.md Section 3: this is
@@ -15284,6 +15367,7 @@ const LEGACY_CASING_COLUMNS = [
   ['accounts', 'accessCodeSalt'],
   ['accounts', 'accountId'],
   ['accounts', 'activeChannels'],
+  ['accounts', 'activeChannelProducts'],
   ['accounts', 'analyticsFallbackNotes'],
   ['accounts', 'analyticsGa4AccountId'],
   ['accounts', 'analyticsGa4PropertyId'],
@@ -20711,6 +20795,7 @@ function buildTrainTheBrain(accountId){
       { label: 'Annual plan: baseline and targets', done: rowsOf('account_annual_plan') > 0, rows: rowsOf('account_annual_plan'), gain: 'What the year is calibrated on and what you aim for.', step: 'annualPlan' },
       { label: 'Prior-year results', done: rowsOf('account_year_results') > 0, rows: rowsOf('account_year_results'), gain: 'Last year\'s spend and results the plan is compared with.', step: 'yearResults' },
       { label: 'Active channels', done: (() => { try { const a = db.prepare('SELECT activeChannels FROM accounts WHERE accountId = ?').get(accountId); return !!(a && a.activeChannels && String(a.activeChannels).trim()); } catch (e) { return false; } })(), gain: 'Only the channels you switch on are offered on Campaign Creation and recommended on the Media Plan.', step: 'activeChannels' },
+      { label: 'Channel products (Meta, Google, Yahoo, programmatic, magazines, direct mail)', done: (() => { try { const a = db.prepare('SELECT activeChannelProducts FROM accounts WHERE accountId = ?').get(accountId); return !!(a && a.activeChannelProducts && String(a.activeChannelProducts).trim() && a.activeChannelProducts !== '{}'); } catch (e) { return false; } })(), gain: 'Switch on the ad products you actually buy. Recommendations only use what is on.', step: 'channelProducts' },
       { label: 'Non-working media', done: (() => { try { return db.prepare('SELECT nonWorkingMediaJson FROM media_plans WHERE accountId = ?').all(accountId).some(r => { try { const j = JSON.parse(r.nonWorkingMediaJson || '[]'); return Array.isArray(j) && j.length > 0; } catch (e) { return false; } }); } catch (e) { return false; } })(), gain: 'Agency, analytics, production and licence spend, kept apart from channel media.', step: 'nonWorkingMedia' },
       { label: 'Demand fulfillment assumptions', done: rowsOf('account_demand_fulfillment') > 0, rows: rowsOf('account_demand_fulfillment'), gain: 'How demand grows with website traffic.', step: 'demandFulfillment' },
       { label: 'Marketable audience sizes', done: rowsOf('account_marketable_sizes') > 0, rows: rowsOf('account_marketable_sizes'), gain: 'Direct mail and email list counts by audience.', step: 'marketableSizes' },
@@ -36658,9 +36743,15 @@ Submit via the recommendation_from_intake tool.`;
         });
       } catch (e){ console.warn('existing channel check skipped', e.message); }
       const skippedExisting = [];
+      const skippedInactiveProducts = [];
+      const productCfg = channelProductConfig(campaign.accountId);
       for (const c of channels){
         if (c && c.channel && existingChannelKeys.has(String(c.channel).trim().toLowerCase())){ skippedExisting.push(c.channel); continue; }
         const lineStage = normalizeChannelPlanningStage(c.stage);
+        // 2026-10-17 — activation layer: a channel family the account switched off is not recommended; every kept
+        // line carries its partner / product / result type, marked "blended" until its own data exists.
+        const productTag = channelProductTag(campaign.accountId, c.channel, productCfg);
+        if (productTag && productTag.suppressed){ skippedInactiveProducts.push(c.channel); continue; }
         // 2026-09-22 fix, per Todd's direct report — see
         // estimateImpressionsFromBudget()'s own comment. The model's own
         // impressions figure (when it gave one — real inference from a
@@ -36679,7 +36770,7 @@ Submit via the recommendation_from_intake tool.`;
             impressions: lineImpressions,
             status: 'draft',
             stage: lineStage, stageFromAi: true,
-            detailsJson: Object.assign({}, lineStage === 'Advocacy' ? { explicitStage: 'Advocacy' } : {}, c.assumptionNote ? { assumptionNote: c.assumptionNote } : {}, c.audiencePastCustomers ? { audiencePastCustomers: true } : {}, c.exactFromConversation ? { exactFromConversation: true } : {})
+            detailsJson: Object.assign({}, productTag ? { partner: productTag.partner, productGroupFamily: productTag.group, partnerProduct: productTag.product, partnerProductLabel: productTag.productLabel, resultType: productTag.resultType, resultTypeSource: productTag.resultTypeSource, economicsBasis: productTag.economicsBasis } : {}, lineStage === 'Advocacy' ? { explicitStage: 'Advocacy' } : {}, c.assumptionNote ? { assumptionNote: c.assumptionNote } : {}, c.audiencePastCustomers ? { audiencePastCustomers: true } : {}, c.exactFromConversation ? { exactFromConversation: true } : {})
           });
           savedCount++;
           if (lineStage) stageBudgets[lineStage] = (stageBudgets[lineStage] || 0) + (Number(c.budget) || 0);
@@ -36719,7 +36810,7 @@ Submit via the recommendation_from_intake tool.`;
       }
       try { applyLoopStageRules(campaign.accountId, { apply: true, campaignId }); } catch (e){ console.warn('loop-stage rules after intake failed', e && e.message); }
       syncCampaignProductCreativeGroupsFromChannelPlanning(campaignId);
-      return sendJson(res, 200, { generated: savedCount > 0, savedCount, excludedAudiencesRemoved: exclusionRemoved, skippedExistingChannels: skippedExisting, stageApplied: stage, stagesUsed: Object.keys(stageBudgets), audienceApplied: audienceSegments.length ? audienceSegments : null });
+      return sendJson(res, 200, { generated: savedCount > 0, savedCount, excludedAudiencesRemoved: exclusionRemoved, skippedExistingChannels: skippedExisting, skippedInactiveProducts, stageApplied: stage, stagesUsed: Object.keys(stageBudgets), audienceApplied: audienceSegments.length ? audienceSegments : null });
     }
 
     // POST /api/campaigns/:id/channel-planning/:entryId/client-approve —
@@ -36943,6 +37034,27 @@ Submit via the recommendation_from_intake tool.`;
       db.prepare('UPDATE campaigns SET budgetApprovedAt = ?, budgetApprovedBy = ? WHERE id = ?').run(now, actorName, campaignId);
       finLog(campaign.accountId, campaignId, 'plan_signed_off', finActor(req, campaign.accountId), { name: actorName });
       return sendJson(res, 200, { budgetApprovedAt: now, budgetApprovedBy: actorName });
+    }
+
+    // GET/PUT /api/accounts/:id/channel-products — the Train the Brain activation layer inside each channel family.
+    // PUT body: { families: { metaKey: [productKeys], ... } }. Only the families sent are changed.
+    if ((req.method === 'GET' || req.method === 'PUT' || req.method === 'POST') && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'channel-products'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      if (req.method !== 'GET'){
+        const body = (await readBody(req)) || {};
+        const sent = body.families && typeof body.families === 'object' ? body.families : {};
+        let saved = {};
+        try { const r = db.prepare('SELECT activeChannelProducts FROM accounts WHERE accountId = ?').get(accountId); if (r && r.activeChannelProducts) saved = JSON.parse(r.activeChannelProducts) || {}; } catch (e){ saved = {}; }
+        CHANNEL_PRODUCT_FAMILIES.forEach(f => {
+          if (!Array.isArray(sent[f.key])) return;
+          const all = f.products.map(p => p.key);
+          saved[f.key] = sent[f.key].filter(k => all.includes(k));
+        });
+        db.prepare('UPDATE accounts SET activeChannelProducts = ? WHERE accountId = ?').run(JSON.stringify(saved), accountId);
+      }
+      const cfg = channelProductConfig(accountId);
+      return sendJson(res, 200, { families: CHANNEL_PRODUCT_FAMILIES.map(f => ({ key: f.key, label: f.label, kind: f.kind, note: f.note, channels: f.channels, products: f.products, configured: cfg[f.key].configured, active: cfg[f.key].active })) });
     }
 
     // GET /api/accounts/:id/learned-cpm — CPMs this account has taught the Brain.
@@ -37700,6 +37812,20 @@ Submit your response via the messaging_intake_turn tool.`;
             if (details && details.exactFromConversation) conversationConfirmedBudgets.push({ channel: l.channel, budget: Number(l.budget) || 0 });
           } catch (e){ /* malformed detailsJson on an old row — skip, not fatal to the rest of this response */ }
         });
+        // 2026-10-17 — partner groups (Meta, Google, Yahoo): one summed row per partner, with the result-type
+        // breakdown beneath it. A line with no partner tag stays a plain channel row.
+        const partnerGroupMap = {};
+        lines.forEach(l => {
+          let d = null; try { d = l.detailsJson ? JSON.parse(l.detailsJson) : null; } catch (e){ d = null; }
+          if (!d || !d.partner) return;
+          const g = partnerGroupMap[d.partner] || (partnerGroupMap[d.partner] = { partner: d.partner, budget: 0, impressions: 0, lineIds: [], byResultType: {} });
+          const b = Number(l.budget) || 0, im = Number(l.impressions) || 0;
+          g.budget += b; g.impressions += im; g.lineIds.push(l.id);
+          const rt = d.resultType || 'Untagged';
+          const t = g.byResultType[rt] || (g.byResultType[rt] = { budget: 0, impressions: 0, lines: 0, basis: d.economicsBasis || 'blended' });
+          t.budget += b; t.impressions += im; t.lines += 1;
+        });
+        const partnerGroups = Object.values(partnerGroupMap);
         const audienceTotals = {};
         lines.forEach(l => {
           const key = l.audience || campaign.segment || 'Unspecified';
@@ -37748,6 +37874,7 @@ Submit your response via the messaging_intake_turn tool.`;
           totalSpend,
           totalImpressions,
           lineItems: lines,
+          partnerGroups,
           audienceTotals,
           regionTotals,
           stageTotals,
