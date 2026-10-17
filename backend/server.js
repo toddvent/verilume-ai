@@ -955,8 +955,23 @@ ensureColumn('accounts', 'activeChannels', 'TEXT');
 // account actually uses. JSON {familyKey: [productKey, ...]}. A family with no entry means "never configured":
 // every product is offered. A family set to [] means the account uses none of it.
 ensureColumn('accounts', 'activeChannelProducts', 'TEXT');
+// 2026-10-17 — each actuals row can carry the ad product it belongs to (a CHANNEL_PRODUCT_FAMILIES product key).
+// Untagged rows fall back to the default for their channel (see productForPerfRow).
+// Manual per-product economics (Train the Brain). A blank field means "use the measured or blended value".
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_channel_product_inputs (
+    accountId TEXT NOT NULL,
+    product_key TEXT NOT NULL,
+    cpl REAL,
+    ta_share REAL,
+    conv_rate REAL,
+    lag_days REAL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (accountId, product_key)
+  );
+`);
 const CHANNEL_PRODUCT_FAMILIES = [
-  { key: 'meta', label: 'Meta', kind: 'partner', channels: ['Paid Social'], defaults: { 'Paid Social': 'meta_lead_form' },
+  { key: 'meta', label: 'Meta', kind: 'partner', splittable: true, channels: ['Paid Social'], defaults: { 'Paid Social': 'meta_lead_form' },
     note: 'Facebook, Instagram and WhatsApp. Meta Prospect Leads are Lead Form ads for every client.',
     products: [
       { key: 'meta_lead_form', label: 'Lead Form ads (Facebook + Instagram)', resultType: 'Lead Form' },
@@ -984,7 +999,7 @@ const CHANNEL_PRODUCT_FAMILIES = [
       { key: 'yahoo_search', label: 'Yahoo Search (Bing Network)', resultType: 'Other Yahoo' },
       { key: 'yahoo_mail', label: 'Email / Mail ads', resultType: 'Retargeting' }
     ] },
-  { key: 'programmatic', label: 'Programmatic', kind: 'media', channels: ['Programmatic Display'], defaults: { 'Programmatic Display': 'prog_prospecting' },
+  { key: 'programmatic', label: 'Programmatic', kind: 'media', splittable: true, channels: ['Programmatic Display'], defaults: { 'Programmatic Display': 'prog_prospecting' },
     note: 'Display, native and video bought through a trading desk or DSP.',
     products: [
       { key: 'prog_prospecting', label: 'Prospecting display', resultType: 'Prospecting' },
@@ -993,7 +1008,7 @@ const CHANNEL_PRODUCT_FAMILIES = [
       { key: 'prog_video', label: 'Online video', resultType: 'Other' },
       { key: 'prog_audio', label: 'Audio', resultType: 'Other' }
     ] },
-  { key: 'magazines', label: 'Magazines', kind: 'media', channels: ['Magazines'], defaults: { 'Magazines': 'mag_full_page' },
+  { key: 'magazines', label: 'Magazines', kind: 'media', splittable: true, channels: ['Magazines'], defaults: { 'Magazines': 'mag_full_page' },
     note: 'Print formats and the digital extensions that come with them.',
     products: [
       { key: 'mag_full_page', label: 'Full page', resultType: 'Print' },
@@ -1001,7 +1016,7 @@ const CHANNEL_PRODUCT_FAMILIES = [
       { key: 'mag_insert', label: 'Insert / bound-in card', resultType: 'Print' },
       { key: 'mag_digital', label: 'Digital edition / newsletter sponsor', resultType: 'Digital' }
     ] },
-  { key: 'directMail', label: 'Direct Mail', kind: 'media', channels: ['Direct Mail — Prospects', 'Direct Mail — Past Guests', 'Direct Mail — Inquiries'],
+  { key: 'directMail', label: 'Direct Mail', kind: 'media', splittable: true, channels: ['Direct Mail — Prospects', 'Direct Mail — Past Guests', 'Direct Mail — Inquiries'],
     defaults: { 'Direct Mail — Prospects': 'dm_postcard', 'Direct Mail — Past Guests': 'dm_letter_pack', 'Direct Mail — Inquiries': 'dm_triggered' },
     note: 'Formats mailed to prospects, past guests and inquiries.',
     products: [
@@ -1011,6 +1026,211 @@ const CHANNEL_PRODUCT_FAMILIES = [
       { key: 'dm_triggered', label: 'Triggered follow-up', resultType: 'Print' }
     ] }
 ];
+
+// ============================================================
+// 2026-10-17 — Channel product economics and the scenario mix.
+// Pure functions first (no database), so every number can be checked with made-up data; loaders below read the tables.
+// Precedence for every field: manual (Train the Brain) > measured (this account's files) > family blend > no data.
+// ============================================================
+const PRODUCT_MIN_LEADS = 30;        // leads before a measured cost per lead is trusted
+const PRODUCT_MIN_CONV_LEADS = 100;  // leads before a measured lead-to-booking rate is trusted
+const PRODUCT_MIN_LAG_BOOKINGS = 10; // bookings before a measured days-to-convert is trusted
+function productKeyIsKnown(k){ return CHANNEL_PRODUCT_FAMILIES.some(f => f.products.some(p => p.key === k)); }
+function productFamilyOf(k){ return CHANNEL_PRODUCT_FAMILIES.find(f => f.products.some(p => p.key === k)) || null; }
+// Which ad product an actuals row belongs to. An explicit tag wins; otherwise the channel's default.
+// Meta Prospect Leads default to Lead Form for every client.
+function productForPerfRow(r){
+  const tag = String(r.resultType || '').trim();
+  if (tag && productKeyIsKnown(tag)) return { key: tag, explicit: true };
+  const ch = String(r.channel || ''), pub = String(r.publisher || '');
+  if (ch === 'Paid Social') return { key: 'meta_lead_form', explicit: false };
+  if (ch === 'Brand Search' && (!pub || /google/i.test(pub))) return { key: 'google_brand_search', explicit: false };
+  if (ch === 'Non-Brand Search' && (!pub || /google/i.test(pub))) return { key: 'google_non_brand_search', explicit: false };
+  if (ch === 'Remarketing' && !/google/i.test(pub)) return { key: 'prog_retargeting', explicit: false };
+  if (ch === 'Programmatic Display') return { key: /native/i.test(pub) ? 'prog_native' : 'prog_prospecting', explicit: false };
+  return null;
+}
+// Lead counts carry a source, not an ad product. Only Meta is joined to a product today.
+function productForLeadRow(r){
+  if (/^(meta|facebook)$/i.test(String(r.source || '').trim())) return 'meta_lead_form';
+  return null;
+}
+// Overview, detail and split rows describe the same spend at different levels. For untagged rows we use ONE level per
+// channel, the one with the most spend, so nothing is counted twice. Tagged rows are always counted.
+function pickPerfRows(perfRows){
+  const byChannel = {};
+  perfRows.forEach(r => {
+    const m = productForPerfRow(r); if (!m) return;
+    if (m.explicit) return;
+    const c = byChannel[r.channel] || (byChannel[r.channel] = {});
+    const g = String(r.grain || '');
+    c[g] = (c[g] || 0) + (Number(r.spend) || 0);
+  });
+  const chosen = {};
+  Object.keys(byChannel).forEach(ch => { chosen[ch] = Object.keys(byChannel[ch]).sort((a, b) => byChannel[ch][b] - byChannel[ch][a])[0]; });
+  const out = [];
+  perfRows.forEach(r => {
+    const m = productForPerfRow(r); if (!m) return;
+    if (m.explicit || chosen[r.channel] === String(r.grain || '')) out.push({ key: m.key, spend: Number(r.spend) || 0, leads: Number(r.leads) || 0, clicks: Number(r.clicks) || 0, impressions: Number(r.impressions) || 0 });
+  });
+  return out;
+}
+function computePartnerEconomics(data){
+  const perf = pickPerfRows(data.perfRows || []);
+  const meas = {};
+  const slot = k => meas[k] || (meas[k] = { spend: 0, leads: 0, clicks: 0, impressions: 0, leadRowLeads: 0, bookings: 0, lagWeighted: 0 });
+  perf.forEach(r => { const m = slot(r.key); m.spend += r.spend; m.leads += r.leads; m.clicks += r.clicks; m.impressions += r.impressions; });
+  (data.leadRows || []).forEach(r => {
+    const k = productForLeadRow(r); if (!k) return;
+    const m = slot(k); const n = Number(r.count) || 0, b = Number(r.bookings) || 0, d = Number(r.avgDaysToConvert);
+    m.leadRowLeads += n; m.bookings += b; if (isFinite(d) && b > 0) m.lagWeighted += d * b;
+  });
+  const manual = data.manual || {};
+  const products = {};
+  const measuredOf = k => {
+    const m = meas[k]; if (!m) return { cpl: null, convRate: null, lagDays: null, spend: 0, leads: 0, bookings: 0, leadRowLeads: 0 };
+    return {
+      cpl: (m.leads >= PRODUCT_MIN_LEADS && m.spend > 0) ? m.spend / m.leads : null,
+      convRate: m.leadRowLeads >= PRODUCT_MIN_CONV_LEADS ? m.bookings / m.leadRowLeads : null,
+      lagDays: m.bookings >= PRODUCT_MIN_LAG_BOOKINGS ? m.lagWeighted / m.bookings : null,
+      spend: m.spend, leads: m.leads, bookings: m.bookings, leadRowLeads: m.leadRowLeads, clicks: m.clicks, impressions: m.impressions
+    };
+  };
+  const blends = {};
+  CHANNEL_PRODUCT_FAMILIES.forEach(f => {
+    let sp = 0, ld = 0, lrl = 0, bk = 0, lagW = 0, taSum = 0, taN = 0;
+    f.products.forEach(p => {
+      const m = meas[p.key], md = measuredOf(p.key);
+      if (m && md.cpl != null){ sp += m.spend; ld += m.leads; }
+      if (m && md.convRate != null){ lrl += m.leadRowLeads; bk += m.bookings; }
+      if (m && md.lagDays != null){ lagW += m.lagWeighted; }
+      const mn = manual[p.key]; if (mn && mn.taShare != null){ taSum += mn.taShare; taN++; }
+    });
+    const lagBk = f.products.reduce((a, p) => { const m = meas[p.key], md = measuredOf(p.key); return a + (m && md.lagDays != null ? m.bookings : 0); }, 0);
+    blends[f.key] = { cpl: ld > 0 ? sp / ld : null, convRate: lrl > 0 ? bk / lrl : null, lagDays: lagBk > 0 ? lagW / lagBk : null, taShare: taN ? taSum / taN : null };
+  });
+  CHANNEL_PRODUCT_FAMILIES.forEach(f => f.products.forEach(p => {
+    const md = measuredOf(p.key), mn = manual[p.key] || {}, bl = blends[f.key];
+    const pick = field => {
+      if (mn[field] != null) return { value: mn[field], basis: 'manual' };
+      if (md[field] != null) return { value: md[field], basis: 'measured' };
+      if (bl[field] != null) return { value: bl[field], basis: 'blended' };
+      return { value: null, basis: 'none' };
+    };
+    const cpl = pick('cpl'), conv = pick('convRate'), lag = pick('lagDays'), ta = pick('taShare');
+    products[p.key] = {
+      key: p.key, label: p.label, resultType: p.resultType, family: f.key,
+      cpl, convRate: conv, lagDays: lag, taShare: ta,
+      costPerBooking: (cpl.value != null && conv.value > 0) ? cpl.value / conv.value : null,
+      measured: { spend: md.spend, leads: md.leads, bookings: md.bookings, leadRowLeads: md.leadRowLeads }
+    };
+  }));
+  return { products, blends };
+}
+// Outcome of spending `budget` across `alloc` ([{key, share}], shares sum to 1).
+function mixOutcome(prods, alloc, budget, windowDays){
+  let leads = 0, bookings = 0, taLeads = 0, taKnown = true, lagNum = 0, lagDen = 0, bookingsKnown = true; const flags = [];
+  alloc.forEach(a => {
+    const p = prods[a.key]; if (!p || !(a.share > 0)) return;
+    const spend = budget * a.share; const l = p.cpl > 0 ? spend / p.cpl : 0; leads += l;
+    if (p.convRate != null) bookings += l * p.convRate; else bookingsKnown = false;
+    if (p.taShare != null) taLeads += l * p.taShare; else taKnown = false;
+    if (p.lagDays != null){ const w = p.convRate != null ? l * p.convRate : l; lagNum += p.lagDays * w; lagDen += w;
+      if (windowDays != null && p.lagDays > windowDays) flags.push({ key: a.key, label: p.label, lagDays: p.lagDays, text: p.label + ': about ' + Math.round(p.lagDays) + ' days to convert, which lands after the campaign ends (' + Math.round(windowDays) + ' days left).' }); }
+  });
+  return { spend: budget, leads, bookings: bookingsKnown ? bookings : null, taLeads: taKnown ? taLeads : null,
+    costPerLead: leads > 0 ? budget / leads : null, costPerBooking: (bookingsKnown && bookings > 0) ? budget / bookings : null,
+    avgLagDays: lagDen > 0 ? lagNum / lagDen : null, lagFlags: flags };
+}
+// The scenario engine. products: [{key,label,cpl,convRate,lagDays,taShare,basis}], budget in dollars,
+// leadsTarget / bookingsTarget optional, windowDays optional (days left until the campaign ends).
+function solveMix(opts){
+  const budget = Number(opts.budget) || 0; const windowDays = opts.windowDays != null ? Number(opts.windowDays) : null;
+  const L = Number(opts.leadsTarget) > 0 ? Number(opts.leadsTarget) : 0, Bk = Number(opts.bookingsTarget) > 0 ? Number(opts.bookingsTarget) : 0;
+  const list = (opts.products || []).filter(p => p && p.cpl > 0);
+  const prods = {}; list.forEach(p => { prods[p.key] = p; });
+  const notes = []; const excluded = (opts.products || []).filter(p => !(p && p.cpl > 0)).map(p => p && p.label).filter(Boolean);
+  if (excluded.length) notes.push('No cost per lead yet for: ' + excluded.join(', ') + '. Enter it in Train the Brain, or load actuals.');
+  if (!list.length || !(budget > 0)) return { scenarios: [], recommended: null, notes: notes.concat(list.length ? [] : ['No product has a cost per lead, so no mix can be calculated.']), targets: { leads: L || null, bookings: Bk || null }, windowDays };
+  const mk = (key, label, alloc, extra) => Object.assign({ key, label, allocation: alloc.map(a => ({ productKey: a.key, label: prods[a.key].label, share: a.share, spend: budget * a.share })), outcome: mixOutcome(prods, alloc, budget, windowDays) }, extra || {});
+  const best = (arr, f) => arr.reduce((b, p) => (b === null || f(p) < f(b)) ? p : b, null);
+  const scenarios = [];
+  const cheapestLead = best(list, p => p.cpl);
+  scenarios.push(mk('cheapestLead', 'Cheapest per lead', [{ key: cheapestLead.key, share: 1 }]));
+  const withConv = list.filter(p => p.convRate > 0);
+  if (withConv.length){ const b = best(withConv, p => p.cpl / p.convRate); scenarios.push(mk('cheapestBooking', 'Cheapest per booking', [{ key: b.key, share: 1 }])); }
+  else notes.push('No conversion rate yet, so cost per booking cannot be compared.');
+  const withLag = list.filter(p => p.lagDays != null);
+  if (withLag.length){ const b = best(withLag, p => p.lagDays * 1e6 + p.cpl); scenarios.push(mk('fastest', 'Fastest to convert', [{ key: b.key, share: 1 }])); }
+  let recommended = null;
+  if (L || Bk){
+    // Minimum spend that meets every target: single products, then pairs where both targets are tight.
+    const cands = [];
+    list.forEach(p => {
+      const needL = L ? L * p.cpl : 0; const needB = Bk ? (p.convRate > 0 ? Bk * p.cpl / p.convRate : Infinity) : 0;
+      const c = Math.max(needL, needB); if (isFinite(c)) cands.push({ cost: c, x: { [p.key]: c } });
+    });
+    if (L && Bk){
+      for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++){
+        const a = list[i], b = list[j]; const ai = 1 / a.cpl, aj = 1 / b.cpl, bi = (a.convRate || 0) / a.cpl, bj = (b.convRate || 0) / b.cpl;
+        const det = ai * bj - aj * bi; if (Math.abs(det) < 1e-12) continue;
+        const xi = (L * bj - Bk * aj) / det, xj = (ai * Bk - bi * L) / det;
+        if (xi >= -1e-9 && xj >= -1e-9) cands.push({ cost: xi + xj, x: { [a.key]: Math.max(0, xi), [b.key]: Math.max(0, xj) } });
+      }
+    }
+    if (cands.length){
+      const win = cands.reduce((m, c) => c.cost < m.cost ? c : m, cands[0]);
+      const keys = Object.keys(win.x).filter(k => win.x[k] > 1e-9); const tot = keys.reduce((a, k) => a + win.x[k], 0);
+      const alloc = keys.map(k => ({ key: k, share: win.x[k] / tot }));
+      const label = alloc.length > 1 ? 'Recommended mix' : 'Recommended';
+      recommended = mk('recommended', label, alloc, { minSpendForTargets: win.cost, withinBudget: win.cost <= budget + 1e-6,
+        leadsPctOfTarget: L ? null : undefined, bookingsPctOfTarget: Bk ? null : undefined });
+      const o = recommended.outcome;
+      if (L) recommended.leadsPctOfTarget = o.leads / L;
+      if (Bk) recommended.bookingsPctOfTarget = o.bookings != null ? o.bookings / Bk : null;
+      if (!recommended.withinBudget) notes.push('The budget does not reach every target. The best mix covers ' + Math.round(Math.min(recommended.leadsPctOfTarget || 1, recommended.bookingsPctOfTarget || 1) * 100) + '% of the tightest target; it would take about $' + Math.round(win.cost).toLocaleString() + '.');
+      scenarios.push(recommended);
+    } else notes.push('No product has the conversion rate needed to reach the booking target.');
+  } else notes.push('Set a Primary KPI and target on the campaign to get a recommended mix.');
+  return { scenarios, recommended, notes, targets: { leads: L || null, bookings: Bk || null }, windowDays };
+}
+function campaignKpiTargets(campaign){
+  const kpi = String(aliasVal(campaign, 'primaryKpi') || ''), goal = Number(aliasVal(campaign, 'kpiGoal')) || 0, rate = Number(aliasVal(campaign, 'funnelBookingRatePct')) || 0;
+  if (!(goal > 0)) return { leadsTarget: 0, bookingsTarget: 0 };
+  if (/lead/i.test(kpi)) return { leadsTarget: goal, bookingsTarget: rate > 0 ? goal * rate / 100 : 0 };
+  if (/transaction|booking|purchase|sale|reservation/i.test(kpi)) return { leadsTarget: 0, bookingsTarget: goal };
+  return { leadsTarget: 0, bookingsTarget: 0 };
+}
+function campaignWindowDays(campaign){
+  const endRaw = aliasVal(campaign, 'endDate'), startRaw = aliasVal(campaign, 'startDate');
+  const end = endRaw ? new Date(endRaw) : null; if (!end || isNaN(end)) return null;
+  const start = startRaw ? new Date(startRaw) : null; const now = new Date();
+  const from = (start && !isNaN(start) && start > now) ? start : now;
+  return Math.max(0, (end - from) / 86400000);
+}
+function loadEconomicsData(accountId){
+  const perfRows = [], leadRows = [], manual = {};
+  try { db.prepare('SELECT * FROM account_digital_performance WHERE accountId = ?').all(accountId).forEach(r => perfRows.push({ channel: aliasVal(r, 'channel'), publisher: aliasVal(r, 'publisher'), grain: aliasVal(r, 'grain'), resultType: aliasVal(r, 'resultType'), spend: aliasVal(r, 'spend'), leads: aliasVal(r, 'leads'), clicks: aliasVal(r, 'clicks'), impressions: aliasVal(r, 'impressions') })); } catch (e){}
+  try { db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId).forEach(r => leadRows.push({ source: aliasVal(r, 'source'), count: aliasVal(r, 'count'), bookings: aliasVal(r, 'bookings'), avgDaysToConvert: aliasVal(r, 'avgDaysToConvert') })); } catch (e){}
+  try { db.prepare('SELECT * FROM account_channel_product_inputs WHERE accountId = ?').all(accountId).forEach(r => { manual[r.product_key] = { cpl: r.cpl, taShare: r.ta_share, convRate: r.conv_rate, lagDays: r.lag_days }; }); } catch (e){}
+  return { perfRows, leadRows, manual };
+}
+// Flat products for solveMix, from the economics for the ACTIVE products of one family.
+function familyMixProducts(econ, family, activeKeys){
+  return family.products.filter(p => activeKeys.includes(p.key)).map(p => { const e = econ.products[p.key];
+    return { key: p.key, label: p.label, resultType: p.resultType, cpl: e.cpl.value, cplBasis: e.cpl.basis, convRate: e.convRate.value, lagDays: e.lagDays.value, taShare: e.taShare.value }; });
+}
+// The recommended split of one line's budget across a family's products, or null when there is nothing real to split on:
+// needs two or more products in the mix, each with a manual or measured cost per lead (a blend alone is not enough).
+function mixSplitForLine(fam, activeKeys, econ, campaign, lineBudget){
+  if (!fam || !fam.splittable || !(lineBudget > 0) || activeKeys.length < 2) return null;
+  const kt = campaignKpiTargets(campaign);
+  const mix = solveMix({ products: familyMixProducts(econ, fam, activeKeys), budget: lineBudget, leadsTarget: kt.leadsTarget, bookingsTarget: kt.bookingsTarget, windowDays: campaignWindowDays(campaign) });
+  const rec = mix.recommended;
+  if (!rec || rec.allocation.length < 2) return null;
+  const real = rec.allocation.every(a => { const e = econ.products[a.productKey]; return e && (e.cpl.basis === 'manual' || e.cpl.basis === 'measured'); });
+  return real ? rec.allocation : null;
+}
 function channelProductConfig(accountId){
   let saved = null;
   try { const r = db.prepare('SELECT activeChannelProducts FROM accounts WHERE accountId = ?').get(accountId); if (r && r.activeChannelProducts) saved = JSON.parse(r.activeChannelProducts); } catch (e){ saved = null; }
@@ -1965,6 +2185,9 @@ createTableIfNeeded(`
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
 `);
+// 2026-10-17 — each actuals row can carry the ad product it belongs to (a CHANNEL_PRODUCT_FAMILIES product key).
+// Untagged rows fall back to the default for their channel (see productForPerfRow). Added here, after the table exists.
+ensureColumn('account_digital_performance', 'resultType', 'TEXT');
 // Lead form → lead type, per account. mappingJson: { "<form key>": "High
 // Value" | "Growth" | "Prospect" }. Unmapped forms fall back to
 // suggestLeadTypeForForm() (generic keywords) and are flagged suggested.
@@ -8016,7 +8239,7 @@ const CHANNEL_TIMING_OVERRIDE_SOURCES = ['dma_test', 'manual'];
 // See repairFoldedColumns() near createTableIfNeeded() — one bulk check
 // covering every table added 2026-09-28 (all created above this point).
 repairFoldedColumns([
-  ['account_digital_performance', ['accountId', 'sourceChannel', 'keywordType', 'creativeOffer', 'leadsByFormJson', 'sourceSheet', 'updatedAt']],
+  ['account_digital_performance', ['accountId', 'sourceChannel', 'keywordType', 'creativeOffer', 'leadsByFormJson', 'sourceSheet', 'updatedAt', 'resultType']],
   ['account_lead_form_settings', ['accountId', 'mappingJson', 'updatedAt']],
   ['account_dm_cost_per_piece', ['accountId', 'costPerPiece', 'updatedAt']],
   ['account_dm_format_cost', ['accountId', 'formatName', 'costPerPiece', 'updatedAt']],
@@ -19969,6 +20192,8 @@ const REPORT_CARD_CATALOG = [
   { added: '2026-09-30', scope: 'Verilume default', tab: 'Strategy', name: 'Forecast versus target', formula: 'year-end revenue = YTD actual revenue + forecast revenue for planned months; gap = year-end − annual target. Forecast chain: impressions → visits (regression) → leads → bookings → revenue, low/expected/high', tables: ['account_annual_plan', 'mmm_inputs', 'account_website_users_monthly', 'account_lead_counts', 'account_transactions_monthly', 'account_guest_bookings'] },
   { added: '2026-09-30', scope: 'Verilume default', tab: 'Strategy', name: 'Rolling 18-month budget', formula: 'six months back, twelve forward: budget per month (confirmed Marketing Budget uploads) vs spend per month; gap over months having both', tables: ['marketing_budget_uploads', 'marketing_budget_line_items', 'mmm_inputs'] },
   { added: '2026-09-30', scope: 'Verilume default', tab: 'Media Science', name: 'Analysis due / maturing / analyzed campaigns', formula: 'days since last hit date (or end date) ≥ attribution window (90 days) and actuals missing = due; < 90 days = still converting; ROAS = actualRevenue ÷ actualSpend; frequency = impressions ÷ reach; cost per conversion = spend ÷ conversions', tables: ['campaigns', 'channel_planning_details'] },
+  { added: '2026-10-17', scope: 'Verilume default', tab: 'Media Science', name: 'Channel product economics', formula: 'per ad product: cost per lead = SUM(spend) ÷ SUM(leads) over ONE grain per channel (the one with the most spend, so overview, detail and split rows are not added together); lead-to-booking = bookings ÷ leads and days to convert weighted by bookings from lead counts joined to the product (Meta source today); cost per booking = cost per lead ÷ lead-to-booking. Precedence: manual input, then measured (30+ leads, 100+ leads for conversion, 10+ bookings for days), then the family blend, then no data', tables: ['account_digital_performance', 'account_lead_counts', 'account_channel_product_inputs'] },
+  { added: '2026-10-17', scope: 'Verilume default', tab: 'Media Science', name: 'Scenario mix by partner', formula: 'for the partner budget: cheapest per lead, cheapest per booking and fastest to convert each put 100% on one product; the recommended mix is the lowest-spend allocation across products that meets the leads target and the bookings target (leads target × campaign booking rate, or the Transactions target). If the budget falls short, the same mix is scaled to the budget and the share of each target is shown. Days to convert beyond the days left in the campaign are flagged, not excluded', tables: ['account_channel_product_inputs', 'campaigns'] },
   { added: '2026-09-30', scope: 'Verilume default', tab: 'Media Science', name: 'Core elements by channel', formula: 'per channel: SUM(impressions, clicks, spend, leads, calls); cost per lead = spend ÷ leads; click rate = clicks ÷ impressions', tables: ['account_digital_performance (grain overview)'] },
   { added: '2026-09-30', scope: 'Verilume default', tab: 'Media Science', name: 'Lead to booking by audience type', formula: 'bookings ÷ leads per lead type; average days to convert weighted by bookings', tables: ['account_lead_counts'] },
   { added: '2026-09-30', scope: 'Verilume default', tab: 'Customer Experiences', name: 'Cost per engagement by month', formula: 'SUM(spend) ÷ SUM(clicks), all channels, overview grain', tables: ['account_digital_performance'] },
@@ -20742,7 +20967,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['account_ga4_meta', 'account_plan_scenarios', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'marketing_projects', 'marketing_project_tasks', 'account_learned_cpm', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
+const CATALOG_EXEMPT = new Set(['account_ga4_meta', 'account_plan_scenarios', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'marketing_projects', 'marketing_project_tasks', 'account_learned_cpm', 'account_channel_product_inputs', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -36744,6 +36969,7 @@ Submit via the recommendation_from_intake tool.`;
       } catch (e){ console.warn('existing channel check skipped', e.message); }
       const skippedExisting = [];
       const skippedInactiveProducts = [];
+      let econForSplit = null;
       const productCfg = channelProductConfig(campaign.accountId);
       for (const c of channels){
         if (c && c.channel && existingChannelKeys.has(String(c.channel).trim().toLowerCase())){ skippedExisting.push(c.channel); continue; }
@@ -36752,6 +36978,33 @@ Submit via the recommendation_from_intake tool.`;
         // line carries its partner / product / result type, marked "blended" until its own data exists.
         const productTag = channelProductTag(campaign.accountId, c.channel, productCfg);
         if (productTag && productTag.suppressed){ skippedInactiveProducts.push(c.channel); continue; }
+        // 2026-10-17 — mix split: when this channel's family has two or more products with a real (manual or measured)
+        // cost per lead, spread the line's budget the way the scenario engine recommends, one line per product.
+        if (productTag && productTag.family){
+          const fam = CHANNEL_PRODUCT_FAMILIES.find(f => f.key === productTag.family);
+          const lineBudget = Number(c.budget) || 0;
+          if (fam && fam.splittable && lineBudget > 0 && productCfg[fam.key].active.length > 1){
+            try {
+              econForSplit = econForSplit || computePartnerEconomics(loadEconomicsData(campaign.accountId));
+              const alloc = mixSplitForLine(fam, productCfg[fam.key].active, econForSplit, campaign, lineBudget);
+              if (alloc){
+                alloc.forEach(a => {
+                  const prod = fam.products.find(p => p.key === a.productKey); const e = econForSplit.products[a.productKey];
+                  const spend = Math.round(a.spend);
+                  const imps = estimateImpressionsFromBudget(c.channel, spend, campaign.accountId);
+                  try {
+                    insertChannelPlanningRow({ campaignId, channel: c.channel, budget: spend, impressions: imps, status: 'draft', stage: lineStage, stageFromAi: true,
+                      detailsJson: Object.assign({}, { partner: fam.kind === 'partner' ? fam.label : null, productGroupFamily: fam.label, partnerProduct: prod.key, partnerProductLabel: prod.label, resultType: prod.resultType, resultTypeSource: 'mix', economicsBasis: e.cpl.basis, mixShare: a.share,
+                        assumptionNote: 'Part of the recommended mix: ' + Math.round(a.share * 100) + '% of the ' + c.channel + ' budget, from this account\'s cost per lead, conversion rate and days to convert.' }) });
+                    savedCount++;
+                    if (lineStage) stageBudgets[lineStage] = (stageBudgets[lineStage] || 0) + spend;
+                  } catch (e){ console.warn('mix line save failed', c.channel, a.productKey, e); }
+                });
+                continue;
+              }
+            } catch (e){ console.warn('mix split skipped', e && e.message); }
+          }
+        }
         // 2026-09-22 fix, per Todd's direct report — see
         // estimateImpressionsFromBudget()'s own comment. The model's own
         // impressions figure (when it gave one — real inference from a
@@ -37055,6 +37308,72 @@ Submit via the recommendation_from_intake tool.`;
       }
       const cfg = channelProductConfig(accountId);
       return sendJson(res, 200, { families: CHANNEL_PRODUCT_FAMILIES.map(f => ({ key: f.key, label: f.label, kind: f.kind, note: f.note, channels: f.channels, products: f.products, configured: cfg[f.key].configured, active: cfg[f.key].active })) });
+    }
+
+    // GET /api/accounts/:id/channel-product-economics — per product: cost per lead, target-audience share, lead-to-booking
+    // rate, days to convert and cost per booking, each with its basis (manual, measured, blended or none).
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'channel-product-economics'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const econ = computePartnerEconomics(loadEconomicsData(accountId));
+      const cfg = channelProductConfig(accountId);
+      return sendJson(res, 200, { thresholds: { cplLeads: PRODUCT_MIN_LEADS, convLeads: PRODUCT_MIN_CONV_LEADS, lagBookings: PRODUCT_MIN_LAG_BOOKINGS },
+        families: CHANNEL_PRODUCT_FAMILIES.map(f => ({ key: f.key, label: f.label, kind: f.kind, splittable: !!f.splittable, blend: econ.blends[f.key],
+          products: f.products.map(p => Object.assign({ active: cfg[f.key].active.includes(p.key) }, econ.products[p.key])) })) });
+    }
+    // PUT /api/accounts/:id/channel-product-economics/:productKey — manual inputs for one product.
+    // Body: { cpl, taShare, convRate, lagDays }; taShare and convRate are fractions (0.88 = 88%). null or "" clears a field.
+    if ((req.method === 'PUT' || req.method === 'POST') && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'channel-product-economics'){
+      const accountId = decodeURIComponent(parts[2]);
+      const productKey = decodeURIComponent(parts[4]);
+      if (!requireAccount(req, res, accountId)) return;
+      if (!productKeyIsKnown(productKey)) return sendJson(res, 404, { error: 'unknown product' });
+      const body = (await readBody(req)) || {};
+      const num = (v, lo, hi, name) => { if (v === null || v === undefined || v === '') return { ok: true, v: null }; const n = Number(v); if (!isFinite(n) || n < lo || n > hi) return { ok: false, error: name + ' must be between ' + lo + ' and ' + hi + '.' }; return { ok: true, v: n }; };
+      const f = { cpl: num(body.cpl, 0.0001, 1e7, 'Cost per lead'), taShare: num(body.taShare, 0, 1, 'Target-audience share'), convRate: num(body.convRate, 0, 1, 'Lead-to-booking rate'), lagDays: num(body.lagDays, 0, 3650, 'Days to convert') };
+      const bad = Object.values(f).find(x => !x.ok); if (bad) return sendJson(res, 400, { error: bad.error });
+      db.prepare('DELETE FROM account_channel_product_inputs WHERE accountId = ? AND product_key = ?').run(accountId, productKey);
+      if ([f.cpl.v, f.taShare.v, f.convRate.v, f.lagDays.v].some(v => v !== null)){
+        db.prepare('INSERT INTO account_channel_product_inputs (accountId, product_key, cpl, ta_share, conv_rate, lag_days, updated_at) VALUES (?,?,?,?,?,?,?)').run(accountId, productKey, f.cpl.v, f.taShare.v, f.convRate.v, f.lagDays.v, new Date().toISOString());
+      }
+      const econ = computePartnerEconomics(loadEconomicsData(accountId));
+      return sendJson(res, 200, { product: econ.products[productKey] });
+    }
+    // GET /api/accounts/:id/digital-performance/result-type-groups — the channel / publisher / tactic combinations in this account's
+    // actuals for the partner and media families, with spend, leads and the ad product each is tagged with. One grain per channel
+    // (the one with most spend) so overlapping overview / detail / split rows are never added twice.
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'digital-performance' && parts[4] === 'result-type-groups'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const chans = new Set(); CHANNEL_PRODUCT_FAMILIES.forEach(f => f.channels.forEach(c => chans.add(c)));
+      const rows = db.prepare('SELECT * FROM account_digital_performance WHERE accountId = ?').all(accountId).map(r => ({ channel: aliasVal(r, 'channel') || '', publisher: aliasVal(r, 'publisher') || '', tactic: aliasVal(r, 'tactic') || '', grain: aliasVal(r, 'grain') || '', spend: Number(aliasVal(r, 'spend')) || 0, leads: Number(aliasVal(r, 'leads')) || 0, tag: aliasVal(r, 'resultType') || '' })).filter(r => chans.has(r.channel));
+      const grainSpend = {};
+      rows.forEach(r => { const k = r.channel + '|' + r.grain; grainSpend[k] = (grainSpend[k] || 0) + r.spend; });
+      const bestGrain = {};
+      Object.keys(grainSpend).forEach(k => { const [c, g] = k.split('|'); if (!bestGrain[c] || grainSpend[k] > grainSpend[c + '|' + bestGrain[c]]) bestGrain[c] = g; });
+      const groups = {};
+      rows.filter(r => r.grain === bestGrain[r.channel]).forEach(r => {
+        const k = [r.channel, r.publisher, r.tactic].join('|');
+        const g = groups[k] || (groups[k] = { channel: r.channel, publisher: r.publisher, tactic: r.tactic, spend: 0, leads: 0, rows: 0, tags: {} });
+        g.spend += r.spend; g.leads += r.leads; g.rows += 1; g.tags[r.tag || ''] = (g.tags[r.tag || ''] || 0) + 1;
+      });
+      const out = Object.values(groups).map(g => { const t = Object.keys(g.tags).sort((a, b) => g.tags[b] - g.tags[a])[0]; return { channel: g.channel, publisher: g.publisher, tactic: g.tactic, spend: g.spend, leads: g.leads, rows: g.rows, productKey: t || null, mixed: Object.keys(g.tags).length > 1 }; }).sort((a, b) => b.spend - a.spend);
+      return sendJson(res, 200, { groups: out, products: CHANNEL_PRODUCT_FAMILIES.map(f => ({ family: f.label, channels: f.channels, products: f.products.map(p => ({ key: p.key, label: p.label })) })) });
+    }
+    // POST /api/accounts/:id/digital-performance/result-type — tag actuals rows with an ad product.
+    // Body: { channel, publisher?, tactic?, productKey } where productKey null clears the tag (the channel default applies).
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'digital-performance' && parts[4] === 'result-type'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = (await readBody(req)) || {};
+      if (!body.channel) return sendJson(res, 400, { error: 'channel is required' });
+      const pk = body.productKey === null || body.productKey === '' || body.productKey === undefined ? null : String(body.productKey);
+      if (pk && !productKeyIsKnown(pk)) return sendJson(res, 400, { error: 'unknown product' });
+      let sql = 'UPDATE account_digital_performance SET resultType = ? WHERE accountId = ? AND channel = ?'; const args = [pk, accountId, String(body.channel)];
+      if (typeof body.publisher === 'string'){ sql += ' AND publisher = ?'; args.push(body.publisher); }
+      if (typeof body.tactic === 'string'){ sql += ' AND tactic = ?'; args.push(body.tactic); }
+      const info = db.prepare(sql).run(...args);
+      return sendJson(res, 200, { updated: info && info.changes !== undefined ? info.changes : null });
     }
 
     // GET /api/accounts/:id/learned-cpm — CPMs this account has taught the Brain.
@@ -37818,7 +38137,7 @@ Submit your response via the messaging_intake_turn tool.`;
         lines.forEach(l => {
           let d = null; try { d = l.detailsJson ? JSON.parse(l.detailsJson) : null; } catch (e){ d = null; }
           if (!d || !d.partner) return;
-          const g = partnerGroupMap[d.partner] || (partnerGroupMap[d.partner] = { partner: d.partner, budget: 0, impressions: 0, lineIds: [], byResultType: {} });
+          const g = partnerGroupMap[d.partner] || (partnerGroupMap[d.partner] = { partner: d.partner, family: d.productGroupFamily || d.partner, budget: 0, impressions: 0, lineIds: [], byResultType: {} });
           const b = Number(l.budget) || 0, im = Number(l.impressions) || 0;
           g.budget += b; g.impressions += im; g.lineIds.push(l.id);
           const rt = d.resultType || 'Untagged';
@@ -37826,6 +38145,19 @@ Submit your response via the messaging_intake_turn tool.`;
           t.budget += b; t.impressions += im; t.lines += 1;
         });
         const partnerGroups = Object.values(partnerGroupMap);
+        // Scenario mix per splittable partner: what the same dollars deliver under each way of spending them, using
+        // this account's economics (manual, measured, then blended). Never throws into the summary.
+        try {
+          const econ = computePartnerEconomics(loadEconomicsData(campaign.accountId));
+          const cfgNow = channelProductConfig(campaign.accountId);
+          const kt = campaignKpiTargets(campaign); const wd = campaignWindowDays(campaign);
+          partnerGroups.forEach(g => {
+            const fam = CHANNEL_PRODUCT_FAMILIES.find(f => f.label === g.partner || f.key === g.family);
+            if (!fam) return;
+            g.economics = fam.products.filter(p => cfgNow[fam.key].active.includes(p.key)).map(p => { const e = econ.products[p.key]; return { key: p.key, label: p.label, resultType: p.resultType, cpl: e.cpl, convRate: e.convRate, lagDays: e.lagDays, taShare: e.taShare, costPerBooking: e.costPerBooking }; });
+            if (fam.splittable) g.scenarios = solveMix({ products: familyMixProducts(econ, fam, cfgNow[fam.key].active), budget: g.budget, leadsTarget: kt.leadsTarget, bookingsTarget: kt.bookingsTarget, windowDays: wd });
+          });
+        } catch (e){ console.warn('partner scenarios skipped', e && e.message); }
         const audienceTotals = {};
         lines.forEach(l => {
           const key = l.audience || campaign.segment || 'Unspecified';
