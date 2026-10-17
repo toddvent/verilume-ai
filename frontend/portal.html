@@ -18071,6 +18071,7 @@ function cmpMissingChannelGapsNote(campaign, selectedChannelsSet){
 let accountActiveChannelsRestricted = false;
 let accountActiveChannelsSet = null;
 let accountActiveChannelsLoadedFor = null;
+let accountChannelsOffByProducts = new Set();
 async function ensureAccountActiveChannelsLoaded(){
   if (!state.companyId || accountActiveChannelsLoadedFor === state.companyId) return;
   accountActiveChannelsLoadedFor = state.companyId;
@@ -18082,6 +18083,12 @@ async function ensureAccountActiveChannelsLoaded(){
       accountActiveChannelsSet = data.activeChannels ? new Set(data.activeChannels) : null;
     }
   } catch (e) { /* stay unrestricted on any fetch failure — never lock a picker on a network error */ }
+  // 2026-10-17 — Train the Brain activation layer: a channel whose whole product family is switched off is not offered.
+  accountChannelsOffByProducts = new Set();
+  try {
+    const r2 = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/channel-products`);
+    if (r2.ok){ const d2 = await r2.json(); (d2.families || []).forEach(f => { if (f.configured && !(f.active || []).length) (f.channels || []).forEach(c => accountChannelsOffByProducts.add(c)); }); }
+  } catch (e) { /* offer everything on failure */ }
   // A fetch that resolves after the picker already rendered once still
   // needs to correct it — re-render whichever of these are currently on
   // screen (each is a no-op if its container isn't present).
@@ -18095,10 +18102,12 @@ async function ensureAccountActiveChannelsLoaded(){
 // handled server-side (see backend/server.js) so activeChannels already
 // includes them when restricted.
 function isChannelActive(ch){
+  if (accountChannelsOffByProducts.has(ch)) return false;
   if (!accountActiveChannelsRestricted || !accountActiveChannelsSet) return true;
   return accountActiveChannelsSet.has(ch);
 }
 function channelInactiveTitle(ch){
+  if (accountChannelsOffByProducts.has(ch)) return ' title="Switched off in Train the Brain, Channel products. Switch a product on there to use this channel."';
   return isChannelActive(ch) ? '' : ' title="No budget identified for this channel in the latest confirmed Marketing Budget Upload — resolve it there (or add budget) to enable this channel here."';
 }
 // Round 132xx (2026-08-11), per direct instruction: "Move Paid Social,
@@ -30596,7 +30605,7 @@ const TTB_CFG = {
   brainFacts: { manual: { cards: [] }, view: { step: 'searchOptimization', label: 'Search Everywhere' } },
   searchKeywords: { upload: { direct: 'srchKwPick', formats: 'A CSV export from Semrush, BrightEdge, Search Console or Keyword Planner, or a plain list with one keyword per row.', sample: { name: 'search-keywords-sample.csv', cols: ['Keyword', 'Search Volume', 'Intent', 'Product Group'], rows: [['world cruise', 12100, 'Commercial', 'World Voyage'], ['how long is a world cruise', 880, 'Informational', 'World Voyage']] } }, manual: { cards: [] }, view: { step: 'searchOptimization', label: 'Search Everywhere' } },
   competitivePositioning: { manual: { step: 'competitivePositioning' }, view: { tab: 'strategy', label: 'Strategy' } },
-  taxonomy: { manual: { step: 'bulkUpload' }, used: 'Used by Campaign Creation and the Marketing Calendar' },
+  taxonomy: { manual: { cards: [] }, used: 'Used by Campaign Creation and the Marketing Calendar' },
   calendarUpload: { manual: { step: 'bulkUpload' }, used: 'Used by the Marketing Calendar and Analysis' },
   brandWritingSamples: { upload: { formats: 'Word, PDF or text files', go: 'brandWritingSamples' }, manual: { step: 'brandWritingSamples' }, used: 'Used by Copywriting' },
   voice: { manual: { step: 'voice' }, view: { tab: 'brand', label: 'Customer Experiences' } },
@@ -31078,6 +31087,7 @@ function ttbMountOpen(){
     if (k === 'activeChannels'){ try { mbuRenderActiveChannels(); } catch (e){ console.warn(e); } return; }
     if (k === 'channelProducts'){ try { cpLoadChannelProducts(); } catch (e){ console.warn(e); } return; }
     if (k === 'nonWorkingMedia'){ ttbNwmMount(slot); return; }
+    if (k === 'taxonomy'){ ttbTaxMount(slot); return; }
     if (k === 'searchKeywords'){ srchKwRender(); return; }
     if (k === 'brainFacts'){ gscFactsRender(); return; }
     if (TTB_UP[k] && !TTB_UP[k].legacy && ttbUp.key === k){ ttbUpRender(); }
@@ -31085,6 +31095,50 @@ function ttbMountOpen(){
   });
 }
 // 2026-10-11 — Non-working media inside Train the Brain: make sure the year's plan is loaded, draw the vendor table, and give it its own Save (the card normally saves with the whole plan).
+
+// 2026-10-17 — Product Group / Creative Focus Group editor inside Train the Brain. Add Manually used to jump to the monthly
+// transactions upload (a different module); it now edits the account's real lists in place, same PUT the Marketing Calendar reads.
+const TTB_TAX_KEYS = [['productGroup', 'Product Group', 'Polar, Epicurean, Brand'], ['creativeMarket', 'Creative Focus Group', 'Arctic, Antarctica, Mediterranean']];
+async function ttbTaxMount(slot){
+  if (!slot) return;
+  slot.innerHTML = '<div class="ttb-tag">Loading your lists…</div>';
+  try { if (typeof mktCalLoadTaxonomies === 'function') await mktCalLoadTaxonomies(); } catch (e){}
+  ttbTaxRender(slot);
+}
+function ttbTaxRender(slot){
+  slot = slot || document.getElementById('ttbSlot-taxonomy'); if (!slot) return;
+  const byKey = state.calendarTaxonomies || {};
+  slot.innerHTML = TTB_TAX_KEYS.map(([k, label, ph]) => {
+    const vals = Array.isArray(byKey[k] && byKey[k].valuesJson) ? byKey[k].valuesJson : [];
+    const chips = vals.length ? vals.map((v, i) => `<span class="ttb-chip" style="display:inline-flex;gap:6px;align-items:center;margin:0 6px 6px 0;padding:4px 10px;border:1px solid var(--border,#d0d5dd);border-radius:999px">${escapeHtml(v)}<button type="button" class="btn-ghost" style="padding:0 4px" aria-label="Remove ${escapeHtml(v)}" onclick="ttbTaxRemove('${k}', ${i})">&times;</button></span>`).join('') : '<div class="ttb-tag">Nothing here yet.</div>';
+    return `<div style="margin-bottom:16px"><div class="ttb-tag">${escapeHtml(label)}</div><div style="margin:6px 0">${chips}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><input type="text" id="ttbTaxIn-${k}" placeholder="Add one or more, separated by commas (e.g. ${escapeHtml(ph)})" style="flex:1;min-width:220px" onkeydown="if(event.key==='Enter'){event.preventDefault();ttbTaxAdd('${k}')}"><button type="button" class="btn-primary" onclick="ttbTaxAdd('${k}')">Add</button></div></div>`;
+  }).join('') + '<div id="ttbTaxMsg" class="ttb-tag" role="status"></div>';
+}
+async function ttbTaxSave(k, values){
+  const msg = document.getElementById('ttbTaxMsg'); const say = t => { if (msg) msg.textContent = t; };
+  const cur = (state.calendarTaxonomies || {})[k];
+  const label = (cur && cur.label) || (TTB_TAX_KEYS.find(x => x[0] === k) || [])[1] || k;
+  say('Saving…');
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/taxonomies/${encodeURIComponent(k)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label, values }) });
+    if (!r.ok) throw new Error(String(r.status));
+    state.calendarTaxonomies = state.calendarTaxonomies || {};
+    state.calendarTaxonomies[k] = { ...(cur || { taxonomyKey: k }), label, valuesJson: values };
+    try { renderCmpProductGroupRow(); renderCmpCreativeFocusGroupRow(); } catch (e){}
+    ttbTaxRender(); const m2 = document.getElementById('ttbTaxMsg'); if (m2) m2.textContent = 'Saved ' + new Date().toLocaleTimeString() + '. Campaign Creation and the Marketing Calendar now use this list.';
+  } catch (e){ say('Could not save. Try again.'); }
+}
+function ttbTaxAdd(k){
+  const el = document.getElementById('ttbTaxIn-' + k); if (!el) return;
+  const add = el.value.split(/\s*,\s*/).map(x => x.trim()).filter(Boolean); if (!add.length) return;
+  const cur = (state.calendarTaxonomies || {})[k]; const values = Array.isArray(cur && cur.valuesJson) ? cur.valuesJson.slice() : [];
+  add.forEach(v => { if (!ciFindMatch(values, v)) values.push(v); });
+  ttbTaxSave(k, values);
+}
+function ttbTaxRemove(k, i){
+  const cur = (state.calendarTaxonomies || {})[k]; const values = Array.isArray(cur && cur.valuesJson) ? cur.valuesJson.slice() : [];
+  values.splice(i, 1); ttbTaxSave(k, values);
+}
 async function ttbNwmMount(slot){
   try {
     if (!state.mediaPlan && typeof loadMediaPlan === 'function') await loadMediaPlan(typeof mpSelectedYear === 'number' ? mpSelectedYear : undefined);
@@ -52503,6 +52557,28 @@ function cmpRecoPartnerRowsHtml(items, rowHtml){
   });
   return html;
 }
+
+// 2026-10-17 — how the same dollars perform under each way of spending them across a partner's ad products. Read-only:
+// numbers come from the saved economics (typed, measured, then partner average). Days to convert is a flag, not a limit.
+function cmpRecoScenarioHtml(summary){
+  const groups = (summary && summary.partnerGroups || []).filter(g => g.scenarios && g.scenarios.recommended);
+  if (!groups.length) return '';
+  const m = v => '$' + Math.round(v).toLocaleString();
+  const n = v => Math.round(v).toLocaleString();
+  return groups.map(g => {
+    const sc = g.scenarios;
+    const rows = (sc.scenarios || [sc.recommended]).map(x => {
+      const o = x.outcome || {};
+      const mix = (x.allocation || []).filter(a => a.spend > 0).map(a => `${escapeHtml(a.label)} ${Math.round(a.share * 100)}%`).join(', ');
+      return `<tr${x.key === 'recommended' ? ' style="font-weight:600"' : ''}><td>${escapeHtml(x.label)}</td><td>${mix || 'n/a'}</td><td>${n(o.leads || 0)}</td><td>${o.costPerLead ? m(o.costPerLead) : 'n/a'}</td><td>${n(o.bookings || 0)}</td><td>${o.costPerBooking ? m(o.costPerBooking) : 'n/a'}</td><td>${o.avgLagDays ? Math.round(o.avgLagDays) + ' days' : 'n/a'}</td></tr>`;
+    }).join('');
+    const rec = sc.recommended || {};
+    const flags = ((rec.outcome && rec.outcome.lagFlags) || []).map(f => `<li>${escapeHtml(f.text)}</li>`).join('');
+    const fit = rec.withinBudget === false && rec.minSpendForTargets ? `<p class="hint">Reaching the lead and booking targets with these products would take about ${m(rec.minSpendForTargets)}. At ${m(g.budget)} the mix above reaches ${Math.round(rec.leadsPctOfTarget || 0)}% of the lead target and ${Math.round(rec.bookingsPctOfTarget || 0)}% of the booking target.</p>` : '';
+    const notes = (sc.notes || []).map(t => `<li>${escapeHtml(t)}</li>`).join('');
+    return `<div style="margin:0 0 14px"><div style="font-weight:600;margin-bottom:4px">${escapeHtml(g.partner)}: ways to spend ${m(g.budget)}</div><div class="table-scroll" style="overflow-x:auto"><table class="active-camp-table" style="width:100%"><thead><tr><th>Scenario</th><th>Mix</th><th>Leads</th><th>Cost per lead</th><th>Bookings</th><th>Cost per booking</th><th>Days to convert</th></tr></thead><tbody>${rows}</tbody></table></div>${fit}${flags ? `<ul class="hint">${flags}</ul>` : ''}${notes ? `<ul class="hint">${notes}</ul>` : ''}</div>`;
+  }).join('');
+}
 function cmpRecoChannelTableHtml(summary, regionFilter){
   const allItems = summary.lineItems || [];
   // 2026-09-16 — region filter, per Todd's "toggle between budget
@@ -52569,7 +52645,7 @@ function cmpRecoChannelTableHtml(summary, regionFilter){
   };
   const addRowHtml = s.addingLine ? `
     <tr>
-      <td><div class="field" style="margin:0;"><select id="cmpRecoNewChannel">${CHANNEL_OPTIONS.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}</select></div></td>
+      <td><div class="field" style="margin:0;"><select id="cmpRecoNewChannel">${CHANNEL_OPTIONS.filter(c => !accountChannelsOffByProducts.has(c)).map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}</select></div></td>
       <td><div class="field" style="margin:0;"><select id="cmpRecoNewStage">${stageOptionsForNewRow()}</select></div></td>
       <td><div class="field" style="margin:0;"><select id="cmpRecoNewRegion">${regionOptionsHtml((regionFilter && regionFilter !== 'all') ? regionFilter : 'US')}</select></div></td>
       <td><div class="field" style="margin:0;"><input type="number" id="cmpRecoNewBudget" value="0" min="0" step="1"></div></td>
@@ -52604,7 +52680,7 @@ function cmpRecoChannelTableHtml(summary, regionFilter){
       <tbody>${cmpRecoPartnerRowsHtml(items, rowHtml)}${addRowHtml}</tbody>
     </table></div>` : emptyMessage;
   const addBtn = s.addingLine ? '' : `<div class="btn-row" style="margin-bottom:10px;"><button type="button" class="btn-ghost" onclick="cmpRecoStartAddChannel()">+ Add Channel</button></div>`;
-  return table + addBtn;
+  return table + cmpRecoScenarioHtml(summary) + addBtn;
 }
 // Audience mode — read-only, per wireframe spec (edit/delete/Add Channel
 // is specifically for the channel table; there's no per-audience
@@ -53040,6 +53116,7 @@ async function cmpRecoDeleteLine(entryId){
   cmpOpenRecommendationPitch();
 }
 function cmpRecoStartAddChannel(){
+  try { ensureAccountActiveChannelsLoaded(); } catch (e){}
   cmpRecoState.addingLine = true;
   cmpRecoState.editingLineItemId = null;
   const campaign = cmpRailLoadedCampaign();
@@ -77968,6 +78045,7 @@ async function cpLoadChannelProducts(){
     const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/channel-products`);
     if (r.ok){ const d = await r.json(); cpChannelProducts = d.families || []; }
   } catch (e){ console.warn('cpLoadChannelProducts failed', e); }
+  await cpLoadEconomics();
   cpRenderChannelProducts();
 }
 function cpRenderChannelProducts(){
@@ -77988,7 +78066,73 @@ function cpRenderChannelProducts(){
         <button type="button" class="select-tile${f.active.includes(p.key) ? ' selected' : ''}" onclick="cpToggleProduct('${f.key}','${p.key}')">
           <span class="indicator">✓</span><span class="label">${escapeHtml(p.label)}</span>
         </button>`).join('')}</div>
-    </div>`).join('');
+      ${cpEconomicsHtml(f)}
+    </div>`).join('') + cpTagActualsHtml();
+}
+// Tag actuals: which ad product each channel / publisher / tactic in your uploaded results belongs to, so measured cost per lead
+// and conversion are calculated per product. Untagged rows use the channel's default product.
+function cpTagActualsHtml(){
+  if (!cpTagGroups || !cpTagGroups.length) return '';
+  const rows = cpTagGroups.map((g, i) => {
+    const prods = (cpTagProducts || []).filter(f => f.channels.includes(g.channel)).flatMap(f => f.products);
+    if (!prods.length) return '';
+    const opts = '<option value="">Channel default</option>' + prods.map(p => `<option value="${escapeHtml(p.key)}"${g.productKey === p.key ? ' selected' : ''}>${escapeHtml(p.label)}</option>`).join('');
+    return `<tr><td style="padding:4px 6px">${escapeHtml(g.channel)}${g.publisher ? ' · ' + escapeHtml(g.publisher) : ''}${g.tactic ? ' · ' + escapeHtml(g.tactic) : ''}</td><td style="padding:4px 6px">${fmtMoney(g.spend)}</td><td style="padding:4px 6px">${Math.round(g.leads).toLocaleString()}</td><td style="padding:4px 6px"><select aria-label="Ad product for ${escapeHtml(g.channel)}" onchange="cpTagActuals(${i}, this.value)">${opts}</select>${g.mixed ? ' <span class="illustrative-tag">mixed tags</span>' : ''}</td></tr>`;
+  }).join('');
+  if (!rows) return '';
+  return `<div style="margin-top:18px"><b>Tag your results by ad product</b><div class="hint" style="margin:2px 0 6px">Pick the ad product behind each line of your uploaded results. The Brain then measures cost per lead and conversion for each product instead of one channel average. Spend shown counts each channel once.</div><div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:0.85rem"><thead><tr style="text-align:left"><th style="padding:4px 6px">Results line</th><th style="padding:4px 6px">Spend</th><th style="padding:4px 6px">Leads</th><th style="padding:4px 6px">Ad product</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+}
+async function cpTagActuals(i, productKey){
+  const g = (cpTagGroups || [])[i]; if (!g) return;
+  const status = document.getElementById('mbuChannelProductsStatus');
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/digital-performance/result-type`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: g.channel, publisher: g.publisher, tactic: g.tactic, productKey: productKey || null }) });
+    if (!r.ok){ if (status) status.textContent = 'Could not save the tag. Try again.'; return; }
+    await cpLoadEconomics(); cpRenderChannelProducts();
+    if (status) status.textContent = `Saved ${new Date().toLocaleTimeString()}.`;
+  } catch (e){ if (status) status.textContent = 'Could not save the tag. Try again.'; }
+}
+// 2026-10-17 — per-product economics (Train the Brain). Typed values win; otherwise the Brain uses what your actuals measured
+// (tagged rows), then the partner's blended average. Percentages are typed as whole numbers and saved as fractions.
+let cpEconomics = null;
+let cpTagGroups = null, cpTagProducts = null;
+async function cpLoadEconomics(){
+  try {
+    const rg = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/digital-performance/result-type-groups`);
+    if (rg.ok){ const dg = await rg.json(); cpTagGroups = dg.groups || []; cpTagProducts = dg.products || []; }
+  } catch (e){ console.warn('cpLoad tag groups failed', e); }
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/channel-product-economics`);
+    if (r.ok){ const d = await r.json(); cpEconomics = {}; (d.families || []).forEach(f => (f.products || []).forEach(p => { cpEconomics[p.key] = p; })); }
+  } catch (e){ console.warn('cpLoadEconomics failed', e); }
+}
+function cpBasisChip(b){
+  const t = { manual: 'Typed by you', measured: 'Measured', blended: 'Partner average', none: 'No data yet' }[b] || 'No data yet';
+  return `<span class="illustrative-tag" title="Where this number comes from">${t}</span>`;
+}
+function cpEconomicsHtml(f){
+  if (!cpEconomics) return '';
+  const rows = f.products.filter(p => f.active.includes(p.key) && cpEconomics[p.key]).map(p => {
+    const e = cpEconomics[p.key];
+    const val = (x, pct) => (x && x.value !== null && x.value !== undefined && x.basis === 'manual') ? (pct ? Math.round(x.value * 10000) / 100 : x.value) : '';
+    const shown = (x, pct, unit) => (x && x.value !== null && x.value !== undefined) ? (pct ? (Math.round(x.value * 1000) / 10) + '%' : (unit === '$' ? '$' + Number(x.value).toLocaleString(undefined, { maximumFractionDigits: 2 }) : Math.round(x.value) + ' days')) : 'n/a';
+    const cell = (field, x, pct, unit, ph) => `<td style="padding:4px 6px"><input type="number" step="any" min="0" aria-label="${escapeHtml(p.label)} ${field}" id="cpEc-${p.key}-${field}" value="${val(x, pct)}" placeholder="${escapeHtml(ph)}" style="width:92px" onchange="cpSaveEconomics('${p.key}')"><div class="hint" style="margin:2px 0 0">${shown(x, pct, unit)} ${cpBasisChip(x && x.basis)}</div></td>`;
+    return `<tr><td style="padding:4px 6px"><b>${escapeHtml(p.label)}</b></td>${cell('cpl', e.cpl, false, '$', '$ per lead')}${cell('taShare', e.taShare, true, '', '% target audience')}${cell('convRate', e.convRate, true, '', '% lead to booking')}${cell('lagDays', e.lagDays, false, 'd', 'days to convert')}<td style="padding:4px 6px">${e.costPerBooking ? '$' + Math.round(e.costPerBooking).toLocaleString() : 'n/a'}<div class="hint" style="margin:2px 0 0">cost per booking</div></td></tr>`;
+  }).join('');
+  if (!rows) return '';
+  return `<div style="margin-top:10px;overflow-x:auto"><div class="hint" style="margin:0 0 4px">What each product delivers. Leave a box empty and the Brain uses your measured results, then the ${escapeHtml(f.label)} average. Recommendations weigh cost per lead, conversion rate and days to convert together.</div><table style="border-collapse:collapse;font-size:0.85rem"><thead><tr style="text-align:left"><th style="padding:4px 6px">Product</th><th>Cost per lead</th><th>Target audience %</th><th>Lead to booking %</th><th>Days to convert</th><th>Cost per booking</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+async function cpSaveEconomics(pk){
+  const status = document.getElementById('mbuChannelProductsStatus');
+  const g = f => { const el = document.getElementById('cpEc-' + pk + '-' + f); return el ? el.value.trim() : ''; };
+  const pct = v => v === '' ? null : Number(v) / 100;
+  const body = { cpl: g('cpl') === '' ? null : Number(g('cpl')), taShare: pct(g('taShare')), convRate: pct(g('convRate')), lagDays: g('lagDays') === '' ? null : Number(g('lagDays')) };
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/channel-product-economics/${encodeURIComponent(pk)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok){ const d = await r.json().catch(() => ({})); if (status) status.textContent = d.error || 'Could not save. Try again.'; return; }
+    await cpLoadEconomics(); cpRenderChannelProducts();
+    if (status) status.textContent = `Saved ${new Date().toLocaleTimeString()}.`;
+  } catch (e){ if (status) status.textContent = 'Could not save. Try again.'; }
 }
 async function cpSaveFamily(f){
   const status = document.getElementById('mbuChannelProductsStatus');
@@ -77996,7 +78140,7 @@ async function cpSaveFamily(f){
   try {
     const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/channel-products`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ families: { [f.key]: f.active } }) });
     ok = r.ok;
-    if (ok){ const d = await r.json(); cpChannelProducts = d.families || cpChannelProducts; cpRenderChannelProducts(); }
+    if (ok){ const d = await r.json(); cpChannelProducts = d.families || cpChannelProducts; accountActiveChannelsLoadedFor = null; try { ensureAccountActiveChannelsLoaded(); } catch (e2){} await cpLoadEconomics(); cpRenderChannelProducts(); }
   } catch (e){ console.warn('cpSaveFamily failed', e); }
   if (status) status.textContent = ok ? `Saved ${new Date().toLocaleTimeString()}.` : 'Could not save. Try again.';
 }
