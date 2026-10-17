@@ -70856,9 +70856,45 @@ const AD_UNIT_SPECS = {
   'Linear TV': [{ label: ':15 Spot (16:9)', ratio: 16/9, hasImage: true, frames: 3 }, { label: ':30 Spot (16:9)', ratio: 16/9, hasImage: true, frames: 3 }],
   'OTV': [{ label: ':15 Spot (16:9)', ratio: 16/9, hasImage: true, frames: 3 }, { label: ':30 Spot (16:9)', ratio: 16/9, hasImage: true, frames: 3 }],
   'CTV': [{ label: ':15 Spot (16:9)', ratio: 16/9, hasImage: true, frames: 3 }, { label: ':30 Spot (16:9)', ratio: 16/9, hasImage: true, frames: 3 }],
-  'Paid Social': [{ label: 'Lead Form Card (1200×628)', ratio: 1200/628, hasImage: true }, { label: 'Click-to-Message (1080×1080)', ratio: 1, hasImage: true }, { label: 'Feed Square (1080×1080)', ratio: 1, hasImage: true }, { label: 'Story / Reel (1080×1920, animated)', ratio: 1080/1920, hasImage: true, frames: 3 }, { label: 'Feed Landscape (1200×628)', ratio: 1200/628, hasImage: true }],
-  'Brand Search': [{ label: 'Expanded Text Ad', ratio: 3/1, hasImage: false }],
-  'Non-Brand Search': [{ label: 'Expanded Text Ad', ratio: 3/1, hasImage: false }],
+  'Paid Social': [
+    { label: 'Lead Form Card (1200×628)', ratio: 1200/628, hasImage: true, formats: ['Lead form ad'] },
+    { label: 'Lead Form Square Card (1080×1080)', ratio: 1, hasImage: true, formats: ['Lead form ad'] },
+    { label: 'Feed Square (1080×1080)', ratio: 1, hasImage: true, formats: ['Feed post'] },
+    { label: 'Feed Portrait (1080×1350)', ratio: 1080/1350, hasImage: true, formats: ['Feed post'] },
+    { label: 'Feed Landscape (1200×628)', ratio: 1200/628, hasImage: true, formats: ['Feed post'] },
+    { label: 'Story / Reel (1080×1920, animated)', ratio: 1080/1920, hasImage: true, frames: 3, formats: ['Story / Reel'] },
+    { label: 'Carousel Card (1080×1080, 3 cards)', ratio: 1, hasImage: true, frames: 3, formats: ['Carousel'] },
+    { label: 'Click-to-Message (1080×1080)', ratio: 1, hasImage: true, formats: ['Click-to-message ad'] },
+    { label: 'Click-to-Message Story (1080×1920)', ratio: 1080/1920, hasImage: true, formats: ['Click-to-message ad'] }
+  ],
+  'Brand Search': [
+    { label: 'Responsive Search Ad (headlines + descriptions)', ratio: 3/1, hasImage: false, formats: ['Responsive search ad'] },
+    { label: 'Expanded Text Ad', ratio: 3/1, hasImage: false, formats: ['Responsive search ad'] },
+    { label: 'Call-Only Ad', ratio: 3/1, hasImage: false, formats: ['Call-only ad'] },
+    { label: 'Performance Max Landscape (1200×628)', ratio: 1200/628, hasImage: true, formats: ['Performance Max asset group'] },
+    { label: 'Performance Max Square (1200×1200)', ratio: 1, hasImage: true, formats: ['Performance Max asset group'] },
+    { label: 'Performance Max Portrait (960×1200)', ratio: 960/1200, hasImage: true, formats: ['Performance Max asset group'] },
+    { label: 'Demand Gen Landscape (1200×628)', ratio: 1200/628, hasImage: true, formats: ['Demand Gen image ad'] },
+    { label: 'Demand Gen Square (1200×1200)', ratio: 1, hasImage: true, formats: ['Demand Gen image ad'] },
+    { label: 'YouTube :15 (16:9)', ratio: 16/9, hasImage: true, frames: 3, formats: ['YouTube video ad'] },
+    { label: 'YouTube :30 (16:9)', ratio: 16/9, hasImage: true, frames: 3, formats: ['YouTube video ad'] },
+    { label: 'Responsive Display Landscape (1200×628)', ratio: 1200/628, hasImage: true, formats: ['Responsive display ad'] },
+    { label: 'Responsive Display Square (1200×1200)', ratio: 1, hasImage: true, formats: ['Responsive display ad'] }
+  ],
+  'Non-Brand Search': [
+    { label: 'Responsive Search Ad (headlines + descriptions)', ratio: 3/1, hasImage: false, formats: ['Responsive search ad'] },
+    { label: 'Expanded Text Ad', ratio: 3/1, hasImage: false, formats: ['Responsive search ad'] },
+    { label: 'Call-Only Ad', ratio: 3/1, hasImage: false, formats: ['Call-only ad'] },
+    { label: 'Performance Max Landscape (1200×628)', ratio: 1200/628, hasImage: true, formats: ['Performance Max asset group'] },
+    { label: 'Performance Max Square (1200×1200)', ratio: 1, hasImage: true, formats: ['Performance Max asset group'] },
+    { label: 'Performance Max Portrait (960×1200)', ratio: 960/1200, hasImage: true, formats: ['Performance Max asset group'] },
+    { label: 'Demand Gen Landscape (1200×628)', ratio: 1200/628, hasImage: true, formats: ['Demand Gen image ad'] },
+    { label: 'Demand Gen Square (1200×1200)', ratio: 1, hasImage: true, formats: ['Demand Gen image ad'] },
+    { label: 'YouTube :15 (16:9)', ratio: 16/9, hasImage: true, frames: 3, formats: ['YouTube video ad'] },
+    { label: 'YouTube :30 (16:9)', ratio: 16/9, hasImage: true, frames: 3, formats: ['YouTube video ad'] },
+    { label: 'Responsive Display Landscape (1200×628)', ratio: 1200/628, hasImage: true, formats: ['Responsive display ad'] },
+    { label: 'Responsive Display Square (1200×1200)', ratio: 1, hasImage: true, formats: ['Responsive display ad'] }
+  ],
   // Round 132as, per direct feedback: "Display ads are animated we need copy
   // per frame up to 4." Standard programmatic display units today are
   // overwhelmingly served as animated HTML5 (not static), so all four sizes
@@ -70866,7 +70902,21 @@ const AD_UNIT_SPECS = {
   // previously only the one explicitly-named "Rich Media" unit was animated,
   // which understated how this Function actually ships. 4 frames each, the
   // stated max.
-  'Programmatic Display': [{ label: 'Medium Rectangle (300×250, animated)', ratio: 300/250, hasImage: true, frames: 4 }, { label: 'Leaderboard (728×90, animated)', ratio: 728/90, hasImage: true, frames: 4 }, { label: 'Skyscraper (160×600, animated)', ratio: 160/600, hasImage: true, frames: 4 }, { label: 'Rich Media (animated, 300×250)', ratio: 300/250, hasImage: true, frames: 4 }],
+  'Programmatic Display': [
+    { label: 'Medium Rectangle (300×250, animated)', ratio: 300/250, hasImage: true, frames: 4, formats: ['Standard banner'] },
+    { label: 'Leaderboard (728×90, animated)', ratio: 728/90, hasImage: true, frames: 4, formats: ['Standard banner'] },
+    { label: 'Skyscraper (160×600, animated)', ratio: 160/600, hasImage: true, frames: 4, formats: ['Standard banner'] },
+    { label: 'Rich Media (animated, 300×250)', ratio: 300/250, hasImage: true, frames: 4, formats: ['Rich media'] },
+    { label: 'Native Card (1200×628)', ratio: 1200/628, hasImage: true, formats: ['Native ad'] },
+    { label: 'Native Square (1200×1200)', ratio: 1, hasImage: true, formats: ['Native ad'] },
+    { label: 'Online Video :15 (16:9)', ratio: 16/9, hasImage: true, frames: 3, formats: ['Online video'] },
+    { label: 'Online Video :30 (16:9)', ratio: 16/9, hasImage: true, frames: 3, formats: ['Online video'] },
+    { label: 'Audio :30 (audio)', ratio: 3/1, hasImage: false, formats: ['Audio spot'] },
+    { label: ':15 Spot (16:9)', ratio: 16/9, hasImage: true, frames: 3, formats: [':15 Spot'] },
+    { label: ':30 Spot (16:9)', ratio: 16/9, hasImage: true, frames: 3, formats: [':30 Spot'] },
+    { label: 'Email Template (600px wide)', ratio: 600/800, hasImage: true, stacked: true, formats: ['Standalone send'] },
+    { label: 'Responsive Search Ad (headlines + descriptions)', ratio: 3/1, hasImage: false, formats: ['Responsive search ad'] }
+  ],
   'Retail Media': [{ label: 'Medium Rectangle (300×250)', ratio: 300/250, hasImage: true }, { label: 'Sponsored Product Tile', ratio: 1, hasImage: true }],
   'Out-of-Home': [{ label: 'Bulletin (14×48)', ratio: 14/48, hasImage: true, stacked: true }, { label: 'Poster (6×12)', ratio: 6/12, hasImage: true, stacked: true }],
   'Radio': [{ label: ':15 Spot (audio)', ratio: 3/1, hasImage: false }, { label: ':30 Spot (audio)', ratio: 3/1, hasImage: false }],
@@ -70877,7 +70927,11 @@ const AD_UNIT_SPECS = {
   'Podcasts': [{ label: 'Host-Read :30', ratio: 3/1, hasImage: false }, { label: 'Pre-Produced :30', ratio: 3/1, hasImage: false }],
   'Email — Remarketing': [{ label: 'Email Template (600px wide)', ratio: 600/800, hasImage: true, stacked: true }],
   'Internal Email': [{ label: 'Email Template (600px wide)', ratio: 600/900, hasImage: true, stacked: true }],
-  'Remarketing': [{ label: 'Medium Rectangle (300×250)', ratio: 300/250, hasImage: true }, { label: 'Dynamic Product Ad (1080×1080)', ratio: 1, hasImage: true }]
+  'Remarketing': [
+    { label: 'Medium Rectangle (300×250)', ratio: 300/250, hasImage: true, formats: ['Dynamic product/offer ad', 'Static retargeting ad'] },
+    { label: 'Dynamic Product Ad (1080×1080)', ratio: 1, hasImage: true, formats: ['Dynamic product/offer ad'] },
+    { label: 'Static Retargeting Landscape (1200×628)', ratio: 1200/628, hasImage: true, formats: ['Static retargeting ad'] }
+  ]
 };
 // Round 132l — "build a library over time": sizes a campaign has actually
 // saved a version against move to the top of that Function's Size list
@@ -73666,6 +73720,14 @@ function cmpBuildCreativeAssetGridRows(){
 // moved on) is added as a one-off entry rather than silently dropped — same
 // convention cmpCopyVersionAssetChanged() already uses for an approved
 // asset's size.
+// 2026-10-17 — a size belongs to one or more formats (spec.formats). With a format chosen, only its sizes are listed; a spec with no
+// formats, or a format with no matching spec, falls back to the channel's full list so the picker is never empty.
+function cmpSizeSpecsForRow(channel, row){
+  const all = adUnitSpecsFor(channel);
+  if (!row || !row.mediaType) return all;
+  const hit = all.filter(sp => !sp.formats || sp.formats.includes(row.mediaType));
+  return hit.length ? hit : all;
+}
 function cmpPopulateCreativeAssetSizeSelectsForChannel(channel){
   const slug = cmpCreativeAssetChannelSlug(channel);
   const rows = cmpCreativeAssetGridRows[channel] || [];
@@ -73704,7 +73766,13 @@ function cmpPopulateCreativeAssetSizeSelectsForChannel(channel){
     });
   } else {
     cmpCreativeAssetSizeOptionsByChannel[channel] = adUnitSpecsFor(channel);
-    applyLabels(adUnitSpecsFor(channel).map(o => o.label));
+    rows.forEach((row, i) => {
+      const sel = document.getElementById(`cmpCAG_${slug}_${i}_size`);
+      if (!sel) return;
+      const labels = cmpSizeSpecsForRow(channel, row).map(o => o.label);
+      const opts = (row.size && !labels.includes(row.size)) ? [...labels, row.size] : labels;
+      sel.innerHTML = cmpOptionsHtmlSelected(opts, 'Select a size…', row.size);
+    });
     cmpAssetCopyDrawAllForChannel(channel);
   }
 }
@@ -74932,6 +75000,12 @@ function cmpCreativeAssetRowFieldChanged(channel, rowIndex, field, value){
   if (!cmpCreativeAssetGridRows[channel]) cmpCreativeAssetGridRows[channel] = [];
   if (!cmpCreativeAssetGridRows[channel][rowIndex]) cmpCreativeAssetGridRows[channel][rowIndex] = { partner: '', mediaType: '', size: '' };
   cmpCreativeAssetGridRows[channel][rowIndex][field] = value;
+  if (field === 'mediaType' && !channelUsesPublisherSpecTable(channel)){
+    const row = cmpCreativeAssetGridRows[channel][rowIndex];
+    // A size that doesn't belong to the newly chosen format is cleared so a Story size can't stay on a Lead form ad.
+    if (row.size && !cmpSizeSpecsForRow(channel, row).some(sp => sp.label === row.size)) row.size = '';
+    cmpPopulateCreativeAssetSizeSelectsForChannel(channel);
+  }
   cmpSyncCreativeAssetRequestsFromGrid();
   cmpRefreshAssetCopyPanel(channel, rowIndex);
   // A new publication on a Magazines/Newspapers row narrows that row's sizes.
