@@ -4344,6 +4344,11 @@
   body.ask-dock #askVerilumeLive.scope-campaign > .ask-status,body.ask-dock #askVerilumeLive.scope-campaign > .ask-thread,body.ask-dock #askVerilumeLive.scope-campaign > #askVerilumeDq,body.ask-dock #askVerilumeLive.scope-campaign > .ask-cards,body.ask-dock #askVerilumeLive.scope-campaign > .ask-assist,body.ask-dock #askVerilumeLive.scope-campaign > #askVerilumeProposal,body.ask-dock #askVerilumeLive.scope-campaign > .ask-followups{display:none;}
   body.ask-dock .ask-expand.scope-campaign > .ask-expand-label,body.ask-dock .ask-expand.scope-campaign > .prompt-row{display:none;}
   body.ask-dock .ask-expand button{font-family:inherit;}
+  /* 2026-10-17 (test note 10): the AI Brain dialogue sheet always has a visible Close, pinned at the top while scrolling. */
+  .ask-expand-bar{display:none;}
+  body.ask-dock .ask-expand-bar{display:flex;justify-content:flex-end;position:sticky;top:-14px;margin:-14px -16px 6px;padding:8px 10px;background:var(--white);z-index:2;border-radius:16px 16px 0 0;}
+  body.ask-dock .ask-expand-bar button{background:none;border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:0.8125rem;color:var(--muted);cursor:pointer;min-height:32px;}
+  body.ask-dock .ask-expand-bar button:hover{color:var(--ink,#1c1c28);border-color:#9aa0ab;}
   .adc-ask-cta{display:none;}
   body.ask-dock #cmpPitchPanel .adc-ask-cta{display:flex;align-items:center;gap:12px;justify-content:space-between;margin:0 28px;padding:10px 14px;border:1px solid #BFC4F5;background:#EEF0FF;border-radius:10px;font-size:0.8125rem;}
   body.ask-dock #cmpPitchCollabMount{display:none;}
@@ -4799,6 +4804,7 @@
     </div>
     <div class="ask-voice-pill" id="askVerilumeVoicePill" role="status" aria-live="polite" title="Click to dismiss" onclick="askVerilumeVoiceSay('')"></div>
     <div class="ask-expand" id="askVerilumeExpand">
+      <div class="ask-expand-bar"><button type="button" onclick="askDockCloseAll()" aria-label="Close the AI Brain dialogue">✕ Close</button></div>
       <div class="ask-expand-label" id="askVerilumeExpandLabel">Suggested — scoped to Daily Brief</div>
       <div class="prompt-row" id="askVerilumePromptRow"></div>
       <p class="ask-voice-note" id="askVerilumeVoiceNote" style="display:none;"></p>
@@ -9661,7 +9667,10 @@
                corners rounded like a standalone card instead of a
                continuation of the section above it. -->
           <div class="cmp-intake" id="cmpIntake" style="margin-top:22px;border-top:1px solid var(--line);padding-top:18px;border-top-left-radius:0;border-top-right-radius:0;">
-            <h3 style="margin:0 0 6px;">Create Your New Program</h3>
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+              <h3 style="margin:0 0 6px;">Create Your New Program</h3>
+              <button type="button" class="btn-ghost" onclick="cmpCloseObjectivesIntake()" aria-label="Close the AI Brain dialogue" title="Close — your conversation is saved">✕ Close</button>
+            </div>
             <p class="lede" style="margin-bottom:12px;">Please let us know what your current Marketing needs are. We can discuss a new campaign idea &amp; objective, new projects, creative layers and alignment, segmentation, testing and lifecycle stages. Ask away. Your AI Brain is waiting.</p>
             <div class="cmp-intake-body" id="cmpIntakeBody"></div>
             <div class="cmp-intake-input-row">
@@ -9679,9 +9688,6 @@
                Area. Rename to 'Continue to Budget Evaluation'." Same
                handler as before (cmpSkipPickupAndContinue()) — only its
                label and position changed, not what it does. -->
-          <div class="btn-row" style="margin-top:18px;justify-content:flex-end;">
-            <button type="button" class="btn-ghost" onclick="cmpSkipPickupAndContinue()">Continue to Budget Evaluation →</button>
-          </div>
           <!-- 2026-09-21, per direct instruction: recap of what Campaign
                Creation (step 1) already collected, so this stage doesn't
                read as if it forgot the Product Group/Creative Focus Group/
@@ -48013,15 +48019,20 @@ function cmpTemplateMatchLabel(c){
   const parts = cmpTemplateMatchLabelParts(c);
   return parts.length ? `Matches: ${parts.join(', ')}` : 'Recently created';
 }
+// 2026-10-17 — Recommended Campaigns show only COMPLETED campaigns that have metrics added (actual spend,
+// impressions or conversions), never drafts or in-flight ones.
+function cmpTemplateIsCompletedWithMetrics(c){
+  const done = cmpIsHistoricalComplete(c) || String(c.status || '').toLowerCase() === 'analysis' || String(c.status || '').toLowerCase() === 'completed';
+  const hasMetrics = (Number(c.actualSpend) || 0) > 0 || (Number(c.actualImpressions) || 0) > 0 || (Number(c.actualConversions) || 0) > 0;
+  return done && hasMetrics;
+}
 function cmpTemplateRecommendations(){
-  const candidates = cmpTemplateCandidates();
+  const candidates = cmpTemplateCandidates().filter(cmpTemplateIsCompletedWithMetrics);
   const byRecency = (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
   const scored = candidates.map(c => ({ c, score: cmpScoreTemplateCandidate(c) })).filter(x => x.score > 0);
   scored.sort((a, b) => b.score - a.score || byRecency(a.c, b.c));
-  if (scored.length) return scored.slice(0, 3).map(x => x.c);
-  // Nothing overlaps this campaign's real setup yet — still offer the most
-  // recent real campaigns rather than an empty stage.
-  return [...candidates].sort(byRecency).slice(0, 3);
+  // Only campaigns similar to this one; no "most recent" filler (shows the empty hint instead).
+  return scored.slice(0, 3).map(x => x.c);
 }
 // Renders the recommendation row inside the Pick Up Existing Campaign
 // stage. Called from renderCmpDownstreamStages() (same place the stage's
@@ -52389,6 +52400,17 @@ function cmpRecoLineCpmHtml(l){
   if (c.source === 'learned') return `${formatted} <span class="illustrative-tag">taught</span>`;
   return c.source === 'actual' ? formatted : `${formatted} <span class="illustrative-tag">default</span>`;
 }
+// 2026-10-17 (test notes 8, 9): every priced line shows impressions. A line saved without a figure shows the
+// estimate from its CPM (budget ÷ CPM × 1000), tagged, instead of 0. Field / ABM is priced per contact, so it stays blank.
+function cmpRecoLineImpressionsHtml(l){
+  const imp = Math.round(Number(l.impressions) || 0);
+  if (imp > 0) return imp.toLocaleString();
+  const budget = Number(l.budget) || 0;
+  if (budget <= 0 || l.channel === 'Field / ABM') return '—';
+  const c = cmpRecoLineCpm(l);
+  if (c.value && c.value > 0) return `${Math.round(budget / c.value * 1000).toLocaleString()} <span class="illustrative-tag">est.</span>`;
+  return '—';
+}
 function cmpRecoChannelTableHtml(summary, regionFilter){
   const allItems = summary.lineItems || [];
   // 2026-09-16 — region filter, per Todd's "toggle between budget
@@ -52446,7 +52468,7 @@ function cmpRecoChannelTableHtml(summary, regionFilter){
         <td>${escapeHtml(l.region || 'US')}</td>
         <td>${fmtMoney(Number(l.budget) || 0)}</td>
         <td>${cmpRecoLineCpmHtml(l)}</td>
-        <td>${Math.round(Number(l.impressions) || 0).toLocaleString()}</td>
+        <td>${cmpRecoLineImpressionsHtml(l)}</td>
         <td style="white-space:nowrap;">
           <button type="button" class="btn-ghost" onclick="cmpRecoStartEditLine('${l.id}')">Edit</button>
           <button type="button" class="btn-ghost" onclick="cmpRecoDeleteLine('${l.id}')">Delete</button>
@@ -53078,33 +53100,16 @@ let cmpConfirmIntakeBusy = false;
 function cmpRenderIntakeRecommendations(extracted, recs){
   const mount = document.getElementById('cmpIntakeRecommendations');
   if (!mount) return;
-  const stageBtn = !extracted.stageRecommendation ? '' : (cmpIntakeStageApplied === extracted.stageRecommendation
-    ? `<span class="hint" style="color:var(--advocacy);">✓ Applied — this campaign's Loop Stage is now ${escapeHtml(extracted.stageRecommendation)}</span>`
-    : `<button type="button" class="btn-ghost" ${cmpIntakeStageApplying ? 'disabled' : ''} onclick="cmpApplyIntakeStage('${extracted.stageRecommendation}')">${cmpIntakeStageApplying ? 'Applying…' : `Apply Stage: ${escapeHtml(extracted.stageRecommendation)} →`}</button>`);
+  // 2026-10-17 (test notes): no Apply Stage CTA and no repeated recommendation cards (the Pick-Up row above already
+  // shows them). The one action is "Looks good — View Recommendation", which also applies the suggested stage.
   mount.innerHTML = `
     <div class="cmp-intake-summary">
       <b>What the AI Brain heard:</b> ${escapeHtml(extracted.goalSummary || '(no summary)')}
       ${extracted.stageRecommendation ? `<br><b>Suggested Lifecycle Stage:</b> ${escapeHtml(extracted.stageRecommendation)}` : ''}
       ${extracted.primaryKpiRecommendation ? `<br><b>Suggested Primary KPI:</b> ${escapeHtml(extracted.primaryKpiRecommendation)}` : ''}
-      <div class="btn-row" style="margin-top:10px;">${stageBtn}</div>
-    </div>
-    ${recs.length ? `<div class="template-rec-row" style="margin-top:14px;">${recs.map(c => `
-      <div class="template-rec-card">
-        <div class="template-rec-name">${escapeHtml(c.name)}</div>
-        <div class="template-rec-id">${escapeHtml(c.id)}</div>
-        <div class="template-rec-actions">
-          <div class="template-rec-match">${escapeHtml(c.why)}</div>
-          <button type="button" class="btn-ghost" onclick="cmpApplyTemplate('${c.id}')">Use as template →</button>
-        </div>
-      </div>`).join('')}</div>` : ''}
-    <!-- 2026-09-16, per wireframe spec: "The thread ends with the AI
-         Brain's summary and the user's explicit agreement to proceed."
-         Apply Stage / Use as template above are optional refinements;
-         this is the one deliberate, required confirm step that actually
-         ends the dialogue and advances — nothing auto-advances on its
-         own once the AI Brain is ready. -->
-    <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px;display:flex;justify-content:flex-end;">
-      <button type="button" class="btn-primary" ${cmpConfirmIntakeBusy ? 'disabled' : ''} onclick="cmpConfirmIntakeAndContinue()">${cmpConfirmIntakeBusy ? 'Building your recommendation…' : 'Looks good — Continue to Recommendation →'}</button>
+      <div class="btn-row" style="margin-top:12px;">
+        <button type="button" class="btn-primary" ${cmpConfirmIntakeBusy ? 'disabled' : ''} onclick="cmpConfirmIntakeAndContinue()">${cmpConfirmIntakeBusy ? 'Building your recommendation…' : 'Looks good — View Recommendation →'}</button>
+      </div>
     </div>
   `;
 }
