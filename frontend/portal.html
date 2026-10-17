@@ -12916,6 +12916,18 @@
       </div>
     </div>
 
+    <div class="sk-card" id="mbuChannelProductsCard" style="margin-top:18px;">
+      <div class="sk-card-head ink">
+        <div class="htext"><div class="kicker">Account setting — inside each channel</div><h3>Channel products</h3></div>
+        <div class="hicon">🧩</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="hint" style="margin-top:0;">Switch on the ad products and formats you actually buy. Recommendations only use what is on. Meta, Google and Yahoo roll up as one partner total on the plan, with each product beneath it. Until a product has its own results, it uses the partner's blended average.</p>
+        <div id="mbuChannelProductsBody"><p class="hint">Loading…</p></div>
+        <p class="hint" id="mbuChannelProductsStatus" style="margin-top:8px;"></p>
+      </div>
+    </div>
+
     <div class="sk-card" id="mbuWebsiteUsersCard" style="margin-top:18px;">
       <div class="sk-card-head ink">
         <div class="htext"><div class="kicker">Account setting — manual reach input</div><h3>Website users by month</h3></div>
@@ -30528,6 +30540,9 @@ const TTB_ITEMS = {
   calendarUpload: { benefit: 'Past campaigns and plan lines loaded in bulk, so the Marketing Calendar and Analysis start with history.',
     sample: `<div class="ttb-srow"><b>Antarctica Fall Push</b><span>Paid Social · $12,000</span></div><div class="ttb-srow"><b>Past Guest Mailer</b><span>Direct Mail · $8,500</span></div>`,
     opts: [['manual', 'Open the upload', 'bulkUpload']] },
+  channelProducts: { benefit: 'The ad products you buy inside each channel. Meta, Google and Yahoo roll up as one partner total, and recommendations only use what you switch on.',
+    sample: `<div class="ttb-srow"><b>Meta</b><span>Lead Form ads, Feed / Reels web conversion</span></div><div class="ttb-srow"><b>Google</b><span>Brand Search, Non-Brand Search</span></div><div class="ttb-srow"><b>Magazines</b><span>Full page, Insert</span></div>`,
+    opts: [['manual', 'Add Manually', 'channelProducts']] },
   brandWritingSamples: { benefit: 'Two or three writings are enough. The Brain learns how you sound from them.',
     sample: `<div class="ttb-srow"><b>Spring email to past guests</b><span>420 words</span></div><div class="ttb-srow"><b>Brochure page, Antarctica</b><span>610 words</span></div><div class="ttb-srow"><b>CEO welcome speech</b><span>780 words</span></div>`,
     opts: [['upload', 'Upload File', 'brandWritingSamples'], ['manual', 'Add Manually', 'brandWritingSamples']] },
@@ -30556,7 +30571,7 @@ function ttbToggle(k){ ttb.open = ttb.open === k ? '' : k; ttbRerender(); }
 //   Add Manually  -> opens inside the row. The existing entry card is moved in here rather than copied, so it works exactly as before.
 //   Partner Integration -> the one Partner Integrations page.
 // View in Portal is greyed until the item has data, and only shown as a link where the data actually appears.
-const TTB_ALL_CARDS = ['teamStepBody', 'kpiMetricsAdminModule', 'mbuWebsiteUsersCard', 'mbuMarketableSizesCard', 'mbuDmCostPerPieceCard', 'mbuDmFormatCostCard', 'mbuMagazineCostCard', 'mbuActiveChannelsCard', 'mpNonWorkingCard', 'lsrCard', 'mbuAnnualPlanCard', 'mbuDemandFulfillmentCard', 'mbuEngagementCard', 'mbuGa4SourcesCard', 'mbuGa4SearchCard', 'mbuLeadCountsCard', 'mbuTransactionsCard', 'mbuDigitalCard'];
+const TTB_ALL_CARDS = ['teamStepBody', 'kpiMetricsAdminModule', 'mbuWebsiteUsersCard', 'mbuMarketableSizesCard', 'mbuDmCostPerPieceCard', 'mbuDmFormatCostCard', 'mbuMagazineCostCard', 'mbuActiveChannelsCard', 'mbuChannelProductsCard', 'mpNonWorkingCard', 'lsrCard', 'mbuAnnualPlanCard', 'mbuDemandFulfillmentCard', 'mbuEngagementCard', 'mbuGa4SourcesCard', 'mbuGa4SearchCard', 'mbuLeadCountsCard', 'mbuTransactionsCard', 'mbuDigitalCard'];
 let ttbHomes = null;
 function ttbInitHomes(){
   if (ttbHomes) return; ttbHomes = {};
@@ -30597,6 +30612,7 @@ const TTB_CFG = {
   digitalPerformance: { upload: { direct: 'ttbUpPick', formats: 'The agency workbook as it comes (.xlsx or .csv). Sheets with a year and month layout are read automatically.', handler: 'dpHandleWorkbookFile', cards: ['mbuDigitalCard'], noSample: 'No sample needed. Send the workbook your agency already gives you.' }, manual: { cards: ['mbuDigitalCard'] }, integ: true, view: { tab: 'dataScientist', label: 'Media Science' } },
   kpiMetrics: { manual: { cards: ['kpiMetricsAdminModule'] }, view: { step: 'analyticsSetup', label: 'CMO View' } },
   activeChannels: { manual: { cards: ['mbuActiveChannelsCard'] }, used: 'Used by Campaign Creation and the Media Plan' },
+  channelProducts: { manual: { cards: ['mbuChannelProductsCard'] }, used: 'Used by Campaign Creation and the AI Brain recommendation' },
   nonWorkingMedia: { manual: { cards: ['mpNonWorkingCard'] }, used: 'Used by the Media Plan budget' },
   annualPlan: { manual: { cards: ['mbuAnnualPlanCard'] }, view: { tab: 'strategy', label: 'Strategy' } },
   yearResults: { manual: { step: 'mediaplan' }, view: { step: 'mediaplan', label: 'Budget and Plan' } },
@@ -31060,6 +31076,7 @@ function ttbMountOpen(){
     cards.forEach(id => { const el = document.getElementById(id); if (!el) return; el.style.marginTop = '0'; el.style.display = ''; slot.appendChild(el); });
     if (k === 'marketingBudgetUpload'){ ttbBuRender(); return; }
     if (k === 'activeChannels'){ try { mbuRenderActiveChannels(); } catch (e){ console.warn(e); } return; }
+    if (k === 'channelProducts'){ try { cpLoadChannelProducts(); } catch (e){ console.warn(e); } return; }
     if (k === 'nonWorkingMedia'){ ttbNwmMount(slot); return; }
     if (k === 'searchKeywords'){ srchKwRender(); return; }
     if (k === 'brainFacts'){ gscFactsRender(); return; }
@@ -52462,6 +52479,30 @@ function cmpRecoLineImpressionsHtml(l){
   if (c.value && c.value > 0) return `${Math.round(budget / c.value * 1000).toLocaleString()} <span class="illustrative-tag">est.</span>`;
   return '—';
 }
+// 2026-10-17 — partner groups: Meta, Google and Yahoo lines roll up to one summed row, with each product beneath it
+// tagged by result type. Lines with no partner tag stay plain channel rows, in their original order.
+function cmpRecoLineDetails(l){ try { return l.detailsJson ? (typeof l.detailsJson === 'string' ? JSON.parse(l.detailsJson) : l.detailsJson) : {}; } catch (e){ return {}; } }
+function cmpRecoPartnerRowsHtml(items, rowHtml){
+  const groups = {}; const order = [];
+  items.forEach(l => { const d = cmpRecoLineDetails(l); if (d && d.partner){ if (!groups[d.partner]){ groups[d.partner] = []; order.push(d.partner); } groups[d.partner].push(l); } });
+  const done = new Set(); let html = '';
+  items.forEach(l => {
+    const d = cmpRecoLineDetails(l);
+    if (!d || !d.partner){ html += rowHtml(l); return; }
+    if (done.has(d.partner)) return;
+    done.add(d.partner);
+    const ls = groups[d.partner];
+    const b = ls.reduce((a, x) => a + (Number(x.budget) || 0), 0);
+    const im = ls.reduce((a, x) => a + (Number(x.impressions) || 0), 0);
+    html += `<tr style="background:var(--surface-2,#f4f5f8);font-weight:600;"><td colspan="3">${escapeHtml(d.partner)} <span class="illustrative-tag">partner total</span></td><td>${fmtMoney(b)}</td><td>${im > 0 && b > 0 ? '$' + (b / im * 1000).toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—'}</td><td>${Math.round(im).toLocaleString()}</td><td></td></tr>`;
+    ls.forEach(x => {
+      const dd = cmpRecoLineDetails(x);
+      const tag = `<div class="hint" style="margin:2px 0 0;font-weight:400;">${escapeHtml(dd.partnerProductLabel || '')}${dd.resultType ? ' · ' + escapeHtml(dd.resultType) : ''} <span class="illustrative-tag">${dd.economicsBasis === 'measured' ? 'measured' : 'blended'}</span></div>`;
+      html += rowHtml(x).replace(/<td>([^<]*)<\/td>/, (m, ch) => `<td style="padding-left:22px;">${ch}${tag}</td>`);
+    });
+  });
+  return html;
+}
 function cmpRecoChannelTableHtml(summary, regionFilter){
   const allItems = summary.lineItems || [];
   // 2026-09-16 — region filter, per Todd's "toggle between budget
@@ -52560,7 +52601,7 @@ function cmpRecoChannelTableHtml(summary, regionFilter){
   const table = items.length || s.addingLine ? `
     <div class="table-scroll" style="max-height:340px;overflow-y:auto;"><table class="active-camp-table cmp-reco-channel-table" style="width:100%;margin-bottom:14px;">
       <thead><tr><th>Channel</th><th>Loop Stage</th><th>Region</th><th>Budget</th><th>CPM</th><th>Impressions</th><th>Actions</th></tr></thead>
-      <tbody>${items.map(rowHtml).join('')}${addRowHtml}</tbody>
+      <tbody>${cmpRecoPartnerRowsHtml(items, rowHtml)}${addRowHtml}</tbody>
     </table></div>` : emptyMessage;
   const addBtn = s.addingLine ? '' : `<div class="btn-row" style="margin-bottom:10px;"><button type="button" class="btn-ghost" onclick="cmpRecoStartAddChannel()">+ Add Channel</button></div>`;
   return table + addBtn;
@@ -77916,6 +77957,57 @@ async function mbuSaveActiveChannels(){
   if (status) status.textContent = persisted
     ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
     : `Saved ${new Date().toLocaleTimeString()} — local only, this session.`;
+}
+// 2026-10-17 — activation layer inside each channel family (Meta, Google, Yahoo, programmatic, magazines, direct mail).
+let cpChannelProducts = null; // [{key,label,kind,note,products,configured,active}]
+async function cpLoadChannelProducts(){
+  const body = document.getElementById('mbuChannelProductsBody');
+  if (body) body.innerHTML = '<p class="hint">Loading…</p>';
+  if (dataSourceLabel !== 'backend' || !state.companyId){ if (body) body.innerHTML = '<p class="hint">Sign in to an account to set this up.</p>'; return; }
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/channel-products`);
+    if (r.ok){ const d = await r.json(); cpChannelProducts = d.families || []; }
+  } catch (e){ console.warn('cpLoadChannelProducts failed', e); }
+  cpRenderChannelProducts();
+}
+function cpRenderChannelProducts(){
+  const body = document.getElementById('mbuChannelProductsBody');
+  if (!body) return;
+  if (!cpChannelProducts){ body.innerHTML = '<p class="hint">Could not load channel products just now.</p>'; return; }
+  body.innerHTML = cpChannelProducts.map(f => `
+    <div style="margin:0 0 14px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;">
+        <b>${escapeHtml(f.label)}${f.kind === 'partner' ? ' <span class="illustrative-tag">partner</span>' : ''}</b>
+        <span>
+          <button type="button" class="btn-ghost" style="padding:4px 10px;font-size:0.75rem;" onclick="cpSetFamily('${f.key}', true)">All on</button>
+          <button type="button" class="btn-ghost" style="padding:4px 10px;font-size:0.75rem;" onclick="cpSetFamily('${f.key}', false)">All off</button>
+        </span>
+      </div>
+      <div class="hint" style="margin:2px 0 6px;">${escapeHtml(f.note || '')}${f.configured ? '' : ' Not set up yet, so every product is offered.'}</div>
+      <div class="select-tile-row">${f.products.map(p => `
+        <button type="button" class="select-tile${f.active.includes(p.key) ? ' selected' : ''}" onclick="cpToggleProduct('${f.key}','${p.key}')">
+          <span class="indicator">✓</span><span class="label">${escapeHtml(p.label)}</span>
+        </button>`).join('')}</div>
+    </div>`).join('');
+}
+async function cpSaveFamily(f){
+  const status = document.getElementById('mbuChannelProductsStatus');
+  let ok = false;
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/channel-products`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ families: { [f.key]: f.active } }) });
+    ok = r.ok;
+    if (ok){ const d = await r.json(); cpChannelProducts = d.families || cpChannelProducts; cpRenderChannelProducts(); }
+  } catch (e){ console.warn('cpSaveFamily failed', e); }
+  if (status) status.textContent = ok ? `Saved ${new Date().toLocaleTimeString()}.` : 'Could not save. Try again.';
+}
+function cpToggleProduct(fk, pk){
+  const f = (cpChannelProducts || []).find(x => x.key === fk); if (!f) return;
+  f.active = f.active.includes(pk) ? f.active.filter(k => k !== pk) : f.active.concat(pk);
+  f.configured = true; cpRenderChannelProducts(); cpSaveFamily(f);
+}
+function cpSetFamily(fk, on){
+  const f = (cpChannelProducts || []).find(x => x.key === fk); if (!f) return;
+  f.active = on ? f.products.map(p => p.key) : []; f.configured = true; cpRenderChannelProducts(); cpSaveFamily(f);
 }
 function mbuToggleActiveChannel(ch){
   if (state.activeChannels.has(ch)) state.activeChannels.delete(ch); else state.activeChannels.add(ch);
