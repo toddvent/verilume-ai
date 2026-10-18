@@ -61867,7 +61867,7 @@ async function expandCopyInterviewCandidate(jobId, candidateKey){
   cmpSetExpandLinkBusy(btn, true);
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}/interview/${encodeURIComponent(result.interviewId)}/candidate/${encodeURIComponent(candidateKey)}/expand`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 100000
     });
     if (!resp.ok){
       const err = await resp.json().catch(() => ({}));
@@ -67679,7 +67679,7 @@ async function expandMfpInterviewCandidate(interviewId, candidateKey){
   }
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview/${encodeURIComponent(interviewId)}/candidate/${encodeURIComponent(candidateKey)}/expand`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 100000
     });
     if (!resp.ok){
       const err = await resp.json().catch(() => ({}));
@@ -69841,7 +69841,7 @@ async function cmpExpandCopyContestCandidate(panelId, flagId, key){
   try {
     const data = await cmpFetchJsonWithRetry(
       `${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview/${encodeURIComponent(result.interviewId)}/candidate/${encodeURIComponent(key)}/expand`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' } }, 1, 700
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 100000 }, 1, 700 // 2026-10-18: a 400-600 word draft takes longer than the 12s default
     );
     const idx = result.candidates.findIndex(c => c.key === key);
     if (idx !== -1 && data.candidate){
@@ -69851,7 +69851,7 @@ async function cmpExpandCopyContestCandidate(panelId, flagId, key){
   } catch (e){
     cmpSetExpandLinkBusy(btn, false);
     const flag = document.getElementById(flagId);
-    if (flag) flag.textContent = `Couldn't expand this draft: ${e.message || 'backend unreachable'}.`;
+    if (flag) flag.textContent = /abort/i.test(e && e.message || '') ? "The longer version took too long to come back. Nothing was lost; select Generate longer version again." : `Couldn't expand this draft: ${e.message || 'backend unreachable'}.`;
   }
 }
 // 2026-09-23 — same auto-fire pattern as voiceContestAutoRetryPending()
