@@ -3648,6 +3648,18 @@ ensureColumn('channel_planning_details', 'actualsEnteredByRole', 'TEXT');
 ensureColumn('channel_planning_details', 'actualsEnteredByName', 'TEXT');
 ensureColumn('channel_planning_details', 'actualsUpdatedAt', 'TEXT');
 
+// 2026-10-18 — Brand Search and Remarketing are never assigned to a campaign. Remove every such plan line (any status) and take the
+// names out of each campaign's channel list. Runs on every start; a no-op once clean.
+try {
+  const rmLines = db.prepare("DELETE FROM channel_planning_details WHERE LOWER(TRIM(channel)) IN ('brand search','remarketing')").run();
+  let rmCamps = 0;
+  db.prepare("SELECT id, channels FROM campaigns WHERE channels LIKE '%Brand Search%' OR channels LIKE '%Remarketing%'").all().forEach(r => {
+    const kept = String(r.channels || '').split(',').map(x => x.trim()).filter(x => x && !/^(brand search|remarketing)$/i.test(x));
+    db.prepare('UPDATE campaigns SET channels = ? WHERE id = ?').run(kept.join(', '), r.id); rmCamps++;
+  });
+  if (rmLines.changes || rmCamps) console.log('[brand search / remarketing] removed ' + rmLines.changes + ' plan lines and cleaned ' + rmCamps + ' campaign channel lists');
+} catch (e){ console.warn('brand search / remarketing cleanup skipped', e && e.message); }
+
 // 2026-09-13 — Project # (client reference), per direct instruction: this
 // is the CLIENT's own internal Wrike job/project number, never a Verilume-
 // generated id. Verilume stores it only so a client integrating their own
@@ -36808,6 +36820,7 @@ Submit your response via the campaign_intake_turn tool.`;
       const actorRole = body.actorRole === 'cx_ops' ? 'cx_ops' : 'client';
       const actorName = typeof body.actorName === 'string' ? body.actorName : '';
       if (!body.channel) throw { status: 400, error: 'channel is required' };
+      if (['brand search', 'remarketing'].includes(String(body.channel).trim().toLowerCase())) throw { status: 400, error: 'Brand Search and Remarketing are never budgeted on a campaign. Their ads and site links are built in Creative.' };
       const detailsJson = (body.detailsJson && typeof body.detailsJson === 'object') ? body.detailsJson : {};
       let status = body.status === 'submitted' || body.status === 'approved' ? body.status : 'draft';
       const entryId = generateId('CPD');
