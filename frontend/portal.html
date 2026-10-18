@@ -49811,6 +49811,9 @@ function cmpRenderStep0RunContest(c){
   const mode = c.audienceSharedExperience === 'separate' ? 'separate' : 'shared';
   if (mode === 'shared'){
     cmpStep1AudienceNames = [];
+    // 2026-10-18 (test 3 note 8): saving the final draft re-renders this card. Rebuilding it threw away the draft, the edit box and the saved
+    // message. If the shared contest is already here, leave it alone and just refresh the button label and credit line.
+    if (holder.querySelector('#cmpStep0SharedContestPanel')){ cmpContestSyncButtons(); return; }
     holder.innerHTML = `
       <div class="hint" style="margin-bottom:10px;">One shared contest, applied campaign-wide — writes into this campaign's Long Form Copy.</div>
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;"><button type="button" class="btn-primary" id="cmpStep0SharedContestBtn">${escapeHtml(cmpContestButtonLabel('cmpStep0SharedContestPanel'))}</button><span class="hint cmp-contest-credit" style="margin:0 0 0 auto;display:none;"></span></div>
@@ -69454,7 +69457,7 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId, forceMode){
   const isDefaultRun = runMode === 'default';
   const timeoutMs = isDefaultRun ? 60000 : 100000;
   cmpSunriseLoaderShow(isDefaultRun
-    ? { headline: 'Anthropic', note: 'is drafting your campaign copy.', countdownSec: timeoutMs / 1000, countdownLabel: 'Time left before timeout' }
+    ? { headline: 'Your AI copywriter', note: 'is drafting your campaign copy.', countdownSec: timeoutMs / 1000, countdownLabel: 'Time left before timeout' }
     : { headline: CMP_CONTEST_LOADER_HEAD, note: runMode === 'extend' ? 'are adding more options to your draft.' : CMP_CONTEST_LOADER_NOTE, countdownSec: timeoutMs / 1000, countdownLabel: 'Contest running. Time left before timeout' });
   try {
     // 2026-09-23 fix, same report — switched from a single authedFetch
@@ -69627,12 +69630,13 @@ function cmpRenderCardSections(c, idBase, expandLinkHtml){
   const assessId = `${idBase}-assessbox`;
   const draftOpen = !!cmpCardSectionOpenState[draftId];
   const assessOpen = !!cmpCardSectionOpenState[assessId];
+  // 2026-10-18 (test 3 note 5): "View long format" shows the whole draft in one step, no second "Show more".
   const draftHtml = `<div id="${draftId}" style="display:${draftOpen ? 'block' : 'none'};margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);">
-    ${cmpRenderTruncatedCopy(c.copy, idBase)}
+    <div style="font-size:0.8125rem;margin:6px 0;white-space:pre-wrap;">${escapeHtml(c.copy || '')}</div>
     ${c.longCopy ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);">
       <div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;margin-bottom:4px;">Long-form expansion</div>
-      ${cmpRenderTruncatedCopy(c.longCopy, `${idBase}-long`)}
-    </div>` : expandLinkHtml}
+      <div style="font-size:0.8125rem;margin:6px 0;white-space:pre-wrap;">${escapeHtml(c.longCopy)}</div>
+    </div>` : `<div class="hint" style="margin-top:8px;">Want it longer? This asks the AI to write a fuller version of this draft. It appears right here, under the original.</div>${expandLinkHtml}`}
   </div>`;
   const hasNote = !!c.note;
   const hasFlags = !!(c.flags && c.flags.length);
@@ -69683,7 +69687,47 @@ function renderCmpCopyContestPanel(result, flagId, panelId){
   // resolves just appears once it has real copy, with no placeholder
   // shown in the meantime.
   const visibleCandidates = (result.candidates || []).filter(c => c.configured && c.copy);
-  const cards = visibleCandidates.map(c => {
+  // 2026-10-18 (test 3 note 2): the first draft stands on its own. No "Option 1" label, no "top scoring" badge (it is the only score), the
+  // whole draft and our assessment are open, and a button offers the full contest.
+  if (result.mode === 'default' && visibleCandidates.length === 1){
+    const c = visibleCandidates[0];
+    const btnIdFor = { cmpCopyContestPanel: 'cmpCopyContestBtn', cmpStep0SharedContestPanel: 'cmpStep0SharedContestBtn', askDockContestPanel: 'askDockContestBtn', copyverCopyContestPanel: 'copyverCopyContestBtn' }[panelId] || '';
+    const expandLink = !c.longCopy ? cmpExpandLinkHtml(`cmpExpandBtn-${panelId}-${c.key}`, `cmpExpandCopyContestCandidate('${panelId}','${flagId}','${c.key}')`) : '';
+    const hasNote = !!c.note, hasFlags = !!(c.flags && c.flags.length);
+    const lbl = 'text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;';
+    return `<div style="border:2px solid var(--cx);border-radius:8px;padding:12px;">
+      <div style="font-weight:700;font-size:0.9375rem;">Your campaign copy draft</div>
+      <div style="display:flex;gap:16px;margin:6px 0;">
+        <div><span class="hint" style="${lbl}">Campaign Fit</span> ${scorePill(c.relevanceScore)}</div>
+        <div><span class="hint" style="${lbl}">Brand Fit</span> ${scorePill(c.complianceScore)}</div>
+      </div>
+      ${c.approach ? `<div class="hint" style="margin-top:2px;font-style:italic;">Approach: ${escapeHtml(c.approach)}</div>` : ''}
+      <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--line);">
+        <div class="hint" style="${lbl}margin-bottom:4px;">Long Form Copy</div>
+        <div style="font-size:0.8125rem;white-space:pre-wrap;">${escapeHtml(c.copy)}</div>
+        ${c.longCopy ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);"><div class="hint" style="${lbl}margin-bottom:4px;">Long-form expansion</div><div style="font-size:0.8125rem;white-space:pre-wrap;">${escapeHtml(c.longCopy)}</div></div>` : `<div style="margin-top:8px;">${expandLink}</div>`}
+      </div>
+      <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--line);">
+        <div class="hint" style="${lbl}margin-bottom:4px;">Our assessment</div>
+        ${hasNote ? `<div class="hint" style="font-style:italic;">${escapeHtml(c.note)}</div>` : ''}
+        ${hasFlags ? `<div class="hint" style="color:var(--advocacy);margin-top:${hasNote ? '4px' : '0'};">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
+        ${(!hasNote && !hasFlags) ? '<div class="hint">No issues flagged.</div>' : ''}
+      </div>
+      <div style="padding-top:12px;display:flex;justify-content:center;">
+        <button type="button" class="btn-ghost" onclick="cmpSelectCopyContestCandidate('${result.interviewId}', '${c.key}', '${flagId}')">Use this draft →</button>
+      </div>
+    </div>
+    <div style="margin-top:10px;padding:12px;border:1px dashed var(--line);border-radius:8px;text-align:center;">
+      <div class="hint" style="margin-bottom:8px;">Want more to choose from? The full contest adds drafts from other AI partners, each scored the same way, next to this one.</div>
+      <button type="button" class="btn-primary" onclick="cmpRunCampaignCopyContest('${panelId}', '${btnIdFor}', '${flagId}', 'extend')">✦ Run the full contest →</button>
+    </div>
+    <div id="${flagId}" class="hint" style="margin-top:8px;"></div>
+    ${renderAiStatusTip(INTERVIEW_STATUS_TIPS)}`;
+  }
+  // 2026-10-18 (test 3 notes 3-4): shown numbers run 1, 2, 3 over the drafts actually on screen, so a partner that timed out never leaves a gap.
+  // The first draft is always the original one.
+  const cards = visibleCandidates.map((c, ci) => {
+
     const isWinner = c.key === result.recommendedKey;
     const border = isWinner ? '2px solid var(--cx)' : '1px solid var(--line)';
     // 2026-09-23 — "What is the approach from each" is the approach line
@@ -69710,7 +69754,7 @@ function renderCmpCopyContestPanel(result, flagId, panelId){
     return `<div style="display:flex;flex-direction:column;height:100%;border:${border};border-radius:8px;padding:10px;">
       <div>
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
-          <div style="font-weight:700;font-size:0.8125rem;">${escapeHtml(c.label)}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
+          <div style="font-weight:700;font-size:0.8125rem;">Option ${ci + 1}${isWinner ? ' <span class="hint" style="color:var(--cx);font-weight:700;">— top scoring</span>' : ''}</div>
         </div>
         <div style="display:flex;gap:16px;margin:6px 0;">
           <div><span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Campaign Fit</span> ${scorePill(c.relevanceScore)}</div>
@@ -69721,8 +69765,8 @@ function renderCmpCopyContestPanel(result, flagId, panelId){
         ${cmpSections.assessHtml}
       </div>
       <div style="margin-top:auto;padding-top:10px;display:flex;flex-direction:column;align-items:center;gap:8px;">
-        <button type="button" class="btn-ghost" onclick="cmpSelectCopyContestCandidate('${result.interviewId}', '${c.key}', '${flagId}')">Use this draft →</button>
         <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:center;">${cmpSections.linksHtml}</div>
+        <button type="button" class="btn-ghost" onclick="cmpSelectCopyContestCandidate('${result.interviewId}', '${c.key}', '${flagId}')">Use this draft →</button>
       </div>
     </div>`;
   }).join('');
