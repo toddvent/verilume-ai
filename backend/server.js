@@ -1583,7 +1583,7 @@ function draftAllowanceFor(accountId){
   else { const t = PAID_TIERS.find(x => x.key === a.paidTier); limit = t ? t.monthlyDrafts : null; }
   if (limit == null) return null;
   let used = 0;
-  try { used = db.prepare('SELECT COUNT(*) AS n FROM draft_usage WHERE accountId = ? AND createdAt >= ?').get(accountId, since).n || 0; } catch (e){}
+  try { used = Number(db.prepare('SELECT COUNT(*) AS n FROM draft_usage WHERE accountId = ? AND createdAt >= ?').get(accountId, since).n) || 0; } catch (e){}
   return { tier: a.paidTier, limit, used, remaining: Math.max(0, limit - used), since, period: a.paidTier === 'spark' ? 'trial' : 'month' };
 }
 // 2026-10-06 — placeholder tiers replaced by the illumination levels
@@ -28627,7 +28627,8 @@ function countInterviewRunsThisWeek(accountId){
   let total = 0;
   for (const t of tables){
     const row = db.prepare(`SELECT COUNT(*) as c FROM ${t} WHERE accountId = ? AND createdAt >= ?`).get(accountId, since);
-    total += (row && row.c) || 0;
+    // Postgres returns COUNT(*) as a string; adding strings joined the four counts (0, 2, 0, 0 became "00200"), which tripped the cap.
+    total += Number(row && row.c) || 0;
   }
   return total;
 }
