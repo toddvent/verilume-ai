@@ -4481,6 +4481,27 @@ function logScoreHistory(accountId, campaignId, sourceType, sourceKey, result){
     .run(generateId('CSH'), accountId, campaignId, sourceType, sourceKey, result.relevanceScore, result.complianceScore, result.note || null, JSON.stringify(result.flags || []), result.mode, now, now);
   return now;
 }
+// 2026-10-18 — publishes the campaign's header relevance number from the
+// copy contest. One sourceKey per contest (campaign-wide, or one per
+// audience), so the latest row wins as the contest moves from the first
+// draft (stage 'first_draft') to the full panel ('contest') to the saved
+// winner ('selected'). Scores the candidate passed in (the top-scoring live
+// one, or the winner); never throws — a logging miss must not fail a contest.
+function logContestScore(campaign, audienceLabel, candidate, stage){
+  try {
+    if (!campaign || !candidate) return;
+    if (typeof candidate.relevanceScore !== 'number' || typeof candidate.complianceScore !== 'number') return;
+    logScoreHistory(campaign.accountId, campaign.id, 'campaign_copy_contest',
+      audienceLabel ? `contest::audience::${audienceLabel}` : 'contest::campaign',
+      { relevanceScore: candidate.relevanceScore, complianceScore: candidate.complianceScore,
+        note: candidate.scoreNote || candidate.note || null, flags: candidate.flags || [], mode: stage });
+  } catch (e){ console.error('logContestScore failed:', e && e.message); }
+}
+function topScoredContestCandidate(cands){
+  const live = (cands || []).filter(c => c && c.configured !== false && !c.pending && c.copy && typeof c.combinedScore === 'number');
+  if (!live.length) return null;
+  return live.reduce((a, b) => (b.combinedScore > a.combinedScore ? b : a));
+}
 // 2026-08-27 fix, per direct report — this used to be THREE Anthropic
 // "angle" candidates (Confident Authority / Warm Storyteller / Bold Modern)
 // competing alongside one candidate per other vendor, which meant Anthropic
@@ -40280,6 +40301,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       db.prepare(`INSERT INTO campaign_copy_interviews (id, campaignId, accountId, sourceKey, requestedBy, candidatesJson, createdAt, audience)
         VALUES (?,?,?,?,?,?,?,?)`)
         .run(interviewId, campaignId, campaign.accountId, body.sourceKey, requestedBy, JSON.stringify(result.candidates), now, audienceLabel);
+      logContestScore(campaign, audienceLabel, topScoredContestCandidate(result.candidates), body.mode === 'default' ? 'first_draft' : 'contest');
       return sendJson(res, 200, {
         available: true, interviewId, recommendedKey: result.recommendedKey, candidates: redactCandidatesForClient(result.candidates), createdAt: now, audience: audienceLabel,
         mode: body.mode === 'default' ? 'default' : 'contest', allowance: allowanceForClient(campaign.accountId)
@@ -40336,6 +40358,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       const audienceLabel = interview.audience || null;
       const all = await extendCandidateInterviewWithContest(campaign, account, audienceLabel, existing);
       db.prepare('UPDATE campaign_copy_interviews SET candidatesJson = ? WHERE id = ?').run(JSON.stringify(all), interviewId);
+      logContestScore(campaign, audienceLabel, topScoredContestCandidate(all), 'contest');
       const live = all.filter(c => c.configured !== false && !c.pending);
       return sendJson(res, 200, { available: true, interviewId, recommendedKey: pickRecommendedCopyInterviewCandidate(all.filter(c => c.configured)), candidates: redactCandidatesForClient(all), audience: audienceLabel, allowance: allowanceForClient(campaign.accountId), liveCount: live.length });
     }
@@ -40577,6 +40600,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       // both use, not a second, independently-set value that could
       // disagree with it.
       recordContestResult(campaign.accountId, 'Campaign', campaignTypeCompleteness(campaign).label || 'General', chosen, candidates, 'campaign_copy_interviews', interviewId, selectedBy, campaignId);
+      logContestScore(campaign, audienceForApply, chosen, 'selected');
       return sendJson(res, 200, { interviewId, selectedCandidateKey: body.candidateKey, selectedAt: now, copy: (audienceApplied && typeof body.editedCopy === 'string' && body.editedCopy.trim()) ? body.editedCopy.trim().slice(0, 20000) : chosen.copy, audienceApplied });
     }
 
