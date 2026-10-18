@@ -8758,6 +8758,40 @@ function exactPhrasePromptBlock(phrases){
   return `\nBRAND EXACT PHRASES (human-entered; copy these word for word, with this spelling and capitalisation, never paraphrased, shortened or pluralised differently):\n${phrases.map(p => `- "${p.text}" — ${ruleText[p.rule] || ruleText['when-fits']}${p.note ? `. Usage: ${p.note}` : ''}`).join('\n')}\n`;
 }
 async function exactPhraseContextForAccount(accountId){ return exactPhrasePromptBlock(accountExactPhrases(accountId)); }
+// 2026-10-18 (Test 4 note 1) — audience copy must be personal without sounding like surveillance or a mail merge.
+// A draft may speak to what an audience wants and where they are in their relationship with the brand. It may not tell the reader
+// what we saw them do. The stance below goes into the drafting prompt for audience-specific and campaign-wide copy alike, and
+// surveillanceFlags() checks every scored draft in code.
+const NO_MONITORING_RULES = `PERSONAL, NOT WATCHED (applies to every audience): Never tell the reader what we know about their behavior. Do not say or imply that they visited, viewed, clicked, searched, signed up, requested, abandoned, or "showed interest"; do not use "we noticed", "we saw", "since you...", "based on your activity", "you've already...", or "still thinking about". Do not cite dates, amounts, names or counts that read like a database field. Speak to what this kind of person wants, in the way a good host would, and let the offer do the personalizing. Test: if the reader would wonder "how do they know that?", rewrite it.`;
+function audienceStanceBlock(audienceLabel){
+  const a = String(audienceLabel || '').toLowerCase();
+  let stance;
+  if (/hand[- ]?raiser|inquir|lead|request|subscrib|signed up|interested|prospect list/.test(a)){
+    stance = 'This audience asked to hear more. Do not mention that they asked or what they looked at. Speak to the aspiration behind the interest, treat them as someone already curious, and make the next step easy and unpressured. Warm, informed, a little more specific than for a stranger.';
+  } else if (/past (customer|guest|client|traveler|traveller)|repeat|loyal|returning|alumni|member|existing|previous/.test(a)){
+    stance = 'This audience has history with the brand. Express it as a relationship, not a record: warmth, recognition, "the next chapter", shared language. Never cite their past purchase, dates, spend or trip details. No "welcome back" lookups, no loyalty-database phrasing.';
+  } else if (/anonymous|website|web traffic|visitor|traffic|cold|awareness|new to|unknown|broad/.test(a)){
+    stance = 'This audience does not know the brand yet and we know nothing about them. Do not presume prior interest or familiarity, and never say or imply that we saw them on the site. Introduce the brand and the one reason it is worth their attention, and make it easy to learn more.';
+  } else {
+    stance = 'Write to what this audience wants and how familiar they likely are with the brand, without ever stating what we know about them.';
+  }
+  return `AUDIENCE STANCE: ${stance}\n${NO_MONITORING_RULES}`;
+}
+const SURVEILLANCE_PATTERNS = [
+  /\byou(?:'|’)?ve (?:already )?(?:shown|expressed|demonstrated) (?:an )?interest\b/i,
+  /\bwe(?:'|’)?(?:ve)? (?:noticed|seen|saw|spotted|been watching|been tracking)\b/i,
+  /\bsince you (?:visited|viewed|clicked|looked|searched|signed|requested|browsed|abandoned|left)\b/i,
+  /\bbased on your (?:browsing|activity|search|history|visit|clicks?|behaviou?r|interest)\b/i,
+  /\byour (?:recent|latest) (?:activity|visit|search|browsing|inquiry|enquiry)\b/i,
+  /\byou (?:recently )?(?:looked at|viewed|browsed|checked out|visited our|clicked on|abandoned)\b/i,
+  /\bstill (?:thinking|dreaming) about\b/i,
+  /\byou left (?:something|items?|your)\b/i
+];
+function surveillanceFlags(copyText){
+  const text = String(copyText || '');
+  const hit = SURVEILLANCE_PATTERNS.find(re => re.test(text));
+  return hit ? ['Sounds like we are monitoring the reader (tells them what we saw or know about their behavior). Rewrite it so the offer personalizes, not the data.'] : [];
+}
 // Deterministic check of a draft against the account's exact phrases. Returns short flag strings.
 function exactPhraseFlags(copyText, phrases){
   const flags = [];
@@ -27791,6 +27825,7 @@ function scoreComplianceHeuristically(copyText, account, campaign){
   // not a relevance one — it belongs in this function, not the heuristic
   // relevance scorer above.
   exactPhraseFlags(copyText, account && account.accountId ? accountExactPhrases(account.accountId) : []).forEach(f => flags.push(f));
+  surveillanceFlags(copyText).forEach(f => flags.push(f));
   if (campaign && campaign.mandatoryPhrase && !copyText.includes(campaign.mandatoryPhrase)){
     flags.push(`Missing this campaign's Mandatory Phrase, required verbatim: "${campaign.mandatoryPhrase}".`);
   }
@@ -27871,7 +27906,7 @@ ${copyText.slice(0, 2000)}`;
       });
       // 2026-10-18 — the saved exact phrases are checked in code too, so a missing or reworded phrase always shows up and lowers Brand Fit.
       const aiFlags = Array.isArray(parsed.complianceFlags) ? parsed.complianceFlags.slice() : [];
-      const phraseFlags = exactPhraseFlags(copyText, account && account.accountId ? accountExactPhrases(account.accountId) : []);
+      const phraseFlags = exactPhraseFlags(copyText, account && account.accountId ? accountExactPhrases(account.accountId) : []).concat(surveillanceFlags(copyText));
       phraseFlags.forEach(f => aiFlags.push(f));
       const aiComp = typeof parsed.complianceScore === 'number' ? Math.max(0, parsed.complianceScore - phraseFlags.length * 15) : null;
       return {
@@ -28223,7 +28258,7 @@ CAMPAIGN CONTEXT:
 - Loop Stage: ${campaign.stage || '(not set)'} — this stage's real job: ${stageJob}
 - Objective: ${campaignObjectiveText(campaign) || '(not set)'}
 - Audience/Segment: ${campaign.segment || '(not set)'}${exclusionPromptLine(campaign)}
-${audienceLabel ? `- THIS DRAFT IS FOR ONE SPECIFIC AUDIENCE, NOT THE WHOLE CAMPAIGN: "${audienceLabel}" -- write to speak directly to this audience, not a generic campaign-wide reader. If this audience implies a different angle, urgency, or level of familiarity with the brand than a first-time visitor, reflect that.\n` : ''}- Primary KPI: ${campaign.primaryKpi || '(not set)'}
+${audienceLabel ? `- THIS DRAFT IS FOR ONE SPECIFIC AUDIENCE, NOT THE WHOLE CAMPAIGN: "${audienceLabel}" -- write to speak directly to this audience, not a generic campaign-wide reader. If this audience implies a different angle, urgency, or level of familiarity with the brand than a first-time visitor, reflect that.\n${audienceStanceBlock(audienceLabel)}\n` : `${NO_MONITORING_RULES}\n`}- Primary KPI: ${campaign.primaryKpi || '(not set)'}
 - Key Message, if any${campaign.keyMessageMode === 'descriptive' ? ' (a DESCRIPTIVE brief -- write real copy that captures this direction in your own words, do not quote it verbatim)' : ''}: ${campaign.keyMessage || '(none supplied)'}
 ${keyMessageHeadlineRule(campaign)}- Campaign writing style, if the account has one on file: ${campaign.roleStyle || '(none set -- use your own best judgment, grounded in the brand voice guide above)'}
 - Channels this copy will run on: ${channelsText || '(not yet set on this campaign -- write copy that reads naturally across channels)'}
