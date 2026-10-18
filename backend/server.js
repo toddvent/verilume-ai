@@ -37049,6 +37049,7 @@ Submit your response via the campaign_intake_turn tool.`;
             const before = sentence.slice(Math.max(0, m.index - 28), m.index);
             if (/^\s*(?:\/|per\b|a\s+lead|each\b)|^\s*(?:cpl|cpm|cpa|cpc|cpi|cac|roas)\b/i.test(after) ||
                 /(?:cpl|cpm|cpa|cpc|cac|cost\s+per\s+\w+|per\s+lead|\bcost\s+of)\W*(?:of|is|was|at|about|around|~|=|:)?\s*$/i.test(before)) continue;
+            if (amount < 100) continue; // a channel budget is never a few dollars; this is a unit cost or a price
             dollarAmounts.push(amount);
           }
           if (dollarAmounts.length !== 1) return; // 0 = nothing to attach; 2+ = ambiguous which figure goes with which channel, skip rather than guess
