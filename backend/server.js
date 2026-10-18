@@ -46221,7 +46221,13 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         split(aliasVal(r, 'creativeMarket')).forEach(v => { f.creativeMarkets.add(v); all.creativeMarkets.add(v); });
       });
       const out = {}; Object.keys(by).forEach(k => { out[k] = { channels: [...by[k].channels], productGroups: [...by[k].productGroups], creativeMarkets: [...by[k].creativeMarkets] }; });
-      return sendJson(res, 200, { campaigns: out, options: { channels: [...all.channels].sort(), productGroups: [...all.productGroups].sort(), creativeMarkets: [...all.creativeMarkets].sort() } });
+      // 2026-10-18: the Product Group and Creative Focus dropdown lists come from the account's saved lists (Train the Brain / Data Management), the same
+      // source Campaign Creation and the Marketing Calendar use. Values found only on older plan lines no longer pad the list; they still match when picked
+      // only if they are in the saved list. When an account has no saved list yet, fall back to what the plan lines contain.
+      const savedList = key => { try { const t = db.prepare('SELECT valuesJson FROM account_taxonomies WHERE accountId = ? AND taxonomyKey = ?').get(accountId, key); const v = t ? JSON.parse(aliasVal(t, 'valuesJson') || '[]') : []; return Array.isArray(v) ? v.map(x => String(x).trim()).filter(Boolean) : []; } catch (e){ return []; } };
+      const savedPg = savedList('productGroup'), savedCm = savedList('creativeMarket');
+      const sortCI = a => a.slice().sort((x, y) => x.localeCompare(y, undefined, { sensitivity: 'base' }));
+      return sendJson(res, 200, { campaigns: out, options: { channels: [...all.channels].sort(), productGroups: savedPg.length ? sortCI(savedPg) : [...all.productGroups].sort(), creativeMarkets: savedCm.length ? sortCI(savedCm) : [...all.creativeMarkets].sort() } });
     }
     // POST /api/accounts/:id/loop-stage-rules/check  { rows:[{ campaignName, channel, audience, productGroup, budget }] } — 2026-10-10. Runs the same audience-gap
     // check on rows that are about to be uploaded, so the upload screen can explain what is missing before anything is saved. Writes nothing.
