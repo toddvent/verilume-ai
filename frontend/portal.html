@@ -59835,6 +59835,8 @@ async function mktCalLoadTaxonomies(){
     // on a page that may load before the Marketing Calendar ever has) can
     // read the same real values without a second fetch.
     state.calendarTaxonomies = byKey;
+    // 2026-10-18: Campaign Management's filter lists come from these same saved lists, so drop its cached copy and let it reload.
+    try { cmgmtFacets = null; } catch (e){}
     mktCalPopulateSelect('mktCalFilterProductGroup', byKey.productGroup, 'All product groups');
     mktCalPopulateSelect('mktCalFilterCreativeMarket', byKey.creativeMarket, 'All creative markets');
     renderCmpProductGroupRow();
