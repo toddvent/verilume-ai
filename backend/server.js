@@ -5162,6 +5162,7 @@ function brandVoiceCriticalMessagesContext(account, extra){
   } catch (e){ /* malformed/legacy JSON — fall through without it */ }
   if (Array.isArray(brandKeywords) && brandKeywords.length) lines.push(`Approved Brand Keywords (emotional/voice signal): ${brandKeywords.join(', ')}`);
   if (Array.isArray(productKeywords) && productKeywords.length) lines.push(`Approved Product Keywords (what this brand sells): ${productKeywords.join(', ')}`);
+  { const ep = exactPhrasePromptBlock(account.accountId ? accountExactPhrases(account.accountId) : []); if (ep) lines.push(ep.trim()); }
   // 2026-08-27 fix, per direct report — the account's own scanned website
   // used to sit completely unused by this contest even when a scan existed
   // on file. Included here for BRAND UNDERSTANDING ONLY — same "understand
@@ -8728,6 +8729,60 @@ function websiteProfileRollup(accountId){
   } catch (e){ return null; }
 }
 
+// 2026-10-18 — Exact phrases (Brand Voice > Brand & Product Keywords). Stored in accounts.brandKeywordsJson.phrases as
+// [{ text, rule, note }]. rule: 'always' (must appear), 'when-fits' (use when it fits, never reworded), 'protect' (if the copy
+// mentions it, the wording and capitalisation stay exact). Unlike Brand/Product Keywords, which are voice signals, these are
+// word-for-word instructions, and the scorer checks the copy against them.
+const EXACT_PHRASE_RULES = ['always', 'when-fits', 'protect'];
+function sanitizeExactPhrases(list){
+  const out = []; const seen = new Set();
+  (Array.isArray(list) ? list : []).forEach(p => {
+    const text = String((p && p.text) != null ? p.text : (typeof p === 'string' ? p : '')).replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (!text || seen.has(text.toLowerCase())) return;
+    seen.add(text.toLowerCase());
+    const rule = EXACT_PHRASE_RULES.includes(p && p.rule) ? p.rule : 'when-fits';
+    out.push({ text, rule, note: String((p && p.note) || '').replace(/\s+/g, ' ').trim().slice(0, 200) });
+  });
+  return out.slice(0, 60);
+}
+function accountExactPhrases(accountId){
+  try {
+    const row = db.prepare('SELECT brandKeywordsJson FROM accounts WHERE accountId = ?').get(accountId);
+    const parsed = row && row.brandKeywordsJson ? JSON.parse(row.brandKeywordsJson) : null;
+    return sanitizeExactPhrases(parsed && parsed.phrases);
+  } catch (e){ return []; }
+}
+function exactPhrasePromptBlock(phrases){
+  if (!phrases || !phrases.length) return '';
+  const ruleText = { always: 'ALWAYS INCLUDE, word for word', 'when-fits': 'use when it fits, but never reworded or re-capitalised', protect: 'if you mention this, keep the exact wording and capitalisation' };
+  return `\nBRAND EXACT PHRASES (human-entered; copy these word for word, with this spelling and capitalisation, never paraphrased, shortened or pluralised differently):\n${phrases.map(p => `- "${p.text}" — ${ruleText[p.rule] || ruleText['when-fits']}${p.note ? `. Usage: ${p.note}` : ''}`).join('\n')}\n`;
+}
+async function exactPhraseContextForAccount(accountId){ return exactPhrasePromptBlock(accountExactPhrases(accountId)); }
+// Deterministic check of a draft against the account's exact phrases. Returns short flag strings.
+function exactPhraseFlags(copyText, phrases){
+  const flags = [];
+  const text = String(copyText || '');
+  if (!text || !phrases || !phrases.length) return flags;
+  const lower = text.toLowerCase();
+  const stem = w => w.slice(0, 5);
+  const words = (text.toLowerCase().match(/[a-z0-9']+/g) || []).map(stem);
+  phrases.forEach(p => {
+    if (text.includes(p.text)) return;
+    if (lower.includes(p.text.toLowerCase())){ flags.push(`Brand phrase "${p.text}" is written with different capitalisation. Use it exactly as saved.`); return; }
+    const toks = (p.text.toLowerCase().match(/[a-z0-9']+/g) || []).map(stem);
+    let reworded = false;
+    if (toks.length >= 2){
+      const need = Math.max(2, toks.length - 1); const win = toks.length + 3;
+      for (let i = 0; i + 1 <= words.length && !reworded; i++){
+        const seg = new Set(words.slice(i, i + win));
+        if (toks.filter(t => seg.has(t)).length >= need) reworded = true;
+      }
+    }
+    if (reworded){ flags.push(`Brand phrase "${p.text}" appears reworded. Use it word for word.`); return; }
+    if (p.rule === 'always') flags.push(`Missing the brand phrase "${p.text}", which must appear word for word.`);
+  });
+  return flags;
+}
 // 2026-09-12 — Voice Guardrail Direct Wiring round. Terms to Avoid and
 // website context previously only reached a copy-generation prompt
 // INDIRECTLY, via whatever text a human happened to copy into the approved
@@ -8766,6 +8821,7 @@ async function liveGuardrailContext(accountId){
       const parsed = row && row.brandKeywordsJson ? JSON.parse(row.brandKeywordsJson) : null;
       if (parsed && Array.isArray(parsed.negative)) avoidWords = parsed.negative.filter(Boolean);
     } catch (e){ /* malformed/legacy brandKeywordsJson — fall through without it */ }
+    { const ep = exactPhrasePromptBlock(accountExactPhrases(accountId)); if (ep) lines.push(ep); }
     if (avoidWords.length){
       lines.push(`\nCURRENT TERMS TO AVOID FOR THIS ACCOUNT (live, human-entered — may not yet be reflected in the Voice Guide text above if it hasn't been regenerated recently; these apply regardless): ${avoidWords.map(w => `"${w}"`).join(', ')}\nDo not use any of these words or phrases anywhere in the copy, even if not otherwise flagged.\n`);
     }
@@ -27734,6 +27790,7 @@ function scoreComplianceHeuristically(copyText, account, campaign){
   // account's own definition of the word (they set it, it's required),
   // not a relevance one — it belongs in this function, not the heuristic
   // relevance scorer above.
+  exactPhraseFlags(copyText, account && account.accountId ? accountExactPhrases(account.accountId) : []).forEach(f => flags.push(f));
   if (campaign && campaign.mandatoryPhrase && !copyText.includes(campaign.mandatoryPhrase)){
     flags.push(`Missing this campaign's Mandatory Phrase, required verbatim: "${campaign.mandatoryPhrase}".`);
   }
@@ -27812,11 +27869,16 @@ ${copyText.slice(0, 2000)}`;
           required: ['relevanceScore', 'relevanceNote', 'complianceScore', 'complianceFlags']
         }
       });
+      // 2026-10-18 — the saved exact phrases are checked in code too, so a missing or reworded phrase always shows up and lowers Brand Fit.
+      const aiFlags = Array.isArray(parsed.complianceFlags) ? parsed.complianceFlags.slice() : [];
+      const phraseFlags = exactPhraseFlags(copyText, account && account.accountId ? accountExactPhrases(account.accountId) : []);
+      phraseFlags.forEach(f => aiFlags.push(f));
+      const aiComp = typeof parsed.complianceScore === 'number' ? Math.max(0, parsed.complianceScore - phraseFlags.length * 15) : null;
       return {
         relevanceScore: typeof parsed.relevanceScore === 'number' ? parsed.relevanceScore : null,
         note: typeof parsed.relevanceNote === 'string' ? parsed.relevanceNote : null,
-        complianceScore: typeof parsed.complianceScore === 'number' ? parsed.complianceScore : null,
-        flags: Array.isArray(parsed.complianceFlags) ? parsed.complianceFlags : [],
+        complianceScore: aiComp,
+        flags: aiFlags,
         mode: 'ai'
       };
       // A thrown error (bad HTTP status, malformed tool response) falls
@@ -28701,7 +28763,7 @@ async function runCandidateInterview(campaign, account, audienceLabel, runOpts){
   // context chain is its own separate, narrower thing (samples + creative
   // job decisions only) by standing convention, not an oversight. A
   // candidate for a future round, not this one.
-  const sampleContext = (await brandWritingSampleContext(account.accountId, { creativeMarket: campaignCreativeMarketScope(campaign) })) + (await creativeJobDecisionContext(account.accountId));
+  const sampleContext = (await brandWritingSampleContext(account.accountId, { creativeMarket: campaignCreativeMarketScope(campaign) })) + (await creativeJobDecisionContext(account.accountId)) + (await exactPhraseContextForAccount(account.accountId));
   const configuredVendors = defaultOnly ? [] : INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar]);
   // 2026-09-23 fix, per Todd's report ("signal is aborted... took much
   // longer this time" after the client timeout was already raised to
@@ -28799,7 +28861,7 @@ async function runCandidateInterview(campaign, account, audienceLabel, runOpts){
 // 2026-10-17 — the contest step on top of a default (Anthropic-only) draft: every configured partner drafts once, in parallel, is scored,
 // and is appended to the interview with the next "Option N" labels (shuffled among themselves). Already-stored candidates are untouched.
 async function extendCandidateInterviewWithContest(campaign, account, audienceLabel, existing){
-  const sampleContext = (await brandWritingSampleContext(account.accountId, { creativeMarket: campaignCreativeMarketScope(campaign) })) + (await creativeJobDecisionContext(account.accountId));
+  const sampleContext = (await brandWritingSampleContext(account.accountId, { creativeMarket: campaignCreativeMarketScope(campaign) })) + (await creativeJobDecisionContext(account.accountId)) + (await exactPhraseContextForAccount(account.accountId));
   // Drop any "not configured" placeholder rows an older default run stored, so they never block a partner from being added.
   existing = (existing || []).filter(c => c.configured !== false);
   const have = new Set((existing || []).map(c => c.key));
@@ -35109,7 +35171,9 @@ Submit your response via the campaign_intake_turn tool.`;
         brand: Array.isArray(body.brand) ? body.brand : [],
         product: Array.isArray(body.product) ? body.product : [],
         negative: Array.isArray(body.negative) ? body.negative : [],
-        positive: Array.isArray(body.positive) ? body.positive : []
+        positive: Array.isArray(body.positive) ? body.positive : [],
+        // 2026-10-18 — exact phrases with a rule and usage note each, see sanitizeExactPhrases().
+        phrases: sanitizeExactPhrases(body.phrases)
       };
       db.prepare('UPDATE accounts SET brandKeywordsJson = ? WHERE accountId = ?')
         .run(JSON.stringify(brandKeywords), accountId);
@@ -40277,7 +40341,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       // it isn't persisted on the interview row (see the create endpoint's
       // own comment on why the shared sample/decision context is fetched
       // once per request rather than stashed).
-      const sampleContext = (await brandWritingSampleContext(account.accountId, { creativeMarket: campaignCreativeMarketScope(campaign) })) + (await creativeJobDecisionContext(account.accountId));
+      const sampleContext = (await brandWritingSampleContext(account.accountId, { creativeMarket: campaignCreativeMarketScope(campaign) })) + (await creativeJobDecisionContext(account.accountId)) + (await exactPhraseContextForAccount(account.accountId));
       const audienceLabel = interview.audience || null;
       await Promise.all(pendingCandidates.map(async (c) => {
         try {
@@ -40344,7 +40408,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
         // own "safe to call again" discipline.
         return sendJson(res, 200, { interviewId, candidate: redactCandidatesForClient([candidate])[0] });
       }
-      const sampleContext = (await brandWritingSampleContext(account.accountId, { creativeMarket: campaignCreativeMarketScope(campaign) })) + (await creativeJobDecisionContext(account.accountId));
+      const sampleContext = (await brandWritingSampleContext(account.accountId, { creativeMarket: campaignCreativeMarketScope(campaign) })) + (await creativeJobDecisionContext(account.accountId)) + (await exactPhraseContextForAccount(account.accountId));
       const audienceLabel = interview.audience || null;
       const opts = { longForm: true, priorApproach: candidate.approach || null };
       try {
@@ -40733,7 +40797,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       if (candidate.longCopy){
         return sendJson(res, 200, { interviewId, candidate: redactCandidatesForClient([candidate])[0] });
       }
-      const sampleContext = (await brandWritingSampleContext(account.accountId, { creativeMarket: campaignCreativeMarketScope(campaign) })) + (await creativeJobDecisionContext(account.accountId));
+      const sampleContext = (await brandWritingSampleContext(account.accountId, { creativeMarket: campaignCreativeMarketScope(campaign) })) + (await creativeJobDecisionContext(account.accountId)) + (await exactPhraseContextForAccount(account.accountId));
       const opts = { longForm: true, priorApproach: candidate.approach || null };
       try {
         const gen = candidateKey === INTERVIEW_ANTHROPIC_SLOT.key
