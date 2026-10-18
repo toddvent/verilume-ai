@@ -40515,7 +40515,9 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
         let audienceCopyMap = {};
         try { audienceCopyMap = campaign.audienceCopyJson ? JSON.parse(campaign.audienceCopyJson) : {}; } catch (e){ audienceCopyMap = {}; }
         if (!audienceCopyMap || typeof audienceCopyMap !== 'object') audienceCopyMap = {};
-        audienceCopyMap[audienceForApply] = { copy: chosen.copy, interviewId, selectedAt: now, selectedBy };
+        // 2026-10-18 — an audience winner can be edited before it is saved, same as the campaign-wide one
+        const editedAudienceCopy = typeof body.editedCopy === 'string' ? body.editedCopy.trim().slice(0, 20000) : '';
+        audienceCopyMap[audienceForApply] = { copy: editedAudienceCopy || chosen.copy, interviewId, selectedAt: now, selectedBy };
         db.prepare('UPDATE campaigns SET audienceCopyJson = ? WHERE id = ?').run(JSON.stringify(audienceCopyMap), campaignId);
         audienceApplied = audienceForApply;
       }
@@ -40540,7 +40542,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       // both use, not a second, independently-set value that could
       // disagree with it.
       recordContestResult(campaign.accountId, 'Campaign', campaignTypeCompleteness(campaign).label || 'General', chosen, candidates, 'campaign_copy_interviews', interviewId, selectedBy, campaignId);
-      return sendJson(res, 200, { interviewId, selectedCandidateKey: body.candidateKey, selectedAt: now, copy: chosen.copy, audienceApplied });
+      return sendJson(res, 200, { interviewId, selectedCandidateKey: body.candidateKey, selectedAt: now, copy: (audienceApplied && typeof body.editedCopy === 'string' && body.editedCopy.trim()) ? body.editedCopy.trim().slice(0, 20000) : chosen.copy, audienceApplied });
     }
 
     // 2026-09-18 — POST .../campaign-copy-contest and its /select sibling
