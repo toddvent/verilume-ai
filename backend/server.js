@@ -28782,25 +28782,26 @@ async function runCandidateInterview(campaign, account, audienceLabel, runOpts){
   // assignment is randomized; display order is not). `label`/`vendor`/
   // `model` stay on the record for the ops-only view; redactCandidatesForClient()
   // below is the only place the client-facing choice is made.
-  const shuffled = [...allCandidates];
-  for (let i = shuffled.length - 1; i > 0; i--){
+  // 2026-10-18, per direct instruction (test 3, notes 3-4): the first option is always the original draft (shown without naming the partner),
+  // and a default run holds only that draft. The other partners follow as Option 2, 3, ... in a shuffled order. The client renumbers what it
+  // shows so a partner that times out never leaves a gap.
+  const others = defaultOnly ? [] : allCandidates.filter(c => c !== anthropicCandidate);
+  for (let i = others.length - 1; i > 0; i--){
     const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    [others[i], others[j]] = [others[j], others[i]];
   }
-  shuffled.forEach((c, i) => { c.blindLabel = `Option ${i + 1}`; });
-  allCandidates.sort((a, b) => {
-    const na = parseInt(String(a.blindLabel).replace(/\D/g, ''), 10) || 0;
-    const nb = parseInt(String(b.blindLabel).replace(/\D/g, ''), 10) || 0;
-    return na - nb;
-  });
-
+  anthropicCandidate.blindLabel = 'Option 1';
+  others.forEach((c, i) => { c.blindLabel = `Option ${i + 2}`; });
+  const finalCandidates = [anthropicCandidate, ...others];
   const recommendedKey = pickRecommendedCopyInterviewCandidate(allLive);
-  return { available: true, note: null, recommendedKey, candidates: allCandidates };
+  return { available: true, note: null, recommendedKey, candidates: finalCandidates };
 }
 // 2026-10-17 — the contest step on top of a default (Anthropic-only) draft: every configured partner drafts once, in parallel, is scored,
 // and is appended to the interview with the next "Option N" labels (shuffled among themselves). Already-stored candidates are untouched.
 async function extendCandidateInterviewWithContest(campaign, account, audienceLabel, existing){
   const sampleContext = (await brandWritingSampleContext(account.accountId, { creativeMarket: campaignCreativeMarketScope(campaign) })) + (await creativeJobDecisionContext(account.accountId));
+  // Drop any "not configured" placeholder rows an older default run stored, so they never block a partner from being added.
+  existing = (existing || []).filter(c => c.configured !== false);
   const have = new Set((existing || []).map(c => c.key));
   const vendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar] && !have.has(v.key));
   const generated = await Promise.all(vendors.map(v => generateVendorInterviewCopy(v.key, campaign, account, sampleContext, audienceLabel)));
