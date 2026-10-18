@@ -46859,7 +46859,9 @@ function utmUsesGa4(){ return ['ga4', 'both'].includes(utmPlatformOf()); }
 function utmUsesAdobe(){ return ['adobe', 'both'].includes(utmPlatformOf()); }
 // Which auto-inserted click parameters make sense for this link (the builder shows them as suggestions).
 function utmAutoInsertSuggestions(vendor, medium){
-  return { contactId: medium === 'email', gclid: !!(vendor && vendor.slug === 'google' && medium === 'cpc') };
+  // 2026-10-18 — contact id where a first-party id exists to merge in (email sends and personalized direct mail), the Google click id on paid search,
+  // and Meta's own campaign / ad set / ad ids on Meta placements (Meta fills these in at click time; its click id, fbclid, it adds itself).
+  return { contactId: medium === 'email' || medium === 'direct-mail', gclid: !!(vendor && vendor.slug === 'google' && medium === 'cpc'), metaIds: !!(vendor && ['facebook', 'instagram', 'meta'].includes(vendor.slug)) };
 }
 const UTM_REQUIRED_ELEMENTS = ['utm_source', 'utm_medium', 'utm_campaign'];
 // THE builder. Both screens call this. opts: { baseUrl, campaign, job, channelText, elements, vendorSlug, contactId, gclid }
@@ -46881,12 +46883,12 @@ function utmBuildTrackedLink(opts){
     utm_campaign: campaignSlug,
     utm_id: campaign.id ? String(campaign.id) : '',
     utm_source_platform: res.vendor && res.vendor.kind === 'digital' ? res.vendor.slug : '',
-    utm_content: job ? slugify(job.specSummary || job.id) : 'campaign-level',
+    utm_content: opts.assetCode || (job ? slugify(job.specSummary || job.id) : 'campaign-level'),
     utm_term: slugify(segments[0] || ''),
     cx_campaign_id: campaign.id || '',
-    cx_creative_id: job ? job.id : '',
-    cx_channel: slugify((job && job.channel) || opts.channelText || ''),
-    cx_placement: job ? slugify(job.specSummary || '') : '',
+    cx_creative_id: job ? (job.jobCode || job.id) : '',
+    cx_channel: opts.channelCode || slugify((job && job.channel) || opts.channelText || ''),
+    cx_placement: opts.assetCode || (job ? slugify(job.specSummary || '') : ''),
     cx_stage: slugify(campaign.stage || ''),
     cx_audience: slugify(segments[0] || ''),
     cx_flight: new Date().toISOString().slice(0, 10)
@@ -46896,15 +46898,18 @@ function utmBuildTrackedLink(opts){
   const params = order.map(k => { const el = UTM_ELEMENT_LIBRARY.find(e => e.key === k); const v = values[k]; return (el && v) ? `${el.param}=${encodeURIComponent(v)}` : null; }).filter(Boolean);
   let adobe = null;
   if (utmUsesAdobe()){
-    adobe = utmAdobeCode(campaign.id || campaignSlug, res.source, res.medium, job ? job.id : '');
+    adobe = utmAdobeCode(campaign.id || campaignSlug, res.source, res.medium, opts.assetCode || (job ? job.id : ''));
     if (adobe.ok) params.push(`${adobeParam}=${encodeURIComponent(adobe.code)}`);
     else warnings.push(`The Adobe tracking code is ${adobe.bytes > 255 ? 'over Adobe\'s 255-byte limit' : 'missing a part'}: ${adobe.code}`);
   }
   // Merge tokens are appended raw: the email platform or Google fills them in, and encoding the braces would break that.
   if (opts.contactId && typeof state !== 'undefined' && state.utmAutoContactIdEnabled && state.utmContactIdToken) params.push(`${state.utmContactIdParam || 'contact_id'}=${state.utmContactIdToken}`);
   if (opts.gclid) params.push('gclid={gclid}');
+  // Meta URL-parameter macros, appended raw like the other merge tokens: Meta swaps them for the real ids when the ad is served.
+  if (opts.metaIds) params.push('meta_campaign_id={{campaign.id}}', 'meta_adset_id={{adset.id}}', 'meta_ad_id={{ad.id}}');
   const sep = cleaned.url.includes('?') ? '&' : '?';
   const url = (params.length ? `${cleaned.url}${sep}${params.join('&')}` : cleaned.url) + (cleaned.hash || '');
+  if (url.length > 1800) warnings.push(`This link is ${url.length} characters. Some ad platforms and email tools cut links near 2,000 — drop an element you do not report on.`);
   const prediction = utmPredictChannels(res.source, res.medium, res.vendor);
   return { url, values, vendor: res.vendor, source: res.source, medium: res.medium, adobe, warnings, prediction, cleaned };
 }
@@ -50287,23 +50292,122 @@ function cmpRenderTraffickingQrUtm(campaign){
       : (totalJobs ? `<p class="hint" style="margin:0;">No tracking links built yet — enter the Campaign URL above and click Build.</p>` : `<p class="hint" style="margin:0;">No approved creative jobs on this campaign yet — submit assets to Brand on Creative Asset Selection, then approve them on Performance Marketing; tracking links build per job once one exists.</p>`)}</div>
     ${jobsWithTracking.length ? `<div class="btn-row" style="margin:0 0 10px;"><button type="button" class="btn-ghost" ${test && test.running ? 'disabled' : ''} onclick="cmpTraffickingRunUtmLinkTest()">${test && test.running ? 'Testing links…' : `Test ${jobsWithTracking.length} tracking link${jobsWithTracking.length === 1 ? '' : 's'} →`}</button></div>${test && test.results ? cmpRenderUtmLinkTestResults(test.results) : ''}` : ''}`;
 }
+// 2026-10-18 — asset type codes. One short code per channel + format + size, the same for every client (registry served by the backend, one place to
+// maintain), used in place of long names inside tracking links: PD-BN-300x250 = Programmatic Display, standard banner, 300×250.
+let cmpAssetCodes = null;
+async function cmpEnsureAssetCodes(){
+  if (cmpAssetCodes) return cmpAssetCodes;
+  try { const r = await fetch(`${BACKEND_URL}/api/asset-codes`); if (r.ok) cmpAssetCodes = await r.json(); } catch (e){ /* codes stay unavailable; callers fall back */ }
+  return cmpAssetCodes;
+}
+function cmpAssetCodeHash(v){ let h = 2166136261; for (const ch of String(v || '').toLowerCase()){ h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return h.toString(36).toUpperCase().slice(-3).padStart(3, '0'); }
+function cmpAssetSizeCode(size){
+  const R = cmpAssetCodes, t = String(size || '').trim();
+  if (!R || !t) return '';
+  const lc = t.toLowerCase();
+  const dm = t.match(/(\d{1,5}(?:\.\d+)?)\s*[x×]\s*(\d{1,5}(?:\.\d+)?)/i);
+  if (dm){ const sp = Object.keys(R.sizeSpecials).find(k => lc.includes(k)); return `${dm[1]}x${dm[2]}${sp ? R.sizeSpecials[sp] : ''}`; }
+  const px = t.match(/(\d{3,4})\s*px/i); if (px) return `W${px[1]}`;
+  const sec = t.match(/:(\d{2})\b/); if (sec) return `${sec[1]}s`;
+  const al = Object.keys(R.sizeAliases).find(k => lc.includes(k)); if (al) return R.sizeAliases[al];
+  return 'X' + cmpAssetCodeHash(t);
+}
+function cmpChannelCode(channel){
+  const R = cmpAssetCodes, ch = String(channel || '');
+  if (!R || !ch) return '';
+  const pre = Object.keys(R.channelPrefixes).find(k => ch.startsWith(k));
+  return R.channels[ch] || (pre ? R.channelPrefixes[pre] : 'C' + cmpAssetCodeHash(ch).slice(1));
+}
+function cmpAssetCodeFor(channel, mediaType, size){
+  const R = cmpAssetCodes;
+  if (!R) return '';
+  const f = mediaType ? (R.formats[mediaType] || 'F' + cmpAssetCodeHash(mediaType).slice(1)) : '';
+  return [cmpChannelCode(channel), f, cmpAssetSizeCode(size)].filter(Boolean).join('-');
+}
+// Every ad unit (partner + format + size) a creative job covers. The job keeps one entry per size sent for its channel.
+function cmpJobAssetSpecs(job){
+  let specs = []; try { specs = JSON.parse(job.specsJson || '[]'); } catch (e){ specs = []; }
+  if (!Array.isArray(specs)) specs = specs ? [specs] : [];
+  if (!specs.length) specs = [{ deliveryPlatform: job.deliveryPlatform, sizeOrLength: job.sizeOrLength, specSummary: job.specSummary }];
+  const seen = new Set(), out = [];
+  specs.forEach(sp => {
+    const parts = String(sp.specSummary || '').split(' — ');
+    const mediaType = parts.length > 1 ? parts[0].trim() : '';
+    const size = String(sp.sizeOrLength || parts[parts.length - 1] || '').trim();
+    const partner = sp.deliveryPlatform || job.deliveryPlatform || '';
+    const code = cmpAssetCodeFor(job.channel, mediaType, size);
+    // The key adds the partner so the same unit bought from two partners keeps two links.
+    const key = code ? code + (partner ? '.' + slugify(partner).slice(0, 20) : '') : '';
+    if (!code || seen.has(key)) return;
+    seen.add(key);
+    out.push({ code, key, mediaType, size, partner });
+  });
+  return out;
+}
+function cmpJobAssetLinks(job){ try { return JSON.parse(job.assetLinksJson || '{}') || {}; } catch (e){ return {}; } }
+// One link per ad unit on the given jobs. onlyMissing skips units that already have one.
+function cmpTraffickingItemsFor(campaign, baseUrl, jobs, elements, onlyMissing){
+  const items = [];
+  const campaignChannelText = (typeof cmpCreativeChannelsText === 'function' ? cmpCreativeChannelsText(campaign) : '').split(',')[0].trim();
+  jobs.forEach(job => {
+    const have = cmpJobAssetLinks(job);
+    cmpJobAssetSpecs(job).forEach(sp => {
+      if (onlyMissing && have[sp.key]) return;
+      const pseudo = Object.assign({}, job, { deliveryPlatform: sp.partner || job.deliveryPlatform, specSummary: [sp.mediaType, sp.size].filter(Boolean).join(' — ') || job.specSummary });
+      const channelText = job.channel || campaignChannelText;
+      const pre = utmResolveSourceMedium(pseudo, channelText, '');
+      const sug = utmAutoInsertSuggestions(pre.vendor, pre.medium);
+      const built = utmBuildTrackedLink({ baseUrl, campaign, job: pseudo, channelText, elements, vendorSlug: '', assetCode: sp.code, channelCode: cmpChannelCode(job.channel),
+        contactId: !!(state.utmAutoContactIdEnabled && sug.contactId), gclid: !!(state.utmAutoGclidEnabled && sug.gclid), metaIds: sug.metaIds });
+      const notes = built.warnings.filter(w => !w.startsWith('Removed ')).concat(utmUsesGa4() && !built.prediction.ga4.pass ? [built.prediction.ga4.note] : [], utmUsesAdobe() && !built.prediction.adobe.pass ? [built.prediction.adobe.note] : []);
+      items.push({ job, spec: sp, url: built.url, built, notes });
+    });
+  });
+  return items;
+}
+// Saves the links per job. The job's primary link (the one Send to Trafficking checks) is set once every ad unit on it has a link.
+async function cmpTraffickingSaveItems(items){
+  const byJob = new Map();
+  items.forEach(it => { if (!byJob.has(it.job.id)) byJob.set(it.job.id, []); byJob.get(it.job.id).push(it); });
+  let jobsDone = 0; const failed = [];
+  for (const [jobId, list] of byJob){
+    const job = list[0].job;
+    const links = Object.assign({}, cmpJobAssetLinks(job));
+    list.forEach(it => { links[it.spec.key] = it.url; });
+    const specs = cmpJobAssetSpecs(job);
+    const allCovered = specs.every(sp => links[sp.key]);
+    const primary = (specs.find(sp => links[sp.key]) || {}).key;
+    const body = { assetLinks: Object.fromEntries(list.map(it => [it.spec.key, it.url])) };
+    if (allCovered && primary) body.trackingUrl = links[primary];
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (resp.ok){ job.assetLinksJson = JSON.stringify(links); if (body.trackingUrl) job.trackingUrl = body.trackingUrl; jobsDone++; } else failed.push(jobId);
+    } catch (e){ failed.push(jobId); }
+  }
+  return { jobsDone, failed, total: byJob.size };
+}
 // One row per creative job's own tracking link, with its own Copy/QR
 // controls (ids suffixed by job.id, so every row's QR code and copy status
 // are independent of every other row's).
 function cmpTraffickingLinkRowHtml(job){
-  const label = `${job.channel || 'Asset'}${job.deliveryPlatform ? ' — ' + job.deliveryPlatform : ''}`;
+  const links = cmpJobAssetLinks(job);
+  const specs = cmpJobAssetSpecs(job).filter(sp => links[sp.key]);
+  if (!specs.length) return cmpTraffickingLinkRowCard(job.id, `${job.channel || 'Asset'}${job.deliveryPlatform ? ' — ' + job.deliveryPlatform : ''}`, `(${job.id})`, job.trackingUrl || '');
+  return specs.map(sp => cmpTraffickingLinkRowCard(`${job.id}_${sp.key}`, `${sp.code}${sp.partner ? ' — ' + sp.partner : ''}`, `${[job.channel, sp.mediaType, sp.size].filter(Boolean).join(' · ')}`, links[sp.key])).join('');
+}
+function cmpTraffickingLinkRowCard(domKey, label, sub, url){
   return `
     <div class="cmp-asset-row-card" style="margin-bottom:10px;">
       <div class="field" style="margin-bottom:8px;">
-        <label>${escapeHtml(label)} <span class="hint" style="font-weight:400;">(${escapeHtml(job.id)})</span></label>
-        <input type="text" id="cmpTraffickingLinkOutput_${job.id}" readonly value="${escapeHtml(job.trackingUrl || '')}">
+        <label>${escapeHtml(label)} <span class="hint" style="font-weight:400;">${escapeHtml(sub)}</span></label>
+        <input type="text" id="cmpTraffickingLinkOutput_${domKey}" readonly value="${escapeHtml(url || '')}">
       </div>
       <div class="btn-row" style="margin-top:0;">
-        <button type="button" class="btn-ghost" onclick="cmpTraffickingCopyLink('${job.id}')">Copy link →</button>
-        <button type="button" class="btn-ghost" onclick="cmpTraffickingGenerateQr('${job.id}')">Generate QR code →</button>
+        <button type="button" class="btn-ghost" onclick="cmpTraffickingCopyLink('${domKey}')">Copy link →</button>
+        <button type="button" class="btn-ghost" onclick="cmpTraffickingGenerateQr('${domKey}')">Generate QR code →</button>
       </div>
-      <div id="cmpTraffickingQrStatus_${job.id}" style="font-size:0.75rem;margin-top:6px;"></div>
-      <div id="cmpTraffickingQrHolder_${job.id}" style="margin-top:8px;"></div>
+      <div id="cmpTraffickingQrStatus_${domKey}" style="font-size:0.75rem;margin-top:6px;"></div>
+      <div id="cmpTraffickingQrHolder_${domKey}" style="margin-top:8px;"></div>
     </div>`;
 }
 // Builds one tracking link PER creative job, all off the one Campaign URL
@@ -50346,24 +50450,15 @@ async function cmpTraffickingBuildCampaignLinks(){
   let okCount = 0;
   const jobWarnings = [];
   let offlineCount = 0;
-  for (const job of jobs){
-    const channelText = job.channel || campaignChannelText;
-    // Same builder as the single-link screen, so the two can no longer drift apart.
-    const pre = utmResolveSourceMedium(job, channelText, '');
-    const sug = utmAutoInsertSuggestions(pre.vendor, pre.medium);
-    const built = utmBuildTrackedLink({ baseUrl, campaign, job, channelText, elements, vendorSlug: '', contactId: !!(state.utmAutoContactIdEnabled && sug.contactId), gclid: !!(state.utmAutoGclidEnabled && sug.gclid) });
-    const finalUrl = built.url;
-    if (UTM_OFFLINE_MEDIUMS.includes(built.medium)) offlineCount++;
-    const notes = built.warnings.filter(w => !w.startsWith('Removed '));
-    if (notes.length || !built.prediction.ga4.pass && utmUsesGa4() || !built.prediction.adobe.pass && utmUsesAdobe()) jobWarnings.push({ id: job.id, notes: notes.concat(utmUsesGa4() && !built.prediction.ga4.pass ? [built.prediction.ga4.note] : [], utmUsesAdobe() && !built.prediction.adobe.pass ? [built.prediction.adobe.note] : []) });
-    try {
-      const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(job.id)}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trackingUrl: finalUrl })
-      });
-      if (resp.ok){ job.trackingUrl = finalUrl; okCount++; }
-    } catch (e){ /* best-effort per job — reflected in the warning below */ }
-  }
+  await cmpEnsureAssetCodes();
+  if (!cmpAssetCodes){ resultEl.innerHTML = `<p class="hint" style="color:#8A5A0A;">Couldn't load the asset type codes — check your connection and try again.</p>`; return; }
+  const items = cmpTraffickingItemsFor(campaign, baseUrl, jobs, elements, false);
+  items.forEach(it => {
+    if (UTM_OFFLINE_MEDIUMS.includes(it.built.medium)) offlineCount++;
+    if (it.notes.length) jobWarnings.push({ id: it.spec.code, notes: it.notes });
+  });
+  const saved = await cmpTraffickingSaveItems(items);
+  okCount = jobs.filter(j => j.trackingUrl).length;
   const offlineNote = (offlineCount && utmUsesGa4() && !state.utmGa4CustomGroup)
     ? `<div class="hint" style="margin-bottom:10px;"><strong>${offlineCount} offline link${offlineCount === 1 ? '' : 's'} (print, direct mail, radio and similar).</strong> GA4 has no default channel for offline media, so this traffic shows as Unassigned until the custom channel group is added. <a onclick="goToStep('analyticsSetup')" style="cursor:pointer;">Copy the rules from Analytics Integrations →</a></div>` : '';
   resultEl.innerHTML = offlineNote + (jobWarnings.length ? `<div class="hint" style="margin-bottom:10px;"><strong>${jobWarnings.length} link${jobWarnings.length === 1 ? '' : 's'} need${jobWarnings.length === 1 ? 's' : ''} a look before trafficking.</strong>${jobWarnings.map(w => `<div style="margin-top:4px;">${escapeHtml(w.id)}: ${w.notes.map(escapeHtml).join(' ')}</div>`).join('')}</div>` : '')
@@ -50376,24 +50471,17 @@ async function cmpTraffickingBuildCampaignLinks(){
 // 2026-10-18 — opening Trafficking proposes tracking links for every asset that has none yet, as soon as the landing page (Campaign URL) is known.
 // Nothing is saved until the person approves: the proposal is shown, then "Approve and save links" writes each link to its asset.
 let cmpTraffickingProposal = null;
-function cmpTraffickingAutoPropose(campaign){
+async function cmpTraffickingAutoPropose(campaign){
   const resultEl = document.getElementById('cmpTraffickingLinkResult');
   if (!campaign || !resultEl) return;
   const baseUrl = (campaign.campaignUrl || '').trim();
   const elements = state.utmMasterElements || [];
-  const jobs = ((typeof creativeJobsCache !== 'undefined' && creativeJobsCache) || []).filter(j => !j.trackingUrl);
+  const jobs = (typeof creativeJobsCache !== 'undefined' && creativeJobsCache) || [];
   if (!baseUrl || !elements.length || !jobs.length){ cmpTraffickingProposal = null; return; }
-  const campaignChannelText = (typeof cmpCreativeChannelsText === 'function' ? cmpCreativeChannelsText(campaign) : '').split(',')[0].trim();
-  const items = [];
-  jobs.forEach(job => {
-    try {
-      const channelText = job.channel || campaignChannelText;
-      const pre = utmResolveSourceMedium(job, channelText, '');
-      const sug = utmAutoInsertSuggestions(pre.vendor, pre.medium);
-      const built = utmBuildTrackedLink({ baseUrl, campaign, job, channelText, elements, vendorSlug: '', contactId: !!(state.utmAutoContactIdEnabled && sug.contactId), gclid: !!(state.utmAutoGclidEnabled && sug.gclid) });
-      items.push({ job, url: built.url, notes: built.warnings.filter(w => !w.startsWith('Removed ')) });
-    } catch (e){ /* a link that can't be built is left for the manual builder */ }
-  });
+  await cmpEnsureAssetCodes();
+  if (!cmpAssetCodes){ cmpTraffickingProposal = null; return; }
+  let items = [];
+  try { items = cmpTraffickingItemsFor(campaign, baseUrl, jobs, elements, true); } catch (e){ items = []; }
   if (!items.length){ cmpTraffickingProposal = null; return; }
   cmpTraffickingProposal = { campaignId: campaign.id, items };
   cmpTraffickingRenderProposal();
@@ -50407,8 +50495,8 @@ function cmpTraffickingRenderProposal(){
   const box = document.createElement('div');
   box.id = 'cmpTraffickingProposalBox';
   box.style.cssText = 'background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:0.8125rem;line-height:1.5;';
-  box.innerHTML = `<strong>Proposed tracking links</strong> — built from the landing page and your Master UTM Configuration for ${pr.items.length} asset${pr.items.length === 1 ? '' : 's'} that have none yet. Nothing is saved until you approve.
-    <div style="margin-top:8px;">${pr.items.map(it => `<div style="padding:6px 0;border-top:1px solid #D6E3F6;"><div style="font-weight:600;">${escapeHtml(it.job.channel || 'Asset')}${it.job.deliveryPlatform ? ' — ' + escapeHtml(it.job.deliveryPlatform) : ''}</div><div style="word-break:break-all;color:#1E5FA8;">${escapeHtml(it.url)}</div>${it.notes.length ? `<div class="hint" style="margin:2px 0 0;color:#9A6A0E;">${it.notes.map(escapeHtml).join(' ')}</div>` : ''}</div>`).join('')}</div>
+  box.innerHTML = `<strong>Proposed tracking links</strong> — built from the landing page and your Master UTM Configuration, one per ad unit (${pr.items.length} without a link yet), each identified by its short asset code. Nothing is saved until you approve.
+    <div style="margin-top:8px;">${pr.items.map(it => `<div style="padding:6px 0;border-top:1px solid #D6E3F6;"><div style="font-weight:600;">${escapeHtml(it.spec.code)}${it.spec.partner ? ' — ' + escapeHtml(it.spec.partner) : ''} <span class="hint" style="font-weight:400;">${escapeHtml([it.job.channel, it.spec.mediaType, it.spec.size].filter(Boolean).join(' · '))}</span></div><div style="word-break:break-all;color:#1E5FA8;">${escapeHtml(it.url)}</div>${it.notes.length ? `<div class="hint" style="margin:2px 0 0;color:#9A6A0E;">${it.notes.map(escapeHtml).join(' ')}</div>` : ''}</div>`).join('')}</div>
     <div class="btn-row" style="margin-top:10px;gap:8px;"><button type="button" class="btn-primary" onclick="cmpTraffickingApproveProposal()">Approve and save links</button><button type="button" class="btn-ghost" onclick="cmpTraffickingDismissProposal()">Not now</button></div>
     <div id="cmpTraffickingProposalFlag" class="hint" style="margin-top:6px;"></div>`;
   resultEl.insertBefore(box, resultEl.firstChild);
@@ -50423,14 +50511,12 @@ async function cmpTraffickingApproveProposal(){
   const campaign = cmpRailLoadedCampaign();
   if (!pr || !campaign) return;
   const flag = document.getElementById('cmpTraffickingProposalFlag');
-  let ok = 0;
-  for (const it of pr.items){
-    try {
-      const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(it.job.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackingUrl: it.url }) });
-      if (resp.ok){ it.job.trackingUrl = it.url; ok++; }
-    } catch (e){ /* counted below */ }
+  const res = await cmpTraffickingSaveItems(pr.items);
+  if (res.failed.length){
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = `Saved ${res.jobsDone} of ${res.total} — try again for the rest.`; }
+    pr.items = pr.items.filter(it => res.failed.includes(it.job.id));
+    return;
   }
-  if (ok < pr.items.length){ if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = `Saved ${ok} of ${pr.items.length} — try again for the rest.`; } pr.items = pr.items.filter(it => !it.job.trackingUrl); return; }
   cmpTraffickingProposal = null;
   cmpRenderTraffickingQrUtm(campaign);
   cmpRenderTraffickingWorkspaceStatusBadge(campaign);
