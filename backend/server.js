@@ -19917,7 +19917,7 @@ function buildCreativeMedia(accountId, opts){
   // Winning offers by cost per lead (detail rows carrying a creative offer).
   const offers = {};
   dp.filter(r => r.offer && wset.has(key(r.year, r.month))).forEach(r => { const o = offers[r.offer] = offers[r.offer] || { offer: r.offer, spend: 0, clicks: 0, impressions: 0, leads: 0, calls: 0 }; o.spend += r.spend; o.clicks += r.clicks; o.impressions += r.impressions; o.leads += r.leads; o.calls += r.calls; });
-  const offerRows = Object.values(offers).map(o => Object.assign(o, { cpl: o.leads ? Math.round((o.spend / o.leads) * 100) / 100 : null, costPerEngagement: o.clicks ? Math.round((o.spend / o.clicks) * 100) / 100 : null })).sort((a, b) => (a.cpl == null) - (b.cpl == null) || (a.cpl || 0) - (b.cpl || 0)).slice(0, 8);
+  const offerRows = Object.values(offers).map(o => Object.assign(o, { cpl: (o.leads && o.spend > 0) ? Math.round((o.spend / o.leads) * 100) / 100 : null, costPerEngagement: (o.clicks && o.spend > 0) ? Math.round((o.spend / o.clicks) * 100) / 100 : null })).sort((a, b) => (a.cpl == null) - (b.cpl == null) || (a.cpl || 0) - (b.cpl || 0)).slice(0, 8); // 2026-10-18 — an offer with no spend on file has no cost per lead, so it can never rank as the winner
   // Creative focus: bookings and gross from customer-level rows (leads are not tagged by creative focus).
   let focusRows = [];
   try {
@@ -19928,6 +19928,36 @@ function buildCreativeMedia(accountId, opts){
       x.codes.add(aliasVal(r, 'bookingCode')); x.gross += Number(aliasVal(r, 'grossRevenue')) || 0; });
     focusRows = Object.values(g).map(x => ({ creativeFocus: x.creativeFocus, transactions: x.codes.size, gross: Math.round(x.gross), avgPrice: x.codes.size ? Math.round(x.gross / x.codes.size) : null })).sort((a, b) => b.gross - a.gross).slice(0, 8);
   } catch (e) {}
+  // 2026-10-18 — View copy link: tie an offer or creative focus to a campaign built in Verilume and one of its creative jobs that has approved copy.
+  // Offers match by a campaign ID, job code, or exact campaign name inside the offer text; creative focus rows match the most recent campaign
+  // carrying that creative focus group. Legacy / uploaded campaigns (historicalComplete, ad hoc) and anything with no approved copy get no link.
+  try {
+    const norm = v => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+    const camps = db.prepare('SELECT id, name, campaignCode, creativeFocusGroups, approvedCreativeAssetsJson, startDate, historicalComplete, isAdHoc FROM campaigns WHERE accountId = ? AND COALESCE(cancelled,0) = 0').all(accountId)
+      .filter(c => !(Number(aliasVal(c, 'historicalComplete')) === 1) && !Number(aliasVal(c, 'isAdHoc')))
+      .filter(c => { try { const arr = JSON.parse(aliasVal(c, 'approvedCreativeAssetsJson') || '[]'); return Array.isArray(arr) && arr.some(a => a && a.copyVersions && Object.values(a.copyVersions).some(v => v && v.approved)); } catch (e){ return false; } });
+    const jobsOf = {}; db.prepare('SELECT id, campaignId, jobCode, copyApproved, createdAt FROM creative_jobs WHERE accountId = ?').all(accountId).forEach(j => { const cid = aliasVal(j, 'campaignId'); (jobsOf[cid] = jobsOf[cid] || []).push(j); });
+    const linkFor = (camp, jobCodeHint) => {
+      const js = (jobsOf[camp.id] || []).slice().sort((x, y) => (Number(aliasVal(y, 'copyApproved')) || 0) - (Number(aliasVal(x, 'copyApproved')) || 0) || String(aliasVal(x, 'createdAt')).localeCompare(String(aliasVal(y, 'createdAt'))));
+      const job = (jobCodeHint && js.find(j => norm(aliasVal(j, 'jobCode')) === norm(jobCodeHint))) || js[0];
+      return job ? { campaignId: camp.id, campaignName: camp.name || null, jobId: job.id, jobCode: aliasVal(job, 'jobCode') || null } : null;
+    };
+    offerRows.forEach(o => {
+      const t = norm(o.offer); let hit = null, code = null;
+      for (const c of camps){
+        if (t.includes(norm(c.id))){ hit = c; break; }
+        const js = jobsOf[c.id] || []; const jm = js.find(j => aliasVal(j, 'jobCode') && t.includes(norm(aliasVal(j, 'jobCode')))); if (jm){ hit = c; code = aliasVal(jm, 'jobCode'); break; }
+        if (c.name && norm(c.name).length >= 6 && t === norm(c.name)){ hit = c; break; }
+      }
+      o.copyLink = hit ? linkFor(hit, code) : null;
+    });
+    focusRows.forEach(r => {
+      const want = norm(r.creativeFocus); if (!want || want === 'unassigned'){ r.copyLink = null; return; }
+      const cands = camps.filter(c => String(aliasVal(c, 'creativeFocusGroups') || '').split(/[,;|]/).some(g => norm(g) === want)).sort((x, y) => String(y.startDate || '').localeCompare(String(x.startDate || '')));
+      let link = null; for (const c of cands){ link = linkFor(c, null); if (link) break; }
+      r.copyLink = link;
+    });
+  } catch (e){ console.warn('creative-media copy links skipped', e && e.message); }
   // Relevance score trend: AI business-outcome score saved per campaign, by month scored.
   const rel = {}; let relCount = 0;
   db.prepare('SELECT messagingRelevanceJson, messagingRelevanceScoredAt FROM campaigns WHERE accountId = ? AND COALESCE(cancelled,0) = 0').all(accountId).forEach(c => {
