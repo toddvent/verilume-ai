@@ -23819,6 +23819,43 @@ async function scoreContentRelevance(page, campaign){
     return { score: null, note: 'AI content relevance scoring failed: ' + e.message };
   }
 }
+// 2026-10-18 — Landing page vs. ad copy. Compares what the page says with the headline, offer and CTA the campaign's approved
+// creative assets actually carry. AI judges it when a key is configured; otherwise a plain keyword overlap runs, so the
+// score always exists once a page has been read and copy has been written.
+function campaignApprovedCopyText(campaign){
+  let assets = []; try { assets = JSON.parse(aliasVal(campaign, 'approvedCreativeAssetsJson') || '[]'); } catch (e){}
+  if (!Array.isArray(assets)) return { text: '', fields: [] };
+  const parts = [];
+  assets.forEach(a => {
+    const versions = (a && a.copyVersions && typeof a.copyVersions === 'object') ? a.copyVersions : {};
+    Object.keys(versions).forEach(k => {
+      const v = versions[k] || {}; if (!v.fields) return;
+      ['headline', 'subhead', 'body', 'offer', 'cta', 'description', 'primaryText'].forEach(f => { const t = v.fields[f]; if (typeof t === 'string' && t.trim()) parts.push(t.trim()); });
+    });
+  });
+  const uniq = [...new Set(parts)].slice(0, 40);
+  return { text: uniq.join('\n').slice(0, 2500), fields: uniq };
+}
+async function scoreLandingCopyMatch(page, campaign){
+  const copy = campaignApprovedCopyText(campaign);
+  if (!copy.text) return { score: null, method: null, note: 'No ad copy has been written for this campaign yet, so there is nothing to compare the page with.' };
+  const pageText = [page.title, page.metaDescription, page.headline, page.bodyText].filter(Boolean).join(' ');
+  if (process.env.ANTHROPIC_API_KEY){
+    try {
+      const prompt = `You are checking whether a landing page delivers on the promise made in a campaign's ad copy. A visitor who clicks the ad should find the same offer, product and tone on the page. Ad copy:\n${copy.text}\n\nLanding page title: ${page.title || '(none)'}\nHeadline: ${page.headline || '(none)'}\nMeta description: ${page.metaDescription || '(none)'}\nPage text: ${String(page.bodyText || '').slice(0, 2000)}\n\nScore 0-100 how well the page matches the ad copy (offer, product, destination, tone, call to action). Name anything the ads promise that the page does not mention.`;
+      const parsed = await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 300, content: prompt, toolName: 'submit_relevance_score', toolDescription: 'Submit the ad copy to landing page match score.', schema: SCORE_RATIONALE_SCHEMA });
+      if (typeof parsed.score === 'number') return { score: Math.max(0, Math.min(100, Math.round(parsed.score))), method: 'ai', note: parsed.rationale || '' };
+    } catch (e){ /* fall through to the keyword check */ }
+  }
+  const STOP = new Set('the a an and or of to for in on at with your you our we is are be this that it from by as will can get more all any new now just not have has was were their them they than then out about into over under up off'.split(' '));
+  const tok = t => (String(t).toLowerCase().match(/[a-z0-9$%][a-z0-9'$%-]{2,}/g) || []).filter(w => !STOP.has(w));
+  const copyTerms = [...new Set(tok(copy.text))].slice(0, 40);
+  const pageTerms = new Set(tok(pageText));
+  if (!copyTerms.length) return { score: null, method: null, note: 'The ad copy has no terms to compare yet.' };
+  const hit = copyTerms.filter(w => pageTerms.has(w));
+  const missing = copyTerms.filter(w => !pageTerms.has(w)).slice(0, 8);
+  return { score: Math.round(100 * hit.length / copyTerms.length), method: 'keywords', note: `${hit.length} of ${copyTerms.length} words in the ad copy also appear on the page.${missing.length ? ' Not on the page: ' + missing.join(', ') + '.' : ''}` };
+}
 async function scoreImageRelevance(imageUrl, campaign){
   if (!process.env.ANTHROPIC_API_KEY) return { score: null, note: 'AI imagery relevance scoring requires ANTHROPIC_API_KEY to be configured.' };
   if (!imageUrl) return { score: null, note: 'No hero image found on the page to score.' };
@@ -34845,17 +34882,18 @@ Submit your response via the campaign_intake_turn tool.`;
         return sendJson(res, 200, { fetchOk: false, fetchError, runAt: new Date().toISOString() });
       }
       const page = extractLandingPageContent(pageHtml, url);
-      const [ctaLinkCheck, contentRelevance, imageRelevance] = await Promise.all([
+      const [ctaLinkCheck, contentRelevance, imageRelevance, copyMatch] = await Promise.all([
         page.cta && page.cta.href ? checkLinkResolves(page.cta.href) : Promise.resolve(null),
         scoreContentRelevance(page, campaign),
-        scoreImageRelevance(page.heroImageUrl, campaign)
+        scoreImageRelevance(page.heroImageUrl, campaign),
+        scoreLandingCopyMatch(page, campaign)
       ]);
       const ctaPath = ctaPathCoherence(page.cta && page.cta.href, campaign.conversionType);
       const result = {
         fetchOk: true,
         runAt: new Date().toISOString(),
         page: { title: page.title, metaDescription: page.metaDescription, headline: page.headline, heroImageUrl: page.heroImageUrl, cta: page.cta },
-        relevance: { content: contentRelevance, imagery: imageRelevance },
+        relevance: { content: contentRelevance, imagery: imageRelevance, copyMatch },
         performance: {
           ctaFound: !!(page.cta && page.cta.href),
           ctaLinkResolves: ctaLinkCheck ? { ok: ctaLinkCheck.ok, status: ctaLinkCheck.status, error: ctaLinkCheck.error || null } : null,
