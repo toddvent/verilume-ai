@@ -896,6 +896,9 @@
   @media (max-width:640px){.cmp-copy-field-mid{grid-column:auto;}.cmp-copy-items{grid-template-columns:1fr;}}
   .cmp-copy-field-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:3px;}
   .cmp-copy-field-head label{font-size:0.75rem;font-weight:600;color:var(--ink);}
+  .cmp-copy-limit{font-size:0.6875rem;color:var(--muted,#6B7280);margin-top:3px;line-height:1.3;}
+  .cmp-copy-field select{width:100%;box-sizing:border-box;font-family:inherit;font-size:0.8125rem;padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--white);}
+  .cmp-copy-field select.invalid{border-color:var(--advocacy);}
   .cmp-copy-field input[type=text],.cmp-copy-field textarea{width:100%;box-sizing:border-box;font-family:inherit;font-size:0.8125rem;line-height:1.45;padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--white);}
   .cmp-copy-count{font-size:0.6875rem;font-variant-numeric:tabular-nums;color:var(--muted);white-space:nowrap;}
   .cmp-copy-count.near{color:#9A6A0E;}
@@ -975,6 +978,7 @@
   .cmp-step0-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;}
   .cmp-step0-card-chevron{font-size:0.875rem;color:var(--muted);transition:transform 0.2s ease;flex-shrink:0;}
   .cmp-step0-card-chevron.collapsed{transform:rotate(-90deg);}
+  .cmp-step0-card-head.is-collapsed > div:first-child::after{content:'Collapsed — click to reopen';display:block;font-size:0.6875rem;font-weight:400;color:var(--muted);margin-top:2px;}
   /* Creative Step 1's contest-entry cards — same class names and colors as
      Creative-Step1-SelectWinner-Desktop.dc.html's own .entry-card/.entries-grid,
      ported directly rather than reinterpreted, per direct instruction that
@@ -9881,7 +9885,10 @@
                (Step 1 had been removed in 2026-09-24). Hidden in shared mode; cmpRenderCreativeStep1() shows/hides it. -->
           <div class="module cmp-stage" id="cmpCreativeStep1Card" style="margin-bottom:0;margin-top:20px;display:none;">
             <div class="module-body" style="max-height:none;overflow:visible;padding:18px 20px;">
-              <div style="font-size:1.125rem;font-weight:700;color:var(--ink);margin-bottom:10px;">Audience Contest Results</div>
+              <div class="cmp-step0-card-head" style="margin-bottom:10px;" onclick="cmpToggleCreativeStepCard('cmpCreativeStep1Body','cmpCreativeStep1Chevron')">
+                <div style="font-size:1.125rem;font-weight:700;color:var(--ink);">Audience Contest Results</div>
+                <span class="cmp-step0-card-chevron" id="cmpCreativeStep1Chevron">▾</span>
+              </div>
               <div id="cmpCreativeStep1Body"></div>
             </div>
           </div>
@@ -11215,9 +11222,10 @@
               <div id="cmpCreativeAssetMatrix"></div>
               <div class="hint" id="cmpCreativeAssetError" style="margin-top:6px;"></div>
               <div class="btn-row" style="margin-top:16px;">
-                <button type="button" class="btn-primary" onclick="cmpSubmitCreativeRequestToBrand()">Send Assets to Creative Team →</button>
+                <button type="button" class="btn-primary" onclick="cmpSubmitCreativeRequestToBrand()">Send Assets for Approval →</button>
               </div>
               <div class="hint" id="cmpCreativeAssetSubmittedNote" style="display:none;margin-top:6px;"></div>
+              <div id="cmpCreativeHandoffCard" style="margin-top:12px;"></div>
             </div>
           </div>
           <div class="cmp-workspace-collab" id="cmpPerfMarketingCollabMount"></div>
@@ -33362,9 +33370,9 @@ function exportsRender(){
   const log = exportsState.log ? `<h3 style="margin:22px 0 8px;">Recent downloads</h3>` + (exportsState.log.length ? `<div class="strat-tablewrap"><table class="strat-table"><thead><tr><th>When</th><th>Who</th><th>Export</th><th>Format</th><th>Rows</th></tr></thead><tbody>${exportsState.log.map(l => `<tr><td>${escapeHtml(new Date(l.at).toLocaleString())}</td><td>${escapeHtml(l.who)}</td><td>${escapeHtml(l.feed)}</td><td>${escapeHtml(l.format || '')}</td><td>${l.rows == null ? '' : l.rows}</td></tr>`).join('')}</tbody></table></div>` : '<p class="hint">Nothing has been downloaded yet.</p>') : '';
   el.innerHTML = `${d.signedInAs ? `<div class="hint" style="margin:0 0 12px;">Signed in as ${escapeHtml(d.signedInAs)}.</div>` : ''}${cards}${none}${log}`;
 }
-async function exportsDownload(feed, fmt){
+async function exportsDownload(feed, fmt, campaignId){
   try {
-    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/exports/${encodeURIComponent(feed)}?format=${fmt}`, { timeoutMs: 60000 });
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/exports/${encodeURIComponent(feed)}?format=${fmt}${campaignId ? '&campaignId=' + encodeURIComponent(campaignId) : ''}`, { timeoutMs: 60000 });
     if (!r.ok){ const e = await r.json().catch(() => ({})); adLibFlash(e.error || 'Could not download that export.'); return; }
     const blob = await r.blob(); const cd = r.headers.get('Content-Disposition') || ''; const m = /filename="([^"]+)"/.exec(cd);
     const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = m ? m[1] : `${feed}.${fmt}`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -49176,6 +49184,7 @@ function cmpOpenCreativeWorkspace(){
   // 3 relocated real sections above.
   cmpRenderCreativeStep0(campaign);
   cmpRenderCreativeStep1(campaign);
+  cmpCreativeZonesInit(campaign);
   // 2026-09-24 — Creative Asset Selection (Step 2): relocates the real
   // Partner/Format/Size matrix in from Performance Marketing — see
   // cmpOpenCreativeAssetSelectionInWorkspace()'s own comment.
@@ -49286,6 +49295,67 @@ function cmpToggleCreativeStepCard(bodyId, chevronId){
   const collapsed = body.style.display === 'none';
   body.style.display = collapsed ? '' : 'none';
   if (chevron) chevron.classList.toggle('collapsed', !collapsed);
+  const head = body.previousElementSibling;
+  if (head && head.classList.contains('cmp-step0-card-head')) head.classList.toggle('is-collapsed', !collapsed);
+  // Reopening a section by hand makes it the one being worked on.
+  if (collapsed){ const z = cmpCreativeZoneOfBody(bodyId); if (z !== null) cmpCreativeSetActiveZone(z); }
+}
+// 2026-10-18 — the Creative workspace keeps itself tidy: Campaign Recap (zone 0) and the copy sections (zone 1: Run Campaign Copy Contest and
+// Audience Contest Results) fold away once work moves on to a later section. Zone 2 is Creative Asset Selection, which is never auto-collapsed.
+// Work "moves on" when the person clicks or types in a later section, runs a contest, or reopens an earlier one by hand. Reopening an earlier
+// section folds the ones before it, never the ones after it, so nothing the person is about to use is hidden from them.
+const CMP_CREATIVE_ZONES = [
+  { cards: [['cmpCreativeStep0Body', 'cmpCreativeStep0Chevron']] },
+  { cards: [['cmpCreativeStep0RunContestBody', 'cmpCreativeStep0RunContestChevron'], ['cmpCreativeStep1Body', 'cmpCreativeStep1Chevron']] },
+  { cards: [] }
+];
+let cmpCreativeActiveZone = null;
+function cmpCreativeZoneOfBody(bodyId){
+  const i = CMP_CREATIVE_ZONES.findIndex(z => z.cards.some(cd => cd[0] === bodyId));
+  return i < 0 ? null : i;
+}
+function cmpCreativeSetCard(bodyId, chevId, open){
+  const body = document.getElementById(bodyId);
+  if (!body) return;
+  body.style.display = open ? '' : 'none';
+  const chev = document.getElementById(chevId);
+  if (chev) chev.classList.toggle('collapsed', !open);
+  const head = body.previousElementSibling;
+  if (head && head.classList.contains('cmp-step0-card-head')) head.classList.toggle('is-collapsed', !open);
+}
+function cmpCreativeSetActiveZone(zone){
+  if (zone === cmpCreativeActiveZone) return;
+  cmpCreativeActiveZone = zone;
+  CMP_CREATIVE_ZONES.forEach((z, i) => {
+    if (i < zone) z.cards.forEach(cd => cmpCreativeSetCard(cd[0], cd[1], false));
+    else if (i === zone) z.cards.forEach(cd => cmpCreativeSetCard(cd[0], cd[1], true));
+  });
+}
+function cmpCreativeZoneFromEvent(e){
+  const t = e.target;
+  if (!t || !t.closest || t.closest('.cmp-step0-card-head')) return null; // heads are handled by cmpToggleCreativeStepCard
+  if (t.closest('#cmpCreativeStep2')) return 2;
+  if (t.closest('#cmpCreativeStep0RunContest') || t.closest('#cmpCreativeStep1Card')) return 1;
+  if (t.closest('#cmpCreativeStep0')) return 0;
+  return null;
+}
+let cmpCreativeZonesBound = false;
+function cmpCreativeZonesInit(campaign){
+  const left = document.getElementById('cmpCreativeLeft');
+  if (left && !cmpCreativeZonesBound){
+    cmpCreativeZonesBound = true;
+    const h = e => { const z = cmpCreativeZoneFromEvent(e); if (z !== null) cmpCreativeSetActiveZone(z); };
+    left.addEventListener('pointerdown', h, true);
+    left.addEventListener('focusin', h, true);
+  }
+  // Open on whichever section the campaign has already reached.
+  let zone = 0;
+  const hasCopy = campaign && ((campaign.longformCopy || '').trim() || (campaign.audienceCopyJson && campaign.audienceCopyJson !== '{}'));
+  if (hasCopy) zone = 1;
+  if (cmpCreativeAssetRequests && cmpCreativeAssetRequests.length) zone = 2;
+  cmpCreativeActiveZone = null;
+  CMP_CREATIVE_ZONES.forEach(z => z.cards.forEach(cd => cmpCreativeSetCard(cd[0], cd[1], true)));
+  cmpCreativeSetActiveZone(zone);
 }
 function cmpRenderCreativeStep0(c){
   if (!c) return;
@@ -50303,6 +50373,68 @@ async function cmpTraffickingBuildCampaignLinks(){
   if (statEl) statEl.textContent = `${okCount} of ${jobs.length}`;
   cmpRenderTraffickingWorkspaceStatusBadge(campaign);
 }
+// 2026-10-18 — opening Trafficking proposes tracking links for every asset that has none yet, as soon as the landing page (Campaign URL) is known.
+// Nothing is saved until the person approves: the proposal is shown, then "Approve and save links" writes each link to its asset.
+let cmpTraffickingProposal = null;
+function cmpTraffickingAutoPropose(campaign){
+  const resultEl = document.getElementById('cmpTraffickingLinkResult');
+  if (!campaign || !resultEl) return;
+  const baseUrl = (campaign.campaignUrl || '').trim();
+  const elements = state.utmMasterElements || [];
+  const jobs = ((typeof creativeJobsCache !== 'undefined' && creativeJobsCache) || []).filter(j => !j.trackingUrl);
+  if (!baseUrl || !elements.length || !jobs.length){ cmpTraffickingProposal = null; return; }
+  const campaignChannelText = (typeof cmpCreativeChannelsText === 'function' ? cmpCreativeChannelsText(campaign) : '').split(',')[0].trim();
+  const items = [];
+  jobs.forEach(job => {
+    try {
+      const channelText = job.channel || campaignChannelText;
+      const pre = utmResolveSourceMedium(job, channelText, '');
+      const sug = utmAutoInsertSuggestions(pre.vendor, pre.medium);
+      const built = utmBuildTrackedLink({ baseUrl, campaign, job, channelText, elements, vendorSlug: '', contactId: !!(state.utmAutoContactIdEnabled && sug.contactId), gclid: !!(state.utmAutoGclidEnabled && sug.gclid) });
+      items.push({ job, url: built.url, notes: built.warnings.filter(w => !w.startsWith('Removed ')) });
+    } catch (e){ /* a link that can't be built is left for the manual builder */ }
+  });
+  if (!items.length){ cmpTraffickingProposal = null; return; }
+  cmpTraffickingProposal = { campaignId: campaign.id, items };
+  cmpTraffickingRenderProposal();
+}
+function cmpTraffickingRenderProposal(){
+  const resultEl = document.getElementById('cmpTraffickingLinkResult');
+  const pr = cmpTraffickingProposal;
+  if (!resultEl || !pr) return;
+  const existing = resultEl.querySelector('#cmpTraffickingProposalBox');
+  if (existing) existing.remove();
+  const box = document.createElement('div');
+  box.id = 'cmpTraffickingProposalBox';
+  box.style.cssText = 'background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:0.8125rem;line-height:1.5;';
+  box.innerHTML = `<strong>Proposed tracking links</strong> — built from the landing page and your Master UTM Configuration for ${pr.items.length} asset${pr.items.length === 1 ? '' : 's'} that have none yet. Nothing is saved until you approve.
+    <div style="margin-top:8px;">${pr.items.map(it => `<div style="padding:6px 0;border-top:1px solid #D6E3F6;"><div style="font-weight:600;">${escapeHtml(it.job.channel || 'Asset')}${it.job.deliveryPlatform ? ' — ' + escapeHtml(it.job.deliveryPlatform) : ''}</div><div style="word-break:break-all;color:#1E5FA8;">${escapeHtml(it.url)}</div>${it.notes.length ? `<div class="hint" style="margin:2px 0 0;color:#9A6A0E;">${it.notes.map(escapeHtml).join(' ')}</div>` : ''}</div>`).join('')}</div>
+    <div class="btn-row" style="margin-top:10px;gap:8px;"><button type="button" class="btn-primary" onclick="cmpTraffickingApproveProposal()">Approve and save links</button><button type="button" class="btn-ghost" onclick="cmpTraffickingDismissProposal()">Not now</button></div>
+    <div id="cmpTraffickingProposalFlag" class="hint" style="margin-top:6px;"></div>`;
+  resultEl.insertBefore(box, resultEl.firstChild);
+}
+function cmpTraffickingDismissProposal(){
+  cmpTraffickingProposal = null;
+  const box = document.getElementById('cmpTraffickingProposalBox');
+  if (box) box.remove();
+}
+async function cmpTraffickingApproveProposal(){
+  const pr = cmpTraffickingProposal;
+  const campaign = cmpRailLoadedCampaign();
+  if (!pr || !campaign) return;
+  const flag = document.getElementById('cmpTraffickingProposalFlag');
+  let ok = 0;
+  for (const it of pr.items){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(it.job.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackingUrl: it.url }) });
+      if (resp.ok){ it.job.trackingUrl = it.url; ok++; }
+    } catch (e){ /* counted below */ }
+  }
+  if (ok < pr.items.length){ if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = `Saved ${ok} of ${pr.items.length} — try again for the rest.`; } pr.items = pr.items.filter(it => !it.job.trackingUrl); return; }
+  cmpTraffickingProposal = null;
+  cmpRenderTraffickingQrUtm(campaign);
+  cmpRenderTraffickingWorkspaceStatusBadge(campaign);
+}
 function cmpTraffickingCopyLink(jobId){
   const input = document.getElementById(`cmpTraffickingLinkOutput_${jobId}`);
   if (!input) return;
@@ -50415,6 +50547,7 @@ function cmpOpenTraffickingWorkspace(){
   if (typeof loadCreativeJobs === 'function') loadCreativeJobs().then(() => {
     if (typeof renderTraffickingJobsSummary === 'function') renderTraffickingJobsSummary();
     cmpRenderTraffickingQrUtm(campaign);
+    cmpTraffickingAutoPropose(campaign);
   }).catch(() => {});
   cmpRenderTraffickingWorkspaceStatusBadge(campaign);
 }
@@ -66547,7 +66680,7 @@ function onTeamKindChange(userChanged){
 
 
 // Data recipients: the feeds an admin can grant. Mirrors EXPORT_FEEDS in server.js.
-const EXPORT_FEED_OPTIONS = [['copy', 'Production copy feed'], ['mmm', 'MMM data file (when available)'], ['matchmarket', 'DMA match-market feed (when available)']];
+const EXPORT_FEED_OPTIONS = [['creative', 'Creative hand-off package (approved assets and copy)'], ['copy', 'Production copy feed'], ['mmm', 'MMM data file (when available)'], ['matchmarket', 'DMA match-market feed (when available)']];
 function renderTeamExportBoxes(selected){
   const box = document.getElementById('teamExportFeeds'); if (!box) return;
   const sel = selected || Array.from(box.querySelectorAll('input:checked')).map(i => i.value);
@@ -69497,6 +69630,7 @@ async function cmpContestLoadAllowance(){
   cmpContestSyncButtons();
 }
 async function cmpRunCampaignCopyContest(panelId, btnId, flagId, forceMode){
+  try { cmpCreativeSetActiveZone(1); } catch (e){ /* section tidy-up is a nicety */ }
   panelId = panelId || 'cmpCopyContestPanel';
   btnId = btnId || 'cmpCopyContestBtn';
   flagId = flagId || 'cmpCopyContestSelectFlag';
@@ -71088,7 +71222,7 @@ const CREATIVE_TYPES_BY_CHANNEL = {
   'Linear TV': [':15 Spot', ':30 Spot'], 'OTV': [':15 Spot', ':30 Spot'], 'CTV': [':15 Spot', ':30 Spot'],
   'Paid Social': ['Feed post', 'Story / Reel', 'Carousel'],
   'Brand Search': ['Responsive search ad', 'Call-only ad'], 'Non-Brand Search': ['Responsive search ad', 'Call-only ad'],
-  'Programmatic Display': ['Standard banner', 'Native ad', 'Rich media'],
+  'Programmatic Display': ['Standard banner', 'High-impact display', 'Native ad', 'Rich media'],
   'Retail Media': ['Sponsored product tile', 'Standard banner'],
   'Out-of-Home': ['Bulletin', 'Poster'],
   'Radio': [':15 Spot', ':30 Spot'],
@@ -71190,13 +71324,33 @@ const AD_UNIT_SPECS = {
   // which understated how this Function actually ships. 4 frames each, the
   // stated max.
   'Programmatic Display': [
-    { label: 'Medium Rectangle (300×250, animated)', ratio: 300/250, hasImage: true, frames: 4, formats: ['Standard banner'] },
-    { label: 'Leaderboard (728×90, animated)', ratio: 728/90, hasImage: true, frames: 4, formats: ['Standard banner'] },
-    { label: 'Skyscraper (160×600, animated)', ratio: 160/600, hasImage: true, frames: 4, formats: ['Standard banner'] },
-    { label: 'Rich Media (animated, 300×250)', ratio: 300/250, hasImage: true, frames: 4, formats: ['Rich media'] },
-    { label: 'Native Card (1200×628)', ratio: 1200/628, hasImage: true, formats: ['Native ad'] },
-    { label: 'Native Square (1200×1200)', ratio: 1, hasImage: true, formats: ['Native ad'] },
-    { label: 'Online Video :15 (16:9)', ratio: 16/9, hasImage: true, frames: 3, formats: ['Online video'] },
+    // 2026-10-18 — every IAB standard display size plus the IAB high-impact units, grouped so the Size list reads in sections
+    // (group → <optgroup>). Standard sizes belong to the "Standard banner" format; high-impact units to "High-impact display".
+    { group: 'IAB standard', label: 'Medium Rectangle (300×250, animated)', ratio: 300/250, hasImage: true, frames: 4, formats: ['Standard banner'] },
+    { group: 'IAB standard', label: 'Large Rectangle (336×280, animated)', ratio: 336/280, hasImage: true, frames: 4, formats: ['Standard banner'] },
+    { group: 'IAB standard', label: 'Square (250×250, animated)', ratio: 1, hasImage: true, frames: 4, formats: ['Standard banner'] },
+    { group: 'IAB standard', label: 'Leaderboard (728×90, animated)', ratio: 728/90, hasImage: true, frames: 4, formats: ['Standard banner'] },
+    { group: 'IAB standard', label: 'Large Leaderboard (970×90, animated)', ratio: 970/90, hasImage: true, frames: 4, formats: ['Standard banner'] },
+    { group: 'IAB standard', label: 'Banner (468×60, animated)', ratio: 468/60, hasImage: true, frames: 4, formats: ['Standard banner'] },
+    { group: 'IAB standard', label: 'Skyscraper (160×600, animated)', ratio: 160/600, hasImage: true, frames: 4, formats: ['Standard banner'] },
+    { group: 'IAB standard', label: 'Narrow Skyscraper (120×600, animated)', ratio: 120/600, hasImage: true, frames: 4, formats: ['Standard banner'] },
+    { group: 'IAB standard', label: 'Mobile Banner (320×50, animated)', ratio: 320/50, hasImage: true, frames: 4, formats: ['Standard banner'] },
+    { group: 'IAB standard', label: 'Large Mobile Banner (320×100, animated)', ratio: 320/100, hasImage: true, frames: 4, formats: ['Standard banner'] },
+    { group: 'IAB standard', label: 'Mobile Small Banner (300×50, animated)', ratio: 300/50, hasImage: true, frames: 4, formats: ['Standard banner'] },
+    { group: 'IAB high impact', label: 'Billboard (970×250, animated)', ratio: 970/250, hasImage: true, frames: 4, formats: ['High-impact display'] },
+    { group: 'IAB high impact', label: 'Half Page / Filmstrip (300×600, animated)', ratio: 300/600, hasImage: true, frames: 4, formats: ['High-impact display'] },
+    { group: 'IAB high impact', label: 'Portrait (300×1050, animated)', ratio: 300/1050, hasImage: true, frames: 4, formats: ['High-impact display'] },
+    { group: 'IAB high impact', label: 'Pushdown (970×250 collapsed, expands to 970×415)', ratio: 970/250, hasImage: true, frames: 4, formats: ['High-impact display'] },
+    { group: 'IAB high impact', label: 'Expandable Leaderboard (728×90, expands to 728×315)', ratio: 728/90, hasImage: true, frames: 4, formats: ['High-impact display'] },
+    { group: 'IAB high impact', label: 'Expandable Rectangle (300×250, expands to 600×250)', ratio: 300/250, hasImage: true, frames: 4, formats: ['High-impact display'] },
+    { group: 'IAB high impact', label: 'Mobile Interstitial (320×480)', ratio: 320/480, hasImage: true, frames: 4, formats: ['High-impact display'] },
+    { group: 'IAB high impact', label: 'Tablet Interstitial (768×1024)', ratio: 768/1024, hasImage: true, frames: 4, formats: ['High-impact display'] },
+    { group: 'IAB high impact', label: 'Sticky Footer (728×90 desktop / 320×50 mobile)', ratio: 728/90, hasImage: true, frames: 4, formats: ['High-impact display'] },
+    { group: 'IAB high impact', label: 'Page Skin / Wallpaper (1920×1080 frame)', ratio: 1920/1080, hasImage: true, frames: 4, formats: ['High-impact display'] },
+    { group: 'Rich media', label: 'Rich Media (animated, 300×250)', ratio: 300/250, hasImage: true, frames: 4, formats: ['Rich media'] },
+    { group: 'Native', label: 'Native Card (1200×628)', ratio: 1200/628, hasImage: true, formats: ['Native ad'] },
+    { group: 'Native', label: 'Native Square (1200×1200)', ratio: 1, hasImage: true, formats: ['Native ad'] },
+    { group: 'Video, audio and other', label: 'Online Video :15 (16:9)', ratio: 16/9, hasImage: true, frames: 3, formats: ['Online video'] },
     { label: 'Online Video :30 (16:9)', ratio: 16/9, hasImage: true, frames: 3, formats: ['Online video'] },
     { label: 'Audio :30 (audio)', ratio: 3/1, hasImage: false, formats: ['Audio spot'] },
     { label: ':15 Spot (16:9)', ratio: 16/9, hasImage: true, frames: 3, formats: [':15 Spot'] },
@@ -73830,6 +73984,16 @@ function cmpOptionsHtmlSelected(values, placeholder, selected){
   values.forEach(v => opts.push(`<option value="${escapeHtml(v)}"${v === selected ? ' selected' : ''}>${escapeHtml(v)}</option>`));
   return opts.join('');
 }
+// Size lists for a channel whose specs carry a `group` render as sections (optgroups); everything else stays a flat list.
+function cmpSizeOptionsHtml(channel, labels, selected){
+  const groupOf = {};
+  adUnitSpecsFor(channel).forEach(sp => { if (sp.group) groupOf[sp.label] = sp.group; });
+  if (!labels.some(l => groupOf[l])) return cmpOptionsHtmlSelected(labels, 'Select a size…', selected);
+  const order = [], byGroup = {};
+  labels.forEach(l => { const g = groupOf[l] || 'Other'; if (!byGroup[g]){ byGroup[g] = []; order.push(g); } byGroup[g].push(l); });
+  const opt = v => `<option value="${escapeHtml(v)}"${v === selected ? ' selected' : ''}>${escapeHtml(v)}</option>`;
+  return `<option value="">Select a size…</option>` + order.map(g => `<optgroup label="${escapeHtml(g)}">${byGroup[g].map(opt).join('')}</optgroup>`).join('');
+}
 function cmpCreativeAssetChannelSlug(channel){
   return (channel || '').replace(/[^a-zA-Z0-9]+/g, '_');
 }
@@ -73944,12 +74108,12 @@ const PRODUCT_CREATIVE_FORMATS = {
   google_demand_gen: ['Demand Gen image ad', 'YouTube video ad'],
   google_display: ['Responsive display ad'],
   google_remarketing: ['Dynamic product/offer ad', 'Static retargeting ad'],
-  yahoo_dsp_display: ['Standard banner', 'Rich media'],
+  yahoo_dsp_display: ['Standard banner', 'High-impact display', 'Rich media'],
   yahoo_native: ['Native ad'],
   yahoo_ctv_video: [':15 Spot', ':30 Spot'],
   yahoo_search: ['Responsive search ad'],
   yahoo_mail: ['Standalone send'],
-  prog_prospecting: ['Standard banner', 'Rich media'], prog_retargeting: ['Standard banner', 'Rich media'], prog_native: ['Native ad'], prog_video: ['Online video'], prog_audio: ['Audio spot'],
+  prog_prospecting: ['Standard banner', 'High-impact display', 'Rich media'], prog_retargeting: ['Standard banner', 'High-impact display', 'Rich media'], prog_native: ['Native ad'], prog_video: ['Online video'], prog_audio: ['Audio spot'],
   mag_full_page: ['Full Page'], mag_half_page: ['Half Page'], mag_insert: ['Two-Page Spread', 'Inside Cover'], mag_digital: ['Newsletter sponsorship'],
   dm_postcard: ['Postcard'], dm_letter_pack: ['Letter Package', 'Self-Mailer'], dm_catalog: ['Catalog / Booklet'], dm_triggered: ['Postcard', 'Letter Package']
 };
@@ -74058,7 +74222,7 @@ function cmpPopulateCreativeAssetSizeSelectsForChannel(channel){
       if (!sel) return;
       const labels = cmpSizeSpecsForRow(channel, row).map(o => o.label);
       const opts = (row.size && !labels.includes(row.size)) ? [...labels, row.size] : labels;
-      sel.innerHTML = cmpOptionsHtmlSelected(opts, 'Select a size…', row.size);
+      sel.innerHTML = cmpSizeOptionsHtml(channel, opts, row.size);
     });
     cmpAssetCopyDrawAllForChannel(channel);
   }
@@ -74214,6 +74378,21 @@ function cmpAssetCopyTextToData(spec, text){
 // One place for the budgets. Numbers are the platforms' published limits
 // where a hard limit exists (Google/Microsoft RSA, Meta) and widely-used
 // creative best practice where it doesn't (print, mail, OOH, audio).
+// 2026-10-18 — Meta's button is chosen from a fixed list (custom text is not
+// accepted on any placement, Stories and Reels included). One list, one place:
+// when Meta changes it, edit here. Which buttons are offered also varies by
+// campaign objective in Ads Manager; this is the common set — verify against a
+// live Ads Manager account before relying on any one button for an objective.
+const CMP_META_CTA_OPTIONS = ['Learn More', 'Shop Now', 'Sign Up', 'Book Now', 'Contact Us', 'Get Offer', 'Get Quote', 'Apply Now', 'Order Now', 'Download', 'Subscribe', 'Watch More', 'Send Message', 'Call Now', 'Get Directions', 'See Menu', 'Install Now', 'Use App', 'Listen Now', 'Request Time', 'Donate Now', 'Play Game', 'Open Link'];
+function cmpCoerceToOption(val, options){
+  const t = String(val || '').trim().toLowerCase();
+  if (!t) return '';
+  const exact = options.find(o => o.toLowerCase() === t);
+  if (exact) return exact;
+  const rules = [[/book|reserve|stay|room/, 'Book Now'], [/shop|buy|purchase|cart/, 'Shop Now'], [/sign.?up|join|register|enroll|rsvp/, 'Sign Up'], [/offer|deal|save|promo|discount/, 'Get Offer'], [/quote|estimate/, 'Get Quote'], [/apply/, 'Apply Now'], [/order/, 'Order Now'], [/download/, 'Download'], [/subscribe/, 'Subscribe'], [/watch|video/, 'Watch More'], [/contact|talk|inquire|enquire/, 'Contact Us'], [/call|phone/, 'Call Now'], [/direction|visit|find us/, 'Get Directions'], [/message|chat|dm/, 'Send Message']];
+  const hit = rules.find(r => r[0].test(t) && options.includes(r[1]));
+  return hit ? hit[1] : (options.includes('Learn More') ? 'Learn More' : '');
+}
 function cmpAssetCopySchema(channel, spec, row){
   const label = (spec && spec.label) || (row && row.size) || '';
   const lc = label.toLowerCase();
@@ -74241,11 +74420,13 @@ function cmpAssetCopySchema(channel, spec, row){
       note: isVideo
         ? `${label}: ${n} beats. On-screen text stays short — a viewer reads about 3 words per second, so a :15 carries roughly 35 spoken words in total. Open on the hook, develop in the middle, close on offer + call to action.`
         : channel === 'Paid Social'
-          ? `${label}: ${n} frames, each on screen for about 2 seconds. Keep text to one line per frame and put the call to action on the last frame; Meta recommends text covering less than 20% of the visual.`
+          ? `${label}: ${n} frames, each on screen for about 2 seconds. Keep text to one line per frame and put the call to action on the last frame; Meta recommends text covering less than 20% of the visual. Frame text is free text; the button underneath can only be one of Meta's own labels.`
           : `${label}: animated unit, ${n} frames. One idea per frame, about 5–7 words; the last frame carries the offer and the call to action, which must also be legible when the animation stops.`,
       fields: [
         F('frames', 'Frames', perFrame, { multi: true, min: n, limit: n, itemLabel: 'Frame', fixed: true }),
-        F('cta', 'Call to action (button / end card)', 20)
+        (channel === 'Paid Social' && /meta|facebook|instagram/i.test((row && row.partner) || ''))
+          ? F('cta', "Button (chosen from Meta's list)", 20, { options: CMP_META_CTA_OPTIONS })
+          : F('cta', 'Call to action (button / end card)', 20)
       ],
       toWireframe: f => cmpFrameCopyArray((f.frames || []).map((t, i, arr) => i === arr.length - 1 && f.cta ? `${t || ''} ${f.cta}`.trim() : (t || '')), n)
     };
@@ -74261,7 +74442,7 @@ function cmpAssetCopySchema(channel, spec, row){
         F('primary', 'Primary text', 125, { rows: 3 }),
         F('headline', 'Headline', 40),
         F('description', 'Description', 30, { optional: true }),
-        F('cta', 'Button label', 20, { placeholder: 'Learn More' })
+        meta ? F('cta', "Button (chosen from Meta's list)", 20, { options: CMP_META_CTA_OPTIONS }) : F('cta', 'Button label', 20, { placeholder: 'Learn More' })
       ],
       toWireframe: f => ({ headline: f.headline || '', body: f.primary || '', cta: f.cta || 'Learn More' })
     };
@@ -74502,6 +74683,7 @@ function cmpAssetCopyDraftFields(c, channel, spec, key, schema){
   schema.fields.forEach(fd => {
     if (fd.multi){ const arr = Array.isArray(f[fd.key]) ? f[fd.key].slice(0, fd.limit) : []; while (arr.length < fd.min) arr.push(''); f[fd.key] = arr; }
     else if (typeof f[fd.key] !== 'string') f[fd.key] = '';
+    if (fd.options && !fd.multi) f[fd.key] = cmpCoerceToOption(f[fd.key], fd.options);
   });
   return f;
 }
@@ -74514,11 +74696,16 @@ function cmpAssetCopyVersion(c, channel, row, key){
   if (stale){
     row.copyVersions[key] = { fields: cmpAssetCopyDraftFields(c, channel, spec, key, schema), approved: false, approvedAt: null, edited: false, sizeLabel: row.size, schemaId: schema.id };
   }
+  // 2026-10-18 — a button saved before Meta's fixed list was enforced is mapped to the closest allowed button.
+  schema.fields.forEach(fd => {
+    const cv = row.copyVersions[key];
+    if (fd.options && !fd.multi && cv.fields && cv.fields[fd.key] && !fd.options.includes(cv.fields[fd.key])) cv.fields[fd.key] = cmpCoerceToOption(cv.fields[fd.key], fd.options);
+  });
   return row.copyVersions[key];
 }
 function cmpAssetCopyFieldsToWireframe(schema, fields){ return schema.toWireframe(fields || {}); }
 function cmpAssetCopyOverBudget(schema, fields){
-  return schema.fields.some(fd => fd.multi ? (fields[fd.key] || []).some(v => (v || '').length > fd.max) : ((fields[fd.key] || '').length > fd.max));
+  return schema.fields.some(fd => fd.options ? !fd.options.includes(fields[fd.key]) : fd.multi ? (fields[fd.key] || []).some(v => (v || '').length > fd.max) : ((fields[fd.key] || '').length > fd.max));
 }
 let cmpAssetWireframeOpen = {};
 function cmpAssetCopyPanelHtml(channel, slug, i, row){
@@ -74542,7 +74729,7 @@ function cmpAssetCopyPanelHtml(channel, slug, i, row){
     const over = cmpAssetCopyOverBudget(schema, v.fields);
     const badge = v.approved
       ? `<span class="wf-badge-ok">✓ Approved ${escapeHtml(new Date(v.approvedAt).toLocaleString())}</span>`
-      : over ? `<span class="wf-badge-warn">Over budget — shorten the fields marked red</span>`
+      : over ? `<span class="wf-badge-warn">Fix the fields marked red</span>`
       : `<span class="wf-badge-ok" style="background:#EAF1FB;color:#1E5FA8;">✓ Best-practice fit for ${escapeHtml(row.size)}</span>`;
     const args = (fk, idx) => `'${slug}', ${i}, '${keyId}', '${fk}', ${idx}`;
     const fieldHtml = schema.fields.map(fd => {
@@ -74576,14 +74763,18 @@ function cmpAssetCopyPanelHtml(channel, slug, i, row){
       const wraps = fd.rows > 1 || fd.max > 30;
       const rowsFor = fd.rows > 1 ? fd.rows : Math.min(8, Math.max(2, Math.ceil(fd.max / 34)));
       const noEnter = fd.rows > 1 ? '' : ` onkeydown="if(event.key==='Enter')event.preventDefault()"`;
-      const input = wraps
+      const optMissing = fd.options && !fd.options.includes(val);
+      const input = fd.options
+        ? `<select id="${kid}_${fd.key}" class="${optMissing ? 'invalid' : ''}" onchange="cmpAssetCopyFieldChanged(${args(fd.key, -1)}, this.value); this.classList.remove('invalid')"${blurAttr}>${optMissing ? '<option value="" selected disabled>Choose a button…</option>' : ''}${fd.options.map(o => `<option value="${escapeHtml(o)}"${o === val ? ' selected' : ''}>${escapeHtml(o)}</option>`).join('')}</select>`
+        : wraps
         ? `<textarea id="${kid}_${fd.key}" rows="${rowsFor}" placeholder="${escapeHtml(fd.placeholder || '')}" oninput="cmpAssetCopyFieldChanged(${args(fd.key, -1)}, this.value)"${blurAttr}${noEnter}>${escapeHtml(val)}</textarea>`
         : `<input type="text" id="${kid}_${fd.key}" placeholder="${escapeHtml(fd.placeholder || '')}" value="${escapeHtml(val)}" oninput="cmpAssetCopyFieldChanged(${args(fd.key, -1)}, this.value)"${blurAttr}>`;
       const widthClass = fd.rows >= 4 ? ' cmp-copy-field-wide' : fd.rows >= 2 ? ' cmp-copy-field-mid' : '';
       return `
         <div class="cmp-copy-field${widthClass}">
-          <div class="cmp-copy-field-head"><label>${escapeHtml(fd.label)}${fd.optional && !/optional/i.test(fd.label) ? ' <span class="hint" style="font-weight:400;">optional</span>' : ''}</label>${counter(val, fd.max)}</div>
+          <div class="cmp-copy-field-head"><label>${escapeHtml(fd.label)}${fd.optional && !/optional/i.test(fd.label) ? ' <span class="hint" style="font-weight:400;">optional</span>' : ''}</label>${fd.options ? '' : counter(val, fd.max)}</div>
           ${input}
+          <div class="cmp-copy-limit">${fd.options ? "Pick from Meta's list — Meta does not accept custom button text." : `Free text — up to ${fd.max} characters.`}</div>
         </div>`;
     }).join('');
     const wfOpen = cmpAssetWireframeOpen[kid] !== false; // 2026-10-08: open by default — shows in the right-hand space beside the fields
@@ -74726,7 +74917,7 @@ function cmpAssetCopyRefreshBadge(r){
     const badge = head.querySelector('.wf-badge-ok, .wf-badge-warn');
     if (badge) badge.outerHTML = v.approved
       ? `<span class="wf-badge-ok">✓ Approved ${escapeHtml(new Date(v.approvedAt).toLocaleString())}</span>`
-      : over ? `<span class="wf-badge-warn">Over budget — shorten the fields marked red</span>`
+      : over ? `<span class="wf-badge-warn">Fix the fields marked red</span>`
       : `<span class="wf-badge-ok" style="background:#EAF1FB;color:#1E5FA8;">✓ Best-practice fit for ${escapeHtml(r.row.size)}</span>`;
   }
   const approveBtn = block.querySelector('.btn-primary');
@@ -74854,7 +75045,7 @@ function cmpApplyCtaOverrideAcrossAssets(c, newCta, skipRow, skipKey, doGridRere
         const spec = cmpSpecForRowSize(channel, row.size);
         const schema = cmpAssetCopySchema(channel, spec, row);
         const ctaField = schema.fields.find(fd => fd.key === 'cta');
-        v.fields.cta = ctaField ? cmpFit(trimmed, ctaField.max) : trimmed;
+        v.fields.cta = ctaField ? (ctaField.options ? cmpCoerceToOption(trimmed, ctaField.options) : cmpFit(trimmed, ctaField.max)) : trimmed;
         v.edited = true;
         if (v.approved){ v.approved = false; v.approvedAt = null; }
       });
@@ -75109,6 +75300,30 @@ function cmpRefreshAssetCopyPanel(channel, i){
   if (!c || !(row.partner && row.mediaType && row.size)) return;
   cmpAssetCopyKeys(c, channel).forEach(key => cmpAssetCopyDrawWireframe(channel, row, key, `cmpCAG_${slug}_${i}_${cmpAssetCopyKeyId(key)}`));
 }
+// 2026-10-18 — compares each asset row with this channel's own plan lines. Warning only: a partner or size can be changed on purpose.
+function cmpCreativeAssetPlanNotesHtml(channel){
+  const lines = cmpPlanLinesForChannel(channel);
+  if (!lines.length) return '';
+  const rows = cmpCreativeAssetGridRows[channel] || [];
+  const norm = v => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const partners = [...new Set(lines.map(l => l.partner).filter(Boolean))];
+  const notes = [];
+  rows.forEach((row, i) => {
+    if (!row.partner) return;
+    const lead = rows.length > 1 ? `Asset ${i + 1}: ` : '';
+    if (partners.length && !partners.some(pn => norm(pn) === norm(row.partner))){
+      notes.push(`${lead}${row.partner} isn't a partner on this channel's plan (plan: ${partners.join(', ')}).`);
+    } else if (row.size){
+      const pl = lines.find(l => norm(l.partner) === norm(row.partner) && l.size);
+      if (pl && !norm(row.size).includes(norm(pl.size)) && !norm(pl.size).includes(norm(row.size))) notes.push(`${lead}size "${row.size}" differs from the plan's "${pl.size}" for ${row.partner}.`);
+    }
+  });
+  return notes.length ? `<p class="hint" style="margin:0 0 8px;color:#9A6A0E;">⚠ ${notes.map(escapeHtml).join(' ')} Fine if intended — otherwise update the plan or this asset so they agree.</p>` : '';
+}
+function cmpRefreshCreativeAssetPlanNotes(channel){
+  const el = document.getElementById(`cmpCAG_${cmpCreativeAssetChannelSlug(channel)}_plannotes`);
+  if (el) el.innerHTML = cmpCreativeAssetPlanNotesHtml(channel);
+}
 function cmpCreativeAssetChannelGroupInnerHtml(channel){
   const slug = cmpCreativeAssetChannelSlug(channel);
   const rows = (cmpCreativeAssetGridRows[channel] && cmpCreativeAssetGridRows[channel].length) ? cmpCreativeAssetGridRows[channel] : [{ partner: '', mediaType: '', size: '' }];
@@ -75127,7 +75342,8 @@ function cmpCreativeAssetChannelGroupInnerHtml(channel){
       <span style="font-weight:600;font-size:0.9375rem;">${escapeHtml(channel)}</span>
       ${usedDefault ? `<span class="hint" style="margin:0;">Prefilled from this account's last saved setup for this channel — edit any field to override.</span>` : ''}
     </div>
-    ${isOrphanChannel ? `<p class="hint" style="margin:0 0 8px;color:#9A6A0E;">⚠ This channel isn't in the campaign's current Channel Plan — this asset is kept so nothing gets lost, but double-check it's still wanted. Clear the Partner/Format/Size fields below (or Remove, if there's more than one row) if it shouldn't be here.</p>` : ''}
+    ${isOrphanChannel ? `<p class="hint" style="margin:0 0 8px;color:#9A6A0E;">⚠ This channel isn't in the campaign's current Channel Plan — this asset is kept so nothing gets lost, but Submit to Brand stays blocked until you clear the Partner/Format/Size fields below (or Remove, if there's more than one row) or add the channel back to the plan.</p>` : ''}
+    <div id="cmpCAG_${slug}_plannotes">${cmpCreativeAssetPlanNotesHtml(channel)}</div>
     <div>
       ${rows.map((row, i) => cmpCreativeAssetRowHtml(channel, slug, i, row, formatOptions, rows.length > 1)).join('')}
     </div>
@@ -75365,6 +75581,7 @@ function cmpRenderCreativeAssetMatrix(){
   el.innerHTML = cmpCreativeGateHtml(gateCampaign) + '<div id="cmpAssetNav" class="cmp-asset-nav"></div>' + channels.map(channel => `<div class="creative-asset-channel-group" id="cmpCAG_${cmpCreativeAssetChannelSlug(channel)}_group">${cmpCreativeAssetChannelGroupInnerHtml(channel)}</div>`).join('');
   channels.forEach(channel => { cmpPopulateCreativeAssetSizeSelectsForChannel(channel); cmpFillPublisherPartnerSelects(channel); });
   cmpSyncCreativeAssetRequestsFromGrid();
+  cmpLoadCreativeHandoffs();
 }
 function cmpRenderCreativeAssetMatrixChannelGroup(channel){
   const groupEl = document.getElementById(`cmpCAG_${cmpCreativeAssetChannelSlug(channel)}_group`);
@@ -75406,6 +75623,7 @@ function cmpCreativeAssetRowFieldChanged(channel, rowIndex, field, value){
     cmpPopulateCreativeAssetSizeSelectsForChannel(channel);
   }
   cmpSyncCreativeAssetRequestsFromGrid();
+  cmpRefreshCreativeAssetPlanNotes(channel);
   cmpRefreshAssetCopyPanel(channel, rowIndex);
   // A new publication on a Magazines/Newspapers row narrows that row's sizes.
   if (field === 'partner' && (channel === 'Magazines' || channel === 'Newspapers')) cmpPopulateCreativeAssetSizeSelectsForChannel(channel);
@@ -75431,6 +75649,14 @@ function cmpRemoveCreativeAssetRow(channel, rowIndex){
 // universe Creative Asset Selection's own Channel dropdown already offers
 // (cmpChannelPlanRows' $ channels plus cmpDemandFulfillmentChannelsInPlan —
 // see cmpRenderCreativeAssetChannelSelect()).
+// 2026-10-18 — a saved asset whose channel has since left the Channel Plan.
+// Only judged once this campaign's plan has actually loaded, so a slow fetch never reads as "every asset is an orphan".
+function cmpOrphanCreativeAssetChannels(){
+  const c = cmpRailLoadedCampaign();
+  if (!c || cmpApprovedChannelsFromPlan.campaignId !== c.id || !Array.isArray(cmpApprovedChannelsFromPlan.channels)) return [];
+  const approved = cmpApprovedChannelsFromPlan.channels;
+  return [...new Set(cmpCreativeAssetRequests.map(a => a.channel).filter(ch => ch && !approved.includes(ch)))];
+}
 function cmpMissingCreativeAssetChannels(){
   // 2026-09-25 — same real-plan source as the grid itself, so "every
   // approved channel needs an asset before Submit" checks the same list
@@ -75442,11 +75668,17 @@ function cmpMissingCreativeAssetChannels(){
 function cmpRenderCreativeAssetCoverageNote(){
   const el = document.getElementById('cmpCreativeAssetCoverageNote');
   if (!el) return;
-  const approvedChannels = [...Object.keys(cmpChannelPlanRows), ...cmpDemandFulfillmentChannelsInPlan];
+  const approvedChannels = cmpCreativeAssetApprovedChannels();
   if (!approvedChannels.length){ el.style.display = 'none'; el.textContent = ''; return; }
   const missing = cmpMissingCreativeAssetChannels();
+  const orphans = cmpOrphanCreativeAssetChannels();
   el.style.display = '';
-  if (missing.length){
+  if (orphans.length){
+    el.style.background = '#fff4e5';
+    el.style.border = '1px solid #f0b429';
+    el.style.color = '#8a5300';
+    el.textContent = `⚠ Assets exist for ${orphans.join(', ')}, which ${orphans.length > 1 ? "aren't" : "isn't"} in the approved Channel Plan. Remove ${orphans.length > 1 ? 'them' : 'it'} here, or add the channel back to the plan, before this can submit to Brand.${missing.length ? ` Also still needs an asset for: ${missing.join(', ')}.` : ''}`;
+  } else if (missing.length){
     el.style.background = '#fff4e5';
     el.style.border = '1px solid #f0b429';
     el.style.color = '#8a5300';
@@ -75485,6 +75717,78 @@ function cmpPersistCreativeAssetRequestsToCampaign(){
 // Creative" button did (cmpApprovePerfMarketing() + open Brand Messaging).
 // Local-only/Ad Hoc campaigns skip the network writes and proceed the same
 // way.
+// 2026-10-18 — the release card under Send Assets: where the package stands (waiting for the CMO / Admin, approved, or returned), the
+// approve / return controls for the CMO / Admin, and — once approved — the download and share options for the creative team or agency.
+let cmpCreativeHandoffState = { campaignId: null, handoffs: [], canDecide: false };
+async function cmpLoadCreativeHandoffs(){
+  const el = document.getElementById('cmpCreativeHandoffCard');
+  const c = cmpRailLoadedCampaign();
+  if (!el || !c || c.localOnly || c.isAdHoc || dataSourceLabel !== 'backend'){ if (el) el.innerHTML = ''; return; }
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}/creative-handoffs`);
+    if (!r.ok) return;
+    const d = await r.json();
+    cmpCreativeHandoffState = { campaignId: c.id, handoffs: d.handoffs || [], canDecide: !!d.canDecide };
+  } catch (e){ return; }
+  cmpRenderCreativeHandoffCard();
+}
+function cmpRenderCreativeHandoffCard(){
+  const el = document.getElementById('cmpCreativeHandoffCard');
+  if (!el) return;
+  const hs = cmpCreativeHandoffState.handoffs.filter(h => h.status !== 'superseded');
+  const pending = hs.find(h => h.status === 'pending_approval');
+  const approved = hs.find(h => h.status === 'approved');
+  const returned = hs.find(h => h.status === 'rejected' && (!approved || h.version > approved.version) && !pending);
+  const when = iso => iso ? new Date(iso).toLocaleString() : '';
+  const box = (bg, bd, col, inner) => `<div style="background:${bg};border:1px solid ${bd};color:${col};border-radius:8px;padding:12px 14px;font-size:0.8125rem;line-height:1.5;margin-top:8px;">${inner}</div>`;
+  let html = '';
+  if (pending){
+    html += box('#FFF4E0', '#F3D9A6', '#8A5A0A', `<strong>Waiting for CMO / Admin approval</strong> — version ${pending.version}: ${pending.assetCount} asset${pending.assetCount === 1 ? '' : 's'}, ${pending.copyCount} approved copy set${pending.copyCount === 1 ? '' : 's'}, sent ${escapeHtml(when(pending.submittedAt))}${pending.submittedBy ? ' by ' + escapeHtml(pending.submittedBy) : ''}.`
+      + (cmpCreativeHandoffState.canDecide ? `
+        <div style="margin-top:10px;"><textarea id="cmpHandoffNote" rows="2" placeholder="Note (required if you return it for changes)" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:0.8125rem;padding:7px 9px;border:1px solid var(--line);border-radius:7px;"></textarea></div>
+        <div class="btn-row" style="margin-top:8px;gap:8px;"><button type="button" class="btn-primary" onclick="cmpDecideCreativeHandoff('${pending.id}','approve')">Approve and release to creative team</button><button type="button" class="btn-ghost" onclick="cmpDecideCreativeHandoff('${pending.id}','reject')">Return with note</button></div>
+        <div id="cmpHandoffFlag" class="hint" style="margin-top:6px;"></div>`
+        : `<div style="margin-top:6px;">Only the CMO or an Admin can approve this.</div>`));
+  }
+  if (returned){
+    html += box('#FDECEC', '#F3B8B8', '#8A1F1F', `<strong>Returned for changes</strong> by ${escapeHtml(returned.decidedBy || 'the approver')} ${escapeHtml(when(returned.decidedAt))}: ${escapeHtml(returned.decisionNote || '')}<br>Make the changes, then send the assets again.`);
+  }
+  if (approved){
+    const link = `${location.origin}${location.pathname}`;
+    const mail = `mailto:?subject=${encodeURIComponent('Creative assets and approved copy — ' + ((cmpRailLoadedCampaign() || {}).name || 'campaign'))}&body=${encodeURIComponent(`The approved creative assets and copy are ready. Sign in here and open Exports to download the Creative hand-off package (CSV or JSON):\n\n${link}\n`)}`;
+    html += box('#EAF7EF', '#BFE3CC', '#1F6B3A', `<strong>✓ Approved and released</strong> — version ${approved.version}, approved by ${escapeHtml(approved.decidedBy || 'the CMO / Admin')} ${escapeHtml(when(approved.decidedAt))}. ${approved.assetCount} asset${approved.assetCount === 1 ? '' : 's'} with ${approved.copyCount} approved copy set${approved.copyCount === 1 ? '' : 's'}.
+      <div class="btn-row" style="margin-top:10px;gap:8px;flex-wrap:wrap;">
+        <button type="button" class="btn-ghost" onclick="cmpHandoffDownload('csv')">Download CSV</button>
+        <button type="button" class="btn-ghost" onclick="cmpHandoffDownload('json')">Download JSON</button>
+        <button type="button" class="btn-ghost" onclick="cmpHandoffCopyLink()">Copy download page link</button>
+        <a class="btn-ghost" style="text-decoration:none;" href="${mail}">Email to agency</a>
+      </div>
+      <div class="hint" style="margin-top:6px;">The creative team or agency signs in as a data recipient with the Creative hand-off package granted (Team page) and downloads from Exports. Nothing leaves before approval.</div>
+      <div id="cmpHandoffFlag" class="hint" style="margin-top:4px;"></div>`);
+  }
+  el.innerHTML = html;
+}
+async function cmpDecideCreativeHandoff(id, decision){
+  const c = cmpRailLoadedCampaign();
+  const flag = document.getElementById('cmpHandoffFlag');
+  const note = ((document.getElementById('cmpHandoffNote') || {}).value || '').trim();
+  if (!c) return;
+  if (decision === 'reject' && !note){ if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Add a note saying what needs to change.'; } return; }
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}/creative-handoffs/${encodeURIComponent(id)}/decision`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision, note }) });
+    if (!r.ok){ const e = await r.json().catch(() => ({})); if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = e.error || "Couldn't save that decision — try again."; } return; }
+  } catch (e){ if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — try again.'; } return; }
+  cmpLoadCreativeHandoffs();
+}
+function cmpHandoffDownload(fmt){
+  const c = cmpRailLoadedCampaign();
+  if (typeof exportsDownload === 'function') exportsDownload('creative', fmt, c ? c.id : null);
+}
+function cmpHandoffCopyLink(){
+  const link = `${location.origin}${location.pathname}`;
+  const flag = document.getElementById('cmpHandoffFlag');
+  (navigator.clipboard ? navigator.clipboard.writeText(link) : Promise.reject()).then(() => { if (flag) flag.textContent = 'Link copied — they sign in and open Exports.'; }).catch(() => { if (flag) flag.textContent = link; });
+}
 async function cmpSubmitCreativeRequestToBrand(){
   const campaign = cmpRailLoadedCampaign();
   const errEl = document.getElementById('cmpCreativeAssetError');
@@ -75498,6 +75802,13 @@ async function cmpSubmitCreativeRequestToBrand(){
   // submit — now every approved channel needs its own, so Brand always gets
   // a complete request instead of coverage for whichever channel happened
   // to be added first.
+  const orphanChannels = cmpOrphanCreativeAssetChannels();
+  if (orphanChannels.length){
+    if (errEl) errEl.textContent = `Remove the assets for ${orphanChannels.join(', ')} (not in the approved Channel Plan), or add the channel back to the plan, before submitting.`;
+    const coverageEl0 = document.getElementById('cmpCreativeAssetCoverageNote');
+    if (coverageEl0) coverageEl0.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
   const missingChannels = cmpMissingCreativeAssetChannels();
   if (missingChannels.length){
     if (errEl) errEl.textContent = `Add a creative asset for every approved channel before submitting — still missing: ${missingChannels.join(', ')}.`;
@@ -75584,10 +75895,29 @@ async function cmpSubmitCreativeRequestToBrand(){
       }
       return;
     }
+    // 2026-10-18 — the assets and their approved copy go to the CMO / Admin for release; the creative team receives them once approved.
+    let handoffErr = null;
+    if (!campaign.isAdHoc && !campaign.localOnly){
+      try {
+        const hr = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/creative-handoff`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jobIds: approvedAssetJobIds }) });
+        if (!hr.ok) handoffErr = await hr.json().catch(() => ({ error: `HTTP ${hr.status}` }));
+      } catch (e){ handoffErr = { error: 'network' }; }
+    }
+    if (handoffErr){
+      if (submittedNote) submittedNote.style.display = 'none';
+      if (errEl){
+        errEl.innerHTML = handoffErr.code === 'copy_not_approved' && Array.isArray(handoffErr.missing)
+          ? `⚠ Assets are saved, but they can't go for release until every asset's copy is approved:<br>${handoffErr.missing.map(m => '• ' + escapeHtml(m)).join('<br>')}`
+          : `⚠ Assets are saved, but sending them for release failed (${escapeHtml(handoffErr.error || 'try again')}).`;
+      }
+      cmpLoadCreativeHandoffs();
+      return;
+    }
     if (submittedNote){
       submittedNote.style.display = '';
-      submittedNote.textContent = `${cmpCreativeAssetRequests.length} asset${cmpCreativeAssetRequests.length === 1 ? '' : 's'} submitted to Brand ${new Date(pmAssetsApprovedAt).toLocaleString()}.`;
+      submittedNote.textContent = `${cmpCreativeAssetRequests.length} asset${cmpCreativeAssetRequests.length === 1 ? '' : 's'} with approved copy sent to the CMO / Admin for approval ${new Date(pmAssetsApprovedAt).toLocaleString()}. The creative team gets them once approved.`;
     }
+    cmpLoadCreativeHandoffs();
   }
   cmpApprovePerfMarketing();
   // 2026-09-24 — skip the jump to the legacy accordion's Brand Messaging
