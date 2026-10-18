@@ -49937,6 +49937,7 @@ async function cmpSelectAudienceDraft(panelId, interviewId, candidateKey, flagId
     }
     const result = await resp.json();
     cmpAudienceStoreApplied(campaign, info.name, result.copy, interviewId);
+    cmpRefreshDraftScore(campaign);
     cmpAudienceShowEditBox(flagId, panelId, interviewId, candidateKey, info.name, result.copy);
   } catch (e){
     if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — try again.'; }
@@ -49982,6 +49983,7 @@ async function cmpSaveAudienceDraftEdit(editId){
     }
     const result = await resp.json();
     cmpAudienceStoreApplied(campaign, ctx.name, result.copy, ctx.interviewId);
+    cmpRefreshDraftScore(campaign);
     if (saveFlag){ saveFlag.style.color = 'var(--cx)'; saveFlag.textContent = `Saved ${new Date().toLocaleTimeString()} — this is now the copy for ${ctx.name}.`; }
   } catch (e){
     if (saveFlag){ saveFlag.style.color = 'var(--advocacy)'; saveFlag.textContent = 'Backend unreachable — try again.'; }
@@ -50075,6 +50077,7 @@ async function cmpApplyAudienceWinner(idx){
       audienceCopyMap[result.audienceApplied] = { copy: result.copy, interviewId: state.result.interviewId, selectedAt: new Date().toISOString() };
       campaign.audienceCopyJson = JSON.stringify(audienceCopyMap);
     }
+    cmpRefreshDraftScore(campaign);
     cmpRenderCreativeStep1(campaign);
   } catch (e){
     if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — try again.'; }
@@ -62518,6 +62521,17 @@ async function cmpLoadMediaAlignment(campaign){
 // component shows "not available yet" exactly like every other
 // not-yet-run input on this score), then this re-renders the panel once
 // the real numbers are back.
+// 2026-10-18 — the header relevance number is published by the server as each
+// contest step is scored (first draft, full contest, saved winner). The client
+// caches the score history after its first load, so clear the cache and reload
+// it after every contest step to make the header update in place.
+function cmpRefreshDraftScore(campaign){
+  try {
+    if (!campaign) return;
+    campaign._draftQualityScore = undefined;
+    cmpLoadDraftQualityScore(campaign);
+  } catch (e){ /* header refresh is a nicety */ }
+}
 async function cmpLoadDraftQualityScore(campaign){
   if (!campaign || campaign.localOnly || dataSourceLabel !== 'backend') return;
   if (campaign._draftQualityScore !== undefined) return; // already loaded, or a fetch is already in flight
@@ -69571,12 +69585,14 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId, forceMode){
     cmpCopyContestLastResult[panelId] = result;
     setTimeout(cmpContestLoadAllowance, 700);
     panel.innerHTML = renderCmpCopyContestPanel(result, flagId, panelId);
+    cmpRefreshDraftScore(campaign);
     // 2026-09-23 — if any candidate came back pending (still generating,
     // or a first-pass failure), fire the second pass automatically instead
     // of leaving it as a final-looking error card.
     cmpCopyContestAutoRetryPending(campaign.id, result, () => {
       const p = document.getElementById(panelId);
       if (p) p.innerHTML = renderCmpCopyContestPanel(result, flagId, panelId);
+      cmpRefreshDraftScore(campaign);
     });
   } catch (e){
     panel.innerHTML = `<div class="hint" style="color:var(--advocacy);font-weight:600;background:#FDECEC;border:1px solid #F3B8B8;border-radius:8px;padding:10px 12px;margin:0;">⚠ Couldn't run the copy contest: ${escapeHtml(e.message || 'backend unreachable')}. Try again.</div>`;
@@ -69924,6 +69940,7 @@ async function cmpSelectCopyContestCandidate(interviewId, candidateKey, flagId){
       return;
     }
     const result = await resp.json();
+    cmpRefreshDraftScore(campaign);
     const longformEl = document.getElementById('cmpLongFormCopy');
     // 2026-09-23 fix, per Todd's report ("Use this draft does not work") —
     // this used to claim "Applied to Long Form Copy above" unconditionally,
