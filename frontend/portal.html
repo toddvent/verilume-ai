@@ -25052,6 +25052,28 @@ async function cxBriefStatus(id, status){
   try { await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/creative-briefs/${encodeURIComponent(id)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) }); } catch (e){}
   await cxLoadBriefs(); cxRenderMedia();
 }
+// 2026-10-18 — replaces Send to Creative on these rows: View copy opens the approved copy for the matching campaign and job. Offers that
+// do not match a campaign built in Verilume (legacy campaigns, uploads) show a dash.
+function cxCopyLinkHtml(link){
+  if (!link || !link.campaignId) return '<span class="strat-sub" title="Not available: no matching campaign with approved copy in Verilume">—</span>';
+  const lbl = link.jobCode ? `View copy <span class="strat-sub">${escapeHtml(link.jobCode)}</span>` : 'View copy';
+  return `<button type="button" class="strat-chip" onclick="cxViewCopy('${jsStrEscape(link.campaignId)}','${jsStrEscape(link.jobId || '')}')">${lbl}</button>`;
+}
+let cxPendingCopyJobId = null;
+function cxViewCopy(campaignId, jobId){
+  try {
+    cxPendingCopyJobId = jobId || null;
+    cmpManageExistingCampaign(campaignId);
+    cmpOpenApprovalWorkspace();
+  } catch (e){ console.warn('cxViewCopy failed', e); }
+}
+function cxOpenPendingCopyRow(){
+  if (!cxPendingCopyJobId || !cmpFinalApprovalOpen) return;
+  const idx = (cmpFinalApprovalRows || []).findIndex(r => r && r.jobId === cxPendingCopyJobId);
+  if (idx < 0) return;
+  cxPendingCopyJobId = null;
+  if (cmpFinalApprovalExpandedRowIdx !== idx) cmpToggleFinalApprovalRow(idx);
+}
 function cxSendBtn(kind, key){
   const sent = cx.briefs.some(b => b.kind === kind && b.evidence && (b.evidence.offer === key || b.evidence.creativeFocus === key));
   const busy = cx.sending === kind + ':' + key;
@@ -25069,9 +25091,9 @@ function cxRenderMedia(){
   const tr = d.costPerEngagement.trend;
   if (tr.length){ html += `<div class="strat-chart-label">Cost per engagement by month <span class="strat-key">spend ÷ clicks, all channels</span></div>` + stratBarsSvg(tr.map(t => ({ month: t.month, v: t.costPerEngagement })), 'v', 'p', '#1E2761', n => n == null ? '—' : '$' + n.toFixed(2), false); }
   else html += '<p class="strat-empty">Not on file yet: monthly digital performance with clicks and spend.</p>';
-  if (d.offers.length){ html += `<div class="strat-chart-label">Offers by cost per lead</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Offer</th><th>Spend</th><th>Leads</th><th>Cost per lead</th><th>Cost per engagement</th><th></th></tr></thead><tbody>` + d.offers.map((o, i) => `<tr><td>${i === 0 && o.cpl != null ? '<span class="strat-tag">Winning</span> ' : ''}${escapeHtml(o.offer)}</td><td>${stratMoney(o.spend)}</td><td>${stratNum(o.leads)}</td><td>${o.cpl != null ? '$' + o.cpl.toFixed(2) : '—'}</td><td>${o.costPerEngagement != null ? '$' + o.costPerEngagement.toFixed(2) : '—'}</td><td>${o.cpl != null ? cxSendBtn('offer', o.offer) : ''}</td></tr>`).join('') + `</tbody></table></div>`; }
+  if (d.offers.length){ html += `<div class="strat-chart-label">Offers by cost per lead</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Offer</th><th>Spend</th><th>Leads</th><th>Cost per lead</th><th>Cost per engagement</th><th></th></tr></thead><tbody>` + d.offers.map((o, i) => `<tr><td>${i === 0 && o.cpl != null ? '<span class="strat-tag">Winning</span> ' : ''}${escapeHtml(o.offer)}</td><td>${stratMoney(o.spend)}</td><td>${stratNum(o.leads)}</td><td>${o.cpl != null ? '$' + o.cpl.toFixed(2) : '—'}</td><td>${o.costPerEngagement != null ? '$' + o.costPerEngagement.toFixed(2) : '—'}</td><td>${o.cpl != null ? cxCopyLinkHtml(o.copyLink) : ''}</td></tr>`).join('') + `</tbody></table></div>`; }
   else html += '<p class="strat-foot">Offers appear once the digital performance upload includes the creative offer column.</p>';
-  if (d.creativeFocus.length){ html += `<div class="strat-chart-label">Creative focus · transactions and price</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Creative focus</th><th>Transactions</th><th>Gross revenue</th><th>Average price</th><th></th></tr></thead><tbody>` + d.creativeFocus.map(r => `<tr><td>${escapeHtml(r.creativeFocus)}</td><td>${r.transactions.toLocaleString()}</td><td>${stratMoney(r.gross)}</td><td>${r.avgPrice != null ? '$' + r.avgPrice.toLocaleString() : '—'}</td><td>${r.creativeFocus !== 'Unassigned' ? cxSendBtn('focus', r.creativeFocus) : ''}</td></tr>`).join('') + `</tbody></table></div><p class="strat-foot">Leads are not tagged by creative focus, so lead-to-booking by creative focus is not shown yet.</p>`; }
+  if (d.creativeFocus.length){ html += `<div class="strat-chart-label">Creative focus · transactions and price</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Creative focus</th><th>Transactions</th><th>Gross revenue</th><th>Average price</th><th></th></tr></thead><tbody>` + d.creativeFocus.map(r => `<tr><td>${escapeHtml(r.creativeFocus)}</td><td>${r.transactions.toLocaleString()}</td><td>${stratMoney(r.gross)}</td><td>${r.avgPrice != null ? '$' + r.avgPrice.toLocaleString() : '—'}</td><td>${r.creativeFocus !== 'Unassigned' ? cxCopyLinkHtml(r.copyLink) : ''}</td></tr>`).join('') + `</tbody></table></div><p class="strat-foot">Leads are not tagged by creative focus, so lead-to-booking by creative focus is not shown yet.</p>`; }
   const rl = d.relevance.trend;
   html += rl.length ? `<div class="strat-chart-label">Relevance score by month scored <span class="strat-key">average across ${d.relevance.scoredCampaigns} scored campaign${d.relevance.scoredCampaigns === 1 ? '' : 's'}</span></div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Month</th><th>Campaigns scored</th><th>Average score</th></tr></thead><tbody>` + rl.map(r => `<tr><td>${stratMonthLabel(r.month)}</td><td>${r.campaigns}</td><td>${r.avgScore}</td></tr>`).join('') + `</tbody></table></div>` : '<p class="strat-foot">No messaging relevance scores saved yet. Scores appear after copy is scored inside a campaign.</p>';
   if (cx.sendError) html += `<p class="strat-sub" role="alert">${escapeHtml(cx.sendError)}</p>`;
@@ -58090,6 +58112,7 @@ async function cmpFinalApprovalLoadJobs(c){
     cmpFinalApprovalJobsCache = resp.ok ? ((await resp.json()).jobs || []) : [];
   } catch (e){ cmpFinalApprovalJobsCache = []; }
   if (cmpFinalApprovalOpen) cmpRenderFinalApprovalReview();
+  try { cxOpenPendingCopyRow(); } catch (e){}
 }
 
 // Point (c) — toggles the AI Brain (Collaboration Center) open as a small
@@ -58604,6 +58627,7 @@ function cmpRenderFinalApprovalReview(){
       <div class="btn-row" style="margin:0;">
         <button type="button" class="btn-primary" ${creativeApproved ? '' : 'disabled'} onclick="approveCampaignQa()">Mark QA &amp; Approval complete →</button>
         ${creativeApproved ? '' : `<span class="hint">Creative &amp; messaging must be approved first.</span>`}
+        ${(() => { const w = cmpQaBlockers(c); return w.length ? `<span class="hint" style="flex-basis:100%;">Still waiting on approved copy for ${w.length} asset${w.length === 1 ? '' : 's'}: ${escapeHtml(w.slice(0, 6).join('; '))}${w.length > 6 ? '; and ' + (w.length - 6) + ' more' : ''}. QA &amp; Approval cannot be marked complete until each has approved copy.</span>` : ''; })()}
       </div>
       <div id="cmpFinalApprovalSaveFlag" class="hint" style="margin-top:8px;"></div>
     </div></div>`;
@@ -58657,6 +58681,20 @@ async function cmpRequestCreativeMessagingChanges(){
 // complete" button is disabled until both are true, but this function
 // checks again directly since approveCampaignQa() can still be reached
 // other ways (e.g. a stale render).
+// 2026-10-18 — what is holding QA & Approval back, in plain words: every creative asset on the campaign needs at least one approved copy
+// version before Marketing Functions and Creative read Complete. Returns the assets still waiting, e.g. 'Remarketing (Criteo), Medium Rectangle (300x250)'.
+function cmpQaBlockers(c){
+  const out = [];
+  try {
+    if (!(Array.isArray(c.approvedCreativeAssets) && c.approvedCreativeAssets.length) && c.approvedCreativeAssetsJson){ const p = JSON.parse(c.approvedCreativeAssetsJson); if (Array.isArray(p)) c.approvedCreativeAssets = p; }
+    (c.approvedCreativeAssets || []).forEach(a => {
+      if (!a) return;
+      const ok = a.copyVersions && Object.values(a.copyVersions).some(v => v && v.approved);
+      if (!ok) out.push([a.channel, a.partner, a.size].filter(Boolean).join(', '));
+    });
+  } catch (e){}
+  return out;
+}
 async function approveCampaignQa(){
   const c = findCampaign(currentCampaignId);
   if (!c) return;
@@ -58664,7 +58702,8 @@ async function approveCampaignQa(){
   const functionsDone = stages.find(s => s.key === 'functions').status === 'complete';
   const creativeDone = stages.find(s => s.key === 'creative').status === 'complete';
   if (!functionsDone || !creativeDone){
-    alert('Marketing Functions and Creative must both be Complete before QA & Approval can be marked complete.');
+    const waiting = cmpQaBlockers(c);
+    alert('Marketing Functions and Creative must both be Complete before QA & Approval can be marked complete.' + (waiting.length ? '\n\nStill waiting on approved copy for ' + waiting.length + ' asset' + (waiting.length === 1 ? '' : 's') + ':\n- ' + waiting.slice(0, 8).join('\n- ') + (waiting.length > 8 ? '\n- and ' + (waiting.length - 8) + ' more' : '') + '\n\nApprove copy for each in Creative, or remove the asset.' : ''));
     return;
   }
   if (!c.creativeMessagingCmoApproved){
@@ -72227,9 +72266,34 @@ function cmpAlignRowMarkup(current, setterCall){
 // existing one (Pick Up Existing Campaign) its copy can come along as drafts.
 let adLib = { q: '', channel: '', status: '', campaign: '' };
 function adLibCampName(c){ return c.name || c.objective || c.id; }
+// 2026-10-18 — copy written in the Creative asset grid lives in campaign.approvedCreativeAssets (copyVersions per audience), not in
+// copyVersionAssets, so the library also reads it. These rows are read-only (no pick-up into another campaign).
+function adLibGridRows(c){
+  const out = [];
+  try {
+    let arr = Array.isArray(c.approvedCreativeAssets) ? c.approvedCreativeAssets : null;
+    if (!arr && c.approvedCreativeAssetsJson){ const parsed = JSON.parse(c.approvedCreativeAssetsJson); arr = Array.isArray(parsed) ? parsed : null; }
+    (arr || []).forEach((asset, i) => {
+      if (!asset || !asset.copyVersions) return;
+      let schema = null; try { const spec = cmpSpecForRowSize(asset.channel, asset.size); schema = spec ? cmpAssetCopySchema(asset.channel, spec, asset) : null; } catch (e){ schema = null; }
+      Object.keys(asset.copyVersions).forEach(key => {
+        const v = asset.copyVersions[key]; if (!v || !v.fields) return;
+        let wf = null; try { wf = schema ? schema.toWireframe(v.fields) : null; } catch (e){ wf = null; }
+        const o = { id: `grid:${i}:${key}`, derived: true, channel: asset.channel, creativeType: asset.partner || '', sizeLabel: [asset.size, key === CMP_ASSET_COPY_ALL_KEY ? '' : key].filter(Boolean).join(' · '), status: v.approved ? 'Approved' : 'Draft' };
+        if (wf && typeof wf === 'object'){ o.headline = wf.headline || ''; o.body = wf.body || ''; o.cta = wf.cta || ''; }
+        else o.copy = (typeof wf === 'string' && wf) ? wf : Object.values(v.fields).flat().filter(Boolean).join(' — ');
+        out.push(o);
+      });
+    });
+  } catch (e){ /* a malformed asset list never breaks the library */ }
+  return out;
+}
 function adLibRows(){
   const rows = [];
-  (state.campaigns || []).forEach(c => { (Array.isArray(c.copyVersionAssets) ? c.copyVersionAssets : []).forEach(a => rows.push({ c, a })); });
+  (state.campaigns || []).forEach(c => {
+    (Array.isArray(c.copyVersionAssets) ? c.copyVersionAssets : []).forEach(a => rows.push({ c, a }));
+    adLibGridRows(c).forEach(a => rows.push({ c, a }));
+  });
   return rows;
 }
 function adLibText(a){ const parts = [a.headline, a.body, a.cta].filter(Boolean); return parts.length ? parts.join(' — ') : (a.copy || ''); }
@@ -72263,7 +72327,7 @@ function adLibRefreshList(){
   const target = cmpRailLoadedCampaign && cmpRailLoadedCampaign();
   list.innerHTML = `<div class="hint" style="margin:0 0 10px;">${rows.length} copy version${rows.length === 1 ? '' : 's'}</div>` + (rows.length ? rows.map(({ c, a }) => {
     const approved = (a.status || 'Draft') === 'Approved';
-    const canUse = target && target.id !== c.id;
+    const canUse = target && target.id !== c.id && !a.derived;
     return `<div class="adlib-card"><div class="adlib-meta"><span class="adlib-pill ${approved ? 'ok' : ''}">${escapeHtml(a.status || 'Draft')}</span><strong>${escapeHtml(a.channel || '')}</strong>${a.creativeType && a.creativeType !== '(unspecified)' ? ` &middot; ${escapeHtml(a.creativeType)}` : ''}${a.sizeLabel ? ` &middot; ${escapeHtml(a.sizeLabel)}` : ''}<span class="adlib-camp">${escapeHtml(adLibCampName(c))} &middot; ${escapeHtml(c.id)}</span></div>
       <div class="adlib-copy">${a.headline ? `<div class="adlib-h">${escapeHtml(a.headline)}</div>` : ''}${a.body ? `<div>${escapeHtml(a.body)}</div>` : ''}${a.cta ? `<div class="adlib-cta">${escapeHtml(a.cta)}</div>` : ''}${!a.headline && !a.body && !a.cta ? `<div>${escapeHtml(a.copy || '')}</div>` : ''}</div>
       <div class="adlib-act"><button type="button" class="btn-ghost" onclick="adLibCopyText('${escapeHtml(c.id)}','${escapeHtml(a.id)}')">Copy text</button>${canUse ? `<button type="button" class="btn-ghost" onclick="cmpCopyPickupClone('${escapeHtml(c.id)}',['${escapeHtml(a.id)}']);adLibFlash('Added to ${escapeHtml(adLibCampName(target)).replace(/'/g, '')} as a draft.')">Use in ${escapeHtml(adLibCampName(target))}</button>` : ''}</div></div>`;
@@ -72271,7 +72335,7 @@ function adLibRefreshList(){
 }
 function adLibFlash(msg){ try { askDockToast(msg); } catch (e){} }
 function adLibCopyText(cid, aid){
-  const c = (state.campaigns || []).find(x => x.id === cid); const a = c && (c.copyVersionAssets || []).find(x => x.id === aid); if (!a) return;
+  const hit = adLibRows().find(r => r.c.id === cid && r.a.id === aid); const a = hit && hit.a; if (!a) return;
   const t = adLibText(a);
   try { navigator.clipboard.writeText(t); adLibFlash('Copy text copied.'); } catch (e){ adLibFlash('Could not copy automatically; select the text instead.'); }
 }
