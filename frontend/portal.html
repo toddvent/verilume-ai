@@ -6043,6 +6043,23 @@
             </div>
           </div>
 
+          <div style="margin-top:18px;" id="brandExactPhrasesBlock">
+            <label style="display:block;font-weight:700;font-size:0.7188rem;text-transform:uppercase;letter-spacing:0.06em;color:#3A3428;margin-bottom:4px;">Exact phrases — use word for word</label>
+            <p class="hint" style="margin:0 0 8px;">Phrases you always say a particular way, like a program name or a signature line. Unlike the keywords above, these are copied exactly, with this spelling and capitalisation. Every copy prompt receives them, and a draft that leaves one out or rewords it loses Brand Fit points.</p>
+            <div id="brandPhrasesList"></div>
+            <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+              <input type="text" id="brandPhraseInput" placeholder="Add an exact phrase, e.g. Intimate Yachting Expeditions" style="flex:2;min-width:220px;" onkeydown="if(event.key==='Enter'){event.preventDefault();addBrandPhrase();}">
+              <select id="brandPhraseRule" style="flex:1;min-width:170px;" aria-label="How to use this phrase">
+                <option value="when-fits">Use when it fits</option>
+                <option value="always">Always include</option>
+                <option value="protect">Protect wording</option>
+              </select>
+              <input type="text" id="brandPhraseNote" placeholder="Usage note (optional), e.g. first mention only" style="flex:2;min-width:200px;" onkeydown="if(event.key==='Enter'){event.preventDefault();addBrandPhrase();}">
+              <button type="button" class="btn-ghost" style="padding:8px 14px;" onclick="addBrandPhrase()">Add</button>
+            </div>
+            <div class="hint" style="margin-top:6px;"><strong>Always include:</strong> every draft must contain it. <strong>Use when it fits:</strong> use it where it belongs, never reworded. <strong>Protect wording:</strong> if the copy mentions it, spelling and capitalisation stay exact.</div>
+          </div>
+
           <div id="brandKeywordsSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:12px;"></div>
         </div>
       </div>
@@ -14013,7 +14030,7 @@ const state = {
   // Each group is a plain array of strings — no volume-band/rationale
   // shape like searchKeywords above, since these aren't ranked by
   // estimated search volume, they're a reference list.
-  brandKeywords: { brand: [], product: [], negative: [], positive: [] },
+  brandKeywords: { brand: [], product: [], negative: [], positive: [], phrases: [] },
   // Round 132c[6] (2026-08-17) — buildout item #6, Onboarding Survey (core +
   // industry module). Null until loadOnboardingSurvey() resolves — the
   // onboarding-hub card's status() reads this defensively (see
@@ -22315,7 +22332,8 @@ async function loadAccountData(){
             brand: Array.isArray(parsed.brand) ? parsed.brand : [],
             product: Array.isArray(parsed.product) ? parsed.product : [],
             negative: Array.isArray(parsed.negative) ? parsed.negative : [],
-            positive: Array.isArray(parsed.positive) ? parsed.positive : []
+            positive: Array.isArray(parsed.positive) ? parsed.positive : [],
+            phrases: Array.isArray(parsed.phrases) ? parsed.phrases : []
           };
         } catch (e){ console.warn('loadAccountData: brandKeywordsJson failed to parse.', e); }
       }
@@ -69917,6 +69935,7 @@ async function cmpSelectCopyContestCandidate(interviewId, candidateKey, flagId){
           <textarea id="${editId}" rows="10" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:0.8125rem;padding:8px;border:1px solid var(--line);border-radius:6px;">${escapeHtml(result.copy)}</textarea>
           <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;">
             <button type="button" class="btn-primary" onclick="cmpSaveCopyContestWinnerEdit('${editId}','${saveFlagId}')">Save →</button>
+            <button type="button" class="btn-ghost" onclick="cmpSaveSelectionAsBrandPhrase('${editId}','${saveFlagId}')" title="Select a phrase in the draft first">Save selection as brand phrase</button>
           </div>
           <div id="${saveFlagId}" class="hint" style="margin-top:6px;"></div>
           <div id="${saveFlagId}-aud" class="cmp-aud-msg-wrap"></div>
@@ -75801,6 +75820,7 @@ function generateAndRenderBrandKeywords(){
 }
 
 function renderBrandKeywordChips(){
+  try { renderBrandPhrases(); } catch (e){}
   ['brand', 'product', 'negative', 'positive'].forEach(group => {
     const el = document.getElementById(`brandKeywords${group[0].toUpperCase()}${group.slice(1)}List`);
     if (!el) return;
@@ -75866,6 +75886,55 @@ function removeBrandKeywordChip(group, i){
 // that Terms to Avoid (this same negative list) IS the source everywhere
 // that field used to feed. Nothing left to pull in from.
 
+// 2026-10-18 — Exact phrases: [{ text, rule, note }] in state.brandKeywords.phrases. Saved with the rest of the keywords.
+const BRAND_PHRASE_RULE_LABELS = { always: 'Always include', 'when-fits': 'Use when it fits', protect: 'Protect wording' };
+function renderBrandPhrases(){
+  const el = document.getElementById('brandPhrasesList'); if (!el) return;
+  const list = (state.brandKeywords && state.brandKeywords.phrases) || [];
+  el.innerHTML = list.length ? list.map((p, i) => `
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 6px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;">
+      <span style="font-weight:600;flex:2;min-width:180px;">${escapeHtml(p.text)}</span>
+      <select onchange="setBrandPhraseField(${i}, 'rule', this.value)" aria-label="Rule for ${escapeHtml(p.text)}" style="flex:1;min-width:150px;">${Object.keys(BRAND_PHRASE_RULE_LABELS).map(k => `<option value="${k}" ${p.rule === k ? 'selected' : ''}>${BRAND_PHRASE_RULE_LABELS[k]}</option>`).join('')}</select>
+      <input type="text" value="${escapeHtml(p.note || '')}" placeholder="Usage note (optional)" onchange="setBrandPhraseField(${i}, 'note', this.value)" style="flex:2;min-width:180px;">
+      <button type="button" onclick="removeBrandPhrase(${i})" style="border:none;background:none;cursor:pointer;color:var(--muted);font-size:1rem;line-height:1;" aria-label="Remove ${escapeHtml(p.text)}">×</button>
+    </div>`).join('') : '<p class="hint" style="margin:0;">None yet.</p>';
+}
+// Returns true when the phrase was added (or already existed). `rule` and `note` are optional.
+function addBrandPhraseValue(text, rule, note){
+  text = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  if (!text) return false;
+  if (!state.brandKeywords.phrases) state.brandKeywords.phrases = [];
+  if (!state.brandKeywords.phrases.some(p => p.text.toLowerCase() === text.toLowerCase())) state.brandKeywords.phrases.push({ text, rule: rule || 'when-fits', note: note || '' });
+  renderBrandPhrases();
+  saveBrandKeywords();
+  return true;
+}
+function addBrandPhrase(){
+  const t = document.getElementById('brandPhraseInput'), r = document.getElementById('brandPhraseRule'), n = document.getElementById('brandPhraseNote');
+  if (!t || !addBrandPhraseValue(t.value, r && r.value, n && n.value)) return;
+  t.value = ''; if (n) n.value = '';
+}
+function setBrandPhraseField(i, field, value){
+  const p = state.brandKeywords.phrases && state.brandKeywords.phrases[i]; if (!p) return;
+  p[field] = value; saveBrandKeywords();
+}
+function removeBrandPhrase(i){
+  if (!state.brandKeywords.phrases) return;
+  state.brandKeywords.phrases.splice(i, 1); renderBrandPhrases(); saveBrandKeywords();
+}
+// "Save selection as brand phrase" in the final-draft edit box: takes the text selected in the textarea.
+function cmpSaveSelectionAsBrandPhrase(editId, flagId){
+  const ta = document.getElementById(editId), flag = document.getElementById(flagId);
+  if (!ta) return;
+  const sel = ta.value.substring(ta.selectionStart, ta.selectionEnd).replace(/\s+/g, ' ').trim();
+  const say = (t, bad) => { if (flag){ flag.style.color = bad ? 'var(--advocacy)' : 'var(--cx)'; flag.textContent = t; } };
+  if (!sel){ say('Select the phrase in the draft first, then choose Save as brand phrase.', true); return; }
+  if (sel.length > 120){ say('Select a shorter phrase (up to 120 characters).', true); return; }
+  const exists = (state.brandKeywords.phrases || []).some(p => p.text.toLowerCase() === sel.toLowerCase());
+  addBrandPhraseValue(sel, 'when-fits', '');
+  say(exists ? `"${sel}" is already in your brand phrases.` : `Saved "${sel}" as a brand phrase (use when it fits). You can change the rule on the Brand Voice page.`, false);
+}
+
 async function saveBrandKeywords(){
   // 2026-09-12 fix — this used to write status into ONLY
   // #brandKeywordsSaveFlag, which lives inside #brandKeywordsModule
@@ -75886,7 +75955,7 @@ async function saveBrandKeywords(){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/brand-keywords`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brand: state.brandKeywords.brand, product: state.brandKeywords.product, negative: state.brandKeywords.negative, positive: state.brandKeywords.positive })
+        body: JSON.stringify({ brand: state.brandKeywords.brand, product: state.brandKeywords.product, negative: state.brandKeywords.negative, positive: state.brandKeywords.positive, phrases: state.brandKeywords.phrases || [] })
       });
       persisted = resp.ok;
     } catch (e){ /* falls through to local-only flag below */ }
