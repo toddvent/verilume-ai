@@ -18418,7 +18418,7 @@ function cmpRenderAudienceChannelGapNote(){
 function renderCmpDemandFulfillmentRow(){
   const row = document.getElementById('cmpDemandFulfillmentRow');
   if (!row) return;
-  row.innerHTML = RECOMMENDED_CHANNELS_DEMAND_FULFILLMENT.map(ch => `
+  row.innerHTML = RECOMMENDED_CHANNELS_DEMAND_FULFILLMENT.filter(ch => !BUDGET_EXCLUDED_CHANNELS.includes(ch)).map(ch => `
     <button type="button" class="select-tile${selectedRecommendedChannels.has(ch) ? ' selected' : ''}" onclick="toggleRecommendedChannel('${ch}')">
       <span class="indicator">✓</span><span class="label">${ch}</span>
     </button>`).join('');
@@ -20216,7 +20216,7 @@ function applyCmpRecommendedChannelsAuto(){
   // definition, so they default to selected here rather than competing for
   // one of the stage-ranked list's N slots; a human can still uncheck one
   // in its own row (same override convention as toggleRecommendedChannel()).
-  const suggested = [...computeSuggestedRecommendedChannels(), ...RECOMMENDED_CHANNELS_DEMAND_FULFILLMENT];
+  const suggested = [...computeSuggestedRecommendedChannels(), ...RECOMMENDED_CHANNELS_DEMAND_FULFILLMENT].filter(ch => !BUDGET_EXCLUDED_CHANNELS.includes(ch));
   const current = [...selectedRecommendedChannels].sort().join('|');
   const next = [...suggested].sort().join('|');
   if (current === next) return; // no-op guard — avoids re-rendering/re-touching on every keystroke when nothing actually changed
