@@ -851,11 +851,28 @@
   .cmp-asset-copy-pending{margin-top:2px;}
   /* 2026-10-08, per Todd ("creative asset section should be full width or place the wireframe in the white space when selected"):
      on wide screens the fitted-copy block is two columns — fields left, live wireframe preview right (sticky while you edit). */
-  @media (min-width:1100px){
+  /* 2026-10-18, per Todd: the preview sat on top of the fields when the workspace is half the screen. The two-column split now keys off the
+     card's own width (container query), not the browser window, so a narrow workspace stacks the preview under the fields. */
+  .cmp-asset-row-card{container-type:inline-size;container-name:cmpasset;}
+  .cmp-asset-copy-block > .cmp-asset-wf{position:static;}
+  @container cmpasset (min-width:760px){
     .cmp-asset-copy-block{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,380px);column-gap:24px;align-items:start;}
     .cmp-asset-copy-block > .cmp-asset-wf{grid-column:2;grid-row:1 / span 6;margin-top:0 !important;position:sticky;top:8px;}
     .cmp-asset-copy-block > :not(.cmp-asset-wf){grid-column:1;}
   }
+  /* Asset navigation bar: one chip per asset, scrolls left and right, stays in view while you work. */
+  .cmp-asset-nav{display:flex;align-items:center;gap:6px;position:sticky;top:0;z-index:4;background:var(--white);padding:8px 0;margin:0 0 10px;border-bottom:1px solid var(--line);}
+  .cmp-asset-nav-arrow{flex:0 0 auto;width:30px;height:30px;border:1px solid var(--line);background:var(--white);border-radius:50%;cursor:pointer;font-size:1rem;line-height:1;color:var(--ink);}
+  .cmp-asset-nav-arrow:hover{border-color:var(--cx);color:var(--cx);}
+  .cmp-asset-nav-track{flex:1 1 auto;display:flex;gap:6px;overflow-x:auto;scroll-behavior:smooth;scrollbar-width:thin;padding:2px 0;}
+  .cmp-asset-chip{flex:0 0 auto;display:inline-flex;flex-direction:column;align-items:flex-start;gap:1px;border:1px solid var(--line);background:var(--white);border-radius:10px;padding:6px 12px;cursor:pointer;font-family:inherit;text-align:left;max-width:200px;}
+  .cmp-asset-chip:hover{border-color:var(--cx);}
+  .cmp-asset-chip.on{background:var(--ink);border-color:var(--ink);color:var(--white);}
+  .cmp-asset-chip-ch{font-size:0.625rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;opacity:0.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+  .cmp-asset-chip-nm{font-size:0.75rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+  .cmp-asset-chip-st{font-size:0.625rem;white-space:nowrap;}
+  .cmp-asset-chip-st.ok{color:#1E7A45;}.cmp-asset-chip-st.draft{color:#9A6A0E;}.cmp-asset-chip-st.setup{color:var(--muted);}
+  .cmp-asset-chip.on .cmp-asset-chip-st{color:#E6E6E6;}
   .cmp-asset-copy-block{border-top:1px dashed var(--line);padding-top:10px;margin-top:6px;}
   .cmp-asset-copy-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
   .cmp-asset-copy-title{font-weight:700;font-size:0.8438rem;}
@@ -75025,7 +75042,7 @@ function cmpCreativeAssetRowHtml(channel, slug, i, row, formatOptions, showRemov
   const formatId = `cmpCAG_${slug}_${i}_format`;
   const sizeId = `cmpCAG_${slug}_${i}_size`;
   return `
-    <div class="cmp-asset-row-card">
+    <div class="cmp-asset-row-card" data-asset="${slug}_${i}">
     <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
       <div style="flex:1 1 150px;">
         <label class="hint" style="display:block;margin-bottom:3px;">Partner</label>
@@ -75182,6 +75199,112 @@ async function cmpSetCreativeDisposition(value){
   if (typeof renderCmpStageRail === 'function') renderCmpStageRail();
   if (typeof cmpRenderWorkspaceHub === 'function') cmpRenderWorkspaceHub();
 }
+
+// 2026-10-18 — asset navigation bar. One chip per asset (channel, format, status), scrolls left and right. Picking a chip puts that asset in
+// focus and hides the others, so a half-width workspace shows one asset at a time. "All assets" shows everything again.
+let cmpAssetFocus = 'all';
+let cmpAssetFocusCampaignId = null;
+function cmpAssetNavItems(){
+  const c = cmpRailLoadedCampaign();
+  const out = [];
+  Object.keys(cmpCreativeAssetGridRows || {}).forEach(channel => {
+    const slug = cmpCreativeAssetChannelSlug(channel);
+    if (!document.getElementById(`cmpCAG_${slug}_group`)) return;
+    (cmpCreativeAssetGridRows[channel] || []).forEach((row, i) => {
+      const complete = !!(row.partner && row.mediaType && row.size);
+      let st = 'setup', label = 'Choose format and size';
+      if (complete && c){
+        const keys = cmpAssetCopyKeys(c, channel);
+        const vs = keys.map(k => row.copyVersions && row.copyVersions[k]);
+        const done = vs.length && vs.every(v => v && v.approved);
+        st = done ? 'ok' : 'draft'; label = done ? '✓ Approved' : 'Copy to approve';
+      }
+      out.push({ id: `${slug}_${i}`, channel, name: row.mediaType ? `${row.mediaType}${row.size ? ' · ' + row.size : ''}` : 'New asset', st, label });
+    });
+  });
+  return out;
+}
+function cmpAssetNavRefresh(keepScroll){
+  const nav = document.getElementById('cmpAssetNav');
+  if (!nav) return;
+  const items = cmpAssetNavItems();
+  if (items.length < 2){ nav.style.display = 'none'; cmpAssetFocus = 'all'; cmpAssetApplyFocus(); return; }
+  // First time a campaign's assets show, open on the first asset that still needs work (or the overview when all are approved).
+  const cur = cmpRailLoadedCampaign();
+  if (cur && cmpAssetFocusCampaignId !== cur.id){
+    cmpAssetFocusCampaignId = cur.id;
+    const first = items.find(x => x.st !== 'ok');
+    cmpAssetFocus = first ? first.id : 'all';
+  }
+  if (cmpAssetFocus !== 'all' && !items.some(x => x.id === cmpAssetFocus)) cmpAssetFocus = 'all';
+  nav.style.display = '';
+  const track = nav.querySelector('.cmp-asset-nav-track');
+  const left = track ? track.scrollLeft : 0;
+  const chip = (id, ch, nm, st, label) => `<button type="button" role="tab" aria-selected="${cmpAssetFocus === id}" class="cmp-asset-chip${cmpAssetFocus === id ? ' on' : ''}" data-chip="${escapeHtml(id)}" onclick="cmpAssetNavFocus('${id}')"><span class="cmp-asset-chip-ch">${escapeHtml(ch)}</span><span class="cmp-asset-chip-nm">${escapeHtml(nm)}</span><span class="cmp-asset-chip-st ${st}">${escapeHtml(label)}</span></button>`;
+  const doneCt = items.filter(x => x.st === 'ok').length;
+  nav.innerHTML = `<button type="button" class="cmp-asset-nav-arrow" aria-label="Previous asset" onclick="cmpAssetNavStep(-1)">‹</button>
+    <div class="cmp-asset-nav-track" role="tablist" aria-label="Creative assets" onkeydown="cmpAssetNavKey(event)">${chip('all', 'All assets', `${items.length} assets`, doneCt === items.length ? 'ok' : 'draft', `${doneCt} of ${items.length} approved`)}${items.map(x => chip(x.id, x.channel, x.name, x.st, x.label)).join('')}</div>
+    <button type="button" class="cmp-asset-nav-arrow" aria-label="Next asset" onclick="cmpAssetNavStep(1)">›</button>`;
+  const t2 = nav.querySelector('.cmp-asset-nav-track');
+  if (t2) { t2.style.scrollBehavior = 'auto'; t2.scrollLeft = left; t2.style.scrollBehavior = ''; }
+  cmpAssetApplyFocus();
+  if (!keepScroll) cmpAssetNavScrollToActive();
+}
+function cmpAssetNavScrollToActive(){
+  const on = document.querySelector('#cmpAssetNav .cmp-asset-chip.on');
+  if (on && on.scrollIntoView) on.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+}
+function cmpAssetApplyFocus(){
+  const cards = document.querySelectorAll('#cmpCreativeAssetMatrix .cmp-asset-row-card');
+  cards.forEach(card => { card.style.display = (cmpAssetFocus === 'all' || card.getAttribute('data-asset') === cmpAssetFocus) ? '' : 'none'; });
+  document.querySelectorAll('#cmpCreativeAssetMatrix .creative-asset-channel-group').forEach(g => {
+    const any = Array.from(g.querySelectorAll('.cmp-asset-row-card')).some(cd => cd.style.display !== 'none');
+    g.style.display = (cmpAssetFocus === 'all' || any) ? '' : 'none';
+  });
+}
+function cmpAssetNavFocus(id){
+  cmpAssetFocus = id;
+  document.querySelectorAll('#cmpAssetNav .cmp-asset-chip').forEach(b => { const on = b.getAttribute('data-chip') === id; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
+  cmpAssetApplyFocus();
+  cmpAssetNavScrollToActive();
+  const nav = document.getElementById('cmpAssetNav');
+  if (nav && nav.scrollIntoView && id !== 'all') nav.scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
+function cmpAssetNavKey(e){
+  if (e.key === 'ArrowRight'){ e.preventDefault(); cmpAssetNavStep(1); const b = document.querySelector('#cmpAssetNav .cmp-asset-chip.on'); if (b) b.focus(); }
+  else if (e.key === 'ArrowLeft'){ e.preventDefault(); cmpAssetNavStep(-1); const b = document.querySelector('#cmpAssetNav .cmp-asset-chip.on'); if (b) b.focus(); }
+}
+// Single maintenance point: the bar rebuilds itself whenever the asset grid is re-rendered or a status changes, so any future change to the
+// grid needs no call into this code. A signature of what the bar shows stops it looping on its own redraw.
+let cmpAssetNavSig = '', cmpAssetNavTimer = null, cmpAssetNavObs = null;
+function cmpAssetNavWatch(){
+  const matrix = document.getElementById('cmpCreativeAssetMatrix');
+  if (!matrix || matrix._navWatched) return;
+  matrix._navWatched = true;
+  cmpAssetNavObs = new MutationObserver(() => {
+    if (cmpAssetNavTimer) return;
+    cmpAssetNavTimer = requestAnimationFrame(() => {
+      cmpAssetNavTimer = null;
+      cmpAssetApplyFocus(); // rebuilt cards come back visible, so the focus is re-applied every time
+      const sig = JSON.stringify(cmpAssetNavItems()) + '|' + !!document.getElementById('cmpAssetNav') + '|' + (document.querySelectorAll('#cmpCreativeAssetMatrix .cmp-asset-row-card').length);
+      const navEl = document.getElementById('cmpAssetNav');
+      if (sig === cmpAssetNavSig && navEl && navEl.firstChild) return;
+      cmpAssetNavSig = sig;
+      cmpAssetNavRefresh(true);
+    });
+  });
+  cmpAssetNavObs.observe(matrix, { childList: true, subtree: true });
+}
+document.addEventListener('DOMContentLoaded', cmpAssetNavWatch);
+function cmpAssetNavStep(dir){
+  const items = cmpAssetNavItems();
+  if (!items.length) return;
+  const ids = ['all'].concat(items.map(x => x.id));
+  let k = ids.indexOf(cmpAssetFocus); if (k < 0) k = 0;
+  k = Math.min(ids.length - 1, Math.max(0, k + dir));
+  cmpAssetNavFocus(ids[k]);
+}
 function cmpRenderCreativeAssetMatrix(){
   const el = document.getElementById('cmpCreativeAssetMatrix');
   if (!el) return;
@@ -75208,7 +75331,8 @@ function cmpRenderCreativeAssetMatrix(){
   // 2026-09-09 style-check fix — .creative-asset-channel-group's look was
   // fully inline at its only call site; given a real rule (below, near
   // the other .cmp-* card patterns) instead.
-  el.innerHTML = cmpCreativeGateHtml(gateCampaign) + channels.map(channel => `<div class="creative-asset-channel-group" id="cmpCAG_${cmpCreativeAssetChannelSlug(channel)}_group">${cmpCreativeAssetChannelGroupInnerHtml(channel)}</div>`).join('');
+  cmpAssetNavWatch();
+  el.innerHTML = cmpCreativeGateHtml(gateCampaign) + '<div id="cmpAssetNav" class="cmp-asset-nav"></div>' + channels.map(channel => `<div class="creative-asset-channel-group" id="cmpCAG_${cmpCreativeAssetChannelSlug(channel)}_group">${cmpCreativeAssetChannelGroupInnerHtml(channel)}</div>`).join('');
   channels.forEach(channel => { cmpPopulateCreativeAssetSizeSelectsForChannel(channel); cmpFillPublisherPartnerSelects(channel); });
   cmpSyncCreativeAssetRequestsFromGrid();
 }
