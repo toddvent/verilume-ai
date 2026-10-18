@@ -3842,6 +3842,7 @@ ensureColumn('creative_jobs', 'copyApprovedAt', 'TEXT');
 ensureColumn('creative_jobs', 'assetApproved', 'INTEGER DEFAULT 0');
 ensureColumn('creative_jobs', 'assetApprovedAt', 'TEXT');
 ensureColumn('creative_jobs', 'trackingUrl', 'TEXT');
+ensureColumn('creative_jobs', 'assetLinksJson', 'TEXT'); // 2026-10-18 — { assetCode: trackingUrl } per ad unit; trackingUrl stays the job's primary link
 
 // Round 74 — Creative Jobs restructured into a designer-facing task grid,
 // per direct instruction. Two changes: (1) dueDate/deliveryDate ("date
@@ -22300,6 +22301,38 @@ function exportFeedsGrantedFor(sess){
   if (accessAudienceFor(sess) !== 'recipient') return all;
   try { const m = db.prepare('SELECT exportfeeds FROM team_members WHERE id = ?').get(sess.memberId); return cleanExportFeeds(JSON.parse((m && m.exportfeeds) || '[]')); } catch (e){ return []; }
 }
+// ---- Asset type codes (2026-10-18) ----
+// One short code per creative asset type — channel + format + size — the same for every client, so tracking links stay short and a code means the
+// same thing everywhere. e.g. PD-BN-300x250 = Programmatic Display, standard banner, 300×250. This is the single source: the portal reads it
+// from GET /api/asset-codes. A channel, format or size not listed still gets a stable code (a short hash of its name) until it is added here.
+const ASSET_CODE_REGISTRY = {
+  version: 1,
+  channels: { 'Paid Social': 'PS', 'Programmatic Display': 'PD', 'Brand Search': 'BS', 'Non-Brand Search': 'NS', 'Remarketing': 'RM', 'Retail Media': 'RT', 'Partner Media': 'PT', 'Linear TV': 'TV', 'OTV': 'OT', 'CTV': 'CT', 'Out-of-Home': 'OH', 'Radio': 'RA', 'Podcasts': 'PC', 'Magazines': 'MG', 'Newspapers': 'NP', 'Email — Remarketing': 'ER', 'Internal Email': 'IE', 'PR': 'PR', 'Field / ABM': 'FA' },
+  channelPrefixes: { 'Direct Mail': 'DM' },
+  formats: { 'Feed post': 'FD', 'Story / Reel': 'SR', 'Carousel': 'CA', 'Lead form ad': 'LF', 'Click-to-message ad': 'CM', 'Standard banner': 'BN', 'High-impact display': 'HI', 'Rich media': 'RC', 'Native ad': 'NA', 'Online video': 'OV', 'Audio spot': 'AU', ':15 Spot': 'S15', ':30 Spot': 'S30', 'Responsive search ad': 'RS', 'Call-only ad': 'CO', 'Performance Max asset group': 'PX', 'Demand Gen image ad': 'DG', 'YouTube video ad': 'YT', 'Responsive display ad': 'RD', 'Dynamic product/offer ad': 'DP', 'Static retargeting ad': 'ST', 'Sponsored product tile': 'SP', 'Standalone send': 'SS', 'Postcard': 'PO', 'Letter Package': 'LP', 'Self-Mailer': 'SM', 'Catalog / Booklet': 'CB', 'Full Page': 'FP', 'Half Page': 'HP', 'Two-Page Spread': 'TS', 'Inside Cover': 'IC', 'Newsletter sponsorship': 'NL', 'Bulletin': 'BL', 'Poster': 'PS', 'Press release': 'PN', 'Host-read': 'HR', 'Pre-produced': 'PP', 'One-pager': 'OP' },
+  // Added after the dimensions when a unit shares its dimensions with another in the same format (a pushdown and a billboard are both 970×250).
+  sizeSpecials: { 'pushdown': 'p', 'expandable': 'x', 'sticky': 's', 'skin': 'k' },
+  sizeAliases: { 'full page': 'FP', 'half page': 'HP', 'quarter page': 'QP', 'spread': 'SP', 'bulletin': 'BL', 'poster': 'PO', 'responsive search': 'RSA', 'expanded text': 'ETA', 'call-only': 'CO', 'host-read': 'HR', 'pre-produced': 'PP', 'one-pager': '1P', 'sponsored product tile': 'SPT', 'letter': 'LTR', '#10': 'N10', 'postcard': 'PC' }
+};
+function assetCodeHash(v){ let h = 2166136261; for (const ch of String(v || '').toLowerCase()) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return h.toString(36).toUpperCase().slice(-3).padStart(3, '0'); }
+function assetSizeCode(size){
+  const R = ASSET_CODE_REGISTRY, t = String(size || '').trim();
+  if (!t) return '';
+  const lc = t.toLowerCase();
+  const dm = t.match(/(\d{1,5}(?:\.\d+)?)\s*[x×]\s*(\d{1,5}(?:\.\d+)?)/i);
+  if (dm){ const sp = Object.keys(R.sizeSpecials).find(k => lc.includes(k)); return `${dm[1]}x${dm[2]}${sp ? R.sizeSpecials[sp] : ''}`; }
+  const px = t.match(/(\d{3,4})\s*px/i); if (px) return `W${px[1]}`;
+  const sec = t.match(/:(\d{2})\b/); if (sec) return `${sec[1]}s`;
+  const al = Object.keys(R.sizeAliases).find(k => lc.includes(k)); if (al) return R.sizeAliases[al];
+  return 'X' + assetCodeHash(t);
+}
+function assetTypeCode(channel, mediaType, size){
+  const R = ASSET_CODE_REGISTRY, ch = String(channel || '');
+  const pre = Object.keys(R.channelPrefixes).find(k => ch.startsWith(k));
+  const c = R.channels[ch] || (pre ? R.channelPrefixes[pre] : (ch ? 'C' + assetCodeHash(ch).slice(1) : ''));
+  const f = mediaType ? (R.formats[mediaType] || 'F' + assetCodeHash(mediaType).slice(1)) : '';
+  return [c, f, assetSizeCode(size)].filter(Boolean).join('-');
+}
 // ---- Creative hand-off (2026-10-18) ----
 // Assets + approved copy go to the CMO / Admin for release; once approved they are served as the 'creative' export feed (CSV/JSON) and
 // shown on the campaign. The package is a frozen snapshot of what was submitted, so what gets approved is exactly what gets released.
@@ -40176,6 +40209,11 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       db.prepare(`UPDATE creative_jobs SET priority = ?, status = ?, notes = ?, dueDate = ?, deliveryDate = ?, workingCopy = ?, copyApproved = ?, copyApprovedAt = ?,
         assetApproved = ?, assetApprovedAt = ?, trackingUrl = ?, actualSpend = ?, actualImpressions = ?, actualConversions = ?, updatedAt = ? WHERE id = ?`)
         .run(priority, status, notes, dueDate, deliveryDate, workingCopy, copyApproved, copyApprovedAt, assetApproved, assetApprovedAt, trackingUrl, actualSpend, actualImpressions, actualConversions, now, jobId);
+      if (body.assetLinks && typeof body.assetLinks === 'object' && !Array.isArray(body.assetLinks)){
+        let links = {}; try { links = JSON.parse(current.assetLinksJson || '{}') || {}; } catch (e){ links = {}; }
+        Object.keys(body.assetLinks).slice(0, 200).forEach(k => { const u = String(body.assetLinks[k] || '').slice(0, 2500); if (/^[A-Za-z0-9._x-]{1,60}$/.test(k) && u) links[k] = u; });
+        db.prepare('UPDATE creative_jobs SET assetLinksJson = ? WHERE id = ?').run(JSON.stringify(links), jobId);
+      }
       return sendJson(res, 200, { updatedAt: now, status, copyApproved: !!copyApproved, assetApproved: !!assetApproved, trackingUrl, dueDate, deliveryDate, actualSpend, actualImpressions, actualConversions });
     }
 
@@ -41093,6 +41131,10 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       return sendJson(res, 200, { accountId, campaigns, interviews });
     }
 
+    // GET /api/asset-codes — the shared asset type code registry (same for every client). Static, nothing account-specific.
+    if (req.method === 'GET' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'asset-codes'){
+      return sendJson(res, 200, ASSET_CODE_REGISTRY);
+    }
     // ---- Creative hand-off (2026-10-18) ----
     // POST /api/campaigns/:id/creative-handoff — freeze the approved creative assets and their approved copy as a package and send it to the
     // CMO / Admin for release. Blocked until every asset has approved copy. A newer submission supersedes an earlier one still waiting.
@@ -41187,10 +41229,11 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       // 2026-10-18 — the package also carries each asset's own details (partner, format, size) from the approved asset list. Copy is left out
       // on purpose: Trafficking needs where and how an asset runs, not the words.
       let pkgAssets = [];
-      try { pkgAssets = creativeHandoffBuild(db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId)).assets.map(a => ({ assetId: a.asset_id, channel: a.channel, partner: a.partner, format: a.ad_format, size: a.size_label, width: a.width, height: a.height })); } catch (e){}
+      try { pkgAssets = creativeHandoffBuild(db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId)).assets.map(a => ({ assetId: a.asset_id, assetCode: assetTypeCode(a.channel, a.ad_format, a.size_label), channel: a.channel, partner: a.partner, format: a.ad_format, size: a.size_label, width: a.width, height: a.height })); } catch (e){}
       const trafficPackage = jobs.map(j => ({
         jobId: j.id, channel: j.channel, deliveryPlatform: j.deliveryPlatform,
         specSummary: j.specSummary, trackingUrl: j.trackingUrl, assetApprovedAt: j.assetApprovedAt,
+        assetLinks: (() => { try { return JSON.parse(j.assetLinksJson || '{}') || {}; } catch (e){ return {}; } })(),
         assets: pkgAssets.filter(a => a.channel === j.channel)
       }));
       db.prepare('UPDATE campaigns SET trafficSentAt = ?, trafficPackageJson = ? WHERE id = ?')
