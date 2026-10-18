@@ -13357,6 +13357,22 @@ createTableIfNeeded(`
     rowcount INTEGER,
     createdat TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS creative_handoffs (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    campaignid TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    packagejson TEXT NOT NULL,
+    jobids TEXT,
+    submittedby TEXT,
+    submittedbyname TEXT,
+    submittedat TEXT NOT NULL,
+    decidedby TEXT,
+    decidedbyname TEXT,
+    decidedat TEXT,
+    decisionnote TEXT
+  );
   CREATE TABLE IF NOT EXISTS onboarding_assignments (
     id TEXT PRIMARY KEY,
     accountid TEXT NOT NULL,
@@ -21165,7 +21181,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['account_ga4_meta', 'account_plan_scenarios', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'marketing_projects', 'marketing_project_tasks', 'account_learned_cpm', 'account_channel_product_inputs', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
+const CATALOG_EXEMPT = new Set(['account_ga4_meta', 'account_plan_scenarios', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'marketing_projects', 'marketing_project_tasks', 'account_learned_cpm', 'account_channel_product_inputs', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'creative_handoffs', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -22268,6 +22284,7 @@ function agencyNamedChannels(session){
 // ---- Exports (data recipients and the production copy feed) ----
 const EXPORT_FEEDS = [
   { key: 'copy', label: 'Production copy feed', desc: 'Approved Copy Versions by asset spec, for feed-driven render and template tools.', ready: true, formats: ['csv', 'json'] },
+  { key: 'creative', label: 'Creative hand-off package', desc: 'Approved creative assets with their approved copy, released by the CMO or Admin, for creative tools and agencies.', ready: true, formats: ['csv', 'json'] },
   { key: 'mmm', label: 'MMM data file', desc: 'Channel, spend and impressions by period, with how each value was calculated.', ready: false, formats: ['csv'] },
   { key: 'matchmarket', label: 'DMA match-market feed', desc: 'Test and control markets, match scores and test tracking.', ready: false, formats: ['csv'] }
 ];
@@ -22282,6 +22299,63 @@ function exportFeedsGrantedFor(sess){
   const all = EXPORT_FEEDS.map(f => f.key);
   if (accessAudienceFor(sess) !== 'recipient') return all;
   try { const m = db.prepare('SELECT exportfeeds FROM team_members WHERE id = ?').get(sess.memberId); return cleanExportFeeds(JSON.parse((m && m.exportfeeds) || '[]')); } catch (e){ return []; }
+}
+// ---- Creative hand-off (2026-10-18) ----
+// Assets + approved copy go to the CMO / Admin for release; once approved they are served as the 'creative' export feed (CSV/JSON) and
+// shown on the campaign. The package is a frozen snapshot of what was submitted, so what gets approved is exactly what gets released.
+function creativeHandoffBuild(campaign){
+  let assets = []; try { assets = JSON.parse(aliasVal(campaign, 'approvedCreativeAssetsJson') || '[]'); } catch (e){}
+  if (!Array.isArray(assets)) assets = [];
+  const out = [], missing = [];
+  assets.forEach((a, idx) => {
+    if (!a || !a.channel) return;
+    const sz = copyFeedSize(a.size);
+    const label = `${a.channel}${a.partner ? ' — ' + a.partner : ''}${a.size ? ' — ' + a.size : ''}`;
+    const versions = (a.copyVersions && typeof a.copyVersions === 'object') ? a.copyVersions : {};
+    const copy = [];
+    Object.keys(versions).forEach(k => {
+      const v = versions[k] || {};
+      if (!v.approved) missing.push(`${label} (${k === '_all' ? 'campaign copy' : k}): copy not approved`);
+      copy.push({ audience: k === '_all' ? '' : k, approved: !!v.approved, approvedAt: v.approvedAt || null, fields: v.fields || {} });
+    });
+    if (!copy.length) missing.push(`${label}: no copy yet`);
+    out.push({ asset_id: `${campaign.id}_A${String(idx + 1).padStart(2, '0')}`, channel: a.channel, partner: a.partner || '', ad_format: a.mediaType || '', size_label: a.size || '', width: sz.w, height: sz.h, copy });
+  });
+  return { assets: out, missing };
+}
+function creativeHandoffRows(handoff, campaign){
+  let pkg = {}; try { pkg = JSON.parse(handoff.packagejson) || {}; } catch (e){}
+  const j = x => Array.isArray(x) ? x.filter(Boolean).join(' | ') : String(x == null ? '' : x);
+  const rows = [];
+  (pkg.assets || []).forEach(a => (a.copy || []).forEach(c => {
+    const f = c.fields || {};
+    rows.push({ campaign_id: handoff.campaignid, campaign_name: (campaign && campaign.name) || handoff.campaignid, handoff_version: handoff.version, approved_by: handoff.decidedbyname || '', approved_at: handoff.decidedat || '',
+      asset_id: a.asset_id, channel: a.channel, partner: a.partner, ad_format: a.ad_format, size_label: a.size_label, width: a.width, height: a.height, audience: c.audience,
+      copy_approved: c.approved ? 'yes' : 'no', headline: j(f.headline || f.headlines || f.subject || ''), body_copy: j(f.body || f.primary || f.descriptions || f.lead || f.script || f.support || ''),
+      frames: Array.isArray(f.frames) ? f.frames.filter(Boolean).join(' / ') : '', cta_text: j(f.cta || ''), copy_json: JSON.stringify(f) });
+  }));
+  return rows;
+}
+const CREATIVE_HANDOFF_COLS = ['campaign_id', 'campaign_name', 'handoff_version', 'approved_by', 'approved_at', 'asset_id', 'channel', 'partner', 'ad_format', 'size_label', 'width', 'height', 'audience', 'copy_approved', 'headline', 'body_copy', 'frames', 'cta_text', 'copy_json'];
+function creativeHandoffCsv(rows){
+  const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  return [CREATIVE_HANDOFF_COLS.join(',')].concat(rows.map(r => CREATIVE_HANDOFF_COLS.map(k => q(r[k])).join(','))).join('\r\n');
+}
+function creativeHandoffJson(handoffs, campaignsById){
+  return { campaigns: handoffs.map(h => { let pkg = {}; try { pkg = JSON.parse(h.packagejson) || {}; } catch (e){}
+    const c = campaignsById[h.campaignid];
+    return { campaign_id: h.campaignid, campaign_name: (c && c.name) || h.campaignid, handoff_version: h.version, approved_by: h.decidedbyname || null, approved_at: h.decidedat || null, assets: pkg.assets || [] }; }) };
+}
+function creativeHandoffOut(h){
+  let pkg = {}; try { pkg = JSON.parse(h.packagejson) || {}; } catch (e){}
+  return { id: h.id, campaignId: h.campaignid, version: h.version, status: h.status, submittedBy: h.submittedbyname || h.submittedby || null, submittedAt: h.submittedat, decidedBy: h.decidedbyname || null, decidedAt: h.decidedat || null, decisionNote: h.decisionnote || null,
+    assetCount: (pkg.assets || []).length, copyCount: (pkg.assets || []).reduce((n, a) => n + (a.copy || []).length, 0), assets: pkg.assets || [] };
+}
+function latestApprovedHandoffs(accountId, campaignId){
+  const all = db.prepare("SELECT * FROM creative_handoffs WHERE accountid = ? AND status = 'approved' ORDER BY decidedat DESC").all(accountId);
+  const seen = new Set(), out = [];
+  all.forEach(h => { if (campaignId && h.campaignid !== campaignId) return; if (seen.has(h.campaignid)) return; seen.add(h.campaignid); out.push(h); });
+  return out;
 }
 function copyFeedSize(label){ const m = String(label || '').match(/(\d{2,5})\s*[x×]\s*(\d{2,5})/i); return m ? { w: Number(m[1]), h: Number(m[2]) } : { w: '', h: '' }; }
 function copyFeedLimits(sz){
@@ -39943,7 +40017,10 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
         let specs = [];
         try { specs = existing.specsJson ? JSON.parse(existing.specsJson) : []; } catch (e){ specs = []; }
         if (!Array.isArray(specs)) specs = specs ? [specs] : []; // pre-round-74 rows stored a single object
-        specs.push(newSpec);
+        // 2026-10-18 — sending the same asset again updates its spec instead of adding a duplicate.
+        const sameSpec = specs.findIndex(sp => sp && (sp.deliveryPlatform || null) === newSpec.deliveryPlatform && (sp.sizeOrLength || null) === newSpec.sizeOrLength && (sp.specSummary || null) === newSpec.specSummary);
+        if (sameSpec >= 0) specs[sameSpec] = Object.assign({}, specs[sameSpec], newSpec, { addedAt: specs[sameSpec].addedAt || newSpec.addedAt });
+        else specs.push(newSpec);
         const specSummary = specs.length > 1
           ? `${specs.length} sizes: ${specs.map(s => s.specSummary || s.sizeOrLength || '—').join('; ')}`
           : (specs[0].specSummary || null);
@@ -41016,6 +41093,60 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       return sendJson(res, 200, { accountId, campaigns, interviews });
     }
 
+    // ---- Creative hand-off (2026-10-18) ----
+    // POST /api/campaigns/:id/creative-handoff — freeze the approved creative assets and their approved copy as a package and send it to the
+    // CMO / Admin for release. Blocked until every asset has approved copy. A newer submission supersedes an earlier one still waiting.
+    // GET  /api/campaigns/:id/creative-handoffs — the campaign's hand-offs, newest first, with whether the caller can decide.
+    // POST /api/campaigns/:id/creative-handoffs/:hid/decision { decision: 'approve'|'reject', note } — CMO / Admin only.
+    if (parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'creative-handoff' && parts.length === 4 && req.method === 'POST'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const body = await readBody(req);
+      const built = creativeHandoffBuild(campaign);
+      if (!built.assets.length) return sendJson(res, 400, { error: 'No creative assets are saved on this campaign yet.' });
+      if (built.missing.length) return sendJson(res, 409, { error: 'Approve the copy on every asset before sending it for release.', code: 'copy_not_approved', missing: built.missing });
+      const actor = planScenarioActor(req, campaign.accountId) || {};
+      const now = new Date().toISOString();
+      db.prepare("UPDATE creative_handoffs SET status = 'superseded' WHERE campaignid = ? AND status = 'pending_approval'").run(campaignId);
+      const ver = (db.prepare('SELECT MAX(version) AS v FROM creative_handoffs WHERE campaignid = ?').get(campaignId) || {}).v || 0;
+      const id = generateId('CHO');
+      db.prepare('INSERT INTO creative_handoffs (id, accountid, campaignid, version, status, packagejson, jobids, submittedby, submittedbyname, submittedat) VALUES (?,?,?,?,?,?,?,?,?,?)')
+        .run(id, campaign.accountId, campaignId, ver + 1, 'pending_approval', JSON.stringify({ assets: built.assets }), String(body.jobIds || '').slice(0, 2000) || null, actor.id || null, actor.name || null, now);
+      return sendJson(res, 201, { handoff: creativeHandoffOut(db.prepare('SELECT * FROM creative_handoffs WHERE id = ?').get(id)), approverRole: 'CMO or Admin' });
+    }
+    if (parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'creative-handoffs' && parts.length === 4 && req.method === 'GET'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const campaign = db.prepare('SELECT id, accountId FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const actor = planScenarioActor(req, campaign.accountId) || {};
+      const rows = db.prepare('SELECT * FROM creative_handoffs WHERE campaignid = ? ORDER BY version DESC').all(campaignId);
+      return sendJson(res, 200, { handoffs: rows.map(creativeHandoffOut), canDecide: !!actor.canActivate, approverRole: 'CMO or Admin' });
+    }
+    if (parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'creative-handoffs' && parts[5] === 'decision' && parts.length === 6 && req.method === 'POST'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const handoffId = decodeURIComponent(parts[4]);
+      const campaign = db.prepare('SELECT id, accountId FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      const actor = planScenarioActor(req, campaign.accountId) || {};
+      if (!actor.canActivate) return sendJson(res, 403, { error: 'Only the CMO or an Admin can approve or return a creative hand-off.' });
+      const h = db.prepare('SELECT * FROM creative_handoffs WHERE id = ? AND campaignid = ?').get(handoffId, campaignId);
+      if (!h) return sendJson(res, 404, { error: 'hand-off not found' });
+      if (h.status !== 'pending_approval') return sendJson(res, 409, { error: `This hand-off is already ${h.status.replace('_', ' ')}.` });
+      const body = await readBody(req);
+      const decision = body.decision === 'approve' ? 'approved' : body.decision === 'reject' ? 'rejected' : null;
+      if (!decision) return sendJson(res, 400, { error: "decision must be 'approve' or 'reject'" });
+      const note = String(body.note || '').trim().slice(0, 2000);
+      if (decision === 'rejected' && !note) return sendJson(res, 400, { error: 'Add a note saying what needs to change.' });
+      const now = new Date().toISOString();
+      if (decision === 'approved') db.prepare("UPDATE creative_handoffs SET status = 'superseded' WHERE campaignid = ? AND status = 'approved'").run(campaignId);
+      db.prepare('UPDATE creative_handoffs SET status = ?, decidedby = ?, decidedbyname = ?, decidedat = ?, decisionnote = ? WHERE id = ?').run(decision, actor.id || null, actor.name || null, now, note || null, handoffId);
+      return sendJson(res, 200, { handoff: creativeHandoffOut(db.prepare('SELECT * FROM creative_handoffs WHERE id = ?').get(handoffId)) });
+    }
+
     // POST /api/campaigns/:id/send-to-trafficking — round 73, per direct
     // instruction: "Links and Creative are sent to the trafficking team when
     // all assets are approved." Gated on EVERY creative job on this campaign
@@ -41053,9 +41184,14 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
         });
       }
       const now = new Date().toISOString();
+      // 2026-10-18 — the package also carries each asset's own details (partner, format, size) from the approved asset list. Copy is left out
+      // on purpose: Trafficking needs where and how an asset runs, not the words.
+      let pkgAssets = [];
+      try { pkgAssets = creativeHandoffBuild(db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId)).assets.map(a => ({ assetId: a.asset_id, channel: a.channel, partner: a.partner, format: a.ad_format, size: a.size_label, width: a.width, height: a.height })); } catch (e){}
       const trafficPackage = jobs.map(j => ({
         jobId: j.id, channel: j.channel, deliveryPlatform: j.deliveryPlatform,
-        specSummary: j.specSummary, trackingUrl: j.trackingUrl, assetApprovedAt: j.assetApprovedAt
+        specSummary: j.specSummary, trackingUrl: j.trackingUrl, assetApprovedAt: j.assetApprovedAt,
+        assets: pkgAssets.filter(a => a.channel === j.channel)
       }));
       db.prepare('UPDATE campaigns SET trafficSentAt = ?, trafficPackageJson = ? WHERE id = ?')
         .run(now, JSON.stringify(trafficPackage), campaignId);
@@ -47556,7 +47692,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const who = exportCaller(sess);
       if (parts.length === 4){
         const granted = exportFeedsGrantedFor(sess);
-        const feeds = EXPORT_FEEDS.map(f => ({ key: f.key, label: f.label, desc: f.desc, ready: f.ready, granted: granted.includes(f.key), formats: f.formats, count: f.key === 'copy' ? copyFeedRows(accountId, null).length : null }));
+        const feeds = EXPORT_FEEDS.map(f => ({ key: f.key, label: f.label, desc: f.desc, ready: f.ready, granted: granted.includes(f.key), formats: f.formats, count: f.key === 'creative' ? latestApprovedHandoffs(accountId, null).reduce((n, h) => n + creativeHandoffRows(h, null).length, 0) : f.key === 'copy' ? copyFeedRows(accountId, null).length : null }));
         return sendJson(res, 200, { feeds, recipient: who.recipient, signedInAs: who.name });
       }
       if (parts[4] === 'log'){
@@ -47570,6 +47706,19 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (!exportFeedsGrantedFor(sess).includes(feed.key)) return sendJson(res, 403, { error: `you have not been granted ${feed.label}` });
       const u = new URL(req.url, 'http://x');
       const format = u.searchParams.get('format') === 'json' ? 'json' : 'csv';
+      if (feed.key === 'creative'){
+        const hs = latestApprovedHandoffs(accountId, u.searchParams.get('campaignId') || null);
+        const byId = {}; db.prepare('SELECT id, name FROM campaigns WHERE accountId = ?').all(accountId).forEach(c => { byId[c.id] = c; });
+        const crows = hs.reduce((a, h) => a.concat(creativeHandoffRows(h, byId[h.campaignid])), []);
+        try { db.prepare('INSERT INTO export_fetch_log (id, accountid, memberid, membername, feed, format, rowcount, createdat) VALUES (?,?,?,?,?,?,?,?)').run(generateId('EXF'), accountId, sess && sess.memberId || null, who.name, feed.key, format, crows.length, new Date().toISOString()); } catch (e){}
+        const cstamp = new Date().toISOString().slice(0, 10);
+        if (format === 'json'){
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Disposition': `attachment; filename="${accountId}-creative-handoff-${cstamp}.json"`, 'Access-Control-Expose-Headers': 'Content-Disposition' });
+          return res.end(JSON.stringify(creativeHandoffJson(hs, byId), null, 2));
+        }
+        res.writeHead(200, { 'Content-Type': 'text/csv', 'Content-Disposition': `attachment; filename="${accountId}-creative-handoff-${cstamp}.csv"`, 'Access-Control-Expose-Headers': 'Content-Disposition' });
+        return res.end(creativeHandoffCsv(crows));
+      }
       const rows = copyFeedRows(accountId, u.searchParams.get('campaignId') || null);
       try { db.prepare('INSERT INTO export_fetch_log (id, accountid, memberid, membername, feed, format, rowcount, createdat) VALUES (?,?,?,?,?,?,?,?)').run(generateId('EXF'), accountId, sess && sess.memberId || null, who.name, feed.key, format, rows.length, new Date().toISOString()); } catch (e){ console.warn('export log failed', e.message); }
       const stamp = new Date().toISOString().slice(0, 10);
