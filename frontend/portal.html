@@ -42919,8 +42919,19 @@ async function mbuLoadCategoryMapping(){
       <span>Mapping your budget's categories — this can take a few seconds…</span>
     </div><style>@keyframes mbuSpin{to{transform:rotate(360deg);}}</style>`;
   }
-  const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(mbuAnalysis.id)}/category-mapping`);
-  if (!resp.ok) return;
+  // 2026-10-18 — never leave the spinner up: a failed request or a drawing error now shows what went wrong, with a retry.
+  const mbuFail = (why) => {
+    console.warn('mbuLoadCategoryMapping failed:', why);
+    const body = document.getElementById('mbuResultsBody');
+    if (body) body.innerHTML = `<div style="padding:24px 8px;"><p style="margin:0 0 8px;"><strong>The budget categories did not load.</strong></p><p class="hint" style="margin:0 0 12px;">${escapeHtml(String(why || 'Unknown error').slice(0, 240))}</p><button type="button" class="btn-ghost" onclick="mbuLoadCategoryMapping()">Try again</button></div>`;
+  };
+  let resp;
+  try { resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-budget-uploads/${encodeURIComponent(mbuAnalysis.id)}/category-mapping`); }
+  catch (e){ return mbuFail(e && e.message); }
+  if (!resp.ok){ let msg = 'The server answered ' + resp.status + '.'; try { const j = await resp.json(); if (j && j.error) msg = j.error; } catch (e){} return mbuFail(msg); }
+  try { return await mbuLoadCategoryMappingApply(resp); } catch (e){ return mbuFail(e && e.message ? e.message : e); }
+}
+async function mbuLoadCategoryMappingApply(resp){
   mbuCategoryMappingData = await resp.json();
   mbuNonWorkingLabels = Object.assign({}, mbuCategoryMappingData.categoryLabels || {});
   mbuManualNonWorking = (mbuCategoryMappingData.nonWorkingCategories || []).filter(c => c.manual).map(c => ({ category: c.category, total: Number(c.total) || 0 }));
