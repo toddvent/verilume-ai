@@ -9853,6 +9853,15 @@
             </div>
           </div>
 
+          <!-- 2026-10-18 — per-audience contest results card restored. Running an audience chip stored the results but nothing on screen showed them
+               (Step 1 had been removed in 2026-09-24). Hidden in shared mode; cmpRenderCreativeStep1() shows/hides it. -->
+          <div class="module cmp-stage" id="cmpCreativeStep1Card" style="margin-bottom:0;margin-top:20px;display:none;">
+            <div class="module-body" style="max-height:none;overflow:visible;padding:18px 20px;">
+              <div style="font-size:1.125rem;font-weight:700;color:var(--ink);margin-bottom:10px;">Audience Contest Results</div>
+              <div id="cmpCreativeStep1Body"></div>
+            </div>
+          </div>
+
           <!-- 2026-09-24 — "Add the creative asset selection page/s," per
                direct instruction, confirmed via clarifying question to mean
                surfacing the real, already-working Partner/Format/Size matrix
@@ -49939,6 +49948,8 @@ function cmpRenderCreativeStep1(c){
   const body = document.getElementById('cmpCreativeStep1Body');
   if (!body || !c) return;
   const mode = c.audienceSharedExperience === 'separate' ? 'separate' : 'shared';
+  const step1Card = document.getElementById('cmpCreativeStep1Card');
+  if (step1Card) step1Card.style.display = mode === 'separate' ? '' : 'none';
   if (mode === 'shared'){
     cmpStep1AudienceNames = [];
     body.innerHTML = `<div class="cmp-step0-callout">This campaign is set to one shared creative experience — run the single campaign-wide contest in Step 0's "Run the contest" card, above, and pick its winner there; it applies to every audience at once. Switch Step 0's toggle to "No" to run a separate contest per audience instead.</div>`;
