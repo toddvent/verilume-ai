@@ -1929,6 +1929,9 @@
 @media (max-width:900px){.bd-w-grid{grid-template-columns:1fr}.bd-welcome{padding:20px}}
   .ttb-hero{display:flex;align-items:center;gap:28px;flex-wrap:wrap;} .ttb-clock{color:var(--ink);display:block;} .ttb-big{font-size:1.3125rem;font-weight:500;line-height:1.2;}
   #step-manageAccount.ttb-live > #kpiMetricsAdminModule{display:none;}
+  .cch-test-pill{display:inline-block;font-size:0.6875rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;padding:3px 10px;border-radius:999px;background:#EDE7FB;color:#4B2E9B;border:1px solid #CFC1F2;cursor:pointer;margin-left:6px;}
+  .cmp-test-banner{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:12px;background:#F3EFFD;border:1px solid #CFC1F2;margin:0 0 14px;color:#2B1B5E;}
+  .cmp-test-banner b{font-weight:700;}
   #step-analyticsSetup #mmmInputsCard, #step-analyticsSetup #utmMasterConfigCard{display:none;}
   .ttb-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-top:22px;}
   .ttb-card{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;font:inherit;color:var(--ink);background:var(--white);border:1px solid var(--line);border-radius:16px;padding:20px;cursor:pointer;min-height:210px;transition:border-color .15s ease,box-shadow .15s ease;} .ttb-card:hover{border-color:var(--ink);box-shadow:var(--shadow-sm);} .ttb-card:focus-visible{outline:2px solid var(--ink);outline-offset:2px;} .ttb-card.done{background:var(--paper-dim);}
@@ -9490,6 +9493,7 @@
           <div class="cch-name-row">
             <div class="cch-name" id="cchName">—</div>
             <span class="cch-status-pill" id="cchStatusPill">—</span>
+            <a class="cch-test-pill" id="cchTestPill" style="display:none;" onclick="goToStep('testRegistry')"></a>
             <!-- 2026-09-24, per direct instruction ("tighten up the campaign
                  header"): moved out of .cch-meta (where it sat left-justified
                  on its own row below In Market) to right here, directly next
@@ -10036,6 +10040,7 @@
       <div class="cch-panel-mount" id="cmpAnalysisHeaderMount"></div>
       <div class="cmp-pitch-body">
         <div class="cmp-pitch-left" id="cmpAnalysisLeft">
+          <div id="cmpAnalysisTestBanner"></div>
           <!-- 2026-09-28 — Campaign Summary strip, per direct instruction:
                "showcases the different metrics associated with a campaign
                highlighting the primary campaign. Campaign Summary from left
@@ -10049,19 +10054,9 @@
           <div class="module cmp-stage open" id="cmpAnalysisSummaryCard" style="overflow:visible;">
             <div class="module-body" style="max-height:none;overflow:visible;padding:22px 24px;">
               <h2 style="margin:0 0 4px;">Campaign Summary — Target · Actual · Variance</h2>
-              <p class="lede" id="cmpAnalysisSummaryLede" style="margin:0 0 14px;"></p>
+              <p class="lede" id="cmpAnalysisSummaryLede" style="margin:0 0 8px;"></p>
+              <div id="cmpAnalysisInMarket" class="hint" style="margin:0 0 14px;"></div>
               <div id="cmpAnalysisSummary"></div>
-            </div>
-          </div>
-          <div class="module cmp-stage open" id="cmpAnalysisMarketCard" style="overflow:visible;">
-            <div class="module-body" style="max-height:none;overflow:visible;padding:22px 24px;">
-              <div id="cmpAnalysisInMarket"></div>
-            </div>
-          </div>
-          <div class="module cmp-stage open" id="cmpAnalysisActualsCard" style="overflow:visible;">
-            <div class="module-body" style="max-height:none;overflow:visible;padding:22px 24px;">
-              <h2 style="margin:0 0 14px;">Actuals vs. Plan</h2>
-              <div id="cmpAnalysisActuals"></div>
             </div>
           </div>
           <div class="module cmp-stage open" id="cmpAnalysisMixCard" style="overflow:visible;">
@@ -16634,6 +16629,7 @@ function cmpRenderCampaignHeader(campaign){
   pill.textContent = status;
   pill.className = `cch-status-pill ${status.toLowerCase()}`;
   pill.style.display = ''; // undo the 0-state's display:none, if it was just set
+  cmpUpdateTestIndicators(campaign); cmpLoadCampaignTests(campaign);
   // Round 132bx follow-up, per direct instruction: "cancel can only happen
   // before the start date" — narrowed from "anything not already
   // Cancelled/Completed" to Pending only (start date hasn't arrived yet).
@@ -50732,27 +50728,15 @@ function cmpToggleTraffickingMobileCollab(){
 function cmpRenderAnalysisInMarket(campaign){
   const el = document.getElementById('cmpAnalysisInMarket');
   if (!el || !campaign) return;
-  if (campaign.isAdHoc){
-    el.innerHTML = `<p class="cmp-stage-note" style="padding:0;">Ad Hoc projects don't move through an In Market stage.</p>`;
-    return;
-  }
+  if (campaign.isAdHoc){ el.textContent = ''; return; }
   const status = campaign.status || 'Not Started';
   let note;
-  if (status === 'In Market') note = `This campaign is In Market — today falls within its ${campaign.startDate || '?'} – ${campaign.endDate || '?'} run.`;
-  else if (status === 'Analysis') note = `This campaign's run ended ${campaign.endDate || 'on its end date'} and has moved to Analysis.`;
+  if (status === 'In Market') note = `In Market now (${campaign.startDate || '?'} to ${campaign.endDate || '?'}).`;
+  else if (status === 'Analysis') note = `The run ended ${campaign.endDate || 'on its end date'} and has moved to Analysis.`;
   else if (campaign.startDate) note = `Enters market automatically on ${campaign.startDate}.`;
-  else note = `Enters market automatically once a start date is set.`;
-  el.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-      <div style="display:flex;align-items:center;gap:12px;">
-        <div style="width:40px;height:40px;border-radius:10px;background:var(--media-tint,#EAF1FB);display:flex;align-items:center;justify-content:center;font-size:18px;">📍</div>
-        <div>
-          <div style="font-size:0.9375rem;font-weight:700;color:var(--ink);">Status: ${escapeHtml(status)}</div>
-          <div style="font-size:0.78125rem;color:var(--muted);">${escapeHtml(note)}</div>
-        </div>
-      </div>
-      <a class="flink" onclick="goToStep('campaign','${campaign.id}','campaignAnalyticsCard')">${(campaign.actualSpend != null || campaign.actualImpressions != null || campaign.actualConversions != null) ? 'Edit actuals' : 'Log actuals'} →</a>
-    </div>`;
+  else note = 'Enters market automatically once a start date is set.';
+  const pace = cmpAnalysisPacingNote(campaign);
+  el.textContent = `Status: ${status}. ${note}${pace ? ' ' + pace + '.' : ''}`;
 }
 // Spend/Impressions/Conversions vs. plan, with pacing — every value is a
 // real, already-persisted campaign field (actualSpend/budget/
@@ -51129,6 +51113,7 @@ async function cmpLoadApprovedPlanTotals(campaign){
       totalSpend: use.reduce((t, l) => t + (Number(l.budget) || 0), 0),
       totalImpressions: use.reduce((t, l) => t + (Number(l.impressions) || 0), 0),
       approved: approvedLines.length > 0, lineCount: use.length,
+      lines: use.map(l => { let d = null; try { d = l.detailsJson ? JSON.parse(l.detailsJson) : null; } catch (e){} return { channel: l.channel, budget: Number(l.budget) || 0, rule: !!(d && d.stageSource === 'rule') }; }),
       budgetApprovedAt: data.budgetApprovedAt || null
     } : null;
     cmpApprovedPlanCache[campaign.id] = plan;
@@ -51371,6 +51356,112 @@ async function cmpRenderDigitalAllocation(campaign, el, token){
     </tbody></table></div>
     <p class="hint" style="margin:6px 0 0;">Digital campaigns are creative allocations against the overall media plan: a row is tied here when its region, ad name or creative offer names one of this campaign\u2019s Creative Focus Groups or Product Groups. Anything else stays account-level until it\u2019s named.</p>`);
 }
+
+// 2026-10-18 — formal tests (Match Market, A/B, multi-variant...) attached to a campaign. Read from the Test Registry; shown as a
+// chip in the campaign header and a notice at the top of Analysis, so nobody reads test-cell results as ordinary campaign results.
+const CMP_TEST_TYPE_LABEL = { ab: 'Creative A/B', multivariant: 'Multi-variant', offer: 'Offer or price test', audience: 'Audience test', frequency: 'Frequency test', channel: 'Channel or placement test', timing: 'Timing test', landing: 'Landing page test', matchmarket: 'Match Market test', other: 'Test' };
+let cmpTestsFetchedAt = {};
+async function cmpLoadCampaignTests(campaign){
+  if (!campaign || !campaign.id || campaign.localOnly || dataSourceLabel !== 'backend') return;
+  if (cmpTestsFetchedAt[campaign.id] && Date.now() - cmpTestsFetchedAt[campaign.id] < 60000) return;
+  cmpTestsFetchedAt[campaign.id] = Date.now();
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/media-tests`);
+    if (!r.ok) return;
+    const tests = ((await r.json()).tests || []).filter(t => t && (t.campaignId === campaign.id || t.campaignid === campaign.id));
+    campaign._tests = tests;
+    cmpUpdateTestIndicators(campaign);
+  } catch (e){ console.warn('cmpLoadCampaignTests failed', e); }
+}
+function cmpUpdateTestIndicators(campaign){
+  const tests = (campaign && campaign._tests) || [];
+  const pill = document.getElementById('cchTestPill');
+  if (pill){
+    if (tests.length){
+      const t = tests[0];
+      pill.style.display = '';
+      pill.textContent = tests.length > 1 ? `In ${tests.length} tests` : `In test · ${CMP_TEST_TYPE_LABEL[t.testType] || 'Test'}`;
+      pill.title = tests.map(x => `${x.name} (${x.status || 'draft'})`).join('; ');
+    } else { pill.style.display = 'none'; pill.textContent = ''; }
+  }
+  const box = document.getElementById('cmpAnalysisTestBanner');
+  if (box){
+    box.innerHTML = tests.map(t => {
+      const when = [t.startDate, t.endDate].filter(Boolean).join(' to ');
+      return `<div class="cmp-test-banner"><div style="flex:1;"><b>This campaign is part of a formal test:</b> ${escapeHtml(CMP_TEST_TYPE_LABEL[t.testType] || 'Test')}, “${escapeHtml(t.name)}” <span class="hint" style="color:inherit;opacity:0.8;">· ${escapeHtml(t.status || 'draft')}${when ? ' · ' + escapeHtml(when) : ''}</span>${t.hypothesis ? `<div style="margin-top:4px;">Hypothesis: ${escapeHtml(t.hypothesis)}</div>` : ''}<div style="margin-top:4px;opacity:0.85;">Read results against the test's own design${t.primaryKpi ? ` (primary KPI: ${escapeHtml(t.primaryKpi)})` : ''}, not as ordinary campaign results.</div></div><a class="flink" onclick="goToStep('testRegistry')">Open in Truth Lab →</a></div>`;
+    }).join('');
+  }
+}
+
+// 2026-10-18 — actuals are edited right in the Analysis summary table. Revenue and conversions are single campaign fields; spend and
+// impressions are the sum of the per-channel figures, so they open a small by-channel editor (or the total when no channels are set).
+function cmpAnRefresh(c){
+  cmpRenderAnalysisSummary(c);
+  try { cmpRenderCampaignHeader(c); } catch (e){}
+}
+async function cmpAnPost(c, fields){
+  if (dataSourceLabel !== 'backend' || c.localOnly) return false;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields) });
+    return resp.ok;
+  } catch (e){ return false; }
+}
+function cmpAnEdit(key){
+  const c = findCampaign(currentCampaignId); if (!c) return;
+  const td = document.getElementById('cmpAnAct_' + key); if (!td) return;
+  const chans = (typeof cmpCreativeChannelsText === 'function' ? cmpCreativeChannelsText(c) : '').split(',').map(x => x.trim()).filter(Boolean);
+  if ((key === 'spend' || key === 'impressions') && chans.length){ cmpAnEditChannels(key, chans); return; }
+  const field = { spend: 'actualSpend', impressions: 'actualImpressions', revenue: 'actualRevenue', conversions: 'actualConversions' }[key];
+  const cur = c[field];
+  td.innerHTML = `<input type="number" min="0" step="any" id="cmpAnIn_${key}" class="tbl-input" style="width:130px;" value="${cur != null && cur !== '' ? escapeHtml(String(cur)) : ''}" onkeydown="if(event.key==='Enter')cmpAnSave('${key}')"> <button type="button" class="btn-primary" style="padding:4px 12px;" onclick="cmpAnSave('${key}')">Save</button> <button type="button" class="btn-ghost" style="padding:4px 10px;" onclick="cmpRenderAnalysisSummary(findCampaign(currentCampaignId))">Cancel</button><div id="cmpAnMsg_${key}" class="hint" style="margin:4px 0 0;"></div>`;
+  const inp = document.getElementById('cmpAnIn_' + key); if (inp) inp.focus();
+}
+async function cmpAnSave(key){
+  const c = findCampaign(currentCampaignId); if (!c) return;
+  const field = { spend: 'actualSpend', impressions: 'actualImpressions', revenue: 'actualRevenue', conversions: 'actualConversions' }[key];
+  const raw = document.getElementById('cmpAnIn_' + key).value;
+  const val = raw === '' ? null : Number(raw);
+  const msg = document.getElementById('cmpAnMsg_' + key);
+  if (val !== null && (!isFinite(val) || val < 0)){ if (msg) msg.textContent = 'Enter a number, zero or more.'; return; }
+  const ok = await cmpAnPost(c, { [field]: val });
+  c[field] = val;
+  if (!ok && msg){ msg.textContent = 'Saved on this screen only; the backend could not be reached.'; }
+  cmpAnRefresh(c);
+}
+function cmpAnEditChannels(key, chans){
+  const c = findCampaign(currentCampaignId); if (!c) return;
+  const td = document.getElementById('cmpAnAct_' + key); if (!td) return;
+  const tr = td.closest('tr'); if (!tr) return;
+  const old = document.getElementById('cmpAnChanRow'); if (old) old.remove();
+  const by = Object.fromEntries((c.mmmLineItems || []).map(li => [li.category, li]));
+  const money = key === 'spend';
+  const rows = chans.map(ch => { const li = by[ch] || {}; const v = key === 'spend' ? li.spend : li.impressions; return `<tr><td style="padding:4px 8px;">${escapeHtml(ch)}</td><td style="padding:4px 8px;"><input type="number" min="0" step="any" class="tbl-input cmp-an-li" data-category="${escapeHtml(ch)}" value="${v != null ? v : ''}" style="width:140px;"></td></tr>`; }).join('');
+  tr.insertAdjacentHTML('afterend', `<tr id="cmpAnChanRow"><td colspan="4" style="background:var(--paper-dim);"><div style="padding:10px 4px;"><div class="cmp-wf-stat-label" style="margin-bottom:6px;">Actual ${money ? 'spend' : 'impressions'} by channel (the total is their sum)</div><table style="border-collapse:collapse;"><tbody>${rows}</tbody></table><div style="margin-top:8px;display:flex;gap:8px;align-items:center;"><button type="button" class="btn-primary" style="padding:4px 12px;" onclick="cmpAnSaveChannels('${key}')">Save</button><button type="button" class="btn-ghost" style="padding:4px 10px;" onclick="cmpRenderAnalysisSummary(findCampaign(currentCampaignId))">Cancel</button><span id="cmpAnChanMsg" class="hint"></span></div></div></td></tr>`);
+}
+async function cmpAnSaveChannels(key){
+  const c = findCampaign(currentCampaignId); if (!c) return;
+  const by = Object.fromEntries((c.mmmLineItems || []).map(li => [li.category, li]));
+  const edited = {};
+  document.querySelectorAll('.cmp-an-li').forEach(inp => { edited[inp.getAttribute('data-category')] = inp.value !== '' ? Number(inp.value) : null; });
+  const lineItems = Object.keys(edited).map(cat => { const li = by[cat] || {}; return { category: cat, spend: key === 'spend' ? edited[cat] : (li.spend != null ? li.spend : null), reach: li.reach != null ? li.reach : null, impressions: key === 'impressions' ? edited[cat] : (li.impressions != null ? li.impressions : null) }; });
+  const msg = document.getElementById('cmpAnChanMsg');
+  if (dataSourceLabel !== 'backend' || c.localOnly){ if (msg) msg.textContent = 'No backend record for this account, so this cannot be saved.'; return; }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}/mmm-line-items`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lineItems }) });
+    if (!resp.ok){ const err = await resp.json().catch(() => ({})); if (msg) msg.textContent = err.error || 'Could not save.'; return; }
+    const data = await resp.json();
+    c.mmmLineItems = data.lineItems; c.actualSpend = data.actualSpend; c.actualReach = data.actualReach; c.actualImpressions = data.actualImpressions;
+    cmpAnRefresh(c);
+  } catch (e){ if (msg) msg.textContent = 'Backend unreachable. Not saved.'; }
+}
+// When the plan total and the brief's budget differ, say so and name the lines that are not part of the brief's own mix.
+function cmpSpendGapNote(campaign, plan, m){
+  const b = Number(campaign.budget);
+  if (!plan || !(b > 0) || !(plan.totalSpend > 0) || Math.abs(plan.totalSpend - b) <= Math.max(50, b * 0.01)) return '';
+  const diff = plan.totalSpend - b;
+  const rule = (plan.lines || []).filter(l => l.rule && l.budget > 0).map(l => `${l.channel} ${fmtMoney(l.budget)}`);
+  return `<br>The brief's budget is ${fmtMoney(b)}; the plan is ${fmtMoney(Math.abs(diff))} ${diff > 0 ? 'higher' : 'lower'}.${rule.length ? ` Lines added by stage rules: ${escapeHtml(rule.join(', '))}.` : ''}`;
+}
 async function cmpRenderAnalysisSummary(campaign){
   const el = document.getElementById('cmpAnalysisSummary');
   const lede = document.getElementById('cmpAnalysisSummaryLede');
@@ -51412,7 +51503,7 @@ async function cmpRenderAnalysisSummary(campaign){
   const fmtRoas = v => `${Number(v).toFixed(2)}×`;
   const fmtMin = v => `${Number(v).toFixed(2)} min`;
   const row = (r) => {
-    const { key, label, target, actual, tracking, fmt, lowerIsBetter, note, shareField, isPrimary } = r;
+    const { key, label, target, actual, tracking, fmt, lowerIsBetter, note, shareField, isPrimary, edit } = r;
     const hasActual = actual != null;
     let varianceHtml = dash;
     if (hasActual && target != null){
@@ -51428,7 +51519,7 @@ async function cmpRenderAnalysisSummary(campaign){
     return `<tr${isPrimary ? ' style="background:var(--cx-tint,#CFFAFE);"' : ''}>
       <td><b>${escapeHtml(label)}</b>${isPrimary ? '<span class="cmp-summary-badge primary">Primary KPI</span>' : ''}${note ? `<div class="cmp-summary-note">${note}</div>` : ''}</td>
       <td>${target != null ? `${fmt(target)}<span class="cmp-summary-badge target">Target</span>` : dash}${shareField ? cmpShareOfTargetNote(target, t, shareField, fmt) : ''}</td>
-      <td>${actualHtml}</td>
+      <td id="${edit ? 'cmpAnAct_' + edit : ''}">${actualHtml}${edit ? ` <a class="flink" style="margin-left:6px;font-size:0.75rem;" onclick="cmpAnEdit('${edit}')">${hasActual ? 'Edit' : 'Enter'}</a>` : ''}</td>
       <td>${varianceHtml}</td>
     </tr>`;
   };
@@ -51436,15 +51527,15 @@ async function cmpRenderAnalysisSummary(campaign){
   const obj = m.objective || {};
   const objFmt = /revenue|spend|budget/i.test(obj.label || '') ? fmtMoney : fmtInt;
   const execRows = [
-    row({ key: 'spend', label: 'Spend', target: m.target.spend, actual: m.actual.spend, fmt: fmtMoney, lowerIsBetter: true, shareField: 'workingMedia',
-      note: m.target.spend != null ? `Approved at the Campaign Budget stage — ${escapeHtml(m.source.spend)}` : 'No channel plan or budget on file' }),
-    row({ key: 'revenue', label: 'Revenue', target: m.target.revenue, actual: m.actual.revenue, tracking: tr.revenue, fmt: fmtMoney, shareField: 'grossRevenue',
+    row({ key: 'spend', label: 'Spend', edit: 'spend', target: m.target.spend, actual: m.actual.spend, fmt: fmtMoney, lowerIsBetter: true, shareField: 'workingMedia',
+      note: m.target.spend != null ? `${/^approved/.test(m.source.spend || '') ? 'Approved at the Campaign Budget stage' : 'Not approved yet'} — ${escapeHtml(m.source.spend)}${cmpSpendGapNote(campaign, plan, m)}` : 'No channel plan or budget on file' }),
+    row({ key: 'revenue', label: 'Revenue', edit: 'revenue', target: m.target.revenue, actual: m.actual.revenue, tracking: tr.revenue, fmt: fmtMoney, shareField: 'grossRevenue',
       note: m.grossRevenuePerBooking ? `Transactions × $${Math.round(m.grossRevenuePerBooking).toLocaleString()} gross revenue per booking (${m.baseline ? m.baseline.year + ' annual baseline' : 'baseline'}); actual = logged under Analysis inputs` : 'Needs an annual baseline with gross revenue and bookings to model a revenue target; actual = logged under Analysis inputs' }),
     row({ key: 'roas', label: 'ROAS', target: m.target.roas, actual: m.actual.roas, tracking: tr.roas, fmt: fmtRoas, note: 'Revenue ÷ spend' }),
     row({ key: 'cac', label: 'CAC', target: m.target.cac, actual: m.actual.cac, tracking: tr.cac, fmt: fmtMoney, lowerIsBetter: true, note: 'Spend ÷ transactions (cost per acquisition)' }),
-    row({ key: 'impressions', label: 'Impressions', target: m.target.impressions, actual: m.actual.impressions, fmt: fmtInt, shareField: 'impressions',
+    row({ key: 'impressions', label: 'Impressions', edit: 'impressions', target: m.target.impressions, actual: m.actual.impressions, fmt: fmtInt, shareField: 'impressions',
       note: m.target.impressions != null ? `Approved at the Campaign Budget stage — ${escapeHtml(m.source.impressions)}` : 'No planned or approved impressions' }),
-    row({ key: 'objective', label: obj.label ? `Campaign Objective — ${obj.label}` : 'Campaign Objective', target: obj.target, actual: obj.actual, fmt: objFmt, isPrimary: !!obj.label,
+    row({ key: 'objective', label: obj.label ? `Campaign Objective — ${obj.label}` : 'Campaign Objective', edit: 'conversions', target: obj.target, actual: obj.actual, fmt: objFmt, isPrimary: !!obj.label,
       note: obj.label ? `Target KPI goal set at creation${obj.target == null ? ' (none entered)' : ''}; actual = logged conversions for this KPI` : 'No Primary KPI set on this campaign' })
   ].join('');
   const detailRows = [
@@ -51501,7 +51592,8 @@ function cmpOpenAnalysisWorkspace(){
   cmpInvalidateApprovedPlan(campaign.id); // always re-read the approved channel plan on open
   cmpRenderAnalysisSummary(campaign);
   cmpRenderAnalysisInMarket(campaign);
-  cmpRenderAnalysisActuals(campaign);
+  cmpLoadCampaignResults(campaign, document.getElementById('cmpAnalysisSummary'));
+  cmpUpdateTestIndicators(campaign); cmpLoadCampaignTests(campaign);
   cmpLoadAnalysisMix(campaign);
   cmpRenderAnalysisWorkspaceStatusBadge(campaign);
 }
