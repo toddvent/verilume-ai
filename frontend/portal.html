@@ -49866,7 +49866,7 @@ function cmpRenderStep0RunContest(c){
     <div class="cmp-step0-field-head" style="margin-bottom:8px;"><label>Run Audience Specific Contest</label></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;">` +
     audiences.map((name, idx) => {
-      const hasResult = !!cmpStep1AudienceResults[idx];
+      const hasResult = !!(cmpCopyContestLastResult && cmpCopyContestLastResult[cmpAudPanelId(idx)]);
       return `
       <div style="display:flex;flex-direction:column;gap:4px;">
         <button type="button" class="cmp-step0-contest-chip${hasResult ? ' has-result' : ''}" id="cmpStep0RunBtn_${idx}" data-audience-idx="${idx}">${hasResult ? '↻' : '✦'} ${escapeHtml(name)}</button>
@@ -49876,9 +49876,10 @@ function cmpRenderStep0RunContest(c){
     `</div>`;
 }
 async function cmpRunAudienceContest(idx){
+  // 2026-10-18 — same three steps as the campaign contest (Draft, Run Contest for More Options, Run Another Contest).
+  // The panel lives in the Audience Contest Results card; the chip just opens it and starts the first draft.
   const audienceName = cmpStep1AudienceNames[idx];
   const campaign = cmpCurrentCampaign();
-  const btn = document.getElementById(`cmpStep0RunBtn_${idx}`);
   const status = document.getElementById(`cmpStep0RunStatus_${idx}`);
   if (!audienceName || !campaign) return;
   const gate = cmpRequiredForGenerationGate();
@@ -49886,54 +49887,80 @@ async function cmpRunAudienceContest(idx){
     if (status){ status.style.color = 'var(--advocacy)'; status.textContent = `Set ${gate.missing.join(' and ')} on Brand Messaging before running this contest.`; }
     return;
   }
-  // 2026-09-24 — "Asset Types should be before the contest and included in
-  // the contest" (direct instruction): pass this campaign's asset-type
-  // selection (if any) along so the backend scopes the drafting prompt's
-  // channels to just those types — see assetTypesToApprovedChannelsText()
-  // in server.js. Follow-up the same day, per direct instruction ("it's an
-  // optional question," not a required step): no longer gates the
-  // contest — an empty selection just means the drafting prompt uses this
-  // campaign's whole approved-channel list, same as before this feature
-  // existed.
-  if (status){ status.style.color = ''; status.textContent = 'Drafting copy for this audience — three independent angles plus every configured vendor…'; }
-  if (btn) btn.disabled = true;
-  cmpSunriseLoaderShow({ headline: CMP_CONTEST_LOADER_HEAD, note: CMP_CONTEST_LOADER_NOTE, countdownSec: 100, countdownLabel: 'Contest running. Time left before timeout' });
+  if (status){ status.style.color = 'var(--cx)'; status.textContent = 'Drafting below, in Audience Contest Results.'; }
+  const pid = cmpAudPanelId(idx);
+  cmpPanelAudience[pid] = { name: audienceName, idx };
+  cmpRenderCreativeStep1(campaign);
+  const card = document.getElementById('cmpCreativeStep1Card');
+  if (card && card.scrollIntoView) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  await cmpRunCampaignCopyContest(pid, cmpAudBtnId(idx), `cmpAudFlag_${idx}`);
+  cmpRenderStep0RunContest(campaign);
+}
+// Use this draft, audience version: applies the draft to this audience (server writes audienceCopyJson), then offers the same edit-and-save box.
+async function cmpSelectAudienceDraft(panelId, interviewId, candidateKey, flagId){
+  const info = cmpPanelAudience[panelId];
+  const campaign = cmpCurrentCampaign();
+  const flag = document.getElementById(flagId);
+  if (!info || !campaign) return;
   try {
-    // 2026-09-23 fix — same silent-retry convention as
-    // cmpRunCampaignCopyContest()'s own fix, applied here too so a slow
-    // round trip to the real backend doesn't read as a dead chip.
-    //
-    // 2026-09-23 follow-up fix — same "signal is aborted without reason"
-    // bug and same fix as cmpRunCampaignCopyContest()'s own follow-up
-    // comment: this hits the identical heavy copy-interview endpoint, so
-    // it needs the same 100000ms treatment, not the generic 12000ms
-    // default.
-    //
-    // 2026-09-24 — same 1→2 maxAttempts fix as cmpRunCampaignCopyContest()
-    // (see its comment): a single 100s window isn't always enough for all 5
-    // AI partners to finish, but a silent second attempt reliably clears it.
-    const result = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sourceKey: cmpAudienceContestSourceKey(audienceName), audience: audienceName, assetTypes: cmpCampaignAssetTypes }),
-      timeoutMs: 100000
-    }, 2, 700);
-    if (!result.available){
-      if (status){ status.textContent = result.note || 'Copy contest unavailable.'; }
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview/${encodeURIComponent(interviewId)}/select`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateKey, audience: info.name })
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = err.error || "Couldn't apply this draft — try again."; }
       return;
     }
-    cmpStep1AudienceResults[idx] = { result, selectedKey: null };
-    if (status){ status.style.color = 'var(--cx)'; status.textContent = '✓ Contest run — pick the winner in Step 1, below.'; }
-    cmpRenderCreativeStep1(campaign);
-    // 2026-09-23 — same auto-retry as cmpRunCampaignCopyContest() above;
-    // re-renders Step 1's own entries-grid (not renderCmpCopyContestPanel)
-    // once the second pass fills in whatever was pending.
-    cmpCopyContestAutoRetryPending(campaign.id, result, () => cmpRenderCreativeStep1(cmpCurrentCampaign()));
+    const result = await resp.json();
+    cmpAudienceStoreApplied(campaign, info.name, result.copy, interviewId);
+    cmpAudienceShowEditBox(flagId, panelId, interviewId, candidateKey, info.name, result.copy);
   } catch (e){
-    if (status){ status.style.color = 'var(--advocacy)'; status.textContent = 'Backend unreachable — try again.'; }
-  } finally {
-    cmpSunriseLoaderHide();
-    if (btn) btn.disabled = false;
-    cmpRenderStep0RunContest(campaign);
+    if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Backend unreachable — try again.'; }
+  }
+}
+function cmpAudienceStoreApplied(campaign, name, copy, interviewId){
+  const map = cmpAudienceCopyMap(campaign);
+  map[name] = { copy, interviewId, selectedAt: new Date().toISOString() };
+  campaign.audienceCopyJson = JSON.stringify(map);
+}
+let cmpAudienceEditCtx = {};
+function cmpAudienceShowEditBox(flagId, panelId, interviewId, candidateKey, name, copy){
+  const flag = document.getElementById(flagId);
+  if (!flag) return;
+  const editId = `${flagId}-edit`, saveFlagId = `${flagId}-save`;
+  cmpAudienceEditCtx[editId] = { panelId, interviewId, candidateKey, name, saveFlagId };
+  flag.style.color = '';
+  flag.innerHTML = `<div class="ai-status-bubble"><div style="font-weight:700;">Approve as is, Edit or Replace the winner for ${escapeHtml(name)}</div>
+      <div style="margin-top:4px;">The saved version is the copy used for this audience across the campaign.</div></div>
+    <div style="border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:10px;">
+      <textarea id="${editId}" rows="10" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:0.8125rem;padding:8px;border:1px solid var(--line);border-radius:6px;">${escapeHtml(copy)}</textarea>
+      <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;">
+        <button type="button" class="btn-primary" onclick="cmpSaveAudienceDraftEdit('${editId}')">Save →</button>
+        <button type="button" class="btn-ghost" onclick="cmpSaveSelectionAsBrandPhrase('${editId}','${saveFlagId}')" title="Select a phrase in the draft first">Save selection as brand phrase</button>
+      </div>
+      <div id="${saveFlagId}" class="hint" style="margin-top:6px;">Applied to ${escapeHtml(name)}.</div>
+    </div>`;
+}
+async function cmpSaveAudienceDraftEdit(editId){
+  const ctx = cmpAudienceEditCtx[editId];
+  const el = document.getElementById(editId);
+  const saveFlag = ctx && document.getElementById(ctx.saveFlagId);
+  const campaign = cmpCurrentCampaign();
+  if (!ctx || !el || !campaign) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview/${encodeURIComponent(ctx.interviewId)}/select`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateKey: ctx.candidateKey, audience: ctx.name, editedCopy: el.value })
+    });
+    if (!resp.ok){
+      const err = await resp.json().catch(() => ({}));
+      if (saveFlag){ saveFlag.style.color = 'var(--advocacy)'; saveFlag.textContent = err.error || "Couldn't save — try again."; }
+      return;
+    }
+    const result = await resp.json();
+    cmpAudienceStoreApplied(campaign, ctx.name, result.copy, ctx.interviewId);
+    if (saveFlag){ saveFlag.style.color = 'var(--cx)'; saveFlag.textContent = `Saved ${new Date().toLocaleTimeString()} — this is now the copy for ${ctx.name}.`; }
+  } catch (e){
+    if (saveFlag){ saveFlag.style.color = 'var(--advocacy)'; saveFlag.textContent = 'Backend unreachable — try again.'; }
   }
 }
 // Step 1: per-audience "<Audience> — contest results" card, matching
@@ -49962,70 +49989,27 @@ function cmpRenderCreativeStep1(c){
     return;
   }
   const audienceCopyMap = cmpAudienceCopyMap(c);
+  // Existing panels keep their content across re-renders (the panel div is moved, not rebuilt) so a draft on screen is never wiped.
+  const kept = {};
+  audiences.forEach((name, idx) => { const el = document.getElementById(cmpAudPanelId(idx)); if (el) kept[idx] = el; });
   body.innerHTML = audiences.map((name, idx) => {
     const applied = audienceCopyMap[name];
-    const state = cmpStep1AudienceResults[idx];
-    const result = state && state.result;
-    const selectedKey = state && state.selectedKey;
-    let entriesHtml, applyBtnHtml;
-    const statusBadge = `<span class="badge ${applied ? 'strong' : (result ? 'weak' : 'weak')}">${applied ? '✓ Winner applied' : (result ? 'Pick a winner below' : 'Not run yet')}</span>`;
-    if (!result){
-      entriesHtml = applied
-        ? `<div class="hint" style="white-space:pre-wrap;margin:6px 0 0;">${escapeHtml(applied.copy)}</div>`
-        : `<div class="hint">Run this audience's contest in Step 0, above, to see entries here.</div>`;
-      applyBtnHtml = '';
-    } else {
-      entriesHtml = `<div class="entries-grid">${(result.candidates || []).map(cand => {
-        const isSelected = cand.key === selectedKey;
-        if (!cand.configured){
-          return `<div class="entry-card" style="opacity:0.6;">
-            <div class="entry-model">${escapeHtml(cand.label)}</div>
-            <div class="hint">${escapeHtml(cand.error || 'Not configured.')}</div>
-          </div>`;
-        }
-        if (cand.pending){
-          // 2026-09-23 — same temporary state as renderCmpCopyContestPanel's
-          // own pending card; cmpCopyContestAutoRetryPending() fires the
-          // second pass automatically and re-renders this whole card once
-          // it resolves.
-          return `<div class="entry-card">
-            <div class="entry-model">${escapeHtml(cand.label)}</div>
-            <div class="hint">Still thinking — retrying automatically…</div>
-          </div>`;
-        }
-        if (!cand.copy){
-          return `<div class="entry-card">
-            <div class="entry-model">${escapeHtml(cand.label)}</div>
-            <div class="hint" style="color:var(--advocacy);">${escapeHtml(cand.error || 'Generation failed.')}</div>
-          </div>`;
-        }
-        return `<div class="entry-card ${isSelected ? 'winner' : ''}">
-          <div class="entry-model">${escapeHtml(cand.label)}${cand.key === result.recommendedKey ? ' · top scoring' : ''}</div>
-          ${cand.approach ? `<div class="hint" style="font-style:italic;">Approach: ${escapeHtml(cand.approach)}</div>` : ''}
-          <div class="entry-headline">${escapeHtml(cand.copy)}</div>
-          <div class="entry-score">
-            <span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Campaign Fit</span> ${scorePill(cand.relevanceScore)}
-            <span class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;">Brand Fit</span> ${scorePill(cand.complianceScore)}
-          </div>
-          ${cand.flags && cand.flags.length ? `<div class="hint" style="color:var(--advocacy);">${cand.flags.map(escapeHtml).join('; ')}</div>` : ''}
-          ${isSelected
-            ? `<span class="badge strong">★ Selected as winner</span>`
-            : `<button type="button" class="btn-ghost" onclick="cmpStep1SelectLocalWinner(${idx}, '${cand.key}')">Select as winner →</button>`}
-        </div>`;
-      }).join('')}</div>`;
-      applyBtnHtml = `
-        <button type="button" class="btn-primary" style="opacity:${selectedKey ? '1' : '.55'};" ${selectedKey ? '' : 'disabled'} onclick="cmpApplyAudienceWinner(${idx})">Apply winner to remainder of campaign — ${escapeHtml(name)} →</button>
-        <div id="cmpStep1Flag_${idx}" class="hint" style="margin-top:8px;"></div>`;
-    }
+    const pid = cmpAudPanelId(idx);
+    const opened = !!cmpPanelAudience[pid];
+    const badge = `<span class="badge ${applied ? 'strong' : 'weak'}">${applied ? '✓ Winner applied' : (opened ? 'Pick a draft' : 'Not run yet')}</span>`;
+    const appliedHtml = applied && !opened ? `<div class="hint" style="white-space:pre-wrap;margin:6px 0 0;">${escapeHtml(applied.copy)}</div>` : '';
+    const idle = !applied && !opened ? `<div class="hint">Run this audience's contest in Step 0, above, to see its draft here.</div>` : '';
+    const btn = opened ? `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 0;"><button type="button" class="btn-primary" id="${cmpAudBtnId(idx)}" onclick="cmpRunCampaignCopyContest('${pid}','${cmpAudBtnId(idx)}','cmpAudFlag_${idx}')">${escapeHtml(cmpContestButtonLabel(pid))}</button></div>` : '';
     return `<div class="cmp-step1-audience-card">
-      <div class="msg-card-head">
-        <span class="msg-card-title">${escapeHtml(name)} — contest results</span>
-        ${statusBadge}
-      </div>
-      ${entriesHtml}
-      ${applyBtnHtml ? `<div style="margin-top:12px;">${applyBtnHtml}</div>` : ''}
+      <div class="msg-card-head"><span class="msg-card-title">${escapeHtml(name)} — contest</span>${badge}</div>
+      ${appliedHtml}${idle}${btn}
+      <div id="${pid}" style="margin-top:8px;${opened ? '' : 'display:none;'}"></div>
     </div>`;
   }).join('');
+  Object.keys(kept).forEach(idx => {
+    const fresh = document.getElementById(cmpAudPanelId(idx));
+    if (fresh && kept[idx]) fresh.replaceWith(kept[idx]);
+  });
 }
 // Local-only — marks this candidate as the pending winner for this
 // audience and re-renders Step 1 so the card flips to the dimmed-until-
@@ -69436,6 +69420,15 @@ const CMP_CONTEST_LOADER_NOTE = 'are working on your campaign options.';
 // 2026-10-17 — three steps on one button. First click: the default draft (one partner, fast). With a default draft on screen: the contest
 // adds the other partners' options to it. After a contest: "Run Another Contest" runs a fresh contest. `forceMode` overrides.
 let cmpContestAllowance = null;
+// 2026-10-18 — audience contests use the same panel/flow as the campaign contest. panelId -> { name, idx }.
+const cmpPanelAudience = {};
+function cmpAudPanelId(idx){ return `cmpAudContestPanel_${idx}`; }
+function cmpAudBtnId(idx){ return `cmpAudContestBtn_${idx}`; }
+function cmpUseDraftOnclick(panelId, interviewId, key, flagId){
+  return cmpPanelAudience[panelId]
+    ? `cmpSelectAudienceDraft('${panelId}','${interviewId}','${key}','${flagId}')`
+    : `cmpSelectCopyContestCandidate('${interviewId}', '${key}', '${flagId}')`;
+}
 function cmpContestNextMode(panelId){
   const last = cmpCopyContestLastResult[panelId];
   if (!last || !last.interviewId) return 'default';
@@ -69448,6 +69441,9 @@ function cmpContestButtonLabel(panelId){
 function cmpContestSyncButtons(){
   [['cmpCopyContestPanel', 'cmpCopyContestBtn'], ['cmpStep0SharedContestPanel', 'cmpStep0SharedContestBtn'], ['askDockContestPanel', 'askDockContestBtn'], ['copyverCopyContestPanel', 'copyverCopyContestBtn']].forEach(([pid, bid]) => {
     const b = document.getElementById(bid); if (b) b.textContent = cmpContestButtonLabel(pid);
+  });
+  Object.keys(cmpPanelAudience).forEach(pid => {
+    const b = document.getElementById(cmpAudBtnId(cmpPanelAudience[pid].idx)); if (b) b.textContent = cmpContestButtonLabel(pid);
   });
   const a = cmpContestAllowance;
   const txt = a && a.limit ? `Drafts used: ${a.used} of ${a.limit} this ${a.period === 'trial' ? 'trial' : 'month'}` : '';
@@ -69537,7 +69533,9 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId, forceMode){
       ? await cmpFetchJsonWithRetry(`${base}/${encodeURIComponent(prior.interviewId)}/contest`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', timeoutMs }, 2, 700)
       : await cmpFetchJsonWithRetry(base, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sourceKey: CMP_BRAND_MESSAGING_CONTEST_SOURCE_KEY, assetTypes: cmpCampaignAssetTypes, mode: isDefaultRun ? 'default' : 'contest' }),
+          body: JSON.stringify(cmpPanelAudience[panelId]
+            ? { sourceKey: cmpAudienceContestSourceKey(cmpPanelAudience[panelId].name), audience: cmpPanelAudience[panelId].name, assetTypes: cmpCampaignAssetTypes, mode: isDefaultRun ? 'default' : 'contest' }
+            : { sourceKey: CMP_BRAND_MESSAGING_CONTEST_SOURCE_KEY, assetTypes: cmpCampaignAssetTypes, mode: isDefaultRun ? 'default' : 'contest' }),
           timeoutMs
         }, 2, 700);
     result.mode = isDefaultRun ? 'default' : 'contest';
@@ -69720,7 +69718,7 @@ function renderCmpCopyContestPanel(result, flagId, panelId){
   // whole draft and our assessment are open, and a button offers the full contest.
   if (result.mode === 'default' && visibleCandidates.length === 1){
     const c = visibleCandidates[0];
-    const btnIdFor = { cmpCopyContestPanel: 'cmpCopyContestBtn', cmpStep0SharedContestPanel: 'cmpStep0SharedContestBtn', askDockContestPanel: 'askDockContestBtn', copyverCopyContestPanel: 'copyverCopyContestBtn' }[panelId] || '';
+    const btnIdFor = { cmpCopyContestPanel: 'cmpCopyContestBtn', cmpStep0SharedContestPanel: 'cmpStep0SharedContestBtn', askDockContestPanel: 'askDockContestBtn', copyverCopyContestPanel: 'copyverCopyContestBtn' }[panelId] || (cmpPanelAudience[panelId] ? cmpAudBtnId(cmpPanelAudience[panelId].idx) : '');
     const expandLink = !c.longCopy ? cmpExpandLinkHtml(`cmpExpandBtn-${panelId}-${c.key}`, `cmpExpandCopyContestCandidate('${panelId}','${flagId}','${c.key}')`) : '';
     const hasNote = !!c.note, hasFlags = !!(c.flags && c.flags.length);
     const lbl = 'text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;';
@@ -69743,7 +69741,7 @@ function renderCmpCopyContestPanel(result, flagId, panelId){
         ${(!hasNote && !hasFlags) ? '<div class="hint">No issues flagged.</div>' : ''}
       </div>
       <div style="padding-top:12px;display:flex;justify-content:center;">
-        <button type="button" class="btn-ghost" onclick="cmpSelectCopyContestCandidate('${result.interviewId}', '${c.key}', '${flagId}')">Use this draft →</button>
+        <button type="button" class="btn-ghost" onclick="${cmpUseDraftOnclick(panelId, result.interviewId, c.key, flagId)}">Use this draft →</button>
       </div>
     </div>
     <div style="margin-top:10px;padding:12px;border:1px dashed var(--line);border-radius:8px;text-align:center;">
@@ -69795,7 +69793,7 @@ function renderCmpCopyContestPanel(result, flagId, panelId){
       </div>
       <div style="margin-top:auto;padding-top:10px;display:flex;flex-direction:column;align-items:center;gap:8px;">
         <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:center;">${cmpSections.linksHtml}</div>
-        <button type="button" class="btn-ghost" onclick="cmpSelectCopyContestCandidate('${result.interviewId}', '${c.key}', '${flagId}')">Use this draft →</button>
+        <button type="button" class="btn-ghost" onclick="${cmpUseDraftOnclick(panelId, result.interviewId, c.key, flagId)}">Use this draft →</button>
       </div>
     </div>`;
   }).join('');
