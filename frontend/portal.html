@@ -18233,6 +18233,10 @@ function channelInactiveTitle(ch){
 // back into the regular Recommended Channels row; Brand Search takes its
 // place here.
 const RECOMMENDED_CHANNELS_DEMAND_FULFILLMENT = ['Brand Search', 'Internal Email', 'Remarketing'];
+// 2026-10-18 — Brand Search and Remarketing stay out of the campaign budget process (no recommended or seeded $ line) but are offered in the
+// ad creative workflow so their site links and ads get built. Internal Email keeps its normal budget treatment.
+const BUDGET_EXCLUDED_CHANNELS = ['Brand Search', 'Remarketing'];
+const CREATIVE_ONLY_CHANNELS = ['Brand Search', 'Remarketing'];
 
 // Round 132 (2026-08-09), per campaign_audit.xlsx (Create Campaign, "Campaign
 // Channel Groups (multi-select: Print Publications, Direct Mail, Digital,
@@ -53320,7 +53324,7 @@ function cmpRecoChannelTableHtml(summary, regionFilter){
       <tbody>${cmpRecoPartnerRowsHtml(items, rowHtml)}${addRowHtml}</tbody>
     </table></div>` : emptyMessage;
   const addBtn = s.addingLine ? '' : `<div class="btn-row" style="margin-bottom:10px;"><button type="button" class="btn-ghost" onclick="cmpRecoStartAddChannel()">+ Add Channel</button></div>`;
-  return table + cmpRecoScenarioHtml(summary) + cmpStageMixCardHtml(summary) + addBtn;
+  return table + cmpRecoScenarioHtml(summary) + addBtn; // the stage-mix target table is no longer shown (2026-10-18)
 }
 // Audience mode — read-only, per wireframe spec (edit/delete/Add Channel
 // is specifically for the channel table; there's no per-audience
@@ -53576,14 +53580,14 @@ async function cmpRecoRegenerateForStageChange(campaign, oldStage, newStage){
   const lockedTotal = locked.reduce((s, e) => s + (Number(e.budget) || 0), 0);
   const remainingBudget = Math.max(0, (Number(campaign.budget) || 0) - lockedTotal);
   const lockedChannels = new Set(locked.map(e => e.channel));
-  const suggested = new Set([...computeSuggestedChannelsForCampaign(campaign), ...RECOMMENDED_CHANNELS_DEMAND_FULFILLMENT]);
+  const suggested = new Set([...computeSuggestedChannelsForCampaign(campaign), ...RECOMMENDED_CHANNELS_DEMAND_FULFILLMENT].filter(ch => !BUDGET_EXCLUDED_CHANNELS.includes(ch)));
   // Never re-suggest a channel a locked line already covers — that spend is
   // already accounted for under its own committed line.
   const suggestedNew = [...suggested].filter(ch => !lockedChannels.has(ch));
   const mix = (typeof computeRecommendedMediaMix === 'function')
     ? computeRecommendedMediaMix({ stage: newStage, segment: campaign.segment, budget: remainingBudget, channels: suggestedNew.join(', ') })
     : { channels: [] };
-  const newPaidRows = (mix.channels || []).filter(r => !r.owned);
+  const newPaidRows = (mix.channels || []).filter(r => !r.owned && !BUDGET_EXCLUDED_CHANNELS.includes(r.channel));
 
   // Draft lines are, by definition, not yet committed to anything, so this
   // is a clean replace, not a merge.
@@ -54017,12 +54021,12 @@ async function cmpGenerateAndPersistRecommendation(campaign){
       if (existingData.entries && existingData.entries.length) return false; // already has a real plan — never overwrite
     }
   } catch (e){ console.warn('cmpGenerateAndPersistRecommendation: could not check existing plan', e); return false; }
-  const suggested = new Set([...computeSuggestedChannelsForCampaign(campaign), ...RECOMMENDED_CHANNELS_DEMAND_FULFILLMENT]);
+  const suggested = new Set([...computeSuggestedChannelsForCampaign(campaign), ...RECOMMENDED_CHANNELS_DEMAND_FULFILLMENT].filter(ch => !BUDGET_EXCLUDED_CHANNELS.includes(ch)));
   if (!suggested.size) return false;
   const mix = (typeof computeRecommendedMediaMix === 'function')
     ? computeRecommendedMediaMix(Object.assign({}, campaign, { channels: [...suggested].join(', ') }))
     : { channels: [] };
-  const paidRows = (mix.channels || []).filter(r => !r.owned);
+  const paidRows = (mix.channels || []).filter(r => !r.owned && !BUDGET_EXCLUDED_CHANNELS.includes(r.channel));
   if (!paidRows.length) return false;
   let anySaved = false;
   for (const row of paidRows){
@@ -74708,7 +74712,10 @@ async function cmpLoadApprovedChannelsFromPlan(campaign){
       budget: Number(e.budget) || 0,
       product: (e.detailsJson && e.detailsJson.partnerProduct) ? String(e.detailsJson.partnerProduct) : ''
     })).filter(l => l.channel && (!anyBudget || l.budget > 0));
-    cmpApprovedChannelsFromPlan = { campaignId: campaign.id, channels: names, lines };
+    // 2026-10-18 — Brand Search and Remarketing carry no budget line, but their ads and site links are still built in Creative.
+    const namesWithCreativeOnly = cmpSortChannelsByTaxonomy([...new Set([...names, ...CREATIVE_ONLY_CHANNELS])]);
+    cmpApprovedChannelsFromPlan = { campaignId: campaign.id, channels: namesWithCreativeOnly, lines };
+    return namesWithCreativeOnly;
     return names;
   } catch (e){
     console.warn('cmpLoadApprovedChannelsFromPlan failed (grid falls back to in-memory channel sets):', e && e.message);
