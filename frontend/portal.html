@@ -848,6 +848,8 @@
   .cmp-step0-contest-chip.has-result{background:#EAF6F1;border-color:#8FCDB0;color:#1E7A45;}
   /* 2026-09-25 — Creative Asset Selection with fitted copy (see cmpAssetCopyPanelHtml) */
   .cmp-asset-row-card{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--paper-dim,#FBFBFC);margin-bottom:10px;}
+  /* 2026-10-18 (Test 4 note 3): .field caps width at 640px, which left the whole right side of the asset section empty and gave the preview no room beside the fields. */
+  #cmpCreativeAssetWrap{max-width:none;}
   .cmp-asset-copy-pending{margin-top:2px;}
   /* 2026-10-08, per Todd ("creative asset section should be full width or place the wireframe in the white space when selected"):
      on wide screens the fitted-copy block is two columns — fields left, live wireframe preview right (sticky while you edit). */
@@ -50015,7 +50017,8 @@ function cmpRenderCreativeStep1(c){
     const opened = !!cmpPanelAudience[pid];
     const badge = `<span class="badge ${applied ? 'strong' : 'weak'}">${applied ? '✓ Winner applied' : (opened ? 'Pick a draft' : 'Not run yet')}</span>`;
     const appliedHtml = applied && !opened ? `<div class="hint" style="white-space:pre-wrap;margin:6px 0 0;">${escapeHtml(applied.copy)}</div>` : '';
-    const idle = !applied && !opened ? `<div class="hint">Run this audience's contest in Step 0, above, to see its draft here.</div>` : '';
+    const runBtn = !opened ? `<div style="margin:8px 0;"><button type="button" class="btn-primary" onclick="cmpRunAudienceContest(${idx})">${applied ? '↻ Run this audience again →' : '✦ Draft copy for ' + escapeHtml(name) + ' →'}</button><span class="hint" id="cmpStep0RunStatus_${idx}_card" style="margin-left:10px;"></span></div>` : '';
+    const idle = runBtn;
     const btn = opened ? `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 0;"><button type="button" class="btn-primary" id="${cmpAudBtnId(idx)}" onclick="cmpRunCampaignCopyContest('${pid}','${cmpAudBtnId(idx)}','cmpAudFlag_${idx}')">${escapeHtml(cmpContestButtonLabel(pid))}</button></div>` : '';
     return `<div class="cmp-step1-audience-card">
       <div class="msg-card-head"><span class="msg-card-title">${escapeHtml(name)} — contest</span>${badge}</div>
