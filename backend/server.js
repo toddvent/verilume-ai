@@ -36946,6 +36946,7 @@ Submit your response via the campaign_intake_turn tool.`;
         // builders) never add a second line for a channel the plan already
         // carries; Brand Search is always-on, so the seed used to land beside
         // the AI Brain's own Brand Search line and show twice.
+        if (body && body.autoSeed && ['brand search', 'remarketing'].includes(String(body.channel || '').trim().toLowerCase())) return sendJson(res, 200, { skipped: true, reason: 'Brand Search and Remarketing are not budgeted' });
         if (body && body.autoSeed){
           const dup = db.prepare('SELECT id FROM channel_planning_details WHERE campaignId = ? AND channel = ? LIMIT 1').get(campaignId, String(body.channel || ''));
           if (dup) return sendJson(res, 200, { entryId: dup.id, deduped: true });
@@ -37215,7 +37216,7 @@ Submit your response via the campaign_intake_turn tool.`;
       // its own list here (not imported — this is the backend, portal.html
       // is the frontend) so it's obvious this must be kept in sync with
       // CHANNEL_MIX_GROUPS if that ever changes.
-      const RECO_GENERATION_CHANNELS = ['Linear TV', 'OTV', 'CTV', 'Newspapers', 'Magazines', 'Direct Mail — Prospects', 'Direct Mail — Past Guests', 'Direct Mail — Inquiries', 'Programmatic Display', 'Brand Search', 'Non-Brand Search', 'Paid Social', 'Partner Media', 'Podcasts', 'Retail Media', 'Radio', 'Out-of-Home', 'Field / ABM', 'Internal Email'];
+      const RECO_GENERATION_CHANNELS = ['Linear TV', 'OTV', 'CTV', 'Newspapers', 'Magazines', 'Direct Mail — Prospects', 'Direct Mail — Past Guests', 'Direct Mail — Inquiries', 'Programmatic Display', 'Non-Brand Search', 'Paid Social', 'Partner Media', 'Podcasts', 'Retail Media', 'Radio', 'Out-of-Home', 'Field / ABM', 'Internal Email']; // 2026-10-18 — Brand Search and Remarketing are not budgeted; they live in the creative workflow
       // Mirrors ACCOUNT_SEGMENTS (portal.html) — same vocabulary the Loop
       // Stage & Audience row's own tile picker uses, so whatever this
       // extracts lines up exactly with what a human would pick by hand.
@@ -37295,6 +37296,8 @@ VIDEO — this platform's real channel taxonomy groups Linear TV, OTV, and CTV t
 
 Extract every distinct channel/tactic this conversation named or clearly implied (including consideration-stage tactics mentioned only in general terms, like "magazines, digital and video" — split those into separate line items). For each line: give a real dollar budget (use the exact number if the conversation gave one, or compute one from a stated unit cost × quantity, otherwise make a reasonable estimate from the remaining budget and note the assumption), and identify the Lifecycle Stage that specific line serves. Every line's budget should sum to no more than the total campaign budget above. Where a line clearly maps to one of the ACCOUNT-WIDE MARKETING BUDGET categories above, weigh the real remaining headroom for that category — don't recommend a number that quietly blows through it without saying so in assumptionNote. When the conversation named a general tactic without pinning down exact channels or a split between them, use the ACCOUNT-LEVEL MEDIA MIX PLAN's percentages for that specific Lifecycle Stage as the base-case split — a Loyalty line follows the account's own Loyalty mix, a Consideration line follows its Consideration mix, never one blended account-wide average — and say so in assumptionNote; when the conversation was specific about channels or amounts, that specific instruction always wins over the account's general mix. Where HISTORICAL CAMPAIGN PERFORMANCE shows real results for a comparable channel, let that inform which channels get emphasis, and say so in assumptionNote when it does. Also extract the campaign-level audienceSegments per that field's own instructions — this is a separate, whole-campaign rollup, not one value per channel line. Set dataConfidenceNote per its own instructions.
 ${exclusionPromptLine(campaign)}
+
+NEVER include Brand Search or Remarketing as channels: they are not part of the campaign budget (their ads and site links are built in the creative workflow).
 
 Submit via the recommendation_from_intake tool.`;
       let parsed;
@@ -37388,6 +37391,10 @@ Submit via the recommendation_from_intake tool.`;
       // 2026-10-17 — lines this campaign already carries (kept, never re-added below) use up part of the
       // approved budget, so new lines are clamped to what is LEFT, and a channel that will be skipped as
       // already-present is not counted again. Previously the total across all lines could pass the budget.
+      // 2026-10-18 — Brand Search and Remarketing are not part of the campaign budget: drop them from the extracted lines, and clear any
+      // unapproved draft line a past run left behind so the plan total and the budget share are not carrying them.
+      channels = channels.filter(c => !['brand search', 'remarketing'].includes(String(c && c.channel || '').trim().toLowerCase()));
+      try { db.prepare("DELETE FROM channel_planning_details WHERE campaignId = ? AND LOWER(channel) IN ('brand search','remarketing') AND LOWER(COALESCE(status,'')) = 'draft'").run(campaignId); } catch (e){ console.warn('draft Brand Search / Remarketing cleanup skipped', e && e.message); }
       let existingLiveSum = 0; const existingKeysForClamp = new Set();
       try {
         db.prepare("SELECT channel, budget, status FROM channel_planning_details WHERE campaignId = ?").all(campaignId).forEach(r => {
