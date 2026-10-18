@@ -1929,6 +1929,7 @@
 @media (max-width:900px){.bd-w-grid{grid-template-columns:1fr}.bd-welcome{padding:20px}}
   .ttb-hero{display:flex;align-items:center;gap:28px;flex-wrap:wrap;} .ttb-clock{color:var(--ink);display:block;} .ttb-big{font-size:1.3125rem;font-weight:500;line-height:1.2;}
   #step-manageAccount.ttb-live > #kpiMetricsAdminModule{display:none;}
+  #step-analyticsSetup #mmmInputsCard, #step-analyticsSetup #utmMasterConfigCard{display:none;}
   .ttb-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-top:22px;}
   .ttb-card{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;font:inherit;color:var(--ink);background:var(--white);border:1px solid var(--line);border-radius:16px;padding:20px;cursor:pointer;min-height:210px;transition:border-color .15s ease,box-shadow .15s ease;} .ttb-card:hover{border-color:var(--ink);box-shadow:var(--shadow-sm);} .ttb-card:focus-visible{outline:2px solid var(--ink);outline-offset:2px;} .ttb-card.done{background:var(--paper-dim);}
   .ttb-card-top{display:flex;width:100%;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;} .ttb-card-state{font-size:0.75rem;font-weight:600;color:var(--muted);} .ttb-card-kicker{font-size:0.6875rem;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);} .ttb-card-name{font-size:1.3125rem;font-weight:500;line-height:1.2;} .ttb-card-desc{font-size:0.9375rem;line-height:1.45;color:var(--muted);flex:1;} .ttb-card-open{font-size:0.875rem;font-weight:600;margin-top:8px;} .ttb-back{margin-bottom:14px;}
@@ -2922,9 +2923,9 @@
      stack-the-panel-below-the-content behavior at 1000px unchanged. */
   .cmp-creative-mobile-ai-bar{display:none;}
   @media (max-width:600px){
-    #cmpCreativePanel .cmp-pitch-body, #cmpTraffickingPanel .cmp-pitch-body, #cmpAnalysisPanel .cmp-pitch-body, #cmpCxVisionPanel .cmp-pitch-body{grid-template-columns:1fr;}
-    #cmpCreativePanel .cmp-workspace-collab, #cmpTraffickingPanel .cmp-workspace-collab, #cmpAnalysisPanel .cmp-workspace-collab, #cmpCxVisionPanel .cmp-workspace-collab{display:none;}
-    #cmpCreativePanel.mobile-collab-open .cmp-workspace-collab, #cmpTraffickingPanel.mobile-collab-open .cmp-workspace-collab, #cmpAnalysisPanel.mobile-collab-open .cmp-workspace-collab, #cmpCxVisionPanel.mobile-collab-open .cmp-workspace-collab{display:flex;position:fixed;left:0;right:0;bottom:52px;top:auto;max-height:60vh;width:auto;border-top:1px solid var(--line);border-radius:14px 14px 0 0;box-shadow:0 -12px 30px -10px rgba(15,23,42,0.35);z-index:2;}
+    #cmpCreativePanel .cmp-pitch-body, #cmpTraffickingPanel .cmp-pitch-body, #cmpAnalysisPanel .cmp-pitch-body, #cmpApprovalPanel .cmp-pitch-body, #cmpCxVisionPanel .cmp-pitch-body{grid-template-columns:1fr;}
+    #cmpCreativePanel .cmp-workspace-collab, #cmpTraffickingPanel .cmp-workspace-collab, #cmpAnalysisPanel .cmp-workspace-collab, #cmpApprovalPanel .cmp-workspace-collab, #cmpCxVisionPanel .cmp-workspace-collab{display:none;}
+    #cmpCreativePanel.mobile-collab-open .cmp-workspace-collab, #cmpTraffickingPanel.mobile-collab-open .cmp-workspace-collab, #cmpAnalysisPanel.mobile-collab-open .cmp-workspace-collab, #cmpApprovalPanel.mobile-collab-open .cmp-workspace-collab, #cmpCxVisionPanel.mobile-collab-open .cmp-workspace-collab{display:flex;position:fixed;left:0;right:0;bottom:52px;top:auto;max-height:60vh;width:auto;border-top:1px solid var(--line);border-radius:14px 14px 0 0;box-shadow:0 -12px 30px -10px rgba(15,23,42,0.35);z-index:2;}
     .cmp-creative-mobile-ai-bar{display:flex;align-items:center;gap:10px;flex-shrink:0;padding:12px 16px;background:var(--white);border-top:1px solid var(--line);cursor:pointer;}
     .cmp-creative-mobile-ai-avatar{width:34px;height:34px;border-radius:50%;background:#1E2761;color:#FFFFFF;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;flex-shrink:0;}
     .cmp-creative-mobile-ai-text{flex:1;font-size:0.8125rem;color:var(--muted);}
@@ -4393,6 +4394,9 @@
   body.ask-dock #cmpTraffickingCollabMount{display:none;}
   body.ask-dock #cmpTraffickingPanel .cmp-pitch-body{grid-template-columns:minmax(0,1fr);}
   body.ask-dock #cmpTraffickingPanel .cmp-pitch-left{border-right:0;padding-left:28px;padding-right:28px;padding-bottom:110px;}
+  body.ask-dock #cmpApprovalCollabMount{display:none;}
+  body.ask-dock #cmpApprovalPanel .cmp-pitch-body{grid-template-columns:minmax(0,1fr);}
+  body.ask-dock #cmpApprovalPanel .cmp-pitch-left{border-right:0;padding-left:28px;padding-right:28px;padding-bottom:110px;}
   body.ask-dock #cmpAnalysisCollabMount{display:none;}
   body.ask-dock #cmpAnalysisPanel .cmp-pitch-body{grid-template-columns:minmax(0,1fr);}
   body.ask-dock #cmpAnalysisPanel .cmp-pitch-left{border-right:0;padding-left:28px;padding-right:28px;padding-bottom:110px;}
@@ -10077,6 +10081,22 @@
       </div>
     </div>
 
+    <!-- 2026-10-18 — Final Approval workspace: a stage in the campaign flow (campaign header and breadcrumb mounted, same width as the
+         other workspaces). #cmpApprovalLeft is filled by cmpRenderFinalApprovalReview(). -->
+    <div class="cmp-pitch-overlay" id="cmpApprovalOverlay" onclick="cmpCloseApprovalWorkspace()"></div>
+    <div class="cmp-pitch-panel" id="cmpApprovalPanel">
+      <div class="cch-panel-mount" id="cmpApprovalHeaderMount"></div>
+      <div class="cmp-pitch-body">
+        <div class="cmp-pitch-left" id="cmpApprovalLeft"></div>
+        <div class="cmp-workspace-collab" id="cmpApprovalCollabMount"></div>
+      </div>
+      <div class="cmp-creative-mobile-ai-bar" id="cmpApprovalMobileAiBar" onclick="cmpToggleApprovalMobileCollab()">
+        <div class="cmp-creative-mobile-ai-avatar">AI</div>
+        <div class="cmp-creative-mobile-ai-text">AI Brain live — tap to open the Collaboration Center</div>
+        <div class="cmp-creative-mobile-ai-dot"></div>
+      </div>
+    </div>
+
     <!-- 2026-09-22 — Media + CX Vision full-screen workspace, per direct
          correction: "Selecting Media Science & CX takes users to the
          workstream cards. There is no workstream for this. It's a simple
@@ -15399,8 +15419,11 @@ const CMP_WORKSPACE_CARDS = [
     desc: "The CMO's brief recap, campaign dashboards, and AI Brain-generated messages to the Copywriter and Analytics team." },
   { key: 'creative', label: 'Creative', railKeys: ['messaging', 'copyVersions', 'creative'],
     desc: 'Creative layers, brand alignment, and asset production for the approved channel mix.' },
-  { key: 'trafficking', label: 'Trafficking', railKeys: ['qrutm', 'qa', 'trafficking'],
-    desc: 'Launch scheduling, tagging, QR/UTM, and QA rating before this campaign goes live.' },
+  { key: 'trafficking', label: 'Trafficking', railKeys: ['qrutm', 'trafficking'],
+    desc: 'Launch scheduling, tagging and QR/UTM before this campaign goes live.' },
+  // 2026-10-18 — Final Approval is its own stage after Trafficking: the analytics story, relevance score and Executive-to-Asset views.
+  { key: 'approval', label: 'Final Approval', railKeys: ['qa'],
+    desc: 'The analytics story, relevance score and Executive-to-Asset views, approved before launch.' },
   { key: 'analysis', label: 'Analysis', railKeys: ['market', 'analysis'],
     desc: "Performance read-outs and the AI Brain's learnings, feeding back into the next campaign's plan." }
 ];
@@ -15479,6 +15502,10 @@ function cmpWorkspaceCardOpen(cardKey){
     cmpOpenTraffickingWorkspace();
     return;
   }
+  if (cardKey === 'approval' && cmpRailLoadedCampaign() && typeof cmpOpenApprovalWorkspace === 'function'){
+    cmpOpenApprovalWorkspace();
+    return;
+  }
   if (cardKey === 'analysis' && cmpRailLoadedCampaign() && typeof cmpOpenAnalysisWorkspace === 'function'){
     cmpOpenAnalysisWorkspace();
     return;
@@ -15495,7 +15522,7 @@ function cmpWorkspaceCardOpen(cardKey){
 // paused, not cancelled. A built step's pill routes through the exact
 // same cmpWorkspaceCardOpen() router the Workspace Hub cards already use,
 // so this is never a second, diverging navigation path.
-const CMP_BREADCRUMB_BUILT_CARDS = new Set(['objectives', 'budget', 'cxVision', 'creative', 'trafficking', 'analysis']);
+const CMP_BREADCRUMB_BUILT_CARDS = new Set(['objectives', 'budget', 'cxVision', 'creative', 'trafficking', 'approval', 'analysis']);
 // 2026-09-24, per direct instruction ("Color code the step label to indicate
 // active status"): each non-active step now also carries a
 // status-not-started/status-in-progress/status-complete class, driven by
@@ -15526,6 +15553,7 @@ function cmpBreadcrumbGoTo(cardKey){
   if (typeof cmpCloseCreativeWorkspace === 'function') cmpCloseCreativeWorkspace();
   if (typeof cmpCloseTraffickingWorkspace === 'function') cmpCloseTraffickingWorkspace();
   if (typeof cmpCloseAnalysisWorkspace === 'function') cmpCloseAnalysisWorkspace();
+  if (typeof cmpCloseApprovalWorkspace === 'function') cmpCloseApprovalWorkspace();
   cmpWorkspaceCardOpen(cardKey);
 }
 // 2026-09-20, per Todd's direct instruction: "We moved the Ask Verilume
@@ -16667,8 +16695,8 @@ function cmpRenderCampaignHeader(campaign){
     const C = 2 * Math.PI * 29;
     circle.classList.remove('unscored');
     circle.innerHTML = `<svg viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="cchScrGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#B8760B"/><stop offset="1" stop-color="#0B6F62"/></linearGradient></defs><circle class="scr-track" cx="32" cy="32" r="29"/><circle class="scr-arc" cx="32" cy="32" r="29" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${(C * (1 - pct / 100)).toFixed(1)}"/></svg><span class="scr-num">${pct}%</span>`;
-    const bits = [`Media plan ${score.mediaPlanPct !== null ? score.mediaPlanPct + '%' : '—'} (40%)`, `Copy fit ${score.copyFitPct !== null ? score.copyFitPct + '%' : '—'} (40%)`, `Brand ${score.brandAuditPct !== null ? score.brandAuditPct + '%' : '—'} (20%)`];
-    circle.title = `Illumination score — ${bits.join(' · ')}${score.illuminationInputs < 3 ? `. Based on ${score.illuminationInputs} of 3 inputs so far.` : ''}`;
+    const bits = [`Media plan ${score.mediaPlanPct !== null ? score.mediaPlanPct + '%' : '—'} (35%)`, `Copy fit ${score.copyFitPct !== null ? score.copyFitPct + '%' : '—'} (25%)`, `Brand ${score.brandAuditPct !== null ? score.brandAuditPct + '%' : '—'} (15%)`, `Landing page vs. copy ${score.lpCopyPct !== null ? score.lpCopyPct + '%' : '—'} (25%)`];
+    circle.title = `Illumination score — ${bits.join(' · ')}${score.illuminationInputs < 4 ? `. Based on ${score.illuminationInputs} of 4 inputs so far.` : ''}`;
   } else {
     circle.classList.add('unscored');
     circle.textContent = '—';
@@ -24903,7 +24931,7 @@ function msToolsHtml(){
   const items = [
     { label: 'Measurement Coverage & Confidence', step: 'measurementCoverage' }, { label: 'Match Market Builder', step: 'marketOptimization' },
     { label: 'Website Traffic Analysis', step: 'websiteTraffic' }, { label: 'Analytics Connections', step: 'analyticsSetup' },
-    { label: 'MMM Data Inputs', step: 'analyticsSetup' }, { label: 'Master UTM Configuration', step: 'analyticsSetup' },
+    { label: 'MMM Data Inputs', step: 'mmmInputs' }, { label: 'Master UTM Configuration', step: 'utmConfig' },
     { label: 'Manual KPI & Actuals Entry', step: 'campaignMgmt' }, { label: 'Historical Campaigns & Media Plans', step: 'campaignMgmt' },
     { label: 'View My Customers', step: 'marketOptimization' }
   ];
@@ -26284,8 +26312,8 @@ const DATA_SCIENTIST_SHELL_GROUPS = [
   ]},
   { label: 'Analytics & Data Inputs', items: [
     { label: 'Analytics Connections', step: 'analyticsSetup' },
-    { label: 'MMM Data Inputs', step: 'analyticsSetup' },
-    { label: 'Master UTM Configuration', step: 'analyticsSetup' },
+    { label: 'MMM Data Inputs', step: 'mmmInputs' },
+    { label: 'Master UTM Configuration', step: 'utmConfig' },
     { label: 'Customer Sentiment Data' },
     { label: 'Manual KPI & Actuals Entry', step: 'campaignMgmt', desc: "Also where Marketing Ops' KPI-development piece landed" }
   ]},
@@ -26609,7 +26637,7 @@ function askDockScopeRender(){
   const now = askDockScopeNow();
   let c = null; try { c = cmpRailLoadedCampaign(); } catch (e){}
   let stage = ''; const ovOpen = id => { const e = document.getElementById(id); return !!(e && e.classList.contains('open')); };
-  if (ovOpen('cmpPitchPanel')) stage = 'Recommendation'; else if (ovOpen('cmpObjectivesPanel')) stage = 'Objectives'; else if (ovOpen('cmpPerfMarketingPanel')) stage = 'Performance Marketing'; else if (ovOpen('cmpCreativePanel')) stage = 'Creative'; else if (ovOpen('cmpTraffickingPanel')) stage = 'Trafficking'; else if (ovOpen('cmpAnalysisPanel')) stage = 'Analysis';
+  if (ovOpen('cmpPitchPanel')) stage = 'Recommendation'; else if (ovOpen('cmpObjectivesPanel')) stage = 'Objectives'; else if (ovOpen('cmpPerfMarketingPanel')) stage = 'Performance Marketing'; else if (ovOpen('cmpCreativePanel')) stage = 'Creative'; else if (ovOpen('cmpTraffickingPanel')) stage = 'Trafficking'; else if (ovOpen('cmpApprovalPanel')) stage = 'Final Approval'; else if (ovOpen('cmpAnalysisPanel')) stage = 'Analysis';
   if (!stage) try { const st = (typeof CMP_STAGE_RAIL !== 'undefined' && typeof cmpOpenStage !== 'undefined') ? CMP_STAGE_RAIL.find(x => x.key === cmpOpenStage) : null; stage = st ? st.label : ''; } catch (e){}
   const label = c ? ('Talking about: ' + (c.name || 'this campaign') + (stage ? ' · ' + stage : '')) : 'Planning a new campaign';
   el.innerHTML = `<div class="adbt-chips" style="margin-bottom:8px"><button type="button" class="adbt-chip${now === 'campaign' ? ' on' : ''}" aria-pressed="${now === 'campaign'}" onclick="askDockScope.pick='campaign';askDockScopeRender();askDockCampRender()">${escapeHtml(label)}</button><button type="button" class="adbt-chip${now === 'account' ? ' on' : ''}" aria-pressed="${now === 'account'}" onclick="askDockScope.pick='account';askDockScopeRender();askDockCampRender()">Account data</button></div>`;
@@ -30213,7 +30241,7 @@ const AI_PARTNER_ONBOARDING_GROUPS = [
         title: 'Master UTM Configuration',
         category: 'manual',
         source: 'Analytics Setup',
-        route: 'analyticsSetup',
+        route: 'utmConfig',
         desc: 'Up to 8 tracking elements, applied account-wide to every campaign\'s tracking links — the URL/trafficking standard this account runs on.',
         status(){
           const n = (state.utmMasterElements || []).length;
@@ -30224,7 +30252,7 @@ const AI_PARTNER_ONBOARDING_GROUPS = [
         title: 'MMM Data Inputs',
         category: 'manual',
         source: 'Analytics Setup',
-        route: 'analyticsSetup',
+        route: 'mmmInputs',
         desc: 'Historical cross-category spend, delivery, and outcomes, logged period by period — the raw material a future MMM model would train on. Entered row by row; narrates what’s here today, doesn’t claim a fitted model exists.',
         status(){
           if (aipoMmmPeriodCount == null) return { text: 'Checking…', tone: 'pending' };
@@ -30639,7 +30667,7 @@ function ttbToggle(k){ ttb.open = ttb.open === k ? '' : k; ttbRerender(); }
 //   Add Manually  -> opens inside the row. The existing entry card is moved in here rather than copied, so it works exactly as before.
 //   Partner Integration -> the one Partner Integrations page.
 // View in Portal is greyed until the item has data, and only shown as a link where the data actually appears.
-const TTB_ALL_CARDS = ['teamStepBody', 'kpiMetricsAdminModule', 'mbuWebsiteUsersCard', 'mbuMarketableSizesCard', 'mbuDmCostPerPieceCard', 'mbuDmFormatCostCard', 'mbuMagazineCostCard', 'mbuActiveChannelsCard', 'mbuChannelProductsCard', 'mpNonWorkingCard', 'lsrCard', 'mbuAnnualPlanCard', 'mbuDemandFulfillmentCard', 'mbuEngagementCard', 'mbuGa4SourcesCard', 'mbuGa4SearchCard', 'mbuLeadCountsCard', 'mbuTransactionsCard', 'mbuDigitalCard'];
+const TTB_ALL_CARDS = ['teamStepBody', 'kpiMetricsAdminModule', 'utmMasterConfigCard', 'mmmInputsCard', 'mbuWebsiteUsersCard', 'mbuMarketableSizesCard', 'mbuDmCostPerPieceCard', 'mbuDmFormatCostCard', 'mbuMagazineCostCard', 'mbuActiveChannelsCard', 'mbuChannelProductsCard', 'mpNonWorkingCard', 'lsrCard', 'mbuAnnualPlanCard', 'mbuDemandFulfillmentCard', 'mbuEngagementCard', 'mbuGa4SourcesCard', 'mbuGa4SearchCard', 'mbuLeadCountsCard', 'mbuTransactionsCard', 'mbuDigitalCard'];
 let ttbHomes = null;
 function ttbInitHomes(){
   if (ttbHomes) return; ttbHomes = {};
@@ -30679,6 +30707,8 @@ const TTB_CFG = {
   leadCounts: { upload: { direct: 'ttbUpPick', formats: '.xlsx or .csv, one row per source, lead type and form', handler: 'mbuHandleLeadFile', cards: ['mbuLeadCountsCard'], sample: { name: 'leads-by-month-sample.csv', cols: ['Year', 'Month', 'Source', 'Lead Type', 'Form Name', 'Total Leads', 'Bookings', 'Avg Days to Convert'], rows: [[2026, 'Jan', 'Website', 'High Value', 'Request a brochure', 320, 18, 41], [2026, 'Jan', 'Meta', 'Growth', 'Sweepstakes', 1150, 9, 66]] } }, manual: { cards: ['mbuLeadCountsCard'] }, integ: true, view: { tab: 'marketer', label: 'Growth & Performance' } },
   digitalPerformance: { upload: { direct: 'ttbUpPick', formats: 'The agency workbook as it comes (.xlsx or .csv). Sheets with a year and month layout are read automatically.', handler: 'dpHandleWorkbookFile', cards: ['mbuDigitalCard'], noSample: 'No sample needed. Send the workbook your agency already gives you.' }, manual: { cards: ['mbuDigitalCard'] }, integ: true, view: { tab: 'dataScientist', label: 'Media Science' } },
   kpiMetrics: { manual: { cards: ['kpiMetricsAdminModule'] }, view: { step: 'analyticsSetup', label: 'CMO View' } },
+  utmConfig: { manual: { cards: ['utmMasterConfigCard'] }, used: 'Used by every campaign tracking link and QR code' },
+  mmmInputs: { manual: { cards: ['mmmInputsCard'] }, used: 'Used by Media Science' },
   activeChannels: { manual: { cards: ['mbuActiveChannelsCard'] }, used: 'Used by Campaign Creation and the Media Plan' },
   channelProducts: { manual: { cards: ['mbuChannelProductsCard'] }, used: 'Used by Campaign Creation and the AI Brain recommendation' },
   nonWorkingMedia: { manual: { cards: ['mpNonWorkingCard'] }, used: 'Used by the Media Plan budget' },
@@ -30709,6 +30739,8 @@ const TTB_PLAN_SAMPLES = {
 TTB_PLAN_SAMPLES.activeChannels = { benefit: 'Only the channels you switch on are offered when you create a campaign and recommended on the Media Plan.', sample: `<div class="ttb-srow ttb-head"><span>Channel</span><span>Status</span></div><div class="ttb-srow"><span>Paid Search</span><span>On</span></div><div class="ttb-srow"><span>Direct Mail</span><span>On</span></div><div class="ttb-srow"><span>Radio</span><span>Off</span></div>` };
 TTB_PLAN_SAMPLES.nonWorkingMedia = { benefit: 'Keeps agency, analytics and production spend out of the channel media totals, so the plan is not overstated.', sample: `<div class="ttb-srow ttb-head"><span>Vendor</span><span>Supports</span><span>Spend</span></div><div class="ttb-srow"><span>Agency retainer</span><span>Creative</span><span>$180,000</span></div><div class="ttb-srow"><span>Analytics platform</span><span>Measurement</span><span>$42,000</span></div>` };
 Object.keys(TTB_PLAN_SAMPLES).forEach(k => { TTB_ITEMS[k] = TTB_PLAN_SAMPLES[k]; });
+TTB_ITEMS.utmConfig = { benefit: 'One tracking-link standard for every campaign, with Contact ID and GCLID added where they apply.', sample: `<div class="ttb-srow ttb-head"><span>Element</span><span>Example</span></div><div class="ttb-srow"><span>utm_source</span><span>meta</span></div><div class="ttb-srow"><span>utm_medium</span><span>paid_social</span></div>` };
+TTB_ITEMS.mmmInputs = { benefit: 'Period-by-period spend, delivery and outcomes by category, ready for media mix modeling.', sample: `<div class="ttb-srow ttb-head"><span>Category</span><span>Period</span><span>Spend</span></div><div class="ttb-srow"><span>Paid Social</span><span>2026-08</span><span>$42,000</span></div>` };
 TTB_ITEMS.brainFacts = { benefit: 'Confirmed facts about your brand, products and destinations. Answers to customer questions are written only from these.', sample: `<div class="ttb-srow ttb-head"><span>Applies to</span><span>Fact</span></div><div class="ttb-srow"><span>Brand</span><span>Every departure carries a naturalist guide.</span></div><div class="ttb-srow"><span>Faroe Islands</span><span>An archipelago of 18 islands.</span></div>` };
 TTB_ITEMS.searchKeywords = { benefit: 'The queries your customers use. Press releases and website copy are optimized toward them.', sample: `<div class="ttb-srow ttb-head"><span>Keyword</span><span>Volume</span><span>Intent</span></div><div class="ttb-srow"><span>world cruise</span><span>High</span><span>Commercial</span></div><div class="ttb-srow"><span>how long is a world cruise</span><span>Medium</span><span>Informational</span></div>` };
 function ttbMoney(n){ n = Number(n); if (!isFinite(n)) return '—'; if (n >= 1e12) return '$' + (n / 1e12).toFixed(1).replace(/\.0$/, '') + 'T'; if (n >= 1e9) return '$' + (n / 1e9).toFixed(1).replace(/\.0$/, '') + 'B'; if (n >= 1e6) return '$' + (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M'; return '$' + Math.round(n).toLocaleString(); }
@@ -31147,11 +31179,35 @@ function ttbMountOpen(){
     if (k === 'channelProducts'){ try { cpLoadChannelProducts(); } catch (e){ console.warn(e); } return; }
     if (k === 'nonWorkingMedia'){ ttbNwmMount(slot); return; }
     if (k === 'taxonomy'){ ttbTaxMount(slot); return; }
+    if (k === 'utmConfig'){ try { ttbUtmMmmInit('utm'); } catch (e){ console.warn(e); } return; }
+    if (k === 'mmmInputs'){ try { ttbUtmMmmInit('mmm'); } catch (e){ console.warn(e); } return; }
     if (k === 'searchKeywords'){ srchKwRender(); return; }
     if (k === 'brainFacts'){ gscFactsRender(); return; }
     if (TTB_UP[k] && !TTB_UP[k].legacy && ttbUp.key === k){ ttbUpRender(); }
     if (cards.length && !ttb.loaded[k]){ ttb.loaded[k] = true; try { if (cards[0] === 'kpiMetricsAdminModule') loadKpiMetricsAdminTable(); else mbuLoadReachInputs(); } catch (e){ console.warn('ttb: loading entry card failed', e); } }
   });
+}
+// 2026-10-18 — Master UTM configuration and MMM data inputs now live in Train the Brain, Your Numbers. They fill the fields and load the tables the old Analytics Integrations page used to.
+function ttbUtmMmmInit(which){
+  if (which === 'utm'){
+    renderUtmElementsChips();
+    const set = (id, fn) => { const el = document.getElementById(id); if (el) fn(el); };
+    set('utmAutoContactIdCheck', el => { el.checked = !!state.utmAutoContactIdEnabled; });
+    set('utmContactIdParam', el => { el.value = state.utmContactIdParam || 'contact_id'; });
+    set('utmContactIdToken', el => { el.value = state.utmContactIdToken || '{{contact_id}}'; });
+    set('utmAutoGclidCheck', el => { el.checked = !!state.utmAutoGclidEnabled; });
+    set('utmPlatformSelect', el => { el.value = state.utmPlatform || ''; });
+    set('utmAdobeCodeParam', el => { el.value = state.utmAdobeCodeParam || 'cid'; });
+    set('utmGa4CustomGroupCheck', el => { el.checked = !!state.utmGa4CustomGroup; });
+    onUtmPlatformChange();
+  } else {
+    loadMmmCategories().then(() => { loadMmmInputs(); loadMmmCategoryMapping(); loadMmmReadiness(); });
+  }
+}
+// Opens Train the Brain on Your Numbers with one of the two moved items open.
+function ttbOpenNumbersItem(key){
+  ttb.group = 'numbers'; ttb.open = key; ttb.manual = Object.assign(ttb.manual || {}, { [key]: true });
+  goToStep('manageAccount');
 }
 // 2026-10-11 — Non-working media inside Train the Brain: make sure the year's plan is loaded, draw the vendor table, and give it its own Save (the card normally saves with the whole plan).
 
@@ -31263,7 +31319,7 @@ const TTB_MORE = {
   team: ['Team Experiences', 'Assessment Rankings'],
   'your company': ['View My Customers'],
   'your voice': ['Press Release Development & Distribution History', 'Reputation & Media Monitoring', 'Wire Frame Development'],
-  'your numbers': ['Analytics Connections', 'Master UTM Configuration', 'MMM Data Inputs', 'Historical Campaigns & Media Plans', 'Manual KPI & Actuals Entry'],
+  'your numbers': ['Analytics Connections', 'Historical Campaigns & Media Plans', 'Manual KPI & Actuals Entry'],
   'your plan': ['Budget & Channel Management'],
   more: ['Account Settings']
 };
@@ -47044,12 +47100,12 @@ function renderUtmAutoParamsRow(){
   if (state.utmAutoContactIdEnabled){
     html += `<label class="radio-row" style="margin-bottom:6px;"><input type="checkbox" id="utmLinkContactIdCheck"${ctx.emailSuggested ? ' checked' : ''}> Insert 1st-party Contact ID (${escapeHtml(state.utmContactIdToken)}) — for an email send</label>`;
   } else {
-    html += `<div class="hint" style="margin-bottom:6px;">Contact ID auto-insert is off — <a onclick="goToStep('analyticsSetup')" style="cursor:pointer;">turn it on in Master UTM Configuration</a> to offer it here.</div>`;
+    html += `<div class="hint" style="margin-bottom:6px;">Contact ID auto-insert is off — <a onclick="ttbOpenNumbersItem('utmConfig')" style="cursor:pointer;">turn it on in Master UTM Configuration</a> to offer it here.</div>`;
   }
   if (state.utmAutoGclidEnabled){
     html += `<label class="radio-row"><input type="checkbox" id="utmLinkGclidCheck"${ctx.googleSuggested ? ' checked' : ''}> Insert Google Click ID (gclid={gclid}) — for a Google Ads campaign</label>`;
   } else {
-    html += `<div class="hint">GCLID auto-insert is off — <a onclick="goToStep('analyticsSetup')" style="cursor:pointer;">turn it on in Master UTM Configuration</a> to offer it here.</div>`;
+    html += `<div class="hint">GCLID auto-insert is off — <a onclick="ttbOpenNumbersItem('utmConfig')" style="cursor:pointer;">turn it on in Master UTM Configuration</a> to offer it here.</div>`;
   }
   row.innerHTML = html;
 }
@@ -47295,7 +47351,7 @@ function buildUtmLink(){
   }
   const elements = state.utmMasterElements || [];
   if (!elements.length){
-    resultEl.innerHTML = `<p class="hint">No Master UTM Configuration set yet — <a onclick="goToStep('analyticsSetup')" style="cursor:pointer;">choose up to 8 elements</a> in Analytics Integrations first.</p>`;
+    resultEl.innerHTML = `<p class="hint">No Master UTM Configuration set yet — <a onclick="ttbOpenNumbersItem('utmConfig')" style="cursor:pointer;">choose up to 8 elements</a> in Train the Brain, Your Numbers, first.</p>`;
     return;
   }
   const jobId = document.getElementById('utmBuilderCreativeJob').value;
@@ -50430,7 +50486,7 @@ async function cmpTraffickingBuildCampaignLinks(){
   }
   const elements = state.utmMasterElements || [];
   if (!elements.length){
-    resultEl.innerHTML = `<p class="hint">No Master UTM Configuration set yet — <a onclick="goToStep('analyticsSetup')" style="cursor:pointer;">choose up to 8 elements</a> in Analytics Integrations first.</p>`;
+    resultEl.innerHTML = `<p class="hint">No Master UTM Configuration set yet — <a onclick="ttbOpenNumbersItem('utmConfig')" style="cursor:pointer;">choose up to 8 elements</a> in Train the Brain, Your Numbers, first.</p>`;
     return;
   }
   // 2026-09-28 fix — real creative jobs (GET .../creative-jobs), same
@@ -51550,7 +51606,8 @@ const CMP_WORKSPACE_PANEL_CLOSERS = {
   cmpCxVisionPanel: () => cmpCloseCxVisionWorkspace(),
   cmpCreativePanel: () => cmpCloseCreativeWorkspace(),
   cmpTraffickingPanel: () => cmpCloseTraffickingWorkspace(),
-  cmpAnalysisPanel: () => cmpCloseAnalysisWorkspace()
+  cmpAnalysisPanel: () => cmpCloseAnalysisWorkspace(),
+  cmpApprovalPanel: () => cmpCloseApprovalWorkspace()
 };
 function cmpSyncUtilityNavBack(){
   const link = document.getElementById('utilNavBackToDash');
@@ -54943,6 +55000,8 @@ document.addEventListener('keydown', e => {
     if (traffickingPanel && traffickingPanel.classList.contains('open')) cmpCloseTraffickingWorkspace();
     const analysisPanel = document.getElementById('cmpAnalysisPanel');
     if (analysisPanel && analysisPanel.classList.contains('open')) cmpCloseAnalysisWorkspace();
+    const approvalPanel = document.getElementById('cmpApprovalPanel');
+    if (approvalPanel && approvalPanel.classList.contains('open')) cmpCloseApprovalWorkspace();
   }
 });
 
@@ -55568,17 +55627,18 @@ function renderFaqN(){
   const c = ((typeof cmpRailLoadedCampaign === 'function') ? cmpRailLoadedCampaign() : null)
     || ((typeof currentCampaignId !== 'undefined') ? findCampaign(currentCampaignId) : null);
   if (!c){
-    el.textContent = 'Once a campaign is loaded, this explains the Illumination score in its header: media plan alignment (40%), copy alignment with the media (40%) and brand (20%).';
+    el.textContent = 'Once a campaign is loaded, this explains the Illumination score in its header: media plan alignment (35%), copy contest fit (25%), brand (15%) and landing page against the ad copy (25%).';
     return;
   }
   const score = computeCampaignRelevanceScore(c);
   const ma = score.mediaAlignment;
   const parts = [
-    `Media plan alignment (40%): ${score.mediaPlanPct !== null ? score.mediaPlanPct + '%' : 'not scored yet' + (ma && ma.reason ? ' (' + ma.reason + ')' : '')}`,
-    `Copy alignment with the media (40%): ${score.copyFitPct !== null ? score.copyFitPct + '%' : 'not scored yet'}`,
-    `Brand (20%): ${score.brandAuditPct !== null ? score.brandAuditPct + '%' : 'not scored yet'}`
+    `Media plan alignment (35%): ${score.mediaPlanPct !== null ? score.mediaPlanPct + '%' : 'not scored yet' + (ma && ma.reason ? ' (' + ma.reason + ')' : '')}`,
+    `Copy contest fit (25%): ${score.copyFitPct !== null ? score.copyFitPct + '%' : 'not scored yet'}`,
+    `Brand (15%): ${score.brandAuditPct !== null ? score.brandAuditPct + '%' : 'not scored yet'}`,
+    `Landing page against the ad copy (25%): ${score.lpCopyPct !== null ? score.lpCopyPct + '%' : 'not scored yet'}`
   ];
-  el.textContent = `This campaign's Illumination score is ${score.overall !== null ? score.overall + '%' : 'not scored yet'}. It asks three things. Will the media plan reach this campaign's share of the annual KPI target, compared with the year's other campaigns, inside its in-market dates (or those dates plus the analytics window when the KPI is transactions, ROAS or CAC)? Does the copy line up with the media? Does the copy hold to the brand voice and exclusions? Right now: ${parts.join('; ')}.${score.illuminationInputs && score.illuminationInputs < 3 ? ` Based on ${score.illuminationInputs} of 3 inputs so far.` : ''} See the full breakdown in this campaign's Illumination Score panel.`;
+  el.textContent = `This campaign's Illumination score is ${score.overall !== null ? score.overall + '%' : 'not scored yet'}. It asks four things. Will the media plan reach this campaign's share of the annual KPI target, compared with the year's other campaigns, inside its in-market dates (or those dates plus the analytics window when the KPI is transactions, ROAS or CAC)? Does the copy line up with the media? Does the copy hold to the brand voice and exclusions? Does the landing page deliver what the ads promise? Right now: ${parts.join('; ')}.${score.illuminationInputs && score.illuminationInputs < 4 ? ` Based on ${score.illuminationInputs} of 4 inputs so far.` : ''} See the full breakdown in this campaign's Illumination Score panel.`;
 }
 
 // 2026-08-22 — Draft Scoring's own drawer topic. Reads lastDraftScoreCache
@@ -57819,55 +57879,12 @@ async function cmpFinalApprovalLoadJobs(c){
   if (cmpFinalApprovalOpen) cmpRenderFinalApprovalReview();
 }
 
-function cmpOpenFinalApprovalReview(){
-  cmpFinalApprovalOpen = true;
-  cmpFinalApprovalExpandedRowIdx = null;
-  cmpRenderFinalApprovalReview();
-  cmpFinalApprovalLoadJobs(findCampaign(currentCampaignId));
-}
-function cmpCloseFinalApprovalReview(){
-  cmpFinalApprovalOpen = false;
-  const el = document.getElementById('cmpFinalApprovalOverlay');
-  if (el) el.remove();
-  // Hand the Collaboration Center back to the Workspace Hub if the AI Brain
-  // popup (point c) was left open when this closed.
-  if (cmpFinalApprovalAiBrainOpen){
-    cmpFinalApprovalAiBrainOpen = false;
-    cmpCollabMountId = 'cmpWorkspaceCollab';
-  }
-  // 2026-09-28 — this overlay can now be opened straight from the modern
-  // Trafficking workspace (cmpRenderTraffickingQa()'s "Open Final Approval
-  // review →" button), not just the legacy accordion page. Closing it after
-  // approving one or both sections in there used to leave that workspace's
-  // own QA card and status badge showing whatever they said before the
-  // overlay opened — these calls are no-ops (both early-return on a missing
-  // element) when the Trafficking workspace isn't the one open.
-  const campaign = (typeof cmpRailLoadedCampaign === 'function') ? cmpRailLoadedCampaign() : null;
-  if (campaign){
-    if (typeof cmpRenderTraffickingQa === 'function') cmpRenderTraffickingQa(campaign);
-    if (typeof cmpRenderTraffickingWorkspaceStatusBadge === 'function') cmpRenderTraffickingWorkspaceStatusBadge(campaign);
-    if (typeof cmpRenderCollabCenter === 'function') cmpRenderCollabCenter(campaign);
-  }
-  // Same staleness fix for the Workspace Hub's own downstream-stages
-  // accordion (renderCmpDownstreamStages()'s qaBody) — a no-op when that
-  // accordion isn't the one currently mounted.
-  if (typeof renderCmpDownstreamStages === 'function') renderCmpDownstreamStages();
-}
-
 // Point (c) — toggles the AI Brain (Collaboration Center) open as a small
 // floating popup inside this overlay, reusing the same mount-swap pattern
 // as every other popup-style opening of this component in this file
 // (cmpCollabMountId points at whichever DOM id should render it; see
 // cmpOpenObjectivesIntake()/cmpCloseObjectivesIntake() for the established
 // precedent this follows).
-function cmpToggleFinalApprovalAiBrain(){
-  cmpFinalApprovalAiBrainOpen = !cmpFinalApprovalAiBrainOpen;
-  cmpRenderFinalApprovalReview();
-  cmpCollabMountId = cmpFinalApprovalAiBrainOpen ? 'cmpFinalApprovalCollabMount' : 'cmpWorkspaceCollab';
-  const campaign = findCampaign(currentCampaignId);
-  if (campaign) cmpRenderCollabCenter(campaign);
-}
-
 // Point (d)(1) — expands/collapses one approved-asset row's full-row-width
 // copy + wireframe panel. Only one row open at a time, matching the
 // existing Creative Asset Copy grid's own single-open-panel convention.
@@ -57914,146 +57931,391 @@ function cmpFinalApprovalDrawWireframe(a, fields, wrapId){
   wrap.querySelectorAll('.wireframe-enterprise-lock, .wireframe-motion-controls .btn-ghost:not(:first-child)').forEach(n => { n.style.display = 'none'; });
 }
 
+// ============================================================
+// 2026-10-18 — Final Approval as a campaign stage (was a full-screen overlay). It opens inside the campaign frame with the campaign
+// header and breadcrumb, at the same working width as Creative, Trafficking and Analysis. The page leads with the analytics story,
+// then the relevance score, then one card per view from Executive down to Asset.
+// ============================================================
+let cmpApprovalData = null;
+function cmpOpenFinalApprovalReview(){ cmpBreadcrumbGoTo('approval'); }
+function cmpOpenApprovalWorkspace(){
+  const campaign = cmpRailLoadedCampaign();
+  const overlay = document.getElementById('cmpApprovalOverlay');
+  const panel = document.getElementById('cmpApprovalPanel');
+  if (!campaign || !overlay || !panel) return;
+  overlay.classList.add('open');
+  panel.classList.add('open');
+  panel.classList.remove('mobile-collab-open');
+  document.body.style.overflow = 'hidden';
+  cmpSyncUtilityNavBack();
+  cmpMountCampaignHeaderInto('cmpApprovalHeaderMount');
+  const breadcrumb = document.getElementById('cmpCampaignHeaderBreadcrumb');
+  if (breadcrumb) breadcrumb.innerHTML = cmpRenderWorkspaceBreadcrumb('approval');
+  cmpCollabMountId = 'cmpApprovalCollabMount';
+  ['cmpWorkspaceCollab', 'cmpObjectivesCollabMount', 'cmpPitchCollabMount', 'cmpPerfMarketingCollabMount', 'cmpCreativeCollabMount', 'cmpCxVisionCollabMount', 'cmpTraffickingCollabMount', 'cmpAnalysisCollabMount'].forEach(id => {
+    const m = document.getElementById(id); if (m) m.innerHTML = '';
+  });
+  cmpRenderCollabCenter(campaign);
+  cmpFinalApprovalOpen = true;
+  cmpFinalApprovalExpandedRowIdx = null;
+  cmpRenderFinalApprovalReview();
+  cmpFinalApprovalLoadJobs(campaign);
+  cmpApprovalLoad(campaign);
+  cmpApprovalEnsureLandingAudit(campaign);
+}
+function cmpCloseApprovalWorkspace(){
+  const overlay = document.getElementById('cmpApprovalOverlay');
+  const panel = document.getElementById('cmpApprovalPanel');
+  const wasOpen = !!(panel && panel.classList.contains('open'));
+  cmpFinalApprovalOpen = false;
+  if (overlay) overlay.classList.remove('open');
+  if (panel){ panel.classList.remove('open'); panel.classList.remove('mobile-collab-open'); }
+  if (!wasOpen) return;
+  document.body.style.overflow = '';
+  cmpSyncUtilityNavBack();
+  cmpCollabMountId = 'cmpWorkspaceCollab';
+  const mount = document.getElementById('cmpApprovalCollabMount');
+  if (mount) mount.innerHTML = '';
+  const campaign = cmpRailLoadedCampaign();
+  if (campaign){
+    if (typeof cmpRenderTraffickingQa === 'function') cmpRenderTraffickingQa(campaign);
+    if (typeof cmpRenderTraffickingWorkspaceStatusBadge === 'function') cmpRenderTraffickingWorkspaceStatusBadge(campaign);
+    cmpRenderCollabCenter(campaign);
+  }
+  cmpMountCampaignHeaderInto('cmpHubHeaderMount');
+  if (campaign) renderCmpWorkspaceHub(campaign);
+  if (typeof renderCmpDownstreamStages === 'function') renderCmpDownstreamStages();
+}
+function cmpCloseFinalApprovalReview(){ cmpCloseApprovalWorkspace(); }
+function cmpToggleFinalApprovalAiBrain(){ /* the Collaboration Center now lives in the page itself */ }
+function cmpToggleApprovalMobileCollab(){ const p = document.getElementById('cmpApprovalPanel'); if (p) p.classList.toggle('mobile-collab-open'); }
+
+// A first look at the landing page against the copy, so the score has its fourth input without anyone remembering to run the audit.
+async function cmpApprovalEnsureLandingAudit(c){
+  if (!c || c.localOnly || dataSourceLabel !== 'backend' || !c.campaignUrl || c._lpCopyAuditTried) return;
+  let a = c._landingPageAudit || null;
+  if (!a && c.landingPageAuditJson){ try { a = JSON.parse(c.landingPageAuditJson); } catch (e){ a = null; } }
+  const hasCopy = Array.isArray(c.approvedCreativeAssets) ? c.approvedCreativeAssets.length > 0 : !!c.approvedCreativeAssetsJson;
+  if (!hasCopy) return;
+  if (a && a.fetchOk && a.relevance && a.relevance.copyMatch && a.relevance.copyMatch.score !== null) return;
+  c._lpCopyAuditTried = true;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}/landing-page-audit`, { method: 'POST' });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    c._landingPageAudit = data; c.landingPageAuditJson = JSON.stringify(data); c.landingPageAuditAt = data.runAt;
+    if (cmpFinalApprovalOpen) cmpRenderFinalApprovalReview();
+    try { cmpRenderCampaignHeader(c); } catch (e){}
+  } catch (e){ console.warn('cmpApprovalEnsureLandingAudit failed', e); }
+}
+
+const CMP_APPROVAL_METRICS = [
+  { key: 'impressions', label: 'Impressions', dir: 0, fmt: v => Math.round(v).toLocaleString() },
+  { key: 'cpm', label: 'CPM', hint: 'Cost per thousand impressions', dir: -1, fmt: v => '$' + v.toFixed(2) },
+  { key: 'cpv', label: 'CPV', hint: 'Cost per website visitor', dir: -1, fmt: v => '$' + v.toFixed(2) },
+  { key: 'cpe', label: 'CPE', hint: 'Cost per engaged visitor', dir: -1, fmt: v => '$' + v.toFixed(2) },
+  { key: 'cpl', label: 'CPL', hint: 'Cost per lead', dir: -1, fmt: v => '$' + v.toFixed(2) },
+  { key: 'cac', label: 'CAC', hint: 'Cost per acquisition', dir: -1, fmt: v => '$' + Math.round(v).toLocaleString() },
+  { key: 'roas', label: 'ROAS', hint: 'Revenue per dollar of media', dir: 1, fmt: v => v.toFixed(2) + 'x' }
+];
+function cmpApprovalSplit(v){ return String(v || '').split(',').map(x => x.trim()).filter(Boolean); }
+function cmpApprovalDiv(a, b){ return (typeof a === 'number' && typeof b === 'number' && isFinite(a) && isFinite(b) && b > 0) ? a / b : null; }
+function cmpApprovalMetrics(m, rate){
+  const spend = m.spend, imps = m.impressions, users = m.websiteUsers;
+  const rev = (m.actual && m.actual.revenue != null) ? m.actual.revenue : m.grossRevenue;
+  const cpm = cmpApprovalDiv(spend, imps);
+  return {
+    impressions: (typeof imps === 'number' && imps > 0) ? imps : null,
+    cpm: cpm !== null ? cpm * 1000 : null,
+    cpv: cmpApprovalDiv(spend, users),
+    cpe: (typeof rate === 'number' && rate > 0 && typeof users === 'number') ? cmpApprovalDiv(spend, users * rate) : null,
+    cpl: cmpApprovalDiv(spend, m.leads),
+    cac: cmpApprovalDiv(spend, m.transactions),
+    roas: cmpApprovalDiv(rev, spend),
+    spend, leads: m.leads, transactions: m.transactions, isActual: !!(m.spendIsActual || m.impsIsActual)
+  };
+}
+function cmpApprovalClientMetrics(t, rate){
+  const spend = t.workingMedia, cpm = cmpApprovalDiv(spend, t.impressions);
+  return {
+    impressions: t.impressions > 0 ? t.impressions : null,
+    cpm: cpm !== null ? cpm * 1000 : null,
+    cpv: cmpApprovalDiv(spend, t.websiteUsers),
+    cpe: (typeof rate === 'number' && rate > 0) ? cmpApprovalDiv(spend, t.websiteUsers * rate) : null,
+    cpl: cmpApprovalDiv(spend, t.valueLeads),
+    cac: cmpApprovalDiv(spend, t.bookings),
+    roas: cmpApprovalDiv(t.grossRevenue, spend)
+  };
+}
+function cmpApprovalMedian(arr){ const v = arr.filter(x => typeof x === 'number' && isFinite(x)).sort((a, b) => a - b); if (!v.length) return null; return v.length % 2 ? v[(v.length - 1) / 2] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2; }
+async function cmpApprovalLoadLines(c){
+  if (dataSourceLabel !== 'backend' || c.localOnly) return [];
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}/pitch-summary`);
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    const lines = data.lineItems || [];
+    const approved = lines.filter(l => l.status === 'approved');
+    return approved.length ? approved : lines;
+  } catch (e){ return []; }
+}
+async function cmpApprovalLoad(c){
+  if (!c) return;
+  if (cmpApprovalData && cmpApprovalData.campaignId === c.id && cmpApprovalData.loading) return;
+  cmpApprovalData = { campaignId: c.id, loading: true };
+  try {
+    cmpInvalidateApprovedPlan(c.id);
+    const ctx = await cmpLoadCampaignSummaryContext();
+    const plan = await cmpLoadApprovedPlanTotals(c);
+    const m = cmpCampaignSummaryModel(c, ctx, plan);
+    const rate = m.engagement && typeof m.engagement.engagementRate === 'number' ? m.engagement.engagementRate : null;
+    const mine = cmpApprovalMetrics(m, rate);
+    const peerCs = (state.campaigns || []).filter(x => x && x.id !== c.id && !x.isAdHoc && !x.cancelled && x.startDate && c.stage && x.stage === c.stage).slice(0, 30);
+    const peerPlans = await Promise.all(peerCs.map(x => cmpLoadApprovedPlanTotals(x)));
+    const peerMets = peerCs.map((x, i) => cmpApprovalMetrics(cmpCampaignSummaryModel(x, ctx, peerPlans[i]), rate));
+    const med = {}, cnt = {};
+    CMP_APPROVAL_METRICS.forEach(k => { const vals = peerMets.map(p => p[k.key]).filter(v => typeof v === 'number'); med[k.key] = cmpApprovalMedian(vals); cnt[k.key] = vals.length; });
+    const client = m.annualTarget ? cmpApprovalClientMetrics(m.annualTarget, rate) : null;
+    const lines = await cmpApprovalLoadLines(c);
+    cmpApprovalData = { campaignId: c.id, loading: false, ctx, m, mine, peers: { n: peerCs.length, med, cnt }, client, lines, year: m.year };
+  } catch (e){
+    console.warn('cmpApprovalLoad failed', e);
+    cmpApprovalData = { campaignId: c.id, loading: false, error: true };
+  }
+  if (cmpFinalApprovalOpen) cmpRenderFinalApprovalReview();
+}
+// Product-group results logged for this campaign's in-market months (transactions only: lead counts are not split by product group yet).
+function cmpApprovalGroupActuals(c, d, groups){
+  const out = {};
+  const ctx = d && d.ctx;
+  if (!ctx || !Array.isArray(ctx.transactionRows) || !c.startDate) return out;
+  const start = new Date(c.startDate), endRaw = c.endDate ? new Date(c.endDate) : new Date(), end = endRaw > new Date() ? new Date() : endRaw;
+  const startMonth = new Date(start.getFullYear(), start.getMonth(), 1);
+  const rows = ctx.transactionRows.filter(r => { const dd = new Date(r.year, r.month - 1, 1), de = new Date(r.year, r.month, 0); return de >= startMonth && dd <= end; });
+  groups.forEach(g => {
+    const mine = rows.filter(r => String(r.productGroup || '').trim().toLowerCase() === g.toLowerCase());
+    if (!mine.length) return;
+    out[g] = mine.reduce((a, r) => a + ((r.source === 'guest_bookings' && r.attributableTransactions != null) ? Number(r.attributableTransactions) : (Number(r.transactions) || 0)), 0);
+  });
+  return out;
+}
+function cmpApprovalBriefAbstract(c){
+  const raw = String(c.cmoAnalyticsBrief || '').replace(/\r/g, '');
+  if (!raw.trim()) return '';
+  const paras = raw.split(/\n\s*\n/).map(p => p.replace(/^[#>\-*\s]+/gm, '').replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim()).filter(p => p.length >= 60);
+  if (!paras.length) return '';
+  let t = paras[0];
+  if (t.length > 460){ const cut = t.slice(0, 460); const i = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('; ')); t = (i > 200 ? cut.slice(0, i + 1) : cut.replace(/\s+\S*$/, '') + '…'); }
+  return t;
+}
+function cmpApprovalStatusBadge(approved){ return approved ? `<span class="wf-badge-ok">✓ Approved</span>` : `<span class="wf-badge-warn">Requested Changes</span>`; }
+function cmpApprovalFmtVal(k, v){ return (typeof v === 'number' && isFinite(v)) ? k.fmt(v) : '<span class="hint">—</span>'; }
+function cmpApprovalDelta(k, mine, ref){
+  if (typeof mine !== 'number' || typeof ref !== 'number' || !(ref > 0)) return '<span class="hint">—</span>';
+  const pct = Math.round(100 * (mine - ref) / ref);
+  if (pct === 0) return '<span class="hint">in line</span>';
+  const txt = `${Math.abs(pct)}% ${pct > 0 ? 'higher' : 'lower'}`;
+  if (!k.dir) return `<span class="hint">${txt}</span>`;
+  const good = (pct > 0) === (k.dir > 0);
+  return `<span class="${good ? 'wf-badge-ok' : 'wf-badge-warn'}">${txt}</span>`;
+}
+function cmpApprovalStoryHtml(c, d, rows){
+  const pgs = cmpApprovalSplit(c.productGroups), cgs = cmpApprovalSplit(c.creativeFocusGroups);
+  const kpi = c.primaryKpi || 'the primary KPI';
+  const goal = c.kpiGoal ? Number(c.kpiGoal) : null;
+  const list = a => a.length <= 1 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
+  const $ = v => '$' + (v >= 100 ? Math.round(v).toLocaleString() : v.toFixed(2));
+  const abstract = cmpApprovalBriefAbstract(c);
+  const foundation = `${escapeHtml(kpi)}${goal ? ` (target ${goal.toLocaleString()})` : ''} at the ${escapeHtml(c.stage || 'current')} stage` + (pgs.length ? `, promoting ${escapeHtml(list(pgs))}` : '') + (cgs.length ? ` through ${escapeHtml(list(cgs))} creative` : '') + '.';
+  const parts = [];
+  parts.push(`<p style="margin:0 0 6px;"><strong>The foundation.</strong> ${abstract ? escapeHtml(abstract) + ' ' : ''}<span class="hint">${foundation}</span></p>${abstract ? '' : `<p class="hint" style="margin:0 0 12px;">No Campaign Analytics Brief has been written yet. <a class="flink" onclick="cmpBreadcrumbGoTo('cxVision')">Open Media + CX Vision</a> to generate it and this story will lead with it.</p>`}`);
+  if (!d || d.loading){ parts.push('<p class="hint">Reading the plan, the client baseline and similar campaigns…</p>'); return parts.join(''); }
+  if (d.error){ parts.push('<p class="hint">The numbers behind the story could not load just now. Reopen this page to try again.</p>'); return parts.join(''); }
+  const me = d.mine, cl = d.client, med = d.peers.med;
+  // Incremental leads and cost per lead against the client overall.
+  let leadsP = '';
+  if (me.cpl !== null && me.leads != null){
+    const base = (cl && cl.cpl) ? me.spend / cl.cpl : null;
+    const inc = base !== null ? me.leads - base : null;
+    const vsCl = (cl && cl.cpl) ? Math.round(100 * (me.cpl - cl.cpl) / cl.cpl) : null;
+    const vsPeer = med.cpl ? Math.round(100 * (me.cpl - med.cpl) / med.cpl) : null;
+    leadsP = `<p style="margin:0 0 12px;"><strong>Incremental leads and cost per lead.</strong> ${me.isActual ? 'To date' : 'The plan'} puts ${$(me.spend)} to work for about ${Math.round(me.leads).toLocaleString()} leads at ${$(me.cpl)} each${goal && /lead/i.test(kpi) ? `, ${Math.round(100 * me.leads / goal)}% of the ${goal.toLocaleString()} lead target` : ''}.`
+      + (base !== null ? ` At the client's overall ${$(cl.cpl)} per lead, that spend would normally buy about ${Math.round(base).toLocaleString()}, ${inc >= 0 ? `so this campaign adds ${Math.round(inc).toLocaleString()} incremental lead${Math.round(inc) === 1 ? '' : 's'}` : `so it falls ${Math.abs(Math.round(inc)).toLocaleString()} lead${Math.abs(Math.round(inc)) === 1 ? '' : 's'} short of that baseline`} (${Math.abs(vsCl)}% ${vsCl <= 0 ? 'cheaper' : 'dearer'} per lead than the client overall).` : ' The client overall cost per lead is not loaded for this year, so the incremental read waits on the annual plan.')
+      + (vsPeer !== null ? ` Against ${d.peers.cnt.cpl} similar-stage campaign${d.peers.cnt.cpl === 1 ? '' : 's'} it is ${Math.abs(vsPeer)}% ${vsPeer <= 0 ? 'cheaper' : 'dearer'}.` : '') + '</p>';
+  } else {
+    leadsP = `<p style="margin:0 0 12px;"><strong>Incremental leads and cost per lead.</strong> <span class="hint">Cost per lead cannot be read yet. It needs a budget or approved channel plan and a website-user to lead rate; the Executive card below fills in as those arrive.</span></p>`;
+  }
+  parts.push(leadsP);
+  // Product group and creative group share of the KPI.
+  const acts = cmpApprovalGroupActuals(c, d, pgs);
+  const txnKpi = /transaction|booking|sale|purchase/i.test(String(c.primaryKpi || ''));
+  let grpBits = [];
+  if (txnKpi && goal){ pgs.forEach(g => { if (acts[g] != null) grpBits.push(`${escapeHtml(g)} ${Math.round(100 * acts[g] / goal)}%`); }); }
+  parts.push(`<p style="margin:0 0 12px;"><strong>Product group and creative group.</strong> ${pgs.length ? `The campaign promotes ${escapeHtml(list(pgs))}` : 'No product group is set on this campaign'}${cgs.length ? ` with ${escapeHtml(list(cgs))} creative` : ''}. ` + (grpBits.length ? `Share of the ${escapeHtml(kpi)} goal achieved so far: ${grpBits.join(', ')}.` : `<span class="hint">Percent of KPI achieved by group appears once results are logged by product group${txnKpi ? '' : ' (lead counts are not split by product group yet)'}.</span>`) + '</p>');
+  // What the messaging should do if it works.
+  const hl = (rows.find(r => r.wf && typeof r.wf === 'object' && r.wf.headline) || {}).wf;
+  const lead = pgs[0];
+  parts.push(`<p style="margin:0;"><strong>Where the value goes.</strong> If this lands at or under the client's cost per lead, the messaging should earn more of what it promotes: ${hl && hl.headline ? `the headline “${escapeHtml(hl.headline)}” and its offer` : 'the approved headline and offer'} become the control for the next ${lead ? escapeHtml(lead) : 'product'} push, and more budget follows ${cgs.length ? escapeHtml(list(cgs)) : 'the strongest creative group'}. If it falls short, the copy is changed before the budget is.</p>`);
+  return parts.join('');
+}
+function cmpApprovalScoreHtml(c, align){
+  const ma = align.mediaAlignment;
+  const items = [
+    { label: 'Media plan alignment', w: 35, pct: align.mediaPlanPct, note: align.mediaPlanPct !== null ? '' : ((ma && ma.reason) || 'Needs a budgeted plan, Primary KPI and dates.') },
+    { label: 'Copy contest fit', w: 25, pct: align.copyFitPct, note: 'Run the copy contest in Creative.' },
+    { label: 'Brand fit', w: 15, pct: align.brandAuditPct, note: 'Scored with the same contest drafts.' },
+    { label: 'Landing page against the ad copy', w: 25, pct: align.lpCopyPct, note: c.campaignUrl ? 'Reading the page against the approved copy…' : 'Add a Campaign URL.' }
+  ];
+  const col = p => p >= 70 ? '#0B6F62' : p >= 50 ? '#B8760B' : '#B42318';
+  const rowsHtml = items.map(i => `<div style="display:grid;grid-template-columns:minmax(150px,230px) 1fr 56px;gap:12px;align-items:center;padding:7px 0;">
+      <div>${escapeHtml(i.label)} <span class="hint">· ${i.w}%</span></div>
+      <div style="height:8px;border-radius:4px;background:var(--line);overflow:hidden;">${i.pct !== null ? `<div style="width:${Math.max(2, Math.min(100, i.pct))}%;height:100%;background:${col(i.pct)};"></div>` : ''}</div>
+      <div style="text-align:right;font-variant-numeric:tabular-nums;">${i.pct !== null ? i.pct + '%' : '<span class="hint">—</span>'}</div>
+      ${i.pct === null ? `<div class="hint" style="grid-column:1 / -1;margin-top:-4px;">${escapeHtml(i.note)}</div>` : ''}
+    </div>`).join('');
+  const n = align.illuminationInputs;
+  return `<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <h3 style="margin:0;">Relevance score</h3>
+      <div><span style="font-size:1.75rem;font-weight:600;font-variant-numeric:tabular-nums;">${align.overall !== null ? align.overall + '%' : '—'}</span> ${n < 4 ? `<span class="hint">provisional, ${n} of 4 inputs read</span>` : ''}</div>
+    </div>
+    <p class="hint" style="margin:4px 0 8px;">How well the media plan, the copy and the landing page point at the KPI. It reads quality, not how much work is finished, so an input with nothing to read yet shows a dash instead of a score.</p>
+    ${rowsHtml}`;
+}
+function cmpApprovalExecutiveHtml(d){
+  if (!d || d.loading) return '<p class="hint">Reading the plan and the client baseline…</p>';
+  if (d.error) return '<p class="hint">The comparison could not load just now.</p>';
+  const me = d.mine, cl = d.client, med = d.peers.med;
+  const rows = CMP_APPROVAL_METRICS.map(k => `<tr>
+      <td>${k.label}${k.hint ? `<div class="hint" style="margin:0;">${k.hint}</div>` : ''}</td>
+      <td>${cmpApprovalFmtVal(k, me[k.key])}</td>
+      <td>${cmpApprovalFmtVal(k, med[k.key])}${d.peers.cnt[k.key] ? `<div class="hint" style="margin:0;">${d.peers.cnt[k.key]} campaign${d.peers.cnt[k.key] === 1 ? '' : 's'}</div>` : ''}</td>
+      <td>${cmpApprovalDelta(k, me[k.key], med[k.key])}</td>
+      <td>${cl ? cmpApprovalFmtVal(k, cl[k.key]) : '<span class="hint">—</span>'}</td>
+      <td>${cl ? cmpApprovalDelta(k, me[k.key], cl[k.key]) : '<span class="hint">—</span>'}</td>
+    </tr>`).join('');
+  return `<div class="table-scroll"><table class="data-table" style="margin-bottom:8px;">
+      <thead><tr><th>Metric</th><th>${me.isActual ? 'This campaign (actual)' : 'This campaign (plan)'}</th><th>Similar stage${c_stageLabel()}</th><th>vs. similar</th><th>Client overall${d.year ? ' ' + d.year : ''}</th><th>vs. client</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    <p class="hint" style="margin:0;">Logged actuals are used where they exist, otherwise the approved plan's model. Similar stage is the median of other campaigns at the same Lifecycle-Loop stage; client overall is the annual plan. A dash means that figure is not available yet.</p>`;
+}
+function c_stageLabel(){ const c = findCampaign(currentCampaignId); return c && c.stage ? ` (${escapeHtml(c.stage)})` : ''; }
+function cmpApprovalChannelHtml(d, rows){
+  if (!d || d.loading) return '<p class="hint">Reading the channel plan…</p>';
+  const by = {};
+  (d.lines || []).forEach(l => { const k = l.channel || 'Other'; const b = by[k] || (by[k] = { spend: 0, imps: 0 }); b.spend += Number(l.budget) || 0; b.imps += Number(l.impressions) || 0; });
+  const assets = {};
+  rows.forEach(r => { assets[r.channel] = (assets[r.channel] || 0) + 1; });
+  const keys = [...new Set([...Object.keys(by), ...Object.keys(assets)])];
+  if (!keys.length) return '<p class="hint">No channel plan or approved assets yet.</p>';
+  const total = Object.values(by).reduce((a, b) => a + b.spend, 0);
+  return `<div class="table-scroll"><table class="data-table" style="margin-bottom:0;">
+    <thead><tr><th>Channel</th><th>Planned spend</th><th>Share</th><th>Impressions</th><th>CPM</th><th>Approved assets</th></tr></thead>
+    <tbody>${keys.map(k => { const b = by[k]; return `<tr><td>${escapeHtml(k)}</td><td>${b ? fmtMoney(b.spend) : '—'}</td><td>${b && total > 0 ? Math.round(100 * b.spend / total) + '%' : '—'}</td><td>${b && b.imps ? Math.round(b.imps).toLocaleString() : '—'}</td><td>${b && b.imps > 0 ? '$' + (1000 * b.spend / b.imps).toFixed(2) : '—'}</td><td>${assets[k] || 0}</td></tr>`; }).join('')}</tbody></table></div>`;
+}
+function cmpApprovalGroupHtml(c, d, kind){
+  const groups = cmpApprovalSplit(kind === 'product' ? c.productGroups : c.creativeFocusGroups);
+  if (!groups.length) return `<p class="hint">No ${kind === 'product' ? 'product group' : 'creative focus group'} is set on this campaign. Set it on Campaign Creation.</p>`;
+  const goal = c.kpiGoal ? Number(c.kpiGoal) : null;
+  const txnKpi = /transaction|booking|sale|purchase/i.test(String(c.primaryKpi || ''));
+  const acts = (kind === 'product' && d && !d.loading && !d.error) ? cmpApprovalGroupActuals(c, d, groups) : {};
+  const body = groups.map(g => {
+    const v = acts[g];
+    return `<tr><td>${escapeHtml(g)}</td><td>${v != null ? Math.round(v).toLocaleString() + ' transactions' : '<span class="hint">not logged yet</span>'}</td><td>${(v != null && txnKpi && goal) ? Math.round(100 * v / goal) + '%' : '<span class="hint">—</span>'}</td></tr>`;
+  }).join('');
+  const note = kind === 'product'
+    ? (txnKpi ? 'Share of the KPI goal comes from the monthly transactions file, by product group.' : `Lead counts are not split by product group yet, so percent of ${escapeHtml(c.primaryKpi || 'KPI')} achieved fills in once they are.`)
+    : 'Results by creative group are not captured yet. Tracking links carry the campaign ID and asset code; the split needs the creative group attached to each asset.';
+  return `<div class="table-scroll"><table class="data-table" style="margin-bottom:8px;"><thead><tr><th>${kind === 'product' ? 'Product group' : 'Creative group'}</th><th>Logged</th><th>% of ${escapeHtml(c.primaryKpi || 'KPI')} goal</th></tr></thead><tbody>${body}</tbody></table></div><p class="hint" style="margin:0;">${note}</p>`;
+}
+function cmpApprovalCard(eyebrow, title, inner, id){
+  return `<div class="module cmp-stage open"${id ? ` id="${id}"` : ''} style="overflow:visible;"><div class="module-body" style="max-height:none;overflow:visible;padding:22px 24px;">
+    <div class="section-eyebrow" style="margin-bottom:4px;">${escapeHtml(eyebrow)}</div><h3 style="margin:0 0 12px;">${escapeHtml(title)}</h3>${inner}</div></div>`;
+}
+
 function cmpRenderFinalApprovalReview(){
   if (!cmpFinalApprovalOpen) return;
   const c = findCampaign(currentCampaignId);
-  if (!c) return;
-  let overlay = document.getElementById('cmpFinalApprovalOverlay');
-  if (!overlay){
-    overlay = document.createElement('div');
-    overlay.id = 'cmpFinalApprovalOverlay';
-    overlay.className = 'copyver-review-backdrop';
-    document.body.appendChild(overlay);
-  }
+  const left = document.getElementById('cmpApprovalLeft');
+  if (!c || !left) return;
   const { rows, totalVersions, approvedVersions } = cmpCollectApprovedCopyForReview(c);
   cmpFinalApprovalRows = rows;
+  const d = (cmpApprovalData && cmpApprovalData.campaignId === c.id) ? cmpApprovalData : null;
   const angle = (typeof cmpRecommendedCtaAngle === 'function') ? cmpRecommendedCtaAngle(c.ctaOverride, c.businessInitiative, c.primaryKpi, c.stage) : null;
   const creativeApproved = !!c.creativeMessagingCmoApproved;
   const analyticsApproved = !!c.analyticsApproachCmoApproved;
   const align = computeCampaignRelevanceScore(c);
-  const pct = v => (v === null || v === undefined) ? '—' : `${v}%`;
-  // Two-state vocabulary, per direct instruction ("Campaign Statues:
-  // Requested Changes and Approved") — replaces the old three-way
-  // Awaiting review / Approved language.
-  const statusBadge = approved => approved
-    ? `<span class="wf-badge-ok">✓ Approved</span>`
-    : `<span class="wf-badge-warn">Requested Changes</span>`;
+  const mediaMix = (typeof cmpCreativeChannelsText === 'function') ? cmpCreativeChannelsText(c) : (c.channels || []).join(', ');
+  const keepScroll = left.scrollTop;
+  const keepNote = document.getElementById('cmpAnalyticsCmoNote'), keepNote2 = document.getElementById('cmpCreativeCmoNote');
+  const draftA = keepNote ? keepNote.value : null, draftC = keepNote2 ? keepNote2.value : null;
 
-  // Point (a) — Analytics Approach now reviews FIRST.
-  const analyticsSection = `
-    <div>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-        <h4 style="margin:0;">1. Analytics Approach</h4>
-        ${statusBadge(analyticsApproved)}
-      </div>
-      <p class="hint" style="margin:4px 0 12px;">Primary KPI: ${escapeHtml(c.primaryKpi || '—')}${c.kpiGoal ? ` (target ${escapeHtml(String(c.kpiGoal))})` : ''} · Lifecycle-Loop Stage: ${escapeHtml(c.stage || '—')}${analyticsApproved && c.analyticsApproachCmoApprovedAt ? ` · Approved ${escapeHtml(new Date(c.analyticsApproachCmoApprovedAt).toLocaleString())}` : ''}</p>
-      <div class="table-scroll"><table class="data-table" style="margin-bottom:12px;">
-        <thead><tr><th>Alignment component</th><th>Score</th></tr></thead>
-        <tbody>
-          <tr><td>Channel mix vs. recommended</td><td>${pct(align.channelRelevancePct)}</td></tr>
-          <tr><td>Budget logic</td><td>${pct(align.budgetRelevancePct)}</td></tr>
-          <tr><td>Landing page relevance</td><td>${pct(align.landingPageRelevancePct)}</td></tr>
-          <tr><td>Landing page performance (CTA path)</td><td>${pct(align.landingPagePerformancePct)}</td></tr>
-          <tr><td>Brand foundation</td><td>${pct(align.brandFoundationPct)}</td></tr>
-          <tr><td><b>Overall alignment</b></td><td><b>${pct(align.overall)}</b></td></tr>
-        </tbody>
-      </table></div>
-      ${analyticsApproved ? '' : `
-        <div class="btn-row" style="margin-top:4px;gap:8px;flex-wrap:wrap;">
+  const storyApproval = `
+      ${analyticsApproved ? (c.analyticsApproachCmoApprovedAt ? `<p class="hint" style="margin:12px 0 0;">Approved ${escapeHtml(new Date(c.analyticsApproachCmoApprovedAt).toLocaleString())}</p>` : '') : `
+        <div class="btn-row" style="margin-top:14px;gap:8px;flex-wrap:wrap;">
           <button type="button" class="btn-primary" onclick="cmpApproveAnalyticsApproachCmo()">Approve analytics approach →</button>
         </div>
         <div class="field" style="margin-top:10px;">
           <label>Request changes (optional note)</label>
-          <textarea id="cmpAnalyticsCmoNote" rows="2" placeholder="What needs to change before this can be approved.">${escapeHtml(c.analyticsApproachCmoNote || '')}</textarea>
+          <textarea id="cmpAnalyticsCmoNote" rows="2" placeholder="What needs to change before this can be approved.">${escapeHtml(draftA !== null ? draftA : (c.analyticsApproachCmoNote || ''))}</textarea>
         </div>
-        <div class="btn-row" style="margin-top:0;">
-          <button type="button" class="btn-ghost" onclick="cmpRequestAnalyticsApproachChanges()">Save note / request changes</button>
-        </div>`}
-      ${(!analyticsApproved && c.analyticsApproachCmoNote) ? `<p class="hint" style="margin-top:8px;color:#9A6A0E;">Last note: ${escapeHtml(c.analyticsApproachCmoNote)}</p>` : ''}
-    </div>`;
+        <div class="btn-row" style="margin-top:0;"><button type="button" class="btn-ghost" onclick="cmpRequestAnalyticsApproachChanges()">Save note / request changes</button></div>`}
+      ${(!analyticsApproved && c.analyticsApproachCmoNote) ? `<p class="hint" style="margin-top:8px;color:#9A6A0E;">Last note: ${escapeHtml(c.analyticsApproachCmoNote)}</p>` : ''}`;
+  const storyCard = `<div class="module cmp-stage open" style="overflow:visible;"><div class="module-body" style="max-height:none;overflow:visible;padding:22px 24px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
+        <div><div class="section-eyebrow" style="margin-bottom:4px;">Final Approval</div><h2 style="margin:0;">The analytics story</h2></div>${cmpApprovalStatusBadge(analyticsApproved)}
+      </div>
+      ${cmpApprovalStoryHtml(c, d, rows)}
+      <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);">${cmpApprovalScoreHtml(c, align)}</div>
+      ${storyApproval}
+    </div></div>`;
 
-  // Point (d) — Creative & Messaging is now the FINAL section, gated open
-  // only once Analytics Approach is approved (the mirror image of the old
-  // gate, which locked Analytics behind Creative). Its own "Top" recap strip
-  // is the Campaign Execution summary the spec calls for: Budget, Media Mix,
-  // Actual vs. Target KPI (Actual comes from the Analysis step's manual
-  // input, same c.actualConversions the Analysis stage itself saves — see
-  // saveAnalysisInputs() — so it's genuinely blank until that step is
-  // filled in, exactly as "filled in later after addressing analytics"
-  // describes), and a representative Headline/CTA — there's no single
-  // campaign-level headline field, so this shows the first approved row's
-  // actual headline (honest placeholder text if none exists yet) alongside
-  // the same recommended-CTA angle the old recap line showed.
-  const mediaMix = (typeof cmpCreativeChannelsText === 'function') ? cmpCreativeChannelsText(c) : (c.channels || []).join(', ');
-  const repHeadline = (rows.find(r => r.wf && typeof r.wf === 'object' && r.wf.headline) || {}).wf;
-  const creativeSection = `
-    <div style="${analyticsApproved ? '' : 'opacity:0.5;pointer-events:none;'}margin-top:20px;padding-top:20px;border-top:1px solid var(--line);">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-        <h4 style="margin:0;">2. Creative &amp; Messaging</h4>
-        ${analyticsApproved ? statusBadge(creativeApproved) : `<span class="hint">Unlocks once Analytics Approach is approved</span>`}
-      </div>
-      <div class="table-scroll" style="margin:10px 0 14px;">
-        <table class="data-table" style="margin-bottom:0;">
-          <thead><tr><th>Budget</th><th>Media Mix</th><th>Actual / Target KPI</th><th>Headline</th><th>Call-to-action</th></tr></thead>
-          <tbody><tr>
-            <td>${fmtMoney(c.budget)}</td>
-            <td>${escapeHtml(mediaMix || '—')}</td>
-            <td>${escapeHtml(c.primaryKpi || 'KPI')}: ${c.actualConversions != null ? Number(c.actualConversions).toLocaleString() : '—'} / ${c.kpiGoal ? escapeHtml(String(c.kpiGoal)) : '—'}</td>
-            <td>${repHeadline ? escapeHtml(repHeadline.headline) : '<span class="hint">—</span>'}</td>
-            <td>${angle ? `"${escapeHtml(angle.ask)}"` : '—'}</td>
-          </tr></tbody>
-        </table>
-      </div>
-      <p class="hint" style="margin:0 0 12px;">${approvedVersions} of ${totalVersions} drafted copy version${totalVersions === 1 ? '' : 's'} approved${approvedVersions < totalVersions ? ' — the rest are still in progress on the Creative Asset Copy grid.' : '.'}</p>
+  const creativeInner = `
+      <div class="table-scroll" style="margin:0 0 14px;"><table class="data-table" style="margin-bottom:0;">
+        <thead><tr><th>Budget</th><th>Media Mix</th><th>Actual / Target KPI</th><th>Headline</th><th>Call-to-action</th></tr></thead>
+        <tbody><tr>
+          <td>${fmtMoney(c.budget)}</td><td>${escapeHtml(mediaMix || '—')}</td>
+          <td>${escapeHtml(c.primaryKpi || 'KPI')}: ${c.actualConversions != null ? Number(c.actualConversions).toLocaleString() : '—'} / ${c.kpiGoal ? escapeHtml(String(c.kpiGoal)) : '—'}</td>
+          <td>${(() => { const w = (rows.find(r => r.wf && typeof r.wf === 'object' && r.wf.headline) || {}).wf; return w ? escapeHtml(w.headline) : '<span class="hint">—</span>'; })()}</td>
+          <td>${angle ? `"${escapeHtml(angle.ask)}"` : '—'}</td>
+        </tr></tbody></table></div>
+      <p class="hint" style="margin:0 0 12px;">${approvedVersions} of ${totalVersions} drafted copy version${totalVersions === 1 ? '' : 's'} approved${approvedVersions < totalVersions ? '. The rest are still in progress on the Creative Asset Copy grid.' : '.'}</p>
       ${rows.length ? `<div class="table-scroll"><table class="data-table" style="margin-bottom:12px;">
         <thead><tr><th>Job ID</th><th>Creative Asset</th><th>Format</th><th>Audience</th><th></th></tr></thead>
         <tbody>${rows.map((r, idx) => `<tr>
           <td>${r.jobId ? escapeHtml(r.jobId) : '<span class="hint">—</span>'}</td>
           <td>${escapeHtml(r.channel)}${r.partner ? ` <span class="hint">(${escapeHtml(r.partner)})</span>` : ''}</td>
-          <td>${escapeHtml(r.size || '')}</td>
-          <td>${escapeHtml(r.audience)}</td>
+          <td>${escapeHtml(r.size || '')}</td><td>${escapeHtml(r.audience)}</td>
           <td><button type="button" class="btn-ghost" onclick="cmpToggleFinalApprovalRow(${idx})">${cmpFinalApprovalExpandedRowIdx === idx ? 'Hide copy ▲' : 'View approved copy ▼'}</button></td>
-        </tr>${cmpFinalApprovalExpandedRowIdx === idx ? `<tr><td colspan="5" style="padding:0;">
-          <div style="padding:16px;background:var(--paper-dim);border-top:1px solid var(--line);">
-            <p style="margin:0 0 10px;">${escapeHtml(r.display)}</p>
-            <div id="cmpFaWf_${idx}"></div>
-          </div>
-        </td></tr>` : ''}`).join('')}</tbody>
-      </table></div>` : `<p class="lede">No approved creative copy yet — approve at least one asset on the Creative Asset Copy grid before this can be reviewed.</p>`}
+        </tr>${cmpFinalApprovalExpandedRowIdx === idx ? `<tr><td colspan="5" style="padding:0;"><div style="padding:16px;background:var(--paper-dim);border-top:1px solid var(--line);"><p style="margin:0 0 10px;">${escapeHtml(r.display)}</p><div id="cmpFaWf_${idx}"></div></div></td></tr>` : ''}`).join('')}</tbody></table></div>` : `<p class="lede">No approved creative copy yet. Approve at least one asset on the Creative Asset Copy grid before this can be reviewed.</p>`}
       ${creativeApproved ? '' : `
-        <div class="btn-row" style="margin-top:4px;gap:8px;flex-wrap:wrap;">
-          <button type="button" class="btn-primary" ${(rows.length && analyticsApproved) ? '' : 'disabled'} onclick="cmpApproveCreativeMessagingCmo()">Approve creative &amp; messaging →</button>
-        </div>
-        <div class="field" style="margin-top:10px;">
-          <label>Comments</label>
-          <textarea id="cmpCreativeCmoNote" rows="2" placeholder="Comments, or what needs to change before this can be approved.">${escapeHtml(c.creativeMessagingCmoNote || '')}</textarea>
-        </div>
-        <div class="btn-row" style="margin-top:0;">
-          <button type="button" class="btn-ghost" onclick="cmpRequestCreativeMessagingChanges()">Save comment</button>
-        </div>`}
+        <div class="btn-row" style="margin-top:4px;gap:8px;flex-wrap:wrap;"><button type="button" class="btn-primary" ${(rows.length && analyticsApproved) ? '' : 'disabled'} onclick="cmpApproveCreativeMessagingCmo()">Approve creative &amp; messaging →</button></div>
+        <div class="field" style="margin-top:10px;"><label>Comments</label>
+          <textarea id="cmpCreativeCmoNote" rows="2" placeholder="Comments, or what needs to change before this can be approved.">${escapeHtml(draftC !== null ? draftC : (c.creativeMessagingCmoNote || ''))}</textarea></div>
+        <div class="btn-row" style="margin-top:0;"><button type="button" class="btn-ghost" onclick="cmpRequestCreativeMessagingChanges()">Save comment</button></div>`}
       ${(!creativeApproved && c.creativeMessagingCmoNote) ? `<p class="hint" style="margin-top:8px;color:#9A6A0E;">Last comment: ${escapeHtml(c.creativeMessagingCmoNote)}</p>` : ''}
-      ${creativeApproved && c.creativeMessagingCmoApprovedAt ? `<p class="hint" style="margin-top:8px;">Approved ${escapeHtml(new Date(c.creativeMessagingCmoApprovedAt).toLocaleString())}</p>` : ''}
-    </div>`;
-
-  const bothApproved = creativeApproved && analyticsApproved;
-  overlay.innerHTML = `
-    <div class="copyver-review-header">
-      <div><h3>Final Approval — ${escapeHtml(c.name || c.id)}</h3><p class="hint" style="margin:2px 0 0;">Collective review of this campaign's measurement approach and approved copy — no need to open each asset individually.</p></div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <button type="button" class="btn-ghost" onclick="cmpToggleFinalApprovalAiBrain()">${cmpFinalApprovalAiBrainOpen ? '✕ Close AI Brain' : '💬 Ask AI Brain'}</button>
-        <button type="button" class="btn-ghost" onclick="cmpCloseFinalApprovalReview()">Close ✕</button>
+      ${creativeApproved && c.creativeMessagingCmoApprovedAt ? `<p class="hint" style="margin-top:8px;">Approved ${escapeHtml(new Date(c.creativeMessagingCmoApprovedAt).toLocaleString())}</p>` : ''}`;
+  const assetCard = `<div class="module cmp-stage open" style="overflow:visible;${analyticsApproved ? '' : 'opacity:0.55;'}"><div class="module-body" style="max-height:none;overflow:visible;padding:22px 24px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
+        <div><div class="section-eyebrow" style="margin-bottom:4px;">Asset view</div><h3 style="margin:0;">Creative &amp; messaging</h3></div>
+        ${analyticsApproved ? cmpApprovalStatusBadge(creativeApproved) : `<span class="hint">Unlocks once the analytics approach is approved</span>`}
       </div>
-    </div>
-    <div class="copyver-review-body">
-      ${analyticsSection}
-      ${creativeSection}
-      <div class="btn-row" style="margin-top:24px;padding-top:20px;border-top:1px solid var(--line-strong);">
+      <div style="${analyticsApproved ? '' : 'pointer-events:none;'}">${creativeInner}</div></div></div>`;
+  const bothApproved = creativeApproved && analyticsApproved;
+  left.innerHTML = `
+    ${storyCard}
+    ${cmpApprovalCard('Executive view', 'Executive summary', cmpApprovalExecutiveHtml(d))}
+    ${cmpApprovalCard('Channel view', 'Channels', cmpApprovalChannelHtml(d, rows))}
+    ${cmpApprovalCard('Product group view', 'Product groups', cmpApprovalGroupHtml(c, d, 'product'))}
+    ${cmpApprovalCard('Creative group view', 'Creative groups', cmpApprovalGroupHtml(c, d, 'creative'))}
+    ${assetCard}
+    <div class="module cmp-stage open" style="overflow:visible;"><div class="module-body" style="max-height:none;overflow:visible;padding:22px 24px;">
+      <div class="btn-row" style="margin:0;">
         <button type="button" class="btn-primary" ${bothApproved ? '' : 'disabled'} onclick="approveCampaignQa()">Mark QA &amp; Approval complete →</button>
-        ${bothApproved ? '' : `<span class="hint">Both sections above must be approved first.</span>`}
+        ${bothApproved ? '' : `<span class="hint">The analytics approach and creative &amp; messaging must both be approved first.</span>`}
       </div>
       <div id="cmpFinalApprovalSaveFlag" class="hint" style="margin-top:8px;"></div>
-    </div>
-    ${cmpFinalApprovalAiBrainOpen ? `<div class="cmp-final-approval-ai-popup"><div id="cmpFinalApprovalCollabMount"></div></div>` : ''}`;
+    </div></div>`;
+  left.scrollTop = keepScroll;
 }
 
 async function cmpPersistFinalApprovalField(c, fields, label){
@@ -62596,11 +62858,14 @@ function computeCampaignRelevanceScore(campaign){
   const dq = campaign._draftQualityScore || null;
   const copyFitPct = (dq && typeof dq.fitPct === 'number') ? dq.fitPct : null;
   const brandAuditPct = (dq && typeof dq.brandPct === 'number') ? dq.brandPct : null;
-  const illum = [[mediaPlanPct, 40], [copyFitPct, 40], [brandAuditPct, 20]].filter(x => x[0] !== null);
+  // 2026-10-18 — four inputs: media plan 35, copy contest fit 25, brand 15, landing page against the ad copy 25. Each is a quality
+  // read, never a count of finished work; an input with nothing to read yet drops out and the rest re-spread, and the score says how many are in.
+  const lpCopyPct = (richAudit && richAudit.fetchOk && richAudit.relevance && richAudit.relevance.copyMatch && typeof richAudit.relevance.copyMatch.score === 'number') ? richAudit.relevance.copyMatch.score : null;
+  const illum = [[mediaPlanPct, 35], [copyFitPct, 25], [brandAuditPct, 15], [lpCopyPct, 25]].filter(x => x[0] !== null);
   const illuminationInputs = illum.length;
   const overall = illum.length ? Math.round(illum.reduce((t, x) => t + x[0] * x[1], 0) / illum.reduce((t, x) => t + x[1], 0)) : null;
 
-  return { required, statuses, completionPct, mediaPlanPct, copyFitPct, brandAuditPct, illuminationInputs, mediaAlignment, channelRelevancePct, creativeMessagingRelevancePct, budgetRelevancePct, landingPageRelevancePct, landingPagePerformancePct, brandFoundationPct, overall, richAudit,
+  return { required, statuses, completionPct, mediaPlanPct, copyFitPct, brandAuditPct, lpCopyPct, illuminationInputs, mediaAlignment, channelRelevancePct, creativeMessagingRelevancePct, budgetRelevancePct, landingPageRelevancePct, landingPagePerformancePct, brandFoundationPct, overall, richAudit,
     // Back-compat aliases — anything still reading the pre-132cc field
     // names (functionPct/brandPct/urlPct) keeps working rather than
     // silently reading undefined. functionPct now points at completionPct
@@ -62806,9 +63071,10 @@ function renderCampaignQaPanel(){
   // channel / budget / landing-page checks stay below as reference only.
   const ma = score.mediaAlignment;
   const illumComponents = [
-    { label: 'Media plan alignment', weight: 40, pct: score.mediaPlanPct },
-    { label: 'Copy alignment with the media', weight: 40, pct: score.copyFitPct },
-    { label: 'Brand (auditor readout)', weight: 20, pct: score.brandAuditPct }
+    { label: 'Media plan alignment', weight: 35, pct: score.mediaPlanPct },
+    { label: 'Copy contest fit', weight: 25, pct: score.copyFitPct },
+    { label: 'Brand (auditor readout)', weight: 15, pct: score.brandAuditPct },
+    { label: 'Landing page against the ad copy', weight: 25, pct: score.lpCopyPct }
   ].filter(x => x.pct !== null);
   let synthesis = 'Nothing to score yet. Illumination needs a budgeted media plan with a Primary KPI and dates, then scored copy.';
   if (illumComponents.length){
@@ -62816,7 +63082,7 @@ function renderCampaignQaPanel(){
     synthesis = illumComponents.every(x => x.pct >= 70)
       ? 'Every available input is strong: the plan, the copy and the brand read are pointing the same way.'
       : `The weakest input right now is ${weakest.label} (${weakest.pct}%). That is the highest-leverage place to work.`;
-    if (score.illuminationInputs < 3) synthesis += ` Based on ${score.illuminationInputs} of 3 inputs so far; the score will move as the rest come in.`;
+    if (score.illuminationInputs < 4) synthesis += ` Based on ${score.illuminationInputs} of 4 inputs so far; the score will move as the rest come in.`;
   }
   const mediaNote = !ma ? 'checking the plan…' : (ma.reason || '');
   const mediaDetail = (ma && ma.pct !== null)
@@ -62829,11 +63095,12 @@ function renderCampaignQaPanel(){
     </div>
     <div>
       <div class="section-eyebrow" style="margin-bottom:8px;">Illumination Score${score.overall !== null ? ` — ${score.overall}%` : ''}</div>
-      <p class="hint" style="margin:0 0 10px;">How well lit this campaign is: whether the plan will reach its share of the annual target in its window (40%), whether the copy lines up with the media (40%), and whether it holds to the brand voice and exclusions (20%).</p>
-      ${scoreBar('Media plan alignment · 40%', score.mediaPlanPct, mediaNote)}
+      <p class="hint" style="margin:0 0 10px;">How well lit this campaign is: whether the plan will reach its share of the annual target in its window (35%), how the copy contest scored against the campaign (25%), whether it holds to the brand voice and exclusions (15%), and whether the landing page delivers what the ads promise (25%).</p>
+      ${scoreBar('Media plan alignment · 35%', score.mediaPlanPct, mediaNote)}
       ${mediaDetail}
-      ${scoreBar('Copy alignment with the media · 40%', score.copyFitPct, 'score a draft in Creative to add this')}
-      ${scoreBar('Brand · 20%', score.brandAuditPct, 'the auditor reads the same scored drafts')}
+      ${scoreBar('Copy contest fit · 25%', score.copyFitPct, 'run the copy contest in Creative to add this')}
+      ${scoreBar('Brand · 15%', score.brandAuditPct, 'the auditor reads the same scored drafts')}
+      ${scoreBar('Landing page against the ad copy · 25%', score.lpCopyPct, 'add a Campaign URL and run the landing page audit once copy exists')}
       <div class="section-eyebrow" style="margin:14px 0 8px;">Supporting checks <span class="hint" style="font-weight:400;text-transform:none;letter-spacing:0;">(for reference, not part of the score)</span></div>
       ${scoreBar('Channel mix vs. this campaign\'s own recommendation', score.channelRelevancePct, 'no Recommended Channels captured for this campaign')}
       ${scoreBar('Budget logic coherence', score.budgetRelevancePct, 'set a Funding source and Budget on this campaign')}
@@ -63042,6 +63309,7 @@ function renderLandingPageAuditHtml(audit){
       <div class="section-eyebrow" style="margin-bottom:6px;">Relevance — content &amp; imagery</div>
       ${scoreLine('Content relevance', audit.relevance.content)}
       ${scoreLine('Imagery relevance', audit.relevance.imagery)}
+      ${audit.relevance.copyMatch ? scoreLine('Match to the ad copy', audit.relevance.copyMatch) : ''}
     </div>
     <div style="border-top:1px solid var(--line);padding-top:10px;">
       <div class="section-eyebrow" style="margin-bottom:6px;">Performance — CTA path</div>
@@ -68147,6 +68415,7 @@ function jumpToCampaignSection(sectionId){
 
 let lastGroup = 'Brand';
 function goToStep(step, arg, arg2, arg3){
+  if (step === 'utmConfig' || step === 'mmmInputs'){ ttbOpenNumbersItem(step); return; } // moved into Train the Brain, Your Numbers
   if (typeof portalIsRecipient !== 'undefined' && portalIsRecipient && step !== 'exports') step = 'exports';
   if (step !== 'manageAccount' && typeof ttbReturnCards === 'function') ttbReturnCards(); // entry cards borrowed by Train the Brain go back to their own page
   // 2026-09-28 fix, per direct report ("Tracking Links page: I can't scroll
