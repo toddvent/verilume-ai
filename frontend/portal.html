@@ -883,13 +883,18 @@
      to reduce scrolling"): short fields sit 3–4 across on a wide card, mid-
      length ones take two columns, long body copy takes the full width, and
      repeatable lists (RSA headlines/descriptions, frames) flow in columns. */
-  .cmp-copy-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px 16px;}
-  .cmp-copy-field{min-width:0;}
+  /* 2026-10-18 (Test 4): cells in a row line up (same label height, inputs stretch to the tallest cell) and every field grows to show its full text. */
+  .cmp-copy-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px 16px;align-items:stretch;}
+  .cmp-copy-field{min-width:0;display:flex;flex-direction:column;}
+  .cmp-copy-field textarea,.cmp-copy-item textarea{flex:1 1 auto;resize:vertical;field-sizing:content;min-height:2.6em;}
+  .cmp-copy-field-head{min-height:2.4em;align-items:flex-start;}
+  .cmp-copy-field-head label{line-height:1.25;}
+  .cmp-copy-item textarea{width:100%;box-sizing:border-box;font-family:inherit;font-size:0.8125rem;line-height:1.4;padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:var(--white);}
   .cmp-copy-field-mid{grid-column:span 2;}
   .cmp-copy-field-wide,.cmp-copy-field-multi{grid-column:1 / -1;}
   .cmp-copy-items{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:4px 16px;}
   @media (max-width:640px){.cmp-copy-field-mid{grid-column:auto;}.cmp-copy-items{grid-template-columns:1fr;}}
-  .cmp-copy-field-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:3px;}
+  .cmp-copy-field-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:3px;}
   .cmp-copy-field-head label{font-size:0.75rem;font-weight:600;color:var(--ink);}
   .cmp-copy-field input[type=text],.cmp-copy-field textarea{width:100%;box-sizing:border-box;font-family:inherit;font-size:0.8125rem;line-height:1.45;padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--white);}
   .cmp-copy-count{font-size:0.6875rem;font-variant-numeric:tabular-nums;color:var(--muted);white-space:nowrap;}
@@ -69502,7 +69507,7 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId, forceMode){
   const isDefaultRun = runMode === 'default';
   const timeoutMs = isDefaultRun ? 60000 : 100000;
   cmpSunriseLoaderShow(isDefaultRun
-    ? { headline: 'Your AI copywriter', note: 'is drafting your campaign copy.', countdownSec: timeoutMs / 1000, countdownLabel: 'Time left before timeout' }
+    ? { headline: 'Working on your first draft', note: 'Your AI copywriter is writing your campaign copy.', countdownSec: timeoutMs / 1000, countdownLabel: 'Time left before timeout' }
     : { headline: CMP_CONTEST_LOADER_HEAD, note: runMode === 'extend' ? 'are adding more options to your draft.' : CMP_CONTEST_LOADER_NOTE, countdownSec: timeoutMs / 1000, countdownLabel: 'Contest running. Time left before timeout' });
   try {
     // 2026-09-23 fix, same report — switched from a single authedFetch
@@ -74534,7 +74539,7 @@ function cmpAssetCopyPanelHtml(channel, slug, i, row){
             <div class="cmp-copy-items">${arr.map((val, idx) => `
               <div class="cmp-copy-item">
                 <span class="cmp-copy-item-label">${escapeHtml(fd.itemLabel)} ${idx + 1}</span>
-                <input type="text" id="${kid}_${fd.key}_${idx}" maxlength="${fd.max + 40}" value="${escapeHtml(val || '')}" oninput="cmpAssetCopyFieldChanged(${args(fd.key, idx)}, this.value)">
+                <textarea id="${kid}_${fd.key}_${idx}" rows="${fd.max > 30 ? 2 : 1}" maxlength="${fd.max + 40}" oninput="cmpAssetCopyFieldChanged(${args(fd.key, idx)}, this.value)" onkeydown="if(event.key==='Enter')event.preventDefault()">${escapeHtml(val || '')}</textarea>
                 ${counter(val, fd.max)}
                 ${canRemove ? `<button type="button" class="cmp-copy-item-remove" title="Remove" onclick="cmpAssetCopyRemoveItem(${args(fd.key, idx)})">×</button>` : ''}
               </div>`).join('')}</div>
@@ -74549,13 +74554,18 @@ function cmpAssetCopyPanelHtml(channel, slug, i, row){
       // still saves/cascades immediately rather than waiting out the full
       // debounce window.
       const blurAttr = fd.key === 'cta' ? ` onblur="cmpAssetCopyFieldBlur(${args(fd.key, -1)})"` : '';
-      const input = fd.rows > 1
-        ? `<textarea id="${kid}_${fd.key}" rows="${fd.rows}" placeholder="${escapeHtml(fd.placeholder || '')}" oninput="cmpAssetCopyFieldChanged(${args(fd.key, -1)}, this.value)"${blurAttr}>${escapeHtml(val)}</textarea>`
+      // 2026-10-18 (Test 4): short fields used to be one-line inputs that cut text off at the box edge. Anything longer than a short label now wraps in a
+      // textarea sized to its character limit, so up to 200 characters are always fully visible; one-line fields keep Enter from adding a line break.
+      const wraps = fd.rows > 1 || fd.max > 30;
+      const rowsFor = fd.rows > 1 ? fd.rows : Math.min(8, Math.max(2, Math.ceil(fd.max / 34)));
+      const noEnter = fd.rows > 1 ? '' : ` onkeydown="if(event.key==='Enter')event.preventDefault()"`;
+      const input = wraps
+        ? `<textarea id="${kid}_${fd.key}" rows="${rowsFor}" placeholder="${escapeHtml(fd.placeholder || '')}" oninput="cmpAssetCopyFieldChanged(${args(fd.key, -1)}, this.value)"${blurAttr}${noEnter}>${escapeHtml(val)}</textarea>`
         : `<input type="text" id="${kid}_${fd.key}" placeholder="${escapeHtml(fd.placeholder || '')}" value="${escapeHtml(val)}" oninput="cmpAssetCopyFieldChanged(${args(fd.key, -1)}, this.value)"${blurAttr}>`;
       const widthClass = fd.rows >= 4 ? ' cmp-copy-field-wide' : fd.rows >= 2 ? ' cmp-copy-field-mid' : '';
       return `
         <div class="cmp-copy-field${widthClass}">
-          <div class="cmp-copy-field-head"><label>${escapeHtml(fd.label)}${fd.optional ? ' <span class="hint" style="font-weight:400;">optional</span>' : ''}</label>${counter(val, fd.max)}</div>
+          <div class="cmp-copy-field-head"><label>${escapeHtml(fd.label)}${fd.optional && !/optional/i.test(fd.label) ? ' <span class="hint" style="font-weight:400;">optional</span>' : ''}</label>${counter(val, fd.max)}</div>
           ${input}
         </div>`;
     }).join('');
