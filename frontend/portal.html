@@ -22301,7 +22301,11 @@ async function loadAccountData(){
       // every chip) now starts on DEFAULT_UTM_ELEMENTS instead of a blank
       // screen with nothing checked.
       if (record.account.utmMasterElementsJson){
-        try { state.utmMasterElements = JSON.parse(record.account.utmMasterElementsJson); }
+        try {
+          state.utmMasterElements = JSON.parse(record.account.utmMasterElementsJson);
+          // 2026-10-19 — the audience now travels in GA4's own utm_marketing_tactic, so an older saved audience element is swapped for it.
+          state.utmMasterElements = [...new Set(state.utmMasterElements.map(k => k === 'cx_audience' ? 'utm_marketing_tactic' : k))];
+        }
         catch (e){ console.warn('loadAccountData: could not parse utmMasterElementsJson', e); }
       } else {
         state.utmMasterElements = DEFAULT_UTM_ELEMENTS.slice();
@@ -46697,13 +46701,14 @@ const UTM_ELEMENT_LIBRARY = [
   { key: 'utm_id', param: 'utm_id', label: 'Campaign ID (GA4)', source: 'This campaign\'s real system ID, in the parameter GA4 reads as the campaign ID' },
   { key: 'utm_source_platform', param: 'utm_source_platform', label: 'Source platform', source: 'The ad platform, for digital vendors (e.g. "google", "facebook")' },
   { key: 'utm_content', param: 'utm_content', label: 'Creative used', source: 'The Creative Job selected below (or "campaign-level" if none)' },
-  { key: 'utm_term', param: 'utm_term', label: 'Audience / term', source: 'This campaign\'s first target audience segment' },
+  { key: 'utm_term', param: 'utm_term', label: 'Keyword (search)', source: 'The search keyword, for paid search links only' },
+  { key: 'utm_creative_format', param: 'utm_creative_format', label: 'Creative format (GA4)', source: 'The ad format (e.g. "standard-banner", "carousel", "online-video")' },
+  { key: 'utm_marketing_tactic', param: 'utm_marketing_tactic', label: 'Audience / tactic (GA4)', source: 'This campaign\'s first target audience segment, in the parameter GA4 reads as the marketing tactic' },
   { key: 'cx_campaign_id', param: 'cx_campaign_id', label: 'Campaign ID', source: 'This campaign\'s real system ID' },
   { key: 'cx_creative_id', param: 'cx_creative_id', label: 'Creative Job ID', source: 'The selected Creative Job\'s real system ID' },
   { key: 'cx_channel', param: 'cx_channel', label: 'Channel', source: 'The selected Creative Job\'s channel (or campaign\'s first channel)' },
   { key: 'cx_placement', param: 'cx_placement', label: 'Placement / spec', source: 'The selected Creative Job\'s spec summary' },
   { key: 'cx_stage', param: 'cx_stage', label: 'Media Loop stage', source: 'This campaign\'s Media Loop stage' },
-  { key: 'cx_audience', param: 'cx_audience', label: 'Audience segment', source: 'Same as Audience/term, as a labeled field' },
   { key: 'cx_flight', param: 'cx_flight', label: 'Flight date', source: 'Today\'s date, at build time' }
 ];
 const UTM_MAX_ELEMENTS = 8;
@@ -46719,7 +46724,7 @@ const UTM_MAX_ELEMENTS = 8;
 // internally. Order matters here too — it's applied via the same
 // library-order filter toggleUtmElement() uses, so this isn't read
 // directly as the query-string order.
-const DEFAULT_UTM_ELEMENTS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_id', 'utm_content', 'utm_term', 'cx_campaign_id', 'cx_creative_id'];
+const DEFAULT_UTM_ELEMENTS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_id', 'utm_content', 'utm_marketing_tactic', 'utm_creative_format', 'utm_source_platform'];
 
 function slugify(text){
   return (text || '').toString().toLowerCase().trim()
@@ -46949,20 +46954,27 @@ function utmBuildTrackedLink(opts){
   warnings.push(...res.warnings);
   const segments = String(campaign.segment || '').split(',').map(t => t.trim()).filter(Boolean);
   const campaignSlug = slugify(campaign.name || campaign.objective || '');
+  // 2026-10-19 — the Verilume campaign ID rides in utm_id AND at the end of utm_campaign ("spring-launch_<id>"), so a GA4 export that only
+  // carries the campaign name still joins back to the campaign. utm_content is "<assetCode>.<creativeGroup>.<productGroup>" ("_" = none).
+  const campaignParam = campaign.id ? `${campaignSlug || 'campaign'}_${campaign.id}` : campaignSlug;
+  const grp = opts.groups || {};
+  const contentBase = opts.assetCode || (job ? slugify(job.specSummary || job.id) : 'campaign-level');
+  const contentValue = (grp.creative || grp.product) ? `${contentBase}.${grp.creative || '_'}.${grp.product || '_'}` : contentBase;
   const values = {
     utm_source: res.source,
     utm_medium: res.medium,
-    utm_campaign: campaignSlug,
+    utm_campaign: campaignParam,
     utm_id: campaign.id ? String(campaign.id) : '',
     utm_source_platform: res.vendor && res.vendor.kind === 'digital' ? res.vendor.slug : '',
-    utm_content: opts.assetCode || (job ? slugify(job.specSummary || job.id) : 'campaign-level'),
-    utm_term: slugify(segments[0] || ''),
+    utm_content: contentValue,
+    utm_term: slugify(opts.keyword || ''),
+    utm_creative_format: slugify(opts.formatText || ''),
+    utm_marketing_tactic: slugify(segments[0] || ''),
     cx_campaign_id: campaign.id || '',
     cx_creative_id: job ? (job.jobCode || job.id) : '',
     cx_channel: opts.channelCode || slugify((job && job.channel) || opts.channelText || ''),
     cx_placement: opts.assetCode || (job ? slugify(job.specSummary || '') : ''),
     cx_stage: slugify(campaign.stage || ''),
-    cx_audience: slugify(segments[0] || ''),
     cx_flight: new Date().toISOString().slice(0, 10)
   };
   const chosen = new Set([...(opts.elements || []), ...UTM_REQUIRED_ELEMENTS]);
@@ -50416,6 +50428,33 @@ function cmpJobAssetSpecs(job){
   });
   return out;
 }
+// 2026-10-19 — the product group and creative group an ad carries. A job's own choice when it has one (and it is one of the campaign's groups);
+// otherwise the campaign's only group when it has just one; otherwise blank, and the Trafficking page asks.
+function cmpJobGroups(campaign, job){
+  const split = v => String(v || '').split(',').map(x => x.trim()).filter(Boolean);
+  const pgs = split(campaign.productGroups), cgs = split(campaign.creativeFocusGroups);
+  const pick = (val, list) => { const v = String(val || '').trim().toLowerCase(); const hit = v ? list.find(g => g.toLowerCase() === v) : null; return hit || (list.length === 1 ? list[0] : ''); };
+  return { product: pick(job.productgroup || job.productGroup, pgs), creative: pick(job.creativegroup || job.creativeGroup, cgs), pgs, cgs };
+}
+function cmpTraffickingGroupPickerHtml(job){
+  const c = cmpRailLoadedCampaign();
+  if (!c) return '';
+  const g = cmpJobGroups(c, job);
+  if (g.pgs.length < 2 && g.cgs.length < 2) return '';
+  const sel = (field, list, cur, label) => list.length < 2 ? '' : `<label style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;">${label}<select onchange="cmpJobSetGroup('${escapeHtml(job.id)}','${field}',this.value)"><option value="">Choose…</option>${list.map(x => `<option value="${escapeHtml(x)}"${x === cur ? ' selected' : ''}>${escapeHtml(x)}</option>`).join('')}</select></label>`;
+  return `<div class="hint" style="margin:0 0 6px;display:flex;flex-wrap:wrap;align-items:center;">${escapeHtml(job.channel || 'Asset')}: ${sel('productGroup', g.pgs, g.product, 'Product group')}${sel('creativeGroup', g.cgs, g.creative, 'Creative group')}</div>`;
+}
+async function cmpJobSetGroup(jobId, field, value){
+  const job = ((typeof creativeJobsCache !== 'undefined' && creativeJobsCache) || []).find(j => j.id === jobId);
+  if (!job) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: value }) });
+    if (!resp.ok) return;
+  } catch (e){ return; }
+  job[field === 'productGroup' ? 'productgroup' : 'creativegroup'] = value;
+  // The group is part of every link on this asset, so the links are rebuilt with it.
+  cmpTraffickingBuildCampaignLinks();
+}
 function cmpJobAssetLinks(job){ try { return JSON.parse(job.assetLinksJson || '{}') || {}; } catch (e){ return {}; } }
 // One link per ad unit on the given jobs. onlyMissing skips units that already have one.
 function cmpTraffickingItemsFor(campaign, baseUrl, jobs, elements, onlyMissing){
@@ -50429,9 +50468,12 @@ function cmpTraffickingItemsFor(campaign, baseUrl, jobs, elements, onlyMissing){
       const channelText = job.channel || campaignChannelText;
       const pre = utmResolveSourceMedium(pseudo, channelText, '');
       const sug = utmAutoInsertSuggestions(pre.vendor, pre.medium);
+      const grp = cmpJobGroups(campaign, job);
       const built = utmBuildTrackedLink({ baseUrl, campaign, job: pseudo, channelText, elements, vendorSlug: '', assetCode: sp.code, channelCode: cmpChannelCode(job.channel),
+        groups: { product: slugify(grp.product), creative: slugify(grp.creative) }, formatText: sp.mediaType || sp.size,
         contactId: !!(state.utmAutoContactIdEnabled && sug.contactId), gclid: !!(state.utmAutoGclidEnabled && sug.gclid), metaIds: sug.metaIds });
-      const notes = built.warnings.filter(w => !w.startsWith('Removed ')).concat(utmUsesGa4() && !built.prediction.ga4.pass ? [built.prediction.ga4.note] : [], utmUsesAdobe() && !built.prediction.adobe.pass ? [built.prediction.adobe.note] : []);
+      const needGroups = (grp.pgs.length > 1 && !grp.product ? ['product group'] : []).concat(grp.cgs.length > 1 && !grp.creative ? ['creative group'] : []);
+      const notes = built.warnings.filter(w => !w.startsWith('Removed ')).concat(needGroups.length ? [`Choose this asset's ${needGroups.join(' and ')} so GA4 results roll up by group, then rebuild the links.`] : [], utmUsesGa4() && !built.prediction.ga4.pass ? [built.prediction.ga4.note] : [], utmUsesAdobe() && !built.prediction.adobe.pass ? [built.prediction.adobe.note] : []);
       items.push({ job, spec: sp, url: built.url, built, notes });
     });
   });
@@ -50462,6 +50504,9 @@ async function cmpTraffickingSaveItems(items){
 // controls (ids suffixed by job.id, so every row's QR code and copy status
 // are independent of every other row's).
 function cmpTraffickingLinkRowHtml(job){
+  return cmpTraffickingGroupPickerHtml(job) + cmpTraffickingLinkRowHtmlInner(job);
+}
+function cmpTraffickingLinkRowHtmlInner(job){
   const links = cmpJobAssetLinks(job);
   const specs = cmpJobAssetSpecs(job).filter(sp => links[sp.key]);
   if (!specs.length) return cmpTraffickingLinkRowCard(job.id, `${job.channel || 'Asset'}${job.deliveryPlatform ? ' — ' + job.deliveryPlatform : ''}`, `(${job.id})`, job.trackingUrl || '');
@@ -58231,7 +58276,11 @@ async function cmpApprovalLoad(c){
     CMP_APPROVAL_METRICS.forEach(k => { const vals = peerMets.map(p => p[k.key]).filter(v => typeof v === 'number'); med[k.key] = cmpApprovalMedian(vals); cnt[k.key] = vals.length; });
     const client = m.clientOverall ? cmpApprovalClientMetrics(m.clientOverall, rate) : null;
     const lines = await cmpApprovalLoadLines(c);
-    cmpApprovalData = { campaignId: c.id, loading: false, ctx, m, mine, peers: { n: peerCs.length, med, cnt }, client, lines, year: m.year, clientLabel: m.clientOverallLabel, plan };
+    let utm = null;
+    if (dataSourceLabel === 'backend' && !c.localOnly){
+      try { const ur = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}/utm-results`); if (ur.ok) utm = await ur.json(); } catch (e){ utm = null; }
+    }
+    cmpApprovalData = { campaignId: c.id, loading: false, ctx, m, mine, peers: { n: peerCs.length, med, cnt }, client, lines, year: m.year, clientLabel: m.clientOverallLabel, plan, utm };
   } catch (e){
     console.warn('cmpApprovalLoad failed', e);
     cmpApprovalData = { campaignId: c.id, loading: false, error: true };
@@ -58310,7 +58359,7 @@ function cmpApprovalStoryHtml(c, d, rows){
   const txnKpi = /transaction|booking|sale|purchase/i.test(String(c.primaryKpi || ''));
   let grpBits = [];
   if (txnKpi && goal){ pgs.forEach(g => { if (acts[g] && acts[g].tx != null) grpBits.push(`${escapeHtml(g)} ${Math.round(100 * acts[g].tx / goal)}%`); }); }
-  parts.push(`<p style="margin:0 0 12px;"><strong>Product group and creative group.</strong> ${pgs.length ? `The campaign promotes ${escapeHtml(list(pgs))}` : 'No product group is set on this campaign'}${cgs.length ? ` with ${escapeHtml(list(cgs))} creative` : ''}. ` + (grpBits.length ? `Share of the ${escapeHtml(kpi)} goal achieved so far: ${grpBits.join(', ')}.` : `<span class="hint">Percent of the KPI achieved by group fills in from the transaction files${txnKpi ? '' : ', and lead counts by group from GA4 visits tagged with the product group in the UTM'}.</span>`) + '</p>');
+  parts.push(`<p style="margin:0 0 12px;"><strong>Product group and creative group.</strong> ${pgs.length ? `The campaign promotes ${escapeHtml(list(pgs))}` : 'No product group is set on this campaign'}${cgs.length ? ` with ${escapeHtml(list(cgs))} creative` : ''}. ` + (grpBits.length ? `Share of the ${escapeHtml(kpi)} goal achieved so far: ${grpBits.join(', ')}.` : `<span class="hint">Percent of the KPI achieved by group comes from the transaction files; traffic and key events by group come from GA4 visits joined to this campaign by its ID.</span>`) + '</p>');
   // What the messaging should do if it works.
   const hl = (rows.find(r => r.wf && typeof r.wf === 'object' && r.wf.headline) || {}).wf;
   const lead = pgs[0];
@@ -58320,7 +58369,7 @@ function cmpApprovalStoryHtml(c, d, rows){
 function cmpApprovalScoreHtml(c, align){
   const ma = align.mediaAlignment;
   const items = [
-    { label: 'Media plan alignment', w: 35, pct: align.mediaPlanPct, note: align.mediaPlanPct !== null ? '' : ((ma && ma.reason) || 'Needs a budgeted plan, Primary KPI and dates.') },
+    { label: 'Media plan alignment', w: 35, pct: align.mediaPlanPct, note: align.mediaPlanPct !== null ? '' : (ma ? (ma.reason || 'Needs a budgeted plan, Primary KPI and dates.') : 'Checking the media plan against the annual target…') },
     { label: 'Copy contest fit', w: 25, pct: align.copyFitPct, note: 'Run the copy contest in Creative.' },
     { label: 'Brand fit', w: 15, pct: align.brandAuditPct, note: 'Scored with the same contest drafts.' },
     { label: 'Landing page against the ad copy', w: 25, pct: align.lpCopyPct, note: c.campaignUrl ? 'Reading the page against the approved copy…' : 'Add a Campaign URL.' }
@@ -58378,29 +58427,45 @@ function cmpApprovalGroupHtml(c, d, kind){
   const txnKpi = /transaction|booking|sale|purchase/i.test(String(c.primaryKpi || ''));
   const loaded = !!(d && !d.loading && !d.error);
   const dash = '<span class="hint">—</span>';
-  const pend = '<span class="hint">needs UTM tag</span>';
+  const utm = loaded ? d.utm : null;
+  const rowsUtm = utm ? (kind === 'product' ? utm.byProduct : utm.byCreative) || [] : [];
+  const cellFor = (g, field) => {
+    if (!utm || !utm.uploaded) return '<span class="hint">needs GA4 upload</span>';
+    if (!utm.matchedRows) return '<span class="hint">no matched rows</span>';
+    const u = rowsUtm.find(x => String(x.key).toLowerCase() === g.toLowerCase());
+    return u && u[field] > 0 ? Math.round(u[field]).toLocaleString() : dash;
+  };
+  const tagged = rowsUtm.reduce((a, x) => a + (x.sessions || 0), 0);
+  const utmNote = !utm ? '' : (!utm.uploaded
+    ? 'No GA4 export with UTM columns is on file. Upload it in Train the Brain → Your Numbers → GA4 sources.'
+    : (!utm.matchedRows
+      ? 'The GA4 export on file has no rows carrying this campaign’s ID. Check that its tracking links use the campaign ID in utm_id and at the end of utm_campaign.'
+      : `${utm.matchedRows.toLocaleString()} GA4 rows matched to this campaign by its ID, ${utm.from} to ${utm.to}${utm.untaggedSessions > 0 ? `; ${utm.untaggedSessions.toLocaleString()} sessions carry no ${kind === 'product' ? 'product' : 'creative'} group tag` : ''}.`));
   if (kind === 'creative'){
-    const body = groups.map(g => `<tr><td>${escapeHtml(g)}</td><td>${pend}</td><td>${pend}</td><td>${dash}</td></tr>`).join('');
-    return `<div class="table-scroll"><table class="data-table" style="margin-bottom:8px;"><thead><tr><th>Creative group</th><th>Traffic (GA4)</th><th>Leads (GA4)</th><th>% of ${escapeHtml(c.primaryKpi || 'KPI')} goal</th></tr></thead><tbody>${body}</tbody></table></div>
-      <p class="hint" style="margin:0;">Traffic and leads by creative group come from GA4 visits tagged with the creative focus group in the UTM. The GA4 weekly export does not carry that tag yet, so these fill in once it does. Until then the creative groups are listed as planned.</p>`;
+    const body = groups.map(g => `<tr><td>${escapeHtml(g)}</td><td>${cellFor(g, 'sessions')}</td><td>${cellFor(g, 'keyEvents')}</td></tr>`).join('');
+    return `<div class="table-scroll"><table class="data-table" style="margin-bottom:8px;"><thead><tr><th>Creative group</th><th>Traffic (GA4 sessions)</th><th>Key events (GA4)</th></tr></thead><tbody>${body}</tbody></table></div>
+      <p class="hint" style="margin:0;">${utmNote ? escapeHtml(utmNote) + ' ' : ''}Traffic and key events come from GA4 visits whose link tags the creative group in utm_content. Key events include calls and other actions, so they read as engagement and intent, not only form leads.</p>`;
   }
   const acts = loaded ? cmpApprovalGroupActuals(c, d, groups) : {};
   const spend = (loaded && d.mine && typeof d.mine.spend === 'number') ? d.mine.spend : null;
   const single = groups.length === 1;
+  const splitOk = !single && tagged > 0;
   const body = groups.map(g => {
     const a = acts[g];
     const tx = a && a.tx != null ? a.tx : null, rev = a && a.rev != null ? a.rev : null;
-    const cac = (single && spend > 0 && tx > 0) ? spend / tx : null;
-    const roas = (single && spend > 0 && rev > 0) ? rev / spend : null;
-    return `<tr><td>${escapeHtml(g)}</td><td>${pend}</td><td>${pend}</td>
+    const u = rowsUtm.find(x => String(x.key).toLowerCase() === g.toLowerCase());
+    const gSpend = single ? spend : (splitOk && spend > 0 && u ? spend * (u.sessions / tagged) : null);
+    const cac = (gSpend > 0 && tx > 0) ? gSpend / tx : null;
+    const roas = (gSpend > 0 && rev > 0) ? rev / gSpend : null;
+    return `<tr><td>${escapeHtml(g)}</td><td>${cellFor(g, 'sessions')}</td><td>${cellFor(g, 'keyEvents')}</td>
       <td>${tx != null ? Math.round(tx).toLocaleString() : '<span class="hint">not logged yet</span>'}</td>
       <td>${rev != null ? fmtMoney(rev) : dash}</td>
       <td>${cac !== null ? '$' + Math.round(cac).toLocaleString() : dash}</td>
       <td>${roas !== null ? roas.toFixed(2) + 'x' : dash}</td>
       <td>${(tx != null && txnKpi && goal) ? Math.round(100 * tx / goal) + '%' : dash}</td></tr>`;
   }).join('');
-  return `<div class="table-scroll"><table class="data-table" style="margin-bottom:8px;"><thead><tr><th>Product group</th><th>Traffic (GA4)</th><th>Leads (GA4)</th><th>Transactions</th><th>Revenue</th><th>CAC</th><th>ROAS</th><th>% of ${escapeHtml(c.primaryKpi || 'KPI')} goal</th></tr></thead><tbody>${body}</tbody></table></div>
-    <p class="hint" style="margin:0;">Traffic and leads by product group come from GA4 visits tagged with the product group in the UTM; that tag is not in the GA4 weekly export yet, so those two columns fill in once it is. Transactions and revenue come from the transaction files for the campaign's months, for that product group across the account. ${single ? 'CAC and ROAS use the campaign spend, since there is one product group.' : 'CAC and ROAS by group need spend split by group, which the UTM-tagged traffic will provide.'}</p>`;
+  return `<div class="table-scroll"><table class="data-table" style="margin-bottom:8px;"><thead><tr><th>Product group</th><th>Traffic (GA4 sessions)</th><th>Key events (GA4)</th><th>Transactions</th><th>Revenue</th><th>CAC</th><th>ROAS</th><th>% of ${escapeHtml(c.primaryKpi || 'KPI')} goal</th></tr></thead><tbody>${body}</tbody></table></div>
+    <p class="hint" style="margin:0;">${utmNote ? escapeHtml(utmNote) + ' ' : ''}Traffic and key events come from GA4 visits whose link tags the product group in utm_content. Transactions and revenue come from the transaction files for the campaign’s months, for that product group across the account. ${single ? 'CAC and ROAS use the whole campaign spend, since there is one product group.' : (splitOk ? 'CAC and ROAS split the campaign spend by each group’s share of tagged GA4 traffic.' : 'CAC and ROAS by group need GA4 traffic tagged by product group to split the spend.')}</p>`;
 }
 function cmpApprovalCard(eyebrow, title, inner, id, thought){
   return `<div class="module cmp-stage open"${id ? ` id="${id}"` : ''} style="overflow:visible;"><div class="module-body" style="max-height:none;overflow:visible;padding:22px 24px;">
@@ -58484,6 +58549,7 @@ function cmpRenderFinalApprovalReview(){
   cmpFinalApprovalRows = rows;
   const d = (cmpApprovalData && cmpApprovalData.campaignId === c.id) ? cmpApprovalData : null;
   const creativeApproved = !!c.creativeMessagingCmoApproved;
+  try { cmpLoadMediaAlignment(c); cmpLoadDraftQualityScore(c); } catch (e){}
   const align = computeCampaignRelevanceScore(c);
   const keepScroll = left.scrollTop;
   const keepNote2 = document.getElementById('cmpCreativeCmoNote');
@@ -63181,6 +63247,7 @@ async function cmpLoadMediaAlignment(campaign){
   campaign._mediaAlignment = out;
   try {
     if (typeof cmpRailLoadedCampaign === 'function' && cmpRailLoadedCampaign() === campaign) cmpRenderCampaignHeader(campaign);
+    if (typeof cmpFinalApprovalOpen !== 'undefined' && cmpFinalApprovalOpen && currentCampaignId === campaign.id) cmpRenderFinalApprovalReview(); // keep the card in step with the header
     if (document.getElementById('campaignQaPanel') && currentCampaignId === campaign.id) renderCampaignQaPanel();
     if (typeof renderFaqN === 'function') renderFaqN();
   } catch (e){ /* a re-render is a nicety, never a failure */ }
@@ -63232,6 +63299,7 @@ async function cmpLoadDraftQualityScore(campaign){
   }
   renderCampaignQaPanel();
   try { if (typeof cmpRailLoadedCampaign === 'function' && cmpRailLoadedCampaign() === campaign) cmpRenderCampaignHeader(campaign); } catch (e){ /* header refresh is a nicety */ }
+  try { if (typeof cmpFinalApprovalOpen !== 'undefined' && cmpFinalApprovalOpen && currentCampaignId === campaign.id) cmpRenderFinalApprovalReview(); } catch (e){}
 }
 function renderCampaignQaPanel(){
   const c = findCampaign(currentCampaignId);
@@ -80501,12 +80569,35 @@ async function ga4SourcesHandleFile(event){
     const { hi, col, comment } = ga4ReadHeader(rows, { year: ['year'], week: ['week'], campaign: ['session campaign', 'campaign'], sm: ['session source / medium', 'source / medium', 'session source'], event: ['event name'], sessions: ['sessions'], engaged: ['engaged sessions'], key: ['key events'] });
     if (hi < 0) throw new Error('Could not find a header row with Year, Week, Session campaign, Session source / medium, Event name, Sessions, Engaged sessions and Key events. Check the export columns.');
     const agg = new Map(), ev = new Map(); let src = 0, startRows = 0, keyTotal = 0;
+    // 2026-10-19 — optional UTM columns. When the export carries them, the weekly rows are also kept with those dimensions so they can be
+    // joined to a Verilume campaign by its ID (utm_id, or the ID at the end of the campaign name).
+    const hdr = rows[hi].map(v => String(v || '').trim().toLowerCase());
+    const find = fn => hdr.findIndex(fn);
+    const ucol = {
+      utmid: find(h => /campaign id/.test(h)),
+      content: find(h => /ad content/.test(h)),
+      term: find(h => /\bterm\b/.test(h) && !/google/.test(h)),
+      format: find(h => /creative format/.test(h)),
+      tactic: find(h => /marketing tactic/.test(h)),
+      platform: find(h => /source platform/.test(h))
+    };
+    const hasUtm = ucol.utmid >= 0 || ucol.content >= 0 || ucol.tactic >= 0 || ucol.format >= 0;
+    const ua = new Map();
+    const cell = (r, k) => ucol[k] >= 0 ? String(r[ucol[k]] || '').trim().replace(/^\(not set\)$/i, '') : '';
     for (let i = hi + 1; i < rows.length; i++){
       const r = rows[i]; if (!r || r.length < 4) continue; const yr = parseInt(r[col.year], 10), wk = parseInt(r[col.week], 10);
       if (!(yr > 2000) || !(wk >= 0)) continue; src++;
       const sm = String(r[col.sm] || '').trim(), camp = String(r[col.campaign] || '').trim(), en = String(r[col.event] || '').trim(), ke = ga4N(r[col.key]);
       if (!sm) continue;
       const k = yr + '|' + wk + '|' + camp + '|' + sm; const o = agg.get(k) || { year: yr, week: wk, campaign: camp, sourcemedium: sm, sessions: 0, engaged: 0, keyevents: 0 };
+      if (hasUtm){
+        const u = { year: yr, week: wk, utmid: cell(r, 'utmid'), campaign: camp, sourcemedium: sm, content: cell(r, 'content'), term: cell(r, 'term'), format: cell(r, 'format'), tactic: cell(r, 'tactic'), platform: cell(r, 'platform'), sessions: 0, engaged: 0, keyevents: 0 };
+        const uk = [yr, wk, u.utmid, camp, sm, u.content, u.term, u.format, u.tactic, u.platform].join('|');
+        const uo = ua.get(uk) || u;
+        if (en === 'session_start'){ uo.sessions += ga4N(r[col.sessions]); uo.engaged += ga4N(r[col.engaged]); }
+        if (ke > 0) uo.keyevents += ke;
+        ua.set(uk, uo);
+      }
       if (en === 'session_start'){ o.sessions += ga4N(r[col.sessions]); o.engaged += ga4N(r[col.engaged]); startRows++; }
       if (ke > 0){ o.keyevents += ke; keyTotal += ke; const k2 = yr + '|' + wk + '|' + sm + '|' + en; const e = ev.get(k2) || { year: yr, week: wk, sourcemedium: sm, eventname: en, keyevents: 0 }; e.keyevents += ke; ev.set(k2, e); }
       agg.set(k, o);
@@ -80514,9 +80605,11 @@ async function ga4SourcesHandleFile(event){
     const out = [...agg.values()].filter(o => o.sessions > 0 || o.keyevents > 0);
     if (!out.length) throw new Error('No session or key-event rows were found under that header.');
     const capped = src >= 99990; const range = ga4Range(comment);
-    ga4Pending.sources = { rows: out, events: [...ev.values()], fileName: file.name, truncated: capped, sourceRows: src, note: range ? range.from + '-' + range.to : '' };
+    const utmRows = hasUtm ? [...ua.values()].filter(o => o.sessions > 0 || o.keyevents > 0) : null;
+    ga4Pending.sources = { rows: out, events: [...ev.values()], utmRows, fileName: file.name, truncated: capped, sourceRows: src, note: range ? range.from + '-' + range.to : '' };
     const names = [...new Set([...ev.values()].map(e => e.eventname))].length, srcs = new Set(out.map(o => o.sourcemedium)).size;
     box.innerHTML = `<div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:10px 12px;margin:0 0 10px;font-size:0.8125rem;"><b>${src.toLocaleString('en-US')} rows</b> read from ${escapeHtml(file.name)}: ${srcs.toLocaleString('en-US')} sources, ${names} key events, ${keyTotal.toLocaleString('en-US')} key events in total.${range ? ' Range ' + range.from + ' to ' + range.to + '.' : ''}
+      ${utmRows ? '<div style="margin-top:6px;color:#0B6F62;font-weight:600;">UTM columns found (' + [ucol.utmid >= 0 ? 'campaign ID' : '', ucol.content >= 0 ? 'ad content' : '', ucol.tactic >= 0 ? 'marketing tactic' : '', ucol.format >= 0 ? 'creative format' : '', ucol.term >= 0 ? 'term' : '', ucol.platform >= 0 ? 'source platform' : ''].filter(Boolean).join(', ') + '). Results will join to campaigns by their Verilume campaign ID.</div>' : '<div style="margin-top:6px;" class="hint">No UTM columns in this export. To see results by campaign, product group and creative group, add Session manual campaign ID, ad content, marketing tactic and creative format to the GA4 report.</div>'}
       ${capped ? '<div style="margin-top:6px;color:#9A5B00;font-weight:600;">This file has exactly 100,000 rows, GA4\'s limit for a free-form export. The smallest sources and rarest events are missing. Export shorter date ranges, or filter to key events, for the full picture. You can still save it.</div>' : ''}
       <div class="btn-row" style="margin-top:8px;"><button type="button" class="btn-primary" onclick="ga4Save('sources')">Save — replace the GA4 source data</button><button type="button" class="btn-ghost" onclick="ga4Cancel('sources')">Cancel</button></div></div>`;
   } catch (e){ box.innerHTML = '<p class="hint" style="color:var(--advocacy);">' + escapeHtml(e.message || 'Could not read that file.') + '</p>'; }
