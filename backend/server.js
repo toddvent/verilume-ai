@@ -3842,6 +3842,8 @@ ensureColumn('creative_jobs', 'copyApprovedAt', 'TEXT');
 ensureColumn('creative_jobs', 'assetApproved', 'INTEGER DEFAULT 0');
 ensureColumn('creative_jobs', 'assetApprovedAt', 'TEXT');
 ensureColumn('creative_jobs', 'trackingUrl', 'TEXT');
+ensureColumn('creative_jobs', 'productgroup', 'TEXT'); // 2026-10-19 — the product group and creative group this ad carries, tagged into utm_content so GA4 results roll up by group
+ensureColumn('creative_jobs', 'creativegroup', 'TEXT');
 ensureColumn('creative_jobs', 'assetLinksJson', 'TEXT'); // 2026-10-18 — { assetCode: trackingUrl } per ad unit; trackingUrl stays the job's primary link
 
 // Round 74 — Creative Jobs restructured into a designer-facing task grid,
@@ -7871,6 +7873,56 @@ function estimateImpressionsFromBudget(channel, budget, accountId){
   }
   cpm = cpm || SERVER_CHANNEL_CPM[channel] || SERVER_DEFAULT_BLENDED_CPM;
   return Math.round((amt / cpm) * 1000);
+}
+
+// 2026-10-18 — Remarketing ceilings, per Todd: Remarketing is bounded two ways. (1) It is no more than 12% of the
+// campaign budget. (2) Its audience cannot exceed 20% of the US website visitors this campaign's own impressions drive
+// (impressions x visits-per-impression x US share). Remarketing spend = members x impressions-per-member x CPM / 1000.
+// Brand Search / Internal Email / the email-remarketing line are not "driving" channels, so they add no visitors.
+const REMARKETING_MAX_BUDGET_SHARE = 0.12;
+const REMARKETING_MAX_VISITOR_SHARE = 0.20;
+const DEMAND_FULFILLMENT_CHANNELS = new Set(['remarketing', 'brand search', 'internal email', 'email \u2014 remarketing']);
+function capRemarketingForCampaign(campaignId){
+  const out = { capped: 0, lines: [] };
+  const campaign = db.prepare('SELECT id, accountId, budget FROM campaigns WHERE id = ?').get(campaignId);
+  if (!campaign) return out;
+  const rows = db.prepare("SELECT id, channel, budget, impressions, status, detailsJson FROM channel_planning_details WHERE campaignId = ?").all(campaignId)
+    .filter(r => { const st = String(r.status || '').toLowerCase(); return st !== 'cancelled' && st !== 'rejected'; });
+  const remAll = rows.filter(r => String(r.channel || '').trim().toLowerCase() === 'remarketing');
+  const rem = remAll.filter(r => String(r.status || '').toLowerCase() !== 'approved'); // approved lines are signed off; only drafts are re-capped
+  const approvedRem = remAll.filter(r => String(r.status || '').toLowerCase() === 'approved').reduce((a, r) => a + (Number(r.budget) || 0), 0);
+  if (!rem.length) return out;
+  const campBudget = Number(campaign.budget) || 0;
+  let df = {}; try { df = db.prepare('SELECT * FROM account_demand_fulfillment WHERE accountId = ?').get(campaign.accountId) || {}; } catch (e){}
+  let visitsPerImp = null;
+  try { const cal = getForecastCalibration(campaign.accountId); visitsPerImp = cal && cal.impressionsToVisits ? Number(cal.impressionsToVisits.visitsPerImp) : null; } catch (e){}
+  const drivingImps = rows.filter(r => !DEMAND_FULFILLMENT_CHANNELS.has(String(r.channel || '').trim().toLowerCase()))
+    .reduce((sum, r) => sum + (Number(r.impressions) || (r.budget ? (estimateImpressionsFromBudget(r.channel, r.budget, campaign.accountId) || 0) : 0)), 0);
+  const usShare = df.usShareOfTraffic > 0 ? Number(df.usShareOfTraffic) : 1;
+  const usVisitors = (visitsPerImp > 0 && drivingImps > 0) ? drivingImps * visitsPerImp * usShare : null;
+  const freq = df.remarketingImpressionsPerMember > 0 ? Number(df.remarketingImpressionsPerMember) : 24;
+  const cpm = df.remarketingCpm > 0 ? Number(df.remarketingCpm) : (SERVER_CHANNEL_CPM['Remarketing'] || SERVER_DEFAULT_BLENDED_CPM);
+  const shareCeiling = campBudget > 0 ? campBudget * REMARKETING_MAX_BUDGET_SHARE : null;
+  const visitorCeiling = usVisitors != null ? usVisitors * REMARKETING_MAX_VISITOR_SHARE * freq * cpm / 1000 : null;
+  const ceilings = [shareCeiling, visitorCeiling].filter(v => v != null);
+  if (!ceilings.length) return out;
+  const total = Math.max(0, Math.min(...ceilings) - approvedRem);
+  const binding = (visitorCeiling != null && visitorCeiling <= (shareCeiling == null ? Infinity : shareCeiling)) ? 'visitors' : 'share';
+  const current = rem.reduce((a, r) => a + (Number(r.budget) || 0), 0);
+  if (current <= total + 0.5) return out;
+  const scale = total / current; const now = new Date().toISOString();
+  const upd = db.prepare('UPDATE channel_planning_details SET budget = ?, impressions = ?, detailsJson = ?, updatedAt = ? WHERE id = ?');
+  rem.forEach(r => {
+    const nb = Math.round((Number(r.budget) || 0) * scale);
+    let d = {}; try { d = r.detailsJson ? JSON.parse(r.detailsJson) : {}; } catch (e){ d = {}; }
+    d.assumptionNote = (binding === 'visitors'
+      ? 'Remarketing is capped so its audience stays within ' + Math.round(REMARKETING_MAX_VISITOR_SHARE * 100) + '% of the ~' + Math.round(usVisitors).toLocaleString('en-US') + ' US website visitors this campaign\'s impressions are expected to drive.'
+      : 'Remarketing is capped at ' + Math.round(REMARKETING_MAX_BUDGET_SHARE * 100) + '% of the campaign budget.') + ' Was $' + Math.round(Number(r.budget) || 0).toLocaleString('en-US') + '.';
+    d.remarketingCap = { binding, share: shareCeiling != null ? Math.round(shareCeiling) : null, visitors: visitorCeiling != null ? Math.round(visitorCeiling) : null, usVisitors: usVisitors != null ? Math.round(usVisitors) : null, was: Math.round(Number(r.budget) || 0) };
+    upd.run(nb, estimateImpressionsFromBudget('Remarketing', nb, campaign.accountId), JSON.stringify(d), now, r.id);
+    out.capped++; out.lines.push({ id: r.id, was: Number(r.budget) || 0, now: nb, binding });
+  });
+  return out;
 }
 
 // Round 132bz — Partner Capability Requests (buildout item #5): "extend
@@ -20583,6 +20635,28 @@ createTableIfNeeded(`
     keyevents REAL,
     updatedAt TEXT NOT NULL,
     PRIMARY KEY (accountId, year, week, campaign, sourcemedium)
+  );
+`);
+// 2026-10-19 — GA4 results with the UTM dimensions, so they can be joined to a Verilume campaign by its ID (utm_id, or the ID at the end of
+// utm_campaign). Same weekly grain as account_ga4_sources; the extra dimensions are why it is a table of its own. Plain lowercase columns.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_ga4_utm (
+    accountId TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    utmid TEXT NOT NULL DEFAULT '',
+    campaign TEXT NOT NULL DEFAULT '',
+    sourcemedium TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL DEFAULT '',
+    term TEXT NOT NULL DEFAULT '',
+    format TEXT NOT NULL DEFAULT '',
+    tactic TEXT NOT NULL DEFAULT '',
+    platform TEXT NOT NULL DEFAULT '',
+    sessions REAL,
+    engaged REAL,
+    keyevents REAL,
+    updatedAt TEXT NOT NULL,
+    PRIMARY KEY (accountId, year, week, utmid, campaign, sourcemedium, content, term, format, tactic, platform)
   );
 `);
 createTableIfNeeded(`
@@ -34631,7 +34705,7 @@ Submit your response via the campaign_intake_turn tool.`;
     // populated for every campaign's tracking links. Whole-array save, same
     // convention as /content-library — the front end always sends the full
     // ordered selection, order matters (it's the query-string param order).
-    const VALID_UTM_ELEMENTS = ['utm_source','utm_medium','utm_campaign','utm_id','utm_source_platform','utm_content','utm_term','cx_campaign_id','cx_creative_id','cx_channel','cx_placement','cx_stage','cx_audience','cx_flight'];
+    const VALID_UTM_ELEMENTS = ['utm_source','utm_medium','utm_campaign','utm_id','utm_source_platform','utm_content','utm_term','utm_creative_format','utm_marketing_tactic','cx_campaign_id','cx_creative_id','cx_channel','cx_placement','cx_stage','cx_audience','cx_flight'];
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'utm-config'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
@@ -37097,6 +37171,12 @@ Submit your response via the campaign_intake_turn tool.`;
     // heavily-funded stage across the extracted lines) for the places that
     // still expect one value (list views, filters) — it is no longer what
     // drives generation and no longer the only place a stage is recorded.
+    // 2026-10-18 — re-apply the Remarketing ceilings (12% of budget; 20% of campaign-driven US visitors) to a campaign's existing draft lines.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'cap-remarketing'){
+      const campaignId = parts[2];
+      try { return sendJson(res, 200, capRemarketingForCampaign(campaignId)); }
+      catch (e){ return sendJson(res, 500, { error: e.message }); }
+    }
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'generate-recommendation-from-intake'){
       const campaignId = decodeURIComponent(parts[2]);
       const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
@@ -37452,6 +37532,7 @@ Submit via the recommendation_from_intake tool.`;
       if (audienceSegments.length && !(campaign.segment || '').trim()){
         db.prepare('UPDATE campaigns SET segment = ? WHERE id = ?').run(audienceSegments.join(', '), campaignId);
       }
+      try { const rc = capRemarketingForCampaign(campaignId); if (rc.capped) console.log('[remarketing cap]', campaignId, JSON.stringify(rc.lines)); } catch (e){ console.warn('remarketing cap skipped', e && e.message); }
       try { applyLoopStageRules(campaign.accountId, { apply: true, campaignId }); } catch (e){ console.warn('loop-stage rules after intake failed', e && e.message); }
       syncCampaignProductCreativeGroupsFromChannelPlanning(campaignId);
       return sendJson(res, 200, { generated: savedCount > 0, savedCount, excludedAudiencesRemoved: exclusionRemoved, skippedExistingChannels: skippedExisting, skippedInactiveProducts, stageApplied: stage, stagesUsed: Object.keys(stageBudgets), audienceApplied: audienceSegments.length ? audienceSegments : null });
@@ -40250,6 +40331,11 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       db.prepare(`UPDATE creative_jobs SET priority = ?, status = ?, notes = ?, dueDate = ?, deliveryDate = ?, workingCopy = ?, copyApproved = ?, copyApprovedAt = ?,
         assetApproved = ?, assetApprovedAt = ?, trackingUrl = ?, actualSpend = ?, actualImpressions = ?, actualConversions = ?, updatedAt = ? WHERE id = ?`)
         .run(priority, status, notes, dueDate, deliveryDate, workingCopy, copyApproved, copyApprovedAt, assetApproved, assetApprovedAt, trackingUrl, actualSpend, actualImpressions, actualConversions, now, jobId);
+      if (body.productGroup !== undefined || body.creativeGroup !== undefined){
+        const cl = v => String(v == null ? '' : v).trim().slice(0, 120);
+        if (body.productGroup !== undefined) db.prepare('UPDATE creative_jobs SET productgroup = ? WHERE id = ?').run(cl(body.productGroup), jobId);
+        if (body.creativeGroup !== undefined) db.prepare('UPDATE creative_jobs SET creativegroup = ? WHERE id = ?').run(cl(body.creativeGroup), jobId);
+      }
       if (body.assetLinks && typeof body.assetLinks === 'object' && !Array.isArray(body.assetLinks)){
         let links = {}; try { links = JSON.parse(current.assetLinksJson || '{}') || {}; } catch (e){ links = {}; }
         Object.keys(body.assetLinks).slice(0, 200).forEach(k => { const u = String(body.assetLinks[k] || '').slice(0, 2500); if (/^[A-Za-z0-9._x-]{1,60}$/.test(k) && u) links[k] = u; });
@@ -45785,7 +45871,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         catch (e){ console.warn('[ga4] read failed:', e.message); return sendJson(res, 500, { error: 'could not read the GA4 data' }); }
       }
       if (req.method === 'DELETE'){
-        const tabs = isSrc ? ['account_ga4_sources', 'account_ga4_keyevents'] : ['account_ga4_search'];
+        const tabs = isSrc ? ['account_ga4_sources', 'account_ga4_keyevents', 'account_ga4_utm'] : ['account_ga4_search'];
         tabs.forEach(t => db.prepare(`DELETE FROM ${t} WHERE accountId = ?`).run(accountId));
         db.prepare('DELETE FROM account_ga4_meta WHERE accountId = ? AND kind = ?').run(accountId, isSrc ? 'sources' : 'search');
         return sendJson(res, 200, { accountId, cleared: true });
@@ -45804,6 +45890,12 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         agg.forEach((o, k) => { stmts.push({ sql: 'INSERT INTO account_ga4_sources (accountId, year, week, campaign, sourcemedium, sessions, engaged, keyevents, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', params: [accountId, o.y, o.w, o.c, o.s, o.se, o.en, o.ke, now] }); fileMap.set(k, { sessions: o.se, keyevents: o.ke }); });
         const eagg = new Map();
         for (const r of (Array.isArray(body.events) ? body.events : [])){ const y = parseInt(r.year, 10), w = parseInt(r.week, 10); if (!(y >= 2000 && y <= 2100) || !str(r.eventname) || !str(r.sourcemedium)){ continue; } const k = [y, w, str(r.sourcemedium), str(r.eventname)].join('||'); const o = eagg.get(k) || { y, w, s: str(r.sourcemedium), e: str(r.eventname), ke: 0 }; o.ke += num(r.keyevents); eagg.set(k, o); }
+        if (Array.isArray(body.utmRows)){
+          stmts.push({ sql: 'DELETE FROM account_ga4_utm WHERE accountId = ?', params: [accountId] });
+          const uagg = new Map();
+          for (const r of body.utmRows){ const y = parseInt(r.year, 10), w = parseInt(r.week, 10); if (!(y >= 2000 && y <= 2100) || !(w >= 0 && w <= 53)) continue; const o = { y, w, id: str(r.utmid), c: str(r.campaign), s: str(r.sourcemedium), ct: str(r.content), tm: str(r.term), f: str(r.format), t: str(r.tactic), p: str(r.platform) }; const k = [o.y, o.w, o.id, o.c, o.s, o.ct, o.tm, o.f, o.t, o.p].join('||'); const e = uagg.get(k) || Object.assign(o, { se: 0, en: 0, ke: 0 }); e.se += num(r.sessions); e.en += num(r.engaged); e.ke += num(r.keyevents); uagg.set(k, e); }
+          uagg.forEach(o => stmts.push({ sql: 'INSERT INTO account_ga4_utm (accountId, year, week, utmid, campaign, sourcemedium, content, term, format, tactic, platform, sessions, engaged, keyevents, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', params: [accountId, o.y, o.w, o.id, o.c, o.s, o.ct, o.tm, o.f, o.t, o.p, o.se, o.en, o.ke, now] }));
+        }
         eagg.forEach(o => stmts.push({ sql: 'INSERT INTO account_ga4_keyevents (accountId, year, week, sourcemedium, eventname, keyevents, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)', params: [accountId, o.y, o.w, o.s, o.e, o.ke, now] }));
       } else {
         stmts.push({ sql: 'DELETE FROM account_ga4_search WHERE accountId = ?', params: [accountId] });
@@ -47473,6 +47565,41 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       brainWrite(accountId, { dashboard: 'Media Science', action: body.status === 'accepted' ? 'Accepted plan change' : 'Updated plan change', subject: String(rec.title).slice(0, 120), refId: testId, actor: actor.id || null });
       return sendJson(res, 200, { recommendations: recs });
     }
+    // GET /api/campaigns/:id/utm-results — 2026-10-19. GA4 results for one campaign, found by its Verilume campaign ID: the row's utm_id, or the ID
+    // as a segment of utm_campaign ("spring-launch_<campaignId>"). Matching is exact against this campaign's own ID (case-insensitive, since
+    // some pipelines lowercase UTM values), never a pattern, so a look-alike string cannot be credited to the wrong campaign. utm_content is
+    // "<assetCode>.<creativeGroup>.<productGroup>" (a "_" marks a missing group); the groups are matched back to this campaign's own groups.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'utm-results'){
+      const campaignId = decodeURIComponent(parts[2]);
+      const camp = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!camp) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, camp.accountId)) return;
+      try {
+        const want = String(campaignId).toLowerCase();
+        const slug = t => String(t || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        const split = v => String(v || '').split(',').map(x => x.trim()).filter(Boolean);
+        const pgs = split(aliasVal(camp, 'productGroups') || aliasVal(camp, 'productGroup')), cgs = split(aliasVal(camp, 'creativeFocusGroups') || aliasVal(camp, 'creativeFocusGroup'));
+        const pgBy = {}; pgs.forEach(g => { pgBy[slug(g)] = g; }); const cgBy = {}; cgs.forEach(g => { cgBy[slug(g)] = g; });
+        const all = db.prepare('SELECT * FROM account_ga4_utm WHERE accountId = ?').all(camp.accountId);
+        const mine = all.filter(r => String(r.utmid || '').toLowerCase() === want || String(r.campaign || '').toLowerCase().split('_').includes(want));
+        const n = v => Number(v) || 0;
+        const roll = (keyFn) => { const m = {}; mine.forEach(r => { const k = keyFn(r); if (k == null) return; const o = m[k] = m[k] || { key: k, sessions: 0, engaged: 0, keyEvents: 0 }; o.sessions += n(r.sessions); o.engaged += n(r.engaged); o.keyEvents += n(r.keyevents); }); return Object.values(m).sort((a, b) => b.sessions - a.sessions); };
+        const parseContent = c => { const p = String(c || '').split('.'); return { asset: p[0] || '', cg: p[1] && p[1] !== '_' ? p[1] : '', pg: p[2] && p[2] !== '_' ? p[2] : '' };
+        };
+        const byProduct = roll(r => { const c = parseContent(r.content); return c.pg ? (pgBy[c.pg] || '(other)') : null; });
+        const byCreative = roll(r => { const c = parseContent(r.content); return c.cg ? (cgBy[c.cg] || '(other)') : null; });
+        const weeks = mine.map(r => `${r.year}-${String(r.week).padStart(2, '0')}`).sort();
+        const tot = mine.reduce((a, r) => ({ sessions: a.sessions + n(r.sessions), engaged: a.engaged + n(r.engaged), keyEvents: a.keyEvents + n(r.keyevents) }), { sessions: 0, engaged: 0, keyEvents: 0 });
+        const untagged = mine.filter(r => { const c = parseContent(r.content); return !c.pg && !c.cg; }).reduce((a, r) => a + n(r.sessions), 0);
+        return sendJson(res, 200, {
+          campaignId, uploaded: all.length > 0, matchedRows: mine.length, totals: tot, from: weeks[0] || null, to: weeks[weeks.length - 1] || null,
+          untaggedSessions: Math.round(untagged), byProduct, byCreative,
+          byAsset: roll(r => parseContent(r.content).asset || null), byTactic: roll(r => r.tactic || null), byFormat: roll(r => r.format || null),
+          byTerm: roll(r => r.term || null), bySourceMedium: roll(r => r.sourcemedium || null)
+        });
+      } catch (e){ console.error('[utm-results] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'Could not read the GA4 UTM results.' }); }
+    }
+
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'campaign-results'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
