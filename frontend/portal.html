@@ -15026,7 +15026,8 @@ function computeStageStatuses(campaign){
   const creativeStatus = bucketStageStatus(computeFunctionCompletion(campaign, { creativeOnly: true }));
   let qaStatus = 'not-started';
   if (campaign.qaApproved) qaStatus = 'complete';
-  else if (functionsStatus === 'complete' && creativeStatus === 'complete') qaStatus = 'in-progress';
+  // 2026-10-19: QA & Approval no longer waits on Marketing Functions or Creative. It is gated only by the CMO's creative & messaging approval.
+  else if (campaign.creativeMessagingCmoApproved || (Array.isArray(campaign.approvedCreativeAssets) && campaign.approvedCreativeAssets.length)) qaStatus = 'in-progress';
   let marketStatus = 'not-started';
   if (campaign.status === 'In Market') marketStatus = 'in-progress';
   else if (campaign.status === 'Analysis') marketStatus = 'complete';
@@ -17442,7 +17443,7 @@ function renderCmpDownstreamStages(){
       // Creative weren't Complete yet, with no way to view the CMO copy
       // review on its own. Always opens the real review now.
       : `<button type="button" class="btn-primary" onclick="cmpOpenFinalApprovalReview()">Open Final Approval review →</button>
-         <p class="cmp-stage-note" style="padding:8px 0 0;">Review and approve Creative &amp; Messaging and the Analytics Approach there — QA &amp; Approval itself still requires Marketing Functions and Creative both Complete first.</p>`}`;
+         <p class="cmp-stage-note" style="padding:8px 0 0;">Review and approve Creative &amp; Messaging and the Analytics Approach there; QA &amp; Approval is marked complete from inside that review.</p>`}`;
 
   // 7 — Trafficking: same tracking-link data as QR/UTM, framed for the trafficking task.
   const traffickingBody = `
@@ -50747,7 +50748,7 @@ function cmpRenderTraffickingQa(campaign){
       // the collective read-only copy list + analytics approach, "Mark QA &
       // Approval complete" lives inside it once both sections are approved).
       : `<button type="button" class="btn-primary" onclick="cmpOpenFinalApprovalReview()">Open Final Approval review →</button>
-         <p class="cmp-stage-note" style="padding:8px 0 0;">Review and approve Creative &amp; Messaging and the Analytics Approach there — QA &amp; Approval itself still requires Marketing Functions and Creative both Complete first.</p>`}`;
+         <p class="cmp-stage-note" style="padding:8px 0 0;">Review and approve Creative &amp; Messaging and the Analytics Approach there; QA &amp; Approval is marked complete from inside that review.</p>`}`;
 }
 function cmpRenderTraffickingWorkspaceStatusBadge(campaign){
   const el = document.getElementById('cmpTraffickingStatusBadge');
@@ -58644,7 +58645,6 @@ function cmpRenderFinalApprovalReview(){
       <div class="btn-row" style="margin:0;">
         <button type="button" class="btn-primary" ${creativeApproved ? '' : 'disabled'} onclick="approveCampaignQa()">Mark QA &amp; Approval complete →</button>
         ${creativeApproved ? '' : `<span class="hint">Creative &amp; messaging must be approved first.</span>`}
-        ${(() => { const w = cmpQaBlockers(c); return w.length ? `<span class="hint" style="flex-basis:100%;">Still waiting on approved copy for ${w.length} asset${w.length === 1 ? '' : 's'}: ${escapeHtml(w.slice(0, 6).join('; '))}${w.length > 6 ? '; and ' + (w.length - 6) + ' more' : ''}. QA &amp; Approval cannot be marked complete until each has approved copy.</span>` : ''; })()}
       </div>
       <div id="cmpFinalApprovalSaveFlag" class="hint" style="margin-top:8px;"></div>
     </div></div>`;
@@ -58715,14 +58715,7 @@ function cmpQaBlockers(c){
 async function approveCampaignQa(){
   const c = findCampaign(currentCampaignId);
   if (!c) return;
-  const stages = computeStageStatuses(c);
-  const functionsDone = stages.find(s => s.key === 'functions').status === 'complete';
-  const creativeDone = stages.find(s => s.key === 'creative').status === 'complete';
-  if (!functionsDone || !creativeDone){
-    const waiting = cmpQaBlockers(c);
-    alert('Marketing Functions and Creative must both be Complete before QA & Approval can be marked complete.' + (waiting.length ? '\n\nStill waiting on approved copy for ' + waiting.length + ' asset' + (waiting.length === 1 ? '' : 's') + ':\n- ' + waiting.slice(0, 8).join('\n- ') + (waiting.length > 8 ? '\n- and ' + (waiting.length - 8) + ' more' : '') + '\n\nApprove copy for each in Creative, or remove the asset.' : ''));
-    return;
-  }
+  // 2026-10-19: the Marketing Functions / Creative Complete requirement is removed. Only the CMO creative & messaging approval below gates QA.
   if (!c.creativeMessagingCmoApproved){
     cmpOpenFinalApprovalReview();
     return;
@@ -82807,11 +82800,34 @@ function ciResearchBlockHtml(c, i){
     ${p && p.profile ? ciProfileHtml(p) : ''}
   </div>`;
 }
+// Rasterize the client's saved logo (PNG, SVG or WebP) to a PNG on a white background so the PDF can embed it. Returns '' if there is none or it cannot be read.
+function ciLogoPng(){
+  return new Promise(resolve => {
+    const src = (state.styleAssets && (state.styleAssets.logoDataUrl || state.styleAssets.logoUrl)) || '';
+    if (!src){ resolve(''); return; }
+    const img = new Image(); if (!/^data:/i.test(src)) img.crossOrigin = 'anonymous';
+    const done = v => resolve(v || '');
+    img.onload = () => { try {
+      const nw = img.naturalWidth || 300, nh = img.naturalHeight || 100; const isSvg = /^data:image\/svg/i.test(src) || /\.svg(\?|$)/i.test(src); const sc2 = nw > 480 ? 480 / nw : (isSvg ? 480 / nw : 1);
+      const w = Math.max(1, Math.round(nw * sc2)), h = Math.max(1, Math.round(nh * sc2));
+      const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.drawImage(img, 0, 0, w, h);
+      done(c.toDataURL('image/png')); } catch (e){ done(''); } };
+    img.onerror = () => done(''); img.src = src; setTimeout(() => done(''), 6000);
+  });
+}
+async function ciDownloadBattlePdf(name){
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/competitor-battle-brief-pdf`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ competitorName: name }) });
+    if (!r.ok){ const d = await r.json().catch(() => ({})); alert(d.error || 'Could not build the PDF right now.'); return; }
+    const blob = await r.blob(); const url = URL.createObjectURL(blob); const a = document.createElement('a');
+    a.href = url; a.download = 'battle-brief-' + ciKeyFe(name).replace(/\s+/g, '-') + '.pdf'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  } catch (e){ alert('Could not build the PDF right now.'); }
+}
 function ciBattleHtml(name){
   const p = ciProfileFor(name); const b = p && p.battleBrief; if (!b) return '';
   const e = escapeHtml; const pts = arr => (arr || []).map(x => `<li><strong>${e(x.point)}</strong>: ${e(x.evidence)}${ciCite(x.sources, p)}</li>`).join('');
   const sec = (label, inner) => inner ? `<div class="seo-row-detail" style="margin-bottom:6px;"><strong>${e(label)}:</strong> ${inner}</div>` : '';
-  return `<div class="seo-row-detail" style="margin-bottom:6px;"><span class="illustrative-tag" style="background:var(--advocacy-light,#EAF4EA);color:var(--advocacy,#2F7D3C);">Sourced Battle Brief</span> <span style="color:var(--muted);font-size:0.75rem;">${p.battleGeneratedAt ? new Date(p.battleGeneratedAt).toLocaleString() : ''}</span></div>
+  return `<div class="seo-row-detail" style="margin-bottom:6px;"><span class="illustrative-tag" style="background:var(--advocacy-light,#EAF4EA);color:var(--advocacy,#2F7D3C);">Sourced Battle Brief</span> <button type="button" class="btn-ghost" style="padding:2px 10px;font-size:0.75rem;" onclick="ciDownloadBattlePdf(decodeURIComponent('${encodeURIComponent(name)}'))">Download PDF</button> <span style="color:var(--muted);font-size:0.75rem;">${p.battleGeneratedAt ? new Date(p.battleGeneratedAt).toLocaleString() : ''}</span></div>
     ${sec('Summary', e(b.summary))}
     ${sec('Where we win', b.whereWeWin && b.whereWeWin.length ? `<ul style="margin:4px 0 0;padding-left:18px;">${pts(b.whereWeWin)}</ul>` : '')}
     ${sec('Where they win', b.whereTheyWin && b.whereTheyWin.length ? `<ul style="margin:4px 0 0;padding-left:18px;">${pts(b.whereTheyWin)}</ul>` : '')}
