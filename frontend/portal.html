@@ -7683,7 +7683,7 @@
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('companyProfile')">Configuration</a> / Competitive Positioning</div>
     <div class="eyebrow">Brand Groundwork · Competitive Positioning</div>
     <h1>Competitive Positioning</h1>
-    <p class="lede lede-full">Industry Trends is Claude reasoning from known category patterns — not sourced from live market data. Direct Competitors is up to 5 named companies within <strong id="ctIndustryLabel"></strong> that this account competes with for the same customer, each with an optional reference document and a generated positioning read — reasoning about why they compete, never an asserted claim about what that competitor is actually doing (see <code>cxmedia-brand-foundations-plan.md</code>).</p>
+    <p class="lede lede-full">Direct Competitors is up to 5 named companies within <strong id="ctIndustryLabel"></strong>. Each one is researched like a client account from its website, press and investor pages, SEC filings where it is public, and web search. Every statement in the profile cites its source, and the Battle Brief compares it with your own account.</p>
 
     <div class="module open accent-media" id="ctIndustryModule">
       <div class="module-head" onclick="toggleModule('ctIndustryModule')">
@@ -7695,9 +7695,10 @@
         <span class="chevron">▸</span>
       </div>
       <div class="module-body">
-        <p>Templated reasoning standing in for a real Claude call — same "prompt-ready" convention as Brand Voice's draft generator.</p>
+        <p>Researches current trends with a live web search and adds what your named competitors have been doing. Sources are listed under the draft. Without a web-search connection it falls back to a plainly labelled starting hypothesis.</p>
         <div class="btn-row" style="margin-bottom:12px;">
-          <button type="button" class="btn-ghost" onclick="generateIndustryTrendsDraft()">Generate draft →</button>
+          <button type="button" class="btn-ghost" id="ctTrendsBtn" onclick="generateIndustryTrendsDraft()">Research trends →</button>
+          <span class="hint" id="ctTrendsStatus"></span>
         </div>
         <div class="field" style="max-width:none;">
           <label>Industry Trends draft — edit before saving</label>
@@ -12455,6 +12456,15 @@
         </div>
         <div class="faq-body" id="bpFaqBodyAY">
           <p id="bpFaqTextAY"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadAZ" onclick="toggleFaqItem('AZ')">
+          <span class="faq-label">Analysis: reading Target, Actual and Variance</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyAZ">
+          <p id="bpFaqTextAZ"></p>
         </div>
       </div>
   </div>
@@ -23853,10 +23863,14 @@ function renderBattleBrief(){
     const watchHtml = watchItems.length
       ? `<div class="seo-row-detail" style="margin-top:${brief ? '6px' : '0'};"><strong>Worth watching:</strong> <span class="illustrative-tag">AI reasoning — not a live news feed</span><ul style="margin:4px 0 0;padding-left:18px;">${watchItems.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul></div>`
       : '';
+    const genHtml = ciBattleHtml(name);
+    if (genHtml){
+      return `<div class="seo-row" style="flex-direction:column;align-items:flex-start;"><div class="seo-row-title" style="margin-bottom:6px;">${escapeHtml(name)}</div>${genHtml}${watchHtml}</div>`;
+    }
     if (!brief){
       return watchHtml
         ? `<div class="seo-row" style="flex-direction:column;align-items:flex-start;"><div class="seo-row-title" style="margin-bottom:6px;">${escapeHtml(name)}</div>${watchHtml}</div>`
-        : `<div class="seo-row"><div class="seo-row-main"><div class="seo-row-title">${escapeHtml(name)}</div><div class="seo-row-detail">No Battle Brief drafted yet — add a "why they compete" note or generate a positioning read for this competitor above.</div></div></div>`;
+        : `<div class="seo-row"><div class="seo-row-main"><div class="seo-row-title">${escapeHtml(name)}</div><div class="seo-row-detail">No Battle Brief drafted yet. Use "Research sources and build profile" above, then "Generate Battle Brief".</div></div></div>`;
     }
     // 2026-09-13 — the real multi-vendor read (categorizedIntel, from
     // runCompetitorIntelligence() in Direct Competitors above), when one
@@ -51701,7 +51715,7 @@ async function cmpRenderAnalysisSummary(campaign){
       ? `Shares are against the ${t.year} annual target${t.label ? ` (${escapeHtml(t.label)})` : ''}.`
       : (m.year ? (m.clientOverall ? `No ${m.year} annual target is entered, so the client-overall comparison uses your last 12 months of uploads (${escapeHtml(m.clientOverall.windowLabel)}). Enter a ${m.year} target under Media Plan &amp; Budget → Annual plan to see each KPI as a share of the year.` : `No ${m.year} annual target on file yet and no last-12-months uploads to build one from — upload the marketing budget, website users, leads and transactions under Train the Brain → Your Numbers.`) : 'Set a Start Date to place this campaign in a plan year.');
     const baseNote = m.baseline ? `Rates follow the ${cmpBaselineName(m.baseline)}.` : 'No annual baseline on file — rates fall back to budget-model history and stage seeds until one is entered.';
-    lede.innerHTML = `${escapeHtml(campaign.name || 'This campaign')}${primaryKpi ? ` · Primary KPI: <b>${escapeHtml(primaryKpi)}</b>` : ''}. <b>Target</b> = the forecast from the annual budget model, run from the spend and impressions approved at the Campaign Budget stage; <b>Actual</b> = logged results only; <b>Variance</b> = Actual − Target. A muted <i>Tracking</i> figure is the model re-run on logged actuals where no actual exists yet. ${baseNote} ${annualNote}`;
+    lede.innerHTML = `${escapeHtml(campaign.name || 'This campaign')}${primaryKpi ? ` · Primary KPI: <b>${escapeHtml(primaryKpi)}</b>` : ''} ${aiThoughtIconHtml('AZ')} <a class="flink" style="font-size:0.8125rem;" onclick="var n=document.getElementById('cmpAnalysisBasisNote'); if(n) n.style.display = n.style.display === 'none' ? '' : 'none';">Basis for these figures</a><span id="cmpAnalysisBasisNote" style="display:none;"><br>${baseNote} ${annualNote}</span>`;
   }
 }
 function cmpOpenAnalysisWorkspace(){
@@ -54580,6 +54594,7 @@ const BP_FAQ_TOPICS = [
   { letter: "GG", label: "Strategy: Media Mix Allocations", keywords: ["media mix", "allocation", "channel share", "share of spend", "share of plan", "search", "social", "direct mail", "strategy", "reporting card"], text: "This card compares where the money went with where the plan said it would go. Share of spend is each budget category's spend divided by all spend in the dates; channels roll up to the budget categories, so Brand Search and Non-Brand Search both count as Search. Share of plan is each category's working media in the confirmed budget divided by all working media in it. Each bar is the share of spend, with a tick for the share of the plan. A budget line with no matching channel shows its plan share only, and a channel with no matching budget line shows its spend share only. The large view lists every category with the points over or under plan and last year's share, then every channel. Which story it tells: the widest gap between spend and plan, otherwise what leads spend." },
   { letter: "GH", label: "Strategy: Forecasted Future Revenue", keywords: ["forecast", "future revenue", "booked to date", "low expected high", "year end", "target", "strategy", "reporting card"], text: "This card shows revenue booked so far and what the forecast expects for the rest of the dates. The forecast takes the planned impressions and spend by month and runs them through the calibrated chain of impressions to visits, visits to leads, leads to bookings and bookings to revenue, giving a low, expected and high figure. The low and high assume every stage lands at its own 25th and 75th percentile together, so they are a planning band, not a statistical confidence interval. YTD shows the whole year, booked to date plus the forecast to December, and sets it against the annual revenue target. WoW is the last and next 7 days, MoM is this month, YoY is the last and next 12 months, and Custom is any dates. Months with no planned media have no forecast. Which story it tells: where revenue lands against the same dates last year and against the target." },
   { letter: "AX", label: "Campaign Analysis: how the step works", keywords: ["analysis", "campaign analysis", "analytics story", "target actual variance", "executive view", "channel view", "product group", "creative group", "tracking", "client overall", "cpl", "cac", "roas", "incremental leads", "formal test", "truth lab"] },
+  { letter: "AZ", label: "Analysis: reading Target, Actual and Variance", keywords: ["target", "actual", "variance", "tracking", "primary kpi", "annual budget model", "annual target", "last 12 months", "baseline"] },
   { letter: "AY", label: "Final Approval: how the step works", keywords: ["final approval", "approval", "campaign brief", "relevance score", "illumination", "asset view", "approve creative", "qa", "approved budget", "primary kpis", "last 12 months"] },
   { letter: 'F', label: 'Past campaigns', keywords: ['learned','history','previous','analysis','pattern','overspend','underspend','delivered'] },
   // Round 132uu (2026-08-11), per direct instruction: "We should have a
@@ -54763,7 +54778,7 @@ const BP_FAQ_TOPIC_TAB = {
   // 2026-10-05 — Search Everywhere page topics, text taken from its client training guide.
 AG: 'marketer', AN: 'marketer', AH: 'marketer', AI: 'marketer', AJ: 'marketer', AK: 'marketer', AL: 'marketer', AM: 'marketer',
   // 2026-10-07 — product utilization and team training topics.
-  AO: 'dataScientist', AP: 'dataScientist', AQ: 'dataScientist', AR: 'dataScientist', AS: 'brand', AT: 'accountManagement', AU: 'accountManagement', AV: 'accountManagement', AW: 'dailyBrief', GA: 'marketer', GB: 'marketer', GC: 'marketer', GD: 'marketer', GE: 'strategy', GF: 'strategy', GG: 'strategy', GH: 'strategy', AX: 'marketer', AY: 'marketer'
+  AO: 'dataScientist', AP: 'dataScientist', AQ: 'dataScientist', AR: 'dataScientist', AS: 'brand', AT: 'accountManagement', AU: 'accountManagement', AV: 'accountManagement', AW: 'dailyBrief', GA: 'marketer', GB: 'marketer', GC: 'marketer', GD: 'marketer', GE: 'strategy', GF: 'strategy', GG: 'strategy', GH: 'strategy', AX: 'marketer', AY: 'marketer', AZ: 'marketer'
 };
 
 // 2026-10-04 (Todd): too many chips at once. Show the five most relevant to the page the person is on
@@ -55005,7 +55020,8 @@ const AI_THOUGHT_PREVIEWS = {
   GG: "Where spend went by category against the plan.",
   GH: "What the forecast expects revenue to reach, against last year and the target.",
   AX: "How the Analysis page works: the story, Target, Actual and Variance, and the group views.",
-  AY: "What Final Approval shows, and what the relevance score reads."
+  AY: "What Final Approval shows, and what the relevance score reads.",
+  AZ: "How Target, Actual, Variance and Tracking are built, and what baseline they use."
 };
 function aiThoughtRoleLabel(letter){
   const tabKey = BP_FAQ_TOPIC_TAB[letter];
@@ -55422,6 +55438,7 @@ const SE_THOUGHTS = {
 };
 const PU_THOUGHTS = {
   AX: "Analysis answers one question: is this campaign delivering what it was planned to deliver, and what should change. The page opens with the analytics story. It starts from the Campaign Analytics Brief, then sets the plan against the client overall, which is the annual plan when one is entered for the year and your last 12 months of uploads when it is not. It reads incremental leads and cost per lead against that baseline, the share of the KPI achieved by product group and creative group, and where the value should go if the messaging works. Below the story, the Summary table sets Target, Actual and Variance side by side. Target is the forecast from the media plan approved at the Campaign Budget stage, run through your own rates. Actual is what has been logged, and you can edit an Actual cell right in the table. A muted Tracking figure is the model re-run on logged actuals where no actual exists yet. Website Engagement is the whole site's average, not this campaign's, so it carries no target or variance. The Executive view compares impressions, CPM, CPV, CPE, CPL, CAC and ROAS with similar-stage campaigns and the client overall. The Channel, Product group and Creative group views follow. Traffic and leads by group come from GA4 visits tagged in the UTM, and CAC and ROAS from the transaction files. When the campaign belongs to a formal test, a banner says so, and confirmed results from the Truth Lab are saved with the campaign.",
+  AZ: "The KPI tables on Analysis compare what was planned with what happened. Target is the forecast from the annual budget model, run from the spend and impressions approved at the Campaign Budget stage. Actual is logged results only. Variance is Actual minus Target. A muted Tracking figure is the model re-run on logged actuals where no actual exists yet, so you can see where the campaign is heading before results are logged. The model's rates follow the account's annual baseline when one is entered, and otherwise the last 12 months of uploads. When no annual target exists for the campaign's year, the client-overall comparison uses those same last 12 months, and entering a target under Media Plan and Budget, Annual plan, lets each KPI show as a share of the year. The Basis link beside the title shows the exact window and target in use for this campaign.",
   AY: "Final Approval is the last review before QA and Approval is marked complete. It opens with the overall Campaign Brief: stage, audience, dates, goal, product and creative groups, and the copy and analytics briefs. The approved media budget and plan follows, with the channel lines, the approval date and the Primary KPIs. Those KPIs are modeled from your last 12 months of uploads: marketing budget, website visits, engagement, website leads, transactions and revenue. The relevance score reads quality in four parts: the media plan against the KPIs at 35 percent, the copy contest fit at 25, brand fit at 15, and the landing page against the ad copy at 25. An input with nothing to read yet shows a dash and the others share its weight, so the score is marked provisional. It is not a progress score. The Asset view lists each approved creative asset with its Job ID, format and audience. Open View approved copy to see the copy and its wireframe. Then approve creative and messaging and mark QA and Approval complete. The analytics story now lives on the Analysis page.",
   AO: "The Truth Lab holds every test in one place: creative elements, offer, audience, frequency, channel, timing, landing page and market tests. To start an A/B test, describe the test you want in your own words at the top of the page and Verilume drafts it, or asks what it still needs; you then check the draft and save it. You can also choose Set up a market test or Something else, pick what you are testing, name it, choose one KPI and the smallest lift worth detecting. Enter impressions and conversions for each variant, or import a results CSV, and the readout shows each variant’s lift, its p-value and whether there is enough volume to call it. Link the test to a campaign if it belongs to one. A test only teaches the Brain after a person confirms it at the bottom of the test (see Confirming a result).",
   AP: "Plan the test in Geographic Optimization, then choose Save this plan to the Truth Lab. That creates a draft with the test and control markets, channel, weeks and planned spend. When media starts, enter the start date, the spend in the test markets, and weekly bookings for all test markets added together and all control markets added together. You can type them or import a CSV with the columns week, test and control. You need at least 3 weeks before and 3 after the start date; 8 or more before is better. The readout compares the test-to-control ratio after media started with the ratio before, so season and market size cancel out. It shows the lift, its 95% range, extra bookings and cost per extra booking. A lift is only called clear when even the low end of the range is above zero.",
@@ -82635,6 +82652,7 @@ function renderPositioningStep(){
   // 2026-09-12 — AI Brain Contribution Ledger, Round 3. Same
   // load-on-render convention as vgLoadHistory() inside renderVoiceStep().
   posLoadHistory();
+  ciLoadProfiles();
 }
 
 // Round 24, point b — Strategic Opportunity. Templated JS standing in for a
@@ -82673,7 +82691,7 @@ function renderStrategicOpportunity(){
 // generateVoiceDraft() used to follow before its 2026-09-11/12 rewrite:
 // reasoning from known category patterns, not sourced from live market data
 // (this build has no real market-research connector).
-function generateIndustryTrendsDraft(){
+function generateIndustryTrendsTemplate(){
   const audienceLabels = GENERATIONS.filter(g => state.audience.has(g.key)).map(g => g.label);
   const wealthLabels = WEALTH_TIERS.filter(w => state.wealth.has(w.key)).map(w => w.label);
   const audienceClause = audienceLabels.length ? audienceLabels.join(', ') : 'a broad audience';
@@ -82688,6 +82706,121 @@ function generateIndustryTrendsDraft(){
 
   document.getElementById('ctIndustryTrendsText').value = draft;
   state.positioning.industryTrendsText = draft;
+}
+
+
+// 2026-10-19 — researched Industry Trends (web search + competitor profiles); template kept as a labelled fallback.
+async function generateIndustryTrendsDraft(){
+  const st = document.getElementById('ctTrendsStatus'); const btn = document.getElementById('ctTrendsBtn');
+  const fallback = msg => { generateIndustryTrendsTemplate(); if (st) st.textContent = msg + ' Showing a starting hypothesis instead.'; };
+  if (dataSourceLabel !== 'backend'){ return fallback('Live research needs the backend connection.'); }
+  if (st) st.textContent = 'Researching current trends…'; if (btn) btn.disabled = true;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/industry-trends`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const d = await resp.json().catch(() => ({}));
+    if (!resp.ok || !d.ok){ fallback(d.error || 'Research did not return.'); return; }
+    let t = `${state.industry} — Industry Trends (web-researched ${new Date().toLocaleDateString()})\n\n${d.text}\n`;
+    if (d.competitorMoves && d.competitorMoves.length) t += `\nRecent competitor moves from the profiles below:\n- ${d.competitorMoves.join('\n- ')}\n`;
+    if (d.cited && d.cited.length) t += `\nSources:\n${d.cited.map(c => '- ' + c.url).join('\n')}\n`;
+    document.getElementById('ctIndustryTrendsText').value = t; state.positioning.industryTrendsText = t;
+    if (st) st.textContent = 'Done. Review and edit before saving.';
+  } catch (e){ fallback('Backend unreachable.'); }
+  finally { if (btn) btn.disabled = false; }
+}
+
+// 2026-10-19 — sourced competitor profiles. state.ciProfiles[key] = server shape { profile, sources, battleBrief, ... }.
+state.ciProfiles = state.ciProfiles || {};
+function ciKeyFe(n){ return String(n || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+function ciProfileFor(name){ return (state.ciProfiles || {})[ciKeyFe(name)] || null; }
+async function ciLoadProfiles(){
+  if (dataSourceLabel !== 'backend' || !state.companyId) return;
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/competitor-profiles`);
+    if (!r.ok) return; const d = await r.json();
+    state.ciProfiles = {}; (d.profiles || []).forEach(p => { state.ciProfiles[ciKeyFe(p.competitorName)] = p; });
+    state.ciProviders = d.providers || [];
+    (state.positioning.competitors || []).forEach(c => { const p = ciProfileFor(c.name); if (p && p.websiteUrl && !c.websiteUrl) c.websiteUrl = p.websiteUrl; });
+    renderCompetitorRows(); renderBattleBrief();
+  } catch (e){ console.warn('ciLoadProfiles failed', e); }
+}
+function ciCite(ids, p){
+  if (!ids || !ids.length) return '';
+  const src = (p && p.sources) || [];
+  return ' ' + ids.map(id => { const s = src.find(x => x.id === id); const tip = s ? escapeHtml(s.title || s.url) : id; return s && /^https?:/.test(s.url || '') ? `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener" title="${tip}" style="font-size:0.7rem;color:var(--muted);">[${escapeHtml(id)}]</a>` : `<span title="${tip}" style="font-size:0.7rem;color:var(--muted);">[${escapeHtml(id)}]</span>`; }).join(' ');
+}
+function ciProfileHtml(p){
+  const f = p.profile; if (!f) return '';
+  const e = escapeHtml; const row = (label, body) => body ? `<div class="hint" style="margin-top:8px;"><strong>${e(label)}:</strong> ${body}</div>` : '';
+  const one = (label, o) => o && o.text ? row(label, e(o.text) + ciCite(o.sources, p)) : '';
+  const list = (label, arr) => arr && arr.length ? row(label, `<ul style="margin:4px 0 0;padding-left:18px;">${arr.map(x => `<li>${e(x.text)}${ciCite(x.sources, p)}</li>`).join('')}</ul>`) : '';
+  const m = f.mediaMixEstimate;
+  const kinds = {}; (p.sources || []).forEach(s => { kinds[s.kind] = (kinds[s.kind] || 0) + 1; });
+  return `<div style="margin-top:10px;border-top:1px solid var(--border,#ddd);padding-top:8px;">
+    <div class="hint" style="font-size:0.75rem;color:var(--muted);">Sourced profile built ${p.profileGeneratedAt ? new Date(p.profileGeneratedAt).toLocaleString() : ''} from ${(p.sources || []).length} public source${(p.sources || []).length === 1 ? '' : 's'} (${e(Object.entries(kinds).map(([k, n]) => n + ' ' + k).join(', '))}). Statements without a source are left out.</div>
+    ${one('Overview', f.overview)}${one('Positioning', f.positioning)}${list('Value propositions', f.valueProps)}${one('Tone and messaging', f.toneAndMessaging)}${list('Audiences', f.audiences)}${list('Offers and pricing', f.offersAndPricing)}
+    ${f.channelsObserved && f.channelsObserved.length ? row('Channels observed', `<ul style="margin:4px 0 0;padding-left:18px;">${f.channelsObserved.map(c => `<li><strong>${e(c.channel)}</strong>: ${e(c.evidence)}${ciCite(c.sources, p)}</li>`).join('')}</ul>`) : ''}
+    ${m ? row('Media mix (estimate)', `${e(m.summary)} <span class="illustrative-tag">Inference · ${e(m.confidence)} confidence</span><br><span style="color:var(--muted);">Basis: ${e(m.basis)}</span>${ciCite(m.sources, p)}`) : ''}
+    ${f.advertisingSpend && f.advertisingSpend.figure ? row('Reported advertising spend', `${e(f.advertisingSpend.figure)} (${e(f.advertisingSpend.period)})${ciCite(f.advertisingSpend.sources, p)}`) : row('Reported advertising spend', '<span style="color:var(--muted);">Not stated in any source found.</span>')}
+    ${f.recentActivity && f.recentActivity.length ? row('Recent activity', `<ul style="margin:4px 0 0;padding-left:18px;">${f.recentActivity.map(a => `<li>${a.date ? e(a.date) + ': ' : ''}${e(a.item)}${ciCite(a.sources, p)}</li>`).join('')}</ul>`) : ''}
+    ${list('Investor and financial', f.investorAndFinancial)}${list('Strengths', f.strengths)}${list('Weaknesses and gaps', f.weaknessesAndGaps)}
+    ${f.openQuestions && f.openQuestions.length ? row('Not found in public sources', `<ul style="margin:4px 0 0;padding-left:18px;">${f.openQuestions.map(q => `<li>${e(q)}</li>`).join('')}</ul>`) : ''}
+    <details style="margin-top:8px;"><summary class="hint" style="cursor:pointer;">Sources (${(p.sources || []).length})</summary><ul style="margin:4px 0 0;padding-left:18px;font-size:0.8rem;">${(p.sources || []).map(s => `<li>[${e(s.id)}] ${e(s.kind)}: ${/^https?:/.test(s.url || '') ? `<a href="${e(s.url)}" target="_blank" rel="noopener">${e(s.title || s.url)}</a>` : e(s.title || s.url)}</li>`).join('')}</ul></details>
+  </div>`;
+}
+async function ciResearchCompetitor(i){
+  const c = state.positioning.competitors[i]; const st = document.getElementById(`ctCiStatus${i}`);
+  if (!c || !(c.name || '').trim()){ if (st) st.textContent = 'Add a company name first.'; return; }
+  if (dataSourceLabel !== 'backend'){ if (st) st.textContent = 'Research needs the backend connection.'; return; }
+  const site = document.getElementById(`ctCiSite${i}`); if (site) c.websiteUrl = site.value.trim();
+  if (st) st.textContent = 'Reading the website, press and investor pages, SEC filings and web search. This can take a minute…';
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/competitor-profile`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ competitorName: c.name.trim(), websiteUrl: c.websiteUrl || '' }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok){ const el = document.getElementById(`ctCiStatus${i}`); if (el) el.textContent = (d.error || 'Could not build the profile.') + (d.notes && d.notes.length ? ' ' + d.notes.join(' ') : ''); return; }
+    state.ciProfiles[ciKeyFe(c.name)] = d.profile; if (d.profile && d.profile.websiteUrl) c.websiteUrl = d.profile.websiteUrl;
+    c._ciNotes = d.notes || [];
+    renderCompetitorRows(); renderBattleBrief();
+  } catch (e){ if (st) st.textContent = 'Backend unreachable.'; }
+}
+async function ciBuildBattle(i){
+  const c = state.positioning.competitors[i]; const st = document.getElementById(`ctCiStatus${i}`); if (!c) return;
+  if (st) st.textContent = 'Comparing with your own account and writing the Battle Brief…';
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/competitor-battle-brief`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ competitorName: c.name.trim() }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok){ const el = document.getElementById(`ctCiStatus${i}`); if (el) el.textContent = d.error || 'Could not write the Battle Brief.'; return; }
+    state.ciProfiles[ciKeyFe(c.name)] = d.profile; renderCompetitorRows(); renderBattleBrief();
+  } catch (e){ if (st) st.textContent = 'Backend unreachable.'; }
+}
+function ciResearchBlockHtml(c, i){
+  const p = ciProfileFor(c.name); const e = escapeHtml;
+  const noProv = state.ciProviders && !state.ciProviders.length;
+  return `<div style="margin:10px 0;padding:10px;border:1px solid var(--border,#ddd);border-radius:6px;">
+    <div class="hint" style="margin-bottom:6px;"><strong>Sourced research</strong>: profile this competitor from its own public materials, then compare it with your account.</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      <input type="text" id="ctCiSite${i}" style="flex:1;min-width:200px;" value="${e(c.websiteUrl || '')}" placeholder="Website (optional, found automatically if blank)" oninput="state.positioning.competitors[${i}].websiteUrl=this.value">
+      <button type="button" class="btn-ghost" onclick="ciResearchCompetitor(${i})">${p && p.profile ? 'Refresh sources and profile' : 'Research sources and build profile'} →</button>
+      ${p && p.profile ? `<button type="button" class="btn-ghost" onclick="ciBuildBattle(${i})">${p.battleBrief ? 'Rewrite Battle Brief' : 'Generate Battle Brief'} →</button>` : ''}
+    </div>
+    ${noProv ? `<div class="hint" style="margin-top:6px;">No web-search connection is set up, so recent news and media mix will come only from the pages and filings that can be read.</div>` : ''}
+    <div class="hint" id="ctCiStatus${i}" style="margin-top:6px;">${(c._ciNotes && c._ciNotes.length) ? e(c._ciNotes.join(' ')) : ''}</div>
+    ${p && p.profile ? ciProfileHtml(p) : ''}
+  </div>`;
+}
+function ciBattleHtml(name){
+  const p = ciProfileFor(name); const b = p && p.battleBrief; if (!b) return '';
+  const e = escapeHtml; const pts = arr => (arr || []).map(x => `<li><strong>${e(x.point)}</strong>: ${e(x.evidence)}${ciCite(x.sources, p)}</li>`).join('');
+  const sec = (label, inner) => inner ? `<div class="seo-row-detail" style="margin-bottom:6px;"><strong>${e(label)}:</strong> ${inner}</div>` : '';
+  return `<div class="seo-row-detail" style="margin-bottom:6px;"><span class="illustrative-tag" style="background:var(--advocacy-light,#EAF4EA);color:var(--advocacy,#2F7D3C);">Sourced Battle Brief</span> <span style="color:var(--muted);font-size:0.75rem;">${p.battleGeneratedAt ? new Date(p.battleGeneratedAt).toLocaleString() : ''}</span></div>
+    ${sec('Summary', e(b.summary))}
+    ${sec('Where we win', b.whereWeWin && b.whereWeWin.length ? `<ul style="margin:4px 0 0;padding-left:18px;">${pts(b.whereWeWin)}</ul>` : '')}
+    ${sec('Where they win', b.whereTheyWin && b.whereTheyWin.length ? `<ul style="margin:4px 0 0;padding-left:18px;">${pts(b.whereTheyWin)}</ul>` : '')}
+    ${sec('How to differentiate', b.differentiation && b.differentiation.length ? `<ul style="margin:4px 0 0;padding-left:18px;">${b.differentiation.map(x => `<li>${e(x)}</li>`).join('')}</ul>` : '')}
+    ${sec('Messaging angles to test', b.messagingAngles && b.messagingAngles.length ? `<ul style="margin:4px 0 0;padding-left:18px;">${b.messagingAngles.map(a => `<li>${e(a.angle)}: <em>"${e(a.sampleLine)}"</em></li>`).join('')}</ul>` : '')}
+    ${sec('Counter-moves', b.counterMoves && b.counterMoves.length ? `<ul style="margin:4px 0 0;padding-left:18px;">${b.counterMoves.map(m => `<li>[${e(m.horizon)}] ${e(m.move)}: ${e(m.why)}</li>`).join('')}</ul>` : '')}
+    ${sec('Media implications', e(b.mediaImplications))}
+    ${sec('Watch list', b.watchList && b.watchList.length ? `<ul style="margin:4px 0 0;padding-left:18px;">${b.watchList.map(x => `<li>${e(x)}</li>`).join('')}</ul>` : '')}
+    ${sec('Confidence', e(b.confidenceNote))}`;
 }
 
 // Round 22 — Direct Competitors list (<=5). Rebuilds the whole list on
@@ -82749,6 +82882,7 @@ function renderCompetitorRows(){
       </div>
       <input type="file" id="ctFile${i}" accept=".txt,.md,.docx,.doc,.pdf,.png,.jpg,.jpeg" style="display:none;" onchange="handleCompetitorFile(event, ${i})">
       <div class="hint" id="ctFileNote${i}" style="margin-bottom:10px;">${c.sourceFileName ? `On file: ${escapeHtml(c.sourceFileName)}` : ''}</div>
+      ${ciResearchBlockHtml(c, i)}
       <div class="hint" style="margin-bottom:6px;">Research theme — pick what to ask about this competitor:</div>
       <div class="btn-row" style="flex-wrap:wrap;gap:6px;margin-bottom:8px;">${chips}</div>
       <div class="hint" id="ctIntelStatus${i}" style="margin-top:2px;"></div>
