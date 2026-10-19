@@ -6907,6 +6907,21 @@ db.exec(`
   );
 `);
 try { db.exec('CREATE INDEX IF NOT EXISTS idx_plan_scenario_events_acct ON plan_scenario_events (accountId, happened)'); } catch (e){}
+// 2026-10-19 — Ops-Console benchmark store: AGGREGATED channel cost per thousand impressions only, by industry and across all accounts.
+// No accountId column by design (account-level privacy): a row exists only when at least MIX_MINIMUMS.benchmarkMinAccounts accounts feed it.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS mix_benchmark_cpm (
+    id TEXT PRIMARY KEY,
+    industry TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    accountcount INTEGER NOT NULL,
+    cpmmedian REAL,
+    cpmp25 REAL,
+    cpmp75 REAL,
+    cpmmean REAL,
+    updatedat TEXT NOT NULL
+  );
+`);
 function planScenarioLog(accountId, row, action, actor, detail){
   try { db.prepare('INSERT INTO plan_scenario_events (id, accountId, scenario, scenarioname, year, action, actorid, actorname, detail, happened) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
     .run(generateId('PSE'), accountId, row.id, row.name, row.year, action, actor && actor.id || null, actor && actor.name || null, detail ? String(detail).slice(0, 400) : null, new Date().toISOString()); } catch (e){ console.warn('[plan-scenarios] event log failed:', e.message); }
@@ -20926,6 +20941,75 @@ function planBaselineEnsure(accountId, year, basis, force){
   else db.prepare("INSERT INTO plan_baseline_drafts (id, accountId, year, basis, status, builtat, fingerprint, cellsjson, editsjson, labeltext, methodjson) VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, '{}', ?, ?)").run(id, accountId, built.year, basis, now, fp, cj, built.label, mj);
   return db.prepare('SELECT * FROM plan_baseline_drafts WHERE id = ?').get(id);
 }
+// ---- Mix evidence levels and readiness (2026-10-19) ----
+// Each channel sits on one level: 0 Estimate (cost per thousand only), 1 Directional (its own recent results), 2 Modelled (its own response curve),
+// 3 Modelled with benchmarks. Spend and results are loaded monthly, so the minimums are in months (13 weeks is about 3 months, 52 weeks is 12).
+// MIX_BUILT_LEVEL is the highest level the forecast actually runs on today: curve fitting (level 2 and 3) is not built, so a channel that meets the
+// level 2 data minimums is reported as "ready for curve modelling" and still labelled level 1.
+const MIX_MINIMUMS = { directional: { months: 3, outcomes: 30 }, curve: { months: 12, activeShare: 0.8, spendVariation: 0.25, outcomes: 100 }, wholeMix: { channels: 3, maxCorrelation: 0.8 }, benchmarkMinAccounts: 5 };
+const MIX_LEVEL_LABELS = ['Estimate: cost only', 'Directional: your recent results', 'Modelled: your data', 'Modelled: your data plus benchmarks'];
+const MIX_BUILT_LEVEL = 1;
+function mixQuantile(sorted, q){ if (!sorted.length) return null; const i = (sorted.length - 1) * q, lo = Math.floor(i), hi = Math.ceil(i); return sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo); }
+function mixPearson(a, b){ const n = a.length; if (n < 6) return null; const ma = a.reduce((x, y) => x + y, 0) / n, mb = b.reduce((x, y) => x + y, 0) / n; let sab = 0, saa = 0, sbb = 0; for (let i = 0; i < n; i++){ sab += (a[i] - ma) * (b[i] - mb); saa += (a[i] - ma) ** 2; sbb += (b[i] - mb) ** 2; } return saa > 0 && sbb > 0 ? sab / Math.sqrt(saa * sbb) : null; }
+function mixReadinessFor(accountId){
+  const M = MIX_MINIMUMS; const keys = storyMonthKeys(new Date(), 24); const series = {};
+  const slot = c => series[c] || (series[c] = { spend: {}, imps: 0, impsSpend: 0, outcomes: 0 });
+  try { getEffectiveMmmTotals(accountId).totals.forEach(t => { if (keys.indexOf(t.periodLabel) < 0) return; const c = String(t.category || t.channel || '').trim(); if (!c) return; const sp = Number(t.spend) || 0; if (!(sp > 0)) return; const o = slot(c); o.spend[t.periodLabel] = (o.spend[t.periodLabel] || 0) + sp; if (Number(t.impressions) > 0){ o.imps += Number(t.impressions); o.impsSpend += sp; } }); } catch (e){}
+  try { getDigitalMonthlyTotals(accountId).forEach(t => { const k = `${t.year}-${String(t.month).padStart(2, '0')}`; if (keys.indexOf(k) < 0 || !series[t.channel]) return; series[t.channel].outcomes += Number(t.leads) || 0; }); } catch (e){}
+  const fmt = n => Math.round(n).toLocaleString('en-US');
+  const rows = Object.keys(series).map(c => {
+    const s = series[c]; const active = keys.filter(k => s.spend[k] > 0); const vals = active.map(k => s.spend[k]);
+    const first = keys.findIndex(k => s.spend[k] > 0); const span = first < 0 ? 0 : keys.length - first; const activeShare = span ? active.length / span : 0;
+    const total = vals.reduce((a, b) => a + b, 0); const mean = vals.length ? total / vals.length : 0; const sd = vals.length ? Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length) : 0; const cv = mean > 0 ? sd / mean : 0;
+    const out = Math.round(s.outcomes);
+    const meets1 = active.length >= M.directional.months && out >= M.directional.outcomes;
+    const meets2 = meets1 && active.length >= M.curve.months && activeShare >= M.curve.activeShare && cv >= M.curve.spendVariation && out >= M.curve.outcomes;
+    const dataLevel = meets2 ? 2 : meets1 ? 1 : 0; const level = Math.min(dataLevel, MIX_BUILT_LEVEL);
+    const target = dataLevel < 2 ? dataLevel + 1 : null; const items = [], actions = [];
+    if (target){
+      const need = target === 1 ? M.directional : M.curve;
+      items.push({ label: 'Months of spend', have: active.length, need: need.months, met: active.length >= need.months });
+      items.push({ label: 'Leads tied to the channel', have: out, need: need.outcomes, met: out >= need.outcomes });
+      if (active.length < need.months) actions.push(`Load monthly spend for ${c} back ${need.months} months (${active.length} on file).`);
+      if (out < need.outcomes) actions.push(`Tie leads to ${c}: tag its campaigns with UTMs, or load leads by channel (${fmt(out)} of ${need.outcomes} on file).`);
+      if (target === 2){
+        items.push({ label: 'Months with spend, of months since it started', have: Math.round(activeShare * 100), need: Math.round(M.curve.activeShare * 100), met: activeShare >= M.curve.activeShare, unit: '%' });
+        items.push({ label: 'Spend variation from month to month', have: Math.round(cv * 100), need: Math.round(M.curve.spendVariation * 100), met: cv >= M.curve.spendVariation, unit: '%' });
+        if (active.length >= M.curve.months && activeShare < M.curve.activeShare) actions.push(`${c} has gaps in its spend. Keep it running most months so the model can read it.`);
+        if (cv < M.curve.spendVariation) actions.push(`Spend on ${c} has barely changed (it varies ${Math.round(cv * 100)}%). A planned change in spend, or a geographic test, lets the model learn how ${c} responds.`);
+      }
+    }
+    return { channel: c, level, dataLevel, levelLabel: MIX_LEVEL_LABELS[level], readyForCurve: dataLevel === 2, nextLevel: target, nextLabel: target != null ? MIX_LEVEL_LABELS[target] : null, items, actions,
+      months: active.length, spend: Math.round(total), outcomes: out, spendVariation: Math.round(cv * 100) / 100, cpm: s.imps > 0 ? Math.round(s.impsSpend / s.imps * 100000) / 100 : null, costPerLead: out > 0 ? Math.round(total / out * 100) / 100 : null, _vals: s.spend };
+  }).sort((a, b) => b.spend - a.spend);
+  const ready = rows.filter(r => r.readyForCurve); let maxCorr = null;
+  for (let i = 0; i < ready.length; i++) for (let j = i + 1; j < ready.length; j++){ const ks = keys.filter(k => ready[i]._vals[k] > 0 && ready[j]._vals[k] > 0); const r = mixPearson(ks.map(k => ready[i]._vals[k]), ks.map(k => ready[j]._vals[k])); if (r != null && (maxCorr == null || Math.abs(r) > Math.abs(maxCorr))) maxCorr = r; }
+  const totS = rows.reduce((n, r) => n + r.spend, 0), totO = rows.reduce((n, r) => n + r.outcomes, 0);
+  const whole = { eligible: ready.length, needed: M.wholeMix.channels, maxCorrelation: maxCorr != null ? Math.round(maxCorr * 100) / 100 : null, maxAllowed: M.wholeMix.maxCorrelation,
+    ok: ready.length >= M.wholeMix.channels && (maxCorr == null || Math.abs(maxCorr) < M.wholeMix.maxCorrelation), switchedOn: false, note: 'Moving budget between channels on response curves is not switched on yet.' };
+  rows.forEach(r => { delete r._vals; });
+  return { window: `${keys[0]} to ${keys[keys.length - 1]}`, unitNote: 'Spend and results are loaded monthly, so the minimums count months.', minimums: M, levels: MIX_LEVEL_LABELS, builtLevel: MIX_BUILT_LEVEL, channels: rows, wholeMix: whole,
+    accountCostPerLead: totO > 0 ? Math.round(totS / totO * 100) / 100 : null, counts: [0, 1, 2, 3].map(l => rows.filter(r => r.level === l).length) };
+}
+function mixBenchmarkRefresh(){
+  const keys = storyMonthKeys(new Date(), 12); const by = {}; const M = MIX_MINIMUMS;
+  db.prepare('SELECT accountId, industry FROM accounts').all().forEach(a => {
+    const cp = {}; try { getEffectiveMmmTotals(a.accountId).totals.forEach(t => { if (keys.indexOf(t.periodLabel) < 0) return; const c = String(t.category || t.channel || '').trim(); const sp = Number(t.spend) || 0, im = Number(t.impressions) || 0; if (!c || !(sp > 0) || !(im > 0)) return; const o = cp[c] || (cp[c] = { sp: 0, im: 0 }); o.sp += sp; o.im += im; }); } catch (e){ return; }
+    const ind = String(a.industry || '').trim();
+    Object.keys(cp).forEach(c => { const cpm = cp[c].sp / cp[c].im * 1000; if (!(cpm > 0.05 && cpm < 1000)) return; [ind, 'ALL'].forEach(scope => { if (!scope) return; (by[scope + '||' + c] || (by[scope + '||' + c] = [])).push(cpm); }); });
+  });
+  const now = new Date().toISOString(); let published = 0, suppressed = 0; const ops = [{ sql: 'DELETE FROM mix_benchmark_cpm', params: [] }];
+  Object.keys(by).forEach(k => { const list = by[k].sort((x, y) => x - y); if (list.length < M.benchmarkMinAccounts){ suppressed++; return; } const [scope, ch] = k.split('||'); const r2 = v => Math.round(v * 100) / 100;
+    ops.push({ sql: 'INSERT INTO mix_benchmark_cpm (id, industry, channel, accountcount, cpmmedian, cpmp25, cpmp75, cpmmean, updatedat) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', params: [k, scope, ch, list.length, r2(mixQuantile(list, 0.5)), r2(mixQuantile(list, 0.25)), r2(mixQuantile(list, 0.75)), r2(list.reduce((a, b) => a + b, 0) / list.length), now] }); published++; });
+  db.batch(ops, 60000);
+  return { published, suppressed, minimumAccounts: M.benchmarkMinAccounts, updatedAt: now };
+}
+function mixBenchmarkCpm(accountId, channel){
+  try { const acct = db.prepare('SELECT industry FROM accounts WHERE accountId = ?').get(accountId); const ind = acct && String(acct.industry || '').trim();
+    let r = ind ? db.prepare('SELECT * FROM mix_benchmark_cpm WHERE industry = ? AND channel = ?').get(ind, channel) : null; let scope = ind;
+    if (!r){ r = db.prepare("SELECT * FROM mix_benchmark_cpm WHERE industry = 'ALL' AND channel = ?").get(channel); scope = 'all-industry'; }
+    return r && r.cpmmedian > 0 ? { cpm: Number(r.cpmmedian), n: r.accountcount, scope } : null; } catch (e){ return null; }
+}
 function planScenarioCompute(accountId, input){
   const year = Number(input.year) || new Date().getUTCFullYear();
   const bandName = input.band === 'low' || input.band === 'high' ? input.band : 'mid'; const bi = planScenarioBand(bandName);
@@ -20965,10 +21049,15 @@ function planScenarioCompute(accountId, input){
   if (!chNames.length){ totalImps = blendedCpm ? W / blendedCpm * 1000 : 0; notes.push('No channel history on file, so the whole budget is converted at one blended cost per thousand impressions.'); }
   chNames.forEach(c => {
     const spend = W * shares[c]; const hist = ch[c]; let cpm = hist && hist.impressions > 0 ? hist.spend / hist.impressions * 1000 : null, src = 'this channel\'s last 12 months';
-    if (!cpm){ cpm = blendedCpm; src = hist ? 'blended cost (no impressions logged for this channel)' : 'blended cost (channel has no history)'; }
+    if (!cpm){ const bm = mixBenchmarkCpm(accountId, c); if (bm){ cpm = bm.cpm; src = `${bm.scope} median of ${bm.n} accounts (benchmark)`; } else { cpm = blendedCpm; src = hist ? 'blended cost (no impressions logged for this channel)' : 'blended cost (channel has no history)'; } }
     const imps = cpm ? spend / cpm * 1000 : 0; totalImps += imps;
     chRows.push({ channel: c, spend: Math.round(spend), share: Math.round(shares[c] * 1000) / 10, cpm: cpm ? Math.round(cpm * 100) / 100 : null, cpmSource: src, impressions: Math.round(imps), baselineSpend: hist ? Math.round(hist.spend) : 0 });
   });
+  let MR = null; try { MR = mixReadinessFor(accountId); } catch (e){ MR = null; }
+  chRows.forEach(r => { const m = MR && MR.channels.find(x => x.channel === r.channel); r.evidence = { level: m ? m.level : 0, label: MIX_LEVEL_LABELS[m ? m.level : 0], readyForCurve: !!(m && m.readyForCurve) };
+    if (m && m.level >= 1 && m.costPerLead != null && MR.accountCostPerLead) r.directional = { costPerLead: m.costPerLead, accountCostPerLead: MR.accountCostPerLead, vsAverage: Math.round((m.costPerLead / MR.accountCostPerLead - 1) * 100) }; });
+  const bigCh = chRows.filter(r => r.share >= 10); const overallLevel = bigCh.length ? Math.min.apply(null, bigCh.map(r => r.evidence.level)) : 0;
+  if (chRows.length){ const lows = chRows.filter(r => r.evidence.level === 0).map(r => r.channel); notes.push(`Mix effect: ${MIX_LEVEL_LABELS[overallLevel]}.` + (lows.length ? ` ${lows.join(', ')} ${lows.length === 1 ? 'is' : 'are'} converted on cost per thousand only; the Readiness card shows what each needs.` : '')); }
   // monthly shape: last year's impression pattern, else even
   const py = year - 1; const pyKeys = Object.keys(S.impressions).filter(k => k.startsWith(String(py)));
   const pyTot = pyKeys.reduce((n, k) => n + (S.impressions[k] || 0), 0); const seasonal = pyKeys.length >= 9 && pyTot > 0;
@@ -20992,7 +21081,7 @@ function planScenarioCompute(accountId, input){
   if (!planBudget && input.workingMedia == null) notes.push('No confirmed ' + year + ' working media budget, so the last 12 months of spend is used.');
   return { year, band: bandName, outcome, bands, channels: chRows, baseline: base, target, confidence: f.confidence, rangeNote: f.rangeNote,
     assumptions: ['Impressions per channel = spend ÷ that channel\'s own cost per thousand over the last 12 complete months.', 'Funnel rates (visits, leads, transactions, revenue per transaction) are this account\'s own where there is history; the engine labels any benchmark.', 'The mix moves results only through cost per thousand impressions. Channels are not given different conversion rates until media mix model results are available.'].concat(notes).concat(f.notes || []),
-    minimums: minApplied, customMix: anyMix, usedBudget: planBudget ? 'confirmed ' + year + ' budget' : 'last 12 months of spend' };
+    minimums: minApplied, mixEvidence: { level: overallLevel, label: MIX_LEVEL_LABELS[overallLevel], builtLevel: MIX_BUILT_LEVEL }, customMix: anyMix, usedBudget: planBudget ? 'confirmed ' + year + ' budget' : 'last 12 months of spend' };
 }
 // ---- Scenario plan upload (2026-10-10) ----
 const PLAN_UPLOAD_MONTHS = ['january','february','march','april','may','june','july','august','september','october','november','december'];
@@ -21956,7 +22045,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['account_ga4_meta', 'account_plan_scenarios', 'plan_scenario_events', 'plan_baseline_drafts', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'marketing_projects', 'marketing_project_tasks', 'account_learned_cpm', 'account_channel_product_inputs', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'creative_handoffs', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
+const CATALOG_EXEMPT = new Set(['account_ga4_meta', 'account_plan_scenarios', 'plan_scenario_events', 'mix_benchmark_cpm', 'plan_baseline_drafts', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'marketing_projects', 'marketing_project_tasks', 'account_learned_cpm', 'account_channel_product_inputs', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'creative_handoffs', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -22374,6 +22463,7 @@ const PRODUCT_GUIDE = [
   { letter: "GE", label: "Strategy: Booked Revenue Trends", keywords: ["booked revenue", "product group", "average revenue per transaction", "price", "trend", "strategy", "reporting card"], text: "This card shows booked revenue by product group over the dates you pick, with the average revenue per transaction beneath it. Booked revenue is gross revenue on transactions, from the monthly transactions or the guest bookings upload. Average revenue per transaction is booked revenue divided by unique transactions (booking codes), so a rise with flat transactions points to price or mix, and a rise in revenue with a flat average points to volume. The four largest product groups are drawn, and the rest fold into Other; the large view lists all of them. Hover a dot for the period's figures. The date list is YTD by default, then WoW, MoM, YoY and Custom, and the change is against the same dates one year earlier. Monthly totals are divided evenly by day for a week or a part month and marked as estimated in the large view. Which story it tells: the change against last year when last year has the figures, otherwise the trend across the dates." },
   { letter: "GF", label: "Strategy: Budget Allocations", keywords: ["budget allocations", "working media", "committed", "scheduled", "not yet scheduled", "over plan", "strategy", "reporting card"], text: "This card shows how much of the working media budget for the dates is committed. The plan for the dates is the confirmed working media budget spread evenly by day; YTD shows the whole plan year so that media scheduled later in the year counts. Spent is spend actuals in the dates, up to today. Scheduled is media on the channel planning uploads dated today or later in the dates, excluding cancelled or rejected lines, and the large view splits it into approved and still draft. Not yet scheduled is what is left of the plan, and Over plan appears when spend plus scheduled media passes it. If no confirmed budget is on file for the dates, the card says so and still shows what was spent. Which story it tells: how much is committed and what is still open." },
   { letter: "GG", label: "Strategy: Media Mix Allocations", keywords: ["media mix", "allocation", "channel share", "share of spend", "share of plan", "search", "social", "direct mail", "strategy", "reporting card"], text: "This card compares where the money went with where the plan said it would go. Share of spend is each budget category's spend divided by all spend in the dates; channels roll up to the budget categories, so Brand Search and Non-Brand Search both count as Search. Share of plan is each category's working media in the confirmed budget divided by all working media in it. Each bar is the share of spend, with a tick for the share of the plan. A budget line with no matching channel shows its plan share only, and a channel with no matching budget line shows its spend share only. The large view lists every category with the points over or under plan and last year's share, then every channel. Which story it tells: the widest gap between spend and plan, otherwise what leads spend." },
+  { letter: "GI", label: "Strategy: how much evidence behind the mix forecast", keywords: ["evidence", "readiness", "minimums", "mix response", "response curve", "media mix model", "mmm", "diminishing returns", "level 1", "level 2", "directional", "modelled", "estimate", "cost only", "benchmarks", "industry average", "what do i need", "how much data", "channel readiness", "strategy", "scenario"], text: "Verilume forecasts a budget mix using the best evidence your account has for each channel, and says which level it used. Level 0, Estimate: cost only, turns spend into impressions using the channel’s cost per thousand. Level 1, Directional: your recent results, also compares the channel’s cost per lead with your account average. It needs at least 3 months of spend and 30 leads tied to the channel. Level 2, Modelled: your data, fits a diminishing-returns curve to the channel’s own history. It needs 12 months of spend, the channel running in at least 80 percent of the months since it started, monthly spend that varies by at least a quarter, and 100 leads tied to the channel. Level 3 adds industry averages from other accounts when your own history is thin; only summarized figures are shared, never an account’s own numbers. Moving budget between channels automatically needs at least three channels at level 2 whose spend does not rise and fall together. Today forecasts run on cost per thousand with level 1 comparisons; curve modelling is not switched on yet. Spend and results are loaded monthly, so the minimums count months. The Readiness card lists each channel, what is missing and what to do next. Flat spend cannot show a curve, so a planned change in spend or a geographic test helps a channel move up." },
   { letter: "GH", label: "Strategy: Forecasted Future Revenue", keywords: ["forecast", "future revenue", "booked to date", "low expected high", "year end", "target", "strategy", "reporting card"], text: "This card shows revenue booked so far and what the forecast expects for the rest of the dates. The forecast takes the planned impressions and spend by month and runs them through the calibrated chain of impressions to visits, visits to leads, leads to bookings and bookings to revenue, giving a low, expected and high figure. The low and high assume every stage lands at its own 25th and 75th percentile together, so they are a planning band, not a statistical confidence interval. YTD shows the whole year, booked to date plus the forecast to December, and sets it against the annual revenue target. WoW is the last and next 7 days, MoM is this month, YoY is the last and next 12 months, and Custom is any dates. Months with no planned media have no forecast. Which story it tells: where revenue lands against the same dates last year and against the target." },
   { letter: "AX", label: "Search Everywhere: illumination guides and light levels", keywords: ["search everywhere", "illumination guide", "view guide", "light level", "seo checklist", "aeo", "geo", "local business", "franchise", "call center", "ecommerce", "self rate", "self assessment search", "search checklist"], text: "Search Everywhere has three area cards: SEO (get found), AEO (be the answer) and GEO (be cited by AI). Each shows what drives it, a light level, and a View guide button that opens the guide on the page. The guide is a prioritized checklist written for your kind of business: a local business, a single-location call center or ecommerce, or a franchise with online sales and storefronts. You rate each item yourself as not started, in progress, done or does not apply. Items Verilume can read from your data, such as Search Console connected, indexing health, answered questions and AI citation checks, are filled in for you. The light level is Dark, Dim, Lit, Bright or Brilliant based on the weighted share of items done, and it is saved so you can see progress over time. You can also ask Ask Verilume or the voice agent to walk you through the assessment, or to judge a recommendation someone gave you, such as whether to add an FAQ hub to support AEO. It answers for your kind of business and your current status, and says plainly when the evidence for a tactic is thin. Ratings are set in the guide, not by voice." }
 ];
@@ -33664,6 +33754,17 @@ async function handleRequestInner(req, res) {
     // Brain investment. Ops-only, same X-Admin-Token/ADMIN_API_TOKEN gate
     // as GET /api/ops/integration-status above (not requireAdminMember —
     // that's the portal team-member gate).
+    // 2026-10-19 — Ops-Console: aggregated channel cost per thousand by industry (never account-level; a row needs MIX_MINIMUMS.benchmarkMinAccounts accounts).
+    //   GET  /api/ops/mix-benchmarks           what is published now
+    //   POST /api/ops/mix-benchmarks/refresh   rebuilds from every account's last 12 months
+    if (parts.length >= 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'mix-benchmarks' && parts.length <= 4){
+      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN) return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
+      try {
+        if (req.method === 'POST' && parts[3] === 'refresh') return sendJson(res, 200, mixBenchmarkRefresh());
+        if (req.method === 'GET' && parts.length === 3){ const rows = db.prepare('SELECT industry, channel, accountcount, cpmmedian, cpmp25, cpmp75, cpmmean, updatedat FROM mix_benchmark_cpm ORDER BY industry, channel').all().map(r => ({ industry: r.industry, channel: r.channel, accounts: r.accountcount, median: r.cpmmedian, p25: r.cpmp25, p75: r.cpmp75, mean: r.cpmmean, updatedAt: r.updatedat })); return sendJson(res, 200, { minimumAccounts: MIX_MINIMUMS.benchmarkMinAccounts, rows }); }
+        return sendJson(res, 404, { error: 'Unknown request.' });
+      } catch (e){ console.error('[mix-benchmarks] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'Benchmarks failed: ' + (e && e.message || 'unknown error') }); }
+    }
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'ai-brain-transparency-rollup'){
       if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
@@ -47805,6 +47906,13 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       return sendJson(res, 200, { accountId, saved: true, updatedAt: now });
     }
 
+    // 2026-10-19 — GET /api/accounts/:id/mix-readiness: per-channel evidence level, what the next level needs, and the minimums (months, not weeks: data is monthly).
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'mix-readiness'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      try { return sendJson(res, 200, mixReadinessFor(accountId)); }
+      catch (e){ console.error('[mix-readiness] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'Readiness could not be worked out: ' + (e && e.message || 'unknown error') }); }
+    }
     // 2026-10-19 (slice 1b) — GET /api/accounts/:id/annual-plan/baseline-draft?year=&basis=ttm|calendar  (builds or refreshes the draft; nothing is saved to the plan)
     //   POST .../baseline-draft/cell { basis, year, field, value|null, note }   a person corrects one cell of the draft
     //   POST .../baseline-draft/rebuild { basis, year }                        discards corrections and rebuilds from the data
