@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-19-mix-curves-pr-chip-forms (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-19-pr-corp-one-flow (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -5073,6 +5073,15 @@ const INTERVIEW_COPY_SCHEMA = {
     approach: { type: 'string', description: 'One short sentence (roughly 10-20 words) naming the real strategic approach you actually took for this draft -- the hook, angle, or persuasion strategy used, in your own words. Not a generic label like "direct response" unless that genuinely is your approach.' }
   },
   required: ['copy', 'approach']
+};
+const PR_CONTEST_SCHEMA = {
+  type: 'object',
+  properties: {
+    copy: { type: 'string', description: 'The full drafted piece.' },
+    strategy: { type: 'string', description: 'One short sentence (about 10-20 words) naming the real approach taken for this draft.' },
+    headline: { type: 'string', description: 'The headline or subject line of the piece.' }
+  },
+  required: ['copy', 'strategy', 'headline']
 };
 const COPY_SOURCES_SCHEMA = {
   type: 'object',
@@ -10554,16 +10563,21 @@ const CORPORATE_COMMS_STATUSES = ['draft', 'approved'];
 // Charity/Person partnership vs. a Significant Hire/Departure. See
 // PRESS_RELEASE_TYPE_GUIDANCE below for the per-type prompt guidance this
 // feeds into buildPrCorpCommPrompt().
-const PRESS_RELEASE_TYPES = ['product_launch', 'earnings', 'partnership', 'charity_or_person', 'hire_or_departure'];
+const PRESS_RELEASE_TYPES = ['product_launch', 'earnings', 'partnership', 'charity_or_person', 'hire_or_departure', 'holding_statement', 'talking_points', 'internal_announcement'];
+// 2026-10-19 (Todd): corporate communications merged into the one PR process. These three types replace the separate Corporate Communications list.
+const PRESS_CORPORATE_TYPES = ['holding_statement', 'talking_points', 'internal_announcement'];
 const PRESS_RELEASE_TYPE_LABELS = {
   product_launch: 'Product Launch / Enhancement',
   earnings: 'Earnings Announcement',
   partnership: 'Strategic Partnership',
   charity_or_person: 'Charity / Person Partnership',
-  hire_or_departure: 'Significant Hire / Departure'
+  hire_or_departure: 'Significant Hire / Departure',
+  holding_statement: 'Holding Statement / Crisis Response',
+  talking_points: 'Talking Points',
+  internal_announcement: 'Internal Announcement'
 };
-const PRESS_RELEASE_AUDIENCES = ['consumer', 'business'];
-const PRESS_RELEASE_AUDIENCE_LABELS = { consumer: 'Consumer', business: 'Business / Trade Network' };
+const PRESS_RELEASE_AUDIENCES = ['consumer', 'business', 'internal'];
+const PRESS_RELEASE_AUDIENCE_LABELS = { consumer: 'Consumer', business: 'Business / Trade Network', internal: 'Internal Stakeholders' };
 // Search Everywhere (2026-10-04): keyword module, optimize runs, website audit.
 // Keywords: one row per keyword or search query. status 'live' = in use, 'suggested' = waiting for the team to accept.
 createTableIfNeeded(`
@@ -10729,6 +10743,23 @@ ensureColumn('press_releases', 'publishedUrl', 'TEXT');
 ensureColumn('press_releases', 'campaignId', 'TEXT');
 ensureColumn('corporate_comms', 'context', 'TEXT');
 ensureColumn('corporate_comms', 'campaignId', 'TEXT');
+// 2026-10-19 (Todd): Corporate Communications folded into the one PR process. Existing rows move into press_releases once,
+// keeping the same id so approve/reject history stays attached. Safe to run on every start.
+try {
+  const oldCorp = db.prepare('SELECT * FROM corporate_comms').all();
+  oldCorp.forEach(r => {
+    const brief = { news: { what: r.context || '' }, experience: { why: '', distinct: '' }, details: { when: '', where: '', who: r.audience || '', how: '' }, nextStep: { matters: '' } };
+    const now = new Date().toISOString();
+    const already = db.prepare('SELECT id FROM press_releases WHERE id = ?').get(r.id);
+    if (!already){
+      db.prepare(`INSERT INTO press_releases (id, accountId, title, workingCopy, status, distributedDate, createdBy, createdAt, updatedAt, releaseType, audience, ctaMode, briefJson, campaignId) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(r.id, r.accountId, r.title, r.workingCopy || null, r.status === 'approved' ? 'distributed' : 'draft', r.status === 'approved' ? (r.approvedAt || now) : null, r.createdBy || null, r.createdAt || now, r.updatedAt || now, 'talking_points', 'internal', 'inspiration', JSON.stringify(brief), r.campaignId || null);
+    }
+    try { db.prepare("UPDATE pr_corp_comm_decisions SET docType = 'press_release' WHERE docType = 'corporate_comms' AND recordId = ?").run(r.id); } catch (e){}
+    db.prepare('DELETE FROM corporate_comms WHERE id = ?').run(r.id);
+  });
+  if (oldCorp.length) console.log('[server.js] moved ' + oldCorp.length + ' corporate communication(s) into the PR list');
+} catch (e){ console.warn('corporate comms move skipped:', e.message); }
 const PR_BRIEF_SHAPE = { news: ['what'], experience: ['why', 'distinct'], details: ['when', 'where', 'who', 'how'], nextStep: ['matters'] };
 function prCleanBrief(raw){
   const out = {};
@@ -10756,9 +10787,18 @@ function prBriefStatus(brief, ctaText){
   st.complete = st.missing.length === 0;
   return st;
 }
-function prBriefToKeyFacts(brief){
+function prBriefToKeyFacts(brief, releaseType){
   const b = brief || prCleanBrief({});
   const lines = [];
+  if (PRESS_CORPORATE_TYPES.includes(releaseType)){
+    if (b.news.what) lines.push(`WHAT HAPPENED / WHAT WE ARE COMMUNICATING (supplied by the team): ${b.news.what}`);
+    const kn = [b.experience.why && `What we know and what we are doing: ${b.experience.why}`, b.experience.distinct && `What we cannot say yet, or must not say: ${b.experience.distinct}`].filter(Boolean);
+    if (kn.length) lines.push(`WHAT WE KNOW AND WHAT WE CANNOT SAY (supplied by the team): ${kn.join(' | ')}`);
+    const dt2 = [b.details.when && `When: ${b.details.when}`, b.details.where && `Where / what is affected: ${b.details.where}`, b.details.who && `Who is affected or speaking: ${b.details.who}`, b.details.how && `Facts and figures: ${b.details.how}`].filter(Boolean);
+    if (dt2.length) lines.push(`THE FACTS (supplied by the team): ${dt2.join(' | ')}`);
+    if (b.nextStep.matters) lines.push(`WHAT PEOPLE SHOULD DO NEXT (supplied by the team): ${b.nextStep.matters}`);
+    return lines.join('\n');
+  }
   if (b.news.what) lines.push(`THE NEWS (supplied by the team): ${b.news.what}`);
   const ex = [b.experience.why && `Why it is compelling: ${b.experience.why}`, b.experience.distinct && `What only this brand can say: ${b.experience.distinct}`].filter(Boolean);
   if (ex.length) lines.push(`THE EXPERIENCE (supplied by the team): ${ex.join(' | ')}`);
@@ -10800,7 +10840,7 @@ function prSeedLines(row){
   }
   return lines.join('\n');
 }
-function prRowKeyFacts(row){ return [prBriefToKeyFacts(prBriefParse(row && row.briefJson)), prSeedLines(row)].filter(Boolean).join('\n'); }
+function prRowKeyFacts(row){ return [prBriefToKeyFacts(prBriefParse(row && row.briefJson), row && row.releaseType), prSeedLines(row)].filter(Boolean).join('\n'); }
 // What Search Console can say about a distributed release. Files carry no per-page daily data, so impressions are the figure in the latest Pages file with its date range stated.
 function prSearchStatus(accountId, row){
   if (!row || row.status !== 'distributed') return null;
@@ -26678,6 +26718,15 @@ async function buildPrCorpCommPrompt(account, docType, brief){
     }
   }[docType];
   if (!docSpec) return { error: `Unknown docType "${docType}".` };
+  if (docType === 'press_release' && PRESS_CORPORATE_TYPES.includes(brief.releaseType)){
+    const corp = {
+      holding_statement: { label: 'a real, ready-to-publish holding statement or crisis response', format: 'A short, calm, factual statement: (1) what happened, stated plainly, (2) what is known so far and what is being done, (3) what is not yet known, without speculation, (4) who is affected and what they should do, with the contact or place to go. No blame, no minimising, no promises that are not in the brief. 120-250 words. Never state a cause, number or time that is not in the brief; where one is missing write a bracketed placeholder.' },
+      talking_points: { label: 'real, ready-to-use talking points for spokespeople and leaders', format: 'A short headline line, then 5-8 numbered talking points, each one or two sentences, in the order a spokesperson would use them: the core message, the key facts, what is being done, what to say if asked about the points that cannot be shared yet, and the one next step. Add a short "Do not say" list taken only from the brief.' },
+      internal_announcement: { label: 'a real, ready-to-send internal announcement to employees or stakeholders', format: 'A subject line, then a short message in the brand voice: what is changing or happening, why, who it affects, when, and what people need to do. 120-300 words, plain and warm, no marketing language. Close with who to ask.' }
+    }[brief.releaseType];
+    docSpec.label = corp.label; docSpec.format = corp.format;
+    docSpec.brief = `Title: ${brief.title || '(not set)'}\nType: ${PRESS_RELEASE_TYPE_LABELS[brief.releaseType]}\nAudience: ${PRESS_RELEASE_AUDIENCE_LABELS[brief.audience] || '(not set)'}\nWhat this communication is built from: ${brief.keyFacts || '(none supplied — use only what is in the brand context above; do not invent facts)'}${ctaGuidanceBlock}`;
+  }
   const prompt = `You are an expert corporate communications and PR writer for ${industryPersonaPhrase(account)}. Write ${docSpec.label} — not a summary, not a template, not placeholder language. Write the way a senior comms professional briefed on this brand's actual voice would write.
 
 BRAND VOICE GUIDE (follow this exactly — tone, point of view, words to avoid, example sentences):
@@ -28723,7 +28772,7 @@ async function generateVendorPrCopy(vendorKey, prompt){
     const text = await callVendorForText(vendorKey, prompt);
     const parsed = parseJsonBlock(text);
     if (!parsed) return { copy: null, error: 'Generation returned no parseable JSON.' };
-    return { copy: typeof parsed.copy === 'string' ? parsed.copy : null, error: null };
+    return { copy: typeof parsed.copy === 'string' ? parsed.copy : null, approach: typeof parsed.strategy === 'string' ? parsed.strategy : null, headline: typeof parsed.headline === 'string' ? parsed.headline : null, error: null };
   } catch (e){
     return { copy: null, error: 'Generation failed: ' + e.message };
   }
@@ -28747,7 +28796,7 @@ async function runPrCandidateInterview(account, docType, brief){
   if (built.error){
     return { available: false, note: built.error, recommendedKey: null, candidates: [] };
   }
-  const { prompt } = built;
+  const prompt = built.prompt + '\n\nAlso state, in the same submission: "strategy" (one sentence, roughly 10-20 words, naming the real approach you took) and "headline" (the headline or subject line of the piece, or the first line for talking points).';
   // 2026-09-03 fix, alongside the fetchWithTimeout() timeout raise (45s ->
   // 90s, per the grok-4.6 report) — this used to `await` the Anthropic call
   // FIRST and only then run the vendor batch, the same
@@ -28766,15 +28815,15 @@ async function runPrCandidateInterview(account, docType, brief){
       content: prompt,
       toolName: 'submit_copy',
       toolDescription: 'Submit the drafted copy.',
-      schema: COPY_SCHEMA
-    }).then(parsed => ({ copy: typeof parsed.copy === 'string' ? parsed.copy : null, error: null }))
+      schema: PR_CONTEST_SCHEMA
+    }).then(parsed => ({ copy: typeof parsed.copy === 'string' ? parsed.copy : null, approach: typeof parsed.strategy === 'string' ? parsed.strategy : null, headline: typeof parsed.headline === 'string' ? parsed.headline : null, error: null }))
       .catch(e => ({ copy: null, error: 'Generation failed: ' + e.message })),
     Promise.all(configuredVendors.map(v => generateVendorPrCopy(v.key, prompt)))
   ]);
 
   const buildCandidate = (key, label, vendor, model, configured, gen) => ({
     key, label, vendor, model, configured,
-    copy: gen ? gen.copy : null, error: gen ? gen.error : null,
+    copy: gen ? gen.copy : null, approach: gen ? (gen.approach || null) : null, headline: gen ? (gen.headline || null) : null, error: gen ? gen.error : null,
     relevanceScore: null, complianceScore: null, combinedScore: null, note: null, flags: [], scoreMode: null
   });
   const anthropicCandidate = buildCandidate('anthropic-baseline', 'Anthropic (baseline)', 'Anthropic', 'claude-sonnet-4-5', true, anthropicResp);
@@ -28816,6 +28865,7 @@ async function handlePrCopyInterviewRequest(docType, accountId, sourceId, body, 
   if (!account) return { status: 404, body: { error: 'account not found' } };
   const row = db.prepare(`SELECT * FROM ${cfg.table} WHERE id = ? AND accountId = ?`).get(sourceId, accountId);
   if (!row) return { status: 404, body: { error: 'item not found' } };
+  if (docType === 'press_release'){ const bs = prBriefStatus(prBriefParse(row.briefJson), row.ctaText); if (!bs.complete) return { status: 200, body: { available: false, note: 'Finish all four steps of the brief first. Still missing: ' + bs.missing.join(', ') + '.', interviewId: null, recommendedKey: null, candidates: [] } }; }
   const capCheck = checkInterviewWeeklyCap(accountId);
   if (capCheck) return { status: 429, body: capCheck };
   const brief = cfg.briefFromRow(row, body);
@@ -30389,7 +30439,7 @@ function redactCandidatesForClient(candidates){
   // fix (candidatesJson from an old run has no blindLabel field at all).
   return (candidates || []).map(c => ({
     key: c.key, label: c.blindLabel || c.label, configured: c.configured,
-    copy: c.copy, approach: c.approach || null, error: c.error, pending: !!c.pending,
+    copy: c.copy, approach: c.approach || null, headline: c.headline || null, error: c.error, pending: !!c.pending,
     relevanceScore: c.relevanceScore, complianceScore: c.complianceScore, combinedScore: c.combinedScore,
     note: c.note, flags: c.flags, scoreMode: c.scoreMode,
     // 2026-09-23 — "option to expand to a long format." Populated by POST
@@ -30996,7 +31046,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-19-mix-curves-pr-chip-forms',
+        buildStamp: '2026-10-19-pr-corp-one-flow',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
@@ -43916,7 +43966,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const nextDistributedDate = nextStatus === 'distributed' ? (existing.distributedDate || now) : (nextStatus === existing.status ? existing.distributedDate : null);
       db.prepare('UPDATE press_releases SET title = ?, workingCopy = ?, status = ?, distributedDate = ?, updatedAt = ?, releaseType = ?, audience = ?, ctaText = ?, ctaMode = ?, linkedinCopy = ?, briefJson = ?, campaignId = ?, publishedUrl = ? WHERE id = ?')
         .run(nextTitle, nextCopy, nextStatus, nextDistributedDate, now, nextReleaseType, nextAudience, nextCtaText, nextCtaMode, nextLinkedinCopy, nextBriefJson, nextCampaignId, nextPubUrl, prId);
-      return sendJson(res, 200, { updated: true });
+      return sendJson(res, 200, { updated: true, briefStatus: prBriefStatus(prBriefParse(nextBriefJson), nextCtaText) });
     }
     if (req.method === 'DELETE' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'press-releases'){
       const accountId = decodeURIComponent(parts[2]);
@@ -43936,6 +43986,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const existing = db.prepare('SELECT * FROM press_releases WHERE id = ? AND accountId = ?').get(prId, accountId);
       if (!existing) return sendJson(res, 404, { error: 'press release not found' });
       const body = await readBody(req);
+      { const bs = prBriefStatus(prBriefParse(existing.briefJson), existing.ctaText); if (!bs.complete) return sendJson(res, 200, { copy: null, sourcesUsed: [], note: 'Finish all four steps of the brief first. Still missing: ' + bs.missing.join(', ') + '.', briefStatus: bs }); }
       const result = await draftPrCorpCommCopyViaAI(account, 'press_release', { title: existing.title, keyFacts: body.keyFacts || prRowKeyFacts(existing), releaseType: existing.releaseType || '', audience: existing.audience || '', ctaText: existing.ctaText || '', ctaMode: existing.ctaMode || 'inspiration' });
       if (result.copy){
         const now = new Date().toISOString();
@@ -43959,7 +44010,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       // GET overview: what the master page shows.
       if (req.method === 'GET' && parts.length === 4){
         const kw = srchKeywordsForAccount(accountId);
-        const press = db.prepare('SELECT id, title, status, releaseType, updatedAt FROM press_releases WHERE accountId = ? ORDER BY updatedAt DESC').all(accountId).map(p => {
+        const press = db.prepare('SELECT id, title, status, releaseType, updatedAt FROM press_releases WHERE accountId = ? AND (audience IS NULL OR audience != \'internal\') ORDER BY updatedAt DESC').all(accountId).map(p => {
           const run = db.prepare(`SELECT id, acceptedCount, totalCount, appliedAt, createdAt FROM search_optimizations WHERE accountId = ? AND surface = 'press' AND targetRef = ? ORDER BY createdAt DESC LIMIT 1`).get(accountId, p.id);
           return { ...p, optimized: run ? { runId: run.id, acceptedCount: run.acceptedCount, totalCount: run.totalCount, appliedAt: run.appliedAt, ranAt: run.createdAt } : null };
         });
