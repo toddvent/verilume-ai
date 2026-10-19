@@ -4213,13 +4213,22 @@
   .seo-section-title{font-size:1.0625rem;font-weight:700;color:var(--ink);}
   /* Add-forms inside page sections use the same field look as .field inputs: 10px radius, 11px/13px padding, Inter, cx focus ring, custom chevron (2026-10-19, Todd) */
   .seo-form{align-items:stretch;}
-  .seo-form input[type=text],.seo-form select{box-sizing:border-box;min-height:44px;padding:11px 13px;border:1px solid var(--line);border-radius:10px;font-family:'Inter';font-size:0.9062rem;background-color:var(--white);color:var(--ink);transition:border-color 0.15s ease,box-shadow 0.15s ease;}
+  .seo-form input[type=text],.seo-form input[type=number],.seo-form input[type=date],.seo-form select{box-sizing:border-box;min-height:44px;padding:11px 13px;border:1px solid var(--line);border-radius:10px;font-family:'Inter';font-size:0.9062rem;background-color:var(--white);color:var(--ink);transition:border-color 0.15s ease,box-shadow 0.15s ease;}
   .seo-form input[type=text]::placeholder{color:var(--muted);opacity:.85;}
-  .seo-form input[type=text]:focus,.seo-form select:focus{outline:none;border-color:var(--cx);box-shadow:0 0 0 3px rgba(8,145,178,0.14);}
+  .seo-form input[type=text]:focus,.seo-form input[type=number]:focus,.seo-form input[type=date]:focus,.seo-form select:focus{outline:none;border-color:var(--cx);box-shadow:0 0 0 3px rgba(8,145,178,0.14);}
   .seo-form select{padding-right:40px;appearance:none;-webkit-appearance:none;-moz-appearance:none;cursor:pointer;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%235B5647' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");background-repeat:no-repeat;background-position:right 14px center;background-size:11px 7px;}
   .seo-form select:hover{border-color:var(--cx);}
   .seo-form .btn-primary{min-height:44px;padding:0 22px;display:inline-flex;align-items:center;justify-content:center;}
   .seo-section>.hint{font-size:0.8125rem;color:var(--muted);line-height:1.5;}
+  /* PR list: same table as paid campaigns, with a teal Distribute chip and a teal Archive button */
+  .prc-chip{font-family:inherit;display:inline-block;padding:6px 14px;border-radius:999px;border:1px solid var(--cx);background:var(--cx);color:var(--white);font-size:0.8125rem;font-weight:700;line-height:1.2;cursor:pointer;white-space:nowrap;}
+  .prc-chip:hover{filter:brightness(0.92);}
+  .prc-chip.off{background:var(--paper-dim);border-color:var(--line);color:var(--muted);cursor:not-allowed;filter:none;}
+  .prc-chip.done{background:var(--white);color:var(--cx);cursor:default;filter:none;}
+  .prc-stsel{font:inherit;font-size:0.8125rem;border:1px solid var(--line);background:var(--white);color:var(--ink);border-radius:8px;padding:5px 8px;cursor:pointer;}
+  .prc-tools{display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin:0 0 10px;}
+  .prc-tools .mktcal-filter-field{min-width:170px;}
+  #repPressList td .btn-row{margin:0;}
   .seo-section-sub{font-size:0.8125rem;color:var(--muted);margin:2px 0 14px;max-width:760px;line-height:1.5;}
   .seo-summary-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin:18px 0 30px;}
   .seo-stat-tile{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:16px 18px;}
@@ -13920,7 +13929,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-19-review-sources-partners';
+const CXMEDIA_BUILD_STAMP = '2026-10-19-pr-list-reach';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -27113,7 +27122,7 @@ const askDockPr = { sel: null, running: false, result: null, picked: false, note
 function askDockPrItems(){
   const out = [];
   try {
-    (prcState.pressReleases || []).forEach(x => out.push({ type: 'press', id: x.id, title: x.title, kind: PRC_PRESS_TYPE_LABELS[x.releaseType] || 'Press release', item: x }));
+    (prcState.pressReleases || []).filter(x => x.status !== 'archived').forEach(x => out.push({ type: 'press', id: x.id, title: x.title, kind: PRC_PRESS_TYPE_LABELS[x.releaseType] || 'Press release', item: x }));
     (prcState.editorialPitches || []).forEach(x => out.push({ type: 'editorial', id: x.id, title: (x.outlet || '') + ': ' + (x.topic || ''), kind: 'Editorial pitch', item: x }));
   } catch (e){}
   return out;
@@ -66551,7 +66560,7 @@ async function refreshAccountIntelligence(){
 // required fields and which array/endpoint it targets, same
 // config-over-duplication approach as PRC_TYPE_CONFIG below.
 const PRC_TYPE_CONFIG = {
-  press: { endpoint: 'press-releases', stateKey: 'pressReleases', idPrefix: 'PRL', statusMap: { distributed: ['sent', 'Distributed'], draft: ['pending', 'Draft'] }, nextStatus: { draft: 'distributed', distributed: 'draft' }, nextLabel: { draft: 'Mark Distributed →', distributed: 'Revert to Draft' } },
+  press: { endpoint: 'press-releases', stateKey: 'pressReleases', idPrefix: 'PRL', statusMap: { distributed: ['sent', 'Distributed'], draft: ['pending', 'Draft'], internal_qa: ['pending', 'Internal QA'], final: ['info', 'Final'], archived: ['info', 'Archived'] }, nextStatus: { draft: 'distributed', distributed: 'draft' }, nextLabel: { draft: 'Mark Distributed →', distributed: 'Revert to Draft' } },
   editorial: { endpoint: 'editorial-pitches', stateKey: 'editorialPitches', idPrefix: 'EDP', statusMap: { placed: ['sent', 'Placed'], pending: ['pending', 'Pending'] }, nextStatus: { pending: 'placed', placed: 'pending' }, nextLabel: { pending: 'Mark Placed →', placed: 'Revert to Pending' } },
   corp: { endpoint: 'corporate-comms', stateKey: 'corporateComms', idPrefix: 'CCM', statusMap: { approved: ['sent', 'Approved'], draft: ['pending', 'Draft'] }, nextStatus: { draft: 'approved', approved: 'draft' }, nextLabel: { draft: 'Mark Approved →', approved: 'Revert to Draft' } }
 };
@@ -67153,6 +67162,7 @@ function prcPressExpandedHtml(item){
     ${corp ? '' : srchPanelHtml('press:' + id, { kind: 'press', id })}
     ${contest}
     ${decision}
+    ${prcReachBlockHtml(item)}
     ${linkedin}
   </div>`;
 }
@@ -67246,19 +67256,105 @@ async function prcSavePressMeta(id){
     else if (statusEl) statusEl.textContent = data.error || 'Save failed.';
   } catch (e){ if (statusEl) statusEl.textContent = 'Backend unreachable.'; }
 }
-function renderRepPress(){
-  prcRenderSection('press', 'repPressList',
-    p => `${escapeHtml(p.title)}${p.distributedDate ? ` <span class="hint" style="font-weight:400;">— ${escapeHtml(p.distributedDate.slice(0,10))}</span>` : ''}`,
-    p => {
-      const bits = [];
-      if (p.releaseType && PRC_PRESS_TYPE_LABELS[p.releaseType]) bits.push(PRC_PRESS_TYPE_LABELS[p.releaseType]);
-      if (p.audience && PRC_PRESS_AUDIENCE_LABELS[p.audience]) bits.push(PRC_PRESS_AUDIENCE_LABELS[p.audience]);
-      if (p.briefStatus){ const n = ['news', 'experience', 'details', 'nextStep'].filter(k => p.briefStatus[k]).length; bits.push(n === 4 ? 'Brief complete' : `Brief ${n} of 4`); }
-      if (p.campaignId){ const cmp = prcCampaignById(p.campaignId); if (cmp) bits.push('Campaign: ' + escapeHtml(cmp.name || cmp.id)); }
-      return bits.join(' · ');
-    });
+const prcTbl = { status: 'active', q: '', sort: 'updatedAt', dir: -1 };
+const PRC_STATUS_LABEL = { draft: 'Draft', internal_qa: 'Internal QA', final: 'Final', distributed: 'Final', archived: 'Archived' };
+function prcFmtDate(d){ if (!d) return '—'; try { const x = new Date(String(d).slice(0, 10) + 'T12:00:00'); return isNaN(x) ? String(d).slice(0, 10) : x.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); } catch (e){ return String(d).slice(0, 10); } }
+function prcReachText(it){ const r = it.reachData; if (!r || r.total === null || r.total === undefined) return null; return Number(r.total).toLocaleString('en-US') + (r.basis ? ' · ' + r.basis : ''); }
+function prcSortVal(it, k){
+  if (k === 'name') return (it.title || '').toLowerCase();
+  if (k === 'distributedDate') return it.distributedDate || '';
+  if (k === 'status') return ['draft', 'internal_qa', 'final', 'distributed', 'archived'].indexOf(it.status);
+  if (k === 'reach') return it.reachData && it.reachData.total != null ? Number(it.reachData.total) : -1;
+  return it.updatedAt || '';
 }
-
+function prcSortBy(k){ if (prcTbl.sort === k) prcTbl.dir = -prcTbl.dir; else { prcTbl.sort = k; prcTbl.dir = k === 'name' ? 1 : -1; } prcRenderPressTable(); }
+function prcSetFilter(v){ prcTbl.status = v; prcRenderPressTable(); }
+function prcSetSearch(v){ prcTbl.q = v; prcRenderPressTable(); }
+function prcPressRowHtml(it){
+  const id = it.id; const corp = prcIsCorp(it); const open = !!prcExpanded[`press:${id}`];
+  const sub = [PRC_PRESS_TYPE_LABELS[it.releaseType], PRC_PRESS_AUDIENCE_LABELS[it.audience]].filter(Boolean);
+  if (it.briefStatus){ const n = ['news', 'experience', 'details', 'nextStep'].filter(k => it.briefStatus[k]).length; sub.push(n === 4 ? 'Brief complete' : `Brief ${n} of 4`); }
+  const camp = it.campaignId ? prcCampaignById(it.campaignId) : null; if (camp) sub.push('Campaign: ' + (camp.name || camp.id));
+  const locked = it.status === 'distributed' || it.status === 'archived';
+  const statusCell = locked ? `<span class="badge${it.status === 'archived' ? '' : ' strong'}" style="${it.status === 'archived' ? 'background:var(--paper-dim);color:var(--muted);border:1px solid var(--line);' : ''}">${PRC_STATUS_LABEL[it.status]}</span>`
+    : `<select class="prc-stsel" aria-label="Status of ${escapeHtml(it.title)}" onchange="prcSetStatus('${id}',this.value)">${['draft', 'internal_qa', 'final'].map(v => `<option value="${v}" ${it.status === v ? 'selected' : ''}>${PRC_STATUS_LABEL[v]}</option>`).join('')}</select>`;
+  const reach = prcReachText(it);
+  const reachCell = reach ? escapeHtml(reach) : (it.status === 'distributed' ? `<a class="flink" onclick="prcOpenReach('${id}')">Add final reach</a>` : '—');
+  const verb = corp ? 'Send' : 'Distribute', done = corp ? 'Sent' : 'Distributed';
+  const distCell = it.status === 'distributed' ? `<span class="prc-chip done">${done} ✓</span>`
+    : (it.status === 'archived' ? '<span class="hint">—</span>'
+    : (it.status === 'final' ? `<button type="button" class="prc-chip" onclick="prcDistribute('${id}')">${verb} →</button>` : `<span class="prc-chip off" title="Set the status to Final first">${verb}</span>`));
+  const arch = it.status === 'archived' ? `<button type="button" class="cmp-manage-btn" onclick="prcRestore('${id}')">Restore</button>` : `<button type="button" class="cmp-manage-btn" onclick="prcArchive('${id}')">Archive</button>`;
+  const main = `<tr>
+      <td class="name" data-label="Name"><a class="flink" style="font-weight:600;" onclick="prcToggleExpand('press','${id}')">${escapeHtml(it.title)}</a><div class="hint" style="margin:2px 0 0;font-weight:400;">${sub.map(escapeHtml).join(' · ')}</div></td>
+      <td class="num" data-label="Distribution Date">${prcFmtDate(it.distributedDate)}</td>
+      <td data-label="Status">${statusCell}</td>
+      <td class="num" data-label="Final Reach">${reachCell}</td>
+      <td data-label="Distribute">${distCell}</td>
+      <td data-label="Archive">${arch}</td>
+      <td data-label=""><button type="button" class="btn-ghost" onclick="prcToggleExpand('press','${id}')">${open ? 'Close' : 'Open'}</button></td>
+    </tr>`;
+  const detail = open ? `<tr><td colspan="7" style="padding-right:0;">${it.searchSeed ? prcSeedNoteHtml(it) : ''}${corp ? '' : prcStripHtml(it)}${prcPressExpandedHtml(it)}<div class="btn-row" style="margin-top:10px;"><button type="button" class="btn-ghost" onclick="prcDelete('press','${id}')">Remove permanently</button></div></td></tr>` : '';
+  return main + detail;
+}
+function prcRenderPressTable(){
+  const host = document.getElementById('repPressList'); if (!host) return;
+  if (!document.getElementById('prcPressTbl')){
+    host.innerHTML = `<div class="prc-tools">
+      <div class="mktcal-filter-field"><label for="prcPressStatusSel">Status</label><select id="prcPressStatusSel" onchange="prcSetFilter(this.value)">
+        <option value="active">All except archived</option><option value="draft">Draft</option><option value="internal_qa">Internal QA</option><option value="final">Final, not yet distributed</option><option value="distributed">Distributed</option><option value="archived">Archived</option><option value="all">Everything</option></select></div>
+      <div style="flex:1 1 240px;max-width:420px;"><input type="text" class="cmgmt-search-input" placeholder="Search by name…" oninput="prcSetSearch(this.value)" style="width:100%;"></div></div>
+      <div id="prcPressTbl"></div>`;
+  }
+  const el = document.getElementById('prcPressTbl'); if (!el) return;
+  let rows = (prcState.pressReleases || []).slice();
+  const f = prcTbl.status;
+  rows = rows.filter(r => f === 'all' ? true : (f === 'active' ? r.status !== 'archived' : r.status === f));
+  const q = prcTbl.q.trim().toLowerCase(); if (q) rows = rows.filter(r => (r.title || '').toLowerCase().includes(q));
+  rows.sort((a, b) => { const x = prcSortVal(a, prcTbl.sort), y = prcSortVal(b, prcTbl.sort); return (x < y ? -1 : x > y ? 1 : 0) * prcTbl.dir; });
+  const arrow = k => prcTbl.sort === k ? (prcTbl.dir > 0 ? ' ▲' : ' ▼') : '';
+  const th = (k, l) => `<th class="cmgmt-sortable${prcTbl.sort === k ? ' active' : ''}" onclick="prcSortBy('${k}')">${l}${arrow(k)}</th>`;
+  if (!(prcState.pressReleases || []).length){ el.innerHTML = '<p class="hint">Nothing here yet. Add one above.</p>'; return; }
+  el.innerHTML = `<div class="table-scroll"><table class="active-camp-table"><thead><tr>${th('name', 'Name')}${th('distributedDate', 'Distribution Date')}${th('status', 'Status')}${th('reach', 'Final Reach')}<th>Distribute</th><th>Archive</th><th></th></tr></thead><tbody>${rows.length ? rows.map(prcPressRowHtml).join('') : '<tr><td colspan="7"><div class="cmgmt-empty">Nothing matches this filter.</div></td></tr>'}</tbody></table></div>`;
+  rows.forEach(r => { if (prcExpanded[`press:${r.id}`]) prcLoadDecisionHistory('press', r.id); });
+}
+function renderRepPress(){ prcRenderPressTable(); }
+async function prcPatchPress(id, body, failMsg){
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/press-releases/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){ alertInline(data.error || failMsg || 'Could not save.'); return false; }
+    await loadPrCorpCommData(); return true;
+  } catch (e){ alertInline('Backend unreachable. Not saved.'); return false; }
+}
+function alertInline(msg){ const el = document.getElementById('prcpressNewStatus'); if (el){ el.textContent = msg; setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 6000); } }
+async function prcSetStatus(id, v){ await prcPatchPress(id, { status: v }); }
+async function prcDistribute(id){ await prcPatchPress(id, { status: 'distributed' }); prcExpanded[`press:${id}`] = true; prcRenderPressTable(); setTimeout(() => prcOpenReach(id), 50); }
+async function prcArchive(id){ await prcPatchPress(id, { status: 'archived' }); }
+async function prcRestore(id){ await prcPatchPress(id, { status: 'restore' }); }
+function prcOpenReach(id){ prcExpanded[`press:${id}`] = true; prcRenderPressTable(); setTimeout(() => { const el = document.getElementById(`prcReach-${id}`); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 80); }
+async function prcSaveReach(id){
+  const g = x => { const el = document.getElementById(`${x}-${id}`); return el ? el.value : ''; };
+  const out = document.getElementById(`prcReachStatus-${id}`);
+  const ok = await prcPatchPress(id, { distributedDate: g('prcDistDate'), reach: { total: g('prcReachTotal'), basis: g('prcReachBasis'), notes: g('prcReachNotes') } }, 'Could not save the reach.');
+  const o2 = document.getElementById(`prcReachStatus-${id}`); if (o2) o2.textContent = ok ? 'Saved.' : (out ? out.textContent : '');
+}
+function prcReachBlockHtml(item){
+  const id = item.id; const r = item.reachData || {};
+  const basisOpts = ['', 'Media impressions', 'Outlets that ran it', 'Email recipients', 'Email opens', 'Employees reached', 'Website visits', 'Other'].map(b => `<option value="${escapeHtml(b)}" ${((r.basis || '') === b) ? 'selected' : ''}>${b || 'How it was counted…'}</option>`).join('');
+  return `<div id="prcReach-${id}" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line, #e3e3e8);">
+    <div style="font-weight:700;">Distribution date and final reach</div>
+    <p class="hint" style="margin:4px 0 8px;">Distribution happens outside Verilume, so enter the date it went out and, once you know it, what it reached and how that was counted.</p>
+    <div class="seo-form" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+      <input type="date" id="prcDistDate-${id}" value="${escapeHtml(String(item.distributedDate || '').slice(0, 10))}" aria-label="Distribution date">
+      <input type="number" min="0" step="1" id="prcReachTotal-${id}" value="${r.total != null ? escapeHtml(String(r.total)) : ''}" placeholder="Final reach (number)" style="min-width:200px;">
+      <select id="prcReachBasis-${id}" style="min-width:210px;">${basisOpts}</select>
+    </div>
+    <div class="field" style="max-width:none;"><label for="prcReachNotes-${id}">Notes on the reach (outlets, links, how it was measured)</label><textarea id="prcReachNotes-${id}" rows="2" placeholder="e.g. Ran in Travel + Leisure and 11 trade outlets. Impressions from the Meltwater report.">${escapeHtml(r.notes || '')}</textarea></div>
+    <div class="btn-row" style="margin-top:6px;"><button type="button" class="btn-primary" onclick="prcSaveReach('${id}')">Save reach →</button></div>
+    <div id="prcReachStatus-${id}" class="hint" style="margin-top:4px;">${r.recordedAt ? 'Last recorded ' + escapeHtml(String(r.recordedAt).slice(0, 10)) + '.' : ''}</div>
+  </div>`;
+}
 function renderRepEditorial(){
   prcRenderSection('editorial', 'repEditorialList',
     p => `${escapeHtml(p.outlet)} <span class="hint" style="font-weight:400;">— ${escapeHtml(p.topic)}</span>`,
