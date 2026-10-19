@@ -28985,6 +28985,249 @@ Respond via the submit_competitor_synthesis tool.`;
   }
 }
 
+// ---------- Competitor profiles from real sources + Battle Brief (2026-10-19) ----------
+// Per direct instruction: describe each competitor the way we describe a client account, from what is actually public (its website, press
+// and newsroom pages, investor pages, SEC filings, and web-grounded searches), then build the Battle Brief for the real client from the
+// competitor's profile and the client's own brand foundations. Every claim carries the source it came from; a field with no source stays
+// null. Media mix is an inference and is labelled as one. Nothing here replaces the older multi-vendor read; it sits beside it.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS competitor_profiles (
+    accountId TEXT NOT NULL,
+    competitorKey TEXT NOT NULL,
+    competitorName TEXT NOT NULL,
+    websiteUrl TEXT,
+    sourcesJson TEXT,
+    profileJson TEXT,
+    battleBriefJson TEXT,
+    sourcesFetchedAt TEXT,
+    profileGeneratedAt TEXT,
+    battleGeneratedAt TEXT,
+    updatedAt TEXT NOT NULL,
+    PRIMARY KEY (accountId, competitorKey)
+  );
+`);
+const CI_UA = process.env.CI_FETCH_USER_AGENT || 'Mozilla/5.0 (compatible; VerilumeResearch/1.0; +https://verilume.ai)';
+function ciKey(name){ return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+function ciPublicUrl(u){
+  try {
+    let s = String(u || '').trim(); if (!s) return null;
+    if (!/^https?:\/\//i.test(s)) s = 'https://' + s;
+    const x = new URL(s);
+    if (x.protocol !== 'http:' && x.protocol !== 'https:') return null;
+    const h = x.hostname.toLowerCase();
+    if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal') || h === '::1' || h === '[::1]') return null;
+    if (/^(0|10|127)\./.test(h) || /^169\.254\./.test(h) || /^192\.168\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h)) return null;
+    if (!h.includes('.')) return null;
+    return x.toString();
+  } catch (e){ return null; }
+}
+// Fetch one public page as text. Never throws; returns { ok, url, status, title, text, html } with text capped.
+async function ciFetchPage(url, opts){
+  const o = opts || {}; const safe = ciPublicUrl(url);
+  if (!safe) return { ok: false, url, error: 'not a public http(s) address' };
+  try {
+    const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), o.timeoutMs || 12000);
+    const resp = await fetch(safe, { redirect: 'follow', signal: controller.signal, headers: { 'User-Agent': o.userAgent || CI_UA, 'Accept': 'text/html,application/xhtml+xml,application/json;q=0.9,text/plain;q=0.8' } });
+    clearTimeout(timer);
+    if (resp.url && !ciPublicUrl(resp.url)) return { ok: false, url: safe, error: 'redirected to a non-public address' };
+    if (!resp.ok) return { ok: false, url: resp.url || safe, status: resp.status, error: 'HTTP ' + resp.status };
+    const ctype = String(resp.headers.get('content-type') || '');
+    if (!/(html|xml|json|text)/i.test(ctype)) return { ok: false, url: resp.url || safe, error: 'not a text page (' + ctype.slice(0, 40) + ')' };
+    let raw = await resp.text(); const maxChars = o.maxChars || 400000; if (raw.length > maxChars) raw = raw.slice(0, maxChars);
+    const title = (raw.match(/<title[^>]*>([^<]*)<\/title>/i) || [])[1] || '';
+    const body = o.json ? raw : stripHtmlTags(raw.replace(/<(script|style|noscript|svg|nav|footer)[\s\S]*?<\/\1>/gi, ' '));
+    return { ok: true, url: resp.url || safe, status: resp.status, title: stripHtmlTags(title).slice(0, 200), text: body, html: o.json ? null : raw };
+  } catch (e){ return { ok: false, url: safe, error: (e && e.name === 'AbortError') ? 'timed out' : String(e && e.message || e).slice(0, 120) }; }
+}
+// Pick press / newsroom / investor / about links off a home page (same site or a clearly related subdomain).
+function ciFindLinks(html, baseUrl){
+  const out = { press: [], investor: [], about: [], advertising: [] };
+  if (!html) return out;
+  let baseHost = ''; try { baseHost = new URL(baseUrl).hostname.replace(/^www\./, ''); } catch (e){ return out; }
+  const root = baseHost.split('.').slice(-2).join('.');
+  const seen = new Set(); const re = /<a\b[^>]*?href=["']([^"'#]+)["'][^>]*>([\s\S]*?)<\/a>/gi; let m;
+  while ((m = re.exec(html))){
+    let href; try { href = new URL(m[1], baseUrl).toString(); } catch (e){ continue; }
+    const safe = ciPublicUrl(href); if (!safe || seen.has(safe)) continue;
+    const host = new URL(safe).hostname.replace(/^www\./, ''); if (!(host === baseHost || host.endsWith('.' + root) || host === root)) continue;
+    const text = stripHtmlTags(m[2]).toLowerCase().slice(0, 80); const path = (new URL(safe).pathname + ' ' + host).toLowerCase();
+    const hay = text + ' ' + path;
+    let kind = null;
+    if (/investor|shareholder|sec filings|annual report/.test(hay)) kind = 'investor';
+    else if (/press|newsroom|news room|media center|media-center|press release|in the news/.test(hay)) kind = 'press';
+    else if (/advertis|partner with us|brand partners/.test(hay)) kind = 'advertising';
+    else if (/\babout( us)?\b|our story|who we are|company/.test(text)) kind = 'about';
+    if (kind && out[kind].length < 2){ out[kind].push(safe); seen.add(safe); }
+  }
+  return out;
+}
+// SEC EDGAR: public companies only. Returns { cik, name, ticker, filings: [{form, date, url}] } or null.
+let ciSecTickers = null, ciSecTickersAt = 0;
+async function ciSecLookup(name){
+  try {
+    if (!ciSecTickers || Date.now() - ciSecTickersAt > 86400000){
+      const r = await ciFetchPage('https://www.sec.gov/files/company_tickers.json', { json: true, timeoutMs: 15000, userAgent: process.env.SEC_USER_AGENT || 'Verilume Research research@verilume.ai' });
+      if (!r.ok) return null; ciSecTickers = Object.values(JSON.parse(r.text)); ciSecTickersAt = Date.now();
+    }
+    const norm = s => String(s || '').toLowerCase().replace(/\b(inc|corp|corporation|co|company|ltd|plc|holdings|group|the|limited|llc|sa|nv)\b\.?/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+    const want = norm(name); if (want.length < 3) return null;
+    const hit = ciSecTickers.find(t => norm(t.title) === want) || ciSecTickers.find(t => norm(t.title).startsWith(want + ' ')) ;
+    if (!hit) return null;
+    const cik = String(hit.cik_str).padStart(10, '0');
+    const sub = await ciFetchPage(`https://data.sec.gov/submissions/CIK${cik}.json`, { json: true, timeoutMs: 15000, userAgent: process.env.SEC_USER_AGENT || 'Verilume Research research@verilume.ai' });
+    if (!sub.ok) return null;
+    const j = JSON.parse(sub.text); const rec = j.filings && j.filings.recent; if (!rec || !rec.form) return null;
+    const filings = [];
+    for (let i = 0; i < rec.form.length && filings.length < 6; i++){
+      const f = rec.form[i]; if (!['10-K', '10-Q', '8-K', '20-F', '40-F'].includes(f)) continue;
+      if (filings.some(x => x.form === f) && f !== '8-K') continue;
+      if (f === '8-K' && filings.filter(x => x.form === '8-K').length >= 2) continue;
+      const acc = String(rec.accessionNumber[i]).replace(/-/g, '');
+      filings.push({ form: f, date: rec.filingDate[i], url: `https://www.sec.gov/Archives/edgar/data/${parseInt(cik, 10)}/${acc}/${rec.primaryDocument[i]}` });
+    }
+    return { cik, name: hit.title, ticker: hit.ticker, filings };
+  } catch (e){ return null; }
+}
+// Pull the passages that matter for marketing out of a long filing.
+function ciFilingExcerpt(text){
+  const sentences = String(text || '').split(/(?<=[.!?])\s+/);
+  const pat = /advertis|marketing (expense|spend|cost)|brand|distribution channel|travel advis|direct (to consumer|booking|mail)|digital|television|media|customer acquisition|loyalty|market share|competit/i;
+  const picks = []; let len = 0;
+  for (const s of sentences){ if (s.length < 40 || s.length > 600) continue; if (pat.test(s) && (/\$\s?\d|\d+(\.\d+)?\s?%|million|billion/i.test(s) || /advertis|marketing/i.test(s))){ picks.push(s.trim()); len += s.length; if (len > 7000) break; } }
+  return picks.join(' ');
+}
+async function ciGatherSources(account, competitorName, websiteUrl){
+  const sources = []; const notes = [];
+  const add = (kind, url, title, text) => { if (!text || text.length < 80) return null; const id = 'S' + (sources.length + 1); sources.push({ id, kind, url, title: title || url, fetchedAt: new Date().toISOString(), excerpt: String(text).slice(0, kind === 'filing' ? 7000 : 6000) }); return id; };
+  const provider = aicProviders()[0] || null;
+  let site = ciPublicUrl(websiteUrl);
+  if (!site && provider){
+    try {
+      const r = await aicAsk(provider.key, `What is the official corporate website URL of "${competitorName}" (the brand that competes with ${account.company || 'a company'} in ${account.industry || 'its industry'})? Reply with only the URL.`);
+      const m = String(r.text || '').match(/https?:\/\/[^\s)"'<>]+/); if (m) site = ciPublicUrl(m[0]);
+      if (!site && r.cited && r.cited[0]) site = ciPublicUrl(r.cited[0].url);
+    } catch (e){ notes.push('Could not look up the official website.'); }
+  }
+  if (site){
+    const home = await ciFetchPage(site);
+    if (home.ok){
+      add('website', home.url, home.title || 'Home page', home.text);
+      const links = ciFindLinks(home.html, home.url);
+      const wanted = [['press', links.press], ['investor', links.investor], ['about', links.about], ['advertising', links.advertising]];
+      const fetched = await Promise.all(wanted.flatMap(([kind, urls]) => urls.slice(0, kind === 'press' ? 2 : 1).map(async u => ({ kind, r: await ciFetchPage(u, { timeoutMs: 10000 }) }))));
+      fetched.forEach(f => { if (f.r.ok) add(f.kind === 'investor' ? 'investor' : f.kind === 'press' ? 'press' : 'website', f.r.url, f.r.title || f.kind, f.r.text); });
+      if (!links.press.length) notes.push('No newsroom page was found on the website.');
+      if (!links.investor.length) notes.push('No investor page was found on the website.');
+    } else notes.push('The website could not be read (' + (home.error || 'unknown') + ').');
+  } else notes.push('No website address was found for ' + competitorName + '. Add one to improve the profile.');
+  const sec = await ciSecLookup(competitorName);
+  if (sec && sec.filings.length){
+    const tenK = sec.filings.find(f => ['10-K', '20-F', '40-F'].includes(f.form));
+    if (tenK){
+      const f = await ciFetchPage(tenK.url, { maxChars: 3500000, timeoutMs: 25000 });
+      if (f.ok){ const ex = ciFilingExcerpt(f.text); if (ex) add('filing', tenK.url, `${sec.name} ${tenK.form} filed ${tenK.date}`, ex); else notes.push('The latest annual filing had no marketing passages to read.'); }
+      else notes.push('The latest SEC annual filing could not be read (' + (f.error || 'unknown') + ').');
+    }
+    const q = sec.filings.find(f => f.form === '10-Q');
+    if (q){ const f = await ciFetchPage(q.url, { maxChars: 2000000, timeoutMs: 20000 }); if (f.ok){ const ex = ciFilingExcerpt(f.text); if (ex) add('filing', q.url, `${sec.name} 10-Q filed ${q.date}`, ex); } }
+  } else notes.push('No SEC filings found: the company may be private or non-US, so financial and spend figures stay empty unless a search source states them.');
+  if (provider){
+    const asks = [
+      ['search', `What has ${competitorName} announced or been reported doing in the last 6 months? Cover press releases, product or offer launches, partnerships, leadership and strategy changes. Give dated, specific items with sources.`],
+      ['search', `How does ${competitorName} advertise and market itself? Cover the media channels it uses (TV, streaming, search, social, direct mail, travel advisors or partners, events, PR), notable campaigns, and any reported advertising spend or media mix. State only what is reported and say when a figure is not public.`]
+    ];
+    const reads = await Promise.all(asks.map(async ([kind, q]) => { try { return { q, r: await aicAsk(provider.key, q) }; } catch (e){ return { q, err: e }; } }));
+    reads.forEach((x, i) => {
+      if (x.r && x.r.text){
+        const label = i === 0 ? 'Recent activity (web search)' : 'Marketing and media (web search)';
+        const cited = (x.r.cited || []).slice(0, 6).map(c => c.url).join('\n');
+        add('search', (x.r.cited && x.r.cited[0] && x.r.cited[0].url) || 'search:' + provider.key, label, x.r.text + (cited ? '\n\nCited pages:\n' + cited : ''));
+      } else notes.push('A web search step failed (' + String(x.err && x.err.message || 'no answer').slice(0, 80) + ').');
+    });
+  } else notes.push('No web-search provider is configured, so recent news and media mix come only from the pages above.');
+  return { sources, notes, website: site };
+}
+const CI_PROFILE_SCHEMA = (() => {
+  const cited = { type: 'array', items: { type: 'object', properties: { text: { type: 'string' }, sources: { type: 'array', items: { type: 'string' } } }, required: ['text', 'sources'] } };
+  const one = { type: ['object', 'null'], properties: { text: { type: 'string' }, sources: { type: 'array', items: { type: 'string' } } }, required: ['text', 'sources'] };
+  return { type: 'object', properties: {
+    overview: one, positioning: one, valueProps: cited, toneAndMessaging: one, audiences: cited, offersAndPricing: cited,
+    channelsObserved: { type: 'array', items: { type: 'object', properties: { channel: { type: 'string' }, evidence: { type: 'string' }, sources: { type: 'array', items: { type: 'string' } } }, required: ['channel', 'evidence', 'sources'] } },
+    mediaMixEstimate: { type: ['object', 'null'], properties: { summary: { type: 'string' }, confidence: { type: 'string', enum: ['low', 'medium', 'high'] }, basis: { type: 'string' }, sources: { type: 'array', items: { type: 'string' } } }, required: ['summary', 'confidence', 'basis', 'sources'] },
+    advertisingSpend: { type: ['object', 'null'], properties: { figure: { type: 'string' }, period: { type: 'string' }, sources: { type: 'array', items: { type: 'string' } } }, required: ['figure', 'period', 'sources'] },
+    recentActivity: { type: 'array', items: { type: 'object', properties: { date: { type: ['string', 'null'] }, item: { type: 'string' }, sources: { type: 'array', items: { type: 'string' } } }, required: ['date', 'item', 'sources'] } },
+    investorAndFinancial: cited, strengths: cited, weaknessesAndGaps: cited, openQuestions: { type: 'array', items: { type: 'string' } }
+  }, required: ['overview', 'positioning', 'valueProps', 'toneAndMessaging', 'audiences', 'offersAndPricing', 'channelsObserved', 'mediaMixEstimate', 'advertisingSpend', 'recentActivity', 'investorAndFinancial', 'strengths', 'weaknessesAndGaps', 'openQuestions'] };
+})();
+async function ciBuildProfile(account, competitorName, gathered){
+  const src = gathered.sources.map(s => `[${s.id}] (${s.kind}) ${s.title} — ${s.url}\n${s.excerpt}`).join('\n\n=====\n\n');
+  const prompt = `You are profiling a COMPETITOR the way we would profile a client account, so a strategist can compare it with the real client, ${account.company || 'the client'} (${account.industry || 'industry not set'}).
+
+Competitor: ${competitorName}
+
+You may use ONLY the numbered sources below. Rules:
+- Every statement must cite the source ids it came from, for example ["S1","S3"]. A statement with no supporting source must be left out.
+- If the sources do not support a field, return null (for single fields) or an empty list. Never fill gaps from general knowledge or guess figures, dates, names or channels.
+- advertisingSpend: only a figure a source states, with its period. Otherwise null.
+- mediaMixEstimate is an INFERENCE from the channels the sources show. State the basis in one sentence and set confidence low unless a source gives actual spend or mix. Otherwise null.
+- recentActivity: dated items only when the source gives a date; otherwise date null.
+- Be specific and plain. No marketing fluff, no padding.
+
+SOURCES:
+${src}
+
+Submit via the competitor_profile tool.`;
+  return await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 4000, content: prompt, toolName: 'competitor_profile', toolDescription: 'Submit the sourced competitor profile.', schema: CI_PROFILE_SCHEMA, timeoutMs: 90000 });
+}
+const CI_BATTLE_SCHEMA = { type: 'object', properties: {
+  summary: { type: 'string' },
+  whereWeWin: { type: 'array', items: { type: 'object', properties: { point: { type: 'string' }, evidence: { type: 'string' }, sources: { type: 'array', items: { type: 'string' } } }, required: ['point', 'evidence', 'sources'] } },
+  whereTheyWin: { type: 'array', items: { type: 'object', properties: { point: { type: 'string' }, evidence: { type: 'string' }, sources: { type: 'array', items: { type: 'string' } } }, required: ['point', 'evidence', 'sources'] } },
+  differentiation: { type: 'array', items: { type: 'string' } },
+  messagingAngles: { type: 'array', items: { type: 'object', properties: { angle: { type: 'string' }, sampleLine: { type: 'string' } }, required: ['angle', 'sampleLine'] } },
+  counterMoves: { type: 'array', items: { type: 'object', properties: { move: { type: 'string' }, why: { type: 'string' }, horizon: { type: 'string', enum: ['near term', 'longer term'] } }, required: ['move', 'why', 'horizon'] } },
+  mediaImplications: { type: 'string' }, watchList: { type: 'array', items: { type: 'string' } }, confidenceNote: { type: 'string' }
+}, required: ['summary', 'whereWeWin', 'whereTheyWin', 'differentiation', 'messagingAngles', 'counterMoves', 'mediaImplications', 'watchList', 'confidenceNote'] };
+async function ciBuildBattleBrief(account, competitorName, profile, sources){
+  let clientSite = '';
+  const cu = ciPublicUrl(account.websiteUrl);
+  if (cu){ const r = await ciFetchPage(cu, { timeoutMs: 10000 }); if (r.ok) clientSite = r.text.slice(0, 5000); }
+  const clientCtx = [
+    `Company: ${account.company || '(not set)'}; industry: ${account.industry || '(not set)'}`,
+    account.visionStatement ? `Vision statement: ${account.visionStatement}` : '',
+    account.longformVoiceExample ? `Voice example: ${String(account.longformVoiceExample).slice(0, 1200)}` : '',
+    clientSite ? `Client website text: ${clientSite}` : ''
+  ].filter(Boolean).join('\n');
+  const srcList = sources.map(s => `[${s.id}] ${s.kind}: ${s.title}`).join('\n');
+  const prompt = `Write a Battle Brief that positions the real client against one competitor and says how to differentiate when planning product and marketing initiatives.
+
+CLIENT (use this as the client's own profile; anything not stated here is unknown):
+${clientCtx}
+
+COMPETITOR PROFILE (built only from public sources; ids refer to the source list):
+${JSON.stringify(profile).slice(0, 14000)}
+
+SOURCE LIST:
+${srcList}
+
+Rules:
+- Ground every "where they win" and "where we win" point in the competitor profile or the client context, and cite source ids for competitor facts. If the client context does not support a claim about the client, do not make it; say what is missing in confidenceNote.
+- messagingAngles: 2 to 3, each with one example line the client could test. counterMoves: concrete and tied to the evidence, split into near term and longer term.
+- mediaImplications: which channels the client should lean into or avoid given where this competitor is visible, noting that the competitor's media mix is an estimate.
+- Do not invent facts about either company. Plain language.
+
+Submit via the battle_brief tool.`;
+  return await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 3500, content: prompt, toolName: 'battle_brief', toolDescription: 'Submit the Battle Brief.', schema: CI_BATTLE_SCHEMA, timeoutMs: 90000 });
+}
+function ciReadRow(accountId, name){
+  const r = db.prepare('SELECT * FROM competitor_profiles WHERE accountId = ? AND competitorKey = ?').get(accountId, ciKey(name));
+  if (!r) return null;
+  const pj = v => { try { return v ? JSON.parse(v) : null; } catch (e){ return null; } };
+  return { competitorName: aliasVal(r, 'competitorName'), websiteUrl: aliasVal(r, 'websiteUrl') || null, sources: pj(aliasVal(r, 'sourcesJson')) || [], profile: pj(aliasVal(r, 'profileJson')), battleBrief: pj(aliasVal(r, 'battleBriefJson')),
+    sourcesFetchedAt: aliasVal(r, 'sourcesFetchedAt') || null, profileGeneratedAt: aliasVal(r, 'profileGeneratedAt') || null, battleGeneratedAt: aliasVal(r, 'battleGeneratedAt') || null };
+}
+function ciPublicShape(row){ if (!row) return null; return Object.assign({}, row, { sources: (row.sources || []).map(s => ({ id: s.id, kind: s.kind, url: s.url, title: s.title, fetchedAt: s.fetchedAt })) }); }
+
 // Cost-control safety net (2026-08-22) — a single "Interview candidates"
 // or "Run contest" click is up to 10 real AI calls (up to 5 parallel
 // draft-generation calls, one per partner, plus up to 5 more scoring
@@ -35232,6 +35475,75 @@ Submit your response via the campaign_intake_turn tool.`;
         } catch (e){ /* never block the positioning save over a ledger write */ }
       }
       return sendJson(res, 200, { approved: !!approved, approvedAt });
+    }
+
+    // 2026-10-19 — Competitive Positioning, sourced profiles. Each competitor is
+    // researched like a client account (website, press, investor pages, SEC
+    // filings, web search), profiled with cited source ids, then compared with the
+    // real client in a Battle Brief. Nothing here is invented: unsupported fields
+    // stay empty and media mix is a labelled inference.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'competitor-profiles'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const rows = db.prepare('SELECT competitorName FROM competitor_profiles WHERE accountId = ?').all(accountId);
+      const list = rows.map(r => ciPublicShape(ciReadRow(accountId, aliasVal(r, 'competitorName')))).filter(Boolean);
+      return sendJson(res, 200, { profiles: list, providers: aicProviders().map(p => p.key) });
+    }
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'competitor-profile'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const body = await readBody(req);
+      const competitorName = String(body.competitorName || '').trim().slice(0, 120);
+      if (!competitorName) return sendJson(res, 400, { error: 'competitorName is required' });
+      let gathered, profile;
+      try {
+        gathered = await ciGatherSources(account, competitorName, body.websiteUrl);
+        if (!gathered.sources.length) return sendJson(res, 200, { ok: false, error: 'No public sources could be read for ' + competitorName + '.', notes: gathered.notes });
+        profile = await ciBuildProfile(account, competitorName, gathered);
+      } catch (e){ return sendJson(res, 502, { ok: false, error: 'Profile research failed: ' + String(e && e.message || e).slice(0, 200) }); }
+      const now = new Date().toISOString();
+      const existing = db.prepare('SELECT battleBriefJson FROM competitor_profiles WHERE accountId = ? AND competitorKey = ?').get(accountId, ciKey(competitorName));
+      db.prepare(`INSERT INTO competitor_profiles (accountId, competitorKey, competitorName, websiteUrl, sourcesJson, profileJson, battleBriefJson, sourcesFetchedAt, profileGeneratedAt, battleGeneratedAt, updatedAt)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(accountId, competitorKey) DO UPDATE SET competitorName=excluded.competitorName, websiteUrl=excluded.websiteUrl, sourcesJson=excluded.sourcesJson, profileJson=excluded.profileJson, sourcesFetchedAt=excluded.sourcesFetchedAt, profileGeneratedAt=excluded.profileGeneratedAt, updatedAt=excluded.updatedAt`)
+        .run(accountId, ciKey(competitorName), competitorName, gathered.website || null, JSON.stringify(gathered.sources), JSON.stringify(profile), existing ? (aliasVal(existing, 'battleBriefJson') || null) : null, now, now, null, now);
+      return sendJson(res, 200, { ok: true, notes: gathered.notes, profile: ciPublicShape(ciReadRow(accountId, competitorName)) });
+    }
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'competitor-battle-brief'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const body = await readBody(req);
+      const competitorName = String(body.competitorName || '').trim();
+      const row = ciReadRow(accountId, competitorName);
+      if (!row || !row.profile) return sendJson(res, 400, { ok: false, error: 'Build the sourced profile for ' + (competitorName || 'this competitor') + ' first.' });
+      let brief;
+      try { brief = await ciBuildBattleBrief(account, row.competitorName, row.profile, row.sources); }
+      catch (e){ return sendJson(res, 502, { ok: false, error: 'Battle Brief generation failed: ' + String(e && e.message || e).slice(0, 200) }); }
+      const now = new Date().toISOString();
+      db.prepare('UPDATE competitor_profiles SET battleBriefJson = ?, battleGeneratedAt = ?, updatedAt = ? WHERE accountId = ? AND competitorKey = ?').run(JSON.stringify(brief), now, now, accountId, ciKey(competitorName));
+      return sendJson(res, 200, { ok: true, profile: ciPublicShape(ciReadRow(accountId, competitorName)) });
+    }
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'industry-trends'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const provider = aicProviders()[0];
+      if (!provider) return sendJson(res, 200, { ok: false, error: 'No web-search provider is configured, so a researched read of industry trends is not available.' });
+      let text = '', cited = [];
+      try {
+        const r = await aicAsk(provider.key, `Summarize the current trends shaping the ${account.industry || 'travel'} industry that matter for marketing and product planning at ${account.company || 'a company'} over the next 12 months: consumer demand, pricing, channels and media costs, technology, regulation. Be specific, dated where possible, and note when something is a forecast rather than reported.`);
+        text = String(r.text || '').trim(); cited = (r.cited || []).slice(0, 8).map(c => ({ url: c.url, title: c.title || c.url }));
+      } catch (e){ return sendJson(res, 502, { ok: false, error: 'Trend research failed: ' + String(e && e.message || e).slice(0, 200) }); }
+      if (!text) return sendJson(res, 200, { ok: false, error: 'The search returned no answer.' });
+      const rows = db.prepare('SELECT competitorName FROM competitor_profiles WHERE accountId = ?').all(accountId);
+      const recent = [];
+      rows.forEach(r => { const p = ciReadRow(accountId, aliasVal(r, 'competitorName')); if (p && p.profile && Array.isArray(p.profile.recentActivity)) p.profile.recentActivity.slice(0, 2).forEach(a => recent.push(p.competitorName + ': ' + a.item)); });
+      return sendJson(res, 200, { ok: true, text, cited, competitorMoves: recent, provider: provider.key });
     }
 
     // POST /api/accounts/:id/competitor-intelligence — 2026-09-13, per
