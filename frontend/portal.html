@@ -13235,10 +13235,11 @@
           <select id="mbuAnnualPlanYear" class="tbl-select" onchange="mbuLoadAnnualPlan()"></select>
           <span class="hint" id="mbuAnnualPlanStatus" style="margin:0;"></span>
           <label for="mbuAnnualPlanBasis" style="margin:0;">Forecast from</label>
-          <select id="mbuAnnualPlanBasis" class="tbl-select" title="Which actuals the recommended plan is built on"><option value="calendar">Previous calendar year</option><option value="ttm">Last 12 months</option></select>
+          <select id="mbuAnnualPlanBasis" class="tbl-select" onchange="mbuBaselineLoad()" title="Which actuals the recommended plan is built on"><option value="calendar">Previous calendar year</option><option value="ttm">Last 12 months</option></select>
           <button type="button" class="btn-ghost" onclick="mbuRecommendAnnualPlan()">Recommend a plan</button>
           <button type="button" class="btn-primary" id="mbuApprovePlanBtn" onclick="mbuApproveAnnualPlan()" style="display:none;">Approve this plan</button>
         </div>
+        <div id="mbuBaselineDraft" style="margin:0 0 14px;"></div>
         <div id="mbuAnnualPlanRec" class="hint" style="display:none;margin:0 0 10px;"></div>
         <div style="overflow-x:auto;">
           <table class="data-table" id="mbuAnnualPlanTable" style="min-width:640px;">
@@ -24606,6 +24607,26 @@ async function stratLoadRolling(){
   const reading = g ? `Across the ${g.months} months that have both a budget and spend, spend is ${stratMoney(g.spend)} against ${stratMoney(g.budget)} budgeted (${stratMoney(g.spend - g.budget)} ${g.spend - g.budget >= 0 ? 'over' : 'under'}).` : 'No month has both a budget and spend yet.';
   box.innerHTML = `<p class="strat-reading" style="margin:0 0 10px;">${escapeHtml(reading)}</p><div class="strat-tablewrap"><table class="strat-table"><thead><tr><th>Month</th><th>Budget</th><th>Spend</th><th>Spend minus budget</th><th>Impressions</th></tr></thead><tbody>${rows}</tbody></table></div>${d.budgetNote ? `<p class="strat-foot">${escapeHtml(d.budgetNote)}</p>` : ''}<p class="strat-foot">Past months use recorded spend and the rest use the media plan as loaded. Budget adds every category and scope from the confirmed budget uploads.</p>`;
 }
+// ---- Campaigns against the plan target (2026-10-19, slice 2b): the campaigns' planned lines run through the scenario forecast chain ----
+async function stratLoadCoverage(){
+  if (!stratIsLive()) return; const box = document.getElementById('stratCovBody'); if (!box) return;
+  const y = (strat.fcData && strat.fcData.year) || new Date().getFullYear();
+  box.innerHTML = '<p class="strat-empty">Loading…</p>';
+  let d; try { d = await scnCall(`/campaign-coverage?year=${y}`); } catch (e){ box.innerHTML = '<p class="strat-empty">Could not load campaign coverage just now.</p>'; return; }
+  strat.covData = d; stratRenderCoverage(d);
+}
+function stratRenderCoverage(d){
+  const box = document.getElementById('stratCovBody'); if (!box || !d) return;
+  if (!d.rows || !d.rows.length){ box.innerHTML = `<p class="strat-empty">${escapeHtml((d.notes || [])[0] || 'Nothing to show yet.')}</p>`; return; }
+  const money = { workingMedia: 1, revenue: 1 };
+  const fmt = (k, v) => v == null ? '—' : (money[k] ? stratMoney(v) : stratNum(v));
+  const rows = d.rows.map(r => `<tr><td>${escapeHtml(r.label)}${r.modeled ? ' <span class="strat-sub">modeled</span>' : ''}</td><td><b>${fmt(r.key, r.value)}</b>${r.range ? `<div class="strat-sub">${fmt(r.key, r.range[0])} to ${fmt(r.key, r.range[1])}</div>` : ''}</td><td>${fmt(r.key, r.target)}</td><td>${r.pctOfTarget != null ? '<b>' + r.pctOfTarget + '%</b>' : '—'}</td><td>${r.gap != null ? (r.gap >= 0 ? fmt(r.key, r.gap) + ' to go' : '<span class="neg">' + fmt(r.key, -r.gap) + ' over</span>') : '—'}</td></tr>`).join('');
+  const chans = (d.channels || []).filter(c => c.planned || c.target).map(c => `<tr><td>${escapeHtml(c.channel)}</td><td>${stratMoney(c.planned)}</td><td>${c.target != null ? stratMoney(c.target) : '—'}</td><td>${c.pctOfTarget != null ? c.pctOfTarget + '%' : '—'}</td></tr>`).join('');
+  box.innerHTML = `<p class="strat-sub" style="margin:0 0 8px;">${d.campaigns} campaign${d.campaigns === 1 ? '' : 's'} with planned lines in ${d.year}${d.hasTarget ? ', against the ' + d.year + ' target' + (d.targetLabel ? ' (' + escapeHtml(d.targetLabel) + ')' : '') : ''}.</p>
+    <div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Metric</th><th>All campaigns <span class="strat-sub">low to high</span></th><th>${d.year} target</th><th>Covered</th><th>Gap</th></tr></thead><tbody>${rows}</tbody></table></div>
+    ${chans ? `<div class="strat-chart-label" style="margin-top:12px;">Planned spend by channel against the target mix</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Channel</th><th>Campaigns plan</th><th>Target mix</th><th>Covered</th></tr></thead><tbody>${chans}</tbody></table></div>` : ''}
+    <p class="strat-foot"><span class="strat-tag ${escapeHtml(d.confidence || '')}">${escapeHtml(d.confidence || '')} confidence</span> ${(d.notes || []).map(escapeHtml).join(' ')}</p>`;
+}
 async function stratLoadForecast(){
   if (!stratIsLive()) return; const box = document.getElementById('stratFcBody'); if (!box) return;
   box.innerHTML = '<p class="strat-empty">Loading…</p>';
@@ -24640,7 +24661,7 @@ function stratRenderForecast(){
 function stratAsk(q){ try { askVerilumeOpenLive(); } catch (e){} askVerilumeAsk(q); }
 
 // ---- Scenario planner (2026-10-08): run what-ifs on budget and media mix; activating one for the account needs an admin or CMO ----
-const scn = { open: false, year: new Date().getFullYear(), data: null, draft: null, result: null, msg: '', msgKind: '', busy: false, showAssume: false };
+const scn = { cmp: [], open: false, year: new Date().getFullYear(), data: null, draft: null, result: null, msg: '', msgKind: '', busy: false, showAssume: false };
 function scnBase(){ return `${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/plan-scenarios`; }
 async function scnCall(path, method, body){
   const r = await authedFetch(scnBase() + path, { method: method || 'GET', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
@@ -24745,6 +24766,7 @@ function scnReadEditor(){
   if (d.mode === 'upload') return d;
   const bd = document.getElementById('scnBand'); if (bd) d.band = bd.value;
   const wm = document.getElementById('scnBudget'); if (wm) d.workingMedia = wm.value === '' ? null : Number(wm.value);
+  const am = document.getElementById('scnApplyMin'); if (am) d.applyMin = am.checked;
   const mix = {}; document.querySelectorAll('#scnMix input[data-ch]').forEach(i => { if (i.value !== '' && Number(i.value) > 0) mix[i.dataset.ch] = Number(i.value); }); d.mix = mix;
   return d;
 }
@@ -24752,24 +24774,30 @@ function scnMixTotal(){ let t = 0; document.querySelectorAll('#scnMix input[data
 function scnAddChannel(){ const el = document.getElementById('scnNewCh'); const n = el ? el.value.trim().slice(0, 80) : ''; if (!n) return; scnReadEditor(); if (!(n in scn.draft.mix)) scn.draft.mix[n] = 0; scnRender(); }
 async function scnRun(){
   const d = scnReadEditor(); if (!d) return; scnMsg('Running…');
-  try { scn.result = await scnCall('/run', 'POST', { year: scn.year, workingMedia: d.workingMedia, mix: d.mix, band: d.band }); scn.msg = ''; scnRender(); }
+  try { scn.result = await scnCall('/run', 'POST', { year: scn.year, workingMedia: d.workingMedia, mix: d.mix, band: d.band, applyMinimums: d.applyMin !== false }); scn.msg = ''; scnRender(); }
   catch (e){ scnMsg(e.message, 'err'); }
 }
 async function scnSave(submit){
   const d = scnReadEditor(); if (!d) return; if (!d.name.trim()){ scnMsg('Give the scenario a name first.', 'err'); return; }
   scnMsg('Saving…');
-  try { await scnCall('', 'POST', { year: scn.year, name: d.name.trim(), kind: d.kind, band: d.band, workingMedia: d.workingMedia, mix: d.mix, submit: !!submit }); scn.draft = null; scn.result = null; await scnLoad(); if (typeof stratLoadForecast === 'function') stratLoadForecast(); scnMsg(submit ? 'Saved and sent for approval.' : 'Saved.', 'ok'); }
+  try { const resp = await scnCall('', 'POST', { year: scn.year, name: d.name.trim(), kind: d.kind, band: d.band, workingMedia: d.workingMedia, mix: d.mix, applyMinimums: d.applyMin !== false, submit: !!submit }); scn.draft = null; scn.result = null; await scnLoad(); if (typeof stratLoadForecast === 'function') stratLoadForecast(); scnMsg(submit ? 'Saved and sent for approval.' + scnNoticeText(resp && resp.notice) : 'Saved.', 'ok'); }
   catch (e){ scnMsg(e.message, 'err'); }
 }
 async function scnAct(id, act){
   if (act === 'activate' && !confirm('Activate this scenario for the whole account? It replaces the current ' + scn.year + ' target that the dashboards and the Weekly Brain read.')) return;
   scnMsg('Working…');
-  try { await scnCall(`/${encodeURIComponent(id)}/${act}`, 'POST', {}); await scnLoad(); if (act === 'activate' && typeof stratLoadForecast === 'function') stratLoadForecast(); scnMsg(act === 'activate' ? 'Activated. It is now the ' + scn.year + ' target.' : act === 'submit' ? 'Sent for approval.' : 'Archived.', 'ok'); }
+  try { const resp = await scnCall(`/${encodeURIComponent(id)}/${act}`, 'POST', {}); await scnLoad(); if (typeof stratLoadForecast === 'function'){ stratLoadForecast(); stratLoadCoverage(); } scnMsg(act === 'activate' ? 'Activated. It is now the ' + scn.year + ' target.' : act === 'submit' ? 'Sent for approval.' + scnNoticeText(resp && resp.notice) : 'Archived.', 'ok'); }
   catch (e){ scnMsg(e.message, 'err'); }
 }
 function scnOpen(id){
   const r = (scn.data.scenarios || []).find(x => x.id === id); if (!r) return;
   scn.draft = { name: r.name + ' (copy)', kind: 'custom', band: r.band, workingMedia: r.workingMedia, mix: r.mix || {} }; scn.result = r.result; scn.msg = ''; scnRender();
+}
+function scnMinHtml(m){
+  if (!m || !m.on) return m && m.count ? '' : '';
+  if (!(m.raised || []).length && !(m.heldBack || []).length) return '<p class="strat-sub" style="margin:8px 0 0;">Rate card minimums were checked: every channel in this mix already meets its minimum.</p>';
+  const rows = (m.raised || []).map(x => `<tr><td>${escapeHtml(x.channel)}</td><td>Raised from ${stratMoneyFull(x.from)} to ${stratMoneyFull(x.to)}</td><td>${(x.fundedBy || []).map(f => escapeHtml(f.channel) + ' ' + stratMoneyFull(f.gave)).join(', ') || '—'}</td></tr>`).concat((m.heldBack || []).map(x => `<tr><td>${escapeHtml(x.channel)}</td><td>Held back (minimum ${stratMoneyFull(x.minimum)}): ${escapeHtml(x.reason)}</td><td>Its ${stratMoneyFull(x.weighted)} went to the other channels</td></tr>`)).join('');
+  return `<div class="strat-chart-label">Rate card minimums applied</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Channel</th><th>What changed</th><th>Funded by</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 function scnResultHtml(r){
   if (!r) return '<p class="strat-empty">Run the scenario to see the forecast.</p>';
@@ -24780,6 +24808,7 @@ function scnResultHtml(r){
   const rng = bd.low ? `<p class="strat-sub" style="margin:8px 0 0;">Range for the year, low to high: leads ${scnFmt(bd.low.leads)} to ${scnFmt(bd.high.leads)}, transactions ${scnFmt(bd.low.transactions)} to ${scnFmt(bd.high.transactions)}${bd.low.revenue != null ? `, gross revenue ${scnFmt(bd.low.revenue, 'money')} to ${scnFmt(bd.high.revenue, 'money')}` : ''}. The scenario column shows the ${escapeHtml(r.band)} end.</p>` : '';
   const ch = (r.channels || []).map(c => `<tr><td>${escapeHtml(c.channel)}</td><td>${stratMoneyFull(c.spend)}</td><td>${c.share}%</td><td>${c.cpm != null ? '$' + c.cpm : '—'}</td><td>${stratNum(c.impressions)}</td></tr>`).join('');
   return `<div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Metric</th><th>Last 12 months${b.window ? ' (' + escapeHtml(b.window) + ')' : ''}</th><th>This scenario</th><th>${t ? 'Approved target' + (t.label ? '' : '') : 'Approved target'}</th></tr></thead><tbody>${rows}</tbody></table></div>${rng}
+    ${scnMinHtml(r.minimums)}
     ${ch ? `<div class="strat-chart-label">What each channel delivers at its own cost</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Channel</th><th>Spend</th><th>Share</th><th>Cost per thousand</th><th>Impressions</th></tr></thead><tbody>${ch}</tbody></table></div>` : ''}
     <p class="strat-foot"><span class="strat-tag ${escapeHtml(r.confidence || '')}">${escapeHtml(r.confidence || '')} confidence</span> <a class="flink" onclick="scn.showAssume=!scn.showAssume;scnRender()">${scn.showAssume ? 'Hide' : 'How this was calculated'}</a></p>
     ${scn.showAssume ? `<ul class="strat-sub" style="margin:4px 0 0 18px;">${(r.assumptions || []).map(a => `<li>${escapeHtml(a)}</li>`).join('')}</ul>` : ''}`;
@@ -24799,22 +24828,56 @@ function scnEditorHtml(){
   return `<div class="scn-editor">${head}<div class="scn-row">
       <div><label for="scnBudget">Working media</label><input id="scnBudget" type="number" min="0" step="1000" value="${d.workingMedia != null ? Math.round(d.workingMedia) : ''}" oninput="scnMixTotal()"></div>
       <div><label for="scnBand">Funnel assumption</label><select id="scnBand"><option value="low"${d.band === 'low' ? ' selected' : ''}>Low end (every stage at its 25th percentile)</option><option value="mid"${d.band === 'mid' ? ' selected' : ''}>Typical for this account</option><option value="high"${d.band === 'high' ? ' selected' : ''}>High end (every stage at its 75th percentile)</option></select></div></div>
+    <label class="strat-sub" style="display:flex;gap:6px;align-items:center;margin:6px 0 2px;"><input type="checkbox" id="scnApplyMin" ${d.applyMin === false ? '' : 'checked'}> Apply rate card minimums: raise a channel to its minimum buy and fund it from the channels above theirs</label>
     <div class="strat-chart-label" style="margin-top:4px;">Media mix: spend by channel</div>
     <table class="strat-table scn-mix" id="scnMix"><tbody>${mixRows || '<tr><td class="strat-sub">No channels yet. Add one below.</td></tr>'}<tr><td class="strat-sub">Allocated total</td><td class="strat-sub" id="scnMixTotal"></td></tr></tbody></table>
     <div class="scn-row" style="margin-top:8px;"><div><input id="scnNewCh" type="text" placeholder="Add a channel"> <button type="button" class="strat-chip" onclick="scnAddChannel()">Add</button></div></div>
     <div class="strat-actions"><button type="button" class="strat-chip" style="background:var(--ink);color:#fff;" onclick="scnRun()">Run scenario</button> <button type="button" class="strat-chip" onclick="scnSave(false)">Save</button> ${scn.data.canActivate ? '' : `<button type="button" class="strat-chip" onclick="scnSave(true)">Save and send for approval</button>`} <button type="button" class="strat-chip" onclick="scnCloseDraft()">Close</button></div>
     <div id="scnResult" style="margin-top:12px;">${scnResultHtml(scn.result)}</div></div>`;
 }
+function scnNoticeText(n){ if (!n) return ''; if (!n.approvers) return ' No admin, CMO or Director has an email on file to tell, so it shows as waiting on Strategy and in the Weekly Brain.'; if (n.notConfigured) return ' Email is not set up for this site yet, so the notice shows on Strategy and in the Weekly Brain.'; return ' ' + n.sent + ' of ' + n.approvers + ' approver' + (n.approvers === 1 ? ' was' : 's were') + ' emailed.'; }
+function scnToggleCmp(id, on){
+  scn.cmp = scn.cmp.filter(x => x !== id); if (on) scn.cmp.push(id);
+  if (scn.cmp.length > 3){ const drop = scn.cmp.shift(); }
+  scnRender();
+}
+function scnDelta(v, base, kind){
+  if (v == null || base == null || !base) return '';
+  const p = (v - base) / Math.abs(base) * 100; if (!isFinite(p)) return '';
+  const good = (kind === 'cost') ? p <= 0 : p >= 0;
+  return ` <span class="strat-sub ${good ? 'pos' : 'neg'}">${p >= 0 ? '+' : '−'}${Math.abs(p).toFixed(p > 99 ? 0 : 1)}%</span>`;
+}
+function scnCompareHtml(){
+  const sel = scn.cmp.map(id => (scn.data.scenarios || []).find(r => r.id === id)).filter(r => r && r.result && r.result.outcome);
+  if (sel.length < 2) return `<p class="strat-sub" style="margin:10px 0 0;">${sel.length ? 'Pick one more scenario to compare side by side.' : 'Tick two or three scenarios in the Compare column to see them side by side.'}</p>`;
+  const b = (sel[0].result.baseline) || {}, t = sel[0].result.target || null;
+  const tmap = t ? { workingMedia: t.workingMedia, leads: t.leads, transactions: t.transactions, revenue: t.revenue } : {};
+  const cost = { cac: 1, costPerVisitor: 1, costPerLead: 1 };
+  const head = `<tr><th>Metric</th><th>Last 12 months${b.window ? ' <span class="strat-sub">' + escapeHtml(b.window) + '</span>' : ''}</th><th>Approved target</th>${sel.map(r => `<th>${escapeHtml(r.name)}<div class="strat-sub">${r.status === 'active' ? 'Active target' : r.status === 'pending' ? 'Waiting for approval' : 'Draft'}</div></th>`).join('')}</tr>`;
+  const rows = SCN_ROWS.map(([lab, k, kind]) => `<tr><td>${lab}</td><td>${scnFmt(b[k], kind)}</td><td>${t ? scnFmt(tmap[k], kind) : '—'}</td>${sel.map(r => { const v = r.result.outcome[k]; return `<td><b>${scnFmt(v, kind)}</b>${scnDelta(v, b[k], cost[k] ? 'cost' : '')}</td>`; }).join('')}</tr>`).join('');
+  const rng = `<tr><td>Gross revenue range <span class="strat-sub">low to high</span></td><td>—</td><td>—</td>${sel.map(r => { const bd = r.result.bands || {}; return `<td>${bd.low && bd.low.revenue != null ? scnFmt(bd.low.revenue, 'money') + ' to ' + scnFmt(bd.high.revenue, 'money') : '—'}</td>`; }).join('')}</tr>`;
+  const mins = `<tr><td>Rate card minimums</td><td>—</td><td>—</td>${sel.map(r => { const m = r.result.minimums; return `<td class="strat-sub">${m && m.on ? ((m.raised || []).length + ' raised, ' + (m.heldBack || []).length + ' held back') : 'not applied'}</td>`; }).join('')}</tr>`;
+  const chans = Array.from(new Set([].concat(...sel.map(r => (r.result.channels || []).map(c => c.channel))))).sort();
+  const chRows = chans.map(c => `<tr><td>${escapeHtml(c)}</td><td></td><td></td>${sel.map(r => { const x = (r.result.channels || []).find(q => q.channel === c); return `<td>${x ? stratMoneyFull(x.spend) + ' <span class="strat-sub">' + x.share + '%</span>' : '—'}</td>`; }).join('')}</tr>`).join('');
+  return `<div class="strat-chart-label" style="margin-top:14px;">Side by side</div><div class="strat-table-wrap"><table class="strat-table"><thead>${head}</thead><tbody>${rows}${rng}${mins}<tr><td colspan="${3 + sel.length}" class="strat-chart-label" style="padding-top:10px;">Spend by channel</td></tr>${chRows}</tbody></table></div><p class="strat-foot">Percentages beside each value compare the scenario with the last 12 months. Green is better: more for leads, transactions and revenue, less for cost per visitor, lead and CAC.</p>`;
+}
+const SCN_ACTION_LABEL = { saved: 'Saved', submitted: 'Sent for approval', notified: 'Approvers told', activated: 'Activated as the target', replaced: 'Replaced as the target', archived: 'Archived' };
+function scnHistoryHtml(){
+  const h = scn.data.history || []; if (!h.length) return '';
+  const when = iso => { try { return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch (e){ return iso || ''; } };
+  return `<div class="strat-chart-label" style="margin-top:14px;">What was approved, and when</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>When</th><th>Scenario</th><th>What happened</th><th>Who</th><th>Detail</th></tr></thead><tbody>${h.map(e => `<tr><td style="white-space:nowrap;">${escapeHtml(when(e.at))}</td><td>${escapeHtml(e.scenario || '')}</td><td>${escapeHtml(SCN_ACTION_LABEL[e.action] || e.action)}</td><td>${escapeHtml(e.by || '')}</td><td class="strat-sub">${escapeHtml(e.detail || '')}</td></tr>`).join('')}</tbody></table></div>`;
+}
 function scnSavedHtml(){
   const rows = scn.data.scenarios || []; if (!rows.length) return '<p class="strat-sub" style="margin:12px 0 0;">No saved scenarios for ' + scn.year + ' yet.</p>';
   const can = scn.data.canActivate;
   const label = s => s === 'active' ? 'Active target' : s === 'pending' ? 'Waiting for approval' : 'Draft';
-  const trs = rows.map(r => { const o = r.result && r.result.outcome || {}; return `<tr><td><b>${escapeHtml(r.name)}</b><div class="strat-sub">${escapeHtml(r.createdByName || '')}${r.activatedByName ? ' · activated by ' + escapeHtml(r.activatedByName) : ''}</div></td><td><span class="scn-pill ${escapeHtml(r.status)}">${label(r.status)}</span></td><td>${scnFmt(o.workingMedia, 'money')}</td><td>${scnFmt(o.leads)}</td><td>${scnFmt(o.transactions)}</td><td>${scnFmt(o.revenue, 'money')}</td><td style="white-space:nowrap;">
+  const pendingN = rows.filter(r => r.status === 'pending').length;
+  const trs = rows.map(r => { const o = r.result && r.result.outcome || {}; const canCmp = !!(r.result && r.result.outcome); return `<tr><td><input type="checkbox" ${canCmp ? '' : 'disabled'} ${scn.cmp.includes(r.id) ? 'checked' : ''} onchange="scnToggleCmp('${r.id}',this.checked)" aria-label="Compare ${escapeHtml(r.name)}"></td><td><b>${escapeHtml(r.name)}</b><div class="strat-sub">${escapeHtml(r.createdByName || '')}${r.activatedByName ? ' · activated by ' + escapeHtml(r.activatedByName) : ''}</div></td><td><span class="scn-pill ${escapeHtml(r.status)}">${label(r.status)}</span></td><td>${scnFmt(o.workingMedia, 'money')}</td><td>${scnFmt(o.leads)}</td><td>${scnFmt(o.transactions)}</td><td>${scnFmt(o.revenue, 'money')}</td><td style="white-space:nowrap;">
       <a class="flink" onclick="scnOpen('${r.id}')">Open a copy</a>${r.kind === 'upload' ? ` · <a class="flink" onclick="scnViewLines('${r.id}')">${scn.lines && scn.lines.scenarioId === r.id ? 'Hide' : 'View'} plan lines</a>` : ''}
       ${r.status !== 'active' && can ? ` · <a class="flink" onclick="scnAct('${r.id}','activate')">Activate for the account</a>` : ''}
       ${r.status === 'draft' && !can ? ` · <a class="flink" onclick="scnAct('${r.id}','submit')">Send for approval</a>` : ''}
       ${r.status !== 'active' ? ` · <a class="flink" onclick="scnAct('${r.id}','archive')">Archive</a>` : ''}</td></tr>`; }).join('');
-  return `<div class="strat-chart-label">Saved scenarios</div><div class="strat-table-wrap scn-list"><table class="strat-table"><thead><tr><th>Scenario</th><th>Status</th><th>Working media</th><th>Leads</th><th>Transactions</th><th>Gross revenue</th><th></th></tr></thead><tbody>${trs}</tbody></table></div>`;
+  return `${pendingN ? `<p class="scn-msg" style="margin:12px 0 0;">${pendingN} scenario${pendingN === 1 ? ' is' : 's are'} waiting for approval.${can ? ' You can activate ' + (pendingN === 1 ? 'it' : 'one') + ' below.' : ' An admin, the CMO or a Director can activate ' + (pendingN === 1 ? 'it' : 'one') + '.'}</p>` : ''}<div class="strat-chart-label">Saved scenarios</div><div class="strat-table-wrap scn-list"><table class="strat-table"><thead><tr><th>Compare</th><th>Scenario</th><th>Status</th><th>Working media</th><th>Leads</th><th>Transactions</th><th>Gross revenue</th><th></th></tr></thead><tbody>${trs}</tbody></table></div>${scnCompareHtml()}${scnHistoryHtml()}`;
 }
 // ---- Scenario plan upload (2026-10-10): a plan file goes INTO a scenario only; nothing touches the account budget, campaigns or targets ----
 const SCN_UPL_SPEC = [['month', ['month', 'period'], true], ['channel', ['channel'], true], ['spend', ['spend', 'budget'], true], ['partner', ['partner', 'vendor', 'publisher'], false], ['stage', ['marketing stage', 'stage'], false], ['audience', ['audience', 'ad group'], false], ['dma', ['dma'], false], ['productGroup', ['product group', 'product'], false], ['creativeType', ['creative'], false], ['cpm', ['cpm'], false], ['impressions', ['impression'], false], ['ctr', ['ctr', 'click-through', 'click through'], false]];
@@ -24947,6 +25010,7 @@ function strategyShellHtml(){
       </div></div><div id="stratPriceBody"></div></div>
     <div class="strat-card"><div class="strat-head"><h2>Database growth by audience type</h2></div><div id="stratAudBody"></div></div>
     <div class="strat-card" id="stratScnCard"><div class="strat-head"><h2>Forecast against the plan target</h2></div><div id="stratFcBody"></div><div id="stratScnBody" style="display:none;margin-top:6px;"></div></div>
+    <div class="strat-card" id="stratCovCard"><div class="strat-head"><h2>Campaigns against the plan target</h2></div><div id="stratCovBody"></div></div>
     <div class="strat-card"><div class="strat-head"><h2>Rolling 18 months: budget and spend</h2></div><div id="stratRollBody"></div></div>
     ${stratFieldHtml()}
     ${stratToolsHtml()}`;
@@ -26205,7 +26269,7 @@ function strategyPageInit(){
   if (!stratIsLive()) return;
   stratSyncPriceControls();
   stratLoadPrice().then(stratFillPgSelect); stratLoadAudience();
-  stratLoadDemand().then(() => stratLoadForecast()); stratLoadRolling(); bfRenderStrategy(); if (scn.open) scnToggleReopen();
+  stratLoadDemand().then(() => { stratLoadForecast(); stratLoadCoverage(); }); stratLoadRolling(); bfRenderStrategy(); if (scn.open) scnToggleReopen();
 }
 function stratFillPgSelect(){
   const sel = document.getElementById('stratPgSel'); if (!sel) return;
@@ -80502,6 +80566,60 @@ async function mbuLoadAnnualPlan(){
   if (status) status.textContent = '';
   mbuRenderAnnualRollup();
   if (typeof mbuRenderDemandFulfillmentForecast === 'function') mbuRenderDemandFulfillmentForecast();
+  mbuBaselineLoad();
+}
+// 2026-10-19 (slice 1b) — Baseline draft: the baseline built from the account's own data, each cell marked
+// from data / estimated / calculated / missing / edited, corrected by a person, then approved into the plan.
+let mbuBaseline = null;
+function mbuBaselineCall(path, method, body){
+  return authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/annual-plan/baseline-draft${path}`, { method: method || 'GET', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
+    .then(async r => { let j = null; try { j = await r.json(); } catch (e){} if (!r.ok) throw new Error((j && j.error) || `The server answered ${r.status}.`); return j; });
+}
+function mbuBaselineParams(){
+  const y = parseInt((document.getElementById('mbuAnnualPlanYear') || {}).value, 10) || (new Date().getFullYear() + 1);
+  const b = (document.getElementById('mbuAnnualPlanBasis') || {}).value === 'ttm' ? 'ttm' : 'calendar';
+  return { year: y, basis: b };
+}
+async function mbuBaselineLoad(){
+  const box = document.getElementById('mbuBaselineDraft'); if (!box) return;
+  if (dataSourceLabel !== 'backend'){ box.innerHTML = ''; return; }
+  const p = mbuBaselineParams();
+  box.innerHTML = '<p class="hint" style="margin:0;">Building the baseline draft from your data…</p>';
+  try { mbuBaseline = await mbuBaselineCall(`?year=${p.year}&basis=${p.basis}`); mbuBaselineRender(); }
+  catch (e){ box.innerHTML = `<p class="hint" style="margin:0;color:var(--danger,#b3261e);">${escapeHtml(e.message)}</p>`; }
+}
+function mbuBaselineRender(){
+  const box = document.getElementById('mbuBaselineDraft'); const d = mbuBaseline; if (!box || !d) return;
+  const approved = d.status === 'approved';
+  const chip = { 'from data': ['From data', '#1b6b3a'], 'estimated': ['Estimated', '#8a5a00'], 'calculated': ['Calculated', '#2b5f9e'], 'missing': ['Missing', '#b3261e'], 'edited': ['Edited', '#6b3fa0'] };
+  const rows = Object.keys(d.cells || {}).map(f => { const c = d.cells[f]; const ch = chip[c.state] || [c.state, '#555'];
+    const val = c.value == null ? '' : String(Math.round(c.value * 100) / 100);
+    const input = approved ? `<span>${c.value == null ? '—' : Number(c.value).toLocaleString('en-US')}</span>` : `<input type="number" min="0" step="any" value="${escapeHtml(val)}" placeholder="Not on file" style="width:130px;" onchange="mbuBaselineEdit('${escapeHtml(f)}', this.value)" aria-label="${escapeHtml(c.label)}">`;
+    return `<tr><td>${escapeHtml(c.label)}</td><td>${input}</td><td><span style="font-size:11px;font-weight:600;color:${ch[1]};border:1px solid ${ch[1]};border-radius:10px;padding:1px 8px;white-space:nowrap;">${ch[0]}</span></td><td class="hint" style="margin:0;">${escapeHtml(c.source || '')}</td></tr>`; }).join('');
+  const missing = Object.keys(d.cells || {}).filter(f => d.cells[f].state === 'missing').length;
+  const head = approved
+    ? `<strong>Baseline approved</strong> by ${escapeHtml(d.approvedBy || 'a team member')} on ${escapeHtml(String(d.approvedAt || '').slice(0, 10))}. ${d.newerData ? '<span style="color:#8a5a00;">New data has been loaded since. Rebuild to bring it in; approval is asked for again.</span>' : ''}`
+    : `<strong>Baseline draft</strong>, waiting for approval. Built from your data${d.label ? ' (' + escapeHtml(d.label) + ')' : ''}. Correct any cell, then approve. ${missing ? `<span style="color:#b3261e;">${missing} cell${missing === 1 ? ' is' : 's are'} not on file.</span>` : ''}`;
+  const btns = (approved ? '' : (d.canApprove ? '<button type="button" class="btn-primary" onclick="mbuBaselineApprove()">Approve baseline</button> ' : '<span class="hint" style="margin:0;">An admin, the CMO or a Director approves the baseline.</span> ')) + '<button type="button" class="btn-ghost" onclick="mbuBaselineRebuild()">Rebuild from data</button>';
+  box.innerHTML = `<div style="border:1px solid var(--border,#d8d8d8);border-radius:8px;padding:12px;"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:8px;"><div>${head}</div><div style="display:flex;gap:8px;align-items:center;">${btns}</div></div><div style="overflow-x:auto;"><table class="data-table" style="min-width:640px;"><thead><tr><th>Metric</th><th>Value</th><th>Status</th><th>Where it came from</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+}
+async function mbuBaselineEdit(field, value){
+  const p = mbuBaselineParams();
+  try { mbuBaseline = await mbuBaselineCall('/cell', 'POST', { year: p.year, basis: p.basis, field, value: value === '' ? null : value }); mbuBaselineRender(); }
+  catch (e){ alert(e.message); mbuBaselineRender(); }
+}
+async function mbuBaselineRebuild(){
+  const p = mbuBaselineParams();
+  if (mbuBaseline && mbuBaseline.status !== 'approved' && !confirm('Rebuild from your data? Corrections you typed into the draft are discarded.')) return;
+  if (mbuBaseline && mbuBaseline.status === 'approved' && !confirm('Rebuild from your data? The baseline becomes a draft again and needs approval. The approved plan row stays as it is until then.')) return;
+  try { mbuBaseline = await mbuBaselineCall('/rebuild', 'POST', p); mbuBaselineRender(); } catch (e){ alert(e.message); }
+}
+async function mbuBaselineApprove(){
+  const p = mbuBaselineParams();
+  try { mbuBaseline = await mbuBaselineCall('/approve', 'POST', p); mbuBaselineRender();
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/annual-plan?year=${p.year}`);
+    if (resp.ok){ const data = await resp.json(); mbuAnnualPlanRows = { baseline: null, target: null }; (data.rows || []).forEach(r => { mbuAnnualPlanRows[r.kind] = r; }); mbuPlanChannels = mbuPlanChannelsFrom(mbuAnnualPlanRows); mbuRenderAnnualPlanTable(); }
+  } catch (e){ alert(e.message); }
 }
 let mbuPlanChannels = [];
 function mbuPlanChannelsFrom(rows){
@@ -80692,56 +80810,12 @@ async function mbuSaveAnnualPlan(){
 // model as the Analysis workspace (cmpCampaignSummaryModel), so the two
 // views can never disagree on a campaign's number.
 async function mbuRenderAnnualRollup(){
-  const el = document.getElementById('mbuAnnualRollupBody');
-  const yearSel = document.getElementById('mbuAnnualPlanYear');
+  // 2026-10-19 (slice 2b): the campaigns-versus-target roll-up moved to Strategy, where it runs on the scenario forecast chain. The old one here ran two unrelated
+  // chains (users and leads from spend; transactions straight from impressions) and could show one campaign at 5% of the users target and 58% of transactions.
+  const el = document.getElementById('mbuAnnualRollupBody'); const yearSel = document.getElementById('mbuAnnualPlanYear');
   if (!el || !yearSel) return;
   const year = parseInt(yearSel.value, 10);
-  el.innerHTML = '<p class="hint">Computing…</p>';
-  if (typeof cmpLoadCampaignSummaryContext !== 'function'){ el.innerHTML = ''; return; }
-  const ctx = await cmpLoadCampaignSummaryContext();
-  const campaigns = (state.campaigns || []).filter(c => c && c.startDate && !c.isAdHoc && !c.cancelled && new Date(c.startDate).getFullYear() === year);
-  const target = (ctx.annualByYear[year] && ctx.annualByYear[year].target) || null;
-  if (!campaigns.length){
-    el.innerHTML = `<p class="lede" style="margin:0;">No campaigns start in ${year} yet${target ? ` — the whole ${year} target is still unassigned to campaigns` : ''}.</p>`;
-    return;
-  }
-  const sums = { spend: 0, impressions: 0, websiteUsers: 0, leads: 0, registrations: 0, transactions: 0, grossRevenue: 0 };
-  const counts = { spendActual: 0, impsActual: 0, txnActual: 0 };
-  const plans = await Promise.all(campaigns.map(c => cmpLoadApprovedPlanTotals(c)));
-  campaigns.forEach((c, i) => {
-    const m = cmpCampaignSummaryModel(c, ctx, plans[i]);
-    if (m.spend != null) sums.spend += m.spend; if (m.spendIsActual) counts.spendActual++;
-    if (m.impressions != null) sums.impressions += m.impressions; if (m.impsIsActual) counts.impsActual++;
-    if (m.websiteUsers != null) sums.websiteUsers += m.websiteUsers;
-    if (m.leads != null) sums.leads += m.leads;
-    if (m.registrations != null) sums.registrations += m.registrations;
-    if (m.transactions != null) sums.transactions += m.transactions; if (m.txnIsActual) counts.txnActual++;
-    if (m.grossRevenue != null) sums.grossRevenue += m.grossRevenue;
-  });
-  const fmtInt = v => Math.round(v).toLocaleString();
-  const line = (label, value, targetKey, fmt, note) => {
-    const tv = target && target[targetKey] != null ? target[targetKey] : null;
-    const pct = (tv > 0) ? (value / tv) * 100 : null;
-    const gap = tv != null ? tv - value : null;
-    return `<tr><td>${escapeHtml(label)}${note ? `<div class="hint">${escapeHtml(note)}</div>` : ''}</td>
-      <td>${fmt(value)}</td>
-      <td>${tv != null ? fmt(tv) : '<span class="hint">—</span>'}</td>
-      <td>${pct != null ? `<b>${pct.toFixed(1)}%</b>` : '<span class="hint">—</span>'}</td>
-      <td>${gap != null ? (gap >= 0 ? fmt(gap) + ' to go' : `<span style="color:var(--cx);">${fmt(-gap)} over</span>`) : '<span class="hint">—</span>'}</td></tr>`;
-  };
-  const n = campaigns.length;
-  el.innerHTML = `<div class="table-scroll"><table class="data-table" style="margin-bottom:8px;">
-    <thead><tr><th>Metric</th><th>Σ ${n} campaign${n === 1 ? '' : 's'} (${year})</th><th>${year} target</th><th>Covered</th><th>Gap</th></tr></thead>
-    <tbody>
-      ${line('Spend', sums.spend, 'workingMedia', fmtMoney, `${counts.spendActual} of ${n} with logged spend; rest at the Campaign Budget stage's approved plan`)}
-      ${line('Impressions', sums.impressions, 'impressions', fmtInt, `${counts.impsActual} of ${n} with logged impressions; rest planned`)}
-      ${line('New Website Users', sums.websiteUsers, 'websiteUsers', fmtInt, 'Modeled: spend ÷ cost per website user')}
-      ${line('High-Value Leads', sums.leads, 'valueLeads', fmtInt, 'Modeled: website users × value-lead rate')}
-      ${line('Registrations', sums.registrations, 'growthLeads', fmtInt, 'Modeled: website users × growth-lead rate')}
-      ${line('Transactions', sums.transactions, 'bookings', fmtInt, `${counts.txnActual} of ${n} with logged actuals; rest modeled`)}
-      ${line('Gross revenue', sums.grossRevenue, 'grossRevenue', fmtMoney, 'Modeled: transactions × baseline revenue per booking')}
-    </tbody></table></div>
-    ${target ? '' : `<p class="hint" style="margin:0;">No ${year} target entered yet — fill the Target column above to see coverage and gap.</p>`}`;
+  el.innerHTML = `<p class="lede" style="margin:0;">Campaigns against the ${year} target now live on Strategy, where impressions, sessions, leads, transactions and revenue come from one forecast instead of separate chains. <a class="flink" onclick="switchPrimaryTab('strategy')">Open Strategy →</a></p>`;
 }
 
 // 2026-09-28 — shared grid reader for the two manual-bridge uploads below
