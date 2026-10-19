@@ -20150,7 +20150,21 @@ function buildStoryForecastVsTarget(accountId, opts){
   const t = tRow ? { year: tRow.year, label: tRow.label || null, grossRevenue: tRow.grossRevenue, impressions: tRow.impressions, bookings: tRow.bookings, workingMedia: tRow.workingMedia } : null;
   const gap = (comparable && t && t.grossRevenue && yearEnd) ? yearEnd.map(v => Math.round(v - t.grossRevenue)) : null;
   const pct = (a, b) => (a != null && b) ? Math.round(a / b * 1000) / 10 : null;
-  return { year, comparable, plannedSpan: months.length ? { from: months[0].month, to: months[months.length - 1].month } : null, confidence: cal.confidence, planSource: `plan as loaded (${year}, months from ${cur} on)`,
+  // 2026-10-19 (Todd): when the loaded media plan is a different period, or has nothing for the target year, compare the saved scenarios for the
+  // target year against the target instead of leaving the card empty. Each scenario carries its own range (low/high) from the planning band.
+  let scenarios = [];
+  if (t){ try {
+    scenarios = db.prepare("SELECT * FROM account_plan_scenarios WHERE accountId = ? AND year = ? AND status <> 'archived' ORDER BY createdAt DESC").all(accountId, t.year).map(planScenarioOut)
+      .filter(r => r.result && r.result.outcome).map(r => { const o = r.result.outcome, bd = r.result.bands || {};
+        const rev = o.revenue != null ? Math.round(o.revenue) : null, lo = bd.low && bd.low.revenue != null ? Math.round(bd.low.revenue) : null, hi = bd.high && bd.high.revenue != null ? Math.round(bd.high.revenue) : null;
+        return { id: r.id, name: r.name, status: r.status, band: r.band, isTarget: r.status === 'active', workingMedia: o.workingMedia != null ? Math.round(o.workingMedia) : null, impressions: o.impressions != null ? Math.round(o.impressions) : null,
+          leads: o.leads != null ? Math.round(o.leads) : null, transactions: o.transactions != null ? Math.round(o.transactions) : null, revenue: rev, revenueLow: lo, revenueHigh: hi, roas: o.roas != null ? Math.round(o.roas * 100) / 100 : null,
+          gapToTarget: (rev != null && t.grossRevenue) ? { expected: rev - Math.round(t.grossRevenue), low: lo != null ? lo - Math.round(t.grossRevenue) : null, high: hi != null ? hi - Math.round(t.grossRevenue) : null } : null,
+          spendPctOfTarget: (o.workingMedia != null && t.workingMedia) ? Math.round(o.workingMedia / t.workingMedia * 1000) / 10 : null,
+          impressionsPctOfTarget: (o.impressions != null && t.impressions) ? Math.round(o.impressions / t.impressions * 1000) / 10 : null }; });
+  } catch (e){ scenarios = []; } }
+  const scenarioCovers = scenarios.length > 0;
+  return { year, scenarios, comparable, plannedSpan: months.length ? { from: months[0].month, to: months[months.length - 1].month } : null, confidence: cal.confidence, planSource: `plan as loaded (${year}, months from ${cur} on)`,
     coversYearToDate: includesYtd,
     ytd: { revenue: ytdRev, impressions: ytdImp, spend: ytdSpend },
     remaining: f ? { months: f.months, totals: f.totals, rangeNote: f.rangeNote } : null,
@@ -20161,7 +20175,7 @@ function buildStoryForecastVsTarget(accountId, opts){
     spend: (comparable && t && t.workingMedia != null && spendProjected != null) ? { target: t.workingMedia, projected: spendProjected, pctOfTarget: pct(spendProjected, t.workingMedia) } : null,
     baseline: storyRatios(bRow),
     lastYearSameRemainingMonthsRevenue: null,
-    notOnFile: [t ? null : 'annual plan target (Campaign Management > Annual Plans)', months.length ? null : `planned impressions or spend for ${year}`].filter(Boolean) };
+    notOnFile: [t ? null : 'annual plan target (Campaign Management > Annual Plans)', (months.length || scenarioCovers) ? null : `planned impressions or spend for ${year}, or a saved scenario for ${year}`].filter(Boolean) };
 }
 
 // A trend window should end at the latest month that has data, not at "last month", so a
@@ -20849,7 +20863,7 @@ function planScenarioActor(req, accountId){
   if (!session) return null;
   if (!session.memberId) return { id: null, name: 'Account admin', canActivate: true };
   if (!m) return { id: session.memberId, name: 'Team member', canActivate: false };
-  return { id: session.memberId, name: m.name || 'Team member', canActivate: !!(m.isAdmin || m.isadmin) || String(m.level || '') === 'CMO' };
+  return { id: session.memberId, name: m.name || 'Team member', canActivate: !!(m.isAdmin || m.isadmin) || String(m.level || '') === 'CMO', isDirector: String(m.level || '') === 'Director' };
 }
 function planScenarioOut(r){
   let result = null, mix = null; try { result = r.resultJson ? JSON.parse(r.resultJson) : null; } catch (e){} try { mix = r.mixJson ? JSON.parse(r.mixJson) : null; } catch (e){}
@@ -47653,6 +47667,8 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       const actor = planScenarioActor(req, accountId) || { id: null, name: 'Team member', canActivate: false };
+      // 2026-10-19 (Todd): Directors may activate a plan scenario, as well as an Admin or the CMO. Only this route; creative hand-offs and loop-stage rules keep their own rule.
+      if (actor.isDirector) actor.canActivate = true;
       try {
         if (req.method === 'GET' && parts.length === 4){
           const y = parseInt(new URL(req.url, 'http://localhost').searchParams.get('year'), 10); const year = Number.isFinite(y) ? y : new Date().getUTCFullYear();
@@ -47725,7 +47741,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
             if (row.status === 'active') return sendJson(res, 400, { error: 'Activate another scenario first; the active one is replaced, not archived.' });
             db.prepare("UPDATE account_plan_scenarios SET status = 'archived', updatedAt = ? WHERE id = ?").run(now, sid);
           } else if (act === 'activate'){
-            if (!actor.canActivate) return sendJson(res, 403, { error: 'Only an admin or a CMO can activate a scenario for the account. Send it for approval instead.' });
+            if (!actor.canActivate) return sendJson(res, 403, { error: 'Only an admin, the CMO or a Director can activate a scenario for the account. Send it for approval instead.' });
             let result = null; try { result = JSON.parse(row.resultJson); } catch (e){}
             if (!result || !result.outcome) return sendJson(res, 400, { error: 'This scenario has no saved result to activate.' });
             const o = result.outcome, lt = o.leadTypes || {};
