@@ -6890,6 +6890,42 @@ db.exec(`
   );
 `);
 try { db.exec('CREATE INDEX IF NOT EXISTS idx_scenario_plan_lines_scn ON scenario_plan_lines (scenario)'); } catch (e){}
+// 2026-10-19 — Approval history: one row per thing that happened to a scenario (saved, sent for approval, activated, replaced, archived) and who was told.
+// Plain lowercase column names (except accountId) for the same reason as scenario_plan_lines.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS plan_scenario_events (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    scenario TEXT NOT NULL,
+    scenarioname TEXT,
+    year INTEGER,
+    action TEXT NOT NULL,
+    actorid TEXT,
+    actorname TEXT,
+    detail TEXT,
+    happened TEXT NOT NULL
+  );
+`);
+try { db.exec('CREATE INDEX IF NOT EXISTS idx_plan_scenario_events_acct ON plan_scenario_events (accountId, happened)'); } catch (e){}
+function planScenarioLog(accountId, row, action, actor, detail){
+  try { db.prepare('INSERT INTO plan_scenario_events (id, accountId, scenario, scenarioname, year, action, actorid, actorname, detail, happened) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(generateId('PSE'), accountId, row.id, row.name, row.year, action, actor && actor.id || null, actor && actor.name || null, detail ? String(detail).slice(0, 400) : null, new Date().toISOString()); } catch (e){ console.warn('[plan-scenarios] event log failed:', e.message); }
+}
+// Who can approve a scenario: an Admin, the CMO or a Director, with an email on file (the same people the route lets activate).
+function planScenarioApprovers(accountId){
+  try { return db.prepare("SELECT id, name, email, isAdmin, level FROM team_members WHERE accountId = ?").all(accountId)
+    .filter(m => (m.isAdmin || m.isadmin) || ['CMO', 'Director'].includes(String(m.level || ''))).filter(m => !m.status || m.status === 'active' || true); } catch (e){ return []; }
+}
+async function planScenarioNotifyApprovers(accountId, row, actor){
+  const approvers = planScenarioApprovers(accountId).filter(m => m.email && m.id !== (actor && actor.id));
+  let sent = 0, notConfigured = false;
+  for (const m of approvers){
+    const text = `${actor && actor.name || 'A team member'} sent the ${row.year} plan scenario "${row.name}" for approval.\n\nOpen Strategy, then Forecast against the plan target, then Scenario planner to review it against the target. An admin, the CMO or a Director can activate it, which replaces the ${row.year} target that the dashboards and the Weekly Brain read.`;
+    try { const r = await sendTransactionalEmail({ to: m.email, subject: `Scenario waiting for approval: ${row.name} (${row.year})`, textBody: text, htmlBody: '<p>' + escapeHtmlBasic(text).replace(/\n/g, '<br>') + '</p>' }); if (r && r.emailStatus === 'sent') sent++; else if (r && r.emailStatus === 'not_configured') notConfigured = true; } catch (e){}
+  }
+  planScenarioLog(accountId, row, 'notified', actor, `${approvers.length} approver${approvers.length === 1 ? '' : 's'} on file; ${sent} email${sent === 1 ? '' : 's'} sent${notConfigured ? ' (email is not configured, so the pending notice shows on Strategy and in the Weekly Brain only)' : ''}`);
+  return { approvers: approvers.length, sent, notConfigured };
+}
 // Self-heal for account_plan_scenarios on Postgres: if the table was created before its camelCase names were in schema-identifiers.json its columns are
 // stored lowercase while queries quote them. Rename only the columns this table owns, only when a write fails for that reason, then retry once.
 const PLAN_SCENARIO_CAMEL_COLS = ['accountId', 'workingMedia', 'mixJson', 'resultJson', 'createdById', 'createdByName', 'createdAt', 'updatedAt', 'submittedAt', 'activatedById', 'activatedByName', 'activatedAt'];
@@ -20201,24 +20237,29 @@ function buildStoryPriceVolume(accountId, opts){
   const dim = opts.dim === 'creativeFocus' ? 'creativeFocus' : 'productGroup';
   const win = storyWindowEndingAtData(asOf, months, storyLatestMonth(accountId, dim === 'creativeFocus' ? 'guest' : 'txn'));
   const need = new Set(win.concat(win.map(k => storyShiftYear(k, -1))));
-  const series = {}; const totals = {}; const groups = new Set(); const focusByGroup = {}; const productGroups = new Set();
+  const series = {}; const totals = {}; const groups = new Set(); const focusByGroup = {}; const productGroups = new Set(); const optionSet = new Set();
   const add = (g, k, gross, vol) => { if (!need.has(k)) return; groups.add(g); const s = series[g] || (series[g] = {}); const c = s[k] || (s[k] = { gross: 0, volume: 0 }); c.gross += gross; c.volume += vol; const t = totals[k] || (totals[k] = { gross: 0, volume: 0 }); t.gross += gross; t.volume += vol; };
   const key = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
   let source;
   if (dim === 'productGroup'){
     const tx = storyTxnRows(accountId); source = tx.source || 'account_transactions_monthly';
-    tx.rows.forEach(r => add(r.productGroup || 'Unassigned', key(r.year, r.month), r.revenue, r.transactions));
-    db.prepare("SELECT DISTINCT \"productGroup\", \"creativeFocus\" FROM account_guest_bookings WHERE accountId = ?").all(accountId).forEach(r => { const pg = String(aliasVal(r, 'productGroup') || '').trim(), cf = String(aliasVal(r, 'creativeFocus') || '').trim(); if (pg){ productGroups.add(pg); if (cf){ (focusByGroup[pg] = focusByGroup[pg] || new Set()).add(cf); } } });
+    const pgSel = opts.productGroup ? String(opts.productGroup).trim() : null;
+    tx.rows.forEach(r => { if (r.productGroup) optionSet.add(r.productGroup); });
+    tx.rows.forEach(r => { if (pgSel && (r.productGroup || 'Unassigned') !== pgSel) return; add(r.productGroup || 'Unassigned', key(r.year, r.month), r.revenue, r.transactions); });
+    db.prepare("SELECT DISTINCT \"productGroup\", \"creativeFocus\" FROM account_guest_bookings WHERE accountId = ?").all(accountId).forEach(r => { const pg = String(aliasVal(r, 'productGroup') || '').trim(), cf = String(aliasVal(r, 'creativeFocus') || '').trim(); if (pg){ productGroups.add(pg); optionSet.add(pg); if (cf){ (focusByGroup[pg] = focusByGroup[pg] || new Set()).add(cf); } } });
   } else {
     source = 'account_guest_bookings';
     const settings = getTransactionSettings(accountId);
     const pgFilter = opts.productGroup ? String(opts.productGroup).trim() : null;
+    const cfFilter = opts.creativeFocus ? String(opts.creativeFocus).trim() : null;
     const seen = {};
     db.prepare('SELECT * FROM account_guest_bookings WHERE accountId = ?').all(accountId).forEach(r => {
       if (!rowCounts(r, settings)) return;
       const pg = String(aliasVal(r, 'productGroup') || '').trim(), cf = String(aliasVal(r, 'creativeFocus') || '').trim() || 'Unassigned';
       if (pg){ productGroups.add(pg); if (cf !== 'Unassigned') (focusByGroup[pg] = focusByGroup[pg] || new Set()).add(cf); }
+      if (cf !== 'Unassigned') optionSet.add(cf);
       if (pgFilter && pg !== pgFilter) return;
+      if (cfFilter && cf !== cfFilter) return;
       const k = key(r.year, r.month); const code = aliasVal(r, 'bookingCode');
       const dk = `${cf}|${k}|${code}`; const isNew = !seen[dk]; seen[dk] = true;
       add(cf, k, Number(aliasVal(r, 'grossRevenue')) || 0, isNew ? 1 : 0);
@@ -20237,7 +20278,8 @@ function buildStoryPriceVolume(accountId, opts){
       yoyGrossPct: storyPct(t && t.gross, p && p.gross), yoyVolumePct: storyPct(t && t.volume, p && p.volume) };
   });
   const byGroup = {}; Object.keys(out).forEach(g => { byGroup[g] = win.map(k => { const c = out[g][k]; const p = out[g][storyShiftYear(k, -1)]; return { month: k, gross: c ? Math.round(c.gross) : null, volume: c ? c.volume : null, priorYearGross: p ? Math.round(p.gross) : null, priorYearVolume: p ? p.volume : null }; }); });
-  return { dim, source, window: { from: win[0], to: win[win.length - 1], months }, filter: opts.productGroup || null,
+  return { dim, source, window: { from: win[0], to: win[win.length - 1], months }, filter: (dim === 'creativeFocus' ? opts.creativeFocus : opts.productGroup) || null,
+    options: Array.from(optionSet).sort((a, b) => a.localeCompare(b)),
     months: monthsOut, byGroup,
     productGroups: Array.from(productGroups).sort(),
     creativeFocusByProductGroup: Object.fromEntries(Object.entries(focusByGroup).map(([k, v]) => [k, Array.from(v).sort()])),
@@ -20738,6 +20780,152 @@ function planSpendOverMonths(accountId, keys, S){
   keys.forEach(k => { const a = Number(S.spend[k]) || 0, b = Number(bud[k]) || 0; const v = Math.max(a, b); if (v > 0){ any = true; total += v; if (b > a) fromBudget++; else fromActual++; } });
   return any ? { total: Math.round(total), months: keys.length, fromBudget, fromActual, actualOnly: keys.reduce((n, k) => n + (Number(S.spend[k]) || 0), 0) } : null;
 }
+// 2026-10-19: rate-card minimums inside scenario runs (same raise-and-fund rule as the Media Plan's mpApplyChannelMinimums). `spend` is {channel: dollars}.
+// A channel is dropped as not earned when its weighted spend is under MIN_LIFT_EARN_FRACTION of its minimum; the rest under their minimum are raised to it, funded
+// pro rata from channels above their own minimum (never below it). If donors cannot cover every lift, the smallest under-minimum channel is held back and its money is
+// spread over the remaining channels. The total never changes.
+const PLAN_MIN_EARN_FRACTION = 0.25;
+function planApplyMinimums(spend, minimums){
+  const out = Object.assign({}, spend); const raised = [], heldBack = [];
+  const total = Object.keys(out).reduce((n, c) => n + out[c], 0); if (!(total > 0)) return { spend: out, raised, heldBack };
+  const minOf = c => { const m = minimums[c]; return Number(m) > 0 ? Number(m) : 0; };
+  const spread = (amt) => { const keys = Object.keys(out).filter(c => out[c] > 0); const t = keys.reduce((n, c) => n + out[c], 0); if (!(t > 0)) return; keys.forEach(c => { out[c] += amt * out[c] / t; }); };
+  // 1) not earned
+  Object.keys(out).forEach(c => { const m = minOf(c); if (m > 0 && out[c] > 0 && out[c] < PLAN_MIN_EARN_FRACTION * m){ const free = out[c]; out[c] = 0; heldBack.push({ channel: c, minimum: Math.round(m), weighted: Math.round(free), reason: 'earned under ' + Math.round(PLAN_MIN_EARN_FRACTION * 100) + '% of its minimum buy' }); spread(free); } });
+  // 2) raise and fund
+  for (let guard = 0; guard < 20; guard++){
+    const under = Object.keys(out).filter(c => out[c] > 0 && minOf(c) > out[c] + 0.5).sort((a, b) => (minOf(a) - out[a]) - (minOf(b) - out[b]));
+    if (!under.length) break;
+    const need = under.reduce((n, c) => n + (minOf(c) - out[c]), 0);
+    const donors = Object.keys(out).filter(c => out[c] > 0 && !under.includes(c) && out[c] > minOf(c)); const head = donors.reduce((n, c) => n + (out[c] - minOf(c)), 0);
+    if (need <= head + 0.5){
+      const fundedBy = donors.map(c => ({ channel: c, gave: 0 }));
+      donors.forEach((c, i) => { const give = need * (out[c] - minOf(c)) / head; out[c] -= give; fundedBy[i].gave = Math.round(give); });
+      under.forEach(c => { raised.push({ channel: c, from: Math.round(out[c]), to: Math.round(minOf(c)) }); out[c] = minOf(c); });
+      raised.forEach(r => { r.fundedBy = fundedBy.filter(f => f.gave > 0); });
+      break;
+    }
+    const drop = under[0]; const free = out[drop]; out[drop] = 0; heldBack.push({ channel: drop, minimum: Math.round(minOf(drop)), weighted: Math.round(free), reason: 'other channels cannot fund its minimum buy' }); spread(free);
+  }
+  return { spend: out, raised, heldBack };
+}
+// 2026-10-19 (slice 2b): the campaigns' planned lines for a year, run through the SAME forecast chain as the scenario planner, against the year's target.
+// Replaces the old per-campaign roll-up in Annual Plan, whose two unrelated chains (users and leads from spend; transactions straight from impressions)
+// made one campaign look 5% of the users target and 58% of transactions. Here impressions flow to sessions to leads to transactions to revenue once.
+function planCampaignCoverage(accountId, year){
+  const asOf = new Date(); const S = buildForecastSeries(accountId);
+  const cal = forecastEngine.calibrate(S, { asOf, fallbackAov: storyFallbackAov(accountId, year) });
+  const rows = db.prepare('SELECT cpd.*, c.startDate AS cStart, c.name AS cName FROM channel_planning_details cpd JOIN campaigns c ON c.id = cpd.campaignId WHERE c.accountId = ? AND COALESCE(c.isAdHoc, 0) = 0 AND COALESCE(c.cancelled, 0) = 0').all(accountId);
+  const byMonth = {}, byChannel = {}, campaigns = new Set(); let lines = 0;
+  rows.forEach(r => {
+    const d = String(aliasVal(r, 'hitDate') || aliasVal(r, 'dropDate') || aliasVal(r, 'cStart') || '').slice(0, 7); if (!/^\d{4}-\d{2}$/.test(d) || d.slice(0, 4) !== String(year)) return;
+    const imps = Number(r.impressions) || 0, spend = Number(aliasVal(r, 'budget')) || 0; if (!(imps > 0) && !(spend > 0)) return;
+    lines++; campaigns.add(r.campaignId);
+    const m = byMonth[d] || (byMonth[d] = { month: d, impressions: 0, spend: 0 }); m.impressions += imps; m.spend += spend;
+    const c = byChannel[r.channel] || (byChannel[r.channel] = { channel: r.channel, spend: 0, impressions: 0 }); c.spend += spend; c.impressions += imps;
+  });
+  const { target } = storyPlanRows(accountId, year); const t = target && target.year === year ? target : null;
+  const allCampaigns = db.prepare("SELECT id FROM campaigns WHERE accountId = ? AND COALESCE(isAdHoc, 0) = 0 AND COALESCE(cancelled, 0) = 0 AND substr(COALESCE(startDate, ''), 1, 4) = ?").all(accountId, String(year)).length;
+  const months = Object.keys(byMonth).sort().map(k => byMonth[k]);
+  const out = { year, campaigns: campaigns.size, campaignsStartingInYear: allCampaigns, lines, hasTarget: !!t, targetLabel: t ? (t.label || null) : null, confidence: cal.confidence, rows: [], channels: [], notes: [] };
+  const sumSpend = months.reduce((n, m) => n + m.spend, 0), sumImps = months.reduce((n, m) => n + m.impressions, 0);
+  if (!months.length){ out.notes.push(`No campaign has planned channel lines with a spend or impressions in ${year} yet, so nothing can be run through the forecast.`); return out; }
+  const f = forecastEngine.forecast(cal, { months });
+  const T = f.totals, mid = a => a ? a[1] : null, lo = a => a ? a[0] : null, hi = a => a ? a[2] : null;
+  const tgt = t ? { workingMedia: t.workingMedia, impressions: t.impressions, sessions: t.websiteUsers, leads: (Number(t.prospectLeads) || 0) + (Number(t.growthLeads) || 0) + (Number(t.valueLeads) || 0) || null, transactions: t.bookings, revenue: t.grossRevenue } : {};
+  const val = { workingMedia: sumSpend, impressions: sumImps, sessions: mid(T.visits), leads: mid(T.leads), transactions: mid(T.bookings), revenue: T.revenue ? mid(T.revenue) : null };
+  const rng = { sessions: [lo(T.visits), hi(T.visits)], leads: [lo(T.leads), hi(T.leads)], transactions: [lo(T.bookings), hi(T.bookings)], revenue: T.revenue ? [lo(T.revenue), hi(T.revenue)] : null };
+  const LAB = { workingMedia: 'Working media (campaign plans)', impressions: 'Media impressions', sessions: 'Website sessions', leads: 'Leads', transactions: 'Transactions', revenue: 'Gross revenue' };
+  Object.keys(LAB).forEach(k => { const v = val[k] != null ? Math.round(val[k]) : null, tv = tgt[k] != null ? Number(tgt[k]) : null;
+    out.rows.push({ key: k, label: LAB[k], value: v, range: rng[k] ? [Math.round(rng[k][0]), Math.round(rng[k][1])] : null, target: tv, pctOfTarget: v != null && tv > 0 ? Math.round(v / tv * 1000) / 10 : null, gap: v != null && tv != null ? Math.round(tv - v) : null,
+      modeled: !(k === 'workingMedia' || k === 'impressions') }); });
+  const mix = (() => { try { return JSON.parse(t && t.detailsJson || '{}').channelMix || {}; } catch (e){ return {}; } })();
+  const names = Array.from(new Set(Object.keys(byChannel).concat(Object.keys(mix))));
+  out.channels = names.map(c => ({ channel: c, planned: Math.round((byChannel[c] || {}).spend || 0), target: mix[c] != null ? Math.round(mix[c]) : null, pctOfTarget: mix[c] > 0 ? Math.round(((byChannel[c] || {}).spend || 0) / mix[c] * 1000) / 10 : null })).sort((a, b) => (b.target || b.planned) - (a.target || a.planned));
+  out.notes.push('Sessions, leads, transactions and revenue are modeled once from the campaigns\' planned impressions, through this account\'s own funnel rates (the engine labels any benchmark). They do not come from separate chains.');
+  if (allCampaigns > campaigns.size) out.notes.push(`${allCampaigns - campaigns.size} campaign${allCampaigns - campaigns.size === 1 ? '' : 's'} starting in ${year} ${allCampaigns - campaigns.size === 1 ? 'has' : 'have'} no planned channel lines yet and add nothing here.`);
+  if (!t) out.notes.push(`No ${year} target is on file. Activate a scenario or enter one in the Annual Plan to see coverage and gap.`);
+  return out;
+}
+// ---- 2026-10-19 (slice 1b): Annual Plan baseline draft -------------------------------------------------------------------------------
+// The baseline is built automatically from loaded data, every cell says where it came from and how sure that is, a person can correct a cell, and an Admin, the
+// CMO or a Director approves it (approver and date kept). The draft rebuilds itself when the loaded data changes, unless it has been approved; an approved baseline
+// only says newer data is available. Approving writes the baseline row of the Annual Plan, exactly where the dashboards already read it.
+// Plain lowercase column names (except accountId), same reason as scenario_plan_lines.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS plan_baseline_drafts (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    year INTEGER,
+    basis TEXT NOT NULL,
+    status TEXT NOT NULL,
+    builtat TEXT NOT NULL,
+    fingerprint TEXT,
+    cellsjson TEXT,
+    editsjson TEXT,
+    labeltext TEXT,
+    methodjson TEXT,
+    approvedbyid TEXT,
+    approvedbyname TEXT,
+    approvedat TEXT,
+    approvedfp TEXT
+  );
+`);
+const PLAN_BASELINE_FIELD_LABELS = { workingMedia: 'Working media', impressions: 'Media impressions', websiteUsers: 'Website sessions', prospectLeads: 'Prospect leads', growthLeads: 'Growth (registration) leads', valueLeads: 'High-value leads', directCalls: 'Direct calls', bookings: 'Transactions', directBookings: 'Direct transactions (no lead)', grossRevenue: 'Gross revenue' };
+function planBaselineFingerprint(accountId){
+  const q = (sql) => { try { const r = db.prepare(sql).get(accountId); return r ? Object.values(r).join(':') : ''; } catch (e){ return ''; } };
+  return [
+    q('SELECT COUNT(*) AS n, COALESCE(SUM(users), 0) AS s FROM account_website_users_monthly WHERE accountId = ?'),
+    q('SELECT COUNT(*) AS n, COALESCE(SUM("count"), 0) AS s FROM account_lead_counts WHERE accountId = ?'),
+    q("SELECT COUNT(*) AS n, COALESCE(SUM(impressions), 0) AS s, COALESCE(SUM(spend), 0) AS t FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'"),
+    q('SELECT COUNT(*) AS n, COALESCE(SUM(transactions), 0) AS s, COALESCE(SUM(revenue), 0) AS t FROM account_transactions_monthly WHERE accountId = ?'),
+    q('SELECT COUNT(*) AS n FROM account_guest_bookings WHERE accountId = ?'),
+    q("SELECT COUNT(*) AS n, COALESCE(MAX(confirmedAt), '') AS m FROM marketing_budget_uploads WHERE accountId = ? AND status = 'confirmed'"),
+    q('SELECT COUNT(*) AS n, COALESCE(SUM(grossRevenue), 0) AS s FROM account_year_results WHERE accountId = ?')
+  ].join('|');
+}
+function planBaselineBuild(accountId, year, basis){
+  const rec = buildAnnualPlanRecommendation(accountId, year, new Date(), basis); const b = rec.baseline || {};
+  const per = rec.window ? `${rec.window.from} to ${rec.window.to}` : String(rec.year - 1);
+  const audited = /audited/i.test(b.label || '');
+  const estBudget = !!(rec.budget && rec.budget.baseline && rec.budget.baseline.estimated);
+  const SRC = {
+    workingMedia: { src: estBudget ? `Confirmed marketing budget (working media), prorated to ${per}` : `Media spend and the confirmed marketing budget, ${per}`, need: 'Confirm the marketing budget with working media, or load media spend', est: estBudget },
+    impressions: { src: `Media totals, all channels, ${per}`, need: 'Load media totals or digital performance' },
+    websiteUsers: { src: `Website users by month (GA4 or manual), ${per}`, need: 'Load website users by month in Train the Brain' },
+    prospectLeads: { src: `Leads by type, Prospect, ${per}`, need: 'Load leads by type' },
+    growthLeads: { src: `Leads by type, Registration, ${per}`, need: 'Load leads by type' },
+    valueLeads: { src: `Leads by type, High Value, ${per}`, need: 'Load leads by type' },
+    directCalls: { src: `Calls from digital performance, ${per}`, need: 'Load digital performance with calls' },
+    bookings: { src: audited ? `Audited ${rec.year - 1} result` : `Transactions by month, ${per}`, need: 'Load transactions by month, or enter the audited year result' },
+    directBookings: { src: 'Calculated: transactions minus the bookings tied to leads', need: 'Needs transactions and leads with bookings', calc: true },
+    grossRevenue: { src: audited ? `Audited ${rec.year - 1} result` : `Transactions by month (gross revenue), ${per}`, need: 'Load transactions with revenue, or enter the audited year result' }
+  };
+  const cells = {};
+  ANNUAL_PLAN_NUMERIC_FIELDS.forEach(f => { const v = b[f] != null ? Number(b[f]) : null; const d = SRC[f] || { src: '', need: '' };
+    cells[f] = { label: PLAN_BASELINE_FIELD_LABELS[f] || f, value: v, state: v == null ? 'missing' : (d.est ? 'estimated' : d.calc ? 'calculated' : 'from data'), source: v == null ? ('Not on file. ' + d.need + '.') : d.src }; });
+  let chMix = (b.details && b.details.channelMix) || null;
+  return { cells, channelMix: chMix, label: b.label || null, year: b.year != null ? b.year : rec.year - 1, window: rec.window || null, method: rec.method || [], missing: rec.missing || [] };
+}
+function planBaselineView(row, canApprove){
+  if (!row) return null;
+  let cells = {}, edits = {}, method = []; try { cells = JSON.parse(row.cellsjson || '{}'); } catch (e){} try { edits = JSON.parse(row.editsjson || '{}'); } catch (e){} try { method = JSON.parse(row.methodjson || '[]'); } catch (e){}
+  const out = {}; Object.keys(cells).forEach(f => { const c = Object.assign({}, cells[f]); const e = edits[f]; if (e){ c.drafted = c.value; c.value = e.value; c.state = 'edited'; c.source = `Changed by ${e.by || 'a team member'} on ${String(e.at || '').slice(0, 10)}${e.note ? ': ' + e.note : ''}. Drafted from data: ${c.drafted != null ? Math.round(c.drafted).toLocaleString('en-US') : 'not on file'}.`; } out[f] = c; });
+  return { year: row.year, basis: row.basis, status: row.status, builtAt: row.builtat, label: row.labeltext, cells: out, method, canApprove: !!canApprove,
+    approvedBy: row.approvedbyname || null, approvedAt: row.approvedat || null, newerData: row.status === 'approved' && row.fingerprint !== row.approvedfp };
+}
+function planBaselineEnsure(accountId, year, basis, force){
+  const id = `${accountId}|${basis}`; let row = db.prepare('SELECT * FROM plan_baseline_drafts WHERE id = ?').get(id); const fp = planBaselineFingerprint(accountId);
+  const need = !row || force || (row.status !== 'approved' && row.fingerprint !== fp);
+  if (row && row.status === 'approved' && row.fingerprint !== fp && !force){ db.prepare('UPDATE plan_baseline_drafts SET fingerprint = ? WHERE id = ?').run(fp, id); return db.prepare('SELECT * FROM plan_baseline_drafts WHERE id = ?').get(id); }
+  if (!need) return row;
+  const built = planBaselineBuild(accountId, year, basis); const now = new Date().toISOString();
+  const keepEdits = row && row.status !== 'approved' && !force ? (row.editsjson || '{}') : '{}';
+  const cj = JSON.stringify(built.cells), mj = JSON.stringify(built.method);
+  if (row) db.prepare("UPDATE plan_baseline_drafts SET year = ?, status = 'draft', builtat = ?, fingerprint = ?, cellsjson = ?, editsjson = ?, labeltext = ?, methodjson = ?, approvedbyid = NULL, approvedbyname = NULL, approvedat = NULL, approvedfp = NULL WHERE id = ?").run(built.year, now, fp, cj, keepEdits, built.label, mj, id);
+  else db.prepare("INSERT INTO plan_baseline_drafts (id, accountId, year, basis, status, builtat, fingerprint, cellsjson, editsjson, labeltext, methodjson) VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, '{}', ?, ?)").run(id, accountId, built.year, basis, now, fp, cj, built.label, mj);
+  return db.prepare('SELECT * FROM plan_baseline_drafts WHERE id = ?').get(id);
+}
 function planScenarioCompute(accountId, input){
   const year = Number(input.year) || new Date().getUTCFullYear();
   const bandName = input.band === 'low' || input.band === 'high' ? input.band : 'mid'; const bi = planScenarioBand(bandName);
@@ -20761,6 +20949,18 @@ function planScenarioCompute(accountId, input){
   if (givenSum > 0){ Object.keys(given).forEach(c => { shares[c] = given[c] / givenSum; }); anyMix = true; }
   else if (baseTotalSpend > 0){ Object.keys(ch).forEach(c => { shares[c] = ch[c].spend / baseTotalSpend; }); }
   const chRows = []; let totalImps = 0; const notes = [];
+  let minApplied = { raised: [], heldBack: [], on: false, count: 0 };
+  if (input.applyMinimums !== false && Object.keys(shares).length){
+    let mins = {}; try { mins = rateCardMinimumsFor(accountId).minimums || {}; } catch (e){ mins = {}; }
+    const have = Object.keys(shares).filter(c => mins[c] > 0).length; minApplied.count = Object.keys(mins).length;
+    if (have){
+      const res = planApplyMinimums(Object.fromEntries(Object.keys(shares).map(c => [c, W * shares[c]])), mins);
+      Object.keys(shares).forEach(c => { shares[c] = res.spend[c] / W; }); Object.keys(shares).forEach(c => { if (!(shares[c] > 0.000001)) delete shares[c]; });
+      minApplied = { raised: res.raised, heldBack: res.heldBack, on: true, count: minApplied.count };
+      if (res.raised.length) notes.push('Rate card minimums applied: ' + res.raised.map(r => r.channel + ' raised to ' + r.to.toLocaleString('en-US')).join('; ') + '. The lift was funded from channels above their own minimum; the total budget did not change.');
+      if (res.heldBack.length) notes.push('Held back: ' + res.heldBack.map(h => h.channel + ' (' + h.reason + ')').join('; ') + '.');
+    } else if (minApplied.count) notes.push('Rate card minimums are on file, but none are for the channels in this mix.');
+  }
   const chNames = Object.keys(shares);
   if (!chNames.length){ totalImps = blendedCpm ? W / blendedCpm * 1000 : 0; notes.push('No channel history on file, so the whole budget is converted at one blended cost per thousand impressions.'); }
   chNames.forEach(c => {
@@ -20792,7 +20992,7 @@ function planScenarioCompute(accountId, input){
   if (!planBudget && input.workingMedia == null) notes.push('No confirmed ' + year + ' working media budget, so the last 12 months of spend is used.');
   return { year, band: bandName, outcome, bands, channels: chRows, baseline: base, target, confidence: f.confidence, rangeNote: f.rangeNote,
     assumptions: ['Impressions per channel = spend ÷ that channel\'s own cost per thousand over the last 12 complete months.', 'Funnel rates (visits, leads, transactions, revenue per transaction) are this account\'s own where there is history; the engine labels any benchmark.', 'The mix moves results only through cost per thousand impressions. Channels are not given different conversion rates until media mix model results are available.'].concat(notes).concat(f.notes || []),
-    customMix: anyMix, usedBudget: planBudget ? 'confirmed ' + year + ' budget' : 'last 12 months of spend' };
+    minimums: minApplied, customMix: anyMix, usedBudget: planBudget ? 'confirmed ' + year + ' budget' : 'last 12 months of spend' };
 }
 // ---- Scenario plan upload (2026-10-10) ----
 const PLAN_UPLOAD_MONTHS = ['january','february','march','april','may','june','july','august','september','october','november','december'];
@@ -21303,6 +21503,22 @@ function buildBrainDumpFacts(accountId, now, prevFacts){
     } else if (pr){
       lines.push(`The forecast is ${bdMoney(pr.expected)} for the planned months; no matching plan target is on file to compare against.`);
     } else lines.push('No revenue forecast is available yet; it needs monthly transactions or an Annual Plan baseline.');
+    // 2026-10-19: scenarios that are waiting on a person. A pending scenario names who sent it and since when; drafts are mentioned only when no target is active for that year.
+    try {
+      const sc = db.prepare("SELECT * FROM account_plan_scenarios WHERE accountId = ? AND status IN ('pending', 'draft', 'active') ORDER BY createdAt DESC").all(accountId).map(planScenarioOut);
+      const pend = sc.filter(r => r.status === 'pending'); const activeYears = new Set(sc.filter(r => r.status === 'active').map(r => r.year));
+      pend.slice(0, 3).forEach(r => { const days = r.submittedAt ? Math.max(0, Math.floor((now - new Date(r.submittedAt)) / 86400000)) : null; lines.push(`Draft ${r.year} target waiting for approval: the scenario "${r.name}" was sent by ${r.createdByName || 'a team member'}${days != null ? ` ${days === 0 ? 'today' : days + ' day' + (days === 1 ? '' : 's') + ' ago'}` : ''}. An admin, the CMO or a Director can activate it on Strategy.`); });
+      if (pend.length > 3) lines.push(`${pend.length - 3} more scenario${pend.length - 3 === 1 ? ' is' : 's are'} waiting for approval.`);
+      const draftsOnly = sc.filter(r => r.status === 'draft' && !activeYears.has(r.year) && !pend.some(p => p.year === r.year));
+      if (!pend.length && draftsOnly.length) lines.push(`${draftsOnly.length} saved ${draftsOnly[0].year} scenario${draftsOnly.length === 1 ? '' : 's'} ${draftsOnly.length === 1 ? 'has' : 'have'} not been sent for approval, so no ${draftsOnly[0].year} target comes from them yet.`);
+      if (pend.length && metric.value == null) metric = { label: metric.label, value: null, display: 'Draft target waiting for approval' };
+    } catch (e){ /* scenarios are optional here */ }
+    try {
+      const bd = db.prepare("SELECT * FROM plan_baseline_drafts WHERE accountId = ? ORDER BY builtat DESC").all(accountId);
+      const unapproved = bd.find(r => r.status !== 'approved'); const stale = bd.find(r => r.status === 'approved' && r.fingerprint !== r.approvedfp);
+      if (unapproved) lines.push('The Annual Plan baseline is built from your loaded data and waiting for approval. An admin, the CMO or a Director can approve it on the Annual Plan.');
+      else if (stale) lines.push('New data has been loaded since the Annual Plan baseline was approved. Rebuild it on the Annual Plan if the numbers should move.');
+    } catch (e){ /* baseline drafts are optional here */ }
     const o = dm.outcomes; const outliers = [];
     if (o){ ['revenue', 'roas', 'cac'].forEach(k => { const v = o.deltaPct && o.deltaPct[k]; if (v != null && Math.abs(v) >= 25) outliers.push(`${k === 'roas' ? 'ROAS' : k === 'cac' ? 'CAC' : 'Revenue'} is ${v >= 0 ? 'up' : 'down'} ${Math.abs(v)}% against the same months last year`); }); }
     if (o && o.roas != null) lines.push(`ROAS is ${o.roas.toFixed(2)}x on ${bdMoney(o.revenue)} of gross revenue.`);
@@ -21740,7 +21956,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['account_ga4_meta', 'account_plan_scenarios', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'marketing_projects', 'marketing_project_tasks', 'account_learned_cpm', 'account_channel_product_inputs', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'creative_handoffs', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
+const CATALOG_EXEMPT = new Set(['account_ga4_meta', 'account_plan_scenarios', 'plan_scenario_events', 'plan_baseline_drafts', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'marketing_projects', 'marketing_project_tasks', 'account_learned_cpm', 'account_channel_product_inputs', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'creative_handoffs', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -34984,7 +35200,7 @@ async function handleRequestInner(req, res) {
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       const qs = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries());
-      const opts = { asOf: storyAsOf(qs), months: qs.months, dim: qs.dim, productGroup: qs.productGroup, outcomes: qs.outcomes === '1' };
+      const opts = { asOf: storyAsOf(qs), months: qs.months, dim: qs.dim, productGroup: qs.productGroup, creativeFocus: qs.creativeFocus, outcomes: qs.outcomes === '1' };
       if (parts[4] === 'story' && !qs.months){ try { opts.range = dateRangeForRequest(req, accountId, qs); } catch (e){ opts.range = null; } }
       try {
         const data = parts[4] === 'story' ? buildStoryDemand(accountId, opts)
@@ -47589,6 +47805,51 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       return sendJson(res, 200, { accountId, saved: true, updatedAt: now });
     }
 
+    // 2026-10-19 (slice 1b) — GET /api/accounts/:id/annual-plan/baseline-draft?year=&basis=ttm|calendar  (builds or refreshes the draft; nothing is saved to the plan)
+    //   POST .../baseline-draft/cell { basis, year, field, value|null, note }   a person corrects one cell of the draft
+    //   POST .../baseline-draft/rebuild { basis, year }                        discards corrections and rebuilds from the data
+    //   POST .../baseline-draft/approve { basis, year }                        Admin, CMO or Director: writes the baseline row of the Annual Plan, with approver and date
+    if (parts.length >= 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'annual-plan' && parts[4] === 'baseline-draft' && parts.length <= 6){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const actor = planScenarioActor(req, accountId) || { id: null, name: 'Team member', canActivate: false }; if (actor.isDirector) actor.canActivate = true;
+      try {
+        const u = new URL(req.url, 'http://localhost'); const body = req.method === 'POST' ? (await readBody(req) || {}) : {};
+        const basis = (body.basis || u.searchParams.get('basis')) === 'calendar' ? 'calendar' : 'ttm';
+        const yq = parseInt(body.year || u.searchParams.get('year'), 10); const year = Number.isFinite(yq) ? yq : new Date().getUTCFullYear();
+        if (req.method === 'GET' && parts.length === 5){ const row = planBaselineEnsure(accountId, year, basis, false); return sendJson(res, 200, planBaselineView(row, actor.canActivate)); }
+        if (req.method === 'POST' && parts.length === 6){
+          const act = parts[5]; const id = `${accountId}|${basis}`;
+          if (act === 'rebuild'){ const row = planBaselineEnsure(accountId, year, basis, true); return sendJson(res, 200, planBaselineView(row, actor.canActivate)); }
+          let row = db.prepare('SELECT * FROM plan_baseline_drafts WHERE id = ?').get(id); if (!row) row = planBaselineEnsure(accountId, year, basis, false);
+          if (act === 'cell'){
+            if (row.status === 'approved') return sendJson(res, 400, { error: 'This baseline is approved. Rebuild it to make changes; approval is asked for again.' });
+            const f = String(body.field || ''); if (!ANNUAL_PLAN_NUMERIC_FIELDS.includes(f)) return sendJson(res, 400, { error: 'Unknown field.' });
+            const edits = (() => { try { return JSON.parse(row.editsjson || '{}'); } catch (e){ return {}; } })();
+            if (body.value === null || body.value === '' || body.value === undefined) delete edits[f];
+            else { const n = Number(body.value); if (!(Number.isFinite(n) && n >= 0)) return sendJson(res, 400, { error: 'Enter a number of zero or more, or leave it blank to go back to the drafted value.' }); edits[f] = { value: n, by: actor.name, at: new Date().toISOString(), note: body.note ? String(body.note).slice(0, 200) : null }; }
+            db.prepare('UPDATE plan_baseline_drafts SET editsjson = ? WHERE id = ?').run(JSON.stringify(edits), id);
+            return sendJson(res, 200, planBaselineView(db.prepare('SELECT * FROM plan_baseline_drafts WHERE id = ?').get(id), actor.canActivate));
+          }
+          if (act === 'approve'){
+            if (!actor.canActivate) return sendJson(res, 403, { error: 'Only an admin, the CMO or a Director can approve the baseline.' });
+            const view = planBaselineView(row, true); const now = new Date().toISOString();
+            const vals = {}; ANNUAL_PLAN_NUMERIC_FIELDS.forEach(f => { vals[f] = view.cells[f] && view.cells[f].value != null ? Number(view.cells[f].value) : null; });
+            const edited = Object.keys(view.cells).filter(f => view.cells[f].state === 'edited').length;
+            const label = `${view.label || 'Baseline'}, approved by ${actor.name} on ${now.slice(0, 10)}`.slice(0, 200);
+            const existing = db.prepare("SELECT * FROM account_annual_plan WHERE accountId = ? AND year = ? AND kind = 'baseline'").get(accountId, row.year);
+            let details = {}; try { details = existing && existing.detailsJson ? JSON.parse(existing.detailsJson) : {}; } catch (e){}
+            try { const mixB = planBaselineBuild(accountId, year, basis).channelMix; if (mixB) details.channelMix = mixB; } catch (e){}
+            const cols = ANNUAL_PLAN_NUMERIC_FIELDS.map(f => `"${f}"`).join(', ');
+            db.batch([{ sql: `INSERT INTO account_annual_plan (accountId, year, kind, label, ${cols}, notes, "detailsJson", updatedAt) VALUES (?, ?, 'baseline', ?, ${ANNUAL_PLAN_NUMERIC_FIELDS.map(() => '?').join(', ')}, ?, ?, ?)
+              ON CONFLICT(accountId, year, kind) DO UPDATE SET label = excluded.label, ${ANNUAL_PLAN_NUMERIC_FIELDS.map(f => `"${f}" = excluded."${f}"`).join(', ')}, notes = excluded.notes, "detailsJson" = excluded."detailsJson", updatedAt = excluded.updatedAt`, params: [accountId, row.year, label, ...ANNUAL_PLAN_NUMERIC_FIELDS.map(f => vals[f]), `Approved from the auto-built baseline draft${edited ? ` with ${edited} corrected cell${edited === 1 ? '' : 's'}` : ''}.`, JSON.stringify(details), now] },
+              { sql: "UPDATE plan_baseline_drafts SET status = 'approved', approvedbyid = ?, approvedbyname = ?, approvedat = ?, approvedfp = fingerprint WHERE id = ?", params: [actor.id, actor.name, now, id] }], 60000);
+            return sendJson(res, 200, planBaselineView(db.prepare('SELECT * FROM plan_baseline_drafts WHERE id = ?').get(id), true));
+          }
+        }
+        return sendJson(res, 404, { error: 'Unknown request.' });
+      } catch (e){ console.error('[baseline-draft] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'Baseline draft failed: ' + (e && e.message || 'unknown error') }); }
+    }
     // GET /api/accounts/:id/annual-plan/recommendation?year=YYYY — proposed baseline and target (nothing is saved).
     if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'annual-plan' && parts[4] === 'recommendation'){
       const accountId = decodeURIComponent(parts[2]);
@@ -47674,7 +47935,12 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
           const y = parseInt(new URL(req.url, 'http://localhost').searchParams.get('year'), 10); const year = Number.isFinite(y) ? y : new Date().getUTCFullYear();
           const rows = db.prepare("SELECT * FROM account_plan_scenarios WHERE accountId = ? AND year = ? AND status <> 'archived' ORDER BY createdAt DESC").all(accountId, year).map(planScenarioOut);
           const presets = PLAN_SCENARIO_PRESETS.map(p => { const r = planScenarioCompute(accountId, { year, band: p.bandLabel }); return { kind: p.kind, name: p.name, blurb: p.blurb, band: p.bandLabel, result: r.error ? null : r, error: r.error || null }; });
-          return sendJson(res, 200, { year, canActivate: actor.canActivate, actorName: actor.name, scenarios: rows, presets });
+          let history = []; try { history = db.prepare('SELECT * FROM plan_scenario_events WHERE accountId = ? AND year = ? ORDER BY happened DESC').all(accountId, year).slice(0, 60).map(e => ({ id: e.id, scenarioId: e.scenario, scenario: e.scenarioname, action: e.action, by: e.actorname, detail: e.detail, at: e.happened })); } catch (e){}
+          return sendJson(res, 200, { year, canActivate: actor.canActivate, actorName: actor.name, scenarios: rows, presets, history, pending: rows.filter(r => r.status === 'pending').length });
+        }
+        if (req.method === 'GET' && parts.length === 5 && parts[4] === 'campaign-coverage'){
+          const y = parseInt(new URL(req.url, 'http://localhost').searchParams.get('year'), 10); const year = Number.isFinite(y) ? y : new Date().getUTCFullYear();
+          return sendJson(res, 200, planCampaignCoverage(accountId, year));
         }
         if (req.method === 'POST' && parts.length === 5 && parts[4] === 'run'){
           const body = await readBody(req); const r = planScenarioCompute(accountId, body || {});
@@ -47725,21 +47991,26 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
           const mix = {}; r.channels.forEach(c => { mix[c.channel] = c.spend; });
           planScenarioRun(() => db.prepare('INSERT INTO account_plan_scenarios (id, accountId, year, name, kind, status, band, workingMedia, mixJson, resultJson, notes, createdById, createdByName, createdAt, updatedAt, submittedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
             .run(id, accountId, r.year, name, kind, status, band, r.outcome.workingMedia, JSON.stringify(mix), JSON.stringify(r), body.notes ? String(body.notes).slice(0, 2000) : null, actor.id, actor.name, now, now, status === 'pending' ? now : null));
-          return sendJson(res, 200, { saved: true, scenario: planScenarioOut(db.prepare('SELECT * FROM account_plan_scenarios WHERE id = ?').get(id)) });
+          const savedRow = db.prepare('SELECT * FROM account_plan_scenarios WHERE id = ?').get(id);
+          planScenarioLog(accountId, savedRow, 'saved', actor, `${band} band, working media ${Math.round(r.outcome.workingMedia).toLocaleString('en-US')}`);
+          let notice = null; if (status === 'pending'){ planScenarioLog(accountId, savedRow, 'submitted', actor, null); notice = await planScenarioNotifyApprovers(accountId, savedRow, actor); }
+          return sendJson(res, 200, { saved: true, notice, scenario: planScenarioOut(savedRow) });
         }
         if (req.method === 'POST' && parts.length === 6){
           const sid = decodeURIComponent(parts[4]); const act = parts[5];
           const row = db.prepare('SELECT * FROM account_plan_scenarios WHERE id = ? AND accountId = ?').get(sid, accountId);
           if (!row) return sendJson(res, 404, { error: 'Scenario not found.' });
-          const now = new Date().toISOString();
+          const now = new Date().toISOString(); let notice = null;
           if (act === 'submit'){
             if (row.status !== 'draft') return sendJson(res, 400, { error: 'Only a draft can be sent for approval.' });
             db.prepare("UPDATE account_plan_scenarios SET status = 'pending', submittedAt = ?, updatedAt = ? WHERE id = ?").run(now, now, sid);
+            planScenarioLog(accountId, row, 'submitted', actor, null); notice = await planScenarioNotifyApprovers(accountId, row, actor);
           } else if (act === 'archive'){
             const mine = actor.id && actor.id === aliasVal(row, 'createdById');
             if (!actor.canActivate && !mine) return sendJson(res, 403, { error: 'Only the person who made it, an admin or a CMO can archive a scenario.' });
             if (row.status === 'active') return sendJson(res, 400, { error: 'Activate another scenario first; the active one is replaced, not archived.' });
             db.prepare("UPDATE account_plan_scenarios SET status = 'archived', updatedAt = ? WHERE id = ?").run(now, sid);
+            planScenarioLog(accountId, row, 'archived', actor, null);
           } else if (act === 'activate'){
             if (!actor.canActivate) return sendJson(res, 403, { error: 'Only an admin, the CMO or a Director can activate a scenario for the account. Send it for approval instead.' });
             let result = null; try { result = JSON.parse(row.resultJson); } catch (e){}
@@ -47757,9 +48028,12 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
             else { stmts.push({ sql: `UPDATE account_plan_scenarios SET status = 'archived', updatedAt = ? WHERE accountId = ? AND year = ? AND status = 'active'`, params: [now, accountId, row.year] });
               stmts.push({ sql: `INSERT INTO account_annual_plan (accountId, year, kind, label, workingMedia, impressions, websiteUsers, valueLeads, growthLeads, prospectLeads, bookings, grossRevenue, "detailsJson", updatedAt) VALUES (?, ?, 'target', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, params: [accountId, row.year, label, vals.workingMedia, vals.impressions, vals.websiteUsers, vals.valueLeads, vals.growthLeads, vals.prospectLeads, vals.bookings, vals.grossRevenue, JSON.stringify(details), now] }); }
             stmts.push({ sql: `UPDATE account_plan_scenarios SET status = 'active', activatedById = ?, activatedByName = ?, activatedAt = ?, updatedAt = ? WHERE id = ?`, params: [actor.id, actor.name, now, now, sid] });
+            const prevActive = db.prepare("SELECT * FROM account_plan_scenarios WHERE accountId = ? AND year = ? AND status = 'active' AND id <> ?").get(accountId, row.year, sid);
             db.batch(stmts, 60000);
+            if (prevActive) planScenarioLog(accountId, prevActive, 'replaced', actor, `replaced by "${row.name}"`);
+            planScenarioLog(accountId, row, 'activated', actor, `became the ${row.year} target (working media ${Math.round(o.workingMedia).toLocaleString('en-US')}, gross revenue ${o.revenue != null ? Math.round(o.revenue).toLocaleString('en-US') : 'n/a'})`);
           } else return sendJson(res, 404, { error: 'Unknown action.' });
-          return sendJson(res, 200, { ok: true, scenario: planScenarioOut(db.prepare('SELECT * FROM account_plan_scenarios WHERE id = ?').get(sid)) });
+          return sendJson(res, 200, { ok: true, notice, scenario: planScenarioOut(db.prepare('SELECT * FROM account_plan_scenarios WHERE id = ?').get(sid)) });
         }
       } catch (e){ console.error('[plan-scenarios] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'Scenario request failed: ' + (e && e.message || 'unknown error') }); }
     }
