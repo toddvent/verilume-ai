@@ -4211,6 +4211,15 @@
   .seo-section{scroll-margin-top:var(--sticky-scroll-margin, 24px);margin-bottom:34px;}
   .seo-section-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:4px;flex-wrap:wrap;}
   .seo-section-title{font-size:1.0625rem;font-weight:700;color:var(--ink);}
+  /* Add-forms inside page sections use the same field look as .field inputs: 10px radius, 11px/13px padding, Inter, cx focus ring, custom chevron (2026-10-19, Todd) */
+  .seo-form{align-items:stretch;}
+  .seo-form input[type=text],.seo-form select{box-sizing:border-box;min-height:44px;padding:11px 13px;border:1px solid var(--line);border-radius:10px;font-family:'Inter';font-size:0.9062rem;background-color:var(--white);color:var(--ink);transition:border-color 0.15s ease,box-shadow 0.15s ease;}
+  .seo-form input[type=text]::placeholder{color:var(--muted);opacity:.85;}
+  .seo-form input[type=text]:focus,.seo-form select:focus{outline:none;border-color:var(--cx);box-shadow:0 0 0 3px rgba(8,145,178,0.14);}
+  .seo-form select{padding-right:40px;appearance:none;-webkit-appearance:none;-moz-appearance:none;cursor:pointer;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%235B5647' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");background-repeat:no-repeat;background-position:right 14px center;background-size:11px 7px;}
+  .seo-form select:hover{border-color:var(--cx);}
+  .seo-form .btn-primary{min-height:44px;padding:0 22px;display:inline-flex;align-items:center;justify-content:center;}
+  .seo-section>.hint{font-size:0.8125rem;color:var(--muted);line-height:1.5;}
   .seo-section-sub{font-size:0.8125rem;color:var(--muted);margin:2px 0 14px;max-width:760px;line-height:1.5;}
   .seo-summary-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin:18px 0 30px;}
   .seo-stat-tile{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:16px 18px;}
@@ -5367,7 +5376,7 @@
     <div class="seo-section" id="repPressSection">
       <div class="seo-section-head"><div class="seo-section-title">📰 Press Release Development &amp; Distribution</div></div>
       <p class="seo-section-sub">Draft, review and approve here. Verilume does not send releases: send yours outside Verilume, then use Mark Distributed to record it.</p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+      <div class="seo-form" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
         <input type="text" id="prcPressNewTitle" placeholder="Press release title" style="flex:1;min-width:200px;">
         <select id="prcPressNewType" style="min-width:180px;">
           <option value="">Release type…</option>
@@ -5392,7 +5401,7 @@
            handling mode, separate from the free-text Key Facts field —
            see PRESS_RELEASE_CTA_MODES (server.js). Optional at creation;
            feeds the AI draft's THE NEXT STEP section once set. -->
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+      <div class="seo-form" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
         <input type="text" id="prcPressNewCtaText" placeholder="Optional: exact Next Step / how-to-book text" style="flex:1;min-width:260px;">
         <select id="prcPressNewCtaMode" style="min-width:230px;">
           <option value="inspiration">Use for inspiration</option>
@@ -5407,7 +5416,7 @@
     <div class="seo-section" id="repEditorialSection">
       <div class="seo-section-head"><div class="seo-section-title">✉️ Editorial Solicitation</div></div>
       <p class="seo-section-sub">Pitches out to press contacts, and whether they've landed.</p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+      <div class="seo-form" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
         <input type="text" id="prcEditorialNewOutlet" placeholder="Outlet (e.g. Travel + Leisure)" style="flex:1;min-width:180px;">
         <input type="text" id="prcEditorialNewTopic" placeholder="Story topic/angle" style="flex:1;min-width:200px;">
         <button type="button" class="btn-primary" onclick="prcCreateEditorial()">+ Add</button>
@@ -5419,7 +5428,7 @@
     <div class="seo-section" id="repCorpCommsSection">
       <div class="seo-section-head"><div class="seo-section-title">🏢 Corporate Communications</div></div>
       <p class="seo-section-sub">Internal and external communications — talking points, holding statements, and crisis-response drafts — reunited here with Reputation Monitoring and PR rather than living disconnected under Content Development.</p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+      <div class="seo-form" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
         <input type="text" id="prcCorpNewTitle" placeholder="Title" style="flex:1;min-width:180px;">
         <input type="text" id="prcCorpNewAudience" placeholder="Audience (e.g. Internal — Leadership)" style="flex:1;min-width:200px;">
         <select id="prcCorpNewCampaign" style="min-width:200px;"><option value="">Link a campaign (optional)…</option></select>
@@ -28272,7 +28281,7 @@ function cmpLiveStatCardOverride(label){
 // ---- Key tools (2026-10-05): the tools each tab leans on, as chips above the cards ----
 const KEY_TOOLS = {
   strategy: [{ l: 'Budgets', s: 'mediaplan' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaigns', s: 'campaignMgmt' }, { l: 'Competition & Positioning', s: 'competitivePositioning' }, { l: 'Marketing Tests', s: 'marketOptimization' }, { l: 'Forecasts', a: 'forecast' }],
-  brand: [{ l: 'Brand Voice', s: 'voice' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaign Creative', s: 'omniCreative' }, { l: 'Search Everywhere', s: 'searchOptimization' }, { l: 'PR', s: 'reputation', anchor: 'repPressSection' }, { l: 'Reputation Management', s: 'reputation', anchor: 'repMentionsSection' }],
+  brand: [{ l: 'Brand Voice', s: 'voice' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaign Creative', s: 'omniCreative' }, { l: 'Search Everywhere', s: 'searchOptimization' }, { l: 'PR & Reputation', s: 'reputation' }],
   marketer: [{ l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Budgets', s: 'mediaplan' }, { l: 'Campaign Creation', s: 'campaignMgmt' }, { l: 'Forecasting', a: 'forecast' }, { l: 'Creative Assets', s: 'omniCreative' }],
   dataScientist: [{ l: 'Budgets', s: 'mediaplan' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaign Analysis', s: 'campaignMgmt' }, { l: 'Goal Setting + Forecasting', a: 'forecast' }, { l: 'Truth Lab', s: 'testRegistry' }, { l: 'Geographic Optimization', s: 'marketOptimization' }]
 };
