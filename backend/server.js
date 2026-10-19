@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-19-review-sources-partners (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-19-pr-list-reach (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -10550,7 +10550,8 @@ createTableIfNeeded(`
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
 `);
-const PRESS_RELEASE_STATUSES = ['draft', 'distributed'];
+// 2026-10-19 (Todd): list layout like paid campaigns. Status the team sets: draft, internal_qa, final. Distribute moves a final item to distributed; archived hides it.
+const PRESS_RELEASE_STATUSES = ['draft', 'internal_qa', 'final', 'distributed', 'archived'];
 const EDITORIAL_PITCH_STATUSES = ['pending', 'placed'];
 const CORPORATE_COMMS_STATUSES = ['draft', 'approved'];
 
@@ -10741,6 +10742,9 @@ ensureColumn('press_releases', 'briefJson', 'TEXT');
 ensureColumn('press_releases', 'searchSeedJson', 'TEXT');
 ensureColumn('press_releases', 'publishedUrl', 'TEXT');
 ensureColumn('press_releases', 'campaignId', 'TEXT');
+// Single-word lowercase names on purpose: avoids the camelCase folding problem noted for ensureColumn. reach = JSON { total, basis, notes, recordedAt }; prearchive = the status to restore on Restore.
+ensureColumn('press_releases', 'reach', 'TEXT');
+ensureColumn('press_releases', 'prearchive', 'TEXT');
 ensureColumn('corporate_comms', 'context', 'TEXT');
 ensureColumn('corporate_comms', 'campaignId', 'TEXT');
 // 2026-10-19 (Todd): Corporate Communications folded into the one PR process. Existing rows move into press_releases once,
@@ -31046,7 +31050,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-19-review-sources-partners',
+        buildStamp: '2026-10-19-pr-list-reach',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
@@ -43926,7 +43930,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       const rows = db.prepare('SELECT * FROM press_releases WHERE accountId = ? ORDER BY createdAt DESC').all(accountId)
-        .map(r => { const brief = prBriefParse(r.briefJson); return Object.assign({}, r, { brief, briefStatus: prBriefStatus(brief, r.ctaText) }); });
+        .map(r => { const brief = prBriefParse(r.briefJson); let reachData = null; try { reachData = r.reach ? JSON.parse(r.reach) : null; } catch (e){} return Object.assign({}, r, { brief, briefStatus: prBriefStatus(brief, r.ctaText), reachData }); });
       const strips = prPressStrips(accountId);
       rows.forEach(r => { r.searchSeed = prSeedParse(r.searchSeedJson); r.searchStatus = strips[r.id] || null; });
       return sendJson(res, 200, { pressReleases: rows, statuses: PRESS_RELEASE_STATUSES });
@@ -43938,7 +43942,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const existing = db.prepare('SELECT * FROM press_releases WHERE id = ? AND accountId = ?').get(prId, accountId);
       if (!existing) return sendJson(res, 404, { error: 'press release not found' });
       const body = await readBody(req);
-      if (body.status !== undefined && !PRESS_RELEASE_STATUSES.includes(body.status)) return sendJson(res, 400, { error: `status must be one of: ${PRESS_RELEASE_STATUSES.join(', ')}` });
+      if (body.status !== undefined && body.status !== 'restore' && !PRESS_RELEASE_STATUSES.includes(body.status)) return sendJson(res, 400, { error: `status must be one of: ${PRESS_RELEASE_STATUSES.join(', ')}` });
       if (body.releaseType !== undefined && body.releaseType !== '' && !PRESS_RELEASE_TYPES.includes(body.releaseType)){
         return sendJson(res, 400, { error: `releaseType must be one of: ${PRESS_RELEASE_TYPES.join(', ')}` });
       }
@@ -43963,9 +43967,33 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       let nextPubUrl = existing.publishedUrl || null; if (body.publishedUrl !== undefined){ const u = prCleanUrl(body.publishedUrl); if (u === undefined) return sendJson(res, 400, { error: 'publishedUrl must be a web address' }); nextPubUrl = u; }
       // distributedDate follows status the same way copyApprovedAt/etc do elsewhere in this file —
       // stamped the moment status flips to 'distributed', never hand-entered.
-      const nextDistributedDate = nextStatus === 'distributed' ? (existing.distributedDate || now) : (nextStatus === existing.status ? existing.distributedDate : null);
-      db.prepare('UPDATE press_releases SET title = ?, workingCopy = ?, status = ?, distributedDate = ?, updatedAt = ?, releaseType = ?, audience = ?, ctaText = ?, ctaMode = ?, linkedinCopy = ?, briefJson = ?, campaignId = ?, publishedUrl = ? WHERE id = ?')
-        .run(nextTitle, nextCopy, nextStatus, nextDistributedDate, now, nextReleaseType, nextAudience, nextCtaText, nextCtaMode, nextLinkedinCopy, nextBriefJson, nextCampaignId, nextPubUrl, prId);
+      // Status rules: distributing needs Final first; Archive remembers where it came from; Restore goes back there.
+      let nextPrearchive = existing.prearchive || null;
+      let finalStatus = nextStatus;
+      if (body.status !== undefined && body.status !== existing.status){
+        if (body.status === 'distributed' && existing.status !== 'final') return sendJson(res, 400, { error: 'Set the status to Final before distributing.' });
+        if (body.status === 'archived'){ nextPrearchive = existing.status !== 'archived' ? existing.status : nextPrearchive; }
+        if (existing.status === 'archived' && body.status === 'restore') finalStatus = nextPrearchive || 'draft';
+      }
+      if (body.status === 'restore'){ finalStatus = existing.status === 'archived' ? (nextPrearchive || 'draft') : existing.status; nextPrearchive = null; }
+      let nextDistributedDate = existing.distributedDate || null;
+      if (finalStatus === 'distributed') nextDistributedDate = existing.distributedDate || now;
+      else if (finalStatus !== existing.status && finalStatus !== 'archived' && existing.status !== 'archived') nextDistributedDate = null;
+      else if (existing.status === 'archived' && finalStatus !== 'distributed') nextDistributedDate = existing.distributedDate || null;
+      if (body.distributedDate !== undefined){
+        const dd = String(body.distributedDate || '').trim();
+        if (dd && !/^\d{4}-\d{2}-\d{2}$/.test(dd)) return sendJson(res, 400, { error: 'distributedDate must be YYYY-MM-DD' });
+        nextDistributedDate = dd || null;
+      }
+      let nextReach = existing.reach || null;
+      if (body.reach !== undefined){
+        const r = body.reach || {};
+        let total = null; if (r.total !== null && r.total !== undefined && String(r.total).trim() !== ''){ total = Math.round(Number(r.total)); if (!isFinite(total) || total < 0) return sendJson(res, 400, { error: 'Final reach must be a number of zero or more.' }); }
+        const basis = String(r.basis || '').trim().slice(0, 60); const notes = String(r.notes || '').trim().slice(0, 1500);
+        nextReach = (total === null && !basis && !notes) ? null : JSON.stringify({ total, basis, notes, recordedAt: now });
+      }
+      db.prepare('UPDATE press_releases SET title = ?, workingCopy = ?, status = ?, distributedDate = ?, updatedAt = ?, releaseType = ?, audience = ?, ctaText = ?, ctaMode = ?, linkedinCopy = ?, briefJson = ?, campaignId = ?, publishedUrl = ?, reach = ?, prearchive = ? WHERE id = ?')
+        .run(nextTitle, nextCopy, finalStatus, nextDistributedDate, now, nextReleaseType, nextAudience, nextCtaText, nextCtaMode, nextLinkedinCopy, nextBriefJson, nextCampaignId, nextPubUrl, nextReach, nextPrearchive, prId);
       return sendJson(res, 200, { updated: true, briefStatus: prBriefStatus(prBriefParse(nextBriefJson), nextCtaText) });
     }
     if (req.method === 'DELETE' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'press-releases'){
@@ -44010,7 +44038,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       // GET overview: what the master page shows.
       if (req.method === 'GET' && parts.length === 4){
         const kw = srchKeywordsForAccount(accountId);
-        const press = db.prepare('SELECT id, title, status, releaseType, updatedAt FROM press_releases WHERE accountId = ? AND (audience IS NULL OR audience != \'internal\') ORDER BY updatedAt DESC').all(accountId).map(p => {
+        const press = db.prepare('SELECT id, title, status, releaseType, updatedAt FROM press_releases WHERE accountId = ? AND status != \'archived\' AND (audience IS NULL OR audience != \'internal\') ORDER BY updatedAt DESC').all(accountId).map(p => {
           const run = db.prepare(`SELECT id, acceptedCount, totalCount, appliedAt, createdAt FROM search_optimizations WHERE accountId = ? AND surface = 'press' AND targetRef = ? ORDER BY createdAt DESC LIMIT 1`).get(accountId, p.id);
           return { ...p, optimized: run ? { runId: run.id, acceptedCount: run.acceptedCount, totalCount: run.totalCount, appliedAt: run.appliedAt, ranAt: run.createdAt } : null };
         });
