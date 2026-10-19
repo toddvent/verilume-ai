@@ -28272,7 +28272,7 @@ function cmpLiveStatCardOverride(label){
 // ---- Key tools (2026-10-05): the tools each tab leans on, as chips above the cards ----
 const KEY_TOOLS = {
   strategy: [{ l: 'Budgets', s: 'mediaplan' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaigns', s: 'campaignMgmt' }, { l: 'Competition & Positioning', s: 'competitivePositioning' }, { l: 'Marketing Tests', s: 'marketOptimization' }, { l: 'Forecasts', a: 'forecast' }],
-  brand: [{ l: 'Brand Voice', s: 'voice' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaign Creative', s: 'omniCreative' }, { l: 'Search Everywhere', s: 'searchOptimization' }, { l: 'PR', s: 'reputation' }, { l: 'Reputation Management', s: 'reputation' }],
+  brand: [{ l: 'Brand Voice', s: 'voice' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaign Creative', s: 'omniCreative' }, { l: 'Search Everywhere', s: 'searchOptimization' }, { l: 'PR', s: 'reputation', anchor: 'repPressSection' }, { l: 'Reputation Management', s: 'reputation', anchor: 'repMentionsSection' }],
   marketer: [{ l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Budgets', s: 'mediaplan' }, { l: 'Campaign Creation', s: 'campaignMgmt' }, { l: 'Forecasting', a: 'forecast' }, { l: 'Creative Assets', s: 'omniCreative' }],
   dataScientist: [{ l: 'Budgets', s: 'mediaplan' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaign Analysis', s: 'campaignMgmt' }, { l: 'Goal Setting + Forecasting', a: 'forecast' }, { l: 'Truth Lab', s: 'testRegistry' }, { l: 'Geographic Optimization', s: 'marketOptimization' }]
 };
@@ -28284,6 +28284,7 @@ function ktGo(tab, i){
     return;
   }
   goToStep(it.s);
+  if (it.anchor){ let tries = 0; const go = () => { const t = document.getElementById(it.anchor); if (t && t.offsetParent !== null){ t.scrollIntoView({ behavior: 'smooth', block: 'start' }); } else if (++tries < 12) setTimeout(go, 150); }; setTimeout(go, 150); }
 }
 function renderKeyTools(tab){
   const el = document.getElementById('tabKeyTools'); if (!el) return;
