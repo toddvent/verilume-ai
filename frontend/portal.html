@@ -13929,7 +13929,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-19-pr-list-reach';
+const CXMEDIA_BUILD_STAMP = '2026-10-19-pr-brief-autosave';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -66998,7 +66998,7 @@ const PRC_BRIEF_PARTS = [
     { f: 'matters', label: 'Why it matters', ph: 'The reason to act now, or what this means for the reader.', rows: 2 } ] }
 ];
 // ---- 2026-10-19 (Todd): one guided flow for every corporate writing job ----
-// 1 create (type, audience, optional campaign) -> 2 four-step brief, each step saved as you go -> 3 Save and draft
+// 1 create (type, audience, optional campaign) -> 2 four-step brief, each step saved as you go -> 3 Draft Communication
 // -> 4 review the draft -> 5 Run contest (Strategy, Headline, Complete piece) -> 6 edit, save, approve; save phrases to the brand library.
 const PRC_BRIEF_PARTS_CORP = [
   { key: 'news', n: 1, title: 'What happened', q: 'What are we communicating?', fields: [
@@ -67049,20 +67049,17 @@ function prcBriefPanelHtml(item){
     }).join('');
     const ctaLabel = corp ? 'Who should people contact, or where should they go? (exact wording, if there is one)' : 'How can guests book or act? (exact wording, if there is one)';
     const cta = p.key === 'nextStep' ? `<div class="field" style="margin-top:8px;"><label for="prcPressEditCtaText-${item.id}">${ctaLabel}</label><input type="text" id="prcPressEditCtaText-${item.id}" value="${escapeHtml(item.ctaText || '')}" placeholder="${corp ? 'e.g. Call the service line or email the comms team' : 'e.g. Call 1-800-000-0000 or book through your travel advisor'}" style="width:100%;"></div><div class="field" style="margin-top:8px;"><label for="prcPressEditCtaMode-${item.id}">How should that wording be used?</label><select id="prcPressEditCtaMode-${item.id}">${Object.entries(PRC_PRESS_CTA_MODE_LABELS).map(([v, l]) => `<option value="${v}" ${ctaMode === v ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}</select></div>` : '';
-    return `<div id="prcBriefPane-${item.id}-${p.n}" style="display:${p.n === cur ? 'block' : 'none'};"><div style="font-weight:700;margin-top:10px;">${p.n}. ${p.title.toUpperCase()}: ${p.q}</div>${fields}${cta}</div>`;
+    const nextP = parts.find(x => x.n === p.n + 1);
+    const nav = `<div class="btn-row" style="margin-top:10px;flex-wrap:wrap;">${p.n > 1 ? `<button type="button" class="btn-ghost" onclick="prcBriefStepTo('${item.id}',${p.n - 1})">← Back</button>` : ''}${nextP ? `<button type="button" class="btn-primary" onclick="prcBriefStepTo('${item.id}',${p.n + 1})">Add ${escapeHtml(nextP.title.replace(/^The /, ''))} →</button>` : `<button type="button" class="btn-primary" onclick="prcSaveAndDraft('${item.id}')">Draft Communication →</button>`}</div>`;
+    return `<div id="prcBriefPane-${item.id}-${p.n}" style="display:${p.n === cur ? 'block' : 'none'};"><div style="font-weight:700;margin-top:10px;">${p.n}. ${p.title.toUpperCase()}: ${p.q}</div>${fields}${cta}${nav}</div>`;
   }).join('');
   const camp = item.campaignId ? prcCampaignById(item.campaignId) : null;
-  return `<div oninput="prcBriefLive('${item.id}')" style="margin-bottom:12px;padding:12px;border:1px solid var(--line, #e3e3e8);border-radius:10px;">
+  return `<div oninput="prcBriefLive('${item.id}')" onchange="prcBriefAuto('${item.id}')" style="margin-bottom:12px;padding:12px;border:1px solid var(--line, #e3e3e8);border-radius:10px;">
     <div style="font-weight:700;">Step 2 of 5: brief for ${brand}'s ${escapeHtml((PRC_PRESS_TYPE_LABELS[item.releaseType] || 'release').toLowerCase())}</div>
-    <div class="hint" style="margin:2px 0 8px;">Four short answers, saved as you move between steps. The draft and the contest use only what you write here, so nothing is invented.${camp ? ` <button type="button" class="btn-ghost" style="padding:2px 8px;" onclick="prcBriefRefill('${item.id}')">Refill from ${escapeHtml(camp.name || 'campaign')}</button>` : ''}</div>
+    <div class="hint" style="margin:2px 0 8px;">Four short answers. Everything saves automatically as you type and as you move between steps. The draft and the contest use only what you write here, so nothing is invented.${camp ? ` <button type="button" class="btn-ghost" style="padding:2px 8px;" onclick="prcBriefRefill('${item.id}')">Refill from ${escapeHtml(camp.name || 'campaign')}</button>` : ''}</div>
     <div class="adbt-chips">${chips}</div>
     ${panes}
-    <div class="btn-row" style="margin-top:10px;flex-wrap:wrap;">
-      <button type="button" class="btn-ghost" onclick="prcBriefStepTo('${item.id}',${Math.max(1, cur - 1)})">← Back</button>
-      <button type="button" class="btn-ghost" onclick="prcBriefStepTo('${item.id}',${Math.min(4, cur + 1)})">Next →</button>
-      <button type="button" class="btn-primary" onclick="prcSaveAndDraft('${item.id}')">Save and draft →</button>
-    </div>
-    <div id="prcBriefStatus-${item.id}" class="hint" style="margin-top:6px;">${st.complete ? 'All four steps are filled in. Ready to draft.' : (st.missing && st.missing.length ? 'Still missing: ' + st.missing.join(', ') + '.' : 'Answer each step, then Save and draft.')}</div>
+    <div id="prcBriefStatus-${item.id}" class="hint" style="margin-top:6px;">${st.complete ? 'All four steps are filled in. Ready to draft.' : (st.missing && st.missing.length ? 'Still missing: ' + st.missing.join(', ') + '.' : 'Answer each step, then choose Draft Communication.')}</div>
   </div>`;
 }
 function prcBriefGo(id, n){
@@ -67073,6 +67070,8 @@ function prcBriefGo(id, n){
   });
 }
 // Moving between steps saves the brief quietly, and the checkmarks come from what the server says it stored.
+const prcAutoT = {};
+function prcBriefAuto(id){ clearTimeout(prcAutoT[id]); prcAutoT[id] = setTimeout(() => prcBriefSaveQuiet(id), 500); }
 async function prcBriefStepTo(id, n){ prcBriefGo(id, n); await prcBriefSaveQuiet(id); }
 function prcBriefCollect(id){
   const out = {};
@@ -67127,7 +67126,7 @@ function prcPressExpandedHtml(item){
   const complete = !!(item.briefStatus && item.briefStatus.complete);
   const draft = `<div id="prcDraftBlock-${id}" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line, #e3e3e8);">
       <div style="font-weight:700;">Step 4 of 5: review the draft</div>
-      ${hasDraft ? '' : '<p class="hint" style="margin:4px 0 6px;">Your draft appears here after Save and draft. You can also write one yourself.</p>'}
+      ${hasDraft ? '' : '<p class="hint" style="margin:4px 0 6px;">Your draft appears here after Draft Communication. You can also write one yourself.</p>'}
       <textarea id="prcCopy-press-${id}" rows="8" style="width:100%;font-family:inherit;margin-top:6px;">${escapeHtml(item.workingCopy || '')}</textarea>
       <div class="btn-row" style="margin-top:6px;flex-wrap:wrap;">
         <button type="button" class="btn-primary" onclick="prcSaveCopy('press','${id}')">Save draft →</button>
