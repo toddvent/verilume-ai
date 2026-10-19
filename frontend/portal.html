@@ -24612,12 +24612,20 @@ async function stratLoadForecast(){
   try { strat.fcData = await stratGet('forecast-vs-target'); } catch (e){ strat.fcData = null; box.innerHTML = '<p class="strat-empty">Could not load the forecast just now.</p>'; return; }
   stratRenderForecast();
 }
+function stratScenarioVsTargetHtml(d){
+  const sc = d.scenarios || []; if (!sc.length) return '';
+  const gapTxt = g => g ? (g.expected >= 0 ? 'Ahead by ' + stratMoney(g.expected) : 'Short by ' + stratMoney(-g.expected)) + (g.low != null && g.high != null ? ` <span class="strat-sub">(${g.low >= 0 ? '+' : '−'}${stratMoney(Math.abs(g.low))} to ${g.high >= 0 ? '+' : '−'}${stratMoney(Math.abs(g.high))})</span>` : '') : '—';
+  const pill = s => s === 'active' ? 'Sets the target' : s === 'pending' ? 'Waiting for approval' : 'Draft';
+  const pc = v => v == null ? '—' : v + '%';
+  const rows = sc.map(r => `<tr><td><b>${escapeHtml(r.name)}</b><div class="strat-sub">${pill(r.status)}</div></td><td>${stratMoney(r.workingMedia)} <span class="strat-sub">${pc(r.spendPctOfTarget)}</span></td><td>${stratNum(r.impressions)} <span class="strat-sub">${pc(r.impressionsPctOfTarget)}</span></td><td>${stratMoney(r.revenue)}${r.revenueLow != null && r.revenueHigh != null ? `<div class="strat-sub">${stratMoney(r.revenueLow)} to ${stratMoney(r.revenueHigh)}</div>` : ''}</td><td>${r.isTarget ? '<span class="strat-sub">This is the target</span>' : gapTxt(r.gapToTarget)}</td></tr>`).join('');
+  return `<div class="strat-chart-label" style="margin-top:12px;">Saved ${d.year} scenarios against the ${d.year} target</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr><th>Scenario</th><th>Working media <span class="strat-sub">% of target</span></th><th>Impressions <span class="strat-sub">% of target</span></th><th>Gross revenue <span class="strat-sub">low to high</span></th><th>Against the target</th></tr></thead><tbody>${rows}</tbody></table></div><p class="strat-foot">Each scenario is a planned spend and mix run through the same forecast. Nothing here changes the target until a scenario is activated.</p>`;
+}
 function stratRenderForecast(){
   const box = document.getElementById('stratFcBody'); const d = strat.fcData; if (!box || !d) return;
   const conf = { high: 'High confidence: learned from this account\'s history', medium: 'Medium confidence: partly learned, partly benchmark', low: 'Low confidence: little history', benchmark: 'Benchmark only: not enough history yet, rates are industry starting points' }[d.confidence] || d.confidence;
   const y = d.projectedRevenue, t = d.target, cards = [];
   if (y) cards.push(`<div class="strat-fc-card"><div class="l">Gross revenue from the plan as loaded, expected</div><div class="v">${stratMoney(y.expected)}</div><div class="s">Range ${stratMoney(y.low)} to ${stratMoney(y.high)} · ${escapeHtml(y.basis)}</div></div>`);
-  if (t && t.grossRevenue) cards.push(`<div class="strat-fc-card"><div class="l">${d.year} plan target, gross revenue${t.label ? ' (' + escapeHtml(t.label) + ')' : ''}</div><div class="v">${stratMoney(t.grossRevenue)}</div><div class="s">${!d.comparable ? 'Different period from the loaded media plan, so no gap is calculated' : d.revenueGapToTarget ? `${d.revenueGapToTarget.expected >= 0 ? 'Ahead of target by ' + stratMoney(d.revenueGapToTarget.expected) : 'Short of target by ' + stratMoney(-d.revenueGapToTarget.expected)} at the expected case` : 'Annual Plan on file'}</div></div>`);
+  if (t && t.grossRevenue) cards.push(`<div class="strat-fc-card"><div class="l">${d.year} plan target, gross revenue${t.label ? ' (' + escapeHtml(t.label) + ')' : ''}</div><div class="v">${stratMoney(t.grossRevenue)}</div><div class="s">${!d.comparable ? (d.scenarios && d.scenarios.length ? 'Different period from the loaded media plan, so the saved scenarios below are compared with it' : 'Different period from the loaded media plan, so no gap is calculated') : d.revenueGapToTarget ? `${d.revenueGapToTarget.expected >= 0 ? 'Ahead of target by ' + stratMoney(d.revenueGapToTarget.expected) : 'Short of target by ' + stratMoney(-d.revenueGapToTarget.expected)} at the expected case` : 'Annual Plan on file'}</div></div>`);
   if (d.impressions) cards.push(`<div class="strat-fc-card"><div class="l">Impressions vs target</div><div class="v">${d.impressions.pctOfTarget != null ? d.impressions.pctOfTarget + '%' : '—'}</div><div class="s">${stratNum(d.impressions.projected)} planned of ${stratNum(d.impressions.target)} targeted (all channels)</div></div>`);
   if (d.spend) cards.push(`<div class="strat-fc-card"><div class="l">Spend vs plan target</div><div class="v">${d.spend.pctOfTarget != null ? d.spend.pctOfTarget + '%' : '—'}</div><div class="s">${stratMoney(d.spend.projected)} planned of ${stratMoney(d.spend.target)} working media</div></div>`);
   const b = d.baseline;
@@ -24625,6 +24633,7 @@ function stratRenderForecast(){
   box.innerHTML = `
     <div class="strat-fc-grid">${cards.join('') || '<p class="strat-empty">Nothing to compare yet.</p>'}</div>
     <p class="strat-foot"><span class="strat-tag ${d.confidence}">${escapeHtml(conf)}</span> Low and high assume every stage of the funnel lands at its own 25th and 75th percentile together: a planning band, not a statistical interval. Only months with planned media count.</p>
+    ${stratScenarioVsTargetHtml(d)}
     ${stratNotOnFile(d.notOnFile)}
     <div class="strat-actions"><button type="button" class="strat-chip strat-chip-rec" id="scnToggleBtn" onclick="scnToggle()" aria-expanded="${scn.open ? 'true' : 'false'}"><span class="rec-tag">Recommended</span>${scn.open ? 'Hide the scenario planner' : 'Create new scenarios'}</button> <a class="flink" onclick="goToStep('mediaplan')">Open the Annual Plan →</a></div>`;
 }
@@ -24749,7 +24758,7 @@ async function scnRun(){
 async function scnSave(submit){
   const d = scnReadEditor(); if (!d) return; if (!d.name.trim()){ scnMsg('Give the scenario a name first.', 'err'); return; }
   scnMsg('Saving…');
-  try { await scnCall('', 'POST', { year: scn.year, name: d.name.trim(), kind: d.kind, band: d.band, workingMedia: d.workingMedia, mix: d.mix, submit: !!submit }); scn.draft = null; scn.result = null; await scnLoad(); scnMsg(submit ? 'Saved and sent for approval.' : 'Saved.', 'ok'); }
+  try { await scnCall('', 'POST', { year: scn.year, name: d.name.trim(), kind: d.kind, band: d.band, workingMedia: d.workingMedia, mix: d.mix, submit: !!submit }); scn.draft = null; scn.result = null; await scnLoad(); if (typeof stratLoadForecast === 'function') stratLoadForecast(); scnMsg(submit ? 'Saved and sent for approval.' : 'Saved.', 'ok'); }
   catch (e){ scnMsg(e.message, 'err'); }
 }
 async function scnAct(id, act){
@@ -24893,7 +24902,7 @@ function scnLinesHtml(){
 function scnRender(){
   const box = document.getElementById('stratScnBody'); if (!box || !scn.data) return;
   const yrs = []; const y0 = new Date().getFullYear(); for (let y = y0 - 1; y <= y0 + 2; y++) yrs.push(y);
-  box.innerHTML = `<div class="strat-chart-label" style="margin:0 0 6px;">Scenario planner</div><p class="strat-sub" style="margin:0 0 6px;">Try a budget and media mix, see leads, transactions and revenue against the last 12 months and the approved target. Anyone can run and save scenarios. Activating one for the account takes an admin or a CMO, and replaces the target the dashboards and the Weekly Brain read.</p>
+  box.innerHTML = `<div class="strat-chart-label" style="margin:0 0 6px;">Scenario planner</div><p class="strat-sub" style="margin:0 0 6px;">Try a budget and media mix, see leads, transactions and revenue against the last 12 months and the approved target. Anyone can run and save scenarios. Activating one for the account takes an admin, the CMO or a Director, and replaces the target the dashboards and the Weekly Brain read.</p>
     <div class="scn-row"><div><label for="scnYear">Plan year</label><select id="scnYear" onchange="scnSetYear(this.value)">${yrs.map(y => `<option value="${y}"${y === scn.year ? ' selected' : ''}>${y}</option>`).join('')}</select></div></div>
     <div class="scn-presets">${(scn.data.presets || []).map(scnPresetCard).join('')}</div>
     <div id="scnMsg" class="scn-msg ${scn.msgKind}">${escapeHtml(scn.msg)}</div>
