@@ -13920,7 +13920,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-19-pr-corp-one-flow';
+const CXMEDIA_BUILD_STAMP = '2026-10-19-review-sources-partners';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -23820,7 +23820,12 @@ const PARTNER_DIRECTORY = {
     partners: [
       { name: 'Brandwatch', model: 'both', note: 'Broad cross-platform listening, including Reddit/X/TikTok at volume — the licensed tier the Competitor Monitoring evaluation flagged as a future paid add-on.' },
       { name: 'Meltwater', model: 'both', note: 'PR-industry-standard media monitoring plus a press-contact database — a natural fit alongside Editorial Solicitation above.' },
-      { name: 'Mention', model: 'both', note: 'A lighter-weight, lower-cost listening tier ($29-150/mo) for accounts that want broader coverage without Brandwatch/Meltwater\'s enterprise price point.' }
+      { name: 'Mention', model: 'both', note: 'A lighter-weight, lower-cost listening tier ($29-150/mo) for accounts that want broader coverage without Brandwatch/Meltwater\'s enterprise price point.' },
+      { name: 'Google Business Profile (reviews)', model: 'byol', note: 'The client\'s own Google reviews for each location, with owner replies, through the client\'s own sign-in. Planned. Not connected today; Google\'s access approval still has to be confirmed.' },
+      { name: 'Meta Pages and Instagram (comments and ratings)', model: 'byol', note: 'Comments, ratings and ad comments on the client\'s own Facebook Page and Instagram account, with the client\'s permission. Facebook Groups data is not available to us. Planned. Not connected today.' },
+      { name: 'Tripadvisor Content API (listing reviews)', model: 'referral', note: 'Reviews and ratings for the client\'s Tripadvisor listings through Tripadvisor\'s own API, with Tripadvisor credit shown. Pay as you go after a free monthly allowance. Cruise Critic has no public review API we know of. Planned. Not connected today.' },
+      { name: 'Expedia Group guest reviews (partner)', model: 'referral', note: 'Reviews for a property are offered to Expedia partners; whether a client can read its own is for an Expedia representative to confirm. Planned. Not connected today.' },
+      { name: 'Reddit Data API (named subreddits)', model: 'referral', note: 'Threads in the client\'s own subreddit and named communities through Reddit\'s API. Commercial use needs Reddit\'s approval and a contract. Planned. Not connected today.' }
     ]
   },
   training: {
