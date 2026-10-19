@@ -1591,6 +1591,7 @@
   .geo-bar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0 0 14px;flex-wrap:wrap;}
   .geo-src{font-size:0.8125rem;color:var(--muted);}
   .geo-link{background:none;border:0;padding:0;font:inherit;font-size:0.8125rem;font-weight:600;color:var(--hdr-navy);cursor:pointer;text-decoration:underline;text-underline-offset:3px;}
+  .geo-row-l small{display:block;color:var(--muted,#6E6E73);font-size:.7rem;font-weight:400;line-height:1.25;margin-top:1px;} .cc-head{margin-bottom:10px;} .cc-card .gpc-sel{max-width:170px;} .geo-src .gpc-custom input{font:inherit;font-size:.8125rem;}
   .geo-card{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:20px 22px;box-shadow:var(--shadow-sm);}
   .geo-note{color:var(--muted);font-size:0.875rem;}
   .geo-grid{margin-bottom:0;align-items:stretch;}
@@ -12366,6 +12367,51 @@
         </div>
         <div class="faq-body" id="bpFaqBodyAW">
           <p id="bpFaqTextAW"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadMA" onclick="toggleFaqItem('MA')">
+          <span class="faq-label">Visualize markets: reading the Excel file</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyMA">
+          <p id="bpFaqTextMA"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadMB" onclick="toggleFaqItem('MB')">
+          <span class="faq-label">Visualize markets: testing and why pairs say Too small</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyMB">
+          <p id="bpFaqTextMB"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadMC" onclick="toggleFaqItem('MC')">
+          <span class="faq-label">Visualize markets: which testing approach fits</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyMC">
+          <p id="bpFaqTextMC"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadMD" onclick="toggleFaqItem('MD')">
+          <span class="faq-label">Top markets: why composite score leads, not index alone</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyMD">
+          <p id="bpFaqTextMD"></p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-head" id="bpFaqHeadME" onclick="toggleFaqItem('ME')">
+          <span class="faq-label">Region and sales classification cards</span>
+          <span class="chevron">▸</span>
+        </div>
+        <div class="faq-body" id="bpFaqBodyME">
+          <p id="bpFaqTextME"></p>
         </div>
       </div>
       <div class="faq-item">
@@ -25537,18 +25583,75 @@ async function gpcExport(key, format){
   document.querySelectorAll('.share-menu').forEach(m => { m.hidden = true; });
   const c = gpcCardData(key); if (!c) return; const x = c.export || {};
   const say = t => { const st = gpc[key]; if (st){ st.err = t; gpcRender(); setTimeout(() => { if (st.err === t){ st.err = ''; gpcRender(); } }, 6000); } };
-  const grid = [[c.title], ...(x.context || []), [], ...(x.tables || []).flatMap(t => [[t.name], t.columns.slice(), ...t.rows, []]), ...(x.notes || []).map(n => [n])].map(r => r.map(v => String(v == null ? '' : v).replace(/[\t\r\n]+/g, ' ')));
+  await ccDeliver({ title: c.title, fileSlug: x.fileSlug || 'growth', context: x.context, tables: x.tables, notes: x.notes }, format, say);
+}
+
+// ---- Standard chart-card chrome (2026-10-19, Todd: every chart on the site carries the same four features) ----
+// A card is a title row plus a body. The title row always carries: a timeframe dropdown (when the data has a window),
+// Share (Excel, CSV, Google Sheets, PDF, Slide), Expand (large view with the underlying table) and the AI Thoughts bubble.
+// To add a chart: ccReg('myCard', { title, thought: 'XX' | ['XX','YY'], range?: { value(), options:[[key,label]], set(key) }, export(){ return { fileSlug, context:[[..]], tables:[{name,columns,rows}], notes:[..] }; }, expand(){ return html; } })
+// then render it with ccCardHtml('myCard', bodyHtml, { style, cls }). Registered charts and the full standard are documented in the CX Experiences project doc "chart-card-standard".
+const CC = {}; const cc = { open: null };
+function ccReg(id, def){ CC[id] = def; }
+function ccIcon(kind){
+  return kind === 'share' ? '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>'
+    : '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>';
+}
+function ccRangeHtml(id){
+  const d = CC[id]; if (!d || !d.range) return '';
+  const cur = d.range.value();
+  return `<select class="gpc-sel" aria-label="Timeframe for ${escapeHtml(d.title)}" onchange="ccSetRange('${id}',this.value)">${d.range.options.map(([k, l]) => `<option value="${k}"${cur === k ? ' selected' : ''}>${escapeHtml(l)}</option>`).join('')}</select>`;
+}
+function ccShareHtml(id, ctx){
+  const d = CC[id]; const mid = `cc-${id}-${ctx}`;
+  const items = [['xlsx', 'Excel (.xlsx)'], ['csv', 'CSV'], ['sheets', 'Google Sheets'], ['pdf', 'PDF'], ['pptx', 'Slide (.pptx)']].map(([f, l]) => `<button type="button" role="menuitem" onclick="ccExport('${id}','${f}')">${l}</button>`).join('');
+  return `<span class="share-wrap"><button type="button" class="share-btn" aria-label="Share or download ${escapeHtml(d.title)}" aria-haspopup="menu" onclick="shareToggle(event,'${mid}')">${ccIcon('share')}</button><div class="share-menu" id="shareMenu-${mid}" role="menu" hidden>${items}</div></span>`;
+}
+function ccThoughtHtml(id){ const t = CC[id].thought; return (Array.isArray(t) ? t : (t ? [t] : [])).map(x => `<span class="ai-thought-mount" data-topic="${x}"></span>`).join(''); }
+function ccToolsHtml(id, ctx){
+  const d = CC[id];
+  return `<div class="gpc-tools">${ccRangeHtml(id)}${ccShareHtml(id, ctx)}${ctx === 'card' && d.expand ? `<button type="button" class="share-btn" aria-label="Open ${escapeHtml(d.title)} in a large view" title="Large view" onclick="ccOpen('${id}')">${ccIcon('expand')}</button>` : ''}${ccThoughtHtml(id)}</div>`;
+}
+function ccHeadHtml(id, ctx){ return `<div class="gpc-head cc-head"><div class="geo-h" style="margin:0;">${escapeHtml(CC[id].title)}</div>${ccToolsHtml(id, ctx || 'card')}</div>`; }
+function ccCardHtml(id, body, o){ o = o || {}; return `<div class="geo-card cc-card ${o.cls || ''}" data-cc="${id}" style="${o.style || ''}">${ccHeadHtml(id, 'card')}${body}</div>`; }
+function ccSetRange(id, k){ const d = CC[id]; if (d && d.range) d.range.set(k); }
+function ccOpen(id){ cc.open = id; ccRenderModal(); }
+function ccClose(){ cc.open = null; ccRenderModal(); }
+function ccTableHtml(t){
+  return `<div class="strat-chart-label" style="margin:14px 0 4px;">${escapeHtml(t.name)}</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr>${t.columns.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead><tbody>${t.rows.length ? t.rows.map(r => `<tr>${r.map(v => `<td>${escapeHtml(v == null ? '' : v)}</td>`).join('')}</tr>`).join('') : `<tr class="empty-state-row"><td colspan="${t.columns.length}">None</td></tr>`}</tbody></table></div>`;
+}
+function ccRenderModal(){
+  let host = document.getElementById('ccModal');
+  if (!cc.open || !CC[cc.open]){ if (host) host.remove(); return; }
+  const id = cc.open, d = CC[id];
+  if (!host){ host = document.createElement('div'); host.id = 'ccModal'; host.className = 'gpc-modal'; host.addEventListener('click', e => { if (e.target === host) ccClose(); }); document.body.appendChild(host); }
+  const x = d.export ? d.export() : null;
+  host.innerHTML = `<div class="gpc-panel" role="dialog" aria-modal="true" aria-label="${escapeHtml(d.title)}"><div class="gpc-phead"><h2>${escapeHtml(d.title)}</h2><div class="gpc-tools">${ccRangeHtml(id)}${ccShareHtml(id, 'modal')}${ccThoughtHtml(id)}<button type="button" class="share-btn" aria-label="Close the large view" onclick="ccClose()">✕</button></div></div>${d.expand ? d.expand() : ''}${x ? (x.tables || []).map(ccTableHtml).join('') + (x.notes || []).map(n => `<p class="strat-sub">${escapeHtml(n)}</p>`).join('') : ''}</div>`;
+  try { mountAiThoughtIcons(); } catch (e){}
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && cc.open) ccClose(); });
+// Builds the file for one grid of tables. Shared by every card, the Growth cards included.
+async function ccDeliver(x, format, say){
+  document.querySelectorAll('.share-menu').forEach(m => { m.hidden = true; });
+  const grid = [[x.title], ...(x.context || []), [], ...(x.tables || []).flatMap(t => [[t.name], t.columns.slice(), ...t.rows, []]), ...(x.notes || []).map(n => [n])].map(r => r.map(v => String(v == null ? '' : v).replace(/[\t\r\n]+/g, ' ')));
+  const asCsv = () => { const csv = grid.map(r => r.map(v => /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v).join(',')).join('\n'); const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); const a = document.createElement('a'); a.href = url; a.download = `${x.fileSlug || 'chart'}.csv`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); };
   if (format === 'sheets'){
     try { await navigator.clipboard.writeText(grid.map(r => r.join('\t')).join('\n')); window.open('https://sheets.new', '_blank', 'noopener'); say('Copied. Paste into the new Google Sheet with Ctrl/Cmd+V.'); }
-    catch (e){ const csv = grid.map(r => r.map(v => /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v).join(',')).join('\n'); const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); const a = document.createElement('a'); a.href = url; a.download = `${x.fileSlug || 'growth'}.csv`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); say('Clipboard blocked, so a CSV was downloaded. In Google Sheets use File, Import.'); }
+    catch (e){ asCsv(); say('Clipboard blocked, so a CSV was downloaded. In Google Sheets use File, Import.'); }
     return;
   }
+  if (format === 'csv'){ asCsv(); return; }
   try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/analytics/card-file`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ format, title: c.title, fileSlug: x.fileSlug, context: x.context, tables: x.tables, notes: x.notes }) });
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/analytics/card-file`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ format, title: x.title, fileSlug: x.fileSlug, context: x.context, tables: x.tables, notes: x.notes }) });
     if (!resp.ok){ say('Could not build that download right now.'); return; }
     const blob = await resp.blob(); const cd = resp.headers.get('Content-Disposition') || ''; const m = /filename="([^"]+)"/.exec(cd);
-    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = m ? m[1] : `${x.fileSlug || 'growth'}.${format}`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = m ? m[1] : `${x.fileSlug || 'chart'}.${format}`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
   } catch (e){ say('Could not build that download right now.'); }
+}
+async function ccExport(id, format){
+  const d = CC[id]; if (!d || !d.export) return; const x = Object.assign({ title: d.title }, d.export());
+  const say = t => { const n = document.getElementById('ccNote'); if (n){ n.textContent = t; setTimeout(() => { if (n.textContent === t) n.textContent = ''; }, 6000); } else if (d.say) d.say(t); };
+  await ccDeliver(x, format, say);
 }
 
 function gpRenderCoreRow(){
@@ -40205,7 +40308,7 @@ const GEO_TIERS = ['Must Win', 'Growth', 'Opportunistic', 'Monitor'];
 const GEO_TIER_COL = { 'Must Win': '#1D1D1F', 'Growth': '#D08A3E', 'Opportunistic': '#8E8E93', 'Monitor': '#D2D2D7' };
 const GEO_TIER_HINT = { 'Must Win': 'Largest, most reliable markets. Defend and use as test anchors.', 'Growth': 'Room to grow. Test added spend here first.', 'Opportunistic': 'Smaller markets. Use low-cost, geo-targetable media.', 'Monitor': 'Too little volume to act on. Watch.' };
 const GEO_US_SHAPE = 'M612,404L612,404L612,404ZM721,383L726,399L733,411L741,420L743,429L754,447L756,455L757,471L755,471L753,481L743,484L738,475L731,473L726,463L719,457L709,445L713,438L708,435L710,439L706,438L705,432L707,427L706,419L703,415L700,415L693,409L688,403L681,400L677,400L677,404L674,404L666,411L661,410L660,406L651,401L639,399L625,402L621,403L617,395L615,402L611,402L603,402L593,407L588,410L591,413L594,409L596,412L595,416L591,417L594,422L599,422L601,428L589,423L583,428L579,423L573,429L565,425L560,417L555,415L548,421L534,417L524,419L519,420L508,425L510,418L505,420L507,426L509,426L499,435L485,442L472,453L473,449L481,445L476,444L475,447L469,449L472,450L469,454L465,453L468,456L465,463L464,473L465,479L469,489L465,491L458,487L451,487L447,483L436,479L434,472L431,468L431,459L424,453L424,450L418,444L412,429L400,415L391,415L387,413L381,415L376,424L372,428L356,419L351,414L348,409L349,403L345,394L339,390L331,380L327,378L323,371L296,368L295,376L282,374L250,370L196,338L198,334L161,330L159,327L160,318L158,314L150,303L146,303L146,297L142,297L136,293L132,286L119,282L117,279L120,269L113,257L108,240L111,234L105,225L106,214L110,221L108,211L106,213L100,208L102,203L95,187L99,171L94,161L94,158L100,152L104,141L106,131L104,128L106,120L106,114L115,101L126,75L129,66L130,61L132,57L137,57L131,55L136,48L133,46L134,41L134,26L133,19L135,15L142,21L153,26L157,26L157,31L151,35L158,31L158,34L154,43L158,42L159,33L162,30L160,25L162,25L163,16L161,15L161,11L230,29L242,31L389,53L473,57L499,57L499,50L503,52L506,62L516,64L516,66L522,64L526,64L532,67L534,71L535,68L542,71L544,74L548,73L553,69L555,72L562,71L566,74L569,73L565,76L558,79L551,85L546,91L539,97L540,99L546,97L553,94L556,95L554,100L556,98L561,100L568,95L573,94L588,82L594,82L588,87L585,91L585,95L588,92L595,93L599,98L610,98L615,94L624,93L630,90L630,96L636,96L640,94L643,101L646,103L649,101L650,104L643,104L639,105L636,103L634,107L631,104L624,104L623,106L616,107L614,110L610,113L612,110L605,110L599,125L595,132L595,136L599,130L602,128L606,121L606,124L602,135L602,142L599,148L600,151L598,160L601,174L601,177L606,188L610,189L615,186L618,183L622,173L621,162L616,150L617,148L615,143L618,137L618,131L620,127L623,125L625,121L626,128L628,125L628,119L634,116L631,113L635,108L642,110L645,113L652,114L656,120L654,122L657,126L657,133L654,138L651,140L650,145L654,147L659,139L663,137L667,141L670,152L672,156L672,163L668,164L666,170L665,176L662,181L669,185L671,183L676,186L682,183L686,183L695,174L701,171L710,164L718,157L721,152L717,144L724,140L734,139L737,140L745,138L751,132L753,132L753,124L749,123L750,119L754,115L760,105L766,100L785,96L808,90L809,85L812,83L815,84L816,78L820,70L818,62L819,55L824,38L827,38L830,42L837,36L844,40L851,65L856,65L858,71L862,71L866,77L863,80L861,86L858,85L856,90L850,93L850,98L846,93L845,90L843,102L834,107L830,113L828,123L827,126L831,129L827,135L834,140L836,145L840,145L843,143L845,144L836,150L836,147L830,152L827,153L828,149L828,149L825,148L826,156L821,158L807,163L798,170L801,171L812,167L815,163L819,165L806,175L796,179L794,177L794,178L792,181L797,183L797,194L796,201L789,212L789,208L779,204L778,202L778,201L778,200L778,204L782,211L788,215L790,221L789,230L785,236L784,247L781,246L781,240L783,233L780,234L779,228L775,229L771,225L775,222L769,218L770,209L767,212L769,224L771,231L766,231L762,227L759,230L760,224L759,230L762,229L763,232L769,232L775,235L774,245L778,250L775,254L782,253L786,259L783,260L786,265L776,273L789,270L791,277L786,282L773,282L782,285L779,292L783,288L786,290L783,297L781,296L776,297L769,303L766,309L765,315L756,317L753,318L749,325L746,335L738,344L731,348L732,350L726,357L723,363L722,373L720,375ZM170,448L170,448L170,448ZM169,459L169,459L169,459ZM167,461L167,461L167,461ZM166,461L166,461L166,461ZM165,461L165,461L165,461ZM166,467L166,467L166,467ZM165,462L165,462L165,462ZM164,453L164,453L164,453ZM164,462L164,462L164,462ZM163,454L163,454L163,454ZM160,468L161,468L162,466L162,467L163,465L164,464L163,466L165,466L165,467L163,467L162,469ZM160,459L160,459L160,459ZM158,477L158,477L158,477ZM157,478L158,478L158,478ZM156,473L158,471L158,471L159,469L161,469L160,469L164,469L164,471L165,471L164,472L163,472L163,473L162,473L158,477L159,474L157,476L156,475L156,474ZM155,479L155,479L155,479ZM152,483L152,483L152,483ZM148,481L148,481L148,481ZM148,480L148,480L148,480ZM146,478L146,478L146,478ZM144,479L144,479L144,479ZM140,482L140,482L140,482ZM139,482L139,482L139,482ZM138,488L138,488L138,488ZM139,482L139,482L139,482ZM138,488L138,488L138,488ZM137,488L137,488L137,488ZM137,486L137,486L137,486ZM136,488L136,488L136,488ZM136,487L136,487L136,487ZM136,485L136,485L136,485ZM135,487L136,486L136,487ZM137,463L137,463L137,463ZM135,484L135,484L135,484ZM137,463L137,463L137,463ZM133,485L134,485L134,486L133,486ZM134,463L134,463L136,462L135,463ZM131,485L131,485L131,485ZM130,485L130,485L130,485ZM129,486L129,486L129,486ZM127,487L127,487L127,487ZM133,430L133,430L133,430ZM125,489L125,489L125,489ZM124,483L124,483L124,483ZM117,490L117,490L117,490ZM115,490L115,490L115,490ZM114,490L114,490L114,490ZM114,490L114,490L114,490ZM114,489L114,489L114,489ZM112,489L113,489L114,490L112,490ZM112,490L112,490L112,490ZM115,450L117,450L118,449L119,449L120,450L121,450L121,453L119,453L119,453L115,451ZM104,493L107,493L109,492L108,491L108,490L110,490L110,491L112,491L110,492L112,491L109,494L107,493L105,494ZM120,414L125,412L129,411L131,410L133,411L132,413L132,414L135,414L137,415L138,413L140,414L139,412L138,413L138,411L136,409L137,409L138,410L137,411L139,412L139,412L138,410L139,409L138,408L137,408L134,407L133,404L131,401L129,400L129,399L128,398L129,397L129,395L131,395L134,395L136,394L137,393L138,390L140,388L141,387L142,387L143,387L145,386L146,384L147,384L147,385L149,385L151,384L152,382L153,382L155,383L155,383L154,384L155,385L156,383L157,384L157,385L158,385L159,384L160,384L162,385L162,386L163,386L163,387L165,388L166,387L166,387L168,386L171,388L171,387L173,388L177,388L179,389L182,387L182,387L187,389L188,389L200,449L202,449L202,449L203,449L204,448L206,448L206,449L208,450L209,451L212,454L213,456L215,453L216,453L216,450L218,448L220,449L221,451L222,451L224,453L225,453L228,455L229,456L234,461L234,462L235,462L235,463L236,463L236,464L237,464L239,465L243,465L244,466L244,468L246,470L245,473L245,475L243,474L242,472L242,471L242,470L242,472L241,472L239,472L238,469L238,471L237,470L237,469L236,470L235,469L234,469L235,467L235,467L234,464L232,463L230,463L229,462L228,459L225,457L224,457L221,454L219,451L219,452L220,453L221,455L223,458L221,457L219,458L219,456L218,455L218,456L215,455L218,456L219,458L217,459L213,458L212,456L210,455L205,453L205,453L205,451L203,453L201,453L199,452L195,452L194,452L190,453L190,452L188,452L188,450L186,451L185,451L184,451L184,451L182,452L182,451L184,450L182,450L181,448L181,448L180,447L179,449L179,447L178,449L177,449L178,447L177,448L177,448L176,450L177,450L176,451L177,451L178,452L177,453L178,454L177,455L177,454L176,455L174,455L173,454L173,457L172,455L172,457L172,457L170,459L170,458L169,459L168,460L167,460L166,461L165,460L165,459L167,458L168,457L167,458L165,457L166,455L167,454L167,452L167,450L168,450L170,448L171,449L172,448L171,447L171,447L169,447L167,448L166,449L165,450L164,452L164,453L163,454L163,455L161,457L160,458L159,459L158,459L157,461L160,462L160,464L159,465L158,468L155,468L155,469L153,470L152,471L151,471L149,473L150,474L149,475L148,475L147,476L146,476L144,477L144,478L143,478L142,479L143,480L142,481L138,482L137,482L135,483L134,484L133,483L132,484L131,484L131,483L130,483L129,486L124,486L122,488L120,488L119,489L117,489L117,487L118,487L119,485L123,485L123,486L124,485L125,485L128,482L130,481L133,480L133,481L136,482L134,480L135,479L137,477L141,475L142,476L142,474L143,473L145,471L147,465L148,464L148,463L144,464L143,463L143,461L142,463L142,465L141,465L140,463L139,462L138,462L137,461L137,460L134,462L132,463L131,463L132,461L132,458L133,457L131,453L131,454L129,454L127,454L125,454L125,453L124,451L123,449L123,449L122,449L124,448L123,446L124,446L123,445L122,445L122,444L121,442L121,441L122,441L121,440L123,440L123,438L126,435L127,433L129,432L131,433L132,433L134,431L136,431L138,431L139,430L139,427L138,424L139,425L139,423L138,422L138,423L137,423L134,424L134,425L133,424L131,423L129,423L127,424L124,422L124,421L124,420L123,418L124,419L125,418L124,417L122,416L121,415ZM99,495L101,494L102,493L103,492L104,492L105,493L103,494L102,495ZM98,496L98,496L98,496ZM97,494L97,494L97,494ZM102,471L102,471L102,471ZM97,493L97,493L97,493ZM96,495L96,495L96,495ZM95,494L95,494L95,494ZM95,495L95,495L95,495ZM101,467L101,467L101,467ZM92,495L92,495L92,495ZM91,495L91,495L91,495ZM90,495L90,495L90,495ZM107,425L108,424L108,424L110,426L111,425L112,426L112,427L113,428L116,429L115,430L113,429L112,431L111,428L109,426L108,427L107,426ZM85,495L85,495L85,495ZM98,443L99,443L100,445L99,445ZM98,442L98,442L98,442ZM79,495L80,495L83,496L81,496ZM74,494L78,494L79,493L79,494L76,495ZM73,494L73,494L73,494ZM73,493L73,493L73,493ZM72,494L72,494L72,494ZM71,493L71,493L71,493ZM70,492L70,492L70,492ZM70,494L70,494L70,494ZM66,494L68,492L68,493L70,493L67,494ZM65,492L65,492L65,492ZM64,493L67,492L66,493ZM62,491L63,491L63,492ZM60,492L60,492L60,492ZM59,492L59,492L59,492ZM60,490L60,490L60,490ZM58,493L58,493L58,493ZM57,493L57,493L57,493ZM54,487L54,487L54,487ZM50,487L50,487L50,487ZM50,485L50,485L50,485ZM49,486L49,486L49,486ZM49,484L49,484L49,484ZM45,483L45,483L45,483ZM42,478L42,478L42,478ZM36,473L36,473L36,473ZM36,473L36,473L36,473ZM36,472L36,472L36,472ZM33,474L34,473L34,475ZM31,469L34,470L34,471L32,470ZM242,473L242,473L242,473ZM241,474L241,474L241,474ZM241,474L241,474L241,474ZM240,474L240,472L241,474ZM239,472L240,472L240,473ZM234,466L234,466L234,466ZM234,467L234,467L234,467ZM234,466L234,466L234,466ZM236,476L236,476L236,476ZM233,468L233,468L233,468ZM233,467L233,467L234,467L234,468ZM234,473L234,473L234,473ZM234,477L234,477L234,477ZM232,473L232,473L232,473ZM232,472L232,472L232,472ZM232,474L233,473L233,474L233,475ZM231,471L231,469L231,468L232,468L234,469L235,470L236,471L238,472L236,472L239,473L240,476L238,477L238,476L237,475L235,474L236,476L237,476L238,477L237,477L235,476L234,475L234,475L235,473L232,472ZM228,462L228,462L228,462ZM231,471L231,471L231,471ZM229,472L229,472L229,472ZM227,466L227,465L229,465L228,464L228,464L231,463L234,465L233,466L232,466L231,467L230,467L230,470L229,470ZM222,457L224,457L225,457L227,460L226,459L228,461L228,462L227,465L226,464L226,462L224,461L224,460ZM222,456L222,456L222,456ZM220,453L220,453L220,453ZM222,464L222,462L225,463L227,467L228,470L224,467L224,467L223,464ZM220,458L220,458L220,458ZM222,465L223,465L223,466L222,466ZM218,456L218,456L218,456ZM219,458L219,458L219,458ZM218,461L218,460L220,458L221,459L223,459L223,460L225,462L224,463L222,462L222,464L220,463ZM185,451L185,451L185,451ZM184,451L184,451L184,451ZM179,448L179,448L179,448ZM179,450L179,450L179,450ZM179,453L179,453L179,453ZM178,456L180,454L180,452L181,452L179,455ZM178,453L179,451L179,453ZM177,450L177,450L177,450ZM749,488L749,488L749,488ZM748,489L748,489L748,489ZM743,492L743,492L743,492ZM732,496L738,491L741,493ZM729,497L729,497L729,497ZM726,497L726,497L726,497ZM719,458L719,458L719,458ZM713,498L713,498L713,498ZM672,407L672,407L672,407ZM852,93L852,93L852,93ZM851,95L851,95L851,95ZM849,91L849,91L849,91ZM846,94L846,94L846,94ZM847,102L847,102L847,102ZM845,97L845,97L845,97ZM844,95L844,95L844,95ZM842,153L842,153L842,153ZM835,154L837,151L840,153ZM790,270L790,270L790,270ZM789,287L789,287L789,287ZM142,307L142,307L142,307ZM140,315L140,315L140,315ZM136,305L136,305L136,305ZM132,294L132,294L132,294ZM127,307L127,307L127,307ZM125,291L125,291L125,291ZM120,291L120,291L120,291ZM117,290L117,290L117,290ZM330,480L334,475L333,470L344,475L347,480L352,484L349,487L340,491L337,495L333,493L333,487ZM319,458L325,458L331,460L330,463L323,464L323,461ZM319,465L319,465L319,465ZM312,458L312,458L312,458ZM308,455L309,453L319,454L316,456ZM291,446L297,443L302,451L294,451ZM265,437L268,434L273,436L273,439L268,440ZM257,441L257,441L257,441ZM778,234L778,234L778,234ZM776,231L776,231L776,231ZM769,220L769,220L769,220ZM636,107L636,107L636,107ZM627,109L627,109L627,109ZM625,109L625,109L625,109ZM624,113L624,113L624,113ZM623,111L623,111L623,111ZM621,116L621,116L621,116ZM619,122L619,122L619,122ZM618,125L618,125L618,125ZM610,114L610,114L610,114ZM574,75L581,70L581,72L575,76ZM609,405L609,405L609,405ZM605,405L605,405L605,405ZM602,405L602,405L602,405ZM599,405L599,405L599,405ZM819,160L819,160L819,160ZM818,163L818,163L818,163ZM817,162L817,162L817,162ZM750,126L750,126L750,126ZM749,125L749,125L749,125ZM672,183L672,183L672,183ZM670,182L670,182L670,182ZM779,235L779,235L779,235ZM155,41L155,41L155,41ZM160,19L160,19L160,19ZM160,16L160,16L160,16ZM159,18L159,18L159,18ZM157,24L161,29L159,31ZM157,14L157,14L157,14ZM156,15L156,15L156,15ZM157,10L157,10L157,10ZM154,16L160,17L158,21ZM154,15L154,15L154,15ZM607,119L607,119L607,119ZM602,123L602,123L602,123ZM559,92L559,92L559,92ZM559,95L559,95L559,95ZM557,94L557,94L557,94ZM556,95L556,95L556,95ZM556,93L556,93L556,93ZM555,92L555,92L555,92ZM555,96L555,96L555,96ZM553,93L553,93L553,93ZM604,408L604,408L604,408ZM596,409L596,409L596,409ZM592,419L592,419L592,419ZM580,428L580,428L580,428ZM577,428L577,428L577,428ZM574,429L574,429L574,429ZM553,420L553,420L553,420ZM826,150L826,150L826,150ZM826,154L826,154L826,154ZM825,160L825,160L825,160Z|M611,402L607,373L609,317L607,315L646,311L657,350L663,361L660,364L660,369L662,375L662,382L664,385L623,389L622,392L626,395L627,399L625,402M198,334L201,334L202,329L200,327L201,321L205,317L207,310L213,307L210,303L208,292L210,272L216,272L219,275L221,272L224,257L297,269L282,374M664,385L667,390L709,387L712,390L713,382L721,383M646,311L665,309L684,307L681,313L688,316L695,325L706,333L709,338L714,340L716,347L718,348L722,356L726,357M615,186L643,183L643,184L649,233L650,239L641,241L641,245L636,250L635,255L630,255L627,258L623,257L618,261L611,258L605,262L604,260L611,244L608,236L610,232L606,188M403,223L498,225L505,229L501,234L505,240L509,242L509,282L427,281L399,279M828,123L823,118L822,114L812,83M828,149L824,144L819,145L796,150L796,137L806,135L822,131L827,126M830,152L828,149M540,99L536,100L537,111L531,114L529,120L533,123L531,125L531,135L535,139L543,143L544,145L550,149L552,152L553,158L483,160L483,126L477,120L481,114L481,107L478,100L478,83L474,73L475,63L473,57M778,200L779,198L787,189L781,185L778,181L778,175L782,167L795,171L794,177M794,178L792,181M778,202L778,201M665,309L665,305L669,303L672,297L677,297L683,292L688,286L688,287L694,283L697,283L701,274L721,271L786,259M756,317L736,302L719,305L714,299L695,301L684,307M481,114L384,110L389,53M509,282L509,291L512,312L512,345L506,343L501,339L491,342L486,342L484,344L475,339L471,344L470,340L466,342L463,339L459,339L452,335L451,337L440,331L432,330L428,327L429,290L385,288L385,278M710,164L711,169L771,157L775,159L776,163L782,167M779,198L774,200L723,210L708,213L705,196L701,171M483,160L480,175L483,179L479,176L471,171L464,171L461,173L455,169L379,164L382,127L384,110M512,345L519,347L519,347L519,357L520,376L523,383L528,391L528,398L525,407L526,412L522,417L524,419M323,371L322,367L377,372L380,336L384,288L385,288M379,164L376,202M307,194L376,202L404,204L403,223L399,279L385,278L328,273L297,269L307,194L279,190L282,171L289,126L291,116L382,127M819,145L821,158M798,170L798,164L796,150M498,225L494,220L492,214L508,215L549,213L553,217L552,223L554,229L564,238L565,244L573,245L570,254L571,257L583,266L585,271L584,273L588,279L590,279L590,285L586,288L585,288L585,288L585,292L582,298L573,299L577,293L576,289L509,291M723,210L724,220L733,210L737,212L741,208L745,209L749,213L748,217L739,212L740,218L734,227L732,225L729,234L724,232L724,235L717,250L718,254L705,261L703,259L699,262L695,260L694,257L689,255L682,247L682,242L686,241L687,234L689,229L691,232L692,226L696,221L699,221L704,214L705,202L703,197L705,196M553,217L554,213L557,211L559,203L557,200L557,197L567,193L569,189L569,183L566,182L562,176L601,174M605,262L605,268L599,270L600,276L593,274L590,279M582,298L584,300L579,303L581,305L577,309L578,314L575,317L572,321L572,328L569,329L567,335L564,337L566,340L562,345L564,347L564,355L519,357M106,131L120,135L161,146L161,146L147,201L171,237L189,264L208,292M790,221L781,223L774,200M553,158L555,163L554,165L556,172L561,174L562,176M492,214L490,198L487,197L488,192L485,187L483,179M649,233L654,232L658,238L666,240L672,240L677,236L682,242M694,257L689,263L684,266L679,274L671,278L644,281L628,282L609,284L606,283L607,287L586,288M585,288L585,288M778,234L778,234M789,230L783,233M760,224L760,221M759,219L760,221L759,219L752,216L749,213M662,181L643,184M599,125L595,121L595,121L596,114L591,112L591,110L582,109L578,107L565,104L561,101L561,101L561,100M575,317L607,315M593,407L587,398L588,392L558,393L560,383L568,368L565,365L565,358L564,355M289,126L286,120L284,123L274,121L272,123L264,122L263,115L259,113L260,109L257,104L257,99L255,96L250,100L248,97L248,94L254,79L247,73L244,65L240,60L241,56L238,50L242,31M806,135L804,119L806,108L805,104L810,99L808,95L808,90M785,96L786,103L788,106L788,114L792,122L796,137M137,57L142,60L145,65L144,70L149,74L160,74L163,77L172,77L176,78L180,77L191,78L193,77L219,83L223,92L216,101L214,105L209,110L208,113L212,116L209,123L201,156L161,146M671,278L701,274M224,257L242,164L282,171M230,29L219,75L219,83M242,164L201,156';
-let geo = { ass: {}, floor: 1000, over: null, ins: null, plan: null, path: 'match', q: '', loading: false, building: false, asking: false, err: '', hide: {}, detailOpen: false, terr: { data: null, loading: false, q: '', sel: null, statuses: null, msg: '' } };
+let geo = { range: 'auto', win: null, bk: null, rankBy: 'composite', rangeMsg: '', ass: {}, floor: 1000, over: null, ins: null, plan: null, path: 'match', q: '', loading: false, building: false, asking: false, err: '', hide: {}, detailOpen: false, terr: { data: null, loading: false, q: '', sel: null, statuses: null, msg: '' } };
 function geoProjMake(k, tx, ty){
   const R = Math.PI / 180;
   const mk = (rot, cLon, cLat, p0, p1, kk, x0, y0) => {
@@ -40225,7 +40328,7 @@ function geoShell(){
   const host = document.getElementById('geoPage'); if (!host || host.dataset.ready) return;
   host.dataset.ready = '1';
   host.innerHTML = `
-    <div class="geo-bar"><div id="geoSource" class="geo-src"></div><div class="geo-bar-r"><button type="button" class="geo-link" onclick="geoRefresh()">Refresh from latest bookings</button></div></div>
+    <div class="geo-bar"><div id="geoSource" class="geo-src"></div><div class="geo-bar-r"><span id="ccNote" class="geo-cap" style="margin:0 10px 0 0;"></span><button type="button" class="geo-link" onclick="geoRefresh()">Refresh from latest bookings</button></div></div>
     <div id="geoTop"></div>
     <div id="geoAi"></div>
     <div class="geo-h" style="margin:26px 0 10px;">Select your path</div>
@@ -40236,11 +40339,13 @@ async function geoOpen(){
   if (!state.companyId) return;
   geoShell(); geo.err = ''; geo.loading = true; geoRenderAll();
   try {
-    const r = await authedFetch(geoUrl('geo-overview'), { timeoutMs: 60000 });
+    const wq = geo.range !== 'auto' && geo.win ? `?from=${encodeURIComponent(geo.win.from)}&to=${encodeURIComponent(geo.win.to)}` : '';
+    const r = await authedFetch(geoUrl('geo-overview' + wq), { timeoutMs: 120000 });
     const d = await r.json().catch(() => ({}));
     if (!r.ok){ geo.loading = false; geo.err = d.error || 'Could not read your market data.'; geoRenderAll(); return; }
+    if (d.windowEmpty){ const pv = geo.prev || { range: 'auto', win: null }; geo.range = pv.range; geo.win = pv.win; geo.rangeMsg = d.error || 'No bookings in that range.'; geo.loading = false; geoRenderAll(); return; }
     if (d.needsBuild){ geo.over = null; geo.loading = false; await geoBuild(); return; }
-    geo.over = d; geo.loading = false; geoRenderAll(); geoLoadInsights();
+    geo.over = d; geo.loading = false; geoRenderAll(); geoLoadInsights(); geoExportStatus(true); geoLoadApproach();
   } catch (e){ geo.loading = false; geo.err = 'Backend unreachable. Try again in a moment.'; geoRenderAll(); }
 }
 function geoRefresh(){ geoBuild(true); }
@@ -40262,6 +40367,52 @@ async function geoBuild(){
     geo.building = false; geo.plan = null; geo.ins = null; geo.detailOpen = false; await geoOpen();
   } catch (e){ geo.building = false; geo.err = 'Backend unreachable. Try again in a moment.'; geoRenderAll(); }
 }
+const GEO_RANGES = [['auto', 'Automatic (by volume)'], ['3m', 'Last 3 months'], ['6m', 'Last 6 months'], ['12m', 'Last 12 months'], ['all', 'All history'], ['custom', 'Custom dates']];
+const GEO_RANKS = [['composite', 'Composite score'], ['index', 'INDEX'], ['zscore', 'Z-score'], ['customers', 'Customers']];
+async function geoEnsureBk(){
+  if (geo.bk) return geo.bk;
+  try { const r = await authedFetch(geoUrl('market-customer-uploads/booking-preview?' + new URLSearchParams({ countBy: mouBk.countBy || 'transactions' }))); const d = await r.json().catch(() => ({})); if (r.ok && d.available && d.lastDate) geo.bk = d; } catch (e){}
+  return geo.bk;
+}
+function geoWindowFor(k){
+  const b = geo.bk; if (!b || !b.lastDate) return null;
+  if (k === 'all') return { from: b.firstDate, to: b.lastDate };
+  const n = { '3m': 3, '6m': 6, '12m': 12 }[k]; if (!n) return null;
+  const t = new Date(b.lastDate + 'T00:00:00Z'); t.setUTCMonth(t.getUTCMonth() - n); t.setUTCDate(t.getUTCDate() + 1);
+  let f = t.toISOString().slice(0, 10); if (b.firstDate && f < b.firstDate) f = b.firstDate;
+  return { from: f, to: b.lastDate };
+}
+function geoResetDerived(){ geo.ins = null; geo.plan = null; geo.approach = null; geo.detailOpen = false; }
+async function geoSetRange(k){
+  if (geo.loading || geo.building) return;
+  geo.prev = { range: geo.range, win: geo.win }; geo.rangeMsg = '';
+  if (k === 'custom'){ geo.range = 'custom'; geoRenderAll(); return; }
+  if (k === 'auto'){ geo.range = 'auto'; geo.win = null; geoResetDerived(); return geoOpen(); }
+  await geoEnsureBk(); const w = geoWindowFor(k);
+  if (!w){ geo.rangeMsg = 'Booking dates are not available yet, so a timeframe cannot be set.'; geoRenderAll(); return; }
+  geo.range = k; geo.win = w; geoResetDerived(); geoOpen();
+}
+async function geoApplyCustom(){
+  const f = (document.getElementById('geoCustFrom') || {}).value, t = (document.getElementById('geoCustTo') || {}).value;
+  if (!f || !t || t < f){ geo.rangeMsg = !f || !t ? 'Choose a start and an end date.' : 'The start date must be on or before the end date.'; geoRenderAll(); return; }
+  geo.prev = { range: geo.prev && geo.prev.range !== 'custom' ? geo.prev.range : 'auto', win: geo.prev ? geo.prev.win : null };
+  geo.rangeMsg = ''; geo.range = 'custom'; geo.win = { from: f, to: t }; geoResetDerived(); geoOpen();
+}
+function geoSetRank(k){ geo.rankBy = k; geoRenderTop(); try { mountAiThoughtIcons(); } catch (e){} if (cc.open === 'geoTop') ccRenderModal(); }
+// Top markets: statistically relevant, over-indexing markets only, ranked by the chosen lens. Composite leads; ties break on Z-score then customers.
+function geoRank(o, k, n){
+  const v = x => (x == null || isNaN(x)) ? -Infinity : Number(x);
+  const q = (o.markets || []).filter(m => m.relevant && m.zScore > 0 && m.populationIndex != null);
+  const key = { composite: m => [v(m.composite), v(m.zScore), v(m.customers)], index: m => [v(m.populationIndex), v(m.zScore), v(m.customers)], zscore: m => [v(m.zScore), v(m.composite), v(m.customers)], customers: m => [v(m.customers), v(m.zScore), v(m.composite)] }[k] || (m => [v(m.composite), v(m.zScore), v(m.customers)]);
+  return q.sort((a, b) => { const x = key(a), y = key(b); for (let i = 0; i < 3; i++){ if (y[i] !== x[i]) return y[i] - x[i]; } return 0; }).slice(0, n);
+}
+function geoRankVal(m, k){ return k === 'index' ? m.populationIndex : k === 'zscore' ? m.zScore : k === 'customers' ? m.customers : m.composite; }
+function geoRankFmt(m, k){ const x = geoRankVal(m, k); return x == null ? '—' : k === 'zscore' ? (Math.round(x * 10) / 10).toString() : k === 'customers' ? Math.round(x).toLocaleString() : (Math.round(x * 10) / 10).toString(); }
+function geoWindowLabel(o){
+  const a = (o && o.upload && o.upload.audit) || {};
+  if (a.dateFrom && a.dateTo) return `${a.dateFrom} to ${a.dateTo}`;
+  return (o && o.upload && (o.upload.periodLabel || o.upload.label)) || 'Window not recorded';
+}
 async function geoLoadInsights(){
   if (!geo.over || !geo.over.upload) return;
   try {
@@ -40269,14 +40420,17 @@ async function geoLoadInsights(){
     if (r.ok){ geo.ins = await r.json(); geoRenderAi(); }
   } catch (e){ /* the page works without the notes */ }
 }
-function geoRenderAll(){ geoRenderSource(); geoRenderTop(); geoRenderAi(); geoRenderTiles(); geoRenderBody(); }
+function geoRenderAll(){ geoRenderSource(); geoRenderTop(); geoRenderAi(); geoRenderTiles(); geoRenderBody(); try { mountAiThoughtIcons(); } catch (e){} if (cc.open && /^geo/.test(cc.open)) ccRenderModal(); }
 function geoRenderSource(){
   const el = document.getElementById('geoSource'); if (!el) return;
   if (geo.building){ el.textContent = 'Rolling your bookings up to markets…'; return; }
   if (geo.loading){ el.textContent = 'Reading your market data…'; return; }
   const o = geo.over; if (!o){ el.textContent = ''; return; }
   const a = o.upload.audit || {};
-  el.textContent = `Built from your bookings, ${a.dateFrom || ''} to ${a.dateTo || ''} · ${geoNum(a.mappedRowCount)} transactions placed in ${geoNum(o.marketCount)} markets`;
+  const from = a.source === 'bookings' ? 'Built from your bookings' : 'Built from your customer file';
+  const win = geoWindowLabel(o);
+  const cust = geo.range === 'custom' ? `<span class="gpc-custom" style="margin-left:10px;"><input type="date" id="geoCustFrom" aria-label="Start date" value="${escapeHtml((geo.win && geo.win.from) || '')}"> <span>to</span> <input type="date" id="geoCustTo" aria-label="End date" value="${escapeHtml((geo.win && geo.win.to) || '')}"> <button type="button" class="drr-chip" onclick="geoApplyCustom()">Apply</button></span>` : '';
+  el.innerHTML = `${escapeHtml(from)}, ${escapeHtml(win)} · ${geoNum(a.mappedRowCount)} transactions placed in ${geoNum(o.marketCount)} markets${cust}${geo.rangeMsg ? `<div class="drr-err">${escapeHtml(geo.rangeMsg)}</div>` : ''}`;
 }
 function geoBars(rows, fmt){
   const max = Math.max(1, ...rows.map(r => r.v));
@@ -40295,16 +40449,40 @@ function geoRenderTop(){
   if (geo.building || geo.loading){ el.innerHTML = '<div class="geo-card geo-note">' + (geo.building ? 'Building your market file from bookings. This takes a few seconds.' : 'Loading…') + '</div>'; return; }
   if (geo.err && !geo.over){ el.innerHTML = `<div class="geo-card geo-note">${escapeHtml(geo.err)}</div>`; return; }
   const o = geo.over; if (!o){ el.innerHTML = ''; return; }
-  const reg = o.regions || {};
-  const regRows = [['US', 'United States'], ['CAN', 'Canada'], ['INTL', 'International']].map(([k, l]) => { const r = reg[k] || { customers: 0, share: 0 }; return { l, v: r.customers || 0, share: r.share || 0, c: 'var(--ink)' }; });
-  const top = (o.topMarkets || []).map(m => ({ l: escapeHtml(m.dmaName || m.dmaCode), v: m.populationIndex, sub: m.customers, c: 'var(--hdr-amber)' }));
-  const tiers = GEO_TIERS.map(t => ({ l: t, v: (o.tiers || {})[t] || 0, c: GEO_TIER_COL[t] }));
-  el.innerHTML = `<div class="stat-card-grid four geo-grid">
-    <div class="geo-card"><div class="geo-h">Customer counts by region</div>${geoBars(regRows, r => `${r.v.toLocaleString()} <small>${r.share}%</small>`)}<div class="geo-cap">Transactions with a postal code, grouped by the country of the postal code.</div></div>
-    <div class="geo-card"><div class="geo-h">Top 5 statistically relevant markets</div>${top.length ? geoBars(top, r => `${r.v}`) : '<div class="geo-cap" style="margin-top:6px;">No market over-indexes with enough volume to be statistically reliable yet.</div>'}<div class="geo-cap">Population index: share of your customers divided by share of population, times 100. 100 means in proportion to size.</div></div>
-    <div class="geo-card"><div class="geo-h">Markets by sales classification</div>${geoBars(tiers, r => r.v.toLocaleString())}<div class="geo-cap">${geoNum(o.marketCount)} markets in total, ${geoNum(o.relevantCount)} statistically relevant.</div></div>
-    <div class="geo-card"><div class="geo-h">Sales territories</div>${geoStoreThumb(o)}</div></div>`;
+  el.innerHTML = `<div class="stat-card-grid four geo-grid">${ccCardHtml('geoRegion', geoRegionBody(o))}${ccCardHtml('geoTop', geoTopBody(o))}${ccCardHtml('geoTier', geoTierBody(o))}${ccCardHtml('geoTerr', geoTerrBody(o))}</div>`;
 }
+function geoRegionRows(o){ const reg = o.regions || {}; return [['US', 'United States'], ['CAN', 'Canada'], ['INTL', 'International']].map(([k, l]) => { const r = reg[k] || { customers: 0, share: 0 }; return { l, v: r.customers || 0, share: r.share || 0, c: 'var(--ink)' }; }); }
+function geoRegionBody(o){ return `${geoBars(geoRegionRows(o), r => `${r.v.toLocaleString()} <small>${r.share}%</small>`)}<div class="geo-cap">Transactions with a postal code, grouped by the country of the postal code.</div>`; }
+function geoRankSel(){ return `<select class="gpc-sel" style="margin:0 0 8px;" aria-label="Rank top markets by" onchange="geoSetRank(this.value)">${GEO_RANKS.map(([k, l]) => `<option value="${k}"${geo.rankBy === k ? ' selected' : ''}>Rank by ${l}</option>`).join('')}</select>`; }
+function geoTopRows(o, n){
+  const k = geo.rankBy || 'composite';
+  return geoRank(o, k, n).map(m => ({ l: `${escapeHtml(m.dmaName || m.dmaCode)}<small>Composite ${geoRankFmt(m, 'composite')} · INDEX ${geoRankFmt(m, 'index')} · Z ${geoRankFmt(m, 'zscore')} · ${geoNum(m.customers)} customers</small>`, v: Math.max(0, geoRankVal(m, k) || 0), m, c: 'var(--hdr-amber)' }));
+}
+function geoTopBody(o){
+  const k = geo.rankBy || 'composite', lab = (GEO_RANKS.find(x => x[0] === k) || GEO_RANKS[0])[1];
+  const rows = geoTopRows(o, 5);
+  return `${geoRankSel()}${rows.length ? geoBars(rows, r => geoRankFmt(r.m, k)) : '<div class="geo-cap" style="margin-top:6px;">No market over-indexes with enough volume to be statistically reliable yet.</div>'}<div class="geo-cap">Statistically relevant, over-indexing markets only (30+ customers, Z-score 1.96 or more), ranked by ${lab.toLowerCase()}. Composite blends customer volume and INDEX. INDEX 100 means a market holds your customers in proportion to its population.</div>`;
+}
+function geoTierBody(o){ const tiers = GEO_TIERS.map(t => ({ l: t, v: (o.tiers || {})[t] || 0, c: GEO_TIER_COL[t] })); return `${geoBars(tiers, r => r.v.toLocaleString())}<div class="geo-cap">${geoNum(o.marketCount)} markets in total, ${geoNum(o.relevantCount)} statistically relevant. Classes are composite-score quartiles.</div>`; }
+function geoTerrBody(o){ return geoStoreThumb(o); }
+function geoCcContext(){ const o = geo.over; return [['Timeframe', o ? geoWindowLabel(o) : ''], ['Source', o && o.upload && o.upload.audit && o.upload.audit.source === 'bookings' ? 'Account bookings' : 'Customer file']]; }
+function geoMarketsTable(o, list, name){ return { name, columns: ['Market', 'Sales classification', 'Customers', 'INDEX', 'Z-score', 'Composite score', 'Statistically relevant'], rows: list.map(m => [m.dmaName, m.tier || '', m.customers == null ? '' : Math.round(m.customers), m.populationIndex == null ? '' : m.populationIndex, m.zScore == null ? '' : Math.round(m.zScore * 100) / 100, m.composite == null ? '' : Math.round(m.composite * 10) / 10, m.relevant ? 'Yes' : 'No']) }; }
+const geoRangeDef = { value: () => geo.range, options: GEO_RANGES, set: k => geoSetRange(k) };
+ccReg('geoRegion', { title: 'Customer counts by region', thought: 'ME', range: geoRangeDef, say: t => { geo.rangeMsg = t; geoRenderSource(); },
+  export: () => { const o = geo.over || {}; const rows = geoRegionRows(o); return { fileSlug: 'customers-by-region', context: geoCcContext(), tables: [{ name: 'Customers by region', columns: ['Region', 'Customers', 'Share of customers %'], rows: rows.map(r => [r.l, r.v, r.share]) }], notes: ['Transactions with a postal code, grouped by the country of the postal code. Postal codes that could not be placed in a market are not in the market total.'] }; },
+  expand: () => `<div class="gpc-abs">${escapeHtml('Where transactions with a postal code come from, by country of the postal code.')}</div><div class="gpc-chart big">${geoRegionBody(geo.over || {})}</div>` });
+ccReg('geoTop', { title: 'Top 5 markets', thought: 'MD', range: geoRangeDef, say: t => { geo.rangeMsg = t; geoRenderSource(); },
+  export: () => { const o = geo.over || {}; const k = geo.rankBy || 'composite'; return { fileSlug: 'top-markets', context: [...geoCcContext(), ['Ranked by', (GEO_RANKS.find(x => x[0] === k) || [])[1]]], tables: [geoMarketsTable(o, geoRank(o, k, 25), 'Top 25 statistically relevant, over-indexing markets')], notes: ['Only markets with at least 30 customers and a Z-score of 1.96 or more qualify. Composite is two thirds log-scaled customer volume and one third INDEX. INDEX 100 is in proportion to population.'] }; },
+  expand: () => { const o = geo.over || {}; const rows = geoTopRows(o, 25), k = geo.rankBy || 'composite'; return `${geoRankSel()}<div class="gpc-abs">${escapeHtml('Top 25 statistically relevant markets that over-index, with every measure shown so you can see why each one ranks where it does.')}</div><div class="gpc-chart big">${rows.length ? geoBars(rows, r => geoRankFmt(r.m, k)) : '<div class="geo-cap">No market qualifies yet.</div>'}</div>`; } });
+ccReg('geoTier', { title: 'Markets by sales classification', thought: 'ME', range: geoRangeDef, say: t => { geo.rangeMsg = t; geoRenderSource(); },
+  export: () => { const o = geo.over || {}; return { fileSlug: 'markets-by-classification', context: geoCcContext(), tables: [{ name: 'Markets by sales classification', columns: ['Sales classification', 'Markets'], rows: GEO_TIERS.map(t => [t, (o.tiers || {})[t] || 0]) }, geoMarketsTable(o, (o.markets || []).slice().sort((a, b) => (b.composite || 0) - (a.composite || 0)), 'All markets')], notes: ['Classes are composite-score quartiles: Must Win is the top quartile, Monitor the bottom.'] }; },
+  expand: () => `<div class="gpc-abs">${escapeHtml('How many markets fall in each class. The table below lists every market with its measures.')}</div><div class="gpc-chart big">${geoTierBody(geo.over || {})}</div>` });
+ccReg('geoTerr', { title: 'Sales territories', thought: 'AR', range: geoRangeDef, say: t => { geo.rangeMsg = t; geoRenderSource(); },
+  export: () => { const o = geo.over || {}; const st = (o.stores && o.stores.sample) || []; return { fileSlug: 'sales-territories', context: geoCcContext(), tables: [{ name: 'Stores on file', columns: ['Store', 'Address'], rows: st.map(x => [x.name || x.storeId, x.address || '']) }], notes: [`${(o.stores && o.stores.count) || 0} stores on file. Trade areas use 3, 5 and 10 mile rings. Reseller territories are on the Trade Territories path.`] }; },
+  expand: () => `<div class="gpc-abs">${escapeHtml('Trade areas use 3, 5 and 10 mile rings around each store. Open Trade Territories below to see which resellers cover your markets.')}</div><div class="gpc-chart big">${geoTerrBody(geo.over || {})}</div>` });
+ccReg('geoMap', { title: 'Visualize markets', thought: ['MA', 'MB'], range: geoRangeDef, say: t => { const n = document.getElementById('geoDlNote'); if (n) n.textContent = t; },
+  export: () => { const o = geo.over || {}; return { fileSlug: 'visualize-markets', context: geoCcContext(), tables: [geoMarketsTable(o, (o.markets || []).slice().sort((a, b) => (b.customers || 0) - (a.customers || 0)), 'All markets')], notes: ['The Excel with all markets download adds matched pairs, the recommended testing approach and a guide.'] }; },
+  expand: () => geoMapSvg(geo.over || {}, true) });
 function geoRenderAi(){
   const el = document.getElementById('geoAi'); if (!el) return;
   if (!geo.over){ el.innerHTML = ''; return; }
@@ -40526,7 +40704,7 @@ function geoRenderResult(){
     <div class="geo-h" style="margin:18px 0 6px;">Test and control markets</div>
     <div class="geo-scroll"><table class="geo-t"><thead><tr><th>#</th><th>Test market</th><th>Control market</th><th class="r">Test per week</th><th class="r">Control per week</th><th>Readiness</th></tr></thead><tbody>${pairRows}</tbody></table></div>
     <div class="geo-dl"><button type="button" class="geo-btn" onclick="geoSaveToRegistry()">Save this plan to the Truth Lab</button> <span class="geo-cap" id="geoSaveNote"></span></div>
-    <div class="geo-dl"><button type="button" class="geo-btn" onclick="geoDownload()">Download all markets with statistical detail (Excel)</button><button type="button" class="geo-link" onclick="geoToggleDetail()">${geo.detailOpen ? 'Hide' : 'Show'} readiness by market pair</button> <span class="geo-cap" id="geoDlNote"></span></div>
+    <div class="geo-dl"><button type="button" class="geo-btn" onclick="geoDownload()">Download all markets with statistical detail (Excel)</button><button type="button" class="geo-link" onclick="geoDownload(true)">Rebuild file</button><button type="button" class="geo-link" onclick="geoToggleDetail()">${geo.detailOpen ? 'Hide' : 'Show'} readiness by market pair</button> <span class="geo-cap" id="geoDlNote"></span></div>
     <div id="geoDetail"></div></div>`;
   if (geo.detailOpen) geoShowDetail();
 }
@@ -40546,16 +40724,81 @@ async function geoSaveToRegistry(){
     if (note) note.innerHTML = 'Saved as a draft test. <a class="flink" onclick="goToStep(\'testRegistry\')">Open the Truth Lab</a> to add the start date and weekly bookings.';
   } catch (e){ if (note) note.textContent = 'Could not save: ' + e.message; }
 }
-async function geoDownload(){
-  const note = document.getElementById('geoDlNote'); if (!geo.over) return;
-  if (note) note.textContent = 'Building your Excel file…';
+// 2026-10-19: the Excel file is built once, saved with its date, and reused. The server starts building it in the background
+// as soon as the markets are shown, so the first click is usually quick. "Rebuild" forces a fresh build.
+// 2026-10-19: the recommended testing approach, worked out on the server from the transaction history in Train the Brain.
+// The Excel download carries the same recommendation (Recommended Approach tab, By Product Group tab, Recommended_Use column).
+async function geoLoadApproach(){
+  if (!geo.over || !geo.over.upload) return;
   try {
-    const r = await authedFetch(geoUrl(`market-customer-uploads/${encodeURIComponent(geo.over.upload.id)}/export.xlsx`), { timeoutMs: 90000 });
-    if (!r.ok){ if (note) note.textContent = 'Could not build the Excel file right now.'; return; }
-    const blob = await r.blob(), url = URL.createObjectURL(blob), a = document.createElement('a');
-    a.href = url; a.download = 'Verilume-all-markets-detail.xlsx'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-    if (note) note.textContent = 'Downloaded. Check your downloads folder.';
-  } catch (e){ if (note) note.textContent = 'Backend unreachable. Try again.'; }
+    const r = await authedFetch(geoUrl(`geo-approach?uploadId=${encodeURIComponent(geo.over.upload.id)}`), { timeoutMs: 60000 });
+    if (!r.ok) return;
+    geo.approach = await r.json();
+    geoRenderBody(); try { mountAiThoughtIcons(); } catch (e){}
+  } catch (e){ /* the card is an extra; the page works without it */ }
+}
+function geoApproachHtml(){
+  const a = geo.approach; if (!a || a.needsBuild || a.available === undefined) return '';
+  const strongCol = { Strong: 'var(--cx)', Usable: '#2f7d4f', Thin: '#b8860b', 'Too small': 'var(--advocacy)' };
+  const pill = `<span class="geo-pill ${a.approach === 'time_based' ? 'warn' : ''}">${escapeHtml(a.label || '')}${a.strength ? ' · ' + escapeHtml(a.strength) : ''}</span>`;
+  const m = a.metrics || {};
+  const why = (a.why || []).map(x => `<li>${escapeHtml(x)}</li>`).join('');
+  const steps = (a.steps || []).map(x => `<li>${escapeHtml(x)}</li>`).join('');
+  const groups = (a.groups || []).slice(0, 8);
+  const gRows = groups.map(g => `<tr><td>${escapeHtml(g.name)}</td><td class="r">${geoNum(g.transactions)}</td><td class="r">${g.pooled13 == null ? '—' : g.pooled13 + '%'}</td><td>${escapeHtml(g.label)}</td><td>${g.canModelSeparately ? 'Yes' : 'No'}</td></tr>`).join('');
+  const gTbl = groups.length ? `<div class="geo-h" style="margin:14px 0 6px;">Product groups: can each be modeled on its own?</div>
+    <div class="geo-scroll"><table class="geo-t"><thead><tr><th>Product group</th><th class="r">Transactions</th><th class="r">Pooled, 13 weeks</th><th>Approach on its own</th><th>Model separately</th></tr></thead><tbody>${gRows}</tbody></table></div>
+    <div class="geo-cap">${escapeHtml(a.filterAdvice || '')}${(a.groups || []).length > 8 ? ` Showing 8 of ${(a.groups || []).length}; the Excel file lists all.` : ''}</div>` : (a.filterAdvice ? `<div class="geo-cap" style="margin-top:8px;">${escapeHtml(a.filterAdvice)}</div>` : '');
+  return `<div class="geo-card" style="margin-top:12px;">
+    <div class="geo-head"><h3 class="geo-title" style="margin:0;">Recommended testing approach <span class="ai-thought-mount" data-topic="MC"></span></h3>${pill}</div>
+    <p class="geo-p" style="margin-top:8px;"><strong>${escapeHtml(a.headline || '')}</strong></p>
+    <ul class="geo-p" style="margin:6px 0 0 18px;padding:0;">${why}</ul>
+    ${a.historyNote ? `<div class="geo-cap" style="margin-top:6px;">History: ${escapeHtml(a.historyNote)}.</div>` : ''}
+    <div class="geo-h" style="margin:14px 0 6px;">What to do next</div><ol class="geo-p" style="margin:0 0 0 18px;padding:0;">${steps}</ol>
+    ${gTbl}
+    <div class="geo-cap" style="margin-top:10px;">Based on ${a.source === 'bookings' ? 'the booking history in Train the Brain' : 'the customer file this analysis was built from'}. The Excel download follows this recommendation: a Recommended Approach tab, a By Product Group tab, and a Recommended_Use label on every market.</div>
+  </div>`;
+}
+function geoExportLabel(){
+  const i = geo.exportInfo; if (!i) return '';
+  if (i.ready && i.builtAt) return `Saved file ready, built ${String(i.builtAt).slice(0, 10)}.`;
+  if (i.building) return 'Preparing the Excel file in the background. The first build can take a minute; after that it is saved and downloads at once.';
+  if (i.stale && i.builtAt) return `The saved file from ${String(i.builtAt).slice(0, 10)} is out of date and will be rebuilt.`;
+  return '';
+}
+async function geoExportStatus(prepare){
+  if (!geo.over || !geo.over.upload) return;
+  try {
+    const r = await authedFetch(geoUrl(`market-customer-uploads/${encodeURIComponent(geo.over.upload.id)}/export-status${prepare ? '?prepare=1' : ''}`), { timeoutMs: 20000 });
+    if (!r.ok) return;
+    geo.exportInfo = await r.json();
+    document.querySelectorAll('#geoDlNote').forEach(n => { if (!geo.dlBusy) n.textContent = geoExportLabel(); });
+    if (geo.exportInfo.building && !geo.exportPoll){
+      geo.exportPoll = setInterval(async () => {
+        await geoExportStatus(false);
+        if (!geo.exportInfo || !geo.exportInfo.building){ clearInterval(geo.exportPoll); geo.exportPoll = null; }
+      }, 8000);
+    }
+  } catch (e){ /* the label is a convenience; the download still works */ }
+}
+async function geoDownload(rebuild){
+  const notes = () => Array.from(document.querySelectorAll('#geoDlNote')); const say = t => notes().forEach(n => { n.textContent = t; });
+  if (!geo.over) return;
+  geo.dlBusy = true;
+  say(rebuild ? 'Rebuilding the Excel file. This can take a minute…' : 'Getting your Excel file…');
+  try {
+    const r = await authedFetch(geoUrl(`market-customer-uploads/${encodeURIComponent(geo.over.upload.id)}/export.xlsx${rebuild ? '?rebuild=1' : ''}`), { timeoutMs: 180000 });
+    if (!r.ok){ say('Could not build the Excel file right now.'); geo.dlBusy = false; return; }
+    const blob = await r.blob();
+    const cd = r.headers.get('Content-Disposition') || ''; const m = /filename="?([^";]+)"?/i.exec(cd);
+    const day = (r.headers.get('X-Verilume-Built-At') || new Date().toISOString()).slice(0, 10);
+    const name = m ? m[1] : `Verilume-all-markets-detail-${day}.xlsx`;
+    const url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    geo.dlBusy = false;
+    geo.exportInfo = { ready: true, building: false, stale: false, builtAt: r.headers.get('X-Verilume-Built-At') || new Date().toISOString() };
+    say(`Downloaded ${name}. ${r.headers.get('X-Verilume-Saved-File') === 'yes' ? 'This is the saved file.' : 'A fresh file was built and saved.'}`);
+  } catch (e){ geo.dlBusy = false; say('Backend unreachable. Try again.'); }
 }
 function geoToggleDetail(){ geo.detailOpen = !geo.detailOpen; geoRenderResult(); }
 function geoShowDetail(){
@@ -40565,7 +40808,11 @@ function geoShowDetail(){
 }
 // ---- Visualize Markets ----
 function geoMapHtml(){
-  const o = geo.over, ms = o.markets || [];
+  const o = geo.over;
+  return geoApproachHtml() + ccCardHtml('geoMap', `<div style="display:flex;justify-content:flex-end;margin:-4px 0 6px;"><button type="button" class="geo-btn sm" onclick="geoDownload()">Excel with all markets</button></div>${geoMapSvg(o, false)}`, { style: 'margin-top:12px;' });
+}
+function geoMapSvg(o, big){
+  const ms = o.markets || [];
   const us = ms.filter(m => (m.country || 'US') === 'US'), placed = us.filter(m => m.lat != null && m.lng != null), other = ms.length - us.length, unplaced = us.length - placed.length;
   const parts = GEO_US_SHAPE.split('|'), maxC = Math.max(1, ...placed.map(m => m.customers || 0));
   const dots = placed.filter(m => !geo.hide[m.tier]).sort((a, b) => (b.customers || 0) - (a.customers || 0)).map(m => {
@@ -40573,13 +40820,12 @@ function geoMapHtml(){
     return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(1)}" fill="${col}" fill-opacity="${m.relevant ? 0.82 : 0.32}" stroke="${m.tier === 'Monitor' ? '#8E8E93' : '#fff'}" stroke-width="1"><title>${escapeHtml(m.dmaName)}: ${escapeHtml(m.tier)}, ${geoNum(m.customers)} customers, population index ${m.populationIndex == null ? 'n/a' : m.populationIndex}${m.relevant ? ', statistically relevant' : ', not statistically relevant'}</title></circle>`;
   }).join('');
   const leg = GEO_TIERS.map(t => `<button type="button" class="geo-leg ${geo.hide[t] ? 'off' : ''}" onclick="geoToggleTier('${t}')"><span class="geo-dot" style="background:${GEO_TIER_COL[t]}"></span>${t}</button>`).join('');
-  return `<div class="geo-card" style="margin-top:12px;"><div class="geo-head"><div class="geo-h" style="margin:0;">Visualize markets</div><button type="button" class="geo-btn sm" onclick="geoDownload()">Excel with all markets</button></div>
-    <p class="geo-p" style="margin-top:8px;">Each bubble is a market. Color is the market type, size is customers. Solid bubbles are statistically relevant; faded bubbles do not have enough volume to be sure.</p>
+  return `<p class="geo-p" style="margin-top:8px;">Each bubble is a market. Color is the market type, size is customers. Solid bubbles are statistically relevant; faded bubbles do not have enough volume to be sure.</p>
     <div class="geo-legend">${leg}</div>
     ${placed.length ? `<svg viewBox="0 0 960 500" class="geo-map" role="img" aria-label="Map of markets"><path d="${parts[0]}" fill="#EEEEF1"/><path d="${parts[1] || ''}" fill="none" stroke="#fff" stroke-width="1"/>${dots}</svg>` : '<div class="geo-cap" style="margin:16px 0;">No markets could be placed on the map yet. The zip location reference is needed to place them.</div>'}
-    <div class="geo-cap">${placed.length} markets on the map${unplaced ? `, ${unplaced} could not be placed` : ''}${other ? `, ${other} outside the US are in the Excel file` : ''}. <span id="geoDlNote"></span></div></div>`;
+    <div class="geo-cap">${placed.length} markets on the map${unplaced ? `, ${unplaced} could not be placed` : ''}${other ? `, ${other} outside the US are in the Excel file` : ''}.${big ? '' : ' <span id="geoDlNote"></span>'}</div>`;
 }
-function geoToggleTier(t){ geo.hide[t] = !geo.hide[t]; geoRenderBody(); }
+function geoToggleTier(t){ geo.hide[t] = !geo.hide[t]; geoRenderBody(); try { mountAiThoughtIcons(); } catch (e){} if (cc.open === 'geoMap') ccRenderModal(); }
 
 // ---------- Booking history as the Match Market source (2026-10-07) ----------
 let mouBk = { info: null, from: '', to: '', groups: null, weight: 'count', countBy: 'transactions', busy: false, biz: 'auto', presetDone: false, auto: null };
@@ -54586,6 +54832,11 @@ const BP_FAQ_TOPICS = [
   { letter: "AU", label: "Team and Org Chart", keywords: ["team", "org chart", "org", "invite", "member", "reports to", "role", "admin", "roster", "onboarding", "add a person", "add someone", "add people", "add a team", "who reports", "position"] },
   { letter: "AV", label: "Ask Verilume and voice: what you can ask", keywords: ["ask verilume", "voice", "ask", "question", "how do i", "how to", "what can i ask", "getting started", "where do i"] },
   { letter: "AW", label: "Brain Dump: your greeting and growth links", keywords: ["brain dump", "growth", "my growth", "assessment", "self assessment", "next career", "career", "training", "development plan", "private", "manager see", "who can see", "greeting", "1:1"] },
+  { letter: "MA", label: "Visualize markets: reading the Excel file", keywords: ["visualize markets","excel","all markets","index","composite score","tier","match pair","z score","p value","statistically relevant","holdout","pair similarity","population index","download","rebuild","saved file"] },
+  { letter: "MB", label: "Visualize markets: testing and why pairs say Too small", keywords: ["too small","pair readiness","detectable lift","pooled","pooled test","spend change","media spend","test design","match market","power","minimum detectable","readiness"] },
+  { letter: "MC", label: "Visualize markets: which testing approach fits", keywords: ["testing approach","recommended approach","transaction volume","product group","filter","time based","media mix model","mmm","on off","pooled","pairs","small client","large client","by product group","recommended use"] },
+  { letter: "MD", label: "Top markets: why composite score leads, not index alone", keywords: ["top markets","composite","index","z-score","rank by","statistically relevant","customers","over-index","small markets"] },
+  { letter: "ME", label: "Region and sales classification cards", keywords: ["region","sales classification","must win","growth","opportunistic","monitor","tiers","timeframe","quartile","unmapped"] },
   { letter: "GA", label: "Growth and Performance: Performance", keywords: ["roas", "cac", "return on ad spend", "customer acquisition cost", "revenue per dollar", "performance", "price increase", "growth and performance", "reporting card", "wow", "mom", "yoy", "ytd", "custom range"] },
   { letter: "GB", label: "Growth and Performance: Demand Pacing", keywords: ["demand pacing", "pacing", "pace", "budget pace", "impression pace", "behind pace", "ahead of pace", "on pace", "spend vs budget", "growth and performance", "reporting card"] },
   { letter: "GC", label: "Growth and Performance: KPI Story", keywords: ["kpi story", "impressions volume", "cost per impression", "cpm", "website visits", "engaged visitor", "cost per engaged", "leads", "cost per lead", "growth and performance", "reporting card"] },
@@ -54779,7 +55030,7 @@ const BP_FAQ_TOPIC_TAB = {
   // 2026-10-05 — Search Everywhere page topics, text taken from its client training guide.
 AG: 'marketer', AN: 'marketer', AH: 'marketer', AI: 'marketer', AJ: 'marketer', AK: 'marketer', AL: 'marketer', AM: 'marketer',
   // 2026-10-07 — product utilization and team training topics.
-  AO: 'dataScientist', AP: 'dataScientist', AQ: 'dataScientist', AR: 'dataScientist', AS: 'brand', AT: 'accountManagement', AU: 'accountManagement', AV: 'accountManagement', AW: 'dailyBrief', GA: 'marketer', GB: 'marketer', GC: 'marketer', GD: 'marketer', GE: 'strategy', GF: 'strategy', GG: 'strategy', GH: 'strategy', AX: 'marketer', AY: 'marketer', AZ: 'marketer'
+  AO: 'dataScientist', AP: 'dataScientist', AQ: 'dataScientist', AR: 'dataScientist', AS: 'brand', AT: 'accountManagement', AU: 'accountManagement', AV: 'accountManagement', AW: 'dailyBrief', MA: 'dataScientist', MB: 'dataScientist', MC: 'dataScientist', MD: 'dataScientist', ME: 'dataScientist', GA: 'marketer', GB: 'marketer', GC: 'marketer', GD: 'marketer', GE: 'strategy', GF: 'strategy', GG: 'strategy', GH: 'strategy', AX: 'marketer', AY: 'marketer', AZ: 'marketer'
 };
 
 // 2026-10-04 (Todd): too many chips at once. Show the five most relevant to the page the person is on
@@ -55012,6 +55263,11 @@ const AI_THOUGHT_PREVIEWS = {
   AU: "How to add people, set who reports to whom, and who can see what.",
   AV: "What Ask Verilume and voice can answer, and what they will not do.",
   AW: "What is on the Brain Dump, where your growth links go, and who can see them.",
+  MA: "How to read the markets Excel file: INDEX, composite score, match pairs, Z-score, and the saved dated file.",
+  MB: "Why market pairs can say Too small, and how pooling and media spend should shape a test.",
+  MC: "Which testing approach fits your transaction volume, and which product groups can be modeled on their own.",
+  MD: "Why the Top 5 markets are ranked by composite score, with INDEX, Z-score and customers shown.",
+  ME: "How region counts and sales classifications are built, and how the timeframe changes them.",
   GA: "How Performance (ROAS and CAC) is worked out, and what the date choices mean.",
   GB: "How Demand Pacing measures spend and impressions against the plan.",
   GC: "The volume and the cost of impressions, engaged visitors, leads and transactions.",
@@ -55438,6 +55694,11 @@ const SE_THOUGHTS = {
   AN: 'A reference for the team, covering Article, BlogPosting, NewsArticle, FAQPage, HowTo and VideoObject. Each entry says what the type is, when to use it, which fields are required or recommended, gives a copy-ready example with placeholders, and notes what Google does with it, checked on a stated date. Nothing here is filled from your account or generated for you. Note that Google no longer shows FAQ or How-to rich results, so those two give no search benefit today.'
 };
 const PU_THOUGHTS = {
+  MA: "The Excel file has one row per market. INDEX compares your share of customers in a market with that market’s share of the population: 100 means in proportion, 200 means double, 50 means half. It matters because big cities have many customers just by being big, and the index separates big from strong for you. The composite score is two thirds how many customers the market has (on a log scale) and one third the INDEX, and the tiers are quarters of that score, so Must Win is the top quarter. Holdout markets are about one in six, kept out of every test. A Match Pair label, such as MW2, marks two markets that are the closest on INDEX, one for test and one for control; a small Pair Similarity Distance means a closer match, and the match does not yet consider size or sales history. The Z-score says how far a market’s customer count is from what population alone predicts: above plus 1.96 is a stronghold, below minus 1.96 is white space, and Statistically Relevant means at least 30 customers and a clear gap in either direction. The two index columns measure the same thing: Customer Index vs Population is recalculated on customer counts beside the Z-score and normally sits within a few points of INDEX, so use INDEX. The How to Use This File tab in the download explains every column. The file is built once, saved with its date in the name, and reused until your upload or the reference data changes. Choose Rebuild file to refresh it.",
+  MB: "Pair Readiness asks one narrow question: could one test market and one control market, on their own, show a lift by counting customers over eight weeks? For most single markets the answer is no, so every pair can say Too small. That does not make the file useless. The index, tiers, holdouts, strongholds, white space and pairs tell you where to put media and which markets are fair comparisons. Too small is about how to run the test, not whether to use the file. Pool the markets: test all the test markets together against all the control markets together. The Pooled Test Design tab shows what the whole group can detect; for example, one file’s best single pair needed a 40% lift while all pairs together could see about 13%. Then plan from the media change, not only from volume. Volume sets how small a change you can see, and spend sets how big a change you create. Choose the spend change you can afford, estimate the lift it should buy, and check that it is larger than the detectable lift. If it is not, spend more, run longer or add markets. The tab does this with cells you can change; its cost multiplier of 2.0 is a placeholder until your own tests replace it. For the real read of a test, use weekly bookings or revenue by market in the Truth Lab, not customer counts. Your recommended approach, which depends on your transaction volume, is on the Recommended testing approach card and in the download.",
+  MC: "Verilume looks at the transaction history in Train the Brain and recommends how to test. It asks how small a lift each design could reliably detect. If the best single pair of markets could detect 10% or less in 13 weeks, test matched pairs. If not, but all the test markets pooled against all the control markets detect 20% or less in 13 weeks, pool them into one test group and one control group. If that needs 26 weeks, pool the markets and plan a longer test. If even that is too small, geography cannot read a realistic lift: use the markets for targeting, and measure with a time-based test that switches media on and off in the same markets, or with a media mix model once there are about two years of weekly history. Product groups are checked the same way, inside the same test and control markets. A group with enough transactions of its own can be modeled separately: filter the bookings to that group when you read the test. Smaller groups are read inside the total. The Excel download follows the recommendation, with a Recommended Approach tab, a By Product Group tab and a Recommended Use label on every market.",
+  MD: "The Top 5 card ranks markets by composite score, the same score that sets the sales classification, so it agrees with the Excel download and the map. Composite blends two things: how many customers a market has (log-scaled volume, two thirds of the score) and how far it over-indexes its population (INDEX, one third). Ranking by INDEX alone favors small markets that happen to be concentrated, such as a market with 200 customers at an index of 400, ahead of a large market with thousands of customers at an index of 180 where a media dollar moves far more business. Only markets that are statistically relevant qualify: at least 30 customers and a Z-score of 1.96 or more, which means the over-index is unlikely to be chance. Ties break on Z-score, then customers. Each row shows composite, INDEX, Z-score and customers. Use Rank by to view the same markets by INDEX, Z-score or customer count when you want that lens. INDEX of 100 means a market holds the same share of your customers as of the population.",
+  ME: "Customer counts by region groups every transaction with a postal code by the country of that postal code, so United States, Canada and International add up to the total in the file. Postal codes that could not be placed in a market are listed in the Excel note, which is why the market total can be slightly lower than the region total. Markets by sales classification splits markets into Must Win, Growth, Opportunistic and Monitor using composite score quartiles, so the four groups are always sized relative to each other. Statistically relevant markets are the ones with enough customers and a strong enough Z-score to trust. Use the timeframe on the card to see how the picture changes over a different booking window; every geo card shares the same window.",
   AX: "Analysis answers one question: is this campaign delivering what it was planned to deliver, and what should change. The page opens with the analytics story. It starts from the Campaign Analytics Brief, then sets the plan against the client overall, which is the annual plan when one is entered for the year and your last 12 months of uploads when it is not. It reads incremental leads and cost per lead against that baseline, the share of the KPI achieved by product group and creative group, and where the value should go if the messaging works. Below the story, the Summary table sets Target, Actual and Variance side by side. Target is the forecast from the media plan approved at the Campaign Budget stage, run through your own rates. Actual is what has been logged, and you can edit an Actual cell right in the table. A muted Tracking figure is the model re-run on logged actuals where no actual exists yet. Website Engagement is the whole site's average, not this campaign's, so it carries no target or variance. The Executive view compares impressions, CPM, CPV, CPE, CPL, CAC and ROAS with similar-stage campaigns and the client overall. The Channel, Product group and Creative group views follow. Traffic and leads by group come from GA4 visits tagged in the UTM, and CAC and ROAS from the transaction files. When the campaign belongs to a formal test, a banner says so, and confirmed results from the Truth Lab are saved with the campaign.",
   AZ: "The KPI tables on Analysis compare what was planned with what happened. Target is the forecast from the annual budget model, run from the spend and impressions approved at the Campaign Budget stage. Actual is logged results only. Variance is Actual minus Target. A muted Tracking figure is the model re-run on logged actuals where no actual exists yet, so you can see where the campaign is heading before results are logged. The model's rates follow the account's annual baseline when one is entered, and otherwise the last 12 months of uploads. When no annual target exists for the campaign's year, the client-overall comparison uses those same last 12 months, and entering a target under Media Plan and Budget, Annual plan, lets each KPI show as a share of the year. The Basis link beside the title shows the exact window and target in use for this campaign.",
   AY: "Final Approval is the last review before QA and Approval is marked complete. It opens with the overall Campaign Brief: stage, audience, dates, goal, product and creative groups, and the copy and analytics briefs. The approved media budget and plan follows, with the channel lines, the approval date and the Primary KPIs. Those KPIs are modeled from your last 12 months of uploads: marketing budget, website visits, engagement, website leads, transactions and revenue. The relevance score reads quality in four parts: the media plan against the KPIs at 35 percent, the copy contest fit at 25, brand fit at 15, and the landing page against the ad copy at 25. An input with nothing to read yet shows a dash and the others share its weight, so the score is marked provisional. It is not a progress score. The Asset view lists each approved creative asset with its Job ID, format and audience. Open View approved copy to see the copy and its wireframe. Then approve creative and messaging and mark QA and Approval complete. The analytics story now lives on the Analysis page.",
