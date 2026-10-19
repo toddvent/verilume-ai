@@ -29228,6 +29228,100 @@ function ciReadRow(accountId, name){
 }
 function ciPublicShape(row){ if (!row) return null; return Object.assign({}, row, { sources: (row.sources || []).map(s => ({ id: s.id, kind: s.kind, url: s.url, title: s.title, fetchedAt: s.fetchedAt })) }); }
 
+// 2026-10-19 — Battle Brief PDF (portrait Letter, Helvetica, no dependencies). Built from the stored brief and its source list.
+// Decode an opaque 8-bit RGB/RGBA PNG (as exported by a browser canvas) to raw RGB for embedding. Returns null for anything else.
+function ciPngToRgb(buf){
+  try {
+    const zlib = require('zlib');
+    if (!buf || buf.length < 33 || buf.readUInt32BE(0) !== 0x89504e47) return null;
+    let p = 8, w = 0, h = 0, ct = 0, bd = 0, il = 0; const idat = [];
+    while (p + 8 <= buf.length){ const len = buf.readUInt32BE(p); const type = buf.toString('latin1', p + 4, p + 8); const d = buf.subarray(p + 8, p + 8 + len);
+      if (type === 'IHDR'){ w = d.readUInt32BE(0); h = d.readUInt32BE(4); bd = d[8]; ct = d[9]; il = d[12]; } else if (type === 'IDAT') idat.push(d); else if (type === 'IEND') break; p += 12 + len; }
+    if (!w || !h || bd !== 8 || il !== 0 || (ct !== 2 && ct !== 6) || w * h > 4000000) return null;
+    const bpp = ct === 6 ? 4 : 3; const raw = zlib.inflateSync(Buffer.concat(idat)); const stride = w * bpp;
+    if (raw.length < (stride + 1) * h) return null;
+    const out = Buffer.alloc(stride * h); let prev = Buffer.alloc(stride);
+    for (let y = 0; y < h; y++){
+      const f = raw[y * (stride + 1)]; const line = raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1)); const cur = out.subarray(y * stride, (y + 1) * stride);
+      for (let i = 0; i < stride; i++){ const a = i >= bpp ? cur[i - bpp] : 0, b = prev[i], c = i >= bpp ? prev[i - bpp] : 0; let v = line[i];
+        if (f === 1) v += a; else if (f === 2) v += b; else if (f === 3) v += (a + b) >> 1; else if (f === 4){ const pp = a + b - c, pa = Math.abs(pp - a), pb = Math.abs(pp - b), pc = Math.abs(pp - c); v += (pa <= pb && pa <= pc) ? a : (pb <= pc ? b : c); }
+        cur[i] = v & 255; }
+      prev = cur;
+    }
+    const rgb = Buffer.alloc(w * h * 3);
+    for (let i = 0, j = 0; i < w * h; i++){ const o = i * bpp; if (bpp === 4){ const al = out[o + 3] / 255; rgb[j++] = Math.round(out[o] * al + 255 * (1 - al)); rgb[j++] = Math.round(out[o + 1] * al + 255 * (1 - al)); rgb[j++] = Math.round(out[o + 2] * al + 255 * (1 - al)); } else { rgb[j++] = out[o]; rgb[j++] = out[o + 1]; rgb[j++] = out[o + 2]; } }
+    return { w, h, data: zlib.deflateSync(rgb) };
+  } catch (e){ return null; }
+}
+function ciBattleBriefPdf(account, row, logoPng){
+  const W = 612, H = 792, M = 54, CW = W - 2 * M;
+  const map = { '—': '-', '–': '-', '·': '-', '÷': '/', '‘': "'", '’': "'", '“': '"', '”': '"', '…': '...', '•': '-' };
+  const clean = s => String(s == null ? '' : s).replace(/[–—·÷‘’“”…•]/g, ch => map[ch]).replace(/[^\x20-\x7e\xa0-\xff]/g, '?');
+  const esc = s => clean(s).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+  const pages = [[]]; let y = H - M;
+  const newPage = () => { pages.push([]); y = H - M; };
+  const wrap = (text, width, size) => { const per = Math.max(8, Math.floor(width / (size * 0.5))); const out = []; String(text == null ? '' : text).split(/\n/).forEach(par => { let cur = ''; clean(par).split(/\s+/).filter(Boolean).forEach(w => { while (w.length > per){ if (cur){ out.push(cur); cur = ''; } out.push(w.slice(0, per)); w = w.slice(per); } if ((cur + ' ' + w).trim().length > per){ out.push(cur); cur = w; } else cur = (cur + ' ' + w).trim(); }); out.push(cur); }); return out; };
+  const para = (text, size, bold, indent, gapAfter, gray) => { wrap(text, CW - (indent || 0), size).forEach(l => { if (y < M + size) newPage(); pages[pages.length - 1].push(`BT /${bold ? 'F2' : 'F1'} ${size} Tf ${gray === 2 ? '0.118 0.153 0.38 rg' : (gray ? '0.43 g' : '0.11 g')} ${(M + (indent || 0)).toFixed(1)} ${y.toFixed(1)} Td (${esc(l)}) Tj ET`); y -= size + 3; }); y -= (gapAfter == null ? 4 : gapAfter); };
+  const head = t => { y -= 6; if (y < M + 40) newPage(); para(t, 12, true, 0, 3, 2); };
+  const cite = a => (a && a.length) ? ' [' + a.join(', ') + ']' : '';
+  const b = row.battleBrief || {}; const p = row.profile || {};
+  const img = null; // client logo removed from the Battle Brief PDF (2026-10-19, per Todd); the header carries the company name instead.
+  // Cover band (portal navy). Drawn after layout, see decorations below.
+  const NAVY = '0.118 0.153 0.38', AMBER = '0.816 0.541 0.243';
+  const BAND = 132; y = H - BAND - 30;
+  para(`${account.industry ? account.industry + '  |  ' : ''}Competitor profile built from ${(row.sources || []).length} public source${(row.sources || []).length === 1 ? '' : 's'}  |  Brief generated ${row.battleGeneratedAt ? new Date(row.battleGeneratedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : ''}`, 9, false, 0, 2, true);
+  para('Bracketed ids such as [S1] refer to the numbered source list at the end of this document.', 8, false, 0, 8, true);
+  head('Summary'); { const pgI = pages.length - 1, y0 = y; para(b.summary, 10, false, 6, 10); if (pages.length - 1 === pgI){ pages[pgI].unshift(`0.961 0.961 0.969 rg ${M - 8} ${(y + 4).toFixed(1)} ${CW + 16} ${(y0 + 12 - y - 4).toFixed(1)} re f`); } }
+  const pts = (title, arr) => { if (arr && arr.length){ head(title); arr.forEach(x => { para('- ' + x.point + ': ' + x.evidence + cite(x.sources), 10, false, 8, 2); }); } };
+  pts('Where we win', b.whereWeWin); pts('Where they win', b.whereTheyWin);
+  if (b.differentiation && b.differentiation.length){ head('How to differentiate'); b.differentiation.forEach(d => para('- ' + d, 10, false, 8, 2)); }
+  if (b.messagingAngles && b.messagingAngles.length){ head('Messaging angles to test'); b.messagingAngles.forEach(a => para('- ' + a.angle + '. Example: "' + a.sampleLine + '"', 10, false, 8, 2)); }
+  if (b.counterMoves && b.counterMoves.length){ head('Counter-moves'); b.counterMoves.forEach(m => para('- [' + m.horizon + '] ' + m.move + ': ' + m.why, 10, false, 8, 2)); }
+  if (b.mediaImplications){ head('Media implications'); para(b.mediaImplications, 10, false, 0); }
+  if (b.watchList && b.watchList.length){ head('Watch list'); b.watchList.forEach(w => para('- ' + w, 10, false, 8, 2)); }
+  if (b.confidenceNote){ head('Confidence'); para(b.confidenceNote, 10, false, 0); }
+  const mm = p.mediaMixEstimate; if (mm && mm.summary){ head('Competitor media mix (estimate)'); para(mm.summary + ' Inference, ' + mm.confidence + ' confidence. Basis: ' + mm.basis + cite(mm.sources), 10, false, 0); }
+  if (row.sources && row.sources.length){ head('Sources'); row.sources.forEach(s => para('[' + s.id + '] ' + s.kind + ': ' + (s.title || '') + ' - ' + (s.url || ''), 8, false, 8, 1, true)); }
+  const objs = []; const add = s => { objs.push(Buffer.isBuffer(s) ? s : Buffer.from(s, 'latin1')); return objs.length; };
+  const catalog = add(''); const pagesObj = add(''); const f1 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>'); const f2 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+  const imObj = img ? add(Buffer.concat([Buffer.from(`<< /Type /XObject /Subtype /Image /Width ${img.w} /Height ${img.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length ${img.data.length} >>\nstream\n`, 'latin1'), img.data, Buffer.from('\nendstream', 'latin1')])) : 0;
+  const produced = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const kids = [];
+  pages.forEach((pg, i) => {
+    // Footer: thin rule, Verilume wordmark (Veri + lume in brand blue) left, page number centre, date produced right.
+    const dateTxt = 'Produced ' + produced; const dateW = dateTxt.length * 8 * 0.5; const pgTxt = 'Page ' + (i + 1) + ' of ' + pages.length;
+    const foot = `0.85 G 0.5 w ${M} 46 m ${W - M} 46 l S\n` +
+      `BT /F2 13 Tf 0.11 g ${M} 28 Td (Veri) Tj ET\nBT /F2 13 Tf 0.145 0.388 0.922 rg ${M + 24.5} 28 Td (lume) Tj ET\n` +
+      `BT /F1 8 Tf 0.43 g ${(W / 2 - pgTxt.length * 2).toFixed(1)} 30 Td (${esc(pgTxt)}) Tj ET\n` +
+      `BT /F1 8 Tf 0.43 g ${(W - M - dateW).toFixed(1)} 30 Td (${esc(dateTxt)}) Tj ET`;
+    let deco = '';
+    if (i === 0){
+      const title = clean(row.competitorName).length > 40 ? clean(row.competitorName).slice(0, 38) + '...' : clean(row.competitorName);
+      deco += `${NAVY} rg 0 ${H - BAND} ${W} ${BAND} re f\n${AMBER} rg 0 ${H - BAND} ${W} 3 re f\n`;
+      deco += `BT /F2 13 Tf 1 g ${M} ${H - 36} Td (Veri) Tj ET\nBT /F2 13 Tf ${AMBER} rg ${M + 24.5} ${H - 36} Td (lume) Tj ET\nBT /F1 8 Tf 0.7 g ${M + 58} ${H - 36} Td (|   CXMedia.AI) Tj ET\n`;
+      deco += `BT /F2 8 Tf ${AMBER} rg 1.4 Tc ${M} ${H - 66} Td (${esc(((account.company || '').toUpperCase() ? (account.company || '').toUpperCase().slice(0, 40) + '  |  ' : '') + 'COMPETITIVE BATTLE BRIEF')}) Tj ET\n`;
+      deco += `BT /F2 ${title.length > 24 ? 18 : 24} Tf 1 g 0 Tc ${M} ${H - 95} Td (${esc(title)}) Tj ET\n`;
+      deco += `BT /F1 10 Tf 0.85 g ${M} ${H - 116} Td (${esc('Produced for ' + (account.company || 'the client'))}) Tj ET\n`;
+      if (img){ const sc = Math.min(150 / img.w, 46 / img.h); const iw = img.w * sc, ih = img.h * sc; const pw = iw + 20, ph = ih + 18; const px = W - M - pw, py = H - BAND / 2 - ph / 2 + 2;
+        deco += `1 g ${px.toFixed(1)} ${py.toFixed(1)} ${pw.toFixed(1)} ${ph.toFixed(1)} re f\nq ${iw.toFixed(1)} 0 0 ${ih.toFixed(1)} ${(px + 10).toFixed(1)} ${(py + 9).toFixed(1)} cm /Im1 Do Q\n`; }
+    } else {
+      deco += `${NAVY} rg 0 ${H - 28} ${W} 28 re f\n${AMBER} rg 0 ${H - 28} ${W} 1.5 re f\n`;
+      deco += `BT /F2 10 Tf 1 g ${M} ${H - 18} Td (Veri) Tj ET\nBT /F2 10 Tf ${AMBER} rg ${M + 18.8} ${H - 18} Td (lume) Tj ET\n`;
+      const rt = clean('Battle Brief: ' + row.competitorName + '  |  ' + (account.company || '')); const rtt = rt.length > 70 ? rt.slice(0, 68) + '...' : rt;
+      deco += `BT /F1 8 Tf 0.85 g ${(W - M - rtt.length * 4).toFixed(1)} ${H - 18} Td (${esc(rtt)}) Tj ET\n`;
+    }
+    const body = deco + pg.join('\n') + '\n' + foot; const cs = add(`<< /Length ${Buffer.byteLength(body, 'latin1')} >>\nstream\n${body}\nendstream`);
+    kids.push(add(`<< /Type /Page /Parent ${pagesObj} 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 ${f1} 0 R /F2 ${f2} 0 R >>${imObj ? ` /XObject << /Im1 ${imObj} 0 R >>` : ''} >> /Contents ${cs} 0 R >>`));
+  });
+  objs[catalog - 1] = Buffer.from(`<< /Type /Catalog /Pages ${pagesObj} 0 R >>`, 'latin1');
+  objs[pagesObj - 1] = Buffer.from(`<< /Type /Pages /Kids [${kids.map(k => k + ' 0 R').join(' ')}] /Count ${kids.length} >>`, 'latin1');
+  const parts = [Buffer.from('%PDF-1.4\n', 'latin1')]; const offs = []; let pos = parts[0].length;
+  objs.forEach((o, i) => { offs.push(pos); const bf = Buffer.concat([Buffer.from(`${i + 1} 0 obj\n`, 'latin1'), o, Buffer.from('\nendobj\n', 'latin1')]); parts.push(bf); pos += bf.length; });
+  let xref = `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`; offs.forEach(o => { xref += String(o).padStart(10, '0') + ' 00000 n \n'; });
+  parts.push(Buffer.from(xref + `trailer\n<< /Size ${objs.length + 1} /Root ${catalog} 0 R >>\nstartxref\n${pos}\n%%EOF\n`, 'latin1'));
+  return Buffer.concat(parts);
+}
+
 // Cost-control safety net (2026-08-22) — a single "Interview candidates"
 // or "Run contest" click is up to 10 real AI calls (up to 5 parallel
 // draft-generation calls, one per partner, plus up to 5 more scoring
@@ -35526,6 +35620,20 @@ Submit your response via the campaign_intake_turn tool.`;
       const now = new Date().toISOString();
       db.prepare('UPDATE competitor_profiles SET battleBriefJson = ?, battleGeneratedAt = ?, updatedAt = ? WHERE accountId = ? AND competitorKey = ?').run(JSON.stringify(brief), now, now, accountId, ciKey(competitorName));
       return sendJson(res, 200, { ok: true, profile: ciPublicShape(ciReadRow(accountId, competitorName)) });
+    }
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'competitor-battle-brief-pdf'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const body = await readBody(req);
+      const row = ciReadRow(accountId, String(body.competitorName || '').trim());
+      if (!row || !row.battleBrief) return sendJson(res, 400, { error: 'Generate the Battle Brief for this competitor first.' });
+      let logo = null; try { const m = /^data:image\/png;base64,([A-Za-z0-9+\/=]+)$/.exec(String(body.logoPng || '')); if (m && m[1].length < 1500000) logo = Buffer.from(m[1], 'base64'); } catch (e){}
+      let pdf; try { pdf = ciBattleBriefPdf(account, row, logo); } catch (e){ return sendJson(res, 500, { error: 'Could not build the PDF.' }); }
+      const slug = ciKey(row.competitorName).replace(/\s+/g, '-') || 'competitor';
+      res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="battle-brief-${slug}.pdf"` });
+      return res.end(pdf);
     }
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'industry-trends'){
       const accountId = decodeURIComponent(parts[2]);
