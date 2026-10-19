@@ -5374,10 +5374,10 @@
     </div>
 
     <div class="seo-section" id="repPressSection">
-      <div class="seo-section-head"><div class="seo-section-title">📰 Press Release Development &amp; Distribution</div></div>
-      <p class="seo-section-sub">Draft, review and approve here. Verilume does not send releases: send yours outside Verilume, then use Mark Distributed to record it.</p>
+      <div class="seo-section-head"><div class="seo-section-title">📰 PR &amp; Corporate Communications</div></div>
+      <p class="seo-section-sub">One process for every corporate writing job: press releases, holding statements, talking points and internal announcements. Verilume does not send them: send yours outside Verilume, then mark it Distributed (or Sent) to record it.</p>
       <div class="seo-form" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-        <input type="text" id="prcPressNewTitle" placeholder="Press release title" style="flex:1;min-width:200px;">
+        <input type="text" id="prcPressNewTitle" placeholder="Title (e.g. Owners Suite launch, or Booking site outage)" style="flex:1;min-width:200px;">
         <select id="prcPressNewType" style="min-width:180px;">
           <option value="">Release type…</option>
           <option value="product_launch">Product Launch / Enhancement</option>
@@ -5385,16 +5385,20 @@
           <option value="partnership">Strategic Partnership</option>
           <option value="charity_or_person">Charity / Person Partnership</option>
           <option value="hire_or_departure">Significant Hire / Departure</option>
+          <option value="holding_statement">Holding Statement / Crisis Response</option>
+          <option value="talking_points">Talking Points</option>
+          <option value="internal_announcement">Internal Announcement</option>
         </select>
         <select id="prcPressNewAudience" style="min-width:170px;">
           <option value="">Audience…</option>
           <option value="consumer">Consumer</option>
           <option value="business">Business / Trade Network</option>
+          <option value="internal">Internal Stakeholders</option>
         </select>
         <select id="prcPressNewCampaign" style="min-width:200px;" title="Optional: pre-fills the brief from a campaign"><option value="">Link a campaign (optional)…</option></select>
         <button type="button" class="btn-primary" onclick="prcCreatePress()">+ Add</button>
       </div>
-      <p class="hint" style="margin:-4px 0 10px;">After you add a release, open it to answer four short questions (the news, the experience, the details, the next step). The draft and the contest are built from your answers.</p>
+      <p class="hint" style="margin:-4px 0 10px;">Step 1 of 5: pick the type, audience and optional campaign. Then open the item to answer four short questions. The draft and the contest are built only from your answers.</p>
       <!-- 2026-08-29, per direct report: "how to book includes a specific
            process statement... use exact copy vs direction for
            inspiration." A supplied Next-Step/CTA text needs its own
@@ -5423,19 +5427,6 @@
       </div>
       <div id="prceditorialNewStatus" class="hint" style="margin-bottom:8px;"></div>
       <div class="seo-card-list" id="repEditorialList"></div>
-    </div>
-
-    <div class="seo-section" id="repCorpCommsSection">
-      <div class="seo-section-head"><div class="seo-section-title">🏢 Corporate Communications</div></div>
-      <p class="seo-section-sub">Internal and external communications — talking points, holding statements, and crisis-response drafts — reunited here with Reputation Monitoring and PR rather than living disconnected under Content Development.</p>
-      <div class="seo-form" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-        <input type="text" id="prcCorpNewTitle" placeholder="Title" style="flex:1;min-width:180px;">
-        <input type="text" id="prcCorpNewAudience" placeholder="Audience (e.g. Internal — Leadership)" style="flex:1;min-width:200px;">
-        <select id="prcCorpNewCampaign" style="min-width:200px;"><option value="">Link a campaign (optional)…</option></select>
-        <button type="button" class="btn-primary" onclick="prcCreateCorp()">+ Add</button>
-      </div>
-      <div id="prccorpNewStatus" class="hint" style="margin-bottom:8px;"></div>
-      <div class="seo-card-list" id="repCorpCommsList"></div>
     </div>
 
     <!-- Round 132bx (2026-08-15) — Specialty Partners (see the matching
@@ -13929,7 +13920,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-19-mix-curves-pr-chip-forms';
+const CXMEDIA_BUILD_STAMP = '2026-10-19-pr-corp-one-flow';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -27117,8 +27108,7 @@ const askDockPr = { sel: null, running: false, result: null, picked: false, note
 function askDockPrItems(){
   const out = [];
   try {
-    (prcState.pressReleases || []).forEach(x => out.push({ type: 'press', id: x.id, title: x.title, kind: 'Press release', item: x }));
-    (prcState.corporateComms || []).forEach(x => out.push({ type: 'corp', id: x.id, title: x.title, kind: 'Corporate communication', item: x }));
+    (prcState.pressReleases || []).forEach(x => out.push({ type: 'press', id: x.id, title: x.title, kind: PRC_PRESS_TYPE_LABELS[x.releaseType] || 'Press release', item: x }));
     (prcState.editorialPitches || []).forEach(x => out.push({ type: 'editorial', id: x.id, title: (x.outlet || '') + ': ' + (x.topic || ''), kind: 'Editorial pitch', item: x }));
   } catch (e){}
   return out;
@@ -27126,9 +27116,8 @@ function askDockPrItems(){
 function askDockPrReady(it){
   if (it.type === 'press'){
     const st = it.item.briefStatus || {}; const n = ['news', 'experience', 'details', 'nextStep'].filter(k => st[k]).length;
-    return { ok: !!st.news, label: n === 4 ? 'Brief complete' : `Brief ${n} of 4`, why: st.news ? '' : 'Add the news to the brief first.' };
+    return { ok: !!st.complete, label: n === 4 ? 'Brief complete' : `Brief ${n} of 4`, why: st.complete ? '' : 'Finish all four steps first.' };
   }
-  if (it.type === 'corp'){ const has = !!(it.item.context && it.item.context.trim()); return { ok: has, label: has ? 'Key points added' : 'No key points yet', why: has ? '' : 'Add key points first.' }; }
   return { ok: true, label: 'Outlet and angle set', why: '' };
 }
 function askDockPrHtml_row(it){
@@ -27146,7 +27135,7 @@ function askDockContestPrHtml(){
     const r = askDockPr.result;
     if (r && r.candidates && r.candidates.length){
       h += `<p class="hint" style="margin:4px 0 8px;">Read each draft and pick the one to keep. Drafts are numbered, not named, and are not scored: you decide.</p>`;
-            h += r.candidates.filter(c => c.copy).map(c => `<div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;"><div style="font-weight:700;margin-bottom:6px;">${escapeHtml(c.label)}</div><div style="white-space:pre-wrap;font-size:0.8125rem;max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:8px;">${escapeHtml(c.copy)}</div><div style="margin-top:8px;"><button type="button" class="btn-primary" ${askDockPr.picked ? 'disabled' : ''} onclick="askDockContestPrPick('${escapeHtml(c.key)}')">Use this draft →</button></div></div>`).join('');
+            h += r.candidates.filter(c => c.copy).map(c => `<div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;"><div style="font-weight:700;margin-bottom:6px;">${escapeHtml(c.label)}</div>${c.approach ? `<div style="font-size:0.8125rem;margin-bottom:4px;"><b>Strategy:</b> ${escapeHtml(c.approach)}</div>` : ''}${c.headline ? `<div style="font-size:0.8125rem;margin-bottom:6px;"><b>Headline:</b> ${escapeHtml(c.headline)}</div>` : ''}<div style="white-space:pre-wrap;font-size:0.8125rem;max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:8px;">${escapeHtml(c.copy)}</div><div style="margin-top:8px;"><button type="button" class="btn-primary" ${askDockPr.picked ? 'disabled' : ''} onclick="askDockContestPrPick('${escapeHtml(c.key)}')">Use this draft →</button></div></div>`).join('');
       if (askDockPr.picked) h += `<p class="hint">Saved as the working copy. <button type="button" class="btn-ghost" style="padding:2px 8px;" onclick="askDockContestPrOpen('${askDockPr.sel.type}','${askDockPr.sel.id}')">Open it to edit and approve</button></p>`;
     }
     h += `<div style="margin-top:6px;"><button type="button" class="btn-ghost" onclick="askDockPr.sel=null;askDockPr.result=null;askDockPr.note='';askDockContestRender()">Choose another</button></div>`;
@@ -27193,7 +27182,7 @@ async function askDockContestPrPick(key){
 function askDockContestPrOpen(type, id){
   askDockContestClose();
   try { goToStep('reputation'); } catch (e){}
-  setTimeout(() => { try { prcExpanded[`${type}:${id}`] = true; renderReputationStep(); const sec = document.getElementById(type === 'press' ? 'repPressSection' : type === 'corp' ? 'repCorpCommsSection' : 'repEditorialSection'); if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e){} }, 400);
+  setTimeout(() => { try { prcExpanded[`${type}:${id}`] = true; renderReputationStep(); const sec = document.getElementById(type === 'editorial' ? 'repEditorialSection' : 'repPressSection'); if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e){} }, 400);
 }
 function askDockContestOpenCopy(){
   const c = askDockContestCampaign(); if (!c){ askDockToast('Open a campaign to run this contest.'); return; }
@@ -29168,7 +29157,7 @@ function cfdWsAction(key, action){
     const pending = (prcState.editorialPitches || []).filter(p => p.status === 'pending').length;
     say(`<strong>${pending} pending ${pending===1?'pitch':'pitches'}</strong> — showing editorial pitches below.`, () => seoScrollTo('repEditorialSection'));
   } else if (action === 'repCorpComms'){
-    say('Showing corporate communications below.', () => seoScrollTo('repCorpCommsSection'));
+    say('Showing PR and corporate communications below.', () => seoScrollTo('repPressSection'));
   } else if (action === 'seoCompetitorActivity' || action === 'repCompetitorActivity'){
     const n = COMPETITOR_INTEL_DATA.currentActivity.filter(a => a.impactedFunction === pageKey).length;
     say(`<strong>${n} competitor ${n===1?'move':'moves'}</strong> touching this workstream — opening the Battle Brief &amp; Current Activity page under Competitive Positioning.`, () => { goToStep('competitivePositioning'); setTimeout(() => seoScrollTo('ctActivitySection'), 400); });
@@ -66478,14 +66467,12 @@ async function repRunSweepNow(){
 async function loadPrCorpCommData(){
   if (dataSourceLabel !== 'backend' || !state.companyId) return;
   try {
-    const [prResp, edResp, ccResp] = await Promise.all([
+    const [prResp, edResp] = await Promise.all([
       authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/press-releases`),
-      authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/editorial-pitches`),
-      authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/corporate-comms`)
+      authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/editorial-pitches`)
     ]);
     if (prResp.ok) prcState.pressReleases = (await prResp.json()).pressReleases || [];
     if (edResp.ok) prcState.editorialPitches = (await edResp.json()).editorialPitches || [];
-    if (ccResp.ok) prcState.corporateComms = (await ccResp.json()).corporateComms || [];
   } catch (e){ /* honest-empty fallback — prcState stays whatever it already was */ }
   if (document.getElementById('repPressList')) renderReputationStep();
   const signalsEl = document.getElementById('connectedSignalsList');
@@ -66642,6 +66629,7 @@ async function prcCreate(type, fields){
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok){ if (statusEl) statusEl.textContent = data.error || 'Saving failed.'; return; }
     if (statusEl) statusEl.textContent = '';
+    if (type === 'press' && data.id) prcExpanded[`press:${data.id}`] = true;
     await loadPrCorpCommData();
   } catch (e){ if (statusEl) statusEl.textContent = 'Backend unreachable — could not save.'; }
 }
@@ -66800,7 +66788,10 @@ function prcRenderSection(type, containerId, titleFn, subtitleFn){
   const rows = prcState[cfg.stateKey];
   if (!rows.length){ el.innerHTML = '<p class="hint">Nothing here yet — add one above.</p>'; return; }
   el.innerHTML = rows.map(item => {
-    const [cls, label] = cfg.statusMap[item.status] || ['info', item.status];
+    let [cls, label] = cfg.statusMap[item.status] || ['info', item.status];
+    const isCorpRow = type === 'press' && prcIsCorp(item);
+    if (isCorpRow && item.status === 'distributed') label = 'Sent';
+    const nextLbl = (isCorpRow && type === 'press') ? ({ draft: 'Mark Sent →', distributed: 'Revert to Draft' })[item.status] : cfg.nextLabel[item.status];
     const key = `${type}:${item.id}`;
     const expanded = !!prcExpanded[key];
     return `<div class="seo-row" style="flex-direction:column;align-items:stretch;">
@@ -66811,14 +66802,15 @@ function prcRenderSection(type, containerId, titleFn, subtitleFn){
         </div>
         <span class="seo-badge rep-badge ${cls}" style="white-space:nowrap;">${label}</span>
       </div>
-      ${type === 'press' ? prcSeedNoteHtml(item) + prcStripHtml(item) : ''}
+      ${type === 'press' ? prcSeedNoteHtml(item) + (isCorpRow ? '' : prcStripHtml(item)) : ''}
       <div class="btn-row" style="margin:8px 0 0;flex-wrap:wrap;">
-        <button type="button" class="btn-ghost" onclick="prcToggleExpand('${type}','${item.id}')">${expanded ? 'Hide draft' : 'View / edit draft'}</button>
-        <button type="button" class="btn-ghost" onclick="prcGenerateDraft('${type}','${item.id}')">Draft with AI →</button>
-        <button type="button" class="btn-ghost" onclick="prcToggleStatus('${type}','${item.id}')">${cfg.nextLabel[item.status] || 'Change status'}</button>
+        <button type="button" class="btn-ghost" onclick="prcToggleExpand('${type}','${item.id}')">${expanded ? 'Close' : (type === 'press' ? 'Open' : 'View / edit draft')}</button>
+        ${type === 'press' ? '' : `<button type="button" class="btn-ghost" onclick="prcGenerateDraft('${type}','${item.id}')">Draft with AI →</button>`}
+        <button type="button" class="btn-ghost" onclick="prcToggleStatus('${type}','${item.id}')">${nextLbl || 'Change status'}</button>
         <button type="button" class="btn-ghost" onclick="prcDelete('${type}','${item.id}')">Remove</button>
       </div>
-      ${expanded ? `<div style="margin-top:8px;">
+      ${expanded && type === 'press' ? prcPressExpandedHtml(item) : ''}
+      ${expanded && type !== 'press' ? `<div style="margin-top:8px;">
         ${type === 'press' ? prcBriefPanelHtml(item) : ''}
         ${type === 'corp' ? prcCorpContextHtml(item) : ''}
         ${type === 'press' ? `
@@ -66934,9 +66926,14 @@ const PRC_PRESS_TYPE_LABELS = {
   earnings: 'Earnings Announcement',
   partnership: 'Strategic Partnership',
   charity_or_person: 'Charity / Person Partnership',
-  hire_or_departure: 'Significant Hire / Departure'
+  hire_or_departure: 'Significant Hire / Departure',
+  holding_statement: 'Holding Statement / Crisis Response',
+  talking_points: 'Talking Points',
+  internal_announcement: 'Internal Announcement'
 };
-const PRC_PRESS_AUDIENCE_LABELS = { consumer: 'Consumer', business: 'Business / Trade Network' };
+const PRC_PRESS_AUDIENCE_LABELS = { consumer: 'Consumer', business: 'Business / Trade Network', internal: 'Internal Stakeholders' };
+const PRC_CORP_TYPES = ['holding_statement', 'talking_points', 'internal_announcement'];
+function prcIsCorp(item){ return !!item && (PRC_CORP_TYPES.includes(item.releaseType) || item.audience === 'internal'); }
 // Mirrors backend PRESS_RELEASE_CTA_MODE_LABELS (server.js).
 const PRC_PRESS_CTA_MODE_LABELS = {
   inspiration: 'Use for inspiration',
@@ -66986,63 +66983,218 @@ const PRC_BRIEF_PARTS = [
   { key: 'nextStep', n: 4, title: 'The Next Step', q: 'Why does it matter, and how can guests book?', fields: [
     { f: 'matters', label: 'Why it matters', ph: 'The reason to act now, or what this means for the reader.', rows: 2 } ] }
 ];
+// ---- 2026-10-19 (Todd): one guided flow for every corporate writing job ----
+// 1 create (type, audience, optional campaign) -> 2 four-step brief, each step saved as you go -> 3 Save and draft
+// -> 4 review the draft -> 5 Run contest (Strategy, Headline, Complete piece) -> 6 edit, save, approve; save phrases to the brand library.
+const PRC_BRIEF_PARTS_CORP = [
+  { key: 'news', n: 1, title: 'What happened', q: 'What are we communicating?', fields: [
+    { f: 'what', label: 'What happened, or what is being communicated, in one or two plain sentences', ph: 'e.g. Our booking site was unavailable on Oct 3 from 2 to 6 pm.', rows: 3 } ] },
+  { key: 'experience', n: 2, title: 'What we know', q: 'What do we know, what are we doing, and what can we not say yet?', fields: [
+    { f: 'why', label: 'What we know and what we are doing about it', ph: 'Only confirmed facts and real actions.', rows: 3 },
+    { f: 'distinct', label: 'What we cannot say yet, or must not say', ph: 'Cause not confirmed, legal review pending, no figures yet.', rows: 2 } ] },
+  { key: 'details', n: 3, title: 'The facts', q: 'When, where, who and how many?', fields: [
+    { f: 'when', label: 'When', ph: 'Date and time, duration, effective date', input: true },
+    { f: 'where', label: 'Where or what is affected', ph: 'Systems, locations, products, teams', input: true },
+    { f: 'who', label: 'Who is affected or speaking', ph: 'Audience affected, spokesperson name and title', input: true },
+    { f: 'how', label: 'Facts and figures', ph: 'Numbers, scope, timeline to resolution', rows: 3 } ] },
+  { key: 'nextStep', n: 4, title: 'Next steps', q: 'What should people do, and who do they contact?', fields: [
+    { f: 'matters', label: 'What people should do next', ph: 'The action, the deadline, or what to expect.', rows: 2 } ] }
+];
+function prcBriefPartsFor(item){ return prcIsCorp(item) ? PRC_BRIEF_PARTS_CORP : PRC_BRIEF_PARTS; }
+const prcMetaEdit = {}; const prcContest = {};
+function prcLiveStatus(id){
+  const g = (k, f) => { const el = document.getElementById(`prcBr-${id}-${k}-${f}`); return el ? el.value.trim() : ''; };
+  const cta = document.getElementById(`prcPressEditCtaText-${id}`);
+  const detailsFilled = ['when', 'where', 'who', 'how'].filter(f => g('details', f)).length;
+  const st = { news: !!g('news', 'what'), experience: !!g('experience', 'why'), details: !!g('details', 'when') && detailsFilled >= 2, nextStep: !!(g('nextStep', 'matters') || (cta && cta.value.trim())) };
+  const labels = { news: 0, experience: 1, details: 2, nextStep: 3 };
+  const item = prcState.pressReleases.find(x => x.id === id); const parts = prcBriefPartsFor(item);
+  st.missing = parts.filter(p => !st[p.key]).map(p => p.title); st.complete = st.missing.length === 0;
+  return st;
+}
+function prcBriefLive(id){
+  const item = prcState.pressReleases.find(x => x.id === id); if (!item) return;
+  const st = prcLiveStatus(id);
+  prcBriefPartsFor(item).forEach(p => { const chip = document.getElementById(`prcBriefChip-${id}-${p.n}`); if (chip) chip.textContent = `${st[p.key] ? '✓' : '○'} ${p.n}. ${p.title}`; });
+  const stEl = document.getElementById(`prcBriefStatus-${id}`);
+  if (stEl && !prcBriefLive.keep) stEl.textContent = st.complete ? 'All four steps are filled in. Ready to draft.' : 'Still missing: ' + st.missing.join(', ') + '.';
+}
 function prcBriefPanelHtml(item){
   const b = item.brief || { news: {}, experience: {}, details: {}, nextStep: {} };
+  const corp = prcIsCorp(item); const parts = prcBriefPartsFor(item);
   const st = item.briefStatus || {};
-  const cur = prcBriefStep[item.id] || (PRC_BRIEF_PARTS.find(p => !st[p.key]) || PRC_BRIEF_PARTS[0]).n;
+  const cur = prcBriefStep[item.id] || (parts.find(p => !st[p.key]) || parts[0]).n;
   const brand = escapeHtml(state.company || 'your brand');
   const ctaMode = item.ctaMode || 'inspiration';
-  const chips = PRC_BRIEF_PARTS.map(p => `<button type="button" class="adbt-chip${p.n === cur ? ' on' : ''}" id="prcBriefChip-${item.id}-${p.n}" onclick="prcBriefGo('${item.id}',${p.n})">${st[p.key] ? '✓' : '○'} ${p.n}. ${p.title}</button>`).join('');
-  const panes = PRC_BRIEF_PARTS.map(p => {
+  const chips = parts.map(p => `<button type="button" class="adbt-chip${p.n === cur ? ' on' : ''}" id="prcBriefChip-${item.id}-${p.n}" onclick="prcBriefGo('${item.id}',${p.n})">${st[p.key] ? '✓' : '○'} ${p.n}. ${p.title}</button>`).join('');
+  const panes = parts.map(p => {
     const fields = p.fields.map(fd => {
       const v = escapeHtml((b[p.key] && b[p.key][fd.f]) || '');
       const id = `prcBr-${item.id}-${p.key}-${fd.f}`;
       return `<div class="field" style="margin-top:8px;"><label for="${id}">${fd.label}</label>${fd.input ? `<input type="text" id="${id}" value="${v}" placeholder="${escapeHtml(fd.ph)}" style="width:100%;">` : `<textarea id="${id}" rows="${fd.rows || 3}" placeholder="${escapeHtml(fd.ph)}" style="width:100%;font-family:inherit;">${v}</textarea>`}</div>`;
     }).join('');
-    const cta = p.key === 'nextStep' ? `<div class="field" style="margin-top:8px;"><label for="prcPressEditCtaText-${item.id}">How can guests book or act? (exact wording, if there is one)</label><input type="text" id="prcPressEditCtaText-${item.id}" value="${escapeHtml(item.ctaText || '')}" placeholder="e.g. Call 1-800-000-0000 or book through your travel advisor" style="width:100%;"></div><div class="field" style="margin-top:8px;"><label for="prcPressEditCtaMode-${item.id}">How should that wording be used?</label><select id="prcPressEditCtaMode-${item.id}">${Object.entries(PRC_PRESS_CTA_MODE_LABELS).map(([v, l]) => `<option value="${v}" ${ctaMode === v ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}</select></div>` : '';
+    const ctaLabel = corp ? 'Who should people contact, or where should they go? (exact wording, if there is one)' : 'How can guests book or act? (exact wording, if there is one)';
+    const cta = p.key === 'nextStep' ? `<div class="field" style="margin-top:8px;"><label for="prcPressEditCtaText-${item.id}">${ctaLabel}</label><input type="text" id="prcPressEditCtaText-${item.id}" value="${escapeHtml(item.ctaText || '')}" placeholder="${corp ? 'e.g. Call the service line or email the comms team' : 'e.g. Call 1-800-000-0000 or book through your travel advisor'}" style="width:100%;"></div><div class="field" style="margin-top:8px;"><label for="prcPressEditCtaMode-${item.id}">How should that wording be used?</label><select id="prcPressEditCtaMode-${item.id}">${Object.entries(PRC_PRESS_CTA_MODE_LABELS).map(([v, l]) => `<option value="${v}" ${ctaMode === v ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}</select></div>` : '';
     return `<div id="prcBriefPane-${item.id}-${p.n}" style="display:${p.n === cur ? 'block' : 'none'};"><div style="font-weight:700;margin-top:10px;">${p.n}. ${p.title.toUpperCase()}: ${p.q}</div>${fields}${cta}</div>`;
   }).join('');
   const camp = item.campaignId ? prcCampaignById(item.campaignId) : null;
-  return `<div style="margin-bottom:12px;padding:12px;border:1px solid var(--line, #e3e3e8);border-radius:10px;">
-    <div style="font-weight:700;">Brief for ${brand}'s release</div>
-    <div class="hint" style="margin:2px 0 8px;">Four short answers. The draft and the contest use only what you write here, so nothing is invented.${camp ? ` <button type="button" class="btn-ghost" style="padding:2px 8px;" onclick="prcBriefRefill('${item.id}')">Refill from ${escapeHtml(camp.name || 'campaign')}</button>` : ''}</div>
+  return `<div oninput="prcBriefLive('${item.id}')" style="margin-bottom:12px;padding:12px;border:1px solid var(--line, #e3e3e8);border-radius:10px;">
+    <div style="font-weight:700;">Step 2 of 5: brief for ${brand}'s ${escapeHtml((PRC_PRESS_TYPE_LABELS[item.releaseType] || 'release').toLowerCase())}</div>
+    <div class="hint" style="margin:2px 0 8px;">Four short answers, saved as you move between steps. The draft and the contest use only what you write here, so nothing is invented.${camp ? ` <button type="button" class="btn-ghost" style="padding:2px 8px;" onclick="prcBriefRefill('${item.id}')">Refill from ${escapeHtml(camp.name || 'campaign')}</button>` : ''}</div>
     <div class="adbt-chips">${chips}</div>
     ${panes}
     <div class="btn-row" style="margin-top:10px;flex-wrap:wrap;">
-      <button type="button" class="btn-ghost" onclick="prcBriefGo('${item.id}',${Math.max(1, cur - 1)})">← Back</button>
-      <button type="button" class="btn-ghost" onclick="prcBriefGo('${item.id}',${Math.min(4, cur + 1)})">Next →</button>
-      <button type="button" class="btn-primary" onclick="prcSaveBrief('${item.id}')">Save brief →</button>
-      <button type="button" class="btn-ghost" onclick="prcSaveBrief('${item.id}', true)" ${st.complete ? '' : 'title="Works with what you have; missing parts become placeholders."'}>Save and draft with AI →</button>
+      <button type="button" class="btn-ghost" onclick="prcBriefStepTo('${item.id}',${Math.max(1, cur - 1)})">← Back</button>
+      <button type="button" class="btn-ghost" onclick="prcBriefStepTo('${item.id}',${Math.min(4, cur + 1)})">Next →</button>
+      <button type="button" class="btn-primary" onclick="prcSaveAndDraft('${item.id}')">Save and draft →</button>
     </div>
-    <div id="prcBriefStatus-${item.id}" class="hint" style="margin-top:6px;">${st.complete ? 'All four parts are filled in.' : (st.missing && st.missing.length ? 'Still missing: ' + st.missing.join(', ') + '.' : '')}</div>
+    <div id="prcBriefStatus-${item.id}" class="hint" style="margin-top:6px;">${st.complete ? 'All four steps are filled in. Ready to draft.' : (st.missing && st.missing.length ? 'Still missing: ' + st.missing.join(', ') + '.' : 'Answer each step, then Save and draft.')}</div>
   </div>`;
 }
 function prcBriefGo(id, n){
   n = Math.max(1, Math.min(4, n)); prcBriefStep[id] = n;
-  PRC_BRIEF_PARTS.forEach(p => {
-    const pane = document.getElementById(`prcBriefPane-${id}-${p.n}`); if (pane) pane.style.display = p.n === n ? 'block' : 'none';
-    const chip = document.getElementById(`prcBriefChip-${id}-${p.n}`); if (chip){ chip.classList.toggle('on', p.n === n); }
+  [1, 2, 3, 4].forEach(k => {
+    const pane = document.getElementById(`prcBriefPane-${id}-${k}`); if (pane) pane.style.display = k === n ? 'block' : 'none';
+    const chip = document.getElementById(`prcBriefChip-${id}-${k}`); if (chip){ chip.classList.toggle('on', k === n); }
   });
 }
+// Moving between steps saves the brief quietly, and the checkmarks come from what the server says it stored.
+async function prcBriefStepTo(id, n){ prcBriefGo(id, n); await prcBriefSaveQuiet(id); }
 function prcBriefCollect(id){
   const out = {};
   PRC_BRIEF_PARTS.forEach(p => { out[p.key] = {}; p.fields.forEach(fd => { const el = document.getElementById(`prcBr-${id}-${p.key}-${fd.f}`); out[p.key][fd.f] = el ? el.value.trim() : ''; }); });
   return out;
 }
-async function prcSaveBrief(id, thenDraft){
+async function prcBriefSaveQuiet(id){
   const statusEl = document.getElementById(`prcBriefStatus-${id}`);
   const payload = { brief: prcBriefCollect(id) };
   const ctaTextEl = document.getElementById(`prcPressEditCtaText-${id}`), ctaModeEl = document.getElementById(`prcPressEditCtaMode-${id}`);
   if (ctaTextEl && ctaModeEl){ payload.ctaText = ctaTextEl.value.trim(); payload.ctaMode = ctaModeEl.value; }
-  if (statusEl) statusEl.textContent = 'Saving…';
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/press-releases/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const data = await resp.json().catch(() => ({}));
-    if (!resp.ok){ if (statusEl) statusEl.textContent = data.error || 'Save failed.'; return; }
+    if (!resp.ok){ if (statusEl) statusEl.textContent = data.error || 'Could not save this step.'; return null; }
+    const item = prcState.pressReleases.find(x => x.id === id);
+    if (item){ item.brief = payload.brief; if (payload.ctaText !== undefined){ item.ctaText = payload.ctaText; item.ctaMode = payload.ctaMode; } if (data.briefStatus) item.briefStatus = data.briefStatus; }
+    const st = data.briefStatus || prcLiveStatus(id);
+    const parts = prcBriefPartsFor(item);
+    parts.forEach(p => { const chip = document.getElementById(`prcBriefChip-${id}-${p.n}`); if (chip) chip.textContent = `${st[p.key] ? '✓' : '○'} ${p.n}. ${p.title}`; });
+    if (statusEl) statusEl.textContent = (st.complete ? 'Saved. All four steps are filled in. Ready to draft.' : 'Saved. Still missing: ' + st.missing.join(', ') + '.');
+    return st;
+  } catch (e){ if (statusEl) statusEl.textContent = 'Backend unreachable. Not saved.'; return null; }
+}
+async function prcSaveAndDraft(id){
+  const statusEl = document.getElementById(`prcBriefStatus-${id}`);
+  const live = prcLiveStatus(id);
+  if (!live.complete){
+    const item = prcState.pressReleases.find(x => x.id === id); const parts = prcBriefPartsFor(item);
+    const first = parts.find(p => !live[p.key]); if (first) prcBriefGo(id, first.n);
+    if (statusEl) statusEl.textContent = 'Finish all four steps before drafting. Still missing: ' + live.missing.join(', ') + '.';
+    await prcBriefSaveQuiet(id); return;
+  }
+  const st = await prcBriefSaveQuiet(id); if (!st) return;
+  if (!st.complete){ if (statusEl) statusEl.textContent = 'The saved brief is still missing: ' + st.missing.join(', ') + '.'; return; }
+  if (statusEl) statusEl.textContent = 'Saved. Drafting with AI, this takes a few seconds…';
+  await prcGenerateDraft('press', id);
+  setTimeout(() => { const el = document.getElementById(`prcDraftBlock-${id}`); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 150);
+}
+function prcMetaToggle(id){ prcMetaEdit[id] = !prcMetaEdit[id]; renderReputationStep(); }
+function prcPressExpandedHtml(item){
+  const id = item.id; const corp = prcIsCorp(item);
+  const camp = item.campaignId ? prcCampaignById(item.campaignId) : null;
+  const summary = [PRC_PRESS_TYPE_LABELS[item.releaseType] || 'No type', PRC_PRESS_AUDIENCE_LABELS[item.audience] || 'No audience', camp ? 'Campaign: ' + (camp.name || camp.id) : 'No linked campaign'].map(escapeHtml).join(' · ');
+  const metaEdit = prcMetaEdit[id] ? `<div class="seo-form" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 0;">
+      <select id="prcPressEditType-${id}" style="min-width:180px;"><option value="" ${!item.releaseType ? 'selected' : ''}>Release type…</option>${Object.entries(PRC_PRESS_TYPE_LABELS).map(([v, l]) => `<option value="${v}" ${item.releaseType === v ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}</select>
+      <select id="prcPressEditAudience-${id}" style="min-width:170px;"><option value="" ${!item.audience ? 'selected' : ''}>Audience…</option>${Object.entries(PRC_PRESS_AUDIENCE_LABELS).map(([v, l]) => `<option value="${v}" ${item.audience === v ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}</select>
+      <select id="prcPressEditCampaign-${id}" style="min-width:200px;"><option value="">No linked campaign</option>${prcCampaignOptionsHtml(item.campaignId)}</select>
+      <button type="button" class="btn-primary" onclick="prcSavePressMeta('${id}')">Save →</button>
+      <div id="prcPressMetaStatus-${id}" class="hint" style="flex-basis:100%;"></div></div>` : '';
+  const hasDraft = !!(item.workingCopy && item.workingCopy.trim());
+  const complete = !!(item.briefStatus && item.briefStatus.complete);
+  const draft = `<div id="prcDraftBlock-${id}" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line, #e3e3e8);">
+      <div style="font-weight:700;">Step 4 of 5: review the draft</div>
+      ${hasDraft ? '' : '<p class="hint" style="margin:4px 0 6px;">Your draft appears here after Save and draft. You can also write one yourself.</p>'}
+      <textarea id="prcCopy-press-${id}" rows="8" style="width:100%;font-family:inherit;margin-top:6px;">${escapeHtml(item.workingCopy || '')}</textarea>
+      <div class="btn-row" style="margin-top:6px;flex-wrap:wrap;">
+        <button type="button" class="btn-primary" onclick="prcSaveCopy('press','${id}')">Save draft →</button>
+        <button type="button" class="btn-ghost" onclick="prcSaveSelectionToLibrary('${id}')" title="Select a phrase or paragraph in the draft first">Save selection to brand library</button>
+      </div>
+      <div id="prcCopyStatus-press-${id}" class="hint" style="margin-top:4px;"></div>
+    </div>`;
+  const contest = `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line, #e3e3e8);">
+      <div style="font-weight:700;">Step 5 of 5: run the contest</div>
+      <p class="hint" style="margin:4px 0 8px;">One version from each AI partner, written from your brief. Each shows its strategy, headline and complete text. Drafts are numbered, not named, and you choose.</p>
+      <button type="button" class="btn-ghost" ${complete ? '' : 'disabled title="Finish all four brief steps first."'} onclick="prcRunContest('${id}')">Run contest →</button>
+      <div id="prcContestOut-${id}">${prcContestHtml(id)}</div>
+    </div>`;
+  const decision = `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line, #e3e3e8);">
+      <div class="btn-row" style="flex-wrap:wrap;">
+        <button type="button" class="btn-ghost" onclick="prcSubmitCopyDecision('press','${id}', true)">Approve copy →</button>
+        <button type="button" class="btn-ghost" onclick="prcSubmitCopyDecision('press','${id}', false)">Reject copy →</button>
+      </div>
+      <div class="field" style="margin-top:8px;"><label for="prcDecisionReason-press-${id}">Reason (required to reject; helps the next draft)</label><textarea id="prcDecisionReason-press-${id}" rows="2" placeholder="e.g. Too aggressive a claim for this outlet, missing the required disclosure..."></textarea></div>
+      <div id="prcDecisionFlag-press-${id}" class="hint" style="margin-top:4px;"></div>
+      <div id="prcDecisionHistory-press-${id}" style="margin-top:8px;"></div>
+    </div>`;
+  const linkedin = corp ? '' : `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line, #e3e3e8);">
+      <div class="btn-row" style="flex-wrap:wrap;"><button type="button" class="btn-ghost" onclick="prcGenerateLinkedIn('${id}')">LinkedIn post from this release →</button></div>
+      <div id="prcLinkedinStatus-${id}" class="hint" style="margin-top:4px;"></div>
+      ${item.linkedinCopy ? `<textarea id="prcLinkedin-${id}" rows="5" style="width:100%;font-family:inherit;margin-top:6px;">${escapeHtml(item.linkedinCopy)}</textarea><div class="btn-row" style="margin-top:6px;"><button type="button" class="btn-primary" onclick="prcSaveLinkedin('${id}')">Save LinkedIn copy →</button></div>` : ''}
+    </div>`;
+  return `<div style="margin-top:8px;">
+    <div class="hint" style="margin:0 0 4px;">${summary} · <a class="flink" onclick="prcMetaToggle('${id}')">${prcMetaEdit[id] ? 'Done' : 'Edit'}</a></div>${metaEdit}
+    ${prcBriefPanelHtml(item)}
+    ${draft}
+    ${corp ? '' : srchPanelHtml('press:' + id, { kind: 'press', id })}
+    ${contest}
+    ${decision}
+    ${linkedin}
+  </div>`;
+}
+function prcContestHtml(id){
+  const c = prcContest[id]; if (!c) return '';
+  if (c.running) return '<div class="ai-status-bubble" style="margin-top:8px;">Getting one version from each AI partner, using your brief. This can take a minute.</div>';
+  let h = c.note ? `<p class="hint" style="margin-top:8px;color:var(--advocacy);">${escapeHtml(c.note)}</p>` : '';
+  const list = (c.result && c.result.candidates || []).filter(x => x.copy);
+  h += list.map(x => `<div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px;">
+    <div style="font-weight:700;margin-bottom:6px;">${escapeHtml(x.label)}</div>
+    <div style="font-size:0.8125rem;margin-bottom:4px;"><b>Strategy:</b> ${escapeHtml(x.approach || 'Not stated')}</div>
+    <div style="font-size:0.8125rem;margin-bottom:6px;"><b>Headline:</b> ${escapeHtml(x.headline || 'Not stated')}</div>
+    <div style="font-size:0.8125rem;"><b>Complete text:</b></div>
+    <div style="white-space:pre-wrap;font-size:0.8125rem;max-height:280px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:8px;margin-top:4px;">${escapeHtml(x.copy)}</div>
+    <div style="margin-top:8px;"><button type="button" class="btn-primary" ${c.picked ? 'disabled' : ''} onclick="prcContestPick('${id}','${escapeHtml(x.key)}')">Use this draft →</button></div></div>`).join('');
+  if (c.picked) h += '<p class="hint" style="margin-top:8px;">Saved as the working draft above. Edit it, save it, then approve.</p>';
+  return h;
+}
+async function prcRunContest(id){
+  if (prcContest[id] && prcContest[id].running) return;
+  prcContest[id] = { running: true, result: null, note: '', picked: false };
+  const out = document.getElementById(`prcContestOut-${id}`); if (out) out.innerHTML = prcContestHtml(id);
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/press-releases/${encodeURIComponent(id)}/interview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}), timeoutMs: 100000 });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) prcContest[id].note = data.error || "Couldn't run the contest. Try again.";
+    else if (!data.available) prcContest[id].note = data.note || 'The contest is not available right now.';
+    else prcContest[id].result = data;
+  } catch (e){ prcContest[id].note = 'Could not reach the server. Try again.'; }
+  prcContest[id].running = false;
+  const out2 = document.getElementById(`prcContestOut-${id}`); if (out2) out2.innerHTML = prcContestHtml(id);
+}
+async function prcContestPick(id, key){
+  const c = prcContest[id]; if (!c || !c.result || c.picked) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/press-releases/${encodeURIComponent(id)}/interview/${encodeURIComponent(c.result.interviewId)}/select`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidateKey: key }) });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){ c.note = data.error || "Couldn't save the pick. Try again."; const o = document.getElementById(`prcContestOut-${id}`); if (o) o.innerHTML = prcContestHtml(id); return; }
+    c.picked = true; c.note = '';
     await loadPrCorpCommData();
-    const fresh = document.getElementById(`prcBriefStatus-${id}`); if (fresh && !thenDraft) fresh.textContent = 'Brief saved.';
-    if (thenDraft) prcGenerateDraft('press', id);
-  } catch (e){ if (statusEl) statusEl.textContent = 'Backend unreachable.'; }
+  } catch (e){ c.note = 'Could not reach the server. Try again.'; const o = document.getElementById(`prcContestOut-${id}`); if (o) o.innerHTML = prcContestHtml(id); }
+}
+function prcSaveSelectionToLibrary(id){
+  const ta = document.getElementById(`prcCopy-press-${id}`); const out = document.getElementById(`prcCopyStatus-press-${id}`); if (!ta) return;
+  const sel = ta.value.substring(ta.selectionStart, ta.selectionEnd).trim();
+  if (!sel){ if (out) out.textContent = 'Select the phrase or paragraph in the draft first, then choose Save selection to brand library.'; return; }
+  try { addToLibrary('boilerplate', sel); if (out) out.textContent = 'Saved to the brand library. You can reuse it from the library on any copy field.'; } catch (e){ if (out) out.textContent = 'Could not save to the library.'; }
 }
 function prcBriefRefill(id){
   const item = prcState.pressReleases.find(x => x.id === id); const c = item && prcCampaignById(item.campaignId); if (!c) return;
@@ -67130,7 +67282,6 @@ function renderReputationStep(){
   renderRepMentions();
   renderRepPress();
   renderRepEditorial();
-  renderRepCorpComms();
   renderSpecialtyPartners('reputation');
 }
 
