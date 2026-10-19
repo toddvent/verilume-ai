@@ -12520,7 +12520,7 @@ function geoAnalysis(accountId, upload, withCost){
 }
 // 2026-10-07 — an upload never changes after it is written, so its market overview is computed once and kept in the database.
 // It survives restarts and cold starts, which is what made the page open slowly. A new upload has a new id, so nothing goes stale.
-const GEO_CACHE_V = 'v1';
+const GEO_CACHE_V = 'v2';
 function geoDbCacheGet(accountId, key){
   try { const r = db.prepare('SELECT payload FROM account_geo_cache WHERE accountId = ? AND cache_key = ?').get(accountId, key); return r && r.payload ? JSON.parse(r.payload) : null; } catch (e){ return null; }
 }
@@ -12544,14 +12544,23 @@ function geoOverviewCompute(accountId, upload){
   const analysis = geoAnalysis(accountId, upload, false);
   const dmas = (analysis.dmaExport && analysis.dmaExport.dmas) || [];
   const tiers = {}; GEO_TIER_ORDER.forEach(t => { tiers[t] = 0; }); dmas.forEach(d => { if (tiers[d.opportunityTier] != null) tiers[d.opportunityTier]++; });
-  const relevantTop = dmas.filter(d => d.relevant && d.zScore > 0 && d.populationIndex != null).sort((a, b) => b.populationIndex - a.populationIndex).slice(0, 5)
-    .map(d => ({ dmaCode: d.dmaCode, dmaName: d.dmaName, populationIndex: d.populationIndex, countIndex: d.countIndex, customers: d.countVolume, zScore: d.zScore, pValue: d.pValue }));
+  // 2026-10-19: top markets are ranked by composite score (volume plus intensity), not INDEX alone, which surfaces small markets.
+  // Only statistically relevant, over-indexing markets qualify. Ties break on Z-score, then customers. The other views are kept for the "Rank by" selector.
+  const topRow = d => ({ dmaCode: d.dmaCode, dmaName: d.dmaName, populationIndex: d.populationIndex, countIndex: d.countIndex, customers: d.countVolume, volume: d.volume, composite: d.compositeScore, tier: d.opportunityTier, zScore: d.zScore, pValue: d.pValue });
+  const qual = dmas.filter(d => d.relevant && d.zScore > 0 && d.populationIndex != null);
+  const num = v => (v == null || isNaN(v)) ? -Infinity : Number(v);
+  const rankBy = (k) => qual.slice().sort((a, b) => k === 'index' ? (num(b.populationIndex) - num(a.populationIndex) || num(b.zScore) - num(a.zScore))
+    : k === 'zscore' ? (num(b.zScore) - num(a.zScore) || num(b.compositeScore) - num(a.compositeScore))
+    : k === 'customers' ? (num(b.countVolume) - num(a.countVolume) || num(b.zScore) - num(a.zScore))
+    : (num(b.compositeScore) - num(a.compositeScore) || num(b.zScore) - num(a.zScore) || num(b.countVolume) - num(a.countVolume))).slice(0, 5).map(topRow);
+  const topViews = { composite: rankBy('composite'), index: rankBy('index'), zscore: rankBy('zscore'), customers: rankBy('customers') };
+  const relevantTop = topViews.composite;
   const allMarkets = dmas.map(d => ({ dmaCode: d.dmaCode, dmaName: d.dmaName, country: d.country || 'US', tier: d.opportunityTier, composite: d.compositeScore, customers: d.countVolume, volume: d.volume, populationIndex: d.populationIndex, zScore: d.zScore, pValue: d.pValue, relevant: !!d.relevant, lat: d.lat, lng: d.lng }));
   let stores = { count: 0, first: null };
   try { const rows = db.prepare('SELECT storeId AS "storeId", name, address, lat, lng FROM account_stores WHERE accountId = ?').all(accountId); stores = { count: rows.length, first: rows[0] || null, sample: rows.slice(0, 5) }; } catch (e){}
   const audit = upload.auditJson ? JSON.parse(upload.auditJson) : null;
   return { upload: { id: upload.id, label: upload.label, periodLabel: upload.periodLabel || null, createdAt: upload.createdAt, geoLevel: upload.geoLevel || 'zip', weightMode: upload.weightMode, audit },
-    regions: analysis.regions || null, tiers, topMarkets: relevantTop, markets: allMarkets, marketCount: allMarkets.length, relevantCount: allMarkets.filter(m => m.relevant).length, stores,
+    regions: analysis.regions || null, tiers, topMarkets: relevantTop, topViews, markets: allMarkets, marketCount: allMarkets.length, relevantCount: allMarkets.filter(m => m.relevant).length, stores,
     readinessSummary: analysis.readiness ? { summary: analysis.readiness.summary, pooled: analysis.readiness.pooled, periodDays: analysis.readiness.periodDays } : null,
     note: dmas.length ? null : 'No markets could be placed yet: the zip-to-market reference may not be loaded, or no postal codes matched it.' };
 }
@@ -12954,6 +12963,7 @@ function buildMarketUploadXlsxMarketRows(analysis){
       compositeScore: r.compositeScore != null ? Number(r.compositeScore) : null,
       testControlAssignment: assignment,
       matchPair: pairLabelByKey[key] || (holdoutKeys.has(key) ? 'Holdout' : null),
+      pairSide: (() => { const p = pairs.find(x => x.testDma === key || x.controlDma === key); return p ? (p.testDma === key ? 'test' : 'control') : null; })(),
       popSharePct: r.popShare != null ? r.popShare : null, countIndex: r.countIndex != null ? r.countIndex : null, zScore: r.zScore != null ? r.zScore : null, pValue: r.pValue != null ? r.pValue : null, relevant: r.relevant == null ? null : !!r.relevant,
       pairDistance: (() => { const p = pairs.find(x => x.testDma === key || x.controlDma === key); return p && p.similarityDistance != null ? Math.round(p.similarityDistance * 100) / 100 : null; })(),
       pairMde8: (() => { const rp = analysis.readiness && analysis.readiness.pairs && analysis.readiness.pairs.find(x => x.testDma === key || x.controlDma === key); return rp && rp.mdePct ? rp.mdePct.w8 : null; })(),
@@ -13073,6 +13083,412 @@ function buildMarketUploadXlsxCountryRows(analysis){
     };
   });
 }
+// ---- 2026-10-19: saved, dated Excel file + two guide sheets (Todd) ------------------------------------------------
+// The markets rarely change, so the finished workbook is saved per upload and served from the save. It is rebuilt only
+// when the upload, the market reference data or this builder changes, or when the person asks ("Rebuild"). The file name
+// carries the date it was built. XLSX_BUILD_VERSION is bumped whenever the sheet layout or wording changes.
+const XLSX_BUILD_VERSION = '2026-10-19b';
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS market_export_cache (
+    account_id TEXT NOT NULL,
+    upload_id TEXT NOT NULL,
+    variant TEXT NOT NULL,
+    signature TEXT NOT NULL,
+    built_at TEXT NOT NULL,
+    file_b64 TEXT NOT NULL,
+    PRIMARY KEY (account_id, upload_id, variant)
+  );
+`);
+function marketExportSignature(upload){
+  let rowInfo = { c: 0, s: 0 }; try { rowInfo = db.prepare('SELECT COUNT(*) AS c, COALESCE(SUM(customerCount), 0) AS s FROM market_customer_rows WHERE marketUploadId = ?').get(upload.id) || rowInfo; } catch (e){}
+  let ref = ''; try { const st = dmaMasterStatus(); ref = [st.zipsLoaded, st.dmaCount, (st.sources || []).map(x => x.updatedAt).join(',')].join('|'); } catch (e){}
+  return require('crypto').createHash('sha1').update([XLSX_BUILD_VERSION, upload.id, upload.createdAt, upload.weightMode, upload.geoLevel, upload.auditJson || '', Number(rowInfo.c), Number(rowInfo.s), ref, geoBookingFingerprint(upload.accountId)].join('~')).digest('hex');
+}
+const marketExportInFlight = new Map();
+function marketExportCachedRow(accountId, upload, variant){
+  let row = null; try { row = db.prepare('SELECT signature, built_at AS "built_at" FROM market_export_cache WHERE account_id = ? AND upload_id = ? AND variant = ?').get(accountId, upload.id, variant); } catch (e){}
+  if (!row) return { exists: false };
+  return { exists: true, fresh: row.signature === marketExportSignature(upload), builtAt: row.built_at };
+}
+// Returns { buffer, builtAt, cached }. Concurrent requests for the same file share one build.
+async function ensureMarketExport(accountId, upload, variant, force){
+  const key = `${accountId}|${upload.id}|${variant}`;
+  const sig = marketExportSignature(upload);
+  if (!force){
+    let row = null; try { row = db.prepare('SELECT signature, built_at AS "built_at", file_b64 AS "file_b64" FROM market_export_cache WHERE account_id = ? AND upload_id = ? AND variant = ?').get(accountId, upload.id, variant); } catch (e){}
+    if (row && row.signature === sig && row.file_b64) return { buffer: Buffer.from(row.file_b64, 'base64'), builtAt: row.built_at, cached: true };
+  }
+  if (marketExportInFlight.has(key)) return marketExportInFlight.get(key);
+  const p = (async () => {
+    const builtAt = new Date().toISOString();
+    const analysis = computeMarketUploadAnalysis(accountId, upload, { skipZipMatching: true, skipTradeAreas: true });
+    let approach = null; try { approach = buildTestApproach(accountId, upload, analysis); } catch (e){ console.warn('[market-export] approach failed:', e && e.message); }
+    const buffer = await buildMarketUploadXlsx(analysis, upload, { definedCountriesOnly: variant === 'defined', accountId, builtAt, approach });
+    try {
+      db.prepare('DELETE FROM market_export_cache WHERE account_id = ? AND upload_id = ? AND variant = ?').run(accountId, upload.id, variant);
+      db.prepare('INSERT INTO market_export_cache (account_id, upload_id, variant, signature, built_at, file_b64) VALUES (?, ?, ?, ?, ?, ?)').run(accountId, upload.id, variant, sig, builtAt, buffer.toString('base64'));
+    } catch (e){ console.error('[market-export-cache] could not save the built file:', e && e.message); }
+    return { buffer, builtAt, cached: false };
+  })();
+  marketExportInFlight.set(key, p);
+  p.then(() => marketExportInFlight.delete(key), () => marketExportInFlight.delete(key));
+  return p;
+}
+function marketExportFileName(variant, builtAt){
+  const day = String(builtAt || new Date().toISOString()).slice(0, 10);
+  return variant === 'defined' ? `Verilume-defined-countries-detail-${day}.xlsx` : `Verilume-all-markets-detail-${day}.xlsx`;
+}
+
+// ---- 2026-10-19: recommended testing approach from the transaction history (Todd) --------------------------------------
+// The client's booking/transaction history (the guest bookings loaded in Train the Brain) decides which kind of market test
+// is realistic. Detectable lift is the same best-case Poisson number used everywhere else on this page (95% confidence,
+// 80% power, x2 pre-period allowance). The ladder is deliberately simple and the thresholds are printed in the download.
+//   Matched market pairs   best single pair detects 10% or less in 13 weeks
+//   Pooled market groups   all test markets vs all control markets detect 20% or less in 13 weeks
+//   Pooled, longer test    the same groups detect 20% or less in 26 weeks
+//   Time-based test / MMM  geography cannot read a lift at this volume; markets are for targeting only
+// A product group can be modeled on its own when its own transactions, in the same test and control markets, clear the same ladder.
+const GEO_APPROACH = { pairMax: 10, pooledMax: 20, shortWeeks: 13, longWeeks: 26, strong: 5, usable: 10 };
+const GEO_APPROACH_LABEL = { pairs: 'Matched market pairs', pooled: 'Pooled market groups', pooled_long: 'Pooled market groups, longer test', time_based: 'Time-based test or media mix model' };
+function geoBookingFingerprint(accountId){
+  try { const r = db.prepare('SELECT COUNT(*) AS c, MAX("updatedAt") AS u FROM account_guest_bookings WHERE accountId = ?').get(accountId); return `${r.c}|${r.u}`; } catch (e){ return 'none'; }
+}
+// Distinct transactions (booking codes) per market and product group, inside the upload's own date window.
+function geoBookingsByDmaGroup(accountId, audit){
+  const settings = getTransactionSettings(accountId);
+  const all = db.prepare('SELECT year, month, "bookingDate", "bookingCode", "bookingStatus", "bookingType", "promoType", "productGroup", "creativeFocus", "guestPostalCode" FROM account_guest_bookings WHERE accountId = ?').all(accountId);
+  const from = audit && audit.dateFrom ? String(audit.dateFrom).slice(0, 10) : null, to = audit && audit.dateTo ? String(audit.dateTo).slice(0, 10) : null;
+  const dateOf = r => { const d = String(aliasVal(r, 'bookingDate') || ''); if (/^\d{4}-\d{2}-\d{2}/.test(d)) return d.slice(0, 10); if (r.year && r.month) return `${r.year}-${String(r.month).padStart(2, '0')}-15`; return null; };
+  const zips = new Set(); all.forEach(r => { const z = String(aliasVal(r, 'guestPostalCode') || '').trim(); if (z) zips.add(z); });
+  const keyOf = {}; zips.forEach(z => { const g = normalizeGeoKey(z, 'US'); if (g && !/^DMA:/.test(g.key) && g.country === 'US') keyOf[z] = g.key; });
+  const keys = Array.from(new Set(Object.values(keyOf))).map(k => String(k).padStart(5, '0'));
+  const dmaOf = {};
+  for (let i = 0; i < keys.length; i += 200){ const ch = keys.slice(i, i + 200); db.prepare(`SELECT zip, dmaCode AS "dmaCode" FROM zip_dma_master WHERE zip IN (${ch.map(() => '?').join(',')})`).all(...ch).forEach(f => { dmaOf[f.zip] = String(f.dmaCode); }); }
+  const seen = new Set(); const by = {}; const groupTotals = {}; let minD = null, maxD = null, inWindow = 0, withMarket = 0;
+  all.forEach(r => {
+    if (!rowCounts(r, settings)) return;
+    const d = dateOf(r); if (d){ if (!minD || d < minD) minD = d; if (!maxD || d > maxD) maxD = d; }
+    if (from && (!d || d < from)) return; if (to && (!d || d > to)) return;
+    const code = String(aliasVal(r, 'bookingCode')); if (seen.has(code)) return; seen.add(code); inWindow++;
+    const z = String(aliasVal(r, 'guestPostalCode') || '').trim(); const k = keyOf[z]; if (!k) return; const dc = dmaOf[String(k).padStart(5, '0')]; if (dc == null) return;
+    withMarket++;
+    const g = String(aliasVal(r, 'productGroup') || '').trim() || '(none)';
+    (by[dc] = by[dc] || {})[g] = (by[dc][g] || 0) + 1; groupTotals[g] = (groupTotals[g] || 0) + 1;
+  });
+  const histWeeks = minD && maxD ? Math.round((new Date(maxD) - new Date(minD)) / (7 * 86400000)) + 1 : 0;
+  return { byDma: by, groupTotals, inWindow, withMarket, histWeeks, firstDate: minD, lastDate: maxD };
+}
+function geoApproachRung(best13, pooled13, pooled26){
+  if (best13 != null && best13 <= GEO_APPROACH.pairMax) return 'pairs';
+  if (pooled13 != null && pooled13 <= GEO_APPROACH.pooledMax) return 'pooled';
+  if (pooled26 != null && pooled26 <= GEO_APPROACH.pooledMax) return 'pooled_long';
+  return 'time_based';
+}
+function geoStrength(lift){ return lift == null ? null : (lift <= GEO_APPROACH.strong ? 'Strong' : (lift <= GEO_APPROACH.usable ? 'Usable' : (lift <= GEO_APPROACH.pooledMax ? 'Thin' : 'Too small'))); }
+function buildTestApproach(accountId, upload, analysis){
+  const rd = analysis && analysis.readiness; const audit = upload && upload.auditJson ? (() => { try { return JSON.parse(upload.auditJson); } catch (e){ return null; } })() : null;
+  const Z = 2.8, D = 2;
+  const out = { thresholds: Object.assign({}, GEO_APPROACH), source: audit && audit.source === 'bookings' ? 'bookings' : 'customer_file', productGroupsFilter: audit && audit.productGroups ? audit.productGroups : null };
+  if (!rd || !rd.pairs || !rd.pairs.length){
+    return Object.assign(out, { available: false, approach: 'time_based', label: GEO_APPROACH_LABEL.time_based, headline: 'There are not enough markets with volume to form test and control pairs.',
+      why: ['No matched market pairs could be formed from this upload.'], steps: geoApproachSteps('time_based', null, out), groups: [], metrics: {} });
+  }
+  const periodDays = rd.periodDays || 365, wk = periodDays / 7;
+  const mdeOf = (nT, nC, weeks) => { const a = nT / wk * weeks, b = nC / wk * weeks; return (a > 0 && b > 0) ? Z * Math.sqrt(D * (1 / a + 1 / b)) * 100 : null; };
+  const r1 = v => v == null ? null : Math.round(v * 10) / 10;
+  const best13 = Math.min(...rd.pairs.map(p => mdeOf(p.testVolume, p.controlVolume, 13)).filter(v => v != null));
+  const sumT = rd.pairs.reduce((a, p) => a + p.testVolume, 0), sumC = rd.pairs.reduce((a, p) => a + p.controlVolume, 0);
+  const pooled13 = mdeOf(sumT, sumC, 13), pooled26 = mdeOf(sumT, sumC, 26);
+  const rung = geoApproachRung(Number.isFinite(best13) ? best13 : null, pooled13, pooled26);
+  const lift = rung === 'pairs' ? best13 : (rung === 'pooled' ? pooled13 : (rung === 'pooled_long' ? pooled26 : pooled26));
+  let by = null, groups = [];
+  if (out.source === 'bookings'){
+    try {
+      by = geoBookingsByDmaGroup(accountId, audit);
+      const names = Object.keys(by.groupTotals).sort((a, b) => by.groupTotals[b] - by.groupTotals[a]).slice(0, 20);
+      names.forEach(g => {
+        let T = 0, C = 0; const per = rd.pairs.map(p => { const t = (by.byDma[String(p.testDma)] || {})[g] || 0, c = (by.byDma[String(p.controlDma)] || {})[g] || 0; T += t; C += c; return [t, c]; });
+        const b13 = Math.min(...per.map(x => mdeOf(x[0], x[1], 13)).filter(v => v != null));
+        const p13 = mdeOf(T, C, 13), p26 = mdeOf(T, C, 26);
+        const gr = geoApproachRung(Number.isFinite(b13) ? b13 : null, p13, p26);
+        groups.push({ name: g, transactions: by.groupTotals[g], sharePct: by.withMarket ? r1(by.groupTotals[g] / by.withMarket * 100) : null, testTransactions: T, controlTransactions: C,
+          bestPair13: Number.isFinite(b13) ? r1(b13) : null, pooled13: r1(p13), pooled26: r1(p26), approach: gr, label: GEO_APPROACH_LABEL[gr], strength: geoStrength(gr === 'pooled_long' ? p26 : (gr === 'pairs' ? b13 : p13)),
+          canModelSeparately: gr !== 'time_based', note: gr === 'time_based' ? 'Too few transactions in the test and control markets to read this group alone. Measure it inside the total, or use a time-based test.' : (gr === 'pooled_long' ? 'Can be read on its own with a longer test (up to 26 weeks).' : 'Can be read on its own: filter the weekly bookings to this product group.') });
+      });
+    } catch (e){ console.warn('[geo-approach] product group split failed:', e && e.message); }
+  }
+  const weeklyTx = by && by.withMarket ? Math.round(by.withMarket / wk * 10) / 10 : Math.round((sumT + sumC) / wk * 10) / 10;
+  const histWeeks = by ? by.histWeeks : null;
+  const metrics = { bestPair13: Number.isFinite(best13) ? r1(best13) : null, pooled13: r1(pooled13), pooled26: r1(pooled26), weeklyTransactions: weeklyTx, periodDays: Math.round(periodDays), assumedPeriod: !!rd.assumedPeriod, pairs: rd.pairs.length,
+    testTransactions: Math.round(sumT), controlTransactions: Math.round(sumC), historyWeeks: histWeeks, firstDate: by ? by.firstDate : null, lastDate: by ? by.lastDate : null };
+  const why = [];
+  why.push(`Best single pair would need a ${metrics.bestPair13}% lift to be seen in 13 weeks (rule for pairs: ${GEO_APPROACH.pairMax}% or less).`);
+  why.push(`All ${rd.pairs.length} pairs pooled could see ${metrics.pooled13}% in 13 weeks and ${metrics.pooled26}% in 26 weeks (rule for pooling: ${GEO_APPROACH.pooledMax}% or less).`);
+  if (out.source === 'bookings') why.push(`About ${weeklyTx} transactions a week are placed in a market${histWeeks ? `, with ${histWeeks} weeks of history on file` : ''}.`);
+  else why.push('This upload is a customer file, not transaction history, so weekly volume and product groups are not known. Build the markets from booking history for a firmer recommendation.');
+  if (rd.assumedPeriod) why.push('The upload does not state its period, so it was treated as one year. A longer period means lower weekly volume and a weaker result.');
+  const sep = groups.filter(g => g.canModelSeparately).length;
+  const filterAdvice = groups.length ? (sep ? `${sep} of ${groups.length} product group${groups.length === 1 ? ' has' : 's have'} enough transactions in the test and control markets to be modeled on ${sep === 1 ? 'its' : 'their'} own (filter the bookings to the product group when you read the test).` : 'No product group has enough transactions to be modeled on its own. Read the test on total transactions.') : (out.source === 'bookings' ? 'No product group is recorded on the bookings, so the test is read on total transactions.' : null);
+  const hist = histWeeks != null ? (histWeeks >= 104 ? 'enough history (two years or more) to consider a media mix model alongside tests' : (histWeeks >= 52 ? 'a year of history, enough for a test baseline but not yet for a media mix model' : 'under a year of history, so seasonality cannot be separated from a lift yet')) : null;
+  return Object.assign(out, { available: true, approach: rung, label: GEO_APPROACH_LABEL[rung], strength: rung === 'time_based' ? 'Too small' : geoStrength(lift), headline: geoApproachHeadline(rung, metrics), why, steps: geoApproachSteps(rung, metrics, out), metrics, groups, filterAdvice, historyNote: hist });
+}
+function geoApproachHeadline(rung, m){
+  if (rung === 'pairs') return `Your volume supports testing individual market pairs: the best pair can detect ${m.bestPair13}% in 13 weeks.`;
+  if (rung === 'pooled') return `Pool the test markets into one group and the control markets into another. Together they can detect ${m.pooled13}% in 13 weeks; single pairs cannot.`;
+  if (rung === 'pooled_long') return `Pool the markets and plan for a longer test. Together they can detect ${m.pooled26}% in 26 weeks, but only ${m.pooled13}% in 13.`;
+  return `Market tests cannot read a realistic lift at this transaction volume (${m.pooled26 == null ? 'n/a' : m.pooled26 + '%'} even pooled over 26 weeks). Use the markets for targeting, and measure with time-based tests or a media mix model.`;
+}
+function geoApproachSteps(rung, m, ctx){
+  const s = [];
+  if (rung === 'pairs'){ s.push('Pick the pairs with a small Pair_Similarity_Distance and similar customer counts. Use the Holdout markets as untouched comparison markets.'); s.push('Run each pair for at least the length shown on the Pooled Test Design tab, and read weekly transactions in the Truth Lab.'); s.push('Pooling several pairs still helps: it makes the result steadier.'); }
+  else if (rung === 'pooled'){ s.push('Treat every row marked Pooled test group as one test market, and every row marked Pooled control group as one control market.'); s.push('Run at least 13 weeks. Use the Pooled Test Design tab to size the media change so the expected lift is above the detectable lift.'); s.push('Do not read results market by market; read the groups. Single markets will look noisy.'); }
+  else if (rung === 'pooled_long'){ s.push('Pool the markets as above, and plan for 26 weeks so the groups have enough transactions.'); s.push('Raise the media change in the test markets if you can: a bigger change is visible sooner.'); s.push('Check seasonality: a 26-week test should compare against the same weeks last year or a control group, never the weeks before.'); }
+  else { s.push('Use this file for targeting: strongholds, white space and tiers show where to place media.'); s.push('Measure with a time-based test: switch media on and off (or up and down) in the same markets and compare weekly transactions before, during and after, with Holdout markets as a comparison where possible.'); s.push('Once there are two years of weekly history by market, a media mix model can use spend variation over time instead of market splits.'); }
+  if (ctx && ctx.source === 'bookings') s.push('To test a single product group, build the markets with that product group filter, or read the test on that group\'s transactions (see the By Product Group tab).');
+  return s;
+}
+
+// Pooled view of the same matched pairs: every test market together against every control market together, plus each tier.
+// Same method as buildPairReadiness (95% confidence, 80% power, Poisson counts, x2 allowance for the pre-period baseline).
+function marketPooledDesign(analysis){
+  const rd = analysis && analysis.readiness;
+  if (!rd || !rd.pairs || !rd.pairs.length) return null;
+  const Z = 2.8, DESIGN = 2;
+  const periodDays = rd.periodDays || 365, weeksInPeriod = periodDays / 7;
+  const tierBy = {}; ((analysis.dmaExport && analysis.dmaExport.dmas) || []).forEach(d => { tierBy[d.dmaCode] = d.opportunityTier; });
+  const group = (pairs, label) => {
+    const T = pairs.reduce((a, p) => a + p.testVolume, 0), C = pairs.reduce((a, p) => a + p.controlVolume, 0);
+    const wT = T / weeksInPeriod, wC = C / weeksInPeriod;
+    const mde = w => (wT > 0 && wC > 0) ? Z * Math.sqrt(DESIGN * (1 / (wT * w) + 1 / (wC * w))) * 100 : null;
+    const wk = lift => (wT > 0 && wC > 0) ? Math.ceil(DESIGN * (1 / wT + 1 / wC) * Math.pow(Z / (lift / 100), 2)) : null;
+    const r1 = v => v == null ? null : Math.round(v * 10) / 10;
+    return { label, pairs: pairs.length, test: Math.round(T), control: Math.round(C), weeklyT: wT, weeklyC: wC, m4: r1(mde(4)), m8: r1(mde(8)), m13: r1(mde(13)), w10: wk(10) };
+  };
+  const all = group(rd.pairs, 'All pairs together');
+  const tiers = [];
+  ['Must Win', 'Growth', 'Opportunistic', 'Monitor'].forEach(t => {
+    const ps = rd.pairs.filter(p => tierBy[p.testDma] === t);
+    if (ps.length >= 2) tiers.push(group(ps, t + ' pairs together'));
+  });
+  const single = rd.pairs.map(p => p.mdePct && p.mdePct.w8).filter(v => v != null).sort((a, b) => a - b);
+  const median = single.length ? single[Math.floor(single.length / 2)] : null;
+  const tooSmall = rd.pairs.filter(p => p.grade === 'Too small').length;
+  const costing = rd.costing || null;
+  return { all, tiers, bestSingle: single.length ? single[0] : null, medianSingle: median, pairCount: rd.pairs.length, tooSmall, periodDays: Math.round(periodDays), weeksInPeriod, assumedPeriod: !!rd.assumedPeriod,
+    cpb: costing && costing.costPerBooking > 0 ? Number(costing.costPerBooking) : null, cpbSource: costing && costing.source ? String(costing.source) : null, Z, DESIGN };
+}
+
+function addMarketGuideSheet(wb, analysis, pooled, builtAt, approach){
+  const ws = wb.addWorksheet('How to Use This File', { views: [{ showGridLines: false }] });
+  ws.columns = [{ width: 34 }, { width: 120 }];
+  ws.getCell(1, 1).value = 'HOW TO USE THIS FILE'; ws.getCell(1, 1).font = { bold: true, size: 14 };
+  ws.getCell(2, 1).value = `Built ${String(builtAt || new Date().toISOString()).slice(0, 10)} from your market upload. The markets rarely change, so Verilume saves this file and reuses it until the upload or the market reference data changes. Use Rebuild on the Visualize markets card to refresh it.`;
+  ws.getCell(2, 1).font = { italic: true, size: 9, color: { argb: 'FF888888' } };
+  const pc = pooled ? pooled.pairCount : null;
+  const pooledTxt = pooled ? `${pooled.all.m8}% over 8 weeks` : 'not available for this upload';
+  const bestTxt = pooled && pooled.bestSingle != null ? `${pooled.bestSingle}%` : 'n/a';
+  const sections = [
+    ['YOUR RECOMMENDED APPROACH', approach ? [
+      ['Approach', `${approach.label}${approach.strength ? ` (${approach.strength})` : ''}. ${approach.headline}`],
+      ['Why', (approach.why || []).join(' ')],
+      ['What the Recommended_Use column means', 'Each market is labelled with its part in this approach: pooled test group, pooled control group, test or control market in a pair, keep out of the test (holdout), or targeting only. Filter the By Market tab on it.'],
+      ['Product groups', approach.filterAdvice || 'No product group detail is available for this upload.'],
+      ['The ladder', `Matched pairs when the best single pair detects ${GEO_APPROACH.pairMax}% or less in 13 weeks; pooled groups when all test markets together against all control markets together detect ${GEO_APPROACH.pooledMax}% or less in 13 weeks; pooled groups with a 26 week test when they detect ${GEO_APPROACH.pooledMax}% or less in 26 weeks; otherwise a time-based test or media mix model, with the markets used for targeting.`]
+    ] : [['Approach', 'No recommendation could be worked out for this upload.']]],
+    ['WHAT THIS FILE IS FOR', [
+      ['Purpose', 'One row per market (DMA). It tells you where your customers are, which markets matter most, which markets can be held back from testing, and which markets look alike enough to pair for a test. It is a planning file: it does not tell you whether a test worked. Results are read in the Truth Lab.'],
+      ['Where the numbers come from', 'Your customer upload, rolled up to markets through the postal-code-to-market reference data, compared with how many people live in each market. Customers whose postal codes could not be placed are listed on the By Postal Code tab and are not in the market numbers.'],
+      ['How to use it, in order', '1. Sort by Opportunity_Tier or Composite_Score to see where to focus. 2. Use Customer_Index_vs_Population and Z_Score to see strongholds and white space. 3. Take the Holdout markets out of any test. 4. Pick Match_Pair rows with a small Pair_Similarity_Distance as test and control markets. 5. Open the Pooled Test Design tab to check that the test group can show a lift, and what media change it needs.']
+    ]],
+    ['THE COLUMNS', [
+      ['Geographic_Location', 'The market code and name (a Nielsen-style TV market, DMA). Outside the US the market follows the country\'s own market split.'],
+      ['Customer_Count / Revenue', 'Customers (or revenue, when the upload was weighted by revenue) placed in this market. Only one of the two is filled in.'],
+      ['Population', 'People living in the market, from the population reference data. It is the yardstick for "is this market over or under represented?"'],
+      ['INDEX', 'Your share of customers in the market divided by the market\'s share of population, times 100. 100 means your customers appear in proportion to the people who live there. 200 means twice as many as population predicts. 50 means half. It matters because a big city has many customers just by being big; the index separates "big" from "strong for you". INDEX is the number the Composite_Score and the market pairing use.'],
+      ['Customer_Index_vs_Population', 'The same comparison, recalculated on customer counts only and printed next to Z_Score so the statistics and the index come from identical numbers. On a customer-weighted upload it matches INDEX within a few points (rounding and the base of unplaced postal codes). On a revenue-weighted upload INDEX follows revenue while this column still follows customers, so they can differ. If they agree you can ignore this one.'],
+      ['Composite_Score', 'A 0 to 100 priority score. Two thirds is how many customers the market has (on a log scale, so New York does not drown out everything else, scaled to your largest market) and one third is the INDEX (scaled to your highest INDEX). High scores are markets that are both large and strong for you. The score is relative to your own markets, not a national benchmark.'],
+      ['Opportunity_Tier', 'Composite_Score split into quarters across your markets: top quarter Must Win, then Growth, Opportunistic, Monitor. Because it is quarters, about a quarter of markets land in each tier by design; it ranks, it does not say a market is good or bad in absolute terms.'],
+      ['Test_Control_Assignment', 'Holdout: about one market in six, spread evenly from the highest to the lowest score, kept out of every test so you always have untouched markets to compare against. Test/Control: markets that were paired. Not in test: left over when there was no partner.'],
+      ['Match_Pair', 'Two markets share the same label (for example MW2: the Must Win tier, pair 2). They are the closest match on INDEX among the markets that were left. One becomes the test market and the other its control. The match is on INDEX only ("who lives here"). There is no sales history by market in this file yet, so a pair can differ in size or trend. Check Customer_Count for both before you rely on a pair.'],
+      ['Pair_Similarity_Distance', 'How far apart the two markets of a pair are on INDEX. 0 means identical. Small is better; a pair more than about 10 points apart is a weak match.'],
+      ['Population_Share_Pct', 'The market\'s share of the country\'s population. It is what your customers would be spread by if they followed population exactly.'],
+      ['Z_Score', 'How many standard errors the market\'s customer count sits above (positive) or below (negative) what population share alone predicts. Around zero means as expected. Above +1.96 is a stronghold, you have more customers than population explains. Below -1.96 is white space, fewer than expected. The size of very large values (such as 30) only says the gap is very clear; use it to rank, not as a precise number.'],
+      ['P_Value', 'The chance of seeing a gap this large by luck if your customers really followed population. Under 0.05 is the usual line.'],
+      ['Statistically_Relevant', 'Yes when the market has at least 30 customers and the Z_Score is beyond plus or minus 1.96. It covers over-indexed and under-indexed markets, so a Yes with a negative Z_Score is a reliable gap to close, not a strength. No means there is too little volume to be sure either way.'],
+      ['Detectable_Lift_8wk_Pct', 'The smallest change in customers that this one test and control pair could reliably detect after 8 weeks (95% confidence, 80% power). Smaller is better. It uses only customer volume and does not include market-to-market noise, so it is a best case.'],
+      ['Pair_Readiness', 'A grade for that number: Strong is 5% or better, Usable 10%, Thin 20%, Too small above 20%. See the next section for what Too small means and what to do about it.']
+    ]],
+    ['WHY EVERY PAIR CAN SAY "TOO SMALL"', [
+      ['What it means', `Pair_Readiness asks one narrow question: could this single pair of markets, on its own, prove a lift by counting customers over 8 weeks? ${pc != null ? `Here the best single pair needs a ${bestTxt} lift and ${pooled.tooSmall} of ${pc} pairs grade Too small.` : ''} A market has only a few customers a week, so any one market is noisy, and real media lifts are usually far smaller than the 40% to 1,000% a single pair would need.`],
+      ['So why is the file still useful?', 'Because most of what it gives you is not about proving a lift. Index, composite score, tier, Holdout, pairing, strongholds and white space tell you where to put media and which markets are fair comparisons. Too small is a warning about how to run the test, not a reason to discard the file.'],
+      ['The fix: pool the markets', `Test all the test markets as one group against all the control markets as one group. That adds the volume together. ${pooled ? `Here all ${pc} pairs together could detect about ${pooledTxt}, against ${bestTxt} for the best single pair.` : ''} The Pooled Test Design tab shows this for all pairs and for each tier.`],
+      ['The second fix: use the right measure', 'Customer counts from a customer file are the weakest measure. For a real test use weekly bookings or revenue for each market from the 8 to 13 weeks before the test and through it. Weekly bookings are much larger numbers than new customers, and the Truth Lab compares test and control against that history. The numbers in this file are for choosing and sizing a test, not for reading it.'],
+      ['Does the period matter?', pooled && pooled.assumedPeriod ? 'Yes. This upload does not say what period it covers, so it was treated as one year. If it holds several years of customers the true weekly volume is lower and the detectable lift is higher. Enter the period on the upload for tighter numbers.' : `Yes. The upload covers about ${pooled ? pooled.periodDays : 365} days and weekly volume is counted from that.`]
+    ]],
+    ['SIZING A TEST FROM MEDIA SPEND, NOT JUST VOLUME', [
+      ['Why spend matters as much as volume', 'Volume sets how much noise a test has: how small a change you can see. Media spend sets how big a change you create. A test only works when the lift you can expect from the extra spend is larger than the lift you can detect. Starting from volume alone tells you the second half and ignores the first.'],
+      ['How to plan it', 'Choose the change in media you can afford in the test markets (for example 25% more, or a new channel). Estimate the lift that change should buy. Check that it is larger than the pooled detectable lift for the test length. If it is not, raise the spend change, lengthen the test, or add test markets. The Pooled Test Design tab does this arithmetic with cells you can change.'],
+      ['What is an assumption', 'The tab uses a cost multiplier: the last dollar of media buys fewer customers than the average dollar. It starts at 2.0 (a 50% increase in spend gives about a 25% lift). That is a placeholder, not a measurement. Replace it with results from your own confirmed tests in the Truth Lab or your media mix model as they build up.']
+    ]],
+    ['LIMITS TO KEEP IN MIND', [
+      ['Matching', 'Pairs are matched on INDEX only. They do not yet use sales history, seasonality or demographics by market.'],
+      ['Detectable lift', 'Best case. It leaves out market-to-market noise and any outside event during the test.'],
+      ['Reference data', 'Market boundaries and population come from the reference data loaded in Verilume, not a paid Nielsen licence, and may not match another provider\'s market list exactly.']
+    ]]
+  ];
+  let r = 4;
+  sections.forEach(sec => {
+    const h = ws.getRow(r); h.getCell(1).value = sec[0]; h.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    h.getCell(1).fill = h.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E2761' } }; r++;
+    sec[1].forEach(([k, v]) => {
+      const row = ws.getRow(r); row.getCell(1).value = k; row.getCell(1).font = { bold: true }; row.getCell(2).value = v;
+      row.getCell(1).alignment = row.getCell(2).alignment = { vertical: 'top', wrapText: true };
+      row.height = Math.max(18, Math.ceil(String(v).length / 105) * 15 + 4); r++;
+    });
+    r++;
+  });
+}
+
+function addPooledDesignSheet(wb, pooled, builtAt, approach){
+  const ws = wb.addWorksheet('Pooled Test Design', { views: [{ showGridLines: false }] });
+  ws.columns = [{ width: 36 }, { width: 14 }, { width: 14 }, { width: 16 }, { width: 16 }, { width: 18 }, { width: 18 }, { width: 18 }, { width: 22 }];
+  const hdrFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E4D8' } };
+  const inputFont = { color: { argb: 'FF0000FF' }, bold: true };
+  ws.getCell(1, 1).value = 'POOLED TEST DESIGN: THE TEST MARKETS TOGETHER AGAINST THE CONTROL MARKETS TOGETHER'; ws.getCell(1, 1).font = { bold: true, size: 14 };
+  if (!pooled){
+    ws.getCell(2, 1).value = 'No matched pairs are available for this upload, so there is nothing to pool yet.'; return;
+  }
+  ws.getCell(2, 1).value = `Single market pairs are usually too small to read a lift. Pooling adds their volume together. Built ${String(builtAt || '').slice(0, 10)}. Detectable lift is at 95% confidence and 80% power on customer counts and is a best case (no market-to-market noise). Blue cells can be changed.`;
+  ws.getCell(2, 1).font = { italic: true, size: 9, color: { argb: 'FF888888' } };
+  if (approach && approach.approach === 'time_based'){ ws.getCell(3, 1).value = 'Your recommended approach is a time-based test or media mix model. This tab shows why pooling the markets is still not enough at your transaction volume.'; ws.getCell(3, 1).font = { bold: true, color: { argb: 'FFB00020' } }; }
+  let r = 4;
+  ws.getCell(r, 1).value = '1. WHAT CAN EACH GROUP DETECT?'; ws.getCell(r, 1).font = { bold: true }; r++;
+  const heads = ['Group', 'Pairs', 'Test customers', 'Control customers', 'Detectable lift, 4 weeks (%)', 'Detectable lift, 8 weeks (%)', 'Detectable lift, 13 weeks (%)', 'Weeks to detect a 10% lift'];
+  heads.forEach((h, i) => { const c = ws.getRow(r).getCell(i + 1); c.value = h; c.font = { bold: true }; c.fill = hdrFill; c.alignment = { wrapText: true, vertical: 'top' }; });
+  ws.getRow(r).height = 32; r++;
+  const lines = [pooled.all].concat(pooled.tiers);
+  lines.forEach(g => { const row = ws.getRow(r); [g.label, g.pairs, g.test, g.control, g.m4, g.m8, g.m13, g.w10].forEach((v, i) => { row.getCell(i + 1).value = v; }); r++; });
+  const sg = ws.getRow(r); sg.getCell(1).value = 'For comparison: best single pair'; sg.getCell(6).value = pooled.bestSingle; sg.getCell(1).font = sg.getCell(6).font = { italic: true, color: { argb: 'FF666666' } }; r++;
+  const sm = ws.getRow(r); sm.getCell(1).value = 'For comparison: typical (median) single pair'; sm.getCell(6).value = pooled.medianSingle; sm.getCell(1).font = sm.getCell(6).font = { italic: true, color: { argb: 'FF666666' } }; r++;
+  if (pooled.all.control > 0){
+    const ratio = Math.round(pooled.all.test / pooled.all.control * 10) / 10;
+    ws.mergeCells(r, 1, r, 9); const bc = ws.getCell(r, 1);
+    bc.value = ratio >= 1.5 || ratio <= 0.67
+      ? `Balance check: the test group has ${ratio} times the customers of the control group. Pairs are matched on INDEX, not size, so one side of a pair can be much bigger. The smaller side limits what can be detected; pick pairs with similar customer counts where you can.`
+      : `Balance check: test and control groups have similar volume (${ratio} to 1).`;
+    bc.alignment = { wrapText: true, vertical: 'top' }; bc.font = { size: 9, color: { argb: 'FF555555' } }; ws.getRow(r).height = 28; r++;
+  }
+  r++;
+
+  ws.getCell(r, 1).value = '2. SIZE THE TEST FROM THE MEDIA CHANGE (all pairs together)'; ws.getCell(r, 1).font = { bold: true }; r++;
+  const a = pooled.all, rows = {};
+  const input = (key, label, value, fmt, note) => { const row = ws.getRow(r); row.getCell(1).value = label; if (typeof value === 'object' && value && value.formula){ row.getCell(2).value = value; } else { row.getCell(2).value = value; row.getCell(2).font = inputFont; } if (fmt) row.getCell(2).numFmt = fmt; if (note){ row.getCell(3).value = note; row.getCell(3).font = { italic: true, size: 9, color: { argb: 'FF888888' } }; } rows[key] = r; r++; };
+  const weeks = 8, mult = 2, cpb = pooled.cpb;
+  input('wT', 'Test customers per week (all test markets)', a.weeklyT, '#,##0.0', `From the upload: ${a.test.toLocaleString()} customers over ${Math.round(pooled.weeksInPeriod)} weeks${pooled.assumedPeriod ? ' (period assumed to be one year)' : ''}.`);
+  input('wC', 'Control customers per week (all control markets)', a.weeklyC, '#,##0.0');
+  input('weeks', 'Test length (weeks)', weeks, '0', 'Change this to see the effect of a longer test.');
+  input('cpb', 'Cost per booking', cpb, '$#,##0.00', cpb ? (pooled.cpbSource || 'From your budget data.') : 'No cost per booking was found for this window. Enter yours to see dollars.');
+  input('mult', 'Cost multiplier for extra media', mult, '0.0', 'Assumption: the last dollar buys fewer customers than the average dollar. 2.0 means a 50% spend increase gives about a 25% lift. Replace with your own test results.');
+  const detResult = a.weeklyT > 0 && a.weeklyC > 0 ? pooled.Z * Math.sqrt(pooled.DESIGN * (1 / (a.weeklyT * weeks) + 1 / (a.weeklyC * weeks))) * 100 : null;
+  input('det', 'Detectable lift at this test length (%)', { formula: `${pooled.Z}*SQRT(${pooled.DESIGN}*(1/(B${rows.wT}*B${rows.weeks})+1/(B${rows.wC}*B${rows.weeks})))*100`, result: detResult }, '0.0');
+  const baseSpendRes = cpb ? a.weeklyT * cpb : null;
+  input('base', 'Weekly media in the test markets today', { formula: `IF(B${rows.cpb}>0,B${rows.wT}*B${rows.cpb},"")`, result: baseSpendRes == null ? '' : baseSpendRes }, '$#,##0', 'Assumes media in a market is in proportion to its customers. Replace with the actual figure if you have it.');
+  const minChange = detResult != null ? detResult * mult : null;
+  input('minchg', 'Smallest media increase that can be detected (%)', { formula: `B${rows.det}*B${rows.mult}`, result: minChange }, '0.0', 'Detectable lift times the cost multiplier. A spend change smaller than this cannot be told apart from noise.');
+  r++;
+  ws.getCell(r, 1).value = 'A. If you change media by this much, can the test see it?'; ws.getCell(r, 1).font = { bold: true }; r++;
+  ['Media change in test markets (%)', 'Extra media per week', 'Extra media for the test', 'Expected lift (%)', 'Detectable lift (%)', 'Can the test see it?', 'Weeks needed to see it'].forEach((h, i) => { const c = ws.getRow(r).getCell(i + 1); c.value = h; c.font = { bold: true }; c.fill = hdrFill; c.alignment = { wrapText: true, vertical: 'top' }; });
+  ws.getRow(r).height = 32; r++;
+  [10, 25, 50, 100].forEach(ch => {
+    const row = ws.getRow(r); row.getCell(1).value = ch; row.getCell(1).font = inputFont; row.getCell(1).numFmt = '0';
+    const exp = ch / mult;
+    row.getCell(2).value = { formula: `IF(B${rows.base}="","",A${r}/100*B${rows.base})`, result: baseSpendRes == null ? '' : ch / 100 * baseSpendRes }; row.getCell(2).numFmt = '$#,##0';
+    row.getCell(3).value = { formula: `IF(B${r}="","",B${r}*B${rows.weeks})`, result: baseSpendRes == null ? '' : ch / 100 * baseSpendRes * weeks }; row.getCell(3).numFmt = '$#,##0';
+    row.getCell(4).value = { formula: `A${r}/B${rows.mult}`, result: exp }; row.getCell(4).numFmt = '0.0';
+    row.getCell(5).value = { formula: `B${rows.det}`, result: detResult }; row.getCell(5).numFmt = '0.0';
+    row.getCell(6).value = { formula: `IF(D${r}>=E${r},"Yes","No: too small to see")`, result: detResult != null && exp >= detResult ? 'Yes' : 'No: too small to see' };
+    const wkRes = a.weeklyT > 0 && a.weeklyC > 0 ? Math.ceil(pooled.DESIGN * (1 / a.weeklyT + 1 / a.weeklyC) * Math.pow(pooled.Z / (exp / 100), 2)) : null;
+    row.getCell(7).value = { formula: `ROUNDUP(${pooled.DESIGN}*(1/B${rows.wT}+1/B${rows.wC})*(${pooled.Z}/(D${r}/100))^2,0)`, result: wkRes };
+    r++;
+  });
+  r++;
+  ws.getCell(r, 1).value = 'B. If you want to prove this lift, how much media does it take?'; ws.getCell(r, 1).font = { bold: true }; r++;
+  ['Lift you want to prove (%)', 'Media change needed (%)', 'Extra media for the test', 'Detectable lift (%)', 'Can the test see it?', 'Weeks needed to see it'].forEach((h, i) => { const c = ws.getRow(r).getCell(i + 1); c.value = h; c.font = { bold: true }; c.fill = hdrFill; c.alignment = { wrapText: true, vertical: 'top' }; });
+  ws.getRow(r).height = 32; r++;
+  [5, 10, 15, 20].forEach(lf => {
+    const row = ws.getRow(r); row.getCell(1).value = lf; row.getCell(1).font = inputFont; row.getCell(1).numFmt = '0';
+    row.getCell(2).value = { formula: `A${r}*B${rows.mult}`, result: lf * mult }; row.getCell(2).numFmt = '0.0';
+    row.getCell(3).value = { formula: `IF(B${rows.base}="","",B${r}/100*B${rows.base}*B${rows.weeks})`, result: baseSpendRes == null ? '' : lf * mult / 100 * baseSpendRes * weeks }; row.getCell(3).numFmt = '$#,##0';
+    row.getCell(4).value = { formula: `B${rows.det}`, result: detResult }; row.getCell(4).numFmt = '0.0';
+    row.getCell(5).value = { formula: `IF(A${r}>=D${r},"Yes","No: too small to see")`, result: detResult != null && lf >= detResult ? 'Yes' : 'No: too small to see' };
+    const wkRes = a.weeklyT > 0 && a.weeklyC > 0 ? Math.ceil(pooled.DESIGN * (1 / a.weeklyT + 1 / a.weeklyC) * Math.pow(pooled.Z / (lf / 100), 2)) : null;
+    row.getCell(6).value = { formula: `ROUNDUP(${pooled.DESIGN}*(1/B${rows.wT}+1/B${rows.wC})*(${pooled.Z}/(A${r}/100))^2,0)`, result: wkRes };
+    r++;
+  });
+  r++;
+  [
+    'How to read this: the pooled detectable lift says how small a change the whole test group could show. The media change says how large a change you are creating. If the expected lift is below the detectable lift, add test markets, run longer, or spend more.',
+    'Use weekly bookings or revenue by market for the real read in the Truth Lab. Customer counts here only size the test.',
+    'The cost multiplier is an assumption until your own tests or media mix model replace it.'
+  ].forEach(t => { ws.mergeCells(r, 1, r, 9); const c = ws.getCell(r, 1); c.value = t; c.alignment = { wrapText: true, vertical: 'top' }; c.font = { size: 9, color: { argb: 'FF555555' } }; ws.getRow(r).height = 30; r++; });
+}
+
+// What each market is for under the recommended approach, so the download reads the same as the recommendation.
+function marketRecommendedUse(approach, r){
+  if (!approach) return null;
+  if (r.testControlAssignment === 'Holdout') return 'Keep out of the test (holdout comparison)';
+  if (r.testControlAssignment !== 'Test/Control') return 'Not in the test';
+  const side = r.pairSide;
+  if (approach.approach === 'pairs') return side === 'test' ? `Test market in pair ${r.matchPair}` : `Control market in pair ${r.matchPair}`;
+  if (approach.approach === 'pooled' || approach.approach === 'pooled_long') return side === 'test' ? 'Pooled test group' : 'Pooled control group';
+  return 'Targeting only: this volume needs a time-based test';
+}
+function addRecommendedApproachSheet(wb, approach, builtAt){
+  const ws = wb.addWorksheet('Recommended Approach', { views: [{ showGridLines: false }] });
+  ws.columns = [{ width: 38 }, { width: 22 }, { width: 100 }];
+  ws.getCell(1, 1).value = 'RECOMMENDED TESTING APPROACH'; ws.getCell(1, 1).font = { bold: true, size: 14 };
+  ws.getCell(2, 1).value = `Built ${String(builtAt || '').slice(0, 10)} from ${approach && approach.source === 'bookings' ? 'the booking and transaction history on file in Train the Brain' : 'the customer file uploaded for this analysis'}. It is rebuilt with the file.`;
+  ws.getCell(2, 1).font = { italic: true, size: 9, color: { argb: 'FF888888' } };
+  if (!approach){ ws.getCell(4, 1).value = 'No recommendation could be worked out for this upload.'; return; }
+  let r = 4; const fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E2761' } };
+  ws.mergeCells(r, 1, r, 3); const t = ws.getCell(r, 1); t.value = `${approach.label}${approach.strength ? ` (${approach.strength})` : ''}`; t.font = { bold: true, size: 13, color: { argb: 'FFFFFFFF' } }; t.fill = fill; ws.getRow(r).height = 24; r++;
+  ws.mergeCells(r, 1, r, 3); const h = ws.getCell(r, 1); h.value = approach.headline; h.alignment = { wrapText: true, vertical: 'top' }; ws.getRow(r).height = 34; r += 2;
+  const sec = txt => { ws.getCell(r, 1).value = txt; ws.getCell(r, 1).font = { bold: true }; r++; };
+  sec('WHY');
+  (approach.why || []).forEach(w => { ws.mergeCells(r, 1, r, 3); const c = ws.getCell(r, 1); c.value = w; c.alignment = { wrapText: true, vertical: 'top' }; ws.getRow(r).height = Math.max(18, Math.ceil(String(w).length / 130) * 15 + 3); r++; });
+  r++; sec('THE NUMBERS');
+  const m = approach.metrics || {}; const hdrFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E4D8' } };
+  ['Measure', 'Value', 'Rule used'].forEach((x, i) => { const c = ws.getRow(r).getCell(i + 1); c.value = x; c.font = { bold: true }; c.fill = hdrFill; }); r++;
+  const T = approach.thresholds || GEO_APPROACH;
+  [
+    ['Best single pair, lift detectable in 13 weeks (%)', m.bestPair13, `Matched pairs if ${T.pairMax}% or less`],
+    ['All pairs pooled, 13 weeks (%)', m.pooled13, `Pooled groups if ${T.pooledMax}% or less`],
+    ['All pairs pooled, 26 weeks (%)', m.pooled26, `Pooled groups, longer test, if ${T.pooledMax}% or less`],
+    ['Transactions per week placed in a market', m.weeklyTransactions, 'Counted as distinct booking codes with a usable postal code'],
+    ['Weeks of history on file', m.historyWeeks, 'A media mix model needs about two years (104 weeks)'],
+    ['Test group transactions in the period', m.testTransactions, null],
+    ['Control group transactions in the period', m.controlTransactions, null],
+    ['Period covered (days)', m.periodDays, m.assumedPeriod ? 'Not stated on the upload, so one year was assumed' : 'From the upload']
+  ].forEach(x => { const row = ws.getRow(r); row.getCell(1).value = x[0]; row.getCell(2).value = x[1] == null ? 'n/a' : x[1]; row.getCell(3).value = x[2]; row.getCell(2).alignment = { horizontal: 'right' }; r++; });
+  r++; sec('WHAT TO DO NEXT');
+  (approach.steps || []).forEach((w, i) => { ws.mergeCells(r, 1, r, 3); const c = ws.getCell(r, 1); c.value = `${i + 1}. ${w}`; c.alignment = { wrapText: true, vertical: 'top' }; ws.getRow(r).height = Math.max(18, Math.ceil(String(w).length / 130) * 15 + 3); r++; });
+  if (approach.filterAdvice){ r++; sec('PRODUCT GROUPS'); ws.mergeCells(r, 1, r, 3); const c = ws.getCell(r, 1); c.value = approach.filterAdvice + (approach.productGroupsFilter ? ` This upload was already built for: ${approach.productGroupsFilter.join(', ')}.` : ''); c.alignment = { wrapText: true, vertical: 'top' }; ws.getRow(r).height = 34; r++; }
+  if (approach.historyNote){ r++; ws.mergeCells(r, 1, r, 3); const c = ws.getCell(r, 1); c.value = `History: ${approach.historyNote}.`; c.font = { size: 9, color: { argb: 'FF555555' } }; r++; }
+  r++; ws.mergeCells(r, 1, r, 3); const n = ws.getCell(r, 1);
+  n.value = 'The ladder is: matched pairs, then pooled groups at 13 weeks, then pooled groups at 26 weeks, then a time-based test or media mix model. Detectable lift is a best case on transaction counts (95% confidence, 80% power) and leaves out market-to-market noise. Markets outside the US are not placed in test groups.';
+  n.alignment = { wrapText: true, vertical: 'top' }; n.font = { size: 9, color: { argb: 'FF555555' } }; ws.getRow(r).height = 40;
+}
+function addProductGroupSheet(wb, approach){
+  if (!approach || !approach.groups || !approach.groups.length) return;
+  const ws = wb.addWorksheet('By Product Group', { views: [{ state: 'frozen', ySplit: 3 }] });
+  const cols = [['Product_Group', 30], ['Transactions', 14], ['Share_Of_Transactions_Pct', 24], ['Test_Group_Transactions', 22], ['Control_Group_Transactions', 24], ['Best_Single_Pair_13wk_Pct', 24], ['Pooled_13wk_Pct', 16], ['Pooled_26wk_Pct', 16], ['Recommended_Approach', 34], ['Can_Model_Separately', 20], ['Note', 90]];
+  ws.columns = cols.map(c => ({ width: c[1] }));
+  ws.mergeCells(1, 1, 1, cols.length); ws.getCell(1, 1).value = 'BY PRODUCT GROUP: CAN EACH ONE BE MODELED ON ITS OWN?'; ws.getCell(1, 1).font = { bold: true, size: 14 };
+  ws.getCell(2, 1).value = 'Each product group is counted in the same test and control markets as the total. A group can be modeled on its own when its own transactions clear the same ladder. Lift figures are detectable lift (%), a best case.';
+  ws.getCell(2, 1).font = { italic: true, size: 9, color: { argb: 'FF888888' } };
+  cols.forEach((c, i) => { const cell = ws.getRow(3).getCell(i + 1); cell.value = c[0]; cell.font = { bold: true }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E4D8' } }; });
+  approach.groups.forEach((g, i) => { const row = ws.getRow(4 + i); [g.name, g.transactions, g.sharePct, g.testTransactions, g.controlTransactions, g.bestPair13, g.pooled13, g.pooled26, g.label, g.canModelSeparately ? 'Yes' : 'No', g.note].forEach((v, j) => { row.getCell(j + 1).value = v; }); });
+}
 async function buildMarketUploadXlsx(analysis, upload, opts){
   const definedOnly = !!(opts && opts.definedCountriesOnly);
   let marketRows = buildMarketUploadXlsxMarketRows(analysis);
@@ -13148,7 +13564,8 @@ async function buildMarketUploadXlsx(analysis, upload, opts){
     { header: 'Detectable_Lift_8wk_Pct', width: 24 },
     { header: 'Pair_Readiness', width: 16 },
     { header: 'Latitude', width: 10 },
-    { header: 'Longitude', width: 10 }
+    { header: 'Longitude', width: 10 },
+    { header: 'Recommended_Use', width: 36 }
   ];
   marketSheet.columns = marketColumns.map(c => ({ width: c.width }));
   marketSheet.mergeCells(1, 1, 1, marketColumns.length);
@@ -13158,6 +13575,8 @@ async function buildMarketUploadXlsx(analysis, upload, opts){
   const marketNoteParts = [];
   if (!marketRows.length) marketNoteParts.push(isDma ? 'No markets scored yet.' : 'No zip→DMA crosswalk is loaded, or none of this file\'s zips matched it — load zip→DMA reference data in the Ops Console, then re-export.');
   if (unmapped && unmapped.zips > 0) marketNoteParts.push(`${unmapped.zips.toLocaleString()} postal code(s) (${Math.round(unmapped.volume).toLocaleString()} ${analysis.weightMode === 'revenue' ? 'in revenue' : 'customers'}) did not match any market in the loaded crosswalk and are not reflected here — see the "By Postal Code" tab.`);
+  if (opts && opts.approach) marketNoteParts.push(`Recommended approach: ${opts.approach.label}. See the "Recommended Approach" tab and the Recommended_Use column.`);
+  marketNoteParts.push(`Built ${String((opts && opts.builtAt) || new Date().toISOString()).slice(0, 10)}. See "How to Use This File" for what each column means. Pair_Readiness grades each pair on its own and is often "Too small"; "Pooled Test Design" shows what the test markets can detect together.`);
   const marketNoteCell = marketSheet.getCell(2, 1);
   marketNoteCell.value = marketNoteParts.join(' ');
   marketNoteCell.font = { italic: true, size: 9, color: { argb: 'FF888888' } };
@@ -13177,7 +13596,16 @@ async function buildMarketUploadXlsx(analysis, upload, opts){
     row.getCell(10).value = r.popSharePct; row.getCell(11).value = r.countIndex; row.getCell(12).value = r.zScore; row.getCell(13).value = r.pValue;
     row.getCell(14).value = r.relevant == null ? null : (r.relevant ? 'Yes' : 'No'); row.getCell(15).value = r.pairDistance; row.getCell(16).value = r.pairMde8; row.getCell(17).value = r.pairGrade;
     row.getCell(18).value = r.lat; row.getCell(19).value = r.lng;
+    row.getCell(20).value = marketRecommendedUse(opts && opts.approach, r);
   });
+
+  // ---- Guide and pooled-design sheets (2026-10-19) ----
+  let pooledDesign = null; try { pooledDesign = marketPooledDesign(analysis); } catch (e){ pooledDesign = null; }
+  const builtAtIso = (opts && opts.builtAt) || new Date().toISOString();
+  try { addRecommendedApproachSheet(wb, opts && opts.approach, builtAtIso); } catch (e){ console.error('[market-xlsx] approach sheet failed:', e && e.message); }
+  try { addProductGroupSheet(wb, opts && opts.approach); } catch (e){ console.error('[market-xlsx] product group sheet failed:', e && e.message); }
+  try { addPooledDesignSheet(wb, pooledDesign, builtAtIso, opts && opts.approach); } catch (e){ console.error('[market-xlsx] pooled sheet failed:', e && e.message); }
+  try { addMarketGuideSheet(wb, analysis, pooledDesign, builtAtIso, opts && opts.approach); } catch (e){ console.error('[market-xlsx] guide sheet failed:', e && e.message); }
 
   // ---- Sheet 2: By Postal Code — reference detail only, not a second test
   // design (see this function's own comment above for why) ----
@@ -21701,6 +22129,11 @@ const PRODUCT_GUIDE = [
   { letter: "AR", label: "Trade Territories", keywords: ["trade territories", "reseller", "agency", "storefront", "franchise", "territory", "radius", "local", "regional", "national", "trade file", "agency code"], text: "Trade Territories shows where each reseller’s guests actually live. Send a trade file on its own, separate from the booking file, with Agency Code, Agency Name, the reseller address columns and Guest Postal Code. A reseller is local when most of its guests are within 50 miles, regional when its typical guest is within 300 miles, national when it sells everywhere, and thin when it has under 10 U.S. bookings. A local reseller’s territory is the radius that holds 80% of its guests, capped at 100 miles for local and 300 for regional. Select a reseller to see the markets inside its territory, and download the list as a CSV. Territories change slowly, so refresh the file when resellers or territories change rather than on a schedule." },
   { letter: "AS", label: "Ad Copy Library", keywords: ["ad copy library", "copy version", "copy library", "shipped copy", "production feed", "copy feed"], text: "The Ad Copy Library lists every Copy Version saved on any campaign, so you can see what has actually shipped. There is nothing to set up: it fills as campaigns save copy. When you start a new campaign from an existing one, its copy comes along as drafts, so you edit rather than start over. Ask Verilume, typed or by voice, can answer questions about what copy has run, and a production copy feed can be exported from the Exports page when a partner needs it." },
   { letter: "AT", label: "Team Experiences: self-assessment and development plan", keywords: ["team experiences", "self assessment", "skill sets", "development plan", "training", "next level", "critical skills", "position"], text: "Team Experiences has three jobs. Skill Sets shows what any position on the org chart is expected to hold. The self-assessment lets each person rate themselves against their own seat’s critical skills. The development plan builds steps toward the next level. A good first week is to look up your own seat, complete the self-assessment, then draft a development plan and review it with your manager. Ask Verilume can summarize team structure and training progress, but it never reads out emails, phone numbers or any one person’s self-ratings." },
+  { letter: "MA", label: "Visualize markets: reading the Excel file", keywords: ["visualize markets","excel","all markets","index","composite score","tier","match pair","z score","p value","statistically relevant","holdout","pair similarity","population index","download","rebuild","saved file"], text: "The Excel file has one row per market. INDEX compares your share of customers in a market with that market’s share of the population: 100 means in proportion, 200 means double, 50 means half. It matters because big cities have many customers just by being big, and the index separates big from strong for you. The composite score is two thirds how many customers the market has (on a log scale) and one third the INDEX, and the tiers are quarters of that score, so Must Win is the top quarter. Holdout markets are about one in six, kept out of every test. A Match Pair label, such as MW2, marks two markets that are the closest on INDEX, one for test and one for control; a small Pair Similarity Distance means a closer match, and the match does not yet consider size or sales history. The Z-score says how far a market’s customer count is from what population alone predicts: above plus 1.96 is a stronghold, below minus 1.96 is white space, and Statistically Relevant means at least 30 customers and a clear gap in either direction. The two index columns measure the same thing: Customer Index vs Population is recalculated on customer counts beside the Z-score and normally sits within a few points of INDEX, so use INDEX. The How to Use This File tab in the download explains every column. The file is built once, saved with its date in the name, and reused until your upload or the reference data changes. Choose Rebuild file to refresh it." },
+  { letter: "MB", label: "Visualize markets: testing and why pairs say Too small", keywords: ["too small","pair readiness","detectable lift","pooled","pooled test","spend change","media spend","test design","match market","power","minimum detectable","readiness"], text: "Pair Readiness asks one narrow question: could one test market and one control market, on their own, show a lift by counting customers over eight weeks? For most single markets the answer is no, so every pair can say Too small. That does not make the file useless. The index, tiers, holdouts, strongholds, white space and pairs tell you where to put media and which markets are fair comparisons. Too small is about how to run the test, not whether to use the file. Pool the markets: test all the test markets together against all the control markets together. The Pooled Test Design tab shows what the whole group can detect; for example, one file’s best single pair needed a 40% lift while all pairs together could see about 13%. Then plan from the media change, not only from volume. Volume sets how small a change you can see, and spend sets how big a change you create. Choose the spend change you can afford, estimate the lift it should buy, and check that it is larger than the detectable lift. If it is not, spend more, run longer or add markets. The tab does this with cells you can change; its cost multiplier of 2.0 is a placeholder until your own tests replace it. For the real read of a test, use weekly bookings or revenue by market in the Truth Lab, not customer counts. Your recommended approach, which depends on your transaction volume, is on the Recommended testing approach card and in the download." },
+  { letter: "MC", label: "Visualize markets: which testing approach fits", keywords: ["testing approach","recommended approach","transaction volume","product group","filter","time based","media mix model","mmm","on off","pooled","pairs","small client","large client","by product group","recommended use"], text: "Verilume looks at the transaction history in Train the Brain and recommends how to test. It asks how small a lift each design could reliably detect. If the best single pair of markets could detect 10% or less in 13 weeks, test matched pairs. If not, but all the test markets pooled against all the control markets detect 20% or less in 13 weeks, pool them into one test group and one control group. If that needs 26 weeks, pool the markets and plan a longer test. If even that is too small, geography cannot read a realistic lift: use the markets for targeting, and measure with a time-based test that switches media on and off in the same markets, or with a media mix model once there are about two years of weekly history. Product groups are checked the same way, inside the same test and control markets. A group with enough transactions of its own can be modeled separately: filter the bookings to that group when you read the test. Smaller groups are read inside the total. The Excel download follows the recommendation, with a Recommended Approach tab, a By Product Group tab and a Recommended Use label on every market." },
+  { letter: "MD", label: "Top markets: why composite score leads, not index alone", keywords: ["top markets","composite","index","z-score","rank by","statistically relevant","customers","over-index","small markets"], text: "The Top 5 card ranks markets by composite score, the same score that sets the sales classification, so it agrees with the Excel download and the map. Composite blends two things: how many customers a market has (log-scaled volume, two thirds of the score) and how far it over-indexes its population (INDEX, one third). Ranking by INDEX alone favors small markets that happen to be concentrated, such as a market with 200 customers at an index of 400, ahead of a large market with thousands of customers at an index of 180 where a media dollar moves far more business. Only markets that are statistically relevant qualify: at least 30 customers and a Z-score of 1.96 or more, which means the over-index is unlikely to be chance. Ties break on Z-score, then customers. Each row shows composite, INDEX, Z-score and customers. Use Rank by to view the same markets by INDEX, Z-score or customer count when you want that lens. INDEX of 100 means a market holds the same share of your customers as of the population." },
+  { letter: "ME", label: "Region and sales classification cards", keywords: ["region","sales classification","must win","growth","opportunistic","monitor","tiers","timeframe","quartile","unmapped"], text: "Customer counts by region groups every transaction with a postal code by the country of that postal code, so United States, Canada and International add up to the total in the file. Postal codes that could not be placed in a market are listed in the Excel note, which is why the market total can be slightly lower than the region total. Markets by sales classification splits markets into Must Win, Growth, Opportunistic and Monitor using composite score quartiles, so the four groups are always sized relative to each other. Statistically relevant markets are the ones with enough customers and a strong enough Z-score to trust. Use the timeframe on the card to see how the picture changes over a different booking window; every geo card shares the same window." },
   { letter: "AU", label: "Team and Org Chart", keywords: ["team", "org chart", "org", "invite", "member", "reports to", "role", "admin", "roster", "onboarding", "add a person", "add someone", "add people", "add a team", "who reports", "position"], text: "Team and Org Chart is where an admin adds each person, sets their position and who they report to. The chart drives skill sets, the self-assessment and the development plan, so keep reporting lines current. The page is admin-only today. Give each new person their position first, then have them complete the self-assessment in Team Experiences. Ask Verilume can answer who sits where and which seats lack a reporting line, without sharing contact details or individual self-ratings." },
   { letter: "AV", label: "Ask Verilume and voice: what you can ask", keywords: ["ask verilume", "voice", "ask", "question", "how do i", "how to", "what can i ask", "getting started", "where do i"], text: "AI Thoughts and voice share the same knowledge. Ask Verilume, typed or by voice, answers from your own data: campaigns, Media Science markets and the last test plan, Truth Lab results and confirmed learnings, Trade Territories, the Ad Copy Library and the team structure. It also explains how to use the product, so you can ask how do I save a match market test, how do I confirm a result, or what does a local reseller mean, and hear the same answer that appears in these thoughts. Voice never changes anything. Any change is proposed for a person to accept. It does not read out emails, phone numbers or individual self-ratings." },
   { letter: "AW", label: "Brain Dump: your greeting and growth links", keywords: ["brain dump", "growth", "my growth", "assessment", "self assessment", "next career", "career", "training", "development plan", "private", "manager see", "who can see", "greeting", "1:1"], text: "The Brain Dump opens with a greeting and your seat, then the weekly business update: Strategy, Customer Experiences, Growth and Performance, Media Science, AI Brain learnings, and news from outside. Beside it, Your growth links to your own development: the position self-assessment, your next-career checklist, and your development plan, all in Team Experiences. Those pages are private to you. A manager sees nothing from them unless you choose to share it. You can also ask Verilume or the voice agent to read you the Brain Dump, and it presents each section in turn. The 1:1 with your Brain is coming later. On the Team Experiences page, Training Library Partners lists LinkedIn Learning and Coursiv as placeholder options: you can say you already have a license or ask for a new relationship, but nothing is connected yet. Growth home is your private coaching space. Rate your seat's skills and drag them into the order you most need help with, and the coach ranks your key needs. Set a desired next career to see the skill gap and the closest three moves. Build a lesson plan from the training library, which holds only real, verified links. Sort a brain dump into tasks, things to learn and things to raise, and keep up to five active tasks that you choose and order yourself. Hold a short weekly 1:1 with the coach in text. Nothing is visible to your manager unless you switch sharing on for that item, and the coach is part of the Radiance and Beacon plans." },
@@ -44657,14 +45090,12 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const withZip = sc.rows.length - agg.excl.missing_zip - agg.excl.malformed_zip;
       return sendJson(res, 200, { available: true, totalBookingRows: sc.total, countedRows: sc.counted, inScope: sc.rows.length, withPostalCode: withZip, uniqueZips: agg.rows.length, excluded: agg.excl, byCountry: agg.byCountry, monthly: sc.monthly, firstDate: sc.minD, lastDate: sc.maxD, productGroups: sc.productGroups, usable: agg.rows.length > 0 });
     }
-    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'market-customer-uploads' && parts[4] === 'from-bookings'){
-      const accountId = decodeURIComponent(parts[2]);
-      if (!requireAccount(req, res, accountId)) return;
-      const body = await readBody(req);
+    // Builds a market upload from the account's own bookings for a window. Shared by the from-bookings route and the geo timeframe dropdown.
+    const bkCreateUpload = (accountId, body) => {
       const sc = bkScope(accountId, { from: body.from, to: body.to, productGroups: Array.isArray(body.productGroups) ? body.productGroups.join('|') : null });
       const countBy = body.countBy === 'guests' ? 'guests' : 'transactions';
       const agg = bkAggregate(sc.rows, body.defaultCountry || 'US', countBy);
-      if (!agg.rows.length) return sendJson(res, 400, { error: 'No bookings in that window carry a usable postal code. Widen the dates or check that the booking file includes guest postal codes.' });
+      if (!agg.rows.length) return { status: 400, error: 'No bookings in that window carry a usable postal code. Widen the dates or check that the booking file includes guest postal codes.' };
       const weightMode = body.weightMode === 'revenue' ? 'revenue' : 'count';
       const ds = (sc.rows.length ? (body.from || sc.minD) : null), de = (body.to || sc.maxD);
       let periodDays = null;
@@ -44690,7 +45121,15 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         db.prepare(`INSERT INTO market_customer_rows (id, marketUploadId, zip, customerCount, revenue) VALUES ${ph}`).run(...params);
       }
       try { const row = geoLatestUpload(accountId, id); if (row) geoOverviewPayload(accountId, row); } catch (e){ console.warn('[geo] overview precompute failed:', e.message); }
-      return sendJson(res, 201, { id, rowCount: agg.rows.length, weightMode, geoLevel: 'zip', periodLabel, audit });
+      return { status: 201, id, rowCount: agg.rows.length, weightMode, geoLevel: 'zip', periodLabel, audit };
+    };
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'market-customer-uploads' && parts[4] === 'from-bookings'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const made = bkCreateUpload(accountId, body);
+      if (made.error) return sendJson(res, made.status || 400, { error: made.error });
+      return sendJson(res, 201, { id: made.id, rowCount: made.rowCount, weightMode: made.weightMode, geoLevel: made.geoLevel, periodLabel: made.periodLabel, audit: made.audit });
     }
 
 
@@ -44731,7 +45170,23 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       const sp = new URL(req.url, 'http://x').searchParams;
-      const upload = geoLatestUpload(accountId, sp.get('uploadId'));
+      let upload = null;
+      const wf = (sp.get('from') || '').slice(0, 10), wt = (sp.get('to') || '').slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(wf) && /^\d{4}-\d{2}-\d{2}$/.test(wt) && wt >= wf){
+        // Timeframe dropdown: reuse the booking-built file for exactly this window, or build it once.
+        try {
+          const rows = db.prepare('SELECT id, auditJson FROM market_customer_uploads WHERE accountId = ? ORDER BY createdAt DESC').all(accountId);
+          const hit = rows.find(r => { try { const a = JSON.parse(r.auditJson || '{}'); return a.source === 'bookings' && a.dateFrom === wf && a.dateTo === wt && !a.productGroups; } catch (e){ return false; } });
+          let id = hit && hit.id;
+          if (!id){
+            const made = bkCreateUpload(accountId, { from: wf, to: wt, productGroups: null, weightMode: 'count', countBy: sp.get('countBy') === 'guests' ? 'guests' : 'transactions' });
+            if (made.error) return sendJson(res, 200, { windowEmpty: true, error: 'No bookings with a postal code fall in that date range. Choose a wider range.' });
+            id = made.id;
+          }
+          upload = geoLatestUpload(accountId, id);
+        } catch (e){ console.warn('[geo-overview] window failed:', e.message); }
+      }
+      if (!upload) upload = geoLatestUpload(accountId, sp.get('uploadId'));
       if (!upload) return sendJson(res, 200, { needsBuild: true });
       try { const ov = geoOverviewPayload(accountId, upload); geoCached(`snap|${accountId}|${upload.id}`, 300000, () => { geoSnapshotSave(accountId, 'overview', { uploadLabel: upload.label || upload.periodLabel || upload.id, createdAt: upload.createdAt, marketCount: ov.marketCount, relevantCount: ov.relevantCount, tiers: ov.tiers, regions: ov.regions, topMarkets: (ov.topMarkets || []).slice(0, 5), underIndexing: (ov.markets || []).filter(m => m.relevant && m.zScore < 0).sort((a, b) => a.zScore - b.zScore).slice(0, 5).map(m => ({ name: m.dmaName, index: m.populationIndex })), mustWin: (ov.markets || []).filter(m => m.tier === 'Must Win').sort((a, b) => (b.customers || 0) - (a.customers || 0)).slice(0, 8).map(m => m.dmaName) }); return 1; }); return sendJson(res, 200, ov); }
       catch (e){ console.warn('[geo-overview] failed:', e.message); return sendJson(res, 500, { error: 'could not read the market data' }); }
@@ -44872,22 +45327,57 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (!requireAccount(req, res, accountId)) return;
       const upload = db.prepare('SELECT * FROM market_customer_uploads WHERE id = ? AND accountId = ?').get(uploadId, accountId);
       if (!upload) return sendJson(res, 404, { error: 'no such market customer upload on this account' });
-      const definedCountriesOnly = parts[5] === 'export-defined-countries.xlsx';
+      const variant = parts[5] === 'export-defined-countries.xlsx' ? 'defined' : 'all';
       try {
-        const analysis = computeMarketUploadAnalysis(accountId, upload, {});
-        const buffer = await buildMarketUploadXlsx(analysis, upload, { definedCountriesOnly });
-        const safeLabel = String(upload.label || 'match-market-analysis').replace(/[^A-Za-z0-9 _.-]/g, '').trim().slice(0, 60) || 'match-market-analysis';
-        const filename = `${safeLabel}${definedCountriesOnly ? ' - defined countries' : ''}.xlsx`;
+        const rebuild = new URL(req.url, 'http://localhost').searchParams.get('rebuild') === '1';
+        // 2026-10-19: the finished file is saved and dated; see ensureMarketExport().
+        const built = await ensureMarketExport(accountId, upload, variant, rebuild);
+        const filename = marketExportFileName(variant, built.builtAt);
         res.writeHead(200, {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           'Content-Disposition': `attachment; filename="${filename.replace(/"/g, "'")}"`,
-          'Content-Length': buffer.length
+          'X-Verilume-Built-At': built.builtAt,
+          'X-Verilume-Saved-File': built.cached ? 'yes' : 'no',
+          'Access-Control-Expose-Headers': 'Content-Disposition, X-Verilume-Built-At, X-Verilume-Saved-File',
+          'Content-Length': built.buffer.length
         });
-        res.end(buffer);
+        res.end(built.buffer);
       } catch (e){
         return sendJson(res, 500, { error: 'Excel export failed: ' + (e && e.message || e) });
       }
       return;
+    }
+
+    // GET /api/accounts/:id/geo-approach[?uploadId=] — 2026-10-19. The recommended testing approach worked out from the
+    // transaction history (see buildTestApproach). Same answer the Excel download carries.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'geo-approach'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const upload = geoLatestUpload(accountId, new URL(req.url, 'http://x').searchParams.get('uploadId'));
+      if (!upload) return sendJson(res, 200, { available: false, needsBuild: true, note: 'No market data is built yet. Build it from your booking history first.' });
+      try {
+        const out = geoCached(`appr|${accountId}|${upload.id}|${geoBookingFingerprint(accountId)}`, 600000, () => buildTestApproach(accountId, upload, geoAnalysis(accountId, upload, true)));
+        return sendJson(res, 200, out);
+      } catch (e){ console.warn('[geo-approach] failed:', e && e.message); return sendJson(res, 500, { error: 'could not work out the testing approach' }); }
+    }
+
+    // GET /api/accounts/:id/market-customer-uploads/:uploadId/export-status[?prepare=1] — 2026-10-19.
+    // Says whether a saved, current Excel file exists and when it was built. With prepare=1 and no current file, the build
+    // starts in the background so the file is ready when the person clicks Download.
+    if (req.method === 'GET' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'market-customer-uploads' && parts[5] === 'export-status'){
+      const accountId = decodeURIComponent(parts[2]);
+      const uploadId = parts[4];
+      if (!requireAccount(req, res, accountId)) return;
+      const upload = db.prepare('SELECT * FROM market_customer_uploads WHERE id = ? AND accountId = ?').get(uploadId, accountId);
+      if (!upload) return sendJson(res, 404, { error: 'no such market customer upload on this account' });
+      const prepare = new URL(req.url, 'http://localhost').searchParams.get('prepare') === '1';
+      const info = marketExportCachedRow(accountId, upload, 'all');
+      const building = marketExportInFlight.has(`${accountId}|${upload.id}|all`);
+      if (prepare && !building && !(info.exists && info.fresh)){
+        setImmediate(() => { ensureMarketExport(accountId, upload, 'all', false).catch(e => console.error('[market-export] background build failed:', e && e.message)); });
+      }
+      const ready = info.exists && info.fresh;
+      return sendJson(res, 200, { ready, building: building || (prepare && !ready), builtAt: info.exists ? info.builtAt : null, stale: info.exists && !info.fresh, fileName: info.exists ? marketExportFileName('all', info.builtAt) : null });
     }
 
     // GET /api/marketing-budget-upload-template.csv — round 2026-09-05,
