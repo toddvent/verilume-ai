@@ -13965,7 +13965,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-20-pr-search-style';
+const CXMEDIA_BUILD_STAMP = '2026-10-20-pr-brief-keep-inputs';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -67167,8 +67167,9 @@ async function prcSaveAndDraft(id){
     if (statusEl) statusEl.textContent = 'Finish all four steps before drafting. Still missing: ' + live.missing.join(', ') + '.';
     await prcBriefSaveQuiet(id); return;
   }
-  const st = await prcBriefSaveQuiet(id); if (!st) return;
-  if (!st.complete){ if (statusEl) statusEl.textContent = 'The saved brief is still missing: ' + st.missing.join(', ') + '.'; return; }
+  let st = await prcBriefSaveQuiet(id); if (!st) return;
+  if (!st.complete){ st = await prcBriefSaveQuiet(id); if (!st) return; } // one retry before reporting
+  if (!st.complete){ if (statusEl) statusEl.textContent = 'The server stored an incomplete brief (missing: ' + st.missing.join(', ') + '), although all four steps are filled in here. Nothing on this page was lost. Click Draft Communication once more, and tell me if it repeats.'; try { console.warn('PR brief save mismatch', prcBriefCollect(id), st); } catch (e){} return; }
   if (statusEl) statusEl.textContent = 'Saved. Drafting with AI, this takes a few seconds…';
   await prcGenerateDraft('press', id);
   setTimeout(() => { const el = document.getElementById(`prcDraftBlock-${id}`); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 150);
@@ -67571,8 +67572,27 @@ function prcPressRowHtml(it){
   const detail = open ? `<tr><td colspan="7" style="padding-right:0;">${it.searchSeed ? prcSeedNoteHtml(it) : ''}${corp ? '' : prcStripHtml(it)}${prcPressExpandedHtml(it)}<div class="btn-row" style="margin-top:10px;"><button type="button" class="btn-ghost" onclick="prcDelete('press','${id}')">Remove permanently</button></div></td></tr>` : '';
   return main + detail;
 }
+// A re-render (a status change, a refresh, the reputation sweep finishing) rebuilds the rows from saved data. Anything typed into the
+// brief and not yet saved would vanish, and the next autosave would then write the blanks over the stored brief. So carry typed values across.
+function prcSnapBriefInputs(host){
+  const snap = {}; let activeId = null, selStart = null, selEnd = null;
+  host.querySelectorAll('textarea[id^="prcBr-"], input[id^="prcBr-"], input[id^="prcPressEditCtaText-"]').forEach(e => { snap[e.id] = e.value; });
+  const a = document.activeElement; if (a && a.id && snap[a.id] !== undefined){ activeId = a.id; try { selStart = a.selectionStart; selEnd = a.selectionEnd; } catch (x){} }
+  return { snap, activeId, selStart, selEnd };
+}
+function prcRestoreBriefInputs(host, st){
+  if (!st) return;
+  Object.keys(st.snap).forEach(id => { const e = document.getElementById(id); if (e && e.value !== st.snap[id] && st.snap[id] !== '') e.value = st.snap[id]; });
+  if (st.activeId){ const e = document.getElementById(st.activeId); if (e){ try { e.focus(); if (st.selStart !== null) e.setSelectionRange(st.selStart, st.selEnd); } catch (x){} } }
+}
 function prcRenderPressTable(){
   const host = document.getElementById('repPressList'); if (!host) return;
+  const keepInputs = prcSnapBriefInputs(host);
+  prcRenderPressTableInner(host);
+  prcRestoreBriefInputs(host, keepInputs);
+  try { (prcState.pressReleases || []).forEach(r => { if (prcExpanded[`press:${r.id}`] && document.getElementById(`prcBriefPane-${r.id}-1`)) prcBriefLive(r.id); }); } catch (e){}
+}
+function prcRenderPressTableInner(host){
   if (!document.getElementById('prcPressTbl')){
     host.innerHTML = `<div class="prc-tools">
       <div class="mktcal-filter-field"><label for="prcPressStatusSel">Status</label><select id="prcPressStatusSel" onchange="prcSetFilter(this.value)">
