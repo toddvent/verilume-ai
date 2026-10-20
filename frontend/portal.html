@@ -5406,7 +5406,9 @@
         </select>
         <select id="prcPressNewCampaign" style="min-width:200px;" title="Optional: pre-fills the brief from a campaign"><option value="">Link a campaign (optional)…</option></select>
         <button type="button" class="btn-primary" onclick="prcCreatePress()">+ Add</button>
+        <button type="button" class="btn-ghost" id="prvMic" onclick="prvToggle()" title="Answer by voice: Verilume asks each question aloud and fills the brief for you">🎙 Talk it through</button>
       </div>
+      <div id="prvMsg" class="hint" style="margin:-4px 0 8px;min-height:1em;"></div>
       <p class="hint" style="margin:-4px 0 10px;">Step 1 of 5: pick the type, audience and optional campaign. Then open the item to answer four short questions. The draft and the contest are built only from your answers.</p>
       <!-- 2026-08-29, per direct report: "how to book includes a specific
            process statement... use exact copy vs direction for
@@ -13929,7 +13931,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-19-pr-brief-autosave';
+const CXMEDIA_BUILD_STAMP = '2026-10-20-pr-voice-script';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -67110,6 +67112,207 @@ async function prcSaveAndDraft(id){
   if (statusEl) statusEl.textContent = 'Saved. Drafting with AI, this takes a few seconds…';
   await prcGenerateDraft('press', id);
   setTimeout(() => { const el = document.getElementById(`prcDraftBlock-${id}`); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 150);
+}
+// ---- 2026-10-20 (Todd): scripted voice PR creation, same engine pattern as the campaign brief interview ----
+// Speaks in the ElevenLabs voice (POST .../voice/speak, browser voice only as a fallback), listens with the browser, fills the same
+// create form and brief fields the page already uses, and saves each part as it goes. It never distributes, archives or sends anything.
+let prvIv = null, prvKeep = null;
+function prvMsg(t, warn){ const m = document.getElementById('prvMsg'); if (m){ m.textContent = t || ''; m.style.color = warn ? '#b3261e' : ''; } }
+function prvSentence(t){ t = String(t || '').trim(); if (!t) return ''; t = t.charAt(0).toUpperCase() + t.slice(1); return /[.!?]$/.test(t) ? t : t + '.'; }
+function prvPhrase(t){ return String(t || '').trim().replace(/[.!?]+$/, ''); }
+async function prvSay(text, cb){
+  prvMsg(text);
+  const iv = prvIv;
+  if (briefElOff){ briefSpeakBrowser(text, cb); return; }
+  let url = briefAudioCache[text];
+  try {
+    if (!url){
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice/speak`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+      if (!resp.ok){ let why = 'HTTP ' + resp.status; try { const j = await resp.json(); if (j && j.error) why += ' ' + j.error; } catch (e){} throw new Error(why); }
+      url = briefAudioCache[text] = URL.createObjectURL(await resp.blob());
+    }
+  } catch (e){ briefElFail(e && e.message); prvMsg(text + '  [Browser voice used. ElevenLabs: ' + (e && e.message) + ']'); if (!iv || prvIv === iv) briefSpeakBrowser(text, cb); return; }
+  if (iv && prvIv !== iv){ return; }
+  try {
+    if (briefAudio){ briefAudio.pause(); }
+    const a = briefAudio = new Audio(url); let done = false; const fin = () => { if (!done){ done = true; cb(); } };
+    a.onended = fin; a.onerror = () => { briefElFail('audio could not be played'); briefSpeakBrowser(text, cb); };
+    const pr = a.play(); if (pr && pr.catch) pr.catch(err => { briefElFail('browser blocked audio playback (' + ((err && err.name) || 'error') + ')'); briefSpeakBrowser(text, cb); });
+  } catch (e){ briefElFail(e && e.message); briefSpeakBrowser(text, cb); }
+}
+const PRV_TYPE_ALIASES = [
+  [/holding|crisis|statement/, 'holding_statement'], [/talking/, 'talking_points'], [/internal|staff|employee/, 'internal_announcement'],
+  [/launch|product|enhancement|new feature|press release/, 'product_launch'], [/earning|quarter|financial result/, 'earnings'],
+  [/partner/, 'partnership'], [/charity|person|donation/, 'charity_or_person'], [/hire|depart|appoint|leav|retir/, 'hire_or_departure']
+];
+const PRV_AUD_ALIASES = [[/internal|staff|employee|stakeholder|team/, 'internal'], [/business|trade|travel advisor|partner|b to b|b2b/, 'business'], [/consumer|guest|customer|public|traveler|traveller/, 'consumer']];
+function prvQuestions(corp){
+  return corp ? {
+    'news.what': 'What happened, or what are we communicating? One or two plain sentences.',
+    'experience.why': 'What do we know, and what are we doing about it? Only confirmed facts and real actions.',
+    'experience.distinct': 'Is there anything we cannot say yet, or must not say? Or say skip.',
+    'details.when': 'When did it happen, or when does it take effect?',
+    'details.where': 'What or where is affected? Or say skip.',
+    'details.who': 'Who is affected, or who is speaking? Or say skip.',
+    'details.how': 'Any facts or figures, like scope or time to resolution? Or say skip.',
+    'nextStep.matters': 'What should people do next, and who do they contact?'
+  } : {
+    'news.what': 'What is the news? Say it in one or two plain sentences.',
+    'experience.why': 'Why would a guest care? What do they actually get or feel?',
+    'experience.distinct': 'What can only you say? A first, a number, a place, a partnership. Or say skip.',
+    'details.when': 'When does it happen? Dates, launch date, or booking window.',
+    'details.where': 'Where? Locations, ports, venue or markets. Or say skip.',
+    'details.who': 'Who is involved or quoted? Names and titles. Or say skip.',
+    'details.how': 'How does it work? Pricing, what is included, how it is delivered. Or say skip.',
+    'nextStep.matters': 'Why does it matter, and what should people do next?'
+  };
+}
+function prvField(id, part, f){ return document.getElementById(`prcBr-${id}-${part}-${f}`); }
+function prvSetField(iv, part, f, text, short){
+  const el = prvField(iv.id, part, f); if (!el) return false;
+  const p = PRC_BRIEF_PARTS.find(x => x.key === part); if (p) prcBriefGo(iv.id, p.n);
+  el.value = short ? prvPhrase(text) : prvSentence(text);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  return true;
+}
+function prvDetailCount(iv){ return ['when', 'where', 'who', 'how'].filter(f => { const e = prvField(iv.id, 'details', f); return e && e.value.trim(); }).length; }
+function prvBriefSteps(iv, item){
+  const corp = prcIsCorp(item); const Q = prvQuestions(corp); const parts = prcBriefPartsFor(item); const steps = [];
+  const optional = { 'experience.distinct': 1, 'details.where': 1, 'details.who': 1, 'details.how': 1 };
+  const shortF = { 'details.when': 1, 'details.where': 1, 'details.who': 1 };
+  parts.forEach(p => {
+    iv.partStart[p.key] = steps.length;
+    p.fields.forEach(fd => {
+      const key = p.key + '.' + fd.f;
+      steps.push({ id: key, long: !shortF[key], optional: !!optional[key],
+        say: Q[key] || fd.label,
+        dyn: () => { const el = prvField(iv.id, p.key, fd.f); const cur = el ? el.value.trim() : ''; return (Q[key] || fd.label) + (cur ? ' I already have: ' + cur.slice(0, 160) + '. Say keep, or give me a new answer.' : ''); },
+        keepable: () => { const el = prvField(iv.id, p.key, fd.f); return !!(el && el.value.trim()); },
+        apply: t => prvSetField(iv, p.key, fd.f, t, !!shortF[key]) });
+    });
+    if (p.key === 'details'){
+      steps.push({ id: 'details.more', long: true, when: () => prvDetailCount(iv) < 2, say: 'I need one more detail so the draft has enough to work with. Where, who, or how?',
+        apply: t => { const f = ['where', 'who', 'how'].find(k => { const e = prvField(iv.id, 'details', k); return e && !e.value.trim(); }); return f ? prvSetField(iv, 'details', f, t, f !== 'how') : false; } });
+    }
+    steps.push({ auto: true, partKey: p.key, run: async () => { const nextP = parts.find(x => x.n === p.n + 1); await prcBriefStepTo(iv.id, nextP ? nextP.n : p.n); } });
+  });
+  iv.readbackIdx = steps.length;
+  steps.push({ id: 'readback', long: false,
+    dyn: () => {
+      const g = (k, f) => { const e = prvField(iv.id, k, f); return e ? e.value.trim().slice(0, 140) : ''; };
+      return 'Here is what I have. ' + parts.map(p => p.title.replace(/^The /, '') + ': ' + (p.fields.map(fd => g(p.key, fd.f)).filter(Boolean).join('. ') || 'nothing yet')).join('. ') + '. Say draft it, or tell me which part to change: ' + parts.map(p => p.title.replace(/^The /, '').toLowerCase()).join(', ') + '.';
+    },
+    apply: async t => {
+      const l = t.toLowerCase();
+      if (/\b(draft|go ahead|looks good|that'?s right|yes|done)\b/.test(l)){
+        const live = prcLiveStatus(iv.id);
+        if (!live.complete){ const first = parts.find(p => !live[p.key]); if (first){ iv.returnTo = iv.readbackIdx; iv.jump = iv.partStart[first.key]; return 'jump'; } }
+        iv.finish = true; return true;
+      }
+      const hit = parts.find(p => l.indexOf(p.title.replace(/^The /, '').toLowerCase()) >= 0 || l.indexOf(p.key.toLowerCase()) >= 0);
+      if (hit){ iv.returnTo = iv.readbackIdx; iv.jump = iv.partStart[hit.key]; return 'jump'; }
+      return false;
+    }, help: 'Say draft it, or name the part to change.' });
+  return steps;
+}
+function prvCreateSteps(iv){
+  const typeLabels = Object.values(PRC_PRESS_TYPE_LABELS);
+  const audLabels = Object.values(PRC_PRESS_AUDIENCE_LABELS);
+  const camps = (state.campaigns || []).filter(c => c && c.id && c.name);
+  return [
+    { id: 'type', say: 'What kind of communication is this? For example a product launch, a holding statement, talking points, or an internal announcement.', help: 'Please name one of the types, like product launch or holding statement.',
+      apply: t => { const l = t.toLowerCase(); const lab = briefIvPick(t, typeLabels); let key = lab ? Object.keys(PRC_PRESS_TYPE_LABELS).find(k => PRC_PRESS_TYPE_LABELS[k] === lab) : null;
+        if (!key){ const a = PRV_TYPE_ALIASES.find(x => x[0].test(l)); key = a ? a[1] : null; } if (!key) return false; iv.type = key; return true; } },
+    { id: 'audience', when: () => iv.type !== 'internal_announcement', say: 'Who is it for? Consumers, business and trade network, or internal stakeholders.', help: 'Please say consumers, business, or internal.',
+      apply: t => { const l = t.toLowerCase(); const a = PRV_AUD_ALIASES.find(x => x[0].test(l)); if (!a) return false; iv.audience = a[1]; return true; } },
+    { id: 'campaign', optional: true, when: () => camps.length > 0, say: 'Is it linked to a campaign? Say the campaign name, or say skip.',
+      dyn: () => 'Is it linked to a campaign? ' + camps.slice(0, 5).map(c => c.name).join(', ') + (camps.length > 5 ? ', and more' : '') + '. Say the name, or say skip.',
+      apply: t => { const hit = briefIvPick(t, camps.map(c => c.name)); if (!hit) return false; iv.campaignId = (camps.find(c => c.name === hit) || {}).id || ''; return true; } },
+    { id: 'title', long: false, say: 'What should we call it? Give me a short working title.', help: 'Please give me a short title.',
+      apply: async t => {
+        const title = prvPhrase(t.replace(/^(call it|it'?s called|the title is|title)\s+/i, '')).slice(0, 140); if (!title) return false;
+        const fields = { title, releaseType: iv.type, audience: iv.type === 'internal_announcement' ? 'internal' : (iv.audience || ''), ctaMode: 'inspiration', createdBy: state.userName || '' };
+        if (iv.campaignId){ fields.campaignId = iv.campaignId; const c = prcCampaignById(iv.campaignId); if (c) fields.brief = prcBriefFromCampaign(c); }
+        try {
+          const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/press-releases`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields) });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || !data.id){ prvMsg(data.error || 'Could not create it.', true); return false; }
+          iv.id = data.id; prcExpanded[`press:${data.id}`] = true; await loadPrCorpCommData();
+        } catch (e){ prvMsg('Backend unreachable. Nothing was created.', true); return false; }
+        const item = prcState.pressReleases.find(x => x.id === iv.id);
+        if (!item || !prvField(iv.id, 'news', 'what')){ prvMsg('Created. Open the item, then click the microphone to answer the brief.', true); iv.stopAfter = true; return true; }
+        iv.partStart = {}; iv.briefStart = iv.steps.length; iv.steps = iv.steps.concat(prvBriefSteps(iv, item));
+        try { const sec = document.getElementById(`prcRow-${iv.id}`) || document.getElementById(`prcBriefPane-${iv.id}-1`); if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e){}
+        return true;
+      } }
+  ];
+}
+async function prvNext(){
+  const iv = prvIv; if (!iv || !iv.active) return;
+  for (;;){
+    while (iv.i < iv.steps.length && iv.steps[iv.i].when && !iv.steps[iv.i].when()) iv.i++;
+    if (iv.i >= iv.steps.length){ await prvFinish(iv); return; }
+    const st = iv.steps[iv.i];
+    if (st.auto){ await st.run(); if (!prvIv || prvIv !== iv) return; if (iv.returnTo != null){ iv.i = iv.returnTo; iv.returnTo = null; } else iv.i++; continue; }
+    break;
+  }
+  const st = iv.steps[iv.i]; iv.retry = 0;
+  const el = st.id && iv.id && st.id.indexOf('.') > 0 ? prvField(iv.id, st.id.split('.')[0], st.id.split('.')[1]) : null;
+  document.querySelectorAll('.brf-active').forEach(e => e.classList.remove('brf-active')); if (el){ el.classList.add('brf-active'); try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (x){} }
+  prvSay(st.dyn ? st.dyn() : st.say, () => prvListen());
+}
+async function prvFinish(iv){
+  const id = iv.id; prvStop(false);
+  if (id && iv.finish){ prvSay('Saved. Drafting now. This takes a few seconds, then you can run the contest.', () => {}); await prcSaveAndDraft(id); }
+  else prvSay("That's everything. Review the brief, then choose Draft Communication.", () => {});
+}
+function prvListen(){
+  const iv = prvIv; if (!iv || !iv.active) return; const SR = window.SpeechRecognition || window.webkitSpeechRecognition; const st = iv.steps[iv.i];
+  const rec = new SR(); rec.lang = 'en-US'; rec.interimResults = true; rec.continuous = true; iv.rec = rec; let got = false, text = '', timer = null;
+  const commit = () => { if (got) return; got = true; clearTimeout(timer); try { rec.stop(); } catch (e){} if (text.trim()) prvAnswer(text.trim()); else prvRetry(st, "I didn't hear anything."); };
+  rec.onresult = ev => { text = ''; for (let i = 0; i < ev.results.length; i++) text += ev.results[i][0].transcript; prvMsg('Heard: ' + text); clearTimeout(timer); timer = setTimeout(commit, st.long ? 2200 : 1300); };
+  rec.onerror = ev => { if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed'){ got = true; prvStop(false); prvMsg('Microphone access was blocked. Allow it in your browser site settings and try again.', true); } else if (ev.error === 'no-speech' && !got){ got = true; prvRetry(st, "I didn't hear anything."); } };
+  rec.onend = () => { if (!got && iv.active && iv.rec === rec){ if (text.trim()) commit(); else { got = true; prvRetry(st, "I didn't catch that."); } } };
+  try { rec.start(); } catch (e){ prvStop(false); }
+}
+function prvRetry(st, lead){
+  const iv = prvIv; if (!iv || !iv.active) return; iv.retry = (iv.retry || 0) + 1;
+  if (iv.retry >= 2){ prvStop(false); prvMsg('Paused. Click the microphone to pick up where you left off.'); iv.paused = true; prvKeep = iv; return; }
+  prvSay(lead + ' ' + (st.help || 'Please say it again.'), () => prvListen());
+}
+async function prvAnswer(text){
+  const iv = prvIv; if (!iv || !iv.active) return; const st = iv.steps[iv.i]; const l = text.toLowerCase().replace(/[.!?,]/g, '').trim();
+  if (/^(stop|cancel|exit|quit|never mind|that'?s all)$/.test(l)){ prvStop(false); if (iv.id) await prcBriefSaveQuiet(iv.id); prvMsg('Stopped. Everything entered so far is saved.'); return; }
+  if (/^(back|go back|previous)$/.test(l)){
+    let j = iv.i - 1; while (j >= 0 && iv.steps[j].auto) j--;
+    const floor = iv.id ? (iv.briefStart || 0) : 0; iv.i = Math.max(floor, j); prvNext(); return; }
+  if (/^(skip|pass|next|none|nothing|leave it blank|no thanks)$/.test(l)){ if (st.optional){ iv.i++; prvNext(); } else prvRetry(st, 'That one is needed.'); return; }
+  if (/^keep( it| that)?$/.test(l) && st.keepable && st.keepable()){ iv.i++; prvNext(); return; }
+  let r = false; try { r = await st.apply(text); } catch (e){ console.warn('PR voice step failed', e); }
+  if (!prvIv || prvIv !== iv) return;
+  if (r === 'jump'){ iv.i = iv.jump; prvNext(); return; }
+  if (iv.stopAfter){ prvStop(false); return; }
+  if (r){ iv.i++; prvNext(); } else prvRetry(st, "Sorry, I couldn't use that.");
+}
+function prvStop(silent){
+  const iv = prvIv; prvIv = null;
+  document.querySelectorAll('.brf-active').forEach(e => e.classList.remove('brf-active'));
+  if (iv){ iv.active = false; try { if (iv.rec) iv.rec.stop(); } catch (e){} }
+  try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e){}
+  try { if (briefAudio){ briefAudio.onended = null; briefAudio.pause(); } } catch (e){}
+  const mic = document.getElementById('prvMic'); if (mic){ mic.classList.remove('listening'); mic.textContent = '🎙 Talk it through'; }
+  if (silent) prvKeep = null;
+}
+function prvToggle(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR){ prvMsg('Voice needs Chrome or Edge. You can fill in the form by hand.', true); return; }
+  if (prvIv && prvIv.active){ prvStop(false); prvMsg('Stopped. Everything entered so far is saved.'); return; }
+  const mic = document.getElementById('prvMic'); if (mic){ mic.classList.add('listening'); mic.textContent = '■ Stop'; }
+  if (prvKeep && prvKeep.i < prvKeep.steps.length && (!prvKeep.id || prvField(prvKeep.id, 'news', 'what'))){ prvIv = prvKeep; prvIv.active = true; prvKeep = null; prvIv.paused = false; prvNext(); return; }
+  briefElOff = false; prvKeep = null;
+  const iv = prvIv = { steps: [], i: 0, active: true, retry: 0, id: null, partStart: {}, briefStart: 0 };
+  iv.steps = prvCreateSteps(iv);
+  prvSay("Let's set up a communication. I'll ask what it is and who it's for, then four short questions about the news. Say skip, back or stop any time.", () => prvNext());
 }
 function prcMetaToggle(id){ prcMetaEdit[id] = !prcMetaEdit[id]; renderReputationStep(); }
 function prcPressExpandedHtml(item){
