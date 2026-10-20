@@ -13965,7 +13965,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-20-pr-progressive-steps';
+const CXMEDIA_BUILD_STAMP = '2026-10-20-pr-draft-errors';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -66802,18 +66802,21 @@ async function prcGenerateDraft(type, id){
   const statusEl = document.getElementById(`prcCopyStatus-${type}-${id}`);
   if (statusEl) statusEl.textContent = 'Drafting with AI…';
   else renderReputationStep(); // expand first so the status line exists to update
+  const say = t => { const el = document.getElementById(`prcCopyStatus-${type}-${id}`); if (el) el.textContent = t; };
+  let resp = null, data = {};
   try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/${cfg.endpoint}/${encodeURIComponent(id)}/generate-draft`, {
+    resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/${cfg.endpoint}/${encodeURIComponent(id)}/generate-draft`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
     });
-    const data = await resp.json().catch(() => ({}));
-    await loadPrCorpCommData();
-    const freshStatusEl = document.getElementById(`prcCopyStatus-${type}-${id}`);
-    if (freshStatusEl) freshStatusEl.textContent = data.copy ? `Drafted — review and edit before saving.${data.sourcesUsed && data.sourcesUsed.length ? ' Used: ' + data.sourcesUsed.join(', ') : ''}` : (data.note || 'AI drafting did not return a draft.');
+    data = await resp.json().catch(() => ({}));
   } catch (e){
-    const freshStatusEl = document.getElementById(`prcCopyStatus-${type}-${id}`);
-    if (freshStatusEl) freshStatusEl.textContent = 'Backend unreachable — could not draft.';
+    console.error('generate-draft request failed', e);
+    say('The server did not answer the draft request' + (e && e.message ? ' (' + e.message + ')' : '') + '. It may have timed out while the AI was writing. Wait a minute, then click Draft Communication again.');
+    return;
   }
+  try { await loadPrCorpCommData(); } catch (e){ console.error('refresh after drafting failed', e); say('The draft request finished, but refreshing this page failed (' + ((e && e.message) || 'unknown') + '). Reload the page to see the result.'); return; }
+  if (!resp.ok && !data.copy && !data.note){ say('The server answered ' + resp.status + (data.error ? ': ' + data.error : '') + '. Nothing was drafted.'); return; }
+  say(data.copy ? `Drafted — review and edit before saving.${data.sourcesUsed && data.sourcesUsed.length ? ' Used: ' + data.sourcesUsed.join(', ') : ''}` : (data.note || 'AI drafting did not return a draft.'));
 }
 
 // Shown on releases started from Search Everywhere: the topic is a suggestion, never a fact.
