@@ -5399,13 +5399,6 @@
       <div class="seo-card-list" id="repMentionsList"></div>
     </div>
 
-    <!-- Round 132bx (2026-08-15) — Specialty Partners (see the matching
-         note on Search Optimization above for the full rationale). -->
-    <div class="seo-section" id="repPartnersSection">
-      <div class="seo-section-head"><div class="seo-section-title">🤝 Specialty Partners</div></div>
-      <p class="seo-section-sub">Licensed listening and media-monitoring vendors that go beyond owned-channel and open-web coverage — activate an existing license or request a new vetted relationship.</p>
-      <div id="partnerDirectory-reputation"></div>
-    </div>
       </div>
     </div>
 
@@ -5481,6 +5474,14 @@
     </div>
 
       </div>
+    </div>
+
+    <!-- Round 132bx (2026-08-15) — Specialty Partners (see the matching
+         note on Search Optimization above for the full rationale). -->
+    <div class="seo-section" id="repPartnersSection" style="margin-top:8px;">
+      <div class="seo-section-head"><div class="seo-section-title">🤝 Specialty Partners</div></div>
+      <p class="seo-section-sub">Licensed listening and media-monitoring vendors that go beyond owned-channel and open-web coverage — activate an existing license or request a new vetted relationship.</p>
+      <div id="partnerDirectory-reputation"></div>
     </div>
 
   </div>
@@ -13967,7 +13968,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-20-rep-pr-accordion';
+const CXMEDIA_BUILD_STAMP = '2026-10-20-rep-pr-accordion-2';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -28334,7 +28335,7 @@ function ktGo(tab, i){
     return;
   }
   goToStep(it.s);
-  if (it.anchor){ let tries = 0; const go = () => { const t = document.getElementById(it.anchor); if (t && t.offsetParent !== null){ if (/^rep(Mentions|Press|Editorial|Partners)Section$/.test(it.anchor)){ const k = repCardForSection(it.anchor), c = document.getElementById('repCard-' + k); if (c && !c.classList.contains('open')){ repOpenCard(k, it.anchor); return; } } t.scrollIntoView({ behavior: 'smooth', block: 'start' }); } else if (++tries < 12) setTimeout(go, 150); }; setTimeout(go, 150); }
+  if (it.anchor){ let tries = 0; const go = () => { const t = document.getElementById(it.anchor); if (t && t.offsetParent !== null){ if (/^rep(Mentions|Press|Editorial)Section$/.test(it.anchor)){ const k = repCardForSection(it.anchor), c = document.getElementById('repCard-' + k); if (c && !c.classList.contains('open')){ repOpenCard(k, it.anchor); return; } } t.scrollIntoView({ behavior: 'smooth', block: 'start' }); } else if (++tries < 12) setTimeout(go, 150); }; setTimeout(go, 150); }
 }
 function renderKeyTools(tab){
   const el = document.getElementById('tabKeyTools'); if (!el) return;
@@ -65201,7 +65202,7 @@ function renderTeamDevelopmentStep(){
    that one object rather than being invented per-section. */
 function seoScrollTo(id){
   const el = document.getElementById(id);
-  if (el && /^rep(Mentions|Press|Editorial|Partners)Section$/.test(id)){ const k = repCardForSection(id), c = document.getElementById('repCard-' + k); if (c && !c.classList.contains('open')){ repOpenCard(k, id); return; } }
+  if (el && /^rep(Mentions|Press|Editorial)Section$/.test(id)){ const k = repCardForSection(id), c = document.getElementById('repCard-' + k); if (c && !c.classList.contains('open')){ repOpenCard(k, id); return; } }
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
