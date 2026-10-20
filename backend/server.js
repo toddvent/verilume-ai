@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-20-pr-view-draft (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-20-pr-blind-counts (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -28982,7 +28982,7 @@ async function handlePrCopyInterviewRequest(docType, accountId, sourceId, body, 
   const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
   db.prepare(`INSERT INTO pr_copy_interviews (id, accountId, docType, sourceId, requestedBy, candidatesJson, createdAt) VALUES (?,?,?,?,?,?,?)`)
     .run(interviewId, accountId, docType, sourceId, requestedBy, JSON.stringify(result.candidates), now);
-  return { status: 200, body: { available: true, interviewId, recommendedKey: result.recommendedKey, candidates: result.candidates.filter(c => c.copy).map(c => Object.assign(redactCandidatesForClient([c])[0], { key: c.blindKey, brandVoice: c.brandVoice || null })), failures: result.candidates.filter(c => !c.copy).map(c => ({ label: c.label, error: String(c.error || 'no draft').slice(0, 200) })), createdAt: now } };
+  return { status: 200, body: { available: true, interviewId, recommendedKey: result.recommendedKey, candidates: result.candidates.filter(c => c.copy).map(c => Object.assign(redactCandidatesForClient([c])[0], { key: c.blindKey, brandVoice: c.brandVoice || null })), returnedCount: result.candidates.filter(c => c.copy).length, totalCount: result.candidates.length, createdAt: now } }; // contests are blind: counts only, never which partner did or did not return a draft
 }
 function handlePrCopySelectRequest(accountId, interviewId, candidateKey, session){
   const interview = db.prepare('SELECT * FROM pr_copy_interviews WHERE id = ? AND accountId = ?').get(interviewId, accountId);
@@ -31150,7 +31150,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-20-pr-view-draft',
+        buildStamp: '2026-10-20-pr-blind-counts',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
