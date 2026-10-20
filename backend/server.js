@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-20-pr-step-order (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-20-pr-contest-json (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -28775,7 +28775,12 @@ async function generateVendorPrCopy(vendorKey, prompt){
   try {
     const text = await callVendorForText(vendorKey, prompt);
     const parsed = parseJsonBlock(text);
-    if (!parsed) return { copy: null, error: 'Generation returned no parseable JSON.' };
+    if (!parsed){
+      // The vendor wrote the piece but not as JSON: keep the text rather than lose a real draft.
+      const plain = String(text || '').replace(/^```[a-z]*\s*|```\s*$/gi, '').trim();
+      if (plain.length >= 200){ const first = plain.split('\n').map(x => x.trim()).filter(Boolean)[0] || null; return { copy: plain, approach: null, headline: first && first.length <= 160 ? first.replace(/^#+\s*/, '') : null, error: null }; }
+      return { copy: null, error: 'Generation returned no usable text.' };
+    }
     return { copy: typeof parsed.copy === 'string' ? parsed.copy : null, approach: typeof parsed.strategy === 'string' ? parsed.strategy : null, headline: typeof parsed.headline === 'string' ? parsed.headline : null, error: null };
   } catch (e){
     return { copy: null, error: 'Generation failed: ' + e.message };
@@ -28812,6 +28817,8 @@ async function runPrCandidateInterview(account, docType, brief){
   // runBrandVoiceContest and runCandidateInterview, bounding total time to
   // the single slowest call instead of a sum.
   const configuredVendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar]);
+  // The other AI partners return plain text, so they are told the exact shape (Anthropic uses a tool schema instead).
+  const vendorPrompt = prompt + '\n\nRespond with ONLY one JSON object, no commentary and no code fences, in exactly this shape: {"copy": "the complete piece, using \\n for line breaks", "strategy": "one sentence, 10-20 words, naming the approach you took", "headline": "the headline or subject line, or the first line for talking points"}';
   const [anthropicResp, vendorGenerated] = await Promise.all([
     callClaudeForJSON({
       model: 'claude-sonnet-4-5',
@@ -28822,7 +28829,7 @@ async function runPrCandidateInterview(account, docType, brief){
       schema: PR_CONTEST_SCHEMA
     }).then(parsed => ({ copy: typeof parsed.copy === 'string' ? parsed.copy : null, approach: typeof parsed.strategy === 'string' ? parsed.strategy : null, headline: typeof parsed.headline === 'string' ? parsed.headline : null, error: null }))
       .catch(e => ({ copy: null, error: 'Generation failed: ' + e.message })),
-    Promise.all(configuredVendors.map(v => generateVendorPrCopy(v.key, prompt)))
+    Promise.all(configuredVendors.map(v => generateVendorPrCopy(v.key, vendorPrompt)))
   ]);
 
   const buildCandidate = (key, label, vendor, model, configured, gen) => ({
@@ -31050,7 +31057,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-20-pr-step-order',
+        buildStamp: '2026-10-20-pr-contest-json',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
