@@ -4211,6 +4211,13 @@
   .seo-section{scroll-margin-top:var(--sticky-scroll-margin, 24px);margin-bottom:34px;}
   .seo-section-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:4px;flex-wrap:wrap;}
   .seo-section-title{font-size:1.0625rem;font-weight:700;color:var(--ink);}
+  /* 2026-10-20 (Todd): Reputation and PR are separate bordered accordion cards (same .module pattern as Campaign Creation); the inactive one stays collapsed. */
+  .rep-card .module-body{padding-bottom:0;transition:max-height 0.3s ease, padding-bottom 0.3s ease;}
+  .rep-card.open .module-body{padding-bottom:22px;}
+  .rep-card .module-head .rep-card-meta{font-size:0.75rem;color:var(--muted);text-align:right;}
+  .rep-card .seo-section{margin-bottom:0;}
+  .rep-card .seo-section + .seo-section{margin-top:22px;padding-top:22px;border-top:1px solid var(--line);}
+  .rep-card .seo-section-head{margin-bottom:6px;}
   /* Add-forms inside page sections use the same field look as .field inputs: 10px radius, 11px/13px padding, Inter, cx focus ring, custom chevron (2026-10-19, Todd) */
   .seo-form{align-items:stretch;}
   .seo-form input[type=text],.seo-form input[type=number],.seo-form input[type=date],.seo-form select{box-sizing:border-box;min-height:44px;padding:11px 13px;border:1px solid var(--line);border-radius:10px;font-family:'Inter';font-size:0.9062rem;background-color:var(--white);color:var(--ink);transition:border-color 0.15s ease,box-shadow 0.15s ease;}
@@ -5375,6 +5382,16 @@
 
     <div class="seo-summary-bar" id="repOverviewSummary"></div>
 
+    <div class="module rep-card accent-cx open" id="repCard-reputation">
+      <div class="module-head" onclick="repToggleCard('reputation')">
+        <div class="titles">
+          <span class="tag">Reputation</span>
+          <h2>What people are saying about the brand</h2>
+        </div>
+        <span class="rep-card-meta" id="repCardMeta-reputation"></span>
+        <span class="chevron">▸</span>
+      </div>
+      <div class="module-body">
     <div class="seo-section" id="repMentionsSection">
       <div class="seo-section-head"><div class="seo-section-title">👁 Reputation Monitoring</div></div>
       <p class="seo-section-sub">Brand mentions across news, social, Reddit, and reviews, flagged by sentiment — the ones marked "Needs Response" haven't had one yet.</p>
@@ -5382,9 +5399,34 @@
       <div class="seo-card-list" id="repMentionsList"></div>
     </div>
 
+    <!-- Round 132bx (2026-08-15) — Specialty Partners (see the matching
+         note on Search Optimization above for the full rationale). -->
+    <div class="seo-section" id="repPartnersSection">
+      <div class="seo-section-head"><div class="seo-section-title">🤝 Specialty Partners</div></div>
+      <p class="seo-section-sub">Licensed listening and media-monitoring vendors that go beyond owned-channel and open-web coverage — activate an existing license or request a new vetted relationship.</p>
+      <div id="partnerDirectory-reputation"></div>
+    </div>
+      </div>
+    </div>
+
+    <div class="module rep-card accent-cx" id="repCard-pr">
+      <div class="module-head" onclick="repToggleCard('pr')">
+        <div class="titles">
+          <span class="tag">PR &amp; Corporate Communications</span>
+          <h2>What the brand says, and who it says it to</h2>
+        </div>
+        <span class="rep-card-meta" id="repCardMeta-pr"></span>
+        <span class="chevron">▸</span>
+      </div>
+      <div class="module-body">
     <div class="seo-section" id="repPressSection">
       <div class="seo-section-head"><div class="seo-section-title">📰 PR &amp; Corporate Communications</div></div>
       <p class="seo-section-sub">One process for every corporate writing job: press releases, holding statements, talking points and internal announcements. Verilume does not send them: send yours outside Verilume, then mark it Distributed (or Sent) to record it.</p>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 10px;">
+        <button type="button" class="btn-primary" id="prvMic" onclick="prvToggle()" title="Verilume asks each question aloud in your voice settings and fills the brief for you">🎙 Talk it through</button>
+        <span class="hint" style="margin:0;">Or answer by voice: Verilume asks the type, audience and the four brief questions aloud, and fills them in for you.</span>
+      </div>
+      <div id="prvMsg" class="hint" style="margin:0 0 10px;min-height:1em;"></div>
       <div class="seo-form" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
         <input type="text" id="prcPressNewTitle" placeholder="Title (e.g. Owners Suite launch, or Booking site outage)" style="flex:1;min-width:200px;">
         <select id="prcPressNewType" style="min-width:180px;">
@@ -5406,9 +5448,7 @@
         </select>
         <select id="prcPressNewCampaign" style="min-width:200px;" title="Optional: pre-fills the brief from a campaign"><option value="">Link a campaign (optional)…</option></select>
         <button type="button" class="btn-primary" onclick="prcCreatePress()">+ Add</button>
-        <button type="button" class="btn-ghost" id="prvMic" onclick="prvToggle()" title="Answer by voice: Verilume asks each question aloud and fills the brief for you">🎙 Talk it through</button>
       </div>
-      <div id="prvMsg" class="hint" style="margin:-4px 0 8px;min-height:1em;"></div>
       <p class="hint" style="margin:-4px 0 10px;">Step 1 of 5: pick the type, audience and optional campaign. Then open the item to answer four short questions. The draft and the contest are built only from your answers.</p>
       <!-- 2026-08-29, per direct report: "how to book includes a specific
            process statement... use exact copy vs direction for
@@ -5440,13 +5480,9 @@
       <div class="seo-card-list" id="repEditorialList"></div>
     </div>
 
-    <!-- Round 132bx (2026-08-15) — Specialty Partners (see the matching
-         note on Search Optimization above for the full rationale). -->
-    <div class="seo-section" id="repPartnersSection">
-      <div class="seo-section-head"><div class="seo-section-title">🤝 Specialty Partners</div></div>
-      <p class="seo-section-sub">Licensed listening and media-monitoring vendors that go beyond owned-channel and open-web coverage — activate an existing license or request a new vetted relationship.</p>
-      <div id="partnerDirectory-reputation"></div>
+      </div>
     </div>
+
   </div>
 
   <!-- ================= WORKSTREAM A: CAMPAIGN MANAGEMENT =================
@@ -13931,7 +13967,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-20-pr-voice-script';
+const CXMEDIA_BUILD_STAMP = '2026-10-20-rep-pr-accordion';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -27198,7 +27234,7 @@ async function askDockContestPrPick(key){
 function askDockContestPrOpen(type, id){
   askDockContestClose();
   try { goToStep('reputation'); } catch (e){}
-  setTimeout(() => { try { prcExpanded[`${type}:${id}`] = true; renderReputationStep(); const sec = document.getElementById(type === 'editorial' ? 'repEditorialSection' : 'repPressSection'); if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e){} }, 400);
+  setTimeout(() => { try { prcExpanded[`${type}:${id}`] = true; renderReputationStep(); const secId = type === 'editorial' ? 'repEditorialSection' : 'repPressSection'; repOpenCard('pr', secId); } catch (e){} }, 400);
 }
 function askDockContestOpenCopy(){
   const c = askDockContestCampaign(); if (!c){ askDockToast('Open a campaign to run this contest.'); return; }
@@ -28298,7 +28334,7 @@ function ktGo(tab, i){
     return;
   }
   goToStep(it.s);
-  if (it.anchor){ let tries = 0; const go = () => { const t = document.getElementById(it.anchor); if (t && t.offsetParent !== null){ t.scrollIntoView({ behavior: 'smooth', block: 'start' }); } else if (++tries < 12) setTimeout(go, 150); }; setTimeout(go, 150); }
+  if (it.anchor){ let tries = 0; const go = () => { const t = document.getElementById(it.anchor); if (t && t.offsetParent !== null){ if (/^rep(Mentions|Press|Editorial|Partners)Section$/.test(it.anchor)){ const k = repCardForSection(it.anchor), c = document.getElementById('repCard-' + k); if (c && !c.classList.contains('open')){ repOpenCard(k, it.anchor); return; } } t.scrollIntoView({ behavior: 'smooth', block: 'start' }); } else if (++tries < 12) setTimeout(go, 150); }; setTimeout(go, 150); }
 }
 function renderKeyTools(tab){
   const el = document.getElementById('tabKeyTools'); if (!el) return;
@@ -65165,6 +65201,7 @@ function renderTeamDevelopmentStep(){
    that one object rather than being invented per-section. */
 function seoScrollTo(id){
   const el = document.getElementById(id);
+  if (el && /^rep(Mentions|Press|Editorial|Partners)Section$/.test(id)){ const k = repCardForSection(id), c = document.getElementById('repCard-' + k); if (c && !c.classList.contains('open')){ repOpenCard(k, id); return; } }
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -65869,7 +65906,7 @@ async function gscDraftRelease(key){
     goToStep('reputation');
     try { await loadPrCorpCommData(); } catch (e){}
     prcExpanded['press:' + data.id] = true; renderReputationStep();
-    setTimeout(() => { const sec = document.getElementById('repPressSection'); if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 200);
+    setTimeout(() => { repOpenCard('pr', 'repPressSection'); }, 200);
   } catch (e){ gsc.relMsg = 'Could not reach the server. Try again.'; gscRender(); }
 }
 function gscManageHtml(x){
@@ -67237,7 +67274,7 @@ function prvCreateSteps(iv){
           const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/press-releases`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields) });
           const data = await resp.json().catch(() => ({}));
           if (!resp.ok || !data.id){ prvMsg(data.error || 'Could not create it.', true); return false; }
-          iv.id = data.id; prcExpanded[`press:${data.id}`] = true; await loadPrCorpCommData();
+          iv.id = data.id; prcExpanded[`press:${data.id}`] = true; await loadPrCorpCommData(); repOpenCard('pr');
         } catch (e){ prvMsg('Backend unreachable. Nothing was created.', true); return false; }
         const item = prcState.pressReleases.find(x => x.id === iv.id);
         if (!item || !prvField(iv.id, 'news', 'what')){ prvMsg('Created. Open the item, then click the microphone to answer the brief.', true); iv.stopAfter = true; return true; }
@@ -67569,6 +67606,32 @@ function renderRepCorpComms(){
     c => [c.approvedAt ? `Approved ${escapeHtml(c.approvedAt.slice(0,10))}` : '', c.context ? 'Key points added' : 'No key points yet', c.campaignId && prcCampaignById(c.campaignId) ? 'Campaign: ' + escapeHtml(prcCampaignById(c.campaignId).name || c.campaignId) : ''].filter(Boolean).join(' · '));
 }
 
+// 2026-10-20: Reputation / PR accordion. One card open at a time; anything that points at a PR section opens the PR card first.
+function repOpenCard(key, scrollTo){
+  ['reputation', 'pr'].forEach(k => {
+    const el = document.getElementById('repCard-' + k); if (!el) return;
+    const on = k === key; el.classList.toggle('open', on);
+    const body = el.querySelector('.module-body'); if (body) body.style.maxHeight = on ? body.scrollHeight + 'px' : '0px';
+  });
+  if (scrollTo){ setTimeout(() => { const t = document.getElementById(scrollTo) || document.getElementById('repCard-' + key); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 340); }
+}
+function repToggleCard(key){
+  const el = document.getElementById('repCard-' + key); if (!el) return;
+  if (el.classList.contains('open')){ el.classList.remove('open'); const b = el.querySelector('.module-body'); if (b) b.style.maxHeight = '0px'; }
+  else repOpenCard(key);
+}
+function repCardForSection(id){ return /^(repPressSection|repEditorialSection)$/.test(id || '') ? 'pr' : 'reputation'; }
+function repUpdateCardMeta(){
+  try {
+    const urgent = REPUTATION_DATA.mentions.filter(m => m.urgent).length;
+    const live = (prcState.pressReleases || []).filter(x => x.status !== 'archived');
+    const inProg = live.filter(x => ['draft', 'internal_qa'].includes(x.status)).length;
+    const pend = (prcState.editorialPitches || []).filter(p => p.status === 'pending').length;
+    const a = document.getElementById('repCardMeta-reputation'), b = document.getElementById('repCardMeta-pr');
+    if (a) a.textContent = urgent ? urgent + ' need a response' : 'Nothing urgent';
+    if (b) b.textContent = live.length + ' communication' + (live.length === 1 ? '' : 's') + (inProg ? ' · ' + inProg + ' in progress' : '') + (pend ? ' · ' + pend + ' pitch' + (pend === 1 ? '' : 'es') + ' pending' : '');
+  } catch (e){}
+}
 function renderReputationStep(){
   try { prcFillCampaignSelects(); } catch (e){}
   const urgent = REPUTATION_DATA.mentions.filter(m => m.urgent).length;
@@ -67586,6 +67649,7 @@ function renderReputationStep(){
   renderRepPress();
   renderRepEditorial();
   renderSpecialtyPartners('reputation');
+  repUpdateCardMeta();
 }
 
 // Round 132bx (2026-08-15) — Connected Signals renderer, for the CMO
