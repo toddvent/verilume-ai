@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-20-pr-contest-json (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-20-pr-voice-score (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -28792,6 +28792,97 @@ async function generateVendorPrCopy(vendorKey, prompt){
 // build (Anthropic supplies the baseline every alternate is measured
 // against). Runs Anthropic + every INTERVIEW_VENDOR_REGISTRY vendor whose
 // env var is set, in parallel, unscored (see table comment above).
+// ---- 2026-10-20 (Todd): brand voice alignment score for each PR contest draft, with an audit trail ----
+// Todd: score brand voice alignment and show the audited reasons; no campaign score. The score is built from a judged set of
+// criteria (each with a quote from the draft that code then verifies) minus code-checked penalties, and every piece is returned
+// so the client can show exactly why the number is what it is.
+const PR_VOICE_CRITERIA = [
+  { key: 'tone', label: 'Tone and register', weight: 30, ask: 'Does the draft sound the way the voice guide says this brand sounds (formality, warmth, confidence, point of view)?' },
+  { key: 'language', label: 'Words and phrasing', weight: 20, ask: 'Does it use the brand\'s kind of vocabulary and avoid words, clichés or hype the guide steers away from?' },
+  { key: 'vision', label: 'Vision and positioning', weight: 20, ask: 'Does it stay consistent with the brand vision and positioning, and not drift into a different kind of company?' },
+  { key: 'claims', label: 'Claims discipline', weight: 20, ask: 'Does it avoid absolute, superlative or unsupported claims (guarantees, "best", "first", invented quotes) that the brief does not support?' },
+  { key: 'audience', label: 'Audience fit', weight: 10, ask: 'Is it pitched correctly for the stated audience and type of communication?' }
+];
+function prNormQuote(t){ return String(t || '').toLowerCase().replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/\s+/g, ' ').trim(); }
+function prFiguresNotInBrief(copy, factsText){
+  const facts = String(factsText || '').replace(/,/g, '').toLowerCase();
+  const found = String(copy || '').replace(/(\d),(\d)/g, '$1$2').match(/\$?\d[\d.]*%?/g) || [];
+  const out = [];
+  found.forEach(tok => {
+    const t = tok.replace(/[.]+$/, ''); if (!t) return;
+    if (/^\d$/.test(t)) return; // a lone digit is almost always a list marker or "1 of"
+    if (facts.indexOf(t.toLowerCase().replace(/^\$/, '')) >= 0) return;
+    if (out.indexOf(t) < 0) out.push(t);
+  });
+  return out;
+}
+async function scorePrBrandVoice(copy, account, brief){
+  const text = String(copy || '').trim();
+  if (!text) return null;
+  const guide = String(account.voiceGuideText || '').trim().slice(0, 2500);
+  const vision = String(account.visionStatement || '').trim().slice(0, 600);
+  const phrases = account && account.accountId ? accountExactPhrases(account.accountId) : [];
+  const factsText = [brief && brief.keyFacts, brief && brief.title, brief && brief.ctaText].filter(Boolean).join('\n');
+  // Code-checked items first: these never depend on the AI judge.
+  const phraseFlags = exactPhraseFlags(text, phrases);
+  const watchFlags = surveillanceFlags(text);
+  const untraced = prFiguresNotInBrief(text, factsText);
+  const checks = [
+    { name: 'Saved brand phrases used exactly', passed: phraseFlags.length === 0, detail: phrases.length ? (phraseFlags.length ? phraseFlags.join(' ') : 'Every saved phrase that applies is used as saved.') : 'No exact phrases are saved for this brand, so nothing was checked.', applicable: phrases.length > 0 },
+    { name: 'Does not sound like it is watching the reader', passed: watchFlags.length === 0, detail: watchFlags.length ? watchFlags[0] : 'No language that tells the reader what we saw them do.', applicable: true },
+    { name: 'Figures and dates come from your brief', passed: untraced.length === 0, detail: untraced.length ? 'These figures are in the draft but not in your brief: ' + untraced.join(', ') + '. Confirm them or remove them.' : 'Every figure and date in the draft appears in your brief.', applicable: true }
+  ];
+  const penalties = [];
+  if (phraseFlags.length) penalties.push({ reason: 'Saved brand phrase not used exactly (' + phraseFlags.length + ')', points: Math.min(45, phraseFlags.length * 15) });
+  if (watchFlags.length) penalties.push({ reason: 'Reader-monitoring language', points: 10 });
+  if (untraced.length) penalties.push({ reason: 'Figures not found in your brief (' + untraced.length + ')', points: Math.min(15, untraced.length * 5) });
+  const guideOnFile = !!(guide || vision);
+  const base = { guideOnFile, checks, penalties, criteria: [], baseScore: null, score: null, mode: 'none', note: '' };
+  if (!process.env.ANTHROPIC_API_KEY){ base.note = 'The judged part of the score needs ANTHROPIC_API_KEY. Only the code checks below ran.'; return base; }
+  const audLabel = { consumer: 'consumers and guests', business: 'business and trade partners', internal: 'internal stakeholders' }[brief && brief.audience] || 'the stated audience';
+  const prompt = `You are auditing ONE draft for how well it matches a brand's voice. Be strict, specific and fair. You are not told who wrote it.
+
+BRAND VOICE GUIDE:
+${guide || '(none on file. Judge tone and language against general professional standards for this kind of communication, and say so in each finding.)'}
+${vision ? `\nBRAND VISION STATEMENT:\n${vision}\n` : ''}${phrases.length ? `\nSAVED BRAND PHRASES (checked separately by code; do not score them):\n${phrases.map(p => '- ' + p.text).join('\n')}\n` : ''}
+TYPE OF COMMUNICATION: ${brief && brief.releaseType ? String(brief.releaseType).replace(/_/g, ' ') : 'press release'}
+AUDIENCE: ${audLabel}
+FACTS THE TEAM SUPPLIED (the only facts the draft may rely on):
+${(factsText || '(none)').slice(0, 2500)}
+
+For EACH criterion below give: a score 0-100 (100 = fully matches; deduct for each real issue), one plain sentence "finding" saying why, an "evidence" field that is ONE short phrase copied EXACTLY from the draft (max 25 words) that shows the issue or the strength, and a "guideRef" that is a short phrase copied EXACTLY from the voice guide or vision statement that the finding relies on (empty string if the guide does not cover it). Never paraphrase the evidence or guideRef: they are checked against the source text.
+${PR_VOICE_CRITERIA.map(c => `- ${c.key}: ${c.ask}`).join('\n')}
+
+DRAFT TO AUDIT:
+${text.slice(0, 3500)}`;
+  let parsed;
+  try {
+    parsed = await callClaudeForJSON({
+      model: 'claude-sonnet-4-5', maxTokens: 1100, content: prompt, toolName: 'submit_voice_audit', toolDescription: 'Submit the per-criterion brand voice audit.',
+      schema: { type: 'object', properties: { criteria: { type: 'array', items: { type: 'object', properties: {
+        key: { type: 'string', enum: PR_VOICE_CRITERIA.map(c => c.key) }, score: { type: 'integer', minimum: 0, maximum: 100 },
+        finding: { type: 'string' }, evidence: { type: 'string' }, guideRef: { type: 'string' } }, required: ['key', 'score', 'finding', 'evidence', 'guideRef'] } } }, required: ['criteria'] }
+    });
+  } catch (e){ base.note = 'The judged part of the score could not run (' + String((e && e.message) || 'error').slice(0, 120) + '). Only the code checks below ran.'; return base; }
+  const norm = prNormQuote(text), gnorm = prNormQuote(guide + ' ' + vision);
+  const got = {}; (Array.isArray(parsed.criteria) ? parsed.criteria : []).forEach(c => { if (c && c.key) got[c.key] = c; });
+  let wsum = 0, ssum = 0;
+  base.criteria = PR_VOICE_CRITERIA.map(def => {
+    const c = got[def.key]; if (!c || typeof c.score !== 'number') return { key: def.key, label: def.label, weight: def.weight, score: null, finding: 'Not judged.', evidence: '', evidenceVerified: false, guideRef: '', guideRefVerified: false };
+    const ev = String(c.evidence || '').trim().slice(0, 240), gr = String(c.guideRef || '').trim().slice(0, 240);
+    wsum += def.weight; ssum += def.weight * Math.max(0, Math.min(100, c.score));
+    return { key: def.key, label: def.label, weight: def.weight, score: Math.max(0, Math.min(100, c.score)), finding: String(c.finding || '').trim().slice(0, 300),
+      evidence: ev, evidenceVerified: !!ev && norm.indexOf(prNormQuote(ev)) >= 0, guideRef: gr, guideRefVerified: !!gr && gnorm.indexOf(prNormQuote(gr)) >= 0 };
+  });
+  if (!wsum){ base.note = 'The judge returned no usable scores. Only the code checks below ran.'; return base; }
+  base.baseScore = Math.round(ssum / wsum);
+  const pen = penalties.reduce((n, p) => n + p.points, 0);
+  base.score = Math.max(0, Math.min(100, base.baseScore - pen));
+  base.mode = guideOnFile ? 'guide' : 'general';
+  base.note = guideOnFile ? '' : 'No brand voice guide or vision statement is on file, so tone and language were judged against general professional standards. Approve a voice guide for a score tied to your brand.';
+  const quoted = base.criteria.filter(c => c.evidence); base.quotesChecked = quoted.length; base.quotesVerified = quoted.filter(c => c.evidenceVerified).length;
+  return base;
+}
 async function runPrCandidateInterview(account, docType, brief){
   if (!process.env.ANTHROPIC_API_KEY){
     return {
@@ -28817,8 +28908,10 @@ async function runPrCandidateInterview(account, docType, brief){
   // runBrandVoiceContest and runCandidateInterview, bounding total time to
   // the single slowest call instead of a sum.
   const configuredVendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar]);
-  // The other AI partners return plain text, so they are told the exact shape (Anthropic uses a tool schema instead).
-  const vendorPrompt = prompt + '\n\nRespond with ONLY one JSON object, no commentary and no code fences, in exactly this shape: {"copy": "the complete piece, using \\n for line breaks", "strategy": "one sentence, 10-20 words, naming the approach you took", "headline": "the headline or subject line, or the first line for talking points"}';
+  // Same closing wording the campaign copy contest uses (tool first, then an exact JSON fallback for partners without tool-calling), with this panel's three fields.
+  const vendorPrompt = built.prompt + '\n\nSubmit your draft via the submit_copy tool (name: "copy"; also include a one-sentence "strategy" field, roughly 10-20 words, naming the real approach you took, and a "headline" field with the headline or subject line, or the first line for talking points). If you have no tool-calling capability, reply with exactly one JSON object of the form {"copy": "...", "strategy": "...", "headline": "..."} and nothing else.';
+  // Each draft is scored for brand voice alignment the moment it arrives, so scoring overlaps the slower partners instead of adding to the total time.
+  const scoreGen = async gen => { if (!gen || !gen.copy) return gen; try { gen.brandVoice = await scorePrBrandVoice(gen.copy, account, brief); } catch (e){ gen.brandVoice = null; } return gen; };
   const [anthropicResp, vendorGenerated] = await Promise.all([
     callClaudeForJSON({
       model: 'claude-sonnet-4-5',
@@ -28828,14 +28921,14 @@ async function runPrCandidateInterview(account, docType, brief){
       toolDescription: 'Submit the drafted copy.',
       schema: PR_CONTEST_SCHEMA
     }).then(parsed => ({ copy: typeof parsed.copy === 'string' ? parsed.copy : null, approach: typeof parsed.strategy === 'string' ? parsed.strategy : null, headline: typeof parsed.headline === 'string' ? parsed.headline : null, error: null }))
-      .catch(e => ({ copy: null, error: 'Generation failed: ' + e.message })),
-    Promise.all(configuredVendors.map(v => generateVendorPrCopy(v.key, vendorPrompt)))
+      .catch(e => ({ copy: null, error: 'Generation failed: ' + e.message })).then(scoreGen),
+    Promise.all(configuredVendors.map(v => generateVendorPrCopy(v.key, vendorPrompt).then(scoreGen)))
   ]);
 
   const buildCandidate = (key, label, vendor, model, configured, gen) => ({
     key, label, vendor, model, configured,
     copy: gen ? gen.copy : null, approach: gen ? (gen.approach || null) : null, headline: gen ? (gen.headline || null) : null, error: gen ? gen.error : null,
-    relevanceScore: null, complianceScore: null, combinedScore: null, note: null, flags: [], scoreMode: null
+    relevanceScore: null, complianceScore: null, combinedScore: null, note: null, flags: [], scoreMode: null, brandVoice: gen && gen.brandVoice ? gen.brandVoice : null
   });
   const anthropicCandidate = buildCandidate('anthropic-baseline', 'Anthropic (baseline)', 'Anthropic', 'claude-sonnet-4-5', true, anthropicResp);
   const liveVendorCandidates = configuredVendors.map((v, i) => buildCandidate(v.key, v.label, v.vendor, v.model, true, vendorGenerated[i]));
@@ -28857,7 +28950,7 @@ async function runPrCandidateInterview(account, docType, brief){
 // own generate-draft endpoint already builds, just run through the panel
 // above instead of a single Anthropic call.
 const PR_DOC_TYPE_CONFIG = {
-  press_release: { table: 'press_releases', briefFromRow: (row, body) => ({ title: row.title, keyFacts: body.keyFacts || prRowKeyFacts(row), releaseType: row.releaseType || '', audience: row.audience || '', ctaText: row.ctaText || '', ctaMode: row.ctaMode || 'inspiration' }) },
+  press_release: { table: 'press_releases', briefFromRow: (row, body) => ({ title: row.title, keyFacts: body.keyFacts || prRowKeyFacts(row), releaseType: aliasVal(row, 'releaseType') || '', audience: row.audience || '', ctaText: aliasVal(row, 'ctaText') || '', ctaMode: aliasVal(row, 'ctaMode') || 'inspiration' }) },
   editorial_pitch: { table: 'editorial_pitches', briefFromRow: (row) => ({ outlet: row.outlet, topic: row.topic }) },
   corporate_comms: { table: 'corporate_comms', briefFromRow: (row, body) => ({ title: row.title, audience: row.audience, context: body.context || row.context || '' }) }
 };
@@ -28889,7 +28982,7 @@ async function handlePrCopyInterviewRequest(docType, accountId, sourceId, body, 
   const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
   db.prepare(`INSERT INTO pr_copy_interviews (id, accountId, docType, sourceId, requestedBy, candidatesJson, createdAt) VALUES (?,?,?,?,?,?,?)`)
     .run(interviewId, accountId, docType, sourceId, requestedBy, JSON.stringify(result.candidates), now);
-  return { status: 200, body: { available: true, interviewId, recommendedKey: result.recommendedKey, candidates: result.candidates.filter(c => c.copy).map(c => Object.assign(redactCandidatesForClient([c])[0], { key: c.blindKey })), createdAt: now } };
+  return { status: 200, body: { available: true, interviewId, recommendedKey: result.recommendedKey, candidates: result.candidates.filter(c => c.copy).map(c => Object.assign(redactCandidatesForClient([c])[0], { key: c.blindKey, brandVoice: c.brandVoice || null })), failures: result.candidates.filter(c => !c.copy).map(c => ({ label: c.label, error: String(c.error || 'no draft').slice(0, 200) })), createdAt: now } };
 }
 function handlePrCopySelectRequest(accountId, interviewId, candidateKey, session){
   const interview = db.prepare('SELECT * FROM pr_copy_interviews WHERE id = ? AND accountId = ?').get(interviewId, accountId);
@@ -31057,7 +31150,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-20-pr-contest-json',
+        buildStamp: '2026-10-20-pr-voice-score',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
