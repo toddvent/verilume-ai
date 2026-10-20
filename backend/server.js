@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-20-pr-search-style (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-20-pr-brief-keep-inputs (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -10844,7 +10844,7 @@ function prSeedLines(row){
   }
   return lines.join('\n');
 }
-function prRowKeyFacts(row){ return [prBriefToKeyFacts(prBriefParse(row && row.briefJson), row && row.releaseType), prSeedLines(row)].filter(Boolean).join('\n'); }
+function prRowKeyFacts(row){ return [prBriefToKeyFacts(prBriefParse(row && aliasVal(row, 'briefJson')), row && row.releaseType), prSeedLines(row)].filter(Boolean).join('\n'); }
 // What Search Console can say about a distributed release. Files carry no per-page daily data, so impressions are the figure in the latest Pages file with its date range stated.
 function prSearchStatus(accountId, row){
   if (!row || row.status !== 'distributed') return null;
@@ -28869,7 +28869,7 @@ async function handlePrCopyInterviewRequest(docType, accountId, sourceId, body, 
   if (!account) return { status: 404, body: { error: 'account not found' } };
   const row = db.prepare(`SELECT * FROM ${cfg.table} WHERE id = ? AND accountId = ?`).get(sourceId, accountId);
   if (!row) return { status: 404, body: { error: 'item not found' } };
-  if (docType === 'press_release'){ const bs = prBriefStatus(prBriefParse(row.briefJson), row.ctaText); if (!bs.complete) return { status: 200, body: { available: false, note: 'Finish all four steps of the brief first. Still missing: ' + bs.missing.join(', ') + '.', interviewId: null, recommendedKey: null, candidates: [] } }; }
+  if (docType === 'press_release'){ const bs = prBriefStatus(prBriefParse(aliasVal(row, 'briefJson')), aliasVal(row, 'ctaText')); if (!bs.complete) return { status: 200, body: { available: false, note: 'Finish all four steps of the brief first. Still missing: ' + bs.missing.join(', ') + '.', interviewId: null, recommendedKey: null, candidates: [] } }; }
   const capCheck = checkInterviewWeeklyCap(accountId);
   if (capCheck) return { status: 429, body: capCheck };
   const brief = cfg.briefFromRow(row, body);
@@ -31050,7 +31050,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-20-pr-search-style',
+        buildStamp: '2026-10-20-pr-brief-keep-inputs',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
@@ -43930,7 +43930,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       const rows = db.prepare('SELECT * FROM press_releases WHERE accountId = ? ORDER BY createdAt DESC').all(accountId)
-        .map(r => { const brief = prBriefParse(r.briefJson); let reachData = null; try { reachData = r.reach ? JSON.parse(r.reach) : null; } catch (e){} return Object.assign({}, r, { brief, briefStatus: prBriefStatus(brief, r.ctaText), reachData }); });
+        .map(r => { const brief = prBriefParse(aliasVal(r, 'briefJson')); let reachData = null; try { reachData = r.reach ? JSON.parse(r.reach) : null; } catch (e){} return Object.assign({}, r, { brief, briefStatus: prBriefStatus(brief, r.ctaText), reachData }); });
       const strips = prPressStrips(accountId);
       rows.forEach(r => { r.searchSeed = prSeedParse(r.searchSeedJson); r.searchStatus = strips[r.id] || null; });
       return sendJson(res, 200, { pressReleases: rows, statuses: PRESS_RELEASE_STATUSES });
@@ -43962,7 +43962,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const nextCtaMode = body.ctaMode !== undefined ? (body.ctaMode || 'inspiration') : (existing.ctaMode || 'inspiration');
       const nextLinkedinCopy = body.linkedinCopy !== undefined ? (body.linkedinCopy || null) : existing.linkedinCopy;
       if (body.campaignId && !prCampaignOk(accountId, body.campaignId)) return sendJson(res, 400, { error: 'campaignId does not match a campaign on this account' });
-      const nextBriefJson = body.brief !== undefined ? JSON.stringify(prCleanBrief(body.brief)) : existing.briefJson;
+      const nextBriefJson = body.brief !== undefined ? JSON.stringify(prCleanBrief(body.brief)) : aliasVal(existing, 'briefJson');
       const nextCampaignId = body.campaignId !== undefined ? (body.campaignId || null) : existing.campaignId;
       let nextPubUrl = existing.publishedUrl || null; if (body.publishedUrl !== undefined){ const u = prCleanUrl(body.publishedUrl); if (u === undefined) return sendJson(res, 400, { error: 'publishedUrl must be a web address' }); nextPubUrl = u; }
       // distributedDate follows status the same way copyApprovedAt/etc do elsewhere in this file —
@@ -44014,7 +44014,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const existing = db.prepare('SELECT * FROM press_releases WHERE id = ? AND accountId = ?').get(prId, accountId);
       if (!existing) return sendJson(res, 404, { error: 'press release not found' });
       const body = await readBody(req);
-      { const bs = prBriefStatus(prBriefParse(existing.briefJson), existing.ctaText); if (!bs.complete) return sendJson(res, 200, { copy: null, sourcesUsed: [], note: 'Finish all four steps of the brief first. Still missing: ' + bs.missing.join(', ') + '.', briefStatus: bs }); }
+      { const bs = prBriefStatus(prBriefParse(aliasVal(existing, 'briefJson')), aliasVal(existing, 'ctaText')); if (!bs.complete) return sendJson(res, 200, { copy: null, sourcesUsed: [], note: 'Finish all four steps of the brief first. Still missing: ' + bs.missing.join(', ') + '.', briefStatus: bs }); }
       const result = await draftPrCorpCommCopyViaAI(account, 'press_release', { title: existing.title, keyFacts: body.keyFacts || prRowKeyFacts(existing), releaseType: existing.releaseType || '', audience: existing.audience || '', ctaText: existing.ctaText || '', ctaMode: existing.ctaMode || 'inspiration' });
       if (result.copy){
         const now = new Date().toISOString();
