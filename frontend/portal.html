@@ -13971,7 +13971,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-20-pr-view-draft';
+const CXMEDIA_BUILD_STAMP = '2026-10-20-pr-blind-counts';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -67503,8 +67503,8 @@ function prcContestHtml(id){
     <div style="font-size:0.8125rem;margin-bottom:6px;"><b>Headline:</b> ${escapeHtml(x.headline || 'Not stated')}</div>
     <div style="font-size:0.8125rem;margin:6px 0 2px;"><a class="flink" onclick="prcContestView('${id}','${escapeHtml(x.key)}')">View Complete Draft →</a> <span class="hint" style="margin:0;">${String(x.copy).trim().split(/\s+/).length} words</span></div>
     <div style="margin-top:8px;"><button type="button" class="btn-primary" ${c.picked ? 'disabled' : ''} onclick="prcContestPick('${id}','${escapeHtml(x.key)}')">Use this draft →</button></div></div>`).join('');
-  const failed = (c.result && c.result.failures) || [];
-  if (failed.length) h += `<p class="hint" style="margin-top:10px;">${list.length} of ${list.length + failed.length} AI partners returned a draft. Did not return one: ${failed.map(x => escapeHtml(x.label) + ' (' + escapeHtml((x.error || 'no draft').replace(/^Generation failed: /, '').slice(0, 140)) + ')').join('; ')}.</p>`;
+  const total = c.result && c.result.totalCount, got = c.result && c.result.returnedCount;
+  if (total && got < total) h += `<p class="hint" style="margin-top:10px;">${got} of ${total} drafts returned.</p>`;
   if (c.picked) h += '<p class="hint" style="margin-top:8px;">Saved as the working draft above. Edit it, save it, then approve.</p>';
   return h;
 }
