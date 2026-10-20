@@ -5415,50 +5415,47 @@
     <div class="seo-section" id="repPressSection">
       <div class="seo-section-head"><div class="seo-section-title">📰 PR &amp; Corporate Communications</div></div>
       <p class="seo-section-sub">One process for every corporate writing job: press releases, holding statements, talking points and internal announcements. Verilume does not send them: send yours outside Verilume, then mark it Distributed (or Sent) to record it.</p>
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 10px;">
-        <button type="button" class="btn-primary" id="prvMic" onclick="prvToggle()" title="Verilume asks each question aloud in your voice settings and fills the brief for you">🎙 Talk it through</button>
-        <span class="hint" style="margin:0;">Or answer by voice: Verilume asks the type, audience and the four brief questions aloud, and fills them in for you.</span>
+      <!-- 2026-10-20 (Todd): the list is the default view. "Create New Communication" swaps it for a short create panel (Talk it through, four fields, Add Details); nothing else shows until Add Details opens the brief. -->
+      <div id="prcListView">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px;">
+          <button type="button" class="btn-primary" id="prcNewChip" onclick="prcOpenCreate()">＋ Create New Communication</button>
+        </div>
+        <div class="seo-card-list" id="repPressList"></div>
       </div>
-      <div id="prvMsg" class="hint" style="margin:0 0 10px;min-height:1em;"></div>
-      <div class="seo-form" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-        <input type="text" id="prcPressNewTitle" placeholder="Title (e.g. Owners Suite launch, or Booking site outage)" style="flex:1;min-width:200px;">
-        <select id="prcPressNewType" style="min-width:180px;">
-          <option value="">Release type…</option>
-          <option value="product_launch">Product Launch / Enhancement</option>
-          <option value="earnings">Earnings Announcement</option>
-          <option value="partnership">Strategic Partnership</option>
-          <option value="charity_or_person">Charity / Person Partnership</option>
-          <option value="hire_or_departure">Significant Hire / Departure</option>
-          <option value="holding_statement">Holding Statement / Crisis Response</option>
-          <option value="talking_points">Talking Points</option>
-          <option value="internal_announcement">Internal Announcement</option>
-        </select>
-        <select id="prcPressNewAudience" style="min-width:170px;">
-          <option value="">Audience…</option>
-          <option value="consumer">Consumer</option>
-          <option value="business">Business / Trade Network</option>
-          <option value="internal">Internal Stakeholders</option>
-        </select>
-        <select id="prcPressNewCampaign" style="min-width:200px;" title="Optional: pre-fills the brief from a campaign"><option value="">Link a campaign (optional)…</option></select>
-        <button type="button" class="btn-primary" onclick="prcCreatePress()">+ Add</button>
+      <div id="prcCreateView" style="display:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 12px;">
+          <div style="font-weight:700;">New communication</div>
+          <button type="button" class="btn-ghost" onclick="prcCloseCreate()">← Back to communications</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 10px;">
+          <button type="button" class="btn-primary prv-mic" onclick="prvToggle()" title="Verilume asks each question aloud and fills these in for you">🎙 Talk it through</button>
+          <span class="hint" style="margin:0;">Or answer by voice: Verilume asks the type, audience, campaign and title aloud, then continues into the brief.</span>
+        </div>
+        <div class="prv-msg hint" style="margin:0 0 10px;min-height:1em;"></div>
+        <div class="seo-form" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+          <input type="text" id="prcPressNewTitle" placeholder="Title (e.g. Owners Suite launch, or Booking site outage)" style="flex:1;min-width:200px;">
+          <select id="prcPressNewType" style="min-width:180px;">
+            <option value="">Release type…</option>
+            <option value="product_launch">Product Launch / Enhancement</option>
+            <option value="earnings">Earnings Announcement</option>
+            <option value="partnership">Strategic Partnership</option>
+            <option value="charity_or_person">Charity / Person Partnership</option>
+            <option value="hire_or_departure">Significant Hire / Departure</option>
+            <option value="holding_statement">Holding Statement / Crisis Response</option>
+            <option value="talking_points">Talking Points</option>
+            <option value="internal_announcement">Internal Announcement</option>
+          </select>
+          <select id="prcPressNewAudience" style="min-width:170px;">
+            <option value="">Audience…</option>
+            <option value="consumer">Consumer</option>
+            <option value="business">Business / Trade Network</option>
+            <option value="internal">Internal Stakeholders</option>
+          </select>
+          <select id="prcPressNewCampaign" style="min-width:200px;" title="Optional: pre-fills the brief from a campaign"><option value="">Link a campaign (optional)…</option></select>
+        </div>
+        <div class="btn-row"><button type="button" class="btn-primary" onclick="prcAddDetails()">Add Details →</button></div>
+        <div id="prcpressNewStatus" class="hint" style="margin-top:8px;"></div>
       </div>
-      <p class="hint" style="margin:-4px 0 10px;">Step 1 of 5: pick the type, audience and optional campaign. Then open the item to answer four short questions. The draft and the contest are built only from your answers.</p>
-      <!-- 2026-08-29, per direct report: "how to book includes a specific
-           process statement... use exact copy vs direction for
-           inspiration." A supplied Next-Step/CTA text needs its own
-           handling mode, separate from the free-text Key Facts field —
-           see PRESS_RELEASE_CTA_MODES (server.js). Optional at creation;
-           feeds the AI draft's THE NEXT STEP section once set. -->
-      <div class="seo-form" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-        <input type="text" id="prcPressNewCtaText" placeholder="Optional: exact Next Step / how-to-book text" style="flex:1;min-width:260px;">
-        <select id="prcPressNewCtaMode" style="min-width:230px;">
-          <option value="inspiration">Use for inspiration</option>
-          <option value="exact">Use exact copy</option>
-          <option value="both">Both — exact copy, framed for creativity</option>
-        </select>
-      </div>
-      <div id="prcpressNewStatus" class="hint" style="margin-bottom:8px;"></div>
-      <div class="seo-card-list" id="repPressList"></div>
     </div>
 
     <div class="seo-section" id="repEditorialSection">
@@ -13968,7 +13965,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-20-rep-pr-accordion-2';
+const CXMEDIA_BUILD_STAMP = '2026-10-20-pr-create-panel';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -66688,24 +66685,47 @@ async function prcCreate(type, fields){
   } catch (e){ if (statusEl) statusEl.textContent = 'Backend unreachable — could not save.'; }
 }
 
-function prcCreatePress(){
-  const title = (document.getElementById('prcPressNewTitle') || {}).value || '';
-  const releaseType = (document.getElementById('prcPressNewType') || {}).value || '';
-  const audience = (document.getElementById('prcPressNewAudience') || {}).value || '';
-  const ctaText = (document.getElementById('prcPressNewCtaText') || {}).value || '';
-  const ctaMode = (document.getElementById('prcPressNewCtaMode') || {}).value || 'inspiration';
-  if (!title.trim()){ document.getElementById('prcpressNewStatus').textContent = 'Title is required.'; return; }
-  const campaignId = (document.getElementById('prcPressNewCampaign') || {}).value || '';
-  const fields = { title: title.trim(), releaseType, audience, ctaText: ctaText.trim(), ctaMode };
-  if (campaignId){ fields.campaignId = campaignId; const c = prcCampaignById(campaignId); if (c) fields.brief = prcBriefFromCampaign(c); }
-  prcCreate('press', fields);
-  document.getElementById('prcPressNewTitle').value = '';
-  if (document.getElementById('prcPressNewCampaign')) document.getElementById('prcPressNewCampaign').value = '';
-  document.getElementById('prcPressNewType').value = '';
-  document.getElementById('prcPressNewAudience').value = '';
-  document.getElementById('prcPressNewCtaText').value = '';
-  document.getElementById('prcPressNewCtaMode').value = 'inspiration';
+// 2026-10-20 (Todd): Create New Communication opens a short create panel; Add Details creates the item and opens the established brief workflow.
+function prcOpenCreate(){
+  prvStop(true);
+  ['prcPressNewTitle', 'prcPressNewType', 'prcPressNewAudience', 'prcPressNewCampaign'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+  const st = document.getElementById('prcpressNewStatus'); if (st) st.textContent = '';
+  prvMsg('');
+  document.getElementById('prcListView').style.display = 'none'; document.getElementById('prcCreateView').style.display = 'block';
+  repOpenCard('pr', 'repPressSection');
 }
+function prcCloseCreate(){
+  if (prvIv && !prvIv.id) prvStop(true);
+  const l = document.getElementById('prcListView'), c = document.getElementById('prcCreateView');
+  if (c) c.style.display = 'none'; if (l) l.style.display = 'block';
+}
+async function prcAddDetails(fromVoice){
+  const val = id => ((document.getElementById(id) || {}).value || '').trim();
+  const statusEl = document.getElementById('prcpressNewStatus');
+  const title = val('prcPressNewTitle'), releaseType = val('prcPressNewType'); let audience = val('prcPressNewAudience'); const campaignId = val('prcPressNewCampaign');
+  if (releaseType === 'internal_announcement' && !audience) audience = 'internal';
+  const missing = [!title && 'a title', !releaseType && 'a release type', !audience && 'an audience'].filter(Boolean);
+  if (missing.length){ if (statusEl) statusEl.textContent = 'Add ' + missing.join(', ') + ' first.'; return null; }
+  const fields = { title, releaseType, audience, ctaMode: 'inspiration', createdBy: state.userName || '' };
+  if (campaignId){ fields.campaignId = campaignId; const c = prcCampaignById(campaignId); if (c) fields.brief = prcBriefFromCampaign(c); }
+  const voiceWasOn = !!(prvIv && prvIv.active && !prvIv.id && !fromVoice);
+  if (voiceWasOn) prvStop(true);
+  let id = null;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/press-releases`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields) });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.id){ if (statusEl) statusEl.textContent = data.error || 'Could not create it.'; return null; }
+    id = data.id;
+  } catch (e){ if (statusEl) statusEl.textContent = 'Backend unreachable. Nothing was created.'; return null; }
+  if (statusEl) statusEl.textContent = '';
+  prcExpanded[`press:${id}`] = true; prcBriefStep[id] = 1;
+  prcCloseCreate();
+  await loadPrCorpCommData(); repOpenCard('pr');
+  setTimeout(() => { const el = document.getElementById(`prcBriefPane-${id}-1`); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 250);
+  if (voiceWasOn) setTimeout(() => prvStartBrief(id), 400); // Talk it through carries on into the brief
+  return id;
+}
+function prcCreatePress(){ return prcAddDetails(); }
 function prcCreateEditorial(){
   const outlet = (document.getElementById('prcEditorialNewOutlet') || {}).value || '';
   const topic = (document.getElementById('prcEditorialNewTopic') || {}).value || '';
@@ -67097,6 +67117,8 @@ function prcBriefPanelHtml(item){
   return `<div oninput="prcBriefLive('${item.id}')" onchange="prcBriefAuto('${item.id}')" style="margin-bottom:12px;padding:12px;border:1px solid var(--line, #e3e3e8);border-radius:10px;">
     <div style="font-weight:700;">Step 2 of 5: brief for ${brand}'s ${escapeHtml((PRC_PRESS_TYPE_LABELS[item.releaseType] || 'release').toLowerCase())}</div>
     <div class="hint" style="margin:2px 0 8px;">Four short answers. Everything saves automatically as you type and as you move between steps. The draft and the contest use only what you write here, so nothing is invented.${camp ? ` <button type="button" class="btn-ghost" style="padding:2px 8px;" onclick="prcBriefRefill('${item.id}')">Refill from ${escapeHtml(camp.name || 'campaign')}</button>` : ''}</div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 8px;"><button type="button" class="btn-ghost prv-mic" onclick="prvBriefToggle('${item.id}')" title="Verilume asks each brief question aloud and fills it in">🎙 Talk it through</button></div>
+    <div class="prv-msg hint" style="margin:0 0 8px;min-height:1em;"></div>
     <div class="adbt-chips">${chips}</div>
     ${panes}
     <div id="prcBriefStatus-${item.id}" class="hint" style="margin-top:6px;">${st.complete ? 'All four steps are filled in. Ready to draft.' : (st.missing && st.missing.length ? 'Still missing: ' + st.missing.join(', ') + '.' : 'Answer each step, then choose Draft Communication.')}</div>
@@ -67155,7 +67177,7 @@ async function prcSaveAndDraft(id){
 // Speaks in the ElevenLabs voice (POST .../voice/speak, browser voice only as a fallback), listens with the browser, fills the same
 // create form and brief fields the page already uses, and saves each part as it goes. It never distributes, archives or sends anything.
 let prvIv = null, prvKeep = null;
-function prvMsg(t, warn){ const m = document.getElementById('prvMsg'); if (m){ m.textContent = t || ''; m.style.color = warn ? '#b3261e' : ''; } }
+function prvMsg(t, warn){ document.querySelectorAll('.prv-msg').forEach(m => { m.textContent = t || ''; m.style.color = warn ? '#b3261e' : ''; }); }
 function prvSentence(t){ t = String(t || '').trim(); if (!t) return ''; t = t.charAt(0).toUpperCase() + t.slice(1); return /[.!?]$/.test(t) ? t : t + '.'; }
 function prvPhrase(t){ return String(t || '').trim().replace(/[.!?]+$/, ''); }
 async function prvSay(text, cb){
@@ -67260,23 +67282,19 @@ function prvCreateSteps(iv){
   return [
     { id: 'type', say: 'What kind of communication is this? For example a product launch, a holding statement, talking points, or an internal announcement.', help: 'Please name one of the types, like product launch or holding statement.',
       apply: t => { const l = t.toLowerCase(); const lab = briefIvPick(t, typeLabels); let key = lab ? Object.keys(PRC_PRESS_TYPE_LABELS).find(k => PRC_PRESS_TYPE_LABELS[k] === lab) : null;
-        if (!key){ const a = PRV_TYPE_ALIASES.find(x => x[0].test(l)); key = a ? a[1] : null; } if (!key) return false; iv.type = key; return true; } },
+        if (!key){ const a = PRV_TYPE_ALIASES.find(x => x[0].test(l)); key = a ? a[1] : null; } if (!key) return false; iv.type = key; const te = document.getElementById('prcPressNewType'); if (te) te.value = key; return true; } },
     { id: 'audience', when: () => iv.type !== 'internal_announcement', say: 'Who is it for? Consumers, business and trade network, or internal stakeholders.', help: 'Please say consumers, business, or internal.',
-      apply: t => { const l = t.toLowerCase(); const a = PRV_AUD_ALIASES.find(x => x[0].test(l)); if (!a) return false; iv.audience = a[1]; return true; } },
+      apply: t => { const l = t.toLowerCase(); const a = PRV_AUD_ALIASES.find(x => x[0].test(l)); if (!a) return false; iv.audience = a[1]; const ae = document.getElementById('prcPressNewAudience'); if (ae) ae.value = a[1]; return true; } },
     { id: 'campaign', optional: true, when: () => camps.length > 0, say: 'Is it linked to a campaign? Say the campaign name, or say skip.',
       dyn: () => 'Is it linked to a campaign? ' + camps.slice(0, 5).map(c => c.name).join(', ') + (camps.length > 5 ? ', and more' : '') + '. Say the name, or say skip.',
-      apply: t => { const hit = briefIvPick(t, camps.map(c => c.name)); if (!hit) return false; iv.campaignId = (camps.find(c => c.name === hit) || {}).id || ''; return true; } },
+      apply: t => { const hit = briefIvPick(t, camps.map(c => c.name)); if (!hit) return false; iv.campaignId = (camps.find(c => c.name === hit) || {}).id || ''; const ce = document.getElementById('prcPressNewCampaign'); if (ce) ce.value = iv.campaignId; return true; } },
     { id: 'title', long: false, say: 'What should we call it? Give me a short working title.', help: 'Please give me a short title.',
       apply: async t => {
         const title = prvPhrase(t.replace(/^(call it|it'?s called|the title is|title)\s+/i, '')).slice(0, 140); if (!title) return false;
-        const fields = { title, releaseType: iv.type, audience: iv.type === 'internal_announcement' ? 'internal' : (iv.audience || ''), ctaMode: 'inspiration', createdBy: state.userName || '' };
-        if (iv.campaignId){ fields.campaignId = iv.campaignId; const c = prcCampaignById(iv.campaignId); if (c) fields.brief = prcBriefFromCampaign(c); }
-        try {
-          const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/press-releases`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields) });
-          const data = await resp.json().catch(() => ({}));
-          if (!resp.ok || !data.id){ prvMsg(data.error || 'Could not create it.', true); return false; }
-          iv.id = data.id; prcExpanded[`press:${data.id}`] = true; await loadPrCorpCommData(); repOpenCard('pr');
-        } catch (e){ prvMsg('Backend unreachable. Nothing was created.', true); return false; }
+        if (iv.type === 'internal_announcement'){ const ae = document.getElementById('prcPressNewAudience'); if (ae && !ae.value) ae.value = 'internal'; }
+        const te = document.getElementById('prcPressNewTitle'); if (te) te.value = title;
+        const newId = await prcAddDetails(true); if (!newId){ prvMsg('Could not create it. Check the fields and try again.', true); return false; }
+        iv.id = newId;
         const item = prcState.pressReleases.find(x => x.id === iv.id);
         if (!item || !prvField(iv.id, 'news', 'what')){ prvMsg('Created. Open the item, then click the microphone to answer the brief.', true); iv.stopAfter = true; return true; }
         iv.partStart = {}; iv.briefStart = iv.steps.length; iv.steps = iv.steps.concat(prvBriefSteps(iv, item));
@@ -67338,14 +67356,30 @@ function prvStop(silent){
   if (iv){ iv.active = false; try { if (iv.rec) iv.rec.stop(); } catch (e){} }
   try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e){}
   try { if (briefAudio){ briefAudio.onended = null; briefAudio.pause(); } } catch (e){}
-  const mic = document.getElementById('prvMic'); if (mic){ mic.classList.remove('listening'); mic.textContent = '🎙 Talk it through'; }
+  document.querySelectorAll('.prv-mic').forEach(mic => { mic.classList.remove('listening'); mic.textContent = '🎙 Talk it through'; });
   if (silent) prvKeep = null;
+}
+function prvStartBrief(id){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR){ prvMsg('Voice needs Chrome or Edge. You can fill in the brief by hand.', true); return; }
+  const item = prcState.pressReleases.find(x => x.id === id); if (!item || !prvField(id, 'news', 'what')) return;
+  prvStop(true); briefElOff = false;
+  const iv = prvIv = { steps: [], i: 0, active: true, retry: 0, id, partStart: {}, briefStart: 0 };
+  iv.steps = prvBriefSteps(iv, item);
+  const live = prcLiveStatus(id); const first = prcBriefPartsFor(item).find(p => !live[p.key]);
+  iv.i = first ? iv.partStart[first.key] : iv.readbackIdx;
+  document.querySelectorAll('.prv-mic').forEach(mic => { mic.classList.add('listening'); mic.textContent = '■ Stop'; });
+  prvSay(first ? "Let's go through the brief. I'll ask each question in order. Say skip, back or stop any time." : 'The brief is complete. Let me read it back.', () => prvNext());
+}
+function prvBriefToggle(id){
+  if (prvIv && prvIv.active){ prvStop(false); prvMsg('Stopped. Everything entered so far is saved.'); return; }
+  prvStartBrief(id);
 }
 function prvToggle(){
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR){ prvMsg('Voice needs Chrome or Edge. You can fill in the form by hand.', true); return; }
   if (prvIv && prvIv.active){ prvStop(false); prvMsg('Stopped. Everything entered so far is saved.'); return; }
-  const mic = document.getElementById('prvMic'); if (mic){ mic.classList.add('listening'); mic.textContent = '■ Stop'; }
+  document.querySelectorAll('.prv-mic').forEach(mic => { mic.classList.add('listening'); mic.textContent = '■ Stop'; });
   if (prvKeep && prvKeep.i < prvKeep.steps.length && (!prvKeep.id || prvField(prvKeep.id, 'news', 'what'))){ prvIv = prvKeep; prvIv.active = true; prvKeep = null; prvIv.paused = false; prvNext(); return; }
   briefElOff = false; prvKeep = null;
   const iv = prvIv = { steps: [], i: 0, active: true, retry: 0, id: null, partStart: {}, briefStart: 0 };
