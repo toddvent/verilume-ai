@@ -13965,7 +13965,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-20-pr-step-order';
+const CXMEDIA_BUILD_STAMP = '2026-10-20-pr-contest-json';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -67455,6 +67455,8 @@ function prcContestHtml(id){
     <div style="font-size:0.8125rem;"><b>Complete text:</b></div>
     <div style="white-space:pre-wrap;font-size:0.8125rem;max-height:280px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:8px;margin-top:4px;">${escapeHtml(x.copy)}</div>
     <div style="margin-top:8px;"><button type="button" class="btn-primary" ${c.picked ? 'disabled' : ''} onclick="prcContestPick('${id}','${escapeHtml(x.key)}')">Use this draft →</button></div></div>`).join('');
+  const failed = (c.result && c.result.candidates || []).filter(x => !x.copy);
+  if (failed.length) h += `<p class="hint" style="margin-top:10px;">${list.length} of ${(c.result.candidates || []).length} AI partners returned a draft. Did not return one: ${failed.map(x => escapeHtml(x.label) + ' (' + escapeHtml((x.error || 'no draft').replace(/^Generation failed: /, '').slice(0, 140)) + ')').join('; ')}.</p>`;
   if (c.picked) h += '<p class="hint" style="margin-top:8px;">Saved as the working draft above. Edit it, save it, then approve.</p>';
   return h;
 }
