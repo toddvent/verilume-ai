@@ -13965,7 +13965,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-20-pr-draft-errors';
+const CXMEDIA_BUILD_STAMP = '2026-10-20-pr-step-order';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -67121,7 +67121,7 @@ function prcBriefPanelHtml(item){
   }).join('');
   const camp = item.campaignId ? prcCampaignById(item.campaignId) : null;
   return `<div oninput="prcBriefLive('${item.id}')" onchange="prcBriefAuto('${item.id}')" style="margin-bottom:12px;padding:12px;border:1px solid var(--line, #e3e3e8);border-radius:10px;">
-    <div style="font-weight:700;">Step 2 of 6: brief for ${brand}'s ${escapeHtml((PRC_PRESS_TYPE_LABELS[item.releaseType] || 'release').toLowerCase())}</div>
+    <div style="font-weight:700;">Step 2 of ${corp ? 5 : 6}: brief for ${brand}'s ${escapeHtml((PRC_PRESS_TYPE_LABELS[item.releaseType] || 'release').toLowerCase())}</div>
     <div class="hint" style="margin:2px 0 8px;">Four short answers. Everything saves automatically as you type and as you move between steps. The draft and the contest use only what you write here, so nothing is invented.${camp ? ` <button type="button" class="btn-ghost" style="padding:2px 8px;" onclick="prcBriefRefill('${item.id}')">Refill from ${escapeHtml(camp.name || 'campaign')}</button>` : ''}</div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 8px;"><button type="button" class="btn-ghost prv-mic" onclick="prvBriefToggle('${item.id}')" title="Verilume asks each brief question aloud and fills it in">🎙 Talk it through</button></div>
     <div class="prv-msg hint" style="margin:0 0 8px;min-height:1em;"></div>
@@ -67408,22 +67408,18 @@ function prcPressExpandedHtml(item){
   const complete = !!(item.briefStatus && item.briefStatus.complete);
   const reveal = hasDraft || !!prcOwn[id] || !!prcContest[id] || (item.status && item.status !== 'draft');
   const draft = `<div id="prcDraftBlock-${id}" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line, #e3e3e8);">
-      <div style="font-weight:700;">Step 4 of 6: review and edit the draft</div>
+      <div style="font-weight:700;">Step 4 of ${corp ? 5 : 6}: review, compare and edit the draft</div>
       <textarea id="prcCopy-press-${id}" rows="8" style="width:100%;font-family:inherit;margin-top:6px;">${escapeHtml(item.workingCopy || '')}</textarea>
       <div class="btn-row" style="margin-top:6px;flex-wrap:wrap;">
         <button type="button" class="btn-primary" onclick="prcSaveCopy('press','${id}')">Save draft →</button>
+        <button type="button" class="prc-chip${complete ? '' : ' off'}" ${complete ? '' : 'disabled title="Finish all four brief steps first."'} onclick="prcRunContest('${id}')" title="One version from each AI partner, shown with its strategy, headline and complete text. Pick one here, then edit and save it.">Run contest →</button>
         <button type="button" class="btn-ghost" onclick="prcSaveSelectionToLibrary('${id}')" title="Select a phrase or paragraph in the draft first">Save selection to brand library</button>
       </div>
       <div id="prcCopyStatus-press-${id}" class="hint" style="margin-top:4px;"></div>
-    </div>`;
-  const contest = `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line, #e3e3e8);">
-      <div style="font-weight:700;">Step 5 of 6: run the contest (optional)</div>
-      <p class="hint" style="margin:4px 0 8px;">One version from each AI partner, written from your brief. Each shows its strategy, headline and complete text. Drafts are numbered, not named, and you choose.</p>
-      <button type="button" class="btn-ghost" ${complete ? '' : 'disabled title="Finish all four brief steps first."'} onclick="prcRunContest('${id}')">Run contest →</button>
       <div id="prcContestOut-${id}">${prcContestHtml(id)}</div>
     </div>`;
   const decision = `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line, #e3e3e8);">
-      <div style="font-weight:700;margin-bottom:6px;">Step 6 of 6: approve or reject</div>
+      <div style="font-weight:700;margin-bottom:6px;">Step 5 of ${corp ? 5 : 6}: approve or reject</div>
       <div class="btn-row" style="flex-wrap:wrap;">
         <button type="button" class="btn-ghost" onclick="prcSubmitCopyDecision('press','${id}', true)">Approve copy →</button>
         <button type="button" class="btn-ghost" onclick="prcSubmitCopyDecision('press','${id}', false)">Reject copy →</button>
@@ -67441,11 +67437,10 @@ function prcPressExpandedHtml(item){
     <div class="hint" style="margin:0 0 4px;">${summary} · <a class="flink" onclick="prcMetaToggle('${id}')">${prcMetaEdit[id] ? 'Done' : 'Edit'}</a></div>${metaEdit}
     ${prcBriefPanelHtml(item)}
     ${reveal ? `${draft}
-    ${corp ? '' : srchPanelHtml('press:' + id, { kind: 'press', id })}
-    ${contest}
     ${decision}
     ${prcReachBlockHtml(item)}
-    ${linkedin}` : `<div class="hint" style="margin-top:10px;">The draft area opens after Draft Communication. <a class="flink" onclick="prcStartOwnDraft('${id}')">Prefer to write it yourself? Start a blank draft</a></div>`}
+    ${linkedin}
+    ${corp ? '' : `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line, #e3e3e8);"><div style="font-weight:700;margin-bottom:6px;">Step 6 of 6: improve for search</div>${srchPanelHtml('press:' + id, { kind: 'press', id })}</div>`}` : `<div class="hint" style="margin-top:10px;">The draft area opens after Draft Communication. <a class="flink" onclick="prcStartOwnDraft('${id}')">Prefer to write it yourself? Start a blank draft</a></div>`}
   </div>`;
 }
 function prcContestHtml(id){
