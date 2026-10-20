@@ -13965,7 +13965,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-20-pr-contest-json';
+const CXMEDIA_BUILD_STAMP = '2026-10-20-pr-voice-score';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -67443,6 +67443,31 @@ function prcPressExpandedHtml(item){
     ${corp ? '' : `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line, #e3e3e8);"><div style="font-weight:700;margin-bottom:6px;">Step 6 of 6: improve for search</div>${srchPanelHtml('press:' + id, { kind: 'press', id })}</div>`}` : `<div class="hint" style="margin-top:10px;">The draft area opens after Draft Communication. <a class="flink" onclick="prcStartOwnDraft('${id}')">Prefer to write it yourself? Start a blank draft</a></div>`}
   </div>`;
 }
+function prcVoiceAuditHtml(bv){
+  if (!bv) return '<div class="hint" style="margin:6px 0;">Brand voice alignment: not scored for this draft.</div>';
+  const e = escapeHtml;
+  const tone = v => v >= 80 ? '#1f7a4d' : v >= 60 ? '#a8660a' : '#b3261e';
+  const head = bv.score !== null && bv.score !== undefined
+    ? `<span style="display:inline-block;padding:2px 10px;border-radius:999px;color:#fff;font-weight:700;background:${tone(bv.score)};">${bv.score}/100</span>` : '<span class="hint">not scored</span>';
+  const crit = (bv.criteria || []).filter(c => c.score !== null).map(c => `<tr style="vertical-align:top;">
+      <td style="padding:6px 8px 6px 0;white-space:nowrap;"><b>${e(c.label)}</b><div class="hint" style="margin:0;">${c.weight}% of the judged score</div></td>
+      <td style="padding:6px 8px;font-weight:700;color:${tone(c.score)};">${c.score}</td>
+      <td style="padding:6px 0;">${e(c.finding)}${c.evidence ? `<div class="hint" style="margin:3px 0 0;">${c.evidenceVerified ? 'In the draft: ' : 'Quote not found in the draft, so treat this finding with care: '}&ldquo;${e(c.evidence)}&rdquo;</div>` : ''}${c.guideRef ? `<div class="hint" style="margin:3px 0 0;">${c.guideRefVerified ? 'From your voice guide: ' : 'Guide reference could not be matched to your guide: '}&ldquo;${e(c.guideRef)}&rdquo;</div>` : ''}</td></tr>`).join('');
+  const checks = (bv.checks || []).filter(c => c.applicable !== false || !c.passed).map(c => `<div style="margin:3px 0;"><b>${c.passed ? '✓' : '✗'}</b> ${e(c.name)}. <span class="hint" style="margin:0;">${e(c.detail)}</span></div>`).join('');
+  const pens = (bv.penalties || []).map(p => `<div style="margin:3px 0;">−${p.points} ${e(p.reason)}</div>`).join('');
+  const total = (bv.penalties || []).reduce((n, p) => n + p.points, 0);
+  const formula = bv.baseScore !== null && bv.baseScore !== undefined ? `Judged criteria ${bv.baseScore}${total ? ` − checks ${total}` : ''} = <b>${bv.score}</b>` : '';
+  return `<div style="margin:6px 0 8px;"><b>Brand voice alignment:</b> ${head}
+    <details style="margin-top:6px;"><summary style="cursor:pointer;font-weight:600;">Why this score</summary>
+      <div style="font-size:0.8125rem;margin-top:6px;">
+        ${bv.note ? `<p class="hint" style="margin:0 0 6px;">${e(bv.note)}</p>` : ''}
+        ${crit ? `<table style="width:100%;border-collapse:collapse;font-size:0.8125rem;"><tbody>${crit}</tbody></table>` : ''}
+        <div style="margin-top:8px;font-weight:700;">Checked by code, not by AI</div>${checks}
+        ${pens ? `<div style="margin-top:6px;font-weight:700;">Points taken off</div>${pens}` : ''}
+        ${formula ? `<div style="margin-top:8px;">${formula}</div>` : ''}
+        ${bv.quotesChecked ? `<div class="hint" style="margin-top:6px;">${bv.quotesVerified} of ${bv.quotesChecked} quoted passages were found word for word in the draft.</div>` : ''}
+      </div></details></div>`;
+}
 function prcContestHtml(id){
   const c = prcContest[id]; if (!c) return '';
   if (c.running) return '<div class="ai-status-bubble" style="margin-top:8px;">Getting one version from each AI partner, using your brief. This can take a minute.</div>';
@@ -67450,13 +67475,14 @@ function prcContestHtml(id){
   const list = (c.result && c.result.candidates || []).filter(x => x.copy);
   h += list.map(x => `<div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px;">
     <div style="font-weight:700;margin-bottom:6px;">${escapeHtml(x.label)}</div>
+    ${prcVoiceAuditHtml(x.brandVoice)}
     <div style="font-size:0.8125rem;margin-bottom:4px;"><b>Strategy:</b> ${escapeHtml(x.approach || 'Not stated')}</div>
     <div style="font-size:0.8125rem;margin-bottom:6px;"><b>Headline:</b> ${escapeHtml(x.headline || 'Not stated')}</div>
     <div style="font-size:0.8125rem;"><b>Complete text:</b></div>
     <div style="white-space:pre-wrap;font-size:0.8125rem;max-height:280px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:8px;margin-top:4px;">${escapeHtml(x.copy)}</div>
     <div style="margin-top:8px;"><button type="button" class="btn-primary" ${c.picked ? 'disabled' : ''} onclick="prcContestPick('${id}','${escapeHtml(x.key)}')">Use this draft →</button></div></div>`).join('');
-  const failed = (c.result && c.result.candidates || []).filter(x => !x.copy);
-  if (failed.length) h += `<p class="hint" style="margin-top:10px;">${list.length} of ${(c.result.candidates || []).length} AI partners returned a draft. Did not return one: ${failed.map(x => escapeHtml(x.label) + ' (' + escapeHtml((x.error || 'no draft').replace(/^Generation failed: /, '').slice(0, 140)) + ')').join('; ')}.</p>`;
+  const failed = (c.result && c.result.failures) || [];
+  if (failed.length) h += `<p class="hint" style="margin-top:10px;">${list.length} of ${list.length + failed.length} AI partners returned a draft. Did not return one: ${failed.map(x => escapeHtml(x.label) + ' (' + escapeHtml((x.error || 'no draft').replace(/^Generation failed: /, '').slice(0, 140)) + ')').join('; ')}.</p>`;
   if (c.picked) h += '<p class="hint" style="margin-top:8px;">Saved as the working draft above. Edit it, save it, then approve.</p>';
   return h;
 }
