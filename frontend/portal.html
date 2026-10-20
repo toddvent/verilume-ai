@@ -13965,7 +13965,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-20-pr-create-panel';
+const CXMEDIA_BUILD_STAMP = '2026-10-20-pr-search-style';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -67577,7 +67577,7 @@ function prcRenderPressTable(){
     host.innerHTML = `<div class="prc-tools">
       <div class="mktcal-filter-field"><label for="prcPressStatusSel">Status</label><select id="prcPressStatusSel" onchange="prcSetFilter(this.value)">
         <option value="active">All except archived</option><option value="draft">Draft</option><option value="internal_qa">Internal QA</option><option value="final">Final, not yet distributed</option><option value="distributed">Distributed</option><option value="archived">Archived</option><option value="all">Everything</option></select></div>
-      <div style="flex:1 1 240px;max-width:420px;"><input type="text" class="cmgmt-search-input" placeholder="Search by name…" oninput="prcSetSearch(this.value)" style="width:100%;"></div></div>
+      <div style="flex:1 1 240px;max-width:420px;"><input type="text" class="cmgmt-search-input" placeholder="Search by name…" oninput="prcSetSearch(this.value)" style="width:100%;max-width:none;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.875rem;padding:9px 14px;border-radius:20px;border:1px solid var(--line);background:var(--white);color:var(--ink);"></div></div>
       <div id="prcPressTbl"></div>`;
   }
   const el = document.getElementById('prcPressTbl'); if (!el) return;
