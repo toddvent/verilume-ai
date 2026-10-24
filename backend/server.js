@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-24-pr-contest-retries (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-24-pr-gemini-diagnostics (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -28778,7 +28778,7 @@ createTableIfNeeded(`
 // depth compared across vendors, same convention as generateVendorInterviewCopy.
 async function generateVendorPrCopy(vendorKey, prompt, timeoutMs){
   try {
-    const text = await callVendorForText(vendorKey, prompt, timeoutMs);
+    const text = await callVendorForText(vendorKey, prompt, timeoutMs, { longForm: true });
     const parsed = parseJsonBlock(text);
     if (!parsed){
       // The vendor wrote the piece but not as JSON: keep the text rather than lose a real draft.
@@ -29321,7 +29321,7 @@ const INTERVIEW_VENDOR_REGISTRY = [
 // underlying call. Throws on any failure; every caller wraps this in the
 // same try/catch → honest-error-per-candidate pattern already established
 // by generateInterviewCandidateCopy's Anthropic path.
-async function callVendorForText(vendorKey, prompt, timeoutMs){
+async function callVendorForText(vendorKey, prompt, timeoutMs, callOpts){
   const ms = typeof timeoutMs === 'number' ? timeoutMs : undefined; // undefined -> fetchWithTimeout's own 90s default
   const v = INTERVIEW_VENDOR_REGISTRY.find(x => x.key === vendorKey);
   if (!v) throw new Error('unknown vendor');
@@ -29363,12 +29363,20 @@ async function callVendorForText(vendorKey, prompt, timeoutMs){
       method: 'POST',
       // 2026-10-09 — key sent in a header, not the URL, so it never lands in request logs or error text.
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': String(process.env.GEMINI_API_KEY || '') },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+      // 2026-10-24 — long-form callers (the PR contest) get an explicit output ceiling. Gemini 3 models can spend the whole default budget thinking and return HTTP 200 with no text, which is what the PR contest saw on every run.
+      body: JSON.stringify(callOpts && callOpts.longForm ? { contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 16384 } } : { contents: [{ parts: [{ text: prompt }] }] })
     }, ms);
     if (!resp.ok) throw await vendorHttpError(resp);
     const data = await resp.json();
     const parts = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
-    return Array.isArray(parts) ? parts.map(p => p.text || '').join('') : '';
+    const gemText = Array.isArray(parts) ? parts.filter(p => !p.thought).map(p => p.text || '').join('') : '';
+    if (!gemText && callOpts && callOpts.longForm){
+      // Say why it was empty, so the next failure explains itself in the stored contest record (admin only, never shown to users).
+      const cand = data.candidates && data.candidates[0];
+      const um = data.usageMetadata || {};
+      throw new Error(`Gemini returned no text (finishReason=${(cand && cand.finishReason) || 'none'}, blockReason=${(data.promptFeedback && data.promptFeedback.blockReason) || 'none'}, thoughtTokens=${um.thoughtsTokenCount != null ? um.thoughtsTokenCount : 'n/a'}, outputTokens=${um.candidatesTokenCount != null ? um.candidatesTokenCount : 'n/a'})`);
+    }
+    return gemText;
   }
   if (vendorKey === 'xai-grok'){
     // x.ai's Responses API — per Todd's own supplied curl example:
@@ -31211,7 +31219,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-24-pr-contest-retries',
+        buildStamp: '2026-10-24-pr-gemini-diagnostics',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
