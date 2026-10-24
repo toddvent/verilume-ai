@@ -1987,7 +1987,7 @@
   .sg-m-line,.sg-note{margin:4px 0 8px;font-size:0.8125rem;color:var(--muted);max-width:70ch;}
   .sg-tier{margin-top:14px;} .sg-tier-h{font-size:0.75rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);padding-bottom:6px;border-bottom:1px solid var(--line-hairline);}
   .sg-item{padding:12px 0;border-bottom:1px solid var(--line-hairline);} .sg-it-t{font-weight:600;} .sg-it-w{margin:2px 0 8px;font-size:0.875rem;color:var(--muted);max-width:75ch;} .sg-i-na .sg-it-t{opacity:.55;}
-  .sg-rate{display:flex;gap:6px;flex-wrap:wrap;} .sg-it-l{margin-top:6px;display:flex;gap:14px;flex-wrap:wrap;font-size:0.8125rem;} .sg-how{margin:6px 0 0;font-size:0.875rem;max-width:75ch;}
+  .sg-rate{display:flex;gap:6px;flex-wrap:wrap;} .sg-it-l{margin-top:6px;display:flex;gap:14px;flex-wrap:wrap;font-size:0.8125rem;} .sg-how{margin:6px 0 0;font-size:0.875rem;max-width:75ch;} .sg-ex{padding:8px 10px;border:1px dashed var(--border,#cbd5e1);border-radius:6px;background:var(--surface-2,rgba(100,116,139,.06));}
   .sg-auto{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:0.8125rem;} .sg-pill{display:inline-block;border-radius:999px;padding:3px 10px;font-weight:600;border:1px solid var(--line-hairline);} .sg-pill.sg-done{border-color:var(--cx);color:var(--cx);} .sg-from{color:var(--muted);}
   .srch-pathbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 16px;} .srch-pathbar-l{font-size:0.75rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);} .srch-arrow{color:var(--muted);}
   .srch-pathbtn{display:inline-flex;flex-direction:column;align-items:flex-start;gap:1px;padding:8px 16px;border:1px solid var(--line-hairline);border-radius:12px;background:var(--surface,transparent);color:inherit;font-family:inherit;cursor:pointer;text-align:left;} .srch-pathbtn:hover,.srch-pathbtn:focus-visible{border-color:var(--cx);} .srch-pathbtn b{font-size:0.9375rem;} .srch-pathbtn span{font-size:0.75rem;color:var(--muted);}
@@ -13971,7 +13971,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-20-pr-blind-counts';
+const CXMEDIA_BUILD_STAMP = '2026-10-24-pr-contest-retries';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -65694,6 +65694,7 @@ const SG_AREAS = {
 const SG_LEVELS = [[85, 'Brilliant'], [65, 'Bright'], [40, 'Lit'], [15, 'Dim'], [0, 'Dark']];
 const SG_ALL = ['local', 'single', 'franchise'], SG_LF = ['local', 'franchise'], SG_SF = ['single', 'franchise'];
 // w: 3 = do first, 2 = next, 1 = then.
+const SG_EXAMPLES = {"seo_gsc": "Search Console shows your site as a verified property, and the latest performance export (queries and pages, with dates) is loaded here, so the cards show clicks, impressions, position and the date range.", "seo_health": "A short fix list where every key page is marked Indexed, the sitemap is submitted with no errors, and robots.txt is open to the pages you want found. Example: 38 of 40 key pages indexed, the other 2 left out on purpose.", "seo_gbp": "A claimed profile with the right primary category, hours, services, 10 or more real photos, a booking or call link, and the location page address. Franchise: one profile per location under one manager account.", "seo_nap": "One master line, for example \"Northside Clinic, 120 Main St, Suite 4, Springfield, 555-0100\", written the same way on the website, Google, Apple Maps, Bing Places, Yelp and the main directories.", "seo_loc_pages": "A page per location at its own address, for example /locations/springfield, with street address, today's hours, services, staff, real photos of that site, local reviews and a map. Each page has copy unique to that location.", "seo_pages": "A page per product or service line, for example \"Teeth Whitening in Springfield\", with a plain description, photos, a price range or a clear next step such as \"Book a consult\".", "seo_titles": "A table of key pages, each with a unique title under about 60 characters that leads with the topic (\"Teeth Whitening in Springfield | Northside Clinic\") and a short description that earns the click.", "seo_content": "A list of the top 10 non-brand searches, each matched to one page (new or improved), published, with its address recorded next to the search.", "seo_vitals": "A before-and-after for the home page, top landing pages and booking page showing Core Web Vitals moved from Poor to Good, for example the main content showing in under 2.5 seconds on a phone.", "seo_reviews": "A one-tap review link on receipts, emails and texts, and a log showing every new review answered within 3 days: thanks for the good ones, a calm offer to fix the bad ones.", "seo_calls": "Every landing page shows a tappable phone number near the top, each source has its own tracking number, and calls reach analytics as a conversion with the source and landing page.", "seo_store_locator": "Each location opens from a normal link, for example /stores/springfield, that loads without scripts and states the address, hours and pickup or in-stock status in text.", "seo_brand": "A confirmed list of every spelling people use for your name (for example \"Northside Clinic\" and \"North Side Clinic\"), so brand and non-brand clicks are separated in the reports.", "seo_links": "A short record of earned links and citations: a chamber of commerce listing, supplier and partner pages, a local news mention, a sponsored-event page, each pointing at the right page. No bought links.", "aeo_faq": "A question list where each question is marked Answered on site or has an approved answer ready, for example \"How long does whitening take?\" answered in two sentences on the service page.", "aeo_facts": "Hours, services, prices and areas served written as plain page text, not inside an image, with a visible \"Updated\" date, and holiday hours changed the same day.", "aeo_direct": "Before: a page opening \"Welcome to our family-run clinic...\". After: the heading \"How long does whitening take?\", then \"Most visits take about 60 minutes, and results last 6 to 12 months.\", then the detail.", "aeo_approved": "A published FAQ section on the matching page: each approved answer in your own words under its question as the heading, with the FAQ markup copied from the list.", "aeo_local_schema": "On each location page, LocalBusiness markup with name, address, phone, opening hours and map position, passing Google's Rich Results test with no errors, and matching the hours shown on the page.", "aeo_org_schema": "Organization markup on the home page with the official name, logo, contact point and links to your official profiles, passing Google's Rich Results test.", "aeo_product_schema": "On each product page, Product markup with name, image, price, currency and availability that matches what the page shows, and changes when the price or stock changes.", "aeo_call_answers": "A list of the ten questions callers ask most, each with a short page or FAQ entry, for example \"Do you take walk-ins?\" answered \"Yes, Monday to Friday, 9 to 5.\"", "aeo_loc_faq": "On each location page, three to five questions only that store can answer, such as \"Where do I park?\" or \"Is there a pharmacy on site?\", written or approved by that location.", "geo_crawl": "A one-page written decision listing which AI crawlers are allowed and which are blocked, matched in robots.txt and any bot protection, with a review date.", "geo_cited": "A saved citation check: your question list, which AI answers name you, which link to you, and which cite competitors, with the date it was run.", "geo_listings": "A table covering Google, Apple Maps, Bing Places and Yelp where name, address, hours, phone and category are identical to your master record. Franchise: pushed from one master record.", "geo_facts": "One approved fact sheet (description, founding year, services, leadership) and a checked list showing the about page, LinkedIn, directories and press pages all match it.", "geo_third": "A list of the sites AI answers cite for your questions, with an honest plan to earn a mention or review on each. No paid or fake posts.", "geo_fresh": "Each key page has a named owner, a quarterly review date and a visible \"Last updated\" date, with a calendar showing the next review.", "geo_feeds": "A product feed accepted in Google Merchant Center with price, stock and identifiers correct, and no disapproved items in its diagnostics.", "geo_central": "A named brand owner for names, categories and descriptions, and a one-page rule sheet: locations edit hours, photos and local details only.", "geo_compare": "A monthly share-of-voice table: for your question list, how often you and each competitor are named, with a note on where competitors appear and you do not."};
 const SG_ITEMS = [
   // ---- SEO ----
   { key: 'seo_gsc', area: 'seo', w: 3, m: SG_ALL, title: 'Connect Google Search Console', why: 'It is the only first-party record of what people searched and clicked. Every other check leans on it.', how: 'Verify the site in Search Console, then upload the performance export here with Update data.', tool: ['Open the data panel', 'gscPage'],
@@ -65790,7 +65791,7 @@ function sgGuideHtml(a, ctx){
     const opts = [['none', 'Not started'], ['started', 'In progress'], ['done', 'Done'], ['na', 'Does not apply']];
     const ctl = s.auto ? `<div class="sg-auto"><span class="sg-pill sg-${s.r}">${s.r === 'done' ? 'Done' : s.r === 'started' ? 'In progress' : 'Not started'}</span> <span class="sg-from">From your data: ${escapeHtml(s.note)}</span></div>`
       : `<div class="sg-rate" role="radiogroup" aria-label="Your rating">${opts.map(o => `<button type="button" role="radio" aria-checked="${s.r === o[0]}" class="sg-r${s.r === o[0] ? ' on' : ''}" onclick="sgRate('${k}','${o[0]}')">${o[1]}</button>`).join('')}</div>`;
-    return `<div class="sg-item sg-i-${s.r}"><div class="sg-it-t">${escapeHtml(it.title)}</div><p class="sg-it-w">${escapeHtml(it.why)}</p>${ctl}<div class="sg-it-l"><button type="button" class="gsc-link" aria-expanded="${!!SG.how[k]}" onclick="sgHowToggle('${k}')">${SG.how[k] ? 'Hide how' : 'How to do it'}</button>${it.tool ? ` <button type="button" class="gsc-link" onclick="srchPathJump('${it.tool[1]}')">${escapeHtml(it.tool[0])}</button>` : ''}</div>${SG.how[k] ? `<p class="sg-how">${escapeHtml(it.how)}</p>` : ''}</div>`;
+    return `<div class="sg-item sg-i-${s.r}"><div class="sg-it-t">${escapeHtml(it.title)}</div><p class="sg-it-w">${escapeHtml(it.why)}</p>${ctl}<div class="sg-it-l"><button type="button" class="gsc-link" aria-expanded="${!!SG.how[k]}" onclick="sgHowToggle('${k}')">${SG.how[k] ? 'Hide how and example' : 'How to do it, with an example'}</button>${it.tool ? ` <button type="button" class="gsc-link" onclick="srchPathJump('${it.tool[1]}')">${escapeHtml(it.tool[0])}</button>` : ''}</div>${SG.how[k] ? `<p class="sg-how">${escapeHtml(it.how)}</p>${SG_EXAMPLES[k] ? `<p class="sg-how sg-ex"><strong>What finished looks like (example):</strong> ${escapeHtml(SG_EXAMPLES[k])}</p>` : ''}` : ''}</div>`;
   };
   return `<section class="sg-guide" aria-label="${A.tag} guide"><div class="sg-g-head"><div><div class="srch-eyebrow">${A.tag} guide &middot; ${A.name}</div><h3 class="sg-g-title">${A.tag} checklist for your business</h3></div><button type="button" class="btn-ghost" onclick="sgOpen('${a}')">Close</button></div>
     <div class="sg-g-models" role="radiogroup" aria-label="Your kind of business">${SG_MODELS.map(m => `<button type="button" role="radio" aria-checked="${m.key === model}" class="sg-m${m.key === model ? ' on' : ''}" onclick="sgModel('${m.key}')">${m.label}</button>`).join('')}</div><p class="sg-m-line">${M.line}</p>
@@ -67493,7 +67494,8 @@ function prcContestView(id, key){
 document.addEventListener('keydown', ev => { if (ev.key === 'Escape') prcModalClose(); });
 function prcContestHtml(id){
   const c = prcContest[id]; if (!c) return '';
-  if (c.running) return '<div class="ai-status-bubble" style="margin-top:8px;">Getting one version from each AI partner, using your brief. This can take a minute.</div>';
+  const hasDrafts = !!(c.result && (c.result.candidates || []).some(x => x.copy));
+  if (c.running && !hasDrafts) return renderMiniLoadCover(c.stage || 'YOUR AI CONTESTANTS ARE THINKING');
   let h = c.note ? `<p class="hint" style="margin-top:8px;color:var(--advocacy);">${escapeHtml(c.note)}</p>` : '';
   const list = (c.result && c.result.candidates || []).filter(x => x.copy);
   h += list.map(x => `<div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px;">
@@ -67504,23 +67506,44 @@ function prcContestHtml(id){
     <div style="font-size:0.8125rem;margin:6px 0 2px;"><a class="flink" onclick="prcContestView('${id}','${escapeHtml(x.key)}')">View Complete Draft →</a> <span class="hint" style="margin:0;">${String(x.copy).trim().split(/\s+/).length} words</span></div>
     <div style="margin-top:8px;"><button type="button" class="btn-primary" ${c.picked ? 'disabled' : ''} onclick="prcContestPick('${id}','${escapeHtml(x.key)}')">Use this draft →</button></div></div>`).join('');
   const total = c.result && c.result.totalCount, got = c.result && c.result.returnedCount;
-  if (total && got < total) h += `<p class="hint" style="margin-top:10px;">${got} of ${total} drafts returned.</p>`;
+  if (c.running) h += renderMiniLoadCover(c.stage || 'YOUR AI CONTESTANTS ARE THINKING');
+  else if (total && got < total) h += `<p class="hint" style="margin-top:10px;">${got} of ${total} drafts returned.</p>`;
   if (c.picked) h += '<p class="hint" style="margin-top:8px;">Saved as the working draft above. Edit it, save it, then approve.</p>';
   return h;
 }
 async function prcRunContest(id){
   if (prcContest[id] && prcContest[id].running) return;
-  prcContest[id] = { running: true, result: null, note: '', picked: false };
-  const out = document.getElementById(`prcContestOut-${id}`); if (out) out.innerHTML = prcContestHtml(id);
+  prcContest[id] = { running: true, result: null, note: '', picked: false, stage: 'YOUR AI CONTESTANTS ARE THINKING' };
+  const draw = () => { const o = document.getElementById(`prcContestOut-${id}`); if (o) o.innerHTML = prcContestHtml(id); };
+  draw();
+  const base = `${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/press-releases/${encodeURIComponent(id)}/interview`;
   try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/press-releases/${encodeURIComponent(id)}/interview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}), timeoutMs: 100000 });
+    const resp = await authedFetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}), timeoutMs: 125000 });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) prcContest[id].note = data.error || "Couldn't run the contest. Try again.";
     else if (!data.available) prcContest[id].note = data.note || 'The contest is not available right now.';
-    else prcContest[id].result = data;
+    else {
+      prcContest[id].result = data;
+      // Voice and campaign contests do the same: a partner that is still thinking gets another request of its own, up to three attempts in all. Early drafts stay on screen meanwhile.
+      let attempt = data.attempt || 1;
+      while (prcContest[id].result.pendingCount > 0 && attempt < (data.maxAttempts || 3)){
+        const waiting = prcContest[id].result.pendingCount;
+        attempt += 1;
+        prcContest[id].stage = `${waiting} AI PARTNER${waiting === 1 ? ' IS' : 'S ARE'} STILL THINKING. TRYING AGAIN (ATTEMPT ${attempt} OF ${data.maxAttempts || 3})`;
+        draw();
+        let next = null;
+        try {
+          const r2 = await authedFetch(`${base}/${encodeURIComponent(data.interviewId)}/retry-pending`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}), timeoutMs: 125000 });
+          if (r2.ok) next = await r2.json().catch(() => null);
+        } catch (e){ /* connection dropped on a follow-up: keep what has already come back */ }
+        if (!next || !Array.isArray(next.candidates)) break;
+        prcContest[id].result = next;
+      }
+    }
   } catch (e){ prcContest[id].note = 'Could not reach the server. Try again.'; }
   prcContest[id].running = false;
-  const out2 = document.getElementById(`prcContestOut-${id}`); if (out2) out2.innerHTML = prcContestHtml(id);
+  prcContest[id].stage = '';
+  draw();
 }
 async function prcContestPick(id, key){
   const c = prcContest[id]; if (!c || !c.result || c.picked) return;
