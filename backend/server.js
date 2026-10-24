@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-20-pr-blind-counts (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-24-pr-contest-retries (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -7045,19 +7045,23 @@ function marketingProjectsFor(accountId){
 function syncMarketingProjectNeeds(accountId, actorName){
   const now = new Date().toISOString(); let added = 0, closed = 0;
   const existing = {}; db.prepare('SELECT * FROM marketing_projects WHERE accountId = ?').all(accountId).forEach(r => { if (r.sourcekey) existing[r.sourcekey] = r; });
-  const upsert = (key, area, name, supports, notes, impact, urgency, met) => {
+  const upsert = (key, area, name, supports, notes, impact, urgency, met, exampleText) => {
     const ex = existing[key];
-    if (ex){ if (met && ex.status !== 'Done' && ex.status !== 'Archived'){ db.prepare('UPDATE marketing_projects SET status = ?, updated = ? WHERE id = ? AND accountId = ?').run('Done', now, ex.id, accountId); closed++; } return; }
+    if (ex){
+      if (exampleText && !/What finished looks like/.test(String(ex.notes || '')) && ex.status !== 'Archived'){ try { db.prepare('UPDATE marketing_projects SET notes = ? WHERE id = ? AND accountId = ?').run((String(ex.notes || '') + exampleText).slice(0, 1000), ex.id, accountId); } catch (e){} }
+      if (met && ex.status !== 'Done' && ex.status !== 'Archived'){ db.prepare('UPDATE marketing_projects SET status = ?, updated = ? WHERE id = ? AND accountId = ?').run('Done', now, ex.id, accountId); closed++; } return; }
     if (met) return;
     db.prepare('INSERT INTO marketing_projects (id, accountId, name, supports, assettypes, delivery, productgroup, creativegroup, impact, effort, urgency, status, owner, notes, createdby, created, updated, area, sourcekey) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(generateId('MPJ'), accountId, String(name).slice(0, 120), String(supports || '').slice(0, 200), '', '', '', '', impact || null, null, urgency || null, 'Backlog', '', String(notes || '').slice(0, 1000), actorName || 'Verilume', now, now, area, key);
+      .run(generateId('MPJ'), accountId, String(name).slice(0, 120), String(supports || '').slice(0, 200), '', '', '', '', impact || null, null, urgency || null, 'Backlog', '', (String(notes || '').slice(0, 1000 - String(exampleText || '').length) + String(exampleText || '')).slice(0, 1000), actorName || 'Verilume', now, now, area, key);
     added++;
   };
   try { buildTrainTheBrain(accountId).setup.steps.forEach(st => st.items.forEach(i => upsert('ttb:' + st.key + ':' + i.label, 'train', st.title + ': ' + i.label, st.title, i.gain, null, null, !!i.done))); } catch (e){ console.warn('[marketing-projects] train needs skipped:', e.message); }
   try {
     gscPrioritiesList(accountId).forEach(pr => {
       const met = pr.status === 'done' || pr.status === 'dismissed';
-      upsert('srch:' + pr.id, 'search', pr.title, 'Search Everywhere ' + (pr.priority || ''), pr.detail, { High: 5, Medium: 3, Low: 1 }[pr.impactLabel] || null, { P1: 5, P2: 3, P3: 2 }[pr.priority] || null, met);
+      const bk = String(pr.sourceKey || '').indexOf('bp:') === 0 ? pr.sourceKey.slice(3) : '';
+      const exampleText = bk && SG_EXAMPLES[bk] ? '\n\nWhat finished looks like (example): ' + SG_EXAMPLES[bk] : '';
+      upsert('srch:' + pr.id, 'search', pr.title, 'Search Everywhere ' + (pr.priority || ''), pr.detail, { High: 5, Medium: 3, Low: 1 }[pr.impactLabel] || null, { P1: 5, P2: 3, P3: 2 }[pr.priority] || null, met, exampleText);
     });
   } catch (e){ console.warn('[marketing-projects] search needs skipped:', e.message); }
   return { added, closed };
@@ -28103,6 +28107,7 @@ Submit through the tool.`;
 // 2026-10-11, per Todd: Search Everywhere priorities are kept in three tiers. (1) Best practices are the starting point: the SEO, AEO and GEO
 // checklist for the account's kind of business. (2) Site scan: what the Search Console data and the site scan show. (3) Manual additions by the team.
 function gscPriorityTier(sourceKey){ const k = String(sourceKey || ''); return k.startsWith('bp:') ? 'best_practice' : k.startsWith('manual:') ? 'manual' : 'site_scan'; }
+const SG_EXAMPLES = {"seo_gsc": "Search Console shows your site as a verified property, and the latest performance export (queries and pages, with dates) is loaded here, so the cards show clicks, impressions, position and the date range.", "seo_health": "A short fix list where every key page is marked Indexed, the sitemap is submitted with no errors, and robots.txt is open to the pages you want found. Example: 38 of 40 key pages indexed, the other 2 left out on purpose.", "seo_gbp": "A claimed profile with the right primary category, hours, services, 10 or more real photos, a booking or call link, and the location page address. Franchise: one profile per location under one manager account.", "seo_nap": "One master line, for example \"Northside Clinic, 120 Main St, Suite 4, Springfield, 555-0100\", written the same way on the website, Google, Apple Maps, Bing Places, Yelp and the main directories.", "seo_loc_pages": "A page per location at its own address, for example /locations/springfield, with street address, today's hours, services, staff, real photos of that site, local reviews and a map. Each page has copy unique to that location.", "seo_pages": "A page per product or service line, for example \"Teeth Whitening in Springfield\", with a plain description, photos, a price range or a clear next step such as \"Book a consult\".", "seo_titles": "A table of key pages, each with a unique title under about 60 characters that leads with the topic (\"Teeth Whitening in Springfield | Northside Clinic\") and a short description that earns the click.", "seo_content": "A list of the top 10 non-brand searches, each matched to one page (new or improved), published, with its address recorded next to the search.", "seo_vitals": "A before-and-after for the home page, top landing pages and booking page showing Core Web Vitals moved from Poor to Good, for example the main content showing in under 2.5 seconds on a phone.", "seo_reviews": "A one-tap review link on receipts, emails and texts, and a log showing every new review answered within 3 days: thanks for the good ones, a calm offer to fix the bad ones.", "seo_calls": "Every landing page shows a tappable phone number near the top, each source has its own tracking number, and calls reach analytics as a conversion with the source and landing page.", "seo_store_locator": "Each location opens from a normal link, for example /stores/springfield, that loads without scripts and states the address, hours and pickup or in-stock status in text.", "seo_brand": "A confirmed list of every spelling people use for your name (for example \"Northside Clinic\" and \"North Side Clinic\"), so brand and non-brand clicks are separated in the reports.", "seo_links": "A short record of earned links and citations: a chamber of commerce listing, supplier and partner pages, a local news mention, a sponsored-event page, each pointing at the right page. No bought links.", "aeo_faq": "A question list where each question is marked Answered on site or has an approved answer ready, for example \"How long does whitening take?\" answered in two sentences on the service page.", "aeo_facts": "Hours, services, prices and areas served written as plain page text, not inside an image, with a visible \"Updated\" date, and holiday hours changed the same day.", "aeo_direct": "Before: a page opening \"Welcome to our family-run clinic...\". After: the heading \"How long does whitening take?\", then \"Most visits take about 60 minutes, and results last 6 to 12 months.\", then the detail.", "aeo_approved": "A published FAQ section on the matching page: each approved answer in your own words under its question as the heading, with the FAQ markup copied from the list.", "aeo_local_schema": "On each location page, LocalBusiness markup with name, address, phone, opening hours and map position, passing Google's Rich Results test with no errors, and matching the hours shown on the page.", "aeo_org_schema": "Organization markup on the home page with the official name, logo, contact point and links to your official profiles, passing Google's Rich Results test.", "aeo_product_schema": "On each product page, Product markup with name, image, price, currency and availability that matches what the page shows, and changes when the price or stock changes.", "aeo_call_answers": "A list of the ten questions callers ask most, each with a short page or FAQ entry, for example \"Do you take walk-ins?\" answered \"Yes, Monday to Friday, 9 to 5.\"", "aeo_loc_faq": "On each location page, three to five questions only that store can answer, such as \"Where do I park?\" or \"Is there a pharmacy on site?\", written or approved by that location.", "geo_crawl": "A one-page written decision listing which AI crawlers are allowed and which are blocked, matched in robots.txt and any bot protection, with a review date.", "geo_cited": "A saved citation check: your question list, which AI answers name you, which link to you, and which cite competitors, with the date it was run.", "geo_listings": "A table covering Google, Apple Maps, Bing Places and Yelp where name, address, hours, phone and category are identical to your master record. Franchise: pushed from one master record.", "geo_facts": "One approved fact sheet (description, founding year, services, leadership) and a checked list showing the about page, LinkedIn, directories and press pages all match it.", "geo_third": "A list of the sites AI answers cite for your questions, with an honest plan to earn a mention or review on each. No paid or fake posts.", "geo_fresh": "Each key page has a named owner, a quarterly review date and a visible \"Last updated\" date, with a calendar showing the next review.", "geo_feeds": "A product feed accepted in Google Merchant Center with price, stock and identifiers correct, and no disapproved items in its diagnostics.", "geo_central": "A named brand owner for names, categories and descriptions, and a one-page rule sheet: locations edit hours, photos and local details only.", "geo_compare": "A monthly share-of-voice table: for your question list, how often you and each competitor are named, with a note on where competitors appear and you do not."};
 const GSC_BEST_PRACTICES = [{"key":"seo_gsc","area":"seo","w":3,"m":["local","single","franchise"],"title":"Connect Google Search Console","why":"It is the only first-party record of what people searched and clicked. Every other check leans on it.","how":"Verify the site in Search Console, then upload the performance export here with Update data."},{"key":"seo_health","area":"seo","w":3,"m":["local","single","franchise"],"title":"Key pages are indexed and the site has no blocking errors","why":"A page that is not indexed cannot be found, however good it is.","how":"Work the Fix and Check items in the health check first. Confirm sitemap and robots.txt do not block pages you want found."},{"key":"seo_gbp","area":"seo","w":3,"m":["local","franchise"],"title":"Google Business Profile claimed and complete","why":"It drives the map results and the local panel, which is where most local searches end.","how":"Claim it, pick the right primary category, add hours, services, photos and a link to the page for that location. For franchises, one profile per location, managed under one account."},{"key":"seo_nap","area":"seo","w":3,"m":["local","franchise"],"title":"Name, address and phone match everywhere","why":"Conflicting listings make engines less sure which facts are right.","how":"Pick one spelling of the name, address and phone. Fix the website, Google, Apple Maps, Bing Places, Yelp and the main directories to match."},{"key":"seo_loc_pages","area":"seo","w":3,"m":["franchise"],"title":"Every location has its own page with real local content","why":"A location page is the page that can win \"near me\" searches for that store.","how":"One crawlable page per location: address, hours, services, team, local photos, reviews and a map. No duplicate copy with only the city swapped."},{"key":"seo_pages","area":"seo","w":3,"m":["single"],"title":"Product, service and category pages match what buyers search","why":"This is where call center and ecommerce traffic is won or lost.","how":"One page per product or service line, titled with the words buyers use, with specific copy, photos, price or a plain next step."},{"key":"seo_titles","area":"seo","w":2,"m":["local","single","franchise"],"title":"Unique titles and descriptions on key pages","why":"The title is the headline in the results and the clearest topic signal.","how":"Give each important page a title under about 60 characters that leads with the topic, and a description that earns the click."},{"key":"seo_content","area":"seo","w":2,"m":["local","single","franchise"],"title":"A page for each of your top non-brand searches","why":"Brand searches come to you anyway. Growth comes from searches that do not name you.","how":"Take the top non-brand searches and keyword opportunities, and publish or improve one page for each."},{"key":"seo_vitals","area":"seo","w":2,"m":["local","single","franchise"],"title":"Pages load fast and work on a phone","why":"Most searches happen on phones, and slow pages lose visitors before they read.","how":"Check Core Web Vitals for the home page, top landing pages and checkout or booking pages. Fix the slowest first."},{"key":"seo_reviews","area":"seo","w":2,"m":["local","franchise"],"title":"A steady flow of reviews, and you answer them","why":"Reviews influence both ranking in the map results and the choice a customer makes.","how":"Ask every happy customer, make the link one tap, and reply to every review, good or bad, within a few days."},{"key":"seo_calls","area":"seo","w":2,"m":["single"],"title":"Click-to-call and call tracking on search landing pages","why":"For a call center, a call is the conversion. Without tracking you cannot tell which pages produce it.","how":"Put a tappable number on every landing page, use a tracking number per source, and send calls to analytics as conversions."},{"key":"seo_store_locator","area":"seo","w":2,"m":["franchise"],"title":"Store locator and pickup pages can be crawled","why":"A locator that only works with scripts can hide every location from search.","how":"Make sure each location has a normal link and page. Show pickup or in-stock status on the page when you can."},{"key":"seo_brand","area":"seo","w":1,"m":["local","single","franchise"],"title":"Brand names confirmed so brand and non-brand are separated","why":"Without it, branded clicks make growth look better than it is.","how":"Open Brand names at the top of the page and confirm every spelling people use for you."},{"key":"seo_links","area":"seo","w":1,"m":["local","single","franchise"],"title":"Earn links and local citations from sites that matter","why":"Links from trusted sites still count, and for local they confirm you are real and nearby.","how":"Local chambers, suppliers, partners, press and community sponsorships. Skip bought links."},{"key":"aeo_faq","area":"aeo","w":3,"m":["local","single","franchise"],"title":"Your site answers the questions people actually ask","why":"Engines show the page that answers the question most directly.","how":"Work through the question list. Mark each one answered on your site, or draft an answer for your team to approve."},{"key":"aeo_facts","area":"aeo","w":3,"m":["local","franchise"],"title":"Hours, services, prices and areas served are in plain text and current","why":"Voice assistants and answer boxes lift these facts straight from the page.","how":"State them on the page as text, not only in an image or a script. Update the same day anything changes, including holidays."},{"key":"aeo_direct","area":"aeo","w":3,"m":["local","single","franchise"],"title":"Each page opens with a direct answer","why":"A clear first two sentences are the part most often quoted.","how":"Put the plain answer first, then the detail. Use the question as the heading when the page answers one."},{"key":"aeo_approved","area":"aeo","w":2,"m":["local","single","franchise"],"title":"Approved FAQ answers published in your own words","why":"Approved answers keep what engines repeat accurate and on message.","how":"Approve answers in the question list, then publish them on the page that fits."},{"key":"aeo_local_schema","area":"aeo","w":3,"m":["local","franchise"],"title":"LocalBusiness markup on each location page","why":"It tells machines the address, hours, phone and category without guessing.","how":"Use the LocalBusiness example in the schema library on every location page, with real hours and the map position."},{"key":"aeo_org_schema","area":"aeo","w":2,"m":["local","single","franchise"],"title":"Organization markup on the home page","why":"It names the business, logo and official profiles in a form engines read reliably.","how":"Add Organization markup with your logo, contact and the links to your official profiles."},{"key":"aeo_product_schema","area":"aeo","w":2,"m":["single","franchise"],"title":"Product and offer markup with price and availability","why":"It makes products eligible for richer results and keeps price and stock facts accurate.","how":"Mark up each product page with name, image, price, currency and availability, and keep it in step with the page."},{"key":"aeo_call_answers","area":"aeo","w":2,"m":["single"],"title":"The top questions callers ask are answered on pages","why":"Your calls are a free list of the questions your customers have.","how":"Ask the team for the ten questions heard most. Publish a short page or FAQ for each."},{"key":"aeo_loc_faq","area":"aeo","w":2,"m":["franchise"],"title":"Each location page has its own questions and answers","why":"Local questions, such as parking, pickup or same-day service, differ by store.","how":"Give each location three to five answers specific to that store, written or approved by the location."},{"key":"geo_crawl","area":"geo","w":3,"m":["local","single","franchise"],"title":"You have decided which AI crawlers may read the site","why":"If robots.txt or a firewall blocks them, assistants cannot cite you.","how":"Review robots.txt and any bot protection. Allow the search crawlers from the AI assistants you want citing you, and write the decision down."},{"key":"geo_cited","area":"geo","w":3,"m":["local","single","franchise"],"title":"You check whether AI answers cite you","why":"You cannot improve what you do not measure, and results differ by assistant.","how":"Run the AI citation check on your question list and review which answers name you and which link to you."},{"key":"geo_listings","area":"geo","w":3,"m":["local","franchise"],"title":"Listings on Google, Apple Maps, Bing Places and Yelp are accurate","why":"Assistants draw local facts from these listings.","how":"Match the name, address, hours, phone and category on each. For franchises, push location data from one master record."},{"key":"geo_facts","area":"geo","w":3,"m":["local","single","franchise"],"title":"The facts about your business agree everywhere they appear","why":"AI answers blend many sources. Mismatches cause wrong or missing mentions.","how":"Keep one approved description, founding year, services and leadership. Check your about page, LinkedIn, directories and press pages against it."},{"key":"geo_third","area":"geo","w":2,"m":["local","single","franchise"],"title":"Trusted third-party sites mention you","why":"Assistants lean on reviews, press, industry sites and forums more than on your own claims.","how":"See which sites the AI answers cite for your questions. Earn honest coverage and reviews on those, not paid or fake posts."},{"key":"geo_fresh","area":"geo","w":2,"m":["local","single","franchise"],"title":"Key pages show a current date and are updated on a schedule","why":"Engines prefer fresh, dated facts, especially for prices, hours and policies.","how":"Name an owner and a quarterly review for each key page, and show the last updated date."},{"key":"geo_feeds","area":"geo","w":2,"m":["single","franchise"],"title":"Product feed submitted to Google Merchant Center","why":"Shopping results and AI shopping answers read your feed.","how":"Submit a feed with accurate price, stock and identifiers, and fix any disapproved items."},{"key":"geo_central","area":"geo","w":2,"m":["franchise"],"title":"Brand facts and location facts agree and are managed centrally","why":"Assistants must match the brand to the right store, or they skip you.","how":"One owner at the brand for names, categories and descriptions, with location managers editing only hours, photos and local details."},{"key":"geo_compare","area":"geo","w":1,"m":["local","single","franchise"],"title":"You track your share of AI answers against competitors","why":"The goal is to be named more often than the alternatives.","how":"Review share of voice monthly and note which competitors are named where you are not."}];
 try { db.exec('CREATE TABLE IF NOT EXISTS search_guide_model (accountid TEXT PRIMARY KEY, modelkey TEXT, updatedat TEXT)'); } catch (e){}
 function gscSearchModel(accountId){ try { const r = db.prepare('SELECT modelkey FROM search_guide_model WHERE accountid = ?').get(accountId); const m = r && aliasVal(r, 'modelkey'); return ['local', 'single', 'franchise'].includes(m) ? m : 'local'; } catch (e){ return 'local'; } }
@@ -28168,7 +28173,7 @@ function gscPrioritiesList(accountId){
     if (k.startsWith('gap:')){ const tk = gscTokens(k.slice(4)); const hit = groups.find(gr => { const w = gscWindowFor(wins, gr.type, gr.value); return gscTimeBound(w) && (gscMatchQuery(tk, gr) || {}).m === 'strong'; }); return hit ? gscWindowFor(wins, hit.type, hit.value) : null; }
     return null;
   };
-  return rows.map(r => { const w = winOf(r); return { id: r.id, date: String(r.createdAt || '').slice(0, 10), priority: r.priorityLevel, title: r.title, detail: r.detail, impactBasis: r.impactBasis, impactClicks: r.impactClicks, impactLabel: r.impactLabel, status: r.status, ownerId: r.ownerId || null, dueDate: r.dueDate || null, dismissedReason: r.dismissedReason || null, window: gscTimeBound(w) ? gscWindowTag(w) : null, doneDate: r.doneAt ? String(r.doneAt).slice(0, 10) : null, sourceKind: String(r.sourceKey || '').split(':')[0], tier: gscPriorityTier(r.sourceKey), releaseSeed: gscPriorityReleaseSeed(r) }; })
+  return rows.map(r => { const w = winOf(r); return { id: r.id, date: String(r.createdAt || '').slice(0, 10), priority: r.priorityLevel, title: r.title, detail: r.detail, impactBasis: r.impactBasis, impactClicks: r.impactClicks, impactLabel: r.impactLabel, status: r.status, ownerId: r.ownerId || null, dueDate: r.dueDate || null, dismissedReason: r.dismissedReason || null, window: gscTimeBound(w) ? gscWindowTag(w) : null, doneDate: r.doneAt ? String(r.doneAt).slice(0, 10) : null, sourceKind: String(r.sourceKey || '').split(':')[0], sourceKey: String(r.sourceKey || ''), tier: gscPriorityTier(r.sourceKey), releaseSeed: gscPriorityReleaseSeed(r) }; })
     .sort((a, b) => (stOrder[a.status] >= 3 ? 1 : 0) - (stOrder[b.status] >= 3 ? 1 : 0) || (GSC_PRIORITY_ORDER[a.priority] || 9) - (GSC_PRIORITY_ORDER[b.priority] || 9) || (a.window ? 0 : 1) - (b.window ? 0 : 1) || ((a.window && a.window.days) || 0) - ((b.window && b.window.days) || 0) || (b.impactClicks || 0) - (a.impactClicks || 0));
 }
 
@@ -28771,9 +28776,9 @@ createTableIfNeeded(`
 // One vendor's PR-copy candidate, sharing buildPrCorpCommPrompt()'s exact
 // prompt with the Anthropic baseline candidate below — same brief/context
 // depth compared across vendors, same convention as generateVendorInterviewCopy.
-async function generateVendorPrCopy(vendorKey, prompt){
+async function generateVendorPrCopy(vendorKey, prompt, timeoutMs){
   try {
-    const text = await callVendorForText(vendorKey, prompt);
+    const text = await callVendorForText(vendorKey, prompt, timeoutMs);
     const parsed = parseJsonBlock(text);
     if (!parsed){
       // The vendor wrote the piece but not as JSON: keep the text rather than lose a real draft.
@@ -28883,7 +28888,20 @@ ${text.slice(0, 3500)}`;
   const quoted = base.criteria.filter(c => c.evidence); base.quotesChecked = quoted.length; base.quotesVerified = quoted.filter(c => c.evidenceVerified).length;
   return base;
 }
-async function runPrCandidateInterview(account, docType, brief){
+// 2026-10-24 (Todd): the PR contest now retries a partner that failed or timed out, the way the voice and campaign contests do.
+// Three attempts in all: the first request, then up to two automatic follow-up requests that rerun ONLY the partners still pending.
+// A partner whose key is wrong or whose account has no credits is not retried, since another try cannot change that.
+const PR_MAX_ATTEMPTS = 3;
+const PR_ATTEMPT_TIMEOUTS_MS = [VENDOR_PASS1_TIMEOUT_MS, VENDOR_PASS2_TIMEOUT_MS, VENDOR_PASS2_TIMEOUT_MS];
+function prFailureRetryable(err){
+  const e = String(err || '');
+  if (!e) return false;
+  return !/HTTP (400|401|402|403|404)\b|invalid api key|incorrect api key|no credits|insufficient[_ ]quota|billing|not configured|permission/i.test(e);
+}
+async function runPrCandidateInterview(account, docType, brief, opts){
+  const only = opts && Array.isArray(opts.only) ? opts.only : null;
+  const attemptNo = (opts && opts.attempt) || 1;
+  const passTimeoutMs = (opts && opts.timeoutMs) || PR_ATTEMPT_TIMEOUTS_MS[0];
   if (!process.env.ANTHROPIC_API_KEY){
     return {
       available: false,
@@ -28907,13 +28925,14 @@ async function runPrCandidateInterview(account, docType, brief){
   // this now runs both in one Promise.all, same pattern already used by
   // runBrandVoiceContest and runCandidateInterview, bounding total time to
   // the single slowest call instead of a sum.
-  const configuredVendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar]);
+  const configuredVendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar] && (!only || only.includes(v.key)));
   // Same closing wording the campaign copy contest uses (tool first, then an exact JSON fallback for partners without tool-calling), with this panel's three fields.
   const vendorPrompt = built.prompt + '\n\nSubmit your draft via the submit_copy tool (name: "copy"; also include a one-sentence "strategy" field, roughly 10-20 words, naming the real approach you took, and a "headline" field with the headline or subject line, or the first line for talking points). If you have no tool-calling capability, reply with exactly one JSON object of the form {"copy": "...", "strategy": "...", "headline": "..."} and nothing else.';
   // Each draft is scored for brand voice alignment the moment it arrives, so scoring overlaps the slower partners instead of adding to the total time.
   const scoreGen = async gen => { if (!gen || !gen.copy) return gen; try { gen.brandVoice = await scorePrBrandVoice(gen.copy, account, brief); } catch (e){ gen.brandVoice = null; } return gen; };
+  const runAnthropic = !only || only.includes('anthropic-baseline');
   const [anthropicResp, vendorGenerated] = await Promise.all([
-    callClaudeForJSON({
+    !runAnthropic ? Promise.resolve(null) : callClaudeForJSON({
       model: 'claude-sonnet-4-5',
       maxTokens: 1200,
       content: prompt,
@@ -28922,18 +28941,24 @@ async function runPrCandidateInterview(account, docType, brief){
       schema: PR_CONTEST_SCHEMA
     }).then(parsed => ({ copy: typeof parsed.copy === 'string' ? parsed.copy : null, approach: typeof parsed.strategy === 'string' ? parsed.strategy : null, headline: typeof parsed.headline === 'string' ? parsed.headline : null, error: null }))
       .catch(e => ({ copy: null, error: 'Generation failed: ' + e.message })).then(scoreGen),
-    Promise.all(configuredVendors.map(v => generateVendorPrCopy(v.key, vendorPrompt).then(scoreGen)))
+    Promise.all(configuredVendors.map(v => generateVendorPrCopy(v.key, vendorPrompt, passTimeoutMs).then(scoreGen)))
   ]);
 
   const buildCandidate = (key, label, vendor, model, configured, gen) => ({
     key, label, vendor, model, configured,
     copy: gen ? gen.copy : null, approach: gen ? (gen.approach || null) : null, headline: gen ? (gen.headline || null) : null, error: gen ? gen.error : null,
-    relevanceScore: null, complianceScore: null, combinedScore: null, note: null, flags: [], scoreMode: null, brandVoice: gen && gen.brandVoice ? gen.brandVoice : null
+    relevanceScore: null, complianceScore: null, combinedScore: null, note: null, flags: [], scoreMode: null, brandVoice: gen && gen.brandVoice ? gen.brandVoice : null,
+    attempts: attemptNo, pending: !!(configured && gen && !gen.copy && prFailureRetryable(gen.error) && attemptNo < PR_MAX_ATTEMPTS)
   });
   const anthropicCandidate = buildCandidate('anthropic-baseline', 'Anthropic (baseline)', 'Anthropic', 'claude-sonnet-4-5', true, anthropicResp);
   const liveVendorCandidates = configuredVendors.map((v, i) => buildCandidate(v.key, v.label, v.vendor, v.model, true, vendorGenerated[i]));
   const unconfiguredCandidates = INTERVIEW_VENDOR_REGISTRY.filter(v => !process.env[v.envVar]).map(v => buildCandidate(v.key, v.label, v.vendor, null, false, { copy: null, error: `${v.envVar} not configured on this deployment.` }));
 
+  if (only){
+    // Follow-up pass: hand back just the partners that were rerun. The caller merges them into the stored contest and keeps blind labels.
+    const ran = [anthropicCandidate, ...liveVendorCandidates].filter(c => only.includes(c.key));
+    return { available: true, note: null, recommendedKey: null, candidates: ran };
+  }
   // Blind the drafts on the server: shuffle the ones that have copy and give each an opaque label and key, so neither the order nor the key names the vendor. The real key stays on the stored record for the ranking ledger.
   const all = [anthropicCandidate, ...liveVendorCandidates, ...unconfiguredCandidates];
   const withCopy = all.filter(c => c.copy);
@@ -28982,7 +29007,43 @@ async function handlePrCopyInterviewRequest(docType, accountId, sourceId, body, 
   const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : null;
   db.prepare(`INSERT INTO pr_copy_interviews (id, accountId, docType, sourceId, requestedBy, candidatesJson, createdAt) VALUES (?,?,?,?,?,?,?)`)
     .run(interviewId, accountId, docType, sourceId, requestedBy, JSON.stringify(result.candidates), now);
-  return { status: 200, body: { available: true, interviewId, recommendedKey: result.recommendedKey, candidates: result.candidates.filter(c => c.copy).map(c => Object.assign(redactCandidatesForClient([c])[0], { key: c.blindKey, brandVoice: c.brandVoice || null })), returnedCount: result.candidates.filter(c => c.copy).length, totalCount: result.candidates.length, createdAt: now } }; // contests are blind: counts only, never which partner did or did not return a draft
+  return { status: 200, body: { available: true, interviewId, recommendedKey: result.recommendedKey, candidates: result.candidates.filter(c => c.copy).map(c => Object.assign(redactCandidatesForClient([c])[0], { key: c.blindKey, brandVoice: c.brandVoice || null })), returnedCount: result.candidates.filter(c => c.copy).length, totalCount: result.candidates.length, pendingCount: result.candidates.filter(c => c.pending).length, attempt: 1, maxAttempts: PR_MAX_ATTEMPTS, createdAt: now } }; // contests are blind: counts only, never which partner did or did not return a draft
+}
+// 2026-10-24 (Todd): follow-up pass for the PR contest. The page calls this by itself when partners are still pending, up to two more times.
+// It reruns only the pending partners, as its own request with its own time budget, and leaves every returned draft untouched.
+async function handlePrCopyRetryRequest(docType, accountId, sourceId, interviewId, body){
+  const cfg = PR_DOC_TYPE_CONFIG[docType];
+  const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+  if (!account) return { status: 404, body: { error: 'account not found' } };
+  const row = db.prepare(`SELECT * FROM ${cfg.table} WHERE id = ? AND accountId = ?`).get(sourceId, accountId);
+  if (!row) return { status: 404, body: { error: 'item not found' } };
+  const interview = db.prepare('SELECT * FROM pr_copy_interviews WHERE id = ? AND accountId = ?').get(interviewId, accountId);
+  if (!interview) return { status: 404, body: { error: 'PR contest not found for this account' } };
+  let candidates = [];
+  try { candidates = JSON.parse(interview.candidatesJson) || []; } catch (e){ candidates = []; }
+  const shape = (retried, attempt) => ({ status: 200, body: { available: true, interviewId, retried, recommendedKey: null,
+    candidates: candidates.filter(c => c.copy).map(c => Object.assign(redactCandidatesForClient([c])[0], { key: c.blindKey, brandVoice: c.brandVoice || null })),
+    returnedCount: candidates.filter(c => c.copy).length, totalCount: candidates.length, pendingCount: candidates.filter(c => c.pending).length, attempt, maxAttempts: PR_MAX_ATTEMPTS } });
+  const pending = candidates.filter(c => c.pending);
+  const lastAttempt = Math.max(1, ...candidates.map(c => c.attempts || 1));
+  if (!pending.length || interview.selectedCandidateKey) return shape(false, lastAttempt);
+  const attempt = Math.max(...pending.map(c => c.attempts || 1)) + 1;
+  if (attempt > PR_MAX_ATTEMPTS){ pending.forEach(c => { c.pending = false; }); db.prepare('UPDATE pr_copy_interviews SET candidatesJson = ? WHERE id = ?').run(JSON.stringify(candidates), interviewId); return shape(false, PR_MAX_ATTEMPTS); }
+  const brief = cfg.briefFromRow(row, body || {});
+  let result;
+  try { result = await runPrCandidateInterview(account, docType, brief, { only: pending.map(c => c.key), attempt, timeoutMs: PR_ATTEMPT_TIMEOUTS_MS[attempt - 1] }); }
+  catch (e){ result = { available: true, candidates: pending.map(c => Object.assign({}, c, { error: 'Generation failed: ' + e.message, pending: attempt < PR_MAX_ATTEMPTS && prFailureRetryable(e.message), attempts: attempt })) }; }
+  let maxDraft = candidates.reduce((m, c) => Math.max(m, c.blindKey ? parseInt(String(c.blindKey).replace(/\D/g, ''), 10) || 0 : 0), 0);
+  (result.candidates || []).forEach(r => {
+    const i = candidates.findIndex(c => c.key === r.key);
+    if (i < 0) return;
+    const keep = { blindLabel: candidates[i].blindLabel, blindKey: candidates[i].blindKey };
+    candidates[i] = Object.assign({}, candidates[i], r, keep);
+    if (candidates[i].copy && !candidates[i].blindKey){ maxDraft++; candidates[i].blindLabel = 'Draft ' + maxDraft; candidates[i].blindKey = 'draft-' + maxDraft; }
+    if (candidates[i].copy) candidates[i].pending = false;
+  });
+  db.prepare('UPDATE pr_copy_interviews SET candidatesJson = ? WHERE id = ?').run(JSON.stringify(candidates), interviewId);
+  return shape(true, attempt);
 }
 function handlePrCopySelectRequest(accountId, interviewId, candidateKey, session){
   const interview = db.prepare('SELECT * FROM pr_copy_interviews WHERE id = ? AND accountId = ?').get(interviewId, accountId);
@@ -31150,7 +31211,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-20-pr-blind-counts',
+        buildStamp: '2026-10-24-pr-contest-retries',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
@@ -44557,6 +44618,14 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const prId = decodeURIComponent(parts[4]);
       const body = await readBody(req);
       const result = await handlePrCopyInterviewRequest('press_release', accountId, prId, body, session);
+      return sendJson(res, result.status, result.body);
+    }
+    // POST .../press-releases/:prId/interview/:interviewId/retry-pending — follow-up pass for partners still pending (see handlePrCopyRetryRequest()).
+    if (req.method === 'POST' && parts.length === 8 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'press-releases' && parts[5] === 'interview' && parts[7] === 'retry-pending'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const result = await handlePrCopyRetryRequest('press_release', accountId, decodeURIComponent(parts[4]), decodeURIComponent(parts[6]), body);
       return sendJson(res, result.status, result.body);
     }
     // POST /api/accounts/:id/press-releases/:prId/interview/:interviewId/select
