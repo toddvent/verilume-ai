@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-26-pr-grok-window (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-26-pr-voice-label (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -22195,7 +22195,7 @@ function buildTrainTheBrain(accountId){
     { key: 'voice', title: 'Your voice', minutes: 6, gain: 'Lets the Brain write and score copy the way you sound.', items: [
       { label: 'Sample writings (two or three is enough)', done: samples >= 1, gain: samples ? `${samples} on file.` : 'Drop in an email, a brochure page or a speech.', step: 'brandWritingSamples' },
       { label: 'Approve the brand voice guide', done: yes(A('voiceApproved')), gain: 'The Brain drafts it from your samples; you approve it.', step: 'voice' },
-      { label: 'Press release layout (from your news page)', done: (() => { try { return Number(db.prepare("SELECT COUNT(*) AS n FROM account_pr_profile WHERE accountId = ? AND status = 'approved'").get(accountId).n) > 0; } catch (e){ return false; } })(), gain: 'How your releases open, are organized, quote and close. Approved once; press release drafts follow it.', step: 'prStyleProfile' },
+      { label: 'PR Voice: how your press releases are written', done: (() => { try { return Number(db.prepare("SELECT COUNT(*) AS n FROM account_pr_profile WHERE accountId = ? AND status = 'approved'").get(accountId).n) > 0; } catch (e){ return false; } })(), gain: 'Scan your news page once. Verilume writes down how your releases open, are organized, quote and close. You approve it, and press release drafts follow it.', step: 'prStyleProfile' },
       { label: 'Product Groups and Creative Focus Groups', done: (() => { try { const ok = k => { const r = db.prepare('SELECT valuesJson FROM account_taxonomies WHERE accountId = ? AND taxonomyKey = ?').get(accountId, k); try { return !!(r && JSON.parse(r.valuesJson).length); } catch (e){ return false; } }; return ok('productGroup') && ok('creativeMarket'); } catch (e){ return false; } })(), gain: 'The lists every campaign, calendar entry and report rolls up to.', step: 'taxonomy' },
       { label: 'Marketing Calendar Bulk Upload', done: (() => { try { return Number(db.prepare('SELECT COUNT(*) AS n FROM channel_planning_details WHERE campaignId IN (SELECT id FROM campaigns WHERE accountId = ?)').get(accountId).n) > 0; } catch (e){ return false; } })(), gain: 'Past campaigns and plan lines in bulk, so the calendar and Analysis start with history.', step: 'calendarUpload' } ] },
     { key: 'numbers', title: 'Your numbers', minutes: 8, gain: 'Turns on the forecast, the story and the weekly Brain Dump.', items: [
@@ -31378,7 +31378,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-26-pr-grok-window',
+        buildStamp: '2026-10-26-pr-voice-label',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
