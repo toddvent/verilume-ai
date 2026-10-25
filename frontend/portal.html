@@ -13995,7 +13995,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-25-pr-profile-format';
+const CXMEDIA_BUILD_STAMP = '2026-10-25-pr-profile-save';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -66590,9 +66590,11 @@ function prpRender(){
       <button type="button" class="btn-primary" onclick="prpSave(true)">${d.status==='approved'?'Save and keep approved':'Approve and use in drafts'}</button>
       <button type="button" class="btn-ghost" onclick="prpSave(false)">Save as draft</button>
       <button type="button" class="btn-ghost" onclick="prpClear()">Remove profile</button>
-    </div>`;
+    </div>
+    <div id="prpSaveNote" class="hint" role="status" style="margin-top:8px;min-height:1.2em;font-weight:600;">${escapeHtml(prpState.note || '')}</div>`;
   body.querySelectorAll('.prp-ta').forEach(prpGrow);
 }
+function prpNote(t){ prpState.note = t; const m = document.getElementById('prpMsg'); if (m) m.textContent = t; const n = document.getElementById('prpSaveNote'); if (n) n.textContent = t; }
 function prpGrow(el){ el.style.height='auto'; el.style.height=(el.scrollHeight+2)+'px'; }
 function prpCollect(){
   const out = Object.assign({}, (prpState.data && prpState.data.profile) || {});
@@ -66622,13 +66624,17 @@ async function prpScan(pasted){
   prpRender();
 }
 async function prpSave(approve){
-  const msg = document.getElementById('prpMsg');
+  if (prpState.busy) return;
+  prpState.busy = true; prpNote('Saving…');
+  document.querySelectorAll('#prpBody button').forEach(b => b.disabled = true);
+  let note = '';
   try {
-    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/pr-profile`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ profile: prpCollect(), approve: !!approve }) });
-    if (r.ok){ prpState.data = await r.json(); msg.textContent = approve ? 'Approved. New press release drafts will follow this profile.' : 'Saved as a draft. It is not used in drafts until you approve it.'; }
-    else msg.textContent = 'Could not save. Try again.';
-  } catch (e){ msg.textContent = 'Could not save. Try again.'; }
-  prpRender();
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/pr-profile`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ profile: prpCollect(), approve: !!approve }), timeoutMs: 30000 });
+    if (r.ok){ prpState.data = await r.json(); note = approve ? '✓ Approved and saved. New press release drafts will follow this profile.' : '✓ Saved as a draft. It is not used in drafts until you approve it.'; }
+    else { let e = ''; try { e = (await r.json()).error || ''; } catch (x){} note = 'Could not save' + (e ? ': ' + e : ' (error ' + r.status + ')') + '. Try again.'; }
+  } catch (e){ note = 'Could not save: the server did not respond. Try again.'; }
+  prpState.busy = false;
+  prpState.note = note; prpRender(); prpNote(note);
 }
 async function prpClear(){
   if (!confirm('Remove the style profile? New drafts will go back to using your brand voice and samples only.')) return;
