@@ -5464,6 +5464,26 @@
       </div>
     </div>
 
+    <!-- 2026-10-25 (Todd): PR style profile. Scan the brand's news page (or paste releases) once, review a short profile, approve it; drafts then use it. -->
+    <div class="seo-section" id="repPrProfileSection">
+      <div class="seo-section-head"><div class="seo-section-title">🧭 How your press releases are written</div><span class="hint" id="prpStatusChip" style="margin-left:auto;"></span></div>
+      <p class="seo-section-sub">Verilume reads your past releases once and writes down how you open, structure, quote and close them, plus who speaks for the company. You review it, correct it, and approve it. Once approved, new drafts follow it, so contest drafts start from your real style.</p>
+      <details id="prpDetails">
+        <summary style="cursor:pointer;font-weight:600;">Set up or review the style profile</summary>
+        <div style="margin-top:12px;">
+          <div class="seo-form" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+            <input type="text" id="prpUrl" placeholder="Your news page address, e.g. yourcompany.com/news" style="flex:1;min-width:240px;">
+            <button type="button" class="btn-primary" id="prpScanBtn" onclick="prpScan(false)">Scan news page</button>
+          </div>
+          <div class="hint" style="margin:0 0 8px;">If your site blocks scans, paste three or more full releases below, with a line of ==== between them.</div>
+          <textarea id="prpPasted" rows="5" placeholder="Paste releases here…" style="width:100%;box-sizing:border-box;margin-bottom:8px;"></textarea>
+          <div class="btn-row"><button type="button" class="btn-ghost" onclick="prpScan(true)">Build from pasted releases</button></div>
+          <div id="prpMsg" class="hint" style="margin-top:8px;min-height:1em;"></div>
+          <div id="prpBody"></div>
+        </div>
+      </details>
+    </div>
+
     <div class="seo-section" id="repEditorialSection">
       <div class="seo-section-head"><div class="seo-section-title">✉️ Editorial Solicitation</div></div>
       <p class="seo-section-sub">Pitches out to press contacts, and whether they've landed.</p>
@@ -13971,7 +13991,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-25-pr-gemini-json';
+const CXMEDIA_BUILD_STAMP = '2026-10-25-pr-style-profile';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -66522,6 +66542,92 @@ async function repRunSweepNow(){
 // check on first render) and again after any create/update/delete/AI-draft
 // in this workstream. Same defensive dataSourceLabel/companyId guard as
 // bwsLoadLibrary() and loadTeam() — a no-op for mock/handoff accounts.
+
+// 2026-10-25 — PR style profile (account_pr_profile). Review-and-approve UI.
+const prpState = { data: null, busy: false };
+const PRP_FIELDS = [
+  ['descriptor','How the brand introduces itself',2],['openingPattern','Opening',2],['structure','Structure',3],['lengthRange','Typical length',1],
+  ['datelineStyle','Dateline',1],['quoteStyle','Quotes',2],['closingBlock','Closing',2],['endMarker','End marker',1],['boilerplate','About the company (boilerplate)',4],['namingConventions','Names and terms to use',2]
+];
+async function prpLoad(){
+  if (dataSourceLabel !== 'backend' || !state.companyId) return;
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/pr-profile`);
+    if (r.ok) prpState.data = await r.json();
+  } catch (e){}
+  prpRender();
+}
+function prpRender(){
+  const d = prpState.data || { exists:false };
+  const chip = document.getElementById('prpStatusChip'); const body = document.getElementById('prpBody'); const urlEl = document.getElementById('prpUrl');
+  if (!chip || !body) return;
+  chip.textContent = !d.exists ? 'Not set up' : (d.status === 'approved' ? 'Approved and in use' : 'Draft, not used yet');
+  if (urlEl && !urlEl.value){
+    let u = d.sourceUrl || ''; if (!u && state.websiteUrl){ u = String(state.websiteUrl).replace(/\/+$/,'') + '/news'; }
+    urlEl.value = u;
+  }
+  if (!d.exists){ body.innerHTML = ''; return; }
+  const p = d.profile || {};
+  const f = PRP_FIELDS.map(([k,label,rows]) => `<label style="display:block;margin:10px 0 2px;font-weight:600;font-size:.9em;">${escapeHtml(label)}</label><textarea data-prp="${k}" rows="${rows}" style="width:100%;box-sizing:border-box;">${escapeHtml(p[k]||'')}</textarea>`).join('');
+  const sp = (p.spokespeople||[]).map(s => [s.name,s.title,s.usedFor].filter(x=>x!==undefined).join(' | ')).join('\n');
+  const rel = (d.releases||[]).map(r => `<li>${escapeHtml(r.title||'Untitled')}${r.date?` <span class="hint">(${escapeHtml(r.date)})</span>`:''}</li>`).join('');
+  const verify = (p.verifyFacts||[]).length ? `<div style="margin:12px 0;padding:10px 12px;border:1px solid var(--border,#ccc);border-radius:8px;"><div style="font-weight:600;margin-bottom:4px;">Confirm before approving</div><ul style="margin:0;padding-left:18px;">${p.verifyFacts.map(v=>`<li>${escapeHtml(v)}</li>`).join('')}</ul></div>` : '';
+  body.innerHTML = `
+    <div style="margin-top:14px;font-weight:700;">The profile</div>
+    ${verify}${f}
+    <label style="display:block;margin:10px 0 2px;font-weight:600;font-size:.9em;">Who speaks for the company (one per line: Name | Title | used for)</label>
+    <textarea data-prp="spokespeople" rows="4" style="width:100%;box-sizing:border-box;">${escapeHtml(sp)}</textarea>
+    <label style="display:block;margin:10px 0 2px;font-weight:600;font-size:.9em;">Recurring phrases (one per line)</label>
+    <textarea data-prp="recurringPhrases" rows="3" style="width:100%;box-sizing:border-box;">${escapeHtml((p.recurringPhrases||[]).join('\n'))}</textarea>
+    <details style="margin-top:10px;"><summary style="cursor:pointer;">Releases this was built from (${(d.releases||[]).length})</summary><ul style="margin:6px 0 0;padding-left:18px;">${rel}</ul></details>
+    <div class="btn-row" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+      <button type="button" class="btn-primary" onclick="prpSave(true)">${d.status==='approved'?'Save and keep approved':'Approve and use in drafts'}</button>
+      <button type="button" class="btn-ghost" onclick="prpSave(false)">Save as draft</button>
+      <button type="button" class="btn-ghost" onclick="prpClear()">Remove profile</button>
+    </div>`;
+}
+function prpCollect(){
+  const out = Object.assign({}, (prpState.data && prpState.data.profile) || {});
+  document.querySelectorAll('#prpBody [data-prp]').forEach(el => {
+    const k = el.getAttribute('data-prp'); const v = el.value;
+    if (k === 'recurringPhrases') out[k] = v.split('\n').map(x=>x.trim()).filter(Boolean);
+    else if (k === 'spokespeople') out[k] = v.split('\n').map(l => { const a = l.split('|').map(x=>x.trim()); return a[0] ? { name:a[0], title:a[1]||'', usedFor:a[2]||'' } : null; }).filter(Boolean);
+    else out[k] = v.trim();
+  });
+  return out;
+}
+async function prpScan(pasted){
+  if (prpState.busy) return;
+  const msg = document.getElementById('prpMsg');
+  const payload = pasted ? { pasted: (document.getElementById('prpPasted')||{}).value || '' } : { url: (document.getElementById('prpUrl')||{}).value || '' };
+  prpState.busy = true;
+  msg.innerHTML = pasted ? 'Reading your releases and writing the profile. This takes up to a minute…' : 'Reading your news page and writing the profile. This takes up to two minutes…';
+  document.querySelectorAll('#repPrProfileSection button').forEach(b => b.disabled = true);
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/pr-profile/scan`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload), timeoutMs: 150000 });
+    const j = await r.json().catch(()=>({}));
+    if (j && j.ok){ prpState.data = j; msg.textContent = `Draft ready from ${(j.releases||[]).length} releases. Review it below, then approve.`; }
+    else msg.textContent = (j && (j.note || j.error)) || 'The profile could not be built. Try again, or paste releases instead.';
+  } catch (e){ msg.textContent = 'The request took too long or did not finish. Try again, or paste releases instead.'; }
+  prpState.busy = false;
+  document.querySelectorAll('#repPrProfileSection button').forEach(b => b.disabled = false);
+  prpRender();
+}
+async function prpSave(approve){
+  const msg = document.getElementById('prpMsg');
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/pr-profile`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ profile: prpCollect(), approve: !!approve }) });
+    if (r.ok){ prpState.data = await r.json(); msg.textContent = approve ? 'Approved. New press release drafts will follow this profile.' : 'Saved as a draft. It is not used in drafts until you approve it.'; }
+    else msg.textContent = 'Could not save. Try again.';
+  } catch (e){ msg.textContent = 'Could not save. Try again.'; }
+  prpRender();
+}
+async function prpClear(){
+  if (!confirm('Remove the style profile? New drafts will go back to using your brand voice and samples only.')) return;
+  try { await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/pr-profile`, { method:'DELETE' }); } catch (e){}
+  prpState.data = { exists:false }; document.getElementById('prpMsg').textContent = 'Profile removed.'; prpRender();
+}
+
 async function loadPrCorpCommData(){
   if (dataSourceLabel !== 'backend' || !state.companyId) return;
   try {
@@ -66533,6 +66639,7 @@ async function loadPrCorpCommData(){
     if (edResp.ok) prcState.editorialPitches = (await edResp.json()).editorialPitches || [];
   } catch (e){ /* honest-empty fallback — prcState stays whatever it already was */ }
   if (document.getElementById('repPressList')) renderReputationStep();
+  prpLoad();
   const signalsEl = document.getElementById('connectedSignalsList');
   if (signalsEl) renderConnectedSignals();
 }
