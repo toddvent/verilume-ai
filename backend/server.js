@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-25-pr-profile-save (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-26-pr-grok-window (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -22195,6 +22195,7 @@ function buildTrainTheBrain(accountId){
     { key: 'voice', title: 'Your voice', minutes: 6, gain: 'Lets the Brain write and score copy the way you sound.', items: [
       { label: 'Sample writings (two or three is enough)', done: samples >= 1, gain: samples ? `${samples} on file.` : 'Drop in an email, a brochure page or a speech.', step: 'brandWritingSamples' },
       { label: 'Approve the brand voice guide', done: yes(A('voiceApproved')), gain: 'The Brain drafts it from your samples; you approve it.', step: 'voice' },
+      { label: 'Press release layout (from your news page)', done: (() => { try { return Number(db.prepare("SELECT COUNT(*) AS n FROM account_pr_profile WHERE accountId = ? AND status = 'approved'").get(accountId).n) > 0; } catch (e){ return false; } })(), gain: 'How your releases open, are organized, quote and close. Approved once; press release drafts follow it.', step: 'prStyleProfile' },
       { label: 'Product Groups and Creative Focus Groups', done: (() => { try { const ok = k => { const r = db.prepare('SELECT valuesJson FROM account_taxonomies WHERE accountId = ? AND taxonomyKey = ?').get(accountId, k); try { return !!(r && JSON.parse(r.valuesJson).length); } catch (e){ return false; } }; return ok('productGroup') && ok('creativeMarket'); } catch (e){ return false; } })(), gain: 'The lists every campaign, calendar entry and report rolls up to.', step: 'taxonomy' },
       { label: 'Marketing Calendar Bulk Upload', done: (() => { try { return Number(db.prepare('SELECT COUNT(*) AS n FROM channel_planning_details WHERE campaignId IN (SELECT id FROM campaigns WHERE accountId = ?)').get(accountId).n) > 0; } catch (e){ return false; } })(), gain: 'Past campaigns and plan lines in bulk, so the calendar and Analysis start with history.', step: 'calendarUpload' } ] },
     { key: 'numbers', title: 'Your numbers', minutes: 8, gain: 'Turns on the forecast, the story and the weekly Brain Dump.', items: [
@@ -26656,7 +26657,7 @@ async function buildPrCorpCommPrompt(account, docType, brief){
   // product/creative-market scoped audience findings meant for consumer-
   // facing campaign copy (see generateMessagingCopyViaAI above), not
   // PR/Corp Comm, which has no product-group concept of its own.
-  const sampleContext = prProfileContext(account.accountId) + (await prCorpCommSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId)) + (await prCorpCommDecisionContext(account.accountId)) + (await liveGuardrailContext(account.accountId)) + (await websiteProfileContext(account.accountId)) + brandWritingSampleStyleContext(account.accountId, 'pr');
+  const sampleContext = prProfileContext(account.accountId, brief) + (await prCorpCommSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId)) + (await prCorpCommDecisionContext(account.accountId)) + (await liveGuardrailContext(account.accountId)) + (await websiteProfileContext(account.accountId)) + brandWritingSampleStyleContext(account.accountId, 'pr');
   // 2026-09-12 — Competitive Positioning, mirroring the same block
   // generateMessagingCopyViaAI() builds from account.competitorsJson
   // (which buildPrCorpCommPrompt never read before today). Same "internal
@@ -28831,7 +28832,7 @@ async function scorePrBrandVoice(copy, account, brief){
   // Code-checked items first: these never depend on the AI judge.
   const phraseFlags = exactPhraseFlags(text, phrases);
   const watchFlags = surveillanceFlags(text);
-  const untraced = prFiguresNotInBrief(text, factsText);
+  const untraced = prFiguresNotInBrief(text, factsText + '\n' + (account && account.accountId ? prProfileFactsText(account.accountId) : ''));
   const checks = [
     { name: 'Saved brand phrases used exactly', passed: phraseFlags.length === 0, detail: phrases.length ? (phraseFlags.length ? phraseFlags.join(' ') : 'Every saved phrase that applies is used as saved.') : 'No exact phrases are saved for this brand, so nothing was checked.', applicable: phrases.length > 0 },
     { name: 'Does not sound like it is watching the reader', passed: watchFlags.length === 0, detail: watchFlags.length ? watchFlags[0] : 'No language that tells the reader what we saw them do.', applicable: true },
@@ -28893,7 +28894,7 @@ ${text.slice(0, 3500)}`;
 // A partner whose key is wrong or whose account has no credits is not retried, since another try cannot change that.
 const PR_MAX_ATTEMPTS = 3;
 // Every partner gets the same wait in a given pass. The first pass is 120s because a press release is long and a reasoning partner needs the time (Grok timed out at 90s and 100s on every PR run). The page calls Railway directly, whose limit is 15 minutes while data flows, so Vercel's 120s function ceiling does not apply here; follow-up passes are 90s.
-const PR_ATTEMPT_TIMEOUTS_MS = [120000, 90000, 90000];
+const PR_ATTEMPT_TIMEOUTS_MS = [120000, 120000, 120000];
 function prFailureRetryable(err){
   const e = String(err || '');
   if (!e) return false;
@@ -29110,26 +29111,39 @@ function prpRowOut(row){
   return { exists: true, status: row.status || 'draft', sourceUrl: row.sourceurl || '', profile: pj.profile || {}, exemplars: pj.exemplars || [], releases: rj, scannedAt: row.scannedat || null, approvedAt: row.approvedat || null, approvedBy: row.approvedby || null, updatedAt: row.updatedat || null };
 }
 // The block added to the PR prompt. Only an APPROVED profile is used.
-function prProfileContext(accountId){
+function prProfileContext(accountId, brief){
   try {
     const row = db.prepare('SELECT status, profilejson FROM account_pr_profile WHERE accountId = ?').get(accountId);
     if (!row || row.status !== 'approved') return '';
     const p = (JSON.parse(row.profilejson || '{}').profile) || {};
+    const aud = String((brief && brief.audience) || '');
     const L = [];
-    if (p.descriptor) L.push(`- How the brand introduces itself: ${p.descriptor}`);
     if (p.openingPattern) L.push(`- Opening: ${p.openingPattern}`);
     if (p.structure) L.push(`- Structure: ${p.structure}`);
     if (p.lengthRange) L.push(`- Typical length: ${p.lengthRange}`);
     if (p.datelineStyle) L.push(`- Dateline: ${p.datelineStyle}`);
     if (p.quoteStyle) L.push(`- Quotes: ${p.quoteStyle}`);
-    if (p.spokespeople && p.spokespeople.length) L.push(`- Spokespeople (use these exact names and titles for a quote; if none fits, write a bracketed placeholder instead of inventing one): ${p.spokespeople.map(s => s.name + ', ' + s.title).join('; ')}`);
-    if (p.closingBlock) L.push(`- Closing: ${p.closingBlock}`);
+    // The same person can be learned under two spellings; keep the first of each surname.
+    const seen = {}; const sp = (p.spokespeople || []).filter(s => { const k = String((s && s.name) || '').toLowerCase().split(/\s+/).pop(); if (!k || seen[k]) return false; seen[k] = 1; return true; });
+    if (sp.length) L.push(`- Spokespeople (use these exact names and titles for a quote; if none fits, write a bracketed placeholder instead of inventing one): ${sp.map(s => s.name + ', ' + s.title).join('; ')}`);
+    // The closing block is written for guests. It is not used for trade or internal readers.
+    if (aud === 'internal') L.push('- Closing: an internal contact line only. No social links or booking calls to action.');
+    else if (aud === 'business') L.push('- Closing: a trade or media contact line suited to business readers. Do not ask them to follow social channels or to contact a travel advisor.');
+    else if (p.closingBlock) L.push(`- Closing: ${p.closingBlock}`);
     if (p.endMarker) L.push(`- End marker: ${p.endMarker}`);
-    if (p.boilerplate) L.push(`- Boilerplate paragraph to include if the brief calls for one: ${p.boilerplate}`);
+    if (p.boilerplate && aud !== 'internal') L.push(`- Boilerplate paragraph to include if the brief calls for one: ${p.boilerplate}`);
     if (p.namingConventions) L.push(`- Naming: ${p.namingConventions}`);
-    if (p.recurringPhrases && p.recurringPhrases.length) L.push(`- Phrases the brand reuses (use sparingly, where they are true): ${p.recurringPhrases.join('; ')}`);
     if (!L.length) return '';
-    return `\nTHIS BRAND'S PR STYLE PROFILE (learned from its own published press releases and approved by its team: follow it for structure, openings, quotes, closings and wording habits. Facts still come only from the brief):\n${L.join('\n')}\n`;
+    return `\nTHIS BRAND'S PR LAYOUT PROFILE (learned from its own published press releases and approved by its team). It governs LAYOUT ONLY: how releases open, how they are organized, who is quoted, and how they close. The BRAND VOICE GUIDE above always wins on tone, point of view, word choice and words to avoid, even where past releases did otherwise. Facts come only from the brief:\n${L.join('\n')}\n`;
+  } catch (e){ return ''; }
+}
+// Text from the approved profile that a draft may legitimately repeat (phone number, boilerplate, names), so the figures check does not flag it.
+function prProfileFactsText(accountId){
+  try {
+    const row = db.prepare('SELECT status, profilejson FROM account_pr_profile WHERE accountId = ?').get(accountId);
+    if (!row || row.status !== 'approved') return '';
+    const p = (JSON.parse(row.profilejson || '{}').profile) || {};
+    return [p.closingBlock, p.boilerplate, p.endMarker, p.namingConventions, p.datelineStyle].filter(Boolean).join('\n');
   } catch (e){ return ''; }
 }
 
@@ -31364,7 +31378,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-25-pr-profile-save',
+        buildStamp: '2026-10-26-pr-grok-window',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
