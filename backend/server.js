@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-24-pr-gemini-diagnostics (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-25-pr-contest-timing (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -28892,7 +28892,8 @@ ${text.slice(0, 3500)}`;
 // Three attempts in all: the first request, then up to two automatic follow-up requests that rerun ONLY the partners still pending.
 // A partner whose key is wrong or whose account has no credits is not retried, since another try cannot change that.
 const PR_MAX_ATTEMPTS = 3;
-const PR_ATTEMPT_TIMEOUTS_MS = [VENDOR_PASS1_TIMEOUT_MS, VENDOR_PASS2_TIMEOUT_MS, VENDOR_PASS2_TIMEOUT_MS];
+// Every partner gets the same wait in a given pass. The first pass is 120s because a press release is long and a reasoning partner needs the time (Grok timed out at 90s and 100s on every PR run). The page calls Railway directly, whose limit is 15 minutes while data flows, so Vercel's 120s function ceiling does not apply here; follow-up passes are 90s.
+const PR_ATTEMPT_TIMEOUTS_MS = [120000, 90000, 90000];
 function prFailureRetryable(err){
   const e = String(err || '');
   if (!e) return false;
@@ -31219,7 +31220,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-24-pr-gemini-diagnostics',
+        buildStamp: '2026-10-25-pr-contest-timing',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
