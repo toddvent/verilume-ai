@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-25-pr-contest-timing (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-25-pr-gemini-json (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -28929,6 +28929,8 @@ async function runPrCandidateInterview(account, docType, brief, opts){
   const configuredVendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar] && (!only || only.includes(v.key)));
   // Same closing wording the campaign copy contest uses (tool first, then an exact JSON fallback for partners without tool-calling), with this panel's three fields.
   const vendorPrompt = built.prompt + '\n\nSubmit your draft via the submit_copy tool (name: "copy"; also include a one-sentence "strategy" field, roughly 10-20 words, naming the real approach you took, and a "headline" field with the headline or subject line, or the first line for talking points). If you have no tool-calling capability, reply with exactly one JSON object of the form {"copy": "...", "strategy": "...", "headline": "..."} and nothing else.';
+  // 2026-10-25: Gemini was told to "submit via the submit_copy tool" but is given no tools, so it tried to call a function that does not exist and ended with finishReason MALFORMED_FUNCTION_CALL on every PR run. Gemini gets a plain JSON-only instruction instead.
+  const jsonOnlyPrompt = built.prompt + '\n\nReply with exactly one JSON object and nothing else, of the form {"copy": "<the full draft>", "strategy": "<one sentence, roughly 10-20 words, naming the real approach you took>", "headline": "<the headline or subject line, or the first line for talking points>"}. Do not call any tool or function.';
   // Each draft is scored for brand voice alignment the moment it arrives, so scoring overlaps the slower partners instead of adding to the total time.
   const scoreGen = async gen => { if (!gen || !gen.copy) return gen; try { gen.brandVoice = await scorePrBrandVoice(gen.copy, account, brief); } catch (e){ gen.brandVoice = null; } return gen; };
   const runAnthropic = !only || only.includes('anthropic-baseline');
@@ -28942,7 +28944,7 @@ async function runPrCandidateInterview(account, docType, brief, opts){
       schema: PR_CONTEST_SCHEMA
     }).then(parsed => ({ copy: typeof parsed.copy === 'string' ? parsed.copy : null, approach: typeof parsed.strategy === 'string' ? parsed.strategy : null, headline: typeof parsed.headline === 'string' ? parsed.headline : null, error: null }))
       .catch(e => ({ copy: null, error: 'Generation failed: ' + e.message })).then(scoreGen),
-    Promise.all(configuredVendors.map(v => generateVendorPrCopy(v.key, vendorPrompt, passTimeoutMs).then(scoreGen)))
+    Promise.all(configuredVendors.map(v => generateVendorPrCopy(v.key, v.key === 'google-gemini' ? jsonOnlyPrompt : vendorPrompt, passTimeoutMs).then(scoreGen)))
   ]);
 
   const buildCandidate = (key, label, vendor, model, configured, gen) => ({
@@ -29365,7 +29367,7 @@ async function callVendorForText(vendorKey, prompt, timeoutMs, callOpts){
       // 2026-10-09 — key sent in a header, not the URL, so it never lands in request logs or error text.
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': String(process.env.GEMINI_API_KEY || '') },
       // 2026-10-24 — long-form callers (the PR contest) get an explicit output ceiling. Gemini 3 models can spend the whole default budget thinking and return HTTP 200 with no text, which is what the PR contest saw on every run.
-      body: JSON.stringify(callOpts && callOpts.longForm ? { contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 16384 } } : { contents: [{ parts: [{ text: prompt }] }] })
+      body: JSON.stringify(callOpts && callOpts.longForm ? { contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 16384, responseMimeType: 'application/json' } } : { contents: [{ parts: [{ text: prompt }] }] })
     }, ms);
     if (!resp.ok) throw await vendorHttpError(resp);
     const data = await resp.json();
@@ -31220,7 +31222,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-25-pr-contest-timing',
+        buildStamp: '2026-10-25-pr-gemini-json',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
