@@ -5426,7 +5426,6 @@
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px;">
           <button type="button" class="btn-primary" id="prcNewChip" onclick="prcOpenCreate()">＋ Create New Communication</button>
         </div>
-        <div class="hint" id="prcStyleHint" style="margin:0 0 10px;">Your press release layout is set up in <a class="flink" onclick="switchPrimaryTab('accountManagement')">Train the Brain › Your voice</a>.</div>
         <div class="seo-card-list" id="repPressList"></div>
       </div>
       <div id="prcCreateView" style="display:none;">
@@ -13996,7 +13995,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-26-pr-grok-window';
+const CXMEDIA_BUILD_STAMP = '2026-10-26-pr-voice-label';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -30973,7 +30972,7 @@ const TTB_ITEMS = {
   voice: { benefit: 'The Brain drafts the voice guide from your samples; you approve it.',
     sample: `<div class="ttb-srow"><span>Sounds</span><span>Warm, precise, unhurried</span></div><div class="ttb-srow"><span>Avoids</span><span>Hype, exclamation marks</span></div><div class="ttb-srow"><span>Sample line</span><span>"Small ships, big horizons."</span></div>`,
     opts: [['manual', 'Add Manually', 'voice']] },
-  prStyleProfile: { benefit: 'Press release drafts follow how your past releases open, are organized, quote and close. Scan your news page once, review it, approve it.',
+  prStyleProfile: { benefit: 'PR Voice. Scan your news page once, review what Verilume learns about how your releases open, are organized, quote and close, and approve it. Press release drafts then follow it.',
     sample: `<div class="ttb-srow"><span>Opening</span><span>What is announced, then when and where</span></div><div class="ttb-srow"><span>Quote</span><span>CEO, third or fourth paragraph</span></div><div class="ttb-srow"><span>Closing</span><span>Contact line, website, social links</span></div>`,
     opts: [['manual', 'Review or set up', 'prStyleProfile']] },
   marketingBudgetUpload: { benefit: 'Gives the forecast a spend plan to test.', arg: 'configuration',
