@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-25-pr-profile-format (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-25-pr-profile-save (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -29017,7 +29017,7 @@ const PR_PROFILE_SCHEMA = {
 function prpClean(v, n){ return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, n || 300); }
 function prpCleanProfile(p){
   p = p || {}; const out = {};
-  PR_PROFILE_TEXT_FIELDS.forEach(k => { out[k] = prpClean(p[k], k === 'boilerplate' ? 900 : 320); });
+  PR_PROFILE_TEXT_FIELDS.forEach(k => { out[k] = prpClean(p[k], k === 'boilerplate' ? 1500 : 700); });
   out.spokespeople = (Array.isArray(p.spokespeople) ? p.spokespeople : []).map(s => ({ name: prpClean(s && s.name, 80), title: prpClean(s && s.title, 120), usedFor: prpClean(s && s.usedFor, 120) })).filter(s => s.name).slice(0, 8);
   out.recurringPhrases = (Array.isArray(p.recurringPhrases) ? p.recurringPhrases : []).map(x => prpClean(x, 90)).filter(Boolean).slice(0, 12);
   out.verifyFacts = (Array.isArray(p.verifyFacts) ? p.verifyFacts : []).map(x => prpClean(x, 200)).filter(Boolean).slice(0, 8);
@@ -31364,7 +31364,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-25-pr-profile-format',
+        buildStamp: '2026-10-25-pr-profile-save',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
