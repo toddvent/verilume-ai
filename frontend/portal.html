@@ -13971,7 +13971,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-24-pr-gemini-diagnostics';
+const CXMEDIA_BUILD_STAMP = '2026-10-25-pr-contest-timing';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -67514,11 +67514,14 @@ function prcContestHtml(id){
 async function prcRunContest(id){
   if (prcContest[id] && prcContest[id].running) return;
   prcContest[id] = { running: true, result: null, note: '', picked: false, stage: 'YOUR AI CONTESTANTS ARE THINKING' };
+  // Same full-screen sunrise loader and countdown the campaign contest uses. First pass allows up to 2 minutes for every partner.
+  cmpSunriseLoaderShow({ headline: CMP_CONTEST_LOADER_HEAD, note: 'are drafting your communication. All five can take up to 2 minutes, so please stay on this page.', countdownSec: 120, countdownLabel: 'Contest running. Time left before timeout' });
   const draw = () => { const o = document.getElementById(`prcContestOut-${id}`); if (o) o.innerHTML = prcContestHtml(id); };
   draw();
   const base = `${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/press-releases/${encodeURIComponent(id)}/interview`;
   try {
-    const resp = await authedFetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}), timeoutMs: 125000 });
+    const resp = await authedFetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}), timeoutMs: 165000 });
+    cmpSunriseLoaderHide();
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) prcContest[id].note = data.error || "Couldn't run the contest. Try again.";
     else if (!data.available) prcContest[id].note = data.note || 'The contest is not available right now.';
@@ -67540,7 +67543,8 @@ async function prcRunContest(id){
         prcContest[id].result = next;
       }
     }
-  } catch (e){ prcContest[id].note = 'Could not reach the server. Try again.'; }
+  } catch (e){ cmpSunriseLoaderHide(); prcContest[id].note = 'Could not reach the server. Try again.'; }
+  cmpSunriseLoaderHide();
   prcContest[id].running = false;
   prcContest[id].stage = '';
   draw();
