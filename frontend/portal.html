@@ -5465,18 +5465,22 @@
     </div>
 
     <!-- 2026-10-25 (Todd): PR style profile. Scan the brand's news page (or paste releases) once, review a short profile, approve it; drafts then use it. -->
+<style id="prpStyles">
+#repPrProfileSection .prp-ta{width:100%;box-sizing:border-box;font:inherit;font-size:14px;line-height:1.45;padding:8px 10px;border:1px solid var(--border,#d0d5dd);border-radius:8px;background:var(--surface,#fff);color:inherit;resize:vertical;overflow:hidden;}
+#repPrProfileSection .prp-ta#prpPasted{overflow:auto;}
+</style>
     <div class="seo-section" id="repPrProfileSection">
       <div class="seo-section-head"><div class="seo-section-title">🧭 How your press releases are written</div><span class="hint" id="prpStatusChip" style="margin-left:auto;"></span></div>
       <p class="seo-section-sub">Verilume reads your past releases once and writes down how you open, structure, quote and close them, plus who speaks for the company. You review it, correct it, and approve it. Once approved, new drafts follow it, so contest drafts start from your real style.</p>
-      <details id="prpDetails">
+      <details id="prpDetails" ontoggle="if(this.open)document.querySelectorAll('#prpBody .prp-ta').forEach(prpGrow)">
         <summary style="cursor:pointer;font-weight:600;">Set up or review the style profile</summary>
         <div style="margin-top:12px;">
           <div class="seo-form" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-            <input type="text" id="prpUrl" placeholder="Your news page address, e.g. yourcompany.com/news" style="flex:1;min-width:240px;">
+            <input type="text" id="prpUrl" placeholder="Your news page address" style="flex:1;min-width:240px;">
             <button type="button" class="btn-primary" id="prpScanBtn" onclick="prpScan(false)">Scan news page</button>
           </div>
           <div class="hint" style="margin:0 0 8px;">If your site blocks scans, paste three or more full releases below, with a line of ==== between them.</div>
-          <textarea id="prpPasted" rows="5" placeholder="Paste releases here…" style="width:100%;box-sizing:border-box;margin-bottom:8px;"></textarea>
+          <textarea id="prpPasted" rows="5" class="prp-ta" placeholder="Paste releases here…" style="margin-bottom:8px;"></textarea>
           <div class="btn-row"><button type="button" class="btn-ghost" onclick="prpScan(true)">Build from pasted releases</button></div>
           <div id="prpMsg" class="hint" style="margin-top:8px;min-height:1em;"></div>
           <div id="prpBody"></div>
@@ -13991,7 +13995,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-25-pr-style-profile';
+const CXMEDIA_BUILD_STAMP = '2026-10-25-pr-profile-format';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -66563,12 +66567,14 @@ function prpRender(){
   if (!chip || !body) return;
   chip.textContent = !d.exists ? 'Not set up' : (d.status === 'approved' ? 'Approved and in use' : 'Draft, not used yet');
   if (urlEl && !urlEl.value){
-    let u = d.sourceUrl || ''; if (!u && state.websiteUrl){ u = String(state.websiteUrl).replace(/\/+$/,'') + '/news'; }
+    // Test default: only the Atlas Ocean Voyages account gets a prefilled news page. Every other account starts blank.
+    let u = d.sourceUrl || '';
+    if (!u && /(^|\.)atlasoceanvoyages\.com/i.test(String(state.websiteUrl || ''))) u = 'https://atlasoceanvoyages.com/news';
     urlEl.value = u;
   }
   if (!d.exists){ body.innerHTML = ''; return; }
   const p = d.profile || {};
-  const f = PRP_FIELDS.map(([k,label,rows]) => `<label style="display:block;margin:10px 0 2px;font-weight:600;font-size:.9em;">${escapeHtml(label)}</label><textarea data-prp="${k}" rows="${rows}" style="width:100%;box-sizing:border-box;">${escapeHtml(p[k]||'')}</textarea>`).join('');
+  const f = PRP_FIELDS.map(([k,label,rows]) => `<label style="display:block;margin:10px 0 2px;font-weight:600;font-size:.9em;">${escapeHtml(label)}</label><textarea data-prp="${k}" rows="${Math.max(rows,2)}" class="prp-ta" oninput="prpGrow(this)">${escapeHtml(p[k]||'')}</textarea>`).join('');
   const sp = (p.spokespeople||[]).map(s => [s.name,s.title,s.usedFor].filter(x=>x!==undefined).join(' | ')).join('\n');
   const rel = (d.releases||[]).map(r => `<li>${escapeHtml(r.title||'Untitled')}${r.date?` <span class="hint">(${escapeHtml(r.date)})</span>`:''}</li>`).join('');
   const verify = (p.verifyFacts||[]).length ? `<div style="margin:12px 0;padding:10px 12px;border:1px solid var(--border,#ccc);border-radius:8px;"><div style="font-weight:600;margin-bottom:4px;">Confirm before approving</div><ul style="margin:0;padding-left:18px;">${p.verifyFacts.map(v=>`<li>${escapeHtml(v)}</li>`).join('')}</ul></div>` : '';
@@ -66576,16 +66582,18 @@ function prpRender(){
     <div style="margin-top:14px;font-weight:700;">The profile</div>
     ${verify}${f}
     <label style="display:block;margin:10px 0 2px;font-weight:600;font-size:.9em;">Who speaks for the company (one per line: Name | Title | used for)</label>
-    <textarea data-prp="spokespeople" rows="4" style="width:100%;box-sizing:border-box;">${escapeHtml(sp)}</textarea>
+    <textarea data-prp="spokespeople" rows="4" class="prp-ta" oninput="prpGrow(this)">${escapeHtml(sp)}</textarea>
     <label style="display:block;margin:10px 0 2px;font-weight:600;font-size:.9em;">Recurring phrases (one per line)</label>
-    <textarea data-prp="recurringPhrases" rows="3" style="width:100%;box-sizing:border-box;">${escapeHtml((p.recurringPhrases||[]).join('\n'))}</textarea>
+    <textarea data-prp="recurringPhrases" rows="3" class="prp-ta" oninput="prpGrow(this)">${escapeHtml((p.recurringPhrases||[]).join('\n'))}</textarea>
     <details style="margin-top:10px;"><summary style="cursor:pointer;">Releases this was built from (${(d.releases||[]).length})</summary><ul style="margin:6px 0 0;padding-left:18px;">${rel}</ul></details>
     <div class="btn-row" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
       <button type="button" class="btn-primary" onclick="prpSave(true)">${d.status==='approved'?'Save and keep approved':'Approve and use in drafts'}</button>
       <button type="button" class="btn-ghost" onclick="prpSave(false)">Save as draft</button>
       <button type="button" class="btn-ghost" onclick="prpClear()">Remove profile</button>
     </div>`;
+  body.querySelectorAll('.prp-ta').forEach(prpGrow);
 }
+function prpGrow(el){ el.style.height='auto'; el.style.height=(el.scrollHeight+2)+'px'; }
 function prpCollect(){
   const out = Object.assign({}, (prpState.data && prpState.data.profile) || {});
   document.querySelectorAll('#prpBody [data-prp]').forEach(el => {
