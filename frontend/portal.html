@@ -5426,6 +5426,7 @@
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px;">
           <button type="button" class="btn-primary" id="prcNewChip" onclick="prcOpenCreate()">＋ Create New Communication</button>
         </div>
+        <div class="hint" id="prcStyleHint" style="margin:0 0 10px;">Your press release layout is set up in <a class="flink" onclick="switchPrimaryTab('accountManagement')">Train the Brain › Your voice</a>.</div>
         <div class="seo-card-list" id="repPressList"></div>
       </div>
       <div id="prcCreateView" style="display:none;">
@@ -5469,7 +5470,7 @@
 #repPrProfileSection .prp-ta{width:100%;box-sizing:border-box;font:inherit;font-size:14px;line-height:1.45;padding:8px 10px;border:1px solid var(--border,#d0d5dd);border-radius:8px;background:var(--surface,#fff);color:inherit;resize:vertical;overflow:hidden;}
 #repPrProfileSection .prp-ta#prpPasted{overflow:auto;}
 </style>
-    <div class="seo-section" id="repPrProfileSection">
+    <div class="seo-section" id="repPrProfileSection" style="display:none;">
       <div class="seo-section-head"><div class="seo-section-title">🧭 How your press releases are written</div><span class="hint" id="prpStatusChip" style="margin-left:auto;"></span></div>
       <p class="seo-section-sub">Verilume reads your past releases once and writes down how you open, structure, quote and close them, plus who speaks for the company. You review it, correct it, and approve it. Once approved, new drafts follow it, so contest drafts start from your real style.</p>
       <details id="prpDetails" ontoggle="if(this.open)document.querySelectorAll('#prpBody .prp-ta').forEach(prpGrow)">
@@ -13995,7 +13996,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-25-pr-profile-save';
+const CXMEDIA_BUILD_STAMP = '2026-10-26-pr-grok-window';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -30972,6 +30973,9 @@ const TTB_ITEMS = {
   voice: { benefit: 'The Brain drafts the voice guide from your samples; you approve it.',
     sample: `<div class="ttb-srow"><span>Sounds</span><span>Warm, precise, unhurried</span></div><div class="ttb-srow"><span>Avoids</span><span>Hype, exclamation marks</span></div><div class="ttb-srow"><span>Sample line</span><span>"Small ships, big horizons."</span></div>`,
     opts: [['manual', 'Add Manually', 'voice']] },
+  prStyleProfile: { benefit: 'Press release drafts follow how your past releases open, are organized, quote and close. Scan your news page once, review it, approve it.',
+    sample: `<div class="ttb-srow"><span>Opening</span><span>What is announced, then when and where</span></div><div class="ttb-srow"><span>Quote</span><span>CEO, third or fourth paragraph</span></div><div class="ttb-srow"><span>Closing</span><span>Contact line, website, social links</span></div>`,
+    opts: [['manual', 'Review or set up', 'prStyleProfile']] },
   marketingBudgetUpload: { benefit: 'Gives the forecast a spend plan to test.', arg: 'configuration',
     sample: `<div class="ttb-srow ttb-head"><span>Channel</span><span>Jan</span><span>Feb</span><span>Mar</span></div><div class="ttb-srow"><span>Paid social</span><span>$24k</span><span>$26k</span><span>$30k</span></div><div class="ttb-srow"><span>Direct mail</span><span>$40k</span><span>$0</span><span>$40k</span></div><div class="ttb-srow"><span>Search</span><span>$18k</span><span>$18k</span><span>$22k</span></div>`,
     opts: [['upload', 'Upload File', 'marketingBudgetUpload']] },
@@ -30994,7 +30998,7 @@ function ttbToggle(k){ ttb.open = ttb.open === k ? '' : k; ttbRerender(); }
 //   Add Manually  -> opens inside the row. The existing entry card is moved in here rather than copied, so it works exactly as before.
 //   Partner Integration -> the one Partner Integrations page.
 // View in Portal is greyed until the item has data, and only shown as a link where the data actually appears.
-const TTB_ALL_CARDS = ['teamStepBody', 'kpiMetricsAdminModule', 'utmMasterConfigCard', 'mmmInputsCard', 'mbuWebsiteUsersCard', 'mbuMarketableSizesCard', 'mbuDmCostPerPieceCard', 'mbuDmFormatCostCard', 'mbuMagazineCostCard', 'mbuActiveChannelsCard', 'mbuChannelProductsCard', 'mpNonWorkingCard', 'lsrCard', 'mbuAnnualPlanCard', 'mbuDemandFulfillmentCard', 'mbuEngagementCard', 'mbuGa4SourcesCard', 'mbuGa4SearchCard', 'mbuLeadCountsCard', 'mbuTransactionsCard', 'mbuDigitalCard'];
+const TTB_ALL_CARDS = ['teamStepBody', 'kpiMetricsAdminModule', 'utmMasterConfigCard', 'mmmInputsCard', 'mbuWebsiteUsersCard', 'mbuMarketableSizesCard', 'mbuDmCostPerPieceCard', 'mbuDmFormatCostCard', 'mbuMagazineCostCard', 'mbuActiveChannelsCard', 'mbuChannelProductsCard', 'mpNonWorkingCard', 'lsrCard', 'mbuAnnualPlanCard', 'mbuDemandFulfillmentCard', 'mbuEngagementCard', 'mbuGa4SourcesCard', 'mbuGa4SearchCard', 'mbuLeadCountsCard', 'mbuTransactionsCard', 'mbuDigitalCard', 'repPrProfileSection'];
 let ttbHomes = null;
 function ttbInitHomes(){
   if (ttbHomes) return; ttbHomes = {};
@@ -31008,7 +31012,7 @@ function ttbReturnCards(){
     let ref = null;
     for (let k = n + 1; k < TTB_ALL_CARDS.length && !ref; k++){ const o = document.getElementById(TTB_ALL_CARDS[k]); if (o && o.parentNode === h.parent && ttbHomes[TTB_ALL_CARDS[k]] && ttbHomes[TTB_ALL_CARDS[k]].parent === h.parent && ttbHomes[TTB_ALL_CARDS[k]].anchor === h.anchor) ref = o; }
     if (!ref && h.anchor && h.anchor.parentNode === h.parent) ref = h.anchor;
-    h.parent.insertBefore(el, ref); el.style.marginTop = h.mt;
+    h.parent.insertBefore(el, ref); el.style.marginTop = h.mt; if (id === 'repPrProfileSection') el.style.display = 'none';
   });
 }
 const TTB_MONTHS_SAMPLE = [['2026', 'Jan'], ['2026', 'Feb']];
@@ -31023,6 +31027,7 @@ const TTB_CFG = {
   calendarUpload: { manual: { step: 'bulkUpload' }, used: 'Used by the Marketing Calendar and Analysis' },
   brandWritingSamples: { upload: { formats: 'Word, PDF or text files', go: 'brandWritingSamples' }, manual: { step: 'brandWritingSamples' }, used: 'Used by Copywriting' },
   voice: { manual: { step: 'voice' }, view: { tab: 'brand', label: 'Customer Experiences' } },
+  prStyleProfile: { manual: { cards: ['repPrProfileSection'], label: 'Review or set up', hideLabel: 'Hide' }, used: 'Used by PR and Corporate Communications drafts' },
   marketingBudgetUpload: { upload: { formats: '.xlsx or .csv, in any layout. Excel or CSV, in any layout.', direct: 'ttbBuPick', sample: { name: 'marketing-budget-sample.csv', cols: ['Category', 'Status', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Total'], rows: [['Paid Social', 'Working', 24000, 26000, 30000, 30000, 28000, 26000, 24000, 24000, 30000, 32000, 34000, 20000, 328000], ['Agency fees', 'Non-Working', 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 96000]] } }, manual: { step: 'marketingBudgetUpload', arg: 'configuration' }, view: { step: 'mediaplan', label: 'Budget and Plan' } },
   bulkUpload: { upload: { direct: 'ttbUpPick', alt: { label: 'Upload customer-level file', key: 'bulkUploadCustomer' }, formats: '.xlsx or .csv, one row per month and product group', handler: 'mbuHandleTxnFile', cards: ['mbuTransactionsCard'], sample: { name: 'transactions-by-month-sample.csv', cols: ['Year', 'Month', 'Product Group', 'Transactions', 'Revenue'], rows: [[2026, 'Jan', 'Mediterranean', 42, 268000], [2026, 'Feb', 'Mediterranean', 51, 322500]] } }, manual: { cards: ['mbuTransactionsCard'] }, integ: true, view: { tab: 'strategy', label: 'Strategy' } },
   partnerIntegrations: { integ: true, manual: { note: 'Prefer to type it? Every number on this page has an Add Manually option.' }, view: { tab: 'dataScientist', label: 'Media Science' } },
@@ -31508,6 +31513,7 @@ function ttbMountOpen(){
     if (k === 'taxonomy'){ ttbTaxMount(slot); return; }
     if (k === 'utmConfig'){ try { ttbUtmMmmInit('utm'); } catch (e){ console.warn(e); } return; }
     if (k === 'mmmInputs'){ try { ttbUtmMmmInit('mmm'); } catch (e){ console.warn(e); } return; }
+    if (k === 'prStyleProfile'){ const dt = document.getElementById('prpDetails'); if (dt) dt.open = true; try { prpLoad(); } catch (e){ console.warn(e); } return; }
     if (k === 'searchKeywords'){ srchKwRender(); return; }
     if (k === 'brainFacts'){ gscFactsRender(); return; }
     if (TTB_UP[k] && !TTB_UP[k].legacy && ttbUp.key === k){ ttbUpRender(); }
@@ -31617,7 +31623,7 @@ function ttbModuleHtml(d, i){
   const btns = [];
   if (c.upload) btns.push(`<button type="button" class="btn-primary" onclick="${c.upload.direct ? `${c.upload.direct}('${i.step}')` : `ttbUploadOpen('${i.step}')`}">${c.upload.alt ? 'Upload monthly totals' : 'Upload File'}</button>`);
   if (c.upload && c.upload.alt) btns.push(`<button type="button" class="btn-primary" onclick="${c.upload.direct}('${c.upload.alt.key}')">${escapeHtml(c.upload.alt.label)}</button>`);
-  if (c.manual) btns.push(`<button type="button" class="btn-ghost" aria-expanded="${!!ttb.manual[i.step]}" onclick="${c.manual.teamFlow ? 'ttbTeamJump()' : c.manual.cards || c.manual.profile ? `ttbToggleManual('${i.step}')` : c.manual.step ? `ttbGo('${c.manual.step}'${c.manual.arg ? `, '${c.manual.arg}'` : ''})` : `ttbToggleManual('${i.step}')`}">${ttb.manual[i.step] && (c.manual.cards || c.manual.profile) ? 'Hide manual entry' : 'Add Manually'}</button>`);
+  if (c.manual) btns.push(`<button type="button" class="btn-ghost" aria-expanded="${!!ttb.manual[i.step]}" onclick="${c.manual.teamFlow ? 'ttbTeamJump()' : c.manual.cards || c.manual.profile ? `ttbToggleManual('${i.step}')` : c.manual.step ? `ttbGo('${c.manual.step}'${c.manual.arg ? `, '${c.manual.arg}'` : ''})` : `ttbToggleManual('${i.step}')`}">${ttb.manual[i.step] && (c.manual.cards || c.manual.profile) ? (c.manual.hideLabel || 'Hide manual entry') : (c.manual.label || 'Add Manually')}</button>`);
   if (c.integ) btns.push(`<button type="button" class="btn-ghost" onclick="ttbGo('partnerIntegrations')">Partner Integration</button>`);
   const hasData = i.done;
   const viewHtml = c.view ? `<button type="button" class="btn-ghost ttb-view" ${hasData ? '' : 'disabled aria-disabled="true" title="Available once this is added"'} onclick="ttbOpenView('${i.step}')">View in Portal${hasData ? ' →' : ''}</button>` : `<span class="hint ttb-used">${escapeHtml(c.used || 'Trains the Brain only')}</span>`;
@@ -67657,7 +67663,7 @@ async function prcRunContest(id){
         draw();
         let next = null;
         try {
-          const r2 = await authedFetch(`${base}/${encodeURIComponent(data.interviewId)}/retry-pending`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}), timeoutMs: 125000 });
+          const r2 = await authedFetch(`${base}/${encodeURIComponent(data.interviewId)}/retry-pending`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}), timeoutMs: 140000 });
           if (r2.ok) next = await r2.json().catch(() => null);
         } catch (e){ /* connection dropped on a follow-up: keep what has already come back */ }
         if (!next || !Array.isArray(next.candidates)) break;
