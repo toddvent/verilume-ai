@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-25-pr-gemini-json (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-25-pr-style-profile (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -26656,7 +26656,7 @@ async function buildPrCorpCommPrompt(account, docType, brief){
   // product/creative-market scoped audience findings meant for consumer-
   // facing campaign copy (see generateMessagingCopyViaAI above), not
   // PR/Corp Comm, which has no product-group concept of its own.
-  const sampleContext = (await prCorpCommSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId)) + (await prCorpCommDecisionContext(account.accountId)) + (await liveGuardrailContext(account.accountId)) + (await websiteProfileContext(account.accountId)) + brandWritingSampleStyleContext(account.accountId, 'pr');
+  const sampleContext = prProfileContext(account.accountId) + (await prCorpCommSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId)) + (await prCorpCommDecisionContext(account.accountId)) + (await liveGuardrailContext(account.accountId)) + (await websiteProfileContext(account.accountId)) + brandWritingSampleStyleContext(account.accountId, 'pr');
   // 2026-09-12 — Competitive Positioning, mirroring the same block
   // generateMessagingCopyViaAI() builds from account.competitorsJson
   // (which buildPrCorpCommPrompt never read before today). Same "internal
@@ -28991,6 +28991,148 @@ const PR_DOC_TYPE_LABELS = {
   editorial_pitch: 'Editorial Pitch',
   corporate_comms: 'Corporate Comms'
 };
+// ===== 2026-10-25 (Todd): PR style profile, learned from the brand's own published releases =====
+// One profile per account. A scan of the brand's news page (or pasted releases) is read once and boiled down to short fields (how releases open, structure, quotes, closing, recurring phrases, spokespeople). The team edits and approves it; only an approved profile is added to the PR prompt.
+// Plain lowercase columns (except accountId) so Postgres casing cannot bite, the same convention marketing_projects uses.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_pr_profile (
+    accountId TEXT PRIMARY KEY, sourceurl TEXT, status TEXT, profilejson TEXT, releasesjson TEXT,
+    scannedat TEXT, approvedat TEXT, approvedby TEXT, updatedat TEXT
+  );
+`);
+CATALOG_EXEMPT.add('account_pr_profile');
+const PR_PROFILE_TEXT_FIELDS = ['descriptor', 'openingPattern', 'structure', 'lengthRange', 'datelineStyle', 'quoteStyle', 'closingBlock', 'endMarker', 'boilerplate', 'namingConventions'];
+const PR_PROFILE_SCHEMA = {
+  type: 'object',
+  properties: {
+    descriptor: { type: 'string' }, openingPattern: { type: 'string' }, structure: { type: 'string' }, lengthRange: { type: 'string' },
+    datelineStyle: { type: 'string' }, quoteStyle: { type: 'string' }, closingBlock: { type: 'string' }, endMarker: { type: 'string' },
+    boilerplate: { type: 'string' }, namingConventions: { type: 'string' },
+    spokespeople: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, title: { type: 'string' }, usedFor: { type: 'string' } }, required: ['name', 'title'] } },
+    recurringPhrases: { type: 'array', items: { type: 'string' } },
+    verifyFacts: { type: 'array', items: { type: 'string' } }
+  },
+  required: ['descriptor', 'openingPattern', 'structure', 'lengthRange', 'datelineStyle', 'quoteStyle', 'closingBlock', 'endMarker', 'boilerplate', 'namingConventions', 'spokespeople', 'recurringPhrases', 'verifyFacts']
+};
+function prpClean(v, n){ return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, n || 300); }
+function prpCleanProfile(p){
+  p = p || {}; const out = {};
+  PR_PROFILE_TEXT_FIELDS.forEach(k => { out[k] = prpClean(p[k], k === 'boilerplate' ? 900 : 320); });
+  out.spokespeople = (Array.isArray(p.spokespeople) ? p.spokespeople : []).map(s => ({ name: prpClean(s && s.name, 80), title: prpClean(s && s.title, 120), usedFor: prpClean(s && s.usedFor, 120) })).filter(s => s.name).slice(0, 8);
+  out.recurringPhrases = (Array.isArray(p.recurringPhrases) ? p.recurringPhrases : []).map(x => prpClean(x, 90)).filter(Boolean).slice(0, 12);
+  out.verifyFacts = (Array.isArray(p.verifyFacts) ? p.verifyFacts : []).map(x => prpClean(x, 200)).filter(Boolean).slice(0, 8);
+  return out;
+}
+function prpHostOk(host){ const h = String(host || '').toLowerCase(); return !!h && h.includes('.') && !/^(\d{1,3}\.){3}\d{1,3}$/.test(h) && !/^\[/.test(h) && !/(^|\.)(localhost|local|internal|lan|test)$/.test(h); }
+function prpBodyText(html){
+  let h = String(html || '').replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ');
+  const m = h.match(/<article[\s\S]*?<\/article>/i) || h.match(/<main[\s\S]*?<\/main>/i);
+  if (m) h = m[0];
+  h = h.replace(/<(nav|header|footer|form|aside)[\s\S]*?<\/\1>/gi, ' ').replace(/<\/(p|div|h[1-6]|li|br)>/gi, '\n');
+  return h.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&#8217;|&#39;|&rsquo;/g, "'").replace(/&quot;|&ldquo;|&rdquo;|&#8220;|&#8221;/g, '"').replace(/&#8211;|&ndash;/g, '-').replace(/&#8212;|&mdash;/g, '-').replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
+}
+function prpParseRelease(html, url){
+  const title = (extractMetaContent(html, 'og:title') || (String(html).match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) || [])[1] || (String(html).match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '').replace(/<[^>]*>/g, ' ').replace(/\s*[|–-]\s*[^|–-]*$/, '').replace(/\s+/g, ' ').trim();
+  let text = prpBodyText(html);
+  if (title){ const at = text.indexOf(title); if (at >= 0 && at < 600) text = text.slice(at + title.length).trim(); }
+  const dm = text.slice(0, 400).match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.? \d{1,2}, \d{4}\b/);
+  const date = extractMetaContent(html, 'article:published_time').slice(0, 10) || (dm ? dm[0] : '');
+  return { url, title: prpClean(title, 200), date, text: text.slice(0, 6000), words: text.split(/\s+/).filter(Boolean).length };
+}
+async function prpMapLimit(items, limit, fn){
+  const out = new Array(items.length); let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => { while (next < items.length){ const i = next++; try { out[i] = await fn(items[i], i); } catch (e){ out[i] = null; } } }));
+  return out;
+}
+// Reads the news index, finds the release links under it (same host only), and fetches up to `max` of them.
+async function prpScanNewsPage(indexUrl, max){
+  let u; try { u = new URL(/^https?:\/\//i.test(indexUrl) ? indexUrl : 'https://' + indexUrl); } catch (e){ return { error: 'That does not look like a web address.' }; }
+  if (!/^https?:$/.test(u.protocol) || !prpHostOk(u.hostname)) return { error: 'Enter the public address of the news page, such as https://yourbrand.com/news.' };
+  const host = u.hostname.replace(/^www\./, '');
+  const idx = await srchFetch(u.toString(), host, { timeoutMs: 12000, maxBytes: 900000 });
+  if (!idx || idx.error || !idx.html || idx.status >= 400) return { error: 'The site did not return its news list to an automated scan' + (idx && idx.status ? ' (status ' + idx.status + ')' : '') + '. Paste five to fifteen releases instead.' };
+  const base = idx.finalUrl || u.toString(); const basePath = new URL(base).pathname.replace(/\/+$/, '');
+  const seen = new Set(); const links = [];
+  const re = /<a\b[^>]*?href\s*=\s*(["'])(.*?)\1/gi; let m;
+  while ((m = re.exec(idx.html))){
+    let h; try { h = new URL(m[2].replace(/&amp;/g, '&'), base); } catch (e){ continue; }
+    if (!srchHostOk(h.toString(), host)) continue;
+    const p = h.pathname.replace(/\/+$/, '');
+    if (!p.startsWith(basePath + '/') || p === basePath) continue;
+    if (p.slice(basePath.length + 1).split('/').length !== 1 || /^(page|category|tag|author|feed)$/i.test(p.slice(basePath.length + 1))) continue;
+    if (/\.(jpg|jpeg|png|gif|webp|pdf|svg|css|js)$/i.test(p)) continue;
+    const key = h.origin + p; if (seen.has(key)) continue; seen.add(key); links.push(key);
+  }
+  if (!links.length) return { error: 'No individual releases were found under that address. Check the link, or paste releases instead.' };
+  const pages = await prpMapLimit(links.slice(0, max), 4, async link => {
+    const r = await srchFetch(link, host, { timeoutMs: 12000, maxBytes: 700000 });
+    if (!r || !r.html || r.status >= 400) return null;
+    return prpParseRelease(r.html, link);
+  });
+  const releases = pages.filter(r => r && r.words >= 120);
+  if (!releases.length) return { error: 'Release pages were found but could not be read as text. Paste releases instead.' };
+  return { releases, found: links.length };
+}
+function prpParsePasted(text){
+  return String(text || '').split(/\n\s*(?:={3,}|-{3,}|#{3,})\s*\n/).map(x => x.trim()).filter(x => x.split(/\s+/).length >= 120).slice(0, 20).map((x, i) => {
+    const lines = x.split('\n'); const title = prpClean(lines[0], 200); const dm = x.slice(0, 500).match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.? \d{1,2}, \d{4}\b/);
+    return { url: '', title: title || 'Pasted release ' + (i + 1), date: dm ? dm[0] : '', text: x.slice(0, 6000), words: x.split(/\s+/).filter(Boolean).length };
+  });
+}
+async function prpBuildProfile(releases){
+  const used = releases.slice(0, 15);
+  const body = used.map((r, i) => `--- RELEASE ${i + 1}: ${r.title}${r.date ? ' (' + r.date + ')' : ''} ---\n${r.text.slice(0, 3200)}`).join('\n\n');
+  const content = `Below are ${used.length} press releases this brand has published. Describe the brand's press release style as short, specific, reusable fields, based ONLY on what these releases show.
+
+RULES:
+- Report a pattern only if it appears in at least two releases, unless a field says otherwise. If a pattern does not appear, return an empty string for that field. Never invent.
+- Keep each text field under 220 characters. Describe the pattern in your own words; do not copy sentences from the releases.
+- descriptor: the one-sentence way the brand describes itself when a release opens or introduces it (a short phrase is fine).
+- openingPattern: how the first paragraph is built. structure: the usual parts in order, subheads, number of paragraphs. lengthRange: typical word count range.
+- datelineStyle: how a release starts (city dateline or none) and whether dates are written in the text.
+- quoteStyle: who is quoted, how the first and later quotes are attributed, how many quotes.
+- closingBlock: how releases end (booking line, contact details, social links). endMarker: any end symbol, or empty.
+- boilerplate: an "About" paragraph ONLY if the same one repeats across releases, reproduced exactly; otherwise empty.
+- namingConventions: how products, ships, places or programs are named and capitalised.
+- spokespeople: only people named in the text WITH a stated title; give the title exactly as written and what they are quoted about.
+- recurringPhrases: up to 10 short phrases the brand reuses to describe itself or its product.
+- verifyFacts: up to 6 facts a person should confirm before relying on this profile (for example a title that differs between releases).
+
+${body}`;
+  const parsed = await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 2200, content, toolName: 'submit_pr_profile', toolDescription: 'Submit the brand press release style profile.', schema: PR_PROFILE_SCHEMA, timeoutMs: 90000 });
+  return prpCleanProfile(parsed);
+}
+function prpRowOut(row){
+  if (!row) return { exists: false };
+  let pj = {}, rj = [];
+  try { pj = JSON.parse(row.profilejson || '{}'); } catch (e){}
+  try { rj = JSON.parse(row.releasesjson || '[]'); } catch (e){}
+  return { exists: true, status: row.status || 'draft', sourceUrl: row.sourceurl || '', profile: pj.profile || {}, exemplars: pj.exemplars || [], releases: rj, scannedAt: row.scannedat || null, approvedAt: row.approvedat || null, approvedBy: row.approvedby || null, updatedAt: row.updatedat || null };
+}
+// The block added to the PR prompt. Only an APPROVED profile is used.
+function prProfileContext(accountId){
+  try {
+    const row = db.prepare('SELECT status, profilejson FROM account_pr_profile WHERE accountId = ?').get(accountId);
+    if (!row || row.status !== 'approved') return '';
+    const p = (JSON.parse(row.profilejson || '{}').profile) || {};
+    const L = [];
+    if (p.descriptor) L.push(`- How the brand introduces itself: ${p.descriptor}`);
+    if (p.openingPattern) L.push(`- Opening: ${p.openingPattern}`);
+    if (p.structure) L.push(`- Structure: ${p.structure}`);
+    if (p.lengthRange) L.push(`- Typical length: ${p.lengthRange}`);
+    if (p.datelineStyle) L.push(`- Dateline: ${p.datelineStyle}`);
+    if (p.quoteStyle) L.push(`- Quotes: ${p.quoteStyle}`);
+    if (p.spokespeople && p.spokespeople.length) L.push(`- Spokespeople (use these exact names and titles for a quote; if none fits, write a bracketed placeholder instead of inventing one): ${p.spokespeople.map(s => s.name + ', ' + s.title).join('; ')}`);
+    if (p.closingBlock) L.push(`- Closing: ${p.closingBlock}`);
+    if (p.endMarker) L.push(`- End marker: ${p.endMarker}`);
+    if (p.boilerplate) L.push(`- Boilerplate paragraph to include if the brief calls for one: ${p.boilerplate}`);
+    if (p.namingConventions) L.push(`- Naming: ${p.namingConventions}`);
+    if (p.recurringPhrases && p.recurringPhrases.length) L.push(`- Phrases the brand reuses (use sparingly, where they are true): ${p.recurringPhrases.join('; ')}`);
+    if (!L.length) return '';
+    return `\nTHIS BRAND'S PR STYLE PROFILE (learned from its own published press releases and approved by its team: follow it for structure, openings, quotes, closings and wording habits. Facts still come only from the brief):\n${L.join('\n')}\n`;
+  } catch (e){ return ''; }
+}
+
 async function handlePrCopyInterviewRequest(docType, accountId, sourceId, body, session){
   const cfg = PR_DOC_TYPE_CONFIG[docType];
   const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
@@ -31222,7 +31364,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-25-pr-gemini-json',
+        buildStamp: '2026-10-25-pr-style-profile',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
@@ -44195,6 +44337,51 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       return sendJson(res, 200, result);
     }
 
+    // ---------- PR style profile (2026-10-25) ----------
+    // GET reads it; POST .../scan builds a draft from the news page or pasted releases; PUT saves edits and, with approve:true, approves it for use in PR drafts; DELETE clears it.
+    if (parts.length >= 4 && parts.length <= 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'pr-profile'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const session = authenticate(req);
+      const getRow = () => db.prepare('SELECT * FROM account_pr_profile WHERE accountId = ?').get(accountId);
+      if (req.method === 'GET' && parts.length === 4) return sendJson(res, 200, prpRowOut(getRow()));
+      if (req.method === 'DELETE' && parts.length === 4){ db.prepare('DELETE FROM account_pr_profile WHERE accountId = ?').run(accountId); return sendJson(res, 200, { cleared: true }); }
+      if (req.method === 'POST' && parts.length === 5 && parts[4] === 'scan'){
+        if (!process.env.ANTHROPIC_API_KEY) return sendJson(res, 200, { ok: false, note: 'Building a profile needs ANTHROPIC_API_KEY to be configured.' });
+        const body = await readBody(req);
+        let releases = [], found = 0, sourceUrl = '';
+        if (typeof body.pasted === 'string' && body.pasted.trim()){
+          releases = prpParsePasted(body.pasted);
+          if (!releases.length) return sendJson(res, 200, { ok: false, note: 'No releases were found in what you pasted. Paste each full release (at least a few paragraphs) and separate releases with a line of ====.' });
+        } else {
+          sourceUrl = String(body.url || '').trim().slice(0, 300);
+          if (!sourceUrl) return sendJson(res, 200, { ok: false, note: 'Enter the news page address, or paste releases.' });
+          const scan = await prpScanNewsPage(sourceUrl, 15);
+          if (scan.error) return sendJson(res, 200, { ok: false, note: scan.error });
+          releases = scan.releases; found = scan.found;
+        }
+        if (releases.length < 3) return sendJson(res, 200, { ok: false, note: 'Only ' + releases.length + ' usable release' + (releases.length === 1 ? ' was' : 's were') + ' found. Three or more are needed to see a pattern; five to fifteen works best.' });
+        let profile;
+        try { profile = await prpBuildProfile(releases); } catch (e){ return sendJson(res, 200, { ok: false, note: 'The profile could not be built right now (' + String(e.message || e).slice(0, 120) + '). Try again.' }); }
+        const exemplars = releases.filter(r => r.words >= 300).slice(0, 2).map(r => ({ title: r.title, url: r.url, date: r.date, excerpt: r.text.slice(0, 1200) }));
+        const now = new Date().toISOString();
+        const list = releases.map(r => ({ title: r.title, url: r.url, date: r.date, words: r.words }));
+        const payload = JSON.stringify({ profile, exemplars });
+        if (getRow()) db.prepare('UPDATE account_pr_profile SET sourceurl = ?, status = ?, profilejson = ?, releasesjson = ?, scannedat = ?, approvedat = NULL, approvedby = NULL, updatedat = ? WHERE accountId = ?').run(sourceUrl, 'draft', payload, JSON.stringify(list), now, now, accountId);
+        else db.prepare('INSERT INTO account_pr_profile (accountId, sourceurl, status, profilejson, releasesjson, scannedat, updatedat) VALUES (?,?,?,?,?,?,?)').run(accountId, sourceUrl, 'draft', payload, JSON.stringify(list), now, now);
+        return sendJson(res, 200, Object.assign({ ok: true, found: found || releases.length }, prpRowOut(getRow())));
+      }
+      if (req.method === 'PUT' && parts.length === 4){
+        const row = getRow(); if (!row) return sendJson(res, 404, { error: 'no PR style profile yet' });
+        const body = await readBody(req);
+        let stored = {}; try { stored = JSON.parse(row.profilejson || '{}'); } catch (e){}
+        const now = new Date().toISOString(); const approve = body.approve === true;
+        const profile = prpCleanProfile(body.profile || stored.profile);
+        db.prepare('UPDATE account_pr_profile SET profilejson = ?, status = ?, approvedat = ?, approvedby = ?, updatedat = ? WHERE accountId = ?')
+          .run(JSON.stringify({ profile, exemplars: stored.exemplars || [] }), approve ? 'approved' : 'draft', approve ? now : null, approve ? (session ? (session.memberId || accountId + ':admin') : null) : null, now, accountId);
+        return sendJson(res, 200, prpRowOut(getRow()));
+      }
+    }
     // ---------- Search Everywhere (2026-10-04) ----------
     // All under /api/accounts/:id/search-everywhere/... : keywords (module), optimize (PR draft or website copy), website-audit.
     if (parts.length >= 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'search-everywhere'){
