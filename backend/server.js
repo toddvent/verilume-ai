@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-27-health-cap (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-27-xai-pr-model (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -28779,7 +28779,8 @@ createTableIfNeeded(`
 // depth compared across vendors, same convention as generateVendorInterviewCopy.
 async function generateVendorPrCopy(vendorKey, prompt, timeoutMs){
   try {
-    const text = await callVendorForText(vendorKey, prompt, timeoutMs, { longForm: true });
+    // XAI_PR_MODEL lets press release contests use a different Grok model than the other contests (set in Railway; unset means the same model as everywhere else).
+    const text = await callVendorForText(vendorKey, prompt, timeoutMs, { longForm: true, model: vendorKey === 'xai-grok' ? (process.env.XAI_PR_MODEL || '').trim() || undefined : undefined });
     const parsed = parseJsonBlock(text);
     if (!parsed){
       // The vendor wrote the piece but not as JSON: keep the text rather than lose a real draft.
@@ -28958,7 +28959,7 @@ async function runPrCandidateInterview(account, docType, brief, opts){
     attempts: attemptNo, pending: !!(configured && gen && !gen.copy && prFailureRetryable(gen.error) && attemptNo < PR_MAX_ATTEMPTS)
   });
   const anthropicCandidate = buildCandidate('anthropic-baseline', 'Anthropic (baseline)', 'Anthropic', 'claude-sonnet-4-5', true, anthropicResp);
-  const liveVendorCandidates = configuredVendors.map((v, i) => buildCandidate(v.key, v.label, v.vendor, v.model, true, vendorGenerated[i]));
+  const liveVendorCandidates = configuredVendors.map((v, i) => buildCandidate(v.key, v.label, v.vendor, (v.key === 'xai-grok' && (process.env.XAI_PR_MODEL || '').trim()) || v.model, true, vendorGenerated[i]));
   const unconfiguredCandidates = INTERVIEW_VENDOR_REGISTRY.filter(v => !process.env[v.envVar]).map(v => buildCandidate(v.key, v.label, v.vendor, null, false, { copy: null, error: `${v.envVar} not configured on this deployment.` }));
 
   if (only){
@@ -29692,7 +29693,7 @@ async function callVendorForText(vendorKey, prompt, timeoutMs, callOpts){
     const resp = await fetchWithTimeout('https://api.x.ai/v1/responses', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.XAI_API_KEY}` },
-      body: JSON.stringify({ model: v.model, input: prompt })
+      body: JSON.stringify({ model: (callOpts && callOpts.model) || v.model, input: prompt })
     }, ms);
     if (!resp.ok) throw await vendorHttpError(resp);
     const data = await resp.json();
@@ -31525,8 +31526,9 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-27-health-cap',
+        buildStamp: '2026-10-27-xai-pr-model',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
+        xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
