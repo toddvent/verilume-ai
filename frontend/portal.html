@@ -13995,7 +13995,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-26-pr-score-excludes-voice';
+const CXMEDIA_BUILD_STAMP = '2026-10-27-pr-improve-draft';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -67623,14 +67623,25 @@ function prcContestHtml(id){
   const hasDrafts = !!(c.result && (c.result.candidates || []).some(x => x.copy));
   if (c.running && !hasDrafts) return renderMiniLoadCover(c.stage || 'YOUR AI CONTESTANTS ARE THINKING');
   let h = c.note ? `<p class="hint" style="margin-top:8px;color:var(--advocacy);">${escapeHtml(c.note)}</p>` : '';
-  const list = (c.result && c.result.candidates || []).filter(x => x.copy);
+  const list = (c.result && c.result.candidates || []).filter(x => x.copy).slice().sort((a, b) => (b.refined ? 1 : 0) - (a.refined ? 1 : 0));
+  const improvedHtml = x => x.refined ? `<div style="font-size:0.8125rem;margin-bottom:8px;padding:8px 10px;border-radius:8px;background:var(--surface-2,rgba(0,0,0,0.04));"><b>Improved from ${escapeHtml(x.basedOn || 'the best draft')}.</b> Score ${x.beforeScore != null ? escapeHtml(String(x.beforeScore)) : '?'} to ${x.brandVoice && x.brandVoice.score != null ? escapeHtml(String(x.brandVoice.score)) : '?'}.${(x.borrowedFrom || []).length ? ` Passages considered from ${escapeHtml(x.borrowedFrom.join(' and '))}.` : ''}${(x.changes || []).length ? `<ul style="margin:6px 0 0;padding-left:18px;">${x.changes.map(ch => `<li>${escapeHtml(ch.fix)}${ch.from ? ` <span class="hint" style="margin:0;">(${escapeHtml(ch.from)})</span>` : ''}</li>`).join('')}</ul>` : ''}</div>` : '';
   h += list.map(x => `<div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px;">
     <div style="font-weight:700;margin-bottom:6px;">${escapeHtml(x.label)}</div>
-    ${prcVoiceAuditHtml(x.brandVoice)}
+    ${improvedHtml(x)}${prcVoiceAuditHtml(x.brandVoice)}
     <div style="font-size:0.8125rem;margin-bottom:4px;"><b>Strategy:</b> ${escapeHtml(x.approach || 'Not stated')}</div>
     <div style="font-size:0.8125rem;margin-bottom:6px;"><b>Headline:</b> ${escapeHtml(x.headline || 'Not stated')}</div>
     <div style="font-size:0.8125rem;margin:6px 0 2px;"><a class="flink" onclick="prcContestView('${id}','${escapeHtml(x.key)}')">View Complete Draft →</a> <span class="hint" style="margin:0;">${String(x.copy).trim().split(/\s+/).length} words</span></div>
     <div style="margin-top:8px;"><button type="button" class="btn-primary" ${c.picked ? 'disabled' : ''} onclick="prcContestPick('${id}','${escapeHtml(x.key)}')">Use this draft →</button></div></div>`).join('');
+  // Improve the best draft: one more draft built from the best score, its audit, and the strongest passages of the others.
+  const scoredCount = list.filter(x => x.brandVoice && x.brandVoice.score != null).length;
+  const rounds = (c.result && c.result.refineRounds) || 0, maxRounds = (c.result && c.result.refineMaxRounds) || 3;
+  if (!c.running && !c.picked && scoredCount && rounds < maxRounds){
+    h += `<div style="border:1px dashed var(--line);border-radius:10px;padding:12px;margin-top:12px;">
+      <div style="font-weight:700;margin-bottom:4px;">Make the best possible draft</div>
+      <p class="hint" style="margin:0 0 8px;">Takes the highest-scoring draft, fixes what the auditor flagged, considers the strongest passages from the others, and scores the result again. It is added as one more draft. Your contest drafts stay as they are. Takes about a minute.</p>
+      <button type="button" class="btn-primary" ${c.refining ? 'disabled' : ''} onclick="prcRefine('${id}')">${rounds ? 'Improve again →' : 'Improve the best draft →'}</button>
+      ${c.refineNote ? `<p class="hint" style="margin:8px 0 0;font-weight:600;">${escapeHtml(c.refineNote)}</p>` : ''}</div>`;
+  } else if (c.refineNote && !c.picked){ h += `<p class="hint" style="margin-top:8px;font-weight:600;">${escapeHtml(c.refineNote)}</p>`; }
   const total = c.result && c.result.totalCount, got = c.result && c.result.returnedCount;
   if (c.running) h += renderMiniLoadCover(c.stage || 'YOUR AI CONTESTANTS ARE THINKING');
   else if (total && got < total) h += `<p class="hint" style="margin-top:10px;">${got} of ${total} drafts returned.</p>`;
@@ -67673,6 +67684,27 @@ async function prcRunContest(id){
   cmpSunriseLoaderHide();
   prcContest[id].running = false;
   prcContest[id].stage = '';
+  draw();
+}
+async function prcRefine(id){
+  const c = prcContest[id]; if (!c || !c.result || c.refining || c.running) return;
+  c.refining = true; c.refineNote = '';
+  const draw = () => { const o = document.getElementById(`prcContestOut-${id}`); if (o) o.innerHTML = prcContestHtml(id); };
+  draw();
+  cmpSunriseLoaderShow({ headline: 'Improving your best draft', note: 'Verilume is fixing what the auditor flagged and combining the strongest passages. This takes about a minute, so please stay on this page.', countdownSec: 150, countdownLabel: 'Working. Time left before timeout' });
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/press-releases/${encodeURIComponent(id)}/interview/${encodeURIComponent(c.result.interviewId)}/refine`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}), timeoutMs: 170000 });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) c.refineNote = data.error || "Couldn't improve the draft. Try again.";
+    else if (data.available === false) c.refineNote = data.note || 'Improving a draft is not available right now.';
+    else {
+      c.result = data;
+      const r = data.refine || {};
+      c.refineNote = r.improved ? `Improved draft added at the top: ${r.before} to ${r.after}.` : (r.note || 'No improvement this time.');
+    }
+  } catch (e){ c.refineNote = 'The request took too long or did not finish. Your drafts are unchanged. Try again.'; }
+  cmpSunriseLoaderHide();
+  c.refining = false;
   draw();
 }
 async function prcContestPick(id, key){
