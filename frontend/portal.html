@@ -4503,6 +4503,10 @@
 </style>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap">
+<style id="prcCopyStyles">
+textarea.prc-copy-ta{width:100%;box-sizing:border-box;font:inherit;font-size:15px;line-height:1.6;padding:14px 16px;border:1px solid var(--border,#d0d5dd);border-radius:10px;background:var(--surface,#fff);color:inherit;resize:vertical;min-height:26em;max-height:85vh;overflow:auto;}
+textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offset:1px;}
+</style>
 </head>
 <body>
 <!-- 2026-08-25 — full-screen load cover, first thing in <body> on purpose
@@ -13995,7 +13999,7 @@
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-27-xai-pr-model';
+const CXMEDIA_BUILD_STAMP = '2026-10-27-pr-improve-tiebreak';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -67045,7 +67049,7 @@ function prcRenderSection(type, containerId, titleFn, subtitleFn){
           <button type="button" class="btn-primary" onclick="prcSavePressMeta('${item.id}')">Save details →</button>
           <div id="prcPressMetaStatus-${item.id}" class="hint" style="flex-basis:100%;"></div>
         </div>` : ''}
-        <textarea id="prcCopy-${type}-${item.id}" rows="6" style="width:100%;font-family:inherit;">${escapeHtml(item.workingCopy || '')}</textarea>
+        <textarea id="prcCopy-${type}-${item.id}" class="prc-copy-ta" rows="22" oninput="prcFitCopy(this)">${escapeHtml(item.workingCopy || '')}</textarea>
         <div class="btn-row" style="margin-top:6px;"><button type="button" class="btn-primary" onclick="prcSaveCopy('${type}','${item.id}')">Save →</button></div>
         <div id="prcCopyStatus-${type}-${item.id}" class="hint" style="margin-top:4px;"></div>
         ${type === 'press' ? srchPanelHtml('press:' + item.id, { kind: 'press', id: item.id }) : ''}
@@ -67542,7 +67546,7 @@ function prcPressExpandedHtml(item){
   const reveal = hasDraft || !!prcOwn[id] || !!prcContest[id] || (item.status && item.status !== 'draft');
   const draft = `<div id="prcDraftBlock-${id}" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line, #e3e3e8);">
       <div style="font-weight:700;">Step 4 of ${corp ? 5 : 6}: review, compare and edit the draft</div>
-      <textarea id="prcCopy-press-${id}" rows="8" style="width:100%;font-family:inherit;margin-top:6px;">${escapeHtml(item.workingCopy || '')}</textarea>
+      <textarea id="prcCopy-press-${id}" class="prc-copy-ta" rows="22" oninput="prcFitCopy(this)" style="margin-top:6px;">${escapeHtml(item.workingCopy || '')}</textarea>
       <div class="btn-row" style="margin-top:6px;flex-wrap:wrap;">
         <button type="button" class="btn-primary" onclick="prcSaveCopy('press','${id}')">Save draft →</button>
         <button type="button" class="prc-chip${complete ? '' : ' off'}" ${complete ? '' : 'disabled title="Finish all four brief steps first."'} onclick="prcRunContest('${id}')" title="One version from each AI partner, shown with its strategy, headline and complete text. Pick one here, then edit and save it.">Run contest →</button>
@@ -67686,6 +67690,21 @@ async function prcRunContest(id){
   prcContest[id].stage = '';
   draw();
 }
+
+// 2026-10-27 — the PR draft box grows to show the draft (up to 85% of the window) instead of a small scrolling window.
+function prcFitCopy(el){
+  if (!el || el.offsetParent === null) return;
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight + 6, Math.round(window.innerHeight * 0.85)) + 'px';
+}
+(function(){
+  let queued = false;
+  const fitAll = () => { queued = false; document.querySelectorAll('textarea.prc-copy-ta').forEach(prcFitCopy); };
+  const queue = () => { if (!queued){ queued = true; requestAnimationFrame(fitAll); } };
+  try { new MutationObserver(queue).observe(document.body, { childList: true, subtree: true }); } catch (e){}
+  document.addEventListener('click', () => setTimeout(queue, 60), true);
+  window.addEventListener('resize', queue);
+})();
 async function prcRefine(id){
   const c = prcContest[id]; if (!c || !c.result || c.refining || c.running) return;
   c.refining = true; c.refineNote = '';
