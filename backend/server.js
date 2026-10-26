@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-26-pr-voice-label (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-26-pr-score-excludes-voice (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -28833,6 +28833,8 @@ async function scorePrBrandVoice(copy, account, brief){
   const phraseFlags = exactPhraseFlags(text, phrases);
   const watchFlags = surveillanceFlags(text);
   const untraced = prFiguresNotInBrief(text, factsText + '\n' + (account && account.accountId ? prProfileFactsText(account.accountId) : ''));
+  const approvedWording = account && account.accountId ? prProfileApproved(account.accountId) : { snippets: [], people: [] };
+  const judgedText = prStripApproved(text, approvedWording.snippets);
   const checks = [
     { name: 'Saved brand phrases used exactly', passed: phraseFlags.length === 0, detail: phrases.length ? (phraseFlags.length ? phraseFlags.join(' ') : 'Every saved phrase that applies is used as saved.') : 'No exact phrases are saved for this brand, so nothing was checked.', applicable: phrases.length > 0 },
     { name: 'Does not sound like it is watching the reader', passed: watchFlags.length === 0, detail: watchFlags.length ? watchFlags[0] : 'No language that tells the reader what we saw them do.', applicable: true },
@@ -28855,12 +28857,13 @@ TYPE OF COMMUNICATION: ${brief && brief.releaseType ? String(brief.releaseType).
 AUDIENCE: ${audLabel}
 FACTS THE TEAM SUPPLIED (the only facts the draft may rely on):
 ${(factsText || '(none)').slice(0, 2500)}
+${approvedWording.people.length || approvedWording.snippets.length ? `\nAPPROVED BRAND WORDING (the brand's team already approved this. Closing, boilerplate and end-marker text has been removed from the draft below, so do not look for it. Do not score any of it for tone, language or vision. These people may be quoted with these exact titles, so do not call them unsupported or invented: ${approvedWording.people.join('; ') || 'none listed'}):\n` : ''}
 
 For EACH criterion below give: a score 0-100 (100 = fully matches; deduct for each real issue), one plain sentence "finding" saying why, an "evidence" field that is ONE short phrase copied EXACTLY from the draft (max 25 words) that shows the issue or the strength, and a "guideRef" that is a short phrase copied EXACTLY from the voice guide or vision statement that the finding relies on (empty string if the guide does not cover it). Never paraphrase the evidence or guideRef: they are checked against the source text.
 ${PR_VOICE_CRITERIA.map(c => `- ${c.key}: ${c.ask}`).join('\n')}
 
 DRAFT TO AUDIT:
-${text.slice(0, 3500)}`;
+${judgedText.slice(0, 3500)}`;
   let parsed;
   try {
     parsed = await callClaudeForJSON({
@@ -29138,6 +29141,30 @@ function prProfileContext(accountId, brief){
   } catch (e){ return ''; }
 }
 // Text from the approved profile that a draft may legitimately repeat (phone number, boilerplate, names), so the figures check does not flag it.
+// Wording the brand's team approved in PR Voice. It is never judged: it is cut out of the text the judge reads, and the people named there are not "unsupported claims".
+function prProfileApproved(accountId){
+  const out = { snippets: [], people: [] };
+  try {
+    const row = db.prepare('SELECT status, profilejson FROM account_pr_profile WHERE accountId = ?').get(accountId);
+    if (!row || row.status !== 'approved') return out;
+    const p = (JSON.parse(row.profilejson || '{}').profile) || {};
+    [p.boilerplate, p.closingBlock, p.endMarker].forEach(v => {
+      const s = String(v || '').trim(); if (!s) return;
+      if (s.length >= 25) out.snippets.push(s);
+      s.split(/(?<=[.!?])\s+/).forEach(x => { x = x.trim(); if (x.length >= 40) out.snippets.push(x); });
+    });
+    out.people = (p.spokespeople || []).filter(s => s && s.name).map(s => s.name + (s.title ? ', ' + s.title : ''));
+  } catch (e){}
+  return out;
+}
+function prStripApproved(text, snippets){
+  let out = String(text || '');
+  (snippets || []).slice().sort((a, b) => b.length - a.length).forEach(s => {
+    const esc = s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+    try { out = out.replace(new RegExp(esc, 'gi'), ' '); } catch (e){}
+  });
+  return out.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n');
+}
 function prProfileFactsText(accountId){
   try {
     const row = db.prepare('SELECT status, profilejson FROM account_pr_profile WHERE accountId = ?').get(accountId);
@@ -31378,7 +31405,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-26-pr-voice-label',
+        buildStamp: '2026-10-26-pr-score-excludes-voice',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
