@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-26-pr-score-excludes-voice (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-27-pr-improve-draft (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -26657,7 +26657,7 @@ async function buildPrCorpCommPrompt(account, docType, brief){
   // product/creative-market scoped audience findings meant for consumer-
   // facing campaign copy (see generateMessagingCopyViaAI above), not
   // PR/Corp Comm, which has no product-group concept of its own.
-  const sampleContext = prProfileContext(account.accountId, brief) + (await prCorpCommSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId)) + (await prCorpCommDecisionContext(account.accountId)) + (await liveGuardrailContext(account.accountId)) + (await websiteProfileContext(account.accountId)) + brandWritingSampleStyleContext(account.accountId, 'pr');
+  const sampleContext = prProfileContext(account.accountId, brief, docType) + (await prCorpCommSampleContext(account.accountId)) + (await brandCopyWebsiteExampleContext(account.accountId)) + (await prCorpCommDecisionContext(account.accountId)) + (await liveGuardrailContext(account.accountId)) + (await websiteProfileContext(account.accountId)) + brandWritingSampleStyleContext(account.accountId, 'pr');
   // 2026-09-12 — Competitive Positioning, mirroring the same block
   // generateMessagingCopyViaAI() builds from account.competitorsJson
   // (which buildPrCorpCommPrompt never read before today). Same "internal
@@ -29114,33 +29114,39 @@ function prpRowOut(row){
   return { exists: true, status: row.status || 'draft', sourceUrl: row.sourceurl || '', profile: pj.profile || {}, exemplars: pj.exemplars || [], releases: rj, scannedAt: row.scannedat || null, approvedAt: row.approvedat || null, approvedBy: row.approvedby || null, updatedAt: row.updatedat || null };
 }
 // The block added to the PR prompt. Only an APPROVED profile is used.
-function prProfileContext(accountId, brief){
+function prProfileContext(accountId, brief, docType){
   try {
     const row = db.prepare('SELECT status, profilejson FROM account_pr_profile WHERE accountId = ?').get(accountId);
     if (!row || row.status !== 'approved') return '';
     const p = (JSON.parse(row.profilejson || '{}').profile) || {};
     const aud = String((brief && brief.audience) || '');
-    const L = [];
-    if (p.openingPattern) L.push(`- Opening: ${p.openingPattern}`);
-    if (p.structure) L.push(`- Structure: ${p.structure}`);
-    if (p.lengthRange) L.push(`- Typical length: ${p.lengthRange}`);
-    if (p.datelineStyle) L.push(`- Dateline: ${p.datelineStyle}`);
-    if (p.quoteStyle) L.push(`- Quotes: ${p.quoteStyle}`);
+    const rt = String((brief && brief.releaseType) || '');
+    const isRelease = (docType || 'press_release') === 'press_release' && rt !== 'talking_points' && rt !== 'internal_announcement' && aud !== 'internal';
+    const G = []; // guidance: follow the pattern, in the brand voice
+    const X = []; // exact: reproduce word for word
+    if (p.openingPattern) G.push(`- Opening: ${p.openingPattern}`);
+    if (p.structure) G.push(`- Structure: ${p.structure}`);
+    if (p.lengthRange) G.push(`- Typical length: ${p.lengthRange}`);
+    if (p.datelineStyle) G.push(`- Dateline: ${p.datelineStyle}`);
+    if (p.quoteStyle) G.push(`- Quotes: ${p.quoteStyle}`);
+    if (p.namingConventions) G.push(`- Naming: ${p.namingConventions}`);
     // The same person can be learned under two spellings; keep the first of each surname.
     const seen = {}; const sp = (p.spokespeople || []).filter(s => { const k = String((s && s.name) || '').toLowerCase().split(/\s+/).pop(); if (!k || seen[k]) return false; seen[k] = 1; return true; });
-    if (sp.length) L.push(`- Spokespeople (use these exact names and titles for a quote; if none fits, write a bracketed placeholder instead of inventing one): ${sp.map(s => s.name + ', ' + s.title).join('; ')}`);
-    // The closing block is written for guests. It is not used for trade or internal readers.
-    if (aud === 'internal') L.push('- Closing: an internal contact line only. No social links or booking calls to action.');
-    else if (aud === 'business') L.push('- Closing: a trade or media contact line suited to business readers. Do not ask them to follow social channels or to contact a travel advisor.');
-    else if (p.closingBlock) L.push(`- Closing: ${p.closingBlock}`);
-    if (p.endMarker) L.push(`- End marker: ${p.endMarker}`);
-    if (p.boilerplate && aud !== 'internal') L.push(`- Boilerplate paragraph to include if the brief calls for one: ${p.boilerplate}`);
-    if (p.namingConventions) L.push(`- Naming: ${p.namingConventions}`);
-    if (!L.length) return '';
-    return `\nTHIS BRAND'S PR LAYOUT PROFILE (learned from its own published press releases and approved by its team). It governs LAYOUT ONLY: how releases open, how they are organized, who is quoted, and how they close. The BRAND VOICE GUIDE above always wins on tone, point of view, word choice and words to avoid, even where past releases did otherwise. Facts come only from the brief:\n${L.join('\n')}\n`;
+    if (sp.length) X.push(`- Spokespeople: when a quote is needed, use one of these people with this exact name and title, spelled exactly as written: ${sp.map(s => s.name + ', ' + s.title).join('; ')}. If none fits, write a bracketed placeholder instead of inventing a person.`);
+    // The closing block is written for guests. It is exact for consumer readers and adapted for trade or internal readers.
+    if (aud === 'internal') G.push('- Closing: an internal contact line only. No social links or booking calls to action.');
+    else if (aud === 'business') G.push('- Closing: a trade or media contact line suited to business readers. Do not ask them to follow social channels or to contact a travel advisor.');
+    else if (p.closingBlock && isRelease) X.push(`- Closing contact block: reproduce word for word, as the last paragraph before any end marker: "${p.closingBlock}"`);
+    else if (p.closingBlock) G.push(`- Closing: ${p.closingBlock}`);
+    if (p.boilerplate && isRelease) X.push(`- About-the-company boilerplate: include it in every press release, exactly as written below, as its own paragraph near the end. Do not shorten, paraphrase, reorder or add to it:\n"${p.boilerplate}"`);
+    if (p.endMarker && isRelease) X.push(`- End marker: finish the release with this exactly: ${p.endMarker}`);
+    else if (p.endMarker) G.push(`- End marker: ${p.endMarker}`);
+    if (!G.length && !X.length) return '';
+    return `\nTHIS BRAND'S PR VOICE (learned from its own published press releases and approved by its team). The BRAND VOICE GUIDE above always wins on tone, point of view, word choice and words to avoid. Facts come only from the brief.\n` +
+      (X.length ? `\nUSE EXACTLY AS WRITTEN (approved wording, reproduce it word for word, never rewrite it as inspiration):\n${X.join('\n')}\n` : '') +
+      (G.length ? `\nFOLLOW AS GUIDANCE (layout and habits, written in the brand voice, not copied):\n${G.join('\n')}\n` : '');
   } catch (e){ return ''; }
 }
-// Text from the approved profile that a draft may legitimately repeat (phone number, boilerplate, names), so the figures check does not flag it.
 // Wording the brand's team approved in PR Voice. It is never judged: it is cut out of the text the judge reads, and the people named there are not "unsupported claims".
 function prProfileApproved(accountId){
   const out = { snippets: [], people: [] };
@@ -29209,7 +29215,7 @@ async function handlePrCopyRetryRequest(docType, accountId, sourceId, interviewI
   try { candidates = JSON.parse(interview.candidatesJson) || []; } catch (e){ candidates = []; }
   const shape = (retried, attempt) => ({ status: 200, body: { available: true, interviewId, retried, recommendedKey: null,
     candidates: candidates.filter(c => c.copy).map(c => Object.assign(redactCandidatesForClient([c])[0], { key: c.blindKey, brandVoice: c.brandVoice || null })),
-    returnedCount: candidates.filter(c => c.copy).length, totalCount: candidates.length, pendingCount: candidates.filter(c => c.pending).length, attempt, maxAttempts: PR_MAX_ATTEMPTS } });
+    returnedCount: candidates.filter(c => c.copy && !c.refined).length, totalCount: candidates.filter(c => !c.refined).length, pendingCount: candidates.filter(c => c.pending).length, attempt, maxAttempts: PR_MAX_ATTEMPTS } });
   const pending = candidates.filter(c => c.pending);
   const lastAttempt = Math.max(1, ...candidates.map(c => c.attempts || 1));
   if (!pending.length || interview.selectedCandidateKey) return shape(false, lastAttempt);
@@ -29231,6 +29237,119 @@ async function handlePrCopyRetryRequest(docType, accountId, sourceId, interviewI
   db.prepare('UPDATE pr_copy_interviews SET candidatesJson = ? WHERE id = ?').run(JSON.stringify(candidates), interviewId);
   return shape(true, attempt);
 }
+// ---------- Improve the best draft (2026-10-26) ----------
+// After a contest: take the highest-scoring draft, fix what its audit flagged, borrow the strongest passages from the next-best drafts, re-score with the same auditor, and add the result as one more draft (never a vendor win). Approved PR Voice wording is put back in by code if the model dropped it.
+const PR_REFINE_MAX_ROUNDS = 3;
+const PR_REFINE_SCHEMA = { type: 'object', properties: {
+  copy: { type: 'string', description: 'The complete improved draft, ready to publish.' },
+  headline: { type: 'string' }, strategy: { type: 'string', description: 'One sentence naming the approach.' },
+  changes: { type: 'array', description: 'The 3 to 8 most important changes you made.', items: { type: 'object', properties: { fix: { type: 'string', description: 'What was changed and why, one plain sentence.' }, from: { type: 'string', description: 'Which draft a borrowed passage came from, for example "Draft 3", or "audit" if it answers an audit finding.' } }, required: ['fix'] } }
+}, required: ['copy', 'changes'] };
+function prProfileExactParts(accountId, brief, docType){
+  const out = { boilerplate: '', closing: '', endMarker: '' };
+  try {
+    const row = db.prepare('SELECT status, profilejson FROM account_pr_profile WHERE accountId = ?').get(accountId);
+    if (!row || row.status !== 'approved') return out;
+    const p = (JSON.parse(row.profilejson || '{}').profile) || {};
+    const aud = String((brief && brief.audience) || ''); const rt = String((brief && brief.releaseType) || '');
+    const isRelease = (docType || 'press_release') === 'press_release' && rt !== 'talking_points' && rt !== 'internal_announcement' && aud !== 'internal';
+    if (!isRelease) return out;
+    out.boilerplate = String(p.boilerplate || '').trim(); out.endMarker = String(p.endMarker || '').trim();
+    if (aud !== 'business') out.closing = String(p.closingBlock || '').trim();
+  } catch (e){}
+  return out;
+}
+function prEnforceExact(copy, accountId, brief, docType){
+  const parts = prProfileExactParts(accountId, brief, docType); const added = [];
+  const norm = s => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  let text = String(copy || '').trimEnd();
+  if (parts.endMarker){ const lines = text.split('\n'); if (norm(lines[lines.length - 1]) === norm(parts.endMarker)){ lines.pop(); text = lines.join('\n').trimEnd(); } }
+  if (parts.boilerplate && norm(text).indexOf(norm(parts.boilerplate)) < 0){ text += '\n\n' + parts.boilerplate; added.push('boilerplate'); }
+  if (parts.closing && norm(text).indexOf(norm(parts.closing)) < 0){ text += '\n\n' + parts.closing; added.push('closing block'); }
+  if (parts.endMarker) text += '\n\n' + parts.endMarker;
+  return { copy: text, added };
+}
+async function handlePrCopyRefineRequest(docType, accountId, sourceId, interviewId, body){
+  const cfg = PR_DOC_TYPE_CONFIG[docType];
+  const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+  if (!account) return { status: 404, body: { error: 'account not found' } };
+  const row = db.prepare(`SELECT * FROM ${cfg.table} WHERE id = ? AND accountId = ?`).get(sourceId, accountId);
+  if (!row) return { status: 404, body: { error: 'item not found' } };
+  const interview = db.prepare('SELECT * FROM pr_copy_interviews WHERE id = ? AND accountId = ?').get(interviewId, accountId);
+  if (!interview) return { status: 404, body: { error: 'PR contest not found for this account' } };
+  if (!process.env.ANTHROPIC_API_KEY) return { status: 200, body: { available: false, note: 'Improving a draft needs ANTHROPIC_API_KEY to be configured.' } };
+  let candidates = []; try { candidates = JSON.parse(interview.candidatesJson) || []; } catch (e){ candidates = []; }
+  const vendorOnes = () => candidates.filter(c => !c.refined);
+  const shape = refine => ({ status: 200, body: { available: true, interviewId, retried: false, recommendedKey: null,
+    candidates: candidates.filter(c => c.copy).map(c => Object.assign(redactCandidatesForClient([c])[0], { key: c.blindKey, brandVoice: c.brandVoice || null, refined: !!c.refined, changes: c.changes || null, basedOn: c.basedOn || null, borrowedFrom: c.borrowedFrom || null, beforeScore: c.beforeScore != null ? c.beforeScore : null })),
+    returnedCount: vendorOnes().filter(c => c.copy).length, totalCount: vendorOnes().length, pendingCount: vendorOnes().filter(c => c.pending).length, attempt: Math.max(1, ...vendorOnes().map(c => c.attempts || 1)), maxAttempts: PR_MAX_ATTEMPTS,
+    refineRounds: candidates.filter(c => c.refined).length, refineMaxRounds: PR_REFINE_MAX_ROUNDS, refine } });
+  const scoreOf = c => (c && c.brandVoice && typeof c.brandVoice.score === 'number') ? c.brandVoice.score : null;
+  const scored = candidates.filter(c => c.copy && scoreOf(c) != null);
+  if (!scored.length) return shape({ improved: false, note: 'There are no scored drafts to improve yet.' });
+  const rounds = candidates.filter(c => c.refined).length;
+  if (rounds >= PR_REFINE_MAX_ROUNDS) return shape({ improved: false, note: 'Three improved drafts is the limit for one contest.' });
+  // The best draft so far is the base. On a tie the newest improved draft wins.
+  const base = scored.slice().sort((a, b) => (scoreOf(b) - scoreOf(a)) || ((b.refined ? 1 : 0) - (a.refined ? 1 : 0)))[0];
+  const baseScore = scoreOf(base);
+  const label = c => c.blindLabel || c.label;
+  const others = scored.filter(c => c !== base && !c.refined).sort((a, b) => scoreOf(b) - scoreOf(a)).slice(0, 2);
+  const bv = base.brandVoice || {};
+  const findings = (bv.criteria || []).filter(k => typeof k.score === 'number' && k.score < 92).map(k => `- ${k.key} (${k.score}/100): ${k.finding || ''}${k.evidence ? ` Quote from the draft: "${k.evidence}"` : ''}`);
+  const failedChecks = (bv.checks || []).filter(k => k.applicable !== false && k.passed === false).map(k => `- ${k.name}: ${k.detail}`);
+  const strengths = [];
+  others.forEach(o => { (o.brandVoice && o.brandVoice.criteria || []).forEach(k => { const mine = (bv.criteria || []).find(x => x.key === k.key); if (mine && typeof k.score === 'number' && k.score > mine.score) strengths.push(`- ${label(o)} scores ${k.score} on ${k.key} (the base scores ${mine.score}).${k.evidence ? ` Strong passage: "${k.evidence}"` : ''}`); }); });
+  const brief = cfg.briefFromRow(row, body || {});
+  const built = await buildPrCorpCommPrompt(account, docType, brief);
+  if (built.error) return shape({ improved: false, note: built.error });
+  const basePrompt = built.prompt.replace(/\n*Submit your draft via the submit_copy tool\.\s*$/, '');
+  const exactParts = prProfileExactParts(accountId, brief, docType);
+  const content = `${basePrompt}
+
+YOU ARE NOW IMPROVING AN EXISTING DRAFT, NOT WRITING FROM SCRATCH.
+An independent auditor scored the best draft so far ${baseScore} out of 100 against the brand voice guide. Produce an improved version that fixes every issue the auditor found, keeps what already works, and where another draft is stronger on a point, borrows that draft's approach or wording.
+
+BASE DRAFT (${label(base)}, scored ${baseScore}):
+${String(base.copy).slice(0, 5000)}
+
+WHAT THE AUDITOR FOUND IN THE BASE DRAFT:
+${findings.length ? findings.join('\n') : '- No criterion scored under 92.'}
+${failedChecks.length ? '\nCODE CHECKS THAT FAILED:\n' + failedChecks.join('\n') : ''}
+
+WHERE OTHER DRAFTS WERE STRONGER:
+${strengths.length ? strengths.join('\n') : '- None were clearly stronger.'}
+
+OTHER DRAFTS (source material only; take the strongest passages and reword them to fit the voice guide, do not paste weak ones):
+${others.map(o => `--- ${label(o)} (scored ${scoreOf(o)}) ---\n${String(o.copy).slice(0, 3000)}`).join('\n\n') || '(none)'}
+
+RULES FOR THE IMPROVED DRAFT:
+- The brand voice guide wins. Remove every aspirational luxury cliché, hype word and banned word the auditor flagged, and use the guide's point of view.
+- Use only facts, figures, dates and quotes from the brief. Remove any figure the code check said is not in the brief. Do not add history or claims the brief does not give.
+- Keep the same required parts and order the format asks for.
+- Any wording in the USE EXACTLY AS WRITTEN section above must stay word for word.${exactParts.boilerplate ? '' : ''}
+- In "changes", name the main fixes. Refer to other drafts only by their label, such as "Draft 3".
+
+Submit the improved draft.`;
+  let parsed;
+  try { parsed = await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 4000, content, toolName: 'submit_improved_draft', toolDescription: 'Submit the improved draft and the list of changes.', schema: PR_REFINE_SCHEMA, timeoutMs: 90000 }); }
+  catch (e){ return shape({ improved: false, note: 'The improved draft could not be written right now (' + String(e.message || e).slice(0, 100) + '). Your drafts are unchanged. Try again.' }); }
+  const fixed = prEnforceExact(typeof parsed.copy === 'string' ? parsed.copy : '', accountId, brief, docType);
+  if (!fixed.copy.trim()) return shape({ improved: false, note: 'The improved draft came back empty. Try again.' });
+  let newBv = null;
+  try { newBv = await scorePrBrandVoice(fixed.copy, account, brief); } catch (e){ newBv = null; }
+  const newScore = newBv && typeof newBv.score === 'number' ? newBv.score : null;
+  if (newScore == null) return shape({ improved: false, note: 'The improved draft could not be scored right now, so it was not added. Try again.' });
+  if (newScore <= baseScore) return shape({ improved: false, before: baseScore, after: newScore, basedOn: label(base), note: `The revised draft scored ${newScore}, which is not better than ${label(base)} at ${baseScore}, so it was not added. You can try again.` });
+  let maxDraft = candidates.reduce((m, c) => Math.max(m, c.blindKey ? parseInt(String(c.blindKey).replace(/\D/g, ''), 10) || 0 : 0), 0); maxDraft++;
+  const changes = (Array.isArray(parsed.changes) ? parsed.changes : []).slice(0, 8).map(c => ({ fix: prpClean(c && c.fix, 220), from: prpClean(c && c.from, 40) })).filter(c => c.fix);
+  if (fixed.added.length) changes.push({ fix: 'Put back approved PR Voice wording the draft had left out: ' + fixed.added.join(', ') + '.', from: 'PR Voice' });
+  candidates.push({ key: 'refined-' + (rounds + 1), label: 'Improved draft', vendor: null, model: null, configured: true, refined: true,
+    copy: fixed.copy, approach: prpClean(parsed.strategy, 240) || null, headline: prpClean(parsed.headline, 240) || null, error: null,
+    relevanceScore: null, complianceScore: null, combinedScore: null, note: null, flags: [], scoreMode: null, brandVoice: newBv,
+    blindLabel: 'Draft ' + maxDraft + ' (improved)', blindKey: 'draft-' + maxDraft, basedOn: label(base), borrowedFrom: others.map(label), beforeScore: baseScore, changes, attempts: 1, pending: false });
+  db.prepare('UPDATE pr_copy_interviews SET candidatesJson = ? WHERE id = ?').run(JSON.stringify(candidates), interviewId);
+  return shape({ improved: true, before: baseScore, after: newScore, basedOn: label(base), note: null });
+}
 function handlePrCopySelectRequest(accountId, interviewId, candidateKey, session){
   const interview = db.prepare('SELECT * FROM pr_copy_interviews WHERE id = ? AND accountId = ?').get(interviewId, accountId);
   if (!interview) return { status: 404, body: { error: 'PR contest not found for this account' } };
@@ -29247,7 +29366,8 @@ function handlePrCopySelectRequest(accountId, interviewId, candidateKey, session
   // 2026-08-27 — one shared call for the ranking ledger + priority-model
   // upsert, per CONTEST_TYPE_REGISTRY's own comment (same structure every
   // contest uses, not a bespoke pair of calls per surface).
-  recordContestResult(accountId, 'Corporate', PR_DOC_TYPE_LABELS[interview.docType] || interview.docType, chosen, candidates, 'pr_copy_interviews', interviewId, selectedBy);
+  // An improved draft has no single author, so choosing it does not credit any partner in the win ledger.
+  if (!chosen.refined) recordContestResult(accountId, 'Corporate', PR_DOC_TYPE_LABELS[interview.docType] || interview.docType, chosen, candidates.filter(c => !c.refined), 'pr_copy_interviews', interviewId, selectedBy);
   return { status: 200, body: { interviewId, selectedCandidateKey: candidateKey, selectedAt: now, copy: chosen.copy } };
 }
 
@@ -31405,7 +31525,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-26-pr-score-excludes-voice',
+        buildStamp: '2026-10-27-pr-improve-draft',
         // 2026-09-27 — which vendor integrations this running instance has
         // credentials for (booleans only, never the values). Lets a deploy be
         // checked from a browser after moving hosts, without the admin-token
@@ -44865,6 +44985,14 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (!requireAccount(req, res, accountId)) return;
       const body = await readBody(req);
       const result = await handlePrCopyRetryRequest('press_release', accountId, decodeURIComponent(parts[4]), decodeURIComponent(parts[6]), body);
+      return sendJson(res, result.status, result.body);
+    }
+    // POST .../press-releases/:prId/interview/:interviewId/refine — improve the best draft from its audit and the other drafts (see handlePrCopyRefineRequest()).
+    if (req.method === 'POST' && parts.length === 8 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'press-releases' && parts[5] === 'interview' && parts[7] === 'refine'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const result = await handlePrCopyRefineRequest('press_release', accountId, decodeURIComponent(parts[4]), decodeURIComponent(parts[6]), body);
       return sendJson(res, result.status, result.body);
     }
     // POST /api/accounts/:id/press-releases/:prId/interview/:interviewId/select
