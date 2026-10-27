@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-27-xai-pr-model (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-27-rls-sweep (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -472,6 +472,19 @@ function createTableIfNeeded(sql){
   // Only the app's own database role gets in. SQLite has no such command, so the error is ignored there.
   if (match && existing){ try { db.exec('ALTER TABLE ' + match[1] + ' ENABLE ROW LEVEL SECURITY'); } catch (e){} }
   if (match && existing) existing.add(match[1]);
+}
+
+// 2026-10-27 — Safety net behind createTableIfNeeded: any table in the public schema that somehow has row-level security off
+// (Supabase flagged four, created with a plain db.exec) gets it switched on. No policies are added, so only the app's own role can read or write.
+// Postgres only; on SQLite the catalog query fails and nothing happens.
+function enforceRlsEverywhere(){
+  try {
+    const rows = db.prepare(`SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND rowsecurity = false`).all();
+    rows.forEach((r) => {
+      if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(String(r.tablename || ''))) return;
+      try { db.exec('ALTER TABLE public.' + r.tablename + ' ENABLE ROW LEVEL SECURITY'); console.log('[rls] enabled row-level security on', r.tablename); } catch (e){ console.warn('[rls] could not enable on', r.tablename, (e && e.message) || e); }
+    });
+  } catch (e){ /* not Postgres */ }
 }
 
 // 2026-09-28 fix, per Todd's "Not saved — server error" on the Leads by
@@ -6901,7 +6914,7 @@ db.exec(`
 try { db.exec('CREATE INDEX IF NOT EXISTS idx_scenario_plan_lines_scn ON scenario_plan_lines (scenario)'); } catch (e){}
 // 2026-10-19 — Approval history: one row per thing that happened to a scenario (saved, sent for approval, activated, replaced, archived) and who was told.
 // Plain lowercase column names (except accountId) for the same reason as scenario_plan_lines.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS plan_scenario_events (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -6917,7 +6930,7 @@ db.exec(`
 `);
 try { db.exec('CREATE INDEX IF NOT EXISTS idx_plan_scenario_events_acct ON plan_scenario_events (accountId, happened)'); } catch (e){}
 // 2026-10-19 — Which lead-count sources (offline URLs, phone numbers, QR codes) belong to which paid channel; used by the mix readiness and response curves.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS account_lead_source_channel (
     accountId TEXT NOT NULL,
     source TEXT NOT NULL,
@@ -6928,7 +6941,7 @@ db.exec(`
 `);
 // 2026-10-19 — Ops-Console benchmark store: AGGREGATED channel cost per thousand impressions only, by industry and across all accounts.
 // No accountId column by design (account-level privacy): a row exists only when at least MIX_MINIMUMS.benchmarkMinAccounts accounts feed it.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS mix_benchmark_cpm (
     id TEXT PRIMARY KEY,
     industry TEXT NOT NULL,
@@ -20925,7 +20938,7 @@ function planCampaignCoverage(accountId, year){
 // CMO or a Director approves it (approver and date kept). The draft rebuilds itself when the loaded data changes, unless it has been approved; an approved baseline
 // only says newer data is available. Approving writes the baseline row of the Annual Plan, exactly where the dashboards already read it.
 // Plain lowercase column names (except accountId), same reason as scenario_plan_lines.
-db.exec(`
+createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS plan_baseline_drafts (
     id TEXT PRIMARY KEY,
     accountId TEXT NOT NULL,
@@ -29291,9 +29304,16 @@ async function handlePrCopyRefineRequest(docType, accountId, sourceId, interview
   const rounds = candidates.filter(c => c.refined).length;
   if (rounds >= PR_REFINE_MAX_ROUNDS) return shape({ improved: false, note: 'Three improved drafts is the limit for one contest.' });
   // The best draft so far is the base. On a tie the newest improved draft wins.
-  const base = scored.slice().sort((a, b) => (scoreOf(b) - scoreOf(a)) || ((b.refined ? 1 : 0) - (a.refined ? 1 : 0)))[0];
+  // Ties are settled on merit: the smaller total shortfall under 90 across criteria, then fewer failed checks, then the higher score before penalties, then the newest improved draft.
+  const lowCount = c => ((c.brandVoice && c.brandVoice.criteria) || []).reduce((sum, k) => sum + (typeof k.score === 'number' && k.score < 90 ? 90 - k.score : 0), 0); // total shortfall under 90 across criteria
+  const failCount = c => ((c.brandVoice && c.brandVoice.checks) || []).filter(k => k.applicable !== false && k.passed === false).length;
+  const rawScore = c => (c.brandVoice && typeof c.brandVoice.baseScore === 'number') ? c.brandVoice.baseScore : scoreOf(c);
+  const base = scored.slice().sort((a, b) => (scoreOf(b) - scoreOf(a)) || (lowCount(a) - lowCount(b)) || (failCount(a) - failCount(b)) || (rawScore(b) - rawScore(a)) || ((b.refined ? 1 : 0) - (a.refined ? 1 : 0)))[0];
   const baseScore = scoreOf(base);
   const label = c => c.blindLabel || c.label;
+  // Nothing worth fixing: a top draft that is already high, with no weak criterion and no failed check, is left alone (no AI calls spent).
+  const weakest = ((base.brandVoice && base.brandVoice.criteria) || []).reduce((m, k) => typeof k.score === 'number' ? Math.min(m, k.score) : m, 100);
+  if (baseScore >= 90 && weakest >= 85 && failCount(base) === 0) return shape({ improved: false, skipped: true, before: baseScore, basedOn: label(base), note: `${label(base)} is already at ${baseScore}, and the auditor found nothing worth fixing, so no changes were made.` });
   const others = scored.filter(c => c !== base && !c.refined).sort((a, b) => scoreOf(b) - scoreOf(a)).slice(0, 2);
   const bv = base.brandVoice || {};
   const findings = (bv.criteria || []).filter(k => typeof k.score === 'number' && k.score < 92).map(k => `- ${k.key} (${k.score}/100): ${k.finding || ''}${k.evidence ? ` Quote from the draft: "${k.evidence}"` : ''}`);
@@ -31526,7 +31546,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-27-xai-pr-model',
+        buildStamp: '2026-10-27-rls-sweep',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -50622,7 +50642,7 @@ function enforceRlsOnPublicTables(){
 if (require.main === module) {
   const server = http.createServer(handleRequest);
   const PORT = process.env.PORT || 8787;
-  server.listen(PORT, () => console.log(`CXMedia.AI demo backend listening on http://localhost:${PORT}`));
+  server.listen(PORT, () => { console.log(`CXMedia.AI demo backend listening on http://localhost:${PORT}`); setTimeout(enforceRlsEverywhere, 20000); });
   setTimeout(enforceRlsOnPublicTables, 5000);
 }
 
