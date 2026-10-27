@@ -8080,10 +8080,23 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
         <div class="field">
           <label for="teamNewPhone">Phone (optional)</label>
           <div style="display:flex;gap:8px;">
-            <input type="tel" id="teamNewPhone" placeholder="(555) 123-4567" style="flex:1;">
+            <input type="tel" id="teamNewPhone" placeholder="(555) 123-4567" style="flex:1;" oninput="mfaSmsRender()">
             <input type="text" id="teamNewPhoneExt" inputmode="numeric" placeholder="Ext." aria-label="Extension" style="width:80px;">
           </div>
           <div class="hint">Optional. A contact number for this person, such as a desk line with an extension. It is not used for sign-in codes unless they choose to receive codes by text.</div>
+          <div id="teamMfaWrap" style="display:none;margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;">
+            <label id="teamMfaLabel" style="display:flex;gap:8px;align-items:flex-start;font-weight:600;font-size:0.875rem;text-transform:none;letter-spacing:0;">
+              <input type="checkbox" id="teamMfaToggle" onchange="mfaSmsToggle()" style="width:auto;margin-top:3px;">
+              <span>Send my sign-in codes by text instead of email</span>
+            </label>
+            <div class="hint" id="teamMfaNote" style="margin-top:4px;"></div>
+            <div id="teamMfaConfirm" style="display:none;margin-top:8px;gap:8px;align-items:center;flex-wrap:wrap;">
+              <input type="text" id="teamMfaCode" inputmode="numeric" maxlength="6" placeholder="6-digit code" autocomplete="one-time-code" style="width:140px;">
+              <button type="button" class="btn-primary" onclick="mfaSmsConfirm()">Confirm</button>
+              <button type="button" class="link-btn" onclick="mfaSmsCancel()">Cancel</button>
+            </div>
+            <div class="hint" id="teamMfaMsg" style="margin-top:6px;"></div>
+          </div>
         </div>
         <div class="field" id="teamReportsWrap">
           <label for="teamNewReportsTo">Reports to</label>
@@ -14001,7 +14014,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-27-mfa-email-default';
+const CXMEDIA_BUILD_STAMP = '2026-10-27-mfa-sms-toggle';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -33791,6 +33804,7 @@ async function checkPortalIsRecipient(){
   } catch (e){}
 }
 let portalViewerIsAdmin = true;
+let portalSelfMemberId = null; // the real signed-in person (not whoever the roster is showing)
 async function checkPortalViewerAdminStatus(){
   if (dataSourceLabel !== 'backend') return;
   try {
@@ -33803,6 +33817,7 @@ async function checkPortalViewerAdminStatus(){
     if (resp.ok){
       const me = await resp.json();
       portalViewerIsAdmin = !!me.isAdmin;
+      portalSelfMemberId = me.memberId || null;
       if (me.memberId && !actingAsId){ actingAsId = me.memberId; try { loadSelfRatings(actingAsId).then(renderSelfRateView); } catch (e){} } try { bdGrowthRender(); } catch (e){}
     }
   } catch (e){ /* leave the safe default in place */ }
@@ -68677,6 +68692,66 @@ function teamEmailHint(){
   el.style.display = free ? '' : 'none';
   el.textContent = free ? 'This looks like a personal email address. Use their work email if they have one, since it receives their invitation and sign-in codes.' : '';
 }
+/* ---------- Text sign-in codes (own profile only) ---------- */
+let mfaSmsPendingId = null;
+function mfaSmsMember(){ return editingTeamMemberId ? findTeamMember(editingTeamMemberId) : null; }
+function mfaSmsMsg(t, bad){ const e = document.getElementById('teamMfaMsg'); if (e){ e.textContent = t || ''; e.style.color = bad ? 'var(--advocacy)' : 'var(--cx)'; } }
+function mfaSmsRender(){
+  const wrap = document.getElementById('teamMfaWrap'); if (!wrap) return;
+  const m = mfaSmsMember();
+  if (!m || String(m.id).startsWith('local-team-')){ wrap.style.display = 'none'; return; }
+  wrap.style.display = '';
+  const own = !!portalSelfMemberId && m.id === portalSelfMemberId;
+  const label = document.getElementById('teamMfaLabel'), tog = document.getElementById('teamMfaToggle'), note = document.getElementById('teamMfaNote');
+  document.getElementById('teamMfaConfirm').style.display = 'none'; mfaSmsPendingId = null; mfaSmsMsg('');
+  if (!own){
+    label.style.display = 'none';
+    note.textContent = m.mfaSms ? 'Sign-in codes go to this person by text. Only they can change that.' : 'Sign-in codes go to this person by email. Only they can turn on text codes, from their own profile.';
+    return;
+  }
+  label.style.display = 'flex';
+  const digits = v => String(v || '').replace(/\D/g, '');
+  const saved = digits(m.phone).length >= 10;
+  const dirty = digits(document.getElementById('teamNewPhone').value) !== digits(m.phone);
+  tog.checked = !!m.mfaSms;
+  tog.disabled = !saved || dirty;
+  note.textContent = !saved ? 'Save a mobile number first. Desk, Teams and Zoom numbers cannot receive texts.'
+    : dirty ? 'Save your new number first, then you can turn this on.'
+    : 'Use a mobile number that can receive texts. We send a code to confirm it before turning this on. Without this, codes go to your email.';
+}
+async function mfaSmsToggle(){
+  const m = mfaSmsMember(), tog = document.getElementById('teamMfaToggle'); if (!m) return;
+  mfaSmsMsg('');
+  try {
+    if (!tog.checked){
+      const r = await authedFetch(`${BACKEND_URL}/api/auth/mfa-sms/off`, { method: 'POST' });
+      if (!r.ok){ tog.checked = true; mfaSmsMsg('Could not switch this off. Try again.', true); return; }
+      m.mfaSms = false; mfaSmsMsg('Sign-in codes will go to your email.'); return;
+    }
+    const r = await authedFetch(`${BACKEND_URL}/api/auth/mfa-sms/start`, { method: 'POST' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok){ tog.checked = false; mfaSmsMsg(d.error || 'Could not send a text.', true); return; }
+    mfaSmsPendingId = d.verificationId;
+    document.getElementById('teamMfaConfirm').style.display = 'flex';
+    document.getElementById('teamMfaCode').value = ''; document.getElementById('teamMfaCode').focus();
+    mfaSmsMsg(`We texted a code to ${d.target}.` + (d.interimCode ? ` No live text provider here, so your code is ${d.interimCode}.` : ''));
+  } catch (e){ tog.checked = !tog.checked; mfaSmsMsg('Could not reach the server.', true); }
+}
+async function mfaSmsConfirm(){
+  const m = mfaSmsMember(); if (!m || !mfaSmsPendingId) return;
+  const code = document.getElementById('teamMfaCode').value.trim();
+  if (!/^\d{6}$/.test(code)){ mfaSmsMsg('Enter the 6-digit code.', true); return; }
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/auth/mfa-sms/confirm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ verificationId: mfaSmsPendingId, code }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok){ mfaSmsMsg(d.error || 'That code did not work.', true); return; }
+    m.mfaSms = true; mfaSmsPendingId = null;
+    document.getElementById('teamMfaConfirm').style.display = 'none';
+    mfaSmsMsg('Done. Sign-in codes will now be texted to you. You can always choose email on the code screen.');
+  } catch (e){ mfaSmsMsg('Could not reach the server.', true); }
+}
+function mfaSmsCancel(){ document.getElementById('teamMfaToggle').checked = false; document.getElementById('teamMfaConfirm').style.display = 'none'; mfaSmsPendingId = null; mfaSmsMsg(''); }
+
 function teamFormProblem(f){
   if (!f.name) return 'Name is required.';
   if (!f.email || !/^\S+@\S+\.\S+$/.test(f.email)) return 'A valid email is required. It is how this person signs in.';
@@ -68768,6 +68843,7 @@ function startEditTeamMember(id){
   onPositionPicked();
   document.getElementById('teamAddTag').textContent = 'Edit';
   document.getElementById('teamAddHeading').textContent = `Edit ${m.name}`;
+  try { mfaSmsRender(); } catch (e){}
   document.getElementById('teamAddSubmitBtn').textContent = 'Save changes →';
   document.getElementById('teamEditCancelBtn').textContent = 'Cancel edit';
   const flag = document.getElementById('teamAddFlag'); if (flag) flag.textContent = '';
@@ -68778,6 +68854,7 @@ function startEditTeamMember(id){
 
 function cancelEditTeamMember(){
   editingTeamMemberId = null;
+  try { mfaSmsRender(); } catch (e){}
   resetTeamMemberForm();
   document.getElementById('teamAddTag').textContent = 'Add';
   document.getElementById('teamAddHeading').textContent = 'Add a team member';
@@ -68804,6 +68881,7 @@ async function saveTeamMemberEdit(){
     if (flag){ flag.textContent = `${m.name} is this account's only Admin. Promote someone else to Admin first.`; flag.style.color = 'var(--advocacy)'; }
     return;
   }
+  const phoneChanged = String(phone || '').replace(/\D/g, '') !== String(m.phone || '').replace(/\D/g, '');
   let persisted = false;
   if (dataSourceLabel === 'backend' && !String(id).startsWith('local-team-')){
     try {
@@ -68825,6 +68903,7 @@ async function saveTeamMemberEdit(){
   await syncLevelsUnder(id);
   let agrNote = '';
   if (wantsAgreement && persisted){ agrNote = (await postAgreement(id, agreementBody)) ? ' Agreement saved.' : ' The agreement could not be saved.'; }
+  if (phoneChanged) m.mfaSms = false;
   cancelEditTeamMember();
   if (flag){
     flag.style.color = 'var(--cx)';
