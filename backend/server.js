@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-27-rls-sweep (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-27-invite-email (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -23957,6 +23957,30 @@ async function sendTransactionalEmail({ to, subject, textBody, htmlBody }){
   }
 }
 
+// 2026-10-27 — Emailed team invitation. The new person gets a link (valid 7 days, one use) to a page where they choose their own password,
+// instead of an admin copying a temporary password to them by hand. It reuses the password_resets table and POST /api/auth/reset-password,
+// which already hash the new password, end old sessions and return a fresh session. Sending a new invite cancels any earlier unused link.
+// If email is not configured or the send fails, the caller gets the link and a temporary password so an admin can still hand it over.
+const MEMBER_INVITE_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+async function sendMemberInvite(memberId, { accountId, name, email, invitedByName }){
+  const now = new Date();
+  try { db.prepare('UPDATE password_resets SET usedAt = ? WHERE memberId = ? AND usedAt IS NULL').run(now.toISOString(), memberId); } catch (e){}
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(now.getTime() + MEMBER_INVITE_LIFETIME_MS).toISOString();
+  db.prepare('INSERT INTO password_resets (token, memberId, createdAt, expiresAt) VALUES (?,?,?,?)').run(token, memberId, now.toISOString(), expiresAt);
+  const base = (process.env.PUBLIC_BASE_URL || 'https://verilume.ai').replace(/\/+$/, '');
+  const link = `${base}/set-password.html?token=${token}`;
+  let company = '';
+  try { const a = db.prepare('SELECT company FROM accounts WHERE accountId = ?').get(accountId); company = (a && a.company) || ''; } catch (e){}
+  const who = invitedByName ? `${invitedByName} has` : 'You have been';
+  const subject = company ? `You have been invited to ${company} on Verilume` : 'You have been invited to Verilume';
+  const textBody = `Hi ${name},\n\n${invitedByName ? invitedByName + ' has invited you' : 'You have been invited'} to ${company ? company + ' on ' : 'join '}Verilume.\n\nChoose your password and sign in here (the link works once and expires in 7 days):\n${link}\n\nYour sign-in email is ${email}. If you were not expecting this, you can ignore this message.`;
+  const htmlBody = `<p>Hi ${escapeHtmlBasic(name)},</p><p>${invitedByName ? escapeHtmlBasic(invitedByName) + ' has invited you' : 'You have been invited'} to ${company ? escapeHtmlBasic(company) + ' on ' : 'join '}Verilume.</p><p><a href="${link}" style="display:inline-block;background:#1E2761;color:#ffffff;padding:10px 18px;border-radius:6px;text-decoration:none;">Choose your password</a></p><p style="color:#6E6E73;font-size:13px;">The link works once and expires in 7 days. Your sign-in email is ${escapeHtmlBasic(email)}. If you were not expecting this, you can ignore this message.</p>`;
+  let mail = { emailStatus: 'error' };
+  try { mail = await sendTransactionalEmail({ to: email, subject, textBody, htmlBody }); } catch (e){}
+  return { link, expiresAt, emailStatus: (mail && mail.emailStatus) || 'error' };
+}
+
 // Round 91 — GA4 (Google Analytics 4) real Data API connector, per direct
 // instruction to move from the round-90 demo-simulated "connected" status
 // to an actual live pull of a client's real GA4 numbers. Same "dormant
@@ -31546,7 +31570,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-27-rls-sweep',
+        buildStamp: '2026-10-27-invite-email',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -49584,8 +49608,12 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (newKind === 'external'){ accessExpiresAt = addMonthsIso(new Date().toISOString(), 3); db.prepare('UPDATE team_members SET accessexpiresat = ? WHERE id = ?').run(accessExpiresAt, memberId); }
       const response = { memberId, handle: newHandle, memberKind: newKind, accessExpiresAt };
       if (tempPassword){
-        response.tempPassword = tempPassword;
-        response.mustChangePassword = true;
+        // 2026-10-27 — email the invitation link; only fall back to showing a temporary password when the email could not be sent.
+        let inviter = ''; try { const me = authenticate(req); if (me && me.memberId){ const r = db.prepare('SELECT name FROM team_members WHERE id = ?').get(me.memberId); inviter = (r && r.name) || ''; } } catch (e){}
+        const inv = await sendMemberInvite(memberId, { accountId, name: body.name, email: body.email, invitedByName: inviter });
+        response.emailStatus = inv.emailStatus;
+        if (inv.emailStatus === 'sent'){ response.inviteSent = true; response.inviteExpiresAt = inv.expiresAt; }
+        else { response.tempPassword = tempPassword; response.inviteLink = inv.link; response.mustChangePassword = true; }
       }
       return sendJson(res, 201, response);
     }
@@ -50077,7 +50105,13 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const { hash: passwordHash, salt: passwordSalt } = hashAccessCode(tempPassword);
       db.prepare('UPDATE team_members SET passwordHash = ?, passwordSalt = ?, mustChangePassword = 1 WHERE id = ?')
         .run(passwordHash, passwordSalt, memberId);
-      return sendJson(res, 200, { memberId, email: existing.email, tempPassword, mustChangePassword: true });
+      // 2026-10-27 — send a fresh invitation link by email; show the temporary password only if the email could not be sent.
+      let inviter = '', memberName = '';
+      try { const me = authenticate(req); if (me && me.memberId){ const r = db.prepare('SELECT name FROM team_members WHERE id = ?').get(me.memberId); inviter = (r && r.name) || ''; } } catch (e){}
+      try { const r = db.prepare('SELECT name FROM team_members WHERE id = ?').get(memberId); memberName = (r && r.name) || ''; } catch (e){}
+      const inv = await sendMemberInvite(memberId, { accountId: existing.accountId, name: memberName || existing.email, email: existing.email, invitedByName: inviter });
+      if (inv.emailStatus === 'sent') return sendJson(res, 200, { memberId, email: existing.email, inviteSent: true, emailStatus: 'sent', inviteExpiresAt: inv.expiresAt });
+      return sendJson(res, 200, { memberId, email: existing.email, tempPassword, mustChangePassword: true, emailStatus: inv.emailStatus, inviteLink: inv.link });
     }
 
     // PATCH /api/team/:id — update a team member. Round 43 added just
