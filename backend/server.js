@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-27-mfa-sms-toggle (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-27-invite-copy (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -23977,10 +23977,13 @@ async function sendMemberInvite(memberId, { accountId, name, email, invitedByNam
   const link = `${base}/set-password.html?token=${token}`;
   let company = '';
   try { const a = db.prepare('SELECT company FROM accounts WHERE accountId = ?').get(accountId); company = (a && a.company) || ''; } catch (e){}
-  const who = invitedByName ? `${invitedByName} has` : 'You have been';
-  const subject = company ? `You have been invited to ${company} on Verilume` : 'You have been invited to Verilume';
-  const textBody = `Hi ${name},\n\n${invitedByName ? invitedByName + ' has invited you' : 'You have been invited'} to ${company ? company + ' on ' : 'join '}Verilume.\n\nChoose your password and sign in here (the link works once and expires in 7 days):\n${link}\n\nYour sign-in email is ${email}. If you were not expecting this, you can ignore this message.`;
-  const htmlBody = `<p>Hi ${escapeHtmlBasic(name)},</p><p>${invitedByName ? escapeHtmlBasic(invitedByName) + ' has invited you' : 'You have been invited'} to ${company ? escapeHtmlBasic(company) + ' on ' : 'join '}Verilume.</p><p><a href="${link}" style="display:inline-block;background:#1E2761;color:#ffffff;padding:10px 18px;border-radius:6px;text-decoration:none;">Choose your password</a></p><p style="color:#6E6E73;font-size:13px;">The link works once and expires in 7 days. Your sign-in email is ${escapeHtmlBasic(email)}. If you were not expecting this, you can ignore this message.</p>`;
+  // Invitation wording. Edit the three strings below: subject, plain text and HTML (keep text and HTML saying the same thing).
+  const welcome = company ? `Welcome to your ${company} account and AI Brain.` : 'Welcome to your account and AI Brain.';
+  const welcomeRest = ' The platform will empower you to be your best, retain your decisions and continue to evolve the team performance and your personal growth.';
+  const inviteLine = `${invitedByName || 'Your team'} ${invitedByName ? 'invited you' : 'has invited you'} to the platform with specific access to tools that benefit your position. Please select the link below to login to begin your experience.`;
+  const subject = company ? `Welcome to your ${company} account and AI Brain` : 'Welcome to your account and AI Brain';
+  const textBody = `${welcome}${welcomeRest}\n\n${inviteLine}\n\n${link}\n\nThe link works once and expires in 7 days. Your sign-in email is ${email}. If you were not expecting this, you can ignore this message.`;
+  const htmlBody = `<p>${escapeHtmlBasic(welcome)}${escapeHtmlBasic(welcomeRest)}</p><p>${escapeHtmlBasic(inviteLine)}</p><p><a href="${link}" style="display:inline-block;background:#F4B63F;color:#10141B;padding:11px 22px;border-radius:999px;text-decoration:none;font-weight:600;">Log in</a></p><p style="color:#6E6E73;font-size:13px;">The link works once and expires in 7 days. Your sign-in email is ${escapeHtmlBasic(email)}. If you were not expecting this, you can ignore this message.</p>`;
   let mail = { emailStatus: 'error' };
   try { mail = await sendTransactionalEmail({ to: email, subject, textBody, htmlBody }); } catch (e){}
   return { link, expiresAt, emailStatus: (mail && mail.emailStatus) || 'error' };
@@ -31575,7 +31578,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-27-mfa-sms-toggle',
+        buildStamp: '2026-10-27-invite-copy',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
