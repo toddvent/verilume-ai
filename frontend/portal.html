@@ -8073,16 +8073,17 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
         </div>
         <div class="field">
           <label for="teamNewEmail">Email</label>
-          <input type="email" id="teamNewEmail" placeholder="priya@acmehospitality.com">
-          <div class="hint">This is their sign-in. A temporary password is shown once after you add them.</div>
+          <input type="email" id="teamNewEmail" placeholder="priya@acmehospitality.com" oninput="teamEmailHint()">
+          <div class="hint">Use their work email. It is their sign-in, and sign-in codes are sent to it. We email them an invitation to set their own password.</div>
+          <div class="hint" id="teamEmailWarn" style="display:none;color:var(--advocacy);"></div>
         </div>
         <div class="field">
-          <label for="teamNewPhone">Phone</label>
+          <label for="teamNewPhone">Phone (optional)</label>
           <div style="display:flex;gap:8px;">
             <input type="tel" id="teamNewPhone" placeholder="(555) 123-4567" style="flex:1;">
             <input type="text" id="teamNewPhoneExt" inputmode="numeric" placeholder="Ext." aria-label="Extension" style="width:80px;">
           </div>
-          <div class="hint">Used for sign-in verification codes. Add an extension if the number needs one.</div>
+          <div class="hint">Optional. A contact number for this person, such as a desk line with an extension. It is not used for sign-in codes unless they choose to receive codes by text.</div>
         </div>
         <div class="field" id="teamReportsWrap">
           <label for="teamNewReportsTo">Reports to</label>
@@ -14000,7 +14001,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-27-invite-email';
+const CXMEDIA_BUILD_STAMP = '2026-10-27-mfa-email-default';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -68621,7 +68622,7 @@ function renderTeamCategoryBoxes(selected, creativeSelected){
 
 function resetTeamMemberForm(){
   const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
-  set('teamPositionInput', ''); set('teamNewName', ''); set('teamNewEmail', ''); set('teamNewPhone', ''); set('teamNewPhoneExt', '');
+  set('teamPositionInput', ''); set('teamNewName', ''); set('teamNewEmail', ''); set('teamNewPhone', ''); set('teamNewPhoneExt', ''); try { teamEmailHint(); } catch (e){}
   set('teamNewFunction', ''); set('teamNewKind', 'internal'); set('teamNewAccess', 'edit'); set('teamNewHandle', '');
   set('agrName', ''); set('agrChannels', ''); set('agrEnds', '');
   const adm = document.getElementById('teamNewIsAdmin'); if (adm) adm.checked = false;
@@ -68663,10 +68664,23 @@ function readTeamMemberForm(){
     spendUnlimited: !!document.getElementById('teamNewSpendUnlimited').checked
   };
 }
+const TEAM_FREE_EMAIL_DOMAINS = ['gmail.com','googlemail.com','yahoo.com','ymail.com','outlook.com','hotmail.com','live.com','msn.com','icloud.com','me.com','aol.com','proton.me','protonmail.com','gmx.com','mail.com'];
+function teamFreeEmail(email){
+  const d = String(email || '').split('@')[1];
+  return d ? TEAM_FREE_EMAIL_DOMAINS.includes(d.trim().toLowerCase()) : false;
+}
+// A warning, not a block: small companies and consultants do use personal addresses.
+function teamEmailHint(){
+  const el = document.getElementById('teamEmailWarn'), v = document.getElementById('teamNewEmail');
+  if (!el || !v) return;
+  const free = teamFreeEmail(v.value);
+  el.style.display = free ? '' : 'none';
+  el.textContent = free ? 'This looks like a personal email address. Use their work email if they have one, since it receives their invitation and sign-in codes.' : '';
+}
 function teamFormProblem(f){
   if (!f.name) return 'Name is required.';
   if (!f.email || !/^\S+@\S+\.\S+$/.test(f.email)) return 'A valid email is required. It is how this person signs in.';
-  if (String(f.phone || '').replace(/\D/g, '').length < 10) return 'A phone number is required (at least 10 digits).';
+  if (f.phone && String(f.phone).replace(/\D/g, '').length < 10) return 'A phone number needs at least 10 digits, or leave it empty.';
   return '';
 }
 function agreementFieldsFilled(){
