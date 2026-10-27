@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-27-invite-email (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-27-invite-name (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -23962,12 +23962,13 @@ async function sendTransactionalEmail({ to, subject, textBody, htmlBody }){
 // which already hash the new password, end old sessions and return a fresh session. Sending a new invite cancels any earlier unused link.
 // If email is not configured or the send fails, the caller gets the link and a temporary password so an admin can still hand it over.
 const MEMBER_INVITE_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+ensureColumn('password_resets', 'invitedby', 'TEXT');
 async function sendMemberInvite(memberId, { accountId, name, email, invitedByName }){
   const now = new Date();
   try { db.prepare('UPDATE password_resets SET usedAt = ? WHERE memberId = ? AND usedAt IS NULL').run(now.toISOString(), memberId); } catch (e){}
   const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date(now.getTime() + MEMBER_INVITE_LIFETIME_MS).toISOString();
-  db.prepare('INSERT INTO password_resets (token, memberId, createdAt, expiresAt) VALUES (?,?,?,?)').run(token, memberId, now.toISOString(), expiresAt);
+  db.prepare('INSERT INTO password_resets (token, memberId, createdAt, expiresAt, invitedby) VALUES (?,?,?,?,?)').run(token, memberId, now.toISOString(), expiresAt, String(invitedByName || '').slice(0, 120) || null);
   const base = (process.env.PUBLIC_BASE_URL || 'https://verilume.ai').replace(/\/+$/, '');
   const link = `${base}/set-password.html?token=${token}`;
   let company = '';
@@ -31570,7 +31571,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-27-invite-email',
+        buildStamp: '2026-10-27-invite-name',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -32930,6 +32931,21 @@ async function handleRequestInner(req, res) {
     // first-login path) and invalidates every existing session for this
     // member, since a password reset should always kick out anyone
     // signed in on stolen/old credentials.
+    // GET /api/auth/invite-info?token= — first names only, so the set-password page can say who invited the person. Reveals nothing for an unknown, used or expired token.
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'auth' && parts[2] === 'invite-info'){
+      const tok = String(new URL(req.url, 'http://x').searchParams.get('token') || '');
+      let out = { valid: false };
+      try {
+        const row = tok ? db.prepare('SELECT * FROM password_resets WHERE token = ?').get(tok) : null;
+        if (row && !row.usedAt && new Date(row.expiresAt).getTime() >= Date.now()){
+          const m = db.prepare('SELECT name FROM team_members WHERE id = ?').get(row.memberId);
+          const first = (n) => String(n || '').trim().split(/\s+/)[0] || '';
+          out = { valid: true, inviterFirstName: first(row.invitedby), inviteeFirstName: first(m && m.name) };
+        }
+      } catch (e){}
+      return sendJson(res, 200, out);
+    }
+
     if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'auth' && parts[2] === 'reset-password'){
       const body = await readBody(req);
       if (!body.resetToken || !body.newPassword || body.newPassword.length < 8){
