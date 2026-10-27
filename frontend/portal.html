@@ -14000,7 +14000,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-27-team-orgchart-open';
+const CXMEDIA_BUILD_STAMP = '2026-10-27-invite-email';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -68689,7 +68689,7 @@ async function addTeamMember(){
   if (problem){ if (flag){ flag.textContent = problem; flag.style.color = 'var(--advocacy)'; } return; }
   const { name, email, phone, phoneExt, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, accessLevel, exportFeeds } = f;
   const localMember = { id: `local-team-${Date.now()}`, accountId: state.companyId, name, email, phone: phone || null, phoneExt: phoneExt || null, isAdmin, functionGroup, level, reportsToId, status: 'active', createdAt: new Date().toISOString(), memberKind, accessLevel, roleLabel, categories, exportFeeds };
-  let persisted = false, tempPasswordOut = null;
+  let persisted = false, tempPasswordOut = null, inviteSent = false, inviteLinkOut = null;
   const wantsAgreement = memberKind === 'external' && agreementFieldsFilled();
   const agreementBody = wantsAgreement ? readAgreementFields() : null;
   if (dataSourceLabel === 'backend'){
@@ -68702,7 +68702,7 @@ async function addTeamMember(){
         const out = await resp.json();
         localMember.id = out.memberId; localMember.handle = out.handle || null;
         localMember.accessExpiresAt = out.accessExpiresAt || null;
-        persisted = true; tempPasswordOut = out.tempPassword || null;
+        persisted = true; tempPasswordOut = out.tempPassword || null; inviteSent = !!out.inviteSent; inviteLinkOut = out.inviteLink || null;
       } else if (resp.status === 403 || resp.status === 409){
         const err = await resp.json().catch(() => ({}));
         if (flag){ flag.textContent = err.error || 'This could not be added.'; flag.style.color = 'var(--advocacy)'; }
@@ -68717,9 +68717,12 @@ async function addTeamMember(){
   tfAssignKeys = null;
   if (assignKeys && assignKeys.length && persisted){ const ok = await ttbAssignMany(localMember.id, assignKeys); if (ok) agrNote += ` Their onboarding items are assigned.`; }
   tfShowForm(false);
-  if (flag && persisted && tempPasswordOut){
+  if (flag && persisted && inviteSent){
     flag.style.color = 'var(--cx)';
-    flag.innerHTML = `Added ${escapeHtml(name)}. They can sign in with ${escapeHtml(email)}. <strong>Temporary password, shown once. Save it before leaving this page:</strong> <code style="background:var(--paper-dim);padding:2px 6px;border-radius:3px;">${escapeHtml(tempPasswordOut)}</code>${escapeHtml(agrNote)}`;
+    flag.textContent = `Added ${name}. An invitation was emailed to ${email} with a link to set a password. The link lasts 7 days; use Resend invite on their card if it lapses.` + agrNote;
+  } else if (flag && persisted && tempPasswordOut){
+    flag.style.color = 'var(--cx)';
+    flag.innerHTML = `Added ${escapeHtml(name)}. They can sign in with ${escapeHtml(email)}. <strong>The invitation email could not be sent, so give them these yourself. Shown once:</strong> temporary password <code style="background:var(--paper-dim);padding:2px 6px;border-radius:3px;">${escapeHtml(tempPasswordOut)}</code>${inviteLinkOut ? ` or set-password link <code style="background:var(--paper-dim);padding:2px 6px;border-radius:3px;word-break:break-all;">${escapeHtml(inviteLinkOut)}</code>` : ''}${escapeHtml(agrNote)}`;
   } else if (flag){
     flag.style.color = 'var(--cx)';
     flag.textContent = (persisted ? `Added ${name}, saved to this account's real backend record.` : `Added ${name}, local only for this session (no backend record for this account, or the backend is unreachable).`) + agrNote;
@@ -69008,7 +69011,7 @@ function renderOrgChart(){
     const opens = openFor[m.id] || [];
     const exp = m.accessExpiresAt ? ' · access ends ' + new Date(m.accessExpiresAt).toLocaleDateString() : '';
     const acts = isAdmin ? `
-        ${m.email && !String(m.id).startsWith('local-team-') ? `<button type="button" class="link-btn" onclick="reissueMemberLogin('${m.id}')">Reissue login</button>` : ''}
+        ${m.email && !String(m.id).startsWith('local-team-') ? `<button type="button" class="link-btn" onclick="reissueMemberLogin('${m.id}')">Resend invite</button>` : ''}
         ${m.memberKind === 'external' ? `<button type="button" class="link-btn" onclick="renewExternalAccess('${m.id}')">Renew 3 months</button>` : ''}
         <button type="button" class="link-btn" onclick="startEditTeamMember('${m.id}')">Edit</button>
         <button type="button" class="link-btn" onclick="deleteTeamMember('${m.id}')">Remove</button>` : '';
@@ -69039,7 +69042,7 @@ function renderOrgChart(){
       <div class="oc-name">${escapeHtml(m.name)}${m.isAdmin ? '<span class="oc-pill">Admin</span>' : ''}</div>
       <div class="oc-sub">${escapeHtml(m.roleLabel ? posTitle(m.roleLabel) : (m.memberKind === 'external' ? 'External partner' : 'Stakeholder'))}</div>
       <div class="oc-sub">${m.memberKind === 'recipient' ? 'Exports only' : m.accessLevel === 'view' || (!m.accessLevel && m.memberKind === 'viewer') ? 'View only' : 'Can edit'}${m.memberKind === 'external' ? ' · external' : ''}${m.accessExpiresAt ? ' · access ends ' + new Date(m.accessExpiresAt).toLocaleDateString() : ''}</div>
-      <div class="oc-acts">${isAdmin ? `${m.email && !String(m.id).startsWith('local-team-') ? `<button type="button" class="link-btn" onclick="reissueMemberLogin('${m.id}')">Reissue login</button>` : ''}${m.memberKind === 'external' ? `<button type="button" class="link-btn" onclick="renewExternalAccess('${m.id}')">Renew 3 months</button>` : ''}<button type="button" class="link-btn" onclick="startEditTeamMember('${m.id}')">Edit</button><button type="button" class="link-btn" onclick="deleteTeamMember('${m.id}')">Remove</button>` : ''}</div>
+      <div class="oc-acts">${isAdmin ? `${m.email && !String(m.id).startsWith('local-team-') ? `<button type="button" class="link-btn" onclick="reissueMemberLogin('${m.id}')">Resend invite</button>` : ''}${m.memberKind === 'external' ? `<button type="button" class="link-btn" onclick="renewExternalAccess('${m.id}')">Renew 3 months</button>` : ''}<button type="button" class="link-btn" onclick="startEditTeamMember('${m.id}')">Edit</button><button type="button" class="link-btn" onclick="deleteTeamMember('${m.id}')">Remove</button>` : ''}</div>
     </div></div>`;
   const side = (sideRow.length || isAdmin) ? `<div style="margin-top:28px;border-top:1px solid var(--line);padding-top:14px;">
       <div class="section-eyebrow" style="margin-bottom:6px;">Stakeholders and partners · outside the reporting line</div>
@@ -69302,14 +69305,15 @@ async function reissueMemberLogin(id){
   const m = findTeamMember(id);
   const flag = document.getElementById('teamAddFlag');
   if (!m || !m.email) return;
-  if (!confirm(`Make a new temporary password for ${m.name}? Any password they have now, temporary or their own, stops working.`)) return;
+  if (!confirm(`Email ${m.name} a new invitation to set a password? Their current password stops working.`)) return;
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/team/${encodeURIComponent(id)}/reissue-credentials`, { method: 'POST' });
     const data = await resp.json().catch(() => ({}));
     if (!flag) return;
     if (!resp.ok){ flag.style.color = 'var(--advocacy)'; flag.textContent = data.error || `Could not reissue the login (${resp.status}).`; return; }
     flag.style.color = 'var(--cx)';
-    flag.innerHTML = `New temporary password for ${escapeHtml(m.name)} (${escapeHtml(data.email)}), shown once: <code style="background:var(--paper-dim);padding:2px 6px;border-radius:3px;">${escapeHtml(data.tempPassword)}</code>`;
+    if (data.inviteSent){ flag.textContent = `Invitation emailed to ${data.email}. The link lasts 7 days.`; return; }
+    flag.innerHTML = `The email could not be sent. New temporary password for ${escapeHtml(m.name)} (${escapeHtml(data.email)}), shown once: <code style="background:var(--paper-dim);padding:2px 6px;border-radius:3px;">${escapeHtml(data.tempPassword)}</code>${data.inviteLink ? ` or link <code style="background:var(--paper-dim);padding:2px 6px;border-radius:3px;word-break:break-all;">${escapeHtml(data.inviteLink)}</code>` : ''}`;
     const mod = document.getElementById('teamAddModule'); if (mod) mod.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e){ if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Could not reach the server to reissue the login.'; } }
 }
