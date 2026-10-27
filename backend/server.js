@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-27-invite-name (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-27-mfa-sms-toggle (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -1372,6 +1372,10 @@ ensureColumn('team_members', 'passwordSalt', 'TEXT');
 ensureColumn('team_members', 'mustChangePassword', 'INTEGER DEFAULT 0');
 ensureColumn('team_members', 'phone', 'TEXT');
 ensureColumn('team_members', 'phoneVerifiedAt', 'TEXT');
+// 2026-10-27 — sign-in codes go to email by default; text is used only when a member has it switched on (mfasms = 1).
+// People who existed before this change and have a phone on file keep text so nothing changes for them.
+ensureColumn('team_members', 'mfasms', 'INTEGER');
+try { db.exec(`UPDATE team_members SET mfasms = 1 WHERE mfasms IS NULL AND phone IS NOT NULL AND phone <> '' AND createdAt < '2026-10-28'`); } catch (e) { console.warn('mfasms backfill skipped:', e.message); }
 ensureColumn('team_members', 'phoneext', 'TEXT');
 
 // Added 2026-08-19 — paid tier/level plumbing (auth-path Path 4). Per
@@ -31571,7 +31575,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-27-invite-name',
+        buildStamp: '2026-10-27-mfa-sms-toggle',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -32103,6 +32107,7 @@ async function handleRequestInner(req, res) {
         (id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, passwordHash, passwordSalt, mustChangePassword, phone, phoneVerifiedAt)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
         .run(memberId, body.accountId, body.name, 'Executive', 'CMO', null, now, body.email, 1, 'active', passwordHash, passwordSalt, 1, body.phone || '', phoneVerifiedAt);
+      if (verification.channel === 'sms' && body.phone){ try { db.prepare('UPDATE team_members SET mfasms = 1 WHERE id = ?').run(memberId); } catch (e){} }
       // Legal-acceptance audit trail (registration rebuild) — standard T&Cs
       // and pricing disclosures are referenced-only on the registration
       // page, no signature required; completing registration (this call
@@ -32187,12 +32192,12 @@ async function handleRequestInner(req, res) {
       try {
         if (useAsyncPg){
           const r = await getAuthPgPool().query(
-            'SELECT id, "accountId", name, "passwordHash", "passwordSalt", "mustChangePassword", status, phone, email, "isAdmin" FROM team_members WHERE lower(email) = lower($1) ORDER BY "createdAt" DESC LIMIT 1',
+            'SELECT id, "accountId", name, "passwordHash", "passwordSalt", "mustChangePassword", status, phone, email, "isAdmin", mfasms FROM team_members WHERE lower(email) = lower($1) ORDER BY "createdAt" DESC LIMIT 1',
             [body.email]
           );
           member = r.rows[0];
         } else {
-          member = db.prepare('SELECT id, accountId, name, passwordHash, passwordSalt, mustChangePassword, status, phone, email, isAdmin FROM team_members WHERE lower(email) = lower(?) ORDER BY createdAt DESC LIMIT 1').get(body.email);
+          member = db.prepare('SELECT id, accountId, name, passwordHash, passwordSalt, mustChangePassword, status, phone, email, isAdmin, mfasms FROM team_members WHERE lower(email) = lower(?) ORDER BY createdAt DESC LIMIT 1').get(body.email);
         }
       } catch (e){
         console.error('login-user: member lookup failed:', e.message);
@@ -32248,8 +32253,9 @@ async function handleRequestInner(req, res) {
       }
 
       let sendResult;
-      const channel = member.phone ? 'sms' : 'email';
-      const target = member.phone || member.email;
+      // Email by default; text only for members who switched it on and have a phone on file.
+      const channel = (member.phone && Number(member.mfasms) === 1) ? 'sms' : 'email';
+      const target = channel === 'sms' ? member.phone : member.email;
       try {
         sendResult = await sendLoginMfaCode(member, channel);
       } catch (e){
@@ -32931,6 +32937,61 @@ async function handleRequestInner(req, res) {
     // first-login path) and invalidates every existing session for this
     // member, since a password reset should always kick out anyone
     // signed in on stolen/old credentials.
+    // Text sign-in codes — a person turns them on for THEIR OWN profile only, after confirming a code sent to the number on file.
+    // Nobody else (admins included) can switch it on, so codes can never be redirected to a phone the person does not hold.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'auth' && parts[2] === 'mfa-sms'){
+      const session = authenticate(req);
+      if (!session || !session.memberId || session.simmemberid || session.simrole){
+        return sendJson(res, 401, { error: 'sign in as yourself to change how your sign-in codes are sent' });
+      }
+      const me = db.prepare('SELECT id, phone FROM team_members WHERE id = ?').get(session.memberId);
+      if (!me) return sendJson(res, 404, { error: 'user not found' });
+      const action = parts[3];
+      if (action === 'off'){
+        db.prepare('UPDATE team_members SET mfasms = 0 WHERE id = ?').run(me.id);
+        return sendJson(res, 200, { mfaSms: false });
+      }
+      if (action === 'start'){
+        const digits = String(me.phone || '').replace(/\D/g, '');
+        if (digits.length < 10) return sendJson(res, 400, { error: 'Add a mobile number to your profile and save it first.' });
+        const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        const recent = db.prepare(`SELECT COUNT(*) AS c FROM phone_verifications WHERE memberId = ? AND purpose = 'mfa-sms-enable' AND createdAt > ?`).get(me.id, hourAgo);
+        if (recent && Number(recent.c) >= 5) return sendJson(res, 429, { error: 'Too many codes requested. Try again in an hour.' });
+        let sent;
+        try { sent = await sendVerificationCode(me.phone); }
+        catch (e){ console.warn('mfa-sms start: send failed', e.message); return sendJson(res, 502, { error: 'Could not send a text right now. Check the number can receive texts and try again.' }); }
+        if (sent.provider === 'interim' && process.env.DATABASE_URL){
+          return sendJson(res, 502, { error: 'Text messages are not set up on this account yet.' });
+        }
+        const id = generateId('VERIFY');
+        const now = new Date();
+        let hash = null, salt = null;
+        if (sent.provider === 'interim'){ const h = hashAccessCode(sent.code); hash = h.hash; salt = h.salt; }
+        db.prepare(`INSERT INTO phone_verifications (id, memberId, phone, purpose, codeHash, codeSalt, provider, channel, createdAt, expiresAt) VALUES (?,?,?,?,?,?,?,?,?,?)`)
+          .run(id, me.id, me.phone, 'mfa-sms-enable', hash, salt, sent.provider, 'sms', now.toISOString(), new Date(now.getTime() + 10 * 60 * 1000).toISOString());
+        const out = { verificationId: id, target: '•••• ' + digits.slice(-4) };
+        if (sent.provider === 'interim') out.interimCode = sent.code;
+        return sendJson(res, 200, out);
+      }
+      if (action === 'confirm'){
+        const body = await readBody(req);
+        const code = String(body.code || '').trim();
+        if (!body.verificationId || !/^\d{6}$/.test(code)) return sendJson(res, 400, { error: 'Enter the 6-digit code.' });
+        const row = db.prepare(`SELECT * FROM phone_verifications WHERE id = ? AND memberId = ? AND purpose = 'mfa-sms-enable'`).get(body.verificationId, me.id);
+        if (!row || row.verified) return sendJson(res, 404, { error: 'That code is no longer valid. Request a new one.' });
+        if (new Date(row.expiresAt).getTime() < Date.now()) return sendJson(res, 410, { error: 'That code has expired. Request a new one.' });
+        if (Number(row.attempts) >= 5) return sendJson(res, 429, { error: 'Too many incorrect attempts. Request a new code.' });
+        if (String(row.phone || '').replace(/\D/g, '') !== String(me.phone || '').replace(/\D/g, '')) return sendJson(res, 409, { error: 'Your phone number changed. Request a new code.' });
+        let ok = false;
+        try { ok = await checkVerificationCode(row.phone, code, row.codeHash, row.codeSalt); } catch (e){ return sendJson(res, 502, { error: 'Could not check that code right now. Try again shortly.' }); }
+        if (!ok){ try { db.prepare('UPDATE phone_verifications SET attempts = attempts + 1 WHERE id = ?').run(row.id); } catch (e){} return sendJson(res, 401, { error: 'Incorrect code.' }); }
+        db.prepare('UPDATE phone_verifications SET verified = 1 WHERE id = ?').run(row.id);
+        db.prepare('UPDATE team_members SET mfasms = 1, phoneVerifiedAt = ? WHERE id = ?').run(new Date().toISOString(), me.id);
+        return sendJson(res, 200, { mfaSms: true });
+      }
+      return sendJson(res, 404, { error: 'unknown action' });
+    }
+
     // GET /api/auth/invite-info?token= — first names only, so the set-password page can say who invited the person. Reveals nothing for an unknown, used or expired token.
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'auth' && parts[2] === 'invite-info'){
       const tok = String(new URL(req.url, 'http://x').searchParams.get('token') || '');
@@ -49549,12 +49610,12 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       // Explicit column list (not SELECT *) as of 2026-08-18 — team_members
       // now carries passwordHash/passwordSalt (registration rebuild) and
       // those must never leave the server, hashed or not.
-      const team = db.prepare(`SELECT id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, phone, phoneVerifiedAt, mustChangePassword, memberkind, handle, rolelabel, categories, accessexpiresat, phoneext, accesslevel, exportfeeds, spendauthority, spendunlimited FROM team_members WHERE accountId = ? ORDER BY createdAt ASC`).all(accountId);
+      const team = db.prepare(`SELECT id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, phone, phoneVerifiedAt, mustChangePassword, memberkind, handle, rolelabel, categories, accessexpiresat, phoneext, accesslevel, exportfeeds, spendauthority, spendunlimited, mfasms FROM team_members WHERE accountId = ? ORDER BY createdAt ASC`).all(accountId);
       team.forEach(m => {
         if (!m.handle){ m.handle = generateHandle(accountId, m.name, m.id); try { db.prepare('UPDATE team_members SET handle = ? WHERE id = ?').run(m.handle, m.id); } catch (e){} }
         m.accessExpiresAt = m.accessexpiresat || null; delete m.accessexpiresat; m.memberKind = m.memberkind || 'internal'; m.roleLabel = m.rolelabel || ''; m.phoneExt = m.phoneext || ''; delete m.phoneext; m.accessLevel = m.accesslevel || ((m.memberKind === 'viewer' || m.memberKind === 'recipient') ? 'view' : 'edit'); delete m.accesslevel; try { m.exportFeeds = JSON.parse(m.exportfeeds || '[]'); } catch (e){ m.exportFeeds = []; } delete m.exportfeeds; let c = []; try { c = JSON.parse(m.categories || '[]'); } catch (e){} m.categories = c;
         delete m.memberkind; delete m.rolelabel;
-        m.spendAuthority = (m.spendauthority === null || m.spendauthority === undefined) ? null : Number(m.spendauthority); m.spendUnlimited = Number(m.spendunlimited) === 1; delete m.spendauthority; delete m.spendunlimited;
+        m.spendAuthority = (m.spendauthority === null || m.spendauthority === undefined) ? null : Number(m.spendauthority); m.spendUnlimited = Number(m.spendunlimited) === 1; delete m.spendauthority; delete m.spendunlimited; m.mfaSms = Number(m.mfasms) === 1; delete m.mfasms;
       });
       return sendJson(res, 200, { team });
     }
@@ -49593,7 +49654,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       // itself requires the requester to already be an admin.
       if (body.isAdmin && !requireAdminMember(req, res, accountId)) return;
       const newKind = MEMBER_KINDS.includes(body.memberKind) ? body.memberKind : 'internal';
-      if (String(body.phone || '').replace(/\D/g, '').length < 10) return sendJson(res, 400, { error: 'a phone number (at least 10 digits) is required' });
+      if (body.phone && String(body.phone).replace(/\D/g, '').length < 10) return sendJson(res, 400, { error: 'a phone number needs at least 10 digits, or leave it empty' });
       if ((newKind === 'external' || newKind === 'viewer' || newKind === 'recipient' || body.accessLevel) && !requireAdminMember(req, res, accountId)) return;
       if (newKind === 'recipient' && !body.email) return sendJson(res, 400, { error: 'an email is required for a data recipient (it is how they sign in)' });
       let passwordHash = null, passwordSalt = null, mustChangePassword = 0, tempPassword = null;
@@ -50140,10 +50201,12 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     // endpoint without stepping on fields the other didn't send.
     if (req.method === 'PATCH' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'team'){
       const memberId = decodeURIComponent(parts[2]);
-      const existing = db.prepare('SELECT id, accountId, isAdmin FROM team_members WHERE id = ?').get(memberId);
+      const existing = db.prepare('SELECT id, accountId, isAdmin, phone FROM team_members WHERE id = ?').get(memberId);
       if (!existing) return sendJson(res, 404, { error: 'team member not found' });
       if (!requireAccount(req, res, existing.accountId)) return;
       const body = await readBody(req);
+      // A new phone number is not trusted for sign-in codes until its owner confirms it again, so changing it switches text codes off.
+      if (body.phone !== undefined && String(body.phone || '').replace(/\D/g, '') !== String(existing.phone || '').replace(/\D/g, '')){ try { db.prepare('UPDATE team_members SET mfasms = 0 WHERE id = ?').run(memberId); } catch (e){} }
       if (body.phoneExt !== undefined) db.prepare('UPDATE team_members SET phoneext = ? WHERE id = ?').run(String(body.phoneExt || '').replace(/[^0-9]/g, '').slice(0, 8) || null, memberId);
       const settable = { name: 'TEXT', email: 'TEXT', level: 'TEXT', functionGroup: 'TEXT', reportsToId: 'TEXT', status: 'TEXT', phone: 'TEXT' };
       Object.keys(settable).forEach(field => {
