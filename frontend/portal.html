@@ -4505,6 +4505,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap">
 <style id="prcCopyStyles">
 textarea.prc-copy-ta{width:100%;box-sizing:border-box;font:inherit;font-size:15px;line-height:1.6;padding:14px 16px;border:1px solid var(--border,#d0d5dd);border-radius:10px;background:var(--surface,#fff);color:inherit;resize:vertical;min-height:26em;max-height:85vh;overflow:auto;}
+textarea.prc-copy-ta.prc-li-ta{min-height:12em;}
 textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offset:1px;}
 </style>
 </head>
@@ -13999,7 +14000,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-27-pr-improve-tiebreak';
+const CXMEDIA_BUILD_STAMP = '2026-10-27-team-orgchart-open';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -31034,7 +31035,7 @@ const TTB_CFG = {
   marketingBudgetUpload: { upload: { formats: '.xlsx or .csv, in any layout. Excel or CSV, in any layout.', direct: 'ttbBuPick', sample: { name: 'marketing-budget-sample.csv', cols: ['Category', 'Status', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Total'], rows: [['Paid Social', 'Working', 24000, 26000, 30000, 30000, 28000, 26000, 24000, 24000, 30000, 32000, 34000, 20000, 328000], ['Agency fees', 'Non-Working', 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 96000]] } }, manual: { step: 'marketingBudgetUpload', arg: 'configuration' }, view: { step: 'mediaplan', label: 'Budget and Plan' } },
   bulkUpload: { upload: { direct: 'ttbUpPick', alt: { label: 'Upload customer-level file', key: 'bulkUploadCustomer' }, formats: '.xlsx or .csv, one row per month and product group', handler: 'mbuHandleTxnFile', cards: ['mbuTransactionsCard'], sample: { name: 'transactions-by-month-sample.csv', cols: ['Year', 'Month', 'Product Group', 'Transactions', 'Revenue'], rows: [[2026, 'Jan', 'Mediterranean', 42, 268000], [2026, 'Feb', 'Mediterranean', 51, 322500]] } }, manual: { cards: ['mbuTransactionsCard'] }, integ: true, view: { tab: 'strategy', label: 'Strategy' } },
   partnerIntegrations: { integ: true, manual: { note: 'Prefer to type it? Every number on this page has an Add Manually option.' }, view: { tab: 'dataScientist', label: 'Media Science' } },
-  team: { manual: { teamFlow: true }, view: { step: 'team', label: 'Team' } },
+  team: { manual: { cards: ['teamStepBody'], hideLabel: 'Hide team and org chart' }, view: { step: 'team', label: 'Team' } },
   websiteUsers: { manual: { cards: ['mbuWebsiteUsersCard'] }, integ: true, view: { step: 'mediaplan', label: 'Budget and Plan', scrollTo: 'mbuWebsiteUsersCard' } },
   websiteEngagement: { upload: { direct: 'ttbUpPick', formats: 'The GA4 Traffic acquisition export (.xlsx or .csv), by Session default channel group', handler: 'mbuHandleEngagementFile', cards: ['mbuEngagementCard'], sample: { name: 'website-engagement-sample.csv', cols: ['Year', 'Month', 'Session default channel group', 'Sessions', 'Engaged sessions', 'Engagement rate', 'Average engagement time per engaged session'], rows: [[2026, 'Jan', 'Organic Search', 18400, 12100, '65.8%', 1.4], [2026, 'Jan', 'Paid Search', 9200, 5100, '55.4%', 1.1]] } }, manual: { cards: ['mbuEngagementCard'] }, integ: true, view: { tab: 'dataScientist', label: 'Media Science' } },
   ga4Sources: { upload: { direct: 'ttbUpPick', formats: 'The GA4 free-form export (.csv): Year, Week, Session campaign, Session source / medium, Event name, Sessions, Engaged sessions, Key events', handler: 'ga4SourcesHandleFile', cards: ['mbuGa4SourcesCard'], noSample: 'No sample needed. Upload the GA4 free-form export as it comes.' }, manual: { cards: ['mbuGa4SourcesCard'] }, integ: true, view: { tab: 'dataScientist', label: 'Media Science' } },
@@ -31509,6 +31510,14 @@ function ttbMountOpen(){
   Object.keys(ttb.manual).forEach(k => {
     if (!ttb.manual[k] || ttb.open !== k) return; const c = TTB_CFG[k]; const cards = (c && c.manual && c.manual.cards) || (c && c.upload && c.upload.workspace) || []; const slot = document.getElementById('ttbSlot-' + k); if (!slot) return;
     cards.forEach(id => { const el = document.getElementById(id); if (!el) return; el.style.marginTop = '0'; el.style.display = ''; slot.appendChild(el); });
+    if (k === 'team'){
+      try {
+        populateTeamLevelSelect(); populateTeamFunctionSelect(); onTeamLevelChange(); renderActingAsSelect(); applyTeamStepAdminGate();
+        if (!tfStep || tfStep < 3) tfStep = currentOrgShape() ? 3 : (tfStep || 1);
+        renderTeamRosterView();
+      } catch (e){ console.warn('team and org chart mount failed', e); }
+      return;
+    }
     if (k === 'marketingBudgetUpload'){ ttbBuRender(); return; }
     if (k === 'activeChannels'){ try { mbuRenderActiveChannels(); } catch (e){ console.warn(e); } return; }
     if (k === 'channelProducts'){ try { cpLoadChannelProducts(); } catch (e){ console.warn(e); } return; }
@@ -67083,7 +67092,7 @@ function prcRenderSection(type, containerId, titleFn, subtitleFn){
             <button type="button" class="btn-ghost" onclick="prcGenerateLinkedIn('${item.id}')">LinkedIn post from this release →</button>
           </div>
           <div id="prcLinkedinStatus-${item.id}" class="hint" style="margin-top:4px;"></div>
-          ${item.linkedinCopy ? `<textarea id="prcLinkedin-${item.id}" rows="5" style="width:100%;font-family:inherit;margin-top:6px;">${escapeHtml(item.linkedinCopy)}</textarea>
+          ${item.linkedinCopy ? `<textarea id="prcLinkedin-${item.id}" class="prc-copy-ta prc-li-ta" rows="9" oninput="prcFitCopy(this)" style="margin-top:6px;">${escapeHtml(item.linkedinCopy)}</textarea>
           <div class="btn-row" style="margin-top:6px;"><button type="button" class="btn-primary" onclick="prcSaveLinkedin('${item.id}')">Save LinkedIn copy →</button></div>` : ''}
         </div>` : ''}
       </div>` : ''}
@@ -67568,7 +67577,7 @@ function prcPressExpandedHtml(item){
   const linkedin = corp ? '' : `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line, #e3e3e8);">
       <div class="btn-row" style="flex-wrap:wrap;"><button type="button" class="btn-ghost" onclick="prcGenerateLinkedIn('${id}')">LinkedIn post from this release →</button></div>
       <div id="prcLinkedinStatus-${id}" class="hint" style="margin-top:4px;"></div>
-      ${item.linkedinCopy ? `<textarea id="prcLinkedin-${id}" rows="5" style="width:100%;font-family:inherit;margin-top:6px;">${escapeHtml(item.linkedinCopy)}</textarea><div class="btn-row" style="margin-top:6px;"><button type="button" class="btn-primary" onclick="prcSaveLinkedin('${id}')">Save LinkedIn copy →</button></div>` : ''}
+      ${item.linkedinCopy ? `<textarea id="prcLinkedin-${id}" class="prc-copy-ta prc-li-ta" rows="9" oninput="prcFitCopy(this)" style="margin-top:6px;">${escapeHtml(item.linkedinCopy)}</textarea><div class="btn-row" style="margin-top:6px;"><button type="button" class="btn-primary" onclick="prcSaveLinkedin('${id}')">Save LinkedIn copy →</button></div>` : ''}
     </div>`;
   return `<div style="margin-top:8px;">
     <div class="hint" style="margin:0 0 4px;">${summary} · <a class="flink" onclick="prcMetaToggle('${id}')">${prcMetaEdit[id] ? 'Done' : 'Edit'}</a></div>${metaEdit}
