@@ -8076,6 +8076,15 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
           <input type="email" id="teamNewEmail" placeholder="priya@acmehospitality.com" oninput="teamEmailHint()">
           <div class="hint">Use their work email. It is their sign-in, and sign-in codes are sent to it. We email them an invitation to set their own password.</div>
           <div class="hint" id="teamEmailWarn" style="display:none;color:var(--advocacy);"></div>
+          <label id="teamSendInviteWrap" style="display:flex;gap:8px;align-items:flex-start;margin-top:8px;font-weight:600;font-size:0.875rem;text-transform:none;letter-spacing:0;">
+            <input type="checkbox" id="teamSendInvite" checked style="width:auto;margin-top:3px;" onchange="teamInviteViaToggle()">
+            <span>Send the invitation now<span class="hint" style="display:block;font-weight:400;">Untick to save the profile first. Use Send invite on their card when you are ready.</span></span>
+          </label>
+          <div id="teamInviteViaWrap" style="margin-top:8px;">
+            <label for="teamInviteVia" style="display:block;font-weight:600;font-size:0.8125rem;">Send it by</label>
+            <select id="teamInviteVia"><option value="email">Email</option><option value="both">Email and text message</option><option value="text">Text message</option></select>
+            <div class="hint">Text messages can only be seen on a mobile phone. Enter the person's mobile number in the Phone field, not a desk, Teams or Zoom number. Sending by text as well can help when an email lands in spam.</div>
+          </div>
         </div>
         <div class="field">
           <label for="teamNewPhone">Phone (optional)</label>
@@ -14014,7 +14023,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-28-mfa-copy';
+const CXMEDIA_BUILD_STAMP = '2026-10-28-invite-text';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -68692,6 +68701,20 @@ function teamEmailHint(){
   el.style.display = free ? '' : 'none';
   el.textContent = free ? 'This looks like a personal email address. Use their work email if they have one, since it receives their invitation and sign-in codes.' : '';
 }
+/* ---------- Invitation status on cards ---------- */
+function inviteBtnLabel(m){ return m.inviteStatus === 'sent' ? 'Resend invite' : (m.inviteStatus === 'failed' ? 'Retry invite' : 'Send invite'); }
+function inviteStatusHtml(m){
+  if (!m.email || String(m.id).startsWith('local-team-') || m.mustChangePassword === 0 || m.mustChangePassword === false) return '';
+  let t = '', c = 'var(--muted)';
+  if (m.inviteStatus === 'sent'){ const d = m.inviteSentAt ? new Date(m.inviteSentAt) : null; t = 'Invitation sent' + (m.inviteVia === 'email+text' ? ' by email and text' : (m.inviteVia === 'text' ? ' by text' : '')) + (d && !isNaN(d) ? ' ' + d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '') + (m.inviteError ? '. ' + m.inviteError : ''); if (m.inviteError) c = 'var(--advocacy)'; }
+  else if (m.inviteStatus === 'failed'){ t = 'Invitation email failed' + (m.inviteError ? ': ' + m.inviteError : ''); c = 'var(--advocacy)'; }
+  else if (m.inviteStatus === 'held'){ t = 'Invitation not sent yet'; c = 'var(--advocacy)'; }
+  return t ? `<div class="hint" style="display:block;width:100%;color:${c};margin:4px 0;">${escapeHtml(t)}</div>` : '';
+}
+function inviteBtnHtml(m){ return `${inviteStatusHtml(m)}<button type="button" class="link-btn" onclick="reissueMemberLogin('${m.id}')">${inviteBtnLabel(m)}</button>`; }
+function teamInviteViaToggle(){ const c = document.getElementById('teamSendInvite'), v = document.getElementById('teamInviteViaWrap'); if (v) v.style.display = (c && c.checked && document.getElementById('teamSendInviteWrap').style.display !== 'none') ? '' : 'none'; }
+function teamSendInviteShow(show){ const w = document.getElementById('teamSendInviteWrap'), c = document.getElementById('teamSendInvite'), sel = document.getElementById('teamInviteVia'); if (w) w.style.display = show ? 'flex' : 'none'; if (c) c.checked = true; if (sel) sel.value = 'email'; teamInviteViaToggle(); }
+
 /* ---------- Text sign-in codes (own profile only) ---------- */
 let mfaSmsPendingId = null;
 function mfaSmsMember(){ return editingTeamMemberId ? findTeamMember(editingTeamMemberId) : null; }
@@ -68776,22 +68799,26 @@ async function addTeamMember(){
   const flag = document.getElementById('teamAddFlag');
   const problem = teamFormProblem(f);
   if (problem){ if (flag){ flag.textContent = problem; flag.style.color = 'var(--advocacy)'; } return; }
+  const sendInviteNow = !(document.getElementById('teamSendInvite') && !document.getElementById('teamSendInvite').checked);
+  const inviteVia = (document.getElementById('teamInviteVia') || {}).value || 'email';
+  if (sendInviteNow && inviteVia !== 'email' && String(f.phone || '').replace(/\D/g, '').length < 10){ if (flag){ flag.textContent = 'To send a text, enter a mobile number with at least 10 digits in the Phone field.'; flag.style.color = 'var(--advocacy)'; } return; }
   const { name, email, phone, phoneExt, isAdmin, level, functionGroup, reportsToId, memberKind, roleLabel, categories, accessLevel, exportFeeds } = f;
   const localMember = { id: `local-team-${Date.now()}`, accountId: state.companyId, name, email, phone: phone || null, phoneExt: phoneExt || null, isAdmin, functionGroup, level, reportsToId, status: 'active', createdAt: new Date().toISOString(), memberKind, accessLevel, roleLabel, categories, exportFeeds };
-  let persisted = false, tempPasswordOut = null, inviteSent = false, inviteLinkOut = null;
+  let persisted = false, tempPasswordOut = null, inviteSent = false, inviteLinkOut = null, inviteHeld = false, lastSentVia = null;
   const wantsAgreement = memberKind === 'external' && agreementFieldsFilled();
   const agreementBody = wantsAgreement ? readAgreementFields() : null;
   if (dataSourceLabel === 'backend'){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/team`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, phone, phoneExt, isAdmin, functionGroup, level, reportsToId, memberKind, accessLevel, roleLabel, categories, exportFeeds })
+        body: JSON.stringify({ name, email, phone, phoneExt, isAdmin, functionGroup, level, reportsToId, memberKind, accessLevel, roleLabel, categories, exportFeeds, sendInvite: sendInviteNow, inviteVia })
       });
       if (resp.ok){
         const out = await resp.json();
         localMember.id = out.memberId; localMember.handle = out.handle || null;
         localMember.accessExpiresAt = out.accessExpiresAt || null;
-        persisted = true; tempPasswordOut = out.tempPassword || null; inviteSent = !!out.inviteSent; inviteLinkOut = out.inviteLink || null;
+        persisted = true; tempPasswordOut = out.tempPassword || null; inviteSent = !!out.inviteSent; inviteLinkOut = out.inviteLink || null; inviteHeld = !!out.inviteHeld; lastSentVia = out.sentVia || null;
+        if (email){ localMember.mustChangePassword = 1; localMember.inviteVia = Array.isArray(out.sentVia) ? out.sentVia.join('+') : null; localMember.inviteStatus = out.inviteHeld ? 'held' : (out.inviteSent ? 'sent' : 'failed'); localMember.inviteSentAt = out.inviteHeld ? null : new Date().toISOString(); if (!out.inviteHeld && !out.inviteSent) localMember.inviteError = 'The email could not be sent'; }
       } else if (resp.status === 403 || resp.status === 409){
         const err = await resp.json().catch(() => ({}));
         if (flag){ flag.textContent = err.error || 'This could not be added.'; flag.style.color = 'var(--advocacy)'; }
@@ -68806,9 +68833,13 @@ async function addTeamMember(){
   tfAssignKeys = null;
   if (assignKeys && assignKeys.length && persisted){ const ok = await ttbAssignMany(localMember.id, assignKeys); if (ok) agrNote += ` Their onboarding items are assigned.`; }
   tfShowForm(false);
-  if (flag && persisted && inviteSent){
+  if (flag && persisted && inviteHeld){
     flag.style.color = 'var(--cx)';
-    flag.textContent = `Added ${name}. An invitation was emailed to ${email} with a link to set a password. The link lasts 7 days; use Resend invite on their card if it lapses.` + agrNote;
+    flag.textContent = `Added ${name}. No invitation has been sent yet. Select Send invite on their card when you are ready.` + agrNote;
+  } else if (flag && persisted && inviteSent){
+    flag.style.color = 'var(--cx)';
+    const viaTxt = Array.isArray(lastSentVia) && lastSentVia.length === 2 ? `emailed to ${email} and texted to ${phone}` : (Array.isArray(lastSentVia) && lastSentVia[0] === 'text' ? `texted to ${phone}` : `emailed to ${email}`);
+    flag.textContent = `Added ${name}. An invitation was ${viaTxt} with a link to set a password. The link lasts 7 days; use Resend invite on their card if it lapses.` + agrNote;
   } else if (flag && persisted && tempPasswordOut){
     flag.style.color = 'var(--cx)';
     flag.innerHTML = `Added ${escapeHtml(name)}. They can sign in with ${escapeHtml(email)}. <strong>The invitation email could not be sent, so give them these yourself. Shown once:</strong> temporary password <code style="background:var(--paper-dim);padding:2px 6px;border-radius:3px;">${escapeHtml(tempPasswordOut)}</code>${inviteLinkOut ? ` or set-password link <code style="background:var(--paper-dim);padding:2px 6px;border-radius:3px;word-break:break-all;">${escapeHtml(inviteLinkOut)}</code>` : ''}${escapeHtml(agrNote)}`;
@@ -68843,7 +68874,7 @@ function startEditTeamMember(id){
   onPositionPicked();
   document.getElementById('teamAddTag').textContent = 'Edit';
   document.getElementById('teamAddHeading').textContent = `Edit ${m.name}`;
-  try { mfaSmsRender(); } catch (e){}
+  try { mfaSmsRender(); } catch (e){} teamSendInviteShow(false);
   document.getElementById('teamAddSubmitBtn').textContent = 'Save changes →';
   document.getElementById('teamEditCancelBtn').textContent = 'Cancel edit';
   const flag = document.getElementById('teamAddFlag'); if (flag) flag.textContent = '';
@@ -68854,7 +68885,7 @@ function startEditTeamMember(id){
 
 function cancelEditTeamMember(){
   editingTeamMemberId = null;
-  try { mfaSmsRender(); } catch (e){}
+  try { mfaSmsRender(); } catch (e){} teamSendInviteShow(true);
   resetTeamMemberForm();
   document.getElementById('teamAddTag').textContent = 'Add';
   document.getElementById('teamAddHeading').textContent = 'Add a team member';
@@ -69104,7 +69135,7 @@ function renderOrgChart(){
     const opens = openFor[m.id] || [];
     const exp = m.accessExpiresAt ? ' · access ends ' + new Date(m.accessExpiresAt).toLocaleDateString() : '';
     const acts = isAdmin ? `
-        ${m.email && !String(m.id).startsWith('local-team-') ? `<button type="button" class="link-btn" onclick="reissueMemberLogin('${m.id}')">Resend invite</button>` : ''}
+        ${m.email && !String(m.id).startsWith('local-team-') ? `${inviteBtnHtml(m)}` : ''}
         ${m.memberKind === 'external' ? `<button type="button" class="link-btn" onclick="renewExternalAccess('${m.id}')">Renew 3 months</button>` : ''}
         <button type="button" class="link-btn" onclick="startEditTeamMember('${m.id}')">Edit</button>
         <button type="button" class="link-btn" onclick="deleteTeamMember('${m.id}')">Remove</button>` : '';
@@ -69135,7 +69166,7 @@ function renderOrgChart(){
       <div class="oc-name">${escapeHtml(m.name)}${m.isAdmin ? '<span class="oc-pill">Admin</span>' : ''}</div>
       <div class="oc-sub">${escapeHtml(m.roleLabel ? posTitle(m.roleLabel) : (m.memberKind === 'external' ? 'External partner' : 'Stakeholder'))}</div>
       <div class="oc-sub">${m.memberKind === 'recipient' ? 'Exports only' : m.accessLevel === 'view' || (!m.accessLevel && m.memberKind === 'viewer') ? 'View only' : 'Can edit'}${m.memberKind === 'external' ? ' · external' : ''}${m.accessExpiresAt ? ' · access ends ' + new Date(m.accessExpiresAt).toLocaleDateString() : ''}</div>
-      <div class="oc-acts">${isAdmin ? `${m.email && !String(m.id).startsWith('local-team-') ? `<button type="button" class="link-btn" onclick="reissueMemberLogin('${m.id}')">Resend invite</button>` : ''}${m.memberKind === 'external' ? `<button type="button" class="link-btn" onclick="renewExternalAccess('${m.id}')">Renew 3 months</button>` : ''}<button type="button" class="link-btn" onclick="startEditTeamMember('${m.id}')">Edit</button><button type="button" class="link-btn" onclick="deleteTeamMember('${m.id}')">Remove</button>` : ''}</div>
+      <div class="oc-acts">${isAdmin ? `${m.email && !String(m.id).startsWith('local-team-') ? `${inviteBtnHtml(m)}` : ''}${m.memberKind === 'external' ? `<button type="button" class="link-btn" onclick="renewExternalAccess('${m.id}')">Renew 3 months</button>` : ''}<button type="button" class="link-btn" onclick="startEditTeamMember('${m.id}')">Edit</button><button type="button" class="link-btn" onclick="deleteTeamMember('${m.id}')">Remove</button>` : ''}</div>
     </div></div>`;
   const side = (sideRow.length || isAdmin) ? `<div style="margin-top:28px;border-top:1px solid var(--line);padding-top:14px;">
       <div class="section-eyebrow" style="margin-bottom:6px;">Stakeholders and partners · outside the reporting line</div>
@@ -69394,19 +69425,31 @@ function orgShapeAssign(shape){
 const POSITION_LIBRARY = [{"id":"pos-head-of-marketing-cmo","track":"Leadership","label":"Head of Marketing / CMO","level":"CMO","fn":"Executive","kind":"internal","cats":[]},{"id":"pos-marketing-strategy-director","track":"Strategy & Budget","label":"Marketing Strategy Director","level":"Director","fn":"Research","kind":"internal","cats":["Strategy"]},{"id":"pos-brand-strategist","track":"Strategy & Budget","label":"Brand Strategist","level":"Manager","fn":"Research","kind":"internal","cats":["Strategy"]},{"id":"pos-market-research-analyst","track":"Strategy & Budget","label":"Market Research Analyst","level":"Specialist","fn":"Research","kind":"internal","cats":["Strategy"]},{"id":"pos-budget-finance-analyst","track":"Strategy & Budget","label":"Budget & Finance Analyst","level":"Specialist","fn":"Marketing Ops","kind":"internal","cats":["Marketing Ops"]},{"id":"pos-brand-director","track":"Brand & Voice","label":"Brand Director","level":"Director","fn":"Brand","kind":"internal","cats":["Design","Copywriting"]},{"id":"pos-brand-manager","track":"Brand & Voice","label":"Brand Manager","level":"Manager","fn":"Brand","kind":"internal","cats":["Design"]},{"id":"pos-style-brand-guardian","track":"Brand & Voice","label":"Style & Brand Guardian","level":"Specialist","fn":"Brand","kind":"internal","cats":["Design"]},{"id":"pos-content-strategist","track":"Brand & Voice","label":"Content Strategist","level":"Manager","fn":"Content Development","kind":"internal","cats":["Copywriting","Strategy"]},{"id":"pos-copywriter","track":"Brand & Voice","label":"Copywriter","level":"Specialist","fn":"Content Development","kind":"internal","cats":["Copywriting"]},{"id":"pos-creative-director","track":"Creative & Design","label":"Creative Director","level":"Director","fn":"Omni-Channel Creative","kind":"internal","cats":["Design"]},{"id":"pos-art-director","track":"Creative & Design","label":"Art Director","level":"Manager","fn":"Omni-Channel Creative","kind":"internal","cats":["Design"]},{"id":"pos-graphic-designer","track":"Creative & Design","label":"Graphic Designer","level":"Specialist","fn":"Omni-Channel Creative","kind":"internal","cats":["Design"]},{"id":"pos-motion-designer","track":"Creative & Design","label":"Motion Designer","level":"Specialist","fn":"Omni-Channel Creative","kind":"internal","cats":["Motion Graphics"]},{"id":"pos-video-producer","track":"Creative & Design","label":"Video Producer","level":"Specialist","fn":"Omni-Channel Creative","kind":"internal","cats":["Motion Graphics"]},{"id":"pos-creative-technologist","track":"Creative & Design","label":"Creative Technologist","level":"Specialist","fn":"Omni-Channel Creative","kind":"internal","cats":["Design"]},{"id":"pos-pr-director","track":"Communications & PR","label":"PR Director","level":"Director","fn":"PR","kind":"internal","cats":["PR"]},{"id":"pos-pr-manager","track":"Communications & PR","label":"PR Manager","level":"Manager","fn":"PR","kind":"internal","cats":["PR"]},{"id":"pos-communications-specialist","track":"Communications & PR","label":"Communications Specialist","level":"Specialist","fn":"PR","kind":"internal","cats":["PR"]},{"id":"pos-social-community-manager","track":"Communications & PR","label":"Social & Community Manager","level":"Manager","fn":"Content Development","kind":"internal","cats":["Copywriting","Customer Experiences"]},{"id":"pos-analytics-director","track":"Analytics & Data","label":"Analytics Director","level":"Director","fn":"Analysis","kind":"internal","cats":["Analysts"]},{"id":"pos-media-science-lead","track":"Analytics & Data","label":"Media Science Lead","level":"Manager","fn":"Analysis","kind":"internal","cats":["Media Science","Analysts"]},{"id":"pos-data-scientist","track":"Analytics & Data","label":"Data Scientist","level":"Specialist","fn":"Analysis","kind":"internal","cats":["Analysts","Media Science"]},{"id":"pos-marketing-analyst","track":"Analytics & Data","label":"Marketing Analyst","level":"Specialist","fn":"Analysis","kind":"internal","cats":["Analysts"]},{"id":"pos-tagging-measurement-specialist","track":"Analytics & Data","label":"Tagging & Measurement Specialist","level":"Specialist","fn":"Analysis","kind":"internal","cats":["Analysts","Marketing Ops"]},{"id":"pos-marketing-ops-director","track":"Marketing Ops & Platforms","label":"Marketing Ops Director","level":"Director","fn":"Marketing Ops","kind":"internal","cats":["Marketing Ops"]},{"id":"pos-marketing-ops-manager","track":"Marketing Ops & Platforms","label":"Marketing Ops Manager","level":"Manager","fn":"Marketing Ops","kind":"internal","cats":["Marketing Ops"]},{"id":"pos-marketing-automation-specialist","track":"Marketing Ops & Platforms","label":"Marketing Automation Specialist","level":"Specialist","fn":"Marketing Ops","kind":"internal","cats":["Marketing Ops"]},{"id":"pos-campaign-trafficker","track":"Marketing Ops & Platforms","label":"Campaign Trafficker","level":"Specialist","fn":"Marketing Ops","kind":"internal","cats":["Marketing Ops"]},{"id":"pos-performance-marketing-director","track":"Performance & Growth","label":"Performance Marketing Director","level":"Director","fn":"Performance Marketing","kind":"internal","cats":["Growth and Performance"]},{"id":"pos-growth-marketing-manager","track":"Performance & Growth","label":"Growth Marketing Manager","level":"Manager","fn":"Performance Marketing","kind":"internal","cats":["Growth and Performance"]},{"id":"pos-paid-search-manager","track":"Performance & Growth","label":"Paid Search Manager","level":"Manager","fn":"Performance Marketing","kind":"internal","cats":["Growth and Performance"]},{"id":"pos-paid-social-manager","track":"Performance & Growth","label":"Paid Social Manager","level":"Manager","fn":"Performance Marketing","kind":"internal","cats":["Growth and Performance"]},{"id":"pos-programmatic-specialist","track":"Performance & Growth","label":"Programmatic Specialist","level":"Specialist","fn":"Performance Marketing","kind":"internal","cats":["Growth and Performance"]},{"id":"pos-media-planner-buyer","track":"Performance & Growth","label":"Media Planner / Buyer","level":"Specialist","fn":"Performance Marketing","kind":"internal","cats":["Growth and Performance"]},{"id":"pos-customer-experience-director","track":"Customer Experience & Lifecycle","label":"Customer Experience Director","level":"Director","fn":"Lifecycle Marketing","kind":"internal","cats":["Customer Experiences"]},{"id":"pos-lifecycle-crm-manager","track":"Customer Experience & Lifecycle","label":"Lifecycle / CRM Manager","level":"Manager","fn":"Lifecycle Marketing","kind":"internal","cats":["Customer Experiences"]},{"id":"pos-email-marketing-specialist","track":"Customer Experience & Lifecycle","label":"Email Marketing Specialist","level":"Specialist","fn":"Lifecycle Marketing","kind":"internal","cats":["Customer Experiences"]},{"id":"pos-agency-creative","track":"External partners","label":"Agency: Creative","level":"Manager","fn":"Omni-Channel Creative","kind":"external","cats":["Design"]},{"id":"pos-agency-media","track":"External partners","label":"Agency: Media","level":"Manager","fn":"Performance Marketing","kind":"external","cats":["Growth and Performance"]},{"id":"pos-agency-pr","track":"External partners","label":"Agency: PR","level":"Manager","fn":"PR","kind":"external","cats":["PR"]},{"id":"pos-agency-analytics","track":"External partners","label":"Agency: Analytics","level":"Manager","fn":"Analysis","kind":"external","cats":["Analysts"]},{"id":"pos-freelance-designer","track":"External partners","label":"Freelance Designer","level":"Specialist","fn":"Omni-Channel Creative","kind":"external","cats":["Design"]},{"id":"pos-freelance-copywriter","track":"External partners","label":"Freelance Copywriter","level":"Specialist","fn":"Content Development","kind":"external","cats":["Copywriting"]},{"id":"pos-freelance-media-buyer","track":"External partners","label":"Freelance Media Buyer","level":"Specialist","fn":"Performance Marketing","kind":"external","cats":["Growth and Performance"]}];
 
 
-async function reissueMemberLogin(id){
+async function reissueMemberLogin(id, via){
   const m = findTeamMember(id);
   const flag = document.getElementById('teamAddFlag');
   if (!m || !m.email) return;
-  if (!confirm(`Email ${m.name} a new invitation to set a password? Their current password stops working.`)) return;
+  const hasMobile = String(m.phone || '').replace(/\D/g, '').length >= 10;
+  if (via === undefined && hasMobile && flag){
+    // Offer text as well when a number is on file.
+    flag.style.color = 'var(--ink)';
+    flag.innerHTML = `Send ${escapeHtml(m.name)}'s invitation by <select id="invViaPick"><option value="email">Email</option><option value="both">Email and text message</option><option value="text">Text message</option></select> <button type="button" class="link-btn" onclick="reissueMemberLogin('${m.id}', document.getElementById('invViaPick').value)">Send</button> <button type="button" class="link-btn" onclick="document.getElementById('teamAddFlag').textContent=''">Cancel</button><div class="hint">Text messages can only be seen on a mobile phone. Use this only if the number on their profile is a mobile.</div>`;
+    const mod0 = document.getElementById('teamAddFlag'); if (mod0 && mod0.scrollIntoView) mod0.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+  via = via || 'email';
+  const what = via === 'text' ? 'a text message' : (via === 'both' ? 'an email and a text message' : 'an email');
+  if (!confirm(m.inviteStatus === 'sent' || m.mustChangePassword === 0 ? `Send ${m.name} a new invitation by ${what}? Their current password stops working.` : `Send ${m.name} their invitation now by ${what}?`)) return;
   try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/team/${encodeURIComponent(id)}/reissue-credentials`, { method: 'POST' });
+    const resp = await authedFetch(`${BACKEND_URL}/api/team/${encodeURIComponent(id)}/reissue-credentials`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ via }) });
     const data = await resp.json().catch(() => ({}));
     if (!flag) return;
     if (!resp.ok){ flag.style.color = 'var(--advocacy)'; flag.textContent = data.error || `Could not reissue the login (${resp.status}).`; return; }
     flag.style.color = 'var(--cx)';
-    if (data.inviteSent){ flag.textContent = `Invitation emailed to ${data.email}. The link lasts 7 days.`; return; }
-    flag.innerHTML = `The email could not be sent. New temporary password for ${escapeHtml(m.name)} (${escapeHtml(data.email)}), shown once: <code style="background:var(--paper-dim);padding:2px 6px;border-radius:3px;">${escapeHtml(data.tempPassword)}</code>${data.inviteLink ? ` or link <code style="background:var(--paper-dim);padding:2px 6px;border-radius:3px;word-break:break-all;">${escapeHtml(data.inviteLink)}</code>` : ''}`;
+    m.mustChangePassword = 1; m.inviteSentAt = new Date().toISOString();
+    if (data.inviteSent){ m.inviteStatus = 'sent'; m.inviteError = null; m.inviteVia = (data.sentVia || []).join('+') || null; renderTeamRosterView(); const sv = data.sentVia || []; flag.textContent = `Invitation ${sv.length === 2 ? 'emailed to ' + data.email + ' and texted' : (sv[0] === 'text' ? 'texted' : 'emailed to ' + data.email)}. The link lasts 7 days.`; return; }
+    m.inviteStatus = 'failed'; m.inviteError = (data.smsStatus && data.smsStatus !== 'skipped' && data.smsStatus !== 'sent' ? 'Text: not sent' : 'The email could not be sent'); renderTeamRosterView();
+    flag.innerHTML = `The invitation could not be sent${data.smsStatus === 'not_configured' ? ' (text messaging is not set up on the server yet)' : ''}. New temporary password for ${escapeHtml(m.name)} (${escapeHtml(data.email)}), shown once: <code style="background:var(--paper-dim);padding:2px 6px;border-radius:3px;">${escapeHtml(data.tempPassword)}</code>${data.inviteLink ? ` or link <code style="background:var(--paper-dim);padding:2px 6px;border-radius:3px;word-break:break-all;">${escapeHtml(data.inviteLink)}</code>` : ''}`;
     const mod = document.getElementById('teamAddModule'); if (mod) mod.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e){ if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Could not reach the server to reissue the login.'; } }
 }
