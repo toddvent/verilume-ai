@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-28-mfa-backfill-fix (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-28-invite-text (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -23967,7 +23967,13 @@ async function sendTransactionalEmail({ to, subject, textBody, htmlBody }){
 // If email is not configured or the send fails, the caller gets the link and a temporary password so an admin can still hand it over.
 const MEMBER_INVITE_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 ensureColumn('password_resets', 'invitedby', 'TEXT');
-async function sendMemberInvite(memberId, { accountId, name, email, invitedByName }){
+// What happened to each person's latest invitation email: sent, failed (with the reason), or held (profile saved without sending).
+ensureColumn('team_members', 'invitesentat', 'TEXT');
+ensureColumn('team_members', 'invitestatus', 'TEXT');
+ensureColumn('team_members', 'inviteerror', 'TEXT');
+ensureColumn('team_members', 'invitevia', 'TEXT');
+async function sendMemberInvite(memberId, { accountId, name, email, invitedByName, phone, via }){
+  via = (via === 'text' || via === 'both') ? via : 'email';
   const now = new Date();
   try { db.prepare('UPDATE password_resets SET usedAt = ? WHERE memberId = ? AND usedAt IS NULL').run(now.toISOString(), memberId); } catch (e){}
   const token = crypto.randomBytes(32).toString('hex');
@@ -23984,9 +23990,27 @@ async function sendMemberInvite(memberId, { accountId, name, email, invitedByNam
   const subject = company ? `Welcome to your ${company} account and AI Brain` : 'Welcome to your account and AI Brain';
   const textBody = `${welcome}${welcomeRest}\n\n${inviteLine}\n\n${link}\n\nThe link works once and expires in 7 days. Your sign-in email is ${email}. If you were not expecting this, you can ignore this message.`;
   const htmlBody = `<p>${escapeHtmlBasic(welcome)}${escapeHtmlBasic(welcomeRest)}</p><p>${escapeHtmlBasic(inviteLine)}</p><p><a href="${link}" style="display:inline-block;background:#F4B63F;color:#10141B;padding:11px 22px;border-radius:999px;text-decoration:none;font-weight:600;">Log in</a></p><p style="color:#6E6E73;font-size:13px;">The link works once and expires in 7 days. Your sign-in email is ${escapeHtmlBasic(email)}. If you were not expecting this, you can ignore this message.</p>`;
-  let mail = { emailStatus: 'error' };
-  try { mail = await sendTransactionalEmail({ to: email, subject, textBody, htmlBody }); } catch (e){}
-  return { link, expiresAt, emailStatus: (mail && mail.emailStatus) || 'error' };
+  let emailStatus = 'skipped', emailError = '';
+  if (via !== 'text'){
+    let mail = { emailStatus: 'error' };
+    try { mail = await sendTransactionalEmail({ to: email, subject, textBody, htmlBody }); } catch (e){}
+    emailStatus = (mail && mail.emailStatus) || 'error';
+    if (emailStatus !== 'sent') emailError = String((mail && mail.emailError) || (emailStatus === 'not_configured' ? 'Email sending is not set up on the server' : 'The email service did not accept the message'));
+  }
+  // Text message wording. Edit here: headline, then the line, then the link.
+  let smsStatus = 'skipped', smsError = '';
+  if (via !== 'email'){
+    const smsBody = `Verilume Team Invite\n${invitedByName || 'Your team'} invited you to join your Verilume team.\n${link}`;
+    const sms = await sendSmsMessage(phone, smsBody);
+    smsStatus = sms.status; if (sms.status !== 'sent') smsError = sms.error || 'The text could not be sent';
+  }
+  const sentVia = [emailStatus === 'sent' ? 'email' : '', smsStatus === 'sent' ? 'text' : ''].filter(Boolean);
+  const errs = [emailError ? 'Email: ' + emailError : '', smsError ? 'Text: ' + smsError : ''].filter(Boolean).join('. ');
+  try {
+    db.prepare('UPDATE team_members SET invitesentat = ?, invitestatus = ?, inviteerror = ?, invitevia = ? WHERE id = ?')
+      .run(new Date().toISOString(), sentVia.length ? 'sent' : 'failed', errs ? errs.slice(0, 200) : null, sentVia.join('+') || null, memberId);
+  } catch (e){ console.warn('could not record invite status:', e.message); }
+  return { link, expiresAt, emailStatus, smsStatus, sentVia, anySent: sentVia.length > 0 };
 }
 
 // Round 91 — GA4 (Google Analytics 4) real Data API connector, per direct
@@ -24061,6 +24085,39 @@ const TWILIO_CONFIGURED = !!(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_V
 
 function twilioAuthHeader(){
   return 'Basic ' + Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
+}
+
+// 2026-10-28 — plain text messages (team invitations). This is Twilio Messaging, separate from Verify above (Verify only sends codes).
+// Dormant until TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and ONE of TWILIO_MESSAGING_SERVICE_SID or TWILIO_FROM_NUMBER are set.
+// US business texting also needs Twilio's A2P 10DLC registration approved for the sending number.
+const TWILIO_MESSAGING_SERVICE_SID = process.env.TWILIO_MESSAGING_SERVICE_SID || '';
+const TWILIO_FROM_NUMBER = process.env.TWILIO_FROM_NUMBER || '';
+function toE164(phone){
+  const raw = String(phone || '').trim();
+  const d = raw.replace(/\D/g, '');
+  if (raw.startsWith('+') && d.length >= 10) return '+' + d;
+  if (d.length === 10) return '+1' + d;
+  if (d.length === 11 && d.startsWith('1')) return '+' + d;
+  return '';
+}
+async function sendSmsMessage(phone, body){
+  const to = toE164(phone);
+  if (!to) return { status: 'error', error: 'The phone number is not a valid mobile number' };
+  if (!(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && (TWILIO_MESSAGING_SERVICE_SID || TWILIO_FROM_NUMBER))){
+    return { status: 'not_configured', error: 'Text messaging is not set up on the server yet' };
+  }
+  try {
+    const params = new URLSearchParams({ To: to, Body: body });
+    if (TWILIO_MESSAGING_SERVICE_SID) params.set('MessagingServiceSid', TWILIO_MESSAGING_SERVICE_SID); else params.set('From', TWILIO_FROM_NUMBER);
+    const resp = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(TWILIO_ACCOUNT_SID)}/Messages.json`, {
+      method: 'POST', headers: { 'Authorization': twilioAuthHeader(), 'Content-Type': 'application/x-www-form-urlencoded' }, body: params
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { status: 'error', error: String((data && data.message) || `Twilio responded ${resp.status}`).slice(0, 160) };
+    return { status: 'sent' };
+  } catch (e){
+    return { status: 'error', error: e.message || 'network error calling Twilio' };
+  }
 }
 
 // Starts a verification. Returns { provider, code? } — `code` is only
@@ -31578,7 +31635,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-28-mfa-backfill-fix',
+        buildStamp: '2026-10-28-invite-text',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -49613,12 +49670,12 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       // Explicit column list (not SELECT *) as of 2026-08-18 — team_members
       // now carries passwordHash/passwordSalt (registration rebuild) and
       // those must never leave the server, hashed or not.
-      const team = db.prepare(`SELECT id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, phone, phoneVerifiedAt, mustChangePassword, memberkind, handle, rolelabel, categories, accessexpiresat, phoneext, accesslevel, exportfeeds, spendauthority, spendunlimited, mfasms FROM team_members WHERE accountId = ? ORDER BY createdAt ASC`).all(accountId);
+      const team = db.prepare(`SELECT id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, phone, phoneVerifiedAt, mustChangePassword, memberkind, handle, rolelabel, categories, accessexpiresat, phoneext, accesslevel, exportfeeds, spendauthority, spendunlimited, mfasms, invitesentat, invitestatus, inviteerror, invitevia FROM team_members WHERE accountId = ? ORDER BY createdAt ASC`).all(accountId);
       team.forEach(m => {
         if (!m.handle){ m.handle = generateHandle(accountId, m.name, m.id); try { db.prepare('UPDATE team_members SET handle = ? WHERE id = ?').run(m.handle, m.id); } catch (e){} }
         m.accessExpiresAt = m.accessexpiresat || null; delete m.accessexpiresat; m.memberKind = m.memberkind || 'internal'; m.roleLabel = m.rolelabel || ''; m.phoneExt = m.phoneext || ''; delete m.phoneext; m.accessLevel = m.accesslevel || ((m.memberKind === 'viewer' || m.memberKind === 'recipient') ? 'view' : 'edit'); delete m.accesslevel; try { m.exportFeeds = JSON.parse(m.exportfeeds || '[]'); } catch (e){ m.exportFeeds = []; } delete m.exportfeeds; let c = []; try { c = JSON.parse(m.categories || '[]'); } catch (e){} m.categories = c;
         delete m.memberkind; delete m.rolelabel;
-        m.spendAuthority = (m.spendauthority === null || m.spendauthority === undefined) ? null : Number(m.spendauthority); m.spendUnlimited = Number(m.spendunlimited) === 1; delete m.spendauthority; delete m.spendunlimited; m.mfaSms = Number(m.mfasms) === 1; delete m.mfasms;
+        m.spendAuthority = (m.spendauthority === null || m.spendauthority === undefined) ? null : Number(m.spendauthority); m.spendUnlimited = Number(m.spendunlimited) === 1; delete m.spendauthority; delete m.spendunlimited; m.mfaSms = Number(m.mfasms) === 1; delete m.mfasms; m.inviteSentAt = m.invitesentat || null; m.inviteStatus = m.invitestatus || null; m.inviteError = m.inviteerror || null; m.inviteVia = m.invitevia || null; delete m.invitevia; delete m.invitesentat; delete m.invitestatus; delete m.inviteerror;
       });
       return sendJson(res, 200, { team });
     }
@@ -49658,6 +49715,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (body.isAdmin && !requireAdminMember(req, res, accountId)) return;
       const newKind = MEMBER_KINDS.includes(body.memberKind) ? body.memberKind : 'internal';
       if (body.phone && String(body.phone).replace(/\D/g, '').length < 10) return sendJson(res, 400, { error: 'a phone number needs at least 10 digits, or leave it empty' });
+      if ((body.inviteVia === 'text' || body.inviteVia === 'both') && body.sendInvite !== false && !toE164(body.phone)) return sendJson(res, 400, { error: 'To send a text, enter a mobile number with at least 10 digits.' });
       if ((newKind === 'external' || newKind === 'viewer' || newKind === 'recipient' || body.accessLevel) && !requireAdminMember(req, res, accountId)) return;
       if (newKind === 'recipient' && !body.email) return sendJson(res, 400, { error: 'an email is required for a data recipient (it is how they sign in)' });
       let passwordHash = null, passwordSalt = null, mustChangePassword = 0, tempPassword = null;
@@ -49692,9 +49750,16 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (tempPassword){
         // 2026-10-27 — email the invitation link; only fall back to showing a temporary password when the email could not be sent.
         let inviter = ''; try { const me = authenticate(req); if (me && me.memberId){ const r = db.prepare('SELECT name FROM team_members WHERE id = ?').get(me.memberId); inviter = (r && r.name) || ''; } } catch (e){}
-        const inv = await sendMemberInvite(memberId, { accountId, name: body.name, email: body.email, invitedByName: inviter });
-        response.emailStatus = inv.emailStatus;
-        if (inv.emailStatus === 'sent'){ response.inviteSent = true; response.inviteExpiresAt = inv.expiresAt; }
+        if (body.sendInvite === false){
+          // Saved without sending: the profile exists, nothing is emailed, and no password is shown. "Send invite" on their card sends it later.
+          try { db.prepare("UPDATE team_members SET invitestatus = 'held' WHERE id = ?").run(memberId); } catch (e){}
+          response.inviteHeld = true;
+          return sendJson(res, 201, response);
+        }
+        const via = (body.inviteVia === 'text' || body.inviteVia === 'both') ? body.inviteVia : 'email';
+        const inv = await sendMemberInvite(memberId, { accountId, name: body.name, email: body.email, invitedByName: inviter, phone: body.phone, via });
+        response.emailStatus = inv.emailStatus; response.smsStatus = inv.smsStatus; response.sentVia = inv.sentVia;
+        if (inv.anySent){ response.inviteSent = true; response.inviteExpiresAt = inv.expiresAt; }
         else { response.tempPassword = tempPassword; response.inviteLink = inv.link; response.mustChangePassword = true; }
       }
       return sendJson(res, 201, response);
@@ -50169,7 +50234,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     // entry (no email) 400s, same as trying to log in as one would.
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'team' && parts[3] === 'reissue-credentials'){
       const memberId = decodeURIComponent(parts[2]);
-      const existing = db.prepare('SELECT id, accountId, email FROM team_members WHERE id = ?').get(memberId);
+      const existing = db.prepare('SELECT id, accountId, email, phone FROM team_members WHERE id = ?').get(memberId);
       if (!existing) return sendJson(res, 404, { error: 'team member not found' });
       // 2026-08-22 — this is an admin recovery path by design (see this
       // endpoint's own opening comment: "admin recovery path for a team
@@ -50183,6 +50248,9 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (!existing.email){
         return sendJson(res, 400, { error: 'this team member has no email on file — add one (edit the member) before issuing login credentials' });
       }
+      const reissueBody = await readBody(req).catch(() => ({}));
+      const via = (reissueBody && (reissueBody.via === 'text' || reissueBody.via === 'both')) ? reissueBody.via : 'email';
+      if (via !== 'email' && !toE164(existing.phone)) return sendJson(res, 400, { error: 'This person has no mobile number on file. Edit their profile to add one, then send again.' });
       const tempPassword = generateTempPassword();
       const { hash: passwordHash, salt: passwordSalt } = hashAccessCode(tempPassword);
       db.prepare('UPDATE team_members SET passwordHash = ?, passwordSalt = ?, mustChangePassword = 1 WHERE id = ?')
@@ -50191,9 +50259,9 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       let inviter = '', memberName = '';
       try { const me = authenticate(req); if (me && me.memberId){ const r = db.prepare('SELECT name FROM team_members WHERE id = ?').get(me.memberId); inviter = (r && r.name) || ''; } } catch (e){}
       try { const r = db.prepare('SELECT name FROM team_members WHERE id = ?').get(memberId); memberName = (r && r.name) || ''; } catch (e){}
-      const inv = await sendMemberInvite(memberId, { accountId: existing.accountId, name: memberName || existing.email, email: existing.email, invitedByName: inviter });
-      if (inv.emailStatus === 'sent') return sendJson(res, 200, { memberId, email: existing.email, inviteSent: true, emailStatus: 'sent', inviteExpiresAt: inv.expiresAt });
-      return sendJson(res, 200, { memberId, email: existing.email, tempPassword, mustChangePassword: true, emailStatus: inv.emailStatus, inviteLink: inv.link });
+      const inv = await sendMemberInvite(memberId, { accountId: existing.accountId, name: memberName || existing.email, email: existing.email, invitedByName: inviter, phone: existing.phone, via });
+      if (inv.anySent) return sendJson(res, 200, { memberId, email: existing.email, inviteSent: true, sentVia: inv.sentVia, emailStatus: inv.emailStatus, smsStatus: inv.smsStatus, inviteExpiresAt: inv.expiresAt });
+      return sendJson(res, 200, { memberId, email: existing.email, tempPassword, mustChangePassword: true, emailStatus: inv.emailStatus, smsStatus: inv.smsStatus, inviteLink: inv.link });
     }
 
     // PATCH /api/team/:id — update a team member. Round 43 added just
