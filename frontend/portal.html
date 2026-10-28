@@ -14014,7 +14014,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-27-mfa-sms-toggle';
+const CXMEDIA_BUILD_STAMP = '2026-10-28-mfa-copy';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -68706,7 +68706,7 @@ function mfaSmsRender(){
   document.getElementById('teamMfaConfirm').style.display = 'none'; mfaSmsPendingId = null; mfaSmsMsg('');
   if (!own){
     label.style.display = 'none';
-    note.textContent = m.mfaSms ? 'Sign-in codes go to this person by text. Only they can change that.' : 'Sign-in codes go to this person by email. Only they can turn on text codes, from their own profile.';
+    note.textContent = m.mfaSms ? 'Sign-in codes go to this person by text. Only they can change that.' : 'Sign-in codes go to this person\'s work email.';
     return;
   }
   label.style.display = 'flex';
