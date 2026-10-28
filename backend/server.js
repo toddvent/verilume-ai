@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-27-invite-copy (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-28-mfa-backfill-fix (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -31578,7 +31578,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-27-invite-copy',
+        buildStamp: '2026-10-28-mfa-backfill-fix',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -32110,7 +32110,7 @@ async function handleRequestInner(req, res) {
         (id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, passwordHash, passwordSalt, mustChangePassword, phone, phoneVerifiedAt)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
         .run(memberId, body.accountId, body.name, 'Executive', 'CMO', null, now, body.email, 1, 'active', passwordHash, passwordSalt, 1, body.phone || '', phoneVerifiedAt);
-      if (verification.channel === 'sms' && body.phone){ try { db.prepare('UPDATE team_members SET mfasms = 1 WHERE id = ?').run(memberId); } catch (e){} }
+      try { db.prepare('UPDATE team_members SET mfasms = ? WHERE id = ?').run((verification.channel === 'sms' && body.phone) ? 1 : 0, memberId); } catch (e){}
       // Legal-acceptance audit trail (registration rebuild) — standard T&Cs
       // and pricing disclosures are referenced-only on the registration
       // page, no signature required; completing registration (this call
@@ -49686,6 +49686,8 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         .run(newKind, newHandle, String(body.roleLabel || '').slice(0, 80) || null, cleanCategories(body.categories), memberId);
       let accessExpiresAt = null;
       if (newKind === 'external'){ accessExpiresAt = addMonthsIso(new Date().toISOString(), 3); db.prepare('UPDATE team_members SET accessexpiresat = ? WHERE id = ?').run(accessExpiresAt, memberId); }
+      // New people start on email codes. The startup backfill only touches rows still NULL, i.e. people who existed before this setting.
+      try { db.prepare('UPDATE team_members SET mfasms = 0 WHERE id = ? AND mfasms IS NULL').run(memberId); } catch (e){}
       const response = { memberId, handle: newHandle, memberKind: newKind, accessExpiresAt };
       if (tempPassword){
         // 2026-10-27 — email the invitation link; only fall back to showing a temporary password when the email could not be sent.
