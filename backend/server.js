@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-29-voice-quarters (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-29-ask-year (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -17749,6 +17749,8 @@ function checkVoiceToken(accountId, token){
 // =====================================================================
 const ELEVENLABS_AGENT_ID = process.env.ELEVENLABS_AGENT_ID || 'agent_1901m2jpy694em5v6nkc249vs0ec';
 const VOICE_ASK_MODEL = 'claude-sonnet-4-5';
+const voicePendingYear = new Map(); // account|actor -> { question, at }: a question waiting for the person to say which year
+const voiceLastCards = new Map(); // voice token -> { accountId, seq, cards, at }
 
 let _elevenVoiceId = null;
 async function elevenLabsVoiceId(key){
@@ -19627,7 +19629,7 @@ function dqContextBlock(accountId, question){
       }
     } catch (e){ /* the by-year summary above still stands */ }
   }
-  lines.push('RULE: for any question about revenue, transactions, order size, product group, creative focus, promo, state or generation, answer from this block. If a number is not here, say it needs the Need something we don\'t show? panel rather than guessing.');
+  lines.push('RULE: for any question about revenue, transactions, order size, product group, creative focus, promo, state or generation, answer from this block. Monthly, quarterly and yearly views are all standard: quarters are calendar quarters (Q1 January to March, Q2 April to June, Q3 July to September, Q4 October to December), and the by-quarter and by-month lines above hold them, so never say a quarterly view needs a custom report. If a number is genuinely not here, say it needs the Need something we don\'t show? panel rather than guessing.');
   return lines.join('\n');
 }
 
@@ -19699,6 +19701,28 @@ function dqRollupFallback(accountId, spec){
   if ((spec.by || []).length && !by.length) return null;
   const filters = (spec.filters || []).filter(f => f.field === 'productGroup');
   return { set: 'monthlyTx', measure: spec.measure === 'revenue' ? 'rollupRevenue' : 'rollupTransactions', agg: 'sum', by, filters, period: spec.period, compare: spec.compare, top: spec.top, order: spec.order };
+}
+// Which year? A question grouped by quarter or month (or asking for the best one) that names no year, dates or "all years" is ambiguous
+// when more than one year is on file, so the assistant asks instead of guessing. Returns null when no question is needed.
+function dqYearClarify(accountId, question){
+  try {
+    const L = dqLoadCached(accountId); if (!L.txs.length) return null;
+    const p = dqParse(question, { vocab: dqVocab(accountId), values: dqValuesByDim(L.txs) });
+    const sp = p.spec;
+    if (!sp.measure || sp.measure === 'marketing' || sp.period.kind !== 'range' || sp.compare) return null;
+    if (!sp.by.some(d => d === 'quarter' || d === 'month') || sp.by.includes('year')) return null;
+    const years = Array.from(new Set(L.txs.map(t => sp.basis === 'delivered' ? t.serviceYear : t.year).filter(Boolean))).sort();
+    if (years.length < 2) return null;
+    const list = years.length > 2 ? years.slice(0, -1).join(', ') + ' and ' + years[years.length - 1] : years.join(' and ');
+    return { years, message: `Which year? I have ${list} on file, or I can look across all years.`, chips: years.slice().reverse().map(y => `${question.replace(/[?.!\s]+$/, '')} in ${y}`).concat([`${question.replace(/[?.!\s]+$/, '')} for all years`]) };
+  } catch (e){ return null; }
+}
+// A reply that is only a year ("2025", "in 2025", "all years") completes the question that was just asked for a year.
+function dqYearFollowUp(text, pendingQuestion){
+  const m = /^\s*(?:in |for |during |the year |year )?(20\d\d|all years|all time|every year|overall|across all years|all of them|all)\s*(?:please)?[.?!]*\s*$/i.exec(String(text || ''));
+  if (!m || !pendingQuestion) return null;
+  const w = m[1].toLowerCase();
+  return pendingQuestion.replace(/[?.!\s]+$/, '') + (/^20\d\d$/.test(w) ? ` in ${w}` : ' for all years');
 }
 // Does this question belong to the data engine? A measure the engine knows, and not a question about a named campaign.
 function dqLooksLikeDataQuestion(accountId, question){
@@ -22997,7 +23021,7 @@ const VOICE_ASK_SCHEMA = {
 };
 
 async function voiceAsk(accountId, body, actorId, opts){
-  const question = String(body.question || body.message || '').trim().slice(0, 2000);
+  let question = String(body.question || body.message || '').trim().slice(0, 2000);
   if (!question) return { error: 'question is required' };
   const surface = String(body.surface || 'ask_bar');
   const tab = String(body.tab || '');
@@ -23006,8 +23030,16 @@ async function voiceAsk(accountId, body, actorId, opts){
   const history = Array.isArray(body.history) ? body.history.slice(-8).map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', text: String(h.text || '').slice(0, 600) })) : [];
   logAccountDataAccess({ accountId, resource: 'voice_ask', action: 'read', actorType: 'voice_agent', actorId: actorId || 'voice', recordCount: 1, detail: `${surface}/${tab}` }); // question text deliberately not retained
   // One door: a question the data engine can compute is answered by it (same answer card as the guided panel); the model only talks around it.
+  const pendKey = accountId + '|' + String(actorId || 'portal');
+  const pend = voicePendingYear.get(pendKey);
+  if (pend){ voicePendingYear.delete(pendKey); if (Date.now() - pend.at < 3 * 60 * 1000){ const done = dqYearFollowUp(question, pend.question); if (done) question = done; } }
   if (dqLooksLikeDataQuestion(accountId, question)){
     try {
+      const ask = dqYearClarify(accountId, question);
+      if (ask){
+        voicePendingYear.set(pendKey, { question, at: Date.now() });
+        return { answer: ask.message, cards: [], proposal: null, followUps: ask.chips.slice(0, 5), campaignId };
+      }
       const dq = await dqAnswerPayload(accountId, { text: question }, (opts && opts.range) || resolveDateRange(null), { allowModel: false });
       if (dq && dq.result){
         const spoken = (dq.sentence ? dq.sentence + ' ' : '') + (dq.result.summary || '');
@@ -31718,7 +31750,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-29-voice-quarters',
+        buildStamp: '2026-10-29-ask-year',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -36275,7 +36307,27 @@ async function handleRequestInner(req, res) {
       const viaVoice = !!req.headers['x-voice-token'];
       const result = await voiceAsk(accountId, body || {}, viaVoice ? 'elevenlabs_agent' : (() => { const sess = authenticate(req); return (sess && sess.memberId) || 'portal'; })(), { viaVoice, coachMemberId: (() => { if (viaVoice) return null; try { const w = coachWho(authenticate(req)); return w ? w.memberId : null; } catch (e){ return null; } })(), range: (() => { try { return dateRangeForRequest(req, accountId, {}); } catch (e){ return null; } })() });
       if (result.error) return sendJson(res, 400, result);
+      // The agent is supposed to hand the cards to the screen itself, but it sometimes says it did and does not. Keep the latest cards for this
+      // voice session so the portal can fetch them directly (GET .../voice/cards) and show them whether or not the agent called its screen tool.
+      if (viaVoice && Array.isArray(result.cards) && result.cards.length){
+        const tk = String(req.headers['x-voice-token'] || '');
+        const prev = voiceLastCards.get(tk);
+        voiceLastCards.set(tk, { accountId, seq: (prev ? prev.seq : 0) + 1, cards: result.cards.slice(0, 6), at: Date.now() });
+        if (voiceLastCards.size > 200){ const cut = Date.now() - 30 * 60 * 1000; voiceLastCards.forEach((v, k) => { if (v.at < cut) voiceLastCards.delete(k); }); }
+      }
       return sendJson(res, 200, result);
+    }
+
+    // GET /api/accounts/:id/voice/cards?since=<seq> — the portal asks for the latest cards the voice assistant produced in this session.
+    // Needs the person's own sign-in plus the session's voice token (X-Voice-Token), so one session cannot read another's cards.
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice' && parts[4] === 'cards'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const tk = String(req.headers['x-voice-token'] || '');
+      const since = Number(new URL(req.url, 'http://x').searchParams.get('since')) || 0;
+      const hit = tk ? voiceLastCards.get(tk) : null;
+      if (!hit || hit.accountId !== accountId || hit.seq <= since) return sendJson(res, 200, { seq: hit && hit.accountId === accountId ? hit.seq : 0, cards: null });
+      return sendJson(res, 200, { seq: hit.seq, cards: hit.cards });
     }
 
     // POST /api/accounts/:id/voice-token — 2026-09-15, ElevenLabs Phase 2
