@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-28-invite-text (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-29-voice-quarters (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -19009,6 +19009,7 @@ const DQ_DIMS = {
   serviceYear: { label: 'Service year', col: 'serviceYear', syn: ['service year', 'service years', 'delivery year', 'delivery years', 'year of service', 'year of delivery', 'travel year', 'year delivered'], natural: true },
   deliveryStatus: { label: 'Delivery status', col: 'deliveryStatus', syn: ['delivery status', 'delivered or not'], natural: true },
   month: { label: 'Month', col: 'month', syn: ['monthly', 'each month', 'by month', 'month'], natural: true },
+  quarter: { label: 'Quarter', col: 'quarter', syn: ['quarterly', 'each quarter', 'by quarter', 'per quarter', 'quarters', 'quarter'], natural: true },
   orderSizeGroup: { label: 'Order size group', derived: 'orderSize', syn: ['order size group', 'order size groups', 'order size bucket'], natural: true },
   leadDaysGroup: { label: 'Sale-to-service window', derived: 'leadDays', syn: ['lead time group', 'booking window group'], natural: true }
 };
@@ -19158,7 +19159,7 @@ function dqCleanDates(p){ const ok = x => typeof x === 'string' && /^20\d\d-\d{2
 function dqParse(text, ctx){
   const when = dqParseWhen(text);
   const raw = dqNorm(when ? when.rest : text); let t = raw; const assumptions = [];
-  const spec = { measure: null, agg: null, by: [], filters: [], period: { kind: 'range' }, basis: 'booked', compare: null, top: null, order: 'desc' };
+  const spec = { measure: null, agg: null, by: [], filters: [], period: { kind: 'range' }, basis: 'booked', compare: null, top: null, order: 'desc', rank: null };
   const now = new Date(); const thisYear = now.getUTCFullYear();
   // comparison and period words first, so "last year" is not mistaken for the Year breakdown
   if (/ (vs|versus|against|compared with|compared to|compare to|compare with) (the )?(same period )?(last|prior|previous) year /.test(t)){ spec.compare = 'priorYear'; t = t.replace(/ (vs|versus|against|compared with|compared to|compare to|compare with) (the )?(same period )?(last|prior|previous) year /, ' '); }
@@ -19170,6 +19171,9 @@ function dqParse(text, ctx){
   if (when){ spec.period = { kind: 'dates', from: when.from, through: when.through }; spec.compare = null; assumptions.push('Counting ' + dqWhenLabel(spec.period) + '.'); }
   const topM = / top (\d+|three|five|ten|3|5|10) /.exec(t); if (topM){ const w = { three: 3, five: 5, ten: 10 }[topM[1]] || Number(topM[1]); spec.top = Math.min(50, w); t = t.replace(topM[0], ' '); }
   if (/ (lowest|smallest|fewest|bottom|least) /.test(t)) spec.order = 'asc';
+  // "best", "highest", "most" and "worst", "lowest", "fewest" ask for a ranking of the groups, not a list in date order
+  if (/ (worst|weakest|poorest|lowest|smallest|fewest|least) /.test(t)){ spec.rank = 'low'; spec.order = 'asc'; }
+  else if (/ (best|highest|most|biggest|largest|strongest|peak|top performing|best performing) /.test(t)){ spec.rank = 'high'; }
   // booked vs delivered basis
   if (/ (delivered in|delivery year|recognized in|recognised in|earned in) /.test(t)){ spec.basis = 'delivered'; t = t.replace(/ (delivered in|delivery year|recognized in|recognised in|earned in) /, ' '); }
   else if (/(20\d\d) service year|service year (20\d\d)|in service year/.test(raw)){ spec.basis = 'delivered'; t = t.replace(/ service year /, ' '); }
@@ -19248,7 +19252,8 @@ function dqValidateSpec(s, ctx){
   else if (dqCleanDates(s.period)) period = dqCleanDates(s.period);
   const top = Number(s.top) > 0 ? Math.min(50, Math.floor(Number(s.top))) : null;
   const basis = s.basis === 'delivered' ? 'delivered' : 'booked';
-  return { measure: s.measure, agg, by, filters, period, basis, compare: s.compare === 'priorYear' && !by.includes('year') && period.kind !== 'all' && period.kind !== 'dates' ? 'priorYear' : null, top, order: s.order === 'asc' ? 'asc' : 'desc' };
+  const rank = by.length && (s.rank === 'high' || s.rank === 'low') ? s.rank : null;
+  return { measure: s.measure, agg, by, filters, period, basis, rank, compare: s.compare === 'priorYear' && !by.includes('year') && !by.includes('quarter') && period.kind !== 'all' && period.kind !== 'dates' ? 'priorYear' : null, top, order: s.order === 'asc' || rank === 'low' ? 'asc' : 'desc' };
 }
 // ---- the rules that decide which transactions count, in words
 function dqCountingRule(settings){
@@ -19308,6 +19313,7 @@ function dqRun(accountId, specIn, range, preloaded){
   const dimVal = (t, d) => {
     if (d === 'year') { const y = spec.basis === 'delivered' ? t.serviceYear : t.year; return y === null || y === undefined ? '(blank)' : String(y); }
     if (d === 'month') { const y = spec.basis === 'delivered' ? t.serviceYear : t.year, m = spec.basis === 'delivered' ? t.serviceMonth : t.month; return y && m ? `${y}-${String(m).padStart(2, '0')}` : '(blank)'; }
+    if (d === 'quarter') { const y = spec.basis === 'delivered' ? t.serviceYear : t.year, m = spec.basis === 'delivered' ? t.serviceMonth : t.month; return y && m ? `${y} Q${Math.ceil(m / 3)}` : '(blank)'; }
     if (edgesFor[d]){ const i = dqGroupIndex(edgesFor[d].edges, t[edgesFor[d].src]); return i < 0 ? '(blank)' : dqGroupLabels(edgesFor[d].edges)[i]; }
     const v = t[DQ_DIMS[d].col]; return v === null || v === undefined || String(v).trim() === '' ? '(blank)' : String(v).trim();
   };
@@ -19336,7 +19342,7 @@ function dqRun(accountId, specIn, range, preloaded){
   const gCur = groupBy(cur), gPrev = spec.compare ? groupBy(prev) : new Map();
   let rows = Array.from(gCur.values()).map(g => { const r = reduce(g.list); const p = spec.compare ? reduce((gPrev.get(g.labels.join('\u0001')) || { list: [] }).list) : null; return { labels: g.labels, v: r.v, n: g.list.length, used: r.used, prev: p ? p.v : null }; });
   const firstNatural = spec.by.length && DQ_DIMS[spec.by[0]].natural;
-  if (firstNatural && !spec.top) rows.sort((a, b) => spec.by.some((d, i) => edgesFor[d] && i === 0) ? dimOrder(spec.by[0], a.labels[0]) - dimOrder(spec.by[0], b.labels[0]) || (a.labels[1] || '').localeCompare(b.labels[1] || '') : a.labels[0].localeCompare(b.labels[0]) || (a.labels[1] || '').localeCompare(b.labels[1] || ''));
+  if (firstNatural && !spec.top && !spec.rank) rows.sort((a, b) => spec.by.some((d, i) => edgesFor[d] && i === 0) ? dimOrder(spec.by[0], a.labels[0]) - dimOrder(spec.by[0], b.labels[0]) || (a.labels[1] || '').localeCompare(b.labels[1] || '') : a.labels[0].localeCompare(b.labels[0]) || (a.labels[1] || '').localeCompare(b.labels[1] || ''));
   else rows.sort((a, b) => (spec.order === 'asc' ? 1 : -1) * ((a.v === null ? -Infinity : a.v) - (b.v === null ? -Infinity : b.v)));
   const notes = []; const assumptionsOut = []; let matrixNote = false;
   if (spec.top) rows = rows.slice(0, spec.top);
@@ -19346,7 +19352,7 @@ function dqRun(accountId, specIn, range, preloaded){
   const title = dqMeasureTitle(spec, vocab) + (spec.by.length ? ' by ' + spec.by.map(d => dqFieldLabel(d, vocab).toLowerCase()).join(' and ') : '');
   const mTitle = dqMeasureTitle(spec, vocab);
   const showN = spec.measure !== 'transactions';
-  const dimLabel = d => (spec.basis === 'delivered' && (d === 'year' || d === 'month')) ? 'Service ' + d : dqFieldLabel(d, vocab);
+  const dimLabel = d => (spec.basis === 'delivered' && (d === 'year' || d === 'month' || d === 'quarter')) ? 'Service ' + d : dqFieldLabel(d, vocab);
   let cols = spec.by.map(d => dimLabel(d)).concat(showN ? [mTitle, 'Transactions'] : [mTitle]);
   if (spec.compare){ cols.push(`${per.prevLabel || 'Prior period'}`); cols.push('Change'); }
   const chg = (c, p) => (c !== null && p !== null && p !== 0) ? `${c >= p ? '+' : ''}${(((c - p) / Math.abs(p)) * 100).toFixed(1)}%` : '—';
@@ -19388,7 +19394,12 @@ function dqRun(accountId, specIn, range, preloaded){
   else if (!spec.by.length) summary = `${mTitle} was ${dqFmt(all.v, kind)} across ${cur.length.toLocaleString('en-US')} transactions in ${per.label}.`;
   else {
     const ranked = rows.filter(r => r.v !== null && r.n >= DQ_SMALL_N).sort((a, b) => b.v - a.v);
-    if (ranked.length >= 2) summary = `${mTitle} was highest for ${ranked[0].labels.join(' / ')} at ${dqFmt(ranked[0].v, kind)} and lowest for ${ranked[ranked.length - 1].labels.join(' / ')} at ${dqFmt(ranked[ranked.length - 1].v, kind)}; overall ${dqFmt(all.v, kind)} across ${cur.length.toLocaleString('en-US')} transactions in ${per.label}.`;
+    if (spec.rank && ranked.length){
+      const lowFirst = spec.rank === 'low'; const ord = lowFirst ? ranked.slice().reverse() : ranked;
+      const nm = r => r.labels.join(' / ');
+      summary = `${mTitle} was ${lowFirst ? 'lowest' : 'highest'} for ${nm(ord[0])} at ${dqFmt(ord[0].v, kind)}` + (ord.length > 1 ? `, followed by ${ord.slice(1, 3).map(r => `${nm(r)} at ${dqFmt(r.v, kind)}`).join(' and ')}` : '') + (spec.measure === 'transactions' ? `; ${cur.length.toLocaleString('en-US')} in all for ${per.label}.` : `; overall ${dqFmt(all.v, kind)} across ${cur.length.toLocaleString('en-US')} transactions in ${per.label}.`);
+    }
+    else if (ranked.length >= 2) summary = `${mTitle} was highest for ${ranked[0].labels.join(' / ')} at ${dqFmt(ranked[0].v, kind)} and lowest for ${ranked[ranked.length - 1].labels.join(' / ')} at ${dqFmt(ranked[ranked.length - 1].v, kind)}; overall ${dqFmt(all.v, kind)} across ${cur.length.toLocaleString('en-US')} transactions in ${per.label}.`;
     else summary = `Overall ${mTitle.toLowerCase()} was ${dqFmt(all.v, kind)} across ${cur.length.toLocaleString('en-US')} transactions in ${per.label}. Groups with fewer than ${DQ_SMALL_N} transactions are marked as small samples.`;
   }
   const withoutValue = cur.length - all.used;
@@ -19537,7 +19548,7 @@ async function dqPlanWithModel(text, ctx){
     by: { type: 'array', items: { type: 'string', enum: Object.keys(DQ_DIMS) }, maxItems: 2 },
     filters: { type: 'array', items: { type: 'object', properties: { field: { type: 'string', enum: DQ_FILTER_DIMS }, values: { type: 'array', items: { type: 'string' } } }, required: ['field', 'values'] } },
     period: { type: 'string', enum: ['dashboard', 'this_year', 'last_year', 'all'] },
-    compare_last_year: { type: 'boolean' }, top: { type: 'integer' }
+    compare_last_year: { type: 'boolean' }, top: { type: 'integer' }, rank: { type: 'string', enum: ['high', 'low', 'none'] }
   }, required: ['measure', 'agg', 'by', 'period'] };
   const fieldHelp = Object.entries(DQ_MEASURES).map(([k, m]) => `${k} = ${dqFieldLabel(k, vocab)} (also: ${(k === 'orderSize' ? vocab.orderSizeSyn : m.syn).slice(0, 6).join(', ')}); aggregates: ${m.aggs.join('/')}`).join('\n')
     + '\n' + Object.entries(DQ_DIMS).map(([k, d]) => `${k} = ${dqFieldLabel(k, vocab)}${d.derived ? ' (groups of ' + d.derived + ')' : ''}`).join('\n');
@@ -19547,7 +19558,7 @@ async function dqPlanWithModel(text, ctx){
       content: `Map this question about a company's customer transactions to a data request. Use only the fields listed. If the question cannot be answered from them, set measure to "none".\n\nFIELDS\n${fieldHelp}\n\nKNOWN VALUES FOR FILTERS\n${known}\n\nQUESTION: ${String(text).slice(0, 400)}` });
     if (!out || out.measure === 'none') return null;
     const yr = new Date().getUTCFullYear();
-    return { measure: out.measure, agg: out.agg, by: out.by || [], filters: out.filters || [], period: out.period === 'this_year' ? { kind: 'year', year: yr } : out.period === 'last_year' ? { kind: 'year', year: yr - 1 } : out.period === 'all' ? { kind: 'all' } : { kind: 'range' }, compare: out.compare_last_year ? 'priorYear' : null, top: out.top || null, order: 'desc' };
+    return { measure: out.measure, agg: out.agg, by: out.by || [], filters: out.filters || [], period: out.period === 'this_year' ? { kind: 'year', year: yr } : out.period === 'last_year' ? { kind: 'year', year: yr - 1 } : out.period === 'all' ? { kind: 'all' } : { kind: 'range' }, compare: out.compare_last_year ? 'priorYear' : null, top: out.top || null, order: out.rank === 'low' ? 'asc' : 'desc', rank: out.rank === 'high' || out.rank === 'low' ? out.rank : null };
   } catch (e){ console.warn('[data-question] model planner failed:', e.message); return null; }
 }
 // ---- Ask Verilume bar: the customer-level transaction file as a context block, with a computed answer when the question names a measure.
@@ -19556,6 +19567,36 @@ function dqLoadCached(accountId){
   const hit = dqCtxCache.get(accountId);
   if (hit && Date.now() - hit.t < 60000) return hit.L;
   const L = dqLoadTransactions(accountId); dqCtxCache.set(accountId, { t: Date.now(), L }); return L;
+}
+// Month and quarter series for the voice assistant and Ask bar, so a question about "which quarter" is answered from a table, not guessed.
+// Calendar quarters on the booking date. Best and lowest are chosen only from complete quarters (three months on file), so a part-finished quarter never wins or loses by being short.
+function dqSeriesLines(txs){
+  const mo = new Map(), q = new Map();
+  txs.forEach(t => {
+    if (!t.year || !t.month) return;
+    const mk = `${t.year}-${String(t.month).padStart(2, '0')}`, qk = `${t.year} Q${Math.ceil(t.month / 3)}`;
+    const add = (m, k) => { const o = m.get(k) || { n: 0, rev: 0, months: new Set() }; o.n++; if (t.revenue !== null) o.rev += t.revenue; o.months.add(t.month); m.set(k, o); };
+    add(mo, mk); add(q, qk);
+  });
+  const out = []; const f = o => `${o.n.toLocaleString('en-US')} transactions, ${dqFmt(o.rev, 'money')}`;
+  const mKeys = Array.from(mo.keys()).sort(), qKeys = Array.from(q.keys()).sort();
+  if (mKeys.length) out.push(`By booking month, latest ${Math.min(24, mKeys.length)} (transactions, gross revenue): ` + mKeys.slice(-24).map(k => `${k} ${f(mo.get(k))}`).join('; '));
+  if (qKeys.length){
+    out.push('By booking quarter, calendar quarters (transactions, gross revenue): ' + qKeys.map(k => `${k} ${f(q.get(k))}${q.get(k).months.size < 3 ? ' (part quarter)' : ''}`).join('; '));
+    const nowYm = new Date().toISOString().slice(0, 7), nowQ = `${nowYm.slice(0, 4)} Q${Math.ceil(Number(nowYm.slice(5, 7)) / 3)}`;
+    const full = qKeys.filter(k => q.get(k).months.size >= 3 && k !== nowQ);
+    if (full.length >= 2){
+      const rank = (key, desc) => full.slice().sort((a, b) => desc ? q.get(b)[key] - q.get(a)[key] : q.get(a)[key] - q.get(b)[key]).slice(0, 3);
+      out.push('BEST QUARTERS BY TRANSACTIONS (finished quarters, highest first): ' + rank('n', true).map(k => `${k} ${q.get(k).n.toLocaleString('en-US')}`).join('; ') + '. LOWEST: ' + rank('n', false).map(k => `${k} ${q.get(k).n.toLocaleString('en-US')}`).join('; ') + '.');
+      out.push('BEST QUARTERS BY GROSS REVENUE (finished quarters, highest first): ' + rank('rev', true).map(k => `${k} ${dqFmt(q.get(k).rev, 'money')}`).join('; ') + '. LOWEST: ' + rank('rev', false).map(k => `${k} ${dqFmt(q.get(k).rev, 'money')}`).join('; ') + '.');
+    }
+  }
+  const mDone = mKeys.filter(k => k !== new Date().toISOString().slice(0, 7));
+  if (mDone.length >= 2){
+    const rankM = (desc) => mDone.slice().sort((a, b) => desc ? mo.get(b).n - mo.get(a).n : mo.get(a).n - mo.get(b).n).slice(0, 3);
+    out.push('BEST MONTHS BY TRANSACTIONS (finished months, highest first): ' + rankM(true).map(k => `${k} ${mo.get(k).n.toLocaleString('en-US')}`).join('; ') + '. LOWEST: ' + rankM(false).map(k => `${k} ${mo.get(k).n.toLocaleString('en-US')}`).join('; ') + '.');
+  }
+  return out;
 }
 function dqContextBlock(accountId, question){
   const L = dqLoadCached(accountId);
@@ -19569,6 +19610,7 @@ function dqContextBlock(accountId, question){
     ...(() => { const sy = {}; let acc = 0; L.txs.forEach(t => { if (t.serviceYear){ sy[t.serviceYear] = (sy[t.serviceYear] || 0) + (t.revenue || 0); } if (t.delivered === false) acc += (t.revenue || 0); });
       const ks = Object.keys(sy).sort(); return ks.length ? ['By service year (service start date; delivered means on or before today):', ...ks.map(y => `- ${y}: gross revenue ${dqFmt(sy[y], 'money')}`), `Booked, not yet delivered (service start after today, accrued and at risk): ${dqFmt(acc, 'money')}`] : []; })(),
     `Product groups: ${(vals.productGroup || []).slice(0, 12).join(', ') || 'none'}. Creative focus groups: ${(vals.creativeFocus || []).slice(0, 15).join(', ') || 'none'}.`];
+  try { dqSeriesLines(L.txs).forEach(x => lines.push(x)); } catch (e){ console.warn('[data-question] series lines failed:', e.message); }
   if (question){
     try {
       const ctx = { vocab, values: vals }; const p = dqParse(question, ctx);
@@ -19653,7 +19695,7 @@ function dqCustMatchLen(text, measure, vocab){
 function dqRollupFallback(accountId, spec){
   if (!['revenue', 'transactions'].includes(spec.measure)) return null;
   if (!dqSetLoad(accountId, 'monthlyTx').length) return null;
-  const by = (spec.by || []).filter(d => ['productGroup', 'year', 'month'].includes(d));
+  const by = (spec.by || []).filter(d => ['productGroup', 'year', 'quarter', 'month'].includes(d));
   if ((spec.by || []).length && !by.length) return null;
   const filters = (spec.filters || []).filter(f => f.field === 'productGroup');
   return { set: 'monthlyTx', measure: spec.measure === 'revenue' ? 'rollupRevenue' : 'rollupTransactions', agg: 'sum', by, filters, period: spec.period, compare: spec.compare, top: spec.top, order: spec.order };
@@ -19935,8 +19977,8 @@ function dqSetParse(text, accountId){
   if (/ (lowest|smallest|fewest|bottom|least) /.test(t)) spec.order = 'asc';
   if (/ (average|averages|avg|mean|typical|on average|per month on average) /.test(t)) spec.agg = 'avg';
   else if (/ (total|totals|sum|combined|add up|how much|how many) /.test(t)) spec.agg = 'sum';
-  else if (/ (lowest|smallest|fewest|minimum) /.test(t)) spec.agg = 'min';
-  else if (/ (highest|largest|most|maximum|peak) /.test(t)) spec.agg = 'max';
+  else if (/ (lowest|smallest|fewest|minimum|worst|weakest) /.test(t)) spec.agg = 'min';
+  else if (/ (highest|largest|most|maximum|peak|best|strongest) /.test(t)) spec.agg = 'max';
   // breakdowns that belong to this data set, longest phrase first, no overlap
   const dims = dqSetDims(best.set); const dph = [];
   Object.entries(dims).forEach(([k, d]) => d.syn.forEach(p => dph.push({ key: k, p })));
@@ -19944,6 +19986,8 @@ function dqSetParse(text, accountId){
   const claimed = [], found = [];
   dph.forEach(x => { const n = dqNorm(x.p); let from = 0; while (true){ const i = t.indexOf(n, from); if (i < 0) break; const s = i + 1, e = i + n.length - 1; if (!claimed.some(c => s < c[1] && e > c[0])){ claimed.push([s, e]); found.push({ key: x.key, pos: s }); } from = i + 1; } });
   found.sort((a, b) => a.pos - b.pos); found.forEach(f => { if (!spec.by.includes(f.key)) spec.by.push(f.key); });
+  // "best quarter" or "lowest year" compares the total for each period, not the single biggest month inside it
+  if ((spec.agg === 'max' || spec.agg === 'min') && spec.by.some(d => ['year', 'quarter'].includes(d)) && m.aggs.includes('sum') && !m.ratio && !m.weight && !/ (maximum|minimum|single) /.test(raw)){ spec.agg = 'sum'; assumptions.push('Best and lowest compare the total for each period, so I used the total.'); }
   // known values in the question become filters, with the words already used for field names blanked out
   let tv = t; claimed.forEach(c => { tv = tv.slice(0, c[0]) + ' '.repeat(c[1] - c[0]) + tv.slice(c[1]); });
   const known = dqSetValues(accountId, best.set);
@@ -20102,6 +20146,8 @@ function dqSetsContextBlock(accountId, question){
       if (s.unit === 'month' && !s.dims.channel){
         const byM = {}; rows.forEach(r => { const v = r[dqSetMeasureField(fm, first)]; if (v !== null && v !== undefined && r.ym) byM[r.ym] = (byM[r.ym] || 0) + v; });
         const ms = Object.keys(byM).sort().slice(-24); if (ms.length) lines.push('  ' + fm.label + ' by month (latest ' + ms.length + '): ' + ms.map(m => `${m} ${dqSetFmt(byM[m], fm.kind)}`).join('; '));
+        const byQ = {}; rows.forEach(r => { const v = r[dqSetMeasureField(fm, first)]; if (v !== null && v !== undefined && r.year && r.month) { const k = `${r.year} Q${Math.ceil(r.month / 3)}`; byQ[k] = (byQ[k] || 0) + v; } });
+        const qs = Object.keys(byQ).sort(); if (qs.length) lines.push('  ' + fm.label + ' by calendar quarter: ' + qs.map(k => `${k} ${dqSetFmt(byQ[k], fm.kind)}`).join('; '));
       }
     }
   });
@@ -20119,6 +20165,43 @@ function dqSetsContextBlock(accountId, question){
   return lines.join('\n');
 }
 
+// ---- Dashboard parity (2026-10-29). Every dashboard view that shows numbers from loaded data should have a plain question here that the
+// Ask Verilume bar and the voice assistant can answer. dqParityReport() runs each question against an account and says whether it is
+// answered, needs data that is not loaded, or is not understood. When a new chart is added to a dashboard, add its view here with one or
+// two questions; GET /api/accounts/:id/data-parity (Admin) shows the result and the build check below runs the same list.
+const DQ_DASHBOARD_PARITY = [
+  { view: 'Transaction volume by month', dashboard: 'Strategy', questions: ['How many transactions by month', 'Which month had the most transactions'] },
+  { view: 'Transaction volume by quarter', dashboard: 'Strategy', questions: ['Transactions by quarter', 'What was my best quarter for transactions'] },
+  { view: 'Transaction volume compared with last year', dashboard: 'Strategy', questions: ['Transactions by month compared with last year'] },
+  { view: 'Gross price (revenue) by month', dashboard: 'Strategy', questions: ['Total revenue by month'] },
+  { view: 'Gross price (revenue) by quarter', dashboard: 'Strategy', questions: ['Which quarter had the highest revenue', 'Total revenue by quarter'] },
+  { view: 'Lowest quarter or month', dashboard: 'Strategy', questions: ['What was my worst quarter for transactions'] },
+  { view: 'Product group table: gross price, volume, average price, change vs last year', dashboard: 'Strategy', questions: ['Total revenue by product group compared with last year', 'Average revenue per transaction by product group', 'How many transactions by product group'] },
+  { view: 'Creative focus mix', dashboard: 'Strategy', questions: ['Total revenue by creative focus group'] },
+  { view: 'Booked and delivered revenue', dashboard: 'Strategy', questions: ['Revenue booked but not yet delivered', 'Total revenue by service year'] },
+  { view: 'Marketing performance: spend, leads and transactions', dashboard: 'Media Science', questions: ['Marketing performance by month'] },
+  { view: 'Leads by month', dashboard: 'Media Science', questions: ['Leads by month', 'Which quarter had the most leads'], optional: true },
+  { view: 'Digital spend and cost per lead', dashboard: 'Media Science', questions: ['Digital spend by month', 'Digital cost per lead by channel'], optional: true },
+  { view: 'Website users', dashboard: 'Media Science', questions: ['Website users by month'], optional: true },
+  { view: 'Annual plan and targets', dashboard: 'Strategy', questions: ['Planned transactions by quarter'], optional: true },
+  { view: 'Marketing budget by category', dashboard: 'Strategy', questions: ['Marketing budget by budget category'], optional: true }
+];
+async function dqParityReport(accountId){
+  const out = [];
+  for (const item of DQ_DASHBOARD_PARITY){
+    for (const q of item.questions){
+      let status = 'not_understood', detail = '';
+      try {
+        const p = await dqAnswerPayload(accountId, { text: q }, resolveDateRange(null), { allowModel: false });
+        if (p && p.result){ status = 'answers'; detail = String(p.result.summary || '').slice(0, 160); }
+        else if (p && p.notOnFile){ status = 'needs_data'; detail = String(p.notOnFile); }
+        else if (p && p.needMore){ status = 'not_understood'; detail = String(p.message || ''); }
+      } catch (e){ status = 'error'; detail = e.message; }
+      out.push({ view: item.view, dashboard: item.dashboard, question: q, status, detail, optional: !!item.optional });
+    }
+  }
+  return out;
+}
 // ==== DQ END ====
 
 function cardCellText(c){ if (c && typeof c === 'object' && 'kind' in c) return cardFmt(c.v, c.kind); return c == null ? '' : String(c); }
@@ -31635,7 +31718,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-28-invite-text',
+        buildStamp: '2026-10-29-voice-quarters',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -33979,6 +34062,15 @@ async function handleRequestInner(req, res) {
     // (Save For AI Assistance); a plain Save Draft call still persists the
     // text and bumps the version (so nothing is lost), but leaves whatever
     // the approval state already was untouched rather than forcing it on.
+    // GET /api/accounts/:id/data-parity — Admin only. Runs the dashboard-parity question list against this account's loaded data.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'data-parity'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAdminMember(req, res, accountId)) return;
+      const rows = await dqParityReport(accountId);
+      const bad = rows.filter(r => r.status === 'not_understood' || r.status === 'error');
+      return sendJson(res, 200, { accountId, total: rows.length, answered: rows.filter(r => r.status === 'answers').length, needsData: rows.filter(r => r.status === 'needs_data').length, notUnderstood: bad.length, rows });
+    }
+
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
