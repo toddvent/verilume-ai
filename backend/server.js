@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-29-ask-year (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-29-budget-vs-actual (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -19789,7 +19789,7 @@ const DQ_SETS = {
   digital: {
     label: 'Digital performance', table: 'account_digital_performance', unit: 'month', need: 'the digital performance file (Train the Brain, Digital actuals card)',
     measures: {
-      spend: { label: 'Media spend', syn: ['digital media spend', 'media spend', 'ad spend', 'digital spend', 'advertising spend', 'spend'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'money' },
+      spend: { label: 'Actual media spend', syn: ['actual media spend', 'actual spend', 'actual digital spend', 'digital media spend', 'media spend', 'ad spend', 'digital spend', 'advertising spend', 'spend'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'money' },
       impressions: { label: 'Impressions', syn: ['impressions', 'ad impressions'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int' },
       clicks: { label: 'Clicks', syn: ['ad clicks', 'clicks'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int' },
       agencyLeads: { label: 'Leads reported by the digital file', syn: ['digital leads', 'agency leads', 'leads from digital', 'digital agency leads'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int' },
@@ -19817,7 +19817,7 @@ const DQ_SETS = {
       notes.push(`Digital performance is read at the ${grain === 'overview' ? 'channel overview' : grain === 'split' ? 'brand / non-brand search' : 'publisher and tactic detail'} level. Levels are never added together, because the same spend appears at each one.`);
       return { rows: use };
     },
-    note: 'Digital performance comes from the agency digital actuals file, by month, channel, publisher and tactic.'
+    note: 'Media spend here is ACTUAL spend reported in the agency digital actuals file, by month, channel, publisher and tactic. It is not the budget. Ask for "budgeted media spend" for the confirmed budget, or name a campaign for that campaign\'s own planned spend.'
   },
   annualPlan: {
     label: 'Annual plan and targets', table: 'account_annual_plan', unit: 'year', need: 'the annual plan and targets (Strategy, Annual Plan)',
@@ -19845,7 +19845,7 @@ const DQ_SETS = {
   },
   budget: {
     label: 'Marketing budget', table: 'marketing_budget_line_items', unit: 'month', need: 'a confirmed marketing budget upload (Train the Brain, Budget card)',
-    measures: { budgetAmount: { label: 'Budgeted amount', syn: ['marketing budget', 'budgeted amount', 'budget amount', 'budget dollars', 'budgeted spend', 'budget'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'money', field: 'amount' } },
+    measures: { budgetAmount: { label: 'Budgeted amount', syn: ['budgeted media spend', 'planned media spend', 'media spend budget', 'media budget', 'budgeted media', 'planned media', 'working media budget', 'marketing budget', 'budgeted amount', 'budget amount', 'budget dollars', 'budgeted spend', 'planned spend', 'budget'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'money', field: 'amount' } },
     dims: { category: { label: 'Budget category', syn: ['budget category', 'budget categories', 'category', 'categories', 'budget line', 'budget lines'], filter: true }, budgetStatus: { label: 'Working or non-working', syn: ['working or non working', 'working versus non working', 'working media status', 'working status'], filter: true, col: 'status' } }, dimsOk: ['year', 'quarter', 'month'],
     load(id){
       const ups = dqSelect("SELECT id, year, scope, confirmedAt FROM marketing_budget_uploads WHERE accountId = ? AND status = 'confirmed' ORDER BY confirmedAt DESC", id);
@@ -19983,12 +19983,19 @@ function dqSetParse(text, accountId){
   const ph = [];
   Object.keys(DQ_SETS).forEach(sk => Object.entries(DQ_SETS[sk].measures).forEach(([mk, m]) => m.syn.concat([m.label.toLowerCase()]).forEach(p => ph.push({ set: sk, key: mk, p }))));
   ph.sort((a, b) => b.p.length - a.p.length);
-  let best = null;
+  let best = null, budgetWorkingOnly = false;
   for (const x of ph){ const n = dqNorm(x.p); const i = t.indexOf(n); if (i >= 0){ if (!best || n.length > best.len || (n.length === best.len && have.includes(x.set) && !have.includes(best.set))) best = { set: x.set, key: x.key, len: n.trim().length, at: i, n }; } }
   if (!best) return null;
+  // Budget words and actual-spend words decide which data set answers, whatever the rest of the phrase says. "Budgeted media spend"
+  // is the confirmed marketing budget; "actual media spend" is what the digital file reports as spent. They are never swapped.
+  const wantsBudget = /\b(budget|budgets|budgeted|planned|allocated|allocation)\b/.test(raw), wantsActual = /\b(actual|actuals|actually|spent)\b/.test(raw);
+  if (wantsBudget && !wantsActual && best.set !== 'budget' && (best.set === 'digital' && best.key === 'spend')){ best = { set: 'budget', key: 'budgetAmount', len: best.len, at: best.at, n: best.n }; if (/\bmedia\b/.test(raw) && !/\bnon.?working\b/.test(raw)) budgetWorkingOnly = true; }
+  else if (wantsBudget && best.set === 'budget' && /\bmedia\b/.test(raw) && !/\bnon.?working\b/.test(raw)) budgetWorkingOnly = true;
   const set = DQ_SETS[best.set]; const m = set.measures[best.key];
   const spec = { set: best.set, measure: best.key, agg: null, by: [], filters: [], period: { kind: 'range' }, basis: 'booked', compare: null, top: null, order: 'desc' };
   t = t.slice(0, best.at) + ' ' + t.slice(best.at + best.n.length - 1);
+  if (best.set === 'budget' && budgetWorkingOnly && !spec.by.includes('budgetStatus')){ spec.filters.push({ field: 'budgetStatus', values: ['WORKING MEDIA'] }); assumptions.push('Budgeted media spend is the working media lines of the confirmed marketing budget. Say "marketing budget" for working and non-working together. Actual spend comes from the digital performance file.'); }
+  else if (best.set === 'budget' && wantsBudget && /\bnon.?working\b/.test(raw) && !spec.by.includes('budgetStatus')) spec.filters.push({ field: 'budgetStatus', values: ['NON-WORKING MEDIA'] });
   const thisYear = new Date().getUTCFullYear();
   if (/ (vs|versus|against|compared with|compared to|compare to|compare with) (the )?(same period )?(last|prior|previous) year /.test(t)){ spec.compare = 'priorYear'; t = t.replace(/ (vs|versus|against|compared with|compared to|compare to|compare with) (the )?(same period )?(last|prior|previous) year /, ' '); }
   if (/ year over year | yoy /.test(t)){ spec.by.push('year'); t = t.replace(/ year over year | yoy /, ' '); }
@@ -20185,6 +20192,7 @@ function dqSetsContextBlock(accountId, question){
       }
     } catch (e){ /* the inventory above still stands */ }
   }
+  lines.push('THREE DIFFERENT SPEND NUMBERS, never swap them: (1) BUDGETED media spend or marketing budget = the confirmed Train the Brain budget upload (working media is the media part); (2) ACTUAL media spend = what the digital performance file reports as spent; (3) CAMPAIGN spend = the planned budget of a named campaign in its own plan. When a question says budget, budgeted or planned, answer from (1). When it says actual or spent, or just media spend, answer from (2) and say it is actual spend. Say which one you are giving.');
   lines.push('RULE: for any question about website users, sessions, engagement, leads, digital spend or performance, annual plan or targets, prior-year results, marketing budget or GA4, answer from this block. Never say an uploaded data set is unavailable if it is listed here; if a number is not here, say it needs the Need something we don\'t show? panel.');
   return lines.join('\n');
 }
@@ -31750,7 +31758,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-29-ask-year',
+        buildStamp: '2026-10-29-budget-vs-actual',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
