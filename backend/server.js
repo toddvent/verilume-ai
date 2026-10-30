@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-29-budget-vs-actual (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-30-single-source (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -2473,7 +2473,7 @@ function allocateDigitalToCampaign(campaign){
 // have data, offered next to the Demand Fulfillment defaults.
 function computeDigitalEvergreenCalibration(accountId){
   const totals = getDigitalMonthlyTotals(accountId);
-  const users = db.prepare('SELECT year, month, region, users FROM account_website_users_monthly WHERE accountId = ?').all(accountId);
+  const users = sotWebUserRows(accountId);
   const usersByMonth = {};
   users.forEach(u => { const k = `${u.year}-${u.month}`; if (!usersByMonth[k]) usersByMonth[k] = { us: 0, all: 0 }; usersByMonth[k].all += Number(u.users) || 0; if (/^us$/i.test(String(u.region || ''))) usersByMonth[k].us += Number(u.users) || 0; });
   const brand = totals.filter(t => t.channel === 'Brand Search');
@@ -12218,17 +12218,11 @@ function getCostPerBookingFromBudget(accountId, audit){
     const spendByCat = {}; const spendMonths = new Set();
     try {
       const years = []; for (let y = Number(fk.slice(0, 4)); y <= Number(tk.slice(0, 4)); y++) years.push(y);
-      years.forEach(y => {
-        const up = db.prepare("SELECT id FROM marketing_budget_uploads WHERE accountId = ? AND year = ? AND status = 'confirmed' AND COALESCE(\"totalOnly\", 0) = 0 ORDER BY confirmedAt DESC LIMIT 1").get(accountId, y);
-        if (!up) return;
-        db.prepare('SELECT category, status, month, amount, "verilumeCategory" FROM marketing_budget_line_items WHERE uploadId = ?').all(up.id).forEach(r => {
-          if (!/^\s*working/i.test(String(r.status || ''))) return;
-          const mn = MONTHS[String(r.month || '').trim().slice(0, 3).toLowerCase()]; if (!mn) return;
-          const k = ym(y, mn); if (k < fk || k > tk) return;
-          const amt = Number(r.amount) || 0; if (!(amt > 0)) return;
-          const cat = String(aliasVal(r, 'verilumeCategory') || r.category || 'Other').trim();
-          (spendByCat[k] = spendByCat[k] || {})[cat] = ((spendByCat[k] || {})[cat] || 0) + amt; spendMonths.add(k);
-        });
+      sotBudgetLines(accountId).forEach(r => {
+        if (!r.working || !r.ym || r.ym < fk || r.ym > tk) return;
+        const amt = Number(r.amount) || 0; if (!(amt > 0)) return;
+        const cat = String(r.verilumeCategory || r.category || 'Other').trim();
+        (spendByCat[r.ym] = spendByCat[r.ym] || {})[cat] = ((spendByCat[r.ym] || {})[cat] || 0) + amt; spendMonths.add(r.ym);
       });
     } catch (e){}
     const matched = Array.from(spendMonths).filter(k => txBy[k] > 0);
@@ -14858,7 +14852,7 @@ function buildChannelScorecardBlock(accountId){
     const blendedSearch = !hasSplit && list.some(c => /^paid search \(total\)$/i.test(c.channel));
     let l2b = '';
     try {
-      const lc = db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId).filter(r => win.has(key(r.year, r.month)));
+      const lc = sotLeadRows(accountId).filter(r => win.has(key(r.year, r.month)));
       const by = {}; lc.forEach(r => { const t = String(aliasVal(r, 'leadType') || 'Other') === 'Registration' ? 'Growth' : String(aliasVal(r, 'leadType') || 'Other'); const x = by[t] = by[t] || { leads: 0, bookings: 0 }; x.leads += Number(r.count) || 0; x.bookings += Number(r.bookings) || 0; });
       const ls = Object.keys(by).filter(t => by[t].leads > 0).map(t => `${t} ${Math.round(by[t].bookings / by[t].leads * 1000) / 10}% (${Math.round(by[t].bookings).toLocaleString('en-US')} of ${Math.round(by[t].leads).toLocaleString('en-US')})`);
       if (ls.length) l2b = `\nLEAD TO BOOKING BY AUDIENCE TYPE (quality of a lead, trailing 12 months): ${ls.join('; ')}. A cheap lead of a type that rarely books is not a cheap booking; weigh cost per lead against these rates.`;
@@ -17837,7 +17831,7 @@ function buildForecastSeries(accountId){
     });
   } catch (e){ /* no media totals — engine falls back to benchmarks */ }
   if (!Object.keys(S.impressions).length && !Object.keys(S.spend).length){ try { fillForecastSeriesFromPlatform(accountId, S); } catch (e){ /* leave empty */ } }
-  db.prepare('SELECT * FROM account_website_users_monthly WHERE accountId = ?').all(accountId).forEach(r => {
+  sotWebUserRows(accountId).forEach(r => {
     const k = key(r.year, r.month); S.visits[k] = (S.visits[k] || 0) + (Number(r.users) || 0);
   });
   db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId).forEach(r => {
@@ -17915,9 +17909,9 @@ function storyCoverage(accountId){
   return {
     mediaByMonth: mmmKeys.length ? { from: mmmKeys[0], to: mmmKeys[mmmKeys.length - 1], rows: mmmKeys.length } : { from: null, to: null, rows: 0 },
     transactionsByMonth: Object.assign(span(withRev, key), { source: tx.source }),
-    leadCountsByMonth: span(db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId).filter(r => (Number(r.count) || 0) > 0), key),
+    leadCountsByMonth: span(sotLeadRows(accountId).filter(r => (Number(r.count) || 0) > 0), key),
     guestBookings: span(db.prepare('SELECT year, month FROM account_guest_bookings WHERE accountId = ?').all(accountId), key),
-    websiteUsersByMonth: span(db.prepare('SELECT * FROM account_website_users_monthly WHERE accountId = ?').all(accountId), key),
+    websiteUsersByMonth: span(sotWebUserRows(accountId), key),
     annualPlan: db.prepare('SELECT year, kind, label FROM account_annual_plan WHERE accountId = ? ORDER BY year DESC, kind').all(accountId).map(r => ({ year: r.year, kind: r.kind, label: r.label || null })),
     yearResults: db.prepare('SELECT year FROM account_year_results WHERE accountId = ? AND (grossRevenue IS NOT NULL OR transactions IS NOT NULL) ORDER BY year DESC').all(accountId).map(r => r.year)
   };
@@ -18320,8 +18314,7 @@ function sgSpendByChannel(src, from, to){
 }
 const SG_CHANNEL_TO_CATEGORY = (() => { const m = {}; Object.keys(VERILUME_TO_MMM_CHANNEL_MAP).forEach(cat => { if (cat === 'Video/CTV') return; VERILUME_TO_MMM_CHANNEL_MAP[cat].forEach(ch => { if (!m[ch]) m[ch] = cat; }); }); return m; })();
 function sgPlanMixByCategory(accountId, year){
-  let up = null;
-  try { up = db.prepare("SELECT id FROM marketing_budget_uploads WHERE accountId = ? AND year = ? AND status = 'confirmed' AND COALESCE(\"totalOnly\", 0) = 0 ORDER BY confirmedAt DESC LIMIT 1").get(accountId, year); } catch (e){ up = null; }
+  const up = sotBudgetUploads(accountId).find(u => u.year === Number(year)) || null;
   if (!up) return null;
   let by = null; try { by = computeByVerilumeCategoryForUpload(up.id); } catch (e){ by = null; }
   if (!by) return null;
@@ -18526,14 +18519,12 @@ function buildBudgetFlow(accountId, opts){
   const year = Math.max(2000, Math.min(2100, Number(opts && opts.year) || curY));
   const todayIso = dmIso(Date.UTC(curY, now.getUTCMonth(), now.getUTCDate()));
   const notes = [];
-  // Planned: the latest confirmed upload for each scope in this year.
-  const ups = db.prepare("SELECT id, scope, fileName, confirmedAt FROM marketing_budget_uploads WHERE accountId = ? AND year = ? AND status = 'confirmed' ORDER BY confirmedAt DESC").all(accountId, year);
-  const seenScope = new Set(); const used = [];
-  ups.forEach(u => { const k = u.scope || 'domestic'; if (seenScope.has(k)) return; seenScope.add(k); used.push(u); });
+  // Planned: the confirmed budget for this year, read through the shared budget reader so every surface agrees.
+  const used = sotBudgetUploads(accountId).filter(u => u.year === year);
   let planned = null; let nonWorking = 0;
   if (used.length){
-    planned = 0;
-    used.forEach(u => { db.prepare('SELECT status, amount FROM marketing_budget_line_items WHERE uploadId = ?').all(u.id).forEach(r => { const st = String(r.status || '').toUpperCase(); const a = Number(r.amount) || 0; if (st.startsWith('WORKING')) planned += a; else if (st.startsWith('NON')) nonWorking += a; }); });
+    const ids = new Set(used.map(u => u.id)); planned = 0;
+    sotBudgetLines(accountId).forEach(r => { if (!ids.has(r.uploadId)) return; if (r.working) planned += r.amount; else nonWorking += r.amount; });
     planned = Math.round(planned);
   }
   // Completed: spend through today for the year.
@@ -18978,6 +18969,153 @@ function fdNextQuestion(card){
   const q = FD_QUESTIONS.find(z => !card[z.key]); return q ? { key: q.key, ask: q.ask, options: q.options } : null;
 }
 
+// ==== SOT BEGIN ====
+// Single source of truth (2026-10-30). One reader per uploaded data set, and one definition of each spend number. The dashboards,
+// the "Need something we don't show?" panel, the Ask Verilume bar and the voice assistant all read through these functions, so a
+// number cannot differ between them. To add or change how a data set is read, change it HERE and nowhere else.
+// Rules, in plain words:
+//   Budget          = the confirmed marketing budget upload, latest per year and scope, line-by-line uploads only (total-only uploads
+//                     carry no months), working and non-working kept apart.
+//   Reported spend  = the blended spend the dashboards use for ROAS, CAC and Budget Flow (Media Mix entries, then agency actuals,
+//                     with a campaign's own daily media overriding on the days it covers). It is built by dmLoadSources/dmDailyMetrics.
+//   Agency spend    = only what the agency digital actuals file reports (overview rows).
+//   Campaign spend  = the planned budget inside a named campaign's own plan. Never mixed with the two above.
+//   Leads           = account_lead_counts with the old "Registration" lead type read as "Growth".
+const SOT_MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+const SOT_DATASETS = {
+  budget: { label: 'Confirmed marketing budget', tables: ['marketing_budget_uploads', 'marketing_budget_line_items'], note: 'latest confirmed upload per year and scope; working and non-working kept apart' },
+  reportedSpend: { label: 'Reported spend (all channels)', tables: ['mmm_inputs', 'account_digital_performance', 'channel_planning_details'], note: 'the blended spend behind ROAS, CAC and Budget Flow' },
+  agencySpend: { label: 'Agency digital actuals', tables: ['account_digital_performance'], note: 'overview rows from the agency digital file' },
+  leads: { label: 'Lead counts', tables: ['account_lead_counts'], note: 'Registration is read as Growth' },
+  webUsers: { label: 'Website users', tables: ['account_website_users_monthly'], note: 'monthly users by region' },
+  transactionsMonthly: { label: 'Monthly transaction roll-up', tables: ['account_transactions_monthly'], note: 'monthly transactions and revenue by product group' },
+  annualPlan: { label: 'Annual plan', tables: ['account_annual_plan'], note: 'baseline and target by year' }
+};
+const sotCache = new Map();
+function sotCached(accountId, key, ttl, fn){
+  const ck = accountId + '|' + key; const h = sotCache.get(ck);
+  if (h && Date.now() - h.t < ttl) return h.v;
+  const v = fn(); sotCache.set(ck, { t: Date.now(), v });
+  if (sotCache.size > 300){ Array.from(sotCache.entries()).sort((a, b) => a[1].t - b[1].t).slice(0, 100).forEach(e => sotCache.delete(e[0])); }
+  return v;
+}
+// Called after any change to an account's data (see the request hook) so no surface keeps an old answer.
+function sotInvalidate(accountId){
+  const pre = accountId + '|';
+  Array.from(sotCache.keys()).forEach(k => { if (k.startsWith(pre)) sotCache.delete(k); });
+  try { Array.from(dqSetCache.keys()).forEach(k => { if (k.startsWith(pre)) dqSetCache.delete(k); }); dqCtxCache.delete(accountId); } catch (e){ /* caches not created yet */ }
+  try { Array.from(_gpCache.keys()).forEach(k => { if (k.indexOf(accountId) >= 0) _gpCache.delete(k); }); } catch (e){ /* none */ }
+}
+function sotYm(y, m){ return `${y}-${String(m).padStart(2, '0')}`; }
+function sotMonthNum(v, fallback){
+  const ms = String(v === null || v === undefined ? '' : v).trim(); let mm;
+  if ((mm = /^(\d{4})-(\d{1,2})/.exec(ms))) return { y: Number(mm[1]), m: Number(mm[2]) };
+  const i = SOT_MONTHS.indexOf(ms.slice(0, 3).toLowerCase()); if (i >= 0) return { y: fallback, m: i + 1 };
+  if (/^\d{1,2}$/.test(ms)) return { y: fallback, m: Number(ms) };
+  return { y: fallback, m: 0 };
+}
+// The uploads that count: confirmed, line-by-line, the latest for each year and scope.
+function sotBudgetUploads(accountId){
+  return sotCached(accountId, 'budgetUploads', 15000, () => {
+    let ups = [];
+    try { ups = db.prepare("SELECT id, year, scope, fileName, confirmedAt FROM marketing_budget_uploads WHERE accountId = ? AND status = 'confirmed' AND COALESCE(\"totalOnly\", 0) = 0 ORDER BY confirmedAt DESC").all(accountId); }
+    catch (e){ try { ups = db.prepare("SELECT id, year, scope, fileName, confirmedAt FROM marketing_budget_uploads WHERE accountId = ? AND status = 'confirmed' ORDER BY confirmedAt DESC").all(accountId); } catch (e2){ ups = []; } }
+    const seen = new Set(), out = [];
+    ups.forEach(u => { const key = u.year + '|' + (u.scope || 'domestic'); if (seen.has(key)) return; seen.add(key); out.push({ id: u.id, year: Number(u.year), scope: u.scope || 'domestic', fileName: u.fileName, confirmedAt: u.confirmedAt }); });
+    return out;
+  });
+}
+// Budget lines. One row per budget line and month, from the uploads that count.
+function sotBudgetLines(accountId){
+  return sotCached(accountId, 'budgetLines', 15000, () => {
+    const out = [];
+    sotBudgetUploads(accountId).forEach(u => {
+      let lines = []; try { lines = db.prepare('SELECT category, status, month, amount, "verilumeCategory" FROM marketing_budget_line_items WHERE uploadId = ?').all(u.id); } catch (e){ lines = []; }
+      lines.forEach(r => {
+        const st = String(r.status || '').trim(); const working = /^working/i.test(st), non = /^non/i.test(st); if (!working && !non) return;
+        const mm = sotMonthNum(r.month, u.year); const amt = Number(r.amount); if (!isFinite(amt)) return;
+        out.push({ year: mm.y, month: mm.m, ym: mm.m ? sotYm(mm.y, mm.m) : null, uploadYear: u.year, scope: u.scope, category: String(r.category || '').trim(), verilumeCategory: String(aliasVal(r, 'verilumeCategory') || '').trim() || null, status: working ? 'WORKING MEDIA' : 'NON-WORKING MEDIA', working, amount: amt, uploadId: u.id, confirmedAt: u.confirmedAt });
+      });
+    });
+    return out;
+  });
+}
+function sotBudgetMonthly(accountId, opts){
+  const o = opts || {}; const out = {};
+  sotBudgetLines(accountId).forEach(r => { if (!r.ym) return; if (o.working === true && !r.working) return; if (o.working === false && r.working) return; out[r.ym] = (out[r.ym] || 0) + r.amount; });
+  return out;
+}
+function sotBudgetYearTotals(accountId){
+  const out = {}; sotBudgetLines(accountId).forEach(r => { const y = out[r.year] || (out[r.year] = { working: 0, nonWorking: 0 }); if (r.working) y.working += r.amount; else y.nonWorking += r.amount; });
+  return out;
+}
+// Reported spend by month: the same blended layer the dashboards use, summed month by month.
+function sotSpendMonthly(accountId){
+  return sotCached(accountId, 'reportedSpend', 30000, () => {
+    const out = {};
+    try {
+      const src = dmLoadSources(accountId, { spendOnly: true }); const months = new Set();
+      Object.keys(src.manualBy).concat(Object.keys(src.digitalBy)).forEach(k => months.add(k.split('||')[0]));
+      Object.keys(src.camp || {}).forEach(c => Object.keys(src.camp[c] || {}).forEach(d => months.add(d.slice(0, 7))));
+      Array.from(months).filter(k => /^\d{4}-\d{2}$/.test(k)).sort().forEach(k => {
+        const y = Number(k.slice(0, 4)), m = Number(k.slice(5, 7)); const dm = dmDailyMetrics(src, `${k}-01`, `${k}-${dmPad(dmDim(y, m))}`);
+        const v = dmSum(dm.days, 'spend'); if (v) out[k] = v;
+      });
+    } catch (e){ console.warn('[sot] reported spend failed', e && e.message); }
+    return out;
+  });
+}
+// Agency digital actuals: overview rows only, so the detail and split breakdowns of the same dollars are never added twice.
+function sotAgencySpendMonthly(accountId){
+  return sotCached(accountId, 'agencySpend', 15000, () => {
+    const out = {};
+    try { db.prepare("SELECT year, month, spend FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").all(accountId).forEach(r => { if (!r.year || !r.month) return; const k = sotYm(r.year, r.month); out[k] = (out[k] || 0) + (Number(r.spend) || 0); }); } catch (e){ /* no file */ }
+    return out;
+  });
+}
+function sotLeadRows(accountId){
+  return sotCached(accountId, 'leads', 15000, () => {
+    try { return db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId).map(r => { const lt = String(aliasVal(r, 'leadType') || ''); return { year: Number(aliasVal(r, 'year')) || 0, month: Number(aliasVal(r, 'month')) || 0, source: String(aliasVal(r, 'source') || '').trim(), leadType: lt === 'Registration' ? 'Growth' : lt, formName: String(aliasVal(r, 'formName') || '').trim(), count: Number(aliasVal(r, 'count')) || 0, bookings: Number(aliasVal(r, 'bookings')) || 0, avgDaysToConvert: aliasVal(r, 'avgDaysToConvert') }; }); }
+    catch (e){ return []; }
+  });
+}
+function sotLeadsMonthly(accountId){ const out = {}; sotLeadRows(accountId).forEach(r => { if (!r.year || !r.month) return; const k = sotYm(r.year, r.month); out[k] = (out[k] || 0) + r.count; }); return out; }
+function sotWebUserRows(accountId){
+  return sotCached(accountId, 'webUsers', 15000, () => {
+    try { return db.prepare('SELECT * FROM account_website_users_monthly WHERE accountId = ?').all(accountId).map(r => ({ year: Number(aliasVal(r, 'year')) || 0, month: Number(aliasVal(r, 'month')) || 0, region: String(aliasVal(r, 'region') || '').trim(), users: Number(aliasVal(r, 'users')) || 0 })); }
+    catch (e){ return []; }
+  });
+}
+function sotWebUsersMonthly(accountId){ const out = {}; sotWebUserRows(accountId).forEach(r => { if (!r.year || !r.month) return; const k = sotYm(r.year, r.month); out[k] = (out[k] || 0) + r.users; }); return out; }
+// What is on file, how far it runs, and when it last changed. Shown by GET /api/accounts/:id/data-sources and in answers.
+function sotFreshness(accountId){
+  const span = obj => { const ks = Object.keys(obj).filter(k => obj[k] !== null).sort(); return ks.length ? { from: ks[0], through: ks[ks.length - 1], months: ks.length } : null; };
+  const lines = sotBudgetLines(accountId);
+  const bud = {}; lines.forEach(l => { if (l.ym) bud[l.ym] = 1; });
+  const last = {}; try { Object.keys(SOT_DATASETS).forEach(k => { last[k] = null; }); last.budget = lines.length ? lines.map(l => l.confirmedAt).filter(Boolean).sort().pop() || null : null; } catch (e){ /* none */ }
+  return {
+    budget: Object.assign({ rows: lines.length, years: Object.keys(sotBudgetYearTotals(accountId)), confirmedAt: last.budget }, span(bud)),
+    reportedSpend: span(sotSpendMonthly(accountId)), agencySpend: span(sotAgencySpendMonthly(accountId)),
+    leads: span(sotLeadsMonthly(accountId)), webUsers: span(sotWebUsersMonthly(accountId))
+  };
+}
+// Reconcile: the surfaces that show a number must agree with these readers. Returns one line per check.
+function sotReconcile(accountId){
+  const out = []; const add = (name, a, b, tol) => out.push({ check: name, a: a === null ? null : Math.round(a), b: b === null ? null : Math.round(b), ok: a !== null && b !== null && Math.abs(a - b) <= (tol || 1) });
+  try {
+    const sum = o => Object.values(o).reduce((x, y) => x + y, 0);
+    const y = new Date().getUTCFullYear();
+    const bf = buildBudgetFlow(accountId, { year: y }); const bp = bf && bf.planned !== undefined ? bf.planned : null;
+    if (bp !== null) add(`Budget Flow planned ${y} = confirmed working media ${y}`, bp, Object.entries(sotBudgetMonthly(accountId, { working: true })).filter(([k]) => k.startsWith(String(y))).reduce((a, [, v]) => a + v, 0));
+  } catch (e){ out.push({ check: 'Budget Flow planned', error: e.message, ok: false }); }
+  try {
+    const d = dqSetRun(accountId, { set: 'budget', measure: 'budgetAmount', agg: 'sum', by: [], filters: [], period: { kind: 'all' }, basis: 'booked', compare: null, top: null, order: 'desc' }, resolveDateRange(null));
+    const tot = sotBudgetLines(accountId).reduce((a, r) => a + r.amount, 0);
+    if (d && d.x) { const raw = Number(String(d.x.summary || '').match(/\$[\d,]+/) ? String(d.x.summary).match(/\$[\d,]+/)[0].replace(/[$,]/g, '') : NaN); if (isFinite(raw)) add('Ask answer for total budget = confirmed budget lines', raw, tot, 1); }
+  } catch (e){ out.push({ check: 'Ask total budget', error: e.message, ok: false }); }
+  return out;
+}
+// ==== SOT END ====
 // ==== DQ BEGIN ====
 // Data questions (2026-10-03). Any loaded customer-level column can be asked about, from taps, typing or voice.
 // A question becomes a validated spec { measure, agg, by[], filters[], period, compare, top, order }; this
@@ -18995,7 +19133,7 @@ const DQ_MEASURES = {
   customers: { label: 'Customers', syn: ['customers', 'guests', 'party size', 'travelers', 'passengers', 'people'], aggs: ['sum', 'avg'], kind: 'num1', basis: 'customer rows on the transaction' },
   undeliveredRevenue: { label: 'Booked, not yet delivered revenue', syn: ['booked not yet delivered revenue', 'booked but not yet delivered', 'not yet delivered revenue', 'not yet delivered', 'undelivered revenue', 'undelivered', 'accrued revenue', 'accrued', 'revenue at risk', 'at risk revenue', 'deferred revenue', 'future service revenue'], aggs: ['sum'], kind: 'money', valueKey: 'revenue', pre: t => t.delivered === false, zeroIfEmpty: true, basis: 'gross revenue on transactions whose service start date is after today (sold, not yet delivered, so still at risk)' },
   deliveredRevenue: { label: 'Delivered revenue', syn: ['delivered revenue', 'recognized revenue', 'recognised revenue', 'earned revenue'], aggs: ['sum'], kind: 'money', valueKey: 'revenue', pre: t => t.delivered === true, zeroIfEmpty: true, basis: 'gross revenue on transactions whose service start date is on or before today' },
-  marketing: { label: 'Marketing performance', syn: ['marketing performance', 'marketing kpis', 'marketing kpi', 'marketing roi', 'spend leads and transactions', 'spend leads transactions', 'cost per transaction', 'funnel performance', 'per day kpis', 'per-day kpis', 'kpis per day', 'average daily revenue', 'daily revenue', 'marketing cost per day', 'cost per day', 'cac per day'], aggs: ['ratio'], kind: 'money', basis: 'media spend, leads and counted transactions by booking month' },
+  marketing: { label: 'Marketing performance', syn: ['marketing performance', 'marketing kpis', 'marketing kpi', 'marketing roi', 'spend leads and transactions', 'spend leads transactions', 'cost per transaction', 'funnel performance', 'per day kpis', 'per-day kpis', 'kpis per day', 'average daily revenue', 'daily revenue', 'marketing cost per day', 'cost per day', 'cac per day'], aggs: ['ratio'], kind: 'money', basis: 'media spend (all channels, as on the dashboards), leads and counted transactions by booking month' },
   revenuePerUnit: { label: 'Revenue per order-size unit', syn: [], aggs: ['ratio'], kind: 'money', basis: 'gross revenue divided by order size, over all counted transactions in the group' }
 };
 const DQ_DIMS = {
@@ -19443,8 +19581,8 @@ function dqMarketingRun(accountId, spec, range, L, vocab){
     return key >= range.from.slice(0, 7) && key <= range.through.slice(0, 7);
   };
   const M = new Map(); const slot = k => { let o = M.get(k); if (!o) { o = { spend: null, leads: null, tx: 0, rev: 0, days: 0, revD: 0, noSize: 0 }; M.set(k, o); } return o; };
-  try { db.prepare("SELECT year, month, spend FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").all(accountId).forEach(r => { const k = ym(r.year, r.month); if (!inPeriod(k)) return; const o = slot(k); o.spend = (o.spend || 0) + (Number(r.spend) || 0); }); } catch (e) { /* no digital file */ }
-  try { db.prepare('SELECT year, month, count FROM account_lead_counts WHERE accountId = ?').all(accountId).forEach(r => { const k = ym(r.year, r.month); if (!inPeriod(k)) return; const o = slot(k); o.leads = (o.leads || 0) + (Number(r.count) || 0); }); } catch (e) { /* no lead file */ }
+  Object.entries(sotSpendMonthly(accountId)).forEach(([k, v]) => { if (!inPeriod(k)) return; const o = slot(k); o.spend = (o.spend || 0) + v; });
+  Object.entries(sotLeadsMonthly(accountId)).forEach(([k, v]) => { if (!inPeriod(k)) return; const o = slot(k); o.leads = (o.leads || 0) + v; });
   cur.forEach(t => { if (!t.year || !t.month) return; const o = slot(ym(t.year, t.month)); o.tx += 1; if (t.revenue !== null) o.rev += t.revenue; if (t.daySum) { o.days += t.daySum; if (t.revenue !== null) o.revD += t.revenue; } else o.noSize += 1; });
   const keys = Array.from(M.keys()).sort();
   const div = (a, b) => (a !== null && b && b > 0) ? a / b : null;
@@ -19754,7 +19892,7 @@ const DQ_SETS = {
     label: 'Website users', table: 'account_website_users_monthly', unit: 'month', need: 'the website users by month file (Train the Brain, Website users card)',
     measures: { users: { label: 'Website users', syn: ['website users', 'website user', 'website visitors', 'website visits', 'site users', 'site visitors', 'web users', 'web traffic', 'website traffic', 'visitors', 'users'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int' } },
     dims: { region: { label: 'Region', syn: ['region', 'regions'], filter: true } }, dimsOk: ['year', 'quarter', 'month'],
-    load(id){ return dqSelect('SELECT * FROM account_website_users_monthly WHERE accountId = ?', id).map(r => ({ year: dqNum(aliasVal(r, 'year')), month: dqNum(aliasVal(r, 'month')) || 0, region: dqStr(aliasVal(r, 'region')), users: dqNum(aliasVal(r, 'users')) })); },
+    load(id){ return sotWebUserRows(id).map(r => Object.assign({}, r)); },
     note: 'Website users come from the monthly website users file, one number per month and region.'
   },
   webEngagement: {
@@ -19783,13 +19921,13 @@ const DQ_SETS = {
       leadConversion: { label: 'Lead to booking rate', syn: ['lead to booking rate', 'lead conversion rate', 'lead close rate', 'leads that became bookings'], aggs: ['ratio'], kind: 'pct', ratio: ['leadBookings', 'leads'], mult: 100 }
     },
     dims: { source: { label: 'Lead source', syn: ['lead source', 'lead sources', 'source', 'sources'], filter: true }, leadType: { label: 'Lead type', syn: ['lead type', 'lead types', 'type of lead'], filter: true }, formName: { label: 'Lead form', syn: ['lead form', 'lead forms', 'form', 'forms'], filter: true } }, dimsOk: ['year', 'quarter', 'month'],
-    load(id){ return dqSelect('SELECT * FROM account_lead_counts WHERE accountId = ?', id).map(r => ({ year: dqNum(aliasVal(r, 'year')), month: dqNum(aliasVal(r, 'month')) || 0, source: dqStr(aliasVal(r, 'source')), leadType: dqStr(aliasVal(r, 'leadType')), formName: dqStr(aliasVal(r, 'formName')), count: dqNum(aliasVal(r, 'count')), bookings: dqNum(aliasVal(r, 'bookings')), avgDaysToConvert: dqNum(aliasVal(r, 'avgDaysToConvert')) })); },
+    load(id){ return sotLeadRows(id).map(r => Object.assign({}, r, { avgDaysToConvert: dqNum(r.avgDaysToConvert) })); },
     note: 'Leads come from the monthly lead counts file by source, lead type and form.'
   },
   digital: {
     label: 'Digital performance', table: 'account_digital_performance', unit: 'month', need: 'the digital performance file (Train the Brain, Digital actuals card)',
     measures: {
-      spend: { label: 'Actual media spend', syn: ['actual media spend', 'actual spend', 'actual digital spend', 'digital media spend', 'media spend', 'ad spend', 'digital spend', 'advertising spend', 'spend'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'money' },
+      spend: { label: 'Agency digital spend', syn: ['agency digital spend', 'agency spend', 'digital agency spend', 'digital media spend', 'ad spend', 'digital spend', 'advertising spend'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'money' },
       impressions: { label: 'Impressions', syn: ['impressions', 'ad impressions'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int' },
       clicks: { label: 'Clicks', syn: ['ad clicks', 'clicks'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int' },
       agencyLeads: { label: 'Leads reported by the digital file', syn: ['digital leads', 'agency leads', 'leads from digital', 'digital agency leads'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'int' },
@@ -19817,7 +19955,14 @@ const DQ_SETS = {
       notes.push(`Digital performance is read at the ${grain === 'overview' ? 'channel overview' : grain === 'split' ? 'brand / non-brand search' : 'publisher and tactic detail'} level. Levels are never added together, because the same spend appears at each one.`);
       return { rows: use };
     },
-    note: 'Media spend here is ACTUAL spend reported in the agency digital actuals file, by month, channel, publisher and tactic. It is not the budget. Ask for "budgeted media spend" for the confirmed budget, or name a campaign for that campaign\'s own planned spend.'
+    note: 'This is the spend the agency digital actuals file reports, by month, channel, publisher and tactic. It covers digital channels only. For all-channel media spend, the same number the Budget and Growth cards use, ask for "media spend". For the budget, ask for "budgeted media spend".'
+  },
+  reportedSpend: {
+    label: 'Media spend (all channels)', table: 'mmm_inputs', unit: 'month', need: 'media spend (Media Mix entries, agency digital actuals or campaign media plans)',
+    measures: { spendReported: { label: 'Media spend', syn: ['actual media spend', 'actual spend', 'media spend', 'marketing spend', 'total media spend', 'total marketing spend', 'media dollars spent', 'total spend', 'spend'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'money', field: 'spend' } },
+    dims: {}, dimsOk: ['year', 'quarter', 'month'],
+    load(id){ return Object.entries(sotSpendMonthly(id)).map(([k, v]) => ({ year: Number(k.slice(0, 4)), month: Number(k.slice(5, 7)), spend: v })); },
+    note: 'Media spend is the blended all-channel spend the Budget and Growth cards use for ROAS and cost per booking: Media Mix entries, then agency actuals, with a campaign\'s own daily media overriding on the days it covers. It is actual spend, not the budget.'
   },
   annualPlan: {
     label: 'Annual plan and targets', table: 'account_annual_plan', unit: 'year', need: 'the annual plan and targets (Strategy, Annual Plan)',
@@ -19847,22 +19992,8 @@ const DQ_SETS = {
     label: 'Marketing budget', table: 'marketing_budget_line_items', unit: 'month', need: 'a confirmed marketing budget upload (Train the Brain, Budget card)',
     measures: { budgetAmount: { label: 'Budgeted amount', syn: ['budgeted media spend', 'planned media spend', 'media spend budget', 'media budget', 'budgeted media', 'planned media', 'working media budget', 'marketing budget', 'budgeted amount', 'budget amount', 'budget dollars', 'budgeted spend', 'planned spend', 'budget'], aggs: ['sum', 'avg', 'min', 'max'], kind: 'money', field: 'amount' } },
     dims: { category: { label: 'Budget category', syn: ['budget category', 'budget categories', 'category', 'categories', 'budget line', 'budget lines'], filter: true }, budgetStatus: { label: 'Working or non-working', syn: ['working or non working', 'working versus non working', 'working media status', 'working status'], filter: true, col: 'status' } }, dimsOk: ['year', 'quarter', 'month'],
-    load(id){
-      const ups = dqSelect("SELECT id, year, scope, confirmedAt FROM marketing_budget_uploads WHERE accountId = ? AND status = 'confirmed' ORDER BY confirmedAt DESC", id);
-      const seen = new Set(), out = [];
-      ups.forEach(u => {
-        const key = aliasVal(u, 'year') + '|' + (aliasVal(u, 'scope') || 'domestic'); if (seen.has(key)) return; seen.add(key);
-        const uy = dqNum(aliasVal(u, 'year'));
-        dqSelect('SELECT category, status, month, amount FROM marketing_budget_line_items WHERE uploadId = ?', aliasVal(u, 'id')).forEach(r => {
-          const ms = dqStr(aliasVal(r, 'month')); let y = uy, m = 0; let mm;
-          if ((mm = /^(\d{4})-(\d{1,2})/.exec(ms))){ y = Number(mm[1]); m = Number(mm[2]); }
-          else { const i = DQ_MONTH_NAMES.indexOf(ms.slice(0, 3).toLowerCase()); if (i >= 0) m = i + 1; else if (/^\d{1,2}$/.test(ms)) m = Number(ms); }
-          out.push({ year: y, month: m, category: dqStr(aliasVal(r, 'category')), budgetStatus: dqStr(aliasVal(r, 'status')), amount: dqNum(aliasVal(r, 'amount')) });
-        });
-      });
-      return out;
-    },
-    note: 'The marketing budget is the latest confirmed budget upload for each year.'
+    load(id){ return sotBudgetLines(id).map(r => ({ year: r.year, month: r.month, category: r.category, budgetStatus: r.status, amount: r.amount })); },
+    note: 'The marketing budget is the latest confirmed line-by-line budget upload for each year and scope. Working media is the media part; non-working is kept apart.'
   },
   ga4Sources: {
     label: 'GA4 sources and key events', table: 'account_ga4_sources', unit: 'week', need: 'the weekly GA4 sources and key events file (Train the Brain, GA4 card)',
@@ -20137,15 +20268,17 @@ function dqSetRecipes(accountId){
     R('leads', 'Leads by source', { measure: 'leads', agg: 'sum', by: ['source'] }),
     R('leads', 'Leads by lead type and year', { measure: 'leads', agg: 'sum', by: ['leadType', 'year'] }),
     R('leads', 'Lead to booking rate by source', { measure: 'leadConversion', agg: 'ratio', by: ['source'] }),
-    R('digital', 'Media spend by month', { measure: 'spend', agg: 'sum', by: ['month'] }),
-    R('digital', 'Media spend and cost per lead by channel', { measure: 'costPerLead', agg: 'ratio', by: ['channel'] }),
+    R('reportedSpend', 'Media spend by month (all channels)', { measure: 'spendReported', agg: 'sum', by: ['month'] }),
+    R('reportedSpend', 'Media spend by quarter (all channels)', { measure: 'spendReported', agg: 'sum', by: ['quarter'] }),
+    R('digital', 'Agency digital spend and cost per lead by channel', { measure: 'costPerLead', agg: 'ratio', by: ['channel'] }),
     R('digital', 'Click-through rate by channel', { measure: 'clickRate', agg: 'ratio', by: ['channel'] }),
-    R('digital', 'Media spend by publisher', { measure: 'spend', agg: 'sum', by: ['publisher'] }),
+    R('digital', 'Agency digital spend by publisher', { measure: 'spend', agg: 'sum', by: ['publisher'] }),
     R('annualPlan', 'Planned revenue, baseline versus target', { measure: 'planRevenue', agg: 'sum', by: ['year', 'kind'] }),
     R('annualPlan', 'Planned website users, baseline versus target', { measure: 'planUsers', agg: 'sum', by: ['year', 'kind'] }),
     R('yearResults', 'Prior-year gross revenue by year', { measure: 'resultsRevenue', agg: 'sum', by: ['year'] }),
     R('budget', 'Marketing budget by category', { measure: 'budgetAmount', agg: 'sum', by: ['category'] }),
     R('budget', 'Marketing budget by month', { measure: 'budgetAmount', agg: 'sum', by: ['month'] }),
+    R('budget', 'Budgeted media spend by month (working media)', { measure: 'budgetAmount', agg: 'sum', by: ['month'], filters: [{ field: 'budgetStatus', values: ['WORKING MEDIA'] }] }),
     R('ga4Sources', 'GA4 sessions by source / medium', { measure: 'ga4Sessions', agg: 'sum', by: ['sourceMedium'] }),
     R('ga4Events', 'GA4 key events by name', { measure: 'ga4EventCount', agg: 'sum', by: ['eventName'] }),
     R('ga4Search', 'GA4 paid search sessions by keyword', { measure: 'searchSessions', agg: 'sum', by: ['keyword'], top: 10 }),
@@ -20192,7 +20325,7 @@ function dqSetsContextBlock(accountId, question){
       }
     } catch (e){ /* the inventory above still stands */ }
   }
-  lines.push('THREE DIFFERENT SPEND NUMBERS, never swap them: (1) BUDGETED media spend or marketing budget = the confirmed Train the Brain budget upload (working media is the media part); (2) ACTUAL media spend = what the digital performance file reports as spent; (3) CAMPAIGN spend = the planned budget of a named campaign in its own plan. When a question says budget, budgeted or planned, answer from (1). When it says actual or spent, or just media spend, answer from (2) and say it is actual spend. Say which one you are giving.');
+  lines.push('FOUR DIFFERENT SPEND NUMBERS, never swap them: (1) BUDGETED media spend or marketing budget = the confirmed Train the Brain budget upload (working media is the media part); (2) MEDIA SPEND (all channels) = the actual spend the dashboards use for ROAS, CAC and Budget Flow; (3) AGENCY DIGITAL SPEND = only what the agency digital file reports; (4) CAMPAIGN spend = the planned budget of a named campaign in its own plan. When a question says budget, budgeted or planned, answer from (1). When it says actual, spent, or just media spend, answer from (2) and say it is actual spend. Say which one you are giving.');
   lines.push('RULE: for any question about website users, sessions, engagement, leads, digital spend or performance, annual plan or targets, prior-year results, marketing budget or GA4, answer from this block. Never say an uploaded data set is unavailable if it is listed here; if a number is not here, say it needs the Need something we don\'t show? panel.');
   return lines.join('\n');
 }
@@ -20215,6 +20348,8 @@ const DQ_DASHBOARD_PARITY = [
   { view: 'Leads by month', dashboard: 'Media Science', questions: ['Leads by month', 'Which quarter had the most leads'], optional: true },
   { view: 'Digital spend and cost per lead', dashboard: 'Media Science', questions: ['Digital spend by month', 'Digital cost per lead by channel'], optional: true },
   { view: 'Website users', dashboard: 'Media Science', questions: ['Website users by month'], optional: true },
+  { view: 'Media spend, all channels (the spend behind ROAS and CAC)', dashboard: 'Growth and Performance', questions: ['Media spend by month', 'Total media spend by quarter'], optional: true },
+  { view: 'Budgeted media spend (confirmed working media)', dashboard: 'Strategy: Budget Flow', questions: ['Budgeted media spend by month'], optional: true },
   { view: 'Annual plan and targets', dashboard: 'Strategy', questions: ['Planned transactions by quarter'], optional: true },
   { view: 'Marketing budget by category', dashboard: 'Strategy', questions: ['Marketing budget by budget category'], optional: true }
 ];
@@ -20426,7 +20561,7 @@ function storyLatestMonth(accountId, source){
   let rows = [];
   if (source === 'txn') rows = storyTxnRows(accountId).rows;
   else if (source === 'guest') rows = db.prepare('SELECT year, month FROM account_guest_bookings WHERE accountId = ?').all(accountId);
-  else rows = db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId).filter(r => (Number(r.count) || 0) > 0);
+  else rows = sotLeadRows(accountId).filter(r => (Number(r.count) || 0) > 0);
   const ks = rows.filter(r => r.year && r.month).map(key).sort();
   return ks.length ? ks[ks.length - 1] : null;
 }
@@ -20499,7 +20634,7 @@ function buildStoryAudienceGrowth(accountId, opts){
   const win = storyWindowEndingAtData(asOf, months, storyLatestMonth(accountId, 'leads')); const need = new Set(win.concat(win.map(k => storyShiftYear(k, -1))));
   const key = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
   const byType = { 'High Value': {}, 'Growth': {}, 'Prospect': {} }; const forms = {};
-  db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId).forEach(r => {
+  sotLeadRows(accountId).forEach(r => {
     const k = key(r.year, r.month); if (!need.has(k)) return;
     const label = STORY_LEAD_LABEL[aliasVal(r, 'leadType')] || null; if (!label) return;
     const n = Number(r.count) || 0;
@@ -20573,7 +20708,7 @@ function buildMediaScience(accountId, opts){
   const priTot = pri.tot.any ? fin(pri.tot) : null; const curTot = cur.tot.any ? fin(cur.tot) : null; const curMatched = curM && curM.tot.any ? fin(curM.tot) : null;
   // Lead to booking, from lead counts (same window).
   const lead = { leads: 0, bookings: 0, weightedDays: 0, dayN: 0 }; const byType = {};
-  db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId).forEach(r => {
+  sotLeadRows(accountId).forEach(r => {
     if (!wset.has(key(r.year, r.month))) return; const t = String(aliasVal(r, 'leadType') || '') === 'Registration' ? 'Growth' : String(aliasVal(r, 'leadType') || 'Other');
     const n = Number(r.count) || 0, b = Number(r.bookings) || 0, dd = aliasVal(r, 'avgDaysToConvert');
     const x = byType[t] = byType[t] || { leadType: t, leads: 0, bookings: 0 }; x.leads += n; x.bookings += b; lead.leads += n; lead.bookings += b;
@@ -20868,12 +21003,10 @@ function buildGrowthOutlook(accountId, asOfDate, totals, leadToBooking, dpRows){
 // three matched months exist, otherwise they scale with the media budget; bookings follow total leads; revenue is
 // bookings x last year's audited revenue per booking.
 function planWorkingMediaBudget(accountId, year){
-  let up = null;
-  try { up = db.prepare("SELECT id FROM marketing_budget_uploads WHERE accountId = ? AND year = ? AND status = 'confirmed' AND COALESCE(\"totalOnly\", 0) = 0 ORDER BY confirmedAt DESC LIMIT 1").get(accountId, year); } catch (e){ up = null; }
-  if (!up) return null;
-  const rows = db.prepare('SELECT status, amount FROM marketing_budget_line_items WHERE uploadId = ?').all(up.id);
-  let wm = 0, tot = 0; rows.forEach(r => { const a = Number(r.amount) || 0; tot += a; if (/^\s*working/i.test(String(r.status || ''))) wm += a; });
-  return wm > 0 ? { uploadId: up.id, workingMedia: Math.round(wm), total: Math.round(tot) } : null;
+  const ups = sotBudgetUploads(accountId).filter(u => u.year === Number(year)); if (!ups.length) return null;
+  const ids = new Set(ups.map(u => u.id)); let wm = 0, tot = 0;
+  sotBudgetLines(accountId).forEach(r => { if (!ids.has(r.uploadId)) return; tot += r.amount; if (r.working) wm += r.amount; });
+  return wm > 0 ? { uploadId: ups[0].id, workingMedia: Math.round(wm), total: Math.round(tot) } : null;
 }
 function buildAnnualPlanRecommendation(accountId, year, asOfDate, basisIn){
   const basis = basisIn === 'ttm' ? 'ttm' : 'calendar';
@@ -20881,8 +21014,8 @@ function buildAnnualPlanRecommendation(accountId, year, asOfDate, basisIn){
   const lastComplete = storyMonthKeys(asOf, 1)[0];
   const users = {}, leads = { Prospect: {}, Growth: {}, Value: {} }, bk = {}, imps = {}, calls = {};
   const safeAll = (sql) => { try { return db.prepare(sql).all(accountId); } catch (e){ console.warn('[annual-plan rec] query failed:', e.message); return []; } };
-  safeAll('SELECT year, month, users FROM account_website_users_monthly WHERE accountId = ?').forEach(r => { const k = mk(r.year, r.month); users[k] = (users[k] || 0) + (Number(r.users) || 0); });
-  safeAll('SELECT * FROM account_lead_counts WHERE accountId = ?').forEach(r => {
+  sotWebUserRows(accountId).forEach(r => { const k = mk(r.year, r.month); users[k] = (users[k] || 0) + (Number(r.users) || 0); });
+  sotLeadRows(accountId).forEach(r => {
     const k = mk(r.year, r.month); const t = String(aliasVal(r, 'leadType') || ''); const g = t === 'High Value' ? 'Value' : (t === 'Registration' || t === 'Growth') ? 'Growth' : t === 'Prospect' ? 'Prospect' : null;
     if (g) leads[g][k] = (leads[g][k] || 0) + (Number(r.count) || 0);
     bk[k] = (bk[k] || 0) + (Number(r.bookings) || 0);
@@ -20963,21 +21096,7 @@ const PLAN_SCENARIO_PRESETS = [
 function planScenarioBand(b){ return b === 'low' ? 0 : b === 'high' ? 2 : 1; }
 
 // Working media by month from the latest confirmed Marketing Budget upload of each year (monthly lines only).
-function planWorkingMediaBudgetByMonth(accountId){
-  const out = {};
-  try {
-    const ups = db.prepare("SELECT id, year, confirmedAt FROM marketing_budget_uploads WHERE accountId = ? AND status = 'confirmed' AND COALESCE(\"totalOnly\", 0) = 0 ORDER BY confirmedAt ASC").all(accountId);
-    const latest = {}; ups.forEach(u => { latest[u.year] = u; });
-    Object.keys(latest).forEach(yr => {
-      db.prepare('SELECT status, month, amount FROM marketing_budget_line_items WHERE uploadId = ?').all(latest[yr].id).forEach(r => {
-        if (!/^\s*working/i.test(String(r.status || ''))) return;
-        const mi = MARKETING_BUDGET_MONTHS.indexOf(String(r.month || '').toLowerCase()); const a = Number(r.amount); if (mi < 0 || !isFinite(a)) return;
-        const k = `${yr}-${String(mi + 1).padStart(2, '0')}`; out[k] = (out[k] || 0) + a;
-      });
-    });
-  } catch (e){ /* no monthly budget */ }
-  return out;
-}
+function planWorkingMediaBudgetByMonth(accountId){ return sotBudgetMonthly(accountId, { working: true }); }
 // Spend over a list of months for baselines. Campaign and channel actuals are often loaded for only part of what was spent, while the
 // confirmed budget covers the full year, so each month uses the larger of the two and the result says how many months leaned on the budget.
 function planSpendOverMonths(accountId, keys, S){
@@ -21174,7 +21293,7 @@ function mixLeadSourceMap(accountId){
 }
 function mixLeadSourceList(accountId){
   const norm = v => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); const sums = {};
-  db.prepare('SELECT source, count FROM account_lead_counts WHERE accountId = ?').all(accountId).forEach(r => { const k = String(r.source || ''); sums[k] = (sums[k] || 0) + (Number(r.count) || 0); });
+  sotLeadRows(accountId).forEach(r => { const k = String(r.source || ''); sums[k] = (sums[k] || 0) + (Number(r.count) || 0); });
   const map = mixLeadSourceMap(accountId).map;
   return Object.keys(sums).sort((a, b) => sums[b] - sums[a]).map(src => { const n = norm(src);
     const hits = n.length >= 3 ? MMM_CATEGORIES.filter(c => { const base = norm(String(c).split('—')[0]); return base && (n.includes(base) || base.includes(n)); }) : [];
@@ -21189,7 +21308,7 @@ function mixReadinessFor(accountId){
   // Leads that cannot be tied to any campaign (direct or unknown: no click, another device, and so on) are the part of the monthly lead total not measured anywhere;
   // they are shared across the measured paid channels in proportion to each channel's measured leads that month (never more than 4 times a month's measured leads).
   const smap = mixLeadSourceMap(accountId).map; const T = {}, otherA = {};
-  try { db.prepare('SELECT year, month, source, count FROM account_lead_counts WHERE accountId = ?').all(accountId).forEach(r => { const k = `${r.year}-${String(r.month).padStart(2, '0')}`; if (keys.indexOf(k) < 0) return; const n = Number(r.count) || 0; T[k] = (T[k] || 0) + n; const ch = smap[String(r.source || '')];
+  try { sotLeadRows(accountId).forEach(r => { const k = `${r.year}-${String(r.month).padStart(2, '0')}`; if (keys.indexOf(k) < 0) return; const n = Number(r.count) || 0; T[k] = (T[k] || 0) + n; const ch = smap[String(r.source || '')];
     if (ch && series[ch]){ series[ch].outcomes += n; series[ch].out[k] = (series[ch].out[k] || 0) + n; series[ch].offline = (series[ch].offline || 0) + n; } else if (ch){ otherA[k] = (otherA[k] || 0) + n; } }); } catch (e){}
   const F = {}; let sumT = 0, sumU = 0, sumAp = 0, sumOff = 0;
   keys.forEach(k => { const Ap = Object.keys(series).reduce((n, c) => n + ((series[c].out || {})[k] || 0), 0); const Tm = T[k] || 0; const U = Tm > Ap + (otherA[k] || 0) ? Tm - Ap - (otherA[k] || 0) : 0;
@@ -21446,8 +21565,8 @@ function buildDataIntegrity(accountId){
     const t = out.tables[out.tables.length - 1]; t.months.forEach(b => { b.uniqueTransactions = codesBy[b.month] ? codesBy[b.month].size : 0; }); t.total.uniqueTransactions = new Set(g.map(r => aliasVal(r, 'bookingCode'))).size; t.columns = ['uniqueTransactions'].concat(t.columns);
   } catch (e){ out.tables.push({ key: 'guest_bookings', error: e.message }); }
   try { monthly('transactions_monthly', 'Monthly transactions (roll-up)', db.prepare('SELECT * FROM account_transactions_monthly WHERE accountId = ?').all(accountId), r => mk(r.year, r.month), { transactions: r => r.transactions, revenue: r => r.revenue }); } catch (e){ out.tables.push({ key: 'transactions_monthly', error: e.message }); }
-  try { monthly('leads', 'Leads by month', db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId), r => mk(r.year, r.month), { leads: r => r.count, bookings: r => r.bookings }); } catch (e){ out.tables.push({ key: 'leads', error: e.message }); }
-  try { monthly('website_users', 'Website users', db.prepare('SELECT * FROM account_website_users_monthly WHERE accountId = ?').all(accountId), r => mk(r.year, r.month), { users: r => r.users }); } catch (e){ out.tables.push({ key: 'website_users', error: e.message }); }
+  try { monthly('leads', 'Leads by month', sotLeadRows(accountId), r => mk(r.year, r.month), { leads: r => r.count, bookings: r => r.bookings }); } catch (e){ out.tables.push({ key: 'leads', error: e.message }); }
+  try { monthly('website_users', 'Website users', sotWebUserRows(accountId), r => mk(r.year, r.month), { users: r => r.users }); } catch (e){ out.tables.push({ key: 'website_users', error: e.message }); }
   try { monthly('digital', 'Digital performance (overview grain)', db.prepare("SELECT * FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").all(accountId), r => mk(r.year, r.month), { impressions: r => r.impressions, spend: r => r.spend, leads: r => r.leads, calls: r => r.calls }); } catch (e){ out.tables.push({ key: 'digital', error: e.message }); }
   try { monthly('mmm_inputs', 'Media totals (MMM inputs)', db.prepare('SELECT * FROM mmm_inputs WHERE accountId = ?').all(accountId), r => (/^\d{4}-\d{2}$/.test(String(aliasVal(r, 'periodLabel') || '')) ? aliasVal(r, 'periodLabel') : null), { spend: r => r.spend, impressions: r => r.impressions }); } catch (e){ out.tables.push({ key: 'mmm_inputs', error: e.message }); }
   try { const camps = db.prepare('SELECT id, startDate, isAdHoc, cancelled FROM campaigns WHERE accountId = ?').all(accountId); const lines = db.prepare('SELECT cpd.campaignId AS cid, cpd.impressions, cpd.budget, cpd.hitDate, cpd.dropDate FROM channel_planning_details cpd JOIN campaigns c ON c.id = cpd.campaignId WHERE c.accountId = ?').all(accountId);
@@ -21572,8 +21691,8 @@ function buildGrowthPerformance(accountId, opts){
   const asOfDate = opts.asOf || new Date(); const months = Math.max(3, Math.min(24, Number(opts.months) || 12));
   const key = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
   const dp = db.prepare("SELECT * FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").all(accountId).map(r => ({ k: key(r.year, r.month), channel: aliasVal(r, 'channel'), impressions: Number(r.impressions) || 0, clicks: Number(r.clicks) || 0, spend: Number(r.spend) || 0, leads: Number(r.leads) || 0, calls: Number(r.calls) || 0 }));
-  const users = db.prepare('SELECT year, month, users FROM account_website_users_monthly WHERE accountId = ?').all(accountId).map(r => ({ k: key(r.year, r.month), users: Number(r.users) || 0 }));
-  const leadRows = db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId).map(r => ({ k: key(r.year, r.month), type: String(aliasVal(r, 'leadType') || '') === 'Registration' ? 'Growth' : String(aliasVal(r, 'leadType') || 'Other'), count: Number(r.count) || 0, bookings: Number(r.bookings) || 0, days: aliasVal(r, 'avgDaysToConvert') }));
+  const users = sotWebUserRows(accountId).map(r => ({ k: key(r.year, r.month), users: Number(r.users) || 0 }));
+  const leadRows = sotLeadRows(accountId).map(r => ({ k: key(r.year, r.month), type: String(aliasVal(r, 'leadType') || '') === 'Registration' ? 'Growth' : String(aliasVal(r, 'leadType') || 'Other'), count: Number(r.count) || 0, bookings: Number(r.bookings) || 0, days: aliasVal(r, 'avgDaysToConvert') }));
   const latestAll = dp.map(r => r.k).concat(users.map(r => r.k)).concat(leadRows.map(r => r.k)).sort().pop() || null;
   const win = storyWindowEndingAtData(asOfDate, months, latestAll); const wset = new Set(win); const pset = new Set(win.map(k => storyShiftYear(k, -1)));
   const sum = (rows, set, f) => rows.filter(r => set.has(r.k)).reduce((n, r) => n + r[f], 0);
@@ -21615,7 +21734,7 @@ function buildBudgetBenchmarksRaw(accountId, opts){
   const asOfDate = (opts && opts.asOf) || new Date(); const key = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
   const r2 = n => Math.round(n * 100) / 100;
   const dp = db.prepare("SELECT * FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").all(accountId).map(r => ({ k: key(r.year, r.month), channel: aliasVal(r, 'channel'), impressions: Number(r.impressions) || 0, spend: Number(r.spend) || 0, leads: Number(r.leads) || 0 }));
-  const users = db.prepare('SELECT year, month, users FROM account_website_users_monthly WHERE accountId = ?').all(accountId).map(r => ({ k: key(r.year, r.month), users: Number(r.users) || 0 }));
+  const users = sotWebUserRows(accountId).map(r => ({ k: key(r.year, r.month), users: Number(r.users) || 0 }));
   const out = { available: false, window: null, cpl: null, costPerVisit: null, cac: null, roas: null, cpm: null, spend: null, leads: null, visits: null, outcomesBasis: null };
   if (dp.length){
     const latest = dp.map(r => r.k).sort().pop();
@@ -21899,7 +22018,7 @@ function buildBrainDumpFacts(accountId, now, prevFacts){
   // Analysis: leads against baseline, database health, analysis due.
   try {
     const key = (y, m) => `${y}-${String(m).padStart(2, '0')}`; const byM = {};
-    db.prepare('SELECT * FROM account_lead_counts WHERE accountId = ?').all(accountId).forEach(r => { const k = key(r.year, r.month); byM[k] = (byM[k] || 0) + (Number(r.count) || 0); });
+    sotLeadRows(accountId).forEach(r => { const k = key(r.year, r.month); byM[k] = (byM[k] || 0) + (Number(r.count) || 0); });
     const keys = Object.keys(byM).sort(); const latest = keys[keys.length - 1];
     const base = keys.slice(-7, -1).map(k => byM[k]); const mean = base.length >= 3 ? base.reduce((a, b) => a + b, 0) / base.length : null;
     const sd = mean != null ? Math.sqrt(base.reduce((a, b) => a + (b - mean) * (b - mean), 0) / base.length) : null;
@@ -31297,6 +31416,12 @@ async function handleRequestInner(req, res) {
         }
       });
     }
+    // Single source of truth: any successful change under an account clears that account's shared readers and answer caches,
+    // so a new upload or confirmed budget shows up on the dashboards, Need something we don't show, Ask and voice together.
+    if (req.method !== 'GET' && parts[0] === 'api' && parts[1] === 'accounts' && parts[2]){
+      const sotAcct = decodeURIComponent(parts[2]);
+      res.once('finish', () => { if (res.statusCode < 400){ try { sotInvalidate(sotAcct); } catch (e){ console.warn('[sot] invalidate failed', e.message); } } });
+    }
     // Automatic activity record: every successful change a signed-in client member makes is stored against their member id with a date and time.
     if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS' && parts[0] === 'api' && parts[1] === 'accounts' && parts[2] && parts[3] !== 'member-activity'){
       const _tok = (String(req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/) || [])[1];
@@ -31758,7 +31883,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-29-budget-vs-actual',
+        buildStamp: '2026-10-30-single-source',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -34109,6 +34234,15 @@ async function handleRequestInner(req, res) {
       const rows = await dqParityReport(accountId);
       const bad = rows.filter(r => r.status === 'not_understood' || r.status === 'error');
       return sendJson(res, 200, { accountId, total: rows.length, answered: rows.filter(r => r.status === 'answers').length, needsData: rows.filter(r => r.status === 'needs_data').length, notUnderstood: bad.length, rows });
+    }
+
+    // GET /api/accounts/:id/data-sources — Admin only. What each shared reader holds (rows, months covered, last confirmed) plus the reconcile checks.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'data-sources'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAdminMember(req, res, accountId)) return;
+      sotInvalidate(accountId);
+      const recon = sotReconcile(accountId);
+      return sendJson(res, 200, { accountId, datasets: SOT_DATASETS, freshness: sotFreshness(accountId), reconcile: recon, allAgree: recon.every(r => r.ok) });
     }
 
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice'){

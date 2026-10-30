@@ -6,7 +6,8 @@ const fs = require('fs'), vm = require('vm'), path = require('path');
 const src = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
 const a = src.indexOf('// ==== DQ BEGIN ===='), b = src.indexOf('// ==== DQ END ====');
 if (a < 0 || b < 0){ console.error('FAIL: the DQ BEGIN / DQ END markers are missing from server.js'); process.exit(1); }
-const region = src.slice(a, b);
+const sa = src.indexOf('// ==== SOT BEGIN ===='), sb = src.indexOf('// ==== SOT END ====');
+const region = src.slice(sa, sb) + '\n' + src.slice(a, b);
 const RANGE = { from: '2000-01-01', through: '2100-01-01', compFrom: '1999-01-01', compThrough: '1999-12-31', label: 'range', compLabel: 'prior' };
 const txs = []; let id = 0;
 for (let y = 2024; y <= 2026; y++) for (let m = 1; m <= 12; m++){
@@ -17,7 +18,7 @@ for (let y = 2024; y <= 2026; y++) for (let m = 1; m <= 12; m++){
 const L = { txs, settings: { validStatuses: ['Confirmed'], filters: {} }, rowCount: txs.length, excludedRows: 0 };
 const ctx = { createTableIfNeeded(){}, ensureColumn(){}, console, Math, Date, Map, Set, Number, String, Array, Object, JSON, RegExp, Infinity, Error, process: { env: {} },
   db: { prepare: () => ({ get: () => null, all: () => [], run: () => ({}) }), exec: () => {} },
-  aliasVal: (r, k) => r[k], getTransactionSettings: () => L.settings, rowCounts: () => true, TXN_FILTER_COLUMNS: [], callClaudeForJSON: async () => null,
+  aliasVal: (r, k) => r[k], getTransactionSettings: () => L.settings, rowCounts: () => true, _gpCache: new Map(), isFinite, dmLoadSources: () => ({ manualBy: {}, digitalBy: {}, camp: {} }), TXN_FILTER_COLUMNS: [], callClaudeForJSON: async () => null,
   resolveDateRange: () => RANGE, dqVocab: () => ({ orderSizeLabel: 'Trip Days', orderSizeSyn: ['trip days', 'nights'] }), dqSavedEdges: () => null, __L: L };
 vm.createContext(ctx);
 vm.runInContext(region, ctx);
