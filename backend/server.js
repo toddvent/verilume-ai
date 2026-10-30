@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-30-single-source (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-10-30-model-sunset (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -152,6 +152,9 @@ const pdfParse = require('pdf-parse');
 // throwaway node:sqlite database (e.g. ':memory:') instead of the real
 // local dev file — never read in production (DATABASE_URL branch below
 // ignores this entirely).
+// One place to name the standard-tier Claude model (2026-10-30). Claude Sonnet 4.5 retires on Nov 30, 2026. To move to a newer model later,
+// set ANTHROPIC_STANDARD_MODEL on the host (Railway) and restart; nothing else in this file names a Sonnet model.
+const ANTHROPIC_STANDARD_MODEL = (process.env.ANTHROPIC_STANDARD_MODEL || '').trim() || 'claude-sonnet-5-5';
 const DB_PATH = process.env.CXMEDIA_TEST_DB_PATH || path.join(__dirname, 'cxmedia.db');
 
 // 2026-08-23 fix — see the long comment below INIT_PHASE for why this
@@ -4542,7 +4545,7 @@ function topScoredContestCandidate(cands){
 // Anthropic is exactly one contestant among the (up to) five, same as every
 // other vendor — a real "one per contestant" panel, never inflated.
 const BRAND_VOICE_PRIMARY_BRIEF = {
-  key: 'anthropic-brand-voice', label: 'Claude (Anthropic)', vendor: 'Anthropic', model: 'claude-sonnet-4-5',
+  key: 'anthropic-brand-voice', label: 'Claude (Anthropic)', vendor: 'Anthropic', model: ANTHROPIC_STANDARD_MODEL,
   brief: 'A voice that leads with the plain claim, then the reasoning — never hedges with "we strive to" or "we believe." Confident and specific, not generic-friendly; short declarative sentences with room for one real, sensory detail where it earns its place. Reads like a brand that knows exactly who it is and isn\'t trying to please everyone.'
 };
 // Shares INTERVIEW_VENDOR_REGISTRY (defined further down, alongside
@@ -4787,7 +4790,7 @@ function exclusionPromptLine(c){
 function stripExcludedFromSegments(c, segmentText){
   return String(segmentText || '').split(',').map(x => x.trim()).filter(x => x && !audienceIsExcluded(c, x)).join(', ');
 }
-const MODEL_STANDARD = 'claude-sonnet-4-5';
+const MODEL_STANDARD = ANTHROPIC_STANDARD_MODEL;
 const MODEL_REASONING = 'claude-opus-5';
 async function callClaudeForJSON({ model, maxTokens, content, schema, toolName, toolDescription, timeoutMs }){
   const resp = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
@@ -5610,7 +5613,7 @@ ${(contentText || '').slice(0, 3000)}
 
 Submit your result via the ${toolName} tool — one entry per signal key listed above, using those exact keys.`;
     const parsed = await callClaudeForJSON({
-      model: 'claude-sonnet-4-5',
+      model: ANTHROPIC_STANDARD_MODEL,
       maxTokens: 1600,
       content: prompt,
       toolName,
@@ -5857,7 +5860,7 @@ Submit your result via the submit_voice_draft tool. If you do not have a tool/fu
       } catch (e){ /* fall through to Anthropic below */ }
     }
     const parsed = await callClaudeForJSON({
-      model: 'claude-sonnet-4-5',
+      model: ANTHROPIC_STANDARD_MODEL,
       maxTokens: 1400,
       content: prompt,
       toolName: 'submit_voice_draft',
@@ -9422,7 +9425,7 @@ Submit via the submit_model_readout_findings tool.`;
   let parsed;
   try {
     parsed = await callClaudeForJSON({
-      model: 'claude-sonnet-4-5',
+      model: ANTHROPIC_STANDARD_MODEL,
       maxTokens: 3000,
       content: prompt,
       toolName: 'submit_model_readout_findings',
@@ -9467,7 +9470,7 @@ async function interpretModelReadoutFindingForMessaging(finding){
   if (!process.env.ANTHROPIC_API_KEY) return null; // honest null — Layer 3 simply doesn't run without a live model, findings still save without it
   try {
     const parsed = await callClaudeForJSON({
-      model: 'claude-sonnet-4-5',
+      model: ANTHROPIC_STANDARD_MODEL,
       maxTokens: 300,
       content: `An audience model readout found this: "${finding.attributeLabel}" (category: ${finding.attributeCategory}) — index ${finding.index != null ? finding.index : 'n/a'}, ${finding.confidenceLabel || 'unknown'} statistical confidence. Evidence from the document: "${finding.evidence}".
 
@@ -9846,7 +9849,7 @@ Do NOT guess at anything you cannot see in these specific frames — no invented
 Submit your findings via the submit_video_analysis tool.`;
 
     const parsed = await callClaudeForJSON({
-      model: 'claude-sonnet-4-5',
+      model: ANTHROPIC_STANDARD_MODEL,
       maxTokens: 600,
       content: [...imageBlocks, { type: 'text', text: prompt }],
       toolName: 'submit_video_analysis',
@@ -10276,7 +10279,7 @@ ${candidatePaths.join('\n')}
 Submit the chosen paths, copied exactly as they appear above, via the submit_selected_paths tool. If none look relevant, submit an empty list.`;
     try {
       const picked = await callClaudeForJSON({
-        model: 'claude-sonnet-4-5-20250929',
+        model: ANTHROPIC_STANDARD_MODEL,
         maxTokens: 500,
         content: selectionPrompt,
         toolName: 'submit_selected_paths',
@@ -10380,7 +10383,7 @@ Submit your findings via the submit_brand_categories tool.`;
   } else {
     try {
       categories = await callClaudeForJSON({
-        model: 'claude-sonnet-4-5-20250929',
+        model: ANTHROPIC_STANDARD_MODEL,
         maxTokens: 900,
         content: extractionPrompt,
         toolName: 'submit_brand_categories',
@@ -17742,7 +17745,7 @@ function checkVoiceToken(accountId, token){
 // with the portal session (never the voice token).
 // =====================================================================
 const ELEVENLABS_AGENT_ID = process.env.ELEVENLABS_AGENT_ID || 'agent_1901m2jpy694em5v6nkc249vs0ec';
-const VOICE_ASK_MODEL = 'claude-sonnet-4-5';
+const VOICE_ASK_MODEL = ANTHROPIC_STANDARD_MODEL;
 const voicePendingYear = new Map(); // account|actor -> { question, at }: a question waiting for the person to say which year
 const voiceLastCards = new Map(); // voice token -> { accountId, seq, cards, at }
 
@@ -19694,7 +19697,7 @@ async function dqPlanWithModel(text, ctx){
     + '\n' + Object.entries(DQ_DIMS).map(([k, d]) => `${k} = ${dqFieldLabel(k, vocab)}${d.derived ? ' (groups of ' + d.derived + ')' : ''}`).join('\n');
   const known = DQ_FILTER_DIMS.map(d => `${d}: ${(ctx.values[d] || []).slice(0, 30).join(' | ')}`).join('\n');
   try {
-    const out = await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 500, timeoutMs: 20000, toolName: 'plan_question', toolDescription: 'Map the question to a data request using only the listed fields.', schema,
+    const out = await callClaudeForJSON({ model: ANTHROPIC_STANDARD_MODEL, maxTokens: 500, timeoutMs: 20000, toolName: 'plan_question', toolDescription: 'Map the question to a data request using only the listed fields.', schema,
       content: `Map this question about a company's customer transactions to a data request. Use only the fields listed. If the question cannot be answered from them, set measure to "none".\n\nFIELDS\n${fieldHelp}\n\nKNOWN VALUES FOR FILTERS\n${known}\n\nQUESTION: ${String(text).slice(0, 400)}` });
     if (!out || out.measure === 'none') return null;
     const yr = new Date().getUTCFullYear();
@@ -22055,7 +22058,7 @@ function buildBrainDumpFacts(accountId, now, prevFacts){
 }
 // The Brain writes the prose; a paragraph is kept only when every number in it comes from the facts.
 function bdNumbers(t){ return (String(t).match(/\d[\d,]*\.?\d*/g) || []).map(x => x.replace(/,/g, '').replace(/\.$/, '')); }
-// Model per section: BRAIN_DUMP_MODEL_<SECTION> overrides BRAIN_DUMP_MODEL, which defaults to claude-sonnet-4-5.
+// Model per section: BRAIN_DUMP_MODEL_<SECTION> overrides BRAIN_DUMP_MODEL, which defaults to the standard model (ANTHROPIC_STANDARD_MODEL).
 // Set BRAIN_DUMP_MODEL to compare another model on the same facts without changing code.
 const BD_SECTION_GUIDE = {
   strategy: 'Say where the forecast stands against the plan target and whether it moved since last week. Name any outlier plainly.',
@@ -22064,7 +22067,7 @@ const BD_SECTION_GUIDE = {
   analysis: 'Lead with leads against baseline and whether that is within the expected range, then database growth and analysis that is due.',
   learnings: 'Say what the Brain took in and which team decisions it learned from this week.'
 };
-function bdModelFor(section){ return process.env['BRAIN_DUMP_MODEL_' + String(section).toUpperCase()] || process.env.BRAIN_DUMP_MODEL || 'claude-sonnet-4-5'; }
+function bdModelFor(section){ return process.env['BRAIN_DUMP_MODEL_' + String(section).toUpperCase()] || process.env.BRAIN_DUMP_MODEL || ANTHROPIC_STANDARD_MODEL; }
 // One short call per section, all at once, so the slowest section sets the time and one failure never blocks the rest.
 async function writeBrainDumpText(facts){
   const fallback = {}; BRAIN_DUMP_SECTIONS.forEach(k => { fallback[k] = (facts[k].lines || []).join(' '); });
@@ -25135,7 +25138,7 @@ async function scoreContentRelevance(page, campaign){
   try {
     const prompt = `You are scoring whether a landing page's actual content matches a marketing campaign's intended messaging. Campaign objective: ${campaignObjectiveText(campaign) || '(not set)'}. Campaign key message: ${campaign.keyMessage || '(not set)'}. Campaign long-form copy: ${(campaign.longformCopy || '').slice(0, 1500) || '(not set)'}.\n\nLanding page title: ${page.title}\nLanding page headline: ${page.headline}\nLanding page body text: ${page.bodyText.slice(0, 2000)}\n\nScore 0-100 how well the landing page's actual content matches the campaign's intended messaging and objective.`;
     const parsed = await callClaudeForJSON({
-      model: 'claude-sonnet-4-5',
+      model: ANTHROPIC_STANDARD_MODEL,
       maxTokens: 300,
       content: prompt,
       toolName: 'submit_relevance_score',
@@ -25171,7 +25174,7 @@ async function scoreLandingCopyMatch(page, campaign){
   if (process.env.ANTHROPIC_API_KEY){
     try {
       const prompt = `You are checking whether a landing page delivers on the promise made in a campaign's ad copy. A visitor who clicks the ad should find the same offer, product and tone on the page. Ad copy:\n${copy.text}\n\nLanding page title: ${page.title || '(none)'}\nHeadline: ${page.headline || '(none)'}\nMeta description: ${page.metaDescription || '(none)'}\nPage text: ${String(page.bodyText || '').slice(0, 2000)}\n\nScore 0-100 how well the page matches the ad copy (offer, product, destination, tone, call to action). Name anything the ads promise that the page does not mention.`;
-      const parsed = await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 300, content: prompt, toolName: 'submit_relevance_score', toolDescription: 'Submit the ad copy to landing page match score.', schema: SCORE_RATIONALE_SCHEMA });
+      const parsed = await callClaudeForJSON({ model: ANTHROPIC_STANDARD_MODEL, maxTokens: 300, content: prompt, toolName: 'submit_relevance_score', toolDescription: 'Submit the ad copy to landing page match score.', schema: SCORE_RATIONALE_SCHEMA });
       if (typeof parsed.score === 'number') return { score: Math.max(0, Math.min(100, Math.round(parsed.score))), method: 'ai', note: parsed.rationale || '' };
     } catch (e){ /* fall through to the keyword check */ }
   }
@@ -25200,7 +25203,7 @@ async function scoreImageRelevance(imageUrl, campaign){
     const b64 = buf.toString('base64');
     const prompt = `You are scoring whether a landing page's hero image matches a marketing campaign's intended brand and messaging. Campaign objective: ${campaignObjectiveText(campaign) || '(not set)'}. Campaign key message: ${campaign.keyMessage || '(not set)'}. Brand tone notes: ${campaign.brandToneNotes || '(not set)'}.\n\nScore 0-100 how well this image fits that campaign's brand and messaging.`;
     const parsed = await callClaudeForJSON({
-      model: 'claude-sonnet-4-5',
+      model: ANTHROPIC_STANDARD_MODEL,
       maxTokens: 300,
       content: [{ type: 'image', source: { type: 'base64', media_type: contentType, data: b64 } }, { type: 'text', text: prompt }],
       toolName: 'submit_relevance_score',
@@ -25521,7 +25524,7 @@ Score 0-100: how likely is this specific copy, as written, to actually produce t
 
 Submit your assessment via the submit_business_outcome_score tool.`;
     const parsed = await callClaudeForJSON({
-      model: 'claude-sonnet-4-5',
+      model: ANTHROPIC_STANDARD_MODEL,
       maxTokens: 500,
       content: prompt,
       toolName: 'submit_business_outcome_score',
@@ -26451,7 +26454,7 @@ Submit your draft via the submit_copy tool.`;
       } catch (e){ /* fall through to Anthropic below */ }
     }
     const parsed = await callClaudeForJSON({
-      model: 'claude-sonnet-4-5',
+      model: ANTHROPIC_STANDARD_MODEL,
       maxTokens: 1200,
       content: prompt,
       toolName: 'submit_copy',
@@ -26830,7 +26833,7 @@ async function gatherPitchResearch({ company, url, industryLabel }){
   try {
     const list = items.map(i => `${i.id} | ${i.origin} | ${i.date || 'n.d.'} | ${i.sourceName || ''} | ${i.title}${i.hintType ? ' | hint:' + i.hintType : ''}`).join('\n');
     const parsed = await callClaudeForJSON({
-      model: 'claude-sonnet-4-5', maxTokens: 900, timeoutMs: 40000,
+      model: ANTHROPIC_STANDARD_MODEL, maxTokens: 900, timeoutMs: 40000,
       content: `Below are real public items about ${company}${industryLabel ? ' (' + industryLabel + ')' : ''}, one per line as: id | where found | date | source | headline. Choose up to 5 that would help a seller open a conversation, each in one of four types: growth (new product, service, location or ship launches, expansion), competitor (a competitor taking or losing market share or making a notable move), promo (promotions, offers, campaigns), cost (cost cutting, layoffs, restructuring, efficiency). Judge only from the headline; never add facts that are not in it. Skip items that are not about ${company} or its market, and skip anything you cannot place in a type. Each "takeaway" is one plain sentence about what the headline tells a seller, no hype.\n\n${list}\n\nSubmit via the submit_signals tool.`,
       toolName: 'submit_signals', toolDescription: 'Submit the selected pitch signals.',
       schema: { type: 'object', properties: { signals: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, type: { type: 'string', enum: ['growth', 'competitor', 'promo', 'cost'] }, takeaway: { type: 'string' } }, required: ['id', 'type', 'takeaway'] } } }, required: ['signals'] }
@@ -26903,7 +26906,7 @@ async function generateAssessmentReadout(input){
   try {
     const prompt = buildAssessmentReadoutPrompt(input);
     const parsed = await callClaudeForJSON({
-      model: 'claude-sonnet-4-5',
+      model: ANTHROPIC_STANDARD_MODEL,
       maxTokens: 900,
       content: prompt,
       toolName: 'submit_readout',
@@ -27124,7 +27127,7 @@ async function draftPrCorpCommCopyViaAI(account, docType, brief){
       } catch (e){ /* fall through to Anthropic below */ }
     }
     const parsed = await callClaudeForJSON({
-      model: 'claude-sonnet-4-5',
+      model: ANTHROPIC_STANDARD_MODEL,
       maxTokens: 1200,
       content: prompt,
       toolName: 'submit_copy',
@@ -27167,7 +27170,7 @@ FORMAT: A LinkedIn-native post — short punchy opening line (not the press rele
 
 Submit the post via the submit_copy tool (hashtags included in the copy text).`;
     const parsed = await callClaudeForJSON({
-      model: 'claude-sonnet-4-5',
+      model: ANTHROPIC_STANDARD_MODEL,
       maxTokens: 700,
       content: prompt,
       toolName: 'submit_copy',
@@ -27401,7 +27404,7 @@ RULES:
 - Prefer fewer, better edits over many.
 Submit through the tool.`;
   try {
-    const parsed = await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 2500, content: prompt, toolName: 'submit_suggestions', toolDescription: 'Submit search optimization suggestions.', schema: SRCH_SUGGESTIONS_SCHEMA });
+    const parsed = await callClaudeForJSON({ model: ANTHROPIC_STANDARD_MODEL, maxTokens: 2500, content: prompt, toolName: 'submit_suggestions', toolDescription: 'Submit search optimization suggestions.', schema: SRCH_SUGGESTIONS_SCHEMA });
     const v = srchValidateSuggestions(parsed.suggestions, text, kw.negatives, facts);
     return { suggestions: v.suggestions, dropped: v.dropped };
   } catch (e){ return { error: 'Search optimization failed: ' + String(e.message || e).slice(0, 200) }; }
@@ -28153,7 +28156,7 @@ RULES:
 - The data shows what happened, not why. Use wording such as "consistent with" or "this data cannot tell". Never promise a result and never state a cause.
 - Do not mention Search Console file names or these instructions. No filler.
 Submit through the tool.`;
-  const parsed = await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 600, content: prompt, toolName: 'submit_read', toolDescription: 'Submit the worded read.', schema: GSC_READ_SCHEMA, timeoutMs: 40000 });
+  const parsed = await callClaudeForJSON({ model: ANTHROPIC_STANDARD_MODEL, maxTokens: 600, content: prompt, toolName: 'submit_read', toolDescription: 'Submit the worded read.', schema: GSC_READ_SCHEMA, timeoutMs: 40000 });
   return gscValidateRead(parsed, rec);
 }
 // Rows for the page: one per current finding, stored so wording is generated once per version of the data.
@@ -28447,7 +28450,7 @@ RULES:
 - If the facts do not answer the question, answer only the part they support. Never guess.
 - List the ids of the facts you used in factIds.
 Submit through the tool.`;
-  return callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 700, content: prompt, toolName: 'submit_answer', toolDescription: 'Submit the drafted answer.', schema: GSC_ANSWER_SCHEMA, timeoutMs: 40000 });
+  return callClaudeForJSON({ model: ANTHROPIC_STANDARD_MODEL, maxTokens: 700, content: prompt, toolName: 'submit_answer', toolDescription: 'Submit the drafted answer.', schema: GSC_ANSWER_SCHEMA, timeoutMs: 40000 });
 }
 // 2026-10-11, per Todd: Search Everywhere priorities are kept in three tiers. (1) Best practices are the starting point: the SEO, AEO and GEO
 // checklist for the account's kind of business. (2) Site scan: what the Search Console data and the site scan show. (3) Manual additions by the team.
@@ -29039,7 +29042,7 @@ Submit via the submit_competitive_intelligence tool.
 ${competitors.length === 0 ? 'No competitors are named for this account, so return an empty "competitors" array — do not invent competitor names.' : `Include exactly one entry per named competitor above, in the same order, using their exact given names.`}`;
 
     const parsed = await callClaudeForJSON({
-      model: 'claude-sonnet-4-5',
+      model: ANTHROPIC_STANDARD_MODEL,
       maxTokens: 1400,
       content: prompt,
       toolName: 'submit_competitive_intelligence',
@@ -29212,7 +29215,7 @@ ${judgedText.slice(0, 3500)}`;
   let parsed;
   try {
     parsed = await callClaudeForJSON({
-      model: 'claude-sonnet-4-5', maxTokens: 1100, content: prompt, toolName: 'submit_voice_audit', toolDescription: 'Submit the per-criterion brand voice audit.',
+      model: ANTHROPIC_STANDARD_MODEL, maxTokens: 1100, content: prompt, toolName: 'submit_voice_audit', toolDescription: 'Submit the per-criterion brand voice audit.',
       schema: { type: 'object', properties: { criteria: { type: 'array', items: { type: 'object', properties: {
         key: { type: 'string', enum: PR_VOICE_CRITERIA.map(c => c.key) }, score: { type: 'integer', minimum: 0, maximum: 100 },
         finding: { type: 'string' }, evidence: { type: 'string' }, guideRef: { type: 'string' } }, required: ['key', 'score', 'finding', 'evidence', 'guideRef'] } } }, required: ['criteria'] }
@@ -29285,7 +29288,7 @@ async function runPrCandidateInterview(account, docType, brief, opts){
   const runAnthropic = !only || only.includes('anthropic-baseline');
   const [anthropicResp, vendorGenerated] = await Promise.all([
     !runAnthropic ? Promise.resolve(null) : callClaudeForJSON({
-      model: 'claude-sonnet-4-5',
+      model: ANTHROPIC_STANDARD_MODEL,
       maxTokens: 1200,
       content: prompt,
       toolName: 'submit_copy',
@@ -29302,7 +29305,7 @@ async function runPrCandidateInterview(account, docType, brief, opts){
     relevanceScore: null, complianceScore: null, combinedScore: null, note: null, flags: [], scoreMode: null, brandVoice: gen && gen.brandVoice ? gen.brandVoice : null,
     attempts: attemptNo, pending: !!(configured && gen && !gen.copy && prFailureRetryable(gen.error) && attemptNo < PR_MAX_ATTEMPTS)
   });
-  const anthropicCandidate = buildCandidate('anthropic-baseline', 'Anthropic (baseline)', 'Anthropic', 'claude-sonnet-4-5', true, anthropicResp);
+  const anthropicCandidate = buildCandidate('anthropic-baseline', 'Anthropic (baseline)', 'Anthropic', ANTHROPIC_STANDARD_MODEL, true, anthropicResp);
   const liveVendorCandidates = configuredVendors.map((v, i) => buildCandidate(v.key, v.label, v.vendor, (v.key === 'xai-grok' && (process.env.XAI_PR_MODEL || '').trim()) || v.model, true, vendorGenerated[i]));
   const unconfiguredCandidates = INTERVIEW_VENDOR_REGISTRY.filter(v => !process.env[v.envVar]).map(v => buildCandidate(v.key, v.label, v.vendor, null, false, { copy: null, error: `${v.envVar} not configured on this deployment.` }));
 
@@ -29448,7 +29451,7 @@ RULES:
 - verifyFacts: up to 6 facts a person should confirm before relying on this profile (for example a title that differs between releases).
 
 ${body}`;
-  const parsed = await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 2200, content, toolName: 'submit_pr_profile', toolDescription: 'Submit the brand press release style profile.', schema: PR_PROFILE_SCHEMA, timeoutMs: 90000 });
+  const parsed = await callClaudeForJSON({ model: ANTHROPIC_STANDARD_MODEL, maxTokens: 2200, content, toolName: 'submit_pr_profile', toolDescription: 'Submit the brand press release style profile.', schema: PR_PROFILE_SCHEMA, timeoutMs: 90000 });
   return prpCleanProfile(parsed);
 }
 function prpRowOut(row){
@@ -29683,7 +29686,7 @@ RULES FOR THE IMPROVED DRAFT:
 
 Submit the improved draft.`;
   let parsed;
-  try { parsed = await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 4000, content, toolName: 'submit_improved_draft', toolDescription: 'Submit the improved draft and the list of changes.', schema: PR_REFINE_SCHEMA, timeoutMs: 90000 }); }
+  try { parsed = await callClaudeForJSON({ model: ANTHROPIC_STANDARD_MODEL, maxTokens: 4000, content, toolName: 'submit_improved_draft', toolDescription: 'Submit the improved draft and the list of changes.', schema: PR_REFINE_SCHEMA, timeoutMs: 90000 }); }
   catch (e){ return shape({ improved: false, note: 'The improved draft could not be written right now (' + String(e.message || e).slice(0, 100) + '). Your drafts are unchanged. Try again.' }); }
   const fixed = prEnforceExact(typeof parsed.copy === 'string' ? parsed.copy : '', accountId, brief, docType);
   if (!fixed.copy.trim()) return shape({ improved: false, note: 'The improved draft came back empty. Try again.' });
@@ -29863,7 +29866,7 @@ ${campaign.mandatoryPhrase ? `MANDATORY PHRASE (required verbatim, word-for-word
 COPY TO SCORE:
 ${copyText.slice(0, 2000)}`;
       const parsed = await callClaudeForJSON({
-        model: 'claude-sonnet-4-5',
+        model: ANTHROPIC_STANDARD_MODEL,
         maxTokens: 500,
         content: prompt,
         toolName: 'submit_copy_score',
@@ -29920,7 +29923,7 @@ const INTERVIEW_SHARED_BRIEF = 'Write the single best, most persuasive version o
 // below can build and blind-label all 5 candidates identically (same
 // pattern as BRAND_VOICE_PRIMARY_BRIEF/INTERVIEW_VENDOR_REGISTRY already
 // does for the Brand Voice contest).
-const INTERVIEW_ANTHROPIC_SLOT = { key: 'anthropic', label: 'Anthropic', vendor: 'Anthropic', model: 'claude-sonnet-4-5' };
+const INTERVIEW_ANTHROPIC_SLOT = { key: 'anthropic', label: 'Anthropic', vendor: 'Anthropic', model: ANTHROPIC_STANDARD_MODEL };
 
 // 2026-08-22, next round — real wiring for the other 4 vendors. Todd
 // supplied real API keys for OpenAI/xAI/Gemini/Perplexity directly (never
@@ -30589,7 +30592,7 @@ async function generateOneCompetitorIntelRead(vendorKey, theme, competitorName, 
       const required = [];
       for (const f of askedFields){ properties[f.key] = { type: ['string', 'null'] }; required.push(f.key); }
       parsed = await callClaudeForJSON({
-        model: 'claude-sonnet-4-5',
+        model: ANTHROPIC_STANDARD_MODEL,
         maxTokens: 700,
         content: prompt,
         toolName: 'submit_competitor_read',
@@ -30624,7 +30627,7 @@ async function generateCompetitorIntelligenceMultiVendor(themeKey, competitorNam
     return { intelligence: null, note: 'Competitor Intelligence requires ANTHROPIC_API_KEY to be configured.' };
   }
   const configuredVendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar]);
-  const allVendors = [{ key: 'anthropic-claude', label: 'Claude (Anthropic)', vendor: 'Anthropic', model: 'claude-sonnet-4-5' }, ...configuredVendors];
+  const allVendors = [{ key: 'anthropic-claude', label: 'Claude (Anthropic)', vendor: 'Anthropic', model: ANTHROPIC_STANDARD_MODEL }, ...configuredVendors];
   const reads = await Promise.all(allVendors.map(v => generateOneCompetitorIntelRead(v.key, theme, competitorName, account)));
   const perVendor = allVendors.map((v, i) => ({ key: v.key, label: v.label, vendor: v.vendor, model: v.model, ...reads[i] }));
   const successful = perVendor.filter(r => !r.error);
@@ -30662,7 +30665,7 @@ Respond via the submit_competitor_synthesis tool.`;
     const required = [];
     for (const f of theme.fields){ properties[f.key] = { type: ['string', 'null'] }; required.push(f.key); }
     const parsed = await callClaudeForJSON({
-      model: 'claude-sonnet-4-5',
+      model: ANTHROPIC_STANDARD_MODEL,
       maxTokens: 900,
       content: synthesisPrompt,
       toolName: 'submit_competitor_synthesis',
@@ -30877,7 +30880,7 @@ SOURCES:
 ${src}
 
 Submit via the competitor_profile tool.`;
-  return await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 4000, content: prompt, toolName: 'competitor_profile', toolDescription: 'Submit the sourced competitor profile.', schema: CI_PROFILE_SCHEMA, timeoutMs: 90000 });
+  return await callClaudeForJSON({ model: ANTHROPIC_STANDARD_MODEL, maxTokens: 4000, content: prompt, toolName: 'competitor_profile', toolDescription: 'Submit the sourced competitor profile.', schema: CI_PROFILE_SCHEMA, timeoutMs: 90000 });
 }
 const CI_BATTLE_SCHEMA = { type: 'object', properties: {
   summary: { type: 'string' },
@@ -30917,7 +30920,7 @@ Rules:
 - Do not invent facts about either company. Plain language.
 
 Submit via the battle_brief tool.`;
-  return await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 3500, content: prompt, toolName: 'battle_brief', toolDescription: 'Submit the Battle Brief.', schema: CI_BATTLE_SCHEMA, timeoutMs: 90000 });
+  return await callClaudeForJSON({ model: ANTHROPIC_STANDARD_MODEL, maxTokens: 3500, content: prompt, toolName: 'battle_brief', toolDescription: 'Submit the Battle Brief.', schema: CI_BATTLE_SCHEMA, timeoutMs: 90000 });
 }
 function ciReadRow(accountId, name){
   const r = db.prepare('SELECT * FROM competitor_profiles WHERE accountId = ? AND competitorKey = ?').get(accountId, ciKey(name));
@@ -31883,7 +31886,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-30-single-source',
+        buildStamp: '2026-10-30-model-sunset',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -35435,7 +35438,7 @@ async function handleRequestInner(req, res) {
           const resp = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-            body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 700, messages: [{ role: 'user', content: promptText }] })
+            body: JSON.stringify({ model: ANTHROPIC_STANDARD_MODEL, max_tokens: 700, messages: [{ role: 'user', content: promptText }] })
           });
           if (!resp.ok){
             const bodyText = (await resp.text()).slice(0, 300);
@@ -35484,9 +35487,9 @@ async function handleRequestInner(req, res) {
         ? (async () => {
             const r = await withTimeout(callAnthropicText(prompt), VENDOR_CALL_TIMEOUT_MS, 'anthropic-claude');
             if (r && r.__timedOut){
-              return { key: 'anthropic-claude', vendor: 'Anthropic', model: 'claude-sonnet-4-5-20250929', text: null, error: `Generation timed out after ${VENDOR_CALL_TIMEOUT_MS / 1000}s` };
+              return { key: 'anthropic-claude', vendor: 'Anthropic', model: ANTHROPIC_STANDARD_MODEL, text: null, error: `Generation timed out after ${VENDOR_CALL_TIMEOUT_MS / 1000}s` };
             }
-            return { key: 'anthropic-claude', vendor: 'Anthropic', model: 'claude-sonnet-4-5-20250929', text: r.text, error: r.error };
+            return { key: 'anthropic-claude', vendor: 'Anthropic', model: ANTHROPIC_STANDARD_MODEL, text: r.text, error: r.error };
           })()
         : Promise.resolve({ key: 'anthropic-claude', vendor: 'Anthropic', model: null, text: null, error: 'not configured — ANTHROPIC_API_KEY not set' });
 
@@ -36140,7 +36143,7 @@ async function handleRequestInner(req, res) {
             const bd = readBrainDump(accountId, weekStart); if (!bd) throw new Error('no posted edition'); const f = bd.facts[section];
             if (process.env.ANTHROPIC_API_KEY){
               const thread = db.prepare('SELECT authorName, authorType, text FROM brain_dump_comments WHERE accountId = ? AND weekStart = ? AND section = ? ORDER BY createdAt ASC').all(accountId, weekStart, section).slice(-8).map(r => `${aliasVal(r, 'authorType') === 'brain' ? 'AI Brain' : aliasVal(r, 'authorName')}: ${r.text}`).join('\n');
-              const r = await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 500, timeoutMs: 30000, toolName: 'submit_reply', schema: { type: 'object', properties: { reply: { type: 'string' } }, required: ['reply'] },
+              const r = await callClaudeForJSON({ model: ANTHROPIC_STANDARD_MODEL, maxTokens: 500, timeoutMs: 30000, toolName: 'submit_reply', schema: { type: 'object', properties: { reply: { type: 'string' } }, required: ['reply'] },
                 content: `You are the AI Brain replying in a team thread under the "${section}" section of the weekly Brain Dump. Answer the last message using ONLY the facts below. If the facts do not answer it, say what is missing and which dashboard to open. Never invent or estimate a number. Keep it under 80 words, plain sentences.\n\nSECTION FACTS:\n${JSON.stringify({ metric: f.metric, facts: f.lines, outliers: f.outliers }, null, 1)}\n\nTHREAD:\n${thread}` });
               if (r && typeof r.reply === 'string' && r.reply.trim()) reply = r.reply.trim();
             } else reply = `Here is what this week's numbers say: ${(f.lines || []).join(' ')}`;
@@ -36640,7 +36643,7 @@ Submit your response via the campaign_intake_turn tool.`;
         let parsed;
         try {
           parsed = await callClaudeForJSON({
-            model: 'claude-sonnet-4-5',
+            model: ANTHROPIC_STANDARD_MODEL,
             maxTokens: 700,
             content: prompt,
             toolName: 'campaign_intake_turn',
@@ -36651,7 +36654,7 @@ Submit your response via the campaign_intake_turn tool.`;
           console.warn('[POST /api/accounts/:id/campaign-intake] first attempt failed, retrying once:', firstErr.message);
           await new Promise(r => setTimeout(r, 800));
           parsed = await callClaudeForJSON({
-            model: 'claude-sonnet-4-5',
+            model: ANTHROPIC_STANDARD_MODEL,
             maxTokens: 700,
             content: prompt,
             toolName: 'campaign_intake_turn',
@@ -40315,7 +40318,7 @@ Submit your response via the recommendation_dialogue_reply tool.`;
             let parsed;
             try {
               parsed = await callClaudeForJSON({
-                model: 'claude-sonnet-4-5', maxTokens: 500, content: prompt,
+                model: ANTHROPIC_STANDARD_MODEL, maxTokens: 500, content: prompt,
                 toolName: 'recommendation_dialogue_reply', toolDescription: 'Submit this turn of the AI Brain plan-review dialogue.',
                 schema: RECO_DIALOGUE_REPLY_SCHEMA, timeoutMs: 20000
               });
@@ -40323,7 +40326,7 @@ Submit your response via the recommendation_dialogue_reply tool.`;
               console.warn('[POST /api/campaigns/:id/recommendation-comments] AI reply first attempt failed, retrying once:', firstErr.message);
               await new Promise(r => setTimeout(r, 800));
               parsed = await callClaudeForJSON({
-                model: 'claude-sonnet-4-5', maxTokens: 500, content: prompt,
+                model: ANTHROPIC_STANDARD_MODEL, maxTokens: 500, content: prompt,
                 toolName: 'recommendation_dialogue_reply', toolDescription: 'Submit this turn of the AI Brain plan-review dialogue.',
                 schema: RECO_DIALOGUE_REPLY_SCHEMA, timeoutMs: 20000
               });
@@ -40831,7 +40834,7 @@ Submit your response via the messaging_intake_turn tool.`;
         let parsed;
         try {
           parsed = await callClaudeForJSON({
-            model: 'claude-sonnet-4-5', maxTokens: 700, content: prompt,
+            model: ANTHROPIC_STANDARD_MODEL, maxTokens: 700, content: prompt,
             toolName: 'messaging_intake_turn',
             toolDescription: 'Submit this turn of the messaging-intake conversation.',
             schema
@@ -40840,7 +40843,7 @@ Submit your response via the messaging_intake_turn tool.`;
           console.warn('[POST /api/campaigns/:id/messaging-intake] first attempt failed, retrying once:', firstErr.message);
           await new Promise(r => setTimeout(r, 800));
           parsed = await callClaudeForJSON({
-            model: 'claude-sonnet-4-5', maxTokens: 700, content: prompt,
+            model: ANTHROPIC_STANDARD_MODEL, maxTokens: 700, content: prompt,
             toolName: 'messaging_intake_turn',
             toolDescription: 'Submit this turn of the messaging-intake conversation.',
             schema
@@ -41029,7 +41032,7 @@ Write 2-4 sentences a CMO would read before approving this budget: what this cam
       let parsed;
       try {
         parsed = await callClaudeForJSON({
-          model: 'claude-sonnet-4-5', maxTokens: 400, content: prompt,
+          model: ANTHROPIC_STANDARD_MODEL, maxTokens: 400, content: prompt,
           toolName: 'cmo_narrative', toolDescription: 'Submit the CMO-facing narrative paragraph.',
           schema: CMO_NARRATIVE_SCHEMA, timeoutMs: 20000
         });
@@ -41038,7 +41041,7 @@ Write 2-4 sentences a CMO would read before approving this budget: what this cam
         await new Promise(r => setTimeout(r, 800));
         try {
           parsed = await callClaudeForJSON({
-            model: 'claude-sonnet-4-5', maxTokens: 400, content: prompt,
+            model: ANTHROPIC_STANDARD_MODEL, maxTokens: 400, content: prompt,
             toolName: 'cmo_narrative', toolDescription: 'Submit the CMO-facing narrative paragraph.',
             schema: CMO_NARRATIVE_SCHEMA, timeoutMs: 20000
           });
@@ -41153,7 +41156,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       let parsed;
       try {
         parsed = await callClaudeForJSON({
-          model: 'claude-sonnet-4-5', maxTokens: 400, content: prompt,
+          model: ANTHROPIC_STANDARD_MODEL, maxTokens: 400, content: prompt,
           toolName: 'cmo_team_message', toolDescription: 'Submit the CMO-facing team briefing message.',
           schema: CMO_TEAM_MESSAGE_SCHEMA, timeoutMs: 20000
         });
@@ -41162,7 +41165,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
         await new Promise(r => setTimeout(r, 800));
         try {
           parsed = await callClaudeForJSON({
-            model: 'claude-sonnet-4-5', maxTokens: 400, content: prompt,
+            model: ANTHROPIC_STANDARD_MODEL, maxTokens: 400, content: prompt,
             toolName: 'cmo_team_message', toolDescription: 'Submit the CMO-facing team briefing message.',
             schema: CMO_TEAM_MESSAGE_SCHEMA, timeoutMs: 20000
           });
@@ -44506,7 +44509,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       let parsed;
       try {
         parsed = await callClaudeForJSON({
-          model: 'claude-sonnet-4-5',
+          model: ANTHROPIC_STANDARD_MODEL,
           maxTokens: 500,
           content: `Read this real writing sample (category: ${categoryLabel(sample.category)}, from ${sample.title}) and describe the concrete style patterns it shows — tone, vocabulary choices, sentence rhythm/length, and structural habits (how it opens, how it closes, how it uses numbers/lists/questions). Ground everything in what's actually on the page — never a generic description that could apply to any brand's writing.
 
@@ -45405,7 +45408,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
           const kw = srchKeywordsForAccount(accountId);
           const prompt = `Write a page title and meta description for one page of ${industryPersonaPhrase(account)}'s website.\nPAGE: ${page.url}\nCURRENT TITLE: ${page.title || '(none)'}\nCURRENT DESCRIPTION: ${page.metaDescription || '(none)'}\nMAIN HEADING: ${page.h1 || '(none)'}\nTARGET KEYWORDS: ${kw.targets.slice(0, 20).map(k => k.keyword).join(', ')}\nTERMS TO AVOID: ${kw.negatives.join(', ') || '(none)'}\nRules: title 50 to 60 characters, main topic first, brand last. Description 140 to 155 characters, plain and specific. Use a keyword only where it fits the page's actual topic. Do not invent facts or numbers. Submit through the tool.`;
           try {
-            const out = await callClaudeForJSON({ model: 'claude-sonnet-4-5', maxTokens: 500, content: prompt, toolName: 'submit_meta', toolDescription: 'Submit the title and meta description.', schema: { type: 'object', properties: { title: { type: 'string' }, metaDescription: { type: 'string' }, note: { type: 'string' } }, required: ['title', 'metaDescription'] } });
+            const out = await callClaudeForJSON({ model: ANTHROPIC_STANDARD_MODEL, maxTokens: 500, content: prompt, toolName: 'submit_meta', toolDescription: 'Submit the title and meta description.', schema: { type: 'object', properties: { title: { type: 'string' }, metaDescription: { type: 'string' }, note: { type: 'string' } }, required: ['title', 'metaDescription'] } });
             const neg = kw.negatives.map(n => n.toLowerCase());
             const bad = [out.title, out.metaDescription].join(' ').toLowerCase();
             if (neg.some(n => n && bad.includes(n))) return sendJson(res, 200, { error: 'The draft used a term on your Avoid list, so it was discarded. Try again.' });
