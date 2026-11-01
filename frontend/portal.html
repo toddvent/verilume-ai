@@ -1954,6 +1954,13 @@
   .ttb-more-row{display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;width:100%;padding:12px 14px;border:1px solid var(--border,#d9dee8);border-radius:10px;background:transparent;cursor:pointer;font:inherit;color:inherit;} .ttb-more-row:hover{border-color:#0e8fb0;} .ttb-more-t{display:flex;flex-direction:column;gap:2px;} .ttb-more-go{color:#0e8fb0;font-weight:600;white-space:nowrap;}
   .ttb-sec-meta{flex:none;font-size:0.8125rem;color:var(--muted);} .ttb-sec-b{padding:2px 20px 20px;}
   @media (max-width:700px){.ttb-sec-meta{display:none}}
+  .ttb-nav{position:sticky;top:64px;z-index:30;display:flex;gap:8px;align-items:center;overflow-x:auto;margin:18px 0 0;padding:10px 0;background:var(--white);border-bottom:1px solid var(--line);-webkit-overflow-scrolling:touch;}
+  .ttb-tab{flex:none;display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border:1px solid var(--line);border-radius:999px;background:var(--white);color:var(--ink);font:inherit;font-size:0.875rem;font-weight:500;cursor:pointer;white-space:nowrap;}
+  .ttb-tab:hover{border-color:var(--ink);} .ttb-tab:focus-visible{outline:2px solid var(--ink);outline-offset:2px;}
+  .ttb-tab.on{background:var(--ink);border-color:var(--ink);color:var(--white);font-weight:600;} .ttb-tab .ttb-tick{font-size:0.75rem;opacity:0.8;}
+  .ttb-tab.all{font-weight:600;border-color:var(--ink);} .ttb-tab.all.on{background:var(--ink);}
+  .ttb-nav-sep{flex:none;width:1px;height:22px;background:var(--line);}
+  .ttb-next{display:flex;justify-content:space-between;gap:10px;margin-top:20px;padding-top:14px;border-top:1px solid var(--line);}
   .ttb-group{margin-top:26px;} .ttb-group-h{display:flex;align-items:center;gap:14px;margin-bottom:8px;} .ttb-group-h h2{margin:0;font-size:1.3125rem;font-weight:500;} .ttb-mini{flex:none;}
   .ttb-owner{display:inline-block;align-self:flex-start;margin-top:6px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.6562rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--cx);background:rgba(8,145,178,0.10);border:1px solid rgba(8,145,178,0.22);border-radius:999px;padding:3px 10px;white-space:nowrap;} .ttb-assign{margin-top:14px;max-width:420px;} .ttb-assign label{margin-bottom:6px;}
   .ttb-mod{border:1px solid var(--line);border-radius:14px;background:var(--white);margin:10px 0;} .ttb-mod.open{border-color:var(--ink);}
@@ -14026,7 +14033,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-11-02-age-basis';
+const CXMEDIA_BUILD_STAMP = '2026-11-03-agency-territories';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -31742,7 +31749,12 @@ function ttbSetupHtml(d){
   if (active){
     const c = cp(active);
     const head = `<div class="ttb-group-h"><span class="ttb-mini">${ttbClock(active.minutes, active.items.filter(i => i.done).length * active.minutes / active.items.length, 44, c.title)}</span><div><h2>${escapeHtml(c.title)}</h2><div class="strat-sub">${escapeHtml(c.desc)}</div></div></div>`;
-    return `${hero}<div class="ttb-group"><button type="button" class="strat-chip ttb-back" onclick="ttbCloseGroup()">&larr; All setup cards</button>${head}${active.items.map(i => ttbModuleHtml(d, i)).join('')}${ttbMoreHtml(String(c.title).toLowerCase())}</div>`;
+    // Persistent card navigation: every setup card stays one click away, with the open one marked and finished ones ticked.
+    const idx = S.steps.indexOf(active);
+    const nav = `<nav class="ttb-nav" aria-label="Setup cards"><button type="button" class="ttb-tab all" onclick="ttbCloseGroup()">&larr; All setup cards</button><span class="ttb-nav-sep"></span>${S.steps.map(st => { const t = cp(st).title; return `<button type="button" class="ttb-tab${st.key === active.key ? ' on' : ''}"${st.key === active.key ? ' aria-current="page"' : ''} onclick="ttbOpenGroup('${st.key}')">${st.done ? '<span class="ttb-tick">&#10003;</span>' : ''}${escapeHtml(t)}</button>`; }).join('')}</nav>`;
+    const prev = S.steps[idx - 1], next = S.steps[idx + 1];
+    const foot = `<div class="ttb-next">${prev ? `<button type="button" class="strat-chip" onclick="ttbOpenGroup('${prev.key}')">&larr; ${escapeHtml(cp(prev).title)}</button>` : '<span></span>'}${next ? `<button type="button" class="strat-chip" onclick="ttbOpenGroup('${next.key}')">${escapeHtml(cp(next).title)} &rarr;</button>` : `<button type="button" class="strat-chip" onclick="ttbCloseGroup()">All setup cards</button>`}</div>`;
+    return `${hero}${nav}<div class="ttb-group">${head}${active.items.map(i => ttbModuleHtml(d, i)).join('')}${ttbMoreHtml(String(c.title).toLowerCase())}${foot}</div>`;
   }
   const cards = S.steps.map(st => { const c = cp(st); const n = st.items.filter(i => i.done).length; return `<button type="button" class="ttb-card${st.done ? ' done' : ''}" onclick="ttbOpenGroup('${st.key}')"><span class="ttb-card-top"><span class="ttb-mini">${ttbClock(st.minutes, n * st.minutes / st.items.length, 44, c.title)}</span><span class="ttb-card-state">${st.done ? '&#10003; Done' : `${n} of ${st.items.length} done`}</span></span><span class="ttb-card-kicker">${c.kicker ? escapeHtml(c.kicker) : '&nbsp;'}</span><span class="ttb-card-name">${escapeHtml(c.title)}</span><span class="ttb-card-desc">${escapeHtml(c.desc)}</span><span class="ttb-card-open">Open &rarr;</span></button>`; }).join('');
   const cardsHtml = `<div class="ttb-cards">${cards}</div>`;
@@ -82859,6 +82871,14 @@ const MBU_GB_FIELDS = [
   { key: 'guestState', label: 'Customer state', shape: 'state', hint: 'State or province.', strong: ['guest state', 'customer state', 'state', 'province', 'guest province'], weak: [] },
   { key: 'guestPostalCode', label: 'Customer postal code', shape: 'postal', hint: 'Postal or ZIP code.', strong: ['guest postal code', 'customer postal code', 'postal code', 'zip code', 'postal', 'zip', 'postcode'], weak: [] },
   { key: 'guestCountry', label: 'Customer country', shape: 'country', hint: 'Country (code or name).', strong: ['guest country', 'customer country', 'country'], weak: [] },
+  { key: 'agencyCode', label: 'Reseller / agency code', shape: 'code', hint: 'Who sold it, when a travel agency, storefront or franchise did. Feeds Sales Territories.', strong: ['agency code', 'reseller code', 'dealer code', 'store code', 'franchise code', 'partner code'], weak: ['agency id', 'reseller id'] },
+  { key: 'agencyName', label: 'Reseller / agency name', shape: 'category', hint: 'The name of the agency or storefront.', strong: ['agency name', 'reseller name', 'dealer name', 'store name', 'franchise name', 'partner name'], weak: [] },
+  { key: 'agencyStreet', label: 'Reseller street address', shape: 'category', hint: 'Street address of the agency, used to place it on the map.', strong: ['agency street', 'agency address', 'reseller street', 'reseller address', 'store address'], weak: [] },
+  { key: 'agencyCity', label: 'Reseller city', shape: 'category', hint: 'City of the agency.', strong: ['agency city', 'reseller city', 'store city'], weak: [] },
+  { key: 'agencyState', label: 'Reseller state', shape: 'state', hint: 'State or province of the agency.', strong: ['agency state', 'reseller state', 'store state', 'agency province'], weak: [] },
+  { key: 'agencyPostal', label: 'Reseller postal code', shape: 'postal', hint: 'Postal or ZIP code of the agency. Sales Territories measures the distance to guests from here.', strong: ['agency postal code', 'agency zip', 'agency zip code', 'reseller postal code', 'reseller zip', 'store postal code', 'store zip'], weak: [] },
+  { key: 'agencyCountry', label: 'Reseller country', shape: 'country', hint: 'Country of the agency.', strong: ['agency country', 'reseller country', 'store country'], weak: [] },
+  { key: 'consortia', label: 'Consortium / buying group', shape: 'category', hint: 'The buying group or network the agency belongs to.', strong: ['consortia', 'consortium', 'buying group', 'network', 'host agency'], weak: [] },
   { key: 'grossRevenue', label: 'Gross revenue', req: false, shape: 'money', hint: "This row's own gross revenue (the sum of all rows is the total).", strong: ['gross revenue', 'gross amount', 'gross sales', 'gross', 'revenue', 'order total', 'total amount'], weak: ['amount', 'total', 'sales'] },
   { key: 'netRevenue', label: 'Net revenue', shape: 'money', hint: "This row's own net revenue.", strong: ['net revenue', 'net amount', 'net sales', 'net'], weak: [] }
 ];
@@ -82996,7 +83016,7 @@ async function mbuHandleGuestBookingsFile(event){
   event.target.value = '';
 }
 let mbuGbMap = null;
-const MBU_GB_BADGE = { high: ['#1F7A4D', '#E6F4EC', 'High'], medium: ['#8A5A00', '#FFF4DB', 'Please confirm'], low: ['#C0273C', '#FDECEC', 'Low — please check'], saved: ['#1F5FA8', '#EAF1FB', 'Saved mapping'], none: ['#6B7280', '#F1F3F5', 'Not found'], chosen: ['#1F5FA8', '#EAF1FB', 'You chose'] };
+const MBU_GB_BADGE = { high: ['#1F7A4D', '#E6F4EC', 'High'], medium: ['#8A5A00', '#FFF4DB', 'Please confirm'], low: ['#C0273C', '#FDECEC', 'Low — please check'], saved: ['var(--media)', 'var(--media-tint)', 'Saved mapping'], none: ['#6B7280', '#F1F3F5', 'Not found'], chosen: ['var(--media)', 'var(--media-tint)', 'You chose'] };
 function mbuGbRenderReview(){
   const m = mbuGbMap; const preview = document.getElementById('mbuTxnPreview'); if (!m || !preview) return;
   const opts = sel => `<option value="">— not in this file —</option>` + m.cols.map(c => `<option value="${c.idx}"${sel === c.idx ? ' selected' : ''}>${escapeHtml(c.header)}</option>`).join('');
@@ -83004,11 +83024,11 @@ function mbuGbRenderReview(){
     const a = m.assign[f.key]; const tier = a ? mbuGbTier(a.conf) : 'none'; const b = MBU_GB_BADGE[tier];
     const note = a ? `${a.source === 'ai' ? '<b>AI suggestion:</b> ' : ''}${escapeHtml(a.why || '')}${a.alt ? ` <span style="color:#8A5A00;">Also could be “${escapeHtml(a.alt)}”.</span>` : ''}` : (f.req ? '<span style="color:#C0273C;">Required. Pick the column that holds it.</span>' : 'No matching column found; leave blank if the file does not have it.');
     return `<tr data-field="${f.key}"><td style="white-space:nowrap;"><b>${f.label}</b>${f.req ? ' <span style="color:#C0273C;">*</span>' : ''}<div class="hint" style="font-weight:400;max-width:230px;white-space:normal;">${escapeHtml(f.hint)}</div></td>
-      <td><select onchange="mbuGbChoose('${f.key}', this.value)" style="max-width:220px;">${opts(a ? a.idx : null)}</select></td>
+      <td><select class="tbl-select" onchange="mbuGbChoose('${f.key}', this.value)" style="max-width:240px;">${opts(a ? a.idx : null)}</select></td>
       <td><span id="mbuGbBadge_${f.key}" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:600;color:${b[0]};background:${b[1]};white-space:nowrap;">${b[2]}</span></td>
       <td style="font-size:0.8125rem;"><div id="mbuGbNote_${f.key}">${note}</div><div class="hint" id="mbuGbSample_${f.key}" style="margin-top:2px;">${a ? 'Examples: ' + escapeHtml(m.cols.find(c => c.idx === a.idx).samples.slice(0, 3).map(x => String(x).slice(0, 24)).join(' · ')) : ''}</div></td></tr>`;
   }).join('');
-  preview.innerHTML = `<div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:12px 14px;margin:0 0 10px;font-size:0.8125rem;">
+  preview.innerHTML = `<div style="background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 14px;margin:0 0 10px;font-size:0.8125rem;">
     <b>How we matched your columns</b> · ${escapeHtml(m.fileName)} · ${m.cols.length} columns, ${m.dataRows.toLocaleString()} rows
     ${m.saved ? `<div class="hint" style="margin-top:4px;">Your earlier approved mapping was applied where the same columns exist. ${m.newCols.length ? `New or renamed columns: ${m.newCols.map(c => '“' + escapeHtml(c.header) + '”').join(', ')}.` : ''}</div>` : ''}
     <div id="mbuGbSummary" style="margin:6px 0;"></div>
@@ -83060,6 +83080,7 @@ async function mbuGbApprove(auto){
       rows.push({
         bookingCode: code, bookingDate: d.text, bookingType, promoType: get('promoType'), bookingStatus: get('bookingStatus'),
         sailDate: sail ? sail.text.slice(0, 10) : null, age: (() => { if (colIndex.guestDob == null) return get('age'); const a = mbuAgeAt(get('guestDob'), sail || d); if (a > 0) ageKnown++; else ageUnknown++; return a; })(), guestState: get('guestState'), guestPostalCode: get('guestPostalCode') != null ? String(get('guestPostalCode')) : null, guestCountry: get('guestCountry'),
+        agencyCode: get('agencyCode'), agencyName: get('agencyName'), agencyStreet: get('agencyStreet'), agencyCity: get('agencyCity'), agencyState: get('agencyState'), agencyPostal: get('agencyPostal') != null ? String(get('agencyPostal')) : null, agencyCountry: get('agencyCountry'), consortia: get('consortia'),
         grossRevenue: get('grossRevenue'), netRevenue: get('netRevenue'), productGroup: get('productGroup'), creativeFocus: get('creativeFocus'), tripDays: tdOk ? td : null
       });
       periods.add(`${d.y}-${d.m}`); codes.add(code); if (d.hasTime) timed++;
@@ -83072,11 +83093,12 @@ async function mbuGbApprove(auto){
     authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/upload-mapping`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'guest_bookings', approvedBy: state.userName || '', mapping: { columns, orderSizeLabel: sizeLbl, ignored: m.cols.filter(c => !usedIdx.has(c.idx)).map(c => c.header) } }) }).catch(() => {});
     mbuPendingGuestBookings = { rows, periods: periodList, fileName: m.fileName, units, sizeLabel: sizeLbl, file: m.file, timed };
     const perLabel = periodList.length ? `${MBU_MONTH_NAMES_1[periodList[0].month]} ${periodList[0].year} → ${MBU_MONTH_NAMES_1[periodList[periodList.length - 1].month]} ${periodList[periodList.length - 1].year} (${periodList.length} months)` : '';
-    if (preview) preview.innerHTML = `<div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:10px 12px;margin:0 0 10px;font-size:0.8125rem;">
+    if (preview) preview.innerHTML = `<div style="background:var(--paper-dim);border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px 12px;margin:0 0 10px;font-size:0.8125rem;">
       ${auto ? `<div style="margin-bottom:6px;">Using the column mapping ${m.saved && m.saved.approvedBy ? 'approved by ' + escapeHtml(m.saved.approvedBy) + ' ' : 'approved '}on ${new Date(m.saved.approvedAt).toLocaleDateString()}. <a href="#" onclick="event.preventDefault();mbuGbMap.savedClean=false;mbuGbRenderReview();">Review the mapping</a></div>` : ''}
       <b>${rows.length.toLocaleString()} customer rows</b> · <b>${codes.size.toLocaleString()} unique transaction codes</b> read from ${escapeHtml(m.fileName)}, ${perLabel}${skipped ? ` · ${skipped} row${skipped === 1 ? '' : 's'} without a transaction ID or date skipped (e.g. a totals row or filter footer)` : ''}.
       ${unitRows ? `<div class="hint" style="margin-top:4px;">${escapeHtml(sizeLbl)}: ${Math.round(units).toLocaleString()} total across ${unitRows.toLocaleString()} rows (average ${(units / unitRows).toFixed(1)} per customer row).${unitRows < rows.length ? ` ${(rows.length - unitRows).toLocaleString()} rows had no usable value and are left blank.` : ''}</div>` : ''}
       <div class="hint" style="margin-top:6px;">Everything in the file is imported as it came. After saving, choose what counts (statuses, transaction types and more) under “What counts in revenue and reports”.</div>
+      ${colIndex.agencyCode != null ? `<div class="hint" style="margin-top:4px;">Reseller columns found: after you save, Sales Territories is rebuilt from the agency, its address and each guest's postal code in this file and the transactions already on file.</div>` : ''}
       ${colIndex.guestDob != null ? `<div class="hint" style="margin-top:4px;">Age worked out from birth date on the delivery date: ${ageKnown.toLocaleString()} rows have an age; ${ageUnknown.toLocaleString()} have no usable birth date (blank or a placeholder year) and are stored as age 0, which age views leave out. Birth dates are not kept.</div>` : ''}
       <div class="hint" style="margin-top:4px;">${timed ? `${timed.toLocaleString()} of ${rows.length.toLocaleString()} rows carry a time of day (read as Eastern time), so sales can be looked at by hour.` : 'This file has dates only, no time of day, so hourly views are not available for it.'}</div>
       <div style="margin-top:8px;font-size:0.8125rem;">
