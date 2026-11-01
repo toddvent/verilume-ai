@@ -14026,7 +14026,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-11-01-txn-upload';
+const CXMEDIA_BUILD_STAMP = '2026-11-02-age-basis';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -82855,6 +82855,7 @@ const MBU_GB_FIELDS = [
   { key: 'productGroup', label: 'Product group', shape: 'category', hint: 'Top-level product family (type of cruise, TVs vs shirts).', strong: ['product group', 'product line', 'product category', 'category', 'product'], weak: ['group', 'line'] },
   { key: 'creativeFocus', label: 'Creative focus group', shape: 'category', hint: 'What the creative features (a destination, a model, a collection).', strong: ['creative focus group', 'creative focus', 'focus group', 'focus', 'destination', 'theme', 'expedition type', 'collection'], weak: ['creative'] },
   { key: 'age', label: 'Customer age', shape: 'age', hint: 'Age at the time of the transaction.', strong: ['customer age', 'guest age', 'age'], weak: [] },
+  { key: 'guestDob', label: 'Customer birth date', shape: 'date', hint: 'Used only to work out age on the delivery (event start) date. The birth date itself is not kept; a missing date or a placeholder year such as 1800 or 1900 becomes age 0, which is left out of age views.', strong: ['guest dob', 'customer dob', 'date of birth', 'birth date', 'birthdate', 'birthday', 'dob'], weak: [] },
   { key: 'guestState', label: 'Customer state', shape: 'state', hint: 'State or province.', strong: ['guest state', 'customer state', 'state', 'province', 'guest province'], weak: [] },
   { key: 'guestPostalCode', label: 'Customer postal code', shape: 'postal', hint: 'Postal or ZIP code.', strong: ['guest postal code', 'customer postal code', 'postal code', 'zip code', 'postal', 'zip', 'postcode'], weak: [] },
   { key: 'guestCountry', label: 'Customer country', shape: 'country', hint: 'Country (code or name).', strong: ['guest country', 'customer country', 'country'], weak: [] },
@@ -82870,6 +82871,21 @@ function mbuGbNameScore(header, f){
   for (const a of f.weak) if (h === a) return { s: 0.7, why: `the column is named just "${header}", which is only a loose match` };
   for (const a of f.weak) if (mbuGbHas(h, a)) return { s: 0.5, why: `the column name contains "${a}", which is only a loose match` };
   return { s: 0 };
+}
+// Birth date -> {y,m,d}. Reads M-D-YYYY, M/D/YYYY, YYYY-MM-DD, Excel dates and serial numbers.
+function mbuDobParts(v){
+  if (v === null || v === undefined || v === '') return null;
+  if (v instanceof Date) return isNaN(v) ? null : { y: v.getFullYear(), m: v.getMonth() + 1, d: v.getDate() };
+  if (typeof v === 'number'){ if (!(v > 1 && v < 80000)) return null; const t = new Date(Math.round((v - 25569) * 86400) * 1000); return { y: t.getUTCFullYear(), m: t.getUTCMonth() + 1, d: t.getUTCDate() }; }
+  const str = String(v).trim(); let m = /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/.exec(str);
+  if (m) return { y: +m[3], m: +m[1], d: +m[2] };
+  m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(str); return m ? { y: +m[1], m: +m[2], d: +m[3] } : null;
+}
+// Age on the delivery date (or the transaction date when there is none). 0 = unknown: no usable birth date, a placeholder year (1900 or earlier), or an impossible age.
+function mbuAgeAt(dobRaw, ref){
+  const b = mbuDobParts(dobRaw); if (!b || !ref || b.y <= 1900 || b.m < 1 || b.m > 12 || b.d < 1 || b.d > 31) return 0;
+  let a = ref.y - b.y - ((ref.m < b.m || (ref.m === b.m && ref.d < b.d)) ? 1 : 0);
+  return a >= 1 && a <= 110 ? a : 0;
 }
 function mbuGbIsDateLike(v){
   if (v instanceof Date) return !isNaN(v);
@@ -83030,7 +83046,7 @@ async function mbuGbApprove(auto){
     const sizeLbl = (document.getElementById('mbuGbSizeLabel') || {}).value || m.orderSizeLabel || (colIndex.tripDays != null ? m.cols.find(c => c.idx === colIndex.tripDays).header : 'Trip Days');
     const grid = m.grid, headerIndex = m.headerIndex;
     const rows = [], periods = new Set(), codes = new Set();
-    let skipped = 0, units = 0, unitRows = 0, timed = 0;
+    let skipped = 0, units = 0, unitRows = 0, timed = 0, ageKnown = 0, ageUnknown = 0;
     for (let i = headerIndex + 1; i < grid.length; i++){
       const r = grid[i] || [];
       const code = String(r[colIndex.bookingCode] == null ? '' : r[colIndex.bookingCode]).trim();
@@ -83043,7 +83059,7 @@ async function mbuGbApprove(auto){
       if (tdOk){ units += td; unitRows++; }
       rows.push({
         bookingCode: code, bookingDate: d.text, bookingType, promoType: get('promoType'), bookingStatus: get('bookingStatus'),
-        sailDate: sail ? sail.text.slice(0, 10) : null, age: get('age'), guestState: get('guestState'), guestPostalCode: get('guestPostalCode') != null ? String(get('guestPostalCode')) : null, guestCountry: get('guestCountry'),
+        sailDate: sail ? sail.text.slice(0, 10) : null, age: (() => { if (colIndex.guestDob == null) return get('age'); const a = mbuAgeAt(get('guestDob'), sail || d); if (a > 0) ageKnown++; else ageUnknown++; return a; })(), guestState: get('guestState'), guestPostalCode: get('guestPostalCode') != null ? String(get('guestPostalCode')) : null, guestCountry: get('guestCountry'),
         grossRevenue: get('grossRevenue'), netRevenue: get('netRevenue'), productGroup: get('productGroup'), creativeFocus: get('creativeFocus'), tripDays: tdOk ? td : null
       });
       periods.add(`${d.y}-${d.m}`); codes.add(code); if (d.hasTime) timed++;
@@ -83061,6 +83077,7 @@ async function mbuGbApprove(auto){
       <b>${rows.length.toLocaleString()} customer rows</b> · <b>${codes.size.toLocaleString()} unique transaction codes</b> read from ${escapeHtml(m.fileName)}, ${perLabel}${skipped ? ` · ${skipped} row${skipped === 1 ? '' : 's'} without a transaction ID or date skipped (e.g. a totals row or filter footer)` : ''}.
       ${unitRows ? `<div class="hint" style="margin-top:4px;">${escapeHtml(sizeLbl)}: ${Math.round(units).toLocaleString()} total across ${unitRows.toLocaleString()} rows (average ${(units / unitRows).toFixed(1)} per customer row).${unitRows < rows.length ? ` ${(rows.length - unitRows).toLocaleString()} rows had no usable value and are left blank.` : ''}</div>` : ''}
       <div class="hint" style="margin-top:6px;">Everything in the file is imported as it came. After saving, choose what counts (statuses, transaction types and more) under “What counts in revenue and reports”.</div>
+      ${colIndex.guestDob != null ? `<div class="hint" style="margin-top:4px;">Age worked out from birth date on the delivery date: ${ageKnown.toLocaleString()} rows have an age; ${ageUnknown.toLocaleString()} have no usable birth date (blank or a placeholder year) and are stored as age 0, which age views leave out. Birth dates are not kept.</div>` : ''}
       <div class="hint" style="margin-top:4px;">${timed ? `${timed.toLocaleString()} of ${rows.length.toLocaleString()} rows carry a time of day (read as Eastern time), so sales can be looked at by hour.` : 'This file has dates only, no time of day, so hourly views are not available for it.'}</div>
       <div style="margin-top:8px;font-size:0.8125rem;">
         <label style="display:block;margin-bottom:4px;"><input type="radio" name="mbuGbMode" value="merge" checked> <b>Update and add</b> — each transaction ID in the file updates the one already on file (status, revenue, the rest) or is added if it is new. Transactions that are not in the file are left alone.</label>
@@ -83270,6 +83287,10 @@ function mbuRenderTransactionSettings(){
   el.innerHTML = `<div style="border:1px solid var(--line-hairline);border-radius:10px;padding:12px 14px;margin:0 0 12px;">
     <div style="font-weight:700;margin:0 0 4px;">What counts in revenue and reports</div>
     <p class="hint" style="margin:0 0 10px;">Everything in your file is imported exactly as it came. Choose a column, then tick the values to include. Values you untick (holds, cancellations, free or internal bookings) are left out of every revenue number. You can change this any time without uploading again.</p>
+    <div style="margin:0 0 10px;font-size:0.8125rem;"><b>When a question says just “revenue”, use:</b>
+      <label style="margin-left:10px;"><input type="radio" name="mbuRevBasis" value="gross" ${d.revenueBasis === 'net' ? '' : 'checked'}> Gross revenue</label>
+      <label style="margin-left:10px;"><input type="radio" name="mbuRevBasis" value="net" ${d.revenueBasis === 'net' ? 'checked' : ''}> Net revenue</label>
+      <div class="hint" style="margin-top:3px;">Applies to Ask and the voice assistant. Asking for “gross revenue” or “net revenue” by name always gives that one. Dashboards and plan totals still use gross.</div></div>
     ${cols.map(block).join('')}
     <div class="btn-row" style="margin-top:6px;"><button type="button" class="btn-primary" onclick="mbuSaveTransactionSettings()">Save and recompute totals</button><span class="hint" id="mbuTxnSettingsStatus" style="margin-left:10px;"></span></div>
   </div>`;
@@ -83289,7 +83310,7 @@ async function mbuSaveTransactionSettings(){
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/transaction-settings`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 120000,
-      body: JSON.stringify({ validStatuses: st.length && !allStatus ? validStatuses : null, filters })
+      body: JSON.stringify({ validStatuses: st.length && !allStatus ? validStatuses : null, filters, revenueBasis: ((el.querySelector('input[name=mbuRevBasis]:checked') || {}).value) || 'gross' })
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok){ if (status) status.textContent = `Not saved — ${data.error || 'server error'}`; return; }
