@@ -294,6 +294,35 @@
       </div>
     </div>
 
+    <!-- 2026-11-03 — Verilume Style: Verilume as its own internal client. The brand voice and the style guide are stored on the Verilume account exactly like a
+         client's Voice and Style Assets, so the same Voice / Style Guide setup applies. Staff-only: GET/POST /api/ops/verilume-style, same ADMIN_API_TOKEN gate. -->
+    <style>
+      .vs-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:8px 0 4px;}
+      .vs-sw{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--white);} .vs-sw i{display:block;height:46px;border-bottom:1px solid var(--line);}
+      .vs-sw b{display:block;font-size:0.78rem;padding:8px 10px 0;font-weight:600;} .vs-sw span{display:block;font-size:0.72rem;color:var(--muted);padding:0 10px 8px;font-variant-numeric:tabular-nums;}
+      .vs-h{font-size:0.72rem;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:20px 0 8px;}
+      .vs-demo{border:1px solid var(--line);border-radius:12px;padding:18px;background:var(--white);display:grid;gap:16px;}
+      .vs-demo .vs-row{display:flex;flex-wrap:wrap;gap:12px;align-items:center;}
+      .vs-btn-p{background:#1D1D1F;color:#fff;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-weight:600;font-size:0.875rem;padding:11px 20px;border-radius:999px;border:none;cursor:default;}
+      .vs-btn-g{background:none;color:#1D1D1F;font-weight:600;font-size:0.9375rem;border:none;border-bottom:2px solid #D2D2D7;padding:2px 0;cursor:default;}
+      .vs-field{width:260px;padding:11px 13px;border:1px solid #D2D2D7;border-radius:10px;font-family:Inter,-apple-system,sans-serif;font-size:0.9062rem;background:#fff;color:#1D1D1F;}
+      .vs-field.focus{border-color:#0891B2;box-shadow:0 0 0 3px rgba(8,145,178,0.14);outline:none;}
+      .vs-sel{appearance:none;-webkit-appearance:none;width:260px;padding:11px 36px 11px 13px;border:1px solid #D2D2D7;border-radius:10px;font-family:Inter,-apple-system,sans-serif;font-size:0.9062rem;background:#fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%236E6E73' stroke-width='1.6' stroke-linecap='round'/></svg>") no-repeat right 13px center;color:#1D1D1F;}
+      .vs-hint{font-size:0.7812rem;color:#6E6E73;margin-top:5px;}
+      .vs-panel{border:1px solid #D2D2D7;background:#F5F5F7;border-radius:12px;padding:12px 14px;font-size:0.8125rem;max-width:520px;}
+      .vs-pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:0.75rem;font-weight:600;}
+      .vs-th{font-size:0.6562rem;letter-spacing:0.05em;text-transform:uppercase;color:#6E6E73;font-weight:600;border-bottom:1px solid #D2D2D7;padding:0 24px 8px 0;text-align:left;}
+      .vs-edit textarea{min-height:90px;font-size:0.82rem;line-height:1.5;}
+      .vs-edit .vs-voice{min-height:300px;}
+    </style>
+    <div class="module" id="verilumeStyleModule" style="border-top-color:var(--advocacy-tint);">
+      <h3>Verilume Style <span class="badge" style="margin-left:6px;">Staff only</span></h3>
+      <p class="desc">Verilume's own brand, voice and component style, kept on the internal Verilume account the same way a client's Brand Voice and Style Guide are. Build and copy work is checked against this. Uses the admin token above.</p>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;"><button class="btn primary" onclick="vsLoad()">Load Verilume Style →</button><span id="vsStatus" class="empty-note" style="font-style:normal;padding:0;"></span></div>
+      <div id="vsError" class="empty-note" style="display:none;color:var(--danger);font-style:normal;"></div>
+      <div id="vsResult"></div>
+    </div>
+
     <!-- 2026-08-20 — Platform Integration Status, per direct instruction to
          add this to the client-management portal experience rather than
          it living only as an answer in chat. Platform-wide, not scoped to
@@ -3065,6 +3094,67 @@ async function finishOpsLogin(data){
     }
   } catch (e){ /* backend unreachable: leave the gate up, do not fail open */ }
 })();
+
+// ---- Verilume Style (2026-11-03) ----
+let vsData = null;
+function vsToken(){ return (document.getElementById('opsAdminToken') || {}).value ? document.getElementById('opsAdminToken').value.trim() : ''; }
+function vsErr(msg){ const e = document.getElementById('vsError'); e.textContent = msg || ''; e.style.display = msg ? 'block' : 'none'; }
+async function vsLoad(){
+  vsErr(''); const token = vsToken(); const st = document.getElementById('vsStatus'); st.textContent = '';
+  if (!token){ vsErr('Enter the ADMIN_API_TOKEN configured on this deployment (top of this page).'); return; }
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/ops/verilume-style`, { headers: { 'X-Admin-Token': token } });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok){ vsErr(d.error || `Couldn't load Verilume Style (${r.status}).`); return; }
+    vsData = d; vsRender();
+  } catch (e){ vsErr('Could not reach the backend.'); }
+}
+// Pull "Name (#hex)" / "Name: #hex" / "#hex : note" swatches out of the palette text, in the order written.
+function vsSwatches(d){
+  const out = [], seen = new Set(); const st = d.style || {};
+  const add = (name, hex) => { hex = hex.toUpperCase(); if (seen.has(hex)) return; seen.add(hex); out.push({ name: name.trim().replace(/^[-•\s]+/, '').replace(/[:(\s]+$/, '') || hex, hex }); };
+  if (/^#[0-9a-f]{6}$/i.test(st.primaryColorHex || '')) add((st.primaryColorName || 'Primary').replace(/\s*\(#?[0-9a-f]{6}\)\s*$/i, ''), st.primaryColorHex);
+  String(st.secondaryPaletteText || '').split(/\n/).forEach(line => { const m = line.match(/#[0-9a-fA-F]{6}/g); if (!m) return; const label = line.replace(/#[0-9a-fA-F]{6}/g, '').replace(/[,;:()]/g, ' ').split(/\s{2,}|\s—\s|\s-\s/)[0].replace(/\s+/g, ' ').trim(); m.forEach((hx, i) => add(i === 0 ? label.slice(0, 40) : (label.slice(0, 32) + (/tint/i.test(line) && i === 1 ? ' tint' : /darker/i.test(line) ? ' darker' : ' alt')), hx)); });
+  return out.slice(0, 24);
+}
+function vsRender(){
+  const d = vsData, st = d.style || {}, el = document.getElementById('vsResult');
+  const badge = (ok) => `<span class="badge ${ok ? 'status-active' : 'status-draft'}">${ok ? 'Approved' : 'Draft'}</span>`;
+  const sw = vsSwatches(d).map(c => `<div class="vs-sw"><i style="background:${escapeHtml(c.hex)}"></i><b>${escapeHtml(c.name)}</b><span>${escapeHtml(c.hex)}</span></div>`).join('');
+  const ta = (id, label, val, cls) => `<div style="margin-bottom:12px;"><label>${label}</label><textarea id="${id}" class="${cls || ''}">${escapeHtml(val || '')}</textarea></div>`;
+  el.innerHTML = `
+    <div style="margin-top:14px;display:flex;gap:14px;flex-wrap:wrap;align-items:center;"><div><b>${escapeHtml(d.company)}</b> <span class="empty-note" style="font-style:normal;">${escapeHtml(d.accountId)}</span></div><div>Voice ${badge(d.voice.approved)}</div><div>Style guide ${badge(st.approved)}</div></div>
+    <div class="vs-h">Colors</div><div class="vs-grid">${sw || '<div class="empty-note">No colors on file yet.</div>'}</div>
+    <div class="vs-h">Components, as specified</div>
+    <div class="vs-demo">
+      <div class="vs-row"><button class="vs-btn-p" type="button" tabindex="-1">Start your free assessment →</button><button class="vs-btn-g" type="button" tabindex="-1">See how the scoring works</button><span class="vs-hint">Primary: solid ink pill. Ghost: only beside a primary; any standalone link is a primary.</span></div>
+      <div class="vs-row"><div><label style="margin-bottom:6px;">Field</label><input class="vs-field focus" value="Booking Conversion Date" readonly tabindex="-1"><div class="vs-hint">Hints sit under the field at 12.5px, muted. Focus: teal border and a soft ring.</div></div><div><label style="margin-bottom:6px;">Select</label><select class="vs-sel" tabindex="-1"><option>Booking Status</option></select><div class="vs-hint">Custom arrow, never the raw browser control.</div></div></div>
+      <div class="vs-row"><div class="vs-panel"><b>Panel.</b> Paper Dim, a 1px line border, 12px radius. No tinted blue panels with hard borders.</div><div><span class="vs-pill" style="background:#DBEAFE;color:#2563EB;">Saved mapping</span> <span class="vs-pill" style="background:#E7F6EC;color:#15803D;">High</span> <span class="vs-pill" style="background:#FFF4DB;color:#8A5A00;">Please confirm</span></div></div>
+      <table style="width:auto;"><thead><tr><th class="vs-th">Our field</th><th class="vs-th">Your column</th><th class="vs-th">Confidence</th></tr></thead><tbody><tr><td style="padding:8px 24px 8px 0;font-size:0.8125rem;"><b>Transaction date</b></td><td style="padding:8px 24px 8px 0;font-size:0.8125rem;">Booking Conversion Date</td><td style="padding:8px 0;font-size:0.8125rem;">High</td></tr></tbody></table>
+    </div>
+    <div class="vs-h">Edit</div>
+    <div class="vs-edit">
+      ${ta('vsVoice', 'Brand voice (the Voice Guide text)', d.voice.text, 'vs-voice')}
+      <div class="field-row"><div><label>Primary color name</label><input type="text" id="vsPrimName" value="${escapeHtml(st.primaryColorName || '')}"></div><div><label>Primary color hex</label><input type="text" id="vsPrimHex" value="${escapeHtml(st.primaryColorHex || '')}" placeholder="#1D1D1F"></div></div>
+      ${ta('vsPalette', 'Palette', st.secondaryPaletteText)}${ta('vsColorH', 'Color hierarchy', st.colorHierarchyNotes)}
+      <div class="field-row"><div><label>Heading font</label><input type="text" id="vsHeadFont" value="${escapeHtml(st.headingFontName || '')}"></div><div><label>Body font</label><input type="text" id="vsBodyFont" value="${escapeHtml(st.bodyFontName || '')}"></div></div>
+      ${ta('vsHeadNotes', 'Heading font notes', st.headingFontNotes)}${ta('vsBodyNotes', 'Body font notes', st.bodyFontNotes)}${ta('vsTypo', 'Typography hierarchy', st.typographyHierarchyNotes)}${ta('vsStyle', 'Component and style rules', st.styleNotes)}${ta('vsLogo', 'Logo and name usage', st.logoUsageNotes)}
+      <div style="display:flex;gap:18px;flex-wrap:wrap;margin:6px 0 12px;"><label style="display:flex;gap:6px;align-items:center;margin:0;"><input type="checkbox" id="vsAppVoice" ${d.voice.approved ? 'checked' : ''} style="width:auto;"> Voice approved</label><label style="display:flex;gap:6px;align-items:center;margin:0;"><input type="checkbox" id="vsAppStyle" ${st.approved ? 'checked' : ''} style="width:auto;"> Style guide approved</label></div>
+      <button class="btn primary" onclick="vsSave()">Save Verilume Style</button>
+    </div>`;
+}
+async function vsSave(){
+  vsErr(''); const token = vsToken(); const st = document.getElementById('vsStatus'); const v = id => document.getElementById(id).value;
+  if (!token){ vsErr('Enter the ADMIN_API_TOKEN configured on this deployment (top of this page).'); return; }
+  const body = { voiceText: v('vsVoice'), style: { primaryColorName: v('vsPrimName'), primaryColorHex: v('vsPrimHex').trim(), secondaryPaletteText: v('vsPalette'), colorHierarchyNotes: v('vsColorH'), headingFontName: v('vsHeadFont'), headingFontNotes: v('vsHeadNotes'), bodyFontName: v('vsBodyFont'), bodyFontNotes: v('vsBodyNotes'), typographyHierarchyNotes: v('vsTypo'), styleNotes: v('vsStyle'), logoUsageNotes: v('vsLogo') }, approveVoice: document.getElementById('vsAppVoice').checked, approveStyle: document.getElementById('vsAppStyle').checked };
+  st.textContent = 'Saving…';
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/ops/verilume-style`, { method: 'POST', headers: { 'X-Admin-Token': token, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok){ st.textContent = ''; vsErr(d.error || `Not saved (${r.status}).`); return; }
+    vsData = d; vsRender(); document.getElementById('vsStatus').textContent = `Saved ${new Date().toLocaleTimeString()}.`;
+  } catch (e){ st.textContent = ''; vsErr('Could not reach the backend. Nothing was saved.'); }
+}
 </script>
 
 </body>
