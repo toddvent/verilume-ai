@@ -14023,7 +14023,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-29-web-roles';
+const CXMEDIA_BUILD_STAMP = '2026-10-29-voice-cards';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -27493,6 +27493,19 @@ async function vxVoiceStart(opts){
     };
     if (sess.signedUrl) startArgs.signedUrl = sess.signedUrl; else startArgs.agentId = sess.agentId;
     vxVoice.conversation = await Conversation.startSession(startArgs);
+    // Also fetch the cards straight from the server, so the data reaches the screen even when the agent says it sent it but did not.
+    vxVoice.cardSeq = 0; if (vxVoice.cardPoll) clearInterval(vxVoice.cardPoll);
+    const vxTok = sess.token, vxAcct = state.companyId;
+    vxVoice.cardPoll = setInterval(async () => {
+      if (vxVoice.state === 'idle'){ clearInterval(vxVoice.cardPoll); vxVoice.cardPoll = null; return; }
+      if (vxVoice.state !== 'live') return;
+      try {
+        const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(vxAcct)}/voice/cards?since=${vxVoice.cardSeq || 0}`, { headers: { 'X-Voice-Token': vxTok }, timeoutMs: 6000 });
+        if (!r.ok) return;
+        const d = await r.json();
+        if (d && Array.isArray(d.cards) && d.seq > (vxVoice.cardSeq || 0)){ vxVoice.cardSeq = d.seq; if (o.onCards) o.onCards(d.cards); }
+      } catch (e){ /* try again on the next tick */ }
+    }, 1500);
     return true;
   } catch (e){
     console.warn('[voice] start failed at', vxStage, ':', e);
@@ -27520,6 +27533,7 @@ async function vxVoiceStart(opts){
   }
 }
 async function vxVoiceStop(){
+  if (vxVoice.cardPoll){ clearInterval(vxVoice.cardPoll); vxVoice.cardPoll = null; }
   if (vxVoice.conversation){ try { await vxVoice.conversation.endSession(); } catch (e){ console.warn('[voice] endSession failed:', e); } }
   vxVoice.conversation = null; vxVoice.state = 'idle';
 }
