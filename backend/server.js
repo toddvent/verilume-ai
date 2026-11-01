@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-10-30-model-sunset (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-01-txn-upload (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -2620,6 +2620,32 @@ createTableIfNeeded(`
 // 2026-10-02 — Order Size (Trip Days for travel, units for retail): stored per customer row, and the approved column mapping per account.
 ensureColumn('account_guest_bookings', 'tripDays', 'REAL');
 ensureColumn('account_guest_bookings_staging', 'tripDays', 'REAL');
+// 2026-11-01 — time of day. The transaction file carries a date and time. bookingDay is the date and bookingHour the hour (0-23) in the
+// source system's time zone (Eastern, see TXN_SOURCE_TZ), so the month and the hour never depend on where the server or the browser runs.
+ensureColumn('account_guest_bookings', 'bookingDay', 'TEXT');
+ensureColumn('account_guest_bookings', 'bookingHour', 'INTEGER');
+ensureColumn('account_guest_bookings_staging', 'bookingDay', 'TEXT');
+ensureColumn('account_guest_bookings_staging', 'bookingHour', 'INTEGER');
+// 2026-11-01 — the file as uploaded, kept for 180 days so the upload history can open it again.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS upload_archives (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    batchId TEXT,
+    fileName TEXT,
+    mimeType TEXT,
+    sizeBytes INTEGER,
+    sha256 TEXT,
+    dataB64 TEXT NOT NULL,
+    uploadedBy TEXT,
+    createdAt TEXT NOT NULL,
+    expiresAt TEXT NOT NULL
+  );
+`);
+const UPLOAD_ARCHIVE_DAYS = 180;
+const UPLOAD_ARCHIVE_MAX_B64 = 36 * 1000 * 1000; // the request body limit is 40 MB; larger files import fine but are not kept
+function purgeExpiredUploadArchives(){ try { db.prepare('DELETE FROM upload_archives WHERE expiresAt < ?').run(new Date().toISOString()); } catch (e){ /* table not ready */ } }
 createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS account_upload_mappings (
     accountId TEXT NOT NULL,
@@ -2646,11 +2672,14 @@ createTableIfNeeded(`
 `);
 // What the browser counted in the file versus what the live table holds for the same months, side by side.
 // fileTotals (from the browser): { rows, codes, gross, byMonth: { 'YYYY-M': { rows, codes, gross } } }.
-function buildUploadReceipt(accountId, kind, batchId, fileName, fileTotals, periods, now){
+function buildUploadReceipt(accountId, kind, batchId, fileName, fileTotals, periods, now, opts){
   const dbBy = {}; let dbRows = 0, dbGross = 0, dbUnits = 0; const dbCodes = new Set();
   if (kind === 'guest_bookings'){
     periods.forEach(p => {
-      const rows = db.prepare('SELECT "bookingCode", "grossRevenue", "tripDays" FROM account_guest_bookings WHERE accountId = ? AND year = ? AND month = ?').all(accountId, p.year, p.month);
+      // An update-and-add upload only touches the transactions in the file, so the database side is counted over those transactions alone.
+      const rows = (opts && opts.onlyBatch)
+        ? db.prepare('SELECT "bookingCode", "grossRevenue", "tripDays" FROM account_guest_bookings WHERE accountId = ? AND year = ? AND month = ? AND "bookingCode" IN (SELECT "bookingCode" FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ?)').all(accountId, p.year, p.month, accountId, opts.onlyBatch)
+        : db.prepare('SELECT "bookingCode", "grossRevenue", "tripDays" FROM account_guest_bookings WHERE accountId = ? AND year = ? AND month = ?').all(accountId, p.year, p.month);
       const codes = new Set(); let g = 0, u = 0; rows.forEach(r => { codes.add(aliasVal(r, 'bookingCode')); g += Number(aliasVal(r, 'grossRevenue')) || 0; u += Number(aliasVal(r, 'tripDays')) || 0; codes.forEach(c => dbCodes.add(c)); });
       dbBy[`${p.year}-${p.month}`] = { rows: rows.length, codes: codes.size, gross: Math.round(g), units: Math.round(u) }; dbRows += rows.length; dbGross += g; dbUnits += u;
     });
@@ -2667,7 +2696,7 @@ function buildUploadReceipt(accountId, kind, batchId, fileName, fileTotals, peri
   }
   const matched = f ? (diffs.length ? 0 : 1) : null;
   const id = `rcpt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
-  const note = f ? (diffs.length ? diffs.join('; ') : 'Every count in the file matches the database.') : 'The browser sent no file totals, so nothing could be compared.';
+  const note = (opts && opts.notePrefix ? opts.notePrefix + ' ' : '') + (f ? (diffs.length ? diffs.join('; ') : 'Every count in the file matches the database.') : 'The browser sent no file totals, so nothing could be compared.');
   try { db.prepare('INSERT INTO upload_receipts (id, accountId, kind, "batchId", "fileName", "createdAt", "fileJson", "dbJson", matched, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, accountId, kind, batchId || null, fileName ? String(fileName).slice(0, 300) : null, now, f ? JSON.stringify(f) : null, JSON.stringify(dbT), matched, note); } catch (e){ console.warn('[upload receipt] not stored:', e.message); }
   return { id, kind, batchId, fileName: fileName || null, createdAt: now, file: f, database: dbT, matched, note, periods: periods.length };
 }
@@ -2811,6 +2840,65 @@ function generationForAge(age, asOfYear){
 }
 // Recompute account_transactions_monthly from guest rows for the given
 // (year, month) periods — or every period on file when none are given.
+// ---- Source time zone (2026-11-01). The transaction file's date-times are Eastern. TXN_SOURCE_TIMEZONE overrides (an IANA name, e.g. 'Etc/GMT+5' for a
+// source that is fixed UTC-5 all year with no daylight saving). Naive stamps are read as wall-clock time in this zone; stamps that carry
+// their own offset (Z or +hh:mm) are honored as written.
+const TXN_SOURCE_TZ = (process.env.TXN_SOURCE_TIMEZONE || '').trim() || 'America/New_York';
+let _txnFmt = null;
+function txnZoneParts(ms){
+  if (!_txnFmt) _txnFmt = new Intl.DateTimeFormat('en-US', { timeZone: TXN_SOURCE_TZ, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const o = {}; _txnFmt.formatToParts(new Date(ms)).forEach(p => { o[p.type] = p.value; });
+  return { y: Number(o.year), m: Number(o.month), d: Number(o.day), h: Number(o.hour) % 24, mi: Number(o.minute), s: Number(o.second) };
+}
+function txnZoneOffsetMs(ms){ const f = ms - (((ms % 1000) + 1000) % 1000); const p = txnZoneParts(f); return Date.UTC(p.y, p.m - 1, p.d, p.h, p.mi, p.s) - f; }
+function txnWallToInstant(y, m, d, h, mi, s){
+  const guess = Date.UTC(y, m - 1, d, h, mi, s); let t = guess - txnZoneOffsetMs(guess); const o2 = txnZoneOffsetMs(t);
+  if (guess - o2 !== t) t = guess - o2; return t;
+}
+// A booking date-time (cell value, ISO string or Date) -> { iso (UTC instant), y, m, d, h, day ('YYYY-MM-DD' in the source zone), hasTime }. null when unreadable.
+function txnParseWhen(v){
+  if (v === null || v === undefined || v === '') return null;
+  const mk = (ms, hasTime) => { if (!Number.isFinite(ms)) return null; const p = txnZoneParts(ms); return { iso: new Date(ms).toISOString(), y: p.y, m: p.m, d: p.d, h: p.h, hasTime: !!hasTime, day: `${p.y}-${String(p.m).padStart(2, '0')}-${String(p.d).padStart(2, '0')}` }; };
+  if (v instanceof Date) return isNaN(v) ? null : mk(v.getTime(), true);
+  const str = String(v).trim(); if (!str) return null;
+  let m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/.exec(str);
+  if (m){
+    if (m[7]) return mk(Date.parse(str.length === 10 ? str : str.replace(' ', 'T')), true); // carries its own offset
+    const hasTime = m[4] !== undefined;
+    const ms = txnWallToInstant(Number(m[1]), Number(m[2]), Number(m[3]), hasTime ? Number(m[4]) : 12, hasTime ? Number(m[5]) : 0, hasTime ? Number(m[6] || 0) : 0);
+    return mk(ms, hasTime);
+  }
+  const d = new Date(str); if (isNaN(d)) return null;
+  if (/(Z|[+-]\d{2}:?\d{2})\s*$/.test(str)) return mk(d.getTime(), true);
+  const hasTime = /\d{1,2}:\d{2}/.test(str); // other formats ("3/5/2026 2:30 PM"): the numbers read are the wall clock
+  return mk(txnWallToInstant(d.getFullYear(), d.getMonth() + 1, d.getDate(), hasTime ? d.getHours() : 12, hasTime ? d.getMinutes() : 0, hasTime ? d.getSeconds() : 0), hasTime);
+}
+// What a merge upload would do, by transaction code, before anything is written. Reads the staged rows against the live rows (two grouped queries).
+function gbDiff(accountId, batchId, mode, stagedPeriods){
+  const grp = (table, extra) => db.prepare(`SELECT "bookingCode" AS code, COUNT(*) AS n, SUM("grossRevenue") AS gross, MIN("bookingStatus") AS smin, MAX("bookingStatus") AS smax, MIN(year) AS y, MIN(month) AS mo FROM ${table} WHERE accountId = ? ${extra} GROUP BY "bookingCode"`);
+  const staged = new Map(); grp('account_guest_bookings_staging', 'AND "uploadBatchId" = ?').all(accountId, batchId).forEach(r => staged.set(String(aliasVal(r, 'code')), r));
+  const live = new Map(); db.prepare(`SELECT g."bookingCode" AS code, COUNT(*) AS n, SUM(g."grossRevenue") AS gross, MIN(g."bookingStatus") AS smin, MAX(g."bookingStatus") AS smax, MIN(g.year) AS y, MIN(g.month) AS mo
+    FROM account_guest_bookings g WHERE g.accountId = ? AND g."bookingCode" IN (SELECT "bookingCode" FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ?) GROUP BY g."bookingCode"`).all(accountId, accountId, batchId).forEach(r => live.set(String(aliasVal(r, 'code')), r));
+  const st = r => `${String(aliasVal(r, 'smin') || '').trim()}${String(aliasVal(r, 'smax') || '').trim() !== String(aliasVal(r, 'smin') || '').trim() ? ' / ' + String(aliasVal(r, 'smax') || '').trim() : ''}`;
+  let added = 0, unchanged = 0, statusChanged = 0, revenueChanged = 0, updated = 0; const statusExamples = [], revenueExamples = [];
+  staged.forEach((r, code) => {
+    const o = live.get(code); if (!o){ added++; return; }
+    const sNew = st(r).toLowerCase(), sOld = st(o).toLowerCase(); const gNew = Number(aliasVal(r, 'gross')) || 0, gOld = Number(aliasVal(o, 'gross')) || 0;
+    const sCh = sNew !== sOld, gCh = Math.abs(gNew - gOld) > 0.005, nCh = Number(aliasVal(r, 'n')) !== Number(aliasVal(o, 'n'));
+    if (!sCh && !gCh && !nCh){ unchanged++; return; }
+    updated++; if (sCh){ statusChanged++; if (statusExamples.length < 8) statusExamples.push({ code, from: st(o) || '(blank)', to: st(r) || '(blank)' }); }
+    if (gCh){ revenueChanged++; if (revenueExamples.length < 5) revenueExamples.push({ code, from: Math.round(gOld * 100) / 100, to: Math.round(gNew * 100) / 100 }); }
+  });
+  const periods = {}; stagedPeriods.forEach(p => { periods[`${p.year}-${p.month}`] = p; }); live.forEach(r => { const y = Number(aliasVal(r, 'y')), mo = Number(aliasVal(r, 'mo')); if (y && mo) periods[`${y}-${mo}`] = { year: y, month: mo }; });
+  let removed = 0;
+  if (mode === 'replace'){
+    const ps = stagedPeriods; const where = ps.length ? ps.map(() => '(year = ? AND month = ?)').join(' OR ') : '1 = 0';
+    const inMonths = db.prepare(`SELECT DISTINCT "bookingCode" AS code FROM account_guest_bookings WHERE accountId = ? AND (${where})`).all(accountId, ...ps.flatMap(p => [p.year, p.month]));
+    inMonths.forEach(r => { if (!staged.has(String(aliasVal(r, 'code')))) removed++; });
+  }
+  return { mode, transactionsInFile: staged.size, added, updated, statusChanged, revenueChanged, unchanged, removed, statusExamples, revenueExamples, periods: Object.values(periods) };
+}
+
 function rollupGuestBookings(accountId, periods){
   const where = periods && periods.length ? ` AND (${periods.map(() => '(year = ? AND month = ?)').join(' OR ')})` : '';
   const params = periods && periods.length ? periods.flatMap(p => [p.year, p.month]) : [];
@@ -19152,6 +19240,8 @@ const DQ_DIMS = {
   serviceYear: { label: 'Service year', col: 'serviceYear', syn: ['service year', 'service years', 'delivery year', 'delivery years', 'year of service', 'year of delivery', 'travel year', 'year delivered'], natural: true },
   deliveryStatus: { label: 'Delivery status', col: 'deliveryStatus', syn: ['delivery status', 'delivered or not'], natural: true },
   month: { label: 'Month', col: 'month', syn: ['monthly', 'each month', 'by month', 'month'], natural: true },
+  hour: { label: 'Hour of day (Eastern)', col: 'hour', syn: ['hour of the day', 'hour of day', 'time of day', 'by hour', 'each hour', 'per hour', 'hourly', 'hours', 'hour'], natural: true },
+  weekday: { label: 'Day of week', col: 'weekday', syn: ['day of the week', 'day of week', 'weekdays', 'weekday', 'by weekday', 'each weekday', 'week day'], natural: true, fixed: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] },
   quarter: { label: 'Quarter', col: 'quarter', syn: ['quarterly', 'each quarter', 'by quarter', 'per quarter', 'quarters', 'quarter'], natural: true },
   orderSizeGroup: { label: 'Order size group', derived: 'orderSize', syn: ['order size group', 'order size groups', 'order size bucket'], natural: true },
   leadDaysGroup: { label: 'Sale-to-service window', derived: 'leadDays', syn: ['lead time group', 'booking window group'], natural: true }
@@ -19243,7 +19333,8 @@ function dqLoadTransactions(accountId){
       const sd = aliasVal(r0, 'sailDate');
       let svc = null; if (sd){ const q = String(sd).slice(0, 10); const dd = /^\d{4}-\d{2}-\d{2}$/.test(q) ? new Date(q + 'T00:00:00Z') : new Date(sd); if (Number.isFinite(dd.getTime()) && dd.getUTCFullYear() >= 2000) svc = dd.toISOString().slice(0, 10); }
       let lead = null; if (bd && sd){ const d = (new Date(sd) - new Date(bd)) / 86400000; if (Number.isFinite(d) && d >= 0 && d < 1500) lead = d; }
-      t = { code, date: bd, year: Number(aliasVal(r0, 'year')) || (bd ? Number(bd.slice(0, 4)) : null), month: Number(aliasVal(r0, 'month')) || (bd ? Number(bd.slice(5, 7)) : null),
+      const bday = String(aliasVal(r0, 'bookingDay') || '').slice(0, 10); const bh = aliasVal(r0, 'bookingHour'); const dayStr = /^\d{4}-\d{2}-\d{2}$/.test(bday) ? bday : bd;
+      t = { code, date: dayStr, hour: (bh === null || bh === undefined || bh === '' || !Number.isFinite(Number(bh))) ? null : String(Number(bh)).padStart(2, '0') + ':00', weekday: /^\d{4}-\d{2}-\d{2}$/.test(dayStr) ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(dayStr + 'T00:00:00Z').getUTCDay()] : null, year: Number(aliasVal(r0, 'year')) || (bd ? Number(bd.slice(0, 4)) : null), month: Number(aliasVal(r0, 'month')) || (bd ? Number(bd.slice(5, 7)) : null),
         productGroup: aliasVal(r0, 'productGroup'), creativeFocus: aliasVal(r0, 'creativeFocus'), promoType: aliasVal(r0, 'promoType'), bookingType: aliasVal(r0, 'bookingType'), bookingStatus: aliasVal(r0, 'bookingStatus'),
         guestState: aliasVal(r0, 'guestState'), guestCountry: aliasVal(r0, 'guestCountry'), generation: aliasVal(r0, 'generation'),
         serviceDate: svc, serviceYear: svc ? Number(svc.slice(0, 4)) : null, serviceMonth: svc ? Number(svc.slice(5, 7)) : null,
@@ -19485,7 +19576,9 @@ function dqRun(accountId, specIn, range, preloaded){
   const gCur = groupBy(cur), gPrev = spec.compare ? groupBy(prev) : new Map();
   let rows = Array.from(gCur.values()).map(g => { const r = reduce(g.list); const p = spec.compare ? reduce((gPrev.get(g.labels.join('\u0001')) || { list: [] }).list) : null; return { labels: g.labels, v: r.v, n: g.list.length, used: r.used, prev: p ? p.v : null }; });
   const firstNatural = spec.by.length && DQ_DIMS[spec.by[0]].natural;
-  if (firstNatural && !spec.top && !spec.rank) rows.sort((a, b) => spec.by.some((d, i) => edgesFor[d] && i === 0) ? dimOrder(spec.by[0], a.labels[0]) - dimOrder(spec.by[0], b.labels[0]) || (a.labels[1] || '').localeCompare(b.labels[1] || '') : a.labels[0].localeCompare(b.labels[0]) || (a.labels[1] || '').localeCompare(b.labels[1] || ''));
+  const fixedFirst = spec.by.length && DQ_DIMS[spec.by[0]].fixed; const fixedIdx = (l) => { const i = fixedFirst ? fixedFirst.indexOf(l) : -1; return i < 0 ? 99 : i; };
+  if (fixedFirst && !spec.top && !spec.rank) rows.sort((a, b) => fixedIdx(a.labels[0]) - fixedIdx(b.labels[0]) || (a.labels[1] || '').localeCompare(b.labels[1] || ''));
+  else if (firstNatural && !spec.top && !spec.rank) rows.sort((a, b) => spec.by.some((d, i) => edgesFor[d] && i === 0) ? dimOrder(spec.by[0], a.labels[0]) - dimOrder(spec.by[0], b.labels[0]) || (a.labels[1] || '').localeCompare(b.labels[1] || '') : a.labels[0].localeCompare(b.labels[0]) || (a.labels[1] || '').localeCompare(b.labels[1] || ''));
   else rows.sort((a, b) => (spec.order === 'asc' ? 1 : -1) * ((a.v === null ? -Infinity : a.v) - (b.v === null ? -Infinity : b.v)));
   const notes = []; const assumptionsOut = []; let matrixNote = false;
   if (spec.top) rows = rows.slice(0, spec.top);
@@ -19507,7 +19600,7 @@ function dqRun(accountId, specIn, range, preloaded){
   if (spec.by.length === 2 && (spec.agg === 'sum' || spec.agg === 'count') && !spec.compare && !spec.top){
     const lists = Array.from(gCur.values());
     const rl = Array.from(new Set(lists.map(g => g.labels[0]))), cl = Array.from(new Set(lists.map(g => g.labels[1])));
-    const ord = (d, arr, totals) => edgesFor[d] ? arr.sort((a, b) => dimOrder(d, a) - dimOrder(d, b)) : (DQ_DIMS[d].natural ? arr.sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true })) : arr.sort((a, b) => (totals[b] || 0) - (totals[a] || 0)));
+    const ord = (d, arr, totals) => edgesFor[d] ? arr.sort((a, b) => dimOrder(d, a) - dimOrder(d, b)) : (DQ_DIMS[d].fixed ? arr.sort((a, b) => { const ia = DQ_DIMS[d].fixed.indexOf(a), ib = DQ_DIMS[d].fixed.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); }) : DQ_DIMS[d].natural ? arr.sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true })) : arr.sort((a, b) => (totals[b] || 0) - (totals[a] || 0)));
     const tot = (idx) => { const o = {}; lists.forEach(g => { const r = reduce(g.list).v; o[g.labels[idx]] = (o[g.labels[idx]] || 0) + (r || 0); }); return o; };
     if (cl.length <= 14 && rl.length <= DQ_MAX_ROWS){
       ord(spec.by[0], rl, tot(0)); ord(spec.by[1], cl, tot(1));
@@ -20351,6 +20444,7 @@ const DQ_DASHBOARD_PARITY = [
   { view: 'Leads by month', dashboard: 'Media Science', questions: ['Leads by month', 'Which quarter had the most leads'], optional: true },
   { view: 'Digital spend and cost per lead', dashboard: 'Media Science', questions: ['Digital spend by month', 'Digital cost per lead by channel'], optional: true },
   { view: 'Website users', dashboard: 'Media Science', questions: ['Website users by month'], optional: true },
+  { view: 'Transactions by hour of day (Eastern) and day of week', dashboard: 'Strategy', questions: ['Transactions by hour of day', 'Transactions by day of the week'], optional: true },
   { view: 'Media spend, all channels (the spend behind ROAS and CAC)', dashboard: 'Growth and Performance', questions: ['Media spend by month', 'Total media spend by quarter'], optional: true },
   { view: 'Budgeted media spend (confirmed working media)', dashboard: 'Strategy: Budget Flow', questions: ['Budgeted media spend by month'], optional: true },
   { view: 'Annual plan and targets', dashboard: 'Strategy', questions: ['Planned transactions by quarter'], optional: true },
@@ -31886,7 +31980,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-10-30-model-sunset',
+        buildStamp: '2026-11-01-txn-upload',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -48666,9 +48760,10 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const rowsIn = Array.isArray(body.rows) ? body.rows : [];
       const batchId = String(body.batchId || '').trim() || `gb_${Date.now()}`;
       const now = new Date().toISOString();
-      const GB_COLS = 24, GB_PER_STMT = 200;
-      const gbColList = `(accountId, "bookingCode", "guestSeq", "bookingDate", year, month, "bookingType", "bookingClass", "marketingAttributable", "promoType", "bookingStatus", "sailDate", age, generation, "guestState", "guestPostalCode", "guestCountry", "grossRevenue", "netRevenue", "productGroup", "creativeFocus", "tripDays", "uploadBatchId", updatedAt)`;
-      const gbUpdate = `"bookingDate" = excluded."bookingDate", year = excluded.year, month = excluded.month, "bookingType" = excluded."bookingType", "bookingClass" = excluded."bookingClass", "marketingAttributable" = excluded."marketingAttributable", "promoType" = excluded."promoType", "bookingStatus" = excluded."bookingStatus", "sailDate" = excluded."sailDate", age = excluded.age, generation = excluded.generation, "guestState" = excluded."guestState", "guestPostalCode" = excluded."guestPostalCode", "guestCountry" = excluded."guestCountry", "grossRevenue" = excluded."grossRevenue", "netRevenue" = excluded."netRevenue", "productGroup" = excluded."productGroup", "creativeFocus" = excluded."creativeFocus", "tripDays" = excluded."tripDays", "uploadBatchId" = excluded."uploadBatchId", updatedAt = excluded.updatedAt`;
+      if (body.cancel){ try { db.prepare('DELETE FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ?').run(accountId, batchId); } catch (e){ /* nothing staged */ } return sendJson(res, 200, { accountId, batchId, cancelled: true }); }
+      const GB_COLS = 26, GB_PER_STMT = 190;
+      const gbColList = `(accountId, "bookingCode", "guestSeq", "bookingDate", year, month, "bookingType", "bookingClass", "marketingAttributable", "promoType", "bookingStatus", "sailDate", age, generation, "guestState", "guestPostalCode", "guestCountry", "grossRevenue", "netRevenue", "productGroup", "creativeFocus", "tripDays", "bookingDay", "bookingHour", "uploadBatchId", updatedAt)`;
+      const gbUpdate = `"bookingDate" = excluded."bookingDate", year = excluded.year, month = excluded.month, "bookingType" = excluded."bookingType", "bookingClass" = excluded."bookingClass", "marketingAttributable" = excluded."marketingAttributable", "promoType" = excluded."promoType", "bookingStatus" = excluded."bookingStatus", "sailDate" = excluded."sailDate", age = excluded.age, generation = excluded.generation, "guestState" = excluded."guestState", "guestPostalCode" = excluded."guestPostalCode", "guestCountry" = excluded."guestCountry", "grossRevenue" = excluded."grossRevenue", "netRevenue" = excluded."netRevenue", "productGroup" = excluded."productGroup", "creativeFocus" = excluded."creativeFocus", "tripDays" = excluded."tripDays", "bookingDay" = excluded."bookingDay", "bookingHour" = excluded."bookingHour", "uploadBatchId" = excluded."uploadBatchId", updatedAt = excluded.updatedAt`;
       // Continue guestSeq numbering across chunks of the same upload (read from the stage).
       const seqRows = rowsIn.length ? db.prepare('SELECT "bookingCode", MAX("guestSeq") AS maxSeq FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ? GROUP BY "bookingCode"').all(accountId, batchId) : [];
       const seq = {}; seqRows.forEach(r => { seq[aliasVal(r, 'bookingCode')] = Number(aliasVal(r, 'maxSeq')) || 0; });
@@ -48678,36 +48773,115 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const numOrNull = v => { if (v === null || v === undefined || v === '') return null; const n = Number(String(v).replace(/[,$]/g, '')); return Number.isFinite(n) ? n : null; };
       for (const r of rowsIn){
         const code = String(r.bookingCode || '').trim();
-        const d = r.bookingDate ? new Date(r.bookingDate) : null;
-        if (!code || !d || isNaN(d)){ skipped++; continue; }
-        const year = d.getFullYear(), month = d.getMonth() + 1;
+        const w = txnParseWhen(r.bookingDate); // date and time in the source (Eastern) zone
+        if (!code || !w){ skipped++; continue; }
+        const year = w.y, month = w.m;
         const cls = { bookingClass: null, marketingAttributable: 1 }; // imported as-is; the client filters afterwards
         seq[code] = (seq[code] || 0) + 1;
         const sail = r.sailDate ? new Date(r.sailDate) : null;
-        pending.push(accountId, code, seq[code], d.toISOString(), year, month, r.bookingType != null ? String(r.bookingType).trim() : null, cls.bookingClass, cls.marketingAttributable,
+        pending.push(accountId, code, seq[code], w.iso, year, month, r.bookingType != null ? String(r.bookingType).trim() : null, cls.bookingClass, cls.marketingAttributable,
           r.promoType != null ? String(r.promoType).trim() : null, r.bookingStatus != null ? String(r.bookingStatus).trim() : null, sail && !isNaN(sail) ? sail.toISOString() : null,
           numOrNull(r.age), generationForAge(numOrNull(r.age), year), r.guestState != null ? String(r.guestState).trim() : null, r.guestPostalCode != null ? String(r.guestPostalCode).trim() : null, r.guestCountry != null ? String(r.guestCountry).trim() : null,
-          numOrNull(r.grossRevenue), numOrNull(r.netRevenue), r.productGroup != null ? String(r.productGroup).trim() : '', r.creativeFocus != null ? String(r.creativeFocus).trim() : null, (() => { const t = numOrNull(r.tripDays); return t != null && t >= 0 && t <= 3650 ? t : null; })(), batchId, now);
+          numOrNull(r.grossRevenue), numOrNull(r.netRevenue), r.productGroup != null ? String(r.productGroup).trim() : '', r.creativeFocus != null ? String(r.creativeFocus).trim() : null, (() => { const t = numOrNull(r.tripDays); return t != null && t >= 0 && t <= 3650 ? t : null; })(), w.day, w.hasTime ? w.h : null, batchId, now);
         saved++;
         if (pending.length >= GB_COLS * GB_PER_STMT) flush();
       }
       flush();
       const stagedTotal = Number(aliasVal(db.prepare('SELECT COUNT(*) AS n FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ?').get(accountId, batchId) || {}, 'n')) || 0;
       if (!body.final) return sendJson(res, 200, { accountId, batchId, saved, skipped, staged: stagedTotal, committed: false, updatedAt: now });
-      // Final chunk: commit the whole upload in one transaction.
-      const periods = db.prepare('SELECT DISTINCT year, month FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ?').all(accountId, batchId).map(p => ({ year: Number(p.year), month: Number(p.month) })).filter(p => p.year >= 2000 && p.month >= 1 && p.month <= 12);
-      (Array.isArray(body.replacePeriods) ? body.replacePeriods : []).forEach(p => { const y = parseInt(p.year, 10), m = parseInt(p.month, 10); if (y >= 2000 && m >= 1 && m <= 12 && !periods.some(q => q.year === y && q.month === m)) periods.push({ year: y, month: m }); });
-      if (!periods.length) return sendJson(res, 400, { error: 'nothing staged for this upload — send the rows again' });
-      const stmts = periods.map(p => ({ sql: 'DELETE FROM account_guest_bookings WHERE accountId = ? AND year = ? AND month = ?', params: [accountId, p.year, p.month] }));
-      stmts.push({ sql: `INSERT INTO account_guest_bookings ${gbColList} SELECT accountId, "bookingCode", "guestSeq", "bookingDate", year, month, "bookingType", "bookingClass", "marketingAttributable", "promoType", "bookingStatus", "sailDate", age, generation, "guestState", "guestPostalCode", "guestCountry", "grossRevenue", "netRevenue", "productGroup", "creativeFocus", "tripDays", "uploadBatchId", updatedAt FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ? ON CONFLICT(accountId, "bookingCode", "guestSeq") DO UPDATE SET ${gbUpdate}`, params: [accountId, batchId] });
-      stmts.push({ sql: 'DELETE FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ?', params: [accountId, batchId] });
+      // Final call: preview what would change, or commit the whole upload in one transaction.
+      // mode 'merge' (the default, "update and add"): each transaction code in the file replaces that transaction's rows; every other transaction is left alone.
+      // mode 'replace': every month the file covers is emptied first, then filled from the file (the old behaviour, for a clean reload).
+      const mode = String(body.mode || '').toLowerCase() === 'replace' ? 'replace' : 'merge';
+      const stagedPeriods = db.prepare('SELECT DISTINCT year, month FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ?').all(accountId, batchId).map(p => ({ year: Number(p.year), month: Number(p.month) })).filter(p => p.year >= 2000 && p.month >= 1 && p.month <= 12);
+      if (!stagedPeriods.length) return sendJson(res, 400, { error: 'nothing staged for this upload — send the rows again' });
+      let diff; try { diff = gbDiff(accountId, batchId, mode, stagedPeriods); } catch (e){ console.error('[guest-bookings] diff failed:', e.message); return sendJson(res, 500, { error: `Could not compare the file with what is on file: ${e.message}. Nothing was changed.` }); }
+      const periods = stagedPeriods.slice();
+      const addP = p => { if (p && p.year >= 2000 && p.month >= 1 && p.month <= 12 && !periods.some(q => q.year === p.year && q.month === p.month)) periods.push({ year: p.year, month: p.month }); };
+      diff.periods.forEach(addP); // a transaction that moved to another month also refreshes the month it left
+      if (mode === 'replace') (Array.isArray(body.replacePeriods) ? body.replacePeriods : []).forEach(p => addP({ year: parseInt(p.year, 10), month: parseInt(p.month, 10) }));
+      if (body.preview) return sendJson(res, 200, { accountId, batchId, preview: true, mode, diff, staged: stagedTotal, months: periods.length });
+      const stmts = [];
+      if (mode === 'replace') periods.forEach(p => stmts.push({ sql: 'DELETE FROM account_guest_bookings WHERE accountId = ? AND year = ? AND month = ?', params: [accountId, p.year, p.month] }));
+      else stmts.push({ sql: 'DELETE FROM account_guest_bookings WHERE accountId = ? AND "bookingCode" IN (SELECT "bookingCode" FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ?)', params: [accountId, accountId, batchId] });
+      stmts.push({ sql: `INSERT INTO account_guest_bookings ${gbColList} SELECT accountId, "bookingCode", "guestSeq", "bookingDate", year, month, "bookingType", "bookingClass", "marketingAttributable", "promoType", "bookingStatus", "sailDate", age, generation, "guestState", "guestPostalCode", "guestCountry", "grossRevenue", "netRevenue", "productGroup", "creativeFocus", "tripDays", "bookingDay", "bookingHour", "uploadBatchId", updatedAt FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ? ON CONFLICT(accountId, "bookingCode", "guestSeq") DO UPDATE SET ${gbUpdate}`, params: [accountId, batchId] });
       try { db.batch(stmts, 180000); }
       catch (e){ console.error('[guest-bookings] commit failed, live rows untouched:', e.message); return sendJson(res, 500, { error: `The upload was not saved: ${e.message}. Your existing data is unchanged.` }); }
-      try { db.prepare("DELETE FROM account_guest_bookings_staging WHERE accountId = ? AND updatedAt < ?").run(accountId, new Date(Date.now() - 2 * 86400000).toISOString()); } catch (e){}
       const rollup = rollupGuestBookings(accountId, periods);
-      const receipt = buildUploadReceipt(accountId, 'guest_bookings', batchId, body.fileName, body.fileTotals, periods, now);
-      return sendJson(res, 200, { accountId, batchId, saved, skipped, staged: stagedTotal, committed: true, rollup, receipt, updatedAt: now });
+      const summaryLine = mode === 'merge'
+        ? `Update and add: ${diff.added.toLocaleString('en-US')} new, ${diff.updated.toLocaleString('en-US')} updated (${diff.statusChanged.toLocaleString('en-US')} status, ${diff.revenueChanged.toLocaleString('en-US')} revenue), ${diff.unchanged.toLocaleString('en-US')} unchanged.`
+        : `Replace months: ${diff.transactionsInFile.toLocaleString('en-US')} transactions in the file, ${diff.removed.toLocaleString('en-US')} on file for those months were not in the file and were removed.`;
+      const receipt = buildUploadReceipt(accountId, 'guest_bookings', batchId, body.fileName, body.fileTotals, stagedPeriods, now, { onlyBatch: mode === 'merge' ? batchId : null, notePrefix: summaryLine });
+      try { db.prepare('DELETE FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ?').run(accountId, batchId); } catch (e){}
+      try { db.prepare("DELETE FROM account_guest_bookings_staging WHERE accountId = ? AND updatedAt < ?").run(accountId, new Date(Date.now() - 2 * 86400000).toISOString()); } catch (e){}
+      return sendJson(res, 200, { accountId, batchId, saved, skipped, staged: stagedTotal, committed: true, mode, diff, rollup, receipt, updatedAt: now });
     }
+    // 2026-11-01 — upload archive. The file as uploaded is kept for 180 days so the upload history can open it again.
+    // POST /api/accounts/:id/upload-archives { kind, batchId, fileName, mimeType, dataBase64, uploadedBy }  (sent by the browser after a successful import)
+    // GET  /api/accounts/:id/upload-archives[?kind=]        -> the list, newest first, with days left
+    // GET  /api/accounts/:id/upload-archives/:archiveId/file -> the original file as a download
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'upload-archives'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const kind = String(body.kind || '').trim();
+      if (kind !== 'guest_bookings') return sendJson(res, 400, { error: 'kind must be guest_bookings' });
+      const b64 = String(body.dataBase64 || '').replace(/^data:[^,]*,/, '');
+      if (!b64) return sendJson(res, 400, { error: 'dataBase64 is required' });
+      if (b64.length > UPLOAD_ARCHIVE_MAX_B64) return sendJson(res, 413, { error: 'This file is too large to keep a copy (the limit is about 26 MB). The import itself is not affected.' });
+      const buf = Buffer.from(b64, 'base64');
+      const id = `arc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      const now = new Date(); const exp = new Date(now.getTime() + UPLOAD_ARCHIVE_DAYS * 86400000);
+      const sha = require('crypto').createHash('sha256').update(buf).digest('hex');
+      db.prepare('INSERT INTO upload_archives (id, accountId, kind, "batchId", "fileName", "mimeType", "sizeBytes", sha256, "dataB64", "uploadedBy", "createdAt", "expiresAt") VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
+        .run(id, accountId, kind, body.batchId ? String(body.batchId).slice(0, 80) : null, body.fileName ? String(body.fileName).slice(0, 200) : null, String(body.mimeType || 'application/octet-stream').slice(0, 120), buf.length, sha, b64, body.uploadedBy ? String(body.uploadedBy).slice(0, 120) : null, now.toISOString(), exp.toISOString());
+      purgeExpiredUploadArchives();
+      return sendJson(res, 201, { id, sizeBytes: buf.length, expiresAt: exp.toISOString() });
+    }
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'upload-archives'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      purgeExpiredUploadArchives();
+      const kind = new URL(req.url, 'http://localhost').searchParams.get('kind');
+      const rows = kind
+        ? db.prepare('SELECT id, kind, "batchId", "fileName", "mimeType", "sizeBytes", "uploadedBy", "createdAt", "expiresAt" FROM upload_archives WHERE accountId = ? AND kind = ? ORDER BY "createdAt" DESC LIMIT 200').all(accountId, kind)
+        : db.prepare('SELECT id, kind, "batchId", "fileName", "mimeType", "sizeBytes", "uploadedBy", "createdAt", "expiresAt" FROM upload_archives WHERE accountId = ? ORDER BY "createdAt" DESC LIMIT 200').all(accountId);
+      const out = rows.map(r => { const exp = aliasVal(r, 'expiresAt'); return { id: r.id, kind: r.kind, batchId: aliasVal(r, 'batchId'), fileName: aliasVal(r, 'fileName'), mimeType: aliasVal(r, 'mimeType'), sizeBytes: Number(aliasVal(r, 'sizeBytes')) || 0, uploadedBy: aliasVal(r, 'uploadedBy'), createdAt: aliasVal(r, 'createdAt'), expiresAt: exp, daysLeft: Math.max(0, Math.ceil((new Date(exp).getTime() - Date.now()) / 86400000)) }; });
+      return sendJson(res, 200, { retentionDays: UPLOAD_ARCHIVE_DAYS, archives: out });
+    }
+    if (req.method === 'GET' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'upload-archives' && parts[5] === 'file'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const r = db.prepare('SELECT "fileName", "mimeType", "dataB64", "expiresAt" FROM upload_archives WHERE id = ? AND accountId = ?').get(decodeURIComponent(parts[4]), accountId);
+      if (!r || new Date(aliasVal(r, 'expiresAt')).getTime() < Date.now()) return sendJson(res, 404, { error: 'That file is no longer kept (files are kept for 180 days).' });
+      const buf = Buffer.from(aliasVal(r, 'dataB64'), 'base64'); const name = String(aliasVal(r, 'fileName') || 'upload').replace(/[^A-Za-z0-9._ -]/g, '_');
+      res.writeHead(200, { 'Content-Type': String(aliasVal(r, 'mimeType') || 'application/octet-stream'), 'Content-Length': buf.length, 'Content-Disposition': `attachment; filename="${name}"`, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' });
+      return res.end(buf);
+    }
+
+    // POST /api/accounts/:id/guest-bookings/backfill-time — Admin. Fills the date and hour in the source (Eastern) zone for transactions loaded before 2026-11-01,
+    // from the full date-time that was already stored, and corrects the month where the old server-clock month differed. Repeat the call while `remaining` is above 0.
+    if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'guest-bookings' && parts[4] === 'backfill-time'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAdminMember(req, res, accountId)) return;
+      const distinct = db.prepare('SELECT DISTINCT "bookingDate" AS bd FROM account_guest_bookings WHERE accountId = ? AND "bookingDay" IS NULL AND "bookingDate" IS NOT NULL').all(accountId).map(r => aliasVal(r, 'bd')).filter(Boolean);
+      const total = distinct.length; const work = distinct.slice(0, 4000);
+      const parsed = work.map(bd => ({ bd, w: txnParseWhen(bd) })).filter(x => x.w);
+      // A file with only dates (no times) was stored at midnight; when nearly everything sits at exactly midnight Eastern the hour is unknown, not midnight.
+      const atMidnight = parsed.filter(x => { const ms = Date.parse(x.bd); const p = txnZoneParts(ms); return p.h === 0 && p.mi === 0 && p.s === 0; }).length;
+      const dateOnly = parsed.length > 0 && atMidnight / parsed.length > 0.9;
+      const periods = new Map(); let moved = 0; const stmts = [];
+      parsed.forEach(({ bd, w }) => {
+        stmts.push({ sql: 'UPDATE account_guest_bookings SET "bookingDay" = ?, "bookingHour" = ?, year = ?, month = ? WHERE accountId = ? AND "bookingDate" = ? AND "bookingDay" IS NULL', params: [w.day, dateOnly ? null : w.h, w.y, w.m, accountId, bd] });
+        periods.set(`${w.y}-${w.m}`, { year: w.y, month: w.m });
+      });
+      const before = new Map(); db.prepare('SELECT DISTINCT year, month FROM account_guest_bookings WHERE accountId = ?').all(accountId).forEach(r => before.set(`${r.year}-${r.month}`, { year: Number(r.year), month: Number(r.month) }));
+      for (let i = 0; i < stmts.length; i += 200){ try { db.batch(stmts.slice(i, i + 200), 120000); } catch (e){ return sendJson(res, 500, { error: `Stopped partway: ${e.message}. Run it again to continue.`, done: i }); } }
+      before.forEach((p, k) => periods.set(k, p));
+      let rollup = null; if (stmts.length) rollup = rollupGuestBookings(accountId, Array.from(periods.values()));
+      return sendJson(res, 200, { accountId, distinctTimesTotal: total, processed: parsed.length, remaining: Math.max(0, total - parsed.length), dateOnlyFile: dateOnly, hoursStored: !dateOnly, monthsRefreshed: periods.size, rollup });
+    }
+
     // 2026-10-02 — the approved column mapping for a customer-file upload, saved per account so the next file from the same system maps without asking.
     // GET /api/accounts/:id/upload-mapping?kind=guest_bookings -> { mapping, approvedBy, approvedAt } | { mapping: null }
     // PUT /api/accounts/:id/upload-mapping { kind, mapping: { columns: { field: 'Client Header' }, orderSizeLabel, ... }, approvedBy }
