@@ -13585,6 +13585,9 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
       <div class="sk-card-body">
         <p class="hint" style="margin-top:0;">Every attempt on this account, accepted or rejected — a rejection is a real event worth being able to see, not something this build hides.</p>
         <div id="mbuHistoryBody"><p class="hint">Loading…</p></div>
+        <h4 style="margin:16px 0 4px;font-size:0.9375rem;">Customer transaction files</h4>
+        <p class="hint" style="margin-top:0;">The original file from each transaction upload, kept for 180 days. Open one to see exactly what was loaded.</p>
+        <div id="mbuArchiveBody"></div>
       </div>
     </div>
 
@@ -14023,7 +14026,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-10-29-voice-cards';
+const CXMEDIA_BUILD_STAMP = '2026-11-01-txn-upload';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -45899,6 +45902,7 @@ async function pcrSubmitRequest(capability){
 async function mbuLoadHistory(){
   const body = document.getElementById('mbuHistoryBody');
   if (!body || !state.companyId) return;
+  mbuLoadArchives();
   try {
     const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/uploads?purpose=marketing_budget`);
     if (!resp.ok){ body.innerHTML = '<p class="hint">Couldn\'t load upload history right now.</p>'; return; }
@@ -82791,7 +82795,9 @@ async function mbuReadFileGridDates(file){
     const XLSX = await cfiLoadSheetJs();
     const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
     const sheet = wb.Sheets[wb.SheetNames[0]];
-    return XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' }).map(r => r.map(c => (c instanceof Date ? c.toISOString() : (c == null ? '' : c))));
+    // A date cell is the wall-clock time typed in the file. Read it as text from the local parts (not toISOString, which would shift it by this browser's time zone).
+    const wall = d => { const t = new Date(Math.round(d.getTime() / 1000) * 1000); const z = n => String(n).padStart(2, '0'); const ymd = `${t.getFullYear()}-${z(t.getMonth() + 1)}-${z(t.getDate())}`; return (t.getHours() || t.getMinutes() || t.getSeconds()) ? `${ymd}T${z(t.getHours())}:${z(t.getMinutes())}:${z(t.getSeconds())}` : ymd; };
+    return XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' }).map(r => r.map(c => (c instanceof Date ? wall(c) : (c == null ? '' : c))));
   }
   throw new Error(`"${file.name}" isn't a .csv or .xlsx file.`);
 }
@@ -82807,7 +82813,33 @@ function mbuParseDateCell(v){
   const d = new Date(str);
   return isNaN(d) ? null : d;
 }
+// 2026-11-01 — the transaction file's date-times are Eastern. This reads a cell as the wall-clock time written in the file and returns text
+// ('YYYY-MM-DDTHH:mm:ss', or 'YYYY-MM-DD' when the cell has no time), so the month and hour never depend on this browser's time zone.
+// A stamp that carries its own offset (Z or +hh:mm) is converted to Eastern. The server reads the same text the same way.
+const MBU_SOURCE_TZ = 'America/New_York';
+function mbuWall(v){
+  if (v === null || v === undefined || v === '') return null;
+  const z = n => String(n).padStart(2, '0');
+  const out = (y, mo, d, h, mi, sec, hasTime) => (mo < 1 || mo > 12 || d < 1 || d > 31) ? null : { text: hasTime ? `${y}-${z(mo)}-${z(d)}T${z(h)}:${z(mi)}:${z(sec || 0)}` : `${y}-${z(mo)}-${z(d)}`, y, m: mo, d, hasTime: !!hasTime };
+  const fromInstant = ms => { const f = new Intl.DateTimeFormat('en-US', { timeZone: MBU_SOURCE_TZ, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }); const o = {}; f.formatToParts(new Date(ms)).forEach(x => { o[x.type] = x.value; }); return out(+o.year, +o.month, +o.day, +o.hour % 24, +o.minute, +o.second, true); };
+  if (v instanceof Date) return isNaN(v) ? null : out(v.getFullYear(), v.getMonth() + 1, v.getDate(), v.getHours(), v.getMinutes(), v.getSeconds(), true);
+  if (typeof v === 'number'){ // Excel serial; the fraction is the time of day
+    if (!(v > 20000 && v < 80000)) return null;
+    const t = new Date(Math.round((v - 25569) * 86400)* 1000); const hasTime = v % 1 !== 0;
+    return out(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate(), t.getUTCHours(), t.getUTCMinutes(), t.getUTCSeconds(), hasTime);
+  }
+  const str = String(v).trim(); if (!str) return null;
+  let m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?)?\s*(Z|[+-]\d{2}:?\d{2})?$/.exec(str);
+  if (m){ if (m[7]) return fromInstant(Date.parse(str.replace(' ', 'T'))); return out(+m[1], +m[2], +m[3], m[4] !== undefined ? +m[4] : 0, m[5] !== undefined ? +m[5] : 0, m[6] !== undefined ? +m[6] : 0, m[4] !== undefined); }
+  m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:[ ,T]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp][Mm])?)?$/.exec(str); // M/D/YYYY with an optional time
+  if (m){ let y = +m[3]; if (y < 100) y += 2000; let h = m[4] !== undefined ? +m[4] : 0; const ap = (m[7] || '').toLowerCase(); if (ap === 'pm' && h < 12) h += 12; if (ap === 'am' && h === 12) h = 0; return out(y, +m[1], +m[2], h, m[5] !== undefined ? +m[5] : 0, m[6] !== undefined ? +m[6] : 0, m[4] !== undefined); }
+  const d = new Date(str); if (isNaN(d)) return null;
+  if (/(Z|[+-]\d{2}:?\d{2})\s*$/.test(str)) return fromInstant(d.getTime());
+  return out(d.getFullYear(), d.getMonth() + 1, d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds(), /\d{1,2}:\d{2}/.test(str));
+}
 let mbuPendingGuestBookings = null;
+let mbuGbStaged = null; // an upload that is staged on the server and waiting for "Confirm and save"
+
 // ---------- 2026-10-02 — column mapping for customer-level files ----------
 // A client's file keeps the client's own column labels. Read the file, propose how each column maps to our standard fields
 // (header words + what the values look like + an AI second opinion for what's left), show the proposal with a confidence level for
@@ -82927,7 +82959,7 @@ async function mbuHandleGuestBookingsFile(event){
     const headerIndex = mbuGbDetectHeaderRow(grid);
     const prop = mbuGbProposeColumns(grid, headerIndex);
     const dataRows = grid.length - headerIndex - 1;
-    const model = { grid, headerIndex, fileName: file.name, cols: prop.cols, dataRows, assign: {}, saved: null, newCols: [] };
+    const model = { grid, headerIndex, fileName: file.name, file, cols: prop.cols, dataRows, assign: {}, saved: null, newCols: [] };
     Object.keys(prop.byField).forEach(k => { const a = prop.byField[k]; model.assign[k] = { idx: a.col, conf: a.conf, source: 'rules', why: `${a.why}; ${a.shapeNote}`, alt: a.alt }; });
     // A mapping the account approved before: use it where those columns are still in the file.
     let savedResp = null; try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/upload-mapping?kind=guest_bookings`); if (r.ok) savedResp = await r.json(); } catch (e){}
@@ -82998,23 +83030,23 @@ async function mbuGbApprove(auto){
     const sizeLbl = (document.getElementById('mbuGbSizeLabel') || {}).value || m.orderSizeLabel || (colIndex.tripDays != null ? m.cols.find(c => c.idx === colIndex.tripDays).header : 'Trip Days');
     const grid = m.grid, headerIndex = m.headerIndex;
     const rows = [], periods = new Set(), codes = new Set();
-    let skipped = 0, units = 0, unitRows = 0;
+    let skipped = 0, units = 0, unitRows = 0, timed = 0;
     for (let i = headerIndex + 1; i < grid.length; i++){
       const r = grid[i] || [];
       const code = String(r[colIndex.bookingCode] == null ? '' : r[colIndex.bookingCode]).trim();
-      const d = mbuParseDateCell(r[colIndex.bookingDate]);
+      const d = mbuWall(r[colIndex.bookingDate]);
       if (!code || !d){ if (r.some(c => String(c == null ? '' : c).trim())) skipped++; continue; }
       const get = k => colIndex[k] != null ? r[colIndex[k]] : null;
-      const sail = colIndex.sailDate != null ? mbuParseDateCell(get('sailDate')) : null;
+      const sail = colIndex.sailDate != null ? mbuWall(get('sailDate')) : null;
       const bookingType = get('bookingType') != null ? String(get('bookingType')).trim() : '';
       const td = colIndex.tripDays != null ? mbuNum(get('tripDays')) : null; const tdOk = td != null && td >= 0 && td <= 3650;
       if (tdOk){ units += td; unitRows++; }
       rows.push({
-        bookingCode: code, bookingDate: d.toISOString(), bookingType, promoType: get('promoType'), bookingStatus: get('bookingStatus'),
-        sailDate: sail ? sail.toISOString() : null, age: get('age'), guestState: get('guestState'), guestPostalCode: get('guestPostalCode') != null ? String(get('guestPostalCode')) : null, guestCountry: get('guestCountry'),
+        bookingCode: code, bookingDate: d.text, bookingType, promoType: get('promoType'), bookingStatus: get('bookingStatus'),
+        sailDate: sail ? sail.text.slice(0, 10) : null, age: get('age'), guestState: get('guestState'), guestPostalCode: get('guestPostalCode') != null ? String(get('guestPostalCode')) : null, guestCountry: get('guestCountry'),
         grossRevenue: get('grossRevenue'), netRevenue: get('netRevenue'), productGroup: get('productGroup'), creativeFocus: get('creativeFocus'), tripDays: tdOk ? td : null
       });
-      periods.add(`${d.getFullYear()}-${d.getMonth() + 1}`); codes.add(code);
+      periods.add(`${d.y}-${d.m}`); codes.add(code); if (d.hasTime) timed++;
     }
     if (!rows.length) throw new Error('No customer rows with a transaction ID and a transaction date under the chosen columns. Check the two required columns.');
     const periodList = [...periods].map(p => { const [y, mo] = p.split('-').map(Number); return { year: y, month: mo }; }).sort((a, b) => a.year - b.year || a.month - b.month);
@@ -83022,54 +83054,135 @@ async function mbuGbApprove(auto){
     const columns = {}; Object.keys(colIndex).forEach(k => { columns[k] = m.cols.find(c => c.idx === colIndex[k]).header; });
     const usedIdx = new Set(Object.values(colIndex));
     authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/upload-mapping`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'guest_bookings', approvedBy: state.userName || '', mapping: { columns, orderSizeLabel: sizeLbl, ignored: m.cols.filter(c => !usedIdx.has(c.idx)).map(c => c.header) } }) }).catch(() => {});
-    mbuPendingGuestBookings = { rows, periods: periodList, fileName: m.fileName, units, sizeLabel: sizeLbl };
+    mbuPendingGuestBookings = { rows, periods: periodList, fileName: m.fileName, units, sizeLabel: sizeLbl, file: m.file, timed };
     const perLabel = periodList.length ? `${MBU_MONTH_NAMES_1[periodList[0].month]} ${periodList[0].year} → ${MBU_MONTH_NAMES_1[periodList[periodList.length - 1].month]} ${periodList[periodList.length - 1].year} (${periodList.length} months)` : '';
     if (preview) preview.innerHTML = `<div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:10px 12px;margin:0 0 10px;font-size:0.8125rem;">
       ${auto ? `<div style="margin-bottom:6px;">Using the column mapping ${m.saved && m.saved.approvedBy ? 'approved by ' + escapeHtml(m.saved.approvedBy) + ' ' : 'approved '}on ${new Date(m.saved.approvedAt).toLocaleDateString()}. <a href="#" onclick="event.preventDefault();mbuGbMap.savedClean=false;mbuGbRenderReview();">Review the mapping</a></div>` : ''}
       <b>${rows.length.toLocaleString()} customer rows</b> · <b>${codes.size.toLocaleString()} unique transaction codes</b> read from ${escapeHtml(m.fileName)}, ${perLabel}${skipped ? ` · ${skipped} row${skipped === 1 ? '' : 's'} without a transaction ID or date skipped (e.g. a totals row or filter footer)` : ''}.
       ${unitRows ? `<div class="hint" style="margin-top:4px;">${escapeHtml(sizeLbl)}: ${Math.round(units).toLocaleString()} total across ${unitRows.toLocaleString()} rows (average ${(units / unitRows).toFixed(1)} per customer row).${unitRows < rows.length ? ` ${(rows.length - unitRows).toLocaleString()} rows had no usable value and are left blank.` : ''}</div>` : ''}
       <div class="hint" style="margin-top:6px;">Everything in the file is imported as it came. After saving, choose what counts (statuses, transaction types and more) under “What counts in revenue and reports”.</div>
-      <div class="hint" style="margin-top:4px;">Saving replaces those ${periodList.length} months' customer rows and recomputes their monthly totals (unique transactions, customers, gross and net revenue) by Product Group.</div>
-      <div class="btn-row" style="margin-top:8px;"><button type="button" class="btn-primary" onclick="mbuConfirmGuestBookingsUpload()">Save — replace these months</button><button type="button" class="btn-ghost" onclick="document.getElementById('mbuTxnPreview').innerHTML='';mbuPendingGuestBookings=null;">Cancel</button></div>
+      <div class="hint" style="margin-top:4px;">${timed ? `${timed.toLocaleString()} of ${rows.length.toLocaleString()} rows carry a time of day (read as Eastern time), so sales can be looked at by hour.` : 'This file has dates only, no time of day, so hourly views are not available for it.'}</div>
+      <div style="margin-top:8px;font-size:0.8125rem;">
+        <label style="display:block;margin-bottom:4px;"><input type="radio" name="mbuGbMode" value="merge" checked> <b>Update and add</b> — each transaction ID in the file updates the one already on file (status, revenue, the rest) or is added if it is new. Transactions that are not in the file are left alone.</label>
+        <label style="display:block;"><input type="radio" name="mbuGbMode" value="replace"> <b>Replace these ${periodList.length} month${periodList.length === 1 ? '' : 's'}</b> — empties those months first, then loads the file. Use it for a clean reload.</label>
+      </div>
+      <div class="hint" style="margin-top:6px;">Next you will see exactly what would change, and nothing is saved until you confirm. Monthly totals are recomputed for the months touched.</div>
+      <div class="btn-row" style="margin-top:8px;"><button type="button" class="btn-primary" onclick="mbuConfirmGuestBookingsUpload()">Check what will change</button><button type="button" class="btn-ghost" onclick="document.getElementById('mbuTxnPreview').innerHTML='';mbuPendingGuestBookings=null;">Cancel</button></div>
       <div id="mbuGuestBookingsProgress" class="hint" style="margin-top:6px;"></div></div>`;
     if (status) status.textContent = '';
   } catch (e){ if (status) status.textContent = e.message || 'Could not read the file with that mapping.'; }
 }
 async function mbuConfirmGuestBookingsUpload(){
   if (!mbuPendingGuestBookings) return;
-  const { rows, periods, fileName } = mbuPendingGuestBookings; mbuPendingGuestBookings = null;
+  const { rows, periods, fileName, file } = mbuPendingGuestBookings; mbuPendingGuestBookings = null;
+  const modeEl = document.querySelector('input[name="mbuGbMode"]:checked'); const mode = modeEl && modeEl.value === 'replace' ? 'replace' : 'merge';
   // What the file holds, counted here, so the server can show it next to what the database holds after the save.
   const fileTotals = { rows: rows.length, codes: new Set(rows.map(r => r.bookingCode)).size, gross: 0, units: Math.round(rows.reduce((t, r) => t + (Number(r.tripDays) || 0), 0)), byMonth: {} };
-  { const codesBy = {}; rows.forEach(r => { const d = new Date(r.bookingDate); const k = `${d.getFullYear()}-${d.getMonth() + 1}`; const g = Number(String(r.grossRevenue == null ? '' : r.grossRevenue).replace(/[,$]/g, '')) || 0; fileTotals.gross += g; const m = fileTotals.byMonth[k] = fileTotals.byMonth[k] || { rows: 0, codes: 0, gross: 0 }; m.rows++; m.gross += g; (codesBy[k] = codesBy[k] || new Set()).add(r.bookingCode); }); Object.keys(codesBy).forEach(k => { fileTotals.byMonth[k].codes = codesBy[k].size; fileTotals.byMonth[k].gross = Math.round(fileTotals.byMonth[k].gross); }); fileTotals.gross = Math.round(fileTotals.gross); }
+  { const codesBy = {}; rows.forEach(r => { const d = mbuWall(r.bookingDate); const k = d ? `${d.y}-${d.m}` : 'unknown'; const g = Number(String(r.grossRevenue == null ? '' : r.grossRevenue).replace(/[,$]/g, '')) || 0; fileTotals.gross += g; const m = fileTotals.byMonth[k] = fileTotals.byMonth[k] || { rows: 0, codes: 0, gross: 0 }; m.rows++; m.gross += g; (codesBy[k] = codesBy[k] || new Set()).add(r.bookingCode); }); Object.keys(codesBy).forEach(k => { fileTotals.byMonth[k].codes = codesBy[k].size; fileTotals.byMonth[k].gross = Math.round(fileTotals.byMonth[k].gross); }); fileTotals.gross = Math.round(fileTotals.gross); }
   const progress = document.getElementById('mbuGuestBookingsProgress');
   const status = document.getElementById('mbuTxnStatus');
+  const preview = document.getElementById('mbuTxnPreview');
   const batchId = `gb_${Date.now()}`;
+  const url = `${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/guest-bookings`;
   const CHUNK = 500; // 2026-10-01: smaller chunks and a 2-minute wait per chunk, so a full two-year file lands instead of stopping after the first chunk
-  let saved = 0, skipped = 0, rollup = null, receipt = null;
+  const post = async body => { const resp = await authedFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 120000, body: JSON.stringify(body) }); const data = await resp.json().catch(() => ({})); if (!resp.ok) throw new Error(data.error || 'server error'); return data; };
   try {
+    // Step 1: stage every row on the server. Nothing in the live data changes yet.
     for (let i = 0; i < rows.length; i += CHUNK){
-      const chunk = rows.slice(i, i + CHUNK);
-      const isFirst = i === 0, isLast = i + CHUNK >= rows.length;
-      if (progress) progress.textContent = `Saving rows ${(i + 1).toLocaleString()}–${Math.min(i + CHUNK, rows.length).toLocaleString()} of ${rows.length.toLocaleString()}…`;
-      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/guest-bookings`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 120000,
-        body: JSON.stringify({ batchId, rows: chunk, replacePeriods: isFirst ? periods : undefined, final: isLast, fileName: isLast ? fileName : undefined, fileTotals: isLast ? fileTotals : undefined })
-      });
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(data.error || `server error on rows ${i + 1}+`);
-      saved += data.saved || 0; skipped += data.skipped || 0; if (data.rollup) rollup = data.rollup; if (data.receipt) receipt = data.receipt;
+      if (progress) progress.textContent = `Reading rows ${(i + 1).toLocaleString()}–${Math.min(i + CHUNK, rows.length).toLocaleString()} of ${rows.length.toLocaleString()}…`;
+      await post({ batchId, rows: rows.slice(i, i + CHUNK) });
     }
-    const preview = document.getElementById('mbuTxnPreview'); if (preview) preview.innerHTML = '';
-    if (status) status.textContent = `Saved ${new Date().toLocaleTimeString()} — ${saved.toLocaleString()} customer rows${skipped ? ` (${skipped} skipped)` : ''}; monthly totals recomputed for ${rollup ? rollup.periods : periods.length} month${(rollup ? rollup.periods : periods.length) === 1 ? '' : 's'}. Choose what counts under “What counts in revenue and reports”.`;
+    // Step 2: ask what would change.
+    if (progress) progress.textContent = 'Comparing with what is on file…';
+    const pv = await post({ batchId, final: true, preview: true, mode, replacePeriods: mode === 'replace' ? periods : undefined });
+    mbuGbStaged = { batchId, mode, fileName, fileTotals, periods, file, rowCount: rows.length };
+    mbuGbRenderConfirm(pv.diff, pv.months);
+  } catch (e){
+    if (progress) progress.textContent = '';
+    try { await post({ batchId, cancel: true }); } catch (e2){}
+    if (status) status.textContent = `Not saved — ${e.message} Nothing in the database changed; upload the file again.`;
+    if (preview) preview.innerHTML = '';
+  }
+}
+function mbuGbRenderConfirm(diff, months){
+  const preview = document.getElementById('mbuTxnPreview'); const st = mbuGbStaged; if (!preview || !st) return;
+  const n = v => Number(v || 0).toLocaleString(); const ex = (list, f) => (list || []).map(f).join('; ');
+  const merge = st.mode === 'merge';
+  const lines = merge
+    ? `<li><b>${n(diff.added)}</b> new transaction${diff.added === 1 ? '' : 's'} added</li>
+       <li><b>${n(diff.updated)}</b> already on file and changed — <b>${n(diff.statusChanged)}</b> with a new status, <b>${n(diff.revenueChanged)}</b> with different revenue</li>
+       <li><b>${n(diff.unchanged)}</b> already on file and the same</li>
+       <li>Every other transaction on file is left alone.</li>`
+    : `<li><b>${n(diff.transactionsInFile)}</b> transactions in the file will be loaded</li>
+       <li><b style="color:#C0273C;">${n(diff.removed)}</b> transaction${diff.removed === 1 ? '' : 's'} on file for ${months} month${months === 1 ? '' : 's'} ${diff.removed === 1 ? 'is' : 'are'} not in the file and will be <b>removed</b></li>
+       <li>Of the ones in both: <b>${n(diff.added)}</b> new, <b>${n(diff.updated)}</b> changed, <b>${n(diff.unchanged)}</b> the same</li>`;
+  const examples = (diff.statusExamples && diff.statusExamples.length ? `<div class="hint" style="margin-top:6px;">Status changes, for example: ${escapeHtml(ex(diff.statusExamples, x => `${x.code}: ${x.from} → ${x.to}`))}</div>` : '')
+    + (diff.revenueExamples && diff.revenueExamples.length ? `<div class="hint" style="margin-top:4px;">Revenue changes, for example: ${escapeHtml(ex(diff.revenueExamples, x => `${x.code}: $${Number(x.from).toLocaleString()} → $${Number(x.to).toLocaleString()}`))}</div>` : '');
+  preview.innerHTML = `<div style="background:#FFF8E6;border:1px solid #F0D9A0;border-radius:8px;padding:10px 12px;margin:0 0 10px;font-size:0.8125rem;">
+    <b>${merge ? 'Update and add' : 'Replace months'}</b> · ${escapeHtml(st.fileName)} · ${n(st.rowCount)} rows, ${months} month${months === 1 ? '' : 's'} touched
+    <ul style="margin:6px 0 0 18px;padding:0;">${lines}</ul>${examples}
+    <div class="btn-row" style="margin-top:8px;"><button type="button" class="btn-primary" onclick="mbuGbCommit()">Confirm and save</button><button type="button" class="btn-ghost" onclick="mbuGbCancelStaged()">Cancel — change nothing</button></div>
+    <div id="mbuGuestBookingsProgress" class="hint" style="margin-top:6px;"></div></div>`;
+  const status = document.getElementById('mbuTxnStatus'); if (status) status.textContent = '';
+}
+async function mbuGbCancelStaged(){
+  const st = mbuGbStaged; mbuGbStaged = null; const preview = document.getElementById('mbuTxnPreview'); if (preview) preview.innerHTML = '';
+  if (!st) return;
+  try { await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/guest-bookings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ batchId: st.batchId, cancel: true }) }); } catch (e){}
+  const status = document.getElementById('mbuTxnStatus'); if (status) status.textContent = 'Cancelled. Nothing was changed.';
+}
+async function mbuGbCommit(){
+  const st = mbuGbStaged; if (!st) return; mbuGbStaged = null;
+  const progress = document.getElementById('mbuGuestBookingsProgress'); const status = document.getElementById('mbuTxnStatus'); const preview = document.getElementById('mbuTxnPreview');
+  if (progress) progress.textContent = 'Saving…';
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/guest-bookings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 180000, body: JSON.stringify({ batchId: st.batchId, final: true, mode: st.mode, replacePeriods: st.mode === 'replace' ? st.periods : undefined, fileName: st.fileName, fileTotals: st.fileTotals }) });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || 'server error');
+    if (preview) preview.innerHTML = '';
+    const d = data.diff || {}; const rollup = data.rollup;
+    let keep = '';
+    try { keep = await mbuArchiveFile(st.file, st.batchId, st.fileName); } catch (e){ keep = ' A copy of the file could not be kept for the upload history.'; }
+    if (status) status.textContent = `Saved ${new Date().toLocaleTimeString()} — ${st.mode === 'merge' ? `${(d.added || 0).toLocaleString()} new, ${(d.updated || 0).toLocaleString()} updated, ${(d.unchanged || 0).toLocaleString()} unchanged` : `${(d.transactionsInFile || 0).toLocaleString()} transactions loaded, ${(d.removed || 0).toLocaleString()} removed`}; monthly totals recomputed for ${rollup ? rollup.periods : st.periods.length} month${(rollup ? rollup.periods : st.periods.length) === 1 ? '' : 's'}. Choose what counts under “What counts in revenue and reports”.${keep}`;
     if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext();
     mbuLoadTransactions();
     mbuLoadGuestBookingsSummary();
     mbuLoadTransactionSettings();
-    mbuRenderUploadReceipt(receipt);
+    mbuRenderUploadReceipt(data.receipt);
+    mbuLoadArchives();
   } catch (e){
     if (progress) progress.textContent = '';
     if (status) status.textContent = `Not saved — ${e.message} Nothing in the database changed; upload the file again.`;
   }
+}
+// The original file is kept for 180 days so the upload history can open it again. A failure here never undoes the import.
+async function mbuArchiveFile(file, batchId, fileName){
+  if (!file) return '';
+  if (file.size > 26 * 1024 * 1024) return ' The file is too large to keep a copy (the limit is about 26 MB), but the import is saved.';
+  const dataUrl = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(new Error('read failed')); r.readAsDataURL(file); });
+  const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/upload-archives`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 120000, body: JSON.stringify({ kind: 'guest_bookings', batchId, fileName, mimeType: file.type || 'application/octet-stream', dataBase64: dataUrl.replace(/^data:[^,]*,/, ''), uploadedBy: (typeof state !== 'undefined' && state.userName) || '' }) });
+  if (!resp.ok){ const d = await resp.json().catch(() => ({})); return ` ${d.error || 'A copy of the file could not be kept.'}`; }
+  return ' A copy of the file is kept for 180 days in the upload history.';
+}
+async function mbuLoadArchives(){
+  const body = document.getElementById('mbuArchiveBody'); if (!body || !state.companyId) return;
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/upload-archives?kind=guest_bookings`);
+    if (!resp.ok){ body.innerHTML = ''; return; }
+    const d = await resp.json(); const list = d.archives || [];
+    if (!list.length){ body.innerHTML = `<p class="hint">No customer transaction files are kept yet. Each file you upload is kept for ${d.retentionDays || 180} days.</p>`; return; }
+    body.innerHTML = `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>File</th><th>Size</th><th>Uploaded by</th><th>Uploaded</th><th>Kept for</th><th></th></tr></thead><tbody>${list.map(a => `<tr><td>${escapeHtml(a.fileName || '—')}</td><td>${(a.sizeBytes / 1024 / 1024) >= 1 ? (a.sizeBytes / 1024 / 1024).toFixed(1) + ' MB' : Math.max(1, Math.round(a.sizeBytes / 1024)) + ' KB'}</td><td>${escapeHtml(a.uploadedBy || '—')}</td><td>${new Date(a.createdAt).toLocaleString()}</td><td>${a.daysLeft} more day${a.daysLeft === 1 ? '' : 's'}</td><td><button type="button" class="btn-ghost" onclick="mbuOpenArchive('${a.id}', this)">Open file</button></td></tr>`).join('')}</tbody></table></div>`;
+  } catch (e){ body.innerHTML = ''; }
+}
+async function mbuOpenArchive(id, btn){
+  const label = btn ? btn.textContent : ''; if (btn){ btn.disabled = true; btn.textContent = 'Opening…'; }
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/upload-archives/${encodeURIComponent(id)}/file`, { timeoutMs: 120000 });
+    if (!resp.ok){ const d = await resp.json().catch(() => ({})); alert(d.error || 'That file could not be opened.'); return; }
+    const blob = await resp.blob(); const cd = resp.headers.get('Content-Disposition') || ''; const nm = (/filename="([^"]+)"/.exec(cd) || [])[1] || 'upload';
+    const u = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = u; a.download = nm; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 30000);
+  } catch (e){ alert('That file could not be opened.'); }
+  finally { if (btn){ btn.disabled = false; btn.textContent = label || 'Open file'; } }
 }
 
 // 2026-10-01 — the upload receipt: what the file said next to what the database holds for the same months.
