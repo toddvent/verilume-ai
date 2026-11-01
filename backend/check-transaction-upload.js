@@ -55,5 +55,30 @@ const ask = q => vm.runInContext('dqAnswerPayload', ctx2)('acct', { text: q }, R
   p = await ask('which hour had the most transactions'); check('which hour had the most transactions names 14:00', p.result && /14:00/.test(p.result.summary || ''), p.result && p.result.summary);
   p = await ask('transactions by day of the week'); const t2 = p.result && p.result.tables && p.result.tables[0];
   check('transactions by day of the week: Monday first, Sunday last', t2 && t2.rows[0][0] === 'Mon' && t2.rows[6][0] === 'Sun', t2 && JSON.stringify(t2.rows.map(r => r[0])));
+  // age bands leave unknown age (0) out; plain "revenue" follows the account's basis
+  const base = txs[0];
+  const mk = (i, ageBand, generation) => Object.assign({}, base, { code: 'Z' + i, ageBand, generation, age: ageBand ? 60 : null, hour: null, weekday: null });
+  const ageTxs = [mk(1, '55-64', 'boomer'), mk(2, '55-64', 'boomer'), mk(3, '65-74', 'silent'), mk(4, null, null), mk(5, null, null)];
+  L.txs = ageTxs;
+  p = await ask('transactions by age band'); const t3 = p.result && p.result.tables && p.result.tables[0];
+  check('transactions by age band: unknown age (0) is not a row, and the two known bands add to 3', t3 && !t3.rows.some(r => /blank/i.test(String(r[0]))) && t3.rows.filter(r => /^(55-64|65-74)$/.test(r[0])).length === 2, t3 && JSON.stringify(t3.rows));
+  p = await ask('transactions by generation'); const t4 = p.result && p.result.tables && p.result.tables[0];
+  check('transactions by generation: unknown age is left out', t4 && !t4.rows.some(r => /blank/i.test(String(r[0]))), t4 && JSON.stringify(t4.rows));
+  L.settings.revenueBasis = 'net';
+  p = await ask('total revenue'); check('revenue basis net: plain "revenue" answers with net revenue (5 x 90 = 450)', p.result && /450/.test(JSON.stringify(p.result)), p.result && p.result.summary);
+  p = await ask('total gross revenue'); check('revenue basis net: "gross revenue" by name still gives gross (5 x 100 = 500)', p.result && /500/.test(JSON.stringify(p.result)), p.result && p.result.summary);
+  L.settings.revenueBasis = 'gross';
+  p = await ask('total revenue'); check('revenue basis gross (default): plain "revenue" answers with gross (500)', p.result && /500/.test(JSON.stringify(p.result)), p.result && p.result.summary);
+  // portal age rule, read straight from the portal file
+  const portal = fs.readFileSync(path.join(__dirname, '..', 'frontend', 'portal.html'), 'utf8');
+  const pa = portal.indexOf('function mbuDobParts(v){'), pb = portal.indexOf('function mbuGbIsDateLike(v){');
+  const pctx = {}; vm.createContext(pctx); vm.runInContext(portal.slice(pa, pb), pctx);
+  const age = (dob, ref) => vm.runInContext('mbuAgeAt', pctx)(dob, ref);
+  check('age: born 06-22-1964, event 2024-05-16 -> 59 (birthday not yet reached)', age('06-22-1964', { y: 2024, m: 5, d: 16 }) === 59);
+  check('age: born 6/22/1964 (slashes), event 2024-06-22 -> 60 (birthday that day)', age('6/22/1964', { y: 2024, m: 6, d: 22 }) === 60);
+  check('age: placeholder year 1800 -> 0', age('01-01-1800', { y: 2024, m: 5, d: 16 }) === 0);
+  check('age: placeholder year 1900 -> 0', age('1/1/1900', { y: 2024, m: 5, d: 16 }) === 0);
+  check('age: blank -> 0', age('', { y: 2024, m: 5, d: 16 }) === 0 && age(null, { y: 2024, m: 5, d: 16 }) === 0);
+  check('age: born after the event (impossible) -> 0', age('01-01-2030', { y: 2024, m: 5, d: 16 }) === 0);
   console.log(failed ? '\n' + failed + ' check(s) FAILED.' : '\nAll transaction upload checks passed.'); process.exit(failed ? 1 : 0);
 })();

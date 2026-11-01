@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-01-txn-upload (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-02-age-basis (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -2765,6 +2765,7 @@ createTableIfNeeded(`
 `);
 // 2026-10-02 — column filters: for any filterable column, the values the client has unticked (everything is imported; the client chooses what counts afterwards).
 ensureColumn('account_transaction_settings', 'filtersJson', 'TEXT');
+ensureColumn('account_transaction_settings', 'revenueBasis', 'TEXT'); // 'gross' (default) or 'net': which revenue a plain "revenue" question means
 function getTransactionSettings(accountId){
   const row = db.prepare('SELECT * FROM account_transaction_settings WHERE accountId = ?').get(accountId);
   let validStatuses = null, typeMapping = {}, filters = {};
@@ -2775,7 +2776,8 @@ function getTransactionSettings(accountId){
   }
   if (Array.isArray(validStatuses)) validStatuses = validStatuses.map(v => String(v).trim().toUpperCase());
   else validStatuses = null;
-  return { validStatuses, typeMapping: typeMapping && typeof typeMapping === 'object' ? typeMapping : {}, filters };
+  const rb = row ? String(aliasVal(row, 'revenueBasis') || '').toLowerCase() : '';
+  return { validStatuses, typeMapping: typeMapping && typeof typeMapping === 'object' ? typeMapping : {}, filters, revenueBasis: rb === 'net' ? 'net' : 'gross' };
 }
 // null validStatuses = every status counts (a blank status always counts).
 function isValidTransactionStatus(status, settings){
@@ -2824,6 +2826,12 @@ function classifyTransactionType(typeValue, settings){
 function classifyBookingType(bookingType, settings){
   const r = classifyTransactionType(bookingType, settings);
   return { bookingClass: r.transactionClass, marketingAttributable: r.marketingAttributable, suggested: r.suggested };
+}
+// Age bands for Ask / voice. Age 0 means unknown (no birth date, or a placeholder such as 1800 or 1900) and is left out of every age view.
+function ageBandFor(age){
+  const a = Number(age);
+  if (!Number.isFinite(a) || a <= 0 || a > 110) return null;
+  if (a < 18) return 'Under 18'; if (a < 35) return '18-34'; if (a < 45) return '35-44'; if (a < 55) return '45-54'; if (a < 65) return '55-64'; if (a < 75) return '65-74'; return '75 and over';
 }
 function generationForAge(age, asOfYear){
   const a = Number(age);
@@ -8591,7 +8599,7 @@ repairFoldedColumns([
   ['account_website_engagement', ['accountId', 'channelGroup', 'engagedSessions', 'engagementRate', 'avgEngagementTimeMin', 'updatedAt']],
   ['account_lead_counts', ['accountId', 'leadType', 'formName', 'avgDaysToConvert', 'updatedAt']],
   ['account_transactions_monthly', ['accountId', 'productGroup', 'updatedAt', 'netRevenue', 'attributableTransactions', 'attributableRevenue', 'fullFareTransactions', 'freeTransactions']],
-  ['account_transaction_settings', ['accountId', 'validStatusesJson', 'typeMappingJson', 'filtersJson', 'updatedAt']],
+  ['account_transaction_settings', ['accountId', 'validStatusesJson', 'typeMappingJson', 'filtersJson', 'revenueBasis', 'updatedAt']],
   ['account_guest_bookings', ['accountId', 'bookingCode', 'guestSeq', 'bookingDate', 'bookingType', 'bookingClass', 'marketingAttributable', 'promoType', 'bookingStatus', 'sailDate', 'guestState', 'guestPostalCode', 'guestCountry', 'grossRevenue', 'netRevenue', 'productGroup', 'creativeFocus', 'tripDays', 'uploadBatchId', 'updatedAt']]
 ]);
 const WEEKS_PER_MONTH = 52 / 12;
@@ -17082,6 +17090,7 @@ const LEGACY_CASING_COLUMNS = [
   ['account_transaction_settings', 'validStatusesJson'],
   ['account_transaction_settings', 'typeMappingJson'],
   ['account_transaction_settings', 'filtersJson'],
+  ['account_transaction_settings', 'revenueBasis'],
   ['account_transaction_settings', 'updatedAt'],
   ['account_guest_bookings', 'accountId'],
   ['account_guest_bookings', 'bookingCode'],
@@ -19235,6 +19244,7 @@ const DQ_DIMS = {
   bookingStatus: { label: 'Transaction status', col: 'bookingStatus', syn: ['transaction status', 'booking status', 'status'] },
   guestState: { label: 'Customer state', col: 'guestState', syn: ['customer state', 'guest state', 'state', 'states'] },
   guestCountry: { label: 'Customer country', col: 'guestCountry', syn: ['customer country', 'country', 'countries'] },
+  ageBand: { label: 'Age band', col: 'ageBand', syn: ['age bands', 'age band', 'age ranges', 'age range', 'age brackets', 'age bracket', 'by age', 'ages'], fixed: ['Under 18', '18-34', '35-44', '45-54', '55-64', '65-74', '75 and over'] },
   generation: { label: 'Generation', col: 'generation', syn: ['generations', 'generation', 'age group', 'age groups', 'cohort'] },
   year: { label: 'Year', col: 'year', syn: ['year over year', 'yearly', 'annual', 'each year', 'by year', 'booking year', 'booking years', 'booked year', 'year booked'], natural: true },
   serviceYear: { label: 'Service year', col: 'serviceYear', syn: ['service year', 'service years', 'delivery year', 'delivery years', 'year of service', 'year of delivery', 'travel year', 'year delivered'], natural: true },
@@ -19246,7 +19256,7 @@ const DQ_DIMS = {
   orderSizeGroup: { label: 'Order size group', derived: 'orderSize', syn: ['order size group', 'order size groups', 'order size bucket'], natural: true },
   leadDaysGroup: { label: 'Sale-to-service window', derived: 'leadDays', syn: ['lead time group', 'booking window group'], natural: true }
 };
-const DQ_FILTER_DIMS = ['productGroup', 'creativeFocus', 'promoType', 'bookingType', 'bookingStatus', 'guestState', 'guestCountry', 'generation'];
+const DQ_FILTER_DIMS = ['productGroup', 'creativeFocus', 'promoType', 'bookingType', 'bookingStatus', 'guestState', 'guestCountry', 'generation', 'ageBand'];
 const DQ_AGG_LABEL = { avg: 'Average', sum: 'Total', median: 'Median', min: 'Lowest', max: 'Highest', count: 'Count of', ratio: '' };
 // Draft vocabulary for the order-size column by industry. The client's own label (from the upload mapping) always comes first.
 const DQ_ORDER_SIZE_VOCAB = {
@@ -19336,12 +19346,13 @@ function dqLoadTransactions(accountId){
       const bday = String(aliasVal(r0, 'bookingDay') || '').slice(0, 10); const bh = aliasVal(r0, 'bookingHour'); const dayStr = /^\d{4}-\d{2}-\d{2}$/.test(bday) ? bday : bd;
       t = { code, date: dayStr, hour: (bh === null || bh === undefined || bh === '' || !Number.isFinite(Number(bh))) ? null : String(Number(bh)).padStart(2, '0') + ':00', weekday: /^\d{4}-\d{2}-\d{2}$/.test(dayStr) ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(dayStr + 'T00:00:00Z').getUTCDay()] : null, year: Number(aliasVal(r0, 'year')) || (bd ? Number(bd.slice(0, 4)) : null), month: Number(aliasVal(r0, 'month')) || (bd ? Number(bd.slice(5, 7)) : null),
         productGroup: aliasVal(r0, 'productGroup'), creativeFocus: aliasVal(r0, 'creativeFocus'), promoType: aliasVal(r0, 'promoType'), bookingType: aliasVal(r0, 'bookingType'), bookingStatus: aliasVal(r0, 'bookingStatus'),
-        guestState: aliasVal(r0, 'guestState'), guestCountry: aliasVal(r0, 'guestCountry'), generation: aliasVal(r0, 'generation'),
+        guestState: aliasVal(r0, 'guestState'), guestCountry: aliasVal(r0, 'guestCountry'), generation: aliasVal(r0, 'generation'), age: null, ageBand: null,
         serviceDate: svc, serviceYear: svc ? Number(svc.slice(0, 4)) : null, serviceMonth: svc ? Number(svc.slice(5, 7)) : null,
         delivered: svc ? svc <= todayIso : null, deliveryStatus: svc ? (svc <= todayIso ? 'Delivered' : 'Not yet delivered') : '(no service date)',
         revenue: null, netRevenue: null, orderSize: null, daySum: null, leadDays: lead, customers: 0 };
       byCode.set(code, t);
     }
+    if (t.age === null){ const ag = num(aliasVal(r0, 'age')); if (ag !== null && ag > 0 && ag <= 110){ t.age = ag; t.ageBand = ageBandFor(ag); } } // first guest with a known age (0 = unknown)
     const g = num(aliasVal(r0, 'grossRevenue')); if (g !== null) t.revenue = (t.revenue || 0) + g;
     const n = num(aliasVal(r0, 'netRevenue')); if (n !== null) t.netRevenue = (t.netRevenue || 0) + n;
     const ts = num(aliasVal(r0, 'tripDays')); if (ts !== null) t.orderSize = Math.max(t.orderSize === null ? ts : t.orderSize, ts); t.daySum = (t.daySum || 0) + ts;
@@ -19393,7 +19404,7 @@ function dqCleanDates(p){ const ok = x => typeof x === 'string' && /^20\d\d-\d{2
 function dqParse(text, ctx){
   const when = dqParseWhen(text);
   const raw = dqNorm(when ? when.rest : text); let t = raw; const assumptions = [];
-  const spec = { measure: null, agg: null, by: [], filters: [], period: { kind: 'range' }, basis: 'booked', compare: null, top: null, order: 'desc', rank: null };
+  const spec = { measure: null, agg: null, by: [], filters: [], period: { kind: 'range' }, basis: 'booked', compare: null, top: null, order: 'desc', rank: null, grossWord: /\bgross\b/.test(raw) };
   const now = new Date(); const thisYear = now.getUTCFullYear();
   // comparison and period words first, so "last year" is not mistaken for the Year breakdown
   if (/ (vs|versus|against|compared with|compared to|compare to|compare with) (the )?(same period )?(last|prior|previous) year /.test(t)){ spec.compare = 'priorYear'; t = t.replace(/ (vs|versus|against|compared with|compared to|compare to|compare with) (the )?(same period )?(last|prior|previous) year /, ' '); }
@@ -19487,7 +19498,7 @@ function dqValidateSpec(s, ctx){
   const top = Number(s.top) > 0 ? Math.min(50, Math.floor(Number(s.top))) : null;
   const basis = s.basis === 'delivered' ? 'delivered' : 'booked';
   const rank = by.length && (s.rank === 'high' || s.rank === 'low') ? s.rank : null;
-  return { measure: s.measure, agg, by, filters, period, basis, rank, compare: s.compare === 'priorYear' && !by.includes('year') && !by.includes('quarter') && period.kind !== 'all' && period.kind !== 'dates' ? 'priorYear' : null, top, order: s.order === 'asc' || rank === 'low' ? 'asc' : 'desc' };
+  return { measure: s.measure, agg, by, filters, period, basis, rank, grossWord: !!s.grossWord, compare: s.compare === 'priorYear' && !by.includes('year') && !by.includes('quarter') && period.kind !== 'all' && period.kind !== 'dates' ? 'priorYear' : null, top, order: s.order === 'asc' || rank === 'low' ? 'asc' : 'desc' };
 }
 // ---- the rules that decide which transactions count, in words
 function dqCountingRule(settings){
@@ -19531,6 +19542,8 @@ function dqRun(accountId, specIn, range, preloaded){
   const ctx = { vocab, values: dqValuesByDim(L.txs) };
   const spec = dqValidateSpec(specIn, ctx);
   if (!spec) return { error: 'That question is not one I can run.' };
+  // The account's revenue basis: a plain "revenue" means net when the account chose net; the word "gross" always means gross.
+  if (spec.measure === 'revenue' && !spec.grossWord && L.settings && L.settings.revenueBasis === 'net') spec.measure = 'netRevenue';
   if (!L.txs.length) return { notOnFile: 'the customer-level transaction file (Train the Brain, Transactions card)' };
   if (spec.measure === 'marketing') return dqMarketingRun(accountId, spec, range, L, vocab);
   // groups for derived dimensions are drawn once from every counted transaction, so periods are compared on the same edges
@@ -19555,7 +19568,8 @@ function dqRun(accountId, specIn, range, preloaded){
   const passFilters = t => spec.filters.every(f => f.values.some(v => String(t[DQ_DIMS[f.field].col] || '').trim().toLowerCase() === v.toLowerCase()));
   const per = dqPeriodTx(L.txs, spec, range);
   const meas = DQ_MEASURES[spec.measure]; const pre = meas.pre || (() => true);
-  const cur = per.cur.filter(passFilters).filter(pre), prev = per.prev.filter(passFilters).filter(pre);
+  const ageKnown = t => !spec.by.some(d => (d === 'ageBand' || d === 'generation') && (t[d] === null || t[d] === undefined || t[d] === '')); // unknown age (0) is left out of age views
+  const cur = per.cur.filter(passFilters).filter(pre).filter(ageKnown), prev = per.prev.filter(passFilters).filter(pre).filter(ageKnown);
   const valuesOf = (list) => {
     if (spec.measure === 'transactions') return list.map(() => 1);
     if (spec.measure === 'customers') return list.map(t => t.customers);
@@ -31980,7 +31994,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-01-txn-upload',
+        buildStamp: '2026-11-02-age-basis',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -49009,7 +49023,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         const values = rows.slice(0, 200).map(r => { const v = r.v == null ? '' : String(r.v); return { value: v, customers: Number(r.n) || 0, transactions: Number(r.b) || 0, grossRevenue: Number(r.g) || 0, counts: key === 'bookingStatus' ? isValidTransactionStatus(v, settings) : !((settings.filters[key] || []).includes(v.trim().toLowerCase())) }; });
         return { key, label, values, tooMany };
       }).filter(c => c.values.length > 1 || c.values.some(v => !v.counts));
-      return sendJson(res, 200, { accountId, validStatuses: settings.validStatuses, columns });
+      return sendJson(res, 200, { accountId, validStatuses: settings.validStatuses, revenueBasis: settings.revenueBasis, columns });
     }
     // POST /api/accounts/:id/transaction-settings — { validStatuses:
     // [..] | null, filters: { "<column>": ["<value left out>", ...] } }.
@@ -49027,9 +49041,10 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         TXN_FILTER_COLUMNS.forEach(([key]) => { if (key === 'bookingStatus') return; const v = body.filters[key]; if (Array.isArray(v) && v.length) filters[key] = v.slice(0, 500).map(x => String(x == null ? '' : x)); });
       }
       const now = new Date().toISOString();
+      const revenueBasis = body.revenueBasis === undefined ? getTransactionSettings(accountId).revenueBasis : (String(body.revenueBasis).toLowerCase() === 'net' ? 'net' : 'gross');
       const existing = db.prepare('SELECT 1 FROM account_transaction_settings WHERE accountId = ?').get(accountId);
-      if (existing) db.prepare('UPDATE account_transaction_settings SET "validStatusesJson" = ?, "filtersJson" = ?, updatedAt = ? WHERE accountId = ?').run(validStatuses ? JSON.stringify(validStatuses) : null, JSON.stringify(filters), now, accountId);
-      else db.prepare('INSERT INTO account_transaction_settings (accountId, "validStatusesJson", "typeMappingJson", "filtersJson", updatedAt) VALUES (?, ?, ?, ?, ?)').run(accountId, validStatuses ? JSON.stringify(validStatuses) : null, '{}', JSON.stringify(filters), now);
+      if (existing) db.prepare('UPDATE account_transaction_settings SET "validStatusesJson" = ?, "filtersJson" = ?, "revenueBasis" = ?, updatedAt = ? WHERE accountId = ?').run(validStatuses ? JSON.stringify(validStatuses) : null, JSON.stringify(filters), revenueBasis, now, accountId);
+      else db.prepare('INSERT INTO account_transaction_settings (accountId, "validStatusesJson", "typeMappingJson", "filtersJson", "revenueBasis", updatedAt) VALUES (?, ?, ?, ?, ?, ?)').run(accountId, validStatuses ? JSON.stringify(validStatuses) : null, '{}', JSON.stringify(filters), revenueBasis, now);
       const rollup = rollupGuestBookings(accountId, null);
       return sendJson(res, 200, { accountId, saved: true, rollup, updatedAt: now });
     }
