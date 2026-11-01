@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-02-age-basis (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-03-agency-territories (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -2626,6 +2626,23 @@ ensureColumn('account_guest_bookings', 'bookingDay', 'TEXT');
 ensureColumn('account_guest_bookings', 'bookingHour', 'INTEGER');
 ensureColumn('account_guest_bookings_staging', 'bookingDay', 'TEXT');
 ensureColumn('account_guest_bookings_staging', 'bookingHour', 'INTEGER');
+// 2026-11-02 — the reseller (agency) the booking came through; feeds Sales Territories. snake_case on purpose (no identifier-folding entries needed).
+ensureColumn('account_guest_bookings', 'agency_code', 'TEXT');
+ensureColumn('account_guest_bookings', 'agency_name', 'TEXT');
+ensureColumn('account_guest_bookings', 'agency_street', 'TEXT');
+ensureColumn('account_guest_bookings', 'agency_city', 'TEXT');
+ensureColumn('account_guest_bookings', 'agency_state', 'TEXT');
+ensureColumn('account_guest_bookings', 'agency_postal', 'TEXT');
+ensureColumn('account_guest_bookings', 'agency_country', 'TEXT');
+ensureColumn('account_guest_bookings', 'agency_consortia', 'TEXT');
+ensureColumn('account_guest_bookings_staging', 'agency_code', 'TEXT');
+ensureColumn('account_guest_bookings_staging', 'agency_name', 'TEXT');
+ensureColumn('account_guest_bookings_staging', 'agency_street', 'TEXT');
+ensureColumn('account_guest_bookings_staging', 'agency_city', 'TEXT');
+ensureColumn('account_guest_bookings_staging', 'agency_state', 'TEXT');
+ensureColumn('account_guest_bookings_staging', 'agency_postal', 'TEXT');
+ensureColumn('account_guest_bookings_staging', 'agency_country', 'TEXT');
+ensureColumn('account_guest_bookings_staging', 'agency_consortia', 'TEXT');
 // 2026-11-01 — the file as uploaded, kept for 180 days so the upload history can open it again.
 createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS upload_archives (
@@ -2832,6 +2849,27 @@ function ageBandFor(age){
   const a = Number(age);
   if (!Number.isFinite(a) || a <= 0 || a > 110) return null;
   if (a < 18) return 'Under 18'; if (a < 35) return '18-34'; if (a < 45) return '35-44'; if (a < 55) return '45-54'; if (a < 65) return '55-64'; if (a < 75) return '65-74'; return '75 and over';
+}
+// Sales Territories reads account_resellers / account_reseller_zips. When a customer transaction file carries an agency column, those two tables
+// (and their meta row) are rebuilt from every guest row on file, so the territories follow the transactions without a second upload.
+// Guest postal code x agency x status; bookings = distinct transaction codes. Only runs when agency codes exist.
+function refreshResellersFromBookings(accountId, fileName){
+  const n = Number(aliasVal(db.prepare("SELECT COUNT(*) AS n FROM account_guest_bookings WHERE accountId = ? AND agency_code IS NOT NULL AND agency_code <> ''").get(accountId) || {}, 'n')) || 0;
+  if (!n) return null;
+  const resellers = db.prepare("SELECT agency_code AS code, MAX(agency_name) AS name, MAX(agency_street) AS street, MAX(agency_city) AS city, MAX(agency_state) AS state, MAX(agency_postal) AS postal, MAX(agency_country) AS country, MAX(agency_consortia) AS consortia FROM account_guest_bookings WHERE accountId = ? AND agency_code IS NOT NULL AND agency_code <> '' GROUP BY agency_code").all(accountId);
+  const zips = db.prepare("SELECT agency_code AS code, UPPER(TRIM(COALESCE(\"guestPostalCode\", ''))) AS zip, UPPER(TRIM(COALESCE(\"guestCountry\", ''))) AS ctry, UPPER(TRIM(COALESCE(\"bookingStatus\", ''))) AS st, COUNT(DISTINCT \"bookingCode\") AS n, SUM(COALESCE(\"grossRevenue\", 0)) AS rev FROM account_guest_bookings WHERE accountId = ? AND agency_code IS NOT NULL AND agency_code <> '' AND \"guestPostalCode\" IS NOT NULL AND TRIM(\"guestPostalCode\") <> '' GROUP BY agency_code, UPPER(TRIM(COALESCE(\"guestPostalCode\", ''))), UPPER(TRIM(COALESCE(\"guestCountry\", ''))), UPPER(TRIM(COALESCE(\"bookingStatus\", '')))").all(accountId);
+  if (!resellers.length || !zips.length) return { resellers: resellers.length, rows: 0, skipped: 'no guest postal codes under an agency' };
+  const val = (r, k) => { const v = aliasVal(r, k); return v == null ? '' : String(v); };
+  const stmts = [{ sql: 'DELETE FROM account_reseller_zips WHERE accountId = ?', params: [accountId] }, { sql: 'DELETE FROM account_resellers WHERE accountId = ?', params: [accountId] }];
+  for (let i = 0; i < resellers.length; i += 100){ const ch = resellers.slice(i, i + 100); stmts.push({ sql: `INSERT INTO account_resellers (accountId, agency_code, agency_name, street, city, state, postal, country, consortia) VALUES ${ch.map(() => '(?,?,?,?,?,?,?,?,?)').join(',')}`, params: [].concat(...ch.map(r => [accountId, val(r, 'code'), val(r, 'name'), val(r, 'street'), val(r, 'city'), val(r, 'state'), val(r, 'postal'), val(r, 'country').toUpperCase(), val(r, 'consortia')])) }); }
+  let nBook = 0;
+  for (let i = 0; i < zips.length; i += 150){ const ch = zips.slice(i, i + 150); ch.forEach(z => { nBook += Number(aliasVal(z, 'n')) || 0; }); stmts.push({ sql: `INSERT INTO account_reseller_zips (accountId, agency_code, guest_zip, guest_country, status, bookings, revenue) VALUES ${ch.map(() => '(?,?,?,?,?,?,?)').join(',')}`, params: [].concat(...ch.map(z => [accountId, val(z, 'code'), val(z, 'zip'), val(z, 'ctry'), val(z, 'st') || '?', Number(aliasVal(z, 'n')) || 0, Number(aliasVal(z, 'rev')) || 0])) }); }
+  const now = new Date().toISOString();
+  stmts.push({ sql: 'DELETE FROM account_reseller_meta WHERE accountId = ?', params: [accountId] });
+  stmts.push({ sql: 'INSERT INTO account_reseller_meta (accountId, file_name, uploaded_at, resellers, bookings) VALUES (?,?,?,?,?)', params: [accountId, String(fileName || 'Customer transaction file').slice(0, 200), now, resellers.length, nBook] });
+  db.batch(stmts, 120000);
+  try { geoDbCachePut(accountId, `terr:${GEO_CACHE_V}:${now}:`, geoTerritoriesCompute(accountId, []), 6000000); } catch (e){ console.warn('[reseller-refresh] precompute failed:', e.message); }
+  return { resellers: resellers.length, rows: zips.length, bookings: nBook, uploadedAt: now };
 }
 function generationForAge(age, asOfYear){
   const a = Number(age);
@@ -31994,7 +32032,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-02-age-basis',
+        buildStamp: '2026-11-03-agency-territories',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -48775,9 +48813,9 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const batchId = String(body.batchId || '').trim() || `gb_${Date.now()}`;
       const now = new Date().toISOString();
       if (body.cancel){ try { db.prepare('DELETE FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ?').run(accountId, batchId); } catch (e){ /* nothing staged */ } return sendJson(res, 200, { accountId, batchId, cancelled: true }); }
-      const GB_COLS = 26, GB_PER_STMT = 190;
-      const gbColList = `(accountId, "bookingCode", "guestSeq", "bookingDate", year, month, "bookingType", "bookingClass", "marketingAttributable", "promoType", "bookingStatus", "sailDate", age, generation, "guestState", "guestPostalCode", "guestCountry", "grossRevenue", "netRevenue", "productGroup", "creativeFocus", "tripDays", "bookingDay", "bookingHour", "uploadBatchId", updatedAt)`;
-      const gbUpdate = `"bookingDate" = excluded."bookingDate", year = excluded.year, month = excluded.month, "bookingType" = excluded."bookingType", "bookingClass" = excluded."bookingClass", "marketingAttributable" = excluded."marketingAttributable", "promoType" = excluded."promoType", "bookingStatus" = excluded."bookingStatus", "sailDate" = excluded."sailDate", age = excluded.age, generation = excluded.generation, "guestState" = excluded."guestState", "guestPostalCode" = excluded."guestPostalCode", "guestCountry" = excluded."guestCountry", "grossRevenue" = excluded."grossRevenue", "netRevenue" = excluded."netRevenue", "productGroup" = excluded."productGroup", "creativeFocus" = excluded."creativeFocus", "tripDays" = excluded."tripDays", "bookingDay" = excluded."bookingDay", "bookingHour" = excluded."bookingHour", "uploadBatchId" = excluded."uploadBatchId", updatedAt = excluded.updatedAt`;
+      const GB_COLS = 34, GB_PER_STMT = 150;
+      const gbColList = `(accountId, "bookingCode", "guestSeq", "bookingDate", year, month, "bookingType", "bookingClass", "marketingAttributable", "promoType", "bookingStatus", "sailDate", age, generation, "guestState", "guestPostalCode", "guestCountry", "grossRevenue", "netRevenue", "productGroup", "creativeFocus", "tripDays", "bookingDay", "bookingHour", agency_code, agency_name, agency_street, agency_city, agency_state, agency_postal, agency_country, agency_consortia, "uploadBatchId", updatedAt)`;
+      const gbUpdate = `"bookingDate" = excluded."bookingDate", year = excluded.year, month = excluded.month, "bookingType" = excluded."bookingType", "bookingClass" = excluded."bookingClass", "marketingAttributable" = excluded."marketingAttributable", "promoType" = excluded."promoType", "bookingStatus" = excluded."bookingStatus", "sailDate" = excluded."sailDate", age = excluded.age, generation = excluded.generation, "guestState" = excluded."guestState", "guestPostalCode" = excluded."guestPostalCode", "guestCountry" = excluded."guestCountry", "grossRevenue" = excluded."grossRevenue", "netRevenue" = excluded."netRevenue", "productGroup" = excluded."productGroup", "creativeFocus" = excluded."creativeFocus", "tripDays" = excluded."tripDays", "bookingDay" = excluded."bookingDay", "bookingHour" = excluded."bookingHour", agency_code = excluded.agency_code, agency_name = excluded.agency_name, agency_street = excluded.agency_street, agency_city = excluded.agency_city, agency_state = excluded.agency_state, agency_postal = excluded.agency_postal, agency_country = excluded.agency_country, agency_consortia = excluded.agency_consortia, "uploadBatchId" = excluded."uploadBatchId", updatedAt = excluded.updatedAt`;
       // Continue guestSeq numbering across chunks of the same upload (read from the stage).
       const seqRows = rowsIn.length ? db.prepare('SELECT "bookingCode", MAX("guestSeq") AS maxSeq FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ? GROUP BY "bookingCode"').all(accountId, batchId) : [];
       const seq = {}; seqRows.forEach(r => { seq[aliasVal(r, 'bookingCode')] = Number(aliasVal(r, 'maxSeq')) || 0; });
@@ -48796,7 +48834,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         pending.push(accountId, code, seq[code], w.iso, year, month, r.bookingType != null ? String(r.bookingType).trim() : null, cls.bookingClass, cls.marketingAttributable,
           r.promoType != null ? String(r.promoType).trim() : null, r.bookingStatus != null ? String(r.bookingStatus).trim() : null, sail && !isNaN(sail) ? sail.toISOString() : null,
           numOrNull(r.age), generationForAge(numOrNull(r.age), year), r.guestState != null ? String(r.guestState).trim() : null, r.guestPostalCode != null ? String(r.guestPostalCode).trim() : null, r.guestCountry != null ? String(r.guestCountry).trim() : null,
-          numOrNull(r.grossRevenue), numOrNull(r.netRevenue), r.productGroup != null ? String(r.productGroup).trim() : '', r.creativeFocus != null ? String(r.creativeFocus).trim() : null, (() => { const t = numOrNull(r.tripDays); return t != null && t >= 0 && t <= 3650 ? t : null; })(), w.day, w.hasTime ? w.h : null, batchId, now);
+          numOrNull(r.grossRevenue), numOrNull(r.netRevenue), r.productGroup != null ? String(r.productGroup).trim() : '', r.creativeFocus != null ? String(r.creativeFocus).trim() : null, (() => { const t = numOrNull(r.tripDays); return t != null && t >= 0 && t <= 3650 ? t : null; })(), w.day, w.hasTime ? w.h : null, ...[r.agencyCode, r.agencyName, r.agencyStreet, r.agencyCity, r.agencyState, r.agencyPostal, r.agencyCountry, r.consortia].map(v => v != null && String(v).trim() !== '' ? String(v).trim().slice(0, 200) : null), batchId, now);
         saved++;
         if (pending.length >= GB_COLS * GB_PER_STMT) flush();
       }
@@ -48818,17 +48856,18 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const stmts = [];
       if (mode === 'replace') periods.forEach(p => stmts.push({ sql: 'DELETE FROM account_guest_bookings WHERE accountId = ? AND year = ? AND month = ?', params: [accountId, p.year, p.month] }));
       else stmts.push({ sql: 'DELETE FROM account_guest_bookings WHERE accountId = ? AND "bookingCode" IN (SELECT "bookingCode" FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ?)', params: [accountId, accountId, batchId] });
-      stmts.push({ sql: `INSERT INTO account_guest_bookings ${gbColList} SELECT accountId, "bookingCode", "guestSeq", "bookingDate", year, month, "bookingType", "bookingClass", "marketingAttributable", "promoType", "bookingStatus", "sailDate", age, generation, "guestState", "guestPostalCode", "guestCountry", "grossRevenue", "netRevenue", "productGroup", "creativeFocus", "tripDays", "bookingDay", "bookingHour", "uploadBatchId", updatedAt FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ? ON CONFLICT(accountId, "bookingCode", "guestSeq") DO UPDATE SET ${gbUpdate}`, params: [accountId, batchId] });
+      stmts.push({ sql: `INSERT INTO account_guest_bookings ${gbColList} SELECT accountId, "bookingCode", "guestSeq", "bookingDate", year, month, "bookingType", "bookingClass", "marketingAttributable", "promoType", "bookingStatus", "sailDate", age, generation, "guestState", "guestPostalCode", "guestCountry", "grossRevenue", "netRevenue", "productGroup", "creativeFocus", "tripDays", "bookingDay", "bookingHour", agency_code, agency_name, agency_street, agency_city, agency_state, agency_postal, agency_country, agency_consortia, "uploadBatchId", updatedAt FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ? ON CONFLICT(accountId, "bookingCode", "guestSeq") DO UPDATE SET ${gbUpdate}`, params: [accountId, batchId] });
       try { db.batch(stmts, 180000); }
       catch (e){ console.error('[guest-bookings] commit failed, live rows untouched:', e.message); return sendJson(res, 500, { error: `The upload was not saved: ${e.message}. Your existing data is unchanged.` }); }
       const rollup = rollupGuestBookings(accountId, periods);
+      let territories = null; try { territories = refreshResellersFromBookings(accountId, body.fileName); } catch (e){ console.warn('[guest-bookings] territories refresh failed:', e.message); territories = { error: e.message }; }
       const summaryLine = mode === 'merge'
         ? `Update and add: ${diff.added.toLocaleString('en-US')} new, ${diff.updated.toLocaleString('en-US')} updated (${diff.statusChanged.toLocaleString('en-US')} status, ${diff.revenueChanged.toLocaleString('en-US')} revenue), ${diff.unchanged.toLocaleString('en-US')} unchanged.`
         : `Replace months: ${diff.transactionsInFile.toLocaleString('en-US')} transactions in the file, ${diff.removed.toLocaleString('en-US')} on file for those months were not in the file and were removed.`;
       const receipt = buildUploadReceipt(accountId, 'guest_bookings', batchId, body.fileName, body.fileTotals, stagedPeriods, now, { onlyBatch: mode === 'merge' ? batchId : null, notePrefix: summaryLine });
       try { db.prepare('DELETE FROM account_guest_bookings_staging WHERE accountId = ? AND "uploadBatchId" = ?').run(accountId, batchId); } catch (e){}
       try { db.prepare("DELETE FROM account_guest_bookings_staging WHERE accountId = ? AND updatedAt < ?").run(accountId, new Date(Date.now() - 2 * 86400000).toISOString()); } catch (e){}
-      return sendJson(res, 200, { accountId, batchId, saved, skipped, staged: stagedTotal, committed: true, mode, diff, rollup, receipt, updatedAt: now });
+      return sendJson(res, 200, { accountId, batchId, saved, skipped, staged: stagedTotal, committed: true, mode, diff, rollup, territories, receipt, updatedAt: now });
     }
     // 2026-11-01 — upload archive. The file as uploaded is kept for 180 days so the upload history can open it again.
     // POST /api/accounts/:id/upload-archives { kind, batchId, fileName, mimeType, dataBase64, uploadedBy }  (sent by the browser after a successful import)

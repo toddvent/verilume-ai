@@ -80,5 +80,25 @@ const ask = q => vm.runInContext('dqAnswerPayload', ctx2)('acct', { text: q }, R
   check('age: placeholder year 1900 -> 0', age('1/1/1900', { y: 2024, m: 5, d: 16 }) === 0);
   check('age: blank -> 0', age('', { y: 2024, m: 5, d: 16 }) === 0 && age(null, { y: 2024, m: 5, d: 16 }) === 0);
   check('age: born after the event (impossible) -> 0', age('01-01-2030', { y: 2024, m: 5, d: 16 }) === 0);
+  // Sales Territories rebuilt from the agency columns of the transactions on file
+  const rdb = new DatabaseSync(':memory:');
+  rdb.exec(`CREATE TABLE account_guest_bookings (accountId TEXT, bookingCode TEXT, guestSeq INT, bookingStatus TEXT, guestPostalCode TEXT, guestCountry TEXT, grossRevenue REAL, agency_code TEXT, agency_name TEXT, agency_street TEXT, agency_city TEXT, agency_state TEXT, agency_postal TEXT, agency_country TEXT, agency_consortia TEXT);
+    CREATE TABLE account_resellers (accountId TEXT, agency_code TEXT, agency_name TEXT, street TEXT, city TEXT, state TEXT, postal TEXT, country TEXT, consortia TEXT);
+    CREATE TABLE account_reseller_zips (accountId TEXT, agency_code TEXT, guest_zip TEXT, guest_country TEXT, status TEXT, bookings INT, revenue REAL);
+    CREATE TABLE account_reseller_meta (accountId TEXT, file_name TEXT, uploaded_at TEXT, resellers INT, bookings INT);`);
+  const g = (code, seq, st, zip, rev, ag) => rdb.prepare('INSERT INTO account_guest_bookings VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run('A', code, seq, st, zip, 'US', rev, ag, ag ? 'Agency ' + ag : null, '1 Main St', 'Irving', 'TX', '75039', 'US', 'TLN');
+  g('B1', 1, 'V', '29412', 100, 'A1'); g('B1', 2, 'V', '29412', 100, 'A1'); g('B2', 1, 'R', '29412', 50, 'A1'); g('B3', 1, 'V', '23518', 70, 'A2'); g('B4', 1, 'V', '99999', 10, null);
+  const wrapped = { prepare: q => rdb.prepare(q), batch: stmts => { rdb.exec('BEGIN'); try { stmts.forEach(x => rdb.prepare(x.sql).run(...(x.params || []))); rdb.exec('COMMIT'); } catch (e){ rdb.exec('ROLLBACK'); throw e; } } };
+  const fa = src.indexOf('function refreshResellersFromBookings(accountId, fileName){'), fb = src.indexOf('function generationForAge(age, asOfYear){');
+  const rctx = { db: wrapped, aliasVal: (r, k) => r[k] !== undefined ? r[k] : r[String(k).toLowerCase()], Number, String, Date, console, GEO_CACHE_V: 'v2', geoDbCachePut(){}, geoTerritoriesCompute: () => ({}) };
+  vm.createContext(rctx); vm.runInContext(src.slice(fa, fb), rctx);
+  const out = vm.runInContext('refreshResellersFromBookings', rctx)('A', 'AOV.xlsx');
+  const rrows = rdb.prepare('SELECT * FROM account_resellers ORDER BY agency_code').all(), zrows = rdb.prepare('SELECT * FROM account_reseller_zips ORDER BY agency_code, status').all();
+  check('territories refresh: two agencies, the booking with no agency is left out', out && out.resellers === 2 && rrows.length === 2, JSON.stringify(out));
+  check('territories refresh: agency address and consortium carried over', rrows[0].agency_name === 'Agency A1' && rrows[0].postal === '75039' && rrows[0].consortia === 'TLN' && rrows[0].street === '1 Main St');
+  check('territories refresh: agency A1 has V = 1 transaction (two guest rows count once) and R = 1, revenue summed', zrows.filter(z => z.agency_code === 'A1').length === 2 && zrows.find(z => z.agency_code === 'A1' && z.status === 'V').bookings === 1 && zrows.find(z => z.agency_code === 'A1' && z.status === 'V').revenue === 200, JSON.stringify(zrows));
+  check('territories refresh: meta row records the file name', rdb.prepare('SELECT file_name, resellers FROM account_reseller_meta').get().file_name === 'AOV.xlsx');
+  rdb.exec('DELETE FROM account_guest_bookings'); g('C1', 1, 'V', '1', 5, null);
+  check('territories refresh: no agency codes on file -> nothing is touched', vm.runInContext('refreshResellersFromBookings', rctx)('A', 'x') === null && rdb.prepare('SELECT COUNT(*) AS n FROM account_resellers').get().n === 2);
   console.log(failed ? '\n' + failed + ' check(s) FAILED.' : '\nAll transaction upload checks passed.'); process.exit(failed ? 1 : 0);
 })();
