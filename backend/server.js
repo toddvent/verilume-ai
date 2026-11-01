@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-03-agency-territories (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-03-verilume-style (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -32032,7 +32032,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-03-agency-territories',
+        buildStamp: '2026-11-03-verilume-style',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -32114,6 +32114,37 @@ async function handleRequestInner(req, res) {
       return sendJson(res, 200, summary);
     }
 
+    // ---- Verilume Style (2026-11-03) — Verilume as its own internal client. The brand voice and style guide live on the Verilume account
+    // exactly like any client's (Voice Guide text + Style Assets fields). Staff-only (X-Admin-Token); the Ops Console's "Verilume Style" module reads and edits them.
+    // The account is VERILUME_INTERNAL_ACCOUNT_ID when set, else the oldest account named "Verilume".
+    const VS_FIELDS = ['primaryColorName', 'primaryColorHex', 'secondaryPaletteText', 'colorHierarchyNotes', 'headingFontName', 'headingFontNotes', 'bodyFontName', 'bodyFontNotes', 'typographyHierarchyNotes', 'styleNotes', 'logoUsageNotes'];
+    const vsAccountId = () => {
+      const env = String(process.env.VERILUME_INTERNAL_ACCOUNT_ID || '').trim(); if (env) return env;
+      const r = db.prepare("SELECT accountId FROM accounts WHERE LOWER(TRIM(company)) = 'verilume' ORDER BY createdAt ASC LIMIT 1").get();
+      return r ? aliasVal(r, 'accountId') : null;
+    };
+    if ((req.method === 'GET' || req.method === 'POST') && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'verilume-style'){
+      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN) return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
+      const accountId = vsAccountId();
+      if (!accountId) return sendJson(res, 404, { error: 'No internal Verilume account was found. Create an account named "Verilume" or set VERILUME_INTERNAL_ACCOUNT_ID.' });
+      const row = () => db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId) || {};
+      const shape = (a) => { const g = k => { const v = aliasVal(a, k); return v == null ? '' : v; }; const out = { accountId, company: g('company'), voice: { text: g('voiceGuideText'), approved: !!Number(g('voiceApproved')) || false, approvedAt: g('voiceApprovedAt') || null, version: Number(g('voiceVersion')) || 0 }, style: { approved: !!Number(g('styleAssetsApproved')) || false, approvedAt: g('styleAssetsApprovedAt') || null, sourceFileName: g('styleSourceFileName') } }; VS_FIELDS.forEach(k => { out.style[k] = g(k); }); return out; };
+      if (req.method === 'GET') return sendJson(res, 200, shape(row()));
+      const body = await readBody(req); const cur = row(); const now = new Date().toISOString(); const sets = [], params = [];
+      if (body.voiceText !== undefined){
+        const t = String(body.voiceText).slice(0, 20000);
+        sets.push('"voiceGuideText" = ?'); params.push(t);
+        if (t !== String(aliasVal(cur, 'voiceGuideText') || '')){ sets.push('"voiceVersion" = ?'); params.push((Number(aliasVal(cur, 'voiceVersion')) || 0) + 1); }
+      }
+      if (body.style && typeof body.style === 'object'){
+        for (const k of VS_FIELDS){ if (body.style[k] === undefined) continue; let v = String(body.style[k]).slice(0, 8000); if (k === 'primaryColorHex' && v && !/^#[0-9a-fA-F]{6}$/.test(v)) return sendJson(res, 400, { error: 'Primary color must be a six-digit hex such as #1D1D1F.' }); sets.push(`"${k}" = ?`); params.push(v); }
+      }
+      if (body.approveVoice !== undefined){ sets.push('"voiceApproved" = ?', '"voiceApprovedAt" = ?'); params.push(body.approveVoice ? 1 : 0, body.approveVoice ? now : null); }
+      if (body.approveStyle !== undefined){ sets.push('"styleAssetsApproved" = ?', '"styleAssetsApprovedAt" = ?'); params.push(body.approveStyle ? 1 : 0, body.approveStyle ? now : null); }
+      if (!sets.length) return sendJson(res, 400, { error: 'Nothing to save.' });
+      db.prepare(`UPDATE accounts SET ${sets.join(', ')} WHERE accountId = ?`).run(...params, accountId);
+      return sendJson(res, 200, Object.assign(shape(row()), { saved: true, savedAt: now }));
+    }
     // GET /api/ops/accounts/:id/kpi-audit-log — 2026-09-20, per Todd's
     // direct instruction: "must be audit proof should an enterprise
     // account want proof showing how we protect client specific data."
