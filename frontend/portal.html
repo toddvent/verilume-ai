@@ -14033,7 +14033,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-11-04-private-titles';
+const CXMEDIA_BUILD_STAMP = '2026-11-06-upload-preview';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -31368,9 +31368,9 @@ const TTB_UP = {
   leadCounts: {
     title: 'Leads by type, by month', yearEl: 'mbuLeadYear', monthEl: 'mbuLeadMonth', statusEl: 'mbuLeadStatus', allowWholeYear: false,
     fields: [
-      { key: 'source', label: 'Source', req: true, names: ['source', 'channel'], hint: 'Where the lead came from: website, Meta, co-reg, transaction.' },
-      { key: 'leadType', label: 'Lead type', req: true, names: ['lead type', 'type', 'designation'], hint: 'High Value, Growth or Prospect.' },
-      { key: 'formName', label: 'Form name', names: ['form'], hint: 'The form the lead filled in.' },
+      { key: 'source', label: 'Source or form', req: true, names: ['source', 'channel', 'form name', 'form'], hint: 'Where the lead came from (website, Meta) or the form name. Forms are matched to the source and type already on file.' },
+      { key: 'leadType', label: 'Lead type', names: ['lead type', 'type', 'designation'], hint: 'High Value, Growth or Prospect. If the file has none, we use the type already on file for each form (new forms are flagged).' },
+      { key: 'formName', label: 'Form name', names: ['form name', 'form'], hint: 'The form the lead filled in.' },
       { key: 'count', label: 'Count of leads', req: true, names: ['total leads', 'count', 'emails', 'leads', 'qty', 'quantity'], hint: 'How many leads in the row.' },
       { key: 'bookings', label: 'Bookings', names: ['booking', 'transactions', 'orders'], hint: 'Bookings that came from those leads.' },
       { key: 'days', label: 'Avg days to convert', names: ['days to convert', 'avg days', 'days'], hint: 'Average days from lead to booking.' },
@@ -31379,22 +31379,29 @@ const TTB_UP = {
       { key: 'date', label: 'Date', names: ['date', 'period'], period: true, hint: 'A full date can stand in for Year and Month.' }
     ],
     build(grid, hi, col, per){
-      const parsed = [], problems = [];
+      const parsed = [], problems = [], guessed = [];
       for (let i = hi + 1; i < grid.length; i++){
         const r = grid[i] || []; const source = String(r[col.source] || '').trim(); if (!source) continue;
         let year = col.year != null ? parseInt(r[col.year], 10) : NaN, month = NaN;
         if (col.month != null){ const t = ttbUpMonthOf(r[col.month], year); month = t.month; year = t.year; }
         if (col.date != null && (!Number.isFinite(year) || !Number.isFinite(month))){ const d = new Date(String(r[col.date] || '')); if (!isNaN(d)){ year = d.getFullYear(); month = d.getMonth() + 1; } }
         if (!Number.isFinite(year)) year = per.year; if (!Number.isFinite(month)) month = per.month >= 1 ? per.month : NaN;
-        const raw = String(r[col.leadType] || '').trim();
-        const leadType = /prospect|meta|co-?reg|facebook|paid social/i.test(raw) ? 'Prospect' : (/high|value|hv/i.test(raw) ? 'High Value' : (/reg|sign|subscri|growth/i.test(raw) ? 'Registration' : null));
+        let raw = col.leadType != null ? String(r[col.leadType] || '').trim() : '';
+        let leadType = null, srcName = source, formName0 = col.formName != null ? String(r[col.formName] || '').trim() : '';
+        if (col.leadType != null) leadType = /prospect|meta|co-?reg|facebook|paid social/i.test(raw) ? 'Prospect' : (/high|value|hv/i.test(raw) ? 'High Value' : (/reg|sign|subscri|growth/i.test(raw) ? 'Registration' : null));
+        else {
+          const nm = formName0 || source, hit = ttbLeadFormLookup(nm);
+          srcName = hit.source; formName0 = nm; leadType = hit.leadType;
+          if (hit.guessed && !guessed.includes(nm)) guessed.push(nm);
+        }
         if (!leadType){ problems.push('row ' + (i + 1) + ': lead type "' + raw + '" isn\'t High Value, Growth or Prospect'); continue; }
-        parsed.push({ year, month, source, leadType, formName: col.formName != null ? String(r[col.formName] || '').trim() : '', count: mbuNum(r[col.count]), bookings: col.bookings != null ? mbuNum(r[col.bookings]) : null, avgDaysToConvert: col.days != null ? mbuNum(r[col.days]) : null });
+        parsed.push({ year, month, source: srcName, leadType, formName: formName0, count: mbuNum(r[col.count]), bookings: col.bookings != null ? mbuNum(r[col.bookings]) : null, avgDaysToConvert: col.days != null ? mbuNum(r[col.days]) : null });
       }
-      return { rows: parsed, problems };
+      return { rows: parsed, problems, notes: guessed.length ? ['Not on file yet, type assumed: ' + guessed.join(', ')] : [] };
     },
+    compare: { url: 'lead-counts', keyOf: r => [r.year, r.month, r.source, r.leadType, r.formName || ''].join('|'), name: r => (r.formName || r.source), measures: [['count', 'Leads'], ['bookings', 'Bookings']] },
     summary(rows){ const per = [...new Set(rows.map(p => TTB_UP_MONTHS[p.month] + ' ' + p.year))]; return rows.length + ' lead row' + (rows.length === 1 ? '' : 's') + ' for ' + per.join(', '); },
-    async save(rows, fname){ const ok = await mbuSaveLeadCounts(rows, fname); const f = rows[0]; if (ok && f){ const y = document.getElementById('mbuLeadYear'), m = document.getElementById('mbuLeadMonth'); if (y) y.value = String(f.year); if (m) m.value = String(f.month); try { mbuLoadLeadCounts(); } catch (e){} } return ok; }
+    async save(rows, fname, per, opts){ const ok = await mbuSaveLeadCounts(rows, fname, opts); const f = rows[0]; if (ok && f){ const y = document.getElementById('mbuLeadYear'), m = document.getElementById('mbuLeadMonth'); if (y) y.value = String(f.year); if (m) m.value = String(f.month); try { mbuLoadLeadCounts(); } catch (e){} } return ok; }
   },
   websiteEngagement: {
     title: 'Website engagement', yearEl: 'mbuEngagementYear', monthEl: 'mbuEngagementMonth', statusEl: 'mbuEngagementStatus', allowWholeYear: true,
@@ -31415,11 +31422,12 @@ const TTB_UP = {
       }
       return { rows: parsed, problems: [] };
     },
+    compare: { url: 'website-engagement', keyOf: (r, per) => [r.year != null ? r.year : per.year, r.month != null ? r.month : (per.month || 0), r.channelGroup].join('|'), name: r => r.channelGroup, measures: [['sessions', 'Sessions'], ['engagedSessions', 'Engaged sessions']] },
     summary(rows, per){ return rows.length + ' channel group' + (rows.length === 1 ? '' : 's') + ' for ' + (TTB_UP_MONTHS[per.month] || 'the whole year') + ' ' + per.year; },
-    async save(rows, fname, per){
+    async save(rows, fname, per, opts){
       const y = document.getElementById('mbuEngagementYear'), m = document.getElementById('mbuEngagementMonth'); if (y) y.value = String(per.year); if (m) m.value = String(per.month || 0);
       mbuEngagementRows = rows; try { mbuRenderEngagementRows(); } catch (e){}
-      return await mbuSaveEngagement(true, fname);
+      return await mbuSaveEngagement(false, fname, opts);
     }
   },
   bulkUpload: {
@@ -31444,16 +31452,32 @@ const TTB_UP = {
       }
       return { rows: parsed, problems: [] };
     },
+    compare: { url: 'transactions-monthly', keyOf: r => [r.year, r.month, r.productGroup || ''].join('|'), name: r => (r.productGroup || 'All product groups'), measures: [['transactions', 'Transactions'], ['revenue', 'Revenue']], overwritesNote: r => r.source === 'guest_bookings' },
     summary(rows){ const per = [...new Set(rows.map(p => TTB_UP_MONTHS[p.month] + ' ' + p.year))]; const t = rows.reduce((a, p) => a + (p.transactions || 0), 0); return rows.length + ' row' + (rows.length === 1 ? '' : 's') + ', ' + t.toLocaleString() + ' transactions, for ' + per.join(', '); },
-    async save(rows){ return await mbuSaveTransactions(rows); }
+    async save(rows, fname, per, opts){ return await mbuSaveTransactions(rows, opts); }
   },
   bulkUploadCustomer: { legacy: 'mbuHandleGuestBookingsFile', row: 'bulkUpload' },
   digitalPerformance: { legacy: 'dpHandleWorkbookFile' },
   ga4Sources: { legacy: 'ga4SourcesHandleFile' },
   ga4Search: { legacy: 'ga4SearchHandleFile' }
 };
-const ttbUp = { key: null, stage: 'idle', fileName: '', grid: null, hi: 0, assign: {}, chosen: {}, year: null, month: null, reviewed: false, msg: '', result: '' };
-function ttbUpReset(){ Object.assign(ttbUp, { key: null, stage: 'idle', fileName: '', grid: null, hi: 0, assign: {}, chosen: {}, year: null, month: null, reviewed: false, msg: '', result: '' }); }
+// Form -> source and lead type, learned from the leads already on file, so a file that only lists forms still files correctly.
+let ttbLeadForms = {};
+function ttbLeadFormLookup(name){
+  const k = String(name || '').trim().toLowerCase(); const hit = ttbLeadForms[k];
+  if (hit) return { source: hit.source, leadType: hit.leadType, guessed: false };
+  const meta = /facebook|meta|instagram|paid social/.test(k), hv = /quote|request info|expert|consult|call|book|talk/.test(k);
+  return { source: meta ? 'META' : 'WEBSITE', leadType: meta ? 'Prospect' : (hv ? 'High Value' : 'Registration'), guessed: true };
+}
+async function ttbLeadFormsLoad(){
+  ttbLeadForms = {};
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/lead-counts`); const d = await r.json();
+    (d.rows || []).slice().sort((a, b) => (a.year * 12 + a.month) - (b.year * 12 + b.month)).forEach(x => { const f = String(x.formName || '').trim().toLowerCase(); if (f) ttbLeadForms[f] = { source: x.source, leadType: x.leadType }; });
+  } catch (e){ console.warn('lead forms not loaded', e); }
+}
+const ttbUp = { key: null, stage: 'idle', fileName: '', grid: null, hi: 0, assign: {}, chosen: {}, year: null, month: null, reviewed: false, periodOk: false, msg: '', result: '' };
+function ttbUpReset(){ Object.assign(ttbUp, { key: null, stage: 'idle', fileName: '', grid: null, hi: 0, assign: {}, chosen: {}, year: null, month: null, reviewed: false, periodOk: false, replaceMonths: false, replacePeriods: null, preview: null, file: null, msg: '', result: '' }); }
 function ttbUpPick(key){
   const cfg = TTB_UP[key]; if (!cfg) return;
   ttb.open = cfg.row || key; ttb.manual[cfg.row || key] = true;
@@ -31470,10 +31494,11 @@ function ttbUpTier(f, header){
   return 'medium';
 }
 async function ttbUpStart(key, file){
-  const cfg = TTB_UP[key]; ttbUpReset(); ttbUp.key = key; ttb.open = key; ttb.manual[key] = true;
+  const cfg = TTB_UP[key]; ttbUpReset(); ttbUp.key = key; ttb.open = key; ttb.manual[key] = true; ttbUp.file = file;
   ttbUp.stage = 'reading'; ttbUp.fileName = file.name; ttbUp.msg = 'Reading your file…'; ttbRerender();
   try {
     const grid = await mbuReadFileGrid(file);
+    if (key === 'leadCounts') await ttbLeadFormsLoad();
     const found = mbuFindHeaderRow(grid, cfg.fields.map(f => [f.key, f.names, !!f.req]));
     if (!found) throw new Error('We could not find a row of column headings with the columns this upload needs (' + cfg.fields.filter(f => f.req).map(f => f.label).join(', ') + '). Check the file, or download the sample to see the layout.');
     const ye = document.getElementById(cfg.yearEl), me = document.getElementById(cfg.monthEl);
@@ -31486,6 +31511,38 @@ async function ttbUpStart(key, file){
 function ttbUpChoose(field, val){ if (val === '') delete ttbUp.assign[field]; else { const idx = parseInt(val, 10); Object.keys(ttbUp.assign).forEach(k => { if (k !== field && ttbUp.assign[k] === idx) delete ttbUp.assign[k]; }); ttbUp.assign[field] = idx; ttbUp.chosen[field] = true; } ttbUpRender(); }
 function ttbUpCancel(){ ttbUpReset(); ttbRerender(); }
 function ttbUpDone(){ const k = ttbUp.key; ttbUpReset(); ttbRerender(); }
+// Before anything is saved, compare the file with what is already on file for the same months.
+async function ttbUpReview(){
+  const key = ttbUp.key, cfg = TTB_UP[key]; if (!cfg) return;
+  const per = { year: Number(ttbUp.year), month: Number(ttbUp.month) };
+  const out = cfg.build(ttbUp.grid, ttbUp.hi, ttbUp.assign, per);
+  if (!out.rows.length){ ttbUpSet({ msg: out.problems.length ? out.problems.slice(0, 4).join('; ') : 'No rows found under those columns. Check the choices above.' }); return; }
+  if (out.rows.some(r => r.month != null && !Number.isFinite(r.month))){ ttbUpSet({ msg: 'Some rows have no month. Pick the month below, or choose the Month or Date column.' }); return; }
+  const c = cfg.compare; if (!c){ ttbUpSubmit(); return; }
+  ttbUpSet({ stage: 'reading', msg: 'Comparing with what is on file…' });
+  let existing = null;
+  try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/${c.url}`); if (r.ok) existing = (await r.json()).rows || []; } catch (e){ console.warn('preview fetch failed', e); }
+  const pk = r => [r.year != null ? r.year : per.year, r.month != null ? r.month : (per.month || 0)].join('-');
+  const periods = new Set(out.rows.map(pk));
+  const fileKeys = new Map(); out.rows.forEach(r => fileKeys.set(c.keyOf(r, per), r));
+  const dbRows = existing ? existing.filter(r => periods.has(pk(r))) : [];
+  const dbMap = new Map(); dbRows.forEach(r => dbMap.set(c.keyOf(r, per), r));
+  const num = v => (v == null || v === '' ? null : Number(v));
+  let added = 0, changed = 0, same = 0, overwrite = 0; const changes = [];
+  fileKeys.forEach((r, k) => {
+    const d = dbMap.get(k);
+    if (!d){ added++; return; }
+    const diff = c.measures.filter(([m]) => (num(r[m]) || 0) !== (num(d[m]) || 0));
+    if (diff.length){ changed++; if (changes.length < 6) changes.push(c.name(r) + ': ' + diff.map(([m, l]) => l + ' ' + (num(d[m]) || 0).toLocaleString() + ' to ' + (num(r[m]) || 0).toLocaleString()).join(', ')); if (c.overwritesNote && c.overwritesNote(d)) overwrite++; }
+    else same++;
+  });
+  const kept = []; dbMap.forEach((d, k) => { if (!fileKeys.has(k)) kept.push(d); });
+  const sumOf = (rows, m) => rows.reduce((a, r) => a + (num(r[m]) || 0), 0);
+  const totals = c.measures.map(([m, l]) => ({ l, file: sumOf(out.rows, m), kept: sumOf(kept, m) }));
+  const pl = [...periods].map(x => { const [y, mo] = x.split('-').map(Number); return { year: y, month: mo }; });
+  const perNames = pl.map(x => (TTB_UP_MONTHS[x.month] || 'Whole year') + ' ' + x.year);
+  ttbUpSet({ stage: 'preview', msg: '', replaceMonths: false, replacePeriods: pl, preview: { ok: existing !== null, added, changed, same, kept: kept.length, keptNames: kept.slice(0, 6).map(c.name), changes, totals, overwrite, perNames, problems: out.problems, notes: out.notes || [], wholeYear: pl.some(x => !x.month) } });
+}
 async function ttbUpSubmit(){
   const key = ttbUp.key, cfg = TTB_UP[key]; if (!cfg) return;
   const per = { year: Number(ttbUp.year), month: Number(ttbUp.month) };
@@ -31494,9 +31551,10 @@ async function ttbUpSubmit(){
   if (out.rows.some(r => r.month != null && !Number.isFinite(r.month))){ ttbUpSet({ msg: 'Some rows have no month. Pick the month below, or choose the Month or Date column.' }); return; }
   ttbUpSet({ stage: 'saving', msg: 'Saving ' + cfg.summary(out.rows, per) + '…' });
   let ok = false;
-  try { ok = await cfg.save(out.rows, ttbUp.fileName, per); } catch (e){ console.warn('ttbUp save failed', e); }
+  try { ok = await cfg.save(out.rows, ttbUp.fileName, per, { replacePeriods: ttbUp.replaceMonths ? ttbUp.replacePeriods : undefined }); } catch (e){ console.warn('ttbUp save failed', e); }
   const st = document.getElementById(cfg.statusEl); const said = st ? st.textContent : '';
-  if (ok){ ttbUpSet({ stage: 'done', result: cfg.summary(out.rows, per) + (out.problems.length ? ' · ' + out.problems.length + ' row' + (out.problems.length === 1 ? '' : 's') + ' skipped' : ''), msg: '' }); try { ttbLoad(); } catch (e){} }
+  let kept = ''; if (ok && ttbUp.file){ try { kept = await mbuArchiveFile(ttbUp.file, null, ttbUp.fileName, { leadCounts: 'lead_counts', websiteEngagement: 'website_engagement', bulkUpload: 'transactions_monthly' }[key]); } catch (e){ console.warn('archive failed', e); } }
+  if (ok){ ttbUpSet({ stage: 'done', result: cfg.summary(out.rows, per) + ((out.notes || []).length ? ' · ' + out.notes.join('; ') : '') + (out.problems.length ? ' · ' + out.problems.length + ' row' + (out.problems.length === 1 ? '' : 's') + ' skipped' : '') + (ttbUp.replaceMonths ? ' · months replaced' : '') + '.' + kept, msg: '' }); try { ttbLoad(); } catch (e){} }
   else ttbUpSet({ stage: 'map', msg: said && !/^Saved/.test(said) ? said : 'Not saved. Try again.' });
 }
 function ttbUpRender(){
@@ -31509,6 +31567,20 @@ function ttbUpRender(){
   const active = S.stage !== 'idle' && S.stage !== 'done';
   slot.querySelectorAll(':scope > .sk-card').forEach(c => { c.style.display = active ? 'none' : ''; });
   if (S.stage === 'reading' || S.stage === 'saving') h = box(`<div class="ttb-tag">${escapeHtml(S.fileName)}</div>${note(S.msg)}`);
+  else if (S.stage === 'preview'){
+    const v = S.preview, n = x => x.toLocaleString();
+    h = box(`<div class="ttb-tag">${escapeHtml(S.fileName)}</div>
+      <div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:12px 14px;font-size:0.8125rem;"><b>What will change</b> · ${escapeHtml(v.perNames.join(', '))}
+        ${v.ok ? `<div style="margin:6px 0;"><b>${n(v.added)}</b> new · <b>${n(v.changed)}</b> updated · ${n(v.same)} unchanged · <b>${n(v.kept)}</b> already on file but not in this file ${S.replaceMonths ? '(will be removed)' : '(kept)'}</div>` : '<div style="margin:6px 0;color:var(--advocacy);">We could not read what is on file to compare. You can still save; every row is added or updated.</div>'}
+        ${v.changes.length ? `<div style="margin:4px 0;">Examples of updates:<ul style="margin:4px 0 0 18px;padding:0;">${v.changes.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul></div>` : ''}
+        ${v.kept ? `<div class="hint" style="margin-top:6px;">Not in this file: ${v.keptNames.map(escapeHtml).join(', ')}${v.kept > v.keptNames.length ? ' and ' + (v.kept - v.keptNames.length) + ' more' : ''}.</div>` : ''}
+        ${v.overwrite ? `<div style="margin:6px 0;color:#C0273C;font-weight:600;">${v.overwrite} of the updated rows are calculated from your booking file. Saving replaces those with this file's numbers.</div>` : ''}
+        <div style="margin-top:6px;">${v.totals.map(t => `${escapeHtml(t.l)}: file ${n(t.file)}${t.kept && !S.replaceMonths ? ' + kept ' + n(t.kept) + ' = ' + n(t.file + t.kept) : ''}`).join(' · ')}</div>
+        ${v.notes.map(t => `<div class="hint" style="margin-top:6px;">${escapeHtml(t)}</div>`).join('')}
+        ${v.problems.length ? `<div class="hint" style="margin-top:6px;">${v.problems.length} row${v.problems.length === 1 ? '' : 's'} will be skipped: ${escapeHtml(v.problems.slice(0, 3).join('; '))}</div>` : ''}</div>
+      ${v.wholeYear ? '' : `<label style="display:block;margin-top:8px;font-size:0.8125rem;"><input type="checkbox" ${S.replaceMonths ? 'checked' : ''} onchange="ttbUp.replaceMonths = this.checked; ttbUpRender();"> Replace ${escapeHtml(v.perNames.join(', '))}: remove rows on file for ${v.perNames.length === 1 ? 'this month' : 'these months'} that are not in this file. Leave unticked to update and add only.</label>`}
+      <div class="btn-row" style="margin-top:10px;gap:10px;"><button type="button" class="btn-primary" onclick="ttbUpSubmit()">Save these changes</button><button type="button" class="btn-ghost" onclick="ttbUpSet({ stage: 'map', preview: null })">Back</button><button type="button" class="btn-ghost" onclick="ttbUpCancel()">Cancel</button></div>`);
+  }
   else if (S.stage === 'error') h = box(`<div class="ttb-tag">${escapeHtml(S.fileName || 'Upload')}</div>${note(S.msg, true)}<div class="btn-row"><button type="button" class="btn-ghost" onclick="ttbUpCancel()">Start over</button></div>`);
   else if (S.stage === 'done') h = box(`<div class="ttb-tag">${escapeHtml(S.fileName)}</div><p style="margin:0 0 4px;font-weight:700;color:var(--cx);">✓ Submitted. ${escapeHtml(S.result)}.</p><div class="btn-row" style="margin-top:10px;gap:10px;"><button type="button" class="btn-ghost" onclick="ttbUpDone()">Done</button></div>`);
   else if (S.stage === 'map'){
@@ -31528,15 +31600,15 @@ function ttbUpRender(){
     const unused = Array.from({ length: cols }, (_, i) => i).filter(i => String(head[i] || '').trim() !== '' && !used.has(i)).map(i => escapeHtml(String(head[i]).trim()));
     const needsPer = !(S.assign.month != null || S.assign.date != null);
     const yrs = (() => { const y0 = new Date().getFullYear(); const a = [y0 - 3, y0 - 2, y0 - 1, y0, y0 + 1]; if (!a.includes(Number(S.year))) a.push(Number(S.year)); return a.sort(); })();
-    const per = needsPer ? `<div style="margin:10px 0 0;font-size:0.8125rem;">Rows with no date in the file are filed under <select class="tbl-select" onchange="ttbUp.year=Number(this.value)">${yrs.map(y => `<option value="${y}"${Number(S.year) === y ? ' selected' : ''}>${y}</option>`).join('')}</select> <select class="tbl-select" onchange="ttbUp.month=Number(this.value)">${(cfg.allowWholeYear ? [0] : []).concat([1,2,3,4,5,6,7,8,9,10,11,12]).map(m => `<option value="${m}"${Number(S.month) === m ? ' selected' : ''}>${m ? TTB_UP_MONTHS[m] : 'Whole year / YTD'}</option>`).join('')}</select></div>` : '';
-    const ok = !missing.length && (confirm === 0 || S.reviewed);
+    const per = needsPer ? `<div style="margin:10px 0 0;font-size:0.8125rem;">Rows with no date in the file are filed under <select class="tbl-select" onchange="ttbUp.year=Number(this.value);ttbUp.periodOk=false;ttbUpRender()">${yrs.map(y => `<option value="${y}"${Number(S.year) === y ? ' selected' : ''}>${y}</option>`).join('')}</select> <select class="tbl-select" onchange="ttbUp.month=Number(this.value);ttbUp.periodOk=false;ttbUpRender()">${(cfg.allowWholeYear ? [0] : []).concat([1,2,3,4,5,6,7,8,9,10,11,12]).map(m => `<option value="${m}"${Number(S.month) === m ? ' selected' : ''}>${m ? TTB_UP_MONTHS[m] : 'Whole year / YTD'}</option>`).join('')}</select></div>` : '';
+    const ok = !missing.length && (confirm === 0 || S.reviewed) && (!needsPer || S.periodOk);
     h = box(`<div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:12px 14px;font-size:0.8125rem;"><b>How we matched your columns</b> · ${escapeHtml(S.fileName)} · ${S.grid.length - S.hi - 1} rows
       <div style="margin:6px 0;">${matched} matched · <b>${confirm}</b> need your confirmation · ${nf} not found${missing.length ? ` · <span style="color:#C0273C;font-weight:600;">Still needed: ${missing.join(', ')}</span>` : ''}</div>
       <div style="overflow-x:auto;"><table class="data-table" style="margin-top:6px;font-size:0.8125rem;"><thead><tr><th>Our field</th><th>Your column</th><th>Match</th><th>Why</th></tr></thead><tbody>${rows}</tbody></table></div>
-      ${per}${unused.length ? `<div class="hint" style="margin-top:8px;">Columns we are not using (${unused.length}): ${unused.join(', ')}.</div>` : ''}</div>
+      ${per}${needsPer ? `<label style="display:block;margin-top:8px;font-size:0.8125rem;"><input type="checkbox" ${S.periodOk ? 'checked' : ''} onchange="ttbUp.periodOk = this.checked; ttbUpRender();"> This file is for <b>${TTB_UP_MONTHS[S.month] || ''} ${S.year}</b>.</label>` : ''}${unused.length ? `<div class="hint" style="margin-top:8px;">Columns we are not using (${unused.length}): ${unused.join(', ')}.</div>` : ''}</div>
       ${confirm > 0 ? `<label style="display:block;margin-top:8px;font-size:0.8125rem;"><input type="checkbox" ${S.reviewed ? 'checked' : ''} onchange="ttbUp.reviewed = this.checked; ttbUpRender();"> I've checked the rows marked “Please confirm”.</label>` : ''}
       ${S.msg ? note(S.msg, true) : ''}
-      <div class="btn-row" style="margin-top:10px;gap:10px;"><button type="button" class="btn-primary" ${ok ? '' : 'disabled aria-disabled="true" style="opacity:0.5;"'} onclick="ttbUpSubmit()">Submit</button><button type="button" class="btn-ghost" onclick="ttbUpCancel()">Cancel</button></div>`);
+      <div class="btn-row" style="margin-top:10px;gap:10px;"><button type="button" class="btn-primary" ${ok ? '' : 'disabled aria-disabled="true" style="opacity:0.5;"'} onclick="ttbUpReview()">Review changes</button><button type="button" class="btn-ghost" onclick="ttbUpCancel()">Cancel</button></div>`);
   }
   mount.innerHTML = h;
 }
@@ -82019,7 +82091,7 @@ function mbuQueueEngagementSave(){
   if (mbuEngagementSaveTimer) clearTimeout(mbuEngagementSaveTimer);
   mbuEngagementSaveTimer = setTimeout(() => mbuSaveEngagement(false), 600);
 }
-async function mbuSaveEngagement(replace, fileName){
+async function mbuSaveEngagement(replace, fileName, opts){
   const status = document.getElementById('mbuEngagementStatus');
   const yearSel = document.getElementById('mbuEngagementYear'), monthSel = document.getElementById('mbuEngagementMonth');
   const year = parseInt(yearSel.value, 10), month = parseInt(monthSel.value, 10);
@@ -82029,7 +82101,7 @@ async function mbuSaveEngagement(replace, fileName){
   if (dataSourceLabel === 'backend'){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/website-engagement`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows, replace: replace ? { year, month } : undefined, fileName: fileName || undefined })
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows, replace: replace ? { year, month } : undefined, replacePeriods: opts && opts.replacePeriods, fileName: fileName || undefined })
       });
       persisted = resp.ok; if (!resp.ok){ try { err = (await resp.json()).error; } catch (e){ /* ignore */ } } else { try { const d = await resp.json(); if (d.receipt) mbuRenderUploadReceipt(d.receipt, 'mbuEngagementReceipt'); } catch (e){ /* receipt is optional */ } }
     } catch (e){ console.warn('mbuSaveEngagement failed', e); }
@@ -82321,7 +82393,7 @@ function mbuQueueLeadSave(){
   if (mbuLeadSaveTimer) clearTimeout(mbuLeadSaveTimer);
   mbuLeadSaveTimer = setTimeout(() => mbuSaveLeadCounts(null), 600);
 }
-async function mbuSaveLeadCounts(rowsOverride, fileName){
+async function mbuSaveLeadCounts(rowsOverride, fileName, opts){
   const status = document.getElementById('mbuLeadStatus');
   const yearSel = document.getElementById('mbuLeadYear'), monthSel = document.getElementById('mbuLeadMonth');
   const year = parseInt(yearSel.value, 10), month = parseInt(monthSel.value, 10);
@@ -82331,7 +82403,7 @@ async function mbuSaveLeadCounts(rowsOverride, fileName){
   if (dataSourceLabel === 'backend'){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/lead-counts`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows, fileName: fileName || undefined })
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows, fileName: fileName || undefined, replacePeriods: opts && opts.replacePeriods })
       });
       persisted = resp.ok; if (!resp.ok){ try { err = (await resp.json()).error; } catch (e){ /* ignore */ } } else { try { const d = await resp.json(); if (d.receipt) mbuRenderUploadReceipt(d.receipt, 'mbuLeadReceipt'); } catch (e){ /* receipt is optional */ } }
     } catch (e){ console.warn('mbuSaveLeadCounts failed', e); }
@@ -82732,7 +82804,7 @@ function mbuQueueTxnSave(){
   if (mbuTxnSaveTimer) clearTimeout(mbuTxnSaveTimer);
   mbuTxnSaveTimer = setTimeout(() => mbuSaveTransactions(null), 600);
 }
-async function mbuSaveTransactions(rowsOverride){
+async function mbuSaveTransactions(rowsOverride, opts){
   if (!rowsOverride && mbuTxnFullYear) return; // Full year is a read-only total
   const status = document.getElementById('mbuTxnStatus');
   const yearSel = document.getElementById('mbuTxnYear'), monthSel = document.getElementById('mbuTxnMonth');
@@ -82743,7 +82815,7 @@ async function mbuSaveTransactions(rowsOverride){
   if (dataSourceLabel === 'backend'){
     try {
       const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/transactions-monthly`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows })
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows, replacePeriods: opts && opts.replacePeriods })
       });
       persisted = resp.ok; if (!resp.ok){ try { err = (await resp.json()).error; } catch (e){ /* ignore */ } }
     } catch (e){ console.warn('mbuSaveTransactions failed', e); }
@@ -83199,11 +83271,11 @@ async function mbuGbCommit(){
   }
 }
 // The original file is kept for 180 days so the upload history can open it again. A failure here never undoes the import.
-async function mbuArchiveFile(file, batchId, fileName){
+async function mbuArchiveFile(file, batchId, fileName, kind){
   if (!file) return '';
   if (file.size > 26 * 1024 * 1024) return ' The file is too large to keep a copy (the limit is about 26 MB), but the import is saved.';
   const dataUrl = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(new Error('read failed')); r.readAsDataURL(file); });
-  const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/upload-archives`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 120000, body: JSON.stringify({ kind: 'guest_bookings', batchId, fileName, mimeType: file.type || 'application/octet-stream', dataBase64: dataUrl.replace(/^data:[^,]*,/, ''), uploadedBy: (typeof state !== 'undefined' && state.userName) || '' }) });
+  const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/upload-archives`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 120000, body: JSON.stringify({ kind: kind || 'guest_bookings', batchId, fileName, mimeType: file.type || 'application/octet-stream', dataBase64: dataUrl.replace(/^data:[^,]*,/, ''), uploadedBy: (typeof state !== 'undefined' && state.userName) || '' }) });
   if (!resp.ok){ const d = await resp.json().catch(() => ({})); return ` ${d.error || 'A copy of the file could not be kept.'}`; }
   return ' A copy of the file is kept for 180 days in the upload history.';
 }
