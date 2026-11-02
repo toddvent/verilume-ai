@@ -13592,8 +13592,8 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
       <div class="sk-card-body">
         <p class="hint" style="margin-top:0;">Every attempt on this account, accepted or rejected — a rejection is a real event worth being able to see, not something this build hides.</p>
         <div id="mbuHistoryBody"><p class="hint">Loading…</p></div>
-        <h4 style="margin:16px 0 4px;font-size:0.9375rem;">Customer transaction files</h4>
-        <p class="hint" style="margin-top:0;">The original file from each transaction upload, kept for 180 days. Open one to see exactly what was loaded.</p>
+        <h4 style="margin:16px 0 4px;font-size:0.9375rem;">Uploaded files</h4>
+        <p class="hint" style="margin-top:0;">The original file from each customer transaction, leads, website engagement and monthly transactions upload, kept for 180 days. Open one to see exactly what was loaded.</p>
         <div id="mbuArchiveBody"></div>
       </div>
     </div>
@@ -14033,7 +14033,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-11-06-upload-preview';
+const CXMEDIA_BUILD_STAMP = '2026-11-07-call-counts';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -31087,6 +31087,7 @@ const TTB_CFG = {
   websiteEngagement: { upload: { direct: 'ttbUpPick', formats: 'The GA4 Traffic acquisition export (.xlsx or .csv), by Session default channel group', handler: 'mbuHandleEngagementFile', cards: ['mbuEngagementCard'], sample: { name: 'website-engagement-sample.csv', cols: ['Year', 'Month', 'Session default channel group', 'Sessions', 'Engaged sessions', 'Engagement rate', 'Average engagement time per engaged session'], rows: [[2026, 'Jan', 'Organic Search', 18400, 12100, '65.8%', 1.4], [2026, 'Jan', 'Paid Search', 9200, 5100, '55.4%', 1.1]] } }, manual: { cards: ['mbuEngagementCard'] }, integ: true, view: { tab: 'dataScientist', label: 'Media Science' } },
   ga4Sources: { upload: { direct: 'ttbUpPick', formats: 'The GA4 free-form export (.csv): Year, Week, Session campaign, Session source / medium, Event name, Sessions, Engaged sessions, Key events', handler: 'ga4SourcesHandleFile', cards: ['mbuGa4SourcesCard'], noSample: 'No sample needed. Upload the GA4 free-form export as it comes.' }, manual: { cards: ['mbuGa4SourcesCard'] }, integ: true, view: { tab: 'dataScientist', label: 'Media Science' } },
   ga4Search: { upload: { direct: 'ttbUpPick', formats: 'The GA4 free-form export (.csv): Week, Session Google Ads campaign, ad group name, keyword text, ad network type, Sessions, Key events, Engaged sessions', handler: 'ga4SearchHandleFile', cards: ['mbuGa4SearchCard'], noSample: 'No sample needed. Upload the GA4 free-form export as it comes.' }, manual: { cards: ['mbuGa4SearchCard'] }, integ: true, view: { tab: 'dataScientist', label: 'Media Science' } },
+  callCounts: { upload: { direct: 'ttbUpPick', formats: 'The RingCentral skill report (.xlsx or .csv): Month, Skill Name, Type, Converted Bookings, Total Calls. Add a Location column, or choose the call center location when you upload.', noSample: 'No sample needed. Send the RingCentral skill report as it comes.' }, manual: { cards: [] }, view: { step: 'mediaplan', label: 'Budget and Plan' } },
   leadCounts: { upload: { direct: 'ttbUpPick', formats: '.xlsx or .csv, one row per source, lead type and form', handler: 'mbuHandleLeadFile', cards: ['mbuLeadCountsCard'], sample: { name: 'leads-by-month-sample.csv', cols: ['Year', 'Month', 'Source', 'Lead Type', 'Form Name', 'Total Leads', 'Bookings', 'Avg Days to Convert'], rows: [[2026, 'Jan', 'Website', 'High Value', 'Request a brochure', 320, 18, 41], [2026, 'Jan', 'Meta', 'Growth', 'Sweepstakes', 1150, 9, 66]] } }, manual: { cards: ['mbuLeadCountsCard'] }, integ: true, view: { tab: 'marketer', label: 'Growth & Performance' } },
   digitalPerformance: { upload: { direct: 'ttbUpPick', formats: 'The agency workbook as it comes (.xlsx or .csv). Sheets with a year and month layout are read automatically.', handler: 'dpHandleWorkbookFile', cards: ['mbuDigitalCard'], noSample: 'No sample needed. Send the workbook your agency already gives you.' }, manual: { cards: ['mbuDigitalCard'] }, integ: true, view: { tab: 'dataScientist', label: 'Media Science' } },
   kpiMetrics: { manual: { cards: ['kpiMetricsAdminModule'] }, view: { step: 'analyticsSetup', label: 'CMO View' } },
@@ -31108,6 +31109,7 @@ const TTB_PLAN_SAMPLES = {
   websiteEngagement: { benefit: 'Shows which channels bring visitors who stay.', sample: `<div class="ttb-srow ttb-head"><span>Channel group</span><span>Sessions</span><span>Engaged</span></div><div class="ttb-srow"><span>Organic Search</span><span>18,400</span><span>65.8%</span></div><div class="ttb-srow"><span>Paid Search</span><span>9,200</span><span>55.4%</span></div>` },
   ga4Sources: { benefit: 'Shows which sources bring visits that take action, beyond brand search and remarketing.', sample: `<div class="ttb-srow ttb-head"><span>Source / medium</span><span>Sessions</span><span>Key events</span></div><div class="ttb-srow"><span>google / cpc</span><span>329,865</span><span>13,049</span></div><div class="ttb-srow"><span>Facebook / PaidSocial</span><span>7,033</span><span>248</span></div>` },
   ga4Search: { benefit: 'Splits brand from non-brand search and ranks keywords by key events.', sample: `<div class="ttb-srow ttb-head"><span>Campaign</span><span>Sessions</span><span>Key events</span></div><div class="ttb-srow"><span>…Non-Brand_CPC…</span><span>110,298</span><span>2,802</span></div><div class="ttb-srow"><span>…Brand_CPC…</span><span>138,773</span><span>8,260</span></div>` },
+  callCounts: { benefit: 'Counts Inbound Consumer Reservation calls as their own direct sales line in the plan and forecast, by month and call center location.', sample: `<div class="ttb-srow ttb-head"><span>Location · skill</span><span>Calls</span><span>Bookings</span></div><div class="ttb-srow"><span>Miami · Inbound Consumer Reservation</span><span>101</span><span>20</span></div>` },
   leadCounts: { benefit: 'Follows leads through to bookings, by source and lead type.', sample: `<div class="ttb-srow ttb-head"><span>Source · type</span><span>Leads</span><span>Bookings</span></div><div class="ttb-srow"><span>Website · High Value</span><span>320</span><span>18</span></div><div class="ttb-srow"><span>Meta · Growth</span><span>1,150</span><span>9</span></div>` },
   digitalPerformance: { benefit: 'Spend, impressions and clicks by channel, publisher and tactic.', sample: `<div class="ttb-srow ttb-head"><span>Channel</span><span>Spend</span><span>Impressions</span></div><div class="ttb-srow"><span>Non-Brand Search</span><span>$42,300</span><span>1.9M</span></div><div class="ttb-srow"><span>Paid Social</span><span>$28,900</span><span>3.4M</span></div>` },
   kpiMetrics: { benefit: 'Feeds the KPI grid and trend line on the CMO View.', sample: `<div class="ttb-srow ttb-head"><span>Metric</span><span>Month</span><span>Value</span></div><div class="ttb-srow"><span>Marketing ROAS</span><span>2026-08</span><span>13.5</span></div><div class="ttb-srow"><span>Cost per booking</span><span>2026-08</span><span>$1,240</span></div>` },
@@ -31456,11 +31458,77 @@ const TTB_UP = {
     summary(rows){ const per = [...new Set(rows.map(p => TTB_UP_MONTHS[p.month] + ' ' + p.year))]; const t = rows.reduce((a, p) => a + (p.transactions || 0), 0); return rows.length + ' row' + (rows.length === 1 ? '' : 's') + ', ' + t.toLocaleString() + ' transactions, for ' + per.join(', '); },
     async save(rows, fname, per, opts){ return await mbuSaveTransactions(rows, opts); }
   },
+  callCounts: {
+    title: 'Call center calls by month and location', yearEl: 'mbuCallYear', monthEl: 'mbuCallMonth', statusEl: 'mbuCallStatus', allowWholeYear: false, needsLocation: true,
+    fields: [
+      { key: 'month', label: 'Month', req: true, names: ['month', 'period', 'date'], hint: 'The month of the calls, like 10-25 (October 2025) or Oct 2025.' },
+      { key: 'skill', label: 'Skill name', req: true, names: ['skill name', 'skill', 'queue', 'call type name'], hint: 'The RingCentral skill, like Inbound Consumer Reservation.' },
+      { key: 'callType', label: 'Type', names: ['type', 'call type'], hint: 'Sales or Service, as RingCentral labels it.' },
+      { key: 'bookings', label: 'Converted bookings', req: true, names: ['converted bookings', 'converted', 'bookings'], hint: 'Bookings that came from those calls.' },
+      { key: 'calls', label: 'Total calls', req: true, names: ['total calls', 'calls'], hint: 'All calls for the skill in the month.' },
+      { key: 'location', label: 'Location', names: ['location', 'call center', 'site', 'center'], hint: 'The call center that took the calls. If the file has none, you choose one when you upload.' }
+    ],
+    build(grid, hi, col, per, loc){
+      const parsed = [], problems = [], classes = {};
+      for (let i = hi + 1; i < grid.length; i++){
+        const r = grid[i] || []; const skill = String(r[col.skill] == null ? '' : r[col.skill]).trim(); if (!skill) continue;
+        const t = ttbCallMonth(r[col.month]); if (!t){ problems.push('row ' + (i + 1) + ': month "' + r[col.month] + '" was not read'); continue; }
+        const location = col.location != null && String(r[col.location] || '').trim() ? String(r[col.location]).trim() : String(loc || '').trim();
+        const calls = mbuNum(r[col.calls]), bookings = mbuNum(r[col.bookings]);
+        if (calls == null && bookings == null) continue;
+        const cl = ttbCallClass(skill); classes[skill] = cl;
+        parsed.push({ year: t.year, month: t.month, location, skill, callType: col.callType != null ? String(r[col.callType] || '').trim() : '', calls, bookings });
+      }
+      const dtc = Object.keys(classes).filter(k => classes[k] === 'dtc'), other = Object.keys(classes).filter(k => classes[k] !== 'dtc');
+      const notes = [];
+      if (dtc.length) notes.push('Used as DTC leads in the plan and forecast: ' + dtc.join(', ') + ' (' + parsed.filter(p => classes[p.skill] === 'dtc').reduce((a, p) => a + (p.calls || 0), 0).toLocaleString() + ' calls, ' + parsed.filter(p => classes[p.skill] === 'dtc').reduce((a, p) => a + (p.bookings || 0), 0).toLocaleString() + ' bookings).');
+      else notes.push('No Inbound Consumer Reservation rows found, so nothing here feeds the DTC line.');
+      if (other.length) notes.push('Saved but not used by the models: ' + other.map(k => k + ' (' + classes[k] + ')').join(', ') + '.');
+      const typeSeen = {}; parsed.forEach(p => { if (p.callType){ (typeSeen[p.skill] = typeSeen[p.skill] || new Set()).add(p.callType); } });
+      const mixed = Object.keys(typeSeen).filter(k => typeSeen[k].size > 1);
+      if (mixed.length) notes.push('The Type column switches between Sales and Service for ' + mixed.join(', ') + '. Type is stored as given and is not used to decide what counts as DTC.');
+      return { rows: parsed, problems, notes };
+    },
+    compare: { url: 'call-counts', keyOf: r => [r.year, r.month, r.location || '', r.skill].join('|'), name: r => (r.location ? r.location + ' · ' : '') + r.skill, measures: [['calls', 'Calls'], ['bookings', 'Converted bookings']] },
+    summary(rows){ const per = [...new Set(rows.map(p => TTB_UP_MONTHS[p.month] + ' ' + p.year))]; const loc = [...new Set(rows.map(p => p.location).filter(Boolean))]; return rows.length + ' call row' + (rows.length === 1 ? '' : 's') + (loc.length ? ' for ' + loc.join(', ') : '') + ', ' + per.length + ' month' + (per.length === 1 ? '' : 's') + ' (' + per[0] + (per.length > 1 ? ' to ' + per[per.length - 1] : '') + ')'; },
+    async save(rows, fname, per, opts){ return await mbuSaveCallCounts(rows, fname, opts); }
+  },
   bulkUploadCustomer: { legacy: 'mbuHandleGuestBookingsFile', row: 'bulkUpload' },
   digitalPerformance: { legacy: 'dpHandleWorkbookFile' },
   ga4Sources: { legacy: 'ga4SourcesHandleFile' },
   ga4Search: { legacy: 'ga4SearchHandleFile' }
 };
+// RingCentral skill report helpers. Months arrive as text like 10-25 (October 2025); skills map to what the calls are.
+function ttbCallMonth(raw){
+  if (raw instanceof Date && !isNaN(raw)) return { year: raw.getFullYear(), month: raw.getMonth() + 1 };
+  const t = String(raw == null ? '' : raw).trim(); if (!t) return null;
+  let m = /^(\d{1,2})[-\/](\d{2}|\d{4})$/.exec(t);
+  if (m){ const mo = parseInt(m[1], 10); let y = parseInt(m[2], 10); if (y < 100) y += 2000; if (mo >= 1 && mo <= 12) return { year: y, month: mo }; }
+  m = /^(\d{4})[-\/](\d{1,2})(?:[-\/]\d{1,2})?/.exec(t); if (m){ const mo = parseInt(m[2], 10); if (mo >= 1 && mo <= 12) return { year: parseInt(m[1], 10), month: mo }; }
+  m = /^([A-Za-z]{3,9})\.?[ ,-]+(\d{2}|\d{4})$/.exec(t);
+  if (m){ const idx = TTB_UP_MONTHS.findIndex((n, i) => i > 0 && n.toLowerCase() === m[1].slice(0, 3).toLowerCase()); let y = parseInt(m[2], 10); if (y < 100) y += 2000; if (idx > 0) return { year: y, month: idx }; }
+  return null;
+}
+function ttbCallClass(skill){
+  const k = String(skill || '').trim().toLowerCase().replace(/[_\s]+/g, ' ');
+  if (/consumer reservation/.test(k)) return 'dtc'; if (/avoya|trade/.test(k)) return 'trade'; if (/group/.test(k)) return 'groups'; if (/existing/.test(k)) return 'service'; return 'other';
+}
+let ttbCallLocations = [];
+async function ttbCallLocationsLoad(){
+  ttbCallLocations = [];
+  try { const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/call-counts`); const d = await r.json(); ttbCallLocations = d.locations || []; if (ttbCallLocations.length === 1 && !ttbUp.location) ttbUp.location = ttbCallLocations[0]; } catch (e){ console.warn('call locations not loaded', e); }
+}
+async function mbuSaveCallCounts(rows, fileName, opts){
+  let persisted = false;
+  if (dataSourceLabel === 'backend'){
+    try {
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/call-counts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: 'ringcentral', rows, fileName: fileName || undefined, replacePeriods: opts && opts.replacePeriods }) });
+      persisted = resp.ok;
+    } catch (e){ console.warn('mbuSaveCallCounts failed', e); }
+  }
+  if (typeof cmpInvalidateSummaryContext === 'function') cmpInvalidateSummaryContext();
+  return persisted;
+}
 // Form -> source and lead type, learned from the leads already on file, so a file that only lists forms still files correctly.
 let ttbLeadForms = {};
 function ttbLeadFormLookup(name){
@@ -31477,7 +31545,7 @@ async function ttbLeadFormsLoad(){
   } catch (e){ console.warn('lead forms not loaded', e); }
 }
 const ttbUp = { key: null, stage: 'idle', fileName: '', grid: null, hi: 0, assign: {}, chosen: {}, year: null, month: null, reviewed: false, periodOk: false, msg: '', result: '' };
-function ttbUpReset(){ Object.assign(ttbUp, { key: null, stage: 'idle', fileName: '', grid: null, hi: 0, assign: {}, chosen: {}, year: null, month: null, reviewed: false, periodOk: false, replaceMonths: false, replacePeriods: null, preview: null, file: null, msg: '', result: '' }); }
+function ttbUpReset(){ Object.assign(ttbUp, { key: null, stage: 'idle', fileName: '', grid: null, hi: 0, assign: {}, chosen: {}, year: null, month: null, reviewed: false, periodOk: false, location: '', replaceMonths: false, replacePeriods: null, preview: null, file: null, msg: '', result: '' }); }
 function ttbUpPick(key){
   const cfg = TTB_UP[key]; if (!cfg) return;
   ttb.open = cfg.row || key; ttb.manual[cfg.row || key] = true;
@@ -31499,6 +31567,7 @@ async function ttbUpStart(key, file){
   try {
     const grid = await mbuReadFileGrid(file);
     if (key === 'leadCounts') await ttbLeadFormsLoad();
+    if (key === 'callCounts') await ttbCallLocationsLoad();
     const found = mbuFindHeaderRow(grid, cfg.fields.map(f => [f.key, f.names, !!f.req]));
     if (!found) throw new Error('We could not find a row of column headings with the columns this upload needs (' + cfg.fields.filter(f => f.req).map(f => f.label).join(', ') + '). Check the file, or download the sample to see the layout.');
     const ye = document.getElementById(cfg.yearEl), me = document.getElementById(cfg.monthEl);
@@ -31515,7 +31584,7 @@ function ttbUpDone(){ const k = ttbUp.key; ttbUpReset(); ttbRerender(); }
 async function ttbUpReview(){
   const key = ttbUp.key, cfg = TTB_UP[key]; if (!cfg) return;
   const per = { year: Number(ttbUp.year), month: Number(ttbUp.month) };
-  const out = cfg.build(ttbUp.grid, ttbUp.hi, ttbUp.assign, per);
+  const out = cfg.build(ttbUp.grid, ttbUp.hi, ttbUp.assign, per, ttbUp.location);
   if (!out.rows.length){ ttbUpSet({ msg: out.problems.length ? out.problems.slice(0, 4).join('; ') : 'No rows found under those columns. Check the choices above.' }); return; }
   if (out.rows.some(r => r.month != null && !Number.isFinite(r.month))){ ttbUpSet({ msg: 'Some rows have no month. Pick the month below, or choose the Month or Date column.' }); return; }
   const c = cfg.compare; if (!c){ ttbUpSubmit(); return; }
@@ -31546,14 +31615,14 @@ async function ttbUpReview(){
 async function ttbUpSubmit(){
   const key = ttbUp.key, cfg = TTB_UP[key]; if (!cfg) return;
   const per = { year: Number(ttbUp.year), month: Number(ttbUp.month) };
-  const out = cfg.build(ttbUp.grid, ttbUp.hi, ttbUp.assign, per);
+  const out = cfg.build(ttbUp.grid, ttbUp.hi, ttbUp.assign, per, ttbUp.location);
   if (!out.rows.length){ ttbUpSet({ msg: out.problems.length ? out.problems.slice(0, 4).join('; ') : 'No rows found under those columns. Check the choices above.' }); return; }
   if (out.rows.some(r => r.month != null && !Number.isFinite(r.month))){ ttbUpSet({ msg: 'Some rows have no month. Pick the month below, or choose the Month or Date column.' }); return; }
   ttbUpSet({ stage: 'saving', msg: 'Saving ' + cfg.summary(out.rows, per) + '…' });
   let ok = false;
   try { ok = await cfg.save(out.rows, ttbUp.fileName, per, { replacePeriods: ttbUp.replaceMonths ? ttbUp.replacePeriods : undefined }); } catch (e){ console.warn('ttbUp save failed', e); }
   const st = document.getElementById(cfg.statusEl); const said = st ? st.textContent : '';
-  let kept = ''; if (ok && ttbUp.file){ try { kept = await mbuArchiveFile(ttbUp.file, null, ttbUp.fileName, { leadCounts: 'lead_counts', websiteEngagement: 'website_engagement', bulkUpload: 'transactions_monthly' }[key]); } catch (e){ console.warn('archive failed', e); } }
+  let kept = ''; if (ok && ttbUp.file){ try { kept = await mbuArchiveFile(ttbUp.file, null, ttbUp.fileName, { leadCounts: 'lead_counts', websiteEngagement: 'website_engagement', bulkUpload: 'transactions_monthly', callCounts: 'call_counts' }[key]); } catch (e){ console.warn('archive failed', e); } try { mbuLoadArchives(); } catch (e){} }
   if (ok){ ttbUpSet({ stage: 'done', result: cfg.summary(out.rows, per) + ((out.notes || []).length ? ' · ' + out.notes.join('; ') : '') + (out.problems.length ? ' · ' + out.problems.length + ' row' + (out.problems.length === 1 ? '' : 's') + ' skipped' : '') + (ttbUp.replaceMonths ? ' · months replaced' : '') + '.' + kept, msg: '' }); try { ttbLoad(); } catch (e){} }
   else ttbUpSet({ stage: 'map', msg: said && !/^Saved/.test(said) ? said : 'Not saved. Try again.' });
 }
@@ -31601,11 +31670,12 @@ function ttbUpRender(){
     const needsPer = !(S.assign.month != null || S.assign.date != null);
     const yrs = (() => { const y0 = new Date().getFullYear(); const a = [y0 - 3, y0 - 2, y0 - 1, y0, y0 + 1]; if (!a.includes(Number(S.year))) a.push(Number(S.year)); return a.sort(); })();
     const per = needsPer ? `<div style="margin:10px 0 0;font-size:0.8125rem;">Rows with no date in the file are filed under <select class="tbl-select" onchange="ttbUp.year=Number(this.value);ttbUp.periodOk=false;ttbUpRender()">${yrs.map(y => `<option value="${y}"${Number(S.year) === y ? ' selected' : ''}>${y}</option>`).join('')}</select> <select class="tbl-select" onchange="ttbUp.month=Number(this.value);ttbUp.periodOk=false;ttbUpRender()">${(cfg.allowWholeYear ? [0] : []).concat([1,2,3,4,5,6,7,8,9,10,11,12]).map(m => `<option value="${m}"${Number(S.month) === m ? ' selected' : ''}>${m ? TTB_UP_MONTHS[m] : 'Whole year / YTD'}</option>`).join('')}</select></div>` : '';
-    const ok = !missing.length && (confirm === 0 || S.reviewed) && (!needsPer || S.periodOk);
+    const needsLoc = !!cfg.needsLocation && S.assign.location == null;
+    const ok = !missing.length && (confirm === 0 || S.reviewed) && (!needsPer || S.periodOk) && (!needsLoc || String(S.location || '').trim());
     h = box(`<div style="background:#EAF1FB;border:1px solid #BFD4F1;border-radius:8px;padding:12px 14px;font-size:0.8125rem;"><b>How we matched your columns</b> · ${escapeHtml(S.fileName)} · ${S.grid.length - S.hi - 1} rows
       <div style="margin:6px 0;">${matched} matched · <b>${confirm}</b> need your confirmation · ${nf} not found${missing.length ? ` · <span style="color:#C0273C;font-weight:600;">Still needed: ${missing.join(', ')}</span>` : ''}</div>
       <div style="overflow-x:auto;"><table class="data-table" style="margin-top:6px;font-size:0.8125rem;"><thead><tr><th>Our field</th><th>Your column</th><th>Match</th><th>Why</th></tr></thead><tbody>${rows}</tbody></table></div>
-      ${per}${needsPer ? `<label style="display:block;margin-top:8px;font-size:0.8125rem;"><input type="checkbox" ${S.periodOk ? 'checked' : ''} onchange="ttbUp.periodOk = this.checked; ttbUpRender();"> This file is for <b>${TTB_UP_MONTHS[S.month] || ''} ${S.year}</b>.</label>` : ''}${unused.length ? `<div class="hint" style="margin-top:8px;">Columns we are not using (${unused.length}): ${unused.join(', ')}.</div>` : ''}</div>
+      ${needsLoc ? `<div style="margin:10px 0 0;font-size:0.8125rem;"><label for="ttbUpLoc"><b>Call center location</b> <span style="color:#C0273C;">*</span> (the file has no Location column)</label><div><input id="ttbUpLoc" class="tbl-select" style="max-width:280px;" list="ttbUpLocList" value="${escapeHtml(S.location || '')}" placeholder="For example Miami" onchange="ttbUp.location = this.value; ttbUpRender();"><datalist id="ttbUpLocList">${ttbCallLocations.map(l => `<option value="${escapeHtml(l)}"></option>`).join('')}</datalist></div></div>` : ''}${per}${needsPer ? `<label style="display:block;margin-top:8px;font-size:0.8125rem;"><input type="checkbox" ${S.periodOk ? 'checked' : ''} onchange="ttbUp.periodOk = this.checked; ttbUpRender();"> This file is for <b>${TTB_UP_MONTHS[S.month] || ''} ${S.year}</b>.</label>` : ''}${unused.length ? `<div class="hint" style="margin-top:8px;">Columns we are not using (${unused.length}): ${unused.join(', ')}.</div>` : ''}</div>
       ${confirm > 0 ? `<label style="display:block;margin-top:8px;font-size:0.8125rem;"><input type="checkbox" ${S.reviewed ? 'checked' : ''} onchange="ttbUp.reviewed = this.checked; ttbUpRender();"> I've checked the rows marked “Please confirm”.</label>` : ''}
       ${S.msg ? note(S.msg, true) : ''}
       <div class="btn-row" style="margin-top:10px;gap:10px;"><button type="button" class="btn-primary" ${ok ? '' : 'disabled aria-disabled="true" style="opacity:0.5;"'} onclick="ttbUpReview()">Review changes</button><button type="button" class="btn-ghost" onclick="ttbUpCancel()">Cancel</button></div>`);
@@ -69442,7 +69512,7 @@ const TF_TASKS = {
   voiceContest: { label: 'Voice Contest', keys: [], go: 'voiceContest' },
   histRevenue: { label: 'Historical Revenue', keys: ['bulkUpload'] },
   histPerformance: { label: 'Historical Campaign Performance', keys: ['digitalPerformance'] },
-  leadsCalls: { label: 'Leads & Calls', keys: ['leadCounts'] },
+  leadsCalls: { label: 'Leads & Calls', keys: ['leadCounts', 'callCounts'] },
   website: { label: 'Website Performance', keys: ['websiteUsers', 'websiteEngagement', 'ga4Sources', 'ga4Search'] },
   partners: { label: 'Partner Integrations', keys: ['partnerIntegrations'] }
 };
@@ -83282,11 +83352,11 @@ async function mbuArchiveFile(file, batchId, fileName, kind){
 async function mbuLoadArchives(){
   const body = document.getElementById('mbuArchiveBody'); if (!body || !state.companyId) return;
   try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/upload-archives?kind=guest_bookings`);
+    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/upload-archives`);
     if (!resp.ok){ body.innerHTML = ''; return; }
     const d = await resp.json(); const list = d.archives || [];
-    if (!list.length){ body.innerHTML = `<p class="hint">No customer transaction files are kept yet. Each file you upload is kept for ${d.retentionDays || 180} days.</p>`; return; }
-    body.innerHTML = `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>File</th><th>Size</th><th>Uploaded by</th><th>Uploaded</th><th>Kept for</th><th></th></tr></thead><tbody>${list.map(a => `<tr><td>${escapeHtml(a.fileName || '—')}</td><td>${(a.sizeBytes / 1024 / 1024) >= 1 ? (a.sizeBytes / 1024 / 1024).toFixed(1) + ' MB' : Math.max(1, Math.round(a.sizeBytes / 1024)) + ' KB'}</td><td>${escapeHtml(a.uploadedBy || '—')}</td><td>${new Date(a.createdAt).toLocaleString()}</td><td>${a.daysLeft} more day${a.daysLeft === 1 ? '' : 's'}</td><td><button type="button" class="btn-ghost" onclick="mbuOpenArchive('${a.id}', this)">Open file</button></td></tr>`).join('')}</tbody></table></div>`;
+    if (!list.length){ body.innerHTML = `<p class="hint">No uploaded files are kept yet. Each file you upload is kept for ${d.retentionDays || 180} days.</p>`; return; }
+    body.innerHTML = `<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>File</th><th>Type</th><th>Size</th><th>Uploaded by</th><th>Uploaded</th><th>Kept for</th><th></th></tr></thead><tbody>${list.map(a => `<tr><td>${escapeHtml(a.fileName || '—')}</td><td>${escapeHtml({ guest_bookings: 'Customer transactions', lead_counts: 'Leads by month', website_engagement: 'Website engagement', transactions_monthly: 'Transactions by month', call_counts: 'Call center calls' }[a.kind] || a.kind || '—')}</td><td>${(a.sizeBytes / 1024 / 1024) >= 1 ? (a.sizeBytes / 1024 / 1024).toFixed(1) + ' MB' : Math.max(1, Math.round(a.sizeBytes / 1024)) + ' KB'}</td><td>${escapeHtml(a.uploadedBy || '—')}</td><td>${new Date(a.createdAt).toLocaleString()}</td><td>${a.daysLeft} more day${a.daysLeft === 1 ? '' : 's'}</td><td><button type="button" class="btn-ghost" onclick="mbuOpenArchive('${a.id}', this)">Open file</button></td></tr>`).join('')}</tbody></table></div>`;
   } catch (e){ body.innerHTML = ''; }
 }
 async function mbuOpenArchive(id, btn){
