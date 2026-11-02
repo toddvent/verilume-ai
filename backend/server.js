@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-06-upload-preview (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-07-call-counts (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -2531,6 +2531,46 @@ function computeLeadPoolEconomics(rows, today){
   const forms = Object.values(byForm).map(f => ({ ...f, conversionRate: f.leads > 0 ? f.bookings / f.leads : null, avgDaysToConvert: f.daysW > 0 ? f.daysSum / f.daysW : null, daysW: undefined, daysSum: undefined }))
     .sort((a, b) => (b.leads || 0) - (a.leads || 0));
   return { pools, forms, maturityRule: 'A month counts once its last day plus the pool\'s own average days-to-convert (90 if unknown) has passed.' };
+}
+// 2026-11-07 — call center call counts (RingCentral skill report: Month, Skill Name, Type, Converted Bookings, Total Calls),
+// by month, call center location and skill. Kept apart from account_lead_counts on purpose: DTC calls are their own High Value line
+// (the plan's direct calls and direct bookings), never merged into form leads. provider keeps RingCentral (the official call data)
+// separate from Invoca, which is used for comparative analysis only. snake_case columns, so no schema-identifiers.json change.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_call_counts (
+    account_id TEXT NOT NULL,
+    provider TEXT NOT NULL DEFAULT 'ringcentral',
+    year INTEGER NOT NULL,
+    month INTEGER NOT NULL,
+    location TEXT NOT NULL DEFAULT '',
+    skill TEXT NOT NULL,
+    call_type TEXT,
+    channel_class TEXT,
+    calls REAL,
+    bookings REAL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (account_id, provider, year, month, location, skill)
+  );
+`);
+// Skill name -> what the calls are. Only 'dtc' (Inbound Consumer Reservation = direct sales call) feeds the scenario and forecast models.
+function callChannelClass(skill){
+  const k = String(skill || '').trim().toLowerCase().replace(/[_\s]+/g, ' ');
+  if (/consumer reservation/.test(k)) return 'dtc';
+  if (/avoya|trade/.test(k)) return 'trade';
+  if (/group/.test(k)) return 'groups';
+  if (/existing/.test(k)) return 'service';
+  return 'other';
+}
+// Official DTC calls by month ({ 'YYYY-MM': n }) for the models; Invoca rows are never read here.
+function dtcCallsMonthly(accountId){
+  const out = { calls: {}, bookings: {} };
+  try {
+    db.prepare("SELECT * FROM account_call_counts WHERE account_id = ? AND provider = 'ringcentral' AND channel_class = 'dtc'").all(accountId).forEach(r => {
+      const k = `${r.year}-${String(r.month).padStart(2, '0')}`;
+      out.calls[k] = (out.calls[k] || 0) + (Number(r.calls) || 0); out.bookings[k] = (out.bookings[k] || 0) + (Number(r.bookings) || 0);
+    });
+  } catch (e){ /* table not ready */ }
+  return out;
 }
 function normalizeLeadType(v){
   const s = String(v || '').trim().toLowerCase();
@@ -21047,6 +21087,7 @@ const REFRESH_DATASETS = [
   { key: 'ga4Sources', label: 'GA4 sources and key events', table: 'account_ga4_sources', cadence: 7, step: 'ga4Sources' },
   { key: 'ga4Search', label: 'GA4 Google Ads search', table: 'account_ga4_search', cadence: 7, step: 'ga4Search' },
   { key: 'leadCounts', label: 'Leads by type, by month', table: 'account_lead_counts', cadence: 7, step: 'leadCounts' },
+  { key: 'callCounts', label: 'Call center calls (RingCentral)', table: 'account_call_counts', where: 'account_id = ?', cadence: 31, step: 'callCounts' },
   { key: 'websiteUsers', label: 'Website users by month', table: 'account_website_users_monthly', cadence: 7, step: 'websiteUsers' },
   { key: 'kpiMetrics', label: 'Monthly KPI report', table: 'account_kpi_metrics', cadence: 7, step: 'kpiMetrics' },
   { key: 'transactions', label: 'Transactions (monthly)', table: 'account_transactions_monthly', cadence: 7, step: 'bulkUpload' },
@@ -21063,11 +21104,11 @@ const REFRESH_DATASETS = [
 function buildRefreshStatus(accountId){
   const now = Date.now(); const out = { asOf: new Date(now).toISOString(), weeklyCadence: true, datasets: [], summary: { current: 0, due: 0, overdue: 0, empty: 0 }, loop: null };
   REFRESH_DATASETS.forEach(d => {
-    const where = d.byCampaign ? 'campaignId IN (SELECT id FROM campaigns WHERE accountId = ?)' : 'accountId = ?';
+    const where = d.byCampaign ? 'campaignId IN (SELECT id FROM campaigns WHERE accountId = ?)' : (d.where || 'accountId = ?');
     let rows = 0, last = null;
     try { rows = Number(db.prepare(`SELECT COUNT(*) AS n FROM ${d.table} WHERE ${where}`).get(accountId).n) || 0; } catch (e) { rows = 0; }
     if (rows > 0){
-      for (const col of ['updatedAt', 'createdAt', 'uploadedAt', 'confirmedAt']){
+      for (const col of ['updatedAt', 'updated_at', 'createdAt', 'uploadedAt', 'confirmedAt']){
         try { const r = db.prepare(`SELECT MAX(${col}) AS m FROM ${d.table} WHERE ${where}`).get(accountId); const v = r && (r.m !== undefined ? r.m : Object.values(r)[0]); if (v){ last = String(v); break; } } catch (e) {}
       }
     }
@@ -21170,6 +21211,10 @@ function buildAnnualPlanRecommendation(accountId, year, asOfDate, basisIn){
     bk[k] = (bk[k] || 0) + (Number(r.bookings) || 0);
   });
   safeAll("SELECT * FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").forEach(r => { const k = mk(r.year, r.month); imps[k] = (imps[k] || 0) + (Number(r.impressions) || 0); calls[k] = (calls[k] || 0) + (Number(r.calls) || 0); });
+  // Official call center data (RingCentral, DTC skill) replaces the agency-reported calls when it is on file; kept as its own line, never added to form leads.
+  const dtc = dtcCallsMonthly(accountId); const haveDtc = Object.keys(dtc.calls).length > 0;
+  if (haveDtc) Object.keys(calls).forEach(k => { delete calls[k]; });
+  if (haveDtc) Object.keys(dtc.calls).forEach(k => { calls[k] = dtc.calls[k]; });
   const yearTotalCal = (m, y) => { let n = 0, any = false; Object.keys(m).forEach(k => { if (k.startsWith(String(y))){ n += m[k]; any = true; } }); return any ? n : null; };
   // Last 12 months basis: the 12 months ending at the latest month that has leads or website users (never later than the last complete month).
   let W = null, win = null;
@@ -21220,10 +21265,10 @@ function buildAnnualPlanRecommendation(accountId, year, asOfDate, basisIn){
   if (tBookings != null) used.push(`Bookings: ${periodTxt} bookings × the change in total leads (${Math.round((leadRatio - 1) * 1000) / 10}%)`);
   if (rpb != null) used.push(`Revenue: bookings × ${periodTxt} revenue per booking ($${Math.round(rpb).toLocaleString('en-US')})`);
   const target = { year, kind: 'target', label: `Recommended ${year} plan (not approved)`, workingMedia: tBudget ? tBudget.workingMedia : null, impressions: bImps != null ? Math.round(bImps * g) : null, websiteUsers: tUsers, prospectLeads: tLeads.Prospect, growthLeads: tLeads.Growth, valueLeads: tLeads.Value,
-    directCalls: bCalls != null ? Math.round(bCalls * g) : null, bookings: tBookings, directBookings: (bDirect != null && leadRatio != null) ? Math.round(bDirect * leadRatio) : null, grossRevenue: (tBookings != null && rpb != null) ? Math.round(tBookings * rpb) : null };
+    directCalls: bCalls != null ? (haveDtc ? scaled('Direct calls (RingCentral DTC)', bCalls, calls) : Math.round(bCalls * g)) : null, bookings: tBookings, directBookings: (bDirect != null && leadRatio != null) ? Math.round(bDirect * leadRatio) : null, grossRevenue: (tBookings != null && rpb != null) ? Math.round(tBookings * rpb) : null };
   const tWm = tBudget ? tBudget.workingMedia : null;
   const mixShare = {}; Object.keys(mixSpend).forEach(ch => { mixShare[ch] = mixSpend[ch] / mixTotal; });
-  baseline.details = { channelMix: Object.keys(mixSpend).reduce((o, ch) => { o[ch] = Math.round(mixSpend[ch]); return o; }, {}) };
+  baseline.details = { channelMix: Object.keys(mixSpend).reduce((o, ch) => { o[ch] = Math.round(mixSpend[ch]); return o; }, {}), directCallSource: haveDtc ? 'ringcentral' : 'digital', dtcCallBookings: haveDtc ? Math.round(yearTotal(dtc.bookings, py) || 0) : null };
   target.details = { channelMix: Object.keys(mixShare).reduce((o, ch) => { o[ch] = Math.round(mixShare[ch] * (tWm != null ? tWm : mixTotal * g)); return o; }, {}) };
   if (mixTotal > 0) used.push('Media mix: the baseline channel spend; the target keeps the same shares of the plan-year working media (change them to run a different mix).');
   if (mixImps > 0) used.push('Impressions: all channels, print and digital, from the media totals.');
@@ -21369,7 +21414,7 @@ function planBaselineBuild(accountId, year, basis){
     prospectLeads: { src: `Leads by type, Prospect, ${per}`, need: 'Load leads by type' },
     growthLeads: { src: `Leads by type, Registration, ${per}`, need: 'Load leads by type' },
     valueLeads: { src: `Leads by type, High Value, ${per}`, need: 'Load leads by type' },
-    directCalls: { src: `Calls from digital performance, ${per}`, need: 'Load digital performance with calls' },
+    directCalls: { src: (b.details && b.details.directCallSource === 'ringcentral') ? `Inbound Consumer Reservation calls (RingCentral call data), ${per}${b.details.dtcCallBookings != null ? '; they converted ' + Number(b.details.dtcCallBookings).toLocaleString('en-US') + ' bookings' : ''}` : `Calls from digital performance, ${per}`, need: 'Upload the RingCentral call file, or load digital performance with calls' },
     bookings: { src: audited ? `Audited ${rec.year - 1} result` : `Transactions by month, ${per}`, need: 'Load transactions by month, or enter the audited year result' },
     directBookings: { src: 'Calculated: transactions minus the bookings tied to leads', need: 'Needs transactions and leads with bookings', calc: true },
     grossRevenue: { src: audited ? `Audited ${rec.year - 1} result` : `Transactions by month (gross revenue), ${per}`, need: 'Load transactions with revenue, or enter the audited year result' }
@@ -22606,6 +22651,7 @@ function buildTrainTheBrain(accountId){
       { label: 'GA4 sources and key events (weekly)', done: rowsOf('account_ga4_sources') > 0, rows: rowsOf('account_ga4_sources'), gain: 'Shows which sources bring visits that take action, beyond brand search and remarketing.', step: 'ga4Sources' },
       { label: 'GA4 Google Ads search (weekly)', done: rowsOf('account_ga4_search') > 0, rows: rowsOf('account_ga4_search'), gain: 'Splits brand from non-brand search and ranks keywords by key events.', step: 'ga4Search' },
       { label: 'Leads by type, by month', done: rowsOf('account_lead_counts') > 0, rows: rowsOf('account_lead_counts'), gain: 'Follows leads through to bookings.', step: 'leadCounts' },
+      { label: 'Call center calls by month and location', done: cnt('SELECT COUNT(*) AS n FROM account_call_counts WHERE account_id = ?', accountId) > 0, rows: cnt('SELECT COUNT(*) AS n FROM account_call_counts WHERE account_id = ?', accountId), gain: 'Counts Inbound Consumer Reservation calls as their own direct sales line in the plan and forecast.', step: 'callCounts' },
       { label: 'Digital performance', done: rowsOf('account_digital_performance') > 0, rows: rowsOf('account_digital_performance'), gain: 'Spend, impressions and clicks by channel, publisher and tactic.', step: 'digitalPerformance' },
       { label: 'Monthly KPI report', done: rowsOf('account_kpi_metrics') > 0, rows: rowsOf('account_kpi_metrics'), gain: 'Feeds the KPI grid and trend line on the CMO Dashboard.', step: 'kpiMetrics' },
       { label: 'Master UTM configuration', done: (() => { try { const a = db.prepare('SELECT utmMasterElementsJson FROM accounts WHERE accountId = ?').get(accountId); const j = a && a.utmMasterElementsJson ? JSON.parse(a.utmMasterElementsJson) : []; return Array.isArray(j) && j.length > 0; } catch (e) { return false; } })(), gain: 'One tracking-link standard for every campaign: up to 8 elements, plus Contact ID and GCLID.', step: 'utmConfig' },
@@ -32032,7 +32078,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-06-upload-preview',
+        buildStamp: '2026-11-07-call-counts',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -48805,6 +48851,53 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (out.error) return sendJson(res, 500, { error: out.error });
       return sendJson(res, 200, { accountId, saved: clean.length, updatedAt: now, receipt: body.fileName ? out.receipt : null });
     }
+    // 2026-11-07 — call center call counts. POST { provider?, rows: [{ year, month, location, skill, callType?, calls, bookings }], replacePeriods?: [{year, month}], fileName? }
+    // GET returns every row plus DTC totals (Inbound Consumer Reservation = direct sales call) and the measured call-to-booking rate.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'call-counts'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      let rows = [];
+      try { rows = db.prepare('SELECT * FROM account_call_counts WHERE account_id = ? ORDER BY year DESC, month ASC, location ASC, skill ASC').all(accountId).map(r => ({ provider: r.provider, year: r.year, month: r.month, location: r.location || '', skill: r.skill, callType: r.call_type, channelClass: r.channel_class, calls: r.calls, bookings: r.bookings })); } catch (e){ rows = []; }
+      const dtcRows = rows.filter(r => r.provider === 'ringcentral' && r.channelClass === 'dtc');
+      const calls = dtcRows.reduce((n, r) => n + (Number(r.calls) || 0), 0), bookings = dtcRows.reduce((n, r) => n + (Number(r.bookings) || 0), 0);
+      const locations = [...new Set(rows.map(r => r.location).filter(Boolean))].sort();
+      return sendJson(res, 200, { accountId, rows, locations, dtc: { calls, bookings, conversionRate: calls > 0 ? bookings / calls : null, months: new Set(dtcRows.map(r => r.year + '-' + r.month)).size } });
+    }
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'call-counts'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const rowsIn = Array.isArray(body.rows) ? body.rows : [];
+      if (!rowsIn.length) return sendJson(res, 400, { error: 'rows is required' });
+      const provider = /invoca/i.test(String(body.provider || '')) ? 'invoca' : 'ringcentral';
+      const now = new Date().toISOString(); const agg = new Map();
+      for (const row of rowsIn){
+        const year = parseInt(row.year, 10), month = parseInt(row.month, 10);
+        const skill = String(row.skill || '').trim(); const location = String(row.location || '').trim().slice(0, 120);
+        if (!(year >= 2000 && year <= 2100)) return sendJson(res, 400, { error: `year must be a 4-digit year: ${row.year}` });
+        if (!(month >= 1 && month <= 12)) return sendJson(res, 400, { error: `month must be 1–12: ${row.month}` });
+        if (!skill) return sendJson(res, 400, { error: 'skill is required on every row' });
+        const n = v => { if (v === null || v === undefined || v === '') return null; const x = Number(String(v).replace(/,/g, '')); return Number.isFinite(x) && x >= 0 ? x : NaN; };
+        const calls = n(row.calls), bookings = n(row.bookings);
+        if (Number.isNaN(calls) || Number.isNaN(bookings)) return sendJson(res, 400, { error: `${skill} ${year}-${month}: calls and bookings must be non-negative numbers or blank` });
+        const k = [year, month, location, skill].join('||'); const prev = agg.get(k);
+        if (prev){ prev.calls = (prev.calls || 0) + (calls || 0); prev.bookings = (prev.bookings || 0) + (bookings || 0); }
+        else agg.set(k, { year, month, location, skill, callType: String(row.callType || '').trim().slice(0, 40) || null, channelClass: callChannelClass(skill), calls, bookings });
+      }
+      const clean = [...agg.values()];
+      const stmts = [];
+      (Array.isArray(body.replacePeriods) ? body.replacePeriods : []).forEach(rp => { const ry = parseInt(rp.year, 10), rm = parseInt(rp.month, 10); if (ry >= 2000 && rm >= 1 && rm <= 12) stmts.push({ sql: 'DELETE FROM account_call_counts WHERE account_id = ? AND provider = ? AND year = ? AND month = ?', params: [accountId, provider, ry, rm] }); });
+      const upsertSql = `INSERT INTO account_call_counts (account_id, provider, year, month, location, skill, call_type, channel_class, calls, bookings, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(account_id, provider, year, month, location, skill) DO UPDATE SET call_type = excluded.call_type, channel_class = excluded.channel_class, calls = excluded.calls, bookings = excluded.bookings, updated_at = excluded.updated_at`;
+      const fileMap = new Map(); const lk = r => [r.year, r.month, r.location, r.skill].join('||');
+      clean.forEach(r => { stmts.push({ sql: upsertSql, params: [accountId, provider, r.year, r.month, r.location, r.skill, r.callType, r.channelClass, r.calls, r.bookings, now] }); fileMap.set(lk(r), { calls: r.calls || 0, bookings: r.bookings || 0 }); });
+      const readBack = () => { const m = new Map(); const periods = new Set(clean.map(r => r.year + '-' + r.month)); periods.forEach(pk => { const [y, mo] = pk.split('-').map(Number); db.prepare('SELECT * FROM account_call_counts WHERE account_id = ? AND provider = ? AND year = ? AND month = ?').all(accountId, provider, y, mo).forEach(r => { m.set([r.year, r.month, r.location || '', r.skill].join('||'), { calls: Number(r.calls) || 0, bookings: Number(r.bookings) || 0 }); }); }); return m; };
+      const out = commitMonthlyUpload(accountId, 'call_counts', body.fileName, stmts, fileMap, readBack, [{ key: 'calls', label: 'Calls' }, { key: 'bookings', label: 'Converted bookings' }], rowsIn.length - clean.length, now);
+      if (out.error) return sendJson(res, 500, { error: out.error });
+      try { sotCache.clear(); } catch (e){}
+      return sendJson(res, 200, { accountId, saved: clean.length, provider, dtcRows: clean.filter(r => r.channelClass === 'dtc').length, updatedAt: now, receipt: body.fileName ? out.receipt : null });
+    }
     // DELETE /api/accounts/:id/lead-counts?year=&month=[&source=&leadType=&formName=]
     if (req.method === 'DELETE' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'lead-counts'){
       const accountId = decodeURIComponent(parts[2]);
@@ -48911,7 +49004,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (!requireAccount(req, res, accountId)) return;
       const body = await readBody(req);
       const kind = String(body.kind || '').trim();
-      if (!['guest_bookings', 'lead_counts', 'website_engagement', 'transactions_monthly'].includes(kind)) return sendJson(res, 400, { error: 'kind must be guest_bookings, lead_counts, website_engagement or transactions_monthly' });
+      if (!['guest_bookings', 'lead_counts', 'website_engagement', 'transactions_monthly', 'call_counts'].includes(kind)) return sendJson(res, 400, { error: 'kind must be guest_bookings, lead_counts, website_engagement, transactions_monthly or call_counts' });
       const b64 = String(body.dataBase64 || '').replace(/^data:[^,]*,/, '');
       if (!b64) return sendJson(res, 400, { error: 'dataBase64 is required' });
       if (b64.length > UPLOAD_ARCHIVE_MAX_B64) return sendJson(res, 413, { error: 'This file is too large to keep a copy (the limit is about 26 MB). The import itself is not affected.' });
