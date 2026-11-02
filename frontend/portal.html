@@ -14033,7 +14033,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-11-03-agency-territories';
+const CXMEDIA_BUILD_STAMP = '2026-11-04-private-titles';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -26134,7 +26134,7 @@ function ghBackBar(){ return `<div class="gh-actions" style="margin:0 0 14px;"><
 function ghActingPick(){
   if (typeof actingAsId !== 'undefined' && actingAsId) return '';
   if (!(state.team && state.team.length)) return '';
-  return `<div class="strat-card" style="margin-bottom:18px;"><label for="ghAsPick" class="gh-lbl">Whose seat is this for?</label><div class="gh-fld"><select id="ghAsPick" onchange="setActingAs(this.value);ghRender()"><option value="">Pick your seat</option>${state.team.map(m => `<option value="${ghEsc(m.id)}">${ghEsc(m.name)} · ${ghEsc(m.level)} · ${ghEsc(functionLabel(m.functionGroup))}</option>`).join('')}</select></div><p class="gh-sub" style="margin:6px 0 0;">The coach uses your seat's skills. Your answers stay in your own private space.</p></div>`;
+  return `<div class="strat-card" style="margin-bottom:18px;"><label for="ghAsPick" class="gh-lbl">Whose seat is this for?</label><div class="gh-fld"><select id="ghAsPick" onchange="setActingAs(this.value);ghRender()"><option value="">Pick your seat</option>${state.team.map(m => `<option value="${ghEsc(m.id)}">${ghEsc(m.name)}${canSeeTitles() ? ' · ' + ghEsc(m.level) + ' · ' + ghEsc(functionLabel(m.functionGroup)) : ''}</option>`).join('')}</select></div><p class="gh-sub" style="margin:6px 0 0;">The coach uses your seat's skills. Your answers stay in your own private space.</p></div>`;
 }
 function ghRender(){
   const el = document.getElementById('ghBody'); if (!el) return;
@@ -30932,7 +30932,7 @@ function ttbOwnerName(key){ const a = (ttb.assign || {})[key]; if (!a || !a.memb
 function ttbAssignHtml(key){
   if (portalViewerIsAdmin === false) return '';
   const cur = ((ttb.assign || {})[key] || {}).memberId || '';
-  const opts = state.team.filter(m => m.status !== 'inactive' && m.memberKind !== 'viewer' && m.memberKind !== 'recipient').map(m => `<option value="${m.id}"${m.id === cur ? ' selected' : ''}>${escapeHtml(m.name)}${m.roleLabel ? ' · ' + escapeHtml(posTitle(m.roleLabel)) : ''}</option>`).join('');
+  const opts = state.team.filter(m => m.status !== 'inactive' && m.memberKind !== 'viewer' && m.memberKind !== 'recipient').map(m => `<option value="${m.id}"${m.id === cur ? ' selected' : ''}>${escapeHtml(m.name)}${m.roleLabel && canSeeTitles() ? ' · ' + escapeHtml(posTitle(m.roleLabel)) : ''}</option>`).join('');
   return `<div class="field ttb-assign"><label for="ttbOwn-${key}">Owner</label><select id="ttbOwn-${key}" onchange="ttbSetAssign('${key}', this.value)"><option value="">Unassigned. The Admin does it</option>${opts}</select></div>`;
 }
 function ttbMyTasksHtml(d){
@@ -68259,7 +68259,7 @@ function renderSelfRateView(){
   if (!el) return;
   if (!actingAsId){
     el.innerHTML = state.team.length
-      ? `<div class="field" style="max-width:420px;"><label for="rateAsPick">Rating as</label><select id="rateAsPick" onchange="setActingAs(this.value)"><option value="">Pick who is rating</option>${state.team.map(m => `<option value="${m.id}">${escapeHtml(m.name)} — ${escapeHtml(m.roleLabel || functionLabel(m.functionGroup))}</option>`).join('')}</select><div class="hint">You are signed in with the account login, so pick the person. Signing in with your own login selects you automatically.</div></div>`
+      ? `<div class="field" style="max-width:420px;"><label for="rateAsPick">Rating as</label><select id="rateAsPick" onchange="setActingAs(this.value)"><option value="">Pick who is rating</option>${state.team.map(m => `<option value="${m.id}">${escapeHtml(m.name)}${canSeeTitles() ? ' — ' + escapeHtml(m.roleLabel || functionLabel(m.functionGroup)) : ''}</option>`).join('')}</select><div class="hint">You are signed in with the account login, so pick the person. Signing in with your own login selects you automatically.</div></div>`
       : `<p class="hint">Add your team on <a class="flink" onclick="goToStep('team')">Team &amp; Org Chart</a> first.</p>`;
     currentSelfRateMemberId = null;
     currentSelfRateSkills = [];
@@ -68295,7 +68295,7 @@ function renderSelfRateView(){
     <div class="sk-card">
       <div class="sk-card-head ${color}">
         <div class="htext">
-          <div class="kicker">${member.name} · ${member.level} · ${functionLabel(member.functionGroup)}</div>
+          <div class="kicker">${member.name}${canSeeTitles() ? ' · ' + member.level + ' · ' + functionLabel(member.functionGroup) : ''}</div>
           <h3>Rate yourself against this seat's skills</h3>
         </div>
         <div class="hicon">★</div>
@@ -68575,6 +68575,10 @@ function splitCats(cats){
   });
   return { dash: uniqList(dash), creative: uniqList(creative), legacy: uniqList(legacy) };
 }
+// Titles stay private: only an Admin sees the position or level written next
+// to a person's name. Everyone else sees names (and function area) only, so a
+// title we don't have exactly right never shows up for a colleague.
+function canSeeTitles(){ return portalViewerIsAdmin !== false; }
 function posTitle(label){
   if (label === 'Head of Marketing / CMO') return 'Head of Marketing';
   const m = /^(.*) Director$/.exec(label || '');
@@ -68633,7 +68637,7 @@ function populateReportsTo(selectedId){
   const block = editingTeamMemberId ? [editingTeamMemberId].concat(descendantsOf(editingTeamMemberId)) : [];
   sel.innerHTML = `<option value="">— no one (leadership) —</option>` +
     state.team.filter(m => m.status !== 'inactive' && m.memberKind !== 'viewer' && m.memberKind !== 'recipient' && !block.includes(m.id))
-      .map(m => `<option value="${m.id}">${escapeHtml(m.name)} — ${escapeHtml(m.roleLabel || functionLabel(m.functionGroup))}</option>`).join('');
+      .map(m => `<option value="${m.id}">${escapeHtml(m.name)}${canSeeTitles() ? ' — ' + escapeHtml(m.roleLabel || functionLabel(m.functionGroup)) : ''}</option>`).join('');
   sel.value = keep || '';
 }
 function onTeamLevelChange(){ populateReportsTo(); }
@@ -69172,7 +69176,7 @@ function renderOrgChart(){
     return `<div class="oc-node">
       <div class="oc-card">
         <div class="oc-name">${escapeHtml(m.name)}${m.isAdmin ? '<span class="oc-pill">Admin</span>' : ''}</div>
-        <div class="oc-sub">${escapeHtml(m.roleLabel ? posTitle(m.roleLabel) : (!m.reportsToId && m.isAdmin ? 'Head of Marketing' : 'Position not set'))}</div>
+        ${canSeeTitles() ? `<div class="oc-sub">${escapeHtml(m.roleLabel ? posTitle(m.roleLabel) : (!m.reportsToId && m.isAdmin ? 'Head of Marketing' : 'Position not set'))}</div>` : ''}
         <div class="oc-sub">${escapeHtml(m.functionGroup && m.functionGroup !== 'Executive' ? functionLabel(m.functionGroup) : '')}${m.memberKind === 'external' ? ' · external' : ''}${m.accessLevel === 'view' ? ' · view only' : ''}${exp}</div>
         ${tfTaskLinks(m, slotOf[m.id])}
         <div class="oc-acts">${acts}</div>
@@ -69194,7 +69198,7 @@ function renderOrgChart(){
   const head = noShapeHint + (shape ? `<div class="section-eyebrow" style="margin-bottom:10px;">${shape.label} · ${filled} of ${1 + shape.kids.length} seats filled</div>` : '');
   const sideCard = m => `<div class="oc-node"><div class="oc-card">
       <div class="oc-name">${escapeHtml(m.name)}${m.isAdmin ? '<span class="oc-pill">Admin</span>' : ''}</div>
-      <div class="oc-sub">${escapeHtml(m.roleLabel ? posTitle(m.roleLabel) : (m.memberKind === 'external' ? 'External partner' : 'Stakeholder'))}</div>
+      ${canSeeTitles() ? `<div class="oc-sub">${escapeHtml(m.roleLabel ? posTitle(m.roleLabel) : (m.memberKind === 'external' ? 'External partner' : 'Stakeholder'))}</div>` : ''}
       <div class="oc-sub">${m.memberKind === 'recipient' ? 'Exports only' : m.accessLevel === 'view' || (!m.accessLevel && m.memberKind === 'viewer') ? 'View only' : 'Can edit'}${m.memberKind === 'external' ? ' · external' : ''}${m.accessExpiresAt ? ' · access ends ' + new Date(m.accessExpiresAt).toLocaleDateString() : ''}</div>
       <div class="oc-acts">${isAdmin ? `${m.email && !String(m.id).startsWith('local-team-') ? `${inviteBtnHtml(m)}` : ''}${m.memberKind === 'external' ? `<button type="button" class="link-btn" onclick="renewExternalAccess('${m.id}')">Renew 3 months</button>` : ''}<button type="button" class="link-btn" onclick="startEditTeamMember('${m.id}')">Edit</button><button type="button" class="link-btn" onclick="deleteTeamMember('${m.id}')">Remove</button>` : ''}</div>
     </div></div>`;
