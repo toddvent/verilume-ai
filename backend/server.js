@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-03-verilume-style (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-06-upload-preview (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -32032,7 +32032,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-03-verilume-style',
+        buildStamp: '2026-11-06-upload-preview',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -48716,6 +48716,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         const ry = parseInt(body.replace.year, 10), rm = body.replace.month == null ? 0 : parseInt(body.replace.month, 10);
         stmts.push({ sql: 'DELETE FROM account_website_engagement WHERE accountId = ? AND year = ? AND month = ?', params: [accountId, ry, rm] });
       }
+      (Array.isArray(body.replacePeriods) ? body.replacePeriods : []).forEach(rp => { const ry = parseInt(rp.year, 10), rm = rp.month == null ? 0 : parseInt(rp.month, 10); if (ry >= 2000 && rm >= 0 && rm <= 12) stmts.push({ sql: 'DELETE FROM account_website_engagement WHERE accountId = ? AND year = ? AND month = ?', params: [accountId, ry, rm] }); });
       const upsertSql = `INSERT INTO account_website_engagement (accountId, year, month, "channelGroup", sessions, "engagedSessions", "engagementRate", "avgEngagementTimeMin", updatedAt)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(accountId, year, month, "channelGroup") DO UPDATE SET sessions = excluded.sessions, "engagedSessions" = excluded."engagedSessions", "engagementRate" = excluded."engagementRate", "avgEngagementTimeMin" = excluded."avgEngagementTimeMin", updatedAt = excluded.updatedAt`;
@@ -48793,6 +48794,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (body.replace && body.replace.year != null && body.replace.month != null){
         stmts.push({ sql: 'DELETE FROM account_lead_counts WHERE accountId = ? AND year = ? AND month = ?', params: [accountId, parseInt(body.replace.year, 10), parseInt(body.replace.month, 10)] });
       }
+      (Array.isArray(body.replacePeriods) ? body.replacePeriods : []).forEach(rp => { const ry = parseInt(rp.year, 10), rm = parseInt(rp.month, 10); if (ry >= 2000 && rm >= 1 && rm <= 12) stmts.push({ sql: 'DELETE FROM account_lead_counts WHERE accountId = ? AND year = ? AND month = ?', params: [accountId, ry, rm] }); });
       const upsertSql = `INSERT INTO account_lead_counts (accountId, year, month, source, "leadType", "formName", count, bookings, "avgDaysToConvert", updatedAt)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(accountId, year, month, source, "leadType", "formName") DO UPDATE SET count = excluded.count, bookings = excluded.bookings, "avgDaysToConvert" = excluded."avgDaysToConvert", updatedAt = excluded.updatedAt`;
@@ -48909,7 +48911,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (!requireAccount(req, res, accountId)) return;
       const body = await readBody(req);
       const kind = String(body.kind || '').trim();
-      if (kind !== 'guest_bookings') return sendJson(res, 400, { error: 'kind must be guest_bookings' });
+      if (!['guest_bookings', 'lead_counts', 'website_engagement', 'transactions_monthly'].includes(kind)) return sendJson(res, 400, { error: 'kind must be guest_bookings, lead_counts, website_engagement or transactions_monthly' });
       const b64 = String(body.dataBase64 || '').replace(/^data:[^,]*,/, '');
       if (!b64) return sendJson(res, 400, { error: 'dataBase64 is required' });
       if (b64.length > UPLOAD_ARCHIVE_MAX_B64) return sendJson(res, 413, { error: 'This file is too large to keep a copy (the limit is about 26 MB). The import itself is not affected.' });
@@ -49198,6 +49200,8 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         if (Number.isNaN(transactions) || Number.isNaN(revenue)) return sendJson(res, 400, { error: `${productGroup || '(all)'} ${year}-${month}: transactions / revenue must be non-negative numbers or blank` });
         clean.push({ year, month, productGroup, transactions, revenue });
       }
+      // Optional "replace these months": clears typed-in rows for those months first. Rows calculated from the booking file are left alone (the upsert below still updates a matching one).
+      (Array.isArray(body.replacePeriods) ? body.replacePeriods : []).forEach(rp => { const ry = parseInt(rp.year, 10), rm = parseInt(rp.month, 10); if (ry >= 2000 && rm >= 1 && rm <= 12){ try { db.prepare("DELETE FROM account_transactions_monthly WHERE accountId = ? AND year = ? AND month = ? AND (source IS NULL OR source <> 'guest_bookings')").run(accountId, ry, rm); } catch (e){ console.warn('transactions replace failed', e.message); } } });
       const upsert = db.prepare(`INSERT INTO account_transactions_monthly (accountId, year, month, "productGroup", transactions, revenue, updatedAt)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(accountId, year, month, "productGroup") DO UPDATE SET transactions = excluded.transactions, revenue = excluded.revenue, updatedAt = excluded.updatedAt`);
