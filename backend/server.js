@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-07-call-counts (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-09-goal-planner (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -21570,17 +21570,23 @@ function planScenarioCompute(accountId, input){
   const year = Number(input.year) || new Date().getUTCFullYear();
   const bandName = input.band === 'low' || input.band === 'high' ? input.band : 'mid'; const bi = planScenarioBand(bandName);
   const asOf = new Date();
-  const S = buildForecastSeries(accountId);
-  const cal = forecastEngine.calibrate(S, { asOf, fallbackAov: storyFallbackAov(accountId, year) });
-  const W12 = storyMonthKeys(asOf, 12);
+  // 2026-11-08 (goal planner): the solver calls this many times for one account, so the account-level reads can be memoised in input._cache.
+  // input.periodMonths ['YYYY-MM',...] runs the budget over those months only (quarter / month / campaign flight); input.cpmMult scales delivery cost for sensitivities.
+  const memo = (k, f) => { const C = input._cache; if (!C) return f(); if (!(k in C)) C[k] = f(); return C[k]; };
+  const PM = Array.isArray(input.periodMonths) ? input.periodMonths.filter(k => /^\d{4}-\d{2}$/.test(String(k))) : []; const periodN = PM.length || 12;
+  const cpmMult = Number(input.cpmMult) > 0 ? Number(input.cpmMult) : 1;
+  const S = memo('S', () => buildForecastSeries(accountId));
+  const cal = memo('cal' + year, () => forecastEngine.calibrate(S, { asOf, fallbackAov: storyFallbackAov(accountId, year) }));
+  const W12 = Array.isArray(input.windowKeys) && input.windowKeys.length ? input.windowKeys.slice() : storyMonthKeys(asOf, 12);
   // baseline channel facts over the last 12 complete months
-  const ch = {}; let anyMix = false;
-  try { getEffectiveMmmTotals(accountId).totals.forEach(t => { if (W12.indexOf(t.periodLabel) < 0) return; const c = String(t.category || t.channel || '').trim(); if (!c) return; const o = ch[c] || (ch[c] = { spend: 0, impressions: 0 }); o.spend += Number(t.spend) || 0; o.impressions += Number(t.impressions) || 0; }); } catch (e){}
-  Object.keys(ch).forEach(c => { if (!(ch[c].spend > 0)) delete ch[c]; });
+  let anyMix = false;
+  const ch = memo('ch' + W12.join(','), () => { const o2 = {};
+    try { getEffectiveMmmTotals(accountId).totals.forEach(t => { if (W12.indexOf(t.periodLabel) < 0) return; const c = String(t.category || t.channel || '').trim(); if (!c) return; const o = o2[c] || (o2[c] = { spend: 0, impressions: 0 }); o.spend += Number(t.spend) || 0; o.impressions += Number(t.impressions) || 0; }); } catch (e){}
+    Object.keys(o2).forEach(c => { if (!(o2[c].spend > 0)) delete o2[c]; }); return o2; });
   const baseTotalSpend = Object.keys(ch).reduce((n, c) => n + ch[c].spend, 0), baseTotalImps = Object.keys(ch).reduce((n, c) => n + ch[c].impressions, 0);
   const blendedCpm = baseTotalImps > 0 ? baseTotalSpend / baseTotalImps * 1000 : (cal.blendedCpm || null);
-  const planBudget = (() => { try { return planWorkingMediaBudget(accountId, year); } catch (e){ return null; } })();
-  const W = input.workingMedia != null && input.workingMedia !== '' && Number(input.workingMedia) >= 0 ? Number(input.workingMedia) : (planBudget ? planBudget.workingMedia : (baseTotalSpend || null));
+  const planBudget = memo('pb' + year, () => { try { return planWorkingMediaBudget(accountId, year); } catch (e){ return null; } });
+  const W = input.workingMedia != null && input.workingMedia !== '' && Number(input.workingMedia) >= 0 ? Number(input.workingMedia) : ((planBudget ? planBudget.workingMedia : (baseTotalSpend || null)) * (PM.length ? PM.length / 12 : 1) || null);
   if (!(W > 0)) return { error: 'No working media budget to run. Enter one, or confirm the ' + year + ' marketing budget.' };
   // mix: given spend per channel (any scale), else the baseline shares
   const given = {}; let givenSum = 0;
@@ -21591,7 +21597,7 @@ function planScenarioCompute(accountId, input){
   const chRows = []; let totalImps = 0; const notes = [];
   let minApplied = { raised: [], heldBack: [], on: false, count: 0 };
   if (input.applyMinimums !== false && Object.keys(shares).length){
-    let mins = {}; try { mins = rateCardMinimumsFor(accountId).minimums || {}; } catch (e){ mins = {}; }
+    let mins = memo('mins', () => { try { return rateCardMinimumsFor(accountId).minimums || {}; } catch (e){ return {}; } });
     const have = Object.keys(shares).filter(c => mins[c] > 0).length; minApplied.count = Object.keys(mins).length;
     if (have){
       const res = planApplyMinimums(Object.fromEntries(Object.keys(shares).map(c => [c, W * shares[c]])), mins);
@@ -21601,14 +21607,15 @@ function planScenarioCompute(accountId, input){
       if (res.heldBack.length) notes.push('Held back: ' + res.heldBack.map(h => h.channel + ' (' + h.reason + ')').join('; ') + '.');
     } else if (minApplied.count) notes.push('Rate card minimums are on file, but none are for the channels in this mix.');
   }
-  let MR = null; try { MR = mixReadinessFor(accountId); } catch (e){ MR = null; }
+  const MR = memo('MR', () => { try { return mixReadinessFor(accountId); } catch (e){ return null; } });
   const mixCurveFor = {}; if (MR) MR.channels.forEach(m => { if (m.level === 2 && m.curve && m.curve.ok) mixCurveFor[m.channel] = m.curve; });
   const chNames = Object.keys(shares);
-  if (!chNames.length){ totalImps = blendedCpm ? W / blendedCpm * 1000 : 0; notes.push('No channel history on file, so the whole budget is converted at one blended cost per thousand impressions.'); }
+  if (!chNames.length){ totalImps = blendedCpm ? W / (blendedCpm * cpmMult) * 1000 : 0; notes.push('No channel history on file, so the whole budget is converted at one blended cost per thousand impressions.'); }
   chNames.forEach(c => {
     const spend = W * shares[c]; const hist = ch[c]; let cpm = hist && hist.impressions > 0 ? hist.spend / hist.impressions * 1000 : null, src = 'this channel\'s last 12 months';
-    if (!cpm){ const bm = mixBenchmarkCpm(accountId, c); if (bm){ cpm = bm.cpm; src = `${bm.scope} median of ${bm.n} accounts (benchmark)`; } else { cpm = blendedCpm; src = hist ? 'blended cost (no impressions logged for this channel)' : 'blended cost (channel has no history)'; } }
-    const raw = cpm ? spend / cpm * 1000 : 0; const mc = mixCurveFor[c] ? mixCurveMultiplier(mixCurveFor[c], spend / 12) : { m: 1, outside: false }; const imps = raw * mc.m; totalImps += imps;
+    if (cpm) cpm = cpm * cpmMult;
+    if (!cpm){ const bm = mixBenchmarkCpm(accountId, c); if (bm){ cpm = bm.cpm; src = `${bm.scope} median of ${bm.n} accounts (benchmark)`; } else { cpm = blendedCpm ? blendedCpm * cpmMult : blendedCpm; src = hist ? 'blended cost (no impressions logged for this channel)' : 'blended cost (channel has no history)'; } }
+    const raw = cpm ? spend / cpm * 1000 : 0; const mc = mixCurveFor[c] ? mixCurveMultiplier(mixCurveFor[c], spend / periodN) : { m: 1, outside: false }; const imps = raw * mc.m; totalImps += imps;
     chRows.push({ channel: c, spend: Math.round(spend), share: Math.round(shares[c] * 1000) / 10, cpm: cpm ? Math.round(cpm * 100) / 100 : null, cpmSource: src, impressions: Math.round(imps), baselineSpend: hist ? Math.round(hist.spend) : 0, response: mixCurveFor[c] ? { multiplier: Math.round(mc.m * 1000) / 1000, outsideRange: mc.outside, b: mixCurveFor[c].bUsed } : null });
   });
   chRows.forEach(r => { const m = MR && MR.channels.find(x => x.channel === r.channel); r.evidence = { level: m ? m.level : 0, label: MIX_LEVEL_LABELS[m ? m.level : 0], readyForCurve: !!(m && m.readyForCurve) };
@@ -21619,9 +21626,16 @@ function planScenarioCompute(accountId, input){
   if (curveChs.length){ const ls = MR && MR.leadSplit; alerts.push({ kind: 'curves', channels: curveChs, message: `Response curves are in use for ${curveChs.join(', ')}. Each is fitted to that channel's own monthly spend and leads, including offline leads your team has tied to it${ls && ls.notTiedPct != null ? ` and a share of direct and unknown leads (${ls.notTiedPct}% of leads in the history could not be tied to a campaign; they are shared across the measured paid channels in proportion to their measured leads)` : ''}. The curves do not model carry-over between months or seasons, and they stop at the spend range the channel has actually run at. Treat the result as a planning guide, not a promise.` }); }
   // monthly shape: last year's impression pattern, else even
   const py = year - 1; const pyKeys = Object.keys(S.impressions).filter(k => k.startsWith(String(py)));
-  const pyTot = pyKeys.reduce((n, k) => n + (S.impressions[k] || 0), 0); const seasonal = pyKeys.length >= 9 && pyTot > 0;
-  const months = []; for (let m = 1; m <= 12; m++){ const k = `${year}-${String(m).padStart(2, '0')}`; const sh = seasonal ? (S.impressions[`${py}-${String(m).padStart(2, '0')}`] || 0) / pyTot : 1 / 12; months.push({ month: k, impressions: totalImps * sh, spend: W * sh }); }
-  notes.push(seasonal ? `Monthly shape follows ${py}'s impressions.` : 'Monthly shape is even across the year (no full prior-year impressions).');
+  const pyTot = pyKeys.reduce((n, k) => n + (S.impressions[k] || 0), 0); let seasonal = pyKeys.length >= 9 && pyTot > 0;
+  const months = [];
+  if (PM.length){
+    const pm = PM.map(k => Number(S.impressions[storyShiftYear(k, -1)]) || 0); const pmSum = pm.reduce((n, v) => n + v, 0); seasonal = pm.every(v => v > 0) && pmSum > 0;
+    PM.forEach((k, i) => { const sh = seasonal ? pm[i] / pmSum : 1 / PM.length; months.push({ month: k, impressions: totalImps * sh, spend: W * sh }); });
+    notes.push(seasonal ? 'Monthly shape follows the same months a year earlier.' : 'Monthly shape is even across the period.');
+  } else {
+    for (let m = 1; m <= 12; m++){ const k = `${year}-${String(m).padStart(2, '0')}`; const sh = seasonal ? (S.impressions[`${py}-${String(m).padStart(2, '0')}`] || 0) / pyTot : 1 / 12; months.push({ month: k, impressions: totalImps * sh, spend: W * sh }); }
+    notes.push(seasonal ? `Monthly shape follows ${py}'s impressions.` : 'Monthly shape is even across the year (no full prior-year impressions).');
+  }
   const f = forecastEngine.forecast(cal, { months });
   const T = f.totals; const pick = a => a ? a[bi] : null;
   const leadsTotal = pick(T.leads), booked = pick(T.bookings), rev = T.revenue ? pick(T.revenue) : null, visits = pick(T.visits);
@@ -21634,13 +21648,152 @@ function planScenarioCompute(accountId, input){
   let target = null; try { const { target: tr } = storyPlanRows(accountId, year); if (tr && tr.year === year) target = { label: tr.label || null, workingMedia: tr.workingMedia, leads: (Number(tr.prospectLeads) || 0) + (Number(tr.growthLeads) || 0) + (Number(tr.valueLeads) || 0) || null, transactions: tr.bookings, revenue: tr.grossRevenue }; } catch (e){}
   const sumKeys = (m, ks) => { let n = 0, any = false; ks.forEach(k => { if (m[k] != null){ n += m[k]; any = true; } }); return any ? n : null; };
   const spendBasis = planSpendOverMonths(accountId, W12, S);
-  const base = { window: `${W12[0]} to ${W12[11]}`, workingMedia: spendBasis ? spendBasis.total : (Math.round(baseTotalSpend) || null), impressions: Math.round(baseTotalImps) || null, sessions: sumKeys(S.visits, W12), leads: (() => { let n = 0, any = false; W12.forEach(k => { if (S.leads[k]){ n += S.leads[k].total; any = true; } }); return any ? Math.round(n) : null; })(), transactions: sumKeys(S.transactions, W12), revenue: sumKeys(S.revenue, W12) };
+  const base = { window: `${W12[0]} to ${W12[W12.length - 1]}`, workingMedia: spendBasis ? spendBasis.total : (Math.round(baseTotalSpend) || null), impressions: Math.round(baseTotalImps) || null, sessions: sumKeys(S.visits, W12), leads: (() => { let n = 0, any = false; W12.forEach(k => { if (S.leads[k]){ n += S.leads[k].total; any = true; } }); return any ? Math.round(n) : null; })(), transactions: sumKeys(S.transactions, W12), revenue: sumKeys(S.revenue, W12) };
   base.roas = div(base.revenue, base.workingMedia); base.cac = div(base.workingMedia, base.transactions); base.costPerVisitor = div(base.workingMedia, base.sessions); base.costPerLead = div(base.workingMedia, base.leads);
   if (spendBasis && spendBasis.fromBudget > 0) notes.push(`Last-12-months working media uses the confirmed budget for ${spendBasis.fromBudget} of ${W12.length} months where logged spend is lower (logged spend alone is ${Math.round(spendBasis.actualOnly).toLocaleString('en-US')}), because campaign and channel actuals are not loaded for the full period.`);
   if (!planBudget && input.workingMedia == null) notes.push('No confirmed ' + year + ' working media budget, so the last 12 months of spend is used.');
-  return { year, band: bandName, outcome, bands, channels: chRows, baseline: base, target, confidence: f.confidence, rangeNote: f.rangeNote,
+  const pk1 = a => Array.isArray(a) ? (a[bi] != null ? a[bi] : null) : (typeof a === 'number' ? a : null);
+  const monthly = (f.months || []).map(m => ({ month: m.month, workingMedia: Math.round((months.find(x => x.month === m.month) || {}).spend || 0), impressions: Math.round(m.impressions || 0), visits: pk1(m.visits), leads: pk1(m.leads), transactions: pk1(m.bookings), revenue: pk1(m.revenue) }));
+  return { year, band: bandName, outcome, bands, monthly, periodMonths: PM.length ? PM : null, channels: chRows, baseline: base, target, confidence: f.confidence, rangeNote: f.rangeNote,
     assumptions: ['Impressions per channel = spend ÷ that channel\'s own cost per thousand over the last 12 complete months.', 'Funnel rates (visits, leads, transactions, revenue per transaction) are this account\'s own where there is history; the engine labels any benchmark.', 'Channels at level 2 also apply their own fitted response curve (leads = a × spend^b, from their own monthly spend and leads), so extra spend on a channel returns less per dollar. Channels below level 2 use cost per thousand impressions. Channels are not given different conversion rates until media mix model results are available.'].concat(notes).concat(f.notes || []),
     minimums: minApplied, alerts, mixEvidence: { level: overallLevel, label: MIX_LEVEL_LABELS[overallLevel], builtLevel: MIX_BUILT_LEVEL }, customMix: anyMix, usedBudget: planBudget ? 'confirmed ' + year + ' budget' : 'last 12 months of spend' };
+}
+// ---- Goal planner (2026-11-08) ---------------------------------------------------------------------------------------
+// "I want to build a budget based on <window> that maximizes our <KPI> for a <budget|campaign>. Provide <views>. Scenarios should focus on achieving <goal>."
+// The person states the result (gross revenue, transactions or leads); the planner works BACKWARD to the working media budget and channel mix that gets there.
+// It reuses planScenarioCompute (same forecast chain as the Strategy scenario planner) as the evaluator and solves the budget by secant steps on a power-law fit.
+// Hold / Expected / Stretch = the engine's low / mid / high funnel band, each solved separately to land on the same goal.
+const PLAN_GOAL_KPIS = {
+  roas: { label: 'ROAS', better: 'higher' }, cac: { label: 'CAC', better: 'lower' }, leads: { label: 'Lead volume', better: 'lower', per: 'cost per lead' },
+  visits: { label: 'Website visits', better: 'lower', per: 'cost per website visit' }, engagement: { label: 'Website engagement', better: 'lower', per: 'cost per engagement' }, cpm: { label: 'Cost per impression', better: 'lower' }
+};
+const PLAN_GOAL_TYPES = { revenue: { label: 'Gross revenue', unit: '$' }, transactions: { label: 'Total transactions', unit: '#' }, leads: { label: 'Total leads', unit: '#' } };
+function planGoalMonthKey(y, m){ return `${y}-${String(m).padStart(2, '0')}`; }
+function planGoalWindowKeys(S, win, asOf){
+  const w = win || {}; const kind = String(w.kind || 'last12'); const last = storyMonthKeys(asOf, 1)[0];
+  if (kind === 'quarter') return storyMonthKeys(asOf, 3); if (kind === 'month') return storyMonthKeys(asOf, 1);
+  if (kind === 'custom'){ const f = /^\d{4}-\d{2}$/.test(String(w.from || '')) ? w.from : null, t = /^\d{4}-\d{2}$/.test(String(w.to || '')) ? w.to : last; if (!f) return null; const out = []; let [y, m] = f.split('-').map(Number); for (let i = 0; i < 120; i++){ const k = planGoalMonthKey(y, m); if (k > t) break; out.push(k); m++; if (m > 12){ m = 1; y++; } } return out.length ? out : null; }
+  if (kind === 'account'){ const ks = new Set(); [S.spend, S.impressions, S.visits, S.leads, S.transactions, S.revenue].forEach(o => Object.keys(o || {}).forEach(k => { if (/^\d{4}-\d{2}$/.test(k) && k <= last) ks.add(k); })); const arr = Array.from(ks).sort(); if (!arr.length) return null; const out = []; let [y, m] = arr[0].split('-').map(Number); for (let i = 0; i < 240; i++){ const k = planGoalMonthKey(y, m); if (k > last) break; out.push(k); m++; if (m > 12){ m = 1; y++; } } return out; }
+  return storyMonthKeys(asOf, 12);
+}
+function planGoalPeriod(action, asOf){
+  const a = action || {}; const kind = a.kind === 'campaign' ? 'campaign' : 'budget'; const year = Number(a.year) || asOf.getUTCFullYear();
+  if (kind === 'campaign'){
+    const f = /^\d{4}-\d{2}$/.test(String(a.start || '')) ? a.start : null, t = /^\d{4}-\d{2}$/.test(String(a.end || '')) ? a.end : f; if (!f) return { error: 'Enter the first month of the campaign.' };
+    if (t < f) return { error: 'The campaign cannot end before it starts.' };
+    const keys = []; let [y, m] = f.split('-').map(Number); for (let i = 0; i < 36; i++){ const k = planGoalMonthKey(y, m); if (k > t) break; keys.push(k); m++; if (m > 12){ m = 1; y++; } }
+    return { kind, year: Number(f.slice(0, 4)), months: keys, label: (a.name ? String(a.name).slice(0, 80) + ' · ' : 'Campaign · ') + keys[0] + (keys.length > 1 ? ' to ' + keys[keys.length - 1] : '') };
+  }
+  const per = ['quarter', 'month'].indexOf(a.period) >= 0 ? a.period : 'annual';
+  if (per === 'annual') return { kind, period: per, year, months: null, label: year + ' annual budget' };
+  if (per === 'quarter'){ const q = Math.min(4, Math.max(1, Number(a.quarter) || (Math.floor(asOf.getUTCMonth() / 3) + 1))); const keys = [0, 1, 2].map(i => planGoalMonthKey(year, (q - 1) * 3 + 1 + i)); return { kind, period: per, year, months: keys, label: `${year} Q${q} budget` }; }
+  const mo = Math.min(12, Math.max(1, Number(a.month) || (asOf.getUTCMonth() + 1))); return { kind, period: per, year, months: [planGoalMonthKey(year, mo)], label: `${planGoalMonthKey(year, mo)} budget` };
+}
+function planGoalEngagementRate(accountId, keys){
+  try {
+    const rows = db.prepare('SELECT * FROM account_website_engagement WHERE accountId = ?').all(accountId).map(r => ({ year: Number(aliasVal(r, 'year')) || 0, month: Number(aliasVal(r, 'month')) || 0, sessions: Number(r.sessions) || 0, eng: Number(aliasVal(r, 'engagedSessions')) || 0 }));
+    const sum = list => { let s = 0, e = 0; list.forEach(r => { s += r.sessions; e += r.eng; }); return s > 0 ? e / s : null; };
+    const inWin = rows.filter(r => r.month > 0 && keys.indexOf(planGoalMonthKey(r.year, r.month)) >= 0); let rate = sum(inWin), src = 'the history window';
+    if (rate == null){ rate = sum(rows.filter(r => r.month > 0)); src = 'all monthly engagement on file'; } if (rate == null){ rate = sum(rows); src = 'the engagement uploaded for the account'; }
+    return rate != null ? { rate, source: src } : null;
+  } catch (e){ return null; }
+}
+function planGoalMetric(r, goalType){ const o = r && r.outcome; if (!o) return null; return goalType === 'revenue' ? o.revenue : goalType === 'transactions' ? o.transactions : o.leads; }
+function planGoalKpiValue(m, kpi){ // lower-is-better KPIs are returned as-is; ROAS is negated so "smaller wins" holds for every KPI.
+  if (!m) return null; const v = kpi === 'roas' ? m.roas : kpi === 'cac' ? m.cac : kpi === 'leads' ? m.costPerLead : kpi === 'visits' ? m.costPerVisit : kpi === 'engagement' ? m.costPerEngagement : m.costPerImpression;
+  return v == null ? null : (kpi === 'roas' ? -v : v);
+}
+function planGoalShape(r, engRate){
+  const o = r.outcome; const W = o.workingMedia; const div = (a, b) => (a != null && b != null && b > 0) ? a / b : null; const rd = (v, d) => v == null ? null : Math.round(v * Math.pow(10, d || 0)) / Math.pow(10, d || 0);
+  const eng = o.sessions != null && engRate ? o.sessions * engRate.rate : null;
+  return { workingMedia: Math.round(W), impressions: o.impressions, costPerImpression: rd(div(W, o.impressions) != null ? div(W, o.impressions) * 1000 : null, 2), visits: o.sessions != null ? Math.round(o.sessions) : null, costPerVisit: rd(div(W, o.sessions), 2),
+    engagements: eng != null ? Math.round(eng) : null, costPerEngagement: rd(div(W, eng), 2), leads: o.leads != null ? Math.round(o.leads) : null, leadTypes: o.leadTypes, costPerLead: rd(div(W, o.leads), 2),
+    transactions: o.transactions != null ? Math.round(o.transactions) : null, cac: rd(div(W, o.transactions), 2), revenue: o.revenue != null ? Math.round(o.revenue) : null, roas: rd(div(o.revenue, W), 2) };
+}
+function planGoalSolve(accountId, spec){
+  const asOf = new Date(); const goalType = PLAN_GOAL_TYPES[spec.goal && spec.goal.type] ? spec.goal.type : 'revenue'; const goalVal = Number(spec.goal && spec.goal.value);
+  if (!(goalVal > 0)) return { error: 'Enter the ' + PLAN_GOAL_TYPES[goalType].label.toLowerCase() + ' you want to reach.' };
+  const kpi = PLAN_GOAL_KPIS[spec.kpi] ? spec.kpi : 'roas'; const period = planGoalPeriod(spec.action, asOf); if (period.error) return { error: period.error };
+  const cache = {}; const S = buildForecastSeries(accountId); cache.S = S;
+  const winKeys = planGoalWindowKeys(S, spec.window, asOf); if (!winKeys || !winKeys.length) return { error: 'That history window has no months on file. Pick another window or enter dates that have data.' };
+  const engRate = planGoalEngagementRate(accountId, winKeys);
+  const lim = spec.limits || {}; const limits = { costPerLead: Number(lim.cpl) > 0 ? Number(lim.cpl) : null, cac: Number(lim.cac) > 0 ? Number(lim.cac) : null, roas: Number(lim.roas) > 0 ? Number(lim.roas) : null };
+  const base = { year: period.year, periodMonths: period.months, windowKeys: winKeys, _cache: cache };
+  const evalAt = (W, band, mix, mult) => planScenarioCompute(accountId, Object.assign({}, base, { band, workingMedia: W, mix: mix || undefined, cpmMult: mult || 1 }));
+  // starting budget: the confirmed budget for the period, else what the history window spent per month
+  let planB = null; try { planB = planWorkingMediaBudget(accountId, period.year); } catch (e){}
+  const spendBasis = planSpendOverMonths(accountId, winKeys, S); const perMonthHist = spendBasis ? spendBasis.total / winKeys.length : null; const nMon = period.months ? period.months.length : 12;
+  let W0 = planB ? planB.workingMedia * nMon / 12 : (perMonthHist ? perMonthHist * nMon : null); const startNote = planB ? 'confirmed ' + period.year + ' budget' : 'average monthly spend in the history window';
+  if (!(W0 > 0)) return { error: 'There is no budget or spend history to start from. Confirm a ' + period.year + ' marketing budget, or upload spend history first.' };
+  const probe = evalAt(W0, 'mid'); if (probe.error) return { error: probe.error };
+  if (planGoalMetric(probe, goalType) == null) return { error: goalType === 'revenue' ? 'Gross revenue cannot be projected yet: there is no transaction history to learn revenue per transaction from. Upload transactions, or set the goal in transactions or leads.' : 'This goal cannot be projected from the data on file yet.' };
+  // channel mix candidates, built from the probe's own channel rows
+  const rows = probe.channels || []; const cands = [{ key: 'current', label: 'Current mix', mix: undefined }];
+  if (rows.length >= 2){
+    const acctCpl = rows.map(r => r.directional && r.directional.accountCostPerLead).find(v => v > 0);
+    const eff = {}; rows.forEach(r => { const adj = r.directional && r.directional.costPerLead > 0 && acctCpl ? Math.pow(acctCpl / r.directional.costPerLead, 0.5) : 1; eff[r.channel] = Math.max(0.0001, r.spend) * Math.min(2, Math.max(0.5, adj)); });
+    if (rows.some(r => r.directional)) cands.push({ key: 'efficiency', label: 'Lead-efficiency tilt', mix: eff });
+    const cpms = rows.map(r => r.cpm).filter(v => v > 0); const bl = cpms.length ? cpms.reduce((n, v) => n + v, 0) / cpms.length : null;
+    if (bl){ const reach = {}; rows.forEach(r => { const adj = r.cpm > 0 ? Math.pow(bl / r.cpm, 0.5) : 1; reach[r.channel] = Math.max(0.0001, r.spend) * Math.min(2, Math.max(0.5, adj)); }); cands.push({ key: 'reach', label: 'Reach-efficiency tilt', mix: reach }); }
+  }
+  // solve the budget so the goal metric lands on the goal for one band and one mix
+  const solve = (band, mix, start) => {
+    let W = start, last = null, hist = []; let reached = false, r = null;
+    for (let i = 0; i < 12; i++){
+      r = evalAt(W, band, mix); if (r.error) return { error: r.error };
+      const m = planGoalMetric(r, goalType); if (m == null) return { error: 'No projection for the goal.' };
+      hist.push({ W, m }); if (Math.abs(m / goalVal - 1) < 0.002){ reached = true; break; }
+      let e = 1; if (hist.length >= 2){ const a = hist[hist.length - 2], b = hist[hist.length - 1]; if (a.W > 0 && b.W > 0 && a.m > 0 && b.m > 0 && Math.abs(Math.log(b.W / a.W)) > 1e-6){ e = Math.log(b.m / a.m) / Math.log(b.W / a.W); } } e = Math.min(1.6, Math.max(0.25, e));
+      let nW = W * Math.pow(goalVal / Math.max(m, 1e-9), 1 / e); nW = Math.min(W * 8, Math.max(W / 8, nW)); if (nW > W0 * 60){ last = { capped: true }; W = W0 * 60; r = evalAt(W, band, mix); break; } if (Math.abs(nW - W) < 1) { reached = Math.abs(m / goalVal - 1) < 0.01; break; } W = nW;
+    }
+    const m = planGoalMetric(r, goalType); if (!reached && m != null && Math.abs(m / goalVal - 1) < 0.01) reached = true;
+    return { W, r, reached, hit: m, capped: !!(last && last.capped) };
+  };
+  const mid = cands.map(c => { const s = solve('mid', c.mix, W0); return Object.assign({ cand: c }, s); }).filter(x => !x.error && x.r);
+  if (!mid.length) { const e = cands.map(c => solve('mid', c.mix, W0)).find(x => x.error); return { error: e ? e.error : 'The goal could not be solved.' }; }
+  const shaped = mid.map(x => ({ x, m: planGoalShape(x.r, engRate) }));
+  const okLimits = m => (limits.costPerLead == null || m.costPerLead == null || m.costPerLead <= limits.costPerLead * 1.0005) && (limits.cac == null || m.cac == null || m.cac <= limits.cac * 1.0005) && (limits.roas == null || m.roas == null || m.roas >= limits.roas * 0.9995);
+  const rankable = shaped.filter(z => z.x.reached); const pool = rankable.length ? rankable : shaped;
+  const inLim = pool.filter(z => okLimits(z.m)); const among = inLim.length ? inLim : pool;
+  among.sort((a, b) => { const av = planGoalKpiValue(a.m, kpi), bv = planGoalKpiValue(b.m, kpi); return (av == null ? 1e18 : av) - (bv == null ? 1e18 : bv); });
+  const pick = among[0]; const chosen = pick.x.cand;
+  const kpiMeta = PLAN_GOAL_KPIS[kpi];
+  const scenarios = PLAN_SCENARIO_PRESETS.map(p => {
+    const bandName = p.bandLabel; const s = bandName === 'mid' ? pick.x : solve(bandName, chosen.mix, pick.x.W); if (s.error) return { kind: p.kind, name: p.name, band: bandName, error: s.error };
+    const m = planGoalShape(s.r, engRate); const hit = s.hit != null ? s.hit : planGoalMetric(s.r, goalType); const W = s.W;
+    const att = (rr) => { const v = planGoalMetric(rr, goalType); return v != null ? v : null; };
+    const sens = []; const addSens = (label, group, rr) => { if (!rr || rr.error) return; const v = att(rr); const mm = planGoalShape(rr, engRate); sens.push({ label, group, workingMedia: mm.workingMedia, goalValue: v != null ? Math.round(v) : null, pctOfGoal: v != null ? Math.round(v / goalVal * 1000) / 10 : null, deltaVsPlan: v != null && hit ? Math.round((v / hit - 1) * 1000) / 10 : null, roas: mm.roas, cac: mm.cac, costPerLead: mm.costPerLead }); };
+    addSens('Budget 10% lower', 'Budget', evalAt(W * 0.9, bandName, chosen.mix)); addSens('Budget 10% higher', 'Budget', evalAt(W * 1.1, bandName, chosen.mix));
+    addSens('Media costs 10% higher', 'Delivery cost', evalAt(W, bandName, chosen.mix, 1.1)); addSens('Media costs 10% lower', 'Delivery cost', evalAt(W, bandName, chosen.mix, 0.9));
+    ['low', 'mid', 'high'].filter(b => b !== bandName).forEach(b => addSens('Funnel at the ' + (b === 'low' ? 'Hold (low)' : b === 'mid' ? 'Expected (typical)' : 'Stretch (high)') + ' rate', 'Conversion', evalAt(W, b, chosen.mix)));
+    const mon = (s.r.monthly || []);
+    const warn = []; if (!s.reached) warn.push(s.capped ? 'The goal needs more than 60 times the starting budget under these funnel rates, so this is the closest the planner will go: ' + Math.round(hit).toLocaleString('en-US') + '.' : 'The planner landed within ' + (Math.round(Math.abs(hit / goalVal - 1) * 1000) / 10) + '% of the goal.');
+    if (!okLimits(m)) warn.push('This budget does not stay inside your limit' + [limits.costPerLead != null && m.costPerLead != null && m.costPerLead > limits.costPerLead ? ' on cost per lead (' + m.costPerLead + ' vs ' + limits.costPerLead + ')' : '', limits.cac != null && m.cac != null && m.cac > limits.cac ? ' on CAC (' + m.cac + ' vs ' + limits.cac + ')' : '', limits.roas != null && m.roas != null && m.roas < limits.roas ? ' on ROAS (' + m.roas + 'x vs ' + limits.roas + 'x)' : ''].filter(Boolean).join(',') + '. Raising the goal\'s time, or loosening the limit, is what it would take.');
+    return { kind: p.kind, name: p.name, band: bandName, blurb: p.kind === 'hold' ? 'Funnel at its low (25th percentile) rate: the cautious path to the goal.' : p.kind === 'expected' ? 'Funnel at what this account has typically done.' : 'Funnel at its high (75th percentile) rate: needs less budget, but only if everything lands.',
+      reached: !!s.reached, goalValue: hit != null ? Math.round(hit) : null, metrics: m, channels: s.r.channels, monthly: mon, sensitivities: sens, warnings: warn, confidence: s.r.confidence || null, minimums: s.r.minimums || null };
+  });
+  const baseM = (() => {
+    const sum = (o) => { let n = 0, any = false; winKeys.forEach(k => { if (o[k] != null){ n += o[k]; any = true; } }); return any ? n : null; };
+    const leads = (() => { let n = 0, any = false; winKeys.forEach(k => { if (S.leads[k]){ n += S.leads[k].total; any = true; } }); return any ? Math.round(n) : null; })();
+    const imps = sum(S.impressions), vis = sum(S.visits), txn = sum(S.transactions), rev = sum(S.revenue), W = spendBasis ? spendBasis.total : null; const div = (a, b) => (a != null && b != null && b > 0) ? Math.round(a / b * 100) / 100 : null;
+    const eng = vis != null && engRate ? vis * engRate.rate : null;
+    return { window: winKeys[0] + (winKeys.length > 1 ? ' to ' + winKeys[winKeys.length - 1] : ''), months: winKeys.length, workingMedia: W, impressions: imps != null ? Math.round(imps) : null, costPerImpression: imps > 0 && W != null ? Math.round(W / imps * 100000) / 100 : null, visits: vis != null ? Math.round(vis) : null, costPerVisit: div(W, vis), engagements: eng != null ? Math.round(eng) : null, costPerEngagement: div(W, eng), leads, costPerLead: div(W, leads), transactions: txn != null ? Math.round(txn) : null, cac: div(W, txn), revenue: rev != null ? Math.round(rev) : null, roas: div(rev, W) };
+  })();
+  const notes = [`The goal is fixed. For each scenario the planner finds the working media budget that reaches it, then picks the channel mix with the best ${kpiMeta.label}${kpiMeta.per ? ' (the lowest ' + kpiMeta.per + ' once the goal is met)' : kpiMeta.better === 'lower' ? ' (lowest)' : ' (highest)'}.`,
+    'Hold, Expected and Stretch are the forecast engine\'s low, typical and high funnel rates (visits, leads, transactions, revenue per transaction). They change the budget needed, not the goal.',
+    'Starting budget for the search: ' + startNote + '.', 'The mix is tested against the current mix and two tilts (toward channels with a lower cost per lead, and toward cheaper reach). Tilts move delivery cost and response curves only; channels do not have their own conversion rates yet.'];
+  if (!engRate) notes.push('Website engagement is not on file, so cost per engagement is not shown. Upload engagement in Data Management to add it.'); else notes.push('Engagements = projected visits × the engagement rate from ' + engRate.source + ' (' + Math.round(engRate.rate * 1000) / 10 + '%).');
+  if (period.months && period.months.length < 12) notes.push('Funnel timing is not modelled across periods, so a short flight counts every lead and sale it produces inside the period.');
+  const tried = shaped.map(z => ({ key: z.x.cand.key, label: z.x.cand.label, workingMedia: z.m.workingMedia, kpi: z.m[kpi === 'roas' ? 'roas' : kpi === 'cac' ? 'cac' : kpi === 'leads' ? 'costPerLead' : kpi === 'visits' ? 'costPerVisit' : kpi === 'engagement' ? 'costPerEngagement' : 'costPerImpression'], chosen: z.x.cand.key === chosen.key, reached: !!z.x.reached }));
+  return { spec: { goal: { type: goalType, label: PLAN_GOAL_TYPES[goalType].label, value: goalVal }, kpi, kpiLabel: kpiMeta.label, window: spec.window || { kind: 'last12' }, action: spec.action || { kind: 'budget', period: 'annual' }, limits, display: Array.isArray(spec.display) ? spec.display : ['summary'] },
+    period: { kind: period.kind, label: period.label, months: period.months, year: period.year }, baseline: baseM, mix: { chosen: chosen.key, label: chosen.label, tried }, scenarios, notes, generatedAt: new Date().toISOString() };
+}
+function planGoalOptions(accountId){
+  const asOf = new Date(); const S = buildForecastSeries(accountId); const y = asOf.getUTCFullYear(); const out = { year: y, years: [y, y + 1], budgets: {} };
+  [y, y + 1].forEach(yr => { try { const b = planWorkingMediaBudget(accountId, yr); if (b) out.budgets[yr] = b.workingMedia; } catch (e){} });
+  const all = planGoalWindowKeys(S, { kind: 'account' }, asOf); out.history = all ? { from: all[0], through: all[all.length - 1], months: all.length } : null;
+  const t = Object.keys(S.revenue || {}).length; out.haveRevenue = t > 0; out.haveEngagement = !!planGoalEngagementRate(accountId, all || []); out.haveLeads = Object.keys(S.leads || {}).length > 0; out.haveVisits = Object.keys(S.visits || {}).length > 0;
+  return out;
 }
 // ---- Scenario plan upload (2026-10-10) ----
 const PLAN_UPLOAD_MONTHS = ['january','february','march','april','may','june','july','august','september','october','november','december'];
@@ -32078,7 +32231,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-07-call-counts',
+        buildStamp: '2026-11-09-goal-planner',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -49575,6 +49728,11 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
           const y = parseInt(new URL(req.url, 'http://localhost').searchParams.get('year'), 10); const year = Number.isFinite(y) ? y : new Date().getUTCFullYear();
           return sendJson(res, 200, planCampaignCoverage(accountId, year));
         }
+        if (parts.length === 5 && parts[4] === 'goal' && req.method === 'POST'){
+          const body = await readBody(req); const r = planGoalSolve(accountId, body || {});
+          return sendJson(res, r.error ? 400 : 200, r);
+        }
+        if (parts.length === 5 && parts[4] === 'goal-options' && req.method === 'GET') return sendJson(res, 200, planGoalOptions(accountId));
         if (req.method === 'POST' && parts.length === 5 && parts[4] === 'run'){
           const body = await readBody(req); const r = planScenarioCompute(accountId, body || {});
           return sendJson(res, r.error ? 400 : 200, r);
