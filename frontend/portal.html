@@ -1727,6 +1727,27 @@
   button.strat-chip.strat-chip-rec:hover{background:#2c2c30;border-color:#2c2c30;color:#fff;}
   .strat-chip-rec .rec-tag{font-size:0.625rem;font-weight:800;letter-spacing:0.05em;text-transform:uppercase;background:#F4B63F;color:#10141B;border-radius:980px;padding:3px 9px;}
   #stratScnBody{border-top:1px solid var(--line-hairline);padding-top:14px;}
+  html:not(.release2-on) .rel2{display:none !important;}
+  /* Goal planner (2026-11-08): the sentence card at the front of the Strategy scenario planner */
+  .gl-card{border:1px solid var(--line);border-radius:14px;background:var(--white);padding:22px 24px;margin:0 0 14px;}
+  .gl-sentence{font-size:1.25rem;line-height:2;font-weight:500;color:var(--ink);max-width:900px;}
+  .gl-sel,.gl-in{font:inherit;font-weight:700;color:var(--advocacy);border:0;border-bottom:2px solid var(--advocacy);background:transparent;padding:0 4px;border-radius:0;max-width:100%;}
+  .gl-in{width:9ch;text-align:left;} .gl-in::placeholder{color:var(--muted);font-weight:400;font-style:italic;}
+  .gl-sel:focus-visible,.gl-in:focus-visible{outline:2px solid var(--ink);outline-offset:2px;}
+  .gl-chips{display:inline-flex;flex-wrap:wrap;gap:6px;vertical-align:middle;}
+  .gl-chip{font:inherit;font-size:0.875rem;font-weight:600;padding:4px 12px;border:1px solid var(--line-strong);border-radius:999px;background:var(--white);color:var(--ink);cursor:pointer;}
+  .gl-chip[aria-pressed="true"]{background:var(--ink);color:var(--white);border-color:var(--ink);}
+  .gl-sub{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin:10px 0 0;font-size:0.875rem;} .gl-sub label{display:block;font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);margin-bottom:3px;}
+  .gl-sub select,.gl-sub input{font:inherit;font-size:0.875rem;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--white);color:var(--ink);box-sizing:border-box;}
+  .gl-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:16px;}
+  .gl-ctx{font-size:0.8125rem;color:var(--muted);margin:10px 0 0;}
+  .gl-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0;} @media (max-width:860px){.gl-3{grid-template-columns:1fr;}}
+  .gl-sc{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--white);cursor:pointer;text-align:left;font:inherit;color:var(--ink);} .gl-sc[aria-pressed="true"]{border-color:var(--ink);box-shadow:var(--shadow-sm);}
+  .gl-sc .n{font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);} .gl-sc .b{font-size:1.5rem;font-weight:600;margin:4px 0;font-variant-numeric:tabular-nums;} .gl-sc .s{font-size:0.8125rem;color:var(--muted);line-height:1.45;}
+  .gl-tbl{width:100%;border-collapse:collapse;font-size:0.875rem;font-variant-numeric:tabular-nums;} .gl-tbl th,.gl-tbl td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:right;} .gl-tbl th:first-child,.gl-tbl td:first-child{text-align:left;} .gl-tbl th{font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);font-weight:700;} .gl-tbl tr.hl td{font-weight:700;}
+  .gl-wrap{overflow-x:auto;} .gl-h{font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin:20px 0 8px;}
+  .gl-warn{border:1px solid var(--line-strong);border-radius:10px;padding:10px 14px;font-size:0.875rem;margin:8px 0;background:var(--white);} .gl-sum p{margin:0 0 10px;line-height:1.6;max-width:820px;}
+  .gl-adv{margin:10px 0 0;} .gl-adv>summary{cursor:pointer;font-weight:600;padding:8px 0;}
   .scn-presets{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:12px 0 4px;}
   .scn-preset{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--paper);display:flex;flex-direction:column;gap:6px;}
   .scn-preset h3{margin:0;font-size:1rem;} .scn-preset .b{font-size:0.78rem;color:var(--muted);line-height:1.4;}
@@ -8052,7 +8073,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
       <div class="recorded visible" id="teamAddFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;color:var(--cx);margin-top:10px;"></div>
     </div>
 
-    <p class="lede" style="margin:8px 0 0;">
+    <p class="lede rel2" style="margin:8px 0 0;">
       Rate yourself, look up any seat's critical skills, or build a development plan:
       <a class="flink" onclick="goToStep('teamDevelopment')">Team Development →</a>
     </p>
@@ -12443,7 +12464,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
           <p id="bpFaqTextAS"></p>
         </div>
       </div>
-      <div class="faq-item">
+      <div class="faq-item rel2">
         <div class="faq-head" id="bpFaqHeadAT" onclick="toggleFaqItem('AT')">
           <span class="faq-label">Team Experiences: self-assessment and development plan</span>
           <span class="chevron">▸</span>
@@ -12470,7 +12491,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
           <p id="bpFaqTextAV"></p>
         </div>
       </div>
-      <div class="faq-item">
+      <div class="faq-item rel2">
         <div class="faq-head" id="bpFaqHeadAW" onclick="toggleFaqItem('AW')">
           <span class="faq-label">Brain Dump: your greeting and growth links</span>
           <span class="chevron">▸</span>
@@ -14033,7 +14054,11 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // changes with every delivered round so it's trivial to check "am I
 // actually running what I think I'm running" from the browser console
 // (logged below) rather than guessing from behavior alone.
-const CXMEDIA_BUILD_STAMP = '2026-11-07-call-counts';
+// Release 2 (2026-11-09, Todd): Growth and Team Member Assessment (Team Experiences: self-assessment, skill sets, development plan; AI Brain Coach / Growth home)
+// is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
+const RELEASE_2 = { teamGrowth: false };
+try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
+const CXMEDIA_BUILD_STAMP = '2026-11-09-release2-hidden';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -23576,7 +23601,7 @@ const WORKSTREAMS = [
   { key: 'experienceManagement', tab: 'marketer', label: 'AI Agent Training', desc: 'Budgets, research, brand style, marketing ops, content development, omni-channel creative, performance marketing, lifecycle marketing, and PR — the direct-access grid, if you already know where you\'re going.' },
   { key: 'brand', tab: 'accountManagement', label: () => state.company ? `${state.company} Configuration` : 'Configuration', desc: 'The upfront setup every other workstream depends on: brand voice & style, sample writings & presentations, competitive positioning, marketing budget upload, product & campaign groups, and team management — done once here, inherited everywhere else.' },
   { key: 'reputation', tab: 'brand', label: 'PR & Corp Comm', desc: 'PR & Corporate Communications — brand mentions, press, and editorial relationships, monitored continuously and connected to what Search Optimization is already seeing.', badge: 'Enterprise' },
-  { key: 'teamDevelopment', tab: 'accountManagement', label: 'Team Experiences', desc: 'Self-assessment, critical skill sets by seat, and a career development plan for this account’s team.' },
+  ...(RELEASE_2.teamGrowth ? [{ key: 'teamDevelopment', tab: 'accountManagement', label: 'Team Experiences', desc: 'Self-assessment, critical skill sets by seat, and a career development plan for this account’s team.' }] : []),
   { key: 'marketingCalendar', tab: 'marketer', label: 'Marketing Calendar', desc: 'Every scheduled campaign event across this account, by month — the account-wide view before drilling into any one campaign.' },
   { key: 'campaignMgmt', tab: 'marketer', label: 'Campaign Management', desc: 'Every campaign’s status across Brand, Marketing Functions, Creative, QA & Approval, In Market, and Analysis — in one place, instead of checking each function group separately.' },
   { key: 'collaboration', tab: 'dailyBrief', label: 'Collaboration', desc: 'Describe what you need in plain language — your AI Partner routes it to the right function(s) instead of you clicking through the org chart.', badge: 'Enterprise' },
@@ -25094,14 +25119,154 @@ function scnLinesHtml(){
 function scnRender(){
   const box = document.getElementById('stratScnBody'); if (!box || !scn.data) return;
   const yrs = []; const y0 = new Date().getFullYear(); for (let y = y0 - 1; y <= y0 + 2; y++) yrs.push(y);
-  box.innerHTML = `<div class="strat-chart-label" style="margin:0 0 6px;">Scenario planner</div><p class="strat-sub" style="margin:0 0 6px;">Try a budget and media mix, see leads, transactions and revenue against the last 12 months and the approved target. Anyone can run and save scenarios. Activating one for the account takes an admin, the CMO or a Director, and replaces the target the dashboards and the Weekly Brain read.</p>
+  box.innerHTML = `<div id="glHost"></div><details class="gl-adv"${scn.advOpen ? ' open' : ''} ontoggle="scn.advOpen=this.open"><summary>Advanced: build a scenario by hand</summary><div class="strat-chart-label" style="margin:8px 0 6px;">Scenario planner</div><p class="strat-sub" style="margin:0 0 6px;">Try a budget and media mix, see leads, transactions and revenue against the last 12 months and the approved target. Anyone can run and save scenarios. Activating one for the account takes an admin, the CMO or a Director, and replaces the target the dashboards and the Weekly Brain read.</p>
     <div class="scn-row"><div><label for="scnYear">Plan year</label><select id="scnYear" onchange="scnSetYear(this.value)">${yrs.map(y => `<option value="${y}"${y === scn.year ? ' selected' : ''}>${y}</option>`).join('')}</select></div></div>
     <div class="scn-presets">${(scn.data.presets || []).map(scnPresetCard).join('')}</div>
     <div id="scnMsg" class="scn-msg ${scn.msgKind}">${escapeHtml(scn.msg)}</div>
-    ${scnEditorHtml()}${scnSavedHtml()}${scnLinesHtml()}`;
+    ${scnEditorHtml()}${scnSavedHtml()}${scnLinesHtml()}</details>`;
+  glRender(); glLoadOptions();
   scnMixTotal();
 }
 
+// ---- Goal planner (2026-11-08) ----------------------------------------------------------------------------------------
+// "I want to build a budget based on <window> that maximizes our <KPI> for a <budget|campaign>. Provide <views>. Scenarios should focus on achieving <goal>."
+// The server works backward from the goal to the working media budget and mix (Hold / Expected / Stretch). This block is only the form, the readout and the exports.
+const GL_WINDOWS = [['last12', 'the last 12 months'], ['account', 'the full account history'], ['quarter', 'the last quarter'], ['month', 'the last month'], ['custom', 'a custom date range']];
+const GL_KPIS = [['roas', 'ROAS'], ['cac', 'CAC'], ['leads', 'lead volume'], ['visits', 'website visits'], ['engagement', 'website engagement'], ['cpm', 'cost per impression']];
+const GL_ACTIONS = [['annual', 'annual budget'], ['quarter', 'quarterly budget'], ['month', 'monthly budget'], ['campaign', 'campaign']];
+const GL_GOALS = [['revenue', 'gross revenue of', '$'], ['transactions', 'total transactions of', ''], ['leads', 'total leads of', '']];
+const GL_VIEWS = [['summary', 'an executive summary'], ['mix', 'the total with media mix'], ['monthly', 'a monthly breakdown']];
+const gl = { f: { win: 'last12', winFrom: '', winTo: '', kpi: 'roas', act: 'annual', year: new Date().getFullYear(), quarter: Math.floor(new Date().getMonth() / 3) + 1, month: new Date().getMonth() + 1, cName: '', cStart: '', cEnd: '', goal: 'revenue', value: '', views: { summary: true, mix: false, monthly: false }, cpl: '', cac: '', roas: '', limits: false }, opts: null, busy: false, res: null, err: '', tab: 'expected', note: '' };
+function glParseNum(v){ let t = String(v == null ? '' : v).toLowerCase().replace(/[$,\s]/g, ''); if (!t) return null; let m = 1; if (/(b|bn)$/.test(t)){ m = 1e9; t = t.replace(/bn?$/, ''); } else if (/m(m|illion)?$/.test(t)){ m = 1e6; t = t.replace(/m.*$/, ''); } else if (/k$/.test(t)){ m = 1e3; t = t.replace(/k$/, ''); } const n = Number(t); return Number.isFinite(n) && n > 0 ? n * m : null; }
+function glMoney(v, d){ if (v == null) return '—'; const a = Math.abs(v); if (a >= 1e9) return '$' + (v / 1e9).toFixed(2) + 'B'; if (a >= 1e6) return '$' + (v / 1e6).toFixed(a >= 1e7 ? 1 : 2) + 'M'; if (a >= 1e4) return '$' + Math.round(v / 1e3).toLocaleString('en-US') + 'K'; return '$' + (d != null ? Number(v).toFixed(d) : Math.round(v).toLocaleString('en-US')); }
+function glFull(v){ return v == null ? '—' : '$' + Math.round(v).toLocaleString('en-US'); }
+function glNum(v){ return v == null ? '—' : Math.round(v).toLocaleString('en-US'); }
+function glUnit(v){ return v == null ? '—' : '$' + Number(v).toFixed(2); }
+function glSet(k, v, redraw){ gl.f[k] = v; if (redraw) glRender(); }
+function glView(k){ gl.f.views[k] = !gl.f.views[k]; if (!Object.values(gl.f.views).some(Boolean)) gl.f.views.summary = true; glRender(); if (gl.res) glResultRender(); }
+function glSel(id, list, cur, onchange){ return `<select class="gl-sel" id="${id}" onchange="${onchange}" aria-label="${escapeHtml(id)}">${list.map(o => `<option value="${o[0]}"${String(o[0]) === String(cur) ? ' selected' : ''}>${escapeHtml(o[1])}</option>`).join('')}</select>`; }
+function glOpen(){
+  try { goToStep('strategy'); } catch (e){}
+  let tries = 0; const t = setInterval(() => {
+    tries++; const card = document.getElementById('stratScnCard');
+    if (card && document.getElementById('stratScnBody')){ clearInterval(t); if (!scn.open) scnToggle(); else glRender(); try { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e){} }
+    else if (tries > 80) clearInterval(t);
+  }, 150);
+}
+async function glLoadOptions(){
+  if (gl.opts || !stratIsLive()) return;
+  try { gl.opts = await scnCall('/goal-options'); glContext(); } catch (e){ gl.opts = { error: true }; }
+}
+function glContext(){ const el = document.getElementById('glCtx'); if (!el || !gl.opts || gl.opts.error) return; const o = gl.opts; const b = o.budgets && o.budgets[gl.f.year]; const bits = [];
+  if (b) bits.push(`Confirmed ${gl.f.year} working media on file: ${glFull(b)}.`); else bits.push(`No confirmed ${gl.f.year} budget on file, so the search starts from your spend history.`);
+  if (o.history) bits.push(`History on file: ${o.history.from} to ${o.history.through} (${o.history.months} months).`);
+  if (!o.haveRevenue) bits.push('No transaction history yet, so revenue goals cannot be projected. Use transactions or leads.');
+  el.textContent = bits.join(' '); }
+function glFormHtml(){
+  const f = gl.f; const goal = GL_GOALS.find(g => g[0] === f.goal) || GL_GOALS[0];
+  const sub = [];
+  if (f.win === 'custom') sub.push(`<div><label for="glWf">History from</label><input type="month" id="glWf" value="${escapeHtml(f.winFrom)}" onchange="glSet('winFrom',this.value)"></div><div><label for="glWt">History to</label><input type="month" id="glWt" value="${escapeHtml(f.winTo)}" onchange="glSet('winTo',this.value)"></div>`);
+  const yrs = [new Date().getFullYear(), new Date().getFullYear() + 1];
+  if (f.act === 'annual' || f.act === 'quarter' || f.act === 'month') sub.push(`<div><label for="glYr">Plan year</label><select id="glYr" onchange="glSet('year',+this.value,true);glContext()">${yrs.map(y => `<option value="${y}"${y === +f.year ? ' selected' : ''}>${y}</option>`).join('')}</select></div>`);
+  if (f.act === 'quarter') sub.push(`<div><label for="glQ">Quarter</label><select id="glQ" onchange="glSet('quarter',+this.value)">${[1, 2, 3, 4].map(q => `<option value="${q}"${q === +f.quarter ? ' selected' : ''}>Q${q}</option>`).join('')}</select></div>`);
+  if (f.act === 'month') sub.push(`<div><label for="glM">Month</label><select id="glM" onchange="glSet('month',+this.value)">${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((n, i) => `<option value="${i + 1}"${i + 1 === +f.month ? ' selected' : ''}>${n}</option>`).join('')}</select></div>`);
+  if (f.act === 'campaign') sub.push(`<div><label for="glCn">Campaign name (optional)</label><input id="glCn" value="${escapeHtml(f.cName)}" onchange="glSet('cName',this.value)" maxlength="80"></div><div><label for="glCs">First month</label><input type="month" id="glCs" value="${escapeHtml(f.cStart)}" onchange="glSet('cStart',this.value)"></div><div><label for="glCe">Last month</label><input type="month" id="glCe" value="${escapeHtml(f.cEnd)}" onchange="glSet('cEnd',this.value)"></div>`);
+  const limits = f.limits ? `<div class="gl-sub"><div><label for="glLc">Cost per lead no more than</label><input id="glLc" inputmode="decimal" placeholder="e.g. 53" value="${escapeHtml(f.cpl)}" onchange="glSet('cpl',this.value)" style="width:110px"></div><div><label for="glLa">CAC no more than</label><input id="glLa" inputmode="decimal" placeholder="e.g. 60" value="${escapeHtml(f.cac)}" onchange="glSet('cac',this.value)" style="width:110px"></div><div><label for="glLr">ROAS at least</label><input id="glLr" inputmode="decimal" placeholder="e.g. 4" value="${escapeHtml(f.roas)}" onchange="glSet('roas',this.value)" style="width:110px"></div></div>` : '';
+  return `<div class="gl-card" id="glForm"><div class="strat-chart-label" style="margin:0 0 10px;">Goal planner</div>
+    <div class="gl-sentence">I want to build a budget based on ${glSel('glWin', GL_WINDOWS, f.win, "glSet('win',this.value,true)")} that maximizes our ${glSel('glKpi', GL_KPIS, f.kpi, "glSet('kpi',this.value)")} for a ${glSel('glAct', GL_ACTIONS, f.act, "glSet('act',this.value,true)")}. Provide <span class="gl-chips" role="group" aria-label="Views to show">${GL_VIEWS.map(v => `<button type="button" class="gl-chip" aria-pressed="${!!f.views[v[0]]}" onclick="glView('${v[0]}')">${v[1]}</button>`).join('')}</span>. Scenarios should focus on achieving ${glSel('glGoal', GL_GOALS.map(g => [g[0], g[1]]), f.goal, "glSet('goal',this.value,true)")} ${goal[2] ? `<span style="color:var(--advocacy);font-weight:700;">${goal[2]}</span>` : ''}<input class="gl-in" id="glVal" inputmode="decimal" placeholder="125M" value="${escapeHtml(f.value)}" oninput="glSet('value',this.value)" onkeydown="if(event.key==='Enter')glRun()" aria-label="Goal amount">.</div>
+    ${sub.length ? `<div class="gl-sub">${sub.join('')}</div>` : ''}${limits}
+    <div class="gl-actions"><button type="button" class="btn-primary" id="glGo" onclick="glRun()"${gl.busy ? ' disabled' : ''}>${gl.busy ? 'Working it out…' : 'Show me how to get there'}</button><button type="button" class="btn-ghost" onclick="glSet('limits',!gl.f.limits,true)" aria-expanded="${!!f.limits}">${f.limits ? 'Remove limits' : 'Add limits (cost per lead, CAC, ROAS)'}</button></div>
+    <p class="gl-ctx" id="glCtx"></p><div id="glMsg" class="scn-msg ${gl.err ? 'err' : ''}" role="status">${escapeHtml(gl.err || gl.note)}</div></div><div id="glResult"></div>`;
+}
+function glRender(){ const el = document.getElementById('glHost'); if (!el) return; el.innerHTML = glFormHtml(); glContext(); glResultRender(); }
+async function glRun(){
+  if (gl.busy) return; const f = gl.f; gl.err = ''; gl.note = '';
+  const value = glParseNum(f.value); if (!value){ gl.err = 'Enter the number you want to reach, for example 125M, 4,500 or 12000.'; glRender(); return; }
+  if (f.win === 'custom' && !f.winFrom){ gl.err = 'Pick the first month of the custom history window.'; glRender(); return; }
+  if (f.act === 'campaign' && !f.cStart){ gl.err = 'Pick the first month of the campaign.'; glRender(); return; }
+  const body = { window: { kind: f.win, from: f.winFrom || undefined, to: f.winTo || undefined }, kpi: f.kpi, goal: { type: f.goal, value },
+    action: f.act === 'campaign' ? { kind: 'campaign', name: f.cName, start: f.cStart, end: f.cEnd || f.cStart } : { kind: 'budget', period: f.act, year: +f.year, quarter: +f.quarter, month: +f.month },
+    limits: { cpl: glParseNum(f.cpl) || undefined, cac: glParseNum(f.cac) || undefined, roas: glParseNum(f.roas) || undefined }, display: Object.keys(f.views).filter(k => f.views[k]) };
+  gl.busy = true; glRender();
+  try { gl.res = await scnCall('/goal', 'POST', body); gl.tab = 'expected'; gl.busy = false; glRender(); try { document.getElementById('glResult').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e){} }
+  catch (e){ gl.busy = false; gl.err = e.message; glRender(); }
+}
+// ---- readout ----
+function glMetricRows(res){
+  const sc = res.scenarios.filter(s => !s.error); const b = res.baseline || {};
+  const row = (label, key, fmt, hl) => ({ label, hl: !!hl, base: b[key] != null ? fmt(b[key]) : '—', vals: sc.map(s => fmt(s.metrics[key])) });
+  return { sc, rows: [row('Working media budget', 'workingMedia', glFull, 1), row('Total impressions', 'impressions', glNum), row('Cost per thousand impressions', 'costPerImpression', glUnit), row('Website visits', 'visits', glNum), row('Cost per website visit', 'costPerVisit', glUnit), row('Engagements', 'engagements', glNum), row('Cost per engagement', 'costPerEngagement', glUnit),
+    row('Leads', 'leads', glNum), row('Cost per lead', 'costPerLead', glUnit), row('Transactions', 'transactions', glNum), row('CAC (cost per transaction)', 'cac', glUnit), row('Gross revenue', 'revenue', glFull, 1), row('ROAS', 'roas', v => v == null ? '—' : Number(v).toFixed(2) + 'x', 1)] };
+}
+function glSummaryText(res){
+  const sc = res.scenarios.filter(s => !s.error); if (!sc.length) return ''; const ex = sc.find(s => s.kind === 'expected') || sc[0], ho = sc.find(s => s.kind === 'hold'), st = sc.find(s => s.kind === 'stretch'); const g = res.spec.goal; const gv = g.type === 'revenue' ? glFull(g.value) : glNum(g.value) + (g.type === 'leads' ? ' leads' : ' transactions');
+  const parts = [];
+  parts.push(`To reach ${g.label.toLowerCase()} of ${gv} for ${res.period.label}, plan on about ${glFull(ex.metrics.workingMedia)} of working media if the funnel performs the way this account typically has.${ho && st ? ` The range is ${glFull(st.metrics.workingMedia)} if everything lands at its high rate (Stretch) to ${glFull(ho.metrics.workingMedia)} if it runs at its low rate (Hold).` : ''}`);
+  const m = ex.metrics; parts.push(`At the Expected budget that works out to ${glNum(m.leads)} leads at ${glUnit(m.costPerLead)} each, ${glNum(m.transactions)} transactions at a CAC of ${glUnit(m.cac)}${m.revenue != null ? `, and ${glFull(m.revenue)} of gross revenue, a ROAS of ${m.roas != null ? m.roas.toFixed(2) + 'x' : '—'}` : ''}.`);
+  const b = res.baseline; const nm = res.period.months ? res.period.months.length : 12;
+  if (b && b.workingMedia && b.months){ const per = m.workingMedia / nm, hper = b.workingMedia / b.months; const d = Math.round((per / hper - 1) * 100); parts.push(`Per month that is ${glFull(per)} against ${glFull(hper)} over your history window (${b.window}), ${d >= 0 ? d + '% more' : Math.abs(d) + '% less'}.`); }
+  parts.push(`Channel mix: ${res.mix.label.toLowerCase()}, chosen because it gave the best ${res.spec.kpiLabel.toLowerCase()} of the ${res.mix.tried.length} mix${res.mix.tried.length === 1 ? '' : 'es'} tested that reach the goal.`);
+  return parts.map(p => `<p>${escapeHtml(p)}</p>`).join('');
+}
+function glResultRender(){
+  const host = document.getElementById('glResult'); if (!host) return; const res = gl.res; if (!res){ host.innerHTML = ''; return; }
+  const want = k => !!gl.f.views[k];
+  const { sc, rows } = glMetricRows(res); const sel = sc.find(s => s.kind === gl.tab) || sc[0];
+  const cards = `<div class="gl-3" role="group" aria-label="Scenarios">${res.scenarios.map(s => s.error ? `<div class="gl-sc"><div class="n">${escapeHtml(s.name)}</div><div class="s">${escapeHtml(s.error)}</div></div>` : `<button type="button" class="gl-sc" aria-pressed="${sel && sel.kind === s.kind}" onclick="gl.tab='${s.kind}';glResultRender()"><div class="n">${escapeHtml(s.name)}</div><div class="b">${glMoney(s.metrics.workingMedia)}</div><div class="s">${escapeHtml(s.blurb)}</div><div class="s" style="margin-top:6px;color:var(--ink);">${s.metrics.roas != null ? 'ROAS ' + s.metrics.roas.toFixed(2) + 'x · ' : ''}CPL ${glUnit(s.metrics.costPerLead)} · CAC ${glUnit(s.metrics.cac)}</div></button>`).join('')}</div>`;
+  const warns = sc.flatMap(s => (s.warnings || []).map(w => `<div class="gl-warn"><b>${escapeHtml(s.name)}.</b> ${escapeHtml(w)}</div>`)).join('');
+  const matrix = `<div class="gl-h">Budget, cost and return by scenario</div><div class="gl-wrap"><table class="gl-tbl"><thead><tr><th scope="col"></th><th scope="col">History (${escapeHtml(res.baseline.window || '')})</th>${sc.map(s => `<th scope="col">${escapeHtml(s.name)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr class="${r.hl ? 'hl' : ''}"><td>${r.label}</td><td>${r.base}</td>${r.vals.map(v => `<td>${v}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  const sens = sc.map(s => `<div class="gl-h">${escapeHtml(s.name)}: what moves the result (goal ${glNum(res.spec.goal.value)}${res.spec.goal.type === 'revenue' ? ' dollars' : ''})</div><div class="gl-wrap"><table class="gl-tbl"><thead><tr><th scope="col">If</th><th scope="col">Working media</th><th scope="col">Reaches</th><th scope="col">% of goal</th><th scope="col">vs plan</th><th scope="col">ROAS</th><th scope="col">CAC</th></tr></thead><tbody>${s.sensitivities.map(x => `<tr><td>${escapeHtml(x.label)}</td><td>${glFull(x.workingMedia)}</td><td>${x.goalValue != null ? glNum(x.goalValue) : '—'}</td><td>${x.pctOfGoal != null ? x.pctOfGoal + '%' : '—'}</td><td>${x.deltaVsPlan != null ? (x.deltaVsPlan > 0 ? '+' : '') + x.deltaVsPlan + '%' : '—'}</td><td>${x.roas != null ? x.roas.toFixed(2) + 'x' : '—'}</td><td>${glUnit(x.cac)}</td></tr>`).join('')}</tbody></table></div>`).join('');
+  const mixTbl = sel ? `<div class="gl-h">Total with media mix: ${escapeHtml(sel.name)}</div><div class="gl-wrap"><table class="gl-tbl"><thead><tr><th scope="col">Channel</th><th scope="col">Working media</th><th scope="col">Share</th><th scope="col">Cost per 1,000</th><th scope="col">Impressions</th><th scope="col">Evidence</th></tr></thead><tbody>${(sel.channels || []).map(c => `<tr><td>${escapeHtml(c.channel)}</td><td>${glFull(c.spend)}</td><td>${c.share}%</td><td>${glUnit(c.cpm)}</td><td>${glNum(c.impressions)}</td><td>${escapeHtml(c.evidence ? c.evidence.label : '')}</td></tr>`).join('') || '<tr><td colspan="6">No channel history, so the budget is converted at one blended cost.</td></tr>'}<tr class="hl"><td>Total</td><td>${glFull(sel.metrics.workingMedia)}</td><td>100%</td><td>${glUnit(sel.metrics.costPerImpression)}</td><td>${glNum(sel.metrics.impressions)}</td><td></td></tr></tbody></table></div>` : '';
+  const monTbl = sel ? `<div class="gl-h">Monthly breakdown: ${escapeHtml(sel.name)}</div><div class="gl-wrap"><table class="gl-tbl"><thead><tr><th scope="col">Month</th><th scope="col">Working media</th><th scope="col">Impressions</th><th scope="col">Visits</th><th scope="col">Leads</th><th scope="col">Transactions</th><th scope="col">Revenue</th></tr></thead><tbody>${(sel.monthly || []).map(m => `<tr><td>${m.month}</td><td>${glFull(m.workingMedia)}</td><td>${glNum(m.impressions)}</td><td>${glNum(m.visits)}</td><td>${glNum(m.leads)}</td><td>${glNum(m.transactions)}</td><td>${glFull(m.revenue)}</td></tr>`).join('') || '<tr><td colspan="7">No monthly detail returned.</td></tr>'}</tbody></table></div>` : '';
+  const notes = `<details class="gl-adv"><summary>How this was worked out</summary><ul class="hint" style="padding-left:18px;margin:6px 0;">${(res.notes || []).map(n => `<li>${escapeHtml(n)}</li>`).join('')}</ul></details>`;
+  const tried = `<p class="gl-ctx">Mixes tested: ${res.mix.tried.map(t => `${escapeHtml(t.label)} ${glFull(t.workingMedia)}${t.chosen ? ' (chosen)' : ''}`).join(' · ')}.</p>`;
+  const exp = `<div class="gl-actions" role="group" aria-label="Export"><span class="gl-ctx" style="margin:0;">Export</span><button type="button" class="btn-ghost" onclick="glExport('pptx')">PowerPoint</button><button type="button" class="btn-ghost" onclick="glExport('xlsx')">Excel</button><button type="button" class="btn-ghost" onclick="glExport('csv')">CSV</button><button type="button" class="btn-ghost" onclick="glExport('gsheet')">Google Sheets</button></div><div id="glExpMsg" class="scn-msg" role="status"></div>`;
+  host.innerHTML = `<div class="gl-card"><div class="strat-chart-label" style="margin:0 0 4px;">${escapeHtml(res.period.label)} · ${escapeHtml(res.spec.goal.label)} ${res.spec.goal.type === 'revenue' ? glFull(res.spec.goal.value) : glNum(res.spec.goal.value)}</div>${cards}${warns}${exp}
+    ${want('summary') ? `<div class="gl-sum" style="margin-top:12px;">${glSummaryText(res)}</div>${matrix}${sens}` : matrix}${want('mix') ? mixTbl : ''}${want('monthly') ? monTbl : ''}${tried}${notes}</div>`;
+}
+// ---- exports ----
+function glTables(res){
+  const { sc, rows } = glMetricRows(res); const g = res.spec.goal;
+  const summary = [['Goal planner'], ['Plan', res.period.label], ['Goal', g.label + ' ' + g.value], ['Maximizing', res.spec.kpiLabel], ['History window', res.baseline.window || ''], ['Mix', res.mix.label], ['Generated', res.generatedAt.slice(0, 10)], [], ['Measure', 'History'].concat(sc.map(s => s.name))].concat(rows.map(r => [r.label, r.base].concat(r.vals)));
+  const sens = [['Scenario', 'If', 'Working media', 'Reaches', '% of goal', 'Change vs plan %', 'ROAS', 'CAC', 'Cost per lead']]; sc.forEach(s => s.sensitivities.forEach(x => sens.push([s.name, x.label, x.workingMedia, x.goalValue, x.pctOfGoal, x.deltaVsPlan, x.roas, x.cac, x.costPerLead])));
+  const mix = [['Scenario', 'Channel', 'Working media', 'Share %', 'Cost per 1,000', 'Impressions']]; sc.forEach(s => (s.channels || []).forEach(c => mix.push([s.name, c.channel, c.spend, c.share, c.cpm, c.impressions])));
+  const mon = [['Scenario', 'Month', 'Working media', 'Impressions', 'Visits', 'Leads', 'Transactions', 'Revenue']]; sc.forEach(s => (s.monthly || []).forEach(m => mon.push([s.name, m.month, m.workingMedia, m.impressions, m.visits, m.leads, m.transactions, m.revenue])));
+  const notes = [['Notes']].concat((res.notes || []).map(n => [n])).concat(sc.flatMap(s => (s.warnings || []).map(w => [s.name + ': ' + w])));
+  return [{ name: 'Summary', rows: summary }, { name: 'Sensitivities', rows: sens }, { name: 'Channel mix', rows: mix }, { name: 'Monthly', rows: mon }, { name: 'Notes', rows: notes }];
+}
+function glDownload(name, blob){ const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); }
+function glFileBase(res){ return ('goal-plan-' + String(res.period.label || 'plan').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + res.generatedAt.slice(0, 10)); }
+async function glExport(kind){
+  const res = gl.res; if (!res) return; const msg = t => { const el = document.getElementById('glExpMsg'); if (el) el.textContent = t; }; const base = glFileBase(res);
+  try {
+    if (kind === 'csv'){
+      const q = v => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+      const text = glTables(res).map(t => '# ' + t.name + '\n' + t.rows.map(r => r.map(q).join(',')).join('\n')).join('\n\n');
+      glDownload(base + '.csv', new Blob(['﻿' + text], { type: 'text/csv;charset=utf-8' })); msg('CSV downloaded.');
+    } else if (kind === 'xlsx' || kind === 'gsheet'){
+      msg('Building the workbook…'); const X = await cfiLoadSheetJs(); const wb = X.utils.book_new();
+      glTables(res).forEach(t => { const ws = X.utils.aoa_to_sheet(t.rows); ws['!cols'] = [{ wch: 34 }, { wch: 28 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 14 }]; X.utils.book_append_sheet(wb, ws, t.name); });
+      X.writeFile(wb, base + '.xlsx');
+      msg(kind === 'gsheet' ? 'Excel file downloaded. To use it in Google Sheets: open sheets.google.com, choose File, then Import, then Upload, and pick this file.' : 'Excel file downloaded.');
+    } else if (kind === 'pptx'){
+      msg('Building the deck…'); const P = await cmpLoadPptxJs(); const pres = new P(); pres.layout = 'LAYOUT_WIDE'; const NAVY = '1B2A41', INK = '22303F', MUTE = '6B7785', HEAD = { bold: true, color: 'FFFFFF', fill: { color: NAVY }, fontFace: 'Calibri', fontSize: 11 };
+      const { sc, rows } = glMetricRows(res); const g = res.spec.goal; const gv = g.type === 'revenue' ? glFull(g.value) : glNum(g.value);
+      const s1 = pres.addSlide(); s1.background = { color: NAVY }; s1.addText(`${g.label} of ${gv}`, { x: 0.7, y: 2.0, w: 11.9, h: 1.2, fontFace: 'Cambria', fontSize: 40, bold: true, color: 'FFFFFF' }); s1.addText(`${res.period.label} · Hold, Expected and Stretch scenarios · maximizing ${res.spec.kpiLabel}`, { x: 0.7, y: 3.3, w: 11.9, h: 0.6, fontFace: 'Calibri', fontSize: 18, color: 'CADCFC' });
+      const ex = sc.find(s => s.kind === 'expected') || sc[0];
+      const s2 = pres.addSlide(); s2.addText('What it takes to get there', { x: 0.6, y: 0.35, w: 12, h: 0.7, fontFace: 'Cambria', fontSize: 28, bold: true, color: INK });
+      s2.addText(`About ${glFull(ex.metrics.workingMedia)} of working media at the Expected funnel rate. Hold needs ${glFull((sc.find(s => s.kind === 'hold') || ex).metrics.workingMedia)}; Stretch needs ${glFull((sc.find(s => s.kind === 'stretch') || ex).metrics.workingMedia)}.`, { x: 0.6, y: 1.1, w: 12.1, h: 0.7, fontFace: 'Calibri', fontSize: 15, color: INK });
+      s2.addTable([['', 'History'].concat(sc.map(s => s.name)).map(t => ({ text: t, options: HEAD }))].concat(rows.map(r => [r.label, r.base].concat(r.vals).map((t, i) => ({ text: String(t), options: { fontFace: 'Calibri', fontSize: 11, color: INK, bold: r.hl, align: i === 0 ? 'left' : 'right' } })))), { x: 0.6, y: 1.9, w: 12.1, colW: [4.0, 2.1].concat(sc.map(() => (12.1 - 6.1) / sc.length)), border: { type: 'solid', color: 'D9DEE5', pt: 0.5 }, rowH: 0.3 });
+      const s3 = pres.addSlide(); s3.addText(`Sensitivities: ${ex.name}`, { x: 0.6, y: 0.35, w: 12, h: 0.7, fontFace: 'Cambria', fontSize: 28, bold: true, color: INK });
+      s3.addTable([['If', 'Working media', 'Reaches', '% of goal', 'vs plan', 'ROAS', 'CAC'].map(t => ({ text: t, options: HEAD }))].concat(ex.sensitivities.map(x => [x.label, glFull(x.workingMedia), x.goalValue != null ? glNum(x.goalValue) : '—', x.pctOfGoal != null ? x.pctOfGoal + '%' : '—', x.deltaVsPlan != null ? (x.deltaVsPlan > 0 ? '+' : '') + x.deltaVsPlan + '%' : '—', x.roas != null ? x.roas.toFixed(2) + 'x' : '—', glUnit(x.cac)].map((t, i) => ({ text: String(t), options: { fontFace: 'Calibri', fontSize: 12, color: INK, align: i === 0 ? 'left' : 'right' } })))), { x: 0.6, y: 1.3, w: 12.1, colW: [4.0, 1.6, 1.5, 1.2, 1.2, 1.2, 1.4], border: { type: 'solid', color: 'D9DEE5', pt: 0.5 }, rowH: 0.36 });
+      if ((ex.channels || []).length){ const s4 = pres.addSlide(); s4.addText(`Media mix: ${ex.name}`, { x: 0.6, y: 0.35, w: 12, h: 0.7, fontFace: 'Cambria', fontSize: 28, bold: true, color: INK });
+        s4.addTable([['Channel', 'Working media', 'Share', 'Cost per 1,000', 'Impressions'].map(t => ({ text: t, options: HEAD }))].concat(ex.channels.slice(0, 14).map(c => [c.channel, glFull(c.spend), c.share + '%', glUnit(c.cpm), glNum(c.impressions)].map((t, i) => ({ text: String(t), options: { fontFace: 'Calibri', fontSize: 12, color: INK, align: i === 0 ? 'left' : 'right' } })))), { x: 0.6, y: 1.3, w: 12.1, colW: [4.5, 2.2, 1.4, 2.0, 2.0], border: { type: 'solid', color: 'D9DEE5', pt: 0.5 }, rowH: 0.34 }); }
+      if ((ex.monthly || []).length){ const s5 = pres.addSlide(); s5.addText(`Monthly breakdown: ${ex.name}`, { x: 0.6, y: 0.35, w: 12, h: 0.7, fontFace: 'Cambria', fontSize: 28, bold: true, color: INK });
+        s5.addTable([['Month', 'Working media', 'Impressions', 'Visits', 'Leads', 'Transactions', 'Revenue'].map(t => ({ text: t, options: HEAD }))].concat(ex.monthly.map(m => [m.month, glFull(m.workingMedia), glNum(m.impressions), glNum(m.visits), glNum(m.leads), glNum(m.transactions), glFull(m.revenue)].map((t, i) => ({ text: String(t), options: { fontFace: 'Calibri', fontSize: 11, color: INK, align: i === 0 ? 'left' : 'right' } })))), { x: 0.6, y: 1.3, w: 12.1, border: { type: 'solid', color: 'D9DEE5', pt: 0.5 }, rowH: 0.32 }); }
+      const s6 = pres.addSlide(); s6.addText('How this was worked out', { x: 0.6, y: 0.35, w: 12, h: 0.7, fontFace: 'Cambria', fontSize: 28, bold: true, color: INK }); s6.addText((res.notes || []).map((n, i, a) => ({ text: n, options: { bullet: true, breakLine: i < a.length - 1 } })), { x: 0.6, y: 1.2, w: 12.1, h: 5.4, fontFace: 'Calibri', fontSize: 14, color: INK, valign: 'top', paraSpaceAfter: 8 });
+      await pres.writeFile({ fileName: base + '.pptx' }); msg('PowerPoint downloaded.');
+    }
+  } catch (e){ msg('The export did not finish: ' + (e && e.message || 'unknown error')); }
+}
 // ---- Tools as text links ----
 function stratToolsHtml(){
   const go = it => it.step ? `goToStep('${it.step}'${it.stepArg ? `,'${jsStrEscape(it.stepArg)}'` : ''})` : `goToStep('pendingFeature','${jsStrEscape(it.label)}','Strategy','strategy')`;
@@ -26027,7 +26192,7 @@ function bdHomeHtml(){
     <p class="bd-home-date">${now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}${state.company ? ' · ' + escapeHtml(state.company) : ''}</p>
     <div class="bd-home-grid">
       <div class="bd-home-tile"><b>Your dashboard</b><p class="strat-sub">Your tasks, approvals and the work in motion.</p><button type="button" class="strat-chip" onclick="goToStep('dashboard')">Open your dashboard →</button></div>
-      <div class="bd-home-tile"><b>Grow your skills</b><p class="strat-sub">Self-assessment, the key skills for your seat and your career plan.</p><button type="button" class="strat-chip" onclick="goToStep('teamDevelopment')">Open Team Experiences →</button></div>
+      ${RELEASE_2.teamGrowth ? `<div class="bd-home-tile"><b>Grow your skills</b><p class="strat-sub">Self-assessment, the key skills for your seat and your career plan.</p><button type="button" class="strat-chip" onclick="goToStep('teamDevelopment')">Open Team Experiences →</button></div>` : ''}
       <div class="bd-home-tile"><b>Train the Brain</b><p class="strat-sub">${setup}</p><button type="button" class="strat-chip" onclick="goToStep('manageAccount')">${done && total && done >= total ? 'Review your setup →' : 'Continue your setup →'}</button></div>
     </div>
   </div>`;
@@ -26072,6 +26237,7 @@ function bdSeat(){
 }
 function bdGrowthGo(which){ ghOpen(which === 'assess' ? 'assess' : which === 'career' ? 'career' : which === 'oneone' ? 'oneone' : which === 'plan' ? 'plan' : 'home'); }
 function bdGrowthHtml(){
+  if (!RELEASE_2.teamGrowth) return '';
   const row = (title, sub, act) => `<div class="bd-g-row"><div><b>${title}</b><div class="strat-sub">${sub}</div></div>${act ? `<button type="button" class="strat-chip" onclick="${act}">Open</button>` : '<span class="strat-tag benchmark">Coming soon</span>'}</div>`;
   return `<div class="strat-card bd-growth"><div class="strat-head"><h2>Your growth <span class="ai-thought-mount" data-topic="AW"></span></h2></div>
     <p class="strat-sub" style="margin:0 0 6px;">Private to you. Your manager sees nothing here unless you choose to share it.</p>
@@ -26449,7 +26615,7 @@ const ACCOUNT_MGMT_TILE_GROUPS = [
   ]},
   { label: 'Team', items: [
     { label: 'Team & Org Chart', step: 'team', desc: 'In-portal — canonical, account.html links back here. Admin-only.' },
-    { label: 'Team Experiences', step: 'teamDevelopment', desc: 'Self-assessment, skill sets, career plan' }
+    ...(RELEASE_2.teamGrowth ? [{ label: 'Team Experiences', step: 'teamDevelopment', desc: 'Self-assessment, skill sets, career plan' }] : [])
   ]},
   { label: 'Ongoing Admin', items: [
     { label: 'Billing & Security', desc: "Payment, invoices, contact info, comms preferences, password/security, plus the AI-training data/privacy opt-out" },
@@ -30270,6 +30436,7 @@ function openExperienceSubWorkstream(key){
 const MEDIA_SCIENCE_TILES = [
   { key: 'measurementCoverage', label: 'Measurement Coverage & Confidence', desc: 'What this account can actually measure today, and the honest per-channel confidence label that coverage produces.', built: true },
   { key: 'marketOptimization', label: 'Match Market Builder (Testing)', desc: 'Upload real client transactions, get a penetration index and matched Test/Control/Holdout groups.', built: true },
+  { key: 'goalPlanner', label: 'Goal Planner (Budget to Goal)', desc: 'Say the result you want, such as $125M revenue or a $53 cost per lead, and see the budget and mix for Hold, Expected and Stretch.', built: true },
   { key: 'websiteTraffic', label: 'Website Traffic Analysis', desc: 'This account\'s own GA4 traffic — for comparisons against competitors/benchmarks, see AI Agent Training → Research.', built: true },
   { key: 'mmm', label: 'Media Mix Modeling (MMM)', desc: 'A real statistical modeling job — Claude can narrate output, not run the model.', built: false },
   { key: 'directAttribution', label: 'Direct Attribution Performance', desc: 'Interpretation of real attribution-platform output.', built: false },
@@ -30322,6 +30489,8 @@ function openMediaScienceTile(key){
     goToStep('measurementCoverage');
   } else if (key === 'marketOptimization'){
     goToStep('marketOptimization');
+  } else if (key === 'goalPlanner'){
+    glOpen();
   } else if (key === 'websiteTraffic'){
     goToStep('websiteTraffic');
   }
@@ -30746,6 +30915,7 @@ const AI_PARTNER_ONBOARDING_GROUPS = [
         desc: 'Who\'s on this account and their reporting structure — canonical here, account.html links back to this page. Admin-only.',
         status(){ return state.team.length ? { text: `${state.team.length} member${state.team.length === 1 ? '' : 's'} on file`, tone: 'ok' } : { text: 'Not started', tone: 'pending' }; }
       },
+      ...(RELEASE_2.teamGrowth ? [
       {
         title: 'Team Experiences',
         category: 'manual',
@@ -30753,7 +30923,8 @@ const AI_PARTNER_ONBOARDING_GROUPS = [
         route: 'teamDevelopment',
         desc: 'Self-assessment, critical skill sets by seat, and a career development plan for this account’s team.',
         status(){ return { text: 'Open to manage', tone: 'pending' }; }
-      },
+      }
+      ] : []),
       // 2026-08-26 account-management reorg, round 2, per direct
       // instruction: "The client level assessment rankings should be
       // developed and added to the team section." This is Continuous
@@ -31826,6 +31997,7 @@ function ttbModuleHtml(d, i){
   if (c.upload && c.upload.alt) btns.push(`<button type="button" class="btn-primary" onclick="${c.upload.direct}('${c.upload.alt.key}')">${escapeHtml(c.upload.alt.label)}</button>`);
   if (c.manual) btns.push(`<button type="button" class="btn-ghost" aria-expanded="${!!ttb.manual[i.step]}" onclick="${c.manual.teamFlow ? 'ttbTeamJump()' : c.manual.cards || c.manual.profile ? `ttbToggleManual('${i.step}')` : c.manual.step ? `ttbGo('${c.manual.step}'${c.manual.arg ? `, '${c.manual.arg}'` : ''})` : `ttbToggleManual('${i.step}')`}">${ttb.manual[i.step] && (c.manual.cards || c.manual.profile) ? (c.manual.hideLabel || 'Hide manual entry') : (c.manual.label || 'Add Manually')}</button>`);
   if (c.integ) btns.push(`<button type="button" class="btn-ghost" onclick="ttbGo('partnerIntegrations')">Partner Integration</button>`);
+  if (i.step === 'annualPlan' || i.step === 'marketingBudgetUpload') btns.push(`<button type="button" class="btn-ghost" onclick="glOpen()">Plan a budget to a goal &rarr;</button>`);
   const hasData = i.done;
   const viewHtml = c.view ? `<button type="button" class="btn-ghost ttb-view" ${hasData ? '' : 'disabled aria-disabled="true" title="Available once this is added"'} onclick="ttbOpenView('${i.step}')">View in Portal${hasData ? ' →' : ''}</button>` : `<span class="hint ttb-used">${escapeHtml(c.used || 'Trains the Brain only')}</span>`;
   const manualOpen = open && ttb.manual[i.step];
@@ -31850,7 +32022,7 @@ function ttbSecToggle(key){
 // 2026-10-07 — the old "All setup cards" list is folded into the five sections. Cards that duplicate a step item are dropped;
 // the rest show as link rows under the section they belong to. Not-built cards are left out.
 const TTB_MORE = {
-  team: ['Team Experiences', 'Assessment Rankings'],
+  team: RELEASE_2.teamGrowth ? ['Team Experiences', 'Assessment Rankings'] : ['Assessment Rankings'],
   'your company': ['View My Customers'],
   'your voice': ['Press Release Development & Distribution History', 'Reputation & Media Monitoring', 'Wire Frame Development'],
   'your numbers': ['Analytics Connections', 'Historical Campaigns & Media Plans', 'Manual KPI & Actuals Entry'],
@@ -55312,6 +55484,8 @@ const BP_FAQ_TOPICS = [
   { letter: 'AC', label: 'Agentic Media Planning output', keywords: ['agentic media planning','marketing loop','media loop','channel mix','budget path','media science'] },
   { letter: 'AD', label: 'Align Sales Territories & Storefronts output', keywords: ['storefront','trade area','radius','sales territory','zip','postal code','store location'] }
 ];
+if (!RELEASE_2.teamGrowth){ for (let i = BP_FAQ_TOPICS.length - 1; i >= 0; i--) if (BP_FAQ_TOPICS[i].letter === 'AT' || BP_FAQ_TOPICS[i].letter === 'AW') BP_FAQ_TOPICS.splice(i, 1); } // Release 2 topics
+
 
 // Round 132ll (2026-08-10), per direct instruction: "we should tag the
 // content using logic that groups the results based on similarity...
@@ -70298,6 +70472,7 @@ function jumpToCampaignSection(sectionId){
 
 let lastGroup = 'Brand';
 function goToStep(step, arg, arg2, arg3){
+  if (!RELEASE_2.teamGrowth && (step === 'teamDevelopment' || step === 'growthHome')) step = 'dashboard'; // Release 2 feature, hidden for now
   if (step === 'utmConfig' || step === 'mmmInputs'){ ttbOpenNumbersItem(step); return; } // moved into Train the Brain, Your Numbers
   if (typeof portalIsRecipient !== 'undefined' && portalIsRecipient && step !== 'exports') step = 'exports';
   if (step !== 'manageAccount' && typeof ttbReturnCards === 'function') ttbReturnCards(); // entry cards borrowed by Train the Brain go back to their own page
@@ -81820,17 +81995,17 @@ async function mbuBaselineLoad(){
 function mbuBaselineRender(){
   const box = document.getElementById('mbuBaselineDraft'); const d = mbuBaseline; if (!box || !d) return;
   const approved = d.status === 'approved';
-  const chip = { 'from data': ['From data', '#1b6b3a'], 'estimated': ['Estimated', '#8a5a00'], 'calculated': ['Calculated', '#2b5f9e'], 'missing': ['Missing', '#b3261e'], 'edited': ['Edited', '#6b3fa0'] };
-  const rows = Object.keys(d.cells || {}).map(f => { const c = d.cells[f]; const ch = chip[c.state] || [c.state, '#555'];
+  const chip = { 'from data': ['From data', '#1F7A4D', '#E6F4EC'], 'estimated': ['Estimated', '#8A5A00', '#FFF4DB'], 'calculated': ['Calculated', 'var(--media)', 'var(--media-tint)'], 'missing': ['Missing', '#C0273C', '#FDECEC'], 'edited': ['Edited', '#6B3FA0', '#F1EAFB'] };
+  const rows = Object.keys(d.cells || {}).map(f => { const c = d.cells[f]; const ch = chip[c.state] || [c.state, '#6B7280', '#F1F3F5'];
     const val = c.value == null ? '' : String(Math.round(c.value * 100) / 100);
-    const input = approved ? `<span>${c.value == null ? '—' : Number(c.value).toLocaleString('en-US')}</span>` : `<input type="number" min="0" step="any" value="${escapeHtml(val)}" placeholder="Not on file" style="width:130px;" onchange="mbuBaselineEdit('${escapeHtml(f)}', this.value)" aria-label="${escapeHtml(c.label)}">`;
-    return `<tr><td>${escapeHtml(c.label)}</td><td>${input}</td><td><span style="font-size:11px;font-weight:600;color:${ch[1]};border:1px solid ${ch[1]};border-radius:10px;padding:1px 8px;white-space:nowrap;">${ch[0]}</span></td><td class="hint" style="margin:0;">${escapeHtml(c.source || '')}</td></tr>`; }).join('');
+    const input = approved ? `<span>${c.value == null ? '—' : Number(c.value).toLocaleString('en-US')}</span>` : `<input type="number" min="0" step="any" class="tbl-input" value="${escapeHtml(val)}" placeholder="Not on file" style="width:150px;text-align:right;font-variant-numeric:tabular-nums;" onchange="mbuBaselineEdit('${escapeHtml(f)}', this.value)" aria-label="${escapeHtml(c.label)}">`;
+    return `<tr><td>${escapeHtml(c.label)}</td><td>${input}</td><td><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:600;white-space:nowrap;color:${ch[1]};background:${ch[2]};">${ch[0]}</span></td><td class="hint" style="margin:0;">${escapeHtml(c.source || '')}</td></tr>`; }).join('');
   const missing = Object.keys(d.cells || {}).filter(f => d.cells[f].state === 'missing').length;
   const head = approved
     ? `<strong>Baseline approved</strong> by ${escapeHtml(d.approvedBy || 'a team member')} on ${escapeHtml(String(d.approvedAt || '').slice(0, 10))}. ${d.newerData ? '<span style="color:#8a5a00;">New data has been loaded since. Rebuild to bring it in; approval is asked for again.</span>' : ''}`
     : `<strong>Baseline draft</strong>, waiting for approval. Built from your data${d.label ? ' (' + escapeHtml(d.label) + ')' : ''}. Correct any cell, then approve. ${missing ? `<span style="color:#b3261e;">${missing} cell${missing === 1 ? ' is' : 's are'} not on file.</span>` : ''}`;
   const btns = (approved ? '' : (d.canApprove ? '<button type="button" class="btn-primary" onclick="mbuBaselineApprove()">Approve baseline</button> ' : '<span class="hint" style="margin:0;">An admin, the CMO or a Director approves the baseline.</span> ')) + '<button type="button" class="btn-ghost" onclick="mbuBaselineRebuild()">Rebuild from data</button>';
-  box.innerHTML = `<div style="border:1px solid var(--border,#d8d8d8);border-radius:8px;padding:12px;"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:8px;"><div>${head}</div><div style="display:flex;gap:8px;align-items:center;">${btns}</div></div><div style="overflow-x:auto;"><table class="data-table" style="min-width:640px;"><thead><tr><th>Metric</th><th>Value</th><th>Status</th><th>Where it came from</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  box.innerHTML = `<div style="background:var(--paper-dim);border:1px solid var(--line);border-radius:8px;padding:12px 14px;"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:8px;"><div>${head}</div><div style="display:flex;gap:8px;align-items:center;">${btns}</div></div><div style="overflow-x:auto;"><table class="data-table" style="min-width:640px;"><thead><tr><th>Metric</th><th>Value</th><th>Status</th><th>Where it came from</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
 async function mbuBaselineEdit(field, value){
   const p = mbuBaselineParams();
