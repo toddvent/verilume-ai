@@ -405,3 +405,26 @@ body:has(.s-cond):not(:has(#pk)) .s-close::after{aspect-ratio:595/355;width:min(
 body:has(#pk) .s-close::after{aspect-ratio:443/278;width:min(34vw,480px);background-image:var(--art-arcs);top:0;bottom:auto;}
 footer .footer-inner{box-shadow:0 0 0 100vmax var(--vl-section);clip-path:inset(0 -100vmax);}
 @media (max-width:1000px){.hero-h::after{display:none!important;}}
+/* "Turn on the light": darkest brand navy -> brand gold */
+.bk-panel{background:#14213D!important;border:1.5px solid #14213D!important;box-shadow:0 10px 30px rgba(20,33,61,.18)!important;transition:background .6s,border-color .6s,color .6s!important;}
+.bk-panel.on{background:#C9932E!important;border-color:#C9932E!important;box-shadow:0 10px 30px rgba(201,147,46,.28)!important;}
+.bk-panel .bk-state{color:#E8C27A!important;}
+.bk-panel .bk-h,.bk-panel .bk-p,.bk-panel .sw-l{color:#fff!important;}
+.bk-panel .bk-p{opacity:.92;}
+.bk-panel .bk-res{border-top-color:rgba(255,255,255,.28)!important;color:rgba(255,255,255,.88)!important;}
+.bk-panel .bk-res b{color:#E8C27A!important;}
+.bk-panel .sw{background:rgba(255,255,255,.18)!important;border-color:rgba(255,255,255,.55)!important;}
+.bk-panel .sw::after{background:#fff!important;box-shadow:none!important;}
+.bk-panel .bk-see{color:#fff!important;}
+/* lit state: gold ground, navy type (white on #C9932E is only ~2.7:1) */
+.bk-panel.on .bk-state,.bk-panel.on .bk-h,.bk-panel.on .bk-p,.bk-panel.on .sw-l,.bk-panel.on .bk-see{color:#14213D!important;}
+.bk-panel.on .bk-p{opacity:1;}
+.bk-panel.on .bk-res{border-top-color:rgba(20,33,61,.3)!important;color:#14213D!important;}
+.bk-panel.on .bk-res b{color:#14213D!important;}
+.bk-panel.on .sw{background:rgba(20,33,61,.25)!important;border-color:#14213D!important;}
+.bk-panel.on .sw::after{background:#14213D!important;box-shadow:none!important;}
+.bk-panel .ws,.bk-panel .ws i{color:rgba(255,255,255,.85)!important;}
+.bk-panel .ws b{color:#E8C27A!important;}.bk-panel .ws::before{background:#E8C27A!important;box-shadow:none!important;}
+.bk-panel .bk-res span,.bk-panel .bk-res i,.bk-panel .bk-res em,.bk-panel .bk-res small{color:rgba(255,255,255,.8)!important;}
+.bk-panel.on .ws,.bk-panel.on .ws i,.bk-panel.on .bk-res span,.bk-panel.on .bk-res i,.bk-panel.on .bk-res em,.bk-panel.on .bk-res small{color:#14213D!important;}
+.bk-panel.on .ws b{color:#14213D!important;}.bk-panel.on .ws::before{background:#14213D!important;}
