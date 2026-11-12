@@ -303,7 +303,7 @@ html body header,html body header#siteHeader{background:rgba(255,255,255,.96)!im
 .vl-brand-link{background:none!important;padding:0!important;border-radius:0!important;}
 .vl-brand-img{height:56px!important;}
 .back-nav .vl-brand-img{height:60px!important;}
-@media (max-width:600px){.vl-brand-img{height:44px!important;}}
+@media (max-width:600px){.vl-brand-img{height:52px!important;}}
 
 /* buttons */
 .btn-lamp,.btn-primary,button.btn-primary,.btn-ink{background:linear-gradient(135deg,#1B2E57,#14213D)!important;color:#fff!important;border:0!important;box-shadow:none!important;}
@@ -335,8 +335,8 @@ p [style*="color:#fff"],.lede [style*="color:#fff"],.sub [style*="color:#fff"]{c
 html body .lede b,html body .hero-h .lede b{color:var(--vl-navy)!important;}
 
 /* ---- header fit ---- */
-.vl-brand-img{height:48px!important;}
-.back-nav .vl-brand-img{height:56px!important;}
+.vl-brand-img{height:62px!important;}.nav > .vl-brand-link,.nav .vl-brand-link{margin-right:44px!important;flex:none;}.nav{gap:8px;}
+.back-nav .vl-brand-img{height:72px!important;}
 header .nav{max-width:1360px;}
 @media (min-width:821px){.navlinks{flex-wrap:nowrap!important;gap:6px 24px!important;}.navlinks a{font-size:clamp(12.5px,1.05vw,15px)!important;}}
 
