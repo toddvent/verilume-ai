@@ -1423,6 +1423,13 @@ ensureColumn('team_members', 'memberkind', "TEXT DEFAULT 'internal'");
 ensureColumn('team_members', 'handle', 'TEXT');
 ensureColumn('team_members', 'rolelabel', 'TEXT');
 ensureColumn('team_members', 'categories', 'TEXT');
+// 2026-11-12 — per-person portal starting page. Stored as a token like 'tab:brand', 'ws:reputation' or 'step:mediaplan'; null = the portal's default.
+ensureColumn('team_members', 'startpage', 'TEXT');
+function cleanStartPage(v){
+  if (v === undefined || v === null || v === '') return null;
+  const t = String(v).trim();
+  return /^(tab|ws|step):[A-Za-z0-9_]{1,40}$/.test(t) ? t : undefined; // undefined = invalid
+}
 createTableIfNeeded(`CREATE TABLE IF NOT EXISTS member_activity (
   id TEXT PRIMARY KEY,
   accountId TEXT NOT NULL,
@@ -33271,7 +33278,7 @@ async function handleRequestInner(req, res) {
       // fixed the same way here.
       let member;
       try {
-        member = db.prepare('SELECT id, accountId, name, email, isAdmin, status FROM team_members WHERE id = ?').get(session.memberId);
+        member = db.prepare('SELECT id, accountId, name, email, isAdmin, status, startpage FROM team_members WHERE id = ?').get(session.memberId);
       } catch (e){
         console.error('[GET /api/auth/me] lookup failed:', e.message);
         return sendJson(res, 502, { error: 'Could not verify your session right now — try again in a moment.' });
@@ -33284,7 +33291,8 @@ async function handleRequestInner(req, res) {
         memberId: member.id,
         name: member.name,
         email: member.email,
-        isAdmin: !!member.isAdmin
+        isAdmin: !!member.isAdmin,
+        startPage: member.startpage || null
       });
     }
 
@@ -50473,8 +50481,9 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       // Explicit column list (not SELECT *) as of 2026-08-18 — team_members
       // now carries passwordHash/passwordSalt (registration rebuild) and
       // those must never leave the server, hashed or not.
-      const team = db.prepare(`SELECT id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, phone, phoneVerifiedAt, mustChangePassword, memberkind, handle, rolelabel, categories, accessexpiresat, phoneext, accesslevel, exportfeeds, spendauthority, spendunlimited, mfasms, invitesentat, invitestatus, inviteerror, invitevia FROM team_members WHERE accountId = ? ORDER BY createdAt ASC`).all(accountId);
+      const team = db.prepare(`SELECT id, accountId, name, functionGroup, level, reportsToId, createdAt, email, isAdmin, status, phone, phoneVerifiedAt, mustChangePassword, memberkind, handle, rolelabel, categories, accessexpiresat, phoneext, accesslevel, exportfeeds, spendauthority, spendunlimited, mfasms, invitesentat, invitestatus, inviteerror, invitevia, startpage FROM team_members WHERE accountId = ? ORDER BY createdAt ASC`).all(accountId);
       team.forEach(m => {
+        m.startPage = m.startpage || null; delete m.startpage;
         if (!m.handle){ m.handle = generateHandle(accountId, m.name, m.id); try { db.prepare('UPDATE team_members SET handle = ? WHERE id = ?').run(m.handle, m.id); } catch (e){} }
         m.accessExpiresAt = m.accessexpiresat || null; delete m.accessexpiresat; m.memberKind = m.memberkind || 'internal'; m.roleLabel = m.rolelabel || ''; m.phoneExt = m.phoneext || ''; delete m.phoneext; m.accessLevel = m.accesslevel || ((m.memberKind === 'viewer' || m.memberKind === 'recipient') ? 'view' : 'edit'); delete m.accesslevel; try { m.exportFeeds = JSON.parse(m.exportfeeds || '[]'); } catch (e){ m.exportFeeds = []; } delete m.exportfeeds; let c = []; try { c = JSON.parse(m.categories || '[]'); } catch (e){} m.categories = c;
         delete m.memberkind; delete m.rolelabel;
@@ -50516,6 +50525,8 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       // team member (unchanged); only granting isAdmin on the new invite
       // itself requires the requester to already be an admin.
       if (body.isAdmin && !requireAdminMember(req, res, accountId)) return;
+      if (body.startPage && !requireAdminMember(req, res, accountId)) return; // only an Admin assigns a starting page when adding someone
+      if (body.startPage && cleanStartPage(body.startPage) === undefined) return sendJson(res, 400, { error: 'That starting page is not valid.' });
       const newKind = MEMBER_KINDS.includes(body.memberKind) ? body.memberKind : 'internal';
       if (body.phone && String(body.phone).replace(/\D/g, '').length < 10) return sendJson(res, 400, { error: 'a phone number needs at least 10 digits, or leave it empty' });
       if ((body.inviteVia === 'text' || body.inviteVia === 'both') && body.sendInvite !== false && !toE164(body.phone)) return sendJson(res, 400, { error: 'To send a text, enter a mobile number with at least 10 digits.' });
@@ -50549,6 +50560,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (newKind === 'external'){ accessExpiresAt = addMonthsIso(new Date().toISOString(), 3); db.prepare('UPDATE team_members SET accessexpiresat = ? WHERE id = ?').run(accessExpiresAt, memberId); }
       // New people start on email codes. The startup backfill only touches rows still NULL, i.e. people who existed before this setting.
       try { db.prepare('UPDATE team_members SET mfasms = 0 WHERE id = ? AND mfasms IS NULL').run(memberId); } catch (e){}
+      { const sp = cleanStartPage(body.startPage); if (sp) { try { db.prepare('UPDATE team_members SET startpage = ? WHERE id = ?').run(sp, memberId); } catch (e){} } }
       const response = { memberId, handle: newHandle, memberKind: newKind, accessExpiresAt };
       if (tempPassword){
         // 2026-10-27 — email the invitation link; only fall back to showing a temporary password when the email could not be sent.
@@ -51107,6 +51119,16 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         if (!/^[a-z0-9_.]{2,30}$/.test(h)) return sendJson(res, 400, { error: 'A handle is 2 to 30 letters, numbers, dots or underscores.' });
         if (handleTaken(existing.accountId, h, memberId)) return sendJson(res, 409, { error: 'That handle is already used in this account.' });
         db.prepare('UPDATE team_members SET handle = ? WHERE id = ?').run(h, memberId);
+      }
+      if (body.startPage !== undefined){
+        // An Admin can set anyone's starting page; everyone else can set only their own.
+        const sp = cleanStartPage(body.startPage);
+        if (sp === undefined) return sendJson(res, 400, { error: 'That starting page is not valid.' });
+        const me = authenticate(req);
+        if (!(me && me.memberId && me.memberId === memberId)){
+          if (!requireAdminMember(req, res, existing.accountId)) return;
+        }
+        db.prepare('UPDATE team_members SET startpage = ? WHERE id = ?').run(sp, memberId);
       }
       if (body.roleLabel !== undefined) db.prepare('UPDATE team_members SET rolelabel = ? WHERE id = ?').run(String(body.roleLabel || '').slice(0, 80) || null, memberId);
       if (body.categories !== undefined) db.prepare('UPDATE team_members SET categories = ? WHERE id = ?').run(cleanCategories(body.categories), memberId);
