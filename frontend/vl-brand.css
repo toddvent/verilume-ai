@@ -428,3 +428,6 @@ footer .footer-inner{box-shadow:0 0 0 100vmax var(--vl-section);clip-path:inset(
 .bk-panel .bk-res span,.bk-panel .bk-res i,.bk-panel .bk-res em,.bk-panel .bk-res small{color:rgba(255,255,255,.8)!important;}
 .bk-panel.on .ws,.bk-panel.on .ws i,.bk-panel.on .bk-res span,.bk-panel.on .bk-res i,.bk-panel.on .bk-res em,.bk-panel.on .bk-res small{color:#14213D!important;}
 .bk-panel.on .ws b{color:#14213D!important;}.bk-panel.on .ws::before{background:#14213D!important;}
+/* optically centre nav on the "verilume" wordmark, which sits below the logo mark's midline */
+.nav > .nav-group{margin-top:10px!important;}
+@media (max-width:600px){.nav > .nav-group{margin-top:6px!important;}}
