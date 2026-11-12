@@ -6,7 +6,7 @@
 
 <!-- Primary SEO -->
 <title>Illumination Packages — Verilume</title>
-<meta name="description" content="Five levels, fit to your agentic needs, and a person decides at every one.">
+<meta name="description" content="Three packages with the same full product. Choose your monthly credits. Partner integrations are Enterprise only.">
 <meta name="keywords" content="customer experience audit, CX audit tool, brand experience assessment, brand health assessment, marketing and CX gap, free brand assessment, CX scorecard, white label CX diagnostic for agencies">
 <link rel="canonical" href="https://www.verilume.ai/packages.html">
 <meta name="robots" content="index, follow">
@@ -15,7 +15,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Verilume">
 <meta property="og:title" content="Illumination Packages — Verilume">
-<meta property="og:description" content="Five levels, fit to your agentic needs, and a person decides at every one.">
+<meta property="og:description" content="Three packages with the same full product. Choose your monthly credits. Partner integrations are Enterprise only.">
 <meta property="og:url" content="https://www.verilume.ai/packages.html">
 <meta property="og:image" content="https://www.verilume.ai/og-image.png">
 <meta property="og:image:width" content="1200">
@@ -774,6 +774,59 @@ footer{padding:64px 0 36px;}
   .utility-nav-inner a:hover{border-color:#fff;background:rgba(255,255,255,0.08);}
 </style>
 <link rel="stylesheet" href="/vl-brand.css">
+
+<style id="pkg-new">
+.pkg-sec{padding:88px 0;background:#fff;color:var(--vl-navy,#14213D)}
+.pkg-sec.tint{background:#F6F4EE}
+.pkg-sec .kicker{color:#0A58CC}
+.pkg-sec h2{font-size:clamp(1.9rem,3.6vw,2.8rem);line-height:1.08;max-width:18em;margin:0 0 14px;font-weight:700;color:#14213D}
+.pkg-sec .sub{max-width:44em;color:#5B5647;font-size:1.05rem;line-height:1.55;margin:0 0 34px}
+.pkg-all{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.pkg-all div{background:#fff;border:1.5px solid rgba(10,88,204,.22);border-radius:16px;padding:22px 20px;box-shadow:0 6px 18px rgba(20,33,61,.05)}
+.pkg-all b{display:block;font-size:1.05rem;margin-bottom:6px;color:#14213D}
+.pkg-all span{display:block;font-size:.93rem;line-height:1.5;color:#5B5647}
+.pkg-note{margin-top:22px;font-size:.95rem;color:#14213D}
+.pkg-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;align-items:stretch}
+.pkg-card{background:#fff;border:1.5px solid #E4E0D3;border-radius:20px;padding:30px 26px;display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 24px rgba(20,33,61,.06);position:relative}
+.pkg-card.feat{border-color:#0A58CC;box-shadow:0 12px 34px rgba(10,88,204,.14)}
+.pkg-card.ent{background:#14213D;border-color:#14213D;color:#fff}
+.pkg-card h3{margin:0;font-size:1.6rem;font-weight:700}
+.pkg-card .tag{font:600 11px/1 var(--vl-body,Poppins,sans-serif);letter-spacing:.14em;text-transform:uppercase;color:#0A58CC}
+.pkg-card.ent .tag{color:#E8C27A}
+.pkg-price{font-size:2.6rem;font-weight:700;letter-spacing:-.02em;line-height:1}
+.pkg-price small{font-size:1rem;font-weight:500;color:#5B5647;letter-spacing:0}
+.pkg-card.ent .pkg-price small,.pkg-card.ent p,.pkg-card.ent li{color:rgba(255,255,255,.88)}
+.pkg-cred{display:flex;align-items:baseline;gap:8px;padding:12px 0;border-top:1px solid #E4E0D3;border-bottom:1px solid #E4E0D3}
+.pkg-card.ent .pkg-cred{border-color:rgba(255,255,255,.25)}
+.pkg-cred b{font-size:2rem;color:#C9932E;font-weight:700}
+.pkg-card.ent .pkg-cred b{color:#E8C27A}
+.pkg-card p{margin:0;font-size:.95rem;line-height:1.5;color:#5B5647}
+.pkg-card ul{margin:0;padding-left:18px;font-size:.93rem;line-height:1.6;color:#14213D}
+.pkg-card .pkSel{margin-top:auto}
+.pkg-card.ent h3,.pkg-card.ent .pkg-price{color:#fff}.pkg-card.ent .pkg-price{font-size:2.1rem;line-height:1.25}
+.pkg-card.ent .pkSelLink{margin-top:auto;display:inline-block;text-align:center;background:#fff!important;color:#14213D!important;border:1.5px solid #fff;border-radius:999px;padding:12px 22px;font-weight:600;text-decoration:none}
+.pkg-fine{margin-top:18px;font-size:.9rem;color:#5B5647;max-width:52em}
+.pkg-tbl{width:100%;border-collapse:collapse;background:#fff;border:1.5px solid #E4E0D3;border-radius:16px;overflow:hidden}
+.pkg-tbl th,.pkg-tbl td{padding:13px 18px;text-align:left;border-bottom:1px solid #E4E0D3;font-size:.98rem}
+.pkg-tbl th{font:600 11px var(--vl-body,Poppins,sans-serif);letter-spacing:.12em;text-transform:uppercase;color:#5B5647;background:#F6F4EE}
+.pkg-tbl td:last-child,.pkg-tbl th:last-child{text-align:right;font-weight:700;color:#14213D}
+.pkg-two{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:28px;align-items:start}
+.pkg-never{background:#F6F4EE;border-radius:16px;padding:24px}
+.pkg-never b{display:block;margin-bottom:10px}
+.pkg-never ul{margin:0;padding-left:18px;line-height:1.7;font-size:.96rem}
+.pkg-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-bottom:26px}
+.pkg-steps div{background:#fff;border:1.5px solid rgba(10,88,204,.22);border-radius:16px;padding:22px}
+.pkg-steps b{display:block;font-size:1.15rem;margin-bottom:6px}
+.pkg-steps span{font-size:.95rem;line-height:1.5;color:#5B5647;display:block}
+.pkg-bar{display:flex;height:16px;border-radius:999px;overflow:hidden;background:#E4E0D3;margin:8px 0 6px}
+.pkg-bar i{display:block;height:100%}
+.pkg-int{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.pkg-int div{background:#14213D;color:#fff;border-radius:16px;padding:24px}
+.pkg-int b{display:block;font-size:1.2rem;margin-bottom:6px;color:#E8C27A}
+.pkg-int span{font-size:.95rem;line-height:1.5;color:rgba(255,255,255,.88)}
+@media(max-width:980px){.pkg-all{grid-template-columns:1fr 1fr}.pkg-cards,.pkg-int,.pkg-steps{grid-template-columns:1fr}.pkg-two{grid-template-columns:1fr}}
+@media(max-width:560px){.pkg-all{grid-template-columns:1fr}}
+</style>
 </head>
 <body>
 
@@ -817,21 +870,96 @@ footer{padding:64px 0 36px;}
   <div class="glow" aria-hidden="true"></div>
   <div class="wrap" style="position:relative">
     <p class="kicker">Illumination Packages</p>
-    <h1 id="pk-h">Five levels. <em>Fit to your agentic needs.</em></h1>
-    <p class="lede">Choose how much of the drafting and watching you hand to AI. At every level, <b style="color:#fff">a person decides.</b></p>
+    <h1 id="pk-h">Everyone gets everything. <em>Credits set the pace.</em></h1>
+    <p class="lede">Every package has the same product. You choose how much AI work you want each month, in credits. At every level, <b style="color:#fff">a person decides.</b></p>
     <p class="ws" style="margin:0"><i>In your workspace</i> <b>Illumination Packages</b></p>
   </div>
 </section>
 
 
 
-<section class="pk-sec alt" id="compare" aria-labelledby="cp-h">
+<section class="pkg-sec" id="everyone" aria-labelledby="ev-h">
   <div class="wrap">
-    <p class="kicker">What each level includes</p>
-    <h2 id="cp-h">Start where your team is. Move when your needs do.</h2>
-    <p class="sub">A higher level is not a better one. It is a different fit. Select a level to highlight it.</p>
-    <div class="mxw"><table class="mx" id="mx"></table></div>
+    <p class="kicker">Included in every package</p>
+    <h2 id="ev-h">One product. The same for every team.</h2>
+    <p class="sub">There are no feature tiers to decode. Starter, Growth and Enterprise all include the full platform.</p>
+    <div class="pkg-all">
+      <div><b>Free assessment and score</b><span>See where you stand and track your Illumination Score over time.</span></div>
+      <div><b>Data uploads</b><span>Bring in your sales, calls, media and customer data, with the source named on every number.</span></div>
+      <div><b>Plan, budget and calendar</b><span>Marketing Calendar, campaigns, budgets and the annual plan.</span></div>
+      <div><b>Campaign brief and six stages</b><span>One objective, written once. Every stage reads from it.</span></div>
+      <div><b>AI drafting, human approval</b><span>Copy, press releases and replies drafted by the AI team. A person approves, edits or declines.</span></div>
+      <div><b>Train the AI Brain</b><span>Teach it your brand. Every correction stays with the company.</span></div>
+      <div><b>Continuous monitoring</b><span>Weekly reputation sweep and news feed, always on.</span></div>
+      <div><b>Team collaboration and onboarding</b><span>Questions, drafts and decisions in one place. Onboarding at no separate fee.</span></div>
+    </div>
+    <p class="pkg-note"><b>One exception:</b> partner integrations with Snowflake, Google and Meta are Enterprise only.</p>
+  </div>
+</section>
+<section class="pkg-sec tint" id="compare" aria-labelledby="cp-h">
+  <div class="wrap">
+    <p class="kicker">Three packages</p>
+    <h2 id="cp-h">Pick the monthly credits that fit your team.</h2>
+    <p class="sub">You can move up or down at any time. Everything you set up carries over.</p>
+    <div class="pkg-cards">
+      <div class="pkg-card"><span class="tag">Starting out</span><h3>Starter</h3>
+        <div class="pkg-price">$1,500<small> / month</small></div>
+        <div class="pkg-cred"><b>50</b><span>credits each month</span></div>
+        <p>For a small team getting started with steady, simple help.</p>
+        <ul><li>The full platform</li><li>Onboarding included</li><li>Credit meter in your portal</li></ul>
+        <button class="btn btn-ink pkSel" data-i="0">Select Starter</button></div>
+      <div class="pkg-card feat"><span class="tag">Growing</span><h3>Growth</h3>
+        <div class="pkg-price">$4,000<small> / month</small></div>
+        <div class="pkg-cred"><b>150</b><span>credits each month</span></div>
+        <p>For a team that drafts and measures across every campaign.</p>
+        <ul><li>The full platform</li><li>Onboarding included</li><li>Credit meter in your portal</li></ul>
+        <button class="btn btn-ink pkSel" data-i="1">Select Growth</button></div>
+      <div class="pkg-card ent"><span class="tag">At scale</span><h3>Enterprise</h3>
+        <div class="pkg-price">Contact us</div>
+        <div class="pkg-cred"><b>Custom</b><span>credits, sized to your team</span></div>
+        <p>For an organization with many seats, plus partner integrations. We build the package with you.</p>
+        <ul><li>The full platform</li><li><b>Partner integrations: Snowflake, Google and Meta</b></li><li>Onboarding included</li></ul>
+        <a class="btn pkSelLink" href="licensing.html">Contact us</a></div>
+    </div>
+    <p class="pkg-fine">Save 15% with an annual commitment. Need more in a month? An admin can add 50 credits for $2,000, invoiced, or move up a package. Enterprise is priced with you.</p>
     <div class="pkcta2" id="pkOut" hidden role="status" aria-live="polite"></div>
+  </div>
+</section>
+<section class="pkg-sec" id="credits" aria-labelledby="cr-h">
+  <div class="wrap">
+    <p class="kicker">How credits work</p>
+    <h2 id="cr-h">Small jobs cost little. Big jobs cost more.</h2>
+    <p class="sub">Credits count the AI work you ask for. Everything you plan, upload and review is free.</p>
+    <div class="pkg-two">
+      <table class="pkg-tbl"><tr><th>AI work</th><th>Credits</th></tr>
+        <tr><td>Standard draft</td><td>1</td></tr>
+        <tr><td>Relevance check</td><td>1</td></tr>
+        <tr><td>Reading a forecast result aloud (AI narration)</td><td>1</td></tr>
+        <tr><td>Press release draft</td><td>3</td></tr>
+        <tr><td>Five-model contest</td><td>5</td></tr>
+        <tr><td>Voice interaction</td><td>5</td></tr>
+        <tr><td>Sourced competitor profile</td><td>10</td></tr>
+      </table>
+      <div class="pkg-never"><b>Never uses credits</b><ul>
+        <li>Marketing Calendar, campaigns, budgets and the annual plan</li>
+        <li>Every Train the Brain input and upload</li>
+        <li>Viewing and exports</li>
+        <li>Forecast and goal-planner math</li>
+        <li>The weekly reputation sweep and news feed</li></ul>
+        <p style="font-size:.9rem;color:#5B5647;margin:12px 0 0">A reply or release drafted from a feed item is a normal draft and counts.</p></div>
+    </div>
+  </div>
+</section>
+<section class="pkg-sec tint" id="integrations" aria-labelledby="in-h">
+  <div class="wrap">
+    <p class="kicker">Enterprise only</p>
+    <h2 id="in-h">Connect your data platforms and ad accounts.</h2>
+    <p class="sub">Partner integrations are the one thing not in every package. They are included with Enterprise.</p>
+    <div class="pkg-int">
+      <div><b>Snowflake</b><span>Sync your warehouse data into Verilume on a schedule.</span></div>
+      <div><b>Google</b><span>Connect your Google data and ad accounts.</span></div>
+      <div><b>Meta</b><span>Connect your Meta ad accounts and campaigns.</span></div>
+    </div>
   </div>
 </section>
 
@@ -858,42 +986,14 @@ footer{padding:64px 0 36px;}
   <div class="footer-faq">
     <h2>Questions we get</h2>
     <div class="faq-list">
-      <div class="faq-item">
-        <h3 onclick="toggleFaqItem(this)">How do I know which level fits? <span class="faq-chevron">▸</span></h3>
-        <div class="faq-body">
-        <p>Start with the free assessment. Your org-chart band and what you want the AI to handle point to a level, and you can move up later without losing anything you built.</p>
-        </div>
-      </div>
-      <div class="faq-item">
-        <h3 onclick="toggleFaqItem(this)">Do I need the top level to be successful? <span class="faq-chevron">▸</span></h3>
-        <div class="faq-body">
-        <p>No. The right level is the one that matches your team and goals. You can move later without losing anything you built.</p>
-        </div>
-      </div>
-      <div class="faq-item">
-        <h3 onclick="toggleFaqItem(this)">Does a higher level mean less human oversight? <span class="faq-chevron">▸</span></h3>
-        <div class="faq-body">
-        <p>No. Higher levels let the AI draft and watch more of the work. A person still approves, edits or declines at every level.</p>
-        </div>
-      </div>
-      <div class="faq-item">
-        <h3 onclick="toggleFaqItem(this)">Is onboarding included? <span class="faq-chevron">▸</span></h3>
-        <div class="faq-body">
-        <p>Yes, at every level, at no separate fee.</p>
-        </div>
-      </div>
-      <div class="faq-item">
-        <h3 onclick="toggleFaqItem(this)">What happens if I move up a level? <span class="faq-chevron">▸</span></h3>
-        <div class="faq-body">
-        <p>Nothing is removed going up. Everything you set up carries over.</p>
-        </div>
-      </div>
-      <div class="faq-item">
-        <h3 onclick="toggleFaqItem(this)">Can an agency use Verilume for its clients? <span class="faq-chevron">▸</span></h3>
-        <div class="faq-body">
-        <p>Yes. Agencies license the instrument and run it under their own name. Beacon adds embedded agency services.</p>
-        </div>
-      </div>
+      <div class="faq-item"><h3 onclick="toggleFaqItem(this)">Which package should I pick? <span class="faq-chevron">▸</span></h3><div class="faq-body"><p>Every package has the same product, so you are only choosing how many credits you need each month. Start with the free assessment, and move up or down whenever your needs change.</p></div></div>
+      <div class="faq-item"><h3 onclick="toggleFaqItem(this)">What is a credit? <span class="faq-chevron">▸</span></h3><div class="faq-body"><p>A credit counts the AI work you ask for. A standard draft is 1 credit and a competitor profile is 10. Planning, uploading, viewing and exporting never use credits.</p></div></div>
+      <div class="faq-item"><h3 onclick="toggleFaqItem(this)">What happens if I run out of credits? <span class="faq-chevron">▸</span></h3><div class="faq-body"><p>Your portal shows your credits left every time the AI does work. When 20 are left, a link appears for an admin to add 50 credits for $2,000, invoiced, or move up a package. At 0, AI work pauses until credits are added. Your work is never deleted or locked, and you can still plan, upload and review.</p></div></div>
+      <div class="faq-item"><h3 onclick="toggleFaqItem(this)">Does a bigger package mean less human oversight? <span class="faq-chevron">▸</span></h3><div class="faq-body"><p>No. A person approves, edits or declines at every package.</p></div></div>
+      <div class="faq-item"><h3 onclick="toggleFaqItem(this)">Is onboarding included? <span class="faq-chevron">▸</span></h3><div class="faq-body"><p>Yes, at every package, at no separate fee.</p></div></div>
+      <div class="faq-item"><h3 onclick="toggleFaqItem(this)">Why are partner integrations Enterprise only? <span class="faq-chevron">▸</span></h3><div class="faq-body"><p>Connections to Snowflake, Google and Meta take extra setup and support. Everything else in the product is the same in every package.</p></div></div>
+      <div class="faq-item"><h3 onclick="toggleFaqItem(this)">What happens if I move up a package? <span class="faq-chevron">▸</span></h3><div class="faq-body"><p>Nothing is removed. Everything you set up carries over.</p></div></div>
+      <div class="faq-item"><h3 onclick="toggleFaqItem(this)">Can an agency use Verilume for its clients? <span class="faq-chevron">▸</span></h3><div class="faq-body"><p>Yes. Agencies license the instrument and run it under their own name. Contact us to talk through licensing.</p></div></div>
     </div>
   </div>
   <script>
@@ -1064,24 +1164,15 @@ footer{padding:64px 0 36px;}
 <script>
 (function(){
   'use strict';
-  var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return [].slice.call((r||document).querySelectorAll(s))};
+  var $=function(s,r){return (r||document).querySelector(s)};
   function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
   var nt=$('#navToggle'),nl=$('#navLinks');
-  function setOpen(o){nt.classList.toggle('open',o);nt.setAttribute('aria-expanded',o?'true':'false');nl.classList.toggle('open',o);nl.style.maxHeight=o?nl.scrollHeight+'px':'0px'}
-  nt.addEventListener('click',function(){setOpen(!nl.classList.contains('open'))});
-  var REAL=true;
-  var L=[
-   {n:'Starter',v:'See',best:'Trying the product and seeing what it does.',add:'The full product to explore, for every org band.',ai:'Reads your sample data and shows what the product does.',keep:'You explore and decide whether it fits.'},
-   {n:'Spark',v:'Keep going',best:'One storefront that wants steady, simple help.',add:'Everything in Starter, without the clock. Keeps what you built.',ai:'Drafts for one storefront and keeps your work in place.',keep:'A person approves every draft.'},
-   {n:'Glow',v:'Understand',best:'A team that wants to understand its numbers.',add:'Two of five function groups, the full scorecard, re-rating and monitoring, plus plan, budget and pacing.',ai:'Watches your scorecard, flags changes and recommends budget moves.',keep:'A person approves each move and sets the targets.'},
-   {n:'Radiance',v:'Act',best:'A team ready to let AI draft plans across every function.',add:'All five function groups, action plans, goal-backward solve and forecasts, licensed APIs and the AI Brain Coach.',ai:'Builds action plans and forecasts across every function and coaches the team.',keep:'A person approves each plan before anything runs.'},
-   {n:'Beacon',v:'Orchestrate',best:'An organization that wants a partner alongside the software.',add:'All five groups plus custom work, embedded agency services, SSO and a named onboarding lead.',ai:'Works across your whole organization with a named lead alongside.',keep:'People decide at every step, with your own sign-in and approvals.'}];
-  var ROWS=[['Full product to explore',0],['No clock, keeps what you built',1],['Two of five function groups',2],['Full scorecard, re-rating and monitoring',2],['Plan, budget and pacing',2],['All five function groups',3],['Action plans, goal-backward solve, forecasts',3],['Licensed APIs',3],['AI Brain Coach',3],['Custom work and embedded agency services',4],['SSO and a named onboarding lead',4],['Onboarding at no separate fee',0]],sel=0;
-  function choose(i){sel=i;draw();var n=L[i].n;try{sessionStorage.setItem('vl_package',n.toLowerCase())}catch(e){}
-    var o=$('#pkOut');o.hidden=false;o.innerHTML='<h3>You selected '+esc(n)+'.</h3><p>We saved your choice. Next is a custom onboarding and free assessment path built around '+esc(n)+'.</p><ol><li>Create your account</li><li>Take the free assessment, tuned to '+esc(n)+'</li><li>Start your free week and activate '+esc(n)+' in the portal</li></ol><a class="btn btn-lamp" href="'+(REAL?'assessment.html?package='+encodeURIComponent(n.toLowerCase()):'#')+'"'+(REAL?'':' title="Not part of this preview"')+'>Continue to my free assessment →</a>'+(REAL?'':'<small>Live site path: assessment.html?package='+esc(n.toLowerCase())+'</small>')+'';o.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});}
-  function draw(){var l=L[sel];
-    $('#mx').innerHTML='<tr><th>Included</th>'+L.map(function(x,i){return '<th data-i="'+i+'" style="cursor:pointer" class="'+(i===sel?'sel':'')+'">'+x.n+'</th>'}).join('')+'</tr>'+ROWS.map(function(r){return '<tr><td>'+esc(r[0])+'</td>'+L.map(function(x,i){return '<td class="'+(i===sel?'sel ':'')+(i>=r[1]?'y':'n')+'">'+(i>=r[1]?'✓':'–')+'</td>'}).join('')+'</tr>'}).join('')+'<tr><td><b>Best for</b></td>'+L.map(function(x,i){return '<td class="'+(i===sel?'sel':'')+'" style="font-size:.8rem;line-height:1.35;vertical-align:top">'+esc(x.best)+'</td>'}).join('')+'</tr><tr><td></td>'+L.map(function(x,i){return '<td class="'+(i===sel?'sel':'')+'"><button class="btn btn-ink pkSel" data-i="'+i+'" style="padding:10px 16px;font-size:.85rem">Select '+esc(x.n)+'</button></td>'}).join('')+'</tr>'}
-  $('#mx').onclick=function(e){var sb=e.target.closest('.pkSel');if(sb){choose(+sb.dataset.i);return}var h=e.target.closest('th[data-i]');if(!h)return;sel=+h.dataset.i;draw()};draw();
+  if(nt&&nl){nt.addEventListener('click',function(){var o=!nl.classList.contains('open');nt.classList.toggle('open',o);nt.setAttribute('aria-expanded',o?'true':'false');nl.classList.toggle('open',o);nl.style.maxHeight=o?nl.scrollHeight+'px':'0px'})}
+  var NAMES=['Starter','Growth'];
+  function choose(i){var n=NAMES[i];try{sessionStorage.setItem('vl_package',n.toLowerCase())}catch(e){}
+    var o=$('#pkOut');o.hidden=false;o.innerHTML='<h3>You selected '+esc(n)+'.</h3><p>We saved your choice. Next is the free assessment, then activation in your portal.</p><ol><li>Create your account</li><li>Take the free assessment</li><li>Activate '+esc(n)+' in the portal</li></ol><a class="btn btn-lamp" href="assessment.html?package='+encodeURIComponent(n.toLowerCase())+'">Continue to my free assessment →</a>';
+    o.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});}
+  document.addEventListener('click',function(e){var b=e.target.closest('.pkSel');if(b)choose(+b.dataset.i)});
 })();
 </script>
 </body>
