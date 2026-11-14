@@ -26434,7 +26434,7 @@ function bdHomeHtml(){
     <p class="bd-home-lead">Your brief is below.</p>
     <p class="bd-home-date">${now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}${state.company ? ' · ' + escapeHtml(state.company) : ''}</p>
     <div class="bd-home-grid">
-      <div class="bd-home-tile"><b>Your dashboard</b><p class="strat-sub">Your tasks, approvals and the work in motion.</p><button type="button" class="strat-chip" onclick="goToStep('dashboard')">Open your dashboard →</button></div>
+      <div class="bd-home-tile"><b>Your dashboard</b><p class="strat-sub">Your tasks, approvals and the work in motion.</p><button type="button" class="strat-chip" onclick="vlOpenMyDashboard()">Open your dashboard →</button></div>
       ${RELEASE_2.teamGrowth ? `<div class="bd-home-tile"><b>Grow your skills</b><p class="strat-sub">Self-assessment, the key skills for your seat and your career plan.</p><button type="button" class="strat-chip" onclick="goToStep('teamDevelopment')">Open Team Experiences →</button></div>` : ''}
       <div class="bd-home-tile"><b>Train the Brain</b><p class="strat-sub">${setup}</p><button type="button" class="strat-chip" onclick="goToStep('manageAccount')">${done && total && done >= total ? 'Review your setup →' : 'Continue your setup →'}</button></div>
     </div>
@@ -85763,6 +85763,15 @@ async function posSetDecision(contributionId, status){
     if (m[1] === 'tab'){ if (PRIMARY_TABS.some(function(t){ return t.key === m[2]; })) switchPrimaryTab(m[2]); else goToStep('dashboard'); }
     else if (m[1] === 'ws'){ if (WORKSTREAMS.some(function(w){ return w.key === m[2]; })) openWorkstream(m[2]); else goToStep('dashboard'); }
     else goToStep(m[2]);
+  };
+  // "Open your dashboard" on the Brain Dump: the person's own starting page, unless that is the Brain Dump itself; then the dashboard that suits their function; then Customer Experiences.
+  window.vlOpenMyDashboard = function(){
+    var tok = portalMyStartPage || '';
+    if (tok && tok !== 'tab:dailyBrief' && tok !== 'step:dailyBrief') return vlOpenToken(tok);
+    var fn = ''; try { var m = (typeof findTeamMember === 'function' && portalSelfMemberId) ? findTeamMember(portalSelfMemberId) : null; fn = (m && m.functionGroup) || ''; } catch (e){}
+    var sg = SUGGEST[fn];
+    if (sg && sg !== 'tab:dailyBrief') return vlOpenToken(sg);
+    return vlOpenToken('tab:marketer');
   };
   window.vlApplySavedStart = async function(){
     if (typeof dataSourceLabel === 'undefined' || dataSourceLabel !== 'backend') return;
