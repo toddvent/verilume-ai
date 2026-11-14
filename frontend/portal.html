@@ -25680,7 +25680,12 @@ async function cxLoad(){
   if (!cxIsLive()) return;
   try { cx.data = await stratGet('creative-media?months=12'); } catch (e){ cx.data = null; }
   await cxLoadBriefs();
-  if (activePrimaryTab === 'brand'){ cxRenderCoreRow(); cxRenderMedia(); }
+  if (activePrimaryTab === 'brand'){ cxRenderCoreRow(); cxRenderBriefsCard(); }
+  else if (activePrimaryTab === 'marketer'){ cxRenderMedia(); }
+}
+function cxRenderBriefsCard(){
+  const card = document.getElementById('cxBriefsCard'), body = document.getElementById('cxBriefsBody'); if (!card || !body) return;
+  const h = cxBriefsHtml(); card.style.display = h ? '' : 'none'; body.innerHTML = h.replace('<div class="strat-chart-label">Sent to Creative</div>', '');
 }
 function cxSearchCardHtml(){
   const d = gsc && gsc.data, c = d && d.cards;
@@ -25756,6 +25761,7 @@ function cxBriefsHtml(){
   return `<div class="strat-chart-label">Sent to Creative</div>` + cx.briefs.slice(0, 8).map(b => `<div class="cx-brief"><div><strong>${escapeHtml(b.title)}</strong><div class="strat-sub">${escapeHtml(b.briefText.split('\\n\\n')[1] || '')}</div><div class="strat-sub">${label[b.status] || b.status} · ${escapeHtml(new Date(b.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' }))}${b.requestedBy ? ' · ' + escapeHtml(b.requestedBy) : ''}</div></div><select onchange="cxBriefStatus('${b.id}', this.value)" aria-label="Brief status">${['sent', 'picked_up', 'done'].map(v => `<option value="${v}" ${b.status === v ? 'selected' : ''}>${label[v]}</option>`).join('')}</select></div>`).join('');
 }
 function cxRenderMedia(){
+  try { cxRenderBriefsCard(); } catch (e){}
   const box = document.getElementById('cxMediaBody'); if (!box) return;
   const d = cx.data; if (!d){ box.innerHTML = '<p class="strat-empty">Loading…</p>'; return; }
   let html = '';
@@ -25819,7 +25825,8 @@ function customerExperiencesShellHtml(){
   if (aipoVoiceContestStats == null) aipoLoadVoiceContestStats();
   const voice = renderTileShellGroups([BRAND_SHELL_GROUPS[0]], null, 'brand');
   if (!cxIsLive()) return voice + cxToolsHtml();
-  return `<div class="strat-card"><div class="strat-head"><h2>Creative and media together</h2></div><div id="cxMediaBody"><p class="strat-empty">Loading…</p></div></div>
+  // 2026-11-14 (Todd): the creative and media reports moved to the Growth & Performance dashboard; this page keeps the Sent to Creative queue.
+  return `<div class="strat-card" id="cxBriefsCard" style="display:none;"><div class="strat-head"><h2>Sent to Creative</h2></div><div id="cxBriefsBody"></div></div>
     ${cxRepCardHtml()}` + voice + cxToolsHtml();
 }
 function customerExperiencesPageInit(){ if (cxIsLive()) cxLoad(); }
@@ -26310,9 +26317,9 @@ function gpCalendarTileHtml(){
 function growthPerformanceShellHtml(){
   if (!gpIsLive()) return renderTileShellGroups(MARKETER_SHELL_GROUPS, null, 'marketer');
   return `<div class="gp-actions"><button type="button" class="btn-primary" onclick="startNewCampaign()">＋ Create New Campaign</button><button type="button" class="btn-ghost gp-right" onclick="goToStep('campaignMgmt')">View All Campaigns →</button></div><div class="gp-motion">${gpCalendarTileHtml()}<div class="strat-card"><div class="strat-head"><h2>Campaigns in motion</h2></div><div id="gpRiskLine" class="strat-sub" style="margin-bottom:8px;"></div>${gpPipelineHtml()}</div></div>
-    <div class="strat-card"><div class="strat-head"><h2>Performance and lifecycle</h2><div class="strat-ctl"><span class="strat-seg"><button type="button" data-gp-view="performance" class="${gp.view === 'performance' ? 'on' : ''}" onclick="gpSetView('performance')">Performance</button><button type="button" data-gp-view="lifecycle" class="${gp.view === 'lifecycle' ? 'on' : ''}" onclick="gpSetView('lifecycle')">Lifecycle</button></span></div></div><div id="gpViewBody"><p class="strat-empty">Loading…</p></div></div>` + gpToolsHtml();
+    <div class="strat-card"><div class="strat-head"><h2>Performance and lifecycle</h2><div class="strat-ctl"><span class="strat-seg"><button type="button" data-gp-view="performance" class="${gp.view === 'performance' ? 'on' : ''}" onclick="gpSetView('performance')">Performance</button><button type="button" data-gp-view="lifecycle" class="${gp.view === 'lifecycle' ? 'on' : ''}" onclick="gpSetView('lifecycle')">Lifecycle</button></span></div></div><div id="gpViewBody"><p class="strat-empty">Loading…</p></div></div><div class="strat-card"><div class="strat-head"><h2>Creative and media together</h2></div><div id="cxMediaBody"><p class="strat-empty">Loading…</p></div></div>` + gpToolsHtml();
 }
-function growthPerformancePageInit(){ gpc.started = false; if (gpIsLive()) gpLoad(); }
+function growthPerformancePageInit(){ gpc.started = false; if (gpIsLive()) gpLoad(); try { if (cxIsLive()) cxLoad(); } catch (e){} }
 
 
 // ---- Brain Dump (2026-09-30): the weekly standup that replaces the Daily Brief ----
