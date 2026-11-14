@@ -4548,6 +4548,11 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 #cmpCampaignFields.brf-placement-mode .field:has(#cmpEndDate),
 #cmpCampaignFields.brf-placement-mode #cmpSubmitBtn{display:none!important;}
 #cmpCampaignFields.brf-placement-mode #briefPlacementGo{display:inline-flex!important;}
+.tu-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:16px;}
+#topUrgentModule .tu-actions .tu-right{margin-left:auto;background:#fff!important;color:#14213D!important;border:1px solid #D2D2D7!important;}
+#topUrgentModule .tu-actions .tu-right:hover{border-color:#14213D!important;background:#fff!important;}
+#topUrgentModule:not([style*="display:none"]):not([style*="display: none"]) ~ #workstreamGrid .gp-actions{display:none!important;}
+
 .brf-ph-only{display:none;}
 #cmpCampaignFields.brf-placement-mode .brf-ph-only{display:block;}
 .brf-sf-opts{display:flex;flex-wrap:wrap;gap:8px;}
@@ -5137,6 +5142,8 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
           <h2 style="margin:0;font-size:1.0625rem;">🔴 Top 5 Most Urgent</h2>
         </div>
         <div id="topUrgentBody"></div>
+        <!-- 2026-11-14, per Todd: Create New Campaign and View All Campaigns are part of the Top 5 module template, shown whenever the module is shown. -->
+        <div class="tu-actions" id="topUrgentActions"><button type="button" class="btn-primary" onclick="startNewCampaign()">＋ Create New Campaign</button><button type="button" class="btn-ghost tu-right" onclick="goToStep('campaignMgmt')">View All Campaigns →</button></div>
       </div>
 
       <!-- 2026-08-24 (round 17) — "What do you want to do?" accordion
