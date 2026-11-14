@@ -4540,6 +4540,35 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 .portal-load-cover.l1 .plc-sky{opacity:.35!important;}
 @media (max-width:600px){.plc-logo{width:120px;}}
 </style>
+<style id="vl-placement-mode">
+/* Stand alone media placement: classification section only, then Creative. */
+.cmp-brief.brf-placement-skip{display:none!important;}
+#cmpCampaignFields.brf-placement-mode .field:has(#cmpCreationKpi),
+#cmpCampaignFields.brf-placement-mode .field:has(#cmpStartDate),
+#cmpCampaignFields.brf-placement-mode .field:has(#cmpEndDate),
+#cmpCampaignFields.brf-placement-mode #cmpSubmitBtn{display:none!important;}
+#cmpCampaignFields.brf-placement-mode #briefPlacementGo{display:inline-flex!important;}
+.brf-ph-only{display:none;}
+#cmpCampaignFields.brf-placement-mode .brf-ph-only{display:block;}
+.brf-sf-opts{display:flex;flex-wrap:wrap;gap:8px;}
+.brf-sf{font:inherit;font-size:.8125rem;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid #E4E0D3;background:#fff;color:#5B5647;cursor:pointer;}
+.brf-sf:hover{border-color:#1F6B5C;color:#14213D;}
+.brf-sf.on{background:#14213D;border-color:#14213D;color:#fff;}
+.brf-sf-list{display:flex;flex-direction:column;gap:6px;margin-top:8px;max-height:260px;overflow:auto;}
+.brf-sf-item{text-align:left;font:inherit;display:flex;flex-direction:column;gap:2px;padding:10px 12px;border:1px solid #E4E0D3;border-radius:10px;background:#fff;color:#14213D;cursor:pointer;}
+.brf-sf-item span{font-size:.75rem;color:#5B5647;}
+.brf-sf-item:hover,.brf-sf-item.on{border-color:#1F6B5C;background:#F6F4EE;}
+/* Campaign Creative steps: CX green (#1F6B5C) */
+#cmpCreativePanel .cmp-step0-jumpnav a{color:#1F6B5C!important;border-color:#B9D4CD!important;background:#fff!important;font-weight:600;}
+#cmpCreativePanel .cmp-step0-jumpnav a:hover{background:#E7F1EE!important;border-color:#1F6B5C!important;}
+#cmpCreativePanel div[style*="color:var(--media)"],#cmpCreativePanel .strat-chart-label{color:#1F6B5C!important;}
+#cmpCreativePanel .btn-primary{background:#1F6B5C!important;border-color:#1F6B5C!important;color:#fff!important;}
+#cmpCreativePanel .btn-primary:hover{background:#17564a!important;border-color:#17564a!important;}
+#cmpCreativePanel .btn-ghost{color:#1F6B5C!important;border-color:#1F6B5C!important;}
+#cmpCreativePanel .btn-ghost:hover{background:#E7F1EE!important;}
+#cmpCreativePanel .cmp-step0-audience-toggle-opt.on,#cmpCreativePanel .cmp-step0-mini-toggle-opt.on{background:#1F6B5C!important;color:#fff!important;}
+#cmpCreativePanel input:focus,#cmpCreativePanel select:focus,#cmpCreativePanel textarea:focus{border-color:#1F6B5C!important;box-shadow:0 0 0 3px rgba(31,107,92,.16)!important;outline:none;}
+</style>
 </head>
 <body>
 <!-- 2026-08-25 — full-screen load cover, first thing in <body> on purpose
@@ -10337,6 +10366,22 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
                  channels within these groups) stays in Audience & Channels
                  below — this field is the higher-level Channel grouping
                  only, per the audit's own "Campaign Channel Groups" naming. -->
+            <div class="field brf-ph-only" id="briefStartFrom">
+              <label>Start from</label>
+              <div class="brf-sf-opts" role="group" aria-label="Start this placement from">
+                <button type="button" class="brf-sf on" data-m="fresh" onclick="briefSfSet('fresh')">A new placement</button>
+                <button type="button" class="brf-sf" data-m="hist" onclick="briefSfSet('hist')">Pick up a historical campaign</button>
+                <button type="button" class="brf-sf" data-m="lib" onclick="briefSfSet('lib')">Reference the ad library</button>
+              </div>
+              <div id="briefSfHist" style="display:none;margin-top:10px;">
+                <input type="text" id="briefSfHistQ" autocomplete="off" placeholder="Search past campaigns by ID or name" oninput="briefSfHistSearch(this.value)" aria-label="Search past campaigns">
+                <div class="brf-sf-list" id="briefSfHistList"></div>
+              </div>
+              <div id="briefSfLib" style="display:none;margin-top:10px;">
+                <div class="brf-sf-list" id="briefSfLibList"></div>
+              </div>
+              <div class="hint" id="briefSfNote" style="margin-top:8px;"></div>
+            </div>
             <div class="field-divider">Campaign classification</div>
             <div class="field">
               <label>Campaign ID</label>
@@ -10520,6 +10565,8 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
                  Campaign ID. See createCampaign(). -->
             <div class="btn-row" style="margin:4px 0 0;">
               <button class="btn-primary" id="cmpSubmitBtn" onclick="createCampaign()">Create Campaign →</button>
+              <button class="btn-primary" id="briefPlacementGo" style="display:none;" onclick="briefPlacementContinue()">Continue to Creative →</button>
+              <div class="cmp-brief-msg" id="briefPlacementMsg" aria-live="polite" style="display:none;"></div>
             </div>
             </div><!-- /cmpCampaignFields -->
           </div>
@@ -56875,7 +56922,9 @@ function briefBuild(){
   const box = briefEl('briefSentence'); if (!box) return;
   const k = briefKind; const title = briefEl('briefTitle'), lede = briefEl('briefLede'), act = briefEl('briefAction'), camp = briefEl('cmpCampaignFields'), sheet = briefEl('cmpProjectSheet');
   document.querySelectorAll('.brf-kind').forEach(b => b.classList.toggle('on', b.dataset.k === k));
-  if (camp) camp.style.display = k === 'campaign' ? '' : 'none';
+  if (camp) camp.style.display = (k === 'campaign' || k === 'placement') ? '' : 'none';
+  if (camp) camp.classList.toggle('brf-placement-mode', k === 'placement');
+  { const bf = briefEl('cmpBrief'); if (bf) bf.classList.toggle('brf-placement-skip', k === 'placement'); }
   if (sheet) sheet.style.display = k === 'project' ? '' : 'none';
   let h = '';
   if (k === 'campaign'){
@@ -57016,9 +57065,9 @@ function briefRender(){
   const box = briefEl('cmpBrief'); if (!box) return;
   const existing = briefEl('cmpExistingCampaign'); const editing = !!(existing && existing.value); box.style.display = editing ? 'none' : '';
   const kinds = document.querySelector('.brf-kinds'); if (kinds) kinds.style.display = editing ? 'none' : '';
-  if (editing){ const c = briefEl('cmpCampaignFields'); if (c) c.style.display = ''; const sh = briefEl('cmpProjectSheet'); if (sh) sh.style.display = 'none'; return; }
+  if (editing){ const c = briefEl('cmpCampaignFields'); if (c){ c.style.display = ''; c.classList.remove('brf-placement-mode'); } const sh = briefEl('cmpProjectSheet'); if (sh) sh.style.display = 'none'; return; }
   if (!briefEl('briefSentence') || !briefEl('briefSentence').firstChild){ briefBuild(); return; }
-  { const c = briefEl('cmpCampaignFields'), sh = briefEl('cmpProjectSheet'); if (c) c.style.display = briefKind === 'campaign' ? '' : 'none'; if (sh) sh.style.display = briefKind === 'project' ? '' : 'none'; }
+  { const c = briefEl('cmpCampaignFields'), sh = briefEl('cmpProjectSheet'); if (c){ c.style.display = (briefKind === 'campaign' || briefKind === 'placement') ? '' : 'none'; c.classList.toggle('brf-placement-mode', briefKind === 'placement'); } if (sh) sh.style.display = briefKind === 'project' ? '' : 'none'; }
   const set = (id, v) => { const e = briefEl(id); if (e && document.activeElement !== e) e.value = v == null ? '' : v; if (e) e.classList.toggle('filled', !!e.value); };
   const sets = briefSets();
   if (briefKind === 'campaign'){
@@ -57176,6 +57225,75 @@ function briefConfirmOpen(p){
     ${warns.length ? `<p class="hint" style="color:var(--advocacy);margin:0 0 6px;">Worth a look:</p><ul style="margin:0 0 8px;padding-left:18px;font-size:0.875rem;line-height:1.5;color:var(--advocacy);">${warns.map(n => `<li>${escapeHtml(n)}</li>`).join('')}</ul>` : '<p class="hint" style="margin:0 0 8px;">Nothing looks out of place.</p>'}
     <div class="btn-row" style="margin-top:10px;"><button type="button" class="btn-primary" onclick="briefConfirmGo()">Looks right, go to Copy →</button><button type="button" class="btn-ghost" onclick="briefConfirmClose()">Not yet</button></div></div>`;
   document.body.appendChild(d);
+}
+
+// 2026-11-14, per Todd: "Stand alone media placement" skips the sentence dialogue and the AI Brain check. The person fills the Campaign
+// Classification section and goes straight to Creative. Saved as its own one-placement campaign; channel, partner, dates and specs are chosen in Creative.
+async function briefPlacementContinue(){
+  const msg = document.getElementById('briefPlacementMsg'), btn = document.getElementById('briefPlacementGo');
+  const say = (t, warn) => { if (!msg) return; msg.style.display = t ? '' : 'none'; msg.textContent = t || ''; msg.className = 'cmp-brief-msg' + (warn ? ' warn' : ''); };
+  const name = (document.getElementById('cmpName') || {}).value || '';
+  if (!name.trim()){ say('Give the placement a name.', true); const e = document.getElementById('cmpNameError'); if (e) e.textContent = 'Campaign name is required.'; return; }
+  const budgetRaw = (document.getElementById('cmpCreationBudget') || {}).value;
+  const budget = (budgetRaw === '' || budgetRaw == null) ? null : Number(budgetRaw);
+  if (budget != null && !(budget >= 0)){ say('Budget must be zero or more.', true); return; }
+  const pgList = [...selectedProductGroups], cgList = [...selectedCreativeFocusGroups];
+  const type = ((document.getElementById('cmpCreationCampaignTypeSelect') || {}).value) || cmpPendingCampaignType || '';
+  const init = ((document.getElementById('cmpCreationBusinessInitiativeSelect') || {}).value) || cmpPendingBusinessInitiative || '';
+  if (btn) btn.disabled = true; say('Saving…');
+  try {
+    const cr = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/campaigns`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ objective: 'Stand-alone media placement', name: name.trim().slice(0, 80), segment: '', stage: '', keyMessage: (briefSfMode === 'lib' && briefSfRef ? String(briefSfRef.text || '').slice(0, 500) : ''), startDate: null, endDate: null, budget, productGroups: pgList.join(', '), creativeFocusGroups: cgList.join(', '), productName: pgList[0] || '' }) });
+    if (!cr.ok) throw new Error('The placement could not be created (' + cr.status + ').');
+    const cid = (await cr.json()).campaignId;
+    if (type || init){ try { await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(cid)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignType: type, businessInitiative: init }) }); } catch (e){ console.warn('briefPlacementContinue: type/initiative follow-up failed', e); } }
+    try { await loadCampaigns(); if (typeof renderCampaignsList === 'function') renderCampaignsList(); if (typeof renderActiveCampaigns === 'function') renderActiveCampaigns(); } catch (e){}
+    try { loadExistingCampaignIntoForm(cid); } catch (e){ console.warn('briefPlacementContinue: could not load the campaign', e); }
+    say('');
+    cmpOpenCreativeWorkspace();
+  } catch (e){ say(e.message || 'The placement could not be saved.', true); }
+  finally { if (btn) btn.disabled = false; }
+}
+
+// ---- Stand alone placement: "Start from" (new, a historical campaign, or the ad library) ----
+let briefSfMode = 'fresh', briefSfRef = null;
+function briefSfSet(m){
+  briefSfMode = m; briefSfRef = (m === 'lib') ? briefSfRef : null;
+  document.querySelectorAll('.brf-sf').forEach(b => b.classList.toggle('on', b.dataset.m === m));
+  const h = document.getElementById('briefSfHist'), l = document.getElementById('briefSfLib'), n = document.getElementById('briefSfNote');
+  if (h) h.style.display = m === 'hist' ? '' : 'none'; if (l) l.style.display = m === 'lib' ? '' : 'none';
+  if (n) n.textContent = '';
+  if (m === 'hist') briefSfHistSearch((document.getElementById('briefSfHistQ') || {}).value || '');
+  if (m === 'lib') briefSfLibLoad();
+}
+function briefSfHistSearch(q){
+  const box = document.getElementById('briefSfHistList'); if (!box) return;
+  const hits = (typeof briefCampMatches === 'function' ? briefCampMatches(q) : []).slice(0, 8);
+  box.innerHTML = hits.length ? hits.map(c => `<button type="button" class="brf-sf-item" onclick="briefSfHistPick('${escapeHtml(c.id)}')"><b>${escapeHtml(c.name || c.objective || c.id)}</b><span>${escapeHtml(c.id)}${c.startDate ? ' · ' + escapeHtml(String(c.startDate).slice(0, 10)) : ''}</span></button>`).join('') : '<p class="hint" style="margin:6px 0 0;">No matching campaigns.</p>';
+}
+function briefSfHistPick(id){
+  const c = (state.campaigns || []).find(x => x.id === id); if (!c) return;
+  const nm = document.getElementById('cmpName'); if (nm){ nm.value = String(c.name || c.objective || '').slice(0, 80); try { updateCmpNameCounter(); } catch (e){} }
+  const bud = document.getElementById('cmpCreationBudget'); if (bud){ bud.value = c.budget != null && c.budget !== '' ? c.budget : ''; try { cmpSyncCreationBudget(); } catch (e){} }
+  selectedProductGroups = new Set((c.productGroups || '').split(',').map(x => x.trim()).filter(Boolean)); try { renderCmpProductGroupRow(); } catch (e){}
+  selectedCreativeFocusGroups = new Set((c.creativeFocusGroups || '').split(',').map(x => x.trim()).filter(Boolean)); try { renderCmpCreativeFocusGroupRow(); } catch (e){}
+  const t = document.getElementById('cmpCreationCampaignTypeSelect'); if (t && c.campaignType && [...t.options].some(o => o.value === c.campaignType)) t.value = c.campaignType;
+  const i = document.getElementById('cmpCreationBusinessInitiativeSelect'); if (i && c.businessInitiative && [...i.options].some(o => o.value === c.businessInitiative)) i.value = c.businessInitiative;
+  const n = document.getElementById('briefSfNote'); if (n) n.textContent = 'Copied the classification from ' + (c.name || c.id) + '. Change anything below, then continue. This saves as a new placement; the original campaign is not changed.';
+  try { markCampaignFormTouched(); } catch (e){}
+}
+async function briefSfLibLoad(){
+  const box = document.getElementById('briefSfLibList'); if (!box) return;
+  box.innerHTML = '<p class="hint" style="margin:6px 0 0;">Loading the ad library…</p>';
+  let items = []; try { items = await loadCopyLibrary(true); } catch (e){}
+  if (!items.length){ box.innerHTML = '<p class="hint" style="margin:6px 0 0;">The ad library is empty. Copy saved to the library from Creative shows up here.</p>'; return; }
+  window.briefSfLibItems = items.slice(0, 40);
+  box.innerHTML = window.briefSfLibItems.map((it, k) => `<button type="button" class="brf-sf-item${briefSfRef && briefSfRef.id === it.id ? ' on' : ''}" onclick="briefSfLibPick(${k})"><b>${escapeHtml(it.label || it.channel || 'Saved copy')}</b><span>${escapeHtml((it.channel ? it.channel + ' · ' : '') + String(it.text || '').slice(0, 110))}</span></button>`).join('');
+}
+function briefSfLibPick(k){
+  const it = (window.briefSfLibItems || [])[k]; if (!it) return; briefSfRef = it;
+  document.querySelectorAll('#briefSfLibList .brf-sf-item').forEach((b, j) => b.classList.toggle('on', j === k));
+  const n = document.getElementById('briefSfNote'); if (n) n.textContent = 'Reference: ' + (it.label || it.channel || 'saved copy') + '. It is attached to the placement as its key message, and Creative can use it.';
 }
 function briefConfirmClose(){ const d = briefEl('briefConfirmModal'); if (d) d.remove(); }
 function briefConfirmGo(){ briefConfirmClose(); try { cmpOpenCreativeWorkspace(); } catch (e){ console.warn('briefConfirmGo: could not open Copy', e); } }
