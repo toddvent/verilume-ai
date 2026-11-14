@@ -404,7 +404,7 @@
   <!-- PACKAGE -->
   <section class="acct-card" id="plan">
     <h2>Your package</h2>
-    <p class="card-sub">The package this account is on, and what you can move up to.</p>
+    <p class="card-sub">The package this account is on, and what you can move up to. Every package has the same functionality; they differ by monthly credits.</p>
     <div id="planBody"><p class="card-sub">Loading…</p></div>
   </section>
 
@@ -515,6 +515,24 @@
         <button class="btn-primary" id="recoveryPhoneSaveBtn" disabled onclick="saveRecoveryPhone()">Save phone number</button>
         <div class="status-note" id="recoveryPhoneStatus"></div>
       </div>
+
+      <h3 style="margin:26px 0 6px;font-size:15px;">Sign-in codes</h3>
+      <p class="card-sub" style="margin-top:0;">When you sign in on a new device, Verilume sends a 6-digit code. It goes to your email unless you turn on text codes. Text codes use the phone number above, so save it first. Only you can change this, for your own profile.</p>
+      <div class="btn-row">
+        <button class="btn-primary" id="mfaSmsOnBtn" onclick="mfaSmsStart()">Send my sign-in codes by text</button>
+        <button class="btn-ghost" id="mfaSmsOffBtn" onclick="mfaSmsOff()">Send them to my email instead</button>
+      </div>
+      <div id="mfaSmsConfirm" style="display:none;margin-top:14px;">
+        <div class="field-row">
+          <div class="field">
+            <label for="mfaSmsCode">Code we just texted</label>
+            <input type="text" id="mfaSmsCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="123456">
+          </div>
+          <div></div>
+        </div>
+        <div class="btn-row"><button class="btn-primary" id="mfaSmsConfirmBtn" onclick="mfaSmsConfirm()">Confirm and turn on text codes</button></div>
+      </div>
+      <div class="status-note" id="mfaSmsStatus"></div>
     </div>
   </section>
 
@@ -932,43 +950,32 @@ function prefillContactFromMember(){
 }
 
 
-// 2026-10-08 — Package: the current level, then only the levels above it, each with an activation option. Levels are activated by the
-// Verilume team (updated IO on file), so a client sends a request; only Spark can be started here. Prices are not shown.
-const PLAN_FALLBACK = [
-  { key: 'spark', rank: 1, name: 'Spark', tagline: 'See where you stand', description: 'Free for 7 days. Same functionality as the Starter Kit.', maxStorefronts: 1, monthlyDrafts: 6, trialDays: 7, selfServe: true },
-  { key: 'starter', rank: 2, name: 'Starter Kit', tagline: 'One storefront', description: 'The paid continuation of Spark for a single storefront.', maxStorefronts: 1, monthlyDrafts: 25, selfServe: false },
-  { key: 'glow', rank: 3, name: 'Glow', tagline: 'Understand', description: 'Up to 10 storefronts.', maxStorefronts: 10, monthlyDrafts: 100, selfServe: false },
-  { key: 'radiance', rank: 4, name: 'Radiance', tagline: 'Act', description: '11 to 20 storefronts.', maxStorefronts: 20, monthlyDrafts: 400, selfServe: false },
-  { key: 'beacon', rank: 5, name: 'Beacon', tagline: 'Orchestrate', description: 'Enterprise, above 20 storefronts. Custom quote.', maxStorefronts: null, monthlyDrafts: null, selfServe: false }
+// 2026-11-14 — Packages: Starter, Growth, Enterprise. Same functionality in every package; they differ by monthly credits
+// (partner integrations with Snowflake, Google and Meta are Enterprise only). Old tier keys map onto the new ones.
+const PLAN_TIERS = [
+  { key: 'starter', rank: 1, name: 'Starter', tagline: 'Starting out', price: '$1,500 a month', credits: '50', description: 'Everything in Verilume with 50 credits a month.', selfServe: false },
+  { key: 'growth', rank: 2, name: 'Growth', tagline: 'Growing', price: '$4,000 a month', credits: '150', description: 'Everything in Verilume with 150 credits a month.', selfServe: false },
+  { key: 'enterprise', rank: 3, name: 'Enterprise', tagline: 'At scale', price: 'Contact us', credits: 'Custom', description: 'Credits sized to your team, plus partner integrations with Snowflake, Google and Meta.', selfServe: false }
 ];
-let planTiers = PLAN_FALLBACK;
-async function loadPlan(){
-  try {
-    const r = await fetch(`${BACKEND_URL}/api/paid-tiers?all=1`);
-    if (r.ok){ const d = await r.json(); if (Array.isArray(d.tiers) && d.tiers.length) planTiers = d.tiers; }
-  } catch (e){}
-  renderPlan();
-}
+const PLAN_LEGACY = { spark: 'starter', starter: 'starter', glow: 'growth', radiance: 'growth', beacon: 'enterprise', growth: 'growth', enterprise: 'enterprise' };
+let planTiers = PLAN_TIERS;
+async function loadPlan(){ renderPlan(); }
 function renderPlan(msg, ok){
   const el = document.getElementById('planBody'); if (!el) return;
-  const cur = planTiers.find(t => t.key === state.paidTier) || null;
+  const curKey = PLAN_LEGACY[state.paidTier] || null;
+  const cur = planTiers.find(t => t.key === curKey) || null;
   const chip = document.getElementById('acctPlanChip'); if (chip) chip.textContent = cur ? cur.name : 'No package yet';
-  const ls = state.levelStatus;
-  const limit = t => t.maxStorefronts == null ? 'Unlimited' : t.maxStorefronts;
-  const drafts = t => t.monthlyDrafts == null ? 'Unlimited' : t.monthlyDrafts;
   const nowHtml = cur
-    ? `<div class="plan-now"><div><div class="plan-tag">Current package</div><h3>${escapeHtml(cur.name)} <span style="font-weight:500;color:var(--muted);font-size:1rem;">· ${escapeHtml(cur.tagline || '')}</span></h3><p class="card-sub" style="margin:6px 0 0;">${escapeHtml(cur.description || '')}</p></div>
-        <div class="plan-facts"><div><b>${limit(cur)}</b>storefronts</div><div><b>${drafts(cur)}</b>AI drafts a month</div>${cur.key === 'spark' && ls ? `<div><b>${ls.expired ? 'Ended' : ls.daysLeft + ' day' + (ls.daysLeft === 1 ? '' : 's')}</b>${ls.expired ? 'trial is read-only' : 'left in your trial'}</div>` : ''}</div></div>`
-    : `<div class="plan-now"><div><div class="plan-tag">Current package</div><h3>No package activated yet</h3><p class="card-sub" style="margin:6px 0 0;">Start with Spark, free for 7 days, or ask Verilume to activate a package.</p></div></div>`;
+    ? `<div class="plan-now"><div><div class="plan-tag">Current package</div><h3>${escapeHtml(cur.name)} <span style="font-weight:500;color:var(--muted);font-size:1rem;">· ${escapeHtml(cur.price)}</span></h3><p class="card-sub" style="margin:6px 0 0;">${escapeHtml(cur.description)}</p></div>
+        <div class="plan-facts"><div><b>${escapeHtml(cur.credits)}</b>credits a month</div></div></div>`
+    : `<div class="plan-now"><div><div class="plan-tag">Current package</div><h3>No package activated yet</h3><p class="card-sub" style="margin:6px 0 0;">Ask Verilume to activate a package. Every package has the same functionality; they differ by monthly credits.</p></div></div>`;
   const above = planTiers.filter(t => !cur || t.rank > cur.rank).sort((a, b) => a.rank - b.rank);
   const upHtml = above.length ? `<div class="plan-up-head">${cur ? 'Move up' : 'Choose a package'}</div><div class="plan-up-grid">${above.map((t, i) => {
-      const canStart = t.key === 'spark' && !state.paidTier;
-      const btn = canStart
-        ? `<button type="button" class="btn-primary" onclick="planStartSpark(this)">Start Spark</button>`
-        : `<button type="button" class="btn-${i === 0 ? 'primary' : 'ghost'}" onclick="planRequest('${t.key}', this)">${t.key === 'beacon' ? 'Talk to Sales' : 'Request activation'}</button>`;
-      return `<div class="plan-up${i === 0 && cur ? ' next' : ''}"><b>${escapeHtml(t.name)}</b><span class="tl">${escapeHtml(t.tagline || '')}</span><p>${escapeHtml(t.description || '')}</p>${btn}</div>`;
-    }).join('')}</div>${cur ? '<p class="card-sub" style="margin:12px 0 0;">Packages above yours are activated by the Verilume team once the updated order is on file. Requesting one sends your details to Sales.</p>' : ''}`
-    : `<p class="card-sub" style="margin:14px 0 0;">You are on our top package.</p>`;
+      const label = t.key === 'enterprise' ? 'Contact us' : 'Request activation';
+      const btn = `<button type="button" class="btn-${i === 0 ? 'primary' : 'ghost'}" onclick="planRequest('${t.key}', this)">${label}</button>`;
+      return `<div class="plan-up${i === 0 && cur ? ' next' : ''}"><b>${escapeHtml(t.name)}</b><span class="tl">${escapeHtml(t.tagline)}</span><p>${escapeHtml(t.price)} · ${t.key === 'enterprise' ? 'custom credits' : escapeHtml(t.credits) + ' credits a month'}</p><p>${escapeHtml(t.description)}</p>${btn}</div>`;
+    }).join('')}</div><p class="card-sub" style="margin:12px 0 0;">Packages above yours are activated by the Verilume team once the order is on file. Requesting one sends your details to Sales. Need more credits in a month? An admin can ask Verilume to add 50 credits for $2,000, invoiced.</p>`
+    : `<p class="card-sub" style="margin:14px 0 0;">You are on our top package. Need more credits in a month? An admin can ask Verilume to add credits, invoiced.</p>`;
   el.innerHTML = nowHtml + upHtml + (msg ? `<p class="plan-msg${ok ? ' ok' : ''}" role="status">${escapeHtml(msg)}</p>` : '');
 }
 async function planRequest(tier, btn){
@@ -979,15 +986,6 @@ async function planRequest(tier, btn){
     if (!r.ok) throw new Error(d.error || 'The request could not be sent.');
     renderPlan(d.alreadyRequested ? 'A request was already sent in the last hour. Sales will be in touch.' : 'Request sent. Verilume Sales will confirm and activate the package with you.', true);
   } catch (e){ renderPlan(e.message || 'The request could not be sent. Email verilume@verilume.ai.'); }
-}
-async function planStartSpark(btn){
-  if (btn) btn.disabled = true;
-  try {
-    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/tier`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tier: 'spark' }) });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.error || 'Spark could not be started.');
-    state.paidTier = 'spark'; await loadAccountRecord(); renderPlan('Spark started.', true);
-  } catch (e){ renderPlan(e.message || 'Spark could not be started.'); }
 }
 function initialsOf(name){ const w = String(name || '').replace(/\(.*?\)/g, '').trim().split(/\s+/).filter(Boolean); return ((w[0] || '')[0] || '—').toUpperCase() + ((w[1] || '')[0] || '').toUpperCase(); }
 // Section tabs follow the page, like the portal's primary nav.
@@ -1144,6 +1142,48 @@ function renderMyProfile(){
   section.style.display = 'block';
   document.getElementById('recoveryPhoneInput').value = me.phone || '';
   document.getElementById('recoveryPhoneSaveBtn').disabled = true;
+}
+
+
+// Sign-in codes by text (own profile only). Uses POST /api/auth/mfa-sms/{start,confirm,off}.
+let mfaSmsVerificationId = null;
+function mfaSmsMsg(t, ok){ const e = document.getElementById('mfaSmsStatus'); e.textContent = t; e.classList.toggle('ok', !!ok); }
+async function mfaSmsStart(){
+  const btn = document.getElementById('mfaSmsOnBtn'); btn.disabled = true; mfaSmsMsg('Sending a code…');
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/auth/mfa-sms/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok){ mfaSmsMsg(d.error || `Couldn't send a text (${r.status}).`); btn.disabled = false; return; }
+    mfaSmsVerificationId = d.verificationId;
+    document.getElementById('mfaSmsConfirm').style.display = 'block';
+    document.getElementById('mfaSmsCode').value = ''; document.getElementById('mfaSmsCode').focus();
+    mfaSmsMsg(`We texted a code to ${d.target}. Enter it below.` + (d.interimCode ? ` (No live text provider here yet; your code is ${d.interimCode}.)` : ''), true);
+  } catch (e){ mfaSmsMsg('Could not reach the backend — try again.'); }
+  btn.disabled = false;
+}
+async function mfaSmsConfirm(){
+  const code = document.getElementById('mfaSmsCode').value.trim();
+  if (!/^\d{6}$/.test(code)){ mfaSmsMsg('Enter the 6-digit code.'); return; }
+  const btn = document.getElementById('mfaSmsConfirmBtn'); btn.disabled = true;
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/auth/mfa-sms/confirm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ verificationId: mfaSmsVerificationId, code }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok){ mfaSmsMsg(d.error || `Couldn't confirm that code (${r.status}).`); btn.disabled = false; return; }
+    document.getElementById('mfaSmsConfirm').style.display = 'none';
+    mfaSmsMsg('✓ Text codes are on. Your next sign-in code will arrive by text.', true);
+  } catch (e){ mfaSmsMsg('Could not reach the backend — try again.'); }
+  btn.disabled = false;
+}
+async function mfaSmsOff(){
+  const btn = document.getElementById('mfaSmsOffBtn'); btn.disabled = true;
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/auth/mfa-sms/off`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok){ mfaSmsMsg(d.error || `Couldn't change that (${r.status}).`); btn.disabled = false; return; }
+    document.getElementById('mfaSmsConfirm').style.display = 'none';
+    mfaSmsMsg('✓ Sign-in codes will go to your email.', true);
+  } catch (e){ mfaSmsMsg('Could not reach the backend — try again.'); }
+  btn.disabled = false;
 }
 
 async function saveRecoveryPhone(){
