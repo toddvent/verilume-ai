@@ -20575,8 +20575,9 @@ function cardToCsv(x){
   out.push([]); x.notes.forEach(n => out.push(['Note', n]));
   return '﻿' + out.map(r => r.map(esc).join(',')).join('\r\n') + '\r\n';
 }
-async function cardToXlsx(x){
+async function cardToXlsx(x, pre){
   const wb = new ExcelJS.Workbook(); wb.creator = 'Verilume'; wb.created = new Date();
+  if (pre) pre(wb);
   const F = { name: 'Arial', size: 10 };
   x.tables.forEach((t, ti) => {
     const ws = wb.addWorksheet(t.name);
@@ -20595,7 +20596,8 @@ async function cardToXlsx(x){
           if (c.v == null){ cell.value = null; return; }
           cell.value = Number(c.v);
           cell.numFmt = c.kind === 'money' ? '$#,##0' : c.kind === 'x' ? '0.00"x"' : c.kind === 'pct' ? '+0.0"%";-0.0"%";0.0"%"' : '#,##0';
-        } else cell.value = c == null ? '' : String(c);
+        } else if (typeof c === 'number'){ cell.value = c; cell.numFmt = '#,##0.0#'; }
+        else cell.value = c == null ? '' : String(c);
       });
       r++;
     });
@@ -20649,6 +20651,361 @@ async function cardToPptx(x){
   return z.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
 function cardToJson(x){ return { title: x.title, context: x.context, notes: x.notes, tables: (x.tables || []).map(t => ({ name: t.name, columns: t.columns.map(c => c.h), numeric: t.columns.map((c, i) => i > 0 && t.rows.some(r => cardCellText(r[i]) !== '') && t.rows.every(r => { const v = r[i]; const tx = cardCellText(v); return tx === '' || (v && typeof v === 'object' && 'kind' in v) || /^[\d$+\-.,%x\s]+$/.test(tx); })), rows: t.rows.map(r => r.map(cardCellText)) })) }; }
+// ================= Visualize studio (2026-11-14) =================
+// Request a chart in words (typed or spoken in the browser), see an existing report if one fits, otherwise a recommended chart built from the
+// account's own tables through the same question engine as Ask Verilume (numbers come from dqRun, never free SQL). A person refines it in
+// plain words or with the controls, saves it to the account, shares it with teammates (in-portal message plus email) and downloads it as
+// PowerPoint, Excel (native chart) or a file Google Sheets imports. Chart types are a fixed set: column, bar, line, area, stacked, pie, table.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_charts (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    title TEXT NOT NULL,
+    requesttext TEXT,
+    datajson TEXT NOT NULL,
+    viewjson TEXT NOT NULL,
+    specjson TEXT,
+    period TEXT,
+    ownerid TEXT,
+    ownername TEXT,
+    visibility TEXT NOT NULL DEFAULT 'private',
+    sharedwith TEXT,
+    note TEXT,
+    createdat TEXT NOT NULL,
+    updatedat TEXT NOT NULL,
+    views INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS account_notifications (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    memberid TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT,
+    link TEXT,
+    fromname TEXT,
+    refid TEXT,
+    createdat TEXT NOT NULL,
+    readat TEXT
+  );
+  CREATE TABLE IF NOT EXISTS account_chart_requests (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    memberid TEXT,
+    requesttext TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    feedback TEXT,
+    createdat TEXT NOT NULL
+  );
+`);
+
+const VIZ_TYPES = ['column', 'bar', 'line', 'area', 'stacked', 'pie', 'table'];
+const VIZ_TYPE_LABEL = { column: 'Column', bar: 'Bar', line: 'Line', area: 'Area', stacked: 'Stacked', pie: 'Pie', table: 'Table' };
+// Fixed order, never cycled. A series past the eighth is folded into "Other" or dropped, never given a new hue.
+const VIZ_PALETTES = {
+  brand: ['#1E2761', '#0891B2', '#C9932E', '#1F6B5C', '#D9480F', '#7C3AED', '#6E6E73', '#0A58CC'],
+  cool: ['#0A58CC', '#0891B2', '#1F6B5C', '#1E2761', '#5B8DEF', '#14B8A6', '#6E6E73', '#7C3AED'],
+  warm: ['#D9480F', '#C9932E', '#B91C1C', '#92400E', '#F59E0B', '#7C2D12', '#6E6E73', '#1E2761'],
+  mono: ['#14213D', '#3F4B66', '#6B7694', '#98A1BA', '#C2C8D8', '#4B5563', '#9CA3AF', '#D1D5DB']
+};
+const VIZ_TIME_DIMS = ['year', 'month', 'quarter', 'serviceYear'];
+const VIZ_ORDERED_DIMS = VIZ_TIME_DIMS.concat(['hour', 'weekday', 'orderSizeGroup', 'leadDaysGroup', 'ageBand']);
+
+function vizNum(v){
+  if (v == null) return null;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (typeof v === 'object' && 'kind' in v) return Number.isFinite(Number(v.v)) ? Number(v.v) : null;
+  const t = String(v).replace(/\(small sample\)/ig, '').trim();
+  if (!t || /^[—–-]$/.test(t)) return null;
+  const n = Number(t.replace(/[$,%x\s]/g, '').replace(/^\+/, ''));
+  return Number.isFinite(n) ? n : null;
+}
+function vizKindOf(samples, measureKind, header){
+  const s = samples.map(v => (v && typeof v === 'object' && 'kind' in v) ? (v.kind === 'money' ? '$' : v.kind === 'pct' ? '%' : '') : String(v == null ? '' : v)).find(x => x && x !== '—') || '';
+  if (/\$/.test(s) || /revenue|spend|cost|price|\$/i.test(header || '') && measureKind === 'money') return 'money';
+  if (/%/.test(s)) return 'pct';
+  if (measureKind === 'int') return 'int';
+  if (measureKind === 'money') return 'money';
+  return 'num1';
+}
+function vizFmtVal(v, kind){
+  if (v == null || !Number.isFinite(v)) return '—';
+  if (kind === 'money') return (v < 0 ? '-$' : '$') + Math.round(Math.abs(v)).toLocaleString('en-US');
+  if (kind === 'pct') return (Math.round(v * 10) / 10).toLocaleString('en-US') + '%';
+  if (kind === 'int') return Math.round(v).toLocaleString('en-US');
+  return (Math.round(v * 10) / 10).toLocaleString('en-US');
+}
+// A computed answer table becomes labels plus numeric series. Totals ("All") are not categories.
+function vizDataFromTable(t, spec){
+  const cols = (t.columns || []).map(c => (c && typeof c === 'object' ? c.h : c));
+  const rows = (t.rows || []).slice();
+  if (!cols.length || !rows.length) return null;
+  const measureKind = spec && DQ_MEASURES[spec.measure] ? DQ_MEASURES[spec.measure].kind : null;
+  const isMatrix = /\\/.test(String(cols[0] || '')) && cols.length > 2;
+  const nLabel = isMatrix ? 1 : Math.max(1, (spec && spec.by && spec.by.length) || 1);
+  const isAll = r => String(r[0] == null ? '' : r[0]).trim() === 'All';
+  const body = rows.filter(r => !isAll(r));
+  if (!body.length) return null;
+  let numIdx = [];
+  for (let i = nLabel; i < cols.length; i++){
+    const parsed = body.map(r => vizNum(r[i]));
+    if (parsed.filter(x => x != null).length >= Math.max(1, Math.ceil(body.length * 0.6))) numIdx.push(i);
+  }
+  if (isMatrix) numIdx = numIdx.filter(i => String(cols[i]).trim() !== 'All');
+  if (numIdx.length > 1) numIdx = numIdx.filter(i => !/^(change|transactions|share|n)$/i.test(String(cols[i]).trim()) || numIdx.every(j => /^(change|transactions|share|n)$/i.test(String(cols[j]).trim())));
+  if (!numIdx.length) return null;
+  let kind = null;
+  const labels = body.map(r => r.slice(0, nLabel).map(v => String(v == null ? '' : v)).join(' / '));
+  const series = numIdx.map(i => {
+    const samples = body.map(r => r[i]);
+    const k = vizKindOf(samples, measureKind, String(cols[i]));
+    if (!kind) kind = k;
+    const name = isMatrix ? String(cols[i]) : String(cols[i]);
+    return { name, values: body.map(r => vizNum(r[i])) };
+  });
+  const dimLabel = isMatrix ? String(cols[0]).split('\\')[0].trim() : cols.slice(0, nLabel).join(' / ');
+  return { labels, series, kind: kind || 'num1', labelName: dimLabel, matrix: isMatrix, additive: !!(spec && (spec.agg === 'sum' || spec.agg === 'count')), dims: (spec && spec.by) || [] };
+}
+function vizRecommend(data, text){
+  const n = data.labels.length, ns = data.series.length; const t = String(text || '').toLowerCase();
+  const first = (data.dims || [])[0] || '';
+  const avgLen = data.labels.reduce((a, l) => a + l.length, 0) / Math.max(1, n);
+  let type = 'column', why = '';
+  if (!n || !ns){ type = 'table'; why = 'There is nothing to plot, so the table is shown.'; }
+  else if (n === 1 && ns === 1){ type = 'table'; why = 'It is a single number, so it is shown as a figure rather than a chart.'; }
+  else if (VIZ_TIME_DIMS.includes(first) || /by month|monthly|over time|trend/.test(t) && ns <= 4 && n >= 5){
+    if (n >= 5){ type = 'line'; why = `${data.labels[0]} to ${data.labels[n - 1]} runs in order, so a line shows the direction.`; }
+    else { type = ns > 1 && data.additive ? 'stacked' : 'column'; why = 'There are only a few periods, so columns read more clearly than a line.'; }
+  }
+  else if (data.matrix || ns >= 2){
+    type = data.additive ? 'stacked' : 'column'; why = data.additive ? 'Two breakdowns that add up are clearest stacked, so each column shows its parts.' : 'Two measures side by side are clearest as grouped columns.';
+  }
+  else if (data.additive && n >= 2 && n <= 6 && /share|mix|percent|proportion|split|breakdown/.test(t)){ type = 'pie'; why = 'A handful of parts of one total, so a pie shows each share.'; }
+  else if (n > 8 || avgLen > 14){ type = 'bar'; why = 'Many or long labels read best as horizontal bars, ranked.'; }
+  else { type = 'column'; why = 'One measure across a few groups, so columns make the comparison.'; }
+  const alts = VIZ_TYPES.filter(x => {
+    if (x === 'stacked') return ns >= 2;
+    if (x === 'pie') return n >= 2 && n <= 12;
+    if (x === 'line' || x === 'area') return n >= 3;
+    return true;
+  });
+  const ordered = VIZ_ORDERED_DIMS.includes(first);
+  return { type, why, alternatives: alts, sort: (type === 'bar' || (!ordered && type === 'column' && ns === 1)) && !data.matrix ? 'desc' : 'none', topN: n > 20 ? 12 : 0 };
+}
+function vizDefaultView(data, title, text){
+  const r = vizRecommend(data, text);
+  return { type: r.type, title: title || '', sort: r.sort, topN: r.topN, palette: 'brand', showValues: data.labels.length <= 12 && data.series.length <= 3, hide: [], note: '', why: r.why, alternatives: r.alternatives };
+}
+// Data plus view options -> the chart exactly as drawn (and exported).
+function vizApply(data, viewIn){
+  const view = Object.assign({ type: 'column', title: '', sort: 'none', topN: 0, palette: 'brand', showValues: true, hide: [] }, viewIn || {});
+  if (!VIZ_TYPES.includes(view.type)) view.type = 'column';
+  const hide = (view.hide || []).map(h => String(h).toLowerCase());
+  let idx = data.labels.map((l, i) => i).filter(i => !hide.includes(String(data.labels[i]).toLowerCase()));
+  let series = data.series.filter(s => !hide.includes(String(s.name).toLowerCase()));
+  if (!series.length) series = data.series.slice(0, 1);
+  const total = i => series.reduce((a, s) => a + (s.values[i] || 0), 0);
+  if (view.sort === 'desc') idx.sort((a, b) => total(b) - total(a));
+  else if (view.sort === 'asc') idx.sort((a, b) => total(a) - total(b));
+  else if (view.sort === 'alpha') idx.sort((a, b) => String(data.labels[a]).localeCompare(String(data.labels[b])));
+  let note = '';
+  if (view.topN > 0 && idx.length > view.topN){ note = `Showing ${view.sort === 'asc' ? 'the lowest' : 'the top'} ${view.topN} of ${idx.length}.`; if (view.sort === 'none'){ const keep = new Set(idx.slice().sort((x, y) => total(y) - total(x)).slice(0, view.topN)); idx = idx.filter(i => keep.has(i)); } else idx = idx.slice(0, view.topN); }
+  let labels = idx.map(i => data.labels[i]);
+  let ser = series.map(s => ({ name: s.name, values: idx.map(i => s.values[i]) }));
+  if (ser.length > 8){
+    const keep = ser.slice().sort((a, b) => b.values.reduce((x, y) => x + (y || 0), 0) - a.values.reduce((x, y) => x + (y || 0), 0)).slice(0, 7);
+    const rest = ser.filter(s => !keep.includes(s));
+    const other = { name: 'Other', values: labels.map((_, i) => rest.reduce((a, s) => a + (s.values[i] || 0), 0)) };
+    ser = ser.filter(s => keep.includes(s)).concat(data.additive ? [other] : []);
+    note = (note ? note + ' ' : '') + (data.additive ? `${rest.length} smaller series are grouped as Other.` : `${rest.length} smaller series are not drawn; they are in the table.`);
+  }
+  let type = view.type;
+  if (type === 'stacked' && ser.length < 2) type = 'column';
+  if (type === 'pie'){
+    ser = ser.slice(0, 1);
+    if (labels.length > 8){
+      const vals = ser[0].values; const top = labels.map((l, i) => ({ l, v: vals[i] || 0 })).sort((a, b) => b.v - a.v);
+      const head = top.slice(0, 7), tail = top.slice(7);
+      labels = head.map(x => x.l).concat(['Other']); ser = [{ name: ser[0].name, values: head.map(x => x.v).concat([tail.reduce((a, x) => a + x.v, 0)]) }];
+      note = (note ? note + ' ' : '') + `${tail.length} smaller groups are shown as Other.`;
+    }
+  }
+  const pal = VIZ_PALETTES[view.palette] || VIZ_PALETTES.brand;
+  const colors = type === 'pie' ? labels.map((_, i) => pal[i % pal.length]) : ser.map((_, i) => pal[i % pal.length]);
+  return { type, title: view.title || '', subtitle: '', labels, series: ser.map((s, i) => Object.assign({}, s, { color: pal[i % pal.length] })), colors, kind: data.kind || 'num1', showValues: !!view.showValues, palette: VIZ_PALETTES[view.palette] ? view.palette : 'brand', note: [view.note, note].filter(Boolean).join(' '), labelName: data.labelName || '' };
+}
+// Plain-words feedback. Anything about how the chart looks is applied here; wording about the data itself asks for a re-run.
+function vizApplyFeedback(viewIn, feedback, data){
+  const view = Object.assign({}, viewIn); const said = []; const t = ' ' + String(feedback || '').toLowerCase().replace(/[.,!?]+/g, ' ') + ' ';
+  const has = re => re.test(t);
+  let m;
+  if ((m = /\b(?:title|call|name|rename)(?:\s+(?:it|this|the chart))?(?:\s+(?:to|as))?\s+["“']?([^"”']{3,80})["”']?\s*$/i.exec(String(feedback || '').trim().replace(/[.!]+$/, ''))) && /\b(title|call it|name it|rename)\b/i.test(feedback)){ view.title = m[1].trim(); said.push(`Title is now "${view.title}".`); }
+  const typeWords = [['stacked', /\bstack(ed)?\b/], ['pie', /\b(pie|donut|doughnut)\b/], ['line', /\bline\b/], ['area', /\barea\b/], ['bar', /\b(horizontal|bars?)\b/], ['column', /\b(columns?|vertical)\b/], ['table', /\btable\b/]];
+  for (const [ty, re] of typeWords){ if (re.test(t)){ view.type = ty; said.push(`Switched to a ${VIZ_TYPE_LABEL[ty].toLowerCase()} chart.`); break; } }
+  if ((m = /\b(top|bottom|lowest|highest|first|last)\s+(\d{1,2})\b/.exec(t))){
+    view.topN = Math.min(30, Math.max(1, parseInt(m[2], 10)));
+    const low = /bottom|lowest|last/.test(m[1]); if (!(view.type === 'line' || view.type === 'area')) view.sort = low ? 'asc' : 'desc'; said.push(`Showing the ${low ? 'lowest' : 'top'} ${view.topN}.`);
+  }
+  else if (has(/\b(all of them|show all|every row|everything|no limit)\b/)){ view.topN = 0; said.push('Showing every group.'); }
+  if (has(/\b(highest first|biggest first|largest first|descending|rank(ed)?|sort(ed)? (it )?(high|desc))\b/)){ view.sort = 'desc'; said.push('Sorted highest first.'); }
+  else if (has(/\b(lowest first|smallest first|ascending|sort(ed)? (it )?(low|asc))\b/)){ view.sort = 'asc'; said.push('Sorted lowest first.'); }
+  else if (has(/\b(alphabetic(al)?|a to z|by name)\b/)){ view.sort = 'alpha'; said.push('Sorted by name.'); }
+  else if (has(/\b(in order|chronolog|original order|unsorted|no sort)\b/)){ view.sort = 'none'; said.push('Back in the original order.'); }
+  const palettes = [['cool', /\b(cool|blue|blues|teal)\b/], ['warm', /\b(warm|orange|red|reds|amber)\b/], ['mono', /\b(gr[ae]y|grayscale|greyscale|monochrome|mono|black and white|neutral)\b/], ['brand', /\b(brand|default|original colors?|verilume colors?)\b/]];
+  if (has(/\b(colou?rs?|palette|shade|tint)\b/) || palettes.some(([, re]) => re.test(t) && /\b(make|use|change|switch|in)\b/.test(t))){
+    for (const [p, re] of palettes){ if (re.test(t)){ view.palette = p; said.push(`Using the ${p} colors.`); break; } }
+  }
+  if (has(/\b(hide|remove|no|without|turn off)\b.*\b(labels?|numbers?|values?)\b/)){ view.showValues = false; said.push('Value labels are off.'); }
+  else if (has(/\b(show|add|turn on|with)\b.*\b(labels?|numbers?|values?)\b/)){ view.showValues = true; said.push('Value labels are on.'); }
+  if ((m = /\b(?:remove|drop|hide|exclude|without|leave out|take out)\s+(?:the\s+)?([a-z0-9][a-z0-9 &/-]{1,40}?)(?:\s+(?:from|please|and)\b|\s*$)/.exec(t)) && !/\b(labels?|numbers?|values?|legend|title|colou?rs?)\b/.test(m[1])){
+    const want = m[1].trim(); const pool = (data.labels || []).concat((data.series || []).map(s => s.name));
+    const hit = pool.find(p => String(p).toLowerCase() === want) || pool.find(p => String(p).toLowerCase().includes(want) && want.length > 2);
+    if (hit){ view.hide = Array.from(new Set((view.hide || []).concat([hit]))); said.push(`Left out ${hit}.`); }
+  }
+  if ((m = /\b(?:bring back|restore|add back|put back)\s+(?:the\s+)?([a-z0-9][a-z0-9 &/-]{1,40})\s*$/.exec(t)) && view.hide && view.hide.length){
+    const want = m[1].trim(); const before = view.hide.length; view.hide = view.hide.filter(h => !String(h).toLowerCase().includes(want)); if (view.hide.length < before) said.push(`Put back ${want}.`);
+  }
+  const dataWords = /\b(by|per|for|only|just|in|during|last|this|previous|prior|compare|compared|versus|vs|instead|year|quarter|month|week|state|region|product|channel|campaign|group|revenue|spend|leads|transactions)\b/;
+  const askData = !said.length && dataWords.test(t);
+  return { view, said, rerun: askData };
+}
+
+// ---- native chart XML, shared by Excel and PowerPoint ----
+function vizXe(v){ return String(v == null ? '' : v).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function vizColLetter(n){ let s = ''; n = n + 1; while (n > 0){ const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
+function vizNumFmt(kind){ return kind === 'money' ? '$#,##0' : kind === 'pct' ? '0.0"%"' : kind === 'int' ? '#,##0' : '#,##0.0'; }
+function vizChartXml(chart, sheet, withExternal){
+  const n = chart.labels.length; const q = `'${sheet.replace(/'/g, "''")}'`;
+  const fmt = vizNumFmt(chart.kind);
+  const hex = c => String(c || '#1E2761').replace('#', '').toUpperCase();
+  const tx = (sz, color, bold) => `<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="${sz}" b="${bold ? 1 : 0}"><a:solidFill><a:srgbClr val="${color}"/></a:solidFill><a:latin typeface="Arial"/></a:defRPr></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr>`;
+  const cat = `<c:cat><c:strRef><c:f>${q}!$A$2:$A$${n + 1}</c:f><c:strCache><c:ptCount val="${n}"/>${chart.labels.map((l, i) => `<c:pt idx="${i}"><c:v>${vizXe(l)}</c:v></c:pt>`).join('')}</c:strCache></c:strRef></c:cat>`;
+  const val = (s, si) => { const L = vizColLetter(si + 1); return `<c:val><c:numRef><c:f>${q}!$${L}$2:$${L}$${n + 1}</c:f><c:numCache><c:formatCode>${vizXe(fmt)}</c:formatCode><c:ptCount val="${n}"/>${s.values.map((v, i) => v == null ? '' : `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`).join('')}</c:numCache></c:numRef></c:val>`; };
+  const sertx = (s, si) => `<c:tx><c:strRef><c:f>${q}!$${vizColLetter(si + 1)}$1</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>${vizXe(s.name)}</c:v></c:pt></c:strCache></c:strRef></c:tx>`;
+  const dl = (show, pos) => show ? `<c:dLbls><c:numFmt formatCode="${vizXe(fmt)}" sourceLinked="0"/><c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>${tx(900, '1D1D1F')}${pos ? `<c:dLblPos val="${pos}"/>` : ''}<c:showLegendKey val="0"/><c:showVal val="1"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="0"/><c:showBubbleSize val="0"/></c:dLbls>` : '';
+  const fill = c => `<c:spPr><a:solidFill><a:srgbClr val="${hex(c)}"/></a:solidFill></c:spPr>`;
+  const lineSp = c => `<c:spPr><a:ln w="28575" cap="rnd"><a:solidFill><a:srgbClr val="${hex(c)}"/></a:solidFill><a:round/></a:ln></c:spPr>`;
+  let plot = '';
+  const type = chart.type;
+  if (type === 'column' || type === 'bar' || type === 'stacked'){
+    const stacked = type === 'stacked';
+    plot = `<c:barChart><c:barDir val="${type === 'bar' ? 'bar' : 'col'}"/><c:grouping val="${stacked ? 'stacked' : 'clustered'}"/><c:varyColors val="0"/>`
+      + chart.series.map((s, i) => `<c:ser><c:idx val="${i}"/><c:order val="${i}"/>${sertx(s, i)}${fill(s.color)}<c:invertIfNegative val="0"/>${dl(chart.showValues && !stacked, 'outEnd')}${cat}${val(s, i)}</c:ser>`).join('')
+      + `<c:gapWidth val="${stacked ? 55 : 80}"/>${stacked ? '<c:overlap val="100"/>' : ''}<c:axId val="111111"/><c:axId val="222222"/></c:barChart>`;
+  } else if (type === 'line'){
+    plot = `<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>` + chart.series.map((s, i) => `<c:ser><c:idx val="${i}"/><c:order val="${i}"/>${sertx(s, i)}${lineSp(s.color)}<c:marker><c:symbol val="circle"/><c:size val="6"/>${fill(s.color)}</c:marker>${dl(chart.showValues, 't')}${cat}${val(s, i)}<c:smooth val="0"/></c:ser>`).join('') + `<c:marker val="1"/><c:axId val="111111"/><c:axId val="222222"/></c:lineChart>`;
+  } else if (type === 'area'){
+    plot = `<c:areaChart><c:grouping val="standard"/><c:varyColors val="0"/>` + chart.series.map((s, i) => `<c:ser><c:idx val="${i}"/><c:order val="${i}"/>${sertx(s, i)}<c:spPr><a:solidFill><a:srgbClr val="${hex(s.color)}"><a:alpha val="70000"/></a:srgbClr></a:solidFill></c:spPr>${cat}${val(s, i)}</c:ser>`).join('') + `<c:axId val="111111"/><c:axId val="222222"/></c:areaChart>`;
+  } else if (type === 'pie'){
+    const s = chart.series[0];
+    plot = `<c:doughnutChart><c:varyColors val="1"/><c:ser><c:idx val="0"/><c:order val="0"/>${sertx(s, 0)}${chart.labels.map((l, i) => `<c:dPt><c:idx val="${i}"/><c:bubble3D val="0"/><c:spPr><a:solidFill><a:srgbClr val="${hex(chart.colors[i])}"/></a:solidFill><a:ln w="19050"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:ln></c:spPr></c:dPt>`).join('')}${chart.showValues ? `<c:dLbls><c:numFmt formatCode="${vizXe(fmt)}" sourceLinked="0"/><c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>${tx(900, 'FFFFFF', true)}<c:showLegendKey val="0"/><c:showVal val="1"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="0"/><c:showBubbleSize val="0"/><c:showLeaderLines val="0"/></c:dLbls>` : ''}${cat}${val(s, 0)}</c:ser><c:firstSliceAng val="0"/><c:holeSize val="52"/></c:doughnutChart>`;
+  }
+  const horiz = type === 'bar';
+  const axes = type === 'pie' ? '' : `<c:catAx><c:axId val="111111"/><c:scaling><c:orientation val="${horiz ? 'maxMin' : 'minMax'}"/></c:scaling><c:delete val="0"/><c:axPos val="${horiz ? 'l' : 'b'}"/><c:numFmt formatCode="General" sourceLinked="0"/><c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="D2D2D7"/></a:solidFill></a:ln></c:spPr>${tx(1000, '6E6E73')}<c:crossAx val="222222"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx>`
+    + `<c:valAx><c:axId val="222222"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="${horiz ? 't' : 'l'}"/><c:majorGridlines><c:spPr><a:ln w="6350"><a:solidFill><a:srgbClr val="E8E8ED"/></a:solidFill></a:ln></c:spPr></c:majorGridlines><c:numFmt formatCode="${vizXe(fmt)}" sourceLinked="0"/><c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:spPr><a:ln><a:noFill/></a:ln></c:spPr>${tx(1000, '6E6E73')}<c:crossAx val="111111"/><c:crosses val="${horiz ? 'max' : 'autoZero'}"/><c:crossBetween val="${type === 'line' || type === 'area' ? 'midCat' : 'between'}"/></c:valAx>`;
+  const legend = (chart.series.length > 1 || type === 'pie') ? `<c:legend><c:legendPos val="b"/><c:overlay val="0"/>${tx(1000, '1D1D1F')}</c:legend>` : '';
+  const title = chart.title ? `<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="1400" b="1"/></a:pPr><a:r><a:rPr lang="en-US" sz="1400" b="1"><a:solidFill><a:srgbClr val="1D1D1F"/></a:solidFill><a:latin typeface="Arial"/></a:rPr><a:t>${vizXe(chart.title)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title><c:autoTitleDeleted val="0"/>` : '<c:autoTitleDeleted val="1"/>';
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><c:roundedCorners val="0"/><c:chart>${title}<c:plotArea><c:layout/>${plot}${axes}</c:plotArea>${legend}<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart><c:spPr><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:ln><a:noFill/></a:ln></c:spPr>${withExternal ? '<c:externalData r:id="rId1"><c:autoUpdate val="0"/></c:externalData>' : ''}</c:chartSpace>`;
+}
+// The chart's own data as a small sheet: labels down column A, one series per column.
+function vizFillDataSheet(ws, chart){
+  const F = { name: 'Arial', size: 10 };
+  ws.getCell(1, 1).value = chart.labelName || 'Category'; ws.getCell(1, 1).font = { ...F, bold: true };
+  chart.series.forEach((s, i) => { const c = ws.getCell(1, i + 2); c.value = s.name; c.font = { ...F, bold: true }; });
+  chart.labels.forEach((l, r) => {
+    ws.getCell(r + 2, 1).value = l; ws.getCell(r + 2, 1).font = F;
+    chart.series.forEach((s, i) => { const c = ws.getCell(r + 2, i + 2); c.value = s.values[r] == null ? null : s.values[r]; c.font = F; c.numFmt = vizNumFmt(chart.kind); });
+  });
+  ws.getColumn(1).width = 30; chart.series.forEach((s, i) => { ws.getColumn(i + 2).width = 18; });
+}
+async function vizToXlsx(chart, x){
+  const JSZip = require('jszip');
+  const sheetName = 'Chart';
+  const buf = await cardToXlsx(x, wb => { vizFillDataSheet(wb.addWorksheet(sheetName), chart); });
+  if (chart.type === 'table' || !chart.series.length) return buf;
+  const z = await JSZip.loadAsync(buf);
+  const wbXml = await z.file('xl/workbook.xml').async('string');
+  const rels = await z.file('xl/_rels/workbook.xml.rels').async('string');
+  const sheetRid = (new RegExp('<sheet [^>]*name="' + sheetName + '"[^>]*r:id="([^"]+)"').exec(wbXml) || [])[1];
+  const target = sheetRid && (new RegExp('<Relationship [^>]*Id="' + sheetRid + '"[^>]*Target="([^"]+)"').exec(rels) || new RegExp('<Relationship [^>]*Target="([^"]+)"[^>]*Id="' + sheetRid + '"').exec(rels) || [])[1];
+  if (!target) return buf;
+  const sheetPath = ('xl/' + target.replace(/^\/?(xl\/)?/, '')).replace('xl/xl/', 'xl/');
+  const sheetFile = z.file(sheetPath); if (!sheetFile) return buf;
+  let sx = await sheetFile.async('string');
+  if (!/xmlns:r=/.test(sx)) sx = sx.replace('<worksheet ', '<worksheet xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ');
+  const ins = '<drawing r:id="rIdVizDr1"/>';
+  const at = sx.search(/<legacyDrawing|<tableParts|<extLst|<\/worksheet>/);
+  sx = sx.slice(0, at) + ins + sx.slice(at);
+  z.file(sheetPath, sx);
+  const relPath = sheetPath.replace('worksheets/', 'worksheets/_rels/') + '.rels';
+  const relXml = '<Relationship Id="rIdVizDr1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawingViz1.xml"/>';
+  const existing = z.file(relPath);
+  z.file(relPath, existing ? (await existing.async('string')).replace('</Relationships>', relXml + '</Relationships>') : `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relXml}</Relationships>`);
+  const col0 = chart.series.length + 3;
+  z.file('xl/drawings/drawingViz1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><xdr:twoCellAnchor><xdr:from><xdr:col>${col0}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>${col0 + 11}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>26</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to><xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="2" name="Chart 1"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr><xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rId1"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor></xdr:wsDr>`);
+  z.file('xl/drawings/_rels/drawingViz1.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chartViz1.xml"/></Relationships>`);
+  z.file('xl/charts/chartViz1.xml', vizChartXml(chart, sheetName, false));
+  let ct = await z.file('[Content_Types].xml').async('string');
+  ct = ct.replace('</Types>', '<Override PartName="/xl/drawings/drawingViz1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/><Override PartName="/xl/charts/chartViz1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/></Types>');
+  z.file('[Content_Types].xml', ct);
+  return z.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+}
+async function vizToPptx(chart, x){
+  const base = await cardToPptx(x);
+  if (chart.type === 'table' || !chart.series.length) return base;
+  const JSZip = require('jszip');
+  const z = await JSZip.loadAsync(base);
+  const X = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  const NS = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"';
+  const RT = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  const MX = 457200, W = 12192000, H = 6858000;
+  const run = (t, sz, color, bold) => `<a:r><a:rPr lang="en-US" sz="${sz}"${bold ? ' b="1"' : ''} dirty="0"><a:solidFill><a:srgbClr val="${color}"/></a:solidFill><a:latin typeface="Arial"/><a:cs typeface="Arial"/></a:rPr><a:t>${vizXe(t)}</a:t></a:r>`;
+  const box = (id, name, x0, y0, w, h, paras) => `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="${name}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${x0}" y="${y0}"/><a:ext cx="${w}" cy="${h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0"><a:normAutofit/></a:bodyPr><a:lstStyle/>${paras}</p:txBody></p:sp>`;
+  const ctx = (x.context || []).filter(([k]) => /^(Period|Source)$/i.test(k)).map(([k, v]) => `${k}: ${v}`).join('   ·   ');
+  const slide = `${X}<p:sld ${NS}><p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:effectLst/></p:bgPr></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>`
+    + box(2, 'Title', MX, 300000, W - 2 * MX, 560000, `<a:p>${run(chart.title || x.title, 2400, '14213D', true)}</a:p>`)
+    + (x.summary ? box(3, 'Summary', MX, 880000, W - 2 * MX, 520000, `<a:p>${run(x.summary, 1300, '1D1D1F', false)}</a:p>`) : '')
+    + `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="4" name="Chart"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="${MX}" y="1450000"/><a:ext cx="${W - 2 * MX}" cy="4650000"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" r:id="rId2"/></a:graphicData></a:graphic></p:graphicFrame>`
+    + box(5, 'Source', MX, 6250000, W - 2 * MX, 420000, `<a:p>${run([ctx, chart.note].filter(Boolean).join('   ·   '), 1000, '6E6E73', false)}</a:p>`)
+    + `</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`;
+  z.file('ppt/slides/slideViz.xml', slide);
+  z.file('ppt/slides/_rels/slideViz.xml.rels', `${X}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RT}/slideLayout" Target="../slideLayouts/slideLayout1.xml"/><Relationship Id="rId2" Type="${RT}/chart" Target="../charts/chartViz1.xml"/></Relationships>`);
+  z.file('ppt/charts/chartViz1.xml', vizChartXml(Object.assign({}, chart, { title: '' }), 'Sheet1', true));
+  z.file('ppt/charts/_rels/chartViz1.xml.rels', `${X}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RT}/package" Target="../embeddings/Microsoft_Excel_SheetViz1.xlsx"/></Relationships>`);
+  const wb = new ExcelJS.Workbook(); vizFillDataSheet(wb.addWorksheet('Sheet1'), chart);
+  z.file('ppt/embeddings/Microsoft_Excel_SheetViz1.xlsx', await wb.xlsx.writeBuffer());
+  let pres = await z.file('ppt/presentation.xml').async('string');
+  pres = pres.replace(/<p:sldIdLst>/, '<p:sldIdLst><p:sldId id="900" r:id="rIdViz900"/>');
+  z.file('ppt/presentation.xml', pres);
+  let prel = await z.file('ppt/_rels/presentation.xml.rels').async('string');
+  prel = prel.replace('</Relationships>', `<Relationship Id="rIdViz900" Type="${RT}/slide" Target="slides/slideViz.xml"/></Relationships>`);
+  z.file('ppt/_rels/presentation.xml.rels', prel);
+  let ct = await z.file('[Content_Types].xml').async('string');
+  if (!/Extension="xlsx"/.test(ct)) ct = ct.replace('<Override', '<Default Extension="xlsx" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"/><Override');
+  ct = ct.replace('</Types>', '<Override PartName="/ppt/slides/slideViz.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/><Override PartName="/ppt/charts/chartViz1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/></Types>');
+  z.file('[Content_Types].xml', ct);
+  return z.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+}
+// The chart as a download grid the existing card writers understand.
+function vizExportCard(accountId, title, chart, data, extra){
+  extra = extra || {};
+  const cols = [{ h: chart.labelName || 'Category' }].concat(chart.series.map(s => ({ h: s.name })));
+  const cell = v => v == null ? '' : chart.kind === 'money' ? { kind: 'money', v } : chart.kind === 'int' ? { kind: 'int', v } : Math.round(v * 100) / 100;
+  const rows = chart.labels.map((l, i) => [l].concat(chart.series.map(s => cell(s.values[i]))));
+  return { title: title || 'Chart', fileSlug: (String(title || 'chart').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'chart').slice(0, 60), summary: extra.sentence || '',
+    context: [['Account', accountId], ['Period', extra.period || ''], ['Source', 'Verilume Visualize'], ['Generated', new Date().toISOString().slice(0, 10)]].filter(r => r[1]),
+    tables: [{ name: 'Chart data', columns: cols, rows }], notes: (extra.notes || []).concat(chart.note ? [chart.note] : []) };
+}
+async function vizSendFile(res, accountId, format, chart, data, title, extra){
+  if (!['xlsx', 'pptx', 'csv'].includes(format)) return sendJson(res, 400, { error: 'format must be xlsx, pptx or csv' });
+  const x = vizExportCard(accountId, title, chart, data, extra); const base = `${x.fileSlug}-${new Date().toISOString().slice(0, 10)}`;
+  if (format === 'csv'){ res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${base}.csv"` }); return res.end(cardToCsv(x)); }
+  if (format === 'pptx'){ const b = await vizToPptx(chart, x); res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'Content-Disposition': `attachment; filename="${base}.pptx"` }); return res.end(b); }
+  const b = await vizToXlsx(chart, x);
+  res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="${base}.xlsx"` });
+  return res.end(Buffer.from(b));
+}
+
 // A small dependency-free PDF writer: Helvetica text on Letter pages, tables wrapped in columns.
 function cardToPdf(x){
   const W = 792, H = 612, M = 40; // landscape Letter
@@ -22764,7 +23121,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['account_pr_profile', 'account_ga4_meta', 'account_plan_scenarios', 'plan_scenario_events', 'mix_benchmark_cpm', 'account_lead_source_channel', 'plan_baseline_drafts', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'marketing_projects', 'marketing_project_tasks', 'account_learned_cpm', 'account_channel_product_inputs', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'creative_handoffs', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
+const CATALOG_EXEMPT = new Set(['account_charts', 'account_notifications', 'account_chart_requests', 'account_pr_profile', 'account_ga4_meta', 'account_plan_scenarios', 'plan_scenario_events', 'mix_benchmark_cpm', 'account_lead_source_channel', 'plan_baseline_drafts', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'marketing_projects', 'marketing_project_tasks', 'account_learned_cpm', 'account_channel_product_inputs', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'creative_handoffs', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -36708,6 +37065,206 @@ async function handleRequestInner(req, res) {
       catch (e){ console.warn('[analytics/strategy-cards] failed:', e.stack || e.message); return sendJson(res, 500, { error: 'could not build the cards' }); }
     }
     // POST /api/accounts/:id/analytics/card-file — turns a card's own tables (the ones on screen) into xlsx, csv, pdf or pptx.
+    // ---- Visualize studio (2026-11-14): /api/accounts/:id/visualize/... and /api/accounts/:id/notifications ----
+    if (parts[0] === 'api' && parts[1] === 'accounts' && parts.length >= 4 && (parts[3] === 'visualize' || parts[3] === 'notifications')){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      try {
+        const actor = planScenarioActor(req, accountId) || {};
+        const me = actor.id || null;
+        const now = new Date().toISOString();
+        const members = () => { try { return db.prepare("SELECT id, name, email, functionGroup, level, status FROM team_members WHERE accountId = ?").all(accountId).filter(m => (m.status || 'active') !== 'inactive'); } catch (e){ return []; } };
+        const parseJ = (s, d) => { try { return s ? JSON.parse(s) : d; } catch (e){ return d; } };
+        const canSee = r => !!r && (actor.isAdmin || r.ownerid === me || r.visibility === 'account' || (r.visibility === 'selected' && parseJ(r.sharedwith, []).includes(me)));
+        const canEdit = r => !!r && (actor.isAdmin || (me && r.ownerid === me));
+        const out = (r, full) => {
+          const data = parseJ(r.datajson, { labels: [], series: [] }); const view = parseJ(r.viewjson, {});
+          const o = { id: r.id, title: r.title, request: r.requesttext || '', period: r.period || '', ownerId: r.ownerid, ownerName: r.ownername, mine: r.ownerid === me, visibility: r.visibility, sharedWith: parseJ(r.sharedwith, []), note: r.note || '', createdAt: r.createdat, updatedAt: r.updatedat, views: r.views || 0, type: view.type || 'column', canEdit: canEdit(r), refreshable: !!r.specjson };
+          if (full){ o.data = data; o.view = view; o.chart = vizApply(data, Object.assign({}, view, { title: view.title || r.title })); o.spec = parseJ(r.specjson, null); }
+          else { const c = vizApply(data, Object.assign({}, view, { title: view.title || r.title })); o.preview = { type: c.type, labels: c.labels.slice(0, 12), series: c.series.slice(0, 3).map(s => ({ name: s.name, color: s.color, values: s.values.slice(0, 12) })), kind: c.kind }; }
+          return o;
+        };
+        const logReq = (text, outcome, feedback) => { try { db.prepare('INSERT INTO account_chart_requests (id, accountid, memberid, requesttext, outcome, feedback, createdat) VALUES (?,?,?,?,?,?,?)').run(generateId('CRQ'), accountId, me, String(text || '').slice(0, 600), outcome, feedback ? String(feedback).slice(0, 400) : null, now); } catch (e){} };
+        const cleanData = d => {
+          if (!d || !Array.isArray(d.labels) || !Array.isArray(d.series)) return null;
+          const labels = d.labels.slice(0, 300).map(l => String(l == null ? '' : l).slice(0, 120));
+          const series = d.series.slice(0, 24).map(s => ({ name: String(s && s.name || 'Series').slice(0, 80), values: labels.map((_, i) => { const v = s && Array.isArray(s.values) ? s.values[i] : null; return Number.isFinite(Number(v)) && v !== null && v !== '' ? Number(v) : null; }) }));
+          if (!labels.length || !series.length) return null;
+          return { labels, series, kind: ['money', 'int', 'num1', 'pct'].includes(d.kind) ? d.kind : 'num1', labelName: String(d.labelName || '').slice(0, 80), matrix: !!d.matrix, additive: !!d.additive, dims: Array.isArray(d.dims) ? d.dims.slice(0, 3).map(String) : [] };
+        };
+        const cleanView = v => { v = v || {}; return { type: VIZ_TYPES.includes(v.type) ? v.type : 'column', title: String(v.title || '').slice(0, 120), sort: ['none', 'asc', 'desc', 'alpha'].includes(v.sort) ? v.sort : 'none', topN: Math.max(0, Math.min(30, parseInt(v.topN, 10) || 0)), palette: VIZ_PALETTES[v.palette] ? v.palette : 'brand', showValues: v.showValues !== false, hide: Array.isArray(v.hide) ? v.hide.slice(0, 40).map(x => String(x).slice(0, 80)) : [], note: String(v.note || '').slice(0, 200), why: String(v.why || '').slice(0, 300), alternatives: Array.isArray(v.alternatives) ? v.alternatives.filter(a => VIZ_TYPES.includes(a)) : VIZ_TYPES }; };
+        const portalLink = id => `${(process.env.PUBLIC_BASE_URL || 'https://verilume.ai').replace(/\/+$/, '')}/portal.html?accountId=${encodeURIComponent(accountId)}&page=${encodeURIComponent('step:visualize')}&chart=${encodeURIComponent(id)}`;
+        const notify = async (row, recipientIds, noteText) => {
+          const all = members(); const sent = [];
+          for (const rid of recipientIds){
+            if (!rid || rid === me) continue; const m = all.find(x => x.id === rid); if (!m) continue;
+            try { db.prepare('INSERT INTO account_notifications (id, accountid, memberid, kind, title, body, link, fromname, refid, createdat) VALUES (?,?,?,?,?,?,?,?,?,?)').run(generateId('NTF'), accountId, rid, 'chart_shared', `${actor.name || 'A teammate'} shared a chart with you: ${row.title}`, String(noteText || '').slice(0, 400) || null, `step:visualize&chart=${row.id}`, actor.name || null, row.id, now); } catch (e){ console.warn('[visualize] notification failed:', e.message); }
+            let emailed = false;
+            if (m.email){
+              try {
+                const link = portalLink(row.id); const who = actor.name || 'A teammate';
+                const r = await sendTransactionalEmail({ to: m.email, subject: `${who} shared a chart with you: ${row.title}`,
+                  textBody: `${who} shared a chart with you in Verilume: ${row.title}.\n${noteText ? '\n' + noteText + '\n' : ''}\nOpen it: ${link}\n\nYou will be asked to sign in if you are not already.`,
+                  htmlBody: `<p>${vizXe(who)} shared a chart with you in Verilume: <strong>${vizXe(row.title)}</strong>.</p>${noteText ? `<p>${vizXe(noteText)}</p>` : ''}<p><a href="${link}">Open the chart</a></p><p style="color:#6e6e73;font-size:12px;">You will be asked to sign in if you are not already.</p>` });
+                emailed = !!(r && !r.emailStatus) || (r && r.emailStatus === 'sent');
+              } catch (e){ console.warn('[visualize] email failed:', e.message); }
+            }
+            sent.push({ memberId: rid, name: m.name, emailed, hasEmail: !!m.email });
+          }
+          return sent;
+        };
+        const recipientsFor = (visibility, sharedWith) => visibility === 'account' ? members().map(m => m.id) : visibility === 'selected' ? sharedWith : [];
+        const buildFor = async (text, spec) => {
+          const range = dateRangeForRequest(req, accountId, {});
+          const matches = [];
+          try { fdRegistryMatches(fdInfer(text, {}), text).forEach(m => matches.push({ kind: 'dashboard', key: m.key, title: m.title, tab: m.tab, tabLabel: m.tabLabel })); } catch (e){}
+          try {
+            const words = String(text || '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 3);
+            db.prepare('SELECT * FROM account_charts WHERE accountid = ? ORDER BY updatedat DESC').all(accountId).filter(canSee).map(r => ({ r, s: words.filter(w => (r.title + ' ' + (r.requesttext || '')).toLowerCase().includes(w)).length })).filter(x => x.s >= 2).sort((a, b) => b.s - a.s).slice(0, 3).forEach(x => matches.push({ kind: 'saved', id: x.r.id, title: x.r.title, owner: x.r.ownername }));
+          } catch (e){}
+          const p = await dqAnswerPayload(accountId, { text, spec }, range, { allowModel: true });
+          if (p.needMore) return { status: 'needs_more', message: p.message, suggestions: (p.suggestions || []).map(s => ({ title: s.title, spec: s.spec })), matches };
+          if (p.notOnFile) return { status: 'not_on_file', what: p.notOnFile, matches };
+          const tables = (p.result && p.result.tables) || [];
+          const data = tables.length ? vizDataFromTable(tables[0], p.spec) : null;
+          const title = (p.result && p.result.title) || String(text).slice(0, 80);
+          const view = data ? vizDefaultView(data, title, text) : null;
+          return { status: 'ok', request: text, title, sentence: p.sentence || (p.result && p.result.summary) || '', period: p.period || '', assumptions: p.assumptions || [], notes: (p.result && p.result.notes) || [], tables, data, view, chart: data ? vizApply(data, view) : null, spec: p.spec || null, matches };
+        };
+
+        const sub = parts[3] === 'notifications' ? 'notifications' : parts[4];
+        // ---- notifications (the in-portal message that a chart is ready) ----
+        if (sub === 'notifications'){
+          if (req.method === 'GET' && parts.length === 4){
+            if (!me) return sendJson(res, 200, { items: [], unread: 0 });
+            const items = db.prepare('SELECT * FROM account_notifications WHERE accountid = ? AND memberid = ? ORDER BY createdat DESC LIMIT 40').all(accountId, me);
+            return sendJson(res, 200, { unread: items.filter(i => !i.readat).length, items: items.map(i => ({ id: i.id, kind: i.kind, title: i.title, body: i.body || '', link: i.link || '', from: i.fromname || '', refId: i.refid || '', createdAt: i.createdat, read: !!i.readat })) });
+          }
+          if (req.method === 'POST' && parts.length === 5 && parts[4] === 'read'){
+            const b = await readBody(req) || {}; if (!me) return sendJson(res, 200, { ok: true });
+            if (b.all) db.prepare('UPDATE account_notifications SET readat = ? WHERE accountid = ? AND memberid = ? AND readat IS NULL').run(now, accountId, me);
+            else (Array.isArray(b.ids) ? b.ids : []).slice(0, 100).forEach(id => db.prepare('UPDATE account_notifications SET readat = ? WHERE id = ? AND memberid = ? AND readat IS NULL').run(now, String(id), me));
+            return sendJson(res, 200, { ok: true });
+          }
+          return sendJson(res, 404, { error: 'not found' });
+        }
+
+        // GET /visualize/library
+        if (req.method === 'GET' && parts.length === 5 && sub === 'library'){
+          const rows = db.prepare('SELECT * FROM account_charts WHERE accountid = ? ORDER BY updatedat DESC').all(accountId).filter(canSee);
+          let recipes = []; let hasData = false;
+          try { const cat = dqCatalog(accountId); hasData = !!cat.hasData; recipes = (cat.recipes || []).concat(cat.setRecipes || []).slice(0, 12).map(r => ({ title: r.title, spec: r.spec })); } catch (e){}
+          const unread = me ? (db.prepare('SELECT COUNT(*) AS n FROM account_notifications WHERE accountid = ? AND memberid = ? AND readat IS NULL AND kind = ?').get(accountId, me, 'chart_shared') || {}).n || 0 : 0;
+          return sendJson(res, 200, {
+            me: { id: me, name: actor.name || '', isAdmin: !!actor.isAdmin }, hasData, recipes,
+            existing: FD_REGISTRY.map(r => ({ key: r.key, title: r.title, tab: r.tab, tabLabel: r.tabLabel })),
+            charts: rows.map(r => out(r, false)), unread,
+            members: members().map(m => ({ id: m.id, name: m.name, role: [m.functionGroup, m.level].filter(Boolean).join(' · '), hasEmail: !!m.email, me: m.id === me }))
+          });
+        }
+        // POST /visualize/recommend { text | spec }
+        if (req.method === 'POST' && parts.length === 5 && sub === 'recommend'){
+          const b = await readBody(req) || {}; const text = String(b.text || '').trim().slice(0, 600);
+          if (!text && !b.spec) return sendJson(res, 400, { error: 'Say or type what you want to see.' });
+          const r = await buildFor(text || (b.title || 'Chart'), b.spec || undefined);
+          logReq(text || b.title, r.status === 'ok' ? 'built' : r.status);
+          return sendJson(res, 200, r);
+        }
+        // POST /visualize/refine { request, data, view, spec, feedback }
+        if (req.method === 'POST' && parts.length === 5 && sub === 'refine'){
+          const b = await readBody(req) || {}; const fbText = String(b.feedback || '').trim().slice(0, 400);
+          if (!fbText) return sendJson(res, 400, { error: 'Tell me what to change.' });
+          const data = cleanData(b.data); if (!data) return sendJson(res, 400, { error: 'There is no chart to change yet.' });
+          const view = cleanView(b.view);
+          const fb = vizApplyFeedback(view, fbText, data);
+          if (fb.rerun && b.request){
+            const combined = String(b.request).slice(0, 400) + '. ' + fbText;
+            let r = await buildFor(combined, undefined);
+            // the new wording can lose the period of the first request; carry it over when that leaves nothing to draw
+            if (r.status === 'ok' && !r.chart && r.spec && b.spec && b.spec.period){ try { const r2 = await buildFor(combined, Object.assign({}, r.spec, { period: b.spec.period })); if (r2.status === 'ok' && r2.chart) r = r2; } catch (e){} }
+            logReq(combined, r.status === 'ok' ? 'built_after_feedback' : r.status, fbText);
+            if (r.status === 'ok' && !r.chart) return sendJson(res, 200, { status: 'ok', rebuilt: false, kept: true, view: view, chart: vizApply(data, view), message: 'There are no numbers for that version in this period, so the chart is unchanged. Name the period, for example "by month last year".' });
+            if (r.status === 'ok'){ r.message = 'I rebuilt it with your change.'; r.request = String(b.request).slice(0, 400); r.rebuilt = true; return sendJson(res, 200, r); }
+            return sendJson(res, 200, Object.assign(r, { kept: true, message: r.message || 'I could not apply that to the data. The chart is unchanged.' }));
+          }
+          logReq(b.request || '', 'feedback', fbText);
+          const view2 = cleanView(fb.view);
+          return sendJson(res, 200, { status: 'ok', rebuilt: false, view: view2, chart: vizApply(data, view2), message: fb.said.length ? fb.said.join(' ') : 'I did not catch a change to the chart in that. Try "make it a line", "top 5", "sort highest first", "cool colors", "remove Bonus" or "title it Spring results". To change the numbers themselves, say what you want, for example "by month" or "only last year".' });
+        }
+        // POST /visualize/charts  (save)
+        if (req.method === 'POST' && parts.length === 5 && sub === 'charts'){
+          const b = await readBody(req) || {};
+          const data = cleanData(b.data); if (!data) return sendJson(res, 400, { error: 'There is no chart to save yet.' });
+          const view = cleanView(b.view); const title = String(b.title || view.title || '').trim().slice(0, 120);
+          if (!title) return sendJson(res, 400, { error: 'Give the chart a name so others can find it.' });
+          const visibility = ['private', 'account', 'selected'].includes(b.visibility) ? b.visibility : 'private';
+          const valid = new Set(members().map(m => m.id));
+          const sharedWith = visibility === 'selected' ? (Array.isArray(b.shareWith) ? b.shareWith.map(String).filter(id => valid.has(id) && id !== me).slice(0, 60) : []) : [];
+          if (visibility === 'selected' && !sharedWith.length) return sendJson(res, 400, { error: 'Pick at least one person to share it with, or save it just for you.' });
+          const id = generateId('CHT'); view.title = view.title || title;
+          db.prepare('INSERT INTO account_charts (id, accountid, title, requesttext, datajson, viewjson, specjson, period, ownerid, ownername, visibility, sharedwith, note, createdat, updatedat) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+            .run(id, accountId, title, String(b.request || '').slice(0, 600), JSON.stringify(data), JSON.stringify(view), b.spec && typeof b.spec === 'object' ? JSON.stringify(b.spec).slice(0, 8000) : null, String(b.period || '').slice(0, 120), me, actor.name || null, visibility, JSON.stringify(sharedWith), String(b.note || '').slice(0, 400) || null, now, now);
+          const row = db.prepare('SELECT * FROM account_charts WHERE id = ?').get(id);
+          const sent = b.notify === false ? [] : await notify(row, recipientsFor(visibility, sharedWith), b.note);
+          return sendJson(res, 201, { chart: out(row, true), notified: sent });
+        }
+        // /visualize/charts/:cid ...
+        if (parts.length >= 6 && sub === 'charts'){
+          const cid = decodeURIComponent(parts[5]);
+          const row = db.prepare('SELECT * FROM account_charts WHERE id = ? AND accountid = ?').get(cid, accountId);
+          if (!row || !canSee(row)) return sendJson(res, 404, { error: 'That chart is not available to you.' });
+          if (req.method === 'GET' && parts.length === 6){
+            const o = out(row, true);
+            const qs = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries());
+            if (qs.refresh === '1' && row.specjson){
+              try {
+                const p = await dqAnswerPayload(accountId, { spec: parseJ(row.specjson, null) }, dateRangeForRequest(req, accountId, {}), { allowModel: false });
+                const t = p && p.result && p.result.tables && p.result.tables[0]; const d2 = t ? vizDataFromTable(t, p.spec) : null;
+                if (d2){ o.data = d2; o.chart = vizApply(d2, Object.assign({}, o.view, { title: o.view.title || row.title })); o.refreshed = true; o.period = p.period || o.period; }
+              } catch (e){ o.refreshError = 'Could not refresh right now; showing the saved numbers.'; }
+            }
+            if (me && row.ownerid !== me){ try { db.prepare('UPDATE account_charts SET views = views + 1 WHERE id = ?').run(cid); } catch (e){} }
+            if (me){ try { db.prepare('UPDATE account_notifications SET readat = ? WHERE accountid = ? AND memberid = ? AND refid = ? AND readat IS NULL').run(now, accountId, me, cid); } catch (e){} }
+            return sendJson(res, 200, { chart: o });
+          }
+          if (req.method === 'PATCH' && parts.length === 6){
+            if (!canEdit(row)) return sendJson(res, 403, { error: 'Only the person who saved a chart, or an Admin, can change it.' });
+            const b = await readBody(req) || {};
+            const before = new Set(recipientsFor(row.visibility, parseJ(row.sharedwith, [])));
+            const title = b.title != null ? String(b.title).trim().slice(0, 120) || row.title : row.title;
+            const view = b.view ? cleanView(b.view) : parseJ(row.viewjson, {}); if (b.view && title && !view.title) view.title = title;
+            const visibility = ['private', 'account', 'selected'].includes(b.visibility) ? b.visibility : row.visibility;
+            const valid = new Set(members().map(m => m.id));
+            const sharedWith = b.shareWith ? b.shareWith.map(String).filter(id => valid.has(id) && id !== row.ownerid).slice(0, 60) : parseJ(row.sharedwith, []);
+            if (visibility === 'selected' && !sharedWith.length) return sendJson(res, 400, { error: 'Pick at least one person to share it with, or make it private.' });
+            const note = b.note != null ? String(b.note).slice(0, 400) : row.note;
+            db.prepare('UPDATE account_charts SET title = ?, viewjson = ?, visibility = ?, sharedwith = ?, note = ?, updatedat = ? WHERE id = ?').run(title, JSON.stringify(view), visibility, JSON.stringify(visibility === 'selected' ? sharedWith : []), note || null, now, cid);
+            const row2 = db.prepare('SELECT * FROM account_charts WHERE id = ?').get(cid);
+            const fresh = recipientsFor(visibility, sharedWith).filter(id => !before.has(id));
+            const sent = b.notify === false ? [] : await notify(row2, fresh, b.note);
+            return sendJson(res, 200, { chart: out(row2, true), notified: sent });
+          }
+          if (req.method === 'DELETE' && parts.length === 6){
+            if (!canEdit(row)) return sendJson(res, 403, { error: 'Only the person who saved a chart, or an Admin, can delete it.' });
+            db.prepare('DELETE FROM account_charts WHERE id = ?').run(cid); db.prepare('DELETE FROM account_notifications WHERE refid = ?').run(cid);
+            return sendJson(res, 200, { ok: true });
+          }
+          if (req.method === 'GET' && parts.length === 7 && parts[6] === 'export'){
+            const qs = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries());
+            const o = out(row, true);
+            return await vizSendFile(res, accountId, qs.format, o.chart, o.data, row.title, { period: row.period, sentence: '' });
+          }
+        }
+        // POST /visualize/export { format, data, view, title, period, sentence }  (a chart that is not saved yet)
+        if (req.method === 'POST' && parts.length === 5 && sub === 'export'){
+          const b = await readBody(req) || {}; const data = cleanData(b.data); if (!data) return sendJson(res, 400, { error: 'There is no chart to download yet.' });
+          const view = cleanView(b.view); const title = String(b.title || view.title || 'Chart').slice(0, 120);
+          return await vizSendFile(res, accountId, b.format, vizApply(data, Object.assign({}, view, { title: view.title || title })), data, title, { period: String(b.period || ''), sentence: String(b.sentence || '').slice(0, 400), notes: Array.isArray(b.notes) ? b.notes.slice(0, 6).map(n => String(n).slice(0, 300)) : [] });
+        }
+        return sendJson(res, 404, { error: 'not found' });
+      } catch (e){ console.warn('[visualize] failed:', e.stack || e.message); return sendJson(res, 500, { error: 'Something went wrong building that. Try again, or ask in different words.' }); }
+    }
+
     if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'analytics' && parts[4] === 'card-file'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
