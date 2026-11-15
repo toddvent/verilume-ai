@@ -25628,21 +25628,26 @@ function stratFieldHtml(){
     <div class="strat-field-grid"><div><div class="strat-chart-label" style="margin:0 0 6px;">Competitors</div>${compHtml}</div><div><div class="strat-chart-label" style="margin:0 0 6px;">Market and industry</div>${newsHtml}</div></div>
     <div class="strat-actions"><a class="flink" onclick="goToStep('competitivePositioning')">Competitor tracking →</a></div></div>`;
 }
+// One definition of each Strategy card: the dashboard and the Data Visualizer both draw it from here (2026-11-15).
+function stratPriceCardHtml(){ return `<div class="strat-card"><div class="strat-head"><h2>Price and volume</h2>
+      <div class="strat-ctl">
+        <span class="strat-seg"><button type="button" data-strat-dim="productGroup" class="on" onclick="stratSetDim('productGroup')">Product group</button><button type="button" data-strat-dim="creativeFocus" onclick="stratSetDim('creativeFocus')">Creative focus</button></span>
+        <span id="stratPgWrap"><select id="stratPgSel" onchange="stratSetPg(this.value)" aria-label="Product group"><option value="">All product groups</option></select></span>
+        <select onchange="stratSetCompare(this.value)" aria-label="Comparison"><option value="yoy">Compare: year over year</option><option value="none">No comparison</option></select>
+      </div></div><div id="stratPriceBody"></div></div>`; }
+function stratAudCardHtml(){ return `<div class="strat-card"><div class="strat-head"><h2>Database growth by audience type</h2></div><div id="stratAudBody"></div></div>`; }
+function stratCovCardHtml(){ return `<div class="strat-card" id="stratCovCard"><div class="strat-head"><h2>Campaigns against the plan target</h2></div><div id="stratCovBody"></div></div>`; }
+function stratRollCardHtml(){ return `<div class="strat-card"><div class="strat-head"><h2>Rolling 18 months: budget and spend</h2></div><div id="stratRollBody"></div></div>`; }
 function strategyShellHtml(){
   if (!stratIsLive()){
     return `<div class="strat-card"><h2>Strategy</h2><p class="strat-empty">Sign in to a live account to see spend, revenue, ROAS, price and volume, audience growth and the forecast here. Tools are below.</p></div>` + stratToolsHtml();
   }
   return `
-    <div class="strat-card"><div class="strat-head"><h2>Price and volume</h2>
-      <div class="strat-ctl">
-        <span class="strat-seg"><button type="button" data-strat-dim="productGroup" class="on" onclick="stratSetDim('productGroup')">Product group</button><button type="button" data-strat-dim="creativeFocus" onclick="stratSetDim('creativeFocus')">Creative focus</button></span>
-        <span id="stratPgWrap"><select id="stratPgSel" onchange="stratSetPg(this.value)" aria-label="Product group"><option value="">All product groups</option></select></span>
-        <select onchange="stratSetCompare(this.value)" aria-label="Comparison"><option value="yoy">Compare: year over year</option><option value="none">No comparison</option></select>
-      </div></div><div id="stratPriceBody"></div></div>
-    <div class="strat-card"><div class="strat-head"><h2>Database growth by audience type</h2></div><div id="stratAudBody"></div></div>
+    ${stratPriceCardHtml()}
+    ${stratAudCardHtml()}
     <div class="strat-card" id="stratScnCard"><div class="strat-head"><h2>Forecast, scenarios and tests</h2></div><p class="strat-sub" style="margin:0 0 10px;">These now have their own page, with a data check up front and a plain-language read-out at the end.</p><div class="strat-actions"><button type="button" class="strat-chip strat-chip-rec" onclick="flOpen('forecast')">Forecast against the plan target</button> <button type="button" class="strat-chip" onclick="flOpen('goal')">Plan a budget to a goal</button> <button type="button" class="strat-chip" onclick="flOpen('test')">Truth Lab tests</button></div></div>
-    <div class="strat-card" id="stratCovCard"><div class="strat-head"><h2>Campaigns against the plan target</h2></div><div id="stratCovBody"></div></div>
-    <div class="strat-card"><div class="strat-head"><h2>Rolling 18 months: budget and spend</h2></div><div id="stratRollBody"></div></div>
+    ${stratCovCardHtml()}
+    ${stratRollCardHtml()}
     ${stratFieldHtml()}
     ${stratToolsHtml()}`;
 }
@@ -26276,6 +26281,7 @@ function gpcCardsHtml(keys){ return (keys || ['roas', 'pacing', 'kpi', 'ops']).m
 function gpcRender(){
   if (activePrimaryTab === 'marketer'){ const el = document.getElementById('tabStatCardGrid'); if (el && el.classList.contains('gp-core')){ el.innerHTML = gpcCardsHtml(); } }
   if (activePrimaryTab === 'strategy'){ const el = document.getElementById('tabStatCardGrid'); if (el && el.classList.contains('gs-core')){ el.innerHTML = gpcCardsHtml(GS_KEYS); } }
+  const mh = document.getElementById('vzMountBody'); if (mh && mh.dataset.key && GPC_META[mh.dataset.key]) mh.innerHTML = gpcCardHtml(mh.dataset.key);
   gpcRenderModal();
 }
 function gpcOpen(key){ gpc.open = key; gpcRenderModal(); }
@@ -86062,10 +86068,28 @@ async function posSetDecision(contributionId, status){
 // ================= Visualize studio (2026-11-14) =================
 // Ask for a chart by voice or text, see an existing report if one fits, otherwise a recommended chart built from this account's own data,
 // refine it in plain words, save it to the account, share it (in-portal message plus email) and download it (PowerPoint, Excel, Google Sheets, CSV).
-const vz = { lib: null, loading: false, text: '', busy: false, res: null, saved: null, fbMsg: '', fbErr: false, panel: '', showTable: false, rec: false, sr: null, ask: null, toasted: {}, saveMsg: '', saving: false, openId: '', mode: 'gallery', cat: 'all', q: '', qrec: false, pdash: null, dash: {}, ret: false, retUntil: 0, focus: '' };
+const vz = { lib: null, loading: false, text: '', busy: false, res: null, saved: null, fbMsg: '', fbErr: false, panel: '', showTable: false, rec: false, sr: null, ask: null, toasted: {}, saveMsg: '', saving: false, openId: '', mode: 'gallery', cat: 'all', q: '', qrec: false, pdash: null, tag: '', dash: {}, ret: false, retUntil: 0, focus: '' };
 const VZ_DASH = [['dataScientist', 'Media Science'], ['strategy', 'Strategy'], ['brand', 'Customer Experiences'], ['marketer', 'Growth & Performance'], ['dailyBrief', 'Brain Dump']];
 const VZ_TYPES = [['column', 'Column'], ['bar', 'Bar'], ['line', 'Line'], ['area', 'Area'], ['stacked', 'Stacked'], ['pie', 'Pie'], ['table', 'Table']];
 const VZ_PAL = { brand: ['#1E2761', '#0891B2', '#C9932E', '#1F6B5C', '#D9480F', '#7C3AED', '#6E6E73', '#0A58CC'], cool: ['#0A58CC', '#0891B2', '#1F6B5C', '#1E2761', '#5B8DEF', '#14B8A6', '#6E6E73', '#7C3AED'], warm: ['#D9480F', '#C9932E', '#B91C1C', '#92400E', '#F59E0B', '#7C2D12', '#6E6E73', '#1E2761'], mono: ['#14213D', '#3F4B66', '#6B7694', '#98A1BA', '#C2C8D8', '#4B5563', '#9CA3AF', '#D1D5DB'] };
+// The real dashboard cards, mounted unchanged. Each key matches an entry in the server's FD_REGISTRY (the one list of existing charts);
+// the markup and loader are the dashboard's own, so a card here is the same card, with its own controls, not a rebuilt chart.
+const VZ_MOUNTS = {
+  'strat-price': { html: () => stratPriceCardHtml(), init: () => { stratSyncPriceControls(); stratLoadPrice().then(stratFillPgSelect); } },
+  'strat-audience': { html: () => stratAudCardHtml(), init: () => stratLoadAudience() },
+  'strat-coverage': { html: () => stratCovCardHtml(), init: () => stratLoadDemand().then(() => stratLoadCoverage()) },
+  'strat-rolling': { html: () => stratRollCardHtml(), init: () => stratLoadRolling() },
+  sbook: { gpc: true, strat: true }, sbud: { gpc: true, strat: true }, smix: { gpc: true, strat: true }, sfore: { gpc: true, strat: true },
+  roas: { gpc: true }, pacing: { gpc: true }, kpi: { gpc: true }, ops: { gpc: true }
+};
+function vzMountable(e){ return !!(e && e.mount && VZ_MOUNTS[e.mount]); }
+function vzMountCard(){
+  const host = document.getElementById('vzMountBody'); const m = VZ_MOUNTS[vz.mountKey]; if (!host || !m) return;
+  ['workstreamGrid', 'tabStatCardGrid'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; }); // same element ids as the dashboard, so the dashboard copy is cleared while a card is open here
+  host.dataset.key = m.gpc ? vz.mountKey : '';
+  if (m.gpc){ host.innerHTML = gpcCardHtml(vz.mountKey); if (m.strat) gscEnsure(); else gpcEnsure(); }
+  else { host.innerHTML = m.html(); try { m.init(); } catch (e){} }
+}
 function vzLive(){ return dataSourceLabel === 'backend' && !!state.companyId; }
 async function vzApi(path, opts){
   const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}${path}`, opts);
@@ -86347,7 +86371,7 @@ function vzRenderRail(){ const el = document.getElementById('vzRail'); if (el) e
 function vzCatalog(){
   const L = vz.lib || { charts: [], existing: [] }; const items = [];
   L.charts.forEach(c => items.push({ kind: 'saved', id: c.id, title: c.title, cat: c.mine ? 'Saved by you' : 'Shared with you', sub: c.mine ? (c.visibility === 'private' ? 'Only you' : c.visibility === 'account' ? 'Everyone on the account' : 'Shared with ' + c.sharedWith.length) : 'From ' + (c.ownerName || 'a teammate'), preview: c.preview, isNew: c.isNew, when: c.updatedAt, dashboards: c.dashboards || [] }));
-  (L.existing || []).forEach((e, i) => items.push({ kind: 'report', idx: i, tab: e.tab, title: e.title, cat: e.tabLabel || 'Reports', sub: 'On the ' + (e.tabLabel || 'dashboard') + ' ' + (e.step ? 'page' : 'dashboard') }));
+  (L.existing || []).forEach((e, i) => { if (vzMountable(e)) items.push({ kind: 'report', idx: i, tab: e.tab, title: e.title, cat: e.tabLabel || 'Reports', sub: 'Card on ' + (e.tabLabel || 'a dashboard'), tags: (e.functions || []).concat(e.roles || []) }); });
   return items;
 }
 function vzMini(p){
@@ -86359,14 +86383,15 @@ function vzMini(p){
 function vzGalleryHtml(){
   const all = vzCatalog(); const cats = ['all'].concat(Array.from(new Set(all.map(x => x.cat))));
   const toks = vz.q.toLowerCase().split(/\s+/).filter(Boolean);
-  const list = all.filter(x => (vz.cat === 'all' || x.cat === vz.cat) && toks.every(t => (x.title + ' ' + x.cat).toLowerCase().includes(t)));
+  const tagList = Array.from(new Set(all.flatMap(x => x.tags || []))).sort(); const list = all.filter(x => (vz.cat === 'all' || x.cat === vz.cat) && (!vz.tag || (x.tags || []).includes(vz.tag)) && toks.every(t => (x.title + ' ' + x.cat + ' ' + (x.tags || []).join(' ')).toLowerCase().includes(t)));
   const sr = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
   const cards = list.map(x => `<button type="button" class="vz-gcard" onclick="${x.kind === 'saved' ? `vzGoSaved('${jsStrEscape(x.id)}')` : `vzOpenReport(${x.idx})`}"><span class="vz-gcat">${escapeHtml(x.cat)}${x.isNew ? '<span class="vz-new">New</span>' : ''}</span><b>${escapeHtml(x.title)}</b>${x.kind === 'saved' ? vzMini(x.preview) : '<span class="vz-mini vz-mini-empty"></span>'}<span class="vz-gsub">${escapeHtml(x.sub)}${x.kind === 'saved' && x.dashboards && x.dashboards.length ? ' · on ' + escapeHtml(x.dashboards.map(vzDashName).join(', ')) : ''}</span></button>`).join('');
   return `<div class="strat-card vz-gallery"><div class="vz-gtools"><div class="vz-gtitle"><div><h2>Data Visualizer</h2><p class="strat-sub" style="margin:2px 0 0;">Every chart on the site, including Train the Brain budget charts. Pick one to open it here. Charts you assign to a dashboard show up there as cards.</p></div><div class="vz-gright"><span class="strat-sub" id="vzCount">${list.length} of ${all.length}</span><button type="button" class="btn-primary" id="vzNewBtn2" onclick="vzNew()">+ Create a New Chart</button></div></div>
     <div class="vz-gfilters"><label class="vz-sel"><span class="vz-sr">Category</span><select aria-label="Category" onchange="vzSetCat(this.value)">${cats.map(c => `<option value="${escapeHtml(c)}"${c === vz.cat ? ' selected' : ''}>${c === 'all' ? 'All categories' : escapeHtml(c)}</option>`).join('')}</select></label>
-      <div class="vz-search"><input id="vzSearch" type="search" value="${escapeHtml(vz.q)}" placeholder="Search charts by name or topic" aria-label="Search charts" oninput="vzSetQ(this.value)">${sr ? `<button type="button" class="vz-mic vz-mic-s${vz.qrec ? ' on' : ''}" onclick="vzSearchDictate()" aria-label="Search by voice" aria-pressed="${vz.qrec}"><span class="vz-dot"></span>${vz.qrec ? 'Listening…' : 'Speak'}</button>` : ''}</div></div></div>
+      ${tagList.length ? `<label class="vz-sel"><span class="vz-sr">Function or role</span><select aria-label="Function or role" onchange="vzSetTag(this.value)"><option value="">All functions and roles</option>${tagList.map(t => `<option value="${escapeHtml(t)}"${t === vz.tag ? ' selected' : ''}>${escapeHtml(t)}</option>`).join('')}</select></label>` : ''}<div class="vz-search"><input id="vzSearch" type="search" value="${escapeHtml(vz.q)}" placeholder="Search charts by name or topic" aria-label="Search charts" oninput="vzSetQ(this.value)">${sr ? `<button type="button" class="vz-mic vz-mic-s${vz.qrec ? ' on' : ''}" onclick="vzSearchDictate()" aria-label="Search by voice" aria-pressed="${vz.qrec}"><span class="vz-dot"></span>${vz.qrec ? 'Listening…' : 'Speak'}</button>` : ''}</div></div></div>
     ${list.length ? `<div class="vz-gal">${cards}</div>` : `<p class="vz-empty">${vz.lib ? 'Nothing matches that. Try another word, or create a new chart.' : 'Loading…'}</p>`}</div>`;
 }
+function vzSetTag(v){ vz.tag = v; vzRenderGal(); }
 function vzSetCat(v){ vz.cat = v; vzRenderGal(); }
 function vzSetQ(v){ vz.q = v; vzRenderGal(); }
 function vzRenderGal(){ const host = document.getElementById('vzGalHost'); if (!host) return; const had = document.activeElement && document.activeElement.id === 'vzSearch'; host.innerHTML = vzGalleryHtml(); if (had){ const e = document.getElementById('vzSearch'); if (e){ e.focus(); e.setSelectionRange(e.value.length, e.value.length); } } }
@@ -86382,7 +86407,7 @@ function vzRenderGalList(){ const g = vzGalleryHtml(); const t = document.create
 function vzDashName(k){ const d = VZ_DASH.find(x => x[0] === k); return d ? d[1] : k; }
 function vzArmReturn(){ vz.ret = true; vz.retUntil = Date.now() + 1500; }
 // Everything opens inside Media Science (the studio sub-page, with breadcrumbs back). Dashboards pull assigned charts as cards on their own.
-function vzOpenReport(i){ const e = vz.lib && vz.lib.existing[i]; if (!e) return; vzOpen(e.title); }
+function vzOpenReport(i){ const e = vz.lib && vz.lib.existing[i]; if (!vzMountable(e)) return; vz.mode = 'mount'; vz.mountKey = e.mount; vz.mountTitle = e.title; vz.res = null; vz.saved = null; vz.panel = ''; goToStep('visualize'); vzRender(); try { window.scrollTo({ top: 0 }); } catch (x){} }
 function vzGoSaved(id){ vzOpenSaved(id); }
 function vzCrumbMs(){ vz.mode = 'gallery'; vz.res = null; vz.saved = null; vz.busy = false; vz.panel = ''; try { switchPrimaryTab('dataScientist'); } catch (e){ goToStep('dashboard'); } }
 function vzMountMs(){
@@ -86423,6 +86448,7 @@ function vzRender(){
   const leaf = document.getElementById('vzCrumbLeaf'); if (leaf) leaf.textContent = vz.saved ? vz.saved.title : 'New chart';
   const root = document.getElementById('vzRoot'); if (!root) return;
   const btn = document.getElementById('vzNewBtn'); if (btn) btn.style.display = vz.mode === 'new' ? 'none' : '';
+  if (vz.mode === 'mount'){ const lf = document.getElementById('vzCrumbLeaf'); if (lf) lf.textContent = vz.mountTitle || 'Chart'; root.innerHTML = `<p style="margin:0 0 12px;"><a class="flink" onclick="vzBack()" style="cursor:pointer;">← Back to Media Science · Data Visualizer</a></p><div class="vz-main" style="max-width:none;"><div id="vzMountBody"></div><p class="strat-sub">This is the dashboard's own card, so its date range, comparison and sharing controls are the ones you use everywhere. Need a different cut it does not offer? <a class="flink" onclick="vzNew()" style="cursor:pointer;">Create a new chart</a>.</p></div>`; vzMountCard(); return; }
   if (vz.mode === 'gallery'){ root.innerHTML = `<div id="vzGalHost">${vzGalleryHtml()}</div>`; return; }
   const ta = document.getElementById('vzText'); if (ta && !vz.rec) vz.text = ta.value;
   const keep = document.activeElement && document.activeElement.id;
