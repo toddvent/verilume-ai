@@ -25646,7 +25646,7 @@ function msDate(d){ if (!d) return '—'; const [y, m, dd] = String(d).slice(0, 
 async function msLoad(){
   if (!msIsLive()) return;
   try { ms.data = await stratGet('media-science?months=12'); } catch (e){ ms.data = null; }
-  if (activePrimaryTab === 'dataScientist'){ msRenderCoreRow(); msRenderDue(); msRenderCore(); msRenderTrust(); }
+  if (activePrimaryTab === 'dataScientist'){ msRenderCoreRow(); msRenderDue(); msRenderCore(); msRenderTrust(); try { renderTopUrgentModule(); } catch (e){} }
 }
 function msRenderCoreRow(){
   const el = document.getElementById('tabStatCardGrid'); if (!el) return;
@@ -25666,6 +25666,21 @@ function msRenderCoreRow(){
     card('Reach and frequency', rf ? `${stratNum(rf.reach)} · ${rf.frequency}x` : '—', rf ? `Across ${rf.campaigns} analyzed campaign${rf.campaigns === 1 ? '' : 's'}` : 'Enter reach in campaign actuals', false, 'Impressions ÷ reach') +
     card('Cost per lead', t && t.cpl != null ? `$${t.cpl.toFixed(2)}` : '—', cmp(dCpl), dCpl != null && dCpl <= 0, `Spend ÷ leads · ${per}`) +
     card('Lead to booking', l2b ? `${l2b.ratePct}%` : '—', l2b ? `${l2b.bookings.toLocaleString()} bookings from ${l2b.leads.toLocaleString()} leads` : 'Lead counts not on file', false, l2b && l2b.avgDaysToConvert != null ? `Average ${l2b.avgDaysToConvert} days to convert` : per);
+}
+// Top 5 Most Urgent for Media Science: the same module and table layout as the other dashboards, sorted by the analysis rules for each campaign's KPI type.
+function msDueDate(hit, days){ const d = new Date(String(hit).slice(0, 10) + 'T00:00:00Z'); if (isNaN(d)) return ''; d.setUTCDate(d.getUTCDate() + Number(days || 0)); return d.toISOString().slice(0, 10); }
+function msRenderTop5(bodyEl){
+  const d = ms.data; if (!d){ bodyEl.innerHTML = '<p class="strat-empty">Loading…</p>'; return; }
+  const a = d.analysisDue, rows = a.top || [];
+  const foot = rows.length ? `<p class="strat-foot">Ordered by KPI type: ${(a.rules || []).filter((r, i, arr) => arr.findIndex(x => x.tier === r.tier) === i).sort((x, y) => x.tier - y.tier).map(r => (a.rules.filter(q => q.tier === r.tier).map(q => q.kpi).join(' / ')) + ' (' + r.days + ' days)').join(', then ')}, then campaigns with no KPI set (90 days). Within a KPI, the furthest past its window comes first.${a.total > rows.length ? ` ${a.total - rows.length} more not shown.` : ''}${a.maturing ? ` ${a.maturing} still inside their window.` : ''}</p>` : '';
+  bodyEl.innerHTML = `<div class="table-scroll"><table class="active-camp-table">
+    <thead><tr><th>Campaign Code</th><th>Campaign Name</th><th>Analysis Due</th><th>KPI Type</th><th>Start</th><th>End</th><th></th></tr></thead>
+    <tbody>${rows.length ? rows.map(r => {
+      const due = msDueDate(r.hitDate, r.windowDays), n = r.overdueDays;
+      const dueTxt = due ? `${due}${n != null ? (n > 0 ? ` · ${n} day${n === 1 ? '' : 's'} past` : n === 0 ? ' · today' : ` · in ${-n} day${n === -1 ? '' : 's'}`) : ''}` : '—';
+      return `<tr><td>${escapeHtml(r.campaignCode || r.campaignId)}</td><td>${escapeHtml(r.name)}</td><td${n != null && n >= 0 ? ' style="color:#C0273C;font-weight:600;"' : ''}>${escapeHtml(dueTxt)}</td>
+        <td><span class="strat-tag">${escapeHtml(r.kpi || 'No KPI set')} · ${r.windowDays} days</span></td><td>${r.startDate || '—'}</td><td>${r.endDate || '—'}</td>
+        <td><button type="button" class="btn-ghost" style="padding:4px 10px;font-size:0.6875rem;white-space:nowrap;" onclick="cmpManageExistingCampaign('${jsStrEscape(r.campaignId)}')">Manage Campaign →</button></td></tr>`; }).join('') : `<tr class="empty-state-row"><td colspan="7">No campaign is past its analysis window without an analysis</td></tr>`}</tbody></table></div>${foot}`;
 }
 function msRenderDue(){
   const box = document.getElementById('msDueBody'); if (!box) return;
@@ -25723,7 +25738,6 @@ function mediaScienceShellHtml(){
     return `<div class="strat-card"><h2>Media Science</h2><p class="strat-empty">Sign in to a live account to see analysis due, impressions, reach and frequency, and lead performance here. Tools are below.</p></div>` + msToolsHtml();
   }
   return `
-    <div class="strat-card"><div class="strat-head"><h2>Analysis due</h2></div><div id="msDueBody"><p class="strat-empty">Loading…</p></div></div>
     <div class="strat-card"><div class="strat-head"><h2>Core elements</h2></div><div id="msCoreBody"><p class="strat-empty">Loading…</p></div></div>
     <div class="strat-card"><div class="strat-head"><h2>What this page is reading</h2></div><div id="msTrustBody"></div></div>
     ${msToolsHtml()}`;
@@ -28543,7 +28557,7 @@ function renderTopUrgentModule(){
   const moduleEl = document.getElementById('topUrgentModule');
   const bodyEl = document.getElementById('topUrgentBody');
   if (!moduleEl || !bodyEl) return;
-  if (activePrimaryTab === 'accountManagement' || activePrimaryTab === 'strategy' || (activePrimaryTab === 'dataScientist' && msIsLive()) || ((activePrimaryTab === 'dailyBrief' || !activePrimaryTab) && bdIsLive())){
+  if (activePrimaryTab === 'accountManagement' || activePrimaryTab === 'strategy' || ((activePrimaryTab === 'dailyBrief' || !activePrimaryTab) && bdIsLive())){
     // 2026-09-30: Top 5 Most Urgent moves off Strategy; Media Science shows Analysis due instead (CMO / VP view).
     moduleEl.style.display = 'none';
     return;
@@ -28563,6 +28577,7 @@ function renderTopUrgentModule(){
   }
   if (activePrimaryTab === 'brand' && cxIsLive()){ cxRenderTopUrgent(bodyEl); return; }
   if (activePrimaryTab === 'marketer' && gpIsLive()){ gpRenderTop5(bodyEl); return; }
+  if (activePrimaryTab === 'dataScientist' && msIsLive()){ msRenderTop5(bodyEl); return; }
   const rows = cmpCreativeGridRows().slice(0, 5);
   // 2026-08-24 (round 17, direct feedback) — the table's own column
   // headers should always render, even with zero campaigns, so the module
