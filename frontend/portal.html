@@ -26580,13 +26580,8 @@ function bdHomeHtml(){
 }
 function bdRender(){
   bdRenderMain(); const box = document.getElementById('brainDumpBody'); if (!box) return;
-  const w = bd.welcome, wh = bdWelcomeHtml(), posted = bd.data && bd.data.posted;
-  let pre = bdHomeHtml();
-  if (wh){
-    if (posted && w && !w.dismissed){ const fs = w.firstSteps || {}; pre += `<details class="bd-w-fold"><summary>Your Verilume account: what we remember, your opportunities and your training path${fs.total ? ` (${fs.doneCount || 0} of ${fs.total} setup items done)` : ''}</summary>${wh}</details>`; }
-    else pre += wh;
-  }
-  box.insertAdjacentHTML('afterbegin', pre);
+  // The Welcome card and the account fold were removed 2026-11-15: the page starts at the Strategy section.
+
   try { if (typeof vz !== 'undefined' && typeof vzLive === 'function' && vzLive()){ if (vz.lib) vzBdNote(); else vzLoadLib(); } } catch (e){}
   box.insertAdjacentHTML('beforeend', '<div class="strat-card"><div class="pj-host" data-area="all"></div></div>'); setTimeout(pjMountAll, 0);
 }
