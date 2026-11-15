@@ -25083,7 +25083,7 @@ async function sendVerificationCode(phone){
     const resp = await fetch(`https://verify.twilio.com/v2/Services/${encodeURIComponent(TWILIO_VERIFY_SERVICE_SID)}/Verifications`, {
       method: 'POST',
       headers: { 'Authorization': twilioAuthHeader(), 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ To: phone, Channel: 'sms' })
+      body: new URLSearchParams({ To: toE164(phone) || phone, Channel: 'sms' })
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) throw new Error((data && data.message) || `Twilio Verify responded ${resp.status}`);
@@ -25102,7 +25102,7 @@ async function checkVerificationCode(phone, code, expectedHash, expectedSalt){
     const resp = await fetch(`https://verify.twilio.com/v2/Services/${encodeURIComponent(TWILIO_VERIFY_SERVICE_SID)}/VerificationCheck`, {
       method: 'POST',
       headers: { 'Authorization': twilioAuthHeader(), 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ To: phone, Code: code })
+      body: new URLSearchParams({ To: toE164(phone) || phone, Code: code })
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) return false;
@@ -34014,7 +34014,7 @@ async function handleRequestInner(req, res) {
         if (recent && Number(recent.c) >= 5) return sendJson(res, 429, { error: 'Too many codes requested. Try again in an hour.' });
         let sent;
         try { sent = await sendVerificationCode(me.phone); }
-        catch (e){ console.warn('mfa-sms start: send failed', e.message); return sendJson(res, 502, { error: 'Could not send a text right now. Check the number can receive texts and try again.' }); }
+        catch (e){ console.warn('mfa-sms start: send failed', e.message); return sendJson(res, 502, { error: 'Could not send a text right now. Check the number can receive texts and try again.' + (e && e.message ? ' (' + String(e.message).slice(0, 140) + ')' : '') }); }
         if (sent.provider === 'interim' && process.env.DATABASE_URL){
           return sendJson(res, 502, { error: 'Text messages are not set up on this account yet.' });
         }
