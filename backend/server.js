@@ -20698,6 +20698,7 @@ createTableIfNeeded(`
     createdat TEXT NOT NULL
   );
 `);
+ensureColumn('account_charts', 'dashboards', 'TEXT');
 
 const VIZ_TYPES = ['column', 'bar', 'line', 'area', 'stacked', 'pie', 'table'];
 const VIZ_TYPE_LABEL = { column: 'Column', bar: 'Bar', line: 'Line', area: 'Area', stacked: 'Stacked', pie: 'Pie', table: 'Table' };
@@ -20736,6 +20737,68 @@ function vizFmtVal(v, kind){
   return (Math.round(v * 10) / 10).toLocaleString('en-US');
 }
 // A computed answer table becomes labels plus numeric series. Totals ("All") are not categories.
+
+// ---- Train the Brain budget charts for the Data Visualizer (2026-11-15). Numbers come from the confirmed budget uploads and the budget flow, never from the model.
+const VIZ_DASHBOARDS = ['dailyBrief', 'strategy', 'brand', 'marketer', 'dataScientist'];
+const VIZ_EXISTING_EXTRA = [
+  { key: 'strategy-booked', title: 'Booked revenue trends', tab: 'strategy', tabLabel: 'Strategy' },
+  { key: 'strategy-budget-alloc', title: 'Budget allocations', tab: 'strategy', tabLabel: 'Strategy' },
+  { key: 'strategy-mix', title: 'Media mix allocations', tab: 'strategy', tabLabel: 'Strategy' },
+  { key: 'strategy-future', title: 'Forecasted future revenue', tab: 'strategy', tabLabel: 'Strategy' },
+  { key: 'ttb-budget-category', title: 'Marketing budget by category', tab: 'accountManagement', tabLabel: 'Train the Brain', step: 'marketingBudgetUpload' },
+  { key: 'ttb-budget-month', title: 'Marketing budget by month', tab: 'accountManagement', tabLabel: 'Train the Brain', step: 'marketingBudgetUpload' },
+  { key: 'ttb-budget-vs-spend', title: 'Budget versus reported spend', tab: 'accountManagement', tabLabel: 'Train the Brain', step: 'marketingBudgetUpload' },
+  { key: 'ttb-annual-plan', title: 'Annual media plan and target', tab: 'accountManagement', tabLabel: 'Train the Brain', step: 'mediaplan' }
+];
+const VIZ_BUDGET_RECIPES = [
+  { title: 'Marketing budget by category', spec: { budget: 'by_category' } },
+  { title: 'Marketing budget by month', spec: { budget: 'by_month' } },
+  { title: 'How much of the budget is committed', spec: { budget: 'allocation' } },
+  { title: 'Budget versus reported spend by month', spec: { budget: 'vs_spend' } }
+];
+function vizBudgetIntent(text){
+  const t = String(text || '').toLowerCase();
+  if (!/\b(budget|budgets|allocation|allocations|working media|media plan|planned spend|committed)\b/.test(t)) return null;
+  if (/\b(vs|versus|compared|actual|actuals|reported spend|over budget|under budget)\b/.test(t)) return 'vs_spend';
+  if (/\b(month|monthly|timing|seasonal|by quarter)\b/.test(t)) return 'by_month';
+  if (/\b(committed|scheduled|spent|remaining|pacing|not yet)\b/.test(t)) return 'allocation';
+  return 'by_category';
+}
+function vizBudgetBuild(accountId, key, text){
+  const money = n => '$' + Math.round(n).toLocaleString('en-US');
+  const need = 'a confirmed marketing budget upload (Train the Brain, Annual Media Plan)';
+  const lines = sotBudgetLines(accountId); if (!lines.length) return { notOnFile: need };
+  const curY = new Date().getUTCFullYear(); const t = String(text || '').toLowerCase(); const years = Array.from(new Set(lines.map(r => r.year))).sort();
+  const m = /\b(20\d\d)\b/.exec(t); let yr = m ? Number(m[1]) : (/last year|prior year/.test(t) ? curY - 1 : (years.includes(curY) ? curY : years[years.length - 1]));
+  const L = lines.filter(r => r.year === yr); if (!L.length) return { notOnFile: `a confirmed ${yr} marketing budget upload (Train the Brain, Annual Media Plan)` };
+  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const working = L.filter(r => r.working).reduce((a, r) => a + r.amount, 0), non = L.filter(r => !r.working).reduce((a, r) => a + r.amount, 0);
+  const base = { period: `Plan year ${yr}`, notes: ['From the confirmed budget upload for the year. Working media is what is spent on media; non-working is excluded from media totals.'], additive: true, kind: 'money' };
+  if (key === 'by_month'){
+    const labels = [], w = [], n = [];
+    for (let mo = 1; mo <= 12; mo++){ const rows = L.filter(r => r.month === mo); if (!rows.length) continue; labels.push(`${yr}-${String(mo).padStart(2, '0')}`); w.push(rows.filter(r => r.working).reduce((a, r) => a + r.amount, 0)); n.push(rows.filter(r => !r.working).reduce((a, r) => a + r.amount, 0)); }
+    if (!labels.length) return { notOnFile: `a ${yr} budget with months on its lines` };
+    const pk = w.indexOf(Math.max(...w)); const series = [{ name: 'Working media', values: w }]; if (n.some(v => v)) series.push({ name: 'Non-working', values: n });
+    return Object.assign(base, { title: `Marketing budget by month, ${yr}`, sentence: `The ${yr} working media budget is ${money(working)}${non ? ` (plus ${money(non)} non-working)` : ''}. ${labels[pk].slice(5) ? MON[Number(labels[pk].slice(5)) - 1] : ''} is the largest month at ${money(w[pk])}.`, labels, series, labelName: 'Month', suggestType: series.length > 1 ? 'stacked' : 'column' });
+  }
+  if (key === 'allocation'){
+    let f; try { f = buildBudgetFlow(accountId, { year: yr }); } catch (e){ f = null; }
+    if (!f || f.planned == null) return { notOnFile: `a confirmed ${yr} budget with working media` };
+    const spent = f.completed || 0, sched = f.pending ? f.pending.total : 0, rest = f.remaining || 0;
+    return Object.assign(base, { title: `Budget committed, ${yr}`, sentence: `${money(spent + sched)} of the ${money(f.planned)} working media budget is committed (${Math.round((spent + sched) / f.planned * 100)}%): ${money(spent)} spent and ${money(sched)} scheduled. ${money(rest)} is not yet scheduled${f.over ? `; scheduling is ${money(f.over)} over budget` : ''}.`, labels: ['Spent', 'Scheduled', 'Not yet scheduled'], series: [{ name: 'Working media', values: [spent, sched, rest] }], labelName: 'Status', suggestType: 'pie', notes: (f.notes || []).concat(base.notes) });
+  }
+  if (key === 'vs_spend'){
+    const bm = sotBudgetMonthly(accountId, { working: true }), sp = sotSpendMonthly(accountId); const labels = [], b = [], a = [];
+    for (let mo = 1; mo <= 12; mo++){ const k = `${yr}-${String(mo).padStart(2, '0')}`; if (bm[k] == null && sp[k] == null) continue; labels.push(k); b.push(bm[k] || 0); a.push(sp[k] || 0); }
+    if (!labels.length) return { notOnFile: `reported spend or a monthly budget for ${yr}` };
+    const tb = b.reduce((x, y) => x + y, 0), ta = a.reduce((x, y) => x + y, 0);
+    return Object.assign(base, { title: `Budget versus reported spend, ${yr}`, sentence: `Across these months the budget is ${money(tb)} and reported spend is ${money(ta)}${tb ? ` (${Math.round(ta / tb * 100)}% of budget)` : ''}.`, labels, series: [{ name: 'Budget', values: b }, { name: 'Reported spend', values: a }], labelName: 'Month', additive: false, suggestType: 'column' });
+  }
+  const cat = {}; L.filter(r => r.working).forEach(r => { const c = r.verilumeCategory || r.category || 'Other'; cat[c] = (cat[c] || 0) + r.amount; });
+  const ent = Object.entries(cat).sort((x, y) => y[1] - x[1]); if (!ent.length) return { notOnFile: `working media lines in the ${yr} budget` };
+  return Object.assign(base, { title: `Marketing budget by category, ${yr}`, sentence: `${ent[0][0]} is the largest line at ${money(ent[0][1])} (${Math.round(ent[0][1] / working * 100)}% of the ${money(working)} working media budget).`, labels: ent.map(e => e[0]), series: [{ name: 'Working media budget', values: ent.map(e => e[1]) }], labelName: 'Category', suggestType: ent.length <= 6 ? 'pie' : 'bar' });
+}
+
 function vizDataFromTable(t, spec){
   const cols = (t.columns || []).map(c => (c && typeof c === 'object' ? c.h : c));
   const rows = (t.rows || []).slice();
@@ -21471,7 +21534,7 @@ const REFRESH_DATASETS = [
   { key: 'bookings', label: 'Guest bookings', table: 'account_guest_bookings', cadence: 7, step: 'bulkUpload' },
   { key: 'planLines', label: 'Plan lines (Marketing Calendar)', table: 'channel_planning_details', cadence: 7, step: 'planLines', byCampaign: true },
   { key: 'marketingBudget', label: 'Marketing budget upload', table: 'marketing_budget_uploads', cadence: 90, step: 'marketingBudgetUpload' },
-  { key: 'annualPlan', label: 'Annual plan: baseline and targets', table: 'account_annual_plan', cadence: 90, step: 'annualPlan' },
+  { key: 'annualPlan', label: 'Annual plan: baseline and targets', table: 'account_annual_plan', cadence: 90, step: 'mediaplan' },
   { key: 'yearResults', label: 'Prior-year results', table: 'account_year_results', cadence: 90, step: 'yearResults' },
   { key: 'demandFulfillment', label: 'Demand fulfillment assumptions', table: 'account_demand_fulfillment', cadence: 90, step: 'demandFulfillment' },
   { key: 'marketableSizes', label: 'Marketable audience sizes', table: 'account_marketable_sizes', cadence: 90, step: 'marketableSizes' },
@@ -23188,7 +23251,7 @@ function buildTrainTheBrain(accountId){
       { label: 'MMM data inputs', done: rowsOf('mmm_inputs') > 0, rows: rowsOf('mmm_inputs'), gain: 'Period-by-period spend, delivery and outcomes by category, ready for media mix modeling.', step: 'mmmInputs' },
       { label: 'Connect a data source, or choose a path', done: integrationDone, gain: 'Snowflake, GA4, Meta, Google Ads or The Trade Desk.', step: 'partnerIntegrations' } ] },
     { key: 'plan', title: 'Your plan', minutes: 4, gain: 'Gives the forecast the targets and costs it needs to test a plan.', items: [
-      { label: 'Annual plan: baseline and targets', done: rowsOf('account_annual_plan') > 0, rows: rowsOf('account_annual_plan'), gain: 'What the year is calibrated on and what you aim for.', step: 'annualPlan' },
+      { label: 'Annual plan: baseline and targets', done: rowsOf('account_annual_plan') > 0, rows: rowsOf('account_annual_plan'), gain: 'What the year is calibrated on and what you aim for.', step: 'mediaplan' },
       { label: 'Prior-year results', done: rowsOf('account_year_results') > 0, rows: rowsOf('account_year_results'), gain: 'Last year\'s spend and results the plan is compared with.', step: 'yearResults' },
       { label: 'Active channels', done: (() => { try { const a = db.prepare('SELECT activeChannels FROM accounts WHERE accountId = ?').get(accountId); return !!(a && a.activeChannels && String(a.activeChannels).trim()); } catch (e) { return false; } })(), gain: 'Only the channels you switch on are offered on Campaign Creation and recommended on the Media Plan.', step: 'activeChannels' },
       { label: 'Channel products (Meta, Google, Yahoo, programmatic, magazines, direct mail)', done: (() => { try { const a = db.prepare('SELECT activeChannelProducts FROM accounts WHERE accountId = ?').get(accountId); return !!(a && a.activeChannelProducts && String(a.activeChannelProducts).trim() && a.activeChannelProducts !== '{}'); } catch (e) { return false; } })(), gain: 'Switch on the ad products you actually buy. Recommendations only use what is on.', step: 'channelProducts' },
@@ -37095,7 +37158,7 @@ async function handleRequestInner(req, res) {
         const canEdit = r => !!r && (actor.isAdmin || (me && r.ownerid === me));
         const out = (r, full) => {
           const data = parseJ(r.datajson, { labels: [], series: [] }); const view = parseJ(r.viewjson, {});
-          const o = { id: r.id, title: r.title, request: r.requesttext || '', period: r.period || '', ownerId: r.ownerid, ownerName: r.ownername, mine: r.ownerid === me, visibility: r.visibility, sharedWith: parseJ(r.sharedwith, []), note: r.note || '', createdAt: r.createdat, updatedAt: r.updatedat, views: r.views || 0, type: view.type || 'column', canEdit: canEdit(r), refreshable: !!r.specjson };
+          const o = { dashboards: parseJ(r.dashboards, []), id: r.id, title: r.title, request: r.requesttext || '', period: r.period || '', ownerId: r.ownerid, ownerName: r.ownername, mine: r.ownerid === me, visibility: r.visibility, sharedWith: parseJ(r.sharedwith, []), note: r.note || '', createdAt: r.createdat, updatedAt: r.updatedat, views: r.views || 0, type: view.type || 'column', canEdit: canEdit(r), refreshable: !!r.specjson };
           if (full){ o.data = data; o.view = view; o.chart = vizApply(data, Object.assign({}, view, { title: view.title || r.title })); o.spec = parseJ(r.specjson, null); }
           else { const c = vizApply(data, Object.assign({}, view, { title: view.title || r.title })); o.preview = { type: c.type, labels: c.labels.slice(0, 12), series: c.series.slice(0, 3).map(s => ({ name: s.name, color: s.color, values: s.values.slice(0, 12) })), kind: c.kind }; }
           return o;
@@ -37129,6 +37192,7 @@ async function handleRequestInner(req, res) {
           }
           return sent;
         };
+        const cleanDash = a => Array.isArray(a) ? Array.from(new Set(a.map(String).filter(k => VIZ_DASHBOARDS.includes(k)))) : [];
         const recipientsFor = (visibility, sharedWith) => visibility === 'account' ? members().map(m => m.id) : visibility === 'selected' ? sharedWith : [];
         const buildFor = async (text, spec) => {
           const range = dateRangeForRequest(req, accountId, {});
@@ -37138,6 +37202,14 @@ async function handleRequestInner(req, res) {
             const words = String(text || '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 3);
             db.prepare('SELECT * FROM account_charts WHERE accountid = ? ORDER BY updatedat DESC').all(accountId).filter(canSee).map(r => ({ r, s: words.filter(w => (r.title + ' ' + (r.requesttext || '')).toLowerCase().includes(w)).length })).filter(x => x.s >= 2).sort((a, b) => b.s - a.s).slice(0, 3).forEach(x => matches.push({ kind: 'saved', id: x.r.id, title: x.r.title, owner: x.r.ownername }));
           } catch (e){}
+          const bKey = (spec && spec.budget) || vizBudgetIntent(text);
+          if (bKey){
+            const b = vizBudgetBuild(accountId, bKey, text);
+            if (b.notOnFile) return { status: 'not_on_file', what: b.notOnFile, matches };
+            const data = { labels: b.labels, series: b.series, kind: 'money', labelName: b.labelName, additive: b.additive, matrix: false, dims: [] };
+            const view = vizDefaultView(data, b.title, text); if (b.suggestType && view.alternatives && view.alternatives.includes(b.suggestType)) view.type = b.suggestType;
+            return { status: 'ok', request: text, title: b.title, sentence: b.sentence, period: b.period, assumptions: [], notes: b.notes || [], tables: [], data, view, chart: vizApply(data, view), spec: { budget: bKey }, matches };
+          }
           const p = await dqAnswerPayload(accountId, { text, spec }, range, { allowModel: true });
           if (p.needMore) return { status: 'needs_more', message: p.message, suggestions: (p.suggestions || []).map(s => ({ title: s.title, spec: s.spec })), matches };
           if (p.notOnFile) return { status: 'not_on_file', what: p.notOnFile, matches };
@@ -37165,15 +37237,22 @@ async function handleRequestInner(req, res) {
           return sendJson(res, 404, { error: 'not found' });
         }
 
+        // GET /visualize/dashboards/:tab  -> the saved charts assigned to that dashboard that this person may see
+        if (req.method === 'GET' && parts.length === 6 && sub === 'dashboards'){
+          const tab = decodeURIComponent(parts[5]);
+          const rows = VIZ_DASHBOARDS.includes(tab) ? db.prepare('SELECT * FROM account_charts WHERE accountid = ? ORDER BY updatedat DESC').all(accountId).filter(canSee).filter(r => parseJ(r.dashboards, []).includes(tab)).slice(0, 12) : [];
+          return sendJson(res, 200, { tab, charts: rows.map(r => out(r, true)) });
+        }
         // GET /visualize/library
         if (req.method === 'GET' && parts.length === 5 && sub === 'library'){
           const rows = db.prepare('SELECT * FROM account_charts WHERE accountid = ? ORDER BY updatedat DESC').all(accountId).filter(canSee);
           let recipes = []; let hasData = false;
           try { const cat = dqCatalog(accountId); hasData = !!cat.hasData; recipes = (cat.recipes || []).concat(cat.setRecipes || []).slice(0, 12).map(r => ({ title: r.title, spec: r.spec })); } catch (e){}
+          try { if (sotBudgetLines(accountId).length) recipes = VIZ_BUDGET_RECIPES.concat(recipes).slice(0, 14); } catch (e){}
           const unread = me ? (db.prepare('SELECT COUNT(*) AS n FROM account_notifications WHERE accountid = ? AND memberid = ? AND readat IS NULL AND kind = ?').get(accountId, me, 'chart_shared') || {}).n || 0 : 0;
           return sendJson(res, 200, {
             me: { id: me, name: actor.name || '', isAdmin: !!actor.isAdmin }, hasData, recipes,
-            existing: FD_REGISTRY.map(r => ({ key: r.key, title: r.title, tab: r.tab, tabLabel: r.tabLabel })),
+            existing: FD_REGISTRY.concat(VIZ_EXISTING_EXTRA).map(r => ({ key: r.key, title: r.title, tab: r.tab, tabLabel: r.tabLabel, step: r.step || '' })),
             charts: rows.map(r => out(r, false)), unread,
             members: members().map(m => ({ id: m.id, name: m.name, role: [m.functionGroup, m.level].filter(Boolean).join(' · '), hasEmail: !!m.email, me: m.id === me }))
           });
@@ -37220,6 +37299,7 @@ async function handleRequestInner(req, res) {
           const id = generateId('CHT'); view.title = view.title || title;
           db.prepare('INSERT INTO account_charts (id, accountid, title, requesttext, datajson, viewjson, specjson, period, ownerid, ownername, visibility, sharedwith, note, createdat, updatedat) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
             .run(id, accountId, title, String(b.request || '').slice(0, 600), JSON.stringify(data), JSON.stringify(view), b.spec && typeof b.spec === 'object' ? JSON.stringify(b.spec).slice(0, 8000) : null, String(b.period || '').slice(0, 120), me, actor.name || null, visibility, JSON.stringify(sharedWith), String(b.note || '').slice(0, 400) || null, now, now);
+          try { db.prepare('UPDATE account_charts SET dashboards = ? WHERE id = ?').run(JSON.stringify(cleanDash(b.dashboards)), id); } catch (e){}
           const row = db.prepare('SELECT * FROM account_charts WHERE id = ?').get(id);
           const sent = b.notify === false ? [] : await notify(row, recipientsFor(visibility, sharedWith), b.note);
           return sendJson(res, 201, { chart: out(row, true), notified: sent });
@@ -37255,6 +37335,7 @@ async function handleRequestInner(req, res) {
             if (visibility === 'selected' && !sharedWith.length) return sendJson(res, 400, { error: 'Pick at least one person to share it with, or make it private.' });
             const note = b.note != null ? String(b.note).slice(0, 400) : row.note;
             db.prepare('UPDATE account_charts SET title = ?, viewjson = ?, visibility = ?, sharedwith = ?, note = ?, updatedat = ? WHERE id = ?').run(title, JSON.stringify(view), visibility, JSON.stringify(visibility === 'selected' ? sharedWith : []), note || null, now, cid);
+            if (b.dashboards != null){ try { db.prepare('UPDATE account_charts SET dashboards = ? WHERE id = ?').run(JSON.stringify(cleanDash(b.dashboards)), cid); } catch (e){} }
             const row2 = db.prepare('SELECT * FROM account_charts WHERE id = ?').get(cid);
             const fresh = recipientsFor(visibility, sharedWith).filter(id => !before.has(id));
             const sent = b.notify === false ? [] : await notify(row2, fresh, b.note);
