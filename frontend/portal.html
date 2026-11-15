@@ -4621,7 +4621,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 #cmpCreativePanel .btn-ghost:hover{background:#E7F1EE!important;}
 #cmpCreativePanel .cmp-step0-audience-toggle-opt.on,#cmpCreativePanel .cmp-step0-mini-toggle-opt.on{background:#1F6B5C!important;color:#fff!important;}
 #cmpCreativePanel input:focus,#cmpCreativePanel select:focus,#cmpCreativePanel textarea:focus{border-color:#1F6B5C!important;box-shadow:0 0 0 3px rgba(31,107,92,.16)!important;outline:none;}
-  /* Visualize studio (2026-11-14): request a chart in words, refine it, save and share it, download it. */
+    /* Visualize studio (2026-11-14): request a chart in words, refine it, save and share it, download it. */
   #step-visualize .vz-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start;}
   @media (max-width:980px){#step-visualize .vz-grid{grid-template-columns:1fr;}}
   .vz-ask textarea{width:100%;box-sizing:border-box;font:inherit;font-size:1.0625rem;line-height:1.45;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:#fff;color:var(--ink);resize:vertical;min-height:64px;}
@@ -4696,12 +4696,15 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
   .vz-kpi{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;margin:16px 0 4px;} .vz-kpi-l{font-size:0.9375rem;color:var(--muted);} .vz-kpi-v{font-size:2rem;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;}
   .vz-delta{font-size:0.9375rem;font-weight:600;} .vz-delta.up{color:#1F7A4D;} .vz-delta.down{color:#C0273C;}
   .vz-sep{width:1px;background:var(--line);margin:0 6px;} .vz-h3{margin:22px 0 4px;font-size:0.9375rem;}
+  .vz-main{max-width:980px;}
   /* 2026-11-15: gallery lives on Media Science; saved charts feed dashboards; return bar */
   .vz-gtitle{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:flex-start;justify-content:space-between;} .vz-gright{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
   .vz-return{margin:0 0 12px;padding:8px 14px;border:1px solid var(--line);border-radius:999px;background:var(--white);display:inline-block;font-size:0.875rem;font-weight:600;} .vz-return a{color:var(--cx,#0A58CC);text-decoration:none;} .vz-return a:hover{text-decoration:underline;}
   #vzDashCharts{margin:0 0 16px;} .vz-dhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;margin:0 0 10px;} .vz-dhead h2{margin:0;font-size:1.0625rem;}
   .vz-dgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;} @media (max-width:900px){.vz-dgrid{grid-template-columns:1fr;}}
-  .vz-dcard{margin:0;grid-column:auto;min-width:0;}  /* 2026-11-15 (Todd): filters and Create across the page, charts below */
+  .vz-dcard{margin:0;grid-column:auto;min-width:0;} .vz-dtitle{margin:2px 0 6px;font-size:1.0625rem;} .vz-dfoot{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;}
+  .vz-flash{animation:vzflash 2.4s ease-out 1;} @keyframes vzflash{0%,40%{box-shadow:0 0 0 3px rgba(10,88,204,.45);}100%{box-shadow:none;}} @media (prefers-reduced-motion:reduce){.vz-flash{animation:none;box-shadow:0 0 0 3px rgba(10,88,204,.45);}}
+  /* 2026-11-15 (Todd): filters and Create across the page, charts below */
   #vzMsHost{grid-column:1/-1;min-width:0;} .vz-gallery{max-width:none;}
   .vz-gbar{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:center;margin:14px 0 16px;} .vz-gbar .vz-search{flex:1 1 280px;min-width:220px;display:flex;gap:8px;align-items:center;} .vz-gbar .vz-search input{flex:1;min-width:0;}
   .vz-more{margin:14px 0 0;text-align:center;} .vz-gtags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;} .vz-gtags i{font-style:normal;font-size:0.6875rem;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:1px 8px;}
@@ -4711,9 +4714,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
   .vz-pinpanel{position:absolute;z-index:30;top:calc(100% + 6px);left:0;min-width:240px;background:var(--white);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-sm);padding:12px 14px;} .vz-pinpanel label{display:flex;gap:8px;align-items:center;padding:4px 0;font-size:0.875rem;cursor:pointer;}
   .vz-pincell{margin:0 0 16px;} .vz-pinhead{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 0 6px;flex-wrap:wrap;} .vz-dfoot{gap:8px;}
 
- .vz-dtitle{margin:2px 0 6px;font-size:1.0625rem;} .vz-dfoot{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;}
-  .vz-flash{animation:vzflash 2.4s ease-out 1;} @keyframes vzflash{0%,40%{box-shadow:0 0 0 3px rgba(10,88,204,.45);}100%{box-shadow:none;}} @media (prefers-reduced-motion:reduce){.vz-flash{animation:none;box-shadow:0 0 0 3px rgba(10,88,204,.45);}}
-  .vz-main{max-width:980px;}
+.vz-bxbar{display:flex;flex-wrap:wrap;gap:12px 18px;align-items:flex-end;margin-bottom:10px}.vz-bxbar select{display:block;margin-top:3px;padding:6px 8px;border:1px solid var(--line,#d7dbe0);border-radius:8px;background:#fff;font:inherit;min-width:140px}.vz-ctitle{margin:4px 0 2px;font-size:16px}
 
 </style>
 </head>
@@ -86095,17 +86096,39 @@ const VZ_MOUNTS = {
   'strat-rolling': { html: () => stratRollCardHtml(), init: () => stratLoadRolling() },
   'ms-core': { swap: true, html: () => '<div class="stat-card-grid four" id="tabStatCardGrid"></div>', init: () => { Promise.resolve(msLoad()).then(() => msRenderCoreRow()); } },
   'cx-core': { swap: true, html: () => '<div class="stat-card-grid four" id="tabStatCardGrid"></div>', init: () => { Promise.resolve(cxLoad()).then(() => cxRenderCoreRow()); } },
+  'strat-forecast': { swap: true, swapIds: ['stratFcBody'], html: () => '<div class="strat-card"><div class="strat-head"><h2>Forecast against the plan target</h2></div><div id="stratFcBody"><p class="strat-empty">Loading…</p></div></div>', init: () => { Promise.resolve(stratLoadDemand()).then(() => stratLoadForecast()); } },
+  'ms-core-card': { html: () => '<div class="strat-card"><div class="strat-head"><h2>Core elements</h2></div><div id="msCoreBody"><p class="strat-empty">Loading…</p></div></div>', init: () => { Promise.resolve(msLoad()).then(() => msRenderCore()); } },
+  'geo-top': { swap: true, swapIds: ['geoPage', 'geoSource', 'geoTop', 'ccNote'], html: () => '<div id="geoPage" data-ready="1"><div class="geo-bar"><div id="geoSource" class="geo-src"></div><span id="ccNote" class="geo-cap" style="margin:0 10px 0 0;"></span></div><div id="geoTop"></div></div>', init: () => { geoOpen(); } },
   'gp-view': { html: () => gpViewCardHtml(), init: () => { Promise.resolve(gpLoad()).then(() => gpRenderView()); } },
   'cx-media': { html: () => cxMediaCardHtml(), init: () => { Promise.resolve(cxLoad()).then(() => cxRenderMedia()); } },
   'cx-rep': { html: () => cxRepCardHtml(), init: () => { Promise.resolve(cxLoad()).then(() => cxRenderRep()); } },
+  'budget-explorer': { html: () => vzBxHtml(), init: () => vzBxLoad(), export: () => vzBxTables() },
   sbook: { gpc: true, strat: true }, sbud: { gpc: true, strat: true }, smix: { gpc: true, strat: true }, sfore: { gpc: true, strat: true },
   roas: { gpc: true }, pacing: { gpc: true }, kpi: { gpc: true }, ops: { gpc: true }
 };
+
+// ---------- Marketing budget explorer: plan year, working / non-working / both, and the view ----------
+const VZ_BX_VIEWS = [['by_category', 'By category'], ['by_month', 'By month'], ['allocation', 'Committed or not scheduled (working)'], ['vs_spend', 'Budget versus reported spend (working)']];
+const vzBx = { view: 'by_category', year: '', basis: 'working', res: null, busy: false, err: '' };
+function vzBxHtml(){ return `<div class="geo-card cc-card vz-bx" data-cc="vz-bx"><div class="vz-bxbar"><label class="strat-sub">Plan year <select id="vzBxYear" onchange="vzBxSet('year', this.value)"></select></label><label class="strat-sub">Spend type <select id="vzBxBasis" onchange="vzBxSet('basis', this.value)"><option value="working">Working media</option><option value="non">Non-working</option><option value="both">Working and non-working</option></select></label><label class="strat-sub">View <select id="vzBxView" onchange="vzBxSet('view', this.value)">${VZ_BX_VIEWS.map(v => `<option value="${v[0]}">${v[1]}</option>`).join('')}</select></label><button type="button" class="strat-chip" onclick="vzBxLarge()">Large view</button></div><div id="vzBxBody"><p class="strat-empty">Loading…</p></div></div>`; }
+function vzBxSet(k, v){ vzBx[k] = v; vzBxLoad(); }
+async function vzBxLoad(){
+  const body = document.getElementById('vzBxBody'); if (!body) return; vzBx.busy = true;
+  const ys = document.getElementById('vzBxYear'), bs = document.getElementById('vzBxBasis'), vs = document.getElementById('vzBxView'); if (bs) bs.value = vzBx.basis; if (vs) vs.value = vzBx.view;
+  let r; try { r = await vzApi('/visualize/budget', vzJson({ view: vzBx.view, year: vzBx.year || undefined, basis: vzBx.basis })); } catch (e){ body.innerHTML = '<p class="strat-empty">The budget could not be loaded right now. Try again in a moment.</p>'; return; }
+  vzBx.busy = false; vzBx.res = r.status === 'ok' ? r : null;
+  const years = r.years || []; if (ys){ if (!vzBx.year && r.year) vzBx.year = String(r.year); ys.innerHTML = years.length ? years.map(y => `<option value="${y}" ${String(y) === String(vzBx.year) ? 'selected' : ''}>${y}</option>`).join('') : '<option value="">No budget on file</option>'; }
+  if (r.status !== 'ok'){ body.innerHTML = `<p class="strat-empty">${escapeHtml('This needs ' + (r.what || 'a confirmed marketing budget upload') + '. Upload it under Train the Brain, then it appears here.')}</p>`; return; }
+  const c = vzShape(r.data, Object.assign({}, r.view, { title: r.title }));
+  body.innerHTML = `<div class="vz-kicker">${escapeHtml(('Marketing budget · ' + r.period).toUpperCase())}</div><h3 class="vz-ctitle">${escapeHtml(r.title)}</h3><p class="strat-sub">${escapeHtml(r.sentence || '')}</p>${c.type === 'table' ? vzTableHtml(c) : `<div class="vz-plot">${vzChartSvg(c)}</div>${vzLegendHtml(c)}`}<p class="strat-sub">${escapeHtml((r.notes || []).join(' '))}</p>`;
+}
+function vzBxTables(){ const r = vzBx.res; if (!r) return []; const d = r.data; return [{ name: r.title, columns: [d.labelName || 'Group'].concat(d.series.map(s => s.name)), rows: d.labels.map((l, i) => [l].concat(d.series.map(s => s.values[i] == null ? '' : s.values[i]))) }]; }
+function vzBxLarge(){ const r = vzBx.res; if (!r) return; ccOpen(vzCcReg('bx', r.title, r.period, r.data, r.view)); }
 function vzMountable(e){ return !!(e && e.mount && VZ_MOUNTS[e.mount]); }
-function vzUnswap(){ if (!vz.swapped) return; const el = document.getElementById('tabStatCardGrid_off'); if (el) el.id = 'tabStatCardGrid'; vz.swapped = false; }
+function vzUnswap(){ (vz.swappedIds || []).forEach(id => { const el = document.getElementById(id + '_off'); if (el) el.id = id; }); vz.swappedIds = []; }
 function vzMountCard(){
   const host = document.getElementById('vzMountBody'); const m = VZ_MOUNTS[vz.mountKey]; if (!host || !m) return;
-  vzUnswap(); const wg = document.getElementById('workstreamGrid'); if (wg) wg.innerHTML = ''; const tg = document.getElementById('tabStatCardGrid'); if (tg){ tg.innerHTML = ''; if (m.swap){ tg.id = 'tabStatCardGrid_off'; vz.swapped = true; } } // same element ids as the dashboard, so the dashboard copy is cleared while a card is open here
+  vzUnswap(); const wg = document.getElementById('workstreamGrid'); if (wg) wg.innerHTML = ''; const tg = document.getElementById('tabStatCardGrid'); if (tg) tg.innerHTML = ''; const sw = m.swapIds || (m.swap ? ['tabStatCardGrid'] : []); vz.swappedIds = []; sw.forEach(id => { const el = document.getElementById(id); if (el){ el.id = id + '_off'; vz.swappedIds.push(id); } }); // same element ids as the dashboard, so the dashboard copy is cleared while a card is open here
   host.dataset.key = m.gpc ? vz.mountKey : '';
   if (m.gpc){ host.innerHTML = gpcCardHtml(vz.mountKey); if (m.strat) gscEnsure(); else gpcEnsure(); }
   else { host.innerHTML = m.html(); try { m.init(); } catch (e){} }
@@ -86487,7 +86510,7 @@ async function vzMountExport(fmt){
   const key = vz.mountKey, m = VZ_MOUNTS[key]; const host = document.getElementById('vzMountBody'); if (!host) return;
   const say = t => { const n = document.getElementById('vzMountSay'); if (n){ n.textContent = t; setTimeout(() => { if (n.textContent === t) n.textContent = ''; }, 7000); } };
   if (m && m.gpc && typeof gpcExport === 'function' && gpcCardData(key)){ const st = gpc[key]; try { await gpcExport(key, fmt); } catch (e){ say('Could not build that download right now.'); } return; }
-  const title = vz.mountTitle || 'Chart'; const tables = vzScrapeCard(host, title);
+  const title = vz.mountTitle || 'Chart'; const tables = (m && m.export) ? m.export() : vzScrapeCard(host, title);
   if (!tables.length){ say('This card has no numbers loaded yet, so there is nothing to download. Wait for it to finish loading, or change its date range.'); return; }
   await ccDeliver({ title, fileSlug: 'chart-' + key, context: [['Source', 'Dashboard card, Data Visualizer'], ['Downloaded', new Date().toISOString().slice(0, 10)]], tables, notes: ['The numbers are the ones the card was showing when you downloaded it.'] }, fmt, say);
 }
