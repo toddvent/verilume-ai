@@ -19068,9 +19068,9 @@ const FD_REGISTRY = [
   { key: 'strategy-kpis', mount: null, functions: ['Strategy','Performance Marketing'], roles: ['Executive'], title: 'Spend, gross revenue, ROAS and CAC', tab: 'strategy', tabLabel: 'Strategy', subjects: ['account'], needs: ['number', 'compare', 'trend'], words: ['spend', 'revenue', 'roas', 'cac', 'acquisition'] },
   { key: 'price-volume', mount: 'strat-price', functions: ['Strategy'], roles: ['Executive'], title: 'Price and volume by product group', tab: 'strategy', tabLabel: 'Strategy', subjects: ['productGroup'], needs: ['trend', 'compare', 'list'], words: ['price', 'volume', 'product group', 'average price'] },
   { key: 'audience-growth', mount: 'strat-audience', functions: ['Strategy','Creative'], roles: ['Executive','Marketer'], title: 'Audience growth by lead type', tab: 'strategy', tabLabel: 'Strategy', subjects: ['audience'], needs: ['trend', 'compare', 'number'], words: ['audience', 'growth', 'leads', 'prospects'] },
-  { key: 'forecast-vs-target', mount: null, functions: ['Strategy'], roles: ['Executive'], title: 'Forecast versus target', tab: 'strategy', tabLabel: 'Strategy', subjects: ['account'], needs: ['compare', 'trend'], words: ['forecast', 'target', 'plan', 'pace', 'pacing'] },
+  { key: 'forecast-vs-target', mount: 'strat-forecast', functions: ['Strategy'], roles: ['Executive'], title: 'Forecast versus target', tab: 'strategy', tabLabel: 'Strategy', subjects: ['account'], needs: ['compare', 'trend'], words: ['forecast', 'target', 'plan', 'pace', 'pacing'] },
   { key: 'channel-core', mount: null, functions: ['Performance Marketing','Media Science'], roles: ['Analyst','Marketer'], title: 'Core elements by channel', tab: 'dataScientist', tabLabel: 'Media Science', subjects: ['channel'], needs: ['list', 'compare', 'number'], words: ['channel', 'cost per lead', 'click rate', 'calls', 'impressions'] },
-  { key: 'campaign-analysis', mount: null, functions: ['Performance Marketing','Media Science'], roles: ['Analyst'], title: 'Analyzed campaigns: reach, frequency, ROAS', tab: 'dataScientist', tabLabel: 'Media Science', subjects: ['campaign'], needs: ['list', 'compare'], words: ['campaign', 'roas', 'reach', 'frequency'] },
+  { key: 'campaign-analysis', mount: 'ms-core-card', functions: ['Performance Marketing','Media Science'], roles: ['Analyst'], title: 'Analyzed campaigns: reach, frequency, ROAS', tab: 'dataScientist', tabLabel: 'Media Science', subjects: ['campaign'], needs: ['list', 'compare'], words: ['campaign', 'roas', 'reach', 'frequency'] },
   { key: 'lead-to-booking', mount: null, functions: ['Performance Marketing'], roles: ['Analyst','Marketer'], title: 'Lead to booking by audience type', tab: 'dataScientist', tabLabel: 'Media Science', subjects: ['audience'], needs: ['number', 'compare', 'list'], words: ['lead to booking', 'conversion', 'bookings', 'days to convert'] },
   { key: 'strat-coverage', mount: 'strat-coverage', functions: ['Strategy'], roles: ['Executive'], title: 'Campaigns against the plan target', tab: 'strategy', tabLabel: 'Strategy', subjects: [], needs: [], words: ['campaigns against the plan', 'plan target', 'coverage'] },
   { key: 'strat-rolling', mount: 'strat-rolling', functions: ['Strategy', 'Budgeting'], roles: ['Executive'], title: 'Rolling 18 months: budget and spend', tab: 'strategy', tabLabel: 'Strategy', subjects: [], needs: [], words: ['rolling 18', 'budget and spend', 'rolling budget'] },
@@ -19081,6 +19081,8 @@ const FD_REGISTRY = [
   { key: 'roas', mount: 'roas', functions: ['Performance Marketing'], roles: ['Marketer'], title: 'Performance (ROAS and CAC)', tab: 'marketer', tabLabel: 'Growth & Performance', subjects: [], needs: [], words: ['roas', 'cac', 'performance card'] },
   { key: 'pacing', mount: 'pacing', functions: ['Performance Marketing'], roles: ['Marketer'], title: 'Demand pacing', tab: 'marketer', tabLabel: 'Growth & Performance', subjects: [], needs: [], words: ['demand pacing', 'pacing'] },
   { key: 'kpi', mount: 'kpi', functions: ['Performance Marketing'], roles: ['Marketer'], title: 'KPI story', tab: 'marketer', tabLabel: 'Growth & Performance', subjects: [], needs: [], words: ['kpi story'] },
+  { key: 'budget-explorer', mount: 'budget-explorer', functions: ['Budgeting', 'Strategy'], roles: ['Executive', 'Marketer'], title: 'Marketing budget by year: working and non-working', tab: 'accountManagement', tabLabel: 'Train the Brain', subjects: [], needs: [], words: ['marketing budget', 'working media', 'non-working', 'budget by category', 'budget by month'] },
+  { key: 'geo-top', mount: 'geo-top', functions: ['Strategy', 'Media Science'], roles: ['Executive', 'Analyst'], title: 'Geographic: customers by region, top markets, classification and territories', tab: 'dataScientist', tabLabel: 'Media Science', subjects: [], needs: [], words: ['geographic', 'markets', 'region', 'territories', 'dma'] },
   { key: 'ms-core', mount: 'ms-core', functions: ['Performance Marketing', 'Media Science'], roles: ['Analyst', 'Marketer'], title: 'Core elements: impressions, reach and frequency, cost per lead, lead to booking', tab: 'dataScientist', tabLabel: 'Media Science', subjects: [], needs: [], words: ['core elements', 'impressions', 'reach and frequency', 'cost per lead'] },
   { key: 'cx-core', mount: 'cx-core', functions: ['Creative'], roles: ['Marketer'], title: 'Creative delivery: assets due, in QA and cost per engagement', tab: 'brand', tabLabel: 'Customer Experiences', subjects: [], needs: [], words: ['creative schedule', 'customer experiences'] },
   { key: 'gp-view', mount: 'gp-view', functions: ['Performance Marketing'], roles: ['Marketer', 'Executive'], title: 'Performance and lifecycle', tab: 'marketer', tabLabel: 'Growth & Performance', subjects: [], needs: [], words: ['lifecycle', 'performance and lifecycle'] },
@@ -20772,45 +20774,59 @@ const VIZ_BUDGET_RECIPES = [
 ];
 function vizBudgetIntent(text){
   const t = String(text || '').toLowerCase();
-  if (!/\b(budget|budgets|allocation|allocations|working media|media plan|planned spend|committed)\b/.test(t)) return null;
+  if (!/\b(budget|budgets|allocation|allocations|working media|non[- ]?working|media plan|planned spend|committed)\b/.test(t)) return null;
   if (/\b(vs|versus|compared|actual|actuals|reported spend|over budget|under budget)\b/.test(t)) return 'vs_spend';
   if (/\b(month|monthly|timing|seasonal|by quarter)\b/.test(t)) return 'by_month';
   if (/\b(committed|scheduled|spent|remaining|pacing|not yet)\b/.test(t)) return 'allocation';
   return 'by_category';
 }
-function vizBudgetBuild(accountId, key, text){
+function vizBudgetYears(accountId){ try { return Array.from(new Set(sotBudgetLines(accountId).map(r => r.year))).filter(Boolean).sort(); } catch (e){ return []; } }
+// opts: { year, basis: 'working' | 'non' | 'both' }. Basis applies to the category and month views; the committed and budget-versus-spend views are working media only.
+function vizBudgetBuild(accountId, key, text, opts){
+  opts = opts || {};
   const money = n => '$' + Math.round(n).toLocaleString('en-US');
   const need = 'a confirmed marketing budget upload (Train the Brain, Annual Media Plan)';
   const lines = sotBudgetLines(accountId); if (!lines.length) return { notOnFile: need };
-  const curY = new Date().getUTCFullYear(); const t = String(text || '').toLowerCase(); const years = Array.from(new Set(lines.map(r => r.year))).sort();
-  const m = /\b(20\d\d)\b/.exec(t); let yr = m ? Number(m[1]) : (/last year|prior year/.test(t) ? curY - 1 : (years.includes(curY) ? curY : years[years.length - 1]));
-  const L = lines.filter(r => r.year === yr); if (!L.length) return { notOnFile: `a confirmed ${yr} marketing budget upload (Train the Brain, Annual Media Plan)` };
+  const curY = new Date().getUTCFullYear(); const t = String(text || '').toLowerCase(); const years = vizBudgetYears(accountId);
+  const ms = Array.from(t.matchAll(/\b(20\d\d)\b/g)); let yr = Number(opts.year) || (ms.length ? Number(ms[ms.length - 1][1]) : (/last year|prior year/.test(t) ? curY - 1 : (years.includes(curY) ? curY : years[years.length - 1])));
+  const basis = ['working', 'non', 'both'].includes(opts.basis) ? opts.basis : (/non[- ]?working/.test(t) ? (/working media and non|both/.test(t) ? 'both' : 'non') : 'working');
+  const L = lines.filter(r => r.year === yr); if (!L.length) return { notOnFile: `a confirmed ${yr} marketing budget upload (Train the Brain, Annual Media Plan)`, years };
   const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const working = L.filter(r => r.working).reduce((a, r) => a + r.amount, 0), non = L.filter(r => !r.working).reduce((a, r) => a + r.amount, 0);
-  const base = { period: `Plan year ${yr}`, notes: ['From the confirmed budget upload for the year. Working media is what is spent on media; non-working is excluded from media totals.'], additive: true, kind: 'money' };
+  const sum = rows => rows.reduce((a, r) => a + r.amount, 0);
+  const W = L.filter(r => r.working), N = L.filter(r => !r.working); const working = sum(W), non = sum(N);
+  const bl = basis === 'working' ? 'working media' : basis === 'non' ? 'non-working' : 'working and non-working';
+  const base = { period: `Plan year ${yr}`, years, year: yr, basis, notes: ['From the confirmed budget upload for the year. Working media is what is spent on media; non-working (fees, production and similar) is not media spend and is excluded from media totals.'], additive: true, kind: 'money' };
+  const pick = rows => basis === 'working' ? rows.filter(r => r.working) : basis === 'non' ? rows.filter(r => !r.working) : rows;
   if (key === 'by_month'){
     const labels = [], w = [], n = [];
-    for (let mo = 1; mo <= 12; mo++){ const rows = L.filter(r => r.month === mo); if (!rows.length) continue; labels.push(`${yr}-${String(mo).padStart(2, '0')}`); w.push(rows.filter(r => r.working).reduce((a, r) => a + r.amount, 0)); n.push(rows.filter(r => !r.working).reduce((a, r) => a + r.amount, 0)); }
-    if (!labels.length) return { notOnFile: `a ${yr} budget with months on its lines` };
-    const pk = w.indexOf(Math.max(...w)); const series = [{ name: 'Working media', values: w }]; if (n.some(v => v)) series.push({ name: 'Non-working', values: n });
-    return Object.assign(base, { title: `Marketing budget by month, ${yr}`, sentence: `The ${yr} working media budget is ${money(working)}${non ? ` (plus ${money(non)} non-working)` : ''}. ${labels[pk].slice(5) ? MON[Number(labels[pk].slice(5)) - 1] : ''} is the largest month at ${money(w[pk])}.`, labels, series, labelName: 'Month', suggestType: series.length > 1 ? 'stacked' : 'column' });
+    for (let mo = 1; mo <= 12; mo++){ const rows = L.filter(r => r.month === mo); if (!rows.length) continue; labels.push(`${yr}-${String(mo).padStart(2, '0')}`); w.push(sum(rows.filter(r => r.working))); n.push(sum(rows.filter(r => !r.working))); }
+    if (!labels.length) return { notOnFile: `a ${yr} budget with months on its lines`, years };
+    const series = []; if (basis !== 'non') series.push({ name: 'Working media', values: w }); if (basis !== 'working') series.push({ name: 'Non-working', values: n });
+    const tot = labels.map((_, i) => series.reduce((a, x) => a + x.values[i], 0)); const pk = tot.indexOf(Math.max(...tot));
+    const grand = basis === 'working' ? working : basis === 'non' ? non : working + non;
+    return Object.assign(base, { title: `Marketing budget by month, ${yr} (${bl})`, sentence: `The ${yr} ${bl} budget is ${money(grand)}. ${MON[Number(labels[pk].slice(5)) - 1]} is the largest month at ${money(tot[pk])}.`, labels, series, labelName: 'Month', suggestType: series.length > 1 ? 'stacked' : 'column' });
   }
   if (key === 'allocation'){
     let f; try { f = buildBudgetFlow(accountId, { year: yr }); } catch (e){ f = null; }
-    if (!f || f.planned == null) return { notOnFile: `a confirmed ${yr} budget with working media` };
+    if (!f || f.planned == null) return { notOnFile: `a confirmed ${yr} budget with working media`, years };
     const spent = f.completed || 0, sched = f.pending ? f.pending.total : 0, rest = f.remaining || 0;
-    return Object.assign(base, { title: `Budget committed, ${yr}`, sentence: `${money(spent + sched)} of the ${money(f.planned)} working media budget is committed (${Math.round((spent + sched) / f.planned * 100)}%): ${money(spent)} spent and ${money(sched)} scheduled. ${money(rest)} is not yet scheduled${f.over ? `; scheduling is ${money(f.over)} over budget` : ''}.`, labels: ['Spent', 'Scheduled', 'Not yet scheduled'], series: [{ name: 'Working media', values: [spent, sched, rest] }], labelName: 'Status', suggestType: 'pie', notes: (f.notes || []).concat(base.notes) });
+    return Object.assign(base, { basis: 'working', title: `Budget committed, ${yr} (working media)`, sentence: `${money(spent + sched)} of the ${money(f.planned)} working media budget is committed (${Math.round((spent + sched) / f.planned * 100)}%): ${money(spent)} spent and ${money(sched)} scheduled. ${money(rest)} is not yet scheduled${f.over ? `; scheduling is ${money(f.over)} over budget` : ''}.`, labels: ['Spent', 'Scheduled', 'Not yet scheduled'], series: [{ name: 'Working media', values: [spent, sched, rest] }], labelName: 'Status', suggestType: 'pie', notes: (f.notes || []).concat(base.notes) });
   }
   if (key === 'vs_spend'){
     const bm = sotBudgetMonthly(accountId, { working: true }), sp = sotSpendMonthly(accountId); const labels = [], b = [], a = [];
     for (let mo = 1; mo <= 12; mo++){ const k = `${yr}-${String(mo).padStart(2, '0')}`; if (bm[k] == null && sp[k] == null) continue; labels.push(k); b.push(bm[k] || 0); a.push(sp[k] || 0); }
-    if (!labels.length) return { notOnFile: `reported spend or a monthly budget for ${yr}` };
+    if (!labels.length) return { notOnFile: `reported spend or a monthly budget for ${yr}`, years };
     const tb = b.reduce((x, y) => x + y, 0), ta = a.reduce((x, y) => x + y, 0);
-    return Object.assign(base, { title: `Budget versus reported spend, ${yr}`, sentence: `Across these months the budget is ${money(tb)} and reported spend is ${money(ta)}${tb ? ` (${Math.round(ta / tb * 100)}% of budget)` : ''}.`, labels, series: [{ name: 'Budget', values: b }, { name: 'Reported spend', values: a }], labelName: 'Month', additive: false, suggestType: 'column' });
+    return Object.assign(base, { basis: 'working', title: `Budget versus reported spend, ${yr} (working media)`, sentence: `Across these months the budget is ${money(tb)} and reported spend is ${money(ta)}${tb ? ` (${Math.round(ta / tb * 100)}% of budget)` : ''}.`, labels, series: [{ name: 'Budget', values: b }, { name: 'Reported spend', values: a }], labelName: 'Month', additive: false, suggestType: 'column' });
   }
-  const cat = {}; L.filter(r => r.working).forEach(r => { const c = r.verilumeCategory || r.category || 'Other'; cat[c] = (cat[c] || 0) + r.amount; });
-  const ent = Object.entries(cat).sort((x, y) => y[1] - x[1]); if (!ent.length) return { notOnFile: `working media lines in the ${yr} budget` };
-  return Object.assign(base, { title: `Marketing budget by category, ${yr}`, sentence: `${ent[0][0]} is the largest line at ${money(ent[0][1])} (${Math.round(ent[0][1] / working * 100)}% of the ${money(working)} working media budget).`, labels: ent.map(e => e[0]), series: [{ name: 'Working media budget', values: ent.map(e => e[1]) }], labelName: 'Category', suggestType: ent.length <= 6 ? 'pie' : 'bar' });
+  // by category: working media uses the confirmed Verilume category; non-working uses the line's own category
+  const catOf = r => r.working ? (r.verilumeCategory || r.category || 'Other') : (r.category || 'Other');
+  const cw = {}, cn = {}; W.forEach(r => { const c = catOf(r); cw[c] = (cw[c] || 0) + r.amount; }); N.forEach(r => { const c = catOf(r); cn[c] = (cn[c] || 0) + r.amount; });
+  const cats = Array.from(new Set((basis !== 'non' ? Object.keys(cw) : []).concat(basis !== 'working' ? Object.keys(cn) : []))).sort((x, y) => ((cw[y] || 0) + (cn[y] || 0)) - ((cw[x] || 0) + (cn[x] || 0)));
+  if (!cats.length) return { notOnFile: `${bl} lines in the ${yr} budget`, years };
+  const series = []; if (basis !== 'non') series.push({ name: 'Working media', values: cats.map(c => cw[c] || 0) }); if (basis !== 'working') series.push({ name: 'Non-working', values: cats.map(c => cn[c] || 0) });
+  const grand = basis === 'working' ? working : basis === 'non' ? non : working + non; const topV = (cw[cats[0]] || 0) + (cn[cats[0]] || 0);
+  return Object.assign(base, { title: `Marketing budget by category, ${yr} (${bl})`, sentence: `${cats[0]} is the largest line at ${money(topV)} (${Math.round(topV / (grand || 1) * 100)}% of the ${money(grand)} ${bl} budget).`, labels: cats, series, labelName: 'Category', suggestType: series.length > 1 ? 'stacked' : (cats.length <= 6 ? 'pie' : 'bar') });
 }
 
 function vizDataFromTable(t, spec){
@@ -37255,6 +37271,16 @@ async function handleRequestInner(req, res) {
           return sendJson(res, 404, { error: 'not found' });
         }
 
+        // POST /visualize/budget { view, year, basis } -> a budget chart for a plan year, working / non-working / both
+        if (req.method === 'POST' && parts.length === 5 && sub === 'budget'){
+          const b = await readBody(req) || {}; const view = ['by_category', 'by_month', 'allocation', 'vs_spend'].includes(b.view) ? b.view : 'by_category';
+          const years = vizBudgetYears(accountId); if (!years.length) return sendJson(res, 200, { status: 'not_on_file', what: 'a confirmed marketing budget upload (Train the Brain, Annual Media Plan)', years });
+          const r = vizBudgetBuild(accountId, view, '', { year: b.year, basis: b.basis });
+          if (r.notOnFile) return sendJson(res, 200, { status: 'not_on_file', what: r.notOnFile, years });
+          const data = { labels: r.labels, series: r.series, kind: 'money', labelName: r.labelName, additive: r.additive, matrix: false, dims: [] };
+          const v = vizDefaultView(data, r.title, ''); if (r.suggestType && v.alternatives && v.alternatives.includes(r.suggestType)) v.type = r.suggestType;
+          return sendJson(res, 200, { status: 'ok', title: r.title, sentence: r.sentence, period: r.period, notes: r.notes || [], years, year: r.year, basis: r.basis, viewKey: view, data, view: v, chart: vizApply(data, v) });
+        }
         // GET /visualize/dashboards/:tab  -> what this person saved to that dashboard: saved charts and existing cards
         if (req.method === 'GET' && parts.length === 6 && sub === 'dashboards'){
           const tab = decodeURIComponent(parts[5]);
