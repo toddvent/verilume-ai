@@ -19065,13 +19065,28 @@ function fdInfer(text, card){
 }
 // Reports that already exist. Checked first so the portal does not fill with near-duplicates.
 const FD_REGISTRY = [
-  { key: 'strategy-kpis', title: 'Spend, gross revenue, ROAS and CAC', tab: 'strategy', tabLabel: 'Strategy', subjects: ['account'], needs: ['number', 'compare', 'trend'], words: ['spend', 'revenue', 'roas', 'cac', 'acquisition'] },
-  { key: 'price-volume', title: 'Price and volume by product group', tab: 'strategy', tabLabel: 'Strategy', subjects: ['productGroup'], needs: ['trend', 'compare', 'list'], words: ['price', 'volume', 'product group', 'average price'] },
-  { key: 'audience-growth', title: 'Audience growth by lead type', tab: 'strategy', tabLabel: 'Strategy', subjects: ['audience'], needs: ['trend', 'compare', 'number'], words: ['audience', 'growth', 'leads', 'prospects'] },
-  { key: 'forecast-vs-target', title: 'Forecast versus target', tab: 'strategy', tabLabel: 'Strategy', subjects: ['account'], needs: ['compare', 'trend'], words: ['forecast', 'target', 'plan', 'pace', 'pacing'] },
-  { key: 'channel-core', title: 'Core elements by channel', tab: 'dataScientist', tabLabel: 'Media Science', subjects: ['channel'], needs: ['list', 'compare', 'number'], words: ['channel', 'cost per lead', 'click rate', 'calls', 'impressions'] },
-  { key: 'campaign-analysis', title: 'Analyzed campaigns: reach, frequency, ROAS', tab: 'dataScientist', tabLabel: 'Media Science', subjects: ['campaign'], needs: ['list', 'compare'], words: ['campaign', 'roas', 'reach', 'frequency'] },
-  { key: 'lead-to-booking', title: 'Lead to booking by audience type', tab: 'dataScientist', tabLabel: 'Media Science', subjects: ['audience'], needs: ['number', 'compare', 'list'], words: ['lead to booking', 'conversion', 'bookings', 'days to convert'] }
+  { key: 'strategy-kpis', mount: null, functions: ['Strategy','Performance Marketing'], roles: ['Executive'], title: 'Spend, gross revenue, ROAS and CAC', tab: 'strategy', tabLabel: 'Strategy', subjects: ['account'], needs: ['number', 'compare', 'trend'], words: ['spend', 'revenue', 'roas', 'cac', 'acquisition'] },
+  { key: 'price-volume', mount: 'strat-price', functions: ['Strategy'], roles: ['Executive'], title: 'Price and volume by product group', tab: 'strategy', tabLabel: 'Strategy', subjects: ['productGroup'], needs: ['trend', 'compare', 'list'], words: ['price', 'volume', 'product group', 'average price'] },
+  { key: 'audience-growth', mount: 'strat-audience', functions: ['Strategy','Creative'], roles: ['Executive','Marketer'], title: 'Audience growth by lead type', tab: 'strategy', tabLabel: 'Strategy', subjects: ['audience'], needs: ['trend', 'compare', 'number'], words: ['audience', 'growth', 'leads', 'prospects'] },
+  { key: 'forecast-vs-target', mount: null, functions: ['Strategy'], roles: ['Executive'], title: 'Forecast versus target', tab: 'strategy', tabLabel: 'Strategy', subjects: ['account'], needs: ['compare', 'trend'], words: ['forecast', 'target', 'plan', 'pace', 'pacing'] },
+  { key: 'channel-core', mount: null, functions: ['Performance Marketing','Media Science'], roles: ['Analyst','Marketer'], title: 'Core elements by channel', tab: 'dataScientist', tabLabel: 'Media Science', subjects: ['channel'], needs: ['list', 'compare', 'number'], words: ['channel', 'cost per lead', 'click rate', 'calls', 'impressions'] },
+  { key: 'campaign-analysis', mount: null, functions: ['Performance Marketing','Media Science'], roles: ['Analyst'], title: 'Analyzed campaigns: reach, frequency, ROAS', tab: 'dataScientist', tabLabel: 'Media Science', subjects: ['campaign'], needs: ['list', 'compare'], words: ['campaign', 'roas', 'reach', 'frequency'] },
+  { key: 'lead-to-booking', mount: null, functions: ['Performance Marketing'], roles: ['Analyst','Marketer'], title: 'Lead to booking by audience type', tab: 'dataScientist', tabLabel: 'Media Science', subjects: ['audience'], needs: ['number', 'compare', 'list'], words: ['lead to booking', 'conversion', 'bookings', 'days to convert'] },
+  { key: 'strat-coverage', mount: 'strat-coverage', functions: ['Strategy'], roles: ['Executive'], title: 'Campaigns against the plan target', tab: 'strategy', tabLabel: 'Strategy', subjects: [], needs: [], words: ['campaigns against the plan', 'plan target', 'coverage'] },
+  { key: 'strat-rolling', mount: 'strat-rolling', functions: ['Strategy', 'Budgeting'], roles: ['Executive'], title: 'Rolling 18 months: budget and spend', tab: 'strategy', tabLabel: 'Strategy', subjects: [], needs: [], words: ['rolling 18', 'budget and spend', 'rolling budget'] },
+  { key: 'sbook', mount: 'sbook', functions: ['Strategy'], roles: ['Executive'], title: 'Booked revenue trends', tab: 'strategy', tabLabel: 'Strategy', subjects: [], needs: [], words: ['booked revenue'] },
+  { key: 'sbud', mount: 'sbud', functions: ['Strategy', 'Budgeting'], roles: ['Executive'], title: 'Budget allocations', tab: 'strategy', tabLabel: 'Strategy', subjects: [], needs: [], words: ['budget allocation'] },
+  { key: 'smix', mount: 'smix', functions: ['Strategy', 'Performance Marketing'], roles: ['Executive', 'Marketer'], title: 'Media mix allocations', tab: 'strategy', tabLabel: 'Strategy', subjects: [], needs: [], words: ['media mix'] },
+  { key: 'sfore', mount: 'sfore', functions: ['Strategy'], roles: ['Executive'], title: 'Forecasted future revenue', tab: 'strategy', tabLabel: 'Strategy', subjects: [], needs: [], words: ['forecasted future revenue', 'future revenue'] },
+  { key: 'roas', mount: 'roas', functions: ['Performance Marketing'], roles: ['Marketer'], title: 'Performance (ROAS and CAC)', tab: 'marketer', tabLabel: 'Growth & Performance', subjects: [], needs: [], words: ['roas', 'cac', 'performance card'] },
+  { key: 'pacing', mount: 'pacing', functions: ['Performance Marketing'], roles: ['Marketer'], title: 'Demand pacing', tab: 'marketer', tabLabel: 'Growth & Performance', subjects: [], needs: [], words: ['demand pacing', 'pacing'] },
+  { key: 'kpi', mount: 'kpi', functions: ['Performance Marketing'], roles: ['Marketer'], title: 'KPI story', tab: 'marketer', tabLabel: 'Growth & Performance', subjects: [], needs: [], words: ['kpi story'] },
+  { key: 'ms-core', mount: 'ms-core', functions: ['Performance Marketing', 'Media Science'], roles: ['Analyst', 'Marketer'], title: 'Core elements: impressions, reach and frequency, cost per lead, lead to booking', tab: 'dataScientist', tabLabel: 'Media Science', subjects: [], needs: [], words: ['core elements', 'impressions', 'reach and frequency', 'cost per lead'] },
+  { key: 'cx-core', mount: 'cx-core', functions: ['Creative'], roles: ['Marketer'], title: 'Creative delivery: assets due, in QA and cost per engagement', tab: 'brand', tabLabel: 'Customer Experiences', subjects: [], needs: [], words: ['creative schedule', 'customer experiences'] },
+  { key: 'gp-view', mount: 'gp-view', functions: ['Performance Marketing'], roles: ['Marketer', 'Executive'], title: 'Performance and lifecycle', tab: 'marketer', tabLabel: 'Growth & Performance', subjects: [], needs: [], words: ['lifecycle', 'performance and lifecycle'] },
+  { key: 'cx-media', mount: 'cx-media', functions: ['Creative', 'Performance Marketing'], roles: ['Marketer'], title: 'Creative and media together', tab: 'marketer', tabLabel: 'Growth & Performance', subjects: [], needs: [], words: ['creative and media'] },
+  { key: 'cx-rep', mount: 'cx-rep', functions: ['Creative', 'Strategy'], roles: ['Executive', 'Marketer'], title: 'Reputation and the brand space', tab: 'brand', tabLabel: 'Customer Experiences', subjects: [], needs: [], words: ['reputation', 'brand space', 'reviews'] },
+  { key: 'ops', mount: 'ops', functions: ['Performance Marketing', 'Creative'], roles: ['Marketer'], title: 'Execution', tab: 'marketer', tabLabel: 'Growth & Performance', subjects: [], needs: [], words: ['execution'] }
 ];
 function fdRegistryMatches(card, text){
   const t = String(text || '').toLowerCase();
@@ -20740,16 +20755,7 @@ function vizFmtVal(v, kind){
 
 // ---- Train the Brain budget charts for the Data Visualizer (2026-11-15). Numbers come from the confirmed budget uploads and the budget flow, never from the model.
 const VIZ_DASHBOARDS = ['dailyBrief', 'strategy', 'brand', 'marketer', 'dataScientist'];
-const VIZ_EXISTING_EXTRA = [
-  { key: 'strategy-booked', title: 'Booked revenue trends', tab: 'strategy', tabLabel: 'Strategy' },
-  { key: 'strategy-budget-alloc', title: 'Budget allocations', tab: 'strategy', tabLabel: 'Strategy' },
-  { key: 'strategy-mix', title: 'Media mix allocations', tab: 'strategy', tabLabel: 'Strategy' },
-  { key: 'strategy-future', title: 'Forecasted future revenue', tab: 'strategy', tabLabel: 'Strategy' },
-  { key: 'ttb-budget-category', title: 'Marketing budget by category', tab: 'accountManagement', tabLabel: 'Train the Brain', step: 'marketingBudgetUpload' },
-  { key: 'ttb-budget-month', title: 'Marketing budget by month', tab: 'accountManagement', tabLabel: 'Train the Brain', step: 'marketingBudgetUpload' },
-  { key: 'ttb-budget-vs-spend', title: 'Budget versus reported spend', tab: 'accountManagement', tabLabel: 'Train the Brain', step: 'marketingBudgetUpload' },
-  { key: 'ttb-annual-plan', title: 'Annual media plan and target', tab: 'accountManagement', tabLabel: 'Train the Brain', step: 'mediaplan' }
-];
+// (VIZ_EXISTING_EXTRA removed 2026-11-15: FD_REGISTRY is the one list of charts that already exist.)
 const VIZ_BUDGET_RECIPES = [
   { title: 'Marketing budget by category', spec: { budget: 'by_category' } },
   { title: 'Marketing budget by month', spec: { budget: 'by_month' } },
@@ -37154,7 +37160,7 @@ async function handleRequestInner(req, res) {
         const now = new Date().toISOString();
         const members = () => { try { return db.prepare("SELECT id, name, email, functionGroup, level, status FROM team_members WHERE accountId = ?").all(accountId).filter(m => (m.status || 'active') !== 'inactive'); } catch (e){ return []; } };
         const parseJ = (s, d) => { try { return s ? JSON.parse(s) : d; } catch (e){ return d; } };
-        const canSee = r => !!r && (actor.isAdmin || r.ownerid === me || r.visibility === 'account' || (r.visibility === 'selected' && parseJ(r.sharedwith, []).includes(me)));
+        const canSee = r => !!r; // 2026-11-15 (Todd): every chart is available to everyone on the account
         const canEdit = r => !!r && (actor.isAdmin || (me && r.ownerid === me));
         const out = (r, full) => {
           const data = parseJ(r.datajson, { labels: [], series: [] }); const view = parseJ(r.viewjson, {});
@@ -37252,7 +37258,7 @@ async function handleRequestInner(req, res) {
           const unread = me ? (db.prepare('SELECT COUNT(*) AS n FROM account_notifications WHERE accountid = ? AND memberid = ? AND readat IS NULL AND kind = ?').get(accountId, me, 'chart_shared') || {}).n || 0 : 0;
           return sendJson(res, 200, {
             me: { id: me, name: actor.name || '', isAdmin: !!actor.isAdmin }, hasData, recipes,
-            existing: FD_REGISTRY.concat(VIZ_EXISTING_EXTRA).map(r => ({ key: r.key, title: r.title, tab: r.tab, tabLabel: r.tabLabel, step: r.step || '' })),
+            existing: FD_REGISTRY.filter(r => r.mount).map(r => ({ key: r.key, mount: r.mount, title: r.title, tab: r.tab, tabLabel: r.tabLabel, functions: r.functions || [], roles: r.roles || [] })),
             charts: rows.map(r => out(r, false)), unread,
             members: members().map(m => ({ id: m.id, name: m.name, role: [m.functionGroup, m.level].filter(Boolean).join(' · '), hasEmail: !!m.email, me: m.id === me }))
           });
@@ -37292,16 +37298,13 @@ async function handleRequestInner(req, res) {
           const data = cleanData(b.data); if (!data) return sendJson(res, 400, { error: 'There is no chart to save yet.' });
           const view = cleanView(b.view); const title = String(b.title || view.title || '').trim().slice(0, 120);
           if (!title) return sendJson(res, 400, { error: 'Give the chart a name so others can find it.' });
-          const visibility = ['private', 'account', 'selected'].includes(b.visibility) ? b.visibility : 'private';
-          const valid = new Set(members().map(m => m.id));
-          const sharedWith = visibility === 'selected' ? (Array.isArray(b.shareWith) ? b.shareWith.map(String).filter(id => valid.has(id) && id !== me).slice(0, 60) : []) : [];
-          if (visibility === 'selected' && !sharedWith.length) return sendJson(res, 400, { error: 'Pick at least one person to share it with, or save it just for you.' });
+          const visibility = 'account'; const sharedWith = [];
           const id = generateId('CHT'); view.title = view.title || title;
           db.prepare('INSERT INTO account_charts (id, accountid, title, requesttext, datajson, viewjson, specjson, period, ownerid, ownername, visibility, sharedwith, note, createdat, updatedat) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
             .run(id, accountId, title, String(b.request || '').slice(0, 600), JSON.stringify(data), JSON.stringify(view), b.spec && typeof b.spec === 'object' ? JSON.stringify(b.spec).slice(0, 8000) : null, String(b.period || '').slice(0, 120), me, actor.name || null, visibility, JSON.stringify(sharedWith), String(b.note || '').slice(0, 400) || null, now, now);
           try { db.prepare('UPDATE account_charts SET dashboards = ? WHERE id = ?').run(JSON.stringify(cleanDash(b.dashboards)), id); } catch (e){}
           const row = db.prepare('SELECT * FROM account_charts WHERE id = ?').get(id);
-          const sent = b.notify === false ? [] : await notify(row, recipientsFor(visibility, sharedWith), b.note);
+          const sent = [];
           return sendJson(res, 201, { chart: out(row, true), notified: sent });
         }
         // /visualize/charts/:cid ...
@@ -37329,16 +37332,13 @@ async function handleRequestInner(req, res) {
             const before = new Set(recipientsFor(row.visibility, parseJ(row.sharedwith, [])));
             const title = b.title != null ? String(b.title).trim().slice(0, 120) || row.title : row.title;
             const view = b.view ? cleanView(b.view) : parseJ(row.viewjson, {}); if (b.view && title && !view.title) view.title = title;
-            const visibility = ['private', 'account', 'selected'].includes(b.visibility) ? b.visibility : row.visibility;
-            const valid = new Set(members().map(m => m.id));
-            const sharedWith = b.shareWith ? b.shareWith.map(String).filter(id => valid.has(id) && id !== row.ownerid).slice(0, 60) : parseJ(row.sharedwith, []);
-            if (visibility === 'selected' && !sharedWith.length) return sendJson(res, 400, { error: 'Pick at least one person to share it with, or make it private.' });
+            const visibility = 'account'; const sharedWith = [];
             const note = b.note != null ? String(b.note).slice(0, 400) : row.note;
             db.prepare('UPDATE account_charts SET title = ?, viewjson = ?, visibility = ?, sharedwith = ?, note = ?, updatedat = ? WHERE id = ?').run(title, JSON.stringify(view), visibility, JSON.stringify(visibility === 'selected' ? sharedWith : []), note || null, now, cid);
             if (b.dashboards != null){ try { db.prepare('UPDATE account_charts SET dashboards = ? WHERE id = ?').run(JSON.stringify(cleanDash(b.dashboards)), cid); } catch (e){} }
             const row2 = db.prepare('SELECT * FROM account_charts WHERE id = ?').get(cid);
             const fresh = recipientsFor(visibility, sharedWith).filter(id => !before.has(id));
-            const sent = b.notify === false ? [] : await notify(row2, fresh, b.note);
+            const sent = [];
             return sendJson(res, 200, { chart: out(row2, true), notified: sent });
           }
           if (req.method === 'DELETE' && parts.length === 6){
