@@ -20690,6 +20690,14 @@ createTableIfNeeded(`
     updatedat TEXT NOT NULL,
     views INTEGER NOT NULL DEFAULT 0
   );
+  CREATE TABLE IF NOT EXISTS account_card_pins (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    memberid TEXT NOT NULL,
+    tab TEXT NOT NULL,
+    ref TEXT NOT NULL,
+    createdat TEXT NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS account_notifications (
     id TEXT PRIMARY KEY,
     accountid TEXT NOT NULL,
@@ -23203,7 +23211,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['account_charts', 'account_notifications', 'account_chart_requests', 'account_pr_profile', 'account_ga4_meta', 'account_plan_scenarios', 'plan_scenario_events', 'mix_benchmark_cpm', 'account_lead_source_channel', 'plan_baseline_drafts', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'marketing_projects', 'marketing_project_tasks', 'account_learned_cpm', 'account_channel_product_inputs', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'creative_handoffs', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
+const CATALOG_EXEMPT = new Set(['account_card_pins', 'account_charts', 'account_notifications', 'account_chart_requests', 'account_pr_profile', 'account_ga4_meta', 'account_plan_scenarios', 'plan_scenario_events', 'mix_benchmark_cpm', 'account_lead_source_channel', 'plan_baseline_drafts', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'marketing_projects', 'marketing_project_tasks', 'account_learned_cpm', 'account_channel_product_inputs', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'creative_handoffs', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -37162,9 +37170,13 @@ async function handleRequestInner(req, res) {
         const parseJ = (s, d) => { try { return s ? JSON.parse(s) : d; } catch (e){ return d; } };
         const canSee = r => !!r; // 2026-11-15 (Todd): every chart is available to everyone on the account
         const canEdit = r => !!r && (actor.isAdmin || (me && r.ownerid === me));
+        const pinOwner = me || 'account'; let pinsCache = null;
+        const myPins = () => { try { return db.prepare('SELECT tab, ref FROM account_card_pins WHERE accountid = ? AND memberid = ? ORDER BY createdat').all(accountId, pinOwner); } catch (e){ return []; } };
+        const pinMap = () => { const m = {}; myPins().forEach(p => { (m[p.ref] = m[p.ref] || []).push(p.tab); }); return m; };
+        const setPins = (ref, tabs) => { pinsCache = null; db.prepare('DELETE FROM account_card_pins WHERE accountid = ? AND memberid = ? AND ref = ?').run(accountId, pinOwner, ref); const t = new Date().toISOString(); tabs.forEach(tab => db.prepare('INSERT INTO account_card_pins (id, accountid, memberid, tab, ref, createdat) VALUES (?,?,?,?,?,?)').run(generateId('PIN'), accountId, pinOwner, tab, ref, t)); };
         const out = (r, full) => {
           const data = parseJ(r.datajson, { labels: [], series: [] }); const view = parseJ(r.viewjson, {});
-          const o = { dashboards: parseJ(r.dashboards, []), id: r.id, title: r.title, request: r.requesttext || '', period: r.period || '', ownerId: r.ownerid, ownerName: r.ownername, mine: r.ownerid === me, visibility: r.visibility, sharedWith: parseJ(r.sharedwith, []), note: r.note || '', createdAt: r.createdat, updatedAt: r.updatedat, views: r.views || 0, type: view.type || 'column', canEdit: canEdit(r), refreshable: !!r.specjson };
+          const o = { dashboards: (pinsCache || (pinsCache = pinMap()))['chart:' + r.id] || [], id: r.id, title: r.title, request: r.requesttext || '', period: r.period || '', ownerId: r.ownerid, ownerName: r.ownername, mine: r.ownerid === me, visibility: r.visibility, sharedWith: parseJ(r.sharedwith, []), note: r.note || '', createdAt: r.createdat, updatedAt: r.updatedat, views: r.views || 0, type: view.type || 'column', canEdit: canEdit(r), refreshable: !!r.specjson };
           if (full){ o.data = data; o.view = view; o.chart = vizApply(data, Object.assign({}, view, { title: view.title || r.title })); o.spec = parseJ(r.specjson, null); }
           else { const c = vizApply(data, Object.assign({}, view, { title: view.title || r.title })); o.preview = { type: c.type, labels: c.labels.slice(0, 12), series: c.series.slice(0, 3).map(s => ({ name: s.name, color: s.color, values: s.values.slice(0, 12) })), kind: c.kind }; }
           return o;
@@ -37243,11 +37255,22 @@ async function handleRequestInner(req, res) {
           return sendJson(res, 404, { error: 'not found' });
         }
 
-        // GET /visualize/dashboards/:tab  -> the saved charts assigned to that dashboard that this person may see
+        // GET /visualize/dashboards/:tab  -> what this person saved to that dashboard: saved charts and existing cards
         if (req.method === 'GET' && parts.length === 6 && sub === 'dashboards'){
           const tab = decodeURIComponent(parts[5]);
-          const rows = VIZ_DASHBOARDS.includes(tab) ? db.prepare('SELECT * FROM account_charts WHERE accountid = ? ORDER BY updatedat DESC').all(accountId).filter(canSee).filter(r => parseJ(r.dashboards, []).includes(tab)).slice(0, 12) : [];
-          return sendJson(res, 200, { tab, charts: rows.map(r => out(r, true)) });
+          const refs = VIZ_DASHBOARDS.includes(tab) ? myPins().filter(p => p.tab === tab).map(p => p.ref) : [];
+          const ids = refs.filter(r => r.startsWith('chart:')).map(r => r.slice(6));
+          const charts = ids.map(id => db.prepare('SELECT * FROM account_charts WHERE id = ? AND accountid = ?').get(id, accountId)).filter(Boolean).map(r => out(r, true));
+          const cards = refs.filter(r => !r.startsWith('chart:') && FD_REGISTRY.some(x => x.mount === r));
+          return sendJson(res, 200, { tab, charts, cards });
+        }
+        // POST /visualize/pins { ref, tabs } -> where this person shows a chart or card
+        if (req.method === 'POST' && parts.length === 5 && sub === 'pins'){
+          const b = await readBody(req) || {}; const ref = String(b.ref || '');
+          const ok = ref.startsWith('chart:') ? !!db.prepare('SELECT id FROM account_charts WHERE id = ? AND accountid = ?').get(ref.slice(6), accountId) : FD_REGISTRY.some(x => x.mount === ref);
+          if (!ok) return sendJson(res, 404, { error: 'That chart was not found.' });
+          setPins(ref, cleanDash(b.tabs));
+          return sendJson(res, 200, { ref, tabs: pinMap()[ref] || [] });
         }
         // GET /visualize/library
         if (req.method === 'GET' && parts.length === 5 && sub === 'library'){
@@ -37259,7 +37282,7 @@ async function handleRequestInner(req, res) {
           return sendJson(res, 200, {
             me: { id: me, name: actor.name || '', isAdmin: !!actor.isAdmin }, hasData, recipes,
             existing: FD_REGISTRY.filter(r => r.mount).map(r => ({ key: r.key, mount: r.mount, title: r.title, tab: r.tab, tabLabel: r.tabLabel, functions: r.functions || [], roles: r.roles || [] })),
-            charts: rows.map(r => out(r, false)), unread,
+            charts: rows.map(r => out(r, false)), unread, pins: pinMap(),
             members: members().map(m => ({ id: m.id, name: m.name, role: [m.functionGroup, m.level].filter(Boolean).join(' · '), hasEmail: !!m.email, me: m.id === me }))
           });
         }
@@ -37302,7 +37325,7 @@ async function handleRequestInner(req, res) {
           const id = generateId('CHT'); view.title = view.title || title;
           db.prepare('INSERT INTO account_charts (id, accountid, title, requesttext, datajson, viewjson, specjson, period, ownerid, ownername, visibility, sharedwith, note, createdat, updatedat) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
             .run(id, accountId, title, String(b.request || '').slice(0, 600), JSON.stringify(data), JSON.stringify(view), b.spec && typeof b.spec === 'object' ? JSON.stringify(b.spec).slice(0, 8000) : null, String(b.period || '').slice(0, 120), me, actor.name || null, visibility, JSON.stringify(sharedWith), String(b.note || '').slice(0, 400) || null, now, now);
-          try { db.prepare('UPDATE account_charts SET dashboards = ? WHERE id = ?').run(JSON.stringify(cleanDash(b.dashboards)), id); } catch (e){}
+          try { if (Array.isArray(b.dashboards)) setPins('chart:' + id, cleanDash(b.dashboards)); } catch (e){}
           const row = db.prepare('SELECT * FROM account_charts WHERE id = ?').get(id);
           const sent = [];
           return sendJson(res, 201, { chart: out(row, true), notified: sent });
@@ -37335,7 +37358,7 @@ async function handleRequestInner(req, res) {
             const visibility = 'account'; const sharedWith = [];
             const note = b.note != null ? String(b.note).slice(0, 400) : row.note;
             db.prepare('UPDATE account_charts SET title = ?, viewjson = ?, visibility = ?, sharedwith = ?, note = ?, updatedat = ? WHERE id = ?').run(title, JSON.stringify(view), visibility, JSON.stringify(visibility === 'selected' ? sharedWith : []), note || null, now, cid);
-            if (b.dashboards != null){ try { db.prepare('UPDATE account_charts SET dashboards = ? WHERE id = ?').run(JSON.stringify(cleanDash(b.dashboards)), cid); } catch (e){} }
+            if (b.dashboards != null){ try { setPins('chart:' + cid, cleanDash(b.dashboards)); } catch (e){} }
             const row2 = db.prepare('SELECT * FROM account_charts WHERE id = ?').get(cid);
             const fresh = recipientsFor(visibility, sharedWith).filter(id => !before.has(id));
             const sent = [];
