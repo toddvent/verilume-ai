@@ -21220,6 +21220,17 @@ function buildStoryAudienceGrowth(accountId, opts){
 // campaign). Read-only. Attribution window is a fixed 90 days for this phase.
 const MS_ATTRIBUTION_DAYS = 90;
 function msDaysBetween(aStr, bDate){ const a = new Date(String(aStr).slice(0, 10) + 'T00:00:00Z'); if (isNaN(a)) return null; return Math.floor((Date.UTC(bDate.getUTCFullYear(), bDate.getUTCMonth(), bDate.getUTCDate()) - a.getTime()) / 86400000); }
+// Analysis priority rules by KPI type (2026-11-15). A campaign is due for analysis once its last hit date is past the window for its KPI,
+// and Top 5 orders by tier (closest to revenue first), then by how far past the window it is. A campaign with no KPI set uses the fixed 90 days.
+const MS_KPI_RULES = {
+  'Transactions': { days: 90, tier: 1, why: 'Sales take the longest to arrive and carry the revenue.' },
+  'Leads': { days: 45, tier: 2, why: 'Leads convert over weeks; the follow-up to bookings needs time.' },
+  'Clicks': { days: 21, tier: 3, why: 'Traffic KPIs settle quickly.' },
+  'Website Visits': { days: 21, tier: 3, why: 'Traffic KPIs settle quickly.' },
+  'Video Views': { days: 14, tier: 4, why: 'Awareness KPIs read out fastest.' },
+  'Reach': { days: 14, tier: 4, why: 'Awareness KPIs read out fastest.' }
+};
+function msKpiRule(kpi){ const k = String(kpi || '').trim(); return MS_KPI_RULES[k] ? Object.assign({ kpi: k }, MS_KPI_RULES[k]) : { kpi: k || null, days: MS_ATTRIBUTION_DAYS, tier: 5, why: k ? 'No rule for this KPI yet, so the standard 90 days applies.' : 'No primary KPI set, so the standard 90 days applies.' }; }
 function msHasActuals(c){ return [c.actualSpend, c.actualImpressions, c.actualConversions, c.actualRevenue].some(v => v !== undefined && v !== null && v !== ''); }
 function buildMediaScience(accountId, opts){
   const asOfDate = opts.asOf || new Date(); const months = Math.max(3, Math.min(24, Number(opts.months) || 12));
@@ -21233,13 +21244,15 @@ function buildMediaScience(accountId, opts){
     const days = hit ? msDaysBetween(hit, asOfDate) : null;
     const spend = c.actualSpend != null ? Number(c.actualSpend) : null, imp = c.actualImpressions != null ? Number(c.actualImpressions) : null, reach = c.actualReach != null ? Number(c.actualReach) : null, conv = c.actualConversions != null ? Number(c.actualConversions) : null, rev = c.actualRevenue != null ? Number(c.actualRevenue) : null;
     const missing = []; if (spend == null) missing.push('spend'); if (imp == null) missing.push('impressions'); if (conv == null) missing.push('conversions'); if (rev == null) missing.push('revenue'); if (reach == null) missing.push('reach');
-    return { campaignId: c.id, campaignCode: c.campaignCode || '', name: c.name || c.objective || '(untitled campaign)', hitDate: hit, daysSince: days, analysisComplete: msHasActuals(c), missing,
-      maturity: days == null ? 'unknown' : (days >= MS_ATTRIBUTION_DAYS ? 'mature' : 'still converting'),
+    const rule = msKpiRule(c.primaryKpi);
+    return { campaignId: c.id, campaignCode: c.campaignCode || '', name: c.name || c.objective || '(untitled campaign)', startDate: c.startDate ? String(c.startDate).slice(0, 10) : null, endDate: c.endDate ? String(c.endDate).slice(0, 10) : null, hitDate: hit, daysSince: days, analysisComplete: msHasActuals(c), missing,
+      kpi: rule.kpi, windowDays: rule.days, tier: rule.tier, overdueDays: days == null ? null : days - rule.days,
+      maturity: days == null ? 'unknown' : (days >= rule.days ? 'mature' : 'still converting'),
       spend, impressions: imp, reach, frequency: (imp != null && reach) ? Math.round((imp / reach) * 10) / 10 : null, conversions: conv, revenue: rev,
       roas: (rev != null && spend) ? Math.round((rev / spend) * 100) / 100 : null, costPerConversion: (spend != null && conv) ? Math.round(spend / conv) : null, primaryKpi: c.primaryKpi || null };
   });
-  const due = rowsC.filter(r => r.daysSince != null && r.daysSince >= MS_ATTRIBUTION_DAYS && !r.analysisComplete).sort((a, b) => b.daysSince - a.daysSince);
-  const maturing = rowsC.filter(r => r.daysSince != null && r.daysSince >= 0 && r.daysSince < MS_ATTRIBUTION_DAYS && !r.analysisComplete).sort((a, b) => b.daysSince - a.daysSince);
+  const due = rowsC.filter(r => r.daysSince != null && r.daysSince >= r.windowDays && !r.analysisComplete).sort((a, b) => (a.tier - b.tier) || (b.overdueDays - a.overdueDays));
+  const maturing = rowsC.filter(r => r.daysSince != null && r.daysSince >= 0 && r.daysSince < r.windowDays && !r.analysisComplete).sort((a, b) => b.daysSince - a.daysSince);
   const analyzed = rowsC.filter(r => r.analysisComplete).sort((a, b) => String(b.hitDate || '').localeCompare(String(a.hitDate || '')));
   // Account-wide core elements from the digital performance upload (overview grain: one row per channel x month).
   const dp = db.prepare("SELECT * FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").all(accountId).map(r => ({ year: r.year, month: r.month, channel: aliasVal(r, 'channel'), impressions: r.impressions, clicks: r.clicks, spend: r.spend, leads: r.leads, calls: r.calls }));
@@ -21273,7 +21286,7 @@ function buildMediaScience(accountId, opts){
   const rfTot = rf.length ? { campaigns: rf.length, impressions: rf.reduce((n, r) => n + r.impressions, 0), reach: rf.reduce((n, r) => n + r.reach, 0) } : null;
   if (rfTot) rfTot.frequency = Math.round((rfTot.impressions / rfTot.reach) * 10) / 10;
   return { asOf: asOfDate.toISOString().slice(0, 10), attributionDays: MS_ATTRIBUTION_DAYS, window: { from: win[0], to: win[win.length - 1], months: win.length },
-    analysisDue: { total: due.length, top: due.slice(0, 5), maturing: maturing.length, nextMaturing: maturing.slice(0, 3) },
+    analysisDue: { total: due.length, rules: Object.keys(MS_KPI_RULES).map(k => ({ kpi: k, days: MS_KPI_RULES[k].days, tier: MS_KPI_RULES[k].tier })), top: due.slice(0, 5), maturing: maturing.length, nextMaturing: maturing.slice(0, 3) },
     core: { totals: curTot, priorYear: priTot, currentMatched: curMatched, comparedMonths: useCmp ? mIdx.length : 0, channels, leadToBooking, reachFrequency: rfTot, campaigns: analyzed.slice(0, 10) },
     coverage: { campaigns: rowsC.length, withHitDate: rowsC.filter(r => r.hitDate).length, withActuals: analyzed.length, digitalPerformance: { rows: dp.length, latest }, leadCounts: lead.leads > 0 } };
 }
@@ -22741,7 +22754,7 @@ function buildBrainDumpFacts(accountId, now, prevFacts){
       if (out) outliers.push(`Leads in ${bdMonthName(latest)} are outside the expected range`);
     } else lines.push('Lead counts need at least four months on file before a baseline can be set.');
     try { const ag = buildStoryAudienceGrowth(accountId, { asOf: now, months: 6 }); const l = (ag.latest || []).filter(x => x.count != null); if (l.length) lines.push(`Database growth this month: ${l.map(x => `${x.type} ${x.count.toLocaleString('en-US')}${x.vsPriorMonthPct != null ? ` (${x.vsPriorMonthPct >= 0 ? '+' : ''}${x.vsPriorMonthPct}% vs last month)` : ''}`).join(', ')}.`); } catch (e) {}
-    try { const ms = buildMediaScience(accountId, { asOf: now }); if (ms.analysisDue.total) lines.push(`${ms.analysisDue.total} campaign${ms.analysisDue.total === 1 ? ' is' : 's are'} past the 90-day window with no analysis on file.`); } catch (e) {}
+    try { const ms = buildMediaScience(accountId, { asOf: now }); if (ms.analysisDue.total) lines.push(`${ms.analysisDue.total} campaign${ms.analysisDue.total === 1 ? ' is' : 's are'} past their analysis window with no analysis on file.`); } catch (e) {}
     F.analysis = { metric, lines, outliers, links: [{ label: 'Media Science', tab: 'dataScientist' }] };
   } catch (e){ F.analysis = { metric: { label: 'Leads against baseline', value: null, display: 'Unavailable' }, lines: ['The analysis numbers could not be read this week.'], outliers: [], links: [{ label: 'Media Science', tab: 'dataScientist' }] }; }
   // AI Brain learnings from the Contribution Ledger, last 7 days.
