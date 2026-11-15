@@ -4621,6 +4621,61 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 #cmpCreativePanel .btn-ghost:hover{background:#E7F1EE!important;}
 #cmpCreativePanel .cmp-step0-audience-toggle-opt.on,#cmpCreativePanel .cmp-step0-mini-toggle-opt.on{background:#1F6B5C!important;color:#fff!important;}
 #cmpCreativePanel input:focus,#cmpCreativePanel select:focus,#cmpCreativePanel textarea:focus{border-color:#1F6B5C!important;box-shadow:0 0 0 3px rgba(31,107,92,.16)!important;outline:none;}
+  /* Visualize studio (2026-11-14): request a chart in words, refine it, save and share it, download it. */
+  #step-visualize .vz-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start;}
+  @media (max-width:980px){#step-visualize .vz-grid{grid-template-columns:1fr;}}
+  .vz-ask textarea{width:100%;box-sizing:border-box;font:inherit;font-size:1.0625rem;line-height:1.45;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:#fff;color:var(--ink);resize:vertical;min-height:64px;}
+  .vz-ask textarea:focus{outline:2px solid rgba(37,99,235,.35);outline-offset:1px;border-color:var(--media);}
+  .vz-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;}
+  .vz-mic{display:inline-flex;align-items:center;gap:8px;font:inherit;font-size:0.875rem;font-weight:600;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:980px;padding:9px 16px;cursor:pointer;}
+  .vz-mic:hover{border-color:var(--ink);} .vz-mic.on{background:#FEE2E2;border-color:#C0273C;color:#8A1626;}
+  .vz-mic.on .vz-dot{background:#C0273C;animation:vzPulse 1s ease-in-out infinite;} .vz-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);}
+  @keyframes vzPulse{0%,100%{opacity:1;}50%{opacity:.3;}} @media (prefers-reduced-motion:reduce){.vz-mic.on .vz-dot{animation:none;}}
+  .vz-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;}
+  .vz-chip{font:inherit;font-size:0.8125rem;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:980px;padding:6px 14px;cursor:pointer;text-align:left;}
+  .vz-chip:hover{border-color:var(--media);color:var(--media);} .vz-chip.on{background:var(--ink);border-color:var(--ink);color:#fff;}
+  .vz-chip:focus-visible,.vz-mic:focus-visible,.vz-item:focus-visible{outline:2px solid var(--media);outline-offset:2px;}
+  .vz-card{margin-top:16px;}
+  .vz-title{width:100%;box-sizing:border-box;font:inherit;font-size:1.25rem;font-weight:700;color:var(--ink);border:1px solid transparent;border-radius:10px;padding:4px 8px;margin:-4px -8px;background:transparent;}
+  .vz-title:hover{border-color:var(--line);} .vz-title:focus{outline:none;border-color:var(--media);background:#fff;}
+  .vz-sentence{margin:10px 0 0;color:var(--muted);font-size:0.9375rem;line-height:1.5;}
+  .vz-why{margin:10px 0 0;font-size:0.8125rem;color:var(--muted);} .vz-why b{color:var(--ink);}
+  .vz-types{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 4px;}
+  .vz-plot{position:relative;margin-top:8px;} .vz-plot svg{width:100%;height:auto;display:block;overflow:visible;}
+  .vz-plot text{font-family:inherit;} .vz-legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 0 0;font-size:0.8125rem;color:var(--ink);}
+  .vz-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px;}
+  #vzTip{position:fixed;z-index:9999;pointer-events:none;background:#1D1D1F;color:#fff;border-radius:10px;padding:8px 12px;font-size:0.8125rem;line-height:1.5;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:280px;display:none;}
+  #vzTip b{display:block;margin-bottom:2px;} #vzTip i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;}
+  .vz-fb{display:flex;gap:8px;margin-top:14px;} .vz-fb input{flex:1;font:inherit;font-size:0.9375rem;padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:#fff;}
+  .vz-fb input:focus{outline:2px solid rgba(37,99,235,.35);outline-offset:1px;border-color:var(--media);}
+  .vz-say{margin:8px 0 0;font-size:0.875rem;color:var(--ink);min-height:1.2em;} .vz-say.err{color:#C0273C;}
+  .vz-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px;align-items:center;}
+  .vz-menu{position:relative;} .vz-menu .share-menu{right:auto;left:0;}
+  .vz-match{background:#F5F8FF;border:1px solid #D6E2FB;border-radius:14px;padding:12px 16px;margin-top:16px;}
+  .vz-match h3{margin:0 0 6px;font-size:0.9375rem;} .vz-match ul{list-style:none;margin:0;padding:0;display:grid;gap:6px;}
+  .vz-match li{display:flex;gap:10px;align-items:center;justify-content:space-between;font-size:0.875rem;}
+  .vz-panel{border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:14px;background:#FBFBFD;}
+  .vz-panel h3{margin:0 0 10px;font-size:1rem;} .vz-panel label.vz-l{display:block;font-size:0.8125rem;font-weight:600;color:var(--muted);margin:10px 0 4px;}
+  .vz-panel input[type=text],.vz-panel textarea{width:100%;box-sizing:border-box;font:inherit;font-size:0.9375rem;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;}
+  .vz-radio{display:grid;gap:8px;margin-top:4px;} .vz-radio label{display:flex;gap:10px;align-items:flex-start;font-size:0.9375rem;cursor:pointer;}
+  .vz-people{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px 14px;margin-top:8px;max-height:220px;overflow:auto;padding:2px;}
+  .vz-people label{display:flex;gap:8px;align-items:center;font-size:0.875rem;} .vz-people small{color:var(--muted);}
+  .vz-rail h2{font-size:1rem;margin:0 0 8px;} .vz-rail .strat-card{margin-top:0;} .vz-rail .strat-card + .strat-card{margin-top:14px;}
+  .vz-item{display:block;width:100%;text-align:left;font:inherit;border:1px solid var(--line-hairline);background:#fff;border-radius:12px;padding:10px 12px;margin-top:8px;cursor:pointer;color:var(--ink);}
+  .vz-item:hover{border-color:var(--media);} .vz-item.on{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink);}
+  .vz-item b{display:block;font-size:0.875rem;line-height:1.3;} .vz-item span{display:block;font-size:0.75rem;color:var(--muted);margin-top:2px;}
+  .vz-new{display:inline-block;background:#D9480F;color:#fff;border-radius:980px;font-size:0.625rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:1px 8px;margin-left:6px;vertical-align:1px;}
+  .vz-mini{display:block;margin-top:8px;} .vz-mini svg{display:block;width:100%;height:34px;}
+  .vz-banner{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;background:#F6F4EE;border:1px solid #E4E0D3;border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:0.8125rem;color:#5B5647;}
+  .vz-tablewrap{overflow:auto;margin-top:12px;max-height:340px;border:1px solid var(--line-hairline);border-radius:12px;}
+  .vz-tablewrap table{border-collapse:collapse;width:100%;font-size:0.8125rem;font-variant-numeric:tabular-nums;} .vz-tablewrap th,.vz-tablewrap td{padding:7px 12px;border-bottom:1px solid var(--line-hairline);text-align:right;white-space:nowrap;}
+  .vz-tablewrap th:first-child,.vz-tablewrap td:first-child{text-align:left;} .vz-tablewrap th{position:sticky;top:0;background:#fff;color:var(--muted);font-weight:600;}
+  .vz-empty{margin:18px 0 0;color:var(--muted);font-size:0.9375rem;line-height:1.6;}
+  .vz-promo{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;}
+  .vz-promo form{display:flex;gap:8px;flex:1;min-width:260px;} .vz-promo input{flex:1;font:inherit;font-size:0.9375rem;padding:10px 14px;border:1px solid var(--line);border-radius:999px;background:#fff;}
+  #vzToast{position:fixed;right:20px;bottom:96px;z-index:9998;background:#14213D;color:#fff;border-radius:14px;padding:14px 16px;max-width:340px;box-shadow:0 12px 32px rgba(0,0,0,.28);display:none;font-size:0.875rem;line-height:1.45;}
+  #vzToast b{display:block;margin-bottom:4px;} #vzToast .vz-tb{display:flex;gap:8px;margin-top:10px;} #vzToast button{font:inherit;font-size:0.8125rem;font-weight:600;border-radius:980px;padding:6px 14px;cursor:pointer;border:1px solid rgba(255,255,255,.4);background:transparent;color:#fff;} #vzToast button.go{background:#fff;color:#14213D;border-color:#fff;}
+
 </style>
 </head>
 <body>
@@ -5338,11 +5393,19 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
        not-yet-built entries, and a direct cross-link to Manage Budgets /
        Marketing Budget Upload so "available via the analytics" is a real
        link, not just a description. See renderMediaScienceStep(). -->
+  <div class="step" id="step-visualize">
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('mediaScience')" class="crumb-home-link">Media Science</a> / Visualize</div>
+    <div class="eyebrow">Media Science · Visualize</div>
+    <h1>See your numbers as a chart.</h1>
+    <p class="lede">Ask in your own words, by voice or text. Shape the chart with a sentence, save it to the account for a teammate, and download it for a deck.</p>
+    <div id="vzRoot"></div>
+  </div>
   <div class="step" id="step-mediaScience">
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / Media Science</div>
     <div class="eyebrow">Workstream · Media Science <span style="font-size:0.625rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;padding:2px 8px;border-radius:20px;background:var(--media, var(--advocacy));color:var(--white);vertical-align:middle;margin-left:6px;">Analytics</span></div>
     <h1>What the media spend bought.</h1>
     <p class="lede">Measurement coverage, match-market testing, website traffic analysis, and the media-performance side of AI agent analysis — the quantitative layer that validates whether a channel is actually working.</p>
+    <div id="mediaScienceViz" style="margin-bottom:14px;"></div>
     <div class="group-grid" id="mediaScienceGrid"></div>
     <div id="mediaScienceBudgetLink" style="margin-top:18px;"></div>
     <div id="mediaScienceComingSoon" style="margin-top:18px;"></div>
@@ -26444,6 +26507,7 @@ function bdHomeHtml(){
       <div class="bd-home-tile"><b>Your dashboard</b><p class="strat-sub">Your tasks, approvals and the work in motion.</p><button type="button" class="strat-chip" onclick="vlOpenMyDashboard()">Open your dashboard →</button></div>
       ${RELEASE_2.teamGrowth ? `<div class="bd-home-tile"><b>Grow your skills</b><p class="strat-sub">Self-assessment, the key skills for your seat and your career plan.</p><button type="button" class="strat-chip" onclick="goToStep('teamDevelopment')">Open Team Experiences →</button></div>` : ''}
       <div class="bd-home-tile"><b>Train the Brain</b><p class="strat-sub">${setup}</p><button type="button" class="strat-chip" onclick="goToStep('manageAccount')">${done && total && done >= total ? 'Review your setup →' : 'Continue your setup →'}</button></div>
+      <div class="bd-home-tile"><b>See it as a chart</b><p class="strat-sub">Ask for any chart by voice or text, then save it, share it or download it. <span id="vzBdNote"></span></p><button type="button" class="strat-chip" onclick="vzOpen()">Open Visualize →</button></div>
     </div>
   </div>`;
 }
@@ -26456,6 +26520,7 @@ function bdRender(){
     else pre += wh;
   }
   box.insertAdjacentHTML('afterbegin', pre);
+  try { if (typeof vz !== 'undefined' && typeof vzLive === 'function' && vzLive()){ if (vz.lib) vzBdNote(); else vzLoadLib(); } } catch (e){}
   box.insertAdjacentHTML('beforeend', '<div class="strat-card"><div class="pj-host" data-area="all"></div></div>'); setTimeout(pjMountAll, 0);
 }
 function bdRenderMain(){
@@ -30683,6 +30748,7 @@ function openExperienceSubWorkstream(key){
 // inert, honestly-labeled line (same "not fabricated" convention used
 // throughout FUNCTION_GROUPS' own tier badges) rather than a dead click.
 const MEDIA_SCIENCE_TILES = [
+  { key: 'visualize', label: 'Visualize', desc: 'Ask for any chart by voice or text, shape it with a sentence, save it for a teammate, and download it as PowerPoint, Excel or Google Sheets.', built: true },
   { key: 'measurementCoverage', label: 'Measurement Coverage & Confidence', desc: 'What this account can actually measure today, and the honest per-channel confidence label that coverage produces.', built: true },
   { key: 'marketOptimization', label: 'Match Market Builder (Testing)', desc: 'Upload real client transactions, get a penetration index and matched Test/Control/Holdout groups.', built: true },
   { key: 'forecastLab', label: 'Forecast & Truth Lab', desc: 'Tests, the forecast against the plan target, and budgets built backward from a goal, with a data check and a plain-language read-out at each step.', built: true },
@@ -30698,6 +30764,7 @@ const MEDIA_SCIENCE_TILES = [
 function renderMediaScienceStep(){
   const grid = document.getElementById('mediaScienceGrid');
   if (!grid) return;
+  try { const pv = document.getElementById('mediaScienceViz'); if (pv) pv.innerHTML = vzPromoCardHtml(); } catch (e){}
   const built = MEDIA_SCIENCE_TILES.filter(t => t.built);
   const notBuilt = MEDIA_SCIENCE_TILES.filter(t => !t.built);
   grid.innerHTML = built.map(w => `
@@ -30734,6 +30801,7 @@ function renderMediaScienceStep(){
   }
 }
 function openMediaScienceTile(key){
+  if (key === 'visualize'){ goToStep('visualize'); return; }
   if (key === 'measurementCoverage'){
     goToStep('measurementCoverage');
   } else if (key === 'marketOptimization'){
@@ -70921,6 +70989,10 @@ function goToStep(step, arg, arg2, arg3){
     renderExperienceManagementStep();
     // renderCfdWs() call removed 2026-08-25 — see cfdWsModule comment below.
     document.getElementById('step-experienceManagement').classList.add('active');
+  } else if (step === 'visualize'){
+    renderVisualizeStep();
+    document.getElementById('step-visualize').classList.add('active');
+    try { window.scrollTo(0, 0); } catch (e){}
   } else if (step === 'mediaScience'){
     renderMediaScienceStep();
     document.getElementById('step-mediaScience').classList.add('active');
@@ -85674,6 +85746,7 @@ async function posSetDecision(contributionId, status){
   // Same pattern as the jobId param just above; jobId still takes priority
   // if somehow both are present, since it's the older, more specific case.
   const stepParam = params.get('step');
+  if (params.get('chart')) window.__vzChart = params.get('chart');
   if (jobId){
     goToStep('campaigns');
     if (state.campaigns.some(c => c.id === jobId)) loadExistingCampaignIntoForm(jobId);
@@ -85714,7 +85787,7 @@ async function posSetDecision(contributionId, status){
   var EXTRA_PAGES = [
     ['step:mediaplan','Annual Media Plan'], ['step:competitivePositioning','Competitive Positioning'], ['step:voice','Brand Book'],
     ['step:partnerIntegrations','Partner Integrations'], ['step:testRegistry','Truth Lab'], ['step:mediaScience','Media Science results'],
-    ['step:customerExperiences','Customer Experience results'], ['step:team','Team & Org Chart'], ['step:exports','Exports']
+    ['step:customerExperiences','Customer Experience results'], ['step:team','Team & Org Chart'], ['step:exports','Exports'], ['step:visualize','Visualize']
   ];
   var SUGGEST = { 'PR':'ws:reputation', 'Performance Marketing':'tab:brand', 'Brand':'step:voice', 'Marketing Ops':'ws:campaignMgmt', 'Analysis':'tab:dataScientist' };
   var lastSuggested = '';
@@ -85937,6 +86010,391 @@ async function posSetDecision(contributionId, status){
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { setTimeout(function () { boot(0); }, 1500); });
   else setTimeout(function () { boot(0); }, 1500);
 })();
+</script>
+<script>
+// ================= Visualize studio (2026-11-14) =================
+// Ask for a chart by voice or text, see an existing report if one fits, otherwise a recommended chart built from this account's own data,
+// refine it in plain words, save it to the account, share it (in-portal message plus email) and download it (PowerPoint, Excel, Google Sheets, CSV).
+const vz = { lib: null, loading: false, text: '', busy: false, res: null, saved: null, fbMsg: '', fbErr: false, panel: '', showTable: false, rec: false, sr: null, ask: null, toasted: {}, saveMsg: '', saving: false, openId: '' };
+const VZ_TYPES = [['column', 'Column'], ['bar', 'Bar'], ['line', 'Line'], ['area', 'Area'], ['stacked', 'Stacked'], ['pie', 'Pie'], ['table', 'Table']];
+const VZ_PAL = { brand: ['#1E2761', '#0891B2', '#C9932E', '#1F6B5C', '#D9480F', '#7C3AED', '#6E6E73', '#0A58CC'], cool: ['#0A58CC', '#0891B2', '#1F6B5C', '#1E2761', '#5B8DEF', '#14B8A6', '#6E6E73', '#7C3AED'], warm: ['#D9480F', '#C9932E', '#B91C1C', '#92400E', '#F59E0B', '#7C2D12', '#6E6E73', '#1E2761'], mono: ['#14213D', '#3F4B66', '#6B7694', '#98A1BA', '#C2C8D8', '#4B5563', '#9CA3AF', '#D1D5DB'] };
+function vzLive(){ return dataSourceLabel === 'backend' && !!state.companyId; }
+async function vzApi(path, opts){
+  const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}${path}`, opts);
+  let j = null; try { j = await r.json(); } catch (e){}
+  if (!r.ok){ const err = new Error((j && j.error) || 'Something went wrong. Try again.'); err.status = r.status; throw err; }
+  return j;
+}
+const vzJson = body => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+async function vzLoadLib(){
+  if (!vzLive()) return null;
+  try { vz.lib = await vzApi('/visualize/library'); } catch (e){ vz.lib = vz.lib || { charts: [], recipes: [], members: [], existing: [], unread: 0, me: {} }; }
+  vzRenderRail(); vzBdNote();
+  return vz.lib;
+}
+function vzFmt(v, kind){
+  if (v == null || !isFinite(v)) return '—';
+  if (kind === 'money') return (v < 0 ? '-$' : '$') + Math.round(Math.abs(v)).toLocaleString('en-US');
+  if (kind === 'pct') return (Math.round(v * 10) / 10).toLocaleString('en-US') + '%';
+  if (kind === 'int') return Math.round(v).toLocaleString('en-US');
+  return (Math.round(v * 10) / 10).toLocaleString('en-US');
+}
+function vzShort(v, kind){
+  const a = Math.abs(v), s = v < 0 ? '-' : '', p = kind === 'money' ? '$' : '';
+  if (a >= 1e9) return s + p + (a / 1e9).toFixed(a >= 1e10 ? 0 : 1).replace(/\.0$/, '') + 'B';
+  if (a >= 1e6) return s + p + (a / 1e6).toFixed(a >= 1e7 ? 0 : 1).replace(/\.0$/, '') + 'M';
+  if (a >= 1e4) return s + p + Math.round(a / 1e3) + 'K';
+  if (a >= 1e3 && kind === 'money') return s + p + (a / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+  return s + p + (kind === 'pct' ? (Math.round(a * 10) / 10) + '%' : (Math.round(a * 10) / 10).toLocaleString('en-US'));
+}
+// The same shaping the server applies, so controls respond instantly and the downloads match the screen.
+function vzShape(data, viewIn){
+  const view = Object.assign({ type: 'column', title: '', sort: 'none', topN: 0, palette: 'brand', showValues: true, hide: [] }, viewIn || {});
+  const hide = (view.hide || []).map(h => String(h).toLowerCase());
+  let idx = data.labels.map((l, i) => i).filter(i => !hide.includes(String(data.labels[i]).toLowerCase()));
+  let series = data.series.filter(s => !hide.includes(String(s.name).toLowerCase())); if (!series.length) series = data.series.slice(0, 1);
+  const total = i => series.reduce((a, s) => a + (s.values[i] || 0), 0);
+  if (view.sort === 'desc') idx.sort((a, b) => total(b) - total(a)); else if (view.sort === 'asc') idx.sort((a, b) => total(a) - total(b)); else if (view.sort === 'alpha') idx.sort((a, b) => String(data.labels[a]).localeCompare(String(data.labels[b])));
+  let note = '';
+  if (view.topN > 0 && idx.length > view.topN){ note = `Showing ${view.sort === 'asc' ? 'the lowest' : 'the top'} ${view.topN} of ${idx.length}.`; if (view.sort === 'none'){ const keep = new Set(idx.slice().sort((x, y) => total(y) - total(x)).slice(0, view.topN)); idx = idx.filter(i => keep.has(i)); } else idx = idx.slice(0, view.topN); }
+  let labels = idx.map(i => data.labels[i]); let ser = series.map(s => ({ name: s.name, values: idx.map(i => s.values[i]) }));
+  if (ser.length > 8){
+    const keep = ser.slice().sort((a, b) => b.values.reduce((x, y) => x + (y || 0), 0) - a.values.reduce((x, y) => x + (y || 0), 0)).slice(0, 7); const rest = ser.filter(s => !keep.includes(s));
+    const other = { name: 'Other', values: labels.map((_, i) => rest.reduce((a, s) => a + (s.values[i] || 0), 0)) };
+    ser = ser.filter(s => keep.includes(s)).concat(data.additive ? [other] : []); note = (note ? note + ' ' : '') + (data.additive ? `${rest.length} smaller series are grouped as Other.` : `${rest.length} smaller series are not drawn; they are in the table.`);
+  }
+  let type = view.type; if (type === 'stacked' && ser.length < 2) type = 'column';
+  if (type === 'pie'){
+    ser = ser.slice(0, 1);
+    if (labels.length > 8){ const vals = ser[0].values; const top = labels.map((l, i) => ({ l, v: vals[i] || 0 })).sort((a, b) => b.v - a.v); const head = top.slice(0, 7), tail = top.slice(7); labels = head.map(x => x.l).concat(['Other']); ser = [{ name: ser[0].name, values: head.map(x => x.v).concat([tail.reduce((a, x) => a + x.v, 0)]) }]; note = (note ? note + ' ' : '') + `${tail.length} smaller groups are shown as Other.`; }
+  }
+  const pal = VZ_PAL[view.palette] || VZ_PAL.brand;
+  return { type, title: view.title || '', labels, series: ser.map((s, i) => Object.assign({}, s, { color: pal[i % pal.length] })), colors: labels.map((_, i) => pal[i % pal.length]), kind: data.kind || 'num1', showValues: !!view.showValues, palette: VZ_PAL[view.palette] ? view.palette : 'brand', note: [view.note, note].filter(Boolean).join(' '), labelName: data.labelName || '' };
+}
+function vzNice(max){
+  if (!(max > 0)) return { max: 1, step: 0.25 };
+  const raw = max / 4, mag = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / mag;
+  const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * mag;
+  return { max: step * Math.ceil(max / step - 1e-9), step };
+}
+function vzTipAttr(label, rows){ return escapeHtml(JSON.stringify({ l: label, r: rows })); }
+function vzChartSvg(c){
+  const n = c.labels.length, ns = c.series.length; if (!n || !ns) return '<p class="vz-empty">Nothing to draw yet.</p>';
+  const kind = c.kind; const W = 760;
+  const trunc = (s, k) => { s = String(s); return s.length > k ? s.slice(0, k - 1) + '…' : s; };
+  if (c.type === 'pie'){
+    const s = c.series[0], tot = s.values.reduce((a, v) => a + (v || 0), 0) || 1; const cx = 190, cy = 150, R = 130, r = 74; let a0 = -Math.PI / 2; let arcs = '';
+    s.values.forEach((v, i) => {
+      const frac = (v || 0) / tot; if (frac <= 0) return; const a1 = a0 + frac * Math.PI * 2 - (frac < 0.999 ? 0.012 : 0), big = a1 - a0 > Math.PI ? 1 : 0;
+      const p = (rad, a) => `${(cx + rad * Math.cos(a)).toFixed(2)} ${(cy + rad * Math.sin(a)).toFixed(2)}`;
+      const d = frac > 0.999 ? `M ${cx - R} ${cy} A ${R} ${R} 0 1 1 ${cx + R} ${cy} A ${R} ${R} 0 1 1 ${cx - R} ${cy} M ${cx - r} ${cy} A ${r} ${r} 0 1 0 ${cx + r} ${cy} A ${r} ${r} 0 1 0 ${cx - r} ${cy}` : `M ${p(R, a0)} A ${R} ${R} 0 ${big} 1 ${p(R, a1)} L ${p(r, a1)} A ${r} ${r} 0 ${big} 0 ${p(r, a0)} Z`;
+      arcs += `<path d="${d}" fill="${c.colors[i]}" fill-rule="evenodd" stroke="#fff" stroke-width="2" data-tip="${vzTipAttr(c.labels[i], [{ k: s.name, v: vzFmt(v, kind) + ' · ' + (frac * 100).toFixed(1) + '%', c: c.colors[i] }])}"/>`;
+      a0 += frac * Math.PI * 2;
+    });
+    const legend = c.labels.map((l, i) => `<g transform="translate(400 ${40 + i * 26})"><rect width="12" height="12" rx="3" fill="${c.colors[i]}"/><text x="20" y="11" font-size="13" fill="#1D1D1F">${escapeHtml(trunc(l, 26))}</text><text x="368" y="11" font-size="13" fill="#6E6E73" text-anchor="end">${escapeHtml(vzFmt(s.values[i], kind))} · ${((s.values[i] || 0) / tot * 100).toFixed(0)}%</text></g>`).join('');
+    return `<svg viewBox="0 0 ${W} ${Math.max(300, 60 + n * 26)}" role="img" aria-label="${escapeHtml(c.title || 'Pie chart')}">${arcs}<text x="${cx}" y="${cy - 2}" text-anchor="middle" font-size="22" font-weight="700" fill="#1D1D1F">${escapeHtml(vzShort(tot, kind))}</text><text x="${cx}" y="${cy + 18}" text-anchor="middle" font-size="12" fill="#6E6E73">total</text>${legend}</svg>`;
+  }
+  const horiz = c.type === 'bar', stacked = c.type === 'stacked';
+  const H = horiz ? Math.max(260, 60 + n * (ns > 1 ? 14 * ns + 14 : 34)) : 360;
+  const ml = horiz ? Math.min(210, 24 + Math.max(...c.labels.map(l => Math.min(l.length, 26))) * 6.6) : 64, mr = horiz ? 56 : 16, mt = 14, mb = horiz ? 30 : (n > 8 ? 78 : 50);
+  const pw = W - ml - mr, ph = H - mt - mb;
+  const totals = c.labels.map((_, i) => c.series.reduce((a, s) => a + (s.values[i] || 0), 0));
+  let vmax = stacked ? Math.max(...totals) : Math.max(...c.series.flatMap(s => s.values.map(v => v == null ? 0 : v)));
+  let vmin = Math.min(0, ...c.series.flatMap(s => s.values.map(v => v == null ? 0 : v)));
+  const nice = vzNice(vmax); const top = nice.max; const lo = vmin < 0 ? -vzNice(-vmin).max : 0; const span = top - lo || 1;
+  const sx = v => horiz ? ml + (v - lo) / span * pw : 0, sy = v => mt + ph - (v - lo) / span * ph;
+  let grid = '', ticks = '';
+  for (let t = lo; t <= top + 1e-9; t += nice.step){
+    if (horiz){ const x = sx(t); grid += `<line x1="${x}" y1="${mt}" x2="${x}" y2="${mt + ph}" stroke="#E8E8ED"/>`; ticks += `<text x="${x}" y="${mt + ph + 18}" font-size="11" fill="#6E6E73" text-anchor="middle">${escapeHtml(vzShort(t, kind))}</text>`; }
+    else { const y = sy(t); grid += `<line x1="${ml}" y1="${y}" x2="${ml + pw}" y2="${y}" stroke="${t === 0 ? '#B9B9BE' : '#E8E8ED'}"/>`; ticks += `<text x="${ml - 8}" y="${y + 4}" font-size="11" fill="#6E6E73" text-anchor="end">${escapeHtml(vzShort(t, kind))}</text>`; }
+  }
+  const gw = (horiz ? ph : pw) / n; let marks = '', cats = '', hits = '';
+  const tipFor = i => vzTipAttr(c.labels[i], c.series.map(s => ({ k: s.name, v: vzFmt(s.values[i], kind), c: s.color })).concat(stacked && ns > 1 ? [{ k: 'Total', v: vzFmt(totals[i], kind), c: '#fff' }] : []));
+  if (c.type === 'column' || c.type === 'bar' || c.type === 'stacked'){
+    const bw = stacked ? Math.min(horiz ? 30 : 64, gw * 0.62) : Math.min(horiz ? 26 : 56, (gw * 0.72) / ns);
+    c.labels.forEach((l, i) => {
+      let acc = 0;
+      c.series.forEach((s, k) => {
+        const v = s.values[i]; if (v == null) return;
+        if (horiz){
+          const y0 = mt + i * gw + (gw - (stacked ? bw : bw * ns)) / 2 + (stacked ? 0 : k * bw);
+          const x0 = stacked ? sx(acc) : sx(Math.min(0, v)), x1 = stacked ? sx(acc + v) : sx(Math.max(0, v));
+          marks += `<rect x="${x0.toFixed(1)}" y="${y0.toFixed(1)}" width="${Math.max(1, x1 - x0).toFixed(1)}" height="${(bw - (ns > 1 && !stacked ? 2 : 0)).toFixed(1)}" rx="${stacked ? 0 : 4}" fill="${s.color}" stroke="${stacked ? '#fff' : 'none'}" stroke-width="2"/>`;
+          if (c.showValues && !stacked && n <= 20) marks += `<text x="${(x1 + 6).toFixed(1)}" y="${(y0 + bw / 2 + 4).toFixed(1)}" font-size="11.5" font-weight="600" fill="#1D1D1F">${escapeHtml(vzShort(v, kind))}</text>`;
+        } else {
+          const x0 = ml + i * gw + (gw - (stacked ? bw : bw * ns)) / 2 + (stacked ? 0 : k * bw);
+          const y1 = stacked ? sy(acc + v) : sy(Math.max(0, v)), y0 = stacked ? sy(acc) : sy(Math.min(0, v)); const h = Math.max(1, y0 - y1);
+          marks += `<path d="${stacked ? `M${x0.toFixed(1)} ${y1.toFixed(1)}h${bw.toFixed(1)}v${h.toFixed(1)}h-${bw.toFixed(1)}z` : `M${x0.toFixed(1)} ${(y1 + h).toFixed(1)}v-${Math.max(0, h - 4).toFixed(1)}q0-4 4-4h${(bw - (ns > 1 ? 2 : 0) - 8).toFixed(1)}q4 0 4 4v${Math.max(0, h - 4).toFixed(1)}z`}" fill="${s.color}" stroke="${stacked ? '#fff' : 'none'}" stroke-width="2"/>`;
+          if (c.showValues && !stacked && n * ns <= 24) marks += `<text x="${(x0 + (bw - (ns > 1 ? 2 : 0)) / 2).toFixed(1)}" y="${(y1 - 6).toFixed(1)}" font-size="11.5" font-weight="600" fill="#1D1D1F" text-anchor="middle">${escapeHtml(vzShort(v, kind))}</text>`;
+        }
+        acc += v;
+      });
+      if (horiz){ cats += `<text x="${ml - 10}" y="${(mt + i * gw + gw / 2 + 4).toFixed(1)}" font-size="12" fill="#1D1D1F" text-anchor="end">${escapeHtml(trunc(l, 26))}</text>`; hits += `<rect x="0" y="${(mt + i * gw).toFixed(1)}" width="${W}" height="${gw.toFixed(1)}" fill="transparent" data-tip="${tipFor(i)}"/>`; }
+      else { const x = ml + i * gw + gw / 2; cats += n > 8 ? `<text transform="translate(${x.toFixed(1)} ${mt + ph + 14}) rotate(-35)" font-size="11.5" fill="#1D1D1F" text-anchor="end">${escapeHtml(trunc(l, 16))}</text>` : `<text x="${x.toFixed(1)}" y="${mt + ph + 20}" font-size="12" fill="#1D1D1F" text-anchor="middle">${escapeHtml(trunc(l, 18))}</text>`; hits += `<rect x="${(ml + i * gw).toFixed(1)}" y="${mt}" width="${gw.toFixed(1)}" height="${ph}" fill="transparent" data-tip="${tipFor(i)}"/>`; }
+    });
+  } else {
+    const px = i => ml + (n === 1 ? pw / 2 : i * pw / (n - 1)); const stackBase = c.labels.map(() => 0);
+    c.series.forEach((s, k) => {
+      const pts = c.labels.map((l, i) => s.values[i] == null ? null : [px(i), sy(s.values[i])]).filter(Boolean); if (!pts.length) return;
+      const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('');
+      if (c.type === 'area') marks += `<path d="${line}L${pts[pts.length - 1][0].toFixed(1)} ${sy(Math.max(0, lo))}L${pts[0][0].toFixed(1)} ${sy(Math.max(0, lo))}Z" fill="${s.color}" fill-opacity="${ns > 1 ? 0.22 : 0.18}"/>`;
+      marks += `<path d="${line}" fill="none" stroke="${s.color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+      if (n <= 40) pts.forEach(p => { marks += `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3.5" fill="${s.color}" stroke="#fff" stroke-width="2"/>`; });
+      const last = pts[pts.length - 1]; marks += `<circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="5" fill="${s.color}" stroke="#fff" stroke-width="2"/>`;
+      if (c.showValues && ns === 1 && n <= 16) c.labels.forEach((l, i) => { if (s.values[i] != null) marks += `<text x="${px(i).toFixed(1)}" y="${(sy(s.values[i]) - 10).toFixed(1)}" font-size="11" font-weight="600" fill="#1D1D1F" text-anchor="middle">${escapeHtml(vzShort(s.values[i], kind))}</text>`; });
+    });
+    const every = Math.max(1, Math.ceil(n / 12));
+    c.labels.forEach((l, i) => { const x = px(i); if (i % every === 0 || i === n - 1) cats += `<text transform="translate(${x.toFixed(1)} ${mt + ph + 14}) rotate(${n > 8 ? -35 : 0})" font-size="11.5" fill="#1D1D1F" text-anchor="${n > 8 ? 'end' : 'middle'}" ${n > 8 ? '' : 'dy="6"'}>${escapeHtml(trunc(l, 14))}</text>`; hits += `<rect x="${(x - (pw / Math.max(1, n - 1)) / 2).toFixed(1)}" y="${mt}" width="${(pw / Math.max(1, n - 1)).toFixed(1)}" height="${ph}" fill="transparent" data-tip="${tipFor(i)}"/>`; });
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml((c.title || 'Chart') + ', ' + n + ' groups')}">${grid}${ticks}${marks}${cats}${hits}</svg>`;
+}
+function vzLegendHtml(c){
+  if (c.type === 'pie' || c.series.length < 2) return '';
+  return `<div class="vz-legend">${c.series.map(s => `<span><i style="background:${s.color}"></i>${escapeHtml(s.name)}</span>`).join('')}</div>`;
+}
+function vzTableHtml(c){
+  return `<div class="vz-tablewrap"><table><thead><tr><th>${escapeHtml(c.labelName || 'Group')}</th>${c.series.map(s => `<th>${escapeHtml(s.name)}</th>`).join('')}</tr></thead><tbody>${c.labels.map((l, i) => `<tr><td>${escapeHtml(l)}</td>${c.series.map(s => `<td>${escapeHtml(vzFmt(s.values[i], c.kind))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+}
+function vzTipInit(){
+  if (window._vzTipOn) return; window._vzTipOn = true;
+  let tip = document.getElementById('vzTip'); if (!tip){ tip = document.createElement('div'); tip.id = 'vzTip'; tip.setAttribute('role', 'tooltip'); document.body.appendChild(tip); }
+  document.addEventListener('mousemove', e => {
+    const t = e.target && e.target.closest ? e.target.closest('[data-tip]') : null; if (!t){ tip.style.display = 'none'; return; }
+    let d; try { d = JSON.parse(t.getAttribute('data-tip')); } catch (x){ tip.style.display = 'none'; return; }
+    tip.innerHTML = `<b>${escapeHtml(d.l)}</b>` + d.r.map(r => `<div><i style="background:${r.c}"></i>${escapeHtml(r.k)}: ${escapeHtml(r.v)}</div>`).join('');
+    tip.style.display = 'block'; const w = tip.offsetWidth; tip.style.left = Math.min(window.innerWidth - w - 12, e.clientX + 14) + 'px'; tip.style.top = (e.clientY + 16) + 'px';
+  });
+}
+// ---------- page ----------
+function vzMemberName(id){ const m = vz.lib && (vz.lib.members || []).find(x => x.id === id); return m ? m.name : ''; }
+function vzCur(){ return vz.res && vz.res.data ? vzShape(vz.res.data, Object.assign({}, vz.res.view, { title: vz.res.view.title || vz.res.title || '' })) : null; }
+function renderVisualizeStep(){
+  vzTipInit();
+  const root = document.getElementById('vzRoot'); if (!root) return;
+  if (window.__vzChart){ vz.openId = window.__vzChart; window.__vzChart = ''; }
+  if (!vzLive()){ root.innerHTML = '<div class="strat-card"><h2>Visualize</h2><p class="strat-empty">Sign in to a live account to ask for charts from your own data.</p></div>'; return; }
+  if (!vz.lib && !vz.loading){ vz.loading = true; vzLoadLib().then(() => { vz.loading = false; vzRender(); const id = vz.openId; if (id){ vz.openId = ''; vzOpenSaved(id); } }); }
+  vzRender();
+}
+function vzRecipeChips(){
+  const rec = (vz.lib && vz.lib.recipes) || [];
+  if (!rec.length) return '';
+  return `<div class="vz-chips" aria-label="Ideas to start from">${rec.slice(0, 6).map((r, i) => `<button type="button" class="vz-chip" onclick="vzTryRecipe(${i})">${escapeHtml(r.title)}</button>`).join('')}</div>`;
+}
+function vzAskCardHtml(){
+  const sr = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+  return `<div class="strat-card vz-ask"><h2>What do you want to see?</h2>
+    <p class="strat-sub" style="margin:4px 0 12px;">Say it or type it in your own words. If a report already exists I will point you to it. If not, I will build the chart from this account's data and you can tell me what to change.</p>
+    <textarea id="vzText" rows="2" placeholder="For example: revenue by creative focus group last year, or transactions by month" aria-label="What do you want to see?" oninput="vz.text=this.value" onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();vzAsk();}">${escapeHtml(vz.text)}</textarea>
+    <div class="vz-bar">${sr ? `<button type="button" class="vz-mic${vz.rec ? ' on' : ''}" onclick="vzDictate()" aria-pressed="${vz.rec}"><span class="vz-dot"></span>${vz.rec ? 'Listening… tap to stop' : 'Speak your request'}</button>` : ''}<button type="button" class="btn-primary" onclick="vzAsk()" ${vz.busy ? 'disabled' : ''}>${vz.busy ? 'Working…' : 'Show me'}</button><span class="strat-sub" id="vzAskNote"></span></div>
+    ${vzRecipeChips()}</div>`;
+}
+function vzMatchesHtml(){
+  const m = (vz.res && vz.res.matches) || []; if (!m.length) return '';
+  return `<div class="vz-match"><h3>Already in the portal</h3><ul>${m.map((x, i) => `<li><span>${escapeHtml(x.title)} <span class="strat-sub">${x.kind === 'saved' ? `saved by ${escapeHtml(x.owner || 'a teammate')}` : escapeHtml(x.tabLabel || '')}</span></span><button type="button" class="strat-chip" onclick="vzOpenMatch(${i})">Open</button></li>`).join('')}</ul><p class="strat-sub" style="margin:8px 0 0;">Open one of these, or keep going with the chart built below.</p></div>`;
+}
+function vzResultHtml(){
+  const r = vz.res; if (!r) return '';
+  if (r.status === 'needs_more' || r.status === 'not_on_file'){
+    return `${vzMatchesHtml()}<div class="strat-card vz-card"><h2>${r.status === 'not_on_file' ? 'That data is not on file yet' : 'I need a little more to go on'}</h2>
+      <p class="vz-empty" style="margin-top:6px;">${r.status === 'not_on_file' ? `To chart that I need ${escapeHtml(r.what || 'a data file')}. Upload it in Train the Brain and ask again. Your request is saved so the team can see what people are missing.` : escapeHtml(r.message || 'Try naming a measure and a breakdown, for example "revenue by product group".')}</p>
+      ${(r.suggestions || []).length ? `<div class="vz-chips">${r.suggestions.map((s, i) => `<button type="button" class="vz-chip" onclick="vzTrySuggestion(${i})">${escapeHtml(s.title)}</button>`).join('')}</div>` : ''}</div>`;
+  }
+  const c = vzCur();
+  if (!c){
+    return `${vzMatchesHtml()}<div class="strat-card vz-card"><h2>${escapeHtml(r.title || 'Result')}</h2><p class="vz-sentence">${escapeHtml(r.sentence || '')}</p><p class="vz-empty">There are no numbers for that in this period, so there is nothing to draw. Try naming the period, for example "last year" or "2025".</p></div>`;
+  }
+  const cur = r.view.type;
+  const types = (r.view.alternatives || VZ_TYPES.map(t => t[0])).map(t => `<button type="button" class="vz-chip${cur === t ? ' on' : ''}" onclick="vzSetType('${t}')" aria-pressed="${cur === t}">${(VZ_TYPES.find(x => x[0] === t) || [0, t])[1]}</button>`).join('');
+  const saved = vz.saved;
+  const banner = saved ? `<div class="vz-banner"><span>Saved by <b>${escapeHtml(saved.ownerName || 'you')}</b>${saved.mine ? ' (you)' : ''} · ${saved.visibility === 'private' ? 'only you' : saved.visibility === 'account' ? 'everyone on this account' : 'shared with ' + (saved.sharedWith || []).map(vzMemberName).filter(Boolean).join(', ')}${saved.period ? ' · ' + escapeHtml(saved.period) : ''}${saved.note ? ' · “' + escapeHtml(saved.note) + '”' : ''}</span><span>${saved.refreshable ? `<button type="button" class="strat-chip" onclick="vzRefresh()">Refresh the numbers</button> ` : ''}${saved.canEdit ? `<button type="button" class="strat-chip" onclick="vzDelete()">Delete</button>` : ''}</span></div>` : '';
+  return `${vzMatchesHtml()}<div class="strat-card vz-card">${banner}
+    <input class="vz-title" id="vzTitle" value="${escapeHtml(r.view.title || r.title || '')}" aria-label="Chart title" onchange="vzSetTitle(this.value)">
+    ${r.sentence ? `<p class="vz-sentence">${escapeHtml(r.sentence)}</p>` : ''}
+    <div class="vz-types" role="group" aria-label="Chart type">${types}</div>
+    ${c.type === 'table' ? vzTableHtml(c) : `<div class="vz-plot">${vzChartSvg(c)}</div>${vzLegendHtml(c)}`}
+    ${c.note ? `<p class="strat-sub" style="margin:8px 0 0;">${escapeHtml(c.note)}</p>` : ''}
+    ${r.view.why && !saved ? `<p class="vz-why"><b>Why this chart:</b> ${escapeHtml(r.view.why)}</p>` : ''}
+    ${(r.assumptions || []).length ? `<p class="vz-why"><b>Assumed:</b> ${(r.assumptions || []).map(escapeHtml).join(' ')}</p>` : ''}
+    <div class="vz-fb"><input id="vzFb" type="text" placeholder="Tell me what to change: top 5, make it a line, cool colors, by month…" aria-label="Tell me what to change" onkeydown="if(event.key==='Enter'){event.preventDefault();vzRefine();}"><button type="button" class="btn-ghost" onclick="vzRefine()">Change it</button></div>
+    <div class="vz-chips">${['Top 5', 'Sort highest first', 'Make it a line', 'Make it a bar', 'Cool colors', 'Hide the labels'].map(t => `<button type="button" class="vz-chip" onclick="vzRefine('${t}')">${t}</button>`).join('')}</div>
+    <p class="vz-say${vz.fbErr ? ' err' : ''}" role="status" aria-live="polite">${escapeHtml(vz.fbMsg)}</p>
+    <div class="vz-actions">
+      <button type="button" class="btn-primary" onclick="vzTogglePanel('save')">${saved ? (saved.canEdit ? 'Save changes or share' : 'Save a copy to the account') : 'Save to the account'}</button>
+      <span class="vz-menu share-wrap"><button type="button" class="btn-ghost" aria-haspopup="menu" onclick="shareToggle(event,'vz-dl')">Download ▾</button><div class="share-menu" id="shareMenu-vz-dl" role="menu" hidden>
+        <button type="button" role="menuitem" onclick="vzDownload('pptx')">PowerPoint (.pptx)</button><button type="button" role="menuitem" onclick="vzDownload('xlsx')">Excel (.xlsx)</button><button type="button" role="menuitem" onclick="vzDownload('sheets')">Google Sheets</button><button type="button" role="menuitem" onclick="vzDownload('csv')">CSV</button></div></span>
+      <button type="button" class="strat-chip" onclick="vz.showTable=!vz.showTable;vzRender();">${vz.showTable ? 'Hide' : 'Show'} the numbers</button>
+    </div>
+    ${vz.showTable && c.type !== 'table' ? vzTableHtml(c) : ''}
+    ${vz.panel === 'save' ? vzSavePanelHtml() : ''}
+    ${(r.notes || []).length ? `<details style="margin-top:14px;"><summary class="strat-sub" style="cursor:pointer;">How these numbers were counted</summary>${(r.notes || []).map(n => `<p class="strat-sub" style="margin:6px 0 0;">${escapeHtml(n)}</p>`).join('')}</details>` : ''}
+  </div>`;
+}
+function vzSavePanelHtml(){
+  const L = vz.lib || { members: [] }, s = vz.saved, mine = !s || s.canEdit;
+  const vis = vz.pvis || (s ? s.visibility : 'private'); const sel = vz.psel || (s ? s.sharedWith.slice() : []);
+  const others = (L.members || []).filter(m => !m.me);
+  return `<div class="vz-panel" id="vzSavePanel"><h3>${s && mine ? 'Save changes' : 'Save to this account'}</h3>
+    <label class="vz-l" for="vzName">Name</label><input type="text" id="vzName" value="${escapeHtml((vz.pname != null ? vz.pname : (s ? s.title : (vz.res.view.title || vz.res.title || ''))))}" maxlength="120" oninput="vz.pname=this.value">
+    <label class="vz-l">Who can open it</label>
+    <div class="vz-radio" role="radiogroup">
+      <label><input type="radio" name="vzVis" value="private" ${vis === 'private' ? 'checked' : ''} onchange="vzSetVis('private')"> <span><b>Just me</b><br><span class="strat-sub">Saved to the account, visible only to you (and Admins).</span></span></label>
+      <label><input type="radio" name="vzVis" value="selected" ${vis === 'selected' ? 'checked' : ''} onchange="vzSetVis('selected')"> <span><b>People I pick</b><br><span class="strat-sub">They get a message here and an email with a link.</span></span></label>
+      <label><input type="radio" name="vzVis" value="account" ${vis === 'account' ? 'checked' : ''} onchange="vzSetVis('account')"> <span><b>Everyone on this account</b><br><span class="strat-sub">Everyone is told it is ready.</span></span></label>
+    </div>
+    ${vis === 'selected' ? `<div class="vz-people" role="group" aria-label="People to share with">${others.length ? others.map(m => `<label><input type="checkbox" ${sel.includes(m.id) ? 'checked' : ''} onchange="vzTogglePerson('${jsStrEscape(m.id)}',this.checked)"> <span>${escapeHtml(m.name)}<br><small>${escapeHtml(m.role || '')}${m.hasEmail ? '' : ' · no email on file'}</small></span></label>`).join('') : '<span class="strat-sub">There is no one else on this account yet. Add teammates in Team &amp; Org Chart.</span>'}</div>` : ''}
+    ${vis !== 'private' ? `<label class="vz-l" for="vzNote">Message to include (optional)</label><textarea id="vzNote" rows="2" maxlength="400" placeholder="For example: this is the view for Monday’s review" oninput="vz.pnote=this.value">${escapeHtml(vz.pnote != null ? vz.pnote : (s ? s.note : ''))}</textarea>` : ''}
+    <div class="vz-actions"><button type="button" class="btn-primary" onclick="vzSave()" ${vz.saving ? 'disabled' : ''}>${vz.saving ? 'Saving…' : vis === 'private' ? 'Save' : 'Save and tell them it is ready'}</button><button type="button" class="btn-ghost" onclick="vzTogglePanel('')">Cancel</button></div>
+    <p class="vz-say${vz.saveErr ? ' err' : ''}" role="status" aria-live="polite">${escapeHtml(vz.saveMsg)}</p></div>`;
+}
+function vzRailHtml(){
+  const L = vz.lib; if (!L) return '<div class="strat-card"><h2>Saved charts</h2><p class="strat-empty">Loading…</p></div>';
+  const mine = L.charts.filter(c => c.mine), shared = L.charts.filter(c => !c.mine);
+  const spark = c => { const p = c.preview; if (!p || !p.series.length) return ''; const v = p.series[0].values.map(x => x || 0); const mx = Math.max(...v, 1); const w = 100 / v.length;
+    return `<span class="vz-mini"><svg viewBox="0 0 100 34" preserveAspectRatio="none" aria-hidden="true">${p.type === 'line' || p.type === 'area' ? `<polyline fill="none" stroke="${p.series[0].color}" stroke-width="2" vector-effect="non-scaling-stroke" points="${v.map((x, i) => `${(i + 0.5) * w},${32 - x / mx * 30}`).join(' ')}"/>` : v.map((x, i) => `<rect x="${i * w + w * 0.15}" y="${33 - x / mx * 30}" width="${w * 0.7}" height="${x / mx * 30 + 1}" fill="${p.series[0].color}" rx="1"/>`).join('')}</svg></span>`; };
+  const item = c => `<button type="button" class="vz-item${vz.saved && vz.saved.id === c.id ? ' on' : ''}" onclick="vzOpenSaved('${c.id}')"><b>${escapeHtml(c.title)}${c.isNew ? '<span class="vz-new">New</span>' : ''}</b><span>${c.mine ? (c.visibility === 'private' ? 'Only you' : c.visibility === 'account' ? 'Everyone' : 'Shared with ' + c.sharedWith.length) : 'From ' + escapeHtml(c.ownerName || 'a teammate')} · ${new Date(c.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>${spark(c)}</button>`;
+  return `<div class="strat-card"><h2>Shared with you</h2>${shared.length ? shared.slice(0, 8).map(item).join('') : '<p class="strat-empty" style="margin-top:6px;">When a teammate saves a chart for you, it shows up here and you get a message.</p>'}</div>
+    <div class="strat-card"><h2>Saved by you</h2>${mine.length ? mine.slice(0, 8).map(item).join('') : '<p class="strat-empty" style="margin-top:6px;">Charts you save to the account will be listed here.</p>'}</div>`;
+}
+function vzRenderRail(){ const el = document.getElementById('vzRail'); if (el) el.innerHTML = vzRailHtml(); }
+function vzRender(){
+  const root = document.getElementById('vzRoot'); if (!root) return;
+  const ta = document.getElementById('vzText'); if (ta && !vz.rec) vz.text = ta.value;
+  const keep = document.activeElement && document.activeElement.id;
+  root.innerHTML = `<div class="vz-grid"><div>${vzAskCardHtml()}${vz.busy && !vz.res ? '<div class="strat-card vz-card"><p class="vz-empty" style="margin:0;">Looking at this account’s data…</p></div>' : ''}${vzResultHtml()}</div><aside class="vz-rail" id="vzRail">${vzRailHtml()}</aside></div>`;
+  if (keep){ const el = document.getElementById(keep); if (el && el.focus && keep !== 'vzFb') try { el.focus(); if (el.setSelectionRange && el.value) el.setSelectionRange(el.value.length, el.value.length); } catch (e){} }
+}
+// ---------- actions ----------
+function vzOpen(text, chartId){ vz.openId = chartId || ''; if (text){ vz.text = text; vz.res = null; vz.saved = null; } goToStep('visualize'); if (text) vzAsk(); else if (chartId && vz.lib){ vz.openId = ''; vzOpenSaved(chartId); } }
+function vzTryRecipe(i){ const r = vz.lib && vz.lib.recipes[i]; if (!r) return; vz.text = r.title; vzAsk(r.spec); }
+function vzTrySuggestion(i){ const s = vz.res && vz.res.suggestions && vz.res.suggestions[i]; if (!s) return; vz.text = s.title; vzAsk(s.spec); }
+async function vzAsk(spec){
+  const ta = document.getElementById('vzText'); if (ta) vz.text = ta.value; const text = (vz.text || '').trim();
+  if (!text && !spec){ const n = document.getElementById('vzAskNote'); if (n) n.textContent = 'Type or say what you want to see first.'; return; }
+  if (vz.rec) vzDictate();
+  vz.busy = true; vz.res = null; vz.saved = null; vz.fbMsg = ''; vz.panel = ''; vz.pname = null; vz.pnote = null; vz.pvis = null; vz.psel = null; vzRender();
+  try { const r = await vzApi('/visualize/recommend', vzJson({ text, spec: spec && spec.measure ? spec : undefined })); vz.res = r; if (r.view){ r.view.title = r.view.title || r.title; } }
+  catch (e){ vz.res = { status: 'needs_more', message: e.message, suggestions: [] }; }
+  vz.busy = false; vzRender();
+}
+function vzOpenMatch(i){
+  const m = vz.res && vz.res.matches[i]; if (!m) return;
+  if (m.kind === 'saved') return vzOpenSaved(m.id);
+  try { switchPrimaryTab(m.tab); } catch (e){ goToStep('dashboard'); }
+}
+async function vzOpenSaved(id){
+  if (!vz.lib){ vz.openId = id; return; }
+  try {
+    const r = await vzApi('/visualize/charts/' + encodeURIComponent(id)); const c = r.chart;
+    vz.saved = c; vz.res = { status: 'ok', request: c.request, title: c.title, sentence: '', period: c.period, data: c.data, view: Object.assign({ alternatives: VZ_TYPES.map(t => t[0]) }, c.view, { title: c.view.title || c.title }), spec: c.spec, notes: [], matches: [] };
+    vz.text = c.request || ''; vz.panel = ''; vz.fbMsg = ''; vz.pname = null; vz.pnote = null; vz.pvis = null; vz.psel = null;
+    vzLoadLib(); vzRender(); try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e){}
+  } catch (e){ vz.fbMsg = e.message; vz.fbErr = true; vzRender(); }
+}
+async function vzRefresh(){
+  if (!vz.saved) return;
+  try { const r = await vzApi('/visualize/charts/' + encodeURIComponent(vz.saved.id) + '?refresh=1'); const c = r.chart; vz.saved = c; vz.res.data = c.data; vz.fbMsg = c.refreshed ? 'The numbers are refreshed from today’s data.' : (c.refreshError || 'These are the numbers it was saved with.'); vz.fbErr = !c.refreshed; }
+  catch (e){ vz.fbMsg = e.message; vz.fbErr = true; }
+  vzRender();
+}
+function vzSetType(t){ if (!vz.res) return; vz.res.view.type = t; vz.fbMsg = ''; vzRender(); }
+function vzSetTitle(v){ if (!vz.res) return; vz.res.view.title = String(v || '').slice(0, 120); vzRender(); }
+async function vzRefine(text){
+  const inp = document.getElementById('vzFb'); const fb = String(text || (inp && inp.value) || '').trim(); if (!fb || !vz.res || !vz.res.data) return;
+  vz.fbMsg = 'Working on that…'; vz.fbErr = false; const keepTitle = document.getElementById('vzTitle'); if (keepTitle) vz.res.view.title = keepTitle.value; vzRender();
+  try {
+    const r = await vzApi('/visualize/refine', vzJson({ request: vz.res.request || vz.text, data: vz.res.data, view: vz.res.view, spec: vz.res.spec, feedback: fb }));
+    if (r.rebuilt){ vz.res = Object.assign({}, vz.res, r); vz.saved = null; if (vz.res.view) vz.res.view.title = vz.res.view.title || vz.res.title; }
+    else if (r.view){ vz.res.view = Object.assign({}, vz.res.view, r.view); }
+    vz.fbMsg = r.message || ''; vz.fbErr = !!r.kept;
+  } catch (e){ vz.fbMsg = e.message; vz.fbErr = true; }
+  vzRender(); const el = document.getElementById('vzFb'); if (el) el.focus();
+}
+function vzTogglePanel(p){ vz.panel = vz.panel === p ? '' : p; vz.saveMsg = ''; vz.saveErr = false; const t = document.getElementById('vzTitle'); if (t && vz.res) vz.res.view.title = t.value; vzRender(); if (vz.panel){ const el = document.getElementById('vzSavePanel'); if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } }
+function vzSetVis(v){ vz.pvis = v; const n = document.getElementById('vzName'); if (n) vz.pname = n.value; const o = document.getElementById('vzNote'); if (o) vz.pnote = o.value; vzRender(); }
+function vzTogglePerson(id, on){ const s = vz.psel || (vz.saved ? vz.saved.sharedWith.slice() : []); const i = s.indexOf(id); if (on && i < 0) s.push(id); if (!on && i >= 0) s.splice(i, 1); vz.psel = s; }
+async function vzSave(){
+  if (!vz.res || !vz.res.data) return;
+  const n = document.getElementById('vzName'); const name = (n ? n.value : vz.pname || '').trim(); const noteEl = document.getElementById('vzNote');
+  const vis = vz.pvis || (vz.saved ? vz.saved.visibility : 'private'); const note = noteEl ? noteEl.value : (vz.pnote || '');
+  const sel = vz.psel || (vz.saved ? vz.saved.sharedWith.slice() : []);
+  if (!name){ vz.saveMsg = 'Give the chart a name so others can find it.'; vz.saveErr = true; vzRender(); return; }
+  if (vis === 'selected' && !sel.length){ vz.saveMsg = 'Pick at least one person, or choose Just me.'; vz.saveErr = true; vzRender(); return; }
+  vz.saving = true; vz.saveMsg = ''; vzRender();
+  try {
+    const view = Object.assign({}, vz.res.view, { title: vz.res.view.title || name });
+    let r;
+    if (vz.saved && vz.saved.canEdit) r = await vzApi('/visualize/charts/' + encodeURIComponent(vz.saved.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: name, view, visibility: vis, shareWith: sel, note }) });
+    else r = await vzApi('/visualize/charts', vzJson({ title: name, request: vz.res.request || vz.text, data: vz.res.data, view, spec: vz.res.spec, period: vz.res.period, visibility: vis, shareWith: sel, note }));
+    vz.saved = r.chart; vz.res.title = r.chart.title; vz.res.view = Object.assign({ alternatives: VZ_TYPES.map(t => t[0]) }, r.chart.view);
+    const sent = r.notified || []; const em = sent.filter(x => x.emailed).length; const noEm = sent.filter(x => !x.hasEmail).map(x => x.name);
+    vz.saveErr = false; vz.panel = '';
+    vz.fbMsg = sent.length ? `Saved. ${sent.map(x => x.name).join(', ')} ${sent.length === 1 ? 'has' : 'have'} a message in the portal${em ? `, and ${em === sent.length ? 'an email is on its way' : em + ' of ' + sent.length + ' also got an email'}` : ''}.${noEm.length ? ' ' + noEm.join(', ') + ' ' + (noEm.length === 1 ? 'has' : 'have') + ' no email on file, so only the portal message went.' : ''}` : 'Saved to the account.';
+    vz.fbErr = false; vz.pvis = null; vz.psel = null; vz.pnote = null; vz.pname = null; vzLoadLib();
+  } catch (e){ vz.saveMsg = e.message; vz.saveErr = true; }
+  vz.saving = false; vzRender();
+}
+async function vzDelete(){
+  if (!vz.saved || !confirm('Delete this saved chart for everyone it was shared with? This cannot be undone.')) return;
+  try { await vzApi('/visualize/charts/' + encodeURIComponent(vz.saved.id), { method: 'DELETE' }); vz.saved = null; vz.res = null; vz.fbMsg = ''; await vzLoadLib(); } catch (e){ vz.fbMsg = e.message; vz.fbErr = true; }
+  vzRender();
+}
+async function vzDownload(fmt){
+  document.querySelectorAll('.share-menu').forEach(m => { m.hidden = true; });
+  const c = vzCur(); if (!c) return; const f = fmt === 'sheets' ? 'xlsx' : fmt;
+  const t = document.getElementById('vzTitle'); if (t && vz.res) vz.res.view.title = t.value;
+  vz.fbMsg = 'Building your file…'; vz.fbErr = false; const say = document.querySelector('.vz-say'); if (say) say.textContent = vz.fbMsg;
+  try {
+    const url = vz.saved ? `${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/visualize/charts/${encodeURIComponent(vz.saved.id)}/export?format=${f}` : `${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/visualize/export`;
+    const resp = vz.saved ? await authedFetch(url) : await authedFetch(url, vzJson({ format: f, data: vz.res.data, view: Object.assign({}, vz.res.view, { title: vz.res.view.title || vz.res.title }), title: vz.res.view.title || vz.res.title, period: vz.res.period, sentence: vz.res.sentence, notes: vz.res.notes }));
+    if (!resp.ok){ let m = 'Could not build that file right now.'; try { m = (await resp.json()).error || m; } catch (e){} throw new Error(m); }
+    const blob = await resp.blob(); const cd = resp.headers.get('Content-Disposition') || ''; const mm = /filename="([^"]+)"/.exec(cd);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = mm ? mm[1] : `chart.${f}`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    vz.fbMsg = fmt === 'sheets' ? `Downloaded ${a.download}. A new Google Sheet is opening: choose File, then Import, then Upload, and pick that file. The chart comes with it.` : `Downloaded ${a.download}.`;
+    if (fmt === 'sheets'){ try { window.open('https://sheets.new', '_blank', 'noopener'); } catch (e){} }
+  } catch (e){ vz.fbMsg = e.message; vz.fbErr = true; }
+  vzRender();
+}
+// ---------- voice (the browser's own speech recognition) ----------
+function vzDictate(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition; if (!SR) return;
+  if (vz.rec && vz.sr){ try { vz.sr.stop(); } catch (e){} return; }
+  const ta = document.getElementById('vzText'); const base = ta ? ta.value.trim() : vz.text.trim();
+  const sr = new SR(); sr.lang = (navigator.language || 'en-US'); sr.interimResults = true; sr.continuous = false; vz.sr = sr; vz.rec = true;
+  sr.onresult = ev => { let s = ''; for (let i = 0; i < ev.results.length; i++) s += ev.results[i][0].transcript; vz.text = (base ? base + ' ' : '') + s.trim(); const t = document.getElementById('vzText'); if (t) t.value = vz.text; };
+  const done = () => { const was = vz.rec; vz.rec = false; vz.sr = null; vzRender(); if (was && vz.text.trim() && !vz.busy){ const n = document.getElementById('vzAskNote'); if (n) n.textContent = 'Heard that. Tap Show me, or edit the words first.'; } };
+  sr.onend = done; sr.onerror = () => { vz.rec = false; vz.sr = null; vzRender(); const n = document.getElementById('vzAskNote'); if (n) n.textContent = 'I could not hear that. Check the microphone is allowed, or type it.'; };
+  try { sr.start(); } catch (e){ vz.rec = false; }
+  vzRender();
+}
+// ---------- messages: the toast, and the Brain Dump and Media Science promotion ----------
+async function vzCheckInbox(){
+  if (!vzLive()) return;
+  try {
+    const n = await vzApi('/notifications'); const fresh = (n.items || []).filter(i => !i.read && i.kind === 'chart_shared' && !vz.toasted[i.id]);
+    if (!fresh.length) return;
+    fresh.forEach(i => { vz.toasted[i.id] = 1; });
+    let seen = []; try { seen = JSON.parse(sessionStorage.getItem('vzSeen') || '[]'); } catch (e){}
+    const show = fresh.filter(i => !seen.includes(i.id)); if (!show.length) return;
+    try { sessionStorage.setItem('vzSeen', JSON.stringify(seen.concat(show.map(i => i.id)).slice(-60))); } catch (e){}
+    let t = document.getElementById('vzToast'); if (!t){ t = document.createElement('div'); t.id = 'vzToast'; t.setAttribute('role', 'status'); document.body.appendChild(t); }
+    const first = show[0]; const id = (first.refId || '');
+    t.innerHTML = `<b>${show.length > 1 ? show.length + ' charts are ready for you' : 'A chart is ready for you'}</b>${escapeHtml(first.title)}${first.body ? `<br><i>“${escapeHtml(first.body)}”</i>` : ''}<div class="vz-tb"><button type="button" class="go" onclick="vzToastGo('${jsStrEscape(id)}')">Open it</button><button type="button" onclick="document.getElementById('vzToast').style.display='none'">Later</button></div>`;
+    t.style.display = 'block';
+    vzLoadLib();
+  } catch (e){}
+}
+function vzToastGo(id){ const t = document.getElementById('vzToast'); if (t) t.style.display = 'none'; vzOpen('', id); if (vz.lib) vzOpenSaved(id); }
+function vzBdNote(){
+  const el = document.getElementById('vzBdNote'); if (!el || !vz.lib) return;
+  const sh = vz.lib.charts.filter(c => !c.mine); const un = vz.lib.unread || 0;
+  el.innerHTML = un ? `<b style="color:#D9480F;">${un} chart${un === 1 ? '' : 's'} shared with you</b> since you last looked.` : sh.length ? `${sh.length} chart${sh.length === 1 ? '' : 's'} shared with you.` : '';
+}
+function vzPromoCardHtml(){
+  return `<div class="strat-card"><div class="vz-promo"><div><h2 style="margin:0 0 4px;">Visualize</h2><p class="strat-sub" style="margin:0;">Ask for any chart in your own words. Save it to the account, share it, or download it for a deck.</p></div><form onsubmit="event.preventDefault();vzOpen(document.getElementById('vzPromoText').value);"><input id="vzPromoText" type="text" placeholder="For example: revenue by product group last year" aria-label="Ask for a chart"><button type="submit" class="btn-primary">Show me</button></form></div></div>`;
+}
+if (typeof window !== 'undefined'){ setTimeout(() => { try { vzCheckInbox(); setInterval(vzCheckInbox, 90000); } catch (e){} }, 6000); }
+
 </script>
 </body>
 </html>
