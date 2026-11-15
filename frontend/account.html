@@ -433,7 +433,7 @@
       </div>
     </div>
     <div class="field">
-      <label for="ctPhone">Phone number</label>
+      <label for="ctPhone">Mobile phone number</label>
       <div class="phone-row">
         <select id="ctPhoneCode">
           <option value="+1" selected>+1 · US/Canada</option>
@@ -458,6 +458,7 @@
           <option value="+27">+27 · South Africa</option>
         </select>
         <input type="tel" id="ctPhone" value="" placeholder="Phone number">
+        <div class="hint" style="margin-top:4px;">One number for you: used for text sign-in codes and for resetting your password.</div>
       </div>
     </div>
     <div class="btn-row">
@@ -502,22 +503,11 @@
          session doesn't carry a memberId (e.g. an older/legacy session) rather
          than showing a field that would silently fail to save. -->
     <div id="recoveryPhoneSection" style="display:none;">
-      <h3 style="margin:0 0 6px;font-size:15px;">Recovery phone number</h3>
-      <p class="card-sub" style="margin-top:0;">Used only to text you a code if you ever need to reset your password from the sign-in screen. Not shared with the rest of your team.</p>
-      <div class="field-row">
-        <div class="field">
-          <label for="recoveryPhoneInput">Phone number</label>
-          <input type="tel" id="recoveryPhoneInput" placeholder="+1 555 123 4567" oninput="document.getElementById('recoveryPhoneSaveBtn').disabled = false;">
-        </div>
-        <div></div>
-      </div>
-      <div class="btn-row">
-        <button class="btn-primary" id="recoveryPhoneSaveBtn" disabled onclick="saveRecoveryPhone()">Save phone number</button>
-        <div class="status-note" id="recoveryPhoneStatus"></div>
-      </div>
-
-      <h3 style="margin:26px 0 6px;font-size:15px;">Sign-in codes</h3>
-      <p class="card-sub" style="margin-top:0;">When you sign in on a new device, Verilume sends a 6-digit code. It goes to your email unless you turn on text codes. Text codes use the phone number above, so save it first. Only you can change this, for your own profile.</p>
+      <!-- One phone number per person: it is edited in Contact information above (team_members.phone). These stubs keep the older script hooks working. -->
+      <input type="hidden" id="recoveryPhoneInput"><button type="button" id="recoveryPhoneSaveBtn" hidden disabled></button><span id="recoveryPhoneStatus" hidden></span>
+      <h3 style="margin:0 0 6px;font-size:15px;">Sign-in codes and password recovery</h3>
+      <p class="card-sub" style="margin-top:0;">When you sign in on a new device, Verilume sends a 6-digit code. It goes to your email unless you choose text. Text codes and password-reset texts use the mobile phone number in Contact information above, so save it there first. Only you can change this, for your own profile.</p>
+      <p class="card-sub" style="margin:0 0 10px;"><b id="mfaPhoneLine"></b> <a href="#contact" style="color:var(--media);">Change it in Contact information</a></p>
       <div class="btn-row">
         <label style="display:flex;gap:8px;align-items:center;margin-right:18px;"><input type="radio" name="mfaChannel" id="mfaChanEmail" onchange="mfaSmsOff()"> Email</label>
         <label style="display:flex;gap:8px;align-items:center;"><input type="radio" name="mfaChannel" id="mfaChanText" onchange="mfaSmsStart()"> Text message</label>
@@ -1153,6 +1143,7 @@ function mfaSmsMsg(t, ok){ const e = document.getElementById('mfaSmsStatus'); e.
 function mfaSmsShow(on, phone){
   document.getElementById('mfaChanText').checked = !!on; document.getElementById('mfaChanEmail').checked = !on;
   const last = String(phone || '').replace(/\D/g, '').slice(-4);
+  const pl = document.getElementById('mfaPhoneLine'); if (pl) pl.textContent = phone ? `Mobile number on file: ending ${last}.` : 'No mobile number on file yet.';
   document.getElementById('mfaSmsNow').textContent = on ? `Your sign-in codes are sent by text${last ? ' to the number ending ' + last : ''}.` : 'Your sign-in codes are sent to your email.';
   if (typeof currentMemberId !== 'undefined'){ try { const m = findTeamMember(currentMemberId); if (m) m.mfaSms = !!on; } catch (e){} }
 }
@@ -1281,7 +1272,7 @@ async function saveContact(){
         });
         personSaved = r2.ok;
         if (!r2.ok){ const d = await r2.json().catch(() => ({})); personError = d.error || ''; }
-        else { const me = findTeamMember(currentMemberId); if (me){ me.name = name; me.email = state.contact.email; me.phone = phone; } renderTeam(); renderMyProfile(); }
+        else { const me = findTeamMember(currentMemberId); let changed = false; if (me){ changed = String(me.phone || '').replace(/\D/g, '') !== String(phone || '').replace(/\D/g, ''); me.name = name; me.email = state.contact.email; me.phone = phone; if (changed) me.mfaSms = false; } renderTeam(); renderMyProfile(); try { document.getElementById('recoveryPhoneInput').value = phone; mfaSmsShow(!!(me && me.mfaSms) && !!phone, phone); } catch (e){} }
       } catch (e){ personError = 'Could not reach the server.'; }
     }
   }
