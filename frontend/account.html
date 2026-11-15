@@ -519,9 +519,10 @@
       <h3 style="margin:26px 0 6px;font-size:15px;">Sign-in codes</h3>
       <p class="card-sub" style="margin-top:0;">When you sign in on a new device, Verilume sends a 6-digit code. It goes to your email unless you turn on text codes. Text codes use the phone number above, so save it first. Only you can change this, for your own profile.</p>
       <div class="btn-row">
-        <button class="btn-primary" id="mfaSmsOnBtn" onclick="mfaSmsStart()">Send my sign-in codes by text</button>
-        <button class="btn-ghost" id="mfaSmsOffBtn" onclick="mfaSmsOff()">Send them to my email instead</button>
+        <label style="display:flex;gap:8px;align-items:center;margin-right:18px;"><input type="radio" name="mfaChannel" id="mfaChanEmail" onchange="mfaSmsOff()"> Email</label>
+        <label style="display:flex;gap:8px;align-items:center;"><input type="radio" name="mfaChannel" id="mfaChanText" onchange="mfaSmsStart()"> Text message</label>
       </div>
+      <div class="status-note" id="mfaSmsNow" style="margin-top:6px;"></div>
       <div id="mfaSmsConfirm" style="display:none;margin-top:14px;">
         <div class="field-row">
           <div class="field">
@@ -1142,24 +1143,31 @@ function renderMyProfile(){
   section.style.display = 'block';
   document.getElementById('recoveryPhoneInput').value = me.phone || '';
   document.getElementById('recoveryPhoneSaveBtn').disabled = true;
+  try { mfaSmsShow(!!me.mfaSms && !!me.phone, me.phone); } catch (e){}
 }
 
 
 // Sign-in codes by text (own profile only). Uses POST /api/auth/mfa-sms/{start,confirm,off}.
 let mfaSmsVerificationId = null;
 function mfaSmsMsg(t, ok){ const e = document.getElementById('mfaSmsStatus'); e.textContent = t; e.classList.toggle('ok', !!ok); }
+function mfaSmsShow(on, phone){
+  document.getElementById('mfaChanText').checked = !!on; document.getElementById('mfaChanEmail').checked = !on;
+  const last = String(phone || '').replace(/\D/g, '').slice(-4);
+  document.getElementById('mfaSmsNow').textContent = on ? `Your sign-in codes are sent by text${last ? ' to the number ending ' + last : ''}.` : 'Your sign-in codes are sent to your email.';
+  if (typeof currentMemberId !== 'undefined'){ try { const m = findTeamMember(currentMemberId); if (m) m.mfaSms = !!on; } catch (e){} }
+}
 async function mfaSmsStart(){
-  const btn = document.getElementById('mfaSmsOnBtn'); btn.disabled = true; mfaSmsMsg('Sending a code…');
+  mfaSmsMsg('Setting that up…');
   try {
     const r = await authedFetch(`${BACKEND_URL}/api/auth/mfa-sms/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok){ mfaSmsMsg(d.error || `Couldn't send a text (${r.status}).`); btn.disabled = false; return; }
+    if (!r.ok){ mfaSmsShow(false); mfaSmsMsg(d.error || `Couldn't send a text (${r.status}).`); return; }
+    if (d.enabled){ document.getElementById('mfaSmsConfirm').style.display = 'none'; mfaSmsShow(true, d.target); mfaSmsMsg('✓ Done. Your next sign-in code will arrive by text.', true); return; }
     mfaSmsVerificationId = d.verificationId;
     document.getElementById('mfaSmsConfirm').style.display = 'block';
     document.getElementById('mfaSmsCode').value = ''; document.getElementById('mfaSmsCode').focus();
-    mfaSmsMsg(`We texted a code to ${d.target}. Enter it below.` + (d.interimCode ? ` (No live text provider here yet; your code is ${d.interimCode}.)` : ''), true);
-  } catch (e){ mfaSmsMsg('Could not reach the backend — try again.'); }
-  btn.disabled = false;
+    mfaSmsMsg(`We texted a code to ${d.target} to confirm it is your phone. Enter it below.` + (d.interimCode ? ` (No live text provider here yet; your code is ${d.interimCode}.)` : ''), true);
+  } catch (e){ mfaSmsShow(false); mfaSmsMsg('Could not reach the backend — try again.'); }
 }
 async function mfaSmsConfirm(){
   const code = document.getElementById('mfaSmsCode').value.trim();
@@ -1170,20 +1178,19 @@ async function mfaSmsConfirm(){
     const d = await r.json().catch(() => ({}));
     if (!r.ok){ mfaSmsMsg(d.error || `Couldn't confirm that code (${r.status}).`); btn.disabled = false; return; }
     document.getElementById('mfaSmsConfirm').style.display = 'none';
-    mfaSmsMsg('✓ Text codes are on. Your next sign-in code will arrive by text.', true);
+    const m = (typeof findTeamMember === 'function' && currentMemberId) ? findTeamMember(currentMemberId) : null;
+    mfaSmsShow(true, m && m.phone); mfaSmsMsg('✓ Text codes are on. Your next sign-in code will arrive by text.', true);
   } catch (e){ mfaSmsMsg('Could not reach the backend — try again.'); }
   btn.disabled = false;
 }
 async function mfaSmsOff(){
-  const btn = document.getElementById('mfaSmsOffBtn'); btn.disabled = true;
   try {
     const r = await authedFetch(`${BACKEND_URL}/api/auth/mfa-sms/off`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok){ mfaSmsMsg(d.error || `Couldn't change that (${r.status}).`); btn.disabled = false; return; }
+    if (!r.ok){ mfaSmsMsg(d.error || `Couldn't change that (${r.status}).`); return; }
     document.getElementById('mfaSmsConfirm').style.display = 'none';
-    mfaSmsMsg('✓ Sign-in codes will go to your email.', true);
+    mfaSmsShow(false); mfaSmsMsg('✓ Sign-in codes will go to your email.', true);
   } catch (e){ mfaSmsMsg('Could not reach the backend — try again.'); }
-  btn.disabled = false;
 }
 
 async function saveRecoveryPhone(){
@@ -1211,7 +1218,9 @@ async function saveRecoveryPhone(){
       return;
     }
     const me = findTeamMember(currentMemberId);
+    const phoneChanged = me && String(me.phone || '').replace(/\D/g, '') !== String(phone || '').replace(/\D/g, '');
     if (me) me.phone = phone;
+    if (phoneChanged){ try { mfaSmsShow(false); } catch (e){} }
     statusEl.textContent = phone ? '✓ Recovery phone number saved.' : '✓ Recovery phone number removed.';
     statusEl.classList.add('ok');
   } catch (e){
