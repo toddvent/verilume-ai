@@ -4706,6 +4706,11 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
   .vz-gbar{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:center;margin:14px 0 16px;} .vz-gbar .vz-search{flex:1 1 280px;min-width:220px;display:flex;gap:8px;align-items:center;} .vz-gbar .vz-search input{flex:1;min-width:0;}
   .vz-more{margin:14px 0 0;text-align:center;} .vz-gtags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;} .vz-gtags i{font-style:normal;font-size:0.6875rem;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:1px 8px;}
   .vz-dgrid .cc-card{margin:0;min-width:0;}
+  /* 2026-11-15: save to dashboard and export on every chart */
+  .vz-mounttools{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 12px;} .vz-pin{position:relative;} .vz-pin summary{list-style:none;cursor:pointer;display:inline-block;} .vz-pin summary::-webkit-details-marker{display:none;}
+  .vz-pinpanel{position:absolute;z-index:30;top:calc(100% + 6px);left:0;min-width:240px;background:var(--white);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-sm);padding:12px 14px;} .vz-pinpanel label{display:flex;gap:8px;align-items:center;padding:4px 0;font-size:0.875rem;cursor:pointer;}
+  .vz-pincell{margin:0 0 16px;} .vz-pinhead{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 0 6px;flex-wrap:wrap;} .vz-dfoot{gap:8px;}
+
  .vz-dtitle{margin:2px 0 6px;font-size:1.0625rem;} .vz-dfoot{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;}
   .vz-flash{animation:vzflash 2.4s ease-out 1;} @keyframes vzflash{0%,40%{box-shadow:0 0 0 3px rgba(10,88,204,.45);}100%{box-shadow:none;}} @media (prefers-reduced-motion:reduce){.vz-flash{animation:none;box-shadow:0 0 0 3px rgba(10,88,204,.45);}}
   .vz-main{max-width:980px;}
@@ -26287,6 +26292,7 @@ function gpcRender(){
   if (activePrimaryTab === 'marketer'){ const el = document.getElementById('tabStatCardGrid'); if (el && el.classList.contains('gp-core')){ el.innerHTML = gpcCardsHtml(); } }
   if (activePrimaryTab === 'strategy'){ const el = document.getElementById('tabStatCardGrid'); if (el && el.classList.contains('gs-core')){ el.innerHTML = gpcCardsHtml(GS_KEYS); } }
   const mh = document.getElementById('vzMountBody'); if (mh && mh.dataset.key && GPC_META[mh.dataset.key]) mh.innerHTML = gpcCardHtml(mh.dataset.key);
+  document.querySelectorAll('[data-vzgpc]').forEach(h => { if (GPC_META[h.dataset.vzgpc]) h.innerHTML = gpcCardHtml(h.dataset.vzgpc); });
   gpcRenderModal();
 }
 function gpcOpen(key){ gpc.open = key; gpcRenderModal(); }
@@ -86342,7 +86348,7 @@ function vzResultHtml(){
     <p class="vz-say${vz.fbErr ? ' err' : ''}" role="status" aria-live="polite">${escapeHtml(vz.fbMsg)}</p>
     <div class="vz-actions">
       <button type="button" class="btn-primary" onclick="vzTogglePanel('save')">${saved ? (saved.canEdit ? 'Save changes' : 'Save a copy to the library') : 'Save to the chart library'}</button>
-      <button type="button" class="btn-ghost" onclick="vzExpand()">Large view</button><span class="vz-menu share-wrap"><button type="button" class="btn-ghost" aria-haspopup="menu" onclick="shareToggle(event,'vz-dl')">Download ▾</button><div class="share-menu" id="shareMenu-vz-dl" role="menu" hidden>
+      ${saved ? vzPinHtml('chart:' + saved.id) : ''}<button type="button" class="btn-ghost" onclick="vzExpand()">Large view</button><span class="vz-menu share-wrap"><button type="button" class="btn-ghost" aria-haspopup="menu" onclick="shareToggle(event,'vz-dl')">Download ▾</button><div class="share-menu" id="shareMenu-vz-dl" role="menu" hidden>
         <button type="button" role="menuitem" onclick="vzDownload('pptx')">PowerPoint (.pptx)</button><button type="button" role="menuitem" onclick="vzDownload('xlsx')">Excel (.xlsx)</button><button type="button" role="menuitem" onclick="vzDownload('sheets')">Google Sheets</button><button type="button" role="menuitem" onclick="vzDownload('csv')">CSV</button></div></span>
     </div>
     ${vz.panel === 'save' ? vzSavePanelHtml() : ''}
@@ -86376,7 +86382,7 @@ function vzRenderRail(){ const el = document.getElementById('vzRail'); if (el) e
 function vzCatalog(){
   const L = vz.lib || { charts: [], existing: [] }; const items = [];
   L.charts.forEach(c => items.push({ kind: 'saved', id: c.id, title: c.title, cat: 'Saved charts', sub: c.mine ? 'Saved by you' : 'Saved by ' + (c.ownerName || 'a teammate'), preview: c.preview, isNew: c.isNew, when: c.updatedAt, dashboards: c.dashboards || [], mine: !!c.mine, tags: ['Saved chart'] }));
-  const seenM = {}; (L.existing || []).forEach((e, i) => { if (vzMountable(e) && !seenM[e.mount]){ seenM[e.mount] = 1; items.push({ kind: 'report', idx: i, tab: e.tab, title: e.title, cat: e.tabLabel || 'Reports', sub: 'Card on ' + (e.tabLabel || 'a dashboard'), tags: (e.functions || []).concat(e.roles || []) }); } });
+  const seenM = {}; (L.existing || []).forEach((e, i) => { if (vzMountable(e) && !seenM[e.mount]){ seenM[e.mount] = 1; items.push({ kind: 'report', mount: e.mount, idx: i, tab: e.tab, title: e.title, cat: e.tabLabel || 'Reports', sub: 'Card on ' + (e.tabLabel || 'a dashboard'), tags: (e.functions || []).concat(e.roles || []) }); } });
   return items;
 }
 function vzMini(p){
@@ -86394,9 +86400,9 @@ function vzGalleryHtml(){
   const total = list.length; let more = 0;
   if (!filtering && !vz.showAll){ list = list.map((x, i) => ({ x, i })).sort((a, b) => vzScore(b.x) - vzScore(a.x) || a.i - b.i).map(o => o.x); if (list.length > 9){ more = list.length - 9; list = list.slice(0, 9); } }
   const sr = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
-  const cards = list.map(x => `<button type="button" class="vz-gcard" onclick="${x.kind === 'saved' ? `vzGoSaved('${jsStrEscape(x.id)}')` : `vzOpenReport(${x.idx})`}"><span class="vz-gcat">${escapeHtml(x.cat)}${x.isNew ? '<span class="vz-new">New</span>' : ''}</span><b>${escapeHtml(x.title)}</b>${x.kind === 'saved' ? vzMini(x.preview) : '<span class="vz-mini vz-mini-empty"></span>'}<span class="vz-gsub">${escapeHtml(x.sub)}${x.kind === 'saved' && x.dashboards && x.dashboards.length ? ' · on ' + escapeHtml(x.dashboards.map(vzDashName).join(', ')) : ''}</span>${x.kind === 'report' && x.tags && x.tags.length ? `<span class="vz-gtags">${x.tags.slice(0, 3).map(t => `<i>${escapeHtml(t)}</i>`).join('')}</span>` : ''}</button>`).join('');
+  const cards = list.map(x => `<button type="button" class="vz-gcard" onclick="${x.kind === 'saved' ? `vzGoSaved('${jsStrEscape(x.id)}')` : `vzOpenReport(${x.idx})`}"><span class="vz-gcat">${escapeHtml(x.cat)}${x.isNew ? '<span class="vz-new">New</span>' : ''}</span><b>${escapeHtml(x.title)}</b>${x.kind === 'saved' ? vzMini(x.preview) : '<span class="vz-mini vz-mini-empty"></span>'}<span class="vz-gsub">${escapeHtml(x.sub)}${(x.kind === 'saved' ? x.dashboards : vzPinTabs(x.mount)).length ? ' · on your ' + escapeHtml((x.kind === 'saved' ? x.dashboards : vzPinTabs(x.mount)).map(vzDashName).join(', ')) : ''}</span>${x.kind === 'report' && x.tags && x.tags.length ? `<span class="vz-gtags">${x.tags.slice(0, 3).map(t => `<i>${escapeHtml(t)}</i>`).join('')}</span>` : ''}</button>`).join('');
   const empty = vz.libErr ? 'The chart library did not load. Refresh the page; if it keeps happening, the latest server update may not be deployed yet.' : (vz.lib ? 'Nothing matches that. Try another word, or create a new chart.' : 'Loading…');
-  return `<div class="strat-card vz-gallery"><div class="vz-gtitle"><div><h2>Data Visualizer</h2><p class="strat-sub" style="margin:2px 0 0;">${filtering || vz.showAll ? 'Every chart on the site' : 'The ' + Math.min(9, total) + ' most relevant to ' + vzRoleLabel() + '. Use the filters to see the rest'}. Open one here; charts you assign to a dashboard show there as cards.</p></div><span class="strat-sub" id="vzCount">${list.length} of ${all.length}</span></div>
+  return `<div class="strat-card vz-gallery"><div class="vz-gtitle"><div><h2>Data Visualizer</h2><p class="strat-sub" style="margin:2px 0 0;">Review the charts created for you by your team members. Select create a new chart to build a chart that you don't see.</p></div><span class="strat-sub" id="vzCount">${list.length} of ${all.length}</span></div>
     <div class="vz-gbar"><button type="button" class="btn-primary" id="vzNewBtn2" onclick="vzNew()">+ Create a New Chart</button>
       <label class="vz-sel"><span class="vz-sr">Category</span><select aria-label="Category" onchange="vzSetCat(this.value)">${cats.map(c => `<option value="${escapeHtml(c)}"${c === vz.cat ? ' selected' : ''}>${c === 'all' ? 'All categories' : escapeHtml(c)}</option>`).join('')}</select></label>
       ${tagList.length ? `<label class="vz-sel"><span class="vz-sr">Function or role</span><select aria-label="Function or role" onchange="vzSetTag(this.value)"><option value="">All functions and roles</option>${tagList.map(t => `<option value="${escapeHtml(t)}"${t === vz.tag ? ' selected' : ''}>${escapeHtml(t)}</option>`).join('')}</select></label>` : ''}
@@ -86448,6 +86454,43 @@ function vzAfterNav(step, again){
   host.insertBefore(bar, host.firstChild);
 }
 (function(){ const g = window.goToStep; if (typeof g === 'function' && !g._vz){ const w = function(){ const r = g.apply(this, arguments); const st = arguments[0]; try { vzAfterNav(st); if (vz.ret) setTimeout(() => { try { vzAfterNav(st, true); } catch (e){} }, 600); } catch (e){} return r; }; w._vz = 1; window.goToStep = w; } })();
+// ---------- save to dashboard (per person) and export, on every chart ----------
+function vzPinTabs(ref){ return (vz.lib && vz.lib.pins && vz.lib.pins[ref]) || []; }
+function vzHomeTab(ref){ const e = vz.lib && (vz.lib.existing || []).find(x => x.mount === ref); return e ? e.tab : ''; }
+function vzPinHtml(ref){
+  const home = vzHomeTab(ref), cur = vzPinTabs(ref); const opts = VZ_DASH.filter(d => d[0] !== home);
+  return `<details class="vz-pin"><summary class="btn-ghost">Save to dashboard${cur.length ? ' (' + cur.length + ')' : ''}</summary><div class="vz-pinpanel" role="group" aria-label="Save to dashboard"><p class="strat-sub" style="margin:0 0 6px;">Shows on your own dashboard${home ? ' as well as where it already lives' : ''}.</p>${opts.map(d => `<label><input type="checkbox" ${cur.includes(d[0]) ? 'checked' : ''} onchange="vzPinSet('${jsStrEscape(ref)}','${d[0]}',this.checked)"> <span>${escapeHtml(d[1])}</span></label>`).join('')}<p class="strat-sub" id="vzPinNote" style="margin:6px 0 0;"></p></div></details>`;
+}
+async function vzPinSet(ref, tab, on){
+  const set = new Set(vzPinTabs(ref)); if (on) set.add(tab); else set.delete(tab); const tabs = Array.from(set);
+  if (vz.lib){ vz.lib.pins = vz.lib.pins || {}; vz.lib.pins[ref] = tabs; }
+  const note = document.getElementById('vzPinNote'); if (note) note.textContent = 'Saving…';
+  try { await vzApi('/visualize/pins', vzJson({ ref, tabs })); const n = document.getElementById('vzPinNote'); if (n) n.textContent = tabs.length ? 'Saved. It shows on: ' + tabs.map(vzDashName).join(', ') + '.' : 'Removed from your dashboards.'; }
+  catch (e){ const n = document.getElementById('vzPinNote'); if (n) n.textContent = e.message; }
+}
+function vzExportMenuHtml(id, fn){
+  return `<span class="vz-menu share-wrap"><button type="button" class="btn-ghost" aria-haspopup="menu" onclick="shareToggle(event,'${id}')">Download ▾</button><div class="share-menu" id="shareMenu-${id}" role="menu" hidden>${[['pptx', 'PowerPoint (.pptx)'], ['xlsx', 'Excel (.xlsx)'], ['sheets', 'Google Sheets'], ['csv', 'CSV']].map(([f, l]) => `<button type="button" role="menuitem" onclick="${fn}('${f}')">${l}</button>`).join('')}</div></span>`;
+}
+// An existing card has no chart file of its own, so the export reads the numbers the card is already showing (its tables and stat tiles).
+function vzScrapeCard(host, title){
+  const tables = []; host.querySelectorAll('table').forEach((t, i) => {
+    const cols = Array.from(t.querySelectorAll('thead th')).map(h => h.innerText.trim()); const rows = Array.from(t.querySelectorAll('tbody tr')).map(r => Array.from(r.children).map(c => c.innerText.trim().replace(/\s+/g, ' ')));
+    if (!rows.length) return; let name = title; const lab = t.closest('.strat-table-wrap') && t.closest('.strat-table-wrap').previousElementSibling; if (lab && lab.classList && lab.classList.contains('strat-chart-label')) name = lab.innerText.trim(); else if (i) name = title + ' ' + (i + 1);
+    tables.push({ name, columns: cols.length ? cols : rows[0].map((_, k) => 'Column ' + (k + 1)), rows });
+  });
+  const tiles = Array.from(host.querySelectorAll('.stat-card, .strat-fc-card, .sc-label')).filter(e => !e.querySelector('table')).map(e => e.innerText.trim().split(/\n+/).filter(Boolean)).filter(a => a.length > 1 && !tables.some(t => false));
+  if (tiles.length && !tables.length) tables.push({ name: title, columns: ['Measure', 'Value', 'Detail'], rows: tiles.map(a => [a[0], a[1], a.slice(2).join(' · ')]) });
+  return tables;
+}
+async function vzMountExport(fmt){
+  document.querySelectorAll('.share-menu').forEach(m => { m.hidden = true; });
+  const key = vz.mountKey, m = VZ_MOUNTS[key]; const host = document.getElementById('vzMountBody'); if (!host) return;
+  const say = t => { const n = document.getElementById('vzMountSay'); if (n){ n.textContent = t; setTimeout(() => { if (n.textContent === t) n.textContent = ''; }, 7000); } };
+  if (m && m.gpc && typeof gpcExport === 'function' && gpcCardData(key)){ const st = gpc[key]; try { await gpcExport(key, fmt); } catch (e){ say('Could not build that download right now.'); } return; }
+  const title = vz.mountTitle || 'Chart'; const tables = vzScrapeCard(host, title);
+  if (!tables.length){ say('This card has no numbers loaded yet, so there is nothing to download. Wait for it to finish loading, or change its date range.'); return; }
+  await ccDeliver({ title, fileSlug: 'chart-' + key, context: [['Source', 'Dashboard card, Data Visualizer'], ['Downloaded', new Date().toISOString().slice(0, 10)]], tables, notes: ['The numbers are the ones the card was showing when you downloaded it.'] }, fmt, say);
+}
 // ---------- the standard card chrome (share and download, large view in a pop-up) for saved charts ----------
 function vzCcReg(key, title, period, data, view){
   const shaped = () => vzShape(data, Object.assign({}, view, { title }));
@@ -86464,14 +86507,23 @@ async function vzRenderDashCharts(){
   if (!vzLive() || !VZ_DASH.some(d => d[0] === tab)){ host.innerHTML = ''; return; }
   let r; try { r = await vzApi('/visualize/dashboards/' + encodeURIComponent(tab)); } catch (e){ host.innerHTML = ''; return; }
   if (tab !== activePrimaryTab) return; vzTipInit();
-  const list = (r.charts || []); vz.dash[tab] = list;
-  if (!list.length){ host.innerHTML = ''; return; }
-  host.innerHTML = `<div class="vz-dhead"><h2>Charts on this dashboard</h2><span class="strat-sub">Built in the Data Visualizer on Media Science</span><span class="strat-sub" id="ccNote"></span></div><div class="vz-dgrid">${list.map(o => {
-    const id = vzCcReg(o.id, o.title, o.period, o.data, o.view); const c = vzShape(o.data, Object.assign({}, o.view, { title: o.view.title || o.title }));
-    return ccCardHtml(id, `<div class="vz-kicker">${escapeHtml(('Media Science' + (o.period ? ' · ' + o.period : '')).toUpperCase())}</div>${c.type === 'table' ? vzTableHtml(c) : `<div class="vz-plot">${vzChartSvg(c)}</div>${vzLegendHtml(c)}`}<div class="vz-dfoot"><span class="strat-sub">${escapeHtml('Saved by ' + (o.mine ? 'you' : (o.ownerName || 'a teammate')))}</span><button type="button" class="strat-chip" onclick="vzOpen('', '${jsStrEscape(o.id)}')">Open in Data Visualizer</button></div>`, { style: 'margin:0;' }).replace('<div class="geo-card cc-card ', '<div id="vzdc-' + escapeHtml(o.id) + '" class="geo-card cc-card vz-dcard ');
-  }).join('')}</div>`;
+  const list = (r.charts || []), cards = (r.cards || []).filter(k => VZ_MOUNTS[k] && !VZ_MOUNTS[k].swap);
+  if (!list.length && !cards.length){ host.innerHTML = ''; return; }
+  const rm = ref => `<button type="button" class="strat-chip" onclick="vzUnpin('${jsStrEscape(ref)}','${tab}')">Remove from this dashboard</button>`;
+  host.innerHTML = `<div class="vz-dhead"><h2>Saved to your dashboard</h2><span class="strat-sub">Charts you saved here from the Data Visualizer on Media Science</span><span class="strat-sub" id="ccNote"></span></div>
+    ${list.length ? `<div class="vz-dgrid">${list.map(o => {
+      const id = vzCcReg(o.id, o.title, o.period, o.data, o.view); const c = vzShape(o.data, Object.assign({}, o.view, { title: o.view.title || o.title }));
+      return ccCardHtml(id, `<div class="vz-kicker">${escapeHtml(('Media Science' + (o.period ? ' · ' + o.period : '')).toUpperCase())}</div>${c.type === 'table' ? vzTableHtml(c) : `<div class="vz-plot">${vzChartSvg(c)}</div>${vzLegendHtml(c)}`}<div class="vz-dfoot"><span class="strat-sub">${escapeHtml('Saved by ' + (o.mine ? 'you' : (o.ownerName || 'a teammate')))}</span><span><button type="button" class="strat-chip" onclick="vzOpen('', '${jsStrEscape(o.id)}')">Open in Data Visualizer</button> ${rm('chart:' + o.id)}</span></div>`, { style: 'margin:0;' }).replace('<div class="geo-card cc-card ', '<div id="vzdc-' + escapeHtml(o.id) + '" class="geo-card cc-card vz-dcard ');
+    }).join('')}</div>` : ''}
+    ${cards.map(k => `<div class="vz-pincell" data-pinref="${escapeHtml(k)}"><div class="vz-pinhead"><span class="strat-sub">Card saved from the Data Visualizer</span>${rm(k)}</div><div class="vz-pinbody" ${VZ_MOUNTS[k].gpc ? `data-vzgpc="${k}"` : ''}>${VZ_MOUNTS[k].gpc ? '' : VZ_MOUNTS[k].html()}</div></div>`).join('')}`;
+  cards.forEach(k => { const m = VZ_MOUNTS[k]; if (m.gpc){ if (m.strat) gscEnsure(); else gpcEnsure(); try { gpcRender(); } catch (e){} } else { try { m.init(); } catch (e){} } });
   if (vz.focus){ vz.flashId = vz.focus; vz.flashUntil = Date.now() + 4000; vz.focus = ''; vz.scrollFlash = true; }
   if (vz.flashId && Date.now() < vz.flashUntil){ const el = document.getElementById('vzdc-' + vz.flashId); if (el){ el.classList.add('vz-flash'); if (vz.scrollFlash){ vz.scrollFlash = false; try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e){} } } }
+}
+async function vzUnpin(ref, tab){
+  const tabs = vzPinTabs(ref).filter(t => t !== tab); if (vz.lib){ vz.lib.pins = vz.lib.pins || {}; vz.lib.pins[ref] = tabs; }
+  try { await vzApi('/visualize/pins', vzJson({ ref, tabs })); } catch (e){}
+  vzRenderDashCharts();
 }
 (function(){ const g = window.renderWorkstreams; if (typeof g === 'function' && !g._vz){ const w = function(){ const r = g.apply(this, arguments); try { vzRenderDashCharts(); } catch (e){} return r; }; w._vz = 1; window.renderWorkstreams = w; } })();
 function vzNew(){ vz.mode = 'new'; vz.res = null; vz.saved = null; vz.text = ''; vz.fbMsg = ''; vz.panel = ''; vz.pdash = null; goToStep('visualize'); vzRender(); const t = document.getElementById('vzText'); if (t) t.focus(); try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e){} }
@@ -86480,7 +86532,7 @@ function vzRender(){
   const leaf = document.getElementById('vzCrumbLeaf'); if (leaf) leaf.textContent = vz.saved ? vz.saved.title : 'New chart';
   const root = document.getElementById('vzRoot'); if (!root) return;
   const btn = document.getElementById('vzNewBtn'); if (btn) btn.style.display = vz.mode === 'new' ? 'none' : '';
-  if (vz.mode === 'mount'){ const lf = document.getElementById('vzCrumbLeaf'); if (lf) lf.textContent = vz.mountTitle || 'Chart'; root.innerHTML = `<p style="margin:0 0 12px;"><a class="flink" onclick="vzBack()" style="cursor:pointer;">← Back to Media Science · Data Visualizer</a></p><div class="vz-main" style="max-width:none;"><div id="vzMountBody"></div><p class="strat-sub">This is the dashboard's own card, so its date range, comparison and sharing controls are the ones you use everywhere. Need a different cut it does not offer? <a class="flink" onclick="vzNew()" style="cursor:pointer;">Create a new chart</a>.</p></div>`; vzMountCard(); return; }
+  if (vz.mode === 'mount'){ const lf = document.getElementById('vzCrumbLeaf'); if (lf) lf.textContent = vz.mountTitle || 'Chart'; root.innerHTML = `<p style="margin:0 0 12px;"><a class="flink" onclick="vzBack()" style="cursor:pointer;">← Back to Media Science · Data Visualizer</a></p><div class="vz-main" style="max-width:none;"><div class="vz-mounttools">${VZ_MOUNTS[vz.mountKey] && !VZ_MOUNTS[vz.mountKey].swap ? vzPinHtml(vz.mountKey) : ''}${vzExportMenuHtml('vz-mdl', 'vzMountExport')}<span class="strat-sub" id="vzMountSay"></span></div><div id="vzMountBody"></div><p class="strat-sub">This is the dashboard's own card, so its date range, comparison and sharing controls are the ones you use everywhere. Need a different cut it does not offer? <a class="flink" onclick="vzNew()" style="cursor:pointer;">Create a new chart</a>.</p></div>`; vzMountCard(); return; }
   if (vz.mode === 'gallery'){ root.innerHTML = `<div id="vzGalHost">${vzGalleryHtml()}</div>`; return; }
   const ta = document.getElementById('vzText'); if (ta && !vz.rec) vz.text = ta.value;
   const keep = document.activeElement && document.activeElement.id;
