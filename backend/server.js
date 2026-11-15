@@ -34006,6 +34006,9 @@ async function handleRequestInner(req, res) {
       if (action === 'start'){
         const digits = String(me.phone || '').replace(/\D/g, '');
         if (digits.length < 10) return sendJson(res, 400, { error: 'Add a mobile number to your profile and save it first.' });
+        // A number this person already confirmed (and has not changed since) needs no second code: choosing Text just turns it on.
+        const vf = db.prepare('SELECT phoneVerifiedAt FROM team_members WHERE id = ?').get(me.id);
+        if (vf && vf.phoneVerifiedAt){ db.prepare('UPDATE team_members SET mfasms = 1 WHERE id = ?').run(me.id); return sendJson(res, 200, { enabled: true, mfaSms: true, target: '•••• ' + digits.slice(-4) }); }
         const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
         const recent = db.prepare(`SELECT COUNT(*) AS c FROM phone_verifications WHERE memberId = ? AND purpose = 'mfa-sms-enable' AND createdAt > ?`).get(me.id, hourAgo);
         if (recent && Number(recent.c) >= 5) return sendJson(res, 429, { error: 'Too many codes requested. Try again in an hour.' });
@@ -51651,7 +51654,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (!requireAccount(req, res, existing.accountId)) return;
       const body = await readBody(req);
       // A new phone number is not trusted for sign-in codes until its owner confirms it again, so changing it switches text codes off.
-      if (body.phone !== undefined && String(body.phone || '').replace(/\D/g, '') !== String(existing.phone || '').replace(/\D/g, '')){ try { db.prepare('UPDATE team_members SET mfasms = 0 WHERE id = ?').run(memberId); } catch (e){} }
+      if (body.phone !== undefined && String(body.phone || '').replace(/\D/g, '') !== String(existing.phone || '').replace(/\D/g, '')){ try { db.prepare('UPDATE team_members SET mfasms = 0, phoneVerifiedAt = NULL WHERE id = ?').run(memberId); } catch (e){} }
       if (body.phoneExt !== undefined) db.prepare('UPDATE team_members SET phoneext = ? WHERE id = ?').run(String(body.phoneExt || '').replace(/[^0-9]/g, '').slice(0, 8) || null, memberId);
       const settable = { name: 'TEXT', email: 'TEXT', level: 'TEXT', functionGroup: 'TEXT', reportsToId: 'TEXT', status: 'TEXT', phone: 'TEXT' };
       Object.keys(settable).forEach(field => {
