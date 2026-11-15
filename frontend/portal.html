@@ -4696,6 +4696,13 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
   .vz-kpi{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;margin:16px 0 4px;} .vz-kpi-l{font-size:0.9375rem;color:var(--muted);} .vz-kpi-v{font-size:2rem;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;}
   .vz-delta{font-size:0.9375rem;font-weight:600;} .vz-delta.up{color:#1F7A4D;} .vz-delta.down{color:#C0273C;}
   .vz-sep{width:1px;background:var(--line);margin:0 6px;} .vz-h3{margin:22px 0 4px;font-size:0.9375rem;}
+  /* 2026-11-15: gallery lives on Media Science; saved charts feed dashboards; return bar */
+  .vz-gtitle{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:flex-start;justify-content:space-between;} .vz-gright{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .vz-return{margin:0 0 12px;padding:8px 14px;border:1px solid var(--line);border-radius:999px;background:var(--white);display:inline-block;font-size:0.875rem;font-weight:600;} .vz-return a{color:var(--cx,#0A58CC);text-decoration:none;} .vz-return a:hover{text-decoration:underline;}
+  #vzDashCharts{margin:0 0 16px;} .vz-dhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;margin:0 0 10px;} .vz-dhead h2{margin:0;font-size:1.0625rem;}
+  .vz-dgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;} @media (max-width:900px){.vz-dgrid{grid-template-columns:1fr;}}
+  .vz-dcard{margin:0;grid-column:auto;min-width:0;} .vz-dtitle{margin:2px 0 6px;font-size:1.0625rem;} .vz-dfoot{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;}
+  .vz-flash{animation:vzflash 2.4s ease-out 1;} @keyframes vzflash{0%,40%{box-shadow:0 0 0 3px rgba(10,88,204,.45);}100%{box-shadow:none;}} @media (prefers-reduced-motion:reduce){.vz-flash{animation:none;box-shadow:0 0 0 3px rgba(10,88,204,.45);}}
   .vz-main{max-width:980px;}
 
 </style>
@@ -5279,6 +5286,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
            Generative Commentary/Key Observations/Curated
            News/Key-Tiles-Per-Role/AI-Partner-Routing content instead (see
            dailyBriefExtraHtml()). -->
+      <div id="vzDashCharts"></div>
       <div class="group-grid" id="workstreamGrid"></div>
     </div>
   </div>
@@ -5416,11 +5424,11 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
        Marketing Budget Upload so "available via the analytics" is a real
        link, not just a description. See renderMediaScienceStep(). -->
   <div class="step" id="step-visualize">
-    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('mediaScience')" class="crumb-home-link">Media Science</a> / Visualize</div>
-    <div class="vz-head"><div><div class="eyebrow">Media Science · Visualize</div>
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="vzCrumbMs()" style="cursor:pointer;">Media Science</a> / <a onclick="vzCrumbMs()" style="cursor:pointer;">Data Visualizer</a> / <span id="vzCrumbLeaf">New chart</span></div>
+    <div class="vz-head"><div><div class="eyebrow">Media Science · Data Visualizer</div>
     <h1>See your numbers as a chart.</h1>
     <p class="lede">Ask in your own words, by voice or text. Shape the chart with a sentence, save it to the account for a teammate, and download it for a deck.</p></div>
-    <button type="button" class="btn-primary" id="vzNewBtn" onclick="vzNew()">+ Create a New Chart</button></div>
+    <button type="button" class="btn-primary" id="vzNewBtn" onclick="vzNew()" style="display:none;">+ Create a New Chart</button></div>
     <div id="vzRoot"></div>
   </div>
   <div class="step" id="step-mediaScience">
@@ -25738,11 +25746,12 @@ function mediaScienceShellHtml(){
     return `<div class="strat-card"><h2>Media Science</h2><p class="strat-empty">Sign in to a live account to see analysis due, impressions, reach and frequency, and lead performance here. Tools are below.</p></div>` + msToolsHtml();
   }
   return `
+    <div id="vzMsHost"></div>
     <div class="strat-card"><div class="strat-head"><h2>Core elements</h2></div><div id="msCoreBody"><p class="strat-empty">Loading…</p></div></div>
     <div class="strat-card"><div class="strat-head"><h2>What this page is reading</h2></div><div id="msTrustBody"></div></div>
     ${msToolsHtml()}`;
 }
-function mediaSciencePageInit(){ if (msIsLive()) msLoad(); }
+function mediaSciencePageInit(){ if (msIsLive()) msLoad(); try { vzMountMs(); } catch (e){} }
 
 
 // ---- Customer Experiences (2026-09-30): creative schedule, creative and media together, tools ----
@@ -86053,7 +86062,8 @@ async function posSetDecision(contributionId, status){
 // ================= Visualize studio (2026-11-14) =================
 // Ask for a chart by voice or text, see an existing report if one fits, otherwise a recommended chart built from this account's own data,
 // refine it in plain words, save it to the account, share it (in-portal message plus email) and download it (PowerPoint, Excel, Google Sheets, CSV).
-const vz = { lib: null, loading: false, text: '', busy: false, res: null, saved: null, fbMsg: '', fbErr: false, panel: '', showTable: false, rec: false, sr: null, ask: null, toasted: {}, saveMsg: '', saving: false, openId: '', mode: 'gallery', cat: 'all', q: '', qrec: false };
+const vz = { lib: null, loading: false, text: '', busy: false, res: null, saved: null, fbMsg: '', fbErr: false, panel: '', showTable: false, rec: false, sr: null, ask: null, toasted: {}, saveMsg: '', saving: false, openId: '', mode: 'gallery', cat: 'all', q: '', qrec: false, pdash: null, dash: {}, ret: false, retUntil: 0, focus: '' };
+const VZ_DASH = [['dataScientist', 'Media Science'], ['strategy', 'Strategy'], ['brand', 'Customer Experiences'], ['marketer', 'Growth & Performance'], ['dailyBrief', 'Brain Dump']];
 const VZ_TYPES = [['column', 'Column'], ['bar', 'Bar'], ['line', 'Line'], ['area', 'Area'], ['stacked', 'Stacked'], ['pie', 'Pie'], ['table', 'Table']];
 const VZ_PAL = { brand: ['#1E2761', '#0891B2', '#C9932E', '#1F6B5C', '#D9480F', '#7C3AED', '#6E6E73', '#0A58CC'], cool: ['#0A58CC', '#0891B2', '#1F6B5C', '#1E2761', '#5B8DEF', '#14B8A6', '#6E6E73', '#7C3AED'], warm: ['#D9480F', '#C9932E', '#B91C1C', '#92400E', '#F59E0B', '#7C2D12', '#6E6E73', '#1E2761'], mono: ['#14213D', '#3F4B66', '#6B7694', '#98A1BA', '#C2C8D8', '#4B5563', '#9CA3AF', '#D1D5DB'] };
 function vzLive(){ return dataSourceLabel === 'backend' && !!state.companyId; }
@@ -86067,7 +86077,7 @@ const vzJson = body => ({ method: 'POST', headers: { 'Content-Type': 'applicatio
 async function vzLoadLib(){
   if (!vzLive()) return null;
   try { vz.lib = await vzApi('/visualize/library'); } catch (e){ vz.lib = vz.lib || { charts: [], recipes: [], members: [], existing: [], unread: 0, me: {} }; }
-  if (vz.mode === 'gallery') vzRenderGal(); vzBdNote();
+  vzRenderGal(); vzBdNote();
   return vz.lib;
 }
 function vzFmt(v, kind){
@@ -86216,6 +86226,7 @@ function renderVisualizeStep(){
   vzTipInit();
   const root = document.getElementById('vzRoot'); if (!root) return;
   if (window.__vzChart){ vz.openId = window.__vzChart; window.__vzChart = ''; vz.mode = 'new'; }
+  if (vz.mode === 'gallery' && !vz.openId){ setTimeout(() => { try { switchPrimaryTab('dataScientist'); } catch (e){ goToStep('dashboard'); } }, 0); return; }
   if (!vzLive()){ root.innerHTML = '<div class="strat-card"><h2>Visualize</h2><p class="strat-empty">Sign in to a live account to ask for charts from your own data.</p></div>'; return; }
   if (!vz.lib && !vz.loading){ vz.loading = true; vzLoadLib().then(() => { vz.loading = false; vzRender(); const id = vz.openId; if (id){ vz.openId = ''; vzOpenSaved(id); } }); }
   vzRender();
@@ -86273,7 +86284,7 @@ function vzResultHtml(){
   const cur = r.view.type, ex = c.style === 'executive';
   const types = (r.view.alternatives || VZ_TYPES.map(t => t[0])).map(t => `<button type="button" class="vz-chip${cur === t ? ' on' : ''}" onclick="vzSetType('${t}')" aria-pressed="${cur === t}">${(VZ_TYPES.find(x => x[0] === t) || [0, t])[1]}</button>`).join('');
   const saved = vz.saved;
-  const banner = saved ? `<div class="vz-banner"><span>Saved by <b>${escapeHtml(saved.ownerName || 'you')}</b>${saved.mine ? ' (you)' : ''} · ${saved.visibility === 'private' ? 'only you' : saved.visibility === 'account' ? 'everyone on this account' : 'shared with ' + (saved.sharedWith || []).map(vzMemberName).filter(Boolean).join(', ')}${saved.period ? ' · ' + escapeHtml(saved.period) : ''}${saved.note ? ' · “' + escapeHtml(saved.note) + '”' : ''}</span><span>${saved.refreshable ? `<button type="button" class="strat-chip" onclick="vzRefresh()">Refresh the numbers</button> ` : ''}${saved.canEdit ? `<button type="button" class="strat-chip" onclick="vzDelete()">Delete</button>` : ''}</span></div>` : '';
+  const banner = saved ? `<div class="vz-banner"><span>Saved by <b>${escapeHtml(saved.ownerName || 'you')}</b>${saved.mine ? ' (you)' : ''} · ${saved.visibility === 'private' ? 'only you' : saved.visibility === 'account' ? 'everyone on this account' : 'shared with ' + (saved.sharedWith || []).map(vzMemberName).filter(Boolean).join(', ')}${(saved.dashboards || []).length ? ' · on ' + escapeHtml(saved.dashboards.map(vzDashName).join(', ')) : ''}${saved.period ? ' · ' + escapeHtml(saved.period) : ''}${saved.note ? ' · “' + escapeHtml(saved.note) + '”' : ''}</span><span>${saved.refreshable ? `<button type="button" class="strat-chip" onclick="vzRefresh()">Refresh the numbers</button> ` : ''}${saved.canEdit ? `<button type="button" class="strat-chip" onclick="vzDelete()">Delete</button>` : ''}</span></div>` : '';
   const fu = vzFollowups(c, r);
   return `${vzMatchesHtml()}<div class="strat-card vz-card vz-exec">${banner}
     <div class="vz-kicker">${escapeHtml(('Media Science' + (r.period ? ' · ' + r.period : '')).toUpperCase())}</div>
@@ -86315,6 +86326,9 @@ function vzSavePanelHtml(){
       <label><input type="radio" name="vzVis" value="account" ${vis === 'account' ? 'checked' : ''} onchange="vzSetVis('account')"> <span><b>Everyone on this account</b><br><span class="strat-sub">Everyone is told it is ready.</span></span></label>
     </div>
     ${vis === 'selected' ? `<div class="vz-people" role="group" aria-label="People to share with">${others.length ? others.map(m => `<label><input type="checkbox" ${sel.includes(m.id) ? 'checked' : ''} onchange="vzTogglePerson('${jsStrEscape(m.id)}',this.checked)"> <span>${escapeHtml(m.name)}<br><small>${escapeHtml(m.role || '')}${m.hasEmail ? '' : ' · no email on file'}</small></span></label>`).join('') : '<span class="strat-sub">There is no one else on this account yet. Add teammates in Team &amp; Org Chart.</span>'}</div>` : ''}
+    <label class="vz-l">Show it on these dashboards</label>
+    <div class="vz-people" role="group" aria-label="Dashboards">${VZ_DASH.map(d => `<label><input type="checkbox" ${vzDashSel().includes(d[0]) ? 'checked' : ''} onchange="vzToggleDash('${d[0]}',this.checked)"> <span>${escapeHtml(d[1])}</span></label>`).join('')}</div>
+    <p class="strat-sub" style="margin:4px 0 0;">The chart is built here and appears as a card on each dashboard you tick. People still only see it if they can open it.</p>
     ${vis !== 'private' ? `<label class="vz-l" for="vzNote">Message to include (optional)</label><textarea id="vzNote" rows="2" maxlength="400" placeholder="For example: this is the view for Monday’s review" oninput="vz.pnote=this.value">${escapeHtml(vz.pnote != null ? vz.pnote : (s ? s.note : ''))}</textarea>` : ''}
     <div class="vz-actions"><button type="button" class="btn-primary" onclick="vzSave()" ${vz.saving ? 'disabled' : ''}>${vz.saving ? 'Saving…' : vis === 'private' ? 'Save' : 'Save and tell them it is ready'}</button><button type="button" class="btn-ghost" onclick="vzTogglePanel('')">Cancel</button></div>
     <p class="vz-say${vz.saveErr ? ' err' : ''}" role="status" aria-live="polite">${escapeHtml(vz.saveMsg)}</p></div>`;
@@ -86332,8 +86346,8 @@ function vzRenderRail(){ const el = document.getElementById('vzRail'); if (el) e
 // ---------- gallery of charts already on the site ----------
 function vzCatalog(){
   const L = vz.lib || { charts: [], existing: [] }; const items = [];
-  L.charts.forEach(c => items.push({ kind: 'saved', id: c.id, title: c.title, cat: c.mine ? 'Saved by you' : 'Shared with you', sub: c.mine ? (c.visibility === 'private' ? 'Only you' : c.visibility === 'account' ? 'Everyone on the account' : 'Shared with ' + c.sharedWith.length) : 'From ' + (c.ownerName || 'a teammate'), preview: c.preview, isNew: c.isNew, when: c.updatedAt }));
-  (L.existing || []).forEach((e, i) => items.push({ kind: 'report', idx: i, tab: e.tab, title: e.title, cat: e.tabLabel || 'Reports', sub: 'Built-in report' }));
+  L.charts.forEach(c => items.push({ kind: 'saved', id: c.id, title: c.title, cat: c.mine ? 'Saved by you' : 'Shared with you', sub: c.mine ? (c.visibility === 'private' ? 'Only you' : c.visibility === 'account' ? 'Everyone on the account' : 'Shared with ' + c.sharedWith.length) : 'From ' + (c.ownerName || 'a teammate'), preview: c.preview, isNew: c.isNew, when: c.updatedAt, dashboards: c.dashboards || [] }));
+  (L.existing || []).forEach((e, i) => items.push({ kind: 'report', idx: i, tab: e.tab, title: e.title, cat: e.tabLabel || 'Reports', sub: 'On the ' + (e.tabLabel || 'dashboard') + ' ' + (e.step ? 'page' : 'dashboard') }));
   return items;
 }
 function vzMini(p){
@@ -86347,8 +86361,8 @@ function vzGalleryHtml(){
   const toks = vz.q.toLowerCase().split(/\s+/).filter(Boolean);
   const list = all.filter(x => (vz.cat === 'all' || x.cat === vz.cat) && toks.every(t => (x.title + ' ' + x.cat).toLowerCase().includes(t)));
   const sr = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
-  const cards = list.map(x => `<button type="button" class="vz-gcard" onclick="${x.kind === 'saved' ? `vzOpenSaved('${jsStrEscape(x.id)}')` : `vzOpenReport(${x.idx})`}"><span class="vz-gcat">${escapeHtml(x.cat)}${x.isNew ? '<span class="vz-new">New</span>' : ''}</span><b>${escapeHtml(x.title)}</b>${x.kind === 'saved' ? vzMini(x.preview) : '<span class="vz-mini vz-mini-empty"></span>'}<span class="vz-gsub">${escapeHtml(x.sub)}</span></button>`).join('');
-  return `<div class="strat-card vz-gallery"><div class="vz-gtools"><div class="vz-gtitle"><h2>Charts already on the site</h2><span class="strat-sub" id="vzCount">${list.length} of ${all.length}</span></div>
+  const cards = list.map(x => `<button type="button" class="vz-gcard" onclick="${x.kind === 'saved' ? `vzGoSaved('${jsStrEscape(x.id)}')` : `vzOpenReport(${x.idx})`}"><span class="vz-gcat">${escapeHtml(x.cat)}${x.isNew ? '<span class="vz-new">New</span>' : ''}</span><b>${escapeHtml(x.title)}</b>${x.kind === 'saved' ? vzMini(x.preview) : '<span class="vz-mini vz-mini-empty"></span>'}<span class="vz-gsub">${escapeHtml(x.sub)}${x.kind === 'saved' && x.dashboards && x.dashboards.length ? ' · on ' + escapeHtml(x.dashboards.map(vzDashName).join(', ')) : ''}</span></button>`).join('');
+  return `<div class="strat-card vz-gallery"><div class="vz-gtools"><div class="vz-gtitle"><div><h2>Data Visualizer</h2><p class="strat-sub" style="margin:2px 0 0;">Every chart on the site, including Train the Brain budget charts. Pick one to see it on the dashboard it feeds.</p></div><div class="vz-gright"><span class="strat-sub" id="vzCount">${list.length} of ${all.length}</span><button type="button" class="btn-primary" id="vzNewBtn2" onclick="vzNew()">+ Create a New Chart</button></div></div>
     <div class="vz-gfilters"><label class="vz-sel"><span class="vz-sr">Category</span><select aria-label="Category" onchange="vzSetCat(this.value)">${cats.map(c => `<option value="${escapeHtml(c)}"${c === vz.cat ? ' selected' : ''}>${c === 'all' ? 'All categories' : escapeHtml(c)}</option>`).join('')}</select></label>
       <div class="vz-search"><input id="vzSearch" type="search" value="${escapeHtml(vz.q)}" placeholder="Search charts by name or topic" aria-label="Search charts" oninput="vzSetQ(this.value)">${sr ? `<button type="button" class="vz-mic vz-mic-s${vz.qrec ? ' on' : ''}" onclick="vzSearchDictate()" aria-label="Search by voice" aria-pressed="${vz.qrec}"><span class="vz-dot"></span>${vz.qrec ? 'Listening…' : 'Speak'}</button>` : ''}</div></div></div>
     ${list.length ? `<div class="vz-gal">${cards}</div>` : `<p class="vz-empty">${vz.lib ? 'Nothing matches that. Try another word, or create a new chart.' : 'Loading…'}</p>`}</div>`;
@@ -86365,16 +86379,61 @@ function vzSearchDictate(){
   try { sr.start(); } catch (e){ vz.qrec = false; } vzRenderGal();
 }
 function vzRenderGalList(){ const g = vzGalleryHtml(); const t = document.createElement('div'); t.innerHTML = g; const a = t.querySelector('.vz-gal,.vz-empty'), b = document.querySelector('#vzGalHost .vz-gal,#vzGalHost .vz-empty'); if (a && b) b.replaceWith(a); const cnt = t.querySelector('#vzCount'), c2 = document.getElementById('vzCount'); if (cnt && c2) c2.textContent = cnt.textContent; }
-function vzOpenReport(i){ const e = vz.lib && vz.lib.existing[i]; if (!e) return; try { switchPrimaryTab(e.tab); } catch (x){ goToStep('dashboard'); } }
-function vzNew(){ vz.mode = 'new'; vz.res = null; vz.saved = null; vz.text = ''; vz.fbMsg = ''; vz.panel = ''; vzRender(); const t = document.getElementById('vzText'); if (t) t.focus(); try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e){} }
-function vzBack(){ vz.mode = 'gallery'; vz.res = null; vz.saved = null; vz.busy = false; vzRender(); vzLoadLib(); }
+function vzDashName(k){ const d = VZ_DASH.find(x => x[0] === k); return d ? d[1] : k; }
+function vzArmReturn(){ vz.ret = true; vz.retUntil = Date.now() + 1500; }
+function vzOpenReport(i){
+  const e = vz.lib && vz.lib.existing[i]; if (!e) return; vzArmReturn();
+  try { if (e.step) goToStep(e.step, e.step === 'marketingBudgetUpload' ? 'configuration' : undefined); else switchPrimaryTab(e.tab); } catch (x){ try { switchPrimaryTab(e.tab); } catch (y){ goToStep('dashboard'); } }
+}
+// A saved chart lives on the dashboards it is assigned to; the gallery sends the person there. A chart with no dashboard opens in the studio.
+function vzGoSaved(id){
+  const c = vz.lib && vz.lib.charts.find(x => x.id === id); const d = c && c.dashboards || [];
+  if (!d.length) return vzOpenSaved(id);
+  vz.focus = id; vzArmReturn(); try { switchPrimaryTab(d[0]); } catch (e){ vzOpenSaved(id); }
+}
+function vzCrumbMs(){ vz.mode = 'gallery'; vz.res = null; vz.saved = null; vz.busy = false; vz.panel = ''; try { switchPrimaryTab('dataScientist'); } catch (e){ goToStep('dashboard'); } }
+function vzMountMs(){
+  const host = document.getElementById('vzMsHost'); if (!host) return;
+  host.innerHTML = '<div id="vzGalHost">' + vzGalleryHtml() + '</div>';
+  if (!vzLive()) return; vz.mode = 'gallery'; vzLoadLib();
+}
+// The return bar: shown on any page reached from the gallery, so the person can get back to Media Science.
+function vzAfterNav(step, again){
+  const old = document.getElementById('vzReturnBar'); if (again){ const hostA = document.querySelector('.step.active'); if (old || !hostA) return; } if (old) old.remove();
+  if (!vz.ret || Date.now() > vz.retUntil || step === 'visualize') { if (Date.now() > vz.retUntil) vz.ret = false; return; }
+  const host = document.querySelector('.step.active') || document.getElementById('step-' + step); if (!host || host.id === 'step-visualize') return;
+  const bar = document.createElement('div'); bar.id = 'vzReturnBar'; bar.className = 'vz-return';
+  bar.innerHTML = '<a onclick="vzCrumbMs()" style="cursor:pointer;">← Back to Media Science · Data Visualizer</a>';
+  host.insertBefore(bar, host.firstChild);
+}
+(function(){ const g = window.goToStep; if (typeof g === 'function' && !g._vz){ const w = function(){ const r = g.apply(this, arguments); const st = arguments[0]; try { vzAfterNav(st); if (vz.ret) setTimeout(() => { try { vzAfterNav(st, true); } catch (e){} }, 600); } catch (e){} return r; }; w._vz = 1; window.goToStep = w; } })();
+// ---------- charts assigned to a dashboard ----------
+async function vzRenderDashCharts(){
+  const host = document.getElementById('vzDashCharts'); if (!host) return;
+  const tab = (typeof activePrimaryTab !== 'undefined') ? activePrimaryTab : '';
+  if (!vzLive() || !VZ_DASH.some(d => d[0] === tab)){ host.innerHTML = ''; return; }
+  let r; try { r = await vzApi('/visualize/dashboards/' + encodeURIComponent(tab)); } catch (e){ host.innerHTML = ''; return; }
+  if (tab !== activePrimaryTab) return; vzTipInit();
+  const list = (r.charts || []); vz.dash[tab] = list;
+  if (!list.length){ host.innerHTML = ''; return; }
+  host.innerHTML = `<div class="vz-dhead"><h2>Charts on this dashboard</h2><span class="strat-sub">Built in the Data Visualizer on Media Science</span></div><div class="vz-dgrid">${list.map(o => {
+    const c = vzShape(o.data, Object.assign({}, o.view, { title: o.view.title || o.title })); const ex = c.style === 'executive';
+    return `<div class="strat-card vz-dcard" id="vzdc-${escapeHtml(o.id)}"><div class="vz-kicker">${escapeHtml(('Media Science' + (o.period ? ' · ' + o.period : '')).toUpperCase())}</div><h3 class="vz-dtitle">${escapeHtml(o.title)}</h3>${c.type === 'table' ? vzTableHtml(c) : `<div class="vz-plot">${vzChartSvg(c)}</div>${vzLegendHtml(c)}`}<div class="vz-dfoot"><span class="strat-sub">${escapeHtml(o.mine ? 'Saved by you' : 'From ' + (o.ownerName || 'a teammate'))}</span><button type="button" class="strat-chip" onclick="vzOpen('', '${jsStrEscape(o.id)}')">Open in Data Visualizer</button></div></div>`;
+  }).join('')}</div>`;
+  if (vz.focus){ vz.flashId = vz.focus; vz.flashUntil = Date.now() + 4000; vz.focus = ''; vz.scrollFlash = true; }
+  if (vz.flashId && Date.now() < vz.flashUntil){ const el = document.getElementById('vzdc-' + vz.flashId); if (el){ el.classList.add('vz-flash'); if (vz.scrollFlash){ vz.scrollFlash = false; try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e){} } } }
+}
+(function(){ const g = window.renderWorkstreams; if (typeof g === 'function' && !g._vz){ const w = function(){ const r = g.apply(this, arguments); try { vzRenderDashCharts(); } catch (e){} return r; }; w._vz = 1; window.renderWorkstreams = w; } })();
+function vzNew(){ vz.mode = 'new'; vz.res = null; vz.saved = null; vz.text = ''; vz.fbMsg = ''; vz.panel = ''; vz.pdash = null; goToStep('visualize'); vzRender(); const t = document.getElementById('vzText'); if (t) t.focus(); try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e){} }
+function vzBack(){ vzCrumbMs(); vzLoadLib(); }
 function vzRender(){
+  const leaf = document.getElementById('vzCrumbLeaf'); if (leaf) leaf.textContent = vz.saved ? vz.saved.title : 'New chart';
   const root = document.getElementById('vzRoot'); if (!root) return;
   const btn = document.getElementById('vzNewBtn'); if (btn) btn.style.display = vz.mode === 'new' ? 'none' : '';
   if (vz.mode === 'gallery'){ root.innerHTML = `<div id="vzGalHost">${vzGalleryHtml()}</div>`; return; }
   const ta = document.getElementById('vzText'); if (ta && !vz.rec) vz.text = ta.value;
   const keep = document.activeElement && document.activeElement.id;
-  root.innerHTML = `<p style="margin:0 0 12px;"><a class="flink" onclick="vzBack()" style="cursor:pointer;">← All charts</a></p><div class="vz-main">${vzAskCardHtml()}${vz.busy && !vz.res ? '<div class="strat-card vz-card"><p class="vz-empty" style="margin:0;">Looking at this account’s data…</p></div>' : ''}${vzResultHtml()}</div>`;
+  root.innerHTML = `<p style="margin:0 0 12px;"><a class="flink" onclick="vzBack()" style="cursor:pointer;">← Back to Media Science · Data Visualizer</a></p><div class="vz-main">${vzAskCardHtml()}${vz.busy && !vz.res ? '<div class="strat-card vz-card"><p class="vz-empty" style="margin:0;">Looking at this account’s data…</p></div>' : ''}${vzResultHtml()}</div>`;
   if (keep){ const el = document.getElementById(keep); if (el && el.focus && keep !== 'vzFb') try { el.focus(); if (el.setSelectionRange && el.value) el.setSelectionRange(el.value.length, el.value.length); } catch (e){} }
 }
 // ---------- actions ----------
@@ -86400,7 +86459,7 @@ async function vzOpenSaved(id){
   try {
     const r = await vzApi('/visualize/charts/' + encodeURIComponent(id)); const c = r.chart;
     vz.mode = 'new'; vz.saved = c; vz.res = { status: 'ok', request: c.request, title: c.title, sentence: '', period: c.period, data: c.data, view: Object.assign({ alternatives: VZ_TYPES.map(t => t[0]) }, c.view, { title: c.view.title || c.title }), spec: c.spec, notes: [], matches: [] };
-    vz.text = c.request || ''; vz.panel = ''; vz.fbMsg = ''; vz.pname = null; vz.pnote = null; vz.pvis = null; vz.psel = null;
+    vz.text = c.request || ''; vz.panel = ''; vz.fbMsg = ''; vz.pname = null; vz.pnote = null; vz.pvis = null; vz.psel = null; vz.pdash = null;
     vzLoadLib(); vzRender(); try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e){}
   } catch (e){ vz.fbMsg = e.message; vz.fbErr = true; vzRender(); }
 }
@@ -86425,6 +86484,8 @@ async function vzRefine(text){
 }
 function vzTogglePanel(p){ vz.panel = vz.panel === p ? '' : p; vz.saveMsg = ''; vz.saveErr = false; const t = document.getElementById('vzTitle'); if (t && vz.res) vz.res.view.title = t.value; vzRender(); if (vz.panel){ const el = document.getElementById('vzSavePanel'); if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } }
 function vzSetVis(v){ vz.pvis = v; const n = document.getElementById('vzName'); if (n) vz.pname = n.value; const o = document.getElementById('vzNote'); if (o) vz.pnote = o.value; vzRender(); }
+function vzDashSel(){ return vz.pdash || (vz.saved ? (vz.saved.dashboards || []) : ['dataScientist']); }
+function vzToggleDash(k, on){ const s = vzDashSel().slice(); const i = s.indexOf(k); if (on && i < 0) s.push(k); if (!on && i >= 0) s.splice(i, 1); vz.pdash = s; }
 function vzTogglePerson(id, on){ const s = vz.psel || (vz.saved ? vz.saved.sharedWith.slice() : []); const i = s.indexOf(id); if (on && i < 0) s.push(id); if (!on && i >= 0) s.splice(i, 1); vz.psel = s; }
 async function vzSave(){
   if (!vz.res || !vz.res.data) return;
@@ -86437,13 +86498,14 @@ async function vzSave(){
   try {
     const view = Object.assign({}, vz.res.view, { title: vz.res.view.title || name });
     let r;
-    if (vz.saved && vz.saved.canEdit) r = await vzApi('/visualize/charts/' + encodeURIComponent(vz.saved.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: name, view, visibility: vis, shareWith: sel, note }) });
-    else r = await vzApi('/visualize/charts', vzJson({ title: name, request: vz.res.request || vz.text, data: vz.res.data, view, spec: vz.res.spec, period: vz.res.period, visibility: vis, shareWith: sel, note }));
+    if (vz.saved && vz.saved.canEdit) r = await vzApi('/visualize/charts/' + encodeURIComponent(vz.saved.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: name, view, visibility: vis, shareWith: sel, note, dashboards: vzDashSel() }) });
+    else r = await vzApi('/visualize/charts', vzJson({ title: name, request: vz.res.request || vz.text, data: vz.res.data, view, spec: vz.res.spec, period: vz.res.period, visibility: vis, shareWith: sel, note, dashboards: vzDashSel() }));
     vz.saved = r.chart; vz.res.title = r.chart.title; vz.res.view = Object.assign({ alternatives: VZ_TYPES.map(t => t[0]) }, r.chart.view);
     const sent = r.notified || []; const em = sent.filter(x => x.emailed).length; const noEm = sent.filter(x => !x.hasEmail).map(x => x.name);
     vz.saveErr = false; vz.panel = '';
     vz.fbMsg = sent.length ? `Saved. ${sent.map(x => x.name).join(', ')} ${sent.length === 1 ? 'has' : 'have'} a message in the portal${em ? `, and ${em === sent.length ? 'an email is on its way' : em + ' of ' + sent.length + ' also got an email'}` : ''}.${noEm.length ? ' ' + noEm.join(', ') + ' ' + (noEm.length === 1 ? 'has' : 'have') + ' no email on file, so only the portal message went.' : ''}` : 'Saved to the account.';
-    vz.fbErr = false; vz.pvis = null; vz.psel = null; vz.pnote = null; vz.pname = null; vzLoadLib();
+    vz.fbErr = false; vz.pvis = null; vz.psel = null; vz.pnote = null; vz.pname = null; vz.pdash = null; vzLoadLib();
+    const dn = (r.chart.dashboards || []).map(vzDashName); if (dn.length) vz.fbMsg += ' It now shows on: ' + dn.join(', ') + '.';
   } catch (e){ vz.saveMsg = e.message; vz.saveErr = true; }
   vz.saving = false; vzRender();
 }
@@ -86507,7 +86569,6 @@ function vzPromoCardHtml(){
   return `<div class="strat-card"><div class="vz-promo"><div><h2 style="margin:0 0 4px;">Visualize</h2><p class="strat-sub" style="margin:0;">Ask for any chart in your own words. Save it to the account, share it, or download it for a deck.</p></div><form onsubmit="event.preventDefault();vzOpen(document.getElementById('vzPromoText').value);"><input id="vzPromoText" type="text" placeholder="For example: revenue by product group last year" aria-label="Ask for a chart"><button type="submit" class="btn-primary">Show me</button></form></div></div>`;
 }
 if (typeof window !== 'undefined'){ setTimeout(() => { try { vzCheckInbox(); setInterval(vzCheckInbox, 90000); } catch (e){} }, 6000); }
-
 </script>
 </body>
 </html>
