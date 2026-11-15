@@ -86362,7 +86362,7 @@ function vzGalleryHtml(){
   const list = all.filter(x => (vz.cat === 'all' || x.cat === vz.cat) && toks.every(t => (x.title + ' ' + x.cat).toLowerCase().includes(t)));
   const sr = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
   const cards = list.map(x => `<button type="button" class="vz-gcard" onclick="${x.kind === 'saved' ? `vzGoSaved('${jsStrEscape(x.id)}')` : `vzOpenReport(${x.idx})`}"><span class="vz-gcat">${escapeHtml(x.cat)}${x.isNew ? '<span class="vz-new">New</span>' : ''}</span><b>${escapeHtml(x.title)}</b>${x.kind === 'saved' ? vzMini(x.preview) : '<span class="vz-mini vz-mini-empty"></span>'}<span class="vz-gsub">${escapeHtml(x.sub)}${x.kind === 'saved' && x.dashboards && x.dashboards.length ? ' · on ' + escapeHtml(x.dashboards.map(vzDashName).join(', ')) : ''}</span></button>`).join('');
-  return `<div class="strat-card vz-gallery"><div class="vz-gtools"><div class="vz-gtitle"><div><h2>Data Visualizer</h2><p class="strat-sub" style="margin:2px 0 0;">Every chart on the site, including Train the Brain budget charts. Pick one to see it on the dashboard it feeds.</p></div><div class="vz-gright"><span class="strat-sub" id="vzCount">${list.length} of ${all.length}</span><button type="button" class="btn-primary" id="vzNewBtn2" onclick="vzNew()">+ Create a New Chart</button></div></div>
+  return `<div class="strat-card vz-gallery"><div class="vz-gtools"><div class="vz-gtitle"><div><h2>Data Visualizer</h2><p class="strat-sub" style="margin:2px 0 0;">Every chart on the site, including Train the Brain budget charts. Pick one to open it here. Charts you assign to a dashboard show up there as cards.</p></div><div class="vz-gright"><span class="strat-sub" id="vzCount">${list.length} of ${all.length}</span><button type="button" class="btn-primary" id="vzNewBtn2" onclick="vzNew()">+ Create a New Chart</button></div></div>
     <div class="vz-gfilters"><label class="vz-sel"><span class="vz-sr">Category</span><select aria-label="Category" onchange="vzSetCat(this.value)">${cats.map(c => `<option value="${escapeHtml(c)}"${c === vz.cat ? ' selected' : ''}>${c === 'all' ? 'All categories' : escapeHtml(c)}</option>`).join('')}</select></label>
       <div class="vz-search"><input id="vzSearch" type="search" value="${escapeHtml(vz.q)}" placeholder="Search charts by name or topic" aria-label="Search charts" oninput="vzSetQ(this.value)">${sr ? `<button type="button" class="vz-mic vz-mic-s${vz.qrec ? ' on' : ''}" onclick="vzSearchDictate()" aria-label="Search by voice" aria-pressed="${vz.qrec}"><span class="vz-dot"></span>${vz.qrec ? 'Listening…' : 'Speak'}</button>` : ''}</div></div></div>
     ${list.length ? `<div class="vz-gal">${cards}</div>` : `<p class="vz-empty">${vz.lib ? 'Nothing matches that. Try another word, or create a new chart.' : 'Loading…'}</p>`}</div>`;
@@ -86381,16 +86381,9 @@ function vzSearchDictate(){
 function vzRenderGalList(){ const g = vzGalleryHtml(); const t = document.createElement('div'); t.innerHTML = g; const a = t.querySelector('.vz-gal,.vz-empty'), b = document.querySelector('#vzGalHost .vz-gal,#vzGalHost .vz-empty'); if (a && b) b.replaceWith(a); const cnt = t.querySelector('#vzCount'), c2 = document.getElementById('vzCount'); if (cnt && c2) c2.textContent = cnt.textContent; }
 function vzDashName(k){ const d = VZ_DASH.find(x => x[0] === k); return d ? d[1] : k; }
 function vzArmReturn(){ vz.ret = true; vz.retUntil = Date.now() + 1500; }
-function vzOpenReport(i){
-  const e = vz.lib && vz.lib.existing[i]; if (!e) return; vzArmReturn();
-  try { if (e.step) goToStep(e.step, e.step === 'marketingBudgetUpload' ? 'configuration' : undefined); else switchPrimaryTab(e.tab); } catch (x){ try { switchPrimaryTab(e.tab); } catch (y){ goToStep('dashboard'); } }
-}
-// A saved chart lives on the dashboards it is assigned to; the gallery sends the person there. A chart with no dashboard opens in the studio.
-function vzGoSaved(id){
-  const c = vz.lib && vz.lib.charts.find(x => x.id === id); const d = c && c.dashboards || [];
-  if (!d.length) return vzOpenSaved(id);
-  vz.focus = id; vzArmReturn(); try { switchPrimaryTab(d[0]); } catch (e){ vzOpenSaved(id); }
-}
+// Everything opens inside Media Science (the studio sub-page, with breadcrumbs back). Dashboards pull assigned charts as cards on their own.
+function vzOpenReport(i){ const e = vz.lib && vz.lib.existing[i]; if (!e) return; vzOpen(e.title); }
+function vzGoSaved(id){ vzOpenSaved(id); }
 function vzCrumbMs(){ vz.mode = 'gallery'; vz.res = null; vz.saved = null; vz.busy = false; vz.panel = ''; try { switchPrimaryTab('dataScientist'); } catch (e){ goToStep('dashboard'); } }
 function vzMountMs(){
   const host = document.getElementById('vzMsHost'); if (!host) return;
@@ -86437,11 +86430,11 @@ function vzRender(){
   if (keep){ const el = document.getElementById(keep); if (el && el.focus && keep !== 'vzFb') try { el.focus(); if (el.setSelectionRange && el.value) el.setSelectionRange(el.value.length, el.value.length); } catch (e){} }
 }
 // ---------- actions ----------
-function vzOpen(text, chartId){ vz.openId = chartId || ''; vz.mode = (text || chartId) ? 'new' : 'gallery'; if (text){ vz.text = text; vz.res = null; vz.saved = null; } goToStep('visualize'); if (text) vzAsk(); else if (chartId && vz.lib){ vz.openId = ''; vzOpenSaved(chartId); } }
+function vzOpen(text, chartId){ vz.openId = chartId || ''; vz.mode = (text || chartId) ? 'new' : 'gallery'; if (text){ vz.text = text; vz.res = null; vz.saved = null; } goToStep('visualize'); if (text) vzAsk(undefined, text); else if (chartId && vz.lib){ vz.openId = ''; vzOpenSaved(chartId); } }
 function vzTryRecipe(i){ const r = vz.lib && vz.lib.recipes[i]; if (!r) return; vz.text = r.title; vzAsk(r.spec); }
 function vzTrySuggestion(i){ const s = vz.res && vz.res.suggestions && vz.res.suggestions[i]; if (!s) return; vz.text = s.title; vzAsk(s.spec); }
-async function vzAsk(spec){
-  const ta = document.getElementById('vzText'); if (ta) vz.text = ta.value; const text = (vz.text || '').trim();
+async function vzAsk(spec, forced){
+  const ta = document.getElementById('vzText'); if (forced) vz.text = forced; else if (ta) vz.text = ta.value; const text = (vz.text || '').trim();
   if (!text && !spec){ const n = document.getElementById('vzAskNote'); if (n) n.textContent = 'Type or say what you want to see first.'; return; }
   if (vz.rec) vzDictate();
   vz.mode = 'new'; vz.busy = true; vz.res = null; vz.saved = null; vz.fbMsg = ''; vz.panel = ''; vz.pname = null; vz.pnote = null; vz.pvis = null; vz.psel = null; vzRender();
@@ -86460,7 +86453,7 @@ async function vzOpenSaved(id){
     const r = await vzApi('/visualize/charts/' + encodeURIComponent(id)); const c = r.chart;
     vz.mode = 'new'; vz.saved = c; vz.res = { status: 'ok', request: c.request, title: c.title, sentence: '', period: c.period, data: c.data, view: Object.assign({ alternatives: VZ_TYPES.map(t => t[0]) }, c.view, { title: c.view.title || c.title }), spec: c.spec, notes: [], matches: [] };
     vz.text = c.request || ''; vz.panel = ''; vz.fbMsg = ''; vz.pname = null; vz.pnote = null; vz.pvis = null; vz.psel = null; vz.pdash = null;
-    vzLoadLib(); vzRender(); try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e){}
+    vzLoadLib(); try { if (!document.getElementById('step-visualize').classList.contains('active')) goToStep('visualize'); } catch (e){} vzRender(); try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e){}
   } catch (e){ vz.fbMsg = e.message; vz.fbErr = true; vzRender(); }
 }
 async function vzRefresh(){
