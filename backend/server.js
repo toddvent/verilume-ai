@@ -1436,6 +1436,7 @@ ensureColumn('team_members', 'phoneext', 'TEXT');
 // selected is the existing free/unassigned state, unchanged.
 ensureColumn('accounts', 'paidTier', 'TEXT');
 ensureColumn('accounts', 'paidTierActivatedAt', 'TEXT');
+ensureColumn('sessions', 'trialaccountid', 'TEXT'); // set on a demo session: the trial account that is visiting and paying credits
 ensureColumn('accounts', 'trialPath', 'TEXT'); // travel | auto | retail | own — chosen on trial-start.html
 // 2026-10-15 — archive before delete. An archived account is hidden in the team
 // console, its client sessions stop working, and the Monday jobs skip it.
@@ -32304,20 +32305,37 @@ async function handleRequestInner(req, res) {
         } catch (e){}
       });
     }
+    // Demo visit by a free-trial prospect: look, and spend credits on drafts, but change nothing else.
+    if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS' && parts[0] === 'api'){
+      try {
+        const _dt = (String(req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/) || [])[1];
+        const _ds = _dt ? db.prepare('SELECT trialaccountid FROM sessions WHERE token = ?').get(_dt.trim()) : null;
+        if (_ds && _ds.trialaccountid){
+          const _p = '/' + parts.join('/');
+          const _ok = DRAFT_ROUTES.some(rx => rx.test(_p)) || READONLY_WRITE_OK.some(rx => rx.test(_p));
+          if (!_ok) return sendJson(res, 403, { error: 'The demo is view-only. Drafts use your trial credits; everything else is read-only.', code: 'demo_view_only' });
+        }
+      } catch (e){ console.warn('[demo] view-only guard failed:', e.message); }
+    }
     // Draft allowance: refuse a draft-producing request once the account's allowance is used; record each successful one.
     if (req.method === 'POST' && parts[0] === 'api' && DRAFT_ROUTES.some(rx => rx.test('/' + parts.join('/')))){
       try {
         const _tk = (String(req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/) || [])[1];
-        const _ss = _tk ? db.prepare('SELECT accountId, memberId, platformuserid FROM sessions WHERE token = ?').get(_tk.trim()) : null;
+        const _ss = _tk ? db.prepare('SELECT accountId, memberId, platformuserid, trialaccountid FROM sessions WHERE token = ?').get(_tk.trim()) : null;
         if (_ss && _ss.accountId && !_ss.platformuserid){
-          const _al = draftAllowanceFor(_ss.accountId);
+          const _payer = _ss.trialaccountid || _ss.accountId; // a demo visit spends the visiting trial's own credits
+          if (_ss.trialaccountid){
+            const _tl = levelStatusFor(db.prepare('SELECT paidTier, paidTierActivatedAt FROM accounts WHERE accountId = ?').get(_payer));
+            if (_tl && _tl.expired) return sendJson(res, 403, { error: 'Your free trial has ended. Activate Starter, Growth or talk to us about Enterprise to keep going.', code: 'spark_expired' });
+          }
+          const _al = draftAllowanceFor(_payer);
           if (_al && _al.remaining <= 0){
             const _msg = _al.tier === 'spark' ? 'You have used all the drafts in your Spark trial. Upgrade to Starter for 50 credits a month.' : 'You have used all ' + _al.limit + ' drafts for this month. Contact Sales to add more.';
             return sendJson(res, 403, { error: _msg, code: 'draft_allowance', limit: _al.limit, used: _al.used });
           }
           const _path = '/' + parts.join('/');
           res.on('finish', () => {
-            try { if (res.statusCode < 400) db.prepare('INSERT INTO draft_usage (id, accountId, memberid, route, createdAt) VALUES (?,?,?,?,?)').run(generateId('DRF'), _ss.accountId, _ss.memberId || null, _path.replace(/\/[^/]{25,}/g, '/:id').slice(0, 200), new Date().toISOString()); } catch (e){}
+            try { if (res.statusCode < 400) db.prepare('INSERT INTO draft_usage (id, accountId, memberid, route, createdAt) VALUES (?,?,?,?,?)').run(generateId('DRF'), _payer, _ss.memberId || null, _path.replace(/\/[^/]{25,}/g, '/:id').slice(0, 200), new Date().toISOString()); } catch (e){}
           });
         }
       } catch (e){ console.warn('[drafts] allowance check failed:', e.message); }
@@ -34361,6 +34379,21 @@ async function handleRequestInner(req, res) {
         if (audience === 'agency') agreements = activeAgreementsFor(accountId, sess.memberId).map(agreementShape);
       }
       return sendJson(res, 200, { audience, items, accessExpiresAt, agreements, accessLevel: (sess0 && sess0.platformuserid && (sess0.simmemberid || sess0.simrole)) ? 'view' : accessLevelFor(sess) });
+    }
+
+    // POST /api/accounts/:id/demo-session — a trial account opens the demo it chose. The session belongs to the shared demo account but is tagged with the trial account, which pays any credits.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'demo-session'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const a = db.prepare('SELECT paidTier, paidTierActivatedAt, trialPath FROM accounts WHERE accountId = ?').get(accountId);
+      const demoId = a && DEMO_ACCOUNTS[a.trialPath];
+      if (!demoId) return sendJson(res, 400, { error: 'This trial is not using a demo account.' });
+      const st = levelStatusFor(a);
+      if (st && st.expired) return sendJson(res, 403, { error: 'Your free trial has ended.', code: 'spark_expired' });
+      const ds = createSession(demoId, null);
+      const exp = new Date(Date.now() + 8 * 3600000).toISOString();
+      db.prepare('UPDATE sessions SET trialaccountid = ?, expiresAt = ? WHERE token = ?').run(accountId, exp, ds.token);
+      return sendJson(res, 200, { token: ds.token, expiresAt: exp, demoAccountId: demoId, allowance: draftAllowanceFor(accountId) });
     }
 
     // POST /api/accounts/:id/trial-start — { path: 'travel'|'auto'|'retail'|'own' }. Records the data path chosen after registration and starts the free trial (7 days, 25 credits) if the account has no level yet.
