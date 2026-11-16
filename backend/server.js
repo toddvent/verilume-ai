@@ -1390,6 +1390,7 @@ ensureColumn('team_members', 'phoneext', 'TEXT');
 // selected is the existing free/unassigned state, unchanged.
 ensureColumn('accounts', 'paidTier', 'TEXT');
 ensureColumn('accounts', 'paidTierActivatedAt', 'TEXT');
+ensureColumn('accounts', 'trialPath', 'TEXT'); // travel | auto | retail | own — chosen on trial-start.html
 // 2026-10-15 — archive before delete. An archived account is hidden in the team
 // console, its client sessions stop working, and the Monday jobs skip it.
 ensureColumn('accounts', 'archivedAt', 'TEXT');
@@ -34301,6 +34302,22 @@ async function handleRequestInner(req, res) {
         if (audience === 'agency') agreements = activeAgreementsFor(accountId, sess.memberId).map(agreementShape);
       }
       return sendJson(res, 200, { audience, items, accessExpiresAt, agreements, accessLevel: (sess0 && sess0.platformuserid && (sess0.simmemberid || sess0.simrole)) ? 'view' : accessLevelFor(sess) });
+    }
+
+    // POST /api/accounts/:id/trial-start — { path: 'travel'|'auto'|'retail'|'own' }. Records the data path chosen after registration and starts the free trial (7 days, 25 credits) if the account has no level yet.
+    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'trial-start'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      const path = String(body.path || '');
+      if (!['travel','auto','retail','own'].includes(path)) return sendJson(res, 400, { error: 'path must be one of: travel, auto, retail, own' });
+      const a = db.prepare('SELECT paidTier, trialPath FROM accounts WHERE accountId = ?').get(accountId);
+      if (!a) return sendJson(res, 404, { error: 'account not found' });
+      if (a.trialPath) return sendJson(res, 200, { ok: true, path: a.trialPath, alreadyChosen: true });
+      const now = nowIso();
+      if (!a.paidTier) db.prepare('UPDATE accounts SET trialPath = ?, paidTier = ?, paidTierActivatedAt = ? WHERE accountId = ?').run(path, 'spark', now, accountId);
+      else db.prepare('UPDATE accounts SET trialPath = ? WHERE accountId = ?').run(path, accountId);
+      return sendJson(res, 200, { ok: true, path });
     }
 
     // POST /api/accounts/:id/upgrade-request — the Spark upgrade prompts post here; emails Sales (SALES_NOTIFY_EMAIL). Rate-limited to one per account per hour.
