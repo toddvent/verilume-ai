@@ -30,16 +30,29 @@ h1{font-size:clamp(28px,4vw,40px);line-height:1.15;margin:0 0 12px;text-wrap:bal
 .note{margin-top:28px;color:var(--muted);font-size:14px}
 #err{color:#B3261E;margin-top:16px;font-weight:500}
 @media(prefers-color-scheme:dark){:root{--bg:#0E1626;--card:#16233B;--line:#26365A;--ink:#EEF1F7;--muted:#AEB8CC}header{background:#14213D}.ico{background:#0E1626}.go{background:var(--gold);color:#14213D}.go:hover{background:#d8a949}}
+.plans{margin-top:36px;display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr;gap:16px;align-items:stretch;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:22px}
+.plans h3{margin:4px 0 0;font-size:18px}
+.plan{border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:6px}
+.plan span{color:var(--muted);font-size:13px;flex:1}
+.plan a{font-weight:600;font-size:14px;color:var(--blue);text-decoration:none}
+.plan.dark{background:#14213D;border-color:#14213D}.plan.dark b{color:#fff}.plan.dark span{color:#C9D1E3}.plan.dark a{color:#E0B866}
+@media(max-width:900px){.plans{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
-<header><span>Verilume</span></header>
+<header style="display:flex;justify-content:space-between"><span>Verilume</span><span style="color:#E0B866;font-weight:500;font-size:14px">Free trial &middot; 7 days &middot; 25 credits</span></header>
 <main>
   <p class="eyebrow">You're registered</p>
   <h1>Pick the challenge you want to work on first</h1>
-  <p class="lede">Your free trial runs 7 days with 25 credits. Choose a ready-made business to explore with realistic data, or start with your own.</p>
+  <p class="lede">Your free trial runs 7 days with 25 credits. Explore a ready-made demo business, or start teaching the platform your own.</p>
   <div class="grid" id="grid"></div>
   <p id="err" role="alert"></p>
+  <section class="plans" aria-label="Activate a package">
+    <div><p class="eyebrow" style="margin:0">Ready to go beyond the trial?</p><h3>Activate a package any time</h3></div>
+    <div class="plan"><b>Starter</b><span>$1,500 / month &middot; 50 credits</span><a href="packages.html#starter">Activate Starter</a></div>
+    <div class="plan"><b>Growth</b><span>$4,000 / month &middot; 150 credits</span><a href="packages.html#growth">Activate Growth</a></div>
+    <div class="plan dark"><b>Enterprise</b><span>Custom credits and partner integrations</span><a href="packages.html#enterprise">Talk to us</a></div>
+  </section>
   <p class="note">Nothing you do in the trial touches a real ad account.</p>
 </main>
 <script>
@@ -54,8 +67,8 @@ const PATHS = [
   { key:'retail', name:'Retail', tag:'Product-level sales',
     brief:'<b>The challenge:</b> thousands of products, daily sales and promotions that overlap. Learn which spend actually lifts sales, and which only follows demand that was coming anyway.',
     icon:'<path d="M4 8h16l-1.2 11a2 2 0 01-2 1.8H7.2a2 2 0 01-2-1.8z"/><path d="M8.5 8V6.5a3.5 3.5 0 017 0V8"/>' },
-  { key:'own', name:'Your own data', tag:'Start with yours',
-    brief:'<b>The challenge:</b> you already know your business. Bring your spend and results, and see where your budget works hardest, with your numbers instead of ours.',
+  { key:'own', name:'Train the Brain', tag:'Start with your data',
+    brief:'<b>The challenge:</b> you know your business, the platform doesn't yet. Train the Brain from scratch with your own spend and results, and it builds your recommendations and visuals.',
     icon:'<path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4"/>' }
 ];
 const qs = new URLSearchParams(location.search);
@@ -73,7 +86,7 @@ grid.addEventListener('click', async e => {
       method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer ' + token()}, body: JSON.stringify({ path: b.dataset.p }) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || 'Could not start the trial');
-    location.href = 'portal.html?accountId=' + encodeURIComponent(accountId) + '&trial=' + encodeURIComponent(j.path || b.dataset.p);
+    location.href = 'trial-punchlist.html?accountId=' + encodeURIComponent(accountId) + '&trial=' + encodeURIComponent(j.path || b.dataset.p);
   } catch (ex){
     err.textContent = ex.message + '. Please try again.';
     grid.querySelectorAll('button').forEach(x => x.disabled = false);
