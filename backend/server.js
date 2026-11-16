@@ -1494,7 +1494,7 @@ function cleanCategories(v){
   const arr = Array.isArray(v) ? v : [];
   return JSON.stringify(arr.filter(x => MEMBER_CATEGORIES.includes(x)));
 }
-const SPARK_DEFAULTS = { trialDays: 7, starterMonthlyDrafts: 25 };
+const SPARK_DEFAULTS = { trialDays: 7, starterMonthlyDrafts: 50, trialCredits: 25 };
 let _sparkCache = null, _sparkCacheAt = 0;
 function getSparkSettings(){
   if (_sparkCache && Date.now() - _sparkCacheAt < 30000) return _sparkCache;
@@ -1503,7 +1503,7 @@ function getSparkSettings(){
     const r = db.prepare('SELECT svalue FROM platform_settings WHERE skey = ?').get('spark');
     if (r && r.svalue){ const j = JSON.parse(r.svalue); if (Number(j.trialDays) >= 1) out.trialDays = Math.floor(Number(j.trialDays)); if (Number(j.starterMonthlyDrafts) >= 1) out.starterMonthlyDrafts = Math.floor(Number(j.starterMonthlyDrafts)); }
   } catch (e){}
-  out.sparkDrafts = Math.max(1, Math.ceil(out.starterMonthlyDrafts * out.trialDays / 30));
+  out.sparkDrafts = out.trialCredits || 25;
   _sparkCache = out; _sparkCacheAt = Date.now();
   return out;
 }
@@ -1606,8 +1606,7 @@ function draftAllowanceFor(accountId){
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
   let limit = null, since = monthStart;
   if (a.paidTier === 'spark'){ limit = cfg.sparkDrafts; since = a.paidTierActivatedAt || monthStart; }
-  else if (a.paidTier === 'starter') limit = cfg.starterMonthlyDrafts;
-  else { const t = PAID_TIERS.find(x => x.key === a.paidTier); limit = t ? t.monthlyDrafts : null; }
+  else { const t = PAID_TIERS.find(x => x.key === normTier(a.paidTier)); limit = t ? t.monthlyDrafts : null; }
   if (limit == null) return null;
   let used = 0;
   try { used = Number(db.prepare('SELECT COUNT(*) AS n FROM draft_usage WHERE accountId = ? AND createdAt >= ?').get(accountId, since).n) || 0; } catch (e){}
@@ -1621,12 +1620,14 @@ function draftAllowanceFor(accountId){
 // Only `key` is stored (accounts.paidTier). Prices other than the Starter
 // Kit are still placeholder. Activation happens in the Ops Console.
 const PAID_TIERS = [
-  { key: 'spark',    rank: 1, name: 'Spark',       tagline: 'See where you stand',  maxStorefronts: 1,    monthlyDrafts: 6,    trialDays: 7, priceMonthly: 0,    selfServe: true,  description: 'Free for 7 days. Same functionality as the Starter Kit.' },
-  { key: 'starter',  rank: 2, name: 'Starter Kit', tagline: 'One storefront',       maxStorefronts: 1,    monthlyDrafts: 25,   trialDays: null, priceMonthly: 99, selfServe: false,  description: 'The paid continuation of Spark for a single storefront.' },
-  { key: 'glow',     rank: 3, name: 'Glow',        tagline: 'Understand',           maxStorefronts: 10,   monthlyDrafts: 100,  trialDays: null, priceMonthly: null, selfServe: false, description: 'Up to 10 storefronts. Pricing to be confirmed.' },
-  { key: 'radiance', rank: 4, name: 'Radiance',    tagline: 'Act',                  maxStorefronts: 20,   monthlyDrafts: 400,  trialDays: null, priceMonthly: null, selfServe: false, description: '11 to 20 storefronts. Pricing to be confirmed.' },
-  { key: 'beacon',   rank: 5, name: 'Beacon',      tagline: 'Orchestrate',          maxStorefronts: null, monthlyDrafts: null, trialDays: null, priceMonthly: null, selfServe: false, description: 'Enterprise, above 20 storefronts. Custom quote.' }
+  { key: 'spark',      rank: 1, name: 'Free trial', tagline: '7 days, 25 credits',  maxStorefronts: null, monthlyDrafts: 25,   trialDays: 7, priceMonthly: 0,    selfServe: true,  description: 'Free for 7 days with 25 credits. Choose the Auto, Retail or Travel demo, or use your own data.' },
+  { key: 'starter',    rank: 2, name: 'Starter',    tagline: 'Starting out',        maxStorefronts: null, monthlyDrafts: 50,   trialDays: null, priceMonthly: 1500, selfServe: false, description: 'For a small team getting started with steady, simple help. 50 credits each month.' },
+  { key: 'growth',     rank: 3, name: 'Growth',     tagline: 'Growing',             maxStorefronts: null, monthlyDrafts: 150,  trialDays: null, priceMonthly: 4000, selfServe: false, description: 'For a team that drafts and measures across every campaign. 150 credits each month.' },
+  { key: 'enterprise', rank: 4, name: 'Enterprise', tagline: 'At scale',            maxStorefronts: null, monthlyDrafts: null, trialDays: null, priceMonthly: null, selfServe: false, description: 'Many seats plus partner integrations (Snowflake, Google, Meta). Custom credits and pricing.' }
 ];
+// Retired levels map onto the current packages so existing accounts keep working.
+const LEGACY_TIER_MAP = { glow: 'growth', radiance: 'growth', beacon: 'enterprise' };
+function normTier(t){ return LEGACY_TIER_MAP[t] || t; }
 
 // 2026-10-06 — Spark 7-day countdown. Spark runs 7 days from activation.
 // Days 1-5: always-on upgrade prompt. Day 6: voice pitch. Day 7: final-day
@@ -1643,7 +1644,7 @@ function levelStatusFor(acct){
   const expired = day > TD;
   const daysLeft = Math.max(0, TD - day + 1);
   const stage = expired ? 'expired' : (day >= TD ? 'final' : (day === TD - 1 && TD > 2 ? 'voice' : 'prompt'));
-  return { tier: 'spark', day: Math.min(day, TD + 1), trialDays: TD, draftAllowance: cfg.sparkDrafts, daysLeft: expired ? 0 : daysLeft, expired, stage, upgradeTo: 'starter', upgradePriceMonthly: 99 };
+  return { tier: 'spark', day: Math.min(day, TD + 1), trialDays: TD, draftAllowance: cfg.sparkDrafts, daysLeft: expired ? 0 : daysLeft, expired, stage, upgradeTo: 'starter', upgradePriceMonthly: 1500 };
 }
 const upgradeRequestLast = new Map();
 
@@ -23761,13 +23762,13 @@ function coachWho(sess){
   return { memberId: m.id, name: m.name || 'Team member', level: aliasVal(m, 'level') || '', fn: aliasVal(m, 'functionGroup') || '', isOwner: false };
 }
 // The coach is part of Radiance, Beacon (Enterprise). Accounts with no tier on file (accounts that pre-date tiers) are not blocked.
-const COACH_TIERS = ['radiance', 'beacon'];
+const COACH_TIERS = ['growth', 'enterprise']; // assumption: former Radiance/Beacon coach access carries to Growth/Enterprise
 function coachGate(accountId){
   let a = null; try { a = db.prepare('SELECT paidTier FROM accounts WHERE accountId = ?').get(accountId); } catch (e){}
   const tier = a && aliasVal(a, 'paidTier') ? String(aliasVal(a, 'paidTier')) : '';
   if (!tier) return { allowed: true, tier: '', legacy: true };
-  const t = PAID_TIERS.find(x => x.key === tier);
-  return { allowed: COACH_TIERS.includes(tier), tier, tierName: t ? t.name : tier, legacy: false };
+  const t = PAID_TIERS.find(x => x.key === normTier(tier));
+  return { allowed: COACH_TIERS.includes(normTier(tier)), tier, tierName: t ? t.name : tier, legacy: false };
 }
 // Verified free training links only (research doc, "V" items). Open in a new tab; link only, never embedded or ingested.
 const COACH_LIBRARY = [
@@ -32264,7 +32265,7 @@ async function handleRequestInner(req, res) {
         if (_ss && _ss.accountId && !_ss.platformuserid){
           const _al = draftAllowanceFor(_ss.accountId);
           if (_al && _al.remaining <= 0){
-            const _msg = _al.tier === 'spark' ? 'You have used all the drafts in your Spark trial. Upgrade to the Starter Kit for 25 drafts a month.' : 'You have used all ' + _al.limit + ' drafts for this month. Contact Sales to add more.';
+            const _msg = _al.tier === 'spark' ? 'You have used all the drafts in your Spark trial. Upgrade to Starter for 50 credits a month.' : 'You have used all ' + _al.limit + ' drafts for this month. Contact Sales to add more.';
             return sendJson(res, 403, { error: _msg, code: 'draft_allowance', limit: _al.limit, used: _al.used });
           }
           const _path = '/' + parts.join('/');
@@ -32284,7 +32285,7 @@ async function handleRequestInner(req, res) {
         if (_ls && _ls.expired && !_exempt){
           const _m = String(req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/);
           const _s = _m ? db.prepare('SELECT platformuserid FROM sessions WHERE token = ?').get(_m[1].trim()) : null;
-          if (!(_s && _s.platformuserid)) return sendJson(res, 403, { error: 'Your Spark trial has ended, so this account is read-only. Upgrade to the Starter Kit to keep making changes.', code: 'spark_expired' });
+          if (!(_s && _s.platformuserid)) return sendJson(res, 403, { error: 'Your Spark trial has ended, so this account is read-only. Upgrade to Starter to keep making changes.', code: 'spark_expired' });
         }
       } catch (e){ console.warn('[spark] guard lookup failed:', e.message); }
     }
@@ -32520,7 +32521,7 @@ async function handleRequestInner(req, res) {
         logIt('account_deleted:' + String(aliasVal(acct, 'company') || '').slice(0, 80) + ':' + total + 'rows');
         return sendJson(res, 200, { accountId, deleted: true, rowsDeleted: total, tables: Object.keys(deleted).length });
       }
-      // POST /api/platform/accounts/:id/level — activate or change a client's level in the Ops Console. { tier: 'spark'|'starter'|'glow'|'radiance'|'beacon'|null }
+      // POST /api/platform/accounts/:id/level — activate or change a client's level in the Ops Console. { tier: 'spark'|'starter'|'growth'|'enterprise'|null }
       if (req.method === 'POST' && parts.length === 5 && sub === 'accounts' && parts[4] === 'level'){
         if (me.role === 'readonly') return sendJson(res, 403, { error: 'Read-only team members cannot change a client level.' });
         const accountId = decodeURIComponent(parts[3]);
