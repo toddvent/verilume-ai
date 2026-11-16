@@ -1016,10 +1016,10 @@
   .lv-name b{font-weight:600;}
   .lv-name.muted{color:var(--muted);}
   /* product vignettes in the sidebar and aside panels */
-  .pv{border-radius:12px;overflow:hidden;background:#0B1017;border:1px solid #1b2430;margin:0 0 14px;}
+  .pv{border-radius:14px;overflow:hidden;background:#FFFFFF;border:1.5px solid #DDE5F3;box-shadow:0 6px 18px rgba(20,33,61,.06);margin:0 0 14px;}
   .pv svg{display:block;width:100%;height:auto;}
-  .pv-cap{padding:10px 14px 12px;color:#EDEAE0;font-size:.78rem;line-height:1.4;background:#0B1017;}
-  .pv-cap b{display:block;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:#F4B63F;margin-bottom:3px;font-weight:500;}
+  .pv-cap{padding:10px 14px 12px;color:#14213D;font-size:.78rem;line-height:1.4;background:#FFFFFF;}
+  .pv-cap b{display:block;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:#0A58CC;margin-bottom:3px;font-weight:600;}
   .mod-visual-frame.pvframe{height:auto;display:block;}
   .pv-strip{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;}
   .pv-strip .pv{margin:0;}
@@ -1312,6 +1312,27 @@ header#siteHeader .logo,.navlinks,.navlinks a{font-family:var(--vl-body,'Instrum
 }
 </style>
 <link rel="stylesheet" href="/vl-brand.css">
+<style id="as-foot-css">
+footer.as-foot{background:#fff!important;color:#14213D!important;border-top:1px solid #E4E0D3!important;padding:34px 28px!important;margin:60px 0 0!important;box-shadow:none!important;clip-path:none!important;text-align:left!important;font-size:.8125rem!important}
+.as-foot-in{max-width:1100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:18px 32px;flex-wrap:wrap}
+.as-foot-brand{font-size:1.15rem;font-weight:600;color:#14213D!important;text-decoration:none}
+.as-foot-links{display:flex;gap:6px 24px;flex-wrap:wrap}
+footer.as-foot .as-foot-links a{color:#14213D!important;text-decoration:none;font-weight:500}
+footer.as-foot .as-foot-links a:hover{color:#0A58CC!important;text-decoration:underline}
+.as-foot-copy{color:#5B6784!important;margin-left:auto}
+@media(max-width:640px){.as-foot-copy{margin-left:0;flex-basis:100%}}
+</style>
+<style id="as-light-panels">
+/* 2026-11-16 — the dark report panels now use the portal's chart look: white card, soft border, navy text, blue accent. */
+.step[data-step="report"] .paid-interstitial,.step[data-step="report"] .paid-cta-band{background:#FFFFFF!important;color:#14213D!important;border:1.5px solid #DDE5F3!important;box-shadow:0 6px 18px rgba(20,33,61,.06)!important}
+.step[data-step="report"] .paid-interstitial .tag,.step[data-step="report"] .paid-cta-copy .tag{color:#0A58CC!important}
+.step[data-step="report"] .paid-interstitial h2,.step[data-step="report"] .paid-interstitial h3,.step[data-step="report"] .paid-interstitial h4,.step[data-step="report"] .paid-cta-copy h3,.step[data-step="report"] .paid-headline{color:#14213D!important}
+.step[data-step="report"] .paid-interstitial p,.step[data-step="report"] .paid-subhead,.step[data-step="report"] .paid-cta-copy p{color:#4a4f58!important}
+.step[data-step="report"] .paid-cta-copy #chosenPackageLine{color:#0A58CC!important}
+.step[data-step="report"] .product-cta-card{background:#F4F7FD!important;border:1.5px solid #DDE5F3!important;box-shadow:none!important}
+.step[data-step="report"] .product-cta-card h3{color:#14213D!important}.step[data-step="report"] .product-cta-card p{color:#4a4f58!important}
+.step[data-step="report"] .product-cta-card a,.step[data-step="report"] .product-cta-card button{color:#0A58CC!important}
+</style>
 </head>
 <body>
 <div class="sticky-nav-wrap">
@@ -1880,7 +1901,7 @@ header#siteHeader .logo,.navlinks,.navlinks a{font-family:var(--vl-body,'Instrum
       </div>
       <aside class="mat-visual">
         <div class="teaser-label">Where Verilume takes you</div>
-        <div class="mod-visual-frame" id="orgChartPreview"><div class="placeholder">Pick a style, then a shape, to preview it here.</div></div>
+        <div class="mod-visual-frame" id="orgChartPreview" aria-hidden="false"></div>
         <ul class="landing-teaser-bullets">
           <li>Once you have an account, this becomes a real, editable Team &amp; Org Chart — not just an illustrative pick.</li>
           <li>Matched to how your team actually operates, not a generic diagram.</li>
@@ -2025,7 +2046,7 @@ header#siteHeader .logo,.navlinks,.navlinks a{font-family:var(--vl-body,'Instrum
          report it links to instead of an invented placeholder. -->
     <aside class="sample-thumb">
       <div class="teaser-label">See the format first</div>
-      <a class="sample-thumb-frame" href="sample-assessment.html" target="_blank" rel="noopener" style="display:block;text-decoration:none;color:inherit;">
+      <a class="sample-thumb-frame" href="sample-assessment.html" target="vlSample" style="display:block;text-decoration:none;color:inherit;">
         <div class="sf-row"><span>Atlas Ocean Voyages</span><span>Sample · Dummy Account</span></div>
         <div class="quad-visual mini" style="margin:2px 0 10px;">
           <div class="qcell q2">Lit Within</div>
@@ -2346,7 +2367,19 @@ header#siteHeader .logo,.navlinks,.navlinks a{font-family:var(--vl-body,'Instrum
 </div>
 </main>
 
-<footer>Verilume</footer>
+<footer class="as-foot">
+  <div class="as-foot-in">
+    <a class="as-foot-brand" href="/" aria-label="Verilume home">Verilume</a>
+    <nav class="as-foot-links" aria-label="Footer">
+      <a href="terms.html">Terms &amp; Conditions</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="sample-assessment.html" target="vlSample">Sample assessment</a>
+      <a href="/">verilume.ai</a>
+    </nav>
+    <span class="as-foot-copy">&copy; <span id="asYear">2026</span> Verilume. All rights reserved.</span>
+  </div>
+</footer>
+<script>try{document.getElementById('asYear').textContent=new Date().getFullYear()}catch(e){}</script>
 
 <script>
 /* ---------- Rubric data (mirrors framework.html's core 15 cells, plus a
@@ -2937,23 +2970,8 @@ function applyIndustryTierSuggestion(idx){
    development downstream (see Company Profile's Products & Services field
    and Brand Voice's Brand & Product Keywords), not a literal sailing-by-
    sailing catalog. */
-const KNOWN_BRAND_OVERVIEWS = {
-  'atlasoceanvoyages.com': {
-    company: 'Atlas Ocean Voyages',
-    industryLabel: 'Cruise Lines — Luxury',
-    description: "Atlas Ocean Voyages is a small-ship luxury expedition cruise line — \"Intimate Yachting Expeditions™\" — launched in 2019 as the U.S. subsidiary of Portugal's Mystic Invest Holding and headquartered in Fort Lauderdale, Florida. Its fleet of purpose-built yachts (World Navigator, World Traveller, World Voyager, and the newly announced Atlas Adventurer) carries roughly 196 guests on its core ships and up to 400 on the larger Atlas Adventurer, sailing polar, epicurean, and cultural expeditions to Antarctica, the Arctic, Northern Europe, the Mediterranean, Asia, Africa, and South America. The brand positions itself around voyages that \"leave you enriched, inspired and forever changed,\" appealing to affluent, intellectually curious travelers who want an intimate, expert-led alternative to mass-market cruising — described by its own repeat guests as people who \"love the outdoors\" and aren't \"just there for a big cruise party.\"",
-    productThemes: "Polar Expeditions, Epicurean Expeditions, Cultural Expeditions, Antarctica, Arctic, Northern Europe, Mediterranean, Asia, Africa, South America, Small luxury expedition yachts (196–400 guests)",
-    // Round 105 additions — the rest of what Step 2 ("profile-guess") now
-    // shows, so this build's one demo domain still produces a full, richly
-    // guessed profile end to end, not just industry/description.
-    // Round 107 — revenueLevel removed: revenue is no longer collected or
-    // guessed anywhere in the assessment (see the REVENUE_BRACKETS_BY_REGION
-    // removal note further down) — it now lives in the portal's budget
-    // planning section instead, per direct instruction.
-    audience: ['boomer', 'genx'],
-    wealth: ['hnw']
-  }
-};
+// 2026-11-16 — the hand-written brand table (it held one demo company) is removed. A profile is only ever guessed from the visitor's own site read below.
+const KNOWN_BRAND_OVERVIEWS = {};
 
 function normalizeDomain(url){
   return (url || '').trim().toLowerCase()
@@ -2978,32 +2996,61 @@ function markUserEdited(el){
 // couldn't tell," which is what guessProfileFromInput() shows when nothing
 // matches (see its "unknown" branch below).
 const INDUSTRY_KEYWORDS = {
-  "Quick-Service / Limited-Service Restaurants": ["fast food", "quick service", "drive-thru", "burger", "taco", "pizza"],
-  "Full-Service Dining": ["restaurant", "grill", "bistro", "steakhouse", "kitchen", "dining"],
-  "Hotels / Hospitality": ["hotel", "resort", "inn", "hospitality", "lodge"],
-  "Retail — General Merchandise": ["department store", "general store", "mart"],
-  "Retail — Specialty / Apparel": ["apparel", "clothing", "boutique", "fashion", "shoes"],
-  "Grocery / Supermarkets": ["grocery", "supermarket", "market"],
-  "Automotive Sales & Service": ["auto", "motors", "dealership", "car care", "tire"],
-  "Healthcare — Outpatient / Clinics": ["clinic", "medical group", "urgent care", "dental", "physical therapy"],
-  "Healthcare — Hospitals & Systems": ["hospital", "health system", "medical center"],
-  "Financial Services / Banking": ["bank", "credit union", "financial", "wealth management"],
-  "Insurance": ["insurance", "assurance"],
-  "Real Estate": ["realty", "real estate", "realtor", "properties"],
-  "Fitness / Gyms & Studios": ["fitness", "gym", "yoga", "pilates", "crossfit"],
-  "Salons / Spas / Personal Care": ["salon", "spa", "barber", "beauty"],
-  "Home Services / Contractors": ["plumbing", "roofing", "hvac", "contractor", "electric", "landscaping"],
-  "Professional Services (B2B)": ["consulting", "law firm", "attorneys", "accounting", "agency"],
-  "Education / Training": ["academy", "school", "university", "institute", "training"],
-  "Entertainment / Attractions": ["theme park", "museum", "attraction", "entertainment"],
-  "Travel / Tourism": ["tours", "travel", "vacations", "excursions"],
-  "Cruise Lines — Luxury": ["luxury cruise", "expedition cruise", "yacht cruise"],
-  "Cruise Lines — Mass Market": ["cruise line", "cruises"],
-  "Sporting Goods Retail": ["sporting goods", "outdoor gear", "athletic"],
-  "Wine & Spirits / Winery": ["winery", "vineyard", "distillery", "spirits"],
-  "Telecom / Wireless Retail": ["wireless", "telecom", "mobile"],
-  "E-commerce / DTC Brand": ["shop", "store", "co."]
+  "Quick-Service / Limited-Service Restaurants": ["fast food", "quick service", "drive-thru", "drive thru", "order online for pickup", "burgers", "tacos", "pizzeria"],
+  "Full-Service Dining": ["restaurant", "steakhouse", "bistro", "reservations", "our menu", "wine list", "chef"],
+  "Hotels / Hospitality": ["hotel", "resort", "book your stay", "guest rooms", "suites", "check-in", "lodging"],
+  "Retail — General Merchandise": ["department store", "general merchandise", "household essentials"],
+  "Retail — Specialty / Apparel": ["apparel", "clothing", "boutique", "fashion", "footwear", "new arrivals", "size guide"],
+  "Grocery / Supermarkets": ["grocery", "supermarket", "weekly ad", "fresh produce", "pharmacy and grocery"],
+  "Automotive Sales & Service": ["dealership", "new and used vehicles", "pre-owned", "auto repair", "service department", "oil change", "tire center"],
+  "Healthcare — Outpatient / Clinics": ["clinic", "urgent care", "dental", "physical therapy", "primary care", "book an appointment", "patients"],
+  "Healthcare — Hospitals & Systems": ["hospital", "health system", "medical center", "emergency department"],
+  "Financial Services / Banking": ["banking", "credit union", "checking and savings", "mortgage", "wealth management", "loans"],
+  "Insurance": ["insurance", "get a quote", "coverage", "policyholders", "claims"],
+  "Real Estate": ["real estate", "realtor", "listings", "homes for sale", "property management"],
+  "Fitness / Gyms & Studios": ["fitness", "gym", "yoga", "pilates", "crossfit", "personal training", "memberships"],
+  "Salons / Spas / Personal Care": ["salon", "day spa", "barbershop", "hair color", "facials", "massage"],
+  "Home Services / Contractors": ["plumbing", "roofing", "hvac", "general contractor", "landscaping", "free estimate", "licensed and insured"],
+  "Professional Services (B2B)": ["consulting", "law firm", "attorneys", "accounting firm", "our clients", "advisory"],
+  "Education / Training": ["admissions", "enroll", "curriculum", "students", "university", "academy", "tuition"],
+  "Entertainment / Attractions": ["theme park", "museum", "tickets and admission", "attractions", "live entertainment", "plan your visit"],
+  "Travel / Tourism": ["guided tours", "vacation packages", "travel agency", "excursions", "itineraries", "destinations"],
+  "Cruise Lines — Luxury": ["luxury cruise", "expedition cruise", "yacht cruise", "small-ship", "all-inclusive luxury", "suite voyages"],
+  "Cruise Lines — Mass Market": ["cruise line", "cruises", "sailings", "cruise deals", "ports of call", "staterooms"],
+  "Sporting Goods Retail": ["sporting goods", "outdoor gear", "athletic equipment", "team sports", "camping and hiking"],
+  "Wine & Spirits / Winery": ["winery", "vineyard", "distillery", "tasting room", "wine club", "bourbon", "whiskey"],
+  "Telecom / Wireless Retail": ["wireless plans", "unlimited data", "cell phone plans", "telecom", "5g network"],
+  "E-commerce / DTC Brand": ["free shipping", "add to cart", "shop now", "subscribe and save", "direct to consumer"]
 };
+
+// 2026-11-16 — the industry guess is only made from a real read of the visitor's website, with whole-word matching, a minimum amount of evidence,
+// and a clear lead over the next industry. Anything weaker returns null so the visitor picks their own industry instead of being shown a wrong guess.
+function guessIndustryFromSite(site, company){
+  if (!site) return -1;
+  const esc = k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const strong = `${site.title || ''} ${site.metaDescription || ''} ${(site.headings || []).join(' ')}`.toLowerCase();
+  const body = `${site.excerpt || ''}`.toLowerCase();
+  const scores = {};
+  for (const [label, kws] of Object.entries(INDUSTRY_KEYWORDS)){
+    let score = 0, distinct = 0;
+    kws.forEach(k => {
+      const re = new RegExp('(^|[^a-z0-9])' + esc(k) + '([^a-z0-9]|$)', 'g');
+      const a = (strong.match(re) || []).length, b = (body.match(re) || []).length;
+      if (a || b){ distinct += 1; score += Math.min(a, 2) * 3 + Math.min(b, 3); }
+    });
+    scores[label] = { score, distinct };
+  }
+  // the two cruise tiers are one family: whichever tier's own words appear wins, luxury first
+  const lux = scores["Cruise Lines — Luxury"], mass = scores["Cruise Lines — Mass Market"];
+  if (lux.score + mass.score > 0){ const fam = { score: lux.score + mass.score, distinct: lux.distinct + mass.distinct }; scores["Cruise Lines — Luxury"] = fam; scores["Cruise Lines — Mass Market"] = { score: 0, distinct: 0 }; }
+  const ranked = Object.entries(scores).sort((a, b) => b[1].score - a[1].score);
+  const top = ranked[0], next = ranked[1];
+  if (!top || top[1].score < 6 || top[1].distinct < 2) return -1;
+  if (next && next[1].score * 1.5 > top[1].score) return -1;
+  let label = top[0];
+  if (label === "Cruise Lines — Luxury" && lux.distinct && !/(luxury|expedition|yacht|small-ship|suite)/.test(strong + ' ' + body)) label = "Cruise Lines — Mass Market";
+  return INDUSTRIES.findIndex(ind => ind.label === label);
+}
 
 // Round 105 — Step 1's "Review the website" moment (see startSiteReview()
 // below). Standing in for a real enrichment/crawl call, same convention as
@@ -3072,33 +3119,14 @@ function guessProfileFromInput(){
   const site = assessmentWebsiteContext;
   const siteText = site ? `${site.title || ''} ${site.metaDescription || ''} ${(site.headings || []).join(' ')} ${site.excerpt || ''}` : '';
   const haystack = `${state.company} ${domain} ${siteText}`.toLowerCase();
-  let industryIdx = -1;
-  // 2026-08-31 — this loop is also, implicitly, the "guess Luxury vs. Mass
-  // Market" read called for in the Round-after-105 direct instruction:
-  // INDUSTRY_KEYWORDS already carries separate, distinct keyword lists for
-  // "Cruise Lines — Luxury" (e.g. "luxury cruise", "expedition cruise",
-  // "yacht cruise") vs. "Cruise Lines — Mass Market" (the generic "cruise
-  // line"/"cruises"), in that order, so a haystack that names the premium
-  // cues lands on the Luxury sibling and a generic one falls through to
-  // Mass Market — no separate variant-guess step needed. Same honestly-weak,
-  // simulated-signal disclosure as the rest of this function; a visitor
-  // still sees and can correct the result via renderIndustryTierSuggestion()
-  // once Step 2's audience/wealth read a moment later.
-  for (const [label, keywords] of Object.entries(INDUSTRY_KEYWORDS)){
-    if (keywords.some(k => haystack.includes(k))){
-      industryIdx = INDUSTRIES.findIndex(ind => ind.label === label);
-      break;
-    }
-  }
+  const industryIdx = guessIndustryFromSite(site, state.company);
   let source;
   if (site && industryIdx !== -1){
     source = `Matched from your website's own content (${site.url}) — a real read, worth double-checking against your Step 5 recap.`;
   } else if (site){
     source = `We read your website but didn't find enough signal there to confidently guess your industry — pick what's right below.`;
-  } else if (industryIdx !== -1){
-    source = `Guessed from your company name/URL — a name-only match, not a real site read. Worth double-checking.`;
   } else {
-    source = `Not enough signal in a name/URL-only read to guess this confidently — pick what's right below.`;
+    source = `We couldn't read your website, so we haven't guessed your industry — pick what's right below.`;
   }
   return {
     confident: industryIdx !== -1,
@@ -3210,7 +3238,8 @@ function enterProfileGuess(){
   document.getElementById('industryGuessTag').textContent = 'Pending';
   renderIndustryDesc();
   const industryHint = document.getElementById('industryDescBody');
-  if (industryHint) industryHint.textContent = 'Answer Audience and Wealth Tier above first — your industry (and its NAICS code) is guessed from those answers, not shown until they\'re in.';
+  if (industryHint) industryHint.textContent = pendingIndustryGuess ? 'Answer Audience and Wealth Tier above first — your industry (and its NAICS code) is suggested from your website once those answers are in.' : 'We could not tell your industry with confidence from your website, so we are not guessing. Pick the closest match from the list.';
+  if (!pendingIndustryGuess){ const t = document.getElementById('industryGuessTag'); if (t){ t.textContent = 'Pick one'; t.classList.add('unknown'); } }
 
   // Description ("what we think this brand does") — Round 118: no longer
   // has its own field on this step (removed as a duplicate of the Step 5
@@ -4416,15 +4445,18 @@ const PRODUCT_VISUALS = {
   contest: { title:'Contest', cap:'Three blind drafts. A person picks. Truth and light scored.', svg:
     `<svg viewBox="0 0 280 150"><rect width="280" height="150" fill="#0B1017"/>${[0,1,2].map(i=>`<g transform="translate(${16+i*88} 14)"><rect width="76" height="70" rx="8" fill="#141c27" stroke="${i===1?'#F4B63F':'#2a3544'}" stroke-width="${i===1?2.5:1}"/><rect x="9" y="12" width="${[52,58,44][i]}" height="4" rx="2" fill="#5b6878"/><rect x="9" y="22" width="${[40,48,56][i]}" height="4" rx="2" fill="#3a4757"/><rect x="9" y="32" width="${[56,34,48][i]}" height="4" rx="2" fill="#3a4757"/></g>`).join('')}<g font-family="monospace" font-size="8" fill="#9aa6b6"><text x="16" y="108">TRUTH</text><rect x="62" y="101" width="200" height="8" rx="4" fill="#1b2430"/><rect x="62" y="101" width="162" height="8" rx="4" fill="#4DD6C0"/><text x="16" y="130">LIGHT</text><rect x="62" y="123" width="200" height="8" rx="4" fill="#1b2430"/><rect x="62" y="123" width="176" height="8" rx="4" fill="#F4B63F"/></g></svg>` },
   brain: { title:'Train the Brain', cap:'Twenty minutes of setup. Every correction stays with the company.', svg:
-    `<svg viewBox="0 0 280 150"><rect width="280" height="150" fill="#0B1017"/>${[[50,32],[230,32],[34,92],[246,92],[90,128],[190,128]].map((p,i)=>`<line x1="140" y1="76" x2="${p[0]}" y2="${p[1]}" stroke="${i<4?'#F4B63F':'#2a3544'}" stroke-width="1.5"/><circle cx="${p[0]}" cy="${p[1]}" r="${i<4?9:7}" fill="${i<4?'#F4B63F':'#141c27'}" stroke="${i<4?'#F4B63F':'#3a4757'}"/>`).join('')}<circle cx="140" cy="76" r="22" fill="#141c27" stroke="#4DD6C0" stroke-width="2"/><text x="140" y="80" text-anchor="middle" font-family="sans-serif" font-size="9.5" fill="#fff">AI Brain</text></svg>` },
+    `<svg viewBox="0 0 280 150"><rect width="280" height="150" fill="#0B1017"/>${[[50,32],[230,32],[34,92],[246,92],[90,128],[190,128]].map((p,i)=>`<line x1="140" y1="76" x2="${p[0]}" y2="${p[1]}" stroke="${i<4?'#F4B63F':'#2a3544'}" stroke-width="1.5"/><circle cx="${p[0]}" cy="${p[1]}" r="${i<4?9:7}" fill="${i<4?'#F4B63F':'#141c27'}" stroke="${i<4?'#F4B63F':'#3a4757'}"/>`).join('')}<circle cx="140" cy="76" r="22" fill="#141c27" stroke="#4DD6C0" stroke-width="2"/><text x="140" y="80" text-anchor="middle" font-family="sans-serif" font-size="9.5" font-weight="600" fill="#14213D">AI Brain</text></svg>` },
   match: { title:'Match Market Testing', cap:'Test in one market. Read it against a matched twin.', svg:
     `<svg viewBox="0 0 280 150"><rect width="280" height="150" fill="#0B1017"/><rect x="170" y="14" width="96" height="104" fill="#F4B63F" opacity=".14"/><g stroke="#1f2a37"><line x1="16" x2="266" y1="38" y2="38"/><line x1="16" x2="266" y1="72" y2="72"/><line x1="16" x2="266" y1="106" y2="106"/></g><path d="M16 84 C50 60 70 100 100 78 S150 74 170 70 S215 44 266 34" fill="none" stroke="#F4B63F" stroke-width="3"/><path d="M16 86 C50 62 70 102 100 80 S150 76 170 74 S215 70 266 66" fill="none" stroke="#4DD6C0" stroke-width="3"/><text x="176" y="28" font-family="monospace" font-size="8" fill="#9aa6b6">TEST WINDOW</text><text x="16" y="136" font-family="monospace" font-size="8" fill="#9aa6b6">TEST MARKET  vs  MATCHED CONTROL</text></svg>` },
   coach: { title:'AI Brain Coach', cap:'Every team member is an A player, with a proposed next step.', svg:
     `<svg viewBox="0 0 280 150"><rect width="280" height="150" fill="#0B1017"/>${(()=>{let o='';for(let r=0;r<7;r++)for(let c=0;c<16;c++){const k=r*16+c;const person=[19,38,53,70,89].indexOf(k)>=0;const lit=((k*37+11)%10)<8;o+=`<rect x="${16+c*15.5}" y="${12+r*17.5}" width="11" height="13" rx="1.5" fill="${person?'#FFF6DC':(lit?'#F4B63F':'#18222e')}"${person?' stroke="#fff"':''}/>`;}return o;})()}</svg>` }
 };
+// 2026-11-16 — the vignettes were drawn on black. They now use the portal's chart palette (white card, navy ink, blue accent, pale-blue tiles).
+const PV_LIGHT = [['#0B1017','#FFFFFF'],['#141c27','#E8F0FD'],['#1f2a37','#E1E8F4'],['#2a3544','#C9D8F0'],['#1b2430','#DDE5F3'],['#F4B63F','#0A58CC'],['#4DD6C0','#14213D'],['#9aa6b6','#5B6784'],['#EDEAE0','#14213D'],['#3a4757','#C9D8F0'],['#5b6878','#8CA0C4'],['#2f3b4b','#C9D8F0']];
+function pvLight(svg){ return PV_LIGHT.reduce((o, p) => o.split(p[0]).join(p[1]).split(p[0].toLowerCase()).join(p[1]), svg); }
 function pvHtml(key, withCap){
   const v = PRODUCT_VISUALS[key]; if (!v) return '';
-  return `<div class="pv" role="img" aria-label="${v.title}: ${v.cap}">${v.svg}${withCap === false ? '' : `<div class="pv-cap"><b>${v.title}</b>${v.cap}</div>`}</div>`;
+  return `<div class="pv" role="img" aria-label="${v.title}: ${v.cap}">${pvLight(v.svg)}${withCap === false ? '' : `<div class="pv-cap"><b>${v.title}</b>${v.cap}</div>`}</div>`;
 }
 const STEP_RAIL_VISUAL = { company:'brief', maturity:'search', orgstyle:'coach', recap:'match', loop:'contest', channels:'match', assess:'brain', contact:'contest' };
 function hydrateProductVisuals(){
@@ -4525,7 +4557,7 @@ document.getElementById('restartBtn').addEventListener('click', () => {
   document.querySelectorAll('#orgStyleChips .select-tile').forEach(c => c.classList.remove('selected'));
   document.getElementById('orgChartGrid').innerHTML = '';
   document.getElementById('orgChartSection').style.display = 'none';
-  document.getElementById('orgChartPreview').innerHTML = '<div class="placeholder">Pick a style, then a shape, to preview it here.</div>';
+  document.getElementById('orgChartPreview').innerHTML = ORG_PEOPLE_SVG;
   document.getElementById('orgStyleNext').disabled = true;
   document.getElementById('loopStageRows').innerHTML = '';
   // 2026-09-01 — #enhanceSection (fnGroupRows/scopePickerNext/
@@ -4921,6 +4953,9 @@ function maybeRevealIndustryGuess(){
 }
 
 /* ---------- Round 104, module (b) — Org Style + org-chart picker ---------- */
+// 2026-11-16 — the Team step's picture is now a fixed group of people; it no longer redraws when a style or shape is picked.
+const ORG_PEOPLE_SVG = '<svg viewBox="0 0 260 150" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A marketing team"><circle cx="62" cy="52" r="9.0" fill="#C9D8F0"/><path d="M46.4 89.7 v-6.6 a15.6 13.9 0 0 1 31.2 0 v6.6 z" fill="#C9D8F0"/><circle cx="130" cy="46" r="9.0" fill="#C9D8F0"/><path d="M114.4 83.7 v-6.6 a15.6 13.9 0 0 1 31.2 0 v6.6 z" fill="#C9D8F0"/><circle cx="198" cy="52" r="9.0" fill="#C9D8F0"/><path d="M182.4 89.7 v-6.6 a15.6 13.9 0 0 1 31.2 0 v6.6 z" fill="#C9D8F0"/><circle cx="30" cy="92" r="11.0" fill="#14213D"/><path d="M11.0 138.0 v-8.0 a19.0 17.0 0 0 1 38.0 0 v8.0 z" fill="#14213D"/><circle cx="96" cy="98" r="11.0" fill="#0A58CC"/><path d="M77.0 144.0 v-8.0 a19.0 17.0 0 0 1 38.0 0 v8.0 z" fill="#0A58CC"/><circle cx="164" cy="98" r="11.0" fill="#14213D"/><path d="M145.0 144.0 v-8.0 a19.0 17.0 0 0 1 38.0 0 v8.0 z" fill="#14213D"/><circle cx="230" cy="92" r="11.0" fill="#0A58CC"/><path d="M211.0 138.0 v-8.0 a19.0 17.0 0 0 1 38.0 0 v8.0 z" fill="#0A58CC"/></svg>';
+document.addEventListener('DOMContentLoaded', function(){ var el = document.getElementById('orgChartPreview'); if (el) el.innerHTML = ORG_PEOPLE_SVG; });
 const ORG_STYLES = {
   solo: { label: 'On My Own' },
   inhouse: { label: 'In-House Team' },
@@ -4988,7 +5023,7 @@ function pickOrgStyle(style){
   document.querySelectorAll('#orgStyleChips .select-tile').forEach(c => c.classList.toggle('selected', c.dataset.style === style));
   renderOrgChartOptions(style);
   document.getElementById('orgChartSection').style.display = 'block';
-  document.getElementById('orgChartPreview').innerHTML = '<div class="placeholder">Pick a shape below to preview it here.</div>';
+  document.getElementById('orgChartPreview').innerHTML = ORG_PEOPLE_SVG;
   document.getElementById('orgStyleNext').disabled = true;
 }
 
@@ -5017,7 +5052,7 @@ function pickOrgChart(chartId){
   const picked = opts.find(o => o.id === chartId);
   if (picked){
     const color = ORG_STYLE_COLOR[state.orgStyle] || '#1D1D1F';
-    document.getElementById('orgChartPreview').innerHTML = orgChartSvg(picked.top, picked.children, color);
+    // preview stays the static team picture (no redraw on pick)
   }
 }
 
@@ -7508,5 +7543,9 @@ function renderAgenticRoleMapping(){
 </script>
 
 <script>try{var __p=new URLSearchParams(location.search).get('package');if(__p)sessionStorage.setItem('vl_package',__p)}catch(e){}</script>
+<script>
+// 2026-11-16 — #register lands on the registration step (used by the sample report's "back to your assessment" link when this page was not kept open).
+window.addEventListener('load', function(){ try { if (location.hash === '#register' && typeof goToStep === 'function') goToStep('contact'); } catch (e) {} });
+</script>
 </body>
 </html>
