@@ -25777,7 +25777,7 @@ function getCampaignsForAccount(accountId){
 // the same origin (Vercel rewrites /api to Railway), so it never needs CORS;
 // the list only covers Verilume's own sites, local development, and anything
 // added in CORS_ALLOWED_ORIGINS (comma separated).
-const CORS_ALLOWED = new Set(['https://www.verilume.ai', 'https://verilume.ai', 'https://www.cxmedia.ai', 'https://cxmedia.ai'].concat(String(process.env.CORS_ALLOWED_ORIGINS || '').split(',').map(x => x.trim().replace(/\/+$/, '')).filter(Boolean)));
+const CORS_ALLOWED = new Set(['https://www.verilume.ai', 'https://verilume.ai'].concat(String(process.env.CORS_ALLOWED_ORIGINS || '').split(',').map(x => x.trim().replace(/\/+$/, '')).filter(Boolean)));
 function corsOriginFor(req){
   const o = String((req && req.headers && req.headers.origin) || '');
   if (!o) return null;
@@ -28012,7 +28012,7 @@ const SRCH_MAX_KEYWORDS = 500;
 const SRCH_PAGE_CAP = 25;
 const SRCH_TAGS = ['SEO', 'AEO', 'GEO'];
 const SRCH_AI_BOTS = ['GPTBot', 'ChatGPT-User', 'OAI-SearchBot', 'PerplexityBot', 'ClaudeBot', 'Claude-Web', 'anthropic-ai', 'Google-Extended', 'CCBot', 'Applebot-Extended'];
-const SRCH_UA = 'Mozilla/5.0 (compatible; VerilumeSiteCheck/1.0; +https://cxmedia.ai)';
+const SRCH_UA = 'Mozilla/5.0 (compatible; VerilumeSiteCheck/1.0; +https://verilume.ai)';
 
 function srchSplitCsv(text){
   let t = String(text || '').replace(/^﻿/, '');
@@ -47085,7 +47085,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
           return sendJson(res, 502, { error: 'Census API key not configured. Get a free key at https://api.census.gov/data/key_signup.html and set it as the CENSUS_API_KEY environment variable on the backend, then try again.' });
         }
         const upstream = await fetch(`https://api.census.gov/data/2020/dec/dhc?get=P1_001N&for=zip%20code%20tabulation%20area:*&key=${encodeURIComponent(process.env.CENSUS_API_KEY)}`, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CXMediaAI/1.0; +https://cxexperiences.com)', 'Accept': 'application/json' },
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; VerilumeAI/1.0; +https://verilume.ai)', 'Accept': 'application/json' },
           signal: AbortSignal.timeout(20000)
         });
         const bodyText = await upstream.text();
@@ -47105,7 +47105,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (!authenticate(req) && !isStaffRequest(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
       try {
         const upstream = await fetch('https://gist.githubusercontent.com/clarkenheim/023882f8d77741f4d5347f80d95bc259/raw', {
-          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CXMediaAI/1.0; +https://cxexperiences.com)', 'Accept': 'text/plain,*/*' },
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; VerilumeAI/1.0; +https://verilume.ai)', 'Accept': 'text/plain,*/*' },
           signal: AbortSignal.timeout(20000)
         });
         const text = await upstream.text();
@@ -47234,7 +47234,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         const fetchCensusVars = async (vars, stateFips) => {
           const ucgidValue = `pseudo(0400000US${stateFips}$8600000)`;
           const upstream = await fetch(`https://api.census.gov/data/${ACS_YEAR}/acs/acs5?get=${vars.join(',')}&ucgid=${encodeURIComponent(ucgidValue)}&key=${encodeURIComponent(process.env.CENSUS_API_KEY)}`, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CXMediaAI/1.0; +https://cxexperiences.com)', 'Accept': 'application/json' },
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; VerilumeAI/1.0; +https://verilume.ai)', 'Accept': 'application/json' },
             signal: AbortSignal.timeout(30000)
           });
           const bodyText = await upstream.text();
@@ -47381,7 +47381,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       try {
         const IRS_ZIP_CSV_URL = 'https://www.irs.gov/pub/irs-soi/22zpallagi.csv';
         const upstream = await fetch(IRS_ZIP_CSV_URL, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CXMediaAI/1.0; +https://cxexperiences.com)', 'Accept': 'text/csv' },
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; VerilumeAI/1.0; +https://verilume.ai)', 'Accept': 'text/csv' },
           signal: AbortSignal.timeout(90000)
         });
         if (!upstream.ok) return sendJson(res, 502, { error: `IRS SOI CSV fetch HTTP ${upstream.status} — ${IRS_ZIP_CSV_URL}` });
