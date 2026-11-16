@@ -2878,13 +2878,13 @@ function industryLuxuryMassSibling(){
 
 // Mass Market vs. Luxury read for the CURRENT audience+wealth selection —
 // reuses the exact same two inputs as verilumeWealthIndex() (income
-// percentile x generationWealthMultiplier()), just read against the
-// "Wealthy" band cutoff (65) rather than shown as its own 0-100 score:
+// percentile x generationWealthMultiplier()), just read against WEALTH_CUTS.luxury (~top 10% of households)
+// rather than shown as its own score:
 // roughly where a luxury positioning starts making more sense than a
 // mass-market one. Used only to power the low-key Step 2 sibling-industry
 // suggestion below — not a scored input anywhere else in the assessment.
 function luxuryMassMarketDesignation(){
-  return verilumeWealthIndex() >= 65 ? 'luxury' : 'mass-market';
+  return verilumeWealthIndex() >= WEALTH_CUTS.luxury ? 'luxury' : 'mass-market';
 }
 
 // Auto-applies (rather than asking) the Luxury/Mass Market sibling switch
@@ -3510,7 +3510,7 @@ function verilumeWealthIndex(){
 // Band cutoffs for the qualitative label shown next to the index, rebuilt
 // for the new average-anchored, uncapped scale (100 = average U.S.
 // household; see verilumeWealthIndex() above). Roughly: mainstream
-// affluence brackets the national average on either side; "Wealthy" starts
+// affluence brackets the national average on either side; "Affluent" starts
 // where a household is running meaningfully (30%+) above the national
 // average; "High Net-Worth / Luxury" starts at roughly 2x the national
 // average, which — combining nationalAverageIncome()'s ~$97,900 fallback
@@ -3519,10 +3519,16 @@ function verilumeWealthIndex(){
 // U.S. household wealth luxury-tier operators actually
 // target. Reasoned bands, not a modeled cutoff — same disclosed-approximation
 // posture as the rest of this section.
+// Cutoffs on the uncapped Verilume Wealth Index (100 = average U.S. household
+// at average generational wealth). They are the index a household of average
+// generational wealth (x1.0) would score at each U.S. income percentile, so a
+// retiree's higher generational factor moves them up the scale exactly as the
+// index intends. ESTIMATES pending a check against Census CPS table HINC-05.
+const WEALTH_CUTS = { mainstream: 70, affluent: 175 /* ~top 20% */, luxury: 250 /* ~top 10% */, superWealthy: 350 /* ~top 5% */ };
 function wealthIndexLabel(index){
-  if (index >= 200) return 'High Net-Worth / Luxury';
-  if (index >= 130) return 'Wealthy';
-  if (index >= 70) return 'Mainstream Affluent';
+  if (index >= WEALTH_CUTS.superWealthy) return 'Super Wealthy / Luxury';
+  if (index >= WEALTH_CUTS.affluent) return 'Affluent';
+  if (index >= WEALTH_CUTS.mainstream) return 'Mainstream';
   return 'Value-Conscious';
 }
 
@@ -3530,13 +3536,13 @@ function wealthIndexLabel(index){
 // downstream consumer of state.wealth already expects ('hnw'/'wealthy'/
 // 'middle' — see portal.html's WEALTH_TIER_MULTIPLIER/wealthTierKey() and
 // this file's own wealthLabels()/recap census table). Thresholds rebased to
-// match wealthIndexLabel()'s new bands above; "Mainstream Affluent" and
+// match wealthIndexLabel()'s new bands above; "Mainstream" and
 // "Value-Conscious" both still collapse to 'middle' since the rest of the
 // app only ever distinguished three tiers, not four.
 function deriveWealthTiersFromIndex(index){
   const set = new Set();
-  if (index >= 200) set.add('hnw');
-  else if (index >= 130) set.add('wealthy');
+  if (index >= WEALTH_CUTS.superWealthy) set.add('hnw');
+  else if (index >= WEALTH_CUTS.affluent) set.add('wealthy');
   else set.add('middle');
   return set;
 }
