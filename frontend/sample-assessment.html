@@ -2933,25 +2933,11 @@ function applyIndustryTierSuggestion(idx){
   renderIndustryTierSuggestion();
 }
 
-/* ---------- Round 27 — known-domain brand overview lookup ----------
-   Atlas Ocean Voyages (atlasoceanvoyages.com) is this build's designated
-   full-demo brand. This is a small, hand-researched lookup keyed by domain —
-   NOT a live company-enrichment/firmographics API (none exists in this
-   prototype) — standing in for what such a service would return. The facts
-   below are real, sourced from Atlas Ocean Voyages' own site
-   (atlasoceanvoyages.com/expeditions, /destinations), Wikipedia, and trade
-   press (ThePointsGuy, Cruise Critic, Travel Weekly), checked 2026-08-05 —
-   see cxmedia-build-status.md's round-27 and round-33 entries. Only this
-   one domain is populated; every other Company URL still falls through to
-   the existing generic descriptionPlaceholderFromUrl()/
-   productThemesPlaceholderFromUrl() behavior at Step 2, unchanged.
-   Round 33 (2026-08-05) added `productThemes` — per direct instruction to
-   "leverage the website for product groups or themes, not every SKU or
-   cruise" — grouped experience categories and destination regions, the
-   level of granularity that actually reinforces brand/positioning keyword
-   development downstream (see Company Profile's Products & Services field
-   and Brand Voice's Brand & Product Keywords), not a literal sailing-by-
-   sailing catalog. */
+/* ---------- Known-domain brand overview lookup ----------
+   Intentionally empty. A profile is only ever guessed from the visitor's own
+   site read (see guessIndustryFromSite below); no company is hard-coded in
+   platform code. Any account-specific data belongs in that account's own
+   configuration, never here. */
 // 2026-11-16 — the hand-written brand table (it held one demo company) is removed. A profile is only ever guessed from the visitor's own site read below.
 const KNOWN_BRAND_OVERVIEWS = {};
 
@@ -3423,8 +3409,8 @@ const ACS_INCOME_BRACKETS = [
    Generation, GENERATION_WEALTH_INDEX 1.74) saturated at 100 the moment
    income crossed roughly the 57th percentile, which both threw away the
    generation signal at the top end and couldn't represent a luxury
-   operator's actual target customer (Atlas Ocean Voyages-style luxury
-   cruise targets roughly the top 5-10% of U.S. household wealth, which
+   operator's actual target customer (a luxury-tier brand
+   targets roughly the top 5-10% of U.S. household wealth, which
    this uncapped index now reads as ~200+ — see wealthIndexLabel() below).
    incomePercentile() is kept only as a helper other code may still find
    useful; verilumeWealthIndex() no longer calls it. */
@@ -3530,7 +3516,7 @@ function verilumeWealthIndex(){
 // average, which — combining nationalAverageIncome()'s ~$97,900 fallback
 // average with realistic income + above-average-generation-multiplier
 // combinations — lands in the same neighborhood as the real top ~5-10% of
-// U.S. household wealth Atlas Ocean Voyages-style luxury operators actually
+// U.S. household wealth luxury-tier operators actually
 // target. Reasoned bands, not a modeled cutoff — same disclosed-approximation
 // posture as the rest of this section.
 function wealthIndexLabel(index){
