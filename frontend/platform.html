@@ -2883,7 +2883,7 @@ function renderClients(){
   $('clientsBody').innerHTML = rows.length
     ? `<table><thead><tr>${mg ? '<th style="width:30px"></th>' : ''}<th>Client</th><th>Account ID</th><th>Industry</th><th>Package</th><th></th></tr></thead><tbody>${rows.map(c => {
         const arch = !!c.archivedAt, demo = isDemo(c.accountId);
-        return `<tr style="${arch ? 'opacity:.7' : ''}">${mg ? `<td><input type="checkbox" class="rowchk" ${demo ? 'disabled title="Demo accounts are protected"' : ''} ${picked.has(c.accountId) ? 'checked' : ''} onchange="togglePick('${esc(c.accountId)}', this.checked)"></td>` : ''}<td><strong>${esc(c.company)}</strong> ${arch ? '<span class="pill archived">Archived</span>' : ''} ${demo ? '<span class="pill demo">Demo</span>' : ''}</td><td class="id">${esc(c.accountId)}</td><td>${esc(c.industry || '')}</td><td>${levelSelect(c)}</td><td><div class="rowbtns">${arch ? '' : `<button class="btn small ghost" onclick="openAccount('${esc(c.accountId)}')">Manage</button><button class="btn small" onclick="openClient('${esc(c.accountId)}')">Open</button>`}${mg && !demo ? (arch ? `<button class="btn small ghost" onclick="archiveOne('${esc(c.accountId)}', false)">Restore</button><button class="btn small danger" onclick="openDelete('${esc(c.accountId)}')">Delete</button>` : `<button class="btn small ghost" onclick="archiveOne('${esc(c.accountId)}', true)">Archive</button>`) : ''}</div></td></tr>`; }).join('')}</tbody></table>`
+        return `<tr style="${arch ? 'opacity:.7' : ''}">${mg ? `<td><input type="checkbox" class="rowchk" ${demo ? 'disabled title="Demo accounts are protected"' : ''} ${picked.has(c.accountId) ? 'checked' : ''} onchange="togglePick('${esc(c.accountId)}', this.checked)"></td>` : ''}<td><strong>${esc(c.company)}</strong> ${arch ? '<span class="pill archived">Archived</span>' : ''} ${demo ? '<span class="pill demo">Demo</span>' : ''}</td><td class="id">${esc(c.accountId)}</td><td>${esc(c.industry || '')}</td><td>${levelSelect(c)}</td><td><div class="rowbtns">${arch ? '' : `${/^CXM-DEMO-/.test(c.accountId) ? `<button class="btn small ghost" onclick="resetDemo('${esc(c.accountId)}')">Reset demo</button>` : ''}<button class="btn small ghost" onclick="openAccount('${esc(c.accountId)}')">Manage</button><button class="btn small" onclick="openClient('${esc(c.accountId)}')">Open</button>`}${mg && !demo ? (arch ? `<button class="btn small ghost" onclick="archiveOne('${esc(c.accountId)}', false)">Restore</button><button class="btn small danger" onclick="openDelete('${esc(c.accountId)}')">Delete</button>` : `<button class="btn small ghost" onclick="archiveOne('${esc(c.accountId)}', true)">Archive</button>`) : ''}</div></td></tr>`; }).join('')}</tbody></table>`
     : '<div class="empty">No clients match.</div>';
   syncBulk();
 }
@@ -3179,6 +3179,12 @@ document.getElementById('tabRow').addEventListener('click', (e) => {
   if (tab) selectTab(tab.dataset.tab);
 });
 
+
+async function resetDemo(id){
+  if (!confirm('Restore ' + id + ' to its original demo state? Anything changed in it since the baseline will be lost.')) return;
+  const r = await api('POST', 'demo/' + encodeURIComponent(id) + '/reset', {});
+  alert(r.ok ? 'Demo restored (' + (r.data.restoredRows || 0).toLocaleString() + ' rows).' : (r.data && r.data.error) || 'Reset failed.');
+}
 // ---- Per-account workspace (ported from the Ops Console) ----
 const ACCOUNTS = {};
 let currentAcctKey = null;
