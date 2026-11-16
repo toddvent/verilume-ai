@@ -397,6 +397,52 @@ function getAuthPgPool(){
   return authPgPool;
 }
 
+
+// ---- Demo accounts: restore to the saved baseline (demo_snapshot.rows, taken once in Supabase) ----
+const DEMO_ACCOUNTS = { travel: 'CXM-DEMO-TRAVEL', auto: 'CXM-DEMO-AUTO', retail: 'CXM-DEMO-RETAIL' };
+const qIdent = (x) => '"' + String(x).replace(/"/g, '""') + '"';
+async function resetDemoAccount(accountId){
+  if (!Object.values(DEMO_ACCOUNTS).includes(accountId)) throw new Error('not a demo account');
+  const client = await getAuthPgPool().connect();
+  try {
+    const has = await client.query('SELECT 1 FROM demo_snapshot.rows WHERE account_id = $1 LIMIT 1', [accountId]);
+    if (!has.rowCount) throw new Error('no baseline snapshot exists for ' + accountId);
+    await client.query('BEGIN');
+    const tabs = (await client.query('SELECT tbl, col FROM public.demo_tables()')).rows;
+    let restored = 0;
+    for (const t of tabs){
+      await client.query('DELETE FROM public.' + qIdent(t.tbl) + ' WHERE ' + qIdent(t.col) + ' = $1', [accountId]);
+      const r = await client.query('INSERT INTO public.' + qIdent(t.tbl) + ' SELECT * FROM jsonb_populate_recordset(null::public.' + qIdent(t.tbl) + ', (SELECT jsonb_agg(data) FROM demo_snapshot.rows WHERE account_id = $1 AND tbl = $2))', [accountId, t.tbl]);
+      restored += r.rowCount || 0;
+    }
+    await client.query('COMMIT');
+    return restored;
+  } catch (e){ try { await client.query('ROLLBACK'); } catch (_){} throw e; }
+  finally { client.release(); }
+}
+// A demo is only reset when no free trial on that vertical is still running.
+function activeTrialsOn(vertical){
+  const td = getSparkSettings().trialDays;
+  const rows = db.prepare("SELECT paidTierActivatedAt FROM accounts WHERE paidTier = 'spark' AND trialPath = ?").all(vertical);
+  return rows.filter(r => r.paidTierActivatedAt && (Date.now() - new Date(r.paidTierActivatedAt).getTime()) < td * 86400000).length;
+}
+let _demoResetDay = '';
+async function nightlyDemoReset(){
+  const now = new Date(); const day = now.toISOString().slice(0, 10);
+  if (now.getUTCHours() !== 8 || _demoResetDay === day) return;
+  _demoResetDay = day;
+  const client = await getAuthPgPool().connect();
+  try {
+    const lock = await client.query('SELECT pg_try_advisory_lock(87310001) AS ok');
+    if (!lock.rows[0].ok) return; // another instance is already doing it
+    for (const [v, id] of Object.entries(DEMO_ACCOUNTS)){
+      if (activeTrialsOn(v) > 0){ console.log('[demo-reset] skipped ' + id + ' — a trial is still active'); continue; }
+      try { const n = await resetDemoAccount(id); console.log('[demo-reset] ' + id + ' restored ' + n + ' rows'); } catch (e){ console.error('[demo-reset] ' + id + ' failed: ' + e.message); }
+    }
+    await client.query('SELECT pg_advisory_unlock(87310001)');
+  } catch (e){ console.error('[demo-reset] ' + e.message); } finally { client.release(); }
+}
+
 // 2026-08-27 — async-pg equivalents of checkTrustedDevice() and
 // insertLoginMfaVerification() (see their sync originals further down),
 // used by login-user and request-login-mfa below via the same
@@ -32463,6 +32509,19 @@ async function handleRequestInner(req, res) {
           return sendJson(res, 200, getSparkSettings());
         }
       }
+      // POST /api/platform/demo/:accountId/reset — put a demo account back to its saved baseline. Owner and IT only.
+      if (req.method === 'POST' && parts.length === 5 && sub === 'demo' && parts[4] === 'reset'){
+        if (!(me.role === 'owner' || me.role === 'it')) return sendJson(res, 403, { error: 'Only the Owner and IT can reset a demo account.' });
+        const demoId = decodeURIComponent(parts[3]);
+        if (!Object.values(DEMO_ACCOUNTS).includes(demoId)) return sendJson(res, 400, { error: 'That is not a demo account.' });
+        try {
+          const n = await resetDemoAccount(demoId);
+          db.prepare('INSERT INTO platform_access_log (id, platformuserid, platformname, platformrole, accountId, action, ip, createdAt) VALUES (?,?,?,?,?,?,?,?)')
+            .run(generateId('PLOG'), me.id, me.name, me.role, demoId, 'demo_reset', getClientIp(req) || null, nowIso());
+          return sendJson(res, 200, { ok: true, restoredRows: n });
+        } catch (e){ return sendJson(res, 500, { error: 'Reset failed: ' + e.message }); }
+      }
+
       // 2026-10-15 — archive, restore and permanently delete a client account.
       // Owner and IT only. Delete requires the account to be archived first and
       // the company name typed exactly. Audit tables are kept (see KEEP below).
@@ -52374,6 +52433,7 @@ function enforceRlsOnPublicTables(){
 if (require.main === module) {
   const server = http.createServer(handleRequest);
   const PORT = process.env.PORT || 8787;
+  setInterval(() => { nightlyDemoReset().catch(e => console.error('[demo-reset]', e.message)); }, 20 * 60 * 1000);
   server.listen(PORT, () => { console.log(`CXMedia.AI demo backend listening on http://localhost:${PORT}`); setTimeout(enforceRlsEverywhere, 20000); });
   setTimeout(enforceRlsOnPublicTables, 5000);
 }
