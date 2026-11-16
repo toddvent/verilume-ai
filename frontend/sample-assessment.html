@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sample Assessment — Verilume</title>
-<meta name="description" content="A sample Verilume free assessment report for a dummy account (Atlas Ocean Voyages), shown before you register so you can see the real format.">
+<meta name="description" content="A sample Verilume free assessment report for a generic demo account, shown before you register so you can see the real format.">
 
 <!-- 2026-09-01, per direct instruction ("A link to specific AI Thoughts and
      FAQs supporting AEO/SEO should be available") — structured FAQ data for
@@ -1495,8 +1495,8 @@ footer.as-foot .as-foot-links a:hover{color:#0A58CC!important;text-decoration:un
   <ul id="surveyRailBullets"></ul>
 </aside>
 <div class="sample-banner">
-  <div class="sb-row"><span class="sample-badge">● Sample · Dummy account</span><a class="sample-back" href="assessment.html#register" onclick="return sampleBack(event)">← Back to your assessment</a></div>
-  <p class="sample-note"><strong>Why Atlas Ocean Voyages?</strong> It is the one hand-researched demo brand: a small-ship luxury expedition cruise line headquartered in Fort Lauderdale. This is the same report every free assessment produces, filled with illustrative answers. None of the numbers are Atlas Ocean Voyages' real performance.</p>
+  <div class="sb-row"><span class="sample-badge">● Sample · Demo account</span><a class="sample-back" href="assessment.html#register" onclick="return sampleBack(event)">← Back to your assessment</a></div>
+  <p class="sample-note"><strong>About this demo.</strong> "Demo Company" is a generic, fictional account, not a real business. This is the same report every free assessment produces, filled with illustrative answers. None of the numbers describe a real company's performance.</p>
 </div>
 <div class="wrap">
 
@@ -2016,7 +2016,7 @@ footer.as-foot .as-foot-links a:hover{color:#0A58CC!important;text-decoration:un
     <!-- Round 104, module (e) — sample-output thumbnail. Opens a real
          illustrative sample report (sample-assessment.html, a static
          standalone page — see that file, built 2026-08-31) in a new tab —
-         stands in for "the full PDF of a demo dummy account's assessment"
+         stands in for "the full PDF of a demo account's assessment"
          the spec calls for; an actual PDF export isn't wired up in this
          prototype (same honesty convention as the Save & Schedule button
          and the CRM-write note above).
@@ -2028,7 +2028,7 @@ footer.as-foot .as-foot-links a:hover{color:#0A58CC!important;text-decoration:un
     <aside class="sample-thumb">
       <div class="teaser-label">See the format first</div>
       <a class="sample-thumb-frame" href="sample-assessment.html" target="vlSample" style="display:block;text-decoration:none;color:inherit;">
-        <div class="sf-row"><span>Atlas Ocean Voyages</span><span>Sample · Dummy Account</span></div>
+        <div class="sf-row"><span>Demo Company</span><span>Sample · Demo account</span></div>
         <div class="quad-visual mini" style="margin:2px 0 10px;">
           <div class="qcell q2">Lit Within</div>
           <div class="qcell q1">Radiant</div>
@@ -2048,7 +2048,7 @@ footer.as-foot .as-foot-links a:hover{color:#0A58CC!important;text-decoration:un
         </div>
       </a>
       <div class="sample-thumb-cta">View sample assessment →</div>
-      <p style="font-size:0.75rem;color:#6E6E73;margin:10px 0 0;">A real dummy account's report, not a mockup — see exactly what you'll get before you register.</p>
+      <p style="font-size:0.75rem;color:#6E6E73;margin:10px 0 0;">a demo account's report, not a mockup — see exactly what you'll get before you register.</p>
     </aside>
     </div>
     <div class="btn-row">
@@ -4412,7 +4412,7 @@ const STEP_RAIL_BULLETS = {
   // still follow before the final report.
   contact: [
     "Your details save your progress and open your free week. Your results arrive as soon as they are ready.",
-    "The sample report on the right is a real dummy account, not a mockup — see the format before you register."
+    "The sample report on the right is a demo account, not a mockup — see the format before you register."
   ]
 };
 
@@ -7526,17 +7526,17 @@ function renderAgenticRoleMapping(){
 
 <script>try{var __p=new URLSearchParams(location.search).get('package');if(__p)sessionStorage.setItem('vl_package',__p)}catch(e){}</script>
 <script>
-/* ---- Sample report bootstrap: the page's own report code, fed a dummy account, with every network call switched off ---- */
+/* ---- Sample report bootstrap: the page's own report code, fed a generic demo account, with every network call switched off ---- */
 (function(){
   var realFetch = window.fetch;
   window.fetch = function(u){ var url = String((u && u.url) || u); if (url.indexOf('/api/') !== -1 || /^https?:\/\//.test(url) && url.indexOf(location.origin) !== 0) return Promise.reject(new Error('sample page: no network')); return realFetch.apply(this, arguments); };
   window.addEventListener('load', function(){
     try {
-      var idx = INDUSTRIES.findIndex(function(i){ return i.label === 'Cruise Lines — Luxury'; });
-      Object.assign(state, { company:'Atlas Ocean Voyages', url:'atlasoceanvoyages.com', industryIdx:String(idx), buyerType:'B2C',
-        description:'A small-ship luxury expedition cruise line (Intimate Yachting Expeditions) sailing Polar, Epicurean and Cultural voyages.',
-        productThemes:'Polar Expeditions, Epicurean Expeditions, Cultural Expeditions, Antarctica, Arctic, Northern Europe, Mediterranean',
-        audience:new Set(['boomer','genx']), wealth:new Set(['hnw']), targetIncome:150000,
+      var idx = INDUSTRIES.findIndex(function(i){ return i.label === 'Retail — Specialty / Apparel'; });
+      Object.assign(state, { company:'Demo Company', url:'example.com', industryIdx:String(idx), buyerType:'B2C',
+        description:'A multi-channel specialty retailer selling everyday apparel and accessories online and through a small network of stores.',
+        productThemes:'Everyday apparel, Accessories, Seasonal collections, Online store, Retail locations',
+        audience:new Set(['genx','millennial']), wealth:new Set(['middle','wealthy']), targetIncome:90000,
         assessStages:new Set(['Awareness','Consideration','Purchase','Loyalty','Advocacy']) });
       state.stageEffectiveness = { Awareness:4, Consideration:4, Purchase:3, Loyalty:4, Advocacy:3 };
       state.stageCxRating = { Awareness:4, Consideration:4, Purchase:3, Loyalty:4, Advocacy:3 };
