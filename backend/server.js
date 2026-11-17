@@ -4004,7 +4004,8 @@ function campaignObjectiveText(campaign){
   const bits = [];
   try { if (campaign.businessInitiative && typeof BUSINESS_INITIATIVE_REGISTRY !== 'undefined' && BUSINESS_INITIATIVE_REGISTRY[campaign.businessInitiative]) bits.push('Primary focus: ' + (BUSINESS_INITIATIVE_REGISTRY[campaign.businessInitiative].label || campaign.businessInitiative)); else if (campaign.businessInitiative) bits.push('Primary focus: ' + campaign.businessInitiative); } catch (e){}
   if (campaign.primaryKpi) bits.push('Primary KPI: ' + campaign.primaryKpi);
-  if (campaign.stage) bits.push('Stage: ' + campaign.stage);
+  const STAGE_OBJ = { Awareness: 'Brand Awareness', Consideration: 'Consideration', Purchase: 'Purchase / Conversion', Loyalty: 'Brand Loyalty', Advocacy: 'Brand Advocacy' };
+  if (campaign.stage) bits.unshift('Campaign objective: ' + (STAGE_OBJ[campaign.stage] || campaign.stage) + ' (Marketing Loop stage: ' + campaign.stage + ')');
   return bits.join('. ');
 }
 
@@ -33502,16 +33503,17 @@ async function handleRequestInner(req, res) {
       // successful-looking reset. ORDER BY createdAt DESC LIMIT 1 makes both
       // lookups deterministically agree on "the most recently created
       // matching row," regardless of any pre-existing duplicates.
+      // 2026-11-17 -- when several profiles share one sign-in email, a profile whose name or email contains "test" is ranked last, so the real profile (and its text/email setting) is the one used. A test profile is still used if it is the only match.
       let member;
       try {
         if (useAsyncPg){
           const r = await getAuthPgPool().query(
-            'SELECT id, "accountId", name, "passwordHash", "passwordSalt", "mustChangePassword", status, phone, email, "isAdmin", mfasms FROM team_members WHERE lower(email) = lower($1) ORDER BY "createdAt" DESC LIMIT 1',
+            'SELECT id, "accountId", name, "passwordHash", "passwordSalt", "mustChangePassword", status, phone, email, "isAdmin", mfasms FROM team_members WHERE lower(email) = lower($1) ORDER BY (CASE WHEN lower(coalesce(name,\'\') || \' \' || coalesce(email,\'\')) LIKE \'%test%\' THEN 1 ELSE 0 END), "createdAt" DESC LIMIT 1',
             [body.email]
           );
           member = r.rows[0];
         } else {
-          member = db.prepare('SELECT id, accountId, name, passwordHash, passwordSalt, mustChangePassword, status, phone, email, isAdmin, mfasms FROM team_members WHERE lower(email) = lower(?) ORDER BY createdAt DESC LIMIT 1').get(body.email);
+          member = db.prepare('SELECT id, accountId, name, passwordHash, passwordSalt, mustChangePassword, status, phone, email, isAdmin, mfasms FROM team_members WHERE lower(email) = lower(?) ORDER BY (CASE WHEN lower(coalesce(name,\'\') || \' \' || coalesce(email,\'\')) LIKE \'%test%\' THEN 1 ELSE 0 END), createdAt DESC LIMIT 1').get(body.email);
         }
       } catch (e){
         console.error('login-user: member lookup failed:', e.message);
