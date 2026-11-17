@@ -26572,26 +26572,43 @@ async function ssLoad(){
 }
 function ssMount(){
   const box = document.getElementById('brainDumpBody'); if (!box || !ssLive()) return;
-  if (!document.getElementById('ssCard')){ box.insertAdjacentHTML('afterbegin', '<div class="strat-card ss-card" id="ssCard"></div>'); }
+  if (!document.getElementById('ssCard')){ box.insertAdjacentHTML('afterbegin', '<div class="strat-card ss-card" id="ssCard"><h2>What do you want to get done today?</h2><p class="strat-sub" style="margin:0 0 10px;">Talk or type to the Brain, or start with one of the suggestions below. Answers come from your own account.</p><div id="ssDockSlot" class="ss-dock-slot"></div><div id="ssBody"></div></div>'); }
+  ssSyncDock();
   if (!SS.d && !SS.loading) ssLoad(); else ssRender();
 }
+// The floating Ask Verilume bar is moved into this card while the Brain Dump is showing, then put back where it came from. It is the same bar, so voice, typing and prompts all keep working; there is never a second copy.
+let SS_BAR = null, SS_HOME = null;
+function ssBar(){ if (!SS_BAR) SS_BAR = document.getElementById('askVerilumeBar'); return SS_BAR; }
+function ssParkDock(){
+  const bar = ssBar(); if (!bar || !SS_HOME) return;
+  bar.classList.remove('ask-inline');
+  const next = (SS_HOME.next && SS_HOME.next.parentNode === SS_HOME.parent) ? SS_HOME.next : null;
+  if (bar.parentNode !== SS_HOME.parent || bar.nextSibling !== next) SS_HOME.parent.insertBefore(bar, next);
+}
+function ssSyncDock(){
+  const bar = ssBar(); if (!bar) return;
+  const slot = document.getElementById('ssDockSlot');
+  const showing = !!(slot && slot.isConnected && slot.offsetParent !== null);
+  if (showing){
+    if (!SS_HOME && bar.parentNode) SS_HOME = { parent: bar.parentNode, next: bar.nextSibling };
+    if (bar.parentNode !== slot){ slot.appendChild(bar); }
+    bar.classList.add('ask-inline');
+  } else { ssParkDock(); }
+}
+setInterval(function(){ try { ssSyncDock(); } catch (e){} }, 700);
 function ssChip(t, extra){ return `<button type="button" class="strat-chip ss-chip${t.usual ? ' ss-usual' : ''}" onclick="ssPick('${t.key}')" title="${t.usual ? 'One of your usual tasks' : ''}">${escapeHtml(t.label)}${extra || ''}</button>`; }
 function ssRender(){
-  const el = document.getElementById('ssCard'); if (!el) return;
-  const d = SS.d; if (!d){ el.innerHTML = `<h2>What do you want to get done today?</h2><p class="strat-sub">${SS.err ? escapeHtml(SS.err) : 'Getting your suggestions…'}</p>`; return; }
-  const all = (d.recommended || []).concat(d.continueTasks || []);
+  const el = document.getElementById('ssBody'); if (!el) return;
+  const d = SS.d; if (!d){ el.innerHTML = `<p class="strat-sub">${SS.err ? escapeHtml(SS.err) : 'Getting your suggestions…'}</p>`; return; }
   const cont = (d.continueTasks || []).map(t => `<span class="ss-cont">${ssChip(t)}<button type="button" class="ss-x" title="Mark done" aria-label="Mark ${escapeHtml(t.label)} done" onclick="ssDone('${t.key}')">✓</button></span>`).join('');
   const rec = (d.recommended || []).map(t => ssChip(t)).join('');
   const fnTxt = d.fn ? (typeof functionLabel === 'function' ? functionLabel(d.fn) : d.fn) : '';
-  const chat = SS.chat.length ? `<div class="ss-chat" aria-live="polite">${SS.chat.map(m => m.role === 'user' ? `<p class="ss-me">${escapeHtml(m.text)}</p>` : `<p class="ss-ai">${escapeHtml(m.text)}</p>${(m.options || []).length ? '<div class="ss-opts">' + m.options.map(o => ssChip(o)).join('') + '</div>' : ''}`).join('')}</div>` : '';
   const ans = SS.active ? `<div class="ss-answer"><div class="strat-chart-label" style="margin:0 0 4px;">${escapeHtml(SS.active.label)}</div>${SS.answering ? '<p class="strat-sub">The Brain is reading your account…</p>' : `<p class="strat-reading" style="white-space:pre-wrap;margin:0 0 8px;">${escapeHtml(SS.answer)}</p>`}
     <div class="strat-actions"><button type="button" class="strat-chip" onclick="ssOpenFull('${SS.active.key}')">Open the full screen →</button> <button type="button" class="strat-chip" onclick="ssDone('${SS.active.key}')">Done with this</button> <button type="button" class="strat-chip" onclick="ssCloseAnswer()">Close</button></div></div>` : '';
-  el.innerHTML = `<h2>What do you want to get done today?</h2>
-    <p class="strat-sub" style="margin:0 0 8px;">${fnTxt ? 'Suggested for your seat (' + escapeHtml(fnTxt) + ').' : 'Pick one, or tell me in your own words.'} Only you see this.</p>
-    ${cont ? `<div class="strat-chart-label" style="margin:8px 0 4px;">Pick up where you left off</div><div class="ss-row">${cont}</div>` : ''}
-    <div class="strat-chart-label" style="margin:8px 0 4px;">Start with</div><div class="ss-row">${rec}</div>
-    <form class="ss-form" onsubmit="ssSend(event)"><input type="text" id="ssText" maxlength="300" placeholder="Or tell me what you want to get done, for example: write social copy for the fall sale" value="${escapeHtml(SS.text || '')}" oninput="SS.text=this.value" ${SS.chatBusy ? 'disabled' : ''}><button type="submit" class="strat-chip" ${SS.chatBusy ? 'disabled' : ''}>${SS.chatBusy ? 'Thinking…' : 'Go'}</button></form>
-    ${chat}${ans}`;
+  el.innerHTML = `${cont ? `<div class="strat-chart-label" style="margin:12px 0 4px;">Pick up where you left off</div><div class="ss-row">${cont}</div>` : ''}
+    <div class="strat-chart-label" style="margin:12px 0 4px;">${fnTxt ? 'Or start with one of these for your seat (' + escapeHtml(fnTxt) + ')' : 'Or start with'}</div><div class="ss-row">${rec}</div>
+    <p class="strat-foot" style="margin:10px 0 0;">Only you see your tasks.</p>
+    ${ans}`;
 }
 function ssFind(key){ const d = SS.d || {}; return (d.recommended || []).concat(d.continueTasks || []).concat(SS.chat.flatMap(m => m.options || [])).find(t => t.key === key) || null; }
 function ssGo(dest){ if (!dest) return; try { if (dest.kind === 'dash' && typeof vlOpenMyDashboard === 'function') vlOpenMyDashboard(); else if (dest.kind === 'step') goToStep(dest.step); } catch (e){ console.warn('ssGo failed', e); } }
@@ -26625,6 +26642,7 @@ async function ssSend(ev){
   SS.chatBusy = false; ssRender();
 }
 (function(){ if (document.getElementById('ssStyle')) return; const st = document.createElement('style'); st.id = 'ssStyle'; st.textContent = '.ss-row,.ss-opts{display:flex;flex-wrap:wrap;gap:8px}.ss-cont{display:inline-flex;gap:2px}.ss-x{border:1px solid var(--line);background:var(--paper);border-radius:999px;padding:2px 8px;cursor:pointer}.ss-usual{border-style:dashed}.ss-form{display:flex;gap:8px;margin-top:12px}.ss-form input{flex:1;min-width:0;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font:inherit}.ss-chat{margin-top:10px}.ss-me{margin:6px 0;font-weight:600}.ss-ai{margin:6px 0}.ss-answer{margin-top:12px;padding:12px;border-radius:8px;background:var(--paper-dim);border:1px solid var(--line)}'; document.head.appendChild(st); })();
+(function(){ if (document.getElementById('ssDockStyle')) return; const st = document.createElement('style'); st.id = 'ssDockStyle'; st.textContent = 'body.ask-dock .ask-bar.ask-inline,body.ask-dock-mini.ask-dock .ask-bar.ask-inline,body.ask-dock-kb.ask-dock .ask-bar.ask-inline{position:static;left:auto;right:auto;bottom:auto;transform:none;width:100%;max-width:none;height:auto;margin:0;box-sizing:border-box;padding:6px 12px;border:1px solid var(--line);border-radius:14px;background:var(--white);box-shadow:none}body.ask-dock .ask-bar.ask-inline > .ask-row,body.ask-dock-mini.ask-dock .ask-bar.ask-inline > .ask-row,body.ask-dock-kb .ask-bar.ask-inline > .ask-row{display:flex;height:auto;min-height:64px;flex-wrap:wrap;justify-content:flex-start}body.ask-dock .ask-bar.ask-inline .ask-expand{position:static;left:auto;bottom:auto;transform:none;width:100%;max-height:none;margin-top:8px;box-shadow:none;border-radius:12px}body.ask-dock .ask-bar.ask-inline .ask-dock-minibadge{display:none}.ss-dock-slot{margin:0 0 6px}'; document.head.appendChild(st); })();
 
 function bdRender(){
   bdRenderMain(); const box = document.getElementById('brainDumpBody'); if (!box) return;
@@ -26633,7 +26651,7 @@ function bdRender(){
   try { if (typeof vz !== 'undefined' && typeof vzLive === 'function' && vzLive()){ if (vz.lib) vzBdNote(); else vzLoadLib(); } } catch (e){}
   box.insertAdjacentHTML('beforeend', '<div class="strat-card"><div class="pj-host" data-area="all"></div></div>'); setTimeout(pjMountAll, 0);
 }
-function bdRenderMain(){ bdRenderMainInner(); try { ssMount(); } catch (e){ console.warn('ssMount failed', e); } }
+function bdRenderMain(){ try { ssParkDock(); } catch (e){} bdRenderMainInner(); try { ssMount(); } catch (e){ console.warn('ssMount failed', e); } }
 function bdRenderMainInner(){
   const box = document.getElementById('brainDumpBody'); if (!box) return;
   if (bd.loading && !bd.data){ box.innerHTML = '<div class="strat-card"><p class="strat-empty">The Brain is reading this week\'s numbers…</p></div>'; return; }
