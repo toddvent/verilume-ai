@@ -5025,20 +5025,32 @@ function stripExcludedFromSegments(c, segmentText){
 }
 const MODEL_STANDARD = ANTHROPIC_STANDARD_MODEL;
 const MODEL_REASONING = 'claude-opus-5';
-async function callClaudeForJSON({ model, maxTokens, content, schema, toolName, toolDescription, timeoutMs }){
+// 2026-11-17 -- some current models reject a forced tool_choice (HTTP 400 "tool_choice: type tool and any are not supported for this model"). Try the forced form first; on that specific error remember it and use tool_choice auto with an explicit instruction to call the tool.
+let ANTHROPIC_FORCED_TOOL_OK = true;
+function anthropicToolChoice(toolName){ return ANTHROPIC_FORCED_TOOL_OK ? { type: 'tool', name: toolName } : { type: 'auto' }; }
+function anthropicToolNudge(toolName){ return ANTHROPIC_FORCED_TOOL_OK ? '' : `\n\nRespond ONLY by calling the ${toolName} tool with your complete answer. Do not write any other text.`; }
+function isToolChoiceUnsupported(err){ return !!(err && err.httpStatus === 400 && /tool_choice/i.test(String(err.message || ''))); }
+async function callClaudeForJSON(opts){
+  try { return await callClaudeForJSONInner(opts); }
+  catch (e){
+    if (ANTHROPIC_FORCED_TOOL_OK && isToolChoiceUnsupported(e)){ ANTHROPIC_FORCED_TOOL_OK = false; console.warn('[anthropic] forced tool_choice not supported by this model; switching to auto.'); return await callClaudeForJSONInner(opts); }
+    throw e;
+  }
+}
+async function callClaudeForJSONInner({ model, maxTokens, content, schema, toolName, toolDescription, timeoutMs }){
   const resp = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
     body: JSON.stringify({
       model,
       max_tokens: maxTokens,
-      messages: [{ role: 'user', content }],
+      messages: [{ role: 'user', content: (typeof content === 'string' ? content + anthropicToolNudge(toolName) : content) }],
       tools: [{
         name: toolName,
         description: toolDescription || 'Submit the requested structured result.',
         input_schema: schema
       }],
-      tool_choice: { type: 'tool', name: toolName }
+      tool_choice: anthropicToolChoice(toolName)
     })
   }, timeoutMs);
   if (!resp.ok){
@@ -5075,7 +5087,15 @@ async function callClaudeForJSON({ model, maxTokens, content, schema, toolName, 
 // `system` may be a string or an array of content blocks (so callers can
 // attach `cache_control` to the static instruction block — see
 // AI_BRAIN_REPLY_SYSTEM's own comment for why that matters for latency).
-function callClaudeToolStream(opts){ return withQueueSlot(aiQueue, () => callClaudeToolStreamInner(opts)); }
+function callClaudeToolStream(opts){
+  return withQueueSlot(aiQueue, async () => {
+    try { return await callClaudeToolStreamInner(opts); }
+    catch (e){
+      if (ANTHROPIC_FORCED_TOOL_OK && isToolChoiceUnsupported(e)){ ANTHROPIC_FORCED_TOOL_OK = false; console.warn('[anthropic] forced tool_choice not supported by this model; switching to auto.'); return await callClaudeToolStreamInner(opts); }
+      throw e;
+    }
+  });
+}
 async function callClaudeToolStreamInner({ model, maxTokens, system, messages, schema, toolName, toolDescription, onReplyDelta, onFirstToken, firstByteMs = 20000, idleMs = 15000, maxMs = 110000 }){
   const controller = new AbortController();
   let phase = 'connect';
@@ -5089,9 +5109,14 @@ async function callClaudeToolStreamInner({ model, maxTokens, system, messages, s
     stream: true,
     messages,
     tools: [{ name: toolName, description: toolDescription || 'Submit the requested structured result.', input_schema: schema }],
-    tool_choice: { type: 'tool', name: toolName }
+    tool_choice: anthropicToolChoice(toolName)
   };
   if (system) body.system = system;
+  if (!ANTHROPIC_FORCED_TOOL_OK){
+    const nudge = anthropicToolNudge(toolName);
+    if (Array.isArray(body.system)) body.system = body.system.concat([{ type: 'text', text: nudge }]);
+    else body.system = (body.system || '') + nudge;
+  }
   let resp;
   try {
     resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -30748,11 +30773,13 @@ ${campaign.mandatoryPhrase ? `MANDATORY PHRASE (required verbatim, word-for-word
 COPY TO SCORE:
 ${copyText.slice(0, 2000)}`;
       let parsed;
+      var lastScoreErr = '';
       for (let attempt = 0; attempt < 2 && !parsed; attempt++){
         try {
           parsed = await callClaudeForJSON({
         model: ANTHROPIC_STANDARD_MODEL,
         maxTokens: 500,
+        timeoutMs: 30000,
         content: prompt + '\n\nScoring rules: judge THIS copy on its own merits. Use the full 0-100 range and avoid round-number defaults; two different drafts should rarely get the same score. Name the specific words or lines that earned or cost points in relevanceNote.',
         toolName: 'submit_copy_score',
         toolDescription: 'Submit the relevance and compliance scores.',
@@ -30767,7 +30794,7 @@ ${copyText.slice(0, 2000)}`;
           required: ['relevanceScore', 'relevanceNote', 'complianceScore', 'complianceFlags']
         }
       });
-        } catch (e){ console.error('[scoreDraftCopy] AI scoring attempt ' + (attempt + 1) + ' failed:', e && e.message); if (attempt === 1) throw e; }
+        } catch (e){ lastScoreErr = String(e && e.message || e).slice(0, 160); console.error('[scoreDraftCopy] AI scoring attempt ' + (attempt + 1) + ' failed:', lastScoreErr); if (attempt === 1) throw e; }
       }
       // 2026-10-18 — the saved exact phrases are checked in code too, so a missing or reworded phrase always shows up and lowers Brand Fit.
       const aiFlags = Array.isArray(parsed.complianceFlags) ? parsed.complianceFlags.slice() : [];
@@ -30787,9 +30814,12 @@ ${copyText.slice(0, 2000)}`;
       // just because the AI scoring call itself hiccuped.
     } catch (e){ /* fall through to heuristic below */ }
   }
+  const why = !process.env.ANTHROPIC_API_KEY ? 'no ANTHROPIC_API_KEY on the server' : (typeof lastScoreErr === 'string' && lastScoreErr ? lastScoreErr : 'the scoring call failed');
   const rel = scoreDraftHeuristically(copyText, campaign);
   const comp = scoreComplianceHeuristically(copyText, account, campaign);
-  return { relevanceScore: rel.relevanceScore, note: rel.relevanceNote, complianceScore: comp.complianceScore, flags: comp.flags, mode: 'heuristic' };
+  // A rules-only check cannot honestly certify a draft as fully on-brand, so it is capped below 100.
+  const capped = Math.min(comp.complianceScore, 85);
+  return { relevanceScore: rel.relevanceScore, note: String(rel.relevanceNote || '').replace('AI scorer unavailable', 'AI scorer unavailable: ' + why), complianceScore: capped, flags: comp.flags.concat(comp.flags.length || capped >= 100 ? [] : []).concat(['Brand Fit is capped at 85 because the AI brand-voice check did not run (rules check only).']), mode: 'heuristic' };
 }
 
 // 2026-09-23 REWRITE, per direct instruction ("Something is off... One
@@ -32017,15 +32047,14 @@ async function runCandidateInterview(campaign, account, audienceLabel, runOpts){
   // is the exact same bug runBrandVoiceContest() had and fixed on
   // 2026-08-26. Combined into one Promise.all so the Anthropic slot AND
   // every configured vendor fire at once.
-  const [anthropicGenerated, vendorGenerated] = await Promise.all([
-    generateInterviewCandidateCopy(INTERVIEW_ANTHROPIC_SLOT, campaign, account, sampleContext, audienceLabel),
-    Promise.all(configuredVendors.map(v => generateVendorInterviewCopy(v.key, campaign, account, sampleContext, audienceLabel)))
+  // 2026-11-17 -- score each draft as soon as it arrives instead of after the slowest writer finishes, so scoring is no longer squeezed into the tail of the request budget.
+  const genAndScore = async genPromise => { const g = await genPromise; const sc = g && g.copy ? await scoreDraftCopy(g.copy, campaign, account) : null; return { g, sc }; };
+  const [anthropicRes, vendorRes] = await Promise.all([
+    genAndScore(generateInterviewCandidateCopy(INTERVIEW_ANTHROPIC_SLOT, campaign, account, sampleContext, audienceLabel)),
+    Promise.all(configuredVendors.map(v => genAndScore(generateVendorInterviewCopy(v.key, campaign, account, sampleContext, audienceLabel))))
   ]);
-
-  const anthropicScored = anthropicGenerated.copy ? await scoreDraftCopy(anthropicGenerated.copy, campaign, account) : null;
-  const vendorScored = await Promise.all(
-    vendorGenerated.map(g => (g.copy ? scoreDraftCopy(g.copy, campaign, account) : Promise.resolve(null)))
-  );
+  const anthropicGenerated = anthropicRes.g, anthropicScored = anthropicRes.sc;
+  const vendorGenerated = vendorRes.map(r => r.g), vendorScored = vendorRes.map(r => r.sc);
 
   const buildCandidate = (key, label, vendor, model, gen, score) => {
     const relevanceScore = score ? score.relevanceScore : null;
