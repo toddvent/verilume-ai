@@ -14265,7 +14265,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-17-r10-largeview';
+const CXMEDIA_BUILD_STAMP = '2026-11-17-r11-drivers';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -26277,10 +26277,58 @@ function gpcRender(){
   document.querySelectorAll('[data-vzgpc]').forEach(h => { if (GPC_META[h.dataset.vzgpc]) h.innerHTML = gpcCardHtml(h.dataset.vzgpc); });
   gpcRenderModal();
 }
+function vzFlagStyle(){
+  if (document.getElementById('vzFlagCss')) return; const st = document.createElement('style'); st.id = 'vzFlagCss';
+  st.textContent = `.vzf-pill{display:inline-block;margin-left:8px;padding:1px 9px;border-radius:980px;font-size:.6875rem;font-weight:600;letter-spacing:.02em;vertical-align:middle;white-space:nowrap;}
+  td.vzf-good{background:rgba(26,127,86,.07);} td.vzf-good .vzf-pill{background:#E1F2E9;color:#146B47;}
+  td.vzf-bad{background:rgba(192,39,60,.06);} td.vzf-bad .vzf-pill{background:#FBE5E8;color:#B0213A;}
+  td.vzf-neutral{background:rgba(201,151,59,.09);} td.vzf-neutral .vzf-pill{background:#F5EAD0;color:#7A5A1C;}
+  td.vzf-est{background:#F4F5F9;} td.vzf-est .vzf-pill{background:#E3E6EE;color:#3F4860;}
+  td.vzf-l2 .vzf-pill{font-weight:700;} .vzf-legend{margin:8px 2px 0;color:var(--muted);font-size:.8125rem;line-height:1.45;}
+  .vzd-bar{display:flex;flex-wrap:wrap;align-items:center;gap:12px 18px;margin:4px 0 2px;} .vzd-link{color:var(--ink);font-weight:600;font-size:.9375rem;cursor:pointer;text-decoration:underline;text-decoration-color:#C9973B;text-underline-offset:4px;background:none;border:0;padding:6px 0;font-family:inherit;}
+  .vzd-panel{margin:10px 0 4px;padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:var(--card,#fff);} .vzd-panel h4{margin:0 0 8px;font-size:.8125rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;}
+  .vzd-panel ul{margin:0;padding-left:18px;} .vzd-panel li{margin:0 0 6px;line-height:1.5;} .vzd-head{font-size:1.0625rem;line-height:1.5;margin:0 0 12px;font-weight:500;}
+  .vzd-drv{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 14px;padding:10px 0;border-top:1px solid var(--line);} .vzd-drv:first-of-type{border-top:0;} .vzd-drv b{font-weight:600;} .vzd-eff{font-weight:700;white-space:nowrap;} .vzd-eff.bad{color:#B0213A;} .vzd-eff.good{color:#146B47;} .vzd-sub{grid-column:1/-1;color:var(--muted);font-size:.875rem;line-height:1.45;}
+  .vzd-act{padding:10px 0;border-top:1px solid var(--line);} .vzd-act:first-of-type{border-top:0;} .vzd-own{display:inline-block;margin-right:8px;padding:1px 9px;border-radius:980px;background:#E8EBF3;color:#14213D;font-size:.75rem;font-weight:600;} .vzd-caution{margin:10px 0 0;padding:10px 12px;border-radius:10px;background:#F4F5F9;color:var(--ink);font-size:.875rem;line-height:1.45;}`;
+  document.head.appendChild(st);
+}
+function vzHowItems(key){
+  const c = gpcCardData(key); if (!c) return null; const notes = (c.large.notes || []).map(n => stratHumanDates(n));
+  return { dates: [stratHumanDates(c.rangeLabel), stratHumanDates(c.compLabel)].filter(Boolean), shows: notes.filter(n => !/ estimated /.test(n) && !/^Not on file/.test(n)), counted: c.large.definitions || [], aware: notes.filter(n => / estimated /.test(n) || /^Not on file/.test(n)) };
+}
+function vzHowHtml(key){
+  const h = vzHowItems(key); if (!h) return ''; const ul = (t, a) => a.length ? `<h4>${t}</h4><ul>${a.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul>` : '';
+  return `<div class="vzd-panel" id="vzHow">${ul('What was compared', h.dates)}${h.shows.length ? '<div style="height:12px"></div>' : ''}${ul('What the numbers show', h.shows)}${h.counted.length ? '<div style="height:12px"></div>' : ''}${ul('How it is counted', h.counted)}${h.aware.length ? '<div style="height:12px"></div>' : ''}${ul('Data to be aware of', h.aware)}</div>`;
+}
+function vzDriversHtml(key){
+  const d = vz.drv; if (!d || d.key !== key) return ''; if (d.loading) return '<div class="vzd-panel"><p class="vzd-head" style="color:var(--muted);margin:0;">Looking at what moved this result. This can take up to half a minute.</p></div>';
+  if (d.err) return `<div class="vzd-panel"><p style="margin:0;">${escapeHtml(d.err)}</p></div>`; const r = d.res; if (!r) return '';
+  if (r.thin) return `<div class="vzd-panel"><p style="margin:0;">${escapeHtml(r.caution || 'There is not enough history to separate the causes yet.')}</p></div>`;
+  const hurt = x => (key === 'roas') ? x < 0 : x > 0; const pf = v => (v >= 0 ? '+' : '') + v + '%';
+  const drv = (r.drivers || []).map(x => `<div class="vzd-drv"><div><b>${escapeHtml(x.name)}</b>${x.estimated ? ' <span class="vzf-pill" style="background:#E3E6EE;color:#3F4860;">estimated</span>' : ''}</div><div class="vzd-eff ${hurt(x.effectPct) ? 'bad' : 'good'}">${pf(x.effectPct)}</div><div class="vzd-sub">${escapeHtml(x.explanation || ('Moved ' + x.evidence + '.'))}</div></div>`).join('');
+  const opt = d.opt ? `<div class="vzd-panel" style="margin-top:12px;"><h4>How to optimize · for the team</h4>${(r.actions || []).map(a => `<div class="vzd-act"><div>${a.owner ? `<span class="vzd-own">${escapeHtml(a.owner)}</span>` : ''}${escapeHtml(a.action || '')}</div><div class="vzd-sub" style="color:var(--muted);font-size:.875rem;margin-top:4px;">${a.effect ? escapeHtml(a.effect) + ' ' : ''}${a.supports ? '<i>' + escapeHtml(a.supports) + '</i>' : ''}</div></div>`).join('')}</div>` : '';
+  return `<div class="vzd-panel"><h4>What influenced this</h4><p class="vzd-head">${escapeHtml(r.headline || '')}</p>${drv}<p class="vzf-legend" style="margin-top:8px;">Each figure is what that factor alone did to the result. Red worked against it, green helped.</p>${r.caution ? `<p class="vzd-caution">${escapeHtml(r.caution)}</p>` : ''}<div class="vzd-bar" style="margin-top:12px;"><button type="button" class="vzd-link" onclick="vzOptToggle()">${d.opt ? 'Hide how to optimize' : 'View how to optimize'}</button></div></div>${opt}`;
+}
+function vzRepaintDetail(){ const dh = document.getElementById('vzMountDetail'); const k = vz.mountKey; if (dh && k && GPC_META[k]) dh.innerHTML = gpcDetailHtml(k); }
+function vzHowToggle(){ vz.howOpen = !vz.howOpen; vzRepaintDetail(); }
+function vzOptToggle(){ if (vz.drv) vz.drv.opt = !vz.drv.opt; vzRepaintDetail(); }
+async function vzDriversRun(key){
+  const st = gpc[key]; if (!st) return; if (vz.drv && vz.drv.loading) return; vz.drv = { key, loading: true, res: null, err: '', opt: false }; vzRepaintDetail();
+  try { const j = await vzApi('/visualize/drivers', vzJson({ key, preset: st.preset, from: st.from, to: st.to })); if (!vz.drv || vz.drv.key !== key) return; if (j && j.ok) vz.drv.res = j; else vz.drv.err = (j && j.error) || 'Could not run the analysis right now.'; }
+  catch (e){ if (vz.drv && vz.drv.key === key) vz.drv.err = (e && e.message) || 'Could not run the analysis right now.'; }
+  if (vz.drv) vz.drv.loading = false; vzRepaintDetail();
+}
+function gpcTableHtml(t){
+  const fl = {}; (t.flags || []).forEach(f => { fl[f[0] + ':' + f[1]] = f[2]; });
+  const rows = t.rows.length ? t.rows.map((r, ri) => `<tr>${r.map((v, ci) => { const f = fl[ri + ':' + ci]; if (!f) return `<td>${escapeHtml(v)}</td>`; const w = f.est ? 'estimated' : (f.dir === 'high' ? (f.level === 2 ? 'Much higher' : 'Higher') : (f.level === 2 ? 'Much lower' : 'Lower')); return `<td class="vzf-${f.tone} vzf-l${f.level}">${escapeHtml(v)}<span class="vzf-pill" title="${f.est ? 'Built from estimated data, so confirm before acting' : 'Outside this account’s usual range for these dates'}">${w}</span></td>`; }).join('')}</tr>`).join('') : `<tr class="empty-state-row"><td colspan="${t.columns.length}">None</td></tr>`;
+  const legend = (t.flags || []).length ? `<p class="vzf-legend">Marked cells sit outside this account’s usual range for the dates shown. Green is favorable, red is not, gold is a change to know about, and grey is built from estimated data.</p>` : '';
+  return `<div class="strat-chart-label" style="margin:14px 0 4px;">${escapeHtml(t.name)}</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr>${t.columns.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>${legend}`;
+}
 function gpcDetailHtml(key){
-  const c = gpcCardData(key); if (!c) return '';
-  const tables = c.large.tables.map(t => `<div class="strat-chart-label" style="margin:14px 0 4px;">${escapeHtml(t.name)}</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr>${t.columns.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead><tbody>${t.rows.length ? t.rows.map(r => `<tr>${r.map(v => `<td>${escapeHtml(v)}</td>`).join('')}</tr>`).join('') : `<tr class="empty-state-row"><td colspan="${t.columns.length}">None</td></tr>`}</tbody></table></div>`).join('');
-  return `<div class="gpc-dates">${escapeHtml(stratHumanDates(c.rangeLabel))} · ${escapeHtml(stratHumanDates(c.compLabel))}</div>${tables}${(c.large.notes || []).map(n => `<p class="strat-sub">${escapeHtml(stratHumanDates(n))}</p>`).join('')}<details class="fd-hint" style="margin-top:12px;"><summary>How this is counted</summary>${(c.large.definitions || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}</details>`;
+  const c = gpcCardData(key); if (!c) return ''; vzFlagStyle();
+  const canWhy = key === 'kpi' || key === 'roas';
+  const bar = `<div class="vzd-bar"><button type="button" class="vzd-link" onclick="vzHowToggle()" aria-expanded="${!!vz.howOpen}">How we got here</button>${canWhy ? `<button type="button" class="btn-ghost" onclick="vzDriversRun('${key}')">What influenced this?</button>` : ''}</div>`;
+  return `${bar}${vz.howOpen ? vzHowHtml(key) : ''}${canWhy ? vzDriversHtml(key) : ''}${c.large.tables.map(gpcTableHtml).join('')}`;
 }
 function gpcOpen(key){ if (key !== 'sources' && typeof vzLargeOpen === 'function' && typeof VZ_MOUNTS !== 'undefined' && VZ_MOUNTS[key] && GPC_META[key]){ vzLargeOpen('mount', key); return; } gpc.open = key; gpcRenderModal(); }
 function gpcClose(){ gpc.open = null; gpcRenderModal(); }
@@ -86947,7 +86995,7 @@ function vzReturnToOrigin(){
   setTimeout(() => { try { window.scrollTo({ top: o.y }); } catch (e){} }, 300);
 }
 function vzLargeOpen(kind, id){
-  vzCaptureOrigin(); vz.res = null; vz.saved = null; vz.panel = ''; vz.lro = null;
+  vz.howOpen = false; vz.drv = null; vzCaptureOrigin(); vz.res = null; vz.saved = null; vz.panel = ''; vz.lro = null;
   if (kind === 'mount'){ vz.mode = 'mount'; vz.mountKey = id; vz.mountTitle = (GPC_META[id] && GPC_META[id].title) || id; vz.mro = null; }
   else { vz.mode = 'large'; vz.largeId = id; vz.mountTitle = CC[id].title; cc.open = id; }
   goToStep('visualize'); vzRender(); try { window.scrollTo({ top: 0 }); } catch (e){}
