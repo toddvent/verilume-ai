@@ -57928,6 +57928,7 @@ async function plcOpen(cid, pre){
   document.body.style.overflow = 'hidden';
   plcRender();
 }
+if (!window._plcEsc){ window._plcEsc = true; document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.getElementById('plcOverlay')) plcClose(); }); }
 function plcClose(){ const ov = document.getElementById('plcOverlay'); if (ov) ov.remove(); document.body.style.overflow = ''; }
 function plcSpec(){ return plc && plc.specIdx !== null ? plc.specs[plc.specIdx] : null; }
 function plcRender(){
@@ -57936,8 +57937,9 @@ function plcRender(){
   const step = (n, t) => `<span class="plc-step ${stage === n ? 'on' : (stage > n ? 'done' : '')}">${n}. ${t}</span>`;
   const chanOpts = `<option value="">Choose a channel</option>` + PLC_CHANNELS.map(x => `<option value="${escapeHtml(x)}"${x === plc.channel ? ' selected' : ''}>${escapeHtml(plcLabel(x))}</option>`).join('');
   const types = CREATIVE_TYPES_BY_CHANNEL[plc.channel] || [];
-  let h = `<div class="plc-card" role="dialog" aria-label="Add a media placement">
-    <h2>${escapeHtml(plc.name)}</h2>
+  let h = `<div class="plc-card" role="dialog" aria-label="Add a media placement" style="position:relative;">
+    <button type="button" class="btn-ghost" onclick="plcClose()" aria-label="Close" title="Close (Esc)" style="position:absolute;top:14px;right:14px;width:36px;height:36px;padding:0;border-radius:50%;font-size:1.125rem;line-height:1;">&#10005;</button>
+    <h2 style="padding-right:44px;">${escapeHtml(plc.name)}</h2>
     <p class="plc-sub">Campaign ID ${escapeHtml(plc.cid)} &middot; one channel, straight to copy. A contest is optional.</p>
     <div class="plc-steps">${step(1, 'Add channel')}${step(2, 'Copy')}${step(3, 'Confirm')}</div>`;
   if (!plc.added){
