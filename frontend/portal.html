@@ -72744,7 +72744,7 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId, forceMode){
   btnId = btnId || 'cmpCopyContestBtn';
   flagId = flagId || 'cmpCopyContestSelectFlag';
   const campaign = cmpCurrentCampaign();
-  const panel = document.getElementById(panelId);
+  let panel = document.getElementById(panelId);
   const btn = document.getElementById(btnId);
   if (!campaign || !panel) return;
   panel.style.display = '';
@@ -72760,6 +72760,15 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId, forceMode){
   }
   panel.innerHTML = renderAiStatusBubble("Getting one response to this campaign's Long Form Copy from each AI partner — grounded in the campaign's writing style, objective, KPI, brand voice, and channels — then scoring each one blind before ranking them.", INTERVIEW_STATUS_TIPS);
   if (btn) btn.disabled = true;
+  // 2026-11-17 -- first click bounced back to the copy page: the gate above reads the on-screen/local campaign, but the server checks its own saved copy. If the Focus fields or Key Message had not finished saving, the server refused (400) and the message landed in a panel that was then redrawn. Save the required fields and wait for the server before starting.
+  try {
+    if (!campaign.localOnly && dataSourceLabel === 'backend'){
+      await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignType: campaign.campaignType, businessInitiative: campaign.businessInitiative, keyMessage: campaign.keyMessage, keyMessageMode: campaign.keyMessageMode || 'exact', briefBuilderExpandedText: campaign.briefBuilderExpandedText || '' })
+      }, 2, 500);
+    }
+  } catch (e){ console.warn('cmpRunCampaignCopyContest: pre-run save failed', e); }
   const runMode = forceMode || cmpContestNextMode(panelId);
   const isDefaultRun = runMode === 'default';
   const timeoutMs = isDefaultRun ? 60000 : 100000;
@@ -72821,6 +72830,7 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId, forceMode){
           timeoutMs
         }, 2, 700);
     result.mode = isDefaultRun ? 'default' : 'contest';
+    panel = document.getElementById(panelId) || panel;
     if (!result.available){
       panel.innerHTML = `<div class="hint">${escapeHtml(result.note || 'Copy contest unavailable.')}</div>`;
       return;
@@ -72838,6 +72848,8 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId, forceMode){
       cmpRefreshDraftScore(campaign);
     });
   } catch (e){
+    panel = document.getElementById(panelId) || panel;
+    panel.style.display = '';
     panel.innerHTML = `<div class="hint" style="color:var(--advocacy);font-weight:600;background:#FDECEC;border:1px solid #F3B8B8;border-radius:8px;padding:10px 12px;margin:0;">⚠ Couldn't run the copy contest: ${escapeHtml(e.message || 'backend unreachable')}. Try again.</div>`;
   } finally {
     cmpSunriseLoaderHide();
