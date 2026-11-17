@@ -57873,7 +57873,11 @@ async function briefPlacementContinue(){
 // ============================================================
 let plc = null;
 // Every channel the copy step can write for: the planning channels plus Email and PR, which have copy specs but are not media-mix lines.
-const PLC_CHANNELS = [...CHANNEL_OPTIONS, 'Email — Remarketing', 'Internal Email', 'PR'];
+const PLC_CHANNELS = [...CHANNEL_OPTIONS, 'Internal Email', 'Email — Remarketing', 'PR'];
+// Paid email is stored under the platform's existing paid-email channel key ('Email — Remarketing': CPM, rate card and spec tables all key on it), shown as "Paid Email".
+const PLC_LABEL = { 'Email — Remarketing': 'Paid Email' };
+function plcLabel(ch){ return PLC_LABEL[ch] || ch; }
+const PLC_AUDIENCES = ['Past Customers', 'Hand-Raisers', 'Prospects', 'CX Transactions'];
 function plcCss(){
   if (document.getElementById('plcCss')) return;
   const s = document.createElement('style'); s.id = 'plcCss';
@@ -57896,6 +57900,15 @@ function plcCss(){
   #plcOverlay .plc-msg.warn{color:var(--advocacy,#b3261e)}
   #plcOverlay .plc-fr{margin:0 0 8px}`;
   document.head.appendChild(s);
+}
+function plcCamp(){ return (plc && (state.campaigns || []).find(x => x.id === plc.cid)) || {}; }
+// The contest prompt adds the campaign's experience focus and Media Science focus, so they are asked for right here instead of on Brand Messaging.
+async function plcSetFocus(field, value){
+  const c = plcCamp(); c[field] = value;
+  try { currentCampaignId = plc.cid; } catch (e){}
+  try { const ts = document.getElementById('cmpCreationCampaignTypeSelect'), is = document.getElementById('cmpCreationBusinessInitiativeSelect'); if (field === 'campaignType' && ts) ts.value = value; if (field === 'businessInitiative' && is) is.value = value; } catch (e){}
+  if (field === 'campaignType') cmpPendingCampaignType = value; else cmpPendingBusinessInitiative = value;
+  try { await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(plc.cid)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: value }) }); plcMsg(''); } catch (e){ plcMsg('Could not save that choice. Try again.', true); }
 }
 function plcSet(id, v){ const e = document.getElementById(id); if (e) e.value = v; }
 function plcMsg(t, warn){ const m = document.getElementById('plcMsg'); if (!m) return; m.textContent = t || ''; m.className = 'plc-msg' + (warn ? ' warn' : ''); }
@@ -57921,7 +57934,7 @@ function plcRender(){
   const ov = document.getElementById('plcOverlay'); if (!ov || !plc) return;
   const stage = !plc.added ? 1 : (plc.copyMode ? 3 : 2);
   const step = (n, t) => `<span class="plc-step ${stage === n ? 'on' : (stage > n ? 'done' : '')}">${n}. ${t}</span>`;
-  const chanOpts = `<option value="">Choose a channel</option>` + PLC_CHANNELS.map(x => `<option value="${escapeHtml(x)}"${x === plc.channel ? ' selected' : ''}>${escapeHtml(x)}</option>`).join('');
+  const chanOpts = `<option value="">Choose a channel</option>` + PLC_CHANNELS.map(x => `<option value="${escapeHtml(x)}"${x === plc.channel ? ' selected' : ''}>${escapeHtml(plcLabel(x))}</option>`).join('');
   const types = CREATIVE_TYPES_BY_CHANNEL[plc.channel] || [];
   let h = `<div class="plc-card" role="dialog" aria-label="Add a media placement">
     <h2>${escapeHtml(plc.name)}</h2>
@@ -57933,13 +57946,19 @@ function plcRender(){
       <div><label for="plcPartner">Partner (optional)</label><input id="plcPartner" type="text" maxlength="80" value="${escapeHtml(plc.partner || '')}"></div>
       <div><label for="plcType">Creative type</label><select id="plcType" onchange="plc.creativeType=this.value">${types.length ? types.map(t => `<option${t === plc.creativeType ? ' selected' : ''}>${escapeHtml(t)}</option>`).join('') : '<option value="">Choose a channel first</option>'}</select></div>
       <div><label for="plcSpec">Creative spec</label><select id="plcSpec" onchange="plc.specIdx=this.value===''?null:Number(this.value)">${plc.specs.length ? plc.specs.map((s, i) => `<option value="${i}"${i === plc.specIdx ? ' selected' : ''}>${escapeHtml(s.label)}</option>`).join('') : '<option value="">Choose a channel first</option>'}</select></div>
+      <div><label for="plcAud">Audience</label><select id="plcAud"><option value="">Choose an audience</option>${PLC_AUDIENCES.map(a => `<option${a === plc.audience ? ' selected' : ''}>${escapeHtml(a)}</option>`).join('')}</select></div>
+      <div><label for="plcReach">Estimated reach</label><input id="plcReach" type="number" min="0" step="1" placeholder="number" value="${escapeHtml(plc.reach == null ? '' : String(plc.reach))}"></div>
       <div><label for="plcDue">Creative due date</label><input id="plcDue" type="date" value="${escapeHtml(plc.due || '')}"></div>
     </div><div class="plc-row"><button type="button" class="btn-primary" onclick="plcAddChannel()">Add channel &rarr;</button><button type="button" class="btn-ghost" onclick="plcClose()">Close</button></div></div>`;
   } else {
     const sp = plcSpec();
-    h += `<div class="plc-sec"><h3>${escapeHtml(plc.channel)}${plc.partner ? ' with ' + escapeHtml(plc.partner) : ''} added</h3>
-      <p class="hint" style="margin:0;">${plc.creativeType ? escapeHtml(plc.creativeType) + ' &middot; ' : ''}${sp ? escapeHtml(sp.label) : 'No spec chosen'}${plc.due ? ' &middot; creative due ' + escapeHtml(plc.due) : ''}</p></div>
-    <div class="plc-sec"><h3>What should this ${escapeHtml(plc.channel)} placement say?</h3>
+    h += `<div class="plc-sec"><h3>${escapeHtml(plcLabel(plc.channel))}${plc.partner ? ' with ' + escapeHtml(plc.partner) : ''} added</h3>
+      <p class="hint" style="margin:0;">${plc.audience ? escapeHtml(plc.audience) + ' &middot; ' : ''}${plc.reach ? Number(plc.reach).toLocaleString('en-US') + ' reach &middot; ' : ''}${plc.creativeType ? escapeHtml(plc.creativeType) + ' &middot; ' : ''}${sp ? escapeHtml(sp.label) : 'No spec chosen'}${plc.due ? ' &middot; creative due ' + escapeHtml(plc.due) : ''}</p></div>
+    <div class="plc-sec"><h3>What should this ${escapeHtml(plcLabel(plc.channel))} placement say?</h3>
+      <div class="plc-grid" style="margin-bottom:12px;">
+        <div><label for="plcExp">Campaign experience focus</label><select id="plcExp" onchange="plcSetFocus('campaignType', this.value)"><option value="">Choose one</option>${Object.keys(CAMPAIGN_TYPE_REGISTRY_CLIENT).map(k => `<option value="${escapeHtml(k)}"${k === plcCamp().campaignType ? ' selected' : ''}>${escapeHtml(CAMPAIGN_TYPE_REGISTRY_CLIENT[k].label)}</option>`).join('')}</select></div>
+        <div><label for="plcFocus">Media Science primary focus</label><select id="plcFocus" onchange="plcSetFocus('businessInitiative', this.value)"><option value="">Choose one</option>${Object.keys(BUSINESS_INITIATIVE_REGISTRY_CLIENT).map(k => `<option value="${escapeHtml(k)}"${k === plcCamp().businessInitiative ? ' selected' : ''}>${escapeHtml(BUSINESS_INITIATIVE_REGISTRY_CLIENT[k].label)}</option>`).join('')}</select></div>
+      </div>
       <label for="plcKey">Key message</label>
       <input id="plcKey" type="text" maxlength="200" value="${escapeHtml(plc.keyMessage || '')}" placeholder="The one thing this placement should say" oninput="plc.keyMessage=this.value">
       <div class="plc-row">
@@ -57971,7 +57990,7 @@ function plcCopyEditorHtml(){
   } else {
     f = `<label for="plcCopy">Copy</label><textarea id="plcCopy">${escapeHtml(plc.copy || '')}</textarea>`;
   }
-  return `<div class="plc-sec"><h3>Your copy for ${escapeHtml(plc.channel)}</h3>${f}
+  return `<div class="plc-sec"><h3>Your copy for ${escapeHtml(plcLabel(plc.channel))}</h3>${f}
     <div class="plc-row"><button type="button" class="btn-primary" onclick="plcConfirm()">Confirm copy and go to Trafficking &rarr;</button>
     <button type="button" class="btn-ghost" onclick="plcDraft()">Redraft</button><button type="button" class="btn-ghost" onclick="plcClose()">Save for later</button></div></div>`;
 }
@@ -57993,13 +58012,14 @@ function plcLibPick(k){
 }
 async function plcPickChannel(ch){
   plc.channel = ch; plc.creativeType = (CREATIVE_TYPES_BY_CHANNEL[ch] || [])[0] || '';
-  plc.partner = (document.getElementById('plcPartner') || {}).value || ''; plc.due = (document.getElementById('plcDue') || {}).value || '';
+  plc.partner = (document.getElementById('plcPartner') || {}).value || ''; plc.due = (document.getElementById('plcDue') || {}).value || ''; plc.audience = (document.getElementById('plcAud') || {}).value || ''; plc.reach = (document.getElementById('plcReach') || {}).value || '';
   plc.specs = ch ? await plcSpecsFor(ch) : []; plc.specIdx = plc.specs.length ? 0 : null;
   plcRender();
 }
 async function plcAddChannel(){
-  plc.partner = (document.getElementById('plcPartner') || {}).value || ''; plc.due = (document.getElementById('plcDue') || {}).value || '';
+  plc.partner = (document.getElementById('plcPartner') || {}).value || ''; plc.due = (document.getElementById('plcDue') || {}).value || ''; plc.audience = (document.getElementById('plcAud') || {}).value || ''; plc.reach = (document.getElementById('plcReach') || {}).value || '';
   if (!plc.channel){ plcMsg('Choose the channel.', true); return; }
+  if (!plc.audience){ plcMsg('Choose the audience.', true); return; }
   if (!plc.due){ plcMsg('Add the creative due date.', true); return; }
   // Dates and budget come from the campaign itself (step 1).
   const cc = (state.campaigns || []).find(x => x.id === plc.cid) || {};
@@ -58008,7 +58028,7 @@ async function plcAddChannel(){
   plcMsg('Adding the channel…');
   try {
     const r = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(plc.cid)}/channel-planning`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ channel: plc.channel, partner: plc.partner || null, impressions: null, budget, hitDate: plc.start || null, endDate: plc.end || null, detailsJson: { creativeDueDate: plc.due, creativeSpec: sp ? sp.label : null, creativeType: plc.creativeType || null, standAlone: true }, actorRole: 'client' }) });
+      body: JSON.stringify({ channel: plc.channel, partner: plc.partner || null, impressions: plc.reach === '' ? null : Number(plc.reach), audience: plc.audience, budget, hitDate: plc.start || null, endDate: plc.end || null, detailsJson: { creativeDueDate: plc.due, creativeSpec: sp ? sp.label : null, creativeType: plc.creativeType || null, standAlone: true }, actorRole: 'client' }) });
     if (!r.ok){ let m = ''; try { m = (await r.json()).error || ''; } catch (e){} throw new Error(m || 'The channel could not be added (' + r.status + ').'); }
     plc.added = true; plcRender();
   } catch (e){ plcMsg(e.message || 'The channel could not be added.', true); }
@@ -58040,6 +58060,7 @@ async function plcDraft(){
 }
 async function plcContest(){
   if (!plc.keyMessage || !plc.keyMessage.trim()){ plcMsg('Add the key message first, so the contest has something to work from.', true); return; }
+  const cp = plcCamp(); if (!cp.campaignType || !cp.businessInitiative){ plcMsg('Choose the campaign experience focus and the Media Science primary focus above. The contest adds both to its prompt.', true); return; }
   await plcSyncKeyMessage();
   const p = document.getElementById('plcContestPanel'); if (p) p.style.display = '';
   plcMsg('');
