@@ -14273,6 +14273,14 @@ createTableIfNeeded(`
     day TEXT NOT NULL
   );
 `);
+// 2026-11-17 -- production logged 'relation "creative_handoffs" does not exist' on every campaign load. The table is in the block above, but it was not created on Postgres, so create it again on its own (harmless if it already exists).
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS creative_handoffs (
+    id TEXT PRIMARY KEY, accountid TEXT NOT NULL, campaignid TEXT NOT NULL, version INTEGER NOT NULL, status TEXT NOT NULL,
+    packagejson TEXT NOT NULL, jobids TEXT, submittedby TEXT, submittedbyname TEXT, submittedat TEXT NOT NULL,
+    decidedby TEXT, decidedbyname TEXT, decidedat TEXT, decisionnote TEXT
+  );`);
+} catch (e){ console.error('[schema] could not ensure creative_handoffs:', e && e.message); }
 // 2026-10-07 — AI Brain Coach (growth workstream). Everything here is private to the signed-in person; see coachWho().
 // Lowercase snake_case, accountid only in WHERE (pg-sync-bridge rules). Registered in CATALOG_EXEMPT: person data, never an account-level dataset.
 createTableIfNeeded(`
@@ -30797,6 +30805,11 @@ ${copyText.slice(0, 2000)}`;
         } catch (e){ lastScoreErr = String(e && e.message || e).slice(0, 160); console.error('[scoreDraftCopy] AI scoring attempt ' + (attempt + 1) + ' failed:', lastScoreErr); if (attempt === 1) throw e; }
       }
       // 2026-10-18 — the saved exact phrases are checked in code too, so a missing or reworded phrase always shows up and lowers Brand Fit.
+      // 2026-11-17 -- with tool_choice auto the model can return an incomplete score object. Coerce numeric strings, and fill any missing half from the rules check instead of showing "not scored".
+      const num = v => { const n = typeof v === 'string' ? parseFloat(v) : v; return (typeof n === 'number' && isFinite(n)) ? Math.max(0, Math.min(100, Math.round(n))) : null; };
+      parsed.relevanceScore = num(parsed.relevanceScore); parsed.complianceScore = num(parsed.complianceScore);
+      if (parsed.relevanceScore == null){ const h = scoreDraftHeuristically(copyText, campaign); parsed.relevanceScore = h.relevanceScore; parsed.relevanceNote = parsed.relevanceNote || h.relevanceNote; }
+      if (parsed.complianceScore == null){ parsed.complianceScore = Math.min(85, scoreComplianceHeuristically(copyText, account, campaign).complianceScore); }
       const aiFlags = Array.isArray(parsed.complianceFlags) ? parsed.complianceFlags.slice() : [];
       const phraseFlags = exactPhraseFlags(copyText, account && account.accountId ? accountExactPhrases(account.accountId) : []).concat(surveillanceFlags(copyText));
       phraseFlags.forEach(f => aiFlags.push(f));
