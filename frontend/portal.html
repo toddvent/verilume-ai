@@ -57533,7 +57533,8 @@ function briefBuild(){
   if (camp) camp.style.display = (k === 'campaign' || k === 'placement') ? '' : 'none';
   // 2026-11-17, per Todd: step 1 is the identical campaign form for a full campaign and for a stand alone placement.
   if (camp) camp.classList.remove('brf-placement-mode');
-  { const bf = briefEl('cmpBrief'); if (bf) bf.classList.toggle('brf-placement-skip', k === 'placement'); }
+  // 2026-11-17 -- the sentence brief is where Stage (which sets the Objective) and Audience are chosen, so a stand alone placement must show it exactly like a full campaign. Hiding it left Stage, Objective and Audience empty on the saved campaign.
+  { const bf = briefEl('cmpBrief'); if (bf) bf.classList.remove('brf-placement-skip'); }
   if (k === 'placement') briefMode = 'create';
   if (sheet) sheet.style.display = k === 'project' ? '' : 'none';
   let h = '';
