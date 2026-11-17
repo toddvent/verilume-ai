@@ -10535,22 +10535,6 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
                  channels within these groups) stays in Audience & Channels
                  below — this field is the higher-level Channel grouping
                  only, per the audit's own "Campaign Channel Groups" naming. -->
-            <div class="field brf-ph-only" id="briefStartFrom">
-              <label>Start from</label>
-              <div class="brf-sf-opts" role="group" aria-label="Start this placement from">
-                <button type="button" class="brf-sf on" data-m="fresh" onclick="briefSfSet('fresh')">A new placement</button>
-                <button type="button" class="brf-sf" data-m="hist" onclick="briefSfSet('hist')">Pick up a historical campaign</button>
-                <button type="button" class="brf-sf" data-m="lib" onclick="briefSfSet('lib')">Reference the ad library</button>
-              </div>
-              <div id="briefSfHist" style="display:none;margin-top:10px;">
-                <input type="text" id="briefSfHistQ" autocomplete="off" placeholder="Search past campaigns by ID or name" oninput="briefSfHistSearch(this.value)" aria-label="Search past campaigns">
-                <div class="brf-sf-list" id="briefSfHistList"></div>
-              </div>
-              <div id="briefSfLib" style="display:none;margin-top:10px;">
-                <div class="brf-sf-list" id="briefSfLibList"></div>
-              </div>
-              <div class="hint" id="briefSfNote" style="margin-top:8px;"></div>
-            </div>
             <div class="field-divider">Campaign classification</div>
             <div class="field">
               <label>Campaign ID</label>
@@ -57550,13 +57534,15 @@ function briefBuild(){
   const k = briefKind; const title = briefEl('briefTitle'), lede = briefEl('briefLede'), act = briefEl('briefAction'), camp = briefEl('cmpCampaignFields'), sheet = briefEl('cmpProjectSheet');
   document.querySelectorAll('.brf-kind').forEach(b => b.classList.toggle('on', b.dataset.k === k));
   if (camp) camp.style.display = (k === 'campaign' || k === 'placement') ? '' : 'none';
-  if (camp) camp.classList.toggle('brf-placement-mode', k === 'placement');
-  { const bf = briefEl('cmpBrief'); if (bf) bf.classList.toggle('brf-placement-skip', k === 'placement'); }
+  // 2026-11-17, per Todd: step 1 is the identical campaign form for a full campaign and for a stand alone placement.
+  if (camp) camp.classList.remove('brf-placement-mode');
+  { const bf = briefEl('cmpBrief'); if (bf) bf.classList.remove('brf-placement-skip'); }
+  if (k === 'placement') briefMode = 'create';
   if (sheet) sheet.style.display = k === 'project' ? '' : 'none';
   let h = '';
-  if (k === 'campaign'){
-    if (title) title.textContent = 'Campaign brief';
-    if (lede) lede.textContent = 'Provide your campaign objectives. The next step will be a brief conversation with your Verilume Assistant and then a recommendation for your review.';
+  if (k === 'campaign' || k === 'placement'){
+    if (title) title.textContent = k === 'placement' ? 'Stand alone media placement' : 'Campaign brief';
+    if (lede) lede.textContent = k === 'placement' ? 'Provide the same campaign details as any campaign. The next step is adding the channel, then copy, with or without a contest.' : 'Provide your campaign objectives. The next step will be a brief conversation with your Verilume Assistant and then a recommendation for your review.';
     const kpis = PRIMARY_KPI_OPTIONS.filter(x => !/^Other/i.test(x)).map(x => ({ v: x, l: x }));
     const foc = Object.keys(BUSINESS_INITIATIVE_REGISTRY_CLIENT).map(x => ({ v: x, l: BUSINESS_INITIATIVE_REGISTRY_CLIENT[x].label }));
     const exp = Object.keys(CAMPAIGN_TYPE_REGISTRY_CLIENT).map(x => ({ v: x, l: CAMPAIGN_TYPE_REGISTRY_CLIENT[x].label }));
@@ -57570,7 +57556,7 @@ function briefBuild(){
       My estimated budget is $<input type="number" id="briefBudgetIn" class="brf-in brf-num" min="0" step="100" placeholder="optional" aria-label="Estimated budget" oninput="briefPickBudget(this.value)">.
       <span id="briefTail"></span>`;
     if (act) act.style.display = 'none';
-  } else if (k === 'placement'){
+  } else if (k === 'placement-legacy'){
     if (title) title.textContent = 'Stand alone media placement';
     if (lede) lede.textContent = 'Add a media placement to a campaign, or on its own. After you add it, the AI Brain confirms the details and you go straight to Copy.';
     h = `I'm adding a media placement that ${briefSelectHtml('briefAssoc', [{ v: 'yes', l: 'is' }, { v: 'no', l: 'is not' }], '', 'briefSetP(\'assoc\',this.value)')} associated with a campaign.
@@ -57697,7 +57683,8 @@ function briefRender(){
   { const c = briefEl('cmpCampaignFields'), sh = briefEl('cmpProjectSheet'); if (c){ c.style.display = (briefKind === 'campaign' || briefKind === 'placement') ? '' : 'none'; c.classList.toggle('brf-placement-mode', briefKind === 'placement'); } if (sh) sh.style.display = briefKind === 'project' ? '' : 'none'; }
   const set = (id, v) => { const e = briefEl(id); if (e && document.activeElement !== e) e.value = v == null ? '' : v; if (e) e.classList.toggle('filled', !!e.value); };
   const sets = briefSets();
-  if (briefKind === 'campaign'){
+  if (briefKind === 'campaign' || briefKind === 'placement'){
+    { const bm = briefEl('briefMode'); if (bm) bm.style.display = briefKind === 'placement' ? 'none' : ''; }
     set('briefMode', briefMode); set('briefStage', selectedStage || ''); set('briefName', (briefEl('cmpName') || {}).value);
     set('briefStart', (briefEl('cmpStartDate') || {}).value); set('briefEnd', (briefEl('cmpEndDate') || {}).value);
     { const g = briefEl('briefGoal'); if (g && document.activeElement !== g){ g.value = briefGoalFmt((briefEl('cmpKpiGoal') || {}).value); g.classList.toggle('filled', !!g.value); } }
@@ -57711,8 +57698,8 @@ function briefRender(){
     briefMultiFill('briefAud', ACCOUNT_SEGMENTS, selectedSegments, 'briefToggleAud', 'audiences', disabled);
     briefExclFill(); briefBudgetCheck();
     const tail = briefEl('briefTail'); if (tail) tail.textContent = '';
-    const btn = briefEl('cmpSubmitBtn'); if (btn && !/Save Changes|Read only/.test(btn.textContent)) btn.textContent = briefMode === 'recommend' ? 'Create and recommend →' : 'Create Campaign →';
-  } else if (briefKind === 'placement'){
+    const btn = briefEl('cmpSubmitBtn'); if (btn && !/Save Changes|Read only/.test(btn.textContent)) btn.textContent = briefKind === 'placement' ? 'Create and add channel →' : (briefMode === 'recommend' ? 'Create and recommend →' : 'Create Campaign →');
+  } else if (briefKind === 'placement-legacy'){
     const s = briefS.placement;
     set('briefAssoc', s.assoc); set('briefChan', s.channel); set('briefPStart', s.start); set('briefPEnd', s.end); set('briefReach', s.reach); set('briefBudget', s.budget);
     const y = briefEl('briefAssocYes'); if (y) y.style.display = s.assoc === 'yes' ? '' : 'none';
@@ -57835,6 +57822,7 @@ async function briefSavePlacement(){
   finally { const b2 = briefEl('briefSaveBtn'); if (b2) b2.disabled = false; }
 }
 function briefConfirmOpen(p){
+  window._briefLastPlacement = p;
   const c = (state.campaigns || []).find(x => x.id === p.campaignId); const money = v => '$' + Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 });
   const notes = [], warns = [];
   notes.push(`${p.channel}${p.partner ? ' with ' + p.partner : ''}, ${p.start} to ${p.end}, ${p.createdCampaign ? 'saved as its own placement' : 'added to ' + ((c && (c.name || c.objective)) || p.campaignId)}.`);
@@ -57877,9 +57865,210 @@ async function briefPlacementContinue(){
     try { await loadCampaigns(); if (typeof renderCampaignsList === 'function') renderCampaignsList(); if (typeof renderActiveCampaigns === 'function') renderActiveCampaigns(); } catch (e){}
     try { loadExistingCampaignIntoForm(cid); } catch (e){ console.warn('briefPlacementContinue: could not load the campaign', e); }
     say('');
-    cmpOpenCreativeWorkspace();
+    plcOpen(cid);
   } catch (e){ say(e.message || 'The placement could not be saved.', true); }
   finally { if (btn) btn.disabled = false; }
+}
+
+
+// ============================================================
+// 2026-11-17, per Todd: "Add Manual" (stand alone media placement) already knows the channel, so it goes straight to copy, with or without a
+// contest. Flow: 1 create the campaign (same form as every campaign) -> 2 campaign id is created -> 3 add the channel manually ->
+// 4 the system asks: draft copy, or run a contest (optional) for that channel's specs -> 5 confirm the copy and move to Trafficking.
+// This is a focused single-channel panel. It does not open the full Recap / Audience contest / Asset Selection workspace.
+// ============================================================
+let plc = null;
+function plcCss(){
+  if (document.getElementById('plcCss')) return;
+  const s = document.createElement('style'); s.id = 'plcCss';
+  s.textContent = `#plcOverlay{position:fixed;inset:0;z-index:1200;background:rgba(20,33,61,.55);display:flex;justify-content:center;align-items:flex-start;overflow:auto;padding:28px 16px}
+  #plcOverlay .plc-card{background:var(--paper,#fff);color:var(--ink,#14213D);width:min(860px,100%);border-radius:16px;padding:26px 28px 28px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+  #plcOverlay h2{margin:0 0 4px;font-size:1.375rem}
+  #plcOverlay .plc-sub{color:var(--muted,#5c5a52);font-size:.875rem;margin:0 0 18px}
+  #plcOverlay .plc-steps{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 20px}
+  #plcOverlay .plc-step{font-size:.75rem;font-weight:600;padding:5px 12px;border-radius:999px;border:1px solid var(--line,#e3e0d8);color:var(--muted,#5c5a52)}
+  #plcOverlay .plc-step.on{background:var(--ink,#14213D);border-color:var(--ink,#14213D);color:#fff}
+  #plcOverlay .plc-step.done{border-color:var(--cx,#1558C0);color:var(--cx,#1558C0)}
+  #plcOverlay .plc-sec{border:1px solid var(--line,#e3e0d8);border-radius:12px;padding:16px 18px;margin:0 0 14px}
+  #plcOverlay .plc-sec h3{margin:0 0 10px;font-size:1rem}
+  #plcOverlay .plc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+  #plcOverlay label{display:block;font-size:.75rem;font-weight:600;margin:0 0 4px;text-transform:uppercase;letter-spacing:.04em}
+  #plcOverlay input,#plcOverlay select,#plcOverlay textarea{width:100%;box-sizing:border-box;font:inherit;padding:8px 10px;border:1px solid var(--line,#ccc);border-radius:8px;background:var(--paper,#fff);color:inherit}
+  #plcOverlay textarea{min-height:96px;resize:vertical}
+  #plcOverlay .plc-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
+  #plcOverlay .plc-msg{font-size:.8125rem;margin-top:8px}
+  #plcOverlay .plc-msg.warn{color:var(--advocacy,#b3261e)}
+  #plcOverlay .plc-fr{margin:0 0 8px}`;
+  document.head.appendChild(s);
+}
+function plcSet(id, v){ const e = document.getElementById(id); if (e) e.value = v; }
+function plcMsg(t, warn){ const m = document.getElementById('plcMsg'); if (!m) return; m.textContent = t || ''; m.className = 'plc-msg' + (warn ? ' warn' : ''); }
+async function plcSpecsFor(channel){
+  let opts = [];
+  try { if (channelUsesPublisherSpecTable(channel)) opts = await loadPublisherSizesForChannel(channel); } catch (e){}
+  if (!opts || !opts.length) opts = adUnitSpecsFor(channel);
+  return opts;
+}
+async function plcOpen(cid, pre){
+  plcCss();
+  const c = (state.campaigns || []).find(x => x.id === cid) || cmpRailLoadedCampaign();
+  plc = { cid, name: (c && (c.name || c.objective)) || cid, channel: '', creativeType: '', specs: [], specIdx: null, added: false, copyMode: '', copy: '', copyParts: null, frameCopy: null, keyMessage: (c && c.keyMessage) || '', ...(pre || {}) };
+  if (pre && pre.channel){ plc.specs = await plcSpecsFor(pre.channel); plc.specIdx = plc.specs.length ? 0 : null; if (pre.spec){ const i = plc.specs.findIndex(s => s.label === pre.spec); if (i >= 0) plc.specIdx = i; } }
+  let ov = document.getElementById('plcOverlay'); if (ov) ov.remove();
+  ov = document.createElement('div'); ov.id = 'plcOverlay'; document.body.appendChild(ov);
+  document.body.style.overflow = 'hidden';
+  plcRender();
+}
+function plcClose(){ const ov = document.getElementById('plcOverlay'); if (ov) ov.remove(); document.body.style.overflow = ''; }
+function plcSpec(){ return plc && plc.specIdx !== null ? plc.specs[plc.specIdx] : null; }
+function plcRender(){
+  const ov = document.getElementById('plcOverlay'); if (!ov || !plc) return;
+  const stage = !plc.added ? 1 : (plc.copyMode ? 3 : 2);
+  const step = (n, t) => `<span class="plc-step ${stage === n ? 'on' : (stage > n ? 'done' : '')}">${n}. ${t}</span>`;
+  const chanOpts = `<option value="">Choose a channel</option>` + CHANNEL_OPTIONS.map(x => `<option value="${escapeHtml(x)}"${x === plc.channel ? ' selected' : ''}>${escapeHtml(x)}</option>`).join('');
+  const types = CREATIVE_TYPES_BY_CHANNEL[plc.channel] || [];
+  let h = `<div class="plc-card" role="dialog" aria-label="Add a media placement">
+    <h2>${escapeHtml(plc.name)}</h2>
+    <p class="plc-sub">Campaign ID ${escapeHtml(plc.cid)} &middot; one channel, straight to copy. A contest is optional.</p>
+    <div class="plc-steps">${step(1, 'Add channel')}${step(2, 'Copy')}${step(3, 'Confirm')}</div>`;
+  if (!plc.added){
+    h += `<div class="plc-sec"><h3>Which channel are you adding?</h3><div class="plc-grid">
+      <div><label for="plcChan">Channel</label><select id="plcChan" onchange="plcPickChannel(this.value)">${chanOpts}</select></div>
+      <div><label for="plcPartner">Partner (optional)</label><input id="plcPartner" type="text" maxlength="80" value="${escapeHtml(plc.partner || '')}"></div>
+      <div><label for="plcType">Creative type</label><select id="plcType" onchange="plc.creativeType=this.value">${types.length ? types.map(t => `<option${t === plc.creativeType ? ' selected' : ''}>${escapeHtml(t)}</option>`).join('') : '<option value="">Choose a channel first</option>'}</select></div>
+      <div><label for="plcSpec">Creative spec</label><select id="plcSpec" onchange="plc.specIdx=this.value===''?null:Number(this.value)">${plc.specs.length ? plc.specs.map((s, i) => `<option value="${i}"${i === plc.specIdx ? ' selected' : ''}>${escapeHtml(s.label)}</option>`).join('') : '<option value="">Choose a channel first</option>'}</select></div>
+      <div><label for="plcStart">Start</label><input id="plcStart" type="date" value="${escapeHtml(plc.start || '')}"></div>
+      <div><label for="plcEnd">End</label><input id="plcEnd" type="date" value="${escapeHtml(plc.end || '')}"></div>
+      <div><label for="plcBudget">Budget ($, optional)</label><input id="plcBudget" type="number" min="0" step="100" value="${escapeHtml(plc.budget == null ? '' : String(plc.budget))}"></div>
+    </div><div class="plc-row"><button type="button" class="btn-primary" onclick="plcAddChannel()">Add channel &rarr;</button><button type="button" class="btn-ghost" onclick="plcClose()">Close</button></div></div>`;
+  } else {
+    const sp = plcSpec();
+    h += `<div class="plc-sec"><h3>${escapeHtml(plc.channel)}${plc.partner ? ' with ' + escapeHtml(plc.partner) : ''} added</h3>
+      <p class="hint" style="margin:0;">${plc.creativeType ? escapeHtml(plc.creativeType) + ' &middot; ' : ''}${sp ? escapeHtml(sp.label) : 'No spec chosen'}${plc.start ? ' &middot; ' + escapeHtml(plc.start) + (plc.end ? ' to ' + escapeHtml(plc.end) : '') : ''}</p></div>
+    <div class="plc-sec"><h3>What should this ${escapeHtml(plc.channel)} placement say?</h3>
+      <label for="plcKey">Key message</label>
+      <input id="plcKey" type="text" maxlength="200" value="${escapeHtml(plc.keyMessage || '')}" placeholder="The one thing this placement should say" oninput="plc.keyMessage=this.value">
+      <div class="plc-row">
+        <button type="button" class="btn-primary" onclick="plcDraft()">Draft copy for me</button>
+        <button type="button" class="btn-ghost" onclick="plcContest()">Run a contest (optional)</button>
+        <span class="hint">A contest asks several AI writers for options and scores them. Skip it when you just want a draft.</span>
+      </div>
+      <div class="plc-row" style="margin-top:6px;"><button type="button" class="btn-ghost" onclick="plcLibOpen()">Start from the ad library</button><span class="hint">Pick saved copy as your starting point.</span></div>
+      <div id="plcLib" style="display:none;margin-top:8px;"></div>
+      <div id="plcContestPanel" style="margin-top:12px;display:none;"></div>
+      <span id="plcContestFlag" class="hint" style="display:block;"></span>
+      <button type="button" id="plcContestBtn" style="display:none;"></button></div>`;
+    if (plc.copyMode) h += plcCopyEditorHtml();
+  }
+  h += `<div id="plcMsg" class="plc-msg" role="status"></div></div>`;
+  ov.innerHTML = h;
+}
+function plcCopyEditorHtml(){
+  const sp = plcSpec() || {};
+  let f;
+  if (sp.frames > 1){
+    const fr = plc.frameCopy || [];
+    f = fr.map((t, i) => `<div class="plc-fr"><label for="plcFr${i}">Frame ${i + 1}</label><textarea id="plcFr${i}" style="min-height:56px;">${escapeHtml(t || '')}</textarea></div>`).join('');
+  } else if (sp.stacked){
+    const p = plc.copyParts || {};
+    f = `<div class="plc-fr"><label for="plcHead">Headline</label><input id="plcHead" value="${escapeHtml(p.headline || '')}"></div>
+         <div class="plc-fr"><label for="plcBody">Body</label><textarea id="plcBody">${escapeHtml(p.body || '')}</textarea></div>
+         <div class="plc-fr"><label for="plcCta">Call to action</label><input id="plcCta" value="${escapeHtml(p.cta || '')}"></div>`;
+  } else {
+    f = `<label for="plcCopy">Copy</label><textarea id="plcCopy">${escapeHtml(plc.copy || '')}</textarea>`;
+  }
+  return `<div class="plc-sec"><h3>Your copy for ${escapeHtml(plc.channel)}</h3>${f}
+    <div class="plc-row"><button type="button" class="btn-primary" onclick="plcConfirm()">Confirm copy and go to Trafficking &rarr;</button>
+    <button type="button" class="btn-ghost" onclick="plcDraft()">Redraft</button><button type="button" class="btn-ghost" onclick="plcClose()">Save for later</button></div></div>`;
+}
+async function plcLibOpen(){
+  const box = document.getElementById('plcLib'); if (!box) return;
+  box.style.display = ''; box.innerHTML = '<p class="hint">Loading the ad library…</p>';
+  let items = []; try { items = await loadCopyLibrary(true); } catch (e){}
+  if (!items.length){ box.innerHTML = '<p class="hint">The ad library is empty. Copy saved to the library shows up here.</p>'; return; }
+  const mine = items.filter(it => it.channel === plc.channel); const list = (mine.length ? mine : items).slice(0, 30);
+  window.plcLibItems = list;
+  box.innerHTML = list.map((it, k) => `<button type="button" class="btn-ghost" style="display:block;width:100%;text-align:left;margin:0 0 6px;" onclick="plcLibPick(${k})"><b>${escapeHtml(it.label || it.channel || 'Saved copy')}</b><br><span class="hint">${escapeHtml((it.channel ? it.channel + ' · ' : '') + String(it.text || '').slice(0, 140))}</span></button>`).join('');
+}
+function plcLibPick(k){
+  const it = (window.plcLibItems || [])[k]; if (!it) return;
+  plc.keyMessage = String(it.text || '').slice(0, 200); plc.copy = String(it.text || ''); plc.copyParts = null;
+  const sp = plcSpec() || {}; if (sp.stacked){ plc.copyParts = { headline: plc.keyMessage, body: String(it.text || ''), cta: '' }; plc.copy = ''; }
+  if (sp.frames > 1){ plc.frameCopy = new Array(sp.frames).fill('').map((_, i) => i === 0 ? String(it.text || '') : ''); }
+  plc.copyMode = 'library'; plcRender(); plcMsg('Starting from saved library copy. Edit it, then confirm.');
+}
+async function plcPickChannel(ch){
+  plc.channel = ch; plc.creativeType = (CREATIVE_TYPES_BY_CHANNEL[ch] || [])[0] || '';
+  plc.partner = (document.getElementById('plcPartner') || {}).value || ''; plc.start = (document.getElementById('plcStart') || {}).value || ''; plc.end = (document.getElementById('plcEnd') || {}).value || ''; plc.budget = (document.getElementById('plcBudget') || {}).value || '';
+  plc.specs = ch ? await plcSpecsFor(ch) : []; plc.specIdx = plc.specs.length ? 0 : null;
+  plcRender();
+}
+async function plcAddChannel(){
+  plc.partner = (document.getElementById('plcPartner') || {}).value || ''; plc.start = (document.getElementById('plcStart') || {}).value || ''; plc.end = (document.getElementById('plcEnd') || {}).value || ''; plc.budget = (document.getElementById('plcBudget') || {}).value || '';
+  if (!plc.channel){ plcMsg('Choose the channel.', true); return; }
+  if (plc.start && plc.end && plc.end < plc.start){ plcMsg('The end date cannot be before the start date.', true); return; }
+  const sp = plcSpec(); const budget = plc.budget === '' ? null : Number(plc.budget);
+  plcMsg('Adding the channel…');
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(plc.cid)}/channel-planning`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel: plc.channel, partner: plc.partner || null, impressions: null, budget, hitDate: plc.start || null, endDate: plc.end || null, detailsJson: { creativeSpec: sp ? sp.label : null, creativeType: plc.creativeType || null, standAlone: true }, actorRole: 'client' }) });
+    if (!r.ok){ let m = ''; try { m = (await r.json()).error || ''; } catch (e){} throw new Error(m || 'The channel could not be added (' + r.status + ').'); }
+    plc.added = true; plcRender();
+  } catch (e){ plcMsg(e.message || 'The channel could not be added.', true); }
+}
+// The AI writers read Key Message from the campaign form, so keep that field and the saved campaign in step with what was typed here.
+async function plcSyncKeyMessage(){
+  const km = (plc.keyMessage || '').trim();
+  plcSet('cmpKeyMessage', km);
+  try { const c = (state.campaigns || []).find(x => x.id === plc.cid); if (c) c.keyMessage = km;
+    await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(plc.cid)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keyMessage: km }) }); } catch (e){ console.warn('plcSyncKeyMessage', e); }
+}
+function plcReadEditor(){
+  const sp = plcSpec() || {};
+  if (sp.frames > 1){ plc.frameCopy = (plc.frameCopy || []).map((_, i) => (document.getElementById('plcFr' + i) || {}).value || ''); }
+  else if (sp.stacked){ plc.copyParts = { headline: (document.getElementById('plcHead') || {}).value || '', body: (document.getElementById('plcBody') || {}).value || '', cta: (document.getElementById('plcCta') || {}).value || '' }; }
+  else { const e = document.getElementById('plcCopy'); if (e) plc.copy = e.value; }
+}
+async function plcDraft(){
+  if (!plc.keyMessage || !plc.keyMessage.trim()){ plcMsg('Add the key message first, so the draft has something to say.', true); const k = document.getElementById('plcKey'); if (k) k.focus(); return; }
+  await plcSyncKeyMessage();
+  try { loadExistingCampaignIntoForm(plc.cid); } catch (e){}
+  plcSet('cmpKeyMessage', plc.keyMessage.trim());
+  const n = cmpDraftNativeCopy(plc.channel, plcSpec());
+  plc.copy = n.copy || ''; plc.copyParts = n.copyParts ? { ...n.copyParts } : null; plc.frameCopy = n.frameCopy || null; plc.copyMode = 'draft';
+  const keep = document.getElementById('plcContestPanel') ? document.getElementById('plcContestPanel').innerHTML : '';
+  plcRender();
+  if (keep){ const p = document.getElementById('plcContestPanel'); if (p){ p.innerHTML = keep; p.style.display = ''; } }
+  plcMsg('');
+}
+async function plcContest(){
+  if (!plc.keyMessage || !plc.keyMessage.trim()){ plcMsg('Add the key message first, so the contest has something to work from.', true); return; }
+  await plcSyncKeyMessage();
+  const p = document.getElementById('plcContestPanel'); if (p) p.style.display = '';
+  plcMsg('');
+  // The contest panel runs on the campaign's Long Form Copy. When it finishes, use the chosen draft, then press Redraft to pull it into this channel's copy.
+  await cmpRunCampaignCopyContest('plcContestPanel', 'plcContestBtn', 'plcContestFlag');
+  if (!plc.copyMode){ plc.copyMode = 'contest'; plc.copy = ''; const sp = plcSpec() || {}; if (sp.stacked) plc.copyParts = plc.copyParts || { headline: '', body: '', cta: '' }; if (sp.frames > 1) plc.frameCopy = plc.frameCopy || new Array(sp.frames).fill('');
+    const keep = p ? p.innerHTML : ''; plcRender(); const p2 = document.getElementById('plcContestPanel'); if (p2){ p2.innerHTML = keep; p2.style.display = ''; } }
+}
+async function plcConfirm(){
+  plcReadEditor();
+  const sp = plcSpec(); const c = (state.campaigns || []).find(x => x.id === plc.cid) || cmpRailLoadedCampaign();
+  const text = sp && sp.frames > 1 ? (plc.frameCopy || []).join('') : (sp && sp.stacked ? ((plc.copyParts || {}).headline || '') + ((plc.copyParts || {}).body || '') : plc.copy);
+  if (!c || !String(text || '').trim()){ plcMsg('Add or edit the copy before you confirm it.', true); return; }
+  if (!Array.isArray(c.copyVersionAssets)) c.copyVersionAssets = [];
+  const asset = { id: `cv_${c.copyVersionAssets.length + 1}_${Math.round(performance.now())}`, channel: plc.channel, creativeType: plc.creativeType || '(unspecified)',
+    sizeLabel: sp ? sp.label : '', ratio: sp ? sp.ratio : null, hasImage: sp ? sp.hasImage : false, frames: sp && sp.frames || null, stacked: !!(sp && sp.stacked), print: !!(sp && sp.print),
+    copy: (sp && (sp.stacked || sp.frames > 1)) ? '' : plc.copy, headline: (plc.copyParts || {}).headline || null, body: (plc.copyParts || {}).body || null, cta: (plc.copyParts || {}).cta || null,
+    frameCopy: sp && sp.frames > 1 ? plc.frameCopy : null, copyAlign: 'bottom', status: 'Approved' };
+  c.copyVersionAssets.push(asset);
+  plcMsg('Saving…');
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ copyVersionAssetsJson: JSON.stringify(c.copyVersionAssets), copyVersionSizeUsageJson: JSON.stringify(c.copyVersionSizeUsage || {}) }) });
+    if (!r.ok) throw new Error('The copy could not be saved (' + r.status + ').');
+  } catch (e){ c.copyVersionAssets.pop(); plcMsg(e.message || 'The copy could not be saved.', true); return; }
+  plcClose();
+  try { cmpOpenTraffickingWorkspace(); } catch (e){ console.warn('plcConfirm: could not open Trafficking', e); }
 }
 
 // ---- Stand alone placement: "Start from" (new, a historical campaign, or the ad library) ----
@@ -57923,7 +58112,7 @@ function briefSfLibPick(k){
   const n = document.getElementById('briefSfNote'); if (n) n.textContent = 'Reference: ' + (it.label || it.channel || 'saved copy') + '. It is attached to the placement as its key message, and Creative can use it.';
 }
 function briefConfirmClose(){ const d = briefEl('briefConfirmModal'); if (d) d.remove(); }
-function briefConfirmGo(){ briefConfirmClose(); try { cmpOpenCreativeWorkspace(); } catch (e){ console.warn('briefConfirmGo: could not open Copy', e); } }
+function briefConfirmGo(){ const p = window._briefLastPlacement; briefConfirmClose(); if (p && p.createdCampaign){ plcOpen(p.campaignId, { channel: p.channel, partner: p.partner, spec: p.spec, start: p.start, end: p.end, budget: p.budget, added: true }); return; } try { cmpOpenCreativeWorkspace(); } catch (e){ console.warn('briefConfirmGo: could not open Copy', e); } }
 // ---- Voice interview: asks each blank in sentence order, listens, fills it, moves on ----
 let briefIv = null;
 function briefIvPick(text, list){
@@ -57932,7 +58121,7 @@ function briefIvPick(text, list){
 }
 function briefIvSteps(){
   const say = (items) => items.slice(0, 7).join(', ') + (items.length > 7 ? ', and more' : '');
-  if (briefKind === 'campaign'){
+  if (briefKind === 'campaign' || briefKind === 'placement'){
     return [
       { id: 'briefName', say: 'What is the campaign name?', apply: t => { const n = t.replace(/^(it'?s |it is |the name is |call it |called |named )+/i, '').replace(/[.!?]+$/, '').trim().slice(0, 80); if (!n) return false; briefPickName(n); return true; } },
       { id: 'briefMode', say: 'Should I recommend the budget, channel mix and creative for you, or will you create it yourself? Say recommend or create.', apply: t => { const l = t.toLowerCase(); if (/recommend|suggest|you do|help|plan/.test(l)){ briefSetMode('recommend'); return true; } if (/create|myself|manual|i will|i'll|single/.test(l)){ briefSetMode('create'); return true; } return false; } },
@@ -57949,7 +58138,7 @@ function briefIvSteps(){
       { id: 'briefBudgetIn', optional: true, say: 'Do you have an estimated budget? Say a number, or say skip and I will estimate it and refine it in the final recommendation.', apply: t => { const m = briefClean(t).match(/(\d+(?:\.\d+)?)\s*(k|m|thousand|million)?/i); if (!m) return false; briefPickBudget(String(briefNum(m[1], m[2]))); return true; } }
     ];
   }
-  if (briefKind === 'placement'){
+  if (briefKind === 'placement-legacy'){
     const s = briefS.placement;
     const steps = [
       { id: 'briefAssoc', say: 'Is this placement part of an existing campaign? Say yes or no.', apply: t => { const l = t.toLowerCase(); if (/\b(no|not|nope|stand.?alone|on its own)\b/.test(l)){ briefSetP('assoc', 'no'); return true; } if (/\b(yes|yeah|yep|existing|part of)\b/.test(l)){ briefSetP('assoc', 'yes'); return true; } return false; } },
@@ -58948,6 +59137,8 @@ async function createCampaign(){
   // pick up existing campaign should be step 2 after creating the campaign
   // to keep it simple and flow."
   loadExistingCampaignIntoForm(campaignId);
+  // 2026-11-17 — stand alone placement: same creation, then straight to adding the channel and copy.
+  if (briefKind === 'placement'){ briefKind = 'campaign'; briefMode = 'create'; plcOpen(campaignId); return; }
   // 2026-09-16 — opens the standalone Objectives overlay now, not the old
   // accordion's Campaign Objectives stage, so a freshly-created campaign
   // lands straight in the real conversational template.
