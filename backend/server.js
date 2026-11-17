@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-17-r10-largeview (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-17-r11-drivers (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -18482,7 +18482,7 @@ function gpSeries(accountId, src, S, E, from, to){
   const per = (map, iso) => { const v = map[iso.slice(0, 7)]; return v == null ? null : v / dmDim(Number(iso.slice(0, 4)), Number(iso.slice(5, 7))); };
   const tg = {}; const tgt = y => tg[y] || (tg[y] = gpPlanYearTargets(accountId, y));
   const rows = B.buckets.map(b => {
-    const r = { label: b.label, partial: B.unit === 'month' && b.to < dmIso(Date.UTC(Number(b.to.slice(0, 4)), Number(b.to.slice(5, 7)), 0)), spend: null, impressions: null, revenue: null, transactions: null, visits: null, engaged: null, leads: null, expSpend: null, expImps: null };
+    const r = { label: b.label, from: b.from, to: b.to, partial: B.unit === 'month' && b.to < dmIso(Date.UTC(Number(b.to.slice(0, 4)), Number(b.to.slice(5, 7)), 0)), spend: null, impressions: null, revenue: null, transactions: null, visits: null, engaged: null, leads: null, expSpend: null, expImps: null };
     const add = (k, v) => { if (v != null && isFinite(v)) r[k] = (r[k] || 0) + v; };
     for (let t = dmParse(b.from); t <= dmParse(b.to); t += 864e5){
       const d = dmIso(t), c = dd[d] || {}; const y = Number(d.slice(0, 4)), diy = (Date.UTC(y, 11, 31) - Date.UTC(y, 0, 1)) / 864e5 + 1;
@@ -18498,6 +18498,47 @@ function gpSeries(accountId, src, S, E, from, to){
 }
 // Analyst readout for the report page (2026-11-17): a short story about the chart, tied to the account's other headline numbers.
 // Numbers in the text always come from the data passed in; the model only words them. If it is unavailable, a plain version is returned.
+// "What influenced this?" (2026-11-17): the arithmetic is done in code (gpDriverFacts); the model only words it. Written for the CMO, with team actions that trace to the same drivers.
+const vizDrvCache = new Map();
+const VIZ_DRV_ACTIONS = {
+  cpm: { action: 'Review which placements and channels got more expensive per thousand impressions, and shift budget toward the ones that held their cost.', owner: 'Media buying', effect: 'Lower cost to reach the same audience.' },
+  eng: { action: 'Test creative and landing-page relevance for the audiences that bring the most reach but the fewest engaged visitors.', owner: 'Creative and content', effect: 'More of the reach turns into engaged visitors.' },
+  lead: { action: 'Tighten the offer and the form on the pages engaged visitors land on, and check that every lead source is being captured.', owner: 'Digital and conversion', effect: 'More leads from the same engaged visitors.' },
+  book: { action: 'Review lead follow-up speed and the handoff to sales or service for newer leads.', owner: 'Sales and service', effect: 'More leads become transactions.' },
+  rpt: { action: 'Check whether the product or package mix, or pricing, moved. Confirm promotions are not pulling average revenue down.', owner: 'Revenue and pricing', effect: 'Protects revenue per transaction.' },
+  eff: { action: 'Look at which channels deliver the most transactions per dollar and move spend toward them, within plan minimums.', owner: 'Media buying', effect: 'More transactions per dollar.' }
+};
+async function vizDrivers(accountId, b){
+  const key = (b.key === 'kpi' || b.key === 'roas') ? b.key : null; if (!key) return { ok: false, error: 'This card does not have a cause analysis yet.' };
+  const sp = gpCleanSpec({ preset: b.preset, from: b.from, to: b.to });
+  const g = gpCached('cards|' + accountId + '|' + JSON.stringify(sp), 60000, () => buildGpCards(accountId, sp));
+  const card = (g.cards || []).find(c => c.key === key); const f = card && card.facts;
+  if (!f) return { ok: true, thin: true, headline: '', drivers: [], actions: [], caution: 'There is not enough history on file to separate the causes for these dates. Try a longer range.' };
+  const ck = accountId + '|' + key + '|' + JSON.stringify(sp) + '|' + JSON.stringify(f); const hit = vizDrvCache.get(ck); if (hit && Date.now() - hit.t < 600000) return hit.v;
+  const f1 = x => (x == null || !isFinite(x)) ? '—' : (Math.abs(x) >= 100 ? Math.round(x).toLocaleString('en-US') : String(Math.round(x * 100) / 100));
+  const drivers = f.steps.filter(x => x.effectPct != null).map(x => ({ key: x.key, name: x.name, effectPct: x.effectPct, changePct: x.changePct, share: x.share, estimated: !!x.estimated, evidence: `${f1(x.from)} to ${f1(x.to)} (${x.changePct >= 0 ? '+' : ''}${x.changePct}%)`, confidence: x.estimated ? 'low' : 'medium' }))
+    .sort((p, q) => Math.abs(q.effectPct) - Math.abs(p.effectPct));
+  const top = drivers.filter(x => !(f.kind === 'kpi' && x.key === 'book')).slice(0, 3);
+  const head = f.headline; const verb = head.pct == null ? 'changed' : (head.pct >= 0 ? 'up' : 'down');
+  let headline = `${head.name} is ${verb}${head.pct == null ? '' : ' ' + Math.abs(head.pct) + '%'}${f.basis === 'trend' ? ' across the selected dates' : ' against the compared period'}${top[0] ? `, driven mostly by ${top[0].name.toLowerCase()}` : ''}.`;
+  const actions = top.slice(0, 3).map(d => Object.assign({ key: d.key, supports: `Addresses: ${d.name.toLowerCase()}` }, VIZ_DRV_ACTIONS[d.key]));
+  let caution = top.some(d => d.estimated) ? 'Some of these figures are estimated from monthly totals divided evenly by day, so treat the flagged driver as a lead to confirm, not a finding.' : '';
+  let ai = false;
+  try {
+    const prompt = `You advise a CMO who orchestrates the customer experience and the marketing team. Below are computed facts about why one cost measure changed. Use ONLY these numbers; do not invent any.\nCard: ${key === 'kpi' ? 'KPI Story (cost per lead, customer cost)' : 'Performance (return on ad spend)'}.\nHeadline measure: ${head.name} went from ${f1(head.a)} to ${f1(head.b)} (${head.pct}%). ${f.second ? f.second.name + ' went from ' + f1(f.second.a) + ' to ' + f1(f.second.b) + ' (' + f.second.pct + '%).' : ''}\nBasis: ${f.basis === 'trend' ? 'first third of the dates against the last third' : 'this period against the compared period'}.\nDrivers (effectPct = what that factor alone did to the headline measure; estimated = built from evenly divided monthly totals): ${JSON.stringify(top.map(d => ({ key: d.key, name: d.name, effectPct: d.effectPct, evidence: d.evidence, estimated: d.estimated })))}.\nWrite: headline (one or two sentences for the CMO: what changed, the main cause, what it means for the business; if the two measures point in opposite directions, say what could explain that); for each driver one plain sentence of explanation; for each driver one action for the team (what to do, owner role, expected effect, and in under 12 words which CMO goal it supports). Actions must follow from the drivers and never contradict the headline. If a driver is estimated, say it should be confirmed first. No jargon, no emojis.`;
+    const r = await callClaudeForJSON({ model: ANTHROPIC_STANDARD_MODEL, maxTokens: 900, timeoutMs: 30000, content: prompt, toolName: 'write_drivers', toolDescription: 'Write the cause analysis and team actions.', schema: { type: 'object', properties: { headline: { type: 'string' }, drivers: { type: 'array', items: { type: 'object', properties: { key: { type: 'string' }, explanation: { type: 'string' } }, required: ['key', 'explanation'] } }, actions: { type: 'array', items: { type: 'object', properties: { key: { type: 'string' }, action: { type: 'string' }, owner: { type: 'string' }, effect: { type: 'string' }, supports: { type: 'string' } }, required: ['key', 'action'] } }, caution: { type: 'string' } }, required: ['headline', 'drivers', 'actions'] } });
+    if (r && r.headline && String(r.headline).length > 20){
+      headline = String(r.headline).slice(0, 420); ai = true; const em = {}; (r.drivers || []).forEach(d => { if (d && d.key) em[d.key] = String(d.explanation || '').slice(0, 260); });
+      top.forEach(d => { if (em[d.key]) d.explanation = em[d.key]; });
+      const am = {}; (r.actions || []).forEach(a => { if (a && a.key) am[a.key] = a; });
+      actions.forEach(a => { const x = am[a.key]; if (x){ if (x.action) a.action = String(x.action).slice(0, 300); if (x.owner) a.owner = String(x.owner).slice(0, 60); if (x.effect) a.effect = String(x.effect).slice(0, 200); if (x.supports) a.supports = String(x.supports).slice(0, 120); } });
+      if (r.caution && !caution) caution = String(r.caution).slice(0, 300);
+    }
+  } catch (e){ console.warn('[visualize/drivers] AI unavailable, computed version used:', e && e.message); }
+  const v = { ok: true, thin: false, headline, basis: f.basis, drivers: top, actions, caution, ai };
+  vizDrvCache.set(ck, { t: Date.now(), v }); if (vizDrvCache.size > 200) vizDrvCache.delete(vizDrvCache.keys().next().value);
+  return v;
+}
 function vizReadoutFacts(data){
   try {
     const labels = (data && data.labels) || []; const s = data && data.series && data.series[0]; if (!s || !labels.length) return null;
@@ -18535,6 +18576,44 @@ async function vizReadout(accountId, b){
     if (r && r.text && String(r.text).length > 30){ text = String(r.text).slice(0, 700); ai = true; }
   } catch (e){ console.warn('[visualize/readout] AI unavailable, plain readout used:', e && e.message); }
   return { text, stats, ai };
+}
+
+// ---- 2026-11-17: tables flag results outside the account's own norm; driver facts split a cost change into its causes ----
+function gpMedian(a){ const x = a.slice().sort((p, q) => p - q), n = x.length; return n % 2 ? x[(n - 1) / 2] : (x[n / 2 - 1] + x[n / 2]) / 2; }
+// Robust score: distance from the median in units of typical swing (median absolute deviation). Needs 8+ periods, else nothing is flagged.
+function gpRobustFlags(vals){
+  const ok = vals.filter(v => v != null && isFinite(v)); if (ok.length < 8) return vals.map(() => null);
+  const med = gpMedian(ok), mad = gpMedian(ok.map(v => Math.abs(v - med))); const sd = mad > 0 ? mad * 1.4826 : null; if (!sd) return vals.map(() => null);
+  return vals.map(v => { if (v == null || !isFinite(v)) return null; const z = (v - med) / sd, a = Math.abs(z); if (a < 1.5) return null; return { dir: z > 0 ? 'high' : 'low', level: a >= 2 ? 2 : 1, z: Math.round(z * 10) / 10 }; });
+}
+function gpFlagTable(SR, cols, estFn){
+  const out = [];
+  cols.forEach(c => {
+    const vals = SR.rows.map(r => (r.partial || r[c.k] == null && !c.fn) ? null : (c.fn ? c.fn(r) : r[c.k]));
+    gpRobustFlags(vals).forEach((x, i) => { if (!x) return;
+      const tone = c.good === 'down' ? (x.dir === 'high' ? 'bad' : 'good') : c.good === 'up' ? (x.dir === 'high' ? 'good' : 'bad') : 'neutral';
+      const est = !!(estFn && estFn(SR.rows[i], c.k)); out.push([i, c.col, { dir: x.dir, level: x.level, tone: est ? 'est' : tone, est, z: x.z }]); });
+  });
+  return out;
+}
+function gpRowsPack(rows){ const s = k => { let n = 0, any = false; rows.forEach(r => { if (r[k] != null && isFinite(r[k])){ n += r[k]; any = true; } }); return any ? n : null; }; return { spend: s('spend'), impressions: s('impressions'), engaged: s('engaged'), leads: s('leads'), transactions: s('transactions'), revenue: s('revenue') }; }
+// Splits the change in cost per lead (and customer cost) into: cost to reach people, engagement, lead conversion, booking. Pure arithmetic, no model.
+function gpDriverFacts(kind, cur, prev, SR, est){
+  const need = p => p && p.spend > 0 && p.impressions > 0 && p.engaged > 0 && p.leads > 0;
+  let A = prev, B = cur, basis = 'compared';
+  if (kind === 'roas'){ const needR = p => p && p.spend > 0 && p.transactions > 0 && p.revenue > 0; if (!needR(A) || !needR(B)){ let rows = SR.rows; if (rows.length > 4 && rows[rows.length - 1].partial) rows = rows.slice(0, -1); if (rows.length < 4) return null; const th = Math.max(1, Math.floor(rows.length / 3)); A = gpRowsPack(rows.slice(0, th)); B = gpRowsPack(rows.slice(-th)); basis = 'trend'; if (!needR(A) || !needR(B)) return null; }
+    const pc = (x, y) => Math.round((y - x) / Math.abs(x) * 1000) / 10; const a = { roas: A.revenue / A.spend, rpt: A.revenue / A.transactions, eff: A.transactions / A.spend * 1000 }, b = { roas: B.revenue / B.spend, rpt: B.revenue / B.transactions, eff: B.transactions / B.spend * 1000 };
+    const tot = Math.log(b.roas / a.roas); const stepsR = [['rpt', 'Revenue per transaction (price and mix)', Math.log(b.rpt / a.rpt), a.rpt, b.rpt], ['eff', 'Transactions bought per $1,000 of spend', Math.log(b.eff / a.eff), a.eff, b.eff]];
+    return { kind, basis, headline: { name: 'ROAS', a: a.roas, b: b.roas, pct: pc(a.roas, b.roas), goodWhen: 'up' }, steps: stepsR.map(([k, name, v, x, y]) => ({ key: k, name, from: x, to: y, changePct: pc(x, y), effectPct: Math.round((Math.exp(v) - 1) * 1000) / 10, share: Math.abs(tot) > 1e-9 ? Math.round(v / tot * 100) : null, estimated: k === 'eff' && !!est.media })), estimated: est };
+  }
+  if (!need(A) || !need(B)){ let rows = SR.rows; if (rows.length > 4 && rows[rows.length - 1].partial) rows = rows.slice(0, -1); if (rows.length < 4) return null; const th = Math.max(1, Math.floor(rows.length / 3)); A = gpRowsPack(rows.slice(0, th)); B = gpRowsPack(rows.slice(-th)); basis = 'trend'; if (!need(A) || !need(B)) return null; }
+  const pc = (x, y) => (x > 0 && y != null) ? Math.round((y - x) / x * 1000) / 10 : null;
+  const m = p => ({ cpm: p.spend / p.impressions * 1000, eng: p.engaged / p.impressions * 10000, lead: p.leads / p.engaged * 100, book: (p.transactions > 0 && p.leads > 0) ? p.transactions / p.leads * 100 : null, cpl: p.spend / p.leads, cac: p.transactions > 0 ? p.spend / p.transactions : null });
+  const a = m(A), b = m(B); const tot = Math.log(b.cpl / a.cpl);
+  const parts = [['cpm', 'Cost to reach people (CPM)', Math.log(b.cpm / a.cpm), a.cpm, b.cpm, !!est.media], ['eng', 'Visitors who engage, per 10,000 impressions', -Math.log(b.eng / a.eng), a.eng, b.eng, !!est.engaged], ['lead', 'Leads per 100 engaged visitors', -Math.log(b.lead / a.lead), a.lead, b.lead, !!est.leads]];
+  const steps = parts.map(([k, name, v, x, y, e]) => ({ key: k, name, from: x, to: y, changePct: pc(x, y), effectPct: Math.round((Math.exp(v) - 1) * 1000) / 10, share: Math.abs(tot) > 1e-9 ? Math.round(v / tot * 100) : null, estimated: e }));
+  if (a.book != null && b.book != null) steps.push({ key: 'book', name: 'Transactions per 100 leads', from: a.book, to: b.book, changePct: pc(a.book, b.book), effectPct: Math.round((Math.exp(-Math.log(b.book / a.book)) - 1) * 1000) / 10, share: null, estimated: !!est.txn, customerCostOnly: true });
+  return { kind, basis, headline: { name: 'CPL', a: a.cpl, b: b.cpl, pct: pc(a.cpl, b.cpl), goodWhen: 'down' }, second: (a.cac && b.cac) ? { name: 'CAC', a: a.cac, b: b.cac, pct: pc(a.cac, b.cac), goodWhen: 'down' } : null, steps, estimated: est };
 }
 function buildGpCards(accountId, spec){
   const R = gpResolveRange(spec);
@@ -18623,6 +18702,13 @@ function buildGpCards(accountId, spec){
       { name: 'How each step carries into the next', columns: cols, rows: [srow('Engaged visitors per 10,000 impressions', stC.e, stP.e, 'n'), srow('Leads per 100 engaged visitors', stC.l, stP.l, 'pct'), srow('Transactions per 100 leads', stC.b, stP.b, 'pct')] }],
     notes: c3._story.concat(estNotes).concat([['Engaged visitors', cur.estimated.engaged.concat(prev.estimated.engaged)], ['Leads', cur.estimated.leads.concat(prev.estimated.leads)]].filter(x => x[1].length).map(x => `${x[0]} for ${mn(x[1])} are estimated from monthly totals divided evenly by day.`)).concat(Object.keys(E.__est ? Object.fromEntries(Array.from(E.__est).map(k => [k, 1])) : {}).filter(k => k >= R.compFrom.slice(0, 7) && k <= R.through.slice(0, 7)).length ? ['Engaged visitors for months without their own engagement figure are website users times the year engaged share of sessions.'] : []),
     definitions: ['The card reads left to right and top to bottom, from attention to action: impressions, engaged visitors, leads, transactions. Each row shows the volume on the left and what it cost on the right.', 'CPM is marketing spend per 1,000 impressions.', 'Engaged Visitors are engaged sessions from the website engagement upload. CPEV (cost per engaged visitor) is marketing spend divided by that total.', 'CPL (cost per lead) is marketing spend divided by leads. CAC is marketing spend divided by unique transactions.', 'The only comparison shown is the percentage change against the compared period. A lower cost is better. Transactions include direct and phone bookings, so transactions per 100 leads can pass 100.'] };
+  { const mset = new Set(cur.estimated.media.concat(prev.estimated.media)), tset = new Set(cur.estimated.txn.concat(prev.estimated.txn)), eset = new Set(cur.estimated.engaged.concat(prev.estimated.engaged)), lset = new Set(cur.estimated.leads.concat(prev.estimated.leads));
+    const hit = (r, set) => { try { return dmMonthsOf(r.from, r.to).some(k => set.has(k)); } catch (e){ return false; } };
+    const estFn = (r, k) => (k === 'cpm' || k === 'spend' || k === 'impressions') ? hit(r, mset) : k === 'cac' ? (hit(r, mset) || hit(r, tset)) : (k === 'costPerEngaged') ? (hit(r, mset) || hit(r, eset)) : (k === 'costPerLead') ? (hit(r, mset) || hit(r, lset)) : (k === 'transactions' || k === 'rpt' || k === 'roas') ? hit(r, tset) : false;
+    c1.large.tables[1].flags = gpFlagTable(SR, [{ k: 'spend', col: 1, good: 'neutral' }, { k: 'transactions', col: 2, good: 'neutral' }, { k: 'rpt', col: 3, good: 'neutral', fn: r => (r.revenue != null && r.transactions > 0) ? r.revenue / r.transactions : null }, { k: 'cac', col: 4, good: 'down' }, { k: 'roas', col: 5, good: 'up' }], estFn);
+    c3.large.tables.push({ name: 'By period', columns: ['Period', 'CPM', 'CPEV', 'CPL', 'CAC'], rows: SR.rows.map(r => [r.label, gpFmtVal(r.cpm, 'money2'), gpFmtVal(r.costPerEngaged, 'money2'), gpFmtVal(r.costPerLead, 'money2'), gpFmtVal(r.cac, 'money2')]), flags: gpFlagTable(SR, [{ k: 'cpm', col: 1, good: 'down' }, { k: 'costPerEngaged', col: 2, good: 'down' }, { k: 'costPerLead', col: 3, good: 'down' }, { k: 'cac', col: 4, good: 'down' }], estFn) });
+    const est0 = { media: media.length > 0, txn: txn.length > 0, engaged: cur.estimated.engaged.concat(prev.estimated.engaged).length > 0, leads: cur.estimated.leads.concat(prev.estimated.leads).length > 0 };
+    try { c3.facts = gpDriverFacts('kpi', cur, prev, SR, est0); } catch (e){ c3.facts = null; } try { c1.facts = gpDriverFacts('roas', cur, prev, SR, est0); } catch (e){ c1.facts = null; } }
   const col = k => SR.rows.map(r => r[k] == null ? null : Math.round(r[k] * 100) / 100); const labels = SR.rows.map(r => r.label);
   const cum = k => { let n = 0, any = false; return SR.rows.map(r => { if (r[k] != null){ n += r[k]; any = true; } return any ? Math.round(n) : null; }); };
   const cumExp = k => { let n = 0, any = false; return SR.rows.map(r => { if (r[k] != null){ n += r[k]; any = true; } return any ? Math.round(n) : null; }); };
@@ -32991,7 +33077,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-17-r10-largeview',
+        buildStamp: '2026-11-17-r11-drivers',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -37639,6 +37725,12 @@ async function handleRequestInner(req, res) {
           const b = await readBody(req) || {};
           try { return sendJson(res, 200, await vizReadout(accountId, { title: b.title, period: b.period, data: b.data, text: b.text })); }
           catch (e){ console.warn('[visualize/readout] failed:', e && e.message); return sendJson(res, 200, { text: '', stats: [], ai: false }); }
+        }
+        // POST /visualize/drivers { key, preset, from, to } -> what influenced the card's headline measure, plus team actions (2026-11-17)
+        if (req.method === 'POST' && parts.length === 5 && sub === 'drivers'){
+          const b = await readBody(req) || {};
+          try { return sendJson(res, 200, await vizDrivers(accountId, { key: String(b.key || ''), preset: b.preset, from: b.from, to: b.to })); }
+          catch (e){ console.warn('[visualize/drivers] failed:', e && e.stack || e && e.message); return sendJson(res, 200, { ok: false, error: 'Could not run the analysis right now. Try again in a moment.' }); }
         }
         // POST /visualize/recommend { text | spec }
         if (req.method === 'POST' && parts.length === 5 && sub === 'recommend'){
