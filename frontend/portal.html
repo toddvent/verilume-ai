@@ -57680,7 +57680,7 @@ function briefRender(){
   const kinds = document.querySelector('.brf-kinds'); if (kinds) kinds.style.display = editing ? 'none' : '';
   if (editing){ const c = briefEl('cmpCampaignFields'); if (c){ c.style.display = ''; c.classList.remove('brf-placement-mode'); } const sh = briefEl('cmpProjectSheet'); if (sh) sh.style.display = 'none'; return; }
   if (!briefEl('briefSentence') || !briefEl('briefSentence').firstChild){ briefBuild(); return; }
-  { const c = briefEl('cmpCampaignFields'), sh = briefEl('cmpProjectSheet'); if (c){ c.style.display = (briefKind === 'campaign' || briefKind === 'placement') ? '' : 'none'; c.classList.toggle('brf-placement-mode', briefKind === 'placement'); } if (sh) sh.style.display = briefKind === 'project' ? '' : 'none'; }
+  { const c = briefEl('cmpCampaignFields'), sh = briefEl('cmpProjectSheet'); if (c){ c.style.display = (briefKind === 'campaign' || briefKind === 'placement') ? '' : 'none'; c.classList.remove('brf-placement-mode'); } if (sh) sh.style.display = briefKind === 'project' ? '' : 'none'; }
   const set = (id, v) => { const e = briefEl(id); if (e && document.activeElement !== e) e.value = v == null ? '' : v; if (e) e.classList.toggle('filled', !!e.value); };
   const sets = briefSets();
   if (briefKind === 'campaign' || briefKind === 'placement'){
