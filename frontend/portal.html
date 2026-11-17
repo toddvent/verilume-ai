@@ -57873,9 +57873,10 @@ async function briefPlacementContinue(){
 // ============================================================
 let plc = null;
 // Every channel the copy step can write for: the planning channels plus Email and PR, which have copy specs but are not media-mix lines.
-const PLC_CHANNELS = [...CHANNEL_OPTIONS, 'Internal Email', 'Email — Remarketing', 'PR'];
-// Paid email is stored under the platform's existing paid-email channel key ('Email — Remarketing': CPM, rate card and spec tables all key on it), shown as "Paid Email".
 const PLC_LABEL = { 'Email — Remarketing': 'Paid Email' };
+// Brand Search is left out: the server never takes it as a budgeted channel line (it is always on).
+const PLC_CHANNELS = [...CHANNEL_OPTIONS.filter(x => x !== 'Brand Search'), 'Internal Email', 'Email — Remarketing', 'PR'].sort((x, y) => (PLC_LABEL[x] || x).localeCompare(PLC_LABEL[y] || y));
+// Paid email is stored under the platform's existing paid-email channel key ('Email — Remarketing': CPM, rate card and spec tables all key on it), shown as "Paid Email".
 function plcLabel(ch){ return PLC_LABEL[ch] || ch; }
 const PLC_AUDIENCES = ['Past Customers', 'Hand-Raisers', 'Prospects', 'CX Transactions'];
 function plcCss(){
