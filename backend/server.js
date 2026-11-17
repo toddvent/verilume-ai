@@ -314,6 +314,7 @@ const CAMPAIGNS_LOWERCASE_FOLDED_COLUMNS = {
   messagetype: 'messageType',
   recommendationdataconfidencenote: 'recommendationDataConfidenceNote',
   rolestyle: 'roleStyle',
+  briefbuilderexpandedtext: 'briefBuilderExpandedText',
   // 2026-09-28 — added via ensureColumn() the same day, deliberately kept
   // OUT of schema-identifiers.json (their UPDATE call sites write them
   // unquoted, which folds to match the stored lowercase column on
@@ -3279,6 +3280,8 @@ ensureColumn('campaigns', 'keyMessageMode', "TEXT DEFAULT 'exact'");
 // roleStyle/keyMessageMode already do.
 ensureColumn('campaigns', 'messageType', 'TEXT');
 ensureColumn('campaigns', 'mandatoryPhrase', 'TEXT');
+// 2026-11-17 -- the Brief Builder context on Brand Messaging was page-only (no column, see the note above), so reloading emptied it and re-locked Long Form Copy. Persisted now.
+ensureColumn('campaigns', 'briefBuilderExpandedText', 'TEXT');
 
 // Added 2026-08-22 — structured campaign-type briefing (Phase B from the
 // copywriting-findings audit). campaignType is a real enum (see
@@ -31109,7 +31112,7 @@ CAMPAIGN CONTEXT:
 - Objective: ${campaignObjectiveText(campaign) || '(not set)'}
 - Audience/Segment: ${campaign.segment || '(not set)'}${exclusionPromptLine(campaign)}
 ${audienceLabel ? `- THIS DRAFT IS FOR ONE SPECIFIC AUDIENCE, NOT THE WHOLE CAMPAIGN: "${audienceLabel}" -- write to speak directly to this audience, not a generic campaign-wide reader. If this audience implies a different angle, urgency, or level of familiarity with the brand than a first-time visitor, reflect that.\n${audienceStanceBlock(audienceLabel)}\n` : `${NO_MONITORING_RULES}\n`}- Primary KPI: ${campaign.primaryKpi || '(not set)'}
-- Key Message, if any${campaign.keyMessageMode === 'descriptive' ? ' (a DESCRIPTIVE brief -- write real copy that captures this direction in your own words, do not quote it verbatim)' : ''}: ${campaign.keyMessage || '(none supplied)'}
+${campaign.briefBuilderExpandedText ? '- Campaign brief (context the team wrote or confirmed): ' + String(campaign.briefBuilderExpandedText).slice(0, 1200) + '\n' : ''}- Key Message, if any${campaign.keyMessageMode === 'descriptive' ? ' (a DESCRIPTIVE brief -- write real copy that captures this direction in your own words, do not quote it verbatim)' : ''}: ${campaign.keyMessage || '(none supplied)'}
 ${keyMessageHeadlineRule(campaign)}- Campaign writing style, if the account has one on file: ${campaign.roleStyle || '(none set -- use your own best judgment, grounded in the brand voice guide above)'}
 - Channels this copy will run on: ${channelsText || '(not yet set on this campaign -- write copy that reads naturally across channels)'}
 - Creative Focus / destination${campaign.creativeFocusGroups && campaign.creativeFocusGroups.includes(',') ? 's' : ''}, if set: ${campaign.creativeFocusGroups || '(none set)'}
@@ -39870,6 +39873,7 @@ Submit your response via the campaign_intake_turn tool.`;
         productName: body.productName !== undefined ? body.productName : existing.productName,
         // 2026-08-22 — same merge-update convention as every field above.
         roleStyle: body.roleStyle !== undefined ? body.roleStyle : existing.roleStyle,
+        briefBuilderExpandedText: body.briefBuilderExpandedText !== undefined ? String(body.briefBuilderExpandedText || '').slice(0, 4000) : existing.briefBuilderExpandedText,
         keyMessageMode: body.keyMessageMode !== undefined ? body.keyMessageMode : existing.keyMessageMode,
         // 2026-08-22 — messageType/mandatoryPhrase, closing the same
         // session-only gap this round for these two that roleStyle/
@@ -40090,6 +40094,7 @@ Submit your response via the campaign_intake_turn tool.`;
       addCol('productName', body.productName !== undefined, merged.productName);
       addCol('campaignCode', !existing.campaignCode, merged.campaignCode); // only when newly generated this call — otherwise merged.campaignCode === existing.campaignCode already, a no-op not worth a write
       addCol('roleStyle', body.roleStyle !== undefined, merged.roleStyle);
+      addCol('briefBuilderExpandedText', body.briefBuilderExpandedText !== undefined, merged.briefBuilderExpandedText);
       addCol('keyMessageMode', body.keyMessageMode !== undefined, merged.keyMessageMode);
       addCol('messageType', body.messageType !== undefined, merged.messageType);
       addCol('mandatoryPhrase', body.mandatoryPhrase !== undefined, merged.mandatoryPhrase);
