@@ -50671,7 +50671,10 @@ function cmpCreativeZonesInit(campaign){
   let zone = 0;
   const hasCopy = campaign && ((campaign.longformCopy || '').trim() || (campaign.audienceCopyJson && campaign.audienceCopyJson !== '{}'));
   if (hasCopy) zone = 1;
-  if (cmpCreativeAssetRequests && cmpCreativeAssetRequests.length) zone = 2;
+  // 2026-11-17 — only jump to Creative Asset Selection (and fold the copy cards away) once the campaign actually has copy. A campaign with a
+  // media placement but no copy yet (for example one built with "Add individual media placement") used to open with Recap and Run Campaign
+  // Copy Contest collapsed, so there was no visible way to add copy or run the contest.
+  if (hasCopy && cmpCreativeAssetRequests && cmpCreativeAssetRequests.length) zone = 2;
   cmpCreativeActiveZone = null;
   CMP_CREATIVE_ZONES.forEach(z => z.cards.forEach(cd => cmpCreativeSetCard(cd[0], cd[1], true)));
   cmpCreativeSetActiveZone(zone);
