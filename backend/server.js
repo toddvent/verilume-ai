@@ -19622,8 +19622,26 @@ function dqToIso(tok, asEnd){
 }
 function dqDayLabel(iso){ const d = new Date(iso + 'T00:00:00Z'); return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }); }
 // Returns { from, through (null = up to the latest data on file), rest } or null.
+function dqQuarterWhen(src){
+  // "Q4-26", "Q4 2026", "Q4 '26", "4Q26", "fourth quarter 2026", "this quarter", "last quarter"
+  const ord = { first: 1, '1st': 1, second: 2, '2nd': 2, third: 3, '3rd': 3, fourth: 4, '4th': 4 };
+  let m = /\bq([1-4])\s*[-\/ ]?\s*(?:fy)?\s*['\u2019]?\s*((?:20)?\d\d)\b/i.exec(src), q, y;
+  if (m){ q = Number(m[1]); y = m[2]; }
+  else if ((m = /\b([1-4])q\s*[-\/ ]?\s*['\u2019]?((?:20)?\d\d)\b/i.exec(src))){ q = Number(m[1]); y = m[2]; }
+  else if ((m = /\b(first|second|third|fourth|1st|2nd|3rd|4th)\s+quarter(?:\s+of)?\s+((?:20)?\d\d)\b/i.exec(src))){ q = ord[m[1].toLowerCase()]; y = m[2]; }
+  else if ((m = /\b(this|current|last|previous|prior)\s+quarter\b/i.exec(src))){
+    const now = new Date(); let yy = now.getUTCFullYear(), qq = Math.floor(now.getUTCMonth() / 3) + 1;
+    if (/^(last|previous|prior)$/i.test(m[1])){ qq -= 1; if (qq < 1){ qq = 4; yy -= 1; } }
+    q = qq; y = String(yy);
+  } else return null;
+  const yr = y.length === 2 ? 2000 + Number(y) : Number(y); if (!(yr >= 2000 && yr <= 2099)) return null;
+  const pad = n => String(n).padStart(2, '0'); const sm = (q - 1) * 3 + 1, em = sm + 2;
+  const lastDay = new Date(Date.UTC(yr, em, 0)).getUTCDate();
+  return { from: `${yr}-${pad(sm)}-01`, through: `${yr}-${pad(em)}-${pad(lastDay)}`, rest: (src.slice(0, m.index) + ' ' + src.slice(m.index + m[0].length)), label: `Q${q} ${yr}` };
+}
 function dqParseWhen(text){
   const src = String(text || '');
+  const qw = dqQuarterWhen(src); if (qw) return qw;
   for (let i = 0; i < DQ_WHEN_RES.length; i++){
     const m = DQ_WHEN_RES[i].exec(src); if (!m) continue;
     const a = dqToIso(m[1], false); if (!a) continue;
@@ -20117,6 +20135,22 @@ function dqContextBlock(accountId, question){
 
 // One answer builder for every door: the "Need something we don't show?" panel and the Ask Verilume bar.
 // input: { text } or { spec }. Returns the same payload shape either way (needMore / notOnFile / result).
+// Chart data for the Ask Verilume answer: built from the result table so the picture can never disagree with the numbers.
+function dqChartFromResult(spec, table){
+  try {
+    const nb = (spec.by || []).length; if (!nb || !table || !table.rows || !table.columns) return null;
+    const rows = table.rows.filter(r => String(r[0]).toLowerCase() !== 'all'); if (rows.length < 2) return null;
+    const num = v => { const t = String(v == null ? '' : v).replace(/[$,%\s×x]/g, '').replace(/,/g, ''); if (t === '' || t === '—') return null; const n = Number(t); return Number.isFinite(n) ? n : null; };
+    const sample = String(rows[0][nb] || ''); const kind = sample.indexOf('$') >= 0 ? 'money' : sample.indexOf('%') >= 0 ? 'pct' : 'num1';
+    const labels = rows.map(r => r.slice(0, nb).join(' · '));
+    const series = [{ name: String(table.columns[nb] || 'Value'), values: rows.map(r => num(r[nb])) }];
+    if (spec.compare && table.columns[nb + 1]) series.push({ name: String(table.columns[nb + 1]), values: rows.map(r => num(r[nb + 1])) });
+    if (series[0].values.every(v => v === null)) return null;
+    const timeLike = (spec.by[0] === 'month' || spec.by[0] === 'week' || spec.by[0] === 'quarter' || spec.by[0] === 'year');
+    const type = timeLike ? (rows.length > 12 ? 'line' : 'column') : (rows.length > 6 && series.length === 1 ? 'bar' : 'column');
+    return { labels, series, kind, type, labelName: table.columns.slice(0, nb).join(' · ') || 'Group', additive: kind === 'money' };
+  } catch (e){ return null; }
+}
 async function dqAnswerPayload(accountId, input, range, opts){
   opts = opts || {};
   const L = dqLoadTransactions(accountId);
@@ -20128,7 +20162,7 @@ async function dqAnswerPayload(accountId, input, range, opts){
     if (r.notOnFile) return { notOnFile: r.notOnFile };
     const x = r.x;
     return { source, spec: r.spec, sentence: dqSetSentence(r.spec, r.period), period: r.period, assumptions: assumptions || [],
-      result: { title: x.title, summary: x.summary, tables: x.tables.map(t => ({ name: t.name, columns: t.columns.map(c => c.h), rows: t.rows })), notes: x.notes.filter(n => !r.definitions.includes(n)), definitions: r.definitions }, buckets: [] };
+      result: { title: x.title, summary: x.summary, tables: x.tables.map(t => ({ name: t.name, columns: t.columns.map(c => c.h), rows: t.rows })), notes: x.notes.filter(n => !r.definitions.includes(n)), definitions: r.definitions, chart: dqChartFromResult(r.spec, { columns: x.tables[0].columns.map(c => c.h), rows: x.tables[0].rows }) }, buckets: [] };
   };
   // a tapped or saved question for one of the other uploaded data sets
   if (input.spec && input.spec.set) return setAnswer(input.spec, [], 'spec');
@@ -20166,7 +20200,7 @@ async function dqAnswerPayload(accountId, input, range, opts){
   if (r.notOnFile) return { notOnFile: r.notOnFile };
   const x = r.x;
   return { source, spec: r.spec, sentence: dqSentence(r.spec, vocab, r.period), period: r.period, assumptions,
-    result: { title: x.title, summary: x.summary, tables: x.tables.map(t => ({ name: t.name, columns: t.columns.map(c => c.h), rows: t.rows })), notes: x.notes.filter(n => !r.definitions.includes(n)), definitions: r.definitions },
+    result: { title: x.title, summary: x.summary, tables: x.tables.map(t => ({ name: t.name, columns: t.columns.map(c => c.h), rows: t.rows })), notes: x.notes.filter(n => !r.definitions.includes(n)), definitions: r.definitions, chart: dqChartFromResult(r.spec, { columns: x.tables[0].columns.map(c => c.h), rows: x.tables[0].rows }) },
     buckets: r.bucketInfo };
 }
 // How specific was the customer-file measure in the words? Used only to decide between the two engines.
@@ -20510,6 +20544,7 @@ function dqSetParse(text, accountId){
   }));
   // two or more values of one field ("US vs Canada") are a comparison, so show them side by side rather than as one combined number
   spec.filters.forEach(f => { if (f.values.length > 1 && !spec.by.includes(f.field) && spec.by.length < 2){ spec.by.unshift(f.field); assumptions.push('You named more than one ' + (dqSetDims(best.set)[f.field] || { label: f.field }).label.toLowerCase() + ', so I show them side by side.'); } });
+  if (!spec.by.length && /\b(chart|graph|plot|visuali[sz]e|trend|over time)\b/.test(raw) && dqSetDims(best.set).month && !m.ratio){ spec.by.push('month'); assumptions.push('A chart needs something to compare, so I drew it by month.'); }
   if (!spec.agg){ spec.agg = dqSetDefaultAgg(m); if (m.aggs.length > 1) assumptions.push(`No "average" or "total" was said, so I used ${spec.agg === 'sum' ? 'the total' : 'the average'}.`); }
   if (!m.aggs.includes(spec.agg)){ spec.agg = dqSetDefaultAgg(m); }
   if (spec.by.length > 2){ assumptions.push(`Only two breakdowns fit in one view; I used ${spec.by.slice(0, 2).map(k => dims[k].label).join(' and ')}.`); spec.by = spec.by.slice(0, 2); }
