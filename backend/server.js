@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-17-r11-drivers (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-17-r12-onetable (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -18659,7 +18659,8 @@ function buildGpCards(accountId, spec){
     c1.status = c1.storyKind === 'comparison' ? (chg('roas') != null ? (chg('roas') >= 0 ? 'good' : 'bad') : (chg('cac') <= 0 ? 'good' : 'bad')) : (c1.storyKind === 'trend' ? (tR ? (tR.dir > 0 ? 'good' : tR.dir < 0 ? 'bad' : 'neutral') : (tC.dir < 0 ? 'good' : tC.dir > 0 ? 'bad' : 'neutral')) : 'neutral');
     c1._story = [whyStory(c1.storyKind), tR && tR.text, tC && tC.text, fC && 'Looking ahead: ' + fC].filter(Boolean); }
   c1.large = { tables: [{ name: 'Performance', columns: cols, rows: [row('Marketing spend', cur.spend, prev.spend, 'money'), row('Gross revenue', cur.revenue, prev.revenue, 'money'), row('Transactions', cur.transactions, prev.transactions, 'int'), row('ROAS (revenue / spend)', cur.roas, prev.roas, 'x'), row('Revenue per transaction', (cur.revenue != null && cur.transactions > 0) ? cur.revenue / cur.transactions : null, (prev.revenue != null && prev.transactions > 0) ? prev.revenue / prev.transactions : null, 'money2'), row('CAC (spend / transactions)', cur.cac, prev.cac, 'money')] },
-      { name: 'By period', columns: ['Period', 'Spend', 'Transactions', 'Revenue per transaction', 'CAC', 'ROAS'], rows: SR.rows.map(r => [r.label, gpFmtVal(r.spend, 'money'), gpFmtVal(r.transactions, 'int'), gpFmtVal((r.revenue != null && r.transactions > 0) ? r.revenue / r.transactions : null, 'money2'), gpFmtVal(r.cac, 'money'), gpFmtVal(r.roas, 'x')]) }],
+      ],
+    detail: [{ name: 'Month by month', columns: ['Period', 'Spend', 'Transactions', 'Revenue per transaction', 'CAC', 'ROAS'], rows: SR.rows.map(r => [r.label, gpFmtVal(r.spend, 'money'), gpFmtVal(r.transactions, 'int'), gpFmtVal((r.revenue != null && r.transactions > 0) ? r.revenue / r.transactions : null, 'money2'), gpFmtVal(r.cac, 'money'), gpFmtVal(r.roas, 'x')]) }],
     notes: estNotes.concat(c1._story), definitions: ['ROAS is gross revenue divided by marketing spend. The chart puts ROAS and CAC on one scale by setting the first period shown to 100, so a line above 100 has risen since then. Hover a dot for the actual figures.', 'Revenue per transaction is gross revenue divided by transactions. It stands in for price: when it rises, CAC can rise and ROAS still improve.', 'CAC is marketing spend divided by unique transactions. Bookings carry no customer id yet, so this is spend per transaction, not per new customer.'] };
   // ---- Card 2: spend and impression pacing ----
   const ex = gpExpectedShare(accountId, R.from, R.through);
@@ -18680,7 +18681,8 @@ function buildGpCards(accountId, spec){
     c2._story = [wb.length ? 'This card leads with pace against the plan because a budget or impressions target is on file.' : whyStory(c2.storyKind), tS && tS.text, tI && tI.text, fut && 'Looking ahead: ' + fut].filter(Boolean); }
   c2.status = wb.length ? (verdict(spendPace) === 'bad' || verdict(impPace) === 'bad' ? 'bad' : (verdict(spendPace) === 'good' && (impPace == null || verdict(impPace) === 'good') ? 'good' : 'neutral')) : 'neutral';
   c2.large = { tables: [{ name: 'Pacing', columns: ['Measure', 'Actual to date', 'Expected pace', '% of pace'], rows: [['Spend', gpFmtVal(cur.spend, 'money'), ex.anySpend ? gpFmtVal(ex.spend, 'money') : '—', spendPace != null ? spendPace + '%' : '—'], ['Impressions', gpFmtVal(cur.impressions, 'int'), ex.anyImps ? gpFmtVal(ex.impressions, 'int') : '—', impPace != null ? impPace + '%' : '—']] },
-      { name: 'Against the compared period', columns: cols, rows: [row('Spend', cur.spend, prev.spend, 'money'), row('Impressions', cur.impressions, prev.impressions, 'int'), row('CPM', cur.cpm, prev.cpm, 'money2')] }],
+      ],
+    detail: [{ name: 'Against the compared period', columns: cols, rows: [row('Spend', cur.spend, prev.spend, 'money'), row('Impressions', cur.impressions, prev.impressions, 'int'), row('CPM', cur.cpm, prev.cpm, 'money2')] }],
     notes: c2._story.concat(estNotes).concat(ex.missing.length ? [`Not on file: ${Array.from(new Set(ex.missing)).join(', ')}.`] : []),
     definitions: [`Expected pace is the annual plan figure spread evenly by day: budget x days in the dates / days in the year.${ex.wmFrom ? ' Budget comes from ' + ex.wmFrom + '.' : ''}`, 'Within 5% of pace reads as on pace. Below 85% reads as behind.'] };
   // ---- Card 3: KPI story ----
@@ -18698,15 +18700,22 @@ function buildGpCards(accountId, spec){
   const stepOf = p => ({ e: (p.engaged != null && p.impressions > 0) ? p.engaged / p.impressions * 10000 : null, l: (p.leads != null && p.engaged > 0) ? p.leads / p.engaged * 100 : null, b: (p.transactions != null && p.leads > 0) ? p.transactions / p.leads * 100 : null });
   const stC = stepOf(cur), stP = stepOf(prev);
   const srow = (label, a, b, unit) => [label, a != null ? (unit === 'pct' ? a.toFixed(1) + '%' : a.toFixed(1)) : '—', b != null ? (unit === 'pct' ? b.toFixed(1) + '%' : b.toFixed(1)) : '—', (a != null && b != null && storyPct(a, b) != null) ? gpFmtVal(storyPct(a, b), 'pct') : '—'];
-  c3.large = { tables: [{ name: 'Impression to booking', columns: cols, rows: [row('Impressions', cur.impressions, prev.impressions, 'int'), row('CPM', cur.cpm, prev.cpm, 'money2'), row('Engaged Visitors', cur.engaged, prev.engaged, 'int'), row('CPEV', cur.costPerEngaged, prev.costPerEngaged, 'money2'), row('Leads', cur.leads, prev.leads, 'int'), row('CPL', cur.costPerLead, prev.costPerLead, 'money2'), row('Transactions', cur.transactions, prev.transactions, 'int'), row('CAC', cur.cac, prev.cac, 'money2')] },
-      { name: 'How each step carries into the next', columns: cols, rows: [srow('Engaged visitors per 10,000 impressions', stC.e, stP.e, 'n'), srow('Leads per 100 engaged visitors', stC.l, stP.l, 'pct'), srow('Transactions per 100 leads', stC.b, stP.b, 'pct')] }],
+  const fchg = (a, b) => (a != null && b != null && storyPct(a, b) != null) ? gpFmtVal(storyPct(a, b), 'pct') : '—';
+  const rateTxt = (a, b, unit) => a == null ? '—' : `${a.toFixed(1)} per ${unit} (was ${b != null ? b.toFixed(1) : '—'})`;
+  const fRows = [['Impressions', cur.impressions, prev.impressions, 'int', 'CPM', cur.cpm, prev.cpm, stC.e, stP.e, 10000], ['Engaged visitors', cur.engaged, prev.engaged, 'int', 'CPEV', cur.costPerEngaged, prev.costPerEngaged, stC.l, stP.l, 100], ['Leads', cur.leads, prev.leads, 'int', 'CPL', cur.costPerLead, prev.costPerLead, stC.b, stP.b, 100], ['Transactions', cur.transactions, prev.transactions, 'int', 'CAC', cur.cac, prev.cac, null, null, 0]];
+  const funnel = { name: 'Impression to booking', columns: ['Stage', 'This period', 'Compared period', 'Change', 'What each cost', 'Cost change', 'Moves on to the next stage'], rows: fRows.map(f => [f[0], gpFmtVal(f[1], f[3]), gpFmtVal(f[2], f[3]), fchg(f[1], f[2]), f[5] != null ? gpFmtVal(f[5], 'money2') + ' ' + f[4] : '—', fchg(f[5], f[6]), f[9] ? rateTxt(f[7], f[8], f[9]) : '—']), flags: [] };
+  { const ch = fRows.map((f, i) => (f[9] && f[7] != null && f[8] > 0) ? { i, pct: (f[7] - f[8]) / f[8] * 100 } : null).filter(Boolean);
+    if (ch.length){ const worst = ch.reduce((a, b) => b.pct < a.pct ? b : a), best = ch.reduce((a, b) => b.pct > a.pct ? b : a);
+      if (worst.pct <= -10) funnel.flags.push([worst.i, 6, { dir: 'low', level: worst.pct <= -25 ? 2 : 1, tone: 'bad', est: false, label: 'Biggest leak' }]);
+      if (best.pct >= 10 && best.i !== worst.i) funnel.flags.push([best.i, 6, { dir: 'high', level: best.pct >= 25 ? 2 : 1, tone: 'good', est: false, label: 'Strongest step' }]); } }
+  c3.large = { tables: [funnel], detail: [],
     notes: c3._story.concat(estNotes).concat([['Engaged visitors', cur.estimated.engaged.concat(prev.estimated.engaged)], ['Leads', cur.estimated.leads.concat(prev.estimated.leads)]].filter(x => x[1].length).map(x => `${x[0]} for ${mn(x[1])} are estimated from monthly totals divided evenly by day.`)).concat(Object.keys(E.__est ? Object.fromEntries(Array.from(E.__est).map(k => [k, 1])) : {}).filter(k => k >= R.compFrom.slice(0, 7) && k <= R.through.slice(0, 7)).length ? ['Engaged visitors for months without their own engagement figure are website users times the year engaged share of sessions.'] : []),
     definitions: ['The card reads left to right and top to bottom, from attention to action: impressions, engaged visitors, leads, transactions. Each row shows the volume on the left and what it cost on the right.', 'CPM is marketing spend per 1,000 impressions.', 'Engaged Visitors are engaged sessions from the website engagement upload. CPEV (cost per engaged visitor) is marketing spend divided by that total.', 'CPL (cost per lead) is marketing spend divided by leads. CAC is marketing spend divided by unique transactions.', 'The only comparison shown is the percentage change against the compared period. A lower cost is better. Transactions include direct and phone bookings, so transactions per 100 leads can pass 100.'] };
   { const mset = new Set(cur.estimated.media.concat(prev.estimated.media)), tset = new Set(cur.estimated.txn.concat(prev.estimated.txn)), eset = new Set(cur.estimated.engaged.concat(prev.estimated.engaged)), lset = new Set(cur.estimated.leads.concat(prev.estimated.leads));
     const hit = (r, set) => { try { return dmMonthsOf(r.from, r.to).some(k => set.has(k)); } catch (e){ return false; } };
     const estFn = (r, k) => (k === 'cpm' || k === 'spend' || k === 'impressions') ? hit(r, mset) : k === 'cac' ? (hit(r, mset) || hit(r, tset)) : (k === 'costPerEngaged') ? (hit(r, mset) || hit(r, eset)) : (k === 'costPerLead') ? (hit(r, mset) || hit(r, lset)) : (k === 'transactions' || k === 'rpt' || k === 'roas') ? hit(r, tset) : false;
-    c1.large.tables[1].flags = gpFlagTable(SR, [{ k: 'spend', col: 1, good: 'neutral' }, { k: 'transactions', col: 2, good: 'neutral' }, { k: 'rpt', col: 3, good: 'neutral', fn: r => (r.revenue != null && r.transactions > 0) ? r.revenue / r.transactions : null }, { k: 'cac', col: 4, good: 'down' }, { k: 'roas', col: 5, good: 'up' }], estFn);
-    c3.large.tables.push({ name: 'By period', columns: ['Period', 'CPM', 'CPEV', 'CPL', 'CAC'], rows: SR.rows.map(r => [r.label, gpFmtVal(r.cpm, 'money2'), gpFmtVal(r.costPerEngaged, 'money2'), gpFmtVal(r.costPerLead, 'money2'), gpFmtVal(r.cac, 'money2')]), flags: gpFlagTable(SR, [{ k: 'cpm', col: 1, good: 'down' }, { k: 'costPerEngaged', col: 2, good: 'down' }, { k: 'costPerLead', col: 3, good: 'down' }, { k: 'cac', col: 4, good: 'down' }], estFn) });
+    c1.large.detail[0].flags = gpFlagTable(SR, [{ k: 'spend', col: 1, good: 'neutral' }, { k: 'transactions', col: 2, good: 'neutral' }, { k: 'rpt', col: 3, good: 'neutral', fn: r => (r.revenue != null && r.transactions > 0) ? r.revenue / r.transactions : null }, { k: 'cac', col: 4, good: 'down' }, { k: 'roas', col: 5, good: 'up' }], estFn);
+    c3.large.detail.push({ name: 'Month by month', columns: ['Period', 'CPM', 'CPEV', 'CPL', 'CAC'], rows: SR.rows.map(r => [r.label, gpFmtVal(r.cpm, 'money2'), gpFmtVal(r.costPerEngaged, 'money2'), gpFmtVal(r.costPerLead, 'money2'), gpFmtVal(r.cac, 'money2')]), flags: gpFlagTable(SR, [{ k: 'cpm', col: 1, good: 'down' }, { k: 'costPerEngaged', col: 2, good: 'down' }, { k: 'costPerLead', col: 3, good: 'down' }, { k: 'cac', col: 4, good: 'down' }], estFn) });
     const est0 = { media: media.length > 0, txn: txn.length > 0, engaged: cur.estimated.engaged.concat(prev.estimated.engaged).length > 0, leads: cur.estimated.leads.concat(prev.estimated.leads).length > 0 };
     try { c3.facts = gpDriverFacts('kpi', cur, prev, SR, est0); } catch (e){ c3.facts = null; } try { c1.facts = gpDriverFacts('roas', cur, prev, SR, est0); } catch (e){ c1.facts = null; } }
   const col = k => SR.rows.map(r => r[k] == null ? null : Math.round(r[k] * 100) / 100); const labels = SR.rows.map(r => r.label);
@@ -18723,7 +18732,7 @@ function buildGpCards(accountId, spec){
     { step: stepTxt(stC.l, '{v} leads per 100 engaged visitors'), cols: [kc('Leads', col('leads'), 'int', gpFmtVal(cur.leads, 'int'), chg('leads'), 'up', 'bars'), kc('CPL', col('costPerLead'), 'money2', gpFmtVal(cur.costPerLead, 'money2'), chg('costPerLead'), 'down')] },
     { step: stepTxt(stC.b, '{v} transactions per 100 leads'), cols: [kc('Transactions', col('transactions'), 'int', gpFmtVal(cur.transactions, 'int'), chg('transactions'), 'up', 'bars'), kc('CAC', col('cac'), 'money2', gpFmtVal(cur.cac, 'money2'), chg('cac'), 'down')] }] };
   const cards = [c1, c2, c3];
-  cards.forEach(c => { c.export = { title: c.title, fileSlug: 'growth-' + c.key, context: ctx, tables: c.large.tables.map(t => ({ name: t.name, columns: t.columns, rows: t.rows })), notes: c.large.notes.concat(c.large.definitions) }; });
+  cards.forEach(c => { c.export = { title: c.title, fileSlug: 'growth-' + c.key, context: ctx, tables: c.large.tables.concat(c.large.detail || []).map(t => ({ name: t.name, columns: t.columns, rows: t.rows })), notes: c.large.notes.concat(c.large.definitions) }; });
   return { range: R, cards, estimated: estNotes };
 }
 function gpExportFromPayload(accountId, b){
@@ -33077,7 +33086,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-17-r11-drivers',
+        buildStamp: '2026-11-17-r12-onetable',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
