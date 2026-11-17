@@ -14265,7 +14265,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-17-r8-report-page-v3';
+const CXMEDIA_BUILD_STAMP = '2026-11-17-r9-heart';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -86968,12 +86968,12 @@ function vzSimilar(){
   vz.q = w; vz.cat = 'all'; vz.tag = ''; vz.showAll = false; vzBack();
 }
 function vzTalk(){ try { askVerilumeToggleVoice(); } catch (e){} }
-const VZ_HEART = on => `<svg width="19" height="19" viewBox="0 0 24 24" fill="${on ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>`;
+const VZ_HEART = on => `<svg width="30" height="30" viewBox="0 0 24 24" fill="${on ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>`;
 const VZ_BRAIN_SVG = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1F6B5C" stroke-width="2" stroke-linecap="round"><path d="M7 18a4 4 0 1 1 1-7.9A5 5 0 0 1 18 11a3.5 3.5 0 0 1-.5 7z"/></svg>';
 function vzFrameStyle2(){
   if (document.getElementById('vzpStyle2')) return; const st = document.createElement('style'); st.id = 'vzpStyle2';
   st.textContent = `
-  .vzp-heart{width:42px;height:42px;border-radius:50%;border:1.5px solid var(--ink);background:#fff;color:var(--ink);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;list-style:none;} .vzp-heart::-webkit-details-marker{display:none;} .vzp-acts .vz-pin summary.vzp-heart,.vzp-heart{display:inline-flex !important;align-items:center;justify-content:center;width:42px;height:42px;padding:0;} .vzp-heart svg{flex:none;} .vzp-heart:hover{background:var(--ink);color:#fff;} .vzp-heart.on{color:#C0273C;border-color:#C0273C;} .vzp-heart.on:hover{background:#C0273C;color:#fff;}
+  .vzp-heart,.vzp-acts .vz-pin summary.vzp-heart{display:inline-flex !important;align-items:center;justify-content:center;width:44px;height:44px;padding:0;border:0 !important;background:transparent !important;color:var(--ink);cursor:pointer;list-style:none;border-radius:10px;line-height:0;} .vzp-heart::-webkit-details-marker{display:none;} .vzp-heart svg{width:30px;height:30px;flex:none;display:block;} .vzp-heart:hover{color:#C0273C;} .vzp-heart:focus-visible{outline:2px solid var(--media);outline-offset:2px;} .vzp-heart.on{color:#C0273C;} .vzp-heart[disabled]{opacity:.35;cursor:not-allowed;}
   .vzp-acts .vz-pin{position:relative;} .vzp-acts .vz-pinpanel{right:0;left:auto;}
   .vzp-lead{font-weight:600;} .vzp-live{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);font-size:0.875rem;color:var(--muted);} 
   .vzp-ro-cap{display:block;font-size:0.6875rem;letter-spacing:.12em;text-transform:uppercase;font-weight:600;margin-bottom:2px;}
