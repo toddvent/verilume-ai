@@ -28245,18 +28245,35 @@ async function dqShareAction(who, format){
     dqShareSay(who, 'Clipboard blocked, so a CSV was downloaded. In Google Sheets use File, Import.');
   }
 }
-function askVerilumeRenderDq(a){
-  askVerilumeDqLast = a || null;
+let askVerilumeChartType = '';
+function askVerilumeChartHtml(r){
+  const ch = r && r.chart; if (!ch || !ch.labels || ch.labels.length < 2 || typeof vzShape !== 'function' || typeof vzChartSvg !== 'function') return '';
+  try {
+    const type = askVerilumeChartType || ch.type || 'column';
+    const shaped = vzShape({ labels: ch.labels, series: ch.series, kind: ch.kind, additive: !!ch.additive }, { type, title: r.title || '', style: 'executive', showValues: true });
+    if (typeof vzTipInit === 'function') vzTipInit();
+    const opts = [['column', 'Columns'], ['bar', 'Bars'], ['line', 'Line'], ['pie', 'Pie']].filter(o => !(o[0] === 'pie' && ch.series.length > 1));
+    return `<div class="av-chart"><div class="vz-plot">${vzChartSvg(shaped)}</div>${typeof vzLegendHtml === 'function' ? vzLegendHtml(shaped) : ''}
+      <div class="av-chart-types" role="group" aria-label="Chart style">${opts.map(o => `<button type="button" class="vz-chip${o[0] === type ? ' on' : ''}" onclick="askVerilumeSetChartType('${o[0]}')">${o[1]}</button>`).join('')}</div></div>`;
+  } catch (e){ return ''; }
+}
+function askVerilumeSetChartType(t){ askVerilumeChartType = t; if (askVerilumeDqLast) askVerilumeRenderDq(askVerilumeDqLast, true); }
+function askVerilumeRenderDq(a, keepType){
+  askVerilumeDqLast = a || null; if (!keepType) askVerilumeChartType = '';
   const el = document.getElementById('askVerilumeDq'); if (!el) return;
   if (!a || !a.result){ el.innerHTML = ''; return; }
+  if (!document.getElementById('avChartStyle')){ const st = document.createElement('style'); st.id = 'avChartStyle'; st.textContent = '.av-chart{margin:10px 0 6px;} .av-chart .vz-plot svg{max-height:300px;} .av-chart-types{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;} .av-read{margin:8px 0 0;} .av-read summary{cursor:pointer;}'; document.head.appendChild(st); }
   const r = a.result;
   const drafts = (a.buckets || []).filter(b => !b.saved).map(b => `<p class="fd-hint">${escapeHtml(b.label)}: the groups are a draft drawn from your data. <button type="button" class="btn-ghost" onclick="askVerilumeApproveGroups('${escapeHtml(b.field)}')">Approve these groups</button> so every period is compared on the same ones.</p>`).join('');
-  el.innerHTML = `<div class="fd-out">${dqShareHtml('av')}<p class="fd-hint">How I read it: ${escapeHtml(a.sentence || '')}</p>${(a.assumptions || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}
+  const chart = askVerilumeChartHtml(r);
+  el.innerHTML = `<div class="fd-out">${dqShareHtml('av')}
     <p class="fd-ask">${escapeHtml(r.title)}</p><p class="fd-sum">${escapeHtml(r.summary)}</p>
-    ${(r.tables || []).map(t => `<div class="strat-table-wrap"><table class="strat-table"><thead><tr>${t.columns.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead><tbody>${t.rows.map(row => `<tr>${row.map(c => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`).join('')}
+    ${chart}
+    <details class="av-read"${chart ? '' : ' open'}><summary class="fd-hint">${chart ? 'Show the numbers' : 'The numbers'}</summary>${(r.tables || []).map(t => `<div class="strat-table-wrap"><table class="strat-table"><thead><tr>${t.columns.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead><tbody>${t.rows.map(row => `<tr>${row.map(c => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`).join('')}</details>
+    <p class="fd-hint">How I read it: ${escapeHtml(a.sentence || '')}</p>${(a.assumptions || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}
     ${(r.notes || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}${drafts}
     <details class="fd-hint"><summary>How this was counted</summary>${(r.definitions || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}</details>
-    <div class="fd-actions"><button type="button" class="btn-ghost" onclick="askVerilumeOpenGuided(true)">Change this in the guided view</button><span class="fd-hint" id="dqShareMsg-av" role="status" aria-live="polite"></span></div></div>`;
+    <div class="fd-actions"><button type="button" class="btn-ghost" onclick="askVerilumeOpenGuided(true)">Not quite right? Adjust</button><span class="fd-hint" id="dqShareMsg-av" role="status" aria-live="polite"></span></div></div>`;
 }
 async function askVerilumeExportDq(format){
   const a = askVerilumeDqLast; if (!a || !a.spec) return;
