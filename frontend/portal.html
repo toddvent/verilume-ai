@@ -51278,7 +51278,7 @@ async function cmpRunAudienceContest(idx){
   if (!audienceName || !campaign) return;
   const gate = cmpRequiredForGenerationGate();
   if (!gate.ok){
-    if (status){ status.style.color = 'var(--advocacy)'; status.textContent = `Set ${gate.missing.join(' and ')} on Brand Messaging before running this contest.`; }
+    if (status){ status.style.color = 'var(--advocacy)'; status.textContent = `Set ${gate.missing.join(' and ')} before running this contest.`; }
     return;
   }
   if (status){ status.style.color = 'var(--cx)'; status.textContent = 'Drafting below, in Audience Contest Results.'; }
@@ -57952,8 +57952,6 @@ function plcRender(){
       <div><label for="plcAud">Audience</label><select id="plcAud"><option value="">Choose an audience</option>${PLC_AUDIENCES.map(a => `<option${a === plc.audience ? ' selected' : ''}>${escapeHtml(a)}</option>`).join('')}</select></div>
       <div><label for="plcReach">Estimated reach</label><input id="plcReach" type="number" min="0" step="1" placeholder="number" value="${escapeHtml(plc.reach == null ? '' : String(plc.reach))}"></div>
       <div><label for="plcDue">Creative due date</label><input id="plcDue" type="date" value="${escapeHtml(plc.due || '')}"></div>
-      <div style="grid-column:1/-1;"><label for="plcKeyMsg">Key message (required)</label><input id="plcKeyMsg" type="text" maxlength="200" value="${escapeHtml(plc.keyMessage || '')}" placeholder="The one thing this placement should say"></div>
-      <div style="grid-column:1/-1;"><label for="plcBriefTxt">Brief: what is this placement for? (optional)</label><textarea id="plcBriefTxt" style="min-height:70px;" placeholder="The offer, the audience reaction you want, anything the writers must know. Left blank, I build it from the campaign details.">${escapeHtml(plc.briefText || '')}</textarea></div>
     </div><div class="plc-row"><button type="button" class="btn-primary" onclick="plcAddChannel()">Add channel and go to Copy &rarr;</button><button type="button" class="btn-ghost" onclick="plcClose()">Close</button></div></div>`;
   } else {
     const sp = plcSpec();
@@ -58026,7 +58024,6 @@ async function plcAddChannel(){
   if (!plc.channel){ plcMsg('Choose the channel.', true); return; }
   if (!plc.audience){ plcMsg('Choose the audience.', true); return; }
   if (!plc.due){ plcMsg('Add the creative due date.', true); return; }
-  if (!String(plc.keyMessage || '').trim()){ plcMsg('Add the key message. The copy writers and the relevance score depend on it.', true); return; }
   // Dates and budget come from the campaign itself (step 1).
   const cc = (state.campaigns || []).find(x => x.id === plc.cid) || {};
   plc.start = String(cc.startDate || '').slice(0, 10); plc.end = String(cc.endDate || '').slice(0, 10);
@@ -58040,16 +58037,6 @@ async function plcAddChannel(){
     // so the channel is recorded as an approved creative asset (the same record Performance Marketing approval writes) and the workspace opens on it.
     const c = (state.campaigns || []).find(x => x.id === plc.cid);
     if (c){
-      // Skipping AI Brain planning leaves Key Message and the Brief Builder context empty, which locks Long Form Copy and leaves the copy writers with nothing to
-      // score against. Save both here: the typed brief, or one built from the campaign's own details.
-      const km = String(plc.keyMessage || '').trim();
-      const brief = String(plc.briefText || '').trim() || [
-        `${c.name || c.objective || 'This campaign'} is a single-channel ${plcLabel(plc.channel)} placement${plc.start ? ' running ' + plc.start + (plc.end ? ' to ' + plc.end : '') : ''}.`,
-        c.stage ? `Marketing Loop stage: ${c.stage}.` : '', plc.audience ? `Audience: ${plc.audience}.` : '',
-        (c.primaryKpi && c.kpiGoal) ? `Goal: ${Number(c.kpiGoal).toLocaleString('en-US')} ${c.primaryKpi}.` : (c.primaryKpi ? `Primary KPI: ${c.primaryKpi}.` : ''),
-        c.productGroups ? `Product focus: ${c.productGroups}.` : '', `Key message: ${km}`].filter(Boolean).join(' ');
-      c.keyMessage = km; c.briefBuilderExpandedText = brief;
-      try { await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(plc.cid)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keyMessage: km, briefBuilderExpandedText: brief }) }); } catch (e){ console.warn('plcAddChannel: key message/brief not saved', e); }
       const asset = { channel: plc.channel, partner: plc.partner || 'To be assigned', mediaType: plc.creativeType || (CREATIVE_TYPES_BY_CHANNEL[plc.channel] || [])[0] || 'Standard', size: sp ? sp.label : 'Standard Unit', audience: plc.audience, estimatedReach: plc.reach || null, creativeDueDate: plc.due, copyVersions: {} };
       c.approvedCreativeAssets = [...(Array.isArray(c.approvedCreativeAssets) ? c.approvedCreativeAssets : []), asset];
       c.approvedCreativeAssetsJson = JSON.stringify(c.approvedCreativeAssets);
@@ -60847,6 +60834,8 @@ function cmpRequiredForGenerationGate(){
   const missing = [];
   if (!c || !c.campaignType || !CAMPAIGN_TYPE_REGISTRY_CLIENT[c.campaignType]) missing.push('Campaign Experience Focus');
   if (!c || !c.businessInitiative || !BUSINESS_INITIATIVE_REGISTRY_CLIENT[c.businessInitiative]) missing.push('Media Science Primary Focus');
+  // 2026-11-17 -- the key message is prompt input too: the writers and the relevance score both work from it. It is the Headline in Step 0 / Key Message on Brand Messaging.
+  if (!c || !String(c.keyMessage || '').trim()) missing.push('the Key Message (the Headline in Step 0)');
   return { ok: missing.length === 0, missing };
 }
 function cmpRenderGenerationRequirementsStatus(c){
@@ -72761,7 +72750,7 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId, forceMode){
     // render something on a click, but as a small gray hint line easy to
     // miss next to a full-width card; made it an unmissable bordered/tinted
     // callout instead so a blocked click is obviously not a dead button.
-    panel.innerHTML = `<p class="hint" style="color:var(--advocacy);font-weight:600;background:#FDECEC;border:1px solid #F3B8B8;border-radius:8px;padding:10px 12px;margin:0;">⚠ Set ${gate.missing.join(' and ')} on Brand Messaging before running the copy contest — the AI Brain needs both to write on-strategy candidates.</p>`;
+    panel.innerHTML = `<p class="hint" style="color:var(--advocacy);font-weight:600;background:#FDECEC;border:1px solid #F3B8B8;border-radius:8px;padding:10px 12px;margin:0;">⚠ Set ${gate.missing.join(' and ')} before running the copy contest — the AI Brain needs both to write on-strategy candidates.</p>`;
     return;
   }
   panel.innerHTML = renderAiStatusBubble("Getting one response to this campaign's Long Form Copy from each AI partner — grounded in the campaign's writing style, objective, KPI, brand voice, and channels — then scoring each one blind before ranking them.", INTERVIEW_STATUS_TIPS);
