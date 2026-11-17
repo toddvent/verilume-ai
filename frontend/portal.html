@@ -14265,7 +14265,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-17-r7-report-page-v2';
+const CXMEDIA_BUILD_STAMP = '2026-11-17-r8-report-page-v3';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -86810,7 +86810,7 @@ function vzGalleryHtml(){
     <div class="vz-gbar"><button type="button" class="btn-primary" id="vzNewBtn2" onclick="vzNew()">+ Create a New Chart</button>
       <label class="vz-sel"><span class="vz-sr">Category</span><select aria-label="Category" onchange="vzSetCat(this.value)">${cats.map(c => `<option value="${escapeHtml(c)}"${c === vz.cat ? ' selected' : ''}>${c === 'all' ? 'All categories' : escapeHtml(c)}</option>`).join('')}</select></label>
       ${tagList.length ? `<label class="vz-sel"><span class="vz-sr">Function or role</span><select aria-label="Function or role" onchange="vzSetTag(this.value)"><option value="">All functions and roles</option>${tagList.map(t => `<option value="${escapeHtml(t)}"${t === vz.tag ? ' selected' : ''}>${escapeHtml(t)}</option>`).join('')}</select></label>` : ''}
-      <div class="vz-search"><input id="vzSearch" type="search" value="${escapeHtml(vz.q)}" placeholder="Search charts by name or topic" aria-label="Search charts" oninput="vzSetQ(this.value)">${sr ? `<button type="button" class="vz-mic vz-mic-s${vz.qrec ? ' on' : ''}" onclick="vzSearchDictate()" aria-label="Search by voice" aria-pressed="${vz.qrec}"><span class="vz-dot"></span>${vz.qrec ? 'Listening…' : 'Speak'}</button>` : ''}</div></div>
+      <div class="vz-search"><input id="vzSearch" type="search" value="${escapeHtml(vz.q)}" placeholder="Search charts by name or topic" aria-label="Search charts" oninput="vzSetQ(this.value)"><button type="button" class="vz-mic vz-mic-s" onclick="vzTalk()" aria-label="Talk to Verilume"><span class="vz-dot"></span>Talk to Verilume</button></div></div>
     ${list.length ? `<div class="vz-gal">${cards}</div>${more ? `<p class="vz-more"><button type="button" class="strat-chip" onclick="vzShowAll()">Show all ${all.length} charts</button></p>` : ''}` : `<p class="vz-empty">${empty}</p>`}</div>`;
 }
 function vzProfileTags(){
@@ -86973,7 +86973,7 @@ const VZ_BRAIN_SVG = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none
 function vzFrameStyle2(){
   if (document.getElementById('vzpStyle2')) return; const st = document.createElement('style'); st.id = 'vzpStyle2';
   st.textContent = `
-  .vzp-heart{width:42px;height:42px;border-radius:50%;border:1.5px solid var(--ink);background:#fff;color:var(--ink);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;list-style:none;} .vzp-heart::-webkit-details-marker{display:none;} .vzp-heart:hover{background:var(--ink);color:#fff;} .vzp-heart.on{color:#C0273C;border-color:#C0273C;} .vzp-heart.on:hover{background:#C0273C;color:#fff;}
+  .vzp-heart{width:42px;height:42px;border-radius:50%;border:1.5px solid var(--ink);background:#fff;color:var(--ink);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;list-style:none;} .vzp-heart::-webkit-details-marker{display:none;} .vzp-acts .vz-pin summary.vzp-heart,.vzp-heart{display:inline-flex !important;align-items:center;justify-content:center;width:42px;height:42px;padding:0;} .vzp-heart svg{flex:none;} .vzp-heart:hover{background:var(--ink);color:#fff;} .vzp-heart.on{color:#C0273C;border-color:#C0273C;} .vzp-heart.on:hover{background:#C0273C;color:#fff;}
   .vzp-acts .vz-pin{position:relative;} .vzp-acts .vz-pinpanel{right:0;left:auto;}
   .vzp-lead{font-weight:600;} .vzp-live{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);font-size:0.875rem;color:var(--muted);} 
   .vzp-ro-cap{display:block;font-size:0.6875rem;letter-spacing:.12em;text-transform:uppercase;font-weight:600;margin-bottom:2px;}
@@ -86984,12 +86984,12 @@ function vzFrameStyle2(){
   .vzp-dbtn{height:40px;border:1px solid var(--line);border-radius:12px;background:#fff;display:inline-flex;align-items:center;gap:8px;padding:0 14px;font:inherit;font-size:0.875rem;cursor:pointer;color:var(--ink);} .vzp-dbtn:hover,.vzp-dbtn.on{border-color:var(--ink);}
   .vzp-alt{background:#fff;border:1px solid var(--line);border-radius:22px;padding:22px 26px;margin-top:18px;} .vzp-alt h3{margin:0 0 4px;font-size:1.0625rem;color:var(--ink);} .vzp-alt>p{margin:0 0 14px;color:var(--muted);font-size:0.875rem;}
   .vzp-thumbs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;} .vzp-thumb{border:1.5px solid var(--line);background:#fff;border-radius:16px;padding:10px 10px 8px;cursor:pointer;text-align:center;font:inherit;color:var(--ink);} .vzp-thumb:hover{border-color:var(--ink);} .vzp-thumb.on{border-color:var(--ink);box-shadow:0 0 0 2px var(--ink) inset;}
-  .vzp-thumb svg{width:100%;height:auto;max-height:96px;display:block;pointer-events:none;} .vzp-thumb span{display:block;font-size:0.8125rem;font-weight:600;margin-top:6px;}
+  .vzp-three{grid-template-columns:repeat(3,minmax(0,1fr));} .vzp-thumb em{display:block;font-style:normal;font-size:0.75rem;color:var(--muted);margin-top:3px;line-height:1.35;} .vzp-thumb svg{width:100%;height:auto;max-height:96px;display:block;pointer-events:none;} .vzp-thumb span{display:block;font-size:0.8125rem;font-weight:600;margin-top:6px;}
   .vzp-say-row{display:flex;gap:8px;margin-top:16px;} .vzp-say-row input{flex:1;min-width:0;font:inherit;font-size:0.9375rem;padding:11px 16px;border:1px solid var(--line);border-radius:980px;background:#fff;} .vzp-say-row input:focus{outline:2px solid rgba(37,99,235,.35);outline-offset:1px;border-color:var(--media);}
   .vzp .vz-tablewrap{border:1px solid var(--line);border-radius:14px;overflow-x:auto;background:#fff;} .vzp .vz-tablewrap table{width:100%;border-collapse:collapse;font-size:0.875rem;font-variant-numeric:tabular-nums;}
   .vzp .vz-tablewrap th{background:var(--ink);color:#fff;font-size:0.6875rem;letter-spacing:.1em;text-transform:uppercase;font-weight:600;text-align:right;padding:11px 14px;white-space:nowrap;} .vzp .vz-tablewrap th:first-child,.vzp .vz-tablewrap td:first-child{text-align:left;}
   .vzp .vz-tablewrap td{padding:10px 14px;text-align:right;border-bottom:1px solid #EEF0F5;color:var(--ink);} .vzp .vz-tablewrap tr:last-child td{border-bottom:0;} .vzp .vz-tablewrap td:first-child{font-weight:500;} .vzp .vz-tablewrap tbody tr:hover td{background:#F7F8FB;}
-  @media (max-width:900px){ .vzp-thumbs{grid-template-columns:repeat(5,128px);overflow-x:auto;padding-bottom:6px;} .vzp-alt{padding:16px;} .vzp-say-row{flex-direction:column;} }`;
+  @media (max-width:900px){ .vzp-thumbs,.vzp-three{grid-template-columns:repeat(3,200px);overflow-x:auto;padding-bottom:6px;} .vzp-alt{padding:16px;} .vzp-say-row{flex-direction:column;} }`;
   document.head.appendChild(st);
 }
 function vzReadoutKey(){ const r = vz.res; return r && r.data ? (String(r.title) + '|' + r.data.labels.join(',') + '|' + (r.data.series[0] || {}).values.join(',')) : ''; }
@@ -87034,15 +87034,26 @@ function vzThumbSvg(type, c0){
     return vzChartSvg(shaped).replace(/<svg /, '<svg aria-hidden="true" preserveAspectRatio="xMidYMid meet" ');
   } catch (e){ return ''; }
 }
+// Pick the three views that suit THIS data, with a plain reason each. The first is the recommendation.
+function vzBestViews(r){
+  const d = r.data, n = d.labels.length, multi = d.series.length > 1, cur = r.view.type;
+  const time = /^\d{4}(-\d{2})?(-\d{2})?$/.test(String(d.labels[0])) || /month|week|day|date|quarter|year/i.test((r.view && r.view.labelName) || '') || /by (month|week|day|quarter|year)/i.test(String(r.title || '') + ' ' + String(r.sentence || ''));
+  const parts = !multi && d.additive && n >= 2 && n <= 6;
+  let o;
+  if (time && n >= 3) o = multi ? [['line', 'Shows how each series moves over time'], ['column', 'Compares each period side by side'], ['table', 'Exact figures for every period']] : [['line', 'Shows the trend over time'], ['column', 'Makes each period easy to compare'], ['table', 'Exact figures for every period']];
+  else if (multi) o = [['column', 'Puts the series side by side for each group'], ['bar', 'Easier to read when labels are long'], ['table', 'Exact figures for every group']];
+  else if (parts) o = [['pie', 'Shows each part of the whole'], ['bar', 'Ranks the parts from largest to smallest'], ['table', 'Exact figures for every part']];
+  else if (n > 8) o = [['bar', 'Best for ranking many groups'], ['column', 'Quick comparison of sizes'], ['table', 'Exact figures for every group']];
+  else o = [['bar', 'Ranks the groups clearly'], ['column', 'Compares sizes side by side'], ['table', 'Exact figures for every group']];
+  if (!(r.view.alternatives || []).length) return o;
+  const allowed = r.view.alternatives; const f = o.filter(x => allowed.includes(x[0]) || x[0] === cur);
+  return (f.length >= 3 ? f : o).slice(0, 3);
+}
 function vzAltHtml(){
-  const r = vz.res, cur = r.view.type; const single = r.data.series.length < 2; const n = r.data.labels.length;
-  let pool = (r.view.alternatives || VZ_TYPES.map(t => t[0])).slice();
-  ['column', 'bar', 'line', 'pie', 'table', 'area', 'stacked'].forEach(t => { if (!pool.includes(t)) pool.push(t); });
-  pool = pool.filter(t => !(t === 'pie' && (!single || n > 12)) && !(t === 'stacked' && single) && !(t === 'line' && n < 3) && !(t === 'area' && n < 3));
-  const five = pool.slice(0, 5); if (!five.includes(cur)) five[4] = cur;
+  const r = vz.res, cur = r.view.type; const best = vzBestViews(r);
   const lab = t => (VZ_TYPES.find(x => x[0] === t) || [0, t])[1].replace('Pie', 'Donut');
-  return `<div class="vzp-alt"><h3>See it another way</h3><p>Pick a view. It redraws this report with the same numbers.</p>
-    <div class="vzp-thumbs" role="group" aria-label="Alternative views">${five.map(t => `<button type="button" class="vzp-thumb${t === cur ? ' on' : ''}" onclick="vzSetType('${t}')" aria-pressed="${t === cur}">${vzThumbSvg(t)}<span>${lab(t)}</span></button>`).join('')}</div>
+  return `<div class="vzp-alt"><h3>Best ways to see this</h3><p>Chosen for this data. Pick one to redraw the report, or tell Verilume what you want below.</p>
+    <div class="vzp-thumbs vzp-three" role="group" aria-label="Recommended views">${best.map((o, i) => `<button type="button" class="vzp-thumb${o[0] === cur ? ' on' : ''}" onclick="vzSetType('${o[0]}')" aria-pressed="${o[0] === cur}">${vzThumbSvg(o[0])}<span>${lab(o[0])}${i === 0 ? ' · recommended' : ''}</span><em>${escapeHtml(o[1])}</em></button>`).join('')}</div>
     <div class="vzp-say-row"><input id="vzFb" type="text" placeholder="Or describe the change you want: top 5, by month, last year…" aria-label="Describe the change you want" onkeydown="if(event.key==='Enter'){event.preventDefault();vzRefine();}"><button type="button" class="btn-primary" onclick="vzRefine()">Change it</button></div>
     <p class="vz-say${vz.fbErr ? ' err' : ''}" role="status" aria-live="polite">${escapeHtml(vz.fbMsg)}</p></div>`;
 }
@@ -87104,8 +87115,21 @@ function vzMountPageHtml(){
   return `<div class="vzp">${vzFrameHead(`<h1>${escapeHtml(vz.mountTitle || 'Report')}</h1>`, '', vzFrameActs(heartHtml))}
     ${vzMountReadoutHtml()}
     <div class="vzp-card" id="vzMountBody" style="padding:18px 20px;"></div>
-    <div class="vzp-alt"><h3>Want a different cut?</h3><p>Describe it and Verilume builds a new chart from this account’s data that you can restyle and save. For voice, use the Verilume bar at the bottom of the page.</p>
-      <div class="vzp-say-row"><input id="vzFb2" type="text" placeholder="For example: ${escapeHtml((vz.mountTitle || 'this report').toLowerCase())} by month, last year" aria-label="Describe a different cut" onkeydown="if(event.key==='Enter'){event.preventDefault();vzOpen(this.value);}"><button type="button" class="btn-primary" onclick="vzOpen(document.getElementById('vzFb2').value)">Build it</button></div></div></div>`;
+    <div class="vzp-alt"><h3>Best ways to see this</h3><p>Verilume can build these from this account’s data. Pick one, or describe your own below.</p>
+      <div class="vzp-thumbs vzp-three" role="group" aria-label="Suggested views">${vzMountSuggest().map((o, i) => `<button type="button" class="vzp-thumb" onclick="vzOpen('${jsStrEscape(o.q)}')">${o.svg}<span>${o.label}${i === 0 ? ' · recommended' : ''}</span><em>${escapeHtml(o.why)}</em></button>`).join('')}</div>
+      <div class="vzp-say-row"><input id="vzFb2" type="text" placeholder="Or describe a different cut: by month, last year, top 5…" aria-label="Describe a different cut" onkeydown="if(event.key==='Enter'){event.preventDefault();vzOpen(this.value);}"><button type="button" class="btn-primary" onclick="vzOpen(document.getElementById('vzFb2').value)">Build it</button></div></div></div>`;
+}
+function vzMountSuggest(){
+  const t = String(vz.mountTitle || 'this report'); const lc = t.toLowerCase();
+  const ic = {
+    line: '<svg viewBox="0 0 160 96" aria-hidden="true"><path d="M10 74 L42 52 L74 60 L106 30 L150 18" fill="none" stroke="#14213D" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="150" cy="18" r="5" fill="#14213D"/><path d="M10 88h140" stroke="#E3E6EE" stroke-width="2"/></svg>',
+    col: '<svg viewBox="0 0 160 96" aria-hidden="true"><g fill="#14213D"><rect x="14" y="46" width="22" height="42" rx="4"/><rect x="46" y="22" width="22" height="66" rx="4"/><rect x="78" y="56" width="22" height="32" rx="4"/><rect x="110" y="34" width="22" height="54" rx="4"/></g></svg>',
+    don: '<svg viewBox="0 0 160 96" aria-hidden="true"><circle cx="80" cy="48" r="32" fill="none" stroke="#E3E6EE" stroke-width="16"/><circle cx="80" cy="48" r="32" fill="none" stroke="#14213D" stroke-width="16" stroke-dasharray="120 201" transform="rotate(-90 80 48)"/><circle cx="80" cy="48" r="32" fill="none" stroke="#C9973B" stroke-width="16" stroke-dasharray="46 201" stroke-dashoffset="-120" transform="rotate(-90 80 48)"/></svg>'
+  };
+  const by = /by month|monthly/.test(lc) ? null : { q: t + ' by month', label: 'Trend line', why: 'See how it moves month to month', svg: ic.line };
+  const list = [by, { q: t + ' compared with last year', label: 'Year over year', why: 'Puts this year next to last year', svg: ic.col }, { q: t + ' share by category', label: 'Donut', why: 'Shows each part of the whole', svg: ic.don }].filter(Boolean);
+  if (list.length < 3) list.unshift({ q: t + ' by quarter', label: 'By quarter', why: 'A calmer view than month to month', svg: ic.line });
+  return list.slice(0, 3);
 }
 function vzRender(){
   const leaf = document.getElementById('vzCrumbLeaf'); if (leaf) leaf.textContent = vz.saved ? vz.saved.title : 'New chart';
