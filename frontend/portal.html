@@ -72738,8 +72738,19 @@ async function cmpContestLoadAllowance(){
   } catch (e){}
   cmpContestSyncButtons();
 }
+function cmpEnsurePanelVisible(panel){
+  try {
+    let el = panel;
+    while (el && el !== document.body){
+      if (el.classList && (el.classList.contains('module-body') || el.classList.contains('cmp-stage') || el.classList.contains('cmp-step0-card-body'))){ el.style.maxHeight = 'none'; el.style.overflow = 'visible'; }
+      if (el.style && el.style.display === 'none') el.style.display = '';
+      el = el.parentElement;
+    }
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e){}
+}
 async function cmpRunCampaignCopyContest(panelId, btnId, flagId, forceMode){
-  try { cmpCreativeSetActiveZone(1); } catch (e){ /* section tidy-up is a nicety */ }
+  // 2026-11-17 -- the section tidy-up that used to run here folded the card holding this panel and jumped the page, which looked like the contest bouncing back. The result panel is now kept open instead.
   panelId = panelId || 'cmpCopyContestPanel';
   btnId = btnId || 'cmpCopyContestBtn';
   flagId = flagId || 'cmpCopyContestSelectFlag';
@@ -72760,6 +72771,12 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId, forceMode){
   }
   panel.innerHTML = renderAiStatusBubble("Getting one response to this campaign's Long Form Copy from each AI partner — grounded in the campaign's writing style, objective, KPI, brand voice, and channels — then scoring each one blind before ranking them.", INTERVIEW_STATUS_TIPS);
   if (btn) btn.disabled = true;
+  const runMode = forceMode || cmpContestNextMode(panelId);
+  const isDefaultRun = runMode === 'default';
+  const timeoutMs = isDefaultRun ? 60000 : 100000;
+  cmpSunriseLoaderShow(isDefaultRun
+    ? { headline: 'Working on your first draft', note: 'Your AI copywriter is writing your campaign copy.', countdownSec: timeoutMs / 1000, countdownLabel: 'Time left before timeout' }
+    : { headline: CMP_CONTEST_LOADER_HEAD, note: runMode === 'extend' ? 'are adding more options to your draft.' : CMP_CONTEST_LOADER_NOTE, countdownSec: timeoutMs / 1000, countdownLabel: 'Contest running. Time left before timeout' });
   // 2026-11-17 -- first click bounced back to the copy page: the gate above reads the on-screen/local campaign, but the server checks its own saved copy. If the Focus fields or Key Message had not finished saving, the server refused (400) and the message landed in a panel that was then redrawn. Save the required fields and wait for the server before starting.
   try {
     if (!campaign.localOnly && dataSourceLabel === 'backend'){
@@ -72769,12 +72786,6 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId, forceMode){
       }, 2, 500);
     }
   } catch (e){ console.warn('cmpRunCampaignCopyContest: pre-run save failed', e); }
-  const runMode = forceMode || cmpContestNextMode(panelId);
-  const isDefaultRun = runMode === 'default';
-  const timeoutMs = isDefaultRun ? 60000 : 100000;
-  cmpSunriseLoaderShow(isDefaultRun
-    ? { headline: 'Working on your first draft', note: 'Your AI copywriter is writing your campaign copy.', countdownSec: timeoutMs / 1000, countdownLabel: 'Time left before timeout' }
-    : { headline: CMP_CONTEST_LOADER_HEAD, note: runMode === 'extend' ? 'are adding more options to your draft.' : CMP_CONTEST_LOADER_NOTE, countdownSec: timeoutMs / 1000, countdownLabel: 'Contest running. Time left before timeout' });
   try {
     // 2026-09-23 fix, same report — switched from a single authedFetch
     // attempt to cmpFetchJsonWithRetry()'s existing silent-retry convention
@@ -72838,6 +72849,8 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId, forceMode){
     cmpCopyContestLastResult[panelId] = result;
     setTimeout(cmpContestLoadAllowance, 700);
     panel.innerHTML = renderCmpCopyContestPanel(result, flagId, panelId);
+    cmpEnsurePanelVisible(panel);
+    setTimeout(() => { const p2 = document.getElementById(panelId); if (p2 && cmpCopyContestLastResult[panelId] === result && !p2.querySelector('.hint, div')) p2.innerHTML = renderCmpCopyContestPanel(result, flagId, panelId); if (p2) cmpEnsurePanelVisible(p2); }, 900);
     cmpRefreshDraftScore(campaign);
     // 2026-09-23 — if any candidate came back pending (still generating,
     // or a first-pass failure), fire the second pass automatically instead
