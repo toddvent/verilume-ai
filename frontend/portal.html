@@ -14265,7 +14265,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-17-r9-heart';
+const CXMEDIA_BUILD_STAMP = '2026-11-17-r10-largeview';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -26273,11 +26273,16 @@ function gpcCardsHtml(keys){ return (keys || ['roas', 'pacing', 'kpi', 'ops']).m
 function gpcRender(){
   if (activePrimaryTab === 'marketer'){ const el = document.getElementById('tabStatCardGrid'); if (el && el.classList.contains('gp-core')){ el.innerHTML = gpcCardsHtml(); } }
   if (activePrimaryTab === 'strategy'){ const el = document.getElementById('tabStatCardGrid'); if (el && el.classList.contains('gs-core')){ el.innerHTML = gpcCardsHtml(GS_KEYS); } }
-  const mh = document.getElementById('vzMountBody'); if (mh && mh.dataset.key && GPC_META[mh.dataset.key]) mh.innerHTML = gpcCardHtml(mh.dataset.key);
+  const mh = document.getElementById('vzMountBody'); if (mh && mh.dataset.key && GPC_META[mh.dataset.key]){ mh.innerHTML = gpcCardHtml(mh.dataset.key); const dh = document.getElementById('vzMountDetail'); if (dh) dh.innerHTML = gpcDetailHtml(mh.dataset.key); }
   document.querySelectorAll('[data-vzgpc]').forEach(h => { if (GPC_META[h.dataset.vzgpc]) h.innerHTML = gpcCardHtml(h.dataset.vzgpc); });
   gpcRenderModal();
 }
-function gpcOpen(key){ gpc.open = key; gpcRenderModal(); }
+function gpcDetailHtml(key){
+  const c = gpcCardData(key); if (!c) return '';
+  const tables = c.large.tables.map(t => `<div class="strat-chart-label" style="margin:14px 0 4px;">${escapeHtml(t.name)}</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr>${t.columns.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead><tbody>${t.rows.length ? t.rows.map(r => `<tr>${r.map(v => `<td>${escapeHtml(v)}</td>`).join('')}</tr>`).join('') : `<tr class="empty-state-row"><td colspan="${t.columns.length}">None</td></tr>`}</tbody></table></div>`).join('');
+  return `<div class="gpc-dates">${escapeHtml(stratHumanDates(c.rangeLabel))} · ${escapeHtml(stratHumanDates(c.compLabel))}</div>${tables}${(c.large.notes || []).map(n => `<p class="strat-sub">${escapeHtml(stratHumanDates(n))}</p>`).join('')}<details class="fd-hint" style="margin-top:12px;"><summary>How this is counted</summary>${(c.large.definitions || []).map(n => `<p class="fd-hint">${escapeHtml(n)}</p>`).join('')}</details>`;
+}
+function gpcOpen(key){ if (key !== 'sources' && typeof vzLargeOpen === 'function' && typeof VZ_MOUNTS !== 'undefined' && VZ_MOUNTS[key] && GPC_META[key]){ vzLargeOpen('mount', key); return; } gpc.open = key; gpcRenderModal(); }
 function gpcClose(){ gpc.open = null; gpcRenderModal(); }
 function gpcJumpBelow(){ const t = document.querySelector('.gp-actions'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 function gpcOpenSources(){ gpc.open = 'sources'; gpcRenderModal(); }
@@ -26340,8 +26345,8 @@ function ccToolsHtml(id, ctx){
 function ccHeadHtml(id, ctx){ return `<div class="gpc-head cc-head"><div class="geo-h" style="margin:0;">${escapeHtml(CC[id].title)}</div>${ccToolsHtml(id, ctx || 'card')}</div>`; }
 function ccCardHtml(id, body, o){ o = o || {}; return `<div class="geo-card cc-card ${o.cls || ''}" data-cc="${id}" style="${o.style || ''}">${ccHeadHtml(id, 'card')}${body}</div>`; }
 function ccSetRange(id, k){ const d = CC[id]; if (d && d.range) d.range.set(k); }
-function ccOpen(id){ cc.open = id; ccRenderModal(); }
-function ccClose(){ cc.open = null; ccRenderModal(); }
+function ccOpen(id){ if (CC[id] && typeof vzLargeOpen === 'function' && !/^vz-/.test(id)){ vzLargeOpen('cc', id); return; } cc.open = id; ccRenderModal(); }
+function ccClose(){ if (typeof vz !== 'undefined' && vz.mode === 'large'){ vzBack(); return; } cc.open = null; ccRenderModal(); }
 function ccTableHtml(t){
   return `<div class="strat-chart-label" style="margin:14px 0 4px;">${escapeHtml(t.name)}</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr>${t.columns.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead><tbody>${t.rows.length ? t.rows.map(r => `<tr>${r.map(v => `<td>${escapeHtml(v == null ? '' : v)}</td>`).join('')}</tr>`).join('') : `<tr class="empty-state-row"><td colspan="${t.columns.length}">None</td></tr>`}</tbody></table></div>`;
 }
@@ -26349,6 +26354,7 @@ function ccRenderModal(){
   let host = document.getElementById('ccModal');
   if (!cc.open || !CC[cc.open]){ if (host) host.remove(); return; }
   const id = cc.open, d = CC[id];
+  if (typeof vz !== 'undefined' && vz.mode === 'large'){ if (host) host.remove(); const lb = document.getElementById('vzLargeBody'); if (lb) { const x0 = d.export ? d.export() : null; lb.innerHTML = (d.expand ? d.expand() : '') + (x0 ? (x0.tables || []).map(ccTableHtml).join('') + (x0.notes || []).map(n => `<p class="strat-sub">${escapeHtml(n)}</p>`).join('') : ''); try { mountAiThoughtIcons(); } catch (e){} } return; }
   if (!host){ host = document.createElement('div'); host.id = 'ccModal'; host.className = 'gpc-modal'; host.addEventListener('click', e => { if (e.target === host) ccClose(); }); document.body.appendChild(host); }
   const x = d.export ? d.export() : null;
   host.innerHTML = `<div class="gpc-panel" role="dialog" aria-modal="true" aria-label="${escapeHtml(d.title)}"><div class="gpc-phead"><h2>${escapeHtml(d.title)}</h2><div class="gpc-tools">${ccRangeHtml(id)}${ccShareHtml(id, 'modal')}${ccThoughtHtml(id)}<button type="button" class="share-btn" aria-label="Close the large view" onclick="ccClose()">✕</button></div></div>${d.expand ? d.expand() : ''}${x ? (x.tables || []).map(ccTableHtml).join('') + (x.notes || []).map(n => `<p class="strat-sub">${escapeHtml(n)}</p>`).join('') : ''}</div>`;
@@ -86491,7 +86497,7 @@ const VZ_MOUNTS = {
 // ---------- Marketing budget explorer: plan year, working / non-working / both, and the view ----------
 const VZ_BX_VIEWS = [['by_category', 'By category'], ['by_month', 'By month'], ['allocation', 'Committed or not scheduled (working)'], ['vs_spend', 'Budget versus reported spend (working)']];
 const vzBx = { view: 'by_category', year: '', basis: 'working', res: null, busy: false, err: '' };
-function vzBxHtml(){ return `<div class="geo-card cc-card vz-bx" data-cc="vz-bx"><div class="vz-bxbar"><label class="strat-sub">Plan year <select id="vzBxYear" onchange="vzBxSet('year', this.value)"></select></label><label class="strat-sub">Spend type <select id="vzBxBasis" onchange="vzBxSet('basis', this.value)"><option value="working">Working media</option><option value="non">Non-working</option><option value="both">Working and non-working</option></select></label><label class="strat-sub">View <select id="vzBxView" onchange="vzBxSet('view', this.value)">${VZ_BX_VIEWS.map(v => `<option value="${v[0]}">${v[1]}</option>`).join('')}</select></label><button type="button" class="strat-chip" onclick="vzBxLarge()">Large view</button></div><div id="vzBxBody"><p class="strat-empty">Loading…</p></div></div>`; }
+function vzBxHtml(){ return `<div class="geo-card cc-card vz-bx" data-cc="vz-bx"><div class="vz-bxbar"><label class="strat-sub">Plan year <select id="vzBxYear" onchange="vzBxSet('year', this.value)"></select></label><label class="strat-sub">Spend type <select id="vzBxBasis" onchange="vzBxSet('basis', this.value)"><option value="working">Working media</option><option value="non">Non-working</option><option value="both">Working and non-working</option></select></label><label class="strat-sub">View <select id="vzBxView" onchange="vzBxSet('view', this.value)">${VZ_BX_VIEWS.map(v => `<option value="${v[0]}">${v[1]}</option>`).join('')}</select></label></div><div id="vzBxBody"><p class="strat-empty">Loading…</p></div></div>`; }
 function vzBxSet(k, v){ vzBx[k] = v; vzBxLoad(); }
 async function vzBxLoad(){
   const body = document.getElementById('vzBxBody'); if (!body) return; vzBx.busy = true;
@@ -86511,7 +86517,7 @@ function vzMountCard(){
   const host = document.getElementById('vzMountBody'); const m = VZ_MOUNTS[vz.mountKey]; if (!host || !m) return;
   vzUnswap(); const wg = document.getElementById('workstreamGrid'); if (wg) wg.innerHTML = ''; const tg = document.getElementById('tabStatCardGrid'); if (tg) tg.innerHTML = ''; const sw = m.swapIds || (m.swap ? ['tabStatCardGrid'] : []); vz.swappedIds = []; sw.forEach(id => { const el = document.getElementById(id); if (el){ el.id = id + '_off'; vz.swappedIds.push(id); } }); // same element ids as the dashboard, so the dashboard copy is cleared while a card is open here
   host.dataset.key = m.gpc ? vz.mountKey : '';
-  if (m.gpc){ host.innerHTML = gpcCardHtml(vz.mountKey); if (m.strat) gscEnsure(); else gpcEnsure(); }
+  if (m.gpc){ host.innerHTML = gpcCardHtml(vz.mountKey); const dh0 = document.getElementById('vzMountDetail'); if (dh0) dh0.innerHTML = gpcDetailHtml(vz.mountKey); if (m.strat) gscEnsure(); else gpcEnsure(); }
   else { host.innerHTML = m.html(); try { m.init(); } catch (e){} }
 }
 function vzLive(){ return dataSourceLabel === 'backend' && !!state.companyId; }
@@ -86839,9 +86845,9 @@ function vzRenderGalList(){ const g = vzGalleryHtml(); const t = document.create
 function vzDashName(k){ const d = VZ_DASH.find(x => x[0] === k); return d ? d[1] : k; }
 function vzArmReturn(){ vz.ret = true; vz.retUntil = Date.now() + 1500; }
 // Everything opens inside Media Science (the studio sub-page, with breadcrumbs back). Dashboards pull assigned charts as cards on their own.
-function vzOpenReport(i){ const e = vz.lib && vz.lib.existing[i]; if (!vzMountable(e)) return; vz.mode = 'mount'; vz.mountKey = e.mount; vz.mountTitle = e.title; vz.res = null; vz.saved = null; vz.panel = ''; goToStep('visualize'); vzRender(); try { window.scrollTo({ top: 0 }); } catch (x){} }
+function vzOpenReport(i){ const e = vz.lib && vz.lib.existing[i]; if (!vzMountable(e)) return; vz.origin = null; vz.mode = 'mount'; vz.mountKey = e.mount; vz.mountTitle = e.title; vz.res = null; vz.saved = null; vz.panel = ''; goToStep('visualize'); vzRender(); try { window.scrollTo({ top: 0 }); } catch (x){} }
 function vzGoSaved(id){ vzOpenSaved(id); }
-function vzCrumbMs(){ vz.mode = 'gallery'; vz.res = null; vz.saved = null; vz.busy = false; vz.panel = ''; try { switchPrimaryTab('dataScientist'); } catch (e){ goToStep('dashboard'); } }
+function vzCrumbMs(){ vz.origin = null; vz.mode = 'gallery'; vz.res = null; vz.saved = null; vz.busy = false; vz.panel = ''; try { switchPrimaryTab('dataScientist'); } catch (e){ goToStep('dashboard'); } }
 function vzMountMs(){
   const host = document.getElementById('vzMsHost'); if (!host) return;
   host.innerHTML = '<div id="vzGalHost">' + vzGalleryHtml() + '</div>';
@@ -86931,7 +86937,35 @@ async function vzUnpin(ref, tab){
 }
 (function(){ const g = window.renderWorkstreams; if (typeof g === 'function' && !g._vz){ const w = function(){ const r = g.apply(this, arguments); try { vzRenderDashCharts(); } catch (e){} return r; }; w._vz = 1; window.renderWorkstreams = w; } })();
 function vzNew(){ vz.mode = 'new'; vz.res = null; vz.saved = null; vz.text = ''; vz.fbMsg = ''; vz.panel = ''; vz.pdash = null; goToStep('visualize'); vzRender(); const t = document.getElementById('vzText'); if (t) t.focus(); try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e){} }
-function vzBack(){ vzCrumbMs(); vzLoadLib(); }
+function vzBack(){ if (vz.origin){ vzReturnToOrigin(); return; } vzCrumbMs(); vzLoadLib(); }
+// ---- Large view = the report page. Remembers where the person came from so Back returns to the same card, period and scroll.
+function vzCaptureOrigin(){ const a = document.querySelector('.step.active'); const id = a ? a.id.replace(/^step-/, '') : ''; if (!id || id === 'visualize') return; vz.origin = { step: id, tab: (typeof activePrimaryTab !== 'undefined') ? activePrimaryTab : '', y: window.pageYOffset || 0 }; }
+function vzReturnToOrigin(){
+  const o = vz.origin; vz.origin = null; vz.mode = 'gallery'; vz.res = null; vz.saved = null; vz.panel = ''; vz.largeId = ''; vz.lro = null; cc.open = null;
+  try { vzUnswap(); } catch (e){}
+  try { if (o.step === 'dashboard' && o.tab && typeof switchPrimaryTab === 'function') switchPrimaryTab(o.tab); else goToStep(o.step); } catch (e){ goToStep('dashboard'); }
+  setTimeout(() => { try { window.scrollTo({ top: o.y }); } catch (e){} }, 300);
+}
+function vzLargeOpen(kind, id){
+  vzCaptureOrigin(); vz.res = null; vz.saved = null; vz.panel = ''; vz.lro = null;
+  if (kind === 'mount'){ vz.mode = 'mount'; vz.mountKey = id; vz.mountTitle = (GPC_META[id] && GPC_META[id].title) || id; vz.mro = null; }
+  else { vz.mode = 'large'; vz.largeId = id; vz.mountTitle = CC[id].title; cc.open = id; }
+  goToStep('visualize'); vzRender(); try { window.scrollTo({ top: 0 }); } catch (e){}
+}
+function vzLargeText(){ const d = CC[vz.largeId]; const x = d && d.export ? d.export() : null; if (!x) return ''; return (x.tables || []).map(t => t.name + '\n' + [t.columns.join(' | ')].concat(t.rows.slice(0, 12).map(r => r.join(' | '))).join('\n')).join('\n\n').slice(0, 2400); }
+function vzLargeReadHtml(){ const m = vz.lro && vz.lro.id === vz.largeId ? vz.lro : null; return `<div class="vzp-read" id="vzLargeRead"><div class="vzp-av">${VZ_BRAIN_SVG}</div><div><div class="vzp-lab">Analyst readout</div>${m && m.text ? `<p>${escapeHtml(m.text)}</p>` : `<p style="color:var(--muted);">${m && m.done ? 'The table below has the numbers for this view.' : 'Reading the numbers…'}</p>`}</div></div>`; }
+async function vzLargeReadoutLoad(){
+  const id = vz.largeId; if (!id || (vz.lro && vz.lro.id === id)) return; vz.lro = { id, text: '', done: false };
+  const paint = () => { const el = document.getElementById('vzLargeRead'); if (el && vz.largeId === id){ const t = document.createElement('div'); t.innerHTML = vzLargeReadHtml(); el.replaceWith(t.firstChild); } };
+  try { if (vzLive()){ const j = await vzApi('/visualize/readout', vzJson({ title: CC[id].title, period: '', text: vzLargeText() })); if (vz.lro && vz.lro.id === id) vz.lro.text = j.text || ''; } } catch (e){}
+  if (vz.lro && vz.lro.id === id){ vz.lro.done = true; paint(); }
+}
+function vzLargePageHtml(){
+  vzFrameStyle(); vzFrameStyle2(); const id = vz.largeId; const d = CC[id]; if (!d) return '<p class="strat-empty">This report is not available.</p>';
+  const acts = `${ccRangeHtml(id)}${ccShareHtml(id, 'modal')}${ccThoughtHtml(id)}<button type="button" class="btn-ghost" onclick="vzSimilar()">View Similar Reports</button><button type="button" class="btn-ghost" onclick="vzNew()">+ Create New Report</button>`;
+  return `<div class="vzp">${vzFrameHead(`<h1>${escapeHtml(d.title)}</h1>`, '', acts)}${vzLargeReadHtml()}<div class="vzp-card" id="vzLargeBody" style="padding:18px 20px;"></div>
+    <div class="vzp-alt"><h3>Want a different cut?</h3><p>Describe it in your own words and Verilume will build it from this account’s data.</p><div class="vzp-say-row"><input id="vzFb2" type="text" placeholder="For example: by month, last year, top 5…" aria-label="Describe a different cut" onkeydown="if(event.key==='Enter'){event.preventDefault();vzOpen(this.value);}"><button type="button" class="btn-primary" onclick="vzOpen(document.getElementById('vzFb2').value)">Build it</button></div></div></div>`;
+}
 
 // ---------- Report page frame (2026-11-17): one layout for every report ----------
 // Title is the report name; actions are Save to My Workspace, View Similar Reports, Create New Report; an analyst readout, the chart card,
@@ -86942,7 +86976,7 @@ function vzFrameStyle(){
   .vzp{max-width:1440px;} .vzp-top{display:flex;justify-content:space-between;align-items:center;gap:14px 24px;flex-wrap:wrap;margin:2px 0 4px;}
   .vzp-top h1,.vzp-title{font-size:clamp(1.5rem,2.6vw,2.4rem);line-height:1.15;margin:0;font-weight:700;color:var(--ink);} .vzp-title{width:100%;max-width:900px;border:1px solid transparent;border-radius:10px;background:transparent;font-family:inherit;padding:2px 6px;margin-left:-6px;}
   .vzp-title:hover{border-color:var(--line);} .vzp-title:focus{outline:none;border-color:var(--media);background:#fff;}
-  .vzp-sub{margin:4px 0 0;color:var(--muted);font-size:0.9375rem;} .vzp-acts{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+  .vzp-sub{margin:4px 0 0;color:var(--muted);font-size:0.9375rem;} .vzp-acts{display:flex;gap:10px;flex-wrap:wrap;align-items:center;} .vzp-acts .share-wrap{position:relative;top:auto;right:auto;display:inline-flex;} .vzp-acts .share-menu{right:0;left:auto;}
   .vzp-acts .btn-primary,.vzp-acts .btn-ghost,.vzp-acts summary{border-radius:980px;white-space:nowrap;}
   .vzp-read{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:start;background:#fff;border:1px solid var(--line);border-radius:22px;padding:20px 26px;margin:14px 0 18px;}
   .vzp-av{width:40px;height:40px;border-radius:50%;background:#E6F6EF;display:grid;place-items:center;} .vzp-lab{font-size:0.7188rem;letter-spacing:.14em;font-weight:600;color:var(--muted);text-transform:uppercase;}
@@ -86965,7 +86999,7 @@ function vzFrameStyle(){
 function vzSimilar(){
   const t = String((vz.res && (vz.res.view && vz.res.view.title || vz.res.title)) || (vz.saved && vz.saved.title) || vz.mountTitle || '');
   const stop = new Set(['the', 'and', 'for', 'with', 'by', 'vs', 'of', 'to', 'in', 'on', 'a', 'an']); const w = t.toLowerCase().split(/[^a-z0-9]+/).filter(x => x.length > 3 && !stop.has(x)).sort((a, b) => b.length - a.length)[0] || '';
-  vz.q = w; vz.cat = 'all'; vz.tag = ''; vz.showAll = false; vzBack();
+  vz.q = w; vz.cat = 'all'; vz.tag = ''; vz.showAll = false; vz.origin = null; vzBack();
 }
 function vzTalk(){ try { askVerilumeToggleVoice(); } catch (e){} }
 const VZ_HEART = on => `<svg width="30" height="30" viewBox="0 0 24 24" fill="${on ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>`;
@@ -87114,7 +87148,7 @@ function vzMountPageHtml(){
     : `<button type="button" class="vzp-heart" disabled title="Not available for this report" aria-label="Save to My Workspace">${VZ_HEART(false)}</button>`;
   return `<div class="vzp">${vzFrameHead(`<h1>${escapeHtml(vz.mountTitle || 'Report')}</h1>`, '', vzFrameActs(heartHtml))}
     ${vzMountReadoutHtml()}
-    <div class="vzp-card" id="vzMountBody" style="padding:18px 20px;"></div>
+    <div class="vzp-card" id="vzMountBody" style="padding:18px 20px;"></div>${(VZ_MOUNTS[vz.mountKey] || {}).gpc ? '<div class="vzp-card" id="vzMountDetail" style="padding:6px 20px 16px;"></div>' : ''}
     <div class="vzp-alt"><h3>Best ways to see this</h3><p>Verilume can build these from this account’s data. Pick one, or describe your own below.</p>
       <div class="vzp-thumbs vzp-three" role="group" aria-label="Suggested views">${vzMountSuggest().map((o, i) => `<button type="button" class="vzp-thumb" onclick="vzOpen('${jsStrEscape(o.q)}')">${o.svg}<span>${o.label}${i === 0 ? ' · recommended' : ''}</span><em>${escapeHtml(o.why)}</em></button>`).join('')}</div>
       <div class="vzp-say-row"><input id="vzFb2" type="text" placeholder="Or describe a different cut: by month, last year, top 5…" aria-label="Describe a different cut" onkeydown="if(event.key==='Enter'){event.preventDefault();vzOpen(this.value);}"><button type="button" class="btn-primary" onclick="vzOpen(document.getElementById('vzFb2').value)">Build it</button></div></div></div>`;
@@ -87135,8 +87169,9 @@ function vzRender(){
   const leaf = document.getElementById('vzCrumbLeaf'); if (leaf) leaf.textContent = vz.saved ? vz.saved.title : 'New chart';
   const root = document.getElementById('vzRoot'); if (!root) return;
   const btn = document.getElementById('vzNewBtn'); if (btn) btn.style.display = 'none';
-  const vhead = document.querySelector('#step-visualize .vz-head'); if (vhead) vhead.style.display = (vz.mode === 'mount' || (vz.mode === 'new' && vz.res && vz.res.data)) ? 'none' : '';
-  if (vz.mode === 'mount'){ const lf = document.getElementById('vzCrumbLeaf'); if (lf) lf.textContent = vz.mountTitle || 'Chart'; root.innerHTML = `<p style="margin:0 0 4px;"><a class="flink" onclick="vzBack()" style="cursor:pointer;">← Back to Media Science · Data Visualizer</a></p>${vzMountPageHtml()}`; vzMountCard(); vzMountWatch(); return; }
+  const vhead = document.querySelector('#step-visualize .vz-head'); if (vhead) vhead.style.display = (vz.mode === 'mount' || vz.mode === 'large' || (vz.mode === 'new' && vz.res && vz.res.data)) ? 'none' : '';
+  if (vz.mode === 'mount'){ const lf = document.getElementById('vzCrumbLeaf'); if (lf) lf.textContent = vz.mountTitle || 'Chart'; root.innerHTML = `<p style="margin:0 0 4px;"><a class="flink" onclick="vzBack()" style="cursor:pointer;">${vz.origin ? '← Back' : '← Back to Media Science · Data Visualizer'}</a></p>${vzMountPageHtml()}`; vzMountCard(); vzMountWatch(); return; }
+  if (vz.mode === 'large'){ const lf2 = document.getElementById('vzCrumbLeaf'); if (lf2) lf2.textContent = vz.mountTitle || 'Chart'; root.innerHTML = `<p style="margin:0 0 4px;"><a class="flink" onclick="vzBack()" style="cursor:pointer;">${vz.origin ? '← Back' : '← Back to Media Science · Data Visualizer'}</a></p>${vzLargePageHtml()}`; ccRenderModal(); vzLargeReadoutLoad(); return; }
   if (vz.mode === 'gallery'){ root.innerHTML = `<div id="vzGalHost">${vzGalleryHtml()}</div>`; return; }
   const ta = document.getElementById('vzText'); if (ta && !vz.rec) vz.text = ta.value;
   const keep = document.activeElement && document.activeElement.id;
