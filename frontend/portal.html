@@ -57951,7 +57951,7 @@ function plcRender(){
       <div><label for="plcAud">Audience</label><select id="plcAud"><option value="">Choose an audience</option>${PLC_AUDIENCES.map(a => `<option${a === plc.audience ? ' selected' : ''}>${escapeHtml(a)}</option>`).join('')}</select></div>
       <div><label for="plcReach">Estimated reach</label><input id="plcReach" type="number" min="0" step="1" placeholder="number" value="${escapeHtml(plc.reach == null ? '' : String(plc.reach))}"></div>
       <div><label for="plcDue">Creative due date</label><input id="plcDue" type="date" value="${escapeHtml(plc.due || '')}"></div>
-    </div><div class="plc-row"><button type="button" class="btn-primary" onclick="plcAddChannel()">Add channel &rarr;</button><button type="button" class="btn-ghost" onclick="plcClose()">Close</button></div></div>`;
+    </div><div class="plc-row"><button type="button" class="btn-primary" onclick="plcAddChannel()">Add channel and go to Copy &rarr;</button><button type="button" class="btn-ghost" onclick="plcClose()">Close</button></div></div>`;
   } else {
     const sp = plcSpec();
     h += `<div class="plc-sec"><h3>${escapeHtml(plcLabel(plc.channel))}${plc.partner ? ' with ' + escapeHtml(plc.partner) : ''} added</h3>
@@ -58032,7 +58032,19 @@ async function plcAddChannel(){
     const r = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(plc.cid)}/channel-planning`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ channel: plc.channel, partner: plc.partner || null, impressions: plc.reach === '' ? null : Number(plc.reach), audience: plc.audience, budget, hitDate: plc.start || null, endDate: plc.end || null, detailsJson: { creativeDueDate: plc.due, creativeSpec: sp ? sp.label : null, creativeType: plc.creativeType || null, standAlone: true }, actorRole: 'client' }) });
     if (!r.ok){ let m = ''; try { m = (await r.json()).error || ''; } catch (e){} throw new Error(m || 'The channel could not be added (' + r.status + ').'); }
-    plc.added = true; plcRender();
+    // 2026-11-17, per Todd: after the channel is added, use the same Creative workspace as the full campaign path. The only thing skipped is AI Brain planning,
+    // so the channel is recorded as an approved creative asset (the same record Performance Marketing approval writes) and the workspace opens on it.
+    const c = (state.campaigns || []).find(x => x.id === plc.cid);
+    if (c){
+      const asset = { channel: plc.channel, partner: plc.partner || 'To be assigned', mediaType: plc.creativeType || (CREATIVE_TYPES_BY_CHANNEL[plc.channel] || [])[0] || 'Standard', size: sp ? sp.label : 'Standard Unit', audience: plc.audience, estimatedReach: plc.reach || null, creativeDueDate: plc.due, copyVersions: {} };
+      c.approvedCreativeAssets = [...(Array.isArray(c.approvedCreativeAssets) ? c.approvedCreativeAssets : []), asset];
+      c.approvedCreativeAssetsJson = JSON.stringify(c.approvedCreativeAssets);
+      try { await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(plc.cid)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approvedCreativeAssetsJson: c.approvedCreativeAssetsJson, approvedAssetSummary: c.approvedCreativeAssets.map(x => x.channel + (x.partner ? ' — ' + x.partner : '') + (x.mediaType ? ' (' + x.mediaType + ')' : '')).join(', ') }) }); } catch (e){ console.warn('plcAddChannel: approved asset not saved', e); }
+    }
+    const cid = plc.cid; plcClose();
+    try { await loadCampaigns(); } catch (e){}
+    try { loadExistingCampaignIntoForm(cid); } catch (e){}
+    cmpOpenCreativeWorkspace();
   } catch (e){ plcMsg(e.message || 'The channel could not be added.', true); }
 }
 // The AI writers read Key Message from the campaign form, so keep that field and the saved campaign in step with what was typed here.
@@ -58064,10 +58076,11 @@ async function plcContest(){
   if (!plc.keyMessage || !plc.keyMessage.trim()){ plcMsg('Add the key message first, so the contest has something to work from.', true); return; }
   const cp = plcCamp(); if (!cp.campaignType || !cp.businessInitiative){ plcMsg('Choose the campaign experience focus and the Media Science primary focus above. The contest adds both to its prompt.', true); return; }
   await plcSyncKeyMessage();
-  const p = document.getElementById('plcContestPanel'); if (p) p.style.display = '';
+  const p = document.getElementById('plcContestPanel'); if (p){ p.style.display = ''; try { p.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e){} }
   plcMsg('');
   // The contest panel runs on the campaign's Long Form Copy. When it finishes, use the chosen draft, then press Redraft to pull it into this channel's copy.
   await cmpRunCampaignCopyContest('plcContestPanel', 'plcContestBtn', 'plcContestFlag');
+  { const pp = document.getElementById('plcContestPanel'); if (pp){ try { pp.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e){} if (!document.getElementById('plcContestBack')) pp.insertAdjacentHTML('beforeend', '<div id="plcContestBack" class="plc-row"><span class="hint">Use a draft above, then pull it into this channel\'s copy.</span><button type="button" class="btn-primary" onclick="plcDraft()">Use contest result in my channel copy &darr;</button></div>'); } }
   if (!plc.copyMode){ plc.copyMode = 'contest'; plc.copy = ''; const sp = plcSpec() || {}; if (sp.stacked) plc.copyParts = plc.copyParts || { headline: '', body: '', cta: '' }; if (sp.frames > 1) plc.frameCopy = plc.frameCopy || new Array(sp.frames).fill('');
     const keep = p ? p.innerHTML : ''; plcRender(); const p2 = document.getElementById('plcContestPanel'); if (p2){ p2.innerHTML = keep; p2.style.display = ''; } }
 }
