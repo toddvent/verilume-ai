@@ -14265,7 +14265,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-17-r11-drivers';
+const CXMEDIA_BUILD_STAMP = '2026-11-17-r12-onetable';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -26294,11 +26294,11 @@ function vzFlagStyle(){
 }
 function vzHowItems(key){
   const c = gpcCardData(key); if (!c) return null; const notes = (c.large.notes || []).map(n => stratHumanDates(n));
-  return { dates: [stratHumanDates(c.rangeLabel), stratHumanDates(c.compLabel)].filter(Boolean), shows: notes.filter(n => !/ estimated /.test(n) && !/^Not on file/.test(n)), counted: c.large.definitions || [], aware: notes.filter(n => / estimated /.test(n) || /^Not on file/.test(n)) };
+  return { dates: [stratHumanDates(c.rangeLabel), stratHumanDates(c.compLabel)].filter(Boolean), shows: notes.filter(n => !/ estimated /.test(n) && !/^Not on file/.test(n)), detail: c.large.detail || [], counted: c.large.definitions || [], aware: notes.filter(n => / estimated /.test(n) || /^Not on file/.test(n)) };
 }
 function vzHowHtml(key){
   const h = vzHowItems(key); if (!h) return ''; const ul = (t, a) => a.length ? `<h4>${t}</h4><ul>${a.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul>` : '';
-  return `<div class="vzd-panel" id="vzHow">${ul('What was compared', h.dates)}${h.shows.length ? '<div style="height:12px"></div>' : ''}${ul('What the numbers show', h.shows)}${h.counted.length ? '<div style="height:12px"></div>' : ''}${ul('How it is counted', h.counted)}${h.aware.length ? '<div style="height:12px"></div>' : ''}${ul('Data to be aware of', h.aware)}</div>`;
+  return `<div class="vzd-panel" id="vzHow">${ul('What was compared', h.dates)}${h.shows.length ? '<div style="height:12px"></div>' : ''}${ul('What the numbers show', h.shows)}${h.counted.length ? '<div style="height:12px"></div>' : ''}${ul('How it is counted', h.counted)}${h.aware.length ? '<div style="height:12px"></div>' : ''}${ul('Data to be aware of', h.aware)}${(h.detail || []).map(t => gpcTableHtml(t)).join('')}</div>`;
 }
 function vzDriversHtml(key){
   const d = vz.drv; if (!d || d.key !== key) return ''; if (d.loading) return '<div class="vzd-panel"><p class="vzd-head" style="color:var(--muted);margin:0;">Looking at what moved this result. This can take up to half a minute.</p></div>';
@@ -26320,7 +26320,7 @@ async function vzDriversRun(key){
 }
 function gpcTableHtml(t){
   const fl = {}; (t.flags || []).forEach(f => { fl[f[0] + ':' + f[1]] = f[2]; });
-  const rows = t.rows.length ? t.rows.map((r, ri) => `<tr>${r.map((v, ci) => { const f = fl[ri + ':' + ci]; if (!f) return `<td>${escapeHtml(v)}</td>`; const w = f.est ? 'estimated' : (f.dir === 'high' ? (f.level === 2 ? 'Much higher' : 'Higher') : (f.level === 2 ? 'Much lower' : 'Lower')); return `<td class="vzf-${f.tone} vzf-l${f.level}">${escapeHtml(v)}<span class="vzf-pill" title="${f.est ? 'Built from estimated data, so confirm before acting' : 'Outside this account’s usual range for these dates'}">${w}</span></td>`; }).join('')}</tr>`).join('') : `<tr class="empty-state-row"><td colspan="${t.columns.length}">None</td></tr>`;
+  const rows = t.rows.length ? t.rows.map((r, ri) => `<tr>${r.map((v, ci) => { const f = fl[ri + ':' + ci]; if (!f) return `<td>${escapeHtml(v)}</td>`; const w = f.label ? f.label : f.est ? 'estimated' : (f.dir === 'high' ? (f.level === 2 ? 'Much higher' : 'Higher') : (f.level === 2 ? 'Much lower' : 'Lower')); return `<td class="vzf-${f.tone} vzf-l${f.level}">${escapeHtml(v)}<span class="vzf-pill" title="${f.est ? 'Built from estimated data, so confirm before acting' : 'Outside this account’s usual range for these dates'}">${w}</span></td>`; }).join('')}</tr>`).join('') : `<tr class="empty-state-row"><td colspan="${t.columns.length}">None</td></tr>`;
   const legend = (t.flags || []).length ? `<p class="vzf-legend">Marked cells sit outside this account’s usual range for the dates shown. Green is favorable, red is not, gold is a change to know about, and grey is built from estimated data.</p>` : '';
   return `<div class="strat-chart-label" style="margin:14px 0 4px;">${escapeHtml(t.name)}</div><div class="strat-table-wrap"><table class="strat-table"><thead><tr>${t.columns.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>${legend}`;
 }
