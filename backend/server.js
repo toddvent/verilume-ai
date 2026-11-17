@@ -3998,7 +3998,14 @@ function campaignObjectiveText(campaign){
     const notes = campaign.activityNotesJson ? JSON.parse(campaign.activityNotesJson) : null;
     if (notes && notes.objectivesGoalSummary && notes.objectivesGoalSummary.trim()) return notes.objectivesGoalSummary.trim();
   } catch (e){ /* malformed JSON on an old row — fall through to the legacy field */ }
-  return (campaign.objective || '').trim();
+  const direct = (campaign.objective || '').trim();
+  if (direct) return direct;
+  // 2026-11-17 -- a stand-alone campaign skips the AI Brain plan, so no written objective exists. Fall back to the Primary Focus and KPI chosen on the create form so the writers and the judge are not told the objective is unset.
+  const bits = [];
+  try { if (campaign.businessInitiative && typeof BUSINESS_INITIATIVE_REGISTRY !== 'undefined' && BUSINESS_INITIATIVE_REGISTRY[campaign.businessInitiative]) bits.push('Primary focus: ' + (BUSINESS_INITIATIVE_REGISTRY[campaign.businessInitiative].label || campaign.businessInitiative)); else if (campaign.businessInitiative) bits.push('Primary focus: ' + campaign.businessInitiative); } catch (e){}
+  if (campaign.primaryKpi) bits.push('Primary KPI: ' + campaign.primaryKpi);
+  if (campaign.stage) bits.push('Stage: ' + campaign.stage);
+  return bits.join('. ');
 }
 
 // 2026-09-19, per Todd's direct product question ("how do we train our
@@ -27318,7 +27325,7 @@ ${competitorContext || '(none on file)'}
 CAMPAIGN CONTEXT:
 - Loop Stage: ${campaign.stage || '(not set)'} — this stage's real job: ${stageJob}
 - Objective: ${campaignObjectiveText(campaign) || '(not set)'}
-- Audience/Segment: ${campaign.segment || '(not set)'}${exclusionPromptLine(campaign)}
+- Audience/Segment: ${campaign.segment || campaign.audienceTargets || '(not set)'}${exclusionPromptLine(campaign)}
 - Target generation(s) (from this account's Verilume assessment): ${humanizeAudienceKeys(account.audience, GENERATION_LABELS_FOR_COPY) || '(not set — assume a broad, general audience)'}
 - Target wealth tier (Verilume Wealth Index-derived): ${humanizeAudienceKeys(account.wealth, WEALTH_TIER_LABELS_FOR_COPY) || '(not set — assume a broad, general audience)'} — calibrate vocabulary and appeals accordingly: High Net-Worth reads restrained and specific (never lead with price or urgency language), Mainstream/Value-Conscious can lead with clear value and practical benefit, and a generation skew (e.g. Gen Z vs. Baby Boomers) should shift register and reference points, not just word choice
 - Primary KPI this campaign is measured on: ${campaign.primaryKpi || '(not set)'} — the call to action must genuinely drive this outcome, specifically, not a generic "learn more"
@@ -30766,7 +30773,7 @@ async function scoreDraftCopy(copyText, campaign, account){
       const visionStatement = (account.visionStatement || '').trim();
       const prompt = `Score this marketing copy on two dimensions, 0-100 each.
 
-RELEVANCE (0-100): how well this copy serves the campaign's stated objective, audience/segment, and primary KPI below. 100 = precisely on-brief; 0 = unrelated.
+RELEVANCE: judge four parts separately and report each. objectiveFit 0-40 (serves the objective and primary KPI), audienceFit 0-30 (speaks to this audience), keyMessageUse 0-20 (uses the Key Message as required), ctaClarity 0-10 (a clear, specific next step). Be strict and specific; most drafts should lose points somewhere.
 - Objective: ${campaignObjectiveText(campaign) || '(not set)'}
 - Audience/Segment: ${campaign.segment || '(not set)'}${exclusionPromptLine(campaign)}
 - Primary KPI: ${campaign.primaryKpi || '(not set)'}
@@ -30794,6 +30801,10 @@ ${copyText.slice(0, 2000)}`;
         schema: {
           type: 'object',
           properties: {
+            objectiveFit: { type: 'integer', minimum: 0, maximum: 40 },
+            audienceFit: { type: 'integer', minimum: 0, maximum: 30 },
+            keyMessageUse: { type: 'integer', minimum: 0, maximum: 20 },
+            ctaClarity: { type: 'integer', minimum: 0, maximum: 10 },
             relevanceScore: { type: 'integer', minimum: 0, maximum: 100 },
             relevanceNote: { type: 'string', description: 'One sentence.' },
             complianceScore: { type: 'integer', minimum: 0, maximum: 100 },
@@ -30807,6 +30818,8 @@ ${copyText.slice(0, 2000)}`;
       // 2026-10-18 — the saved exact phrases are checked in code too, so a missing or reworded phrase always shows up and lowers Brand Fit.
       // 2026-11-17 -- with tool_choice auto the model can return an incomplete score object. Coerce numeric strings, and fill any missing half from the rules check instead of showing "not scored".
       const num = v => { const n = typeof v === 'string' ? parseFloat(v) : v; return (typeof n === 'number' && isFinite(n)) ? Math.max(0, Math.min(100, Math.round(n))) : null; };
+      const parts = [parsed.objectiveFit, parsed.audienceFit, parsed.keyMessageUse, parsed.ctaClarity].map(v => (typeof v === 'number' && isFinite(v)) ? v : null);
+      if (parts.every(v => v !== null)) parsed.relevanceScore = parts.reduce((a, b) => a + b, 0);
       parsed.relevanceScore = num(parsed.relevanceScore); parsed.complianceScore = num(parsed.complianceScore);
       if (parsed.relevanceScore == null){ const h = scoreDraftHeuristically(copyText, campaign); parsed.relevanceScore = h.relevanceScore; parsed.relevanceNote = parsed.relevanceNote || h.relevanceNote; }
       if (parsed.complianceScore == null){ parsed.complianceScore = Math.min(85, scoreComplianceHeuristically(copyText, account, campaign).complianceScore); }
