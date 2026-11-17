@@ -18496,6 +18496,45 @@ function gpSeries(accountId, src, S, E, from, to){
   });
   return { unit: B.unit, rows };
 }
+// Analyst readout for the report page (2026-11-17): a short story about the chart, tied to the account's other headline numbers.
+// Numbers in the text always come from the data passed in; the model only words them. If it is unavailable, a plain version is returned.
+function vizReadoutFacts(data){
+  try {
+    const labels = (data && data.labels) || []; const s = data && data.series && data.series[0]; if (!s || !labels.length) return null;
+    const vals = s.values.map(v => Number(v) || 0); const total = vals.reduce((a, b) => a + b, 0);
+    const order = vals.map((v, i) => i).sort((a, b) => vals[b] - vals[a]); const top = order[0], low = order[order.length - 1];
+    const timeLike = labels.every(l => /^\d{4}(-\d{2})?$/.test(String(l)) || /^(Q[1-4]|20\d\d)/.test(String(l)));
+    return { n: labels.length, total, additive: !!data.additive, kind: data.kind || 'num1', name: s.name, top: { label: labels[top], v: vals[top], share: total ? vals[top] / total * 100 : null }, low: { label: labels[low], v: vals[low] }, timeLike, first: vals[0], last: vals[vals.length - 1], firstL: labels[0], lastL: labels[labels.length - 1] };
+  } catch (e){ return null; }
+}
+function vizFmtNum(v, kind){ if (v == null || !Number.isFinite(v)) return '—'; if (kind === 'money') return '$' + Math.round(v).toLocaleString('en-US'); if (kind === 'pct') return (Math.round(v * 10) / 10) + '%'; return Math.round(v * 10) / 10 >= 1000 ? Math.round(v).toLocaleString('en-US') : String(Math.round(v * 10) / 10); }
+function vizPlainReadout(f){
+  if (!f) return 'There are not enough numbers here to say much yet.';
+  const k = f.kind;
+  if (f.timeLike && f.n > 2 && f.first){ const d = (f.last - f.first) / Math.abs(f.first) * 100; return `${f.name} moved from ${vizFmtNum(f.first, k)} in ${f.firstL} to ${vizFmtNum(f.last, k)} in ${f.lastL}, ${d >= 0 ? 'up' : 'down'} ${Math.abs(Math.round(d * 10) / 10)}%. The highest point was ${f.top.label} at ${vizFmtNum(f.top.v, k)}.`; }
+  return `${f.top.label} leads at ${vizFmtNum(f.top.v, k)}${f.additive && f.top.share != null ? `, ${Math.round(f.top.share * 10) / 10}% of the ${vizFmtNum(f.total, k)} shown` : ''}. ${f.low.label} is lowest at ${vizFmtNum(f.low.v, k)}.`;
+}
+async function vizReadout(accountId, b){
+  const f = vizReadoutFacts(b.data); const plain = vizPlainReadout(f);
+  const stats = [];
+  let ctx = '';
+  try {
+    const g = gpCached('cards|' + accountId + '|{"preset":"ytd"}', 60000, () => buildGpCards(accountId, { preset: 'ytd' }));
+    const pac = (g.cards || []).find(c => c.key === 'pacing'); const roas = (g.cards || []).find(c => c.key === 'roas');
+    if (pac && pac.abstract){ ctx += 'Demand pacing (year to date): ' + pac.abstract + '\n'; const ms = /[Ss]pend is (behind|ahead of|on) pace at ([\d.]+)%/.exec(pac.abstract), mi = /impressions are (behind|ahead of|on) pace at ([\d.]+)%/.exec(pac.abstract); if (ms) stats.push({ label: 'Spend pace', value: ms[2] + '%', tone: ms[1] === 'behind' ? 'bad' : '' }); if (mi) stats.push({ label: 'Impressions pace', value: mi[2] + '%', tone: mi[1] === 'behind' ? 'bad' : '' }); }
+    if (roas && roas.abstract) ctx += 'Performance (year to date): ' + roas.abstract + '\n';
+  } catch (e){}
+  if (!f) return { text: plain, stats: [], ai: false };
+  stats.splice(2); if (f.top && f.top.share != null && f.additive) stats.push({ label: 'Largest share', value: f.top.label + ' ' + (Math.round(f.top.share * 10) / 10) + '%', tone: '' });
+  let text = plain, ai = false;
+  try {
+    const rows = (b.data.labels || []).slice(0, 14).map((l, i) => `${l}: ${vizFmtNum(Number(b.data.series[0].values[i]) || 0, f.kind)}`).join('; ');
+    const prompt = `You are a marketing analyst writing a short readout under a chart for a busy marketing leader.\nChart: ${String(b.title || '').slice(0, 120)}${b.period ? ' (' + String(b.period).slice(0, 60) + ')' : ''}.\nThe numbers (use only these, do not invent any): ${rows}.\n${ctx ? 'Other headline numbers for this account that you may tie in only if they genuinely help explain the story:\n' + ctx : ''}\nWrite 2 to 3 plain sentences: lead with the one thing that matters, say what it means for the plan or budget, and end with what to look at next. No headings, no bullets, no hype. Never state a number that is not given above.`;
+    const r = await callClaudeForJSON({ model: ANTHROPIC_STANDARD_MODEL, maxTokens: 260, timeoutMs: 20000, content: prompt, toolName: 'write_readout', toolDescription: 'Write the analyst readout.', schema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] } });
+    if (r && r.text && String(r.text).length > 30){ text = String(r.text).slice(0, 700); ai = true; }
+  } catch (e){ console.warn('[visualize/readout] AI unavailable, plain readout used:', e && e.message); }
+  return { text, stats, ai };
+}
 function buildGpCards(accountId, spec){
   const R = gpResolveRange(spec);
   const src = gpCached('src|' + accountId, 60000, () => dmLoadSources(accountId)); const S = gpCached('S|' + accountId, 60000, () => buildForecastSeries(accountId)); const E = gpCached('E|' + accountId, 60000, () => gpEngagedMonthly(accountId, S));
@@ -37593,6 +37632,12 @@ async function handleRequestInner(req, res) {
             charts: rows.map(r => out(r, false)), unread, pins: pinMap(),
             members: members().map(m => ({ id: m.id, name: m.name, role: [m.functionGroup, m.level].filter(Boolean).join(' · '), hasEmail: !!m.email, me: m.id === me }))
           });
+        }
+        // POST /visualize/readout { title, period, data } -> { text, stats[], ai }  (2026-11-17, analyst readout under every report)
+        if (req.method === 'POST' && parts.length === 5 && sub === 'readout'){
+          const b = await readBody(req) || {};
+          try { return sendJson(res, 200, await vizReadout(accountId, { title: b.title, period: b.period, data: b.data })); }
+          catch (e){ console.warn('[visualize/readout] failed:', e && e.message); return sendJson(res, 200, { text: '', stats: [], ai: false }); }
         }
         // POST /visualize/recommend { text | spec }
         if (req.method === 'POST' && parts.length === 5 && sub === 'recommend'){
