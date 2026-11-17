@@ -49242,6 +49242,7 @@ function cmpManageExistingCampaign(campaignId){
 function cmpCloseAllStages(){
   cmpOpenStage = null;
   document.querySelectorAll('#newCampaignForm .cmp-stage').forEach(el => {
+    if (el.closest('.cmp-pitch-panel')) return; // 2026-11-17 — the Creative / Trafficking / Analysis workspace cards are not accordion stages; closing them left the Creative page blank after a campaign was loaded
     el.classList.remove('open');
     el.style.overflow = 'hidden';
     const body = el.querySelector('.module-body');
@@ -50440,6 +50441,8 @@ function cmpBindCreativeLeftClickGuard(){
 }
 function cmpOpenCreativeWorkspace(){
   const campaign = cmpRailLoadedCampaign();
+  // Belt and braces: whatever closed the accordion stages before this ran, the Creative workspace cards must open fully.
+  document.querySelectorAll('#cmpCreativeLeft .cmp-stage').forEach(el => { el.style.overflow = ''; const mb = el.querySelector(':scope > .module-body'); if (mb){ mb.style.maxHeight = 'none'; mb.style.overflow = 'visible'; } });
   const overlay = document.getElementById('cmpCreativeOverlay');
   const panel = document.getElementById('cmpCreativePanel');
   const left = document.getElementById('cmpCreativeLeft');
