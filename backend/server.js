@@ -14289,6 +14289,45 @@ try {
     decidedby TEXT, decidedbyname TEXT, decidedat TEXT, decisionnote TEXT
   );`);
 } catch (e){ console.error('[schema] could not ensure creative_handoffs:', e && e.message); }
+// 2026-11-17 -- "What do you want to get done today?" on the Brain Dump: remembers what each person picked, privately. One row per person and task.
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS member_session_tasks (
+    id TEXT PRIMARY KEY, accountid TEXT NOT NULL, memberid TEXT NOT NULL, taskkey TEXT NOT NULL, label TEXT NOT NULL,
+    uses INTEGER NOT NULL, lastat TEXT NOT NULL, status TEXT NOT NULL, createdat TEXT NOT NULL
+  );`);
+} catch (e){ console.error('[schema] could not ensure member_session_tasks:', e && e.message); }
+// Starter tasks by job function. dest is a screen the portal already has: step = goToStep(name), dash = the person's own dashboard.
+const SESSION_TASK_CATALOG = [
+  { key: 'daily', ask: 'What are my daily tasks today? List what is due, waiting for my approval, and in motion for me.', label: 'See what my daily tasks are', fns: ['*'], dest: { kind: 'dash' } },
+  { key: 'chart', label: 'Show a number as a chart', fns: ['*'], dest: { kind: 'step', step: 'visualize' } },
+  { key: 'calendar', ask: 'What is on the marketing calendar in the next two weeks?', label: 'Check the marketing calendar', fns: ['*'], dest: { kind: 'step', step: 'marketingCalendar' } },
+  { key: 'campaigns', ask: 'Give me a short status of the campaigns in progress: what is live, what is due soon, and what is blocked.', label: 'Review campaigns in progress', fns: ['Executive', 'Brand', 'Marketing Ops', 'Lifecycle Marketing', 'Performance Marketing'], dest: { kind: 'step', step: 'campaignMgmt' } },
+  { key: 'newcampaign', label: 'Start a new campaign', fns: ['Executive', 'Lifecycle Marketing', 'Performance Marketing', 'Marketing Ops'], dest: { kind: 'step', step: 'campaign' } },
+  { key: 'writecopy', label: 'Write campaign copy (social, email, ads)', fns: ['Brand', 'Lifecycle Marketing', 'Performance Marketing'], dest: { kind: 'step', step: 'campaignMgmt' } },
+  { key: 'voice', label: 'Check or update the brand voice', fns: ['Brand'], dest: { kind: 'step', step: 'voice' } },
+  { key: 'samples', label: 'Add brand writing samples', fns: ['Brand'], dest: { kind: 'step', step: 'brandWritingSamples' } },
+  { key: 'adlib', label: 'Browse the ad copy library', fns: ['Brand', 'Lifecycle Marketing', 'Performance Marketing'], dest: { kind: 'step', step: 'adCopyLibrary' } },
+  { key: 'positioning', ask: 'Summarize our competitive positioning and what changed recently.', label: 'Review competitive positioning', fns: ['Executive', 'Brand'], dest: { kind: 'step', step: 'competitivePositioning' } },
+  { key: 'leads', ask: 'How are lead counts this month versus last month and versus the same month last year? Note which sources moved most.', label: 'Review lead counts', fns: ['Analysis', 'Performance Marketing', 'Lifecycle Marketing', 'Executive'], dest: { kind: 'step', step: 'visualize' } },
+  { key: 'traffic', ask: 'How is website traffic trending this month versus last month, and which channels drove the change?', label: 'Check website traffic', fns: ['Analysis', 'Performance Marketing'], dest: { kind: 'step', step: 'websiteTraffic' } },
+  { key: 'tests', ask: 'What test results are in, which are waiting for confirmation, and what did we learn?', label: 'Review test results', fns: ['Analysis', 'Marketing Ops'], dest: { kind: 'step', step: 'testRegistry' } },
+  { key: 'coverage', ask: 'Where is measurement coverage weakest right now, and what is the one fix that would help most?', label: 'Check measurement coverage', fns: ['Analysis'], dest: { kind: 'step', step: 'measurementCoverage' } },
+  { key: 'analytics', label: 'Set up or check analytics', fns: ['Analysis', 'Marketing Ops'], dest: { kind: 'step', step: 'analyticsSetup' } },
+  { key: 'queue', ask: 'What is waiting in the marketing ops queue, oldest first?', label: 'Work the marketing ops queue', fns: ['Marketing Ops'], dest: { kind: 'step', step: 'marketingOpsQueue' } },
+  { key: 'upload', label: 'Upload data', fns: ['Marketing Ops', 'Analysis'], dest: { kind: 'step', step: 'bulkUpload' } },
+  { key: 'mediaplan', ask: 'Summarize the media plan and budget: planned versus actual spend, and anything off track.', label: 'Review the media plan and budget', fns: ['Executive', 'Performance Marketing'], dest: { kind: 'step', step: 'mediaplan' } },
+  { key: 'optimize', ask: 'What are the top optimization opportunities across channels right now?', label: 'Find optimization opportunities', fns: ['Performance Marketing', 'Executive'], dest: { kind: 'step', step: 'marketOptimization' } },
+  { key: 'searchsocial', label: 'Check search and social', fns: ['Performance Marketing', 'Brand'], dest: { kind: 'step', step: 'searchSocial' } },
+  { key: 'reputation', ask: 'What is the current reputation and review picture, and does anything need a response?', label: 'Check reputation and reviews', fns: ['Executive', 'Brand', 'PR'], dest: { kind: 'step', step: 'reputation' } },
+  { key: 'news', ask: 'What news in the last week matters to our brand, competitors or industry?', label: 'Monitor the news', fns: ['PR', 'Executive'], dest: { kind: 'step', step: 'monitor' } },
+  { key: 'teach', label: 'Teach the Brain about my business', fns: ['*'], dest: { kind: 'step', step: 'manageAccount' } },
+  { key: 'grow', label: 'Work on my own skills and career plan', fns: ['*'], dest: { kind: 'step', step: 'growthHome' } }
+];
+function sessionTaskFor(fn){
+  const f = String(fn || '');
+  return SESSION_TASK_CATALOG.filter(t => t.fns.includes('*') || t.fns.includes(f));
+}
+
 // 2026-10-07 — AI Brain Coach (growth workstream). Everything here is private to the signed-in person; see coachWho().
 // Lowercase snake_case, accountid only in WHERE (pg-sync-bridge rules). Registered in CATALOG_EXEMPT: person data, never an account-level dataset.
 createTableIfNeeded(`
@@ -23320,7 +23359,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['account_card_pins', 'account_charts', 'account_notifications', 'account_chart_requests', 'account_pr_profile', 'account_ga4_meta', 'account_plan_scenarios', 'plan_scenario_events', 'mix_benchmark_cpm', 'account_lead_source_channel', 'plan_baseline_drafts', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'marketing_projects', 'marketing_project_tasks', 'account_learned_cpm', 'account_channel_product_inputs', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'creative_handoffs', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
+const CATALOG_EXEMPT = new Set(['member_session_tasks', 'account_card_pins', 'account_charts', 'account_notifications', 'account_chart_requests', 'account_pr_profile', 'account_ga4_meta', 'account_plan_scenarios', 'plan_scenario_events', 'mix_benchmark_cpm', 'account_lead_source_channel', 'plan_baseline_drafts', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'marketing_projects', 'marketing_project_tasks', 'account_learned_cpm', 'account_channel_product_inputs', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'creative_handoffs', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -51575,6 +51614,64 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     // ---------- AI Brain Coach: /api/accounts/:id/me/... (2026-10-07) ----------
     // Private to the signed-in person. Nothing here returns another person's data. A manager sees only items the person chose to share
     // (GET /api/accounts/:id/team-shared). The coach is a Radiance / Beacon feature (coachGate); coach AI calls count against the account's draft allowance.
+    // "What do you want to get done today?" -- open to every signed-in team member (not part of the coach plan gate), private to the person.
+    // GET /session/start, POST /session/pick {key,label}, POST /session/done {key}, POST /session/chat {message, history}
+    if (parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'session'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const who = coachWho(authenticate(req));
+      if (!who) return sendJson(res, 403, { error: 'Sign in as a team member to use this.' });
+      const mid = who.memberId, nowIso = new Date().toISOString(), act = parts[4];
+      const rowsFor = () => { try { return db.prepare('SELECT taskkey, label, uses, lastat, status FROM member_session_tasks WHERE accountid = ? AND memberid = ?').all(accountId, mid); } catch (e){ return []; } };
+      if (req.method === 'GET' && act === 'start'){
+        const rows = rowsFor(), byKey = {}; rows.forEach(r => { byKey[aliasVal(r, 'taskkey')] = r; });
+        const base = sessionTaskFor(who.fn);
+        const usesOf = t => { const r = byKey[t.key]; return r ? Number(aliasVal(r, 'uses')) || 0 : 0; };
+        const rec = base.map((t, i) => ({ t, i, u: usesOf(t) })).sort((a, b) => (b.u - a.u) || (a.i - b.i)).slice(0, 8)
+          .map(x => ({ key: x.t.key, label: x.t.label, dest: x.t.dest, ask: x.t.ask || null, usual: x.u >= 3 }));
+        const cont = rows.filter(r => aliasVal(r, 'status') === 'open').sort((a, b) => String(aliasVal(b, 'lastat')).localeCompare(String(aliasVal(a, 'lastat')))).slice(0, 4)
+          .map(r => { const k = aliasVal(r, 'taskkey'); const t = SESSION_TASK_CATALOG.find(x => x.key === k); return { key: k, label: aliasVal(r, 'label'), dest: t ? t.dest : null, ask: t ? (t.ask || null) : null, lastAt: aliasVal(r, 'lastat') }; });
+        return sendJson(res, 200, { name: who.name, fn: who.fn, level: who.level, recommended: rec, continueTasks: cont });
+      }
+      if (req.method === 'POST' && (act === 'pick' || act === 'done')){
+        const b = await readBody(req);
+        const key = String(b.key || '').slice(0, 80).trim(); if (!key) return sendJson(res, 400, { error: 'key is required' });
+        const cat = SESSION_TASK_CATALOG.find(t => t.key === key);
+        const label = cat ? cat.label : String(b.label || key).slice(0, 160);
+        const id = accountId + '|' + mid + '|' + key.toLowerCase();
+        const ex = db.prepare('SELECT uses FROM member_session_tasks WHERE id = ?').get(id);
+        if (act === 'pick'){
+          if (ex) db.prepare("UPDATE member_session_tasks SET uses = uses + 1, lastat = ?, status = 'open', label = ? WHERE id = ?").run(nowIso, label, id);
+          else db.prepare("INSERT INTO member_session_tasks (id, accountid, memberid, taskkey, label, uses, lastat, status, createdat) VALUES (?,?,?,?,?,?,?,?,?)").run(id, accountId, mid, key, label, 1, nowIso, 'open', nowIso);
+        } else if (ex){
+          db.prepare("UPDATE member_session_tasks SET status = 'done', lastat = ? WHERE id = ?").run(nowIso, id);
+        }
+        return sendJson(res, 200, { saved: true, dest: cat ? cat.dest : null });
+      }
+      if (req.method === 'POST' && act === 'chat'){
+        const b = await readBody(req);
+        const msg = String(b.message || '').slice(0, 500).trim(); if (!msg) return sendJson(res, 400, { error: 'Tell me what you want to get done.' });
+        const hist = (Array.isArray(b.history) ? b.history : []).slice(-6).map(h => ({ role: h && h.role === 'assistant' ? 'assistant' : 'user', text: String(h && h.text || '').slice(0, 400) }));
+        const avail = sessionTaskFor(who.fn);
+        const words = msg.toLowerCase().match(/[a-z]{3,}/g) || [];
+        const ruleMatch = () => avail.map(t => ({ t, n: words.filter(w => (t.label + ' ' + t.key).toLowerCase().includes(w)).length })).filter(x => x.n > 0).sort((a, b) => b.n - a.n).slice(0, 3).map(x => ({ key: x.t.key, label: x.t.label, dest: x.t.dest, ask: x.t.ask || null }));
+        let out = null;
+        if (process.env.ANTHROPIC_API_KEY){
+          try {
+            const prompt = `You help a marketing team member start their work session. Their job function is "${who.fn || 'not set'}"${who.level ? ', level ' + who.level : ''}. Pick the best next step from this list only (use the key):\n` +
+              avail.map(t => `- ${t.key}: ${t.label}`).join('\n') +
+              `\n\nConversation so far:\n${hist.map(h => h.role + ': ' + h.text).join('\n')}\nuser: ${msg}\n\nIf the request is clear enough, reply in one short sentence and give up to 3 matching keys. If it is unclear, ask ONE short follow-up question and give up to 3 likely keys. If nothing on the list fits, say so briefly and suggest Ask Verilume at the bottom of the page. Plain words, no jargon.`;
+            const r = await callClaudeForJSON({ model: ANTHROPIC_STANDARD_MODEL, maxTokens: 300, timeoutMs: 20000, content: prompt, toolName: 'suggest_next_step', toolDescription: 'Suggest the next step for the person.',
+              schema: { type: 'object', properties: { reply: { type: 'string' }, keys: { type: 'array', items: { type: 'string' } } }, required: ['reply', 'keys'] } });
+            const opts = (Array.isArray(r.keys) ? r.keys : []).map(k => avail.find(t => t.key === k)).filter(Boolean).slice(0, 3).map(t => ({ key: t.key, label: t.label, dest: t.dest, ask: t.ask || null }));
+            out = { reply: String(r.reply || '').slice(0, 400), options: opts };
+          } catch (e){ console.warn('[session/chat] AI failed, using keyword match:', e && e.message); }
+        }
+        if (!out){ const opts = ruleMatch(); out = { reply: opts.length ? 'These look closest to what you described.' : 'I did not find a matching screen. Try different words, or use Ask Verilume at the bottom of the page.', options: opts }; }
+        return sendJson(res, 200, out);
+      }
+      return sendJson(res, 404, { error: 'not found' });
+    }
     if (parts.length >= 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'me'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
