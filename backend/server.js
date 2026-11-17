@@ -30637,19 +30637,34 @@ function tokenize(text){
 // segment/key message/primary KPI; complianceScore starts at 100 and
 // deducts for each matched risk term, brand-specific or generic.
 function scoreDraftHeuristically(copyText, campaign){
-  const signalSource = [campaignObjectiveText(campaign), campaign.segment, campaign.keyMessage, campaign.primaryKpi].filter(Boolean).join(' ');
+  // 2026-11-17 — the old version scored matched/total over ~4 terms, so any two
+  // drafts that touched the same words tied exactly (25-point steps). Now: wider
+  // signal set (objective, segment, key message, KPI, stage, campaign type,
+  // brief), light stemming, and a blend of coverage, repetition and opening-line
+  // use of the key message, so different drafts land on different numbers.
+  const signalSource = [campaignObjectiveText(campaign), campaign.segment, campaign.keyMessage, campaign.primaryKpi, campaign.stage, campaign.campaignType, campaign.briefBuilderExpandedText].filter(Boolean).join(' ');
+  const stem = w => w.replace(/(ing|ed|es|s|ly)$/,'');
   const signalTerms = [...new Set(tokenize(signalSource).filter(w => w.length >= 4 && !RELEVANCE_STOPWORDS.has(w)))];
-  const copyTokens = new Set(tokenize(copyText));
+  const copyTokens = tokenize(copyText);
+  const copySet = new Set(copyTokens);
+  const copyStems = new Map();
+  copyTokens.forEach(t => { const k = stem(t); copyStems.set(k, (copyStems.get(k) || 0) + 1); });
   let relevanceScore = null;
   let relevanceNote;
   if (!signalTerms.length){
     relevanceNote = 'No objective/segment/key message set on this campaign yet — nothing to score relevance against.';
   } else {
-    const matched = signalTerms.filter(t => copyTokens.has(t));
-    relevanceScore = Math.round((matched.length / signalTerms.length) * 100);
+    const matched = signalTerms.filter(t => copySet.has(t) || copyStems.has(stem(t)));
+    const coverage = matched.length / signalTerms.length;
+    const hits = matched.reduce((n, t) => n + Math.min(3, (copyStems.get(stem(t)) || 1)), 0);
+    const repetition = matched.length ? Math.min(1, hits / (matched.length * 2)) : 0;
+    const km = (campaign.keyMessage || '').trim().toLowerCase();
+    const openingBonus = km && String(copyText).toLowerCase().slice(0, Math.max(160, km.length + 60)).includes(km) ? 1 : 0;
+    const lenFit = Math.max(0, 1 - Math.abs(copyTokens.length - 120) / 400);
+    relevanceScore = Math.round(Math.min(100, coverage * 70 + repetition * 15 + openingBonus * 10 + lenFit * 5));
     relevanceNote = matched.length
-      ? `Matches ${matched.length} of ${signalTerms.length} campaign-context terms: ${matched.slice(0, 6).join(', ')}${matched.length > 6 ? '…' : ''}.`
-      : `Matches none of this campaign's ${signalTerms.length} context terms — worth checking this draft is actually on-brief.`;
+      ? `Estimated by keyword check (AI scorer unavailable): matches ${matched.length} of ${signalTerms.length} campaign terms: ${matched.slice(0, 6).join(', ')}${matched.length > 6 ? '…' : ''}.`
+      : `Estimated by keyword check: matches none of this campaign's ${signalTerms.length} context terms — worth checking this draft is actually on-brief.`;
   }
   return { relevanceScore, relevanceNote, mode: 'heuristic' };
 }
@@ -30732,10 +30747,13 @@ ${campaign.mandatoryPhrase ? `MANDATORY PHRASE (required verbatim, word-for-word
 
 COPY TO SCORE:
 ${copyText.slice(0, 2000)}`;
-      const parsed = await callClaudeForJSON({
+      let parsed;
+      for (let attempt = 0; attempt < 2 && !parsed; attempt++){
+        try {
+          parsed = await callClaudeForJSON({
         model: ANTHROPIC_STANDARD_MODEL,
         maxTokens: 500,
-        content: prompt,
+        content: prompt + '\n\nScoring rules: judge THIS copy on its own merits. Use the full 0-100 range and avoid round-number defaults; two different drafts should rarely get the same score. Name the specific words or lines that earned or cost points in relevanceNote.',
         toolName: 'submit_copy_score',
         toolDescription: 'Submit the relevance and compliance scores.',
         schema: {
@@ -30749,6 +30767,8 @@ ${copyText.slice(0, 2000)}`;
           required: ['relevanceScore', 'relevanceNote', 'complianceScore', 'complianceFlags']
         }
       });
+        } catch (e){ console.error('[scoreDraftCopy] AI scoring attempt ' + (attempt + 1) + ' failed:', e && e.message); if (attempt === 1) throw e; }
+      }
       // 2026-10-18 — the saved exact phrases are checked in code too, so a missing or reworded phrase always shows up and lowers Brand Fit.
       const aiFlags = Array.isArray(parsed.complianceFlags) ? parsed.complianceFlags.slice() : [];
       const phraseFlags = exactPhraseFlags(copyText, account && account.accountId ? accountExactPhrases(account.accountId) : []).concat(surveillanceFlags(copyText));
