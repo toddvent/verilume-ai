@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-17-r7-report-page-v2 (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-17-r8-report-page-v3 (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -18525,12 +18525,12 @@ async function vizReadout(accountId, b){
     if (pac && pac.abstract){ ctx += 'Demand pacing (year to date): ' + pac.abstract + '\n'; const ms = /[Ss]pend is (behind|ahead of|on) pace at ([\d.]+)%/.exec(pac.abstract), mi = /impressions are (behind|ahead of|on) pace at ([\d.]+)%/.exec(pac.abstract); if (ms) stats.push({ label: 'Spend pace', value: ms[2] + '%', tone: ms[1] === 'behind' ? 'bad' : '' }); if (mi) stats.push({ label: 'Impressions pace', value: mi[2] + '%', tone: mi[1] === 'behind' ? 'bad' : '' }); }
     if (roas && roas.abstract) ctx += 'Performance (year to date): ' + roas.abstract + '\n';
   } catch (e){}
-  if (!f && !cardText) return { text: plain, stats: [], ai: false };
+  if (!f && !cardText) return { text: '', stats: [], ai: false };
   stats.splice(2); if (f && f.top && f.top.share != null && f.additive) stats.push({ label: 'Largest share', value: f.top.label + ' ' + (Math.round(f.top.share * 10) / 10) + '%', tone: '' });
-  let text = plain, ai = false;
+  let text = f ? plain : '', ai = false;
   try {
     const rows = f ? (b.data.labels || []).slice(0, 14).map((l, i) => `${l}: ${vizFmtNum(Number(b.data.series[0].values[i]) || 0, f.kind)}`).join('; ') : cardText;
-    const prompt = `You are a marketing analyst writing a short readout under a chart for a busy marketing leader.\nChart: ${String(b.title || '').slice(0, 120)}${b.period ? ' (' + String(b.period).slice(0, 60) + ')' : ''}.\nThe numbers shown on the report at its default time frame (use only these, do not invent any): ${rows}.\n${ctx ? 'Other headline numbers for this account that you may tie in only if they genuinely help explain the story:\n' + ctx : ''}\nWrite 2 to 3 plain sentences: lead with the one thing that matters, say what it means for the plan or budget, and end with what to look at next. No headings, no bullets, no hype. Never state a number that is not given above.`;
+    const prompt = `You are a marketing analyst writing a short readout under a chart for a busy marketing leader.\nChart: ${String(b.title || '').slice(0, 120)}${b.period ? ' (' + String(b.period).slice(0, 60) + ')' : ''}.\nThe numbers shown on the report at its default time frame (use only these, do not invent any): ${rows}.\n${ctx ? 'Other headline numbers for this account that you may tie in only if they genuinely help explain the story:\n' + ctx : ''}\nWrite 2 to 4 plain sentences: lead with the one thing that matters, say what it means for the plan or budget, and end with what to look at next. No headings, no bullets, no hype. Never state a number that is not given above.`;
     const r = await callClaudeForJSON({ model: ANTHROPIC_STANDARD_MODEL, maxTokens: 260, timeoutMs: 20000, content: prompt, toolName: 'write_readout', toolDescription: 'Write the analyst readout.', schema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] } });
     if (r && r.text && String(r.text).length > 30){ text = String(r.text).slice(0, 700); ai = true; }
   } catch (e){ console.warn('[visualize/readout] AI unavailable, plain readout used:', e && e.message); }
@@ -32991,7 +32991,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-17-r7-report-page-v2',
+        buildStamp: '2026-11-17-r8-report-page-v3',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
