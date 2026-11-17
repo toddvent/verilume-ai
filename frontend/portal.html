@@ -58041,7 +58041,7 @@ async function plcAddChannel(){
       c.approvedCreativeAssetsJson = JSON.stringify(c.approvedCreativeAssets);
       try { await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(plc.cid)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approvedCreativeAssetsJson: c.approvedCreativeAssetsJson, approvedAssetSummary: c.approvedCreativeAssets.map(x => x.channel + (x.partner ? ' — ' + x.partner : '') + (x.mediaType ? ' (' + x.mediaType + ')' : '')).join(', ') }) }); } catch (e){ console.warn('plcAddChannel: approved asset not saved', e); }
     }
-    const cid = plc.cid; plcClose();
+    const cid = plc.cid; plcClose(); cmpAssetFocusCampaignId = null; cmpApprovedChannelsFromPlan = { campaignId: null, channels: null };
     try { await loadCampaigns(); } catch (e){}
     try { loadExistingCampaignIntoForm(cid); } catch (e){}
     cmpOpenCreativeWorkspace();
@@ -77213,7 +77213,9 @@ async function cmpLoadApprovedChannelsFromPlan(campaign){
       product: (e.detailsJson && e.detailsJson.partnerProduct) ? String(e.detailsJson.partnerProduct) : ''
     })).filter(l => l.channel && (!anyBudget || l.budget > 0));
     // 2026-10-18 — Brand Search and Remarketing carry no budget line, but their ads and site links are still built in Creative.
-    const namesWithCreativeOnly = cmpSortChannelsByTaxonomy([...new Set([...names, ...CREATIVE_ONLY_CHANNELS])]);
+    // 2026-11-17 — a stand alone placement (every plan line was added through Add placement) has only the channel that was added: no always-on Brand Search or Remarketing.
+    const standAloneOnly = entries.length > 0 && entries.every(e => e.detailsJson && e.detailsJson.standAlone);
+    const namesWithCreativeOnly = standAloneOnly ? names : cmpSortChannelsByTaxonomy([...new Set([...names, ...CREATIVE_ONLY_CHANNELS])]);
     cmpApprovedChannelsFromPlan = { campaignId: campaign.id, channels: namesWithCreativeOnly, lines };
     return namesWithCreativeOnly;
     return names;
