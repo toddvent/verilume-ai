@@ -73703,7 +73703,8 @@ function cmpPersistMessagingToCampaign(){
         longformCopy: c.longformCopy, creativeBrief: c.creativeBrief,
         channelCopyVersionsJson: JSON.stringify(c.channelCopyVersions),
         roleStyle: c.roleStyle, keyMessageMode: c.keyMessageMode,
-        messageType: c.messageType, mandatoryPhrase: c.mandatoryPhrase
+        messageType: c.messageType, mandatoryPhrase: c.mandatoryPhrase,
+        briefBuilderExpandedText: c.briefBuilderExpandedText || ''
       })
     }).catch(e => console.warn('cmpPersistMessagingToCampaign: backend write failed, kept locally only.', e));
   }
