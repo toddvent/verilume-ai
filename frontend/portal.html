@@ -58989,6 +58989,7 @@ function cmpBuildFormPayload(){
 }
 async function createCampaign(){
   if (!requireBrandFoundations()) return;
+  const wasPlacement = (briefKind === 'placement'); // 2026-11-17 — read once, before anything below can re-render the brief
   // Round 132d (2026-08-09), per direct correction — Objective is no longer
   // collected on this stage (it moved into the new, locked-until-created
   // Lifecycle Stage & Goals stage below), so it's no longer required here.
@@ -59172,7 +59173,8 @@ async function createCampaign(){
   // to keep it simple and flow."
   loadExistingCampaignIntoForm(campaignId);
   // 2026-11-17 — stand alone placement: same creation, then straight to adding the channel and copy.
-  if (briefKind === 'placement'){ briefKind = 'campaign'; briefMode = 'create'; plcOpen(campaignId); return; }
+  if (wasPlacement || briefKind === 'placement'){ briefMode = 'create'; try { briefSetKind('campaign'); } catch (e){ briefKind = 'campaign'; } // rebuilds the form and the tab highlight, so Create a campaign is the default again
+    try { await plcOpen(campaignId); } catch (e){ console.error('stand alone placement: the channel window could not open', e); } return; }
   // 2026-09-16 — opens the standalone Objectives overlay now, not the old
   // accordion's Campaign Objectives stage, so a freshly-created campaign
   // lands straight in the real conversational template.
