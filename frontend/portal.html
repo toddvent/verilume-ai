@@ -26572,7 +26572,11 @@ async function ssLoad(){
 }
 function ssMount(){
   const box = document.getElementById('brainDumpBody'); if (!box || !ssLive()) return;
-  if (!document.getElementById('ssCard')){ box.insertAdjacentHTML('afterbegin', '<div class="strat-card ss-card" id="ssCard"><h2>What do you want to get done today?</h2><p class="strat-sub" style="margin:0 0 10px;">Talk or type to the Brain, or start with one of the suggestions below. Answers come from your own account.</p><div id="ssDockSlot" class="ss-dock-slot"></div><div id="ssBody"></div></div>'); }
+  if (!document.getElementById('ssCard')){
+    const cardHtml = '<div class="strat-card ss-card" id="ssCard"><h2>What do you want to get done today?</h2><p class="strat-sub" style="margin:0 0 10px;">Talk or type to the Brain, or start with one of the suggestions below. Answers come from your own account.</p><div id="ssDockSlot" class="ss-dock-slot"></div><div id="ssBody"></div></div>';
+    const head = box.querySelector('.bd-head'); // the Week header stays first; the card sits right under it
+    if (head) head.insertAdjacentHTML('afterend', cardHtml); else box.insertAdjacentHTML('afterbegin', cardHtml);
+  }
   ssSyncDock();
   if (!SS.d && !SS.loading) ssLoad(); else ssRender();
 }
@@ -26672,7 +26676,7 @@ function bdRenderMainInner(){
   const extHtml = `<div class="strat-card"><div class="strat-head"><h2>From outside</h2><span class="strat-tag benchmark">External sources, not this account's data</span></div>
     <div class="curated-news-grid">${!ext.length ? `<p class="hint" style="grid-column:1/-1;margin:0;">Nothing new in the last ${NEWS_FRESH_DAYS} days. <a class="flink" onclick="newsRefreshNow()">${newsFeed.refreshing ? 'Refreshing…' : 'Refresh the news feed'}</a> ${escapeHtml(newsFeed.msg || '')}</p>` : ext.map(i => i.url ? `<a class="curated-news-card" href="${escapeHtml(repSafeHref(i.url))}" target="_blank" rel="noopener noreferrer"><div class="cn-meta">${escapeHtml(i.meta)}</div><div class="cn-title">${escapeHtml(i.title)}</div></a>` : `<div class="curated-news-card"><div class="cn-meta">${escapeHtml(i.meta)} <span class="illustrative-tag">AI reasoning</span></div><div class="cn-title">${escapeHtml(i.title)}</div></div>`).join('')}</div>
     <p class="strat-foot">Auto-selected each Monday from the last ${NEWS_FRESH_DAYS} days: your brand, competitors, your industry group, and AI and marketing. Links go to the publisher.</p></div>`;
-  box.innerHTML = `<div class="strat-card bd-head"><div><div class="strat-chart-label" style="margin:0 0 4px;">Week of ${bdWeekLabel(d.weekStart)}</div><p class="strat-reading" style="margin:0;">Posted ${escapeHtml(posted)}. ${by}, and it stays fixed until the next run. Comment under any section, or mention @AIBrain to dig deeper.</p></div>${runBtn}</div>${runNote}${chg}${sections}${extHtml}`;
+  box.innerHTML = `<div class="strat-card bd-head"><div><div class="strat-chart-label" style="margin:0 0 4px;">Week of ${bdWeekLabel(d.weekStart)}</div><p class="strat-reading" style="margin:0;">Posted ${escapeHtml(posted)}. ${by}, and it stays fixed until the next run. Comment under any section, or mention @AIBrain to dig deeper.</p></div>${runBtn}</div>${runNote}${sections}${extHtml}`;
 }
 // 2026-10-07 — AI Brain Coach, phase 1: the Brain Dump greets the person with their seat and links to their own growth work. The weekly business update stays the main content. Growth content (assessment, next career, plan) lives behind the links and is private to the person.
 function bdSeat(){
