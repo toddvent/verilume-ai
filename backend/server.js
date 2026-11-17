@@ -18343,7 +18343,22 @@ function gpCached(key, ttl, fn){
   if (_gpCache.size > 80){ const oldest = Array.from(_gpCache.entries()).sort((a, b) => a[1].t - b[1].t).slice(0, 20); oldest.forEach(e => _gpCache.delete(e[0])); }
   return v;
 }
-const GP_PRESETS = ['ytd', 'wow', 'mom', 'yoy', 'custom'];
+// ======== ONE SOURCE FOR TIME PERIODS (2026-11-17) ========
+// Every card, the dashboard date range and the data-question engine take their dates from here. Screens never work out dates themselves.
+// To add a period: add it to PERIOD_REGISTRY, give it a branch in gpResolveRange, and every dropdown picks it up (the list is sent with each card payload).
+const PERIOD_REGISTRY = [
+  { key: 'ytd', label: 'YTD', name: 'Year to date' },
+  { key: 'qtd', label: 'QTD', name: 'Quarter to date' },
+  { key: 'mom', label: 'MTD', name: 'Month to date' },
+  { key: 'wow', label: 'WoW', name: 'Last 7 days' },
+  { key: 'yoy', label: 'YoY', name: 'Last 12 months' },
+  { key: 'custom', label: 'Custom', name: 'Custom range' }
+];
+const GP_PRESETS = PERIOD_REGISTRY.map(p => p.key);
+// First and last day of calendar quarter q (1-4) in year y.
+function periodQuarterBounds(q, y){
+  const sm = (q - 1) * 3; return { from: dmIso(Date.UTC(y, sm, 1)), to: dmIso(Date.UTC(y, sm + 3, 0)) };
+}
 function gpDm(src, from, to){ const m = src.__dm || (src.__dm = {}); const k = from + '|' + to; return m[k] || (m[k] = dmDailyMetrics(src, from, to)); }
 function gpResolveRange(spec, now){
   const t = now || new Date(); const y = t.getUTCFullYear(), mo = t.getUTCMonth(), d = t.getUTCDate();
@@ -18361,10 +18376,13 @@ function gpResolveRange(spec, now){
     compFrom = dmIso(pm); compThrough = dmIso(pm + (Math.min(d, pdim) - 1) * 864e5); name = 'Month to date'; compName = 'the same days last month';
   } else if (preset === 'yoy'){
     through = today; from = dmIso(Date.UTC(y - 1, mo, d + 1)); compThrough = dmIso(Date.UTC(y - 1, mo, d)); compFrom = dmIso(Date.UTC(y - 2, mo, d + 1)); name = 'Last 12 months'; compName = 'the 12 months before';
+  } else if (preset === 'qtd'){
+    const qb = periodQuarterBounds(Math.floor(mo / 3) + 1, y); from = qb.from; through = today; compFrom = dmShiftYear(from, -1); compThrough = dmShiftYear(through, -1); name = 'Quarter to date'; compName = 'the same dates last year';
   } else if (preset === 'ytd'){
     from = `${y}-01-01`; through = today; compFrom = dmShiftYear(from, -1); compThrough = dmShiftYear(through, -1); name = 'Year to date'; compName = 'the same dates last year';
   }
-  return { preset, from, through, compFrom, compThrough, name, label: `${name}: ${dmFmt(from)} to ${dmFmt(through)}`, compLabel: `Compared with ${compName}: ${dmFmt(compFrom)} to ${dmFmt(compThrough)}`, today };
+  const periodEnd = preset === 'ytd' ? `${y}-12-31` : preset === 'qtd' ? periodQuarterBounds(Math.floor(mo / 3) + 1, y).to : preset === 'mom' ? dmIso(Date.UTC(y, mo + 1, 0)) : through;
+  return { preset, from, through, periodEnd, compFrom, compThrough, name, label: `${name}: ${dmFmt(from)} to ${dmFmt(through)}`, compLabel: `Compared with ${compName}: ${dmFmt(compFrom)} to ${dmFmt(compThrough)}`, today, periods: PERIOD_REGISTRY };
 }
 function gpCleanSpec(q){
   const preset = q && GP_PRESETS.includes(q.preset) ? q.preset : 'ytd';
@@ -18690,7 +18708,7 @@ function buildStrategyCards(accountId, spec, only){
   }
   // ---------- Card 2: budget allocations ----------
   if (want('sbud')){
-    const wEnd = R.preset === 'ytd' ? `${yrNow}-12-31` : R.through;
+    const wEnd = (R.preset === 'ytd' || R.preset === 'qtd') ? R.periodEnd : R.through;
     const ex = gpExpectedShare(accountId, R.from, wEnd);
     const planned = ex.anySpend ? Math.round(ex.spend) : null;
     const spentThrough = R.through > today ? today : R.through;
@@ -18712,7 +18730,7 @@ function buildStrategyCards(accountId, spec, only){
     let abstract, storyKind;
     if (planned == null){ storyKind = 'none'; abstract = completed != null && completed > 0 ? `No working media budget is on file for these dates yet. ${fmt(completed, 'mk')} has been spent in them.` : 'No working media budget is on file for these dates yet.'; }
     else { storyKind = 'comparison'; abstract = `${fmt((completed || 0) + pending, 'mk')} of the ${fmt(planned, 'mk')} working media is committed (${committed}%): ${fmt(completed || 0, 'mk')} spent, ${fmt(pending, 'mk')} scheduled.${over > 0 ? ` That is ${fmt(over, 'mk')} over plan.` : remaining ? ` ${fmt(remaining, 'mk')} not yet scheduled.` : ''}`; }
-    const c2 = { key: 'sbud', title: 'Budget Allocations', thought: 'GF', storyKind, abstract, rangeLabel: `${R.preset === 'ytd' ? 'Plan year' : R.name}: ${dmFmt(R.from)} to ${dmFmt(wEnd)}`, compLabel: R.compLabel,
+    const c2 = { key: 'sbud', title: 'Budget Allocations', thought: 'GF', storyKind, abstract, rangeLabel: `${R.preset === 'ytd' ? 'Plan year' : R.preset === 'qtd' ? 'Plan quarter' : R.name}: ${dmFmt(R.from)} to ${dmFmt(wEnd)}`, compLabel: R.compLabel,
       chart: { kind: 'donut', stages, center: { big: committed != null ? committed + '%' : '', small: committed != null ? 'committed' : '' } } };
     const monthBud = planWorkingMediaBudgetByMonth(accountId); const S0 = gpCached('S|' + accountId, 60000, () => buildForecastSeries(accountId));
     const mRows = dmMonthsOf(R.from, wEnd).map(k => [dmMonthName(k), fmt(monthBud[k] != null ? monthBud[k] : null, 'money'), fmt(S0.spend[k] != null ? S0.spend[k] : null, 'money')]);
@@ -18760,6 +18778,7 @@ function buildStrategyCards(accountId, spec, only){
     if (R.preset === 'wow'){ from = dmIso(t - 6 * 864e5); to = dmIso(t + 7 * 864e5); name = 'Last 7 and next 7 days'; }
     else if (R.preset === 'mom'){ from = `${today.slice(0, 7)}-01`; to = `${today.slice(0, 7)}-${dmPad(dmDim(yrNow, Number(today.slice(5, 7))))}`; name = 'This month'; }
     else if (R.preset === 'yoy'){ from = dmShiftYear(dmIso(t + 864e5), -1); to = dmShiftYear(dmIso(t), 1); name = 'Last and next 12 months'; }
+    else if (R.preset === 'qtd'){ from = R.from; to = R.periodEnd; name = 'This quarter'; }
     else if (R.preset === 'custom'){ from = R.from; to = R.through; name = 'Custom range'; }
     else { from = `${yrNow}-01-01`; to = `${yrNow}-12-31`; name = 'This year'; }
     const compFrom = dmShiftYear(from, -1), compTo = dmShiftYear(to, -1);
@@ -18926,7 +18945,7 @@ function resolveDateRange(spec, now){
   let from, to;
   if (preset === 'week'){ const start = Date.UTC(y, mo, d) - today.getUTCDay() * 864e5; from = dmIso(start); to = dmIso(start + 6 * 864e5); }
   else if (preset === 'month'){ from = dmIso(Date.UTC(y, mo, 1)); to = dmIso(Date.UTC(y, mo + 1, 0)); }
-  else if (preset === 'quarter'){ const q = Math.floor(mo / 3); from = dmIso(Date.UTC(y, q * 3, 1)); to = dmIso(Date.UTC(y, q * 3 + 3, 0)); }
+  else if (preset === 'quarter'){ const qb = periodQuarterBounds(Math.floor(mo / 3) + 1, y); from = qb.from; to = qb.to; }
   else if (preset === 'custom'){
     const f = dmParse(spec.from), t = dmParse(spec.to);
     if (f != null && t != null && t >= f && (t - f) / 864e5 <= 366 * 5){ from = dmIso(f); to = dmIso(t); }
@@ -19635,9 +19654,8 @@ function dqQuarterWhen(src){
     q = qq; y = String(yy);
   } else return null;
   const yr = y.length === 2 ? 2000 + Number(y) : Number(y); if (!(yr >= 2000 && yr <= 2099)) return null;
-  const pad = n => String(n).padStart(2, '0'); const sm = (q - 1) * 3 + 1, em = sm + 2;
-  const lastDay = new Date(Date.UTC(yr, em, 0)).getUTCDate();
-  return { from: `${yr}-${pad(sm)}-01`, through: `${yr}-${pad(em)}-${pad(lastDay)}`, rest: (src.slice(0, m.index) + ' ' + src.slice(m.index + m[0].length)), label: `Q${q} ${yr}` };
+  const qb = periodQuarterBounds(q, yr);
+  return { from: qb.from, through: qb.to, rest: (src.slice(0, m.index) + ' ' + src.slice(m.index + m[0].length)), label: `Q${q} ${yr}` };
 }
 function dqParseWhen(text){
   const src = String(text || '');
