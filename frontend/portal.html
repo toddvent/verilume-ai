@@ -14266,7 +14266,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-18-r20-contest-first-click';
+const CXMEDIA_BUILD_STAMP = '2026-11-18-r21-anthropic-default';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -51055,13 +51055,7 @@ function cmpStep0InitDelegatedEvents(){
       cmpRunCampaignCopyContest('cmpStep0SharedContestPanel', 'cmpStep0SharedContestBtn', 'cmpStep0SharedContestFlag');
       return;
     }
-    const runNowBtn = e.target.closest('#cmpStep0RunContestNowBtn');
-    if (runNowBtn){
-      if (Date.now() - cmpStep0PressAt < 1000) return;
-      cmpStep0FlushEdits();
-      cmpRunCampaignCopyContest('cmpStep0SharedContestPanel', 'cmpStep0SharedContestBtn', 'cmpStep0SharedContestFlag', 'fresh');
-      return;
-    }
+
     const contestChip = e.target.closest('.cmp-step0-contest-chip[data-audience-idx]');
     if (contestChip && !contestChip.disabled){
       cmpRunAudienceContest(parseInt(contestChip.getAttribute('data-audience-idx'), 10));
@@ -51077,11 +51071,11 @@ function cmpStep0InitDelegatedEvents(){
   // 2026-11-18 (r20): pressing a contest button while a field is still focused blurred it, the field re-rendered and shifted the layout, and the click was lost. Keep focus where it is; the click handler saves the edits itself.
   // Act on the press itself: a field losing focus can re-render the card and shift the buttons between press and release, which lost the click. A click that follows within a second is ignored; keyboard and touch still use the click.
   document.addEventListener('mousedown', (e) => {
-    const t = e.target && e.target.closest ? e.target.closest('#cmpStep0SharedContestBtn, #cmpStep0RunContestNowBtn') : null;
+    const t = e.target && e.target.closest ? e.target.closest('#cmpStep0SharedContestBtn') : null;
     if (!t || e.button !== 0) return;
     e.preventDefault(); cmpStep0PressAt = Date.now();
     cmpStep0FlushEdits();
-    cmpRunCampaignCopyContest('cmpStep0SharedContestPanel', 'cmpStep0SharedContestBtn', 'cmpStep0SharedContestFlag', t.id === 'cmpStep0RunContestNowBtn' ? 'fresh' : undefined);
+    cmpRunCampaignCopyContest('cmpStep0SharedContestPanel', 'cmpStep0SharedContestBtn', 'cmpStep0SharedContestFlag');
   });
   document.addEventListener('focusout', (e) => {
     if (e.target.id === 'cmpStep0HeadlineInput') cmpSaveStep0Headline();
@@ -51435,7 +51429,7 @@ function cmpRenderStep0RunContest(c){
     if (holder.querySelector('#cmpStep0SharedContestPanel')){ cmpContestSyncButtons(); return; }
     holder.innerHTML = `
       <div class="hint" style="margin-bottom:10px;">One shared contest, applied campaign-wide — writes into this campaign's Long Form Copy.</div>
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;"><button type="button" class="btn-primary" id="cmpStep0SharedContestBtn">${escapeHtml(cmpContestButtonLabel('cmpStep0SharedContestPanel'))}</button>${cmpContestNextMode('cmpStep0SharedContestPanel') === 'default' ? '<button type="button" class="btn-ghost" id="cmpStep0RunContestNowBtn">Run the full contest now →</button>' : ''}<span class="hint cmp-contest-credit" style="margin:0 0 0 auto;display:none;"></span></div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;"><button type="button" class="btn-primary" id="cmpStep0SharedContestBtn">${escapeHtml(cmpContestButtonLabel('cmpStep0SharedContestPanel'))}</button><span class="hint cmp-contest-credit" style="margin:0 0 0 auto;display:none;"></span></div>
       <div id="cmpStep0SharedContestPanel" style="margin-top:12px;"></div>`;
     // 2026-11-18 (r20): this holder is rebuilt whenever Step 0 re-renders, which used to wipe a running or finished contest. Put it back.
     cmpContestRestorePanel('cmpStep0SharedContestPanel', 'cmpStep0SharedContestBtn', 'cmpStep0SharedContestFlag');
@@ -73052,13 +73046,12 @@ function cmpContestNextMode(panelId){
 }
 function cmpContestButtonLabel(panelId){
   const m = cmpContestNextMode(panelId);
-  return m === 'default' ? '✦ Draft Campaign Copy →' : (m === 'extend' ? '✦ Run Contest for More Options →' : '↻ Run Another Contest →');
+  return m === 'default' ? '✦ Draft Campaign Copy →' : (m === 'extend' ? '✦ View the other options →' : '↻ Run Another Contest →');
 }
 function cmpContestSyncButtons(){
   [['cmpCopyContestPanel', 'cmpCopyContestBtn'], ['cmpStep0SharedContestPanel', 'cmpStep0SharedContestBtn'], ['askDockContestPanel', 'askDockContestBtn'], ['copyverCopyContestPanel', 'copyverCopyContestBtn']].forEach(([pid, bid]) => {
     const b = document.getElementById(bid); if (b) b.textContent = cmpContestButtonLabel(pid);
   });
-  { const rn = document.getElementById('cmpStep0RunContestNowBtn'); if (rn && cmpContestNextMode('cmpStep0SharedContestPanel') !== 'default') rn.remove(); }
   Object.keys(cmpPanelAudience).forEach(pid => {
     const b = document.getElementById(cmpAudBtnId(cmpPanelAudience[pid].idx)); if (b) b.textContent = cmpContestButtonLabel(pid);
   });
@@ -73397,12 +73390,13 @@ function renderCmpCopyContestPanel(result, flagId, panelId){
         ${(!hasNote && !hasFlags) ? '<div class="hint">No issues flagged.</div>' : ''}
       </div>
       <div style="padding-top:12px;display:flex;justify-content:center;">
-        <button type="button" class="btn-ghost" onclick="${cmpUseDraftOnclick(panelId, result.interviewId, c.key, flagId)}">Use this draft →</button>
+        <button type="button" class="btn-primary" onclick="${cmpUseDraftOnclick(panelId, result.interviewId, c.key, flagId)}">Use this draft →</button>
+        <button type="button" class="btn-ghost" style="margin-left:10px;" onclick="${cmpUseDraftOnclick(panelId, result.interviewId, c.key, flagId)}">Edit this draft</button>
       </div>
     </div>
     <div style="margin-top:10px;padding:12px;border:1px dashed var(--line);border-radius:8px;text-align:center;">
-      <div class="hint" style="margin-bottom:8px;">Want more to choose from? The full contest adds drafts from other AI partners, each scored the same way, next to this one.</div>
-      <button type="button" class="btn-primary" onclick="cmpRunCampaignCopyContest('${panelId}', '${btnIdFor}', '${flagId}', 'extend')">✦ Run the full contest →</button>
+      <div class="hint" style="margin-bottom:8px;">Want to compare? See drafts from the other AI partners, each scored the same way, next to this one. You can edit any draft before you use it.</div>
+      <button type="button" class="btn-primary" onclick="cmpRunCampaignCopyContest('${panelId}', '${btnIdFor}', '${flagId}', 'extend')">✦ View the other options →</button>
     </div>
     <div id="${flagId}" class="hint" style="margin-top:8px;"></div>
     ${renderAiStatusTip(INTERVIEW_STATUS_TIPS)}`;
