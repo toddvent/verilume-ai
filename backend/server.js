@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-18-r38-model-watch (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-18-r39-scoring-reliability (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -5042,13 +5042,31 @@ let ANTHROPIC_FORCED_TOOL_OK = true;
 function anthropicToolChoice(toolName){ return ANTHROPIC_FORCED_TOOL_OK ? { type: 'tool', name: toolName } : { type: 'auto' }; }
 function anthropicToolNudge(toolName){ return ANTHROPIC_FORCED_TOOL_OK ? '' : `\n\nRespond ONLY by calling the ${toolName} tool with your complete answer. Do not write any other text.`; }
 function isToolChoiceUnsupported(err){ return !!(err && err.httpStatus === 400 && /tool_choice/i.test(String(err.message || ''))); }
+// r39: the current model rejects a forced tool call, so we run in auto mode, where it sometimes answers in prose, cuts off, or fills only part of the form. Each of those is retried here (up to 3 tries, with the missing fields named and more room), so a draft or score does not fail on the first hiccup.
+function missingRequiredFields(out, schema){
+  const req = (schema && Array.isArray(schema.required)) ? schema.required : [];
+  return req.filter(k => { const v = out ? out[k] : undefined; return v === undefined || v === null || (typeof v === 'string' && !v.trim()); });
+}
 async function callClaudeForJSON(opts){
-  return withAnthropicModelFallback(opts, async (o) => {
-    try { return await callClaudeForJSONInner(o); }
-    catch (e){
-      if (ANTHROPIC_FORCED_TOOL_OK && isToolChoiceUnsupported(e)){ ANTHROPIC_FORCED_TOOL_OK = false; console.warn('[anthropic] forced tool_choice not supported by this model; switching to auto.'); return await callClaudeForJSONInner(o); }
-      throw e;
+  return withAnthropicModelFallback(opts, async (o0) => {
+    let o = o0, lastErr = null;
+    for (let attempt = 0; attempt < 3; attempt++){
+      try {
+        const out = await callClaudeForJSONInner(o);
+        const missing = missingRequiredFields(out, o0.schema);
+        if (!missing.length) return out;
+        lastErr = new Error('the model response was missing: ' + missing.join(', '));
+        console.warn('[anthropic] incomplete structured answer (' + missing.join(', ') + '), retrying ' + (attempt + 1) + '/3');
+        o = Object.assign({}, o0, { maxTokens: Math.min(8000, (o0.maxTokens || 900) * (attempt + 2)), content: typeof o0.content === 'string' ? o0.content + '\n\nIMPORTANT: your last answer left out ' + missing.join(', ') + '. Call the tool again with every required field fully written.' : o0.content });
+      } catch (e){
+        if (ANTHROPIC_FORCED_TOOL_OK && isToolChoiceUnsupported(e)){ ANTHROPIC_FORCED_TOOL_OK = false; console.warn('[anthropic] forced tool_choice not supported by this model; switching to auto.'); attempt--; continue; }
+        if (!e || !e.softFail) throw e;
+        lastErr = e;
+        console.warn('[anthropic] ' + e.message + ', retrying ' + (attempt + 1) + '/3');
+        o = Object.assign({}, o0, { maxTokens: Math.min(8000, (o0.maxTokens || 900) * (attempt + 2)) });
+      }
     }
+    throw lastErr || new Error('the model did not return a usable structured answer');
   });
 }
 async function callClaudeForJSONInner({ model, maxTokens, content, schema, toolName, toolDescription, timeoutMs }){
@@ -5057,7 +5075,7 @@ async function callClaudeForJSONInner({ model, maxTokens, content, schema, toolN
     headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
     body: JSON.stringify({
       model,
-      max_tokens: maxTokens,
+      max_tokens: ANTHROPIC_FORCED_TOOL_OK ? maxTokens : maxTokens + 1500, // auto mode: leave room in case the model spends part of the budget before answering
       messages: [{ role: 'user', content: (typeof content === 'string' ? content + anthropicToolNudge(toolName) : content) }],
       tools: [{
         name: toolName,
@@ -5075,8 +5093,15 @@ async function callClaudeForJSONInner({ model, maxTokens, content, schema, toolN
   }
   const data = await resp.json();
   const toolUse = (data.content || []).find(b => b.type === 'tool_use' && b.name === toolName);
-  if (!toolUse || typeof toolUse.input !== 'object' || toolUse.input === null){
-    throw new Error('model response did not include the expected structured tool call');
+  const emptyInput = !toolUse || typeof toolUse.input !== 'object' || toolUse.input === null || Object.keys(toolUse.input).length === 0;
+  if (emptyInput){
+    // The model sometimes answers in prose instead of calling the tool; if that prose holds the JSON object, use it.
+    const proseText = (data.content || []).filter(x => x.type === 'text').map(x => x.text || '').join('\n');
+    const fromText = proseText ? parseJsonBlock(proseText) : null;
+    if (fromText && typeof fromText === 'object') return fromText;
+    const err = new Error('model response did not include the expected structured tool call (stop_reason=' + (data.stop_reason || 'unknown') + ')');
+    err.softFail = true;
+    throw err;
   }
   return toolUse.input;
 }
@@ -31048,7 +31073,7 @@ RELEVANCE: judge four parts separately and report each. objectiveFit 0-40 (serve
 - Primary KPI: ${campaign.primaryKpi || '(not set)'}
 - Key Message: ${campaign.keyMessage || '(not set)'}
 
-COMPLIANCE (this is the BRAND FIT score, 0-100): how well this copy honors the brand voice guide, vision statement and writing samples below and avoids risky/absolute claims (guarantees, cures, "100% safe", etc). 100 = fully compliant; deduct per real issue, and name each one specifically in complianceFlags.
+COMPLIANCE (this is the BRAND FIT score, 0-100; start at 100 and list every deduction in brandDeductions with its points, so the reader can see exactly where each missing point went): how well this copy honors the brand voice guide, vision statement and writing samples below and avoids risky/absolute claims (guarantees, cures, "100% safe", etc). 100 = fully compliant; deduct per real issue, and name each one specifically in complianceFlags.
 BRAND VOICE GUIDE:
 ${voiceGuide || '(none on file)'}
 ${brandExtra ? `BRAND WRITING SAMPLES AND SAVED DECISIONS (the voice in practice; judge how close this copy sits to it):\n${brandExtra}\n` : ''}${visionStatement ? `BRAND VISION STATEMENT (the voice's north-star — copy that drifts from this is worth flagging too): ${visionStatement}\n` : ''}${longformVoiceExample ? `APPROVED VOICE CONTEST PARAGRAPH (the voice in a finished piece; judge register and rhythm, not facts):\n${longformVoiceExample}\n` : ''}
@@ -31062,7 +31087,7 @@ ${copyText.slice(0, 2000)}`;
         try {
           parsed = await callClaudeForJSON({
         model: ANTHROPIC_STANDARD_MODEL,
-        maxTokens: 500,
+        maxTokens: 1100,
         timeoutMs: 30000,
         content: prompt + '\n\nScoring rules: judge THIS copy on its own merits. Use the full 0-100 range and avoid round-number defaults; two different drafts should rarely get the same score. Calibrate like a senior brand editor: 90-100 = ready to run, on-voice, nothing to fix; 80-89 = strong with one or two small edits; 70-79 = usable but off-voice or off-brief in places; below 70 only when the copy clearly breaks the voice guide, the mandatory phrase or a compliance rule, and say which. Do not mark copy down for things the brand material does not actually address. In relevanceNote explain the Campaign Fit score (what earned and cost points on objective, audience, key message, call to action, quoting the words). In brandNote explain the Brand Fit score the same way (which voice guide lines or samples it matches or breaks, quoting the words); if no voice guide or samples are on file say so plainly instead of guessing.',
         toolName: 'submit_copy_score',
@@ -31077,10 +31102,11 @@ ${copyText.slice(0, 2000)}`;
             relevanceScore: { type: 'integer', minimum: 0, maximum: 100 },
             relevanceNote: { type: 'string', description: 'Two or three sentences explaining the Campaign Fit score, quoting the copy.' },
             brandNote: { type: 'string', description: 'Two or three sentences explaining the Brand Fit score, naming the voice guide lines or samples it matches or breaks.' },
+            brandDeductions: { type: 'array', description: 'Where the missing Brand Fit points went. One entry per deduction; the points must add up to 100 minus complianceScore. Empty only if complianceScore is 100.', items: { type: 'object', properties: { points: { type: 'integer', minimum: 1, maximum: 100 }, reason: { type: 'string', description: 'Short and specific: quote the words in the copy and name the voice guide line or sample they break or miss.' } }, required: ['points', 'reason'] } },
             complianceScore: { type: 'integer', minimum: 0, maximum: 100 },
             complianceFlags: { type: 'array', items: { type: 'string' }, description: 'Short, specific flags — one per real compliance issue found.' }
           },
-          required: ['relevanceScore', 'relevanceNote', 'complianceScore', 'complianceFlags']
+          required: ['relevanceScore', 'relevanceNote', 'brandNote', 'complianceScore', 'complianceFlags']
         }
       });
         } catch (e){ lastScoreErr = String(e && e.message || e).slice(0, 160); console.error('[scoreDraftCopy] AI scoring attempt ' + (attempt + 1) + ' failed:', lastScoreErr); if (attempt === 1) throw e; }
@@ -31101,6 +31127,7 @@ ${copyText.slice(0, 2000)}`;
         relevanceScore: typeof parsed.relevanceScore === 'number' ? parsed.relevanceScore : null,
         note: typeof parsed.relevanceNote === 'string' ? parsed.relevanceNote : null,
         brandNote: typeof parsed.brandNote === 'string' ? parsed.brandNote : null,
+        brandDeductions: Array.isArray(parsed.brandDeductions) ? parsed.brandDeductions.filter(d => d && typeof d.reason === 'string' && d.reason.trim()).map(d => ({ points: Math.max(1, Math.min(100, Math.round(Number(d.points) || 0))), reason: d.reason.trim().slice(0, 300) })).slice(0, 8) : null,
         breakdown: { objectiveFit: parsed.objectiveFit, audienceFit: parsed.audienceFit, keyMessageUse: parsed.keyMessageUse, ctaClarity: parsed.ctaClarity },
         complianceScore: aiComp,
         flags: aiFlags,
@@ -32611,7 +32638,7 @@ async function runCandidateInterview(campaign, account, audienceLabel, runOpts){
       // left of this request's.
       pending: !!gen.error,
       relevanceScore, complianceScore, combinedScore,
-      note: score ? score.note : null, brandNote: score ? (score.brandNote || null) : null, breakdown: score ? (score.breakdown || null) : null, flags: score ? score.flags : [], scoreMode: score ? score.mode : null,
+      note: score ? score.note : null, brandNote: score ? (score.brandNote || null) : null, brandDeductions: score ? (score.brandDeductions || null) : null, breakdown: score ? (score.breakdown || null) : null, flags: score ? score.flags : [], scoreMode: score ? score.mode : null,
       // 2026-09-23 — "option to expand to a long format" per direct
       // instruction. Populated on demand by POST .../copy-interview/
       // :interviewId/candidate/:key/expand, never at first-pass generation
@@ -32686,7 +32713,7 @@ async function extendCandidateInterviewWithContest(campaign, account, audienceLa
       key: v.key, label: v.label, vendor: v.vendor, model: v.model, configured: true,
       copy: gen.copy, approach: gen.approach || null, error: gen.error, pending: !!gen.error,
       relevanceScore: rel, complianceScore: comp, combinedScore: (typeof rel === 'number' && typeof comp === 'number') ? Math.round((rel + comp) / 2) : null,
-      note: score ? score.note : null, brandNote: score ? (score.brandNote || null) : null, breakdown: score ? (score.breakdown || null) : null, flags: score ? score.flags : [], scoreMode: score ? score.mode : null, longCopy: null
+      note: score ? score.note : null, brandNote: score ? (score.brandNote || null) : null, brandDeductions: score ? (score.brandDeductions || null) : null, breakdown: score ? (score.breakdown || null) : null, flags: score ? score.flags : [], scoreMode: score ? score.mode : null, longCopy: null
     };
   });
   for (let i = fresh.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); [fresh[i], fresh[j]] = [fresh[j], fresh[i]]; }
@@ -32728,7 +32755,7 @@ function redactCandidatesForClient(candidates){
     key: c.key, label: c.blindLabel || c.label, configured: c.configured,
     copy: c.copy, approach: c.approach || null, headline: c.headline || null, error: c.error, pending: !!c.pending,
     relevanceScore: c.relevanceScore, complianceScore: c.complianceScore, combinedScore: c.combinedScore,
-    note: c.note, brandNote: c.brandNote || null, breakdown: c.breakdown || null, flags: c.flags, scoreMode: c.scoreMode,
+    note: c.note, brandNote: c.brandNote || null, brandDeductions: c.brandDeductions || null, breakdown: c.breakdown || null, flags: c.flags, scoreMode: c.scoreMode,
     // 2026-09-23 — "option to expand to a long format." Populated by POST
     // .../copy-interview/:interviewId/candidate/:key/expand; null until a
     // client explicitly asks for the long-form version of this candidate.
@@ -33385,7 +33412,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-18-r38-model-watch',
+        buildStamp: '2026-11-18-r39-scoring-reliability',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -44750,6 +44777,21 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       if (!interview) return sendJson(res, 404, { error: 'copy contest not found for this campaign' });
       let candidates = [];
       try { candidates = JSON.parse(interview.candidatesJson) || []; } catch (e){ candidates = []; }
+      // r39: drafts whose AI score fell back to the rules check (the scorer hiccuped) are scored again on this same click.
+      const rescoreList = candidates.filter(c => !c.pending && c.copy && c.scoreMode === 'heuristic');
+      if (rescoreList.length){
+        try {
+          const rsCtx = (await brandWritingSampleContext(account.accountId, { creativeMarket: campaignCreativeMarketScope(campaign) })) + (await creativeJobDecisionContext(account.accountId));
+          await Promise.all(rescoreList.map(async (c) => {
+            const score = await scoreDraftCopy(c.copy, campaign, account, rsCtx);
+            if (!score || score.mode !== 'ai') return;
+            c.relevanceScore = score.relevanceScore; c.complianceScore = score.complianceScore;
+            c.combinedScore = (typeof c.relevanceScore === 'number' && typeof c.complianceScore === 'number') ? Math.round((c.relevanceScore + c.complianceScore) / 2) : null;
+            c.note = score.note; c.brandNote = score.brandNote || null; c.brandDeductions = score.brandDeductions || null; c.breakdown = score.breakdown || null; c.flags = score.flags; c.scoreMode = score.mode;
+          }));
+          db.prepare('UPDATE campaign_copy_interviews SET candidatesJson = ? WHERE id = ?').run(JSON.stringify(candidates), interviewId);
+        } catch (e){ console.warn('[copy contest] rescoring failed:', e && e.message); }
+      }
       const pendingCandidates = candidates.filter(c => c.pending);
       if (!pendingCandidates.length){
         // Cheap no-op — safe to call even if the client's own pending check
@@ -44777,7 +44819,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
             c.combinedScore = (typeof c.relevanceScore === 'number' && typeof c.complianceScore === 'number')
               ? Math.round((c.relevanceScore + c.complianceScore) / 2) : null;
             c.note = score ? score.note : null;
-            c.brandNote = score ? (score.brandNote || null) : null; c.breakdown = score ? (score.breakdown || null) : null;
+            c.brandNote = score ? (score.brandNote || null) : null; c.brandDeductions = score ? (score.brandDeductions || null) : null; c.breakdown = score ? (score.breakdown || null) : null;
             c.flags = score ? score.flags : [];
             c.scoreMode = score ? score.mode : null;
           }
