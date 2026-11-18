@@ -14275,7 +14275,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-18-r23-projects-category';
+const CXMEDIA_BUILD_STAMP = '2026-11-18-r24-eleven-voice-only';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -58566,10 +58566,26 @@ function briefIvMark(id){ document.querySelectorAll('.brf-active').forEach(e => 
 // Falls back to the browser voice if the server has no key or the call fails.
 let briefAudio = null, briefElOff = false, briefElWhy = ''; const briefAudioCache = {};
 // When the ElevenLabs voice can't be used, say why on screen (and in the console) instead of silently using the browser voice.
-function briefElFail(why){ briefElOff = true; briefElWhy = String(why || 'unknown'); try { console.warn('Brief voice: ElevenLabs unavailable —', briefElWhy); } catch (e){} const m = briefEl('briefMsg'); if (m) m.textContent = (m.textContent || '') + '  [Browser voice used. ElevenLabs: ' + briefElWhy + ']'; }
-function briefSpeakBrowser(text, cb){
-  const syn = window.speechSynthesis; if (!syn || typeof SpeechSynthesisUtterance === 'undefined'){ setTimeout(cb, 600); return; }
-  try { syn.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = 'en-US'; u.rate = 1.02; u.onend = () => cb(); u.onerror = () => cb(); syn.speak(u); } catch (e){ cb(); }
+function briefElFail(why){ briefElOff = false; briefElWhy = String(why || 'unknown'); try { console.warn('Brief voice: ElevenLabs unavailable —', briefElWhy); } catch (e){} const m = briefEl('briefMsg'); if (m) m.textContent = (m.textContent || '') + '  [Voice unavailable right now: ' + briefElWhy + ']'; }
+// 2026-11-18 (Todd): no robot voice anywhere. When the ElevenLabs voice is unavailable the words stay on screen and the flow continues silently.
+function briefSpeakBrowser(text, cb){ setTimeout(cb, Math.min(6000, 900 + String(text || '').length * 45)); }
+// One shared ElevenLabs speaker for scripted playback: speakEleven(text) resolves when the audio ends (or right away, silently, if unavailable).
+let elPlay = { audio: null, token: 0 };
+function elStop(){ elPlay.token++; try { if (elPlay.audio){ elPlay.audio.onended = null; elPlay.audio.pause(); } } catch (e){} }
+async function speakEleven(text){
+  const my = ++elPlay.token; text = String(text || '').trim(); if (!text) return false;
+  try {
+    let url = briefAudioCache[text];
+    if (!url){
+      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice/speak`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: text.slice(0, 400) }) });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      url = briefAudioCache[text] = URL.createObjectURL(await resp.blob());
+    }
+    if (my !== elPlay.token) return false;
+    elStop(); const t2 = ++elPlay.token; const a = elPlay.audio = new Audio(url);
+    await new Promise(res => { a.onended = res; a.onerror = res; const pr = a.play(); if (pr && pr.catch) pr.catch(res); });
+    return t2 === elPlay.token;
+  } catch (e){ try { console.warn('ElevenLabs voice unavailable:', e && e.message); } catch (x){} return false; }
 }
 async function briefIvSay(text, cb){
   briefMsg(text);
@@ -58624,7 +58640,7 @@ function briefIvAnswer(text){
 function briefIvStop(silent){
   const iv = briefIv; briefIv = null; briefIvMark(null);
   if (iv){ iv.active = false; try { if (iv.rec) iv.rec.stop(); } catch (e){} }
-  try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e){}
+  
   try { if (briefAudio){ briefAudio.onended = null; briefAudio.pause(); } } catch (e){}
   const mic = briefEl('briefMic'); if (mic){ mic.classList.remove('listening'); mic.title = 'Talk through the brief'; }
   if (silent) briefIvKeep = null;
@@ -68765,7 +68781,7 @@ async function prvSay(text, cb){
       if (!resp.ok){ let why = 'HTTP ' + resp.status; try { const j = await resp.json(); if (j && j.error) why += ' ' + j.error; } catch (e){} throw new Error(why); }
       url = briefAudioCache[text] = URL.createObjectURL(await resp.blob());
     }
-  } catch (e){ briefElFail(e && e.message); prvMsg(text + '  [Browser voice used. ElevenLabs: ' + (e && e.message) + ']'); if (!iv || prvIv === iv) briefSpeakBrowser(text, cb); return; }
+  } catch (e){ briefElFail(e && e.message); prvMsg(text + '  [Voice unavailable right now: ' + (e && e.message) + ']'); if (!iv || prvIv === iv) briefSpeakBrowser(text, cb); return; }
   if (iv && prvIv !== iv){ return; }
   try {
     if (briefAudio){ briefAudio.pause(); }
@@ -68928,7 +68944,7 @@ function prvStop(silent){
   const iv = prvIv; prvIv = null;
   document.querySelectorAll('.brf-active').forEach(e => e.classList.remove('brf-active'));
   if (iv){ iv.active = false; try { if (iv.rec) iv.rec.stop(); } catch (e){} }
-  try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e){}
+  
   try { if (briefAudio){ briefAudio.onended = null; briefAudio.pause(); } } catch (e){}
   document.querySelectorAll('.prv-mic').forEach(mic => { mic.classList.remove('listening'); mic.textContent = '🎙 Talk it through'; });
   if (silent) prvKeep = null;
@@ -75065,12 +75081,9 @@ function cmpStopMoodCue(){
 // though it's a generic system voice, not a branded/licensed one (matching
 // a specific brand voice's actual audio persona would need a real TTS
 // vendor — see cxmedia-voice-nlp-architecture-2026-08-08.md Phase 2).
+let cmpListenRun = 0;
 function cmpListenToScript(idPrefix, moodKey){
   if (!cmpIsEnterpriseTier()) return;
-  if (!('speechSynthesis' in window)){
-    alert("This browser doesn't support voice playback.");
-    return;
-  }
   cmpStopListenToScript(idPrefix);
   const filmstrip = document.getElementById(`${idPrefix}_filmstrip`);
   const stage = document.getElementById(`${idPrefix}_motionStage`);
@@ -75090,16 +75103,13 @@ function cmpListenToScript(idPrefix, moodKey){
     if (frameEl) frameEl.textContent = `Frame ${i + 1} / ${count}`;
     if (captionEl) captionEl.textContent = txt || '(no copy yet for this frame)';
     if (!txt){ i++; speakNext(); return; }
-    const utt = new SpeechSynthesisUtterance(txt);
-    utt.rate = preset.rate;
-    utt.onend = () => { i++; speakNext(); };
-    utt.onerror = () => { i++; speakNext(); };
-    window.speechSynthesis.speak(utt);
+    const myRun = cmpListenRun = (cmpListenRun || 0) + 1;
+    speakEleven(txt).then(ok => { if (myRun !== cmpListenRun) return; if (!ok) return new Promise(r => setTimeout(r, Math.min(5000, 800 + txt.length * 45))).then(() => { if (myRun === cmpListenRun){ i++; speakNext(); } }); i++; speakNext(); });
   };
   speakNext();
 }
 function cmpStopListenToScript(idPrefix){
-  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  cmpListenRun++; elStop();
   cmpStopMoodCue();
   const stage = document.getElementById(`${idPrefix}_motionStage`);
   if (stage) stage.classList.remove('playing');
@@ -86671,6 +86681,7 @@ async function posSetDecision(contributionId, status){
     fetch(base() + '/api/accounts/' + encodeURIComponent(a) + '/upgrade-request', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify({ source: source }) })
       .then(function () { done(true); }).catch(function () { done(false); });
   }
+  var sparkAudio = null;
   function render(a, tok, ls) {
     var expired = ls.expired, left = ls.daysLeft;
     var bar = el('div', 'position:fixed;left:0;right:0;top:0;z-index:2147482000;background:' + (expired ? '#8a2b2b' : NAVY) + ';color:#fff;font:600 13px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;gap:14px;align-items:center;justify-content:center;padding:9px 16px;flex-wrap:wrap');
@@ -86692,10 +86703,10 @@ async function posSetDecision(contributionId, status){
       var play = el('button', 'background:' + NAVY + ';color:#fff;border:0;padding:7px 12px;border-radius:6px;cursor:pointer;font-weight:600', 'Listen');
       var yes = el('button', 'background:' + AMBER + ';color:' + NAVY + ';border:0;padding:7px 12px;border-radius:6px;cursor:pointer;font-weight:700', 'Yes, tell the team');
       var no = el('button', 'background:transparent;color:#555;border:0;padding:7px 6px;cursor:pointer', 'Not now');
-      function speak() { try { if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); var u = new SpeechSynthesisUtterance(script); u.rate = 1; window.speechSynthesis.speak(u); } } catch (e) {} }
+      function speak() { try { if (sparkAudio) sparkAudio.pause(); fetch(base() + '/api/accounts/' + encodeURIComponent(a) + '/voice/speak', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify({ text: script }) }).then(function (r) { return r.ok ? r.blob() : null; }).then(function (b) { if (b){ sparkAudio = new Audio(URL.createObjectURL(b)); sparkAudio.play().catch(function () {}); } }).catch(function () {}); } catch (e) {} }
       play.onclick = speak;
       yes.onclick = function () { yes.disabled = true; requestUpgrade(a, tok, 'day-6 voice', function (ok) { card.innerHTML = ''; card.appendChild(el('div', 'font-weight:700', ok ? 'Thanks. Our team will contact you.' : 'Could not send. Email verilume@verilume.ai.')); setTimeout(function () { card.remove(); }, 4000); }); };
-      no.onclick = function () { try { window.speechSynthesis.cancel(); } catch (e) {} card.remove(); };
+      no.onclick = function () { try { if (sparkAudio) sparkAudio.pause(); } catch (e) {} card.remove(); };
       row.appendChild(play); row.appendChild(yes); row.appendChild(no); card.appendChild(row); document.body.appendChild(card);
       if (once(vkey)) { try { speak(); } catch (e) {} }
     }
