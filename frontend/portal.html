@@ -6832,6 +6832,11 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
          back to a plain empty-state when nothing's been approved yet. -->
     <div class="section-card" id="voiceContestCurrentSummary" style="margin-bottom:16px;">
       <h3 style="text-transform:uppercase;letter-spacing:0.04em;">Your Current Voice</h3>
+      <div class="field" style="margin-bottom:12px;">
+        <label>Voice Guide <span style="font-weight:400;text-transform:none;color:var(--muted);">— what the platform writes and scores against</span></label>
+        <p id="voiceContestCurrentGuide" style="margin:2px 0 0;font-weight:600;"></p>
+        <p id="voiceContestCurrentGuideExcerpt" class="hint" style="margin:4px 0 0;white-space:pre-wrap;"></p>
+      </div>
       <div class="field" style="margin-bottom:8px;">
         <label>Headline (Vision Statement)</label>
         <p id="voiceContestCurrentHeadline" style="margin:2px 0 0;font-weight:600;"></p>
@@ -14275,7 +14280,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-18-r28-create-to-channel-plan';
+const CXMEDIA_BUILD_STAMP = '2026-11-18-r31-voice-current-guide';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -22793,6 +22798,7 @@ async function loadAccountData(){
       state.voice.approved = !!record.account.voiceApproved;
       state.voice.draft = record.account.voiceGuideText || '';
       state.voice.version = record.account.voiceVersion || 0;
+      state.voice.approvedAt = record.account.voiceApprovedAt || null;
       // 2026-08-22 — the multi-model Brand Voice contest's two dedicated
       // fields, read back the same way the draft above is — independent of
       // voiceApproved, since a Vision Statement/Longform Example can exist
@@ -57614,7 +57620,34 @@ function briefMultiFill(id, values, set, fn, placeholder, disabled){
   const n = [...set]; sum.textContent = n.length ? n.join(', ') : placeholder; sum.classList.toggle('filled', n.length > 0);
 }
 function briefSelectHtml(id, opts, ph, onchange){ return `<select id="${id}" class="brf-in" onchange="${onchange}"><option value="">${ph}</option>${opts.map(o => `<option value="${escapeHtml(o.v)}">${escapeHtml(o.l)}</option>`).join('')}</select>`; }
-function briefSetKind(k){ if (k === briefKind) return; briefKind = k; briefBuild(); }
+// 2026-11-18 (r29), per Todd: Create a campaign, Stand alone media placement and Create a marketing project are separate processes that share a table structure.
+// Switching between them starts the new one blank: nothing typed in one carries into another and nothing is saved.
+function briefSetKind(k){
+  if (k === briefKind) return;
+  const ex = briefEl('cmpExistingCampaign'); const editing = !!(ex && ex.value);
+  if (!editing){
+    try { briefIvStop(true); } catch (e){}
+    // Clear only what the brief and the form share (not the whole downstream wizard): name, dates, goal, budget, KPI, stage, audiences, groups.
+    try {
+      ['cmpName','cmpKeyMessage','cmpBudget','cmpCreationBudget','cmpPlannedImpressions','cmpStartDate','cmpEndDate','cmpKpiGoal'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+      const kp = document.getElementById('cmpPrimaryKpi'); if (kp) kp.value = '';
+      const bi = document.getElementById('cmpCreationBusinessInitiativeSelect'); if (bi) bi.value = '';
+      const ct = document.getElementById('cmpCreationCampaignTypeSelect'); if (ct) ct.value = '';
+      cmpPendingBusinessInitiative = ''; cmpPendingCampaignType = '';
+      selectedStage = null; selectedSegments = new Set(); excludedSegments = new Set(); selectedChannels = new Set();
+      selectedProductGroups = new Set(); selectedCreativeFocusGroups = new Set();
+      if (typeof cmpPlannedImpressionsAuto !== 'undefined') cmpPlannedImpressionsAuto = true; if (typeof cmpBudgetAuto !== 'undefined') cmpBudgetAuto = true;
+      renderStageRow(); renderSegmentRow(); renderCmpChannelRow(); renderCmpProductGroupRow(); renderCmpCreativeFocusGroupRow(); cmpUpdateKpiGateUI();
+    } catch (e){ console.warn('briefSetKind: reset', e); }
+    try { plfReset(); } catch (e){}
+    briefMode = 'recommend';
+    briefS.placement = { assoc: 'no', campaignId: '', name: '', channel: '', partner: '', start: '', end: '', reach: '', budget: '', pg: new Set(), cg: new Set() };
+    briefS.project = { name: '', supports: '', assets: new Set(), delivery: '', area: 'project', pg: new Set(), cg: new Set() };
+    const h = document.getElementById('plfHost'); if (h) h.remove();
+    ['frmStage','frmAud','frmExcl','frmChan','frmType','frmSpec','frmPartner','frmReach'].forEach(id => { const e = briefEl(id); if (e && 'value' in e) e.value = ''; });
+  }
+  briefKind = k; briefBuild(); if (!editing){ try { briefRender(); } catch (e){} }
+}
 function briefAssetTypes(){ const s = new Set(); Object.keys(CMP_CHANNEL_CREATIVE_ASSETS).forEach(g => CMP_CHANNEL_CREATIVE_ASSETS[g].forEach(a => s.add(a))); return [...s]; }
 function briefSetMode(m){ briefMode = m === 'create' ? 'create' : 'recommend'; briefRender(); }
 function briefPickName(v){ const e = briefEl('cmpName'); if (!e) return; e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); }
@@ -73372,13 +73405,7 @@ function cmpRenderCardSections(c, idBase, expandLinkHtml){
       <div style="font-size:0.8125rem;margin:6px 0;white-space:pre-wrap;">${escapeHtml(c.longCopy)}</div>
     </div>` : `<div class="hint" style="margin-top:8px;">Want it longer? This asks the AI to write a fuller version of this draft. It appears right here, under the original.</div>${expandLinkHtml}`}
   </div>`;
-  const hasNote = !!c.note;
-  const hasFlags = !!(c.flags && c.flags.length);
-  const assessHtml = `<div id="${assessId}" style="display:${assessOpen ? 'block' : 'none'};margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);">
-    ${hasNote ? `<div class="hint" style="font-style:italic;">${escapeHtml(c.note)}</div>` : ''}
-    ${hasFlags ? `<div class="hint" style="color:var(--advocacy);margin-top:${hasNote ? '4px' : '0'};">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
-    ${(!hasNote && !hasFlags) ? '<div class="hint">No issues flagged.</div>' : ''}
-  </div>`;
+  const assessHtml = `<div id="${assessId}" style="display:${assessOpen ? 'block' : 'none'};margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);">${cmpAssessmentBlockHtml(c)}</div>`;
   const linksHtml = `<a href="javascript:void(0)" onclick="cmpToggleCardSection('${draftId}', this, 'View long format →', 'Hide long format')" style="font-size:0.75rem;color:var(--cx);font-weight:600;text-decoration:none;">${draftOpen ? 'Hide long format' : 'View long format →'}</a>
     <a href="javascript:void(0)" onclick="cmpToggleCardSection('${assessId}', this, 'View our assessment →', 'Hide our assessment')" style="font-size:0.75rem;color:var(--cx);font-weight:600;text-decoration:none;">${assessOpen ? 'Hide our assessment' : 'View our assessment →'}</a>`;
   return { draftHtml, assessHtml, linksHtml };
@@ -73398,6 +73425,28 @@ function cmpRenderCardSections(c, idBase, expandLinkHtml){
 // than one DOM element (Brand Messaging's panel and the Copy Versions
 // drawer's panel), so the button's onclick needs to know which one it's
 // in, not assume a single well-known id.
+// 2026-11-18 (r30), per Todd: scores need a written reason for BOTH halves. This shows Campaign Fit (with its four parts) and Brand Fit, each with why, plus any flags.
+function cmpAssessmentBlockHtml(c){
+  const bd = c.breakdown || null;
+  const part = (l, v, max) => (typeof v === 'number') ? `${l} ${v}/${max}` : '';
+  const parts = bd ? [part('Objective', bd.objectiveFit, 40), part('Audience', bd.audienceFit, 30), part('Key message', bd.keyMessageUse, 20), part('Call to action', bd.ctaClarity, 10)].filter(Boolean).join(' · ') : '';
+  const lbl = 'text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.625rem;';
+  const flags = (c.flags && c.flags.length) ? `<div class="hint" style="color:var(--advocacy);margin-top:6px;">${c.flags.map(escapeHtml).join('; ')}</div>` : '';
+  const camp = c.note ? `<div class="hint" style="font-style:italic;">${escapeHtml(c.note)}</div>` : '<div class="hint">No written reason was returned for this score.</div>';
+  const brand = c.brandNote ? `<div class="hint" style="font-style:italic;">${escapeHtml(c.brandNote)}</div>` : (c.flags && c.flags.length ? '' : '<div class="hint">No brand issues flagged.</div>');
+  return `<div class="hint" style="${lbl}margin:0 0 2px;">Campaign Fit ${scorePill(c.relevanceScore)}</div>${parts ? `<div class="hint" style="margin:0 0 2px;">${escapeHtml(parts)}</div>` : ''}${camp}
+    <div class="hint" style="${lbl}margin:8px 0 2px;">Brand Fit ${scorePill(c.complianceScore)}</div>${brand}${flags}`;
+}
+// A partner that did not answer in time (or an empty first draft) can be tried again on demand, one click, no new run.
+async function cmpRetryMissingContestOptions(panelId, flagId){
+  const result = cmpCopyContestLastResult[panelId]; const campaign = cmpCurrentCampaign(); if (!result || !result.interviewId || !campaign) return;
+  const flag = document.getElementById(flagId); if (flag){ flag.style.color = ''; flag.textContent = 'Trying the missing options again…'; }
+  try {
+    const data = await cmpFetchJsonWithRetry(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/copy-interview/${encodeURIComponent(result.interviewId)}/retry-pending`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 100000 }, 1, 700);
+    if (Array.isArray(data.candidates)){ result.candidates = data.candidates; result.recommendedKey = data.recommendedKey; }
+    const p = document.getElementById(panelId); if (p) p.innerHTML = renderCmpCopyContestPanel(result, flagId, panelId);
+  } catch (e){ if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = 'Could not reach the writers just now: ' + (e.message || 'try again in a moment.'); } }
+}
 function renderCmpCopyContestPanel(result, flagId, panelId){
   flagId = flagId || 'cmpCopyContestSelectFlag';
   panelId = panelId || 'cmpCopyContestPanel';
@@ -73423,6 +73472,12 @@ function renderCmpCopyContestPanel(result, flagId, panelId){
   const visibleCandidates = (result.candidates || []).filter(c => c.configured && c.copy);
   // 2026-10-18 (test 3 note 2): the first draft stands on its own. No "Option 1" label, no "top scoring" badge (it is the only score), the
   // whole draft and our assessment are open, and a button offers the full contest.
+  if (result.mode === 'default' && visibleCandidates.length === 0){
+    const first = (result.candidates || [])[0] || {};
+    return `<div style="border:1px solid #F3B8B8;background:#FDECEC;border-radius:8px;padding:12px;"><div style="font-weight:700;">The first draft did not come back.</div>
+      <div class="hint" style="margin-top:4px;">${escapeHtml(first.error || 'The writer did not return any copy.')}</div>
+      <div style="margin-top:10px;"><button type="button" class="btn-primary" onclick="cmpRetryMissingContestOptions('${panelId}','${flagId}')">Try the draft again →</button></div></div><div id="${flagId}" class="hint" style="margin-top:8px;"></div>`;
+  }
   if (result.mode === 'default' && visibleCandidates.length === 1){
     const c = visibleCandidates[0];
     const btnIdFor = { cmpCopyContestPanel: 'cmpCopyContestBtn', cmpStep0SharedContestPanel: 'cmpStep0SharedContestBtn', askDockContestPanel: 'askDockContestBtn', copyverCopyContestPanel: 'copyverCopyContestBtn' }[panelId] || (cmpPanelAudience[panelId] ? cmpAudBtnId(cmpPanelAudience[panelId].idx) : '');
@@ -73443,9 +73498,7 @@ function renderCmpCopyContestPanel(result, flagId, panelId){
       </div>
       <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--line);">
         <div class="hint" style="${lbl}margin-bottom:4px;">Our assessment</div>
-        ${hasNote ? `<div class="hint" style="font-style:italic;">${escapeHtml(c.note)}</div>` : ''}
-        ${hasFlags ? `<div class="hint" style="color:var(--advocacy);margin-top:${hasNote ? '4px' : '0'};">${c.flags.map(escapeHtml).join('; ')}</div>` : ''}
-        ${(!hasNote && !hasFlags) ? '<div class="hint">No issues flagged.</div>' : ''}
+        ${cmpAssessmentBlockHtml(c)}
       </div>
       <div style="padding-top:12px;display:flex;justify-content:center;">
         <button type="button" class="btn-primary" onclick="${cmpUseDraftOnclick(panelId, result.interviewId, c.key, flagId)}">Use this draft →</button>
@@ -73505,7 +73558,9 @@ function renderCmpCopyContestPanel(result, flagId, panelId){
       </div>
     </div>`;
   }).join('');
-  return `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;">${cards}</div>
+  const missingN = (result.candidates || []).filter(c => c.configured && !c.copy).length;
+  const missingHtml = (missingN && result.interviewId) ? `<div style="margin-top:10px;padding:10px 12px;border:1px dashed var(--line);border-radius:8px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;"><span class="hint" style="margin:0;">${missingN} ${missingN === 1 ? 'option' : 'options'} did not finish in time.</span><button type="button" class="btn-ghost" onclick="cmpRetryMissingContestOptions('${panelId}','${flagId}')">Try ${missingN === 1 ? 'it' : 'them'} again →</button></div>` : '';
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;">${cards}</div>${missingHtml}
     <div id="${flagId}" class="hint" style="margin-top:8px;"></div>
     ${renderAiStatusTip(INTERVIEW_STATUS_TIPS)}`;
 }
@@ -73685,6 +73740,7 @@ function cmpSaveCopyContestWinnerEdit(editId, saveFlagId){
     return;
   }
   longformEl.value = editEl.value;
+  cmpHydrateMsgFieldsFromCampaign();
   cmpUnapproveMsgField('longform');
   cmpRenderAllMsgGates();
   // Same lock gate as Key Message/Brief Builder elsewhere — a field that's
@@ -73692,7 +73748,10 @@ function cmpSaveCopyContestWinnerEdit(editId, saveFlagId){
   // either way and will be sitting there, ready to approve, once those
   // upstream fields are complete.
   if (longformEl.disabled){
-    if (saveFlag){ saveFlag.style.color = 'var(--advocacy)'; saveFlag.textContent = "Saved — but Long Form Copy is locked until Key Message and the Brief Builder context above it are both filled in. It'll be sitting there ready to approve once those are complete."; }
+    // Still genuinely missing one of them: keep the copy on the campaign anyway so every asset uses it, and say exactly which one is empty.
+    try { const c3 = cmpRailLoadedCampaign(); if (c3){ c3.longformCopy = longformEl.value; cmpPersistMessagingToCampaign(); if (typeof cmpRerenderCreativeAssetCopyPanels === 'function') cmpRerenderCreativeAssetCopyPanels(); } } catch (e){}
+    const miss = [cmpKeyMessageComplete() ? '' : 'the Key Message', cmpBriefBuilderComplete() ? '' : 'the Brief Builder context'].filter(Boolean).join(' and ');
+    if (saveFlag){ saveFlag.style.color = 'var(--advocacy)'; saveFlag.textContent = `Saved to this campaign. It can be approved once ${miss || 'the Key Message and Brief Builder context'} ${/ and /.test(miss) ? 'are' : 'is'} filled in; that is the only thing left.`; }
     return;
   }
   cmpApproveMsgField('longform');
@@ -73855,11 +73914,19 @@ function cmpEffectiveToneDescriptor(){
 // that used to sit between these two is removed (see
 // cmpEffectiveToneDescriptor() above); Long Form Copy now unlocks directly
 // off Key Message + Brief Builder context, one fewer gate to clear.
+// 2026-11-18 (r30): Creative Step 0 saves the Headline (Key Message) and the brief on the campaign itself; the Brand Messaging fields can still be empty on screen. Either place counts, and the screen fields are filled from the campaign.
+function cmpHydrateMsgFieldsFromCampaign(){
+  const c = (typeof cmpRailLoadedCampaign === 'function') ? cmpRailLoadedCampaign() : null; if (!c) return;
+  const km = document.getElementById('cmpKeyMessage'); if (km && !km.value.trim() && String(c.keyMessage || '').trim()) km.value = c.keyMessage;
+  const bb = document.getElementById('cmpBriefBuilderExpandedText'); if (bb && !bb.value.trim() && String(c.briefBuilderExpandedText || '').trim()) bb.value = c.briefBuilderExpandedText;
+}
 function cmpKeyMessageComplete(){
+  cmpHydrateMsgFieldsFromCampaign();
   const el = document.getElementById('cmpKeyMessage');
   return !!(el && el.value.trim());
 }
 function cmpBriefBuilderComplete(){
+  cmpHydrateMsgFieldsFromCampaign();
   const el = document.getElementById('cmpBriefBuilderExpandedText');
   return !!(el && el.value.trim());
 }
@@ -74033,10 +74100,14 @@ function cmpUnapproveMsgField(key){
 // reopens approval" convention as cmpUnapproveMessaging() elsewhere in this
 // stage). Round 132ao (2026-08-12) follow-up — dropped the
 // cmpUnapproveMsgField('tone') call now that Tone Notes is removed.
+let cmpMsgAutosaveT = null;
 function cmpKeyMessageOrBriefEdited(){
   markCampaignFormTouched();
   cmpUnapproveMsgField('longform');
   cmpRenderAllMsgGates();
+  // 2026-11-18 (r30), per Todd: nothing to press. Once both are filled in, they are saved on their own.
+  clearTimeout(cmpMsgAutosaveT);
+  cmpMsgAutosaveT = setTimeout(() => { try { if (cmpKeyMessageComplete() && cmpBriefBuilderComplete()) cmpPersistMessagingToCampaign(); } catch (e){} }, 1200);
 }
 // Round 132e (2026-08-09)'s single "draft everything blank on stage open"
 // entry point — kept as the name openCmpStage('messaging') already calls,
@@ -74070,7 +74141,7 @@ function cmpAutoDraftMessaging(){
 function cmpPersistMessagingToCampaign(){
   const c = cmpRailLoadedCampaign();
   if (!c) return;
-  c.keyMessage = document.getElementById('cmpKeyMessage').value.trim();
+  { const kv = document.getElementById('cmpKeyMessage').value.trim(); if (kv || !String(c.keyMessage || '').trim()) c.keyMessage = kv; } // never blank a saved Key Message from an empty screen field
   // Round 132nn (2026-08-10) — the Brief Builder banner is now editable and
   // is one of the 2 human-authored inputs Tone Notes/Do's-Don'ts gate on
   // (see cmpBriefBuilderComplete()), so a human's edit to it needs to
@@ -74080,7 +74151,7 @@ function cmpPersistMessagingToCampaign(){
   // "no real persistence" disclosure as every other local-only field in
   // this file, rather than silently dropped.
   const briefBuilderExpandedEl = document.getElementById('cmpBriefBuilderExpandedText');
-  c.briefBuilderExpandedText = briefBuilderExpandedEl ? briefBuilderExpandedEl.value.trim() : '';
+  { const bv = briefBuilderExpandedEl ? briefBuilderExpandedEl.value.trim() : ''; if (bv || !String(c.briefBuilderExpandedText || '').trim()) c.briefBuilderExpandedText = bv; }
   // Round 132ao (2026-08-12) follow-up — c.brandToneNotes is deliberately
   // left untouched here now: the wizard's own Tone Notes field is removed
   // (see cmpEffectiveToneDescriptor()), and this key is still independently
@@ -80095,7 +80166,17 @@ function renderVoiceContestStep(){
   // this is just a read-only echo of whatever's currently approved.
   const headlineEl = document.getElementById('voiceContestCurrentHeadline');
   const paragraphEl = document.getElementById('voiceContestCurrentParagraph');
-  if (headlineEl) headlineEl.textContent = state.voice.visionStatement || 'Nothing approved yet — run a contest below or write your own.';
+  // 2026-11-18 (r31), per Todd: the approved Voice Guide is the voice the platform uses; this panel only showed the optional Headline and Paragraph, so it read "nothing approved" for an account whose Voice Guide was approved and in use.
+  { const gEl = document.getElementById('voiceContestCurrentGuide'), xEl = document.getElementById('voiceContestCurrentGuideExcerpt');
+    const guide = String(state.voice.draft || '').trim();
+    if (gEl){
+      if (guide && state.voice.approved){ const d = state.voice.approvedAt ? new Date(state.voice.approvedAt) : null; gEl.innerHTML = `Approved${d && !isNaN(d) ? ' ' + escapeHtml(d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })) : ''}${state.voice.version ? ', version ' + escapeHtml(String(state.voice.version)) : ''} — in use on every draft and score. <a class="flink" onclick="goToStep('voice')" style="cursor:pointer;">View or edit the Voice Guide →</a>`; }
+      else if (guide){ gEl.innerHTML = `Drafted, not approved yet. <a class="flink" onclick="goToStep('voice')" style="cursor:pointer;">Review and approve it →</a>`; }
+      else gEl.textContent = 'No Voice Guide yet — start a contest below or write your own.';
+    }
+    if (xEl) xEl.textContent = guide ? (guide.length > 280 ? guide.slice(0, 280).trim() + '…' : guide) : '';
+  }
+  if (headlineEl) headlineEl.textContent = state.voice.visionStatement || (state.voice.approved && String(state.voice.draft || '').trim() ? 'Not set. The Voice Guide above is the voice in use; a Headline is optional. Run a contest below or write your own to add one.' : 'Nothing approved yet — run a contest below or write your own.');
   if (paragraphEl) paragraphEl.textContent = state.voice.longformExample || '';
   renderVoiceContestInputsPanel();
   loadInterviewUsage();
