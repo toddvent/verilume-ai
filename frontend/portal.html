@@ -1855,7 +1855,8 @@
   .brf-kinds{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center;}
   .brf-kind{font:inherit;font-size:0.75rem;font-weight:600;color:var(--muted);background:transparent;border:1px solid var(--line);border-radius:999px;padding:3px 11px;cursor:pointer;}
   .brf-kind.on{background:var(--ink);border-color:var(--ink);color:#fff;}
-  .brf-kind.main{font-size:0.875rem;padding:5px 14px;}
+  /* 2026-11-18: all three chips share one size (the first used to be larger) */
+  .brf-kind.main{font-size:0.75rem;padding:3px 11px;}
   .brf-kind:not(.on):hover{background:var(--paper-dim);}
   .cmp-brief .brf-text-in{width:min(280px,100%);}
   .cmp-brief .brf-wide{width:min(340px,100%);}
@@ -14265,7 +14266,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-18-r17-channel-forecast';
+const CXMEDIA_BUILD_STAMP = '2026-11-18-r18-chip-size';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
