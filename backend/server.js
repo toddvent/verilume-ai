@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-18-r39-scoring-reliability (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-18-r40-json-structured-answers (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -5042,6 +5042,37 @@ let ANTHROPIC_FORCED_TOOL_OK = true;
 function anthropicToolChoice(toolName){ return ANTHROPIC_FORCED_TOOL_OK ? { type: 'tool', name: toolName } : { type: 'auto' }; }
 function anthropicToolNudge(toolName){ return ANTHROPIC_FORCED_TOOL_OK ? '' : `\n\nRespond ONLY by calling the ${toolName} tool with your complete answer. Do not write any other text.`; }
 function isToolChoiceUnsupported(err){ return !!(err && err.httpStatus === 400 && /tool_choice/i.test(String(err.message || ''))); }
+// r40: structured answers are requested as plain JSON text by default (ANTHROPIC_STRUCTURED_MODE=json). It works on every model, lets the model think before it answers, and is checked field by field below. Set ANTHROPIC_STRUCTURED_MODE=tool to go back to forced tool calls.
+const ANTHROPIC_STRUCTURED_MODE = String(process.env.ANTHROPIC_STRUCTURED_MODE || 'json').trim().toLowerCase() === 'tool' ? 'tool' : 'json';
+// r40: scoring runs on its own model setting so a change to the drafting model never moves the yardstick clients compare. Defaults to the drafting model.
+const ANTHROPIC_SCORER_MODEL = (process.env.ANTHROPIC_SCORER_MODEL || '').trim() || ANTHROPIC_STANDARD_MODEL;
+function jsonModeInstruction(schema, toolDescription){
+  return `\n\nAnswer format: reply with ONE JSON object and nothing else. No markdown fences, no commentary before or after. ${toolDescription ? toolDescription + ' ' : ''}Every required key must be present and fully written; numbers must be JSON numbers, not strings. The object must match this JSON Schema:\n${JSON.stringify(schema)}`;
+}
+async function callClaudeForJSONText({ model, maxTokens, content, schema, toolDescription, timeoutMs }){
+  const instruction = jsonModeInstruction(schema, toolDescription);
+  const userContent = typeof content === 'string' ? content + instruction : (Array.isArray(content) ? content.concat([{ type: 'text', text: instruction }]) : String(content || '') + instruction);
+  const resp = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({ model, max_tokens: maxTokens + 1500, messages: [{ role: 'user', content: userContent }] }) // +1500: room in case the model thinks before it answers
+  }, timeoutMs);
+  if (!resp.ok){
+    const bodyText = await resp.text();
+    const err = new Error(`HTTP ${resp.status}: ${bodyText.slice(0, 300)}`);
+    err.httpStatus = resp.status;
+    throw err;
+  }
+  const data = await resp.json();
+  const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text || '').join('\n');
+  const parsed = text ? parseJsonBlock(text) : null;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || Object.keys(parsed).length === 0){
+    const err = new Error('model response was not a usable JSON object (stop_reason=' + (data.stop_reason || 'unknown') + ')');
+    err.softFail = true;
+    throw err;
+  }
+  return parsed;
+}
 // r39: the current model rejects a forced tool call, so we run in auto mode, where it sometimes answers in prose, cuts off, or fills only part of the form. Each of those is retried here (up to 3 tries, with the missing fields named and more room), so a draft or score does not fail on the first hiccup.
 function missingRequiredFields(out, schema){
   const req = (schema && Array.isArray(schema.required)) ? schema.required : [];
@@ -5052,7 +5083,7 @@ async function callClaudeForJSON(opts){
     let o = o0, lastErr = null;
     for (let attempt = 0; attempt < 3; attempt++){
       try {
-        const out = await callClaudeForJSONInner(o);
+        const out = ANTHROPIC_STRUCTURED_MODE === 'json' ? await callClaudeForJSONText(o) : await callClaudeForJSONInner(o);
         const missing = missingRequiredFields(out, o0.schema);
         if (!missing.length) return out;
         lastErr = new Error('the model response was missing: ' + missing.join(', '));
@@ -31086,7 +31117,7 @@ ${copyText.slice(0, 2000)}`;
       for (let attempt = 0; attempt < 2 && !parsed; attempt++){
         try {
           parsed = await callClaudeForJSON({
-        model: ANTHROPIC_STANDARD_MODEL,
+        model: ANTHROPIC_SCORER_MODEL,
         maxTokens: 1100,
         timeoutMs: 30000,
         content: prompt + '\n\nScoring rules: judge THIS copy on its own merits. Use the full 0-100 range and avoid round-number defaults; two different drafts should rarely get the same score. Calibrate like a senior brand editor: 90-100 = ready to run, on-voice, nothing to fix; 80-89 = strong with one or two small edits; 70-79 = usable but off-voice or off-brief in places; below 70 only when the copy clearly breaks the voice guide, the mandatory phrase or a compliance rule, and say which. Do not mark copy down for things the brand material does not actually address. In relevanceNote explain the Campaign Fit score (what earned and cost points on objective, audience, key message, call to action, quoting the words). In brandNote explain the Brand Fit score the same way (which voice guide lines or samples it matches or breaks, quoting the words); if no voice guide or samples are on file say so plainly instead of guessing.',
@@ -33412,7 +33443,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-18-r39-scoring-reliability',
+        buildStamp: '2026-11-18-r40-json-structured-answers',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
