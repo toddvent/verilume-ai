@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-18-r40-json-structured-answers (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-18-r42-asset-copy-follows-master (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -31081,9 +31081,29 @@ function scoreComplianceHeuristically(copyText, account, campaign){
 // just AI-drafted copy); falls back to the deterministic heuristics above
 // otherwise, same honest-fallback convention as everywhere else in this
 // file that touches ANTHROPIC_API_KEY.
+// r41: the same copy scored against the same campaign and brand inputs shows the same score everywhere (contest card, saved-draft panel, re-scores). Only AI-scored results are remembered, for 24 hours.
+const SCORE_CACHE = new Map();
 async function scoreDraftCopy(copyText, campaign, account, extraBrandContext){
+  if (extraBrandContext === undefined && account && account.accountId){
+    try { extraBrandContext = (await brandWritingSampleContext(account.accountId, { creativeMarket: campaignCreativeMarketScope(campaign) })) + (await creativeJobDecisionContext(account.accountId)) + (await exactPhraseContextForAccount(account.accountId)); } catch (e){ extraBrandContext = ''; }
+  }
+  let key = null;
+  try {
+    key = require('crypto').createHash('sha1').update(JSON.stringify([String(copyText || '').trim(), campaign && campaign.id, campaign && campaign.keyMessage, campaign && campaign.segment, campaign && campaign.primaryKpi, campaign && campaign.stage, campaign && campaign.excludeSegments, campaign && campaign.mandatoryPhrase, account && account.voiceGuideText, account && account.visionStatement, account && account.longformVoiceExample, String(extraBrandContext || ''), ANTHROPIC_SCORER_MODEL])).digest('hex');
+    const hit = SCORE_CACHE.get(key);
+    if (hit && Date.now() - hit.at < 24 * 3600 * 1000) return hit.value;
+  } catch (e){ key = null; }
+  const out = await scoreDraftCopyUncached(copyText, campaign, account, extraBrandContext);
+  if (key && out && out.mode === 'ai'){ if (SCORE_CACHE.size > 600) SCORE_CACHE.delete(SCORE_CACHE.keys().next().value); SCORE_CACHE.set(key, { at: Date.now(), value: out }); }
+  return out;
+}
+async function scoreDraftCopyUncached(copyText, campaign, account, extraBrandContext){
   if (!copyText || !copyText.trim()){
     return { relevanceScore: null, complianceScore: null, note: 'No copy to score yet.', flags: [], mode: 'none' };
+  }
+  // r41: every caller scores with the same brand inputs. The contest passes the writing samples, saved decisions and exact phrases; the score panels under a saved draft passed nothing, so the same copy scored differently there.
+  if (extraBrandContext === undefined && account && account.accountId){
+    try { extraBrandContext = (await brandWritingSampleContext(account.accountId, { creativeMarket: campaignCreativeMarketScope(campaign) })) + (await creativeJobDecisionContext(account.accountId)) + (await exactPhraseContextForAccount(account.accountId)); } catch (e){ extraBrandContext = ''; }
   }
   if (process.env.ANTHROPIC_API_KEY){
     try {
@@ -31109,6 +31129,8 @@ BRAND VOICE GUIDE:
 ${voiceGuide || '(none on file)'}
 ${brandExtra ? `BRAND WRITING SAMPLES AND SAVED DECISIONS (the voice in practice; judge how close this copy sits to it):\n${brandExtra}\n` : ''}${visionStatement ? `BRAND VISION STATEMENT (the voice's north-star — copy that drifts from this is worth flagging too): ${visionStatement}\n` : ''}${longformVoiceExample ? `APPROVED VOICE CONTEST PARAGRAPH (the voice in a finished piece; judge register and rhythm, not facts):\n${longformVoiceExample}\n` : ''}
 ${campaign.mandatoryPhrase ? `MANDATORY PHRASE (required verbatim, word-for-word, somewhere in the copy — its absence is a compliance failure, flag it by name in complianceFlags if missing): "${campaign.mandatoryPhrase}"\n` : ''}${(campaign.keyMessageMode === 'exact' && campaign.keyMessage) ? `KEY MESSAGE — EXACT/VERBATIM MODE (this account set Key Message to required-verbatim, not directional; it must appear word-for-word somewhere in the copy — if the copy only paraphrases or reworks it, that is a compliance failure, flag it by name in complianceFlags): "${campaign.keyMessage}"\n` : ''}
+
+SCOPE RULE: this is body copy only. Terms and conditions, legal disclaimers, fine print, offer restrictions and legal footers are added later by the team and are never part of this copy. Do NOT lower either score, add a flag, or add a deduction because they are absent, and do not ask for them. If the copy states an offer, judge it as written.
 
 COPY TO SCORE:
 ${copyText.slice(0, 2000)}`;
@@ -31799,19 +31821,26 @@ async function generateInterviewCandidateCopy(slot, campaign, account, sampleCon
 // partners on the exact same brief-and-context depth, not accidentally
 // different inputs.
 async function generateVendorInterviewCopy(vendorKey, campaign, account, sampleContext, audienceLabel, timeoutMs, opts){
-  try {
-    const prompt = buildInterviewPrompt(campaign, account, sampleContext, audienceLabel, opts);
-    const text = await callVendorForText(vendorKey, prompt, timeoutMs);
-    const parsed = parseJsonBlock(text);
-    if (!parsed) return { copy: null, approach: null, error: 'Generation returned no parseable JSON.' };
-    return {
-      copy: typeof parsed.copy === 'string' ? parsed.copy : null,
-      approach: typeof parsed.approach === 'string' ? parsed.approach : null,
-      error: null
-    };
-  } catch (e){
-    return { copy: null, approach: null, error: 'Generation failed: ' + e.message };
+  // r41: a partner that answers with text that is not the JSON we asked for (or hits a short network or rate-limit hiccup) gets up to two more tries, as long as the first try was quick enough to leave time, before it is shown as "did not finish". A retired model is handled by the model watch, not here.
+  const started = Date.now();
+  let lastErr = 'Generation returned no parseable JSON.';
+  for (let attempt = 0; attempt < 3; attempt++){
+    if (attempt > 0 && Date.now() - started > 45000) break;
+    try {
+      const prompt = buildInterviewPrompt(campaign, account, sampleContext, audienceLabel, opts)
+        + (attempt > 0 ? '\n\nIMPORTANT: reply with ONLY one JSON object containing the keys "copy" and "approach", both fully written. No text before or after it.' : '');
+      const text = await callVendorForText(vendorKey, prompt, timeoutMs);
+      const parsed = parseJsonBlock(text);
+      if (parsed && typeof parsed.copy === 'string' && parsed.copy.trim()){
+        return { copy: parsed.copy, approach: typeof parsed.approach === 'string' ? parsed.approach : null, error: null };
+      }
+      lastErr = parsed ? 'Generation returned an empty draft.' : 'Generation returned no parseable JSON.';
+    } catch (e){
+      lastErr = 'Generation failed: ' + e.message;
+      if (!/HTTP (408|429|500|502|503|504)\b|timed out|timeout|abort|ECONNRESET|fetch failed|socket/i.test(String(e && e.message))) break;
+    }
   }
+  return { copy: null, approach: null, error: lastErr };
 }
 // A configured vendor's ONE candidate for the Brand Voice contest (a
 // different JSON shape than the copy panel — visionStatement +
@@ -33443,7 +33472,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-18-r40-json-structured-answers',
+        buildStamp: '2026-11-18-r42-asset-copy-follows-master',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -44577,7 +44606,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       if (result.mode !== 'none') logScoreHistory(job.accountId, job.campaignId, 'creative_job', `job:${jobId}`, result);
       return sendJson(res, 200, {
         relevanceScore: result.relevanceScore, complianceScore: result.complianceScore,
-        note: result.note || null, flags: result.flags || [], mode: result.mode, scoredAt: now
+        note: result.note || null, brandNote: result.brandNote || null, brandDeductions: result.brandDeductions || null, breakdown: result.breakdown || null, flags: result.flags || [], mode: result.mode, scoredAt: now
       });
     }
 
@@ -44615,7 +44644,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
         : new Date().toISOString();
       return sendJson(res, 200, {
         relevanceScore: result.relevanceScore, complianceScore: result.complianceScore,
-        note: result.note || null, flags: result.flags || [], mode: result.mode, scoredAt
+        note: result.note || null, brandNote: result.brandNote || null, brandDeductions: result.brandDeductions || null, breakdown: result.breakdown || null, flags: result.flags || [], mode: result.mode, scoredAt
       });
     }
 
