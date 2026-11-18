@@ -5460,8 +5460,8 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="switchPrimaryTab('brand')">Customer Experiences</a> / Marketing Projects</div>
     <div class="eyebrow">Customer Experiences · Marketing Projects</div>
     <h1>Marketing Projects</h1>
-    <p class="lede">Every marketing project in one ranked list. Work the board, or switch to the list.</p>
-    <div class="strat-card"><div class="pj-host" data-area="project"></div></div>
+    <p class="lede">Every marketing project in one place. Search Everywhere and Train the Brain are categories: filter by category to see their statuses, or sort the list.</p>
+    <div class="strat-card"><div class="pj-host" data-area="page"></div></div>
   </div>
 
   <div class="step" id="step-customerExperiences">
@@ -14275,7 +14275,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-18-r22-projects-page';
+const CXMEDIA_BUILD_STAMP = '2026-11-18-r23-projects-category';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -25934,17 +25934,12 @@ function cxRepCardHtml(){
 }
 function cxRenderRep(){ const el = document.getElementById('cxRepBody'); if (el) el.innerHTML = cxRepBodyHtml(); }
 
-function cxProjectsChipHtml(){
-  const n = (typeof pj !== 'undefined' && pj.projects) ? pj.projects.filter(p => p.area === 'project' && pjOpenStatus(p)).length : null;
-  if (typeof pj !== 'undefined' && !pj.projects && !pj.loading && !pj.error && typeof pjLoad === 'function') setTimeout(() => { try { pjLoad(); } catch (e){} }, 0);
-  return `<div class="strat-actions" style="margin:0 0 14px;"><button type="button" class="strat-chip" id="cxProjectsChip" onclick="goToStep('marketingProjects')">Marketing Projects${n == null ? '' : ' · ' + n + ' open'} →</button></div>`;
-}
 function customerExperiencesShellHtml(){
   if (aipoVoiceContestStats == null) aipoLoadVoiceContestStats();
   const voice = renderTileShellGroups([BRAND_SHELL_GROUPS[0]], null, 'brand');
-  if (!cxIsLive()) return cxProjectsChipHtml() + voice + cxToolsHtml();
+  if (!cxIsLive()) return voice + cxToolsHtml();
   // 2026-11-14 (Todd): the creative and media reports moved to the Growth & Performance dashboard; this page keeps the Sent to Creative queue.
-  return cxProjectsChipHtml() + `<div class="strat-card" id="cxBriefsCard" style="display:none;"><div class="strat-head"><h2>Sent to Creative</h2></div><div id="cxBriefsBody"></div></div>
+  return `<div class="strat-card" id="cxBriefsCard" style="display:none;"><div class="strat-head"><h2>Sent to Creative</h2></div><div id="cxBriefsBody"></div></div>
     ${cxRepCardHtml()}` + voice + cxToolsHtml();
 }
 function customerExperiencesPageInit(){ if (cxIsLive()) cxLoad(); }
@@ -26725,7 +26720,6 @@ function bdRender(){
   // The Welcome card and the account fold were removed 2026-11-15: the page starts at the Strategy section.
 
   try { if (typeof vz !== 'undefined' && typeof vzLive === 'function' && vzLive()){ if (vz.lib) vzBdNote(); else vzLoadLib(); } } catch (e){}
-  box.insertAdjacentHTML('beforeend', '<div class="strat-card"><div class="pj-host" data-area="all"></div></div>'); setTimeout(pjMountAll, 0);
 }
 function bdRenderMain(){ try { ssParkDock(); } catch (e){} bdRenderMainInner(); try { ssMount(); } catch (e){ console.warn('ssMount failed', e); } }
 function bdRenderMainInner(){
@@ -29106,7 +29100,7 @@ function cmpLiveStatCardOverride(label){
 // ---- Key tools (2026-10-05): the tools each tab leans on, as chips above the cards ----
 const KEY_TOOLS = {
   strategy: [{ l: 'Budgets', s: 'mediaplan' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaigns', s: 'campaignMgmt' }, { l: 'Competition & Positioning', s: 'competitivePositioning' }, { l: 'Marketing Tests', s: 'marketOptimization' }, { l: 'Forecasts', a: 'forecast' }],
-  brand: [{ l: 'Brand Voice', s: 'voice' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaign Creative', s: 'omniCreative' }, { l: 'Search Everywhere', s: 'searchOptimization' }, { l: 'PR & Reputation', s: 'reputation' }],
+  brand: [{ l: 'Brand Voice', s: 'voice' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaign Creative', s: 'omniCreative' }, { l: 'Search Everywhere', s: 'searchOptimization' }, { l: 'PR & Reputation', s: 'reputation' }, { l: 'Marketing Projects', s: 'marketingProjects' }],
   marketer: [{ l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Budgets', s: 'mediaplan' }, { l: 'Campaign Creation', s: 'campaignMgmt' }, { l: 'Forecasting', a: 'forecast' }, { l: 'Creative Assets', s: 'omniCreative' }],
   dataScientist: [{ l: 'Budgets', s: 'mediaplan' }, { l: 'Marketing Calendar', s: 'marketingCalendar' }, { l: 'Campaign Analysis', s: 'campaignMgmt' }, { l: 'Goal Setting + Forecasting', a: 'forecast' }, { l: 'Truth Lab', s: 'testRegistry' }, { l: 'Geographic Optimization', s: 'marketOptimization' }]
 };
@@ -57443,7 +57437,7 @@ function resolveSelectValue(selectId, otherId){
 // One component, mounted wherever a <div class="pj-host" data-area="..."> exists: Create Campaign (project), Brain Dump (all three areas, tabbed),
 // Search Everywhere (search) and Train the Brain (train). Every area keeps its own list, its own ratings and its own priority order.
 const PJ_AREAS = [{ key: 'project', label: 'Marketing Project' }, { key: 'search', label: 'Search Everywhere' }, { key: 'train', label: 'Train the Brain' }];
-const pj = { hub: 'search', synced: false, projects: null, meta: null, error: '', loading: false, open: null, hideDone: true, drag: null, views: {} };
+const pj = { cat: 'all', sort: 'score', showCat: false, hub: 'search', synced: false, projects: null, meta: null, error: '', loading: false, open: null, hideDone: true, drag: null, views: {} };
 function pjUrl(extra){ return `${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-projects${extra || ''}`; }
 function pjAreaLabel(k){ const a = PJ_AREAS.find(x => x.key === k); return a ? a.label : k; }
 function pjView(area){ if (pj.views[area]) return pj.views[area]; let v = 'board'; try { v = localStorage.getItem('verilume_pj_view_' + area) || 'board'; } catch (e){} return pj.views[area] = v === 'list' ? 'list' : 'board'; }
@@ -57467,7 +57461,7 @@ async function pjCall(path, method, body){
   } catch (e){ pjToast(e.message || 'Not saved.'); pjLoad(); return null; }
 }
 function pjToast(t){ const ms = document.querySelectorAll('.pj-toast'); if (ms.length){ ms.forEach(m => { m.textContent = t; m.style.display = ''; }); setTimeout(() => { document.querySelectorAll('.pj-toast').forEach(m => { m.style.display = 'none'; }); }, 4000); } else console.warn(t); }
-function pjMountAll(){ document.querySelectorAll('.pj-host').forEach(pjRender); pjModalRender(); try { const ch = document.getElementById('cxProjectsChip'); if (ch && pj.projects) ch.textContent = 'Marketing Projects · ' + pj.projects.filter(p => p.area === 'project' && pjOpenStatus(p)).length + ' open →'; } catch (e){} }
+function pjMountAll(){ document.querySelectorAll('.pj-host').forEach(pjRender); pjModalRender(); }
 function pjTypeList(str){ let rest = String(str || ''); const sel = []; briefAssetTypes().forEach(k => { if (rest.includes(k)){ sel.push(k); rest = rest.replace(k, ''); } }); return sel.concat(rest.split(/[;,]/).map(x => x.trim()).filter(Boolean)); }
 function pjToggleType(id, t){ const p = pjFind(id); if (!p) return; const l = pjTypeList(p.assetTypes); const i = l.indexOf(t); if (i >= 0) l.splice(i, 1); else l.push(t); pjPatch(id, 'assetTypes', l.join('; ')); }
 function pjFind(id){ return (pj.projects || []).find(p => p.id === id); }
@@ -57479,6 +57473,7 @@ function pjCardHtml(p){
   return `<div class="pj-card" draggable="true" ondragstart="pjDragStart(event,'${escapeHtml(p.id)}')" ondragend="pjDragEnd()" onclick="pjOpenDetail('${escapeHtml(p.id)}')" tabindex="0" onkeydown="if(event.key==='Enter')pjOpenDetail('${escapeHtml(p.id)}')">
     <div class="pj-card-top"><span class="pj-rank">${p.rank == null ? '' : '#' + p.rank}</span><span class="pj-score" title="Impact x Urgency / Effort. Unrated items score as 3.">${p.score}</span></div>
     <div class="pj-name">${escapeHtml(p.name)}</div>
+    ${pj.showCat ? `<div class="pj-meta"><span class="pj-cat">${escapeHtml(pjAreaLabel(p.area))}</span></div>` : ''}
     <div class="pj-meta">${escapeHtml(ratings)}${p.owner ? ' · ' + escapeHtml(p.owner) : ''}</div>
     ${p.delivery ? `<div class="pj-meta${pjDueClass(p.delivery, !pjOpenStatus(p))}">Due ${escapeHtml(p.delivery)}</div>` : ''}${p.assetTypes ? `<div class="pj-meta" title="Creative types">${escapeHtml(pjTypeList(p.assetTypes).join(' · '))}</div>` : ''}${bar}
     <select class="pj-mini" aria-label="Move ${escapeHtml(p.name)} to another column" onclick="event.stopPropagation()" onchange="pjSetStatus('${escapeHtml(p.id)}',this.value)">${(pj.meta.statuses).map(s => `<option${s === p.status ? ' selected' : ''}>${s}</option>`).join('')}</select>
@@ -57492,7 +57487,7 @@ function pjBoardHtml(area, rows){
 function pjListHtml(area, rows){
   const sel = (p, f, v, opts) => `<select onchange="pjPatch('${escapeHtml(p.id)}','${f}',this.value)">${opts.map(o => `<option value="${o}"${String(v) === String(o) ? ' selected' : ''}>${o === '' ? '—' : o}</option>`).join('')}</select>`;
   const body = rows.map(p => `<tr class="${pjOpenStatus(p) ? '' : 'done'}"><td>${p.rank == null ? '' : p.rank}</td>
-    <td><input type="text" class="pj-in-name" value="${escapeHtml(p.name)}" maxlength="120" aria-label="Project name" onchange="pjPatch('${escapeHtml(p.id)}','name',this.value)"><div class="strat-sub">${escapeHtml([p.supports && 'Supports ' + p.supports, p.assetTypes].filter(Boolean).join(' · '))}</div></td>
+    ${pj.showCat ? `<td><span class="pj-cat">${escapeHtml(pjAreaLabel(p.area))}</span></td>` : ''}<td><input type="text" class="pj-in-name" value="${escapeHtml(p.name)}" maxlength="120" aria-label="Project name" onchange="pjPatch('${escapeHtml(p.id)}','name',this.value)"><div class="strat-sub">${escapeHtml([p.supports && 'Supports ' + p.supports, p.assetTypes].filter(Boolean).join(' · '))}</div></td>
     <td><input type="text" value="${escapeHtml(p.assetTypes)}" maxlength="400" style="min-width:150px" placeholder="e.g. Video ads" aria-label="Creative types" onchange="pjPatch('${escapeHtml(p.id)}','assetTypes',this.value)"></td>
     <td><input type="date" value="${escapeHtml(p.delivery)}" onchange="pjPatch('${escapeHtml(p.id)}','delivery',this.value)"></td>
     <td>${sel(p, 'impact', p.impact == null ? '' : p.impact, ['', 1, 2, 3, 4, 5])}</td><td>${sel(p, 'effort', p.effort == null ? '' : p.effort, ['', 1, 2, 3, 4, 5])}</td><td>${sel(p, 'urgency', p.urgency == null ? '' : p.urgency, ['', 1, 2, 3, 4, 5])}</td>
@@ -57500,10 +57495,34 @@ function pjListHtml(area, rows){
     <td>${sel(p, 'status', p.status, pj.meta.statuses)}</td>
     <td><input type="text" value="${escapeHtml(p.owner)}" maxlength="80" style="width:110px" placeholder="owner" aria-label="Owner" onchange="pjPatch('${escapeHtml(p.id)}','owner',this.value)"></td>
     <td><button type="button" class="strat-chip" onclick="pjOpenDetail('${escapeHtml(p.id)}')">${p.taskCount ? p.taskDone + '/' + p.taskCount : 'Add'} subtasks</button></td></tr>`).join('');
-  return rows.length ? `<div class="strat-table-wrap" style="margin-top:0;"><table><thead><tr><th>#</th><th>Project</th><th>Creative types</th><th>Delivery target</th><th>Impact</th><th>Effort</th><th>Urgency</th><th>Score</th><th>Status</th><th>Owner</th><th>Subtasks</th></tr></thead><tbody>${body}</tbody></table></div>` : '';
+  return rows.length ? `<div class="strat-table-wrap" style="margin-top:0;"><table><thead><tr><th>#</th>${pj.showCat ? '<th>Category</th>' : ''}<th>Project</th><th>Creative types</th><th>Delivery target</th><th>Impact</th><th>Effort</th><th>Urgency</th><th>Score</th><th>Status</th><th>Owner</th><th>Subtasks</th></tr></thead><tbody>${body}</tbody></table></div>` : '';
+}
+const PJ_SORTS = [['score', 'Highest score'], ['category', 'Category'], ['status', 'Status'], ['due', 'Due date'], ['name', 'Name']];
+function pjSortRows(rows){
+  const so = (pj.meta && pj.meta.statuses) || []; const sc = (a, b) => (b.score || 0) - (a.score || 0) || String(a.name).localeCompare(String(b.name));
+  const by = { score: sc, category: (a, b) => PJ_AREAS.findIndex(x => x.key === a.area) - PJ_AREAS.findIndex(x => x.key === b.area) || sc(a, b), status: (a, b) => so.indexOf(a.status) - so.indexOf(b.status) || sc(a, b), due: (a, b) => (a.delivery || '9999').localeCompare(b.delivery || '9999') || sc(a, b), name: (a, b) => String(a.name).localeCompare(String(b.name)) };
+  return rows.slice().sort(by[pj.sort] || sc);
+}
+function pjSetCat(c){ pj.cat = c; pjMountAll(); }
+function pjSetSort(v){ pj.sort = v; pjMountAll(); }
+function pjRenderPage(host){
+  pj.showCat = true;
+  const cat = pj.cat; const inCat = p => cat === 'all' || p.area === cat; const all = pj.projects.filter(inCat);
+  const rows = pjSortRows(all.filter(p => !pj.hideDone || pjOpenStatus(p))); const view = pjView('page'); const openN = all.filter(pjOpenStatus).length;
+  const chips = [['all', 'All']].concat(PJ_AREAS.map(a => [a.key, a.label])).map(([k, l]) => { const n = pj.projects.filter(p => (k === 'all' || p.area === k) && pjOpenStatus(p)).length; return `<button type="button" class="${k === cat ? 'on' : ''}" onclick="pjSetCat('${k}')">${escapeHtml(l)} <span class="pj-count">${n}</span></button>`; }).join('');
+  const addArea = cat === 'all' ? 'project' : cat; const needs = cat === 'all' || cat === 'search' || cat === 'train';
+  host.innerHTML = `<div class="strat-ctl" style="margin:0 0 10px;"><span class="strat-seg" role="group" aria-label="Category">${chips}</span></div>
+    <div class="brf-sheet pj-wrap"><div class="pj-head"><div><div class="strat-chart-label" style="margin:0;">Marketing Projects · ${escapeHtml(cat === 'all' ? 'All categories' : pjAreaLabel(cat))}</div><p class="strat-sub" style="margin:2px 0 0;">${openN} open. Score is Impact x Urgency / Effort, each rated 1 to 5, unrated counts as 3. The # on a card is its rank inside its own category.</p></div>
+    <div class="pj-ctl"><span class="strat-seg"><button type="button" class="${view === 'board' ? 'on' : ''}" onclick="pjSetView('page','board')">Board</button><button type="button" class="${view === 'list' ? 'on' : ''}" onclick="pjSetView('page','list')">List</button></span>
+    <label class="pj-chk">Sort <select onchange="pjSetSort(this.value)" aria-label="Sort projects">${PJ_SORTS.map(([k, l]) => `<option value="${k}"${pj.sort === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+    ${needs ? `<button type="button" class="btn-ghost" onclick="pjSync(false)" title="Add any new identified needs from Train the Brain setup and Search Everywhere priorities">Refresh identified needs</button>` : ''}<label class="pj-chk"><input type="checkbox" ${pj.hideDone ? 'checked' : ''} onchange="pjHideDone(this.checked)"> Hide done and archived</label></div></div>
+    <div class="pj-add"><input type="text" id="pjNew-page" maxlength="120" placeholder="Add a ${escapeHtml(pjAreaLabel(addArea))} project and press Enter" aria-label="New project name" onkeydown="if(event.key==='Enter')pjAdd('page')"><button type="button" class="btn-ghost" onclick="pjAdd('page')">Add</button></div>
+    ${view === 'board' ? pjBoardHtml('page', rows) : pjListHtml('page', rows)}${all.length ? '' : '<p class="hint">No projects in this category yet. Add the first one above.</p>'}<div class="pj-toast" style="display:none;" role="status"></div></div>`;
+  pj.showCat = false;
 }
 function pjRender(host){
   if (!host || !host.isConnected) return; const hubMode = host.dataset.area === 'all'; const area = hubMode ? pj.hub : (host.dataset.area || 'project');
+  if (host.dataset.area === 'page' && pj.projects) return pjRenderPage(host);
   if (!pj.projects){ host.innerHTML = pj.error ? `<p class="hint" style="color:var(--advocacy);">${escapeHtml(pj.error)} <a class="flink" onclick="pjLoad()">Try again</a></p>` : '<p class="hint">Loading the projects…</p>'; if (!pj.loading && !pj.error) pjLoad(); return; }
   const all = pj.projects.filter(p => p.area === area);
   const rows = all.filter(p => !pj.hideDone || pjOpenStatus(p)); const view = pjView(area); const label = pjAreaLabel(area);
@@ -57520,7 +57539,7 @@ function pjHub(a){ pj.hub = a; pjMountAll(); }
 function pjHideDone(v){ pj.hideDone = !!v; pjMountAll(); }
 async function pjAdd(area){
   const inp = document.getElementById('pjNew-' + area); if (!inp || !inp.value.trim()) return; const name = inp.value.trim(); inp.disabled = true;
-  const j = await pjCall('', 'POST', { name, area }); pjMountAll(); if (j) { const again = document.getElementById('pjNew-' + area); if (again) again.focus(); }
+  const j = await pjCall('', 'POST', { name, area: area === 'page' ? (pj.cat === 'all' ? 'project' : pj.cat) : area }); pjMountAll(); if (j) { const again = document.getElementById('pjNew-' + area); if (again) again.focus(); }
 }
 async function pjPatch(id, field, value){ const j = await pjCall('/' + encodeURIComponent(id), 'PATCH', { [field]: value }); if (j) pjMountAll(); }
 function pjSetStatus(id, s){ pjPatch(id, 'status', s); }
