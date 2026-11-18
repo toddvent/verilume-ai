@@ -14266,7 +14266,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-18-r19-placement-fields';
+const CXMEDIA_BUILD_STAMP = '2026-11-18-r20-contest-first-click';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -51030,6 +51030,7 @@ function cmpStep0FieldLiveUpdate(el, fieldType, fieldKey){
 // none of these listeners need re-attaching after any innerHTML re-render,
 // which every render function in this card does constantly.
 let cmpStep0DelegatedEventsBound = false;
+let cmpStep0PressAt = 0;
 function cmpStep0InitDelegatedEvents(){
   if (cmpStep0DelegatedEventsBound) return;
   cmpStep0DelegatedEventsBound = true;
@@ -51049,7 +51050,16 @@ function cmpStep0InitDelegatedEvents(){
     }
     const sharedContestBtn = e.target.closest('#cmpStep0SharedContestBtn');
     if (sharedContestBtn){
+      if (Date.now() - cmpStep0PressAt < 1000) return;
+      cmpStep0FlushEdits();
       cmpRunCampaignCopyContest('cmpStep0SharedContestPanel', 'cmpStep0SharedContestBtn', 'cmpStep0SharedContestFlag');
+      return;
+    }
+    const runNowBtn = e.target.closest('#cmpStep0RunContestNowBtn');
+    if (runNowBtn){
+      if (Date.now() - cmpStep0PressAt < 1000) return;
+      cmpStep0FlushEdits();
+      cmpRunCampaignCopyContest('cmpStep0SharedContestPanel', 'cmpStep0SharedContestBtn', 'cmpStep0SharedContestFlag', 'fresh');
       return;
     }
     const contestChip = e.target.closest('.cmp-step0-contest-chip[data-audience-idx]');
@@ -51064,12 +51074,22 @@ function cmpStep0InitDelegatedEvents(){
   });
   // blur doesn't bubble; focusout is its bubbling equivalent, which is
   // required for event delegation to catch it at the document level.
+  // 2026-11-18 (r20): pressing a contest button while a field is still focused blurred it, the field re-rendered and shifted the layout, and the click was lost. Keep focus where it is; the click handler saves the edits itself.
+  // Act on the press itself: a field losing focus can re-render the card and shift the buttons between press and release, which lost the click. A click that follows within a second is ignored; keyboard and touch still use the click.
+  document.addEventListener('mousedown', (e) => {
+    const t = e.target && e.target.closest ? e.target.closest('#cmpStep0SharedContestBtn, #cmpStep0RunContestNowBtn') : null;
+    if (!t || e.button !== 0) return;
+    e.preventDefault(); cmpStep0PressAt = Date.now();
+    cmpStep0FlushEdits();
+    cmpRunCampaignCopyContest('cmpStep0SharedContestPanel', 'cmpStep0SharedContestBtn', 'cmpStep0SharedContestFlag', t.id === 'cmpStep0RunContestNowBtn' ? 'fresh' : undefined);
+  });
   document.addEventListener('focusout', (e) => {
     if (e.target.id === 'cmpStep0HeadlineInput') cmpSaveStep0Headline();
     else if (e.target.matches('#cmpCreativeStep0DetailFields [data-detail-key]')) cmpSaveStep0DetailFields();
   });
 }
 cmpStep0InitDelegatedEvents();
+function cmpStep0FlushEdits(){ try { cmpSaveStep0Headline(); } catch (e){} try { cmpSaveStep0DetailFields(); } catch (e){} }
 function cmpRenderStep0Headline(c){
   const holder = document.getElementById('cmpCreativeStep0Headline');
   if (!holder) return;
@@ -51415,8 +51435,10 @@ function cmpRenderStep0RunContest(c){
     if (holder.querySelector('#cmpStep0SharedContestPanel')){ cmpContestSyncButtons(); return; }
     holder.innerHTML = `
       <div class="hint" style="margin-bottom:10px;">One shared contest, applied campaign-wide — writes into this campaign's Long Form Copy.</div>
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;"><button type="button" class="btn-primary" id="cmpStep0SharedContestBtn">${escapeHtml(cmpContestButtonLabel('cmpStep0SharedContestPanel'))}</button><span class="hint cmp-contest-credit" style="margin:0 0 0 auto;display:none;"></span></div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;"><button type="button" class="btn-primary" id="cmpStep0SharedContestBtn">${escapeHtml(cmpContestButtonLabel('cmpStep0SharedContestPanel'))}</button>${cmpContestNextMode('cmpStep0SharedContestPanel') === 'default' ? '<button type="button" class="btn-ghost" id="cmpStep0RunContestNowBtn">Run the full contest now →</button>' : ''}<span class="hint cmp-contest-credit" style="margin:0 0 0 auto;display:none;"></span></div>
       <div id="cmpStep0SharedContestPanel" style="margin-top:12px;"></div>`;
+    // 2026-11-18 (r20): this holder is rebuilt whenever Step 0 re-renders, which used to wipe a running or finished contest. Put it back.
+    cmpContestRestorePanel('cmpStep0SharedContestPanel', 'cmpStep0SharedContestBtn', 'cmpStep0SharedContestFlag');
     cmpContestLoadAllowance();
     return;
   }
@@ -73036,6 +73058,7 @@ function cmpContestSyncButtons(){
   [['cmpCopyContestPanel', 'cmpCopyContestBtn'], ['cmpStep0SharedContestPanel', 'cmpStep0SharedContestBtn'], ['askDockContestPanel', 'askDockContestBtn'], ['copyverCopyContestPanel', 'copyverCopyContestBtn']].forEach(([pid, bid]) => {
     const b = document.getElementById(bid); if (b) b.textContent = cmpContestButtonLabel(pid);
   });
+  { const rn = document.getElementById('cmpStep0RunContestNowBtn'); if (rn && cmpContestNextMode('cmpStep0SharedContestPanel') !== 'default') rn.remove(); }
   Object.keys(cmpPanelAudience).forEach(pid => {
     const b = document.getElementById(cmpAudBtnId(cmpPanelAudience[pid].idx)); if (b) b.textContent = cmpContestButtonLabel(pid);
   });
@@ -73062,6 +73085,14 @@ function cmpEnsurePanelVisible(panel){
     panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e){}
 }
+const cmpContestRunning = {};
+function cmpContestRestorePanel(panelId, btnId, flagId){
+  const panel = document.getElementById(panelId); if (!panel) return;
+  const btn = document.getElementById(btnId);
+  if (cmpContestRunning[panelId]){ panel.innerHTML = renderAiStatusBubble('Your contest is still running. The results will appear here.'); if (btn) btn.disabled = true; return; }
+  const last = cmpCopyContestLastResult[panelId];
+  if (last && last.interviewId){ try { panel.innerHTML = renderCmpCopyContestPanel(last, flagId, panelId); } catch (e){} }
+}
 async function cmpRunCampaignCopyContest(panelId, btnId, flagId, forceMode){
   // 2026-11-17 -- the section tidy-up that used to run here folded the card holding this panel and jumped the page, which looked like the contest bouncing back. The result panel is now kept open instead.
   panelId = panelId || 'cmpCopyContestPanel';
@@ -73084,6 +73115,7 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId, forceMode){
   }
   panel.innerHTML = renderAiStatusBubble("Getting one response to this campaign's Long Form Copy from each AI partner — grounded in the campaign's writing style, objective, KPI, brand voice, and channels — then scoring each one blind before ranking them.", INTERVIEW_STATUS_TIPS);
   if (btn) btn.disabled = true;
+  cmpContestRunning[panelId] = true;
   const runMode = forceMode || cmpContestNextMode(panelId);
   const isDefaultRun = runMode === 'default';
   const timeoutMs = isDefaultRun ? 60000 : 100000;
@@ -73178,7 +73210,9 @@ async function cmpRunCampaignCopyContest(panelId, btnId, flagId, forceMode){
     panel.style.display = '';
     panel.innerHTML = `<div class="hint" style="color:var(--advocacy);font-weight:600;background:#FDECEC;border:1px solid #F3B8B8;border-radius:8px;padding:10px 12px;margin:0;">⚠ Couldn't run the copy contest: ${escapeHtml(e.message || 'backend unreachable')}. Try again.</div>`;
   } finally {
+    cmpContestRunning[panelId] = false;
     cmpSunriseLoaderHide();
+    { const b2 = document.getElementById(btnId); if (b2) b2.disabled = false; }
     if (btn) btn.disabled = false;
     cmpContestSyncButtons();
   }
