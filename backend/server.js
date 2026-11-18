@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-18-r37-contest-without-brief (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-18-r38-model-watch (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -5043,11 +5043,13 @@ function anthropicToolChoice(toolName){ return ANTHROPIC_FORCED_TOOL_OK ? { type
 function anthropicToolNudge(toolName){ return ANTHROPIC_FORCED_TOOL_OK ? '' : `\n\nRespond ONLY by calling the ${toolName} tool with your complete answer. Do not write any other text.`; }
 function isToolChoiceUnsupported(err){ return !!(err && err.httpStatus === 400 && /tool_choice/i.test(String(err.message || ''))); }
 async function callClaudeForJSON(opts){
-  try { return await callClaudeForJSONInner(opts); }
-  catch (e){
-    if (ANTHROPIC_FORCED_TOOL_OK && isToolChoiceUnsupported(e)){ ANTHROPIC_FORCED_TOOL_OK = false; console.warn('[anthropic] forced tool_choice not supported by this model; switching to auto.'); return await callClaudeForJSONInner(opts); }
-    throw e;
-  }
+  return withAnthropicModelFallback(opts, async (o) => {
+    try { return await callClaudeForJSONInner(o); }
+    catch (e){
+      if (ANTHROPIC_FORCED_TOOL_OK && isToolChoiceUnsupported(e)){ ANTHROPIC_FORCED_TOOL_OK = false; console.warn('[anthropic] forced tool_choice not supported by this model; switching to auto.'); return await callClaudeForJSONInner(o); }
+      throw e;
+    }
+  });
 }
 async function callClaudeForJSONInner({ model, maxTokens, content, schema, toolName, toolDescription, timeoutMs }){
   const resp = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
@@ -5101,11 +5103,13 @@ async function callClaudeForJSONInner({ model, maxTokens, content, schema, toolN
 // AI_BRAIN_REPLY_SYSTEM's own comment for why that matters for latency).
 function callClaudeToolStream(opts){
   return withQueueSlot(aiQueue, async () => {
-    try { return await callClaudeToolStreamInner(opts); }
-    catch (e){
-      if (ANTHROPIC_FORCED_TOOL_OK && isToolChoiceUnsupported(e)){ ANTHROPIC_FORCED_TOOL_OK = false; console.warn('[anthropic] forced tool_choice not supported by this model; switching to auto.'); return await callClaudeToolStreamInner(opts); }
-      throw e;
-    }
+    return withAnthropicModelFallback(opts, async (o) => {
+      try { return await callClaudeToolStreamInner(o); }
+      catch (e){
+        if (ANTHROPIC_FORCED_TOOL_OK && isToolChoiceUnsupported(e)){ ANTHROPIC_FORCED_TOOL_OK = false; console.warn('[anthropic] forced tool_choice not supported by this model; switching to auto.'); return await callClaudeToolStreamInner(o); }
+        throw e;
+      }
+    });
   });
 }
 async function callClaudeToolStreamInner({ model, maxTokens, system, messages, schema, toolName, toolDescription, onReplyDelta, onFirstToken, firstByteMs = 20000, idleMs = 15000, maxMs = 110000 }){
@@ -31193,10 +31197,11 @@ const INTERVIEW_VENDOR_REGISTRY = [
 // underlying call. Throws on any failure; every caller wraps this in the
 // same try/catch → honest-error-per-candidate pattern already established
 // by generateInterviewCandidateCopy's Anthropic path.
-async function callVendorForText(vendorKey, prompt, timeoutMs, callOpts){
+async function callVendorForTextOnce(vendorKey, prompt, timeoutMs, callOpts){
   const ms = typeof timeoutMs === 'number' ? timeoutMs : undefined; // undefined -> fetchWithTimeout's own 90s default
   const v = INTERVIEW_VENDOR_REGISTRY.find(x => x.key === vendorKey);
   if (!v) throw new Error('unknown vendor');
+  const model = (callOpts && callOpts.model) || modelFor(vendorKey, v.model); // r38: model-watch fallback may have moved us off a retired model
   // 2026-08-27 fix, per direct report (Gemini candidate showing "Generation
   // failed: HTTP 404" with no further detail) — every vendor branch below
   // used to throw just the bare status code, discarding whatever the
@@ -31214,7 +31219,7 @@ async function callVendorForText(vendorKey, prompt, timeoutMs, callOpts){
     const resp = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
-      body: JSON.stringify({ model: v.model, messages: [{ role: 'user', content: prompt }], store: false }) // store:false — OpenAI does not keep the response as application state
+      body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], store: false }) // store:false — OpenAI does not keep the response as application state
     }, ms);
     if (!resp.ok) throw await vendorHttpError(resp);
     const data = await resp.json();
@@ -31231,7 +31236,7 @@ async function callVendorForText(vendorKey, prompt, timeoutMs, callOpts){
     // GEMINI_MODEL is env-overridable specifically so this can be corrected
     // without a code change once vendorHttpError()'s response body below
     // names the actual bad model string.
-    const resp = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(v.model)}:generateContent`, {
+    const resp = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
       method: 'POST',
       // 2026-10-09 — key sent in a header, not the URL, so it never lands in request logs or error text.
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': String(process.env.GEMINI_API_KEY || '') },
@@ -31258,7 +31263,7 @@ async function callVendorForText(vendorKey, prompt, timeoutMs, callOpts){
     const resp = await fetchWithTimeout('https://api.x.ai/v1/responses', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.XAI_API_KEY}` },
-      body: JSON.stringify({ model: (callOpts && callOpts.model) || v.model, input: prompt })
+      body: JSON.stringify({ model: model, input: prompt })
     }, ms);
     if (!resp.ok) throw await vendorHttpError(resp);
     const data = await resp.json();
@@ -31270,7 +31275,7 @@ async function callVendorForText(vendorKey, prompt, timeoutMs, callOpts){
     const resp = await fetchWithTimeout('https://api.perplexity.ai/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}` },
-      body: JSON.stringify({ model: v.model, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }] })
     }, ms);
     if (!resp.ok) throw await vendorHttpError(resp);
     const data = await resp.json();
@@ -31278,6 +31283,243 @@ async function callVendorForText(vendorKey, prompt, timeoutMs, callOpts){
   }
   throw new Error('unhandled vendor');
 }
+// ===== Model watch (2026-11-18, r38) =====
+// Why: a vendor retiring or renaming a model used to surface only as a failed client draft. Three layers now.
+//  1. Runtime fallback: when a call fails because the model is gone, try the configured fallbacks (<VENDOR>_MODEL_FALLBACKS, comma list), then newer models in the same family that the vendor itself lists, remember the one that works, and log it.
+//  2. Daily check: asks each vendor which models exist, makes a one-word test call, records the result, switches ahead of the first client failure and emails the platform owner.
+//  3. Weekly news scan: finds announced retirements and releases and posts them to the Team Console (Models tab) for planning.
+// Tables are created here (CREATE TABLE IF NOT EXISTS) and get row-level security like the other internal tables.
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS model_health (vendorkey TEXT PRIMARY KEY, configured TEXT, activemodel TEXT, status TEXT, detail TEXT, checkedat TEXT, lastokat TEXT, retireson TEXT, suggested TEXT);`);
+  db.exec(`CREATE TABLE IF NOT EXISTS model_learned (vendorkey TEXT NOT NULL, requested TEXT NOT NULL, working TEXT NOT NULL, reason TEXT, createdat TEXT NOT NULL, PRIMARY KEY (vendorkey, requested));`);
+  db.exec(`CREATE TABLE IF NOT EXISTS model_events (id TEXT PRIMARY KEY, vendorkey TEXT, kind TEXT NOT NULL, detail TEXT, createdat TEXT NOT NULL);`);
+  db.exec(`CREATE TABLE IF NOT EXISTS model_news (id TEXT PRIMARY KEY, vendor TEXT, title TEXT NOT NULL, summary TEXT, url TEXT, effectivedate TEXT, severity TEXT, source TEXT, fetchedat TEXT NOT NULL);`);
+} catch (e){ console.error('[schema] model watch tables:', e && e.message); }
+enableRlsNow(['model_health', 'model_learned', 'model_events', 'model_news']);
+
+const MODEL_LEARNED = new Map(); // "vendor|requested" -> working model
+try { db.prepare('SELECT vendorkey, requested, working FROM model_learned').all().forEach(r => MODEL_LEARNED.set(r.vendorkey + '|' + r.requested, r.working)); } catch (e){ /* table not ready yet; starts empty */ }
+function modelFor(vendorKey, requested){ return MODEL_LEARNED.get(vendorKey + '|' + requested) || requested; }
+function modelEvent(vendorKey, kind, detail){
+  try { db.prepare('INSERT INTO model_events (id, vendorkey, kind, detail, createdat) VALUES (?,?,?,?,?)').run('ME-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6), vendorKey || null, kind, String(detail || '').slice(0, 600), new Date().toISOString()); } catch (e){}
+}
+function isModelGoneError(err){
+  const m = String((err && err.message) || err || '');
+  if (/HTTP (404|410)\b/.test(m) || (err && (err.httpStatus === 404 || err.httpStatus === 410))) return true;
+  return /model[_ ]not[_ ]found|not[_ ]found_error.*model|model.*(does not exist|no longer available|has been (deprecated|retired|decommissioned)|is (deprecated|retired))|decommission|invalid model|unknown model|unsupported model/i.test(m);
+}
+function noteModelSwitch(vendorKey, bad, good, reason){
+  if (!good || good === bad) return;
+  MODEL_LEARNED.set(vendorKey + '|' + bad, good);
+  try { db.prepare('INSERT INTO model_learned (vendorkey, requested, working, reason, createdat) VALUES (?,?,?,?,?) ON CONFLICT (vendorkey, requested) DO UPDATE SET working = EXCLUDED.working, reason = EXCLUDED.reason, createdat = EXCLUDED.createdat').run(vendorKey, bad, good, String(reason || '').slice(0, 300), new Date().toISOString()); } catch (e){}
+  modelEvent(vendorKey, 'switched', `${bad} stopped working; now using ${good}. ${String(reason || '').slice(0, 200)}`);
+  console.warn(`[model-watch] ${vendorKey}: ${bad} unavailable, switched to ${good}`);
+}
+const MODEL_VENDORS = [
+  { key: 'anthropic', label: 'Claude (Anthropic)', envVar: 'ANTHROPIC_API_KEY', getModel: () => ANTHROPIC_STANDARD_MODEL, fallbackEnv: 'ANTHROPIC_MODEL_FALLBACKS', builtinFallbacks: [], discover: true },
+  { key: 'openai-gpt', label: 'GPT (OpenAI)', envVar: 'OPENAI_API_KEY', getModel: () => (INTERVIEW_VENDOR_REGISTRY.find(v => v.key === 'openai-gpt') || {}).model, fallbackEnv: 'OPENAI_MODEL_FALLBACKS', builtinFallbacks: ['gpt-6-luna'], discover: false },
+  { key: 'google-gemini', label: 'Gemini (Google)', envVar: 'GEMINI_API_KEY', getModel: () => (INTERVIEW_VENDOR_REGISTRY.find(v => v.key === 'google-gemini') || {}).model, fallbackEnv: 'GEMINI_MODEL_FALLBACKS', builtinFallbacks: ['gemini-3.8-flash'], discover: true },
+  { key: 'xai-grok', label: 'Grok (xAI)', envVar: 'XAI_API_KEY', getModel: () => (INTERVIEW_VENDOR_REGISTRY.find(v => v.key === 'xai-grok') || {}).model, fallbackEnv: 'XAI_MODEL_FALLBACKS', builtinFallbacks: [], discover: true },
+  { key: 'perplexity', label: 'Perplexity', envVar: 'PERPLEXITY_API_KEY', getModel: () => (INTERVIEW_VENDOR_REGISTRY.find(v => v.key === 'perplexity') || {}).model, fallbackEnv: 'PERPLEXITY_MODEL_FALLBACKS', builtinFallbacks: [], discover: false }
+];
+const MODEL_LIST_CACHE = new Map(); // vendor -> { at, ids }
+async function listVendorModels(vendorKey){
+  const hit = MODEL_LIST_CACHE.get(vendorKey);
+  if (hit && Date.now() - hit.at < 6 * 3600 * 1000) return hit.ids;
+  let ids = null;
+  try {
+    if (vendorKey === 'anthropic' && process.env.ANTHROPIC_API_KEY){
+      const r = await fetchWithTimeout('https://api.anthropic.com/v1/models?limit=200', { headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' } }, 20000);
+      if (r.ok){ const d = await r.json(); ids = (d.data || []).map(m => ({ id: m.id, created: m.created_at || '' })); }
+    } else if (vendorKey === 'openai-gpt' && process.env.OPENAI_API_KEY){
+      const r = await fetchWithTimeout('https://api.openai.com/v1/models', { headers: { Authorization: 'Bearer ' + process.env.OPENAI_API_KEY } }, 20000);
+      if (r.ok){ const d = await r.json(); ids = (d.data || []).map(m => ({ id: m.id, created: m.created ? new Date(m.created * 1000).toISOString() : '' })); }
+    } else if (vendorKey === 'google-gemini' && process.env.GEMINI_API_KEY){
+      const r = await fetchWithTimeout('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': String(process.env.GEMINI_API_KEY) } }, 20000);
+      if (r.ok){ const d = await r.json(); ids = (d.models || []).filter(m => (m.supportedGenerationMethods || []).includes('generateContent')).map(m => ({ id: String(m.name || '').replace(/^models\//, ''), created: '' })); }
+    } else if (vendorKey === 'xai-grok' && process.env.XAI_API_KEY){
+      const r = await fetchWithTimeout('https://api.x.ai/v1/models', { headers: { Authorization: 'Bearer ' + process.env.XAI_API_KEY } }, 20000);
+      if (r.ok){ const d = await r.json(); ids = (d.data || []).map(m => ({ id: m.id, created: m.created ? new Date(m.created * 1000).toISOString() : '' })); }
+    }
+  } catch (e){ ids = null; }
+  if (ids) MODEL_LIST_CACHE.set(vendorKey, { at: Date.now(), ids });
+  return ids; // null when the vendor has no list call or it failed
+}
+function modelFamilyToken(vendorKey, model){
+  const m = String(model || '').toLowerCase();
+  if (vendorKey === 'anthropic') return (m.match(/sonnet|opus|haiku/) || [''])[0];
+  if (vendorKey === 'google-gemini') return m.includes('flash-lite') ? 'flash-lite' : (m.match(/flash|pro/) || [''])[0];
+  if (vendorKey === 'xai-grok') return m.includes('code') ? 'code' : (m.includes('imagine') ? 'imagine' : 'grok');
+  return '';
+}
+// Ordered replacements to try for a model that stopped working: configured/built-in fallbacks first (only those the vendor still lists, when it has a list), then newer models in the same family the vendor itself lists.
+async function modelCandidates(vendorKey, bad){
+  const vd = MODEL_VENDORS.find(v => v.key === vendorKey); if (!vd) return [];
+  const out = [];
+  const add = (m) => { m = String(m || '').trim(); if (m && m !== bad && !out.includes(m)) out.push(m); };
+  const listed = await listVendorModels(vendorKey);
+  const present = (m) => !listed || listed.some(x => x.id === m);
+  String(process.env[vd.fallbackEnv] || '').split(',').forEach(m => { if (present(m.trim())) add(m); });
+  (vd.builtinFallbacks || []).forEach(m => { if (present(m)) add(m); });
+  if (vd.discover && listed){
+    const fam = modelFamilyToken(vendorKey, bad);
+    const found = listed.filter(x => fam && x.id.toLowerCase().includes(fam) && !/preview|exp|image|audio|tts|embed|vision|live|thinking-/i.test(x.id) && x.id !== bad)
+      .sort((a, b) => String(b.created).localeCompare(String(a.created)) || b.id.localeCompare(a.id));
+    found.slice(0, 3).forEach(x => add(x.id));
+  }
+  return out.slice(0, 4);
+}
+// One tiny call to prove a model answers. Vendors go through the raw call; Anthropic through a direct 8-token request.
+async function modelTestCall(vendorKey, model){
+  if (vendorKey === 'anthropic'){
+    const r = await fetchWithTimeout('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model, max_tokens: 8, messages: [{ role: 'user', content: 'Reply with the single word OK.' }] }) }, 30000);
+    if (!r.ok){ const t = (await r.text()).slice(0, 300); const e = new Error(`HTTP ${r.status}: ${t}`); e.httpStatus = r.status; throw e; }
+    return true;
+  }
+  const txt = await callVendorForTextOnce(vendorKey, 'Reply with the single word OK.', 30000, { model, _test: true });
+  if (!String(txt || '').trim()) throw new Error('the model returned no text');
+  return true;
+}
+async function withAnthropicModelFallback(opts, run){
+  const requested = opts.model;
+  const first = modelFor('anthropic', requested);
+  try { return await run(Object.assign({}, opts, { model: first })); }
+  catch (e){
+    if (!isModelGoneError(e)) throw e;
+    const cands = await modelCandidates('anthropic', first);
+    for (const m of cands){
+      try { const out = await run(Object.assign({}, opts, { model: m })); noteModelSwitch('anthropic', requested, m, e.message); return out; }
+      catch (e2){ if (!isModelGoneError(e2)) throw e2; }
+    }
+    modelEvent('anthropic', 'no-fallback', `${first} failed and no replacement worked. ${String(e.message).slice(0, 200)}`);
+    throw e;
+  }
+}
+async function callVendorForText(vendorKey, prompt, timeoutMs, callOpts){
+  const v = INTERVIEW_VENDOR_REGISTRY.find(x => x.key === vendorKey);
+  const requested = (callOpts && callOpts.model) || (v && v.model);
+  try { return await callVendorForTextOnce(vendorKey, prompt, timeoutMs, callOpts); }
+  catch (e){
+    if (!v || !isModelGoneError(e) || (callOpts && callOpts._noFallback)) throw e;
+    const bad = modelFor(vendorKey, requested);
+    const cands = await modelCandidates(vendorKey, bad);
+    for (const m of cands){
+      try { const out = await callVendorForTextOnce(vendorKey, prompt, timeoutMs, Object.assign({}, callOpts, { model: m })); noteModelSwitch(vendorKey, requested, m, e.message); return out; }
+      catch (e2){ if (!isModelGoneError(e2)) throw e2; }
+    }
+    modelEvent(vendorKey, 'no-fallback', `${bad} failed and no replacement worked. ${String(e.message).slice(0, 200)}`);
+    throw e;
+  }
+}
+function modelAlertOnce(vendorKey, subject, body){
+  try {
+    const recent = db.prepare("SELECT id FROM model_events WHERE kind = 'alert' AND vendorkey = ? AND detail = ? AND createdat > ?").get(vendorKey, subject.slice(0, 600), new Date(Date.now() - 20 * 3600 * 1000).toISOString());
+    if (recent) return;
+    modelEvent(vendorKey, 'alert', subject);
+    const to = String(process.env.PLATFORM_OWNER_EMAIL || '').trim();
+    if (to) sendTransactionalEmail({ to, subject: 'Verilume model watch: ' + subject, textBody: body }).catch(() => {});
+  } catch (e){}
+}
+function modelRetireDateFromNews(model, vendorLabelPart){
+  try {
+    const rows = db.prepare("SELECT title, summary, effectivedate FROM model_news WHERE effectivedate IS NOT NULL AND effectivedate >= ?").all(new Date().toISOString().slice(0, 10));
+    const m = String(model || '').toLowerCase(); if (!m) return null;
+    const hits = rows.filter(r => (String(r.title) + ' ' + String(r.summary)).toLowerCase().includes(m)).map(r => r.effectivedate).sort();
+    return hits[0] || null;
+  } catch (e){ return null; }
+}
+async function runModelHealthCheck(){
+  const results = [];
+  for (const vd of MODEL_VENDORS){
+    const configured = vd.getModel();
+    const active = modelFor(vd.key, configured);
+    const now = new Date().toISOString();
+    const prev = (() => { try { return db.prepare('SELECT lastokat FROM model_health WHERE vendorkey = ?').get(vd.key); } catch (e){ return null; } })();
+    let status = 'ok', detail = '', suggested = null, lastOk = prev && prev.lastokat || null, usedModel = active;
+    if (!process.env[vd.envVar]){ status = 'no_key'; detail = `${vd.envVar} is not set, so this partner is skipped.`; }
+    else {
+      const listed = await listVendorModels(vd.key);
+      if (listed && !listed.some(x => x.id === active)) detail = `Not in ${vd.label}'s current model list. `;
+      try { await modelTestCall(vd.key, active); lastOk = now; if (detail) detail += 'Test call still works.'; }
+      catch (e){
+        if (isModelGoneError(e)){
+          const cands = await modelCandidates(vd.key, active);
+          let switched = null;
+          for (const m of cands){ try { await modelTestCall(vd.key, m); switched = m; break; } catch (e2){ /* try next */ } }
+          if (switched){ noteModelSwitch(vd.key, configured, switched, 'daily check: ' + String(e.message).slice(0, 150)); usedModel = switched; status = 'switched'; suggested = switched; detail = `${active} is gone. Switched automatically to ${switched}. Set the host setting to ${switched} to make it permanent.`; lastOk = now; }
+          else { status = 'broken'; suggested = cands[0] || null; detail = `${active} is gone and no replacement answered. ${String(e.message).slice(0, 160)}`; }
+        } else { status = 'error'; detail = String(e.message).slice(0, 200); }
+      }
+    }
+    const retiresOn = modelRetireDateFromNews(usedModel) || modelRetireDateFromNews(configured);
+    if (status === 'ok' && retiresOn){ const days = Math.round((new Date(retiresOn) - Date.now()) / 86400000); if (days <= 60){ status = 'retiring'; detail = `${usedModel} is announced to retire on ${retiresOn} (${days} days). Pick and test a replacement.`; } }
+    try { db.prepare('INSERT INTO model_health (vendorkey, configured, activemodel, status, detail, checkedat, lastokat, retireson, suggested) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (vendorkey) DO UPDATE SET configured = EXCLUDED.configured, activemodel = EXCLUDED.activemodel, status = EXCLUDED.status, detail = EXCLUDED.detail, checkedat = EXCLUDED.checkedat, lastokat = EXCLUDED.lastokat, retireson = EXCLUDED.retireson, suggested = EXCLUDED.suggested').run(vd.key, configured, usedModel, status, detail, now, lastOk, retiresOn, suggested); } catch (e){ console.error('[model-watch] could not save health:', e.message); }
+    if (status === 'broken' || status === 'switched' || status === 'retiring' || status === 'error') modelAlertOnce(vd.key, `${vd.label}: ${status} (${usedModel})`, `${vd.label}\nStatus: ${status}\nModel: ${usedModel}\n${detail}\n\nSee the Models tab in the Team Console.`);
+    results.push({ vendor: vd.key, status });
+  }
+  modelEvent(null, 'check-run', results.map(r => r.vendor + ':' + r.status).join(', '));
+  return results;
+}
+// Weekly news scan: Perplexity searches the web for announced retirements and releases. Items without a source link are dropped; each row shows its source so a person can verify before acting.
+async function runModelNewsScan(){
+  if (!process.env.PERPLEXITY_API_KEY) { modelEvent(null, 'news-skipped', 'PERPLEXITY_API_KEY not set'); return { added: 0, skipped: true }; }
+  const inUse = MODEL_VENDORS.map(v => v.label + ': ' + modelFor(v.key, v.getModel())).join('; ');
+  const prompt = `Search for official announcements from Anthropic, OpenAI, Google (Gemini API), xAI and Perplexity about AI model deprecations, retirements, shutdown dates, renamed or replaced models, API changes that break existing requests, and new model releases that replace current ones. Focus on the last 60 days and anything scheduled for the next 12 months. Models we currently call: ${inUse}. Reply with ONLY a JSON object: {"items":[{"vendor":"Anthropic|OpenAI|Google|xAI|Perplexity","title":"short headline","summary":"1-2 sentences, with the exact model names","url":"official source URL","effectiveDate":"YYYY-MM-DD or null","severity":"action|plan|info"}]}. Use "action" when a model we call is affected, "plan" for announced future changes to other models, "info" for new releases. Include only items you found a real source URL for.`;
+  const resp = await fetchWithTimeout('https://api.perplexity.ai/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env.PERPLEXITY_API_KEY }, body: JSON.stringify({ model: modelFor('perplexity', process.env.PERPLEXITY_MODEL || 'sonar-pro'), search_recency_filter: 'month', messages: [{ role: 'user', content: prompt }] }) }, 120000);
+  if (!resp.ok){ modelEvent('perplexity', 'news-failed', 'HTTP ' + resp.status); return { added: 0, error: 'HTTP ' + resp.status }; }
+  const data = await resp.json();
+  const parsed = parseJsonBlock((data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '');
+  const items = parsed && Array.isArray(parsed.items) ? parsed.items : [];
+  let added = 0;
+  const inUseModels = MODEL_VENDORS.map(v => String(modelFor(v.key, v.getModel()) || '').toLowerCase()).filter(Boolean);
+  for (const it of items.slice(0, 40)){
+    const url = typeof repSafeUrl === 'function' ? repSafeUrl(it.url) : (/^https:\/\//.test(String(it.url || '')) ? it.url : null);
+    const title = String(it.title || '').trim().slice(0, 200); if (!url || !title) continue;
+    const eff = /^\d{4}-\d{2}-\d{2}$/.test(String(it.effectiveDate || '')) ? it.effectiveDate : null;
+    const text = (title + ' ' + (it.summary || '')).toLowerCase();
+    const sev = inUseModels.some(m => m && text.includes(m)) ? 'action' : (['action', 'plan', 'info'].includes(it.severity) ? it.severity : 'info');
+    const id = 'MN-' + require('crypto').createHash('sha1').update(String(it.vendor || '') + '|' + title.toLowerCase()).digest('hex').slice(0, 14);
+    try {
+      const had = db.prepare('SELECT id FROM model_news WHERE id = ?').get(id);
+      db.prepare('INSERT INTO model_news (id, vendor, title, summary, url, effectivedate, severity, source, fetchedat) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (id) DO UPDATE SET summary = EXCLUDED.summary, url = EXCLUDED.url, effectivedate = EXCLUDED.effectivedate, severity = EXCLUDED.severity, fetchedat = EXCLUDED.fetchedat').run(id, String(it.vendor || '').slice(0, 40), title, String(it.summary || '').slice(0, 600), url, eff, sev, 'Weekly web scan', new Date().toISOString());
+      if (!had) added++;
+    } catch (e){ /* skip bad row */ }
+  }
+  modelEvent(null, 'news-run', `${items.length} found, ${added} new`);
+  return { added, found: items.length };
+}
+// Notices read from the vendors' own deprecation pages on 2026-11-18, kept so the Models tab is useful before the first weekly scan. Verify against the source link before acting.
+function seedModelNews(){
+  const rows = [
+    ['OpenAI', 'gpt-4o and gpt-4.1 snapshots shut down Jan 14, 2027', 'gpt-4o-2024-08-06, gpt-4o-2024-11-20, gpt-4o-mini and gpt-4.1 are deprecated. Suggested replacement: gpt-6-luna. Our OpenAI partner defaults to gpt-4o.', 'https://developers.openai.com/api/docs/deprecations', '2027-01-14', 'action'],
+    ['OpenAI', 'gpt-5 family and o3 shut down Dec 11, 2026', 'gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-pro, o3 and o3-pro are deprecated. Replacements named: gpt-6.1-sol, gpt-6.1-terra, gpt-6-luna.', 'https://developers.openai.com/api/docs/deprecations', '2026-12-11', 'plan'],
+    ['Anthropic', 'claude-sonnet-4-5 retires Nov 30, 2026', 'Replacement: claude-sonnet-5-5, which is the model we call today. No action unless an override points at 4.5.', 'https://platform.claude.com/docs/en/about-claude/model-deprecations', '2026-11-30', 'info'],
+    ['Anthropic', 'temperature, top_p and top_k removed in API version 2026-10-21', 'Requests that set these return a 400 error. We do not send them, but check any new code before adding them.', 'https://platform.claude.com/docs/en/about-claude/model-deprecations', '2026-10-21', 'plan'],
+    ['Google', 'gemini-3.1-flash-lite shuts down May 7, 2027', 'Replacement named: gemini-3.5-flash-lite. gemini-3.6-flash, which we call, has no shutdown date announced.', 'https://ai.google.dev/gemini-api/docs/deprecations', '2027-05-07', 'plan'],
+    ['Perplexity', 'Sonar Chat Completions became the Agent API (July 2026)', 'Check that sonar-pro on the chat completions endpoint keeps working; the changelog links a migration guide. No sonar-pro retirement date was found.', 'https://docs.perplexity.ai/changelog/changelog', null, 'plan'],
+    ['xAI', 'Eight Grok models retired May 15, 2026 and now redirect to grok-4.3', 'grok-4.6, which we call, was not on the retirement list. Old model names are redirected and billed at grok-4.3 rates.', 'https://docs.x.ai/developers/migration/may-15-retirement', '2026-05-15', 'info']
+  ];
+  for (const r of rows){
+    const id = 'MN-seed-' + require('crypto').createHash('sha1').update(r[0] + r[1]).digest('hex').slice(0, 10);
+    try { db.prepare('INSERT INTO model_news (id, vendor, title, summary, url, effectivedate, severity, source, fetchedat) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (id) DO NOTHING').run(id, r[0], r[1], r[2], r[3], r[4], r[5], 'Vendor page read 2026-11-18', new Date().toISOString()); } catch (e){}
+  }
+}
+let modelWatchTimer = null;
+function startModelWatch(){
+  if (modelWatchTimer) return;
+  try { seedModelNews(); } catch (e){}
+  const tick = async () => {
+    try {
+      const last = db.prepare("SELECT createdat FROM model_events WHERE kind = 'check-run' ORDER BY createdat DESC LIMIT 1").get();
+      if (!last || Date.now() - new Date(last.createdat).getTime() > 20 * 3600 * 1000) await runModelHealthCheck();
+      const lastNews = db.prepare("SELECT createdat FROM model_events WHERE kind IN ('news-run','news-skipped','news-failed') ORDER BY createdat DESC LIMIT 1").get();
+      if (!lastNews || Date.now() - new Date(lastNews.createdat).getTime() > 6.5 * 86400000) await runModelNewsScan();
+    } catch (e){ console.error('[model-watch]', e && e.message); }
+  };
+  setTimeout(tick, 90 * 1000);
+  modelWatchTimer = setInterval(tick, 60 * 60 * 1000); // hourly look; each job only runs when its own window has passed
+}
+// ===== end model watch =====
 // parseJsonBlock(text) — hardened 2026-09-14, per Todd's direct report
 // ("Option 3 and 5 did not return a result", then a repeat run where every
 // option failed). Root cause: this is the naive vendor-side JSON extractor
@@ -33021,6 +33263,22 @@ async function handleRequestInner(req, res) {
           : db.prepare('SELECT * FROM platform_access_log WHERE platformuserid = ? ORDER BY createdAt DESC LIMIT 200').all(me.id);
         return sendJson(res, 200, { visits: rows.map(r => ({ id: r.id, platformUserId: r.platformuserid, platformName: r.platformname, platformRole: r.platformrole, accountId: r.accountId, action: r.action, ip: r.ip, createdAt: r.createdAt })) });
       }
+      // GET /api/platform/models — model watch: health per partner, announced changes, recent events. POST .../models/check and .../models/news-scan run them now (owner/admin).
+      if (parts.length >= 3 && sub === 'models'){
+        if (req.method === 'GET' && parts.length === 3){
+          const health = MODEL_VENDORS.map(vd => { let r = null; try { r = db.prepare('SELECT * FROM model_health WHERE vendorkey = ?').get(vd.key); } catch (e){} return { vendor: vd.key, label: vd.label, configured: vd.getModel() || null, active: r ? r.activemodel : (modelFor(vd.key, vd.getModel()) || null), status: r ? r.status : 'not_checked', detail: r ? r.detail : '', checkedAt: r ? r.checkedat : null, lastOkAt: r ? r.lastokat : null, retiresOn: r ? r.retireson : null, suggested: r ? r.suggested : null, keySet: !!process.env[vd.envVar], fallbackSetting: vd.fallbackEnv }; });
+          let news = [], events = [];
+          try { news = db.prepare("SELECT id, vendor, title, summary, url, effectivedate, severity, source, fetchedat FROM model_news ORDER BY CASE severity WHEN 'action' THEN 0 WHEN 'plan' THEN 1 ELSE 2 END, COALESCE(effectivedate, '9999-12-31') ASC LIMIT 100").all().map(n => ({ id: n.id, vendor: n.vendor, title: n.title, summary: n.summary, url: n.url, effectiveDate: n.effectivedate, severity: n.severity, source: n.source, fetchedAt: n.fetchedat })); } catch (e){}
+          try { events = db.prepare('SELECT vendorkey, kind, detail, createdat FROM model_events ORDER BY createdat DESC LIMIT 40').all().map(x => ({ vendor: x.vendorkey, kind: x.kind, detail: x.detail, at: x.createdat })); } catch (e){}
+          return sendJson(res, 200, { health, news, events });
+        }
+        if (req.method === 'POST' && parts.length === 4 && (parts[3] === 'check' || parts[3] === 'news-scan')){
+          if (!isOwnerOrAdmin) return sendJson(res, 403, { error: 'Only Owners and Admins run the model check.' });
+          try { return sendJson(res, 200, parts[3] === 'check' ? { results: await runModelHealthCheck() } : await runModelNewsScan()); }
+          catch (e){ return sendJson(res, 500, { error: String((e && e.message) || e).slice(0, 200) }); }
+        }
+        return sendJson(res, 404, { error: 'not found' });
+      }
       // Team management: owner and admin only.
       if (parts.length >= 3 && sub === 'users'){
         if (!isOwnerOrAdmin) return sendJson(res, 403, { error: 'Only Owners and Admins manage the Verilume team.' });
@@ -33127,7 +33385,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-18-r37-contest-without-brief',
+        buildStamp: '2026-11-18-r38-model-watch',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -36746,7 +37004,7 @@ async function handleRequestInner(req, res) {
           const resp = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-            body: JSON.stringify({ model: ANTHROPIC_STANDARD_MODEL, max_tokens: 700, messages: [{ role: 'user', content: promptText }] })
+            body: JSON.stringify({ model: modelFor('anthropic', ANTHROPIC_STANDARD_MODEL), max_tokens: 700, messages: [{ role: 'user', content: promptText }] })
           });
           if (!resp.ok){
             const bodyText = (await resp.text()).slice(0, 300);
@@ -52890,6 +53148,7 @@ if (require.main === module) {
   setInterval(() => { nightlyDemoReset().catch(e => console.error('[demo-reset]', e.message)); }, 20 * 60 * 1000);
   server.listen(PORT, () => { console.log(`CXMedia.AI demo backend listening on http://localhost:${PORT}`); setTimeout(enforceRlsEverywhere, 20000); setInterval(enforceRlsEverywhere, 10 * 60 * 1000); });
   setTimeout(enforceRlsOnPublicTables, 5000);
+  try { startModelWatch(); } catch (e){ console.error('[model-watch] could not start:', e && e.message); }
 }
 
 // 2026-08-23 fix — module load (and all ~230 top-level schema-setup
