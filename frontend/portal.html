@@ -14280,7 +14280,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-18-r33-voice-contest-in-scoring';
+const CXMEDIA_BUILD_STAMP = '2026-11-18-r35-brief-auto-draft';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -73674,7 +73674,7 @@ async function cmpSelectCopyContestCandidate(interviewId, candidateKey, flagId){
     // yet, which is easy to miss since the text still appears, just dimmed
     // and non-editable — same gate cmpLongFormLockNote already describes.
     if (!longformEl){
-      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = "Selected, but couldn't find the Long Form Copy field on this page to apply it to — open Brand Messaging and try again."; }
+      if (flag){ flag.style.color = 'var(--advocacy)'; flag.textContent = "Selected, but couldn't find the Long Form Copy field on this page to apply it to — open this campaign's Creative step and try again."; }
       return;
     }
     if (!result.copy){
@@ -73736,7 +73736,7 @@ function cmpSaveCopyContestWinnerEdit(editId, saveFlagId){
   const longformEl = document.getElementById('cmpLongFormCopy');
   if (!editEl) return;
   if (!longformEl){
-    if (saveFlag){ saveFlag.style.color = 'var(--advocacy)'; saveFlag.textContent = "Couldn't find the Long Form Copy field on this page to save to — open Brand Messaging and try again."; }
+    if (saveFlag){ saveFlag.style.color = 'var(--advocacy)'; saveFlag.textContent = "Couldn't find the Long Form Copy field on this page to save to — open this campaign's Creative step and try again."; }
     return;
   }
   longformEl.value = editEl.value;
@@ -73750,8 +73750,8 @@ function cmpSaveCopyContestWinnerEdit(editId, saveFlagId){
   if (longformEl.disabled){
     // Still genuinely missing one of them: keep the copy on the campaign anyway so every asset uses it, and say exactly which one is empty.
     try { const c3 = cmpRailLoadedCampaign(); if (c3){ c3.longformCopy = longformEl.value; cmpPersistMessagingToCampaign(); if (typeof cmpRerenderCreativeAssetCopyPanels === 'function') cmpRerenderCreativeAssetCopyPanels(); } } catch (e){}
-    const miss = [cmpKeyMessageComplete() ? '' : 'the Key Message', cmpBriefBuilderComplete() ? '' : 'the Brief Builder context'].filter(Boolean).join(' and ');
-    if (saveFlag){ saveFlag.style.color = 'var(--advocacy)'; saveFlag.textContent = `Saved to this campaign. It can be approved once ${miss || 'the Key Message and Brief Builder context'} ${/ and /.test(miss) ? 'are' : 'is'} filled in; that is the only thing left.`; }
+    const miss = [cmpKeyMessageComplete() ? '' : 'the Headline (Key Message)', cmpBriefBuilderComplete() ? '' : 'the campaign brief'].filter(Boolean).join(' and ');
+    if (saveFlag){ saveFlag.style.color = 'var(--advocacy)'; saveFlag.textContent = `Saved to this campaign. It can be approved once ${miss || 'the Headline and the campaign brief'} ${/ and /.test(miss) ? 'are' : 'is'} filled in; that is the only thing left.`; }
     return;
   }
   cmpApproveMsgField('longform');
@@ -73928,6 +73928,8 @@ function cmpKeyMessageComplete(){
 function cmpBriefBuilderComplete(){
   cmpHydrateMsgFieldsFromCampaign();
   const el = document.getElementById('cmpBriefBuilderExpandedText');
+  // r35: the brief is drafted automatically from the campaign's own fields. It was only drafted when the Brand Messaging stage rendered, which the Creative flow skips, so a campaign with a Headline still read as missing its brief.
+  if (el && !el.value.trim() && typeof generateCampaignBriefExpanded === 'function'){ try { generateCampaignBriefExpanded(); } catch (e){} }
   return !!(el && el.value.trim());
 }
 function cmpLongFormUnlocked(){ return cmpBriefBuilderComplete() && cmpKeyMessageComplete(); }
@@ -75421,7 +75423,7 @@ function cmpRenderCopyVersionsHeaderRow(){
     banner.innerHTML = '';
   } else {
     banner.className = 'copyver-pending-banner visible';
-    banner.innerHTML = `<span class="copyver-pending-spinner"></span><span>Campaign copy isn't written yet — add Key Message and Long Form Copy on Brand Messaging. Pick and position assets meanwhile.</span>`;
+    banner.innerHTML = `<span class="copyver-pending-spinner"></span><span>Campaign copy isn't written yet — add the Headline and Long Form Copy for this campaign. Pick and position assets meanwhile.</span>`;
   }
 }
 
@@ -75448,13 +75450,13 @@ function cmpRenderCampaignCopyDrawer(){
   const ready = cmpCampaignCopyIsReady();
   if (!ready){
     body.innerHTML = `
-      <div class="copyver-copy-drawer-status pending">Not written yet — Key Message and Long Form Copy are added and approved on the Brand Messaging stage, right before this one.</div>
+      <div class="copyver-copy-drawer-status pending">Not written yet — the Headline and Long Form Copy are added and approved for this campaign before the assets.</div>
       <div class="hint">Once approved there, this panel shows the campaign's Key Message and Long Form Copy alongside whichever asset you're working on here.</div>
-      <button type="button" class="btn-primary" style="width:100%;justify-content:center;" onclick="cmpCloseCampaignCopyDrawer();openCmpStage('messaging');">Go to Brand Messaging →</button>`;
+      <button type="button" class="btn-primary" style="width:100%;justify-content:center;" onclick="cmpCloseCampaignCopyDrawer();openCmpStage('messaging');">Go to campaign copy →</button>`;
     return;
   }
   body.innerHTML = `
-    <div class="copyver-copy-drawer-status ready">✓ From this campaign's approved Brand Messaging — Key Message and Long Form Copy. Edit either on that stage; changes show here right away.</div>
+    <div class="copyver-copy-drawer-status ready">✓ From this campaign's approved Headline and Long Form Copy. Edit either there; changes show here right away.</div>
     <div>
       <div class="copyver-copy-drawer-section-label">Key Message</div>
       <p class="copyver-copy-drawer-text">${escapeHtml(c.keyMessage || '')}</p>
