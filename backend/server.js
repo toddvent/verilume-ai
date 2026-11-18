@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-18-r43-asset-copy-uses-headline (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-18-r44-results-upload-qr-brand (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -8275,6 +8275,48 @@ function csvOf(rows, cols){ return [cols.join(',')].concat(rows.map(r => cols.ma
 function sendCsv(res, name, body){
   res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="' + name + '"', 'Cache-Control': 'no-store' });
   res.end(body);
+}
+// r44 — campaign results by channel. One download template and one upload per campaign, keyed by campaign_id. Internal Email rows always carry
+// total file, delivered, opens, clicks and opt-outs, so open, click and opt-out rates can be read against both the total file and the delivered file.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS campaign_channel_actuals (
+    id TEXT PRIMARY KEY,
+    campaignid TEXT NOT NULL,
+    accountid TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    spend REAL,
+    impressions REAL,
+    clicks REAL,
+    conversions REAL,
+    revenue REAL,
+    emailtotalfile REAL,
+    emaildelivered REAL,
+    emailopens REAL,
+    emailclicks REAL,
+    emailoptouts REAL,
+    updatedat TEXT NOT NULL
+  );
+`);
+const CHANNEL_ACTUALS_COLS = ['campaign_id', 'channel', 'spend', 'impressions', 'clicks', 'conversions', 'revenue', 'email_total_file', 'email_delivered', 'email_opens', 'email_clicks', 'email_opt_outs'];
+function parseCsvText(text){
+  const rows = []; let row = [], cell = '', q = false;
+  const s = String(text || '').replace(/^﻿/, '');
+  for (let i = 0; i < s.length; i++){
+    const ch = s[i];
+    if (q){ if (ch === '"'){ if (s[i + 1] === '"'){ cell += '"'; i++; } else q = false; } else cell += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === ',') { row.push(cell); cell = ''; }
+    else if (ch === '\n' || ch === '\r'){ if (ch === '\r' && s[i + 1] === '\n') i++; row.push(cell); cell = ''; if (row.some(c => String(c).trim() !== '')) rows.push(row); row = []; }
+    else cell += ch;
+  }
+  row.push(cell); if (row.some(c => String(c).trim() !== '')) rows.push(row);
+  return rows;
+}
+function campaignChannelActualsOut(campaignId){
+  return db.prepare('SELECT * FROM campaign_channel_actuals WHERE campaignid = ? ORDER BY channel ASC').all(campaignId).map(r => ({
+    channel: r.channel, spend: r.spend, impressions: r.impressions, clicks: r.clicks, conversions: r.conversions, revenue: r.revenue,
+    emailTotalFile: r.emailtotalfile, emailDelivered: r.emaildelivered, emailOpens: r.emailopens, emailClicks: r.emailclicks, emailOptOuts: r.emailoptouts, updatedAt: r.updatedat
+  }));
 }
 function spendRequestOut(r){
   return { id: r.id, campaignId: r.campaignid, amount: Number(r.amount), status: r.status, requestedById: r.requestedbyid, requestedByName: r.requestedbyname, approverId: r.approverid, approverName: r.approvername,
@@ -33472,7 +33514,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-18-r43-asset-copy-uses-headline',
+        buildStamp: '2026-11-18-r44-results-upload-qr-brand',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -39004,12 +39046,16 @@ Submit your response via the campaign_intake_turn tool.`;
       try {
         const QRCode = require('qrcode');
         const size = Math.min(2048, Math.max(128, Number(body.size) || 512));
+        // r44 — a branded code (logo in the middle, brand colour) uses the highest error correction so it still scans.
+        const ecl = body.level === 'H' ? 'H' : 'M';
+        const darkHex = /^#[0-9a-fA-F]{6}$/.test(String(body.dark || '')) ? String(body.dark) : '#000000';
+        const qrColor = { dark: darkHex, light: '#FFFFFF' };
         if (body.format === 'svg'){
           // Vector output for print: scales to any size without blurring.
-          const svg = await QRCode.toString(data, { type: 'svg', errorCorrectionLevel: 'M', margin: 2 });
+          const svg = await QRCode.toString(data, { type: 'svg', errorCorrectionLevel: ecl, margin: 2, color: qrColor });
           return sendJson(res, 200, { svg });
         }
-        const dataUrl = await QRCode.toDataURL(data, { errorCorrectionLevel: 'M', margin: 2, width: size });
+        const dataUrl = await QRCode.toDataURL(data, { errorCorrectionLevel: ecl, margin: 2, width: size, color: qrColor });
         return sendJson(res, 200, { dataUrl });
       } catch (e){
         return sendJson(res, 500, { error: 'QR generation failed: ' + e.message });
@@ -44679,6 +44725,75 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
     // campaign_copy_interviews instead of creative_job_interviews (see that
     // table's comment for why a separate table). Body: { sourceKey } (same
     // convention as score-copy above).
+    // r44 — GET /api/campaigns/:id/channel-actuals-template.csv, GET/POST /api/campaigns/:id/channel-actuals
+    if (parts.length >= 4 && parts[0] === 'api' && parts[1] === 'campaigns' && (parts[3] === 'channel-actuals' || parts[3] === 'channel-actuals-template.csv')){
+      const campaignId = decodeURIComponent(parts[2]);
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      if (!campaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, campaign.accountId)) return;
+      if (req.method === 'GET' && parts[3] === 'channel-actuals-template.csv'){
+        const chans = String(campaign.channels || '').split(',').map(x => x.trim()).filter(Boolean);
+        if (!chans.some(x => x.toLowerCase() === 'internal email')) chans.push('Internal Email');
+        const saved = {}; campaignChannelActualsOut(campaignId).forEach(r => { saved[r.channel.toLowerCase()] = r; });
+        const lines = [CHANNEL_ACTUALS_COLS.join(',')];
+        chans.forEach(ch => {
+          const r = saved[ch.toLowerCase()] || {};
+          const email = ch.toLowerCase() === 'internal email';
+          const v = x => (x === null || x === undefined) ? '' : x;
+          lines.push([campaignId, ch, v(r.spend), v(r.impressions), v(r.clicks), v(r.conversions), v(r.revenue), email ? v(r.emailTotalFile) : '', email ? v(r.emailDelivered) : '', email ? v(r.emailOpens) : '', email ? v(r.emailClicks) : '', email ? v(r.emailOptOuts) : ''].map(csvCell).join(','));
+        });
+        return sendCsv(res, 'campaign-results-' + campaignId + '.csv', lines.join('\r\n') + '\r\n');
+      }
+      if (req.method === 'GET' && parts[3] === 'channel-actuals'){
+        return sendJson(res, 200, { campaignId, rows: campaignChannelActualsOut(campaignId) });
+      }
+      if (req.method === 'POST' && parts[3] === 'channel-actuals'){
+        const body = await readBody(req);
+        const table = parseCsvText(body && body.csv);
+        if (table.length < 2) return sendJson(res, 400, { error: 'The file has no data rows. Download the template, fill it in and upload it again.' });
+        const head = table[0].map(h => String(h || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''));
+        const ix = name => head.indexOf(name);
+        if (ix('campaign_id') < 0 || ix('channel') < 0) return sendJson(res, 400, { error: 'The file needs campaign_id and channel columns. Use the template downloaded from this campaign.' });
+        const num = (r, name) => { const i = ix(name); if (i < 0) return null; const t = String(r[i] === undefined ? '' : r[i]).replace(/[$,%\s]/g, ''); if (t === '') return null; const n = Number(t); return isFinite(n) ? n : NaN; };
+        const problems = [], warnings = [], clean = [];
+        table.slice(1).forEach((r, k) => {
+          const line = k + 2;
+          const cid = String(r[ix('campaign_id')] || '').trim();
+          const channel = String(r[ix('channel')] || '').trim();
+          if (!cid && !channel) return;
+          if (cid !== campaignId){ problems.push(`Row ${line}: campaign_id is "${cid || 'blank'}" but this campaign is ${campaignId}. Every row must carry this campaign's id.`); return; }
+          if (!channel){ problems.push(`Row ${line}: channel is blank.`); return; }
+          const o = { channel };
+          let bad = false;
+          ['spend', 'impressions', 'clicks', 'conversions', 'revenue', 'email_total_file', 'email_delivered', 'email_opens', 'email_clicks', 'email_opt_outs'].forEach(f => {
+            const n = num(r, f);
+            if (n !== null && (Number.isNaN(n) || n < 0)){ problems.push(`Row ${line}: ${f} must be a number of zero or more.`); bad = true; }
+            o[f] = n;
+          });
+          if (bad) return;
+          if (o.email_delivered != null && o.email_total_file != null && o.email_delivered > o.email_total_file) warnings.push(`Row ${line}: delivered is larger than the total file.`);
+          ['email_opens', 'email_clicks', 'email_opt_outs'].forEach(f => { if (o[f] != null && o.email_delivered != null && o[f] > o.email_delivered) warnings.push(`Row ${line}: ${f.replace(/_/g, ' ')} is larger than delivered.`); });
+          clean.push(o);
+        });
+        if (problems.length) return sendJson(res, 400, { error: problems.slice(0, 6).join(' '), problems: problems.slice(0, 25) });
+        if (!clean.length) return sendJson(res, 400, { error: 'No usable rows were found in the file.' });
+        const now = new Date().toISOString();
+        clean.forEach(o => {
+          db.prepare('DELETE FROM campaign_channel_actuals WHERE campaignid = ? AND LOWER(channel) = ?').run(campaignId, o.channel.toLowerCase());
+          db.prepare('INSERT INTO campaign_channel_actuals (id, campaignid, accountid, channel, spend, impressions, clicks, conversions, revenue, emailtotalfile, emaildelivered, emailopens, emailclicks, emailoptouts, updatedat) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+            .run(generateId('CHA'), campaignId, campaign.accountId, o.channel, o.spend, o.impressions, o.clicks, o.conversions, o.revenue, o.email_total_file, o.email_delivered, o.email_opens, o.email_clicks, o.email_opt_outs, now);
+        });
+        // The campaign's headline actuals follow the uploaded channel rows (sum of what was given).
+        const all = campaignChannelActualsOut(campaignId);
+        const sum = k => { let t = null; all.forEach(r => { if (r[k] != null) t = (t || 0) + Number(r[k]); }); return t; };
+        const sp = sum('spend'), im = sum('impressions'), cv = sum('conversions');
+        if (sp != null) db.prepare('UPDATE campaigns SET actualSpend = ? WHERE id = ?').run(sp, campaignId);
+        if (im != null) db.prepare('UPDATE campaigns SET actualImpressions = ? WHERE id = ?').run(im, campaignId);
+        if (cv != null) db.prepare('UPDATE campaigns SET actualConversions = ? WHERE id = ?').run(cv, campaignId);
+        return sendJson(res, 200, { ok: true, saved: clean.length, warnings: warnings.slice(0, 10), rows: all });
+      }
+    }
+
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'copy-interview'){
       const campaignId = decodeURIComponent(parts[2]);
       const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
