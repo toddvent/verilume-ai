@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-18-r16-loyalty-clicks (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-18-r17-channel-forecast (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -22871,13 +22871,13 @@ function buildGrowthPerformance(accountId, opts){
 // Light read of account_digital_performance only; the same window rule as the Growth and Performance report.
 const _benchCache = new Map();
 function buildBudgetBenchmarks(accountId, opts){
-  const ck = accountId + '|' + (opts && opts.outcomes ? 1 : 0); const hit = _benchCache.get(ck); if (hit && Date.now() - hit.t < 300000) return hit.v;
+  const ck = accountId + '|' + (opts && opts.outcomes ? 1 : 0) + '|' + ((opts && opts.channel) || '') + '|' + ((opts && opts.audience) || ''); const hit = _benchCache.get(ck); if (hit && Date.now() - hit.t < 300000) return hit.v;
   const v = buildBudgetBenchmarksRaw(accountId, opts); _benchCache.set(ck, { t: Date.now(), v }); return v;
 }
 function buildBudgetBenchmarksRaw(accountId, opts){
   const asOfDate = (opts && opts.asOf) || new Date(); const key = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
   const r2 = n => Math.round(n * 100) / 100;
-  const dp = db.prepare("SELECT * FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").all(accountId).map(r => ({ k: key(r.year, r.month), channel: aliasVal(r, 'channel'), impressions: Number(r.impressions) || 0, spend: Number(r.spend) || 0, leads: Number(r.leads) || 0 }));
+  const dp = db.prepare("SELECT * FROM account_digital_performance WHERE accountId = ? AND grain = 'overview'").all(accountId).map(r => ({ k: key(r.year, r.month), channel: aliasVal(r, 'channel'), impressions: Number(r.impressions) || 0, clicks: Number(r.clicks) || 0, spend: Number(r.spend) || 0, leads: Number(r.leads) || 0 }));
   const users = sotWebUserRows(accountId).map(r => ({ k: key(r.year, r.month), users: Number(r.users) || 0 }));
   const out = { available: false, window: null, cpl: null, costPerVisit: null, cac: null, roas: null, cpm: null, spend: null, leads: null, visits: null, outcomesBasis: null };
   if (dp.length){
@@ -22892,6 +22892,34 @@ function buildBudgetBenchmarksRaw(accountId, opts){
     out.costPerVisit = vis ? r2(t.spend / vis) : null;
     out.cpm = t.impressions ? r2(t.spend / t.impressions * 1000) : null;
     out.available = t.spend > 0;
+  }
+  // 2026-11-18 (r17): when a channel is named (a stand-alone placement), forecast from that channel's own history, not account-wide CAC/ROAS.
+  // An internal email carries $0 media cost, so the forecast is volume-based: the channel's click and lead rate per send, times the audience's email list size.
+  if (opts && opts.channel && dp.length){
+    try {
+      const want = String(opts.channel).trim().toLowerCase();
+      const isEmail = /email/.test(want);
+      const latestK = dp.map(r => r.k).sort().pop();
+      const wsetC = new Set(storyWindowEndingAtData(asOfDate, 12, latestK));
+      const chRows = dp.filter(r => wsetC.has(r.k) && (String(r.channel || '').trim().toLowerCase() === want || (isEmail && /email/i.test(String(r.channel || '')) && !/remarket/i.test(want) === !/remarket/i.test(String(r.channel || '')))));
+      const tc = chRows.reduce((a, r) => { a.impressions += r.impressions; a.clicks += r.clicks; a.leads += r.leads; a.spend += r.spend; return a; }, { impressions: 0, clicks: 0, leads: 0, spend: 0 });
+      const labels = { 'past customers': 'pastCustomers', 'future customers': 'futureCustomers', 'hand-raisers': 'handRaisers', 'prospects': 'prospects', 'cancelled orders': 'cancelledOrders' };
+      let listSize = null, audienceLabel = null;
+      if (isEmail && opts.audience){
+        const keys = String(opts.audience).split(',').map(x => labels[x.trim().toLowerCase()]).filter(Boolean);
+        if (keys.length){
+          const sz = db.prepare('SELECT * FROM account_marketable_sizes WHERE accountId = ?').all(accountId);
+          let tot = 0, any = false; sz.forEach(r => { const g = aliasVal(r, 'generationKey'); const em = Number(aliasVal(r, 'emMarketable')); if (keys.includes(g) && em > 0){ tot += em; any = true; } });
+          if (any){ listSize = Math.round(tot); audienceLabel = String(opts.audience); }
+        }
+      }
+      if (tc.impressions > 0 && (tc.clicks > 0 || tc.leads > 0)){
+        const ctr = tc.clicks / tc.impressions, leadRate = tc.leads / tc.impressions;
+        out.channelForecast = { channel: opts.channel, months: wsetC.size, sends: Math.round(tc.impressions), clicks: Math.round(tc.clicks), leads: Math.round(tc.leads), spend: Math.round(tc.spend), zeroCost: tc.spend <= 0,
+          clickRatePct: Math.round(ctr * 10000) / 100, leadRatePct: Math.round(leadRate * 10000) / 100, listSize, audience: audienceLabel,
+          perSendClicks: listSize ? Math.round(listSize * ctr) : null, perSendLeads: listSize ? Math.round(listSize * leadRate) : null };
+      } else out.channelForecast = { channel: opts.channel, none: true };
+    } catch (e){ out.channelForecast = { channel: opts.channel, none: true }; }
   }
   // CAC and ROAS: the same figures as the Budgets cards (spend / unique transactions, revenue / spend). Heavier to build, so only on request (?outcomes=1).
   if (opts && opts.outcomes) try { const d = buildStoryDemand(accountId, { asOf: asOfDate, months: 12 }); const o = d && d.outcomes; if (o){ out.cac = o.cac != null ? o.cac : null; out.roas = o.roas != null ? o.roas : null; out.outcomesBasis = o.basisLabel || null; if (out.cac != null || out.roas != null) out.available = true; } } catch (e){}
@@ -33093,7 +33121,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-18-r16-loyalty-clicks',
+        buildStamp: '2026-11-18-r17-channel-forecast',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -37872,7 +37900,7 @@ async function handleRequestInner(req, res) {
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       const qs = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries());
-      const opts = { asOf: storyAsOf(qs), months: qs.months, dim: qs.dim, productGroup: qs.productGroup, creativeFocus: qs.creativeFocus, outcomes: qs.outcomes === '1' };
+      const opts = { asOf: storyAsOf(qs), months: qs.months, dim: qs.dim, productGroup: qs.productGroup, creativeFocus: qs.creativeFocus, outcomes: qs.outcomes === '1', channel: qs.channel || '', audience: qs.audience || '' };
       if (parts[4] === 'story' && !qs.months){ try { opts.range = dateRangeForRequest(req, accountId, qs); } catch (e){ opts.range = null; } }
       try {
         const data = parts[4] === 'story' ? buildStoryDemand(accountId, opts)
