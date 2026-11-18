@@ -11895,7 +11895,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
                     </select>
                     <div id="cmpRoleStyleSmartDefault"></div>
                   </div>
-                  <p class="hint" id="cmpLongFormLockNote">Unlocks once Key Message is written and the Brief Builder context above is filled in — it drafts directly from your Key Message text, Message Type, and the Role/Style approach above.</p>
+                  <p class="hint" id="cmpLongFormLockNote">Unlocks once the Headline (Key Message) is written. It drafts from the Headline plus this campaign's details and your approved brand voice.</p>
                   <textarea id="cmpLongFormCopy" rows="14" placeholder="Full-length draft copy for this campaign." oninput="cmpUnapproveMsgField('longform');"></textarea>
                   <!-- Round 132[aov-poc] (2026-08-17) — real AI-generated
                        draft, per direct question "why were the copy outputs
@@ -14280,7 +14280,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-18-r35-brief-auto-draft';
+const CXMEDIA_BUILD_STAMP = '2026-11-18-r36-headline-only-gate';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -73750,8 +73750,8 @@ function cmpSaveCopyContestWinnerEdit(editId, saveFlagId){
   if (longformEl.disabled){
     // Still genuinely missing one of them: keep the copy on the campaign anyway so every asset uses it, and say exactly which one is empty.
     try { const c3 = cmpRailLoadedCampaign(); if (c3){ c3.longformCopy = longformEl.value; cmpPersistMessagingToCampaign(); if (typeof cmpRerenderCreativeAssetCopyPanels === 'function') cmpRerenderCreativeAssetCopyPanels(); } } catch (e){}
-    const miss = [cmpKeyMessageComplete() ? '' : 'the Headline (Key Message)', cmpBriefBuilderComplete() ? '' : 'the campaign brief'].filter(Boolean).join(' and ');
-    if (saveFlag){ saveFlag.style.color = 'var(--advocacy)'; saveFlag.textContent = `Saved to this campaign. It can be approved once ${miss || 'the Headline and the campaign brief'} ${/ and /.test(miss) ? 'are' : 'is'} filled in; that is the only thing left.`; }
+    const miss = cmpKeyMessageComplete() ? '' : 'the Headline (Key Message)';
+    if (saveFlag){ saveFlag.style.color = 'var(--advocacy)'; saveFlag.textContent = `Saved to this campaign. It can be approved once ${miss || 'the Headline (Key Message)'} ${/ and /.test(miss) ? 'are' : 'is'} filled in; that is the only thing left.`; }
     return;
   }
   cmpApproveMsgField('longform');
@@ -73932,7 +73932,7 @@ function cmpBriefBuilderComplete(){
   if (el && !el.value.trim() && typeof generateCampaignBriefExpanded === 'function'){ try { generateCampaignBriefExpanded(); } catch (e){} }
   return !!(el && el.value.trim());
 }
-function cmpLongFormUnlocked(){ return cmpBriefBuilderComplete() && cmpKeyMessageComplete(); }
+function cmpLongFormUnlocked(){ return cmpKeyMessageComplete(); } // r36: the Headline (Key Message) is the only required input; the brief is not a user field.
 let cmpMsgFieldApproved = { longform: false };
 // Round 132ww -- the text each field held immediately after its own last
 // auto-draft, so cmpRenderMsgFieldGate() below can tell "still exactly
@@ -74109,7 +74109,7 @@ function cmpKeyMessageOrBriefEdited(){
   cmpRenderAllMsgGates();
   // 2026-11-18 (r30), per Todd: nothing to press. Once both are filled in, they are saved on their own.
   clearTimeout(cmpMsgAutosaveT);
-  cmpMsgAutosaveT = setTimeout(() => { try { if (cmpKeyMessageComplete() && cmpBriefBuilderComplete()) cmpPersistMessagingToCampaign(); } catch (e){} }, 1200);
+  cmpMsgAutosaveT = setTimeout(() => { try { if (cmpKeyMessageComplete()) cmpPersistMessagingToCampaign(); } catch (e){} }, 1200);
 }
 // Round 132e (2026-08-09)'s single "draft everything blank on stage open"
 // entry point — kept as the name openCmpStage('messaging') already calls,
