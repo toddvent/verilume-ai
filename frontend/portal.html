@@ -14275,7 +14275,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-18-r26-excluding-audiences';
+const CXMEDIA_BUILD_STAMP = '2026-11-18-r28-create-to-channel-plan';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -57596,7 +57596,7 @@ document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && pj.open)
 // 'project': Create a marketing project, saved to the Marketing Project sheet (one prioritized list per account).
 // Create = set up by hand (manual / single asset); Recommend = the Objectives AI Brain opens after creation.
 let briefKind = 'campaign';
-let briefMode = 'recommend';
+let briefMode = 'recommend'; // campaign only: 'recommend' (AI dialogue, then budget recommendation) or 'create' (go straight to channels and budgets). A stand alone placement is its own process and never reads or changes this.
 const briefS = {
   placement: { assoc: 'no', campaignId: '', name: '', channel: '', partner: '', start: '', end: '', reach: '', budget: '', pg: new Set(), cg: new Set() },
   project: { name: '', supports: '', assets: new Set(), delivery: '', area: 'project', pg: new Set(), cg: new Set() }
@@ -57860,7 +57860,6 @@ function briefBuild(){
   // 2026-11-17 (later), per Todd: the guided sentence was removed from this page. A stand alone placement shows the campaign form only; Stage and Audiences are chosen in Lifecycle Stage & Goals below, the same fields the sentence wrote into.
   { const bf = briefEl('cmpBrief'); if (bf) bf.classList.remove('brf-placement-skip');
     let nt = document.getElementById('plcFormNote'); if (false){ if (!nt && camp){ nt = document.createElement('p'); nt.id = 'plcFormNote'; nt.className = 'hint'; nt.style.cssText = 'margin:0 0 14px;font-size:.9375rem;color:var(--muted);'; camp.insertBefore(nt, camp.firstChild); } if (nt){ nt.textContent = 'Stand alone media placement. The story above and the fields below are the same questions. Fill in either one. The next step is Creative, where you can run a copy contest or draft for the channel.'; nt.style.display = ''; } } else if (nt) nt.style.display = 'none'; }
-  if (k === 'placement') briefMode = 'create';
   if (sheet) sheet.style.display = k === 'project' ? '' : 'none';
   let h = '';
   if (k === 'campaign' || k === 'placement'){
@@ -59558,12 +59557,15 @@ async function createCampaign(){
   // to keep it simple and flow."
   loadExistingCampaignIntoForm(campaignId);
   // 2026-11-17 — stand alone placement: same creation, then straight to adding the channel and copy.
-  if (wasPlacement || briefKind === 'placement'){ briefMode = 'create'; try { briefSetKind('campaign'); } catch (e){ briefKind = 'campaign'; } // rebuilds the form and the tab highlight, so Create a campaign is the default again
+  if (wasPlacement || briefKind === 'placement'){ try { briefSetKind('campaign'); } catch (e){ briefKind = 'campaign'; } // rebuilds the form and the tab highlight, so Create a campaign is the default again
+    try { briefRender(); } catch (e){}
     plfReset(); try { await plfFinishPlacement(campaignId, plfSnap, plfAud); } catch (e){ console.error('stand alone placement: Creative could not open', e); } return; }
   // 2026-09-16 — opens the standalone Objectives overlay now, not the old
   // accordion's Campaign Objectives stage, so a freshly-created campaign
   // lands straight in the real conversational template.
   if (briefMode === 'recommend' && typeof cmpOpenObjectivesIntake === 'function') cmpOpenObjectivesIntake();
+  // 2026-11-18 (r28): 'Create' = the user builds the channels and budgets themselves, so go straight to the Performance Marketing channel plan (Step 1: add channels and the budget for each activation, then approve and continue).
+  else if (briefMode === 'create'){ try { cmpCloseAllStages(); openCmpStage('perfMarketing'); } catch (e){ console.warn('create mode: could not open the channel plan', e); } }
 }
 
 // Point 2 — not every activity is tied to a Campaign. This lazily finds or
