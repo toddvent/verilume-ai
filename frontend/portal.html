@@ -14275,7 +14275,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-18-r24-eleven-voice-only';
+const CXMEDIA_BUILD_STAMP = '2026-11-18-r25-placement-fields-reach';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -57605,7 +57605,7 @@ let briefProjects = null, briefProjectsHideDone = true;
 function briefEl(id){ return document.getElementById(id); }
 function briefMsg(t, warn){ const m = briefEl('briefMsg'); if (m){ m.textContent = t || ''; m.className = 'cmp-brief-msg' + (warn ? ' warn' : ''); } }
 function briefTax(kind){ let v = null; try { v = cmpTaxonomyValues(kind); } catch (e){} v = (v || []).filter(x => x.toUpperCase() !== 'MULTI-PRODUCT' && x.toUpperCase() !== 'MULTI-DESTINATION'); return v; }
-function briefSets(){ return briefKind === 'campaign' ? { pg: selectedProductGroups, cg: selectedCreativeFocusGroups } : { pg: briefS[briefKind].pg, cg: briefS[briefKind].cg }; }
+function briefSets(){ return (briefKind === 'campaign' || briefKind === 'placement') ? { pg: selectedProductGroups, cg: selectedCreativeFocusGroups } : { pg: briefS[briefKind].pg, cg: briefS[briefKind].cg }; }
 function briefMultiHtml(id, placeholder){ return `<details class="brf-aud" id="${id}Wrap"><summary class="brf-in" id="${id}Sum">${placeholder}</summary><div class="brf-aud-list" id="${id}List"></div></details>`; }
 function briefMultiFill(id, values, set, fn, placeholder, disabled){
   const list = briefEl(id + 'List'), sum = briefEl(id + 'Sum'); if (!list || !sum) return;
@@ -57620,8 +57620,8 @@ function briefSetMode(m){ briefMode = m === 'create' ? 'create' : 'recommend'; b
 function briefPickName(v){ const e = briefEl('cmpName'); if (!e) return; e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); }
 function briefPickStage(s){ if (!s){ if (selectedStage) toggleStage(selectedStage); } else if (selectedStage !== s) toggleStage(s); markCampaignFormTouched(); briefRender(); }
 function briefToggleAud(s){ excludedSegments.delete(s); toggleSegment(s); briefRender(); const w = briefEl('briefAudWrap'); if (w) w.open = true; }
-function briefTogglePg(v){ const st = briefSets().pg; if (briefKind === 'campaign') toggleProductGroup(v); else { if (st.has(v)) st.delete(v); else st.add(v); } briefRender(); const w = briefEl('briefPgWrap'); if (w) w.open = true; }
-function briefToggleCg(v){ const st = briefSets().cg; if (briefKind === 'campaign') toggleCreativeFocusGroup(v); else { if (st.has(v)) st.delete(v); else st.add(v); } briefRender(); const w = briefEl('briefCgWrap'); if (w) w.open = true; }
+function briefTogglePg(v){ const st = briefSets().pg; if (briefKind === 'campaign' || briefKind === 'placement') toggleProductGroup(v); else { if (st.has(v)) st.delete(v); else st.add(v); } briefRender(); const w = briefEl('briefPgWrap'); if (w) w.open = true; }
+function briefToggleCg(v){ const st = briefSets().cg; if (briefKind === 'campaign' || briefKind === 'placement') toggleCreativeFocusGroup(v); else { if (st.has(v)) st.delete(v); else st.add(v); } briefRender(); const w = briefEl('briefCgWrap'); if (w) w.open = true; }
 function briefToggleAsset(v){ const st = briefS.project.assets; if (st.has(v)) st.delete(v); else st.add(v); briefRender(); const w = briefEl('briefAssetsWrap'); if (w) w.open = true; }
 function briefPickDate(id, v){ const e = briefEl(id); if (!e) return; e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); }
 function briefPickGoal(v){ const e = briefEl('cmpKpiGoal'); if (!e) return; e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); }
@@ -57750,8 +57750,8 @@ function briefParseProject(raw){
 }
 // ---- 2026-11-18: the story and the form are the same questions, 1:1. Stage, Audiences and Exclusions live in the form as well as the story;
 // a stand alone placement also carries its channel, creative type, spec and partner, so Creative opens with nothing missing.
-const plf = { channel: '', type: '', specs: [], specIdx: null, partner: '' };
-function plfReset(){ plf.channel = ''; plf.type = ''; plf.specs = []; plf.specIdx = null; plf.partner = ''; }
+const plf = { channel: '', type: '', specs: [], specIdx: null, partner: '', reach: '' };
+function plfReset(){ plf.channel = ''; plf.type = ''; plf.specs = []; plf.specIdx = null; plf.partner = ''; plf.reach = ''; }
 async function plfPickChannel(ch){
   plf.channel = ch || ''; plf.type = ch ? ((CREATIVE_TYPES_BY_CHANNEL[ch] || [])[0] || '') : ''; plf.specs = []; plf.specIdx = null; markCampaignFormTouched(); briefRender();
   if (ch){ try { const sp = await plcSpecsFor(ch); if (plf.channel === ch){ plf.specs = sp || []; plf.specIdx = plf.specs.length ? 0 : null; } } catch (e){} briefRender(); }
@@ -57759,6 +57759,7 @@ async function plfPickChannel(ch){
 function plfPickType(t){ plf.type = t || ''; markCampaignFormTouched(); briefRender(); }
 function plfPickSpec(i){ plf.specIdx = (i === '' || i == null) ? null : Number(i); markCampaignFormTouched(); briefRender(); }
 function plfPickPartner(v){ plf.partner = String(v || '').slice(0, 80); markCampaignFormTouched(); briefRender(); }
+function plfPickReach(el){ const raw = String((el && el.value) != null ? el.value : el).replace(/\D/g, '').slice(0, 11); plf.reach = raw; if (el && el.value !== undefined){ el.value = raw ? Number(raw).toLocaleString('en-US') : ''; } markCampaignFormTouched(); const o = (id) => { const e = briefEl(id); if (e && e !== el){ e.value = raw ? Number(raw).toLocaleString('en-US') : ''; e.classList.toggle('filled', !!raw); } }; o('frmReach'); o('briefPlcReach'); try { briefBudgetCheck(); } catch (e){} }
 function plfCss(){
   if (document.getElementById('plfCss')) return; const st = document.createElement('style'); st.id = 'plfCss';
   st.textContent = `#plfHost .field{margin:0 0 14px;} #plfHost select,#plfHost input[type=text]{width:100%;max-width:560px;box-sizing:border-box;} #plfHost details.brf-aud{display:block;max-width:560px;} #plfHost details.brf-aud>summary{display:block;width:100%;box-sizing:border-box;text-align:left;border-radius:12px;border:1px solid var(--line,#D2D2D7);background:#fff;padding:12px 14px;font:inherit;font-size:.9375rem;color:var(--ink);cursor:pointer;} #plfHost details.brf-aud>summary.filled{font-weight:600;} #plfHost .brf-aud-list{position:static;box-shadow:none;margin-top:6px;}`;
@@ -57782,7 +57783,8 @@ function plfSync(){
     if (isPl) h += mf('', 'Channel', true, `<select id="frmChan" class="brf-in" onchange="plfPickChannel(this.value)"><option value="">Choose a channel</option></select>`)
       + mf('', 'Creative type', true, `<select id="frmType" class="brf-in" onchange="plfPickType(this.value)"><option value="">Choose a channel first</option></select>`)
       + mf('', 'Creative spec', true, `<select id="frmSpec" class="brf-in" onchange="plfPickSpec(this.value)"><option value="">Choose a channel first</option></select>`)
-      + mf('', 'Partner', false, `<input type="text" id="frmPartner" class="brf-in brf-text-in" maxlength="80" placeholder="Publisher or platform" oninput="plfPickPartner(this.value)">`);
+      + mf('', 'Partner', false, `<input type="text" id="frmPartner" class="brf-in brf-text-in" maxlength="80" placeholder="Publisher or platform" oninput="plfPickPartner(this.value)">`)
+      + mf('', 'Expected reach', false, `<input type="text" inputmode="numeric" autocomplete="off" id="frmReach" class="brf-in" maxlength="14" placeholder="e.g. 250,000" aria-label="Expected reach" oninput="plfPickReach(this)">`, 'People or impressions you expect this placement to reach. Numbers only.');
     host.innerHTML = h; host.dataset.k = k;
   }
   const set = (id, v) => { const e = briefEl(id); if (e && document.activeElement !== e){ e.value = v == null ? '' : v; } if (e) e.classList.toggle('filled', !!e.value); };
@@ -57792,7 +57794,7 @@ function plfSync(){
     plfFillSelect('frmChan', chans, plf.channel, 'Choose a channel'); plfFillSelect('briefPlcChan', chans, plf.channel, 'channel');
     plfFillSelect('frmType', types, plf.type, plf.channel ? 'Choose a creative type' : 'Choose a channel first'); plfFillSelect('briefPlcType', types, plf.type, 'creative type');
     plfFillSelect('frmSpec', specs, plf.specIdx, plf.channel ? 'Choose a spec' : 'Choose a channel first'); plfFillSelect('briefPlcSpec', specs, plf.specIdx, 'creative spec');
-    set('frmPartner', plf.partner); set('briefPlcPartner', plf.partner);
+    set('frmPartner', plf.partner); set('briefPlcPartner', plf.partner); { const rv = plf.reach ? Number(plf.reach).toLocaleString('en-US') : ''; set('frmReach', rv); set('briefPlcReach', rv); }
   }
   const disabled = (typeof cmpSegmentDisabledSet === 'function') ? cmpSegmentDisabledSet() : new Set();
   briefMultiFill('frmAud', ACCOUNT_SEGMENTS, selectedSegments, 'briefToggleAud', 'Choose audiences', disabled);
@@ -57821,7 +57823,7 @@ async function plfFinishPlacement(cid, snap, aud){
   const start = String(cc.startDate || '').slice(0, 10), end = String(cc.endDate || '').slice(0, 10);
   try {
     const r = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(cid)}/channel-planning`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ channel: snap.channel, partner: snap.partner || null, impressions: null, audience: aud, budget: null, hitDate: start || null, endDate: end || null, detailsJson: { creativeDueDate: start || null, creativeSpec: sp ? sp.label : null, creativeType: snap.type || null, standAlone: true }, actorRole: 'client' }) });
+      body: JSON.stringify({ channel: snap.channel, partner: snap.partner || null, impressions: snap.reach ? Number(snap.reach) : null, audience: aud, budget: null, hitDate: start || null, endDate: end || null, detailsJson: { creativeDueDate: start || null, creativeSpec: sp ? sp.label : null, creativeType: snap.type || null, standAlone: true }, actorRole: 'client' }) });
     if (!r.ok){ let m = ''; try { m = (await r.json()).error || ''; } catch (e){} throw new Error(m || 'The channel could not be added (' + r.status + ').'); }
     const c = (state.campaigns || []).find(x => x.id === cid);
     if (c){
@@ -57873,7 +57875,7 @@ function briefBuild(){
       with a goal to generate <input type="text" inputmode="numeric" autocomplete="off" id="briefGoal" class="brf-in brf-goal" maxlength="12" placeholder="e.g. 10,000,000" aria-label="Goal value" oninput="briefGoalInput(this)"> ${briefSelectHtml('briefKpi', kpis, 'Primary KPI', 'briefPickKpi(this.value)')},
       optimized for ${briefSelectHtml('briefFocus', foc, 'Media Science primary focus', 'briefPickFocus(this.value)')}.
       The campaign experience focus is ${briefSelectHtml('briefExp', exp, 'campaign experience focus', 'briefPickExp(this.value)')}.${BRIEF_CX}
-      My estimated budget is $<input type="number" id="briefBudgetIn" class="brf-in brf-num" min="0" step="100" placeholder="optional" aria-label="Estimated budget" oninput="briefPickBudget(this.value)">.${k === 'placement' ? ` The placement runs on <select id="briefPlcChan" class="brf-in" aria-label="Channel" onchange="plfPickChannel(this.value)"><option value="">channel</option></select> as a <select id="briefPlcType" class="brf-in" aria-label="Creative type" onchange="plfPickType(this.value)"><option value="">creative type</option></select> in the <select id="briefPlcSpec" class="brf-in brf-wide" aria-label="Creative spec" onchange="plfPickSpec(this.value)"><option value="">creative spec</option></select> size, with <input type="text" id="briefPlcPartner" class="brf-in brf-text-in" maxlength="80" placeholder="partner (optional)" aria-label="Partner" oninput="plfPickPartner(this.value)"> as the partner.` : ''}
+      My estimated budget is $<input type="number" id="briefBudgetIn" class="brf-in brf-num" min="0" step="100" placeholder="optional" aria-label="Estimated budget" oninput="briefPickBudget(this.value)">.${k === 'placement' ? ` The placement runs on <select id="briefPlcChan" class="brf-in" aria-label="Channel" onchange="plfPickChannel(this.value)"><option value="">channel</option></select> as a <select id="briefPlcType" class="brf-in" aria-label="Creative type" onchange="plfPickType(this.value)"><option value="">creative type</option></select> in the <select id="briefPlcSpec" class="brf-in brf-wide" aria-label="Creative spec" onchange="plfPickSpec(this.value)"><option value="">creative spec</option></select> size, with <input type="text" id="briefPlcPartner" class="brf-in brf-text-in" maxlength="80" placeholder="partner (optional)" aria-label="Partner" oninput="plfPickPartner(this.value)"> as the partner. Our expected reach is <input type="text" inputmode="numeric" autocomplete="off" id="briefPlcReach" class="brf-in brf-goal" maxlength="14" placeholder="e.g. 250,000" aria-label="Expected reach" oninput="plfPickReach(this)">.` : ''}
       <span id="briefTail"></span>`;
     if (act) act.style.display = 'none';
   } else if (k === 'placement-legacy'){
@@ -58529,6 +58531,7 @@ function briefIvSteps(){
         { id: 'briefPlcChan', say: 'Which channel is this placement on? For example ' + say(chOpts) + '.', apply: t => { const h = briefIvPick(t, chOpts.concat(PLC_CHANNELS)); if (!h) return false; const ch = PLC_CHANNELS.find(x => plcLabel(x) === h || x === h); if (!ch) return false; plfPickChannel(ch); return true; }, help: 'Please say one of the channels.' },
         { id: 'briefPlcType', say: 'What creative type?', dyn: () => 'What creative type? ' + say(CREATIVE_TYPES_BY_CHANNEL[plf.channel] || []) + '.', apply: t => { const h = briefIvPick(t, CREATIVE_TYPES_BY_CHANNEL[plf.channel] || []); if (!h) return false; plfPickType(h); return true; } },
         { id: 'briefPlcSpec', say: 'Which creative spec?', dyn: () => 'Which creative spec? ' + say(plf.specs.map(x => x.label)) + '.', apply: t => { const labels = plf.specs.map(x => x.label); const h = briefIvPick(t, labels); if (!h) return false; plfPickSpec(String(labels.indexOf(h))); return true; } },
+        { id: 'briefPlcReach', optional: true, say: 'What is your expected reach? Say a number, or skip.', apply: t => { const m = String(t).toLowerCase().match(/(\d+(?:[.,]\d+)*)\s*(k|m|thousand|million)?/); if (!m) return false; const n = briefNum(m[1].replace(/,/g, ''), m[2]); if (!(n >= 0)) return false; plfPickReach({ value: String(Math.round(n)) }); briefRender(); return true; } },
         { id: 'briefPlcPartner', optional: true, say: 'Which partner? Say skip to leave it blank.', apply: t => { const n = t.replace(/^(it'?s |it is |the partner is |with )+/i, '').replace(/[.!?]+$/, '').trim().slice(0, 80); if (!n) return false; plfPickPartner(n); return true; } }
       );
     }
@@ -59368,7 +59371,7 @@ function cmpBuildFormPayload(){
 async function createCampaign(){
   if (!requireBrandFoundations()) return;
   const wasPlacement = (briefKind === 'placement'); // 2026-11-17 — read once, before anything below can re-render the brief
-  const plfSnap = { channel: plf.channel, type: plf.type, specs: plf.specs.slice(), specIdx: plf.specIdx, partner: plf.partner }; const plfAud = [...selectedSegments].join(', ');
+  const plfSnap = { channel: plf.channel, type: plf.type, specs: plf.specs.slice(), specIdx: plf.specIdx, partner: plf.partner, reach: plf.reach }; const plfAud = [...selectedSegments].join(', ');
   // Round 132d (2026-08-09), per direct correction — Objective is no longer
   // collected on this stage (it moved into the new, locked-until-created
   // Lifecycle Stage & Goals stage below), so it's no longer required here.
