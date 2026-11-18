@@ -5455,6 +5455,15 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
        Analytics Summary quadrant/insight feed) — the guest/customer-
        experience-quality side, as distinct from Media Science's media-
        performance side above. See renderCustomerExperiencesStep(). -->
+  <!-- 2026-11-18 (r22): Marketing Projects moved off the Brain Dump to its own page; reached by a chip on the Customer Experiences dashboard. -->
+  <div class="step" id="step-marketingProjects">
+    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="switchPrimaryTab('brand')">Customer Experiences</a> / Marketing Projects</div>
+    <div class="eyebrow">Customer Experiences · Marketing Projects</div>
+    <h1>Marketing Projects</h1>
+    <p class="lede">Every marketing project in one ranked list. Work the board, or switch to the list.</p>
+    <div class="strat-card"><div class="pj-host" data-area="project"></div></div>
+  </div>
+
   <div class="step" id="step-customerExperiences">
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / Customer Experiences (CX)</div>
     <div class="eyebrow">Workstream · Customer Experiences (CX)</div>
@@ -14266,7 +14275,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-18-r21-anthropic-default';
+const CXMEDIA_BUILD_STAMP = '2026-11-18-r22-projects-page';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -25925,12 +25934,17 @@ function cxRepCardHtml(){
 }
 function cxRenderRep(){ const el = document.getElementById('cxRepBody'); if (el) el.innerHTML = cxRepBodyHtml(); }
 
+function cxProjectsChipHtml(){
+  const n = (typeof pj !== 'undefined' && pj.projects) ? pj.projects.filter(p => p.area === 'project' && pjOpenStatus(p)).length : null;
+  if (typeof pj !== 'undefined' && !pj.projects && !pj.loading && !pj.error && typeof pjLoad === 'function') setTimeout(() => { try { pjLoad(); } catch (e){} }, 0);
+  return `<div class="strat-actions" style="margin:0 0 14px;"><button type="button" class="strat-chip" id="cxProjectsChip" onclick="goToStep('marketingProjects')">Marketing Projects${n == null ? '' : ' · ' + n + ' open'} →</button></div>`;
+}
 function customerExperiencesShellHtml(){
   if (aipoVoiceContestStats == null) aipoLoadVoiceContestStats();
   const voice = renderTileShellGroups([BRAND_SHELL_GROUPS[0]], null, 'brand');
-  if (!cxIsLive()) return voice + cxToolsHtml();
+  if (!cxIsLive()) return cxProjectsChipHtml() + voice + cxToolsHtml();
   // 2026-11-14 (Todd): the creative and media reports moved to the Growth & Performance dashboard; this page keeps the Sent to Creative queue.
-  return `<div class="strat-card" id="cxBriefsCard" style="display:none;"><div class="strat-head"><h2>Sent to Creative</h2></div><div id="cxBriefsBody"></div></div>
+  return cxProjectsChipHtml() + `<div class="strat-card" id="cxBriefsCard" style="display:none;"><div class="strat-head"><h2>Sent to Creative</h2></div><div id="cxBriefsBody"></div></div>
     ${cxRepCardHtml()}` + voice + cxToolsHtml();
 }
 function customerExperiencesPageInit(){ if (cxIsLive()) cxLoad(); }
@@ -57429,7 +57443,7 @@ function resolveSelectValue(selectId, otherId){
 // One component, mounted wherever a <div class="pj-host" data-area="..."> exists: Create Campaign (project), Brain Dump (all three areas, tabbed),
 // Search Everywhere (search) and Train the Brain (train). Every area keeps its own list, its own ratings and its own priority order.
 const PJ_AREAS = [{ key: 'project', label: 'Marketing Project' }, { key: 'search', label: 'Search Everywhere' }, { key: 'train', label: 'Train the Brain' }];
-const pj = { hub: 'project', synced: false, projects: null, meta: null, error: '', loading: false, open: null, hideDone: true, drag: null, views: {} };
+const pj = { hub: 'search', synced: false, projects: null, meta: null, error: '', loading: false, open: null, hideDone: true, drag: null, views: {} };
 function pjUrl(extra){ return `${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketing-projects${extra || ''}`; }
 function pjAreaLabel(k){ const a = PJ_AREAS.find(x => x.key === k); return a ? a.label : k; }
 function pjView(area){ if (pj.views[area]) return pj.views[area]; let v = 'board'; try { v = localStorage.getItem('verilume_pj_view_' + area) || 'board'; } catch (e){} return pj.views[area] = v === 'list' ? 'list' : 'board'; }
@@ -57453,7 +57467,7 @@ async function pjCall(path, method, body){
   } catch (e){ pjToast(e.message || 'Not saved.'); pjLoad(); return null; }
 }
 function pjToast(t){ const ms = document.querySelectorAll('.pj-toast'); if (ms.length){ ms.forEach(m => { m.textContent = t; m.style.display = ''; }); setTimeout(() => { document.querySelectorAll('.pj-toast').forEach(m => { m.style.display = 'none'; }); }, 4000); } else console.warn(t); }
-function pjMountAll(){ document.querySelectorAll('.pj-host').forEach(pjRender); pjModalRender(); }
+function pjMountAll(){ document.querySelectorAll('.pj-host').forEach(pjRender); pjModalRender(); try { const ch = document.getElementById('cxProjectsChip'); if (ch && pj.projects) ch.textContent = 'Marketing Projects · ' + pj.projects.filter(p => p.area === 'project' && pjOpenStatus(p)).length + ' open →'; } catch (e){} }
 function pjTypeList(str){ let rest = String(str || ''); const sel = []; briefAssetTypes().forEach(k => { if (rest.includes(k)){ sel.push(k); rest = rest.replace(k, ''); } }); return sel.concat(rest.split(/[;,]/).map(x => x.trim()).filter(Boolean)); }
 function pjToggleType(id, t){ const p = pjFind(id); if (!p) return; const l = pjTypeList(p.assetTypes); const i = l.indexOf(t); if (i >= 0) l.splice(i, 1); else l.push(t); pjPatch(id, 'assetTypes', l.join('; ')); }
 function pjFind(id){ return (pj.projects || []).find(p => p.id === id); }
@@ -57494,7 +57508,7 @@ function pjRender(host){
   const all = pj.projects.filter(p => p.area === area);
   const rows = all.filter(p => !pj.hideDone || pjOpenStatus(p)); const view = pjView(area); const label = pjAreaLabel(area);
   const openN = all.filter(pjOpenStatus).length;
-  const tabs = hubMode ? `<div class="strat-ctl" style="margin:0 0 10px;"><span class="strat-seg">${PJ_AREAS.map(a => `<button type="button" class="${a.key === area ? 'on' : ''}" onclick="pjHub('${a.key}')">${a.label}</button>`).join('')}</span></div>` : '';
+  const tabs = hubMode ? `<div class="strat-ctl" style="margin:0 0 10px;"><span class="strat-seg">${PJ_AREAS.filter(a => a.key !== 'project').map(a => `<button type="button" class="${a.key === area ? 'on' : ''}" onclick="pjHub('${a.key}')">${a.label}</button>`).join('')}<button type="button" onclick="goToStep('marketingProjects')" title="Marketing Projects now has its own page">Marketing Projects →</button></span></div>` : '';
   const needsBtn = area === 'train' || area === 'search' ? `<button type="button" class="btn-ghost" onclick="pjSync(false)" title="Add any new identified needs from ${area === 'train' ? 'Train the Brain setup' : 'Search Everywhere priorities'}">Refresh identified needs</button>` : '';
   host.innerHTML = `${tabs}<div class="brf-sheet pj-wrap"><div class="pj-head"><div><div class="strat-chart-label" style="margin:0;">Projects · ${escapeHtml(label)}</div><p class="strat-sub" style="margin:2px 0 0;">${openN} open. Ranked on its own within ${escapeHtml(label)}: Impact x Urgency / Effort, each rated 1 to 5, unrated counts as 3. Highest score is worked first.</p></div>
     <div class="pj-ctl"><span class="strat-seg"><button type="button" class="${view === 'board' ? 'on' : ''}" onclick="pjSetView('${area}','board')">Board</button><button type="button" class="${view === 'list' ? 'on' : ''}" onclick="pjSetView('${area}','list')">List</button></span>
@@ -71736,6 +71750,9 @@ function goToStep(step, arg, arg2, arg3){
     // redirect pseudo-step; openBrandCampaignBrief() calls goToStep again
     // with the real destination (Marketing Ops, or the Campaigns list).
     openBrandCampaignBrief();
+  } else if (step === 'marketingProjects'){
+    pjMountAll();
+    document.getElementById('step-marketingProjects').classList.add('active');
   } else if (step === 'omniCreative'){
     const printLink = document.getElementById('omniCreativePrintSpecsLink');
     const oohLink = document.getElementById('omniCreativeOohSpecsLink');
