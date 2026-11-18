@@ -14265,7 +14265,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-17-r13-placement';
+const CXMEDIA_BUILD_STAMP = '2026-11-18-r14-story-form';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -57698,6 +57698,87 @@ function briefParseProject(raw){
   o.pg = briefMatchList(low, briefTax('productGroup')); o.cg = briefMatchList(low, briefTax('creativeMarket'));
   return o;
 }
+// ---- 2026-11-18: the story and the form are the same questions, 1:1. Stage, Audiences and Exclusions live in the form as well as the story;
+// a stand alone placement also carries its channel, creative type, spec and partner, so Creative opens with nothing missing.
+const plf = { channel: '', type: '', specs: [], specIdx: null, partner: '' };
+function plfReset(){ plf.channel = ''; plf.type = ''; plf.specs = []; plf.specIdx = null; plf.partner = ''; }
+async function plfPickChannel(ch){
+  plf.channel = ch || ''; plf.type = ch ? ((CREATIVE_TYPES_BY_CHANNEL[ch] || [])[0] || '') : ''; plf.specs = []; plf.specIdx = null; markCampaignFormTouched(); briefRender();
+  if (ch){ try { const sp = await plcSpecsFor(ch); if (plf.channel === ch){ plf.specs = sp || []; plf.specIdx = plf.specs.length ? 0 : null; } } catch (e){} briefRender(); }
+}
+function plfPickType(t){ plf.type = t || ''; markCampaignFormTouched(); briefRender(); }
+function plfPickSpec(i){ plf.specIdx = (i === '' || i == null) ? null : Number(i); markCampaignFormTouched(); briefRender(); }
+function plfPickPartner(v){ plf.partner = String(v || '').slice(0, 80); markCampaignFormTouched(); briefRender(); }
+function plfCss(){
+  if (document.getElementById('plfCss')) return; const st = document.createElement('style'); st.id = 'plfCss';
+  st.textContent = `#plfHost .field{margin:0 0 14px;} #plfHost select,#plfHost input[type=text]{width:100%;max-width:560px;box-sizing:border-box;} #plfHost details.brf-aud{display:block;max-width:560px;} #plfHost details.brf-aud>summary{display:block;width:100%;box-sizing:border-box;text-align:left;border-radius:12px;border:1px solid var(--line,#D2D2D7);background:#fff;padding:12px 14px;font:inherit;font-size:.9375rem;color:var(--ink);cursor:pointer;} #plfHost details.brf-aud>summary.filled{font-weight:600;} #plfHost .brf-aud-list{position:static;box-shadow:none;margin-top:6px;}`;
+  document.head.appendChild(st);
+}
+function plfFillSelect(id, opts, cur, ph){
+  const e = briefEl(id); if (!e) return; const sig = opts.map(o => o.v).join('|');
+  if (e.dataset.sig !== sig){ e.innerHTML = `<option value="">${escapeHtml(ph)}</option>` + opts.map(o => `<option value="${escapeHtml(o.v)}">${escapeHtml(o.l)}</option>`).join(''); e.dataset.sig = sig; }
+  if (document.activeElement !== e) e.value = cur == null ? '' : String(cur); e.classList.toggle('filled', !!e.value);
+}
+function plfSync(){
+  const camp = briefEl('cmpCampaignFields'); if (!camp) return; const k = briefKind; const isPl = k === 'placement';
+  let host = document.getElementById('plfHost');
+  if (!host){ const anchor = (briefEl('cmpCreationBudget') || {}).closest ? briefEl('cmpCreationBudget').closest('.field') : null; if (!anchor) return; host = document.createElement('div'); host.id = 'plfHost'; anchor.after(host); plfCss(); }
+  host.style.display = (k === 'campaign' || k === 'placement') ? '' : 'none';
+  if (host.dataset.k !== k){
+    const mf = (id, label, req, inner, hint) => `<div class="field"><label>${label}${req ? ' <span style="color:var(--advocacy);">*</span>' : ' <span style="font-weight:400;text-transform:none;color:var(--muted);">— optional</span>'}</label>${inner}${hint ? `<div class="hint">${hint}</div>` : ''}</div>`;
+    let h = mf('', 'Marketing Loop stage', true, `<select id="frmStage" class="brf-in" onchange="briefPickStage(this.value)"><option value="">Choose a stage</option>${MEDIA_LOOP_STAGES.map(x => `<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join('')}</select>`, 'The stage sets the objective, and the copy writers use it to decide what the copy has to do.')
+      + mf('', 'Campaign audiences', true, briefMultiHtml('frmAud', 'Choose audiences'), 'Every segment this campaign targets.')
+      + mf('', 'Excluding audiences', false, briefMultiHtml('frmExcl', 'No Audiences'));
+    if (isPl) h += mf('', 'Channel', true, `<select id="frmChan" class="brf-in" onchange="plfPickChannel(this.value)"><option value="">Choose a channel</option></select>`)
+      + mf('', 'Creative type', true, `<select id="frmType" class="brf-in" onchange="plfPickType(this.value)"><option value="">Choose a channel first</option></select>`)
+      + mf('', 'Creative spec', true, `<select id="frmSpec" class="brf-in" onchange="plfPickSpec(this.value)"><option value="">Choose a channel first</option></select>`)
+      + mf('', 'Partner', false, `<input type="text" id="frmPartner" class="brf-in brf-text-in" maxlength="80" placeholder="Publisher or platform" oninput="plfPickPartner(this.value)">`);
+    host.innerHTML = h; host.dataset.k = k;
+  }
+  const set = (id, v) => { const e = briefEl(id); if (e && document.activeElement !== e){ e.value = v == null ? '' : v; } if (e) e.classList.toggle('filled', !!e.value); };
+  set('frmStage', selectedStage || '');
+  if (isPl){
+    const chans = PLC_CHANNELS.map(x => ({ v: x, l: plcLabel(x) })), types = (CREATIVE_TYPES_BY_CHANNEL[plf.channel] || []).map(x => ({ v: x, l: x })), specs = plf.specs.map((x, i) => ({ v: String(i), l: x.label }));
+    plfFillSelect('frmChan', chans, plf.channel, 'Choose a channel'); plfFillSelect('briefPlcChan', chans, plf.channel, 'channel');
+    plfFillSelect('frmType', types, plf.type, plf.channel ? 'Choose a creative type' : 'Choose a channel first'); plfFillSelect('briefPlcType', types, plf.type, 'creative type');
+    plfFillSelect('frmSpec', specs, plf.specIdx, plf.channel ? 'Choose a spec' : 'Choose a channel first'); plfFillSelect('briefPlcSpec', specs, plf.specIdx, 'creative spec');
+    set('frmPartner', plf.partner); set('briefPlcPartner', plf.partner);
+  }
+  const disabled = (typeof cmpSegmentDisabledSet === 'function') ? cmpSegmentDisabledSet() : new Set();
+  briefMultiFill('frmAud', ACCOUNT_SEGMENTS, selectedSegments, 'briefToggleAud', 'Choose audiences', disabled);
+}
+// Everything the Creative step needs, gathered before the form resets. Returns '' when complete, else the one thing to ask for.
+function plfMissing(){
+  if (!selectedStage) return ['Choose the Marketing Loop stage.', 'frmStage'];
+  if (!selectedSegments.size) return ['Choose at least one audience.', 'frmAudSum'];
+  if (briefKind === 'placement'){
+    if (!plf.channel) return ['Choose the channel for this placement.', 'frmChan'];
+    if (!plf.type) return ['Choose the creative type.', 'frmType'];
+    if (plf.specs.length && plf.specIdx == null) return ['Choose the creative spec.', 'frmSpec'];
+  }
+  return null;
+}
+// Stand alone placement: the channel line and the approved creative asset are saved from the form, then Creative opens on that channel.
+async function plfFinishPlacement(cid, snap, aud){
+  const sp = snap.specIdx != null ? snap.specs[snap.specIdx] : null;
+  const cc = (state.campaigns || []).find(x => x.id === cid) || {};
+  const start = String(cc.startDate || '').slice(0, 10), end = String(cc.endDate || '').slice(0, 10);
+  try {
+    const r = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(cid)}/channel-planning`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel: snap.channel, partner: snap.partner || null, impressions: null, audience: aud, budget: null, hitDate: start || null, endDate: end || null, detailsJson: { creativeDueDate: start || null, creativeSpec: sp ? sp.label : null, creativeType: snap.type || null, standAlone: true }, actorRole: 'client' }) });
+    if (!r.ok){ let m = ''; try { m = (await r.json()).error || ''; } catch (e){} throw new Error(m || 'The channel could not be added (' + r.status + ').'); }
+    const c = (state.campaigns || []).find(x => x.id === cid);
+    if (c){
+      const asset = { channel: snap.channel, partner: snap.partner || 'To be assigned', mediaType: snap.type || (CREATIVE_TYPES_BY_CHANNEL[snap.channel] || [])[0] || 'Standard', size: sp ? sp.label : 'Standard Unit', audience: aud, estimatedReach: null, creativeDueDate: start || null, copyVersions: {} };
+      c.approvedCreativeAssets = [...(Array.isArray(c.approvedCreativeAssets) ? c.approvedCreativeAssets : []), asset]; c.approvedCreativeAssetsJson = JSON.stringify(c.approvedCreativeAssets);
+      try { await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(cid)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approvedCreativeAssetsJson: c.approvedCreativeAssetsJson, approvedAssetSummary: c.approvedCreativeAssets.map(x => x.channel + (x.partner ? ' — ' + x.partner : '') + (x.mediaType ? ' (' + x.mediaType + ')' : '')).join(', ') }) }); } catch (e){ console.warn('plfFinishPlacement: asset save failed, local copy only', e); }
+    }
+    cmpAssetFocusCampaignId = null; cmpApprovedChannelsFromPlan = { campaignId: null, channels: null };
+    try { await loadCampaigns(); } catch (e){}
+    try { loadExistingCampaignIntoForm(cid); } catch (e){}
+    cmpOpenCreativeWorkspace();
+  } catch (e){ briefMsg((e && e.message) || 'The channel could not be added.'); }
+}
 const BRIEF_CX = ' My customer experience will focus on <span id="briefPgHold"></span> with the creative focusing on <span id="briefCgHold"></span>.';
 function briefBuild(){
   briefIvStop(true);
@@ -57709,14 +57790,14 @@ function briefBuild(){
   if (camp) camp.classList.remove('brf-placement-mode');
   // 2026-11-17 -- the sentence brief is where Stage (which sets the Objective) and Audience are chosen, so a stand alone placement must show it exactly like a full campaign. Hiding it left Stage, Objective and Audience empty on the saved campaign.
   // 2026-11-17 (later), per Todd: the guided sentence was removed from this page. A stand alone placement shows the campaign form only; Stage and Audiences are chosen in Lifecycle Stage & Goals below, the same fields the sentence wrote into.
-  { const bf = briefEl('cmpBrief'); if (bf) bf.classList.toggle('brf-placement-skip', k === 'placement');
-    let nt = document.getElementById('plcFormNote'); if (k === 'placement'){ if (!nt && camp){ nt = document.createElement('p'); nt.id = 'plcFormNote'; nt.className = 'hint'; nt.style.cssText = 'margin:0 0 14px;font-size:.9375rem;color:var(--muted);'; camp.insertBefore(nt, camp.firstChild); } if (nt){ nt.textContent = 'Stand alone media placement. Fill in the campaign details below, including the stage and audiences. The next step is adding the channel, then copy, with or without a contest.'; nt.style.display = ''; } } else if (nt) nt.style.display = 'none'; }
+  { const bf = briefEl('cmpBrief'); if (bf) bf.classList.remove('brf-placement-skip');
+    let nt = document.getElementById('plcFormNote'); if (false){ if (!nt && camp){ nt = document.createElement('p'); nt.id = 'plcFormNote'; nt.className = 'hint'; nt.style.cssText = 'margin:0 0 14px;font-size:.9375rem;color:var(--muted);'; camp.insertBefore(nt, camp.firstChild); } if (nt){ nt.textContent = 'Stand alone media placement. The story above and the fields below are the same questions. Fill in either one. The next step is Creative, where you can run a copy contest or draft for the channel.'; nt.style.display = ''; } } else if (nt) nt.style.display = 'none'; }
   if (k === 'placement') briefMode = 'create';
   if (sheet) sheet.style.display = k === 'project' ? '' : 'none';
   let h = '';
   if (k === 'campaign' || k === 'placement'){
     if (title) title.textContent = k === 'placement' ? 'Stand alone media placement' : 'Campaign brief';
-    if (lede) lede.textContent = k === 'placement' ? 'Provide the same campaign details as any campaign. The next step is adding the channel, then copy, with or without a contest.' : 'Provide your campaign objectives. The next step will be a brief conversation with your Verilume Assistant and then a recommendation for your review.';
+    if (lede) lede.textContent = k === 'placement' ? 'Provide the same campaign details as any campaign. The next step is Creative, where you can run a copy contest or draft for the channel.' : 'Provide your campaign objectives. The next step will be a brief conversation with your Verilume Assistant and then a recommendation for your review.';
     const kpis = PRIMARY_KPI_OPTIONS.filter(x => !/^Other/i.test(x)).map(x => ({ v: x, l: x }));
     const foc = Object.keys(BUSINESS_INITIATIVE_REGISTRY_CLIENT).map(x => ({ v: x, l: BUSINESS_INITIATIVE_REGISTRY_CLIENT[x].label }));
     const exp = Object.keys(CAMPAIGN_TYPE_REGISTRY_CLIENT).map(x => ({ v: x, l: CAMPAIGN_TYPE_REGISTRY_CLIENT[x].label }));
@@ -57727,7 +57808,7 @@ function briefBuild(){
       with a goal to generate <input type="text" inputmode="numeric" autocomplete="off" id="briefGoal" class="brf-in brf-goal" maxlength="12" placeholder="e.g. 10,000,000" aria-label="Goal value" oninput="briefGoalInput(this)"> ${briefSelectHtml('briefKpi', kpis, 'Primary KPI', 'briefPickKpi(this.value)')},
       optimized for ${briefSelectHtml('briefFocus', foc, 'Media Science primary focus', 'briefPickFocus(this.value)')}.
       The campaign experience focus is ${briefSelectHtml('briefExp', exp, 'campaign experience focus', 'briefPickExp(this.value)')}.${BRIEF_CX}
-      My estimated budget is $<input type="number" id="briefBudgetIn" class="brf-in brf-num" min="0" step="100" placeholder="optional" aria-label="Estimated budget" oninput="briefPickBudget(this.value)">.
+      My estimated budget is $<input type="number" id="briefBudgetIn" class="brf-in brf-num" min="0" step="100" placeholder="optional" aria-label="Estimated budget" oninput="briefPickBudget(this.value)">.${k === 'placement' ? ` The placement runs on <select id="briefPlcChan" class="brf-in" aria-label="Channel" onchange="plfPickChannel(this.value)"><option value="">channel</option></select> as a <select id="briefPlcType" class="brf-in" aria-label="Creative type" onchange="plfPickType(this.value)"><option value="">creative type</option></select> in the <select id="briefPlcSpec" class="brf-in brf-wide" aria-label="Creative spec" onchange="plfPickSpec(this.value)"><option value="">creative spec</option></select> size, with <input type="text" id="briefPlcPartner" class="brf-in brf-text-in" maxlength="80" placeholder="partner (optional)" aria-label="Partner" oninput="plfPickPartner(this.value)"> as the partner.` : ''}
       <span id="briefTail"></span>`;
     if (act) act.style.display = 'none';
   } else if (k === 'placement-legacy'){
@@ -57768,10 +57849,11 @@ function briefToggleExcl(v){
   if (v === '__none__') excludedSegments = new Set();
   else if (excludedSegments.has(v)) excludedSegments.delete(v);
   else { excludedSegments.add(v); selectedSegments.delete(v); }
-  markCampaignFormTouched(); briefRender(); const w = briefEl('briefExclWrap'); if (w) w.open = true;
+  markCampaignFormTouched(); briefRender(); const w = briefEl('briefExclWrap'); if (w && !document.activeElement.closest('#plfHost')) w.open = true;
 }
-function briefExclFill(){
-  const list = briefEl('briefExclList'), sum = briefEl('briefExclSum'); if (!list || !sum) return;
+function briefExclFill(pfx){
+  pfx = pfx || 'briefExcl';
+  const list = briefEl(pfx + 'List'), sum = briefEl(pfx + 'Sum'); if (!list || !sum) return;
   const rows = [`<label><input type="checkbox" ${excludedSegments.size ? '' : 'checked'} onchange="briefToggleExcl('__none__')">No Audiences</label>`].concat(ACCOUNT_SEGMENTS.map(v => {
     const off = selectedSegments.has(v);
     return `<label class="${off ? 'off' : ''}"><input type="checkbox" ${excludedSegments.has(v) ? 'checked' : ''} ${off ? 'disabled' : ''} onchange="briefToggleExcl(this.dataset.v)" data-v="${escapeHtml(v)}">${escapeHtml(v)}</label>`;
@@ -57870,9 +57952,9 @@ function briefRender(){
     set('cmpCreationKpi', (briefEl('cmpPrimaryKpi') || {}).value); set('cmpCreationKpiGoal', (briefEl('cmpKpiGoal') || {}).value);
     const disabled = (typeof cmpSegmentDisabledSet === 'function') ? cmpSegmentDisabledSet() : new Set();
     briefMultiFill('briefAud', ACCOUNT_SEGMENTS, selectedSegments, 'briefToggleAud', 'audiences', disabled);
-    briefExclFill(); briefBudgetCheck();
+    briefExclFill(); briefExclFill('frmExcl'); briefBudgetCheck();
     const tail = briefEl('briefTail'); if (tail) tail.textContent = '';
-    const btn = briefEl('cmpSubmitBtn'); if (btn && !/Save Changes|Read only/.test(btn.textContent)) btn.textContent = briefKind === 'placement' ? 'Create and add channel →' : (briefMode === 'recommend' ? 'Create and recommend →' : 'Create Campaign →');
+    const btn = briefEl('cmpSubmitBtn'); if (btn && !/Save Changes|Read only/.test(btn.textContent)) btn.textContent = briefKind === 'placement' ? 'Create and go to Creative →' : (briefMode === 'recommend' ? 'Create and recommend →' : 'Create Campaign →');
   } else if (briefKind === 'placement-legacy'){
     const s = briefS.placement;
     set('briefAssoc', s.assoc); set('briefChan', s.channel); set('briefPStart', s.start); set('briefPEnd', s.end); set('briefReach', s.reach); set('briefBudget', s.budget);
@@ -57886,6 +57968,7 @@ function briefRender(){
     set('briefProjName', s.name); set('briefSupports', s.supports); set('briefDeliver', s.delivery); set('briefProjArea', s.area || 'project');
     briefMultiFill('briefAssets', briefAssetTypes(), s.assets, 'briefToggleAsset', 'creative asset types');
   }
+  try { plfSync(); } catch (e){ console.warn('plfSync', e); }
   briefMultiFill('briefPg', briefTax('productGroup'), sets.pg, 'briefTogglePg', 'product group');
   briefMultiFill('briefCg', briefTax('creativeMarket'), sets.cg, 'briefToggleCg', 'creative focus group');
 }
@@ -58336,7 +58419,7 @@ function briefIvPick(text, list){
 function briefIvSteps(){
   const say = (items) => items.slice(0, 7).join(', ') + (items.length > 7 ? ', and more' : '');
   if (briefKind === 'campaign' || briefKind === 'placement'){
-    return [
+    const baseSteps = [
       { id: 'briefName', say: 'What is the campaign name?', apply: t => { const n = t.replace(/^(it'?s |it is |the name is |call it |called |named )+/i, '').replace(/[.!?]+$/, '').trim().slice(0, 80); if (!n) return false; briefPickName(n); return true; } },
       { id: 'briefMode', say: 'Should I recommend the budget, channel mix and creative for you, or will you create it yourself? Say recommend or create.', apply: t => { const l = t.toLowerCase(); if (/recommend|suggest|you do|help|plan/.test(l)){ briefSetMode('recommend'); return true; } if (/create|myself|manual|i will|i'll|single/.test(l)){ briefSetMode('create'); return true; } return false; } },
       { id: 'briefStage', say: 'Which Marketing Loop stage? ' + say(MEDIA_LOOP_STAGES) + '.', apply: t => { const s = briefIvPick(t, MEDIA_LOOP_STAGES); if (!s) return false; briefPickStage(s); return true; }, help: 'Please say one of the loop stages.' },
@@ -58351,6 +58434,16 @@ function briefIvSteps(){
       { id: 'briefCgSum', optional: true, say: 'And which creative focus group?', dyn: () => 'And which creative focus group? ' + say(briefTax('creativeMarket')) + '.', apply: t => { const m = briefMatchList(' ' + t.toLowerCase() + ' ', briefTax('creativeMarket')); if (!m.length) return false; m.forEach(v => { if (!selectedCreativeFocusGroups.has(v)) toggleCreativeFocusGroup(v); }); briefRender(); return true; } },
       { id: 'briefBudgetIn', optional: true, say: 'Do you have an estimated budget? Say a number, or say skip and I will estimate it and refine it in the final recommendation.', apply: t => { const m = briefClean(t).match(/(\d+(?:\.\d+)?)\s*(k|m|thousand|million)?/i); if (!m) return false; briefPickBudget(String(briefNum(m[1], m[2]))); return true; } }
     ];
+    if (briefKind === 'placement'){
+      const chOpts = PLC_CHANNELS.map(x => plcLabel(x));
+      baseSteps.push(
+        { id: 'briefPlcChan', say: 'Which channel is this placement on? For example ' + say(chOpts) + '.', apply: t => { const h = briefIvPick(t, chOpts.concat(PLC_CHANNELS)); if (!h) return false; const ch = PLC_CHANNELS.find(x => plcLabel(x) === h || x === h); if (!ch) return false; plfPickChannel(ch); return true; }, help: 'Please say one of the channels.' },
+        { id: 'briefPlcType', say: 'What creative type?', dyn: () => 'What creative type? ' + say(CREATIVE_TYPES_BY_CHANNEL[plf.channel] || []) + '.', apply: t => { const h = briefIvPick(t, CREATIVE_TYPES_BY_CHANNEL[plf.channel] || []); if (!h) return false; plfPickType(h); return true; } },
+        { id: 'briefPlcSpec', say: 'Which creative spec?', dyn: () => 'Which creative spec? ' + say(plf.specs.map(x => x.label)) + '.', apply: t => { const labels = plf.specs.map(x => x.label); const h = briefIvPick(t, labels); if (!h) return false; plfPickSpec(String(labels.indexOf(h))); return true; } },
+        { id: 'briefPlcPartner', optional: true, say: 'Which partner? Say skip to leave it blank.', apply: t => { const n = t.replace(/^(it'?s |it is |the partner is |with )+/i, '').replace(/[.!?]+$/, '').trim().slice(0, 80); if (!n) return false; plfPickPartner(n); return true; } }
+      );
+    }
+    return baseSteps;
   }
   if (briefKind === 'placement-legacy'){
     const s = briefS.placement;
@@ -59170,6 +59263,7 @@ function cmpBuildFormPayload(){
 async function createCampaign(){
   if (!requireBrandFoundations()) return;
   const wasPlacement = (briefKind === 'placement'); // 2026-11-17 — read once, before anything below can re-render the brief
+  const plfSnap = { channel: plf.channel, type: plf.type, specs: plf.specs.slice(), specIdx: plf.specIdx, partner: plf.partner }; const plfAud = [...selectedSegments].join(', ');
   // Round 132d (2026-08-09), per direct correction — Objective is no longer
   // collected on this stage (it moved into the new, locked-until-created
   // Lifecycle Stage & Goals stage below), so it's no longer required here.
@@ -59203,6 +59297,8 @@ async function createCampaign(){
     nameEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return;
   }
+  // 2026-11-18 — the copy writers and the contest read the Loop stage, objective and audiences, so a campaign is never created without them, whether the story was used or skipped.
+  if (!(document.getElementById('cmpExistingCampaign') || {}).value){ const miss = plfMissing(); if (miss){ briefMsg(miss[0]); const el = briefEl(miss[1]); if (el){ try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e){} } return; } }
   if (!cmpValidateCampaignDates()){
     const dateErrEl = document.getElementById('cmpDateError');
     if (dateErrEl && !dateErrEl.textContent){
@@ -59354,7 +59450,7 @@ async function createCampaign(){
   loadExistingCampaignIntoForm(campaignId);
   // 2026-11-17 — stand alone placement: same creation, then straight to adding the channel and copy.
   if (wasPlacement || briefKind === 'placement'){ briefMode = 'create'; try { briefSetKind('campaign'); } catch (e){ briefKind = 'campaign'; } // rebuilds the form and the tab highlight, so Create a campaign is the default again
-    try { await plcOpen(campaignId); } catch (e){ console.error('stand alone placement: the channel window could not open', e); } return; }
+    plfReset(); try { await plfFinishPlacement(campaignId, plfSnap, plfAud); } catch (e){ console.error('stand alone placement: Creative could not open', e); } return; }
   // 2026-09-16 — opens the standalone Objectives overlay now, not the old
   // accordion's Campaign Objectives stage, so a freshly-created campaign
   // lands straight in the real conversational template.
