@@ -14280,7 +14280,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-18-r42-asset-copy-follows-master';
+const CXMEDIA_BUILD_STAMP = '2026-11-18-r43-asset-copy-uses-headline';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -72778,8 +72778,10 @@ function cmpBrandContextProfile(){
 }
 function cmpMessagingElements(){
   const { objective, segments, productGroups, creativeFocusGroups, stage, primaryKpi, businessInitiative, ctaOverride } = cmpBriefContext();
-  const keyMessage = ((document.getElementById('cmpKeyMessage') || {}).value || '').trim();
-  const mandatoryPhrase = ((document.getElementById('cmpMandatoryPhrase') || {}).value || '').trim();
+  // r43: the Creative step never shows the Brand Messaging fields, so these boxes are empty there and the asset copy fell back to the generic audience hook ("You already know what this feels like."). The campaign's own saved Headline (Key Message) and required phrase are used when the boxes are empty.
+  const rcMsg = (typeof cmpRailLoadedCampaign === 'function') ? (cmpRailLoadedCampaign() || {}) : {};
+  const keyMessage = (((document.getElementById('cmpKeyMessage') || {}).value || '').trim()) || String(rcMsg.keyMessage || '').trim();
+  const mandatoryPhrase = (((document.getElementById('cmpMandatoryPhrase') || {}).value || '').trim()) || String(rcMsg.mandatoryPhrase || '').trim();
   const styleKey = ((document.getElementById('cmpLongformStyle') || {}).value || '').trim() || 'Storytelling';
   const style = LONGFORM_ROLE_STYLE[styleKey] || LONGFORM_ROLE_STYLE.Storytelling;
   const focus = creativeFocusGroups.length ? creativeFocusGroups.join(' and ') : (productGroups.length ? productGroups.join(' and ') : '');
@@ -78336,7 +78338,8 @@ function cmpAssetCopyVersion(c, channel, row, key){
   const schema = cmpAssetCopySchema(channel, spec, row);
   const v = row.copyVersions[key];
   // r42: a draft nobody has edited or approved follows the campaign's Long Form Copy. It was drafted once and frozen, so an asset first drawn before the copy was approved kept a blank Body. The master text is remembered with the draft; when it changes and the draft is untouched, the draft is rebuilt.
-  const masterNow = cmpAssetCopyMaster(c, key);
+  const elsNow = cmpMessagingElements();
+  const masterNow = [cmpAssetCopyMaster(c, key), elsNow.headline || '', elsNow.offerLine || '', elsNow.cta || ''].join('\u0001'); // what the draft is built from: approved copy, Headline, required phrase, button
   const masterChanged = !!v && !v.edited && !v.approved && (v.masterText || '') !== masterNow;
   const stale = !v || !v.fields || v.schemaId !== schema.id || (v.sizeLabel !== row.size && !v.edited) || masterChanged;
   if (stale){
