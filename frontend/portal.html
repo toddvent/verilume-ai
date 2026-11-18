@@ -14280,7 +14280,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-18-r38-model-watch';
+const CXMEDIA_BUILD_STAMP = '2026-11-18-r39-scoring-reliability';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -73434,8 +73434,15 @@ function cmpAssessmentBlockHtml(c){
   const flags = (c.flags && c.flags.length) ? `<div class="hint" style="color:var(--advocacy);margin-top:6px;">${c.flags.map(escapeHtml).join('; ')}</div>` : '';
   const camp = c.note ? `<div class="hint" style="font-style:italic;">${escapeHtml(c.note)}</div>` : '<div class="hint">No written reason was returned for this score.</div>';
   const brand = c.brandNote ? `<div class="hint" style="font-style:italic;">${escapeHtml(c.brandNote)}</div>` : (c.flags && c.flags.length ? '' : '<div class="hint">No brand issues flagged.</div>');
+  // r39: where the missing Brand Fit points went, so 80/100 always shows what cost the other 20.
+  const dd = Array.isArray(c.brandDeductions) ? c.brandDeductions : [];
+  const ddTotal = dd.reduce((t, d) => t + (Number(d.points) || 0), 0);
+  const missingPts = (typeof c.complianceScore === 'number') ? 100 - c.complianceScore : null;
+  const deductions = dd.length
+    ? `<ul class="hint" style="margin:4px 0 0;padding-left:18px;">${dd.map(d => `<li><strong>−${escapeHtml(String(d.points))}</strong> ${escapeHtml(d.reason)}</li>`).join('')}${(missingPts != null && missingPts > ddTotal) ? `<li><strong>−${missingPts - ddTotal}</strong> Other small differences from the voice guide.</li>` : ''}</ul>`
+    : ((missingPts != null && missingPts > 0 && c.brandNote) ? `<div class="hint" style="margin-top:4px;">${missingPts} points were not awarded; the reason above is what the scorer gave.</div>` : '');
   return `<div class="hint" style="${lbl}margin:0 0 2px;">Campaign Fit ${scorePill(c.relevanceScore)}</div>${parts ? `<div class="hint" style="margin:0 0 2px;">${escapeHtml(parts)}</div>` : ''}${camp}
-    <div class="hint" style="${lbl}margin:8px 0 2px;">Brand Fit ${scorePill(c.complianceScore)}</div>${brand}${flags}`;
+    <div class="hint" style="${lbl}margin:8px 0 2px;">Brand Fit ${scorePill(c.complianceScore)}</div>${brand}${deductions}${flags}`;
 }
 // A partner that did not answer in time (or an empty first draft) can be tried again on demand, one click, no new run.
 async function cmpRetryMissingContestOptions(panelId, flagId){
@@ -73559,7 +73566,10 @@ function renderCmpCopyContestPanel(result, flagId, panelId){
     </div>`;
   }).join('');
   const missingN = (result.candidates || []).filter(c => c.configured && !c.copy).length;
-  const missingHtml = (missingN && result.interviewId) ? `<div style="margin-top:10px;padding:10px 12px;border:1px dashed var(--line);border-radius:8px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;"><span class="hint" style="margin:0;">${missingN} ${missingN === 1 ? 'option' : 'options'} did not finish in time.</span><button type="button" class="btn-ghost" onclick="cmpRetryMissingContestOptions('${panelId}','${flagId}')">Try ${missingN === 1 ? 'it' : 'them'} again →</button></div>` : '';
+  const heurN = (result.candidates || []).filter(c => c.copy && c.scoreMode === 'heuristic').length;
+  const missingHtml0 = (heurN && result.interviewId && !missingN) ? `<div style="margin-top:10px;padding:10px 12px;border:1px dashed var(--line);border-radius:8px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;"><span class="hint" style="margin:0;">${heurN} ${heurN === 1 ? 'draft was' : 'drafts were'} scored by the rules check only because the AI scorer did not answer.</span><button type="button" class="btn-ghost" onclick="cmpRetryMissingContestOptions('${panelId}','${flagId}')">Score ${heurN === 1 ? 'it' : 'them'} again →</button></div>` : '';
+  const missingHtml1 = (missingN && result.interviewId) ? `<div style="margin-top:10px;padding:10px 12px;border:1px dashed var(--line);border-radius:8px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;"><span class="hint" style="margin:0;">${missingN} ${missingN === 1 ? 'option' : 'options'} did not finish in time.</span><button type="button" class="btn-ghost" onclick="cmpRetryMissingContestOptions('${panelId}','${flagId}')">Try ${missingN === 1 ? 'it' : 'them'} again →</button></div>` : '';
+  const missingHtml = missingHtml1 + missingHtml0;
   return `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;">${cards}</div>${missingHtml}
     <div id="${flagId}" class="hint" style="margin-top:8px;"></div>
     ${renderAiStatusTip(INTERVIEW_STATUS_TIPS)}`;
