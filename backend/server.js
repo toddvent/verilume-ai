@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-18-r28-create-to-channel-plan (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-18-r31-voice-current-guide (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -31021,13 +31021,14 @@ function scoreComplianceHeuristically(copyText, account, campaign){
 // just AI-drafted copy); falls back to the deterministic heuristics above
 // otherwise, same honest-fallback convention as everywhere else in this
 // file that touches ANTHROPIC_API_KEY.
-async function scoreDraftCopy(copyText, campaign, account){
+async function scoreDraftCopy(copyText, campaign, account, extraBrandContext){
   if (!copyText || !copyText.trim()){
     return { relevanceScore: null, complianceScore: null, note: 'No copy to score yet.', flags: [], mode: 'none' };
   }
   if (process.env.ANTHROPIC_API_KEY){
     try {
-      const voiceGuide = (account.voiceGuideText || '').slice(0, 1500);
+      const voiceGuide = (account.voiceGuideText || '').slice(0, 4000);
+      const brandExtra = String(extraBrandContext || '').slice(0, 3000);
       // Same Vision Statement context the drafting prompts now receive
       // (generateMessagingCopyViaAI/generateInterviewCandidateCopy above) —
       // the compliance judge should be checking copy against the same full
@@ -31042,10 +31043,10 @@ RELEVANCE: judge four parts separately and report each. objectiveFit 0-40 (serve
 - Primary KPI: ${campaign.primaryKpi || '(not set)'}
 - Key Message: ${campaign.keyMessage || '(not set)'}
 
-COMPLIANCE (0-100): how well this copy honors the brand voice guide below and avoids risky/absolute claims (guarantees, cures, "100% safe", etc). 100 = fully compliant; deduct per real issue, and name each one specifically in complianceFlags.
+COMPLIANCE (this is the BRAND FIT score, 0-100): how well this copy honors the brand voice guide, vision statement and writing samples below and avoids risky/absolute claims (guarantees, cures, "100% safe", etc). 100 = fully compliant; deduct per real issue, and name each one specifically in complianceFlags.
 BRAND VOICE GUIDE:
 ${voiceGuide || '(none on file)'}
-${visionStatement ? `BRAND VISION STATEMENT (the voice's north-star — copy that drifts from this is worth flagging too): ${visionStatement}\n` : ''}
+${brandExtra ? `BRAND WRITING SAMPLES AND SAVED DECISIONS (the voice in practice; judge how close this copy sits to it):\n${brandExtra}\n` : ''}${visionStatement ? `BRAND VISION STATEMENT (the voice's north-star — copy that drifts from this is worth flagging too): ${visionStatement}\n` : ''}
 ${campaign.mandatoryPhrase ? `MANDATORY PHRASE (required verbatim, word-for-word, somewhere in the copy — its absence is a compliance failure, flag it by name in complianceFlags if missing): "${campaign.mandatoryPhrase}"\n` : ''}${(campaign.keyMessageMode === 'exact' && campaign.keyMessage) ? `KEY MESSAGE — EXACT/VERBATIM MODE (this account set Key Message to required-verbatim, not directional; it must appear word-for-word somewhere in the copy — if the copy only paraphrases or reworks it, that is a compliance failure, flag it by name in complianceFlags): "${campaign.keyMessage}"\n` : ''}
 
 COPY TO SCORE:
@@ -31058,7 +31059,7 @@ ${copyText.slice(0, 2000)}`;
         model: ANTHROPIC_STANDARD_MODEL,
         maxTokens: 500,
         timeoutMs: 30000,
-        content: prompt + '\n\nScoring rules: judge THIS copy on its own merits. Use the full 0-100 range and avoid round-number defaults; two different drafts should rarely get the same score. Name the specific words or lines that earned or cost points in relevanceNote.',
+        content: prompt + '\n\nScoring rules: judge THIS copy on its own merits. Use the full 0-100 range and avoid round-number defaults; two different drafts should rarely get the same score. Calibrate like a senior brand editor: 90-100 = ready to run, on-voice, nothing to fix; 80-89 = strong with one or two small edits; 70-79 = usable but off-voice or off-brief in places; below 70 only when the copy clearly breaks the voice guide, the mandatory phrase or a compliance rule, and say which. Do not mark copy down for things the brand material does not actually address. In relevanceNote explain the Campaign Fit score (what earned and cost points on objective, audience, key message, call to action, quoting the words). In brandNote explain the Brand Fit score the same way (which voice guide lines or samples it matches or breaks, quoting the words); if no voice guide or samples are on file say so plainly instead of guessing.',
         toolName: 'submit_copy_score',
         toolDescription: 'Submit the relevance and compliance scores.',
         schema: {
@@ -31069,7 +31070,8 @@ ${copyText.slice(0, 2000)}`;
             keyMessageUse: { type: 'integer', minimum: 0, maximum: 20 },
             ctaClarity: { type: 'integer', minimum: 0, maximum: 10 },
             relevanceScore: { type: 'integer', minimum: 0, maximum: 100 },
-            relevanceNote: { type: 'string', description: 'One sentence.' },
+            relevanceNote: { type: 'string', description: 'Two or three sentences explaining the Campaign Fit score, quoting the copy.' },
+            brandNote: { type: 'string', description: 'Two or three sentences explaining the Brand Fit score, naming the voice guide lines or samples it matches or breaks.' },
             complianceScore: { type: 'integer', minimum: 0, maximum: 100 },
             complianceFlags: { type: 'array', items: { type: 'string' }, description: 'Short, specific flags — one per real compliance issue found.' }
           },
@@ -31093,6 +31095,8 @@ ${copyText.slice(0, 2000)}`;
       return {
         relevanceScore: typeof parsed.relevanceScore === 'number' ? parsed.relevanceScore : null,
         note: typeof parsed.relevanceNote === 'string' ? parsed.relevanceNote : null,
+        brandNote: typeof parsed.brandNote === 'string' ? parsed.brandNote : null,
+        breakdown: { objectiveFit: parsed.objectiveFit, audienceFit: parsed.audienceFit, keyMessageUse: parsed.keyMessageUse, ctaClarity: parsed.ctaClarity },
         complianceScore: aiComp,
         flags: aiFlags,
         mode: 'ai'
@@ -31467,25 +31471,26 @@ Submit your draft via the submit_copy tool (name: "copy"; also include a one-sen
 // with VENDOR_PASS2_TIMEOUT_MS instead of fetchWithTimeout's bare 90s
 // default, same pattern as generateVendorInterviewCopy already had.
 async function generateInterviewCandidateCopy(slot, campaign, account, sampleContext, audienceLabel, timeoutMs, opts){
-  try {
-    const prompt = buildInterviewPrompt(campaign, account, sampleContext, audienceLabel, opts);
-    const parsed = await callClaudeForJSON({
-      model: slot.model,
-      maxTokens: opts && opts.longForm ? 1200 : 700,
-      content: prompt,
-      toolName: 'submit_copy',
-      toolDescription: 'Submit the drafted copy and the approach you took.',
-      schema: INTERVIEW_COPY_SCHEMA,
-      timeoutMs
-    });
-    return {
-      copy: typeof parsed.copy === 'string' ? parsed.copy : null,
-      approach: typeof parsed.approach === 'string' ? parsed.approach : null,
-      error: null
-    };
-  } catch (e){
-    return { copy: null, approach: null, error: 'Generation failed: ' + e.message };
+  // 2026-11-18 (r30): the first Anthropic draft gets one automatic second try (a cold start or a first-call model hiccup used to leave the loader with no copy), and an empty copy field counts as a failure.
+  let lastErr = '';
+  for (let attempt = 0; attempt < 2; attempt++){
+    try {
+      const prompt = buildInterviewPrompt(campaign, account, sampleContext, audienceLabel, opts);
+      const parsed = await callClaudeForJSON({
+        model: slot.model,
+        maxTokens: opts && opts.longForm ? 1200 : 900,
+        content: prompt,
+        toolName: 'submit_copy',
+        toolDescription: 'Submit the drafted copy and the approach you took.',
+        schema: INTERVIEW_COPY_SCHEMA,
+        timeoutMs
+      });
+      const copy = typeof parsed.copy === 'string' ? parsed.copy.trim() : '';
+      if (!copy) throw new Error('the model returned an empty draft');
+      return { copy, approach: typeof parsed.approach === 'string' ? parsed.approach : null, error: null };
+    } catch (e){ lastErr = e && e.message ? e.message : String(e); console.warn('[copy draft] attempt ' + (attempt + 1) + ' failed: ' + lastErr.slice(0, 200)); }
   }
+  return { copy: null, approach: null, error: 'Generation failed: ' + lastErr };
 }
 // A configured vendor's ONE candidate for the copy interview panel — shares
 // buildInterviewPrompt() with the Anthropic slot above (same shared brief,
@@ -32337,7 +32342,7 @@ async function runCandidateInterview(campaign, account, audienceLabel, runOpts){
   // 2026-08-26. Combined into one Promise.all so the Anthropic slot AND
   // every configured vendor fire at once.
   // 2026-11-17 -- score each draft as soon as it arrives instead of after the slowest writer finishes, so scoring is no longer squeezed into the tail of the request budget.
-  const genAndScore = async genPromise => { const g = await genPromise; const sc = g && g.copy ? await scoreDraftCopy(g.copy, campaign, account) : null; return { g, sc }; };
+  const genAndScore = async genPromise => { const g = await genPromise; const sc = g && g.copy ? await scoreDraftCopy(g.copy, campaign, account, sampleContext) : null; return { g, sc }; };
   const [anthropicRes, vendorRes] = await Promise.all([
     genAndScore(generateInterviewCandidateCopy(INTERVIEW_ANTHROPIC_SLOT, campaign, account, sampleContext, audienceLabel)),
     Promise.all(configuredVendors.map(v => genAndScore(generateVendorInterviewCopy(v.key, campaign, account, sampleContext, audienceLabel))))
@@ -32363,7 +32368,7 @@ async function runCandidateInterview(campaign, account, audienceLabel, runOpts){
       // left of this request's.
       pending: !!gen.error,
       relevanceScore, complianceScore, combinedScore,
-      note: score ? score.note : null, flags: score ? score.flags : [], scoreMode: score ? score.mode : null,
+      note: score ? score.note : null, brandNote: score ? (score.brandNote || null) : null, breakdown: score ? (score.breakdown || null) : null, flags: score ? score.flags : [], scoreMode: score ? score.mode : null,
       // 2026-09-23 — "option to expand to a long format" per direct
       // instruction. Populated on demand by POST .../copy-interview/
       // :interviewId/candidate/:key/expand, never at first-pass generation
@@ -32429,8 +32434,8 @@ async function extendCandidateInterviewWithContest(campaign, account, audienceLa
   existing = (existing || []).filter(c => c.configured !== false);
   const have = new Set((existing || []).map(c => c.key));
   const vendors = INTERVIEW_VENDOR_REGISTRY.filter(v => !!process.env[v.envVar] && !have.has(v.key));
-  const generated = await Promise.all(vendors.map(v => generateVendorInterviewCopy(v.key, campaign, account, sampleContext, audienceLabel)));
-  const scored = await Promise.all(generated.map(g => (g.copy ? scoreDraftCopy(g.copy, campaign, account) : Promise.resolve(null))));
+  const both = await Promise.all(vendors.map(async v => { const g = await generateVendorInterviewCopy(v.key, campaign, account, sampleContext, audienceLabel); const sc = g && g.copy ? await scoreDraftCopy(g.copy, campaign, account, sampleContext) : null; return { g, sc }; }));
+  const generated = both.map(b => b.g), scored = both.map(b => b.sc);
   const fresh = vendors.map((v, i) => {
     const score = scored[i], gen = generated[i];
     const rel = score ? score.relevanceScore : null, comp = score ? score.complianceScore : null;
@@ -32438,7 +32443,7 @@ async function extendCandidateInterviewWithContest(campaign, account, audienceLa
       key: v.key, label: v.label, vendor: v.vendor, model: v.model, configured: true,
       copy: gen.copy, approach: gen.approach || null, error: gen.error, pending: !!gen.error,
       relevanceScore: rel, complianceScore: comp, combinedScore: (typeof rel === 'number' && typeof comp === 'number') ? Math.round((rel + comp) / 2) : null,
-      note: score ? score.note : null, flags: score ? score.flags : [], scoreMode: score ? score.mode : null, longCopy: null
+      note: score ? score.note : null, brandNote: score ? (score.brandNote || null) : null, breakdown: score ? (score.breakdown || null) : null, flags: score ? score.flags : [], scoreMode: score ? score.mode : null, longCopy: null
     };
   });
   for (let i = fresh.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); [fresh[i], fresh[j]] = [fresh[j], fresh[i]]; }
@@ -32480,7 +32485,7 @@ function redactCandidatesForClient(candidates){
     key: c.key, label: c.blindLabel || c.label, configured: c.configured,
     copy: c.copy, approach: c.approach || null, headline: c.headline || null, error: c.error, pending: !!c.pending,
     relevanceScore: c.relevanceScore, complianceScore: c.complianceScore, combinedScore: c.combinedScore,
-    note: c.note, flags: c.flags, scoreMode: c.scoreMode,
+    note: c.note, brandNote: c.brandNote || null, breakdown: c.breakdown || null, flags: c.flags, scoreMode: c.scoreMode,
     // 2026-09-23 — "option to expand to a long format." Populated by POST
     // .../copy-interview/:interviewId/candidate/:key/expand; null until a
     // client explicitly asks for the long-form version of this candidate.
@@ -33121,7 +33126,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-18-r28-create-to-channel-plan',
+        buildStamp: '2026-11-18-r31-voice-current-guide',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -44513,6 +44518,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
             c.combinedScore = (typeof c.relevanceScore === 'number' && typeof c.complianceScore === 'number')
               ? Math.round((c.relevanceScore + c.complianceScore) / 2) : null;
             c.note = score ? score.note : null;
+            c.brandNote = score ? (score.brandNote || null) : null; c.breakdown = score ? (score.breakdown || null) : null;
             c.flags = score ? score.flags : [];
             c.scoreMode = score ? score.mode : null;
           }
