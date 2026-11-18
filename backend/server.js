@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-18-r14-story-form (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-18-r15-rls-sweep (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -527,6 +527,10 @@ function createTableIfNeeded(sql){
 // 2026-10-27 — Safety net behind createTableIfNeeded: any table in the public schema that somehow has row-level security off
 // (Supabase flagged four, created with a plain db.exec) gets it switched on. No policies are added, so only the app's own role can read or write.
 // Postgres only; on SQLite the catalog query fails and nothing happens.
+// 2026-11-18 -- turns row-level security on for named tables right after a plain db.exec creates them (the sweep below only runs on a timer).
+function enableRlsNow(names){
+  (names || []).forEach((n) => { if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(n)) return; try { db.exec('ALTER TABLE ' + n + ' ENABLE ROW LEVEL SECURITY'); } catch (e){ /* SQLite has no such command */ } });
+}
 function enforceRlsEverywhere(){
   try {
     const rows = db.prepare(`SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND rowsecurity = false`).all();
@@ -14289,6 +14293,7 @@ try {
     decidedby TEXT, decidedbyname TEXT, decidedat TEXT, decisionnote TEXT
   );`);
 } catch (e){ console.error('[schema] could not ensure creative_handoffs:', e && e.message); }
+enableRlsNow(['creative_handoffs']);
 // 2026-11-17 -- "What do you want to get done today?" on the Brain Dump: remembers what each person picked, privately. One row per person and task.
 try {
   db.exec(`CREATE TABLE IF NOT EXISTS member_session_tasks (
@@ -14296,6 +14301,7 @@ try {
     uses INTEGER NOT NULL, lastat TEXT NOT NULL, status TEXT NOT NULL, createdat TEXT NOT NULL
   );`);
 } catch (e){ console.error('[schema] could not ensure member_session_tasks:', e && e.message); }
+enableRlsNow(['member_session_tasks']);
 // Starter tasks by job function. dest is a screen the portal already has: step = goToStep(name), dash = the person's own dashboard.
 const SESSION_TASK_CATALOG = [
   { key: 'daily', ask: 'What are my daily tasks today? List what is due, waiting for my approval, and in motion for me.', label: 'See what my daily tasks are', fns: ['*'], dest: { kind: 'dash' } },
@@ -21043,6 +21049,7 @@ createTableIfNeeded(`
     createdat TEXT NOT NULL
   );
 `);
+enableRlsNow(['account_notifications', 'account_chart_requests']);
 ensureColumn('account_charts', 'dashboards', 'TEXT');
 
 const VIZ_TYPES = ['column', 'bar', 'line', 'area', 'stacked', 'pie', 'table'];
@@ -33086,7 +33093,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-18-r14-story-form',
+        buildStamp: '2026-11-18-r15-rls-sweep',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -52846,7 +52853,7 @@ if (require.main === module) {
   const server = http.createServer(handleRequest);
   const PORT = process.env.PORT || 8787;
   setInterval(() => { nightlyDemoReset().catch(e => console.error('[demo-reset]', e.message)); }, 20 * 60 * 1000);
-  server.listen(PORT, () => { console.log(`CXMedia.AI demo backend listening on http://localhost:${PORT}`); setTimeout(enforceRlsEverywhere, 20000); });
+  server.listen(PORT, () => { console.log(`CXMedia.AI demo backend listening on http://localhost:${PORT}`); setTimeout(enforceRlsEverywhere, 20000); setInterval(enforceRlsEverywhere, 10 * 60 * 1000); });
   setTimeout(enforceRlsOnPublicTables, 5000);
 }
 
