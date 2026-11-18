@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-18-r32-one-voice-contest (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-18-r33-voice-contest-in-scoring (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -31035,6 +31035,7 @@ async function scoreDraftCopy(copyText, campaign, account, extraBrandContext){
       // picture of the brand's voice the drafter was given, not a narrower
       // one.
       const visionStatement = (account.visionStatement || '').trim();
+      const longformVoiceExample = (account.longformVoiceExample || '').slice(0, 1200).trim(); // r33: approved Voice Contest Paragraph
       const prompt = `Score this marketing copy on two dimensions, 0-100 each.
 
 RELEVANCE: judge four parts separately and report each. objectiveFit 0-40 (serves the objective and primary KPI), audienceFit 0-30 (speaks to this audience), keyMessageUse 0-20 (uses the Key Message as required), ctaClarity 0-10 (a clear, specific next step). Be strict and specific; most drafts should lose points somewhere.
@@ -31046,7 +31047,7 @@ RELEVANCE: judge four parts separately and report each. objectiveFit 0-40 (serve
 COMPLIANCE (this is the BRAND FIT score, 0-100): how well this copy honors the brand voice guide, vision statement and writing samples below and avoids risky/absolute claims (guarantees, cures, "100% safe", etc). 100 = fully compliant; deduct per real issue, and name each one specifically in complianceFlags.
 BRAND VOICE GUIDE:
 ${voiceGuide || '(none on file)'}
-${brandExtra ? `BRAND WRITING SAMPLES AND SAVED DECISIONS (the voice in practice; judge how close this copy sits to it):\n${brandExtra}\n` : ''}${visionStatement ? `BRAND VISION STATEMENT (the voice's north-star — copy that drifts from this is worth flagging too): ${visionStatement}\n` : ''}
+${brandExtra ? `BRAND WRITING SAMPLES AND SAVED DECISIONS (the voice in practice; judge how close this copy sits to it):\n${brandExtra}\n` : ''}${visionStatement ? `BRAND VISION STATEMENT (the voice's north-star — copy that drifts from this is worth flagging too): ${visionStatement}\n` : ''}${longformVoiceExample ? `APPROVED VOICE CONTEST PARAGRAPH (the voice in a finished piece; judge register and rhythm, not facts):\n${longformVoiceExample}\n` : ''}
 ${campaign.mandatoryPhrase ? `MANDATORY PHRASE (required verbatim, word-for-word, somewhere in the copy — its absence is a compliance failure, flag it by name in complianceFlags if missing): "${campaign.mandatoryPhrase}"\n` : ''}${(campaign.keyMessageMode === 'exact' && campaign.keyMessage) ? `KEY MESSAGE — EXACT/VERBATIM MODE (this account set Key Message to required-verbatim, not directional; it must appear word-for-word somewhere in the copy — if the copy only paraphrases or reworks it, that is a compliance failure, flag it by name in complianceFlags): "${campaign.keyMessage}"\n` : ''}
 
 COPY TO SCORE:
@@ -33126,7 +33127,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-18-r32-one-voice-contest',
+        buildStamp: '2026-11-18-r33-voice-contest-in-scoring',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
