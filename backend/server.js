@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-18-r36-headline-only-gate (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-18-r37-contest-without-brief (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -30945,7 +30945,7 @@ function scoreDraftHeuristically(copyText, campaign){
   // signal set (objective, segment, key message, KPI, stage, campaign type,
   // brief), light stemming, and a blend of coverage, repetition and opening-line
   // use of the key message, so different drafts land on different numbers.
-  const signalSource = [campaignObjectiveText(campaign), campaign.segment, campaign.keyMessage, campaign.primaryKpi, campaign.stage, campaign.campaignType, campaign.briefBuilderExpandedText].filter(Boolean).join(' ');
+  const signalSource = [campaignObjectiveText(campaign), campaign.segment, campaign.keyMessage, campaign.primaryKpi, campaign.stage, campaign.campaignType].filter(Boolean).join(' ');
   const stem = w => w.replace(/(ing|ed|es|s|ly)$/,'');
   const signalTerms = [...new Set(tokenize(signalSource).filter(w => w.length >= 4 && !RELEVANCE_STOPWORDS.has(w)))];
   const copyTokens = tokenize(copyText);
@@ -31456,7 +31456,7 @@ CAMPAIGN CONTEXT:
 - Objective: ${campaignObjectiveText(campaign) || '(not set)'}
 - Audience/Segment: ${campaign.segment || '(not set)'}${exclusionPromptLine(campaign)}
 ${audienceLabel ? `- THIS DRAFT IS FOR ONE SPECIFIC AUDIENCE, NOT THE WHOLE CAMPAIGN: "${audienceLabel}" -- write to speak directly to this audience, not a generic campaign-wide reader. If this audience implies a different angle, urgency, or level of familiarity with the brand than a first-time visitor, reflect that.\n${audienceStanceBlock(audienceLabel)}\n` : `${NO_MONITORING_RULES}\n`}- Primary KPI: ${campaign.primaryKpi || '(not set)'}
-${campaign.briefBuilderExpandedText ? '- Campaign brief (context the team wrote or confirmed): ' + String(campaign.briefBuilderExpandedText).slice(0, 1200) + '\n' : ''}- Key Message, if any${campaign.keyMessageMode === 'descriptive' ? ' (a DESCRIPTIVE brief -- write real copy that captures this direction in your own words, do not quote it verbatim)' : ''}: ${campaign.keyMessage || '(none supplied)'}
+- Key Message, if any${campaign.keyMessageMode === 'descriptive' ? ' (a DESCRIPTIVE brief -- write real copy that captures this direction in your own words, do not quote it verbatim)' : ''}: ${campaign.keyMessage || '(none supplied)'}
 ${keyMessageHeadlineRule(campaign)}- Campaign writing style, if the account has one on file: ${campaign.roleStyle || '(none set -- use your own best judgment, grounded in the brand voice guide above)'}
 - Channels this copy will run on: ${channelsText || '(not yet set on this campaign -- write copy that reads naturally across channels)'}
 - Creative Focus / destination${campaign.creativeFocusGroups && campaign.creativeFocusGroups.includes(',') ? 's' : ''}, if set: ${campaign.creativeFocusGroups || '(none set)'}
@@ -33127,7 +33127,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-18-r36-headline-only-gate',
+        buildStamp: '2026-11-18-r37-contest-without-brief',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
