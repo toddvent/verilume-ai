@@ -14275,7 +14275,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-18-r25-placement-fields-reach';
+const CXMEDIA_BUILD_STAMP = '2026-11-18-r26-excluding-audiences';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -57798,6 +57798,7 @@ function plfSync(){
   }
   const disabled = (typeof cmpSegmentDisabledSet === 'function') ? cmpSegmentDisabledSet() : new Set();
   briefMultiFill('frmAud', ACCOUNT_SEGMENTS, selectedSegments, 'briefToggleAud', 'Choose audiences', disabled);
+  briefExclFill('frmExcl'); // the host may have just been built after the main fill ran, so fill the exclusions here too
 }
 // Everything the Creative step needs, gathered before the form resets. Returns '' when complete, else the one thing to ask for.
 function plfMissing(){
