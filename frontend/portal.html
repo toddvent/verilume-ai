@@ -14280,7 +14280,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-18-r40-json-structured-answers';
+const CXMEDIA_BUILD_STAMP = '2026-11-18-r42-asset-copy-follows-master';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -64474,8 +64474,7 @@ function renderDraftScoreCard(result){
       <div><div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.6875rem;">Campaign Fit</div>${scorePill(result.relevanceScore)}</div>
       <div><div class="hint" style="text-transform:uppercase;letter-spacing:0.06em;font-weight:700;font-size:0.6875rem;">Brand Fit</div>${scorePill(result.complianceScore)}</div>
     </div>
-    ${result.note ? `<div class="hint" style="margin-top:6px;">${escapeHtml(result.note)}</div>` : ''}
-    ${flagsHtml}
+    ${result.mode === 'ai' ? `<div style="margin-top:8px;">${cmpAssessmentBlockHtml(result)}</div>` : `${result.note ? `<div class="hint" style="margin-top:6px;">${escapeHtml(result.note)}</div>` : ''}${flagsHtml}`}
     ${modeNote}
   `;
 }
@@ -78336,10 +78335,13 @@ function cmpAssetCopyVersion(c, channel, row, key){
   const spec = cmpSpecForRowSize(channel, row.size);
   const schema = cmpAssetCopySchema(channel, spec, row);
   const v = row.copyVersions[key];
-  const stale = !v || !v.fields || v.schemaId !== schema.id || (v.sizeLabel !== row.size && !v.edited);
+  // r42: a draft nobody has edited or approved follows the campaign's Long Form Copy. It was drafted once and frozen, so an asset first drawn before the copy was approved kept a blank Body. The master text is remembered with the draft; when it changes and the draft is untouched, the draft is rebuilt.
+  const masterNow = cmpAssetCopyMaster(c, key);
+  const masterChanged = !!v && !v.edited && !v.approved && (v.masterText || '') !== masterNow;
+  const stale = !v || !v.fields || v.schemaId !== schema.id || (v.sizeLabel !== row.size && !v.edited) || masterChanged;
   if (stale){
-    row.copyVersions[key] = { fields: cmpAssetCopyDraftFields(c, channel, spec, key, schema), approved: false, approvedAt: null, edited: false, sizeLabel: row.size, schemaId: schema.id };
-  }
+    row.copyVersions[key] = { fields: cmpAssetCopyDraftFields(c, channel, spec, key, schema), approved: false, approvedAt: null, edited: false, sizeLabel: row.size, schemaId: schema.id, masterText: masterNow };
+  } else if (v && v.masterText === undefined){ v.masterText = masterNow; }
   // 2026-10-18 — a button saved before Meta's fixed list was enforced is mapped to the closest allowed button.
   schema.fields.forEach(fd => {
     const cv = row.copyVersions[key];
