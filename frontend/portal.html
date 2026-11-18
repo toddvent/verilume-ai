@@ -14266,7 +14266,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-18-r18-chip-size';
+const CXMEDIA_BUILD_STAMP = '2026-11-18-r19-placement-fields';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -57756,6 +57756,12 @@ function plfMissing(){
     if (!plf.channel) return ['Choose the channel for this placement.', 'frmChan'];
     if (!plf.type) return ['Choose the creative type.', 'frmType'];
     if (plf.specs.length && plf.specIdx == null) return ['Choose the creative spec.', 'frmSpec'];
+    // 2026-11-18 (r19): the Creative step and the copy writers read Product Group and Creative Focus, and a placement skips the objectives dialogue, so they are asked here.
+    try {
+      const pgv = (cmpTaxonomyValues('productGroup') || []).filter(v => v.toUpperCase() !== 'MULTI-PRODUCT'), cgv = (cmpTaxonomyValues('creativeMarket') || []).filter(v => v.toUpperCase() !== 'MULTI-DESTINATION');
+      if (pgv.length && !selectedProductGroups.size) return ['Choose the product group this placement promotes.', 'briefPgHold'];
+      if (cgv.length && !selectedCreativeFocusGroups.size) return ['Choose the creative focus group.', 'briefCgHold'];
+    } catch (e){}
   }
   return null;
 }
@@ -57770,6 +57776,15 @@ async function plfFinishPlacement(cid, snap, aud){
     if (!r.ok){ let m = ''; try { m = (await r.json()).error || ''; } catch (e){} throw new Error(m || 'The channel could not be added (' + r.status + ').'); }
     const c = (state.campaigns || []).find(x => x.id === cid);
     if (c){
+      // 2026-11-18 (r19): a placement skips the objectives dialogue, so the Creative step's Campaign Objective is written here from what the form collected.
+      try {
+        const n = Number(c.kpiGoal) || 0, kp = c.primaryKpi || '', chn = (typeof plcLabel === 'function' ? plcLabel(snap.channel) : snap.channel);
+        const goalTxt = n && kp ? 'generate ' + n.toLocaleString('en-US') + ' ' + kp.toLowerCase() : 'support the ' + (c.stage || '') + ' stage';
+        const summary = ('Reach ' + (aud || 'the selected audience') + ' on ' + chn + ' to ' + goalTxt + (c.stage ? ' (' + c.stage + ' stage)' : '') + '.').replace(/\s+/g, ' ');
+        c.activityNotes = Object.assign({}, c.activityNotes || {}, { objectivesGoalSummary: summary });
+        c.activityNotesJson = JSON.stringify(c.activityNotes);
+        await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(cid)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ activityNotesJson: c.activityNotesJson }) });
+      } catch (e){ console.warn('plfFinishPlacement: objective summary not saved', e); }
       const asset = { channel: snap.channel, partner: snap.partner || 'To be assigned', mediaType: snap.type || (CREATIVE_TYPES_BY_CHANNEL[snap.channel] || [])[0] || 'Standard', size: sp ? sp.label : 'Standard Unit', audience: aud, estimatedReach: null, creativeDueDate: start || null, copyVersions: {} };
       c.approvedCreativeAssets = [...(Array.isArray(c.approvedCreativeAssets) ? c.approvedCreativeAssets : []), asset]; c.approvedCreativeAssetsJson = JSON.stringify(c.approvedCreativeAssets);
       try { await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(cid)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approvedCreativeAssetsJson: c.approvedCreativeAssetsJson, approvedAssetSummary: c.approvedCreativeAssets.map(x => x.channel + (x.partner ? ' — ' + x.partner : '') + (x.mediaType ? ' (' + x.mediaType + ')' : '')).join(', ') }) }); } catch (e){ console.warn('plfFinishPlacement: asset save failed, local copy only', e); }
