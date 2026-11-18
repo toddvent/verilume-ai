@@ -14265,7 +14265,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-18-r16-loyalty-clicks';
+const CXMEDIA_BUILD_STAMP = '2026-11-18-r17-channel-forecast';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -57883,9 +57883,33 @@ function briefBenchLoad(needOutcomes){
 // Budget check: prices the target with the account's own history only. No channels are chosen at this step, so nothing here
 // uses a channel CPM or a blended rate; the recommendation step prices the real channel mix. It only reports; it never
 // changes a field. KPI -> the account metric that prices it.
+// 2026-11-18 (r17): a stand-alone placement has a channel, so forecast from that channel's own history (an internal email has $0 media cost).
+const briefChFc = { key: null, data: null, loading: false, err: false };
+function briefChannelCheck(box, goal, kpi){
+  const aud = [...selectedSegments].join(', '); const key = state.companyId + '|' + plf.channel + '|' + aud;
+  if (briefChFc.key !== key){ briefChFc.key = key; briefChFc.data = null; briefChFc.err = false; briefChFc.loading = true;
+    stratGet('budget-benchmarks?channel=' + encodeURIComponent(plf.channel) + '&audience=' + encodeURIComponent(aud), 25000).then(d => { if (briefChFc.key === key) briefChFc.data = d || {}; }).catch(() => { if (briefChFc.key === key) briefChFc.err = true; }).finally(() => { if (briefChFc.key === key){ briefChFc.loading = false; briefBudgetCheck(); } });
+  }
+  const n = v => Number(v).toLocaleString('en-US'); const label = (typeof plcLabel === 'function' ? plcLabel(plf.channel) : plf.channel);
+  const f = briefChFc.data && briefChFc.data.channelForecast; const parts = []; let level = 'info';
+  if (briefChFc.loading || (!briefChFc.data && !briefChFc.err)) parts.push('Checking your ' + label + ' history…');
+  else if (!f || f.none || briefChFc.err){
+    parts.push('I do not have ' + label + ' results in your uploaded history yet, so I cannot forecast this placement' + (goal ? ' or size ' + n(goal) + ' ' + (kpi || 'results').toLowerCase() : '') + '. Upload the channel results and I will.');
+  } else {
+    parts.push('Over the last ' + f.months + ' months ' + label + ' delivered <b>' + n(f.clicks) + '</b> clicks' + (f.leads ? ' and <b>' + n(f.leads) + '</b> leads' : '') + ' on ' + n(f.sends) + ' ' + (/email/i.test(plf.channel) ? 'sends' : 'impressions') + ' (' + f.clickRatePct + '% click rate' + (f.leads ? ', ' + f.leadRatePct + '% lead rate' : '') + ').' + (f.zeroCost ? ' No media cost is attributed to it.' : ''));
+    if (f.listSize){
+      parts.push('Your ' + (f.audience || 'audience') + ' email list is ' + n(f.listSize) + ', so one send to the full list should bring about <b>' + n(f.perSendClicks) + '</b> clicks' + (f.perSendLeads ? ' and about ' + n(f.perSendLeads) + ' leads' : '') + '.');
+      if (goal && /click/i.test(kpi) && f.perSendClicks) parts.push('Your goal of ' + n(goal) + ' clicks would take about ' + (Math.round(goal / f.perSendClicks * 10) / 10) + ' send' + (goal / f.perSendClicks > 1.05 ? 's' : '') + ' to that list.');
+      else if (goal && /lead/i.test(kpi) && f.perSendLeads) parts.push('Your goal of ' + n(goal) + ' leads would take about ' + (Math.round(goal / f.perSendLeads * 10) / 10) + ' send' + (goal / f.perSendLeads > 1.05 ? 's' : '') + ' to that list.');
+    } else if (/email/i.test(plf.channel)) parts.push('Add your email list size for ' + ([...selectedSegments].join(', ') || 'this audience') + ' under Marketable audience sizes and I will forecast the total for a send.');
+    parts.push('This is your own history on this channel, not a guarantee.');
+  }
+  box.className = 'brf-check' + (level === 'warn' ? ' warn' : ''); box.innerHTML = parts.join(' '); box.style.display = '';
+}
 function briefBudgetCheck(){
   const box = briefEl('briefBudgetCheck'); if (!box) return;
   const goal = Number((briefEl('cmpKpiGoal') || {}).value) || 0; const kpi = (briefEl('cmpPrimaryKpi') || {}).value || '';
+  if (briefKind === 'placement' && plf.channel){ briefChannelCheck(box, goal, kpi); return; }
   if (!goal){
     if (cmpKpiDropNote){ box.className = 'brf-check warn'; box.textContent = cmpKpiDropNote; box.style.display = ''; } else { box.style.display = 'none'; box.textContent = ''; }
     return;
