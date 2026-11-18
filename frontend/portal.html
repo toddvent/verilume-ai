@@ -14280,7 +14280,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-18-r31-voice-current-guide';
+const CXMEDIA_BUILD_STAMP = '2026-11-18-r32-one-voice-contest';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -80176,7 +80176,7 @@ function renderVoiceContestStep(){
     }
     if (xEl) xEl.textContent = guide ? (guide.length > 280 ? guide.slice(0, 280).trim() + '…' : guide) : '';
   }
-  if (headlineEl) headlineEl.textContent = state.voice.visionStatement || (state.voice.approved && String(state.voice.draft || '').trim() ? 'Not set. The Voice Guide above is the voice in use; a Headline is optional. Run a contest below or write your own to add one.' : 'Nothing approved yet — run a contest below or write your own.');
+  if (headlineEl) headlineEl.textContent = state.voice.visionStatement || (state.voice.approved ? 'The approved Voice Guide above is in use. Run the Voice Contest below to choose a Headline and Paragraph.' : 'Nothing approved yet — run the Voice Contest below or write your own.');
   if (paragraphEl) paragraphEl.textContent = state.voice.longformExample || '';
   renderVoiceContestInputsPanel();
   loadInterviewUsage();
@@ -80248,6 +80248,18 @@ async function voiceContestLoadHistoryList(){
     if (!resp.ok) return;
     const data = await resp.json();
     voiceContestHistoryList = data.interviews || [];
+    // r32: one Voice Contest. Its winner IS the Headline + Paragraph. If the account fields are empty but a past contest has a selected winner, show that winner so the page reflects what was chosen.
+    try {
+      if (!String(state.voice.visionStatement || '').trim()){
+        const done = voiceContestHistoryList.filter(x => (!x.contentType || x.contentType === 'voice_guide') && x.selectedCandidateKey).sort((m, n) => String(n.selectedAt || n.createdAt || '').localeCompare(String(m.selectedAt || m.createdAt || '')));
+        const w = done.length ? (done[0].candidates || []).find(c => c.key === done[0].selectedCandidateKey) : null;
+        if (w && w.visionStatement){
+          const h = document.getElementById('voiceContestCurrentHeadline'), pg = document.getElementById('voiceContestCurrentParagraph');
+          if (h) h.textContent = w.visionStatement;
+          if (pg) pg.textContent = w.longformExample || '';
+        }
+      }
+    } catch (e){ /* display only */ }
     const options = voiceContestHistoryList.map(iv => {
       const typeLabel = VOICE_CONTEST_TYPE_LABEL[iv.contentType] || iv.contentType;
       const dateLabel = iv.createdAt ? new Date(iv.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
