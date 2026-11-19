@@ -13937,7 +13937,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-19-r62-current-packages-banner';
+const CXMEDIA_BUILD_STAMP = '2026-11-19-r65-home-cards';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -25525,7 +25525,7 @@ async function gscLoadAll(){
 function gscEnsure(){ if (gpc.startedS || !stratIsLive()) return; gpc.startedS = true; gscLoadAll(); }
 function gpcEnsure(){ if (gpc.started || !gpIsLive()) return; gpc.started = true; gpcLoadAll(); }
 function gpcSetPreset(key, v){
-  const st = gpc[key]; st.preset = v;
+  const st = gpc[key]; st.preset = v; if (typeof hcIsPinned === 'function' && hcIsPinned(key)) hcSaveSoon();
   if (v === 'custom' && !(st.from && st.to)){ const d = gpcRange({ preset: 'ytd' }); st.from = st.from || d.from; st.to = st.to || d.through; gpcRender(); return; }
   gpcLoad(key);
 }
@@ -25660,7 +25660,7 @@ function gpcCardHtml(key){
   const m = GPC_META[key], st = gpc[key], c = gpcCardData(key);
   const head = `<div class="gpc-head"><div class="sc-label">${escapeHtml(m.title)}</div><div class="gpc-tools">${gpcSelHtml(key)}${gpcShareHtml(key, 'card')}${gpcExpandBtn(key)}${aiThoughtIconHtml(m.thought)}</div></div>${gpcCustomHtml(key, 'card')}`;
   if (!c) return `<div class="stat-card gpc" data-gpc="${key}">${head}<div class="gpc-empty">${st.err ? escapeHtml(st.err) : (st.loading || !gpc.started ? 'Loading' : 'Choose both dates and apply.')}</div></div>`;
-  return `<div class="stat-card gpc${st.loading ? ' loading' : ''}" data-gpc="${key}">${head}<div class="gpc-abs">${escapeHtml(c.abstract)}</div>${st.err ? `<div class="drr-err">${escapeHtml(st.err)}</div>` : ''}<div class="gpc-chart">${gpcChartHtml(c, false)}</div><div class="gpc-foot"><span class="gpc-dates" title="${escapeHtml(stratHumanDates(c.rangeLabel) + ' · ' + stratHumanDates(c.compLabel))}">${escapeHtml(stratHumanDates(c.rangeLabel))}</span></div></div>`;
+  return `<div class="stat-card gpc${st.loading ? ' loading' : ''}" data-gpc="${key}">${head}<div class="gpc-abs">${escapeHtml(c.abstract)}</div>${st.err ? `<div class="drr-err">${escapeHtml(st.err)}</div>` : ''}<div class="gpc-chart">${gpcChartHtml(c, false)}</div><div class="gpc-foot"><span class="gpc-dates" title="${escapeHtml(stratHumanDates(c.rangeLabel) + ' · ' + stratHumanDates(c.compLabel))}">${escapeHtml(stratHumanDates(c.rangeLabel))}</span>${hcPinHtml(key)}</div></div>`;
 }
 function gpcCardsHtml(keys){ return (keys || ['roas', 'pacing', 'kpi', 'ops']).map(gpcCardHtml).join(''); }
 function gpcRender(){
@@ -26098,13 +26098,90 @@ async function ssSend(ev){
 (function(){ if (document.getElementById('ssStyle')) return; const st = document.createElement('style'); st.id = 'ssStyle'; st.textContent = '.ss-row,.ss-opts{display:flex;flex-wrap:wrap;gap:8px}.ss-cont{display:inline-flex;gap:2px}.ss-x{border:1px solid var(--line);background:var(--paper);border-radius:999px;padding:2px 8px;cursor:pointer}.ss-usual{border-style:dashed}.ss-form{display:flex;gap:8px;margin-top:12px}.ss-form input{flex:1;min-width:0;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font:inherit}.ss-chat{margin-top:10px}.ss-me{margin:6px 0;font-weight:600}.ss-ai{margin:6px 0}.ss-answer{margin-top:12px;padding:12px;border-radius:8px;background:var(--paper-dim);border:1px solid var(--line)}'; document.head.appendChild(st); })();
 (function(){ if (document.getElementById('ssDockStyle')) return; const st = document.createElement('style'); st.id = 'ssDockStyle'; st.textContent = 'body.ask-dock .ask-bar.ask-inline,body.ask-dock-mini.ask-dock .ask-bar.ask-inline,body.ask-dock-kb.ask-dock .ask-bar.ask-inline{position:static;left:auto;right:auto;bottom:auto;transform:none;width:100%;max-width:none;height:auto;margin:0;box-sizing:border-box;padding:6px 12px;border:1px solid var(--line);border-radius:14px;background:var(--white);box-shadow:none}body.ask-dock .ask-bar.ask-inline > .ask-row,body.ask-dock-mini.ask-dock .ask-bar.ask-inline > .ask-row,body.ask-dock-kb .ask-bar.ask-inline > .ask-row{display:flex;height:auto;min-height:64px;flex-wrap:wrap;justify-content:flex-start}body.ask-dock .ask-bar.ask-inline .ask-expand{position:static;left:auto;bottom:auto;transform:none;width:100%;max-height:none;margin-top:8px;box-shadow:none;border-radius:12px}body.ask-dock .ask-bar.ask-inline .ask-dock-minibadge{display:none}.ss-dock-slot{margin:0 0 6px}'; document.head.appendChild(st); })();
 
+// ---------- My reporting cards on the Brain Dump (2026-11-19) ----------
+// A person can save up to 4 reporting cards (the Growth & Performance and Strategy cards) to their own home page. The choice is private to them (server: user_preferences 'homeCards').
+// The card is the same card as on its dashboard, drawn by gpcCardHtml, so the date range, share menu, large view and AI Thoughts all work the same way.
+const HC_MAX = 4;
+const HC = { cards: [], loaded: false, loading: false, menu: false, note: '', t: null };
+const HC_GROUPS = [{ label: 'Growth & Performance', keys: ['roas', 'pacing', 'kpi', 'ops'] }, { label: 'Strategy', keys: ['sbook', 'sbud', 'smix', 'sfore'] }];
+function hcKeys(){ return HC.cards.map(c => c.key); }
+function hcIsPinned(k){ return HC.cards.some(c => c.key === k); }
+async function hcApi(method, body){
+  const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/preferences/home-cards`, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined, timeoutMs: 15000 });
+  const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d;
+}
+async function hcLoad(){
+  if (!ssLive() || HC.loaded || HC.loading) return; HC.loading = true;
+  try {
+    const d = await hcApi('GET');
+    HC.cards = (d.cards || []).filter(c => c && GPC_META[c.key]).slice(0, HC_MAX).map(c => ({ key: c.key, preset: c.preset }));
+    HC.cards.forEach(c => { if (c.preset && c.preset !== 'custom' && GPC_PRESETS.some(p => p[0] === c.preset) && gpc[c.key]) gpc[c.key].preset = c.preset; });
+  } catch (e){ /* no saved cards, or the server does not have the route yet */ }
+  HC.loaded = true; HC.loading = false;
+  try { hcMount(); gpcRender(); } catch (e){}
+}
+function hcSnapshot(){ return HC.cards.map(c => ({ key: c.key, preset: ((gpc[c.key] || {}).preset && gpc[c.key].preset !== 'custom') ? gpc[c.key].preset : 'ytd' })); }
+async function hcSave(){
+  HC.cards = hcSnapshot();
+  try { await hcApi('PUT', { cards: HC.cards }); HC.note = ''; } catch (e){ HC.note = 'Could not save that just now. Try again in a moment.'; }
+  hcRefresh();
+}
+function hcSaveSoon(){ clearTimeout(HC.t); HC.t = setTimeout(() => { hcSave(); }, 600); }
+function hcToggle(key){
+  if (!GPC_META[key]) return;
+  if (hcIsPinned(key)){ HC.cards = HC.cards.filter(c => c.key !== key); HC.note = ''; }
+  else {
+    if (HC.cards.length >= HC_MAX){ HC.note = `You can save up to ${HC_MAX} cards. Remove one to add another.`; hcRefresh(); return; }
+    HC.cards.push({ key, preset: (gpc[key] || {}).preset || 'ytd' }); HC.note = '';
+  }
+  hcSave(); hcEnsureData();
+}
+function hcMenuToggle(){ HC.menu = !HC.menu; hcRender(); }
+function hcPinHtml(key){
+  if (!ssLive() || !GPC_META[key]) return '';
+  if (!HC.loaded && !HC.loading) hcLoad();
+  const on = hcIsPinned(key), full = !on && HC.cards.length >= HC_MAX;
+  const label = on ? 'Saved to home' : full ? `Home is full (${HC_MAX})` : 'Save to home';
+  const tip = on ? 'This card is on your home page. Select to remove it.' : full ? `Your home page already has ${HC_MAX} cards. Remove one to add this.` : 'Show this card on your home page (up to 4).';
+  return `<button type="button" class="hc-pin${on ? ' on' : ''}" aria-pressed="${on}" title="${escapeHtml(tip)}" ${full ? 'disabled' : ''} onclick="hcToggle('${key}')"><svg viewBox="0 0 24 24" width="13" height="13" fill="${on ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg>${label}</button>`;
+}
+function hcEnsureData(){
+  const k = hcKeys();
+  try { if (k.some(x => ['roas', 'pacing', 'kpi'].includes(x))) gpcEnsure(); if (k.some(x => GS_KEYS.includes(x))) gscEnsure(); } catch (e){}
+}
+function hcMenuHtml(){
+  if (!HC.menu) return '';
+  const full = HC.cards.length >= HC_MAX;
+  return `<div class="hc-menu">${HC_GROUPS.map(g => `<div class="hc-mg"><div class="strat-chart-label" style="margin:0 0 4px;">${escapeHtml(g.label)}</div><div class="ss-row">${g.keys.map(k => { const on = hcIsPinned(k); return `<button type="button" class="strat-chip${on ? ' hc-on' : ''}" ${(!on && full) ? 'disabled' : ''} onclick="hcToggle('${k}')">${on ? '✓ ' : '+ '}${escapeHtml(GPC_META[k].title)}</button>`; }).join('')}</div></div>`).join('')}</div>`;
+}
+function hcRender(){
+  const el = document.getElementById('hcCard'); if (!el) return;
+  const n = HC.cards.length;
+  const head = `<div class="hc-head"><div><h2>My reporting cards</h2><p class="strat-sub" style="margin:0;">${n ? `${n} of ${HC_MAX} saved. Only you see your choices.` : `Save up to ${HC_MAX} reporting cards here so they are the first numbers you see each day.`}</p></div><button type="button" class="strat-chip" onclick="hcMenuToggle()" aria-expanded="${HC.menu}">${HC.menu ? 'Done' : (n ? 'Change cards' : 'Choose cards')}</button></div>`;
+  const note = HC.note ? `<p class="drr-err" role="status" style="margin:8px 0 0;">${escapeHtml(HC.note)}</p>` : '';
+  const body = n ? `<div class="hc-grid">${HC.cards.map(c => `<div class="hc-slot" data-vzgpc="${c.key}">${gpcCardHtml(c.key)}</div>`).join('')}</div>` : (HC.loaded ? `<p class="strat-sub" style="margin:10px 0 0;">Nothing saved yet. Choose cards above, or select Save to home at the bottom of any card on Growth &amp; Performance or Strategy.</p>` : `<p class="strat-sub" style="margin:10px 0 0;">Loading your cards…</p>`);
+  el.innerHTML = `${head}${hcMenuHtml()}${note}${body}`;
+}
+function hcRefresh(){ hcRender(); try { gpcRender(); } catch (e){} }
+function hcMount(){
+  const box = document.getElementById('brainDumpBody'); if (!box || !ssLive()) return;
+  if (!document.getElementById('hcCard')){
+    const html = '<div class="strat-card hc-card" id="hcCard"></div>';
+    const ss = document.getElementById('ssCard'), head = box.querySelector('.bd-head');
+    if (ss) ss.insertAdjacentHTML('afterend', html); else if (head) head.insertAdjacentHTML('afterend', html); else box.insertAdjacentHTML('afterbegin', html);
+  }
+  hcRender();
+  if (!HC.loaded) hcLoad(); else hcEnsureData();
+}
+(function(){ if (document.getElementById('hcStyle')) return; const st = document.createElement('style'); st.id = 'hcStyle'; st.textContent = '.hc-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.hc-head h2{margin:0 0 2px}.hc-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:12px}.hc-slot{min-width:0}.hc-menu{display:grid;gap:10px;margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--paper-dim)}.hc-on{border-color:#C9973B;background:#FFF8E6}.hc-pin{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--white);color:var(--muted);border-radius:999px;padding:3px 10px;font:inherit;font-size:.75rem;cursor:pointer;white-space:nowrap}.hc-pin:hover:not(:disabled){color:var(--ink);border-color:var(--ink)}.hc-pin.on{color:#8A5A00;border-color:#C9973B;background:#FFF8E6}.hc-pin:disabled{opacity:.55;cursor:not-allowed}@media (max-width:900px){.hc-grid{grid-template-columns:1fr}}'; document.head.appendChild(st); })();
+
 function bdRender(){
   bdRenderMain(); const box = document.getElementById('brainDumpBody'); if (!box) return;
   // The Welcome card and the account fold were removed 2026-11-15: the page starts at the Strategy section.
 
   try { if (typeof vz !== 'undefined' && typeof vzLive === 'function' && vzLive()){ if (vz.lib) vzBdNote(); else vzLoadLib(); } } catch (e){}
 }
-function bdRenderMain(){ try { ssParkDock(); } catch (e){} bdRenderMainInner(); try { ssMount(); } catch (e){ console.warn('ssMount failed', e); } }
+function bdRenderMain(){ try { ssParkDock(); } catch (e){} bdRenderMainInner(); try { ssMount(); } catch (e){ console.warn('ssMount failed', e); } try { hcMount(); } catch (e){ console.warn('hcMount failed', e); } }
 function bdRenderMainInner(){
   const box = document.getElementById('brainDumpBody'); if (!box) return;
   if (bd.loading && !bd.data){ box.innerHTML = '<div class="strat-card"><p class="strat-empty">The Brain is reading this week\'s numbers…</p></div>'; return; }
