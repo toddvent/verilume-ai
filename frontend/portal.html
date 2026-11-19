@@ -14282,7 +14282,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-19-r46-calendar-opens-current-flow';
+const CXMEDIA_BUILD_STAMP = '2026-11-19-r47-old-campaign-page-retired';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -72022,6 +72022,23 @@ function goToStep(step, arg, arg2, arg3){
     if (typeof mbuLoadReachInputs === 'function') mbuLoadReachInputs();
     document.getElementById('step-mediaplan').classList.add('active');
   } else if (step === 'campaign'){
+    // r47 — the old Campaign Detail page is retired for every real campaign. Every link that used to land here opens the current flow, and a link
+    // that named a card opens the stage that holds it. Ad Hoc projects still use the old page until it is removed.
+    {
+      const cid = (arg && arg !== '__current') ? arg : currentCampaignId;
+      const cc = (state.campaigns || []).find(x => x.id === cid);
+      if (cc && !cc.isAdHoc){
+        currentCampaignId = cid;
+        cmpManageExistingCampaign(cid);
+        const focus = String(arg2 || '');
+        try {
+          if (focus === 'campaignAnalyticsCard' && typeof cmpOpenAnalysisWorkspace === 'function') cmpOpenAnalysisWorkspace();
+          else if ((focus === 'campaignTraffickingCard' || focus === 'campaignTrackingCard') && typeof cmpOpenTraffickingWorkspace === 'function') cmpOpenTraffickingWorkspace();
+          else if ((focus === 'campaignBrandCard' || focus === 'campaignCreativeJobsCard') && typeof cmpOpenCreativeWorkspace === 'function') cmpOpenCreativeWorkspace();
+        } catch (e){}
+        return;
+      }
+    }
     if (arg && arg !== '__current') currentCampaignId = arg;
     // Round 100 (2026-08-06) — arg2, when present, is a card id to arrive
     // focused on (e.g. deep-linked from the Marketing Ops Task Queue's
