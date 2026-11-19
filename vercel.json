@@ -39,6 +39,8 @@
     { "source": "/vendor-blind-panel.html", "destination": "/frontend/vendor-blind-panel.html" },
     { "source": "/website-category-scan.html", "destination": "/frontend/website-category-scan.html" },
     { "source": "/portal.html", "destination": "/frontend/portal.html" },
+    { "source": "/trial-start.html", "destination": "/frontend/trial-start.html" },
+    { "source": "/trial-punchlist.html", "destination": "/frontend/trial-punchlist.html" },
     { "source": "/sample-assessment.html", "destination": "/frontend/sample-assessment.html" },
     { "source": "/print-specs.html", "destination": "/frontend/print-specs.html" },
     { "source": "/select-tier.html", "destination": "/frontend/select-tier.html" },
