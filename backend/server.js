@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-19-r61-trial-path-read (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-19-r65-home-cards (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -33665,7 +33665,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-19-r61-trial-path-read',
+        buildStamp: '2026-11-19-r65-home-cards',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -38038,6 +38038,31 @@ async function handleRequestInner(req, res) {
           const saved = getUserPref(accountId, memberId, 'dateRange');
           return sendJson(res, 200, { spec: saved || { preset: 'year' }, resolved: resolveDateRange(saved) });
         } catch (e){ console.warn('[preferences/date-range] failed:', e.message); return sendJson(res, 500, { error: 'could not read or save the date range' }); }
+      }
+    }
+
+    // GET|PUT /api/accounts/:id/preferences/home-cards — the reporting cards this person saved to their own Brain Dump home page (2026-11-19).
+    // Up to 4 of the Growth & Performance and Strategy cards, each with the date range they last picked. Private to the person (per member), like the date-range preference.
+    if ((req.method === 'GET' || req.method === 'PUT') && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'preferences' && parts[4] === 'home-cards'){
+      {
+        const accountId = decodeURIComponent(parts[2]);
+        if (!requireAccount(req, res, accountId)) return;
+        const sess = authenticate(req); const memberId = (sess && sess.memberId) || 'account';
+        const HOME_CARD_KEYS = ['roas', 'pacing', 'kpi', 'ops', 'sbook', 'sbud', 'smix', 'sfore'];
+        try {
+          if (req.method === 'PUT'){
+            const body = await readBody(req) || {};
+            const seen = new Set(); const cards = [];
+            (Array.isArray(body.cards) ? body.cards : []).forEach(c => {
+              const key = c && String(c.key || ''); if (!HOME_CARD_KEYS.includes(key) || seen.has(key) || cards.length >= 4) return; seen.add(key);
+              const preset = /^[a-z]{2,8}$/.test(String(c.preset || '')) && c.preset !== 'custom' ? String(c.preset) : 'ytd';
+              cards.push({ key, preset });
+            });
+            setUserPref(accountId, memberId, 'homeCards', { cards });
+          }
+          const saved = getUserPref(accountId, memberId, 'homeCards');
+          return sendJson(res, 200, { cards: (saved && Array.isArray(saved.cards) ? saved.cards : []).filter(c => c && HOME_CARD_KEYS.includes(c.key)).slice(0, 4), max: 4 });
+        } catch (e){ console.warn('[preferences/home-cards] failed:', e.message); return sendJson(res, 500, { error: 'could not read or save your home cards' }); }
       }
     }
 
