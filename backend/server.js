@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-19-r54-landing-page-explained (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-19-r55-landing-page-recommendations (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -26459,37 +26459,53 @@ async function scoreLandingCopyMatch(page, campaign){
   const missing = copyTerms.filter(w => !pageTerms.has(w)).slice(0, 8);
   return { score: Math.round(100 * hit.length / copyTerms.length), method: 'keywords', note: `${hit.length} of ${copyTerms.length} words in the ad copy also appear on the page.${missing.length ? ' Not on the page: ' + missing.join(', ') + '.' : ''}` };
 }
-// A short, plain explanation (4 or 5 lines) of why the landing page lifted or lowered the campaign's relevance score.
-// Built only from what the audit found. The model words it; a deterministic version stands in when it cannot.
+// A short, plain explanation (4 or 5 lines) of why the landing page lifted or lowered the campaign's relevance score, plus
+// up to three specific changes ranked by how much each should add. Built only from what the audit found. The model words
+// it; a deterministic version stands in when it cannot.
 async function explainLandingPage(campaign, url, page, content, imagery, copyMatch, perf){
+  const copy = campaignApprovedCopyText(campaign);
+  const STOP = new Set('the a an and or of to for in on at with your you our we is are be this that it from by as will can get more all any new now just not have has was were their them they than then out about into over under up off'.split(' '));
+  const tok = t => (String(t).toLowerCase().match(/[a-z0-9$%][a-z0-9'$%-]{2,}/g) || []).filter(w => !STOP.has(w));
+  const pageText = [page.title, page.metaDescription, page.headline, page.bodyText].filter(Boolean).join(' ');
+  const pageTerms = new Set(tok(pageText));
+  const missing = copy.text ? [...new Set(tok(copy.text))].filter(w => !pageTerms.has(w)).slice(0, 10) : [];
+  const adLines = (copy.fields || []).slice(0, 6).map(x => String(x).slice(0, 120));
+  const cta = page.cta || null;
   const facts = [];
   if (copyMatch && typeof copyMatch.score === 'number') facts.push(`Page against the ad copy (counts for 25% of the relevance score): ${copyMatch.score}%. ${copyMatch.note || ''}`);
   else facts.push(`Page against the ad copy: not scored. ${(copyMatch && copyMatch.note) || ''}`);
   if (content && typeof content.score === 'number') facts.push(`Page content against the campaign message: ${content.score}%. ${content.note || ''}`);
   if (imagery && typeof imagery.score === 'number') facts.push(`Main image against the brand and message: ${imagery.score}%. ${imagery.note || ''}`);
-  facts.push(perf.ctaFound ? `The page has a call to action${perf.ctaLinkResolves ? (perf.ctaLinkResolves.ok ? ' and its link works.' : ' but its link does not resolve.') : '.'}` : 'No clear call to action was found on the page.');
+  facts.push(perf.ctaFound ? `The page has a call to action reading "${cta && cta.text || ''}"${perf.ctaLinkResolves ? (perf.ctaLinkResolves.ok ? ' and its link works.' : ' but its link does not resolve.') : '.'}` : 'No clear call to action was found on the page.');
   if (perf.ctaPathCoherence && perf.ctaPathCoherence.detail) facts.push(perf.ctaPathCoherence.detail);
+  if (missing.length) facts.push(`Words from the approved ad copy that are not on the page: ${missing.join(', ')}.`);
   const head = [page.title, page.headline].filter(Boolean).join(' | ').slice(0, 200);
+  const score = copyMatch && typeof copyMatch.score === 'number' ? copyMatch.score : null;
   if (process.env.ANTHROPIC_API_KEY){
     try {
       const parsed = await callClaudeForJSON({
-        model: ANTHROPIC_STANDARD_MODEL, maxTokens: 500, timeoutMs: 30000,
-        content: `A marketer added the landing page ${url} to a campaign. Explain, in exactly 4 or 5 short lines, why this page raised or lowered the campaign's relevance score. Line 1 states the overall effect (helped, hurt, or mixed) with the main number. The next lines say what helped and what hurt, each tied to a finding below. The last line is the single most useful fix. One sentence per line, 22 words or fewer, plain words, no acronyms, no bullets or numbering. Use only the findings below; never invent details. If something was not scored, say why in a few words.\n\nPage title and headline: ${head || '(none found)'}\nFindings:\n${facts.map(f => '- ' + f).join('\n')}`,
-        toolName: 'submit_lines', toolDescription: 'Submit the explanation lines.',
-        schema: { type: 'object', properties: { lines: { type: 'array', minItems: 4, maxItems: 5, items: { type: 'string' } } }, required: ['lines'] }
+        model: ANTHROPIC_STANDARD_MODEL, maxTokens: 900, timeoutMs: 40000,
+        content: `A marketer added the landing page ${url} to a campaign. Do two things.\n1. lines: exactly 4 or 5 short lines explaining why this page raised or lowered the campaign's relevance score. Line 1 states the overall effect (helped, hurt, or mixed) with the main number. The next lines say what helped and what hurt, each tied to a finding below. One sentence per line, 22 words or fewer, plain words, no acronyms, no bullets or numbering.\n2. recommendations: up to 3 specific changes to the page that would raise the score, most valuable first. Each has "change" (the exact edit, quoting the new wording where it is a headline, button or offer, and reusing the approved ad copy below rather than inventing new claims) and "why" (one short sentence tying it to a finding). ${score !== null && score >= 85 ? 'The page already matches well, so give at most one minor change.' : 'Do not give more changes than the findings support.'}\nUse only the findings below; never invent details. If something was not scored, say why in a few words.\n\nPage title and headline: ${head || '(none found)'}\nApproved ad copy lines:\n${adLines.map(x => '- ' + x).join('\n') || '(none yet)'}\nFindings:\n${facts.map(f => '- ' + f).join('\n')}`,
+        toolName: 'submit_explanation', toolDescription: 'Submit the explanation lines and recommendations.',
+        schema: { type: 'object', properties: { lines: { type: 'array', minItems: 4, maxItems: 5, items: { type: 'string' } }, recommendations: { type: 'array', maxItems: 3, items: { type: 'object', properties: { change: { type: 'string' }, why: { type: 'string' } }, required: ['change', 'why'] } } }, required: ['lines', 'recommendations'] }
       });
       const lines = (parsed.lines || []).map(l => String(l || '').replace(/^[\s\-•\d.)]+/, '').trim()).filter(Boolean).slice(0, 5);
-      if (lines.length >= 3) return { lines, method: 'ai' };
+      const recommendations = (parsed.recommendations || []).map(r => ({ change: String(r && r.change || '').trim().slice(0, 300), why: String(r && r.why || '').trim().slice(0, 200) })).filter(r => r.change).slice(0, 3);
+      if (lines.length >= 3) return { lines, recommendations, method: 'ai' };
     } catch (e){ /* use the plain version below */ }
   }
   const lines = [];
-  const cm = copyMatch && typeof copyMatch.score === 'number' ? copyMatch.score : null;
-  lines.push(cm === null ? 'The page could not be scored against your ad copy yet.' : (cm >= 75 ? `The page lifts the score: it matches your ad copy at ${cm}%.` : (cm >= 50 ? `The page is a mixed effect: it matches your ad copy at ${cm}%.` : `The page lowers the score: it matches your ad copy at only ${cm}%.`)));
+  lines.push(score === null ? 'The page could not be scored against your ad copy yet.' : (score >= 75 ? `The page lifts the score: it matches your ad copy at ${score}%.` : (score >= 50 ? `The page is a mixed effect: it matches your ad copy at ${score}%.` : `The page lowers the score: it matches your ad copy at only ${score}%.`)));
   if (copyMatch && copyMatch.note) lines.push(String(copyMatch.note).slice(0, 220));
   if (content && typeof content.score === 'number' && content.note) lines.push(String(content.note).slice(0, 220));
   lines.push(perf.ctaFound ? 'The page has a call to action, which supports conversion.' : 'No clear call to action was found, which holds the page back.');
   lines.push('Make the headline and offer on the page repeat what the ad promises, in the same words.');
-  return { lines: lines.slice(0, 5), method: 'plain' };
+  const recommendations = [];
+  if (adLines[0] && score !== null && score < 85) recommendations.push({ change: `Use your ad's headline on the page: "${adLines[0]}"`, why: 'Visitors who click should see the promise that brought them.' });
+  if (missing.length && score !== null && score < 85) recommendations.push({ change: `Add these words from your ad near the top of the page: ${missing.slice(0, 6).join(', ')}.`, why: 'They are in the ad and missing from the page.' });
+  if (!perf.ctaFound) recommendations.push({ change: 'Add one clear button, such as "Book now" or "Get a quote", above the fold.', why: 'No call to action was found on the page.' });
+  else if (perf.ctaLinkResolves && !perf.ctaLinkResolves.ok) recommendations.push({ change: `Fix the "${cta && cta.text || 'main'}" button; its link does not load.`, why: 'A broken button loses the visitor who is ready to act.' });
+  return { lines: lines.slice(0, 5), recommendations: recommendations.slice(0, 3), method: 'plain' };
 }
 async function scoreImageRelevance(imageUrl, campaign){
   if (!process.env.ANTHROPIC_API_KEY) return { score: null, note: 'AI imagery relevance scoring requires ANTHROPIC_API_KEY to be configured.' };
@@ -33645,7 +33661,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-19-r54-landing-page-explained',
+        buildStamp: '2026-11-19-r55-landing-page-recommendations',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
