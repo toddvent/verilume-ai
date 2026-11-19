@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-18-r44-results-upload-qr-brand (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-18-r45-signup-phone-cap-50 (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -25705,7 +25705,7 @@ async function sendSignupEmailCode(email){
 // overrides). Numbers listed in SIGNUP_PHONE_ALLOWLIST (comma-separated, any
 // formatting) are exempt, for the team's own test numbers. Matches on the
 // last 10 digits so "+1 954-805-4195" and "9548054195" count as one number.
-const SIGNUP_MAX_PER_PHONE = Math.max(1, parseInt(process.env.SIGNUP_MAX_PER_PHONE || '3', 10) || 3);
+const SIGNUP_MAX_PER_PHONE = Math.max(1, parseInt(process.env.SIGNUP_MAX_PER_PHONE || '50', 10) || 50);
 function phoneLast10(p){ const d = String(p || '').replace(/\D/g, ''); return d.length >= 7 ? d.slice(-10) : ''; }
 function signupPhoneCapReached(phone){
   const last10 = phoneLast10(phone);
@@ -33514,7 +33514,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-18-r44-results-upload-qr-brand',
+        buildStamp: '2026-11-18-r45-signup-phone-cap-50',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
