@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-19-r59-trial-start-fix (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-19-r61-trial-path-read (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -33665,7 +33665,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-19-r59-trial-start-fix',
+        buildStamp: '2026-11-19-r61-trial-path-read',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -35272,7 +35272,7 @@ async function handleRequestInner(req, res) {
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       const a = db.prepare('SELECT paidTier, paidTierActivatedAt, trialPath FROM accounts WHERE accountId = ?').get(accountId);
-      const demoId = a && DEMO_ACCOUNTS[a.trialPath];
+      const demoId = a && DEMO_ACCOUNTS[aliasVal(a, 'trialPath')];
       if (!demoId) return sendJson(res, 400, { error: 'This trial is not using a demo account.' });
       const st = levelStatusFor(a);
       if (st && st.expired) return sendJson(res, 403, { error: 'Your free trial has ended.', code: 'spark_expired' });
@@ -35291,7 +35291,8 @@ async function handleRequestInner(req, res) {
       if (!['travel','auto','retail','own'].includes(path)) return sendJson(res, 400, { error: 'path must be one of: travel, auto, retail, own' });
       const a = db.prepare('SELECT paidTier, trialPath FROM accounts WHERE accountId = ?').get(accountId);
       if (!a) return sendJson(res, 404, { error: 'account not found' });
-      if (a.trialPath) return sendJson(res, 200, { ok: true, path: a.trialPath, alreadyChosen: true });
+      const _tp = aliasVal(a, 'trialPath');
+      if (_tp) return sendJson(res, 200, { ok: true, path: _tp, alreadyChosen: true });
       const now = new Date().toISOString();
       if (!a.paidTier) db.prepare('UPDATE accounts SET trialPath = ?, paidTier = ?, paidTierActivatedAt = ? WHERE accountId = ?').run(path, 'spark', now, accountId);
       else db.prepare('UPDATE accounts SET trialPath = ? WHERE accountId = ?').run(path, accountId);
