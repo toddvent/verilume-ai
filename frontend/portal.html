@@ -13937,7 +13937,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-19-r54-landing-page-explained';
+const CXMEDIA_BUILD_STAMP = '2026-11-19-r55-landing-page-recommendations';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -51032,7 +51032,7 @@ function cmpRenderTraffickingQrUtm(campaign){
       ? jobsWithTracking.map(job => cmpTraffickingLinkRowHtml(job)).join('')
       : (totalJobs ? `<p class="hint" style="margin:0;">No tracking links built yet — enter the Campaign URL above and click Build.</p>` : `<p class="hint" style="margin:0;">No approved creative jobs on this campaign yet — submit assets to Brand on Creative Asset Selection, then approve them on Performance Marketing; tracking links build per job once one exists.</p>`)}</div>
     ${jobsWithTracking.length ? `<div class="btn-row" style="margin:0 0 10px;"><button type="button" class="btn-ghost" ${test && test.running ? 'disabled' : ''} onclick="cmpTraffickingRunUtmLinkTest()">${test && test.running ? 'Testing links…' : `Test ${jobsWithTracking.length} tracking link${jobsWithTracking.length === 1 ? '' : 's'} →`}</button></div>${test && test.results ? cmpRenderUtmLinkTestResults(test.results) : ''}` : ''}`;
-  if (savedUrl && !campaign._lpReadTried){ const a0 = cmpLandingPageAuditFor(campaign); if (!a0 || !a0.explanation || a0.url !== savedUrl) cmpRunLandingPageRead(false); }
+  if (savedUrl && !campaign._lpReadTried){ const a0 = cmpLandingPageAuditFor(campaign); if (!a0 || !a0.explanation || !Array.isArray(a0.explanation.recommendations) || a0.url !== savedUrl) cmpRunLandingPageRead(false); }
 }
 // The landing page and the relevance score. The audit reads the page against the approved ad copy, the campaign's message and
 // the page's own call to action; the server also writes a short plain explanation of why the page lifted or lowered the score.
@@ -51062,6 +51062,7 @@ function cmpLandingPageReadHtml(c, state){
       <span style="font-size:0.75rem;font-weight:600;color:${tone};">${escapeHtml(chip)} · counts for 25% of the score</span>
     </div>
     ${ex.lines.map(l => `<p style="margin:0 0 4px;font-size:0.875rem;line-height:1.45;">${escapeHtml(l)}</p>`).join('')}
+    ${Array.isArray(ex.recommendations) && ex.recommendations.length ? `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--line);"><strong style="font-size:0.8125rem;">To raise this score</strong><ol style="margin:6px 0 0;padding-left:20px;font-size:0.875rem;line-height:1.45;">${ex.recommendations.map(r => `<li style="margin-bottom:5px;">${escapeHtml(r.change)}${r.why ? ` <span style="color:var(--muted);">${escapeHtml(r.why)}</span>` : ''}</li>`).join('')}</ol></div>` : ''}
     <p class="hint" style="margin:6px 0 0;"><a onclick="cmpRunLandingPageRead(true)" style="cursor:pointer;">Read the page again</a></p>
   </div>`;
 }
