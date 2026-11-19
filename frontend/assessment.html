@@ -1530,7 +1530,8 @@ footer.as-foot .as-foot-links a:hover{color:#0A58CC!important;text-decoration:un
       <p style="font-size:0.875rem;line-height:1.6;margin:0 0 14px;color:#6E6E73;" id="saveModalAlreadyNote"></p>
       <div style="display:flex;gap:10px;justify-content:flex-end;">
         <button type="button" class="btn-ghost" onclick="closeSaveAccountModal()">Keep going with the assessment</button>
-        <a class="btn-primary" id="saveModalAlreadyPortalLink" href="portal.html">Go to your Portal →</a>
+        <a class="btn-primary" id="saveModalAlreadyTrialLink" href="trial-start.html">Start your free week: pick a demo →</a>
+        <a class="btn-ghost" id="saveModalAlreadyPortalLink" href="portal.html">Go to your Portal</a>
       </div>
     </div>
   </div>
@@ -4074,6 +4075,7 @@ function openSaveAccountModal(){
     document.getElementById('saveModalAlreadyNote').textContent =
       `You're already signed in to a Verilume account (${activeAccountId}). This assessment isn't linked to it yet — for now, head to your Portal to see your real account, or keep going here to finish the free assessment.`;
     document.getElementById('saveModalAlreadyPortalLink').href = 'portal.html?accountId=' + encodeURIComponent(activeAccountId);
+    document.getElementById('saveModalAlreadyTrialLink').href = 'trial-start.html?accountId=' + encodeURIComponent(activeAccountId);
     document.getElementById('saveModalAlreadyView').style.display = 'block';
     return;
   }
@@ -4349,11 +4351,13 @@ async function finishSaveAccountCreation(){
 
     const openedPortal = saveModalThenOpenPortal;
     if (openedPortal){
-      window.open(`portal.html?accountId=${encodeURIComponent(accountId)}&token=${encodeURIComponent(admin.token)}`, '_blank');
+      // The free week starts on the page where the person picks the ready-made demo business to explore
+      // (trial-start.html), not on the portal dashboard.
+      window.open(`trial-start.html?accountId=${encodeURIComponent(accountId)}&token=${encodeURIComponent(admin.token)}`, '_blank');
       saveModalThenOpenPortal = false;
     }
     document.getElementById('saveModalSuccessNote').textContent = openedPortal
-      ? `This is a real Verilume account (${accountId}) — sign in with ${admin.email} and the password you just set. The Portal tab that just opened is already signed in.`
+      ? `This is a real Verilume account (${accountId}) — sign in with ${admin.email} and the password you just set. The tab that just opened is already signed in, so you can pick a ready-made demo to explore.`
       : `This is a real Verilume account (${accountId}) — sign in with ${admin.email} and the password you just set. Someone from Verilume will also reach out about scheduling a consultation.`;
     document.getElementById('saveModalAccountLink').href = `account.html?accountId=${encodeURIComponent(accountId)}`;
     document.getElementById('saveModalVerifyView').style.display = 'none';
@@ -6671,6 +6675,11 @@ function renderInitialReport(){
     let hasAccount = false;
     try { hasAccount = !!localStorage.getItem('verilume_active_account'); } catch (e) {}
     cta.style.display = hasAccount ? 'flex' : 'none';
+    try {
+      const acct = localStorage.getItem('verilume_active_account');
+      const link = cta.querySelector('a');
+      if (acct && link) link.href = 'trial-start.html?accountId=' + encodeURIComponent(acct);
+    } catch (e) {}
   }
 }
 

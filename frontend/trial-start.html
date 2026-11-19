@@ -68,12 +68,18 @@ const PATHS = [
     brief:'<b>The challenge:</b> thousands of products, daily sales and promotions that overlap. Learn which spend actually lifts sales, and which only follows demand that was coming anyway.',
     icon:'<path d="M4 8h16l-1.2 11a2 2 0 01-2 1.8H7.2a2 2 0 01-2-1.8z"/><path d="M8.5 8V6.5a3.5 3.5 0 017 0V8"/>' },
   { key:'own', name:'Train the Brain', tag:'Start with your data',
-    brief:'<b>The challenge:</b> you know your business, the platform doesn't yet. Train the Brain from scratch with your own spend and results, and it builds your recommendations and visuals.',
+    brief:'<b>The challenge:</b> you know your business, the platform doesn\'t yet. Train the Brain from scratch with your own spend and results, and it builds your recommendations and visuals.',
     icon:'<path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4"/>' }
 ];
 const qs = new URLSearchParams(location.search);
 const accountId = qs.get('accountId') || '';
-function token(){ try { return sessionStorage.getItem('verilume_session_' + accountId) || ''; } catch(e){ return ''; } }
+const urlToken = qs.get('token') || '';
+function token(){
+  const k = 'verilume_session_' + accountId;
+  try { const v = localStorage.getItem(k) || sessionStorage.getItem(k); if (v) return v; } catch(e){}
+  return urlToken;
+}
+try { if (urlToken && accountId) { localStorage.setItem('verilume_session_' + accountId, urlToken); history.replaceState(null, '', location.pathname + '?accountId=' + encodeURIComponent(accountId)); } } catch(e){}
 const grid = document.getElementById('grid');
 grid.innerHTML = PATHS.map(p => `<article class="card"><div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true">${p.icon}</svg></div><p class="tag">${p.tag}</p><h2>${p.name}</h2><p class="brief">${p.brief}</p><button class="go" data-p="${p.key}">Start trial</button></article>`).join('');
 grid.addEventListener('click', async e => {
