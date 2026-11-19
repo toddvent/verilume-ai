@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-19-r55-landing-page-recommendations (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-19-r56-client-read-named-sources (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -28107,7 +28107,7 @@ async function pitchWireAndNews(company){
 async function pitchPerplexity(company, industry, siteUrl){
   if (!process.env.PERPLEXITY_API_KEY) return [];
   const host = repHost(siteUrl) || '';
-  const prompt = `Research for a sales conversation with ${company}${host ? ' (' + host + ')' : ''}${industry ? ', in ' + industry : ''}. Find recent public items (last 6 months) in four groups: (growth) new product, service, location or ship launches and expansion; (competitor) a named competitor gaining or losing market share, or a major competitor move; (promo) promotions, pricing offers or campaigns by ${company} or its competitors; (cost) cost cutting, layoffs, restructuring or efficiency programs at ${company} or its industry peers. Also include up to two items on current demand, pricing or cost trends in the industry, and, only if the company is publicly traded, one item from its latest annual report or regulatory filing (label these growth, competitor or cost, whichever fits best). Prefer PR Newswire, Business Wire and GlobeNewswire releases, the company's own newsroom, and reputable news.\nRules: only include items you can link to a real page; never invent an item, quote or URL; if nothing is found, return an empty list.\nReturn ONLY JSON: {"items":[{"type":"growth|competitor|promo|cost","title":"...","url":"https://...","date":"YYYY-MM-DD or empty"}]}`;
+  const prompt = `Research for a sales conversation with ${company}${host ? ' (' + host + ')' : ''}${industry ? ', in ' + industry : ''}. Find recent public items (last 6 months) in four groups: (growth) new product, service, location or ship launches and expansion; (competitor) a named competitor gaining or losing market share, or a major competitor move; (promo) promotions, pricing offers or campaigns by ${company} or its competitors; (cost) cost cutting, layoffs, restructuring or efficiency programs at ${company} or its industry peers. Also include up to two items on current consumer spending, pricing or cost conditions affecting the industry, and, only if the company is publicly traded, one item from its latest annual report or regulatory filing (label these growth, competitor or cost, whichever fits best). Prefer PR Newswire, Business Wire and GlobeNewswire releases, the company's own newsroom, and reputable news.\nRules: only include items you can link to a real page; never invent an item, quote or URL; if nothing is found, return an empty list.\nReturn ONLY JSON: {"items":[{"type":"growth|competitor|promo|cost","title":"...","url":"https://...","date":"YYYY-MM-DD or empty"}]}`;
   try {
     const resp = await fetchWithTimeout('https://api.perplexity.ai/chat/completions', {
       method: 'POST',
@@ -28229,6 +28229,10 @@ async function gatherBrandPresence({ company, url, industryLabel }){
   // Sources the answers leaned on, grouped by kind.
   const hosts = {};
   good.forEach(r => { const seenH = new Set(); r.cited.forEach(c => { const h = repHost(c.url); if (!h || seenH.has(h)) return; seenH.add(h); hosts[h] = (hosts[h] || 0) + 1; }); });
+  const pageMap = {};
+  good.forEach(r => r.cited.forEach(c => { const k = repUrlKey(c.url); if (!pageMap[k]) pageMap[k] = { url: c.url, title: c.title ? String(c.title).slice(0, 120) : null, host: repHost(c.url), answers: 0 }; pageMap[k].answers++; if (!pageMap[k].title && c.title) pageMap[k].title = String(c.title).slice(0, 120); }));
+  const kindOf = h => aicHostMatches(h, siteHost) ? 'brand' : (AIC_COMMUNITY_HOSTS.test(h) ? 'review' : 'other');
+  const sourcePages = Object.values(pageMap).filter(p => p.host).map(p => Object.assign(p, { kind: kindOf(p.host) })).sort((a, b) => b.answers - a.answers).slice(0, 12);
   const sources = Object.keys(hosts).map(h => ({ host: h, answers: hosts[h], kind: aicHostMatches(h, siteHost) ? 'brand' : (AIC_COMMUNITY_HOSTS.test(h) ? 'review' : 'other') })).sort((a, b) => b.answers - a.answers).slice(0, 8);
 
   // Competitors and themes: the model may only use what the answers say; competitor counts are then verified by name.
@@ -28264,7 +28268,7 @@ async function gatherBrandPresence({ company, url, industryLabel }){
   else observation = `${company} was named in ${named} of ${answers} answers, so the assistants know the brand. The question is what they say and which sites they rely on.`;
   if (named > 0 && cited === 0) observation += ` None of the answers pointed to your own website, so the story is being told from other places.`;
   else if (cited > 0) observation += ` Your own website was cited in ${cited} of ${answers}.`;
-  const result = { available: true, company, engines: provs.map(p => p.label), questions: rows, answers, named, siteCited: cited, competitors, themes, tone, sources, reviewSources, observation, ranOn: new Date().toISOString().slice(0, 10), ms: Date.now() - started };
+  const result = { available: true, company, engines: provs.map(p => p.label), questions: rows, sourcePages, answers, named, siteCited: cited, competitors, themes, tone, sources, reviewSources, observation, ranOn: new Date().toISOString().slice(0, 10), ms: Date.now() - started };
   brandPresenceCache.set(cacheKey, { at: Date.now(), result });
   if (brandPresenceCache.size > 200) brandPresenceCache.delete(brandPresenceCache.keys().next().value);
   return result;
@@ -28311,7 +28315,7 @@ Overall CX Strength: ${typeof input.cxPct === 'number' ? input.cxPct + '%' : 'no
 
 Write two things:
 
-1. A "here's what we learned" synthesis (3-5 sentences) written as an independent consultant's observation, not a pitch. It must show we did our homework and understand the brand: (a) what is happening in this industry right now, in terms that are broadly established and carry no invented figures; (b) what the company's public filings or annual report say, ONLY if a source above supports it, otherwise leave filings out and never imply the company is public; (c) how the company presents itself on its own website, using the real content above; and (d) where competitors are moving, using the public signals above where there are any. Use only what is stated above for specifics; never add numbers, dates or quotes that are not listed. No acronyms; spell everything out (e.g. "point of sale," not POS). Do not mention Verilume, AI or what we sell in this paragraph. Close by inviting correction: this is an outside first read, not an audit of their internal data.
+1. A "here's what we learned" synthesis (4-6 sentences), written as an independent consultant's read of this company and its industry. It is NOT about Verilume, artificial intelligence or what we sell; never mention them. Cover: (a) what is happening in this industry right now; (b) the marketing pain points companies in this industry commonly face, such as rising cost to win a customer, fragmented channels, longer or more comparison-driven buying, privacy changes, or being found in AI answers, choosing the ones that fit this industry; (c) the wider conditions shaping demand, such as the consumer economy, prices and what customers are willing to spend; (d) how the company presents itself on its own website, using the real content above; and (e) where competitors are moving, and what the company's public filings say, only where a source above supports it (never imply a company is public). Describe conditions in broadly established terms; use specific numbers, dates or quotes only if they appear above. No acronyms; spell everything out (e.g. "point of sale," not POS). Close by inviting correction: this is an outside first read, not an audit of their internal data.
 
 2. An "opportunity" paragraph (3-5 sentences) with the tone of a consultant's subtle observation, not a sales pitch: what would move this company's results, and what would save its team time, given the pattern of strong and weaker stages above. Lead with the outcome (revenue, return on spend, speed to market, consistency of the customer experience), then name the capability that produces it. Describe only finished results, never work in progress; nobody wants a partial deliverable, they want a result. Never name a tier, package or model. Where most stages are strong, frame the value as helping a good team move faster and more consistently; where several are weaker, frame it as real headroom and how it closes. Never say the team failed or is missing anything. Describe how structured data and artificial intelligence working from it support better experiences and analysis, and weave in only the capabilities that fit this company's pattern, in plain words and never as a feature list: scenario-based budgeting that shows what spend is likely to return before it is committed; consistent campaign planning that carries one story through to the customer experience and the analysis; a Search Everywhere toolkit with public relations integrations so the brand is found and trusted wherever people look, including AI answers; campaign and project management tools that keep execution on schedule; and geographic tools that point the sales force and local media at the markets with the most demand. The client's team keeps final judgment and creative direction.
 
@@ -28326,14 +28330,14 @@ async function generateAssessmentReadout(input){
     const prompt = buildAssessmentReadoutPrompt(input);
     const parsed = await callClaudeForJSON({
       model: ANTHROPIC_STANDARD_MODEL,
-      maxTokens: 900,
+      maxTokens: 1200,
       content: prompt,
       toolName: 'submit_readout',
       toolDescription: 'Submit the assessment readout.',
       schema: {
         type: 'object',
         properties: {
-          synthesis: { type: 'string', description: 'The "here\'s what we learned" synthesis, 3-5 sentences.' },
+          synthesis: { type: 'string', description: 'The "here\'s what we learned" synthesis, 4-6 sentences.' },
           opportunity: { type: 'string', description: 'The "opportunity" paragraph, 3-5 sentences.' }
         },
         required: ['synthesis', 'opportunity']
@@ -33661,7 +33665,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-19-r55-landing-page-recommendations',
+        buildStamp: '2026-11-19-r56-client-read-named-sources',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
