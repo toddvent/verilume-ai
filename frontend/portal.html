@@ -13937,7 +13937,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-19-r50-holder-removed';
+const CXMEDIA_BUILD_STAMP = '2026-11-19-r52-furniture-no-drafts';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -20172,6 +20172,7 @@ const INDUSTRY_WEAK_STAGE = {
   'Full-Service Dining': 'Loyalty',
   'Hotels / Hospitality': 'Purchase',
   'Retail — General Merchandise': 'Consideration',
+  'Retail — Furniture & Home': 'Consideration',
   'Retail — Specialty / Apparel': 'Advocacy',
   'Grocery / Supermarkets': 'Loyalty',
   'Automotive Sales & Service': 'Purchase',
@@ -20663,7 +20664,7 @@ const STANDARD_FONTS = [
 const FONT_CUSTOM_VALUE = '__custom__';
 const INDUSTRY_LABELS = [
   'Quick-Service / Limited-Service Restaurants', 'Full-Service Dining', 'Hotels / Hospitality',
-  'Retail — General Merchandise', 'Retail — Specialty / Apparel', 'Grocery / Supermarkets',
+  'Retail — General Merchandise', 'Retail — Furniture & Home', 'Retail — Specialty / Apparel', 'Grocery / Supermarkets',
   'Automotive Sales & Service', 'Healthcare — Outpatient / Clinics', 'Healthcare — Hospitals & Systems',
   'Financial Services / Banking', 'Insurance', 'Real Estate', 'Fitness / Gyms & Studios',
   'Salons / Spas / Personal Care', 'Home Services / Contractors', 'Professional Services (B2B)',
@@ -20764,6 +20765,7 @@ const INDUSTRY_CYCLE_MULTIPLIER = {
   'Full-Service Dining': 0.4,
   'Hotels / Hospitality': 1.5,
   'Retail — General Merchandise': 0.4,
+  'Retail — Furniture & Home': 2,
   'Retail — Specialty / Apparel': 0.6,
   'Grocery / Supermarkets': 0.15,
   'Automotive Sales & Service': 3,
@@ -21192,6 +21194,7 @@ const INDUSTRY_ECOMMERCE_MIX = {
   'Full-Service Dining': 0.35, // reservation platforms are semi-direct; some still call/inquire
   'Hotels / Hospitality': 0.55, // many book direct online; longer/group stays still route through inquiries
   'Retail — General Merchandise': 0.85,
+  'Retail — Furniture & Home': 0.35, // showroom-driven; most buyers still visit or call before buying
   'Retail — Specialty / Apparel': 0.85,
   'Grocery / Supermarkets': 0.90,
   'Automotive Sales & Service': 0.10, // vehicle purchase overwhelmingly routes through a lead/test-drive first
