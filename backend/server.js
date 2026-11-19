@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-19-r56-client-read-named-sources (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-19-r59-trial-start-fix (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -33665,7 +33665,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-19-r56-client-read-named-sources',
+        buildStamp: '2026-11-19-r59-trial-start-fix',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -35292,7 +35292,7 @@ async function handleRequestInner(req, res) {
       const a = db.prepare('SELECT paidTier, trialPath FROM accounts WHERE accountId = ?').get(accountId);
       if (!a) return sendJson(res, 404, { error: 'account not found' });
       if (a.trialPath) return sendJson(res, 200, { ok: true, path: a.trialPath, alreadyChosen: true });
-      const now = nowIso();
+      const now = new Date().toISOString();
       if (!a.paidTier) db.prepare('UPDATE accounts SET trialPath = ?, paidTier = ?, paidTierActivatedAt = ? WHERE accountId = ?').run(path, 'spark', now, accountId);
       else db.prepare('UPDATE accounts SET trialPath = ? WHERE accountId = ?').run(path, accountId);
       return sendJson(res, 200, { ok: true, path });
