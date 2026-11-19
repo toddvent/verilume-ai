@@ -209,6 +209,23 @@
   .bp-panel,.intake-card{max-width:980px;}
 
   /* Best-practice panel — leads every step from audience onward */
+  /* Brand presence card: how AI assistants and public sources describe the brand */
+  .bpres{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:20px 24px;margin:0 0 22px;}
+  .bpres h3{margin:2px 0 8px;font-size:1.25rem;}
+  .bpres .bpres-eyebrow{font-size:0.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--lamp-deep);font-weight:600;}
+  .bpres .bpres-note{font-size:0.875rem;color:var(--muted);line-height:1.5;margin:10px 0 0;}
+  .bpres table{width:100%;border-collapse:collapse;margin:14px 0 6px;}
+  .bpres th{text-align:left;font-size:0.6875rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line);}
+  .bpres td{padding:10px;border-bottom:1px solid var(--line-hairline);font-size:0.9375rem;vertical-align:top;}
+  .bpres .bpres-yes{font-weight:600;color:#1B6B3A;}
+  .bpres .bpres-no{font-weight:600;color:#9A3B1E;}
+  .bpres .bpres-chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 0;}
+  .bpres .bpres-chip{border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:0.8125rem;background:var(--paper);}
+  .bpres .bpres-cols{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:14px 0 0;}
+  .bpres h4{margin:16px 0 4px;font-size:0.9375rem;}
+  .bpres ul{margin:6px 0 0;padding-left:18px;font-size:0.9375rem;line-height:1.5;}
+  @media (max-width:640px){ .bpres .bpres-cols{grid-template-columns:1fr;} .bpres{padding:16px;} }
+  @media print{ .bpres-run{display:none!important;} }
   .bp-panel{background:#FBF3EC;border-left:3px solid var(--media);border-radius:0 14px 14px 0;padding:18px 22px;margin:0 0 20px;}
   .bp-panel .bp-tag{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:1rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--media);display:block;margin-bottom:8px;}
   .bp-panel p{font-size:1rem;line-height:1.6;color:#3A3428;margin:0;}
@@ -2190,6 +2207,7 @@ footer.as-foot .as-foot-links a:hover{color:#0A58CC!important;text-decoration:un
            moved. See renderReportSynthesis()/renderInitialReport(). -->
       <div id="pitchSignals"></div>
       <div id="journeyBP"></div>
+      <div id="brandPresence"></div>
 
       <!-- Section 1 — "Your opportunity, at a glance." Per direct
            instruction: a single 4-column, single-row grid of 4 small cards,
@@ -6433,12 +6451,67 @@ function renderPitchSignals(){
     `<p class="hint" style="margin:12px 0 0;">From the newsroom, wire releases and news coverage. Tell us if anything is off.</p></div>`;
 }
 
+// ---------- Brand presence: how AI assistants and public sources describe the brand ----------
+// Opt-in (it makes several live AI calls and takes about a minute). Reports only what the assistants answered, as a
+// one-day sample, with the sources they relied on. Never a ranking and never reads review sites directly.
+let brandPresenceState = null; // null = not asked, 'loading', or the result object
+function bpEscHtml(t){ return String(t == null ? '' : t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function renderBrandPresence(){
+  const el = document.getElementById('brandPresence'); if (!el) return;
+  const co = bpEscHtml(state.company || 'your brand');
+  const head = `<div class="bpres-eyebrow">Beyond your own website</div><h3>How ${co} shows up when people ask AI</h3>`;
+  const r = brandPresenceState;
+  if (!r){
+    el.innerHTML = `<div class="bpres">${head}<p>More customers now ask an AI assistant before they search or visit a site. We can ask the leading assistants the questions a customer would ask, with web search on, and show you what they say about ${co}, who they name beside you, and where they get it.</p><div class="bpres-run"><button type="button" class="btn-primary" onclick="runBrandPresence()">See how AI describes ${co} →</button></div><p class="bpres-note">Takes about a minute. It is a sample from today, not a ranking.</p></div>`;
+    return;
+  }
+  if (r === 'loading'){
+    el.innerHTML = `<div class="bpres">${head}<p>Asking the assistants now. This takes about a minute…</p></div>`;
+    return;
+  }
+  if (!r.available){
+    el.innerHTML = `<div class="bpres">${head}<p>${bpEscHtml(r.note || 'This check is not available right now.')}</p><div class="bpres-run"><button type="button" class="btn-ghost" onclick="runBrandPresence()">Try again</button></div></div>`;
+    return;
+  }
+  const mark = e => !e.answered ? '<span class="hint">No answer</span>' : (e.named ? '<span class="bpres-yes">Named</span>' : '<span class="bpres-no">Not named</span>');
+  const engines = r.engines || [];
+  const rows = (r.questions || []).map(q => `<tr><td>${bpEscHtml(q.question)}</td>${(q.engines || []).map(e => `<td>${mark(e)}</td>`).join('')}</tr>`).join('');
+  const kindLabel = { brand: 'your website', review: 'review and community sites', other: 'news and other sites' };
+  const comp = (r.competitors || []).length
+    ? `<h4>Named alongside ${co}</h4><div class="bpres-chips">${r.competitors.map(c => `<span class="bpres-chip">${bpEscHtml(c.name)} · ${c.answers} of ${r.answers}</span>`).join('')}</div>` : '';
+  const th = r.themes || {};
+  const themeBlock = ((th.strengths || []).length || (th.concerns || []).length)
+    ? `<div class="bpres-cols"><div><h4>What is said in your favor</h4>${(th.strengths || []).length ? `<ul>${th.strengths.map(x => `<li>${bpEscHtml(x)}</li>`).join('')}</ul>` : '<p class="hint">Little was said.</p>'}</div><div><h4>What is said as a caution</h4>${(th.concerns || []).length ? `<ul>${th.concerns.map(x => `<li>${bpEscHtml(x)}</li>`).join('')}</ul>` : '<p class="hint">Nothing notable was said.</p>'}</div></div>${r.tone ? `<p class="bpres-note">Overall tone of what was found: <b>${bpEscHtml(r.tone)}</b>.</p>` : ''}` : '';
+  const src = (r.sources || []).length
+    ? `<h4>Where the answers get their information</h4><div class="bpres-chips">${r.sources.map(x => `<span class="bpres-chip" title="${bpEscHtml(kindLabel[x.kind] || '')}">${bpEscHtml(x.host)} · ${x.answers}</span>`).join('')}</div>` : '';
+  el.innerHTML = `<div class="bpres">${head}<p>${bpEscHtml(r.observation || '')}</p>
+    <table><thead><tr><th>Question a customer might ask</th>${engines.map(e => `<th>${bpEscHtml(e)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>
+    ${comp}${themeBlock}${src}
+    <p class="bpres-note">A sample of ${r.answers} answers on ${bpEscHtml(r.ranOn || '')}, from the assistants' own web search. Answers change from day to day, so read this as a pattern, not a score. We do not read review sites directly; what is said about you comes from what the assistants found. Tell us if anything looks off.</p></div>`;
+}
+async function runBrandPresence(){
+  brandPresenceState = 'loading'; renderBrandPresence();
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/assessment/brand-presence`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ company: state.company || '', url: assessmentFetchUrlForPresence(), industryLabel: industryOf().label || '' })
+    });
+    brandPresenceState = await resp.json();
+  } catch (e){ brandPresenceState = { available: false, note: 'The check could not run right now.' }; }
+  renderBrandPresence();
+}
+function assessmentFetchUrlForPresence(){
+  const u = String(state.url || '').trim(); if (!u) return '';
+  return /^https?:\/\//i.test(u) ? u : 'https://' + u;
+}
+
 async function applyAiGeneratedReadout(){
   try {
     if (assessmentPitchPromise){
       await Promise.race([assessmentPitchPromise, new Promise(r => setTimeout(r, 12000))]);
     }
     renderPitchSignals();
+    renderBrandPresence();
     const s = activeScores();
     const stages = RUBRIC.map(r => ({
       stage: r.stage,
@@ -6575,6 +6648,7 @@ function renderInitialReport(){
   // in flight. Deliberately not awaited here — it overwrites the two
   // targeted spots in place on success and leaves everything else, and
   // everything already on screen, exactly as-is on any failure.
+  renderBrandPresence();
   applyAiGeneratedReadout();
   // 2026-08-21, per direct instruction — visitors who already have a real
   // Verilume account (created via the Save & Schedule modal, then chose
