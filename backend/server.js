@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-19-r52-furniture-no-drafts (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-19-r53-brand-presence (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -28123,6 +28123,105 @@ async function gatherPitchResearch({ company, url, industryLabel }){
   }
 }
 
+// ---------- Brand presence check (illumination report) ----------
+// Pre-account and public. Asks the official APIs of AI assistants (the same ones the Search Everywhere AI citation
+// check uses, web search on) the questions a customer would ask, then reports only what those answers contain: whether
+// the brand is named, which competitors appear next to it, the themes in what is said, and which kinds of sites the
+// answers lean on. No scraping of review sites. One day's sample, never a ranking. Cached 24 hours per company.
+const brandPresenceCache = new Map();
+function bpEsc(w){ return String(w).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+function bpNamed(text, terms){
+  const t = String(text || '').toLowerCase();
+  return terms.some(w => w && new RegExp('(^|[^a-z0-9])' + bpEsc(w) + '([^a-z0-9]|$)').test(t));
+}
+function bpCategoryPhrase(label){
+  let l = String(label || '').replace(/&/g, 'and').replace(/\s*\/\s*/g, ' or ').replace(/\s+/g, ' ').trim();
+  if (!l || /^other/i.test(l)) return '';
+  const p = l.split(/\s*[—–]\s*/);
+  if (p.length === 2) l = p[0].toLowerCase() === 'retail' ? p[1] + ' retail' : p[1] + ' ' + p[0];
+  return l.toLowerCase();
+}
+async function gatherBrandPresence({ company, url, industryLabel }){
+  const started = Date.now();
+  const provs = aicProviders();
+  if (!provs.length) return { available: false, note: 'The AI assistants are not connected for this check right now.' };
+  let siteHost = null;
+  try { siteHost = new URL(url).hostname.replace(/^www\./, ''); } catch (e){}
+  const cacheKey = (company.toLowerCase() + '|' + (siteHost || '')).slice(0, 200);
+  const hit = brandPresenceCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < 86400000) return Object.assign({}, hit.result, { cached: true });
+
+  const terms = [company.toLowerCase().replace(/[^a-z0-9&' .-]/g, '').trim()];
+  const noThe = terms[0].replace(/^the\s+/, ''); if (noThe !== terms[0]) terms.push(noThe);
+  if (siteHost){ const stem = siteHost.split('.')[0]; if (stem.length >= 5) terms.push(stem); }
+  const cat = bpCategoryPhrase(industryLabel);
+  const questions = [
+    { key: 'category', question: cat ? `Which companies in ${cat} do people recommend most, and why?` : `Which companies similar to ${company} do people recommend most, and why?` },
+    { key: 'known', question: `What is ${company} known for?` },
+    { key: 'reviews', question: `What do customers say about ${company}? Summarize recent public reviews and opinions.` },
+    { key: 'compare', question: `How does ${company} compare with its main competitors?` }
+  ];
+  const jobs = []; questions.forEach(q => provs.forEach(p => jobs.push({ q, p })));
+  const results = []; let idx = 0;
+  const worker = async () => {
+    while (idx < jobs.length){
+      const j = jobs[idx++];
+      try {
+        const r = await Promise.race([aicAsk(j.p.key, j.q.question), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 50000))]);
+        const cited = r.cited || [];
+        results.push({ key: j.q.key, question: j.q.question, provider: j.p.key, label: j.p.label, ok: true, text: String(r.text || ''), cited,
+          named: bpNamed(r.text, terms), siteCited: !!siteHost && cited.some(c => aicHostMatches(repHost(c.url), siteHost)) });
+      } catch (e){ results.push({ key: j.q.key, question: j.q.question, provider: j.p.key, label: j.p.label, ok: false, text: '', cited: [], named: false, siteCited: false }); }
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  const good = results.filter(r => r.ok && r.text);
+  if (!good.length) return { available: false, note: 'The AI assistants did not answer in time. Try again in a few minutes.', ms: Date.now() - started };
+
+  // Sources the answers leaned on, grouped by kind.
+  const hosts = {};
+  good.forEach(r => { const seenH = new Set(); r.cited.forEach(c => { const h = repHost(c.url); if (!h || seenH.has(h)) return; seenH.add(h); hosts[h] = (hosts[h] || 0) + 1; }); });
+  const sources = Object.keys(hosts).map(h => ({ host: h, answers: hosts[h], kind: aicHostMatches(h, siteHost) ? 'brand' : (AIC_COMMUNITY_HOSTS.test(h) ? 'review' : 'other') })).sort((a, b) => b.answers - a.answers).slice(0, 8);
+
+  // Competitors and themes: the model may only use what the answers say; competitor counts are then verified by name.
+  let competitors = [], themes = null, tone = null;
+  if (process.env.ANTHROPIC_API_KEY){
+    try {
+      const body = good.map((r, i) => `ANSWER ${i + 1} (${r.label}; question: ${r.question})\n${r.text.slice(0, 1400)}`).join('\n\n');
+      const parsed = await callClaudeForJSON({
+        model: ANTHROPIC_STANDARD_MODEL, maxTokens: 900, timeoutMs: 40000,
+        content: `Below are answers from AI assistants about ${company}${cat ? ' (' + cat + ')' : ''}. Using ONLY what these answers state:\n1. competitors: up to 6 other companies named as alternatives or comparisons to ${company} (names exactly as written; none that are ${company} itself).\n2. strengths: up to 3 short phrases for what is said in ${company}'s favor; concerns: up to 3 short phrases for what is said against it or as a caution. Leave a list empty if the answers say nothing.\n3. tone: one of "mostly positive", "mixed", "mostly cautious", "too little said to tell".\nNever add facts, numbers or quotes that are not in the answers. Plain words, no acronyms.\n\n${body}`,
+        toolName: 'submit_presence', toolDescription: 'Submit competitors, themes and tone.',
+        schema: { type: 'object', properties: { competitors: { type: 'array', items: { type: 'string' } }, strengths: { type: 'array', items: { type: 'string' } }, concerns: { type: 'array', items: { type: 'string' } }, tone: { type: 'string', enum: ['mostly positive', 'mixed', 'mostly cautious', 'too little said to tell'] } }, required: ['competitors', 'strengths', 'concerns', 'tone'] }
+      });
+      const allText = good.map(r => r.text.toLowerCase());
+      (parsed.competitors || []).slice(0, 8).forEach(n => {
+        n = String(n || '').trim(); if (!n || n.length > 60 || bpNamed(n, terms)) return;
+        const c = allText.filter(t => bpNamed(t, [n.toLowerCase()])).length;
+        if (c > 0 && !competitors.some(x => x.name.toLowerCase() === n.toLowerCase())) competitors.push({ name: n, answers: c });
+      });
+      competitors.sort((a, b) => b.answers - a.answers); competitors = competitors.slice(0, 5);
+      themes = { strengths: (parsed.strengths || []).slice(0, 3).map(x => String(x).slice(0, 140)), concerns: (parsed.concerns || []).slice(0, 3).map(x => String(x).slice(0, 140)) };
+      tone = parsed.tone || null;
+    } catch (e){ /* the table and sources below still stand on their own */ }
+  }
+
+  const rows = questions.map(q => ({ key: q.key, question: q.question, engines: provs.map(p => { const r = results.find(x => x.key === q.key && x.provider === p.key); return { label: p.label, answered: !!(r && r.ok && r.text), named: !!(r && r.named), siteCited: !!(r && r.siteCited) }; }) }));
+  const answers = good.length, named = good.filter(r => r.named).length, cited = good.filter(r => r.siteCited).length;
+  const reviewSources = sources.filter(x => x.kind === 'review').length;
+  // Deterministic, plain-spoken observation (no model involved).
+  let observation;
+  if (named === 0) observation = `Across ${answers} answers, ${company} was not named. The assistants answered from other companies and sites, which is the opening: a customer asking an AI today would not hear about you.`;
+  else if (named < answers / 2) observation = `${company} was named in ${named} of ${answers} answers. It shows up, but not consistently, so a customer asking an AI may or may not hear about you.`;
+  else observation = `${company} was named in ${named} of ${answers} answers, so the assistants know the brand. The question is what they say and which sites they rely on.`;
+  if (named > 0 && cited === 0) observation += ` None of the answers pointed to your own website, so the story is being told from other places.`;
+  else if (cited > 0) observation += ` Your own website was cited in ${cited} of ${answers}.`;
+  const result = { available: true, company, engines: provs.map(p => p.label), questions: rows, answers, named, siteCited: cited, competitors, themes, tone, sources, reviewSources, observation, ranOn: new Date().toISOString().slice(0, 10), ms: Date.now() - started };
+  brandPresenceCache.set(cacheKey, { at: Date.now(), result });
+  if (brandPresenceCache.size > 200) brandPresenceCache.delete(brandPresenceCache.keys().next().value);
+  return result;
+}
+
 function buildAssessmentReadoutPrompt(input){
   const stageLines = (input.stages || []).map(s =>
     `- ${s.stage}: self-rated "${s.ratingLabel || 'not yet rated'}"${typeof s.rating === 'number' ? ` (${s.rating}/5)` : ''}${s.sub ? ` — ${s.sub}` : ''}`
@@ -33514,7 +33613,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-19-r52-furniture-no-drafts',
+        buildStamp: '2026-11-19-r53-brand-presence',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -35740,6 +35839,24 @@ async function handleRequestInner(req, res) {
       if (!company || !/^https?:\/\//i.test(url)) return sendJson(res, 200, { signals: [], counts: {}, evidenceCount: 0, note: 'A company name and website are needed.' });
       const result = await gatherPitchResearch({ company, url, industryLabel: typeof body.industryLabel === 'string' ? body.industryLabel.slice(0, 120) : '' });
       return sendJson(res, 200, result);
+    }
+
+    // POST /api/assessment/brand-presence — public, pre-account, rate-limited by IP (it spends real AI calls). Never an
+    // error status: an unavailable check just says so and the report carries on without it.
+    if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'assessment' && parts[2] === 'brand-presence'){
+      if (assessmentRateLimitExceeded(req, 'brand-presence', 3)){
+        return sendJson(res, 200, { available: false, note: 'Too many checks from this connection in the last hour. Try again later.' });
+      }
+      const body = await readBody(req);
+      const company = typeof body.company === 'string' ? body.company.trim().slice(0, 120) : '';
+      const url = typeof body.url === 'string' ? body.url.trim() : '';
+      if (!company) return sendJson(res, 200, { available: false, note: 'A company name is needed.' });
+      try {
+        const result = await gatherBrandPresence({ company, url, industryLabel: typeof body.industryLabel === 'string' ? body.industryLabel.slice(0, 120) : '' });
+        return sendJson(res, 200, result);
+      } catch (e){
+        return sendJson(res, 200, { available: false, note: 'The check could not run right now.' });
+      }
     }
 
     // POST /api/assessment/generate-readout — 2026-08-25, the free
