@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-19-r51-illumination-outcome-tone (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-19-r52-furniture-no-drafts (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -8833,7 +8833,7 @@ const CHANNEL_TIMING_REFERENCE = {
 // Mirror of portal.html's INDUSTRY_CYCLE_MULTIPLIER (hand-synced).
 const INDUSTRY_CYCLE_MULTIPLIER = {
   'Quick-Service / Limited-Service Restaurants': 0.3, 'Full-Service Dining': 0.4, 'Hotels / Hospitality': 1.5,
-  'Retail — General Merchandise': 0.4, 'Retail — Specialty / Apparel': 0.6, 'Grocery / Supermarkets': 0.15,
+  'Retail — General Merchandise': 0.4, 'Retail — Furniture & Home': 2, 'Retail — Specialty / Apparel': 0.6, 'Grocery / Supermarkets': 0.15,
   'Automotive Sales & Service': 3, 'Healthcare — Outpatient / Clinics': 1, 'Healthcare — Hospitals & Systems': 1.5,
   'Financial Services / Banking': 2.5, 'Insurance': 2, 'Real Estate': 6, 'Fitness / Gyms & Studios': 0.7,
   'Salons / Spas / Personal Care': 0.5, 'Home Services / Contractors': 1.5, 'Professional Services (B2B)': 4,
@@ -28166,7 +28166,7 @@ Write two things:
 
 1. A "here's what we learned" synthesis (3-5 sentences) written as an independent consultant's observation, not a pitch. It must show we did our homework and understand the brand: (a) what is happening in this industry right now, in terms that are broadly established and carry no invented figures; (b) what the company's public filings or annual report say, ONLY if a source above supports it, otherwise leave filings out and never imply the company is public; (c) how the company presents itself on its own website, using the real content above; and (d) where competitors are moving, using the public signals above where there are any. Use only what is stated above for specifics; never add numbers, dates or quotes that are not listed. No acronyms; spell everything out (e.g. "point of sale," not POS). Do not mention Verilume, AI or what we sell in this paragraph. Close by inviting correction: this is an outside first read, not an audit of their internal data.
 
-2. An "opportunity" paragraph (3-5 sentences) with the tone of a consultant's subtle observation, not a sales pitch: what would move this company's results, and what would save its team time, given the pattern of strong and weaker stages above. Lead with the outcome (revenue, return on spend, speed to market, consistency of the customer experience), then name the capability that produces it. Never describe our work as drafts or first drafts; nobody wants a draft, they want a result. Never name a tier, package or model. Where most stages are strong, frame the value as helping a good team move faster and more consistently; where several are weaker, frame it as real headroom and how it closes. Never say the team failed or is missing anything. Describe how structured data and artificial intelligence working from it support better experiences and analysis, and weave in only the capabilities that fit this company's pattern, in plain words and never as a feature list: scenario-based budgeting that shows what spend is likely to return before it is committed; consistent campaign planning that carries one story through to the customer experience and the analysis; a Search Everywhere toolkit with public relations integrations so the brand is found and trusted wherever people look, including AI answers; campaign and project management tools that keep execution on schedule; and geographic tools that point the sales force and local media at the markets with the most demand. The client's team keeps final judgment and creative direction.
+2. An "opportunity" paragraph (3-5 sentences) with the tone of a consultant's subtle observation, not a sales pitch: what would move this company's results, and what would save its team time, given the pattern of strong and weaker stages above. Lead with the outcome (revenue, return on spend, speed to market, consistency of the customer experience), then name the capability that produces it. Describe only finished results, never work in progress; nobody wants a partial deliverable, they want a result. Never name a tier, package or model. Where most stages are strong, frame the value as helping a good team move faster and more consistently; where several are weaker, frame it as real headroom and how it closes. Never say the team failed or is missing anything. Describe how structured data and artificial intelligence working from it support better experiences and analysis, and weave in only the capabilities that fit this company's pattern, in plain words and never as a feature list: scenario-based budgeting that shows what spend is likely to return before it is committed; consistent campaign planning that carries one story through to the customer experience and the analysis; a Search Everywhere toolkit with public relations integrations so the brand is found and trusted wherever people look, including AI answers; campaign and project management tools that keep execution on schedule; and geographic tools that point the sales force and local media at the markets with the most demand. The client's team keeps final judgment and creative direction.
 
 Submit the synthesis and opportunity paragraphs via the submit_readout tool.`;
 }
@@ -33514,7 +33514,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-19-r51-illumination-outcome-tone',
+        buildStamp: '2026-11-19-r52-furniture-no-drafts',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
