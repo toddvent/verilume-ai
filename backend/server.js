@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-19-r53-brand-presence (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-19-r54-landing-page-explained (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -26459,6 +26459,38 @@ async function scoreLandingCopyMatch(page, campaign){
   const missing = copyTerms.filter(w => !pageTerms.has(w)).slice(0, 8);
   return { score: Math.round(100 * hit.length / copyTerms.length), method: 'keywords', note: `${hit.length} of ${copyTerms.length} words in the ad copy also appear on the page.${missing.length ? ' Not on the page: ' + missing.join(', ') + '.' : ''}` };
 }
+// A short, plain explanation (4 or 5 lines) of why the landing page lifted or lowered the campaign's relevance score.
+// Built only from what the audit found. The model words it; a deterministic version stands in when it cannot.
+async function explainLandingPage(campaign, url, page, content, imagery, copyMatch, perf){
+  const facts = [];
+  if (copyMatch && typeof copyMatch.score === 'number') facts.push(`Page against the ad copy (counts for 25% of the relevance score): ${copyMatch.score}%. ${copyMatch.note || ''}`);
+  else facts.push(`Page against the ad copy: not scored. ${(copyMatch && copyMatch.note) || ''}`);
+  if (content && typeof content.score === 'number') facts.push(`Page content against the campaign message: ${content.score}%. ${content.note || ''}`);
+  if (imagery && typeof imagery.score === 'number') facts.push(`Main image against the brand and message: ${imagery.score}%. ${imagery.note || ''}`);
+  facts.push(perf.ctaFound ? `The page has a call to action${perf.ctaLinkResolves ? (perf.ctaLinkResolves.ok ? ' and its link works.' : ' but its link does not resolve.') : '.'}` : 'No clear call to action was found on the page.');
+  if (perf.ctaPathCoherence && perf.ctaPathCoherence.detail) facts.push(perf.ctaPathCoherence.detail);
+  const head = [page.title, page.headline].filter(Boolean).join(' | ').slice(0, 200);
+  if (process.env.ANTHROPIC_API_KEY){
+    try {
+      const parsed = await callClaudeForJSON({
+        model: ANTHROPIC_STANDARD_MODEL, maxTokens: 500, timeoutMs: 30000,
+        content: `A marketer added the landing page ${url} to a campaign. Explain, in exactly 4 or 5 short lines, why this page raised or lowered the campaign's relevance score. Line 1 states the overall effect (helped, hurt, or mixed) with the main number. The next lines say what helped and what hurt, each tied to a finding below. The last line is the single most useful fix. One sentence per line, 22 words or fewer, plain words, no acronyms, no bullets or numbering. Use only the findings below; never invent details. If something was not scored, say why in a few words.\n\nPage title and headline: ${head || '(none found)'}\nFindings:\n${facts.map(f => '- ' + f).join('\n')}`,
+        toolName: 'submit_lines', toolDescription: 'Submit the explanation lines.',
+        schema: { type: 'object', properties: { lines: { type: 'array', minItems: 4, maxItems: 5, items: { type: 'string' } } }, required: ['lines'] }
+      });
+      const lines = (parsed.lines || []).map(l => String(l || '').replace(/^[\s\-•\d.)]+/, '').trim()).filter(Boolean).slice(0, 5);
+      if (lines.length >= 3) return { lines, method: 'ai' };
+    } catch (e){ /* use the plain version below */ }
+  }
+  const lines = [];
+  const cm = copyMatch && typeof copyMatch.score === 'number' ? copyMatch.score : null;
+  lines.push(cm === null ? 'The page could not be scored against your ad copy yet.' : (cm >= 75 ? `The page lifts the score: it matches your ad copy at ${cm}%.` : (cm >= 50 ? `The page is a mixed effect: it matches your ad copy at ${cm}%.` : `The page lowers the score: it matches your ad copy at only ${cm}%.`)));
+  if (copyMatch && copyMatch.note) lines.push(String(copyMatch.note).slice(0, 220));
+  if (content && typeof content.score === 'number' && content.note) lines.push(String(content.note).slice(0, 220));
+  lines.push(perf.ctaFound ? 'The page has a call to action, which supports conversion.' : 'No clear call to action was found, which holds the page back.');
+  lines.push('Make the headline and offer on the page repeat what the ad promises, in the same words.');
+  return { lines: lines.slice(0, 5), method: 'plain' };
+}
 async function scoreImageRelevance(imageUrl, campaign){
   if (!process.env.ANTHROPIC_API_KEY) return { score: null, note: 'AI imagery relevance scoring requires ANTHROPIC_API_KEY to be configured.' };
   if (!imageUrl) return { score: null, note: 'No hero image found on the page to score.' };
@@ -33613,7 +33645,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-19-r53-brand-presence',
+        buildStamp: '2026-11-19-r54-landing-page-explained',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -39229,7 +39261,8 @@ Submit your response via the campaign_intake_turn tool.`;
         fetchError = 'Could not fetch the page: ' + (e.message || 'request failed');
       }
       if (fetchError){
-        return sendJson(res, 200, { fetchOk: false, fetchError, runAt: new Date().toISOString() });
+        const failed = { fetchOk: false, url, fetchError, runAt: new Date().toISOString(), explanation: { lines: ['We could not read this landing page, so it is not counted in the score yet.', fetchError, 'Check that the address is public, loads without a login, and starts with https://.', 'Once the page loads, we will read it against your ad copy.'], method: 'plain' } };
+        return sendJson(res, 200, failed);
       }
       const page = extractLandingPageContent(pageHtml, url);
       const [ctaLinkCheck, contentRelevance, imageRelevance, copyMatch] = await Promise.all([
@@ -39239,8 +39272,12 @@ Submit your response via the campaign_intake_turn tool.`;
         scoreLandingCopyMatch(page, campaign)
       ]);
       const ctaPath = ctaPathCoherence(page.cta && page.cta.href, campaign.conversionType);
+      const perfForExplain = { ctaFound: !!(page.cta && page.cta.href), ctaLinkResolves: ctaLinkCheck ? { ok: ctaLinkCheck.ok } : null, ctaPathCoherence: ctaPath };
+      const explanation = await explainLandingPage(campaign, url, page, contentRelevance, imageRelevance, copyMatch, perfForExplain);
       const result = {
         fetchOk: true,
+        url,
+        explanation,
         runAt: new Date().toISOString(),
         page: { title: page.title, metaDescription: page.metaDescription, headline: page.headline, heroImageUrl: page.heroImageUrl, cta: page.cta },
         relevance: { content: contentRelevance, imagery: imageRelevance, copyMatch },
