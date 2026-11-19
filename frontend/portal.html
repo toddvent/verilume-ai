@@ -13937,7 +13937,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-19-r52-furniture-no-drafts';
+const CXMEDIA_BUILD_STAMP = '2026-11-19-r54-landing-page-explained';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -51022,8 +51022,9 @@ function cmpRenderTraffickingQrUtm(campaign){
     </div>
     <div class="field" style="margin:14px 0 10px;">
       <label for="cmpTraffickingCampaignUrlInput">Campaign URL — the landing page this campaign drives traffic to</label>
-      <input type="text" id="cmpTraffickingCampaignUrlInput" placeholder="https://..." value="${escapeHtml(savedUrl)}">
+      <input type="text" id="cmpTraffickingCampaignUrlInput" placeholder="https://..." value="${escapeHtml(savedUrl)}" onchange="cmpRunLandingPageRead(true)">
     </div>
+    <div id="cmpLandingPageRead" style="margin:0 0 14px;">${cmpLandingPageReadHtml(campaign)}</div>
     <div class="btn-row" style="margin:0 0 14px;">
       <button type="button" class="btn-primary" onclick="cmpTraffickingBuildCampaignLinks()">Build tracking links →</button>
     </div>
@@ -51031,6 +51032,67 @@ function cmpRenderTraffickingQrUtm(campaign){
       ? jobsWithTracking.map(job => cmpTraffickingLinkRowHtml(job)).join('')
       : (totalJobs ? `<p class="hint" style="margin:0;">No tracking links built yet — enter the Campaign URL above and click Build.</p>` : `<p class="hint" style="margin:0;">No approved creative jobs on this campaign yet — submit assets to Brand on Creative Asset Selection, then approve them on Performance Marketing; tracking links build per job once one exists.</p>`)}</div>
     ${jobsWithTracking.length ? `<div class="btn-row" style="margin:0 0 10px;"><button type="button" class="btn-ghost" ${test && test.running ? 'disabled' : ''} onclick="cmpTraffickingRunUtmLinkTest()">${test && test.running ? 'Testing links…' : `Test ${jobsWithTracking.length} tracking link${jobsWithTracking.length === 1 ? '' : 's'} →`}</button></div>${test && test.results ? cmpRenderUtmLinkTestResults(test.results) : ''}` : ''}`;
+  if (savedUrl && !campaign._lpReadTried){ const a0 = cmpLandingPageAuditFor(campaign); if (!a0 || !a0.explanation || a0.url !== savedUrl) cmpRunLandingPageRead(false); }
+}
+// The landing page and the relevance score. The audit reads the page against the approved ad copy, the campaign's message and
+// the page's own call to action; the server also writes a short plain explanation of why the page lifted or lowered the score.
+function cmpLandingPageAuditFor(c){
+  if (!c) return null;
+  let a = c._landingPageAudit || null;
+  if (!a && c.landingPageAuditJson){ try { a = JSON.parse(c.landingPageAuditJson); } catch (e){ a = null; } }
+  return a;
+}
+function cmpLandingPageReadHtml(c, state){
+  if (!c || !c.campaignUrl) return `<p class="hint" style="margin:0;">Add the landing page and we will explain how it affects this campaign's relevance score.</p>`;
+  if (state === 'loading') return `<p class="hint" style="margin:0;">Reading the landing page against your ad copy…</p>`;
+  const a = cmpLandingPageAuditFor(c);
+  if (!a || !a.explanation || !Array.isArray(a.explanation.lines) || !a.explanation.lines.length || a.url !== c.campaignUrl){
+    const canRun = !c.localOnly && dataSourceLabel === 'backend';
+    return canRun
+      ? `<p class="hint" style="margin:0;"><a onclick="cmpRunLandingPageRead(true)" style="cursor:pointer;">Explain how this page affects the score →</a></p>`
+      : `<p class="hint" style="margin:0;">Save this campaign to the backend and we can read the landing page against its copy.</p>`;
+  }
+  const ex = a.explanation;
+  const cm = a.relevance && a.relevance.copyMatch && typeof a.relevance.copyMatch.score === 'number' ? a.relevance.copyMatch.score : null;
+  const chip = cm === null ? 'Not scored yet' : `${cm}% match to your ad copy`;
+  const tone = cm === null ? '#625E52' : (cm >= 75 ? '#1B6B3A' : (cm >= 50 ? '#8A5A0A' : '#9A3B1E'));
+  return `<div style="border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:#FBFAF6;">
+    <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline;margin-bottom:6px;">
+      <strong style="font-size:0.8125rem;">Why this landing page moved the score</strong>
+      <span style="font-size:0.75rem;font-weight:600;color:${tone};">${escapeHtml(chip)} · counts for 25% of the score</span>
+    </div>
+    ${ex.lines.map(l => `<p style="margin:0 0 4px;font-size:0.875rem;line-height:1.45;">${escapeHtml(l)}</p>`).join('')}
+    <p class="hint" style="margin:6px 0 0;"><a onclick="cmpRunLandingPageRead(true)" style="cursor:pointer;">Read the page again</a></p>
+  </div>`;
+}
+async function cmpRunLandingPageRead(force){
+  const campaign = cmpRailLoadedCampaign();
+  const box = document.getElementById('cmpLandingPageRead');
+  if (!campaign || !box) return;
+  const input = document.getElementById('cmpTraffickingCampaignUrlInput');
+  const url = input ? input.value.trim() : (campaign.campaignUrl || '');
+  if (!url){ box.innerHTML = cmpLandingPageReadHtml(Object.assign({}, campaign, { campaignUrl: '' })); return; }
+  if (campaign._lpReading) return;
+  if (!force && campaign._lpReadTried) return;
+  campaign._lpReadTried = true;
+  if (url !== campaign.campaignUrl){
+    campaign.campaignUrl = url; campaign._landingPageAudit = null; campaign.landingPageAuditJson = null;
+    await cmpPersistCampaignField(campaign, { campaignUrl: url }, 'Campaign URL');
+  }
+  if (campaign.localOnly || dataSourceLabel !== 'backend'){ box.innerHTML = cmpLandingPageReadHtml(campaign); return; }
+  campaign._lpReading = true;
+  box.innerHTML = cmpLandingPageReadHtml(campaign, 'loading');
+  try {
+    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/landing-page-audit`, { method: 'POST' });
+    if (resp.ok){
+      const data = await resp.json();
+      campaign._landingPageAudit = data; campaign.landingPageAuditJson = JSON.stringify(data); campaign.landingPageAuditAt = data.runAt;
+      try { cmpRenderCampaignHeader(campaign); } catch (e){}
+    }
+  } catch (e){ console.warn('cmpRunLandingPageRead failed', e); }
+  campaign._lpReading = false;
+  const box2 = document.getElementById('cmpLandingPageRead');
+  if (box2) box2.innerHTML = cmpLandingPageReadHtml(campaign);
 }
 // 2026-10-18 — asset type codes. One short code per channel + format + size, the same for every client (registry served by the backend, one place to
 // maintain), used in place of long names inside tracking links: PD-BN-300x250 = Programmatic Display, standard banner, 300×250.

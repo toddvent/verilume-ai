@@ -7462,6 +7462,7 @@ function renderAgenticRoleMapping(){
 <script>
   const navToggle = document.getElementById('navToggle');
   const navLinks = document.getElementById('navLinks');
+  if (navToggle && navLinks){
   function setNavOpen(open){
     navToggle.classList.toggle('open', open);
     navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -7474,6 +7475,7 @@ function renderAgenticRoleMapping(){
   window.addEventListener('resize', () => {
     if(navLinks.classList.contains('open')) navLinks.style.maxHeight = navLinks.scrollHeight + 'px';
   });
+  }
 </script>
 <!-- 2026-08-19 (login redesign, round 2) — lightweight login modal for the
      main nav's "Log in" link, per direct instruction: a returning visitor
