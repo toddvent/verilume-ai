@@ -10365,6 +10365,59 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
               <div id="cmpTraffickingQa"></div>
             </div>
           </div>
+            <div class="sk-card cmp-form-col" style="margin-top:0;" id="campaignTraffickingCard">
+      <div class="sk-card-head cx">
+        <div class="htext"><div class="kicker">Ad Trafficking</div><h3>Links, QR codes &amp; the trafficking handoff</h3></div>
+        <div class="hicon">📡</div>
+      </div>
+      <div class="sk-card-body">
+        <p class="lede" style="margin:0 0 14px;">Follows Creative Jobs: once a job's copy is approved and its finished creative asset is approved here, build its tracking link and QR code — then send the whole approved bundle to your trafficking team in one action.</p>
+
+        <div id="traffickingJobsSummary"></div>
+
+        <div id="cmpUtmLinkBuilderAnchor" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line);">
+          <h4 style="margin:0 0 6px;">Approve an asset &amp; build its link</h4>
+          <div class="field">
+            <label for="utmBuilderCreativeJob">Creative Job</label>
+            <select id="utmBuilderCreativeJob" onchange="onUtmBuilderContextChange()">
+              <option value="">— Campaign-level (no specific creative) —</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="utmBuilderVendor">Publisher or vendor (becomes utm_source)</label>
+            <select id="utmBuilderVendor" onchange="onUtmVendorChange()"><option value="">Detect from the creative job</option></select>
+            <div class="hint">Standard platforms, the magazines and newspapers in the publisher spec catalog, and partners clients have added. Not listed? Add it and it joins the list for every account.</div>
+          </div>
+          <div id="utmVendorAddBox" style="display:none;margin-bottom:12px;">
+            <div class="field-row-2">
+              <div><label for="utmVendorAddName" style="font-size:0.75rem;">Vendor name</label><input type="text" id="utmVendorAddName" placeholder="e.g. Cruise Critic"></div>
+              <div><label for="utmVendorAddKind" style="font-size:0.75rem;">Type</label><select id="utmVendorAddKind" onchange="onUtmVendorKindChange()"></select></div>
+            </div>
+            <div class="field"><label for="utmVendorAddMedium" style="font-size:0.75rem;">Medium</label><select id="utmVendorAddMedium"></select></div>
+            <div class="btn-row" style="margin-top:0;"><button type="button" class="btn-ghost" onclick="utmAddVendor()">Add vendor →</button></div>
+          </div>
+          <div id="utmVendorAddStatus" class="hint" style="margin-bottom:10px;"></div>
+          <div id="traffickingJobGateNote" style="margin-bottom:10px;"></div>
+          <div class="btn-row" style="margin-top:0;margin-bottom:14px;">
+            <button type="button" class="btn-ghost" id="traffickingApproveAssetBtn" onclick="approveCreativeAsset()">Approve creative asset →</button>
+          </div>
+          <div id="utmAutoParamsRow" style="margin-bottom:10px;"></div>
+          <div class="btn-row" style="margin-top:0;">
+            <button type="button" class="btn-primary" onclick="buildUtmLink()">Build tracking link →</button>
+          </div>
+          <div id="utmBuilderResult" style="margin-top:14px;"></div>
+        </div>
+
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line);">
+          <h4 style="margin:0 0 6px;">Send to trafficking team</h4>
+          <p class="lede" style="margin:0 0 12px;">Requires every creative job on this campaign to have an approved asset and a built tracking link — bundles them and marks this campaign ready for hand-off.</p>
+          <div class="btn-row" style="margin-top:0;">
+            <button type="button" class="btn-primary" onclick="sendToTrafficking()">Send to Trafficking Team →</button>
+          </div>
+          <div id="trafficSendStatus" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;margin-top:8px;"></div>
+        </div>
+      </div>
+    </div>
         </div>
         <div class="cmp-workspace-collab" id="cmpTraffickingCollabMount"></div>
       </div>
@@ -13847,375 +13900,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
   </div>
 
   <!-- ================= CAMPAIGN DETAIL ================= -->
-  <div id="cmpCardHost" style="display:none;" aria-hidden="true">
-    <!-- Round 132pp (2026-08-10), bug fix per direct report: "The Create
-         Campaign when managing an existing campaign reverted back instead
-         of Save Changes." This breadcrumb's "Campaign Creation" link used
-         to be plain goToStep('campaigns') — it opens the wizard, but
-         without ever calling loadExistingCampaignIntoForm() first, so it
-         landed on a blank "Create Campaign →" form no matter which real
-         campaign the person was just looking at on this page. This is the
-         root cause the round 132kk sunset missed: it fixed Campaign
-         Management's own "Manage Campaign →" button, but every other path
-         that lands here (Executive Charts' at-risk list, Marketing
-         Calendar's "Open this campaign", any future one) still hits this
-         same breadcrumb once here, so fixing it here covers all of them at
-         once. Now calls cmpManageExistingCampaign(currentCampaignId) —
-         currentCampaignId is already set the moment this page opens (see
-         goToStep()'s 'campaign' branch) — same real wizard-in-edit-mode
-         hand-off Campaign Management's button uses. -->
-
-    <!-- 2026-09-28 addition, per direct instruction: "DM Audience Size *
-         Cost per Piece to create actual budget." Only rendered (non-empty)
-         when this campaign has at least one Direct Mail channel selected —
-         see cmpRenderDmActualBudgetCard()'s own comment for the real
-         calculation and its data sources. -->
-    <div id="cmpDmActualBudgetCard"></div>
-
-    <!-- Round 32, part D (2026-08-05), per direct instruction: "Upon
-         submit we should recommend the mix of available channels, audience
-         mix recommendations and channel spend allocation." Rendered on
-         every visit to this page (not just right after creation), so it
-         stays a living recommendation a human can revisit and edit, not a
-         one-time banner. Sits first — ahead of Brand and Lifecycle — since
-         it's the direct payoff of what was just submitted. First-party
-         owned media (Internal Email, the only owned channel in the current
-         MMM_CATEGORIES taxonomy) is always included, per direct
-         instruction, and shown separately from the paid-channel spend
-         split since it carries no media cost. "Pull From Media Plan"
-         replaces the illustrative weighted split with this campaign's
-         actual Media Plan allocation amounts (same stage, matching
-         channels) — real numbers where they exist, editable either way. -->
-    <div class="sk-card cmp-form-col" id="campaignMediaMixCard">
-      <div class="sk-card-head cx">
-        <div class="htext"><div class="kicker">Recommended Mix</div><h3>Channel &amp; audience mix, spend allocation <span class="ai-thought-mount" data-topic="B"></span></h3></div>
-        <div class="hicon">◈</div>
-      </div>
-      <div class="sk-card-body" id="campaignMediaMixBody"></div>
-      <div class="sk-card-footer">Illustrative recommendation — a starting point, not a constraint. Every number here is human-editable.</div>
-    </div>
-
-
-    <!-- Round 99 (2026-08-06) — Performance Marketing card, per direct
-         instruction: "Performance Marketing reviews our recommend channel
-         budgets, validates the buys and/or programmatic allocations and
-         provides via some mechanism the audience targets that also feed
-         the omni-channel creative teams." Sits right after the Recommended
-         Mix card it validates and before Brand, since validating the mix
-         above is the direct precondition for setting an audience target
-         here. Confirmed design decision: one shared field on the campaign
-         (audienceTargets), not a bundled package or free-text notes
-         scattered elsewhere — Omni-Channel Creative reads this same field
-         read-only. -->
-    <div class="sk-card cmp-form-col" id="campaignPerfMarketingCard">
-      <div class="sk-card-head advocacy">
-        <div class="htext"><div class="kicker">Performance Marketing</div><h3>Validate the buy &amp; set audience targets</h3></div>
-        <div class="hicon">◈</div>
-      </div>
-      <div class="sk-card-body">
-        <p class="lede" style="margin:0 0 12px;">Once the recommended mix above (or the programmatic allocation) is validated, set the audience target this campaign is actually going after — Omni-Channel Creative reads this same value so creative production stays pointed at the right audience.</p>
-        <div class="field">
-          <label for="campaignAudienceTargets">Audience targets <span class="ai-thought-mount" data-topic="G"></span></label>
-          <div id="campaignAudienceTargetsSmartDefault" style="margin-bottom:8px;"></div>
-          <textarea id="campaignAudienceTargets" rows="3" placeholder="Who this campaign's buys/allocations are actually targeting — e.g. segments, personas, geos, lookalikes..."></textarea>
-        </div>
-        <div class="btn-row" style="margin-top:0;">
-          <button type="button" class="btn-primary" onclick="saveCampaignPerformanceFields()">Validate &amp; Save →</button>
-        </div>
-        <div id="campaignPerfMarketingSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>
-        <div id="campaignPerfMarketingValidatedNote" style="font-size:0.8125rem;color:var(--muted);margin-top:6px;"></div>
-      </div>
-    </div>
-
-    <!-- Round 65 — Brand card, per direct instruction: always the first
-         card on this page, ahead of the 7-Stage Progress card. Two distinct
-         things live here rather than being conflated: (1) the account-level
-         Brand Voice/Style Assets/Competitive Positioning screens — read-only
-         status here, since those are account-wide and already gate
-         campaign/Ad Hoc creation via requireBrandFoundations(); and (2) this
-         specific campaign's own brand messaging (Key Message, Tone Notes,
-         Do's & Don'ts) — a campaign-level brand activation that can extend
-         or vary from the house voice without editing it. -->
-    <div class="sk-card cmp-form-col" id="campaignBrandCard">
-      <div class="sk-card-head ink">
-        <div class="htext"><div class="kicker">Brand</div><h3>Brand &amp; voice for this campaign</h3></div>
-        <div class="hicon">◆</div>
-      </div>
-      <div class="sk-card-body">
-        <div id="campaignBrandFoundationsStatus" style="margin-bottom:16px;"></div>
-        <div class="field">
-          <label for="campaignBrandKeyMessage">Key message for this campaign</label>
-          <input type="text" id="campaignBrandKeyMessage" placeholder="The one thing this campaign needs to land...">
-        </div>
-        <div class="field">
-          <label for="campaignBrandToneNotes">Tone notes (optional — where this campaign varies from house voice)</label>
-          <textarea id="campaignBrandToneNotes" rows="2" placeholder="e.g. more urgent than usual, lead with savings not lifestyle..."></textarea>
-        </div>
-        <!-- Round 132ad (2026-08-11), per direct decision: removed the
-             campaign-level Do's & Don'ts field that used to sit here
-             (campaignBrandGuidelines) — Do's/Don'ts are now governed
-             entirely by the account's Brand Voice avoid-words, the same
-             field every draft already checks, rather than a second
-             campaign-level copy of the same idea. -->
-
-        <!-- Round 65, point 2 — per direct instruction: campaign-level brand
-             also includes the Creative Brief and the longform copy that
-             everything creative asset gets recommended from, based on that
-             asset's own specs (channel/size/aspect from the Creative Job).
-             This is where a full narrative lives once, so a Bulletin and a
-             Landing Page for the same campaign both draw from one source
-             instead of being written from scratch independently. -->
-        <div class="field">
-          <label for="campaignCreativeBrief">Creative brief</label>
-          <textarea id="campaignCreativeBrief" rows="4" placeholder="Objective, target audience, key message, proof points, mandatories, call to action — whatever the creative team needs to execute without asking follow-up questions."></textarea>
-        </div>
-        <div class="field">
-          <label for="campaignLongformCopy">Longform copy (the master version every creative asset draws from)</label>
-          <textarea id="campaignLongformCopy" rows="14" placeholder="The full, unabridged version of this campaign's story — press-release length is fine. Individual creative assets below get a copy recommendation sized to their own spec (a Bulletin gets a punchy line; a Landing Page gets the full text)."></textarea>
-        </div>
-
-        <div class="btn-row" style="margin-top:0;">
-          <button type="button" class="btn-primary" onclick="saveCampaignBrandFields()">Save →</button>
-        </div>
-        <div id="campaignBrandSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>
-      </div>
-    </div>
-
-    <!-- 2026-08-22 — Campaign Type card. Backend closed this gap this round
-         (CAMPAIGN_TYPE_REGISTRY in backend/server.js: Urgency Offer/Product
-         Launch/Loyalty/Trade Incentive, each with typed required inputs and
-         its own AI-prompt guidance injected into every real-AI copy
-         generator) but had no UI to set it — this is that UI. Mirrors
-         saveCampaignBrandFields()'s save pattern exactly: local-first,
-         explicit backend write on Save, honest local-only fallback flag.
-         CAMPAIGN_TYPE_REGISTRY_CLIENT below is a hand-mirrored copy of the
-         backend registry (same convention already used for
-         MESSAGE_TYPE_CUE/messageType) — no network round trip needed just
-         to render the picker and detail-field inputs, and completeness is
-         computed the same way client-side so it updates live as the person
-         types, not only after a save. -->
-    <div class="sk-card cmp-form-col" id="campaignTypeCard">
-      <div class="sk-card-head ink">
-        <div class="htext"><div class="kicker">Campaign Experience Focus</div><h3>What kind of campaign is this?</h3></div>
-        <div class="hicon">▣</div>
-      </div>
-      <div class="sk-card-body">
-        <div class="field">
-          <label for="campaignTypeSelect">Campaign Experience Focus (optional — shapes the AI copy prompts below with scenario-specific guidance; General/not-set behaves exactly as before this field existed)</label>
-          <select id="campaignTypeSelect" onchange="onCampaignTypeSelectChanged();">
-            <option value="">General — no specific scenario, no extra requirements</option>
-          </select>
-        </div>
-        <div id="campaignTypeDetailFields"></div>
-        <div id="campaignTypeStatus" style="margin-top:4px;"></div>
-        <div class="btn-row" style="margin-top:12px;">
-          <button type="button" class="btn-primary" onclick="saveCampaignTypeFields()">Save →</button>
-        </div>
-        <div id="campaignTypeSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>
-      </div>
-    </div>
-
-    <!-- Round 56 — sk-* card system, per the round-49 audit's deprioritized-
-         to-last redesign item (Campaign Creation/Detail/Project Detail were
-         the last surfaces still on the pre-Apple .dash-tile/.module/.field
-         system used everywhere else in this build through round 45). -->
-    <div class="sk-card cmp-form-col" id="campaignLifecycleCard">
-      <div class="sk-card-head ink">
-        <div class="htext"><div class="kicker">7-Stage Progress</div><h3>Campaign lifecycle</h3></div>
-        <div class="hicon">▤</div>
-      </div>
-      <div class="sk-card-body" id="campaignLifecycle"></div>
-    </div>
-
-    <!-- Round 75 — Campaign Performance & Guidance, per
-         cxmedia-campaign-analytics-strategy.md: (1) best-practice benchmarks
-         scoped to this campaign's own channel(s)+objective+stage, actual vs.
-         benchmark once Analysis-stage actuals exist; (2) a budget-scaled
-         testing-approach recommendation. Positioned right after Overview —
-         the natural next thing a team member checks once a campaign exists. -->
-    <div class="sk-card cmp-form-col" id="campaignAnalyticsCard">
-      <div class="sk-card-head media">
-        <div class="htext"><div class="kicker">Performance &amp; Guidance</div><h3>Campaign performance &amp; best practices</h3></div>
-        <div class="hicon">📊</div>
-      </div>
-      <div class="sk-card-body" id="campaignAnalyticsPanel"></div>
-    </div>
-
-    <!-- Round 31 — Campaign URL & Conversion Tracking, per direct
-         instruction: an optional URL for this campaign's landing page, plus
-         the conversion KPI type it's meant to drive, so the URL Audit below
-         has something concrete to check against. -->
-    <div class="sk-card cmp-form-col" id="campaignTrackingCard">
-      <div class="sk-card-head cx">
-        <div class="htext"><div class="kicker">Tracking</div><h3>Campaign URL &amp; conversion tracking</h3></div>
-        <div class="hicon">⛓</div>
-      </div>
-      <div class="sk-card-body">
-        <div class="field">
-          <label for="campaignUrlInput">Campaign URL (optional — the landing page this campaign drives traffic to)</label>
-          <input type="text" id="campaignUrlInput" placeholder="https://...">
-        </div>
-        <div class="field">
-          <label for="campaignConversionType">Conversion KPI type</label>
-          <select id="campaignConversionType">
-            <option value="">Select how this campaign converts…</option>
-          </select>
-          <div class="hint">Drives both the Measurement best-practice guidance and the URL Audit below — a URL is judged differently for an eCommerce purchase path than for a call-center or storefront campaign.</div>
-        </div>
-        <div class="btn-row" style="margin-top:0;">
-          <button type="button" class="btn-ghost" onclick="saveCampaignUrlSettings()">Save →</button>
-          <button type="button" class="btn-primary" onclick="runUrlAudit()">Audit URL →</button>
-          <button type="button" class="btn-ghost" id="landingPageAuditBtn" onclick="runLandingPageAudit()">Run landing page audit (fetches real content) →</button>
-        </div>
-        <div id="campaignUrlSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>
-        <div id="urlAuditPanel" style="margin-top:14px;"></div>
-        <div id="landingPageAuditPanel" style="margin-top:14px;"></div>
-      </div>
-    </div>
-
-    
-    <!-- Creative Messaging Collection (Deliverable #7 — Creative library),
-         per cxmedia-creative-messaging-scope.md. Sits ahead of Creative Jobs
-         below in the flow — this is where messaging/copy across formats
-         gets drafted against a real best-practice structure; Creative Jobs
-         below is the production/trafficking step that follows once copy is
-         settled. Several collections per campaign are allowed by design. -->
-    <div class="sk-card cmp-form-col" style="margin-top:26px;" id="campaignCreativeCollectionsCard">
-      <div class="sk-card-head cx">
-        <div class="htext"><div class="kicker">Creative Library</div><h3>Creative messaging collections</h3></div>
-        <div class="hicon">🗂️</div>
-      </div>
-      <div class="sk-card-body">
-        <p class="lede" style="margin:0 0 12px;">Group the messaging this campaign needs by Channel + Media Type, drafted against a real best-practice copy structure for this campaign's Media Loop stage. A campaign can hold several collections — e.g. a launch wave and a retargeting wave.</p>
-        <div class="btn-row" style="margin-top:0;margin-bottom:12px;">
-          <button type="button" class="btn-ghost" onclick="createCreativeCollection()">+ New collection</button>
-          <button type="button" class="btn-ghost" onclick="loadCreativeCollections()">Refresh →</button>
-        </div>
-        <div id="creativeCollectionsList"></div>
-      </div>
-    </div>
-
-    <!-- Round 64 — Creative Jobs: requests sent to the creative team from
-         print-specs.html/ooh-specs.html (and eventually other creative
-         pickers), grouped under this Campaign ID and sorted by priority —
-         the same queue a creative team would triage from. -->
-    <div class="sk-card cmp-form-col" style="margin-top:26px;" id="campaignCreativeJobsCard">
-      <div class="sk-card-head cx">
-        <div class="htext"><div class="kicker">Creative Requests</div><h3>Creative jobs for this campaign</h3></div>
-        <div class="hicon">🎨</div>
-      </div>
-      <div class="sk-card-body">
-        <p class="lede" style="margin:0 0 12px;">Sent from Print Ad Specs or Out-of-Home Specs' "Send to creative team" action — each gets its own Creative Job ID, grouped here under this Campaign ID and sorted by priority.</p>
-        <!-- Round 66 — per direct instruction: specs are only associated
-             with the Creative step inside the campaign flow, not mentioned
-             at the portal level (they were removed from the Dashboard's
-             Fundamentals Setup section entirely). This card is that
-             Creative step, so this is where they live now. -->
-        <div class="btn-row" style="margin-top:0;margin-bottom:12px;">
-          <a class="btn-ghost" id="creativeJobsPrintSpecsLink" style="text-decoration:none;">Browse Print Ad Specs →</a>
-          <a class="btn-ghost" id="creativeJobsOohSpecsLink" style="text-decoration:none;">Browse Out-of-Home Specs →</a>
-          <button type="button" class="btn-ghost" onclick="loadCreativeJobs()">Refresh →</button>
-        </div>
-        <div id="creativeJobsList"></div>
-        <!-- Round 68 — Copy workspace: the next step in the creative
-             process, opened per-job via the "Open →" button in the table
-             above. Populated by renderCopyWorkspace(). -->
-        <div id="copyWorkspacePanel" style="margin-top:18px;"></div>
-      </div>
-    </div>
-
-    <!-- Round 73 — Ad Trafficking, per direct instruction: "Creative Jobs
-         are the next step after copy is approved as a unique step. Links
-         and QR codes will be Ad Trafficking that follow creative. Links and
-         Creative are sent to the trafficking team when all assets are
-         approved." A new, distinct card/sub-nav destination (per direct
-         follow-up: its own sub-nav entry, not just a reordered Tracking
-         card) that comes after Creative Jobs. Round 71/72's link/QR builder
-         moved here from the Tracking card above — building a link is now
-         part of the trafficking handoff, not a general campaign-URL
-         utility. Creative Asset approval (separate from Copy approval,
-         confirmed via direct follow-up) is the new gate: a job's copy must
-         already be approved before its finished asset can be approved here,
-         and every job needs BOTH an approved asset and a built tracking
-         link before the campaign-wide "Send to Trafficking Team" action
-         (below) will succeed. -->
-    <div class="sk-card cmp-form-col" style="margin-top:26px;" id="campaignTraffickingCard">
-      <div class="sk-card-head cx">
-        <div class="htext"><div class="kicker">Ad Trafficking</div><h3>Links, QR codes &amp; the trafficking handoff</h3></div>
-        <div class="hicon">📡</div>
-      </div>
-      <div class="sk-card-body">
-        <p class="lede" style="margin:0 0 14px;">Follows Creative Jobs: once a job's copy is approved and its finished creative asset is approved here, build its tracking link and QR code — then send the whole approved bundle to your trafficking team in one action.</p>
-
-        <div id="traffickingJobsSummary"></div>
-
-        <div id="cmpUtmLinkBuilderAnchor" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line);">
-          <h4 style="margin:0 0 6px;">Approve an asset &amp; build its link</h4>
-          <div class="field">
-            <label for="utmBuilderCreativeJob">Creative Job</label>
-            <select id="utmBuilderCreativeJob" onchange="onUtmBuilderContextChange()">
-              <option value="">— Campaign-level (no specific creative) —</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="utmBuilderVendor">Publisher or vendor (becomes utm_source)</label>
-            <select id="utmBuilderVendor" onchange="onUtmVendorChange()"><option value="">Detect from the creative job</option></select>
-            <div class="hint">Standard platforms, the magazines and newspapers in the publisher spec catalog, and partners clients have added. Not listed? Add it and it joins the list for every account.</div>
-          </div>
-          <div id="utmVendorAddBox" style="display:none;margin-bottom:12px;">
-            <div class="field-row-2">
-              <div><label for="utmVendorAddName" style="font-size:0.75rem;">Vendor name</label><input type="text" id="utmVendorAddName" placeholder="e.g. Cruise Critic"></div>
-              <div><label for="utmVendorAddKind" style="font-size:0.75rem;">Type</label><select id="utmVendorAddKind" onchange="onUtmVendorKindChange()"></select></div>
-            </div>
-            <div class="field"><label for="utmVendorAddMedium" style="font-size:0.75rem;">Medium</label><select id="utmVendorAddMedium"></select></div>
-            <div class="btn-row" style="margin-top:0;"><button type="button" class="btn-ghost" onclick="utmAddVendor()">Add vendor →</button></div>
-          </div>
-          <div id="utmVendorAddStatus" class="hint" style="margin-bottom:10px;"></div>
-          <div id="traffickingJobGateNote" style="margin-bottom:10px;"></div>
-          <div class="btn-row" style="margin-top:0;margin-bottom:14px;">
-            <button type="button" class="btn-ghost" id="traffickingApproveAssetBtn" onclick="approveCreativeAsset()">Approve creative asset →</button>
-          </div>
-          <div id="utmAutoParamsRow" style="margin-bottom:10px;"></div>
-          <div class="btn-row" style="margin-top:0;">
-            <button type="button" class="btn-primary" onclick="buildUtmLink()">Build tracking link →</button>
-          </div>
-          <div id="utmBuilderResult" style="margin-top:14px;"></div>
-        </div>
-
-        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line);">
-          <h4 style="margin:0 0 6px;">Send to trafficking team</h4>
-          <p class="lede" style="margin:0 0 12px;">Requires every creative job on this campaign to have an approved asset and a built tracking link — bundles them and marks this campaign ready for hand-off.</p>
-          <div class="btn-row" style="margin-top:0;">
-            <button type="button" class="btn-primary" onclick="sendToTrafficking()">Send to Trafficking Team →</button>
-          </div>
-          <div id="trafficSendStatus" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;margin-top:8px;"></div>
-        </div>
-      </div>
-    </div>
-
-    
-    <!-- Round 31 — Campaign QA & Alignment Score, per direct instruction:
-         (1) every marketing function activated on this campaign must have a
-         complete, individually-QA'd output before the campaign counts as
-         QA'd; (2) a composite Campaign Relevance Score blending that
-         function completion rate with Media Strength (for this campaign's
-         own stage), the account's overall CX Strength, and the URL Audit
-         above, so "aligned" means Media, CX, and execution are all pulling
-         the same direction, not just that the copy shipped. -->
-    <div class="sk-card cmp-form-col" style="margin-top:26px;" id="campaignQaCard">
-      <div class="sk-card-head advocacy">
-        <div class="htext"><div class="kicker">QA &amp; Scoring</div><h3>Campaign QA &amp; alignment score</h3></div>
-        <div class="hicon">✓</div>
-      </div>
-      <div class="sk-card-body">
-        <div class="btn-row" style="margin-top:0;margin-bottom:12px;">
-          <button type="button" class="btn-ghost" onclick="renderCampaignQaPanel()">Refresh QA &amp; alignment →</button>
-        </div>
-        <div id="campaignQaPanel"></div>
-      </div>
-    </div>
-  </div>
-
+  
   <div class="step" id="step-placeholder">
     <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('group', '__back')" id="placeholderGroupLink"></a> / <span id="placeholderName"></span></div>
     <div class="eyebrow" id="placeholderEyebrow"></div>
@@ -14252,7 +13937,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-19-r49-project-detail-deleted';
+const CXMEDIA_BUILD_STAMP = '2026-11-19-r50-holder-removed';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -14291,8 +13976,6 @@ if (document.getElementById('manageAccountSettingsLink')) document.getElementByI
 // Round 66 — Print/OOH Specs links moved from the Dashboard into the
 // Creative Jobs card (the campaign flow's Creative step) — see
 // campaignCreativeJobsCard. Set once here, same accountId-carry pattern.
-document.getElementById('creativeJobsPrintSpecsLink').href = `print-specs.html?accountId=${encodeURIComponent(params.get('accountId') || 'CXM-NAT-2026-700')}`;
-document.getElementById('creativeJobsOohSpecsLink').href = `ooh-specs.html?accountId=${encodeURIComponent(params.get('accountId') || 'CXM-NAT-2026-700')}`;
 
 const state = {
   companyId: params.get('accountId') || 'CXM-NAT-2026-700',
@@ -20799,131 +20482,26 @@ function getChannelBestPractice(channel){
    above. Direct Mail / Magazines specs are NOT listed here — those pull
    real per-publication specs live from /api/print-specs (see
    loadPrintSpecOptionsForRequirement()) rather than a static list. */
-const CREATIVE_MEDIA_TYPES_BY_CHANNEL = {
-  'Search': ['Search ad (responsive)', 'Search ad (call-only)'],
-  'Social': ['Feed post', 'Story / Reel', 'Carousel'],
-  'Display': ['Standard banner', 'Native ad', 'Rich media'],
-  'Video': ['Pre-roll / in-stream', 'Social video', 'Connected TV / OTT'],
-  'Email': ['Standalone send', 'Newsletter placement'],
-  'PR/Earned': ['Media pitch', 'Press kit blurb'],
-  'Linear': [':15 spot', ':30 spot'],
-  'Direct Mail': [], // real specs pulled live from /api/print-specs
-  'Events': ['Invitation', 'On-site signage / collateral'],
-  'Podcasts': ['Host-read spot', 'Produced spot'],
-  'Radio': [':15 spot', ':30 spot'],
-  'Magazines': [] // real specs pulled live from /api/print-specs
-};
-function getCreativeMediaTypes(channel){
-  return CREATIVE_MEDIA_TYPES_BY_CHANNEL[channel] || [];
-}
+
+
 // Whether a channel's Specs field should pull live from the real
 // print-specs backend (round 61) rather than free-text/manual entry.
-function creativeChannelUsesPrintSpecs(channel){
-  return channel === 'Direct Mail' || channel === 'Magazines';
-}
 
-const CREATIVE_COPY_STRUCTURES_BY_CHANNEL = {
-  'Search': [
-    { key: 'headline', label: 'Headline (≤30 characters)', type: 'text' },
-    { key: 'description', label: 'Description line', type: 'textarea' },
-    { key: 'cta', label: 'Call to action', type: 'text' }
-  ],
-  'Social': [
-    { key: 'hook', label: 'Hook / opening line', type: 'text' },
-    { key: 'body', label: 'Body copy', type: 'textarea' },
-    { key: 'hashtags', label: 'Hashtags (optional)', type: 'text', optional: true },
-    { key: 'cta', label: 'Call to action', type: 'text' }
-  ],
-  'Display': [
-    { key: 'headline', label: 'Headline', type: 'text' },
-    { key: 'subhead', label: 'Subhead / supporting line', type: 'text' },
-    { key: 'cta', label: 'CTA button text', type: 'text' }
-  ],
-  'Video': [
-    { key: 'hook', label: 'Hook (first 5 seconds)', type: 'textarea' },
-    { key: 'body', label: 'Body script', type: 'textarea' },
-    { key: 'endCard', label: 'End card / CTA', type: 'text' }
-  ],
-  'Email': [
-    { key: 'subjectLine', label: 'Subject line', type: 'text' },
-    { key: 'preheader', label: 'Preheader', type: 'text' },
-    { key: 'body', label: 'Body copy', type: 'textarea' },
-    { key: 'cta', label: 'Call to action', type: 'text' }
-  ],
-  'PR/Earned': [
-    { key: 'pitchAngle', label: 'Pitch angle', type: 'textarea' },
-    { key: 'keyMessage', label: 'Key message', type: 'text' },
-    { key: 'quote', label: 'Quote', type: 'textarea', libraryKind: 'testimonial' },
-    { key: 'quoteAttribution', label: 'Quote attribution', type: 'text', libraryKind: 'testimonial' }
-  ],
-  'Linear': [
-    { key: 'open', label: 'Open (first few seconds)', type: 'textarea' },
-    { key: 'body', label: 'Body script', type: 'textarea' },
-    { key: 'tag', label: 'Tag / CTA', type: 'text' }
-  ],
-  'Direct Mail': [
-    { key: 'headline', label: 'Headline', type: 'text' },
-    { key: 'offer', label: 'Offer', type: 'text' },
-    { key: 'body', label: 'Body copy', type: 'textarea' },
-    { key: 'cta', label: 'Call to action / response mechanism', type: 'text' },
-    { key: 'legalDisclaimer', label: 'Legal / compliance disclaimer (optional)', type: 'textarea', optional: true, libraryKind: 'legalDisclaimer' }
-  ],
-  'Events': [
-    { key: 'headline', label: 'Invitation headline', type: 'text' },
-    { key: 'body', label: 'Body copy', type: 'textarea' },
-    { key: 'cta', label: 'RSVP / call to action', type: 'text' }
-  ],
-  'Podcasts': [
-    { key: 'script', label: 'Host-read script', type: 'textarea' },
-    { key: 'promoCode', label: 'Promo code', type: 'text' }
-  ],
-  'Radio': [
-    { key: 'open', label: 'Open', type: 'textarea' },
-    { key: 'body', label: 'Body script', type: 'textarea' },
-    { key: 'cta', label: 'Call to action (promo code)', type: 'text' }
-  ],
-  'Magazines': [
-    { key: 'headline', label: 'Headline', type: 'text' },
-    { key: 'body', label: 'Body copy', type: 'textarea' },
-    { key: 'cta', label: 'Call to action', type: 'text' },
-    { key: 'legalDisclaimer', label: 'Legal / compliance disclaimer (optional)', type: 'textarea', optional: true, libraryKind: 'legalDisclaimer' }
-  ]
-};
+
+
 // Per Section 3 of the scoping doc: "A Display Ad's best-practice shape at
 // Awareness (broad hook, minimal specificity, brand-forward) is genuinely
 // different from a Display Ad at Purchase (urgency, offer-forward, direct
 // CTA)." This is the shared, stage-driven shape modifier layered on top of
 // whichever channel structure/creativeGuidance applies above.
-const CREATIVE_STAGE_SHAPE_MODIFIER = {
-  'Awareness': 'Broad hook, minimal specificity, brand-forward — this is about being noticed and remembered, not converting on the spot.',
-  'Consideration': 'Lead with proof — a specific detail, comparison point, or credential — rather than the broad reach-stage framing.',
-  'Purchase': 'Offer-forward and urgent — a clear, specific offer and a direct CTA. This is the least brand-forward, most conversion-forward stage.',
-  'Loyalty': 'Relationship-forward tone — speak to an existing customer, not a cold prospect; reference the relationship rather than re-introducing the brand.',
-  'Advocacy': 'Invite sharing/referral explicitly — the CTA should ask the reader to tell someone else, not just act themselves.'
-};
+
 // Generates the Best Practice copy structure for a requirement: the field
 // list to draft against, plus guidance text combining this channel's real
 // creativeGuidance (CHANNEL_BEST_PRACTICES above) with the stage-specific
 // shape modifier. Snapshot this result into copyStructure at requirement-
 // creation time (per server.js's comment on copyStructureJson) so a
 // requirement's drafted-against guidance doesn't silently drift later.
-function generateCreativeCopyStructure(channel, stage){
-  const fields = CREATIVE_COPY_STRUCTURES_BY_CHANNEL[channel] || [
-    { key: 'headline', label: 'Headline / hook', type: 'text' },
-    { key: 'body', label: 'Body copy', type: 'textarea' },
-    { key: 'cta', label: 'Call to action', type: 'text' }
-  ];
-  const usedFallbackFields = !CREATIVE_COPY_STRUCTURES_BY_CHANNEL[channel];
-  const bp = getChannelBestPractice(channel);
-  const guidanceParts = [];
-  if (usedFallbackFields){
-    guidanceParts.push('No channel-specific field structure on file yet for this channel — using a generic hook/body/CTA shape.');
-  }
-  if (bp.creativeGuidance) guidanceParts.push(bp.creativeGuidance);
-  if (stage && CREATIVE_STAGE_SHAPE_MODIFIER[stage]) guidanceParts.push(`At the ${stage} stage: ${CREATIVE_STAGE_SHAPE_MODIFIER[stage]}`);
-  else guidanceParts.push('No Media Loop stage set on this campaign yet — set one on the campaign for stage-specific shape guidance.');
-  return { channel, stage: stage || null, fields, guidance: guidanceParts.join(' ') };
-}
+
 
 // Round 75 — testing-approach recommendation, per
 // cxmedia-campaign-analytics-strategy.md Section 4. Budget tiers are a
@@ -48397,9 +47975,9 @@ async function sendToTrafficking(){
 function buildUtmLink(){
   const resultEl = document.getElementById('utmBuilderResult');
   const c = findCampaign(currentCampaignId);
-  const baseUrl = document.getElementById('campaignUrlInput').value.trim();
+  const baseUrl = String((c && c.campaignUrl) || '').trim();
   if (!baseUrl){
-    resultEl.innerHTML = `<p class="hint">Enter and save a Campaign URL above first — the tracking link builds on top of it.</p>`;
+    resultEl.innerHTML = `<p class="hint">Add the Campaign URL first (Trafficking > Build a tracking link) — the tracking link builds on top of it.</p>`;
     return;
   }
   const elements = state.utmMasterElements || [];
@@ -48430,7 +48008,7 @@ function buildUtmLink(){
     ${utmPredictionHtml(built)}
     <div class="btn-row" style="margin-top:0;">
       <button type="button" class="btn-ghost" onclick="copyUtmLink()">Copy link →</button>
-      <button type="button" class="btn-ghost" onclick="useUtmLinkAsCampaignUrl()">Use as Campaign URL &amp; audit →</button>
+      <button type="button" class="btn-ghost" onclick="useUtmLinkAsCampaignUrl()">Use as Campaign URL →</button>
       <button type="button" class="btn-primary" onclick="generateUtmQrCode()">Generate QR code →</button>
     </div>
     <div id="utmQrStatus" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;margin-top:8px;"></div>
@@ -48465,10 +48043,10 @@ function copyUtmLink(){
 }
 function useUtmLinkAsCampaignUrl(){
   const input = document.getElementById('utmBuilderLinkOutput');
-  if (!input) return;
-  document.getElementById('campaignUrlInput').value = input.value;
-  saveCampaignUrlSettings();
-  runUrlAudit();
+  const c = findCampaign(currentCampaignId);
+  if (!input || !c) return;
+  c.campaignUrl = input.value;
+  cmpPersistCampaignField(c, { campaignUrl: input.value }, 'Campaign URL');
 }
 // Shows what the analytics tool will do with a link: the vendor, medium and predicted channel in GA4 and Adobe.
 function utmPredictionHtml(built){
@@ -51807,14 +51385,6 @@ function cmpOpenTraffickingWorkspace(){
   // Relocate the one real, stable "Send to Trafficking Team" card (see the
   // overlay markup's own comment) — same bookmark/restore pattern as
   // Creative's #campaignCreativeJobsCard.
-  if (!cmpTraffickingWorkspaceBookmark){
-    const cardEl = document.getElementById('campaignTraffickingCard');
-    if (cardEl){
-      cmpTraffickingWorkspaceBookmark = { parent: cardEl.parentNode, next: cardEl.nextSibling, marginTop: cardEl.style.marginTop };
-      cardEl.style.marginTop = '0';
-      left.appendChild(cardEl);
-    }
-  }
   cmpRenderTraffickingQrUtm(campaign);
   cmpRenderTraffickingQa(campaign);
   // 2026-09-28 fix — cmpRenderTraffickingQrUtm() reads creativeJobsCache
@@ -58387,7 +57957,6 @@ function startNewCampaign(){
 //   'none'    — nothing on file. Renders nothing, same as before.
 async function loadCampaignSmartDefaults(){
   const kmHolder = document.getElementById('cmpKeyMessageSmartDefault');
-  const atHolder = document.getElementById('campaignAudienceTargetsSmartDefault');
   const segHolder = document.getElementById('cmpSegmentSmartDefault');
   // 2026-08-22 extension — Stage and Channels join the same confidence-gated
   // intake pattern.
@@ -58424,7 +57993,6 @@ async function loadCampaignSmartDefaults(){
     renderCampaignSmartDefaultField('keyMessage', fields.keyMessage, kmHolder, 'cmpKeyMessage', 'brand', {
       onFill: () => { updateKeyMessageCounter(); cmpKeyMessageOrBriefEdited(); }
     });
-    renderCampaignSmartDefaultField('audienceTargets', fields.audienceTargets, atHolder, 'campaignAudienceTargets', 'audience');
     renderSegmentSmartDefault(fields.segment, segHolder);
     // Primary KPI intentionally applied BEFORE Stage below: toggleStage()
     // (fired by the Stage smart-default's own skip-fill) cascades into
@@ -58772,7 +58340,6 @@ function renderCampaignSmartDefaultField(fieldKey, fieldData, holder, inputId, k
       // with no side-effecting gate, unlike Channels below) it's safe
       // to just save it for real the moment it's silently filled, so
       // "skipped asking" is true in Supabase too, not just on screen.
-      if (fieldKey === 'audienceTargets') saveCampaignPerformanceFields();
     }
     // 2026-08-22, next round (items 5-6) — genuine adaptive skip. The vision
     // doc's own language is "skipped asking," but until now this still
@@ -60397,38 +59964,7 @@ async function approveCampaignQa(){
 // a distinct, campaign-level activation rather than a duplicate of the
 // account's Brand Voice.
 
-async function saveCampaignBrandFields(){
-  const c = findCampaign(currentCampaignId);
-  if (!c) return;
-  const keyMessage = document.getElementById('campaignBrandKeyMessage').value.trim();
-  const brandToneNotes = document.getElementById('campaignBrandToneNotes').value.trim();
-  const creativeBrief = document.getElementById('campaignCreativeBrief').value.trim();
-  const longformCopy = document.getElementById('campaignLongformCopy').value.trim();
-  c.keyMessage = keyMessage;
-  c.brandToneNotes = brandToneNotes;
-  c.creativeBrief = creativeBrief;
-  c.longformCopy = longformCopy;
-  const flag = document.getElementById('campaignBrandSaveFlag');
-  let persisted = false;
-  if (!c.localOnly && dataSourceLabel === 'backend'){
-    try {
-      const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyMessage, brandToneNotes, creativeBrief, longformCopy })
-      });
-      persisted = resp.ok;
-    } catch (e){ console.warn('saveCampaignBrandFields: backend write failed, saved locally only.', e); }
-  }
-  if (flag){
-    flag.textContent = persisted
-      ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
-      : `Saved ${new Date().toLocaleTimeString()} — local only, this session (no backend record for this account, or the backend is unreachable).`;
-    flag.classList.add('visible');
-  }
-  // Re-render the Creative Jobs list so its copy recommendations reflect
-  // whatever just changed in the brief/longform copy above.
-  loadCreativeJobs();
-}
+
 
 // 2026-08-22 — hand-mirrored copy of backend/server.js's
 // Renamed 2026-09-21, per direct instruction: hand-mirrored copy of
@@ -60904,84 +60440,14 @@ function renderCampaignTypeDetailFields(typeKey, savedValues, holderId){
     </div>
   `).join('');
 }
-function onCampaignTypeSelectChanged(){
-  const typeKey = document.getElementById('campaignTypeSelect').value;
-  // Switching type: start the detail fields blank rather than carrying over
-  // values that belonged to a different type's questions — matches what the
-  // person sees (a fresh set of fields for the newly-selected type).
-  renderCampaignTypeDetailFields(typeKey, {});
-  const c = findCampaign(currentCampaignId);
-  if (c){
-    // Live preview only — nothing persists until Save is clicked. Shown
-    // against a hypothetical in-progress campaign object so a person can see
-    // what switching types would require before committing to it.
-    renderCampaignTypeCompleteness(Object.assign({}, c, { campaignType: typeKey, campaignTypeDetailsJson: '' }));
-  }
-}
+
 // Same honest "suggestion, never a silent gate" discipline as everywhere
 // else in this build — this never blocks Save, it just reports what's
 // missing so the person (and, once saved, the AI prompt) can see the gap
 // rather than silently working around it. Mirrors backend's
 // campaignTypeCompleteness() field-for-field.
-function renderCampaignTypeCompleteness(c){
-  const statusEl = document.getElementById('campaignTypeStatus');
-  if (!statusEl) return;
-  const typeKey = c.campaignType || '';
-  const def = CAMPAIGN_TYPE_REGISTRY_CLIENT[typeKey];
-  if (!typeKey || !def){
-    statusEl.innerHTML = '';
-    return;
-  }
-  const details = campaignTypeDetailsClient(c);
-  const missingCore = def.coreFields.filter(f => !c[f] || (typeof c[f] === 'string' && !c[f].trim()));
-  const missingDetail = def.detailFields.filter(f => f.required && (!details[f.key] || !String(details[f.key]).trim()));
-  const complete = !missingCore.length && !missingDetail.length;
-  const missingLabels = [
-    ...missingCore.map(f => def.coreFieldLabels[f] || f),
-    ...missingDetail.map(f => f.label)
-  ];
-  statusEl.innerHTML = complete
-    ? `<span class="hint" style="color:var(--cx);">✓ ${def.label} — all required fields on file. The AI copy prompts below now include this scenario's guidance.</span>`
-    : `<span class="hint" style="color:var(--warn, #b45309);">⚠ ${def.label} selected — still missing: ${missingLabels.join(', ')}. The AI copy prompts will still use ${def.label} guidance once saved, but these specifics won't be included until they're filled in.</span>`;
-}
-async function saveCampaignTypeFields(){
-  const c = findCampaign(currentCampaignId);
-  if (!c) return;
-  const typeKey = document.getElementById('campaignTypeSelect').value;
-  const def = CAMPAIGN_TYPE_REGISTRY_CLIENT[typeKey];
-  const details = {};
-  if (def){
-    def.detailFields.forEach(f => {
-      const el = document.getElementById(`cmpTypeDetail_${f.key}`);
-      if (el && el.value.trim()) details[f.key] = el.value.trim();
-    });
-  }
-  c.campaignType = typeKey;
-  c.campaignTypeDetailsJson = Object.keys(details).length ? JSON.stringify(details) : '';
-  const flag = document.getElementById('campaignTypeSaveFlag');
-  let persisted = false;
-  if (!c.localOnly && dataSourceLabel === 'backend'){
-    try {
-      const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        // Backend's merge-update endpoint expects campaignTypeDetails as a
-        // real object (it JSON.stringifies it server-side before storing),
-        // not the already-stringified campaignTypeDetailsJson this file
-        // otherwise keeps on the local campaign object — see this endpoint's
-        // 2026-08-22 comment in backend/server.js.
-        body: JSON.stringify({ campaignType: typeKey, campaignTypeDetails: details })
-      });
-      persisted = resp.ok;
-    } catch (e){ console.warn('saveCampaignTypeFields: backend write failed, saved locally only.', e); }
-  }
-  if (flag){
-    flag.textContent = persisted
-      ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend. The AI copy prompts for this campaign now reflect this type.`
-      : `Saved ${new Date().toLocaleTimeString()} — local only, this session (no backend record for this account, or the backend is unreachable) — the AI copy prompts on the real backend record won't see this until it's reachable.`;
-    flag.classList.add('visible');
-  }
-  renderCampaignTypeCompleteness(c);
-}
+
+
 
 // Round 99 (2026-08-06) — Performance Marketing's "validate the buy, hand
 // off audience targets" action, per direct instruction. Mirrors
@@ -60990,40 +60456,7 @@ async function saveCampaignTypeFields(){
 // honest local-only fallback flag otherwise. pmValidatedAt is a real
 // timestamp of the last time this was saved — a lightweight, honest
 // "validated" signal rather than inventing a separate approval workflow.
-async function saveCampaignPerformanceFields(){
-  const c = findCampaign(currentCampaignId);
-  if (!c) return;
-  // 2026-09-22 — dead-field consolidation, per direct instruction ("retire
-  // the dead fields"). This card used to write campaign.audienceTargets,
-  // a column Supabase confirmed is empty on every real campaign because
-  // every reader actually falls back to campaign.segment instead (see
-  // cmpCreativeAudienceText() and its comment). Rather than leave this
-  // whole validated-audience workflow writing into a column nothing
-  // reads, it now writes the real source of truth directly: segment.
-  const audienceTargets = document.getElementById('campaignAudienceTargets').value.trim();
-  const pmValidatedAt = new Date().toISOString();
-  c.segment = audienceTargets;
-  c.pmValidatedAt = pmValidatedAt;
-  const flag = document.getElementById('campaignPerfMarketingSaveFlag');
-  let persisted = false;
-  if (!c.localOnly && dataSourceLabel === 'backend'){
-    try {
-      const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ segment: audienceTargets, pmValidatedAt })
-      });
-      persisted = resp.ok;
-    } catch (e){ console.warn('saveCampaignPerformanceFields: backend write failed, saved locally only.', e); }
-  }
-  if (flag){
-    flag.textContent = persisted
-      ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
-      : `Saved ${new Date().toLocaleTimeString()} — local only, this session (no backend record for this account, or the backend is unreachable).`;
-    flag.classList.add('visible');
-  }
-  const validatedNoteEl = document.getElementById('campaignPerfMarketingValidatedNote');
-  if (validatedNoteEl) validatedNoteEl.textContent = `Last validated ${new Date(pmValidatedAt).toLocaleString()}.`;
-}
+
 
 // Round 100 (2026-08-06) — every major card on Campaign Detail, in the
 // order they appear, so a specialty deep-link (e.g. Tracking Links from
@@ -61064,8 +60497,10 @@ async function saveCampaignPerformanceFields(){
 // an honest "log in to see requests" note rather than trying to trigger
 // its own separate login flow mid-page.
 async function loadCreativeJobs(){
-  const el = document.getElementById('creativeJobsList');
-  if (!el) return;
+  // The Creative Jobs card (and its on-screen list) is gone; this loader now
+  // only fills creativeJobsCache for Trafficking and Creative, so messages
+  // that used to print into the list go to a throwaway stand-in.
+  const el = { innerHTML: '', insertAdjacentHTML(){} };
   const c = findCampaign(currentCampaignId);
   if (!c || c.isAdHoc || c.localOnly) { el.innerHTML = '<p class="lede">No creative jobs — this campaign has no backend record yet.</p>'; return; }
   el.innerHTML = '<p class="lede">Loading…</p>';
@@ -62729,428 +62164,59 @@ function renderDailyBrief(){
    requirements array). creativeCollectionsUi tracks purely local view state
    (which collection/requirement is expanded, and the in-progress "add
    requirement" form) — never sent to the backend, reset on every load. */
-let creativeCollectionsCache = [];
-let creativeCollectionsUi = { expandedCollectionId: null, addingToCollectionId: null, editingRequirementId: null };
 
-async function loadCreativeCollections(){
-  const el = document.getElementById('creativeCollectionsList');
-  if (!el) return;
-  const c = findCampaign(currentCampaignId);
-  if (!c || c.isAdHoc || c.localOnly) { el.innerHTML = '<p class="lede">No creative collections — this campaign has no backend record yet.</p>'; return; }
-  el.innerHTML = '<p class="lede">Loading…</p>';
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}/creative-collections`);
-    if (resp.status === 401){
-      el.innerHTML = '<p class="lede">Log in to this account to see its creative collections.</p>';
-      return;
-    }
-    if (!resp.ok){ el.innerHTML = '<p class="lede">Couldn\'t load creative collections right now.</p>'; return; }
-    const data = await resp.json();
-    creativeCollectionsCache = data.collections || [];
-    // Round 82 — keep the campaign object's own creativeCollections in sync
-    // with what was just fetched, and re-render the QA panel, so Campaign
-    // QA's completion scoring (Deliverable #7 wiring — see
-    // computeFunctionCompletion) reflects this campaign's collections
-    // immediately rather than only after the next full campaign-list reload.
-    c.creativeCollections = creativeCollectionsCache;
-    renderCreativeCollectionsList();
-    renderCampaignQaPanel();
-  } catch (e){
-    el.innerHTML = '<p class="lede">Backend unreachable — can\'t load creative collections.</p>';
-  }
-}
 
-async function createCreativeCollection(){
-  const c = findCampaign(currentCampaignId);
-  if (!c) return;
-  const name = prompt('Name this collection (e.g. "Q3 Awareness Push"):');
-  if (!name || !name.trim()) return;
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}/creative-collections`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name.trim() })
-    });
-    if (!resp.ok){ alert('Could not create the collection.'); return; }
-    await loadCreativeCollections();
-  } catch (e){ alert('Backend unreachable — could not create the collection.'); }
-}
 
-async function renameCreativeCollection(collectionId){
-  const collection = creativeCollectionsCache.find(cc => cc.id === collectionId);
-  if (!collection) return;
-  const name = prompt('Rename this collection:', collection.name);
-  if (!name || !name.trim() || name.trim() === collection.name) return;
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/creative-collections/${encodeURIComponent(collectionId)}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name.trim() })
-    });
-    if (!resp.ok){ alert('Could not rename the collection.'); return; }
-    await loadCreativeCollections();
-  } catch (e){ alert('Backend unreachable — could not rename the collection.'); }
-}
 
-async function deleteCreativeCollection(collectionId){
-  if (!confirm('Delete this collection and all of its requirements? This can\'t be undone.')) return;
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/creative-collections/${encodeURIComponent(collectionId)}`, { method: 'DELETE' });
-    if (!resp.ok){ alert('Could not delete the collection.'); return; }
-    await loadCreativeCollections();
-  } catch (e){ alert('Backend unreachable — could not delete the collection.'); }
-}
 
-function toggleCreativeCollection(collectionId){
-  creativeCollectionsUi.expandedCollectionId = creativeCollectionsUi.expandedCollectionId === collectionId ? null : collectionId;
-  creativeCollectionsUi.addingToCollectionId = null;
-  creativeCollectionsUi.editingRequirementId = null;
-  renderCreativeCollectionsList();
-}
 
-function showAddRequirementForm(collectionId){
-  creativeCollectionsUi.addingToCollectionId = collectionId;
-  creativeCollectionsUi.editingRequirementId = null;
-  renderCreativeCollectionsList();
-}
 
-const CREATIVE_REQUIREMENT_STATUSES_UI = ['Draft', 'Ready for Handoff', 'Approved'];
 
-function renderCreativeCollectionsList(){
-  const el = document.getElementById('creativeCollectionsList');
-  if (!el) return;
-  if (!creativeCollectionsCache.length){
-    el.innerHTML = '<p class="lede">No creative collections yet on this campaign — start one above.</p>';
-    return;
-  }
-  el.innerHTML = creativeCollectionsCache.map(collection => {
-    const expanded = creativeCollectionsUi.expandedCollectionId === collection.id;
-    const statusBadgeClass = collection.status === 'Approved' ? 'strong' : '';
-    return `
-      <div style="padding:14px 0;border-top:1px solid var(--line);">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;cursor:pointer;" onclick="toggleCreativeCollection('${collection.id}')">
-          <div>
-            <h4 style="margin:0;">${escapeHtml(collection.name)} <span class="hint">${expanded ? '▾' : '▸'}</span></h4>
-            <span class="hint">${collection.requirements.length} requirement${collection.requirements.length === 1 ? '' : 's'}</span>
-          </div>
-          <span class="badge ${statusBadgeClass}">${collection.status}</span>
-        </div>
-        ${expanded ? renderCreativeCollectionExpanded(collection) : ''}
-      </div>`;
-  }).join('');
-}
 
-function renderCreativeCollectionExpanded(collection){
-  const reqRows = collection.requirements.map(r => renderCreativeRequirementRow(collection, r)).join('')
-    || '<p class="lede" style="margin:10px 0;">No requirements in this collection yet.</p>';
-  return `
-    <div style="margin-top:10px;padding-left:2px;" onclick="event.stopPropagation()">
-      ${reqRows}
-      <div class="btn-row" style="margin-top:8px;">
-        <button type="button" class="btn-ghost" onclick="showAddRequirementForm('${collection.id}')">+ Add requirement</button>
-        <button type="button" class="btn-ghost" onclick="renameCreativeCollection('${collection.id}')">Rename →</button>
-        <button type="button" class="btn-ghost" onclick="exportCreativeCollection('${collection.id}')">Export →</button>
-        <button type="button" class="btn-ghost" onclick="deleteCreativeCollection('${collection.id}')">Delete →</button>
-      </div>
-      ${creativeCollectionsUi.addingToCollectionId === collection.id ? renderAddRequirementForm(collection) : ''}
-    </div>`;
-}
 
-function renderAddRequirementForm(collection){
-  const channelOptions = CHANNELS.map(ch => `<option value="${ch}">${ch}</option>`).join('');
-  return `
-    <div style="margin-top:14px;padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--paper-dim);">
-      <h4 style="margin:0 0 10px;">Add a requirement</h4>
-      <div class="field">
-        <label for="newReqChannel_${collection.id}">Channel</label>
-        <select id="newReqChannel_${collection.id}" onchange="onNewRequirementChannelChange('${collection.id}')">
-          <option value="">Select a channel…</option>${channelOptions}
-        </select>
-      </div>
-      <div id="newReqMediaTypeWrap_${collection.id}"></div>
-      <div id="newReqSpecsWrap_${collection.id}"></div>
-      <div class="btn-row" style="margin-top:10px;">
-        <button type="button" class="btn-primary" onclick="submitNewRequirement('${collection.id}')">Add requirement →</button>
-        <button type="button" class="btn-ghost" onclick="creativeCollectionsUi.addingToCollectionId=null; renderCreativeCollectionsList();">Cancel</button>
-      </div>
-    </div>`;
-}
 
-async function onNewRequirementChannelChange(collectionId){
-  const channel = document.getElementById(`newReqChannel_${collectionId}`).value;
-  const mtWrap = document.getElementById(`newReqMediaTypeWrap_${collectionId}`);
-  const specsWrap = document.getElementById(`newReqSpecsWrap_${collectionId}`);
-  if (!channel){ mtWrap.innerHTML = ''; specsWrap.innerHTML = ''; return; }
-  const mediaTypes = getCreativeMediaTypes(channel);
-  mtWrap.innerHTML = `
-    <div class="field">
-      <label for="newReqMediaType_${collectionId}">Media type</label>
-      ${mediaTypes.length
-        ? `<select id="newReqMediaType_${collectionId}"><option value="">Select…</option>${mediaTypes.map(mt => `<option value="${escapeHtml(mt)}">${escapeHtml(mt)}</option>`).join('')}</select>`
-        : `<input id="newReqMediaType_${collectionId}" type="text" placeholder="No media types on file for ${escapeHtml(channel)} yet — enter one">`}
-    </div>`;
-  if (creativeChannelUsesPrintSpecs(channel)){
-    specsWrap.innerHTML = `<p class="hint">Loading real specs from the Print Ad Specs catalog…</p>`;
-    try {
-      const resp = await authedFetch(`${BACKEND_URL}/api/print-specs/global`);
-      const data = resp.ok ? await resp.json() : { publications: [] };
-      const opts = [];
-      (data.publications || []).forEach(pub => (pub.formats || []).forEach(fmt => {
-        opts.push(`${pub.name} — ${fmt.name || fmt.label || ''} (${fmt.dimensions || fmt.trimSize || ''})`.replace(/\s+/g,' ').trim());
-      }));
-      specsWrap.innerHTML = `
-        <div class="field">
-          <label for="newReqSpecs_${collectionId}">Specs</label>
-          ${opts.length
-            ? `<select id="newReqSpecs_${collectionId}"><option value="">Select a real spec from the Print Ad Specs catalog…</option>${opts.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('')}</select>`
-            : `<textarea id="newReqSpecs_${collectionId}" rows="2" placeholder="No specs on file in the Print Ad Specs catalog yet — enter manually"></textarea>`}
-          <div class="hint">Pulled live from the same catalog behind Print Ad Specs / Out-of-Home Specs.</div>
-        </div>`;
-    } catch (e){
-      specsWrap.innerHTML = `<div class="field"><label for="newReqSpecs_${collectionId}">Specs</label><textarea id="newReqSpecs_${collectionId}" rows="2" placeholder="Backend unreachable — enter specs manually"></textarea></div>`;
-    }
-  } else {
-    specsWrap.innerHTML = `<div class="field"><label for="newReqSpecs_${collectionId}">Specs</label><textarea id="newReqSpecs_${collectionId}" rows="2" placeholder="No live spec catalog for ${escapeHtml(channel)} yet — enter manually"></textarea></div>`;
-  }
-}
 
-async function submitNewRequirement(collectionId){
-  const channel = document.getElementById(`newReqChannel_${collectionId}`)?.value;
-  if (!channel){ alert('Select a channel first.'); return; }
-  const mediaTypeEl = document.getElementById(`newReqMediaType_${collectionId}`);
-  const specsEl = document.getElementById(`newReqSpecs_${collectionId}`);
-  const mediaType = mediaTypeEl ? mediaTypeEl.value : '';
-  const specs = specsEl ? specsEl.value : '';
-  const campaign = findCampaign(currentCampaignId);
-  const copyStructure = generateCreativeCopyStructure(channel, campaign ? campaign.stage : null);
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/creative-collections/${encodeURIComponent(collectionId)}/requirements`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ channel, mediaType, specs, copyStructure, copyContent: {} })
-    });
-    if (!resp.ok){ alert('Could not add the requirement.'); return; }
-    creativeCollectionsUi.addingToCollectionId = null;
-    await loadCreativeCollections();
-    creativeCollectionsUi.expandedCollectionId = collectionId;
-    renderCreativeCollectionsList();
-  } catch (e){ alert('Backend unreachable — could not add the requirement.'); }
-}
 
-function renderCreativeRequirementRow(collection, req){
-  const editing = creativeCollectionsUi.editingRequirementId === req.id;
-  const statusBadgeClass = req.status === 'Approved' ? 'strong' : '';
-  return `
-    <div style="padding:10px 0;border-top:1px solid var(--line);">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-        <div>
-          <b>${escapeHtml(req.channel)}</b>${req.mediaType ? ` — ${escapeHtml(req.mediaType)}` : ''}
-          <div class="hint">${req.specs ? escapeHtml(req.specs) : 'No specs entered'} · ${req.id}</div>
-        </div>
-        <span class="badge ${statusBadgeClass}">${req.status}</span>
-      </div>
-      <div class="btn-row" style="margin-top:6px;">
-        <button type="button" class="btn-ghost" onclick="toggleRequirementEditor('${req.id}')">${editing ? 'Close ×' : 'Open →'}</button>
-        <button type="button" class="btn-ghost" onclick="cloneCreativeRequirement('${req.id}')">Duplicate →</button>
-        <button type="button" class="btn-ghost" onclick="deleteCreativeRequirement('${req.id}')">Delete →</button>
-      </div>
-      ${editing ? renderRequirementEditor(collection, req) : ''}
-    </div>`;
-}
 
-function toggleRequirementEditor(reqId){
-  creativeCollectionsUi.editingRequirementId = creativeCollectionsUi.editingRequirementId === reqId ? null : reqId;
-  renderCreativeCollectionsList();
-}
 
-function renderRequirementEditor(collection, req){
-  const structure = req.copyStructure;
-  const fields = (structure && structure.fields) || [];
-  const content = req.copyContent || {};
-  const fieldsHtml = fields.map(f => `
-    <div class="field">
-      <label for="reqField_${req.id}_${f.key}">${escapeHtml(f.label)}${f.optional ? ' (optional)' : ''}</label>
-      ${f.type === 'textarea'
-        ? `<textarea id="reqField_${req.id}_${f.key}" rows="3">${escapeHtml(content[f.key] || '')}</textarea>`
-        : `<input id="reqField_${req.id}_${f.key}" type="text" value="${escapeHtml(content[f.key] || '')}">`}
-    </div>`).join('');
-  return `
-    <div style="margin-top:10px;padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--paper-dim);">
-      ${structure
-        ? `<p class="lede" style="margin:0 0 12px;"><b>Best-practice guidance:</b> ${escapeHtml(structure.guidance)}</p>`
-        : `<div class="btn-row" style="margin:0 0 12px;"><button type="button" class="btn-ghost" onclick="generateStructureForRequirement('${collection.id}','${req.id}')">Generate best-practice copy structure →</button></div>`}
-      ${fieldsHtml || '<p class="lede">No copy structure generated yet for this requirement.</p>'}
-      <div class="btn-row" style="margin-top:4px;">
-        <button type="button" class="btn-primary" onclick="saveRequirementCopy('${req.id}')">Save copy →</button>
-        <select id="reqStatus_${req.id}" onchange="updateRequirementStatus('${req.id}', this.value)">
-          ${CREATIVE_REQUIREMENT_STATUSES_UI.map(s => `<option value="${s}"${req.status === s ? ' selected' : ''}>${s}</option>`).join('')}
-        </select>
-      </div>
-      <div id="reqSaveFlag_${req.id}" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>
-    </div>`;
-}
 
-async function generateStructureForRequirement(collectionId, reqId){
-  const collection = creativeCollectionsCache.find(cc => cc.id === collectionId);
-  const req = collection && collection.requirements.find(r => r.id === reqId);
-  if (!req) return;
-  const campaign = findCampaign(currentCampaignId);
-  const copyStructure = generateCreativeCopyStructure(req.channel, campaign ? campaign.stage : null);
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/creative-requirements/${encodeURIComponent(reqId)}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ copyContent: req.copyContent || {} })
-    });
-    // copyStructure isn't updatable via PATCH by design (it's a drafted-
-    // against snapshot) — regenerate client-side only when one was never
-    // set, by re-creating this requirement's structure locally so the
-    // editor can render fields immediately without a schema change.
-    req.copyStructure = copyStructure;
-    renderCreativeCollectionsList();
-  } catch (e){ alert('Backend unreachable — could not generate the copy structure.'); }
-}
 
-async function saveRequirementCopy(reqId){
-  const collection = creativeCollectionsCache.find(cc => cc.requirements.some(r => r.id === reqId));
-  const req = collection && collection.requirements.find(r => r.id === reqId);
-  if (!req) return;
-  const fields = (req.copyStructure && req.copyStructure.fields) || [];
-  const copyContent = {};
-  fields.forEach(f => {
-    const el = document.getElementById(`reqField_${reqId}_${f.key}`);
-    if (el) copyContent[f.key] = el.value;
-  });
-  const flag = document.getElementById(`reqSaveFlag_${reqId}`);
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/creative-requirements/${encodeURIComponent(reqId)}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ copyContent })
-    });
-    if (!resp.ok){ if (flag) flag.textContent = 'Could not save.'; return; }
-    req.copyContent = copyContent;
-    if (flag) flag.textContent = `Saved ${new Date().toLocaleTimeString()}.`;
-  } catch (e){ if (flag) flag.textContent = 'Backend unreachable — not saved.'; }
-}
 
-async function updateRequirementStatus(reqId, status){
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/creative-requirements/${encodeURIComponent(reqId)}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status })
-    });
-    if (!resp.ok){
-      const err = await resp.json().catch(() => ({}));
-      alert(err.error || 'Could not update status.');
-      renderCreativeCollectionsList();
-      return;
-    }
-    await loadCreativeCollections();
-    creativeCollectionsUi.editingRequirementId = reqId;
-    renderCreativeCollectionsList();
-  } catch (e){ alert('Backend unreachable — could not update status.'); }
-}
 
-async function cloneCreativeRequirement(reqId){
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/creative-requirements/${encodeURIComponent(reqId)}/clone`, { method: 'POST' });
-    if (!resp.ok){ alert('Could not duplicate the requirement.'); return; }
-    await loadCreativeCollections();
-  } catch (e){ alert('Backend unreachable — could not duplicate the requirement.'); }
-}
 
-async function deleteCreativeRequirement(reqId){
-  if (!confirm('Delete this requirement?')) return;
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/creative-requirements/${encodeURIComponent(reqId)}`, { method: 'DELETE' });
-    if (!resp.ok){ alert('Could not delete the requirement.'); return; }
-    await loadCreativeCollections();
-  } catch (e){ alert('Backend unreachable — could not delete the requirement.'); }
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // Real branded export (browser print-to-PDF), per Section 4f of the
 // scoping doc — replaces the standalone Creative Designer Brief project
 // type with a real export off this collection instead. Same
 // window.open()/document.write() print pattern as the career checklist
 // export (buildCareerChecklistHTML), same brand styling.
-function exportCreativeCollection(collectionId){
-  const collection = creativeCollectionsCache.find(cc => cc.id === collectionId);
-  const campaign = findCampaign(currentCampaignId);
-  if (!collection || !campaign) return;
-  const win = window.open('', '_blank');
-  if (!win){ console.warn('exportCreativeCollection: popup blocked by the browser.'); return; }
-  win.document.open();
-  win.document.write(buildCreativeCollectionExportHTML(collection, campaign));
-  win.document.close();
-}
 
-function buildCreativeCollectionExportHTML(collection, campaign){
-  const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-  const reqRows = collection.requirements.map(r => {
-    const content = r.copyContent || {};
-    const fields = (r.copyStructure && r.copyStructure.fields) || [];
-    const fieldsHtml = fields.length
-      ? fields.map(f => `<div style="margin-top:8px;"><b>${escapeHtml(f.label)}:</b><br>${escapeHtml(content[f.key] || '—')}</div>`).join('')
-      : '<div style="margin-top:8px;">No copy structure generated for this requirement.</div>';
-    return `<div class="req-block">
-      <h3>${escapeHtml(r.channel)}${r.mediaType ? ' — ' + escapeHtml(r.mediaType) : ''} <span class="req-status">${r.status}</span></h3>
-      <p class="specs">${r.specs ? escapeHtml(r.specs) : 'No specs entered'}</p>
-      ${fieldsHtml}
-    </div>`;
-  }).join('');
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Creative messaging collection — ${escapeHtml(collection.name)}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-<style>
-  :root{ --ink:#1D1D1F; --paper:#FFFFFF; --paper-dim:#F5F5F7;
-    --media:#2563EB; --cx:#0891B2; --advocacy:#4F46E5;
-    --line:#D2D2D7; --muted:#6E6E73; 
-    --line-hairline:#E8E8ED; --line-strong:#B9B9BE;
-    --radius-sm:12px; --radius-md:18px; --radius-lg:28px; --radius-pill:980px;
-    --shadow-sm:0 1px 2px rgba(0,0,0,0.04); --shadow-md:0 4px 16px rgba(0,0,0,0.06); --shadow-lg:0 16px 48px rgba(0,0,0,0.12);
-    --ease:cubic-bezier(0.28,0.11,0.32,1); --dur-fast:0.15s; --dur-med:0.4s;
-    --media-tint:#DBEAFE; --cx-tint:#CFFAFE; --advocacy-tint:#E0E7FF;
-  }
-  *{box-sizing:border-box;}
-  body{margin:0;background:var(--paper-dim);color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;}
-  .wrap{max-width:720px;margin:0 auto;padding:40px 28px 80px;}
-  .cc-hero{background:linear-gradient(135deg,#182548,#101a35);}
-  .cc-hero-toolbar{max-width:720px;margin:0 auto;padding:14px 28px 0;display:flex;justify-content:flex-end;}
-  .cc-hero-toolbar button{font-family:'Inter';font-weight:700;font-size:13.5px;padding:10px 20px;border-radius:8px;border:none;cursor:pointer;background:var(--media);color:#3A2A08;}
-  .cc-hero-inner{max-width:720px;margin:0 auto;padding:20px 28px 34px;}
-  .wordmark{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:20px;font-weight:500;color:#fff;margin-bottom:28px;}
-  .wordmark b{color:var(--media);font-weight:500;}
-  .eyebrow{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.78);margin-bottom:10px;}
-  h1{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:600;font-size:28px;line-height:1.2;margin:0 0 8px;color:#fff;}
-  .meta{font-size:13.5px;color:rgba(255,255,255,0.72);margin:0 0 4px;}
-  .req-block{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin:0 0 20px;font-size:14px;line-height:1.6;}
-  .req-block h3{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:600;font-size:18px;margin:0 0 6px;display:flex;justify-content:space-between;align-items:baseline;}
-  .req-status{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);}
-  .specs{font-size:12.5px;color:var(--muted);margin:0 0 6px;}
-  .footer-note{font-size:11.5px;color:#8a8067;line-height:1.6;margin-top:24px;border-top:1px solid var(--line);padding-top:16px;}
-  @media print{
-    .cc-hero-toolbar{display:none;}
-    body{background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-    .cc-hero{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-    .wrap{padding:0 8px;}
-  }
-</style>
-</head>
-<body>
-  <div class="cc-hero">
-    <div class="cc-hero-toolbar"><button onclick="window.print()">Print / Save as PDF →</button></div>
-    <div class="cc-hero-inner">
-      <div class="wordmark"><span class="vl-logo-h" role="img" aria-label="Verilume"></span></div>
-      <div class="eyebrow">Creative messaging collection</div>
-      <h1>${escapeHtml(collection.name)}</h1>
-      <p class="meta">Campaign: ${escapeHtml(campaign.objective || '')}${campaign.stage ? ' · ' + escapeHtml(campaign.stage) + ' stage' : ''}</p>
-      <p class="meta">Generated ${today}</p>
-    </div>
-  </div>
-  <div class="wrap">
-    ${reqRows || '<p>No requirements in this collection yet.</p>'}
-    <p class="footer-note">Prepared from this campaign's live Creative Messaging Collection. Copy structures reflect this campaign's Media Loop stage at the time each requirement was drafted.</p>
-  </div>
-</body>
-</html>`;
-}
 
-const CREATIVE_JOB_PRIORITY_COLOR = { Urgent: 'var(--advocacy)', High: 'var(--media)', Medium: 'var(--cx)', Low: 'var(--muted)' };
+
+
+
 
 // Round 65 — per direct instruction: "brand at the campaign level includes
 // the creative brief and longform copy that is then used to recommend copy
@@ -63278,14 +62344,11 @@ let openCopyWorkspaceJobId = null;
 function findCreativeJob(jobId){
   return creativeJobsCache.find(j => j.id === jobId);
 }
-function openCopyWorkspace(jobId){
-  openCopyWorkspaceJobId = jobId;
-  renderCopyWorkspace(jobId);
-  requestAnimationFrame(() => document.getElementById('copyWorkspacePanel').scrollIntoView({ behavior: 'smooth', block: 'start' }));
-}
+
 function closeCopyWorkspace(){
   openCopyWorkspaceJobId = null;
-  document.getElementById('copyWorkspacePanel').innerHTML = '';
+  const cwPanel = document.getElementById('copyWorkspacePanel');
+  if (cwPanel) cwPanel.innerHTML = '';
 }
 function renderCopyWorkspace(jobId){
   const panel = document.getElementById('copyWorkspacePanel');
@@ -63930,146 +62993,27 @@ const CREATIVE_JOB_STATUS_BADGE_CLASS = {
   'Complete': 'status-complete'
 };
 function renderCreativeJobsList(jobs){
+  // Keeps the shared jobs cache and the Trafficking Creative-used dropdown in
+  // step with whichever jobs loaded. The old on-screen jobs table was removed
+  // with the Creative Jobs card.
   creativeJobsCache = jobs;
-  const el = document.getElementById('creativeJobsList');
-  // Round 71 — keep the Tracking card's Creative-used dropdown in sync with
-  // whichever jobs actually loaded, every time this list re-renders.
   renderUtmBuilderJobOptions();
-  if (!jobs.length){
-    el.innerHTML = '<p class="lede">No creative jobs sent for this campaign yet — use Print Ad Specs or Out-of-Home Specs\' "Send to creative team" action.</p>';
-    document.getElementById('copyWorkspacePanel').innerHTML = '';
-    return;
-  }
-  // Round 74 — restructured to match the shared campaign-grid look
-  // (.active-camp-table, same as Dashboard/Campaigns) with the columns
-  // per direct instruction: Campaign ID, Job ID (one per campaign+asset
-  // class/channel — enforced upstream by the backend upsert, not here),
-  // Job Type (= channel), Due Date, Delivery Date (date assets sent to
-  // publisher), Status (fixed 4-value vocabulary). Priority is kept as a
-  // small inline indicator on the Job ID cell rather than its own column,
-  // so the data isn't silently dropped from the view.
-  // Round 132c17 (2026-08-17), per direct instruction: Job ID format is the
-  // campaign's Campaign Code + a 2-digit sequential number (jobCode, set by
-  // the backend at creation); Skill is the creative-type routing
-  // (mapChannelToSkill() server-side); every Complete job must come back
-  // for a final CX Relevance Score before it's really done — surfaced here
-  // as its own gate, separate from the Status badge, since Status itself
-  // stays the fixed round-74 4-value vocabulary untouched.
-  el.innerHTML = `<div class="table-scroll"><table class="active-camp-table"><thead><tr>
-      <th>Campaign ID</th><th>Job ID</th><th>Skill</th><th>Job Type</th><th>Due Date</th><th>Delivery Date</th><th>Status</th><th>CX Relevance</th><th>Copy</th><th>Asset</th><th></th>
-    </tr></thead><tbody>
-    ${jobs.map(j => {
-      const copyBadge = j.copyApproved
-        ? `<span class="badge strong">Approved</span>`
-        : (j.workingCopy ? `<span class="badge weak">Draft</span>` : `<span class="badge">Not started</span>`);
-      // 2026-09-20, per Creative-Desktop.dc.html — the wireframe's Creative
-      // Asset Jobs table shows an Asset column alongside Copy/Status. Asset
-      // approval is a real field (job.assetApproved, Round 73) but its own
-      // approve action lives in Ad Trafficking, not here — this is a
-      // read-only reflection of that same real data, same badge styling as
-      // the Trafficking readiness table (renderTraffickingJobGateNote()'s
-      // sibling row), not a second approval control.
-      const assetBadge = j.assetApproved
-        ? `<span class="badge strong">Approved</span>`
-        : `<span class="badge weak">Pending</span>`;
-      const statusClass = CREATIVE_JOB_STATUS_BADGE_CLASS[j.status] || 'status-pending';
-      let cxCell;
-      if (j.cxRelevanceScoredAt){
-        cxCell = `<span class="badge strong">${j.cxRelevanceScore}/100</span>`;
-      } else if (j.status === 'Complete'){
-        cxCell = `<span class="badge" style="color:var(--advocacy);">Awaiting scoring</span>
-          <div style="margin-top:4px;display:flex;gap:4px;align-items:center;">
-            <input type="number" min="0" max="100" placeholder="0-100" id="cxScoreInput-${j.id}" style="width:60px;padding:4px 6px;font-size:0.75rem;">
-            <button type="button" class="btn-ghost" style="padding:5px 8px;font-size:0.7rem;" onclick="submitCxRelevanceScore('${j.id}')">Score →</button>
-          </div>`;
-      } else {
-        cxCell = `<span class="badge weak">Not yet Complete</span>`;
-      }
-      return `<tr>
-      <td style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;">${j.campaignCode || j.campaignId || currentCampaignId || '—'}</td>
-      <td style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;">
-        ${j.jobCode || j.id}
-        <span title="Priority: ${j.priority}" style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-left:6px;vertical-align:middle;background:${CREATIVE_JOB_PRIORITY_COLOR[j.priority] || 'var(--ink)'};"></span>
-      </td>
-      <td><span class="badge weak">${j.skill || mapChannelToSkillClient(j.channel)}</span></td>
-      <td>${j.channel}${j.deliveryPlatform ? ` — ${j.deliveryPlatform}` : ''}${j.specSummary ? `<div style="margin-top:2px;font-size:0.75rem;color:var(--muted);">${escapeHtml(j.specSummary)}</div>` : ''}</td>
-      <td><input type="date" class="job-date-input" value="${j.dueDate ? j.dueDate.slice(0, 10) : ''}" onchange="saveJobDates('${j.id}', 'dueDate', this.value)"></td>
-      <td><input type="date" class="job-date-input" value="${j.deliveryDate ? j.deliveryDate.slice(0, 10) : ''}" onchange="saveJobDates('${j.id}', 'deliveryDate', this.value)"></td>
-      <td>
-        <span class="badge ${statusClass}">${j.status}</span>
-        ${j.status === 'Complete' ? `<div style="margin-top:4px;"><span class="badge ${j.actualSpend != null || j.actualConversions != null ? 'strong' : 'weak'}" style="font-size:0.625rem;">Actuals: ${j.actualSpend != null || j.actualConversions != null ? 'recorded' : 'needed'}</span></div>` : ''}
-      </td>
-      <td>${cxCell}</td>
-      <td>${copyBadge}</td>
-      <td>${assetBadge}</td>
-      <td><button type="button" class="btn-ghost" style="padding:6px 12px;font-size:0.75rem;" onclick="openCopyWorkspace('${j.id}')">Open →</button></td>
-    </tr>`;
-    }).join('')}
-  </tbody></table></div>`;
-  // Keep the workspace panel in sync with whichever job it's open for (if
-  // any) — re-rendering the table shouldn't silently close it or leave it
-  // showing stale data.
-  if (openCopyWorkspaceJobId && jobs.some(j => j.id === openCopyWorkspaceJobId)){
-    renderCopyWorkspace(openCopyWorkspaceJobId);
-  }
 }
 // Round 132c17 (2026-08-17) — client-side mirror of the backend's
 // mapChannelToSkill(), used only as a display fallback for creative jobs
 // created before this round that have no `skill` column value stored yet.
 // Every job created from here forward gets `skill` from the backend at
 // creation, so this is a display-only backfill, never written back.
-function mapChannelToSkillClient(channel){
-  const c = String(channel || '').toLowerCase();
-  if (/print|magazine|newspaper|direct mail/.test(c)) return 'Print';
-  if (/website|email/.test(c)) return 'Website and Email';
-  if (/video|streaming|ctv|ott|youtube/.test(c)) return 'Video';
-  if (/radio|audio|podcast/.test(c)) return 'Radio';
-  if (/ooh|out.of.home|billboard|transit/.test(c)) return 'Out-of-home';
-  return 'Digital Ads';
-}
+
 // Round 132c17 — the CX Relevance Scoring gate. Per direct instruction:
 // "All creative must come back for final CX Relevance Scoring." Only
 // reachable for jobs already at status Complete (the input only renders
 // there — see renderCreativeJobsList()); the backend re-checks this too, so
 // a stale render can't bypass it.
-async function submitCxRelevanceScore(jobId){
-  const input = document.getElementById(`cxScoreInput-${jobId}`);
-  const raw = input ? input.value.trim() : '';
-  const score = Number(raw);
-  if (raw === '' || isNaN(score) || score < 0 || score > 100){
-    if (input) input.style.borderColor = 'var(--advocacy)';
-    return;
-  }
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}/cx-relevance-score`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cxRelevanceScore: score })
-    });
-    if (resp.ok){
-      const job = findCreativeJob(jobId);
-      if (job){ job.cxRelevanceScore = score; job.cxRelevanceScoredAt = new Date().toISOString(); }
-      renderCreativeJobsList(creativeJobsCache);
-    }
-  } catch (e){
-    // Best-effort — a re-render on next load will show whatever the backend
-    // actually holds, same convention as saveJobDates() below.
-  }
-}
+
 // Round 74 — inline-editable Due Date / Delivery Date cells in the grid,
 // PATCHing straight to the backend without opening the Copy Workspace.
-async function saveJobDates(jobId, field, value){
-  const job = findCreativeJob(jobId);
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/creative-jobs/${encodeURIComponent(jobId)}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [field]: value || null })
-    });
-    if (resp.ok && job) job[field] = value || null;
-  } catch (e){
-    // Best-effort — the input simply won't reflect a save; a re-render on
-    // next load will show whatever the backend actually holds.
-  }
-}
+
 
 /* ---------- Campaign QA & Alignment Score, Campaign URL Audit (round 31) ----------
    Per direct instruction: (1) every marketing function activated on a
@@ -64543,30 +63487,7 @@ function renderCampaignQaPanel(){
   if (typeof renderFaqN === 'function') renderFaqN();
 }
 
-async function saveCampaignUrlSettings(){
-  const c = findCampaign(currentCampaignId);
-  if (!c) return;
-  const campaignUrl = document.getElementById('campaignUrlInput').value.trim();
-  const conversionType = document.getElementById('campaignConversionType').value;
-  c.campaignUrl = campaignUrl;
-  c.conversionType = conversionType;
-  const flag = document.getElementById('campaignUrlSaveFlag');
-  let persisted = false;
-  if (!c.localOnly && dataSourceLabel === 'backend'){
-    try {
-      const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ campaignUrl, conversionType })
-      });
-      persisted = resp.ok;
-    } catch (e){ /* falls through to local-only flag below */ }
-  }
-  if (flag){
-    flag.textContent = persisted
-      ? `Saved — recorded to this account's real backend record.`
-      : `Saved — local only, this session (no backend record for this campaign, or the backend is unreachable).`;
-  }
-}
+
 
 // Structural/heuristic URL audit — direct instruction 3/4: an optional
 // Campaign URL, audited against the campaign's objective and its
@@ -64576,110 +63497,12 @@ async function saveCampaignUrlSettings(){
 // actually on the destination page, and every check below says so rather
 // than implying a real content audit happened.
 // Round 132[new] (2026-08-11) — rekeyed onto the 5 new Objectives.
-const OBJECTIVE_URL_KEYWORDS = {
-  'Brand Awareness': ['about', 'story', 'brand'],
-  'Consideration': ['compare', 'guide', 'demo', 'how-it-works', 'learn', 'why'],
-  'Purchase / Conversion': ['book', 'reserve', 'quote', 'buy', 'checkout', 'cart', 'pricing', 'signup', 'sign-up', 'subscribe'],
-  'Brand Loyalty': ['loyalty', 'rewards', 'account', 'member'],
-  'Brand Advocacy': ['refer', 'referral', 'reviews', 'share', 'invite', 'ugc']
-};
-function auditCampaignUrl(url, campaign){
-  const checks = [];
-  let parsed = null;
-  try { parsed = new URL(url); } catch (e){ /* invalid — handled below */ }
 
-  checks.push({
-    label: 'Well-formed URL',
-    pass: !!parsed && (parsed.protocol === 'http:' || parsed.protocol === 'https:'),
-    detail: parsed ? `Parses as a valid ${parsed.protocol.replace(':','')} URL.` : `"${url}" doesn't parse as a valid, complete URL (include the https:// prefix).`
-  });
-  if (!parsed) return { checks, passCount: checks.filter(c=>c.pass).length, total: checks.length, allPass: false };
 
-  const params = parsed.searchParams;
-  const utmPresent = ['utm_source', 'utm_medium', 'utm_campaign'].filter(k => params.has(k));
-  checks.push({
-    label: 'UTM tracking parameters',
-    pass: utmPresent.length === 3,
-    detail: utmPresent.length === 3
-      ? `All three of utm_source/utm_medium/utm_campaign are present — this campaign's traffic will be attributable in any analytics tool reading standard UTM params.`
-      : `${utmPresent.length} of 3 present (missing: ${['utm_source','utm_medium','utm_campaign'].filter(k => !params.has(k)).join(', ')}) — without all three, this campaign's traffic can't be reliably separated from other traffic to this page.`
-  });
 
-  // 2026-09-30 — predicted channel in the analytics tool(s) this account uses, plus the case and spacing rules GA4 is strict about.
-  if (params.get('utm_source') && params.get('utm_medium')){
-    const src = params.get('utm_source'), med = params.get('utm_medium');
-    const pred = utmPredictChannels(src.toLowerCase(), med.toLowerCase(), utmVendorBySlug(src.toLowerCase()));
-    if (utmUsesGa4()) checks.push({ label: 'Predicted GA4 channel', pass: pred.ga4.pass, detail: pred.ga4.note });
-    if (utmUsesAdobe()){
-      const adobeParam = state.utmAdobeCodeParam || 'cid';
-      const code = params.get(adobeParam);
-      const bytes = code ? new TextEncoder().encode(code).length : 0;
-      checks.push({ label: 'Adobe channel and tracking code', pass: pred.adobe.pass && !!code && bytes <= 255, detail: `${pred.adobe.note} ${code ? `Tracking code ${adobeParam} is present (${bytes} of 255 bytes).` : `The tracking code parameter ${adobeParam} is missing from this link.`}` });
-    }
-    const messy = [src, med, params.get('utm_campaign') || ''].some(v => v !== v.toLowerCase() || /\s/.test(v));
-    checks.push({ label: 'Lowercase values, no spaces', pass: !messy, detail: messy ? 'GA4 treats Email and email as two different values, and spaces become %20. Use lowercase with hyphens.' : 'Source, medium and campaign are lowercase with no spaces, so they will group correctly.' });
-  }
 
-  const haystack = (parsed.pathname + ' ' + parsed.hostname).toLowerCase();
-  const keywords = OBJECTIVE_URL_KEYWORDS[campaign.objective] || [];
-  const keywordHit = keywords.some(k => haystack.includes(k));
-  checks.push({
-    label: 'URL relevance to campaign objective',
-    pass: keywords.length ? keywordHit : true,
-    detail: !keywords.length
-      ? `No keyword heuristic defined for this objective — skipped.`
-      : keywordHit
-        ? `The URL's path/domain contains language consistent with "${campaign.objective}" (matched: ${keywords.filter(k => haystack.includes(k)).join(', ')}). This is a keyword heuristic, not a real read of the page's actual content — this build has no fetch/crawl capability.`
-        : `Nothing in the URL's path suggests "${campaign.objective}" (looked for: ${keywords.join(', ')}) — worth confirming this is actually the right landing page, not just a homepage or generic link.`
-  });
 
-  const convType = campaign.conversionType;
-  let convDetail, convPass;
-  if (!convType){
-    convPass = true;
-    convDetail = `No Conversion KPI type set on this campaign yet — set one above for a more specific check here.`;
-  } else if (convType === 'eCommerce'){
-    const ecomHit = ['shop','product','cart','checkout','buy','book'].some(k => haystack.includes(k));
-    convPass = ecomHit;
-    convDetail = ecomHit
-      ? `URL path is consistent with an eCommerce conversion path.`
-      : `This campaign's KPI is eCommerce, but nothing in the URL path suggests a purchase path (shop/product/cart/checkout) — confirm this page can actually complete a transaction, not just describe one.`;
-  } else {
-    convPass = true;
-    convDetail = `This campaign's KPI is ${convType} — the URL itself is a weaker signal here than for eCommerce, since the real conversion event (a call or a store visit) happens off this page. Make sure the landing page prominently surfaces ${convType === 'Call Center' ? 'a trackable phone number' : 'store location/hours'}, which this audit can't verify from the URL alone.`;
-  }
-  checks.push({ label: 'Relevance to conversion KPI type', pass: convPass, detail: convDetail });
 
-  const passCount = checks.filter(c => c.pass).length;
-  return { checks, passCount, total: checks.length, allPass: passCount === checks.length };
-}
-
-function renderUrlAuditHtml(audit){
-  return `
-    <p class="hint" style="margin-bottom:10px;">${audit.passCount} of ${audit.total} checks passed. Structural/heuristic only — this build can't fetch the destination page's actual content, so this reads the URL itself, not what's on it.</p>
-    ${audit.checks.map(c => `
-      <div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);">
-        <span style="flex-shrink:0;">${c.pass ? '✓' : '✕'}</span>
-        <span><strong>${c.label}</strong><br><span class="hint" style="display:inline;">${c.detail}</span></span>
-      </div>
-    `).join('')}
-  `;
-}
-
-function runUrlAudit(){
-  const c = findCampaign(currentCampaignId);
-  const url = document.getElementById('campaignUrlInput').value.trim();
-  const panel = document.getElementById('urlAuditPanel');
-  if (!c || !panel) return;
-  if (!url){
-    panel.innerHTML = `<p class="hint">Enter a Campaign URL above first.</p>`;
-    return;
-  }
-  c.campaignUrl = url;
-  c._urlAudit = auditCampaignUrl(url, c);
-  panel.innerHTML = renderUrlAuditHtml(c._urlAudit);
-  renderCampaignQaPanel();
-}
 
 // Round 132av — real server-side fetch of the campaign's actual landing
 // page, per direct instruction: "The URL is nice for analytics but not
@@ -64690,66 +63513,8 @@ function runUrlAudit(){
 // more than it can read cross-origin response status). Requires a saved
 // backend campaign — this is a real fetch against a real URL, there's
 // nothing meaningful to run locally-only.
-async function runLandingPageAudit(){
-  const c = findCampaign(currentCampaignId);
-  const panel = document.getElementById('landingPageAuditPanel');
-  const btn = document.getElementById('landingPageAuditBtn');
-  if (!c || !panel) return;
-  if (c.localOnly || dataSourceLabel !== 'backend'){
-    panel.innerHTML = `<p class="hint">This campaign isn't saved to the real backend yet — the landing page audit needs a real fetch against a saved campaign record.</p>`;
-    return;
-  }
-  if (!(c.campaignUrl || document.getElementById('campaignUrlInput').value.trim())){
-    panel.innerHTML = `<p class="hint">Enter and Save a Campaign URL above first.</p>`;
-    return;
-  }
-  if (btn) btn.disabled = true;
-  panel.innerHTML = `<p class="hint">Fetching the live page…</p>`;
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}/landing-page-audit`, { method: 'POST' });
-    const data = await resp.json();
-    if (!resp.ok){
-      panel.innerHTML = `<p class="hint">Couldn't run the audit: ${escapeHtml(data.error || 'unknown error')}</p>`;
-      return;
-    }
-    c._landingPageAudit = data;
-    c.landingPageAuditJson = JSON.stringify(data);
-    c.landingPageAuditAt = data.runAt;
-    panel.innerHTML = renderLandingPageAuditHtml(data);
-    renderCampaignQaPanel();
-  } catch (e){
-    panel.innerHTML = `<p class="hint">Couldn't reach the backend to run this audit.</p>`;
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-}
-function renderLandingPageAuditHtml(audit){
-  if (!audit.fetchOk){
-    return `<p class="hint">Couldn't fetch the live page: ${escapeHtml(audit.fetchError || 'unknown error')}</p>`;
-  }
-  const scoreLine = (label, s) => s.score === null
-    ? `<div style="padding:6px 0;"><strong>${label}:</strong> <span class="hint">not scored — ${escapeHtml(s.note || 'AI scoring not configured')}</span></div>`
-    : `<div style="padding:6px 0;"><strong>${label}:</strong> ${s.score}% <span class="hint">— ${escapeHtml(s.note || '')}</span></div>`;
-  const cta = audit.page.cta;
-  return `
-    <p class="hint" style="margin-bottom:8px;">Fetched ${new Date(audit.runAt).toLocaleString()}. Title: "${escapeHtml(audit.page.title || '(none found)')}" · Headline: "${escapeHtml(audit.page.headline || '(none found)')}"${audit.page.heroImageUrl ? ` · Hero image found` : ' · No hero image found'}.</p>
-    <div style="border-top:1px solid var(--line);padding-top:10px;margin-bottom:10px;">
-      <div class="section-eyebrow" style="margin-bottom:6px;">Relevance — content &amp; imagery</div>
-      ${scoreLine('Content relevance', audit.relevance.content)}
-      ${scoreLine('Imagery relevance', audit.relevance.imagery)}
-      ${audit.relevance.copyMatch ? scoreLine('Match to the ad copy', audit.relevance.copyMatch) : ''}
-    </div>
-    <div style="border-top:1px solid var(--line);padding-top:10px;">
-      <div class="section-eyebrow" style="margin-bottom:6px;">Performance — CTA path</div>
-      <div style="padding:6px 0;">
-        ${cta
-          ? `<strong>CTA found:</strong> "${escapeHtml(cta.text)}"${cta.href ? ` → ${escapeHtml(cta.href)}` : ' (no link href)'}`
-          : `<strong>CTA found:</strong> <span class="hint">none identified on the page</span>`}
-      </div>
-      ${audit.performance.ctaLinkResolves ? `<div style="padding:6px 0;"><strong>CTA link resolves:</strong> ${audit.performance.ctaLinkResolves.ok ? `✓ (HTTP ${audit.performance.ctaLinkResolves.status})` : `✕ (${audit.performance.ctaLinkResolves.status ? `HTTP ${audit.performance.ctaLinkResolves.status}` : escapeHtml(audit.performance.ctaLinkResolves.error || 'failed')})`}</div>` : ''}
-      <div style="padding:6px 0;"><strong>CTA path fits conversion type:</strong> ${audit.performance.ctaPathCoherence.pass === null ? `<span class="hint">n/a</span>` : (audit.performance.ctaPathCoherence.pass ? '✓' : '✕')} <span class="hint">— ${escapeHtml(audit.performance.ctaPathCoherence.detail)}</span></div>
-    </div>`;
-}
+
+
 
 /* ---------- Search Everywhere (SEO/AEO/GEO) — keyword recommendations
    (round 32) ----------
