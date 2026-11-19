@@ -88,7 +88,7 @@ function row(t, i, key, cost){ let on = false; try { on = localStorage.getItem(k
 document.getElementById('free').innerHTML = FREE.map((t,i)=>row(t,i,'vl_trial_f'+i,'free')).join('');
 document.getElementById('spend').innerHTML = SPEND.map((t,i)=>row(t,i,'vl_trial_s'+i,'paid')).join('');
 document.addEventListener('change', e => { const c = e.target.closest('input[data-k]'); if (!c) return; try { localStorage.setItem(c.dataset.k, c.checked ? '1' : '0'); } catch(x){} c.closest('li').classList.toggle('done', c.checked); });
-function token(id){ try { return sessionStorage.getItem('verilume_session_' + id) || ''; } catch(e){ return ''; } }
+function token(id){ let t = ''; try { t = localStorage.getItem('verilume_session_' + id) || ''; } catch(e){} if (!t){ try { t = sessionStorage.getItem('verilume_session_' + id) || ''; } catch(e){} } return t; }
 async function meter(){
   try {
     const r = await fetch(API + '/api/accounts/' + encodeURIComponent(accountId), { headers:{ Authorization:'Bearer ' + token(accountId) } });
@@ -106,7 +106,8 @@ document.getElementById('openBtn').addEventListener('click', async () => {
     const r = await fetch(API + '/api/accounts/' + encodeURIComponent(accountId) + '/demo-session', { method:'POST', headers:{ Authorization:'Bearer ' + token(accountId) } });
     const j = await r.json().catch(()=>({}));
     if (!r.ok) throw new Error(j.error || 'Could not open the demo');
-    sessionStorage.setItem('verilume_session_' + j.demoAccountId, j.token);
+    try { localStorage.setItem('verilume_session_' + j.demoAccountId, j.token); } catch(e){}
+    try { sessionStorage.setItem('verilume_session_' + j.demoAccountId, j.token); } catch(e){}
     location.href = 'portal.html?accountId=' + encodeURIComponent(j.demoAccountId) + '&trial=' + encodeURIComponent(accountId);
   } catch(ex){ err.textContent = ex.message + '.'; }
 });
