@@ -13847,7 +13847,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
   </div>
 
   <!-- ================= CAMPAIGN DETAIL ================= -->
-  <div class="step" id="step-campaign">
+  <div id="cmpCardHost" style="display:none;" aria-hidden="true">
     <!-- Round 132pp (2026-08-10), bug fix per direct report: "The Create
          Campaign when managing an existing campaign reverted back instead
          of Save Changes." This breadcrumb's "Campaign Creation" link used
@@ -13864,13 +13864,6 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
          currentCampaignId is already set the moment this page opens (see
          goToStep()'s 'campaign' branch) — same real wizard-in-edit-mode
          hand-off Campaign Management's button uses. -->
-    <div class="crumb"><a onclick="goToStep('dashboard')" class="crumb-home-link">CMO Dashboard</a> / <a onclick="goToStep('campaignMgmt')">Campaign Management</a> / <a onclick="cmpManageExistingCampaign(currentCampaignId)">Campaign Creation</a> / <span id="campaignCrumb"></span></div>
-    <div id="campaignSubNav"></div>
-    <div class="eyebrow">Campaign</div>
-    <h1 id="campaignTitle"></h1>
-    <p class="lede" id="campaignMeta"></p>
-    <div class="camp-card-tags" id="campaignVisTags" style="margin:0 0 16px;"></div>
-    <div id="campaignIdBlock" style="font-size:0.875rem;color:var(--muted);margin:-6px 0 20px;"></div>
 
     <!-- 2026-09-28 addition, per direct instruction: "DM Audience Size *
          Cost per Piece to create actual budget." Only rendered (non-empty)
@@ -14080,11 +14073,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
       </div>
     </div>
 
-    <div id="campaignProjectsCard">
-      <h2 style="margin-top:8px;">Projects</h2>
-      <div id="projectsList"></div>
-    </div>
-
+    
     <!-- Creative Messaging Collection (Deliverable #7 — Creative library),
          per cxmedia-creative-messaging-scope.md. Sits ahead of Creative Jobs
          below in the flow — this is where messaging/copy across formats
@@ -14204,12 +14193,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
       </div>
     </div>
 
-    <div id="campaignAddProjectCard">
-      <h2 style="margin-top:26px;">Add a project</h2>
-      <p class="lede">Each Project Type is a recipe — a master asset, then (where marked) a derivative fan-out in a single pass. See the architecture doc's Section 3 table for the full mapping.</p>
-      <div class="project-type-grid" id="projectTypeGrid"></div>
-    </div>
-
+    
     <!-- Round 31 — Campaign QA & Alignment Score, per direct instruction:
          (1) every marketing function activated on this campaign must have a
          complete, individually-QA'd output before the campaign counts as
@@ -14282,7 +14266,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-19-r47-old-campaign-page-retired';
+const CXMEDIA_BUILD_STAMP = '2026-11-19-r48-old-campaign-page-deleted';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -14905,7 +14889,7 @@ const FUNCTION_GROUPS = [
     // under Brand (Messaging) → Ad Hoc Projects today. adhoc:true routes
     // straight into the Ad Hoc project picker via goAdHoc(), same as the
     // Dashboard's own Ad Hoc link.
-    { name: 'Email Sequence (Trigger Emails)', tier: 'ready', built: true, adhoc: true, note: 'The built 4-part drip generator (Email 1 → Day 3 → Day 7 → Day 14) — opens as an Ad Hoc project, same generator as before, just given its own home here.' },
+    { name: 'Email Sequence (Trigger Emails)', tier: 'hybrid', built: false, note: 'The 4-part drip generator (Email 1 → Day 3 → Day 7 → Day 14) was part of Ad Hoc Projects, which have been retired. It needs a new home in the campaign flow.' },
     { name: 'Email Campaign Planning', tier: 'hybrid', built: false, note: 'The planning/calendar layer around Email Sequence — not yet its own function; Marketing Calendar covers general campaign scheduling today.' }
   ]}
 ];
@@ -15145,7 +15129,7 @@ function isCreativeProjectType(key){
   const def = PROJECT_TYPES.find(t => t.key === key);
   return !!(def && def.creative);
 }
-const PROJECT_TIER_LABEL = { ready: 'Prompt-ready', hybrid: 'Hybrid', integration: 'Integration-required' };
+
 
 // Round 31 — which FUNCTION_GROUPS key(s) each Project Type actually
 // satisfies, for Campaign QA's "all marketing functions must be complete"
@@ -21121,25 +21105,9 @@ function generateCreativeCopyStructure(channel, stage){
 // Round 89 — updated to the MMM_CATEGORIES equivalents (PR/Earned → PR,
 // Linear → Linear TV), now that campaign channel selection uses that
 // taxonomy.
-const UNTRACKABLE_CHANNELS = ['PR', 'Linear TV', 'Radio'];
-const TESTING_APPROACH_TIERS = [
-  { max: 5000, label: 'Sequential, one-variable learning', rationale: 'Volume at this budget almost never reaches statistical significance — a formal test here would just be noise dressed up as data. Run the campaign, change one variable next time (offer, creative, or list), and compare wave-over-wave instead.' },
-  { max: 25000, label: 'A single A/B test on the highest-leverage variable', rationale: 'Enough volume for one clean test, not enough for a multivariate design. Pick one variable — usually creative or offer, not both — and split roughly 50/50 where the channel allows it. If full-funnel conversions are too sparse to reach significance within the flight, a proxy metric (CTR/response rate) is an acceptable early read.' },
-  { max: 100000, label: 'A real A/B or small multivariate test, plus a holdout group', rationale: 'Enough budget to afford a deliberate control group (10-20% held out entirely) without starving the test group — this is exactly where per-placement tracking links matter for channels with no native click tracking.' },
-  { max: Infinity, label: 'A structured test-and-learn program', rationale: 'At this spend level, an unmeasured incremental-lift question is itself expensive. Set aside a stated share of budget (roughly 10% is a reasonable starting figure) specifically for testing, use geo/matched-market holdouts for channels that can’t be individually click-tracked, and run a testing calendar across multiple waves rather than one single test.' }
-];
-function recommendTestingApproach(budget, channels){
-  const b = (typeof budget === 'number' && budget > 0) ? budget : 0;
-  const tier = TESTING_APPROACH_TIERS.find(t => b <= t.max) || TESTING_APPROACH_TIERS[TESTING_APPROACH_TIERS.length - 1];
-  const untrackable = (channels || []).filter(ch => UNTRACKABLE_CHANNELS.includes(ch));
-  return {
-    label: tier.label,
-    rationale: tier.rationale,
-    untrackableNote: untrackable.length
-      ? `${untrackable.join(', ')} ${untrackable.length > 1 ? 'have' : 'has'} no direct click/response mechanism — a geo or matched-market holdout (or a unique promo code/tracking link, per the Ad Trafficking card) is the only honest way to measure ${untrackable.length > 1 ? 'these' : 'this'} regardless of budget tier.`
-      : ''
-  };
-}
+
+
+
 
 // Global money formatter — several existing functions (renderActiveCampaigns,
 // the Analysis-step control) declare their own locally-scoped copy of this
@@ -34081,7 +34049,7 @@ function renderGroup(groupKey){
     // Round 131 — s.adhoc (Lifecycle Marketing's Email Sequence line) opens
     // the Ad Hoc project picker directly, same entry point as the
     // Dashboard's own "Ad Hoc Project" link, rather than a group route.
-    const onclickTarget = s.queueSpecialty ? `goToStep('marketingOpsQueue','${s.queueSpecialty}')` : s.adhoc ? `goAdHoc()` : `goToStep('${s.route || 'voice'}')`;
+    const onclickTarget = s.queueSpecialty ? `goToStep('marketingOpsQueue','${s.queueSpecialty}')` : `goToStep('${s.route || 'voice'}')`;
     const action = blocked
       ? `<span class="btn-ghost" style="padding:6px 14px;font-size:0.75rem;opacity:0.5;cursor:not-allowed;pointer-events:none;">Blocked — Brand required</span>`
       : s.built
@@ -36156,21 +36124,7 @@ function applyOrgModel(){
 // stage/channel allocations now, not just one). Only renders anything for
 // plan-funded campaigns with at least one real draw amount — unplanned
 // campaigns and plan-funded campaigns with no draws yet show nothing here.
-function renderCampaignAllocationDrawsSummary(c){
-  if (c.fundingSource !== 'plan') return '';
-  const draws = (c.allocationDraws && c.allocationDraws.length)
-    ? c.allocationDraws
-    : (c.allocationId ? [{ allocationId: c.allocationId, amount: c.budget }] : []);
-  const meaningful = draws.filter(d => d.allocationId);
-  if (!meaningful.length) return '';
-  const plan = state.mediaPlan;
-  const rows = meaningful.map(d => {
-    const alloc = plan ? (plan.allocations || []).find(a => a.id === d.allocationId) : null;
-    const label = alloc ? `${alloc.stage} · ${alloc.channel}` : 'Allocation no longer on the Media Plan';
-    return `${label} — ${fmtMoney(d.amount || 0)}`;
-  });
-  return `<div style="margin-top:6px;">Media Plan draws: ${rows.join(' · ')}</div>`;
-}
+
 
 // Round 132bx (2026-08-13), per direct instruction: "cancel needs to come
 // out of the budget... not going to worry about cancellation fees" — a
@@ -49061,18 +49015,7 @@ async function utmLoadShortCounts(campaignId, jobId, elId){
 // Copy Job Link: copies a URL that, when opened, lands directly on Add
 // Campaign Details with the matching campaign already selected below (see
 // the jobId handling in Init and loadExistingCampaignIntoForm()).
-function copyJobLink(campaignId, evt, noteElId){
-  if (evt) evt.stopPropagation();
-  if (!campaignId) return;
-  const url = `${location.href.split('?')[0]}?accountId=${encodeURIComponent(state.companyId)}&jobId=${encodeURIComponent(campaignId)}`;
-  const noteEl = document.getElementById(noteElId || `jobLinkNote-${campaignId}`);
-  const done = ok => { if (noteEl) noteEl.textContent = ok ? 'Link copied ✓' : `Copy failed — link: ${url}`; };
-  if (navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(url).then(() => done(true)).catch(() => done(false));
-  } else {
-    done(false);
-  }
-}
+
 
 // Round 132d follow-on (2026-08-09) — the free-text "Edit an existing
 // campaign" search box this used to resolve (handleExistingCampaignSearchInput())
@@ -59649,26 +59592,7 @@ async function createCampaign(){
 // creates one synthetic "Ad Hoc Projects" campaign per account (flagged
 // isAdHoc so the UI can label it distinctly) and jumps straight to the
 // Project Type picker, skipping the Create Campaign form entirely.
-async function goAdHoc(){
-  if (!requireBrandFoundations()) return;
-  let campaign = state.campaigns.find(c => c.isAdHoc);
-  if (!campaign){
-    const payload = { objective: 'Ad Hoc Projects', name: 'Ad Hoc Projects', segment: '', stage: '', keyMessage: '', isAdHoc: true };
-    let campaignId = null;
-    if (dataSourceLabel === 'backend'){
-      try {
-        const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/campaigns`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
-        });
-        if (resp.ok) campaignId = (await resp.json()).campaignId;
-      } catch (e){ console.warn('goAdHoc: backend write failed, creating locally only.', e); }
-    }
-    if (!campaignId) campaignId = `local-adhoc-${Date.now()}`;
-    campaign = { id: campaignId, accountId: state.companyId, ...payload, createdAt: new Date().toISOString(), projects: [], localOnly: campaignId.startsWith('local-') };
-    state.campaigns.push(campaign);
-  }
-  goToStep('campaign', campaign.id);
-}
+
 
 function findCampaign(id){ return state.campaigns.find(c => c.id === id); }
 function findProject(campaignId, projectId){
@@ -59676,25 +59600,7 @@ function findProject(campaignId, projectId){
   return c ? c.projects.find(p => p.id === projectId) : null;
 }
 
-async function createProject(projectType){
-  const campaign = findCampaign(currentCampaignId);
-  if (!campaign) return;
-  let projectId = null;
-  if (dataSourceLabel === 'backend' && !campaign.localOnly){
-    try {
-      const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(campaign.id)}/projects`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectType })
-      });
-      if (resp.ok) projectId = (await resp.json()).projectId;
-    } catch (e){ console.warn('createProject: backend write failed, creating locally only.', e); }
-  }
-  if (!projectId) projectId = `local-${Date.now()}`;
-  const project = { id: projectId, campaignId: campaign.id, projectType, status: 'draft', masterContent: '', derivatives: null, fields: {},
-    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), localOnly: projectId.startsWith('local-') };
-  campaign.projects.push(project);
-  currentProjectId = projectId;
-  goToStep('project');
-}
+
 
 async function saveProject(status){
   const project = findProject(currentCampaignId, currentProjectId);
@@ -60005,7 +59911,6 @@ async function cycleBrandStage(){
       if (resp.ok) persisted = true;
     } catch (e){ console.warn('cycleBrandStage: backend write failed, saved locally only.', e); }
   }
-  renderCampaignDetail();
   renderActiveCampaigns();
   renderCampaignsList();
   const flag = document.getElementById('lifecycleSaveFlag');
@@ -60822,7 +60727,6 @@ async function approveCampaignQa(){
       if (resp.ok) persisted = true;
     } catch (e){ console.warn('approveCampaignQa: backend write failed, saved locally only.', e); }
   }
-  renderCampaignDetail();
   renderActiveCampaigns();
   renderCampaignsList();
   const flag = document.getElementById('lifecycleSaveFlag');
@@ -60848,33 +60752,7 @@ async function approveCampaignQa(){
 // campaign's MMM line items (see saveCampaignMmmLineItems() below) rather
 // than hand-typed here. Actual conversions and analysis notes are unrelated
 // to the MMM line-item shape and stay exactly as before.
-async function saveAnalysisInputs(){
-  const c = findCampaign(currentCampaignId);
-  if (!c) return;
-  const convRaw = document.getElementById('anConversions').value;
-  const revRaw = document.getElementById('anRevenue') ? document.getElementById('anRevenue').value : '';
-  const notes = document.getElementById('anNotes').value.trim();
-  c.actualConversions = convRaw ? Number(convRaw) : null;
-  c.actualRevenue = revRaw ? Number(revRaw) : null;
-  c.analysisNotes = notes;
-  let persisted = false;
-  if (dataSourceLabel === 'backend' && !c.localOnly){
-    try {
-      const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ actualConversions: c.actualConversions, actualRevenue: c.actualRevenue, analysisNotes: c.analysisNotes })
-      });
-      if (resp.ok) persisted = true;
-    } catch (e){ console.warn('saveAnalysisInputs: backend write failed, saved locally only.', e); }
-  }
-  const flag = document.getElementById('analysisSaveFlag');
-  if (flag){
-    flag.textContent = persisted
-      ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend.`
-      : `Saved ${new Date().toLocaleTimeString()} — local only, this session (no backend record for this account, or the backend is unreachable).`;
-    flag.classList.add('visible');
-  }
-}
+
 
 // Round 89 — per-MMM-category line items for this campaign (Spend/Reach/
 // Impressions), per direct instruction. One row per this campaign's
@@ -60909,48 +60787,8 @@ function renderCampaignMmmLineItemsRows(c){
     </tr>`;
   }).join('');
 }
-function renderCampaignMmmTotals(c){
-  const el = document.getElementById('cmpMmmTotals');
-  if (!el) return;
-  el.innerHTML = `<strong>Totals (computed from line items):</strong> Spend ${fmtMoney(c.actualSpend)} &middot; Reach ${c.actualReach != null ? Number(c.actualReach).toLocaleString() : '—'} &middot; Impressions ${c.actualImpressions != null ? Number(c.actualImpressions).toLocaleString() : '—'}`;
-}
-async function saveCampaignMmmLineItems(){
-  const c = findCampaign(currentCampaignId);
-  if (!c) return;
-  const flag = document.getElementById('cmpMmmLineItemsSaveFlag');
-  const inputs = document.querySelectorAll('.cmp-mmm-li-input');
-  const byCategory = {};
-  inputs.forEach(inp => {
-    const cat = inp.getAttribute('data-category');
-    const field = inp.getAttribute('data-field');
-    if (!byCategory[cat]) byCategory[cat] = { category: cat, spend: null, reach: null, impressions: null };
-    byCategory[cat][field] = inp.value !== '' ? inp.value : null;
-  });
-  const lineItems = Object.values(byCategory);
-  if (dataSourceLabel !== 'backend' || c.localOnly){
-    if (flag) flag.textContent = 'No backend record for this account, or the backend is unreachable — not saved.';
-    return;
-  }
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/campaigns/${encodeURIComponent(c.id)}/mmm-line-items`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lineItems })
-    });
-    if (!resp.ok){
-      const err = await resp.json().catch(() => ({}));
-      if (flag) flag.textContent = err.error || 'Could not save line items.';
-      return;
-    }
-    const data = await resp.json();
-    c.mmmLineItems = data.lineItems;
-    c.actualSpend = data.actualSpend;
-    c.actualReach = data.actualReach;
-    c.actualImpressions = data.actualImpressions;
-    renderCampaignMmmLineItemsRows(c);
-    renderCampaignMmmTotals(c);
-    if (flag) flag.textContent = `Saved ${new Date().toLocaleTimeString()}.`;
-  } catch (e){ if (flag) flag.textContent = 'Backend unreachable — not saved.'; }
-}
+
+
 
 // Round 65 — Brand card: account-level Brand Foundations status (read-only,
 // links to the actual Voice/Style Assets/Positioning screens — those are
@@ -60959,20 +60797,7 @@ async function saveCampaignMmmLineItems(){
 // here) plus this specific campaign's own brand messaging fields, which are
 // a distinct, campaign-level activation rather than a duplicate of the
 // account's Brand Voice.
-function renderCampaignBrandFoundationsStatus(){
-  const el = document.getElementById('campaignBrandFoundationsStatus');
-  if (!el) return;
-  const rows = [
-    { name: 'Brand Voice', done: state.voice.approved, step: 'voice' },
-    { name: 'Style Assets', done: state.styleAssets.approved, step: 'styleAssets' },
-    { name: 'Competitive Positioning', done: state.positioning.approved, step: 'competitivePositioning' }
-  ];
-  el.innerHTML = `
-    <div style="font-size:0.7812rem;color:#8a8067;margin-bottom:8px;">Account-level foundations every campaign inherits — edit these on their own screens, not here.</div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;">
-      ${rows.map(r => `<a onclick="goToStep('${r.step}')" class="badge ${r.done ? 'strong' : 'weak'}" style="text-decoration:none;cursor:pointer;">${r.name}: ${r.done ? 'Approved' : 'Not approved'}</a>`).join('')}
-    </div>`;
-}
+
 async function saveCampaignBrandFields(){
   const c = findCampaign(currentCampaignId);
   if (!c) return;
@@ -61437,21 +61262,7 @@ function campaignTypeDetailsClient(c){
 // from renderCampaignDetail() same as every other card's populate step, and
 // again after a successful save so the completeness readout reflects what
 // was just written.
-function renderCampaignTypeCard(c){
-  const select = document.getElementById('campaignTypeSelect');
-  if (!select) return;
-  if (select.options.length <= 1){
-    Object.keys(CAMPAIGN_TYPE_REGISTRY_CLIENT).forEach(key => {
-      const opt = document.createElement('option');
-      opt.value = key;
-      opt.textContent = CAMPAIGN_TYPE_REGISTRY_CLIENT[key].label;
-      select.appendChild(opt);
-    });
-  }
-  select.value = c.campaignType || '';
-  renderCampaignTypeDetailFields(c.campaignType || '', campaignTypeDetailsClient(c));
-  renderCampaignTypeCompleteness(c);
-}
+
 // Rebuilds just the detail-field inputs for whatever type is currently
 // selected — called on every select change (before any save) and on initial
 // render. savedValues seeds the inputs from what's actually on the campaign;
@@ -61619,272 +61430,9 @@ async function saveCampaignPerformanceFields(){
 // order they appear, so a specialty deep-link (e.g. Tracking Links from
 // the Marketing Ops Task Queue) can collapse everything except the one
 // card relevant to that task.
-const CAMPAIGN_DETAIL_CARD_IDS = [
-  'campaignMediaMixCard', 'campaignPerfMarketingCard', 'campaignBrandCard',
-  'campaignTypeCard',
-  'campaignLifecycleCard', 'campaignAnalyticsCard', 'campaignTrackingCard',
-  'campaignCreativeCollectionsCard', 'campaignCreativeJobsCard',
-  'campaignTraffickingCard', 'campaignQaCard'
-];
-function applyCampaignCardFocus(focusCardId){
-  CAMPAIGN_DETAIL_CARD_IDS.forEach(id => {
-    const card = document.getElementById(id);
-    if (!card) return;
-    card.classList.add('collapsible');
-    if (focusCardId) card.classList.toggle('collapsed', id !== focusCardId);
-    else card.classList.remove('collapsed');
-  });
-}
-function renderCampaignDetail(focusCardId){
-  const c = findCampaign(currentCampaignId);
-  if (!c) return;
-  const isAdHoc = !!c.isAdHoc;
-  // Round 32, part D — recommended channel/audience mix + spend allocation.
-  // Ad Hoc projects have no stage/channels/budget of their own, so there's
-  // nothing to recommend a mix for; the card itself is hidden for them.
-  const mediaMixCardEl = document.getElementById('campaignMediaMixCard');
-  if (mediaMixCardEl) mediaMixCardEl.style.display = isAdHoc ? 'none' : '';
-  if (!isAdHoc) renderMediaMixCard();
-  // Round 99 — Performance Marketing card follows the same Ad Hoc rule as
-  // the Recommended Mix card above it: Ad Hoc projects have no channel/
-  // audience mix of their own, so there's nothing to validate or target.
-  const perfMarketingCardEl = document.getElementById('campaignPerfMarketingCard');
-  if (perfMarketingCardEl) perfMarketingCardEl.style.display = isAdHoc ? 'none' : '';
-  if (!isAdHoc){
-    document.getElementById('campaignAudienceTargets').value = c.segment || c.audienceTargets || '';
-    const validatedNoteEl = document.getElementById('campaignPerfMarketingValidatedNote');
-    if (validatedNoteEl) validatedNoteEl.textContent = c.pmValidatedAt ? `Last validated ${new Date(c.pmValidatedAt).toLocaleString()}.` : 'Not yet validated.';
-  }
-  const label = c.name || c.objective;
-  document.getElementById('campaignCrumb').textContent = label;
-  document.getElementById('campaignTitle').textContent = label;
-  renderCampaignBrandFoundationsStatus();
-  document.getElementById('campaignBrandKeyMessage').value = c.keyMessage || '';
-  document.getElementById('campaignBrandToneNotes').value = c.brandToneNotes || '';
-  document.getElementById('campaignCreativeBrief').value = c.creativeBrief || '';
-  document.getElementById('campaignLongformCopy').value = c.longformCopy || '';
-  // 2026-08-22 — Campaign Type card, same "populate on every detail-page
-  // render" convention as every other card above. Ad Hoc projects have no
-  // typed scenario any more than they have a Stage/Objective, so this stays
-  // visible but harmless for them (General/unset, same as an un-migrated
-  // pre-existing campaign) rather than adding another isAdHoc special case.
-  renderCampaignTypeCard(c);
-  document.getElementById('campaignMeta').textContent = isAdHoc
-    ? `Ad Hoc — a project started directly, without a Campaign. Everything created here stands alone.${c.localOnly ? ' Local only, this session (no backend record for this account).' : ''}`
-    : `${[c.keyMessage].filter(Boolean).join(' · ') || 'No key message set.'}${c.localOnly ? ' — local only, this session (no backend record for this account).' : ''}`;
 
-  // Round 53 — visibility tags (objective's stage/channels/audience already
-  // shown in the H1/lede; this row puts them where a Director scanning the
-  // page can see them without reading prose), plus the funding source, right
-  // under the title — same priority ordering as the campaign list card.
-  const visTagsEl = document.getElementById('campaignVisTags');
-  if (isAdHoc){
-    visTagsEl.innerHTML = '';
-  } else {
-    const segments = (c.segment || '').split(',').map(s => s.trim()).filter(Boolean);
-    const channels = cmpCreativeChannelsText(c).split(',').map(s => s.trim()).filter(Boolean);
-    const align = computeCampaignRelevanceScore(c);
-    const funding = c.fundingSource === 'plan' ? 'Media Plan' : 'Unplanned';
-    visTagsEl.innerHTML = `
-      ${c.stage ? `<span class="camp-tag stage">${c.stage}</span>` : ''}
-      ${channels.map(ch => `<span class="camp-tag channel">${ch}</span>`).join('') || '<span class="camp-tag">No channel set</span>'}
-      ${segments.map(s => `<span class="camp-tag audience">${s}</span>`).join('')}
-      <span class="camp-tag">${funding}${c.budget != null ? ' · ' + fmtMoney(c.budget) : ''}</span>
-      <span class="camp-tag">Alignment ${Math.round(align.overall)}</span>`;
-  }
-  // 2026-09-28 addition — see cmpRenderDmActualBudgetCard()'s own comment.
-  // Fires the async loader every render; it self-guards (no-op once this
-  // account's data is already cached) and re-renders this card when it
-  // resolves, so the first-ever load on a fresh account just fills in a
-  // beat after the rest of the page.
-  if (typeof cmpLoadDmActualBudgetInputsIfNeeded === 'function') cmpLoadDmActualBudgetInputsIfNeeded();
-  if (typeof cmpRenderDmActualBudgetCard === 'function') cmpRenderDmActualBudgetCard(c);
 
-  // Round 17, point 4 — Campaign ID + Copy Job Link (previously only shown
-  // once, in the Add Campaign Details "created" banner) and the Marketing
-  // Functions activated at creation now live here permanently, since this
-  // page is where Add Campaign Details hands off to.
-  const idBlockEl = document.getElementById('campaignIdBlock');
-  if (isAdHoc){
-    idBlockEl.innerHTML = '';
-  } else {
-    const fns = (c.functions || '').split(',').map(s => s.trim()).filter(Boolean);
-    // Round 32 — campaign context, so the campaign-level label (e.g.
-    // "PR/Corp Comm") applies here, not the "overall" one.
-    const fnLabels = fns.map(key => { const g = FUNCTION_GROUPS.find(g => g.key === key); return g ? (g.campaignLabel || g.label) : key; });
-    idBlockEl.innerHTML = `
-      <div>Campaign ID: <span class="cid" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:700;color:var(--media);">${c.id}</span>
-        <a class="flink" style="margin-left:12px;" onclick="copyJobLink('${c.id}', event, 'campaignIdLinkNote')">Copy Job Link →</a>
-        <span class="hint" id="campaignIdLinkNote"></span>
-      </div>
-      <div style="margin-top:6px;">Marketing functions activated: ${fnLabels.length ? fnLabels.join(', ') : '<span style="color:var(--muted);">none selected</span>'}</div>
-      ${renderCampaignAllocationDrawsSummary(c)}`;
-  }
 
-  // Round 36 — 7-stage progress bar + advance controls, skipped for Ad Hoc
-  // (it isn't a campaign moving through these stages, it's a standalone
-  // project bucket).
-  const lifecycleEl = document.getElementById('campaignLifecycle');
-  const lifecycleCardEl = document.getElementById('campaignLifecycleCard');
-  if (isAdHoc){
-    lifecycleEl.innerHTML = '';
-    // Round 56 — hide the whole card (header included), not just the body,
-    // now that the sk-* redesign split them into separate elements; hiding
-    // only the body would leave an empty-looking "Campaign lifecycle" card
-    // showing for Ad Hoc campaigns, which never had a lifecycle to begin with.
-    if (lifecycleCardEl) lifecycleCardEl.style.display = 'none';
-  } else {
-    if (lifecycleCardEl) lifecycleCardEl.style.display = '';
-    const stages = computeStageStatuses(c);
-    const byKey = key => stages.find(s => s.key === key);
-
-    // Brand stage — manual, no live per-campaign brand-asset signal exists
-    // yet, so a simple cycle button (Not Started → In Progress → Complete →
-    // Not Started) stands in for a real completion mechanism.
-    const brandNext = { 'not-started': 'In Progress', 'in-progress': 'Complete', 'complete': 'Not Started' }[byKey('brand').status];
-    const brandControl = `<div class="btn-row" style="margin-top:0;">
-      <button class="btn-ghost" onclick="cycleBrandStage()">Brand: ${STAGE_STATUS_LABEL[byKey('brand').status]} — mark "${brandNext}" →</button>
-    </div>`;
-
-    // QA & Approval — the one new manual gesture per direct instruction 2:
-    // "based on the marketing function QA... marked complete by the team
-    // member." Gated on Functions + Creative both Complete first.
-    let qaControl = '';
-    if (byKey('qa').status === 'complete'){
-      qaControl = `<p class="hint" style="margin:8px 0 0;">QA & Approval marked complete.</p>`;
-    } else {
-      // 2026-09-28 — opens the collective Final Approval review
-      // (cmpOpenFinalApprovalReview(), above approveCampaignQa() in this
-      // file) instead of firing the completion gesture blind. Approving
-      // both sections in there is what actually calls approveCampaignQa().
-      qaControl = `<div class="btn-row" style="margin-top:8px;"><button class="btn-primary" onclick="cmpOpenFinalApprovalReview()">Open Final Approval review →</button></div>`;
-    }
-
-    // 2026-09-16, per direct correction — "campaigns have start and end
-    // dates to establish when a campaign is in market," not a manual
-    // button. The two "Mark In Market →"/"Move to Analysis →" buttons that
-    // used to live here (setCampaignStatus(), now removed) are replaced
-    // with a read-only line — status is derived from the campaign's own
-    // dates (deriveCampaignStatusFromDates()) and can't disagree with them.
-    let marketAnalysisControl = '';
-    if (c.status !== 'In Market' && c.status !== 'Analysis'){
-      marketAnalysisControl = `<p class="hint" style="margin:8px 0 0;">${c.startDate ? `Enters market automatically on ${c.startDate}.` : 'Enters market automatically once a start date is set.'}</p>`;
-    } else if (c.status === 'In Market'){
-      marketAnalysisControl = `<p class="hint" style="margin:8px 0 0;">In Market — today falls within its ${c.startDate || '?'} – ${c.endDate || '?'} run. Moves to Analysis automatically on ${c.endDate || 'its end date'}.</p>`;
-    } else {
-      const fmtMoney = n => (typeof n === 'number' && n !== null) ? n : '';
-      // Round 89 — replaces the old manually-typed "Actual spend"/"Actual
-      // impressions" inputs with a per-MMM-category line-item table (one row
-      // per this campaign's selected Channels, which now come from
-      // MMM_CATEGORIES — see renderCmpChannelRow()), per direct instruction:
-      // (1) a line item per category with real Spend/Reach/Impressions,
-      // (2) the campaign's total Spend/Reach/Impressions become a computed
-      // sum of those line items rather than separately hand-typed numbers.
-      // Actual conversions and analysis notes stay as before — conversions
-      // isn't part of the MMM line-item shape, and notes are free text.
-      marketAnalysisControl = `
-        <p class="lede" style="margin:10px 0 14px;">No live analytics feed in this MVP — enter results by hand once they're known.</p>
-        <p style="font-size:0.8125rem;font-weight:600;margin:0 0 8px;">Per-category actuals (drives the computed totals below, and rolls up into MMM by this campaign's Start Date)</p>
-        <div class="table-scroll"><table class="data-table" id="cmpMmmLineItemsTable" style="margin-bottom:10px;">
-          <thead><tr><th>Category</th><th>Spend</th><th>Reach</th><th>Impressions</th></tr></thead>
-          <tbody id="cmpMmmLineItemsRows"></tbody>
-        </table></div>
-        <div class="btn-row" style="margin-top:0;margin-bottom:6px;">
-          <button type="button" class="btn-primary" onclick="saveCampaignMmmLineItems()">Save line items →</button>
-        </div>
-        <div id="cmpMmmLineItemsSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-bottom:10px;"></div>
-        <p id="cmpMmmTotals" style="font-size:0.8125rem;margin:0 0 14px;"></p>
-        <div class="field"><label>Actual conversions</label><input type="number" id="anConversions" min="0" step="1" value="${c.actualConversions != null ? c.actualConversions : ''}"></div>
-        <div class="field"><label>Actual revenue (USD) <span style="font-weight:400;text-transform:none;color:var(--muted);">— booked/attributed revenue for this campaign, for the Revenue and ROAS rows</span></label><input type="number" id="anRevenue" min="0" step="1" value="${c.actualRevenue != null ? c.actualRevenue : ''}"></div>
-        <div class="field"><label>Analysis notes</label><textarea id="anNotes" rows="3" placeholder="What worked, what didn't, what to change next time.">${c.analysisNotes || ''}</textarea></div>
-        <div class="btn-row" style="margin-top:0;">
-          <button class="btn-primary" onclick="saveAnalysisInputs()">Save analysis →</button>
-        </div>
-        <div id="analysisSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>`;
-    }
-
-    lifecycleEl.innerHTML = `
-      ${renderStageBar(c)}
-      ${brandControl}
-      ${qaControl}
-      ${marketAnalysisControl}
-      <div id="lifecycleSaveFlag" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;color:var(--cx);margin-top:8px;"></div>`;
-    if (c.status === 'Analysis'){
-      renderCampaignMmmLineItemsRows(c);
-      renderCampaignMmmTotals(c);
-    }
-  }
-
-  const list = document.getElementById('projectsList');
-  list.innerHTML = c.projects.length ? c.projects.map(p => {
-    const pt = PROJECT_TYPES.find(t => t.key === p.projectType);
-    return `<div class="project-card" onclick="goToStep('project', null, '${p.id}')">
-      <span class="name">${pt ? pt.label : p.projectType}</span>
-      <span class="status ${p.status}">${p.status}</span>
-    </div>`;
-  }).join('') : `<p class="lede">No projects in this campaign yet — add one below.</p>`;
-
-  document.getElementById('projectTypeGrid').innerHTML = PROJECT_TYPES.map(t => {
-    const badge = `<span class="tier-badge ${t.tier}" style="margin-left:8px;">${PROJECT_TIER_LABEL[t.tier]}</span>`;
-    const cls = t.built ? 'project-type-tile' : 'project-type-tile notbuilt';
-    const onclick = t.built ? ` onclick="createProject('${t.key}')"` : '';
-    const note = !t.built
-      ? `<div class="note">${t.note}</div>`
-      : `<div class="note">Master: ${t.masterLabel}${t.derivativeLabels ? ` → ${Object.values(t.derivativeLabels).length} derivatives in one pass` : ' → no derivative fan-out for this type'}</div>`;
-    return `<div class="${cls}"${onclick}>
-      <div class="name">${t.label}${badge}</div>
-      <div class="group">${t.group}</div>
-      ${note}
-    </div>`;
-  }).join('');
-
-  // Round 31 — Campaign URL & Conversion Tracking + Campaign QA & Alignment
-  // Score don't apply to Ad Hoc (no stage/objective/functions to align
-  // against — it's a standalone project bucket, not a campaign moving
-  // toward an objective).
-  const urlSection = document.getElementById('campaignTrackingCard');
-  const qaSection = document.getElementById('campaignQaCard');
-  const jobsSection = document.getElementById('campaignCreativeJobsCard');
-  const traffickingSection = document.getElementById('campaignTraffickingCard');
-  const analyticsSection = document.getElementById('campaignAnalyticsCard');
-  renderCampaignSubNav('campaignSubNav', isAdHoc);
-  if (isAdHoc){
-    if (urlSection) urlSection.style.display = 'none';
-    if (qaSection) qaSection.style.display = 'none';
-    if (jobsSection) jobsSection.style.display = 'none';
-    if (traffickingSection) traffickingSection.style.display = 'none';
-    if (analyticsSection) analyticsSection.style.display = 'none';
-    return;
-  }
-  if (urlSection) urlSection.style.display = 'block';
-  if (qaSection) qaSection.style.display = 'block';
-  if (jobsSection) jobsSection.style.display = 'block';
-  if (traffickingSection) traffickingSection.style.display = 'block';
-  if (analyticsSection) analyticsSection.style.display = 'block';
-  renderCampaignPerformancePanel();
-
-  document.getElementById('campaignUrlInput').value = c.campaignUrl || '';
-  const convSel = document.getElementById('campaignConversionType');
-  convSel.innerHTML = `<option value="">Select how this campaign converts…</option>` +
-    CONVERSION_TYPES.map(t => `<option value="${t}"${c.conversionType === t ? ' selected' : ''}>${t}</option>`).join('');
-  document.getElementById('urlAuditPanel').innerHTML = c._urlAudit ? renderUrlAuditHtml(c._urlAudit) : '';
-  // Round 132av — restore a previously-run landing page audit from its
-  // persisted backend record (landingPageAuditJson) so it survives a page
-  // reload, same as any other saved campaign field, without needing to
-  // re-fetch the live page just to redisplay results already captured.
-  if (!c._landingPageAudit && c.landingPageAuditJson){
-    try { c._landingPageAudit = JSON.parse(c.landingPageAuditJson); } catch (e){ c._landingPageAudit = null; }
-  }
-  document.getElementById('landingPageAuditPanel').innerHTML = c._landingPageAudit ? renderLandingPageAuditHtml(c._landingPageAudit) : '';
-  renderCampaignQaPanel();
-  loadCreativeJobs();
-  loadCreativeCollections();
-
-  // Round 100 (2026-08-06) — collapse every card except the one a specialty
-  // deep-link arrived focused on; normal navigation (no focusCardId) leaves
-  // everything expanded exactly as before.
-  applyCampaignCardFocus(focusCardId);
-}
 
 // Round 75 — Campaign Performance & Guidance panel, per
 // cxmedia-campaign-analytics-strategy.md Sections 1a/2/4. Renders: (1) a
@@ -61894,86 +61442,7 @@ function renderCampaignDetail(focusCardId){
 // (a multi-channel campaign's actuals are still one flat number today — see
 // the doc's Section 3a gap — so a per-channel verdict would be false
 // precision); (3) a budget-scaled testing-approach recommendation.
-function renderCampaignPerformancePanel(){
-  const el = document.getElementById('campaignAnalyticsPanel');
-  const c = findCampaign(currentCampaignId);
-  if (!el || !c || c.isAdHoc) return;
-  const channels = cmpCreativeChannelsText(c).split(',').map(s => s.trim()).filter(Boolean);
 
-  if (!channels.length){
-    el.innerHTML = `<p class="lede">Set at least one channel on this campaign (Add Campaign Details) to see channel-specific best practices here.</p>
-      <div id="campaignPlanRollupPanel" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);"></div>`;
-    renderCampaignPlanRollup(c.id);
-    return;
-  }
-
-  const hasActuals = c.actualSpend != null || c.actualImpressions != null || c.actualConversions != null;
-  const singleChannel = channels.length === 1 ? channels[0] : null;
-
-  let actualsHtml = '';
-  if (hasActuals){
-    const bp = singleChannel ? getChannelBestPractice(singleChannel) : null;
-    const spend = c.actualSpend, imps = c.actualImpressions, convs = c.actualConversions;
-    const rate = (imps && convs != null) ? (convs / imps) : null;
-    const costPer = (convs && spend != null) ? (spend / convs) : null;
-    let verdictHtml = '';
-    if (singleChannel && bp && bp.conversionRateBenchmark && rate != null){
-      const [lo, hi] = bp.conversionRateBenchmark;
-      const verdict = rate < lo ? 'below' : (rate > hi ? 'above' : 'within');
-      const color = verdict === 'below' ? 'var(--advocacy)' : (verdict === 'within' ? 'var(--cx)' : 'var(--media)');
-      verdictHtml = `<div style="margin-top:6px;color:${color};font-weight:600;">${(rate * 100).toFixed(2)}% is ${verdict} the typical ${(lo * 100).toFixed(1)}%–${(hi * 100).toFixed(1)}% range for ${singleChannel}.</div>`;
-    } else if (!singleChannel){
-      verdictHtml = `<div class="hint" style="margin-top:6px;">This campaign spans ${channels.length} channels — actuals are captured campaign-wide today, not broken out per channel, so a benchmark verdict isn't meaningful yet (see the Channel Performance comparison planned for a later round).</div>`;
-    }
-    actualsHtml = `
-      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
-        <h4 style="margin:0 0 8px;">Actual vs. benchmark</h4>
-        <div style="display:flex;gap:22px;flex-wrap:wrap;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.8125rem;">
-          <div><div class="hint" style="margin:0;">${bp ? bp.metricLabels.impressions : 'Impressions'}</div><div style="font-weight:700;">${imps != null ? imps.toLocaleString() : '—'}</div></div>
-          <div><div class="hint" style="margin:0;">${bp && bp.metricLabels.conversions ? bp.metricLabels.conversions : 'Conversions'}</div><div style="font-weight:700;">${convs != null ? convs.toLocaleString() : '—'}</div></div>
-          <div><div class="hint" style="margin:0;">Spend</div><div style="font-weight:700;">${fmtMoney(spend)}</div></div>
-          <div><div class="hint" style="margin:0;">${bp && bp.metricLabels.costPerConversion ? bp.metricLabels.costPerConversion : 'Cost per conversion'}</div><div style="font-weight:700;">${costPer != null ? fmtMoney(costPer) : '—'}</div></div>
-        </div>
-        ${verdictHtml}
-      </div>`;
-  } else {
-    actualsHtml = `<p class="hint" style="margin-top:14px;">No Analysis-stage actuals entered yet — once this campaign reaches Analysis and actuals are saved (Overview card), they'll compare against the benchmarks above.</p>`;
-  }
-
-  const channelCardsHtml = channels.map(ch => {
-    const bp = getChannelBestPractice(ch);
-    const stageNote = c.stage && bp.objectiveModifier[c.stage] ? bp.objectiveModifier[c.stage] : '';
-    return `
-      <div style="padding:14px 0;border-top:1px solid var(--line);">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;">
-          <h4 style="margin:0;">${ch}</h4>
-          <span class="hint" style="margin:0;">Primary metrics: ${bp.primaryMetrics.join(', ')}</span>
-        </div>
-        ${bp.benchmarks.length ? `<div style="margin-top:8px;font-size:0.8125rem;">${bp.benchmarks.map(b => `<div>${b.metric}: <b>${b.range}</b> <span class="hint">— ${b.source}</span></div>`).join('')}</div>` : `<p class="hint" style="margin:8px 0 0;">No standardized numeric benchmark applies to this channel — see the note below instead.</p>`}
-        ${stageNote ? `<p class="lede" style="margin:8px 0 0;">${escapeHtml(stageNote)}</p>` : ''}
-        <p class="lede" style="margin:8px 0 0;"><b>Creative:</b> ${escapeHtml(bp.creativeGuidance)}</p>
-        <p class="lede" style="margin:4px 0 0;"><b>Testing:</b> ${escapeHtml(bp.testingNote)}</p>
-      </div>`;
-  }).join('');
-
-  const testing = recommendTestingApproach(c.budget, channels);
-  const testingHtml = `
-    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
-      <h4 style="margin:0 0 6px;">Recommended testing approach for this budget</h4>
-      <p class="lede" style="margin:0;"><b>${escapeHtml(testing.label)}</b> ${c.budget != null ? `(campaign budget: ${fmtMoney(c.budget)})` : '(no budget set on this campaign yet)'}</p>
-      <p class="lede" style="margin:6px 0 0;">${escapeHtml(testing.rationale)}</p>
-      ${testing.untrackableNote ? `<p class="lede" style="margin:6px 0 0;color:var(--advocacy);">${escapeHtml(testing.untrackableNote)}</p>` : ''}
-      <p class="hint" style="margin:8px 0 0;">A starting approach for a budget this size, not a fixed rule — adjust for what this account already knows works.</p>
-    </div>`;
-
-  el.innerHTML = `
-    <p class="lede" style="margin:0 0 4px;">Benchmarks below are named-source industry figures, not this account's own measured history — useful context until this account has built up its own baseline.</p>
-    ${channelCardsHtml}
-    ${actualsHtml}
-    ${testingHtml}
-    <div id="campaignPlanRollupPanel" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">Loading how this fits your plan…</div>`;
-  renderCampaignPlanRollup(c.id);
-}
 
 // Round 78 — "How this fits your plan," per cxmedia-campaign-analytics-
 // strategy.md Section 1b. Two honest tiers: (1) an account-level rollup,
@@ -61987,59 +61456,7 @@ function renderCampaignPerformancePanel(){
 // from the Media Plan build rather than re-deriving that logic). Async —
 // fetches the account's creative jobs via fetchChannelPerformanceRows(),
 // same call the Channel Performance leaderboard uses.
-async function renderCampaignPlanRollup(campaignId){
-  const el = document.getElementById('campaignPlanRollupPanel');
-  const c = findCampaign(campaignId);
-  if (!el || !c) return;
-  const channels = cmpCreativeChannelsText(c).split(',').map(s => s.trim()).filter(Boolean);
 
-  let accountHtml = '<p class="lede">Set a channel on this campaign to see how it compares to the rest of the account.</p>';
-  if (channels.length){
-    const perChannel = await Promise.all(channels.map(async ch => {
-      const { rows } = await fetchChannelPerformanceRows(ch);
-      const mine = rows.filter(r => r.campaignId === c.id);
-      const others = rows.filter(r => r.campaignId !== c.id);
-      const sum = (arr, key) => arr.reduce((s, r) => s + (r[key] || 0), 0);
-      const mySpend = sum(mine, 'spend'), myConvs = sum(mine, 'convs'), myImps = sum(mine, 'imps');
-      const othersSpend = sum(others, 'spend'), othersConvs = sum(others, 'convs'), othersImps = sum(others, 'imps');
-      return {
-        channel: ch,
-        otherCampaignCount: new Set(others.map(r => r.campaignId)).size,
-        mySpend, myRate: myImps ? (myConvs / myImps) : null,
-        othersSpend, otherRate: othersImps ? (othersConvs / othersImps) : null,
-        totalSpend: mySpend + othersSpend
-      };
-    }));
-    accountHtml = perChannel.map(p => {
-      if (!p.otherCampaignCount){
-        return `<p class="lede" style="margin:4px 0;"><b>${p.channel}:</b> this is the only campaign on this channel with actuals recorded so far — no account baseline to compare against yet.</p>`;
-      }
-      const shareText = p.totalSpend
-        ? `${Math.round((p.mySpend / p.totalSpend) * 100)}% of this account's total ${p.channel} spend across ${p.otherCampaignCount + 1} campaign${p.otherCampaignCount ? 's' : ''} with actuals recorded`
-        : `spend share not available yet (no actuals on ${p.channel} recorded for this campaign)`;
-      let rateCompare = '';
-      if (p.myRate != null && p.otherRate != null){
-        const diff = p.myRate - p.otherRate;
-        rateCompare = ` Its response rate (${(p.myRate * 100).toFixed(2)}%) is ${diff > 0.0005 ? 'above' : diff < -0.0005 ? 'below' : 'in line with'} this account's own ${p.channel} average (${(p.otherRate * 100).toFixed(2)}%) — this is this account's actual history, not a generic industry figure.`;
-      } else if (p.otherRate != null){
-        rateCompare = ` This account's other ${p.channel} campaigns average a ${(p.otherRate * 100).toFixed(2)}% response rate — enter this campaign's own actuals above to see how it compares.`;
-      }
-      return `<p class="lede" style="margin:4px 0;"><b>${p.channel}:</b> ${shareText}.${rateCompare}</p>`;
-    }).join('');
-  }
-
-  const drawsSummary = renderCampaignAllocationDrawsSummary(c);
-  const planHtml = drawsSummary
-    ? `<div style="margin-top:4px;">${drawsSummary}</div>`
-    : (c.fundingSource === 'plan'
-      ? `<p class="hint" style="margin-top:4px;">Funded by the Media Plan, but no allocation draw recorded on this campaign yet.</p>`
-      : `<p class="hint" style="margin-top:4px;">Unplanned — not drawing against the Media Plan, so there's no allocation pacing to show here. See the Media Plan step to fund it from an allocation.</p>`);
-
-  el.innerHTML = `
-    <h4 style="margin:0 0 8px;">How this fits your plan</h4>
-    ${accountHtml}
-    ${planHtml}`;
-}
 
 // Round 64 — Creative Jobs list for this campaign. Not gated behind login
 // itself (the page is already authenticated by the time someone's viewing
@@ -65980,7 +65397,6 @@ function renderProjectDetail(){
   const project = findProject(currentCampaignId, currentProjectId);
   const campaign = findCampaign(currentCampaignId);
   if (!project || !campaign) return;
-  renderCampaignSubNav('projectSubNav', !!campaign.isAdHoc);
   const pt = PROJECT_TYPES.find(t => t.key === project.projectType);
   document.getElementById('projectCampaignCrumb').textContent = campaign.objective;
   document.getElementById('projectCrumb').textContent = pt.label;
@@ -71668,36 +71084,8 @@ function requestQa(){
 // matching "the steps and ability to navigate between steps exists after
 // the campaign id is created." Ad Hoc campaigns skip Tracking/Creative
 // Jobs/QA since those sections don't apply and are hidden for them anyway.
-function renderCampaignSubNav(containerId, isAdHoc){
-  const el = document.getElementById(containerId);
-  if (!el) return;
-  if (!currentCampaignId){ el.innerHTML = ''; return; }
-  const sections = [
-    { id: 'campaignBrandCard', label: 'Brand' },
-    { id: 'campaignTypeCard', label: 'Campaign Experience Focus' },
-    { id: 'campaignLifecycleCard', label: 'Overview' },
-    ...(isAdHoc ? [] : [{ id: 'campaignAnalyticsCard', label: 'Performance' }]),
-    ...(isAdHoc ? [] : [{ id: 'campaignTrackingCard', label: 'Tracking' }]),
-    { id: 'campaignProjectsCard', label: 'Projects' },
-    ...(isAdHoc ? [] : [{ id: 'campaignCreativeJobsCard', label: 'Creative Jobs' }]),
-    // Round 73 — Ad Trafficking, its own sub-nav destination per direct
-    // instruction, positioned right after Creative Jobs ("follow creative").
-    ...(isAdHoc ? [] : [{ id: 'campaignTraffickingCard', label: 'Ad Trafficking' }]),
-    { id: 'campaignAddProjectCard', label: 'Add a Project' },
-    ...(isAdHoc ? [] : [{ id: 'campaignQaCard', label: 'QA & Approval' }])
-  ];
-  el.innerHTML = `<div class="campaign-subnav">${sections.map(s =>
-    `<a onclick="jumpToCampaignSection('${s.id}')">${s.label}</a>`).join('')}</div>`;
-}
-function jumpToCampaignSection(sectionId){
-  if (!document.getElementById('step-campaign').classList.contains('active')){
-    goToStep('campaign', '__current');
-  }
-  requestAnimationFrame(() => {
-    const target = document.getElementById(sectionId);
-    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  });
-}
+
+
 
 let lastGroup = 'Brand';
 function goToStep(step, arg, arg2, arg3){
@@ -72022,8 +71410,7 @@ function goToStep(step, arg, arg2, arg3){
     if (typeof mbuLoadReachInputs === 'function') mbuLoadReachInputs();
     document.getElementById('step-mediaplan').classList.add('active');
   } else if (step === 'campaign'){
-    // r47 — the old Campaign Detail page is retired for every real campaign. Every link that used to land here opens the current flow, and a link
-    // that named a card opens the stage that holds it. Ad Hoc projects still use the old page until it is removed.
+    // r48 — the old Campaign Detail page is gone. Every link opens the current flow; with no campaign to open, Campaign Management is the landing page.
     {
       const cid = (arg && arg !== '__current') ? arg : currentCampaignId;
       const cc = (state.campaigns || []).find(x => x.id === cid);
@@ -72038,14 +71425,9 @@ function goToStep(step, arg, arg2, arg3){
         } catch (e){}
         return;
       }
+      goToStep('campaignMgmt');
+      return;
     }
-    if (arg && arg !== '__current') currentCampaignId = arg;
-    // Round 100 (2026-08-06) — arg2, when present, is a card id to arrive
-    // focused on (e.g. deep-linked from the Marketing Ops Task Queue's
-    // Tracking Links row) — every other card on the page collapses so the
-    // specialist landing here sees only the section relevant to their task.
-    renderCampaignDetail(arg2 || null);
-    document.getElementById('step-campaign').classList.add('active');
   } else if (step === 'project'){
     if (arg2) currentProjectId = arg2;
     renderProjectDetail();
@@ -85236,32 +84618,8 @@ async function mbuRenderCostPerWebsiteUser(){
 // its lookup off the specific format the campaign's approved creative
 // asset actually selected (see cmpComputeDmActualBudget()'s own comment).
 let cmpDmActualBudgetInputs = null; // { accountId, marketableByKey, formatCostByChannel }
-let cmpDmActualBudgetInputsLoading = false;
-async function cmpLoadDmActualBudgetInputsIfNeeded(){
-  if (dataSourceLabel !== 'backend') return;
-  if (cmpDmActualBudgetInputsLoading) return;
-  if (cmpDmActualBudgetInputs && cmpDmActualBudgetInputs.accountId === state.companyId) return;
-  cmpDmActualBudgetInputsLoading = true;
-  try {
-    const [sizesResp, costResp] = await Promise.all([
-      authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/marketable-sizes`),
-      authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/dm-format-cost`)
-    ]);
-    const sizesData = sizesResp.ok ? await sizesResp.json() : { rows: [] };
-    const costData = costResp.ok ? await costResp.json() : { rows: [] };
-    const marketableByKey = {};
-    (sizesData.rows || []).forEach(r => { marketableByKey[r.generationKey] = r.dmMarketable; });
-    const formatCostByChannel = {};
-    (costData.rows || []).forEach(r => {
-      if (!formatCostByChannel[r.channel]) formatCostByChannel[r.channel] = {};
-      formatCostByChannel[r.channel][r.formatName] = { costPerPiece: r.costPerPiece, isDefault: !!r.isDefault };
-    });
-    cmpDmActualBudgetInputs = { accountId: state.companyId, marketableByKey, formatCostByChannel };
-  } catch (e){ console.warn('cmpLoadDmActualBudgetInputsIfNeeded: fetch failed', e); }
-  cmpDmActualBudgetInputsLoading = false;
-  const campaign = findCampaign(currentCampaignId);
-  if (campaign) cmpRenderDmActualBudgetCard(campaign);
-}
+
+
 // The real calculation: for each Direct Mail channel this campaign has
 // selected, DM Audience Size = the sum of this campaign's targeted
 // audience segments' DM Marketable list sizes (Company Profile), counting
