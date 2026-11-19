@@ -4743,7 +4743,7 @@ function renderJourneyBP(){
     : ` Your audience isn't narrowed down yet, so this stays general until that's set.`;
 
   // Human + AI, reinforcing Media + CX expertise specifically
-  const aiClause = ` Verilume pairs a real person with a standing AI partner across that full journey — AI carries the always-on, first-draft work; your team keeps the judgment and the final word. That partnership is built specifically to close the gap between the Media work that earns attention and the delivery work that keeps what Media promised.`;
+  const aiClause = ` Verilume connects planning, delivery and analysis on structured data, with AI working from that data, so budgets follow what is earning a return and the experience keeps the promise the media makes. Your team keeps the judgment and the final word.`;
 
   target.innerHTML = bpPanel(`Where ${company} stands today`, brandClause + gapClause + audienceClause + aiClause);
 }
@@ -7333,6 +7333,15 @@ const STAGE_TO_ROLE = {
   Advocacy: 'PR'
 };
 const CX_CONSISTENCY_ROLE = 'Advanced Analytics';
+// Outcome-first wording for the role table: what the client gains, not how we work.
+const ROLE_OUTCOME = {
+  'Performance Marketing': 'Scenario-based budgeting shows what each dollar is likely to return before it is committed, and the Search Everywhere toolkit makes the brand easier to find. The result is more qualified attention for the same spend.',
+  'Omni-Channel Creative': 'Consistent campaign planning carries one story, audience and offer through every channel, so people comparing options hear the same clear message. The result is stronger consideration with less rework.',
+  'Media Planning & Ops': 'Campaign and project management tools keep launches, approvals and tracking on schedule, and geographic tools point the sales force and local media at the markets with the most demand. The result is more of the demand you earn turning into sales.',
+  'Brand': 'A consistent brand voice and one view of the customer keep the experience after the sale as strong as the promise before it. The result is repeat business and referrals that cost less to win.',
+  'PR': 'The Search Everywhere toolkit with public relations integrations turns reviews, press and community moments into proof that shows up in search and in AI answers. The result is trust that works while your team is busy elsewhere.',
+  'Advanced Analytics': 'Structured data ties media results to the customer experience, showing which messages carry through to the sale. The result is faster, better-informed decisions on where to spend and where to fix.'
+};
 // 2026-09-01 — rewritten from a card grid to table rows (Column A: the
 // question title + the visitor's own self-rated score, Column B: the
 // Verilume role that fills the gap), per direct instruction: "Add the
@@ -7352,14 +7361,14 @@ function renderAgenticRoleMapping(){
       : `Not yet self-rated`;
     return `<tr>
       <td><span class="rg-stage">${stage.stage}</span><span class="rg-score">${scoreLine}</span></td>
-      <td><h4 class="rg-role">${role}</h4><p>Verilume's ${role} role picks up the always-on, first-draft work here, so your team spends its time on judgment and the final word.</p></td>
+      <td><h4 class="rg-role">${role}</h4><p>${ROLE_OUTCOME[role] || ''}</p></td>
     </tr>`;
   });
   const qa = computeQuickScores();
   const alignLine = qa.ratedPairs ? `Alignment ${qa.alignmentPct}% (${alignmentWords(qa).toLowerCase()})` : 'Not yet self-rated';
   rows.push(`<tr>
     <td><span class="rg-stage">Alignment</span><span class="rg-score">${alignLine}</span></td>
-    <td><h4 class="rg-role">${CX_CONSISTENCY_ROLE}</h4><p>Verilume's ${CX_CONSISTENCY_ROLE} role keeps measurement and attribution consistent across every channel.</p></td>
+    <td><h4 class="rg-role">${CX_CONSISTENCY_ROLE}</h4><p>${ROLE_OUTCOME[CX_CONSISTENCY_ROLE]}</p></td>
   </tr>`);
   gridEl.innerHTML = rows.join('');
 }
