@@ -13937,7 +13937,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-19-r55-landing-page-recommendations';
+const CXMEDIA_BUILD_STAMP = '2026-11-19-r62-current-packages-banner';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -83461,10 +83461,10 @@ async function posSetDecision(contributionId, status){
   function render(a, tok, ls) {
     var expired = ls.expired, left = ls.daysLeft;
     var bar = el('div', 'position:fixed;left:0;right:0;top:0;z-index:2147482000;background:' + (expired ? '#8a2b2b' : NAVY) + ';color:#fff;font:600 13px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;gap:14px;align-items:center;justify-content:center;padding:9px 16px;flex-wrap:wrap');
-    var msg = expired ? 'Your Spark trial has ended. This account is read-only until you upgrade to the Starter Kit, $99 a month.'
-      : 'Spark: ' + left + (left === 1 ? ' day' : ' days') + ' left' + (ls.draft ? ', ' + ls.draft.remaining + ' of ' + ls.draft.limit + ' drafts left' : '') + '. Keep everything you built with the Starter Kit, $99 a month.';
+    var msg = expired ? 'Your free trial has ended. This account is read-only until you upgrade to Starter, $1,500 a month with 50 credits.'
+      : 'Free trial: ' + left + (left === 1 ? ' day' : ' days') + ' left' + (ls.draft ? ', ' + ls.draft.remaining + ' of ' + ls.draft.limit + ' credits left' : '') + '. Keep everything you built with Starter, $1,500 a month.';
     var t = el('span', '', msg), btn = el('button', 'background:' + AMBER + ';color:' + NAVY + ';border:0;padding:6px 14px;border-radius:6px;font-weight:700;cursor:pointer', 'Upgrade');
-    btn.onclick = function () { btn.disabled = true; requestUpgrade(a, tok, 'bar', function (ok) { t.textContent = ok ? 'Thanks. Our team will contact you about the Starter Kit.' : 'Could not send the request. Email verilume@verilume.ai.'; btn.remove(); }); };
+    btn.onclick = function () { btn.disabled = true; requestUpgrade(a, tok, 'bar', function (ok) { t.textContent = ok ? 'Thanks. Our team will contact you about Starter.' : 'Could not send the request. Email verilume@verilume.ai.'; btn.remove(); }); };
     bar.appendChild(t); bar.appendChild(btn); document.body.appendChild(bar);
     document.body.style.paddingTop = '44px';
     var key = 'verilume_spark_seen_' + a + '_' + ls.stage;
@@ -83472,7 +83472,7 @@ async function posSetDecision(contributionId, status){
     if (ls.stage === 'voice') {
       var vkey = 'verilume_spark_voice_' + a;
       var card = el('div', 'position:fixed;right:18px;bottom:18px;z-index:2147482500;background:#fff;border:1px solid #d9dce6;border-radius:12px;box-shadow:0 8px 28px rgba(30,39,97,.22);width:min(340px,92vw);padding:18px;font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:' + NAVY);
-      var script = 'You have ' + left + ' days left on Spark. Everything you have built here carries over with the Starter Kit, one storefront for ninety nine dollars a month. Want me to let our team know?';
+      var script = 'You have ' + left + ' days left on your free trial. Everything you have built here carries over with Starter, fifteen hundred dollars a month with fifty credits. Want me to let our team know?';
       card.appendChild(el('div', 'font-weight:700;margin-bottom:6px', 'A word from Verilume'));
       card.appendChild(el('div', 'color:#444;margin-bottom:12px', script));
       var row = el('div', 'display:flex;gap:8px;flex-wrap:wrap');
@@ -83489,10 +83489,10 @@ async function posSetDecision(contributionId, status){
     if ((ls.stage === 'final' || expired) && once(key)) {
       var shade = el('div', 'position:fixed;inset:0;z-index:2147483200;background:rgba(30,39,97,.62);display:flex;align-items:center;justify-content:center;padding:16px');
       var box = el('div', 'background:#fff;border-radius:14px;max-width:440px;width:100%;padding:28px;font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:' + NAVY);
-      box.appendChild(el('div', 'font-size:22px;font-weight:700;margin-bottom:8px', expired ? 'Spark has ended' : 'Last day of Spark'));
-      box.appendChild(el('div', 'color:#444;margin-bottom:18px', expired ? 'Your work is saved and you can still look around, but nothing can be changed until you upgrade. The Starter Kit is $99 a month.' : 'After today this account becomes read-only. Upgrade to the Starter Kit for $99 a month and keep going without losing a thing.'));
+      box.appendChild(el('div', 'font-size:22px;font-weight:700;margin-bottom:8px', expired ? 'Your free trial has ended' : 'Last day of your free trial'));
+      box.appendChild(el('div', 'color:#444;margin-bottom:18px', expired ? 'Your work is saved and you can still look around, but nothing can be changed until you upgrade. Starter is $1,500 a month with 50 credits.' : 'After today this account becomes read-only. Upgrade to Starter for $1,500 a month and keep going without losing a thing.'));
       var r2 = el('div', 'display:flex;gap:10px;flex-wrap:wrap');
-      var up = el('button', 'background:' + AMBER + ';color:' + NAVY + ';border:0;padding:11px 18px;border-radius:8px;font-weight:700;cursor:pointer;font-size:15px', 'Upgrade to the Starter Kit');
+      var up = el('button', 'background:' + AMBER + ';color:' + NAVY + ';border:0;padding:11px 18px;border-radius:8px;font-weight:700;cursor:pointer;font-size:15px', 'Upgrade to Starter');
       var later = el('button', 'background:transparent;color:#555;border:1px solid #d9dce6;padding:11px 16px;border-radius:8px;cursor:pointer', expired ? 'Keep looking around' : 'Remind me later');
       up.onclick = function () { up.disabled = true; requestUpgrade(a, tok, expired ? 'expired pop-up' : 'day-7 pop-up', function (ok) { box.innerHTML = ''; box.appendChild(el('div', 'font-size:18px;font-weight:700', ok ? 'Thanks. Our team will contact you today.' : 'Could not send. Email verilume@verilume.ai.')); setTimeout(function () { shade.remove(); }, 3500); }); };
       later.onclick = function () { shade.remove(); };
