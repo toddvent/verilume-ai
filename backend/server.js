@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-19-r65-home-cards (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-19-r66-viz-pdf (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -21519,17 +21519,77 @@ function vizExportCard(accountId, title, chart, data, extra){
     tables: [{ name: 'Chart data', columns: cols, rows }], notes: (extra.notes || []).concat(chart.note ? [chart.note] : []) };
 }
 async function vizSendFile(res, accountId, format, chart, data, title, extra){
-  if (!['xlsx', 'pptx', 'csv'].includes(format)) return sendJson(res, 400, { error: 'format must be xlsx, pptx or csv' });
+  if (!['xlsx', 'pptx', 'csv', 'pdf'].includes(format)) return sendJson(res, 400, { error: 'format must be xlsx, pptx, csv or pdf' });
   const x = vizExportCard(accountId, title, chart, data, extra); const base = `${x.fileSlug}-${new Date().toISOString().slice(0, 10)}`;
   if (format === 'csv'){ res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${base}.csv"` }); return res.end(cardToCsv(x)); }
+  if (format === 'pdf'){ res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${base}.pdf"` }); return res.end(cardToPdf(x, chart)); }
   if (format === 'pptx'){ const b = await vizToPptx(chart, x); res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'Content-Disposition': `attachment; filename="${base}.pptx"` }); return res.end(b); }
   const b = await vizToXlsx(chart, x);
   res.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="${base}.xlsx"` });
   return res.end(Buffer.from(b));
 }
 
+
+// Draws a chart as vector shapes into a PDF page stream (column, stacked, bar, line, area, doughnut). Top edge is y; it uses about 250 points.
+function pdfDrawChart(chart, out, y, W, M, clean, esc){
+  const PAL = ['#1E2761', '#C9973B', '#4F7CAC', '#7A9E7E', '#B5524A', '#6C5B7B', '#8A8F98', '#3E8E8E'];
+  const col = (c, i) => c || PAL[i % PAL.length];
+  const rgb = (c, mix) => { let h = String(c || '#1E2761').replace('#', ''); if (h.length === 3) h = h.replace(/./g, '$&$&'); const n = parseInt(h.padEnd(6, '0').slice(0, 6), 16) || 0; let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255; if (mix){ r = r + (255 - r) * mix; g = g + (255 - g) * mix; b = b + (255 - b) * mix; } return [r, g, b].map(v => (v / 255).toFixed(3)).join(' '); };
+  const f1 = v => Math.round(v * 10) / 10;
+  const fmt = v => { if (v == null || !isFinite(v)) return ''; const a = Math.abs(v), sg = v < 0 ? '-' : ''; const sc = a >= 1e9 ? [a / 1e9, 'B'] : a >= 1e6 ? [a / 1e6, 'M'] : a >= 1e3 ? [a / 1e3, 'K'] : [a, '']; const num = (sc[1] ? f1(sc[0]) : (a < 10 && chart.kind !== 'int' && chart.kind !== 'money' ? Math.round(a * 100) / 100 : Math.round(a * 10) / 10)) + sc[1]; return chart.kind === 'money' ? sg + '$' + num : chart.kind === 'pct' ? sg + num + '%' : sg + num; };
+  const raw = s => out.push(s);
+  const tw = (t, size, bold) => clean(t).length * size * (bold ? 0.56 : 0.5);
+  const text = (t, x0, y0, size, o) => { o = o || {}; let xx = x0; const w = tw(t, size, o.bold); if (o.align === 'r') xx = x0 - w; else if (o.align === 'c') xx = x0 - w / 2; raw(`BT /${o.bold ? 'F2' : 'F1'} ${size} Tf ${o.color || '0.114 0.114 0.122'} rg ${xx.toFixed(1)} ${y0.toFixed(1)} Td (${esc(t)}) Tj ET`); };
+  const trunc = (t, n) => { t = clean(t); return t.length > n ? t.slice(0, n - 1) + '.' : t; };
+  const S = chart.series, L = chart.labels, n = L.length, type = chart.type;
+  // legend row
+  let lx = M; const showLegend = S.length > 1 || type === 'pie';
+  if (showLegend && type !== 'pie'){ S.forEach((s, i) => { const nm = trunc(s.name, 28); raw(`${rgb(col(s.color, i))} rg ${lx} ${(y - 9).toFixed(1)} 9 9 re f`); text(nm, lx + 13, y - 8, 8.5); lx += 13 + tw(nm, 8.5) + 16; }); }
+  const top = y - (showLegend && type !== 'pie' ? 24 : 12), bottom = y - 218;
+  if (type === 'pie'){
+    const sv = S[0].values.map(v => Math.max(0, Number(v) || 0)); const tot = sv.reduce((a, b) => a + b, 0) || 1;
+    const cx = M + 120, cy = (top + bottom) / 2 + 4, r = 92; let a0 = Math.PI / 2;
+    sv.forEach((v, i) => { if (v <= 0) return; const a1 = a0 - (v / tot) * 2 * Math.PI; const steps = Math.max(2, Math.ceil(Math.abs(a0 - a1) / 0.05)); let path = `${cx.toFixed(1)} ${cy.toFixed(1)} m`; for (let k = 0; k <= steps; k++){ const a = a0 + (a1 - a0) * k / steps; path += ` ${(cx + r * Math.cos(a)).toFixed(1)} ${(cy + r * Math.sin(a)).toFixed(1)} l`; } raw(`${rgb(col(chart.colors && chart.colors[i], i))} rg 1 1 1 RG 1 w ${path} h B`); a0 = a1; });
+    const maxRows = 14; let ly = top - 2;
+    L.slice(0, maxRows).forEach((l, i) => { raw(`${rgb(col(chart.colors && chart.colors[i], i))} rg ${M + 270} ${(ly - 8).toFixed(1)} 9 9 re f`); text(trunc(l, 34), M + 285, ly - 7, 9); text(`${fmt(sv[i])}  (${(sv[i] / tot * 100).toFixed(1)}%)`, W - M, ly - 7, 9, { align: 'r' }); ly -= 15; });
+    if (L.length > maxRows) text(`+ ${L.length - maxRows} more in the table below`, M + 285, ly - 7, 8, { color: '0.43 0.43 0.45' });
+    raw('0 0 0 rg 0 0 0 RG'); return;
+  }
+  const horiz = type === 'bar'; const stacked = type === 'stacked';
+  const maxCat = horiz ? 12 : 400; const nn = Math.min(n, maxCat);
+  let hi = 0, lo = 0;
+  for (let i = 0; i < nn; i++){ if (stacked){ let pos = 0, neg = 0; S.forEach(s => { const v = Number(s.values[i]) || 0; if (v >= 0) pos += v; else neg += v; }); hi = Math.max(hi, pos); lo = Math.min(lo, neg); } else S.forEach(s => { const v = s.values[i]; if (v != null && isFinite(v)){ hi = Math.max(hi, v); lo = Math.min(lo, v); } }); }
+  if (hi === lo) hi = lo + 1;
+  const nice = (a, b) => { const span = b - a; const raw0 = span / 4; const pw = Math.pow(10, Math.floor(Math.log10(raw0))); const st = [1, 2, 2.5, 5, 10].map(m => m * pw).find(v => v >= raw0) || 10 * pw; return { step: st, lo: Math.floor(a / st) * st, hi: Math.ceil(b / st) * st }; };
+  const ax = nice(lo, hi); lo = ax.lo; hi = ax.hi;
+  const leftPad = horiz ? 118 : 56; const x0 = M + leftPad, x1 = W - M - 8; const pw = x1 - x0, ph = top - 14 - bottom;
+  const GR = '0.91 0.91 0.93 RG 0.5 w', AX = '0.62 0.62 0.66 RG 0.8 w';
+  if (!horiz){
+    const yv = v => bottom + 14 + (v - lo) / (hi - lo) * ph;
+    for (let t = lo; t <= hi + ax.step / 2; t += ax.step){ const yy = yv(t); raw(`${GR} ${x0} ${yy.toFixed(1)} m ${x1} ${yy.toFixed(1)} l S`); text(fmt(t), x0 - 5, yy - 3, 8, { align: 'r', color: '0.43 0.43 0.45' }); }
+    const y0 = yv(0); raw(`${AX} ${x0} ${y0.toFixed(1)} m ${x1} ${y0.toFixed(1)} l S`);
+    const band = pw / nn; const every = Math.max(1, Math.ceil(nn / Math.max(1, Math.floor(pw / 46))));
+    for (let i = 0; i < nn; i++){ const cxx = x0 + band * (i + 0.5); if (i % every === 0) text(trunc(L[i], Math.max(6, Math.floor(band * every / 4.6))), cxx, bottom - 2, 8, { align: 'c', color: '0.25 0.25 0.28' }); }
+    if (type === 'column' || stacked){
+      const gw = band * 0.72; const bw = stacked ? gw : gw / S.length;
+      for (let i = 0; i < nn; i++){ let pos = 0, neg = 0; S.forEach((s, si) => { const v = Number(s.values[i]); if (s.values[i] == null || !isFinite(v)) return; const bx = stacked ? x0 + band * i + (band - gw) / 2 : x0 + band * i + (band - gw) / 2 + bw * si; let ya, yb; if (stacked){ if (v >= 0){ ya = yv(pos); pos += v; yb = yv(pos); } else { ya = yv(neg); neg += v; yb = yv(neg); } } else { ya = y0; yb = yv(v); } raw(`${rgb(col(s.color, si))} rg ${bx.toFixed(1)} ${Math.min(ya, yb).toFixed(1)} ${Math.max(0.5, bw - (stacked ? 0 : 1)).toFixed(1)} ${Math.abs(yb - ya).toFixed(1)} re f`); if (!stacked && chart.showValues && nn <= 14 && S.length <= 2) text(fmt(v), bx + bw / 2, yb + (v >= 0 ? 3 : -9), 7.5, { align: 'c' }); }); }
+    } else {
+      (type === 'area' ? S.map((s, si) => si).reverse() : S.map((s, si) => si)).forEach(si => { const s = S[si]; const c = col(s.color, si); let seg = []; const segs = []; for (let i = 0; i < nn; i++){ const v = s.values[i]; if (v == null || !isFinite(v)){ if (seg.length) segs.push(seg); seg = []; } else seg.push([x0 + band * (i + 0.5), yv(v)]); } if (seg.length) segs.push(seg);
+        if (type === 'area') segs.forEach(sg => { if (sg.length < 2) return; raw(`${rgb(c, 0.7)} rg ${sg[0][0].toFixed(1)} ${y0.toFixed(1)} m ` + sg.map(p => `${p[0].toFixed(1)} ${p[1].toFixed(1)} l`).join(' ') + ` ${sg[sg.length - 1][0].toFixed(1)} ${y0.toFixed(1)} l h f`); });
+        segs.forEach(sg => { raw(`${rgb(c)} RG 2 w 1 J 1 j ${sg[0][0].toFixed(1)} ${sg[0][1].toFixed(1)} m ` + sg.slice(1).map(p => `${p[0].toFixed(1)} ${p[1].toFixed(1)} l`).join(' ') + ' S'); if (nn <= 40) sg.forEach(p => raw(`${rgb(c)} rg ${(p[0] - 2.2).toFixed(1)} ${(p[1] - 2.2).toFixed(1)} 4.4 4.4 re f`)); }); });
+    }
+  } else {
+    const xv = v => x0 + (v - lo) / (hi - lo) * pw; const bandH = ph / nn;
+    for (let t = lo; t <= hi + ax.step / 2; t += ax.step){ const xx = xv(t); raw(`${GR} ${xx.toFixed(1)} ${bottom + 14} m ${xx.toFixed(1)} ${(bottom + 14 + ph).toFixed(1)} l S`); text(fmt(t), xx, bottom, 8, { align: 'c', color: '0.43 0.43 0.45' }); }
+    const xz = xv(0); raw(`${AX} ${xz.toFixed(1)} ${bottom + 14} m ${xz.toFixed(1)} ${(bottom + 14 + ph).toFixed(1)} l S`);
+    const gh = bandH * 0.7, bh = gh / S.length;
+    for (let i = 0; i < nn; i++){ const ytop = bottom + 14 + ph - bandH * i - (bandH - gh) / 2; text(trunc(L[i], 22), x0 - 6, ytop - gh / 2 - 3, 8.5, { align: 'r', color: '0.25 0.25 0.28' }); S.forEach((s, si) => { const v = Number(s.values[i]); if (s.values[i] == null || !isFinite(v)) return; const xb = xv(v); const yb = ytop - bh * (si + 1); raw(`${rgb(col(s.color, si))} rg ${Math.min(xz, xb).toFixed(1)} ${yb.toFixed(1)} ${Math.max(0.5, Math.abs(xb - xz)).toFixed(1)} ${Math.max(1, bh - 1).toFixed(1)} re f`); if (chart.showValues && S.length <= 2) text(fmt(v), (v >= 0 ? xb + 3 : xb - 3), yb + bh / 2 - 3, 7.5, { align: v >= 0 ? 'l' : 'r' }); }); }
+    if (n > nn) text(`Top ${nn} of ${n} shown; the full list is in the table below.`, x0, bottom - 12, 8, { color: '0.43 0.43 0.45' });
+  }
+  raw('0 0 0 rg 0 0 0 RG');
+}
 // A small dependency-free PDF writer: Helvetica text on Letter pages, tables wrapped in columns.
-function cardToPdf(x){
+function cardToPdf(x, chart){
   const W = 792, H = 612, M = 40; // landscape Letter
   const map = { '—': '-', '–': '-', '·': '-', '÷': '/', '‘': "'", '’': "'", '“': '"', '”': '"', '…': '...' };
   const clean = s => String(s == null ? '' : s).replace(/[–—·÷‘’“”…]/g, ch => map[ch]).replace(/[^\x20-\x7e\xa0-\xff]/g, '?');
@@ -21541,7 +21601,12 @@ function cardToPdf(x){
   const wrap = (text, width, size) => { const per = Math.max(4, Math.floor(width / (size * 0.5))); const words = clean(text).split(/\s+/); const out = []; let cur = ''; words.forEach(w => { while (w.length > per){ if (cur){ out.push(cur); cur = ''; } out.push(w.slice(0, per)); w = w.slice(per); } if ((cur + ' ' + w).trim().length > per){ out.push(cur); cur = w; } else cur = (cur + ' ' + w).trim(); }); if (cur) out.push(cur); return out.length ? out : ['']; };
   line(x.title, 18, true, 8);
   x.context.forEach(([k, v]) => line(`${k}: ${v}`, 9, false, 3));
+  if (chart && x.summary) wrap(x.summary, W - 2 * M, 10).forEach(l => line(l, 10, false, 3));
   y -= 8;
+  if (chart && chart.series && chart.series.length && chart.labels && chart.labels.length && chart.type !== 'table'){
+    const CH = 250; if (y < M + CH) newPage();
+    try { pdfDrawChart(chart, pages[pages.length - 1], y, W, M, clean, esc); y -= CH; } catch (e){ console.warn('pdf chart skipped:', e.message); }
+  }
   x.tables.forEach(t => {
     line(t.name, 12, true, 6);
     const n = t.columns.length; const first = n > 6 ? 70 : 150; const wNote = t.columns.some(c => c.h === 'Note') ? 210 : 0;
@@ -33665,7 +33730,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-19-r65-home-cards',
+        buildStamp: '2026-11-19-r66-viz-pdf',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
