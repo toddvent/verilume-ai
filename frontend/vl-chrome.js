@@ -5,6 +5,10 @@
      <script src="/vl-chrome.js" data-vl="utility"></script>    app pages: utility nav only
      <script src="/vl-chrome.js" data-vl="brand"></script>      the logo link (login panel, portal/account night bar)
      <script src="/vl-chrome.js" data-vl="footer"></script>     the footer link row, inside <footer>
+     <script src="/vl-chrome.js" data-vl="sitefooter"></script>  a complete footer for pages that have none (legal pages, portal, assessment); put it last in <body>
+   Default styling for the utility nav, header and menu button (HEADER_CSS) is added only when the page has no header CSS of its own,
+   so a page that styles itself is untouched and a bare page (Terms, Privacy, any new page) still looks right. FOOTER_CSS styles the
+   complete footer made by data-vl="sitefooter".
    Runs synchronously, so nothing flashes in late. */
 (function(){
   var me = document.currentScript; if (!me) return;
@@ -32,6 +36,59 @@
     document.head.appendChild(st);
   }
 
+
+  var FOOT_LINKS = [
+    ['index.html','Humanizing Agentic Marketing'],
+    ['media-cx.html','Media + CX'],
+    ['aiteam.html','AiTeam Protocol'],
+    ['execution.html','Integrated Execution'],
+    ['packages.html','Illumination Packages'],
+    ['licensing.html','Licensing'],
+    ['industry-solutions.html','Industry Solutions'],
+    ['terms.html','Terms & Conditions'],
+    ['privacy.html','Privacy Policy']
+  ];
+  var YEAR = new Date().getFullYear();
+  var COPY = '© ' + YEAR + ' Verilume. All rights reserved.';
+  var HEADER_CSS =
+    ':where(.sticky-nav-wrap){position:sticky;top:0;left:0;right:0;z-index:100}' +
+    ':where(.utility-nav){background:#F6F4EE;border-bottom:1px solid #E4E0D3}' +
+    ':where(.utility-nav-inner){max-width:1320px;margin:0 auto;padding:8px 32px;display:flex;justify-content:flex-end;align-items:center;gap:12px;font-family:Poppins,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}' +
+    ':where(.utility-nav-inner a){font:600 12.5px/1 Poppins,system-ui,sans-serif;letter-spacing:.01em;color:#fff;background:linear-gradient(180deg,#1b2d52,#14213D);border:1px solid #14213D;border-radius:999px;padding:9px 18px;text-decoration:none;white-space:nowrap}' +
+    ':where(.utility-nav-inner a:hover){background:linear-gradient(180deg,#0A58CC,#0846a3);border-color:#0A58CC}' +
+    ':where(header#siteHeader){background:#fff;border-bottom:1px solid #E4E0D3;padding:8px 0;font-family:Poppins,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}' +
+    ':where(header#siteHeader .nav){display:flex;align-items:center;justify-content:space-between;gap:16px;max-width:1320px;margin:0 auto;padding:0 32px;position:relative}' +
+    ':where(header#siteHeader .nav-group){display:flex;align-items:center;justify-content:flex-end;flex:1;gap:20px}' +
+    ':where(header#siteHeader .nav-right){display:flex;align-items:center;gap:12px}' +
+    ':where(header#siteHeader .navlinks){display:flex;align-items:center;gap:22px;font:500 14px/1.2 Poppins,system-ui,sans-serif}' +
+    ':where(header#siteHeader .navlinks a){color:#14213D;text-decoration:none;white-space:nowrap;transition:color .2s ease}' +
+    ':where(header#siteHeader .navlinks a:hover){color:#0A58CC}' +
+    ':where(header#siteHeader .navlinks a[aria-current="page"]){border-bottom:2px solid #C9932E;padding-bottom:2px}' +
+    ':where(header#siteHeader .navlinks a.nav-cta){background:#14213D;color:#fff;padding:11px 20px;border-radius:999px;text-transform:uppercase;letter-spacing:.06em;font-size:11px;font-weight:600;border-bottom:0}' +
+    ':where(header#siteHeader .navlinks a.nav-cta:hover){background:#0A58CC;color:#fff}' +
+    ':where(header#siteHeader .nav-toggle){display:none;background:none;border:0;font-size:22px;line-height:1;color:#14213D;cursor:pointer;padding:11px 12px;min-width:44px;min-height:44px}' +
+    '@media (max-width:1180px){' +
+      ':where(header#siteHeader .navlinks){position:absolute;top:100%;left:0;right:0;background:#fff;border-bottom:1px solid #E4E0D3;flex-direction:column;align-items:flex-start;gap:18px;padding:0 28px;z-index:20;max-height:0;overflow:hidden;transition:max-height .3s ease}' +
+      ':where(header#siteHeader .navlinks.open){padding:20px 28px 26px;max-height:600px}' +
+      ':where(header#siteHeader .nav-toggle){display:block}' +
+    '}' +
+    '@media (max-width:600px){:where(.utility-nav-inner),:where(header#siteHeader .nav){padding-left:16px;padding-right:16px}}';
+  var FOOTER_CSS =
+    'footer#vl-sitefoot.vl-sitefoot{all:initial!important;display:block!important;box-sizing:border-box!important;background:#fff!important;color:#14213D!important;border-top:1px solid #E4E0D3!important;padding:34px 28px!important;margin:60px 0 0!important;font-family:Poppins,system-ui,-apple-system,Segoe UI,Roboto,sans-serif!important;font-size:14px!important;line-height:1.5!important;text-align:left!important;position:relative!important;z-index:1!important}' +
+    'footer#vl-sitefoot.vl-sitefoot *{box-sizing:border-box!important;font-family:inherit!important;background:none!important}' +
+    'footer#vl-sitefoot .vsf-in{max-width:1100px!important;margin:0 auto!important;display:flex!important;flex-direction:column!important;align-items:flex-start!important;gap:14px!important}' +
+    'footer#vl-sitefoot .vsf-brand{font-size:1.15rem!important;font-weight:600!important;color:#14213D!important;text-decoration:none!important}' +
+    'footer#vl-sitefoot .vsf-links{display:flex!important;gap:6px 22px!important;flex-wrap:wrap!important}' +
+    'footer#vl-sitefoot .vsf-links a{color:#14213D!important;text-decoration:none!important;font-weight:500!important;font-size:14px!important}' +
+    'footer#vl-sitefoot .vsf-links a:hover{color:#0A58CC!important;text-decoration:underline!important}' +
+    'footer#vl-sitefoot .vsf-copy{color:#5B6784!important;font-size:13px!important}' +
+    '@media print{footer#vl-sitefoot{display:none!important}}';
+
+  function addCss(id, css){
+    if (document.getElementById(id)) return;
+    var el = document.createElement('style'); el.id = id; el.textContent = css; document.head.appendChild(el);
+  }
+
   var here = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
   function navLinks(){
     return NAV.map(function(n){
@@ -40,7 +97,7 @@
   }
   var UTIL_DIV = "<div class=\"utility-nav\" id=\"utilityNav\">\n  <div class=\"utility-nav-inner\">\n    <a href=\"portal.html\" id=\"utilNavPortalLink\" style=\"display:none;\">Access My Portal</a>\n    <a href=\"login.html\" id=\"utilNavAuthLink\">Log in</a>\n  </div>\n</div>";
   var HEADER = "<header id=\"siteHeader\">\n  <nav class=\"nav\" aria-label=\"Primary\">\n    <a class=\"logo vl-brand-link\" href=\"index.html\" aria-label=\"Verilume home\">" + IMG + "</a>\n    <div class=\"nav-group\">\n      <div class=\"navlinks\" id=\"navLinks\">\n        @@NAV@@\n      </div>\n      <div class=\"nav-right\">\n        <button class=\"nav-toggle\" id=\"navToggle\" aria-label=\"Toggle menu\" aria-expanded=\"false\">\u2630</button>\n      </div>\n    </div>\n  </nav>\n</header>";
-  var FOOTER = "<div class=\"footer-inner\">\n    <span>Verilume \u2014 the truth between promise and experience, measured.</span>\n    <nav class=\"footer-nav\" aria-label=\"Footer\">\n      <a href=\"index.html\">Humanizing Agentic Marketing</a>\n      <a href=\"media-cx.html\">Media + CX</a>\n      <a href=\"aiteam.html\">AiTeam Protocol</a>\n      <a href=\"execution.html\">Integrated Execution</a>\n      <a href=\"packages.html\">Illumination Packages</a>\n      <a href=\"licensing.html\">Licensing</a>\n      <a href=\"industry-solutions.html\">Industry Solutions</a>\n    </nav>\n    <span>Design preview</span>\n  </div>";
+  var FOOTER = "<div class=\"footer-inner\">\n    <span>Verilume \u2014 the truth between promise and experience, measured.</span>\n    <nav class=\"footer-nav\" aria-label=\"Footer\">\n      " + FOOT_LINKS.map(function(l){ return '<a href="' + l[0] + '">' + l[1].replace('&','&amp;') + '</a>'; }).join('\n      ') + "\n    </nav>\n    <span>" + COPY + "</span>\n  </div>";
   function put(html){ me.insertAdjacentHTML('beforebegin', html); }
 
   if (part === 'top-site' || part === 'utility'){
@@ -144,11 +201,36 @@
   }
   if (part === 'top-site'){
     put(HEADER.replace('@@NAV@@', navLinks()));
+    // A page that already styles its own header (its .navlinks is a flex row) is left exactly as it is. A page with no header CSS
+    // of its own (legal pages, any new page) gets the standard header styling below.
+    var nl0 = document.getElementById('navLinks');
+    if (nl0 && getComputedStyle(nl0).display !== 'flex') addCss('vl-chrome-header-css', HEADER_CSS);
   }
   if (part === 'brand'){
     put('<a class="wordmark vl-brand-link" href="index.html" aria-label="Verilume home">' + IMG + '</a>');
   }
   if (part === 'footer'){
     put(FOOTER);
+  }
+  if (part === 'sitefooter'){
+    addCss('vl-chrome-footer-css', FOOTER_CSS);
+    if (!document.getElementById('vl-sitefoot')){
+      put('<footer class="vl-sitefoot" id="vl-sitefoot"><div class="vsf-in"><a class="vsf-brand" href="index.html" aria-label="Verilume home">Verilume</a>' +
+        '<nav class="vsf-links" aria-label="Footer">' + FOOT_LINKS.map(function(l){ return '<a href="' + l[0] + '">' + l[1].replace('&','&amp;') + '</a>'; }).join('') + '</nav>' +
+        '<span class="vsf-copy">' + COPY + '</span></div></footer>');
+    }
+  }
+  // Menu button for the header. Bound the moment the header exists, ahead of any page script, and it stops later handlers on the same
+  // button, so pages that still carry their own toggle code do not flip it twice.
+  if (part === 'top-site'){
+    var btn = document.getElementById('navToggle'), links = document.getElementById('navLinks');
+    if (btn && links && !btn.__vlBound){
+      btn.__vlBound = true;
+      btn.addEventListener('click', function(e){
+        e.stopImmediatePropagation();
+        var open = links.classList.toggle('open');
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+    }
   }
 })();
