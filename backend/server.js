@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-20-r79-server-lookups (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-20-r80-server-funnel (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -33841,7 +33841,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-20-r79-server-lookups',
+        buildStamp: '2026-11-20-r80-server-funnel',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -35523,6 +35523,7 @@ async function handleRequestInner(req, res) {
         if (body.fn === 'mix') return sendJson(res, 200, { result: rec.computeRecommendedMix(args[0]) });
         if (body.fn === 'mediaMix') return sendJson(res, 200, { result: rec.computeRecommendedMediaMix(args[0] || {}) });
         if (body.fn === 'lookups') return sendJson(res, 200, { result: rec.computeLookups() });
+        if (body.fn === 'funnelSeed') return sendJson(res, 200, { result: require('./recommender-calc')(body.env).funnelSeed(args[0]) });
         return sendJson(res, 400, { error: 'Unknown calculation.' });
       } catch (e){ console.error('[recommend] failed:', e.message); return sendJson(res, 500, { error: 'The recommendation could not be calculated.' }); }
     }
