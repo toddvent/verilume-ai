@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-19-r66-viz-pdf (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-20-r68-lead-routes (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -1350,7 +1350,7 @@ ensureColumn('accounts', 'styleNotes', 'TEXT');
 ensureColumn('accounts', 'styleSourceFileName', 'TEXT');
 ensureColumn('accounts', 'styleAssetsApprovedAt', 'TEXT');
 // Round 33 — best-practice gap closed against a real uploaded brand
-// guideline (Atlas Ocean Voyages Mini Brand Guidelines v1.0): logo
+// guideline (Example Voyages Mini Brand Guidelines v1.0): logo
 // colorway/exclusion-zone/misuse rules, color weighting/hierarchy, and a
 // typography hierarchy (H1-H4/body/caption) weren't captured anywhere
 // before, even though every real brand guide we've seen specifies them.
@@ -2109,7 +2109,7 @@ const DM_FORMAT_COST_DEFAULTS = {
 };
 // 2026-09-28 — Annual plan: baseline & targets per year, per direct
 // instruction on the AOV_2027_Board_Case.xlsx workbook ("the Anthropic model
-// built for Atlas for an entire year. Extrapolating campaign level
+// built for Example Voyages for an entire year. Extrapolating campaign level
 // analytical objectives that then drive to the final annual event should
 // be the structure that we put in place"). One row per (account, year,
 // kind): kind 'baseline' = the trailing-12-month actuals the annual model
@@ -2127,7 +2127,7 @@ const DM_FORMAT_COST_DEFAULTS = {
 // (popup / subscribe / brochure / share / contact) = the app's
 // Registrations; bookings = Transactions. Manual entry on Company Profile
 // for now — nothing here is seeded from the workbook automatically, since
-// which account row is Atlas and which scenario the board approved are
+// which account row is Example Voyages and which scenario the board approved are
 // both Todd's calls, not the code's.
 createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS account_annual_plan (
@@ -2640,7 +2640,7 @@ function normalizeLeadType(v){
   if (/reg|sign|subscri|growth/.test(s)) return 'Registration';
   return null;
 }
-// 2026-09-29 — Guest-level bookings (ATLAS_BK_DATE.xlsx shape), per direct
+// 2026-09-29 — Guest-level bookings (reference bookings workbook shape), per direct
 // instruction: "Each row is a unique guest. The booking code is the unique
 // transaction code supporting double occupancy. We would keep revenue but
 // dedup the booking code when looking at unique transactions vs. total
@@ -3495,7 +3495,7 @@ ensureColumn('accounts', 'analyticsRequestedAt', 'TEXT');
 // Round 90 — GA4 gets its own two structured fields (Analytics Account ID,
 // Property ID), same "dedicated fields, not just the generic fallback notes
 // textarea" treatment Snowflake already gets above, added when a real
-// client's GA4 account/property numbers needed to be recorded (Atlas Ocean
+// client's GA4 account/property numbers needed to be recorded (Example Voyages Ocean
 // Voyages' demo activation). Every other no-warehouse pathway (Meta,
 // Google Ads, Adobe, Sheets) still only has the generic
 // analyticsFallbackNotes field — GA4 is the one this round gave structure
@@ -3624,7 +3624,7 @@ createTableIfNeeded(`
 //
 // account_taxonomies — the account-configurable dropdown value lists the
 // doc's Section 3 calls for (Product Group, Creative Market, Audience, Buy
-// Type, Media Type). AOV/Atlas Ocean Voyages already runs this exact field
+// Type, Media Type). the reference account already runs this exact field
 // set operationally in its own Excel-based planning today — this is that
 // existing vocabulary becoming real, editable, per-account dropdown data
 // instead of a hardcoded travel-specific enum, so a non-travel account can
@@ -3684,7 +3684,7 @@ createTableIfNeeded(`
 // portal.html) had no way to set up real Product Group / Creative Focus
 // Group values at all except uploading real historical media rows first, a
 // real chicken-and-egg gap for "create proper campaigns that help us test
-// copywriting" on a fresh account like Atlas. This registry is that
+// copywriting" on a fresh account like Example Voyages. This registry is that
 // starting point — never auto-applied, only offered; the account picks one
 // (or starts blank) and can freely edit or fully replace every value before
 // saving, same "brands can override everything" instruction.
@@ -3750,7 +3750,7 @@ const TAXONOMY_TEMPLATES = [
 // cleanly 1:1 to an existing media_plan_allocations row (segmented Direct
 // Mail channels, e.g., vs. this dataset's undifferentiated "Direct Mail"),
 // so this stays null rather than force a guessed match — see
-// seed-atlas-channel-plans.js for the same caution applied on import.
+// seed-reference-channel-plans.js for the same caution applied on import.
 //
 // status (draft|submitted|approved) is the doc's Section 2 per-entry
 // approval gate — a row can be saved partial as Draft; Approved is a
@@ -10472,7 +10472,7 @@ async function fetchSitemapUrls(origin){
   const xml = await resp.text();
   if (/<sitemapindex[\s>]/i.test(xml)){
     // 2026-09-02 fix, per direct correction while testing the
-    // website-category-scan tool against a real site (Atlas Ocean
+    // website-category-scan tool against a real site (Example Voyages Ocean
     // Voyages) — this used to just throw here ("multi-file sitemap
     // index... not supported"), which meant any site using the extremely
     // common sitemap-index-of-sitemaps pattern fell all the way back to
@@ -10608,7 +10608,7 @@ const WEBSITE_SCAN_CANDIDATE_CAP = 200; // sitemap paths offered to the classifi
 // Sitemap discovery + AI-driven page selection, factored out of
 // POST /api/ops/website-category-scan's inline logic (see that route for
 // the full history of two decisions baked into this function: (1) a
-// sitemap-INDEX site like Atlas Ocean Voyages must still reach real
+// sitemap-INDEX site like Example Voyages must still reach real
 // candidate paths, handled inside fetchSitemapUrls() itself; (2) page
 // selection asks the model to classify the REAL, actually-discovered
 // sitemap paths directly rather than matching a hand-maintained keyword
@@ -11685,9 +11685,9 @@ function computeDmaRollup(rows, weightMode){
 
 // DMA-level composite score / opportunity tier / Test-Control-Holdout /
 // matched pairs — 2026-09-09, per direct instruction, after Todd shared
-// the actual Atlas reference file this whole design doc's Test/Control/
+// the actual Example Voyages reference file this whole design doc's Test/Control/
 // Holdout section was modeled on (see computeHoldoutSplit's own comment:
-// "matches the Atlas file's own 15/15/6 shape in spirit"). That file is
+// "matches the Example Voyages file's own 15/15/6 shape in spirit"). That file is
 // DMA-level, and until now this app only computed Test/Control/Holdout at
 // the zip level — a DMA-level upload got an explicit "not built yet" for
 // all three. This mirrors computeCompositeScore/computeHoldoutSplit/
@@ -11961,7 +11961,7 @@ function computePenetrationIndex(rows, weightMode){
 }
 
 // Composite Score / Opportunity Tier — buildout item #4's "the one piece of
-// the Atlas file where the exact original formula isn't knowable," per the
+// the Example Voyages file where the exact original formula isn't knowable," per the
 // design doc: a disclosed, adjustable weighted blend of log-scaled volume
 // (transaction count or revenue, whichever weightMode drove the
 // penetration index above) and the penetration index itself, defaulting to
@@ -12017,7 +12017,7 @@ function computeCompositeScore(penetrationRows, weights){
 // Deterministic, spread-across-tiers selection (every Nth zip by composite
 // score rank) rather than random, so a Holdout group actually spans the
 // opportunity-tier range instead of clustering by chance — matches the
-// Atlas file's own 15/15/6 shape in spirit (roughly a sixth of the
+// Example Voyages file's own 15/15/6 shape in spirit (roughly a sixth of the
 // scoreable pool) but the fraction is a parameter, not hardcoded, since
 // real sizing is a statistics problem the design doc flags as future work,
 // not something this build claims to solve.
@@ -12299,7 +12299,7 @@ function computeStoreTradeAreas(rows, stores, radii, weightMode){
 // reasonable stand-in. The TOP bracket (017, Census's "$200,000 or more")
 // is open-ended, so a flat $225,000 midpoint silently caps every genuinely
 // wealthy area at "upper-middle-class" — confirmed 2026-09-11 against a
-// real account (Atlas Ocean Voyages, one of the wealthiest areas in the
+// real account (Example Voyages, one of the wealthiest areas in the
 // country per Todd, whose ring Wealth Index nonetheless landed in the
 // merely-"Wealthy" band because of this exact cap). When a real, per-zip
 // top-bracket average is on file (income_top_bracket_avg — sourced from
@@ -13311,7 +13311,7 @@ function computeMarketUploadAnalysis(accountId, upload, options){
     let dmaOnly = null;
     try { dmaOnly = computeDmaRollup(rows, upload.weightMode); } catch (e){ dmaOnly = { available: false, note: String(e && e.message || e).slice(0, 120), dmas: [] }; }
     // DMA-level Test/Control/Holdout + matched pairs, per direct
-    // instruction after Todd shared the Atlas reference file this whole
+    // instruction after Todd shared the Example Voyages reference file this whole
     // design was modeled on (DMA-level, with exactly these columns) — see
     // computeDmaCompositeAndMatching()'s own comment. This replaces what
     // used to be a flat "not built yet" for a DMA-level upload.
@@ -13390,7 +13390,7 @@ function computeMarketUploadAnalysis(accountId, upload, options){
 // 2026-09-09, per direct instruction ("We should just show a downloadable
 // Excel or Google Sheets output file to keep the analysis simple instead
 // of scrolling. It should look like the attached") — Todd's attached file
-// (an Atlas match-market reference export, DMA-level) is the actual shape
+// (an Example Voyages match-market reference export, DMA-level) is the actual shape
 // this app's whole Test/Control/Holdout design was modeled on to begin
 // with (see computeHoldoutSplit's own comment). Deliberately does NOT
 // reproduce the sample file's exact "TierAbbrev-N" / "TierAbbrev-HO"
@@ -16664,6 +16664,7 @@ ensureColumn('leads', 'websiteUrl', 'TEXT');
 // Market auto-switch), not something the assessment leaves unset. It just
 // wasn't being sent to the backend either — same gap as websiteUrl above.
 ensureColumn('leads', 'naicsCode', 'TEXT');
+ensureColumn('leads', 'enhancetoken', 'TEXT'); // 2026-11-20: proof that whoever updates a lead is the browser that created it
 
 // Round 60 — session tokens (Deliverable 14/auth). One row per active
 // login; deleted on logout or lazily on expiry (see authenticate() below).
@@ -17661,7 +17662,7 @@ function generateId(prefix){
 // file (Long Form Copy generation and scoring, the copy-interview panel's
 // per-vendor brief, and PR/Corp Comm generation) were hardcoded to "a
 // luxury travel brand" regardless of the account's own industry. That's
-// fine for Atlas Ocean Voyages, wrong for every other vertical this
+// fine for Example Voyages, wrong for every other vertical this
 // platform serves (wine & spirits, retail apparel, sporting goods, etc.) —
 // a client outside travel would get copy/PR written as if it were a
 // cruise line. account.industry already exists and is stored per-account
@@ -17676,7 +17677,7 @@ function industryPersonaPhrase(account){
 // Round 132c17 (2026-08-17), per direct instruction: "the campaign id
 // includes a 3 letter code for each partner defined during setup, three
 // letter product code -last two of start year -last two of month year.
-// Atlas would be AOV-POL (Polar)-27-04". Letters-only, uppercased, capped
+// Example Voyages would be AOV-POL (Polar)-27-04". Letters-only, uppercased, capped
 // at 3 chars each; year/month come from the campaign's own startDate (falls
 // back to today if no start date is on file yet, since a campaign can exist
 // before its dates are locked in). Returns null (not a fabricated code) when
@@ -25618,7 +25619,7 @@ async function sendMemberInvite(memberId, { accountId, name, email, invitedByNam
 //      e.g.: GA4_SERVICE_ACCOUNT_KEY_JSON="$(cat key.json)" node backend/server.js
 //   4. That's it — getGa4Report() below activates automatically for any
 //      account whose analyticsGa4PropertyId is on file (set via the
-//      Analytics Integrations card, or directly per Atlas's round-90 demo
+//      Analytics Integrations card, or directly per Example Voyages's round-90 demo
 //      activation). No restart-order dependency, no other config.
 const GA4_SERVICE_ACCOUNT_KEY_JSON = process.env.GA4_SERVICE_ACCOUNT_KEY_JSON || '';
 let ga4ServiceAccount = null;
@@ -27030,7 +27031,7 @@ async function extractSampleText(uploadedFile){
 //     fetched and parsed with the same pdf-parse pipeline extractSampleText
 //     already uses, returned as { kind: 'pdf', extractedText }.
 //   - the URL is an HTML page -> treated as a potential "directory" page
-//     (e.g. atlasoceanvoyages.com/brochures) and regex-scanned for <a>
+//     (e.g. example-voyages.example/brochures) and regex-scanned for <a>
 //     hrefs that point at a .pdf, same zero-dependency regex approach
 //     already used by stripHtmlTags/extractPrimaryCta above (no HTML/DOM
 //     library in this backend's footprint) — returned as
@@ -27866,8 +27867,8 @@ Submit your draft via the submit_copy tool.`;
 // reason on every real way this can fail (network error, timeout, non-2xx)
 // rather than returning a silent empty result — callers turn that message
 // straight into their own honest-failure response.
-// 2026-09-13 fix, per direct report — a fresh scan of Atlas's real, live
-// site (atlasoceanvoyages.com) came back with "No title/meta/headings
+// 2026-09-13 fix, per direct report — a fresh scan of Example Voyages's real, live
+// site (example-voyages.example) came back with "No title/meta/headings
 // extracted from this scan" even though the response was a 200, not a
 // thrown error. Confirmed directly: the real page DOES have a full
 // <title>, a real <meta name="description">, and real H1/H2/H3 content in
@@ -27939,7 +27940,7 @@ async function fetchAndExtractPage(url){
     throw new Error(`Could not read the response from ${url} (${e.message}).`);
   }
   // 2026-09-13 fix, part 2 — per direct report, swapping the User-Agent
-  // (see this function's own comment above) did NOT fix Atlas's scan; it
+  // (see this function's own comment above) did NOT fix Example Voyages's scan; it
   // came back empty again on a second try. That rules out a simple
   // User-Agent block and points at something no request header can get
   // past: a JavaScript-based challenge (Cloudflare "Managed Challenge"/
@@ -27993,7 +27994,7 @@ async function fetchAndExtractPage(url){
   const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
   const bodyText = stripTags(bodyMatch ? bodyMatch[1] : html);
   // 2026-09-13 fix, part 4 — per direct report, the challenge-page/tiny-
-  // response check above (part 2) did NOT fire on Atlas's next attempt
+  // response check above (part 2) did NOT fire on Example Voyages's next attempt
   // either: the response came back 200, wasn't tiny, matched none of the
   // CHALLENGE_PAGE_MARKERS strings — and STILL extracted no title, no meta
   // description, and no headings. That's a real, distinct failure mode
@@ -28441,7 +28442,7 @@ async function generateAssessmentReadout(input){
 // the exact structure the PR contact confirmed he needs), but tells the
 // model what "Experience," "Details," and "Next Step" actually mean for
 // that release type. Deliberately industry-agnostic wording (see
-// industryPersonaPhrase()) — none of this is Atlas/travel-specific.
+// industryPersonaPhrase()) — none of this is Example Voyages/travel-specific.
 const PRESS_RELEASE_TYPE_GUIDANCE = {
   product_launch: 'THE EXPERIENCE should explain why this product/enhancement is compelling and distinctly this brand\'s, not a generic feature list. THE DETAILS should cover availability, pricing if applicable, and how it works. THE NEXT STEP should be a clear call to action for how a customer engages with or acquires it.',
   earnings: 'THE EXPERIENCE and THE DETAILS should present the real financial results/metrics supplied in the brief plainly and factually — no promotional language, no "compelling experience" framing; this is a financial disclosure, not a marketing piece. THE NEXT STEP should point to where investors can find the full report/call details. Every number in this release must come from the brief — never estimate, round, or infer a figure that was not supplied.',
@@ -33730,7 +33731,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-19-r66-viz-pdf',
+        buildStamp: '2026-11-20-r68-lead-routes',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -36786,7 +36787,7 @@ async function handleRequestInner(req, res) {
 
     // POST /api/accounts/:id/voice-guide/clear-memory — 2026-09-12, per
     // direct instruction after the client asked (mid-conversation) for
-    // Atlas Ocean Voyages' approved Voice Guide/Vision/Longform to be
+    // Example Voyages' approved Voice Guide/Vision/Longform to be
     // manually cleared as a one-time clean-slate test, then separately
     // noted "assuming we wipe the memory when removing [sample writings]"
     // — revealing there was no way for the client himself (non-technical,
@@ -37463,7 +37464,7 @@ async function handleRequestInner(req, res) {
     // releases can be excluded. The top level brand.com/ and product
     // transaction pages... tell the story") — and extracting a fixed set of
     // seven positioning categories from what's actually found, purely to
-    // preview the capability against a real site (Atlas Ocean Voyages)
+    // preview the capability against a real site (Example Voyages)
     // BEFORE any of that account's own real, already-on-file information is
     // consulted. Deliberately does NOT touch brand_copy_website_examples or
     // any accountId — this is a standalone scan of a bare URL, not tied to
@@ -37492,7 +37493,7 @@ async function handleRequestInner(req, res) {
     // set, the sitemap can't be resolved, or the classification call
     // fails — same honest-degradation posture as the extraction step
     // below, never a hard failure. See fetchSitemapUrls() for the
-    // matching 2026-09-02 fix that lets a sitemap-index site (like Atlas
+    // matching 2026-09-02 fix that lets a sitemap-index site (like Example Voyages
     // Ocean Voyages) even reach this step with real candidate paths.
     //
     // 2026-09-12 REFACTOR (Website Brand Profile round) — this route's own
@@ -37512,7 +37513,8 @@ async function handleRequestInner(req, res) {
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       }
       const body = await readBody(req);
-      const websiteUrl = (body.websiteUrl || 'https://www.atlasoceanvoyages.com').trim();
+      const websiteUrl = String(body.websiteUrl || '').trim();
+      if (!websiteUrl) return sendJson(res, 400, { error: 'websiteUrl is required.' });
       let origin;
       try { origin = new URL(websiteUrl).origin; } catch (e){
         return sendJson(res, 400, { error: 'Not a valid URL.' });
@@ -38972,7 +38974,7 @@ Submit your response via the campaign_intake_turn tool.`;
     //     served from the 15-minute cache. A successful real pull also
     //     flips analyticsStatus to 'connected' for real (idempotent if it
     //     was already 'connected' from the round-90 demo simulation — this
-    //     is the point where that simulation becomes true for Atlas, once a
+    //     is the point where that simulation becomes true for Example Voyages, once a
     //     real service account is wired in).
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'ga4-report'){
       const accountId = decodeURIComponent(parts[2]);
@@ -39295,6 +39297,7 @@ Submit your response via the campaign_intake_turn tool.`;
     // produces decodes byte-for-byte with OpenCV's QRCodeDetector, including
     // unencoded merge tokens like `{{ contact.hs_object_id }}`.
     if (req.method === 'POST' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'qr'){
+      if (!authenticate(req)) return sendJson(res, 401, { error: 'Sign in to create QR codes.' });
       const body = await readBody(req);
       const data = typeof body.data === 'string' ? body.data : '';
       if (!data || !data.trim()){
@@ -49866,7 +49869,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
         .run(newId, accountId, null, `Carried forward from ${source.year}`, JSON.stringify([]), cfAnalysis.layout, JSON.stringify(cfAnalysis), 'pending_category_mapping', year, scope, nowCf);
       // 2026-09-08 fix, per direct bug report (Todd: "Backend unreachable —
-      // could not leverage that year" leveraging Atlas's 2026 budget
+      // could not leverage that year" leveraging Example Voyages's 2026 budget
       // forward into 2027) — root-caused to this endpoint's original
       // per-row insert loop. On the production Supabase/Postgres path
       // (DATABASE_URL set), every db.prepare(...).run() call is a REAL
@@ -53305,6 +53308,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     // account-scoped and not auth-gated: it's read-only reference data
     // identical for every account, same trust level as GET /api/health.
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'print-specs' && parts[2] === 'global'){
+      if (!authenticate(req)) return sendJson(res, 401, { error: 'Sign in to see this catalog.' });
       return sendJson(res, 200, { specs: GLOBAL_PRINT_SPECS });
     }
 
@@ -53312,6 +53316,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     // (round 62). Same trust level as print-specs/global: read-only
     // reference data, identical for every account, no auth required.
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'direct-mail-specs' && parts[2] === 'global'){
+      if (!authenticate(req)) return sendJson(res, 401, { error: 'Sign in to see this catalog.' });
       return sendJson(res, 200, { specs: GLOBAL_DIRECT_MAIL_SPECS });
     }
 
@@ -53319,6 +53324,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     // catalog (round 63). Same trust level as the other /global endpoints:
     // read-only reference data, no auth required.
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ooh-specs' && parts[2] === 'global'){
+      if (!authenticate(req)) return sendJson(res, 401, { error: 'Sign in to see this catalog.' });
       return sendJson(res, 200, { specs: GLOBAL_OOH_SPECS });
     }
 
@@ -53423,11 +53429,13 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     // HubSpot account exists. Never accountId-scoped: a lead exists before
     // any account does.
     if (req.method === 'POST' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'leads'){
+      if (assessmentRateLimitExceeded(req, 'lead-create', 30)) return sendJson(res, 429, { error: 'Too many requests from this connection. Try again later.' });
       const body = await readBody(req);
       if (!body.email || !body.consent){
         return sendJson(res, 400, { error: 'email and consent are required' });
       }
       const leadId = generateId('lead');
+      const enhanceToken = crypto.randomBytes(24).toString('hex');
       const now = new Date().toISOString();
       const sync = await syncLeadToHubspot(body);
       db.prepare(`INSERT INTO leads
@@ -53445,8 +53453,10 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
           sync.hubspotStatus, sync.hubspotContactId || null, sync.hubspotError || null, now,
           JSON.stringify(body), body.url || '', body.naicsCode || ''
         );
+      try { db.prepare('UPDATE leads SET enhancetoken = ? WHERE id = ?').run(enhanceToken, leadId); } catch (e){ console.warn('[leads] could not store enhance token:', e.message); }
       return sendJson(res, 201, {
         leadId,
+        enhanceToken,
         hubspotStatus: sync.hubspotStatus,
         hubspotContactId: sync.hubspotContactId || null,
         hubspotContactUrl: sync.hubspotContactUrl || null,
@@ -53467,19 +53477,26 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     // property set — see buildHubspotCustomProperties() above for exactly
     // which fields land where.
     if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'leads' && parts[2] === 'enhance'){
+      if (assessmentRateLimitExceeded(req, 'lead-enhance', 30)) return sendJson(res, 429, { error: 'Too many requests from this connection. Try again later.' });
       const body = await readBody(req);
       if (!body.email){
         return sendJson(res, 400, { error: 'email is required' });
       }
+      // 2026-11-20: only the browser that created the lead (it holds the one-time token from POST /api/leads) may update it.
       const existing = db.prepare('SELECT * FROM leads WHERE email = ? ORDER BY createdAt DESC LIMIT 1').get(body.email);
-      if (!existing){
-        return sendJson(res, 404, { error: 'no lead found for this email — POST /api/leads first' });
+      const tokenOk = !!(existing && body.leadId && body.enhanceToken && existing.id === body.leadId && aliasVal(existing, 'enhancetoken')
+        && String(aliasVal(existing, 'enhancetoken')).length === String(body.enhanceToken).length
+        && crypto.timingSafeEqual(Buffer.from(String(aliasVal(existing, 'enhancetoken'))), Buffer.from(String(body.enhanceToken))));
+      if (!tokenOk){
+        return sendJson(res, 403, { error: 'This update could not be verified.' });
       }
       // Merge onto the original registration-time payload so fields it
       // already had (industry, footprint, org style, maturity levels, …)
       // still get sent to HubSpot alongside the new post-Assess fields —
       // the enhance call only carries what changed, not the whole profile.
-      const merged = Object.assign({}, JSON.parse(existing.assessmentDataJson || '{}'), body);
+      // Identity, consent and credential fields are never changed by this call.
+      const patch = Object.assign({}, body); ['email', 'firstName', 'lastName', 'phone', 'phoneCountry', 'company', 'consent', 'source', 'leadId', 'enhanceToken', 'id'].forEach(k => { delete patch[k]; });
+      const merged = Object.assign({}, JSON.parse(existing.assessmentDataJson || '{}'), patch);
       const sync = await syncLeadToHubspot(merged);
       db.prepare(`UPDATE leads SET
           quadrant = ?, mediaPct = ?, cxPct = ?,
