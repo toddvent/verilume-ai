@@ -177,6 +177,10 @@
       "destination": "/frontend/terms.html"
     },
     {
+      "source": "/privacy.html",
+      "destination": "/frontend/privacy.html"
+    },
+    {
       "source": "/docs/",
       "destination": "/frontend/verilume-product-docs.html"
     },
@@ -287,6 +291,14 @@
     {
       "source": "/:file([^/]+\\.mp4)",
       "destination": "/frontend/:file"
+    },
+    {
+      "source": "/privacy",
+      "destination": "/frontend/privacy.html"
+    },
+    {
+      "source": "/terms",
+      "destination": "/frontend/terms.html"
     }
   ],
   "redirects": [
