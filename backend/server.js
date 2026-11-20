@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-20-r68-lead-routes (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-20-r69-generic-prompts (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -6506,14 +6506,14 @@ ${context}
 This strategy will be handed, as a FIXED foundation, to every future individual destination video script written for this brand — each destination video is written separately, later, by a different process, and will be told to follow your strategy rather than invent its own. Your job here is only to set that shared foundation, not to write any one destination's script.
 
 Write a strategy document (400-700 words) that covers, in your own structure:
-- The ONE throughline that must appear in every destination video, tying back to this brand's actual voice/pillars above (not generic "luxury" language).
+- The ONE throughline that must appear in every destination video, tying back to this brand's actual voice/pillars above (not generic category language).
 - How that throughline stays consistent across a whole COLLECTION of different destination videos while still leaving room for each destination's own specifics.
 - What genuinely differentiates this brand from its ACTUAL named competitors above (see COMPETITIVE POSITIONING, when present) — grounded ONLY in the real "why they compete"/"market overlap"/"how they market themselves" signal given for THOSE SPECIFIC competitors, never a named competitor and never a claim not grounded in what's given.
 - Concrete guidance a scriptwriter could actually use later: what to always include, what to always avoid, and how to open/close every video so the collection reads as one system.
 
-CRITICAL — do not default to a generic "small independent brand vs. a giant/mass-market rival" contrast (e.g. "not a floating resort," "not a ship of thousands," scale-based claims) unless the COMPETITIVE POSITIONING signal above actually supports it for THESE named competitors. Many real competitors in a given category are comparably sized/positioned to this brand — a scale contrast that isn't true of the actual competitors on file is a fabricated claim even if it sounds like a plausible category narrative, and this account may have already told you (in the brand signal above) if its own real category is more crowded with peers than with giants. If the competitor signal doesn't support a scale-based contrast, find the real differentiation elsewhere in what's actually given — an itinerary/expedition-style difference, a market-overlap or approach difference, a substantiated brand-pillar difference — never fall back to invented category tropes to fill the gap.
+CRITICAL — do not default to a generic "small independent brand vs. a giant/mass-market rival" contrast (scale-based claims such as "not a mass-market giant") unless the COMPETITIVE POSITIONING signal above actually supports it for THESE named competitors. Many real competitors in a given category are comparably sized/positioned to this brand — a scale contrast that isn't true of the actual competitors on file is a fabricated claim even if it sounds like a plausible category narrative, and this account may have already told you (in the brand signal above) if its own real category is more crowded with peers than with giants. If the competitor signal doesn't support a scale-based contrast, find the real differentiation elsewhere in what's actually given — an offering-style or itinerary difference, a market-overlap or approach difference, a substantiated brand-pillar difference — never fall back to invented category tropes to fill the gap.
 
-CRITICAL — this brand's fleet is NOT one uniform ship: the brand signal above may describe it with a single blended guest-capacity figure (e.g. "196-400 guests"), but that phrasing is imprecise and confusing — this brand actually operates two different ship classes with different capacities on different routes. This strategy covers the WHOLE collection (every destination, every ship), so do NOT state a specific guest-capacity number as if it applies brand-wide. If capacity or scale comes up, describe it qualitatively (e.g. "small-ship, expedition-scale, never a mass-market vessel") without committing to one blended figure — the exact per-ship number is supplied separately to each individual destination script, which knows which ship actually serves that route.
+CRITICAL — this brand's offering may not be uniform: the brand signal above may describe size, capacity or scale with a single blended figure, but different destinations or offerings can differ. This strategy covers the WHOLE collection, so do NOT state a specific size or capacity number as if it applies brand-wide. If scale comes up, describe it qualitatively without committing to one blended figure — the exact per-destination facts are supplied separately to each individual destination script, which knows the facts on file for that destination.
 
 Submit your candidate via the submit_video_strategy_candidate tool.`;
 }
@@ -6693,26 +6693,25 @@ async function runVideoStrategyContest(account){
 // comparable beat-for-beat. Only the content of each beat (visual direction,
 // VO, on-screen caption, pillar tag) is generated.
 const VIDEO_SCRIPT_BEAT_GRID = [
-  { beat: 'OPEN — the place', timestamp: '0:00–0:04' },
-  { beat: 'THE PLACE, CLOSER', timestamp: '0:04–0:08' },
-  { beat: 'THE YACHT', timestamp: '0:08–0:12' },
-  { beat: 'THE TABLE', timestamp: '0:12–0:16' },
+  { beat: 'OPEN — the setting', timestamp: '0:00–0:04' },
+  { beat: 'THE SETTING, CLOSER', timestamp: '0:04–0:08' },
+  { beat: 'THE EXPERIENCE', timestamp: '0:08–0:12' },
+  { beat: 'THE DETAIL', timestamp: '0:12–0:16' },
   { beat: 'SCALE', timestamp: '0:16–0:20' },
-  { beat: 'THE EXPEDITION', timestamp: '0:20–0:24' },
+  { beat: 'THE MOMENT', timestamp: '0:20–0:24' },
   { beat: 'THE PAYOFF', timestamp: '0:24–0:26.5' },
   { beat: 'END CARD', timestamp: '0:26.5–0:30' }
 ];
-const VIDEO_SCRIPT_PILLARS = ['Immersive Adventure', 'Curated Boutique Hospitality', 'Luxury & Elegance', 'Deep Connection'];
 // overallApproach — added 2026-09-14, per direct instruction: "The
 // competition needs to make sure that we're looking for a collection of
 // destination videos that leverage the common brand voice while adding
-// destination expedition style copy." Rather than build a separate
+// destination-specific copy." Rather than build a separate
 // "designate one brand base script" flag/run mode (rejected as over-
 // engineering — "We're making this too complicated"), each candidate now
 // writes its own short framing paragraph BEFORE its 8 beats, explicitly
 // naming how this script leverages the account's one common brand voice as
 // the throughline across the whole collection of destination videos, then
-// how this destination's beats layer its own expedition-style specifics on
+// how this destination's beats layer its own specifics on
 // top of that. Both layers Todd asked for are now literally present in one
 // generated candidate, without adding a new picker or run mode.
 const VIDEO_SCRIPT_BEAT_SCHEMA = {
@@ -6720,7 +6719,7 @@ const VIDEO_SCRIPT_BEAT_SCHEMA = {
   properties: {
     overallApproach: {
       type: 'string',
-      description: 'A short 2-4 sentence framing written BEFORE the beats: how this candidate leverages the account\'s ONE common brand voice as the throughline shared across the whole collection of destination videos, then how this destination\'s beats layer in their own expedition-style specifics on top of that shared voice. Plain prose, not a beat, not a tagline.'
+      description: 'A short 2-4 sentence framing written BEFORE the beats: how this candidate leverages the account\'s ONE common brand voice as the throughline shared across the whole collection of destination videos, then how this destination\'s beats layer in their own specifics on top of that shared voice. Plain prose, not a beat, not a tagline.'
     },
     beats: {
       type: 'array',
@@ -6731,7 +6730,7 @@ const VIDEO_SCRIPT_BEAT_SCHEMA = {
           visual: { type: 'string', description: 'Shot direction for this beat — concrete, filmable, specific to this destination. Never invent a named excursion, program, or piece of footage not present in the evidence/context given.' },
           vo: { type: 'string', description: 'Voiceover line for this beat, or the literal string "(no VO)" if this beat should carry no voiceover (e.g. a breathing/score-only beat).' },
           caption: { type: 'string', description: 'Short on-screen sound-off caption for this beat, ALL CAPS, matching the terse style of a real cut-down social caption.' },
-          pillar: { type: 'string', description: `Which brand pillar(s) this beat serves — one or more of: ${VIDEO_SCRIPT_PILLARS.join(', ')} (joined with " · " if more than one).` }
+          pillar: { type: 'string', description: `Which brand pillar(s) this beat serves — one or more of this brand's own pillars as named in its voice guide and strategy in the prompt (joined with " · " if more than one); if none are named, leave it short and plain.` }
         },
         required: ['visual', 'vo', 'caption', 'pillar']
       }
@@ -6797,48 +6796,24 @@ async function referenceVideoScriptContext(accountId, sampleId){
     return `\nEXISTING BRAND CONTENT ON FILE, FOR STRUCTURAL/TONAL REFERENCE ONLY (real ${categoryLabel(sample.category)} this brand has already produced, possibly for another destination — match its pacing, rhythm, and voice; NEVER copy its destination-specific facts, named excursions, or footage into this different destination's script):\n--- "${sample.title}" (${categoryLabel(sample.category)}, ${sample.docDate}) ---\n${text.replace(/\s+/g, ' ').slice(0, 1200)}\n`;
   } catch (e){ return ''; }
 }
-// 2026-09-14 — per-destination fleet/ship fact, per direct correction: "THE
-// 196-400 guest statement confuses everyone not just models. The Polar
-// class ships visiting Antarctica, Arctic and Europe are up to 200 guests.
-// The Atlas Adventurer visiting Asia & Africa exclusively is up to 400
-// guests. How should we incorporate this into our content requests" —
-// enforcement confirmed as "Automatic, per-destination." The account's own
-// Products & Services text (frontend/assessment.html's
-// KNOWN_BRAND_OVERVIEWS, written directly into the live account record) is
-// the actual SOURCE of the confusing blended "196–400 guests" phrasing —
-// that's an account-data fix Todd owns, flagged to him directly rather than
-// edited here. This function is the code-side backstop: whatever the
-// account's own text says, every Video Script prompt gets the CORRECT
-// destination-specific ship fact, explicit enough to override it.
-// Mapping confirmed directly by Todd: Antarctica/Arctic/Northern Europe →
-// polar-class fleet (~200 guests); Mediterranean → same 3 yachts, named
-// directly rather than "polar-class" ("Mediterranean sounds odd" for that
-// label); South America → an Antarctica expedition beginning in South
-// America, polar-class, same ships EXCEPT World Voyager; Asia/Africa →
-// Atlas Adventurer exclusively, up to 400, NOT polar-class. Matched via
-// case-insensitive substring against the real creativeMarket value (an
-// account-configured taxonomy string, not a fixed enum) — no match means no
-// injected fact (honest-omit, same convention as everywhere else in this
-// file) rather than guessing at an unrecognized destination name.
-function videoScriptFleetContext(creativeMarket){
-  const m = String(creativeMarket || '').toLowerCase();
-  if (/asia|africa/.test(m)){
-    return `FLEET FACT FOR THIS DESTINATION (state this, not any other guest-capacity figure): aboard the Atlas Adventurer — up to 400 guests. Asia and Africa are the Atlas Adventurer's EXCLUSIVE routes; this ship is NOT polar-class — never describe it with polar-class language or the ~200-guest figure.`;
-  }
-  if (/south america/.test(m)){
-    return `FLEET FACT FOR THIS DESTINATION (state this, not any other guest-capacity figure): an Antarctica expedition beginning in South America, aboard the polar-class fleet — World Navigator or World Traveller (NOT World Voyager, which doesn't sail this route) — up to approximately 200 guests.`;
-  }
-  if (/mediterranean/.test(m)){
-    return `FLEET FACT FOR THIS DESTINATION (state this, not any other guest-capacity figure): aboard World Navigator, World Traveller, or World Voyager — up to approximately 200 guests. Refer to these ships BY NAME here rather than "polar-class" — that label reads oddly for a Mediterranean itinerary even though it's the same fleet.`;
-  }
-  if (/antarctica|arctic|northern europe/.test(m)){
-    return `FLEET FACT FOR THIS DESTINATION (state this, not any other guest-capacity figure): aboard the polar-class fleet — World Navigator, World Traveller, or World Voyager — up to approximately 200 guests, true polar-class capability.`;
-  }
-  return '';
+// Per-destination facts (size, capacity, named offerings) are written into the video-script prompt so a model never blends figures that differ by destination.
+// 2026-11-20 — destination facts come from the account's own data (table account_market_facts, filled in by the client's data
+// collection), never from this file. A fact applies when its market name appears in the creative market (or the reverse).
+function videoScriptFleetContext(accountId, creativeMarket){
+  const m = String(creativeMarket || '').toLowerCase().trim();
+  if (!m || !accountId) return '';
+  let rows = [];
+  try { rows = db.prepare('SELECT market, fact FROM account_market_facts WHERE accountid = ?').all(accountId); } catch (e){ return ''; }
+  // The most specific market name wins (so a longer, narrower match is not contradicted by a broader one); equal-length matches all apply.
+  const cand = rows.filter(r => { const k = String(r.market || '').toLowerCase().trim(); return k && (m.includes(k) || k.includes(m)); });
+  const best = cand.reduce((a, r) => Math.max(a, String(r.market || '').trim().length), 0);
+  const hit = Array.from(new Set(cand.filter(r => String(r.market || '').trim().length === best).map(r => String(r.fact || '').trim()).filter(Boolean)));
+  if (!hit.length) return '';
+  return `FACTS ON FILE FOR THIS DESTINATION (state these exactly; they take priority over any other figure or description of size, capacity or offering in the brand signal below):\n- ${hit.join('\n- ')}`;
 }
 async function buildVideoScriptPrompt(account, creativeMarket, referenceScriptId, contextualNotes){
   const { context, voiceGuideText, visionStatement } = videoScriptPromptContext(account, creativeMarket);
-  const fleetCtx = videoScriptFleetContext(creativeMarket);
+  const fleetCtx = videoScriptFleetContext(account.accountId, creativeMarket);
   let evidence = '';
   try { evidence = await experienceEvidenceContext(account.accountId, creativeMarket, 'creativeMarket'); } catch (e){ evidence = ''; }
   let sampleCtx = '';
@@ -6866,21 +6841,21 @@ async function buildVideoScriptPrompt(account, creativeMarket, referenceScriptId
   // this account's own approved Voice Guide/Vision Statement leading, and
   // overallApproach still asks the model to state its own throughline.
   const strategyCtx = (account.videoStrategyText || '').trim();
-  return `You are writing one candidate :30-second video script for the "${creativeMarket}" destination. This is one entry in a COLLECTION of destination videos across this brand's Creative Focus Groups/destinations — every entry in that collection shares the ONE brand voice below, while each destination's beats add its own expedition-style specifics on top of it. This candidate is also being compared side by side against other independently-written candidates for this same destination.
+  return `You are writing one candidate :30-second video script for the "${creativeMarket}" destination. This is one entry in a COLLECTION of destination videos across this brand's Creative Focus Groups/destinations — every entry in that collection shares the ONE brand voice below, while each destination's beats add its own specifics on top of it. This candidate is also being compared side by side against other independently-written candidates for this same destination.
 
 COMPANY: ${account.company || '(name not set)'} — Industry: ${account.industry || '(not set)'}
 
-${strategyCtx ? `THIS ACCOUNT'S APPROVED VIDEO DESIGN STRATEGY (a human has already selected this as the required foundation for every destination video in this collection — FOLLOW it, do not propose a different throughline or approach of your own):\n${strategyCtx}\n\n` : ''}${voiceGuideText ? `THIS ACCOUNT'S CURRENTLY APPROVED VOICE GUIDE (write in this voice — this is the common thread across the whole collection, not just this one destination):\n${voiceGuideText}\n\n` : ''}${visionStatement ? `BRAND VISION STATEMENT: ${visionStatement}\n\n` : ''}Every film in this system prioritizes the "Intimate Yachting Expeditions" brand theme — scale (a small ship among giants), access (small-group, expert-led), and genuine destination depth, never generic "luxury cruise" vocabulary.
+${strategyCtx ? `THIS ACCOUNT'S APPROVED VIDEO DESIGN STRATEGY (a human has already selected this as the required foundation for every destination video in this collection — FOLLOW it, do not propose a different throughline or approach of your own):\n${strategyCtx}\n\n` : ''}${voiceGuideText ? `THIS ACCOUNT'S CURRENTLY APPROVED VOICE GUIDE (write in this voice — this is the common thread across the whole collection, not just this one destination):\n${voiceGuideText}\n\n` : ''}${visionStatement ? `BRAND VISION STATEMENT: ${visionStatement}\n\n` : ''}Every film in this system follows the brand theme, pillars and vocabulary given in the voice guide, strategy and brand signal above, and never falls back on generic category vocabulary this brand would not use itself.
 
-${fleetCtx ? `${fleetCtx}\n\n` : ''}CRITICAL CUSTOMER-FACING MESSAGES AND BRAND SIGNAL (use these specific facts — never invent products, offers, or claims not present here). NOTE: this signal may still describe the fleet as a single blended "196-400 guests" range — that phrasing is imprecise; ALWAYS follow the FLEET FACT above (when given) over any guest-capacity figure mentioned below:
+${fleetCtx ? `${fleetCtx}\n\n` : ''}CRITICAL CUSTOMER-FACING MESSAGES AND BRAND SIGNAL (use these specific facts — never invent products, offers, or claims not present here). NOTE: this signal may describe size or capacity with a single blended figure; ALWAYS follow the FACTS ON FILE above (when given) over any such figure mentioned below:
 ${context}
 
-${evidence ? evidence : `INTERNAL EXPERIENCE EVIDENCE ON FILE for "${creativeMarket}": none loaded yet for this destination. Write from the brand signal above only — do not invent named onboard programs, specific excursions, or footage that isn't given to you here.`}
+${evidence ? evidence : `INTERNAL EXPERIENCE EVIDENCE ON FILE for "${creativeMarket}": none loaded yet for this destination. Write from the brand signal above only — do not invent named programs, specific activities, or footage that isn't given to you here.`}
 ${sampleCtx}${websiteCtx}${referenceCtx}${notes ? `\nADDITIONAL CONTEXT FOR THIS SPECIFIC RUN (from the client — use it to shape tone/focus/emphasis, but never let it invent a fact, offer, or claim that isn't already given to you above):\n${notes}\n` : ''}
 THE FIXED 8-BEAT STRUCTURE (write content for exactly these 8 beats, in this order — do not rename or reorder them):
 ${VIDEO_SCRIPT_BEAT_GRID.map((b, i) => `${i + 1}. ${b.beat} (${b.timestamp})`).join('\n')}
 
-Before the beats, write a short overallApproach: 2-4 sentences naming how this candidate ${strategyCtx ? 'executes the APPROVED VIDEO DESIGN STRATEGY above' : 'leverages the ONE common brand voice above as the throughline shared across the whole collection of destination videos'}, then how THIS destination's beats layer in their own "${creativeMarket}" expedition-style specifics on top of that shared voice.
+Before the beats, write a short overallApproach: 2-4 sentences naming how this candidate ${strategyCtx ? 'executes the APPROVED VIDEO DESIGN STRATEGY above' : 'leverages the ONE common brand voice above as the throughline shared across the whole collection of destination videos'}, then how THIS destination's beats layer in their own "${creativeMarket}" specifics on top of that shared voice.
 
 Submit your candidate via the submit_video_script_candidate tool, including both overallApproach and beats.`;
 }
@@ -7873,7 +7848,7 @@ const DIRECT_MAIL_PLANNING_REFERENCE = {
     { source: 'USPS Delivers — Direct Mail Cost Calculator', howUsed: "Official calculator caveats and campaign-cost component assumptions; USPS itself states results are approximate." },
     { source: 'Invesp — Average Direct Mail Conversion Rate', howUsed: 'General direct-mail conversion context — used cautiously since conversion definitions differ across sources.' },
     { source: 'CRST — Direct Mail Response Rate by Industry', howUsed: 'Response can include calls, QR scans, walk-ins, and form submissions, not necessarily purchases — informed the engagement-vs-transaction split above.' },
-    { source: "Todd's own worked examples (luxury watch, CPG)", howUsed: 'Cross-checked the engagement/qualified-engagement/transaction funnel shape against real campaign structure, not just published ranges.' }
+    { source: "Verilume worked examples (luxury watch, CPG)", howUsed: 'Cross-checked the engagement/qualified-engagement/transaction funnel shape against real campaign structure, not just published ranges.' }
   ]
 };
 
@@ -7882,8 +7857,8 @@ const CHANNEL_BEST_PRACTICES = {
     primaryMetrics: ['Response rate', 'Engagement rate (QR/call/appointment)', 'Transactional conversion rate', 'Cost per response', 'Cost per acquisition'],
     benchmarks: [
       { metric: 'Response rate (cold/prospect list)', range: '2.0% – 4.4%', tier: 'A', source: 'ANA Response Rate Report (Association of National Advertisers, formerly the Direct Marketing Association/DMA)', asOf: '2025', note: 'Response rate varies enormously by list quality — this is a cold/purchased-list range, not a house-list one.' },
-      { metric: 'Engagement rate (QR scan / call / appointment) — cold or high-consideration offer', range: '0.1% – 0.8%', tier: 'B', source: "Todd-provided planning materials — DM engagement/conversion benchmark set", asOf: '2026-09-13', note: 'Engagement (a scan, a call, a claim) is a much softer signal than a transaction — see directMailPlanningReference.engagementFunnelByAudienceOffer for the full audience/offer matrix this is drawn from.' },
-      { metric: 'Transactional conversion rate — cold prospect, high-consideration', range: '0.01% – 0.10%', tier: 'B', source: "Todd-provided planning materials", asOf: '2026-09-13', note: "Only 5-25% of engagements typically become a qualified appointment or sale for a cold, high-consideration audience — don't plan revenue off the engagement rate alone." },
+      { metric: 'Engagement rate (QR scan / call / appointment) — cold or high-consideration offer', range: '0.1% – 0.8%', tier: 'B', source: "Verilume planning materials — DM engagement/conversion benchmark set", asOf: '2026-09-13', note: 'Engagement (a scan, a call, a claim) is a much softer signal than a transaction — see directMailPlanningReference.engagementFunnelByAudienceOffer for the full audience/offer matrix this is drawn from.' },
+      { metric: 'Transactional conversion rate — cold prospect, high-consideration', range: '0.01% – 0.10%', tier: 'B', source: "Verilume planning materials", asOf: '2026-09-13', note: "Only 5-25% of engagements typically become a qualified appointment or sale for a cold, high-consideration audience — don't plan revenue off the engagement rate alone." },
       { metric: 'Cost per piece', range: '$0.80/piece ($800 CPM)', tier: 'A', source: "This account's own real, direct-given cost (list + printing + postage) — see round 32g", asOf: '2026-09-12', note: 'Not a benchmark — this is real cost data already live in the Media Plan grid, stronger than any external benchmark. See directMailPlanningReference.costByMailerFormat for format options when scoping a new piece.' }
     ],
     creativeGuidanceRef: 'print-specs.html (Direct Mail section)',
@@ -7894,8 +7869,8 @@ const CHANNEL_BEST_PRACTICES = {
     primaryMetrics: ['Response rate', 'Engagement rate (QR/call/appointment)', 'Transactional conversion rate', 'Cost per response', 'Cost per acquisition'],
     benchmarks: [
       { metric: 'Response rate (house/customer list)', range: '5% – 9%', tier: 'A', source: 'ANA Response Rate Report (Association of National Advertisers, formerly DMA)', asOf: '2025', note: 'House-list response consistently and substantially outperforms cold/prospect lists.' },
-      { metric: 'Engagement rate (QR scan / call / claim) — existing customer, retention or cross-sell', range: '0.5% – 4%', tier: 'B', source: "Todd-provided planning materials — DM engagement/conversion benchmark set", asOf: '2026-09-13', note: 'Spans the luxury cross-sell (0.5-2.5%) and CPG loyalty/known-buyer (0.8-4%) rows of the audience/offer matrix — narrow to the closer analog in directMailPlanningReference.engagementFunnelByAudienceOffer.' },
-      { metric: 'Transactional conversion rate — existing customer', range: '0.10% – 1.50%', tier: 'B', source: "Todd-provided planning materials", asOf: '2026-09-13', note: 'Existing-customer transaction rates run well above cold-prospect rates — trust and prior purchase history already established.' },
+      { metric: 'Engagement rate (QR scan / call / claim) — existing customer, retention or cross-sell', range: '0.5% – 4%', tier: 'B', source: "Verilume planning materials — DM engagement/conversion benchmark set", asOf: '2026-09-13', note: 'Spans the luxury cross-sell (0.5-2.5%) and CPG loyalty/known-buyer (0.8-4%) rows of the audience/offer matrix — narrow to the closer analog in directMailPlanningReference.engagementFunnelByAudienceOffer.' },
+      { metric: 'Transactional conversion rate — existing customer', range: '0.10% – 1.50%', tier: 'B', source: "Verilume planning materials", asOf: '2026-09-13', note: 'Existing-customer transaction rates run well above cold-prospect rates — trust and prior purchase history already established.' },
       { metric: 'Cost per piece', range: '$0.71/piece ($710 CPM)', tier: 'A', source: "This account's own real cost data — see round 32g", asOf: '2026-09-12', note: 'Real cost, not a benchmark. See directMailPlanningReference.costByMailerFormat for format options when scoping a new piece.' }
     ],
     creativeGuidanceRef: 'print-specs.html (Direct Mail section)',
@@ -7906,8 +7881,8 @@ const CHANNEL_BEST_PRACTICES = {
     primaryMetrics: ['Response rate', 'Engagement rate (QR/call/appointment)', 'Transactional conversion rate', 'Cost per response', 'Cost per acquisition'],
     benchmarks: [
       { metric: 'Response rate (warm/engaged list)', range: '2.0% – 9%, directionally closer to the house-list end', tier: 'B', source: 'ANA Response Rate Report — extrapolated', asOf: '2025', note: 'The ANA report does not break out an "inquiries" list type on its own; this range brackets prospect (2.0-4.4%) and house-list (5-9%) figures as reasonable bounds for a warmer-than-cold, cooler-than-customer list. Treat as directional, not a precise citation.' },
-      { metric: 'Engagement rate (QR scan / call / appointment) — warm first-party prospect', range: '0.3% – 1.5%', tier: 'B', source: "Todd-provided planning materials — DM engagement/conversion benchmark set", asOf: '2026-09-13', note: 'The "warm first-party prospect / registered user" row of the audience/offer matrix is the closest analog to an inquiry list.' },
-      { metric: 'Transactional conversion rate — warm first-party prospect', range: '0.05% – 0.30%', tier: 'B', source: "Todd-provided planning materials", asOf: '2026-09-13', note: 'Roughly 10-30% of qualified engagements convert to close, depending on the sales process behind this list.' },
+      { metric: 'Engagement rate (QR scan / call / appointment) — warm first-party prospect', range: '0.3% – 1.5%', tier: 'B', source: "Verilume planning materials — DM engagement/conversion benchmark set", asOf: '2026-09-13', note: 'The "warm first-party prospect / registered user" row of the audience/offer matrix is the closest analog to an inquiry list.' },
+      { metric: 'Transactional conversion rate — warm first-party prospect', range: '0.05% – 0.30%', tier: 'B', source: "Verilume planning materials", asOf: '2026-09-13', note: 'Roughly 10-30% of qualified engagements convert to close, depending on the sales process behind this list.' },
       { metric: 'Cost per piece', range: '$0.71/piece ($710 CPM)', tier: 'A', source: "This account's own real cost data — see round 32g", asOf: '2026-09-12', note: 'Real cost, not a benchmark. See directMailPlanningReference.costByMailerFormat for format options when scoping a new piece.' }
     ],
     creativeGuidanceRef: 'print-specs.html (Direct Mail section)',
@@ -10736,7 +10711,7 @@ ${pageBlocks || '(no pages could be fetched)'}
 Fill in exactly these seven categories, using ONLY what the text and structured data above actually support. For any category the given material does not clearly support, set "value" to null — do not guess, infer from company name/industry alone, or use outside knowledge. Every non-null "value" must have an "evidence" field quoting or closely paraphrasing the specific text or structured data above that supports it.
 
 Categories:
-1. scaleFormat — the size or format of what they deliver (e.g. small-ship vs. mega-ship; boutique vs. big-box)
+1. scaleFormat — the size or format of what they deliver (e.g. boutique vs. mass-market; small-batch vs. big-box)
 2. specializationNiche — the specific capability that differentiates them from a generalist competitor
 3. geographicOperationalReach — where they can actually go or operate (specific regions, capabilities, certifications enabling reach)
 4. audienceSegmentServed — who they explicitly target
@@ -21142,6 +21117,13 @@ createTableIfNeeded(`
     createdat TEXT NOT NULL,
     readat TEXT
   );
+  CREATE TABLE IF NOT EXISTS account_market_facts (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    market TEXT NOT NULL,
+    fact TEXT NOT NULL,
+    updatedat TEXT
+  );
   CREATE TABLE IF NOT EXISTS account_chart_requests (
     id TEXT PRIMARY KEY,
     accountid TEXT NOT NULL,
@@ -21152,7 +21134,7 @@ createTableIfNeeded(`
     createdat TEXT NOT NULL
   );
 `);
-enableRlsNow(['account_notifications', 'account_chart_requests']);
+enableRlsNow(['account_notifications', 'account_chart_requests', 'account_market_facts']);
 ensureColumn('account_charts', 'dashboards', 'TEXT');
 
 const VIZ_TYPES = ['column', 'bar', 'line', 'area', 'stacked', 'pie', 'table'];
@@ -23750,7 +23732,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['member_session_tasks', 'account_card_pins', 'account_charts', 'account_notifications', 'account_chart_requests', 'account_pr_profile', 'account_ga4_meta', 'account_plan_scenarios', 'plan_scenario_events', 'mix_benchmark_cpm', 'account_lead_source_channel', 'plan_baseline_drafts', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'marketing_projects', 'marketing_project_tasks', 'account_learned_cpm', 'account_channel_product_inputs', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'creative_handoffs', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
+const CATALOG_EXEMPT = new Set(['account_market_facts', 'member_session_tasks', 'account_card_pins', 'account_charts', 'account_notifications', 'account_chart_requests', 'account_pr_profile', 'account_ga4_meta', 'account_plan_scenarios', 'plan_scenario_events', 'mix_benchmark_cpm', 'account_lead_source_channel', 'plan_baseline_drafts', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'marketing_projects', 'marketing_project_tasks', 'account_learned_cpm', 'account_channel_product_inputs', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'creative_handoffs', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -29121,7 +29103,7 @@ const GSC_ISSUE_RULES = [
   { re: /crawled.*not indexed/i, tier: 'review', label: 'Pages crawled but not indexed', why: 'Google read these pages and chose not to index them, which usually points to thin, duplicate or low-value content.' },
   { re: /discovered.*not indexed/i, tier: 'review', label: 'Pages discovered but not indexed', why: 'Google knows these pages exist but has not crawled them yet.' }
 ];
-const GSC_STOP = new Set(['the', 'and', 'for', 'with', 'from', 'near', 'best', 'top', 'how', 'what', 'where', 'when', 'why', 'cruise', 'cruises', 'ship', 'ships', 'travel', 'tour', 'tours', 'trip', 'trips', 'vacation', 'vacations', 'holiday', 'hotel', 'hotels', 'flight', 'flights', 'price', 'prices', 'cost', 'review', 'reviews', 'booking', 'book', 'offer', 'offers', 'deal', 'deals', 'official', 'site', 'website', 'online', 'login', 'near', 'company', 'group', 'services', 'service', 'inc', 'llc', 'ltd', 'corp']);
+const GSC_STOP = new Set(['the', 'and', 'for', 'with', 'from', 'near', 'best', 'top', 'how', 'what', 'where', 'when', 'why', 'travel', 'tour', 'tours', 'trip', 'trips', 'vacation', 'vacations', 'holiday', 'hotel', 'hotels', 'flight', 'flights', 'price', 'prices', 'cost', 'review', 'reviews', 'booking', 'book', 'offer', 'offers', 'deal', 'deals', 'official', 'site', 'website', 'online', 'login', 'near', 'company', 'group', 'services', 'service', 'inc', 'llc', 'ltd', 'corp']);
 
 createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS gsc_uploads (
@@ -30934,7 +30916,7 @@ RULES:
 - quoteStyle: who is quoted, how the first and later quotes are attributed, how many quotes.
 - closingBlock: how releases end (booking line, contact details, social links). endMarker: any end symbol, or empty.
 - boilerplate: an "About" paragraph ONLY if the same one repeats across releases, reproduced exactly; otherwise empty.
-- namingConventions: how products, ships, places or programs are named and capitalised.
+- namingConventions: how products, places or programs are named and capitalised.
 - spokespeople: only people named in the text WITH a stated title; give the title exactly as written and what they are quoted about.
 - recurringPhrases: up to 10 short phrases the brand reuses to describe itself or its product.
 - verifyFacts: up to 6 facts a person should confirm before relying on this profile (for example a title that differs between releases).
@@ -33731,7 +33713,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-20-r68-lead-routes',
+        buildStamp: '2026-11-20-r69-generic-prompts',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -38131,6 +38113,25 @@ async function handleRequestInner(req, res) {
           return sendJson(res, 200, { cards: (saved && Array.isArray(saved.cards) ? saved.cards : []).filter(c => c && HOME_CARD_KEYS.includes(c.key)).slice(0, 4), max: 4 });
         } catch (e){ console.warn('[preferences/home-cards] failed:', e.message); return sendJson(res, 500, { error: 'could not read or save your home cards' }); }
       }
+    }
+
+    // GET|PUT /api/accounts/:id/market-facts — the destination facts this account's video scripts must state exactly (2026-11-20).
+    // Filled in by the client's own data collection; the prompt templates carry no client-specific facts.
+    if ((req.method === 'GET' || req.method === 'PUT') && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'market-facts'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      try {
+        if (req.method === 'PUT'){
+          const b = await readBody(req) || {}; const list = Array.isArray(b.facts) ? b.facts : [];
+          const clean = []; const seen = new Set();
+          list.slice(0, 60).forEach(f => { const market = String((f && f.market) || '').trim().slice(0, 80); const fact = String((f && f.fact) || '').trim().slice(0, 600); const k = market.toLowerCase(); if (market && fact && !seen.has(k)){ seen.add(k); clean.push({ market, fact }); } });
+          db.prepare('DELETE FROM account_market_facts WHERE accountid = ?').run(accountId);
+          const now = new Date().toISOString();
+          clean.forEach(f => db.prepare('INSERT INTO account_market_facts (id, accountid, market, fact, updatedat) VALUES (?,?,?,?,?)').run(generateId('mkf'), accountId, f.market, f.fact, now));
+        }
+        const rows = db.prepare('SELECT market, fact FROM account_market_facts WHERE accountid = ? ORDER BY market').all(accountId);
+        return sendJson(res, 200, { facts: rows.map(r => ({ market: r.market, fact: r.fact })) });
+      } catch (e){ console.warn('[market-facts] failed:', e.message); return sendJson(res, 500, { error: 'could not read or save destination facts' }); }
     }
 
     // POST /api/accounts/:id/fire-drill/turn — one interview turn. Body: { text?, card? }.
