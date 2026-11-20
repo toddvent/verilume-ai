@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-20-r77-gated-console (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-20-r78-server-mix (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -33841,7 +33841,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-20-r77-gated-console',
+        buildStamp: '2026-11-20-r78-server-mix',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -35501,6 +35501,29 @@ async function handleRequestInner(req, res) {
         });
       }
       return finish(Buffer.from(html, 'utf8'), null);
+    }
+
+    // POST /api/app/recommend — the media-mix decision logic (stage and channel weights, minimums, history blend) runs here, not in
+    // the browser. Body: { fn: 'mix' | 'mediaMix', args: [...], env: { state:{industry,footprint,audience,wealth,activeChannels}, mpHistoryData, ... } }.
+    // Signed-in sessions only; 1,500 calls per account per hour; the module (backend/recommender-mix.js) is generated from the portal source.
+    if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'app' && parts[2] === 'recommend'){
+      const ses = authenticate(req);
+      if (!ses) return sendJson(res, 401, { error: 'Sign in to use recommendations.', code: 'login_required' });
+      const rk = 'rec:' + String(aliasVal(ses, 'accountId') || aliasVal(ses, 'platformuserid') || ''), nowMs = Date.now();
+      const hits = (portalServeLog.get(rk) || []).filter(t => nowMs - t < 3600000);
+      if (hits.length >= 1500){ portalServeLog.set(rk, hits); return sendJson(res, 429, { error: 'Too many recommendation requests. Please wait a few minutes.', code: 'rate_limited' }); }
+      hits.push(nowMs); portalServeLog.set(rk, hits);
+      let body;
+      try { body = await readBody(req); } catch (e){ return sendJson(res, 400, { error: 'Bad request.' }); }
+      let rec;
+      try { rec = require('./recommender-mix')(body && body.env); }
+      catch (e){ console.error('[recommend] module problem:', e.message); return sendJson(res, 503, { error: 'Recommendations are being updated. Please try again in a minute.', code: 'module_missing' }); }
+      try {
+        const args = Array.isArray(body.args) ? body.args : [];
+        if (body.fn === 'mix') return sendJson(res, 200, { result: rec.computeRecommendedMix(args[0]) });
+        if (body.fn === 'mediaMix') return sendJson(res, 200, { result: rec.computeRecommendedMediaMix(args[0] || {}) });
+        return sendJson(res, 400, { error: 'Unknown calculation.' });
+      } catch (e){ console.error('[recommend] failed:', e.message); return sendJson(res, 500, { error: 'The recommendation could not be calculated.' }); }
     }
 
     // POST /api/accounts/:id/accept-terms — records acceptance of the current Terms (used by pages that gate a step on them).
