@@ -38,13 +38,6 @@
 
 
   var FOOT_LINKS = [
-    ['index.html','Humanizing Agentic Marketing'],
-    ['media-cx.html','Media + CX'],
-    ['aiteam.html','AiTeam Protocol'],
-    ['execution.html','Integrated Execution'],
-    ['packages.html','Illumination Packages'],
-    ['licensing.html','Licensing'],
-    ['industry-solutions.html','Industry Solutions'],
     ['terms.html','Terms & Conditions'],
     ['privacy.html','Privacy Policy']
   ];
@@ -97,7 +90,6 @@
   }
   var UTIL_DIV = "<div class=\"utility-nav\" id=\"utilityNav\">\n  <div class=\"utility-nav-inner\">\n    <a href=\"portal.html\" id=\"utilNavPortalLink\" style=\"display:none;\">Access My Portal</a>\n    <a href=\"login.html\" id=\"utilNavAuthLink\">Log in</a>\n  </div>\n</div>";
   var HEADER = "<header id=\"siteHeader\">\n  <nav class=\"nav\" aria-label=\"Primary\">\n    <a class=\"logo vl-brand-link\" href=\"index.html\" aria-label=\"Verilume home\">" + IMG + "</a>\n    <div class=\"nav-group\">\n      <div class=\"navlinks\" id=\"navLinks\">\n        @@NAV@@\n      </div>\n      <div class=\"nav-right\">\n        <button class=\"nav-toggle\" id=\"navToggle\" aria-label=\"Toggle menu\" aria-expanded=\"false\">\u2630</button>\n      </div>\n    </div>\n  </nav>\n</header>";
-  var FOOTER = "<div class=\"footer-inner\">\n    <span>Verilume \u2014 the truth between promise and experience, measured.</span>\n    <nav class=\"footer-nav\" aria-label=\"Footer\">\n      " + FOOT_LINKS.map(function(l){ return '<a href="' + l[0] + '">' + l[1].replace('&','&amp;') + '</a>'; }).join('\n      ') + "\n    </nav>\n    <span>" + COPY + "</span>\n  </div>";
   function put(html){ me.insertAdjacentHTML('beforebegin', html); }
 
   if (part === 'top-site' || part === 'utility'){
@@ -209,16 +201,31 @@
   if (part === 'brand'){
     put('<a class="wordmark vl-brand-link" href="index.html" aria-label="Verilume home">' + IMG + '</a>');
   }
+  function standardFooter(){
+    var f = document.createElement('footer');
+    f.className = 'vl-sitefoot'; f.id = 'vl-sitefoot';
+    f.innerHTML = '<div class="vsf-in"><a class="vsf-brand" href="index.html" aria-label="Verilume home">Verilume</a>' +
+      '<nav class="vsf-links" aria-label="Footer">' + FOOT_LINKS.map(function(l){ return '<a href="' + l[0] + '">' + l[1].replace('&','&amp;') + '</a>'; }).join('') + '</nav>' +
+      '<span class="vsf-copy">' + COPY + '</span></div>';
+    return f;
+  }
+  // data-vl="footer" sits inside a page's own <footer>. It now builds the one standard footer and takes that old band's place, so every
+  // page shows the same footer. If the page's <footer> holds other content of its own, that content stays and the standard footer follows it.
   if (part === 'footer'){
-    put(FOOTER);
+    addCss('vl-chrome-footer-css', FOOTER_CSS);
+    if (!document.getElementById('vl-sitefoot')){
+      var host = me.parentNode && me.parentNode.tagName === 'FOOTER' ? me.parentNode : null;
+      var std = standardFooter();
+      if (host){
+        var others = Array.prototype.filter.call(host.children, function(c){ return c !== me && c.tagName !== 'SCRIPT'; });
+        if (others.length === 0){ host.parentNode.replaceChild(std, host); }
+        else { host.parentNode.insertBefore(std, host.nextSibling); }
+      } else { me.parentNode.insertBefore(std, me); }
+    }
   }
   if (part === 'sitefooter'){
     addCss('vl-chrome-footer-css', FOOTER_CSS);
-    if (!document.getElementById('vl-sitefoot')){
-      put('<footer class="vl-sitefoot" id="vl-sitefoot"><div class="vsf-in"><a class="vsf-brand" href="index.html" aria-label="Verilume home">Verilume</a>' +
-        '<nav class="vsf-links" aria-label="Footer">' + FOOT_LINKS.map(function(l){ return '<a href="' + l[0] + '">' + l[1].replace('&','&amp;') + '</a>'; }).join('') + '</nav>' +
-        '<span class="vsf-copy">' + COPY + '</span></div></footer>');
-    }
+    if (!document.getElementById('vl-sitefoot')) document.body.appendChild(standardFooter());
   }
   // Menu button for the header. Bound the moment the header exists, ahead of any page script, and it stops later handlers on the same
   // button, so pages that still carry their own toggle code do not flip it twice.
