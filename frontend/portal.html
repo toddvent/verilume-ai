@@ -4946,7 +4946,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
              awaited loads first — see that IIFE's own comment). A client
              logging into their own account would see the wrong company name
              flash for 1-2 seconds before their real one replaced it — a
-             startup client seeing "Atlas Ocean Voyages" impersonated as
+             startup client seeing "Example Voyages" impersonated as
              "Acme Hospitality Group," even briefly, is a real trust problem,
              not just a cosmetic one. "Loading…" is a neutral placeholder that
              never claims to be any specific account. -->
@@ -6003,7 +6003,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 
     <div id="aipoMount"></div>
 
-    <!-- 2026-09-20, per Todd's direct instruction: "Is Seed Atlas KPI
+    <!-- 2026-09-20, per Todd's direct instruction: "Is Seed Example Voyages KPI
          metrics supposed to be uploaded. I'd question why we would upload
          anything specific to a client outside of the account management
          section." This is the real entry point for this account's monthly
@@ -6012,7 +6012,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
          exactly this data back via GET /api/accounts/:id/kpi-metrics). Same
          module/field-divider/table styling as the Product Groups & Creative
          Focus Group module above (taxonomyManagerModule) — reused, not a
-         new pattern. Replaces backend/seed-atlas-kpi-metrics.js's old
+         new pattern. Replaces backend/seed-reference-kpi-metrics.js's old
          implied role as "the way KPI data gets in" for real accounts;
          that script is now a one-time sandbox bootstrap only. -->
     <div class="module open accent-cx" id="kpiMetricsAdminModule" style="margin-top:24px;">
@@ -7365,9 +7365,9 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
       <p style="font-size:0.9375rem;font-weight:700;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);">Partner code</p>
       <div class="field" style="margin:0;max-width:160px;">
         <label>3-letter code</label>
-        <input type="text" id="cpPartnerCode" maxlength="3" style="text-transform:uppercase;" placeholder="AOV" onblur="cpSavePartnerCode(this.value)">
+        <input type="text" id="cpPartnerCode" maxlength="3" style="text-transform:uppercase;" placeholder="ABC" onblur="cpSavePartnerCode(this.value)">
       </div>
-      <div class="hint" id="cpPartnerCodeSaveStatus" style="margin-top:8px;">Used to build every Campaign ID on this account, e.g. <strong>AOV-POL-27-04</strong> (Partner-Product-Year-Month). Set once; changing it later doesn't rename Campaign IDs already generated.</div>
+      <div class="hint" id="cpPartnerCodeSaveStatus" style="margin-top:8px;">Used to build every Campaign ID on this account, e.g. <strong>ABC-POL-27-04</strong> (Partner-Product-Year-Month). Set once; changing it later doesn't rename Campaign IDs already generated.</div>
     </div>
 
     <!-- Round 22g (2026-09-08) — "How you sell", per direct instruction:
@@ -7724,7 +7724,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
          since this is an outbound fetch the server makes, not a file the
          browser has to POST here) and returns either extracted PDF text
          ready to review, or — for a directory/listing page like
-         atlasoceanvoyages.com/brochures — a list of the .pdf links it
+         example-voyages.example/brochures — a list of the .pdf links it
          found on the page, each fetchable with its own click. -->
     <div class="module accent-media" id="bwsUrlModule">
       <div class="module-head" onclick="toggleModule('bwsUrlModule')">
@@ -7739,7 +7739,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
         <p>Paste a direct link to a PDF, or a "brochures" directory page that links out to several — the server fetches it directly, so this isn't bound by the upload form's file-size ceiling (Option A tops out around 4.5MB once a file is base64-encoded; this path reads a large brochure PDF straight from its real URL instead). A directory page returns a list of the documents it found for you to pick from; a JS-rendered flipbook/embedded viewer (Issuu and similar) can't be read this way — paste its direct PDF link if it has one, or use Option A instead.</p>
         <div class="field">
           <label>URL</label>
-          <input type="text" id="bwsUrlInput" placeholder="e.g. https://www.atlasoceanvoyages.com/brochures or a direct .pdf link">
+          <input type="text" id="bwsUrlInput" placeholder="e.g. https://www.example-voyages.example/brochures or a direct .pdf link">
         </div>
         <div class="btn-row">
           <button class="btn-primary" onclick="bwsFetchUrl()">Fetch &amp; preview</button>
@@ -8482,7 +8482,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 
     <!-- Round 21 (2026-08-05), per direct instruction: the marketing-metrics
          example (Media Science/CX/Combined, sourced from a real client's —
-         Atlas — July CMO report) built last round on the public
+         Example Voyages — July CMO report) built last round on the public
          marketing-performance.html page was pulled back per direct
          instruction ("Marketing metrics should only live within the
          Portal") and rebuilt here instead, leading this page since this is
@@ -8523,7 +8523,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
           <label for="trendlineMetricSelect" style="font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);margin-right:10px;">Metric</label>
           <!-- 2026-09-20 — options populated by renderTrendlineMetricOptions()
                from state.kpiMetrics.monthly's real metricKeys for this
-               account, not a hardcoded list assuming the Atlas demo
+               account, not a hardcoded list assuming the Example Voyages demo
                account's exact metric set. -->
           <select id="trendlineMetricSelect" onchange="onTrendlineMetricChange(this)"></select>
         </div>
@@ -12014,7 +12014,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
                     <span class="hint" id="cmpLongFormApprovedNote" style="display:none;">Approved. Editing reopens it for approval.</span>
                   </div>
                   <!-- Round 132an (2026-08-11), per direct instruction
-                       following the Atlas Ocean Voyages 4-source copy
+                       following the Example Voyages 4-source copy
                        benchmark review: all 4 external reference decks
                        volunteered the reasoning behind their copy
                        recommendations unprompted, flagged as "honestly
@@ -13701,7 +13701,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
     </div>
 
     <!-- 2026-09-28 — Website engagement (GA4 export), per direct
-         instruction with AOV_ENGAGEMENT.xlsx: "The AOV Engagement rate by
+         instruction with REFERENCE_ENGAGEMENT.xlsx: "The reference Engagement rate by
          session is attached for 2026. This might be good to add manually
          until integrations are done. Upload is easier but can add
          manually." Upload the GA4 "Session default channel group"
@@ -13937,7 +13937,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-19-r66-viz-pdf';
+const CXMEDIA_BUILD_STAMP = '2026-11-20-r67-public-cleanup';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -18370,7 +18370,7 @@ function renderCmpChannelGroupRow(){
   }).join('');
 }
 
-// Round 132c (2026-08-09), per direct correction ("Sourced from AOV Product
+// Round 132c (2026-08-09), per direct correction ("Sourced from Reference Product
 // Group Marketing Calendar not generic") — Campaign Product Group and
 // Creative Focus Group now read the SAME real, account-configured taxonomy
 // the Marketing Calendar's own Product Group / Creative Market filters use
@@ -18462,7 +18462,7 @@ function renderCmpCreativeFocusGroupRow(){
 // use Verilume's own field names (channel_planning_details' actual column
 // names — campaignId, channel, partner, audience, buyType, mediaType,
 // impressions, dropDate, hitDate, endDate, productYear, productGroup,
-// creativeMarket, budget), not a client-specific source format like AOV's
+// creativeMarket, budget), not a client-specific source format like a reference account's
 // original "Marketing Group"/"Drop Date"-style Excel headers — so this
 // same template works unchanged for any account, matching MMM_CATEGORIES/
 // account_taxonomies as the single source of truth for valid values
@@ -19628,7 +19628,7 @@ const CHANNELS = ['Search', 'Social', 'Display', 'Video', 'Email', 'PR/Earned', 
 // above, so a calendar event never falls back to the default dot regardless
 // of which taxonomy its channel value came from.
 const CHANNEL_CAL_COLORS = {
-  // Exact values actually seeded on the AOV demo account's
+  // Exact values actually seeded on the reference demo account's
   // channel_planning_details.channel column (round 102's Marketing Group
   // Lookups, upper-cased/labeled as the seed script wrote them) —
   // confirmed against a live GET /marketing-calendar response.
@@ -20255,7 +20255,7 @@ const STAGE_LOOP_COLORS = {
 // rather than this view trying to do everything at once.
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const QUARTER_MONTHS = { Q1: ['Jan', 'Feb', 'Mar'], Q2: ['Apr', 'May', 'Jun'], Q3: ['Jul', 'Aug', 'Sep'], Q4: ['Oct', 'Nov', 'Dec'] };
-// Actual AOV (Atlas Ocean Voyages) monthly budget distribution, from the
+// Actual reference-account monthly budget distribution, from the
 // account's own BUDGETALLOCATION.xlsx — normalized to % of the annual
 // total (sums to 100). An optional preset a user can apply on top of the
 // flat/even default to match real seasonality, not a live feed — if the
@@ -22138,7 +22138,7 @@ async function loadAccountData(){
       // 2026-09-12 fix — Verilume Wealth Index raw income input (see the
       // ported formula block above and ensureColumn('accounts',
       // 'wealthIndexTargetIncome', ...) in server.js). Honest null, never a
-      // fabricated default, for an account (e.g. Atlas, today) that
+      // fabricated default, for an account (e.g. Example Voyages, today) that
       // predates this field and has never had an income entered.
       state.wealthIndexTargetIncome = (typeof record.account.wealthIndexTargetIncome === 'number') ? record.account.wealthIndexTargetIncome : null;
       // Round 32, follow-on — Active Channels. An empty/missing saved value
@@ -23283,23 +23283,23 @@ const SEO_DATA = {
     { keyword: 'luxury antarctica expedition cruise', volume: 2400, difficulty: 'Medium', intent: 'Commercial', note: 'Ranking #14 — competitor content is thinner here; a strong quick-win candidate.' },
     { keyword: 'best small ship cruise lines 2026', volume: 3600, difficulty: 'High', intent: 'Commercial', note: 'Not ranking in the top 50 — no dedicated comparison page exists yet.' },
     { keyword: 'is expedition cruising worth it', volume: 880, difficulty: 'Low', intent: 'Informational', note: 'No content targets this question at all — open FAQ/blog opportunity.' },
-    { keyword: 'atlas ocean voyages reviews', volume: 1900, difficulty: 'Low', intent: 'Navigational', note: 'Ranking #3 — reputation-driven; keep monitoring sentiment rather than chasing rank.' }
+    { keyword: 'example voyages reviews', volume: 1900, difficulty: 'Low', intent: 'Navigational', note: 'Ranking #3 — reputation-driven; keep monitoring sentiment rather than chasing rank.' }
   ],
   faqOpportunities: [
-    'What is included in an Atlas Ocean Voyages expedition fare?',
+    'What is included in an Example Voyages expedition fare?',
     'How does small-ship cruising differ from mainstream cruise lines?',
     'What is the best time of year to visit Antarctica?',
     'Do expedition cruises require travel insurance?'
   ],
   contentAudit: [
-    { title: 'Atlas Ocean Voyages Announces 2027 World Voyage', type: 'Press Release', published: '2025-11-03', status: 'stale', note: 'Indexed but not ranking — no internal links added since publish.', action: 'Add internal links from relevant destination pages.' },
+    { title: 'Example Voyages Announces 2027 World Voyage', type: 'Press Release', published: '2025-11-03', status: 'stale', note: 'Indexed but not ranking — no internal links added since publish.', action: 'Add internal links from relevant destination pages.' },
     { title: 'Sustainable Cruising: Our 2026 Commitment', type: 'Blog', published: '2026-01-15', status: 'healthy', note: 'Ranking top 10 for 2 target terms.', action: 'Refresh with 2026 progress data to defend position.' },
     { title: "Small-Ship vs. Mega-Ship: A Traveler's Guide", type: 'Blog', published: '2024-06-02', status: 'outdated', note: 'Competitor content has overtaken this on 4 target keywords.', action: 'Rewrite and expand — this is losing ground, not holding it.' }
   ],
   aeoGeoVisibility: [
     { engine: 'Google AI Overviews', status: 'cited', note: 'Cited for "luxury small ship cruise lines."' },
     { engine: 'ChatGPT (browsing)', status: 'not cited', note: 'Not surfaced for "best antarctica cruise operators" — a named competitor is.' },
-    { engine: 'Perplexity', status: 'cited', note: 'Cited for "atlas ocean voyages reviews."' },
+    { engine: 'Perplexity', status: 'cited', note: 'Cited for "example voyages reviews."' },
     { engine: 'Microsoft Copilot', status: 'untested', note: 'No monitoring run yet this cycle.' }
   ],
   ga4: {
@@ -23337,7 +23337,7 @@ const SEO_DATA = {
   ],
   rankTracking: [
     { keyword: 'luxury antarctica expedition cruise', history: [22, 19, 17, 14] },
-    { keyword: 'atlas ocean voyages reviews', history: [5, 4, 3, 3] },
+    { keyword: 'example voyages reviews', history: [5, 4, 3, 3] },
     { keyword: 'best small ship cruise lines 2026', history: [null, null, null, null] }
   ],
   contentBriefs: [
@@ -23356,7 +23356,7 @@ const SEO_DATA = {
     lostLast30d: 6,
     toxicFlagged: 3,
     topNew: [
-      { domain: 'traveltradepress.example', anchor: 'Atlas Ocean Voyages', authority: 62 },
+      { domain: 'traveltradepress.example', anchor: 'Example Voyages', authority: 62 },
       { domain: 'cruiseindustrynews.example', anchor: 'small-ship expedition line', authority: 58 }
     ]
   },
@@ -23383,8 +23383,8 @@ const REPUTATION_DATA = {
   // Competitor Monitoring's Reddit-at-volume/TV scoping.
   sentiment: { label: 'Mixed', score: 62, changeVsLastPeriod: -6 },
   mentions: [
-    { channel: 'Reddit', title: 'r/cruise thread: "Anyone else have server issues booking Atlas Ocean Voyages?"', date: '2026-08-04', sentiment: 'negative', urgent: true, note: 'Multiple replies mention the booking site timing out — likely the same window as the /destinations/antarctica 5xx errors.' },
-    { channel: 'News', title: 'Cruise Industry News: "Atlas Ocean Voyages Expands 2027 Antarctica Season"', date: '2026-08-10', sentiment: 'positive', urgent: false, note: 'Picked up by 3 trade outlets — no action needed, monitor for syndication.' },
+    { channel: 'Reddit', title: 'r/cruise thread: "Anyone else have server issues booking Example Voyages?"', date: '2026-08-04', sentiment: 'negative', urgent: true, note: 'Multiple replies mention the booking site timing out — likely the same window as the /destinations/antarctica 5xx errors.' },
+    { channel: 'News', title: 'Cruise Industry News: "Example Voyages Expands 2027 Antarctica Season"', date: '2026-08-10', sentiment: 'positive', urgent: false, note: 'Picked up by 3 trade outlets — no action needed, monitor for syndication.' },
     { channel: 'Social', title: 'Instagram comment thread on a guest photo post', date: '2026-08-11', sentiment: 'positive', urgent: false, note: 'Strong engagement, no response required.' },
     { channel: 'Reviews', title: 'A 2-star review citing a delayed excursion transfer', date: '2026-08-12', sentiment: 'negative', urgent: true, note: 'No public response posted yet — a same-week reply is the norm for this review platform.' }
   ]
@@ -23439,34 +23439,34 @@ const COMPETITOR_INTEL_DATA = {
     {
       competitor: 'Seabourn',
       positioningSummary: 'A much longer-established all-suite ultra-luxury brand with its own expedition sub-fleet, competing for the same high-net-worth Boomer/Gen X traveler.',
-      differentiation: 'Atlas can\'t win on brand tenure or trust built over decades — it can win on being newer and purpose-built for expedition, not a luxury liner with an expedition add-on.',
-      messagingAngles: ['"Designed for expedition from the keel up" — contrast Seabourn\'s retrofit-style expedition sub-fleet against Atlas\'s purpose-built ships.', 'Lean into agility in itinerary and booking — a newer operation can move faster than a legacy fleet\'s planning cycle.']
+      differentiation: 'Example Voyages can\'t win on brand tenure or trust built over decades — it can win on being newer and purpose-built for expedition, not a luxury liner with an expedition add-on.',
+      messagingAngles: ['"Designed for expedition from the keel up" — contrast Seabourn\'s retrofit-style expedition sub-fleet against the account\'s purpose-built ships.', 'Lean into agility in itinerary and booking — a newer operation can move faster than a legacy fleet\'s planning cycle.']
     },
     {
       competitor: 'Silversea',
       positioningSummary: 'A larger, more diversified fleet spanning both ultra-luxury and expedition cruising, with decades of brand equity across both segments.',
-      differentiation: 'Silversea\'s scale is real, but scale also means the expedition product is one line among several — Atlas\'s entire fleet and brand story is expedition, not a segment of a bigger portfolio.',
+      differentiation: 'Silversea\'s scale is real, but scale also means the expedition product is one line among several — the account\'s entire fleet and brand story is expedition, not a segment of a bigger portfolio.',
       messagingAngles: ['"Expedition is the whole company, not one deck of it" — direct contrast to Silversea\'s multi-brand portfolio structure.', 'On-board culture and crew specialization built entirely around expedition guests, not shared across a broader luxury fleet.']
     },
     {
       competitor: 'Ponant',
       positioningSummary: 'French-flagged, similar ship size and small-ship expedition style, with a strong design/culinary identity and deep polar-region expertise — the closest peer in this set.',
       differentiation: 'This is the one true peer-to-peer comparison, so the win isn\'t category-level (both are genuinely expedition-first) — it\'s destination access, English-first guest experience for the North American traveler, and on-board program specifics.',
-      messagingAngles: ['Lead with polar destination access and itinerary depth where Atlas has a real edge, not a broad "we\'re different" claim — this competitor requires the sharpest, most specific comparison of the three.', 'English-first guest experience and North American booking/service norms, where a French-flagged operator is a genuine friction point for this account\'s core audience.']
+      messagingAngles: ['Lead with polar destination access and itinerary depth where Example Voyages has a real edge, not a broad "we\'re different" claim — this competitor requires the sharpest, most specific comparison of the three.', 'English-first guest experience and North American booking/service norms, where a French-flagged operator is a genuine friction point for this account\'s core audience.']
     }
   ],
   currentActivity: [
-    { competitor: 'Silversea', source: 'search', date: '2026-08-11', headline: 'Now ranking for "best small ship cruise lines 2026" — Atlas doesn\'t appear at all.', note: 'Matches the exact keyword this account is tracking with a null ranking history (see Search Optimization → Rank Tracking) — Silversea appears to have published or promoted a comparison-style page targeting this query directly.', impactedFunction: 'searchOptimization', severity: 'act' },
-    { competitor: 'Seabourn', source: 'ad-transparency', date: '2026-08-09', headline: 'New Meta Ad Library entries pushing an early-booking discount for 2027 Antarctica season.', note: 'Same season and region Atlas is actively expanding into (see the 2027 Antarctica season press release below) — a pricing-led push here is worth watching against Atlas\'s own campaign timing, not reacting to it in isolation.', impactedFunction: 'reputation', severity: 'watch' },
-    { competitor: 'Ponant', source: 'press', date: '2026-08-06', headline: 'Trade press coverage of a new polar-region itinerary launching 2027.', note: 'Direct overlap with Atlas\'s own destination focus — worth a specific competitive callout the next time Atlas\'s own Antarctica season news goes out, rather than letting the two announcements land as unrelated stories.', impactedFunction: 'reputation', severity: 'watch' }
+    { competitor: 'Silversea', source: 'search', date: '2026-08-11', headline: 'Now ranking for "best small ship cruise lines 2026" — Example Voyages doesn\'t appear at all.', note: 'Matches the exact keyword this account is tracking with a null ranking history (see Search Optimization → Rank Tracking) — Silversea appears to have published or promoted a comparison-style page targeting this query directly.', impactedFunction: 'searchOptimization', severity: 'act' },
+    { competitor: 'Seabourn', source: 'ad-transparency', date: '2026-08-09', headline: 'New Meta Ad Library entries pushing an early-booking discount for 2027 Antarctica season.', note: 'Same season and region Example Voyages is actively expanding into (see the 2027 Antarctica season press release below) — a pricing-led push here is worth watching against the account\'s own campaign timing, not reacting to it in isolation.', impactedFunction: 'reputation', severity: 'watch' },
+    { competitor: 'Ponant', source: 'press', date: '2026-08-06', headline: 'Trade press coverage of a new polar-region itinerary launching 2027.', note: 'Direct overlap with the account\'s own destination focus — worth a specific competitive callout the next time the account\'s own Antarctica season news goes out, rather than letting the two announcements land as unrelated stories.', impactedFunction: 'reputation', severity: 'watch' }
   ]
 };
 
 // getBattleBrief() returns curated demo enrichment ONLY (COMPETITOR_INTEL_DATA
-// above is seeded for the demo "Atlas" account's three named competitors).
+// above is seeded for the demo "Example Voyages" account's three named competitors).
 // It is not the primary data source for any real account — see
 // competitorBriefContent() below, which is. Kept as a fallback layer so the
-// existing hand-written Atlas content still renders exactly as before.
+// existing hand-written Example Voyages content still renders exactly as before.
 function getBattleBrief(name){
   return COMPETITOR_INTEL_DATA.battleBriefs.find(b => b.competitor === name) || null;
 }
@@ -23487,7 +23487,7 @@ function clientPositioningSummary(){
 // COMPETITOR_INTEL_DATA demo list (i.e. every real account's own named
 // competitors) got nothing but "No Battle Brief drafted yet." Layering:
 // 1) a curated demo brief (getBattleBrief) if this exact name has one —
-//    keeps the existing Atlas walkthrough content unchanged;
+//    keeps the existing Example Voyages walkthrough content unchanged;
 // 2) otherwise, this account's own Direct Competitors data — the "why
 //    they compete" note and the AI-assisted "positioning read"
 //    (state.positioning.competitors[i].note/.positioningText) — both
@@ -23940,7 +23940,7 @@ function renderTileShellGroups(groups, topNote, originTab){
         ${g.items.map(item => {
           const onclick = item.step
             ? `goToStep('${item.step}'${item.stepArg ? `,'${jsStrEscape(item.stepArg)}'` : ''})`
-            // 2026-08-25, per direct report ("AOV and Creative Production
+            // 2026-08-25, per direct report ("the reference account and Creative Production
             // takes the user back to the same [Dashboard] page") — the 3rd
             // arg here is the originating primary tab (Strategy/Brand/
             // Marketer/Data Scientist/Account Management), threaded through
@@ -28256,7 +28256,7 @@ function renderPendingFeatureStep(title, groupLabel, originTab){
     // 2026-08-25, per direct report — this link used to always jump to
     // goToStep('dashboard') (Daily Brief) regardless of which tab's tile
     // grid the visitor actually came from, so e.g. Brand's "Creative
-    // Production" group and the top "Atlas Ocean Voyages Dashboard" crumb
+    // Production" group and the top "Example Voyages Dashboard" crumb
     // both landed on the same page — one of them was redundant/wrong.
     // originTab (threaded from renderTileShellGroups() -> goToStep's 4th
     // arg) is the real primary tab this tile lives under; falls back to
@@ -32371,7 +32371,7 @@ function getNearTermCampaignsTotal(){
 // read state.kpiMetrics (populated by loadKpiMetricsData() from the real
 // per-account GET /api/accounts/:id/kpi-metrics endpoint), not the old
 // hardcoded MONTHLY_KPI_SERIES/SINGLE_POINT_KPIS/KPI_MONTHS constants that
-// used to carry one demo account's (Atlas) Jan–Jul 2026 numbers as literal
+// used to carry one demo account's (Example Voyages) Jan–Jul 2026 numbers as literal
 // JS. Month labels are derived from whatever periods ("YYYY-MM") this
 // account actually has on file — never assumed to be Jan–Jul.
 function periodToMonthLabel(period){
@@ -32459,7 +32459,7 @@ function renderKpiGrid(){
 }
 // Populates the Monthly Trendline metric <select> from whatever monthly
 // metricKeys this account actually has on file — replaces the old
-// hardcoded <option> list that assumed the Atlas demo account's exact
+// hardcoded <option> list that assumed the Example Voyages demo account's exact
 // metric set.
 function renderTrendlineMetricOptions(){
   const sel = document.getElementById('trendlineMetricSelect');
@@ -32551,7 +32551,7 @@ function renderCmoTop3Tiles(){
 // #kpiMetricsAdminModule in step-manageAccount). Fetches the same GET
 // /api/accounts/:id/kpi-metrics data the Dashboard reads, and renders it as
 // a flat, sorted "on file for this account" list — the real entry point
-// for this data, replacing backend/seed-atlas-kpi-metrics.js's old implied
+// for this data, replacing backend/seed-reference-kpi-metrics.js's old implied
 // role as a data-loading mechanism.
 async function loadKpiMetricsAdminTable(){
   const table = document.getElementById('kpiMetricsAdminTable');
@@ -33107,9 +33107,9 @@ function cmgmtToggleColumnSort(key){
 // of this function that read /creative-jobs always resolved to "—" across
 // the whole grid.
 //
-// Per direct instruction, Due Date is now sourced from the same AOV media
+// Per direct instruction, Due Date is now sourced from the same reference-account media
 // plan uploads that already feed the Marketing Calendar (channel_planning_
-// details, imported by seed-atlas-channel-plans.js from the real workbook)
+// details, imported by seed-reference-channel-plans.js from the real workbook)
 // via the account-wide GET .../marketing-calendar endpoint — no start/end
 // params, so it returns every channel_planning_details row for the account
 // in one request, same shape the Marketing Calendar itself renders from.
@@ -33127,7 +33127,7 @@ let cmgmtDueDatesLoaded = false;
 // calendar and due dates out of place"): this used to collapse dropDate and
 // its hitDate fallback into one plain string per campaign, so a campaign
 // whose rows have no real dropDate at all (true for every Digital/Sheet1
-// row — see seed-atlas-channel-plans.js) silently showed its Due Date as
+// row — see seed-reference-channel-plans.js) silently showed its Due Date as
 // the same hitDate that ALSO backfilled that campaign's own Start Date —
 // two columns reading identical values with no real distinction between
 // them, which is exactly the "out of place" symptom. Now tracks whether the
@@ -36471,7 +36471,7 @@ function mpRenderRevenueFraming(){
 // Sales/Trade Marketing %), each rendered once here with whatever %
 // this plan already has saved (state.mediaPlan.marketingBudgetPct /
 // tradeMarketingPct — blank for a plan that's never used this, e.g. every
-// account by default; populated for accounts that have, like Atlas's real
+// account by default; populated for accounts that have, like the account's real
 // 2027 figures). The two % inputs use mpUpdateRevenuePctPreview() (below)
 // for live $ recompute rather than re-calling this function on every
 // keystroke, so typing multi-digit percentages doesn't lose input focus
@@ -36720,7 +36720,7 @@ function renderMpMonthlyPctSumHint(){
   hint.textContent = matches ? `${sum.toFixed(1)}% across the year — matches 100%.` : `${sum.toFixed(1)}% across the year — should total 100%.`;
   hint.style.color = matches ? 'var(--muted)' : 'var(--advocacy)';
 }
-// Loads the account's actual AOV seasonality (from BUDGETALLOCATION.xlsx)
+// Loads the account's actual AOV seasonality (from the budget allocation workbook)
 // as the plan-wide Revenue-curve table -- a starting point, still
 // hand-editable afterward per month.
 function applyAovSeasonalityToPlan(){
@@ -40680,7 +40680,7 @@ function mrfDmaSectionHtml(dma){
 // backed by the new export.xlsx / export-defined-countries.xlsx endpoints
 // — see their comment in backend/server.js for why these are genuine
 // server-generated .xlsx files now, not a CSV workaround). Todd's own
-// attached reference file (an Atlas match-market export) is exactly what
+// attached reference file (an Example Voyages match-market export) is exactly what
 // these downloads are built to match: one flat table, not a scrolling
 // page. mouLastAnalysis is kept so the export buttons know which upload
 // to ask for without a second round trip.
@@ -46527,7 +46527,7 @@ async function mbuStartLeverage(){
   mbuResetImport();
   try {
     // 2026-09-08 fix, per direct bug report (Todd hit "Backend unreachable
-    // — could not leverage that year" copying Atlas's 2026 budget forward
+    // — could not leverage that year" copying the account's 2026 budget forward
     // into 2027). Root cause: this copy can be a multi-row server-side
     // operation (every line item + category override on the source
     // budget), and on the production Supabase path each of those used to
@@ -48655,7 +48655,7 @@ function loadExistingCampaignIntoForm(campaignId){
   // comment for why.
   const historical = cmpIsCampaignHistorical(c);
   cmpApplyReadOnlyMode(historical);
-  // Round 132c17 — lead with the Campaign Code (AOV-POL-27-04 style) when
+  // Round 132c17 — lead with the Campaign Code (ABC-POL-27-04 style) when
   // this campaign has one; falls back to just the internal id when it
   // doesn't yet (no Partner Code on file for this account — see Company
   // Profile), same honest-fallback convention as everywhere else here.
@@ -58734,7 +58734,7 @@ function cmpBuildFormPayload(){
     // at Creative with a real brief instead of an empty one.
     creativeBrief: (typeof generateCreativeBrief === 'function') ? generateCreativeBrief() : '',
     // Round 132c17 (2026-08-17) — feeds Campaign Code generation
-    // server-side (AOV-POL-27-04 style). Reuses the Product Group tile
+    // server-side (ABC-POL-27-04 style). Reuses the Product Group tile
     // picked above rather than adding a duplicate "product" field — the
     // first selected group is this campaign's primary product for Campaign
     // ID purposes; productCode is derived from it (first 3 letters).
@@ -65401,9 +65401,9 @@ function prpRender(){
   if (!chip || !body) return;
   chip.textContent = !d.exists ? 'Not set up' : (d.status === 'approved' ? 'Approved and in use' : 'Draft, not used yet');
   if (urlEl && !urlEl.value){
-    // Test default: only the Atlas Ocean Voyages account gets a prefilled news page. Every other account starts blank.
+    // Test default: no prefilled news page; the field starts blank.
     let u = d.sourceUrl || '';
-    if (!u && /(^|\.)atlasoceanvoyages\.com/i.test(String(state.websiteUrl || ''))) u = 'https://atlasoceanvoyages.com/news';
+    
     urlEl.value = u;
   }
   if (!d.exists){ body.innerHTML = ''; return; }
@@ -68281,7 +68281,7 @@ async function reissueMemberLogin(id, via){
 // checks now test the opposite: that internal field labels do NOT leak
 // into the draft as literal text, and (new) that the draft's call to
 // action actually lines up with what this campaign is measured on
-// (Primary KPI), the real structural signal the 4-source Atlas Ocean
+// (Primary KPI), the real structural signal the 4-source Example Voyages Ocean
 // Voyages benchmark review surfaced as consistently present in strong
 // copy and never checkable here before.
 // 2026-08-22 -- pulled the 4 content-shape checks (everything except Brand
@@ -68415,7 +68415,7 @@ function goToStep(step, arg, arg2, arg3){
   // on every navigation, means a stuck lock can never outlive the page it
   // was set on, regardless of how the previous overlay was left.
   document.body.style.overflow = '';
-  // 2026-08-26 fix, per direct report ("Select the Atlas Ocean Voyages
+  // 2026-08-26 fix, per direct report ("Select the Example Voyages
   // dashboard links to a different Account Management experience above the
   // content area") — a real bug from the same day's routing change (see
   // renderWorkstreams()'s accountManagement branch). Any direct
@@ -69089,7 +69089,7 @@ const CAMPAIGN_OBJECTIVE_COPY = {
     ? `${focus} earned its reputation the hard way — worth saying so. Not because we said it first, but because the people who've already tried it keep saying it too.`
     : `This earned its reputation the hard way — worth saying so. Not because we said it first, but because the people who've already tried it keep saying it too.`
 };
-// Round 132an (2026-08-11) - direct instruction, following the Atlas Ocean
+// Round 132an (2026-08-11) - direct instruction, following the Example Voyages Ocean
 // Voyages 4-source copy-benchmark review: "None of the examples provided
 // received the marketing loop stage or primary KPI. Keep that in mind as
 // you take us to the next level." Those 4 external references were built
@@ -69198,7 +69198,7 @@ const ACCOUNT_SEGMENT_ANGLE = {
 // already-correct non-consumer angle (ACCOUNT_SEGMENT_ANGLE) unchanged.
 // Round 132an (2026-08-11) \u2014 each tier now also carries an explicit `arc`
 // (the emotional shape the copy should move through) alongside its existing
-// `text` (who the audience is). This is the same distinction the 4 Atlas
+// `text` (who the audience is). This is the same distinction the 4 Example Voyages
 // Ocean Voyages benchmark decks converged on independently: Past Customers
 // aren't just "known" in tone, their copy runs memory -> anticipation ->
 // return and never re-opens with an introduction; New To Brand copy has to
@@ -69220,7 +69220,7 @@ function cmpAudienceAngle(segments){
     // `arc` label ("memory."); it needs its own real opening sentence that
     // still honors the arc's "never re-introduce the brand" rule. This is
     // the generalized, account-agnostic version of the line 3 of the 4
-    // Atlas Ocean Voyages benchmark decks converged on independently
+    // Example Voyages benchmark decks converged on independently
     // ("You know what it feels like.") -- a real hook, not a category name.
     return { tier: 'past-only', text: ACCOUNT_SEGMENT_ANGLE['Past Customers'], arc: 'memory \u2192 anticipation \u2192 return \u2014 never re-introduces the brand; the offer is the reason to come back, not the reason to read', hook: () => `You already know what this feels like.`, copyLine: `Your favorite parts are still exactly where you left them \u2014 and a few new ones are worth a second look.` };
   }
@@ -69321,7 +69321,7 @@ const MESSAGE_TYPE_CUE = {
 // Round 132bi (2026-08-13), per direct instruction: "Add additional tone
 // selections beyond offer, passionate, brand if it will help." It does --
 // the 3 reference examples reviewed last round (Claude/Perplexity/ChatGPT
-// drafts of the same Atlas brief) all used a segment-specific register none
+// drafts of the same Example Voyages brief) all used a segment-specific register none
 // of the original 3 options cover: Past Guests get a memory -> anticipation
 // -> return arc (ChatGPT's own framing: "the offer appears relatively
 // late... we're selling the return, not shouting SALE"), and New-to-Brand
@@ -69375,7 +69375,7 @@ const LONGFORM_ROLE_STYLE = {
 // genuinely drafted FROM those 3 human-reviewed inputs, not just gated
 // behind their existence.
 // Round 132ao (2026-08-12) follow-up fix, per direct report comparing this
-// output against an external reference deck for the same Atlas Ocean
+// output against an external reference deck for the same Example Voyages Ocean
 // Voyages scenario: "Brand messaging is still way off." Traced to this
 // function itself \u2014 every line of the assembled draft below WAS a
 // meta-description of what the copy should do (CAMPAIGN_OBJECTIVE_ANGLE's
@@ -69407,7 +69407,7 @@ const LONGFORM_ROLE_STYLE = {
 // "We shouldn't be using anything from the website specifically beyond
 // understanding the brand better. Media copy drafted inside the tool is
 // not website copy." The 3 reference examples reviewed this round (Claude/
-// Perplexity/ChatGPT drafts for the same Atlas End of Summer brief) all
+// Perplexity/ChatGPT drafts for the same Example Voyages End of Summer brief) all
 // share this same discipline -- every one of them draws real product facts,
 // positioning language, and even a specific approved brand-level line
 // ("The world is larger than you've been led to believe") from a real
@@ -69444,7 +69444,7 @@ function cmpBrandUnderstandingSummary(){
 // without a live model: "a world class copywriter... reuses an approved
 // line before inventing one" is exactly what the ChatGPT reference example
 // did (finding "The world is larger than you've been led to believe" as an
-// already-approved Atlas brand line instead of writing a new campaign
+// already-approved Example Voyages brand line instead of writing a new campaign
 // line). This is the buildable version of that same discipline, using this
 // account's own real internal brand assets -- never the website (round
 // 132bh drew that line firmly). Looks for an explicit "Trademarked
@@ -69463,7 +69463,7 @@ function cmpBrandUnderstandingSummary(){
 // (the selected Product Group name, e.g. "POLAR") from this account's real
 // brand assets — everything else was generic stage/audience/objective
 // template language. This account already has real, approved brand-story
-// material on file (Style Notes sourced from the actual Atlas brand guide
+// material on file (Style Notes sourced from the actual Example Voyages brand guide
 // PDF, Competitive Positioning notes, a fetched website understanding when
 // one exists) that was never reaching the drafted copy. Three new
 // extraction functions below, one per real source, each reusing the same
@@ -69482,13 +69482,13 @@ function cmpBrandUnderstandingSummary(){
 // someone else's page copy can never leak into a client's ad copy.
 //
 // Competitive Positioning needs its own care: `state.positioning.competitors`
-// notes are internal STRATEGY reasoning (e.g. "Atlas needs brand awareness
+// notes are internal STRATEGY reasoning (e.g. "Example Voyages needs brand awareness
 // and trust to compete with Seabourn's longer history" — a gap to close,
 // not a claim to make), not pre-written consumer claims — most of that text
 // would be a real internal-jargon-leak if spliced into ad copy verbatim
 // (the exact failure mode Section 4 of the Brand Voice Guide already warns
 // about). cmpCompetitivePositioningLine() below only fires on notes that
-// contain an explicit, unambiguous "Atlas's edge is/edge here is likely X"
+// contain an explicit, unambiguous "the account's edge is/edge here is likely X"
 // pattern — a genuine positive claim about this account, not a strategic
 // gap-to-close note — and even then reshapes it into a short copy line
 // rather than quoting the internal note directly.
@@ -69516,7 +69516,7 @@ function cmpCompetitivePositioningLine(){
   const competitors = state.positioning.competitors || [];
   for (const c of competitors){
     const note = c.note || '';
-    const m = note.match(/(?:Atlas'?s?|this account'?s?)\s+edge(?:\s+here)?\s+is\s+(?:likely\s+)?([^.]+)\./i);
+    const m = note.match(/(?:Example Voyages'?s?|this account'?s?)\s+edge(?:\s+here)?\s+is\s+(?:likely\s+)?([^.]+)\./i);
     if (m){
       const edge = m[1].trim();
       return { text: `What sets this apart: ${edge}.`, sourceNote: note, competitor: c.name || '' };
@@ -69617,7 +69617,7 @@ function cmpMessagingElements(){
   // Message (always wins, round 132nn) -> a real, already-approved brand
   // line from this account's own Style Notes/Voice Guide, when one exists
   // (round 132bi -- reuse before inventing, same discipline the ChatGPT
-  // reference example used with a real approved Atlas line) -> the generic
+  // reference example used with a real approved Example Voyages line) -> the generic
   // templated stage/audience hook as the last resort. Round 132bh (2026-08-
   // 13) direct correction still holds: website content is understanding
   // only, never a copy source, so it's deliberately absent from this list.
@@ -69718,7 +69718,7 @@ function cmpAssembleLongFormCopy(){
 // language, so the rationale can never drift out of sync with the draft it
 // explains (both read the exact same cmpBriefContext()/PRIMARY_KPI_ANGLE/
 // MEDIA_LOOP_STAGE_ANGLE/cmpAudienceAngle() calls). This is the concrete
-// version of the pattern all 4 Atlas Ocean Voyages benchmark decks did
+// version of the pattern all 4 Example Voyages benchmark decks did
 // unprompted -- showing the reasoning behind a copy recommendation, not
 // just handing over the output.
 function cmpLongFormRationale(){
@@ -69758,10 +69758,10 @@ function cmpLongFormRationale(){
   const bs = cmpMessagingElements().brandStorySources;
   const bsParts = [];
   bsParts.push(bs.productFact ? `Onboard/ship fact: "${bs.productFact}" (from this account's own approved Style Notes/Voice Guide).` : 'Onboard/ship fact: none found in Style Notes/Voice Guide.');
-  bsParts.push(bs.positioningLine ? `Competitive differentiator vs. ${escapeHtml(bs.positioningLine.competitor || 'a named competitor')}: "${escapeHtml(bs.positioningLine.text)}" (derived from an approved Competitive Positioning note that makes an explicit positive claim about this account -- competitor names and internal strategy reasoning are never spliced in directly).` : 'Competitive differentiator: none of this account\u2019s Competitive Positioning notes contain an explicit "Atlas\u2019s edge is..." claim to safely reuse -- most competitor notes here are internal strategic reasoning (a gap to close), not a ready consumer claim, so nothing was inserted rather than risk misstating one.');
+  bsParts.push(bs.positioningLine ? `Competitive differentiator vs. ${escapeHtml(bs.positioningLine.competitor || 'a named competitor')}: "${escapeHtml(bs.positioningLine.text)}" (derived from an approved Competitive Positioning note that makes an explicit positive claim about this account -- competitor names and internal strategy reasoning are never spliced in directly).` : 'Competitive differentiator: none of this account\u2019s Competitive Positioning notes contain an explicit "Example Voyages\u2019s edge is..." claim to safely reuse -- most competitor notes here are internal strategic reasoning (a gap to close), not a ready consumer claim, so nothing was inserted rather than risk misstating one.');
   bsParts.push(bs.websiteFact ? `Website fact: "${escapeHtml(bs.websiteFact)}".` : 'Website fact: none -- either no website context has been fetched for this account yet, or nothing matched the narrow, structured facts this draws from.');
   items.push({ label: 'Brand story (product, positioning, website)', detail: `${bsParts.join(' ')} Reversing round 132bh's earlier "website is understanding only" rule, per direct instruction -- only the structured capacity-style fact is ever used, never raw page text.` });
-  items.push({ label: 'Offer placement', detail: 'Held for its own line, placed after the emotional hook and differentiator -- never the opening line. Every one of the 4 Atlas Ocean Voyages reference examples agreed on this: sell the feeling first, let the offer support it.' });
+  items.push({ label: 'Offer placement', detail: 'Held for its own line, placed after the emotional hook and differentiator -- never the opening line. Every one of the 4 Example Voyages reference examples agreed on this: sell the feeling first, let the offer support it.' });
   items.push({ label: 'Role / style approach', detail: `${styleKey} -- changes how the claim is framed and how the CTA closes (see the Role/style selector above this field).` });
   const avoidWords = cmpBrandVoiceAvoidWords();
   items.push({ label: 'Brand Voice guardrails', detail: avoidWords.length ? `Checked against this account's approved avoid-words: ${cmpFormatQuotedList(avoidWords)}.` : (state.voice.approved ? 'This account\u2019s approved Brand Voice has no avoid-words on file.' : 'No Brand Voice approved yet for this account -- this draft is using a generic tone by default.') });
@@ -71187,7 +71187,7 @@ function cmpToneMismatch(styleKey, copyText){
 }
 
 // Round 132[aov-poc] (2026-08-17) -- new. Built in direct response to the
-// AOV Copy Variation proof-of-concept finding that computeMessagingQaScore()
+// reference Copy Variation proof-of-concept finding that computeMessagingQaScore()
 // had NO check for whether the drafted copy's actual content still fit the
 // CAMPAIGN'S CURRENT LOOP STAGE -- meaning a campaign's Stage/Objective
 // could be changed (or copy could be pasted from a different campaign
@@ -71266,7 +71266,7 @@ function computeMessagingQaScore(){
   let score = 0;
 
   // Round 132[aov-poc] (2026-08-17) rebalance, per direct instruction
-  // following the AOV Copy Variation proof of concept: that POC proved,
+  // following the reference Copy Variation proof of concept: that POC proved,
   // empirically (not just by reading the code), that this score could not
   // tell the difference between copy that fits this campaign's current Loop
   // Stage/Objective and copy that was relabeled from a completely different
@@ -73081,7 +73081,7 @@ function cmpMountCopyVersionReviewOverlay(loading){
     const stage = document.getElementById('cmpStage-copyVersions') || document.body;
     stage.appendChild(overlay);
   }
-  // Fix, per direct report: "Maintain the Atlas Ocean Voyages account
+  // Fix, per direct report: "Maintain the Example Voyages account
   // header" — a full-screen takeover otherwise hides the real page's
   // account-summary bar entirely (it's not sticky, so it scrolls out from
   // under position:fixed; inset:0 regardless of z-index). Carries the same
@@ -75038,7 +75038,7 @@ function cmpFit(text, max){
   if (out.length >= Math.floor(max * 0.45)) return out;
   return cmpTrimDangling(cmpTightenSentence(t, max).replace(/…$/, '').trim());
 }
-// A word-boundary cut can end on a connective ("…with fewer than", "Atlas |")
+// A word-boundary cut can end on a connective ("…with fewer than", "Example Voyages |")
 // — drop trailing stop words and punctuation so a short field reads as a line.
 const CMP_DANGLING_WORDS = new Set(['with','and','or','a','an','the','of','to','for','in','on','at','by','from','than','that','when','where','who','which','you','your','our','as','is','are','be','but','so','if','into','onto','up','down','over','under','per','via','fewer','more','less','most','very','just','only','not','no','&','|','-','—','–']);
 function cmpTrimDangling(text){
@@ -75643,7 +75643,7 @@ function cmpShowCreativeAssetSaveError(status){
 
 // 2026-09-25, per direct report on the Creative Asset Selection grid: "The
 // drop downs aren't populating per channel. Direct Mail as an example should
-// be the client name. Atlas in this account." The Partner select used to
+// be the client name. Example Voyages in this account." The Partner select used to
 // render the same flat account-level list (state.partners — seeded 'Meta',
 // 'Google Ads', 'The Trade Desk') for every channel, so a Direct Mail row
 // offered three ad platforms and never the client itself. Partners are now
@@ -78954,7 +78954,7 @@ function cpSavePartnerCode(value){
     if (status) status.textContent = (persisted
       ? `Saved ${new Date().toLocaleTimeString()} — saved to the backend. `
       : `Saved ${new Date().toLocaleTimeString()} — local only, this session. `)
-      + 'Used to build every Campaign ID on this account, e.g. AOV-POL-27-04 (Partner-Product-Year-Month). Set once; changing it later doesn\'t rename Campaign IDs already generated.';
+      + 'Used to build every Campaign ID on this account, e.g. ABC-POL-27-04 (Partner-Product-Year-Month). Set once; changing it later doesn\'t rename Campaign IDs already generated.';
   });
 }
 
@@ -79975,7 +79975,7 @@ async function mbuSaveMagazineCost(){
 
 // 2026-09-28 — Annual plan: baseline & targets (see mbuAnnualPlanCard's
 // own comment and account_annual_plan on the backend). Field order and
-// labels follow the AOV board-case workbook's Baseline tab so a person can
+// labels follow the board-case workbook's Baseline tab so a person can
 // transcribe a row straight across. Value/Growth/Prospect leads and
 // Direct calls are the workbook's four lead pools; the app's own tiles
 // map Value → High-Value Leads and Growth → Registrations.
@@ -82326,7 +82326,7 @@ function renderAccountLogo(){
   if (avatarEl) avatarEl.style.display = 'none';
   // Round 17 — amber initials badge + Client ID display, per the comps.
   // Initials derived from the company name (first letter of up to the
-  // first 3 words, e.g. "Atlas Ocean Voyages" -> "AOV"), same convention
+  // first 3 words, e.g. "Example Voyages" -> "EXV"), same convention
   // as cmpContrastTextColor's neighbors use elsewhere for chip initials.
   if (avatarEl){
     const src = (state.company || '').trim();
@@ -83173,7 +83173,7 @@ async function posSetDecision(contributionId, status){
 
   try {
     await loadAccountData();
-    // 2026-08-26 fix, per direct report: "I was logged in as Atlas and then
+    // 2026-08-26 fix, per direct report: "I was logged in as Example Voyages and then
     // went to the public page and then selected Access Portal. Acme is now
     // the active experience." Root cause, found by reading
     // loadAccountData(): a non-401 account-fetch failure (network error,
