@@ -62,56 +62,7 @@ li.done b{text-decoration:line-through;color:var(--muted)}
     <div><a href="packages.html#starter">Activate Starter</a><a href="packages.html#growth">Activate Growth</a><a href="packages.html#enterprise">Talk to us about Enterprise</a></div>
   </div>
 </main>
-<script>
-const API = (window.VERILUME_API_BASE || '');
-const qs = new URLSearchParams(location.search);
-const accountId = qs.get('accountId') || '', trial = qs.get('trial') || '';
-const own = trial === 'own';
-const FREE = [
-  ['Read the recommended media mix','See where the budget should go, and why.'],
-  ['Open the forecast and compare two scenarios','Move the budget around and watch the results change.'],
-  ['Explore the visualizations','Check the charts for spend, results and cost per result.'],
-  ['Read the Marketing Loop','See which stage of the customer journey is under-served.'],
-  [own ? 'Train the Brain with your own spend and results' : 'Read what the Brain has learned','The Brain turns data into the recommendations you just read.']
-];
-const SPEND = [
-  ['Draft in the brand voice','Write one piece of copy in the demo company\'s voice. Run it 3 times and compare.', '3'],
-  ['Write campaign messaging with AI','Pick a campaign and draft its core message.', '2'],
-  ['Run a copy interview','Answer a few questions and let the platform build candidate lines.', 'about 8'],
-  ['Draft a press release and a LinkedIn post','One announcement, two formats.', '2'],
-  ['Draft an editorial pitch','Pitch a story to a publication.', '1'],
-  ['Draft a corporate communication','An internal or investor-facing note.', '1'],
-  ['Ask the coach for help with your week','Triage a messy to-do list into a plan.', '3']
-];
-function row(t, i, key, cost){ let on = false; try { on = localStorage.getItem(key) === '1'; } catch(e){}
-  return `<li class="${on?'done':''}"><input type="checkbox" data-k="${key}" ${on?'checked':''} aria-label="${t[0]}"><div><b>${t[0]}</b><small>${t[1]}</small></div><span class="cost ${cost==='free'?'free':''}">${cost==='free'?'Free':t[2]+' credit'+(t[2]==='1'?'':'s')}</span></li>`; }
-document.getElementById('free').innerHTML = FREE.map((t,i)=>row(t,i,'vl_trial_f'+i,'free')).join('');
-document.getElementById('spend').innerHTML = SPEND.map((t,i)=>row(t,i,'vl_trial_s'+i,'paid')).join('');
-document.addEventListener('change', e => { const c = e.target.closest('input[data-k]'); if (!c) return; try { localStorage.setItem(c.dataset.k, c.checked ? '1' : '0'); } catch(x){} c.closest('li').classList.toggle('done', c.checked); });
-function token(id){ let t = ''; try { t = localStorage.getItem('verilume_session_' + id) || ''; } catch(e){} if (!t){ try { t = sessionStorage.getItem('verilume_session_' + id) || ''; } catch(e){} } return t; }
-async function meter(){
-  try {
-    const r = await fetch(API + '/api/accounts/' + encodeURIComponent(accountId), { headers:{ Authorization:'Bearer ' + token(accountId) } });
-    const j = await r.json(); const a = j.draftAllowance || (j.account && j.account.draftAllowance); const ls = j.levelStatus || (j.account && j.account.levelStatus);
-    if (a){ document.getElementById('fill').style.width = Math.min(100, a.used / a.limit * 100) + '%';
-      document.getElementById('barnote').textContent = a.used + ' of ' + a.limit + ' credits used. ' + a.remaining + ' left.';
-      document.getElementById('meter').textContent = 'Free trial · ' + a.remaining + ' credits left' + (ls && ls.daysLeft != null ? ' · ' + ls.daysLeft + ' days left' : ''); }
-  } catch(e){}
-}
-document.getElementById('openBtn').addEventListener('click', async () => {
-  const err = document.getElementById('err'); err.textContent = '';
-  if (!accountId || !token(accountId)){ location.href = 'login.html?next=' + encodeURIComponent(location.pathname + location.search); return; }
-  if (own){ location.href = 'portal.html?accountId=' + encodeURIComponent(accountId); return; }
-  try {
-    const r = await fetch(API + '/api/accounts/' + encodeURIComponent(accountId) + '/demo-session', { method:'POST', headers:{ Authorization:'Bearer ' + token(accountId) } });
-    const j = await r.json().catch(()=>({}));
-    if (!r.ok) throw new Error(j.error || 'Could not open the demo');
-    try { localStorage.setItem('verilume_session_' + j.demoAccountId, j.token); } catch(e){}
-    try { sessionStorage.setItem('verilume_session_' + j.demoAccountId, j.token); } catch(e){}
-    location.href = 'portal.html?accountId=' + encodeURIComponent(j.demoAccountId) + '&trial=' + encodeURIComponent(accountId);
-  } catch(ex){ err.textContent = ex.message + '.'; }
-});
-meter();
-</script>
+<script>const API=window.VERILUME_API_BASE||"";const qs=new URLSearchParams(location.search);const accountId=qs.get("accountId")||"",trial=qs.get("trial")||"";const own=trial==="own";const FREE=[["Read the recommended media mix","See where the budget should go, and why."],["Open the forecast and compare two scenarios","Move the budget around and watch the results change."],["Explore the visualizations","Check the charts for spend, results and cost per result."],["Read the Marketing Loop","See which stage of the customer journey is under-served."],[own?"Train the Brain with your own spend and results":"Read what the Brain has learned","The Brain turns data into the recommendations you just read."]];const SPEND=[["Draft in the brand voice","Write one piece of copy in the demo company's voice. Run it 3 times and compare.","3"],["Write campaign messaging with AI","Pick a campaign and draft its core message.","2"],["Run a copy interview","Answer a few questions and let the platform build candidate lines.","about 8"],["Draft a press release and a LinkedIn post","One announcement, two formats.","2"],["Draft an editorial pitch","Pitch a story to a publication.","1"],["Draft a corporate communication","An internal or investor-facing note.","1"],["Ask the coach for help with your week","Triage a messy to-do list into a plan.","3"]];function row(t,i,key,cost){let on=false;try{on=localStorage.getItem(key)==="1"}catch(e){}return`<li class="${on?"done":""}"><input type="checkbox" data-k="${key}" ${on?"checked":""} aria-label="${t[0]}"><div><b>${t[0]}</b><small>${t[1]}</small></div><span class="cost ${cost==="free"?"free":""}">${cost==="free"?"Free":t[2]+" credit"+(t[2]==="1"?"":"s")}</span></li>`}document.getElementById("free").innerHTML=FREE.map((t,i)=>row(t,i,"vl_trial_f"+i,"free")).join("");document.getElementById("spend").innerHTML=SPEND.map((t,i)=>row(t,i,"vl_trial_s"+i,"paid")).join("");document.addEventListener("change",e=>{const c=e.target.closest("input[data-k]");if(!c)return;try{localStorage.setItem(c.dataset.k,c.checked?"1":"0")}catch(x){}c.closest("li").classList.toggle("done",c.checked)});function token(id){let t="";try{t=localStorage.getItem("verilume_session_"+id)||""}catch(e){}if(!t){try{t=sessionStorage.getItem("verilume_session_"+id)||""}catch(e){}}return t}async function meter(){try{const r=await fetch(API+"/api/accounts/"+encodeURIComponent(accountId),{headers:{Authorization:"Bearer "+token(accountId)}});const j=await r.json();const a=j.draftAllowance||j.account&&j.account.draftAllowance;const ls=j.levelStatus||j.account&&j.account.levelStatus;if(a){document.getElementById("fill").style.width=Math.min(100,a.used/a.limit*100)+"%";document.getElementById("barnote").textContent=a.used+" of "+a.limit+" credits used. "+a.remaining+" left.";document.getElementById("meter").textContent="Free trial · "+a.remaining+" credits left"+(ls&&ls.daysLeft!=null?" · "+ls.daysLeft+" days left":"")}}catch(e){}}document.getElementById("openBtn").addEventListener("click",async()=>{const err=document.getElementById("err");err.textContent="";if(!accountId||!token(accountId)){location.href="login.html?next="+encodeURIComponent(location.pathname+location.search);return}if(own){location.href="portal.html?accountId="+encodeURIComponent(accountId);return}try{const r=await fetch(API+"/api/accounts/"+encodeURIComponent(accountId)+"/demo-session",{method:"POST",headers:{Authorization:"Bearer "+token(accountId)}});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||"Could not open the demo");try{localStorage.setItem("verilume_session_"+j.demoAccountId,j.token)}catch(e){}try{sessionStorage.setItem("verilume_session_"+j.demoAccountId,j.token)}catch(e){}location.href="portal.html?accountId="+encodeURIComponent(j.demoAccountId)+"&trial="+encodeURIComponent(accountId)}catch(ex){err.textContent=ex.message+"."}});meter();</script>
+<script src="/vl-footer.js" data-replace="1"></script>
 </body>
 </html>
