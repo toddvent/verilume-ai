@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-20-r69-generic-prompts (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-20-r70-terms-acceptance (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -1442,6 +1442,8 @@ ensureColumn('team_members', 'phoneext', 'TEXT');
 ensureColumn('accounts', 'paidTier', 'TEXT');
 ensureColumn('accounts', 'paidTierActivatedAt', 'TEXT');
 ensureColumn('sessions', 'trialaccountid', 'TEXT'); // set on a demo session: the trial account that is visiting and paying credits
+ensureColumn('accounts', 'termsAcceptedAt', 'TEXT'); // when the account last accepted the Terms & Conditions
+ensureColumn('accounts', 'termsVersion', 'TEXT');   // which version of the Terms (TERMS_VERSION)
 ensureColumn('accounts', 'trialPath', 'TEXT'); // travel | auto | retail | own — chosen on trial-start.html
 // 2026-10-15 — archive before delete. An archived account is hidden in the team
 // console, its client sessions stop working, and the Monday jobs skip it.
@@ -21117,6 +21119,16 @@ createTableIfNeeded(`
     createdat TEXT NOT NULL,
     readat TEXT
   );
+  CREATE TABLE IF NOT EXISTS terms_acceptances (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    memberid TEXT,
+    version TEXT NOT NULL,
+    context TEXT,
+    ip TEXT,
+    useragent TEXT,
+    acceptedat TEXT NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS account_market_facts (
     id TEXT PRIMARY KEY,
     accountid TEXT NOT NULL,
@@ -21134,7 +21146,7 @@ createTableIfNeeded(`
     createdat TEXT NOT NULL
   );
 `);
-enableRlsNow(['account_notifications', 'account_chart_requests', 'account_market_facts']);
+enableRlsNow(['account_notifications', 'account_chart_requests', 'account_market_facts', 'terms_acceptances']);
 ensureColumn('account_charts', 'dashboards', 'TEXT');
 
 const VIZ_TYPES = ['column', 'bar', 'line', 'area', 'stacked', 'pie', 'table'];
@@ -24707,6 +24719,39 @@ function formatCampaignDatesForPrompt(campaign){
 // database. Sends the 401 itself (matching this file's existing
 // return-false-and-the-caller-returns convention) so every call site is
 // one line: `if (!requireAccount(req, res, accountId)) return;`
+// Terms & Conditions acceptance. Required before the free trial starts and before a package is requested or activated.
+// Bump TERMS_VERSION whenever the Terms change in a material way; accounts are then asked to accept again.
+const TERMS_VERSION = '2026-11-20';
+function termsAcceptedFor(accountId){
+  try {
+    const a = db.prepare('SELECT termsVersion FROM accounts WHERE accountId = ?').get(accountId);
+    return !!(a && aliasVal(a, 'termsVersion') === TERMS_VERSION);
+  } catch (e){ return false; }
+}
+function recordTermsAcceptance(req, accountId, context){
+  const now = new Date().toISOString();
+  let memberId = null;
+  try {
+    const m = String(req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/);
+    const ss = m ? db.prepare('SELECT memberid FROM sessions WHERE token = ?').get(m[1].trim()) : null;
+    memberId = ss ? (ss.memberid || ss.memberId || null) : null;
+  } catch (e){}
+  try {
+    db.prepare('INSERT INTO terms_acceptances (id, accountid, memberid, version, context, ip, useragent, acceptedat) VALUES (?,?,?,?,?,?,?,?)')
+      .run(generateId('tac'), accountId, memberId, TERMS_VERSION, String(context || '').slice(0, 60), String(getClientIp(req) || '').slice(0, 80), String(req.headers['user-agent'] || '').slice(0, 300), now);
+    db.prepare('UPDATE accounts SET termsAcceptedAt = ?, termsVersion = ? WHERE accountId = ?').run(now, TERMS_VERSION, accountId);
+  } catch (e){ console.warn('[terms] could not record acceptance:', e.message); }
+}
+// Returns true when the request may proceed. Otherwise it has already sent a 400 with code 'terms_required'.
+function requireTerms(req, res, accountId, body, context){
+  if (termsAcceptedFor(accountId)) return true;
+  if (body && (body.acceptTerms === true || body.acceptTerms === 'true')){
+    recordTermsAcceptance(req, accountId, context);
+    return true;
+  }
+  sendJson(res, 400, { error: 'Please accept the Terms & Conditions to continue.', code: 'terms_required', termsVersion: TERMS_VERSION });
+  return false;
+}
 function requireAccount(req, res, accountId){
   const session = authenticate(req);
   if (!session || session.accountId !== accountId){
@@ -33713,7 +33758,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-20-r69-generic-prompts',
+        buildStamp: '2026-11-20-r70-terms-acceptance',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -35330,6 +35375,23 @@ async function handleRequestInner(req, res) {
       return sendJson(res, 200, { token: ds.token, expiresAt: exp, demoAccountId: demoId, allowance: draftAllowanceFor(accountId) });
     }
 
+    // POST /api/accounts/:id/accept-terms — records acceptance of the current Terms (used by pages that gate a step on them).
+    // GET  /api/accounts/:id/terms — { accepted, version, acceptedAt } for the current Terms version.
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'accept-terms' && req.method === 'POST'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      if (!(body.acceptTerms === true || body.acceptTerms === 'true')) return sendJson(res, 400, { error: 'Please accept the Terms & Conditions to continue.', code: 'terms_required', termsVersion: TERMS_VERSION });
+      if (!termsAcceptedFor(accountId)) recordTermsAcceptance(req, accountId, String(body.context || 'accept-terms'));
+      return sendJson(res, 200, { ok: true, accepted: true, version: TERMS_VERSION });
+    }
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'terms' && req.method === 'GET'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const a = db.prepare('SELECT termsAcceptedAt, termsVersion FROM accounts WHERE accountId = ?').get(accountId);
+      return sendJson(res, 200, { accepted: termsAcceptedFor(accountId), version: TERMS_VERSION, acceptedAt: a ? (aliasVal(a, 'termsAcceptedAt') || null) : null });
+    }
+
     // POST /api/accounts/:id/trial-start — { path: 'travel'|'auto'|'retail'|'own' }. Records the data path chosen after registration and starts the free trial (7 days, 25 credits) if the account has no level yet.
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'trial-start'){
       const accountId = decodeURIComponent(parts[2]);
@@ -35337,6 +35399,7 @@ async function handleRequestInner(req, res) {
       const body = await readBody(req);
       const path = String(body.path || '');
       if (!['travel','auto','retail','own'].includes(path)) return sendJson(res, 400, { error: 'path must be one of: travel, auto, retail, own' });
+      if (!requireTerms(req, res, accountId, body, 'trial-start')) return;
       const a = db.prepare('SELECT paidTier, trialPath FROM accounts WHERE accountId = ?').get(accountId);
       if (!a) return sendJson(res, 404, { error: 'account not found' });
       const _tp = aliasVal(a, 'trialPath');
@@ -35351,10 +35414,11 @@ async function handleRequestInner(req, res) {
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'upgrade-request'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
+      const body = await readBody(req);
+      if (!requireTerms(req, res, accountId, body, 'upgrade-request')) return;
       const last = upgradeRequestLast.get(accountId) || 0;
       if (Date.now() - last < 3600000) return sendJson(res, 200, { ok: true, alreadyRequested: true });
       upgradeRequestLast.set(accountId, Date.now());
-      const body = await readBody(req);
       const a = db.prepare('SELECT company, paidTier, paidTierActivatedAt FROM accounts WHERE accountId = ?').get(accountId);
       const ls = levelStatusFor(a);
       const wantTier = PAID_TIERS.find(t => t.key === body.tier && t.key !== 'spark') || PAID_TIERS.find(t => t.key === 'starter');
@@ -35381,6 +35445,7 @@ async function handleRequestInner(req, res) {
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
       const body = await readBody(req);
+      if (!requireTerms(req, res, accountId, body, 'tier')) return;
       if (!body.tier || !PAID_TIERS.some(t => t.key === body.tier)){
         return sendJson(res, 400, { error: `tier must be one of: ${PAID_TIERS.map(t => t.key).join(', ')}` });
       }
