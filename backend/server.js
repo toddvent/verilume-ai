@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-20-r70-terms-acceptance (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-20-r72-gated-portal (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -21119,6 +21119,16 @@ createTableIfNeeded(`
     createdat TEXT NOT NULL,
     readat TEXT
   );
+  CREATE TABLE IF NOT EXISTS portal_serves (
+    id TEXT PRIMARY KEY,
+    accountid TEXT,
+    memberid TEXT,
+    ip TEXT,
+    useragent TEXT,
+    watermark TEXT,
+    bytes INTEGER,
+    servedat TEXT NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS terms_acceptances (
     id TEXT PRIMARY KEY,
     accountid TEXT NOT NULL,
@@ -21146,7 +21156,7 @@ createTableIfNeeded(`
     createdat TEXT NOT NULL
   );
 `);
-enableRlsNow(['account_notifications', 'account_chart_requests', 'account_market_facts', 'terms_acceptances']);
+enableRlsNow(['account_notifications', 'account_chart_requests', 'account_market_facts', 'terms_acceptances', 'portal_serves']);
 ensureColumn('account_charts', 'dashboards', 'TEXT');
 
 const VIZ_TYPES = ['column', 'bar', 'line', 'area', 'stacked', 'pie', 'table'];
@@ -24721,6 +24731,9 @@ function formatCampaignDatesForPrompt(campaign){
 // one line: `if (!requireAccount(req, res, accountId)) return;`
 // Terms & Conditions acceptance. Required before the free trial starts and before a package is requested or activated.
 // Bump TERMS_VERSION whenever the Terms change in a material way; accounts are then asked to accept again.
+const PORTAL_APP_PATH = path.join(__dirname, 'portal-app.html');
+let portalAppCache = null;
+const portalServeLog = new Map();
 const TERMS_VERSION = '2026-11-20';
 function termsAcceptedFor(accountId){
   try {
@@ -33758,7 +33771,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-20-r70-terms-acceptance',
+        buildStamp: '2026-11-20-r72-gated-portal',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -35373,6 +35386,51 @@ async function handleRequestInner(req, res) {
       const exp = new Date(Date.now() + 8 * 3600000).toISOString();
       db.prepare('UPDATE sessions SET trialaccountid = ?, expiresAt = ? WHERE token = ?').run(accountId, exp, ds.token);
       return sendJson(res, 200, { token: ds.token, expiresAt: exp, demoAccountId: demoId, allowance: draftAllowanceFor(accountId) });
+    }
+
+    // GET /api/app/portal — the portal application itself. The page people open at portal.html is only a small loader; the
+    // application code (screens, planning rules, scoring) is sent here, only to a valid signed-in session, with a mark that
+    // names the account and session so a leaked copy can be traced. The file backend/portal-app.html is the comment-stripped
+    // portal build. Not cached by the browser or any proxy. Limited to 60 loads per account per hour.
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'app' && parts[2] === 'portal'){
+      const ses = authenticate(req);
+      if (!ses) return sendJson(res, 401, { error: 'Sign in to open the portal.', code: 'login_required' });
+      const acct = String(aliasVal(ses, 'accountId') || '');
+      const rk = acct || ('plat:' + String(aliasVal(ses, 'platformuserid') || ''));
+      const nowMs = Date.now();
+      const hits = (portalServeLog.get(rk) || []).filter(t => nowMs - t < 3600000);
+      if (hits.length >= 60){ portalServeLog.set(rk, hits); return sendJson(res, 429, { error: 'Too many portal loads. Please wait a few minutes.', code: 'rate_limited' }); }
+      hits.push(nowMs); portalServeLog.set(rk, hits);
+      let raw;
+      try {
+        const st = fs.statSync(PORTAL_APP_PATH);
+        if (!portalAppCache || portalAppCache.mtime !== st.mtimeMs) portalAppCache = { mtime: st.mtimeMs, text: fs.readFileSync(PORTAL_APP_PATH, 'utf8') };
+        raw = portalAppCache.text;
+      } catch (e){
+        console.error('[portal-app] backend/portal-app.html is missing:', e.message);
+        return sendJson(res, 503, { error: 'The portal is being updated. Please try again in a minute.', code: 'bundle_missing' });
+      }
+      const tok = String((String(req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/) || [])[1] || '').trim();
+      const member = String(aliasVal(ses, 'memberId') || aliasVal(ses, 'platformuserid') || '-');
+      const wm = [acct || '-', member, crypto.createHash('sha256').update(tok).digest('hex').slice(0, 10), nowMs.toString(36)].join('.');
+      const html = raw.split('@@VL_WM@@').join(wm);
+      const wantsGzip = /\bgzip\b/.test(String(req.headers['accept-encoding'] || ''));
+      const finish = (buf, enc) => {
+        try {
+          db.prepare('INSERT INTO portal_serves (id, accountid, memberid, ip, useragent, watermark, bytes, servedat) VALUES (?,?,?,?,?,?,?,?)')
+            .run(generateId('psv'), acct || null, member === '-' ? null : member, String(getClientIp(req) || '').slice(0, 80), String(req.headers['user-agent'] || '').slice(0, 300), wm, buf.length, new Date().toISOString());
+        } catch (e){ console.warn('[portal-app] could not log the load:', e.message); }
+        const h = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-store, max-age=0', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow, noarchive', 'Vary': 'Accept-Encoding, Authorization', 'Content-Length': buf.length };
+        if (enc) h['Content-Encoding'] = enc;
+        res.writeHead(200, h); res.end(buf);
+      };
+      if (wantsGzip){
+        return require('zlib').gzip(Buffer.from(html, 'utf8'), { level: 5 }, (err, gz) => {
+          if (err) return finish(Buffer.from(html, 'utf8'), null);
+          finish(gz, 'gzip');
+        });
+      }
+      return finish(Buffer.from(html, 'utf8'), null);
     }
 
     // POST /api/accounts/:id/accept-terms — records acceptance of the current Terms (used by pages that gate a step on them).
