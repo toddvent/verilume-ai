@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta name="vl-wm" content="@@VL_WM@@">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verilume — Ops Console (Staff Only)</title>
+<style>
+  :root{
+    --ink:#1D1D1F; --paper:#FFFFFF; --paper-dim:#F5F5F7;
+    --media:#2563EB; --cx:#0891B2; --advocacy:#4F46E5;
+    --line:#D2D2D7; --white:#FFFFFF; --muted:#6E6E73;
+    --line-hairline:#E8E8ED; --line-strong:#B9B9BE;
+    --radius-sm:12px; --radius-md:18px; --radius-lg:28px; --radius-pill:980px;
+    --shadow-sm:0 1px 2px rgba(0,0,0,0.04); --shadow-md:0 4px 16px rgba(0,0,0,0.06); --shadow-lg:0 16px 48px rgba(0,0,0,0.12);
+    --ease:cubic-bezier(0.28,0.11,0.32,1); --dur-fast:0.15s; --dur-med:0.4s;
+    --media-tint:#DBEAFE; --cx-tint:#CFFAFE; --advocacy-tint:#E0E7FF;
+    --warn:#B45309; --warn-tint:#FEF3E2; --danger:#B42318; --danger-tint:#FEF1F0;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:
+      radial-gradient(ellipse 700px 460px at 6% 0%, rgba(8,145,178,0.05) 0%, rgba(8,145,178,0) 58%),
+      radial-gradient(ellipse 700px 500px at 98% 10%, rgba(37,99,235,0.06) 0%, rgba(37,99,235,0) 60%),
+      var(--paper);
+    color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1140px;margin:0 auto;padding:0 28px 80px;}
+  a{color:inherit;}
+  .staffbar{background:var(--ink);color:#fff;}
+  .staffbar-inner{max-width:1140px;margin:0 auto;padding:10px 28px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:0.75rem;letter-spacing:0.04em;}
+  .staffbar-inner b{color:var(--media-tint);}
+  .staffbar .op{color:#B9BEDB;}
+  .topnav{border-bottom:1px solid var(--line);}
+  .topnav-inner{max-width:1140px;margin:0 auto;padding:18px 28px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+  .wordmark{font-size:1.25rem;font-weight:500;}
+  .wordmark b{color:var(--media);font-weight:600;}
+  .wordmark .sub{font-size:0.72rem;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;margin-left:10px;padding-left:10px;border-left:1px solid var(--line);}
+  .nav-actions{display:flex;gap:10px;align-items:center;}
+  .single-admin-note{font-size:0.7rem;color:var(--muted);background:var(--paper-dim);border:1px solid var(--line-hairline);padding:6px 12px;border-radius:var(--radius-pill);}
+  h1{font-size:1.9rem;margin:0 0 4px;letter-spacing:-0.01em;}
+  h2{font-size:1.15rem;margin:0 0 4px;}
+  .lede{color:var(--muted);font-size:0.92rem;max-width:640px;line-height:1.5;margin:0 0 24px;}
+  .eyebrow{font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--media);font-weight:600;margin-bottom:8px;}
+  .badge{font-size:0.6562rem;letter-spacing:0.05em;text-transform:uppercase;padding:3px 9px;border-radius:10px;white-space:nowrap;background:var(--paper-dim);color:var(--muted);font-weight:600;display:inline-block;}
+  .badge.tier-growth{background:var(--advocacy-tint);color:var(--advocacy);}
+  .badge.tier-starter{background:var(--cx-tint);color:var(--cx);}
+  .badge.tier-enterprise{background:#111827;color:#fff;}
+  .badge.status-pending{background:var(--warn-tint);color:var(--warn);}
+  .badge.status-active{background:#E7F6EC;color:#15803D;}
+  .badge.status-none{background:var(--paper-dim);color:var(--muted);}
+  .badge.status-signed{background:#E7F6EC;color:#15803D;}
+  .badge.status-sent{background:var(--warn-tint);color:var(--warn);}
+  .badge.status-draft{background:var(--paper-dim);color:var(--muted);}
+  .badge.status-overdue{background:var(--danger-tint);color:var(--danger);}
+  .badge.status-paid{background:#E7F6EC;color:#15803D;}
+  .badge.status-due{background:var(--warn-tint);color:var(--warn);}
+  .badge.status-configured{background:#E7F6EC;color:#15803D;}
+  .badge.status-not-configured{background:var(--warn-tint);color:var(--warn);}
+  .badge.status-not-built{background:var(--paper-dim);color:var(--muted);}
+  .integ-row{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:12px 0;border-bottom:1px solid var(--line-hairline);}
+  .integ-row:last-child{border-bottom:none;}
+  .integ-row .integ-label{font-size:0.86rem;font-weight:600;margin-bottom:3px;}
+  .integ-row .integ-detail{font-size:0.78rem;color:var(--muted);line-height:1.5;max-width:640px;}
+  .integ-row .integ-envvars{font-size:0.68rem;color:var(--line-strong);font-family:ui-monospace,Menlo,Consolas,monospace;margin-top:3px;}
+  .integ-right{flex-shrink:0;}
+  .directory-grid{display:grid;gap:16px;}
+  .acct-card{background:var(--white);border:1px solid var(--line);border-radius:var(--radius-md);padding:22px 24px;cursor:pointer;transition:box-shadow var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;}
+  .acct-card:hover{box-shadow:var(--shadow-md);border-color:var(--line-strong);}
+  .acct-card .acct-name{font-size:1.15rem;font-weight:600;margin-bottom:6px;}
+  .acct-card .acct-meta{font-size:0.82rem;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .acct-card .acct-badges{display:flex;gap:6px;flex-wrap:wrap;}
+  .acct-card .acct-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px;}
+  .acct-card .next-step{font-size:0.78rem;color:var(--warn);font-weight:600;}
+  .safeguard{background:var(--danger-tint);border:1px solid #F3C6C2;border-radius:var(--radius-sm);padding:14px 18px;font-size:0.82rem;color:#7A241C;margin:18px 0 28px;line-height:1.5;}
+  .safeguard b{color:var(--danger);}
+  .back-link{display:inline-block;font-size:0.8rem;color:var(--media);text-decoration:none;margin-bottom:16px;cursor:pointer;}
+  .back-link:hover{text-decoration:underline;}
+  .workspace-head{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:22px;padding-bottom:20px;border-bottom:1px solid var(--line-hairline);}
+  .workspace-head .acct-badges{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;}
+  .tab-row{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:24px;flex-wrap:wrap;}
+  .tab{padding:10px 16px;font-size:0.85rem;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;user-select:none;}
+  .tab:hover{color:var(--ink);}
+  .tab.active{color:var(--media);border-bottom-color:var(--media);}
+  .module{background:var(--white);border:1px solid var(--line);border-top-width:2px;border-top-color:var(--media-tint);border-radius:14px;margin-bottom:18px;padding:22px 24px;}
+  .module h3{font-size:0.95rem;margin:0 0 4px;}
+  .module .desc{font-size:0.82rem;color:var(--muted);margin:0 0 16px;line-height:1.5;}
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;}
+  .field-row.three{grid-template-columns:1fr 1fr 1fr;}
+  label{font-size:0.75rem;font-weight:600;color:var(--muted);display:block;margin-bottom:6px;}
+  select,input[type=text],input[type=number],input[type=date],input[type=password],textarea{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:0.85rem;font-family:inherit;background:var(--white);color:var(--ink);}
+  textarea{resize:vertical;min-height:60px;}
+  .btn{font-size:0.8rem;font-weight:600;padding:9px 16px;border-radius:8px;border:1px solid var(--line);background:var(--white);color:var(--ink);cursor:pointer;}
+  .btn:hover{border-color:var(--line-strong);}
+  .btn.primary{background:var(--media);border-color:var(--media);color:#fff;}
+  .btn.primary:hover{background:#1D4ED8;}
+  .btn.small{padding:5px 11px;font-size:0.72rem;}
+  .btn.danger{color:var(--danger);border-color:#F3C6C2;}
+  table{width:100%;border-collapse:collapse;font-size:0.82rem;}
+  th{text-align:left;font-size:0.68rem;letter-spacing:0.04em;text-transform:uppercase;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line);}
+  td{padding:10px 10px;border-bottom:1px solid var(--line-hairline);vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  .row-actions{display:flex;gap:6px;}
+  .empty-note{font-size:0.82rem;color:var(--muted);font-style:italic;padding:10px 0;}
+  .proto-note{font-size:0.72rem;color:var(--muted);background:var(--paper-dim);border:1px dashed var(--line-strong);border-radius:8px;padding:8px 12px;margin-top:10px;line-height:1.5;}
+  .toggle{display:inline-flex;align-items:center;gap:8px;cursor:pointer;user-select:none;}
+  .toggle .switch{width:34px;height:18px;border-radius:10px;background:var(--line-strong);position:relative;transition:background var(--dur-fast) var(--ease);flex-shrink:0;}
+  .toggle .switch::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left var(--dur-fast) var(--ease);}
+  .toggle.on .switch{background:#15803D;}
+  .toggle.on .switch::after{left:18px;}
+  .hidden{display:none !important;}
+  #opsLoginGate{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
+  #opsLoginGate .gate-card{background:var(--white);border:1px solid var(--line);border-radius:var(--radius-md);padding:36px 32px;max-width:400px;width:100%;box-shadow:var(--shadow-lg);}
+  #opsLoginGate h1{font-size:1.3rem;margin:0 0 6px;}
+  #opsLoginGate .lede{margin:0 0 20px;font-size:0.85rem;line-height:1.5;color:var(--muted);}
+  #opsLoginGate .field{margin-bottom:14px;}
+  #opsLoginGate input[type=email],#opsLoginGate input[type=password],#opsLoginGate input[type=text]{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font-size:0.88rem;font-family:inherit;}
+  #opsLoginGate .btn.primary{width:100%;padding:11px;font-size:0.85rem;}
+  #opsLoginGate .gate-error{color:var(--danger);font-size:0.78rem;margin-top:10px;min-height:1em;}
+  #opsLoginGate .gate-note{font-size:0.72rem;color:var(--cx);margin-top:10px;}
+  #opsLoginGate .gate-links{display:flex;justify-content:space-between;margin-top:16px;font-size:0.78rem;}
+  #opsLoginGate .gate-links a{color:var(--media);cursor:pointer;text-decoration:none;font-weight:600;}
+  #opsLoginGate .gate-links a:hover{text-decoration:underline;}
+  #opsLoginGate .gate-step{display:none;}
+  #opsLoginGate .gate-step.active{display:block;}
+  #opsLoginGate label{margin-bottom:6px;}
+</style>
+</head>
+<body><script>window.__vlWm="@@VL_WM@@";</script>
+
+
+<div id="opsLoginGate">
+  <div class="gate-card">
+
+    <div class="gate-step active" id="opsGateLoginStep">
+      <h1>Verilume Ops Console</h1>
+      <p class="lede">Staff only. Sign in with the same email and password you use on the public Verilume login.</p>
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="opsLoginEmail" autocomplete="username" onkeydown="if(event.key==='Enter')submitOpsLogin();">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="opsLoginPassword" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitOpsLogin();">
+      </div>
+      <button class="btn primary" id="opsLoginBtn" onclick="submitOpsLogin()">Log in</button>
+      <div class="gate-error" id="opsLoginError"></div>
+    </div>
+
+    <div class="gate-step" id="opsGatePasswordChangeStep">
+      <h1>Set your password</h1>
+      <p class="lede">You signed in with a temporary password. Set a real one now (at least 8 characters) — this only happens once.</p>
+      <div class="field">
+        <label>New password</label>
+        <input type="password" id="opsNewPassword" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitOpsPasswordChange();">
+      </div>
+      <div class="field">
+        <label>Confirm new password</label>
+        <input type="password" id="opsNewPasswordConfirm" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitOpsPasswordChange();">
+      </div>
+      <button class="btn primary" id="opsPasswordChangeBtn" onclick="submitOpsPasswordChange()">Set password and continue</button>
+      <div class="gate-error" id="opsPasswordChangeError"></div>
+    </div>
+
+    <div class="gate-step" id="opsGateMfaStep">
+      <h1>Verify it's you</h1>
+      <p class="lede" id="opsMfaIntro">We sent a 6-digit code.</p>
+      <div class="field">
+        <label>Verification code</label>
+        <input type="text" id="opsMfaCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="123456" onkeydown="if(event.key==='Enter')submitOpsMfaCode();">
+      </div>
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:8px;font-weight:400;text-transform:none;font-size:13px;">
+          <input type="checkbox" id="opsMfaRemember" checked style="width:auto;">
+          Trust this device for 30 days
+        </label>
+      </div>
+      <button class="btn primary" id="opsMfaBtn" onclick="submitOpsMfaCode()">Verify and continue</button>
+      <div class="gate-error" id="opsMfaError"></div>
+      <div class="gate-note" id="opsMfaInterimNote" style="display:none;"></div>
+      <div class="gate-links">
+        <a onclick="resendOpsMfa()">Resend code</a>
+        <a onclick="switchOpsMfaChannel()" id="opsMfaSwitchLink">Verify by email instead</a>
+      </div>
+      <div class="gate-links">
+        <a onclick="backToOpsLogin()">← Back to sign in</a>
+      </div>
+    </div>
+
+    <div class="gate-step" id="opsGateDeniedStep">
+      <h1>Not authorized</h1>
+      <p class="lede">That's a real Verilume login, but this account isn't set up as an admin, so it can't open the Ops Console. Ask an existing admin to grant admin access on Team Access, then try again.</p>
+      <button class="btn" onclick="backToOpsLogin()">← Back to sign in</button>
+    </div>
+
+  </div>
+</div>
+
+
+<div id="opsAppRoot" class="hidden">
+
+<div class="staffbar">
+  <div class="staffbar-inner">
+    <span><b>VERILUME OPS CONSOLE</b> — internal staff tool, not reachable from the client Portal or account pages</span>
+    <span class="op">Signed in as: <span id="opsSignedInAs">—</span> · <a onclick="opsLogout()" style="color:#B9BEDB;cursor:pointer;text-decoration:underline;">Log out</a></span>
+  </div>
+</div>
+
+<div class="topnav">
+  <div class="topnav-inner">
+    <div class="wordmark"><b>Verilume</b><span class="sub">Ops Console</span></div>
+    <div class="nav-actions">
+      <a href="verilume-product-docs.html" target="_blank" rel="noopener" class="single-admin-note" style="text-decoration:none;color:inherit;">Product Docs &#8599;</a>
+      <span class="single-admin-note">Single-admin mode — multi-staff roles &amp; audit log are future work</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  
+  <div id="view-directory">
+    <div style="padding-top:28px;">
+      <div class="eyebrow">Accounts</div>
+      <h1>Accounts Directory</h1>
+      <p class="lede">Every real account CX Experiences operates. Click an account to open its workspace — data &amp; connections, team access, plan &amp; billing, and legal documents.</p>
+    </div>
+
+    
+    <div class="module" style="border-top-color:var(--advocacy-tint);">
+      <h3>Staff Admin Token</h3>
+      <p class="desc">Paste your ADMIN_API_TOKEN once here — every Staff-only panel below uses this same field. Masked by default; use Show if you need to check what you pasted.</p>
+      <div class="field-row" id="opsAdminTokenRow">
+        <div style="flex:1 1 320px;">
+          <label>Admin token</label>
+          <div style="display:flex;gap:8px;">
+            <input type="password" id="opsAdminToken" placeholder="Paste ADMIN_API_TOKEN" autocomplete="off" style="flex:1 1 auto;">
+            <button type="button" class="btn small" id="opsAdminTokenToggleBtn" onclick="toggleOpsAdminTokenVisibility()">Show</button>
+          </div>
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <label class="toggle" id="integRememberToggle" onclick="toggleIntegRemember()" style="margin-bottom:9px;">
+            <span class="switch"></span> Remember for this browser session
+          </label>
+        </div>
+      </div>
+    </div>
+
+    
+    <style>
+      .vs-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:8px 0 4px;}
+      .vs-sw{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--white);} .vs-sw i{display:block;height:46px;border-bottom:1px solid var(--line);}
+      .vs-sw b{display:block;font-size:0.78rem;padding:8px 10px 0;font-weight:600;} .vs-sw span{display:block;font-size:0.72rem;color:var(--muted);padding:0 10px 8px;font-variant-numeric:tabular-nums;}
+      .vs-h{font-size:0.72rem;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:20px 0 8px;}
+      .vs-demo{border:1px solid var(--line);border-radius:12px;padding:18px;background:var(--white);display:grid;gap:16px;}
+      .vs-demo .vs-row{display:flex;flex-wrap:wrap;gap:12px;align-items:center;}
+      .vs-btn-p{background:#1D1D1F;color:#fff;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-weight:600;font-size:0.875rem;padding:11px 20px;border-radius:999px;border:none;cursor:default;}
+      .vs-btn-g{background:none;color:#1D1D1F;font-weight:600;font-size:0.9375rem;border:none;border-bottom:2px solid #D2D2D7;padding:2px 0;cursor:default;}
+      .vs-field{width:260px;padding:11px 13px;border:1px solid #D2D2D7;border-radius:10px;font-family:Inter,-apple-system,sans-serif;font-size:0.9062rem;background:#fff;color:#1D1D1F;}
+      .vs-field.focus{border-color:#0891B2;box-shadow:0 0 0 3px rgba(8,145,178,0.14);outline:none;}
+      .vs-sel{appearance:none;-webkit-appearance:none;width:260px;padding:11px 36px 11px 13px;border:1px solid #D2D2D7;border-radius:10px;font-family:Inter,-apple-system,sans-serif;font-size:0.9062rem;background:#fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%236E6E73' stroke-width='1.6' stroke-linecap='round'/></svg>") no-repeat right 13px center;color:#1D1D1F;}
+      .vs-hint{font-size:0.7812rem;color:#6E6E73;margin-top:5px;}
+      .vs-panel{border:1px solid #D2D2D7;background:#F5F5F7;border-radius:12px;padding:12px 14px;font-size:0.8125rem;max-width:520px;}
+      .vs-pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:0.75rem;font-weight:600;}
+      .vs-th{font-size:0.6562rem;letter-spacing:0.05em;text-transform:uppercase;color:#6E6E73;font-weight:600;border-bottom:1px solid #D2D2D7;padding:0 24px 8px 0;text-align:left;}
+      .vs-edit textarea{min-height:90px;font-size:0.82rem;line-height:1.5;}
+      .vs-edit .vs-voice{min-height:300px;}
+    </style>
+    <div class="module" id="verilumeStyleModule" style="border-top-color:var(--advocacy-tint);">
+      <h3>Verilume Style <span class="badge" style="margin-left:6px;">Staff only</span></h3>
+      <p class="desc">Verilume's own brand, voice and component style, kept on the internal Verilume account the same way a client's Brand Voice and Style Guide are. Build and copy work is checked against this. Uses the admin token above.</p>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;"><button class="btn primary" onclick="vsLoad()">Load Verilume Style →</button><span id="vsStatus" class="empty-note" style="font-style:normal;padding:0;"></span></div>
+      <div id="vsError" class="empty-note" style="display:none;color:var(--danger);font-style:normal;"></div>
+      <div id="vsResult"></div>
+    </div>
+
+    
+    <div class="module" style="border-top-color:var(--advocacy-tint);">
+      <h3>Platform Integration Status</h3>
+      <p class="desc">Whether each vendor-backed capability is actually live on this deployment — generative copywriting, SMS/email verification (including the new login MFA), HubSpot, GA4, and more — plus the Portal's Enterprise-gated capabilities that aren't a credential away at all. Nothing below ever shows a secret value, only whether one is set.</p>
+      <div class="field-row" id="integAuthRow">
+        <div style="display:flex;align-items:flex-end;gap:10px;">
+          <button class="btn primary" onclick="checkIntegrationStatus()">Check status</button>
+        </div>
+      </div>
+      <div id="integStatusError" class="empty-note" style="display:none;color:var(--danger);font-style:normal;"></div>
+      <div id="integStatusResult" style="display:none;">
+        <div id="integList"></div>
+        <h3 style="margin-top:22px;font-size:0.85rem;">Not built yet — no credential turns these on</h3>
+        <div id="integNotBuiltList"></div>
+        <div class="proto-note" id="integCheckedNote" style="margin-top:14px;"></div>
+      </div>
+    </div>
+
+    
+    <div class="module" style="border-top-color:var(--advocacy-tint);">
+      <h3>Product Documentation Search</h3>
+      <p class="desc">Search across every product doc — Licensed Integrations, Copywriting, Marketing Budgets &amp; Campaigns, Registration &amp; Account Management, Company Profile &amp; Team, and the docs home page — by section, not just by file. Try "Snowflake lead time" or "login MFA".</p>
+      <div class="field-row" id="docsSearchAuthRow">
+        <div>
+          <label>Search product docs</label>
+          <input type="text" id="docsSearchQuery" placeholder="e.g. Snowflake setup" onkeydown="if(event.key==='Enter') runDocsSearch();">
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button class="btn primary" onclick="runDocsSearch()">Search</button>
+        </div>
+      </div>
+      <div id="docsSearchError" class="empty-note" style="display:none;color:var(--danger);font-style:normal;"></div>
+      <div id="docsSearchResults"></div>
+    </div>
+
+    
+    <div class="module" style="border-top-color:var(--advocacy-tint);">
+      <h3>Fix Legacy Column Casing <span class="badge" style="margin-left:6px;">Staff only</span></h3>
+      <p class="desc">Renames a column that got silently created all-lowercase by Postgres back to its correct camelCase name, in place — a plain rename never loses data. Run this after adding any new camelCase column to the app if scanned/saved data ever comes back empty when it shouldn't. <strong>As of 2026-09-13, this no longer deletes anything on its own.</strong> When it finds a table with two copies of a column (one already correct, one leftover lowercase one), it now only lists them below for you to review — dropping a leftover duplicate is a separate, manual step you take directly in Supabase after checking it really is unused, never something this button does by itself.</p>
+      <div class="field-row" id="fixCasingAuthRow">
+        <div style="display:flex;align-items:flex-end;">
+          <button class="btn primary" onclick="runFixLegacyCasing()">Fix column casing now</button>
+        </div>
+      </div>
+      <div id="fixCasingError" class="empty-note" style="display:none;color:var(--danger);font-style:normal;"></div>
+      <div id="fixCasingResult" class="proto-note" style="margin-top:14px;display:none;"></div>
+    </div>
+
+    
+    <div class="module" style="border-top-color:var(--advocacy-tint);">
+      <h3>AI Interview Review <span class="badge" style="margin-left:6px;">Staff only</span></h3>
+      <p class="desc">Every multi-candidate "interview" run for an account, with the real vendor and model behind each candidate — the client's own copy workspace never shows this, only a strategic angle label. Use this for QA on the panel itself, or to answer "which model actually wrote this" if it ever comes up. Copywriting is the first product type run through this mechanism — more will land here as they're built (see the Product filter below), so every row is tagged from day one rather than assumed to mean "copy."</p>
+      <div class="field-row" id="interviewAuthRow">
+        <div>
+          <label>Account ID</label>
+          <input type="text" id="interviewLookupAccountId" placeholder="e.g. ACC-... or CXM-...">
+        </div>
+        <div>
+          <label>Product</label>
+          <select id="interviewProductTypeFilter">
+            <option value="">All product types</option>
+          </select>
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button class="btn primary" onclick="checkInterviewReview()">Look up →</button>
+        </div>
+      </div>
+      <div id="interviewReviewError" class="empty-note" style="display:none;color:var(--danger);font-style:normal;"></div>
+      <div id="interviewReviewResult"></div>
+    </div>
+
+    
+    <div class="module" style="border-top-color:var(--advocacy-tint);">
+      <h3>Brand Voice Contest Review <span class="badge" style="margin-left:6px;">Staff only</span></h3>
+      <p class="desc">Which model the client currently has selected for each contest type (Brand Voice Guide, Video Script, Video Strategy), plus the blind-label-to-vendor order and any error messages for the 3 most recent runs of each type — the client's own account setup only ever shows the strategic angle label / "Option N," never the real vendor. </p>
+      <div class="field-row" id="voiceContestAuthRow">
+        <div>
+          <label>Account ID</label>
+          <input type="text" id="voiceContestLookupAccountId" placeholder="e.g. ACC-... or CXM-...">
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button class="btn primary" onclick="checkVoiceContestReview()">Look up →</button>
+        </div>
+      </div>
+      <div id="voiceContestReviewError" class="empty-note" style="display:none;color:var(--danger);font-style:normal;"></div>
+      <div id="voiceContestReviewResult"></div>
+      
+      <div class="field-row" style="margin-top:10px;align-items:flex-start;">
+        <div style="display:flex;align-items:flex-end;">
+          <button class="btn danger" onclick="clearVoiceGuideMemory()">Clear Voice Guide Memory</button>
+        </div>
+        <div id="voiceGuideClearResult" style="flex:1 1 auto;"></div>
+      </div>
+    </div>
+
+    
+    <div class="module" style="border-top-color:var(--advocacy-tint);">
+      <h3>Campaign Copy Contest Review <span class="badge" style="margin-left:6px;">Staff only</span></h3>
+      <p class="desc">Real vendor/model per candidate, each candidate's stated approach, the blind-label order, and who selected what — for the most recent 25 Campaign Copy Contest runs on this account, across every campaign. The client's own workspace only ever shows "Option N," never the real vendor.</p>
+      <div class="field-row" id="campaignContestAuthRow">
+        <div>
+          <label>Account ID</label>
+          <input type="text" id="campaignContestLookupAccountId" placeholder="e.g. ACC-... or CXM-...">
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button class="btn primary" onclick="checkCampaignContestReview()">Look up →</button>
+        </div>
+      </div>
+      <div id="campaignContestReviewError" class="empty-note" style="display:none;color:var(--danger);font-style:normal;"></div>
+      <div id="campaignContestReviewResult"></div>
+    </div>
+
+    
+    <div class="module" style="border-top-color:var(--advocacy-tint);">
+      <h3>Partner Reliability Report <span class="badge" style="margin-left:6px;">Staff only</span></h3>
+      <p class="desc">How often each AI partner (Anthropic plus every configured vendor — OpenAI, xAI, Gemini, Perplexity) actually returns usable copy vs. fails, across every contest surface (Campaign Copy, Creative Job, Brand Voice/Video, PR Copy), platform-wide. The client never sees a failed candidate anymore — its panel just doesn't show up — so this is the one place a partner outage or broken integration is visible.</p>
+      <div class="field-row" id="partnerReliabilityAuthRow">
+        <div>
+          <label>Lookback window</label>
+          <select id="partnerReliabilityDays">
+            <option value="7">Last 7 days</option>
+            <option value="14" selected>Last 14 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="90">Last 90 days</option>
+          </select>
+        </div>
+        <div>
+          <label>Account ID <span class="empty-note" style="font-style:normal;">(optional — leave blank for platform-wide)</span></label>
+          <input type="text" id="partnerReliabilityAccountId" placeholder="e.g. ACC-... or CXM-...">
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button class="btn primary" onclick="checkPartnerReliability()">Run report →</button>
+        </div>
+      </div>
+      <div id="partnerReliabilityError" class="empty-note" style="display:none;color:var(--danger);font-style:normal;"></div>
+      <div id="partnerReliabilityResult"></div>
+    </div>
+
+    
+    <div class="module" style="border-top-color:var(--advocacy-tint);">
+      <h3>Internal Testing — Run a Voice Contest <span class="badge" style="margin-left:6px;">Staff only</span></h3>
+      <p class="desc">Run, rate, and select a Voice Contest winner against any account — the same generation the client-facing Voice Contest page runs, with real vendor/model names shown (never blind) since this is staff-only. Uses the Account ID / admin token above.</p>
+      <div class="field-row" id="itAuthRow">
+        <div>
+          <label>Contest type</label>
+          <select id="itContestType" onchange="itOnContestTypeChange()">
+            <option value="voice_guide">Brand Voice Guide</option>
+            <option value="video_script">Video Script</option>
+            <option value="video_strategy">Video Strategy</option>
+          </select>
+        </div>
+        <div id="itDestinationField" style="display:none;">
+          <label>Destination (Creative Focus Group)</label>
+          <input type="text" id="itDestination" placeholder="e.g. Antarctica">
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button class="btn primary" onclick="itRunContest()">Run new contest →</button>
+        </div>
+      </div>
+      <div id="itRunError" class="empty-note" style="display:none;color:var(--danger);font-style:normal;"></div>
+      <div id="itRunResult"></div>
+    </div>
+
+    
+    <div class="module" style="border-top-color:var(--advocacy-tint);">
+      <h3>AI Brain Transparency — Value Rollup <span class="badge" style="margin-left:6px;">Staff only</span></h3>
+      <p class="desc">Across every account's generations for one surface: how often each input signal was actually on file, and — of the times it was on file — how often it actually changed the generated output. Low impact-of-on-file for a signal we spend real effort maintaining is the concrete "is this worth building further" answer this was built to surface.</p>
+      <div class="field-row" id="transparencyRollupAuthRow">
+        <div>
+          <label>Surface</label>
+          <select id="transparencyRollupContextType">
+            <option value="voice_guide">Voice Guide</option>
+            <option value="campaign_copy">Campaign Copy</option>
+            <option value="voice_contest">Voice Contest</option>
+            <option value="pr_corp_comm">PR / Corporate Comm (not built yet)</option>
+          </select>
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button class="btn primary" onclick="checkTransparencyRollup()">Check rollup →</button>
+        </div>
+      </div>
+      <div id="transparencyRollupError" class="empty-note" style="display:none;color:var(--danger);font-style:normal;"></div>
+      <div id="transparencyRollupResult" style="display:none;">
+        <div class="proto-note" id="transparencyRollupSummary" style="margin-bottom:12px;"></div>
+        <div id="transparencyRollupList"></div>
+      </div>
+    </div>
+
+    
+    <div class="module" style="border-top-color:var(--advocacy-tint);">
+      <h3>Data Integrity <span class="badge" style="margin-left:6px;">Staff only</span></h3>
+      <p class="desc">What the database holds for one account, table by table and month by month: row counts, the sums that matter, and the receipt for each upload (what the file said next to what landed). Set it against the client's source file before trusting any dashboard number.</p>
+      <div class="field-row">
+        <div><label>Account ID</label><input type="text" id="diAccountId" placeholder="e.g. CXM-NAT-2026-..."></div>
+        <div style="display:flex;align-items:flex-end;gap:8px;"><button class="btn primary" onclick="diLoad()">Check this account →</button><button class="btn" onclick="diCsv()">Download CSV</button></div>
+      </div>
+      <div id="diError" class="empty-note" style="display:none;color:var(--danger);font-style:normal;"></div>
+      <div id="diBody"></div>
+    </div>
+    <div class="module">
+      <h3>Report Cards <span class="badge" style="margin-left:6px;">Staff only</span></h3>
+      <p class="desc">Every reporting card the portal produces: when it was added, whether it is a Verilume default or added by a client, the formula behind it and the source tables, for testing against raw data.</p>
+      <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:10px;"><div style="flex:1 1 auto;"><label>Filter</label><input type="text" id="rcFilter" placeholder="Name, tab, table or formula" oninput="rcRender()"></div><button class="btn" onclick="rcLoad()">Refresh</button><button class="btn" onclick="rcCsv()">Download CSV</button></div>
+      <div id="rcBody" class="empty-note">Loading…</div>
+    </div>
+    <div class="module" style="border-top-color:var(--advocacy-tint);">
+      <h3>Reference Data <span class="badge" style="margin-left:6px;">Staff only</span></h3>
+      <p class="desc">The Population Index and DMA roll-up every account's Match Market Builder results depend on need two shared reference files no client supplies: population by zip (U.S. Census, free) and a zip→DMA crosswalk (DMA boundaries are Nielsen's; the free crosswalk is a public approximation, labelled that way wherever a DMA appears — a licensed Nielsen file can be loaded below and replaces it). Zip centroids (for store trade areas) are the same kind of one-time, shared load. None of this is account-scoped — one load here serves every account.</p>
+      <div id="refDataStatus" class="empty-note">Click "Check status" to load current counts.</div>
+      <div class="field-row" style="margin-top:14px;">
+        <div style="display:flex;align-items:flex-end;gap:10px;">
+          <button class="btn" onclick="refDataLoadStatus()">Check status</button>
+          <button class="btn primary" id="refDataLoadPublicBtn" onclick="refDataLoadPublic()">Load public reference data →</button>
+          <button class="btn primary" id="refDataLoadDemographicsBtn" onclick="refDataLoadDemographics()">Load demographics — full national (age + income by zip) →</button>
+        </div>
+      </div>
+      
+      <div class="field-row" style="margin-top:10px;">
+        <div style="display:flex;align-items:flex-end;gap:10px;">
+          <div style="flex:0 0 220px;">
+            <label>Test a few states first (2-letter, comma-separated)</label>
+            <input type="text" id="refDataDemoTestStates" placeholder="e.g. CA,NY,WY,VT">
+          </div>
+          <button class="btn" id="refDataLoadDemoTestBtn" onclick="refDataLoadDemographics(document.getElementById('refDataDemoTestStates').value)">Test these states →</button>
+        </div>
+      </div>
+      
+      <div class="field-row" style="margin-top:10px;">
+        <div style="display:flex;align-items:flex-end;gap:10px;">
+          <button class="btn primary" id="refDataLoadIrsTopBracketBtn" onclick="refDataLoadIrsTopBracketIncome()">Load IRS top-bracket income (real $200k+ average) →</button>
+        </div>
+      </div>
+      <p class="proto-note">2020 Census ZCTA population + public zip→DMA crosswalk, fetched server-side through this console's own session and saved to the backend in batches. Needs a Census API key configured as the CENSUS_API_KEY environment variable on the backend — if that's missing, this will say so directly.</p>
+      <p class="proto-note">Demographics: 2022 ACS 5-Year age (5 generations: Gen Z, Millennials, Gen X, Boomers, Silent Gen — the same ones Company Profile's generation picker can actually back with real Census data) and real per-bracket household income counts, by zip — feeds the Match Market Builder's per-store trade-area Audience/Wealth Fit scoring and the Test/Control demographic matching dimension. Same Census API key requirement as above. Pulled per state (50 states + DC + Puerto Rico) and merged — a prior version pulled the whole country in one flat query, which Census's ZCTA geography doesn't support reliably and silently returned only 2.7% of zips nationally. Use "Test these states" with a couple of sample states first to confirm real per-zip coverage before running the full national reload, which takes noticeably longer (dozens of Census API calls).</p>
+      <p class="proto-note">IRS top-bracket income: real per-zip average income for households earning $200,000+ (IRS Statistics of Income, ZIP Code Data — irs.gov, free, no API key, one national file). Census's own income table can't tell a $225,000-average area apart from a $2,000,000-average one — both land in the same open-ended top bracket — so this fills in the one number Census can't provide, letting genuinely wealthy areas score as such. Independent of the Census demographics load above; run both for the most accurate Wealth Index.</p>
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+        <div class="field-row three">
+          <div>
+            <label>Upload a crosswalk file — source (required)</label>
+            <input type="text" id="refDataDmaSource" placeholder='e.g. "Nielsen ZIP Code by DMA 2026, licensed"'>
+          </div>
+          <div>
+            <label>Method / note</label>
+            <input type="text" id="refDataDmaMethod" placeholder="e.g. official Nielsen boundaries">
+          </div>
+          <div>
+            <label>CSV or TSV: zip, DMA code, DMA name</label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label class="btn" for="refDataDmaFile" style="cursor:pointer;margin:0;">Choose File</label>
+              <span id="refDataDmaFileName" class="empty-note" style="padding:0;"></span>
+            </div>
+            <input type="file" id="refDataDmaFile" accept=".csv,.tsv,.txt" style="display:none;" onchange="document.getElementById('refDataDmaFileName').textContent = (this.files[0] || {}).name || ''; refDataHandleDmaFile(event)">
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+        <label>Zip centroids for store trade areas — Census ZCTA Gazetteer (.txt from the zip archive)</label>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <label class="btn" for="refDataCentroidFile" style="cursor:pointer;margin:0;">Choose File</label>
+          <span id="refDataCentroidFileName" class="empty-note" style="padding:0;"></span>
+          <a class="btn" href="https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2023_Gazetteer/2023_Gaz_zcta_national.zip" target="_blank" rel="noopener">⬇ Download the gazetteer</a>
+        </div>
+        <input type="file" id="refDataCentroidFile" accept=".txt,.csv,.tsv" style="display:none;" onchange="document.getElementById('refDataCentroidFileName').textContent = (this.files[0] || {}).name || ''; refDataHandleCentroidFile(event)">
+      </div>
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+        <p class="desc" style="margin-bottom:10px;"><b>Other countries.</b> Pick the country, then upload its population, centroids and market crosswalk from the national statistics office (Statistics Canada by FSA; ABS by postcode; ONS postcode lookup for the UK; Destatis, INSEE, INE and ISTAT by postal code, with Eurostat's postal-code-to-NUTS table as the market layer). Columns are found by name and by value pattern; every market label says which definition it uses.</p>
+        <div class="field-row three">
+          <div>
+            <label>Country</label>
+            <select id="refDataCountry"><option value="CA">Canada</option><option value="AU">Australia</option><option value="GB">United Kingdom</option><option value="DE">Germany</option><option value="FR">France</option><option value="ES">Spain</option><option value="IT">Italy</option></select>
+          </div>
+          <div>
+            <label>Population by postal unit</label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label class="btn" for="refDataCountryPopFile" style="cursor:pointer;margin:0;">Choose File</label>
+              <span id="refDataCountryPopFileName" class="empty-note" style="padding:0;"></span>
+            </div>
+            <input type="file" id="refDataCountryPopFile" accept=".csv,.tsv,.txt" style="display:none;" onchange="document.getElementById('refDataCountryPopFileName').textContent = (this.files[0] || {}).name || ''; refDataHandleCountryFile(event, 'population')">
+          </div>
+          <div>
+            <label>Centroids (lat / long)</label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label class="btn" for="refDataCountryCentroidFile" style="cursor:pointer;margin:0;">Choose File</label>
+              <span id="refDataCountryCentroidFileName" class="empty-note" style="padding:0;"></span>
+            </div>
+            <input type="file" id="refDataCountryCentroidFile" accept=".csv,.tsv,.txt" style="display:none;" onchange="document.getElementById('refDataCountryCentroidFileName').textContent = (this.files[0] || {}).name || ''; refDataHandleCountryFile(event, 'centroids')">
+          </div>
+        </div>
+        <div class="field-row" style="margin-top:0;">
+          <div>
+            <label>Postal unit → market crosswalk</label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label class="btn" for="refDataCountryMarketFile" style="cursor:pointer;margin:0;">Choose File</label>
+              <span id="refDataCountryMarketFileName" class="empty-note" style="padding:0;"></span>
+            </div>
+            <input type="file" id="refDataCountryMarketFile" accept=".csv,.tsv,.txt" style="display:none;" onchange="document.getElementById('refDataCountryMarketFileName').textContent = (this.files[0] || {}).name || ''; refDataHandleCountryFile(event, 'markets')">
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+        <p class="desc" style="margin-bottom:10px;"><b>Canada demographics (age + income by FSA).</b> Not active for any client yet — built ahead of need, same posture as the rest of this section, so it's ready the day a Canadian account needs Audience/Wealth Fit scoring on its stores. Source: the Canada Revenue Agency's free "Individual Tax Statistics by Forward Sortation Area" (open.canada.ca, no API key) — Table 2 (by age) and Table 1b (by total income class) are two separate downloads, uploaded separately below; direct links go to the most recent edition (2021 tax year — this CRA product was archived after that and replaced by a coarser CMA/CA-level dataset with no FSA, age, or income-class breakdown, so 2021 is genuinely the latest FSA-level age/income data available, not a stale link). Same 5 generations and <code>income_avg_estimate</code> attribute as the U.S. build, so nothing else in the product needs to change once this is loaded — see <code>cxmedia-canada-demographics-additional-countries-approach-2026-09-10.md</code> for the full approach and how to extend it to other countries.</p>
+        <div class="field-row three">
+          <div>
+            <label>CRA tax year this file covers</label>
+            <input type="text" id="refDataCraTaxYear" placeholder="2021" style="max-width:120px;">
+          </div>
+          <div>
+            <label>Table 2 — by age</label>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <label class="btn" for="refDataCraAgeFile" style="cursor:pointer;margin:0;">Choose File</label>
+              <span id="refDataCraAgeFileName" class="empty-note" style="padding:0;"></span>
+              <a class="btn" href="https://www.canada.ca/content/dam/cra-arc/prog-policy/stats/individual-tax-stats-fsa/2021-tax-year/tbl2-en.csv" target="_blank" rel="noopener">⬇ Download Table 2</a>
+            </div>
+            <input type="file" id="refDataCraAgeFile" accept=".csv,.tsv,.txt" style="display:none;" onchange="document.getElementById('refDataCraAgeFileName').textContent = (this.files[0] || {}).name || ''; refDataHandleCraFile(event, 'age')">
+          </div>
+          <div>
+            <label>Table 1b — by total income class</label>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <label class="btn" for="refDataCraIncomeFile" style="cursor:pointer;margin:0;">Choose File</label>
+              <span id="refDataCraIncomeFileName" class="empty-note" style="padding:0;"></span>
+              <a class="btn" href="https://www.canada.ca/content/dam/cra-arc/prog-policy/stats/individual-tax-stats-fsa/2021-tax-year/tbl1b-en.csv" target="_blank" rel="noopener">⬇ Download Table 1b</a>
+            </div>
+            <input type="file" id="refDataCraIncomeFile" accept=".csv,.tsv,.txt" style="display:none;" onchange="document.getElementById('refDataCraIncomeFileName').textContent = (this.files[0] || {}).name || ''; refDataHandleCraFile(event, 'income')">
+          </div>
+        </div>
+        <p class="proto-note">Columns are found by name/pattern (an FSA column, plus any "25-29" / "Under 20" / "Over 75" style range headers) rather than a fixed column list — verified 2026-09-10 against the real Table 2/Table 1b headers (confirmed via direct download: "Prov/Terr, FSA, Total, Total income, Under 20, 20-24, ..., Over 75" and the equivalent dollar-bracket header for income), not just synthetic test data. The download links above go straight to the real files.</p>
+      </div>
+      <p class="empty-note" id="refDataLoadStatus" style="padding:10px 0 0;"></p>
+    </div>
+
+    <div class="safeguard">
+      <b>Naming safeguard —</b> the offline demo package also has a fully-seeded account under the name "Atlas Ocean Voyages" (account ID <code>CXM-NAT-2026-700</code>), built from public facts but with entirely fictional campaigns, invoices, and org chart. The real Atlas Ocean Voyages account below is a separate, brand-new account — never seeded from, or sharing data with, the demo account. See <code>cxmedia-first-client-beta-launch-plan-2026-08-08.md</code> Section 1.2.
+    </div>
+
+    <div class="directory-grid" id="directoryGrid"></div>
+
+    <div class="proto-note" style="margin-top:22px;">
+      Prototype note: account data below is illustrative, matching the decisions already recorded in the beta launch plan (tier, footprint, friend-rate pricing) — connection status, team roster, invoices, and legal documents are shown in their honest current state (not yet provisioned), not filled in with placeholder activity.
+    </div>
+  </div>
+
+  
+  <div id="view-workspace" class="hidden">
+    <div style="padding-top:28px;">
+      <span class="back-link" onclick="showDirectory()">← Back to Accounts Directory</span>
+      <div class="workspace-head">
+        <div>
+          <div class="eyebrow" id="wsEyebrow">Account Workspace</div>
+          <h1 id="wsName">—</h1>
+          <div class="acct-badges" id="wsBadges"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-row" id="tabRow">
+      <div class="tab active" data-tab="data">Data &amp; Connections</div>
+      <div class="tab" data-tab="team">Team Access</div>
+      <div class="tab" data-tab="billing">Plan &amp; Billing</div>
+      <div class="tab" data-tab="legal">Legal &amp; Documents</div>
+    </div>
+
+    
+    <div class="tab-pane" id="pane-data">
+      <div class="module">
+        <h3>Media &amp; analytics connections</h3>
+        <p class="desc">The staff-side half of the GA4 / SA360 / Meta setup split — enter what Verilume needs to record once the client's own account grants access. Mirrors the client-facing Analytics Integrations card, reached here instead so staff can complete setup on a client's behalf.</p>
+        <div class="field-row three">
+          <div>
+            <label>Pathway</label>
+            <select id="connPathway">
+              <option value="">Not yet selected</option>
+              <option value="ga4">GA4</option>
+              <option value="sa360">SA360</option>
+              <option value="meta">Meta</option>
+              <option value="snowflake">Snowflake (client warehouse)</option>
+              <option value="fallback">Fallback / manual notes</option>
+            </select>
+          </div>
+          <div>
+            <label>Account / Property ID</label>
+            <input type="text" id="connAccountId" placeholder="Not yet provided">
+          </div>
+          <div>
+            <label>Status</label>
+            <select id="connStatus">
+              <option value="none">Not connected</option>
+              <option value="pending">Pending client grant</option>
+              <option value="connected">Connected</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn primary" onclick="saveConnection()">Save connection status</button>
+        <div class="proto-note">Writes to the same <code>analyticsPathway</code> / <code>analyticsGa4AccountId</code> / <code>analyticsStatus</code> fields the client Portal already reads — this screen is the missing staff-side editor for them, not a new data model.</div>
+
+        
+        <details class="setup-instructions" style="margin-top:16px;border:1px solid var(--line);border-radius:10px;padding:12px 16px;">
+          <summary style="cursor:pointer;font-weight:600;font-size:0.85rem;">Setup instructions — what to do once a client requests a pathway</summary>
+          <div style="margin-top:12px;font-size:0.8rem;line-height:1.55;">
+            <p class="desc" style="margin:0 0 10px;">A submitted request only sets <code>analyticsStatus = 'requested'</code> — nothing below happens automatically. Work the steps for the client's chosen pathway, then set Status to Connected above once done.</p>
+
+            <p style="margin:10px 0 4px;"><b>GA4</b> — client adds Verilume's service-account email as <b>Viewer</b> in their GA4 Property Access Management, and provides their Account ID + Property ID. Fastest pathway — same-day, no approval step on either side. The real connector already exists (<code>GET /api/accounts/:id/ga4-report</code>); it activates automatically once production has a real <code>GA4_SERVICE_ACCOUNT_KEY_JSON</code> credential — check with engineering before promising a client live data.</p>
+
+            <p style="margin:10px 0 4px;"><b>Snowflake</b> — client's own data team provisions a <b>read-only</b> Secure Data Share (never full warehouse access) and provides the account identifier, Share name, and a data-team contact (still what this form above captures). 2026-09-13 update: the pull connector itself is now real code (<code>syncSnowflakeAccount()</code> in server.js, key-pair JWT auth against Snowflake's SQL API, nightly cron at <code>GET /api/cron/sync-snowflake</code>) — it lands call/lead/booking records into <code>warehouse_calls</code>/<code>warehouse_leads</code>/<code>warehouse_bookings</code>. It stays dormant until two separate things exist: (1) Verilume.AI's own Snowflake account + <code>SNOWFLAKE_*</code> env vars in production, and (2) per-account provisioning — which database/schema/table the client's mounted share landed as, set via the admin-only <code>POST /api/accounts/:id/snowflake-connector-config</code> (not a form on this page; there's no client-facing UI for Verilume's own internal database naming). So "Connected" above still means "request fully documented" until an engineer does that provisioning step and a real sync succeeds — check with engineering before promising a client live data.</p>
+
+            <p style="margin:10px 0 4px;"><b>Meta</b> — client adds Verilume's Business Manager System User with <code>ads_read</code> permission on the ad account(s) to report on. Slowest pathway — Meta's App Review realistically runs 1-2+ weeks, and that's Verilume's own one-time step, separate from any one client. No connector code exists yet.</p>
+
+            <p style="margin:10px 0 4px;"><b>Google Ads / SA360</b> — client grants Verilume's OAuth app read access to their Google Ads account or MCC. Gate is Verilume's own one-time Developer Token approval (Google's process, days-weeks), not the per-client grant. No connector code exists yet.</p>
+
+            <p style="margin:10px 0 4px;"><b>Fallback (Google Sheets / manual notes)</b> — client shares a designated Sheet, kept current with their own campaign data in an agreed format. Real risk is staleness, not setup friction. No reader exists yet — this pathway stays notes-only until one is built.</p>
+
+            <p style="margin:12px 0 0;"><a href="verilume-product-licensed-integrations.html#setup-procedures" target="_blank" rel="noopener">Full setup procedure, auth models, and current build status for every pathway &#8599;</a></p>
+          </div>
+        </details>
+      </div>
+
+      <div class="module">
+        <h3>Bulk data upload on the client's behalf</h3>
+        <p class="desc">The same import mechanisms already live in the client Portal — exposed here for setup work when a client hands off a spreadsheet rather than entering it themselves.</p>
+        <div class="field-row">
+          <div>
+            <label>Marketing Calendar (bulk campaign rows)</label>
+            <button class="btn" onclick="alert('Prototype: would open the same bulk-upload flow as the client Portal\'s Marketing Calendar Bulk Upload.')">Upload CSV…</button>
+          </div>
+          <div>
+            <label>MMM data inputs (historical spend/period rows)</label>
+            <button class="btn" onclick="alert('Prototype: would open the same row-entry flow as the client Portal\'s MMM Data Inputs.')">Add rows…</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    
+    <div class="tab-pane hidden" id="pane-team">
+      <div class="module">
+        <h3>Team member access</h3>
+        <p class="desc">Staff override, on top of the client's own self-service roster in <code>account.html</code> — use this when a client asks CX Experiences directly to deactivate access, or when troubleshooting.</p>
+        <table id="teamTable">
+          <thead><tr><th>Name</th><th>Role</th><th>Access</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="empty-note" id="teamEmptyNote"></div>
+      </div>
+    </div>
+
+    
+    <div class="tab-pane hidden" id="pane-billing">
+      <div class="module">
+        <h3>Account level</h3>
+        <p class="desc">Changing tier or footprint here does not automatically resend an invoice — check the next invoice amount below after a change.</p>
+        <div class="field-row">
+          <div>
+            <label>Tier</label>
+            <select id="planTier">
+              <option value="starter">Starter</option>
+              <option value="growth">Growth</option>
+              <option value="enterprise">Enterprise</option>
+            </select>
+          </div>
+          <div>
+            <label>Footprint</label>
+            <select id="planFootprint">
+              <option value="local">Local</option>
+              <option value="national">National</option>
+              <option value="franchise">Franchise</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn primary" onclick="savePlan()">Save account level</button>
+      </div>
+
+      <div class="module">
+        <h3>Premium Capability — external research &amp; quant/multi-dimensional asks</h3>
+        <p class="desc">Gates the two ask-shapes portal.html's conversational front door treats as Enterprise-only (live external research, quant/multi-dimensional modeling) — a non-Enterprise account gets a warm decline with an upgrade link, never a hard block. Enterprise's baseline allotment (30 asks/mo) is folded into the base fee, not tracked here. This module is only for an <b>a la carte commitment tier bought on top of that baseline</b> — staff-recorded after a sales conversation, not a client self-serve purchase, same quote-gated motion as every other Enterprise plan change on this tab. See <code>cxmedia-pnl-model.xlsx</code>, Active Participation Addendum tab, Section 9.</p>
+        <div class="field-row">
+          <div>
+            <label>A la carte commitment tier</label>
+            <select id="premiumCapTier">
+              <option value="none">None — Enterprise baseline only</option>
+              <option value="flex">Flex — month-to-month (+25 asks/mo, $150/mo)</option>
+              <option value="quarterly">Quarterly commit (+75 asks/mo, $360/mo)</option>
+              <option value="annual">Annual commit (+200 asks/mo, $800/mo)</option>
+            </select>
+          </div>
+          <div>
+            <label>Commitment start date</label>
+            <input type="text" id="premiumCapStart" placeholder="e.g. 2026-08-12">
+          </div>
+        </div>
+        <div id="premiumCapNote" class="empty-note"></div>
+        <button class="btn primary" onclick="savePremiumCap()">Save premium capability</button>
+      </div>
+
+      <div class="module">
+        <h3>Invoices — manual billing</h3>
+        <p class="desc">No payment processor involved — bank transfer, marked here by hand as status changes. Matches the Phase 3 decision in <code>cxmedia-release-schedule.md</code>.</p>
+        <table id="invoiceTable">
+          <thead><tr><th>Period</th><th>Description</th><th>Amount</th><th>Status</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="empty-note" id="invoiceEmptyNote"></div>
+        <div class="module" style="background:var(--paper-dim);border:1px dashed var(--line-strong);margin-top:14px;">
+          <h3 style="font-size:0.85rem;">Create a new invoice</h3>
+          <div class="field-row three">
+            <div><label>Period</label><input type="text" id="newInvPeriod" placeholder="e.g. August 2026"></div>
+            <div><label>Description</label><input type="text" id="newInvDesc" placeholder="e.g. Growth / National, friend rate"></div>
+            <div><label>Amount ($)</label><input type="number" id="newInvAmount" placeholder="6300"></div>
+          </div>
+          <button class="btn primary" onclick="createInvoice()">Create invoice — status: Due</button>
+        </div>
+      </div>
+    </div>
+
+    
+    <div class="tab-pane hidden" id="pane-legal">
+      <div class="module">
+        <h3>Signed legal documents</h3>
+        <p class="desc">Where a signed document lives once it exists — independent of which e-signature vendor eventually gets chosen (still open, see <code>cxmedia-deliverable-4-notes.md</code>). Usable today as a manual upload spot for anything signed and sent back.</p>
+        <table id="legalTable">
+          <thead><tr><th>Document</th><th>Status</th><th>Signed date</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</div>
+
+<script>const t="2026-09-24-partner-reliability-report";console.log("[CXMedia.AI] ops-console.html build:",t);const e=typeof window!=="undefined"&&window.location&&window.location.protocol!=="file:"?"":"http://localhost:8787";const n={"silver-trident":{name:"Silver Trident",tier:"growth",footprint:"national",friendRate:6300,status:"pending",connection:{pathway:"",accountId:"",status:"none"},team:[{name:"Todd (CMO/Admin)",role:"Admin",active:true}],invoices:[],legal:[{doc:"Mutual NDA",status:"draft",signedDate:""},{doc:"Contract / SOW",status:"draft",signedDate:""},{doc:"Terms of Service",status:"draft",signedDate:""},{doc:"IP Ownership & Assignment Addendum",status:"draft",signedDate:""}],premiumCapability:{commitmentTier:"none",commitmentStart:""}},"atlas-ocean-voyages":{name:"Atlas Ocean Voyages (real client account)",tier:"growth",footprint:"national",friendRate:6300,status:"pending",connection:{pathway:"",accountId:"",status:"none"},team:[{name:"Todd (CMO/Admin)",role:"Admin",active:true}],invoices:[],legal:[{doc:"Mutual NDA",status:"draft",signedDate:""},{doc:"Contract / SOW",status:"draft",signedDate:""},{doc:"Terms of Service",status:"draft",signedDate:""},{doc:"IP Ownership & Assignment Addendum",status:"draft",signedDate:""}],premiumCapability:{commitmentTier:"none",commitmentStart:""}}};const o={none:{label:"None — Enterprise baseline only",extraAsks:0,price:0,perAsk:0},flex:{label:"Flex — month-to-month",extraAsks:25,price:150,perAsk:6},quarterly:{label:"Quarterly commit — 3-mo minimum",extraAsks:75,price:360,perAsk:4.8},annual:{label:"Annual commit — 12-mo minimum",extraAsks:200,price:800,perAsk:4}};let a=null;function s(t){const e=t.charAt(0).toUpperCase()+t.slice(1);return`<span class="badge tier-${t}">${e}</span>`}function i(status){const t={pending:["status-pending","Pending provisioning"],active:["status-active","Active"]};const[e,n]=t[status]||["status-none",status];return`<span class="badge ${e}">${n}</span>`}function r(){const t=document.getElementById("directoryGrid");t.innerHTML=Object.entries(n).map(([t,e])=>`\n    <div class="acct-card" onclick="openAccount('${t}')">\n      <div>\n        <div class="acct-name">${e.name}</div>\n        <div class="acct-meta">\n          <span class="acct-badges">\n            ${s(e.tier)}\n            <span class="badge">${e.footprint.charAt(0).toUpperCase()+e.footprint.slice(1)}</span>\n            ${i(e.status)}\n          </span>\n          <span>·</span>\n          <span>$${e.friendRate.toLocaleString()}/mo (friend rate)</span>\n        </div>\n      </div>\n      <div class="acct-right">\n        <div class="next-step">Next: hosting + legal review before provisioning</div>\n        <span class="btn small">Open workspace →</span>\n      </div>\n    </div>\n  `).join("")}function showDirectory(){document.getElementById("view-directory").classList.remove("hidden");document.getElementById("view-workspace").classList.add("hidden");a=null}function openAccount(t){a=t;const e=n[t];document.getElementById("view-directory").classList.add("hidden");document.getElementById("view-workspace").classList.remove("hidden");document.getElementById("wsName").textContent=e.name;document.getElementById("wsBadges").innerHTML=`${s(e.tier)} <span class="badge">${e.footprint.charAt(0).toUpperCase()+e.footprint.slice(1)}</span> ${i(e.status)}`;document.getElementById("connPathway").value=e.connection.pathway;document.getElementById("connAccountId").value=e.connection.accountId;document.getElementById("connStatus").value=e.connection.status;document.getElementById("planTier").value=e.tier;document.getElementById("planFootprint").value=e.footprint;document.getElementById("premiumCapTier").value=e.premiumCapability.commitmentTier;document.getElementById("premiumCapStart").value=e.premiumCapability.commitmentStart;c();d();l();p();u("data")}function c(){const t=n[a];const e=document.getElementById("premiumCapNote");if(t.tier!=="enterprise"){
+e.textContent=t.premiumCapability.commitmentTier==="none"?`${t.name} is on ${t.tier.charAt(0).toUpperCase()+t.tier.slice(1)} tier today — the gate in portal.html already routes this account's research/quant asks to the soft-decline + upgrade link. A commitment tier can still be recorded ahead of an Enterprise upgrade, but won't take effect until the account moves to Enterprise.`:`Recorded ahead of an Enterprise upgrade — this account is still ${t.tier.charAt(0).toUpperCase()+t.tier.slice(1)} tier today, so the commitment isn't active yet. It'll take effect once the tier change above is saved.`}else{const n=o[t.premiumCapability.commitmentTier];e.textContent=t.premiumCapability.commitmentTier==="none"?"Enterprise baseline only (30 premium asks/mo, included in the base fee) — no a la carte commitment on file.":`Active: ${n.label} — +${n.extraAsks} asks/mo on top of the Enterprise baseline, $${n.price}/mo ($${n.perAsk.toFixed(2)}/ask)${t.premiumCapability.commitmentStart?", started "+t.premiumCapability.commitmentStart:""}.`}}function savePremiumCap(){const t=n[a];t.premiumCapability.commitmentTier=document.getElementById("premiumCapTier").value;t.premiumCapability.commitmentStart=document.getElementById("premiumCapStart").value;c()}function d(){const t=n[a];const e=document.querySelector("#teamTable tbody");e.innerHTML=t.team.map((t,e)=>`\n    <tr>\n      <td>${t.name}</td>\n      <td>${t.role}</td>\n      <td><span class="toggle ${t.active?"on":""}" onclick="toggleTeamAccess(${e})"><span class="switch"></span>${t.active?"Active":"Deactivated"}</span></td>\n      <td></td>\n    </tr>\n  `).join("");document.getElementById("teamEmptyNote").textContent=t.team.length<=1?"Only the account Admin exists today — this is where a client's other team members would appear once invited.":""}function toggleTeamAccess(t){const e=n[a];e.team[t].active=!e.team[t].active;d()}function saveConnection(){const t=n[a];t.connection.pathway=document.getElementById("connPathway").value;t.connection.accountId=document.getElementById("connAccountId").value;t.connection.status=document.getElementById("connStatus").value;alert("Saved (prototype — client-side state only, not yet wired to a real backend field).")}function savePlan(){const t=n[a];const e=t.tier;t.tier=document.getElementById("planTier").value;t.footprint=document.getElementById("planFootprint").value;document.getElementById("wsBadges").innerHTML=`${s(t.tier)} <span class="badge">${t.footprint.charAt(0).toUpperCase()+t.footprint.slice(1)}</span> ${i(t.status)}`;c();if(e!==t.tier){alert("Tier changed from "+e+" to "+t.tier+" — remember to reflect this in the next invoice amount below, and note that Premium Capability status above just changed too.")}}function l(){const t=n[a];const e=document.querySelector("#invoiceTable tbody");e.innerHTML=t.invoices.map((t,e)=>`\n    <tr>\n      <td>${t.period}</td>\n      <td>${t.desc}</td>\n      <td>$${Number(t.amount).toLocaleString()}</td>\n      <td><span class="badge status-${t.status}">${t.status}</span></td>\n      <td class="row-actions">\n        ${t.status==="due"?`<button class="btn small" onclick="markInvoicePaid(${e})">Mark Paid</button>`:""}\n        ${t.status==="due"?`<button class="btn small danger" onclick="markInvoiceOverdue(${e})">Mark Overdue</button>`:""}\n      </td>\n    </tr>\n  `).join("");document.getElementById("invoiceEmptyNote").textContent=t.invoices.length===0?"No invoices yet — this account hasn't been provisioned or billed.":""}function createInvoice(){const t=n[a];const e=document.getElementById("newInvPeriod").value||"Unlabeled period";const o=document.getElementById("newInvDesc").value||"—";const s=document.getElementById("newInvAmount").value||t.friendRate;t.invoices.push({period:e,desc:o,amount:s,status:"due"});document.getElementById("newInvPeriod").value="";document.getElementById("newInvDesc").value="";document.getElementById("newInvAmount").value="";l()}function markInvoicePaid(t){n[a].invoices[t].status="paid";l()}
+function markInvoiceOverdue(t){n[a].invoices[t].status="overdue";l()}function p(){const t=n[a];const e=document.querySelector("#legalTable tbody");e.innerHTML=t.legal.map((t,e)=>`\n    <tr>\n      <td>${t.doc}</td>\n      <td><span class="badge status-${t.status}">${t.status}</span></td>\n      <td>${t.signedDate||"—"}</td>\n      <td class="row-actions">\n        ${t.status!=="sent"&&t.status!=="signed"?`<button class="btn small" onclick="markLegalSent(${e})">Mark Sent</button>`:""}\n        ${t.status==="sent"?`<button class="btn small primary" onclick="markLegalSigned(${e})">Upload signed / Mark Signed</button>`:""}\n      </td>\n    </tr>\n  `).join("")}function markLegalSent(t){n[a].legal[t].status="sent";p()}function markLegalSigned(t){const e=n[a];e.legal[t].status="signed";e.legal[t].signedDate=(new Date).toISOString().slice(0,10);p()}function u(t){document.querySelectorAll(".tab").forEach(e=>e.classList.toggle("active",e.dataset.tab===t));document.querySelectorAll(".tab-pane").forEach(t=>t.classList.add("hidden"));document.getElementById("pane-"+t).classList.remove("hidden")}document.getElementById("tabRow").addEventListener("click",t=>{const e=t.target.closest(".tab");if(e)u(e.dataset.tab)});const m="verilume_ops_admin_token";let y=false;function toggleIntegRemember(){y=!y;document.getElementById("integRememberToggle").classList.toggle("on",y);if(y){const t=document.getElementById("opsAdminToken").value.trim();if(t){try{sessionStorage.setItem(m,t)}catch(t){}}}else{try{sessionStorage.removeItem(m)}catch(t){}}}function g(t){return t?'<span class="badge status-configured">Configured</span>':'<span class="badge status-not-configured">Not configured</span>'}let h=null;async function diLoad(){const t=(document.getElementById("diAccountId").value||"").trim();const n=document.getElementById("opsAdminToken").value.trim();const o=document.getElementById("diError"),a=document.getElementById("diBody");o.style.display="none";a.innerHTML="";if(!t){o.textContent="Enter an Account ID.";o.style.display="block";return}if(!n){o.textContent="Enter the ADMIN_API_TOKEN configured on this deployment (top of this page).";o.style.display="block";return}a.innerHTML='<p class="empty-note">Loading…</p>';try{const o=await fetch(`${e}/api/ops/accounts/${encodeURIComponent(t)}/data-integrity`,{headers:{"X-Admin-Token":n}});const a=await o.json().catch(()=>({}));if(!o.ok)throw new Error(a.error||`HTTP ${o.status}`);h=a}catch(t){h=null;a.innerHTML="";o.textContent=t.message;o.style.display="block";return}b()}function f(t){return t==null?"—":Number(t).toLocaleString()}function b(){const t=h,e=document.getElementById("diBody");if(!t||!e)return;let n=`<p class="desc">Generated ${w(new Date(t.generatedAt).toLocaleString())}.</p>`;if(t.receipts&&t.receipts.length){n+=`<h4 style="margin:12px 0 6px;">Upload receipts</h4><div class="table-scroll"><table class="data-table" style="width:100%;font-size:0.8125rem;"><thead><tr><th>When</th><th>Kind</th><th>File</th><th>File rows</th><th>Database rows</th><th>File gross</th><th>Database gross</th><th>Result</th></tr></thead><tbody>${t.receipts.map(t=>`<tr><td style="white-space:nowrap;">${w(new Date(t.createdAt).toLocaleString())}</td><td>${w(t.kind)}</td><td>${w(t.fileName||"")}</td><td>${t.file?f(t.file.rows):"—"}</td><td>${f(t.database&&t.database.rows)}</td>${t.file&&t.file.measures?`<td>${t.file.measures.map(t=>w(t.label)+": "+(t.money?"$":"")+f(t.v)).join("<br>")}</td><td>${(t.database&&t.database.measures?t.database.measures:[]).map(t=>w(t.label)+": "+(t.money?"$":"")+f(t.v)).join("<br>")}</td>`:`<td>${t.file?"$"+f(t.file.gross):"—"}</td><td>$${f(t.database&&t.database.gross)}</td>`}<td>${t.matched===1?'<span style="color:#1F7A4D;font-weight:600;">Match</span>':t.matched===0?`<span style="color:var(--danger);font-weight:600;">Differs</span> <span class="empty-note" style="font-style:normal;">${w(t.note||"")}</span>`:"Not compared"}</td></tr>`).join("")}</tbody></table></div>`
+}else n+='<p class="empty-note">No upload receipts yet. Receipts are written by uploads made after this panel shipped (guest bookings first).</p>';(t.tables||[]).forEach(t=>{if(t.error){n+=`<h4 style="margin:14px 0 6px;">${w(t.key)}</h4><p class="empty-note" style="color:var(--danger);">${w(t.error)}</p>`;return}const e=t.columns||[];n+=`<h4 style="margin:14px 0 6px;">${w(t.label)} <span class="empty-note" style="font-style:normal;">· ${f(t.total.rows)} rows${t.lastUpdate?` · last written ${w(String(t.lastUpdate).slice(0,10))}`:""}</span></h4>`;if(!t.months.length){n+='<p class="empty-note">Nothing on file.</p>';return}n+=`<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Month</th><th>Rows</th>${e.map(t=>`<th>${w(t)}</th>`).join("")}</tr></thead><tbody>${t.months.map(t=>`<tr><td>${w(t.month)}</td><td>${f(t.rows)}</td>${e.map(e=>`<td>${f(t[e])}</td>`).join("")}</tr>`).join("")}<tr style="font-weight:700;"><td>Total</td><td>${f(t.total.rows)}</td>${e.map(e=>`<td>${f(t.total[e])}</td>`).join("")}</tr></tbody></table></div>`});const o=(t.yearResults||[]).map(t=>`<tr><td>${t.year}</td><td>$${f(t.grossRevenue)}</td><td>${f(t.transactions)}</td><td>${w(t.notes||"")}</td></tr>`).join("");n+=`<h4 style="margin:14px 0 6px;">Annual results (entered)</h4>${o?`<table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Year</th><th>Gross revenue</th><th>Transactions</th><th>Notes</th></tr></thead><tbody>${o}</tbody></table>`:'<p class="empty-note">None entered.</p>'}`;const a=(t.annualPlan||[]).map(t=>`<tr><td>${t.year}</td><td>${w(t.kind)}</td><td>${w(t.label||"")}</td><td>$${f(t.workingMedia)}</td><td>${f(t.websiteUsers)}</td><td>${f(t.bookings)}</td><td>$${f(t.grossRevenue)}</td></tr>`).join("");n+=`<h4 style="margin:14px 0 6px;">Annual plan</h4>${a?`<table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Year</th><th>Kind</th><th>Label</th><th>Working media</th><th>Website users</th><th>Bookings</th><th>Gross revenue</th></tr></thead><tbody>${a}</tbody></table>`:'<p class="empty-note">No annual plan saved (the dashboards fall back to the recommended plan).</p>'}`;const s=(t.budgets||[]).map(t=>`<tr><td>${t.year}</td><td>${w(t.scope||"")}</td><td>${w(t.status||"")}</td><td>${w(t.fileName||"")}</td><td>${f(t.lines)}</td><td>$${f(t.workingMedia)}</td><td>$${f(t.total)}</td></tr>`).join("");n+=`<h4 style="margin:14px 0 6px;">Marketing budget uploads</h4>${s?`<div class="table-scroll"><table class="data-table" style="font-size:0.8125rem;"><thead><tr><th>Year</th><th>Scope</th><th>Status</th><th>File</th><th>Lines</th><th>Working media</th><th>Total</th></tr></thead><tbody>${s}</tbody></table></div><p class="empty-note">Only uploads with status "confirmed" feed the plan and the dashboards.</p>`:'<p class="empty-note">None.</p>'}`;if(t.campaigns)n+=`<p class="desc" style="margin-top:12px;">Campaigns: ${f(t.campaigns.total)} total · ${f(t.campaigns.adHoc)} ad hoc · ${f(t.campaigns.cancelled)} cancelled · ${f(t.campaigns.undated)} without a start date.</p>`;e.innerHTML=n}function diCsv(){const t=h;if(!t)return;const e=t=>'"'+String(t==null?"":t).replace(/"/g,'""')+'"';const n=[["Table","Month","Rows","Measure","Value"].map(e).join(",")];(t.tables||[]).forEach(t=>(t.months||[]).forEach(o=>{n.push([t.label,o.month,o.rows,"",""].map(e).join(","));(t.columns||[]).forEach(a=>n.push([t.label,o.month,o.rows,a,o[a]].map(e).join(",")))}));const o=document.createElement("a");o.href=URL.createObjectURL(new Blob([n.join("\n")],{type:"text/csv"}));o.download=`data-integrity-${t.accountId}.csv`;o.click()}let v=null;async function rcLoad(){const t=document.getElementById("rcBody");if(!t)return;t.textContent="Loading…";try{const t=await x(`${e}/api/ops/report-cards`);if(!t.ok)throw new Error(String(t.status));v=await t.json()}catch(e){v=null;t.textContent="Could not load the report cards just now.";return}rcRender()}function $(){
+const t=((document.getElementById("rcFilter")||{}).value||"").toLowerCase();return(v&&v.cards||[]).filter(e=>!t||[e.name,e.tab,e.formula,e.scope,e.client||"",e.sourceTables.join(" ")].join(" ").toLowerCase().includes(t))}function rcRender(){const t=document.getElementById("rcBody");if(!t||!v)return;const e=$();t.innerHTML=`<div class="table-scroll"><table class="data-table" style="width:100%;font-size:0.8125rem;"><thead><tr><th>Date added</th><th>Added by</th><th>Name</th><th>Formula used</th><th>Source tables</th></tr></thead><tbody>${e.map(t=>`<tr><td style="white-space:nowrap;">${w(t.dateAdded)}</td><td>${w(t.client||t.scope)}</td><td><b>${w(t.name)}</b><br><span style="color:#64748B;">${w(t.tab)}</span></td><td>${w(t.formula)}</td><td>${t.sourceTables.map(t=>`<code>${w(t)}</code>`).join("<br>")}</td></tr>`).join("")||'<tr><td colspan="5">No cards match.</td></tr>'}</tbody></table></div><p class="desc" style="margin-top:8px;">${e.length} of ${v.cards.length} cards. ${w(v.note||"")}</p>`}function rcCsv(){const t=$();if(!t.length)return;const e=t=>'"'+String(t==null?"":t).replace(/"/g,'""')+'"';const n=[["Date added","Added by","Tab","Name","Formula used","Source tables"].map(e).join(",")].concat(t.map(t=>[t.dateAdded,t.client||t.scope,t.tab,t.name,t.formula,t.sourceTables.join("; ")].map(e).join(","))).join("\n");const o=document.createElement("a");o.href=URL.createObjectURL(new Blob([n],{type:"text/csv"}));o.download="verilume-report-cards.csv";o.click()}function w(t){return String(t==null?"":t).replace(/[&<>"']/g,t=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[t]))}function x(t,e={}){let n="";try{n=sessionStorage.getItem(J)||""}catch(t){}const o=Object.assign({},e.headers||{});if(n)o["Authorization"]=`Bearer ${n}`;const a=e.timeoutMs||12e3;const s=new AbortController;const i=setTimeout(()=>s.abort(),a);const r=Object.assign({},e,{headers:o,signal:e.signal||s.signal});delete r.timeoutMs;return fetch(t,r).finally(()=>clearTimeout(i))}const k={CA:{name:"Canada",unit:"forward sortation area (A1A)",parse:t=>{const e=t.replace(/\s+/g,"").match(/^([A-Z]\d[A-Z])(\d[A-Z]\d)?$/);return e?e[1]:null}},AU:{name:"Australia",unit:"postcode (4 digits)",parse:t=>/^\d{4}$/.test(t)?t:/^\d{3}$/.test(t)?t.padStart(4,"0"):null},GB:{name:"United Kingdom",unit:"postcode district (e.g. SW1A)",parse:t=>{const e=t.replace(/\s+/g,"").match(/^([A-Z]{1,2}\d[A-Z\d]?)(\d[A-Z]{2})?$/);return e?e[1]:null}},DE:{name:"Germany",unit:"Postleitzahl (5 digits)",parse:t=>/^\d{5}$/.test(t)?t:/^\d{4}$/.test(t)?t.padStart(5,"0"):null},FR:{name:"France",unit:"code postal (5 digits)",parse:t=>/^\d{5}$/.test(t)?t:/^\d{4}$/.test(t)?t.padStart(5,"0"):null},ES:{name:"Spain",unit:"código postal (5 digits)",parse:t=>/^\d{5}$/.test(t)?t:/^\d{4}$/.test(t)?t.padStart(5,"0"):null},IT:{name:"Italy",unit:"CAP (5 digits)",parse:t=>/^\d{5}$/.test(t)?t:/^\d{4}$/.test(t)?t.padStart(5,"0"):null}};const C={population:{url:"https://api.census.gov/data/2020/dec/dhc?get=P1_001N&for=zip%20code%20tabulation%20area:*",sourceLabel:"U.S. Census Bureau, 2020 Decennial Census (DHC), table P1 total population by ZCTA — api.census.gov",parse:t=>{const e=[];(Array.isArray(t)?t.slice(1):[]).forEach(t=>{const n=String(t[1]||"").padStart(5,"0");const o=Number(t[0]);if(/^\d{5}$/.test(n)&&Number.isFinite(o)&&o>=0)e.push({zip:n,population:o})});return e}},dma:{url:"https://gist.githubusercontent.com/clarkenheim/023882f8d77741f4d5347f80d95bc259/raw",sourceLabel:'Public zip→DMA crosswalk (GitHub gist "clarkenheim", TSV)',method:"zip centroid placed inside DMA polygon — public approximation, not Nielsen-licensed",parse:t=>{const e=[];String(t).split(/\r?\n/).forEach((t,n)=>{if(!t.trim())return;const o=t.split(/\t|,/);if(n===0&&!/^\d/.test(o[0].trim()))return;const a=String(o[0]||"").trim().padStart(5,"0");const s=String(o[1]||"").trim();const name=(o.slice(2).join(" ")||"").trim();if(/^\d{5}$/.test(a)&&s)e.push({zip:a,dmaCode:s,dmaName:name})});return e}},centroids:{
+url:"https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2023_Gazetteer/2023_Gaz_zcta_national.zip",sourceLabel:"U.S. Census Bureau, 2023 ZCTA Gazetteer (internal point lat/long)",note:"The gazetteer is a zip archive; download it, unzip the .txt, and upload that file below (GEOID, INTPTLAT, INTPTLONG columns are read automatically)."},demographics:{sourceLabel:"U.S. Census Bureau, 2022 ACS 5-Year Estimates, tables B01001 (age) and B19001 (household income) by ZCTA — api.census.gov",parse:(t,e)=>{const n=Array.isArray(t)&&t.length?t[0]:[];const o=(t,name)=>{const e=n.indexOf(name);return e>=0?Number(t[e])||0:0};const a=n.indexOf("zip code tabulation area");const s=[];(Array.isArray(t)?t.slice(1):[]).forEach(t=>{const n=a>=0?String(t[a]||"").padStart(5,"0"):"";if(!/^\d{5}$/.test(n))return;Object.entries(e.ageBins||{}).forEach(([a,i])=>{const r=i.reduce((n,a)=>{const s=(e.binSuffix||[])[a];if(!s)return n;const i=String(Number(s)+24).padStart(3,"0");return n+o(t,`B01001_${s}E`)+o(t,`B01001_${i}E`)},0);s.push({zip:n,attribute:`population_${a}`,value:r})});const i=o(t,"B19001_001E");if(i>0){s.push({zip:n,attribute:"income_hh_total",value:i});(e.incomeBracketMidpoints||[]).forEach(([e])=>{s.push({zip:n,attribute:`income_hh_${e}`,value:o(t,`B19001_${e}E`)})})}});return s}},irsTopBracketIncome:{sourceLabel:null,parse:t=>{const e=[];(t||[]).forEach(t=>{if(!/^\d{5}$/.test(t.zip))return;e.push({zip:t.zip,attribute:"income_top_bracket_avg",value:t.avgIncome});e.push({zip:t.zip,attribute:"income_top_bracket_returns",value:t.returns})});return e}}};async function I(t,n,o,a){const s=2e3;let i=0;const r=[];for(let c=0;c<n.length;c+=s){const d=await x(`${e}${t}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.assign({rows:n.slice(c,c+s)},o)),timeoutMs:6e4});if(!d.ok){const t=await d.text().catch(()=>"");throw new Error(`HTTP ${d.status} ${t.slice(0,120)}`)}const l=await d.json();i+=l.inserted||0;(l.errors||[]).slice(0,5).forEach(t=>{if(r.length<10)r.push(t)});if(a)a(Math.min(n.length,c+s),n.length)}return{inserted:i,errors:r}}async function refDataLoadStatus(){const t=document.getElementById("refDataStatus");if(!t)return;t.textContent="Checking…";let n=null,o=null,a=null,s=null;try{const t=await x(`${e}/api/market-population-master/status`);if(t.ok)n=await t.json()}catch(t){}try{const t=await x(`${e}/api/market-dma-master/status`);if(t.ok)o=await t.json()}catch(t){}try{const t=await x(`${e}/api/market-zip-centroids/status`);if(t.ok)a=await t.json()}catch(t){}try{const t=await x(`${e}/api/market-demographic-master/status`);if(t.ok)s=await t.json()}catch(t){}const i=t=>t&&t.byCountry&&Object.keys(t.byCountry).length?` (${Object.entries(t.byCountry).map(([t,e])=>`${t} ${Number(e).toLocaleString()}`).join(" · ")})`:"";const r=n?n.zipsLoaded?`${Number(n.zipsLoaded).toLocaleString()} zips/FSAs with population${i(n)} — ${(n.sources||[]).join("; ")}`:"No population data loaded yet.":"Population status unavailable.";const c=o?o.zipsLoaded?`${Number(o.zipsLoaded).toLocaleString()} zips/FSAs → ${Number(o.dmaCount).toLocaleString()} markets${i(o)} — ${(o.sources||[]).map(t=>`${t.sourceLabel}${t.method?` (${t.method})`:""}`).join("; ")}${o.licensed?" · licensed":" · approximation, not Nielsen-licensed"}`:"No zip→DMA crosswalk loaded yet.":"DMA status unavailable.";const d=a?a.zipsLoaded?`${Number(a.zipsLoaded).toLocaleString()} zips/FSAs with centroids${i(a)} — ${(a.sources||[]).join("; ")}`:"No zip centroids loaded yet.":"Centroid status unavailable.";const l=s?(s.attributes||[]).length?(s.attributes||[]).map(t=>`${w(t.attribute)} (${Number(t.zips).toLocaleString()} zips)`).join(" · "):"No demographic data loaded yet.":"Demographic status unavailable."
+;t.innerHTML=`<table><tbody>\n    <tr><td style="font-weight:600;white-space:nowrap;">Population by zip</td><td>${w(r)}</td></tr>\n    <tr><td style="font-weight:600;white-space:nowrap;">Zip → DMA</td><td>${w(c)}</td></tr>\n    <tr><td style="font-weight:600;white-space:nowrap;">Zip centroids</td><td>${w(d)}</td></tr>\n    <tr><td style="font-weight:600;white-space:nowrap;">Demographics by zip</td><td>${l}</td></tr>\n  </tbody></table>`}const E=["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","PR"];const S=8;async function refDataLoadDemographics(t){const status=document.getElementById("refDataLoadStatus");const n=t=>{if(status)status.textContent=t};const o=document.getElementById("refDataLoadDemoTestBtn");const a=document.getElementById("refDataLoadDemographicsBtn");if(o)o.disabled=true;if(a)a.disabled=true;const s=(t||"").split(",").map(t=>t.trim().toUpperCase()).filter(Boolean);const i=s.length?s:E;const r=[];for(let t=0;t<i.length;t+=S)r.push(i.slice(t,t+S));try{const t=[];const o=[];const a=[];for(let s=0;s<r.length;s++){const i=r[s];const c=r.length>1?` — batch ${s+1} of ${r.length} (${i.join(", ")})`:` for ${i.join(", ")}`;n(`Fetching ACS age + income data by zip from api.census.gov${c}…`);const d=`?states=${encodeURIComponent(i.join(","))}`;const l=await x(`${e}/api/market-reference-data/proxy/demographics${d}`,{timeoutMs:11e4});if(!l.ok){const t=await l.text().catch(()=>"");throw new Error(`Census API HTTP ${l.status}${c} ${t.slice(0,200)||"(no error detail returned — likely a gateway/timeout error, not an application error)"}`)}const p=await l.json();const u=C.demographics.parse(p.data,{ageBins:p.ageBins,binSuffix:p.binSuffix,incomeBracketMidpoints:p.incomeBracketMidpoints});for(let e=0;e<u.length;e++)t.push(u[e]);const m=p.statesQueried||i;for(let t=0;t<m.length;t++)o.push(m[t]);const y=p.statesFailed||[];for(let t=0;t<y.length;t++)a.push(y[t]);n(`${c.trim()} done — ${(p.zctaCount||0).toLocaleString()} zip(s) in this batch. ${r.length>1?`${s+1} of ${r.length} batches complete.`:""}`)}if(!t.length)throw new Error("Census API returned no ZCTA rows");const s=new Set(t.map(t=>t.zip)).size;const i=`${s.toLocaleString()} zip${s===1?"":"s"} covered from ${o.length} state${o.length===1?"":"s"} queried`;const c=a.length?` — ${a.length} state${a.length===1?"":"s"} failed: ${a.map(t=>t.state).join(", ")}`:"";n(`${i}${c}. Loading ${t.length.toLocaleString()} demographic attribute rows…`);const d=await I("/api/market-demographic-master",t,{sourceLabel:C.demographics.sourceLabel},(t,e)=>n(`Loading demographics ${t.toLocaleString()} / ${e.toLocaleString()}…`));n(`Done — ${i}${c}. ${d.inserted.toLocaleString()} demographic attribute rows loaded.${d.errors.length?` Some rows were skipped: ${d.errors.slice(0,3).join(" · ")}`:""}`);refDataLoadStatus()}catch(t){n(`Couldn't load demographics: ${t&&t.message?t.message:t}`)}finally{if(o)o.disabled=false;if(a)a.disabled=false}}async function refDataLoadIrsTopBracketIncome(){const status=document.getElementById("refDataLoadStatus");const t=t=>{if(status)status.textContent=t};const n=document.getElementById("refDataLoadIrsTopBracketBtn");if(n)n.disabled=true;try{t("Fetching IRS SOI ZIP-code top-bracket income data from irs.gov (one national file — can take a little while)…");const n=await x(`${e}/api/market-reference-data/proxy/irs-top-bracket-income`,{timeoutMs:11e4});if(!n.ok){const t=await n.text().catch(()=>"");throw new Error(`IRS SOI fetch HTTP ${n.status} ${t.slice(0,200)}`)}const o=await n.json();const a=C.irsTopBracketIncome.parse(o.rows);if(!a.length)throw new Error("IRS SOI data returned no usable zip rows");t(`${(o.zctaCount||0).toLocaleString()} zip(s) with real top-bracket income data. Loading ${a.length.toLocaleString()} attribute rows…`)
+;const s=await I("/api/market-demographic-master",a,{sourceLabel:o.sourceLabel||"IRS Statistics of Income (SOI), ZIP Code Data — irs.gov"},(e,n)=>t(`Loading IRS top-bracket income ${e.toLocaleString()} / ${n.toLocaleString()}…`));t(`Done — ${(o.zctaCount||0).toLocaleString()} zip(s) covered. ${s.inserted.toLocaleString()} attribute rows loaded.${s.errors.length?` Some rows were skipped: ${s.errors.slice(0,3).join(" · ")}`:""}`);refDataLoadStatus()}catch(e){t(`Couldn't load IRS top-bracket income: ${e&&e.message?e.message:e}`)}finally{if(n)n.disabled=false}}async function refDataLoadPublic(){const status=document.getElementById("refDataLoadStatus");const t=t=>{if(status)status.textContent=t};const n=document.getElementById("refDataLoadPublicBtn");if(n)n.disabled=true;try{t("Fetching 2020 Census ZCTA population from api.census.gov…");const n=await x(`${e}/api/market-reference-data/proxy/population`);if(!n.ok){const t=await n.text().catch(()=>"");throw new Error(`Census API HTTP ${n.status} ${t.slice(0,120)}`)}const o=await n.json();const a=C.population.parse(o.data);if(!a.length)throw new Error("Census API returned no ZCTA rows");t(`Loading ${a.length.toLocaleString()} population rows…`);const s=await I("/api/market-population-master",a,{sourceLabel:C.population.sourceLabel},(e,n)=>t(`Loading population ${e.toLocaleString()} / ${n.toLocaleString()}…`));t("Fetching the public zip→DMA crosswalk…");const i=await x(`${e}/api/market-reference-data/proxy/dma`);if(!i.ok){const t=await i.text().catch(()=>"");throw new Error(`crosswalk HTTP ${i.status} ${t.slice(0,120)}`)}const r=await i.json();const c=C.dma.parse(r.text);if(!c.length)throw new Error("crosswalk returned no rows");const d=await I("/api/market-dma-master",c,{sourceLabel:C.dma.sourceLabel,method:C.dma.method},(e,n)=>t(`Loading zip→DMA ${e.toLocaleString()} / ${n.toLocaleString()}…`));t(`Done — ${s.inserted.toLocaleString()} population rows and ${d.inserted.toLocaleString()} zip→DMA rows loaded.${s.errors.length||d.errors.length?` Some rows were skipped: ${[...s.errors,...d.errors].slice(0,3).join(" · ")}`:""}`);refDataLoadStatus()}catch(e){t(`Couldn't load: ${e&&e.message?e.message:e}. If a public source blocks this request, download the file and use "Upload a crosswalk file" instead.`)}finally{if(n)n.disabled=false}}async function refDataHandleDmaFile(event){const t=event.target.files&&event.target.files[0];const status=document.getElementById("refDataLoadStatus");const e=t=>{if(status)status.textContent=t};if(!t)return;const n=((document.getElementById("refDataDmaSource")||{}).value||"").trim();if(!n){e('Enter the source of this crosswalk first (e.g. "Nielsen ZIP Code by DMA 2026, licensed").');event.target.value="";return}const o=((document.getElementById("refDataDmaMethod")||{}).value||"").trim()||"as supplied";try{const a=await t.text();const s=C.dma.parse(a);if(!s.length)throw new Error("no rows recognised — expected columns: zip, DMA code, DMA name");e(`Loading ${s.length.toLocaleString()} rows…`);const i=await I("/api/market-dma-master",s,{sourceLabel:n,method:o},(t,n)=>e(`Loading zip→DMA ${t.toLocaleString()} / ${n.toLocaleString()}…`));e(`Done — ${i.inserted.toLocaleString()} zip→DMA rows loaded from "${t.name}".`);refDataLoadStatus()}catch(n){e(`Couldn't load "${t.name}": ${n&&n.message?n.message:n}`)}event.target.value=""}function A(t){const e=String(t).split(/\r?\n/).filter(t=>t.trim());if(!e.length)return[];const n=e[0].split(/\t|,/).map(t=>t.trim().toLowerCase());let o=n.findIndex(t=>/^(geoid|zcta5|zcta|zip)/.test(t)),a=n.findIndex(t=>/lat/.test(t)),s=n.findIndex(t=>/lon|lng/.test(t));const i=o>=0&&a>=0&&s>=0;if(!i){o=0;a=1;s=2}const r=[];e.slice(i?1:0).forEach(t=>{const e=t.split(/\t|,/);const n=String(e[o]||"").trim().padStart(5,"0");const i=Number(e[a]),c=Number(e[s]);if(/^\d{5}$/.test(n)&&Number.isFinite(i)&&Number.isFinite(c))r.push({zip:n,lat:i,lng:c})});return r}async function refDataHandleCentroidFile(event){
+const t=event.target.files&&event.target.files[0];const status=document.getElementById("refDataLoadStatus");const e=t=>{if(status)status.textContent=t};if(!t)return;if(/\.zip$/i.test(t.name)){e(`"${t.name}" is the zip archive itself — unzip it first (most computers: double-click it, or right-click → Extract), then upload the .txt file that comes out (it will be named something like 2023_Gaz_zcta_national.txt).`);event.target.value="";return}try{const n=A(await t.text());if(!n.length)throw new Error("no rows recognised — expected GEOID / INTPTLAT / INTPTLONG (or zip, lat, lng)");const o=await I("/api/market-zip-centroids",n,{sourceLabel:`${C.centroids.sourceLabel} — file "${t.name}"`},(t,n)=>e(`Loading centroids ${t.toLocaleString()} / ${n.toLocaleString()}…`));e(`Done — ${o.inserted.toLocaleString()} zip centroids loaded from "${t.name}".`);refDataLoadStatus()}catch(n){e(`Couldn't load "${t.name}": ${n&&n.message?n.message:n}`)}event.target.value=""}function T(t,e,n){const o=k[n];if(!o)return[];const a=String(t).split(/\r?\n/).filter(t=>t.trim());if(a.length<2)return[];const s=t=>{const e=[];let n="",o=false;for(const a of t){if(a==='"'){o=!o;continue}if((a===","||a===";")&&!o){e.push(n);n="";continue}n+=a}e.push(n);return e};const i=t=>t.includes("\t")?t.split("\t"):s(t);const r=i(a[0]).map(t=>String(t||"").trim().toLowerCase().replace(/^"|"$/g,""));const c=i(a[1]).map(t=>String(t||"").trim().replace(/^"|"$/g,""));let d=r.findIndex(t=>/forward sortation|\bfsa\b|postcode|postal|\bpoa\b|\bplz\b|\bcap\b|code.?postal|codigo.?postal|c[oó]digo|\bzip\b|pcd|outward/.test(t));if(d<0)d=c.findIndex(t=>!!o.parse(String(t).toUpperCase()));const find=t=>r.findIndex(e=>t.test(e));const l=find(/population|tot_p|\bpop\b|einwohner|habitant|poblaci|popolaz|persons|usual resident/),p=find(/lat/),u=find(/lon|lng|long/),m=find(/nuts|cma.?(code|uid|id)|cmauid|market.?(code|id)|region.?(code|id)|itv|dma|\bcode\b|\bid\b/),y=find(/market.?name|region.?name|cma.?name|census metropolitan|\bname\b|label|region|market/);if(d<0)return[];const g=[];a.slice(1).forEach(t=>{const a=i(t).map(t=>String(t||"").trim().replace(/^"|"$/g,""));const s=o.parse(String(a[d]||"").toUpperCase());if(!s)return;const r=`${n}:${s}`;if(e==="population"){const t=Number(String(a[l]||"").replace(/[^\d.]/g,""));if(l>=0&&Number.isFinite(t))g.push({zip:r,population:t})}else if(e==="centroids"){const t=Number(a[p]),e=Number(a[u]);if(p>=0&&u>=0&&Number.isFinite(t)&&Number.isFinite(e))g.push({zip:r,lat:t,lng:e})}else if(e==="markets"){const t=m>=0&&m!==d?a[m]:"";if(t)g.push({zip:r,dmaCode:`${n}-${t}`,dmaName:y>=0&&y!==d&&y!==m?a[y]:t})}});return g}async function refDataHandleCountryFile(event,t){const e=event.target.files&&event.target.files[0];const status=document.getElementById("refDataLoadStatus");const n=t=>{if(status)status.textContent=t};if(!e)return;const o=(document.getElementById("refDataCountry")||{}).value||"CA";const a=k[o]||k.CA;try{const s=T(await e.text(),t,o);if(!s.length)throw new Error(`no rows recognised for ${a.name} ${t} — check the column names and that codes match the ${a.unit} format`);const i=t==="population"?"/api/market-population-master":t==="centroids"?"/api/market-zip-centroids":"/api/market-dma-master";const r=t==="markets"?{country:o,sourceLabel:`${a.name} market crosswalk — file "${e.name}"`,method:`${a.name} statistical/market regions as published — not a licensed audience-measurement definition`}:{country:o,sourceLabel:`${a.name} national statistics — file "${e.name}"`};const c=await I(i,s,r,(e,o)=>n(`Loading ${a.name} ${t} ${e.toLocaleString()} / ${o.toLocaleString()}…`));n(`Done — ${c.inserted.toLocaleString()} ${a.name} ${t} rows loaded from "${e.name}".${c.errors.length?` Skipped: ${c.errors.slice(0,3).join(" · ")}`:""}`);refDataLoadStatus()}catch(t){n(`Couldn't load "${e.name}": ${t&&t.message?t.message:t}`)}event.target.value=""}function B(t){const e=String(t||"").trim().toLowerCase();let n=e.match(/(\d+)\s*(?:to|-|–)\s*(\d+)/)
+;if(n)return[Number(n[1]),Number(n[2])];n=e.match(/under\s*(\d+)/);if(n)return[0,Number(n[1])-1];n=e.match(/(\d+)\s*(?:and\s*(?:over|older|up)|\+)/);if(n)return[Number(n[1]),Infinity];n=e.match(/(?:^|\s)over\s*(\d+)/);if(n)return[Number(n[1]),Infinity];return null}function L(t){const e=String(t||"").trim().toLowerCase().replace(/[$,]/g,"");let n=e.match(/(\d+)\s*(?:to|-|–)\s*(\d+)/);if(n)return[Number(n[1]),Number(n[2])];n=e.match(/under\s*(\d+)/);if(n)return[0,Number(n[1])-1];n=e.match(/(\d+)\s*(?:and\s*(?:over|older|up|more)|\+)/);if(n)return[Number(n[1]),Number(n[1])*2];n=e.match(/(?:^|\s)over\s*(\d+)/);if(n)return[Number(n[1]),Number(n[1])*2];return null}function N(t){const e=[];let n="",o=false;for(const a of t){if(a==='"'){o=!o;continue}if((a===","||a===";")&&!o){e.push(n);n="";continue}n+=a}e.push(n);return e}function j(t){return t.includes("\t")?t.split("\t"):N(t)}function D(t){const e=(Number(t)||2022)-2022;const n=([t,n])=>[t+e,n===Infinity?Infinity:n+e];return{genz:n([10,29]),millennial:n([30,44]),genx:n([45,61]),boomer:n([62,84]),silent:n([85,Infinity])}}function M(t,e){const n=String(t).split(/\r?\n/).filter(t=>t.trim());if(n.length<2)return[];const o=j(n[0]).map(t=>String(t||"").trim());const a=o.findIndex(t=>/fsa|forward sortation/i.test(t));if(a<0)return[];const s=o.map((t,e)=>({i:e,range:B(t)})).filter(t=>t.range&&t.i!==a);if(!s.length)return[];const i=D(e);const r=[];n.slice(1).forEach(t=>{const e=j(t).map(t=>String(t||"").trim().replace(/^"|"$/g,""));const n=e[a]?e[a].toUpperCase().replace(/\s+/g,""):"";if(!/^[A-Z]\d[A-Z]$/.test(n))return;const o=`CA:${n}`;const c={genz:0,millennial:0,genx:0,boomer:0,silent:0};s.forEach(({i:t,range:n})=>{const o=Number(String(e[t]||"").replace(/[^\d.]/g,""));if(!Number.isFinite(o)||o<=0)return;const[a,s]=n;const r=s===Infinity?a+20:s;const d=r-a+1;Object.entries(i).forEach(([t,[e,n]])=>{const s=n===Infinity?r:n;const i=Math.max(a,e),l=Math.min(r,s);if(l<i)return;const p=l-i+1;c[t]+=o*(p/d)})});Object.entries(c).forEach(([t,e])=>{if(e>0)r.push({zip:o,attribute:`population_${t}`,value:Math.round(e)})})});return r}function R(t){const e=String(t).split(/\r?\n/).filter(t=>t.trim());if(e.length<2)return[];const n=j(e[0]).map(t=>String(t||"").trim());const o=n.findIndex(t=>/fsa|forward sortation/i.test(t));if(o<0)return[];const a=n.map((t,e)=>({i:e,range:L(t)})).filter(t=>t.range&&t.i!==o);if(!a.length)return[];const s=[];e.slice(1).forEach(t=>{const e=j(t).map(t=>String(t||"").trim().replace(/^"|"$/g,""));const n=e[o]?e[o].toUpperCase().replace(/\s+/g,""):"";if(!/^[A-Z]\d[A-Z]$/.test(n))return;const i=`CA:${n}`;let r=0,c=0;a.forEach(({i:t,range:n})=>{const o=Number(String(e[t]||"").replace(/[^\d.]/g,""));if(!Number.isFinite(o)||o<=0)return;const a=(n[0]+n[1])/2;r+=o*a;c+=o});if(c>0)s.push({zip:i,attribute:"income_avg_estimate",value:Math.round(r/c)})});return s}async function refDataHandleCraFile(event,t){const e=event.target.files&&event.target.files[0];const status=document.getElementById("refDataLoadStatus");const n=t=>{if(status)status.textContent=t};if(!e)return;const o=((document.getElementById("refDataCraTaxYear")||{}).value||"").trim();if(!o||!/^\d{4}$/.test(o)){n("Enter the CRA tax year this file covers (e.g. 2022) before uploading — it determines which birth-year generation each age bracket counts toward.");event.target.value="";return}try{const a=await e.text();const s=t==="age"?M(a,o):R(a);if(!s.length)throw new Error(`no rows recognised — expected an FSA column plus ${t==="age"?'age-range (e.g. "25 to 34")':'income-range (e.g. "$25,000 to $34,999")'} columns`);const i=`Canada Revenue Agency, Individual Tax Statistics by Forward Sortation Area, ${o} tax year, ${t==="age"?"Table 2 (by age)":"Table 1b (by total income class)"} — file "${e.name}"`;n(`Loading ${s.length.toLocaleString()} rows from "${e.name}"…`);const r=await I("/api/market-demographic-master",s,{country:"CA",sourceLabel:i
+},(t,e)=>n(`Loading Canada demographics ${t.toLocaleString()} / ${e.toLocaleString()}…`));n(`Done — ${r.inserted.toLocaleString()} Canada demographic rows loaded from "${e.name}".${r.errors.length?` Skipped: ${r.errors.slice(0,3).join(" · ")}`:""}`);refDataLoadStatus()}catch(t){n(`Couldn't load "${e.name}": ${t&&t.message?t.message:t}`)}event.target.value=""}async function checkIntegrationStatus(){const t=document.getElementById("opsAdminToken").value.trim();const n=document.getElementById("integStatusError");const o=document.getElementById("integStatusResult");n.style.display="none";if(!t){n.textContent="Enter the ADMIN_API_TOKEN configured on this deployment to check integration status.";n.style.display="block";return}try{const a=await fetch(`${e}/api/ops/integration-status`,{headers:{"X-Admin-Token":t}});const s=await a.json().catch(()=>({}));if(!a.ok){n.textContent=s.error||`Couldn't check integration status (${a.status}).`;n.style.display="block";o.style.display="none";return}if(y){try{sessionStorage.setItem(m,t)}catch(t){}}document.getElementById("integList").innerHTML=(s.integrations||[]).map(t=>`\n      <div class="integ-row">\n        <div>\n          <div class="integ-label">${t.label}</div>\n          <div class="integ-detail">${t.detail}</div>\n          <div class="integ-envvars">${(t.envVars||[]).join(", ")}</div>\n        </div>\n        <div class="integ-right">${g(t.configured)}</div>\n      </div>\n    `).join("");document.getElementById("integNotBuiltList").innerHTML=(s.notBuilt||[]).map(t=>`\n      <div class="integ-row">\n        <div>\n          <div class="integ-label">${t.label}</div>\n          <div class="integ-detail">${t.detail}</div>\n        </div>\n        <div class="integ-right"><span class="badge status-not-built">Not built</span></div>\n      </div>\n    `).join("");document.getElementById("integCheckedNote").textContent=`Checked just now against buildStamp ${s.buildStamp||"unknown"} — this reflects THIS deployment's actual environment variables, not the codebase.`;o.style.display="block"}catch(t){n.textContent="Could not reach the backend to check integration status.";n.style.display="block";o.style.display="none"}}async function runDocsSearch(){const t=document.getElementById("opsAdminToken").value.trim();const n=document.getElementById("docsSearchQuery").value.trim();const o=document.getElementById("docsSearchError");const a=document.getElementById("docsSearchResults");o.style.display="none";a.innerHTML="";if(!t){o.textContent="Enter the ADMIN_API_TOKEN configured on this deployment to search the product docs.";o.style.display="block";return}if(!n){o.textContent="Enter a search term.";o.style.display="block";return}try{sessionStorage.setItem(m,t)}catch(t){}a.innerHTML='<div class="empty-note">Searching…</div>';try{const s=await fetch(`${e}/api/ops/docs-search?q=${encodeURIComponent(n)}&limit=10`,{headers:{"X-Admin-Token":t}});const i=await s.json().catch(()=>({}));if(!s.ok){a.innerHTML="";o.textContent=i.error||`Couldn't search the product docs (${s.status}).`;o.style.display="block";return}const r=i.results||[];if(!r.length){a.innerHTML=`<div class="empty-note">No matches for "${w(n)}" across any product doc.</div>`;return}a.innerHTML=r.map(t=>`\n      <div class="integ-row" style="display:block;">\n        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;">\n          <a href="${w(t.url)}" target="_blank" rel="noopener" style="font-weight:600;font-size:0.85rem;text-decoration:none;">${w(t.heading)}</a>\n          <span class="proto-note" style="margin:0;padding:2px 8px;">${w(t.docTitle)}</span>\n        </div>\n        <div class="integ-detail" style="margin-top:6px;">${w(t.snippet)}</div>\n      </div>\n    `).join("")}catch(t){a.innerHTML="";o.textContent="Could not reach the backend to search the product docs.";o.style.display="block"}}async function runFixLegacyCasing(){const t=document.getElementById("opsAdminToken").value.trim()
+;const n=document.getElementById("fixCasingError");const o=document.getElementById("fixCasingResult");n.style.display="none";o.style.display="none";if(!t){n.textContent="Enter the ADMIN_API_TOKEN configured on this deployment to run this.";n.style.display="block";return}o.style.display="block";o.textContent="Running…";try{const a=await fetch(`${e}/api/admin/fix-legacy-casing`,{method:"POST",headers:{"X-Admin-Token":t}});const s=await a.json().catch(()=>({}));if(!a.ok){o.style.display="none";n.textContent=s.error||`Couldn't run this (${a.status}).`;n.style.display="block";return}try{sessionStorage.setItem(m,t)}catch(t){}const i=(s.errorDetails||[]).length;const r=s.duplicatesFound||[];let c=`Done — ${s.renamed} column(s) renamed, ${s.alreadyOk} already correct/absent, ${r.length} leftover duplicate(s) FOUND (not dropped — see below), ${s.unexpectedErrors} unexpected error(s).`+(i?` First issue: ${s.errorDetails[0].table}.${s.errorDetails[0].column} — ${s.errorDetails[0].message}`:"");if(r.length){c+="\n\nDuplicates found — each of these tables has BOTH a lowercase and a correctly-cased copy of the same column. Nothing was deleted. Review each one directly in Supabase before dropping the lowercase copy yourself:\n"+r.map(t=>`  • ${t.table}: "${t.lowercaseColumn}" (lowercase, leftover) alongside "${t.camelCaseColumn}" (correct)`).join("\n")}o.style.whiteSpace="pre-wrap";o.textContent=c}catch(t){o.style.display="none";n.textContent="Could not reach the backend to run this.";n.style.display="block"}}async function checkTransparencyRollup(){const t=document.getElementById("opsAdminToken").value.trim();const n=document.getElementById("transparencyRollupContextType").value;const o=document.getElementById("transparencyRollupContextType").selectedOptions[0].textContent.replace(" (not built yet)","");const a=document.getElementById("transparencyRollupError");const s=document.getElementById("transparencyRollupResult");a.style.display="none";if(!t){a.textContent="Enter the ADMIN_API_TOKEN configured on this deployment to check the rollup.";a.style.display="block";return}try{const i=await fetch(`${e}/api/ops/ai-brain-transparency-rollup?contextType=${encodeURIComponent(n)}`,{headers:{"X-Admin-Token":t}});const r=await i.json().catch(()=>({}));if(!i.ok){a.textContent=r.error||`Couldn't check the rollup (${i.status}).`;a.style.display="block";s.style.display="none";return}const c=r.signals||[];document.getElementById("transparencyRollupSummary").textContent=c.length?`${o}: ${r.totalBatches||0} generation${r.totalBatches===1?"":"s"} observed, across ${r.totalAccounts||0} account${r.totalAccounts===1?"":"s"}.`:`No ${o} drafts have been generated with AI Brain Transparency enabled yet.`;document.getElementById("transparencyRollupList").innerHTML=c.length?c.slice().sort((t,e)=>e.impactRateOfOnFile-t.impactRateOfOnFile).map(t=>{const e=t.impactRateOfOnFile>=60?"#1a7a4c":t.impactRateOfOnFile>=25?"#8a6d1a":"#a3312a";return`\n            <div class="integ-row">\n              <div>\n                <div class="integ-label">${t.signalLabel||t.signalKey}</div>\n                <div class="integ-detail">On file in ${t.onFileRate}% of generations (${t.onFileCount} of ${t.totalObservations}) across ${t.accountCount} account${t.accountCount===1?"":"s"}.</div>\n              </div>\n              <div class="integ-right">\n                <span style="font-weight:700;color:${e};">${t.impactRateOfOnFile}%</span>\n                <div style="font-size:0.7rem;color:var(--muted);margin-top:2px;">changed the draft, of on-file</div>\n              </div>\n            </div>`}).join(""):"";s.style.display="block"}catch(t){a.textContent="Could not reach the backend to check the rollup.";a.style.display="block";s.style.display="none"}}function P(t){return String(t==null?"":t).replace(/[&<>"']/g,t=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[t]))}function z(t){
+if(t===null||t===undefined)return'<span class="empty-note" style="font-style:normal;">—</span>';const e=t>=75?"#1a7a4c":t>=50?"#8a6d1a":"#a3312a";return`<span style="font-weight:700;color:${e};">${Math.round(t)}</span>`}let O=false;function H(t){if(O||!t||!t.length)return;const e=document.getElementById("interviewProductTypeFilter");t.forEach(t=>{const n=document.createElement("option");n.value=t.key;n.textContent=t.label;e.appendChild(n)});O=true}async function checkInterviewReview(){const t=document.getElementById("interviewLookupAccountId").value.trim();const n=document.getElementById("interviewProductTypeFilter").value;const o=document.getElementById("opsAdminToken").value.trim();const a=document.getElementById("interviewReviewError");const s=document.getElementById("interviewReviewResult");a.style.display="none";s.innerHTML="";if(!t){a.textContent="Enter an account ID to look up.";a.style.display="block";return}if(!o){a.textContent="Enter the ADMIN_API_TOKEN configured on this deployment.";a.style.display="block";return}try{const i=n?`?productType=${encodeURIComponent(n)}`:"";const r=await fetch(`${e}/api/ops/accounts/${encodeURIComponent(t)}/interviews${i}`,{headers:{"X-Admin-Token":o}});const c=await r.json().catch(()=>({}));if(!r.ok){a.textContent=c.error||`Couldn't look up interviews (${r.status}).`;a.style.display="block";return}H(c.productTypes);if(!c.interviews||!c.interviews.length){s.innerHTML=`<div class="empty-note">No interview runs on file for ${t}${n?" ("+n+")":""} yet.</div>`;return}const d=t=>{const e=(c.productTypes||[]).find(e=>e.key===t);return e?e.label:t||"Copywriting"};s.innerHTML=c.interviews.map(t=>`\n      <div style="border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:10px;">\n        <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">\n          <div>\n            <span class="badge" style="margin-right:8px;">${d(t.productType)}</span>\n            <b>${t.campaignName||t.campaignId||"Unknown campaign"}</b> — ${t.channel||"Unknown channel"}\n            <span class="empty-note" style="font-style:normal;"> · job ${t.jobId} (${t.jobStatus||"—"})</span>\n          </div>\n          <div class="empty-note" style="font-style:normal;">${new Date(t.createdAt).toLocaleString()} · requested by ${t.requestedBy||"unknown"}</div>\n        </div>\n        <table style="margin-top:8px;">\n          <thead><tr><th>Angle</th><th>Vendor</th><th>Model</th><th>Relevance</th><th>Compliance</th><th>Selected?</th></tr></thead>\n          <tbody>\n            ${t.candidates.map(e=>`\n              <tr${e.key===t.selectedCandidateKey?' style="background:rgba(26,122,76,0.08);"':""}>\n                <td>${e.label}</td>\n                <td>${e.vendor||"—"}</td>\n                <td><code>${e.model||"—"}</code></td>\n                <td>${z(e.relevanceScore)}</td>\n                <td>${z(e.complianceScore)}</td>\n                <td>${e.key===t.selectedCandidateKey?`<span class="badge status-configured">Selected${t.selectedBy?" — "+t.selectedBy:""}</span>`:""}</td>\n              </tr>\n            `).join("")}\n          </tbody>\n        </table>\n        ${t.feedbackNote?`<div style="margin-top:8px;padding:8px 10px;background:rgba(217,119,6,0.08);border:1px solid rgba(217,119,6,0.25);border-radius:6px;">\n          <span class="badge" style="background:rgba(217,119,6,0.15);color:#92400e;">${t.feedbackType==="edit_manually"?"Close, edited manually":"None selected"}</span>\n          <span style="margin-left:6px;">${P(t.feedbackNote)}</span>\n          <span class="empty-note" style="font-style:normal;display:block;margin-top:4px;">${t.feedbackBy||"unknown"} · ${t.feedbackAt?new Date(t.feedbackAt).toLocaleString():""}</span>\n        </div>`:""}\n      </div>\n    `).join("")}catch(t){a.textContent="Could not reach the backend to look up interviews.";a.style.display="block"}}async function checkVoiceContestReview(){
+const t=document.getElementById("voiceContestLookupAccountId").value.trim();const n=document.getElementById("opsAdminToken").value.trim();const o=document.getElementById("voiceContestReviewError");const a=document.getElementById("voiceContestReviewResult");o.style.display="none";a.innerHTML="";if(!t){o.textContent="Enter an account ID to look up.";o.style.display="block";return}if(!n){o.textContent="Enter the ADMIN_API_TOKEN configured on this deployment.";o.style.display="block";return}try{const s=await fetch(`${e}/api/ops/accounts/${encodeURIComponent(t)}/voice-contests`,{headers:{"X-Admin-Token":n}});const i=await s.json().catch(()=>({}));if(!s.ok){o.textContent=i.error||`Couldn't look up voice contests (${s.status}).`;o.style.display="block";return}if((!i.interviews||!i.interviews.length)&&(!i.selections||!i.selections.length)){a.innerHTML=`<div class="empty-note">No Brand Voice contest runs on file for ${t} yet.</div>`;return}const r={voice_guide:"Brand Voice Guide",video_script:"Video Script",video_strategy:"Video Strategy"};const c=t=>r[t]||P(t);const d=i.selections&&i.selections.length?`\n      <div style="border:1px solid var(--line);border-radius:8px;padding:12px;background:rgba(26,122,76,0.05);">\n        <div style="font-weight:700;margin-bottom:6px;">Currently selected model, per contest type</div>\n        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;">\n          ${i.selections.map(t=>`\n            <div style="border:1px solid var(--line);border-radius:6px;padding:8px 10px;background:var(--bg, #fff);">\n              <div style="font-weight:700;">${c(t.contentType)}</div>\n              <div style="margin-top:4px;">${P(t.blindLabel||"?")} — ${P(t.vendor||"—")} · <code>${P(t.model||"—")}</code></div>\n              <div class="empty-note" style="font-style:normal;margin-top:4px;">${P(t.selectedBy||"unknown")} · ${t.selectedAt?new Date(t.selectedAt).toLocaleString():""}</div>\n            </div>\n          `).join("")}\n        </div>\n      </div>\n    `:`<div class="empty-note">No contest has had a winner selected for ${t} yet.</div>`;const l={};(i.interviews||[]).forEach(t=>{const e=t.contentType||"voice_guide";if(!l[e])l[e]=[];l[e].push(t)})
+;const p=Object.keys(l).map(t=>`\n      <div style="margin-top:14px;">\n        <div style="font-weight:700;margin-bottom:6px;">${c(t)} — most recent ${l[t].length}</div>\n        ${l[t].map(t=>`\n          <div style="border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:6px;">\n            <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">\n              <div class="empty-note" style="font-style:normal;">Requested by ${P(t.requestedBy||"unknown")}</div>\n              <div class="empty-note" style="font-style:normal;">${new Date(t.createdAt).toLocaleString()}</div>\n            </div>\n            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;">\n              ${t.candidates.map(t=>`\n                <div style="border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:0.8125rem;${t.isSelected?"background:rgba(26,122,76,0.08);":""}">\n                  <b>${P(t.blindLabel||"?")}</b>\n                  ${t.configured?` — ${P(t.vendor||"—")} · <code>${P(t.model||"—")}</code>`:""}\n                  ${t.isSelected?`<span class="badge status-configured" style="margin-left:6px;">Selected</span>`:""}\n                  \n                  ${t.error?`<div class="empty-note" style="font-style:normal;color:var(--danger);margin-top:2px;">${P(t.error)}</div>`:""}\n                </div>\n              `).join("")}\n            </div>\n            ${t.feedbackNote?`<div style="margin-top:8px;padding:8px 10px;background:rgba(217,119,6,0.08);border:1px solid rgba(217,119,6,0.25);border-radius:6px;">\n              <span class="badge" style="background:rgba(217,119,6,0.15);color:#92400e;">${t.feedbackType==="edit_manually"?"Close, edited manually":"None selected"}</span>\n              <span style="margin-left:6px;">${P(t.feedbackNote)}</span>\n              <span class="empty-note" style="font-style:normal;display:block;margin-top:4px;">${P(t.feedbackBy||"unknown")} · ${t.feedbackAt?new Date(t.feedbackAt).toLocaleString():""}</span>\n            </div>`:""}\n            ${K(t.id)}\n          </div>\n        `).join("")}\n      </div>\n    `).join("");a.innerHTML=d+p}catch(t){o.textContent="Could not reach the backend to look up voice contests.";o.style.display="block"}}let F=null;async function checkCampaignContestReview(t){const n=document.getElementById("campaignContestLookupAccountId").value.trim();const o=document.getElementById("opsAdminToken").value.trim();const a=document.getElementById("campaignContestReviewError");const s=document.getElementById("campaignContestReviewResult");a.style.display="none";s.innerHTML="";if(!n){a.textContent="Enter an account ID to look up.";a.style.display="block";return}if(!o){a.textContent="Enter the ADMIN_API_TOKEN configured on this deployment.";a.style.display="block";return}try{const i=t?`?campaignId=${encodeURIComponent(t)}`:"";const r=await fetch(`${e}/api/ops/accounts/${encodeURIComponent(n)}/campaign-contests${i}`,{headers:{"X-Admin-Token":o}});const c=await r.json().catch(()=>({}));if(!r.ok){a.textContent=c.error||`Couldn't look up campaign contests (${r.status}).`;a.style.display="block";return}F=c;const d=_(c,t||"");if(!c.interviews||!c.interviews.length){s.innerHTML=d+`<div class="empty-note">No Campaign Copy Contest runs on file for ${P(n)}${t?" on this campaign":""} yet.</div>`;return}
+const l=c.interviews.map(t=>`\n      <div style="border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:10px;">\n        <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">\n          <div style="font-weight:700;">${P(t.campaignName||t.campaignId)}</div>\n          <div class="empty-note" style="font-style:normal;">${new Date(t.createdAt).toLocaleString()}</div>\n        </div>\n        <div class="empty-note" style="font-style:normal;margin-top:2px;">${P(t.sourceKey||"")}${t.audience?` — audience: ${P(t.audience)}`:""} · Requested by ${P(t.requestedBy||"unknown")}</div>\n        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">\n          ${(t.candidates||[]).map(e=>`\n            <div style="border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:0.8125rem;${e.key===t.selectedCandidateKey?"background:rgba(26,122,76,0.08);":""}">\n              <b>${P(e.blindLabel||e.label||"?")}</b>\n              ${e.configured?` — ${P(e.vendor||"—")} · <code>${P(e.model||"—")}</code>`:""}\n              ${e.key===t.selectedCandidateKey?`<span class="badge status-configured" style="margin-left:6px;">Selected</span>`:""}\n              ${e.approach?`<div class="empty-note" style="font-style:italic;margin-top:2px;">${P(e.approach)}</div>`:""}\n              ${e.error?`<div class="empty-note" style="font-style:normal;color:var(--danger);margin-top:2px;">${P(e.error)}</div>`:""}\n            </div>\n          `).join("")}\n        </div>\n        ${t.selectedCandidateKey?`<div class="empty-note" style="font-style:normal;margin-top:6px;">Selected by ${P(t.selectedBy||"unknown")} · ${t.selectedAt?new Date(t.selectedAt).toLocaleString():""}</div>`:""}\n      </div>\n    `).join("");s.innerHTML=d+l}catch(t){a.textContent="Could not reach the backend to look up campaign contests.";a.style.display="block"}}function _(t,e){if(!t||!t.campaigns||!t.campaigns.length)return"";const n=t.campaigns.map(t=>`<option value="${P(t.id)}"${e===t.id?" selected":""}>${P(t.name||t.id)}</option>`).join("");return`<div class="field-row" style="margin-bottom:10px;">\n    <div>\n      <label>Narrow to one campaign</label>\n      <select onchange="checkCampaignContestReview(this.value)">\n        <option value=""${e?"":" selected"}>All campaigns — most recent 25</option>\n        ${n}\n      </select>\n    </div>\n  </div>`}function U(t){if(t>=30)return`<span class="badge status-overdue">${t}% failing</span>`;if(t>=10)return`<span class="badge status-due">${t}% failing</span>`;return`<span class="badge status-active">${t}% failing</span>`}async function checkPartnerReliability(){const t=document.getElementById("opsAdminToken").value.trim();const n=document.getElementById("partnerReliabilityDays").value;const o=document.getElementById("partnerReliabilityAccountId").value.trim();const a=document.getElementById("partnerReliabilityError");const s=document.getElementById("partnerReliabilityResult");a.style.display="none";s.innerHTML="";if(!t){a.textContent="Enter the ADMIN_API_TOKEN configured on this deployment.";a.style.display="block";return}try{const i=new URLSearchParams({days:n});if(o)i.set("accountId",o);const r=await fetch(`${e}/api/ops/partner-reliability?${i.toString()}`,{headers:{"X-Admin-Token":t}});const c=await r.json().catch(()=>({}));if(!r.ok){a.textContent=c.error||`Couldn't run the partner reliability report (${r.status}).`;a.style.display="block";return}if(!c.summary||!c.summary.length){s.innerHTML=`<div class="empty-note">No configured-partner contest attempts in the last ${P(String(c.days))} day(s)${o?` for ${P(o)}`:""}.</div>`;return}
+const d=c.summary.map(t=>`\n      <tr>\n        <td><b>${P(t.vendor)}</b></td>\n        <td>${t.attempts}</td>\n        <td>${t.failures}</td>\n        <td>${U(t.failureRate)}</td>\n        <td>${t.lastFailureAt?`${new Date(t.lastFailureAt).toLocaleString()}${t.lastFailureAccountId?` — ${P(t.lastFailureAccountId)}`:""}`:"—"}</td>\n        <td style="max-width:280px;">${t.lastFailureError?`<span class="empty-note" style="font-style:normal;color:var(--danger);">${P(t.lastFailureError)}</span>`:"—"}</td>\n      </tr>\n      <tr>\n        <td colspan="6" style="padding-top:0;padding-bottom:12px;">\n          <div class="empty-note" style="font-style:normal;">By source: ${t.bySource.map(t=>`${P(t.source)} (${t.failures}/${t.attempts}, ${t.failureRate}%)`).join(" · ")}</div>\n        </td>\n      </tr>\n    `).join("");s.innerHTML=`\n      <table style="width:100%;border-collapse:collapse;margin-top:10px;">\n        <thead>\n          <tr style="text-align:left;border-bottom:1px solid var(--line);">\n            <th style="padding:6px 8px 6px 0;">Partner</th>\n            <th style="padding:6px 8px;">Attempts</th>\n            <th style="padding:6px 8px;">Failures</th>\n            <th style="padding:6px 8px;">Failure rate</th>\n            <th style="padding:6px 8px;">Last failure</th>\n            <th style="padding:6px 8px;">Last error</th>\n          </tr>\n        </thead>\n        <tbody>${d}</tbody>\n      </table>\n      <div class="empty-note" style="margin-top:6px;">Generated ${new Date(c.generatedAt).toLocaleString()} · window: last ${c.days} day(s)${c.accountId?` · account: ${P(c.accountId)}`:" · platform-wide"}. "Not configured" vendors (no API key on this deployment) are excluded — this only counts partners that were actually asked to generate copy.</div>\n    `}catch(t){a.textContent="Could not reach the backend to run the partner reliability report.";a.style.display="block"}}async function clearVoiceGuideMemory(){const t=document.getElementById("voiceContestLookupAccountId").value.trim();const n=document.getElementById("opsAdminToken").value.trim();const o=document.getElementById("voiceContestReviewError");const a=document.getElementById("voiceGuideClearResult");o.style.display="none";a.innerHTML="";if(!t){o.textContent="Enter an account ID to look up.";o.style.display="block";return}if(!n){o.textContent="Enter the ADMIN_API_TOKEN configured on this deployment.";o.style.display="block";return}const s=confirm("This permanently clears the approved Voice Guide, Vision Statement, and Longform Example for this account, and removes it from the Voice Guide contribution ledger. This cannot be undone. Continue?");if(!s)return;try{const s=await fetch(`${e}/api/accounts/${encodeURIComponent(t)}/voice-guide/clear-memory`,{method:"POST",headers:{"X-Admin-Token":n}});const i=await s.json().catch(()=>({}));if(!s.ok){o.textContent=i.error||`Couldn't clear Voice Guide memory (${s.status}).`;o.style.display="block";return}a.innerHTML=`<div class="empty-note" style="font-style:normal;color:var(--success, #1a7a4c);">Voice Guide memory cleared for ${t}.</div>`}catch(t){o.textContent="Could not reach the backend to clear Voice Guide memory.";o.style.display="block"}}function itOnContestTypeChange(){const t=document.getElementById("itContestType").value;document.getElementById("itDestinationField").style.display=t==="video_script"?"":"none"}let G=null;async function itRunContest(){const t=document.getElementById("voiceContestLookupAccountId").value.trim();const n=document.getElementById("opsAdminToken").value.trim();const o=document.getElementById("itRunError");const a=document.getElementById("itRunResult");o.style.display="none";if(!t||!n){o.textContent="Enter an Account ID and the admin token above first.";o.style.display="block";return}const s=document.getElementById("itContestType").value;const i={contentType:s};if(s==="video_script"){const t=document.getElementById("itDestination").value.trim();if(!t){
+o.textContent="Destination is required for Video Script.";o.style.display="block";return}i.creativeMarket=t}a.innerHTML='<div class="empty-note">Running contest — this can take up to a couple minutes...</div>';try{const s=await fetch(`${e}/api/accounts/${encodeURIComponent(t)}/voice-contest`,{method:"POST",headers:{"Content-Type":"application/json","X-Admin-Token":n},body:JSON.stringify(i)});const r=await s.json().catch(()=>({}));if(!s.ok||r.available===false){o.textContent=r.error||r.note||`Couldn't run the contest (${s.status}).`;o.style.display="block";a.innerHTML="";return}G={interviewId:r.interviewId,contentType:r.contentType,candidates:r.candidates,creativeMarket:r.creativeMarket||null,selectedCandidateKey:null};V()}catch(t){o.textContent="Could not reach the backend to run the contest.";o.style.display="block";a.innerHTML=""}}function V(){const t=document.getElementById("itRunResult");if(!G){t.innerHTML="";return}const e=G;t.innerHTML=`\n    <div style="border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:10px;">\n      <div class="empty-note" style="font-style:normal;">${P(e.interviewId)} · ${e.creativeMarket?P(e.creativeMarket)+" · ":""}${P(e.contentType)}</div>\n      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:10px;margin-top:8px;">\n        ${e.candidates.map(t=>X(t,e)).join("")}\n      </div>\n      ${K(e.interviewId)}\n    </div>\n  `;Z()}function K(t){return`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">\n    <button type="button" class="btn" onclick="voiceContestReviewExport('${t}', 'xlsx')">Download Excel (.xlsx)</button>\n    <button type="button" class="btn" onclick="voiceContestReviewExport('${t}', 'csv')">Open in Google Sheets</button>\n  </div>`}async function voiceContestReviewExport(t,n){const o=document.getElementById("voiceContestLookupAccountId").value.trim();const a=document.getElementById("opsAdminToken").value.trim();if(!o||!a)return;try{const s=n==="xlsx"?"export.xlsx":"export.csv";const i=await fetch(`${e}/api/accounts/${encodeURIComponent(o)}/voice-contest/${encodeURIComponent(t)}/${s}`,{headers:{"X-Admin-Token":a}});if(!i.ok)return;const r=await i.blob();const c=URL.createObjectURL(r);const d=document.createElement("a");d.href=c;d.download=`voice-contest-${t}.${n}`;document.body.appendChild(d);d.click();d.remove();URL.revokeObjectURL(c)}catch(t){}}const q=new Set;async function Z(){if(!G||!G.candidates.some(t=>t.pending))return;if(q.has(G.interviewId))return;q.add(G.interviewId);const t=document.getElementById("voiceContestLookupAccountId").value.trim();const n=document.getElementById("opsAdminToken").value.trim();if(!t||!n)return;try{const o=await fetch(`${e}/api/accounts/${encodeURIComponent(t)}/voice-contest/${encodeURIComponent(G.interviewId)}/retry-pending`,{method:"POST",headers:{"X-Admin-Token":n}});if(!o.ok)return;const a=await o.json().catch(()=>({}));if(!Array.isArray(a.candidates))return;G.candidates=a.candidates;V()}catch(t){}}function X(t,e){const n=e.selectedCandidateKey===t.key;const o=[1,2,3,4,5].map(e=>`<button class="btn${t.rating===e?" primary":""}" style="padding:2px 8px;min-width:0;" onclick="itRateCandidate('${t.key}', ${e})">${e}</button>`).join(" ");let a="";if(t.visionStatement)a+=`<div style="font-style:italic;margin:8px 0;">"${P(t.visionStatement)}"</div>`;if(t.longformExample)a+=`<div style="white-space:pre-wrap;margin:6px 0;font-size:0.8125rem;">${P(t.longformExample)}</div>`;if(t.overallApproach)a+=`<div style="font-style:italic;margin:8px 0;">${P(t.overallApproach)}</div>`;if(Array.isArray(t.beats)&&t.beats.length===8){
+a+=`<div style="overflow-x:auto;margin-top:6px;"><table style="width:100%;border-collapse:collapse;font-size:0.6875rem;"><tbody>${t.beats.map(t=>`<tr style="border-top:1px solid var(--line);"><td style="padding:3px 4px;font-weight:700;white-space:nowrap;vertical-align:top;">${P(t.beat)}</td><td style="padding:3px 4px;vertical-align:top;">${P(t.visual)}</td><td style="padding:3px 4px;vertical-align:top;font-style:italic;">${P(t.vo)}</td></tr>`).join("")}</tbody></table></div>`}if(t.strategyText)a+=`<div style="white-space:pre-wrap;margin:6px 0;font-size:0.8125rem;">${P(t.strategyText)}</div>`;if(t.pending)a+=`<div class="empty-note" style="font-style:normal;">Still thinking — trying again now…${t.error?` (first attempt: ${P(t.error)})`:""}</div>`;else if(t.error)a+=`<div class="empty-note" style="font-style:normal;color:var(--danger);">${P(t.error)}</div>`;return`\n    <div style="border:1px solid var(--line);border-radius:8px;padding:10px;min-width:0;${n?"background:rgba(26,122,76,0.08);":""}">\n      <div style="display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px;">\n        <b style="flex:1 1 auto;min-width:0;">${P(t.blindLabel||"?")} — ${P(t.vendor||"—")} · <code>${P(t.model||"—")}</code></b>\n        ${n?`<span class="badge status-configured">Selected</span>`:""}\n      </div>\n      <div style="margin-top:6px;">${o}</div>\n      ${a}\n      ${t.configured&&!t.error?`<button class="btn" style="margin-top:6px;" onclick="itSelectCandidate('${t.key}')">${n?"Re-select":"Select as winner"}</button>`:""}\n    </div>\n  `}async function itRateCandidate(t,n){const o=document.getElementById("voiceContestLookupAccountId").value.trim();const a=document.getElementById("opsAdminToken").value.trim();if(!G)return;try{const s=await fetch(`${e}/api/accounts/${encodeURIComponent(o)}/voice-contest/${encodeURIComponent(G.interviewId)}/rate`,{method:"POST",headers:{"Content-Type":"application/json","X-Admin-Token":a},body:JSON.stringify({candidateKey:t,rating:n})});const i=await s.json().catch(()=>({}));if(s.ok&&i.candidates){G.candidates=i.candidates;V()}}catch(t){}}async function itSelectCandidate(t){const n=document.getElementById("voiceContestLookupAccountId").value.trim();const o=document.getElementById("opsAdminToken").value.trim();if(!G)return;try{const a=await fetch(`${e}/api/accounts/${encodeURIComponent(n)}/voice-contest/${encodeURIComponent(G.interviewId)}/select`,{method:"POST",headers:{"Content-Type":"application/json","X-Admin-Token":o},body:JSON.stringify({candidateKey:t})});const s=await a.json().catch(()=>({}));if(!a.ok){alert(s.error||"Could not select this candidate.");return}G.selectedCandidateKey=t;V()}catch(t){alert("Could not reach the backend to select this candidate.")}}(function t(){let e="";try{e=sessionStorage.getItem(m)||""}catch(t){}if(e){document.getElementById("opsAdminToken").value=e;y=true;document.getElementById("integRememberToggle").classList.add("on")}})();function toggleOpsAdminTokenVisibility(){const t=document.getElementById("opsAdminToken");const e=document.getElementById("opsAdminTokenToggleBtn");if(!t||!e)return;const n=t.type==="password";t.type=n?"text":"password";e.textContent=n?"Hide":"Show"}r();const J="verilume_ops_token";function W(t){return`verilume_device_trust_${(t||"").trim().toLowerCase()}`}function Y(t){try{return localStorage.getItem(W(t))||""}catch(t){return""}}function Q(t,e){try{localStorage.setItem(W(t),e)}catch(t){}}let tt=null;let et=null;let nt=null;let ot=null;let at=null;let st=null;function it(t){document.querySelectorAll(".gate-step").forEach(t=>t.classList.remove("active"));document.getElementById(t).classList.add("active")}function rt(name){document.getElementById("opsLoginGate").classList.add("hidden");document.getElementById("opsAppRoot").classList.remove("hidden");document.getElementById("opsSignedInAs").textContent=name||"Admin";try{rcLoad()}catch(t){}}async function opsLogout(){try{const t=sessionStorage.getItem(J);if(t)await fetch(`${e}/api/auth/logout`,{
+method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:t})})}catch(t){}try{sessionStorage.removeItem(J)}catch(t){}location.reload()}function backToOpsLogin(){document.getElementById("opsLoginPassword").value="";document.getElementById("opsLoginError").textContent="";it("opsGateLoginStep")}async function submitOpsLogin(){const t=document.getElementById("opsLoginEmail").value.trim();const n=document.getElementById("opsLoginPassword").value;const o=document.getElementById("opsLoginError");const a=document.getElementById("opsLoginBtn");o.textContent="";if(!t||!n){o.textContent="Enter your email and password.";return}a.disabled=true;try{const s=await fetch(`${e}/api/auth/login-user`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:t,password:n,deviceToken:Y(t)})});const i=await s.json().catch(()=>({}));if(!s.ok){o.textContent=i.error||`Couldn't sign in (${s.status}).`;a.disabled=false;return}tt=t;if(i.mfaRequired){ot=i.verificationId;at=i.memberId;st=i.channel;ct(i);a.disabled=false;return}if(i.mustChangePassword){nt=i.accountId;et=i.token;it("opsGatePasswordChangeStep");document.getElementById("opsNewPassword").focus();a.disabled=false;return}await dt(i)}catch(t){o.textContent="Could not reach the backend to sign in — try again.";a.disabled=false}}function ct(t){it("opsGateMfaStep");document.getElementById("opsMfaIntro").textContent=t.channel==="sms"?`We texted a 6-digit code to ${t.target}.`:`We emailed a 6-digit code to ${t.target}.`;document.getElementById("opsMfaSwitchLink").textContent=t.channel==="sms"?"Verify by email instead":"Verify by text instead";const e=document.getElementById("opsMfaInterimNote");if(t.interimCode){e.style.display="block";e.textContent=`No live ${t.channel==="sms"?"SMS":"email"} provider configured yet — your code is ${t.interimCode}.`}else{e.style.display="none"}document.getElementById("opsMfaCode").value="";document.getElementById("opsMfaError").textContent="";document.getElementById("opsMfaCode").focus()}async function submitOpsMfaCode(){const t=document.getElementById("opsMfaCode").value.trim();const n=document.getElementById("opsMfaError");const o=document.getElementById("opsMfaBtn");n.textContent="";if(!/^\d{6}$/.test(t)){n.textContent="Enter the 6-digit code.";return}o.disabled=true;try{const a=document.getElementById("opsMfaRemember").checked;const s=await fetch(`${e}/api/auth/verify-login-code`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({verificationId:ot,code:t,rememberDevice:a})});const i=await s.json().catch(()=>({}));if(!s.ok){n.textContent=i.error||`Couldn't verify that code (${s.status}).`;o.disabled=false;return}if(i.deviceToken)Q(tt,i.deviceToken);if(i.mustChangePassword){nt=i.accountId;et=i.token;it("opsGatePasswordChangeStep");document.getElementById("opsNewPassword").focus();o.disabled=false;return}await dt(i)}catch(t){n.textContent="Could not reach the backend to verify — try again.";o.disabled=false}}async function resendOpsMfa(){if(!at||!st)return;const t=document.getElementById("opsMfaError");t.textContent="";try{const n=await fetch(`${e}/api/auth/request-login-mfa`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({memberId:at,channel:st})});const o=await n.json().catch(()=>({}));if(!n.ok){t.textContent=o.error||"Could not resend a code.";return}ot=o.verificationId;ct(o)}catch(e){t.textContent="Could not reach the backend to resend a code."}}async function switchOpsMfaChannel(){if(!at||!st)return;const t=st==="sms"?"email":"sms";const n=document.getElementById("opsMfaError");n.textContent="";try{const o=await fetch(`${e}/api/auth/request-login-mfa`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({memberId:at,channel:t})});const a=await o.json().catch(()=>({}));if(!o.ok){n.textContent=a.error||"Could not send a code that way.";return}ot=a.verificationId;st=t;ct(a)}catch(t){
+n.textContent="Could not reach the backend to send a code that way."}}async function submitOpsPasswordChange(){const t=document.getElementById("opsNewPassword").value;const n=document.getElementById("opsNewPasswordConfirm").value;const o=document.getElementById("opsPasswordChangeError");const a=document.getElementById("opsPasswordChangeBtn");o.textContent="";if(t.length<8){o.textContent="Password must be at least 8 characters.";return}if(t!==n){o.textContent="Passwords don't match.";return}a.disabled=true;try{const n=await fetch(`${e}/api/auth/change-password`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${et}`},body:JSON.stringify({newPassword:t})});const s=await n.json().catch(()=>({}));if(!n.ok){o.textContent=s.error||`Couldn't set your password (${n.status}).`;a.disabled=false;return}await dt({token:et,accountId:nt})}catch(t){o.textContent="Could not reach the backend — try again.";a.disabled=false}}async function dt(t){try{const n=await fetch(`${e}/api/auth/me`,{headers:{Authorization:`Bearer ${t.token}`}});const o=await n.json().catch(()=>({}));if(!n.ok||!o.isAdmin){try{await fetch(`${e}/api/auth/logout`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:t.token})})}catch(t){}it("opsGateDeniedStep");return}try{sessionStorage.setItem(J,t.token)}catch(t){}rt(o.name||o.email)}catch(t){document.getElementById("opsLoginError").textContent="Could not reach the backend to verify access — try again.";it("opsGateLoginStep")}}(async function t(){let n="";try{n=sessionStorage.getItem("verilume_platform_token")||""}catch(t){}if(!n){location.replace("platform.html");return}try{const t=await fetch(`${e}/api/platform/me`,{headers:{Authorization:`Bearer ${n}`}});const o=await t.json().catch(()=>({}));if(t.ok&&o.user){try{sessionStorage.setItem(J,n)}catch(t){}rt(o.user.name||o.user.email)}else{location.replace("platform.html")}}catch(t){}})();let lt=null;function pt(){return(document.getElementById("opsAdminToken")||{}).value?document.getElementById("opsAdminToken").value.trim():""}function ut(t){const e=document.getElementById("vsError");e.textContent=t||"";e.style.display=t?"block":"none"}async function vsLoad(){ut("");const t=pt();const n=document.getElementById("vsStatus");n.textContent="";if(!t){ut("Enter the ADMIN_API_TOKEN configured on this deployment (top of this page).");return}try{const n=await fetch(`${e}/api/ops/verilume-style`,{headers:{"X-Admin-Token":t}});const o=await n.json().catch(()=>({}));if(!n.ok){ut(o.error||`Couldn't load Verilume Style (${n.status}).`);return}lt=o;yt()}catch(t){ut("Could not reach the backend.")}}function mt(t){const e=[],n=new Set;const o=t.style||{};const a=(name,t)=>{t=t.toUpperCase();if(n.has(t))return;n.add(t);e.push({name:name.trim().replace(/^[-•\s]+/,"").replace(/[:(\s]+$/,"")||t,hex:t})};if(/^#[0-9a-f]{6}$/i.test(o.primaryColorHex||""))a((o.primaryColorName||"Primary").replace(/\s*\(#?[0-9a-f]{6}\)\s*$/i,""),o.primaryColorHex);String(o.secondaryPaletteText||"").split(/\n/).forEach(t=>{const e=t.match(/#[0-9a-fA-F]{6}/g);if(!e)return;const n=t.replace(/#[0-9a-fA-F]{6}/g,"").replace(/[,;:()]/g," ").split(/\s{2,}|\s—\s|\s-\s/)[0].replace(/\s+/g," ").trim();e.forEach((e,o)=>a(o===0?n.slice(0,40):n.slice(0,32)+(/tint/i.test(t)&&o===1?" tint":/darker/i.test(t)?" darker":" alt"),e))});return e.slice(0,24)}function yt(){const t=lt,e=t.style||{},n=document.getElementById("vsResult");const o=t=>`<span class="badge ${t?"status-active":"status-draft"}">${t?"Approved":"Draft"}</span>`;const a=mt(t).map(t=>`<div class="vs-sw"><i style="background:${w(t.hex)}"></i><b>${w(t.name)}</b><span>${w(t.hex)}</span></div>`).join("");const s=(t,e,n,o)=>`<div style="margin-bottom:12px;"><label>${e}</label><textarea id="${t}" class="${o||""}">${w(n||"")}</textarea></div>`
+;n.innerHTML=`\n    <div style="margin-top:14px;display:flex;gap:14px;flex-wrap:wrap;align-items:center;"><div><b>${w(t.company)}</b> <span class="empty-note" style="font-style:normal;">${w(t.accountId)}</span></div><div>Voice ${o(t.voice.approved)}</div><div>Style guide ${o(e.approved)}</div></div>\n    <div class="vs-h">Colors</div><div class="vs-grid">${a||'<div class="empty-note">No colors on file yet.</div>'}</div>\n    <div class="vs-h">Components, as specified</div>\n    <div class="vs-demo">\n      <div class="vs-row"><button class="vs-btn-p" type="button" tabindex="-1">Start your free assessment →</button><button class="vs-btn-g" type="button" tabindex="-1">See how the scoring works</button><span class="vs-hint">Primary: solid ink pill. Ghost: only beside a primary; any standalone link is a primary.</span></div>\n      <div class="vs-row"><div><label style="margin-bottom:6px;">Field</label><input class="vs-field focus" value="Booking Conversion Date" readonly tabindex="-1"><div class="vs-hint">Hints sit under the field at 12.5px, muted. Focus: teal border and a soft ring.</div></div><div><label style="margin-bottom:6px;">Select</label><select class="vs-sel" tabindex="-1"><option>Booking Status</option></select><div class="vs-hint">Custom arrow, never the raw browser control.</div></div></div>\n      <div class="vs-row"><div class="vs-panel"><b>Panel.</b> Paper Dim, a 1px line border, 12px radius. No tinted blue panels with hard borders.</div><div><span class="vs-pill" style="background:#DBEAFE;color:#2563EB;">Saved mapping</span> <span class="vs-pill" style="background:#E7F6EC;color:#15803D;">High</span> <span class="vs-pill" style="background:#FFF4DB;color:#8A5A00;">Please confirm</span></div></div>\n      <table style="width:auto;"><thead><tr><th class="vs-th">Our field</th><th class="vs-th">Your column</th><th class="vs-th">Confidence</th></tr></thead><tbody><tr><td style="padding:8px 24px 8px 0;font-size:0.8125rem;"><b>Transaction date</b></td><td style="padding:8px 24px 8px 0;font-size:0.8125rem;">Booking Conversion Date</td><td style="padding:8px 0;font-size:0.8125rem;">High</td></tr></tbody></table>\n    </div>\n    <div class="vs-h">Edit</div>\n    <div class="vs-edit">\n      ${s("vsVoice","Brand voice (the Voice Guide text)",t.voice.text,"vs-voice")}\n      <div class="field-row"><div><label>Primary color name</label><input type="text" id="vsPrimName" value="${w(e.primaryColorName||"")}"></div><div><label>Primary color hex</label><input type="text" id="vsPrimHex" value="${w(e.primaryColorHex||"")}" placeholder="#1D1D1F"></div></div>\n      ${s("vsPalette","Palette",e.secondaryPaletteText)}${s("vsColorH","Color hierarchy",e.colorHierarchyNotes)}\n      <div class="field-row"><div><label>Heading font</label><input type="text" id="vsHeadFont" value="${w(e.headingFontName||"")}"></div><div><label>Body font</label><input type="text" id="vsBodyFont" value="${w(e.bodyFontName||"")}"></div></div>\n      ${s("vsHeadNotes","Heading font notes",e.headingFontNotes)}${s("vsBodyNotes","Body font notes",e.bodyFontNotes)}${s("vsTypo","Typography hierarchy",e.typographyHierarchyNotes)}${s("vsStyle","Component and style rules",e.styleNotes)}${s("vsLogo","Logo and name usage",e.logoUsageNotes)}\n      <div style="display:flex;gap:18px;flex-wrap:wrap;margin:6px 0 12px;"><label style="display:flex;gap:6px;align-items:center;margin:0;"><input type="checkbox" id="vsAppVoice" ${t.voice.approved?"checked":""} style="width:auto;"> Voice approved</label><label style="display:flex;gap:6px;align-items:center;margin:0;"><input type="checkbox" id="vsAppStyle" ${e.approved?"checked":""} style="width:auto;"> Style guide approved</label></div>\n      <button class="btn primary" onclick="vsSave()">Save Verilume Style</button>\n    </div>`}async function vsSave(){ut("");const t=pt();const n=document.getElementById("vsStatus");const o=t=>document.getElementById(t).value;if(!t){
+ut("Enter the ADMIN_API_TOKEN configured on this deployment (top of this page).");return}const a={voiceText:o("vsVoice"),style:{primaryColorName:o("vsPrimName"),primaryColorHex:o("vsPrimHex").trim(),secondaryPaletteText:o("vsPalette"),colorHierarchyNotes:o("vsColorH"),headingFontName:o("vsHeadFont"),headingFontNotes:o("vsHeadNotes"),bodyFontName:o("vsBodyFont"),bodyFontNotes:o("vsBodyNotes"),typographyHierarchyNotes:o("vsTypo"),styleNotes:o("vsStyle"),logoUsageNotes:o("vsLogo")},approveVoice:document.getElementById("vsAppVoice").checked,approveStyle:document.getElementById("vsAppStyle").checked};n.textContent="Saving…";try{const o=await fetch(`${e}/api/ops/verilume-style`,{method:"POST",headers:{"X-Admin-Token":t,"Content-Type":"application/json"},body:JSON.stringify(a)});const s=await o.json().catch(()=>({}));if(!o.ok){n.textContent="";ut(s.error||`Not saved (${o.status}).`);return}lt=s;yt();document.getElementById("vsStatus").textContent=`Saved ${(new Date).toLocaleTimeString()}.`}catch(t){n.textContent="";ut("Could not reach the backend. Nothing was saved.")}}</script>
+
+</body>
+</html>

@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-20-r74-ip-watch (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-20-r77-gated-console (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -24734,6 +24734,7 @@ function formatCampaignDatesForPrompt(campaign){
 const PORTAL_APP_PATH = path.join(__dirname, 'portal-app.html');
 let portalAppCache = null;
 const portalServeLog = new Map();
+const OPS_APP_PATH = path.join(__dirname, 'ops-console-app.html'); let opsAppCache = null;
 const TERMS_VERSION = '2026-11-20';
 function termsAcceptedFor(accountId){
   try {
@@ -33475,6 +33476,37 @@ async function handleRequestInner(req, res) {
       const me = auth.user;
       const isOwnerOrAdmin = me.role === 'owner' || me.role === 'admin';
 
+      // GET /api/platform/app/ops-console — the Ops Console application. frontend/ops-console.html is only a small loader; the console's
+      // code is sent here, only to a signed-in Verilume team member, with a mark that names the person and session (same idea as
+      // /api/app/portal). 60 loads per person per hour. Logged in portal_serves with account "ops".
+      if (req.method === 'GET' && parts.length === 4 && sub === 'app' && parts[3] === 'ops-console'){
+        const rk = 'ops:' + me.id, nowMs = Date.now();
+        const hits = (portalServeLog.get(rk) || []).filter(t => nowMs - t < 3600000);
+        if (hits.length >= 60){ portalServeLog.set(rk, hits); return sendJson(res, 429, { error: 'Too many loads. Please wait a few minutes.', code: 'rate_limited' }); }
+        hits.push(nowMs); portalServeLog.set(rk, hits);
+        let raw;
+        try {
+          const st = fs.statSync(OPS_APP_PATH);
+          if (!opsAppCache || opsAppCache.mtime !== st.mtimeMs) opsAppCache = { mtime: st.mtimeMs, text: fs.readFileSync(OPS_APP_PATH, 'utf8') };
+          raw = opsAppCache.text;
+        } catch (e){
+          console.error('[ops-app] backend/ops-console-app.html is missing:', e.message);
+          return sendJson(res, 503, { error: 'The Ops Console is being updated. Please try again in a minute.', code: 'bundle_missing' });
+        }
+        const wm = ['ops', me.id, crypto.createHash('sha256').update(String(auth.session.token)).digest('hex').slice(0, 10), nowMs.toString(36)].join('.');
+        const buf = Buffer.from(raw.split('@@VL_WM@@').join(wm), 'utf8');
+        const send = (b2, enc) => {
+          try {
+            db.prepare('INSERT INTO portal_serves (id, accountid, memberid, ip, useragent, watermark, bytes, servedat) VALUES (?,?,?,?,?,?,?,?)')
+              .run(generateId('psv'), 'ops', me.id, String(getClientIp(req) || '').slice(0, 80), String(req.headers['user-agent'] || '').slice(0, 300), wm, b2.length, new Date().toISOString());
+          } catch (e){ console.warn('[ops-app] could not log the load:', e.message); }
+          const h = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-store, max-age=0', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow, noarchive', 'Vary': 'Accept-Encoding, Authorization', 'Content-Length': b2.length };
+          if (enc) h['Content-Encoding'] = enc;
+          res.writeHead(200, h); res.end(b2);
+        };
+        if (/\bgzip\b/.test(String(req.headers['accept-encoding'] || ''))) return require('zlib').gzip(buf, { level: 5 }, (err, gz) => err ? send(buf, null) : send(gz, 'gzip'));
+        return send(buf, null);
+      }
       if (req.method === 'GET' && parts.length === 3 && sub === 'me') return sendJson(res, 200, { user: platformPublicUser(me) });
       if (req.method === 'POST' && parts.length === 3 && sub === 'logout'){
         db.prepare('DELETE FROM platform_sessions WHERE token = ?').run(auth.session.token);
@@ -33809,7 +33841,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-20-r74-ip-watch',
+        buildStamp: '2026-11-20-r77-gated-console',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
