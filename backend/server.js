@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-20-r72-gated-portal (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-20-r74-ip-watch (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -33649,6 +33649,44 @@ async function handleRequestInner(req, res) {
           : db.prepare('SELECT * FROM platform_access_log WHERE platformuserid = ? ORDER BY createdAt DESC LIMIT 200').all(me.id);
         return sendJson(res, 200, { visits: rows.map(r => ({ id: r.id, platformUserId: r.platformuserid, platformName: r.platformname, platformRole: r.platformrole, accountId: r.accountId, action: r.action, ip: r.ip, createdAt: r.createdAt })) });
       }
+      // GET /api/platform/ip-watch — who has downloaded the portal, and what looks like copying. Owner/admin only.
+      // Flags: one account loading from several networks, one network loading for several accounts, unusually many loads,
+      // and brand-new accounts that load the portal many times. Reads portal_serves (written by GET /api/app/portal).
+      if (req.method === 'GET' && parts.length === 3 && sub === 'ip-watch'){
+        if (!isOwnerOrAdmin) return sendJson(res, 403, { error: 'Only Owners and Admins view the IP watch.' });
+        const days = Math.max(1, Math.min(90, parseInt(url.searchParams.get('days') || '7', 10) || 7));
+        const since = new Date(Date.now() - days * 86400000).toISOString();
+        let rows = [];
+        try { rows = db.prepare('SELECT accountid, memberid, ip, useragent, watermark, bytes, servedat FROM portal_serves WHERE servedat >= ? ORDER BY servedat DESC LIMIT 5000').all(since); } catch (e){}
+        const byAcct = {}, byIp = {};
+        rows.forEach(r => {
+          const a = r.accountid || '(console)';
+          (byAcct[a] = byAcct[a] || { loads: 0, ips: new Set(), uas: new Set(), last: r.servedat }).loads++;
+          byAcct[a].ips.add(r.ip); byAcct[a].uas.add(String(r.useragent || '').slice(0, 80));
+          (byIp[r.ip] = byIp[r.ip] || { loads: 0, accts: new Set(), last: r.servedat }).loads++;
+          byIp[r.ip].accts.add(a);
+        });
+        const flags = [];
+        Object.keys(byAcct).forEach(a => {
+          const v = byAcct[a];
+          if (v.ips.size >= 4) flags.push({ kind: 'many_networks', severity: 'review', accountId: a, detail: v.ips.size + ' different networks loaded the portal for this account in ' + days + ' days', loads: v.loads });
+          if (v.loads >= 100) flags.push({ kind: 'heavy_loading', severity: 'review', accountId: a, detail: v.loads + ' portal loads in ' + days + ' days (normal use is a few per day)', loads: v.loads });
+        });
+        Object.keys(byIp).forEach(ip => {
+          const v = byIp[ip];
+          if (ip && v.accts.size >= 3) flags.push({ kind: 'many_accounts_one_network', severity: 'review', ip, detail: v.accts.size + ' accounts loaded the portal from one network (possible repeated trial sign-ups)', accounts: Array.from(v.accts).slice(0, 10), loads: v.loads });
+        });
+        let newHeavy = [];
+        try {
+          newHeavy = db.prepare("SELECT ps.accountid AS accountid, COUNT(*) AS n, a.company AS company, a.createdAt AS createdAt FROM portal_serves ps JOIN accounts a ON a.accountId = ps.accountid WHERE ps.servedat >= ? AND a.createdAt >= ? GROUP BY ps.accountid, a.company, a.createdAt HAVING COUNT(*) >= 20").all(since, since);
+        } catch (e){}
+        newHeavy.forEach(r => flags.push({ kind: 'new_account_heavy', severity: 'review', accountId: r.accountid, detail: 'New account (' + (r.company || 'no company name') + ') loaded the portal ' + r.n + ' times since sign-up', loads: r.n }));
+        return sendJson(res, 200, {
+          days, totalLoads: rows.length, accounts: Object.keys(byAcct).length,
+          flags,
+          recent: rows.slice(0, 50).map(r => ({ accountId: r.accountid, memberId: r.memberid, ip: r.ip, userAgent: String(r.useragent || '').slice(0, 120), mark: r.watermark, bytes: r.bytes, at: r.servedat }))
+        });
+      }
       // GET /api/platform/models — model watch: health per partner, announced changes, recent events. POST .../models/check and .../models/news-scan run them now (owner/admin).
       if (parts.length >= 3 && sub === 'models'){
         if (req.method === 'GET' && parts.length === 3){
@@ -33771,7 +33809,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-20-r72-gated-portal',
+        buildStamp: '2026-11-20-r74-ip-watch',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
