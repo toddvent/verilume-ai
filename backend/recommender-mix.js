@@ -366,5 +366,16 @@ module.exports = function makeRecommender(env){
     return '';
   }
   function avg(arr){ return arr.reduce((a,b) => a + b, 0) / arr.length; }
-  return { computeRecommendedMix, computeRecommendedMediaMix };
+  // Everything the portal screens read from the weight tables for THIS account (its industry, audience, footprint), computed once per
+  // set of inputs. Only these results leave the server; the tables for every other industry never do.
+  function computeLookups(){
+    const effective = {}; MEDIA_LOOP_STAGES.forEach(st => { effective[st] = effectiveStageChannelWeights(st); });
+    const channels = new Set([...Object.keys(CHANNEL_MIN_VIABLE_SPEND), ...Object.keys(CHANNEL_MIN_VIABLE_SPEND_BY_FOOTPRINT)]);
+    MEDIA_LOOP_STAGES.forEach(st => { Object.keys(effective[st]).forEach(c => channels.add(c)); Object.keys(STAGE_CHANNEL_WEIGHTS[st] || {}).forEach(c => channels.add(c)); });
+    const minViable = {}; channels.forEach(c => { minViable[c] = channelMinViableSpend(c); });
+    const universe = {}; MEDIA_LOOP_STAGES.forEach(st => { universe[st] = Object.keys(STAGE_CHANNEL_WEIGHTS[st] || {}); });
+    return { effective, stageWeights: getIndustryStageWeights(state.industry), minViable, universe,
+      weakStage: INDUSTRY_WEAK_STAGE[state.industry] || null, industryChannelTable: !!INDUSTRY_STAGE_CHANNEL_WEIGHTS[state.industry] };
+  }
+  return { computeRecommendedMix, computeRecommendedMediaMix, computeLookups };
 };
