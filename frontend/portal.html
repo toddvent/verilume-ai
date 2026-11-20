@@ -13937,7 +13937,7 @@ textarea.prc-copy-ta:focus{outline:2px solid var(--accent,#1f3a5f);outline-offse
 // is hidden from the front end for Release 1. Set teamGrowth to true to bring every entry point back; nothing was deleted and no data or backend route changed.
 const RELEASE_2 = { teamGrowth: false };
 try { document.documentElement.classList.toggle('release2-on', !!RELEASE_2.teamGrowth); } catch (e){}
-const CXMEDIA_BUILD_STAMP = '2026-11-19-r65-home-cards';
+const CXMEDIA_BUILD_STAMP = '2026-11-19-r66-viz-pdf';
 console.log('[CXMedia.AI] portal.html build:', CXMEDIA_BUILD_STAMP);
 
 /* ---------- Sample account context (session-only, mirrors account.html's seeding pattern) ---------- */
@@ -30425,7 +30425,7 @@ function openExperienceSubWorkstream(key){
 // inert, honestly-labeled line (same "not fabricated" convention used
 // throughout FUNCTION_GROUPS' own tier badges) rather than a dead click.
 const MEDIA_SCIENCE_TILES = [
-  { key: 'visualize', label: 'Visualize', desc: 'Ask for any chart by voice or text, shape it with a sentence, save it for a teammate, and download it as PowerPoint, Excel or Google Sheets.', built: true },
+  { key: 'visualize', label: 'Visualize', desc: 'Ask for any chart by voice or text, shape it with a sentence, save it for a teammate, and download it as PowerPoint, Excel, Google Sheets, PDF or CSV.', built: true },
   { key: 'measurementCoverage', label: 'Measurement Coverage & Confidence', desc: 'What this account can actually measure today, and the honest per-channel confidence label that coverage produces.', built: true },
   { key: 'marketOptimization', label: 'Match Market Builder (Testing)', desc: 'Upload real client transactions, get a penetration index and matched Test/Control/Holdout groups.', built: true },
   { key: 'forecastLab', label: 'Forecast & Truth Lab', desc: 'Tests, the forecast against the plan target, and budgets built backward from a goal, with a data check and a plain-language read-out at each step.', built: true },
@@ -83993,7 +83993,7 @@ async function vzPinSet(ref, tab, on){
   catch (e){ const n = document.getElementById('vzPinNote'); if (n) n.textContent = e.message; }
 }
 function vzExportMenuHtml(id, fn){
-  return `<span class="vz-menu share-wrap"><button type="button" class="btn-ghost" aria-haspopup="menu" onclick="shareToggle(event,'${id}')">Download ▾</button><div class="share-menu" id="shareMenu-${id}" role="menu" hidden>${[['pptx', 'PowerPoint (.pptx)'], ['xlsx', 'Excel (.xlsx)'], ['sheets', 'Google Sheets'], ['csv', 'CSV']].map(([f, l]) => `<button type="button" role="menuitem" onclick="${fn}('${f}')">${l}</button>`).join('')}</div></span>`;
+  return `<span class="vz-menu share-wrap"><button type="button" class="btn-ghost" aria-haspopup="menu" onclick="shareToggle(event,'${id}')">Download ▾</button><div class="share-menu" id="shareMenu-${id}" role="menu" hidden>${[['pptx', 'PowerPoint (.pptx)'], ['xlsx', 'Excel (.xlsx)'], ['sheets', 'Google Sheets'], ['pdf', 'PDF'], ['csv', 'CSV']].map(([f, l]) => `<button type="button" role="menuitem" onclick="${fn}('${f}')">${l}</button>`).join('')}</div></span>`;
 }
 // An existing card has no chart file of its own, so the export reads the numbers the card is already showing (its tables and stat tiles).
 function vzScrapeCard(host, title){
