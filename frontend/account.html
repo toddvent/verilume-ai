@@ -8,23 +8,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  /*
-    Style note: same diagnostic-instrument register as assessment.html and
-    onboarding.html, since this is a continuation of that same client
-    journey (post-onboarding, ongoing account management), not the warm
-    marketing site. Prototype only — in-memory/session state, no backend,
-    no real payment processor or auth provider wired up. See inline notes
-    throughout for where a real backend would plug in.
-
-    Design-system note (2026-07-20): per the same three-tier design-system
-    decision already applied to assessment.html/framework.html/onboarding.html
-    (shared fonts + shared gradient-fade background concept only, no
-    .visual-block imagery components or card restructuring, since this is a
-    task/utility page, not a persuasion page) — same token set, same
-    gradient-fade body background, one deliberate solid-ink color moment
-    (the account-summary bar below, matching onboarding.html's
-    .account-id-card convention).
-  */
   :root{
     --ink:#1D1D1F; --paper:#FFFFFF; --paper-dim:#F5F5F7;
     --media:#2563EB; --cx:#0891B2; --advocacy:#4F46E5;
@@ -43,15 +26,12 @@
     color:var(--ink);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;-webkit-font-smoothing:antialiased;}
   .wrap{max-width:1040px;margin:0 auto;padding:0 28px;}
   a{color:inherit;}
-
   .back-nav{display:flex;justify-content:space-between;align-items:center;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;letter-spacing:0.04em;padding:20px 28px;border-bottom:1px solid var(--line);max-width:1040px;margin:0 auto;}
   .back-nav a{color:var(--cx);text-decoration:none;}
   .back-nav a:hover{text-decoration:underline;}
   .back-nav .wordmark{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:20px;font-weight:500;color:var(--ink);text-decoration:none;}
   .back-nav .wordmark b{color:var(--media);font-weight:500;}
-
   main{padding:40px 0 100px;}
-  /* 2026-10-08 — header and layout match the portal: night wordmark bar, navy client bar with initials badge, section tabs. */
   :root{--hdr-navy:#1E2761;--hdr-navy-dim:#161C4A;--hdr-navy-line:rgba(255,255,255,0.14);--hdr-amber:#D08A3E;--hdr-ink-on-navy:#FFFFFF;--hdr-muted-on-navy:rgba(255,255,255,0.62);}
   .back-nav{background:#07090D;border-bottom:1px solid rgba(255,255,255,.08);padding:16px 28px;box-shadow:0 -3px 0 #07090D;display:flex;justify-content:flex-start;align-items:center;max-width:none;margin:0;}
   .back-nav .wordmark{font-family:'Instrument Sans','Avenir Next','Segoe UI',system-ui,sans-serif;font-size:24px;font-weight:600;letter-spacing:-.01em;color:#fff;text-decoration:none;}
@@ -71,7 +51,6 @@
   .acct-bar-nav a:hover{color:#fff;}
   .acct-bar-nav a.active{color:#fff;font-weight:700;border-bottom-color:var(--hdr-amber);}
   main{padding:32px 0 100px;}
-  /* Package cards */
   .plan-now{display:flex;flex-wrap:wrap;gap:16px 28px;align-items:center;justify-content:space-between;}
   .plan-now h3{margin:0;font-size:1.5rem;font-weight:700;}
   .plan-now .plan-tag{font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--cx);font-weight:700;}
@@ -88,55 +67,32 @@
   .plan-msg{font-size:.875rem;margin:12px 0 0;color:var(--muted);}
   .plan-msg.ok{color:#0B7A4B;}
   @media (max-width:680px){.acct-bar .co-name{font-size:1.375rem;}}
-
   .eyebrow{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:var(--cx);margin-bottom:14px;}
   h1{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:500;font-style:normal;font-size:clamp(26px,3.8vw,36px);line-height:1.15;margin:0 0 10px;letter-spacing:-0.01em;}
   h2{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:600;font-style:normal;font-size:21px;margin:0 0 4px;}
   p.lede{font-size:15px;line-height:1.6;color:var(--muted);max-width:640px;margin:0 0 28px;}
-
-  /* One deliberate solid-ink color moment, matching onboarding.html's
-     .account-id-card — everywhere else on this page stays white/bordered. */
   .account-summary{background:var(--ink);color:var(--white);border-radius:16px;padding:26px 28px;margin:0 0 36px;display:flex;flex-wrap:wrap;gap:28px;align-items:center;justify-content:space-between;}
   .account-summary .co-name{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:22px;font-weight:600;margin:0 0 4px;}
   .account-summary .co-id{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:13px;color:var(--media);}
   .account-summary .tag{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);opacity:0.75;}
-
-  /* Quick-nav — anchor jumps down this single scrolling page rather than a
-     multi-step wizard, since an account view is something you come back to
-     and re-visit sections of, not a linear flow like assessment.html. */
   .quicknav{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 40px;}
   .quicknav a{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;letter-spacing:0.04em;text-transform:uppercase;color:var(--cx);text-decoration:none;border:1px solid var(--line);border-radius:20px;padding:7px 14px;background:var(--white);}
   .quicknav a:hover{border-color:var(--cx);}
-
   section.acct-card{background:var(--white);border:1px solid var(--line);border-radius:18px;padding:26px 28px;margin:0 0 24px;scroll-margin-top:20px;}
   .card-sub{font-size:14px;color:var(--muted);margin:0 0 20px;max-width:600px;}
-
   .field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
   .field-row.field-row-3{grid-template-columns:1fr 1fr 1fr;}
   .field-row > .field{min-width:0;}
   .field{margin-bottom:16px;}
   .field label{display:block;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:6px;}
-  /* Form-field polish (portal audit, round 12): matched to the public
-     site's rounded-card language (was a barely-rounded 3px) and given a
-     real focus ring — previously these controls had zero :focus styling
-     at all, so keyboard/tab navigation was invisible. */
   .field input,.field select,.field textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font-family:'Inter';font-size:14.5px;background:var(--paper);color:var(--ink);transition:border-color 0.15s ease,box-shadow 0.15s ease;}
   .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--cx);box-shadow:0 0 0 3px rgba(8,145,178,0.14);}
-  /* Custom select chevron — same appearance:none + inline-SVG-arrow
-     treatment already built in portal.html's .field select; ported here so
-     account.html doesn't fall back to the bare native OS dropdown arrow. */
   .field select{appearance:none;-webkit-appearance:none;-moz-appearance:none;background-image:url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%235B5647' stroke-width='1.6'%3E%3Cpath d='M5.5 7.5L10 12l4.5-4.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:16px;padding-right:34px;cursor:pointer;}
   .field select:hover{border-color:var(--cx);}
   .field .hint{font-size:12.5px;color:var(--muted);opacity:0.85;margin-top:5px;}
-
   .phone-row{display:flex;gap:10px;}
   .phone-row select{flex:0 0 140px;min-width:104px;}
   .phone-row input{flex:1 1 160px;min-width:0;}
-
-  /* Buttons — border-radius:999px always yields a full pill regardless of
-     the control's own height, matching the public site's pill CTAs
-     (previously a barely-rounded 4px, the single most visible gap between
-     this page and the public marketing pages). */
   .btn-primary{background:var(--ink);color:var(--white);font-family:'Inter';font-weight:600;font-size:14px;padding:11px 20px;border-radius:999px;text-decoration:none;display:inline-block;border:none;cursor:pointer;transition:transform 0.15s ease;}
   .btn-primary:hover{background:#1c2d54;transform:translateY(-1px);}
   .btn-primary:disabled{opacity:0.4;cursor:not-allowed;transform:none;}
@@ -145,8 +101,6 @@
   .btn-danger{background:none;border:1px solid var(--advocacy);color:var(--advocacy);font-family:'Inter';font-weight:600;font-size:13px;padding:8px 14px;border-radius:999px;cursor:pointer;}
   .btn-danger:hover{background:#FBF3EC;}
   .btn-row{display:flex;gap:12px;align-items:center;margin-top:8px;flex-wrap:wrap;}
-
-  /* Round 60 — login gate (Deliverable 14/auth), same shape as portal.html's. */
   .login-gate{position:fixed;inset:0;z-index:500;background:rgba(29,29,31,0.92);display:flex;align-items:center;justify-content:center;padding:24px;}
   .login-gate-card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:36px 32px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.35);}
   .login-gate-card .wordmark{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:20px;font-weight:500;color:var(--ink);}
@@ -155,20 +109,13 @@
   .login-gate-card .lede{margin:0 0 20px;}
   .login-gate-card code{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:13px;background:var(--paper-dim);padding:2px 6px;border-radius:6px;}
   .login-gate-card input{width:100%;box-sizing:border-box;text-align:center;letter-spacing:0.08em;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:16px;}
-
   .status-note{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12.5px;color:var(--muted);margin-top:12px;}
   .status-note.ok{color:var(--cx);}
-
-  /* Communication permissions + consent-style checkbox rows, matching the
-     .agree-row convention already established in onboarding.html and
-     carried into assessment.html Step 5. */
   .toggle-row{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);}
   .toggle-row:last-child{border-bottom:none;}
   .toggle-row input{margin-top:3px;flex-shrink:0;}
   .toggle-row .body h4{font-size:14.5px;font-weight:600;margin:0 0 2px;}
   .toggle-row .body p{font-size:13px;color:var(--muted);margin:0;}
-
-  /* Payment methods */
   .pay-method{display:flex;justify-content:space-between;align-items:center;gap:16px;border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin-bottom:14px;flex-wrap:wrap;}
   .pay-method .pm-info{display:flex;align-items:center;gap:14px;}
   .pay-method .pm-icon{width:40px;height:28px;border-radius:10px;background:var(--paper-dim);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:10px;letter-spacing:0.02em;color:var(--muted);}
@@ -176,11 +123,6 @@
   .pay-method .pm-detail p{font-size:12.5px;color:var(--muted);margin:0;}
   .pay-required-tag{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--advocacy);background:#FBF3EC;border-radius:999px;padding:3px 8px;}
   .pay-empty{border:1px dashed var(--line);border-radius:16px;padding:18px;text-align:center;color:var(--muted);font-size:13.5px;margin-bottom:14px;}
-
-  /* Invoices table — wrapped in .table-scroll so a 5-6 column table can
-     scroll horizontally on a narrow phone instead of compressing columns
-     unreadably or overflowing the page (portal audit, round 12: neither
-     account.html nor portal.html had any overflow-x wrapper anywhere). */
   .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
   table.data-table{width:100%;border-collapse:collapse;font-size:14px;}
   table.data-table th{text-align:left;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line);}
@@ -196,57 +138,23 @@
   .status-chip.inactive{background:#F1EFE8;color:var(--muted);}
   .link-btn{background:none;border:none;color:var(--cx);font-family:'Inter';font-weight:600;font-size:13px;cursor:pointer;padding:0;}
   .link-btn:hover{text-decoration:underline;}
-
-  /* Team members */
   .role-tag{font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:var(--ink);background:var(--paper-dim);border-radius:999px;padding:3px 8px;display:inline-block;}
   .invite-form{border:1px dashed var(--line);border-radius:16px;padding:18px;margin-top:16px;}
   .invite-form .field-row{grid-template-columns:1fr 1fr 1fr auto;align-items:end;}
   .invite-form .field{margin-bottom:0;}
-
   footer{margin-top:40px;padding:24px 28px;border-top:1px solid var(--line);font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:11.5px;color:var(--muted);text-align:center;}
-
   @media (max-width:680px){
     .field-row,.field-row.field-row-3,.invite-form .field-row{grid-template-columns:1fr;}
     .account-summary{flex-direction:column;align-items:flex-start;}
-    /* Phone-row's fixed 140px country-code select was flex-shrink:0 by
-       default (flex:0 0 140px), which could crowd the phone-number input
-       toward zero width on very narrow phones (<360px) — let it shrink a
-       little on the smallest screens instead of forcing 140px no matter what. */
     .phone-row select{flex:0 0 112px;min-width:96px;}
   }
-
-  /* 2026-08-21 — sitewide utility nav, per direct instruction ("we really
-     should have a utility nav above the main nav that includes Access My
-     Portal and the LogIn/Logout function"). One consistent strip, same
-     markup/position on every page (public marketing pages AND the
-     authenticated app pages), sitting above whatever header that page
-     already has. Solves three things raised together: (1) Logout was
-     landing in a different spot on different pages — now it's always
-     here; (2) there was no way back to the Portal once you navigated
-     away from it; (3) auth state (logged in vs not) now reads the same
-     sessionStorage pointer everywhere, so this bar and any page's own
-     logic agree. See the #utilityNav script block for the actual logic. */
   .utility-nav{background:var(--ink);}
   .utility-nav-inner{max-width:1200px;margin:0 auto;padding:10px 28px;display:flex;justify-content:flex-end;align-items:center;gap:12px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;}
-  /* 2026-08-21 fix, per direct correction ("We have a stylized button
-     approach that we perfect in the previous location and used across the
-     website") — the first version of this bar used plain uppercase text
-     links, not the site's actual pill-button convention (the public "Log
-     in" pill, .nav-login elsewhere: bordered pill, mixed-case text,
-     8px/16px padding). Rebuilt to match that same pill shape, just with
-     light-on-dark colors instead of dark-on-light, since this bar's
-     background is var(--ink) — same color-inversion approach already used
-     for the dark-header Logout pill on account.html/print-specs.html/
-     ooh-specs.html. border-radius is hardcoded to 999px rather than
-     var(--radius-pill) because several pages this bar lives on
-     (forgot-password.html, select-tier.html, terms.html) never define
-     that variable at all. */
   .utility-nav-inner a{font-size:12.5px;font-weight:600;color:rgba(255,255,255,0.92);text-decoration:none;padding:8px 16px;border:1px solid rgba(255,255,255,0.38);border-radius:999px;white-space:nowrap;transition:border-color 0.2s ease, background 0.2s ease;}
   .utility-nav-inner a:hover{border-color:#fff;background:rgba(255,255,255,0.08);}
 </style>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
 <style id="vl-account-chrome">
-/* 2026-11-14 account header + utility nav match the public site and the portal. */
 .utility-nav{background:#F6F4EE!important;border-bottom:1px solid #E4E0D3!important;}
 .utility-nav-inner a{font-family:'Poppins',sans-serif!important;font-size:12.5px!important;font-weight:600!important;letter-spacing:.01em!important;text-transform:none!important;color:#fff!important;background:linear-gradient(180deg,#1b2d52,#14213D)!important;border:1px solid #14213D!important;border-radius:999px!important;padding:8px 18px!important;}
 .utility-nav-inner a:hover{background:linear-gradient(180deg,#0A58CC,#0846a3)!important;border-color:#0A58CC!important;}
@@ -269,99 +177,7 @@
     <a href="login.html" id="utilNavAuthLink">Log in</a>
   </div>
 </div>
-<script>
-// 2026-08-21 — shared utility-nav logic, identical on every page (see the
-// .utility-nav CSS comment for why). Reads a single sessionStorage pointer
-// (verilume_active_account) that login.html / assessment.html's Save &
-// Schedule flow set on successful sign-in, and that this same script's own
-// Logout handler (and every page's own logout(), where one exists) clears.
-// Deliberately self-contained (its own vlUtilBackendUrl(), not the page's
-// BACKEND_URL) so it works unmodified on pages that don't otherwise talk to
-// the backend at all (marketing pages, terms.html, etc.).
-(function(){
-  function vlUtilBackendUrl(){
-    return (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
-      ? ''
-      : 'http://localhost:8787';
-  }
-  function vlActiveAccountId(){
-    try { return localStorage.getItem('verilume_active_account') || ''; } catch (e) { return ''; }
-  }
-  function vlUtilityNavInit(){
-    var accountId = vlActiveAccountId();
-    var portalLink = document.getElementById('utilNavPortalLink');
-    var authLink = document.getElementById('utilNavAuthLink');
-    if (!portalLink || !authLink) return;
-    if (accountId){
-      // 2026-08-21 — per direct feedback, showing "Access My Portal" while
-      // already ON portal.html is redundant (you're already there); hide
-      // it there specifically, still show it everywhere else (marketing
-      // pages, assessment.html, account.html, etc.) so there's always a
-      // way back to the Portal from outside it.
-      var onPortalPage = /\/?portal\.html$/.test((window.location && window.location.pathname) || '');
-      if (onPortalPage){
-        portalLink.style.display = 'none';
-      } else {
-        portalLink.href = 'portal.html?accountId=' + encodeURIComponent(accountId);
-        portalLink.style.display = '';
-      }
-      authLink.textContent = 'Logout';
-      authLink.href = '#';
-      authLink.onclick = function(e){
-        e.preventDefault();
-        var token = null;
-        try { token = localStorage.getItem('verilume_session_' + accountId); } catch (e2) {}
-        var finish = function(){
-          try {
-            localStorage.removeItem('verilume_session_' + accountId);
-            localStorage.removeItem('verilume_member_' + accountId);
-            localStorage.removeItem('verilume_active_account');
-          } catch (e3) {}
-          location.href = '/';
-        };
-        if (token){
-          fetch(vlUtilBackendUrl() + '/api/auth/logout', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token: token })
-          }).then(finish).catch(finish);
-        } else {
-          finish();
-        }
-      };
-    } else {
-      portalLink.style.display = 'none';
-      authLink.textContent = 'Log in';
-      authLink.href = 'login.html';
-      authLink.onclick = null;
-    }
-  }
-  if (document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', vlUtilityNavInit);
-  } else {
-    vlUtilityNavInit();
-  }
-  // 2026-08-24, per direct report ("Access My Portal takes me to the
-  // wrong account, even after logging in as the right one") — this only
-  // ever ran once, on initial load. Two real ways that goes stale: (1)
-  // the browser restores this exact page from bfcache on Back/Forward
-  // navigation, which does NOT re-fire DOMContentLoaded, so the link's
-  // href keeps whatever account (or none) was active when this page was
-  // first painted, even if a login happened after that in this same tab
-  // via a different page; (2) this page was left open in one tab while
-  // login happened in another tab/window — localStorage changed, but
-  // this tab's DOM never re-read it. 'pageshow' fires on both a normal
-  // load AND a bfcache restore (check event.persisted to tell them
-  // apart, though re-running is harmless either way); the 'storage'
-  // event fires in OTHER tabs of the same origin when localStorage
-  // changes in one tab, so both close the gap.
-  window.addEventListener('pageshow', function(e){ vlUtilityNavInit(); });
-  window.addEventListener('storage', function(e){
-    if (!e.key || e.key === 'verilume_active_account') vlUtilityNavInit();
-  });
-  window.vlUtilityNavInit = vlUtilityNavInit; // exposed so login()/logout() elsewhere can re-run it after changing session state without a full reload
-})();
-</script>
+<script>(function(){function e(){return typeof window!=="undefined"&&window.location&&window.location.protocol!=="file:"?"":"http://localhost:8787"}function t(){try{return localStorage.getItem("verilume_active_account")||""}catch(e){return""}}function n(){var n=t();var o=document.getElementById("utilNavPortalLink");var a=document.getElementById("utilNavAuthLink");if(!o||!a)return;if(n){var i=/\/?portal\.html$/.test(window.location&&window.location.pathname||"");if(i){o.style.display="none"}else{o.href="portal.html?accountId="+encodeURIComponent(n);o.style.display=""}a.textContent="Logout";a.href="#";a.onclick=function(t){t.preventDefault();var o=null;try{o=localStorage.getItem("verilume_session_"+n)}catch(e){}var a=function(){try{localStorage.removeItem("verilume_session_"+n);localStorage.removeItem("verilume_member_"+n);localStorage.removeItem("verilume_active_account")}catch(e){}location.href="/"};if(o){fetch(e()+"/api/auth/logout",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:o})}).then(a).catch(a)}else{a()}}}else{o.style.display="none";a.textContent="Log in";a.href="login.html";a.onclick=null}}if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",n)}else{n()}window.addEventListener("pageshow",function(e){n()});window.addEventListener("storage",function(e){if(!e.key||e.key==="verilume_active_account")n()});window.vlUtilityNavInit=n})();</script>
 
 
 <div class="back-nav">
@@ -378,7 +194,7 @@
       <div class="acct-bar-right">
         <span class="acct-bar-plan" id="acctPlanChip" title="Your current package">Package</span>
         <span>Client ID · <span id="acctCoId"></span></span>
-        <!-- Round 58 — back to this same account's portal (href set from ?accountId= in the script below). -->
+        
         <a class="acct-bar-back" href="portal.html" id="backToPortalLink">← Back to portal</a>
       </div>
     </div>
@@ -401,14 +217,14 @@
   <h1>Your Verilume account.</h1>
   <p class="lede">Your package, contact info, security, communication preferences, payment methods, invoices, and who on your team has access.</p>
 
-  <!-- PACKAGE -->
+  
   <section class="acct-card" id="plan">
     <h2>Your package</h2>
     <p class="card-sub">The package this account is on, and what you can move up to. Every package has the same functionality; they differ by monthly credits.</p>
     <div id="planBody"><p class="card-sub">Loading…</p></div>
   </section>
 
-  <!-- CONTACT INFORMATION -->
+  
   <section class="acct-card" id="contact">
     <h2>Contact information</h2>
     <p class="card-sub">The primary contact Verilume reaches for account, billing, and support matters.</p>
@@ -467,7 +283,7 @@
     </div>
   </section>
 
-  <!-- PASSWORD / SECURITY -->
+  
   <section class="acct-card" id="security">
     <h2>Password &amp; security</h2>
     <p class="card-sub">Changes here are real and take effect immediately — you'll sign in with the new password next time.</p>
@@ -495,15 +311,9 @@
 
     <hr style="border:none;border-top:1px solid var(--line);margin:24px 0;">
 
-    <!-- 2026-08-19 — self-service recovery phone number. Real, wired to
-         PATCH /api/team/:id for the currently-logged-in member (currentMemberId,
-         set at login/reset — see persistMemberId() above). This is the field
-         "Forgot your password?" on the login screen actually depends on: that
-         flow texts a code to whatever's saved here. Hidden entirely if this
-         session doesn't carry a memberId (e.g. an older/legacy session) rather
-         than showing a field that would silently fail to save. -->
+    
     <div id="recoveryPhoneSection" style="display:none;">
-      <!-- One phone number per person: it is edited in Contact information above (team_members.phone). These stubs keep the older script hooks working. -->
+      
       <input type="hidden" id="recoveryPhoneInput"><button type="button" id="recoveryPhoneSaveBtn" hidden disabled></button><span id="recoveryPhoneStatus" hidden></span>
       <h3 style="margin:0 0 6px;font-size:15px;">Sign-in codes and password recovery</h3>
       <p class="card-sub" style="margin-top:0;">When you sign in on a new device, Verilume sends a 6-digit code. It goes to your email unless you choose text. Text codes and password-reset texts use the mobile phone number in Contact information above, so save it there first. Only you can change this, for your own profile.</p>
@@ -527,7 +337,7 @@
     </div>
   </section>
 
-  <!-- COMMUNICATION PERMISSIONS -->
+  
   <section class="acct-card" id="comms">
     <h2>Communication permissions</h2>
     <p class="card-sub">Choose how Verilume can reach you. These apply to this account's primary contact — team members set their own preferences when they accept an invite.</p>
@@ -555,7 +365,7 @@
     <div class="status-note ok" id="commStatus" style="margin-top:14px;"></div>
   </section>
 
-  <!-- PAYMENT METHODS -->
+  
   <section class="acct-card" id="payment">
     <h2>Payment methods</h2>
     <p class="card-sub">A credit card on file is required to use self-service billing. ACH bank transfer is available as an additional method once a card is on file. Prototype note: no real payment processor (Stripe, Braintree, etc.) is integrated — this only stores the last 4 digits in this session, the same way a real integration would never store a full card or account number client-side.</p>
@@ -631,12 +441,7 @@
     <div class="status-note ok" id="paymentStatus"></div>
   </section>
 
-  <!-- FINANCIAL TRACKING (Deliverable #11) — real, backend-persisted
-       invoice ledger, replacing the previous hardcoded three-row mock.
-       Prototype note, stated plainly: downloads are still mocked (no real
-       PDFs generated) and no real payment processor is wired up — marking
-       an invoice Paid here is a real database record of a real business
-       fact (an invoice got paid), not an instruction to move money. -->
+  
   <section class="acct-card" id="invoices">
     <h2>Invoices &amp; financial tracking</h2>
     <p class="card-sub">Every invoice issued to this account, tracked for real in this build's backend. Prototype note: downloads are still mocked — no real PDFs are generated, and no payment processor is connected — marking an invoice Paid just records that fact, it doesn't move any money.</p>
@@ -683,33 +488,14 @@
       </div>
     </div>
 
-    <!-- Financial summary — real rollup of this account's campaign spend
-         (planned budget vs. reported actuals, already-real fields from
-         Media Plan/Campaign Analysis, just never surfaced together before)
-         plus this real invoice ledger. Every number here is a genuine sum
-         over real rows — nothing modeled or estimated. -->
+    
     <div id="financialSummary" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line, #D2D2D7);"></div>
 
     <div class="status-note" id="invoiceStatus"></div>
   </section>
 
-  <!-- TEAM MEMBERS -->
-  <!-- 2026-08-23, per direct instruction ("Keep the in-portal version" —
-       portal.html's step-team is canonical, this was the duplicate): the
-       roster table and invite/edit form that used to live here (lede
-       ~line 313 originally described both; roster ~1360+, invite form
-       ~1450-1523, using accountViewerIsAdmin() ~964 and countActiveAdmins()
-       ~1378-1385) are removed from this page's UI. team_members' backend
-       table and every API route it uses (GET/POST /api/accounts/:id/team,
-       PATCH /api/team/:id, etc.) are UNCHANGED — this is a UI-only
-       removal, not a data-model change. The JS functions that used to
-       drive this section (renderTeam(), loadTeamData(),
-       submitTeamMemberForm(), toggleInviteForm(), startEditTeamMember(),
-       etc.) are left in place per direct instruction not to touch
-       team_members/its routes, and are effectively dead code now that
-       nothing on this page calls into their removed DOM elements —
-       renderTeam() itself is now null-guarded (see its own comment) so a
-       future re-add of #teamRows wouldn't be needed to avoid a crash. -->
+  
+  
   <section class="acct-card" id="team">
     <h2>Team members</h2>
     <p class="card-sub">Everyone invited to this account shares Client ID <strong id="teamCoIdLabel"></strong>. Team &amp; Org Chart — who's on this account, their Level, Function, reporting line, and Admin status — is managed from the Portal now, not here, so there's one real place this roster is edited instead of two that can drift out of sync.</p>
@@ -726,1133 +512,15 @@
 
 <footer>Verilume · Account management prototype — session-only, no backend, no real payment processor</footer>
 
-<script>
-/* ---------- State (in-memory / session only for everything except Team
-   Members — no backend, no persistence, no real payment processor or auth
-   provider — pass ?accountId=CXM-XXX-YYYY-NNN to override the seeded
-   Client ID (e.g. when linked from onboarding.html's generated Account
-   ID). ---------- */
-const params = new URLSearchParams(location.search);
-
-// Round 43 — Team Members now reads from/writes to the same backend
-// team_members table portal.html's Team & Org Chart uses (see
-// cxmedia-brand-naming-decision.md-adjacent build-status notes for why:
-// per direct instruction, the Org Chart is the single source of truth for
-// who's on an account and what their role is, rather than this page
-// keeping its own separate, disconnected flat role list). Same
-// BACKEND_URL/local-fallback convention already used throughout
-// portal.html — a genuine backend call when reachable, an honest
-// "local only, this session" label when it isn't.
-// Same-origin in production (frontend and API are served from the same
-// Vercel domain), local backend when opened directly as a file:// page
-// during local dev (unchanged behavior from before).
-const BACKEND_URL = (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
-  ? ''
-  : 'http://localhost:8787';
-let dataSourceLabel = 'mock';
-
-// ---------- Round 60 — authentication (Deliverable 14) ----------
-// Same scheme and same sessionStorage key format as portal.html
-// (verilume_session_<accountId>) — same-tab navigation between the two
-// pages (the gear icon / "Back to Client Portal" link, neither of which
-// opens a new tab) shares sessionStorage for the same origin, so logging
-// in on one page carries over to the other without asking twice.
-let sessionToken = null;
-
-// 2026-08-19 — which team_members.id is actually logged in on this session,
-// not just which account. login-user/reset-password both return memberId
-// alongside the token; this is what lets the new "recovery phone number"
-// field below know whose record to read/write, the same way sessionToken
-// itself carries which account. Same storage-key-per-account convention as
-// sessionStorageKey() below, kept as a fully separate key/variable so a
-// missing/legacy session (no memberId) degrades to "profile field hidden"
-// rather than breaking token handling.
-let currentMemberId = null;
-
-function sessionStorageKey(accountId){
-  return `verilume_session_${accountId}`;
-}
-
-function memberStorageKey(accountId){
-  return `verilume_member_${accountId}`;
-}
-
-function persistMemberId(accountId, memberId){
-  currentMemberId = memberId || null;
-  if (!memberId) return;
-  try { localStorage.setItem(memberStorageKey(accountId), memberId); } catch (e) {}
-}
-
-function restoreMemberId(){
-  try {
-    const cached = localStorage.getItem(memberStorageKey(state.companyId));
-    if (cached) currentMemberId = cached;
-  } catch (e) { /* sessionStorage unavailable — skip caching */ }
-}
-
-function authedFetch(url, options = {}){
-  const headers = Object.assign({}, options.headers || {});
-  if (sessionToken) headers['Authorization'] = `Bearer ${sessionToken}`;
-  return fetch(url, Object.assign({}, options, { headers }));
-}
-
-function restoreSessionToken(){
-  try {
-    const cached = localStorage.getItem(sessionStorageKey(state.companyId));
-    if (cached) sessionToken = cached;
-  } catch (e) { /* sessionStorage unavailable — skip caching */ }
-}
-
-function persistSessionToken(token){
-  sessionToken = token;
-  try { localStorage.setItem(sessionStorageKey(state.companyId), token); } catch (e) {}
-}
-
-// 2026-08-21, per direct instruction ("want to make sure login | logout
-// has consistent behavior across the site") — same logout() shape as
-// portal.html, account.html, print-specs.html, and ooh-specs.html now all
-// share this identical session mechanism (sessionToken / sessionStorageKey
-// / authedFetch), so logout needs to behave identically everywhere too,
-// not just clear the one page's own in-memory copy.
-async function logout(){
-  const token = sessionToken;
-  try {
-    if (token){
-      await fetch(`${BACKEND_URL}/api/auth/logout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token })
-      });
-    }
-  } catch (e) { /* unreachable backend shouldn't block logging out locally */ }
-  sessionToken = null;
-  try {
-    localStorage.removeItem(sessionStorageKey(state.companyId));
-    // 2026-08-21 — also clear the sitewide "who's logged in" pointer (see
-    // #utilityNav's script comment), so the utility nav and every other
-    // page agree this session is over, not just this page's own storage.
-    localStorage.removeItem('verilume_active_account');
-  } catch (e) {}
-  location.href = '/'; // per direct instruction: redirect to verilume.ai after logout
-}
-
-// 2026-08-19 (login redesign) — replaced the in-page login-gate modal (plus
-// its own copies of the forced-password-change and phone-recovery flows)
-// with a straight redirect to the new, single, dedicated login.html per
-// direct instruction: signing in should require actually landing on a
-// front-door login page, not opening an overlay on top of a page you're
-// already "on." login.html owns login + forced-password-change now, and
-// forgot-password.html owns recovery (both outside the portal). ?next=
-// carries this page's own URL along so a session that expires mid-edit on
-// account.html returns here afterward rather than defaulting to the Portal.
-// Since this navigates away, the returned Promise deliberately never
-// resolves — the three call sites below (loadAccountRecord/loadTeamData/
-// loadInvoices) just stop at the `await` as the page unloads, which is the
-// correct behavior here.
-function requireLogin(){
-  const next = encodeURIComponent(location.pathname + location.search);
-  location.href = `login.html?next=${next}`;
-  return new Promise(() => {});
-}
-
-// Hand-kept-in-sync copies of portal.html's ORG_LEVELS/TEAM_FUNCTIONS —
-// same convention already used elsewhere in this codebase (e.g.
-// assessment.html's RUBRIC vs. framework.html's own copy) rather than a
-// shared import, since these are two separate static files. If these ever
-// drift from portal.html's own FUNCTION_GROUPS keys, portal.html is the
-// source of truth to resync against.
-const ORG_LEVELS = ['CMO', 'Director', 'Manager', 'Specialist'];
-const TEAM_FUNCTIONS = ['Executive', 'PR', 'Brand', 'Media Planning & Ops', 'Performance Marketing', 'Advanced Analytics'];
-const ORG_LEVEL_INDEX = { CMO: 0, Director: 1, Manager: 2, Specialist: 3 };
-
-// Round 58 — wire the back-nav's "Back to Client Portal" link to this same
-// account, so a user who arrived here from portal.html's gear icon lands
-// back on their own account rather than the seeded demo one.
-document.getElementById('backToPortalLink').href = `portal.html?accountId=${encodeURIComponent(params.get('accountId') || 'CXM-NAT-2026-700')}`;
-// 2026-08-23 — Team Members' own pointer into portal.html's Team & Org
-// Chart step, using the ?step= deep-link portal.html's init IIFE now
-// supports (see that file's own comment on stepParam).
-if (document.getElementById('teamPortalLink')) document.getElementById('teamPortalLink').href = `portal.html?accountId=${encodeURIComponent(params.get('accountId') || 'CXM-NAT-2026-700')}&step=team`;
-
-let state = {
-  paidTier: null, levelStatus: null,
-  companyId: params.get('accountId') || 'CXM-NAT-2026-700',
-  companyName: 'Acme Hospitality Group',
-  contact: { firstName: 'Jane', lastName: 'Doe', email: 'jane@acmehospitality.com', phoneCountry: '+1', phone: '(555) 123-4567' },
-  commPrefs: { email: true, sms: false, phone: true, marketing: false },
-  // Only last4 + display metadata ever live in state — never a full card
-  // or bank account number, mirroring how a real tokenizing processor
-  // would hand back a token instead of the raw number.
-  card: { brand: 'Visa', last4: '4242', exp: '08/28' },
-  ach: null,
-  // Fallback roster, used only if the backend is unreachable (see
-  // loadTeamData() below) — shaped to match the real team_members record
-  // now, not the old flat role list, so the page reads consistently
-  // whether or not a real backend is up.
-  team: [
-    { id: 't1', name: 'Jane Doe', email: 'jane@acmehospitality.com', isAdmin: true, level: 'CMO', functionGroup: 'Executive', reportsToId: null, status: 'active' },
-    { id: 't2', name: 'Priya Shah', email: 'priya@acmehospitality.com', isAdmin: false, level: 'Director', functionGroup: 'Brand', reportsToId: 't1', status: 'active' },
-    { id: 't3', name: 'Marcus Webb', email: 'marcus@acmehospitality.com', isAdmin: false, level: 'Manager', functionGroup: 'Advanced Analytics', reportsToId: 't1', status: 'inactive' }
-  ]
-};
-
-async function init(){
-  document.getElementById('acctCoName').textContent = state.companyName;
-  document.getElementById('acctCoNameEyebrow').textContent = state.companyName;
-  document.getElementById('acctCoId').textContent = state.companyId;
-  document.getElementById('teamCoIdLabel').textContent = state.companyId;
-  document.getElementById('ctCompany').value = state.companyName;
-  renderPaymentMethods();
-  populateInviteFormSelects();
-  await loadAccountRecord();
-  { const av = document.getElementById('acctAvatar'); if (av) av.textContent = initialsOf(state.companyName); }
-  loadPlan();
-  await loadTeamData();
-  renderTeam();
-  loadVoiceConsent();
-  renderMyProfile();
-  prefillContactFromMember();
-  applyInviteIsAdminGate();
-  await loadInvoices();
-  await loadFinancialSummary();
-}
-
-// 2026-10-08 — the Contact card showed seeded demo values (Jane Doe, jane@acmehospitality.com, (555) 123-4567) instead of the person signed in.
-// It now fills from the signed-in team member's own record (name, work email, phone) and saves back to it. With no backend, the demo values stay.
-function prefillContactFromMember(){
-  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
-  if (dataSourceLabel !== 'backend'){
-    set('ctFirst', state.contact.firstName); set('ctLast', state.contact.lastName); set('ctEmail', state.contact.email); set('ctPhone', state.contact.phone);
-    return;
-  }
-  const me = currentMemberId ? findTeamMember(currentMemberId) : null;
-  if (!me){ set('ctFirst', ''); set('ctLast', ''); set('ctEmail', ''); set('ctPhone', ''); return; }
-  const parts = String(me.name || '').trim().split(/\s+/);
-  set('ctFirst', parts[0] || ''); set('ctLast', parts.slice(1).join(' '));
-  set('ctEmail', me.email || '');
-  let phone = String(me.phone || '').trim();
-  const sel = document.getElementById('ctPhoneCode');
-  if (phone.charAt(0) === '+' && sel){
-    const opts = [...sel.options].map(o => o.value).sort((a, b) => b.length - a.length);
-    const code = opts.find(c => phone.indexOf(c) === 0);
-    if (code){ sel.value = code; phone = phone.slice(code.length).trim(); }
-  }
-  set('ctPhone', phone);
-}
-
-
-// 2026-11-14 — Packages: Starter, Growth, Enterprise. Same functionality in every package; they differ by monthly credits
-// (partner integrations with Snowflake, Google and Meta are Enterprise only). Old tier keys map onto the new ones.
-const PLAN_TIERS = [
-  { key: 'starter', rank: 1, name: 'Starter', tagline: 'Starting out', price: '$1,500 a month', credits: '50', description: 'Everything in Verilume with 50 credits a month.', selfServe: false },
-  { key: 'growth', rank: 2, name: 'Growth', tagline: 'Growing', price: '$4,000 a month', credits: '150', description: 'Everything in Verilume with 150 credits a month.', selfServe: false },
-  { key: 'enterprise', rank: 3, name: 'Enterprise', tagline: 'At scale', price: 'Contact us', credits: 'Custom', description: 'Credits sized to your team, plus partner integrations with Snowflake, Google and Meta.', selfServe: false }
-];
-const PLAN_LEGACY = { spark: 'starter', starter: 'starter', glow: 'growth', radiance: 'growth', beacon: 'enterprise', growth: 'growth', enterprise: 'enterprise' };
-let planTiers = PLAN_TIERS;
-async function loadPlan(){ renderPlan(); }
-function renderPlan(msg, ok){
-  const el = document.getElementById('planBody'); if (!el) return;
-  const curKey = PLAN_LEGACY[state.paidTier] || null;
-  const cur = planTiers.find(t => t.key === curKey) || null;
-  const chip = document.getElementById('acctPlanChip'); if (chip) chip.textContent = cur ? cur.name : 'No package yet';
-  const nowHtml = cur
-    ? `<div class="plan-now"><div><div class="plan-tag">Current package</div><h3>${escapeHtml(cur.name)} <span style="font-weight:500;color:var(--muted);font-size:1rem;">· ${escapeHtml(cur.price)}</span></h3><p class="card-sub" style="margin:6px 0 0;">${escapeHtml(cur.description)}</p></div>
-        <div class="plan-facts"><div><b>${escapeHtml(cur.credits)}</b>credits a month</div></div></div>`
-    : `<div class="plan-now"><div><div class="plan-tag">Current package</div><h3>No package activated yet</h3><p class="card-sub" style="margin:6px 0 0;">Ask Verilume to activate a package. Every package has the same functionality; they differ by monthly credits.</p></div></div>`;
-  const above = planTiers.filter(t => !cur || t.rank > cur.rank).sort((a, b) => a.rank - b.rank);
-  const upHtml = above.length ? `<div class="plan-up-head">${cur ? 'Move up' : 'Choose a package'}</div><div class="plan-up-grid">${above.map((t, i) => {
-      const label = t.key === 'enterprise' ? 'Contact us' : 'Request activation';
-      const btn = `<button type="button" class="btn-${i === 0 ? 'primary' : 'ghost'}" onclick="planRequest('${t.key}', this)">${label}</button>`;
-      return `<div class="plan-up${i === 0 && cur ? ' next' : ''}"><b>${escapeHtml(t.name)}</b><span class="tl">${escapeHtml(t.tagline)}</span><p>${escapeHtml(t.price)} · ${t.key === 'enterprise' ? 'custom credits' : escapeHtml(t.credits) + ' credits a month'}</p><p>${escapeHtml(t.description)}</p>${btn}</div>`;
-    }).join('')}</div><p class="card-sub" style="margin:12px 0 0;">Packages above yours are activated by the Verilume team once the order is on file. Requesting one sends your details to Sales. Need more credits in a month? An admin can ask Verilume to add 50 credits for $2,000, invoiced.</p>`
-    : `<p class="card-sub" style="margin:14px 0 0;">You are on our top package. Need more credits in a month? An admin can ask Verilume to add credits, invoiced.</p>`;
-  el.innerHTML = nowHtml + upHtml + (msg ? `<p class="plan-msg${ok ? ' ok' : ''}" role="status">${escapeHtml(msg)}</p>` : '');
-}
-async function planRequest(tier, btn){
-  if (btn) btn.disabled = true;
-  try {
-    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/upgrade-request`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tier, source: 'account page' }) });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.error || 'The request could not be sent.');
-    renderPlan(d.alreadyRequested ? 'A request was already sent in the last hour. Sales will be in touch.' : 'Request sent. Verilume Sales will confirm and activate the package with you.', true);
-  } catch (e){ renderPlan(e.message || 'The request could not be sent. Email verilume@verilume.ai.'); }
-}
-function initialsOf(name){ const w = String(name || '').replace(/\(.*?\)/g, '').trim().split(/\s+/).filter(Boolean); return ((w[0] || '')[0] || '—').toUpperCase() + ((w[1] || '')[0] || '').toUpperCase(); }
-// Section tabs follow the page, like the portal's primary nav.
-(function(){
-  const nav = document.getElementById('acctNav'); if (!nav) return;
-  const links = [...nav.querySelectorAll('a')];
-  function sync(){
-    let cur = links[0];
-    links.forEach(a => { const sec = document.querySelector(a.getAttribute('href')); if (sec && sec.getBoundingClientRect().top < 140) cur = a; });
-    links.forEach(a => a.classList.toggle('active', a === cur));
-  }
-  window.addEventListener('scroll', sync, { passive: true }); setTimeout(sync, 400);
-})();
-
-function escapeHtml(s){
-  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-}
-
-// Round 69 — Company name, per direct instruction: a real, backend-backed
-// field, not the session-only mock it was before. This page never fetched
-// the account's own record at all previously — state.companyName just sat
-// at its hardcoded default regardless of which account was actually open.
-// Same fetch/login-gate pattern as loadTeamData() below.
-async function loadAccountRecord(){
-  restoreSessionToken();
-  try {
-    let resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}`);
-    if (resp.status === 401){
-      const loggedIn = await requireLogin();
-      if (loggedIn){
-        resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}`);
-      }
-    }
-    if (resp.ok){
-      const record = await resp.json();
-      if (record.account && record.account.company){
-        state.companyName = record.account.company;
-        document.getElementById('acctCoName').textContent = state.companyName;
-        document.getElementById('acctCoNameEyebrow').textContent = state.companyName;
-        document.getElementById('ctCompany').value = state.companyName;
-      }
-      state.paidTier = (record.account && record.account.paidTier) || null; state.levelStatus = record.levelStatus || null;
-      const av = document.getElementById('acctAvatar'); if (av) av.textContent = initialsOf(state.companyName);
-      dataSourceLabel = 'backend';
-      return;
-    }
-  } catch (e){
-    console.warn('account.html: backend not reachable, Company name stays at its local default.', e);
-  }
-}
-
-/* ---------- Team Members — real backend read (round 43) ----------
-   Same account+team_members table portal.html's Team & Org Chart reads/
-   writes, so a role set here shows up there and vice versa. Falls back to
-   the seeded local roster above, honestly labeled, if the backend isn't
-   reachable — same convention as every other backend call in this build. */
-async function loadTeamData(){
-  restoreSessionToken();
-  restoreMemberId();
-  try {
-    let resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/team`);
-    if (resp.status === 401){
-      const loggedIn = await requireLogin();
-      if (loggedIn){
-        resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/team`);
-      }
-    }
-    if (resp.ok){
-      const { team } = await resp.json();
-      // Fixed 2026-08-18: this used to be `if (team && team.length)`, which
-      // treated a real, successful, genuinely-empty roster (any brand-new
-      // account with nobody invited yet) the same as "backend unreachable"
-      // and silently kept showing the hardcoded Acme Hospitality Group
-      // fallback names — a real client's account displaying a fictitious
-      // team with no indication it wasn't real. `Array.isArray(team)` is
-      // true for a successful response either way, empty or not, so a
-      // genuinely empty account now correctly renders as an empty roster.
-      if (Array.isArray(team)){
-        state.team = team.map(m => ({ ...m, isAdmin: !!m.isAdmin }));
-      }
-      dataSourceLabel = 'backend';
-      return;
-    }
-  } catch (e){
-    console.warn('account.html: backend not reachable, using the local (session-only) roster.', e);
-  }
-  dataSourceLabel = 'mock';
-}
-
-function functionLabel(key){
-  return key || '';
-}
-
-function findTeamMember(id){
-  return state.team.find(m => m.id === id) || null;
-}
-
-// 2026-08-22 — closes the roster-UI half of the isAdmin gap fix (backend's
-// PATCH /api/team/:id now 403s a non-admin who actually changes isAdmin —
-// see requireAdminMember() in backend/server.js). Without this, a non-admin
-// genuinely trying to self-promote here would hit a raw, unexplained 403.
-// Unlike portal.html (no per-member session, no separate round trip
-// needed), account.html already tracks currentMemberId and loads every
-// member's real isAdmin flag into state.team via loadTeamData() — so "am I
-// admin" is just a lookup, not a fetch. No currentMemberId (a legacy
-// account-level session, or state.team not loaded yet) defaults to true —
-// same root-equivalent treatment the backend itself gives that session.
-function accountViewerIsAdmin(){
-  if (!currentMemberId) return true;
-  const me = findTeamMember(currentMemberId);
-  return me ? !!me.isAdmin : true;
-}
-// Disables the shared Admin checkbox (Invite/Edit Team Member form) and
-// shows why, for a non-admin viewer only — never hides it outright, since
-// "you don't have this permission" is more honest than the field silently
-// disappearing. A no-op for the common case (legacy session, or a real
-// admin) — the checkbox stays exactly as interactive as it's always been.
-function applyInviteIsAdminGate(){
-  const checkbox = document.getElementById('inviteIsAdmin');
-  const hint = document.getElementById('inviteIsAdminGateHint');
-  if (!checkbox) return;
-  const isAdmin = accountViewerIsAdmin();
-  checkbox.disabled = !isAdmin;
-  if (hint) hint.style.display = isAdmin ? 'none' : 'block';
-}
-
-/* ---------- Recovery phone number (round 2026-08-19) ----------
-   The self-service half of the password-recovery flow now on its own
-   standalone page (forgot-password.html) — that flow texts a code to
-   whatever's in team_members.phone for the matching email, but until now
-   the only way to SET that field was a raw admin API call. This reads/writes
-   the currently-logged-in member's own
-   row via the same GET .../team (already loaded into state.team by
-   loadTeamData()) and PATCH /api/team/:id endpoints Team Members uses. */
-function renderMyProfile(){
-  const section = document.getElementById('recoveryPhoneSection');
-  if (!currentMemberId){
-    // No memberId on this session (e.g. a stale pre-2026-08-19 session) —
-    // hide the field rather than show one that can't resolve whose record
-    // to save to. Logging out and back in picks up a memberId-bearing
-    // session and the field reappears.
-    section.style.display = 'none';
-    return;
-  }
-  const me = findTeamMember(currentMemberId);
-  if (!me){
-    // Session has a memberId but the roster fetch didn't include it —
-    // most likely the backend wasn't reachable and state.team is still
-    // the seeded local sample roster. Same "don't show a field that can't
-    // actually save" reasoning as above.
-    section.style.display = 'none';
-    return;
-  }
-  section.style.display = 'block';
-  document.getElementById('recoveryPhoneInput').value = me.phone || '';
-  document.getElementById('recoveryPhoneSaveBtn').disabled = true;
-  try { mfaSmsShow(!!me.mfaSms && !!me.phone, me.phone); } catch (e){}
-}
-
-
-// Sign-in codes by text (own profile only). Uses POST /api/auth/mfa-sms/{start,confirm,off}.
-let mfaSmsVerificationId = null;
-function mfaSmsMsg(t, ok){ const e = document.getElementById('mfaSmsStatus'); e.textContent = t; e.classList.toggle('ok', !!ok); }
-function mfaSmsShow(on, phone){
-  document.getElementById('mfaChanText').checked = !!on; document.getElementById('mfaChanEmail').checked = !on;
-  const last = String(phone || '').replace(/\D/g, '').slice(-4);
-  const pl = document.getElementById('mfaPhoneLine'); if (pl) pl.textContent = phone ? `Mobile number on file: ending ${last}.` : 'No mobile number on file yet.';
-  document.getElementById('mfaSmsNow').textContent = on ? `Your sign-in codes are sent by text${last ? ' to the number ending ' + last : ''}.` : 'Your sign-in codes are sent to your email.';
-  if (typeof currentMemberId !== 'undefined'){ try { const m = findTeamMember(currentMemberId); if (m) m.mfaSms = !!on; } catch (e){} }
-}
-async function mfaSmsStart(){
-  mfaSmsMsg('Setting that up…');
-  try {
-    const r = await authedFetch(`${BACKEND_URL}/api/auth/mfa-sms/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok){ mfaSmsShow(false); mfaSmsMsg(d.error || `Couldn't send a text (${r.status}).`); return; }
-    if (d.enabled){ document.getElementById('mfaSmsConfirm').style.display = 'none'; mfaSmsShow(true, d.target); mfaSmsMsg('✓ Done. Your next sign-in code will arrive by text.', true); return; }
-    mfaSmsVerificationId = d.verificationId;
-    document.getElementById('mfaSmsConfirm').style.display = 'block';
-    document.getElementById('mfaSmsCode').value = ''; document.getElementById('mfaSmsCode').focus();
-    mfaSmsMsg(`We texted a code to ${d.target} to confirm it is your phone. Enter it below.` + (d.interimCode ? ` (No live text provider here yet; your code is ${d.interimCode}.)` : ''), true);
-  } catch (e){ mfaSmsShow(false); mfaSmsMsg('Could not reach the backend — try again.'); }
-}
-async function mfaSmsConfirm(){
-  const code = document.getElementById('mfaSmsCode').value.trim();
-  if (!/^\d{6}$/.test(code)){ mfaSmsMsg('Enter the 6-digit code.'); return; }
-  const btn = document.getElementById('mfaSmsConfirmBtn'); btn.disabled = true;
-  try {
-    const r = await authedFetch(`${BACKEND_URL}/api/auth/mfa-sms/confirm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ verificationId: mfaSmsVerificationId, code }) });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok){ mfaSmsMsg(d.error || `Couldn't confirm that code (${r.status}).`); btn.disabled = false; return; }
-    document.getElementById('mfaSmsConfirm').style.display = 'none';
-    const m = (typeof findTeamMember === 'function' && currentMemberId) ? findTeamMember(currentMemberId) : null;
-    mfaSmsShow(true, m && m.phone); mfaSmsMsg('✓ Text codes are on. Your next sign-in code will arrive by text.', true);
-  } catch (e){ mfaSmsMsg('Could not reach the backend — try again.'); }
-  btn.disabled = false;
-}
-async function mfaSmsOff(){
-  try {
-    const r = await authedFetch(`${BACKEND_URL}/api/auth/mfa-sms/off`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok){ mfaSmsMsg(d.error || `Couldn't change that (${r.status}).`); return; }
-    document.getElementById('mfaSmsConfirm').style.display = 'none';
-    mfaSmsShow(false); mfaSmsMsg('✓ Sign-in codes will go to your email.', true);
-  } catch (e){ mfaSmsMsg('Could not reach the backend — try again.'); }
-}
-
-async function saveRecoveryPhone(){
-  const btn = document.getElementById('recoveryPhoneSaveBtn');
-  const statusEl = document.getElementById('recoveryPhoneStatus');
-  const phone = document.getElementById('recoveryPhoneInput').value.trim();
-  if (!currentMemberId){
-    statusEl.textContent = 'Your session is missing profile info — log out and back in, then try again.';
-    statusEl.classList.remove('ok');
-    return;
-  }
-  btn.disabled = true;
-  statusEl.textContent = 'Saving…';
-  statusEl.classList.remove('ok');
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/team/${encodeURIComponent(currentMemberId)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone })
-    });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok){
-      statusEl.textContent = data.error || `Couldn't save your phone number (${resp.status}).`;
-      btn.disabled = false;
-      return;
-    }
-    const me = findTeamMember(currentMemberId);
-    const phoneChanged = me && String(me.phone || '').replace(/\D/g, '') !== String(phone || '').replace(/\D/g, '');
-    if (me) me.phone = phone;
-    if (phoneChanged){ try { mfaSmsShow(false); } catch (e){} }
-    statusEl.textContent = phone ? '✓ Recovery phone number saved.' : '✓ Recovery phone number removed.';
-    statusEl.classList.add('ok');
-  } catch (e){
-    statusEl.textContent = 'Could not reach the backend — try again.';
-    btn.disabled = false;
-  }
-}
-
-function resolveManager(memberId){
-  const m = findTeamMember(memberId);
-  if (!m || !m.reportsToId) return null;
-  return findTeamMember(m.reportsToId);
-}
-
-function reportsToOptionsFor(level){
-  const levelIdx = ORG_LEVEL_INDEX[level];
-  if (levelIdx === undefined || levelIdx === 0) return [];
-  return state.team
-    .filter(m => ORG_LEVEL_INDEX[m.level] < levelIdx)
-    .sort((a, b) => ORG_LEVEL_INDEX[b.level] - ORG_LEVEL_INDEX[a.level]);
-}
-
-/* ---------- Contact information ---------- */
-// Round 69 — Company name now actually persists to the real account
-// record (POST /api/accounts/:id/profile, same merge-update endpoint
-// portal.html's Company Profile screen already uses for industry/
-// footprint/audience/wealth — extended this round to accept `company`
-// too). First/last/email/phone stay session-only, same as before — this
-// build has no real contact-record table to write those to yet, so the
-// status message says exactly that rather than overclaiming.
-async function saveContact(){
-  state.contact.firstName = document.getElementById('ctFirst').value.trim();
-  state.contact.lastName = document.getElementById('ctLast').value.trim();
-  state.contact.email = document.getElementById('ctEmail').value.trim();
-  const companyName = document.getElementById('ctCompany').value.trim() || state.companyName;
-  state.companyName = companyName;
-  state.contact.phoneCountry = document.getElementById('ctPhoneCode').value;
-  state.contact.phone = document.getElementById('ctPhone').value.trim();
-  document.getElementById('acctCoName').textContent = state.companyName;
-  document.getElementById('acctCoNameEyebrow').textContent = state.companyName;
-  const el = document.getElementById('contactStatus');
-  let persisted = false, personSaved = false, personError = '';
-  if (dataSourceLabel === 'backend'){
-    try {
-      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/profile`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company: companyName })
-      });
-      persisted = resp.ok;
-    } catch (e){ console.warn('saveContact: backend write failed, Company name saved locally only.', e); }
-    if (currentMemberId && findTeamMember(currentMemberId)){
-      try {
-        const name = [state.contact.firstName, state.contact.lastName].filter(Boolean).join(' ');
-        const phone = state.contact.phone ? `${state.contact.phoneCountry} ${state.contact.phone}`.trim() : '';
-        const r2 = await authedFetch(`${BACKEND_URL}/api/team/${encodeURIComponent(currentMemberId)}`, {
-          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, email: state.contact.email, phone })
-        });
-        personSaved = r2.ok;
-        if (!r2.ok){ const d = await r2.json().catch(() => ({})); personError = d.error || ''; }
-        else { const me = findTeamMember(currentMemberId); let changed = false; if (me){ changed = String(me.phone || '').replace(/\D/g, '') !== String(phone || '').replace(/\D/g, ''); me.name = name; me.email = state.contact.email; me.phone = phone; if (changed) me.mfaSms = false; } renderTeam(); renderMyProfile(); try { document.getElementById('recoveryPhoneInput').value = phone; mfaSmsShow(!!(me && me.mfaSms) && !!phone, phone); } catch (e){} }
-      } catch (e){ personError = 'Could not reach the server.'; }
-    }
-  }
-  el.textContent = personSaved
-    ? '✓ Contact information saved.'
-    : (persisted
-      ? `✓ Company name saved. Your name, email and phone were not saved${personError ? ': ' + personError : ' (no team member record is tied to this login)'}.`
-      : '✓ Saved locally only (the backend is unreachable). Nothing was written to your account.');
-  el.classList.toggle('ok', personSaved || persisted);
-}
-
-/* ---------- Password / security (UI mockup only — see card-sub note) ---------- */
-function checkPasswordReady(){
-  const cur = document.getElementById('pwCurrent').value;
-  const nw = document.getElementById('pwNew').value;
-  const conf = document.getElementById('pwConfirm').value;
-  const ready = cur.length > 0 && nw.length >= 8 && nw === conf;
-  document.getElementById('pwSaveBtn').disabled = !ready;
-}
-// 2026-08-19 — wired to the real POST /api/auth/change-password endpoint
-// (same one the forced-first-login password-change screen already uses).
-// This form was previously a pure UI mock ("✓ Password updated (mocked...)")
-// sitting right next to the now-real recovery-phone field above, which read
-// as inconsistent — fixed while already in this card for that field.
-async function changePassword(){
-  const btn = document.getElementById('pwSaveBtn');
-  const el = document.getElementById('pwStatus');
-  const currentPassword = document.getElementById('pwCurrent').value;
-  const newPassword = document.getElementById('pwNew').value;
-  btn.disabled = true;
-  el.classList.remove('ok');
-  el.textContent = 'Saving…';
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/auth/change-password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ currentPassword, newPassword })
-    });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok){
-      el.textContent = data.error || `Couldn't update your password (${resp.status}).`;
-      checkPasswordReady();
-      return;
-    }
-    el.textContent = '✓ Password updated.';
-    el.classList.add('ok');
-    ['pwCurrent','pwNew','pwConfirm'].forEach(id => document.getElementById(id).value = '');
-  } catch (e){
-    el.textContent = 'Could not reach the backend — try again.';
-    checkPasswordReady();
-  }
-}
-
-/* ---------- Communication permissions ---------- */
-async function loadVoiceConsent(){
-  const box = document.getElementById('commVoice'), st = document.getElementById('voiceConsentStatus'), row = document.getElementById('voiceConsentRow');
-  if (!box || !state.companyId) return;
-  try {
-    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice/consent`);
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error('no consent record');
-    if (d.scope !== 'member'){ row.style.display = 'none'; return; } // shared access-code login has no personal profile
-    box.checked = !!d.consented;
-    st.textContent = d.consented && d.at ? 'Agreed on ' + new Date(d.at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) + '.' : '';
-  } catch (e){ row.style.display = 'none'; }
-}
-async function saveVoiceConsent(){
-  const box = document.getElementById('commVoice'), st = document.getElementById('voiceConsentStatus');
-  if (box.checked){
-    if (!window.confirm('Talking uses your microphone. Your audio is processed by ElevenLabs so Verilume can understand and answer you, and the transcript is kept with this account\'s conversation history. Turn voice on for you?')){ box.checked = false; return; }
-  }
-  box.disabled = true; st.textContent = 'Saving…';
-  try {
-    const r = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/voice/consent`, { method: box.checked ? 'POST' : 'DELETE' });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error('save failed');
-    box.checked = !!d.consented;
-    st.textContent = d.consented ? '✓ Voice is on for you.' : '✓ Voice is off for you.';
-  } catch (e){ box.checked = !box.checked; st.textContent = 'Could not save. Try again.'; }
-  box.disabled = false;
-}
-function saveCommPrefs(){
-  state.commPrefs.email = document.getElementById('commEmail').checked;
-  state.commPrefs.sms = document.getElementById('commSms').checked;
-  state.commPrefs.phone = document.getElementById('commPhone').checked;
-  state.commPrefs.marketing = document.getElementById('commMarketing').checked;
-  const el = document.getElementById('commStatus');
-  el.textContent = '✓ Preferences saved (this session only).';
-}
-
-/* ---------- Payment methods ---------- */
-function renderPaymentMethods(){
-  const cardEl = document.getElementById('cardMethodDisplay');
-  if (state.card) {
-    cardEl.innerHTML = `<div class="pay-method">
-      <div class="pm-info">
-        <div class="pm-icon">${state.card.brand.slice(0,4).toUpperCase()}</div>
-        <div class="pm-detail"><h4>${state.card.brand} •••• ${state.card.last4}</h4><p>Expires ${state.card.exp} — required for self-service billing</p></div>
-      </div>
-      <span class="pay-required-tag">On file</span>
-    </div>`;
-  } else {
-    cardEl.innerHTML = `<div class="pay-empty">No credit card on file yet. <strong>A card is required to enable self-service billing.</strong></div>`;
-  }
-
-  const achEl = document.getElementById('achMethodDisplay');
-  if (state.ach) {
-    achEl.innerHTML = `<div class="pay-method">
-      <div class="pm-info">
-        <div class="pm-icon">ACH</div>
-        <div class="pm-detail"><h4>${state.ach.bankName} — ${state.ach.acctType} •••• ${state.ach.last4}</h4><p>Additional payment method</p></div>
-      </div>
-      <button class="btn-danger" onclick="removeAch()">Remove</button>
-    </div>`;
-  } else {
-    achEl.innerHTML = '';
-  }
-}
-function toggleCardForm(){
-  const f = document.getElementById('cardForm');
-  f.style.display = f.style.display === 'none' ? 'block' : 'none';
-}
-function toggleAchForm(){
-  const f = document.getElementById('achForm');
-  f.style.display = f.style.display === 'none' ? 'block' : 'none';
-}
-function saveCard(){
-  const num = document.getElementById('cardNumber').value.replace(/\s+/g, '');
-  const exp = document.getElementById('cardExp').value.trim();
-  if (num.length < 12 || !exp) return;
-  // Only the last 4 digits and a guessed brand are kept — the full number
-  // is discarded immediately, the same way a real tokenizing processor
-  // would only ever hand this page back a token + last4, never the PAN.
-  state.card = { brand: num.startsWith('4') ? 'Visa' : num.startsWith('5') ? 'Mastercard' : 'Card', last4: num.slice(-4), exp };
-  ['cardNumber','cardName','cardExp','cardCvv','cardZip'].forEach(id => document.getElementById(id).value = '');
-  toggleCardForm();
-  renderPaymentMethods();
-  const el = document.getElementById('paymentStatus');
-  el.textContent = '✓ Card saved (mocked — no real payment processor is integrated yet).';
-}
-function saveAch(){
-  const bankName = document.getElementById('achBankName').value.trim();
-  const acctType = document.getElementById('achAcctType').value;
-  const account = document.getElementById('achAccount').value.replace(/\D/g, '');
-  if (!bankName || account.length < 4) return;
-  state.ach = { bankName, acctType, last4: account.slice(-4) };
-  ['achBankName','achRouting','achAccount'].forEach(id => document.getElementById(id).value = '');
-  toggleAchForm();
-  renderPaymentMethods();
-  const el = document.getElementById('paymentStatus');
-  el.textContent = '✓ Bank account saved (mocked — no real payment processor is integrated yet).';
-}
-function removeAch(){
-  state.ach = null;
-  renderPaymentMethods();
-  const el = document.getElementById('paymentStatus');
-  el.textContent = 'Bank account removed.';
-}
-
-/* ---------- Invoices & financial tracking (Deliverable #11) ----------
-   Real, backend-persisted ledger — invoicesCache holds whatever
-   GET /api/accounts/:id/invoices returns. No local-only mock fallback: if
-   the backend is unreachable, the table says so honestly rather than
-   showing the old hardcoded three rows. */
-let invoicesCache = [];
-const INVOICE_STATUS_LABEL = { draft: 'Draft', sent: 'Sent', paid: 'Paid', overdue: 'Overdue' };
-
-async function loadInvoices(){
-  const body = document.getElementById('invoiceRows');
-  if (!body) return;
-  body.innerHTML = `<tr><td colspan="6">Loading…</td></tr>`;
-  try {
-    let resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/invoices`);
-    if (resp.status === 401){
-      const loggedIn = await requireLogin();
-      if (loggedIn) resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/invoices`);
-    }
-    if (!resp.ok){ body.innerHTML = `<tr><td colspan="6">Couldn't load invoices right now.</td></tr>`; return; }
-    const data = await resp.json();
-    invoicesCache = data.invoices || [];
-    renderInvoices();
-  } catch (e){
-    body.innerHTML = `<tr><td colspan="6">Backend unreachable — can't load invoices.</td></tr>`;
-  }
-}
-
-function renderInvoices(){
-  const body = document.getElementById('invoiceRows');
-  if (!body) return;
-  body.innerHTML = invoicesCache.length ? invoicesCache.map(inv => `
-    <tr>
-      <td>${escapeHtml(inv.invoiceNumber)}</td>
-      <td>${inv.issuedDate ? escapeHtml(inv.issuedDate) : '—'}</td>
-      <td>${inv.description ? escapeHtml(inv.description) : '—'}</td>
-      <td>$${Number(inv.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-      <td><span class="status-chip ${inv.status}">${INVOICE_STATUS_LABEL[inv.status] || inv.status}</span></td>
-      <td>
-        <select onchange="updateInvoiceStatus('${inv.id}', this.value)" style="font-size:12px;">
-          ${Object.keys(INVOICE_STATUS_LABEL).map(s => `<option value="${s}"${inv.status === s ? ' selected' : ''}>${INVOICE_STATUS_LABEL[s]}</option>`).join('')}
-        </select>
-        <button class="link-btn" onclick="downloadInvoice('${inv.invoiceNumber}')">Download</button>
-        <button class="link-btn" onclick="deleteInvoice('${inv.id}')">Delete</button>
-      </td>
-    </tr>`).join('') : `<tr><td colspan="6">No invoices on this account yet.</td></tr>`;
-}
-
-function toggleInvoiceForm(){
-  const el = document.getElementById('invoiceForm');
-  el.style.display = el.style.display === 'none' ? 'block' : 'none';
-}
-
-async function createInvoice(){
-  const description = document.getElementById('invDescription').value.trim();
-  const amount = document.getElementById('invAmount').value;
-  const dueDate = document.getElementById('invDueDate').value;
-  const status = document.getElementById('invStatus').value;
-  const statusEl = document.getElementById('invoiceStatus');
-  if (!amount || isNaN(Number(amount))){ if (statusEl) statusEl.textContent = 'Enter a valid amount first.'; return; }
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/invoices`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ description, amount, dueDate: dueDate || null, status })
-    });
-    if (!resp.ok){ if (statusEl) statusEl.textContent = 'Could not save this invoice.'; return; }
-    document.getElementById('invDescription').value = '';
-    document.getElementById('invAmount').value = '';
-    document.getElementById('invDueDate').value = '';
-    toggleInvoiceForm();
-    await loadInvoices();
-    await loadFinancialSummary();
-    if (statusEl) statusEl.textContent = `Saved ${new Date().toLocaleTimeString()}.`;
-  } catch (e){ if (statusEl) statusEl.textContent = 'Backend unreachable — not saved.'; }
-}
-
-async function updateInvoiceStatus(id, status){
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/invoices/${encodeURIComponent(id)}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status })
-    });
-    if (!resp.ok){ alert('Could not update this invoice.'); return; }
-    await loadInvoices();
-    await loadFinancialSummary();
-  } catch (e){ alert('Backend unreachable — could not update this invoice.'); }
-}
-
-async function deleteInvoice(id){
-  if (!confirm('Delete this invoice?')) return;
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/invoices/${encodeURIComponent(id)}`, { method: 'DELETE' });
-    if (!resp.ok){ alert('Could not delete this invoice.'); return; }
-    await loadInvoices();
-    await loadFinancialSummary();
-  } catch (e){ alert('Backend unreachable — could not delete this invoice.'); }
-}
-
-function downloadInvoice(invoiceNumber){
-  const el = document.getElementById('invoiceStatus');
-  el.textContent = `${invoiceNumber}: this is a prototype — invoice PDFs aren't generated in this build.`;
-}
-
-/* ---------- Financial summary (Deliverable #11) ----------
-   Real rollup from GET /api/accounts/:id/financial-summary — every figure
-   is a genuine sum over real campaign/invoice rows on the backend, nothing
-   modeled or estimated client-side. */
-async function loadFinancialSummary(){
-  const el = document.getElementById('financialSummary');
-  if (!el) return;
-  el.innerHTML = '<p class="card-sub">Loading…</p>';
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/financial-summary`);
-    if (!resp.ok){ el.innerHTML = '<p class="card-sub">Couldn\'t load the financial summary right now.</p>'; return; }
-    const s = await resp.json();
-    const fmt = n => '$' + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    el.innerHTML = `
-      <h3 style="margin:0 0 10px;font-size:16px;">Financial summary</h3>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:10px;">
-        <div><div class="card-sub" style="margin:0;">Planned budget (${s.campaignCount} campaign${s.campaignCount === 1 ? '' : 's'})</div><div style="font-size:18px;font-weight:600;">${fmt(s.totalPlannedBudget)}</div></div>
-        <div><div class="card-sub" style="margin:0;">Actual media spend</div><div style="font-size:18px;font-weight:600;">${fmt(s.totalActualSpend)}</div></div>
-        <div><div class="card-sub" style="margin:0;">Total invoiced</div><div style="font-size:18px;font-weight:600;">${fmt(s.totalInvoiced)}</div></div>
-        <div><div class="card-sub" style="margin:0;">Total paid</div><div style="font-size:18px;font-weight:600;">${fmt(s.totalPaid)}</div></div>
-        <div><div class="card-sub" style="margin:0;">Outstanding balance</div><div style="font-size:18px;font-weight:600;">${fmt(s.outstandingBalance)}</div></div>
-      </div>
-      <p class="card-sub" style="margin:0;">${s.campaignsWithActualsCount} of ${s.campaignCount} campaign${s.campaignCount === 1 ? '' : 's'} ${s.campaignCount === 1 ? 'has' : 'have'} reported actual media spend so far — actual spend here reflects only what's been entered on those campaigns' Analysis step.${s.totalOverdue ? ` ${fmt(s.totalOverdue)} is currently marked Overdue.` : ''}</p>
-    `;
-  } catch (e){
-    el.innerHTML = '<p class="card-sub">Backend unreachable — can\'t load the financial summary.</p>';
-  }
-}
-
-/* ---------- Team members ---------- */
-// Round 44 — mirrors the Add/Edit toggle just built in portal.html's Team
-// & Org Chart, so an existing member's Level/Function/Reports To/Admin can
-// actually be changed here too, not just Deactivated/Reactivated.
-let editingTeamMemberId = null;
-
-function renderTeam(){
-  // 2026-08-23 — #teamRows no longer exists (Team Members' roster table
-  // was removed from this page's UI, see #team section's own comment);
-  // this call is left in place (still invoked from init() and a few
-  // status-change paths below) but is now a no-op rather than a crash.
-  const body = document.getElementById('teamRows');
-  if (!body) return;
-  if (!state.team.length){
-    body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);">No team members yet — invite your first one below.</td></tr>`;
-    return;
-  }
-  body.innerHTML = state.team.map(m => {
-    const manager = resolveManager(m.id);
-    const roleText = `${m.isAdmin ? '<span style="font-family:-apple-system, BlinkMacSystemFont, Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif;font-size:10.5px;letter-spacing:0.04em;text-transform:uppercase;background:var(--ink);color:#fff;border-radius:999px;padding:2px 8px;margin-right:6px;">Admin</span>' : ''}${m.level ? `${m.level} · ${functionLabel(m.functionGroup)}` : ''}`;
-    return `
-    <tr>
-      <td>${m.name}</td>
-      <td>${m.email || '—'}</td>
-      <td><span class="role-tag" style="background:none;padding:0;">${roleText || '—'}</span>${manager ? `<div class="hint" style="margin-top:3px;">reports to ${manager.name}</div>` : ''}</td>
-      <td><span class="status-chip ${m.status}">${m.status === 'active' ? 'Active' : 'Inactive'}</span></td>
-      <td style="white-space:nowrap;">
-        <button class="link-btn" onclick="startEditTeamMember('${m.id}')">Edit</button>
-        &nbsp;·&nbsp;
-        <button class="link-btn" onclick="toggleTeamStatus('${m.id}')">${m.status === 'active' ? 'Deactivate' : 'Reactivate'}</button>
-        ${m.email ? `&nbsp;·&nbsp;<button class="link-btn" onclick="reissueTeamMemberCredentials('${m.id}')" title="Generate a new temp password for this person">Reissue login</button>` : ''}
-      </td>
-    </tr>`;
-  }).join('');
-}
-
-function countActiveAdmins(excludeId){
-  return state.team.filter(m => m.isAdmin && m.status !== 'inactive' && m.id !== excludeId).length;
-}
-
-async function toggleTeamStatus(id){
-  const m = state.team.find(m => m.id === id);
-  if (!m) return;
-  const flag = document.getElementById('teamStatus');
-  if (m.status === 'active' && m.isAdmin && countActiveAdmins(id) === 0){
-    flag.style.color = 'var(--advocacy)';
-    flag.textContent = `${m.name} is this account's only Admin — promote someone else to Admin before deactivating them.`;
-    return;
-  }
-  m.status = m.status === 'active' ? 'inactive' : 'active';
-  renderTeam();
-  if (dataSourceLabel === 'backend' && !String(id).startsWith('local-team-')){
-    try {
-      await authedFetch(`${BACKEND_URL}/api/team/${encodeURIComponent(id)}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: m.status })
-      });
-    } catch (e){ /* best-effort — state already reflects the change either way */ }
-  }
-}
-
-function toggleInviteForm(){
-  // 2026-08-23 — #inviteForm no longer exists (invite/edit form removed
-  // from this page's UI, see #team section's own comment); guarded so this
-  // (now-unreachable, since nothing on this page calls it anymore) function
-  // fails safe instead of throwing if something still calls it.
-  const f = document.getElementById('inviteForm');
-  if (!f) return;
-  const opening = f.style.display === 'none';
-  f.style.display = opening ? 'block' : 'none';
-  if (opening) populateInviteFormSelects();
-  else if (editingTeamMemberId) cancelEditTeamMember();
-}
-
-function populateInviteFormSelects(){
-  const levelSel = document.getElementById('inviteLevel');
-  const fnSel = document.getElementById('inviteFunction');
-  if (!levelSel || !fnSel) return;
-  levelSel.innerHTML = `<option value="">Select a level…</option>` + ORG_LEVELS.map(l => `<option value="${l}">${l}</option>`).join('');
-  fnSel.innerHTML = `<option value="">Select a function…</option>` + TEAM_FUNCTIONS.map(f => `<option value="${f}">${functionLabel(f)}</option>`).join('');
-  onInviteLevelChange();
-}
-
-// Same CMO-is-Executive-only lock and Reports To filtering as portal.html's
-// onTeamLevelChange() — kept in sync by hand, same convention noted above.
-function onInviteLevelChange(){
-  const levelSel = document.getElementById('inviteLevel');
-  const fnSel = document.getElementById('inviteFunction');
-  const reportsToSel = document.getElementById('inviteReportsTo');
-  if (!levelSel || !fnSel || !reportsToSel) return;
-  const level = levelSel.value;
-  if (level === 'CMO'){
-    fnSel.value = 'Executive';
-    fnSel.disabled = true;
-  } else {
-    fnSel.disabled = false;
-  }
-  const options = reportsToOptionsFor(level);
-  reportsToSel.innerHTML = (level === 'CMO'
-    ? `<option value="">— none (top of this account's chart) —</option>`
-    : `<option value="">— none on file yet —</option>`) +
-    options.map(m => `<option value="${m.id}">${m.name} — ${m.level}, ${functionLabel(m.functionGroup)}</option>`).join('');
-  if (editingTeamMemberId){
-    Array.from(reportsToSel.options).forEach(o => { if (o.value === editingTeamMemberId) o.remove(); });
-  }
-}
-
-function readInviteForm(){
-  return {
-    name: document.getElementById('inviteName').value.trim(),
-    email: document.getElementById('inviteEmail').value.trim(),
-    level: document.getElementById('inviteLevel').value,
-    functionGroup: document.getElementById('inviteFunction').value,
-    reportsToId: document.getElementById('inviteReportsTo').value || null,
-    isAdmin: document.getElementById('inviteIsAdmin').checked
-  };
-}
-
-function resetInviteForm(){
-  ['inviteName','inviteEmail'].forEach(id => document.getElementById(id).value = '');
-  document.getElementById('inviteIsAdmin').checked = false;
-  document.getElementById('inviteLevel').value = '';
-  document.getElementById('inviteFunction').value = '';
-  onInviteLevelChange();
-}
-
-// Routes to the invite (create) or save (update) path — same form, same
-// fields, same validation either way.
-function submitTeamMemberForm(){
-  if (editingTeamMemberId) return saveTeamMemberEdit();
-  return inviteTeamMember();
-}
-
-function startEditTeamMember(id){
-  const m = findTeamMember(id);
-  if (!m) return;
-  editingTeamMemberId = id;
-  applyInviteIsAdminGate();
-  const f = document.getElementById('inviteForm');
-  f.style.display = 'block';
-  populateInviteFormSelects();
-  document.getElementById('inviteName').value = m.name || '';
-  document.getElementById('inviteEmail').value = m.email || '';
-  document.getElementById('inviteIsAdmin').checked = !!m.isAdmin;
-  document.getElementById('inviteLevel').value = m.level || '';
-  onInviteLevelChange();
-  document.getElementById('inviteFunction').value = m.functionGroup || '';
-  document.getElementById('inviteReportsTo').value = m.reportsToId || '';
-  document.getElementById('inviteFormHeading').textContent = `Edit ${m.name}`;
-  document.getElementById('inviteSubmitBtn').textContent = 'Save changes';
-  document.getElementById('inviteCancelBtn').style.display = 'inline-block';
-  const el = document.getElementById('teamStatus');
-  if (el) el.textContent = '';
-  f.scrollIntoView({ behavior: 'smooth', block: 'center' });
-}
-
-function cancelEditTeamMember(){
-  editingTeamMemberId = null;
-  resetInviteForm();
-  document.getElementById('inviteFormHeading').textContent = 'Invite a team member';
-  document.getElementById('inviteSubmitBtn').textContent = 'Send invite';
-  document.getElementById('inviteCancelBtn').style.display = 'none';
-  document.getElementById('inviteForm').style.display = 'none';
-}
-
-// 2026-08-19 (Path 5 build) — the backend now issues a real temp
-// password + login for any invite that includes an email (see
-// POST /api/accounts/:id/team's comment in server.js). There's no real
-// email delivery in this build, same limitation as every other
-// "shown once" secret here, so that password has to be shown to
-// whoever's running this form, once, right here — same convention as
-// the admin's own temp password on onboarding.html.
-async function inviteTeamMember(){
-  const { name, email, level, functionGroup, reportsToId, isAdmin } = readInviteForm();
-  const el = document.getElementById('teamStatus');
-  if (!name || !email.includes('@') || !level || !functionGroup){
-    el.style.color = 'var(--advocacy)';
-    el.textContent = 'Name, a valid email, Level, and Function are all required.';
-    return;
-  }
-  const localMember = { id: `local-team-${Date.now()}`, name, email, isAdmin, level, functionGroup, reportsToId, status: 'active' };
-  let persisted = false;
-  let tempPassword = null;
-  if (dataSourceLabel === 'backend'){
-    try {
-      const resp = await authedFetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(state.companyId)}/team`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, isAdmin, level, functionGroup, reportsToId })
-      });
-      const data = await resp.json().catch(() => ({}));
-      if (resp.status === 409){
-        el.style.color = 'var(--advocacy)';
-        el.textContent = data.error || 'That email is already registered to a Verilume account.';
-        return;
-      }
-      if (resp.ok){
-        localMember.id = data.memberId;
-        tempPassword = data.tempPassword || null;
-        persisted = true;
-      }
-    } catch (e){ /* falls through to local-only, same convention as portal.html */ }
-  }
-  state.team.push(localMember);
-  resetInviteForm();
-  toggleInviteForm();
-  renderTeam();
-  el.style.color = 'var(--cx)';
-  if (persisted && tempPassword){
-    el.innerHTML = `✓ ${escapeHtml(name)} can sign in now with ${escapeHtml(email)}. `
-      + `<strong>Temporary password — shown once, save it before leaving this page:</strong> `
-      + `<code style="font-family:'SF Mono',Consolas,monospace;background:var(--paper-dim);padding:2px 6px;border-radius:3px;">${escapeHtml(tempPassword)}</code> `
-      + `They'll be asked to set their own password on first login. Lost this before handing it off? Use "Reissue login" on their row below.`;
-  } else if (persisted){
-    el.textContent = `✓ Invite sent to ${email} — saved to this account's real backend record (same roster the Portal's Team & Org Chart reads).`;
-  } else {
-    el.textContent = `✓ Invite sent to ${email} (mocked — local only, this session; no backend record for this account, or the backend is unreachable).`;
-  }
-}
-
-// 2026-08-19 (Path 5 build) — recovery path for the one-time-shown temp
-// password above: if whoever ran the invite lost it before handing it
-// off, this generates a fresh one (invalidating any prior password,
-// used or not) via POST /api/team/:id/reissue-credentials.
-async function reissueTeamMemberCredentials(id){
-  const m = findTeamMember(id);
-  const el = document.getElementById('teamStatus');
-  if (!m) return;
-  if (!m.email){
-    el.style.color = 'var(--advocacy)';
-    el.textContent = `${m.name} has no email on file — edit them to add one before issuing login credentials.`;
-    return;
-  }
-  if (!confirm(`Generate a new temporary password for ${m.name}? Any password they already have (temp or one they set themselves) will stop working.`)) return;
-  try {
-    const resp = await authedFetch(`${BACKEND_URL}/api/team/${encodeURIComponent(id)}/reissue-credentials`, { method: 'POST' });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok){
-      el.style.color = 'var(--advocacy)';
-      el.textContent = data.error || `Couldn't reissue credentials (${resp.status}).`;
-      return;
-    }
-    el.style.color = 'var(--cx)';
-    el.innerHTML = `✓ New temporary password for ${escapeHtml(m.name)} (${escapeHtml(data.email)}) — shown once: `
-      + `<code style="font-family:'SF Mono',Consolas,monospace;background:var(--paper-dim);padding:2px 6px;border-radius:3px;">${escapeHtml(data.tempPassword)}</code>`;
-  } catch (e){
-    el.style.color = 'var(--advocacy)';
-    el.textContent = 'Could not reach the backend to reissue credentials — try again.';
-  }
-}
-
-async function saveTeamMemberEdit(){
-  const id = editingTeamMemberId;
-  const m = findTeamMember(id);
-  const el = document.getElementById('teamStatus');
-  if (!m){ cancelEditTeamMember(); return; }
-  const { name, email, level, functionGroup, reportsToId, isAdmin } = readInviteForm();
-  if (!name || !email.includes('@') || !level || !functionGroup){
-    el.style.color = 'var(--advocacy)';
-    el.textContent = 'Name, a valid email, Level, and Function are all required.';
-    return;
-  }
-  if (reportsToId === id){
-    el.style.color = 'var(--advocacy)';
-    el.textContent = "Someone can't report to themselves.";
-    return;
-  }
-  if (m.isAdmin && !isAdmin && countActiveAdmins(id) === 0){
-    el.style.color = 'var(--advocacy)';
-    el.textContent = `${m.name} is this account's only Admin — promote someone else to Admin first.`;
-    return;
-  }
-  Object.assign(m, { name, email, isAdmin, level, functionGroup, reportsToId });
-  let persisted = false;
-  if (dataSourceLabel === 'backend' && !String(id).startsWith('local-team-')){
-    try {
-      const resp = await authedFetch(`${BACKEND_URL}/api/team/${encodeURIComponent(id)}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, isAdmin, level, functionGroup, reportsToId })
-      });
-      persisted = resp.ok;
-    } catch (e){ /* state already reflects the change either way */ }
-  }
-  cancelEditTeamMember();
-  renderTeam();
-  el.style.color = 'var(--cx)';
-  el.textContent = persisted
-    ? `✓ Saved changes to ${name} — updated in this account's real backend record.`
-    : `✓ Saved changes to ${name} (mocked — local only, this session; no backend record for this account, or the backend is unreachable).`;
-}
-
-init();
-</script>
+<script>const e=new URLSearchParams(location.search);const t=typeof window!=="undefined"&&window.location&&window.location.protocol!=="file:"?"":"http://localhost:8787";let n="mock";let o=null;let a=null;function i(e){return`verilume_session_${e}`}function c(e){return`verilume_member_${e}`}function s(e,t){a=t||null;if(!t)return;try{localStorage.setItem(c(e),t)}catch(e){}}function r(){try{const e=localStorage.getItem(c(v.companyId));if(e)a=e}catch(e){}}function d(e,t={}){const n=Object.assign({},t.headers||{});if(o)n["Authorization"]=`Bearer ${o}`;return fetch(e,Object.assign({},t,{headers:n}))}function l(){try{const e=localStorage.getItem(i(v.companyId));if(e)o=e}catch(e){}}function m(e){o=e;try{localStorage.setItem(i(v.companyId),e)}catch(e){}}async function logout(){const e=o;try{if(e){await fetch(`${t}/api/auth/logout`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:e})})}}catch(e){}o=null;try{localStorage.removeItem(i(v.companyId));localStorage.removeItem("verilume_active_account")}catch(e){}location.href="/"}function u(){const e=encodeURIComponent(location.pathname+location.search);location.href=`login.html?next=${e}`;return new Promise(()=>{})}const p=["CMO","Director","Manager","Specialist"];const y=["Executive","PR","Brand","Media Planning & Ops","Performance Marketing","Advanced Analytics"];const f={CMO:0,Director:1,Manager:2,Specialist:3};document.getElementById("backToPortalLink").href=`portal.html?accountId=${encodeURIComponent(e.get("accountId")||"CXM-NAT-2026-700")}`;if(document.getElementById("teamPortalLink"))document.getElementById("teamPortalLink").href=`portal.html?accountId=${encodeURIComponent(e.get("accountId")||"CXM-NAT-2026-700")}&step=team`;let v={paidTier:null,levelStatus:null,companyId:e.get("accountId")||"CXM-NAT-2026-700",companyName:"Acme Hospitality Group",contact:{firstName:"Jane",lastName:"Doe",email:"jane@acmehospitality.com",phoneCountry:"+1",phone:"(555) 123-4567"},commPrefs:{email:true,sms:false,phone:true,marketing:false},card:{brand:"Visa",last4:"4242",exp:"08/28"},ach:null,team:[{id:"t1",name:"Jane Doe",email:"jane@acmehospitality.com",isAdmin:true,level:"CMO",functionGroup:"Executive",reportsToId:null,status:"active"},{id:"t2",name:"Priya Shah",email:"priya@acmehospitality.com",isAdmin:false,level:"Director",functionGroup:"Brand",reportsToId:"t1",status:"active"},{id:"t3",name:"Marcus Webb",email:"marcus@acmehospitality.com",isAdmin:false,level:"Manager",functionGroup:"Advanced Analytics",reportsToId:"t1",status:"inactive"}]};async function h(){
+document.getElementById("acctCoName").textContent=v.companyName;document.getElementById("acctCoNameEyebrow").textContent=v.companyName;document.getElementById("acctCoId").textContent=v.companyId;document.getElementById("teamCoIdLabel").textContent=v.companyId;document.getElementById("ctCompany").value=v.companyName;H();X();await B();{const e=document.getElementById("acctAvatar");if(e)e.textContent=k(v.companyName)}w();await S();z();U();L();g();A();await _();await V()}function g(){const set=(e,t)=>{const n=document.getElementById(e);if(n)n.value=t||""};if(n!=="backend"){set("ctFirst",v.contact.firstName);set("ctLast",v.contact.lastName);set("ctEmail",v.contact.email);set("ctPhone",v.contact.phone);return}const e=a?T(a):null;if(!e){set("ctFirst","");set("ctLast","");set("ctEmail","");set("ctPhone","");return}const t=String(e.name||"").trim().split(/\s+/);set("ctFirst",t[0]||"");set("ctLast",t.slice(1).join(" "));set("ctEmail",e.email||"");let o=String(e.phone||"").trim();const i=document.getElementById("ctPhoneCode");if(o.charAt(0)==="+"&&i){const e=[...i.options].map(e=>e.value).sort((e,t)=>t.length-e.length);const t=e.find(e=>o.indexOf(e)===0);if(t){i.value=t;o=o.slice(t.length).trim()}}set("ctPhone",o)}const I=[{key:"starter",rank:1,name:"Starter",tagline:"Starting out",price:"$1,500 a month",credits:"50",description:"Everything in Verilume with 50 credits a month.",selfServe:false},{key:"growth",rank:2,name:"Growth",tagline:"Growing",price:"$4,000 a month",credits:"150",description:"Everything in Verilume with 150 credits a month.",selfServe:false},{key:"enterprise",rank:3,name:"Enterprise",tagline:"At scale",price:"Contact us",credits:"Custom",description:"Credits sized to your team, plus partner integrations with Snowflake, Google and Meta.",selfServe:false}];const b={spark:"starter",starter:"starter",glow:"growth",radiance:"growth",beacon:"enterprise",growth:"growth",enterprise:"enterprise"};let C=I;async function w(){E()}function E(e,t){const n=document.getElementById("planBody");if(!n)return;const o=b[v.paidTier]||null;const a=C.find(e=>e.key===o)||null;const i=document.getElementById("acctPlanChip");if(i)i.textContent=a?a.name:"No package yet";const c=a?`<div class="plan-now"><div><div class="plan-tag">Current package</div><h3>${$(a.name)} <span style="font-weight:500;color:var(--muted);font-size:1rem;">· ${$(a.price)}</span></h3><p class="card-sub" style="margin:6px 0 0;">${$(a.description)}</p></div>\n        <div class="plan-facts"><div><b>${$(a.credits)}</b>credits a month</div></div></div>`:`<div class="plan-now"><div><div class="plan-tag">Current package</div><h3>No package activated yet</h3><p class="card-sub" style="margin:6px 0 0;">Ask Verilume to activate a package. Every package has the same functionality; they differ by monthly credits.</p></div></div>`;const s=C.filter(e=>!a||e.rank>a.rank).sort((e,t)=>e.rank-t.rank);const r=s.length?`<div class="plan-up-head">${a?"Move up":"Choose a package"}</div><div class="plan-up-grid">${s.map((e,t)=>{const n=e.key==="enterprise"?"Contact us":"Request activation";const o=`<button type="button" class="btn-${t===0?"primary":"ghost"}" onclick="planRequest('${e.key}', this)">${n}</button>`;return`<div class="plan-up${t===0&&a?" next":""}"><b>${$(e.name)}</b><span class="tl">${$(e.tagline)}</span><p>${$(e.price)} · ${e.key==="enterprise"?"custom credits":$(e.credits)+" credits a month"}</p><p>${$(e.description)}</p>${o}</div>`}).join("")}</div><p class="card-sub" style="margin:12px 0 0;">Packages above yours are activated by the Verilume team once the order is on file. Requesting one sends your details to Sales. Need more credits in a month? An admin can ask Verilume to add 50 credits for $2,000, invoiced.</p>`:`<p class="card-sub" style="margin:14px 0 0;">You are on our top package. Need more credits in a month? An admin can ask Verilume to add credits, invoiced.</p>`;n.innerHTML=c+r+(e?`<p class="plan-msg${t?" ok":""}" role="status">${$(e)}</p>`:"")}
+async function planRequest(e,n){if(n)n.disabled=true;try{const n=await d(`${t}/api/accounts/${encodeURIComponent(v.companyId)}/upgrade-request`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tier:e,source:"account page"})});const o=await n.json().catch(()=>({}));if(!n.ok)throw new Error(o.error||"The request could not be sent.");E(o.alreadyRequested?"A request was already sent in the last hour. Sales will be in touch.":"Request sent. Verilume Sales will confirm and activate the package with you.",true)}catch(e){E(e.message||"The request could not be sent. Email verilume@verilume.ai.")}}function k(name){const e=String(name||"").replace(/\(.*?\)/g,"").trim().split(/\s+/).filter(Boolean);return((e[0]||"")[0]||"—").toUpperCase()+((e[1]||"")[0]||"").toUpperCase()}(function(){const e=document.getElementById("acctNav");if(!e)return;const t=[...e.querySelectorAll("a")];function n(){let e=t[0];t.forEach(t=>{const n=document.querySelector(t.getAttribute("href"));if(n&&n.getBoundingClientRect().top<140)e=t});t.forEach(t=>t.classList.toggle("active",t===e))}window.addEventListener("scroll",n,{passive:true});setTimeout(n,400)})();function $(e){return String(e==null?"":e).replace(/[&<>"']/g,e=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[e]))}async function B(){l();try{let e=await d(`${t}/api/accounts/${encodeURIComponent(v.companyId)}`);if(e.status===401){const n=await u();if(n){e=await d(`${t}/api/accounts/${encodeURIComponent(v.companyId)}`)}}if(e.ok){const t=await e.json();if(t.account&&t.account.company){v.companyName=t.account.company;document.getElementById("acctCoName").textContent=v.companyName;document.getElementById("acctCoNameEyebrow").textContent=v.companyName;document.getElementById("ctCompany").value=v.companyName}v.paidTier=t.account&&t.account.paidTier||null;v.levelStatus=t.levelStatus||null;const o=document.getElementById("acctAvatar");if(o)o.textContent=k(v.companyName);n="backend";return}}catch(e){console.warn("account.html: backend not reachable, Company name stays at its local default.",e)}}async function S(){l();r();try{let e=await d(`${t}/api/accounts/${encodeURIComponent(v.companyId)}/team`);if(e.status===401){const n=await u();if(n){e=await d(`${t}/api/accounts/${encodeURIComponent(v.companyId)}/team`)}}if(e.ok){const{team:t}=await e.json();if(Array.isArray(t)){v.team=t.map(e=>({...e,isAdmin:!!e.isAdmin}))}n="backend";return}}catch(e){console.warn("account.html: backend not reachable, using the local (session-only) roster.",e)}n="mock"}function x(e){return e||""}function T(e){return v.team.find(t=>t.id===e)||null}function N(){if(!a)return true;const e=T(a);return e?!!e.isAdmin:true}function A(){const e=document.getElementById("inviteIsAdmin");const t=document.getElementById("inviteIsAdminGateHint");if(!e)return;const n=N();e.disabled=!n;if(t)t.style.display=n?"none":"block"}function L(){const e=document.getElementById("recoveryPhoneSection");if(!a){e.style.display="none";return}const t=T(a);if(!t){e.style.display="none";return}e.style.display="block";document.getElementById("recoveryPhoneInput").value=t.phone||"";document.getElementById("recoveryPhoneSaveBtn").disabled=true;try{R(!!t.mfaSms&&!!t.phone,t.phone)}catch(e){}}let P=null;function M(e,t){const n=document.getElementById("mfaSmsStatus");n.textContent=e;n.classList.toggle("ok",!!t)}function R(e,t){document.getElementById("mfaChanText").checked=!!e;document.getElementById("mfaChanEmail").checked=!e;const n=String(t||"").replace(/\D/g,"").slice(-4);const o=document.getElementById("mfaPhoneLine");if(o)o.textContent=t?`Mobile number on file: ending ${n}.`:"No mobile number on file yet.";document.getElementById("mfaSmsNow").textContent=e?`Your sign-in codes are sent by text${n?" to the number ending "+n:""}.`:"Your sign-in codes are sent to your email.";if(typeof a!=="undefined"){try{const t=T(a);if(t)t.mfaSms=!!e}catch(e){}}}async function mfaSmsStart(){M("Setting that up…");try{
+const e=await d(`${t}/api/auth/mfa-sms/start`,{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});const n=await e.json().catch(()=>({}));if(!e.ok){R(false);M(n.error||`Couldn't send a text (${e.status}).`);return}if(n.enabled){document.getElementById("mfaSmsConfirm").style.display="none";R(true,n.target);M("✓ Done. Your next sign-in code will arrive by text.",true);return}P=n.verificationId;document.getElementById("mfaSmsConfirm").style.display="block";document.getElementById("mfaSmsCode").value="";document.getElementById("mfaSmsCode").focus();M(`We texted a code to ${n.target} to confirm it is your phone. Enter it below.`+(n.interimCode?` (No live text provider here yet; your code is ${n.interimCode}.)`:""),true)}catch(e){R(false);M("Could not reach the backend — try again.")}}async function mfaSmsConfirm(){const e=document.getElementById("mfaSmsCode").value.trim();if(!/^\d{6}$/.test(e)){M("Enter the 6-digit code.");return}const n=document.getElementById("mfaSmsConfirmBtn");n.disabled=true;try{const o=await d(`${t}/api/auth/mfa-sms/confirm`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({verificationId:P,code:e})});const i=await o.json().catch(()=>({}));if(!o.ok){M(i.error||`Couldn't confirm that code (${o.status}).`);n.disabled=false;return}document.getElementById("mfaSmsConfirm").style.display="none";const c=typeof T==="function"&&a?T(a):null;R(true,c&&c.phone);M("✓ Text codes are on. Your next sign-in code will arrive by text.",true)}catch(e){M("Could not reach the backend — try again.")}n.disabled=false}async function mfaSmsOff(){try{const e=await d(`${t}/api/auth/mfa-sms/off`,{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});const n=await e.json().catch(()=>({}));if(!e.ok){M(n.error||`Couldn't change that (${e.status}).`);return}document.getElementById("mfaSmsConfirm").style.display="none";R(false);M("✓ Sign-in codes will go to your email.",true)}catch(e){M("Could not reach the backend — try again.")}}async function j(){const e=document.getElementById("recoveryPhoneSaveBtn");const n=document.getElementById("recoveryPhoneStatus");const o=document.getElementById("recoveryPhoneInput").value.trim();if(!a){n.textContent="Your session is missing profile info — log out and back in, then try again.";n.classList.remove("ok");return}e.disabled=true;n.textContent="Saving…";n.classList.remove("ok");try{const i=await d(`${t}/api/team/${encodeURIComponent(a)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:o})});const c=await i.json().catch(()=>({}));if(!i.ok){n.textContent=c.error||`Couldn't save your phone number (${i.status}).`;e.disabled=false;return}const s=T(a);const r=s&&String(s.phone||"").replace(/\D/g,"")!==String(o||"").replace(/\D/g,"");if(s)s.phone=o;if(r){try{R(false)}catch(e){}}n.textContent=o?"✓ Recovery phone number saved.":"✓ Recovery phone number removed.";n.classList.add("ok")}catch(t){n.textContent="Could not reach the backend — try again.";e.disabled=false}}function O(e){const t=T(e);if(!t||!t.reportsToId)return null;return T(t.reportsToId)}function D(e){const t=f[e];if(t===undefined||t===0)return[];return v.team.filter(e=>f[e.level]<t).sort((e,t)=>f[t.level]-f[e.level])}async function saveContact(){v.contact.firstName=document.getElementById("ctFirst").value.trim();v.contact.lastName=document.getElementById("ctLast").value.trim();v.contact.email=document.getElementById("ctEmail").value.trim();const e=document.getElementById("ctCompany").value.trim()||v.companyName;v.companyName=e;v.contact.phoneCountry=document.getElementById("ctPhoneCode").value;v.contact.phone=document.getElementById("ctPhone").value.trim();document.getElementById("acctCoName").textContent=v.companyName;document.getElementById("acctCoNameEyebrow").textContent=v.companyName;const o=document.getElementById("contactStatus");let i=false,c=false,s="";if(n==="backend"){try{
+const n=await d(`${t}/api/accounts/${encodeURIComponent(v.companyId)}/profile`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({company:e})});i=n.ok}catch(e){console.warn("saveContact: backend write failed, Company name saved locally only.",e)}if(a&&T(a)){try{const name=[v.contact.firstName,v.contact.lastName].filter(Boolean).join(" ");const e=v.contact.phone?`${v.contact.phoneCountry} ${v.contact.phone}`.trim():"";const n=await d(`${t}/api/team/${encodeURIComponent(a)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name,email:v.contact.email,phone:e})});c=n.ok;if(!n.ok){const e=await n.json().catch(()=>({}));s=e.error||""}else{const t=T(a);let n=false;if(t){n=String(t.phone||"").replace(/\D/g,"")!==String(e||"").replace(/\D/g,"");t.name=name;t.email=v.contact.email;t.phone=e;if(n)t.mfaSms=false}z();L();try{document.getElementById("recoveryPhoneInput").value=e;R(!!(t&&t.mfaSms)&&!!e,e)}catch(e){}}}catch(e){s="Could not reach the server."}}}o.textContent=c?"✓ Contact information saved.":i?`✓ Company name saved. Your name, email and phone were not saved${s?": "+s:" (no team member record is tied to this login)"}.`:"✓ Saved locally only (the backend is unreachable). Nothing was written to your account.";o.classList.toggle("ok",c||i)}function checkPasswordReady(){const e=document.getElementById("pwCurrent").value;const t=document.getElementById("pwNew").value;const n=document.getElementById("pwConfirm").value;const o=e.length>0&&t.length>=8&&t===n;document.getElementById("pwSaveBtn").disabled=!o}async function changePassword(){const e=document.getElementById("pwSaveBtn");const n=document.getElementById("pwStatus");const o=document.getElementById("pwCurrent").value;const a=document.getElementById("pwNew").value;e.disabled=true;n.classList.remove("ok");n.textContent="Saving…";try{const e=await d(`${t}/api/auth/change-password`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({currentPassword:o,newPassword:a})});const i=await e.json().catch(()=>({}));if(!e.ok){n.textContent=i.error||`Couldn't update your password (${e.status}).`;checkPasswordReady();return}n.textContent="✓ Password updated.";n.classList.add("ok");["pwCurrent","pwNew","pwConfirm"].forEach(e=>document.getElementById(e).value="")}catch(e){n.textContent="Could not reach the backend — try again.";checkPasswordReady()}}async function U(){const e=document.getElementById("commVoice"),n=document.getElementById("voiceConsentStatus"),o=document.getElementById("voiceConsentRow");if(!e||!v.companyId)return;try{const a=await d(`${t}/api/accounts/${encodeURIComponent(v.companyId)}/voice/consent`);const i=await a.json().catch(()=>({}));if(!a.ok)throw new Error("no consent record");if(i.scope!=="member"){o.style.display="none";return}e.checked=!!i.consented;n.textContent=i.consented&&i.at?"Agreed on "+new Date(i.at).toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})+".":""}catch(e){o.style.display="none"}}async function saveVoiceConsent(){const e=document.getElementById("commVoice"),n=document.getElementById("voiceConsentStatus");if(e.checked){if(!window.confirm("Talking uses your microphone. Your audio is processed by ElevenLabs so Verilume can understand and answer you, and the transcript is kept with this account's conversation history. Turn voice on for you?")){e.checked=false;return}}e.disabled=true;n.textContent="Saving…";try{const o=await d(`${t}/api/accounts/${encodeURIComponent(v.companyId)}/voice/consent`,{method:e.checked?"POST":"DELETE"});const a=await o.json().catch(()=>({}));if(!o.ok)throw new Error("save failed");e.checked=!!a.consented;n.textContent=a.consented?"✓ Voice is on for you.":"✓ Voice is off for you."}catch(t){e.checked=!e.checked;n.textContent="Could not save. Try again."}e.disabled=false}function saveCommPrefs(){v.commPrefs.email=document.getElementById("commEmail").checked;v.commPrefs.sms=document.getElementById("commSms").checked
+;v.commPrefs.phone=document.getElementById("commPhone").checked;v.commPrefs.marketing=document.getElementById("commMarketing").checked;const e=document.getElementById("commStatus");e.textContent="✓ Preferences saved (this session only)."}function H(){const e=document.getElementById("cardMethodDisplay");if(v.card){e.innerHTML=`<div class="pay-method">\n      <div class="pm-info">\n        <div class="pm-icon">${v.card.brand.slice(0,4).toUpperCase()}</div>\n        <div class="pm-detail"><h4>${v.card.brand} •••• ${v.card.last4}</h4><p>Expires ${v.card.exp} — required for self-service billing</p></div>\n      </div>\n      <span class="pay-required-tag">On file</span>\n    </div>`}else{e.innerHTML=`<div class="pay-empty">No credit card on file yet. <strong>A card is required to enable self-service billing.</strong></div>`}const t=document.getElementById("achMethodDisplay");if(v.ach){t.innerHTML=`<div class="pay-method">\n      <div class="pm-info">\n        <div class="pm-icon">ACH</div>\n        <div class="pm-detail"><h4>${v.ach.bankName} — ${v.ach.acctType} •••• ${v.ach.last4}</h4><p>Additional payment method</p></div>\n      </div>\n      <button class="btn-danger" onclick="removeAch()">Remove</button>\n    </div>`}else{t.innerHTML=""}}function toggleCardForm(){const e=document.getElementById("cardForm");e.style.display=e.style.display==="none"?"block":"none"}function toggleAchForm(){const e=document.getElementById("achForm");e.style.display=e.style.display==="none"?"block":"none"}function saveCard(){const e=document.getElementById("cardNumber").value.replace(/\s+/g,"");const t=document.getElementById("cardExp").value.trim();if(e.length<12||!t)return;v.card={brand:e.startsWith("4")?"Visa":e.startsWith("5")?"Mastercard":"Card",last4:e.slice(-4),exp:t};["cardNumber","cardName","cardExp","cardCvv","cardZip"].forEach(e=>document.getElementById(e).value="");toggleCardForm();H();const n=document.getElementById("paymentStatus");n.textContent="✓ Card saved (mocked — no real payment processor is integrated yet)."}function saveAch(){const e=document.getElementById("achBankName").value.trim();const t=document.getElementById("achAcctType").value;const n=document.getElementById("achAccount").value.replace(/\D/g,"");if(!e||n.length<4)return;v.ach={bankName:e,acctType:t,last4:n.slice(-4)};["achBankName","achRouting","achAccount"].forEach(e=>document.getElementById(e).value="");toggleAchForm();H();const o=document.getElementById("paymentStatus");o.textContent="✓ Bank account saved (mocked — no real payment processor is integrated yet)."}function removeAch(){v.ach=null;H();const e=document.getElementById("paymentStatus");e.textContent="Bank account removed."}let F=[];const G={draft:"Draft",sent:"Sent",paid:"Paid",overdue:"Overdue"};async function _(){const e=document.getElementById("invoiceRows");if(!e)return;e.innerHTML=`<tr><td colspan="6">Loading…</td></tr>`;try{let n=await d(`${t}/api/accounts/${encodeURIComponent(v.companyId)}/invoices`);if(n.status===401){const e=await u();if(e)n=await d(`${t}/api/accounts/${encodeURIComponent(v.companyId)}/invoices`)}if(!n.ok){e.innerHTML=`<tr><td colspan="6">Couldn't load invoices right now.</td></tr>`;return}const o=await n.json();F=o.invoices||[];q()}catch(t){e.innerHTML=`<tr><td colspan="6">Backend unreachable — can't load invoices.</td></tr>`}}function q(){const e=document.getElementById("invoiceRows");if(!e)return;e.innerHTML=F.length?F.map(e=>`\n    <tr>\n      <td>${$(e.invoiceNumber)}</td>\n      <td>${e.issuedDate?$(e.issuedDate):"—"}</td>\n      <td>${e.description?$(e.description):"—"}</td>\n      <td>$${Number(e.amount).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2
+})}</td>\n      <td><span class="status-chip ${e.status}">${G[e.status]||e.status}</span></td>\n      <td>\n        <select onchange="updateInvoiceStatus('${e.id}', this.value)" style="font-size:12px;">\n          ${Object.keys(G).map(t=>`<option value="${t}"${e.status===t?" selected":""}>${G[t]}</option>`).join("")}\n        </select>\n        <button class="link-btn" onclick="downloadInvoice('${e.invoiceNumber}')">Download</button>\n        <button class="link-btn" onclick="deleteInvoice('${e.id}')">Delete</button>\n      </td>\n    </tr>`).join(""):`<tr><td colspan="6">No invoices on this account yet.</td></tr>`}function toggleInvoiceForm(){const e=document.getElementById("invoiceForm");e.style.display=e.style.display==="none"?"block":"none"}async function createInvoice(){const e=document.getElementById("invDescription").value.trim();const n=document.getElementById("invAmount").value;const o=document.getElementById("invDueDate").value;const status=document.getElementById("invStatus").value;const a=document.getElementById("invoiceStatus");if(!n||isNaN(Number(n))){if(a)a.textContent="Enter a valid amount first.";return}try{const i=await d(`${t}/api/accounts/${encodeURIComponent(v.companyId)}/invoices`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({description:e,amount:n,dueDate:o||null,status:status})});if(!i.ok){if(a)a.textContent="Could not save this invoice.";return}document.getElementById("invDescription").value="";document.getElementById("invAmount").value="";document.getElementById("invDueDate").value="";toggleInvoiceForm();await _();await V();if(a)a.textContent=`Saved ${(new Date).toLocaleTimeString()}.`}catch(e){if(a)a.textContent="Backend unreachable — not saved."}}async function updateInvoiceStatus(e,status){try{const n=await d(`${t}/api/invoices/${encodeURIComponent(e)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:status})});if(!n.ok){alert("Could not update this invoice.");return}await _();await V()}catch(e){alert("Backend unreachable — could not update this invoice.")}}async function deleteInvoice(e){if(!confirm("Delete this invoice?"))return;try{const n=await d(`${t}/api/invoices/${encodeURIComponent(e)}`,{method:"DELETE"});if(!n.ok){alert("Could not delete this invoice.");return}await _();await V()}catch(e){alert("Backend unreachable — could not delete this invoice.")}}function downloadInvoice(e){const t=document.getElementById("invoiceStatus");t.textContent=`${e}: this is a prototype — invoice PDFs aren't generated in this build.`}async function V(){const e=document.getElementById("financialSummary");if(!e)return;e.innerHTML='<p class="card-sub">Loading…</p>';try{const n=await d(`${t}/api/accounts/${encodeURIComponent(v.companyId)}/financial-summary`);if(!n.ok){e.innerHTML='<p class="card-sub">Couldn\'t load the financial summary right now.</p>';return}const o=await n.json();const a=e=>"$"+Number(e||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})
+;e.innerHTML=`\n      <h3 style="margin:0 0 10px;font-size:16px;">Financial summary</h3>\n      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:10px;">\n        <div><div class="card-sub" style="margin:0;">Planned budget (${o.campaignCount} campaign${o.campaignCount===1?"":"s"})</div><div style="font-size:18px;font-weight:600;">${a(o.totalPlannedBudget)}</div></div>\n        <div><div class="card-sub" style="margin:0;">Actual media spend</div><div style="font-size:18px;font-weight:600;">${a(o.totalActualSpend)}</div></div>\n        <div><div class="card-sub" style="margin:0;">Total invoiced</div><div style="font-size:18px;font-weight:600;">${a(o.totalInvoiced)}</div></div>\n        <div><div class="card-sub" style="margin:0;">Total paid</div><div style="font-size:18px;font-weight:600;">${a(o.totalPaid)}</div></div>\n        <div><div class="card-sub" style="margin:0;">Outstanding balance</div><div style="font-size:18px;font-weight:600;">${a(o.outstandingBalance)}</div></div>\n      </div>\n      <p class="card-sub" style="margin:0;">${o.campaignsWithActualsCount} of ${o.campaignCount} campaign${o.campaignCount===1?"":"s"} ${o.campaignCount===1?"has":"have"} reported actual media spend so far — actual spend here reflects only what's been entered on those campaigns' Analysis step.${o.totalOverdue?` ${a(o.totalOverdue)} is currently marked Overdue.`:""}</p>\n    `}catch(t){e.innerHTML='<p class="card-sub">Backend unreachable — can\'t load the financial summary.</p>'}}let J=null;function z(){const e=document.getElementById("teamRows");if(!e)return;if(!v.team.length){e.innerHTML=`<tr><td colspan="5" style="color:var(--muted);">No team members yet — invite your first one below.</td></tr>`;return}e.innerHTML=v.team.map(e=>{const t=O(e.id);const n=`${e.isAdmin?'<span style="font-family:-apple-system, BlinkMacSystemFont, Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif;font-size:10.5px;letter-spacing:0.04em;text-transform:uppercase;background:var(--ink);color:#fff;border-radius:999px;padding:2px 8px;margin-right:6px;">Admin</span>':""}${e.level?`${e.level} · ${x(e.functionGroup)}`:""}`;return`\n    <tr>\n      <td>${e.name}</td>\n      <td>${e.email||"—"}</td>\n      <td><span class="role-tag" style="background:none;padding:0;">${n||"—"}</span>${t?`<div class="hint" style="margin-top:3px;">reports to ${t.name}</div>`:""}</td>\n      <td><span class="status-chip ${e.status}">${e.status==="active"?"Active":"Inactive"}</span></td>\n      <td style="white-space:nowrap;">\n        <button class="link-btn" onclick="startEditTeamMember('${e.id}')">Edit</button>\n        &nbsp;·&nbsp;\n        <button class="link-btn" onclick="toggleTeamStatus('${e.id}')">${e.status==="active"?"Deactivate":"Reactivate"}</button>\n        ${e.email?`&nbsp;·&nbsp;<button class="link-btn" onclick="reissueTeamMemberCredentials('${e.id}')" title="Generate a new temp password for this person">Reissue login</button>`:""}\n      </td>\n    </tr>`}).join("")}function Y(e){return v.team.filter(t=>t.isAdmin&&t.status!=="inactive"&&t.id!==e).length}async function toggleTeamStatus(e){const o=v.team.find(t=>t.id===e);if(!o)return;const a=document.getElementById("teamStatus");if(o.status==="active"&&o.isAdmin&&Y(e)===0){a.style.color="var(--advocacy)";a.textContent=`${o.name} is this account's only Admin — promote someone else to Admin before deactivating them.`;return}o.status=o.status==="active"?"inactive":"active";z();if(n==="backend"&&!String(e).startsWith("local-team-")){try{await d(`${t}/api/team/${encodeURIComponent(e)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:o.status})})}catch(e){}}}function W(){const e=document.getElementById("inviteForm");if(!e)return;const t=e.style.display==="none";e.style.display=t?"block":"none";if(t)X();else if(J)te()}function X(){const e=document.getElementById("inviteLevel");const t=document.getElementById("inviteFunction")
+;if(!e||!t)return;e.innerHTML=`<option value="">Select a level…</option>`+p.map(e=>`<option value="${e}">${e}</option>`).join("");t.innerHTML=`<option value="">Select a function…</option>`+y.map(e=>`<option value="${e}">${x(e)}</option>`).join("");Z()}function Z(){const e=document.getElementById("inviteLevel");const t=document.getElementById("inviteFunction");const n=document.getElementById("inviteReportsTo");if(!e||!t||!n)return;const o=e.value;if(o==="CMO"){t.value="Executive";t.disabled=true}else{t.disabled=false}const a=D(o);n.innerHTML=(o==="CMO"?`<option value="">— none (top of this account's chart) —</option>`:`<option value="">— none on file yet —</option>`)+a.map(e=>`<option value="${e.id}">${e.name} — ${e.level}, ${x(e.functionGroup)}</option>`).join("");if(J){Array.from(n.options).forEach(e=>{if(e.value===J)e.remove()})}}function K(){return{name:document.getElementById("inviteName").value.trim(),email:document.getElementById("inviteEmail").value.trim(),level:document.getElementById("inviteLevel").value,functionGroup:document.getElementById("inviteFunction").value,reportsToId:document.getElementById("inviteReportsTo").value||null,isAdmin:document.getElementById("inviteIsAdmin").checked}}function Q(){["inviteName","inviteEmail"].forEach(e=>document.getElementById(e).value="");document.getElementById("inviteIsAdmin").checked=false;document.getElementById("inviteLevel").value="";document.getElementById("inviteFunction").value="";Z()}function ee(){if(J)return oe();return ne()}function startEditTeamMember(e){const t=T(e);if(!t)return;J=e;A();const n=document.getElementById("inviteForm");n.style.display="block";X();document.getElementById("inviteName").value=t.name||"";document.getElementById("inviteEmail").value=t.email||"";document.getElementById("inviteIsAdmin").checked=!!t.isAdmin;document.getElementById("inviteLevel").value=t.level||"";Z();document.getElementById("inviteFunction").value=t.functionGroup||"";document.getElementById("inviteReportsTo").value=t.reportsToId||"";document.getElementById("inviteFormHeading").textContent=`Edit ${t.name}`;document.getElementById("inviteSubmitBtn").textContent="Save changes";document.getElementById("inviteCancelBtn").style.display="inline-block";const o=document.getElementById("teamStatus");if(o)o.textContent="";n.scrollIntoView({behavior:"smooth",block:"center"})}function te(){J=null;Q();document.getElementById("inviteFormHeading").textContent="Invite a team member";document.getElementById("inviteSubmitBtn").textContent="Send invite";document.getElementById("inviteCancelBtn").style.display="none";document.getElementById("inviteForm").style.display="none"}async function ne(){const{name:name,email:e,level:o,functionGroup:a,reportsToId:i,isAdmin:c}=K();const s=document.getElementById("teamStatus");if(!name||!e.includes("@")||!o||!a){s.style.color="var(--advocacy)";s.textContent="Name, a valid email, Level, and Function are all required.";return}const r={id:`local-team-${Date.now()}`,name:name,email:e,isAdmin:c,level:o,functionGroup:a,reportsToId:i,status:"active"};let l=false;let m=null;if(n==="backend"){try{const n=await d(`${t}/api/accounts/${encodeURIComponent(v.companyId)}/team`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name,email:e,isAdmin:c,level:o,functionGroup:a,reportsToId:i})});const u=await n.json().catch(()=>({}));if(n.status===409){s.style.color="var(--advocacy)";s.textContent=u.error||"That email is already registered to a Verilume account.";return}if(n.ok){r.id=u.memberId;m=u.tempPassword||null;l=true}}catch(e){}}v.team.push(r);Q();W();z();s.style.color="var(--cx)";if(l&&m){
+s.innerHTML=`✓ ${$(name)} can sign in now with ${$(e)}. `+`<strong>Temporary password — shown once, save it before leaving this page:</strong> `+`<code style="font-family:'SF Mono',Consolas,monospace;background:var(--paper-dim);padding:2px 6px;border-radius:3px;">${$(m)}</code> `+`They'll be asked to set their own password on first login. Lost this before handing it off? Use "Reissue login" on their row below.`}else if(l){s.textContent=`✓ Invite sent to ${e} — saved to this account's real backend record (same roster the Portal's Team & Org Chart reads).`}else{s.textContent=`✓ Invite sent to ${e} (mocked — local only, this session; no backend record for this account, or the backend is unreachable).`}}async function reissueTeamMemberCredentials(e){const n=T(e);const o=document.getElementById("teamStatus");if(!n)return;if(!n.email){o.style.color="var(--advocacy)";o.textContent=`${n.name} has no email on file — edit them to add one before issuing login credentials.`;return}if(!confirm(`Generate a new temporary password for ${n.name}? Any password they already have (temp or one they set themselves) will stop working.`))return;try{const a=await d(`${t}/api/team/${encodeURIComponent(e)}/reissue-credentials`,{method:"POST"});const i=await a.json().catch(()=>({}));if(!a.ok){o.style.color="var(--advocacy)";o.textContent=i.error||`Couldn't reissue credentials (${a.status}).`;return}o.style.color="var(--cx)";o.innerHTML=`✓ New temporary password for ${$(n.name)} (${$(i.email)}) — shown once: `+`<code style="font-family:'SF Mono',Consolas,monospace;background:var(--paper-dim);padding:2px 6px;border-radius:3px;">${$(i.tempPassword)}</code>`}catch(e){o.style.color="var(--advocacy)";o.textContent="Could not reach the backend to reissue credentials — try again."}}async function oe(){const e=J;const o=T(e);const a=document.getElementById("teamStatus");if(!o){te();return}const{name:name,email:i,level:c,functionGroup:s,reportsToId:r,isAdmin:l}=K();if(!name||!i.includes("@")||!c||!s){a.style.color="var(--advocacy)";a.textContent="Name, a valid email, Level, and Function are all required.";return}if(r===e){a.style.color="var(--advocacy)";a.textContent="Someone can't report to themselves.";return}if(o.isAdmin&&!l&&Y(e)===0){a.style.color="var(--advocacy)";a.textContent=`${o.name} is this account's only Admin — promote someone else to Admin first.`;return}Object.assign(o,{name:name,email:i,isAdmin:l,level:c,functionGroup:s,reportsToId:r});let m=false;if(n==="backend"&&!String(e).startsWith("local-team-")){try{const n=await d(`${t}/api/team/${encodeURIComponent(e)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name,email:i,isAdmin:l,level:c,functionGroup:s,reportsToId:r})});m=n.ok}catch(e){}}te();z();a.style.color="var(--cx)";a.textContent=m?`✓ Saved changes to ${name} — updated in this account's real backend record.`:`✓ Saved changes to ${name} (mocked — local only, this session; no backend record for this account, or the backend is unreachable).`}h();</script>
 </body>
 </html>

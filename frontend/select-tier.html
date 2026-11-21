@@ -41,7 +41,6 @@
   .activate-panel label{display:block;font-size:11.5px;font-weight:600;margin-bottom:4px;}
   .activate-panel input{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:4px;font-family:inherit;font-size:13px;margin-bottom:10px;box-sizing:border-box;}
   .activate-error{font-size:12px;color:var(--advocacy);min-height:16px;margin-bottom:6px;}
-
   .utility-nav{background:var(--ink);}
   .utility-nav-inner{max-width:1200px;margin:0 auto;padding:10px 28px;display:flex;justify-content:flex-end;align-items:center;gap:12px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;}
   .utility-nav-inner a{font-size:12.5px;font-weight:600;color:rgba(255,255,255,0.92);text-decoration:none;padding:8px 16px;border:1px solid rgba(255,255,255,0.38);border-radius:999px;white-space:nowrap;transition:border-color 0.2s ease, background 0.2s ease;}
@@ -60,7 +59,6 @@
   --vl-display:'Bricolage Grotesque','Avenir Next','Segoe UI',system-ui,sans-serif;
   --vl-body:'Instrument Sans','Avenir Next','Segoe UI',system-ui,sans-serif;
   --vl-mono:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
-
   --ink:#10141B; --paper:#FBFAF6; --paper-dim:#F2F0E9; --white:#FFFFFF;
   --media:#B8760B; --cx:#0B6F62; --advocacy:#B4472B;
   --line:#D9D4C6; --line-hairline:#E7E3D8; --line-strong:#BDB6A3; --muted:#625E52;
@@ -68,7 +66,6 @@
   --radius-sm:8px; --radius-md:12px; --radius-lg:18px;
   --shadow-sm:0 1px 2px rgba(16,20,27,.06); --shadow-md:0 6px 20px rgba(16,20,27,.08); --shadow-lg:0 22px 56px rgba(16,20,27,.16);
 }
-
 html body, html body *:not(code):not(pre):not(kbd):not(samp):not(.vl-mono){font-family:var(--vl-body)!important;}
 html body h1, html body h2, html body h3, html body .logo, html body .vl-display,
 html body h1 *, html body h2 *, html body .stat-num, html body .big-num{font-family:var(--vl-display)!important;font-optical-sizing:auto;}
@@ -76,7 +73,6 @@ html body h1, html body h2{letter-spacing:-0.02em;}
 html body .vl-mono, html body .eyebrow, html body .hero-eyebrow, html body .band-label, html body .teaser-label{font-family:var(--vl-mono)!important;letter-spacing:.08em;}
 body{background:var(--day);color:var(--ink);}
 ::selection{background:var(--lamp);color:#10141B;}
-
 .utility-nav{background:#000!important;}
 .utility-nav-inner a{border-color:rgba(255,255,255,.28)!important;font-family:var(--vl-mono)!important;font-size:11px!important;letter-spacing:.06em;text-transform:uppercase;}
 header, header#siteHeader{background:rgba(7,9,13,.88)!important;backdrop-filter:blur(14px) saturate(140%);-webkit-backdrop-filter:blur(14px) saturate(140%);border-bottom:1px solid rgba(255,255,255,.08)!important;}
@@ -91,12 +87,10 @@ header .logo b, .logo b{color:var(--lamp)!important;font-weight:600!important;}
 @media (max-width:1180px){
   .navlinks{background:var(--night)!important;border-bottom:1px solid rgba(255,255,255,.1)!important;}
 }
-
 .btn-primary, button.btn-primary{background:var(--lamp)!important;color:#10141B!important;border:0!important;border-radius:999px!important;font-weight:600!important;box-shadow:none!important;}
 .btn-primary:hover{box-shadow:0 0 0 6px rgba(244,182,63,.25)!important;transform:none!important;}
 .btn-ghost{border-color:var(--ink)!important;color:var(--ink)!important;border-radius:999px!important;background:transparent!important;}
 .btn-ghost:hover{background:var(--ink)!important;color:var(--day)!important;}
-
 .hero{background:radial-gradient(120% 90% at 78% -10%, #1b2a3a 0%, #0b1118 46%, #07090D 100%)!important;color:#EDEAE0!important;border-bottom:0!important;}
 .hero h1, .hero .accent{color:#fff!important;}
 .hero .accent{color:var(--lamp)!important;}
@@ -106,10 +100,8 @@ header .logo b, .logo b{color:var(--lamp)!important;font-weight:600!important;}
 .hero .hero-eyebrow .dot{background:var(--truth)!important;}
 .hero .btn-ghost{border-color:rgba(255,255,255,.5)!important;color:#fff!important;}
 .hero .btn-ghost:hover{background:#fff!important;color:#10141B!important;}
-
 .band{background:var(--day);}
 .band-label h2{color:var(--ink);}
-
 footer{background:var(--night)!important;border-top:1px solid rgba(255,255,255,.08)!important;color:rgba(237,234,224,.7)!important;}
 footer .footer-faq{border-bottom-color:rgba(255,255,255,.12)!important;}
 footer .footer-faq h2, footer h2{color:#fff!important;}
@@ -120,14 +112,11 @@ footer .faq-item a{color:var(--truth)!important;}
 footer .footer-nav a{color:rgba(237,234,224,.62)!important;}
 footer .footer-nav a:hover{color:var(--lamp)!important;}
 footer .footer-inner{color:rgba(237,234,224,.55)!important;}
-
 @media (prefers-reduced-motion:reduce){
   *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important;}
 }
-
 html body h1, html body h2{font-weight:600;}
 html body h3{font-weight:600;}
-
 .wrap > footer, .page > footer, main + footer, footer:not(:has(.footer-inner)){
   position:relative; box-shadow:0 0 0 100vmax var(--night); clip-path:inset(0 -100vmax);
   margin-top:80px!important; padding:28px 0 32px!important; line-height:1.6!important;
@@ -136,7 +125,6 @@ html body h3{font-weight:600;}
 footer:not(:has(.footer-inner)) .footer-nav a{color:rgba(237,234,224,.62)!important;}
 footer:not(:has(.footer-inner)) > span{color:rgba(237,234,224,.55)!important;}
 .wrap:has(> footer){padding-bottom:0!important;margin-bottom:0!important;}
-
 .btn-ghost{border:1.5px solid currentColor!important;padding:15px 26px!important;border-radius:999px!important;display:inline-block;}
 .hero .btn-ghost{border-color:rgba(255,255,255,.5)!important;}
 </style>
@@ -148,72 +136,7 @@ footer:not(:has(.footer-inner)) > span{color:rgba(237,234,224,.55)!important;}
     <a href="login.html" id="utilNavAuthLink">Log in</a>
   </div>
 </div>
-<script>
-(function(){
-  function vlUtilBackendUrl(){
-    return (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
-      ? ''
-      : 'http://localhost:8787';
-  }
-  function vlActiveAccountId(){
-    try { return localStorage.getItem('verilume_active_account') || ''; } catch (e) { return ''; }
-  }
-  function vlUtilityNavInit(){
-    var accountId = vlActiveAccountId();
-    var portalLink = document.getElementById('utilNavPortalLink');
-    var authLink = document.getElementById('utilNavAuthLink');
-    if (!portalLink || !authLink) return;
-    if (accountId){
-      var onPortalPage = /\/?portal\.html$/.test((window.location && window.location.pathname) || '');
-      if (onPortalPage){
-        portalLink.style.display = 'none';
-      } else {
-        portalLink.href = 'portal.html?accountId=' + encodeURIComponent(accountId);
-        portalLink.style.display = '';
-      }
-      authLink.textContent = 'Logout';
-      authLink.href = '#';
-      authLink.onclick = function(e){
-        e.preventDefault();
-        var token = null;
-        try { token = localStorage.getItem('verilume_session_' + accountId); } catch (e2) {}
-        var finish = function(){
-          try {
-            localStorage.removeItem('verilume_session_' + accountId);
-            localStorage.removeItem('verilume_member_' + accountId);
-            localStorage.removeItem('verilume_active_account');
-          } catch (e3) {}
-          location.href = '/';
-        };
-        if (token){
-          fetch(vlUtilBackendUrl() + '/api/auth/logout', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token: token })
-          }).then(finish).catch(finish);
-        } else {
-          finish();
-        }
-      };
-    } else {
-      portalLink.style.display = 'none';
-      authLink.textContent = 'Log in';
-      authLink.href = 'login.html';
-      authLink.onclick = null;
-    }
-  }
-  if (document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', vlUtilityNavInit);
-  } else {
-    vlUtilityNavInit();
-  }
-  window.addEventListener('pageshow', function(e){ vlUtilityNavInit(); });
-  window.addEventListener('storage', function(e){
-    if (!e.key || e.key === 'verilume_active_account') vlUtilityNavInit();
-  });
-  window.vlUtilityNavInit = vlUtilityNavInit;
-})();
-</script>
+<script>(function(){function t(){return typeof window!=="undefined"&&window.location&&window.location.protocol!=="file:"?"":"http://localhost:8787"}function e(){try{return localStorage.getItem("verilume_active_account")||""}catch(t){return""}}function n(){var n=e();var o=document.getElementById("utilNavPortalLink");var a=document.getElementById("utilNavAuthLink");if(!o||!a)return;if(n){var i=/\/?portal\.html$/.test(window.location&&window.location.pathname||"");if(i){o.style.display="none"}else{o.href="portal.html?accountId="+encodeURIComponent(n);o.style.display=""}a.textContent="Logout";a.href="#";a.onclick=function(e){e.preventDefault();var o=null;try{o=localStorage.getItem("verilume_session_"+n)}catch(t){}var a=function(){try{localStorage.removeItem("verilume_session_"+n);localStorage.removeItem("verilume_member_"+n);localStorage.removeItem("verilume_active_account")}catch(t){}location.href="/"};if(o){fetch(t()+"/api/auth/logout",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:o})}).then(a).catch(a)}else{a()}}}else{o.style.display="none";a.textContent="Log in";a.href="login.html";a.onclick=null}}if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",n)}else{n()}window.addEventListener("pageshow",function(t){n()});window.addEventListener("storage",function(t){if(!t.key||t.key==="verilume_active_account")n()});window.vlUtilityNavInit=n})();</script>
 
 <div class="back-nav"><a class="wordmark" href="index.html">Veri<b>lume</b></a><a href="javascript:history.back()">← Back</a></div>
 <div class="wrap">
@@ -231,122 +154,7 @@ footer:not(:has(.footer-inner)) > span{color:rgba(237,234,224,.55)!important;}
   <p class="status" id="pageStatus"></p>
 </div>
 
-<script>
-const BACKEND_URL = (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
-  ? ''
-  : 'http://localhost:8787';
-
-function sessionStorageKey(accountId){
-  return `verilume_session_${accountId}`;
-}
-function persistSessionTokenFor(accountId, token){
-  try { localStorage.setItem(sessionStorageKey(accountId), token); } catch (e) { }
-}
-
-let TIERS = [];
-
-async function loadTiers(){
-  const grid = document.getElementById('tiersGrid');
-  try {
-    const resp = await fetch(`${BACKEND_URL}/api/paid-tiers`);
-    if (!resp.ok) throw new Error(`Backend responded ${resp.status}`);
-    const data = await resp.json();
-    TIERS = data.tiers || [];
-    renderTiers();
-  } catch (e){
-    grid.innerHTML = `<p style="color:var(--advocacy);">Couldn't reach the Verilume backend to load levels — try again in a moment.</p>`;
-  }
-}
-
-function renderTiers(){
-  const grid = document.getElementById('tiersGrid');
-  grid.innerHTML = TIERS.map(t => `
-    <div class="tier-card">
-      <div>
-        <div class="tier-name">${escapeHtml(t.name)}</div>
-        <p class="tier-desc">${escapeHtml(t.description)}</p>
-      </div>
-      <div class="tier-actions">
-        <a class="btn-primary" href="onboarding.html?tier=${encodeURIComponent(t.key)}" onclick="return requireAgreement()">Create a new account with this level →</a>
-        <button type="button" class="btn-ghost" onclick="toggleActivatePanel('${t.key}')">I already have an account</button>
-      </div>
-      <div class="activate-panel" id="activate-${t.key}">
-        <label for="activateEmail-${t.key}">Email</label>
-        <input type="email" id="activateEmail-${t.key}">
-        <label for="activatePassword-${t.key}">Password</label>
-        <input type="password" id="activatePassword-${t.key}">
-        <div class="activate-error" id="activateError-${t.key}"></div>
-        <button type="button" class="btn-primary" style="width:100%;" onclick="activateTierOnExisting('${t.key}')">Log in and activate this level →</button>
-      </div>
-    </div>
-  `).join('');
-}
-
-function escapeHtml(s){
-  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-}
-
-function requireAgreement(){
-  const box = document.getElementById('agreeTerms');
-  const err = document.getElementById('termsError');
-  if (box && box.checked){ err.textContent = ''; return true; }
-  err.textContent = 'Please agree to the Terms & Conditions and Privacy Policy to continue.';
-  if (box) box.focus();
-  return false;
-}
-document.addEventListener('change', function(e){
-  if (e.target && e.target.id === 'agreeTerms' && e.target.checked) document.getElementById('termsError').textContent = '';
-});
-
-function toggleActivatePanel(key){
-  document.querySelectorAll('.activate-panel').forEach(el => {
-    if (el.id !== `activate-${key}`) el.classList.remove('open');
-  });
-  document.getElementById(`activate-${key}`).classList.toggle('open');
-}
-
-async function activateTierOnExisting(key){
-  const email = document.getElementById(`activateEmail-${key}`).value.trim();
-  const password = document.getElementById(`activatePassword-${key}`).value;
-  const errEl = document.getElementById(`activateError-${key}`);
-  errEl.textContent = '';
-  if (!requireAgreement()){ errEl.textContent = 'Tick the agreement above first.'; return; }
-  if (!email || !password){ errEl.textContent = 'Enter your email and password.'; return; }
-  try {
-    const loginResp = await fetch(`${BACKEND_URL}/api/auth/login-user`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
-    const loginData = await loginResp.json().catch(() => ({}));
-    if (!loginResp.ok){
-      errEl.textContent = loginData.error || `Couldn't sign in (${loginResp.status}).`;
-      return;
-    }
-    if (loginData.mustChangePassword){
-      persistSessionTokenFor(loginData.accountId, loginData.token);
-      errEl.textContent = '';
-      window.location.href = `account.html?accountId=${encodeURIComponent(loginData.accountId)}`;
-      return;
-    }
-    const tierResp = await fetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(loginData.accountId)}/tier`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${loginData.token}` },
-      body: JSON.stringify({ tier: key, acceptTerms: true })
-    });
-    if (!tierResp.ok){
-      const tierData = await tierResp.json().catch(() => ({}));
-      errEl.textContent = tierData.error || `Couldn't activate this level (${tierResp.status}).`;
-      return;
-    }
-    persistSessionTokenFor(loginData.accountId, loginData.token);
-    window.location.href = `account.html?accountId=${encodeURIComponent(loginData.accountId)}`;
-  } catch (e){
-    errEl.textContent = 'Could not reach the backend — try again.';
-  }
-}
-
-loadTiers();
-</script>
+<script>const t=typeof window!=="undefined"&&window.location&&window.location.protocol!=="file:"?"":"http://localhost:8787";function e(t){return`verilume_session_${t}`}function n(t,n){try{localStorage.setItem(e(t),n)}catch(t){}}let o=[];async function a(){const e=document.getElementById("tiersGrid");try{const e=await fetch(`${t}/api/paid-tiers`);if(!e.ok)throw new Error(`Backend responded ${e.status}`);const n=await e.json();o=n.tiers||[];i()}catch(t){e.innerHTML=`<p style="color:var(--advocacy);">Couldn't reach the Verilume backend to load levels — try again in a moment.</p>`}}function i(){const t=document.getElementById("tiersGrid");t.innerHTML=o.map(t=>`\n    <div class="tier-card">\n      <div>\n        <div class="tier-name">${c(t.name)}</div>\n        <p class="tier-desc">${c(t.description)}</p>\n      </div>\n      <div class="tier-actions">\n        <a class="btn-primary" href="onboarding.html?tier=${encodeURIComponent(t.key)}" onclick="return requireAgreement()">Create a new account with this level →</a>\n        <button type="button" class="btn-ghost" onclick="toggleActivatePanel('${t.key}')">I already have an account</button>\n      </div>\n      <div class="activate-panel" id="activate-${t.key}">\n        <label for="activateEmail-${t.key}">Email</label>\n        <input type="email" id="activateEmail-${t.key}">\n        <label for="activatePassword-${t.key}">Password</label>\n        <input type="password" id="activatePassword-${t.key}">\n        <div class="activate-error" id="activateError-${t.key}"></div>\n        <button type="button" class="btn-primary" style="width:100%;" onclick="activateTierOnExisting('${t.key}')">Log in and activate this level →</button>\n      </div>\n    </div>\n  `).join("")}function c(t){return String(t==null?"":t).replace(/[&<>"']/g,t=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[t]))}function requireAgreement(){const t=document.getElementById("agreeTerms");const e=document.getElementById("termsError");if(t&&t.checked){e.textContent="";return true}e.textContent="Please agree to the Terms & Conditions and Privacy Policy to continue.";if(t)t.focus();return false}document.addEventListener("change",function(t){if(t.target&&t.target.id==="agreeTerms"&&t.target.checked)document.getElementById("termsError").textContent=""});function toggleActivatePanel(t){document.querySelectorAll(".activate-panel").forEach(e=>{if(e.id!==`activate-${t}`)e.classList.remove("open")});document.getElementById(`activate-${t}`).classList.toggle("open")}async function activateTierOnExisting(e){
+const o=document.getElementById(`activateEmail-${e}`).value.trim();const a=document.getElementById(`activatePassword-${e}`).value;const i=document.getElementById(`activateError-${e}`);i.textContent="";if(!requireAgreement()){i.textContent="Tick the agreement above first.";return}if(!o||!a){i.textContent="Enter your email and password.";return}try{const c=await fetch(`${t}/api/auth/login-user`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:o,password:a})});const r=await c.json().catch(()=>({}));if(!c.ok){i.textContent=r.error||`Couldn't sign in (${c.status}).`;return}if(r.mustChangePassword){n(r.accountId,r.token);i.textContent="";window.location.href=`account.html?accountId=${encodeURIComponent(r.accountId)}`;return}const l=await fetch(`${t}/api/accounts/${encodeURIComponent(r.accountId)}/tier`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${r.token}`},body:JSON.stringify({tier:e,acceptTerms:true})});if(!l.ok){const t=await l.json().catch(()=>({}));i.textContent=t.error||`Couldn't activate this level (${l.status}).`;return}n(r.accountId,r.token);window.location.href=`account.html?accountId=${encodeURIComponent(r.accountId)}`}catch(t){i.textContent="Could not reach the backend — try again."}}a();</script>
 </body>
 </html>
