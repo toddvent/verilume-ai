@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-21-r84-trial-delivery (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-21-r86-terms-at-signup (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -33842,7 +33842,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-21-r84-trial-delivery',
+        buildStamp: '2026-11-21-r86-terms-at-signup',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -34421,6 +34421,9 @@ async function handleRequestInner(req, res) {
         accountId: body.accountId, memberId, documentType: 'pricing_disclosures',
         documentVersion: 'v1', name: body.name, email: body.email, method: 'assumed-on-save'
       });
+      // Current Terms acceptance (the same record the trial and package steps check). Both account-creation pages show the Terms and
+      // Privacy Policy links beside the action; onboarding.html also has a required checkbox and sends acceptTerms:true.
+      recordTermsAcceptance(req, body.accountId, body.acceptTerms === true ? 'register-admin-checkbox' : 'register-admin-notice');
       if (body.nda && body.nda.signedAt){
         recordLegalAcceptance(req, {
           accountId: body.accountId, memberId, documentType: 'nda',
