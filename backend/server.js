@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-21-r86-terms-at-signup (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-21-r87-terms-ops-activation (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -33621,6 +33621,11 @@ async function handleRequestInner(req, res) {
         // Any level above free Spark needs an updated IO on file, and the
         // Verilume team member making the change is recorded and messages Sales.
         if (tier && tier !== 'spark' && !ioReference) return sendJson(res, 400, { error: 'An updated IO reference is required to activate this level.' });
+        // Paid levels need the Terms accepted: online by the client, or by the team confirming that the signed IO incorporates them.
+        if (tier && tier !== 'spark' && !termsAcceptedFor(accountId)){
+          if (body.termsViaIo === true) recordTermsAcceptance(req, accountId, 'ops-console-io');
+          else return sendJson(res, 400, { error: 'The Terms & Conditions have not been accepted for this account. Confirm the IO incorporates them, or ask the client to accept them online.', code: 'terms_required', termsVersion: TERMS_VERSION });
+        }
         const now = nowIso();
         db.prepare('UPDATE accounts SET paidTier = ?, paidTierActivatedAt = ? WHERE accountId = ?').run(tier, tier ? now : null, accountId);
         let salesNotified = false;
@@ -33842,7 +33847,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-21-r86-terms-at-signup',
+        buildStamp: '2026-11-21-r87-terms-ops-activation',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
