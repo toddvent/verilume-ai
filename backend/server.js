@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-20-r80-server-funnel (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-21-r81-server-segments (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -33841,7 +33841,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-20-r80-server-funnel',
+        buildStamp: '2026-11-21-r81-server-segments',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -35515,6 +35515,7 @@ async function handleRequestInner(req, res) {
       hits.push(nowMs); portalServeLog.set(rk, hits);
       let body;
       try { body = await readBody(req); } catch (e){ return sendJson(res, 400, { error: 'Bad request.' }); }
+      if (body && body.fn === 'segmentChannels') return sendJson(res, 200, { result: require('./recommender-segments')((Array.isArray(body.args) ? body.args : [])[0]) });
       let rec;
       try { rec = require('./recommender-mix')(body && body.env); }
       catch (e){ console.error('[recommend] module problem:', e.message); return sendJson(res, 503, { error: 'Recommendations are being updated. Please try again in a minute.', code: 'module_missing' }); }
