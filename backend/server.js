@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-21-r87-terms-ops-activation (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-21-r91-route-hardening (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -15904,7 +15904,7 @@ function requireAccountAudited(req, res, accountId, resource, requestPath){
 // any account is expected, not a cross-account violation to flag), so
 // only the session path below goes through the audited check.
 function requireAccountOrAdminAudited(req, res, accountId, resource, requestPath){
-  if (ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN) return true;
+  if (adminTokenOk(req)) return true;
   return requireAccountAudited(req, res, accountId, resource, requestPath);
 }
 
@@ -16771,6 +16771,59 @@ function assessmentRateLimitExceeded(req, kind, maxPerHour){
   if (row && row.c >= maxPerHour) return true;
   db.prepare('INSERT INTO assessment_ai_calls (ip, kind, createdAt) VALUES (?,?,?)').run(ip, kind, new Date().toISOString());
   return false;
+}
+
+// 2026-11-21 (r91) — same counter, keyed by something other than the network address (for example one signed-in account).
+function keyRateLimitExceeded(key, kind, maxPerHour){
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const row = db.prepare('SELECT COUNT(*) AS c FROM assessment_ai_calls WHERE ip = ? AND kind = ? AND createdAt > ?').get(String(key), kind, oneHourAgo);
+  if (row && row.c >= maxPerHour) return true;
+  db.prepare('INSERT INTO assessment_ai_calls (ip, kind, createdAt) VALUES (?,?,?)').run(String(key), kind, new Date().toISOString());
+  return false;
+}
+
+// 2026-11-21 (r91) — wrong password / access code lockout. Failures are recorded per sign-in name (email or account id) and per network.
+// 10 failures for one name or 40 from one network inside 15 minutes pauses sign-in for that name or network until the window passes.
+// A database problem never blocks a sign-in (the check fails open and logs).
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS auth_failures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject TEXT NOT NULL,
+    ip TEXT NOT NULL,
+    createdAt TEXT NOT NULL
+  );
+`);
+const AUTH_FAIL_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_FAIL_PER_NAME = Number(process.env.AUTH_FAIL_PER_NAME) || 10;
+const AUTH_FAIL_PER_IP = Number(process.env.AUTH_FAIL_PER_IP) || 40;
+function authSubject(kind, id){ return kind + ':' + String(id || '').trim().toLowerCase().slice(0, 200); }
+function authLockedOut(req, kind, id){
+  try {
+    const since = new Date(Date.now() - AUTH_FAIL_WINDOW_MS).toISOString();
+    const byName = db.prepare('SELECT COUNT(*) AS c FROM auth_failures WHERE subject = ? AND createdAt > ?').get(authSubject(kind, id), since);
+    if (byName && Number(byName.c) >= AUTH_FAIL_PER_NAME) return true;
+    const byIp = db.prepare('SELECT COUNT(*) AS c FROM auth_failures WHERE ip = ? AND createdAt > ?').get(getClientIp(req) || 'unknown', since);
+    return !!(byIp && Number(byIp.c) >= AUTH_FAIL_PER_IP);
+  } catch (e){ console.warn('[auth-lockout] check failed:', e.message); return false; }
+}
+function recordAuthFailure(req, kind, id){
+  try {
+    db.prepare('INSERT INTO auth_failures (subject, ip, createdAt) VALUES (?,?,?)').run(authSubject(kind, id), getClientIp(req) || 'unknown', new Date().toISOString());
+    if (Math.random() < 0.02) db.prepare('DELETE FROM auth_failures WHERE createdAt < ?').run(new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+  } catch (e){ console.warn('[auth-lockout] record failed:', e.message); }
+}
+function clearAuthFailures(kind, id){
+  try { db.prepare('DELETE FROM auth_failures WHERE subject = ?').run(authSubject(kind, id)); } catch (e){}
+}
+const AUTH_LOCKED_MESSAGE = 'Too many incorrect attempts. Wait 15 minutes and try again.';
+
+// 2026-11-21 (r91) — staff token check that does not leak how much of the token matched.
+function adminTokenOk(req){
+  if (!ADMIN_API_TOKEN) return false;
+  const given = String(req.headers['x-admin-token'] || '');
+  const a = crypto.createHash('sha256').update(given).digest();
+  const b = crypto.createHash('sha256').update(ADMIN_API_TOKEN).digest();
+  return crypto.timingSafeEqual(a, b);
 }
 
 // 2026-08-21 fix -- sitewide camelCase column casing repair.
@@ -25087,19 +25140,19 @@ function accessDecision(req, path, session){
   return { item: item.key, label: item.label, audience };
 }
 function isStaffRequest(req){
-  if (ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN) return true;
+  if (adminTokenOk(req)) return true;
   const pa = (typeof platformAuth === 'function') ? platformAuth(req) : null;
   return !!(pa && pa.user);
 }
 function requireStaff(req, res, opts){
-  if (ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN) return true;
+  if (adminTokenOk(req)) return true;
   const pa = (typeof platformAuth === 'function') ? platformAuth(req) : null;
   if (pa && pa.user && (pa.user.role !== 'readonly' || (opts && opts.allowReadonly))) return true;
   sendJson(res, 401, { error: 'unauthorized — Verilume team sign-in required' });
   return false;
 }
 function requireAccountOrAdmin(req, res, accountId){
-  if (ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN) return true;
+  if (adminTokenOk(req)) return true;
   return requireAccount(req, res, accountId);
 }
 
@@ -26395,16 +26448,57 @@ function readBody(req){
 // outright. 8s timeout per attempt via AbortController; anything that
 // throws (DNS failure, connection refused, timeout) reports ok:false with
 // the error message rather than bubbling up and failing the whole request.
+// 2026-11-21 (r91) — the link checker only reaches public web addresses. Internal, private and reserved addresses are refused, on the
+// first address and on every redirect. Only http and https on the usual ports are allowed. (A host that changes its answer between
+// the lookup and the request is a residual risk of this method.)
+function isNonPublicIp(ip){
+  const v = require('net').isIP(ip);
+  if (v === 4){
+    const [a, b, c] = ip.split('.').map(Number);
+    return a === 0 || a === 10 || a === 127 || a >= 224 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 192 && b === 0 && c === 0) || (a === 198 && (b === 18 || b === 19));
+  }
+  if (v === 6){
+    const x = ip.toLowerCase();
+    const mapped = x.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    if (mapped) return isNonPublicIp(mapped[1]);
+    return x === '::' || x === '::1' || /^f[cd]/.test(x) || /^fe[89ab]/.test(x) || x.startsWith('ff');
+  }
+  return true;
+}
+async function linkBlockReason(raw){
+  let u;
+  try { u = new URL(raw); } catch (e){ return 'That is not a valid web address.'; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return 'Only http and https addresses can be checked.';
+  if (u.username || u.password) return 'Addresses with a sign-in inside them cannot be checked.';
+  if (u.port && !['80', '443', '8080', '8443'].includes(u.port)) return 'That port cannot be checked.';
+  const host = u.hostname.replace(/^\[|\]$/g, '');
+  if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.internal') || host.endsWith('.local')) return 'That address cannot be checked.';
+  if (require('net').isIP(host)) return isNonPublicIp(host) ? 'That address cannot be checked.' : null;
+  try {
+    const found = await require('dns').promises.lookup(host, { all: true });
+    if (!found.length || found.some(f => isNonPublicIp(f.address))) return 'That address cannot be checked.';
+  } catch (e){ return 'That address could not be found.'; }
+  return null;
+}
 async function checkLinkResolves(url){
   const attempt = async (method) => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-    try {
-      const resp = await fetch(url, { method, redirect: 'follow', signal: controller.signal });
-      return { url, ok: resp.ok, status: resp.status, finalUrl: resp.url && resp.url !== url ? resp.url : null };
-    } finally {
-      clearTimeout(timer);
+    let current = url;
+    for (let hop = 0; hop < 6; hop++){
+      const blocked = await linkBlockReason(current);
+      if (blocked) return { url, ok: false, status: null, error: blocked };
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      let resp;
+      try { resp = await fetch(current, { method, redirect: 'manual', signal: controller.signal }); }
+      finally { clearTimeout(timer); }
+      const loc = resp.headers && resp.headers.get && resp.headers.get('location');
+      if ([301, 302, 303, 307, 308].includes(resp.status) && loc){
+        try { current = new URL(loc, current).toString(); } catch (e){ return { url, ok: false, status: resp.status, error: 'bad redirect' }; }
+        continue;
+      }
+      return { url, ok: resp.ok, status: resp.status, finalUrl: current !== url ? current : null };
     }
+    return { url, ok: false, status: null, error: 'too many redirects' };
   };
   try {
     const head = await attempt('HEAD');
@@ -33410,9 +33504,11 @@ async function handleRequestInner(req, res) {
         if (!body.email || !body.password) return sendJson(res, 400, { error: 'email and password are required' });
         if (assessmentRateLimitExceeded(req, 'platform-login', 20)) return sendJson(res, 429, { error: 'Too many attempts from this network. Try again in an hour.' });
         const emailNorm = String(body.email).trim().toLowerCase();
+        if (authLockedOut(req, 'platform', emailNorm)) return sendJson(res, 429, { error: AUTH_LOCKED_MESSAGE });
         const user = db.prepare('SELECT * FROM platform_users WHERE lower(email) = ?').get(emailNorm);
         const good = !!(user && user.status === 'active' && user.passwordHash && verifyAccessCode(String(body.password), user.passwordHash, user.passwordSalt));
-        if (!good) return sendJson(res, 401, { error: 'incorrect email or password' });
+        if (!good){ recordAuthFailure(req, 'platform', emailNorm); return sendJson(res, 401, { error: 'incorrect email or password' }); }
+        clearAuthFailures('platform', emailNorm);
         const recent = db.prepare(`SELECT COUNT(*) AS c FROM phone_verifications WHERE purpose = 'platform-login' AND memberId = ? AND createdAt > ?`).get(user.id, new Date(Date.now() - 3600000).toISOString());
         if (recent && Number(recent.c) >= 5) return sendJson(res, 429, { error: 'Too many codes requested. Try again in an hour.' });
         const r = await issueCode(user, emailNorm, 'platform-login');
@@ -33847,7 +33943,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-21-r87-terms-ops-activation',
+        buildStamp: '2026-11-21-r91-route-hardening',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -33922,7 +34018,7 @@ async function handleRequestInner(req, res) {
     // token gate as GET /api/ops/integration-status, reusing the existing
     // ADMIN_API_TOKEN env var rather than introducing a new secret.
     if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'admin' && parts[2] === 'fix-legacy-casing'){
-      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+      if (!adminTokenOk(req)){
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       }
       const summary = fixLegacyColumnCasing();
@@ -33939,7 +34035,7 @@ async function handleRequestInner(req, res) {
       return r ? aliasVal(r, 'accountId') : null;
     };
     if ((req.method === 'GET' || req.method === 'POST') && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'verilume-style'){
-      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN) return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
+      if (!adminTokenOk(req)) return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       const accountId = vsAccountId();
       if (!accountId) return sendJson(res, 404, { error: 'No internal Verilume account was found. Create an account named "Verilume" or set VERILUME_INTERNAL_ACCOUNT_ID.' });
       const row = () => db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId) || {};
@@ -33977,7 +34073,7 @@ async function handleRequestInner(req, res) {
     // artifact, requested and handed over by staff, not a self-service
     // account feature).
     if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'accounts' && parts[4] === 'kpi-audit-log'){
-      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+      if (!adminTokenOk(req)){
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       }
       const accountId = decodeURIComponent(parts[3]);
@@ -33995,7 +34091,7 @@ async function handleRequestInner(req, res) {
     }
 
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'integration-status'){
-      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+      if (!adminTokenOk(req)){
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       }
       const integrations = [
@@ -34088,7 +34184,7 @@ async function handleRequestInner(req, res) {
     // id="..." sections) and scored (heading match weighted 3x over a
     // body-text match). ?limit= is optional, capped at 25, defaults to 10.
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'docs-search'){
-      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+      if (!adminTokenOk(req)){
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       }
       const q = url.searchParams.get('q') || '';
@@ -34103,6 +34199,7 @@ async function handleRequestInner(req, res) {
 
     // POST /api/accounts — create a new account from an assessment submission
     if (req.method === 'POST' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'accounts'){
+      if (assessmentRateLimitExceeded(req, 'account-create', Number(process.env.ACCOUNT_CREATE_PER_HOUR) || 10)) return sendJson(res, 429, { error: 'Too many accounts created from this connection. Try again in an hour.' });
       const body = await readBody(req);
       if (!body.company || !Array.isArray(body.cells)){
         return sendJson(res, 400, { error: 'company and cells[] are required' });
@@ -34262,6 +34359,7 @@ async function handleRequestInner(req, res) {
       if (!body.accountId || !body.accessCode){
         return sendJson(res, 400, { error: 'accountId and accessCode are required' });
       }
+      if (authLockedOut(req, 'account', body.accountId)) return sendJson(res, 429, { error: AUTH_LOCKED_MESSAGE });
       const account = db.prepare('SELECT accountId, accessCodeHash, accessCodeSalt FROM accounts WHERE accountId = ?').get(body.accountId);
       if (!account){
         return sendJson(res, 404, { error: 'account not found' });
@@ -34270,8 +34368,10 @@ async function handleRequestInner(req, res) {
         return sendJson(res, 409, { error: 'this account has no access code yet — use POST /api/auth/claim once to set one' });
       }
       if (!verifyAccessCode(body.accessCode, account.accessCodeHash, account.accessCodeSalt)){
+        recordAuthFailure(req, 'account', body.accountId);
         return sendJson(res, 401, { error: 'incorrect access code' });
       }
+      clearAuthFailures('account', body.accountId);
       const session = createSession(account.accountId);
       return sendJson(res, 200, { token: session.token, expiresAt: session.expiresAt });
     }
@@ -34475,6 +34575,7 @@ async function handleRequestInner(req, res) {
       if (!body.email || !body.password){
         return sendJson(res, 400, { error: 'email and password are required' });
       }
+      if (authLockedOut(req, 'user', body.email)) return sendJson(res, 429, { error: AUTH_LOCKED_MESSAGE });
 
       // 2026-08-27 fix — same reasoning as verify-login-code just below:
       // every db call in this route now goes through a real async Postgres
@@ -34512,8 +34613,10 @@ async function handleRequestInner(req, res) {
       }
 
       if (!member || !member.passwordHash || !verifyAccessCode(body.password, member.passwordHash, member.passwordSalt)){
+        recordAuthFailure(req, 'user', body.email);
         return sendJson(res, 401, { error: 'incorrect email or password' });
       }
+      clearAuthFailures('user', body.email);
       if (member.status === 'inactive'){
         return sendJson(res, 403, { error: 'this user has been deactivated on this account' });
       }
@@ -35835,7 +35938,7 @@ async function handleRequestInner(req, res) {
     // and every successful read is logged too.
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'kpi-metrics'){
       const accountId = decodeURIComponent(parts[2]);
-      const isStaffCaller = !!(ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN);
+      const isStaffCaller = !!(adminTokenOk(req));
       if (!requireAccountOrAdminAudited(req, res, accountId, 'account_kpi_metrics', req.url)) return;
       const rows = db.prepare(`SELECT metricKey, label, fmt, period, value, yoyLabel, source, updatedAt FROM account_kpi_metrics WHERE accountId = ? ORDER BY metricKey ASC, period ASC`).all(accountId);
       const session = isStaffCaller ? null : authenticate(req);
@@ -35865,7 +35968,7 @@ async function handleRequestInner(req, res) {
     // row count and (for a session write) which team member did it.
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'kpi-metrics'){
       const accountId = decodeURIComponent(parts[2]);
-      const isStaffCaller = !!(ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN);
+      const isStaffCaller = !!(adminTokenOk(req));
       if (!requireAccountOrAdminAudited(req, res, accountId, 'account_kpi_metrics', req.url)) return;
       const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
       if (!account) return sendJson(res, 404, { error: 'account not found' });
@@ -36743,7 +36846,7 @@ async function handleRequestInner(req, res) {
       if (!requireAccountOrAdmin(req, res, accountId)) return;
       const loaded = loadVoiceContestForExport(accountId, interviewId);
       if (!loaded) return sendJson(res, 404, { error: 'voice contest not found for this account' });
-      const isStaffCaller = !!(ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN);
+      const isStaffCaller = !!(adminTokenOk(req));
       const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId) || { accountId };
       const candidatesForExport = isStaffCaller ? loaded.candidates : (
         loaded.contentType === 'video_script' ? redactVideoScriptCandidatesForClient(loaded.candidates)
@@ -36771,7 +36874,7 @@ async function handleRequestInner(req, res) {
       if (!requireAccountOrAdmin(req, res, accountId)) return;
       const loaded = loadVoiceContestForExport(accountId, interviewId);
       if (!loaded) return sendJson(res, 404, { error: 'voice contest not found for this account' });
-      const isStaffCaller = !!(ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN);
+      const isStaffCaller = !!(adminTokenOk(req));
       const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId) || { accountId };
       const candidatesForExport = isStaffCaller ? loaded.candidates : (
         loaded.contentType === 'video_script' ? redactVideoScriptCandidatesForClient(loaded.candidates)
@@ -36831,7 +36934,7 @@ async function handleRequestInner(req, res) {
       // instead of the client-safe blind labels — staff testing needs to
       // see which vendor produced what. A normal client-portal call (no
       // admin token) is completely unaffected.
-      const isStaffCaller = !!(ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN);
+      const isStaffCaller = !!(adminTokenOk(req));
       if (contentType === 'video_strategy'){
         const result = await runVideoStrategyContest(account);
         if (!result.available){
@@ -36971,7 +37074,7 @@ async function handleRequestInner(req, res) {
     //   GET  /api/ops/mix-benchmarks           what is published now
     //   POST /api/ops/mix-benchmarks/refresh   rebuilds from every account's last 12 months
     if (parts.length >= 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'mix-benchmarks' && parts.length <= 4){
-      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN) return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
+      if (!adminTokenOk(req)) return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       try {
         if (req.method === 'POST' && parts[3] === 'refresh') return sendJson(res, 200, mixBenchmarkRefresh());
         if (req.method === 'GET' && parts.length === 3){ const rows = db.prepare('SELECT industry, channel, accountcount, cpmmedian, cpmp25, cpmp75, cpmmean, updatedat FROM mix_benchmark_cpm ORDER BY industry, channel').all().map(r => ({ industry: r.industry, channel: r.channel, accounts: r.accountcount, median: r.cpmmedian, p25: r.cpmp25, p75: r.cpmp75, mean: r.cpmmean, updatedAt: r.updatedat })); return sendJson(res, 200, { minimumAccounts: MIX_MINIMUMS.benchmarkMinAccounts, rows }); }
@@ -36979,7 +37082,7 @@ async function handleRequestInner(req, res) {
       } catch (e){ console.error('[mix-benchmarks] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'Benchmarks failed: ' + (e && e.message || 'unknown error') }); }
     }
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'ai-brain-transparency-rollup'){
-      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+      if (!adminTokenOk(req)){
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       }
       const contextType = url.searchParams.get('contextType') || 'voice_guide';
@@ -37044,7 +37147,7 @@ async function handleRequestInner(req, res) {
     // requireAdminMember() (that's the portal team-member session gate).
     if (req.method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'voice-guide' && parts[4] === 'clear-memory'){
       const accountId = decodeURIComponent(parts[2]);
-      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+      if (!adminTokenOk(req)){
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       }
       const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
@@ -37183,7 +37286,7 @@ async function handleRequestInner(req, res) {
       if (!target) return sendJson(res, 400, { error: 'candidateKey does not match a candidate on this contest' });
       const now = new Date().toISOString();
       const ratedBy = session ? (session.memberId || `${session.accountId}:admin`) : (req.headers['x-admin-token'] ? 'Staff (Ops Console)' : null);
-      const isStaffCaller = !!(ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN);
+      const isStaffCaller = !!(adminTokenOk(req));
       if (body.rating !== undefined) target.rating = rating;
       target.ratedBy = ratedBy;
       target.ratedAt = now;
@@ -37245,7 +37348,7 @@ async function handleRequestInner(req, res) {
       if (!account) return sendJson(res, 404, { error: 'account not found' });
       const interview = db.prepare('SELECT * FROM account_voice_interviews WHERE id = ? AND accountId = ?').get(interviewId, accountId);
       if (!interview) return sendJson(res, 404, { error: 'voice contest not found for this account' });
-      const isStaffCaller = !!(ADMIN_API_TOKEN && req.headers['x-admin-token'] === ADMIN_API_TOKEN);
+      const isStaffCaller = !!(adminTokenOk(req));
       let candidates = [];
       try { candidates = JSON.parse(interview.candidatesJson) || []; } catch (e){ candidates = []; }
       const contentType = interview.contentType || 'voice_guide';
@@ -37542,7 +37645,7 @@ async function handleRequestInner(req, res) {
     // models browse consistently, and fairer as a comparison (same
     // material in front of all five, not whatever each one guesses).
     if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'vendor-blind-panel'){
-      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+      if (!adminTokenOk(req)){
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       }
       const body = await readBody(req);
@@ -37743,7 +37846,7 @@ async function handleRequestInner(req, res) {
     // module scope alongside those shared functions for the same reason —
     // this route no longer declares its own local copies.
     if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'website-category-scan'){
-      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+      if (!adminTokenOk(req)){
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       }
       const body = await readBody(req);
@@ -37799,7 +37902,7 @@ async function handleRequestInner(req, res) {
     //      selection can be older than the 3 most recent runs if nothing
     //      newer has been picked yet).
     if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'accounts' && parts[4] === 'voice-contests'){
-      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+      if (!adminTokenOk(req)){
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       }
       const accountId = decodeURIComponent(parts[3]);
@@ -37892,7 +37995,7 @@ async function handleRequestInner(req, res) {
     // Same ADMIN_API_TOKEN gate as every other /api/ops/... endpoint — this
     // names real vendors, which the client-facing surfaces never do.
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'contest-rankings'){
-      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+      if (!adminTokenOk(req)){
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       }
       const accountId = url.searchParams.get('accountId');
@@ -37949,7 +38052,7 @@ async function handleRequestInner(req, res) {
     // narrows the lookback; ?accountId= optionally narrows to one account
     // for spot-checking rather than the platform-wide default view.
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'partner-reliability'){
-      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+      if (!adminTokenOk(req)){
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       }
       const daysRaw = parseInt(url.searchParams.get('days'), 10);
@@ -39265,7 +39368,7 @@ Submit your response via the campaign_intake_turn tool.`;
     // the client doesn't know (and shouldn't need to know) Verilume's own
     // internal database/schema/table naming for their mounted share.
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'snowflake-connector-config'){
-      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+      if (!adminTokenOk(req)){
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       }
       const accountId = decodeURIComponent(parts[2]);
@@ -39295,7 +39398,7 @@ Submit your response via the campaign_intake_turn tool.`;
     // newly-provisioned connection works right now rather than waiting
     // for the next scheduled run.
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'snowflake-sync'){
-      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+      if (!adminTokenOk(req)){
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       }
       const accountId = decodeURIComponent(parts[2]);
@@ -39590,6 +39693,9 @@ Submit your response via the campaign_intake_turn tool.`;
     // (DNS failure, connection refused, timeout) reports ok:false with the
     // error message rather than crashing the batch.
     if (req.method === 'POST' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'utm-links' && parts[2] === 'validate'){
+      const _utmSession = authenticate(req);
+      if (!_utmSession) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
+      if (keyRateLimitExceeded('acct:' + _utmSession.accountId, 'utm-validate', 30)) return sendJson(res, 429, { error: 'Too many link checks this hour. Try again later.' });
       const body = await readBody(req);
       const urls = Array.isArray(body.urls) ? [...new Set(body.urls.filter(u => typeof u === 'string' && u.trim()))].slice(0, 50) : [];
       const results = await Promise.all(urls.map(checkLinkResolves));
@@ -41940,7 +42046,10 @@ Submit your response via the campaign_intake_turn tool.`;
     // drives generation and no longer the only place a stage is recorded.
     // 2026-10-18 — re-apply the Remarketing ceilings (12% of budget; 20% of campaign-driven US visitors) to a campaign's existing draft lines.
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'campaigns' && parts[3] === 'cap-remarketing'){
-      const campaignId = parts[2];
+      const campaignId = decodeURIComponent(parts[2]);
+      const _capCampaign = db.prepare('SELECT accountId FROM campaigns WHERE id = ?').get(campaignId);
+      if (!_capCampaign) return sendJson(res, 404, { error: 'campaign not found' });
+      if (!requireAccount(req, res, _capCampaign.accountId)) return;
       try { return sendJson(res, 200, capRemarketingForCampaign(campaignId)); }
       catch (e){ return sendJson(res, 500, { error: e.message }); }
     }
@@ -46020,7 +46129,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
     // full productTypes registry so the Ops Console can render a real
     // filter dropdown instead of a hardcoded one.
     if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'accounts' && parts[4] === 'interviews'){
-      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+      if (!adminTokenOk(req)){
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       }
       const accountId = decodeURIComponent(parts[3]);
@@ -46086,7 +46195,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
     // ?campaignId= narrows to one campaign (same idea as the interviews
     // endpoint's ?productType= filter).
     if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'accounts' && parts[4] === 'campaign-contests'){
-      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+      if (!adminTokenOk(req)){
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       }
       const accountId = decodeURIComponent(parts[3]);
@@ -48498,7 +48607,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     // GET /api/market-dma-master/status
     // GET /api/ops/accounts/:id/data-integrity — staff view of what the database holds for an account (ADMIN_API_TOKEN).
     if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'accounts' && parts[4] === 'data-integrity'){
-      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN) return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
+      if (!adminTokenOk(req)) return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       return sendJson(res, 200, buildDataIntegrity(decodeURIComponent(parts[3])));
     }
     // GET /api/accounts/:id/data-integrity — the same view for the account's own team.
@@ -53590,6 +53699,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     // data client-side (see vsIllustrativeCpm on each entry, which already
     // carries the in-app figure as of this build for that comparison).
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'channel-best-practices' && parts[2] === 'global'){
+      if (!authenticate(req)) return sendJson(res, 401, { error: 'unauthorized — a valid session token is required' });
       return sendJson(res, 200, { channels: CHANNEL_BEST_PRACTICES, directMailPlanningReference: DIRECT_MAIL_PLANNING_REFERENCE });
     }
 
@@ -53825,7 +53935,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
     // replaces this with an actual admin role, per
     // cxmedia-account-mgmt-scoping.md's future admin-panel note.
     if (req.method === 'GET' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'leads'){
-      if (!ADMIN_API_TOKEN || req.headers['x-admin-token'] !== ADMIN_API_TOKEN){
+      if (!adminTokenOk(req)){
         return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
       }
       const leads = db.prepare('SELECT * FROM leads ORDER BY createdAt DESC').all()
