@@ -4,14 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<!-- Primary SEO -->
+
 <title>Humanizing Agentic Marketing — Verilume</title>
 <meta name="description" content="Humans decide. AI recommends. Verilume puts an AI agent under every seat of your marketing organization.">
 <meta name="keywords" content="customer experience audit, CX audit tool, brand experience assessment, brand health assessment, marketing and CX gap, free brand assessment, CX scorecard, white label CX diagnostic for agencies">
 <link rel="canonical" href="https://www.verilume.ai/">
 <meta name="robots" content="index, follow">
 
-<!-- Open Graph -->
+
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Verilume">
 <meta property="og:title" content="Humanizing Agentic Marketing — Verilume">
@@ -21,7 +21,7 @@
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 
-<!-- Twitter Card -->
+
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Verilume — Humanizing Agentic Marketing | Free Brand & CX Assessment">
 <meta name="twitter:description" content="Score every touchpoint your guest has with you and see exactly where your brand's promise breaks. Free, instant, no gate.">
@@ -30,25 +30,17 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style id="vl-site-inline">
-/* Verilume public site layer — "from the dark to the brightest light".
-   Loaded LAST on every public page (index, platform, journey, solution pages…).
-   It re-points the old design tokens (--ink/--paper/--media/--cx/--advocacy) at the
-   new light-system palette, swaps the type, and gives nav + footer the night bookends.
-   Light is the only motion: nothing here spins, bounces or glows without a reason. */
-
 :root{
   --night:#07090D; --night-2:#0E141B; --dusk:#18212C; --dusk-2:#223041;
   --day:#FBFAF6; --day-2:#F2F0E9; --day-3:#E7E3D8;
-  --lamp:#F4B63F;         /* Lume: warm light */
-  --lamp-deep:#A8680A;    /* lamp for text on light grounds */
-  --truth:#4DD6C0;        /* Veri: cool signal */
-  --truth-deep:#0B6F62;   /* truth for text on light grounds */
+  --lamp:#F4B63F;         
+  --lamp-deep:#A8680A;    
+  --truth:#4DD6C0;        
+  --truth-deep:#0B6F62;   
   --ember:#C8512D;
   --vl-display:'Bricolage Grotesque','Avenir Next','Segoe UI',system-ui,sans-serif;
   --vl-body:'Instrument Sans','Avenir Next','Segoe UI',system-ui,sans-serif;
   --vl-mono:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
-
-  /* old tokens, re-pointed so every existing page re-inks without edits */
   --ink:#10141B; --paper:#FBFAF6; --paper-dim:#F2F0E9; --white:#FFFFFF;
   --media:#B8760B; --cx:#0B6F62; --advocacy:#B4472B;
   --line:#D9D4C6; --line-hairline:#E7E3D8; --line-strong:#BDB6A3; --muted:#625E52;
@@ -56,8 +48,6 @@
   --radius-sm:8px; --radius-md:12px; --radius-lg:18px;
   --shadow-sm:0 1px 2px rgba(16,20,27,.06); --shadow-md:0 6px 20px rgba(16,20,27,.08); --shadow-lg:0 22px 56px rgba(16,20,27,.16);
 }
-
-/* ---- type ---- */
 html body, html body *:not(code):not(pre):not(kbd):not(samp):not(.vl-mono){font-family:var(--vl-body)!important;}
 html body h1, html body h2, html body h3, html body .logo, html body .vl-display,
 html body h1 *, html body h2 *, html body .stat-num, html body .big-num{font-family:var(--vl-display)!important;font-optical-sizing:auto;}
@@ -65,8 +55,6 @@ html body h1, html body h2{letter-spacing:-0.02em;}
 html body .vl-mono, html body .eyebrow, html body .hero-eyebrow, html body .band-label, html body .teaser-label{font-family:var(--vl-mono)!important;letter-spacing:.08em;}
 body{background:var(--day);color:var(--ink);}
 ::selection{background:var(--lamp);color:#10141B;}
-
-/* ---- nav: night bookend ---- */
 .utility-nav{background:#000!important;}
 .utility-nav-inner a{border-color:rgba(255,255,255,.28)!important;font-family:var(--vl-mono)!important;font-size:11px!important;letter-spacing:.06em;text-transform:uppercase;}
 header, header#siteHeader{background:rgba(7,9,13,.88)!important;backdrop-filter:blur(14px) saturate(140%);-webkit-backdrop-filter:blur(14px) saturate(140%);border-bottom:1px solid rgba(255,255,255,.08)!important;}
@@ -81,14 +69,10 @@ header .logo b, .logo b{color:var(--lamp)!important;font-weight:600!important;}
 @media (max-width:1180px){
   .navlinks{background:var(--night)!important;border-bottom:1px solid rgba(255,255,255,.1)!important;}
 }
-
-/* ---- buttons ---- */
 .btn-primary, button.btn-primary{background:var(--lamp)!important;color:#10141B!important;border:0!important;border-radius:999px!important;font-weight:600!important;box-shadow:none!important;}
 .btn-primary:hover{box-shadow:0 0 0 6px rgba(244,182,63,.25)!important;transform:none!important;}
 .btn-ghost{border-color:var(--ink)!important;color:var(--ink)!important;border-radius:999px!important;background:transparent!important;}
 .btn-ghost:hover{background:var(--ink)!important;color:var(--day)!important;}
-
-/* ---- hero blocks on inner pages: they open dark, like the story does ---- */
 .hero{background:radial-gradient(120% 90% at 78% -10%, #1b2a3a 0%, #0b1118 46%, #07090D 100%)!important;color:#EDEAE0!important;border-bottom:0!important;}
 .hero h1, .hero .accent{color:#fff!important;}
 .hero .accent{color:var(--lamp)!important;}
@@ -98,12 +82,8 @@ header .logo b, .logo b{color:var(--lamp)!important;font-weight:600!important;}
 .hero .hero-eyebrow .dot{background:var(--truth)!important;}
 .hero .btn-ghost{border-color:rgba(255,255,255,.5)!important;color:#fff!important;}
 .hero .btn-ghost:hover{background:#fff!important;color:#10141B!important;}
-
-/* ---- the lightness scale used by cards, bands and pills on inner pages ---- */
 .band{background:var(--day);}
 .band-label h2{color:var(--ink);}
-
-/* ---- footer: night again ---- */
 footer{background:var(--night)!important;border-top:1px solid rgba(255,255,255,.08)!important;color:rgba(237,234,224,.7)!important;}
 footer .footer-faq{border-bottom-color:rgba(255,255,255,.12)!important;}
 footer .footer-faq h2, footer h2{color:#fff!important;}
@@ -114,18 +94,11 @@ footer .faq-item a{color:var(--truth)!important;}
 footer .footer-nav a{color:rgba(237,234,224,.62)!important;}
 footer .footer-nav a:hover{color:var(--lamp)!important;}
 footer .footer-inner{color:rgba(237,234,224,.55)!important;}
-
-/* ---- motion rules ---- */
 @media (prefers-reduced-motion:reduce){
   *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important;}
 }
-
-/* heading weight: the old pages used 300 display; the new system sets 600 */
 html body h1, html body h2{font-weight:600;}
 html body h3{font-weight:600;}
-
-/* footer bar inside a page wrapper (inner pages): bleed the night ground edge to edge,
-   keep the content on the page container's edges, never clip text */
 .wrap > footer, .page > footer, main + footer, footer:not(:has(.footer-inner)){
   position:relative; box-shadow:0 0 0 100vmax var(--night); clip-path:inset(0 -100vmax);
   margin-top:80px!important; padding:28px 0 32px!important; line-height:1.6!important;
@@ -134,11 +107,8 @@ html body h3{font-weight:600;}
 footer:not(:has(.footer-inner)) .footer-nav a{color:rgba(237,234,224,.62)!important;}
 footer:not(:has(.footer-inner)) > span{color:rgba(237,234,224,.55)!important;}
 .wrap:has(> footer){padding-bottom:0!important;margin-bottom:0!important;}
-
-/* ghost buttons: a full pill outline (they were rendering a lone bottom arc) */
 .btn-ghost{border:1.5px solid currentColor!important;padding:15px 26px!important;border-radius:999px!important;display:inline-block;}
 .hero .btn-ghost{border-color:rgba(255,255,255,.5)!important;}
-
 </style>
 
 <style id="preview-add">
@@ -152,14 +122,12 @@ footer:not(:has(.footer-inner)) > span{color:rgba(237,234,224,.55)!important;}
 .navlinks a:nth-last-child(2){margin-right:auto}
 .navlinks a.nav-cta{font-size:11.5px!important}
 }
-/* one hero for all five pages: same field, same H1 and sub-line position, same min and max sizes */
 .hero-h,.s-cond{background:radial-gradient(90% 70% at 70% 0%,#15202c 0%,#0a0f15 55%,#07090D 100%)!important;padding:112px 0 96px!important;min-height:clamp(560px,82vh,720px);box-sizing:border-box;position:relative;overflow:hidden}
 .hero-h .kicker,.s-cond .kicker{margin:0 0 18px}
 .hero-h h1,.s-cond h1{font-size:clamp(2.5rem,5.6vw,4.4rem)!important;line-height:1.02!important;letter-spacing:-.03em!important;font-weight:600!important;margin:0 0 26px!important;max-width:15em!important;color:#fff}
 @media (min-width:821px){.hero-h h1,.s-cond h1{min-height:2.04em}.hero-h .lede,.s-cond .lede{min-height:6.2em}}
 .hero-h h1 em,.s-cond h1 em{font-style:normal;color:var(--lamp)}
 .hero-h .lede,.s-cond .lede{font-size:clamp(1.05rem,1.6vw,1.3rem)!important;line-height:1.55!important;max-width:42em!important;margin:0 0 34px!important;color:rgba(237,234,224,.84)}
-
 .bk-res{margin-top:18px;padding-top:14px;border-top:1px dashed rgba(255,255,255,.2);font-size:.92rem;color:rgba(237,234,224,.8);position:relative}
 .bk-res b{color:var(--truth);font-family:var(--vl-mono)!important;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;display:block;margin-bottom:4px}
 .prevnote{background:#10141B;color:#EDEAE0;font:12px/1.4 var(--vl-mono);letter-spacing:.06em;text-transform:uppercase;text-align:center;padding:8px 12px}
@@ -167,7 +135,6 @@ footer:not(:has(.footer-inner)) > span{color:rgba(237,234,224,.55)!important;}
 .s-org{background:linear-gradient(#0B1118,#18212C);color:#fff;padding:96px 0 110px}
 .s-org .kicker{color:var(--lamp)} .s-org h2{color:#fff} .s-org .sub{color:rgba(237,234,224,.78)}
 .s-org .sub .samplebadge{margin-left:8px}
-/* media + cx */
 .s-cond{background:linear-gradient(#07090D,#0E141B 60%,#18212C);color:#fff;padding:130px 0 100px;position:relative;overflow:hidden}
 .s-cond .glow{position:absolute;inset:auto 0 0 0;height:60%;background:radial-gradient(60% 80% at 50% 120%,rgba(244,182,63,.28),transparent 70%);pointer-events:none}
 .s-cond .kicker{color:var(--truth)} .s-cond h1{font-size:clamp(2.4rem,6vw,4.8rem);line-height:1.02;margin:0 0 22px;color:#fff;max-width:14em;font-weight:600}
@@ -272,7 +239,7 @@ footer:not(:has(.footer-inner)) > span{color:rgba(237,234,224,.55)!important;}
 .s-inf .ws b,.s-bud .ws b{color:#0B6F62}
 .s-bud .ws{margin:0 0 18px}
 .vlh .ws{margin-top:16px;max-width:22em}
-.vlh > div{display:flex;flex-direction:column}.vlh p{flex:1 1 auto}.vlh .ws{margin-top:auto;padding-top:16px}  /* the three workspace lines sit on one row whatever the paragraph length */
+.vlh > div{display:flex;flex-direction:column}.vlh p{flex:1 1 auto}.vlh .ws{margin-top:auto;padding-top:16px}  
 .tile .ws{margin-top:12px}
 .s-inf{padding:84px 0 70px}
 .s-inf h2{font-size:clamp(1.9rem,3.6vw,3rem)!important;max-width:18em!important;margin-bottom:14px!important}
@@ -326,7 +293,7 @@ footer:not(:has(.footer-inner)) > span{color:rgba(237,234,224,.55)!important;}
 .nameorigin{margin:0;max-width:52em;color:rgba(237,234,224,.8);line-height:1.6;border-top:1px solid rgba(255,255,255,.2);padding-top:22px}.nameorigin b{color:var(--lamp)}
 </style>
 
-<!-- Structured data: Organization + SoftwareApplication + FAQPage, linked via @graph -->
+
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -394,7 +361,6 @@ footer:not(:has(.footer-inner)) > span{color:rgba(237,234,224,.55)!important;}
 }
 </script>
 <style>
-/* ===== Verilume home — dark to light ===== */
 *{box-sizing:border-box;}
 html{scroll-behavior:smooth;}
 body{margin:0;background:var(--night);color:#EDEAE0;-webkit-font-smoothing:antialiased;overflow-x:hidden;}
@@ -418,8 +384,6 @@ header{padding:16px 0;}
 .utility-nav-inner{max-width:1320px;margin:0 auto;padding:8px 28px;display:flex;justify-content:flex-end;gap:12px;}
 .utility-nav-inner a{color:rgba(255,255,255,.9);text-decoration:none;padding:6px 14px;border:1px solid rgba(255,255,255,.3);border-radius:999px;white-space:nowrap;}
 .utility-nav-inner a:hover{background:rgba(255,255,255,.08);}
-
-/* ---------- shared bits ---------- */
 .kicker{font-family:var(--vl-mono)!important;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;display:flex;align-items:center;gap:10px;margin:0 0 18px;}
 .kicker::before{content:"";width:22px;height:1px;background:currentColor;opacity:.6;}
 .sec{position:relative;padding:112px 0;}
@@ -436,8 +400,6 @@ header{padding:16px 0;}
 .btn-ink-line:hover{background:#10141B;color:#fff;}
 .samplebadge{font-family:var(--vl-mono)!important;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;border:1px dashed currentColor;border-radius:999px;padding:4px 10px;opacity:.75;white-space:nowrap;}
 :focus-visible{outline:2px solid var(--lamp);outline-offset:3px;}
-
-/* ---------- 1. HERO ---------- */
 .hero-h{background:radial-gradient(90% 70% at 70% 0%,#15202c 0%,#0a0f15 55%,#07090D 100%);padding:96px 0 84px;overflow:hidden;position:relative;}
 .hero-h .glow{position:absolute;left:50%;top:62%;width:900px;height:900px;margin:-450px 0 0 -450px;background:radial-gradient(circle,rgba(244,182,63,.2) 0%,rgba(244,182,63,0) 62%);opacity:0;animation:vlWake 14s ease-in-out infinite;pointer-events:none;}
 @keyframes vlWake{0%,24%{opacity:0;transform:scale(.4)}34%{opacity:.9;transform:scale(.6)}52%,86%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(.4)}}
@@ -471,13 +433,21 @@ header{padding:16px 0;}
 @keyframes vlBorder{0%,34%{border-color:rgba(255,255,255,.2);border-style:dashed}46%,84%{border-color:rgba(244,182,63,.7);border-style:solid}96%,100%{border-color:rgba(255,255,255,.2);border-style:dashed}}
 .hero-foot{margin-top:28px;font-family:var(--vl-mono)!important;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.45);display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;}
 @media (max-width:900px){.five{grid-template-columns:repeat(2,1fr)}.five .fc{min-height:196px!important}}
+.five .fc{min-height:0!important}
+.five .fc .hl{position:relative;display:block;min-height:3.9em;margin:10px 0 14px}
+.five .fc .hl .t{left:0;right:0;top:0;bottom:auto}
+.five .fc .t.dim{color:#7A7F8C}
+.five .fc .t.lit{color:var(--vl-navy,#14213D)}
+.five .fc .tools{display:block;margin-top:0;padding-top:12px;border-top:1px solid var(--vl-divider,#E4E0D3);position:relative;z-index:1}
+.five .fc .tl{display:block;font-family:var(--vl-mono)!important;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--vl-blue,#0A58CC);margin-bottom:6px}
+.five .fc .tp{display:block;font-size:.84rem;line-height:1.5;font-weight:400;color:#3D4454}
+@media (max-width:900px){.five .fc{min-height:0!important}}
+@media (max-width:560px){.five{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){
   .hero-h .glow{opacity:.9;transform:none;animation:none}
   .fc{animation:none;border-color:rgba(244,182,63,.7);border-style:solid}
   .fc .t.dim{display:none}.fc .t.lit,.fc::after{animation:none;opacity:1}
 }
-
-/* ---------- 2. FIVE BREAKS ---------- */
 .s-breaks{background:linear-gradient(#18212C,#0E141B 140px,#0B1118);padding-bottom:132px;padding-top:110px;}
 .s-breaks .kicker{color:var(--truth);}
 .s-breaks h2{color:#fff;}
@@ -507,8 +477,6 @@ header{padding:16px 0;}
 .bk-see{margin-left:auto;font-family:var(--vl-mono)!important;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--lamp);text-decoration:none;opacity:0;pointer-events:none;transition:opacity .4s;}
 .bk-panel.on .bk-see{opacity:1;pointer-events:auto;}
 @media (max-width:900px){.breaks{grid-template-columns:1fr}}
-
-/* ---------- 3. VERI LUME HAND ---------- */
 .s-vlh{background:linear-gradient(#07090D,#0E141B 30%,#18212C);padding-bottom:110px;}
 .s-vlh .kicker{color:var(--lamp);}
 .s-vlh h2{color:#fff;}
@@ -544,8 +512,6 @@ header{padding:16px 0;}
 .dc-status.neutral{color:rgba(237,234,224,.7)}
 .nothing{margin-top:22px;font-family:var(--vl-mono)!important;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.6);}
 @media (max-width:820px){.draftcard{grid-template-columns:1fr}.dc-ai{border-right:0;border-bottom:1px solid rgba(255,255,255,.15)}}
-
-/* ---------- 4. LOOP ---------- */
 .s-loop{background:#F2F0E9;color:#10141B;padding-top:96px;}
 .s-loop .kicker{color:#0B6F62;}
 .s-loop h2{color:#10141B;}
@@ -569,8 +535,6 @@ header{padding:16px 0;}
 .stagecard .t{font-family:var(--vl-mono)!important;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--lamp);margin-bottom:8px;}
 .stagecard p{margin:0;line-height:1.55;color:rgba(255,255,255,.88);}
 @media (max-width:900px){.loopgrid{grid-template-columns:1fr}.looptext .al{flex-direction:column;gap:4px}.looptext .al b{min-width:0}}
-
-/* ---------- 5. INSIDE ---------- */
 .s-inside{background:#EDEBE2;color:#10141B;padding-top:96px;}
 .s-inside .kicker{color:#0B6F62;}
 .s-inside h2{color:#10141B;}
@@ -593,8 +557,6 @@ select.f,input.f{font:inherit;padding:12px 14px;border:1px solid #bdb6a3;border-
 .chip:hover{border-color:#10141B}
 .chip[aria-pressed="true"],.chip.on{background:#10141B;color:#fff;border-color:#10141B;}
 .chipset{display:flex;gap:8px;flex-wrap:wrap;}
-
-/* contest */
 .drafts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;}
 .dr{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;gap:14px;padding:22px;border:1px solid #cfc9b8;border-radius:14px;background:#fff;transition:.25s;min-height:190px;}
 .dr:hover{border-color:#10141B;transform:translateY(-2px);}
@@ -624,8 +586,6 @@ select.f,input.f{font:inherit;padding:12px 14px;border:1px solid #bdb6a3;border-
 .cta-row{margin-top:24px;display:flex;gap:14px;flex-wrap:wrap;align-items:center;justify-content:space-between;padding:22px 26px;border-radius:14px;background:#10141B;color:#fff;}
 .cta-row p{margin:0;max-width:34em;line-height:1.5;color:rgba(255,255,255,.88);}
 @media (max-width:820px){.drafts,.rs{grid-template-columns:1fr}.pane{padding:22px}}
-
-/* brain */
 .brain{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:28px;align-items:start;}
 .widget{border:1px solid #cfc9b8;border-radius:18px;background:#10141B;color:#fff;overflow:hidden;transition:.4s;}
 .widget-bar{all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;align-items:center;gap:12px;padding:16px 20px;color:#fff;}
@@ -661,8 +621,6 @@ select.f,input.f{font:inherit;padding:12px 14px;border:1px solid #bdb6a3;border-
 .msg .tx{font-size:.94rem;line-height:1.45}
 .msgs .empty{color:#6a6f78;font-size:.92rem;padding:10px 0;font-style:italic}
 @media (max-width:900px){.brain{grid-template-columns:1fr}}
-
-/* media science */
 .ms{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:26px;align-items:start;}
 .cfg{border:1px solid #cfc9b8;border-radius:16px;background:#fff;padding:24px;}
 .cfg .fld{margin-bottom:20px}
@@ -682,8 +640,6 @@ select.f,input.f{font:inherit;padding:12px 14px;border:1px solid #bdb6a3;border-
 .legend{display:flex;gap:18px;font-size:.85rem;margin-top:10px;flex-wrap:wrap}
 .legend i{display:inline-block;width:18px;height:3px;vertical-align:middle;margin-right:6px;border-radius:2px}
 @media (max-width:900px){.ms{grid-template-columns:1fr}}
-
-/* strategy */
 .strat{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:26px;align-items:start;}
 .brief{border:1px solid #cfc9b8;border-radius:16px;background:#fff;overflow:hidden;}
 .bf{border-bottom:1px solid #ece8dc;}
@@ -711,8 +667,6 @@ select.f,input.f{font:inherit;padding:12px 14px;border:1px solid #bdb6a3;border-
 .rk .row.me .nm{font-weight:700}
 .rk .v{font-family:var(--vl-mono)!important;font-size:12px;width:30px;text-align:right}
 @media (max-width:900px){.strat{grid-template-columns:1fr}.rk .nm{width:96px;font-size:.84rem}}
-
-/* ---------- 6. TEAM ---------- */
 .s-team{background:linear-gradient(#EDEBE2 0,#223041 150px,#18212C 100%);color:#EDEAE0;padding-top:210px;}
 .s-team .kicker{color:var(--lamp)}
 .s-team h2{color:#fff}
@@ -742,8 +696,6 @@ select.f,input.f{font:inherit;padding:12px 14px;border:1px solid #bdb6a3;border-
 .threeareas h4{margin:0 0 8px;font-family:var(--vl-display)!important;font-size:1.25rem;color:#fff}
 .threeareas p{margin:0;color:rgba(237,234,224,.78);line-height:1.55;font-size:.97rem}
 @media (max-width:900px){.cityw{grid-template-columns:1fr}.threeareas{grid-template-columns:1fr}.threeareas > div + div{padding-left:0;border-left:0;border-top:1px solid rgba(255,255,255,.14)}.city{grid-template-columns:repeat(14,1fr)}}
-
-/* ---------- 7. LEVELS ---------- */
 .s-levels{background:linear-gradient(#0B1118 0,#F2F0E9 150px,#F2F0E9 100%);color:#10141B;padding-top:200px;}
 .s-levels .kicker{color:#0B6F62}
 .s-levels h2{color:#10141B}
@@ -762,8 +714,6 @@ select.f,input.f{font:inherit;padding:12px 14px;border:1px solid #bdb6a3;border-
 .levels-foot{margin-top:18px;font-size:.9rem;color:#4a4f58;max-width:50em;line-height:1.5}
 @media (max-width:980px){.levels{grid-template-columns:1fr 1fr}.lv + .lv{border-left:0}.lv{border-top:1px solid rgba(16,20,27,.14)}}
 @media (max-width:560px){.levels{grid-template-columns:1fr}}
-
-/* ---------- 8. RESEARCH ---------- */
 .s-res{background:#E9E6DB;color:#10141B;padding:92px 0 100px}
 .s-res .kicker{color:#0B6F62}
 .s-res h2{font-size:clamp(1.8rem,3.2vw,2.5rem);color:#10141B}
@@ -775,8 +725,6 @@ select.f,input.f{font:inherit;padding:12px 14px;border:1px solid #bdb6a3;border-
 .stat small{display:block;margin-top:8px;font-family:var(--vl-mono)!important;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#6a6f78}
 .res-note{margin-top:26px;font-size:.88rem;color:#4a4f58;max-width:52em;line-height:1.5}
 @media (max-width:900px){.stats{grid-template-columns:1fr 1fr}.stat + .stat{border-left:0;padding-left:0}.stat{padding:20px 12px 0 0;border-top:1px solid rgba(16,20,27,.14)}}
-
-/* ---------- 9. CLOSE ---------- */
 .s-close{background:linear-gradient(#18212C 0,rgba(24,33,44,0) 190px),radial-gradient(80% 90% at 50% 100%,#FFE7A6 0%,#FFF6DA 42%,#FBFAF6 100%);color:#10141B;padding:240px 0 150px;text-align:left;position:relative;overflow:hidden}
 .s-close .kicker{color:#0B6F62}
 .s-close h2{font-size:clamp(2.6rem,6.4vw,5.2rem);max-width:12em;color:#10141B}
@@ -786,8 +734,6 @@ select.f,input.f{font:inherit;padding:12px 14px;border:1px solid #bdb6a3;border-
 .s-close .cols b{display:block;font-family:var(--vl-display)!important;font-size:1.45rem;margin-bottom:6px;letter-spacing:-.01em}
 @media (max-width:820px){.s-close .cols{grid-template-columns:1fr}.s-close .cols div + div{padding-left:0;border-left:0;border-top:1px solid rgba(16,20,27,.16)}}
 .closefine{margin-top:22px;font-family:var(--vl-mono)!important;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#4a4f58}
-
-/* ---------- FOOTER FAQ (kept, restyled by vl-site.css) ---------- */
 footer{padding:64px 0 36px;}
 .footer-faq{max-width:1180px;margin:0 auto;padding:0 28px 40px;border-bottom:1px solid;margin-bottom:26px;}
 .footer-faq h2{font-size:1.9rem;font-weight:600;margin:0 0 20px;}
@@ -803,7 +749,6 @@ footer{padding:64px 0 36px;}
 .footer-inner{display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;max-width:1180px;margin:0 auto;padding:0 28px;font-size:.84rem;}
 .footer-nav{display:flex;flex-wrap:wrap;gap:18px;}
 .footer-nav a{text-decoration:none;}
-
 .s-res .sub{color:#2d3440;margin-bottom:30px}
 .flips{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
 .flip{perspective:900px;height:230px;outline:none;cursor:pointer}
@@ -825,22 +770,8 @@ footer{padding:64px 0 36px;}
 .wholeloop svg{width:100%;height:auto;display:block}
 .wholeloop figcaption{margin-top:10px;text-align:center;color:rgba(237,234,224,.85);font-size:.98rem;line-height:1.5}
 .wholeloop figcaption b{color:#F4B63F}
-
   .utility-nav{background:var(--ink);}
   .utility-nav-inner{max-width:1200px;margin:0 auto;padding:10px 28px;display:flex;justify-content:flex-end;align-items:center;gap:12px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;}
-  /* 2026-08-21 fix, per direct correction ("We have a stylized button
-     approach that we perfect in the previous location and used across the
-     website") — the first version of this bar used plain uppercase text
-     links, not the site's actual pill-button convention (the public "Log
-     in" pill, .nav-login elsewhere: bordered pill, mixed-case text,
-     8px/16px padding). Rebuilt to match that same pill shape, just with
-     light-on-dark colors instead of dark-on-light, since this bar's
-     background is var(--ink) — same color-inversion approach already used
-     for the dark-header Logout pill on account.html/print-specs.html/
-     ooh-specs.html. border-radius is hardcoded to 999px rather than
-     var(--radius-pill) because several pages this bar lives on
-     (forgot-password.html, select-tier.html, terms.html) never define
-     that variable at all. */
   .utility-nav-inner a{font-size:12.5px;font-weight:600;color:rgba(255,255,255,0.92);text-decoration:none;padding:8px 16px;border:1px solid rgba(255,255,255,0.38);border-radius:999px;white-space:nowrap;transition:border-color 0.2s ease, background 0.2s ease;}
   .utility-nav-inner a:hover{border-color:#fff;background:rgba(255,255,255,0.08);}
 </style>
@@ -863,12 +794,12 @@ footer{padding:64px 0 36px;}
       <a class="btn btn-lamp" href="assessment.html">Start the free assessment →</a>
       <a class="btn btn-line" href="#proof">See the research</a>
     </div>
-    <div class="five" role="img" aria-label="Five places marketing breaks, relit one by one: work, handoff, plan, measurement, know-how">
-      <div class="fc"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg></span><span class="fc-n">Work</span><span class="t dim">The work can't get out the door</span><span class="t lit">An agent drafts under every seat</span></div>
-      <div class="fc"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 7h13"/><path d="M17 4l3 3-3 3"/><path d="M17 17H4"/><path d="M7 14l-3 3 3 3"/></svg></span><span class="fc-n">Handoff</span><span class="t dim">The promise and the delivery drift apart</span><span class="t lit">One campaign, one objective</span></div>
-      <div class="fc"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span><span class="fc-n">Plan</span><span class="t dim">The plan says one thing, the creative another</span><span class="t lit">One story, graded for relevance</span></div>
-      <div class="fc"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20V11M10 20V4M16 20v-6M22 20H2"/></svg></span><span class="fc-n">Measurement</span><span class="t dim">TV judged like brand search</span><span class="t lit">Each tactic measured by its job</span></div>
-      <div class="fc"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 00-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0012 3z"/></svg></span><span class="fc-n">Know-how</span><span class="t dim">What your team knows lives in a few heads</span><span class="t lit">Train the Brain keeps it</span></div>
+    <div class="five" role="group" aria-label="Five places marketing breaks, relit one by one: work, handoff, plan, measurement, know-how">
+      <div class="fc"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg></span><span class="fc-n">Work</span><span class="hl"><span class="t dim">The work can't get out the door</span><span class="t lit">An agent drafts under every seat</span></span><span class="tools"><span class="tl">Tools</span><span class="tp">Structured marketing campaign planning tools and calendars support flawless execution, accountability and downstream analysis. Search Everywhere and Reputation Management turn a website scan into starting priorities for your brand positioning, competitors and how LLMs present you. Your team scores and decides.</span></span></div>
+      <div class="fc"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 7h13"/><path d="M17 4l3 3-3 3"/><path d="M17 17H4"/><path d="M7 14l-3 3 3 3"/></svg></span><span class="fc-n">Handoff</span><span class="hl"><span class="t dim">The promise and the delivery drift apart</span><span class="t lit">One campaign, one objective</span></span><span class="tools"><span class="tl">Tools</span><span class="tp">Multi-model AI agents support integrated experiences balancing media objectives, ad copy and landing pages. Humans select contest winners, design ads and place media.</span></span></div>
+      <div class="fc"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span><span class="fc-n">Plan</span><span class="hl"><span class="t dim">The plan says one thing, the creative another</span><span class="t lit">One story, graded for relevance</span></span><span class="tools"><span class="tl">Tools</span><span class="tp">Budget and campaign scenario planning models based on your data and industry best practices. Your AI Brain maintains a record of past results when presenting the future. Employee tribal knowledge is eliminated.</span></span></div>
+      <div class="fc"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20V11M10 20V4M16 20v-6M22 20H2"/></svg></span><span class="fc-n">Measurement</span><span class="hl"><span class="t dim">TV judged like brand search</span><span class="t lit">Each tactic measured by its job</span></span><span class="tools"><span class="tl">Tools</span><span class="tp">Advanced analytics, including real-time data visualization without needing a developer, MMM feeds and GeoOptimization, support your analytics story.</span></span></div>
+      <div class="fc"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 00-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0012 3z"/></svg></span><span class="fc-n">Know-how</span><span class="hl"><span class="t dim">What your team knows lives in a few heads</span><span class="t lit">Train the Brain keeps it</span></span><span class="tools"><span class="tl">Tools</span><span class="tp">Train the Brain builds on your AI Brain, historical and future performance, publicly sourced data and your overall brand voice and positioning.</span></span></div>
     </div>
   </div>
 </section>
@@ -1000,106 +931,14 @@ footer{padding:64px 0 36px;}
       </div>
     </div>
   </div>
-  <script>
-    // Round 21 (2026-08-05), per direct instruction — each FAQ item starts
-    // collapsed; clicking its heading toggles it open/closed independently
-    // (not an exclusive accordion — more than one can be open at once).
-    function toggleFaqItem(heading){
-      heading.parentElement.classList.toggle('open');
-    }
-  </script>
+  <script>function toggleFaqItem(heading){heading.parentElement.classList.toggle("open")}</script>
   <script src="/vl-chrome.js" data-vl="footer"></script>
 </footer>
 
-<script>
-(function(){
-  'use strict';
-  var $ = function(s, r){ return (r||document).querySelector(s); };
-  var $$ = function(s, r){ return Array.prototype.slice.call((r||document).querySelectorAll(s)); };
-  var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+<script>(function(){"use strict";var $=function(s,r){return(r||document).querySelector(s)};var $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};var reduce=window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches;function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}var navToggle=$("#navToggle"),navLinks=$("#navLinks");function setNavOpen(open){navToggle.classList.toggle("open",open);navToggle.setAttribute("aria-expanded",open?"true":"false");navLinks.classList.toggle("open",open);navLinks.style.maxHeight=open?navLinks.scrollHeight+"px":"0px"}navToggle.addEventListener("click",function(){setNavOpen(!navLinks.classList.contains("open"))});$$("a",navLinks).forEach(function(a){a.addEventListener("click",function(){setNavOpen(false)})});var BREAKS=[{n:"Work",t:"The work can’t get out the door.",dark:"In a small team, one person is the whole department. In a mid-size team, every function is a queue. In an enterprise, hundreds of seats, and drafts still wait days for review. Your best people spend their hours on production instead of judgment.",lit:"An AI agent sits under every seat and writes the first pass. Your people spend their hours on judgment: they approve, edit or decline.",see:"#human",seeT:"See the five seats"},{n:"Handoff",t:"The promise and the delivery drift apart.",dark:"Media makes the promise. CX delivers it. The click gets measured. The call center doesn’t. Agencies, channels and regions each optimize their own slice, and nobody owns the whole journey.",lit:"Relevance Scores grade the promise against the experience. The gap between media and delivery gets an owner, and a number.",see:"media-cx.html#analysis",seeT:"See the scores"},{n:"Plan",t:"The plan says one thing. The creative says another.",dark:"Two documents, two teams, months apart. They meet at the post-mortem. Two stories, and you are asked to choose between them.",lit:"One campaign, one objective, six stages: objectives, budget, vision, creative, trafficking, analysis. The plan and the creative are the same story.",see:"execution.html#brief",seeT:"See the brief"},{n:"Measurement",t:"You measure TV the way you measure brand search.",dark:"TV creates demand. Search collects it. Judge every channel by last click and the awareness that fed it looks like waste. The report is accurate. The question it answers is wrong.",lit:"Measurement follows the job each tactic does, by conversion type, and flags where coverage is missing instead of guessing.",see:"media-cx.html#analysis",seeT:"See a match-market test"},{n:"Know-how",t:"What your team knows lives in a few heads.",dark:"Why the last campaign worked. Which vendor to trust. How the brand really sounds. When one person leaves, or the skill was never on the team, you start over.",lit:"Train the Brain captures what the business knows. Every correction stays with the company, not with a person.",see:"aiteam.html#brain",seeT:"See the Brain learn"}];var bkSel=0,bkOn=[false,false,false,false,false];var bkList=$("#bkList");bkList.innerHTML=BREAKS.map(function(b,i){return'<button class="bk" role="tab" id="bk'+i+'" aria-selected="'+(i===0)+'" data-i="'+i+'"><span class="n">0'+(i+1)+'</span><span class="tt">'+esc(b.t)+"</span></button>"}).join("");function bkRender(){var b=BREAKS[bkSel],on=bkOn[bkSel];$$(".bk",bkList).forEach(function(el,i){el.setAttribute("aria-selected",i===bkSel?"true":"false")});$("#bkPanel").classList.toggle("on",on);$("#bkState").textContent=on?"With the light on":"In the dark";$("#bkH").textContent=on?"Light, here: "+b.n.toLowerCase():b.t;$("#bkP").textContent=on?b.lit:b.dark;$("#bkSw").setAttribute("aria-checked",on?"true":"false");$("#bkSwL").textContent=on?"Light is on":"Turn on the light";var see=$("#bkSee");see.setAttribute("href",b.see);see.textContent=b.seeT+" →"}bkList.addEventListener("click",function(e){var t=e.target.closest(".bk");if(!t)return;bkSel=+t.dataset.i;bkRender()
+});$("#bkSw").addEventListener("click",function(){bkOn[bkSel]=!bkOn[bkSel];bkRender()});bkRender();var SEATS=[{n:"PR",keep:"Human keeps the relationships.",draft:"Holding statement on the delayed sailing: three sentences, calm tone, one clear next step for guests, and no promise we can’t keep.",ok:"Approved. Sent to the PR lead’s outbox, in the lead’s name.",no:"Declined. The agent drafts a second version with your note."},{n:"Brand",keep:"Human keeps creative direction.",draft:"Three taglines for spring in the brand’s voice, each under eight words, with the reason each one fits the voice guide.",ok:"Approved. The tagline goes to creative with the voice guide attached.",no:"Declined. The agent tries again with a warmer register."},{n:"Media Planning & Ops",keep:"Human keeps campaign creation.",draft:"The November plan: budget moved toward streaming, with the trafficking checklist already filled in and two open questions for you.",ok:"Approved. The plan moves to trafficking, and the two questions go to you.",no:"Declined. The plan stays where it was."},{n:"Performance Marketing",keep:"Human keeps the buy.",draft:"Three paid-search ad variants for the winter offer, headlines under thirty characters, matched to the landing page promise.",ok:"Approved. Variants queue for launch, and nothing spends until you release it.",no:"Declined. The agent returns shorter headlines."},{n:"Analytics",keep:"Human keeps the final call on a number.",draft:"This week’s read on conversion by channel, with two places where coverage is missing and a note on what not to conclude yet.",ok:"Approved. The read is posted with your name beside the numbers.",no:"Declined. The agent re-runs it with the date range you want."}];var seatSel=0,seatState={};var seatTabs=$("#seatTabs");seatTabs.innerHTML=SEATS.map(function(s,i){return'<button class="seat" role="tab" aria-selected="'+(i===0)+'" data-i="'+i+'">'+esc(s.n)+"</button>"}).join("");function seatRender(){var s=SEATS[seatSel],st=seatState[seatSel];$$(".seat",seatTabs).forEach(function(el,i){el.setAttribute("aria-selected",i===seatSel?"true":"false")});$("#dcDraft").textContent=s.draft;$("#dcKeep").textContent=s.keep;var el=$("#dcSt");if(st==="ok"){el.textContent="✓ "+s.ok;el.className="dc-status"}else if(st==="no"){el.textContent=s.no;el.className="dc-status neutral"}else if(st==="edit"){el.textContent="Opened for editing. The agent waits.";el.className="dc-status neutral"}else{el.textContent="Waiting on a person.";el.className="dc-status neutral"}}seatTabs.addEventListener("click",function(e){var t=e.target.closest(".seat");if(!t)return;seatSel=+t.dataset.i;seatRender()});$("#dcOk").addEventListener("click",function(){seatState[seatSel]="ok";seatRender()});$("#dcEdit").addEventListener("click",function(){seatState[seatSel]="edit";seatRender()});$("#dcNo").addEventListener("click",function(){seatState[seatSel]="no";seatRender()});seatRender();document.querySelectorAll(".flip").forEach(function(f){f.addEventListener("click",function(){f.classList.toggle("on")})})})();</script>
 
-  /* ===== nav (hamburger) ===== */
-  var navToggle = $('#navToggle'), navLinks = $('#navLinks');
-  function setNavOpen(open){
-    navToggle.classList.toggle('open', open);
-    navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    navLinks.classList.toggle('open', open);
-    navLinks.style.maxHeight = open ? navLinks.scrollHeight + 'px' : '0px';
-  }
-  navToggle.addEventListener('click', function(){ setNavOpen(!navLinks.classList.contains('open')); });
-  $$('a', navLinks).forEach(function(a){ a.addEventListener('click', function(){ setNavOpen(false); }); });
 
-  /* ===== 2 · five breaks ===== */
-  var BREAKS = [
-    { n:'Work', t:'The work can’t get out the door.', dark:'In a small team, one person is the whole department. In a mid-size team, every function is a queue. In an enterprise, hundreds of seats, and drafts still wait days for review. Your best people spend their hours on production instead of judgment.', lit:'An AI agent sits under every seat and writes the first pass. Your people spend their hours on judgment: they approve, edit or decline.', see:'#human', seeT:'See the five seats' },
-    { n:'Handoff', t:'The promise and the delivery drift apart.', dark:'Media makes the promise. CX delivers it. The click gets measured. The call center doesn’t. Agencies, channels and regions each optimize their own slice, and nobody owns the whole journey.', lit:'Relevance Scores grade the promise against the experience. The gap between media and delivery gets an owner, and a number.', see:'media-cx.html#analysis', seeT:'See the scores' },
-    { n:'Plan', t:'The plan says one thing. The creative says another.', dark:'Two documents, two teams, months apart. They meet at the post-mortem. Two stories, and you are asked to choose between them.', lit:'One campaign, one objective, six stages: objectives, budget, vision, creative, trafficking, analysis. The plan and the creative are the same story.', see:'execution.html#brief', seeT:'See the brief' },
-    { n:'Measurement', t:'You measure TV the way you measure brand search.', dark:'TV creates demand. Search collects it. Judge every channel by last click and the awareness that fed it looks like waste. The report is accurate. The question it answers is wrong.', lit:'Measurement follows the job each tactic does, by conversion type, and flags where coverage is missing instead of guessing.', see:'media-cx.html#analysis', seeT:'See a match-market test' },
-    { n:'Know-how', t:'What your team knows lives in a few heads.', dark:'Why the last campaign worked. Which vendor to trust. How the brand really sounds. When one person leaves, or the skill was never on the team, you start over.', lit:'Train the Brain captures what the business knows. Every correction stays with the company, not with a person.', see:'aiteam.html#brain', seeT:'See the Brain learn' }
-  ];
-  var bkSel = 0, bkOn = [false,false,false,false,false];
-  var bkList = $('#bkList');
-  bkList.innerHTML = BREAKS.map(function(b,i){
-    return '<button class="bk" role="tab" id="bk'+i+'" aria-selected="'+(i===0)+'" data-i="'+i+'"><span class="n">0'+(i+1)+'</span><span class="tt">'+esc(b.t)+'</span></button>';
-  }).join('');
-  function bkRender(){
-    var b = BREAKS[bkSel], on = bkOn[bkSel];
-    $$('.bk', bkList).forEach(function(el, i){ el.setAttribute('aria-selected', i===bkSel ? 'true':'false'); });
-    $('#bkPanel').classList.toggle('on', on);
-    $('#bkState').textContent = on ? 'With the light on' : 'In the dark';
-    $('#bkH').textContent = on ? 'Light, here: ' + b.n.toLowerCase() : b.t;
-    $('#bkP').textContent = on ? b.lit : b.dark;
-    $('#bkSw').setAttribute('aria-checked', on ? 'true':'false');
-    $('#bkSwL').textContent = on ? 'Light is on' : 'Turn on the light';
-    var see = $('#bkSee'); see.setAttribute('href', b.see); see.textContent = b.seeT + ' →';
-  }
-  bkList.addEventListener('click', function(e){ var t = e.target.closest('.bk'); if (!t) return; bkSel = +t.dataset.i; bkRender(); });
-  $('#bkSw').addEventListener('click', function(){ bkOn[bkSel] = !bkOn[bkSel]; bkRender(); });
-  bkRender();
-
-  /* ===== 3 · seats ===== */
-  var SEATS = [
-    { n:'PR', keep:'Human keeps the relationships.', draft:'Holding statement on the delayed sailing: three sentences, calm tone, one clear next step for guests, and no promise we can’t keep.', ok:'Approved. Sent to the PR lead’s outbox, in the lead’s name.', no:'Declined. The agent drafts a second version with your note.' },
-    { n:'Brand', keep:'Human keeps creative direction.', draft:'Three taglines for spring in the brand’s voice, each under eight words, with the reason each one fits the voice guide.', ok:'Approved. The tagline goes to creative with the voice guide attached.', no:'Declined. The agent tries again with a warmer register.' },
-    { n:'Media Planning & Ops', keep:'Human keeps campaign creation.', draft:'The November plan: budget moved toward streaming, with the trafficking checklist already filled in and two open questions for you.', ok:'Approved. The plan moves to trafficking, and the two questions go to you.', no:'Declined. The plan stays where it was.' },
-    { n:'Performance Marketing', keep:'Human keeps the buy.', draft:'Three paid-search ad variants for the winter offer, headlines under thirty characters, matched to the landing page promise.', ok:'Approved. Variants queue for launch, and nothing spends until you release it.', no:'Declined. The agent returns shorter headlines.' },
-    { n:'Analytics', keep:'Human keeps the final call on a number.', draft:'This week’s read on conversion by channel, with two places where coverage is missing and a note on what not to conclude yet.', ok:'Approved. The read is posted with your name beside the numbers.', no:'Declined. The agent re-runs it with the date range you want.' }
-  ];
-  var seatSel = 0, seatState = {};
-  var seatTabs = $('#seatTabs');
-  seatTabs.innerHTML = SEATS.map(function(s,i){ return '<button class="seat" role="tab" aria-selected="'+(i===0)+'" data-i="'+i+'">'+esc(s.n)+'</button>'; }).join('');
-  function seatRender(){
-    var s = SEATS[seatSel], st = seatState[seatSel];
-    $$('.seat', seatTabs).forEach(function(el,i){ el.setAttribute('aria-selected', i===seatSel?'true':'false'); });
-    $('#dcDraft').textContent = s.draft; $('#dcKeep').textContent = s.keep;
-    var el = $('#dcSt');
-    if (st === 'ok'){ el.textContent = '✓ ' + s.ok; el.className = 'dc-status'; }
-    else if (st === 'no'){ el.textContent = s.no; el.className = 'dc-status neutral'; }
-    else if (st === 'edit'){ el.textContent = 'Opened for editing. The agent waits.'; el.className = 'dc-status neutral'; }
-    else { el.textContent = 'Waiting on a person.'; el.className = 'dc-status neutral'; }
-  }
-  seatTabs.addEventListener('click', function(e){ var t = e.target.closest('.seat'); if (!t) return; seatSel = +t.dataset.i; seatRender(); });
-  $('#dcOk').addEventListener('click', function(){ seatState[seatSel] = 'ok'; seatRender(); });
-  $('#dcEdit').addEventListener('click', function(){ seatState[seatSel] = 'edit'; seatRender(); });
-  $('#dcNo').addEventListener('click', function(){ seatState[seatSel] = 'no'; seatRender(); });
-  seatRender();
-
-  document.querySelectorAll('.flip').forEach(function(f){ f.addEventListener('click',function(){ f.classList.toggle('on'); }); });
-})();
-</script>
-
-<!-- 2026-08-19 (login redesign, round 2) — lightweight login modal for the
-     main nav's "Log in" link, per direct instruction: a returning visitor
-     shouldn't have to leave the page they're on just to sign in. Handles
-     the ordinary case (valid email+password) entirely in-page; anything
-     that needs its own screen — a first-login forced password change, or
-     Forgot Password's phone-recovery flow — still hands off to
-     login.html/forgot-password.html (both already built), via a redirect
-     rather than as the default path. Same sessionStorage key convention as
-     those pages, so a modal-driven login is picked up immediately by
-     account.html/portal.html. Injected identically on every public page by
-     patch_login_modal.py — see MANIFEST.md for the file list. -->
 <div class="vl-lm-overlay" id="vlLoginOverlay" style="display:none;">
   <div class="vl-lm-card">
     <button type="button" class="vl-lm-close" onclick="vlCloseLoginModal()" aria-label="Close">&times;</button>
@@ -1142,133 +981,8 @@ footer{padding:64px 0 36px;}
 .vl-lm-links a:hover{text-decoration:underline;}
 </style>
 
-<script>
-(function(){
-  var VL_BACKEND_URL = (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
-    ? '' : 'http://localhost:8787';
-  function vlSessionKey(accountId){ return 'verilume_session_' + accountId; }
-  function vlMemberKey(accountId){ return 'verilume_member_' + accountId; }
-  function vlPersistSession(accountId, token, memberId){
-    try {
-      localStorage.setItem(vlSessionKey(accountId), token);
-      if (memberId) localStorage.setItem(vlMemberKey(accountId), memberId);
-      // 2026-08-21 — also set the sitewide "who's logged in" pointer (see
-      // #utilityNav's script comment) so the utility nav, and
-      // assessment.html's Save & Schedule modal, recognize this session
-      // without needing to know the accountId in advance.
-      localStorage.setItem('verilume_active_account', accountId);
-    } catch (e) {}
-  }
-  window.vlOpenLoginModal = function(){
-    document.getElementById('vlLoginOverlay').style.display = 'flex';
-    document.getElementById('vlLoginError').textContent = '';
-    document.getElementById('vlLoginEmail').focus();
-  };
-  window.vlCloseLoginModal = function(){
-    document.getElementById('vlLoginOverlay').style.display = 'none';
-  };
-  var forgotLink = document.getElementById('vlForgotPasswordLink');
-  if (forgotLink){
-    forgotLink.addEventListener('click', function(e){
-      e.preventDefault();
-      var email = document.getElementById('vlLoginEmail').value.trim();
-      var qs = new URLSearchParams();
-      if (email) qs.set('email', email);
-      var suffix = qs.toString();
-      location.href = 'forgot-password.html' + (suffix ? ('?' + suffix) : '');
-    });
-  }
-  window.vlSubmitLogin = async function(){
-    var email = document.getElementById('vlLoginEmail').value.trim();
-    var password = document.getElementById('vlLoginPassword').value;
-    var errEl = document.getElementById('vlLoginError');
-    var btn = document.getElementById('vlLoginBtn');
-    if (!email || !password){ errEl.textContent = 'Enter your email and password to continue.'; return; }
-    btn.disabled = true;
-    errEl.textContent = '';
-    try {
-      var resp = await fetch(VL_BACKEND_URL + '/api/auth/login-user', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email, password: password })
-      });
-      var data = await resp.json().catch(function(){ return {}; });
-      if (!resp.ok){
-        errEl.textContent = data.error || ("Couldn't sign in (" + resp.status + ").");
-        btn.disabled = false;
-        return;
-      }
-      // 2026-08-21 fix, per direct report ("Logging Out and Login from the
-      // assessment.html page does not recognize the user password") — this
-      // modal (injected identically on every public page, including
-      // assessment.html) only ever checked data.mustChangePassword, never
-      // data.mfaRequired. login-user sends a step-up MFA code instead of a
-      // session token for any login that isn't already on a trusted
-      // device (see server.js's checkTrustedDevice) — which is the normal
-      // case, not an edge case. That response has no token/accountId at
-      // all, so the old code fell through to vlPersistSession(undefined,
-      // undefined, ...) and redirected to portal.html?accountId=undefined
-      // — a session that was never actually established. From the visitor's
-      // side that looks exactly like "my password wasn't accepted," even
-      // though login-user had just verified it correctly. Same hand-off
-      // pattern as the mustChangePassword branch below: this modal doesn't
-      // try to replicate the MFA code-entry screen inline, it defers to
-      // login.html, which already handles that flow correctly end to end.
-      if (data.mfaRequired){
-        location.href = 'login.html?next=' + encodeURIComponent(location.pathname + location.search);
-        return;
-      }
-      if (data.mustChangePassword){
-        // First-login password change needs its own screen — hand off to
-        // login.html rather than replicate that flow in this modal.
-        location.href = 'login.html?next=' + encodeURIComponent(location.pathname + location.search);
-        return;
-      }
-      vlPersistSession(data.accountId, data.token, data.memberId);
-      location.href = 'portal.html?accountId=' + encodeURIComponent(data.accountId);
-    } catch (e){
-      errEl.textContent = 'Could not reach the backend to sign in — try again.';
-      btn.disabled = false;
-    }
-  };
-  var navLink = document.getElementById('navLoginLink');
-  if (navLink){
-    navLink.addEventListener('click', function(e){
-      e.preventDefault();
-      vlOpenLoginModal();
-    });
-  }
-})();
-</script>
+<script>(function(){var VL_BACKEND_URL=typeof window!=="undefined"&&window.location&&window.location.protocol!=="file:"?"":"http://localhost:8787";function vlSessionKey(accountId){return"verilume_session_"+accountId}function vlMemberKey(accountId){return"verilume_member_"+accountId}function vlPersistSession(accountId,token,memberId){try{localStorage.setItem(vlSessionKey(accountId),token);if(memberId)localStorage.setItem(vlMemberKey(accountId),memberId);localStorage.setItem("verilume_active_account",accountId)}catch(e){}}window.vlOpenLoginModal=function(){document.getElementById("vlLoginOverlay").style.display="flex";document.getElementById("vlLoginError").textContent="";document.getElementById("vlLoginEmail").focus()};window.vlCloseLoginModal=function(){document.getElementById("vlLoginOverlay").style.display="none"};var forgotLink=document.getElementById("vlForgotPasswordLink");if(forgotLink){forgotLink.addEventListener("click",function(e){e.preventDefault();var email=document.getElementById("vlLoginEmail").value.trim();var qs=new URLSearchParams;if(email)qs.set("email",email);var suffix=qs.toString();location.href="forgot-password.html"+(suffix?"?"+suffix:"")})}window.vlSubmitLogin=async function(){var email=document.getElementById("vlLoginEmail").value.trim();var password=document.getElementById("vlLoginPassword").value;var errEl=document.getElementById("vlLoginError");var btn=document.getElementById("vlLoginBtn");if(!email||!password){errEl.textContent="Enter your email and password to continue.";return}btn.disabled=true;errEl.textContent="";try{var resp=await fetch(VL_BACKEND_URL+"/api/auth/login-user",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:email,password:password})});var data=await resp.json().catch(function(){return{}});if(!resp.ok){errEl.textContent=data.error||"Couldn't sign in ("+resp.status+").";btn.disabled=false;return}if(data.mfaRequired){location.href="login.html?next="+encodeURIComponent(location.pathname+location.search);return}if(data.mustChangePassword){location.href="login.html?next="+encodeURIComponent(location.pathname+location.search);return}vlPersistSession(data.accountId,data.token,data.memberId);location.href="portal.html?accountId="+encodeURIComponent(data.accountId)}catch(e){errEl.textContent="Could not reach the backend to sign in — try again.";btn.disabled=false}};var navLink=document.getElementById("navLoginLink");if(navLink){navLink.addEventListener("click",function(e){e.preventDefault();vlOpenLoginModal()})}})();</script>
 
-<script>
-/* preview: tie each "problem" to the research above it */
-(function(){
-  var RES=[
-    ['McKinsey · +40% productivity, and 60–70% less time-to-publish, for teams running three or more generative-AI workflows','#proof'],
-    ['BCG · AI-driven personalization leaders grow revenue 10 points faster a year than laggards','#proof'],
-    ['Bain · 10–25% higher return on ad spend from AI-powered targeting','#proof'],
-    ['Bain · 10–25% higher return on ad spend when each channel is measured for its real job','#proof'],
-    ['Pedowitz Group · 41% of marketers report 30+ day campaign cycles; our estimate is 1–3 weeks saved to first draft','#proof']];
-  var SEE=[['#org','See the seat →'],['media-cx.html#fail','See where it fails →'],['media-cx.html#analysis','See the analysis →'],['media-cx.html#analysis','See the analysis →'],['',''] ];
-  var WS=['Copywriting','Campaign Workspace','Budget & Recommendation','Analysis · Media Science','Train the Brain'];
-  var SEATWS=['PR & Corporate Communications','Brand & Voice','Media Plan & Budget','Performance Marketing','Advanced Analytics'];
-  function ws(n){return '<i>In your workspace</i> <b>'+n.replace(/&/g,'&amp;')+'</b>'}
-  var list=document.getElementById('bkList'), res=document.getElementById('bkRes'), see=document.getElementById('bkSee');
-  function sync(){
-    var btns=[].slice.call(list.querySelectorAll('.bk')), i=btns.findIndex(function(b){return b.getAttribute('aria-selected')==='true';}); if(i<0)i=0;
-    document.getElementById('bkWs').innerHTML=ws(WS[i]);
-    res.innerHTML='<b>The research behind this</b>'+RES[i][0]+'. <span style="opacity:.7">Industry benchmark, not a measured Verilume result.</span>';
-    if(SEE[i][0]){see.setAttribute('href',SEE[i][0]);see.textContent=SEE[i][1];see.style.display='';}else{see.style.display='none';}
-  }
-  list.addEventListener('click',function(){setTimeout(sync,0)});
-  document.getElementById('bkSw').addEventListener('click',function(){setTimeout(sync,0)});
-  sync();
-  var st=document.getElementById('seatTabs'),dw=document.getElementById('dcWs');
-  function seatSync(){var bs=[].slice.call(st.querySelectorAll('.seat')),i=bs.findIndex(function(x){return x.getAttribute('aria-selected')==='true'});dw.innerHTML=ws(SEATWS[i<0?0:i])}
-  st.addEventListener('click',function(){setTimeout(seatSync,0)});seatSync();
-  document.getElementById('dcCt').addEventListener('click',function(){var e=document.getElementById('dcSt');e.textContent='Contest started. Five drafts compete blind, scored on truth and light. You pick the winner.';e.className='dc-status';});
-})();
-</script>
+<script>(function(){var RES=[["McKinsey · +40% productivity, and 60–70% less time-to-publish, for teams running three or more generative-AI workflows","#proof"],["BCG · AI-driven personalization leaders grow revenue 10 points faster a year than laggards","#proof"],["Bain · 10–25% higher return on ad spend from AI-powered targeting","#proof"],["Bain · 10–25% higher return on ad spend when each channel is measured for its real job","#proof"],["Pedowitz Group · 41% of marketers report 30+ day campaign cycles; our estimate is 1–3 weeks saved to first draft","#proof"]];var SEE=[["#org","See the seat →"],["media-cx.html#fail","See where it fails →"],["media-cx.html#analysis","See the analysis →"],["media-cx.html#analysis","See the analysis →"],["",""]];var WS=["Copywriting","Campaign Workspace","Budget & Recommendation","Analysis · Media Science","Train the Brain"];var SEATWS=["PR & Corporate Communications","Brand & Voice","Media Plan & Budget","Performance Marketing","Advanced Analytics"];function ws(n){return"<i>In your workspace</i> <b>"+n.replace(/&/g,"&amp;")+"</b>"}var list=document.getElementById("bkList"),res=document.getElementById("bkRes"),see=document.getElementById("bkSee");function sync(){var btns=[].slice.call(list.querySelectorAll(".bk")),i=btns.findIndex(function(b){return b.getAttribute("aria-selected")==="true"});if(i<0)i=0;document.getElementById("bkWs").innerHTML=ws(WS[i]);res.innerHTML="<b>The research behind this</b>"+RES[i][0]+'. <span style="opacity:.7">Industry benchmark, not a measured Verilume result.</span>';if(SEE[i][0]){see.setAttribute("href",SEE[i][0]);see.textContent=SEE[i][1];see.style.display=""}else{see.style.display="none"}}list.addEventListener("click",function(){setTimeout(sync,0)});document.getElementById("bkSw").addEventListener("click",function(){setTimeout(sync,0)});sync();var st=document.getElementById("seatTabs"),dw=document.getElementById("dcWs");function seatSync(){var bs=[].slice.call(st.querySelectorAll(".seat")),i=bs.findIndex(function(x){return x.getAttribute("aria-selected")==="true"});dw.innerHTML=ws(SEATWS[i<0?0:i])}st.addEventListener("click",function(){setTimeout(seatSync,0)});seatSync();document.getElementById("dcCt").addEventListener("click",function(){var e=document.getElementById("dcSt");e.textContent="Contest started. Five drafts compete blind, scored on truth and light. You pick the winner.";e.className="dc-status"})})();</script>
 </body>
 </html>
