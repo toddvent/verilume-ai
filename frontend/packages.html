@@ -1170,7 +1170,7 @@ footer{padding:64px 0 36px;}
   if(nt&&nl){nt.addEventListener('click',function(){var o=!nl.classList.contains('open');nt.classList.toggle('open',o);nt.setAttribute('aria-expanded',o?'true':'false');nl.classList.toggle('open',o);nl.style.maxHeight=o?nl.scrollHeight+'px':'0px'})}
   var NAMES=['Starter','Growth'];
   function choose(i){var n=NAMES[i];try{sessionStorage.setItem('vl_package',n.toLowerCase())}catch(e){}
-    var o=$('#pkOut');o.hidden=false;o.innerHTML='<h3>You selected '+esc(n)+'.</h3><p>We saved your choice. Next is the free assessment, then activation in your portal.</p><ol><li>Create your account</li><li>Take the free assessment</li><li>Activate '+esc(n)+' in the portal</li></ol><a class="btn btn-lamp" href="assessment.html?package='+encodeURIComponent(n.toLowerCase())+'">Continue to my free assessment →</a>';
+    var o=$('#pkOut');o.hidden=false;o.innerHTML='<h3>You selected '+esc(n)+'.</h3><p>We saved your choice. Next is the free assessment, then activation in your portal.</p><ol><li>Create your account</li><li>Take the free assessment</li><li>Activate '+esc(n)+' in the portal</li></ol><p style="font-size:.85rem;opacity:.8;margin:0 0 14px">You will be asked to agree to our <a href="terms.html">Terms &amp; Conditions</a> and <a href="privacy.html">Privacy Policy</a> before you start your trial or activate a package.</p><a class="btn btn-lamp" href="assessment.html?package='+encodeURIComponent(n.toLowerCase())+'">Continue to my free assessment →</a>';
     o.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});}
   document.addEventListener('click',function(e){var b=e.target.closest('.pkSel');if(b)choose(+b.dataset.i)});
 })();

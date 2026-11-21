@@ -8,18 +8,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  /*
-    2026-08-19 (Path 4 build) — real tier-selection page. Per direct
-    instruction: final tier names/pricing/inclusions are TBD (see
-    PAID_TIERS in backend/server.js — this page reads that same list live
-    via GET /api/paid-tiers rather than hardcoding a second copy), but the
-    login-facing plumbing has to be real today: pick a level, then either
-    (a) create a brand-new account with that level already set, or
-    (b) log into an account you already have and activate that level on
-    it directly, without redoing the entire registration flow. Both paths
-    land on account.html when done, per direct instruction ("taking them
-    to their account page per level selected").
-  */
   :root{
     --ink:#1D1D1F; --paper:#FFFFFF; --paper-dim:#F5F5F7;
     --cx:#0891B2; --media:#2563EB; --line:#D2D2D7; --muted:#6E6E73; --advocacy:#4F46E5;
@@ -33,8 +21,11 @@
   .wordmark{font-size:20px;font-weight:500;color:var(--ink);text-decoration:none;margin-right:18px;}
   .wordmark b{color:var(--media);font-weight:500;}
   h1{font-weight:500;font-size:clamp(28px,4vw,40px);margin:48px 0 10px;letter-spacing:-0.01em;}
-  .lede{font-size:16px;line-height:1.6;color:var(--muted);max-width:640px;margin:0 0 12px;}
-  .tbd-note{font-size:12.5px;color:#8a8067;background:#FBF6ED;border:1px solid #E9DFC7;border-radius:8px;padding:10px 14px;max-width:640px;margin:0 0 36px;}
+  .lede{font-size:16px;line-height:1.6;color:var(--muted);max-width:640px;margin:0 0 20px;}
+  .terms-row{display:flex;gap:10px;align-items:flex-start;max-width:640px;margin:0 0 6px;font-size:14px;line-height:1.5;color:var(--ink);cursor:pointer;}
+  .terms-row input{margin-top:3px;width:18px;height:18px;flex:none;}
+  .terms-row a{color:var(--cx);}
+  .terms-error{font-size:12.5px;color:var(--advocacy);min-height:18px;margin:0 0 26px;}
   .tiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px;}
   .tier-card{border:1px solid var(--line);border-radius:12px;padding:26px;display:flex;flex-direction:column;}
   .tier-name{font-size:19px;font-weight:600;margin:0 0 8px;}
@@ -45,64 +36,31 @@
   .btn-ghost{background:transparent;color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:11px 18px;font-size:13px;font-weight:600;cursor:pointer;text-align:center;}
   .btn-ghost:hover{border-color:var(--ink);}
   .status{font-size:12.5px;margin-top:60px;color:var(--muted);}
-  /* Inline "activate on existing account" login panel */
   .activate-panel{display:none;margin-top:14px;border-top:1px solid var(--line);padding-top:14px;}
   .activate-panel.open{display:block;}
   .activate-panel label{display:block;font-size:11.5px;font-weight:600;margin-bottom:4px;}
   .activate-panel input{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:4px;font-family:inherit;font-size:13px;margin-bottom:10px;box-sizing:border-box;}
   .activate-error{font-size:12px;color:var(--advocacy);min-height:16px;margin-bottom:6px;}
-  .prototype-note{margin-top:56px;padding-top:20px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted);line-height:1.7;}
 
-  /* 2026-08-21 — sitewide utility nav, per direct instruction ("we really
-     should have a utility nav above the main nav that includes Access My
-     Portal and the LogIn/Logout function"). One consistent strip, same
-     markup/position on every page (public marketing pages AND the
-     authenticated app pages), sitting above whatever header that page
-     already has. Solves three things raised together: (1) Logout was
-     landing in a different spot on different pages — now it's always
-     here; (2) there was no way back to the Portal once you navigated
-     away from it; (3) auth state (logged in vs not) now reads the same
-     sessionStorage pointer everywhere, so this bar and any page's own
-     logic agree. See the #utilityNav script block for the actual logic. */
   .utility-nav{background:var(--ink);}
   .utility-nav-inner{max-width:1200px;margin:0 auto;padding:10px 28px;display:flex;justify-content:flex-end;align-items:center;gap:12px;font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;}
-  /* 2026-08-21 fix, per direct correction ("We have a stylized button
-     approach that we perfect in the previous location and used across the
-     website") — the first version of this bar used plain uppercase text
-     links, not the site's actual pill-button convention (the public "Log
-     in" pill, .nav-login elsewhere: bordered pill, mixed-case text,
-     8px/16px padding). Rebuilt to match that same pill shape, just with
-     light-on-dark colors instead of dark-on-light, since this bar's
-     background is var(--ink) — same color-inversion approach already used
-     for the dark-header Logout pill on account.html/print-specs.html/
-     ooh-specs.html. border-radius is hardcoded to 999px rather than
-     var(--radius-pill) because several pages this bar lives on
-     (forgot-password.html, select-tier.html, terms.html) never define
-     that variable at all. */
   .utility-nav-inner a{font-size:12.5px;font-weight:600;color:rgba(255,255,255,0.92);text-decoration:none;padding:8px 16px;border:1px solid rgba(255,255,255,0.38);border-radius:999px;white-space:nowrap;transition:border-color 0.2s ease, background 0.2s ease;}
   .utility-nav-inner a:hover{border-color:#fff;background:rgba(255,255,255,0.08);}
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style id="vl-site-inline">
-/* Verilume public site layer — "from the dark to the brightest light".
-   Loaded LAST on every public page (index, platform, journey, solution pages…).
-   It re-points the old design tokens (--ink/--paper/--media/--cx/--advocacy) at the
-   new light-system palette, swaps the type, and gives nav + footer the night bookends.
-   Light is the only motion: nothing here spins, bounces or glows without a reason. */
-
 :root{
   --night:#07090D; --night-2:#0E141B; --dusk:#18212C; --dusk-2:#223041;
   --day:#FBFAF6; --day-2:#F2F0E9; --day-3:#E7E3D8;
-  --lamp:#F4B63F;         /* Lume: warm light */
-  --lamp-deep:#A8680A;    /* lamp for text on light grounds */
-  --truth:#4DD6C0;        /* Veri: cool signal */
-  --truth-deep:#0B6F62;   /* truth for text on light grounds */
+  --lamp:#F4B63F;
+  --lamp-deep:#A8680A;
+  --truth:#4DD6C0;
+  --truth-deep:#0B6F62;
   --ember:#C8512D;
   --vl-display:'Bricolage Grotesque','Avenir Next','Segoe UI',system-ui,sans-serif;
   --vl-body:'Instrument Sans','Avenir Next','Segoe UI',system-ui,sans-serif;
   --vl-mono:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
 
-  /* old tokens, re-pointed so every existing page re-inks without edits */
   --ink:#10141B; --paper:#FBFAF6; --paper-dim:#F2F0E9; --white:#FFFFFF;
   --media:#B8760B; --cx:#0B6F62; --advocacy:#B4472B;
   --line:#D9D4C6; --line-hairline:#E7E3D8; --line-strong:#BDB6A3; --muted:#625E52;
@@ -111,7 +69,6 @@
   --shadow-sm:0 1px 2px rgba(16,20,27,.06); --shadow-md:0 6px 20px rgba(16,20,27,.08); --shadow-lg:0 22px 56px rgba(16,20,27,.16);
 }
 
-/* ---- type ---- */
 html body, html body *:not(code):not(pre):not(kbd):not(samp):not(.vl-mono){font-family:var(--vl-body)!important;}
 html body h1, html body h2, html body h3, html body .logo, html body .vl-display,
 html body h1 *, html body h2 *, html body .stat-num, html body .big-num{font-family:var(--vl-display)!important;font-optical-sizing:auto;}
@@ -120,7 +77,6 @@ html body .vl-mono, html body .eyebrow, html body .hero-eyebrow, html body .band
 body{background:var(--day);color:var(--ink);}
 ::selection{background:var(--lamp);color:#10141B;}
 
-/* ---- nav: night bookend ---- */
 .utility-nav{background:#000!important;}
 .utility-nav-inner a{border-color:rgba(255,255,255,.28)!important;font-family:var(--vl-mono)!important;font-size:11px!important;letter-spacing:.06em;text-transform:uppercase;}
 header, header#siteHeader{background:rgba(7,9,13,.88)!important;backdrop-filter:blur(14px) saturate(140%);-webkit-backdrop-filter:blur(14px) saturate(140%);border-bottom:1px solid rgba(255,255,255,.08)!important;}
@@ -136,13 +92,11 @@ header .logo b, .logo b{color:var(--lamp)!important;font-weight:600!important;}
   .navlinks{background:var(--night)!important;border-bottom:1px solid rgba(255,255,255,.1)!important;}
 }
 
-/* ---- buttons ---- */
 .btn-primary, button.btn-primary{background:var(--lamp)!important;color:#10141B!important;border:0!important;border-radius:999px!important;font-weight:600!important;box-shadow:none!important;}
 .btn-primary:hover{box-shadow:0 0 0 6px rgba(244,182,63,.25)!important;transform:none!important;}
 .btn-ghost{border-color:var(--ink)!important;color:var(--ink)!important;border-radius:999px!important;background:transparent!important;}
 .btn-ghost:hover{background:var(--ink)!important;color:var(--day)!important;}
 
-/* ---- hero blocks on inner pages: they open dark, like the story does ---- */
 .hero{background:radial-gradient(120% 90% at 78% -10%, #1b2a3a 0%, #0b1118 46%, #07090D 100%)!important;color:#EDEAE0!important;border-bottom:0!important;}
 .hero h1, .hero .accent{color:#fff!important;}
 .hero .accent{color:var(--lamp)!important;}
@@ -153,11 +107,9 @@ header .logo b, .logo b{color:var(--lamp)!important;font-weight:600!important;}
 .hero .btn-ghost{border-color:rgba(255,255,255,.5)!important;color:#fff!important;}
 .hero .btn-ghost:hover{background:#fff!important;color:#10141B!important;}
 
-/* ---- the lightness scale used by cards, bands and pills on inner pages ---- */
 .band{background:var(--day);}
 .band-label h2{color:var(--ink);}
 
-/* ---- footer: night again ---- */
 footer{background:var(--night)!important;border-top:1px solid rgba(255,255,255,.08)!important;color:rgba(237,234,224,.7)!important;}
 footer .footer-faq{border-bottom-color:rgba(255,255,255,.12)!important;}
 footer .footer-faq h2, footer h2{color:#fff!important;}
@@ -169,17 +121,13 @@ footer .footer-nav a{color:rgba(237,234,224,.62)!important;}
 footer .footer-nav a:hover{color:var(--lamp)!important;}
 footer .footer-inner{color:rgba(237,234,224,.55)!important;}
 
-/* ---- motion rules ---- */
 @media (prefers-reduced-motion:reduce){
   *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important;}
 }
 
-/* heading weight: the old pages used 300 display; the new system sets 600 */
 html body h1, html body h2{font-weight:600;}
 html body h3{font-weight:600;}
 
-/* footer bar inside a page wrapper (inner pages): bleed the night ground edge to edge,
-   keep the content on the page container's edges, never clip text */
 .wrap > footer, .page > footer, main + footer, footer:not(:has(.footer-inner)){
   position:relative; box-shadow:0 0 0 100vmax var(--night); clip-path:inset(0 -100vmax);
   margin-top:80px!important; padding:28px 0 32px!important; line-height:1.6!important;
@@ -189,10 +137,8 @@ footer:not(:has(.footer-inner)) .footer-nav a{color:rgba(237,234,224,.62)!import
 footer:not(:has(.footer-inner)) > span{color:rgba(237,234,224,.55)!important;}
 .wrap:has(> footer){padding-bottom:0!important;margin-bottom:0!important;}
 
-/* ghost buttons: a full pill outline (they were rendering a lone bottom arc) */
 .btn-ghost{border:1.5px solid currentColor!important;padding:15px 26px!important;border-radius:999px!important;display:inline-block;}
 .hero .btn-ghost{border-color:rgba(255,255,255,.5)!important;}
-
 </style>
 </head>
 <body>
@@ -203,14 +149,6 @@ footer:not(:has(.footer-inner)) > span{color:rgba(237,234,224,.55)!important;}
   </div>
 </div>
 <script>
-// 2026-08-21 — shared utility-nav logic, identical on every page (see the
-// .utility-nav CSS comment for why). Reads a single sessionStorage pointer
-// (verilume_active_account) that login.html / assessment.html's Save &
-// Schedule flow set on successful sign-in, and that this same script's own
-// Logout handler (and every page's own logout(), where one exists) clears.
-// Deliberately self-contained (its own vlUtilBackendUrl(), not the page's
-// BACKEND_URL) so it works unmodified on pages that don't otherwise talk to
-// the backend at all (marketing pages, terms.html, etc.).
 (function(){
   function vlUtilBackendUrl(){
     return (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:')
@@ -226,11 +164,6 @@ footer:not(:has(.footer-inner)) > span{color:rgba(237,234,224,.55)!important;}
     var authLink = document.getElementById('utilNavAuthLink');
     if (!portalLink || !authLink) return;
     if (accountId){
-      // 2026-08-21 — per direct feedback, showing "Access My Portal" while
-      // already ON portal.html is redundant (you're already there); hide
-      // it there specifically, still show it everywhere else (marketing
-      // pages, assessment.html, account.html, etc.) so there's always a
-      // way back to the Portal from outside it.
       var onPortalPage = /\/?portal\.html$/.test((window.location && window.location.pathname) || '');
       if (onPortalPage){
         portalLink.style.display = 'none';
@@ -274,25 +207,11 @@ footer:not(:has(.footer-inner)) > span{color:rgba(237,234,224,.55)!important;}
   } else {
     vlUtilityNavInit();
   }
-  // 2026-08-24, per direct report ("Access My Portal takes me to the
-  // wrong account, even after logging in as the right one") — this only
-  // ever ran once, on initial load. Two real ways that goes stale: (1)
-  // the browser restores this exact page from bfcache on Back/Forward
-  // navigation, which does NOT re-fire DOMContentLoaded, so the link's
-  // href keeps whatever account (or none) was active when this page was
-  // first painted, even if a login happened after that in this same tab
-  // via a different page; (2) this page was left open in one tab while
-  // login happened in another tab/window — localStorage changed, but
-  // this tab's DOM never re-read it. 'pageshow' fires on both a normal
-  // load AND a bfcache restore (check event.persisted to tell them
-  // apart, though re-running is harmless either way); the 'storage'
-  // event fires in OTHER tabs of the same origin when localStorage
-  // changes in one tab, so both close the gap.
   window.addEventListener('pageshow', function(e){ vlUtilityNavInit(); });
   window.addEventListener('storage', function(e){
     if (!e.key || e.key === 'verilume_active_account') vlUtilityNavInit();
   });
-  window.vlUtilityNavInit = vlUtilityNavInit; // exposed so login()/logout() elsewhere can re-run it after changing session state without a full reload
+  window.vlUtilityNavInit = vlUtilityNavInit;
 })();
 </script>
 
@@ -300,14 +219,16 @@ footer:not(:has(.footer-inner)) > span{color:rgba(237,234,224,.55)!important;}
 <div class="wrap">
   <h1>Select your level</h1>
   <p class="lede">Create a new account at this level, or if you already have a Verilume account, log in and activate it directly — no need to go through registration again.</p>
-  <p class="tbd-note">Level names, pricing, and inclusions below are placeholders — not yet finalized. What's real: picking one here creates or updates a real account record.</p>
+
+  <label class="terms-row" for="agreeTerms">
+    <input type="checkbox" id="agreeTerms">
+    <span>I agree to the <a href="terms.html" target="_blank" rel="noopener">Terms &amp; Conditions</a> and have read the <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</span>
+  </label>
+  <p class="terms-error" id="termsError" role="alert"></p>
 
   <div class="tiers" id="tiersGrid">Loading levels…</div>
 
   <p class="status" id="pageStatus"></p>
-  <div class="prototype-note">
-    Prototype note — the three levels above (PAID_TIERS in backend/server.js) are placeholders standing in for real, still-undecided pricing tiers. What this page does is real: "Create a new account" runs the same registration (onboarding.html → POST /api/accounts → POST /api/auth/register-admin) as every other account-creation path, just with the chosen level pre-set; "Activate on my existing account" authenticates via the real POST /api/auth/login-user endpoint and then calls POST /api/accounts/:id/tier, a real, persisted update — no simulation either way.
-  </div>
 </div>
 
 <script>
@@ -319,7 +240,7 @@ function sessionStorageKey(accountId){
   return `verilume_session_${accountId}`;
 }
 function persistSessionTokenFor(accountId, token){
-  try { localStorage.setItem(sessionStorageKey(accountId), token); } catch (e) { /* sessionStorage unavailable — skip caching */ }
+  try { localStorage.setItem(sessionStorageKey(accountId), token); } catch (e) { }
 }
 
 let TIERS = [];
@@ -346,7 +267,7 @@ function renderTiers(){
         <p class="tier-desc">${escapeHtml(t.description)}</p>
       </div>
       <div class="tier-actions">
-        <a class="btn-primary" href="onboarding.html?tier=${encodeURIComponent(t.key)}">Create a new account with this level →</a>
+        <a class="btn-primary" href="onboarding.html?tier=${encodeURIComponent(t.key)}" onclick="return requireAgreement()">Create a new account with this level →</a>
         <button type="button" class="btn-ghost" onclick="toggleActivatePanel('${t.key}')">I already have an account</button>
       </div>
       <div class="activate-panel" id="activate-${t.key}">
@@ -365,6 +286,18 @@ function escapeHtml(s){
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
+function requireAgreement(){
+  const box = document.getElementById('agreeTerms');
+  const err = document.getElementById('termsError');
+  if (box && box.checked){ err.textContent = ''; return true; }
+  err.textContent = 'Please agree to the Terms & Conditions and Privacy Policy to continue.';
+  if (box) box.focus();
+  return false;
+}
+document.addEventListener('change', function(e){
+  if (e.target && e.target.id === 'agreeTerms' && e.target.checked) document.getElementById('termsError').textContent = '';
+});
+
 function toggleActivatePanel(key){
   document.querySelectorAll('.activate-panel').forEach(el => {
     if (el.id !== `activate-${key}`) el.classList.remove('open');
@@ -372,17 +305,12 @@ function toggleActivatePanel(key){
   document.getElementById(`activate-${key}`).classList.toggle('open');
 }
 
-// 2026-08-19 — "activate on an existing account" without redoing
-// registration: authenticate via the same real POST /api/auth/login-user
-// every other login on this site uses, then call the new
-// POST /api/accounts/:id/tier directly against that account, then land on
-// account.html signed in — per direct instruction ("taking them to their
-// account page per level selected").
 async function activateTierOnExisting(key){
   const email = document.getElementById(`activateEmail-${key}`).value.trim();
   const password = document.getElementById(`activatePassword-${key}`).value;
   const errEl = document.getElementById(`activateError-${key}`);
   errEl.textContent = '';
+  if (!requireAgreement()){ errEl.textContent = 'Tick the agreement above first.'; return; }
   if (!email || !password){ errEl.textContent = 'Enter your email and password.'; return; }
   try {
     const loginResp = await fetch(`${BACKEND_URL}/api/auth/login-user`, {
@@ -396,10 +324,6 @@ async function activateTierOnExisting(key){
       return;
     }
     if (loginData.mustChangePassword){
-      // Don't try to also handle the forced-password-change screen here —
-      // send them to account.html, which already has that flow built, and
-      // let them come back to activate the tier once their password is
-      // real. Simpler and doesn't duplicate that screen a second time.
       persistSessionTokenFor(loginData.accountId, loginData.token);
       errEl.textContent = '';
       window.location.href = `account.html?accountId=${encodeURIComponent(loginData.accountId)}`;
@@ -408,7 +332,7 @@ async function activateTierOnExisting(key){
     const tierResp = await fetch(`${BACKEND_URL}/api/accounts/${encodeURIComponent(loginData.accountId)}/tier`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${loginData.token}` },
-      body: JSON.stringify({ tier: key })
+      body: JSON.stringify({ tier: key, acceptTerms: true })
     });
     if (!tierResp.ok){
       const tierData = await tierResp.json().catch(() => ({}));
