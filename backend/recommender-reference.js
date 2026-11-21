@@ -299,7 +299,18 @@ const AD_UNIT_SPECS = {
   ]
 };
 
-const KINDS = { channelBP: CHANNEL_BEST_PRACTICES, objectiveBP: OBJECTIVE_BEST_PRACTICES, mediaMixBP: MEDIA_MIX_BEST_PRACTICES, measurementBP: MEASUREMENT_BEST_PRACTICES, copyBP: COPY_BEST_PRACTICE_BY_TREATMENT, adUnits: AD_UNIT_SPECS };
+const ILLUSTRATIVE_CHANNEL_CPM = {
+  'Direct Mail — Prospects': 800, 'Direct Mail — Past Guests': 710, 'Direct Mail — Inquiries': 710,
+  'Linear TV': 22, 'OTV': 26, 'CTV': 28,
+  'Paid Social': 9, 'Brand Search': 4, 'Non-Brand Search': 6,
+  'Internal Email': 1, 'Email — Remarketing': 200, 'PR': 15, 'Programmatic Display': 7, 'Partner Media': 12,
+  'Retail Media': 9, 'Field / ABM': 650,
+  'Magazines': 40, 'Newspapers': 34, 'Out-of-Home': 14, 'Radio': 18, 'Podcasts': 20,
+  // Round 132xx — 'Remarketing' (pixel/audience-based paid retargeting),
+  // priced like Paid Social/Programmatic Display's open-auction tier.
+  'Remarketing': 10
+};
+const KINDS = { channelBP: CHANNEL_BEST_PRACTICES, objectiveBP: OBJECTIVE_BEST_PRACTICES, mediaMixBP: MEDIA_MIX_BEST_PRACTICES, measurementBP: MEASUREMENT_BEST_PRACTICES, copyBP: COPY_BEST_PRACTICE_BY_TREATMENT, adUnits: AD_UNIT_SPECS, cpmAll: { all: ILLUSTRATIVE_CHANNEL_CPM } };
 module.exports = function reference(kind, key){
   const t = Object.prototype.hasOwnProperty.call(KINDS, kind) ? KINDS[kind] : null;
   if (!t || key == null) return null;
