@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-21-r83-server-cpm (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-21-r84-trial-delivery (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -24734,6 +24734,7 @@ function formatCampaignDatesForPrompt(campaign){
 const PORTAL_APP_PATH = path.join(__dirname, 'portal-app.html');
 let portalAppCache = null;
 const portalServeLog = new Map();
+const TRIAL_LOADS_PER_HOUR = Number(process.env.TRIAL_LOADS_PER_HOUR) || 15, TRIAL_LOADS_PER_DAY = Number(process.env.TRIAL_LOADS_PER_DAY) || 40, TRIAL_LOADS_PER_IP_DAY = Number(process.env.TRIAL_LOADS_PER_IP_DAY) || 60; // free-trial portal delivery limits
 const OPS_APP_PATH = path.join(__dirname, 'ops-console-app.html'); let opsAppCache = null;
 const TERMS_VERSION = '2026-11-20';
 function termsAcceptedFor(accountId){
@@ -33841,7 +33842,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-21-r83-server-cpm',
+        buildStamp: '2026-11-21-r84-trial-delivery',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -35466,11 +35467,34 @@ async function handleRequestInner(req, res) {
       const ses = authenticate(req);
       if (!ses) return sendJson(res, 401, { error: 'Sign in to open the portal.', code: 'login_required' });
       const acct = String(aliasVal(ses, 'accountId') || '');
-      const rk = acct || ('plat:' + String(aliasVal(ses, 'platformuserid') || ''));
+      // Free-trial sessions (a trial account's own sign-in, or a demo visit tagged with the trial account) get the application under tighter
+      // conditions than paid accounts: Terms accepted, trial not ended, few loads per hour and day, and a daily cap per network address.
+      let trialAcct = String(aliasVal(ses, 'trialaccountid') || '');
+      if (!trialAcct && acct){
+        try { const _ta = db.prepare('SELECT paidTier FROM accounts WHERE accountId = ?').get(acct); if (_ta && aliasVal(_ta, 'paidTier') === 'spark') trialAcct = acct; } catch (e){}
+      }
+      const rk = trialAcct ? ('trial:' + trialAcct) : (acct || ('plat:' + String(aliasVal(ses, 'platformuserid') || '')));
       const nowMs = Date.now();
-      const hits = (portalServeLog.get(rk) || []).filter(t => nowMs - t < 3600000);
-      if (hits.length >= 60){ portalServeLog.set(rk, hits); return sendJson(res, 429, { error: 'Too many portal loads. Please wait a few minutes.', code: 'rate_limited' }); }
-      hits.push(nowMs); portalServeLog.set(rk, hits);
+      if (trialAcct){
+        try {
+          const _a = db.prepare('SELECT paidTier, paidTierActivatedAt FROM accounts WHERE accountId = ?').get(trialAcct);
+          const _st = levelStatusFor(_a);
+          if (_st && _st.expired) return sendJson(res, 403, { error: 'Your free trial has ended. Upgrade to keep using the portal.', code: 'spark_expired' });
+        } catch (e){}
+        if (!termsAcceptedFor(trialAcct)) return sendJson(res, 403, { error: 'Please accept the Terms & Conditions to open your free trial.', code: 'terms_required', termsVersion: TERMS_VERSION });
+        const day = (portalServeLog.get(rk) || []).filter(t => nowMs - t < 86400000);
+        const hr = day.filter(t => nowMs - t < 3600000);
+        if (hr.length >= TRIAL_LOADS_PER_HOUR || day.length >= TRIAL_LOADS_PER_DAY){ portalServeLog.set(rk, day); return sendJson(res, 429, { error: 'Your free trial has reached its limit of portal loads for now. Please try again later.', code: 'rate_limited' }); }
+        const ipk = 'trialip:' + String(getClientIp(req) || '');
+        const ipDay = (portalServeLog.get(ipk) || []).filter(t => nowMs - t < 86400000);
+        if (ipDay.length >= TRIAL_LOADS_PER_IP_DAY){ portalServeLog.set(ipk, ipDay); return sendJson(res, 429, { error: 'Too many free-trial loads from this network today. Please try again tomorrow or contact us.', code: 'rate_limited' }); }
+        day.push(nowMs); portalServeLog.set(rk, day);
+        ipDay.push(nowMs); portalServeLog.set(ipk, ipDay);
+      } else {
+        const hits = (portalServeLog.get(rk) || []).filter(t => nowMs - t < 3600000);
+        if (hits.length >= 60){ portalServeLog.set(rk, hits); return sendJson(res, 429, { error: 'Too many portal loads. Please wait a few minutes.', code: 'rate_limited' }); }
+        hits.push(nowMs); portalServeLog.set(rk, hits);
+      }
       let raw;
       try {
         const st = fs.statSync(PORTAL_APP_PATH);
@@ -35482,7 +35506,7 @@ async function handleRequestInner(req, res) {
       }
       const tok = String((String(req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/) || [])[1] || '').trim();
       const member = String(aliasVal(ses, 'memberId') || aliasVal(ses, 'platformuserid') || '-');
-      const wm = [acct || '-', member, crypto.createHash('sha256').update(tok).digest('hex').slice(0, 10), nowMs.toString(36)].join('.');
+      const wm = [(trialAcct && trialAcct !== acct ? trialAcct + '@' + (acct || '-') : (acct || '-')), member, crypto.createHash('sha256').update(tok).digest('hex').slice(0, 10), nowMs.toString(36)].join('.');
       const html = raw.split('@@VL_WM@@').join(wm);
       const wantsGzip = /\bgzip\b/.test(String(req.headers['accept-encoding'] || ''));
       const finish = (buf, enc) => {
