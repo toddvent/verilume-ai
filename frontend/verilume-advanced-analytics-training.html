@@ -1,0 +1,93 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Advanced Analytics Training Guide</title><meta name="description" content="How to run MMM Light, read it honestly, and turn what it is unsure about into a market test."><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:wght@600&display=swap"><style>
+:root{--ink:#1d2430;--mute:#5b6676;--line:#dfe3ea;--bg:#fff;--soft:#f5f7fa;--acc:#0f5f73;--warn:#8a5a00;--bad:#9b2c2c;--ok:#1f6b45}
+@media (prefers-color-scheme:dark){:root{--ink:#e8ecf2;--mute:#9aa6b6;--line:#2c3441;--bg:#12161d;--soft:#1a2029;--acc:#6cc3d8;--warn:#e2b04a;--bad:#e58a8a;--ok:#7fd3a5}}
+*{box-sizing:border-box}html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 "Source Sans 3","Segoe UI",Helvetica,Arial,sans-serif}
+.wrap{max-width:860px;margin:0 auto;padding:36px 28px 64px}
+h1{font:600 2rem/1.2 "Source Serif 4",Georgia,serif;margin:0 0 6px;text-wrap:balance}
+h2{font:600 1.35rem/1.3 "Source Serif 4",Georgia,serif;margin:36px 0 8px;padding-top:6px;border-top:1px solid var(--line);text-wrap:balance}
+h3{font-size:1.02rem;margin:20px 0 4px}
+.eyebrow{font-size:.78rem;letter-spacing:.09em;text-transform:uppercase;color:var(--mute)}
+.lede{color:var(--mute);margin:4px 0 18px;max-width:60ch}
+p,li{max-width:70ch}table{border-collapse:collapse;width:100%;margin:10px 0 16px;font-size:.93rem;display:block;overflow-x:auto}
+th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}th{background:var(--soft)}
+.callout{background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:12px 16px;margin:14px 0}
+.tag{display:inline-block;font-size:.75rem;border:1px solid currentColor;border-radius:99px;padding:0 8px;margin-right:4px}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+code{background:var(--soft);padding:1px 5px;border-radius:3px;font-size:.88em}
+a{color:var(--acc)}.meta{font-size:.85rem;color:var(--mute)}
+.step{counter-increment:s}ol.steps{list-style:none;padding:0;counter-reset:s}ol.steps li{position:relative;padding-left:2.2em;margin:8px 0}
+ol.steps li:before{counter-increment:s;content:counter(s);position:absolute;left:0;top:0;width:1.6em;height:1.6em;border-radius:50%;background:var(--acc);color:var(--bg);font-size:.85rem;display:flex;align-items:center;justify-content:center}
+@media print{.wrap{padding:0}h2{break-after:avoid}table,.callout{break-inside:avoid}body{font-size:11.5pt}.noprint{display:none}}
+</style></head><body><div class="wrap">
+<div class="eyebrow">Verilume · Advanced Analytics</div>
+<h1>Advanced Analytics training guide</h1>
+<p class="lede">How to run MMM Light, read it honestly, and turn what it is unsure about into a market test. For marketers, analysts and account managers. About 30 minutes.</p>
+<p class="meta">Version 1 · November 2026 · Covers MMM Light, Visualize markets, the Truth Lab and the qualification check. Not yet verified on the production site; screens may differ slightly until it is.</p>
+
+<div class="callout"><b>The idea in one line.</b> The model finds patterns in your history and tells you where it is least sure. A test then settles those questions with cause, not pattern. Then the result informs the next decision.</div>
+
+<h2>1. The loop</h2>
+<ol class="steps"><li><b>Check readiness.</b> Is there enough dated history and spend variation to model?</li><li><b>Run MMM Light.</b> See what it credits, with ranges and a confidence label.</li><li><b>Pick what to test.</b> The Test next card lists channels the model is least sure about that can be aimed by market.</li><li><b>Plan the test.</b> Visualize markets sizes it against your own markets and says how many weeks it needs.</li><li><b>Run and confirm.</b> Track it in the Truth Lab. A person decides: ship, kill or iterate.</li><li><b>Refresh.</b> Re-run on a schedule you choose.</li></ol>
+
+<h2>2. Before you start: the qualification check</h2>
+<p>On the MMM Light page choose <b>Run the check</b>. It compares what is loaded with what the model and a market test need, marks each item Ready, Thin or Missing, and writes the list of what to ask the client for. It is read-only and uses no credits.</p>
+<table><tr><th>What</th><th>Needed</th><th>Why</th></tr>
+<tr><td>History</td><td>52 complete weeks of dated records minimum; two years reads best</td><td>The model must separate seasons from media.</td></tr>
+<tr><td>Outcome</td><td>Transactions or revenue by booking date, with cancellations marked</td><td>This is what the model explains. Leads and direct sales calls are optional extras.</td></tr>
+<tr><td>Spend</td><td>Spend by channel with flight dates. Weekly actuals are better than monthly totals</td><td>The model learns from week-to-week moves.</td></tr>
+<tr><td>Channels</td><td>At least two (three is better), each active 26 weeks with about 25% change in weekly spend</td><td>A channel at a flat level cannot be separated from the base.</td></tr>
+<tr><td>Markets</td><td>A postal code on each transaction, and enough volume in test and control markets</td><td>Needed to place bookings in markets and to see a realistic lift.</td></tr></table>
+<p>Channels that always move together, such as two bought in the same flights, cannot be told apart. The check names them. Staggering one of them for a few weeks fixes this.</p>
+
+<h2>3. Run MMM Light</h2>
+<ol class="steps"><li>Choose what the model should explain: transactions (the usual start), revenue, leads or direct sales calls. The card shows weeks of daily history and whether it is ready.</li><li>Choose <b>Run</b>. The button shows the credits it uses and how many you have left. A run takes about a minute.</li><li>Read the result in this order: confidence and holdout, then the ranges, then the suggested move.</li></ol>
+<h3>What a run shows</h3>
+<table><tr><th>Item</th><th>How to read it</th></tr>
+<tr><td>Confidence</td><td>High, Medium or Low. Based on how well the model predicted the last 13 weeks it had not seen. Low means the model did not beat the average, so no recommendations are shown.</td></tr>
+<tr><td>Ranges</td><td>Every number comes with a range from re-fitting on reshuffled errors. Treat the range as a guide, not a guarantee.</td></tr>
+<tr><td>Media share</td><td>The least certain number. A channel that runs every week looks like base. Do not plan from it alone.</td></tr>
+<tr><td>Next dollar</td><td>What one more dollar in each channel is expected to add. More reliable than the share.</td></tr>
+<tr><td>Response curves</td><td>Show where each channel flattens. Diminishing returns: each extra dollar buys less.</td></tr>
+<tr><td>Suggested move</td><td>A reallocation limited to cutting no channel below half of current spend, lifting none above one and a half times, and never above 125% of the highest weekly spend you have actually run.</td></tr></table>
+<div class="callout"><b>Patterns, not proof.</b> The model reads this account's own history. A price change, a competitor or weather that moved at the same time can be mistaken for media. Test the large moves before committing budget.</div>
+
+<h2>4. Credits and keeping it fresh</h2>
+<p>A run uses credits from the account's monthly allowance, five by default, and only when the model fits. A run that cannot fit is not charged. Enterprise accounts are unmetered.</p>
+<p>An admin, the CMO or a Director can set the refresh under <b>Keep it fresh</b>: manual, monthly, every two weeks or weekly; which outcomes; and a credit reserve (20 by default) below which refreshing pauses. Larger clients with more media usually benefit from a faster cadence, smaller accounts from monthly or by hand. A scheduled refresh skips when there are fewer than seven new days of data, the outcome is not ready, or a run is already going. Scheduled runs are labelled <i>Scheduled run</i>.</p>
+
+<h2>5. From the model to a market test</h2>
+<ol class="steps"><li>On the <b>Test next</b> card, each row is a channel the model is least sure about that can be aimed by market. The last column is what the model expects 20% more weekly spend to add, with its range.</li><li>Choose <b>Plan this test</b>. Visualize markets opens with that channel and expected lift loaded.</li><li>Read <b>Weeks needed (pooled markets)</b>. Under 13 weeks is a standard test. Up to 26 means plan a longer test or raise the spend change. Beyond that, the markets cannot read a lift this small; use a time-based test (switch the channel up or down in the same markets and compare before and after).</li><li>Choose <b>Save as a test in the Truth Lab</b>. The draft carries the channel, expected lift, sizing and a link to the MMM run.</li></ol>
+<h3>Which test design fits your volume</h3>
+<table><tr><th>Design</th><th>When</th></tr>
+<tr><td>Pairs</td><td>The best single test and control pair can detect the lift within 13 weeks.</td></tr>
+<tr><td>Pooled</td><td>All test markets as one group against all control markets as one. Single pairs are too small, pooled groups can see the lift in 13 weeks.</td></tr>
+<tr><td>Pooled, longer</td><td>Pooled groups need about 26 weeks.</td></tr>
+<tr><td>Time-based</td><td>Volume is too small for any market design. Use the markets for targeting and measure by switching media on and off.</td></tr></table>
+
+<h2>6. Run the test and confirm</h2>
+<p>In the Truth Lab open the draft, add the test and control markets and the start date, and enter weekly bookings as the test runs. When it ends, a person confirms the result: <b>ship</b>, <b>kill</b> or <b>iterate</b>. Confirming teaches the Brain a lesson that appears in later recommendations. Nothing is automatic.</p>
+<div class="callout"><b>Not built yet.</b> Test results are not fed back into the model to calibrate it. For now, use the result to judge whether the model's expected lift was right and to decide where to move money.</div>
+
+<h2>7. What MMM Light is not</h2>
+<ul><li>It is not a Bayesian model with priors.</li><li>It is not calibrated to your test results yet.</li><li>It does not model markets separately, and it reads weeks, not days.</li><li>It works best with two or more years of history and a handful of channels whose spend changes from week to week.</li></ul>
+<p>Consider a deeper model when you have many channels, large budgets, steady always-on spend, heavy seasonality or promotions, or a decision that needs a tighter range. A dedicated model, calibrated with test results, will usually serve you better. Verilume can broker one from Measurement Coverage. Use MMM Light to decide where to test first.</p>
+
+<h2>8. When something looks wrong</h2>
+<table><tr><th>You see</th><th>Do this</th></tr>
+<tr><td>Not ready to model yet</td><td>Read the reasons listed. Usually fewer than 52 weeks, or fewer than two channels with enough spend variation. Run the qualification check for the request list.</td></tr>
+<tr><td>Confidence Low</td><td>The model could not predict recent weeks. Do not reallocate from it. Add history or spend variation, then re-run.</td></tr>
+<tr><td>A channel cannot be read</td><td>It ran too few weeks or its spend barely changes. Pulse it or flight it differently for a few months.</td></tr>
+<tr><td>Weeks needed is very long</td><td>Raise the spend change in the test markets, choose a larger channel, or use a time-based test.</td></tr>
+<tr><td>Refresh paused</td><td>Credits fell to the reserve. Raise the allowance, lower the reserve, or run by hand.</td></tr>
+<tr><td>No Plan this test buttons</td><td>The run found no channels that can be aimed by market, or the model was sure about all of them.</td></tr></table>
+
+<h2>9. Glossary</h2>
+<table><tr><th>Term</th><th>Meaning</th></tr>
+<tr><td>Adstock</td><td>Carry-over: media keeps working after the week it runs. The half-life is the weeks for half of a week's effect to fade.</td></tr>
+<tr><td>Saturation</td><td>Diminishing returns: each extra dollar buys less than the one before.</td></tr>
+<tr><td>Holdout</td><td>The last 13 weeks, kept back to check whether the model predicts weeks it has not seen.</td></tr>
+<tr><td>Pooled test</td><td>All test markets treated as one group, all control markets as another.</td></tr>
+<tr><td>Detectable lift</td><td>The smallest lift a design could reliably see, at 95% confidence and 80% power.</td></tr></table>
+<p class="meta">Questions in the portal: look for the AI Thoughts icons on the MMM Light page, or ask Verilume.</p>
+</div></body></html>
