@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-22-r95-ytd-performance (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-22-r95-mmm-credits (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -22648,6 +22648,22 @@ function mmmRunView(r){
   if (!r) return null; let result = null; try { result = r.resultJson ? JSON.parse(r.resultJson) : null; } catch (e){}
   return { id: r.id, outcome: r.outcome, createdAt: aliasVal(r, 'createdAt'), createdByName: aliasVal(r, 'createdByName'), dataFrom: aliasVal(r, 'dataFrom'), dataThrough: aliasVal(r, 'dataThrough'), weeksUsed: aliasVal(r, 'weeksUsed'), confidence: r.confidence, fitted: !!r.fitted, result };
 }
+// MMM Light credit price (2026-11-22): one fitted run uses this many credits from the monthly allowance. Opening, comparing and exporting saved runs is free,
+// and a run that cannot fit (not enough data) is free. Today's metering counts rows in draft_usage, so a run inserts this many rows (one per credit).
+const MMM_RUN_CREDITS = (() => { const n = parseInt(process.env.MMM_RUN_CREDITS, 10); return Number.isFinite(n) && n >= 0 ? n : 5; })();
+const MMM_GEO_ADDRESSABLE = /search|social|display|programmatic|ctv|otv|tv|radio|out-of-home|ooh|direct mail|print|magazine|newspaper|audio|podcast|video/i;
+// Turns the model's least certain channels into match-market test candidates: what the model expects from +20% spend, and why a test would settle it.
+function mmmTestPlan(result){
+  const rows = (result && result.channels) || []; if (!rows.length || !result.series) return [];
+  const mean = result.series.reduce((n, r) => n + (r.actual || 0), 0) / Math.max(1, result.series.length) || 0;
+  const testFirst = new Set((result.realloc && result.realloc.testFirst) || []);
+  return rows.filter(c => MMM_GEO_ADDRESSABLE.test(c.channel) && (c.confidence !== 'high' || testFirst.has(c.channel)) && c.currentWeeklySpend > 0).map(c => {
+    const add = c.currentWeeklySpend * 0.2; const lo = (c.marginalRange ? c.marginalRange[0] : 0) * add, hi = (c.marginalRange ? c.marginalRange[1] : 0) * add, mid = (c.marginalPerDollar || 0) * add;
+    const pct = v => mean > 0 ? Math.round(v / mean * 1000) / 10 : null;
+    return { channel: c.channel, confidence: c.confidence, why: testFirst.has(c.channel) ? 'The model would move this channel by 20% or more.' : (c.confidenceWhy || 'The model is not sure about this channel.'),
+      extraWeeklySpend: Math.round(add), expectedWeeklyGain: [Math.round(lo * 100) / 100, Math.round(mid * 100) / 100, Math.round(hi * 100) / 100], expectedLiftPct: [pct(lo), pct(mid), pct(hi)], priority: testFirst.has(c.channel) ? 1 : (c.confidence === 'none' ? 3 : c.confidence === 'low' ? 2 : 3) };
+  }).sort((a, b) => a.priority - b.priority).slice(0, 5);
+}
 async function mmmRunModel(accountId, key, actorName){
   const M = require('./mmm-model'); const a = mmmAssemble(accountId, key);
   const result = await M.fit(a.weekly, key, { yield: () => new Promise(r => setImmediate(r)) });
@@ -22661,6 +22677,7 @@ async function mmmRunModel(accountId, key, actorName){
       'It reads patterns in this account\'s own history. It is not a controlled test, so confirm large recommended moves in the Truth Lab.'
     ]
   };
+  try { if (result.fitted) result.testPlan = mmmTestPlan(result); } catch (e){ console.warn('[mmm] test plan failed:', e && e.message); }
   const id = 'MMM-' + crypto.randomBytes(6).toString('hex'); const now = new Date().toISOString();
   db.prepare('INSERT INTO mmm_model_runs (id, accountId, outcome, createdAt, createdByName, dataFrom, dataThrough, weeksUsed, confidence, fitted, resultJson) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
     .run(id, accountId, key, now, actorName || null, result.from || null, result.to || null, result.weeksUsed || 0, result.confidence || null, result.fitted ? 1 : 0, JSON.stringify(result));
@@ -34097,7 +34114,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-22-r95-ytd-performance',
+        buildStamp: '2026-11-22-r95-mmm-credits',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -52051,7 +52068,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
           const rid = u.searchParams.get('runId'); const latest = rid ? db.prepare('SELECT * FROM mmm_model_runs WHERE accountId = ? AND id = ?').get(accountId, rid) : db.prepare('SELECT * FROM mmm_model_runs WHERE accountId = ? AND outcome = ? ORDER BY createdAt DESC LIMIT 1').get(accountId, key);
           const availability = mmmAvailability(accountId); const av = availability[key];
           const run = mmmRunView(latest); const stale = !!(run && av && av.through && run.dataThrough && mmmAddDays(String(run.dataThrough).slice(0, 10), 14) < av.through);
-          return sendJson(res, 200, { outcome: key, outcomes: availability, run, stale, runs, running: mmmRunning.has(accountId) });
+          return sendJson(res, 200, { outcome: key, outcomes: availability, run, stale, runs, running: mmmRunning.has(accountId), runCredits: MMM_RUN_CREDITS, allowance: allowanceForClient(accountId) });
         }
         if (req.method === 'POST' && parts.length === 5 && parts[4] === 'run'){
           const body = await readBody(req) || {}; const key = MMM_OUTCOMES[body.outcome] ? body.outcome : null;
@@ -52059,8 +52076,18 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
           const actor = planScenarioActor(req, accountId) || { name: 'Team member' };
           if (mmmRunning.has(accountId)) return sendJson(res, 409, { error: 'A model run is already in progress for this account. Try again in a minute.' });
           if (keyRateLimitExceeded(accountId, 'mmm-run', 6)) return sendJson(res, 429, { error: 'This account has run the model 6 times in the last hour. Try again later.' });
+          const _al = MMM_RUN_CREDITS > 0 ? draftAllowanceFor(accountId) : null;
+          if (_al && _al.remaining < MMM_RUN_CREDITS) return sendJson(res, 403, { error: 'A model run uses ' + MMM_RUN_CREDITS + ' credits and this account has ' + _al.remaining + ' left this ' + (_al.period === 'trial' ? 'trial' : 'month') + '. Add credits or move up a package to run it. Saved runs stay open.', code: 'draft_allowance', cost: MMM_RUN_CREDITS, remaining: _al.remaining });
           mmmRunning.add(accountId);
-          try { const run = await mmmRunModel(accountId, key, actor.name); return sendJson(res, 200, { run }); }
+          try {
+            const run = await mmmRunModel(accountId, key, actor.name);
+            let creditsUsed = 0;
+            if (_al && run && run.result && run.result.fitted){ // only a run that produced a model is charged
+              try { const ins = db.prepare('INSERT INTO draft_usage (id, accountId, memberid, route, createdAt) VALUES (?,?,?,?,?)'); const at = new Date().toISOString(); for (let i = 0; i < MMM_RUN_CREDITS; i++) ins.run(generateId('DRF'), accountId, null, '/mmm-allocations/run', at); creditsUsed = MMM_RUN_CREDITS; } catch (e){ console.warn('[mmm] credit record failed:', e && e.message); }
+            }
+            const after = _al ? draftAllowanceFor(accountId) : null;
+            return sendJson(res, 200, { run, creditsUsed, creditsRemaining: after ? after.remaining : null, creditsCap: after ? after.limit : null });
+          }
           finally { mmmRunning.delete(accountId); }
         }
       } catch (e){ console.error('[mmm-allocations] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'The model view could not be built: ' + (e && e.message || 'unknown error') }); }
