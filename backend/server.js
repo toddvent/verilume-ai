@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-21-r92-package-wording (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-22-r94-mmm-allocations (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -22515,6 +22515,158 @@ function mixLeadSourceList(accountId){
     const hits = n.length >= 3 ? MMM_CATEGORIES.filter(c => { const base = norm(String(c).split('—')[0]); return base && (n.includes(base) || base.includes(n)); }) : [];
     return { source: src, leads: Math.round(sums[src]), channel: map[src] || null, suggested: !map[src] && hits.length === 1 ? hits[0] : null }; });
 }
+// ---------------------------------------------------------------------------------------------------------------
+// 2026-11-22 (r94) — MMM Model Allocations (Strategy tool). The model itself is in mmm-model.js (server side only).
+// This block assembles the daily series the model reads and stores each run so the view stays fixed until someone reruns it.
+//   Outcomes, by timestamp:  revenue and transactions = guest bookings by booking date (else warehouse bookings by booked time);
+//                            leads = warehouse leads by created time; calls = warehouse calls by start time, customer service calls left out.
+//   Media: planned budget per channel-plan line spread evenly over the line's flight days (hit or drop date to end date);
+//          months with no flight spend for a channel use that channel's monthly MMM input spread evenly over the month.
+// The model works on whole weeks (Monday to Sunday) built from these days.
+// ---------------------------------------------------------------------------------------------------------------
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS mmm_model_runs (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    createdByName TEXT,
+    dataFrom TEXT,
+    dataThrough TEXT,
+    weeksUsed INTEGER,
+    confidence TEXT,
+    fitted INTEGER,
+    resultJson TEXT
+  );
+`);
+const MMM_OUTCOMES = {
+  revenue: { label: 'Revenue', unit: '$' },
+  transactions: { label: 'Transactions', unit: 'transactions' },
+  leads: { label: 'Leads', unit: 'leads' },
+  calls: { label: 'Direct sales calls', unit: 'calls' }
+};
+const mmmRunning = new Set();
+function mmmDay(v){ const s = String(v || '').slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null; }
+function mmmAddDays(iso, n){ const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+function mmmSpreadInto(map, from, to, amount){
+  if (!(amount > 0)) return;
+  if (to < from) to = from;
+  const n = Math.min(400, Math.round((new Date(to + 'T00:00:00Z') - new Date(from + 'T00:00:00Z')) / 86400000) + 1);
+  const per = amount / n; for (let i = 0; i < n; i++){ const d = mmmAddDays(from, i); map[d] = (map[d] || 0) + per; }
+}
+function mmmCallSkill(raw){
+  let o = null; try { o = raw ? JSON.parse(raw) : null; } catch (e){ return ''; }
+  if (!o || typeof o !== 'object') return '';
+  const want = ['skill', 'skillname', 'skill_name', 'queue', 'queuename', 'queue_name', 'calltype', 'call_type', 'type', 'reason', 'department', 'dept', 'line'];
+  const keys = Object.keys(o); for (const w of want){ const k = keys.find(x => x.toLowerCase() === w); if (k && typeof o[k] === 'string' && o[k].trim()) return o[k].trim(); }
+  return '';
+}
+// a call counts toward the model when it is a direct sales call (the RingCentral DTC skill class), or when no skill is on the record and
+// the call came in on a tracked marketing number, campaign or was marked qualified. Customer service, existing-reservation, trade and group calls never count.
+function mmmCallCounts(r){
+  const skill = mmmCallSkill(aliasVal(r, 'rawPayload'));
+  if (skill){
+    const cls = callChannelClass(skill);
+    if (cls === 'dtc') return { counted: true };
+    return { counted: false, why: (cls === 'service' || /service|support|existing|billing|complain|care/i.test(skill)) ? 'service' : 'other' };
+  }
+  const tracked = !!(aliasVal(r, 'trackingNumber') || aliasVal(r, 'campaignRef') || Number(aliasVal(r, 'qualified')) === 1);
+  return tracked ? { counted: true } : { counted: false, why: 'untracked' };
+}
+function mmmMediaDaily(accountId){
+  const channels = {}; const impressions = {}; const source = {};
+  const lines = db.prepare(`SELECT d.channel AS channel, d.budget AS budget, d.impressions AS impressions, d.hitDate AS hitDate, d.dropDate AS dropDate, d.endDate AS endDate, d.status AS status, c.cancelled AS cancelled FROM channel_planning_details d JOIN campaigns c ON c.id = d.campaignId WHERE c.accountId = ?`).all(accountId);
+  lines.forEach(r => {
+    const st = String(aliasVal(r, 'status') || '').toLowerCase(); if (st === 'cancelled' || st === 'rejected' || Number(aliasVal(r, 'cancelled')) === 1) return;
+    const ch = String(aliasVal(r, 'channel') || '').trim(); if (!ch) return;
+    const start = mmmDay(aliasVal(r, 'hitDate')) || mmmDay(aliasVal(r, 'dropDate')); if (!start) return;
+    const end = mmmDay(aliasVal(r, 'endDate')) || start;
+    const b = Number(aliasVal(r, 'budget')) || 0; if (b <= 0) return;
+    (channels[ch] = channels[ch] || {}); mmmSpreadInto(channels[ch], start, end, b); source[ch] = 'flights';
+    impressions[ch] = (impressions[ch] || 0) + (Number(aliasVal(r, 'impressions')) || 0);
+  });
+  const monthly = db.prepare('SELECT channel, periodLabel, spend, impressions FROM mmm_inputs WHERE accountId = ? AND spend IS NOT NULL').all(accountId);
+  monthly.forEach(r => {
+    const ch = String(aliasVal(r, 'channel') || '').trim(); const pl = String(aliasVal(r, 'periodLabel') || '');
+    if (!ch || !/^\d{4}-\d{2}$/.test(pl)) return; const amt = Number(aliasVal(r, 'spend')) || 0; if (amt <= 0) return;
+    const first = pl + '-01'; const dt = new Date(first + 'T00:00:00Z'); const last = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
+    const cur = channels[ch] || {}; let covered = false; for (let d = first; d <= last; d = mmmAddDays(d, 1)){ if (cur[d] > 0){ covered = true; break; } }
+    if (covered) return;
+    (channels[ch] = channels[ch] || {}); mmmSpreadInto(channels[ch], first, last, amt); source[ch] = source[ch] === 'flights' ? 'flights and monthly inputs' : 'monthly inputs';
+    impressions[ch] = (impressions[ch] || 0) + (Number(aliasVal(r, 'impressions')) || 0);
+  });
+  return { channels, impressions, source };
+}
+function mmmOutcomeDaily(accountId, key){
+  const out = {}; let rows = 0; const notes = []; let excluded = null;
+  if (key === 'revenue' || key === 'transactions'){
+    const gb = db.prepare('SELECT bookingDate, bookingCode, bookingStatus, grossRevenue FROM account_guest_bookings WHERE accountId = ? AND bookingDate IS NOT NULL').all(accountId);
+    if (gb.length){
+      const seen = {};
+      gb.forEach(r => { const d = mmmDay(aliasVal(r, 'bookingDate')); if (!d) return; if (/cancel/i.test(String(aliasVal(r, 'bookingStatus') || ''))) return;
+        rows++;
+        if (key === 'revenue') out[d] = (out[d] || 0) + (Number(aliasVal(r, 'grossRevenue')) || 0);
+        else { const k = d + '|' + aliasVal(r, 'bookingCode'); if (!seen[k]){ seen[k] = 1; out[d] = (out[d] || 0) + 1; } } });
+      notes.push('Guest bookings by booking date, cancelled bookings left out.');
+    } else {
+      const wb = db.prepare('SELECT bookedAt, value FROM warehouse_bookings WHERE accountId = ? AND bookedAt IS NOT NULL').all(accountId);
+      wb.forEach(r => { const d = mmmDay(aliasVal(r, 'bookedAt')); if (!d) return; rows++; out[d] = (out[d] || 0) + (key === 'revenue' ? (Number(aliasVal(r, 'value')) || 0) : 1); });
+      if (wb.length) notes.push('Warehouse bookings by booked time.');
+    }
+  } else if (key === 'leads'){
+    const wl = db.prepare('SELECT createdAtSource FROM warehouse_leads WHERE accountId = ? AND createdAtSource IS NOT NULL').all(accountId);
+    wl.forEach(r => { const d = mmmDay(aliasVal(r, 'createdAtSource')); if (!d) return; rows++; out[d] = (out[d] || 0) + 1; });
+    if (wl.length) notes.push('Warehouse leads by created time. Lead counts uploaded only by month cannot be used here because the model needs the day.');
+  } else if (key === 'calls'){
+    const wc = db.prepare('SELECT startedAt, rawPayload, trackingNumber, campaignRef, qualified FROM warehouse_calls WHERE accountId = ? AND startedAt IS NOT NULL').all(accountId);
+    excluded = { service: 0, other: 0, untracked: 0, counted: 0 };
+    wc.forEach(r => { const d = mmmDay(aliasVal(r, 'startedAt')); if (!d) return; const v = mmmCallCounts(r); if (v.counted){ excluded.counted++; rows++; out[d] = (out[d] || 0) + 1; } else excluded[v.why] = (excluded[v.why] || 0) + 1; });
+    if (wc.length) notes.push('Warehouse calls by start time. Direct sales calls only: customer service and existing-reservation calls, trade and group calls, and calls with no skill that did not come in on a tracked number or campaign are left out.');
+  }
+  return { daily: out, rows, notes, excluded };
+}
+function mmmAssemble(accountId, key){
+  const o = mmmOutcomeDaily(accountId, key); const m = mmmMediaDaily(accountId);
+  const days = Object.keys(o.daily).sort(); const yesterday = mmmAddDays(new Date().toISOString().slice(0, 10), -1);
+  const M = require('./mmm-model'); const through = days.length ? (days[days.length - 1] < yesterday ? days[days.length - 1] : yesterday) : yesterday;
+  // an outcome day with no records is a real zero only inside the span the feed covers, so fill zeros between first and last record
+  if (days.length){ for (let d = days[0]; d <= through; d = mmmAddDays(d, 1)){ if (o.daily[d] == null) o.daily[d] = 0; } }
+  const weekly = M.toWeekly({ outcome: o.daily, channels: m.channels }, { through });
+  return { weekly, outcomeRows: o.rows, notes: o.notes, excluded: o.excluded, media: m, through, firstDay: days[0] || null };
+}
+function mmmAvailability(accountId){
+  const M = require('./mmm-model'); const out = {}; const shared = {};
+  Object.keys(MMM_OUTCOMES).forEach(k => {
+    try {
+      const a = mmmAssemble(accountId, k); const rd = M.readiness(a.weekly, k);
+      out[k] = { label: MMM_OUTCOMES[k].label, rows: a.outcomeRows, weeks: a.weekly.weeks.length, ready: !!rd.ok, reasons: rd.reasons, usableChannels: rd.usable.length, notes: a.notes, excluded: a.excluded, through: a.through, channelsSeen: Object.keys(a.media.channels).length };
+    } catch (e){ out[k] = { label: MMM_OUTCOMES[k].label, rows: 0, weeks: 0, ready: false, reasons: ['Could not read this data: ' + (e && e.message || 'unknown error')], usableChannels: 0, notes: [], excluded: null }; }
+  });
+  return out;
+}
+function mmmRunView(r){
+  if (!r) return null; let result = null; try { result = r.resultJson ? JSON.parse(r.resultJson) : null; } catch (e){}
+  return { id: r.id, outcome: r.outcome, createdAt: aliasVal(r, 'createdAt'), createdByName: aliasVal(r, 'createdByName'), dataFrom: aliasVal(r, 'dataFrom'), dataThrough: aliasVal(r, 'dataThrough'), weeksUsed: aliasVal(r, 'weeksUsed'), confidence: r.confidence, fitted: !!r.fitted, result };
+}
+async function mmmRunModel(accountId, key, actorName){
+  const M = require('./mmm-model'); const a = mmmAssemble(accountId, key);
+  const result = await M.fit(a.weekly, key, { yield: () => new Promise(r => setImmediate(r)) });
+  result.dataNotes = {
+    outcomeSource: a.notes, callsExcluded: a.excluded, outcomeRows: a.outcomeRows,
+    media: Object.keys(a.media.channels).map(ch => ({ channel: ch, source: a.media.source[ch], impressions: Math.round(a.media.impressions[ch] || 0) })),
+    assumptions: [
+      'Media spend is the planned budget on each channel-plan line spread evenly over its flight days; where a channel has no flight spend in a month, its monthly MMM input is spread evenly over that month.',
+      'The model reads whole weeks (Monday to Sunday) built from the daily records, so day-of-week patterns do not distort it.',
+      'Because planned budget is spread evenly over each flight, week-to-week variation in spend is only as detailed as the flights are. Short flights, pulses and staggered starts give the model more to learn from than a few long, steady flights.',
+      'It reads patterns in this account\'s own history. It is not a controlled test, so confirm large recommended moves in the Truth Lab.'
+    ]
+  };
+  const id = 'MMM-' + crypto.randomBytes(6).toString('hex'); const now = new Date().toISOString();
+  db.prepare('INSERT INTO mmm_model_runs (id, accountId, outcome, createdAt, createdByName, dataFrom, dataThrough, weeksUsed, confidence, fitted, resultJson) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+    .run(id, accountId, key, now, actorName || null, result.from || null, result.to || null, result.weeksUsed || 0, result.confidence || null, result.fitted ? 1 : 0, JSON.stringify(result));
+  return mmmRunView(db.prepare('SELECT * FROM mmm_model_runs WHERE id = ?').get(id));
+}
+
 function mixReadinessFor(accountId){
   const M = MIX_MINIMUMS; const keys = storyMonthKeys(new Date(), 24); const series = {};
   const slot = c => series[c] || (series[c] = { spend: {}, imps: 0, impsSpend: 0, outcomes: 0 });
@@ -33945,7 +34097,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-21-r92-package-wording',
+        buildStamp: '2026-11-22-r94-mmm-allocations',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -51876,6 +52028,34 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       } catch (e){ console.error('[mix-lead-sources] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'Lead sources could not be saved: ' + (e && e.message || 'unknown error') }); }
     }
     // 2026-10-19 — GET /api/accounts/:id/mix-readiness: per-channel evidence level, what the next level needs, and the minimums (months, not weeks: data is monthly).
+    // 2026-11-22 (r94) — MMM Model Allocations.
+    //   GET  /api/accounts/:id/mmm-allocations?outcome=revenue|transactions|leads|calls  -> what each outcome's data can support, the latest saved run for that outcome, recent runs
+    //   POST /api/accounts/:id/mmm-allocations/run { outcome }                           -> fits the model on the account's own daily history and saves the run (a few seconds; 6 per hour)
+    if (parts.length >= 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'mmm-allocations' && parts.length <= 5){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      try {
+        const u = new URL(req.url, 'http://localhost');
+        if (req.method === 'GET' && parts.length === 4){
+          let key = MMM_OUTCOMES[u.searchParams.get('outcome')] ? u.searchParams.get('outcome') : 'transactions'; if (u.searchParams.get('runId')){ const rr = db.prepare('SELECT outcome FROM mmm_model_runs WHERE accountId = ? AND id = ?').get(accountId, u.searchParams.get('runId')); if (rr && MMM_OUTCOMES[rr.outcome]) key = rr.outcome; }
+          const runs = db.prepare('SELECT id, outcome, createdAt, createdByName, dataThrough, weeksUsed, confidence, fitted FROM mmm_model_runs WHERE accountId = ? ORDER BY createdAt DESC LIMIT 30').all(accountId);
+          const rid = u.searchParams.get('runId'); const latest = rid ? db.prepare('SELECT * FROM mmm_model_runs WHERE accountId = ? AND id = ?').get(accountId, rid) : db.prepare('SELECT * FROM mmm_model_runs WHERE accountId = ? AND outcome = ? ORDER BY createdAt DESC LIMIT 1').get(accountId, key);
+          const availability = mmmAvailability(accountId); const av = availability[key];
+          const run = mmmRunView(latest); const stale = !!(run && av && av.through && run.dataThrough && mmmAddDays(String(run.dataThrough).slice(0, 10), 14) < av.through);
+          return sendJson(res, 200, { outcome: key, outcomes: availability, run, stale, runs, running: mmmRunning.has(accountId) });
+        }
+        if (req.method === 'POST' && parts.length === 5 && parts[4] === 'run'){
+          const body = await readBody(req) || {}; const key = MMM_OUTCOMES[body.outcome] ? body.outcome : null;
+          if (!key) return sendJson(res, 400, { error: 'Choose revenue, transactions, leads or calls.' });
+          const actor = planScenarioActor(req, accountId) || { name: 'Team member' };
+          if (mmmRunning.has(accountId)) return sendJson(res, 409, { error: 'A model run is already in progress for this account. Try again in a minute.' });
+          if (keyRateLimitExceeded(accountId, 'mmm-run', 6)) return sendJson(res, 429, { error: 'This account has run the model 6 times in the last hour. Try again later.' });
+          mmmRunning.add(accountId);
+          try { const run = await mmmRunModel(accountId, key, actor.name); return sendJson(res, 200, { run }); }
+          finally { mmmRunning.delete(accountId); }
+        }
+      } catch (e){ console.error('[mmm-allocations] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'The model view could not be built: ' + (e && e.message || 'unknown error') }); }
+    }
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'mix-readiness'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
