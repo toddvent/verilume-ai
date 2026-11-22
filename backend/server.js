@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-22-r94-mmm-allocations (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-22-r95-ytd-performance (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -34097,7 +34097,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-22-r94-mmm-allocations',
+        buildStamp: '2026-11-22-r95-ytd-performance',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -50729,7 +50729,16 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (!Number.isFinite(year)) return sendJson(res, 400, { error: 'year is required' });
       // 2026-09-14 fix — same plannedRevenue quoting bug fixed just above.
       const r = db.prepare('SELECT grossRevenue, "plannedRevenue", transactions, notes, updatedAt FROM account_year_results WHERE accountId = ? AND year = ?').get(accountId, year);
-      return sendJson(res, 200, Object.assign({ accountId, year, grossRevenue: null, plannedRevenue: null, transactions: null, notes: null, updatedAt: null }, r || {}));
+      const out = Object.assign({ accountId, year, grossRevenue: null, plannedRevenue: null, transactions: null, notes: null, updatedAt: null }, r || {});
+      // 2026-11-22: a year nobody typed results for (usually the year in progress) reads year-to-date from the monthly transaction
+      // roll-up instead of showing blanks. Returned as `derived`, never stored: a saved figure always wins, and Save records a final one.
+      if (out.grossRevenue == null && out.transactions == null){
+        try {
+          const d = db.prepare('SELECT COALESCE(SUM(revenue), 0) AS rv, COALESCE(SUM(transactions), 0) AS tx, MAX(CASE WHEN COALESCE(revenue, 0) > 0 OR COALESCE(transactions, 0) > 0 THEN month END) AS lastMonth FROM account_transactions_monthly WHERE accountId = ? AND year = ?').get(accountId, year);
+          if (d && d.lastMonth) out.derived = { grossRevenue: Math.round(d.rv), transactions: Math.round(d.tx), throughMonth: d.lastMonth, source: 'transactions' };
+        } catch (e){ /* table absent: leave blank */ }
+      }
+      return sendJson(res, 200, out);
     }
     // POST /api/accounts/:id/year-results — final gross revenue for a year
     // (input 2 above). { year, grossRevenue, notes }
