@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-22-r96-mmm-schedule (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-22-r97-mmm-plan-test (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -13704,6 +13704,21 @@ function buildTestApproach(accountId, upload, analysis){
   const hist = histWeeks != null ? (histWeeks >= 104 ? 'enough history (two years or more) to consider a media mix model alongside tests' : (histWeeks >= 52 ? 'a year of history, enough for a test baseline but not yet for a media mix model' : 'under a year of history, so seasonality cannot be separated from a lift yet')) : null;
   return Object.assign(out, { available: true, approach: rung, label: GEO_APPROACH_LABEL[rung], strength: rung === 'time_based' ? 'Too small' : geoStrength(lift), headline: geoApproachHeadline(rung, metrics), why, steps: geoApproachSteps(rung, metrics, out), metrics, groups, filterAdvice, historyNote: hist });
 }
+// Weeks a pooled test needs to see a given lift (95% confidence, 80% power, Poisson counts, x2 allowance for the baseline),
+// from the same volumes buildTestApproach uses. Returns null fields when the markets carry no volume.
+function geoWeeksForLift(approach, liftPct){
+  const m = approach && approach.metrics; const Z = 2.8, D = 2;
+  const base = { liftPct: Math.round(liftPct * 10) / 10, weeks: null, verdict: 'unknown', text: 'The markets on file carry no volume to size this test.' };
+  if (!m || !approach.available || !(m.testTransactions > 0) || !(m.controlTransactions > 0) || !(m.periodDays > 0)) return base;
+  const wk = m.periodDays / 7, wT = m.testTransactions / wk, wC = m.controlTransactions / wk;
+  const weeks = Math.ceil(D * (1 / wT + 1 / wC) * Math.pow(Z / (liftPct / 100), 2));
+  const w13 = m.pooled13, w26 = m.pooled26;
+  let verdict, text;
+  if (weeks <= 13){ verdict = 'readable'; text = `A lift of ${base.liftPct}% should be readable in about ${weeks} week${weeks === 1 ? '' : 's'} with the test and control markets pooled.`; }
+  else if (weeks <= 26){ verdict = 'longer'; text = `A lift of ${base.liftPct}% needs about ${weeks} weeks with the markets pooled. Plan a longer test, or raise spend in the test markets so the lift is bigger.`; }
+  else { verdict = 'too_small'; text = `A lift of ${base.liftPct}% would take ${weeks > 104 ? 'more than two years' : 'about ' + weeks + ' weeks'} to read at this volume. The markets can see ${w26 == null ? 'only large' : w26 + '%'} lifts in 26 weeks, so raise the spend change, or use a time-based test.`; }
+  return Object.assign(base, { weeks, verdict, text, pooled13: w13, pooled26: w26 });
+}
 function geoApproachHeadline(rung, m){
   if (rung === 'pairs') return `Your volume supports testing individual market pairs: the best pair can detect ${m.bestPair13}% in 13 weeks.`;
   if (rung === 'pooled') return `Pool the test markets into one group and the control markets into another. Together they can detect ${m.pooled13}% in 13 weeks; single pairs cannot.`;
@@ -22729,6 +22744,69 @@ function mmmAvailability(accountId){
   });
   return out;
 }
+// 2026-11-22 (r97): qualification check. Runs the same gates the model uses against what an account has loaded today, plus the
+// market-test inputs, and says in plain words what passes, what is thin and what to ask the client for. Read-only; no credits.
+function mmmQualification(accountId){
+  const M = require('./mmm-model'); const G = M.GATES || {};
+  const minW = G.minWeeks || 52, goodW = G.goodWeeks || 104;
+  const items = []; const ask = [];
+  const add = (id, group, label, status, detail, request) => { items.push({ id, group, label, status, detail }); if (request && status !== 'pass') ask.push({ id, group, request }); };
+  let acct = null; try { acct = db.prepare('SELECT name FROM accounts WHERE id = ?').get(accountId); } catch (e){}
+  const outs = {}; let tx = null;
+  Object.keys(MMM_OUTCOMES).forEach(k => {
+    try { const a = mmmAssemble(accountId, k); const rd = M.readiness(a.weekly, k); outs[k] = { label: MMM_OUTCOMES[k].label, weeks: a.weekly.weeks.length, rows: a.outcomeRows, ready: !!rd.ok, reasons: rd.reasons, through: a.through, first: a.firstDay, notes: a.notes, excluded: a.excluded, rd, media: a.media };
+      if (k === 'transactions') tx = outs[k]; } catch (e){ outs[k] = { label: MMM_OUTCOMES[k].label, weeks: 0, rows: 0, ready: false, reasons: ['Could not read this data.'] }; }
+  });
+  // 1 outcome history
+  ['transactions', 'revenue'].forEach(k => { const o = outs[k]; if (!o) return;
+    const st = o.weeks >= goodW ? 'pass' : (o.weeks >= minW ? 'warn' : 'fail');
+    add('hist_' + k, 'Outcome history', `${o.label} by day`, st,
+      o.rows ? `${o.rows.toLocaleString ? o.rows.toLocaleString() : o.rows} records over ${o.weeks} complete weeks${o.first ? ', from ' + o.first : ''}${o.through ? ' through ' + o.through : ''}. ${st === 'pass' ? 'Two or more years: enough for the model to separate seasons from media.' : st === 'warn' ? `The model runs from ${minW} weeks but reads best with ${goodW}.` : `The model needs ${minW} weeks.`}` : 'No dated records found.',
+      `A transaction file with one row per booking or sale: booking date, booking or order code, status (so cancellations can be left out), gross revenue, product group, and the customer's postal code. At least ${goodW / 52} years of history, two if possible.`); });
+  // 2 media spend
+  const media = tx && tx.media ? tx.media : { channels: {}, source: {} }; const chNames = Object.keys(media.channels || {});
+  const srcs = chNames.map(n => (media.source || {})[n] || '');
+  const dailyN = srcs.filter(x => /flights/.test(x)).length;
+  add('spend_present', 'Media spend', 'Spend by channel and date', chNames.length ? (dailyN >= Math.ceil(chNames.length / 2) ? 'pass' : 'warn') : 'fail',
+    chNames.length ? `${chNames.length} channels with spend. ${dailyN} come from dated flights, ${chNames.length - dailyN} from monthly totals spread across the month.${dailyN < chNames.length ? ' Monthly totals hide week-to-week moves, which is what the model learns from.' : ''}` : 'No spend by channel found.',
+    'Media spend by channel with flight start and end dates for every buy (planned or invoiced), going back as far as the transaction history. Weekly actuals are better than monthly. Include impressions where the vendor reports them.');
+  // 3 usable channels
+  const rdT = tx && tx.rd; if (rdT){
+    const usable = rdT.usable || []; const bad = Object.keys(rdT.channels || {}).filter(n => !rdT.channels[n].usable);
+    add('channels_usable', 'Media spend', 'Channels the model can read', usable.length >= 3 ? 'pass' : (usable.length >= 2 ? 'warn' : 'fail'),
+      `${usable.length} of ${Object.keys(rdT.channels || {}).length} channels have enough active weeks (${G.minActiveWeeks || 26}) and enough week-to-week change in spend (${Math.round((G.minSpendCv || 0.25) * 100)}%).${bad.length ? ' Cannot read: ' + bad.slice(0, 6).map(n => n + ' (' + rdT.channels[n].why.join('; ') + ')').join(' | ') + (bad.length > 6 ? ' and ' + (bad.length - 6) + ' more' : '') + '.' : ''}`,
+      'For always-on channels, spend that moves from week to week (pulses, flights, tests). A channel at a flat level every week cannot be separated from the base. Tell us about any planned pauses or step changes.');
+    if (rdT.collinear && rdT.collinear.length) add('collinear', 'Media spend', 'Channels that move together', 'warn', rdT.collinear.slice(0, 4).map(c => `${c.a} and ${c.b} (correlation ${c.r})`).join('; ') + '. The model cannot tell these apart; consider staggering one of them.', 'A note on which of these channels are bought and flighted together, and whether they can be staggered.');
+  }
+  // 4 other outcome feeds
+  ['leads', 'calls'].forEach(k => { const o = outs[k]; if (!o) return;
+    const st = !o.rows ? 'fail' : (o.weeks >= minW ? 'pass' : 'warn');
+    let detail = o.rows ? `${o.rows} records over ${o.weeks} weeks.` : 'No daily records loaded.';
+    if (k === 'calls' && o.excluded && o.rows) detail += ` ${o.excluded.counted} counted as direct sales calls; ${(o.excluded.service || 0)} service and ${(o.excluded.untracked || 0)} untracked left out.`;
+    add('feed_' + k, 'Other outcomes', o.label + ' by day', o.rows ? st : 'warn', o.rows ? detail : detail + ' Optional: transactions alone are enough to start.',
+      k === 'calls' ? 'The call feed from the call platform (start time, tracking number, campaign or source, skill or department, duration, qualified flag), plus the attribution columns from the tracking vendor: UTM source, medium, campaign and referring site. Please send the real column names from the shared view.'
+        : 'Lead records with the date and time created and the source or campaign.'); });
+  // 5 market test inputs
+  let geoLine = null;
+  try {
+    const up = geoLatestUpload(accountId, null);
+    if (!up) add('geo_upload', 'Market test', 'Markets built from transactions', 'fail', 'No market file is built yet. It builds from the transaction file when postal codes are present.', 'Postal code on every transaction (five digits), so each booking can be placed in a market.');
+    else {
+      const ap = geoCached(`appr|${accountId}|${up.id}|${geoBookingFingerprint(accountId)}`, 600000, () => buildTestApproach(accountId, up, geoAnalysis(accountId, up, true)));
+      const m = ap.metrics || {}; geoLine = { approach: ap.approach, label: ap.label, strength: ap.strength, weeklyTransactions: m.weeklyTransactions, pooled13: m.pooled13, pooled26: m.pooled26, pairs: m.pairs, historyWeeks: m.historyWeeks };
+      const st = !ap.available || ap.approach === 'time_based' ? 'fail' : (ap.approach === 'pairs' ? 'pass' : 'warn');
+      add('geo_volume', 'Market test', 'Volume to read a match-market test', st, `${ap.headline}`,
+        'A longer window of transactions with postal codes, or a wider mix of markets, so test and control markets carry more volume. If volume stays low we use a time-based test instead.');
+      if (m.historyWeeks != null) add('geo_hist', 'Market test', 'History for a baseline', m.historyWeeks >= 52 ? 'pass' : 'warn', `${m.historyWeeks} weeks of dated transactions in markets.`, 'At least one year of transactions with postal codes for the pre-test baseline.');
+    }
+  } catch (e){ add('geo_upload', 'Market test', 'Markets built from transactions', 'warn', 'Could not check the market file just now.', null); }
+  const rank = { fail: 3, warn: 2, pass: 1 }; const worstOf = list => list.reduce((a, x) => Math.max(a, rank[x.status] || 0), 0);
+  const core = items.filter(x => ['Outcome history', 'Media spend'].includes(x.group)); const market = items.filter(x => x.group === 'Market test');
+  const mmmVerdict = worstOf(core) >= 3 ? 'not_yet' : (worstOf(core) === 2 ? 'partly' : 'ready');
+  const testVerdict = !market.length ? 'unknown' : (worstOf(market) >= 3 ? 'not_yet' : (worstOf(market) === 2 ? 'partly' : 'ready'));
+  return { accountName: acct && acct.name || null, generatedAt: new Date().toISOString(), mmm: mmmVerdict, marketTest: testVerdict, gates: { minWeeks: minW, goodWeeks: goodW, minActiveWeeks: G.minActiveWeeks, minSpendCv: G.minSpendCv }, items, request: ask, geo: geoLine,
+    outcomes: Object.keys(outs).map(k => ({ key: k, label: outs[k].label, weeks: outs[k].weeks, rows: outs[k].rows, ready: outs[k].ready, reasons: outs[k].reasons })) };
+}
 function mmmRunView(r){
   if (!r) return null; let result = null; try { result = r.resultJson ? JSON.parse(r.resultJson) : null; } catch (e){}
   return { id: r.id, outcome: r.outcome, createdAt: aliasVal(r, 'createdAt'), createdByName: aliasVal(r, 'createdByName'), dataFrom: aliasVal(r, 'dataFrom'), dataThrough: aliasVal(r, 'dataThrough'), weeksUsed: aliasVal(r, 'weeksUsed'), confidence: r.confidence, fitted: !!r.fitted, result };
@@ -24471,6 +24549,11 @@ const PRODUCT_GUIDE = [
   { letter: "MC", label: "Visualize markets: which testing approach fits", keywords: ["testing approach","recommended approach","transaction volume","product group","filter","time based","media mix model","mmm","on off","pooled","pairs","small client","large client","by product group","recommended use"], text: "Verilume looks at the transaction history in Train the Brain and recommends how to test. It asks how small a lift each design could reliably detect. If the best single pair of markets could detect 10% or less in 13 weeks, test matched pairs. If not, but all the test markets pooled against all the control markets detect 20% or less in 13 weeks, pool them into one test group and one control group. If that needs 26 weeks, pool the markets and plan a longer test. If even that is too small, geography cannot read a realistic lift: use the markets for targeting, and measure with a time-based test that switches media on and off in the same markets, or with a media mix model once there are about two years of weekly history. Product groups are checked the same way, inside the same test and control markets. A group with enough transactions of its own can be modeled separately: filter the bookings to that group when you read the test. Smaller groups are read inside the total. The Excel download follows the recommendation, with a Recommended Approach tab, a By Product Group tab and a Recommended Use label on every market." },
   { letter: "MD", label: "Top markets: why composite score leads, not index alone", keywords: ["top markets","composite","index","z-score","rank by","statistically relevant","customers","over-index","small markets"], text: "The Top 5 card ranks markets by composite score, the same score that sets the sales classification, so it agrees with the Excel download and the map. Composite blends two things: how many customers a market has (log-scaled volume, two thirds of the score) and how far it over-indexes its population (INDEX, one third). Ranking by INDEX alone favors small markets that happen to be concentrated, such as a market with 200 customers at an index of 400, ahead of a large market with thousands of customers at an index of 180 where a media dollar moves far more business. Only markets that are statistically relevant qualify: at least 30 customers and a Z-score of 1.96 or more, which means the over-index is unlikely to be chance. Ties break on Z-score, then customers. Each row shows composite, INDEX, Z-score and customers. Use Rank by to view the same markets by INDEX, Z-score or customer count when you want that lens. INDEX of 100 means a market holds the same share of your customers as of the population." },
   { letter: "ME", label: "Region and sales classification cards", keywords: ["region","sales classification","must win","growth","opportunistic","monitor","tiers","timeframe","quartile","unmapped"], text: "Customer counts by region groups every transaction with a postal code by the country of that postal code, so United States, Canada and International add up to the total in the file. Postal codes that could not be placed in a market are listed in the Excel note, which is why the market total can be slightly lower than the region total. Markets by sales classification splits markets into Must Win, Growth, Opportunistic and Monitor using composite score quartiles, so the four groups are always sized relative to each other. Statistically relevant markets are the ones with enough customers and a strong enough Z-score to trust. Use the timeframe on the card to see how the picture changes over a different booking window; every geo card shares the same window." },
+  { letter: "MF", label: "MMM Light: what it is and how to read a run", keywords: ["mmm", "mmm light", "media mix", "marketing mix model", "adstock", "carry over", "saturation", "diminishing returns", "confidence", "range", "reallocation", "next dollar", "base", "holdout"], text: "MMM Light is a weekly model built from your own daily records and campaign plans. It reads how each channel's spend moved against transactions, revenue, leads or direct sales calls, and allows for carry-over after the week media runs and for diminishing returns as spend rises. Each run shows a range for every number, a confidence label based on how well the model predicted the last 13 weeks it had not seen, and a suggested move of money between channels that never cuts a channel below half of current spend or lifts it above one and a half times. Read the ranges before the point estimates. The share given to media is the least certain number, because a channel that runs every week looks like base. The next dollar and the reallocation matter more. A pattern is not proof: two channels that always move together cannot be told apart, and anything else that changed at the same time, such as a price change, a competitor or weather, can be mistaken for media. Test the large moves." },
+  { letter: "MG", label: "MMM Light credits and the refresh schedule", keywords: ["mmm credits", "run credits", "refresh schedule", "scheduled run", "weekly refresh", "monthly refresh", "credit reserve", "cadence", "pause", "unmetered"], text: "A model run uses credits from the account's monthly allowance, five by default, and only when the model actually fits. A run that cannot fit because the data is not ready is not charged. Enterprise accounts are unmetered. An admin, the CMO or a Director can set the refresh: manual, monthly, every two weeks or weekly, which outcomes to refresh, and a credit reserve, 20 by default, below which refreshing pauses so other work is never starved. Larger clients with more media usually benefit from a faster cadence; smaller accounts can refresh monthly or by hand. A scheduled refresh skips when there are fewer than seven new days of data, when the outcome is not ready, or when a run is already going. Scheduled runs are saved and labelled Scheduled run so they can be compared with earlier ones." },
+  { letter: "MH", label: "From MMM Light to a match-market test", keywords: ["test next", "plan this test", "match market", "expected lift", "weeks needed", "truth lab", "hypothesis", "candidate", "geo test", "incrementality"], text: "The Test next card lists channels the model is least sure about that can be aimed by market. For each, the model estimates what 20 percent more weekly spend would add, shown as a range of weekly outcome. Choose Plan this test and Visualize markets opens with that channel and lift loaded. It shows how many weeks your test and control markets, pooled, would need to see a lift that size, and says plainly when the answer is too long to be practical. In that case raise the spend change in the test markets or use a time-based test. Save as a test in the Truth Lab creates a draft linked to the MMM run, with the channel, the expected lift and the sizing, ready for markets and dates. Confirming a result is a person's decision. Test results are not yet fed back into the model automatically." },
+  { letter: "MI", label: "Is this account ready? The qualification check", keywords: ["qualification", "ready", "readiness", "data request", "weeks of history", "spend variation", "active weeks", "postal code", "what data do i need", "requirements", "minimum data"], text: "Run the check on the MMM Light page to compare what an account has loaded with what the model and a market test need. For the model: at least 52 complete weeks of dated records, and two years reads best; spend by channel with dates, where flight dates are better than monthly totals; and at least two channels, three is better, each with 26 active weeks and about 25 percent week-to-week change in spend. It flags channels that move together. For a market test: a postal code on each transaction and enough volume in test and control markets to see a realistic lift. Each item shows Ready, Thin or Missing, and the list of what to ask the client for can be copied as a data request. The check is read-only and uses no credits." },
+  { letter: "MJ", label: "MMM Light: honest limits and when to go deeper", keywords: ["limits", "bayesian", "calibration", "go deeper", "dedicated model", "broker", "not proof", "correlation", "partner mmm", "measurement coverage"], text: "MMM Light is a weekly regression with ranges from re-fitting, a 13-week check on weeks it has not seen, and limits on how far it will move money. It runs in about a minute and saves each run. It is not a Bayesian model with priors, it is not calibrated to your test results yet, it does not model markets separately, and it reads weeks, not days. It works best with two or more years of history and a handful of channels whose spend changes from week to week. Consider a deeper model when you have many channels, large budgets, steady always-on spend, heavy seasonality or promotions, or a decision that needs a tighter range. A dedicated model, calibrated with test results, will usually serve you better, and Verilume can broker one from Measurement Coverage. Use MMM Light to decide where to test first." },
   { letter: "AU", label: "Team and Org Chart", keywords: ["team", "org chart", "org", "invite", "member", "reports to", "role", "admin", "roster", "onboarding", "add a person", "add someone", "add people", "add a team", "who reports", "position"], text: "Team and Org Chart is where an admin adds each person, sets their position and who they report to. The chart drives skill sets, the self-assessment and the development plan, so keep reporting lines current. The page is admin-only today. Give each new person their position first, then have them complete the self-assessment in Team Experiences. Ask Verilume can answer who sits where and which seats lack a reporting line, without sharing contact details or individual self-ratings." },
   { letter: "AV", label: "Ask Verilume and voice: what you can ask", keywords: ["ask verilume", "voice", "ask", "question", "how do i", "how to", "what can i ask", "getting started", "where do i"], text: "AI Thoughts and voice share the same knowledge. Ask Verilume, typed or by voice, answers from your own data: campaigns, Media Science markets and the last test plan, Truth Lab results and confirmed learnings, Trade Territories, the Ad Copy Library and the team structure. It also explains how to use the product, so you can ask how do I save a match market test, how do I confirm a result, or what does a local reseller mean, and hear the same answer that appears in these thoughts. Voice never changes anything. Any change is proposed for a person to accept. It does not read out emails, phone numbers or individual self-ratings." },
   { letter: "AW", label: "Brain Dump: your greeting and growth links", keywords: ["brain dump", "growth", "my growth", "assessment", "self assessment", "next career", "career", "training", "development plan", "private", "manager see", "who can see", "greeting", "1:1"], text: "The Brain Dump opens with a greeting and your seat, then the weekly business update: Strategy, Customer Experiences, Growth and Performance, Media Science, AI Brain learnings, and news from outside. Beside it, Your growth links to your own development: the position self-assessment, your next-career checklist, and your development plan, all in Team Experiences. Those pages are private to you. A manager sees nothing from them unless you choose to share it. You can also ask Verilume or the voice agent to read you the Brain Dump, and it presents each section in turn. The 1:1 with your Brain is coming later. On the Team Experiences page, Training Library Partners lists LinkedIn Learning and Coursiv as placeholder options: you can say you already have a license or ask for a new relationship, but nothing is connected yet. Growth home is your private coaching space. Rate your seat's skills and drag them into the order you most need help with, and the coach ranks your key needs. Set a desired next career to see the skill gap and the closest three moves. Build a lesson plan from the training library, which holds only real, verified links. Sort a brain dump into tasks, things to learn and things to raise, and keep up to five active tasks that you choose and order yourself. Hold a short weekly 1:1 with the coach in text. Nothing is visible to your manager unless you switch sharing on for that item." },
@@ -34199,7 +34282,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-22-r96-mmm-schedule',
+        buildStamp: '2026-11-22-r97-mmm-plan-test',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -49762,7 +49845,11 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       const upload = geoLatestUpload(accountId, new URL(req.url, 'http://x').searchParams.get('uploadId'));
       if (!upload) return sendJson(res, 200, { available: false, needsBuild: true, note: 'No market data is built yet. Build it from your booking history first.' });
       try {
-        const out = geoCached(`appr|${accountId}|${upload.id}|${geoBookingFingerprint(accountId)}`, 600000, () => buildTestApproach(accountId, upload, geoAnalysis(accountId, upload, true)));
+        const cachedOut = geoCached(`appr|${accountId}|${upload.id}|${geoBookingFingerprint(accountId)}`, 600000, () => buildTestApproach(accountId, upload, geoAnalysis(accountId, upload, true)));
+        // 2026-11-22 (r97): a model's expected lift (MMM Light "Test next") can be checked against this account's markets.
+        const liftQ = Number(new URL(req.url, 'http://x').searchParams.get('liftPct'));
+        const out = Object.assign({}, cachedOut);
+        if (Number.isFinite(liftQ) && liftQ > 0) out.forLift = geoWeeksForLift(cachedOut, liftQ);
         return sendJson(res, 200, out);
       } catch (e){ console.warn('[geo-approach] failed:', e && e.message); return sendJson(res, 500, { error: 'could not work out the testing approach' }); }
     }
@@ -52147,6 +52234,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
       if (!requireAccount(req, res, accountId)) return;
       try {
         const u = new URL(req.url, 'http://localhost');
+        if (req.method === 'GET' && parts.length === 5 && parts[4] === 'qualification') return sendJson(res, 200, mmmQualification(accountId));
         if (req.method === 'GET' && parts.length === 4){
           let key = MMM_OUTCOMES[u.searchParams.get('outcome')] ? u.searchParams.get('outcome') : 'transactions'; if (u.searchParams.get('runId')){ const rr = db.prepare('SELECT outcome FROM mmm_model_runs WHERE accountId = ? AND id = ?').get(accountId, u.searchParams.get('runId')); if (rr && MMM_OUTCOMES[rr.outcome]) key = rr.outcome; }
           const runs = db.prepare('SELECT id, outcome, createdAt, createdByName, dataThrough, weeksUsed, confidence, fitted FROM mmm_model_runs WHERE accountId = ? ORDER BY createdAt DESC LIMIT 30').all(accountId);
