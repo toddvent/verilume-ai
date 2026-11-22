@@ -205,6 +205,14 @@
       "destination": "/docs/registrationaccountmanagementproduct.html"
     },
     {
+      "source": "/docs/advanced-analytics",
+      "destination": "/docs/verilume-product-advanced-analytics.html"
+    },
+    {
+      "source": "/docs/advanced-analytics-training",
+      "destination": "/docs/verilume-advanced-analytics-training.html"
+    },
+    {
       "source": "/docs/free-assessment",
       "destination": "/docs/verilume-product-free-assessment.html"
     },
