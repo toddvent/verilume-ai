@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-22-r95-mmm-credits (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-22-r96-mmm-schedule (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -22546,6 +22546,91 @@ const MMM_OUTCOMES = {
   calls: { label: 'Direct sales calls', unit: 'calls' }
 };
 const mmmRunning = new Set();
+// ---- MMM Light refresh schedule (2026-11-22) ----------------------------------------------------------------------------------
+// A client chooses which outcomes to model and how often to refresh: manual (default), monthly, every two weeks or weekly (the fastest, because the model
+// reads whole weeks). A scheduled run is skipped, at no cost, when under a full week of new data has arrived since the last run for that outcome, and is
+// paused when it would take the credit balance below the reserve (default 20), so drafting and other AI work are never starved. Runs are charged like manual ones.
+// runCredits, when set on an account's row, overrides the default price (MMM_RUN_CREDITS) for that account; there is no screen for it yet.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS mmm_schedules (
+    accountId TEXT PRIMARY KEY,
+    outcomes TEXT,
+    cadence TEXT,
+    reserve INTEGER,
+    runCredits INTEGER,
+    updatedAt TEXT,
+    updatedByName TEXT,
+    lastCheckAt TEXT,
+    lastStatus TEXT,
+    lastMessage TEXT
+  );
+`);
+const MMM_CADENCE_DAYS = { weekly: 7, biweekly: 14, monthly: 30 };
+const MMM_DEFAULT_RESERVE = 20;
+function mmmScheduleRow(accountId){
+  let r = null; try { r = db.prepare('SELECT * FROM mmm_schedules WHERE accountId = ?').get(accountId); } catch (e){}
+  let outs = []; try { outs = JSON.parse(aliasVal(r || {}, 'outcomes') || '[]'); } catch (e){}
+  const cad = aliasVal(r || {}, 'cadence');
+  const rs = aliasVal(r || {}, 'reserve'); const rc = aliasVal(r || {}, 'runCredits');
+  return { cadence: MMM_CADENCE_DAYS[cad] ? cad : 'manual', outcomes: outs.filter(o => MMM_OUTCOMES[o]), reserve: rs !== null && rs !== undefined && Number.isFinite(Number(rs)) ? Number(rs) : MMM_DEFAULT_RESERVE,
+    runCredits: rc !== null && rc !== undefined && Number.isFinite(Number(rc)) ? Number(rc) : null, updatedAt: aliasVal(r || {}, 'updatedAt') || null, updatedByName: aliasVal(r || {}, 'updatedByName') || null,
+    lastCheckAt: aliasVal(r || {}, 'lastCheckAt') || null, lastStatus: aliasVal(r || {}, 'lastStatus') || null, lastMessage: aliasVal(r || {}, 'lastMessage') || null };
+}
+function mmmRunCreditsFor(accountId){ const sc = mmmScheduleRow(accountId); return sc.runCredits != null ? sc.runCredits : MMM_RUN_CREDITS; }
+// Credits a schedule would use in a month at most (a run that finds nothing new is skipped and costs nothing).
+function mmmMonthlyEstimate(accountId, cadence, outcomes){
+  const d = MMM_CADENCE_DAYS[cadence]; if (!d) return 0;
+  return Math.round((30 / d) * mmmRunCreditsFor(accountId) * (outcomes || []).length);
+}
+function mmmChargeRun(accountId, cost){
+  const ins = db.prepare('INSERT INTO draft_usage (id, accountId, memberid, route, createdAt) VALUES (?,?,?,?,?)'); const at = new Date().toISOString();
+  for (let i = 0; i < cost; i++) ins.run(generateId('DRF'), accountId, null, '/mmm-allocations/run', at);
+}
+function mmmSaveCheck(accountId, status, message){
+  try { db.prepare('UPDATE mmm_schedules SET lastCheckAt = ?, lastStatus = ?, lastMessage = ? WHERE accountId = ?').run(new Date().toISOString(), status, String(message || '').slice(0, 400), accountId); } catch (e){}
+}
+// One pass over every account with a schedule. Returns what it did per account (used by the hourly timer and by tests).
+async function mmmScheduleTick(now){
+  now = now || new Date(); const report = [];
+  let rows = []; try { rows = db.prepare('SELECT accountId FROM mmm_schedules').all(); } catch (e){ return report; }
+  for (const row of rows){
+    const accountId = aliasVal(row, 'accountId'); const sc = mmmScheduleRow(accountId);
+    if (sc.cadence === 'manual' || !sc.outcomes.length) continue;
+    const days = MMM_CADENCE_DAYS[sc.cadence]; const ran = [], skipped = [];
+    for (const key of sc.outcomes){
+      try {
+        const last = db.prepare('SELECT createdAt, dataThrough, fitted FROM mmm_model_runs WHERE accountId = ? AND outcome = ? ORDER BY createdAt DESC LIMIT 1').get(accountId, key);
+        const lastAt = last ? new Date(aliasVal(last, 'createdAt')).getTime() : 0;
+        if (last && now.getTime() - lastAt < days * 86400000 - 3600000) continue; // not due yet
+        if (mmmRunning.has(accountId)){ skipped.push(MMM_OUTCOMES[key].label + ': a run was already in progress'); continue; }
+        const a = mmmAssemble(accountId, key); const rd = require('./mmm-model').readiness(a.weekly, key);
+        if (!rd.ok){ skipped.push(MMM_OUTCOMES[key].label + ': not enough data to model yet'); continue; }
+        const through = last ? mmmDay(aliasVal(last, 'dataThrough')) : null;
+        if (through && a.through && mmmAddDays(through, 7) > a.through){ skipped.push(MMM_OUTCOMES[key].label + ': under a week of new data since the last run (no credits used)'); continue; }
+        const cost = mmmRunCreditsFor(accountId); const al = cost > 0 ? draftAllowanceFor(accountId) : null;
+        if (al && al.remaining - cost < sc.reserve){ skipped.push(MMM_OUTCOMES[key].label + ': paused, ' + al.remaining + ' credits left and ' + sc.reserve + ' are kept in reserve for other work'); continue; }
+        mmmRunning.add(accountId);
+        try {
+          const run = await mmmRunModel(accountId, key, 'Scheduled run');
+          if (al && run && run.result && run.result.fitted) mmmChargeRun(accountId, cost);
+          ran.push(MMM_OUTCOMES[key].label + (run && run.result && run.result.fitted ? '' : ' (could not fit, no credits used)'));
+        } finally { mmmRunning.delete(accountId); }
+      } catch (e){ skipped.push(MMM_OUTCOMES[key].label + ': ' + (e && e.message || 'failed')); console.error('[mmm-schedule]', accountId, key, e && e.message); }
+    }
+    if (ran.length || skipped.length){
+      mmmSaveCheck(accountId, ran.length ? 'ran' : (skipped.some(x => /paused/.test(x)) ? 'paused' : 'skipped'), (ran.length ? 'Ran ' + ran.join(', ') + '. ' : '') + skipped.join('. '));
+      report.push({ accountId, ran, skipped });
+    }
+  }
+  return report;
+}
+let mmmScheduleTimer = null;
+function startMmmSchedule(){
+  if (mmmScheduleTimer) return;
+  const tick = () => mmmScheduleTick().catch(e => console.error('[mmm-schedule] tick failed:', e && e.message));
+  setTimeout(tick, 5 * 60 * 1000);
+  mmmScheduleTimer = setInterval(tick, 60 * 60 * 1000); // hourly look; each outcome runs only when its own cadence has passed
+}
 function mmmDay(v){ const s = String(v || '').slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null; }
 function mmmAddDays(iso, n){ const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
 function mmmSpreadInto(map, from, to, amount){
@@ -34114,7 +34199,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-22-r95-mmm-credits',
+        buildStamp: '2026-11-22-r96-mmm-schedule',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -52068,7 +52153,26 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
           const rid = u.searchParams.get('runId'); const latest = rid ? db.prepare('SELECT * FROM mmm_model_runs WHERE accountId = ? AND id = ?').get(accountId, rid) : db.prepare('SELECT * FROM mmm_model_runs WHERE accountId = ? AND outcome = ? ORDER BY createdAt DESC LIMIT 1').get(accountId, key);
           const availability = mmmAvailability(accountId); const av = availability[key];
           const run = mmmRunView(latest); const stale = !!(run && av && av.through && run.dataThrough && mmmAddDays(String(run.dataThrough).slice(0, 10), 14) < av.through);
-          return sendJson(res, 200, { outcome: key, outcomes: availability, run, stale, runs, running: mmmRunning.has(accountId), runCredits: MMM_RUN_CREDITS, allowance: allowanceForClient(accountId) });
+          return sendJson(res, 200, { outcome: key, outcomes: availability, run, stale, runs, running: mmmRunning.has(accountId), runCredits: mmmRunCreditsFor(accountId), allowance: allowanceForClient(accountId) });
+        }
+        if (parts.length === 5 && parts[4] === 'schedule'){
+          const actor = planScenarioActor(req, accountId); const canEdit = !!(actor && actor.canActivate);
+          const view = () => { const sc = mmmScheduleRow(accountId); const al = allowanceForClient(accountId); const est = mmmMonthlyEstimate(accountId, sc.cadence, sc.outcomes);
+            const next = sc.cadence === 'manual' ? null : sc.outcomes.map(k => { const l = db.prepare('SELECT createdAt FROM mmm_model_runs WHERE accountId = ? AND outcome = ? ORDER BY createdAt DESC LIMIT 1').get(accountId, k); return l ? new Date(new Date(aliasVal(l, 'createdAt')).getTime() + MMM_CADENCE_DAYS[sc.cadence] * 86400000).toISOString() : null; }).filter(Boolean).sort()[0] || null;
+            return { schedule: sc, canEdit, runCredits: mmmRunCreditsFor(accountId), monthlyEstimate: est, allowance: al, nextDueAt: next, cadences: Object.keys(MMM_CADENCE_DAYS) }; };
+          if (req.method === 'GET') return sendJson(res, 200, view());
+          if (req.method === 'PUT'){
+            if (!canEdit) return sendJson(res, 403, { error: 'Only an admin, the CMO or a Director can change the refresh schedule.' });
+            const body = await readBody(req) || {};
+            const cadence = body.cadence === 'manual' || MMM_CADENCE_DAYS[body.cadence] ? body.cadence : null; if (!cadence) return sendJson(res, 400, { error: 'Choose manual, monthly, every two weeks or weekly.' });
+            const outs = Array.isArray(body.outcomes) ? [...new Set(body.outcomes.filter(o => MMM_OUTCOMES[o]))] : [];
+            if (cadence !== 'manual' && !outs.length) return sendJson(res, 400, { error: 'Choose at least one outcome to refresh.' });
+            const rsv = Number(body.reserve); if (!(Number.isInteger(rsv) && rsv >= 0 && rsv <= 500)) return sendJson(res, 400, { error: 'The credit reserve must be a whole number from 0 to 500.' });
+            const now = new Date().toISOString(); const ex = db.prepare('SELECT accountId FROM mmm_schedules WHERE accountId = ?').get(accountId);
+            if (ex) db.prepare('UPDATE mmm_schedules SET outcomes = ?, cadence = ?, reserve = ?, updatedAt = ?, updatedByName = ? WHERE accountId = ?').run(JSON.stringify(outs), cadence, rsv, now, (actor && actor.name) || null, accountId);
+            else db.prepare('INSERT INTO mmm_schedules (accountId, outcomes, cadence, reserve, updatedAt, updatedByName) VALUES (?,?,?,?,?,?)').run(accountId, JSON.stringify(outs), cadence, rsv, now, (actor && actor.name) || null);
+            return sendJson(res, 200, view());
+          }
         }
         if (req.method === 'POST' && parts.length === 5 && parts[4] === 'run'){
           const body = await readBody(req) || {}; const key = MMM_OUTCOMES[body.outcome] ? body.outcome : null;
@@ -52076,14 +52180,14 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
           const actor = planScenarioActor(req, accountId) || { name: 'Team member' };
           if (mmmRunning.has(accountId)) return sendJson(res, 409, { error: 'A model run is already in progress for this account. Try again in a minute.' });
           if (keyRateLimitExceeded(accountId, 'mmm-run', 6)) return sendJson(res, 429, { error: 'This account has run the model 6 times in the last hour. Try again later.' });
-          const _al = MMM_RUN_CREDITS > 0 ? draftAllowanceFor(accountId) : null;
-          if (_al && _al.remaining < MMM_RUN_CREDITS) return sendJson(res, 403, { error: 'A model run uses ' + MMM_RUN_CREDITS + ' credits and this account has ' + _al.remaining + ' left this ' + (_al.period === 'trial' ? 'trial' : 'month') + '. Add credits or move up a package to run it. Saved runs stay open.', code: 'draft_allowance', cost: MMM_RUN_CREDITS, remaining: _al.remaining });
+          const _cost = mmmRunCreditsFor(accountId); const _al = _cost > 0 ? draftAllowanceFor(accountId) : null;
+          if (_al && _al.remaining < _cost) return sendJson(res, 403, { error: 'A model run uses ' + _cost + ' credits and this account has ' + _al.remaining + ' left this ' + (_al.period === 'trial' ? 'trial' : 'month') + '. Add credits or move up a package to run it. Saved runs stay open.', code: 'draft_allowance', cost: _cost, remaining: _al.remaining });
           mmmRunning.add(accountId);
           try {
             const run = await mmmRunModel(accountId, key, actor.name);
             let creditsUsed = 0;
             if (_al && run && run.result && run.result.fitted){ // only a run that produced a model is charged
-              try { const ins = db.prepare('INSERT INTO draft_usage (id, accountId, memberid, route, createdAt) VALUES (?,?,?,?,?)'); const at = new Date().toISOString(); for (let i = 0; i < MMM_RUN_CREDITS; i++) ins.run(generateId('DRF'), accountId, null, '/mmm-allocations/run', at); creditsUsed = MMM_RUN_CREDITS; } catch (e){ console.warn('[mmm] credit record failed:', e && e.message); }
+              try { mmmChargeRun(accountId, _cost); creditsUsed = _cost; } catch (e){ console.warn('[mmm] credit record failed:', e && e.message); }
             }
             const after = _al ? draftAllowanceFor(accountId) : null;
             return sendJson(res, 200, { run, creditsUsed, creditsRemaining: after ? after.remaining : null, creditsCap: after ? after.limit : null });
@@ -54229,6 +54333,7 @@ if (require.main === module) {
   server.listen(PORT, () => { console.log(`CXMedia.AI demo backend listening on http://localhost:${PORT}`); setTimeout(enforceRlsEverywhere, 20000); setInterval(enforceRlsEverywhere, 10 * 60 * 1000); });
   setTimeout(enforceRlsOnPublicTables, 5000);
   try { startModelWatch(); } catch (e){ console.error('[model-watch] could not start:', e && e.message); }
+  try { startMmmSchedule(); } catch (e){ console.error('[mmm-schedule] could not start:', e && e.message); }
 }
 
 // 2026-08-23 fix — module load (and all ~230 top-level schema-setup
