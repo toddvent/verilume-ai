@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-23-r99b-wireframe-brief (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-23-r99c-wireframe-brief (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -514,14 +514,17 @@ function createTableBulkPrecheck(){
   return createTableExistingCache;
 }
 function createTableIfNeeded(sql){
-  const match = /CREATE TABLE IF NOT EXISTS\s+([a-zA-Z_][a-zA-Z0-9_]*)/.exec(sql);
+  // 2026-11-23 (r99b) — a block can create several tables. It used to check only the FIRST name, so once that one existed the rest
+  // (portal_serves, terms_acceptances, account_card_pins, search_guide_ratings, search_guide_history) were never created on Postgres.
+  // Now the block is skipped only when EVERY table in it is confirmed present.
+  const names = []; const re = /CREATE TABLE IF NOT EXISTS\s+([a-zA-Z_][a-zA-Z0-9_]*)/g; let mm;
+  while ((mm = re.exec(sql))) names.push(mm[1]);
   const existing = createTableBulkPrecheck();
-  if (match && existing && existing.has(match[1])) return; // confirmed present — no round trip spent
+  if (names.length && existing && names.every(n => existing.has(n))) return; // confirmed present — no round trip spent
   db.exec(sql);
   // Every new table starts with row-level security on (no policies), so the public database roles can never read it.
   // Only the app's own database role gets in. SQLite has no such command, so the error is ignored there.
-  if (match && existing){ try { db.exec('ALTER TABLE ' + match[1] + ' ENABLE ROW LEVEL SECURITY'); } catch (e){} }
-  if (match && existing) existing.add(match[1]);
+  if (names.length && existing){ names.forEach(n => { if (existing.has(n)) return; try { db.exec('ALTER TABLE ' + n + ' ENABLE ROW LEVEL SECURITY'); } catch (e){} existing.add(n); }); }
 }
 
 // 2026-10-27 — Safety net behind createTableIfNeeded: any table in the public schema that somehow has row-level security off
@@ -34563,7 +34566,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-23-r99b-wireframe-brief',
+        buildStamp: '2026-11-23-r99c-wireframe-brief',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
