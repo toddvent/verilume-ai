@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-22-r97-mmm-plan-test (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-23-r99-wireframe-brief (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -22539,6 +22539,288 @@ function mixLeadSourceList(accountId){
 //          months with no flight spend for a channel use that channel's monthly MMM input spread evenly over the month.
 // The model works on whole weeks (Monday to Sunday) built from these days.
 // ---------------------------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------------------------------
+// 2026-11-23 (r99) — Website wireframes and landing pages, slice 1: the validated brief.
+// Foundation check (what the account already has), product positioning per product group (drafted, then approved
+// by a person), and a brief that starts from the CLIENT-CHOSEN objective and asks the next questions that objective
+// needs. Nothing is generated here: slice 1 ends with an approved brief. The question sets are data (WF_OBJECTIVES),
+// so a new objective is a new entry, not new logic. Lowercase columns (pg-sync-bridge rules).
+// ---------------------------------------------------------------------------------------------------------------
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS wireframe_positioning (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    productgroup TEXT NOT NULL,
+    audience TEXT,
+    problem TEXT,
+    proof TEXT,
+    priceposition TEXT,
+    competitorstance TEXT,
+    status TEXT,
+    source TEXT,
+    approvedat TEXT,
+    approvedby TEXT,
+    updatedat TEXT,
+    updatedby TEXT
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS wireframe_briefs (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    name TEXT NOT NULL,
+    objective TEXT NOT NULL,
+    answersjson TEXT,
+    acceptedjson TEXT,
+    status TEXT,
+    createdby TEXT,
+    createdat TEXT,
+    updatedat TEXT,
+    updatedby TEXT,
+    approvedat TEXT,
+    approvedby TEXT
+  );
+`);
+CATALOG_EXEMPT.add('wireframe_positioning');
+CATALOG_EXEMPT.add('wireframe_briefs');
+
+const WF_DRAFT_CREDITS = 1;
+const WF_TRAFFIC = ['Paid search', 'Paid social', 'Email', 'Organic search', 'Direct', 'Referral or partners', 'Print, QR or offline'];
+const WF_PRIMARY_ACTIONS = ['Submit a lead form', 'Buy online', 'Book or reserve', 'Call', 'Subscribe', 'Download', 'Register', 'Read or learn more', 'Other'];
+const WF_OBJECTIVES = [
+  { key: 'lead_gen', label: 'Lead generation', blurb: 'Capture enquiries from people who are interested but not ready to buy online.', primaryOk: ['Submit a lead form', 'Call', 'Download', 'Register'],
+    questions: [
+      { id: 'lead_def', group: 'Lead capture', q: 'What counts as a lead for this business?', help: 'For example: a completed quote request with a phone number. A page can only be judged against one definition.', type: 'long', required: true },
+      { id: 'lead_offer_type', group: 'Lead capture', q: 'What do people get for giving their details?', type: 'choice', options: ['Free consultation', 'Quote or estimate', 'Download or guide', 'Trial or demo', 'Event signup', 'Nothing beyond a reply'], required: true },
+      { id: 'lead_offer', group: 'Lead capture', q: 'What is the offer or reason to act now?', help: 'Include any deadline, limit or incentive, and the terms that must appear with it.', type: 'long', required: true },
+      { id: 'lead_fields', group: 'Lead capture', q: 'Which form fields are wanted?', help: 'List them. Each extra field lowers completion, so each one should earn its place.', type: 'long', required: true },
+      { id: 'lead_fields_count', group: 'Lead capture', q: 'How many fields is that?', type: 'number', required: true },
+      { id: 'lead_dest', group: 'Lead capture', q: 'Where do leads go?', type: 'choice', options: ['CRM', 'Email inbox', 'Spreadsheet', 'Call center', 'Not decided'], required: true },
+      { id: 'lead_crm', group: 'Lead capture', q: 'Which CRM, and is it connected to the website form today?', type: 'text', required: true, when: { id: 'lead_dest', is: ['CRM'] } },
+      { id: 'lead_owner', group: 'Follow-up', q: 'Who follows up on each lead?', type: 'text', required: true },
+      { id: 'lead_sla', group: 'Follow-up', q: 'What is the follow-up promise, and can the team keep it?', help: 'For example: a call within one business day.', type: 'text', required: true }
+    ] },
+  { key: 'ecommerce', label: 'Ecommerce', blurb: 'Sell products online, from browsing to checkout.', primaryOk: ['Buy online'],
+    questions: [
+      { id: 'ecom_catalog', group: 'Catalog', q: 'How is the catalog organized, and how many products are there?', type: 'long', required: true },
+      { id: 'ecom_priority', group: 'Catalog', q: 'Which products or categories should lead?', type: 'long', required: false },
+      { id: 'ecom_platform', group: 'Store', q: 'Which store platform runs checkout?', type: 'choice', options: ['Shopify', 'WooCommerce', 'BigCommerce', 'Magento', 'Custom build', 'Not decided'], required: true },
+      { id: 'ecom_pricing', group: 'Store', q: 'What are the price, shipping and returns rules?', help: 'These must appear before checkout, not at it.', type: 'long', required: true },
+      { id: 'ecom_checkout', group: 'Store', q: 'Which payment options and guest checkout rules apply?', type: 'long', required: false },
+      { id: 'ecom_trust', group: 'Trust', q: 'What reassures a first-time buyer?', help: 'Guarantees, returns, reviews, secure payment, service contact.', type: 'long', required: true },
+      { id: 'ecom_aov', group: 'Baseline', q: 'What is the average order value today, if known?', type: 'number', required: false }
+    ] },
+  { key: 'brand', label: 'Brand and awareness', blurb: 'Make the brand known and understood. Success is measured by attention and intent, not a sale on the page.', primaryOk: ['Subscribe', 'Read or learn more', 'Download', 'Register', 'Other'],
+    questions: [
+      { id: 'brand_idea', group: 'The idea', q: 'What is the one idea a visitor should leave with?', type: 'long', required: true },
+      { id: 'brand_next', group: 'The idea', q: 'What should a visitor do next?', type: 'choice', options: ['Subscribe', 'Find a location', 'Follow', 'Request information', 'Watch a video', 'Nothing in particular'], required: true },
+      { id: 'brand_measure', group: 'Measurement', q: 'How will awareness be measured?', help: 'For example: branded search growth, direct traffic, survey recall, share of voice.', type: 'long', required: true },
+      { id: 'brand_proof', group: 'Proof', q: 'What proves the idea (awards, numbers, customers, press)?', type: 'long', required: false }
+    ] },
+  { key: 'bookings', label: 'Bookings and appointments', blurb: 'Fill a calendar: appointments, reservations, tours or classes.', primaryOk: ['Book or reserve', 'Call'],
+    questions: [
+      { id: 'book_types', group: 'Offer', q: 'What can be booked?', type: 'long', required: true },
+      { id: 'book_source', group: 'Availability', q: 'Where does real availability live, and can the site read it?', type: 'long', required: true },
+      { id: 'book_deposit', group: 'Availability', q: 'Is a deposit or payment taken at booking?', type: 'yesno', required: true },
+      { id: 'book_confirm', group: 'After booking', q: 'What does the person receive after booking, and when are reminders sent?', type: 'long', required: true },
+      { id: 'book_cancel', group: 'After booking', q: 'What are the cancellation and change rules?', type: 'long', required: true }
+    ] },
+  { key: 'content', label: 'Content and education', blurb: 'Answer questions people ask, earn trust and organic traffic.', primaryOk: ['Subscribe', 'Download', 'Read or learn more', 'Other'],
+    questions: [
+      { id: 'content_topics', group: 'Topics', q: 'Which topics matter most?', type: 'long', required: true },
+      { id: 'content_question', group: 'Topics', q: 'What question does each page answer for the reader?', type: 'long', required: true },
+      { id: 'content_next', group: 'Next step', q: 'Where does a reader go after the answer?', type: 'choice', options: ['Subscribe', 'Contact', 'Read next', 'Download', 'Nothing in particular'], required: true },
+      { id: 'content_links', group: 'Structure', q: 'Is there an internal link plan between pages?', type: 'long', required: false }
+    ] },
+  { key: 'event', label: 'Event or campaign landing page', blurb: 'One offer, one action, matched to the ad or email that sends people there.', primaryOk: ['Register', 'Submit a lead form', 'Book or reserve', 'Buy online', 'Call'],
+    questions: [
+      { id: 'event_dates', group: 'The offer', q: 'What are the dates or deadline?', type: 'text', required: true },
+      { id: 'event_offer', group: 'The offer', q: 'What is the offer, in the words used in the ad or email?', type: 'long', required: true },
+      { id: 'event_cta', group: 'The offer', q: 'What is the single call to action?', type: 'text', required: true },
+      { id: 'event_source', group: 'Message match', q: 'Which ad or email sends people here? Paste its headline and image description.', help: 'The page headline should echo it.', type: 'long', required: true },
+      { id: 'event_nav', group: 'Message match', q: 'Should the full site navigation stay on this page?', help: 'Landing pages for paid traffic normally keep only the logo and one action.', type: 'yesno', required: true }
+    ] },
+  { key: 'other', label: 'Something else', blurb: 'Describe it in your own words. The brief still needs one measurable action.', primaryOk: null,
+    questions: [
+      { id: 'other_desc', group: 'In your words', q: 'What must this site or page achieve?', type: 'long', required: true },
+      { id: 'other_conversion', group: 'In your words', q: 'What single action shows it worked?', type: 'long', required: true },
+      { id: 'other_measure', group: 'In your words', q: 'How will you count that action?', type: 'long', required: true }
+    ] }
+];
+// Asked for every objective, after the objective's own questions are chosen.
+const WF_COMMON_QUESTIONS = [
+  { id: 'product_focus', group: 'Scope', q: 'Which product groups or offerings is this for?', help: 'Positioning must be approved for each one chosen.', type: 'groups', required: true },
+  { id: 'conversion_primary', group: 'Objective', q: 'What is the one action a visitor should take?', help: 'A page carries one primary action.', type: 'choice', options: WF_PRIMARY_ACTIONS, required: true },
+  { id: 'conversion_secondary', group: 'Objective', q: 'Which supporting actions, at most two?', type: 'multi', options: WF_PRIMARY_ACTIONS, required: false },
+  { id: 'second_objective', group: 'Objective', q: 'Does this same page also need to serve a different objective?', help: 'If yes, the brief is split rather than blended.', type: 'yesno', required: true },
+  { id: 'win_value', group: 'Objective', q: 'What is one win worth, or how will you judge it?', type: 'text', required: true },
+  { id: 'success_measure', group: 'Objective', q: 'How will it be measured, and by when?', type: 'text', required: true },
+  { id: 'audience', group: 'Audience and traffic', q: 'Who is the audience?', help: 'Pre-filled from the company profile when it is there.', type: 'long', required: true, profile: 'audience' },
+  { id: 'traffic', group: 'Audience and traffic', q: 'Where will visitors come from?', type: 'multi', options: WF_TRAFFIC, required: true },
+  { id: 'baseline', group: 'Audience and traffic', q: 'What is the baseline today?', help: 'Sessions, conversion rate, cost per lead or order. A rough number is fine.', type: 'long', required: false },
+  { id: 'proof', group: 'Proof and claims', q: 'What proof can the page show?', help: 'Reviews, awards, press, numbers, case studies.', type: 'long', required: false },
+  { id: 'claims_avoid', group: 'Proof and claims', q: 'What claims, words or comparisons must not appear?', type: 'long', required: false },
+  { id: 'legal_copy', group: 'Proof and claims', q: 'Is legal or compliance wording required on the page?', type: 'yesno', required: true },
+  { id: 'legal_copy_text', group: 'Proof and claims', q: 'What is the wording, or who supplies it?', type: 'long', required: true, when: { id: 'legal_copy', is: ['Yes'] } },
+  { id: 'platform', group: 'Build constraints', q: 'Which platform will the site run on?', type: 'choice', options: ['WordPress', 'Shopify', 'Webflow', 'Squarespace', 'Custom or in-house', 'Not decided', 'Other'], required: true },
+  { id: 'platform_other', group: 'Build constraints', q: 'Which platform?', type: 'text', required: true, when: { id: 'platform', is: ['Other'] } },
+  { id: 'tracking', group: 'Build constraints', q: 'What tracking is in place?', type: 'multi', options: ['GA4', 'Tag manager', 'Ad pixels', 'Call tracking', 'CRM attribution', 'None yet'], required: true },
+  { id: 'languages', group: 'Build constraints', q: 'Which languages, and any accessibility requirements?', type: 'text', required: false },
+  { id: 'launch', group: 'Build constraints', q: 'When does it need to launch?', type: 'text', required: false },
+  { id: 'popup', group: 'Build constraints', q: 'Does anyone want pop-ups, overlays or exit-intent offers?', type: 'yesno', required: true },
+  { id: 'approver', group: 'People', q: 'Who approves the pages, and who supplies content?', type: 'text', required: true }
+];
+function wfObjective(key){ return WF_OBJECTIVES.find(o => o.key === key) || null; }
+function wfAnswerHas(answers, cond){
+  const v = answers[cond.id]; if (v === undefined || v === null || v === '') return false;
+  const arr = Array.isArray(v) ? v : [v];
+  return arr.some(x => cond.is.includes(x));
+}
+// The question list for a brief: objective questions first, then the common ones, with follow-ups shown only when their condition holds.
+function wfQuestionsFor(objectiveKey, answers){
+  const obj = wfObjective(objectiveKey); if (!obj) return [];
+  return obj.questions.concat(WF_COMMON_QUESTIONS).filter(q => !q.when || wfAnswerHas(answers, q.when));
+}
+function wfBlank(v){ return v === undefined || v === null || (typeof v === 'string' && !v.trim()) || (Array.isArray(v) && !v.length); }
+function wfText(v){ return Array.isArray(v) ? v.join(', ') : String(v == null ? '' : v); }
+
+function wfAccountRow(accountId){ return db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId) || null; }
+function wfProductGroups(accountId){
+  try { const r = db.prepare('SELECT valuesJson FROM account_taxonomies WHERE accountId = ? AND taxonomyKey = ?').get(accountId, 'productGroup'); const a = r ? JSON.parse(aliasVal(r, 'valuesJson') || '[]') : []; return (Array.isArray(a) ? a : []).map(x => String(x && x.value != null ? x.value : x).trim()).filter(Boolean); } catch (e){ return []; }
+}
+function wfCompetitors(account){
+  try { const c = account && account.competitorsJson ? JSON.parse(account.competitorsJson) : []; return (Array.isArray(c) ? c : []).filter(x => x && x.name && String(x.name).trim()); } catch (e){ return []; }
+}
+function wfPositioningOut(r){
+  return { id: r.id, productGroup: r.productgroup, audience: r.audience || '', problem: r.problem || '', proof: r.proof || '', pricePosition: r.priceposition || '', competitorStance: r.competitorstance || '', status: r.status || 'draft', source: r.source || 'person', approvedAt: r.approvedat || null, approvedBy: r.approvedby || null, updatedAt: r.updatedat || null, updatedBy: r.updatedby || null };
+}
+function wfPositioningRows(accountId){
+  return db.prepare('SELECT * FROM wireframe_positioning WHERE accountid = ? ORDER BY productgroup').all(accountId).map(wfPositioningOut);
+}
+
+// What the account already has, and whether it is enough to start. Required items stop the brief; recommended items only advise.
+function wfFoundation(accountId){
+  const a = wfAccountRow(accountId) || {};
+  const groups = wfProductGroups(accountId); const pos = wfPositioningRows(accountId);
+  const approvedPos = pos.filter(p => p.status === 'approved' && groups.includes(p.productGroup));
+  const comps = wfCompetitors(a);
+  let samples = 0; try { samples = Number(db.prepare('SELECT COUNT(*) AS n FROM brand_writing_samples WHERE accountId = ?').get(accountId).n) || 0; } catch (e){}
+  const has = v => !wfBlank(v);
+  const item = (group, label, status, detail, step, required) => ({ group, label, status, detail, step: step || null, required: !!required });
+  const items = [];
+  const profileBits = [['company', a.company], ['industry', a.industry], ['audience', a.audience], ['products or services', a.productsServices], ['website', a.websiteUrl]];
+  const profMissing = profileBits.filter(b => !has(b[1])).map(b => b[0]);
+  items.push(item('Company profile', 'Company basics', !has(a.company) || !has(a.industry) ? 'fail' : profMissing.length ? 'warn' : 'pass', profMissing.length ? 'Missing: ' + profMissing.join(', ') + '.' : 'Company, industry, audience, products and website are on file.', 'companyProfile', true));
+  items.push(item('Company profile', 'Corporate goals', has(a.corporateGoals) ? 'pass' : 'warn', has(a.corporateGoals) ? 'On file.' : 'Not on file. Goals help judge whether a page objective fits the business.', 'companyProfile', false));
+  items.push(item('Brand voice', 'Approved voice guide', has(a.voiceGuideText) && a.voiceApproved ? 'pass' : has(a.voiceGuideText) ? 'warn' : 'fail', has(a.voiceGuideText) && a.voiceApproved ? 'Approved voice guide on file.' : has(a.voiceGuideText) ? 'A voice guide exists but is not approved yet.' : 'No voice guide yet. Upload the brand guide or build one under Brand Voice.', 'voice', true));
+  items.push(item('Brand voice', 'Writing samples', samples >= 2 ? 'pass' : samples === 1 ? 'warn' : 'warn', samples ? samples + ' on file.' : 'None on file. Samples make the copy sound like the brand.', 'voice', false));
+  const hasLogo = has(a.logoDataUrl) || has(a.logoUrl);
+  items.push(item('Brand look', 'Colors and fonts', has(a.primaryColorHex) && (has(a.headingFontName) || has(a.bodyFontName)) ? 'pass' : has(a.primaryColorHex) || has(a.headingFontName) ? 'warn' : 'fail', has(a.primaryColorHex) ? 'Primary color ' + a.primaryColorHex + (has(a.headingFontName) ? ', heading font ' + a.headingFontName : ', no heading font yet') + '.' : 'No primary color on file. The prototype is built from these.', 'voice', true));
+  items.push(item('Brand look', 'Logo', hasLogo ? 'pass' : 'warn', hasLogo ? 'On file.' : 'No logo on file. The prototype will show a plain name placeholder.', 'voice', false));
+  items.push(item('Products', 'Product groups', groups.length ? 'pass' : 'fail', groups.length ? groups.length + ' on file: ' + groups.slice(0, 6).join(', ') + (groups.length > 6 ? ', and more' : '') + '.' : 'None yet. Add them in Taxonomy Manager.', 'taxonomy', true));
+  items.push(item('Products', 'Product positioning approved', approvedPos.length && approvedPos.length >= groups.length ? 'pass' : approvedPos.length ? 'warn' : 'fail', groups.length ? approvedPos.length + ' of ' + groups.length + ' product groups approved below.' : 'Needs product groups first.', null, true));
+  items.push(item('Market', 'Competitors', comps.length ? 'pass' : 'warn', comps.length ? comps.length + ' named' + (a.competitivePositioningApproved ? ', positioning approved.' : ', positioning not approved yet.') : 'None named. Positioning will have nothing to compare against.', 'competitivePositioning', false));
+  items.push(item('Market', 'Website profile', has(a.websiteContextJson) ? 'pass' : has(a.websiteUrl) ? 'warn' : 'warn', has(a.websiteContextJson) ? 'Website scanned.' : has(a.websiteUrl) ? 'Website address on file but not scanned yet.' : 'No website address on file.', 'searchOptimization', false));
+  const blocked = items.filter(i => i.required && i.status === 'fail');
+  return { items, canProceed: blocked.length === 0, blockers: blocked.map(i => i.label), groups, approvedGroups: approvedPos.map(p => p.productGroup) };
+}
+
+// Checks the answers against the objective. `blocks` must be fixed; `warns` can be accepted knowingly (and are logged); `info` only advises.
+function wfValidate(accountId, brief, accepted){
+  const answers = brief.answers || {}; const obj = wfObjective(brief.objective);
+  const qs = wfQuestionsFor(brief.objective, answers);
+  const missing = qs.filter(q => q.required && wfBlank(answers[q.id])).map(q => ({ id: q.id, q: q.q, group: q.group }));
+  const flags = []; const add = (sev, code, text, fix) => flags.push({ severity: sev, code, text, fix, accepted: sev === 'warn' && !!(accepted && accepted[code]), acceptedBy: accepted && accepted[code] ? accepted[code].by : null, acceptedAt: accepted && accepted[code] ? accepted[code].at : null, acceptedNote: accepted && accepted[code] ? accepted[code].note : null });
+  const f = wfFoundation(accountId);
+  if (!f.canProceed) add('block', 'foundation', 'The account is missing required groundwork: ' + f.blockers.join(', ') + '.', 'Fill these in on the Foundation check above. Nothing is drafted from an empty foundation.');
+  const traffic = Array.isArray(answers.traffic) ? answers.traffic : []; const paid = traffic.some(t => t === 'Paid search' || t === 'Paid social');
+  if (obj && obj.primaryOk && !wfBlank(answers.conversion_primary) && !obj.primaryOk.includes(answers.conversion_primary)) add('block', 'objective_action_mismatch', 'The objective is ' + obj.label.toLowerCase() + ' but the primary action is "' + answers.conversion_primary + '". They point different ways.', 'Change the primary action to one that fits ' + obj.label.toLowerCase() + ' (' + obj.primaryOk.join(', ') + '), or change the objective.');
+  if (answers.second_objective === 'Yes') add('block', 'two_objectives', 'This page is being asked to serve a second objective. A page carries one primary objective.', 'Keep this brief for one objective and start a second brief for the other. They can share a site.');
+  const sec = Array.isArray(answers.conversion_secondary) ? answers.conversion_secondary : [];
+  if (sec.length > 2) add('block', 'too_many_actions', sec.length + ' supporting actions are chosen. More than two dilutes the main action.', 'Keep the two that matter most.');
+  if (sec.includes(answers.conversion_primary) && !wfBlank(answers.conversion_primary)) add('warn', 'secondary_repeats_primary', 'The primary action is also listed as a supporting action.', 'Remove it from the supporting list.');
+  const focus = Array.isArray(answers.product_focus) ? answers.product_focus : [];
+  const unpositioned = focus.filter(g => !f.approvedGroups.includes(g));
+  if (unpositioned.length) add('block', 'group_no_positioning', 'No approved positioning for: ' + unpositioned.join(', ') + '.', 'Approve a positioning card for each in step 2 above.');
+  if (answers.popup === 'Yes') add('warn', 'popup', 'Pop-ups or overlays were requested. The standard keeps every conversion path inline on the page.', 'Accept only if there is a reason an inline version cannot work, and say what it is.');
+  if (wfBlank(answers.proof)) add('warn', 'no_proof', 'No proof was given. Copy cannot carry specific claims without it, so every claim will be marked for review.', 'Add reviews, numbers, awards or press, or accept that the page will stay general.');
+  if (wfBlank(answers.baseline)) add('warn', 'no_baseline', 'No baseline. Without today\'s numbers a change cannot be judged as an improvement.', 'Add a rough sessions and conversion figure, or accept that results will only be compared going forward.');
+  const trk = Array.isArray(answers.tracking) ? answers.tracking : [];
+  if (trk.includes('None yet')) add('warn', 'no_tracking', 'No tracking is in place, so the primary action cannot be counted.', 'Plan tracking for the primary action before launch, or accept the gap.');
+  if (answers.platform === 'Not decided') add('warn', 'platform_open', 'The platform is not decided. Some layouts depend on what the platform can do.', 'Decide before build, or accept that the prototype stays platform-neutral.');
+  if (paid && (brief.objective === 'lead_gen' || brief.objective === 'event' || brief.objective === 'ecommerce')) add('info', 'paid_traffic', 'Paid traffic is planned. Plan a dedicated landing page with a lean header, one action and wording that matches the ad.', null);
+  if (brief.objective === 'lead_gen'){
+    const n = Number(answers.lead_fields_count);
+    if (Number.isFinite(n) && n > 6) add('warn', 'form_long', 'The form has ' + n + ' fields. Long forms lose people unless the offer is worth it.', 'Cut to what is needed to follow up now, and ask the rest later.');
+    else if (Number.isFinite(n) && n > 4 && answers.lead_offer_type === 'Nothing beyond a reply') add('warn', 'form_vs_offer', 'The form has ' + n + ' fields but the visitor gets nothing beyond a reply.', 'Offer something in return, or shorten the form.');
+    if (answers.lead_dest === 'Not decided') add('block', 'lead_dest', 'Leads have nowhere to go yet.', 'Choose where leads are delivered before drafting a form.');
+    if (/^(none|n\/a|no|unknown)/i.test(wfText(answers.lead_sla).trim())) add('warn', 'no_sla', 'There is no follow-up promise, so the page cannot tell people what happens next.', 'Set a promise the team can keep, or accept a page that makes none.');
+  }
+  if (brief.objective === 'ecommerce' && answers.ecom_platform === 'Not decided') add('block', 'ecom_platform', 'No store platform is chosen. Product and cart pages depend on it.', 'Choose the store platform.');
+  if (brief.objective === 'brand' && answers.brand_next === 'Nothing in particular') add('block', 'brand_no_next', 'A brand page with no next step leaves the visitor with nowhere to go.', 'Choose what the visitor should do next, even if it is only to subscribe.');
+  if (brief.objective === 'content' && answers.content_next === 'Nothing in particular') add('block', 'content_no_next', 'Content pages need somewhere to send the reader.', 'Choose the next step.');
+  if (brief.objective === 'event' && answers.event_nav === 'Yes' && paid) add('warn', 'nav_on_paid', 'Full site navigation stays on a page that paid traffic lands on. People wander off before acting.', 'Use the lean header, or accept it knowingly.');
+  const unaccepted = flags.filter(x => x.severity === 'warn' && !x.accepted);
+  const blocks = flags.filter(x => x.severity === 'block');
+  return { missing, flags, ready: !missing.length && !blocks.length && !unaccepted.length, counts: { missing: missing.length, blocks: blocks.length, warnsOpen: unaccepted.length, warnsAccepted: flags.filter(x => x.severity === 'warn' && x.accepted).length } };
+}
+function wfBriefOut(r){
+  let answers = {}, accepted = {}; try { answers = JSON.parse(r.answersjson || '{}') || {}; } catch (e){} try { accepted = JSON.parse(r.acceptedjson || '{}') || {}; } catch (e){}
+  return { id: r.id, name: r.name, objective: r.objective, answers, accepted, status: r.status || 'draft', createdBy: r.createdby || null, createdAt: r.createdat || null, updatedAt: r.updatedat || null, updatedBy: r.updatedby || null, approvedAt: r.approvedat || null, approvedBy: r.approvedby || null };
+}
+function wfBriefView(accountId, row){
+  const brief = wfBriefOut(row); const a = wfAccountRow(accountId) || {};
+  // A pre-fill is only a starting point: it is shown, and saved only when a person saves the brief.
+  const prefill = {}; wfQuestionsFor(brief.objective, brief.answers).forEach(q => { if (q.profile && wfBlank(brief.answers[q.id]) && !wfBlank(a[q.profile])) prefill[q.id] = String(a[q.profile]); });
+  const questions = wfQuestionsFor(brief.objective, brief.answers).map(q => q.type === 'groups' ? Object.assign({}, q, { options: wfProductGroups(accountId) }) : q);
+  const effective = Object.assign({}, brief, { answers: Object.assign({}, prefill, brief.answers) });
+  const check = wfValidate(accountId, effective, brief.accepted);
+  return { brief, questions, prefill, check, objective: wfObjective(brief.objective) ? { key: brief.objective, label: wfObjective(brief.objective).label, blurb: wfObjective(brief.objective).blurb } : null };
+}
+function wfBriefText(accountId, view){
+  const a = wfAccountRow(accountId) || {}; const f = wfFoundation(accountId); const b = view.brief; const ans = Object.assign({}, view.prefill, b.answers);
+  const pos = wfPositioningRows(accountId); const focus = Array.isArray(ans.product_focus) ? ans.product_focus : [];
+  const L = []; L.push('# Website brief: ' + b.name); L.push(''); L.push('Company: ' + (a.company || '') + (a.industry ? ' (' + a.industry + ')' : '')); L.push('Objective: ' + (view.objective ? view.objective.label : b.objective)); L.push('Status: ' + (b.status === 'approved' ? 'Approved' + (b.approvedBy ? ' by ' + b.approvedBy : '') + (b.approvedAt ? ' on ' + String(b.approvedAt).slice(0, 10) : '') : 'Draft, not approved') + '.'); L.push('');
+  L.push('## Foundation'); f.items.forEach(i => L.push('- ' + i.label + ': ' + ({ pass: 'ready', warn: 'thin', fail: 'missing' })[i.status] + '. ' + i.detail)); L.push('');
+  if (focus.length){ L.push('## Product positioning'); focus.forEach(g => { const p = pos.find(x => x.productGroup === g); L.push('### ' + g + (p && p.status === 'approved' ? '' : ' (not approved)')); if (p){ L.push('- Audience: ' + p.audience); L.push('- Problem it solves: ' + p.problem); L.push('- Proof: ' + p.proof); L.push('- Price position: ' + p.pricePosition); L.push('- Against competitors: ' + p.competitorStance); } }); L.push(''); }
+  const groups = []; view.questions.forEach(q => { if (q.id === 'product_focus') return; let g = groups.find(x => x.n === q.group); if (!g){ g = { n: q.group, rows: [] }; groups.push(g); } g.rows.push(q); });
+  groups.forEach(g => { L.push('## ' + g.n); g.rows.forEach(q => { const v = ans[q.id]; L.push('- ' + q.q + ' ' + (wfBlank(v) ? '(not answered)' : wfText(v))); }); L.push(''); });
+  const fl = view.check.flags.filter(x => x.severity !== 'info'); if (fl.length){ L.push('## Checks'); fl.forEach(x => L.push('- ' + (x.severity === 'block' ? 'MUST FIX' : x.accepted ? 'Accepted' + (x.acceptedBy ? ' by ' + x.acceptedBy : '') + (x.acceptedNote ? ' (' + x.acceptedNote + ')' : '') : 'Open') + ': ' + x.text)); L.push(''); }
+  if (view.check.missing.length){ L.push('## Still to answer'); view.check.missing.forEach(m => L.push('- ' + m.q)); L.push(''); }
+  return L.join('\n');
+}
+async function wfDraftPositioning(accountId, productGroup){
+  const a = wfAccountRow(accountId) || {}; const comps = wfCompetitors(a).slice(0, 5);
+  const compLines = comps.map(c => { const intel = (c.intelByTheme && c.intelByTheme.marketing_positioning) || c.categorizedIntel || {}; const bits = [intel.whyTheyCompete, intel.marketingApproach].filter(Boolean).join(' | ') || c.note || ''; return '- ' + c.name + (bits ? ': ' + bits : ''); }).join('\n');
+  let site = ''; try { const w = a.websiteContextJson ? JSON.parse(a.websiteContextJson) : null; site = w ? JSON.stringify(w).slice(0, 1500) : ''; } catch (e){}
+  const prompt = `You are drafting a product positioning card for ONE product group of a business, to be reviewed and approved by a person before any website is planned from it.
+
+RULES: Use only the facts below. Never invent proof points, prices, awards, numbers or competitor claims. Where a fact is not given, write "Needs input:" followed by what the client must supply. Plain, specific sentences. No marketing slogans.
+
+COMPANY: ${a.company || ''}
+INDUSTRY: ${a.industry || ''}
+PRODUCT GROUP TO POSITION: ${productGroup}
+PRODUCTS AND SERVICES: ${a.productsServices || '(not on file)'}
+AUDIENCE ON FILE: ${a.audience || '(not on file)'}
+CORPORATE GOALS: ${a.corporateGoals || '(not on file)'}
+APPROVED VOICE GUIDE (for tone only): ${String(a.voiceGuideText || '(none)').slice(0, 1200)}
+NAMED COMPETITORS:
+${compLines || '(none named)'}
+WEBSITE CONTEXT: ${site || '(none)'}
+
+Return the card through the submit_positioning tool.`;
+  const parsed = await callClaudeForJSON({ model: ANTHROPIC_STANDARD_MODEL, maxTokens: 900, content: prompt, toolName: 'submit_positioning', toolDescription: 'Submit the positioning card for one product group.',
+    schema: { type: 'object', properties: {
+      audience: { type: 'string', description: 'Who this product group is for, in one or two sentences.' },
+      problem: { type: 'string', description: 'The problem it solves or the job it does for that audience.' },
+      proof: { type: 'string', description: 'Proof points that are actually present in the facts given. Otherwise "Needs input: ..."' },
+      pricePosition: { type: 'string', description: 'Where it sits on price (premium, mid, value) if the facts say; otherwise "Needs input: ..."' },
+      competitorStance: { type: 'string', description: 'How it differs from the named competitors, only from the intel given; otherwise "Needs input: ..."' }
+    }, required: ['audience', 'problem', 'proof', 'pricePosition', 'competitorStance'] } });
+  const s = k => (typeof parsed[k] === 'string' ? parsed[k].trim().slice(0, 1200) : '');
+  return { audience: s('audience'), problem: s('problem'), proof: s('proof'), pricePosition: s('pricePosition'), competitorStance: s('competitorStance') };
+}
+
 createTableIfNeeded(`
   CREATE TABLE IF NOT EXISTS mmm_model_runs (
     id TEXT PRIMARY KEY,
@@ -34282,7 +34564,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-22-r97-mmm-plan-test',
+        buildStamp: '2026-11-23-r99-wireframe-brief',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -52224,6 +52506,102 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         }
         return sendJson(res, 200, { sources: mixLeadSourceList(accountId), channels: MMM_CATEGORIES });
       } catch (e){ console.error('[mix-lead-sources] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'Lead sources could not be saved: ' + (e && e.message || 'unknown error') }); }
+    }
+    // 2026-11-23 (r99) — Website wireframes, slice 1 (the validated brief). Nothing is generated yet.
+    //   GET  /api/accounts/:id/wireframes                                  -> foundation check, product groups, positioning cards, objectives, briefs
+    //   PUT  /api/accounts/:id/wireframes/positioning                      -> save a card { productGroup, audience, problem, proof, pricePosition, competitorStance, approve? }
+    //   POST /api/accounts/:id/wireframes/positioning/draft { productGroup } -> draft a card from the profile (1 credit); saved as an unapproved draft
+    //   POST /api/accounts/:id/wireframes/briefs { name, objective }       -> start a brief for the objective the client chose
+    //   GET|PUT|DELETE /api/accounts/:id/wireframes/briefs/:bid            -> read with questions and checks | save answers, change objective, accept a flag | archive
+    //   POST /api/accounts/:id/wireframes/briefs/:bid/approve              -> approve when nothing is missing, blocked or unaccepted
+    //   GET  /api/accounts/:id/wireframes/briefs/:bid/text                 -> the brief as plain text to copy
+    if (parts.length >= 4 && parts.length <= 7 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'wireframes'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      try {
+        const actor = planScenarioActor(req, accountId) || { name: 'Team member', canActivate: false };
+        const nowIso = new Date().toISOString();
+        if (req.method === 'GET' && parts.length === 4){
+          const briefs = db.prepare('SELECT * FROM wireframe_briefs WHERE accountid = ? AND (status IS NULL OR status <> ?) ORDER BY updatedat DESC').all(accountId, 'archived').map(wfBriefOut)
+            .map(b => ({ id: b.id, name: b.name, objective: b.objective, objectiveLabel: wfObjective(b.objective) ? wfObjective(b.objective).label : b.objective, status: b.status, updatedAt: b.updatedAt, approvedAt: b.approvedAt, approvedBy: b.approvedBy }));
+          return sendJson(res, 200, { foundation: wfFoundation(accountId), positioning: wfPositioningRows(accountId), objectives: WF_OBJECTIVES.map(o => ({ key: o.key, label: o.label, blurb: o.blurb })), briefs, draftCredits: WF_DRAFT_CREDITS, allowance: allowanceForClient(accountId), canApprove: !!actor.canActivate });
+        }
+        if (parts.length === 5 && parts[4] === 'positioning' && req.method === 'PUT'){
+          const body = await readBody(req) || {}; const g = String(body.productGroup || '').trim();
+          if (!g || !wfProductGroups(accountId).includes(g)) return sendJson(res, 400, { error: 'Choose one of this account\'s product groups.' });
+          const f = k => String(body[k] == null ? '' : body[k]).slice(0, 1500);
+          const ex = db.prepare('SELECT * FROM wireframe_positioning WHERE accountid = ? AND productgroup = ?').get(accountId, g);
+          const wantApprove = body.approve === true;
+          if (wantApprove && !actor.canActivate) return sendJson(res, 403, { error: 'Only an admin or the CMO can approve a positioning card. Save it as a draft for them to review.' });
+          if (wantApprove && ['audience', 'problem', 'proof', 'pricePosition', 'competitorStance'].some(k => wfBlank(f(k)) || /^needs input/i.test(f(k).trim()))) return sendJson(res, 400, { error: 'Every field must be filled in, with nothing still marked "Needs input", before the card can be approved.' });
+          const status = wantApprove ? 'approved' : 'draft'; // any edit of an approved card returns it to draft unless re-approved
+          if (ex) db.prepare('UPDATE wireframe_positioning SET audience = ?, problem = ?, proof = ?, priceposition = ?, competitorstance = ?, status = ?, source = ?, approvedat = ?, approvedby = ?, updatedat = ?, updatedby = ? WHERE id = ?')
+            .run(f('audience'), f('problem'), f('proof'), f('pricePosition'), f('competitorStance'), status, 'person', wantApprove ? nowIso : null, wantApprove ? actor.name : null, nowIso, actor.name, ex.id);
+          else db.prepare('INSERT INTO wireframe_positioning (id, accountid, productgroup, audience, problem, proof, priceposition, competitorstance, status, source, approvedat, approvedby, updatedat, updatedby) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+            .run(generateId('WFP'), accountId, g, f('audience'), f('problem'), f('proof'), f('pricePosition'), f('competitorStance'), status, 'person', wantApprove ? nowIso : null, wantApprove ? actor.name : null, nowIso, actor.name);
+          return sendJson(res, 200, { positioning: wfPositioningRows(accountId), foundation: wfFoundation(accountId) });
+        }
+        if (parts.length === 6 && parts[4] === 'positioning' && parts[5] === 'draft' && req.method === 'POST'){
+          const body = await readBody(req) || {}; const g = String(body.productGroup || '').trim();
+          if (!g || !wfProductGroups(accountId).includes(g)) return sendJson(res, 400, { error: 'Choose one of this account\'s product groups.' });
+          const ex = db.prepare('SELECT * FROM wireframe_positioning WHERE accountid = ? AND productgroup = ?').get(accountId, g);
+          if (ex && ex.status === 'approved') return sendJson(res, 409, { error: 'This card is approved. Edit it directly, or change a field to reopen it, before drafting over it.' });
+          if (keyRateLimitExceeded(accountId, 'wf-position-draft', 20)) return sendJson(res, 429, { error: 'Too many drafts this hour. Try again later.' });
+          const al = WF_DRAFT_CREDITS > 0 ? draftAllowanceFor(accountId) : null;
+          if (al && al.remaining < WF_DRAFT_CREDITS) return sendJson(res, 403, { error: 'A draft uses ' + WF_DRAFT_CREDITS + ' credit and this account has ' + al.remaining + ' left. You can still write the card by hand.', code: 'draft_allowance' });
+          let d; try { d = await wfDraftPositioning(accountId, g); } catch (e){ return sendJson(res, 502, { error: 'The draft could not be written: ' + (e && e.message || 'unknown error') + '. Nothing was charged.' }); }
+          if (al){ try { const ins = db.prepare('INSERT INTO draft_usage (id, accountId, memberid, route, createdAt) VALUES (?,?,?,?,?)'); for (let i = 0; i < WF_DRAFT_CREDITS; i++) ins.run(generateId('DRF'), accountId, null, '/wireframes/positioning/draft', nowIso); } catch (e){ console.warn('[wireframes] credit record failed:', e && e.message); } }
+          if (ex) db.prepare('UPDATE wireframe_positioning SET audience = ?, problem = ?, proof = ?, priceposition = ?, competitorstance = ?, status = ?, source = ?, approvedat = NULL, approvedby = NULL, updatedat = ?, updatedby = ? WHERE id = ?').run(d.audience, d.problem, d.proof, d.pricePosition, d.competitorStance, 'draft', 'ai_draft', nowIso, actor.name, ex.id);
+          else db.prepare('INSERT INTO wireframe_positioning (id, accountid, productgroup, audience, problem, proof, priceposition, competitorstance, status, source, approvedat, approvedby, updatedat, updatedby) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(generateId('WFP'), accountId, g, d.audience, d.problem, d.proof, d.pricePosition, d.competitorStance, 'draft', 'ai_draft', null, null, nowIso, actor.name);
+          const after = al ? draftAllowanceFor(accountId) : null;
+          return sendJson(res, 200, { positioning: wfPositioningRows(accountId), foundation: wfFoundation(accountId), creditsUsed: al ? WF_DRAFT_CREDITS : 0, creditsRemaining: after ? after.remaining : null });
+        }
+        if (parts.length === 5 && parts[4] === 'briefs' && req.method === 'POST'){
+          const body = await readBody(req) || {}; const obj = wfObjective(body.objective);
+          if (!obj) return sendJson(res, 400, { error: 'Choose the objective this site or page must achieve.' });
+          const name = String(body.name || '').trim().slice(0, 120) || (obj.label + ' brief');
+          const id = generateId('WFB');
+          db.prepare('INSERT INTO wireframe_briefs (id, accountid, name, objective, answersjson, acceptedjson, status, createdby, createdat, updatedat, updatedby) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(id, accountId, name, obj.key, '{}', '{}', 'draft', actor.name, nowIso, nowIso, actor.name);
+          return sendJson(res, 200, wfBriefView(accountId, db.prepare('SELECT * FROM wireframe_briefs WHERE id = ? AND accountid = ?').get(id, accountId)));
+        }
+        if (parts.length >= 6 && parts[4] === 'briefs'){
+          const bid = decodeURIComponent(parts[5]);
+          const row = db.prepare('SELECT * FROM wireframe_briefs WHERE id = ? AND accountid = ?').get(bid, accountId);
+          if (!row) return sendJson(res, 404, { error: 'Brief not found.' });
+          if (parts.length === 6 && req.method === 'GET') return sendJson(res, 200, wfBriefView(accountId, row));
+          if (parts.length === 7 && parts[6] === 'text' && req.method === 'GET'){ const v = wfBriefView(accountId, row); return sendJson(res, 200, { text: wfBriefText(accountId, v) }); }
+          if (parts.length === 6 && req.method === 'DELETE'){ db.prepare('UPDATE wireframe_briefs SET status = ?, updatedat = ?, updatedby = ? WHERE id = ? AND accountid = ?').run('archived', nowIso, actor.name, bid, accountId); return sendJson(res, 200, { archived: true }); }
+          if (parts.length === 6 && req.method === 'PUT'){
+            const body = await readBody(req) || {}; const cur = wfBriefOut(row);
+            let objective = cur.objective; if (body.objective !== undefined){ if (!wfObjective(body.objective)) return sendJson(res, 400, { error: 'Unknown objective.' }); objective = body.objective; }
+            const answers = Object.assign({}, cur.answers);
+            if (body.answers && typeof body.answers === 'object'){
+              const known = new Set(WF_OBJECTIVES.reduce((a, o) => a.concat(o.questions.map(q => q.id)), WF_COMMON_QUESTIONS.map(q => q.id)));
+              Object.keys(body.answers).forEach(k => { if (!known.has(k)) return; let v = body.answers[k]; if (Array.isArray(v)) v = v.map(x => String(x).slice(0, 200)).slice(0, 20); else v = String(v == null ? '' : v).slice(0, 3000); answers[k] = v; });
+            }
+            const accepted = Object.assign({}, cur.accepted);
+            const probe = { objective, answers: Object.assign({}, wfBriefView(accountId, Object.assign({}, row, { objective, answersjson: JSON.stringify(answers) })).prefill, answers), accepted };
+            const flags = wfValidate(accountId, probe, accepted).flags;
+            if (body.acceptFlag){ const fl = flags.find(x => x.code === body.acceptFlag); if (!fl || fl.severity !== 'warn') return sendJson(res, 400, { error: 'That check cannot be accepted. Fix it instead.' }); accepted[fl.code] = { by: actor.name, at: nowIso, note: String(body.note || '').slice(0, 300) }; }
+            if (body.unacceptFlag) delete accepted[body.unacceptFlag];
+            // An accepted warning that no longer applies is dropped, so it cannot silently approve a later, different problem.
+            Object.keys(accepted).forEach(code => { if (!flags.some(x => x.code === code && x.severity === 'warn')) delete accepted[code]; });
+            const name = body.name !== undefined ? (String(body.name).trim().slice(0, 120) || cur.name) : cur.name;
+            db.prepare('UPDATE wireframe_briefs SET name = ?, objective = ?, answersjson = ?, acceptedjson = ?, status = ?, updatedat = ?, updatedby = ?, approvedat = NULL, approvedby = NULL WHERE id = ? AND accountid = ?').run(name, objective, JSON.stringify(answers), JSON.stringify(accepted), 'draft', nowIso, actor.name, bid, accountId);
+            return sendJson(res, 200, wfBriefView(accountId, db.prepare('SELECT * FROM wireframe_briefs WHERE id = ? AND accountid = ?').get(bid, accountId)));
+          }
+          if (parts.length === 7 && parts[6] === 'approve' && req.method === 'POST'){
+            if (!actor.canActivate) return sendJson(res, 403, { error: 'Only an admin or the CMO can approve a brief.' });
+            const v = wfBriefView(accountId, row);
+            if (!v.check.ready) return sendJson(res, 400, { error: 'The brief is not ready: ' + v.check.counts.missing + ' unanswered, ' + v.check.counts.blocks + ' to fix, ' + v.check.counts.warnsOpen + ' warnings not yet accepted.', check: v.check });
+            // Save the pre-filled answers the person saw, so the approved brief is the one they approved.
+            const merged = Object.assign({}, v.prefill, v.brief.answers);
+            db.prepare('UPDATE wireframe_briefs SET answersjson = ?, status = ?, approvedat = ?, approvedby = ?, updatedat = ?, updatedby = ? WHERE id = ? AND accountid = ?').run(JSON.stringify(merged), 'approved', nowIso, actor.name, nowIso, actor.name, bid, accountId);
+            return sendJson(res, 200, wfBriefView(accountId, db.prepare('SELECT * FROM wireframe_briefs WHERE id = ? AND accountid = ?').get(bid, accountId)));
+          }
+        }
+        return sendJson(res, 404, { error: 'Not found.' });
+      } catch (e){ console.error('[wireframes] failed:', e && e.stack || e); return sendJson(res, 500, { error: 'The wireframe brief could not be loaded: ' + (e && e.message || 'unknown error') }); }
     }
     // 2026-10-19 — GET /api/accounts/:id/mix-readiness: per-channel evidence level, what the next level needs, and the minimums (months, not weeks: data is monthly).
     // 2026-11-22 (r94) — MMM Model Allocations.
