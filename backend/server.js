@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-24-r105-creative-package (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-24-r106-creative-guest-scope (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -14391,6 +14391,18 @@ try {
   );`);
 } catch (e){ console.error('[schema] could not ensure creative_handoffs:', e && e.message); }
 enableRlsNow(['creative_handoffs']);
+// 2026-11-24 (r106) -- outside creative guests see only the campaigns they are assigned; creative questions and deliveries are kept per job.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS creative_guest_campaigns (
+    id TEXT PRIMARY KEY, accountid TEXT NOT NULL, memberid TEXT NOT NULL, campaignid TEXT NOT NULL, assignedby TEXT, assignedat TEXT NOT NULL
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS creative_job_notes (
+    id TEXT PRIMARY KEY, accountid TEXT NOT NULL, campaignid TEXT, jobid TEXT NOT NULL, kind TEXT NOT NULL, memberid TEXT, authorname TEXT, body TEXT, linkurl TEXT, createdat TEXT NOT NULL
+  );
+`);
+enableRlsNow(['creative_guest_campaigns', 'creative_job_notes']);
 // 2026-11-17 -- "What do you want to get done today?" on the Brain Dump: remembers what each person picked, privately. One row per person and task.
 try {
   db.exec(`CREATE TABLE IF NOT EXISTS member_session_tasks (
@@ -24142,7 +24154,7 @@ function brainLessonActor(req, accountId){
 }
 const BRAIN_LEDGER_LABELS = { voice_guide: ['Brand voice guide', 'Customer Experiences'], website_scan: ['Website scan', 'Train the Brain'], website_profile: ['Website profile', 'Train the Brain'], competitive_positioning: ['Competitive positioning', 'Strategy'], brand_writing_sample_style: ['Writing samples', 'Customer Experiences'], training_digest: ['Training digest', 'Train the Brain'], model_readout_finding: ['Analysis readout', 'Media Science'], video_analysis: ['Video analysis', 'Customer Experiences'], forecast_calibration: ['Forecast calibration', 'Strategy'] };
 // Tables that hold an accountId but are not data sets the Brain consumes (settings, sessions, logs, decisions, caches).
-const CATALOG_EXEMPT = new Set(['account_market_facts', 'member_session_tasks', 'account_card_pins', 'account_charts', 'account_notifications', 'account_chart_requests', 'account_pr_profile', 'account_ga4_meta', 'account_plan_scenarios', 'plan_scenario_events', 'mix_benchmark_cpm', 'account_lead_source_channel', 'plan_baseline_drafts', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'marketing_projects', 'marketing_project_tasks', 'account_learned_cpm', 'account_channel_product_inputs', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'creative_handoffs', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
+const CATALOG_EXEMPT = new Set(['account_market_facts', 'member_session_tasks', 'account_card_pins', 'account_charts', 'account_notifications', 'account_chart_requests', 'account_pr_profile', 'account_ga4_meta', 'account_plan_scenarios', 'plan_scenario_events', 'mix_benchmark_cpm', 'account_lead_source_channel', 'plan_baseline_drafts', 'plan_scenario_lines', 'scenario_plan_lines', 'account_rate_card_minimums', 'marketing_projects', 'marketing_project_tasks', 'account_learned_cpm', 'account_channel_product_inputs', 'onboarding_assignments', 'media_tests', 'export_fetch_log', 'creative_handoffs', 'creative_guest_campaigns', 'creative_job_notes', 'gsc_uploads', 'search_brand_terms', 'search_priorities', 'search_group_matches', 'search_reads', 'brain_facts', 'search_questions', 'search_brand_checks', 'search_brand_words', 'brain_fact_changes', 'account_guest_bookings_staging', 'brain_dump_welcome', 'short_links', 'user_preferences', 'creative_brief_requests', 'accounts', 'sessions', 'team_members', 'legal_acceptances', 'trusted_devices', 'voice_tokens', 'password_resets', 'phone_verifications', 'score_history', 'content_score_history', 'self_ratings', 'invoices', 'account_data_access_log', 'ai_brain_contributions', 'ai_brain_contribution_log', 'brain_lessons', 'ai_brain_transparency_items', 'ai_brain_context_cache', 'assessment_ai_calls', 'brain_dump_weeks', 'brain_dump_comments', 'creative_job_decisions', 'pr_corp_comm_decisions', 'mmm_adstock_lag_decisions', 'mmm_adstock_lag_decision_log', 'campaign_recommendation_comments', 'campaign_allocation_draws', 'campaign_mbu_draws', 'account_voice_interviews', 'campaign_copy_interviews', 'pr_copy_interviews', 'creative_job_interviews', 'contest_rankings', 'uploaded_files', 'account_transaction_settings', 'account_lead_form_settings', 'account_taxonomies', 'account_taxonomy_mappings', 'account_category_mapping_memory', 'account_channel_timing_overrides', 'account_active_channels', 'account_priority_models', 'print_specs_custom', 'partner_capability_requests', 'channel_planning_upload_batches', 'account_store_sets', 'market_customer_rows', 'marketing_budget_uploads', 'marketing_budget_category_overrides', 'marketing_budget_category_splits', 'mmm_category_mappings', 'search_optimizations', 'website_audits', 'news_feed_hidden', 'reputation_mentions', 'reputation_sweeps', 'financial_audit_log', 'budget_approval_requests', 'search_guide_ratings', 'search_guide_history', 'coach_needs', 'coach_career', 'coach_plan_items', 'coach_tasks', 'coach_dumps', 'coach_sessions', 'coach_sharing']);
 // Lists every table that carries an accountId and is neither in the catalog nor exempt, so a new data set cannot go unnoticed.
 function catalogCoverage(){
   let tables = [];
@@ -25359,6 +25371,15 @@ function assetTypeCode(channel, mediaType, size){
 // ---- Creative hand-off (2026-10-18) ----
 // Assets + approved copy go to the CMO / Admin for release; once approved they are served as the 'creative' export feed (CSV/JSON) and
 // shown on the campaign. The package is a frozen snapshot of what was submitted, so what gets approved is exactly what gets released.
+// Outside creative / agency guests only reach the campaigns they were assigned. Returns null for everyone else (no limit).
+function creativeGuestScope(req, accountId){
+  const session = authenticate(req);
+  if (!session || !session.memberId) return null;
+  const aud = accessAudienceFor(session);
+  if (aud !== 'creative' && aud !== 'agency') return null;
+  const rows = db.prepare('SELECT campaignid FROM creative_guest_campaigns WHERE accountid = ? AND memberid = ?').all(accountId, session.memberId);
+  return new Set(rows.map(r => aliasVal(r, 'campaignid')));
+}
 function creativeHandoffBuild(campaign){
   let assets = []; try { assets = JSON.parse(aliasVal(campaign, 'approvedCreativeAssetsJson') || '[]'); } catch (e){}
   if (!Array.isArray(assets)) assets = [];
@@ -34285,7 +34306,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-24-r105-creative-package',
+        buildStamp: '2026-11-24-r106-creative-guest-scope',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -45473,10 +45494,68 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
          FROM creative_jobs JOIN campaigns ON campaigns.id = creative_jobs.campaignId
          WHERE creative_jobs.accountId = ?`
       ).all(accountId)
+        .filter(j => { const gs = creativeGuestScope(req, accountId); return !gs || gs.has(aliasVal(j, 'campaignId')); })
         .sort((a, b) => (CREATIVE_JOB_PRIORITY_ORDER[a.priority] ?? 2) - (CREATIVE_JOB_PRIORITY_ORDER[b.priority] ?? 2) || a.createdAt.localeCompare(b.createdAt));
       return sendJson(res, 200, { jobs });
     }
 
+    // r106 (2026-11-24) -- creative guest access, questions and deliveries.
+    // GET/POST /api/accounts/:id/creative-guest-access: who (outside guests) sees which campaigns. CMO / Admin only.
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'creative-guest-access' && (req.method === 'GET' || req.method === 'POST')){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const actor = planScenarioActor(req, accountId) || {};
+      if (!actor.canActivate) return sendJson(res, 403, { error: 'Only the CMO or an Admin can choose which campaigns an outside creative guest sees.' });
+      if (req.method === 'GET'){
+        const guests = db.prepare("SELECT * FROM team_members WHERE accountId = ?").all(accountId)
+          .filter(m => aliasVal(m, 'memberkind') === 'external' && (m.status == null || m.status === 'active'))
+          .map(m => ({ id: m.id, name: m.name, roleLabel: aliasVal(m, 'rolelabel') || '', campaignIds: db.prepare('SELECT campaignid FROM creative_guest_campaigns WHERE accountid = ? AND memberid = ?').all(accountId, m.id).map(r => aliasVal(r, 'campaignid')) }));
+        const campaigns = db.prepare('SELECT id, name FROM campaigns WHERE accountId = ? ORDER BY createdAt DESC').all(accountId).map(c => ({ id: c.id, name: c.name || c.id }));
+        return sendJson(res, 200, { guests, campaigns });
+      }
+      const body = await readBody(req);
+      const mem = db.prepare('SELECT id, memberkind FROM team_members WHERE id = ? AND accountId = ?').get(String(body.memberId || ''), accountId);
+      if (!mem || aliasVal(mem, 'memberkind') !== 'external') return sendJson(res, 400, { error: 'Pick an outside guest on this account.' });
+      const valid = new Set(db.prepare('SELECT id FROM campaigns WHERE accountId = ?').all(accountId).map(c => c.id));
+      const ids = (Array.isArray(body.campaignIds) ? body.campaignIds : []).map(String).filter(x => valid.has(x));
+      const now = new Date().toISOString();
+      db.prepare('DELETE FROM creative_guest_campaigns WHERE accountid = ? AND memberid = ?').run(accountId, mem.id);
+      ids.forEach(cid => db.prepare('INSERT INTO creative_guest_campaigns (id, accountid, memberid, campaignid, assignedby, assignedat) VALUES (?,?,?,?,?,?)').run(generateId('CGC'), accountId, mem.id, cid, actor.id || null, now));
+      return sendJson(res, 200, { memberId: mem.id, campaignIds: ids });
+    }
+    // GET /api/accounts/:id/creative-threads?jobId= and POST { jobId, kind: question|answer|delivery, body, linkUrl }.
+    // A delivery is a link to the finished work (no file storage here) and moves a Pending or In Progress job to Pending Approval.
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'creative-threads' && (req.method === 'GET' || req.method === 'POST')){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const guestScope = creativeGuestScope(req, accountId);
+      const q = new URL(req.url, 'http://x').searchParams;
+      const body = req.method === 'POST' ? await readBody(req) : {};
+      const jobId = String(body.jobId || q.get('jobId') || '').trim();
+      const job = jobId ? db.prepare('SELECT * FROM creative_jobs WHERE id = ? AND accountId = ?').get(jobId, accountId) : null;
+      if (!job) return sendJson(res, 404, { error: 'job not found' });
+      const campaignId = aliasVal(job, 'campaignId');
+      if (guestScope && !guestScope.has(campaignId)) return sendJson(res, 403, { error: 'This job is not assigned to you.' });
+      if (req.method === 'GET'){
+        const notes = db.prepare('SELECT * FROM creative_job_notes WHERE accountid = ? AND jobid = ? ORDER BY createdat ASC').all(accountId, jobId)
+          .map(n => ({ id: n.id, kind: n.kind, author: aliasVal(n, 'authorname') || '', body: n.body || '', linkUrl: aliasVal(n, 'linkurl') || '', createdAt: aliasVal(n, 'createdat') }));
+        return sendJson(res, 200, { notes });
+      }
+      const actor = planScenarioActor(req, accountId) || {};
+      let kind = ['question', 'answer', 'delivery'].includes(body.kind) ? body.kind : 'question';
+      if (guestScope && kind === 'answer') kind = 'question';
+      const text = String(body.body || '').trim().slice(0, 4000);
+      const link = String(body.linkUrl || '').trim().slice(0, 1000);
+      if (kind === 'delivery' && !/^https:\/\/[^\s]+$/i.test(link)) return sendJson(res, 400, { error: 'Add the https link where the finished work can be downloaded.' });
+      if (kind !== 'delivery' && !text) return sendJson(res, 400, { error: 'Write your message first.' });
+      const now = new Date().toISOString();
+      const id = generateId('CJN');
+      db.prepare('INSERT INTO creative_job_notes (id, accountid, campaignid, jobid, kind, memberid, authorname, body, linkurl, createdat) VALUES (?,?,?,?,?,?,?,?,?,?)')
+        .run(id, accountId, campaignId, jobId, kind, actor.id || null, actor.name || 'Team member', text, kind === 'delivery' ? link : null, now);
+      let status = job.status;
+      if (kind === 'delivery' && (job.status === 'Pending' || job.status === 'In Progress')){ db.prepare("UPDATE creative_jobs SET status = 'Pending Approval' WHERE id = ?").run(jobId); status = 'Pending Approval'; }
+      return sendJson(res, 201, { id, status });
+    }
     // GET /api/accounts/:id/creative-package[?campaignId=...] — 2026-11-24 (r105). What a creative or agency needs to do the work and nothing else:
     // the CMO-released (approved) hand-off copy and dimensions, the brief, the audience in words, dates, the job list and the brand kit.
     // Left out on purpose: budgets, MMM, forecasts, performance, other accounts' data and any copy that has not been approved and released.
@@ -45487,7 +45566,8 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
       if (!account) return sendJson(res, 404, { error: 'account not found' });
       const only = (new URL(req.url, 'http://x').searchParams.get('campaignId') || '').trim();
-      const handoffs = latestApprovedHandoffs(accountId, only || null);
+      const guestScope = creativeGuestScope(req, accountId);
+      const handoffs = latestApprovedHandoffs(accountId, only || null).filter(h => !guestScope || guestScope.has(h.campaignid));
       const jobsAll = db.prepare('SELECT * FROM creative_jobs WHERE accountId = ?').all(accountId);
       const packages = handoffs.map(h => {
         const c = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(h.campaignid);
