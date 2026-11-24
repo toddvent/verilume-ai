@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-24-r109-creative-campaign-view (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-24-r113-measurement-coverage-removed (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -7725,34 +7725,6 @@ function suggestMinViableSpendMultiplier(survey){
   return Math.round(Math.max(0.4, Math.min(1.5, raw)) * 100) / 100;
 }
 
-// The five-methodology framework from the measurement-alignment memo,
-// reduced to a fixed capability table: for each of the 18 MMM_CATEGORIES,
-// which measurement mechanisms are even structurally possible for that
-// channel. This doesn't change per account — a Linear TV buy can't carry a
-// UTM parameter no matter what the account says it does — only whether the
-// account has actually turned each *possible* mechanism on (via
-// measurementCoverageJson) changes per account.
-const MEASUREMENT_CHANNEL_CAPABILITIES = {
-  'Direct Mail — Prospects': { firstParty: true, callTracking: true, qr: true, comparative: false },
-  'Direct Mail — Past Guests': { firstParty: true, callTracking: true, qr: true, comparative: false },
-  'Direct Mail — Inquiries': { firstParty: true, callTracking: true, qr: true, comparative: false },
-  'Linear TV': { firstParty: false, callTracking: true, qr: false, comparative: false },
-  'OTV': { firstParty: false, callTracking: false, qr: false, comparative: true },
-  'CTV': { firstParty: false, callTracking: false, qr: false, comparative: true },
-  'Paid Social': { firstParty: false, callTracking: false, qr: false, comparative: true },
-  'Brand Search': { firstParty: true, callTracking: true, qr: false, comparative: true },
-  'Non-Brand Search': { firstParty: true, callTracking: true, qr: false, comparative: true },
-  'Internal Email': { firstParty: true, callTracking: false, qr: false, comparative: true },
-  'PR': { firstParty: false, callTracking: false, qr: false, comparative: false },
-  'Programmatic Display': { firstParty: false, callTracking: false, qr: false, comparative: true },
-  'Partner Media': { firstParty: false, callTracking: true, qr: true, comparative: true },
-  'Magazines': { firstParty: false, callTracking: true, qr: true, comparative: true },
-  'Newspapers': { firstParty: false, callTracking: true, qr: true, comparative: true },
-  'Out-of-Home': { firstParty: false, callTracking: true, qr: true, comparative: false },
-  'Radio': { firstParty: false, callTracking: true, qr: false, comparative: true },
-  'Podcasts': { firstParty: false, callTracking: true, qr: false, comparative: true },
-  'Email — Remarketing': { firstParty: true, callTracking: false, qr: false, comparative: true }
-};
 
 // CHANNEL_BEST_PRACTICES — 2026-09-12, per direct instruction: "build out
 // the channel best practices," the implementation of Section 2 of
@@ -8450,43 +8422,6 @@ function getMeasurementCoverage(accountId){
   }
 }
 
-// Per-channel confidence label — the concrete output of buildout item #2,
-// combining the fixed capability table above with this account's actual
-// coverage answers. "deterministic" = a first-party or call-tracking
-// mechanism this channel structurally supports AND the account has it
-// enabled for this channel; "comparative" = UTM-based like-for-like
-// comparison only; "model-only" = no in-channel mechanism exists or is
-// enabled — MMM or DMA match-market is the only path; each also carries
-// whether MMM/geo-lift are themselves available account-wide, since those
-// are what "model-only" actually resolves to in practice.
-function computeMeasurementConfidence(category, coverage){
-  const cap = MEASUREMENT_CHANNEL_CAPABILITIES[category] || { firstParty: false, callTracking: false, qr: false, comparative: false };
-  const methods = [];
-  const hasFirstParty = cap.firstParty && coverage.firstPartyMatchBack.enabled && coverage.firstPartyMatchBack.channels.includes(category);
-  const hasCallTracking = cap.callTracking && coverage.callTracking.enabled && coverage.callTracking.channels.includes(category);
-  const hasQr = cap.qr && coverage.qrTracking.enabled && coverage.qrTracking.channels.includes(category);
-  const hasUtm = cap.comparative && coverage.utmDiscipline.enabled && coverage.utmDiscipline.channels.includes(category);
-  if (hasFirstParty) methods.push('First-party direct attribution');
-  if (hasCallTracking) methods.push('Call tracking');
-  if (hasQr) methods.push('QR code tracking');
-  if (hasUtm) methods.push('Comparative UTM analytics');
-  let tier, label;
-  if (hasFirstParty || hasCallTracking || hasQr){
-    tier = 'deterministic';
-    label = 'Strong — deterministic tracking on file';
-  } else if (hasUtm){
-    tier = 'comparative';
-    label = 'Comparative only — valid channel-vs-channel, not causal';
-  } else if (coverage.mmm || coverage.dmaMatchMarket){
-    tier = 'model-only';
-    label = coverage.dmaMatchMarket ? 'Model-only — covered by DMA match-market testing, not in-channel' : 'Model-only — covered by MMM, not in-channel';
-    methods.push(coverage.dmaMatchMarket ? 'DMA match-market / geo-lift' : 'MMM');
-  } else {
-    tier = 'none';
-    label = 'No measurement coverage on file for this channel';
-  }
-  return { category, tier, label, methods, structurallyEligible: cap };
-}
 
 // Round 85 — partner category-mapping/consolidation. Per direct instruction,
 // "Partner may select less and consolidate categories as desired": the MMM
@@ -14426,7 +14361,6 @@ const SESSION_TASK_CATALOG = [
   { key: 'leads', ask: 'How are lead counts this month versus last month and versus the same month last year? Note which sources moved most.', label: 'Review lead counts', fns: ['Analysis', 'Performance Marketing', 'Lifecycle Marketing', 'Executive'], dest: { kind: 'step', step: 'visualize' } },
   { key: 'traffic', ask: 'How is website traffic trending this month versus last month, and which channels drove the change?', label: 'Check website traffic', fns: ['Analysis', 'Performance Marketing'], dest: { kind: 'step', step: 'websiteTraffic' } },
   { key: 'tests', ask: 'What test results are in, which are waiting for confirmation, and what did we learn?', label: 'Review test results', fns: ['Analysis', 'Marketing Ops'], dest: { kind: 'step', step: 'testRegistry' } },
-  { key: 'coverage', ask: 'Where is measurement coverage weakest right now, and what is the one fix that would help most?', label: 'Check measurement coverage', fns: ['Analysis'], dest: { kind: 'step', step: 'measurementCoverage' } },
   { key: 'analytics', label: 'Set up or check analytics', fns: ['Analysis', 'Marketing Ops'], dest: { kind: 'step', step: 'analyticsSetup' } },
   { key: 'queue', ask: 'What is waiting in the marketing ops queue, oldest first?', label: 'Work the marketing ops queue', fns: ['Marketing Ops'], dest: { kind: 'step', step: 'marketingOpsQueue' } },
   { key: 'upload', label: 'Upload data', fns: ['Marketing Ops', 'Analysis'], dest: { kind: 'step', step: 'bulkUpload' } },
@@ -34306,7 +34240,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-24-r109-creative-campaign-view',
+        buildStamp: '2026-11-24-r113-measurement-coverage-removed',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -47105,61 +47039,10 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       return sendJson(res, 200, { override, minViableSpendCalibrationEnabled: !!refreshed.minViableSpendCalibrationEnabled });
     }
 
-    // GET /api/accounts/:id/measurement-coverage — this account's saved
-    // answer to "what can you actually measure today" (buildout item #1).
-    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'measurement-coverage'){
-      const accountId = decodeURIComponent(parts[2]);
-      if (!requireAccount(req, res, accountId)) return;
-      const account = db.prepare('SELECT accountId, measurementCoverageJson FROM accounts WHERE accountId = ?').get(accountId);
-      if (!account) return sendJson(res, 404, { error: 'account not found' });
-      return sendJson(res, 200, { coverage: getMeasurementCoverage(accountId), allCategories: MMM_CATEGORIES, hasSaved: !!account.measurementCoverageJson });
-    }
-
-    // POST /api/accounts/:id/measurement-coverage — save/update. Editable
-    // any time, same convention as mmm-categories. Whole-object save.
-    if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'measurement-coverage'){
-      const accountId = decodeURIComponent(parts[2]);
-      if (!requireAccount(req, res, accountId)) return;
-      const account = db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId);
-      if (!account) return sendJson(res, 404, { error: 'account not found' });
-      const body = await readBody(req);
-      const incoming = body.coverage && typeof body.coverage === 'object' ? body.coverage : {};
-      const merged = Object.assign(defaultMeasurementCoverage(), incoming);
-      ['callTracking', 'qrTracking', 'utmDiscipline', 'firstPartyMatchBack'].forEach(k => {
-        const block = merged[k] && typeof merged[k] === 'object' ? merged[k] : {};
-        const channels = Array.isArray(block.channels) ? block.channels.filter(c => MMM_CATEGORIES.includes(c)) : [];
-        merged[k] = { enabled: !!block.enabled, channels };
-      });
-      merged.mmm = !!merged.mmm;
-      merged.dmaMatchMarket = !!merged.dmaMatchMarket;
-      merged.neuroscience = !!merged.neuroscience;
-      db.prepare('UPDATE accounts SET measurementCoverageJson = ? WHERE accountId = ?').run(JSON.stringify(merged), accountId);
-      return sendJson(res, 200, { coverage: merged });
-    }
-
-    // GET /api/accounts/:id/measurement-confidence — buildout item #2: the
-    // per-channel confidence label, derived from measurement-coverage plus
-    // the fixed capability table. Restricted to this account's included MMM
-    // categories when that inclusion list has been saved (same pattern as
-    // mmm-categories), otherwise every category.
-    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'measurement-confidence'){
-      const accountId = decodeURIComponent(parts[2]);
-      if (!requireAccount(req, res, accountId)) return;
-      const account = db.prepare('SELECT accountId, mmmIncludedCategoriesJson FROM accounts WHERE accountId = ?').get(accountId);
-      if (!account) return sendJson(res, 404, { error: 'account not found' });
-      const included = account.mmmIncludedCategoriesJson ? JSON.parse(account.mmmIncludedCategoriesJson) : [];
-      const categories = included.length ? included : MMM_CATEGORIES;
-      const coverage = getMeasurementCoverage(accountId);
-      const confidence = categories.map(c => computeMeasurementConfidence(c, coverage));
-      return sendJson(res, 200, { confidence });
-    }
-
     // GET /api/accounts/:id/partner-capability-requests — buildout item #5.
     // Every request on file for this account, most recent first, plus the
     // illustrative-partner info block per capability and this account's
-    // current measurement-coverage flag for each (so the client, seeing
-    // "requested," can also see once it's actually been turned on via
-    // Measurement Coverage).
+    // saved capability flag for each.
     if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'partner-capability-requests'){
       const accountId = decodeURIComponent(parts[2]);
       if (!requireAccount(req, res, accountId)) return;
@@ -47177,8 +47060,8 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
 
     // POST /api/accounts/:id/partner-capability-requests — submit a new
     // request. Never auto-turns on the capability itself (that stays a
-    // Measurement Coverage edit, a deliberate real-world confirmation step,
-    // not something a request form should silently assume) — this only
+    // deliberate real-world confirmation step, not something a request
+    // form should silently assume) — this only
     // logs that the account asked, so it has a real next step to point to.
     if (req.method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'partner-capability-requests'){
       const accountId = decodeURIComponent(parts[2]);
@@ -51030,7 +50913,7 @@ Write 1-3 concrete, specific observations as a single short paragraph (this is a
         rows.forEach(r => { byChannel[r.channel] = { periods: num(r.n) || 0, latestPeriod: r.latest || null, spend: num(r.spend), outcome: num(r.outcome), metric: r.metric || null, outcomePerDollar: (num(r.spend) > 0 && num(r.outcome) != null) ? Math.round((num(r.outcome) / num(r.spend)) * 10000) / 10000 : null }; });
         const anyOutcome = Object.values(byChannel).some(c => c.outcome != null && c.outcome > 0);
         return { available: true, value: { channels: byChannel }, source: 'mmm_inputs', updatedAt: rows.reduce((m, r) => (r.createdAt && (!m || r.createdAt > m)) ? r.createdAt : m, null), note: anyOutcome ? null : 'spend by period only — no outcome values yet, so no channel performance can be read from it' };
-      }, 'measurementCoverage'));
+      }, 'mmmInputs'));
       // 8. external research
       inputs.push(gather('externalResearch', 'External research (estimated CPM, media consumption by generation and wealth)', 'Editorial tables in the product (portal.html) — replace with licensed data when available', () => ({
         available: true,
