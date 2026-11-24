@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-23-r101-wireframes-removed (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-24-r105-creative-package (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -34285,7 +34285,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-23-r101-wireframes-removed',
+        buildStamp: '2026-11-24-r105-creative-package',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -45475,6 +45475,49 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       ).all(accountId)
         .sort((a, b) => (CREATIVE_JOB_PRIORITY_ORDER[a.priority] ?? 2) - (CREATIVE_JOB_PRIORITY_ORDER[b.priority] ?? 2) || a.createdAt.localeCompare(b.createdAt));
       return sendJson(res, 200, { jobs });
+    }
+
+    // GET /api/accounts/:id/creative-package[?campaignId=...] — 2026-11-24 (r105). What a creative or agency needs to do the work and nothing else:
+    // the CMO-released (approved) hand-off copy and dimensions, the brief, the audience in words, dates, the job list and the brand kit.
+    // Left out on purpose: budgets, MMM, forecasts, performance, other accounts' data and any copy that has not been approved and released.
+    // The path matches the creative guest allow-list, so external creative guests can call it.
+    if (req.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'creative-package'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+      if (!account) return sendJson(res, 404, { error: 'account not found' });
+      const only = (new URL(req.url, 'http://x').searchParams.get('campaignId') || '').trim();
+      const handoffs = latestApprovedHandoffs(accountId, only || null);
+      const jobsAll = db.prepare('SELECT * FROM creative_jobs WHERE accountId = ?').all(accountId);
+      const packages = handoffs.map(h => {
+        const c = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(h.campaignid);
+        if (!c) return null;
+        const out = creativeHandoffOut(h);
+        let nowCopy = null; try { nowCopy = JSON.stringify(creativeHandoffBuild(c).assets.map(a => a.copy)); } catch (e){}
+        let thenCopy = null; try { thenCopy = JSON.stringify((JSON.parse(h.packagejson).assets || []).map(a => a.copy)); } catch (e){}
+        const jobs = jobsAll.filter(j => (aliasVal(j, 'campaignId') || '') === h.campaignid).map(j => ({
+          id: j.id, channel: aliasVal(j, 'channel') || '', deliveryPlatform: aliasVal(j, 'deliveryPlatform') || '', status: j.status || '',
+          dueDate: aliasVal(j, 'dueDate') || '', priority: j.priority || ''
+        }));
+        return {
+          campaignId: h.campaignid, campaignName: c.name || h.campaignid,
+          brief: String(aliasVal(c, 'creativeBrief') || '').trim(),
+          audience: String(aliasVal(c, 'audienceTargets') || aliasVal(c, 'segment') || '').trim(),
+          startDate: aliasVal(c, 'startDate') || '', endDate: aliasVal(c, 'endDate') || '',
+          version: out.version, approvedBy: out.decidedBy, approvedAt: out.decidedAt,
+          copyChangedSinceRelease: !!(nowCopy && thenCopy && nowCopy !== thenCopy),
+          assets: out.assets, jobs
+        };
+      }).filter(Boolean);
+      const brand = {
+        companyName: aliasVal(account, 'company') || '', logoDataUrl: aliasVal(account, 'logoDataUrl') || '', logoUrl: aliasVal(account, 'logoUrl') || '',
+        primaryColorName: aliasVal(account, 'primaryColorName') || '', primaryColorHex: aliasVal(account, 'primaryColorHex') || '',
+        secondaryPaletteText: aliasVal(account, 'secondaryPaletteText') || '',
+        headingFontName: aliasVal(account, 'headingFontName') || '', bodyFontName: aliasVal(account, 'bodyFontName') || '',
+        styleNotes: String(aliasVal(account, 'styleNotes') || '').slice(0, 1500),
+        voiceGuide: String(aliasVal(account, 'voiceGuideText') || '').slice(0, 1500)
+      };
+      return sendJson(res, 200, { packages, brand });
     }
 
     // PATCH /api/creative-jobs/:id — update priority/status/notes on an
