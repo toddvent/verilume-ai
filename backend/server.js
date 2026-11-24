@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-24-r106-creative-guest-scope (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-24-r109-creative-campaign-view (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -34306,7 +34306,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-24-r106-creative-guest-scope',
+        buildStamp: '2026-11-24-r109-creative-campaign-view',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -45567,26 +45567,32 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       if (!account) return sendJson(res, 404, { error: 'account not found' });
       const only = (new URL(req.url, 'http://x').searchParams.get('campaignId') || '').trim();
       const guestScope = creativeGuestScope(req, accountId);
-      const handoffs = latestApprovedHandoffs(accountId, only || null).filter(h => !guestScope || guestScope.has(h.campaignid));
+      // r109: one package per campaign that has creative jobs or a released hand-off. Copy shown is the campaign's current copy with an
+      // approved / not approved flag on each version; the latest released hand-off (if any) is carried as `released`.
       const jobsAll = db.prepare('SELECT * FROM creative_jobs WHERE accountId = ?').all(accountId);
-      const packages = handoffs.map(h => {
-        const c = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(h.campaignid);
+      const handoffByCampaign = {}; latestApprovedHandoffs(accountId, only || null).forEach(h => { handoffByCampaign[h.campaignid] = h; });
+      const ids = new Set(Object.keys(handoffByCampaign)); jobsAll.forEach(j => { const cid = aliasVal(j, 'campaignId'); if (cid && (!only || cid === only)) ids.add(cid); });
+      const packages = [...ids].filter(cid => !guestScope || guestScope.has(cid)).map(cid => {
+        const c = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(cid);
         if (!c) return null;
-        const out = creativeHandoffOut(h);
-        let nowCopy = null; try { nowCopy = JSON.stringify(creativeHandoffBuild(c).assets.map(a => a.copy)); } catch (e){}
-        let thenCopy = null; try { thenCopy = JSON.stringify((JSON.parse(h.packagejson).assets || []).map(a => a.copy)); } catch (e){}
-        const jobs = jobsAll.filter(j => (aliasVal(j, 'campaignId') || '') === h.campaignid).map(j => ({
+        const h = handoffByCampaign[cid] || null;
+        let built = { assets: [] }; try { built = creativeHandoffBuild(c); } catch (e){}
+        let released = null, changed = false;
+        if (h){
+          const out = creativeHandoffOut(h);
+          released = { version: out.version, approvedBy: out.decidedBy, approvedAt: out.decidedAt };
+          try { changed = JSON.stringify(built.assets.map(a => a.copy)) !== JSON.stringify((JSON.parse(h.packagejson).assets || []).map(a => a.copy)); } catch (e){}
+        }
+        const jobs = jobsAll.filter(j => aliasVal(j, 'campaignId') === cid).map(j => ({
           id: j.id, channel: aliasVal(j, 'channel') || '', deliveryPlatform: aliasVal(j, 'deliveryPlatform') || '', status: j.status || '',
-          dueDate: aliasVal(j, 'dueDate') || '', priority: j.priority || ''
+          dueDate: aliasVal(j, 'dueDate') || '', priority: j.priority || '', sizeOrLength: aliasVal(j, 'sizeOrLength') || '', specSummary: aliasVal(j, 'specSummary') || ''
         }));
         return {
-          campaignId: h.campaignid, campaignName: c.name || h.campaignid,
+          campaignId: cid, campaignName: c.name || cid,
           brief: String(aliasVal(c, 'creativeBrief') || '').trim(),
           audience: String(aliasVal(c, 'audienceTargets') || aliasVal(c, 'segment') || '').trim(),
           startDate: aliasVal(c, 'startDate') || '', endDate: aliasVal(c, 'endDate') || '',
-          version: out.version, approvedBy: out.decidedBy, approvedAt: out.decidedAt,
-          copyChangedSinceRelease: !!(nowCopy && thenCopy && nowCopy !== thenCopy),
-          assets: out.assets, jobs
+          released, copyChangedSinceRelease: changed, assets: built.assets, jobs
         };
       }).filter(Boolean);
       const brand = {
