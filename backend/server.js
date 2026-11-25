@@ -26376,6 +26376,213 @@ async function fetchGa4Report(propertyId){
   return report;
 }
 
+
+// ---------------------------------------------------------------------
+// Integrated daily performance (2026-11-25) — step 1 of the performance_daily build.
+// Decisions (Todd, 2026-11-25): reporting zone is Eastern (America/New_York); scheduled pulls run
+// here on Railway (hourly tick like the MMM refresh, not a Vercel cron); bookings come ONLY from
+// the client transaction feed, never GA4; Direct Mail and Magazines put 60% of impressions in the
+// hit week and spread the rest evenly to the end date; TV spreads evenly from hit date to end date;
+// steady digital and monthly totals divide flat by day.
+// Raw rows are stored as GA4 returned them; the daily table is computed from them, so a rule change
+// never needs a re-pull. Plain lowercase column names.
+// ---------------------------------------------------------------------
+const PD_TZ = 'America/New_York';
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_ga4_daily (
+    accountid TEXT NOT NULL,
+    day TEXT NOT NULL,
+    channelgroup TEXT NOT NULL DEFAULT '',
+    sourcemedium TEXT NOT NULL DEFAULT '',
+    campaign TEXT NOT NULL DEFAULT '',
+    sessions REAL,
+    engagedsessions REAL,
+    users REAL,
+    keyevents REAL,
+    pulledat TEXT NOT NULL,
+    PRIMARY KEY (accountid, day, channelgroup, sourcemedium, campaign)
+  );
+`);
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS ga4_pull_runs (
+    id TEXT PRIMARY KEY,
+    accountid TEXT NOT NULL,
+    startedat TEXT NOT NULL,
+    finishedat TEXT,
+    status TEXT NOT NULL,
+    fromday TEXT,
+    today TEXT,
+    rowsstored INTEGER DEFAULT 0,
+    truncated INTEGER DEFAULT 0,
+    sampled INTEGER DEFAULT 0,
+    message TEXT
+  );
+`);
+
+function pdToday(){ return new Intl.DateTimeFormat('en-CA', { timeZone: PD_TZ }).format(new Date()); } // YYYY-MM-DD in Eastern
+function pdAddDays(iso, n){ const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+function pdDaysBetween(a, b){ return Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 86400000); }
+function pdDay(v){ const s = String(v || '').slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null; }
+
+// Allocation of one planned line's impressions (or spend) to days. Returns { 'YYYY-MM-DD': amount }.
+// channel text decides the rule; anything not Direct Mail / Magazine / TV is steady (flat by day).
+function pdAllocationRule(channel){
+  const c = String(channel || '').toLowerCase();
+  if (/direct\s*mail/.test(c) || /magazine/.test(c)) return 'hit_week_60';
+  if (/\btv\b|television/.test(c)) return 'even_hit_to_end';
+  return 'flat';
+}
+function pdAllocate(channel, total, startDay, hitDay, endDay){
+  const out = {}; total = Number(total) || 0;
+  const rule = pdAllocationRule(channel);
+  const end = pdDay(endDay) || pdDay(hitDay) || pdDay(startDay);
+  if (!(total > 0) || !end) return out;
+  const hit = pdDay(hitDay) || pdDay(startDay) || end;
+  const add = (day, v) => { out[day] = (out[day] || 0) + v; };
+  if (rule === 'hit_week_60'){
+    const weekEnd = pdAddDays(hit, 6) < end ? pdAddDays(hit, 6) : end;
+    const weekDays = pdDaysBetween(hit, weekEnd) + 1;
+    if (weekEnd >= end){ for (let i = 0; i < weekDays; i++) add(pdAddDays(hit, i), total / weekDays); return out; } // flight no longer than the hit week
+    const first = total * 0.6, rest = total - first;
+    for (let i = 0; i < weekDays; i++) add(pdAddDays(hit, i), first / weekDays);
+    const restFrom = pdAddDays(weekEnd, 1), restDays = pdDaysBetween(restFrom, end) + 1;
+    for (let i = 0; i < restDays; i++) add(pdAddDays(restFrom, i), rest / restDays);
+  } else if (rule === 'even_hit_to_end'){
+    const n = Math.max(1, pdDaysBetween(hit, end) + 1);
+    for (let i = 0; i < n; i++) add(pdAddDays(hit, i), total / n);
+  } else {
+    const from = pdDay(startDay) || hit; const n = Math.max(1, pdDaysBetween(from, end) + 1);
+    for (let i = 0; i < n; i++) add(pdAddDays(from, i), total / n);
+  }
+  return out;
+}
+
+// One GA4 pull for a date window. Daily grain by channel group, source/medium and campaign.
+async function fetchGa4Daily(propertyId, fromDay, toDay){
+  const accessToken = await getGa4AccessToken();
+  const LIMIT = 100000; let offset = 0; const rows = []; let truncated = false, sampled = false;
+  for (let page = 0; page < 20; page++){
+    const resp = await fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${encodeURIComponent(propertyId)}:runReport`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dateRanges: [{ startDate: fromDay, endDate: toDay }],
+        dimensions: [{ name: 'date' }, { name: 'sessionDefaultChannelGroup' }, { name: 'sessionSourceMedium' }, { name: 'sessionCampaignName' }],
+        metrics: [{ name: 'sessions' }, { name: 'engagedSessions' }, { name: 'totalUsers' }, { name: 'keyEvents' }],
+        limit: LIMIT, offset
+      })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok){
+      const err = new Error((data && data.error && data.error.message) || `GA4 Data API responded ${resp.status}`);
+      err.ga4Status = (data && data.error && data.error.status) || 'ERROR'; throw err;
+    }
+    (data.rows || []).forEach(r => rows.push({
+      day: r.dimensionValues[0].value.replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3'),
+      channelgroup: r.dimensionValues[1].value || '', sourcemedium: r.dimensionValues[2].value || '', campaign: r.dimensionValues[3].value || '',
+      sessions: Number(r.metricValues[0].value) || 0, engagedsessions: Number(r.metricValues[1].value) || 0,
+      users: Number(r.metricValues[2].value) || 0, keyevents: Number(r.metricValues[3].value) || 0
+    }));
+    const md = data.metadata || {};
+    if (md.dataLossFromOtherRow) truncated = true;
+    if (Array.isArray(md.samplingMetadatas) && md.samplingMetadatas.length) sampled = true;
+    const total = Number(data.rowCount) || rows.length;
+    if (rows.length >= total || !(data.rows || []).length) break;
+    offset += LIMIT;
+    if (page === 19) truncated = true;
+  }
+  return { rows, truncated, sampled };
+}
+
+function pdStoreGa4Rows(accountId, rows){
+  const stamp = new Date().toISOString();
+  const up = db.prepare(`INSERT INTO account_ga4_daily (accountid, day, channelgroup, sourcemedium, campaign, sessions, engagedsessions, users, keyevents, pulledat)
+    VALUES (?,?,?,?,?,?,?,?,?,?)
+    ON CONFLICT(accountid, day, channelgroup, sourcemedium, campaign) DO UPDATE SET sessions=excluded.sessions, engagedsessions=excluded.engagedsessions, users=excluded.users, keyevents=excluded.keyevents, pulledat=excluded.pulledat`);
+  rows.forEach(r => up.run(accountId, r.day, r.channelgroup, r.sourcemedium, r.campaign, r.sessions, r.engagedsessions, r.users, r.keyevents, stamp));
+  return rows.length;
+}
+
+// Pull one account. mode 'backfill' = 13 months back to yesterday (Eastern); 'daily' = last 4 days (yesterday plus a re-pull window
+// because GA4 revises recent days). Today is never pulled — a partial day would read as a drop.
+async function pdPullGa4Account(account, mode){
+  const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random();
+  const today = pdToday(); const toDay = pdAddDays(today, -1);
+  const fromDay = mode === 'backfill' ? pdAddDays(today, -400) : pdAddDays(today, -4);
+  db.prepare('INSERT INTO ga4_pull_runs (id, accountid, startedat, status, fromday, today) VALUES (?,?,?,?,?,?)').run(id, account.accountId, new Date().toISOString(), 'running', fromDay, toDay);
+  try {
+    let stored = 0, truncated = false, sampled = false;
+    // Backfill in 90-day slices so one slice never nears the row cap.
+    let a = fromDay;
+    while (a <= toDay){
+      const b = pdAddDays(a, 89) < toDay ? pdAddDays(a, 89) : toDay;
+      const r = await fetchGa4Daily(account.analyticsGa4PropertyId, a, b);
+      stored += pdStoreGa4Rows(account.accountId, r.rows);
+      truncated = truncated || r.truncated; sampled = sampled || r.sampled;
+      a = pdAddDays(b, 1);
+    }
+    db.prepare('UPDATE ga4_pull_runs SET status=?, finishedat=?, rowsstored=?, truncated=?, sampled=?, message=? WHERE id=?')
+      .run('ok', new Date().toISOString(), stored, truncated ? 1 : 0, sampled ? 1 : 0, truncated ? 'Some rows were grouped into (other) by GA4 — consider the BigQuery export.' : (sampled ? 'GA4 sampled part of this data.' : null), id);
+    return { ok: true, stored, truncated, sampled, fromDay, toDay };
+  } catch (e){
+    db.prepare('UPDATE ga4_pull_runs SET status=?, finishedat=?, message=? WHERE id=?').run('failed', new Date().toISOString(), String(e && e.message || e).slice(0, 500), id);
+    return { ok: false, reason: e && e.ga4Status || 'error', message: e && e.message };
+  }
+}
+
+// Hourly look; each account is pulled once per Eastern day (after 4am Eastern so GA4 has settled), first time as a backfill.
+async function pdGa4Tick(){
+  if (!ga4ServiceAccount) return;
+  const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone: PD_TZ, hour: '2-digit', hour12: false }).format(new Date()));
+  if (hour < 4) return;
+  const todayEt = pdToday();
+  const accounts = db.prepare("SELECT * FROM accounts WHERE analyticsGa4PropertyId IS NOT NULL AND analyticsGa4PropertyId != '' AND archivedAt IS NULL").all();
+  for (const acct of accounts){
+    const last = db.prepare("SELECT startedat, status FROM ga4_pull_runs WHERE accountid = ? AND status = 'ok' ORDER BY startedat DESC LIMIT 1").get(acct.accountId);
+    const lastDayEt = last ? new Intl.DateTimeFormat('en-CA', { timeZone: PD_TZ }).format(new Date(last.startedat)) : null;
+    if (lastDayEt === todayEt) continue;
+    const running = db.prepare("SELECT 1 FROM ga4_pull_runs WHERE accountid = ? AND status = 'running' AND startedat > ?").get(acct.accountId, new Date(Date.now() - 30 * 60 * 1000).toISOString());
+    if (running) continue;
+    try { await pdPullGa4Account(acct, last ? 'daily' : 'backfill'); } catch (e){ console.error('[ga4-daily]', acct.accountId, e && e.message); }
+  }
+}
+let pdGa4Timer = null;
+function startGa4DailySchedule(){
+  if (pdGa4Timer) return;
+  const tick = () => pdGa4Tick().catch(e => console.error('[ga4-daily] tick failed:', e && e.message));
+  setTimeout(tick, 3 * 60 * 1000);
+  pdGa4Timer = setInterval(tick, 60 * 60 * 1000);
+}
+
+
+// Daily integrated rows for one account, computed (not yet stored) from the raw GA4 daily table, the plan lines
+// (allocated by the flight rules above) and the client booking feed. Every figure carries a basis tag.
+function pdBuildDaily(accountId, fromDay, toDay){
+  const rows = new Map();
+  const get = (day, channel, source) => { const k = day + '|' + source + '|' + channel; if (!rows.has(k)) rows.set(k, { day, source, channel, impressions: null, spend: null, sessions: null, engaged_sessions: null, users: null, ga4_key_events: null, bookings: null, booking_value: null, basis: {} }); return rows.get(k); };
+  db.prepare('SELECT day, channelgroup, SUM(sessions) s, SUM(engagedsessions) e, SUM(users) u, SUM(keyevents) k FROM account_ga4_daily WHERE accountid = ? AND day >= ? AND day <= ? GROUP BY day, channelgroup').all(accountId, fromDay, toDay)
+    .forEach(r => { const o = get(r.day, r.channelgroup || '(not set)', 'ga4'); o.sessions = r.s; o.engaged_sessions = r.e; o.users = r.u; o.ga4_key_events = r.k; o.basis = { sessions: 'measured', engaged_sessions: 'measured', users: 'measured (per-day only, never sum across days)', ga4_key_events: 'measured' }; });
+  db.prepare(`SELECT p.channel, p.impressions, p.budget, p.dropDate, p.hitDate, p.endDate FROM channel_planning_details p JOIN campaigns c ON c.id = p.campaignId WHERE c.accountId = ?`).all(accountId)
+    .forEach(p => {
+      const imp = pdAllocate(p.channel, p.impressions, p.dropDate, p.hitDate, p.endDate);
+      const sp = pdAllocate(p.channel, p.budget, p.dropDate, p.hitDate, p.endDate);
+      new Set([...Object.keys(imp), ...Object.keys(sp)]).forEach(day => {
+        if (day < fromDay || day > toDay) return;
+        const o = get(day, p.channel, 'plan');
+        if (imp[day] != null){ o.impressions = (o.impressions || 0) + imp[day]; o.basis.impressions = 'allocated (' + pdAllocationRule(p.channel) + ')'; }
+        if (sp[day] != null){ o.spend = (o.spend || 0) + sp[day]; o.basis.spend = 'allocated (' + pdAllocationRule(p.channel) + ') — planned budget, not billed'; }
+      });
+    });
+  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: PD_TZ });
+  db.prepare('SELECT bookedAt, value FROM warehouse_bookings WHERE accountId = ?').all(accountId).forEach(b => {
+    if (!b.bookedAt) return; const t = new Date(b.bookedAt); if (isNaN(t)) return;
+    const day = fmt.format(t); if (day < fromDay || day > toDay) return;
+    const o = get(day, '(all channels)', 'bookings'); o.bookings = (o.bookings || 0) + 1; o.booking_value = (o.booking_value || 0) + (Number(b.value) || 0);
+    o.basis.bookings = 'measured (client booking feed, never GA4)';
+  });
+  return [...rows.values()].sort((a, b) => a.day < b.day ? -1 : a.day > b.day ? 1 : (a.source + a.channel).localeCompare(b.source + b.channel));
+}
+
 // ---------------------------------------------------------------------
 // Snowflake inbound connector — 2026-09-13, per direct instruction
 // ("build what we need for snowflake"), following the 2026-08-17 scope
@@ -39913,6 +40120,28 @@ Submit your response via the campaign_intake_turn tool.`;
         console.warn('fetchGa4Report failed for', accountId, '—', e.message);
         return sendJson(res, 200, { configured: true, connected: false, reason, message: e.message });
       }
+    }
+
+    // Integrated daily performance — status of the stored daily GA4 pull, the computed daily rows, and a staff trigger.
+    if (parts.length === 4 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'performance-daily' && req.method === 'GET'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const u = new URL(req.url, 'http://x');
+      const to = pdDay(u.searchParams.get('to')) || pdAddDays(pdToday(), -1);
+      const from = pdDay(u.searchParams.get('from')) || pdAddDays(to, -29);
+      if (pdDaysBetween(from, to) > 400) return sendJson(res, 400, { error: 'range is limited to 400 days' });
+      const lastRun = db.prepare('SELECT startedat, finishedat, status, fromday, today, rowsstored, truncated, sampled, message FROM ga4_pull_runs WHERE accountid = ? ORDER BY startedat DESC LIMIT 1').get(accountId) || null;
+      const coverage = db.prepare('SELECT MIN(day) AS first, MAX(day) AS last, COUNT(DISTINCT day) AS days FROM account_ga4_daily WHERE accountid = ?').get(accountId);
+      return sendJson(res, 200, { timeZone: PD_TZ, from, to, ga4: { configured: !!ga4ServiceAccount, lastRun, coverage }, rows: pdBuildDaily(accountId, from, to) });
+    }
+    if (parts.length === 5 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'accounts' && parts[4] === 'ga4-daily-pull' && req.method === 'POST'){
+      if (!adminTokenOk(req)) return sendJson(res, 401, { error: 'unauthorized' });
+      if (!ga4ServiceAccount) return sendJson(res, 200, { configured: false });
+      const account = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(decodeURIComponent(parts[3]));
+      if (!account || !account.analyticsGa4PropertyId) return sendJson(res, 404, { error: 'account or GA4 property not found' });
+      const u = new URL(req.url, 'http://x');
+      const result = await pdPullGa4Account(account, u.searchParams.get('mode') === 'backfill' ? 'backfill' : 'daily');
+      return sendJson(res, 200, result);
     }
 
     // POST /api/accounts/:id/snowflake-connector-config — 2026-09-13,
@@ -54795,6 +55024,7 @@ if (require.main === module) {
   setTimeout(enforceRlsOnPublicTables, 5000);
   try { startModelWatch(); } catch (e){ console.error('[model-watch] could not start:', e && e.message); }
   try { startMmmSchedule(); } catch (e){ console.error('[mmm-schedule] could not start:', e && e.message); }
+  try { startGa4DailySchedule(); } catch (e){ console.error('[ga4-daily] could not start:', e && e.message); }
 }
 
 // 2026-08-23 fix — module load (and all ~230 top-level schema-setup
