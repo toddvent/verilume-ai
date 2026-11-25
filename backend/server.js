@@ -34237,6 +34237,8 @@ async function handleRequestInner(req, res) {
             if (!others || Number(others.c) < 1) return sendJson(res, 409, { error: 'There must always be at least one active Owner.' });
           }
           db.prepare('UPDATE platform_users SET role = ?, status = ? WHERE id = ?').run(newRole, newStatus, target.id);
+          // Turning text sign-in off clears the saved number. It can only be turned on by the person themselves (they confirm their own number).
+          if (body.textSignIn === false) db.prepare('UPDATE platform_users SET mobilePhone = NULL, mobileVerifiedAt = NULL WHERE id = ?').run(target.id);
           if (newStatus !== 'active'){
             db.prepare('DELETE FROM platform_sessions WHERE platformuserid = ?').run(target.id);
             db.prepare('DELETE FROM sessions WHERE platformuserid = ?').run(target.id);
