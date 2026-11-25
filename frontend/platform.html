@@ -488,8 +488,23 @@ async function loadTeam(){
   const u = (r.data && r.data.users) || [];
   const canEdit = t => me.role === 'owner' || t.role === 'support' || t.role === 'readonly';
   const roleOpts = sel => (me.role === 'owner' ? ['owner','admin','support','readonly'] : ['support','readonly']).map(x => `<option value="${x}" ${x === sel ? 'selected' : ''}>${ROLE_LABEL[x]}</option>`).join('');
-  $('teamBody').innerHTML = `<table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Last sign-in</th><th></th></tr></thead><tbody>${u.map(t =>
-    `<tr><td><strong>${esc(t.name)}</strong></td><td>${esc(t.email)}</td><td>${canEdit(t) ? `<select class="inline" onchange="patchUser('${esc(t.id)}',{role:this.value})">${roleOpts(t.role)}</select>` : esc(ROLE_LABEL[t.role])}</td><td><span class="pill ${t.status}">${t.status === 'active' ? 'Active' : 'Off'}</span></td><td>${t.lastLoginAt ? esc(new Date(t.lastLoginAt).toLocaleString()) : 'Not yet'}</td><td style="text-align:right">${canEdit(t) && t.id !== me.id ? `<button class="btn small ghost" onclick="patchUser('${esc(t.id)}',{status:'${t.status === 'active' ? 'inactive' : 'active'}'})">${t.status === 'active' ? 'Turn off' : 'Turn on'}</button>` : ''}</td></tr>`).join('')}</tbody></table>`;
+  $('teamBody').innerHTML = `<table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Text sign-in</th><th>Last sign-in</th><th></th></tr></thead><tbody>${u.map(t =>
+    `<tr><td><strong>${esc(t.name)}</strong></td><td>${esc(t.email)}</td><td>${canEdit(t) ? `<select class="inline" onchange="patchUser('${esc(t.id)}',{role:this.value})">${roleOpts(t.role)}</select>` : esc(ROLE_LABEL[t.role])}</td><td><span class="pill ${t.status}">${t.status === 'active' ? 'Active' : 'Off'}</span></td><td>${textToggle(t)}</td><td>${t.lastLoginAt ? esc(new Date(t.lastLoginAt).toLocaleString()) : 'Not yet'}</td><td style="text-align:right">${canEdit(t) && t.id !== me.id ? `<button class="btn small ghost" onclick="patchUser('${esc(t.id)}',{status:'${t.status === 'active' ? 'inactive' : 'active'}'})">${t.status === 'active' ? 'Turn off' : 'Turn on'}</button>` : ''}</td></tr>`).join('')}</tbody></table>`;
+}
+function textToggle(t){
+  const own = t.id === me.id;
+  const can = own || canEditUser(t);
+  const dis = !can || (!own && !t.hasMobile) ? 'disabled' : '';
+  const tip = own ? (t.hasMobile ? 'Turn off text sign-in' : 'Add a mobile number to turn on') : (t.hasMobile ? 'Turn off their text sign-in' : 'Only they can turn this on');
+  return `<label title="${tip}" style="display:inline-flex;align-items:center;gap:6px;cursor:${dis ? 'default' : 'pointer'}"><input type="checkbox" ${t.hasMobile ? 'checked' : ''} ${dis} onchange="toggleText('${esc(t.id)}', this)"> ${t.hasMobile ? 'On' : 'Off'}</label>`;
+}
+function canEditUser(t){ return me.role === 'owner' || t.role === 'support' || t.role === 'readonly'; }
+async function toggleText(id, box){
+  if (id === me.id){
+    if (box.checked){ box.checked = false; $('mobilePanel').classList.remove('hidden'); mobileRefresh(); $('mbPhone').focus(); window.scrollTo(0, 0); return; }
+    await api('DELETE', 'mobile'); loadTeam(); return;
+  }
+  if (!box.checked) await patchUser(id, { textSignIn: false });
 }
 async function patchUser(id, body){
   const r = await api('PATCH', 'users/' + encodeURIComponent(id), body);
