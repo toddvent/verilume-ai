@@ -181,68 +181,8 @@
       "destination": "/frontend/privacy.html"
     },
     {
-      "source": "/docs/",
-      "destination": "/frontend/verilume-product-docs.html"
-    },
-    {
-      "source": "/docs/data-uploads",
-      "destination": "/frontend/verilume-product-data-uploads.html"
-    },
-    {
-      "source": "/docs/media-plan-budget",
-      "destination": "/frontend/verilume-product-media-plan-budget.html"
-    },
-    {
-      "source": "/docs/copywriting",
-      "destination": "/frontend/verilume-product-copywriting.html"
-    },
-    {
-      "source": "/docs/licensed-integrations",
-      "destination": "/frontend/verilume-product-licensed-integrations.html"
-    },
-    {
-      "source": "/docs/registration-account-management",
-      "destination": "/docs/registrationaccountmanagementproduct.html"
-    },
-    {
-      "source": "/docs/advanced-analytics",
-      "destination": "/docs/verilume-product-advanced-analytics.html"
-    },
-    {
-      "source": "/docs/advanced-analytics-training",
-      "destination": "/docs/verilume-advanced-analytics-training.html"
-    },
-    {
-      "source": "/docs/free-assessment",
-      "destination": "/docs/verilume-product-free-assessment.html"
-    },
-    {
-      "source": "/docs/continuous-monitoring",
-      "destination": "/docs/verilume-product-continuous-monitoring.html"
-    },
-    {
-      "source": "/docs/team-experiences",
-      "destination": "/docs/verilume-product-team-experiences.html"
-    },
-    {
-      "source": "/docs/public-sample-assessment",
-      "destination": "/docs/verilume-product-public-sample-assessment.html"
-    },
-    {
-      "source": "/docs/training/:file(.+\\.pdf)",
-      "destination": "/frontend/training/:file"
-    },
-    {
       "source": "/assessment-framework.html",
       "destination": "/frontend/assessment-framework.html"
-    },
-    {
-      "source": "/docs/security/:file(.+\\.pdf)",
-      "destination": "/frontend/security/:file"
-    },
-    {
-      "source": "/docs/:file(.+\\.html)",
-      "destination": "/frontend/:file"
     },
     {
       "source": "/:file([^/]+\\.html)",
@@ -307,13 +247,6 @@
     {
       "source": "/terms",
       "destination": "/frontend/terms.html"
-    }
-  ],
-  "redirects": [
-    {
-      "source": "/docs",
-      "destination": "/docs/",
-      "permanent": false
     }
   ],
   "headers": [
