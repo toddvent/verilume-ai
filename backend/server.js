@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-25-r114-team-console-real-accounts (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-25-r115-platform-docs-library (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -34110,6 +34110,27 @@ async function handleRequestInner(req, res) {
         logIt('account_deleted:' + String(aliasVal(acct, 'company') || '').slice(0, 80) + ':' + total + 'rows');
         return sendJson(res, 200, { accountId, deleted: true, rowsDeleted: total, tables: Object.keys(deleted).length });
       }
+      // ---- Documentation library (Team Console → Library). Signed-in team only; files live in backend/platform-docs. ----
+      // GET /api/platform/docs                  -> the manifest (id, title, category, summary, audience, updated, type)
+      // GET /api/platform/docs/:id              -> one HTML document
+      // GET /api/platform/docs/file/:name       -> one downloadable file (PDF, Word) listed in the manifest
+      if (req.method === 'GET' && sub === 'docs' && (parts.length === 3 || parts.length === 4 || (parts.length === 5 && parts[3] === 'file'))){
+        const docsDir = path.join(__dirname, 'platform-docs');
+        let manifest = [];
+        try { manifest = JSON.parse(fs.readFileSync(path.join(docsDir, 'manifest.json'), 'utf8')); } catch (e){ return sendJson(res, 500, { error: 'The documentation library is not installed on this server (platform-docs folder missing).' }); }
+        if (parts.length === 3) return sendJson(res, 200, { docs: manifest, count: manifest.length });
+        const wantId = decodeURIComponent(parts[parts.length - 1]);
+        const entry = manifest.find(m => m.id === wantId && (parts.length === 5 ? m.type === 'file' : m.type === 'html'));
+        if (!entry) return sendJson(res, 404, { error: 'That document is not in the library.' });
+        const fileName = parts.length === 5 ? entry.file : entry.id + '.html';
+        const full = path.join(docsDir, parts.length === 5 ? 'files' : '', fileName);
+        if (!/^[A-Za-z0-9_.-]+$/.test(fileName) || !full.startsWith(docsDir)) return sendJson(res, 400, { error: 'bad document name' });
+        let buf; try { buf = fs.readFileSync(full); } catch (e){ return sendJson(res, 404, { error: 'The file for this document is missing on the server.' }); }
+        const mime = parts.length === 5 ? (entry.mime || 'application/octet-stream') : 'text/html; charset=utf-8';
+        const headers = { 'Content-Type': mime, 'Content-Length': buf.length, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow' };
+        if (parts.length === 5) headers['Content-Disposition'] = 'attachment; filename="' + fileName + '"';
+        res.writeHead(200, headers); return res.end(buf);
+      }
       // ---- Account workspace (Team Console → Accounts & workspaces). Real data for the four tabs. ----
       // GET /api/platform/accounts/:id/workspace
       if (req.method === 'GET' && parts.length === 5 && sub === 'accounts' && parts[4] === 'workspace'){
@@ -34471,7 +34492,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-25-r114-team-console-real-accounts',
+        buildStamp: '2026-11-25-r115-platform-docs-library',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
