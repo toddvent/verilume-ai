@@ -1,32 +1,5 @@
 [
  {
-  "id": "team-console-guide",
-  "type": "html",
-  "title": "Team Console staff guide",
-  "category": "Training",
-  "summary": "How Verilume staff sign in, work in client workspaces, change levels, record agreements and invoices, and manage the team.",
-  "audience": "Staff",
-  "updated": "2026-11-25"
- },
- {
-  "id": "auth-paths",
-  "type": "html",
-  "title": "Sign-in and account creation paths",
-  "category": "Product",
-  "summary": "The five ways a person gets into Verilume, step by step, with what has changed since the 2026-08-19 snapshot.",
-  "audience": "Staff",
-  "updated": "2026-11-25"
- },
- {
-  "id": "product-team-console",
-  "type": "html",
-  "title": "Team Console",
-  "category": "Product",
-  "summary": "What the staff console does today, the Library, its Decision Log, known limits.",
-  "audience": "Product and engineering",
-  "updated": "2026-11-25"
- },
- {
   "id": "product-company-profile-team",
   "type": "html",
   "title": "Company Profile & Team",
@@ -209,24 +182,6 @@
   "updated": "2026-11-25"
  },
  {
-  "id": "database-architecture",
-  "type": "html",
-  "title": "Database architecture",
-  "category": "Database",
-  "summary": "Every table by area, where sensitive data sits, how it is protected, and what is kept for how long.",
-  "audience": "Staff",
-  "updated": "2026-11-25"
- },
- {
-  "id": "security-overview",
-  "type": "html",
-  "title": "Security overview: how we protect client data",
-  "category": "Security",
-  "summary": "How sign-in, separation, logging, vendors and open items stand today, with what can and cannot be said to clients.",
-  "audience": "Staff",
-  "updated": "2026-11-25"
- },
- {
   "id": "01-information-security-policy",
   "type": "file",
   "file": "01-Information-Security-Policy.pdf",
@@ -344,6 +299,51 @@
   "updated": "2026-11-25"
  },
  {
+  "id": "database-architecture",
+  "type": "html",
+  "title": "Database architecture",
+  "category": "Database",
+  "summary": "Every table by area, where sensitive data sits, how it is protected, and what is kept for how long.",
+  "audience": "Staff",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "security-overview",
+  "type": "html",
+  "title": "Security overview: how we protect client data",
+  "category": "Security",
+  "summary": "How sign-in, separation, logging, vendors and open items stand today, with what can and cannot be said to clients.",
+  "audience": "Staff",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "team-console-guide",
+  "type": "html",
+  "title": "Team Console staff guide",
+  "category": "Training",
+  "summary": "How Verilume staff sign in, work in client workspaces, change levels, record agreements and invoices, and manage the team.",
+  "audience": "Staff",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "auth-paths",
+  "type": "html",
+  "title": "Sign-in and account creation paths",
+  "category": "Product",
+  "summary": "The five ways a person gets into Verilume, step by step, with what has changed since the 2026-08-19 snapshot.",
+  "audience": "Staff",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "team-console-product",
+  "type": "html",
+  "title": "Team Console",
+  "category": "Product",
+  "summary": "What the Team Console does today, its Decision Log, deploy notes and known limits.",
+  "audience": "Staff",
+  "updated": "2026-11-25"
+ },
+ {
   "id": "verilume-auth-paths-with-code.pdf",
   "type": "file",
   "title": "Sign-in paths: flow chart vs. code (PDF, 2026-08-19)",
@@ -394,6 +394,15 @@
   "category": "Start here",
   "summary": "What is in the library, what lives elsewhere, and the gaps in product, training, security and database documentation.",
   "audience": "Staff",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "product-team-console",
+  "type": "html",
+  "title": "Team Console",
+  "category": "Product",
+  "summary": "What the staff console does today, the Library, its Decision Log, known limits.",
+  "audience": "Product and engineering",
   "updated": "2026-11-25"
  }
 ]
