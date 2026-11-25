@@ -1,0 +1,513 @@
+<title>Campaign Management — Verilume Product Docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ink:#161B22; --slate:#5B6472; --slate-soft:#8891A0; --paper:#FFFFFF; --paper-sunk:#F4F6F9;
+  --line:#E2E6EC; --brand:#2B5FE0; --brand-soft:#EDF2FE; --confirmed:#1F8A5F; --confirmed-soft:#E9F6EF;
+  --flagged:#B8391A; --flagged-soft:#FBEAE4; --warning:#B8791A; --warning-soft:#FBF1E1;
+  --mono-bg:#0F1720; --mono-ink:#D7DEE8;
+}
+:root:not([data-theme="light"]){
+  @media (prefers-color-scheme: dark){
+    --ink:#E7EAEF; --slate:#A8B1C0; --slate-soft:#7A8393; --paper:#12161D; --paper-sunk:#191F29;
+    --line:#2A3140; --brand:#7EA0FF; --brand-soft:#1B2740; --confirmed:#4FCC93; --confirmed-soft:#122A20;
+    --flagged:#FF8A68; --flagged-soft:#2E1710; --warning:#E5AC55; --warning-soft:#2C2110;
+    --mono-bg:#0A0E14; --mono-ink:#C6CEDA;
+  }
+}
+:root[data-theme="dark"]{
+  --ink:#E7EAEF; --slate:#A8B1C0; --slate-soft:#7A8393; --paper:#12161D; --paper-sunk:#191F29;
+  --line:#2A3140; --brand:#7EA0FF; --brand-soft:#1B2740; --confirmed:#4FCC93; --confirmed-soft:#122A20;
+  --flagged:#FF8A68; --flagged-soft:#2E1710; --warning:#E5AC55; --warning-soft:#2C2110;
+  --mono-bg:#0A0E14; --mono-ink:#C6CEDA;
+}
+*{box-sizing:border-box;}
+html{-webkit-text-size-adjust:100%;}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:15.5px;line-height:1.6;}
+::selection{background:var(--brand-soft);}
+a{color:var(--brand);}
+h1,h2,h3,h4{font-family:'Source Serif 4',Georgia,serif;font-weight:600;color:var(--ink);text-wrap:balance;line-height:1.25;}
+code, .mono{font-family:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;font-size:0.87em;}
+.shell{display:grid;grid-template-columns:272px minmax(0,1fr);max-width:1280px;margin:0 auto;}
+@media (max-width:900px){.shell{grid-template-columns:1fr;} .toc{position:static !important; height:auto !important; border-right:none !important; border-bottom:1px solid var(--line);}}
+.toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:28px 20px 40px 28px;border-right:1px solid var(--line);}
+.toc-brand{font-family:'Source Serif 4',serif;font-size:15px;font-weight:600;letter-spacing:0.01em;margin-bottom:2px;}
+.toc-sub{font-size:11.5px;color:var(--slate);margin-bottom:22px;}
+.toc-group{margin-bottom:18px;}
+.toc-group-label{font-size:10.5px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;color:var(--slate-soft);margin:0 0 8px;}
+.toc a{display:block;font-size:13px;color:var(--slate);text-decoration:none;padding:5px 0 5px 10px;border-left:2px solid transparent;margin-left:-1px;}
+.toc a:hover{color:var(--ink); border-left-color:var(--line);}
+.toc a.flag::after{content:" \2691"; color:var(--flagged);}
+.toc a.home{font-weight:600;color:var(--brand);}
+.main{padding:40px 48px 120px;min-width:0;}
+@media (max-width:640px){.main{padding:28px 20px 90px;}}
+.doc-header{margin-bottom:44px;}
+.doc-kicker{font-size:11.5px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--brand);margin-bottom:10px;}
+.doc-header h1{font-size:34px;margin:0 0 12px;}
+.doc-dek{font-size:16px;color:var(--slate);max-width:62ch;margin:0 0 20px;}
+.meta-row{display:flex;flex-wrap:wrap;gap:10px 22px;font-size:12.5px;color:var(--slate-soft);padding-top:16px;border-top:1px solid var(--line);}
+.meta-row b{color:var(--slate);font-weight:600;}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;letter-spacing:0.02em;padding:3px 10px 3px 8px;border-radius:99px;white-space:nowrap;}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;flex:none;}
+.pill--confirmed{background:var(--confirmed-soft);color:var(--confirmed);}
+.pill--confirmed::before{background:var(--confirmed);}
+.pill--flagged{background:var(--flagged-soft);color:var(--flagged);}
+.pill--flagged::before{background:var(--flagged);}
+.pill--warning{background:var(--warning-soft);color:var(--warning);}
+.pill--warning::before{background:var(--warning);}
+.pill--neutral{background:var(--paper-sunk);color:var(--slate);}
+.pill--neutral::before{background:var(--slate-soft);}
+section{margin-bottom:56px;scroll-margin-top:24px;}
+section > h2{font-size:22px;padding-bottom:12px;border-bottom:1px solid var(--line);margin:0 0 20px;display:flex;align-items:baseline;gap:12px;justify-content:space-between;}
+section > h2 .num{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--slate-soft);font-weight:400;}
+h3{font-size:16.5px;margin:28px 0 10px;}
+h4{font-size:14px;margin:20px 0 8px;color:var(--slate);}
+p{margin:0 0 14px;max-width:72ch;}
+ul,ol{margin:0 0 14px;padding-left:22px;max-width:70ch;}
+li{margin-bottom:5px;}
+.lede{font-size:15px;color:var(--slate);max-width:72ch;}
+.card{border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:16px 0;background:var(--paper-sunk);}
+.card--confirmed{background:var(--confirmed-soft);border-color:color-mix(in srgb, var(--confirmed) 30%, var(--line));}
+.card--flagged{background:var(--flagged-soft);border-color:color-mix(in srgb, var(--flagged) 30%, var(--line));}
+.card--warning{background:var(--warning-soft);border-color:color-mix(in srgb, var(--warning) 30%, var(--line));}
+.card-title{display:flex;align-items:center;gap:10px;font-weight:600;font-size:14px;margin-bottom:8px;color:var(--ink);}
+.card p:last-child{margin-bottom:0;}
+.card .cite{font-size:12px;color:var(--slate-soft);margin-top:8px;}
+.finding-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin:20px 0 8px;}
+.finding-tile{border:1px solid var(--line);border-radius:10px;padding:16px 18px;}
+.finding-tile .pill{margin-bottom:10px;}
+.finding-tile h4{margin:0 0 6px;font-size:13.5px;color:var(--ink);}
+.finding-tile p{font-size:13px;color:var(--slate);margin:0;}
+.flow{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:18px 0 24px;}
+.flow-step{display:grid;grid-template-columns:40px 1fr;gap:14px;padding:16px 20px;border-bottom:1px solid var(--line);}
+.flow-step:last-child{border-bottom:none;}
+.flow-step:nth-child(odd){background:var(--paper-sunk);}
+.flow-num{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--brand);font-weight:500;padding-top:2px;}
+.flow-step h4{margin:0 0 4px;font-size:14px;color:var(--ink);}
+.flow-step p{margin:0;font-size:13.5px;color:var(--slate);}
+.flow-step .endpoint{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--slate);background:var(--paper);border:1px solid var(--line);padding:1px 7px;border-radius:5px;margin-top:6px;}
+.table-wrap{overflow-x:auto;margin:16px 0 24px;border:1px solid var(--line);border-radius:10px;}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:560px;}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top;}
+thead th{background:var(--paper-sunk);font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--slate);white-space:nowrap;}
+tbody tr:last-child td{border-bottom:none;}
+td .mono{color:var(--slate);}
+.env-list{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 20px;}
+.env-badge{font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--mono-bg);color:var(--mono-ink);padding:5px 10px;border-radius:6px;}
+pre{background:var(--mono-bg);color:var(--mono-ink);border-radius:10px;padding:16px 18px;overflow-x:auto;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.6;margin:14px 0 20px;}
+hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+@media (max-width:700px){.two-col{grid-template-columns:1fr;}}
+.foot{margin-top:60px;padding-top:20px;border-top:1px solid var(--line);font-size:12px;color:var(--slate-soft);}
+.product-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:20px 0 8px;}
+.product-card{border:1px solid var(--line);border-radius:12px;padding:20px 22px;background:var(--paper-sunk);text-decoration:none;display:block;transition:border-color .15s;}
+.product-card:hover{border-color:var(--brand);}
+.product-card.disabled{opacity:0.55;pointer-events:none;}
+.product-card .pc-group{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--slate-soft);margin-bottom:8px;}
+.product-card h3{font-size:17px;margin:0 0 8px;color:var(--ink);}
+.product-card p{font-size:13px;color:var(--slate);margin:0 0 12px;max-width:none;}
+</style>
+
+
+<div class="shell">
+
+  <nav class="toc">
+    <div class="toc-brand">Verilume — Internal Product Docs</div>
+    <div class="toc-sub">Campaign Management</div>
+    <a class="home" href="verilume-product-docs.html">&larr; All Products</a>
+    <div class="toc-sub" style="margin-top:-14px;">Group 04 &middot; Marketing Budgets, Campaigns &amp; Analysis</div>
+
+    <div class="toc-group" style="margin-top:18px;">
+      <p class="toc-group-label">Overview</p>
+      <a href="#overview">Product summary</a>
+      <a href="#findings">Headline findings</a>
+    </div>
+
+    <div class="toc-group">
+      <p class="toc-group-label">How it works</p>
+      <a href="#lifecycle">Campaign lifecycle overview</a>
+      <a href="#perfmarketing">Performance Marketing &amp; audience (segment)</a>
+      <a href="#channelplan">Channel Plan &amp; channels</a>
+      <a href="#creative">Creative handoff (Step 0 recap)</a>
+      <a href="#objective">Objective: narrative goal vs. copy-template category</a>
+    </div>
+
+    <div class="toc-group">
+      <p class="toc-group-label">Product ops</p>
+      <a href="#data-model">Data model reference</a>
+      <a href="#analysis-summary">Campaign Summary &amp; annual roll-up</a>
+      <a href="#tracking">Tracking links, vendors &amp; QR</a>
+      <a href="#projects">Marketing Projects board &amp; PM worksheet</a>
+      <a href="#gaps" class="flag">Known gaps &amp; open items</a>
+      <a href="#log">Decision log — this cycle</a>
+      <a href="#roadmap">Suggested next steps</a>
+    </div>
+  </nav>
+
+  <main class="main">
+
+    <header class="doc-header" id="overview">
+      <div class="doc-kicker">Product Documentation · Verilume</div>
+      <h1>Campaign Management</h1>
+      <p class="doc-dek">
+        The campaign record that every other Marketing &amp; Analysis surface
+        reads from: Performance Marketing's audience targeting, Channel
+        Plan's approved channel mix and spend, Creative's Step 0 recap, and
+        the AI copy engine's objective-driven templates all key off one
+        <code>campaigns</code> row (<code>backend/server.js</code>,
+        <code>frontend/portal.html</code>'s Campaign Detail page and
+        <code>cmp*</code> functions). This document is new as of the
+        2026-09-22 data-source-of-truth consolidation — it did not exist
+        before that cycle — and covers the campaign data model as verified
+        against the live code and Supabase on that date.
+      </p>
+      <div class="meta-row">
+        <span><b>Owner</b> Todd Brown</span>
+        <span><b>System</b> verilume.ai — <code>backend/server.js</code>, <code>frontend/portal.html</code> (Campaign Detail page, <code>cmp*</code> functions)</span>
+        <span><b>Verified against</b> working tree + direct Supabase queries, 2026-09-22 (dead-field consolidation)</span>
+        <span><b>Status</b> Built and live; this is the first Product doc written for this area</span>
+      </div>
+    </header>
+
+    <section id="findings">
+      <h2><span>Headline findings</span><span class="num">this cycle</span></h2>
+      <div class="finding-grid">
+        <div class="finding-tile">
+          <span class="pill pill--flagged">Root cause found</span>
+          <h4>Three columns duplicated real data, and were empty on every real campaign</h4>
+          <p><code>campaigns.audienceTargets</code>, <code>.channels</code>, and <code>.objective</code> (narrative use) were each shadowed by a different, genuinely-populated field. Confirmed by direct SQL against all 4 real campaigns in the account: every one of them was empty on all three dead columns.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--flagged">Bug found</span>
+          <h4>A "smart default" could look saved without ever being saved</h4>
+          <p>A client-side auto-fill feature silently pre-filled form fields from account history without calling any save function, so a field could read as filled-in in the browser while Supabase still had <code>NULL</code>.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--flagged">Bug found</span>
+          <h4>The ad-copy objective template lookup was silently failing on every real campaign</h4>
+          <p>Every Marketing Function Project generator (Social Batch, Email Sequence, Landing Page, Press Release/Email/Landing) resolved its objective-driven copy line by reading the dead <code>objective</code> column — always empty, so it always fell back to a generic line. Fixed by deriving the category from <code>stage</code> instead.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--confirmed">Resolved</span>
+          <h4>One source of truth, per field, everywhere</h4>
+          <p>Every read and write site for these three fields — frontend and backend — was migrated onto the real underlying field. See <a href="#data-model">Data model reference</a> for the final mapping.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="lifecycle">
+      <h2><span>Campaign lifecycle overview</span><span class="num">&sect; 01</span></h2>
+      <p class="lede">A campaign moves through Media Mix recommendation → Performance Marketing validation → Channel Plan approval → Creative production, each stage reading the previous stage's real, persisted output rather than a copy of it.</p>
+      <div class="flow">
+        <div class="flow-step">
+          <div class="flow-num">01</div>
+          <div><h4>Recommended Mix</h4><p>An illustrative channel &amp; audience mix and spend split is generated from the campaign's stage and budget — a starting point, fully human-editable, not itself persisted as the source of truth for anything downstream.</p></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">02</div>
+          <div><h4>Performance Marketing</h4><p>Validates the buy/allocation, and sets the audience target this campaign is actually going after — written to <code>campaigns.segment</code>. Skipped entirely for Ad Hoc projects.</p></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">03</div>
+          <div><h4>Channel Plan approval</h4><p>Per-channel budget/impressions rows are approved into real <code>channel_planning_details</code> records (one row per channel, <code>status: 'approved'</code>); the campaign's <code>mediaMixJson</code> also reflects the approved per-channel dollar amounts.</p></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">04</div>
+          <div><h4>Creative Asset Selection</h4><p>Opens once Channel Plan is approved. Creative's Step 0 recap reads the campaign's real audience (<code>segment</code>), channels (<code>channel_planning_details</code>/<code>mediaMixJson</code>), and objective (<code>activityNotesJson.objectivesGoalSummary</code>) — read-only from here on.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="perfmarketing">
+      <h2><span>Performance Marketing &amp; audience (segment)</span><span class="num">&sect; 02</span></h2>
+      <p>The Performance Marketing card ("Validate the buy &amp; set audience targets") is the one place a human sets this campaign's audience. As of the 2026-09-22 consolidation its Validate &amp; Save action writes into <code>campaigns.segment</code> — the field every other reader in the app (Creative, Marketing Ops, the AI Brain contribution ledger) already reads for audience.</p>
+      <div class="card card--flagged">
+        <div class="card-title">Fixed this cycle — the field used to write nowhere real</div>
+        <p>Before this cycle, Validate &amp; Save wrote to <code>campaigns.audienceTargets</code>, a column nothing downstream ever read. Supabase confirmed it was empty on all 4 real campaigns in the account even though Performance Marketing had genuinely validated buys. Todd's explicit direction was to repoint the save to the real field rather than make the card read-only, so this workflow is now the live audience of record.</p>
+      </div>
+      <p>A separate "smart default" pre-fills this same textarea from the account's recent-campaign history when the form first loads. Before this cycle that fill never triggered a save — a field could look complete in the browser with nothing in Supabase. It now calls the save action automatically the moment it silently fills the field.</p>
+    </section>
+
+    <section id="channelplan">
+      <h2><span>Channel Plan &amp; channels</span><span class="num">&sect; 03</span></h2>
+      <p>The Channel Plan's Approve action (<code>cmpApproveChannelPlan()</code>) does two things: it writes one real <code>channel_planning_details</code> row per planned channel (budget, impressions, status <code>approved</code>), and it keeps <code>campaign.channels</code>/<code>channelGroups</code> set in the browser's in-memory campaign object for the rest of that session's UI. As of this cycle it no longer writes <code>channels</code>/<code>channelGroups</code> back to Supabase — Supabase confirmed nothing reads that column back once a page reloads, so the write was pure duplication of the <code>channel_planning_details</code> rows written in the same action.</p>
+      <p>Every reader in the app that used to read <code>campaign.channels</code> directly — leaderboards, CSV exports, search/relevance scoring, the Channel Plan picker's own initial state, Creative's recap — now goes through one shared helper, <code>cmpCreativeChannelsText(c)</code>: real column first (for any pre-existing local-only data), falling back to the approved channels with budget &gt; 0 in <code>mediaMix.channels</code>.</p>
+    </section>
+
+    <section id="creative">
+      <h2><span>Creative handoff (Step 0 recap)</span><span class="num">&sect; 04</span></h2>
+      <p>Creative's Step 0 recap is the read-only summary Omni-Channel Creative sees before starting production — Audiences, Approved Channels, and Objective. This is what originally surfaced the whole consolidation: the recap showed blank Audiences/Approved Channels on a genuinely complete campaign, because it was reading the dead <code>audienceTargets</code>/<code>channels</code> columns instead of <code>segment</code> and the real channel-planning data.</p>
+      <p>Three shared helpers now back this recap and every other audience/channel/objective reader in the frontend:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Helper</th><th>Real source (checked first)</th><th>Dead-column fallback (pre-existing local-only data only)</th></tr></thead>
+          <tbody>
+            <tr><td><code>cmpCreativeAudienceText(c)</code></td><td><code>segment</code></td><td><code>audienceTargets</code></td></tr>
+            <tr><td><code>cmpCreativeChannelsText(c)</code></td><td><code>mediaMix.channels</code> where amount &gt; 0</td><td><code>channels</code></td></tr>
+            <tr><td><code>cmpCreativeObjectiveText(c)</code></td><td><code>activityNotes.objectivesGoalSummary</code></td><td><code>objective</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="lede"><strong>2026-09-23 addendum:</strong> a related but distinct bug also hit this recap (and every other Step 0/Brand Messaging/contest-gate read that depends on knowing which campaign is open): the rail-based Campaign Workspace Hub's <code>loadExistingCampaignIntoForm(campaignId)</code> never set the module-level <code>currentCampaignId</code> — only the older flat detail page did. Roughly 50 call sites across the rail hub silently read a stale or null campaign id as a result. Rather than patch each call site, the fix was made at the single upstream point: <code>loadExistingCampaignIntoForm()</code> now sets <code>currentCampaignId</code> itself (mirrored by <code>resetCampaignForm()</code> clearing it). Verified via Playwright.</p>
+    </section>
+
+    <section id="objective">
+      <h2><span>Objective: narrative goal vs. copy-template category</span><span class="num">&sect; 05</span></h2>
+      <p><code>campaign.objective</code> is not a simple duplicate the way <code>audienceTargets</code>/<code>channels</code> were — it was overloaded across two genuinely different concepts sharing one column, and each needed its own fix.</p>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">Narrative business goal</div>
+          <p>Free text describing what this campaign is trying to achieve, used in AI-prompt context (content/image relevance scoring, the campaign-intake digest, CMO team messages). Now sourced from <code>activityNotesJson.objectivesGoalSummary</code> via <code>cmpCreativeObjectiveText()</code> (frontend) and <code>campaignObjectiveText()</code> (backend).</p>
+        </div>
+        <div class="card">
+          <div class="card-title">Canonical funnel-stage category</div>
+          <p>One of a fixed 5-value set (<code>Brand Awareness</code>, <code>Consideration</code>, <code>Purchase / Conversion</code>, <code>Brand Loyalty</code>, <code>Brand Advocacy</code>) that keys <code>CAMPAIGN_OBJECTIVE_COPY</code>, the pre-written ad-copy template table every Marketing Function Project generator uses. For the <em>live creation form</em> this was already correctly derived from <code>selectedStage</code> via <code>cmpCurrentObjective()</code>. For a <em>saved</em> campaign it was still reading the dead <code>objective</code> column directly — fixed this cycle with <code>cmpCampaignObjectiveCategory(campaign)</code>, deriving from <code>campaign.stage</code> the same way.</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Stage</th><th>Objective category</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">Awareness</td><td>Brand Awareness</td></tr>
+            <tr><td class="mono">Consideration</td><td>Consideration</td></tr>
+            <tr><td class="mono">Purchase</td><td>Purchase / Conversion</td></tr>
+            <tr><td class="mono">Loyalty</td><td>Brand Loyalty</td></tr>
+            <tr><td class="mono">Advocacy</td><td>Brand Advocacy</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="lede">One deliberately untouched pattern: the <code>c.name || c.objective</code> "Untitled Campaign" display-name fallback (~28 sites in <code>portal.html</code>, ~4 in <code>server.js</code>) is a separate, intentional convention, not part of this fix.</p>
+    </section>
+
+    <section id="data-model">
+      <h2><span>Data model reference</span><span class="num">&sect; 06</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Table / field</th><th>Role</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><code>campaigns</code></td><td>Base table — <code>id</code>, <code>accountId</code>, <code>stage</code>, <code>segment</code>, <code>keyMessage</code>, plus dozens of columns added incrementally via <code>ensureColumn()</code></td><td>No <code>ADD COLUMN IF NOT EXISTS</code> in this stack — every added column goes through a startup migration helper</td></tr>
+            <tr><td><code>campaigns.segment</code></td><td>Real audience-of-record</td><td>Set at intake and/or by Performance Marketing's Validate &amp; Save</td></tr>
+            <tr><td><code>campaigns.mediaMixJson</code></td><td>Real per-channel dollar amounts</td><td>Parsed as <code>mediaMix.channels[]</code>, each row <code>{ channel, amount, owned }</code></td></tr>
+            <tr><td><code>channel_planning_details</code></td><td>Real approved channel plan, one row per channel</td><td><code>campaignId</code>, <code>channel</code>, <code>budget</code>, <code>impressions</code>, <code>status</code> (<code>draft</code>/<code>approved</code>), <code>detailsJson</code></td></tr>
+            <tr><td><code>campaigns.activityNotesJson</code></td><td>Narrative fields</td><td>Parsed as <code>activityNotes.objectivesGoalSummary</code> — the real narrative objective</td></tr>
+            <tr><td><code>campaigns.stage</code></td><td>Funnel stage; also the canonical objective-category source</td><td>One of <code>Awareness</code> / <code>Consideration</code> / <code>Purchase</code> / <code>Loyalty</code> / <code>Advocacy</code> — see <a href="#objective">&sect; 05</a></td></tr>
+            <tr><td><code>campaigns.audienceTargets</code></td><td class="mono">dead</td><td>Empty on every real campaign; kept only as a last-resort fallback for pre-existing local-only data</td></tr>
+            <tr><td><code>campaigns.channels</code> / <code>channelGroups</code></td><td class="mono">dead</td><td>Same — no longer written; kept as a fallback only</td></tr>
+            <tr><td><code>campaigns.objective</code></td><td class="mono">dead (narrative use) / removed (category use)</td><td>No longer the source for either of its two former uses — see <a href="#objective">&sect; 05</a></td></tr>
+            <tr><td><code>campaigns.pmValidatedAt</code> / <code>pmAssetsApprovedAt</code></td><td>Real save timestamps</td><td>The honest signal that Performance Marketing's audience save / Channel Plan approval actually happened — used to catch the "looks saved but isn't" bug this cycle</td></tr>
+            <tr><td><code>campaigns.funnelVisitRatePct</code> / <code>funnelLeadRatePct</code> / <code>funnelBookingRatePct</code> / <code>funnelRegistrationRatePct</code></td><td>Per-campaign funnel assumptions (whole-number percents; null = use the stage &times; industry seed)</td><td>Sent by the form since round 132q but never accepted by the INSERT/merge-update until 2026-09-28 — "saved with this campaign" was not true before that. Registration rate is new the same day.</td></tr>
+            <tr><td><code>account_annual_plan</code></td><td>Annual baseline &amp; target per (account, year, kind)</td><td>Added 2026-09-28. <code>GET/POST /api/accounts/:id/annual-plan</code>; GET returns <code>derived</code> rates (cost per website user, value/growth-lead rates, impressions&rarr;bookings, ROAS, direct share). See <a href="#analysis-summary">&sect; 06a</a></td></tr>
+            <tr><td><code>account_dm_format_cost</code> / <code>account_magazine_cost</code></td><td>Cost per piece by real DM format; cost per insertion by publication + ad format</td><td>Added 2026-09-28, replacing the flat per-channel DM cost as the input to Direct Mail &mdash; Actual Budget (<code>cmpComputeDmActualBudget()</code>), keyed off the format the campaign's approved creative asset actually selected</td></tr>
+            <tr><td><code>media_plans.goalBackwardSolveJson</code></td><td>Backward-solve goal state for the Media Plan Goal feature</td><td>Was live-folded to <code>goalbackwardsolvejson</code> in production (legacy-casing drift) — fixed 2026-09-23, see <a href="#log">§ 08</a></td></tr>
+            <tr><td><code>creative_job_decisions.jobId</code></td><td>Links a creative decision back to its generation job</td><td>Was live-folded to <code>jobid</code> — fixed 2026-09-23</td></tr>
+            <tr><td><code>campaign_recommendation_comments.authorName</code> / <code>authorRole</code> / <code>suggestionJson</code></td><td>Comment-thread metadata on a budget recommendation card</td><td>Were live-folded to <code>authorname</code> / <code>authorrole</code> / <code>suggestionjson</code> — fixed 2026-09-23</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="analysis-summary">
+      <h2><span>Campaign Summary &amp; annual roll-up (Analysis workspace)</span><span class="num">&sect; 06a — added 2026-09-28</span></h2>
+      <p><strong>Layout (2026-09-28, round 4 redesign).</strong> Per direct instruction ("columns for forecast based on annual budget estimates leveraging the models, actual results, variances"), the Campaign Summary is two Target / Actual / Variance tables: <em>Performance KPIs &mdash; Executive Campaign Summary</em> (Spend, Revenue, ROAS, CAC, Impressions, Campaign Objective = the Primary KPI goal vs. logged result) and <em>Details</em> (Website Users, Website Engagement, High-Value Leads, Registrations, Transactions). Variance is Actual &minus; Target with %, colored by whether over is good for the row (Spend and CAC: under is good). Revenue target = target transactions &times; the baseline's gross revenue per booking; actual revenue is the new logged <code>campaigns.actualRevenue</code> (Analysis inputs) &mdash; never derived and shown as an actual. A muted "Tracking" figure appears in the Actual column only where no actual exists yet and the model has been re-run on logged spend/impressions. The seven-tile strip this replaced is described next for the formulas, which are unchanged.</p>
+      <p>The Analysis workspace (Campaign Workspace Hub &rarr; Analysis) opens with the <strong>Campaign Summary</strong>, with the campaign's Primary KPI row highlighted. The structure is the annual board-case model's own funnel (working media &rarr; impressions &amp; pieces &rarr; website users &rarr; lead pools &rarr; bookings) run for one campaign, so campaign-level objectives are a slice of the year rather than a separate vocabulary. Each tile is labeled <em>Actual</em> (a logged campaign field) or <em>Modeled</em>, states its source, and shows the campaign's share of that year's annual target when one is on file.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Tile</th><th>Formula (as specified)</th><th>Source precedence, most-real first</th></tr></thead>
+          <tbody>
+            <tr><td>Spend</td><td>Campaign spend</td><td><b>Target</b> = &Sigma; budget of the Campaign Budget stage's channel plan (approved lines when any are, else the draft plan) &rarr; creation-form <code>budget</code>; <b>Actual</b> = <code>actualSpend</code> (&Sigma; MMM line items)</td></tr>
+            <tr><td>Impressions</td><td>&Sigma; campaign impressions</td><td><b>Target</b> = &Sigma; impressions of the same channel plan &rarr; <code>plannedImpressions</code>; <b>Actual</b> = <code>actualImpressions</code></td></tr>
+            <tr><td>New Website Users</td><td>Spend &divide; historical cost per website user during the campaign window</td><td>That year's annual baseline (working media &divide; website users) &rarr; that year's Website-users-by-month history &rarr; latest annual baseline &rarr; blended history</td></tr>
+            <tr><td>Website Engagement</td><td>Avg. time on site</td><td><b>Actual</b> = session-weighted average engagement time per engaged session (+ engagement rate) for the campaign's year from the GA4 channel-group export uploaded or typed under Media Plan &amp; Budget &rarr; Website engagement (<code>account_website_engagement</code>; whole-year row preferred, else across months on file). Null until that or the GA4 integration exists.</td></tr>
+            <tr><td>High-Value Leads</td><td>Website users &times; typical conversion %</td><td><b>Target</b>: this campaign's saved Visits&rarr;Leads rate (explicit edit) &rarr; annual baseline <em>value-lead</em> rate (value leads &divide; website users) &rarr; Loop Stage &times; Industry seed. <b>Actual</b>: &Sigma; High Value lead counts for the campaign's in-market months from Leads by type, by month (<code>account_lead_counts</code>, account-wide, all sources)</td></tr>
+            <tr><td>Registrations</td><td>Website users &times; typical conversion %</td><td><b>Target</b>: this campaign's saved Visits&rarr;Registrations rate (new field, <code>REGISTRATION_RATE_BY_STAGE</code> seed) &rarr; annual baseline <em>growth-lead</em> rate &rarr; stage seed. <b>Actual</b>: &Sigma; Registration lead counts for the in-market months, same source</td></tr>
+            <tr><td>Transactions</td><td>Impressions &times; historical impressions-to-transaction %</td><td><b>Target</b>: &Sigma; this account's other logged campaigns &rarr; annual baseline bookings &divide; impressions &rarr; this campaign's funnel chain; with a note for the lead-attributed share at measured pool rates. <b>Actual</b>: own logged <code>actualConversions</code> (Transactions KPI) &rarr; &Sigma; Unique transactions by month for the in-market months (campaign's Product Groups when they match, else all)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Target / Actual / Tracking (2026-09-28, round 3).</strong> Per direct correction ("campaign specific targets with annual targets based on budget models... the KPIs based on the $400,000 spend and the impressions that were approved during the campaign budget stage. The KPIs should then follow the model"), every tile carries a <em>Target</em> derived from the Campaign Budget stage's approved plan with the KPI chain run from there; an <em>Actual</em> where one is logged (spend, impressions, transactions); and <em>Tracking</em> — the same chain re-run on logged actuals — for the modeled KPIs once any actual exists. Cost per website user's budget-model history now uses the year's saved Media Plan working budget (falling back to &Sigma; campaigns only when no plan exists), which is what turned a $0.32-per-user artifact into a real rate.</p>
+      <p><strong>Annual plan (Media Plan &amp; Budget page &rarr; Annual plan — baseline &amp; targets).</strong> One row per (account, year, kind): <em>baseline</em> = the trailing-12-month actuals the annual model was calibrated on; <em>target</em> = the approved scenario for the year. Fields follow the board-case workbook's Baseline tab (working media, impressions &amp; pieces, new website users, the four lead pools, bookings, direct bookings, gross revenue). Derived rates are computed server-side in one place (<code>GET /api/accounts/:id/annual-plan</code>) and shown read-only under the inputs. A <strong>Campaign roll-up vs. target</strong> table sums every campaign starting in the plan year — the same <code>cmpCampaignSummaryModel()</code> the strip uses — against the target, with coverage % and gap, so what campaigns not yet created still have to deliver is visible.</p>
+      <p>Vocabulary mapping, workbook &rarr; app: Value leads (talk to expert / quote / request info) = High-Value Leads; Growth leads (subscribe / brochure / popup / share / contact) = Registrations; Bookings = Transactions.</p>
+    </section>
+
+    <section id="tracking">
+      <h2><span>Tracking links, vendors &amp; QR codes (Ad Trafficking)</span><span class="num">&sect; 06b &mdash; added 2026-09-30</span></h2>
+      <p class="lede">Every tracking link is now built by one shared builder (<code>utmBuildTrackedLink()</code> in <code>portal.html</code>), used by both the single-link builder on Campaign Detail and the trafficking workspace's bulk builder. It picks <code>utm_source</code> from a vendor list, checks how GA4 and/or Adobe will file the link, and hands the QR code a short link the account controls. Training guide: <a href="training/Verilume-UTM-QR-Tracking-Training.pdf" target="_blank" rel="noopener">Tracking Links, Vendors &amp; QR Codes (v2.0)</a>. Scope and priorities: <code>cxmedia-utm-qr-analytics-setup-scope-and-priority-2026-09-30</code> and <code>cxmedia-utm-qr-round1-build-status-2026-09-30</code> in the project.</p>
+      <p class="hint"><strong>Verification status.</strong> Tested locally: the link builder and channel prediction in Node, the backend routes on SQLite, the Analytics Integrations card and QR flow in a headless browser (network calls stubbed). <strong>Not yet run on Postgres or in production</strong>, and never against a real GA4 property or Adobe report suite. The GA4 channel predictions come from Google's published default channel group rules, not from an observed report.</p>
+
+      <h3>What the builder does</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Piece</th><th>Behavior</th></tr></thead>
+          <tbody>
+            <tr><td>Vendor &rarr; <code>utm_source</code></td><td>The source is a vendor slug (<code>google</code>, <code>facebook</code>, <code>instagram</code>, <code>vogue</code>, <code>cruise-critic</code>). Resolved from an explicit &ldquo;Publisher or vendor&rdquo; pick, else the creative job's <code>deliveryPlatform</code>, else the channel. With no vendor named, offline jobs fall back to a generic slug (<code>direct-mail</code>, <code>print</code>&hellip;) and say so; digital jobs with no platform fall back to the channel name and warn.</td></tr>
+            <tr><td>Medium</td><td>From a fixed set: <code>cpc, paid-social, display, paid-video, email, referral, affiliate</code> and offline <code>direct-mail, print, radio, tv, ooh, event, podcast, qr</code>. The vendor sets the default; for digital, email and partner vendors the job's channel can refine it.</td></tr>
+            <tr><td>Required elements</td><td><code>utm_source</code>, <code>utm_medium</code>, <code>utm_campaign</code> are always included even if the account did not tick them (GA4 requires them). The 8-element cap applies to what the account picks. Library is now 14 elements (added <code>utm_id</code>, <code>utm_source_platform</code>); <code>utm_id</code> is in the default set only for accounts that never saved a selection.</td></tr>
+            <tr><td>Base URL cleaner</td><td>Strips existing <code>utm_</code> parameters (and the Adobe code parameter), keeps the <code>#fragment</code> last, reports what it removed.</td></tr>
+            <tr><td>Adobe tracking code</td><td>For accounts using Adobe or both: <code>campaignid_publisher_medium_creative</code>, lowercase, appended in the account's chosen parameter name (default <code>cid</code>), checked against the 255-byte limit.</td></tr>
+            <tr><td>Auto-inserts</td><td>Contact ID on email links and <code>gclid={gclid}</code> on Google <code>cpc</code> links are suggested from the resolved vendor and medium; the bulk builder now applies them too (it used to skip both). Merge tokens are appended raw.</td></tr>
+            <tr><td>Channel check</td><td>Every built link and the URL audit show the predicted GA4 channel (Google's default rules, or the account's custom group once flagged) and, for Adobe, the channel from the account's own rule list plus the tracking code. Also flags uppercase and spaces. Offline mediums are predicted <em>Unassigned</em> in GA4 until the custom channel group is applied.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Vendor list: three layers, one merged list</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Layer</th><th>Source</th></tr></thead>
+          <tbody>
+            <tr><td>Standard Verilume vendors</td><td>In <code>UTM_STANDARD_VENDORS</code> (portal code): digital platforms, email platforms, and generic offline sources. Meta is split into <code>facebook</code> and <code>instagram</code> and X uses <code>twitter</code>, because those are the names on GA4's recognized-source list; <code>meta</code> is not.</td></tr>
+            <tr><td>Publisher spec catalog</td><td>Master source for print. <code>GET /api/accounts/:id/utm-vendors</code> derives one vendor per publication from <code>GLOBAL_PRINT_SPECS</code> plus the account's own <code>print_specs_custom</code> rows (the account's own additions stay private to that account).</td></tr>
+            <tr><td>Partners clients add</td><td>Table <code>utm_vendors</code> (slug, name, <code>vendorKind</code>, medium, <code>aliasesJson</code>, <code>addedByAccountId</code>). <code>POST /api/accounts/:id/utm-vendors</code> adds one; an existing slug is reused. <strong>Shared across every account by decision</strong> (vendor names are not sensitive).</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Short links and QR</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field / route</th><th>Role</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><code>short_links</code></td><td>One row per short code: <code>code</code>, <code>accountId</code>, <code>campaignId</code>, <code>jobId</code>, <code>destinationUrl</code></td><td>Six characters from an unambiguous alphabet. A creative job keeps <strong>one code for life</strong>: rebuilding its link updates the destination, so a printed QR keeps working. Same destination in the same account reuses the code.</td></tr>
+            <tr><td><code>short_link_clicks</code></td><td>Visit log: time, device kind (mobile/desktop), <code>isScan</code></td><td>No IP address or other personal data stored. Bots and link previewers are not counted. QR scans are marked by <code>?q=1</code> on the address the QR encodes.</td></tr>
+            <tr><td><code>GET /r/:code</code></td><td>Public 302 redirect</td><td>Unauthenticated on purpose (someone scanning a printed code has no login). Unknown code returns a plain &ldquo;link not active&rdquo; page.</td></tr>
+            <tr><td><code>/api/accounts/:id/short-links</code></td><td>POST create or reuse; GET list with scan and visit counts; PATCH <code>/:code</code> correct the destination</td><td>Host defaults to the API host; set <code>SHORT_LINK_BASE</code> on Railway for a short branded domain (do this before printing, because a printed code keeps its host). There is no screen yet for editing a destination or retiring a code.</td></tr>
+            <tr><td><code>POST /api/qr</code></td><td>PNG data URL, or SVG with <code>format: 'svg'</code></td><td>The portal's QR now encodes the short link and offers PNG and an SVG for print. Counts shown are redirect visits, not website sessions.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>New account fields</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Column</th><th>Role</th></tr></thead>
+          <tbody>
+            <tr><td><code>accounts.utmPlatform</code></td><td><code>''</code> (follow <code>analyticsPathway</code>), <code>ga4</code>, <code>adobe</code> or <code>both</code></td></tr>
+            <tr><td><code>accounts.utmAdobeCodeParam</code></td><td>Query parameter the client's Adobe tag reads into the campaign variable; default <code>cid</code></td></tr>
+            <tr><td><code>accounts.utmGa4CustomGroup</code></td><td>The client has applied the custom channel group in GA4; switches the offline prediction from Unassigned to the custom channel</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>All three are saved through the existing <code>POST /api/accounts/:id/utm-config</code>, which merge-updates, so older callers that send only <code>elements</code> do not reset them. The Analytics Integrations card also prints the paste-in GA4 custom channel group and Adobe Marketing Channel rules for the chosen platform.</p>
+    </section>
+
+    <section id="projects">
+      <h2><span>Marketing Projects board &amp; PM worksheet</span><span class="num">&sect; 06c &mdash; added 2026-10-11</span></h2>
+      <p>One ranked list of marketing work, in three areas: <strong>Marketing Project</strong> (Create Campaign), <strong>Search Everywhere</strong> and <strong>Train the Brain</strong>. It is mounted in Create Campaign, the Brain Dump hub (all areas, tabbed), Search Everywhere and a Projects tab in Train the Brain. Each area ranks on its own. This is not a campaign list; campaigns live elsewhere in this doc.</p>
+      <h3>Inline editing, list and board</h3>
+      <p>The list and the JIRA-style board (Backlog, In progress, Blocked, Done) read the same rows. Every field edits inline: name, status, owner, delivery target, Creative Types, Impact, Effort and Urgency. Dragging a card between board columns changes its status. Opening a project shows its detail with subtasks (title, status, assignee, due date), which can be added, edited and deleted. Projects are archived, never hard-deleted.</p>
+      <h3>Ranking</h3>
+      <p>Score = Impact &times; Urgency &divide; Effort, with any unrated value counted as 3. Rank is computed per area among open projects (not Done or Archived).</p>
+      <h3>Auto-populated rows</h3>
+      <p><code>POST /api/accounts/:id/marketing-projects/sync-needs</code> adds rows from identified needs and closes them when the need is met. Unfinished Train the Brain setup items become &ldquo;Step: item&rdquo; rows (unrated). Open Search Everywhere priorities become rows with Impact from High/Medium/Low (5/3/1) and Urgency from P1/P2/P3 (5/3/2). Search Everywhere priorities are kept in three tiers: best practice (starting point, from the 32-item guide for the account&rsquo;s business model), site-scan observations (second), and manual additions (third), with tier filters on the page.</p>
+      <h3>Data and routes</h3>
+      <div class="table-wrap"><table><thead><tr><th>Item</th><th>Detail</th></tr></thead><tbody>
+        <tr><td><code>marketing_projects</code></td><td>Project rows, including <code>area</code> and <code>sourcekey</code> (ties an auto row to its originating need)</td></tr>
+        <tr><td><code>marketing_project_tasks</code></td><td>Subtasks: id, accountId, projectid, title, status, assignee, due</td></tr>
+        <tr><td><code>search_guide_model</code></td><td>Business model (local, single, franchise) that selects the best-practice set; defaults to local until set</td></tr>
+        <tr><td>Routes</td><td>GET/POST/PATCH <code>/api/accounts/:id/marketing-projects[/:pid]</code>; POST/PATCH/DELETE <code>…/:pid/tasks[/:tid]</code>; POST <code>…/search-everywhere/priorities</code> (model, add)</td></tr>
+      </tbody></table></div>
+      <h3>PM worksheet template</h3>
+      <p>A CSV for planning projects offline, one row per subtask (a project with no subtasks is one row). Download: <a href="training/Verilume-PM-Worksheet-Template.csv" download>Verilume-PM-Worksheet-Template.csv</a>. Score and rank are deliberately not columns; the board computes them. Training guide: <a href="training/Verilume-Marketing-Projects-Training.pdf">Verilume-Marketing-Projects-Training.pdf</a>.</p>
+      <div class="table-wrap"><table><thead><tr><th>Column</th><th>What goes in it</th></tr></thead><tbody><tr><td><code>Area</code></td><td>Marketing Project, Search Everywhere or Train the Brain</td></tr><tr><td><code>Project Name</code></td><td>Free text, or the need it came from</td></tr><tr><td><code>Supports</code></td><td>The campaign, goal or objective the work supports</td></tr><tr><td><code>Creative Types</code></td><td>Separated by semicolons, e.g. Email; Landing page</td></tr><tr><td><code>Delivery Target (YYYY-MM-DD)</code></td><td>Date the work should ship</td></tr><tr><td><code>Product Group</code></td><td>Brand, Data Management, etc. (from Taxonomies)</td></tr><tr><td><code>Creative Focus Group</code></td><td>Audience or creative group the work serves</td></tr><tr><td><code>Impact (1-5)</code></td><td>Higher = bigger payoff; blank counts as 3</td></tr><tr><td><code>Effort (1-5)</code></td><td>Higher = more work; blank counts as 3</td></tr><tr><td><code>Urgency (1-5)</code></td><td>Higher = sooner; blank counts as 3</td></tr><tr><td><code>Status</code></td><td>Backlog, In progress, Blocked, Done or Archived</td></tr><tr><td><code>Owner</code></td><td>Person accountable</td></tr><tr><td><code>Notes</code></td><td>Free text</td></tr><tr><td><code>Source</code></td><td>Manual, Train the Brain or Search Everywhere</td></tr><tr><td><code>Subtask Title</code></td><td>One subtask per row; repeat the project columns on each row</td></tr><tr><td><code>Subtask Status</code></td><td>To do, In progress, Blocked or Done</td></tr><tr><td><code>Subtask Assignee</code></td><td>Person doing the subtask</td></tr><tr><td><code>Subtask Due (YYYY-MM-DD)</code></td><td>Subtask due date</td></tr></tbody></table></div>
+      <p><strong>Not built:</strong> the board has no CSV import yet, so the worksheet is for planning and typing rows in; no manual drag-ordering inside a column; no owner filter. Verified locally only (SQLite and a headless browser); not yet run against Postgres in production.</p>
+    </section>
+
+    <section id="gaps">
+      <h2><span>Known gaps &amp; open items</span><span class="num">&sect; 07 — for product awareness</span></h2>
+      <ul>
+        <li>A separate set of unrelated lowercase-duplicate columns (<code>campaigntype</code>, <code>rolestyle</code>, <code>mandatoryphrase</code>, and others) exist from an old migration and hold zero rows anywhere in the account. Flagged, out of scope — nothing reads them, so they cause no bugs, but they're dead weight in the schema.</li>
+        <li><strong>Annual plan is manual entry.</strong> The board-case workbook is not imported automatically; Todd transcribes the Baseline and chosen-scenario rows on Company Profile. No monthly phasing (the workbook's Timing tab: lag, carryover, ramp) is applied to campaigns yet &mdash; a campaign's modeled numbers are unphased annual-rate slices.</li>
+        <li><strong>Website Engagement is null by design</strong> until GA4 session duration is pulled; a Magazine &mdash; Actual Budget calc (cost per insertion &times; insertions) is not built &mdash; no structured insertion count exists on a campaign.</li>
+        <li>This doc covers the campaign data model as it stood after the 2026-09-22 consolidation. Campaign Creation intake, the CMO Dashboard, and portal-wide analytics that also touch campaigns are not yet covered here — see the (not yet documented) CMO Dashboard &amp; Portal Navigation card on the home page.</li>
+              <li><strong>Tracking &amp; QR (&sect; 06b) &mdash; not built yet:</strong> Adobe classification export (a <code>Key</code> CSV for Classification Sets), the AI Brain analytics setup guide and click-ID questions (gclid defaults still follow the old setting), the Invoca/warehouse UTM column reconciliation, an edit or retire screen for short links, a slug lock once a vendor has been used in a link, and admin edit or removal of client-added vendors (anyone's addition is visible to every account).</li>
+        <li><strong>Tracking &amp; QR &mdash; unverified against real tools:</strong> the GA4 channel predictions and the Adobe rule and code formats are built from Google's and Adobe's public documentation. Confirm against AOV's Traffic acquisition report, and whether the <code>nextdoor</code> and <code>yelp</code> sources are on Google's recognized list (the check treats them as unconfirmed).</li>
+      </ul>
+    </section>
+
+    <section id="log">
+      <h2><span>Decision log — this cycle</span><span class="num">&sect; 08</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Ask</th><th>Resolution</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">2026-09-22 · R1</td><td>"audiences do not appear, approved channels do not appear."</td><td>Root-caused via direct Supabase query (not code inspection, per direct instruction) to Creative's recap reading dead <code>audienceTargets</code>/<code>channels</code> columns instead of the real <code>segment</code>/channel-planning data. Added <code>cmpCreativeAudienceText()</code>/<code>cmpCreativeChannelsText()</code> fallback helpers.</td></tr>
+            <tr><td class="mono">2026-09-22 · R2</td><td>"Performance Marketing fields are not blank."</td><td>Found the "smart default" auto-fill mechanism that could fill a field in the browser without ever calling a save function. Fixed to auto-save immediately on silent fill; corrected misleading "Verilume skipped asking" copy that implied a save had happened.</td></tr>
+            <tr><td class="mono">2026-09-22 · R3</td><td>"We're capturing campaign information that should be stored in a single table... One table should be the source of truth. Am I not understanding?"</td><td>Confirmed via SQL against all 4 real campaigns: <code>audienceTargets</code>/<code>channels</code>/<code>objective</code> (narrative use) are empty on every one. Todd chose "Retire the dead fields" — full migration of every read/write site onto the real underlying field, across 4 phases.</td></tr>
+            <tr><td class="mono">2026-09-22 · R4</td><td>How should Performance Marketing's Audience Targets card behave once its dead field is retired?</td><td>Todd's explicit choice: repoint the save to <code>segment</code> (not make the card read-only) — Performance Marketing's validation is now the live audience of record.</td></tr>
+            <tr><td class="mono">2026-09-22 · R5</td><td>"we might need to update our product group's documentation"</td><td>Audit found Campaign Management had no Product doc at all. Todd's choice: build this doc from the existing template rather than only logging the workstream.</td></tr>
+            <tr><td class="mono">2026-09-23</td><td>"Is this not the same issue and fix that was required to fix the toggle?" — Todd identified that the rail-based Campaign Workspace Hub never sets <code>currentCampaignId</code>, unlike the older flat detail page.</td><td>Confirmed same bug class, fixed one level upstream: <code>loadExistingCampaignIntoForm()</code> now sets <code>currentCampaignId</code> directly rather than patching the ~50 downstream call sites individually. See <a href="#creative">§ 04</a>.</td></tr>
+            <tr><td class="mono">2026-09-23</td><td>Dashboard KPI stat cards — Active Campaigns, Creative in QA, Budget Pacing.</td><td>Active Campaigns and Creative in QA wired to live data. Budget Pacing remains a static placeholder pending Todd's definition of the pacing formula — not yet resolved.</td></tr>
+            <tr><td class="mono">2026-09-23</td><td>"We have a real error this time" — a Campaign Copy Interview insert failed on <code>column "sourceKey" does not exist</code>.</td><td>Root-caused to the legacy-casing bug class and fixed via live migration. Prompted a full production audit (930 live columns vs. 421 known identifiers) that found 30 drifted columns across 12 tables, including three owned by this Product (<code>media_plans</code>, <code>creative_job_decisions</code>, <code>campaign_recommendation_comments</code> — see <a href="#data-model">§ 06</a>) and the shared <code>contest_rankings</code> ledger used by every contest type. All fixed via data-preserving <code>RENAME COLUMN</code> migrations (all affected tables empty — zero data risk) and registered in <code>LEGACY_CASING_COLUMNS</code>.</td></tr>
+            <tr><td class="mono">2026-09-28</td><td>"an updated cost per DM and Magazine size selected during the creative process. We currently use a default price for DM vs. asset level."</td><td>Todd's choices (asked): DM cost per real named format, seeded from <code>DIRECT_MAIL_PLANNING_REFERENCE</code> only where a format genuinely matches (postcards, bifold, trifold; the rest start blank); Magazine cost per publication + ad format, manual, no seed. Direct Mail &mdash; Actual Budget now prices off the approved creative asset's format.</td></tr>
+            <tr><td class="mono">2026-09-28</td><td>Campaign-level analysis view: "Campaign Summary from left to right or stacked on the left: Spend, Impressions, New Website Users, Website Engagement, High-Value Leads, Registrations, Transactions" with the formulas per metric.</td><td>Built as the Analysis workspace's leading card (<a href="#analysis-summary">&sect; 06a</a>). Asked and resolved: Registrations gets its own stage-seeded, editable rate (not the lead rate); Transactions uses the account's own logged campaign history first, funnel fallback. Found and fixed en route: funnel rates were never persisted server-side.</td></tr>
+            <tr><td class="mono">2026-09-28 · R6</td><td>"We define Meta and Co-Reg type leads as Prospect. We have 3 types. High-Value, Growth, Prospect." (upload rejected PROSPECT rows)</td><td>Third lead type added end to end: <code>Prospect</code> (aliases: prospect, meta, co-reg, facebook, paid social) in the upload parser, backend normalizer, manual select, month and year totals, pool economics, and a new Prospect Leads row on the Details table (actual only &mdash; prospect volume follows paid-social lead-gen spend, not website users, so it carries no website-users target). Growth stays stored as <code>Registration</code> (no migration) and is labeled "Growth (Registration)".</td></tr>
+            <tr><td class="mono">2026-09-28 · R5</td><td>AOV's lead export carries Bookings, Conversion Rate and Avg Days to Convert per Month &times; Source &times; Lead Type &times; Form: "How valuable would the conversion metrics be to our forecast campaign budget and overall models?" &rarr; "Go ahead and build it." Plus: "I have unique transactions by month by product group also. Did we add them?" (we had not).</td><td>Leads by type, by month gained Bookings and Avg Days to Convert per row (conversion rate derived, never stored). <code>computeLeadPoolEconomics()</code> (backend) rolls these into per-pool conversion and lead-weighted days-to-convert over <em>mature</em> months only &mdash; a month counts once its last day plus that pool's own average days-to-convert has passed, so recent, still-converting months don't understate the rate. Measured High Value conversion (&ge;50 mature leads) replaces the Leads &rarr; Bookings seed on new campaigns; measured days-to-convert &times; 1.5 replaces the Transaction Window heuristic; the Analysis timing note names the measured lead &rarr; booking lag; the Transactions target shows the lead-attributed share at measured pool rates. New Unique transactions by month, by Product Group (<code>account_transactions_monthly</code>, upload or manual, Month column loads a year) feeds the Transactions actual for in-market months &mdash; narrowed to the campaign's Product Groups when they match &mdash; and a per-year seasonality index once all 12 months exist. Verified on the sample rows: High Value 14.97% / 33 days, Registration 0.62% / 68 days, August correctly held out as immature.</td></tr>
+            <tr><td class="mono">2026-09-28</td><td>"Changes to Analytics which may require redesign. 1) columns for forecast based on annual budget estimates leveraging the models, actual results, variances. 2) Performance KPIs Exec Campaign Summary columns Target, Actual, Variance: Spend, Revenue, ROAS, CAC, Impressions, Campaign Objective. 3) Details: Website Users, High Value Leads, Registrations, Transactions target, actual, variance."</td><td>Redesigned the strip into the two tables above. Added <code>actualRevenue</code> (logged on Analysis inputs, persisted) so Revenue/ROAS actuals are real; fixed the Actual conversions input, which was rendering its value through the money formatter (a number input can't hold "$900", so the field always reopened blank).</td></tr>
+            <tr><td class="mono">2026-09-28</td><td>AOV_ENGAGEMENT.xlsx: "The AOV Engagement rate by session is attached for 2026. This might be good to add manually until integrations are done. Upload is easier but can add manually. I can also upload or manually add leads by type by month with the high value or registration designation. Just need to find a home for the data."</td><td>Two manual-bridge homes on the Media Plan &amp; Budget page, both upload (.xlsx/.csv, header row auto-detected — the GA4 export's title row and blank leading columns are handled) or manual entry: Website engagement by channel group (per year, whole-year/YTD or per month) and Leads by type, by month (Source &times; Lead Type &times; Form Name, count; Year/Month columns optional). Verified the parser against the AOV export: 10 channel groups, total row skipped, 1,311,000 sessions, 48.5% engagement, 2.33 min weighted. Both feed the Campaign Summary as actuals.</td></tr>
+            <tr><td class="mono">2026-09-28</td><td>AOV_2027_Board_Case.xlsx: "Extrapolating campaign level analytical objectives that then drive to the final annual event should be the structure that we put in place with the generative guidance provided to the team and analytical resources."</td><td>Adopted the workbook's funnel as the campaign model's structure and vocabulary; added <code>account_annual_plan</code> (baseline + target per year) so campaign metrics read as shares of the year and roll up against it. Baseline rates override stage seeds. Not done yet: importing the workbook automatically (which account row is Atlas and which scenario the board approved are Todd's calls), monthly phasing/lag from its Timing tab, and AI Brain guidance text keyed to the gap.</td></tr>
+            <tr><td class="mono">2026-09-29</td><td>"We need to be careful… building a platform to support 100 clients across several industries. Our processes need to support a self-service model. Just want to make sure that we don't build a platform based on AOV demo by accident."</td><td>Applied to the Campaign Summary's data sources: the Transactions and Revenue actuals still read the marketing-attributable figures from the monthly roll-up, but what counts as a valid transaction and which transaction types are attributable now come from the account's own Transaction settings (Media Plan &amp; Budget → Transactions card) rather than from status codes and booking-type names lifted from one client's file. Nothing in the summary model references a client-specific value; every rate, cost and classification resolves through account settings, account uploads, or industry-neutral seeds — the standing rule for this workspace going forward.</td></tr>
+            <tr><td class="mono">2026-09-29</td><td>MEDIA_PLANS_2H2026CONSUMER_ADS_2.csv: "Attached is the magazine and newspaper campaigns that will be uploaded. Add additional columns if needed."</td><td>Create-campaigns-from-a-file uploader now reads a client's own column names, not only the template's: <code>BCC_HEADER_ALIASES</code> maps industry-neutral synonyms (Marketing Group → channel, Partner/Publication/Vendor → partner, Size/Ad Size/Format → creativeSize, Specs/Dimensions → creativeSpecs, 1st Proof Due → proofDueDate, Creative/Materials Due → creativeDueDate, Expeditions/Products Promoted → promotedItems, QR Code Link/Landing Page → qrCodeLink, Phone → phone, Notes, Project Number/Job #/Wrike # → projectNumber); matching ignores case, spacing and punctuation. Values are normalized before validation ("$35,000 " → 35000, "712,000" → 712000, 7/7/2026 → 2026-07-07), channel matching forgives plural/case ("MAGAZINES" → Magazines), a duplicated header keeps the first non-empty value, a blank header is surfaced as "(unnamed column N)" in the not-used list, campaignName is optional (label falls back to Partner · Channel · Audience), and a hit date outside the file's stated date range warns without blocking. Nine placement fields added: <code>projectNumber</code> (existing pass-through column — the frontend had never actually sent it) and eight in the row's <code>detailsJson</code>. Pricing tie-in: on Magazines/Newspapers rows, <code>registerPrintPlacementFromUpload()</code> registers Partner + Size as a publication/ad-format pair in the account's print-spec catalog (trim inches parsed from Specs, incl. fractional "8 1/4 x 10 7/8"; format synonyms so "Spread" finds "2-Page Spread") and seeds <code>account_magazine_cost</code>'s cost per insertion from Budget only where nothing is saved — a manually-entered cost always wins. Verified on the file: 12/12 rows valid; row 9 (Conde Nast, 10/6/2025) flagged as outside the 2H-2026 range; column 20 (Brand/Med/Cultural…) has no header and is reported unused.</td></tr>
+            <tr><td class="mono">2026-09-29</td><td>MEDIA_PLANS_2H2026 Direct Mail, Email and Digital worksheets: "What you will notice are two distinct paths. 1) The business metrics and categorization associated with a campaign 2) Production specific timelines and details needed to execute. We will need to capture this information for each campaign based by upload or create campaign process. The Marketing Ops section is the best location for this and supports all industries."</td><td>Path 1 stays the line item's own columns. Path 2 is a generic production model (<code>PRODUCTION_FIELD_GROUPS</code>) on the line item's <code>detailsJson</code>: timeline (data/list request, data/list due, creative due, proof due, files released to vendor, planned drop, in-home/in-market), details (production job, format/size, specs, vendor, total / distributed / held-for-fulfillment quantities, materials ordered), costs (paper &amp; manufacturing, postage/freight, insertion, total production cost, unit cost — reusing the keys the single-entry POST already stored) and execution (promoted items, QR link, phone, notes). Captured two ways: the create-campaigns upload maps a worksheet's own headers onto it (List Request, Release Files, In Home, Mail Qty, Paper and ManufacturingCost, Postage or Freight, Vendor…), and a new Marketing Ops → <b>Production Schedule &amp; Details</b> queue lists every campaign with physical placements (direct mail, print, OOH, partner/retail media) showing how many line items have a schedule, with a per-line editor that PATCHes <code>detailsJson</code> (existing merge endpoint; the account calendar feed now carries <code>projectNumber</code> and <code>production</code>). Upload hardening from the four tabs: umbrella channel names resolve by media type ("EMAIL" → Internal Email; "DIGITAL" + Display IAB / EM Sponsor / TXT Links / Search → Partner Media; "DIRECT MAIL" → the Prospects / Past Guests / Inquiries member from the audience column, else Prospects with a warning); spreadsheet formula errors (#DIV/0!) and cells echoing their own heading read as blank; empty template rows (no project number, dates, impressions or budget — partner alone doesn't count, templates pre-fill it) are skipped and counted; helper columns (Hit Month/Week, Campaign Days) are ignored silently; Direct Mail Format + Unit Cost seeds <code>account_dm_format_cost</code> when the format resolves to one catalog entry ("SJ 32 pg" → Slim Jim Catalog (36-Page); a bare "PC" stays on the line). Verified on all four files: Consumer Ads 12/12, Direct Mail 9 kept / 292 template rows skipped, Email 140 kept / 236 skipped, Digital 52/52 — zero errors.</td></tr>
+            <tr><td class="mono">2026-09-29</td><td>"a) Historical campaigns &lt; today are marked as complete w/ no creative needed. Campaigns with future dates may or may not require creative. How should we handle? b) We uploaded Food &amp; Wine but it is not part of our drop-down options looking at creative. c) When uploading, we identify what's not part of the DB. We should allow someone to add if it does exist." Clarified: ask per campaign.</td><td>(a) <code>campaigns.creativeDisposition</code> — <code>needed</code> | <code>external</code> | null. Uploaded campaigns with a past hit date are stamped <code>external</code> on import; an upload may carry a CREATIVE NEEDED (Yes/No) column to set it in bulk; a future-dated uploaded campaign with no decision shows a one-time choice at the top of the Creative stage ("Yes — produce creative here" / "No — produced elsewhere / not needed"), changeable later. <code>external</code> makes Brand Messaging, Copy Versions and Creative read complete (hub card, rail, stage bar) and collapses the asset grid to a note. (b) The Creative asset grid now prefills from the campaign's own Channel Planning lines: one row per partner on each channel, partner leading the Partner dropdown regardless of the print catalog, and Size resolved from the line's uploaded format ("Full Page") once the publication's catalog loads. (c) Upload preview: a value that isn't in the account's Audience / Buy Type / Media Type / Product Group / Creative Focus Group / Partner list gets an "+ Add … to list" button on its row, and a summary line above the table offers "+ Add all to the lists"; both write through the real taxonomy PUT and re-validate every row. Deploy note: <code>schema-identifiers.json</code> changed (creativeDisposition).</td></tr>
+            <tr><td class="mono">2026-09-29</td><td>"Trying to add another category. Backend not reachable" (upload preview's + Add to list).</td><td>Root cause was CORS, not connectivity: the backend's <code>Access-Control-Allow-Methods</code> never listed PUT, so the browser's preflight rejected every cross-origin PUT before it left the page — the taxonomy save (<code>PUT …/taxonomies/:key</code>, also used by the Taxonomy Manager) and <code>PUT …/taxonomy-mappings</code> could never have succeeded from the deployed site; the fetch rejection surfaced as "unreachable". Fixed on both sides: PUT added to the allow-list, both routes accept POST as well, and the frontend now sends POST so it works even against a backend that hasn't picked up the header change. Error text now shows the real failure reason.</td></tr>
+            <tr><td class="mono">2026-09-29</td><td>Email tab uploaded as 137 rows → 127 campaigns (every send has its own hit date + audience, so the 5-field key almost never repeats). Clarifying question answered: "Project Number first".</td><td>Grouping in <code>POST …/channel-planning/bulk-create-campaigns</code> is now two-tier: rows sharing a Project Number become one campaign (its sends/drops/insertions are the line items; campaign start = earliest hit, end = latest end; label = campaignName → production job → Partner · Channel · audience(s) · #project); rows without one keep Channel + Partner + Hit Date + End Date + Audience. Existing-campaign matching registers both keys per line, so a Project Number already on any of the account's line items resolves to that campaign. Preview summary mirrors the rule. Email file re-estimate: 140 kept rows → 62 campaigns (59 by project number, 3 without one). Uploaded-files card no longer shows "? → ?" when no date range was typed.</td></tr>
+            <tr><td class="mono">2026-09-29</td><td>"We also create a campaign id for each campaign uploaded. A practical use case may be downloads that are used for editing and then reuploading the file with the campaign id that we create."</td><td>Round trip built. <code>GET …/channel-planning/lines</code> returns every line item on the account with <code>verilumeCampaignId</code>, <code>verilumeLineId</code>, <code>campaignCode</code>, the campaign label/dates/creative flag, every business field and every production field flattened from detailsJson — the exact column set the uploader reads. "Download current campaigns (for editing)" on the bulk-upload page writes it as CSV. On upload: a row with a <code>verilumeLineId</code> updates that line in place (blank cells leave stored values alone, production details merge); a row with only a <code>verilumeCampaignId</code> or campaign code is added to that campaign; rows with neither go through the Project Number / 5-field grouping as before. Preview labels each row Update / Add to campaign / new; the result line reports rows updated separately from rows inserted.</td></tr>
+            <tr><td class="mono">2026-09-29</td><td>Digital agency workbooks (search, social, display; 2025 and 2026 YTD) — "How should we upload and then leverage for analytics and campaign planning?"</td><td>The Analysis view of Campaign Summary now ends with "Digital performance tied to this campaign": agency actuals for the campaign's in-market months whose region / ad name / creative offer name one of its Creative Focus Groups or Product Groups (spend, impressions, clicks, leads split into High Value / Growth / Prospect, CPL), the same months' digital spend that names no creative market (with the labels seen), and the evergreen programs — brand search and remarketing — shown separately and never allocated. Full model in Media Plan &amp; Budget → Digital agency performance. A campaign with no Creative Focus Group or Product Group says so instead of guessing.</td></tr>
+            <tr><td class="mono">2026-09-29</td><td>Dashboard showed 0 campaigns and Top 5 empty; Network tab showed <code>/campaigns</code>, <code>kpi-metrics</code>, <code>press-releases</code>, <code>corporate-comms</code> and <code>me</code> all cancelled at ~12 s.</td><td>Root cause: <code>getCampaignsForAccount()</code> ran 4+ queries per campaign (projects, draws, creative collections and requirements, MMM line items). On Postgres each is a synchronous round trip, so after uploads pushed the list past ~100 campaigns the request exceeded the client 12 s timeout, and the single-threaded bridge queued every other request behind it. Fix: one query per child table for the whole account, grouped in JS; output verified identical to the old per-campaign version on 150 seeded campaigns. The page still degrades silently to an empty list on failure (console warning only) — flagged as a follow-up.</td></tr>
+            <tr><td class="mono">2026-09-29</td><td>"The calendar should include the campaign name instead of the ID. We don't need response actuals on the calendar cards." Detail popup titled the campaign "(untitled campaign)".</td><td>Calendar pills show the campaign name (ID moved to the hover tooltip); the Response actuals inputs are removed from the calendar event detail (stored actuals and the Publisher/Vendor leaderboard are untouched). Root cause of "(untitled campaign)": <code>c.name AS campaignName</code> is an unquoted camelCase alias that Postgres folds to lowercase and it is not in <code>schema-identifiers.json</code>, so <code>r.campaignName</code> was undefined; reads now go through <code>aliasVal()</code> (also applied to the lines download and the creative-jobs list).</td></tr>
+            <tr><td class="mono">2026-09-29</td><td>Calendar cards for uploaded campaigns repeat ("AOV · Internal Email · INQ") because their names are generated from partner · channel · audience. "Go ahead with the first" (add the project number).</td><td>Calendar cards and the agenda list prefix the client Project # (<code>#6010 · AOV · Internal Email · INQ</code>) when one is on file and not already in the name; prefixed so the ellipsis never hides it. Calendar search also matches Project #. Display only — no campaign is renamed; real names come from a Campaign Name column via the download/edit/re-upload round trip. Frontend only (<code>portal.html</code>).</td></tr>
+                      <tr><td class="mono">2026-09-30</td><td>GA4 and Adobe UTM and QR review; "Page not assigned is a huge issue for AOV." Standards: utm_source is the publisher, click IDs are standard and asked through the AI Brain, GA4 setup belongs in the AI Brain, every GA4 capability needs an Adobe equivalent.</td><td>Reviewed against Google's and Adobe's public documentation and scoped in two project docs. Built round 1 (&sect; 06b): platform per account, vendor list, one shared builder, channel check for both platforms, Adobe tracking code, paste-in channel rules. Correction found on the way: unrecognized paid sources land in <em>Paid Other</em>, not Unassigned; offline mediums and unmatched mediums are the Unassigned ones.</td></tr>
+            <tr><td class="mono">2026-09-30</td><td>"Hybrid: standard Verilume sources to get started and then augment based on partners added by clients"; "Client based adds can be added to the Verilume defaults. It's not really sensitive information"; "Our publisher creative spec frontend is a great resource for the master source file."</td><td>Vendor list is three merged layers (&sect; 06b): standard vendors in code, print publications from the publisher spec catalog, and a shared <code>utm_vendors</code> table clients add to for every account.</td></tr>
+            <tr><td class="mono">2026-09-30</td><td>"We just need to stick to the individual Meta properties" (a screenshot showing GA4's source list has <code>facebook</code> and <code>instagram</code> but not <code>meta</code>).</td><td>Meta split into <code>facebook</code> and <code>instagram</code> vendors; X uses <code>twitter</code>. A job that says "Meta" resolves to <code>facebook</code>.</td></tr>
+            <tr><td class="mono">2026-09-30</td><td>"Plan on AOV and other clients having an offline channel. Build out the short link as well."</td><td>Offline is a first-class channel: fixed offline mediums, generic offline sources, a custom-channel-group prompt on the trafficking screen. Short links built (&sect; 06b): public redirect, one code per creative job, scan log without personal data, SVG QR.</td></tr>
+            <tr><td class="mono">2026-09-30</td><td>"Update our Trafficking training guide and product documentation."</td><td>Training guide rewritten as v2.0 (13 pages: platforms, vendors, offline, short links, ten steps, checklist) and this section added. Home-page card updated.</td></tr>
+            <tr><td class="mono">2026-10-11</td><td>&quot;Change this section into an interactive campaign brief w/ voice that populates the fields below.&quot; Sentence given: Create or Recommend a [stage] campaign targeting [audiences] between [dates] with a goal to generate [value] [KPI]; later &quot;I have a [campaign name]&quot; in front and product group / creative focus group after.</td><td>Create Campaign opens on an interactive brief. Every blank writes into the real form fields below (stage, audiences, dates, KPI goal, Primary KPI, Media Science focus, product group, creative focus group), so the manual path still works. Create stays in the hub; Recommend opens the Objectives AI Brain after creation. The brief hides once an existing campaign is loaded.</td></tr>
+            <tr><td class="mono">2026-10-11</td><td>Three kinds beside &quot;Create a campaign&quot; (default): Stand alone media placement, and Create a marketing project.</td><td><strong>Placement:</strong> saved as a line on the campaign named by its ID, or on a one-line campaign made for it. <strong>Project:</strong> saved to a new prioritized Marketing Project sheet (<code>marketing_projects</code>; score = Impact &times; Urgency &divide; Effort, unrated = 3, Done and Archived last).</td></tr>
+            <tr><td class="mono">2026-10-11</td><td>&quot;Estimated Budget: &hellip; Campaign Experience did not update.&quot; Then: &quot;Remove&quot; the explanatory budget wording.</td><td>Estimated budget is a blank in the sentence that fills <code>#cmpCreationBudget</code>; blank means Verilume estimates it and refines it in the final recommendation (stated in the field hint, not the sentence). Added a Campaign Experience Focus blank synced to the Campaign Experience Focus select.</td></tr>
+            <tr><td class="mono">2026-10-11</td><td>&quot;The Fill the brief associated with voice is confusing &hellip; add the Voice icon next to Campaign brief &hellip; an interactive interview with our voice that follows the paragraph.&quot; Then: &quot;The voice should be my Eleven Labs voice.&quot;</td><td>Fill-the-brief box removed. The mic beside the title starts a spoken interview that walks the sentence in order (skip, back, stop by voice). Questions are spoken by <code>POST /api/accounts/:id/voice/speak</code> using the voice set on the Verilume ElevenLabs agent (or <code>ELEVENLABS_VOICE_ID</code>), behind the per-person voice permission; the browser voice is the fallback. Answers are heard with the browser's speech recognition.</td></tr>
+            <tr><td class="mono">2026-10-11</td><td>Placement flow: campaign ID typed with the name shown and search, no placement name, partner drop-down with add-new-partner, creative specs chosen from the partner's available specs or left blank, and Add placement goes to an AI Brain confirm and then straight to Copy.</td><td>Built as asked. The confirm step is a rule-based AI Brain check (CPM, missing reach or budget, minimum buy, lead time under 14 days, spec note), then &quot;Looks right, go to Copy&quot; opens Copy. New partners save to the account's partners and vendors list.</td></tr>
+            <tr><td class="mono">2026-10-11</td><td>&quot;Our product group option across the site needs to include Brand.&quot;</td><td>Brand is appended to the Product Group taxonomy in <code>GET /api/accounts/:id/taxonomies</code> and in the client's <code>cmpTaxonomyValues('productGroup')</code>.</td></tr>
+            <tr><td class="mono">2026-10-11</td><td>"Make the project sheet editable inline and give it a JIRA-style board with subtasks. It also needs to be accessible via the Brain Dump, Search Everywhere and Train the Brain with each area having its own prioritization."</td><td>One Projects component with a Board (drag cards between Backlog, In progress, Blocked, Done) and an inline-editable List. Each project opens to edit every field and manage subtasks (title, status, assignee, due date, check-off, remove). Mounted on Create Campaign, Brain Dump, Search Everywhere and Train the Brain (new Projects tab). Each project belongs to one area (<code>marketing_projects.area</code>) and is ranked only against that area's projects, using that area's own impact, effort and urgency ratings. Subtasks live in <code>marketing_project_tasks</code>. Projects are archived, never deleted; subtasks can be removed.</td></tr>
+            <tr><td class="mono">2026-10-11</td><td>"We need to broaden the scope of the sheet to include Train the Brain onboarding rows and Search Everywhere priorities. The project sheet is not for campaigns. It's for marketing projects. Area = Marketing Project, Search Everywhere, Train the Brain. Project Name = user defined or auto-populate from Train the Brain and Search Everywhere identified needs. Creative Types - Missing."</td><td>Areas are now Marketing Project, Search Everywhere and Train the Brain (older Campaigns and Brain Dump rows read as Marketing Project). <code>POST /api/accounts/:id/marketing-projects/sync-needs</code> adds one row per unfinished Train the Brain setup item and per open Search Everywhere priority (keyed by <code>sourcekey</code> so each is added once) and moves the row to Done when the need is met. Search rows start rated from the priority (P1/P2/P3 urgency 5/3/2, High/Medium/Low impact 5/3/1); Train the Brain rows start unrated. It runs when the board loads and from Refresh identified needs. Creative Types is now on cards, the list and the detail view (chips plus free text, separated by semicolons). Brain Dump shows all three areas as tabs.</td></tr>
+            <tr><td class="mono">2026-10-11</td><td>"We should maintain the search priorities based on best practices as a starting point, observations based on scanning the site as a second and then manual additions."</td><td>Search Everywhere priorities now come in three tiers, shown as a tag on each row with filter chips above the list. <strong>Best practices</strong> (starting point): the 32 SEO, AEO and GEO checklist items for the account's business model seed as priorities (<code>bp:</code> keys; weight 3 is P2 / High, 2 and 1 are P3), so a specific finding can outrank them; items rated Done or Not applicable in the guide close automatically, Started moves to In progress, and changing the business model swaps the untouched ones. <strong>Site scan</strong>: findings from the Search Console data and the site scan, unchanged. <strong>Added by team</strong>: <code>+ Add a priority</code> (title, level, due date, details; <code>manual:</code> keys). The business model is stored per account (<code>search_guide_model</code>); the first device to open the guide sets it. All three tiers flow into the Search Everywhere board.</td></tr>
+                      <tr><td class="mono">2026-10-11 · Docs</td><td>"Please add the PM spreadsheets and inline to the product and training docs."</td><td>Added &sect; 06c (inline-editable list and board, subtasks, areas, ranking, sync, search tiers, PM worksheet column table and template link); built the Marketing Projects training PDF and linked it and the CSV template from the Client Training Guides on the docs home page. CSV import listed as the next step.</td></tr>
+                      <tr><td class="mono">2026-10-11 · Brief fixes</td><td>"Recommend a [stage] campaign targeting %audience% while excluding %audience or No Audiences% between start date and end date. Generate %#% needs to support 8 characters (e.g., 10,000,000). We should run a budget check based on target # when the user gets to that field."</td><td>Added <strong>while excluding</strong> to the campaign sentence: a multi-select with <em>No Audiences</em> (the default, nothing excluded) and the account audiences; an audience cannot be both targeted and excluded (picking one removes it from the other). Saved as <code>campaigns.excludeSegments</code> (comma-separated; empty = No Audiences) on create and update, reloaded on edit, listed in the AI context as "Excluded audiences", and added as a voice-interview question. The goal field now takes up to 10 digits and shows commas (10,000,000); the real field still holds the plain number. A <strong>budget check</strong> appears under the sentence as soon as a target number and Primary KPI are set: it sizes the target into an illustrative budget (blended CPM), then compares that with the estimated budget typed in the brief and with the annual marketing budget on the Media Plan; it warns but never changes a field. KPIs the funnel cannot size yet (anything other than Impressions, Reach, Video Views, Clicks, Leads, Transactions) say so. Not done: the channel and audience recommendation logic does not yet filter on exclusions, and typed brief text ("excluding...") is not parsed. Tested on SQLite and in a browser; not on Postgres.</td></tr>
+            <tr><td class="mono">2026-10-11 · Exclusions enforced</td><td>"Build both and be careful to apply the rule only to the specific campaign id that the rule applies to."</td><td>Excluded audiences now bind the AI Brain, for that one campaign only (every check reads <code>campaigns.excludeSegments</code> from the campaign record being processed; nothing is account-wide or global). (1) <strong>Prompts:</strong> eight copy and recommendation prompts (messaging copy, relevance scoring, interview-panel drafts, channel and review prompts, and the intake recommendation) carry a hard "EXCLUDED AUDIENCES" instruction when the campaign has one, and nothing when it does not. (2) <strong>Code filters:</strong> the intake recommendation drops excluded audiences from the audience list it saves and removes any line aimed at one (past-customer lines, and Direct Mail — Past Guests / Prospects / Inquiries when that audience is excluded); the removed lines are reported in <code>excludedAudiencesRemoved</code>. An excluded audience is also stripped from the campaign's own target segment on create and update, and a per-audience copy draft for an excluded audience is refused. Tested with a stubbed model: the campaign with exclusions lost 3 of 4 lines and its prompt carried the rule; a second campaign on the same account kept all 4 lines and its prompt had no rule. Not covered: the browser-side generic fallback mix, the Internal Email channel when it is not flagged as a past-customer line, and a banner telling the user which lines were removed.</td></tr>
+            <tr><td class="mono">2026-10-11 · Target sizes the budget</td><td>CMP-mv4endy1-383-2: "recapped a $7,875 budget when no budget was added and 10,000,000 impressions was the target. 10,000,000 is not listed in the campaign recap. We should estimate a budget when only the KPI is presented... use the blended CPM."</td><td>Reproduced in a browser: after the target was entered, any later change (stage, dates, channels) re-seeded Estimated Impressions and Budget from the channel-mix floor and discarded the target (10,000,000 impressions became 900,000, budget $4,500). Fix: <code>cmpGoalRequiredImpressions()</code> makes the Primary KPI and target the source of Estimated Impressions whenever Impressions is on auto (both in the reconcile pass and in the fallback estimate), and Budget follows at the blended CPM. A budget the person types still wins and is never overwritten. The campaign recap now lists <strong>Primary KPI</strong> and <strong>Target</strong> (editable, saved with the recap), and the AI Brain's opening line names the target and says when the budget was estimated from it. The blended CPM is the form's existing one (average of the recommended or chosen paid channels, so it moves with the channel mix); using the account's historical CPM from uploaded digital performance instead is a possible follow-up.</td></tr>
+            <tr><td class="mono">2026-10-11 · Cancel confirmation chip</td><td>"When a client cancels, replace the cancellation Yes with a Confirmation with a chip to return back to the campaign creation page."</td><td>After "Yes, cancel campaign" the prompt is replaced in place by a confirmation ("Campaign cancelled. Its budget has been removed from the Media Plan's committed total and Budget Mix. No cancellation fee was applied.") with a <strong>← Return to Campaign Creation</strong> chip that opens a fresh Campaign Creation page (<code>startNewCampaign()</code>). The cancel save itself, the Pending-only guard and the budget rollup are unchanged; reopening the prompt on another campaign resets it to the Yes / Never mind question.</td></tr>
+            <tr><td class="mono">2026-10-11 · Results bar + export chips</td><td>"Add a border/design feature below the filters between filters and actual campaigns. Convert 208 Campaigns Chip into a Google Sheet, CSV XLSX download chip."</td><td>A shaded results bar with a heavier top rule now separates the filters from the campaign list. It shows the live count on the left ("208 active campaigns", following the filters) and three export chips on the right: <strong>Google Sheet</strong> (copies the list and opens a new sheet to paste into, since no Google sign-in is wired), <strong>CSV</strong> and <strong>XLSX</strong>. Each exports every campaign the current filters match, not just the 10 shown: Campaign ID, Name, Status, Completed Step, Due, Start and End dates. If the XLSX library can't load, a CSV downloads instead and the bar says so. Tested locally in a headless browser (CSV with quoting); XLSX and the Google Sheet paste were not exercised live.</td></tr>
+            <tr><td class="mono">2026-10-11 · Brief dropdowns close</td><td>"The exclude is not closing" (Audiences / exclusion list stayed open over the fields below).</td><td>The brief's audience, exclusion, product group, creative focus and asset-type lists are expandable panels that only closed when their own header was clicked. They now close when the person clicks anywhere else, moves focus to another field, or presses Escape; ticking boxes inside a list keeps it open so several can be chosen. Checked in a browser against the real brief.</td></tr>
+            <tr><td class="mono">2026-10-11 · Top 5 module shading, bigger buttons, status tints</td><td>"Add some shading around the Top 5 across all dashboards... The Manage Campaign and In Market buttons look a little small... Use the Verilume light colors to reflect the status with manage campaigns using our toggle teal."</td><td>Every dashboard's Top 5 table renders into one module, so one style change covers them all: a light blue-gray shaded panel with a teal top rule and the table on a white card inside it. <strong>Manage Campaign</strong> is now a larger solid-teal pill (the same teal as the toggles, <code>--cx</code>), also used on the Campaign Management list. Status pills are larger and tinted with the Verilume light tints: In Market blue, Analysis indigo, Creative complete green, in progress and pre-market stages amber, not started rose. Pills are tinted by their text, so any new status shows in the amber default until given its own color. Checked in a browser; the real dashboards' data was not exercised.</td></tr>
+            <tr><td class="mono">2026-10-12 &middot; Brief KPIs follow the loop stage; budget check priced from account history</td><td>"The target KPI is probably not aligned with the loop stage... adjust the KPIs available based on the loop stage... No channels have been selected unless you are forecasting... this client's account does not have linear, CTV or OTV as active channels... The account already has CPL, Cost per website visit, CAC and ROAS based on the historical data loaded."</td><td>The Primary KPI list is limited by Marketing Loop stage (Awareness: Impressions, Reach, Video Views; Consideration: Clicks, Video Views, Leads; Purchase: Leads, Transactions, Clicks; Loyalty: Transactions, Leads; Advocacy: Leads, Reach). Changing the stage to one that does not fit the chosen KPI clears it and says why; editing an existing campaign keeps its saved KPI. The brief's budget check no longer uses a funnel estimate, a blended CPM or any channel assumption, since no channels exist at that step. It prices the target from the account's own trailing-12-month history via <code>GET /api/accounts/:id/analytics/budget-benchmarks</code>: Leads at cost per lead, Clicks at cost per website visit, Transactions at CAC (plus revenue at ROAS), Impressions at the account's CPM; Reach and Video Views are left to the recommendation step. If history is missing for the KPI it says so. If a hand-picked channel is not active on the account, it notes that using it needs permission to expand and a match-market test to measure incrementality. Checked in a browser with mock benchmarks; the endpoint was not run against a real database. The stage-to-KPI map is a first cut to confirm. Follow-up (same day): the first build bundled the heavy CAC/ROAS lookup into the same call, which could time out and showed as "no cost per lead history" even though Media Science had $52.84. Cost per lead now loads on its own (fast, cached 5 minutes, same source and window as the Media Science card); CAC and ROAS load separately only when the KPI is Transactions; a failed load now says it could not load instead of claiming no history. Tested against a temporary local database copy with sample digital performance rows (CPL came back in under 0.1 seconds).</td></tr>
+            <tr><td class="mono">2026-10-12 &middot; Create and recommend would not open the next step</td><td>"Select Create and recommend doesn't open the next step" (console: INDUSTRY_FUNNEL_MULTIPLIER is not defined, in cmpToggleFunnelFields).</td><td>Cause: an earlier industry-benchmark refactor replaced <code>INDUSTRY_FUNNEL_MULTIPLIER</code> with standalone and cluster tables, but <code>cmpToggleFunnelFields()</code> still read the old name. It threw for any account with an Industry set, which stopped <code>cmpPopulateFormFields</code> and <code>createCampaign</code> before the next step. Fixed by testing the standalone table and <code>industryCluster()</code> instead. Verified by calling the function in a browser for four industry values (including none); no error. Only reference to the old name in code; the rest are comments.</td></tr>
+            <tr><td class="mono">2026-10-15 &middot; Primary KPI: Impressions replaced by Website Visits</td><td>"We had a request to change the KPI Impressions to Website Visits." Chosen: replace (goal counted in visits), keep Clicks as its own option.</td><td><code>PRIMARY_KPI_OPTIONS</code> now lists Website Visits in place of Impressions. It is a funnel KPI: the goal is a visit count and the forecast walks it back to impressions with the same visit rate Clicks uses. It is offered for the Awareness and Consideration stages (replacing Impressions on Awareness), is the default for the Brand Awareness objective, is priced in the brief's budget check by cost per website visit from account history, and is understood by the brief parser ("25k website visits") and the creative-angle and direct-visit-tracking checks. Impressions stays as a reported metric and a campaign already saved with Impressions as its Primary KPI keeps working and stays selectable while editing. Impressions is no longer parsed from a brief, so "500k impressions" no longer sets a goal. Verified in a browser: stage lists, funnel math (10,000 visits gives the same impressions as 10,000 Clicks) and brief parsing. Open: in the current model Clicks already means website visits (same visit rate, same cost per visit), so Website Visits and Clicks produce the same forecast and price today; a separate ad-click rate and cost per ad click are not built.</td></tr>
+</tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="roadmap">
+      <h2><span>Suggested next steps</span><span class="num">&sect; 09</span></h2>
+      <ol>
+        <li><strong>Document Campaign Creation intake</strong> — how <code>stage</code>/<code>segment</code>/budget get set in the first place, and how the Recommended Mix illustrative split is generated. This doc starts at Performance Marketing; intake itself isn't covered yet.</li>
+        <li><strong>Consider retiring the dead columns outright</strong> (<code>audienceTargets</code>, <code>channels</code>, <code>channelGroups</code>) now that nothing writes to them — currently they're kept only as a fallback for old local-only data, which will age out on its own.</li>
+        <li><strong>Clean up the unrelated dead lowercase-duplicate columns</strong> flagged in <a href="#gaps">Known gaps</a>, separately from this cycle's work.</li>
+        <li><strong>CSV import for the PM worksheet</strong> &mdash; load the template straight into the Marketing Projects board (&sect; 06c), with a preview before it writes.</li>
+        <li><strong>Document the CMO Dashboard &amp; Portal Navigation</strong> card, still listed as not-yet-documented on the home page, since it's the other major consumer of campaign data in this Product group.</li>
+      </ol>
+    </section>
+
+    <div class="foot">
+      Verilume — Internal Product Documentation. Reflects the state of
+      <code>backend/server.js</code> and <code>frontend/portal.html</code> as
+      verified against the working tree and direct Supabase queries on
+      2026-09-22 (dead-field consolidation), re-verified 2026-09-23 for the
+      <code>currentCampaignId</code> upstream fix, Dashboard KPI wiring, and
+      the legacy-casing audit affecting this Product's tables; extended 2026-09-28 for the Campaign Summary strip, annual plan roll-up, per-format DM / per-publication Magazine cost, and persisted funnel rates. Extended 2026-10-11 for the interactive Create Campaign brief (three kinds, voice interview, Marketing Project sheet, Brand product group). Extended 2026-09-30 for tracking links, the vendor list, GA4/Adobe channel checks and short-link QR codes (&sect; 06b; tested locally only, not yet on Postgres or in production). Update this
+      document as the Product changes — it's meant to be the living
+      reference, not a point-in-time snapshot.
+    </div>
+
+  </main>
+</div>

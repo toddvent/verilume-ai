@@ -1,0 +1,789 @@
+<title>Copywriting — Verilume Product Docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ink:#161B22; --slate:#5B6472; --slate-soft:#8891A0; --paper:#FFFFFF; --paper-sunk:#F4F6F9;
+  --line:#E2E6EC; --brand:#2B5FE0; --brand-soft:#EDF2FE; --confirmed:#1F8A5F; --confirmed-soft:#E9F6EF;
+  --flagged:#B8391A; --flagged-soft:#FBEAE4; --warning:#B8791A; --warning-soft:#FBF1E1;
+  --mono-bg:#0F1720; --mono-ink:#D7DEE8;
+}
+:root:not([data-theme="light"]){
+  @media (prefers-color-scheme: dark){
+    --ink:#E7EAEF; --slate:#A8B1C0; --slate-soft:#7A8393; --paper:#12161D; --paper-sunk:#191F29;
+    --line:#2A3140; --brand:#7EA0FF; --brand-soft:#1B2740; --confirmed:#4FCC93; --confirmed-soft:#122A20;
+    --flagged:#FF8A68; --flagged-soft:#2E1710; --warning:#E5AC55; --warning-soft:#2C2110;
+    --mono-bg:#0A0E14; --mono-ink:#C6CEDA;
+  }
+}
+:root[data-theme="dark"]{
+  --ink:#E7EAEF; --slate:#A8B1C0; --slate-soft:#7A8393; --paper:#12161D; --paper-sunk:#191F29;
+  --line:#2A3140; --brand:#7EA0FF; --brand-soft:#1B2740; --confirmed:#4FCC93; --confirmed-soft:#122A20;
+  --flagged:#FF8A68; --flagged-soft:#2E1710; --warning:#E5AC55; --warning-soft:#2C2110;
+  --mono-bg:#0A0E14; --mono-ink:#C6CEDA;
+}
+*{box-sizing:border-box;}
+html{-webkit-text-size-adjust:100%;}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:15.5px;line-height:1.6;}
+::selection{background:var(--brand-soft);}
+a{color:var(--brand);}
+h1,h2,h3,h4{font-family:'Source Serif 4',Georgia,serif;font-weight:600;color:var(--ink);text-wrap:balance;line-height:1.25;}
+code, .mono{font-family:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;font-size:0.87em;}
+.shell{display:grid;grid-template-columns:272px minmax(0,1fr);max-width:1280px;margin:0 auto;}
+@media (max-width:900px){.shell{grid-template-columns:1fr;} .toc{position:static !important; height:auto !important; border-right:none !important; border-bottom:1px solid var(--line);}}
+.toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:28px 20px 40px 28px;border-right:1px solid var(--line);}
+.toc-brand{font-family:'Source Serif 4',serif;font-size:15px;font-weight:600;letter-spacing:0.01em;margin-bottom:2px;}
+.toc-sub{font-size:11.5px;color:var(--slate);margin-bottom:22px;}
+.toc-group{margin-bottom:18px;}
+.toc-group-label{font-size:10.5px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;color:var(--slate-soft);margin:0 0 8px;}
+.toc a{display:block;font-size:13px;color:var(--slate);text-decoration:none;padding:5px 0 5px 10px;border-left:2px solid transparent;margin-left:-1px;}
+.toc a:hover{color:var(--ink); border-left-color:var(--line);}
+.toc a.flag::after{content:" \2691"; color:var(--flagged);}
+.toc a.home{font-weight:600;color:var(--brand);}
+.main{padding:40px 48px 120px;min-width:0;}
+@media (max-width:640px){.main{padding:28px 20px 90px;}}
+.doc-header{margin-bottom:44px;}
+.doc-kicker{font-size:11.5px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--brand);margin-bottom:10px;}
+.doc-header h1{font-size:34px;margin:0 0 12px;}
+.doc-dek{font-size:16px;color:var(--slate);max-width:62ch;margin:0 0 20px;}
+.meta-row{display:flex;flex-wrap:wrap;gap:10px 22px;font-size:12.5px;color:var(--slate-soft);padding-top:16px;border-top:1px solid var(--line);}
+.meta-row b{color:var(--slate);font-weight:600;}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;letter-spacing:0.02em;padding:3px 10px 3px 8px;border-radius:99px;white-space:nowrap;}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;flex:none;}
+.pill--confirmed{background:var(--confirmed-soft);color:var(--confirmed);}
+.pill--confirmed::before{background:var(--confirmed);}
+.pill--flagged{background:var(--flagged-soft);color:var(--flagged);}
+.pill--flagged::before{background:var(--flagged);}
+.pill--warning{background:var(--warning-soft);color:var(--warning);}
+.pill--warning::before{background:var(--warning);}
+.pill--neutral{background:var(--paper-sunk);color:var(--slate);}
+.pill--neutral::before{background:var(--slate-soft);}
+section{margin-bottom:56px;scroll-margin-top:24px;}
+section > h2{font-size:22px;padding-bottom:12px;border-bottom:1px solid var(--line);margin:0 0 20px;display:flex;align-items:baseline;gap:12px;justify-content:space-between;}
+section > h2 .num{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--slate-soft);font-weight:400;}
+h3{font-size:16.5px;margin:28px 0 10px;}
+h4{font-size:14px;margin:20px 0 8px;color:var(--slate);}
+p{margin:0 0 14px;max-width:72ch;}
+ul,ol{margin:0 0 14px;padding-left:22px;max-width:70ch;}
+li{margin-bottom:5px;}
+.lede{font-size:15px;color:var(--slate);max-width:72ch;}
+.card{border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:16px 0;background:var(--paper-sunk);}
+.card--confirmed{background:var(--confirmed-soft);border-color:color-mix(in srgb, var(--confirmed) 30%, var(--line));}
+.card--flagged{background:var(--flagged-soft);border-color:color-mix(in srgb, var(--flagged) 30%, var(--line));}
+.card--warning{background:var(--warning-soft);border-color:color-mix(in srgb, var(--warning) 30%, var(--line));}
+.card-title{display:flex;align-items:center;gap:10px;font-weight:600;font-size:14px;margin-bottom:8px;color:var(--ink);}
+.card p:last-child{margin-bottom:0;}
+.card .cite{font-size:12px;color:var(--slate-soft);margin-top:8px;}
+.finding-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin:20px 0 8px;}
+.finding-tile{border:1px solid var(--line);border-radius:10px;padding:16px 18px;}
+.finding-tile .pill{margin-bottom:10px;}
+.finding-tile h4{margin:0 0 6px;font-size:13.5px;color:var(--ink);}
+.finding-tile p{font-size:13px;color:var(--slate);margin:0;}
+.flow{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:18px 0 24px;}
+.flow-step{display:grid;grid-template-columns:40px 1fr;gap:14px;padding:16px 20px;border-bottom:1px solid var(--line);}
+.flow-step:last-child{border-bottom:none;}
+.flow-step:nth-child(odd){background:var(--paper-sunk);}
+.flow-num{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--brand);font-weight:500;padding-top:2px;}
+.flow-step h4{margin:0 0 4px;font-size:14px;color:var(--ink);}
+.flow-step p{margin:0;font-size:13.5px;color:var(--slate);}
+.flow-step .endpoint{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--slate);background:var(--paper);border:1px solid var(--line);padding:1px 7px;border-radius:5px;margin-top:6px;}
+.table-wrap{overflow-x:auto;margin:16px 0 24px;border:1px solid var(--line);border-radius:10px;}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:560px;}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top;}
+thead th{background:var(--paper-sunk);font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--slate);white-space:nowrap;}
+tbody tr:last-child td{border-bottom:none;}
+td .mono{color:var(--slate);}
+.env-list{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 20px;}
+.env-badge{font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--mono-bg);color:var(--mono-ink);padding:5px 10px;border-radius:6px;}
+pre{background:var(--mono-bg);color:var(--mono-ink);border-radius:10px;padding:16px 18px;overflow-x:auto;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.6;margin:14px 0 20px;}
+hr.rule{border:none;border-top:1px solid var(--line);margin:40px 0;}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+@media (max-width:700px){.two-col{grid-template-columns:1fr;}}
+.foot{margin-top:60px;padding-top:20px;border-top:1px solid var(--line);font-size:12px;color:var(--slate-soft);}
+.product-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:20px 0 8px;}
+.product-card{border:1px solid var(--line);border-radius:12px;padding:20px 22px;background:var(--paper-sunk);text-decoration:none;display:block;transition:border-color .15s;}
+.product-card:hover{border-color:var(--brand);}
+.product-card.disabled{opacity:0.55;pointer-events:none;}
+.product-card .pc-group{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--slate-soft);margin-bottom:8px;}
+.product-card h3{font-size:17px;margin:0 0 8px;color:var(--ink);}
+.product-card p{font-size:13px;color:var(--slate);margin:0 0 12px;max-width:none;}
+</style>
+
+<div class="shell">
+  
+  <nav class="toc">
+    <div class="toc-brand">Verilume — Internal Product Docs</div>
+    <div class="toc-sub">Copywriting</div>
+    <a class="home" href="verilume-product-docs.html">&larr; All Products</a>
+    <div class="toc-sub" style="margin-top:-14px;">Group 03 &middot; Copywriting</div>
+    <div class="toc-sub" style="margin-top:-14px;">Group 03 &middot; Copywriting</div>
+
+    <div class="toc-group" style="margin-top:18px;">
+      <p class="toc-group-label">Overview</p>
+      <a href="#overview">Product summary</a>
+      <a href="#findings">Headline findings</a>
+    </div>
+
+    <div class="toc-group">
+      <p class="toc-group-label">How it works</p>
+      <a href="#surfaces">The four contest surfaces</a>
+      <a href="#vendors">Vendor dispatch &amp; the AI panel</a>
+      <a href="#registry">Registry &amp; single entry point</a>
+      <a href="#ledger">Ranking ledger</a>
+      <a href="#priority-cache">Priority-model cache</a>
+      <a href="#single-draft">Single-draft generation</a>
+      <a href="#content-loop">The content loop</a>
+      <a href="#usage-cap">Weekly usage cap</a>
+      <a href="#reader">Ops reader endpoint</a>
+    </div>
+
+    <div class="toc-group">
+      <p class="toc-group-label">Product ops</p>
+      <a href="#data-model">Data model reference</a>
+      <a href="#gaps" class="flag">Known gaps &amp; open items</a>
+    <section id="search-everywhere">
+      <h2><span>Search Everywhere (SEO, AEO, GEO)</span><span class="num">&sect; 12a</span></h2>
+      <p class="lede">
+        One optimize step used for press releases and website copy, one site check
+        for the website, and one Train the Brain module that supplies the keywords.
+        Everything runs from <code>/api/accounts/:id/search-everywhere/...</code>.
+      </p>
+      <div class="card">
+        <div class="card-title">Optimize step</div>
+        <p>Reads the draft, the account's Search keywords (highest volume first), the real search queries on file and the Avoid list, then proposes up to ten edits. SEO places a relevant keyword in a headline, lede, subhead or boilerplate. AEO adds a question-and-answer line an answer engine can quote. GEO makes a fact easy to cite. The writer accepts or skips each edit; accepted edits are written to the press release's working copy, and the count (for example 3 of 9) travels with the release. Website copy follows the same flow but the result is copied out, never published. Stored in <code>search_optimizations</code>.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Search keywords (Train the Brain)</div>
+        <p>Table <code>search_keywords</code>: keyword or query, type (target, query, avoid), intent, product group, volume band and volume, difficulty, cost per click, clicks, impressions, click-through rate, average position, question flag, source and status (live or suggested). Uploads detect the file type and let the user confirm the column mapping, as the marketing budget upload does. Re-uploading updates matching rows.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Site check (no partner needed)</div>
+        <p>The server fetches the client's own pages and checks them, limited to the client's own domain. It is a scan on a date, not live monitoring. It cannot see search demand, rankings, backlinks, what Google has indexed, or content built only by JavaScript; those need Search Console or a licensed tool. Capped at 25 pages per run and once every five minutes. Stored in <code>website_audits</code>.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Search Console performance page</div>
+        <p>The top of Search Everywhere reads Google Search Console exports. A multi-file upload recognises each CSV by its headers (queries, pages, countries, devices, appearance, Google AI, indexing, links, and the daily charts), shows a preview, and imports on confirm. The page shows the shared date range with a same-dates-last-year comparison (a prior period with under 90% of its days on file shows "No prior year on file"), four executive cards (organic clicks, click rate, non-brand share of clicks, forecast from open priorities) each with a share icon for Excel, CSV and PDF, up to three two-line Brain reads with See more, the Top 5 priorities table (date, priority, opportunity, business impact, status, Manage), four slide-style charts with a computed headline and source footer, the top 5 non-brand searches and an index health check. Brand versus non-brand uses a brand-name list the team confirms; nothing counts as brand until confirmed, and brand findings stay hidden until then. Priorities are rule-based, deduplicated, and a dismissed item never returns. The team works on at most 5 items at once (planned or in progress): started items fill the Top 5 first, new findings take any free slots, and the rest wait until something is done or dismissed; View all shows the full list. The first read is always the progress summary (done, in progress, planned, waiting, oldest active item); a read is shown only if it adds something the cards and charts do not already say, so the brand-share read was removed as it repeats the brand chart headline; business impact is Calculated (impressions x target click rate minus current click rate) or Rated (High, Medium, Low). Search is organic only; paid and cross-channel reads belong on Strategy and Growth &amp; Performance. Stored in <code>gsc_uploads</code>, <code>gsc_rows</code>, <code>gsc_daily</code>, <code>search_brand_terms</code>, <code>search_priorities</code>.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Search by product group</div>
+        <p>Non-brand searches are matched to the account's Product Groups and Creative Focus Groups (the same lists the Marketing Calendar uses; there is no separate search-theme setup). A search matches a group when it contains all of the group's distinctive words, allowing plurals and one-letter misspellings. A word found in most of the account's group names is not distinctive, so nothing is specific to one industry. A search that shares only a word unique to one group is proposed, never assumed: the Brain lists "N searches share this word" and the writer taps Accept or Not these for the whole set; single searches can be assigned from a picker. Decisions are stored in <code>search_group_matches</code> and a rejected pairing is not proposed again. The table shows searches, impressions, click rate and position per group, with a "Not in any product group" row; when that row holds 30% or more of non-brand impressions it becomes a rated priority. Group names themselves are never changed from this page. Downloads: Excel, CSV and PDF.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Brain reads (wording, checks, responses)</div>
+        <p>The rules decide what is worth saying; the model only words it. For each finding the model gets the finding record and writes a headline, a one-sentence meaning and one suggested next step, and it also sees the account's active Train the Brain lessons. Nothing it writes is shown unless every number in it appears in the record, it makes no promise or cause claim (the data shows what happened, not why), and it fits the length limits; a read that fails keeps the standard wording, and See more says why. Wording is generated once per version of the data and stored in <code>search_reads</code>. Each read offers Add to priorities (a new rated priority), Not now (hidden for a week) and Disagree (a reason, saved as a Train the Brain lesson, and the read does not return). A read is shown only if it adds something the cards and charts do not already say. The progress summary is always first and has no actions.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Google AI impressions</div>
+        <p>From the Search Console Google AI report: impressions by month for the part of the chosen date range the report covers (it began May 18, 2026 for the first client), the same figure as a share of web search impressions, and the top pages and countries from the latest export. Google reports impressions only for AI features, never clicks, and only for Google; other answer engines need a licensed tool. No prior-year comparison is shown because the report is new. Download: Excel, CSV, PDF.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Questions and FAQs</div>
+        <p>Search queries that are questions (at least 50 impressions) are listed with their product group, impressions and position. Brand questions are scoped to the brand; others need an accepted or strong group match. A team member drafts, edits and approves each answer individually. Drafts are written only from Facts in Train the Brain (brand-wide, product group, or creative focus such as a destination or SKU). A draft is discarded if it uses no fact, includes a number or name not in the facts, makes a promise, price or superlative claim, uses an avoided term, or runs over 600 characters; a human edit can still be approved with failing checks flagged. Questions can be skipped, marked answered on site, or disputed (sent to Train the Brain as a correction). Approved answers appear in an Approved FAQs card with copy answer, copy as FAQ markup (JSON-LD), and csv, xlsx and pdf downloads. Nothing is published to a site. Competitor reviews supply questions only, never answers.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Date-aware ranking</div>
+        <p>The Marketing Calendar's in-market dates (hit date, or drop date if none, to end date) are read for every Product Group and Creative Focus Group, ignoring cancelled and ad hoc campaigns. A group is "in market now", "soon" (starts within 90 days), "later" or "ended"; the nearest flight that has not ended decides. Groups that are live or soon and have no matched searches, or whose matched searches average below position 8, get a "Get search ready for [group]" priority: P1 when live or starting within 45 days, otherwise P2, with a suggested due date 42 days before the start. Win-page-one priorities whose search strongly matches an in-market group are raised to P1 when urgent. Within a priority level, time-bound items sort first, nearest start first. The Search by product group table has an In market column (also in its downloads), and priorities and questions show an in-market tag. Search stays organic only: no spend or Google Ads data is used. The 90, 45, 42 and 8 values are settings.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Brand checks</div>
+        <p>Five rule-based checks against what the account already holds (confirmed brand names, avoided terms, approved facts, the latest site check, Search Console, competitors from Competitive Positioning). No model decides a result. Name is used the same way: close variants of a confirmed multi-word name, and a home page title without a brand name. Pages say what they are: missing, very short or duplicate titles, and missing descriptions. Pages match the voice and facts: avoided terms, promise, price or superlative words, and numbers not in approved facts (years ignored). What people add to your name: brand searches grouped by the word added; reputation words (reviews, complaints, cancel, refund, problems, scam, login, lawsuit, legit), competitor names and team-added words are flagged when no checked page names them. Approved FAQs match current facts: every edit or removal of a fact is logged, and the change report lists each FAQ whose fact changed since approval, with the old and new wording. FAQs are never changed or flagged automatically; the team can reopen the FAQ or mark the change reviewed. Pages are the top 10 by search impressions that are in the site check, with a control to check every page in it; pages outside the site check show as not checked, never a pass. Any team member can mark an item fixed (or reviewed); a fixed item is re-checked on the next site check and returns if still present. Add to priorities creates a P2 priority in the same list and 5-item limit. Review sentiment is not included; it needs a licensed source.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Slide and image downloads</div>
+        <p>Every card's share menu now offers Slide (.pptx) and Image (.png) besides Excel, CSV and PDF. This applies to all cards that use the shared download, Search Everywhere and the Strategy dashboard alike. The slide has one native, editable table per slide (11 rows a slide, up to 4 slides a table; further rows stay in the Excel file and are noted on the slide), with the card title, period and source. The image is drawn in the browser at 3200 pixels wide from the same data, up to 3 tables of 20 rows. Charts are not drawn on either yet; the tables carry the figures.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Ask Verilume and voice read Search Everywhere</div>
+        <p>Ask Verilume (typed and voice) now receives a Search Everywhere block built from the account's own records when the question is about search (search, SEO, clicks, impressions, brand demand, keywords, groups, priorities, indexing, FAQs and similar words); otherwise it gets a one-line note that the data is on file. The block carries: overall web clicks, impressions and click rate; the brand and non-brand split and the top brand searches, which count whether or not a search matches a product group; top non-brand searches; demand by product group and creative focus with in-market dates, and the share not in any group; Google AI impressions; the active priorities and their status; brand checks needing attention; and counts of approved FAQs and facts. With no upload it says so. The brand and non-brand split comes from the top queries in the export, and the block says that.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Client training guide</div>
+        <p>A 15-page client training PDF, with screenshots of each section of the live page and a cover image of the full program, covers this module end to end: <a href="training/Verilume-Search-Everywhere-Training.pdf" target="_blank" rel="noopener">Search Everywhere training</a>. It is also listed under Client Training Guides on the Product Docs home. Update it whenever the automatic Search Console pull or the partner area ships.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">AI Thoughts on the Search Everywhere page</div>
+        <p>Seven thought bubbles sit on the page, using the same AI Thoughts system as the campaign forms (hover shows a one-line summary, click opens the drawer on that topic). Topics AG to AM: reading the page (next to the page title), Add your Search Console files, Brand names, Search priorities, Search by product group, Questions and FAQs, and Brand checks. They are listed under Growth &amp; Performance in the drawer. The text is fixed copy written from the training guide, so it explains how the module works and never reads account data; questions about the account's own numbers go to Ask Verilume.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Schema library</div>
+        <p>A reference section on the Search Everywhere page, closed by default, for the team to open when needed. First version covers content pages: Article, BlogPosting, NewsArticle, FAQPage, HowTo and VideoObject. Each entry gives what the type is, when to use it, fields marked Required, Recommended or Optional, a copy-ready JSON-LD example with placeholders in square brackets, and Google and policy notes with a source link and the date last checked (Oct 5, 2026). It is fixed reference content: nothing is generated from account data and nothing is published. It has its own AI Thought bubble (topic AN). Findings from Google's documentation on that date: Article has no required properties, only recommended ones; VideoObject requires name, thumbnailUrl and uploadDate; FAQ rich results are no longer shown (announced May 2026, documentation removed June 2026); How-to rich results were removed in 2023. Review the dated notes whenever Google changes its documentation. Not yet in the library: core business pages (Organization, Product, TouristTrip), reviews and ratings, events and people.</p>
+      </div>
+      <div class="card card--confirmed">
+        <div class="card-title">PR hand-offs: Draft a Release and Content updates</div>
+        <p>Built 2026-10-05. <b>Draft a Release</b> appears on priorities of the window ("get search ready") and gap ("win page one") kinds, and on questions that belong to a group and have no approved FAQ. It creates a press release in PR with the topic and keyword-list search terms stored as suggestions (<code>searchSeedJson</code>), never an Avoid term, and opens it; nothing is drafted. A <b>Content updates</b> card under Priorities lists every Distributed release and every gap priority marked done. Impressions appear only for a release with a saved page address that is in the latest Pages file, with that file's dates when known; the files carry no per-page daily data so the figure is not "since publishing". The five-priority limit is unchanged. Release and gap-done dates are also drawn as amber diamonds on the monthly clicks and click-rate charts (added 2026-10-05). See <a href="verilume-product-pr.html">PR &amp; Corporate Communications</a>.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">AI answers: which pages AI assistants cite</div>
+        <p>Built 2026-10-05, stub-tested. A card on the Search Everywhere page, after Questions people ask. Each check sends one question from the Questions list, written as a person would ask it with no brand hint, to an AI assistant's official API with web search on, and records the answer, the pages it cites, whether your name appears and whether a page on your site is cited. Providers: Perplexity (citations come back natively; the same key the Reputation sweep uses) and ChatGPT through OpenAI's Responses web search (documented shape, not yet run against a live key). A provider is used only when its key is set (<code>PERPLEXITY_API_KEY</code>, <code>OPENAI_API_KEY</code>); with none, the card says nothing is connected and nothing runs. No scraping.</p>
+        <p>The card shows questions checked, cited, named but not cited, and not cited; cited counts by assistant; the sources the answers cite most (your site and community or review sites such as Reddit are tagged, shown only when an answer cites them); and each question with its answer and sources on request. The Questions table gets an "AI answers" column. A question that is not cited keeps the existing Draft answer and Draft a Release choices. Checks run in the background, two at a time, up to 20 questions per run, a question is not re-checked inside 7 days unless "Check again" is chosen, and the Questions list itself decides what is asked. Every published release is matched to the cited pages by its saved page address and the release strip shows "n of N AI answers cited this release".</p>
+        <p>An answer is one sample on one date, not a ranking, and the card says so. Community discussion is not searched: Reddit has no official source chosen yet, so it appears only as a cited source. Table <code>ai_citation_checks</code>; routes <code>GET /search-everywhere/ai-citations</code>, <code>POST .../run</code> and <code>.../detail</code>.</p>
+      </div>
+      <div class="card card--flagged">
+        <div class="card-title">&#9873; Not built yet</div>
+        <p>Automatic Google Search Console pull (files are uploaded by hand today), community share on Reddit and similar forums (planned, needs a licensed provider or official API); Gemini, Grok and other assistants for AI answer checks; scheduled weekly AI answer checks, publishing FAQ answers straight to a site (copy-out only today), the licensed-partner area, chart drawings on slide and image downloads, and licensed connectors (BrightEdge, Adobe, Semrush) for the keyword list and for monitoring; a Monday refresh of those pulls; tier gating (all tiers can use it today); role scope with the Team Org Chart work; the older "Search Everywhere and Organic Social" page still has its own keyword generator and name, which overlaps with this page and needs a naming decision.</p>
+      </div>
+    </section>
+
+      <a href="#log">Decision log — this cycle</a>
+      <a href="#roadmap">Suggested next steps</a>
+    </div>
+  </nav>
+
+  <main class="main">
+
+    <header class="doc-header" id="overview">
+      <div class="doc-kicker">Product Documentation · Verilume</div>
+      <h1>Copywriting</h1>
+      <p class="doc-dek">
+        The AI copywriting engine behind every generated word in the portal: Brand
+        Voice, Creative Job, Campaign Copy, and PR &amp; Corporate Copy. Two
+        mechanisms share the same generation surface — a blind multi-vendor panel
+        ("interview" a contest of AI candidates, pick a winner) and single-draft
+        generation for everyday requests. This document is the current-state
+        reference for that Product — what's actually built and running today,
+        verified against the live codebase, written to be absorbable by engineering
+        leadership without prior context.
+      </p>
+      <div class="meta-row">
+        <span><b>Owner</b> Todd Brown</span>
+        <span><b>System</b> verilume.ai — <code>backend/server.js</code></span>
+        <span><b>Verified against</b> production code, 2026-09-12</span>
+        <span><b>Status</b> Live in production</span>
+        <span><b>Client training</b> <a href="training/Verilume-Brand-Voice-Training.pdf" target="_blank" rel="noopener">Brand &amp; Voice (PDF)</a> · <a href="training/Verilume-Sample-Writings-Training.pdf" target="_blank" rel="noopener">Sample Writings &amp; Presentations (PDF)</a> · <a href="training/Verilume-Competitive-Positioning-Training.pdf" target="_blank" rel="noopener">Competitive Positioning (PDF)</a></span>
+      </div>
+    </header>
+
+    <section id="findings">
+      <h2><span>Headline findings</span><span class="num">requested this cycle</span></h2>
+      <p class="lede">
+        What was explicitly asked to be validated: that all contest surfaces share
+        one structure, that ranking captures more than the winner, and that the
+        recorded data is actually read by something. Checked directly against the
+        code.
+      </p>
+      <div class="finding-grid">
+        <div class="finding-tile">
+          <span class="pill pill--confirmed">Confirmed solid</span>
+          <h4>One structure, four surfaces</h4>
+          <p>All four contest types call a single <code>recordContestResult()</code>,
+          resolved against one <code>CONTEST_TYPE_REGISTRY</code>. See &sect; Registry.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--confirmed">Confirmed solid</span>
+          <h4>Full rank order captured</h4>
+          <p>Every candidate's rank, best-to-worst, for every run — not just the
+          winner. See &sect; Ranking ledger.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--confirmed">Working as designed</span>
+          <h4>"Never reveal the model" policy</h4>
+          <p>Contest panels never disclose which vendor produced which draft to the
+          client, by design — enforced consistently across all four panels and the
+          priority-model fallback logic. See &sect; Vendor dispatch.</p>
+        </div>
+        <div class="finding-tile">
+          <span class="pill pill--flagged">Not implemented</span>
+          <h4>No UI on the ranking data</h4>
+          <p><code>GET /api/ops/contest-rankings</code> is a real, working API — but
+          nothing renders it. See &sect; Known gaps.</p>
+        </div>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <section id="surfaces">
+      <h2><span>The four contest surfaces</span><span class="num">&sect; 01</span></h2>
+      <p class="lede">
+        Every AI copy surface in the portal that runs a multi-vendor blind panel
+        ("interview" candidates, review, select a winner) uses the same underlying
+        mechanism. This is the literal product surface a client or team member
+        interacts with.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Surface</th><th>contestType</th><th>Where it lives</th><th>Source table</th></tr></thead>
+          <tbody>
+            <tr><td>Voice Contest</td><td class="mono">Brand Voice</td><td>Portal &gt; Brand &gt; Style Guide &gt; Voice</td><td class="mono">account_voice_interviews</td></tr>
+            <tr><td>Creative Job Interview</td><td class="mono">Creative Job</td><td>Portal &gt; Brand &gt; Messaging / Creative</td><td class="mono">creative_job_interviews</td></tr>
+            <tr><td>Campaign Copy Interview</td><td class="mono">Campaign</td><td>Portal &gt; Brand &gt; Messaging (Ad/Email Copy)</td><td class="mono">campaign_copy_interviews</td></tr>
+            <tr><td>PR &amp; Corporate Copy</td><td class="mono">Corporate</td><td>Portal &gt; PR &gt; Press Release / Editorial Solicitation</td><td class="mono">pr_copy_interviews</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Voice Contest is the flagship and the one that established the pattern: its
+      winning Vision Statement and Longform Example become <code>accounts.visionStatement</code>
+      / <code>accounts.longformVoiceExample</code>, which every other generation
+      prompt in the file already reads as brand context — see &sect; The content loop.</p>
+    </section>
+
+    <section id="vendors">
+      <h2><span>Vendor dispatch &amp; the AI panel</span><span class="num">&sect; 02</span></h2>
+      <p class="lede">
+        Anthropic (Claude) is the default vendor for every surface. Contest
+        panels additionally dispatch to whichever of four other LLM vendors
+        have API keys configured, run in parallel, and returned as blind
+        candidates. Full vendor list, env vars, and licensing status now live
+        in one place — see <a href="verilume-product-licensed-integrations.html">Licensed
+        Integrations</a> — rather than duplicated here where it can drift out
+        of sync.
+      </p>
+      <div class="card card--confirmed">
+        <div class="card-title">Design policy — never reveal the winning model to the client</div>
+        <p>Candidates are shown blind (labeled generically, not by vendor/model)
+        in every client-facing contest panel. This policy is also enforced in
+        the fallback path: when a stored vendor preference references a vendor
+        whose key has since been removed from the deployment, the dispatcher
+        falls back to Anthropic/template silently rather than surfacing which
+        vendor was lost.</p>
+      </div>
+      <div class="card card--confirmed">
+        <div class="card-title">Standing pattern — the two-pass pending/retry design (required for every contest surface)</div>
+        <p>Originated in the Brand Voice contest (2026-09-15, per Todd's own
+        proposed architecture — "return the results and message clients when
+        a particular model is still thinking and then run a second pass with
+        only the failed models as a new request"), and now also implemented
+        in the Campaign Copy Interview (2026-09-23, closing a real production
+        abort Todd hit twice). <strong>Every new contest surface must follow
+        this same shape</strong> — a multi-vendor blind panel that skips it
+        will eventually abort or 504 under real load, exactly as Campaign
+        Copy did before this fix. The four requirements:</p>
+        <ol>
+          <li><strong>One parallel fan-out, not sequential batches.</strong>
+          The Anthropic angle(s) and every configured vendor call must fire in
+          a single <code>Promise.all</code> (or a <code>Promise.all</code> of
+          <code>Promise.all</code>s run together), never awaited one batch
+          after another. Wall-clock must be bounded by the single slowest
+          call, not the sum of every batch — this exact "sequential batches"
+          bug hit both Brand Voice (fixed 2026-08-26, a real 504) and
+          Campaign Copy (fixed 2026-09-23) independently, because it was
+          never written down as a rule until now.</li>
+          <li><strong>Pass 1 gets one attempt per candidate, no inline
+          retry.</strong> A candidate whose generation fails on the first
+          pass (timeout or otherwise) is marked <code>pending: true</code>
+          with <code>copy/error</code> left honest, not a terminal failure.
+          Budget: <code>VENDOR_PASS1_TIMEOUT_MS = 90000</code> (matches the
+          Anthropic candidate's own first-attempt budget, so no vendor is
+          artificially capped tighter than Claude within the same
+          <code>Promise.all</code>).</li>
+          <li><strong>A dedicated <code>.../retry-pending</code> endpoint is
+          the second pass</strong> — a genuinely separate HTTP request with
+          its own fresh Vercel 120s ceiling (see the platform-wide
+          <code>maxDuration: 120</code> in <code>vercel.json</code>), so a
+          slow vendor never has to squeeze into whatever budget the first
+          request has left. It regenerates <strong>only</strong> the
+          candidates still marked pending, leaves every already-successful
+          candidate completely untouched, and always clears
+          <code>pending</code> back to <code>false</code> regardless of
+          outcome — this is the last attempt, never a third pass. Budget:
+          <code>VENDOR_PASS2_TIMEOUT_MS = 100000</code> (100s, leaving ~20s
+          margin under the 120s ceiling for JSON parsing/DB save/response).</li>
+          <li><strong>The client fires the second pass automatically</strong>
+          the moment any candidate in the first response comes back pending
+          — never a manual "retry" button (Todd's explicit choice) — and
+          renders a genuinely temporary "still thinking, retrying
+          automatically…" card state for any pending candidate in the
+          interim, distinct from both the not-configured and hard-failure
+          card states. Fires at most once per interview id.</li>
+        </ol>
+        <p>Reference implementations to copy from directly: <code>runBrandVoiceContest()</code>
+        / <code>POST /api/accounts/:id/voice-contest/:interviewId/retry-pending</code>
+        (the original) and <code>runCandidateInterview()</code> /
+        <code>POST /api/campaigns/:id/copy-interview/:interviewId/retry-pending</code>
+        (the 2026-09-23 port, closest match to a per-campaign contest shape).
+        Frontend reference: <code>voiceContestAutoRetryPending()</code> /
+        <code>cmpCopyContestAutoRetryPending()</code> — the latter takes an
+        <code>onUpdated</code> re-render callback rather than owning a fixed
+        DOM target, since Campaign Copy has two different callers with two
+        different render paths (the shared contest panel and Creative Step
+        1's per-audience results grid).</p>
+      </div>
+    </section>
+
+    <section id="registry">
+      <h2><span>Registry &amp; single entry point</span><span class="num">&sect; 03</span></h2>
+      <p class="lede">
+        Todd: "all contests whether is exists today or not needs to have the same
+        structure when recording results or we can't scale the data." A new
+        contest feature registers one entry — that's the whole integration point.
+      </p>
+      <div class="flow">
+        <div class="flow-step">
+          <div class="flow-num">01</div>
+          <div><h4>A contest's /select endpoint fires</h4>
+          <p>A team member picks a winner from the blind candidate panel, on any
+          of the four surfaces.</p></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">02</div>
+          <div><h4>One call: recordContestResult()</h4>
+          <p>Resolves the contest's <code>CONTEST_TYPE_REGISTRY</code> entry (its
+          <code>taskType</code> and known subtypes), then does both things a
+          contest result needs, together, so they can never drift apart.</p></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">03</div>
+          <div><h4>Writes the ranking ledger</h4>
+          <p>Full rank order, every candidate, this run — see &sect; Ranking ledger.</p></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">04</div>
+          <div><h4>Upserts the priority-model cache</h4>
+          <p>Current winning vendor for this account/taskType — see &sect; Priority-model cache.</p></div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Contest Type</th><th>taskType</th><th>Subtypes</th></tr></thead>
+          <tbody>
+            <tr><td>Brand Voice</td><td class="mono">brand_voice</td><td>&mdash; (single contest per account)</td></tr>
+            <tr><td>Creative Job</td><td class="mono">creative_job</td><td>Copywriting</td></tr>
+            <tr><td>Campaign</td><td class="mono">marketing_copy</td><td>Offer, Brand Campaign, Launch, General</td></tr>
+            <tr><td>Corporate</td><td class="mono">pr_copy</td><td>Press Release, Editorial Pitch, Corporate Comms</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <pre>function recordContestResult(accountId, contestType, contestSubtype, chosen, allCandidates, sourceTable, sourceInterviewId, setBy){
+  const reg = CONTEST_TYPE_REGISTRY[contestType];
+  if (!reg){
+    console.error(`recordContestResult: unregistered contestType "${contestType}" — add it to CONTEST_TYPE_REGISTRY so future contests stay on the same structure.`);
+  }
+  logContestRanking(accountId, contestType, contestSubtype, sourceTable, sourceInterviewId, allCandidates, chosen.key);
+  try {
+    upsertPriorityModelFromCandidate(accountId, (reg &amp;&amp; reg.taskType) || contestType, chosen, sourceTable, sourceInterviewId, setBy);
+  } catch (e){ /* priority-model bookkeeping should never break the select response */ }
+}</pre>
+    </section>
+
+    <section id="ledger">
+      <h2><span>Ranking ledger</span><span class="num">&sect; 04</span></h2>
+      <p class="lede">
+        Todd's correction after a first draft tracked only the winner: "I thought
+        the purpose of ranking was to support more advanced modeling in the
+        future. Why would rank 1-5 if we didn't build anything to support it?"
+        Full rank order is now captured for every run.
+      </p>
+      <div class="card card--confirmed">
+        <div class="card-title">Ranking basis, chosen automatically per contest</div>
+        <p>Rating (Voice Contest) &gt; combined score (Creative Job / Campaign Copy)
+        &gt; compliance score alone (PR Copy, where nothing stronger exists yet).
+        Ties share a rank number. Unconfigured or errored candidates are excluded
+        from ranking.</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Column</th><th>Type</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">id</td><td>TEXT (PK)</td><td>Row identifier</td></tr>
+            <tr><td class="mono">accountId</td><td>TEXT</td><td>Which client account</td></tr>
+            <tr><td class="mono">contestType</td><td>TEXT</td><td>Registry key</td></tr>
+            <tr><td class="mono">contestSubtype</td><td>TEXT</td><td>e.g. Offer, Press Release, Copywriting</td></tr>
+            <tr><td class="mono">sourceTable / sourceInterviewId</td><td>TEXT</td><td>Which contest run produced this row</td></tr>
+            <tr><td class="mono">candidateKey / vendor / model</td><td>TEXT</td><td>Which AI candidate this row scores</td></tr>
+            <tr><td class="mono">rank</td><td>INTEGER</td><td>Full rank order (1 = best) — ties share a rank</td></tr>
+            <tr><td class="mono">isWinner</td><td>INTEGER</td><td>1 for the selected candidate, else 0</td></tr>
+            <tr><td class="mono">rankBasis</td><td>TEXT</td><td>rating / combined_score / compliance_score</td></tr>
+            <tr><td class="mono">createdAt</td><td>TEXT</td><td>Timestamp of the /select action</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Indexed on <code>(accountId, contestType, contestSubtype)</code>. Append-only
+      — one row per candidate per contest run, never overwritten.</p>
+      <p class="lede"><strong>2026-09-23 addendum:</strong> a production legacy-casing
+      audit (930 live columns cross-referenced against known camelCase identifiers)
+      found five of this table's own columns had been live-folded to lowercase —
+      <code>contestsubtype</code>, <code>contesttype</code>, <code>iswinner</code>,
+      <code>rankbasis</code>, <code>sourcetable</code> — alongside five more on the
+      related <code>content_score_history</code> table
+      (<code>complianceFlagsJson</code>, <code>complianceScore</code>,
+      <code>relevanceScore</code>, <code>scoredAt</code>, <code>sourceKey</code>).
+      Both fixed via data-preserving <code>RENAME COLUMN</code> migrations (both
+      tables were empty at the time — zero data risk) as part of a 30-column,
+      12-table sweep triggered by a real production error on
+      <code>campaign_copy_interviews.sourceKey</code>. See the Decision log below.</p>
+    </section>
+
+    <section id="priority-cache">
+      <h2><span>Priority-model cache</span><span class="num">&sect; 05</span></h2>
+      <span class="pill pill--confirmed" style="margin-bottom:14px;">Gap closed this cycle</span>
+      <p class="lede">
+        <code>account_priority_models</code> is the "current winning vendor per
+        taskType" cache — one row per account/taskType, upserted every time a
+        contest is decided. Before this round, only 2 of 4 contest types ever
+        wrote to it.
+      </p>
+      <div class="two-col">
+        <div>
+          <h3>Has a real dispatch consumer today</h3>
+          <p><code>generateMessagingCopyViaAI()</code> (Campaign Copy single-draft)
+          and <code>draftPrCorpCommCopyViaAI()</code> (PR/Corporate single-draft)
+          both call <code>getDispatchablePriorityModel()</code> and route to the
+          account's winning vendor when one is on file and still configured —
+          falling straight through to Anthropic on any dispatch failure or stale
+          reference.</p>
+        </div>
+        <div>
+          <h3>Recorded, no dispatch consumer yet</h3>
+          <p>Creative Job copy is only ever produced via its own contest panel;
+          Voice Contest is a one-time-per-account comparison, not a per-request
+          draft. Their vendor preference is still recorded for consistency and
+          future reporting — same "capture ahead of the consumer" posture as the
+          ranking ledger itself.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="single-draft">
+      <h2><span>Single-draft generation (non-contest)</span><span class="num">&sect; 06</span></h2>
+      <p class="lede">
+        Not every copy request runs a full multi-vendor panel — most day-to-day
+        drafting is a single call to the account's preferred vendor.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Function</th><th>Used by</th><th>Dispatch behavior</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">generateMessagingCopyViaAI()</td><td>Campaign Copy single-draft</td><td>Checks priority model for <code>marketing_copy</code>, falls back to Anthropic</td></tr>
+            <tr><td class="mono">draftPrCorpCommCopyViaAI()</td><td>PR/Corporate single-draft</td><td>Checks priority model for <code>pr_copy</code>, falls back to Anthropic</td></tr>
+            <tr><td class="mono">generateVoiceGuideDraftViaAI()</td><td>Brand Book &gt; Voice — <code>POST /api/accounts/:id/voice-draft</code> (2026-09-12)</td><td>Checks priority model for <code>brand_voice</code> (added 2026-09-12, closing the gap flagged below in &sect;11's history), falls back to Anthropic; returns <code>{ draft, gaps, whyDraft }</code> — see &sect;12 for the full write-up</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>All three functions also read the account's Voice Guide, Style Notes, and (when
+      set) the Voice Contest's <code>visionStatement</code> / <code>longformVoiceExample</code>
+      as additional brand context in the prompt — see &sect; The content loop. All three
+      share <code>brandVoiceCriticalMessagesContext()</code>, which as of 2026-09-12 leads
+      with the account's Verilume assessment audience/wealth read-out and average
+      transaction value (from Media Plan &amp; Budget's revenue/transactions entry) before
+      anything else — see &sect;12. All
+      three return a graceful <code>note</code> (not an error) when
+      <code>ANTHROPIC_API_KEY</code> isn't configured — the first two fall back to a
+      deterministic template draft; <code>generateVoiceGuideDraftViaAI()</code>
+      returns <code>draft: null</code> with an explanatory note instead (its old
+      client-side template was retired outright, not kept as a fallback — see
+      &sect;12).</p>
+    </section>
+
+    <section id="content-loop">
+      <h2><span>The content loop</span><span class="num">&sect; 07 — already live, clarified not new</span></h2>
+      <span class="pill pill--neutral" style="margin-bottom:14px;">Working as designed</span>
+      <p class="lede">
+        Separate from vendor/model preference: the actual winning content from
+        Voice Contest already feeds every other generation prompt as brand
+        context.
+      </p>
+      <div class="card">
+        <div class="card-title">Confirmed present via direct code search</div>
+        <p><code>account.visionStatement</code> and <code>account.longformVoiceExample</code>
+        (saved to the account on Voice Contest's <code>/select</code>) appear as
+        "BRAND VISION STATEMENT" / "REFERENCE LONGFORM EXAMPLE" blocks inside
+        <code>buildInterviewPrompt()</code> (Creative Job / Campaign Copy contest
+        generation), <code>generateMessagingCopyViaAI()</code> (Campaign Copy
+        single-draft), <code>draftPrCorpCommCopyViaAI()</code> (PR/Corporate
+        single-draft), and the Draft Scoring prompt.</p>
+        <p class="cite">This is the primary way "the ideal voice influences all
+        copy" already works today — the vendor-preference loop is a second,
+        separate lever on top of it (which model does the writing), not the only
+        mechanism.</p>
+      </div>
+    </section>
+
+    <section id="usage-cap">
+      <h2><span>Weekly usage cap</span><span class="num">&sect; 08</span></h2>
+      <p class="lede">
+        A single, shared safety cap on AI panel usage — not a quality limit — sits
+        in front of all four contest surfaces.
+      </p>
+      <div class="env-list">
+        <span class="env-badge">INTERVIEW_WEEKLY_CAP (default 20/week/account)</span>
+      </div>
+      <div class="card">
+        <div class="card-title"><code>checkInterviewWeeklyCap(accountId)</code></div>
+        <p>Rolling 7-day window, counted across Creative Job, Campaign Copy, PR
+        Copy, and Voice Contest together — running one panel on any surface counts
+        against the same shared total. Called at the top of all four contest-run
+        endpoints; when the cap is hit, the request is rejected with a message
+        naming the current usage and reset window rather than a bare error.</p>
+      </div>
+    </section>
+
+    <section id="reader">
+      <h2><span>Ops reader endpoint</span><span class="num">&sect; 09</span></h2>
+      <p class="lede">
+        Todd: "It can't not read anything today beyond there not being any data
+        yet... How does that happen if is not considering the client data and/or
+        preferences captured through the various contests." This endpoint is the
+        direct answer.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Endpoint</th><th>Purpose</th><th>Note</th></tr></thead>
+          <tbody>
+            <tr><td><code>GET /api/ops/contest-rankings</code></td><td>Win rate per contestType / contestSubtype / vendor</td><td>Staff-only</td></tr>
+            <tr><td><code>POST /api/accounts/:id/voice-guide/clear-memory</code> (2026-09-12)</td><td>Ops Console "Clear Voice Guide Memory" button — wipes <code>voiceGuideText</code>, <code>voiceApproved</code>, <code>voiceVersion</code>, <code>voiceApprovedAt</code>, <code>visionStatement</code>, <code>longformVoiceExample</code> for the account and marks that account's <code>voice_guide</code>-sourced <code>ai_brain_contributions</code> rows <code>status = 'removed'</code></td><td>Staff-only, destructive, account-wide — see &sect;12</td></tr>
+            <tr><td><code>GET /api/ops/ai-brain-transparency-rollup?contextType=</code> (2026-09-12)</td><td>Ops Console "AI Brain Transparency — Value Rollup" module (now with a Surface dropdown) — on-file rate and impact-of-on-file rate per input signal, aggregated across every account's generations for one surface (<code>contextType</code> defaults to <code>voice_guide</code> for backward compatibility)</td><td>Staff-only — the "help us value the features we build" answer; see &sect;12</td></tr>
+            <tr><td><code>GET /api/accounts/:id/ai-brain-transparency?contextType=</code> (2026-09-12)</td><td>General client-facing AI Brain Transparency read, for every surface after Voice Guide (which keeps its own dedicated <code>.../voice-transparency</code> route, unchanged) — same {available, generatedAt, items} shape</td><td>requireAccount-gated; <code>contextType</code> required, validated against <code>AI_BRAIN_TRANSPARENCY_CONTEXT_TYPES</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="env-list">
+        <span class="env-badge">X-Admin-Token header</span>
+        <span class="env-badge">?accountId= (optional)</span>
+        <span class="env-badge">?contestType= (optional)</span>
+      </div>
+      <div class="card">
+        <div class="card-title">What it returns</div>
+        <p>Aggregated appearances vs. wins per vendor, grouped by contestType and
+        contestSubtype, as a win-rate percentage — the first real consumer of the
+        ledger beyond the priority-model cache. No UI reads it yet; see &sect;
+        Known gaps.</p>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <section id="data-model">
+      <h2><span>Data model reference</span><span class="num">&sect; 10</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Table</th><th>Key fields</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><code>contest_rankings</code></td><td><code>id</code> (PK), <code>accountId</code>, <code>contestType</code>, <code>rank</code></td><td>Append-only, full rank order — see &sect;04</td></tr>
+            <tr><td><code>account_priority_models</code></td><td><code>accountId</code>, <code>taskType</code>, <code>loopStage</code> (PK)</td><td>Current-winner cache, all 4 types write to it — see &sect;05</td></tr>
+            <tr><td><code>account_voice_interviews</code></td><td><code>accountId</code>, candidate JSON</td><td>Voice Contest source rows</td></tr>
+            <tr><td><code>creative_job_interviews</code></td><td><code>jobId</code>, <code>accountId</code>, <code>productType</code></td><td>Creative Job source rows</td></tr>
+            <tr><td><code>campaign_copy_interviews</code></td><td><code>campaignId</code>, <code>accountId</code></td><td>Campaign Copy source rows; subtype from <code>campaigns.messageType</code></td></tr>
+            <tr><td><code>pr_copy_interviews</code></td><td><code>accountId</code>, <code>docType</code></td><td>PR/Corporate source rows; subtype from <code>PR_DOC_TYPE_LABELS[docType]</code></td></tr>
+            <tr><td><code>content_score_history</code></td><td><code>id</code> (PK), <code>accountId</code>, <code>campaignId</code>, <code>sourceType</code>/<code>sourceKey</code></td><td>Relevance/compliance scoring history, shared by Creative Job and Campaign Copy score endpoints</td></tr>
+            <tr><td><code>pr_corp_comm_decisions</code></td><td><code>id</code> (PK), <code>docType</code>, <code>recordId</code>, <code>accountId</code>, <code>approved</code>, <code>reason</code></td><td>PR/Corporate's own approve/reject-with-reason log (2026-09-12) — deliberately separate from <code>creative_job_decisions</code>, read back in via <code>prCorpCommDecisionContext()</code>; see decision log below</td></tr>
+            <tr><td><code>ai_brain_transparency_items</code></td><td><code>id</code> (PK), <code>batchId</code>, <code>accountId</code>, <code>contextType</code>, <code>signalKey</code>, <code>hadSignal</code>, <code>hadImpact</code>, <code>clientText</code></td><td>AI Brain Transparency OUTPUT/explanation ledger (2026-09-12) — one row per input signal per generation; deliberately separate from <code>ai_brain_contributions</code> (the INPUT ledger); <code>contextType</code> is <code>'voice_guide'</code> or <code>'campaign_copy'</code> today (<code>'voice_contest'</code>/<code>'pr_corp_comm'</code> reserved, not yet written) — see &sect;12</td></tr>
+            <tr><td><code>CONTEST_TYPE_REGISTRY</code> (in-code)</td><td><code>taskType</code>, <code>subtypes</code></td><td>Not a DB table — the enforced structure every contest registers against — see &sect;03</td></tr>
+            <tr><td><code>INTERVIEW_VENDOR_REGISTRY</code> (in-code)</td><td><code>key</code>, <code>vendor</code>, <code>envVar</code>, <code>model</code></td><td>Not a DB table — the shared vendor pool every panel dispatches to — see &sect;02</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="gaps">
+      <h2><span>Known gaps &amp; open items</span><span class="num">&sect; 11 — for product awareness</span></h2>
+      <p class="lede">
+        None of these have been fixed yet — listed here so the product team can
+        prioritize, not because a fix has already shipped.
+      </p>
+      <div class="card card--flagged">
+        <div class="card-title">&#9873; No UI for the ops reader</div>
+        <p><code>GET /api/ops/contest-rankings</code> is an API response today, not
+        a dashboard. Building a simple win-rate view on top of it is the natural
+        next step.</p>
+      </div>
+      <div class="card card--warning">
+        <div class="card-title">&#9888; No automated action on win-rate data</div>
+        <p>No auto-promotion of a consistently-winning vendor across accounts —
+        current state is visibility and consistent capture, not an automated
+        policy.</p>
+      </div>
+      <div class="card card--warning">
+        <div class="card-title">&#9888; Creative Job still has no per-request dispatch consumer</div>
+        <p>Creative Job's recorded vendor preference has no equivalent single-draft
+        generation path to check it yet — recorded for consistency and future
+        reporting, same posture as the ranking data itself. Voice Contest closed
+        this same gap 2026-09-12 (<code>generateVoiceGuideDraftViaAI()</code> now
+        checks <code>getDispatchablePriorityModel(accountId, 'brand_voice')</code>
+        — see &sect;12), leaving Creative Job as the only remaining contest type
+        without a consumer.</p>
+      </div>
+      <div class="card card--warning">
+        <div class="card-title">&#9888; No automated alerting on vendor-model deprecation</div>
+        <p>The Gemini model retirement this cycle (&sect;02) was caught by reading a
+        live 404 response body, not by any monitoring. A vendor deprecating a
+        model silently degrades that panel candidate until someone notices.</p>
+      </div>
+      <div class="card card--warning">
+        <div class="card-title">&#9888; Corporate Comms' audience field is still free text</div>
+        <p>Press Releases now have a controlled <code>audience</code> taxonomy
+        (Consumer / Business &amp; Trade Network). Corporate Comms kept its
+        original free-text <code>audience</code> field, unchanged — worth
+        unifying if Corporate Comms is ever audited the same way.</p>
+      </div>
+    </section>
+
+    <section id="log">
+      <h2><span>Decision log — this cycle</span><span class="num">&sect; 12</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Ask</th><th>Resolution</th></tr></thead>
+          <tbody><tr><td>2026-10-05 · PR documentation</td><td>"We need to build out a PR training guide with images also. Update product docs as needed."</td><td>PR now has its own Product doc (<a href="verilume-product-pr.html">PR &amp; Corporate Communications</a>) and a 15-page training guide. The optimize step and Search keywords module described here are covered there from the PR side.</td></tr>
+            <tr><td class="mono">2026-08-27</td><td>"All contests should use the same ranking system... capturing type, subtype, ranking per model, winner model."</td><td>Built CONTEST_TYPE_REGISTRY + contest_rankings ledger</td></tr>
+            <tr><td class="mono">2026-08-27</td><td>"Why would rank 1-5 if we didn't build anything to support it?"</td><td>Switched from winner-only to full rank order, ahead of any consumer</td></tr>
+            <tr><td class="mono">2026-08-27</td><td>"All contests... needs to have the same structure... or we can't scale the data."</td><td>Consolidated two hand-wired calls per endpoint into one recordContestResult()</td></tr>
+            <tr><td class="mono">2026-08-27</td><td>"How does continuous learning happen if is not considering the client data... captured through the various contests."</td><td>Closed priority-model gap for all 4 types + shipped GET /api/ops/contest-rankings</td></tr>
+            <tr><td class="mono">2026-08-27</td><td>"Copywriting is the product... one format for all product groups... a home page that links to product details."</td><td>This document + verilume-product-docs.html home page, built on the Registration &amp; Account Management template</td></tr>
+            <tr><td class="mono">2026-08-29</td><td>"Did we compare X to our capabilities" led to a PR checklist audit — Todd's PR contact's own framework (The News/The Experience/The Details/The Next Step), release-type coverage, and audience targeting, checked against the real generation code.</td><td>Found and fixed 4 prompts hardcoded to "a luxury travel brand" regardless of the account's actual industry (<code>industryPersonaPhrase()</code> now reads <code>account.industry</code>); added a <code>releaseType</code> taxonomy (Product Launch/Enhancement, Earnings Announcement, Strategic Partnership, Charity/Person Partnership, Significant Hire/Departure) and an <code>audience</code> field (Consumer / Business &amp; Trade) to <code>press_releases</code>, each with type/audience-specific prompt guidance; restructured the press release format into the 4 named parts; wired the account's saved legal-boilerplate library (<code>contentLibraryJson.legalDisclaimer</code>) into Earnings Announcement generation as required-verbatim text, never AI-paraphrased</td></tr>
+            <tr><td class="mono">2026-08-29</td><td>"Some fields may require us to use exact copy vs direction for inspiration... how to book includes a specific process statement" — plus "we should include a LinkedIn copy example."</td><td>Added a per-field <code>ctaText</code>/<code>ctaMode</code> control (exact / inspiration / both) for the press release's Next-Step/CTA text, prompted accordingly; added a LinkedIn derivative (<code>linkedinCopy</code>, <code>POST .../generate-linkedin</code>) that rewrites the release's own approved copy for LinkedIn's format, same master/derivative pattern as Social Content Batch</td></tr>
+            <tr><td class="mono">2026-08-29</td><td>"Let's go ahead complete the gaps and republish the consolidated update" — closing the "set-once at creation" gap logged above.</td><td>Added edit controls (release type, audience, CTA text, CTA mode) directly on an existing Press Release's expanded editor in the Portal, wired to the same PATCH endpoint the create form already used. No backend change was needed — the API already validated and persisted all four fields on update; only the front end was missing the control. Verified live against the real dev DB: created a release, PATCHed all four fields, confirmed they persisted, and confirmed the existing ctaMode validation still rejects a bad value.</td></tr>
+            <tr><td class="mono">2026-09-12</td><td>"I think that PR as a starting point can benefit from everything except campaigns."</td><td>Gave PR &amp; Corp Comm generation (<code>buildPrCorpCommPrompt()</code>) its own full AI-Brain signal set, mirroring what campaign copy generation already had: (1) <strong>Competitive Positioning</strong> — <code>account.competitorsJson</code> was never read by this prompt before; added the same "internal context only, never name a competitor" block <code>generateMessagingCopyViaAI()</code> already builds. (2) <strong>Real PR sample writings</strong> — new <code>prCorpCommSampleContext()</code>, reading only <code>category = 'pr'</code> Brand Writing Samples (never <code>internal_comms</code>, which stays <code>generateInternalCommsMaster()</code>'s own boundary, untouched); this closes a gap flagged but never built back on 2026-08-22 — <code>brandWritingSampleContext()</code> has always structurally excluded PR-category samples by design (<code>category NOT IN ('pr', 'internal_comms')</code>), with a comment noting PR's own path would read them via "a separate, not-yet-built follow-up," which is this. (3) <strong>PR's own decision history</strong> — new <code>pr_corp_comm_decisions</code> table (docType/recordId-keyed, since press_releases/editorial_pitches/corporate_comms are three separate tables) + <code>POST/GET /api/accounts/:id/pr-corp-comm/:docType/:recId/copy-decision(s)</code>, mirroring creative jobs' own copy-decision endpoint exactly in behavior (reason required to reject, append-only log); read back into the prompt via <code>prCorpCommDecisionContext()</code>, mirroring <code>creativeJobDecisionContext()</code>'s framing. Kept fully isolated from campaigns' <code>creative_job_decisions</code> in both directions, per explicit instruction — this was the exact gap the 2026-09-01 decision-context fix (below) flagged as still open ("PR/Corporate Comm still has no decision-feedback path of its own"). Frontend: added Approve/Reject-with-reason controls plus a decision-history list to each Press Release/Editorial Pitch/Corporate Comms working-copy editor in the Portal, mirroring creative jobs' own copy-decision panel — the only existing example of this UI pattern in the codebase (campaigns' equivalent reject-with-reason UI was already built when this round started, so this became the second real implementation of it, not the first).</td></tr>
+            <tr><td class="mono">2026-09-12</td><td>"I didn't understand the difference between Tone Anchors and Brand Keywords — they are the same" + "always look for opportunities to recommend and then allow our humans to approve and reject when we have enough data to do so and/or ask humans for more when we know we need it — that is the Human Agentic Model" (scoped 2026-09-11, see <code>cxmedia-brand-voice-consolidation-human-agentic-model-scoping-2026-09-11.md</code> in the Claude project).</td><td>Removed the fixed 6-checkbox Tone Anchors picker (<code>state.toneAnchors</code> — never persisted server-side) from Brand Book &gt; Voice; the open-ended "Brand Keywords — emotional, voice &amp; style" chip list (already persisted to <code>accounts.brandKeywordsJson</code>) is now the single input for this concept, with every reader in portal.html updated (Campaign Brief Builder tones, Search Everywhere's tone-modifier lookup, the Voice page's own "why this matters" commentary). Replaced <code>generateVoiceDraft()</code>'s 100%-client-side templated JS with a real Claude call — new <code>POST /api/accounts/:id/voice-draft</code> (<code>generateVoiceGuideDraftViaAI()</code>, same <code>brandVoiceCriticalMessagesContext()</code> grounding as Voice Contest, plus Terms to Avoid and real Sample Writings) — and fixed a real, previously-silent bug along the way: the old templated draft's "Words to avoid: X, Y, Z." line never matched <code>extractVoiceGuideAvoidTerms()</code>'s quoted-phrase regex, so the compliance guardrail had never actually fired against this field for any account; the new prompt requires the exact <code>avoid "phrase"</code> shape that regex expects, verified by hand against a sample draft. Response also returns <code>gaps[]</code> (what's missing that would make the draft stronger, e.g. no Sample Writings on file) as its own field, surfaced in a new "To improve this draft" panel — the Human Agentic Model's "recommend with what you have, ask for more when you know you need it" made concrete for the first time in this codebase. The Contribution Ledger (the larger data-architecture piece of the same scoping doc) was explicitly deferred, not built this round.</td></tr>
+            <tr><td class="mono">2026-09-12</td><td>Todd: "sample writings should come before the brand in order since I think it's critical to the voice guide and the voice guide + website scanned document includes the critical prompt information needed to maximize the contest... the contest can run with nothing beyond what it does today." On vendor dispatch: "the winner should be the default." Scoped in <code>cxmedia-voice-contest-guide-unification-multivendor-dispatch-scoping-2026-09-12.md</code> in the Claude project.</td><td>Closed the loop between Voice Contest and the Voice Guide generator, which previously shared only <code>brandVoiceCriticalMessagesContext()</code> and never referenced each other's output. (1) Both <code>generateBrandVoiceCandidate()</code> (Anthropic angle) and <code>generateVendorBrandVoiceCopy()</code> (non-Anthropic vendor path) now fold in real Sample Writings (<code>brandWritingSampleContext()</code>) and the account's currently-approved Voice Guide text (<code>account.voiceGuideText</code>, when present) as additional grounding, ahead of the existing critical-messages block — the Contest previously used neither. (2) <code>generateVoiceGuideDraftViaAI()</code>'s prompt was reordered so Sample Writings lead (previously appended after the critical-messages block), followed by a new Voice Contest Winner block (<code>account.visionStatement</code> / <code>account.longformVoiceExample</code>, when present) so the guide refines and formalizes the most recently approved Contest winner rather than drafting blind to it. (3) <code>generateVoiceGuideDraftViaAI()</code> now checks <code>getDispatchablePriorityModel(accountId, 'brand_voice')</code> before falling back to Anthropic — the same dispatch pattern <code>generateMessagingCopyViaAI()</code>/<code>marketing_copy</code> and <code>draftPrCorpCommCopyViaAI()</code>/<code>pr_copy</code> already used — closing the exact gap <code>CONTEST_TYPE_REGISTRY</code>'s own comment flagged ("No per-request vendor dispatch consumer today"): a non-Anthropic Voice Contest winner now actually becomes the vendor used for future Voice Guide generation. Portal: a new CTA ("Generate updated Voice Guide from this winner →") appears on the Voice Contest page once a winner is saved to the account, calling the existing <code>generateVoiceDraft()</code> unchanged. Task-type independence was explicitly preserved — <code>brand_voice</code>, <code>marketing_copy</code>, and <code>pr_copy</code> remain three fully independent <code>account_priority_models</code> rows with no cascading between them, confirmed with the client.</td></tr>
+            <tr><td class="mono">2026-09-12</td><td>"I removed all of the sample copy so we can start clean assuming we wipe the memory when removing. Let's build what we need to make sure that we are leveraging all inputs available to us... Focus on Agentic Optimization. We don't want to waste clients time asking for sample writings and other work if it adds no incremental value downstream. Voice is not a campaign. It's the voice of the company that applies to all campaigns that will then adjust by campaign downstream."</td><td><strong>Grounding:</strong> <code>brandVoiceCriticalMessagesContext()</code> — the shared function behind Voice Contest and Voice Guide generation alike — now leads with two new blocks, ahead of everything else in the prompt: (1) the account's own Verilume assessment audience/wealth read-out (<code>account.audience</code>/<code>account.wealth</code>, humanized via the same <code>GENERATION_LABELS_FOR_COPY</code>/<code>WEALTH_TIER_LABELS_FOR_COPY</code> maps <code>generateMessagingCopyViaAI()</code> already used), with explicit register calibration (High Net-Worth restrained/specific, Mainstream/Value-Conscious value-forward, generation skew shifts reference points); (2) the account's average transaction value, computed from its most recent <code>account_year_results</code> row with both <code>grossRevenue</code> and <code>transactions</code> set (the same Media Plan &amp; Budget "Revenue &amp; results" entry that calculates ROAS) — a high AOV calibrates toward restrained/unhurried, a low AOV toward direct/value-forward. Both are wrapped in their own try/catch so malformed or missing data falls through silently rather than breaking generation. <strong>Sample Writings reprioritized:</strong> the "Sample Writings" block in all three generation prompts (Voice Contest's two paths, Voice Guide) was reframed from "the clearest, highest-priority signal of how this brand actually writes" to explicitly OPTIONAL — a bonus specificity/style layer on top of the real account signal above, never required, so a client who has provided none still gets a fully-grounded draft. <strong>Admin control:</strong> new <code>POST /api/accounts/:id/voice-guide/clear-memory</code> (<code>X-Admin-Token</code>-gated, matching every other ops-console-facing route — not the portal team-member session gate, which ops-console has no session for) plus a "Clear Voice Guide Memory" button on the Ops Console's Brand Voice Contest Review panel, so a client who wipes their own sample writings can also have their approved Voice Guide/Vision Statement memory cleared and start clean — see &sect;09.</td></tr>
+            <tr><td class="mono">2026-09-12</td><td>"Add the AI Brain Transparency Feature. I want to show clients our observations and how it impacts outputs using the Voice module as the first test. It's ok if we observe something and tell clients that it doesn't impact a recommendation. It will also help us value the features we build. Client outputs should be generative and no more than 300 characters." Scoped via clarifying questions: Voice Guide only (not Voice Contest) as the first test surface; a new client-facing panel on the Voice Guide page (not folded into the existing <code>gaps[]</code>/"To improve this draft" panel above, which is a different concept — what's missing vs. what was used); build the ops value-rollup now, not defer it.</td><td>A new, separate OUTPUT/explanation ledger — <code>ai_brain_transparency_items</code> — distinct from the Contribution Ledger (&sect;09/&sect;10 below and the dedicated <code>cxmedia-ai-brain-contribution-ledger-design-2026-08-13.md</code>, which is the INPUT ledger: what the system knows). This one records, per Voice Guide generation, one row per input signal (9 signals: audience &amp; wealth tier, average transaction value, products &amp; services, brand/product keywords, scanned website, Website Brand Profile, most recent Voice Contest winner, Sample Writings, Terms to Avoid) — whether it was on file for the account and whether it actually shaped that specific draft, each paired with a generative, client-facing sentence (Claude-written, hard-capped at 300 characters via <code>clampClientText()</code>, word-boundary safe) honestly explaining either outcome, including "on file but made no real difference." <code>gatherVoiceTransparencySignals(account)</code> collects the raw on-file/excerpt data per signal (reusing the same account fields/rollups <code>brandVoiceCriticalMessagesContext()</code> already reads); <code>generateVoiceTransparencyNotes()</code> makes one real Claude call (<code>submit_voice_transparency</code> tool schema, one entry per signal key) to judge impact and write the sentence; <code>attachVoiceTransparency()</code> wires this into <code>generateVoiceGuideDraftViaAI()</code>'s two real-draft return paths (vendor dispatch and Anthropic fallback — never the no-API-key/error paths, which return <code>transparency: null</code> honestly instead of fabricating observations) and persists the batch via <code>saveVoiceTransparencyBatch()</code>. Two new endpoints: <code>GET /api/accounts/:id/voice-transparency</code> (client-facing, <code>requireAccount</code>-gated, returns the latest batch) and <code>GET /api/ops/ai-brain-transparency-rollup</code> (ops-only, <code>X-Admin-Token</code>-gated, aggregates on-file rate and impact-of-on-file rate per signal across every account — the literal "help us value the features we build" ask: which inputs are widely provided but rarely change the output). Portal: new "What we observed — and what it changed" card on the Voice Guide page (below Version history), populated immediately from a fresh generation's response and reloaded on page entry. Ops Console: new "AI Brain Transparency — Value Rollup" module in the Directory view, alongside Platform Integration Status. Verified live end-to-end against a scratch SQLite DB (not the shared dev DB) — both endpoints' auth gates, the empty-batch honest response, and a seeded on-file/not-on-file pair rendering correctly through the real HTTP routes.</td></tr>
+            <tr><td class="mono">2026-09-12</td><td>Todd: "once added continue to build this feature and others identified above in the most efficient manner" — following straight from the Voice Guide first test's own roadmap item (&sect;13, "Extend AI Brain Transparency beyond the Voice Guide").</td><td>Generalized the Voice Guide-only mechanism into a shared one every surface can use, then wired up Campaign Copy as the second surface. <strong>Generalized:</strong> <code>generateVoiceTransparencyNotes()</code> &rarr; <code>generateTransparencyNotes(account, signals, contentText, signalRegistry, subjectLabel, toolName)</code> (takes any signal registry/subject, not just Voice's 9); <code>saveVoiceTransparencyBatch()</code> &rarr; <code>saveTransparencyBatch(accountId, items, contextType)</code> (contextType now a real parameter, not hardcoded); new <code>attachTransparency(contextType, signalRegistry, gatherFn, subjectLabel, toolName, account, result, getContentText)</code> shared attach/persist wrapper — <code>attachVoiceTransparency()</code> is now a one-line call into it, kept as a thin wrapper so every existing Voice Guide call site is untouched. New <code>AI_BRAIN_TRANSPARENCY_CONTEXT_TYPES</code> const (<code>voice_guide</code>, <code>campaign_copy</code>, <code>voice_contest</code>, <code>pr_corp_comm</code> — the last two listed as documented intent, not yet wired to a real writer) validated on every read endpoint. <strong>Campaign Copy (new):</strong> <code>CAMPAIGN_COPY_TRANSPARENCY_SIGNALS</code> (9 signals matching exactly what <code>generateMessagingCopyViaAI()</code> reads: Brand Voice Guide, Vision/Longform, Sample Writings + website copy examples, decision history, training digest, guardrail/website, Website Brand Profile, competitive positioning, and the per-generation Key Message) + <code>gatherCampaignCopyTransparencySignals()</code>, which reads presence/excerpt straight off each context-builder's own formatted output rather than re-deriving anything, so it can't drift out of sync with what the prompt actually received. Wired into <code>POST /api/campaigns/:id/messaging-ai-draft</code> via <code>attachCampaignCopyTransparency()</code>, same only-on-a-real-draft, never-blocks-the-draft posture as Voice Guide. <strong>Endpoints:</strong> Voice Guide's own <code>GET .../voice-transparency</code> is untouched (still what the Voice Guide page calls); new general <code>GET /api/accounts/:id/ai-brain-transparency?contextType=</code> serves every other surface with the same response shape; <code>GET /api/ops/ai-brain-transparency-rollup</code> now takes <code>?contextType=</code> (defaults to <code>voice_guide</code> for backward compatibility with the Ops Console module that was already calling it bare). <strong>Frontend:</strong> <code>vtRenderTransparency()</code> generalized to take <code>{listId, flagId}</code> (both default to the original Voice Guide element ids); Campaign Copy's AI-draft panel (<code>cmpGenerateAiDraft()</code>) now renders its own transparency block inline, since that panel is rebuilt fresh each generation rather than living in a static card; the Ops Console rollup module got a Surface dropdown (Voice Guide / Campaign Copy / Voice Contest (not built yet) / PR &amp; Corporate Comm (not built yet)). <strong>Verified live</strong> against a scratch SQLite DB: the no-API-key honest-fallback path (no fabricated transparency when there's no real draft to explain), the new endpoint's 400 on a missing/invalid <code>contextType</code>, a seeded <code>campaign_copy</code> batch reading correctly through both the client and ops-rollup routes, and the ops rollup's default-to-<code>voice_guide</code> backward compatibility. Voice Contest and PR/Corporate Comm are next — see &sect;13.</td></tr>
+            <tr><td class="mono">2026-09-12</td><td>Todd: "The contests are a little different. The UI should first allow the user to pick rank participants without our influence and then expose how each models alignment with the brand based on our assessment of the outputs alignment with what we know. It should include all 5 participants."</td><td>Wired Voice Contest up as the third AI Brain Transparency surface — per-candidate, not winner-only, and with a UI sequencing requirement the other two surfaces didn't need. <strong>Backend:</strong> <code>runBrandVoiceContest()</code> now calls <code>gatherVoiceTransparencySignals(account)</code> once per contest run (signal presence is account-level, not draft-specific, so it's reused unchanged from Voice Guide rather than a new registry) and then, in parallel (<code>Promise.all</code>), calls <code>generateTransparencyNotes()</code> once per real candidate (configured, with both a Vision Statement and Longform Example) — all 5 participants get their own observation, not just the recommended one. Each candidate's <code>transparency</code>/<code>transparencyNote</code> is attached to its own object before <code>account_voice_interviews.candidatesJson</code> is written, so it persists automatically on every subsequent read (run, history, rate) with no extra schema or plumbing. <code>generateTransparencyNotes()</code> gained a 7th, optional <code>timeoutMs</code> parameter — Voice Contest passes 25000 (vs. the 90s <code>callClaudeForJSON</code> default) since 5 of these calls run in parallel after candidate generation (which already has a documented 504 history at lower loads — see &sect;02); a slow one now fails gracefully into its own null/note instead of risking the whole request. Each candidate's batch is persisted to <code>ai_brain_transparency_items</code> via <code>saveTransparencyBatch(accountId, items, 'voice_contest')</code>, non-blocking (a persistence failure never blocks the contest result). <code>redactBrandVoiceCandidatesForClient()</code> — the single redaction function shared by all 3 client-facing read paths (run/history/rate) — now passes <code>transparency</code>/<code>transparencyNote</code> through, so one change covers all three call sites. <strong>Frontend — rank first, reveal after:</strong> a purely client-side gate (<code>result.revealed</code>, never sent to/from the server) controls when each card's AI Brain alignment section renders, independent of what data the API already returned (all 5 candidates' transparency is present in every response regardless of rating state). Before every real candidate is rated, each card shows a collapsed "AI Brain alignment — hidden until you've rated every option" placeholder and a disabled "Reveal AI Brain Alignment for all 5 options" button under the grid, with a live count ("Rate every option above (2 of 5 so far)..."); once every real candidate has a rating, the button enables, and clicking it (<code>revealVoiceContestAlignment()</code>) sets <code>revealed = true</code> and re-renders, populating each card's section from its own <code>c.transparency</code> via the existing shared <code>vtRenderTransparency()</code> (generalized during the Campaign Copy round to take a <code>{listId, flagId}</code> pair — Voice Contest is the first surface to actually exercise that generalization with per-card, dynamically-suffixed ids). Once revealed it stays revealed for the rest of that panel's life — re-rating a candidate afterward doesn't hide it again. All 4 places the panel used to set <code>holder.innerHTML</code> directly (initial run, timeout-recovery, rating) now go through one shared <code>rerenderVoiceContestPanel()</code>, so the per-card population is never accidentally skipped on any of them. <strong>Ops Console:</strong> the Surface dropdown's Voice Contest option dropped its stale "(not built yet)" suffix. <strong>Verified live</strong> against a scratch SQLite DB: the no-API-key honest fallback (<code>{"available":false,...}</code>), <code>contextType</code> validation, and a seeded two-candidate <code>voice_contest</code> batch correctly aggregating via the ops rollup endpoint. PR/Corporate Comm remains the one surface still not wired to a real writer — see &sect;13.</td></tr>
+            <tr><td class="mono">2026-09-23</td><td>Live production report: "Couldn't run the copy contest: signal is aborted without reason," then, after a client-timeout bump alone, "we aborted again but it took much longer this time" — plus the direct question, "are we using the same rules as the brand voice contest?"</td><td>No — confirmed the Campaign Copy Interview (<code>runCandidateInterview()</code>) had never been brought to parity with Brand Voice's 2026-08-26/09-15 fixes. It ran its 3 Anthropic angles and its vendor batch as two <em>sequential</em> <code>Promise.all</code> calls (angle-time + vendor-time, not the max of the two), then a third sequential AI-call phase (scoring) after both — worst case could exceed even a 100s client timeout and Vercel's 120s function ceiling with every model behaving normally. Also confirmed, directly: one contestant failing was never taking down the others (each candidate's generation was already isolated in its own try/catch) — the missing piece was purely the lack of a two-pass design to bound total wall-clock. Ported the full pattern from Brand Voice: merged the two <code>Promise.all</code> batches into one, added <code>pending: true</code> marking on first-pass failures, built <code>POST /api/campaigns/:id/copy-interview/:interviewId/retry-pending</code>, and wired the client's automatic second-pass fire-and-re-render (both the shared contest panel and Creative Step 1's per-audience grid). Documented as a standing, required pattern for every future contest surface — see &sect;02.</td></tr>
+            <tr><td class="mono">2026-09-23</td><td>Follow-on screenshot: "⚠ Couldn't run the copy contest: server error — column \"sourceKey\" of relation \"campaign_copy_interviews\" does not exist" — "We have a real error this time."</td><td>Confirmed directly against production via Supabase MCP: a real legacy-casing gap (column created before its camelCase identifier was registered). Fixed via live migration, then proactively audited all 930 production columns against all 421 known identifiers — found 30 drifted columns across 12 tables, including 5 on <code>contest_rankings</code> itself and 5 on <code>content_score_history</code> — see &sect;04 addendum. All fixed via data-preserving renames (all affected tables empty) and registered in <code>LEGACY_CASING_COLUMNS</code>.</td></tr>
+<tr><td class="mono">2026-10-04</td><td>"Can we add an extra workflow step that optimizes the PR draft for SEO/AEO/GEO keyword optimizations that fit naturally?" Placement: after the draft, before approval. Suggest edits, writer accepts each. Keywords from account lists first.</td><td>Built. New "Optimize for search" step on each press release card (Draft, Optimize, Review and approve). Suggestions are tagged SEO, AEO or GEO, show the keyword and why, and nothing changes until accepted. Server-side checks drop any suggestion whose text is not in the draft, that adds a number not in the draft, that uses an Avoid term, or whose SEO keyword is missing. Accepted edits are applied to the working copy; the original stays on the run. Checked against stand-in AI responses; not yet against the live model.</td></tr>
+<tr><td class="mono">2026-10-04</td><td>"I view search keywords as high volume, most relevant keyword queries relevant to the brand profile, product groups and creative focus. The uploader and integration options flow makes sense." Keyword lists live in Train the Brain.</td><td>Built. New Train the Brain item "Search keywords" (Your company group, setup time now 3 minutes). Sources: the account's own lists (read from the older Search Everywhere list and Brand and Product lists, which keep working), CSV upload with automatic column detection for Semrush, Search Console, Keyword Planner and BrightEdge-style exports, and typed entries. Uploads arrive as suggestions to accept and never overwrite team edits; Avoid terms always win; top 500 by volume kept and the rest reported. Volume bands: High 1,000 or more a month, Medium 100 to 999, Low under 100. Search Console and licensed connectors (BrightEdge, Adobe, Semrush) are not built; the screen says so.</td></tr>
+<tr><td class="mono">2026-10-04</td><td>"We also have the same need for the website so we can have PR and Website live on the master Search Everywhere page in Customer Experiences." Reuse the Voice include and exclude page flow. Asked what can be done without a partner (URL structure, 301 and 404 maintenance, titles, meta, alt text, AEO/GEO).</td><td>Built. The Search Optimization page is now Search Everywhere with a Press releases and Website switch. Website: a site check that fetches the pages chosen in Website Examples plus the home page (up to 25 pages) and reports URL structure, redirects (301 and 302, chains, loops), broken internal links, titles, meta descriptions, duplicates, headings, canonical and noindex, alt text, Open Graph, schema, question headings, robots.txt, sitemap.xml, llms.txt, AI crawler blocks and http to https. Plus drafted titles and descriptions per page, and the same suggest-and-accept optimizer for page copy (pasted or fetched). The old monitoring sections stay below, labeled as sample data. Checked against a stand-in site; not yet run on a live site.</td></tr>
+                      <tr><td class="mono">2026-10-04</td><td>"Let's work on PR / Corp Comm overall to make sure that it's wired and then added. I believe that we added the best practices and key information needed from the user" (The News / The Experience / The Details / The Next Step). Choices: guided four-step interview; optional campaign link.</td><td>Audit found the four-part format was in the draft prompt but the user was never asked for the content: only a title and an optional Next Step line were collected, and the brief fields the prompt reads (key facts, context) were never sent, so drafts ran on title, type and audience alone. Built: each press release has a guided four-step brief (The News: what are we announcing; The Experience: why compelling and what only the brand can say; The Details: when, where, who, how it works; The Next Step: why it matters, plus the exact how-to-book wording and mode that already existed, moved into this step). Saved on the release (<code>press_releases.briefJson</code>); the list shows "Brief 2 of 4" and the draft and the contest are built from it, with bracketed placeholders for missing parts instead of invented facts. Corporate communications get a "What are we communicating" key-points field (<code>corporate_comms.context</code>) used the same way. Optional campaign link (<code>campaignId</code> on both): picking a campaign at creation pre-fills the news (key message and type details), the dates and why it matters; "Refill from campaign" fills empty answers later. PR now runs from the dock Contest (pick a release, pitch or communication; the existing PR copy contest runs; drafts are numbered, unscored, read and picked by a person; the pick is saved as the working copy and recorded in the contest rankings). Tested on a scratch database and a headless browser with mock results; the live AI drafts were not run. Not done: editorial pitches still have only outlet and topic; Add my own entry and scoring for PR drafts; the campaign press-release project (a separate fixed template) is unchanged.</td></tr>
+<tr><td class="mono">2026-10-04</td><td>"Reputation Monitoring: we decided that we were going to leverage Perplexity rep monitoring as the basic service with the others are market place options." Weekly sweep Monday early AM, ready by 8:00 AM. "Start with every tier for now." "Yes label." "Is there another free option for us that would increase what Perplexity can do?"</td><td>Built a weekly Reputation sweep: Perplexity web search plus GDELT (free public news index, no account or key) as a second news source. Mentions are saved per account with a source link, channel, sentiment and a Needs Response flag, and replace the illustrative sample on the Reputation page once a sweep has run. A Perplexity mention is kept only if its link is one Perplexity itself returned, so nothing on screen lacks a real source. On-screen label: a sample of the web, not every mention. "Sweep now" button (one per hour). Schedule: Mondays 09:00 UTC (reputation), 10:00 (intelligence refresh), 11:00 (Brain Dump), moved earlier from 13:00 and 14:00 UTC. Brandwatch, Meltwater and Mention stay as marketplace options. Open: GDELT terms of use for commercial use not confirmed; not run against live Perplexity or GDELT (sandbox could not reach GDELT); the curated news scheduled task (13:00 UTC) still needs moving earlier; Reddit official API skipped (commercial use needs approval).</td></tr>
+<tr><td class="mono">2026-10-04</td><td>"Why would we cap vs identifying all opportunities?" "I don't want a never ending page, so we need to determine when added context adds value." "The other read can be the priority list completion or in progress status. There is no reason to recommend something new if client resources can't keep up." "Good, 5 is consistent with campaigns."</td><td>Built: reads must add something new and change a decision; the first read is the progress summary; active limit of 5, with new findings waiting when full and a View all link. Open: date-aware ranking from the Marketing Calendar.</td></tr>
+<tr><td class="mono">2026-10-04</td><td>"Go ahead with the next build phase." Product Groups and Creative Focus Groups from the Marketing Calendar are used for search too; unmatched searches are a finding; the Brain proposes and the writer accepts.</td><td>Built: matching engine, Search by product group table, suggestions with Accept or Not these, assign from a picker, "not in any product group" priority, Excel/CSV/PDF download. Tested on the Atlas searches with sample groups and on dental searches with dental groups. Open: Atlas real group names (test used sample groups); matching words are English-only for now.</td></tr>
+<tr><td class="mono">2026-10-04</td><td>"Move to the next build." Plan slice 4: Brain read component. The model writes the wording from the finding record only; numbers must come from the data; Accept goes to Priorities, Disagree goes to Train the Brain.</td><td>Built and tested against a stubbed model, including a case where wording with an invented number is rejected. Not yet run against the live Anthropic model. Open: who can Disagree (any member today; a non-admin lesson waits for admin approval).</td></tr>
+<tr><td class="mono">2026-10-04</td><td>"Ready for the next build." AI answer visibility, first part: use the Google AI report already uploaded.</td><td>Built: Google AI impressions card (monthly bars, share of web impressions, top pages and countries) with downloads. Impressions only, Google only. Question mining, FAQs and the partner area still need an approved sketch.</td></tr>
+<tr><td class="mono">2026-10-04</td><td>Questions and FAQ sketch approved: "1. Team member can review site question and approve / edit / draft 2. Facts can live in train the brain with brand, product group and/or creative focus 3. All Approved individually 4. Yes 5. Build it."</td><td>Built: Questions people ask, Approved FAQs, and a Facts module in Train the Brain. Copy-out only, no site publishing. Answers come only from client-approved facts, with checks on every draft. Tested with a stub model; a live-model run is still to do.</td></tr>
+<tr><td class="mono">2026-10-04</td><td>"Ready for the next build." Chosen from four options: date-aware ranking from the Marketing Calendar.</td><td>Built: in-market dates per group, "Get search ready" priorities with suggested due dates, time-bound items sorted first, In market column and tags. Rules and thresholds are settings. Same-period seasonality from last year is not used yet.</td></tr>
+<tr><td class="mono">2026-10-05</td><td>Brand profile checks sketch approved: "1. Top 10 pages by default with option to expand 2. Yes 3. Any for now until we have roles 4. No, a change report should be generated 5. Yes"</td><td>Built: Brand checks card, fact change log and FAQ change report, team-added watch words, mark fixed, add to priorities, downloads. Revisit who can mark fixed when roles exist.</td></tr>
+<tr><td class="mono">2026-10-05</td><td>"Ready for the next build." Chosen from four options: slide and image export.</td><td>Built: Slide (.pptx) and Image (.png) in the share menu of every card using the shared download. Tables only, no charts yet. The earlier open question (all cards or only search) is answered by building it for all.</td></tr>
+<tr><td class="mono">2026-10-05</td><td>"Is the AI Brain and Voice able to read the data when uploaded?" Found it was not. Todd: "We do need overall AOV search demand (brand) even when a product group is not identified. Go ahead and build it."</td><td>Built: Search Everywhere context for Ask Verilume and voice, leading with overall and brand demand, then groups, priorities and checks. The Search Console catalog entries now describe what is wired.</td></tr>
+<tr><td class="mono">2026-10-05</td><td>"We need to develop a user training guide for this module. Send as a PDF and attach to product docs."</td><td>Built: Search Everywhere client training PDF (10 pages, nine sessions: why, what you need, setup, reading the page, priorities, questions and FAQs, brand checks, sharing and the Monday routine, troubleshooting). Linked from the Product Docs home under Client Training Guides and from the Licensed Integrations doc. Written against the build as of this date; update it when the automatic pull or the partner area ships.</td></tr>
+<tr><td class="mono">2026-10-05</td><td>"Can we incorporate some screen shots of the Search Everywhere product into the training guide. Partial views illustrating the relevant portal page would be helpful? We should also be adding Speech bubbles and AI Thoughts integrations based on the training guide."</td><td>Built: training PDF now 13 pages with partial screenshots of the live page (upload, brand names, cards, product groups, priorities, questions, approved FAQs, brand checks, the hover bubble and the drawer) and a new session on AI Thoughts. Seven AI Thought bubbles (topics AG to AM) added to the page, with text taken from the guide. Screenshots come from a sample account; replace them when the page layout changes.</td></tr>
+<tr><td class="mono">2026-10-05</td><td>"Are we limiting what we are actually doing by using Google in the title to represent a Search Everywhere program designed to build share on Reddit and LLM model results?" Then: "Go ahead and update. Add a Search Everywhere type image to the cover to incorporate the total vision."</td><td>Training guide repositioned: cover headline now "Know Where You Show Up Everywhere. Act On It." with a diagram (Google search connected today; AI answers and communities planned, drawn dashed), Session 1 states what runs today versus planned, and a new Session 11 "Where Search Everywhere is going" lists sources with status. Planned sources are labelled not built and not measured. Version 1.1, 14 pages. Open: provider choice for AI answer visibility and community share (licensed or official API only).</td></tr>
+<tr><td class="mono">2026-10-05</td><td>"Go forward with" the PR and Search Everywhere hand-offs (chosen from the sketch Todd approved earlier).</td><td>Built Draft a Release (priorities and questions), the search status strip on Distributed releases, and the Content updates card. Chart date markers were added the same day, after close-out. Search Everywhere guide v1.3 and PR guide v1.2 updated.</td></tr>
+<tr><td class="mono">2026-10-05</td><td>"I don't want to build the review option now. Focus is just creating a schema knowledge library for the team to access as needed." Choices: in the portal under Search Everywhere; each entry with what it is and when to use it, required and recommended fields, a copy-ready example, and Google eligibility notes; first version covers content pages.</td><td>Built: Schema library card on the Search Everywhere page for Article, BlogPosting, NewsArticle, FAQPage, HowTo and VideoObject, with a Copy button and a dated source note on each. Google's documentation says FAQ rich results are no longer shown, which corrects earlier guidance: the Site check finding for missing FAQPage markup now says it is optional, the sample coverage note no longer calls FAQPage a citation lever, and the training guide notes FAQ markup is optional. Review and testimonial markup, the brand review platform and schema generation were set aside for now.</td></tr>
+<tr><td class="mono">2026-10-05</td><td>"AI-answer and community citation tracking. Not built. Go ahead." Choices: official AI APIs; skip community for now; show results in the release strip, a Search Everywhere card and the Questions list.</td><td>Built the AI answers card, the Questions column and the release-strip tile (Perplexity and OpenAI web search, official APIs only). Community stays planned. Not yet run against live keys.</td></tr>
+<tr><td class="mono">2026-10-04</td><td>"Good, we can start the Search Everywhere build." Approved sketch: four executive cards, Top 5 priorities, slide-style charts, top 5 non-brand, health check; client-agnostic (about 100 clients, five industries), organic only; brand list confirmed by the team; reads two lines with See more.</td><td>Built: Search Console upload, brand-name confirmation, priorities with Manage, cards, charts and share downloads. Tested on the Atlas files and a synthetic dental account. Open: cap of three reads, who confirms brand names, cross-client benchmarks.</td></tr>
+<tr><td class="mono">2026-10-04</td><td>"We need to make sure that we're bringing in chips with titles and links as needed into the Customer Experiences dashboard." (the Reputation and the brand space card)</td><td>The card, which was a placeholder sentence, now shows linked chips: up to six mentions from the latest Reputation sweep (channel, source, date, sentiment or Needs response, each linking to its source page) and three market and industry reads linking to the publisher. Before a first sweep it says so and points to Reputation Monitoring. Refreshes after a sweep. New entrants and ad formats still have no feed; the card no longer promises them.</td></tr>
+<tr><td class="mono">2026-10-04</td><td>"Are the statements true that nothing is available for the 5 competitors, or is it missing a build?" (Strategy card "The field this week")</td><td>Missing build. The card only read the Brain's weekly "worth watching" notes and ignored the sourced competitor news from the weekly sweep. It now shows linked competitor news first, then the watch notes. Both need a Monday run after deploy to fill. Page scripts checked; not viewed in a browser.</td></tr>
+<tr><td class="mono">2026-10-15</td><td>"We have never successfully found anything to post in this section each Monday." Found with Todd: the weekly cron had never reached the backend, and once it did, five of six lanes were rate limited.</td><td>Three causes, in order. (1) The site password gate (middleware.js) answered every scheduled call with a 401 before it reached the API, so none of the five Monday jobs (news feed, reputation sweep, intelligence refresh, Brain Dump, Snowflake sync) had ever run; the five /api/cron paths are now exempt from the gate and still require CRON_SECRET. (2) Vercel forwards /api/* to Railway, so CRON_SECRET must be set to the same value on both Vercel and Railway. (3) First live run: the travel lane saved 6 current items (Oct 1 to Oct 15); the other five lanes failed with Perplexity HTTP 429 because all six searches fired at once. The feed now runs one lane at a time with a pause and retries a 429 up to three times. Verified in the live database: runs and items now write. Open: the freshness filter and link check are unchanged and may still leave a lane thin; all accounts have no paid tier, so the per-account competitor lane and Brain Dump posting skip every account until a tier is set or the rule changes; the empty message "Nothing new in the last 14 days" still shows when a feed has never run.</td></tr>
+<tr><td class="mono">2026-10-04</td><td>"The Brain Dump is showing articles from 2025 which is not relevant." "I like the fixes." Use broad industry groups, not the exact NAICS code: Travel, Auto, Finance, Retail, "HC works." Files to Todd for upload.</td><td>Replaced the hand-picked curated news with a weekly feed. Lanes: your brand (from the Reputation sweep), competitors (GDELT, per account), your industry group (Travel &amp; hospitality, Automotive, Financial services, Retail &amp; e-commerce, Healthcare, mapped from the account's industry), and AI and marketing for everyone. The two Perplexity lanes are shared across accounts (six calls a week in total). An item is kept only if its link is one Perplexity returned and it was published in the last 14 days; nothing older is ever shown, and a lane with nothing recent says so. The old hand-picked items are hidden because none is current. Brain Dump: the edition freezes one item per lane into "From outside", and the Customer Experiences section gains a reputation sentiment line and link. Daily Brief news list: Hide button and Refresh news. Schedule, Mondays UTC: news feed 08:00, reputation sweep 09:00, intelligence refresh 10:00, Brain Dump 11:00. Open: the weekly curated news scheduled task (13:00 UTC) is now redundant and should be paused; not run against live Perplexity or GDELT; industry mapping is by keyword on the industry name, and accounts that match none see only the AI and marketing lane.</td></tr>
+</tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="roadmap">
+      <h2><span>Suggested next steps</span><span class="num">&sect; 13</span></h2>
+      <ol>
+        <li><strong>Build a simple win-rate dashboard</strong> on top of <code>GET /api/ops/contest-rankings</code> — the data exists, no UI reads it yet.</li>
+        <li><strong>Add a dispatch consumer for Creative Job</strong> vendor preference, if a single-draft generation path is ever built (Voice Contest's own gap here closed 2026-09-12 — see &sect;12).</li>
+        <li><strong>Add monitoring on vendor-model 404s</strong> so a deprecated model (like the Gemini retirement this cycle) is caught proactively instead of by reading an error body during unrelated work.</li>
+        <li><strong>Revisit whether win-rate data should ever drive an automated action</strong> (e.g. auto-promoting a vendor) once enough contest runs have accumulated to make that meaningful.</li>
+        <li><strong>Document the remaining Products</strong> in this same format — see the home page for what's still open.</li>
+        <li><strong>Extend AI Brain Transparency to PR/Corporate Comm</strong> — the last remaining surface. The mechanism is now fully generalized and Voice Contest's round proved out the per-candidate pattern (see &sect;12's 2026-09-12 Voice Contest entry), so this is a signal registry + a gather function + one <code>attachTransparency()</code> (or a direct <code>generateTransparencyNotes()</code>/<code>saveTransparencyBatch()</code> call, if PR ever needs per-item control like Voice Contest did) at <code>draftPrCorpCommCopyViaAI()</code>'s return point, not new plumbing. Not yet started, and not explicitly requested for this round — confirm scope with Todd before starting, per the pattern this engagement has followed of one surface at a time.</li>
+      </ol>
+    </section>
+
+    <div class="foot">
+      Verilume — Internal Product Documentation. Reflects the state of
+      <code>backend/server.js</code> as verified on 2026-09-23 (Campaign Copy
+      Interview brought to two-pass pending/retry parity with Brand Voice;
+      that pattern is now documented in &sect;02 as required for every
+      contest surface), and re-verified the same day against a direct
+      Supabase production audit that found and fixed legacy-casing drift on
+      <code>contest_rankings</code> and <code>content_score_history</code>
+      (see &sect;04 addendum). Update this
+      document as the Product changes — it's meant to be the living reference,
+      not a point-in-time snapshot.
+    </div>
+
+  </main>
+</div>
