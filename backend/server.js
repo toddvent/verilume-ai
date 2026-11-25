@@ -8376,6 +8376,16 @@ createTableIfNeeded(`
     FOREIGN KEY (accountId) REFERENCES accounts(accountId)
   );
 `);
+// 2026-11-25 — who asked: the log page in the Ops Console shows date, client,
+// the person (profile) who requested, their role, and what was requested.
+ensureColumn('partner_capability_requests', 'requesterMemberId', 'TEXT');
+ensureColumn('partner_capability_requests', 'requesterName', 'TEXT');
+ensureColumn('partner_capability_requests', 'requesterRole', 'TEXT');
+ensureColumn('partner_capability_requests', 'requesterEmail', 'TEXT');
+ensureColumn('partner_capability_requests', 'timeline', 'TEXT');
+// 2026-11-25 — partner IDs (Meta ad account, Google Ads customer, The Trade Desk advertiser)
+// entered inside Train the Brain; one JSON text column keeps the schema small.
+ensureColumn('accounts', 'analyticsPartnerIdsJson', 'TEXT');
 // Same three account-wide capabilities measurement-coverage already tracks
 // as booleans (mmm/dmaMatchMarket/neuroscience) — illustrative partner
 // categories pulled from the measurement-alignment memo, explicitly framed
@@ -16840,6 +16850,7 @@ const LEGACY_CASING_COLUMNS = [
   ['accounts', 'analyticsFallbackNotes'],
   ['accounts', 'analyticsGa4AccountId'],
   ['accounts', 'analyticsGa4PropertyId'],
+  ['accounts', 'analyticsPartnerIdsJson'],
   ['accounts', 'analyticsPathway'],
   ['accounts', 'analyticsRequestedAt'],
   ['accounts', 'analyticsSnowflakeAccountId'],
@@ -39594,6 +39605,13 @@ Submit your response via the campaign_intake_turn tool.`;
         // convention as the Snowflake fields above.
         analyticsGa4AccountId: body.analyticsGa4AccountId !== undefined ? body.analyticsGa4AccountId : existing.analyticsGa4AccountId,
         analyticsGa4PropertyId: body.analyticsGa4PropertyId !== undefined ? body.analyticsGa4PropertyId : existing.analyticsGa4PropertyId,
+        analyticsPartnerIdsJson: body.analyticsPartnerIds !== undefined
+          ? JSON.stringify({
+              metaAdAccountId: String((body.analyticsPartnerIds || {}).metaAdAccountId || '').trim().slice(0, 60),
+              googleAdsCustomerId: String((body.analyticsPartnerIds || {}).googleAdsCustomerId || '').trim().slice(0, 60),
+              tradeDeskAdvertiserId: String((body.analyticsPartnerIds || {}).tradeDeskAdvertiserId || '').trim().slice(0, 60)
+            })
+          : existing.analyticsPartnerIdsJson,
         analyticsStatus: existing.analyticsStatus || 'not_started',
         analyticsRequestedAt: existing.analyticsRequestedAt
       };
@@ -39608,10 +39626,10 @@ Submit your response via the campaign_intake_turn tool.`;
       }
       db.prepare(`UPDATE accounts SET analyticsPathway = ?, analyticsSnowflakeAccountId = ?, analyticsSnowflakeShareName = ?,
         analyticsSnowflakeContact = ?, analyticsFallbackNotes = ?, analyticsGa4AccountId = ?, analyticsGa4PropertyId = ?,
-        analyticsStatus = ?, analyticsRequestedAt = ? WHERE accountId = ?`)
+        analyticsStatus = ?, analyticsRequestedAt = ?, analyticsPartnerIdsJson = ? WHERE accountId = ?`)
         .run(merged.analyticsPathway, merged.analyticsSnowflakeAccountId, merged.analyticsSnowflakeShareName,
           merged.analyticsSnowflakeContact, merged.analyticsFallbackNotes, merged.analyticsGa4AccountId, merged.analyticsGa4PropertyId,
-          merged.analyticsStatus, merged.analyticsRequestedAt, accountId);
+          merged.analyticsStatus, merged.analyticsRequestedAt, merged.analyticsPartnerIdsJson, accountId);
       return sendJson(res, 200, merged);
     }
 
@@ -47039,6 +47057,17 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       return sendJson(res, 200, { override, minViableSpendCalibrationEnabled: !!refreshed.minViableSpendCalibrationEnabled });
     }
 
+    // GET /api/ops/partner-capability-requests — staff-only log of every partner capability request
+    // across all accounts: date, client, who asked, their role, and what was asked.
+    if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'partner-capability-requests'){
+      if (!adminTokenOk(req)){
+        return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
+      }
+      const rows = db.prepare(`SELECT r.id, r.createdAt, r.accountId, a.company AS clientName, r.requesterMemberId, r.requesterName, r.requesterRole, r.requesterEmail,
+          r.capability, r.note, r.timeline, r.status FROM partner_capability_requests r LEFT JOIN accounts a ON a.accountId = r.accountId ORDER BY r.createdAt DESC LIMIT 500`).all();
+      return sendJson(res, 200, { requests: rows.map(r => ({ ...r, capabilityLabel: (PARTNER_CAPABILITY_INFO[r.capability] || {}).label || r.capability })) });
+    }
+
     // GET /api/accounts/:id/partner-capability-requests — buildout item #5.
     // Every request on file for this account, most recent first, plus the
     // illustrative-partner info block per capability and this account's
@@ -47074,9 +47103,25 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       }
       const id = generateId('PCR');
       const now = new Date().toISOString();
-      db.prepare('INSERT INTO partner_capability_requests (id, accountId, capability, note, status, createdAt) VALUES (?,?,?,?,?,?)')
-        .run(id, accountId, body.capability, (body.note || '').trim() || null, 'requested', now);
-      return sendJson(res, 201, { id, accountId, capability: body.capability, note: body.note || null, status: 'requested', createdAt: now });
+      // Who is asking: read from the signed-in session, never from the request body.
+      let who = { id: null, name: null, role: null, email: null };
+      try {
+        const sess = authenticate(req);
+        if (sess && sess.memberId){
+          const m = db.prepare('SELECT id, name, email, level, functionGroup, isAdmin FROM team_members WHERE id = ?').get(sess.memberId);
+          if (m) who = { id: m.id, name: m.name || null, email: m.email || null,
+            role: [m.level, m.functionGroup].filter(Boolean).join(' · ') + (m.isAdmin ? (m.level || m.functionGroup ? ' (Admin)' : 'Admin') : '') || null };
+        }
+      } catch (e){ console.warn('[partner-capability-requests] requester lookup failed:', e.message); }
+      const clip = (v, n) => (String(v || '').trim().slice(0, n)) || null;
+      try {
+        db.prepare('INSERT INTO partner_capability_requests (id, accountId, capability, note, status, createdAt, requesterMemberId, requesterName, requesterRole, requesterEmail, timeline) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+          .run(id, accountId, body.capability, clip(body.note, 2000), 'requested', now, who.id, who.name, who.role, who.email, clip(body.timeline, 120));
+      } catch (e){
+        console.error('[POST partner-capability-requests] insert failed:', e.message);
+        return sendJson(res, 500, { error: 'Could not save the request: ' + e.message });
+      }
+      return sendJson(res, 201, { id, accountId, capability: body.capability, note: clip(body.note, 2000), status: 'requested', createdAt: now, requesterName: who.name, requesterRole: who.role });
     }
 
     // GET /api/accounts/:id/mmm-category-mapping — the partner-facing bucket
