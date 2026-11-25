@@ -1,0 +1,55 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign-in and account creation paths</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@600&display=swap"><style>
+:root{--navy:#1E2761;--amber:#D08A3E;--ink:#1c2233;--mute:#5d6578;--line:#e3e6ee;--bg:#fff;--soft:#f5f6fa;--cream:#F4F2EC;--ok:#1d7a4e;--warn:#9a5b00;--bad:#a8261d}
+*{box-sizing:border-box}body{margin:0;font:15px/1.6 Inter,system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+.wrap{max-width:900px;margin:0 auto;padding:32px 28px 64px}
+h1,h2,h3{font-family:Poppins,Inter,system-ui,sans-serif;color:var(--navy);line-height:1.25;text-wrap:balance}
+h1{font-size:30px;margin:6px 0 8px}h2{font-size:21px;margin:38px 0 10px;padding-top:6px}h3{font-size:16px;margin:24px 0 6px}
+.eyebrow{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--amber);font-weight:600}
+.meta{color:var(--mute);font-size:13px;margin-bottom:18px}
+.lede{font-size:17px;color:#333a50}
+p{margin:8px 0}ul,ol{padding-left:22px}li{margin:4px 0}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px}
+th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+th{background:var(--soft);color:var(--navy);font-weight:600}
+.scroll{overflow-x:auto}
+code{font:12.5px ui-monospace,Menlo,Consolas,monospace;background:var(--soft);padding:1px 5px;border-radius:5px}
+.pill{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:99px;background:var(--soft);color:var(--navy);white-space:nowrap}
+.pill.ok{background:#e4f4ec;color:var(--ok)}.pill.warn{background:#fdf0dc;color:var(--warn)}.pill.bad{background:#fbe6e4;color:var(--bad)}
+.callout{background:var(--cream);border-radius:14px;padding:14px 18px;margin:16px 0}
+.callout.warn{background:#fdf0dc}
+.toc{background:var(--soft);border-radius:14px;padding:12px 20px;margin:18px 0}.toc a{color:var(--navy);text-decoration:none}.toc li{margin:2px 0}
+.steps{counter-reset:s;list-style:none;padding:0}.steps li{counter-increment:s;position:relative;padding:8px 12px 8px 44px;margin:6px 0;background:var(--soft);border-radius:12px}
+.steps li:before{content:counter(s);position:absolute;left:12px;top:8px;width:22px;height:22px;border-radius:50%;background:var(--navy);color:#fff;font-size:12px;font-weight:600;text-align:center;line-height:22px}
+.fork{margin:6px 0 6px 20px;padding-left:14px;border-left:3px solid var(--amber)}
+pre{background:#1b1f2e;color:#e8eaf2;padding:12px 14px;border-radius:12px;overflow-x:auto;font:12.5px/1.5 ui-monospace,Menlo,Consolas,monospace}
+@media(max-width:600px){.wrap{padding:20px 14px 48px}h1{font-size:25px}}
+@media print{.toc{display:none}.wrap{padding:0}}
+@media(prefers-color-scheme:dark){:root{--ink:#e6e8f0;--mute:#9aa2b8;--line:#2d3350;--bg:#12162a;--soft:#1b2040;--cream:#222848;--navy:#aab4ff}}
+</style></head><body><div class="wrap"><div class="eyebrow">Product</div><h1>Sign-in and account creation paths</h1><div class="meta">Snapshot 2026-08-19, updated against the code 2026-11-25</div><p class="lede">The five ways a person gets into Verilume, step by step. The original flow charts and code excerpts were captured on 2026-08-19; each section here adds what has changed since, checked against the code on 2026-11-25.</p>
+<div class="callout"><strong>Source:</strong> "Verilume: the 5 auth paths, flow chart vs. code" (PDF, snapshot 2026-08-19). The charts are rewritten as steps below, and the line numbers in that PDF have moved. Use function names to find the code.</div>
+<h2>1. Direct path: home page to log in (existing account) <span class="pill ok">Fixed 08-19</span></h2>
+<p>Before the fix there was no Log in link on the marketing site, and a successful login kept using whatever account id happened to be in the page address instead of the account the login belonged to.</p>
+<ol class="steps"><li>Visitor clicks <strong>Log in</strong> in the site navigation (index.html links to account.html).</li><li>account.html opens with no account id and asks the server for the account. The server answers <strong>401 unauthorized</strong>, so the login box appears.</li><li>Visitor submits email and password to <code>POST /api/auth/login-user</code>.</li><li>Inactive user: <strong>403 account deactivated</strong>. Wrong credentials: the box stays open with an error.</li><li>Success: if the server says <code>mustChangePassword</code>, the forced password-change screen runs (<code>POST /api/auth/change-password</code>).</li><li>The page compares the returned account id with the one in the address. If different, it saves the session for the returned account and reloads <code>account.html?accountId=...</code> (the 08-19 fix). If the same, the account loads signed in.</li></ol>
+<p><strong>The server rule behind it:</strong> <code>requireAccount(req,res,accountId)</code> reads the session token and returns <strong>401</strong> unless the token's account equals the account being requested.</p>
+<h3>Changed since 08-19</h3>
+<ul><li>A second step was added (2026-08-20): after the password, a 6-digit code is sent by email (or text if the person turned it on) through <code>/api/auth/request-login-mfa</code> and <code>/api/auth/verify-login-code</code>. A device can be trusted for 30 days.</li><li>Lockout (2026-11-21, r91): 10 failures for one name or 40 from one network inside 15 minutes pauses sign-in.</li></ul>
+<h2>2. Create a new account with no assessment <span class="pill ok">Worked before 08-19</span></h2>
+<p>Someone arrives at onboarding.html cold and creates a real account and a real admin login.</p>
+<ol class="steps"><li>Intro: company name, admin name and admin email.</li><li>Optional: sign the NDA (kept for the session only).</li><li><code>runProvisioning()</code> calls <code>POST /api/accounts</code> with blank industry and description.</li><li>Then <code>POST /api/auth/register-admin</code> creates the admin member with a <strong>temporary password</strong> and <code>mustChangePassword</code> set.</li><li>Acceptance rows are written to <code>legal_acceptances</code> (document, version, name, email, IP, browser).</li><li>The temporary password is shown once. "Manage your account" opens account.html.</li></ol>
+<h2>3. Complete the assessment, then create an account to save <span class="pill ok">Fixed 08-19</span></h2>
+<p>Three bugs were fixed here: the Save button was a stub that never called the backend, the Portal-activation button bypassed registration through the old access-code path, and onboarding links dropped the assessment data.</p>
+<ol class="steps"><li>On any assessment step the visitor clicks <strong>Save &amp; schedule</strong>, or on the report step clicks <strong>Activate in Portal</strong>. Both open the same Save modal asking name and email.</li><li><code>submitSaveAccountModal()</code> calls <code>POST /api/accounts</code> with the full assessment payload, then <code>POST /api/auth/register-admin</code>.</li><li>The session token is saved for that account and the temporary password is shown in the page.</li><li>From <em>Save</em> the visitor stays on the assessment. From <em>Activate in Portal</em> the portal opens signed in.</li><li>Alternatively the report's paid-program links open onboarding.html with the assessment data carried in the address (<code>handoff=</code>, base64). onboarding.html reads it, pre-fills company, name and email, and continues as path 2.</li></ol>
+<div class="callout warn"><strong>Privacy note:</strong> the assessment hand-off carries answers in the web address. Addresses end up in browser history and logs. Replacing it with a short server-held token is worth doing.</div>
+<h2>4. Select a paid account level, then create the account <span class="pill warn">Gap on 08-19</span></h2>
+<p>On 08-19 there was no package or tier selector anywhere. "Choosing a paid level" and "creating an account" were the same path as 2 and 3, and no choice was recorded; the paid-inclusions grid on the report page was marketing copy only.</p>
+<h3>Changed since 08-19</h3>
+<ul><li>Account level is now set by the Verilume team in the Team Console. The level route requires an IO reference above the free trial, and records the change in <code>level_activations</code> with who made it. See the staff guide.</li><li>Accounts carry <code>paidTier</code>, <code>paidTierActivatedAt</code>, <code>trialpath</code> and Terms acceptance fields.</li><li>I found no visitor-facing level selector in the code; a visitor still cannot choose a level themselves. Confirm if one was built elsewhere.</li></ul>
+<h2>5. Team member invite <span class="pill ok">Gap on 08-19, since built</span></h2>
+<p>On 08-19 <code>POST /api/accounts/:id/team</code> created a roster row without any password fields, so an invited person could not sign in. This was recorded as deliberate sequencing (single admin or CMO first).</p>
+<h3>Changed since 08-19</h3>
+<ul><li>Invites now exist: invite email, a set-password link valid 7 days (<code>/api/auth/invite-info</code> shows first names only; <code>/api/auth/reset-password</code> completes it), and tracking on the member row (<code>invitesentat</code>, <code>invitestatus</code>, <code>inviteerror</code>, <code>invitevia</code>).</li><li>An admin can now deactivate a team member; so can Verilume staff from the console.</li></ul>
+<h2>Verilume team sign-in (not in the original document)</h2>
+<ol class="steps"><li>Open <code>/platform</code>. Email and password.</li><li>Choose email or text for the 6-digit code. Text uses Twilio Verify, the same service as the client portal.</li><li>Session lasts 12 hours. View-as into a client lasts 4 hours.</li></ol>
+<h2>Open points</h2>
+<ul><li>Move the assessment hand-off out of the web address.</li><li>Confirm whether visitors can pick a level without staff.</li><li>Add text to password reset.</li><li>The original PDF is in the Training and Product files section of this library for the code excerpts.</li></ul>
+</div></body></html>

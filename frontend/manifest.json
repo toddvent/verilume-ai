@@ -1,0 +1,100 @@
+[
+ {
+  "id": "database-architecture",
+  "type": "html",
+  "title": "Database architecture",
+  "category": "Database",
+  "summary": "Every table by area, where sensitive data sits, how it is protected, and what is kept for how long.",
+  "audience": "Staff",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "security-overview",
+  "type": "html",
+  "title": "Security overview: how we protect client data",
+  "category": "Security",
+  "summary": "How sign-in, separation, logging, vendors and open items stand today, with what can and cannot be said to clients.",
+  "audience": "Staff",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "team-console-guide",
+  "type": "html",
+  "title": "Team Console staff guide",
+  "category": "Training",
+  "summary": "How Verilume staff sign in, work in client workspaces, change levels, record agreements and invoices, and manage the team.",
+  "audience": "Staff",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "auth-paths",
+  "type": "html",
+  "title": "Sign-in and account creation paths",
+  "category": "Product",
+  "summary": "The five ways a person gets into Verilume, step by step, with what has changed since the 2026-08-19 snapshot.",
+  "audience": "Staff",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "team-console-product",
+  "type": "html",
+  "title": "Team Console",
+  "category": "Product",
+  "summary": "What the Team Console does today, its Decision Log, deploy notes and known limits.",
+  "audience": "Staff",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "verilume-auth-paths-with-code.pdf",
+  "type": "file",
+  "title": "Sign-in paths: flow chart vs. code (PDF, 2026-08-19)",
+  "category": "Product",
+  "summary": "Original snapshot with flow charts and code excerpts. The updated version is \"Sign-in and account creation paths\".",
+  "audience": "Staff",
+  "updated": "2026-11-25",
+  "file": "verilume-auth-paths-with-code.pdf",
+  "mime": "application/pdf"
+ },
+ {
+  "id": "Verilume-Analytics-Training-Guide.docx",
+  "type": "file",
+  "title": "Analytics training guide",
+  "category": "Training",
+  "summary": "Client and team training on the analytics features.",
+  "audience": "Staff and clients",
+  "updated": "2026-11-25",
+  "file": "Verilume-Analytics-Training-Guide.docx",
+  "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+ },
+ {
+  "id": "Verilume-Analytics-Integration-Setup-Atlas-v2.docx",
+  "type": "file",
+  "title": "Analytics integration setup guide (Atlas)",
+  "category": "Training",
+  "summary": "Step-by-step setup for connecting analytics.",
+  "audience": "Staff and clients",
+  "updated": "2026-11-25",
+  "file": "Verilume-Analytics-Integration-Setup-Atlas-v2.docx",
+  "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+ },
+ {
+  "id": "Verilume-Legal-Review-Brief.pdf",
+  "type": "file",
+  "title": "Legal review brief: Terms and Privacy",
+  "category": "Security",
+  "summary": "Brief for counsel on the Terms of Service and Privacy Policy placeholders.",
+  "audience": "Staff",
+  "updated": "2026-11-25",
+  "file": "Verilume-Legal-Review-Brief.pdf",
+  "mime": "application/pdf"
+ },
+ {
+  "id": "library-map",
+  "type": "html",
+  "title": "Library map: what exists and what is missing",
+  "category": "Start here",
+  "summary": "What is in the library, what lives elsewhere, and the gaps in product, training, security and database documentation.",
+  "audience": "Staff",
+  "updated": "2026-11-25"
+ }
+]
