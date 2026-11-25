@@ -33837,12 +33837,13 @@ async function handleRequestInner(req, res) {
         insertCode(verificationId, user.id, emailNorm, purpose, sent ? 'postmark' : 'interim', x.hash, x.salt);
         return sent ? { verificationId } : { verificationId, interimCode: code };
       };
-      const checkCode = (row, code, purpose) => {
+      const checkCode = async (row, code, purpose) => {
         if (!row || row.purpose !== purpose) return { status: 404, error: 'verification not found or already used' };
         if (row.verified) return { status: 409, error: 'this code was already used' };
         if (new Date(row.expiresAt).getTime() < Date.now()) return { status: 410, error: 'this code has expired — request a new one' };
         if (row.attempts >= 5) return { status: 429, error: 'too many incorrect attempts — request a new code' };
-        if (!verifyAccessCode(String(code || ''), row.codeHash, row.codeSalt)){
+        const codeOk = (row.provider === 'twilio-verify') ? await checkVerificationCode(row.phone, String(code || '')) : verifyAccessCode(String(code || ''), row.codeHash, row.codeSalt);
+        if (!codeOk){
           db.prepare('UPDATE phone_verifications SET attempts = attempts + 1 WHERE id = ?').run(row.id);
           return { status: 401, error: 'incorrect code' };
         }
@@ -33853,6 +33854,16 @@ async function handleRequestInner(req, res) {
       // Sends a 6-digit code by text message. Stores the same kind of row as the email path, with channel 'sms'.
       const issueSmsCode = async (user, phone, purpose) => {
         const verificationId = generateId('VERIFY');
+        // Same Twilio Verify service the portal already uses: no extra key. Twilio holds the code, so only a placeholder hash is stored.
+        // Falls back to a plain text (messaging service or from-number) only when Verify is not configured.
+        if (TWILIO_CONFIGURED){
+          try { await sendVerificationCode(phone); }
+          catch (e){ return { failed: true, reason: 'Could not send a text right now. Try the email code.' }; }
+          const d = hashAccessCode(crypto.randomBytes(16).toString('hex'));
+          db.prepare(`INSERT INTO phone_verifications (id, memberId, phone, purpose, codeHash, codeSalt, provider, channel, createdAt, expiresAt) VALUES (?,?,?,?,?,?,?,?,?,?)`)
+            .run(verificationId, user.id, phone, purpose, d.hash, d.salt, 'twilio-verify', 'sms', nowIso(), tenMin());
+          return { verificationId };
+        }
         const code = String(crypto.randomInt(100000, 999999));
         const x = hashAccessCode(code);
         const sent = await sendSmsMessage(phone, `Your Verilume team code is ${code}. It expires in 10 minutes. If you did not ask for it, ignore this message.`);
@@ -33890,7 +33901,7 @@ async function handleRequestInner(req, res) {
         const body = await readBody(req);
         if (!body.verificationId || !body.code) return sendJson(res, 400, { error: 'verificationId and code are required' });
         const row = db.prepare('SELECT * FROM phone_verifications WHERE id = ?').get(body.verificationId);
-        const c = checkCode(row, body.code, 'platform-login');
+        const c = await checkCode(row, body.code, 'platform-login');
         if (!c.ok) return sendJson(res, c.status, { error: c.error });
         const user = db.prepare('SELECT * FROM platform_users WHERE id = ?').get(row.memberId);
         if (!user || user.status !== 'active') return sendJson(res, 403, { error: 'this Verilume team access has been turned off' });
@@ -33919,7 +33930,7 @@ async function handleRequestInner(req, res) {
         const body = await readBody(req);
         if (!body.verificationId || !body.code || !body.newPassword || String(body.newPassword).length < 12) return sendJson(res, 400, { error: 'verificationId, code and a password of 12 or more characters are required' });
         const row = db.prepare('SELECT * FROM phone_verifications WHERE id = ?').get(body.verificationId);
-        const c = checkCode(row, body.code, 'platform-reset');
+        const c = await checkCode(row, body.code, 'platform-reset');
         if (!c.ok) return sendJson(res, c.status, { error: c.error });
         const hp = hashAccessCode(String(body.newPassword));
         db.prepare('UPDATE platform_users SET passwordHash = ?, passwordSalt = ? WHERE id = ?').run(hp.hash, hp.salt, row.memberId);
@@ -33991,7 +34002,7 @@ async function handleRequestInner(req, res) {
         const body = await readBody(req);
         const row = db.prepare('SELECT * FROM phone_verifications WHERE id = ?').get(String(body.verificationId || ''));
         if (!row || row.memberId !== me.id) return sendJson(res, 404, { error: 'verification not found or already used' });
-        const c = checkCode(row, body.code, 'platform-mobile');
+        const c = await checkCode(row, body.code, 'platform-mobile');
         if (!c.ok) return sendJson(res, c.status, { error: c.error });
         db.prepare('UPDATE platform_users SET mobilePhone = ?, mobileVerifiedAt = ? WHERE id = ?').run(row.phone, nowIso(), me.id);
         return sendJson(res, 200, { ok: true, maskedPhone: maskPhone(row.phone) });
