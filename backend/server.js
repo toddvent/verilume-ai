@@ -16663,6 +16663,8 @@ createTableIfNeeded(`CREATE TABLE IF NOT EXISTS platform_users (
   createdAt TEXT NOT NULL,
   lastloginat TEXT
 )`);
+// 2026-11-25 — mobile number for text-message sign-in codes (confirmed with a text code before it is saved).
+try { ensureColumn('platform_users', 'mobilePhone', 'TEXT'); ensureColumn('platform_users', 'mobileVerifiedAt', 'TEXT'); } catch (e) {}
 createTableIfNeeded(`CREATE TABLE IF NOT EXISTS platform_sessions (
   token TEXT PRIMARY KEY,
   platformuserid TEXT NOT NULL,
@@ -33588,7 +33590,7 @@ function platformAuth(req){
   if (!user || user.status !== 'active') return null;
   return { session: sess, user };
 }
-function platformPublicUser(u){ return { id: u.id, email: u.email, name: u.name, role: u.role, status: u.status, lastLoginAt: u.lastloginat || null }; }
+function platformPublicUser(u){ return { id: u.id, email: u.email, name: u.name, role: u.role, status: u.status, lastLoginAt: u.lastloginat || null, hasMobile: !!u.mobilePhone }; }
 // Blocks writes made through a view-as session according to the Verilume
 // person's role. Returns an error message to refuse with, or null to allow.
 function platformViewAsGuard(req, parts){
@@ -33806,7 +33808,19 @@ async function handleRequestInner(req, res) {
         return { ok: true };
       };
 
-      // POST /api/platform/login — { email, password } -> emails a code. No trusted-device shortcut.
+      // Sends a 6-digit code by text message. Stores the same kind of row as the email path, with channel 'sms'.
+      const issueSmsCode = async (user, phone, purpose) => {
+        const verificationId = generateId('VERIFY');
+        const code = String(crypto.randomInt(100000, 999999));
+        const x = hashAccessCode(code);
+        const sent = await sendSmsMessage(phone, `Your Verilume team code is ${code}. It expires in 10 minutes. If you did not ask for it, ignore this message.`);
+        if (sent.status !== 'sent') return { failed: true, reason: sent.status === 'not_configured' ? 'Text messaging is not set up on the server yet. Use an email code.' : 'Could not send a text right now. Try the email code.' };
+        db.prepare(`INSERT INTO phone_verifications (id, memberId, phone, purpose, codeHash, codeSalt, provider, channel, createdAt, expiresAt) VALUES (?,?,?,?,?,?,?,?,?,?)`)
+          .run(verificationId, user.id, phone, purpose, x.hash, x.salt, 'twilio-sms', 'sms', nowIso(), tenMin());
+        return { verificationId };
+      };
+      const maskPhone = ph => { const d = String(ph || '').replace(/\D/g, ''); return d.length >= 4 ? '(•••) •••-' + d.slice(-4) : 'your phone'; };
+      // POST /api/platform/login — { email, password, channel? } -> emails (default) or texts a code. No trusted-device shortcut.
       if (req.method === 'POST' && parts.length === 3 && sub === 'login'){
         const body = await readBody(req);
         if (!body.email || !body.password) return sendJson(res, 400, { error: 'email and password are required' });
@@ -33819,9 +33833,15 @@ async function handleRequestInner(req, res) {
         clearAuthFailures('platform', emailNorm);
         const recent = db.prepare(`SELECT COUNT(*) AS c FROM phone_verifications WHERE purpose = 'platform-login' AND memberId = ? AND createdAt > ?`).get(user.id, new Date(Date.now() - 3600000).toISOString());
         if (recent && Number(recent.c) >= 5) return sendJson(res, 429, { error: 'Too many codes requested. Try again in an hour.' });
+        if (body.channel === 'sms'){
+          if (!user.mobilePhone) return sendJson(res, 400, { error: 'No mobile number is saved for this account yet. Sign in with an email code, then add one under My mobile.' });
+          const rs = await issueSmsCode(user, user.mobilePhone, 'platform-login');
+          if (rs.failed) return sendJson(res, 502, { error: rs.reason });
+          return sendJson(res, 200, { ok: true, verificationId: rs.verificationId, email: emailNorm, channel: 'sms', maskedPhone: maskPhone(user.mobilePhone) });
+        }
         const r = await issueCode(user, emailNorm, 'platform-login');
         if (r.failed) return sendJson(res, 502, { error: 'Could not send an email code right now. Try again shortly.' });
-        return sendJson(res, 200, { ok: true, verificationId: r.verificationId, email: emailNorm, interimCode: r.interimCode });
+        return sendJson(res, 200, { ok: true, verificationId: r.verificationId, email: emailNorm, channel: 'email', interimCode: r.interimCode });
       }
       // POST /api/platform/verify — { verificationId, code } -> console session
       if (req.method === 'POST' && parts.length === 3 && sub === 'verify'){
@@ -33913,6 +33933,32 @@ async function handleRequestInner(req, res) {
         return send(buf, null);
       }
       if (req.method === 'GET' && parts.length === 3 && sub === 'me') return sendJson(res, 200, { user: platformPublicUser(me) });
+      // POST /api/platform/mobile/start — { phone } -> texts a code to confirm the number before it is saved
+      if (req.method === 'POST' && parts.length === 4 && sub === 'mobile' && parts[3] === 'start'){
+        const body = await readBody(req);
+        const e164 = toE164(String(body.phone || ''));
+        if (!e164) return sendJson(res, 400, { error: 'Enter a valid US or Canadian mobile number.' });
+        const recent = db.prepare(`SELECT COUNT(*) AS c FROM phone_verifications WHERE purpose = 'platform-mobile' AND memberId = ? AND createdAt > ?`).get(me.id, new Date(Date.now() - 3600000).toISOString());
+        if (recent && Number(recent.c) >= 5) return sendJson(res, 429, { error: 'Too many codes requested. Try again in an hour.' });
+        const rs = await issueSmsCode(me, e164, 'platform-mobile');
+        if (rs.failed) return sendJson(res, 502, { error: rs.reason });
+        return sendJson(res, 200, { ok: true, verificationId: rs.verificationId, maskedPhone: maskPhone(e164) });
+      }
+      // POST /api/platform/mobile/confirm — { verificationId, code } -> saves the confirmed number
+      if (req.method === 'POST' && parts.length === 4 && sub === 'mobile' && parts[3] === 'confirm'){
+        const body = await readBody(req);
+        const row = db.prepare('SELECT * FROM phone_verifications WHERE id = ?').get(String(body.verificationId || ''));
+        if (!row || row.memberId !== me.id) return sendJson(res, 404, { error: 'verification not found or already used' });
+        const c = checkCode(row, body.code, 'platform-mobile');
+        if (!c.ok) return sendJson(res, c.status, { error: c.error });
+        db.prepare('UPDATE platform_users SET mobilePhone = ?, mobileVerifiedAt = ? WHERE id = ?').run(row.phone, nowIso(), me.id);
+        return sendJson(res, 200, { ok: true, maskedPhone: maskPhone(row.phone) });
+      }
+      // DELETE /api/platform/mobile — remove the saved number (text sign-in turns off)
+      if (req.method === 'DELETE' && parts.length === 3 && sub === 'mobile'){
+        db.prepare('UPDATE platform_users SET mobilePhone = NULL, mobileVerifiedAt = NULL WHERE id = ?').run(me.id);
+        return sendJson(res, 200, { ok: true });
+      }
       if (req.method === 'POST' && parts.length === 3 && sub === 'logout'){
         db.prepare('DELETE FROM platform_sessions WHERE token = ?').run(auth.session.token);
         return sendJson(res, 200, { ok: true });
