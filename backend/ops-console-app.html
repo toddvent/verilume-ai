@@ -858,5 +858,151 @@ ut("Enter the ADMIN_API_TOKEN configured on this deployment (top of this page)."
  try{ parent.postMessage({type:'opsReady'},'*'); }catch(e){}
 })();
 </script>
+<script>
+/* 2026-11-25 — Accounts & workspaces now read and write REAL client accounts through the Team Console routes
+   (/api/platform/accounts/...). Team sign-in is the credential; the old demo data and the admin-token field are retired here. */
+(function(){
+ var TOKEN_KEY='verilume_platform_token';
+ function tok(){ try{ return sessionStorage.getItem(TOKEN_KEY)||''; }catch(x){ return ''; } }
+ var BASE=(typeof e==='string')?e:'';
+ /* Team sign-in replaces the admin token on every staff panel: panels still read #opsAdminToken, so give them a placeholder
+    and swap it for the Bearer token at fetch time. */
+ var SENT='TEAM-SIGNIN';
+ var ot=document.getElementById('opsAdminToken');
+ if(tok()){
+  if(ot){ ot.value=SENT; }
+  var row=document.getElementById('opsAdminTokenRow'); if(row&&row.closest('.module')) row.closest('.module').style.display='none';
+  var of=window.fetch;
+  window.fetch=function(u,o){
+   try{
+    if(o&&o.headers){
+     var h=o.headers, isH=(typeof Headers!=='undefined'&&h instanceof Headers);
+     var v=isH?h.get('X-Admin-Token'):h['X-Admin-Token'];
+     if(v===SENT){
+      if(isH){ h.delete('X-Admin-Token'); h.set('Authorization','Bearer '+tok()); }
+      else { var c={}; for(var k in h){ if(k!=='X-Admin-Token') c[k]=h[k]; } c['Authorization']='Bearer '+tok(); o=Object.assign({},o,{headers:c}); }
+     }
+    }
+   }catch(x){}
+   return of.call(this,u,o);
+  };
+ }
+ function api(method,path,body){
+  return fetch(BASE+'/api/platform/'+path,{method:method,headers:Object.assign({'Authorization':'Bearer '+tok()},body?{'Content-Type':'application/json'}:{}),body:body?JSON.stringify(body):undefined})
+   .then(function(r){ return r.json().catch(function(){return {};}).then(function(j){ if(!r.ok) throw new Error(j.error||('Request failed ('+r.status+')')); return j; }); });
+ }
+ function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+ var $=function(id){return document.getElementById(id);};
+ var cur=null, W=null, LIST=[];
+ function msg(id,text,bad){ var el=$(id); if(!el) return; el.textContent=text||''; el.style.color=bad?'#B42318':'#15803D'; el.style.display=text?'block':'none'; }
+ function note(host,id){ var el=$(id); if(!el){ el=document.createElement('div'); el.id=id; el.className='empty-note'; el.style.fontStyle='normal'; host.appendChild(el); } return el; }
+ function tierBadge(t){ if(!t) return '<span class="badge">No level yet</span>'; return '<span class="badge tier-'+esc(t)+'">'+esc(t.charAt(0).toUpperCase()+t.slice(1))+'</span>'; }
+
+ /* ---------- directory ---------- */
+ var q=document.createElement('input'); q.type='text'; q.placeholder='Search accounts by name or ID'; q.id='acctSearchReal'; q.style.cssText='max-width:380px;margin:0 0 14px;padding:10px 14px;border:1px solid #D2D2D7;border-radius:12px;font:inherit;';
+ var grid=$('directoryGrid'); if(grid&&grid.parentNode) grid.parentNode.insertBefore(q,grid);
+ q.addEventListener('input',function(){ drawList(); });
+ function drawList(){
+  var term=(q.value||'').toLowerCase().trim();
+  var rows=LIST.filter(function(a){ return !term||(a.company||'').toLowerCase().indexOf(term)>=0||(a.accountId||'').toLowerCase().indexOf(term)>=0; });
+  grid.innerHTML=rows.length?rows.map(function(a){
+   return '<div class="acct-card" onclick="openAccount(\''+esc(a.accountId).replace(/'/g,'')+'\')"><div><div class="acct-name">'+esc(a.company)+'</div><div class="acct-meta"><span class="acct-badges">'+tierBadge(a.paidTier)+(a.archivedAt?' <span class="badge">Archived</span>':'')+'</span><span>·</span><span>'+esc(a.industry||'No industry')+'</span><span>·</span><span><code>'+esc(a.accountId)+'</code></span></div></div><div class="acct-right"><span class="btn small">Open workspace →</span></div></div>';
+  }).join(''):'<div class="empty-note">No accounts match.</div>';
+ }
+ window.r=function(){
+  grid.innerHTML='<div class="empty-note">Loading accounts…</div>';
+  api('GET','accounts').then(function(j){ LIST=j.accounts||[]; drawList(); }).catch(function(x){ grid.innerHTML='<div class="empty-note" style="color:#B42318;">Could not load accounts: '+esc(x.message)+'</div>'; });
+ };
+ var ph=document.querySelector('#view-directory [data-group="accounts"].lede, #view-directory p.lede'); if(ph) ph.textContent='Every client account. Click one to open its workspace — data & connections, team access, plan & billing, and agreements.';
+ document.querySelectorAll('#view-directory .proto-note[data-group="accounts"], #view-directory .safeguard[data-group="accounts"]').forEach(function(el){ el.style.display='none'; });
+
+ /* ---------- workspace ---------- */
+ function load(then){ return api('GET','accounts/'+encodeURIComponent(cur)+'/workspace').then(function(j){ W=j; if(then) then(); }); }
+ window.openAccount=function(id){
+  cur=id; $('view-directory').classList.add('hidden'); $('view-workspace').classList.remove('hidden');
+  $('wsName').textContent='Loading…'; $('wsBadges').innerHTML='';
+  load(function(){
+   var a=W.account; $('wsName').textContent=a.company;
+   $('wsBadges').innerHTML=tierBadge(a.paidTier)+' <span class="badge">'+esc((a.footprint||'—').charAt(0).toUpperCase()+(a.footprint||'—').slice(1))+'</span> <code>'+esc(a.accountId)+'</code>';
+   $('connPathway').value=W.connection.pathway; $('connAccountId').value=W.connection.accountId; $('connStatus').value=W.connection.status;
+   drawPlan(); drawTeam(); drawInv(); drawLegal(); window.u('data');
+  }).catch(function(x){ $('wsName').textContent='Could not open this account'; msg('wsErr',x.message,true); });
+ };
+ window.showDirectory=function(){ $('view-directory').classList.remove('hidden'); $('view-workspace').classList.add('hidden'); cur=null; window.r(); };
+
+ window.saveConnection=function(){
+  var m=note($('pane-data').querySelector('.module'),'connMsg');
+  api('POST','accounts/'+encodeURIComponent(cur)+'/connection',{pathway:$('connPathway').value,accountId:$('connAccountId').value,status:$('connStatus').value})
+   .then(function(){ m.textContent='Saved. The client portal reads this same record.'; m.style.color='#15803D'; }).catch(function(x){ m.textContent=x.message; m.style.color='#B42318'; });
+ };
+ var cn=document.querySelector('#pane-data .module .proto-note'); if(cn) cn.innerHTML='Saved to the account record the client portal already reads. Marking <b>Connected</b> is a staff statement that the connector is live.';
+
+ /* plan */
+ function drawPlan(){
+  var sel=$('planTier'); sel.innerHTML='<option value="">No level yet</option>'+(W.levels||[]).map(function(l){ return '<option value="'+esc(l.key)+'">'+esc(l.name)+'</option>'; }).join('');
+  sel.value=W.account.paidTier||'';
+  var f=$('planFootprint'); f.innerHTML='<option>'+esc(W.account.footprint||'—')+'</option>'; f.disabled=true;
+  var mod=sel.closest('.module'); if(!$('planIo')){
+   var d=document.createElement('div'); d.innerHTML='<div class="field-row" style="margin-top:10px;"><div><label>IO reference</label><input type="text" id="planIo" placeholder="Required above Free trial"></div><div><label>Note</label><input type="text" id="planNote"></div></div><label class="toggle" style="margin:8px 0 10px;"><input type="checkbox" id="planTermsIo" style="width:auto;margin-right:8px;"> The signed IO incorporates the Terms &amp; Conditions</label><div class="empty-note" id="planMsg" style="font-style:normal;display:none;"></div>';
+   mod.insertBefore(d,mod.querySelector('button')); 
+  }
+  var p=mod.querySelector('.desc'); if(p) p.textContent='Changing the level here is recorded with your name and goes to Sales. Footprint is set when the account is created.';
+  $('planIo').value=''; $('planNote').value=''; $('planTermsIo').checked=false; msg('planMsg','');
+  var pc=$('premiumCapTier'); if(pc){ var pm=pc.closest('.module'); if(pm){ pm.innerHTML='<h3>Premium capability commitment</h3><p class="desc">Recording an a la carte commitment tier is not stored yet — it needs its own field. Until then, record it in the IO reference above.</p>'; } }
+ }
+ window.savePlan=function(){
+  var t=$('planTier').value;
+  api('POST','accounts/'+encodeURIComponent(cur)+'/level',{tier:t||null,ioReference:$('planIo').value,note:$('planNote').value,termsViaIo:$('planTermsIo').checked})
+   .then(function(){ msg('planMsg','Level saved.'); return load(function(){ $('wsBadges').innerHTML=tierBadge(W.account.paidTier)+' <span class="badge">'+esc((W.account.footprint||'—'))+'</span> <code>'+esc(W.account.accountId)+'</code>'; }); })
+   .catch(function(x){ msg('planMsg',x.message,true); });
+ };
+ window.savePremiumCap=function(){};
+
+ /* team */
+ function drawTeam(){
+  var tb=document.querySelector('#teamTable tbody');
+  tb.innerHTML=W.team.map(function(m,i){ var on=m.status==='active'; return '<tr><td>'+esc(m.name)+(m.email?'<div class="acct-meta">'+esc(m.email)+'</div>':'')+'</td><td>'+esc(m.role)+'</td><td><span class="toggle '+(on?'on':'')+'" onclick="toggleTeamAccess('+i+')"><span class="switch"></span>'+(on?'Active':'Deactivated')+'</span></td><td></td></tr>'; }).join('');
+  $('teamEmptyNote').textContent=W.team.length?'':'No one has been added to this account yet.';
+ }
+ window.toggleTeamAccess=function(i){
+  var m=W.team[i]; if(!m) return;
+  api('POST','accounts/'+encodeURIComponent(cur)+'/team/'+encodeURIComponent(m.id),{status:m.status==='active'?'deactivated':'active'}).then(function(){ return load(drawTeam); }).catch(function(x){ $('teamEmptyNote').textContent=x.message; });
+ };
+
+ /* invoices */
+ function drawInv(){
+  var th=document.querySelector('#invoiceTable thead tr'); if(th) th.innerHTML='<th>Invoice</th><th>Description</th><th>Amount</th><th>Status</th><th></th>';
+  var tb=document.querySelector('#invoiceTable tbody');
+  tb.innerHTML=W.invoices.map(function(v,i){ var open=v.status==='sent'||v.status==='overdue'||v.status==='draft';
+   return '<tr><td>'+esc(v.invoiceNumber)+'<div class="acct-meta">'+esc(v.issuedDate)+'</div></td><td>'+esc(v.description)+'</td><td>$'+Number(v.amount).toLocaleString()+'</td><td><span class="badge status-'+esc(v.status)+'">'+esc(v.status)+'</span></td><td class="row-actions">'+(open?'<button class="btn small" onclick="markInvoicePaid('+i+')">Mark Paid</button>':'')+(v.status==='sent'?'<button class="btn small danger" onclick="markInvoiceOverdue('+i+')">Mark Overdue</button>':'')+'</td></tr>'; }).join('');
+  $('invoiceEmptyNote').textContent=W.invoices.length?'':'No invoices yet for this account.';
+  var b=document.querySelector('#pane-billing button[onclick="createInvoice()"]'); if(b) b.textContent='Create invoice — status: Sent';
+ }
+ function setInv(i,s){ var v=W.invoices[i]; api('POST','accounts/'+encodeURIComponent(cur)+'/invoices/'+encodeURIComponent(v.id),{status:s}).then(function(){ return load(drawInv); }).catch(function(x){ $('invoiceEmptyNote').textContent=x.message; }); }
+ window.markInvoicePaid=function(i){ setInv(i,'paid'); };
+ window.markInvoiceOverdue=function(i){ setInv(i,'overdue'); };
+ window.createInvoice=function(){
+  var per=$('newInvPeriod').value.trim(), d=$('newInvDesc').value.trim(), amt=$('newInvAmount').value;
+  api('POST','accounts/'+encodeURIComponent(cur)+'/invoices',{amount:amt,description:[per,d].filter(Boolean).join(' — ')})
+   .then(function(){ $('newInvPeriod').value=''; $('newInvDesc').value=''; $('newInvAmount').value=''; return load(drawInv); }).catch(function(x){ $('invoiceEmptyNote').textContent=x.message; });
+ };
+
+ /* agreements */
+ function drawLegal(){
+  var tb=document.querySelector('#legalTable tbody');
+  tb.innerHTML=W.legal.map(function(l,i){ return '<tr><td>'+esc(l.doc)+'</td><td><span class="badge status-'+esc(l.status)+'">'+esc(l.status)+'</span></td><td>'+esc(l.signedDate||'—')+'</td><td class="row-actions">'+(l.status==='draft'?'<button class="btn small" onclick="markLegalSent('+i+')">Mark Sent</button>':'')+(l.status==='sent'?'<button class="btn small primary" onclick="markLegalSigned('+i+')">Mark Signed</button>':'')+'</td></tr>'; }).join('');
+ }
+ function setLegal(i,s){ var l=W.legal[i]; api('POST','accounts/'+encodeURIComponent(cur)+'/legal/'+encodeURIComponent(l.id),{status:s}).then(function(){ return load(drawLegal); }).catch(function(x){ alert(x.message); }); }
+ window.markLegalSent=function(i){ setLegal(i,'sent'); };
+ window.markLegalSigned=function(i){ setLegal(i,'signed'); };
+ var lp=document.querySelector('#pane-legal .desc'); if(lp) lp.textContent='Tracks what has been sent and what has come back signed. The signed file itself is kept wherever your team stores contracts; this records the status and date.';
+
+ var we=document.createElement('div'); we.id='wsErr'; we.className='empty-note'; we.style.cssText='display:none;font-style:normal;'; $('view-workspace').insertBefore(we,$('tabRow'));
+ if(tok()){
+  document.querySelectorAll('.desc').forEach(function(el){ el.innerHTML=el.innerHTML.replace(/Uses the admin token above\.?/g,'Uses your team sign-in.').replace(/the same ADMIN_API_TOKEN field/g,'your team sign-in'); });
+  window.r();
+ }
+})();
+</script>
 </body>
 </html>

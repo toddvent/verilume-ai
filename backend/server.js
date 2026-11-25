@@ -98,7 +98,7 @@ const path = require('path');
 // any DATABASE_URL question. If a request's logs don't show this exact
 // line, the crash-fix deploy hasn't actually taken effect yet, no matter
 // what the deploy dashboard says.
-console.log('[server.js] BUILD MARKER: 2026-11-24-r113-measurement-coverage-removed (also check GET /api/health -> buildStamp)');
+console.log('[server.js] BUILD MARKER: 2026-11-25-r114-team-console-real-accounts (also check GET /api/health -> buildStamp)');
 const crypto = require('crypto');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -16447,6 +16447,24 @@ createTableIfNeeded(`
 `);
 const INVOICE_STATUSES = ['draft', 'sent', 'paid', 'overdue'];
 
+// 2026-11-25 — per-account agreement tracking for the Team Console workspace (NDA, SOW, Terms, IP addendum).
+// A real record of what Verilume has sent and what has come back signed; no e-signature is performed here.
+createTableIfNeeded(`
+  CREATE TABLE IF NOT EXISTS account_legal_docs (
+    id TEXT PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    doc TEXT NOT NULL,
+    status TEXT DEFAULT 'draft',
+    sentDate TEXT,
+    signedDate TEXT,
+    updatedBy TEXT,
+    updatedAt TEXT NOT NULL,
+    FOREIGN KEY (accountId) REFERENCES accounts(accountId)
+  );
+`);
+const LEGAL_DOC_NAMES = ['Mutual NDA', 'Contract / SOW', 'Terms of Service', 'IP Ownership & Assignment Addendum'];
+const LEGAL_DOC_STATUSES = ['draft', 'sent', 'signed'];
+
 // Copy Library — per direct instruction: "user should be able to edit copy
 // and save copy to library for future use." One flat table per account,
 // not scoped to a single campaign (campaignId is stored for context/filter
@@ -16794,12 +16812,36 @@ function clearAuthFailures(kind, id){
 const AUTH_LOCKED_MESSAGE = 'Too many incorrect attempts. Wait 15 minutes and try again.';
 
 // 2026-11-21 (r91) — staff token check that does not leak how much of the token matched.
-function adminTokenOk(req){
+// 2026-11-25 — "staff" now means EITHER the ADMIN_API_TOKEN (X-Admin-Token) OR a signed-in
+// Verilume team member (platform session, Authorization: Bearer). The name is kept so every
+// existing staff-gated route and isStaffCaller check accepts team sign-in without being
+// rewritten one by one. A read-only team role passes on GET/HEAD only.
+function adminTokenOnly(req){
   if (!ADMIN_API_TOKEN) return false;
   const given = String(req.headers['x-admin-token'] || '');
   const a = crypto.createHash('sha256').update(given).digest();
   const b = crypto.createHash('sha256').update(ADMIN_API_TOKEN).digest();
   return crypto.timingSafeEqual(a, b);
+}
+function teamStaffOk(req){
+  if (!req.headers['authorization']) return false;
+  let pa = null;
+  try { pa = platformAuth(req); } catch (e){ return false; }
+  if (!pa || !pa.user) return false;
+  if (pa.user.role !== 'readonly') return true;
+  return req.method === 'GET' || req.method === 'HEAD';
+}
+function adminTokenOk(req){
+  return adminTokenOnly(req) || teamStaffOk(req);
+}
+// Who did it, for audit columns that used to say 'Staff (Ops Console)' whenever a token was sent.
+function staffLabel(req){
+  if (adminTokenOnly(req)) return 'Staff (Ops Console)';
+  try {
+    const pa = req.headers['authorization'] ? platformAuth(req) : null;
+    if (pa && pa.user) return 'Team: ' + (pa.user.name || pa.user.email);
+  } catch (e){}
+  return null;
 }
 
 // 2026-08-21 fix -- sitewide camelCase column casing repair.
@@ -34057,6 +34099,119 @@ async function handleRequestInner(req, res) {
         logIt('account_deleted:' + String(aliasVal(acct, 'company') || '').slice(0, 80) + ':' + total + 'rows');
         return sendJson(res, 200, { accountId, deleted: true, rowsDeleted: total, tables: Object.keys(deleted).length });
       }
+      // ---- Account workspace (Team Console → Accounts & workspaces). Real data for the four tabs. ----
+      // GET /api/platform/accounts/:id/workspace
+      if (req.method === 'GET' && parts.length === 5 && sub === 'accounts' && parts[4] === 'workspace'){
+        const accountId = decodeURIComponent(parts[3]);
+        const acct = db.prepare('SELECT * FROM accounts WHERE accountId = ?').get(accountId);
+        if (!acct) return sendJson(res, 404, { error: 'account not found' });
+        // First look at an account creates its four agreement rows (draft) so they can be tracked.
+        try {
+          const have = db.prepare('SELECT doc FROM account_legal_docs WHERE accountId = ?').all(accountId).map(r => r.doc);
+          const nowI = nowIso();
+          LEGAL_DOC_NAMES.filter(d => !have.includes(d)).forEach(d => {
+            db.prepare('INSERT INTO account_legal_docs (id, accountId, doc, status, updatedAt) VALUES (?,?,?,?,?)').run(generateId('LGL'), accountId, d, 'draft', nowI);
+          });
+        } catch (e){ console.warn('[workspace] legal seed', e.message); }
+        const legal = db.prepare('SELECT * FROM account_legal_docs WHERE accountId = ?').all(accountId)
+          .map(r => ({ id: r.id, doc: r.doc, status: r.status, sentDate: aliasVal(r, 'sentDate') || '', signedDate: aliasVal(r, 'signedDate') || '', updatedBy: aliasVal(r, 'updatedBy') || '', updatedAt: aliasVal(r, 'updatedAt') || '' }))
+          .sort((x, y) => LEGAL_DOC_NAMES.indexOf(x.doc) - LEGAL_DOC_NAMES.indexOf(y.doc));
+        let team = [];
+        try {
+          team = db.prepare('SELECT * FROM team_members WHERE accountId = ? ORDER BY createdAt ASC').all(accountId).map(m => ({
+            id: m.id, name: m.name, email: m.email || '',
+            role: (aliasVal(m, 'isAdmin') ? 'Admin' : [m.level, aliasVal(m, 'functionGroup')].filter(Boolean).join(' · ')),
+            status: m.status || 'active'
+          }));
+        } catch (e){ console.warn('[workspace] team', e.message); }
+        let invoices = [];
+        try {
+          invoices = db.prepare('SELECT * FROM invoices WHERE accountId = ? ORDER BY issuedDate DESC, createdAt DESC').all(accountId).map(i => ({
+            id: i.id, invoiceNumber: aliasVal(i, 'invoiceNumber'), description: i.description || '', amount: i.amount, status: i.status, issuedDate: aliasVal(i, 'issuedDate') || '', dueDate: aliasVal(i, 'dueDate') || '', paidDate: aliasVal(i, 'paidDate') || ''
+          }));
+        } catch (e){ console.warn('[workspace] invoices', e.message); }
+        const st = aliasVal(acct, 'analyticsStatus') || 'not_started';
+        return sendJson(res, 200, {
+          account: { accountId, company: acct.company, industry: acct.industry || '', footprint: acct.footprint || '', createdAt: aliasVal(acct, 'createdAt'), paidTier: aliasVal(acct, 'paidTier') || null, archivedAt: aliasVal(acct, 'archivedAt') || null },
+          levels: PAID_TIERS.map(t => ({ key: t.key, name: t.name, priceMonthly: t.priceMonthly })),
+          connection: { pathway: aliasVal(acct, 'analyticsPathway') || '', accountId: aliasVal(acct, 'analyticsGa4AccountId') || '', propertyId: aliasVal(acct, 'analyticsGa4PropertyId') || '', status: st === 'connected' ? 'connected' : (st === 'requested' ? 'pending' : 'none') },
+          team, invoices, legal
+        });
+      }
+      // POST /api/platform/accounts/:id/connection — { pathway, accountId, status: none|pending|connected }
+      if (req.method === 'POST' && parts.length === 5 && sub === 'accounts' && parts[4] === 'connection'){
+        if (me.role === 'readonly') return sendJson(res, 403, { error: 'Read-only team members cannot change a connection.' });
+        const accountId = decodeURIComponent(parts[3]);
+        if (!db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId)) return sendJson(res, 404, { error: 'account not found' });
+        const body = await readBody(req);
+        const pathway = String(body.pathway || '').trim().slice(0, 40);
+        if (pathway && !['ga4', 'sa360', 'meta', 'snowflake', 'sheets', 'fallback'].includes(pathway)) return sendJson(res, 400, { error: 'Unknown pathway.' });
+        const map = { none: 'not_started', pending: 'requested', connected: 'connected' };
+        const status = map[body.status];
+        if (!status) return sendJson(res, 400, { error: 'status must be none, pending or connected.' });
+        db.prepare('UPDATE accounts SET analyticsPathway = ?, analyticsGa4AccountId = ?, analyticsStatus = ? WHERE accountId = ?')
+          .run(pathway, String(body.accountId || '').trim().slice(0, 120) || null, status, accountId);
+        db.prepare('INSERT INTO platform_access_log (id, platformuserid, platformname, platformrole, accountId, action, ip, createdAt) VALUES (?,?,?,?,?,?,?,?)')
+          .run(generateId('PLOG'), me.id, me.name, me.role, accountId, 'connection:' + (pathway || 'none') + '/' + status, getClientIp(req) || null, nowIso());
+        return sendJson(res, 200, { ok: true });
+      }
+      // POST /api/platform/accounts/:id/team/:memberId — { status: active|deactivated }
+      if (req.method === 'POST' && parts.length === 6 && sub === 'accounts' && parts[4] === 'team'){
+        if (me.role === 'readonly') return sendJson(res, 403, { error: 'Read-only team members cannot change client access.' });
+        const accountId = decodeURIComponent(parts[3]), memberId = decodeURIComponent(parts[5]);
+        const body = await readBody(req);
+        if (!['active', 'deactivated'].includes(body.status)) return sendJson(res, 400, { error: 'status must be active or deactivated.' });
+        const m = db.prepare('SELECT id FROM team_members WHERE id = ? AND accountId = ?').get(memberId, accountId);
+        if (!m) return sendJson(res, 404, { error: 'team member not found' });
+        db.prepare('UPDATE team_members SET status = ? WHERE id = ?').run(body.status, memberId);
+        db.prepare('INSERT INTO platform_access_log (id, platformuserid, platformname, platformrole, accountId, action, ip, createdAt) VALUES (?,?,?,?,?,?,?,?)')
+          .run(generateId('PLOG'), me.id, me.name, me.role, accountId, 'client_member_' + body.status + ':' + memberId, getClientIp(req) || null, nowIso());
+        return sendJson(res, 200, { ok: true });
+      }
+      // POST /api/platform/accounts/:id/invoices — issue an invoice; PATCH-style status via /invoices/:invId
+      if (req.method === 'POST' && parts.length === 5 && sub === 'accounts' && parts[4] === 'invoices'){
+        if (me.role === 'readonly') return sendJson(res, 403, { error: 'Read-only team members cannot issue invoices.' });
+        const accountId = decodeURIComponent(parts[3]);
+        if (!db.prepare('SELECT accountId FROM accounts WHERE accountId = ?').get(accountId)) return sendJson(res, 404, { error: 'account not found' });
+        const body = await readBody(req);
+        if (body.amount == null || body.amount === '' || isNaN(Number(body.amount))) return sendJson(res, 400, { error: 'Amount is required and must be a number.' });
+        const n = db.prepare('SELECT COUNT(*) AS n FROM invoices WHERE accountId = ?').get(accountId).n;
+        const id = generateId('INVID'), now = nowIso();
+        const num = 'INV-' + (1000 + Number(n) + 1);
+        db.prepare('INSERT INTO invoices (id, accountId, invoiceNumber, description, amount, status, issuedDate, dueDate, paidDate, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+          .run(id, accountId, num, String(body.description || body.period || '').slice(0, 300) || null, Number(body.amount), 'sent', now.slice(0, 10), body.dueDate || null, null, now, now);
+        db.prepare('INSERT INTO platform_access_log (id, platformuserid, platformname, platformrole, accountId, action, ip, createdAt) VALUES (?,?,?,?,?,?,?,?)')
+          .run(generateId('PLOG'), me.id, me.name, me.role, accountId, 'invoice_issued:' + num, getClientIp(req) || null, nowIso());
+        return sendJson(res, 201, { id, invoiceNumber: num });
+      }
+      if (req.method === 'POST' && parts.length === 6 && sub === 'accounts' && parts[4] === 'invoices'){
+        if (me.role === 'readonly') return sendJson(res, 403, { error: 'Read-only team members cannot change invoices.' });
+        const accountId = decodeURIComponent(parts[3]), invId = decodeURIComponent(parts[5]);
+        const body = await readBody(req);
+        if (!['sent', 'paid', 'overdue', 'draft'].includes(body.status)) return sendJson(res, 400, { error: 'Unknown invoice status.' });
+        const inv = db.prepare('SELECT * FROM invoices WHERE id = ? AND accountId = ?').get(invId, accountId);
+        if (!inv) return sendJson(res, 404, { error: 'invoice not found' });
+        const now = nowIso();
+        db.prepare('UPDATE invoices SET status = ?, paidDate = ?, updatedAt = ? WHERE id = ?').run(body.status, body.status === 'paid' ? now.slice(0, 10) : null, now, invId);
+        db.prepare('INSERT INTO platform_access_log (id, platformuserid, platformname, platformrole, accountId, action, ip, createdAt) VALUES (?,?,?,?,?,?,?,?)')
+          .run(generateId('PLOG'), me.id, me.name, me.role, accountId, 'invoice_' + body.status + ':' + (aliasVal(inv, 'invoiceNumber') || invId), getClientIp(req) || null, nowIso());
+        return sendJson(res, 200, { ok: true });
+      }
+      // POST /api/platform/accounts/:id/legal/:docId — { status: draft|sent|signed }
+      if (req.method === 'POST' && parts.length === 6 && sub === 'accounts' && parts[4] === 'legal'){
+        if (me.role === 'readonly') return sendJson(res, 403, { error: 'Read-only team members cannot change agreement status.' });
+        const accountId = decodeURIComponent(parts[3]), docId = decodeURIComponent(parts[5]);
+        const body = await readBody(req);
+        if (!LEGAL_DOC_STATUSES.includes(body.status)) return sendJson(res, 400, { error: 'status must be draft, sent or signed.' });
+        const row = db.prepare('SELECT * FROM account_legal_docs WHERE id = ? AND accountId = ?').get(docId, accountId);
+        if (!row) return sendJson(res, 404, { error: 'agreement not found' });
+        const today = nowIso().slice(0, 10);
+        db.prepare('UPDATE account_legal_docs SET status = ?, sentDate = ?, signedDate = ?, updatedBy = ?, updatedAt = ? WHERE id = ?')
+          .run(body.status, body.status === 'draft' ? null : (aliasVal(row, 'sentDate') || today), body.status === 'signed' ? today : null, me.name, nowIso(), docId);
+        db.prepare('INSERT INTO platform_access_log (id, platformuserid, platformname, platformrole, accountId, action, ip, createdAt) VALUES (?,?,?,?,?,?,?,?)')
+          .run(generateId('PLOG'), me.id, me.name, me.role, accountId, 'legal_' + body.status + ':' + row.doc, getClientIp(req) || null, nowIso());
+        return sendJson(res, 200, { ok: true });
+      }
       // POST /api/platform/accounts/:id/level — activate or change a client's level in the Ops Console. { tier: 'spark'|'starter'|'growth'|'enterprise'|null }
       if (req.method === 'POST' && parts.length === 5 && sub === 'accounts' && parts[4] === 'level'){
         if (me.role === 'readonly') return sendJson(res, 403, { error: 'Read-only team members cannot change a client level.' });
@@ -34305,7 +34460,7 @@ async function handleRequestInner(req, res) {
         dbReachable, dbMs, ...(dbError ? { dbError } : {}),
         queues: { claude: aiQueues.anthropic.snapshot(), openai: aiQueues.openai.snapshot(), xai: aiQueues.xai.snapshot(), gemini: aiQueues.gemini.snapshot(), voice: voiceQueue.snapshot() },
         dbHost: (() => { try { return process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : null; } catch (e){ return 'unparseable DATABASE_URL'; } })(),
-        buildStamp: '2026-11-24-r113-measurement-coverage-removed',
+        buildStamp: '2026-11-25-r114-team-console-real-accounts',
         interviewWeeklyCap: INTERVIEW_WEEKLY_CAP,
         xaiPrModel: (process.env.XAI_PR_MODEL || '').trim() || null,
         // 2026-09-27 — which vendor integrations this running instance has
@@ -37289,7 +37444,7 @@ async function handleRequestInner(req, res) {
       const capCheck3 = checkInterviewWeeklyCap(accountId);
       if (capCheck3) return sendJson(res, 429, capCheck3);
       const now = new Date().toISOString();
-      const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : (req.headers['x-admin-token'] ? 'Staff (Ops Console)' : null);
+      const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : staffLabel(req);
       // 2026-09-14 — when this call comes from ops-console.html's new
       // Internal Testing section (admin-token auth, no portal session),
       // send back the REAL unredacted candidates (vendor/model included)
@@ -37555,7 +37710,7 @@ async function handleRequestInner(req, res) {
           return sendJson(res, 400, { error: 'candidateKey does not match a candidate with real content on this contest' });
         }
         const now = new Date().toISOString();
-        const selectedBy = session ? (session.memberId || `${session.accountId}:admin`) : (req.headers['x-admin-token'] ? 'Staff (Ops Console)' : null);
+        const selectedBy = session ? (session.memberId || `${session.accountId}:admin`) : staffLabel(req);
         db.prepare('UPDATE account_voice_interviews SET selectedCandidateKey = ?, selectedBy = ?, selectedAt = ? WHERE id = ?')
           .run(body.candidateKey, selectedBy, now, interviewId);
         db.prepare('UPDATE accounts SET videoStrategyText = ? WHERE accountId = ?')
@@ -37577,7 +37732,7 @@ async function handleRequestInner(req, res) {
           return sendJson(res, 400, { error: 'candidateKey does not match a candidate with real content on this contest' });
         }
         const now = new Date().toISOString();
-        const selectedBy = session ? (session.memberId || `${session.accountId}:admin`) : (req.headers['x-admin-token'] ? 'Staff (Ops Console)' : null);
+        const selectedBy = session ? (session.memberId || `${session.accountId}:admin`) : staffLabel(req);
         db.prepare('UPDATE account_voice_interviews SET selectedCandidateKey = ?, selectedBy = ?, selectedAt = ? WHERE id = ?')
           .run(body.candidateKey, selectedBy, now, interviewId);
         recordContestResult(accountId, 'Video Script', interview.creativeMarket || null, chosen, candidates, 'account_voice_interviews', interviewId, selectedBy);
@@ -37587,7 +37742,7 @@ async function handleRequestInner(req, res) {
         return sendJson(res, 400, { error: 'candidateKey does not match a candidate with real content on this contest' });
       }
       const now = new Date().toISOString();
-      const selectedBy = session ? (session.memberId || `${session.accountId}:admin`) : (req.headers['x-admin-token'] ? 'Staff (Ops Console)' : null);
+      const selectedBy = session ? (session.memberId || `${session.accountId}:admin`) : staffLabel(req);
       db.prepare('UPDATE account_voice_interviews SET selectedCandidateKey = ?, selectedBy = ?, selectedAt = ? WHERE id = ?')
         .run(body.candidateKey, selectedBy, now, interviewId);
       db.prepare('UPDATE accounts SET visionStatement = ?, longformVoiceExample = ? WHERE accountId = ?')
@@ -37647,7 +37802,7 @@ async function handleRequestInner(req, res) {
       const target = candidates.find(c => c.key === body.candidateKey);
       if (!target) return sendJson(res, 400, { error: 'candidateKey does not match a candidate on this contest' });
       const now = new Date().toISOString();
-      const ratedBy = session ? (session.memberId || `${session.accountId}:admin`) : (req.headers['x-admin-token'] ? 'Staff (Ops Console)' : null);
+      const ratedBy = session ? (session.memberId || `${session.accountId}:admin`) : staffLabel(req);
       const isStaffCaller = !!(adminTokenOk(req));
       if (body.rating !== undefined) target.rating = rating;
       target.ratedBy = ratedBy;
@@ -37968,7 +38123,7 @@ async function handleRequestInner(req, res) {
       target.overallApproach = overallApproach;
       target.finalized = true;
       target.finalizedAt = new Date().toISOString();
-      target.finalizedBy = session ? (session.memberId || `${session.accountId}:admin`) : (req.headers['x-admin-token'] ? 'Staff (Ops Console)' : null);
+      target.finalizedBy = session ? (session.memberId || `${session.accountId}:admin`) : staffLabel(req);
       db.prepare('UPDATE account_voice_interviews SET candidatesJson = ? WHERE id = ?')
         .run(JSON.stringify(candidates), interviewId);
       return sendJson(res, 200, { interviewId, candidateKey: body.candidateKey, overallApproach: target.overallApproach, beats: target.beats, finalizedAt: target.finalizedAt });
@@ -46040,7 +46195,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       }
       const now = new Date().toISOString();
       const interviewId = generateId('CCI');
-      const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : (req.headers['x-admin-token'] ? 'Staff (Ops Console)' : null);
+      const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : staffLabel(req);
       db.prepare(`INSERT INTO campaign_copy_interviews (id, campaignId, accountId, sourceKey, requestedBy, candidatesJson, createdAt, audience)
         VALUES (?,?,?,?,?,?,?,?)`)
         .run(interviewId, campaignId, campaign.accountId, body.sourceKey, requestedBy, JSON.stringify(result.candidates), now, audienceLabel);
@@ -46485,7 +46640,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       }
       const now = new Date().toISOString();
       const interviewId = generateId('CJI');
-      const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : (req.headers['x-admin-token'] ? 'Staff (Ops Console)' : null);
+      const requestedBy = session ? (session.memberId || `${session.accountId}:admin`) : staffLabel(req);
       db.prepare(`INSERT INTO creative_job_interviews (id, jobId, accountId, requestedBy, candidatesJson, productType, createdAt)
         VALUES (?,?,?,?,?,?,?)`)
         .run(interviewId, jobId, job.accountId, requestedBy, JSON.stringify(result.candidates), 'copywriting', now);
