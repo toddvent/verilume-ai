@@ -76,7 +76,8 @@
     <p class="lede">Verilume team sign-in.</p>
     <div class="field"><label for="siEmail">Email</label><input type="email" id="siEmail" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()"></div>
     <div class="field"><label for="siPass">Password</label><input type="password" id="siPass" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"></div>
-    <button class="btn" id="siBtn" onclick="doLogin()">Send code</button>
+    <button class="btn" id="siBtn" onclick="doLogin('email')">Email me a code</button>
+    <button class="btn" id="siSmsBtn" onclick="doLogin('sms')" style="background:#fff;color:#1E2761;border:1px solid #1E2761;margin-top:8px;">Text me a code</button>
     <div class="err" id="siErr"></div>
     <div class="links"><a onclick="showSetup()">First time, or forgot your password?</a></div>
   </div>
@@ -122,9 +123,23 @@
 <div class="hidden" id="consoleView">
   <header class="bar">
     <div class="title">Verilume Team Console</div>
-    <div class="who"><span id="whoName"></span><span class="role-pill" id="whoRole"></span><button onclick="doLogout()">Sign out</button></div>
+    <div class="who"><span id="whoName"></span><span class="role-pill" id="whoRole"></span><button onclick="toggleMobile()">My mobile</button><button onclick="doLogout()">Sign out</button></div>
   </header>
   <main>
+    <div class="panel hidden" id="mobilePanel">
+      <h2>My mobile number</h2>
+      <p class="note" id="mobileState"></p>
+      <div class="form-row">
+        <div class="field"><label for="mbPhone">Mobile number</label><input type="tel" id="mbPhone" placeholder="(555) 123-4567"></div>
+        <button class="btn small" id="mbSend" onclick="mobileStart()">Text me a code</button>
+      </div>
+      <div class="form-row hidden" id="mbConfirmRow">
+        <div class="field"><label for="mbCode">6-digit code</label><input type="text" id="mbCode" inputmode="numeric" maxlength="6"></div>
+        <button class="btn small" onclick="mobileConfirm()">Confirm number</button>
+      </div>
+      <div class="note" id="mbNote"></div><div class="err" id="mbErr"></div>
+      <button class="btn small hidden" id="mbRemove" onclick="mobileRemove()" style="background:#fff;color:#1E2761;border:1px solid #1E2761;">Remove number</button>
+    </div>
     <div class="tabs">
       <button class="tab on" id="tabClients" onclick="showTab('clients')">Clients</button>
       <button class="tab hidden" id="tabOpsAccounts" onclick="showTab('ops-accounts')">Accounts &amp; workspaces</button>
@@ -208,20 +223,24 @@ async function api(method, path, body){
 function show(view){ ['signinView','codeView','setupView','consoleView'].forEach(v => $(v).classList.toggle('hidden', v !== view)); }
 
 // ---- sign in ----
-async function doLogin(){
+let lastChannel = 'email';
+async function doLogin(channel){
+  channel = channel === 'sms' ? 'sms' : 'email'; lastChannel = channel;
   const email = $('siEmail').value.trim(), password = $('siPass').value;
   $('siErr').textContent = '';
   if (!email || !password){ $('siErr').textContent = 'Enter your email and password.'; return; }
-  $('siBtn').disabled = true;
+  $('siBtn').disabled = true; $('siSmsBtn').disabled = true;
   try {
-    const r = await api('POST', 'login', { email, password });
+    const r = await api('POST', 'login', { email, password, channel });
     if (!r.ok){ $('siErr').textContent = r.data.error || 'Could not sign in.'; return; }
     pendingVerification = r.data.verificationId;
-    $('codeLede').textContent = `We emailed a new sign-in code to ${r.data.email}. Use the newest email, titled "your sign-in code". It can take a minute.` + (r.data.interimCode ? ` (Local demo: ${r.data.interimCode})` : '');
+    $('codeLede').textContent = r.data.channel === 'sms'
+      ? `We texted a sign-in code to ${r.data.maskedPhone}. It can take a minute.`
+      : `We emailed a new sign-in code to ${r.data.email}. Use the newest email, titled "your sign-in code". It can take a minute.` + (r.data.interimCode ? ` (Local demo: ${r.data.interimCode})` : '');
     $('cdCode').value = ''; $('cdErr').textContent = '';
     show('codeView'); $('cdCode').focus();
   } catch (e){ $('siErr').textContent = 'Could not reach the server.'; }
-  finally { $('siBtn').disabled = false; }
+  finally { $('siBtn').disabled = false; $('siSmsBtn').disabled = false; }
 }
 async function doVerify(){
   const code = $('cdCode').value.trim();
@@ -242,10 +261,10 @@ async function resendCode(){
   if (!email || !password){ backToSignin(); return; }
   resendAt = Date.now() + 20000; $('cdErr').textContent = ''; $('cdNote').textContent = 'Sending…';
   try {
-    const r = await api('POST', 'login', { email, password });
+    const r = await api('POST', 'login', { email, password, channel: lastChannel });
     if (!r.ok){ $('cdNote').textContent = ''; $('cdErr').textContent = r.data.error || 'Could not send a new code.'; return; }
     pendingVerification = r.data.verificationId; $('cdCode').value = '';
-    $('cdNote').textContent = 'A new code is on its way. Use the newest email.' + (r.data.interimCode ? ` (Local demo: ${r.data.interimCode})` : '');
+    $('cdNote').textContent = (lastChannel === 'sms' ? 'A new text is on its way.' : 'A new code is on its way. Use the newest email.') + (r.data.interimCode ? ` (Local demo: ${r.data.interimCode})` : '');
     $('cdCode').focus();
   } catch (e){ $('cdNote').textContent = ''; $('cdErr').textContent = 'Could not reach the server.'; }
 }
@@ -314,6 +333,30 @@ window.addEventListener('message', ev => {
   if (ev.data.type === 'opsReady') { opsReady = true; opsLoading = false; opsSend(); }
   if (ev.data.type === 'opsHeight') f.style.height = Math.max(640, Number(ev.data.height) || 0) + 'px';
 });
+let mbVerification = null;
+function toggleMobile(){ const p = $('mobilePanel'); p.classList.toggle('hidden'); if (!p.classList.contains('hidden')) mobileRefresh(); }
+async function mobileRefresh(){
+  const r = await api('GET', 'me'); const has = !!(r.data && r.data.user && r.data.user.hasMobile);
+  $('mobileState').textContent = has ? 'A mobile number is saved. You can choose "Text me a code" when you sign in.' : 'No mobile number saved. Add one to sign in with a text code.';
+  $('mbRemove').classList.toggle('hidden', !has);
+}
+async function mobileStart(){
+  $('mbErr').textContent = ''; $('mbNote').textContent = '';
+  const phone = $('mbPhone').value.trim(); if (!phone){ $('mbErr').textContent = 'Enter your mobile number.'; return; }
+  $('mbSend').disabled = true;
+  try {
+    const r = await api('POST', 'mobile/start', { phone });
+    if (!r.ok){ $('mbErr').textContent = r.data.error || 'Could not send a text.'; return; }
+    mbVerification = r.data.verificationId; $('mbConfirmRow').classList.remove('hidden'); $('mbNote').textContent = `We texted a code to ${r.data.maskedPhone}.`;
+  } finally { $('mbSend').disabled = false; }
+}
+async function mobileConfirm(){
+  $('mbErr').textContent = '';
+  const r = await api('POST', 'mobile/confirm', { verificationId: mbVerification, code: $('mbCode').value.trim() });
+  if (!r.ok){ $('mbErr').textContent = r.data.error || 'Could not confirm.'; return; }
+  $('mbConfirmRow').classList.add('hidden'); $('mbCode').value = ''; $('mbPhone').value = ''; $('mbNote').textContent = 'Saved. Text sign-in is on.'; mobileRefresh();
+}
+async function mobileRemove(){ await api('DELETE', 'mobile'); $('mbNote').textContent = 'Number removed.'; mobileRefresh(); }
 function showTab(t){
   const isOps = t.indexOf('ops-') === 0;
   const map = { clients: 'paneClients', log: 'paneLog', pcr: 'panePcr', team: 'paneTeam' };
