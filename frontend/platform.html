@@ -217,12 +217,11 @@
         <div class="lib-chips" id="libChips"></div>
         <div class="doc-grid" id="libGrid"></div>
         <div class="err" id="libErr"></div>
-        <h3 style="margin:26px 0 8px;color:var(--navy);font-size:15px">Product docs on the site</h3>
-        <div class="doc-grid" id="docGrid"></div>
       </div>
       <div id="libReader" class="hidden">
         <div class="lib-bar"><button class="btn small ghost" onclick="libBack()">&larr; Library</button><strong id="libTitle"></strong><span style="flex:1"></span><button class="btn small ghost" onclick="libPrint()">Print or save as PDF</button></div>
-        <iframe id="libFrame" title="Document" sandbox="allow-modals allow-same-origin" style="width:100%;border:1px solid var(--line);border-radius:18px;min-height:70vh;background:#fff"></iframe>
+        <iframe id="libFrame" title="Document" sandbox="allow-modals allow-same-origin" style="width:100%;border:1px solid var(--line);border-radius:18px;height:calc(100vh - 150px);min-height:480px;background:#fff"></iframe>
+        <div class="err" id="libMiss" style="margin-top:10px"></div>
       </div>
     </div>
 
@@ -430,7 +429,8 @@ function renderLib(){
   const cats = ['All'].concat(['Start here','Product','Training','Security','Database'].filter(c => docs.some(d => d.category === c)));
   $('libChips').innerHTML = cats.map(c => `<button class="lib-chip${c === libCat ? ' on' : ''}" onclick="libCat='${c}';renderLib()">${esc(c)}</button>`).join('');
   const q = ($('libSearch').value || '').toLowerCase().trim();
-  const rows = docs.filter(d => (libCat === 'All' || d.category === libCat) && (!q || (d.title + ' ' + d.summary + ' ' + d.category).toLowerCase().indexOf(q) >= 0));
+  const ORD = ['Start here','Product','Training','Security','Database'];
+  const rows = docs.slice().sort((x, y) => ORD.indexOf(x.category) - ORD.indexOf(y.category)).filter(d => (libCat === 'All' || d.category === libCat) && (!q || (d.title + ' ' + d.summary + ' ' + d.category).toLowerCase().indexOf(q) >= 0));
   $('libGrid').innerHTML = rows.length ? rows.map(d => `<button class="doc-card lib-card" onclick="openLib('${esc(d.id)}')"><span class="cat">${esc(d.category)}${d.type === 'file' ? ' &middot; download' : ''}</span><strong>${esc(d.title)}</strong><span>${esc(d.summary)}</span><span class="upd">Updated ${esc(d.updated)} &middot; ${esc(d.audience || 'Staff')}</span></button>`).join('') : '<p class="muted">Nothing matches.</p>';
 }
 async function openLib(id){
@@ -444,25 +444,47 @@ async function openLib(id){
   }
   const r = await libFetch(encodeURIComponent(id));
   if (!r.ok){ $('libErr').textContent = 'Could not open that document.'; return; }
-  const fr = $('libFrame'); fr.onload = () => { try { fr.style.height = (fr.contentDocument.documentElement.scrollHeight + 8) + 'px'; } catch (e){} }; fr.srcdoc = await r.text(); $('libTitle').textContent = d.title;
+  const fr = $('libFrame'); $('libMiss').textContent = ''; fr.onload = () => libHook(fr); fr.srcdoc = await r.text(); $('libTitle').textContent = d.title;
   $('libList').classList.add('hidden'); $('libReader').classList.remove('hidden'); window.scrollTo(0, 0);
 }
-function libBack(){ $('libReader').classList.add('hidden'); $('libList').classList.remove('hidden'); $('libFrame').srcdoc = ''; }
-function libPrint(){ try { $('libFrame').contentWindow.focus(); $('libFrame').contentWindow.print(); } catch (e){} }
-const PRODUCT_DOCS = [
-  ['All Product docs', 'Home page for the six Product groups', '/docs/'],
-  ['Data Management', 'Data uploads, connections and access control', '/docs/data-uploads'],
-  ['Licensed Integrations', 'Vendors, GA4, Snowflake and what is not integrated', '/docs/licensed-integrations'],
-  ['Copywriting', 'Contest, voice, scoring and content loop', '/docs/copywriting'],
-  ['Marketing Budgets, Campaigns & Analysis', 'Media plan, budgets, campaigns, analysis', '/docs/media-plan-budget'],
-  ['Registration & Account Management', 'Sign-up, sign-in, team access, accounts', '/docs/registration-account-management'],
-  ['Advanced Analytics', 'MMM Light, tests, qualification', '/platform/productdocs/advanced-analytics'],
-  ['Advanced Analytics training guide (PDF)', 'Training material for the team', '/platform/productdocs/verilume-advanced-analytics-training.pdf']
-];
-function renderDocs(){
-  loadLibrary();
-  $('docGrid').innerHTML = PRODUCT_DOCS.map(d => `<a class="doc-card" href="${d[2]}" target="_blank" rel="noopener"><strong>${esc(d[0])} &#8599;</strong><span>${esc(d[1])}</span></a>`).join('');
+
+function libTarget(href){
+  if (!href) return null;
+  if (href.indexOf('lib:') === 0) return { id: href.slice(4) };
+  let h = href.split('#')[0].split('?')[0];
+  if (/^https?:\/\//i.test(h) || /^mailto:/i.test(h)) return { ext: true };
+  h = h.replace(/^\/+/, '').replace(/^(docs|platform\/productdocs)\//i, '');
+  const base = h.split('/').pop();
+  if (!base || base === 'docs') return { id: 'product-docs-home' };
+  let m = base.match(/^verilume-product-docs(\.html)?$/i); if (m) return { id: 'product-docs-home' };
+  m = base.match(/^verilume-product-(.+?)(\.html)?$/i); if (m) return { id: 'product-' + m[1].toLowerCase(), label: base };
+  if (/^(registrationaccountmanagementproduct(\.html)?|registration-account-management)$/i.test(base)) return { id: 'product-registration-account-management' };
+  m = base.match(/^(?:verilume-)?(advanced-analytics-training)(\.html)?$/i); if (m) return { id: 'product-advanced-analytics-training' };
+  m = base.match(/^(data-uploads|licensed-integrations|copywriting|media-plan-budget|campaign-management|pr|company-profile-team|advanced-analytics)$/i); if (m) return { id: 'product-' + m[1].toLowerCase(), label: base };
+  const f = (libDocs || []).find(x => x.type === 'file' && x.file && x.file.toLowerCase() === base.toLowerCase());
+  if (f) return { id: f.id };
+  return { missing: base };
 }
+function libHook(fr){
+  let doc; try { doc = fr.contentDocument; } catch (e){ return; }
+  if (!doc) return;
+  doc.addEventListener('click', ev => {
+    const a = ev.target.closest && ev.target.closest('a[href]'); if (!a) return;
+    const href = a.getAttribute('href');
+    if (href.charAt(0) === '#'){
+      ev.preventDefault(); const el = doc.getElementById(href.slice(1)); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); return;
+    }
+    const t = libTarget(href); if (!t) return;
+    if (t.ext){ ev.preventDefault(); window.open(a.href, '_blank', 'noopener'); return; }
+    ev.preventDefault();
+    if (t.id && (libDocs || []).some(x => x.id === t.id)) { openLib(t.id); return; }
+    $('libMiss').textContent = 'That page is not in the library yet (' + (t.missing || t.label || t.id) + '). Ask an owner to add it.';
+    window.scrollTo(0, document.body.scrollHeight);
+  });
+}
+function libBack(){ $('libMiss').textContent = ''; $('libReader').classList.add('hidden'); $('libList').classList.remove('hidden'); $('libFrame').srcdoc = ''; }
+function libPrint(){ try { $('libFrame').contentWindow.focus(); $('libFrame').contentWindow.print(); } catch (e){} }
+function renderDocs(){ loadLibrary(); }
 function showTab(t){
   const isOps = t.indexOf('ops-') === 0;
   const map = { clients: 'paneClients', log: 'paneLog', pcr: 'panePcr', team: 'paneTeam', docs: 'paneDocs' };
