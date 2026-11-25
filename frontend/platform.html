@@ -368,6 +368,7 @@ function enterConsole(){
   const roles = me.role === 'owner' ? ['owner','admin','support','readonly'] : ['support','readonly'];
   $('nuRole').innerHTML = roles.map(r => `<option value="${r}">${ROLE_LABEL[r]}</option>`).join('');
   show('consoleView'); showTab('clients'); loadClients();
+  { const m = /^#lib=([A-Za-z0-9_.-]+)$/.exec(location.hash || ''); if (m){ showTab('docs'); libWhenReady(m[1]); } }
 }
 let opsReady = false, opsLoading = false, opsGroup = 'accounts';
 function opsSend(){ const f = $('opsFrame'); if (opsReady && f && f.contentWindow) f.contentWindow.postMessage({ type: 'opsGroup', group: opsGroup }, '*'); }
@@ -482,6 +483,7 @@ function libHook(fr){
     window.scrollTo(0, document.body.scrollHeight);
   });
 }
+async function libWhenReady(id){ for (let i = 0; i < 40 && !libDocs; i++) await new Promise(r => setTimeout(r, 150)); if (libDocs) openLib(id); }
 function libBack(){ $('libMiss').textContent = ''; $('libReader').classList.add('hidden'); $('libList').classList.remove('hidden'); $('libFrame').srcdoc = ''; }
 function libPrint(){ try { $('libFrame').contentWindow.focus(); $('libFrame').contentWindow.print(); } catch (e){} }
 function renderDocs(){ loadLibrary(); }
