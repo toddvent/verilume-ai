@@ -45,7 +45,7 @@
   .role-pill{background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.3);border-radius:999px;padding:3px 11px;font-size:11.5px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;}
   header.bar button{background:transparent;color:#fff;border:1px solid rgba(255,255,255,0.45);border-radius:999px;padding:7px 15px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;}
   header.bar button:hover{border-color:#fff;}
-  main{max-width:1060px;margin:0 auto;padding:28px;}
+  main{max-width:1240px;margin:0 auto;padding:28px;}
   .tabs{display:flex;gap:6px;margin-bottom:18px;}
   .tab{background:transparent;border:1px solid var(--line);color:var(--navy);padding:8px 18px;border-radius:999px;font-weight:600;font-size:13.5px;cursor:pointer;font-family:inherit;}
   .tab.on{background:var(--navy);color:#fff;border-color:var(--navy);}
@@ -127,8 +127,12 @@
   <main>
     <div class="tabs">
       <button class="tab on" id="tabClients" onclick="showTab('clients')">Clients</button>
-      <button class="tab" id="tabLog" onclick="showTab('log')">Access log</button>
+      <button class="tab hidden" id="tabOpsAccounts" onclick="showTab('ops-accounts')">Accounts &amp; workspaces</button>
+      <button class="tab hidden" id="tabOpsHealth" onclick="showTab('ops-health')">Platform health</button>
+      <button class="tab hidden" id="tabOpsReview" onclick="showTab('ops-review')">AI review</button>
+      <button class="tab hidden" id="tabOpsTools" onclick="showTab('ops-tools')">Tools</button>
       <button class="tab" id="tabPcr" onclick="showTab('pcr')">Partner requests</button>
+      <button class="tab" id="tabLog" onclick="showTab('log')">Access log</button>
       <button class="tab hidden" id="tabTeam" onclick="showTab('team')">Team</button>
     </div>
 
@@ -152,6 +156,11 @@
     <div class="panel hidden" id="paneLog">
       <h2>Client visits</h2>
       <div id="logBody"></div>
+    </div>
+
+    <div class="hidden" id="paneOps">
+      <div class="err" id="opsErr"></div>
+      <iframe id="opsFrame" title="Operations" style="width:100%;border:0;min-height:640px;background:transparent;"></iframe>
     </div>
 
     <div class="panel hidden" id="panePcr">
@@ -284,18 +293,38 @@ function enterConsole(){
   $('whoName').textContent = me.name; $('whoRole').textContent = ROLE_LABEL[me.role] || me.role;
   const manage = me.role === 'owner' || me.role === 'admin';
   $('tabTeam').classList.toggle('hidden', !manage);
+  ['tabOpsAccounts','tabOpsHealth','tabOpsReview','tabOpsTools'].forEach(id => $(id).classList.toggle('hidden', me.role === 'readonly'));
   const roles = me.role === 'owner' ? ['owner','admin','support','readonly'] : ['support','readonly'];
   $('nuRole').innerHTML = roles.map(r => `<option value="${r}">${ROLE_LABEL[r]}</option>`).join('');
   show('consoleView'); showTab('clients'); loadClients();
 }
+let opsReady = false, opsLoading = false, opsGroup = 'accounts';
+function opsSend(){ const f = $('opsFrame'); if (opsReady && f && f.contentWindow) f.contentWindow.postMessage({ type: 'opsGroup', group: opsGroup }, '*'); }
+async function loadOps(){
+  if (opsLoading || opsReady) { opsSend(); return; }
+  opsLoading = true; $('opsErr').textContent = '';
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/platform/app/ops-console`, { headers: { 'Authorization': 'Bearer ' + token(), 'Accept-Encoding': 'gzip' } });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); $('opsErr').textContent = d.error || 'Could not load the operations tools right now.'; opsLoading = false; return; }
+    $('opsFrame').srcdoc = await r.text();
+  } catch (e) { $('opsErr').textContent = 'Could not load the operations tools right now.'; opsLoading = false; }
+}
+window.addEventListener('message', ev => {
+  const f = $('opsFrame'); if (!f || ev.source !== f.contentWindow || !ev.data) return;
+  if (ev.data.type === 'opsReady') { opsReady = true; opsLoading = false; opsSend(); }
+  if (ev.data.type === 'opsHeight') f.style.height = Math.max(640, Number(ev.data.height) || 0) + 'px';
+});
 function showTab(t){
-  ['clients','log','pcr','team'].forEach(x => {
-    $('pane' + x[0].toUpperCase() + x.slice(1)).classList.toggle('hidden', x !== t);
-    $('tab' + x[0].toUpperCase() + x.slice(1)).classList.toggle('on', x === t);
-  });
+  const isOps = t.indexOf('ops-') === 0;
+  const map = { clients: 'paneClients', log: 'paneLog', pcr: 'panePcr', team: 'paneTeam' };
+  Object.keys(map).forEach(x => $(map[x]).classList.toggle('hidden', x !== t));
+  $('paneOps').classList.toggle('hidden', !isOps);
+  const tabs = { clients: 'tabClients', log: 'tabLog', pcr: 'tabPcr', team: 'tabTeam', 'ops-accounts': 'tabOpsAccounts', 'ops-health': 'tabOpsHealth', 'ops-review': 'tabOpsReview', 'ops-tools': 'tabOpsTools' };
+  Object.keys(tabs).forEach(x => $(tabs[x]).classList.toggle('on', x === t));
   if (t === 'log') loadLog();
   if (t === 'pcr') loadPcr();
   if (t === 'team') loadTeam();
+  if (isOps) { opsGroup = t.slice(4); loadOps(); }
 }
 async function loadSpark(){
   const r = await api('GET', 'spark-settings'); if (!r.ok) return;
