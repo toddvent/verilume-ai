@@ -1,0 +1,63 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Advanced Analytics Product Documentation</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:wght@600&display=swap"><style>
+:root{--ink:#1d2430;--mute:#5b6676;--line:#dfe3ea;--bg:#fff;--soft:#f5f7fa;--acc:#0f5f73;--warn:#8a5a00;--bad:#9b2c2c;--ok:#1f6b45}
+@media (prefers-color-scheme:dark){:root{--ink:#e8ecf2;--mute:#9aa6b6;--line:#2c3441;--bg:#12161d;--soft:#1a2029;--acc:#6cc3d8;--warn:#e2b04a;--bad:#e58a8a;--ok:#7fd3a5}}
+*{box-sizing:border-box}html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 "Source Sans 3","Segoe UI",Helvetica,Arial,sans-serif}
+.wrap{max-width:860px;margin:0 auto;padding:36px 28px 64px}
+h1{font:600 2rem/1.2 "Source Serif 4",Georgia,serif;margin:0 0 6px;text-wrap:balance}
+h2{font:600 1.35rem/1.3 "Source Serif 4",Georgia,serif;margin:36px 0 8px;padding-top:6px;border-top:1px solid var(--line);text-wrap:balance}
+h3{font-size:1.02rem;margin:20px 0 4px}
+.eyebrow{font-size:.78rem;letter-spacing:.09em;text-transform:uppercase;color:var(--mute)}
+.lede{color:var(--mute);margin:4px 0 18px;max-width:60ch}
+p,li{max-width:70ch}table{border-collapse:collapse;width:100%;margin:10px 0 16px;font-size:.93rem;display:block;overflow-x:auto}
+th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}th{background:var(--soft)}
+.callout{background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:12px 16px;margin:14px 0}
+.tag{display:inline-block;font-size:.75rem;border:1px solid currentColor;border-radius:99px;padding:0 8px;margin-right:4px}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+code{background:var(--soft);padding:1px 5px;border-radius:3px;font-size:.88em}
+a{color:var(--acc)}.meta{font-size:.85rem;color:var(--mute)}
+ol.steps{list-style:none;padding:0;counter-reset:s}ol.steps li{position:relative;padding-left:2.2em;margin:8px 0}
+ol.steps li:before{counter-increment:s;content:counter(s);position:absolute;left:0;top:0;width:1.6em;height:1.6em;border-radius:50%;background:var(--acc);color:var(--bg);font-size:.85rem;display:flex;align-items:center;justify-content:center}
+@media print{.wrap{padding:0}h2{break-after:avoid}table,.callout{break-inside:avoid}body{font-size:11.5pt}}
+</style></head><body><div class="wrap">
+<div class="eyebrow">Verilume Product docs · Marketing Budgets, Campaigns &amp; Analysis</div>
+<h1>Advanced Analytics: MMM Light and market testing</h1>
+<p class="lede">Current-state reference for the model, its schedule and credits, the qualification check, and the handoff from a model's test candidates into market design and the Truth Lab.</p>
+<p class="meta">Updated 2026-11-22 · Build 2026-11-22-r97 · Status: built and tested against mocked data; <b>not yet verified on the production site</b>. <a href="lib:verilume-advanced-analytics-training">Training guide (PDF)</a> · <a href="lib:product-advanced-analytics-training">Training guide (web)</a> · <a href="lib:product-docs-home">All Product docs</a></p>
+
+<h2>01 What it is</h2>
+<p>MMM Light fits a weekly regression to an account's own daily records and campaign plans, with carry-over (geometric adstock), diminishing returns (Hill saturation), trend and seasonality, a nonnegative ridge, a 13-week holdout and bootstrap ranges. It recommends a reallocation within guard rails and lists channels worth testing. The model code is server-only (<code>mmm-model.js</code>).</p>
+<div class="callout"><b>Positioning.</b> Reported numbers come straight from the data; modeled numbers show a range and confidence. MMM Light is not a Bayesian model, is not calibrated to test results, does not model markets separately and reads weeks, not days. Where a deeper model fits, Verilume brokers one from Measurement Coverage. Portal and home-page copy say so.</div>
+
+<h2>02 What is built</h2>
+<table><tr><th>Capability</th><th>Where</th><th>State</th></tr>
+<tr><td>Model runs by outcome (revenue, transactions, leads, direct sales calls), saved per run</td><td>Portal MMM Light page; <code>GET/POST /api/accounts/:id/mmm-allocations[/run]</code>; table <code>mmm_model_runs</code></td><td><span class="tag ok">Built</span></td></tr>
+<tr><td>Credits per run (default 5, <code>MMM_RUN_CREDITS</code> env, per-account override in <code>mmm_schedules.runCredits</code>); charged only when the model fits; unmetered for Enterprise</td><td><code>mmmRunCreditsFor</code>, <code>mmmChargeRun</code>; <code>draft_usage</code> rows</td><td><span class="tag ok">Built</span></td></tr>
+<tr><td>Configurable refresh (manual, monthly, biweekly, weekly), outcomes, credit reserve (default 20); in-process hourly tick; skips on under 7 new days, not ready or already running; edit rights admin, CMO or Director</td><td><code>mmm_schedules</code>; <code>GET/PUT …/mmm-allocations/schedule</code></td><td><span class="tag ok">Built</span> <span class="tag warn">timer not run on live server</span></td></tr>
+<tr><td>Test candidates (<code>mmmTestPlan</code>): geo-addressable channels the model is least sure about, expected effect of +20% weekly spend with range</td><td>Stored in <code>result.testPlan</code>; "Test next" card</td><td><span class="tag ok">Built</span></td></tr>
+<tr><td><b>Plan this test</b>: opens Visualize markets with the channel and expected lift; sizes weeks needed for the pooled markets (<code>geoWeeksForLift</code>, 95% confidence, 80% power, Poisson counts, 2x baseline allowance)</td><td><code>GET …/geo-approach?liftPct=</code> adds <code>forLift</code>; portal <code>mmaPlanTest</code>, <code>geoCandidateHtml</code></td><td><span class="tag ok">Built (r97)</span></td></tr>
+<tr><td><b>Save as a test in the Truth Lab</b>: draft <code>matchmarket</code> test whose <code>details</code> carry <code>source: "mmm-candidate"</code>, <code>mmmRunId</code>, channel, expected lift range, sizing</td><td><code>POST …/media-tests</code> (existing route)</td><td><span class="tag ok">Built (r97)</span></td></tr>
+<tr><td><b>Qualification check</b>: gates applied to what is loaded; Ready / Thin / Missing per item; copyable data request; read-only, no credits</td><td><code>GET …/mmm-allocations/qualification</code>; <code>mmmQualification</code>; "Is this account ready?" card</td><td><span class="tag ok">Built (r97)</span></td></tr>
+<tr><td>AI Thoughts topics MF to MJ and public FAQ answers drawn from the training guide</td><td><code>BP_FAQ_TOPICS</code>, <code>PU_THOUGHTS</code> in the portal; <code>PRODUCT_GUIDE</code> in the server; <code>index.html</code></td><td><span class="tag ok">Built (r97)</span></td></tr></table>
+
+<h2>03 Gates</h2>
+<table><tr><th>Gate</th><th>Value</th></tr><tr><td>Minimum history</td><td>52 complete weeks (104 reads best)</td></tr><tr><td>Channel active weeks</td><td>26</td></tr><tr><td>Channel weekly spend variation (CV)</td><td>25%</td></tr><tr><td>Collinearity</td><td>|r| 0.85 or more flags channels that cannot be separated</td></tr><tr><td>Holdout</td><td>13 weeks; R&sup2; below 0 gives no recommendations</td></tr><tr><td>Reallocation limits</td><td>Not below 50% or above 150% of current, nor above 125% of the highest weekly spend ever run</td></tr><tr><td>Run rate limit</td><td>6 per hour per key</td></tr></table>
+
+<h2>04 Handoff to testing</h2>
+<ol><li>The run stores <code>testPlan</code>: channel, why, extra weekly spend, expected lift [low, mid, high] as % of mean weekly outcome.</li><li>Plan this test stores a candidate in the portal and opens Visualize markets (step <code>marketOptimization</code>). The earlier link on the Test next card pointed at the Data Visualizer; fixed in r97.</li><li>The page requests <code>geo-approach?liftPct=&lt;mid&gt;</code>. The server returns the cached approach plus <code>forLift</code>: weeks, verdict (<code>readable</code> up to 13 weeks, <code>longer</code> up to 26, <code>too_small</code> beyond) and text.</li><li>Save writes a draft Truth Lab test linked to the run. Markets and dates are added in the Truth Lab. Confirming a result remains a person's decision.</li></ol>
+
+<h2>05 Known gaps</h2>
+<ul><li>Nothing here is verified on the production site; route tests were run against a mocked portal and a synthetic fixture, and the schedule timer has not run on a live server.</li><li>Test results do not calibrate the model. Accept-and-log decision, partner-supplied MMM results, impressions as exposure and daily actual spend load are not built.</li><li>The Truth Lab does not yet show the linked MMM run on a test; the link is stored in the test's details.</li><li><code>weeks needed</code> uses the pooled markets only; per-pair sizing is on the existing approach card.</li><li>The refresh timer is single-process; a multi-instance deploy would need a lock.</li><li>No UI for a per-account price override; no notice when a refresh pauses.</li><li>AI Media Plan recommendations are not yet constrained to budget channels (current gate is Active Channels).</li></ul>
+
+<h2>06 Qualifying a real account</h2>
+<p>Use the qualification check on the MMM Light page, then send the copied request to the client. For a client that supplies calls and leads through a data warehouse share, the real column names for call attribution (UTM source, medium, campaign, referring site) are needed before those fields can be mapped; until then they sit in the raw payload.</p>
+
+<h2>Decision log</h2>
+<table><tr><th>Date</th><th>Decision</th><th>Why</th></tr>
+<tr><td>2026-11-22</td><td>Test candidate handoff sizes the test against pooled markets and reports weeks needed, rather than blocking when too long</td><td>A long answer is information; the page says what to change.</td></tr>
+<tr><td>2026-11-22</td><td>Saved test is a draft with the MMM run id in <code>details</code>; no schema change</td><td>The existing test registry already stores free-form details; avoids a migration.</td></tr>
+<tr><td>2026-11-22</td><td>Qualification check is read-only and free</td><td>It should be run before a client commits to credits.</td></tr>
+<tr><td>2026-11-22</td><td>Training guide parsed into AI Thoughts MF to MJ and five public FAQ answers</td><td>One source of wording for users, the voice assistant and AI search engines.</td></tr>
+<tr><td>2026-11-22</td><td>Refresh cadence is a per-account setting; run credits default 5</td><td>Client size and credit allowance decide how often a refresh is worth it.</td></tr>
+<tr><td>2026-11-25</td><td>Moved into the Team Console Library</td><td>Links now open inside the Library; the public /docs routes are to be retired.</td></tr></table>
+</div></body></html>

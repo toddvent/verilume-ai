@@ -1,0 +1,42 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Library map</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@600&display=swap"><style>
+:root{--navy:#1E2761;--amber:#D08A3E;--ink:#1c2233;--mute:#5d6578;--line:#e3e6ee;--bg:#fff;--soft:#f5f6fa;--cream:#F4F2EC;--ok:#1d7a4e;--warn:#9a5b00;--bad:#a8261d}
+*{box-sizing:border-box}body{margin:0;font:15px/1.6 Inter,system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+.wrap{max-width:900px;margin:0 auto;padding:32px 28px 64px}
+h1,h2,h3{font-family:Poppins,Inter,system-ui,sans-serif;color:var(--navy);line-height:1.25;text-wrap:balance}
+h1{font-size:30px;margin:6px 0 8px}h2{font-size:21px;margin:38px 0 10px;padding-top:6px}h3{font-size:16px;margin:24px 0 6px}
+.eyebrow{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--amber);font-weight:600}
+.meta{color:var(--mute);font-size:13px;margin-bottom:18px}
+.lede{font-size:17px;color:#333a50}
+p{margin:8px 0}ul,ol{padding-left:22px}li{margin:4px 0}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px}
+th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+th{background:var(--soft);color:var(--navy);font-weight:600}
+.scroll{overflow-x:auto}
+code{font:12.5px ui-monospace,Menlo,Consolas,monospace;background:var(--soft);padding:1px 5px;border-radius:5px}
+.pill{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:99px;background:var(--soft);color:var(--navy);white-space:nowrap}
+.pill.ok{background:#e4f4ec;color:var(--ok)}.pill.warn{background:#fdf0dc;color:var(--warn)}.pill.bad{background:#fbe6e4;color:var(--bad)}
+.callout{background:var(--cream);border-radius:14px;padding:14px 18px;margin:16px 0}
+.callout.warn{background:#fdf0dc}
+.toc{background:var(--soft);border-radius:14px;padding:12px 20px;margin:18px 0}.toc a{color:var(--navy);text-decoration:none}.toc li{margin:2px 0}
+.steps{counter-reset:s;list-style:none;padding:0}.steps li{counter-increment:s;position:relative;padding:8px 12px 8px 44px;margin:6px 0;background:var(--soft);border-radius:12px}
+.steps li:before{content:counter(s);position:absolute;left:12px;top:8px;width:22px;height:22px;border-radius:50%;background:var(--navy);color:#fff;font-size:12px;font-weight:600;text-align:center;line-height:22px}
+.fork{margin:6px 0 6px 20px;padding-left:14px;border-left:3px solid var(--amber)}
+pre{background:#1b1f2e;color:#e8eaf2;padding:12px 14px;border-radius:12px;overflow-x:auto;font:12.5px/1.5 ui-monospace,Menlo,Consolas,monospace}
+@media(max-width:600px){.wrap{padding:20px 14px 48px}h1{font-size:25px}}
+@media print{.toc{display:none}.wrap{padding:0}}
+@media(prefers-color-scheme:dark){:root{--ink:#e6e8f0;--mute:#9aa2b8;--line:#2d3350;--bg:#12162a;--soft:#1b2040;--cream:#222848;--navy:#aab4ff}}
+</style></head><body><div class="wrap"><div class="eyebrow">Start here</div><h1>Library map</h1><div class="meta">As of 2026-11-25</div><p class="lede">The Team Console library is the one place for what we have built, how to train people on it, and how we protect client data. This page says what is in here, what exists elsewhere, and what is still missing.</p>
+<h2>Categories</h2>
+<div class="scroll"><table class=""><tr><th>Category</th><th>Holds</th><th>In the library now</th></tr><tr><td>Product</td><td>What each part of the platform does today, with a Decision Log</td><td>Team Console; Sign-in and account creation paths</td></tr><tr><td>Training</td><td>How staff and clients learn it</td><td>Team Console staff guide; Analytics training guide; Analytics integration setup guide</td></tr><tr><td>Security</td><td>How client data is protected and what is open</td><td>Security overview; Legal review brief</td></tr><tr><td>Database</td><td>Tables, sensitive data, retention</td><td>Database architecture</td></tr></table></div>
+<h2>Product documentation</h2>
+<p>The six Product groups, and where each stands:</p>
+<div class="scroll"><table class=""><tr><th>Product group</th><th>Reference doc</th><th>State</th></tr><tr><td>Data Management</td><td>Data Uploads &amp; Integrity</td><td><span class="pill ok">In the Library</span></td></tr><tr><td>Licensed Integrations</td><td>Licensed Integrations</td><td><span class="pill ok">In the Library</span></td></tr><tr><td>Copywriting</td><td>Copywriting</td><td><span class="pill ok">In the Library</span></td></tr><tr><td>Marketing Budgets, Campaigns &amp; Analysis</td><td>Media Plan &amp; Budget; Campaign Management</td><td><span class="pill ok">In the Library</span></td></tr><tr><td>Registration &amp; Account Management</td><td>Registration &amp; Account Management; the Team Console and sign-in paths docs</td><td><span class="pill ok">In the Library</span></td></tr><tr><td>Company Profile &amp; Team</td><td>Company Profile &amp; Team; PR &amp; Corporate Communications; Team Console</td><td><span class="pill ok">In the Library</span></td></tr><tr><td>Advanced Analytics</td><td>Advanced Analytics product doc and training guide (web and PDF)</td><td><span class="pill ok">In the Library</span></td></tr><tr><td>Public Front End Pages</td><td>No doc yet</td><td><span class="pill bad">Missing</span></td></tr></table></div>
+<p>Many newer features exist only as dated round notes in the project, not yet folded into a Product doc: Visualize, Search Everywhere, Reputation and PR, Goal and Scenario Planner, Truth Lab, credit pricing and packs, portal start page, call-centre upload, Channel Partner Index and Comparative Analytics, Analytics Summary and partner ids. Folding them in needs the repo's /docs files.</p>
+<h2>Training</h2>
+<div class="scroll"><table class=""><tr><th>Audience</th><th>Material</th><th>State</th></tr><tr><td>Verilume staff</td><td>Team Console staff guide</td><td><span class="pill ok">Here</span></td></tr><tr><td>Clients</td><td>Analytics training guide; Integration setup guide; ten client training PDFs and two Atlas session decks are here; GA4 Setup / AI Brain and Team &amp; Org Management PDFs and the PM worksheet CSV are still missing</td><td><span class="pill ok">Here / repo</span></td></tr><tr><td>Clients</td><td>Train the Brain partner ids, Comparative Analytics and Channel Partner Index</td><td><span class="pill bad">Missing</span></td></tr><tr><td>Everyone</td><td>Training library (scoped 2026-10-07)</td><td><span class="pill bad">Not built</span></td></tr></table></div>
+<h2>Security</h2>
+<p>The Security overview consolidates the 2026 notes: Supabase row-level security fixes (September), October hardening, vendor wiring, login step-up and console gating, and the November route audit. Still outside the library: the nine-document policy pack named in the 2026-10-09 note. Add the PDFs when found.</p>
+<h2>How to add a document</h2>
+<ol class="steps"><li>Write the page as HTML (or save a PDF or Word file).</li><li>Put it in the server's <code>platform-docs</code> folder and add one line to <code>manifest.json</code>: id, title, category (Product, Training, Security or Database), summary, audience, updated date.</li><li>Deploy the backend. It appears in the library for signed-in team members. Nothing is published to the public site.</li></ol>
+<p>Update a document in place and change its date; do not create dated copies. After each workstream, update the matching Product doc and its Decision Log.</p>
+</div></body></html>

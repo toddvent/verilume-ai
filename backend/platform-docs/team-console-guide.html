@@ -1,0 +1,60 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Team Console staff guide</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@600&display=swap"><style>
+:root{--navy:#1E2761;--amber:#D08A3E;--ink:#1c2233;--mute:#5d6578;--line:#e3e6ee;--bg:#fff;--soft:#f5f6fa;--cream:#F4F2EC;--ok:#1d7a4e;--warn:#9a5b00;--bad:#a8261d}
+*{box-sizing:border-box}body{margin:0;font:15px/1.6 Inter,system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+.wrap{max-width:900px;margin:0 auto;padding:32px 28px 64px}
+h1,h2,h3{font-family:Poppins,Inter,system-ui,sans-serif;color:var(--navy);line-height:1.25;text-wrap:balance}
+h1{font-size:30px;margin:6px 0 8px}h2{font-size:21px;margin:38px 0 10px;padding-top:6px}h3{font-size:16px;margin:24px 0 6px}
+.eyebrow{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--amber);font-weight:600}
+.meta{color:var(--mute);font-size:13px;margin-bottom:18px}
+.lede{font-size:17px;color:#333a50}
+p{margin:8px 0}ul,ol{padding-left:22px}li{margin:4px 0}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px}
+th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+th{background:var(--soft);color:var(--navy);font-weight:600}
+.scroll{overflow-x:auto}
+code{font:12.5px ui-monospace,Menlo,Consolas,monospace;background:var(--soft);padding:1px 5px;border-radius:5px}
+.pill{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:99px;background:var(--soft);color:var(--navy);white-space:nowrap}
+.pill.ok{background:#e4f4ec;color:var(--ok)}.pill.warn{background:#fdf0dc;color:var(--warn)}.pill.bad{background:#fbe6e4;color:var(--bad)}
+.callout{background:var(--cream);border-radius:14px;padding:14px 18px;margin:16px 0}
+.callout.warn{background:#fdf0dc}
+.toc{background:var(--soft);border-radius:14px;padding:12px 20px;margin:18px 0}.toc a{color:var(--navy);text-decoration:none}.toc li{margin:2px 0}
+.steps{counter-reset:s;list-style:none;padding:0}.steps li{counter-increment:s;position:relative;padding:8px 12px 8px 44px;margin:6px 0;background:var(--soft);border-radius:12px}
+.steps li:before{content:counter(s);position:absolute;left:12px;top:8px;width:22px;height:22px;border-radius:50%;background:var(--navy);color:#fff;font-size:12px;font-weight:600;text-align:center;line-height:22px}
+.fork{margin:6px 0 6px 20px;padding-left:14px;border-left:3px solid var(--amber)}
+pre{background:#1b1f2e;color:#e8eaf2;padding:12px 14px;border-radius:12px;overflow-x:auto;font:12.5px/1.5 ui-monospace,Menlo,Consolas,monospace}
+@media(max-width:600px){.wrap{padding:20px 14px 48px}h1{font-size:25px}}
+@media print{.toc{display:none}.wrap{padding:0}}
+@media(prefers-color-scheme:dark){:root{--ink:#e6e8f0;--mute:#9aa2b8;--line:#2d3350;--bg:#12162a;--soft:#1b2040;--cream:#222848;--navy:#aab4ff}}
+</style></head><body><div class="wrap"><div class="eyebrow">Training</div><h1>Team Console staff guide</h1><div class="meta">For Verilume staff. Matches the 2026-11-25 release (r114).</div><p class="lede">For Verilume staff. How to sign in to the Team Console, find a client, change their plan, record agreements and invoices, and manage the team. It covers what each person can and cannot do and what to do when something looks wrong.</p>
+<div class="toc"><strong>On this page</strong><ol><li><a href="#in">Signing in</a></li><li><a href="#tabs">What each tab is for</a></li><li><a href="#acct">Working in a client's workspace</a></li><li><a href="#level">Changing a client's level</a></li><li><a href="#team">Managing the team</a></li><li><a href="#roles">What each role can do</a></li><li><a href="#rules">House rules</a></li><li><a href="#help">When something looks wrong</a></li></ol></div>
+<h2 id="in">Signing in</h2>
+<ol class="steps"><li>Open the Team Console at <code>/platform</code>. Enter your work email and password.</li><li>Choose how to receive your 6-digit code: <strong>email</strong>, or <strong>text</strong> if you have turned text sign-in on.</li><li>Enter the code. Codes last 10 minutes. Your session lasts 12 hours, then you sign in again.</li></ol>
+<h3>Turning on text sign-in</h3>
+<p>Click <strong>My mobile</strong> in the top bar, enter your number, enter the code we text you, and it is on. Only you can turn it on, because you have to prove the number is yours. An Owner or Admin can turn it off for someone (that also clears the number). Password reset is still email only.</p>
+<h3>First time</h3>
+<p>New team members get a setup link. Choose a password and confirm your email code. Your Owner sets your role.</p>
+<h2 id="tabs">What each tab is for</h2>
+<div class="scroll"><table class=""><tr><th>Tab</th><th>Use it to</th></tr><tr><td>Clients</td><td>Search every client account, see level and activity, change a client&#x27;s level, and set the free-trial length and starter credits.</td></tr><tr><td>Accounts &amp; workspaces</td><td>Open one client and work on their plan and billing, data connections, team access and agreements.</td></tr><tr><td>Platform health</td><td>Check that the AI vendors and background jobs are working.</td></tr><tr><td>AI review</td><td>Review and approve items queued for a human check.</td></tr><tr><td>Tools</td><td>Admin utilities. Hidden for the read-only role.</td></tr><tr><td>Partner requests</td><td>See which clients have asked for a partner integration and update the status.</td></tr><tr><td>Access log</td><td>See who from Verilume did what in which client account, and who visited.</td></tr><tr><td>Product docs / Library</td><td>This documentation library.</td></tr><tr><td>Team</td><td>Add Verilume team members, set roles, turn text sign-in on or off. Owner and Admin only.</td></tr></table></div>
+<h2 id="acct">Working in a client's workspace</h2>
+<p>Go to <strong>Accounts &amp; workspaces</strong>, find the client and click <strong>Open</strong>. Everything you change is written to the Access log with your name.</p>
+<h3>Plan &amp; Billing</h3>
+<ul><li>Shows the client's current level and footprint. Change the level as described below.</li><li><strong>Invoices:</strong> issue an invoice (numbered INV-1001 and up per client) and mark it Sent, Paid or Overdue. Marking Paid stamps today's date. No payment is taken or moved here; this is a record only.</li></ul>
+<h3>Data &amp; Connections</h3>
+<p>Set the analytics connection to <strong>Not connected</strong>, <strong>Pending client grant</strong> or <strong>Connected</strong>, and enter the GA4 account and property ids. This is the same record the client sees in their portal.</p>
+<h3>Team Access</h3>
+<p>Lists the client's own team members. Use <strong>Deactivate</strong> when a client asks you to remove someone or for troubleshooting, and <strong>Activate</strong> to restore. The person is not deleted.</p>
+<h3>Agreements</h3>
+<p>Four are tracked for every client: Mutual NDA, Contract / SOW, Terms of Service, IP Ownership &amp; Assignment Addendum. Set each to <strong>Draft</strong>, <strong>Sent</strong> or <strong>Signed</strong>; dates are recorded. The signed file itself is not stored here, so keep it in your document system. There is no e-signature in the console.</p>
+<h2 id="level">Changing a client's level</h2>
+<ol class="steps"><li>Open the client and go to Plan &amp; Billing.</li><li>Pick the new level. Any level above the free trial needs the <strong>IO reference</strong> (the number on the signed insertion order).</li><li>Tick <strong>Terms accepted through the signed IO</strong> if the IO incorporates the Terms. This records the acceptance.</li><li>Save. The level badge updates and the change is logged. The client's portal reflects it on next load.</li></ol>
+<p>Premium commitment tiers (Flex, Quarterly, Annual) are not recorded in the console yet.</p>
+<h2 id="team">Managing the team</h2>
+<ol class="steps"><li>Open <strong>Team</strong> (Owner or Admin).</li><li>Enter name, email and role in <strong>Add a team member</strong> and click Add. They receive a setup link.</li><li>To remove access, set the person to inactive in the Verilume team table.</li></ol>
+<h2 id="roles">What each role can do</h2>
+<div class="scroll"><table class=""><tr><th>Role</th><th>Can do</th></tr><tr><td>Owner</td><td>Everything, including archive, restore and delete client accounts, demo reset and team management</td></tr><tr><td>Admin</td><td>Team management and every staff panel; cannot delete client accounts</td></tr><tr><td>IT</td><td>Archive, restore and delete client accounts</td></tr><tr><td>Support</td><td>Staff panels and client changes</td></tr><tr><td>Read-only</td><td>View only; every change is refused</td></tr></table></div>
+<p>Since the 2026-11-25 release, all roles except Read-only can use every staff panel. If you need a role limited further, tell the Owner.</p>
+<h2 id="rules">House rules</h2>
+<ul><li>Never share your sign-in or code. Do not forward a code.</li><li>Open a client only when you have a reason; access is logged and reviewed.</li><li>Do not copy client data out of the console into email or chat. Share the portal link instead.</li><li>Use <strong>view as</strong> only to reproduce a problem a client reported. It lasts 4 hours and is logged.</li><li>Never type a client's password. We never need it.</li><li>Report a lost phone or laptop to the Owner immediately so your session and number can be cleared.</li></ul>
+<h2 id="help">When something looks wrong</h2>
+<div class="scroll"><table class=""><tr><th>What you see</th><th>What to do</th></tr><tr><td>&quot;Text messaging is not set up on the server yet&quot;</td><td>Use the email code and tell IT the text service variables are missing.</td></tr><tr><td>&quot;This is a read-only Verilume team session&quot;</td><td>Your role is Read-only. Ask the Owner to change it.</td></tr><tr><td>A client page shows no data</td><td>Check Data &amp; Connections status first, then Platform health.</td></tr><tr><td>Sign-in paused</td><td>Too many wrong passwords; wait 15 minutes.</td></tr><tr><td>An account workspace shows odd or empty fields on first open</td><td>Tell IT; some live columns are read by a compatibility helper and the first open should be checked.</td></tr></table></div>
+</div></body></html>

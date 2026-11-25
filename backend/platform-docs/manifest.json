@@ -1,0 +1,399 @@
+[
+ {
+  "id": "team-console-guide",
+  "type": "html",
+  "title": "Team Console staff guide",
+  "category": "Training",
+  "summary": "How Verilume staff sign in, work in client workspaces, change levels, record agreements and invoices, and manage the team.",
+  "audience": "Staff",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "auth-paths",
+  "type": "html",
+  "title": "Sign-in and account creation paths",
+  "category": "Product",
+  "summary": "The five ways a person gets into Verilume, step by step, with what has changed since the 2026-08-19 snapshot.",
+  "audience": "Staff",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "product-team-console",
+  "type": "html",
+  "title": "Team Console",
+  "category": "Product",
+  "summary": "What the staff console does today, the Library, its Decision Log, known limits.",
+  "audience": "Product and engineering",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "product-company-profile-team",
+  "type": "html",
+  "title": "Company Profile & Team",
+  "category": "Product",
+  "summary": "Company Overview and the Verilume Wealth Index; lists the sub-areas still undocumented.",
+  "audience": "Product and engineering",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "product-docs-home",
+  "type": "html",
+  "title": "Product Docs home",
+  "category": "Product",
+  "summary": "Index of the six Product groups, each Product doc, and the client training guides.",
+  "audience": "Product and engineering",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "product-data-uploads",
+  "type": "html",
+  "title": "Data Uploads & Integrity",
+  "category": "Product",
+  "summary": "Universal transaction format, column mapping, all-or-nothing saves, receipts, data catalog.",
+  "audience": "Product and engineering",
+  "updated": "2026-10-12"
+ },
+ {
+  "id": "product-campaign-management",
+  "type": "html",
+  "title": "Campaign Management",
+  "category": "Product",
+  "summary": "The campaign record, channel plan approval, creative recap and the one source of truth.",
+  "audience": "Product and engineering",
+  "updated": "2026-10-12"
+ },
+ {
+  "id": "product-licensed-integrations",
+  "type": "html",
+  "title": "Licensed Integrations",
+  "category": "Product",
+  "summary": "Every third-party vendor: LLMs, Twilio, Postmark, HubSpot, GA4, Snowflake, voice; setup procedures.",
+  "audience": "Product and engineering",
+  "updated": "2026-10-12"
+ },
+ {
+  "id": "product-media-plan-budget",
+  "type": "html",
+  "title": "Media Plan & Budget",
+  "category": "Product",
+  "summary": "Plan setup, budget upload and mapping, manual media plan wizard, International scope, reporting.",
+  "audience": "Product and engineering",
+  "updated": "2026-10-12"
+ },
+ {
+  "id": "product-pr",
+  "type": "html",
+  "title": "PR & Corporate Communications",
+  "category": "Product",
+  "summary": "Press releases, pitches, corporate comms, reputation sweep, PR Contest.",
+  "audience": "Product and engineering",
+  "updated": "2026-10-12"
+ },
+ {
+  "id": "product-copywriting",
+  "type": "html",
+  "title": "Copywriting",
+  "category": "Product",
+  "summary": "Brand voice, creative job, campaign copy, PR copy, the blind-panel contest and content loop.",
+  "audience": "Product and engineering",
+  "updated": "2026-10-12"
+ },
+ {
+  "id": "verilume-advanced-analytics-training",
+  "type": "file",
+  "file": "verilume-advanced-analytics-training.pdf",
+  "title": "Advanced Analytics training guide",
+  "category": "Training",
+  "summary": "How to run MMM Light, read it honestly and turn uncertainty into a market test. 7 pages.",
+  "audience": "Staff and clients",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "verilume-brand-voice-training",
+  "type": "file",
+  "file": "Verilume-Brand-Voice-Training.pdf",
+  "title": "Brand & Voice training",
+  "category": "Training",
+  "summary": "Brand Book and the seven steps to one approved voice. 8 pages.",
+  "audience": "Staff and clients",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "verilume-budget-campaign-uploads-training",
+  "type": "file",
+  "file": "Verilume-Budget-Campaign-Uploads-Training.pdf",
+  "title": "Budget & Campaign Uploads training",
+  "category": "Training",
+  "summary": "Marketing Budget Upload and Marketing Calendar Bulk Upload, spreadsheet to live media plan. 7 pages.",
+  "audience": "Staff and clients",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "verilume-competitive-positioning-training",
+  "type": "file",
+  "file": "Verilume-Competitive-Positioning-Training.pdf",
+  "title": "Competitive Positioning training",
+  "category": "Training",
+  "summary": "Five competitors, Battle Briefs and six steps to approved positioning. 7 pages.",
+  "audience": "Staff and clients",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "verilume-marketing-projects-training",
+  "type": "file",
+  "file": "Verilume-Marketing-Projects-Training.pdf",
+  "title": "Marketing Projects training",
+  "category": "Training",
+  "summary": "The projects board, scoring, subtasks and the planning template. 7 pages.",
+  "audience": "Staff and clients",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "verilume-pr-training",
+  "type": "file",
+  "file": "Verilume-PR-Training.pdf",
+  "title": "PR & Corporate Communications training",
+  "category": "Training",
+  "summary": "Brief, draft, review, the PR Contest and the weekly monitoring routine. 20 pages.",
+  "audience": "Staff and clients",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "verilume-sample-writings-training",
+  "type": "file",
+  "file": "Verilume-Sample-Writings-Training.pdf",
+  "title": "Sample Writings training",
+  "category": "Training",
+  "summary": "Teaching the AI how you write with real examples. 7 pages.",
+  "audience": "Staff and clients",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "verilume-search-everywhere-training",
+  "type": "file",
+  "file": "Verilume-Search-Everywhere-Training.pdf",
+  "title": "Search Everywhere training",
+  "category": "Training",
+  "summary": "Organic visibility across Google, AI answers and communities. 22 pages.",
+  "audience": "Staff and clients",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "verilume-utm-qr-tracking-training",
+  "type": "file",
+  "file": "Verilume-UTM-QR-Tracking-Training.pdf",
+  "title": "Tracking Links & QR Codes training",
+  "category": "Training",
+  "summary": "Eight steps from campaign to knowing what worked. 9 pages.",
+  "audience": "Staff and clients",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "verilume-atlas-copy-training",
+  "type": "file",
+  "file": "Verilume-Atlas-Copy-Training.pptx",
+  "title": "Atlas copy training session (slides)",
+  "category": "Training",
+  "summary": "The same session as a PowerPoint deck.",
+  "audience": "Staff and clients",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "data_onboarding",
+  "type": "file",
+  "file": "DATA_ONBOARDING.pptx",
+  "title": "Data onboarding session (Atlas slides)",
+  "category": "Training",
+  "summary": "Working session: ask for the data, train the Brain, improve it weekly. 10 slides.",
+  "audience": "Staff and clients",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "database-architecture",
+  "type": "html",
+  "title": "Database architecture",
+  "category": "Database",
+  "summary": "Every table by area, where sensitive data sits, how it is protected, and what is kept for how long.",
+  "audience": "Staff",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "security-overview",
+  "type": "html",
+  "title": "Security overview: how we protect client data",
+  "category": "Security",
+  "summary": "How sign-in, separation, logging, vendors and open items stand today, with what can and cannot be said to clients.",
+  "audience": "Staff",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "01-information-security-policy",
+  "type": "file",
+  "file": "01-Information-Security-Policy.pdf",
+  "title": "Information Security Policy",
+  "category": "Security",
+  "summary": "Scope, roles, access, authentication, logging, encryption. v1.0, effective 2026-10-09.",
+  "audience": "Staff",
+  "updated": "2026-10-09"
+ },
+ {
+  "id": "02-incident-response-plan",
+  "type": "file",
+  "file": "02-Incident-Response-Plan.pdf",
+  "title": "Incident Response Plan",
+  "category": "Security",
+  "summary": "How incidents are handled. Adopted; tabletop test planned.",
+  "audience": "Staff",
+  "updated": "2026-10-09"
+ },
+ {
+  "id": "03-data-retention-and-deletion-policy",
+  "type": "file",
+  "file": "03-Data-Retention-and-Deletion-Policy.pdf",
+  "title": "Data Retention and Deletion Policy",
+  "category": "Security",
+  "summary": "Retention periods, 30-day deletion after closure, backups, what is planned.",
+  "audience": "Staff",
+  "updated": "2026-10-09"
+ },
+ {
+  "id": "04-business-continuity-and-backup-policy",
+  "type": "file",
+  "file": "04-Business-Continuity-and-Backup-Policy.pdf",
+  "title": "Business Continuity and Backup Policy",
+  "category": "Security",
+  "summary": "Backups and continuity; restore test not yet done.",
+  "audience": "Staff",
+  "updated": "2026-10-09"
+ },
+ {
+  "id": "05-vendor-and-subprocessor-management-policy",
+  "type": "file",
+  "file": "05-Vendor-and-Subprocessor-Management-Policy.pdf",
+  "title": "Vendor and Subprocessor Management Policy",
+  "category": "Security",
+  "summary": "Vendor approval and the subprocessor register with attestation status.",
+  "audience": "Staff",
+  "updated": "2026-10-09"
+ },
+ {
+  "id": "06-ai-governance-statement",
+  "type": "file",
+  "file": "06-AI-Governance-Statement.pdf",
+  "title": "AI Governance Statement",
+  "category": "Security",
+  "summary": "How AI is used on client data and its limits.",
+  "audience": "Staff",
+  "updated": "2026-10-09"
+ },
+ {
+  "id": "07-data-processing-addendum-template",
+  "type": "file",
+  "file": "07-Data-Processing-Addendum-TEMPLATE.pdf",
+  "title": "Data Processing Addendum (template)",
+  "category": "Security",
+  "summary": "Template DPA for client contracts. Have counsel review before use.",
+  "audience": "Staff",
+  "updated": "2026-10-09"
+ },
+ {
+  "id": "08-security-questionnaire-answer-library",
+  "type": "file",
+  "file": "08-Security-Questionnaire-Answer-Library.pdf",
+  "title": "Security Questionnaire Answer Library",
+  "category": "Security",
+  "summary": "Approved answers for client security questionnaires.",
+  "audience": "Staff",
+  "updated": "2026-10-09"
+ },
+ {
+  "id": "09-security-roadmap-and-procurement-checklist",
+  "type": "file",
+  "file": "09-Security-Roadmap-and-Procurement-Checklist.pdf",
+  "title": "Security Roadmap and Procurement Checklist",
+  "category": "Security",
+  "summary": "Internal plan: insurance, pen test, MFA, SOC 2, SOC 1, vendor evidence.",
+  "audience": "Staff (internal)",
+  "updated": "2026-10-09"
+ },
+ {
+  "id": "product-advanced-analytics",
+  "type": "html",
+  "title": "Advanced Analytics",
+  "category": "Product",
+  "summary": "MMM Light, qualification check, test handoff and Truth Lab link; build r97, not yet verified on production.",
+  "audience": "Staff",
+  "updated": "2026-11-22"
+ },
+ {
+  "id": "product-advanced-analytics-training",
+  "type": "html",
+  "title": "Advanced Analytics training guide (web)",
+  "category": "Training",
+  "summary": "How to run MMM Light, read it honestly and turn uncertainty into a market test.",
+  "audience": "Staff",
+  "updated": "2026-11-22"
+ },
+ {
+  "id": "product-registration-account-management",
+  "type": "html",
+  "title": "Registration & Account Management",
+  "category": "Product",
+  "summary": "Signup, sign-in and step-up codes, sessions, isolation, retention, Twilio and HubSpot, with the incident log to 2026-10-06.",
+  "audience": "Product and engineering",
+  "updated": "2026-11-25"
+ },
+ {
+  "id": "verilume-auth-paths-with-code.pdf",
+  "type": "file",
+  "title": "Sign-in paths: flow chart vs. code (PDF, 2026-08-19)",
+  "category": "Product",
+  "summary": "Original snapshot with flow charts and code excerpts. The updated version is \"Sign-in and account creation paths\".",
+  "audience": "Staff",
+  "updated": "2026-11-25",
+  "file": "verilume-auth-paths-with-code.pdf",
+  "mime": "application/pdf"
+ },
+ {
+  "id": "Verilume-Analytics-Training-Guide.docx",
+  "type": "file",
+  "title": "Analytics training guide",
+  "category": "Training",
+  "summary": "Client and team training on the analytics features.",
+  "audience": "Staff and clients",
+  "updated": "2026-11-25",
+  "file": "Verilume-Analytics-Training-Guide.docx",
+  "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+ },
+ {
+  "id": "Verilume-Analytics-Integration-Setup-Atlas-v2.docx",
+  "type": "file",
+  "title": "Analytics integration setup guide (Atlas)",
+  "category": "Training",
+  "summary": "Step-by-step setup for connecting analytics.",
+  "audience": "Staff and clients",
+  "updated": "2026-11-25",
+  "file": "Verilume-Analytics-Integration-Setup-Atlas-v2.docx",
+  "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+ },
+ {
+  "id": "Verilume-Legal-Review-Brief.pdf",
+  "type": "file",
+  "title": "Legal review brief: Terms and Privacy",
+  "category": "Security",
+  "summary": "Brief for counsel on the Terms of Service and Privacy Policy placeholders.",
+  "audience": "Staff",
+  "updated": "2026-11-25",
+  "file": "Verilume-Legal-Review-Brief.pdf",
+  "mime": "application/pdf"
+ },
+ {
+  "id": "library-map",
+  "type": "html",
+  "title": "Library map: what exists and what is missing",
+  "category": "Start here",
+  "summary": "What is in the library, what lives elsewhere, and the gaps in product, training, security and database documentation.",
+  "audience": "Staff",
+  "updated": "2026-11-25"
+ }
+]
