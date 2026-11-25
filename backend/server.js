@@ -44243,6 +44243,79 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
       });
     }
 
+    // GET /api/accounts/:accountId/channel-planning/partner-index
+    // ?channel=Magazines&preset=ytd|qtd|mtd|wow|yoy|custom[&from=YYYY-MM-DD&to=YYYY-MM-DD]
+    // 2026-11-25 — Channel Partner Index (Comparative Analytics). Partners are compared WITHIN a channel,
+    // inside each campaign, then pooled across every campaign in the chosen period.
+    //   Net results = weighted booking-equivalents (labeled default weights until the account's own
+    //   downstream rates can be learned; calls are weighted 0 because the existing data counts calls inside leads).
+    //   Partner Index = (partner's share of results) / (partner's share of spend) x 100, shrunk toward 100 when volume is small.
+    //   Step-up view vs the campaign's average partner: change in spend %, reach %, results %, and return on premium.
+    // Season normalization is NOT applied in this version; the response says so.
+    if (req.method === 'GET' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'accounts' && parts[3] === 'channel-planning' && parts[4] === 'partner-index'){
+      const accountId = decodeURIComponent(parts[2]);
+      if (!requireAccount(req, res, accountId)) return;
+      const channel = url.searchParams.get('channel');
+      if (!channel) return sendJson(res, 400, { error: 'channel is required' });
+      const preset = (url.searchParams.get('preset') || 'ytd').toLowerCase();
+      const now = new Date(); const iso = d => d.toISOString().slice(0, 10);
+      const y = now.getUTCFullYear(), m = now.getUTCMonth();
+      let from, to = iso(now);
+      if (preset === 'custom'){
+        from = String(url.searchParams.get('from') || ''); to = String(url.searchParams.get('to') || '');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || to < from) return sendJson(res, 400, { error: 'custom needs from and to dates (YYYY-MM-DD), with to on or after from' });
+      } else if (preset === 'mtd') from = iso(new Date(Date.UTC(y, m, 1)));
+      else if (preset === 'qtd') from = iso(new Date(Date.UTC(y, Math.floor(m / 3) * 3, 1)));
+      else if (preset === 'wow') from = iso(new Date(now.getTime() - 6 * 864e5));
+      else if (preset === 'yoy') from = iso(new Date(Date.UTC(y - 1, m, now.getUTCDate() + 1)));
+      else from = `${y}-01-01`;
+      const W = { call: 0, qr: 0.25, url: 0.05, lead: 1 }; // labeled default weights (booking-equivalents are not learned yet)
+      const isDM = /^direct mail/i.test(channel);
+      const raw = db.prepare(`SELECT cpd.*, c.name AS campaignName, c.objective AS campaignObjective FROM channel_planning_details cpd
+        JOIN campaigns c ON c.id = cpd.campaignId WHERE c.accountId = ? AND cpd.channel = ?`).all(accountId, channel);
+      const inWindow = r => { const d = String(aliasVal(r, 'hitDate') || aliasVal(r, 'dropDate') || '').slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= from && d <= to; };
+      const rows = raw.filter(inWindow).map(r => ({ ...serializeChannelPlanningRow(r), campaignName: r.campaignName, campaignObjective: r.campaignObjective }));
+      const K = 20; // shrink strength: results-equivalents of evidence needed before the index is trusted
+      const results = r => (r.actualLeads || 0) * W.lead + (r.actualQrScans || 0) * W.qr + (r.actualUrlVisits || 0) * W.url + (r.actualCalls || 0) * W.call;
+      const keyOf = r => { const p = (r.partner || '').trim() || '(no publication/vendor recorded)'; return isDM ? `${p}::${(r.audience || '').trim() || '(no audience)'}` : p; };
+      const agg = (list) => { const g = new Map(); list.forEach(r => { const k = keyOf(r);
+        if (!g.has(k)) g.set(k, { partner: k.split('::')[0], audience: isDM ? k.split('::')[1] : null, placements: 0, spend: 0, reach: 0, results: 0, measured: 0 });
+        const a = g.get(k); a.placements++; a.spend += r.budget || 0; a.reach += r.impressions || 0; a.results += results(r); if (r.totalEngagement != null) a.measured++; });
+        return [...g.values()]; };
+      const score = (list) => { const S = list.reduce((a, r) => a + r.spend, 0), R = list.reduce((a, r) => a + r.reach, 0), N = list.reduce((a, r) => a + r.results, 0);
+        const n = list.length || 1;
+        list.forEach(r => {
+          r.cpm = r.reach > 0 && r.spend > 0 ? r.spend / (r.reach / 1000) : null;
+          r.resultsPer1000Reach = r.reach > 0 ? r.results / (r.reach / 1000) : null;
+          r.costPerResult = r.results > 0 && r.spend > 0 ? r.spend / r.results : null;
+          const rawIdx = (S > 0 && N > 0 && r.spend > 0) ? (r.results / N) / (r.spend / S) * 100 : null;
+          r.partnerIndex = rawIdx == null ? null : Math.round((r.results * rawIdx + K * 100) / (r.results + K));
+          r.confidence = r.results >= 40 && r.placements >= 2 ? 'High' : r.results >= 15 ? 'Medium' : 'Low';
+          const avgS = S / n, avgR = R / n, avgN = N / n;
+          r.deltaSpendPct = avgS > 0 ? Math.round((r.spend / avgS - 1) * 1000) / 10 : null;
+          r.deltaReachPct = avgR > 0 ? Math.round((r.reach / avgR - 1) * 1000) / 10 : null;
+          r.deltaResultsPct = avgN > 0 ? Math.round((r.results / avgN - 1) * 1000) / 10 : null;
+          r.returnOnPremium = (r.deltaSpendPct != null && Math.abs(r.deltaSpendPct) >= 1 && r.deltaResultsPct != null) ? Math.round(r.deltaResultsPct / r.deltaSpendPct * 100) / 100 : null;
+          const up = r.deltaSpendPct != null && r.deltaSpendPct > 0;
+          r.verdict = r.deltaSpendPct == null || r.deltaResultsPct == null ? null
+            : up ? (r.deltaResultsPct >= r.deltaSpendPct ? 'Bigger and worth it' : 'Bigger but not worth it')
+            : (r.deltaResultsPct >= r.deltaSpendPct ? 'Cheaper and holding up' : 'Cheaper and weaker');
+        });
+        list.sort((a, b) => (b.partnerIndex ?? -1) - (a.partnerIndex ?? -1));
+        return { totalSpend: S, totalReach: R, totalResults: N, channelCpm: R > 0 && S > 0 ? S / (R / 1000) : null, partners: list,
+          winner: (list[0] && list[0].partnerIndex != null && list[0].confidence !== 'Low' && list.length > 1) ? { partner: list[0].partner, audience: list[0].audience } : null }; };
+      const byCampaign = new Map();
+      rows.forEach(r => { if (!byCampaign.has(r.campaignId)) byCampaign.set(r.campaignId, { campaignId: r.campaignId, name: r.campaignName || r.campaignObjective || r.campaignId, objective: r.campaignObjective || null, rows: [] }); byCampaign.get(r.campaignId).rows.push(r); });
+      const campaigns = [...byCampaign.values()].map(c => ({ campaignId: c.campaignId, name: c.name, objective: c.objective, placements: c.rows.length, ...score(agg(c.rows)) }));
+      const pooled = score(agg(rows));
+      const track = new Map();
+      campaigns.forEach(c => c.partners.forEach(p => { const k = p.partner + '::' + (p.audience || ''); if (!track.has(k)) track.set(k, { ran: 0, above: 0 }); const t = track.get(k); if (p.partnerIndex != null) { t.ran++; if (p.partnerIndex >= 100) t.above++; } }));
+      pooled.partners.forEach(p => { const t = track.get(p.partner + '::' + (p.audience || '')) || { ran: 0, above: 0 }; p.campaignsRun = t.ran; p.campaignsAboveAverage = t.above;
+        p.consistency = t.ran < 2 ? 'Single campaign' : t.above === t.ran ? 'Consistent' : t.above === 0 ? 'Consistently below' : 'Mixed'; });
+      return sendJson(res, 200, { channel, preset, from, to, weights: W, weightsNote: 'Default booking-equivalent weights (lead 1, QR scan 0.25, URL visit 0.05, call 0 because calls are already counted inside leads). Account-specific weights are not learned yet.',
+        seasonality: 'not applied yet', placementsInPeriod: rows.length, pooled, campaigns });
+    }
+
     const BULK_ROW_DETAIL_TEXT_KEYS = ['creativeSize', 'creativeSpecs', 'proofDueDate', 'creativeDueDate', 'promotedItems', 'qrCodeLink', 'phone', 'notes',
       'productionProject', 'listRequestDate', 'listDueDate', 'releaseFilesDate', 'dropDateBudget', 'inHomeDate', 'vendor', 'materialsOrdered'];
     const BULK_ROW_DETAIL_NUMERIC_KEYS = ['totalQuantity', 'distributedQuantity', 'fulfillmentQuantity', 'paperMfgCost', 'postageCost', 'insertionCost', 'productionCost', 'unitCost'];
