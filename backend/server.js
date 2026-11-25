@@ -34091,6 +34091,12 @@ async function handleRequestInner(req, res) {
           : db.prepare('SELECT * FROM platform_access_log WHERE platformuserid = ? ORDER BY createdAt DESC LIMIT 200').all(me.id);
         return sendJson(res, 200, { visits: rows.map(r => ({ id: r.id, platformUserId: r.platformuserid, platformName: r.platformname, platformRole: r.platformrole, accountId: r.accountId, action: r.action, ip: r.ip, createdAt: r.createdAt })) });
       }
+      // GET /api/platform/partner-capability-requests — every partner capability request clients submitted (Team Console, Partner requests tab)
+      if (req.method === 'GET' && parts.length === 3 && sub === 'partner-capability-requests'){
+        const rows = db.prepare(`SELECT r.id, r.createdAt, r.accountId, a.company AS clientName, r.requesterMemberId, r.requesterName, r.requesterRole, r.requesterEmail,
+          r.capability, r.note, r.timeline, r.status FROM partner_capability_requests r LEFT JOIN accounts a ON a.accountId = r.accountId ORDER BY r.createdAt DESC LIMIT 500`).all();
+        return sendJson(res, 200, { requests: rows.map(r => ({ ...r, capabilityLabel: (PARTNER_CAPABILITY_INFO[r.capability] || {}).label || r.capability })) });
+      }
       // GET /api/platform/ip-watch — who has downloaded the portal, and what looks like copying. Owner/admin only.
       // Flags: one account loading from several networks, one network loading for several accounts, unusually many loads,
       // and brand-new accounts that load the portal many times. Reads portal_serves (written by GET /api/app/portal).
@@ -47133,9 +47139,7 @@ Write 2-4 sentences telling the Copywriter team the shape of this campaign — w
     // GET /api/ops/partner-capability-requests — staff-only log of every partner capability request
     // across all accounts: date, client, who asked, their role, and what was asked.
     if (req.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'ops' && parts[2] === 'partner-capability-requests'){
-      if (!adminTokenOk(req)){
-        return sendJson(res, 401, { error: 'unauthorized — set ADMIN_API_TOKEN and send it as X-Admin-Token to use this endpoint' });
-      }
+      if (!requireStaff(req, res, { allowReadonly: true })) return;
       const rows = db.prepare(`SELECT r.id, r.createdAt, r.accountId, a.company AS clientName, r.requesterMemberId, r.requesterName, r.requesterRole, r.requesterEmail,
           r.capability, r.note, r.timeline, r.status FROM partner_capability_requests r LEFT JOIN accounts a ON a.accountId = r.accountId ORDER BY r.createdAt DESC LIMIT 500`).all();
       return sendJson(res, 200, { requests: rows.map(r => ({ ...r, capabilityLabel: (PARTNER_CAPABILITY_INFO[r.capability] || {}).label || r.capability })) });
