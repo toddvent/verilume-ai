@@ -25606,13 +25606,14 @@ function stripTags(html){
 // added to includeFiles), that one doc is skipped with a logged warning —
 // the index still builds from whatever it can read, never throws.
 const PRODUCT_DOCS_SOURCES = [
-  { key: 'home', title: 'Verilume Product Docs — Home', file: 'verilume-product-docs.html', urlPath: '/docs/' },
-  { key: 'licensed-integrations', title: 'Licensed Integrations', file: 'verilume-product-licensed-integrations.html', urlPath: '/docs/licensed-integrations' },
-  { key: 'copywriting', title: 'Copywriting', file: 'verilume-product-copywriting.html', urlPath: '/docs/copywriting' },
-  { key: 'media-plan-budget', title: 'Marketing Budgets, Campaigns & Analysis', file: 'verilume-product-media-plan-budget.html', urlPath: '/docs/media-plan-budget' },
-  { key: 'registration-account-management', title: 'Registration & Account Management', file: 'registrationaccountmanagementproduct.html', urlPath: '/docs/registration-account-management' },
-  { key: 'company-profile-team', title: 'Company Profile & Team', file: 'verilume-product-company-profile-team.html', urlPath: '/docs/company-profile-team' },
-  { key: 'data-uploads', title: 'Data Uploads & Integrity', file: 'verilume-product-data-uploads.html', urlPath: '/docs/data-uploads' }
+  // 2026-11-25 — read from backend/platform-docs (the Team Console Library), not frontend/. url is a Library deep link.
+  { key: 'home', title: 'Verilume Product Docs — Home', file: 'product-docs-home.html', urlPath: '/platform.html#lib=product-docs-home' },
+  { key: 'licensed-integrations', title: 'Licensed Integrations', file: 'product-licensed-integrations.html', urlPath: '/platform.html#lib=product-licensed-integrations' },
+  { key: 'copywriting', title: 'Copywriting', file: 'product-copywriting.html', urlPath: '/platform.html#lib=product-copywriting' },
+  { key: 'media-plan-budget', title: 'Marketing Budgets, Campaigns & Analysis', file: 'product-media-plan-budget.html', urlPath: '/platform.html#lib=product-media-plan-budget' },
+  { key: 'registration-account-management', title: 'Registration & Account Management', file: 'product-registration-account-management.html', urlPath: '/platform.html#lib=product-registration-account-management' },
+  { key: 'company-profile-team', title: 'Company Profile & Team', file: 'product-company-profile-team.html', urlPath: '/platform.html#lib=product-company-profile-team' },
+  { key: 'data-uploads', title: 'Data Uploads & Integrity', file: 'product-data-uploads.html', urlPath: '/platform.html#lib=product-data-uploads' }
 ];
 
 let productDocsSearchIndexCache = null; // { builtAt, entries }
@@ -25633,7 +25634,7 @@ function buildProductDocsSearchIndex(){
   for (const source of PRODUCT_DOCS_SOURCES){
     let html;
     try {
-      html = fs.readFileSync(path.join(__dirname, '..', 'frontend', source.file), 'utf8');
+      html = fs.readFileSync(path.join(__dirname, 'platform-docs', source.file), 'utf8');
     } catch (e){
       console.warn(`[docsSearchIndex] could not read ${source.file} — skipping this doc in the index (${(e && e.code) || (e && e.message) || e})`);
       continue;
@@ -25652,7 +25653,7 @@ function buildProductDocsSearchIndex(){
       const heading = extractHeadingText(blockHtml) || sectionId;
       const text = stripTags(blockHtml);
       if (!text) continue;
-      entries.push({ docKey: source.key, docTitle: source.title, sectionId, heading, text, url: `${source.urlPath}#${sectionId}` });
+      entries.push({ docKey: source.key, docTitle: source.title, sectionId, heading, text, url: source.urlPath });
     }
     if (!foundAny){
       // No id="..." sections in this doc — index the whole page as one
