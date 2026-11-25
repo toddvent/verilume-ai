@@ -1977,15 +1977,15 @@ async function refDataHandleCraFile(event, kind){
 }
 
 async function pcrLogLoad(){
-  const token = document.getElementById('opsAdminToken').value.trim();
+  const token = (document.getElementById('opsAdminToken').value || '').trim();
+  const platformToken = (() => { try { return sessionStorage.getItem('verilume_platform_token') || ''; } catch (e) { return ''; } })();
   const errEl = document.getElementById('pcrLogError');
   const out = document.getElementById('pcrLogResult');
   const st = document.getElementById('pcrLogStatus');
   errEl.style.display = 'none';
-  if (!token){ errEl.textContent = 'Enter the ADMIN_API_TOKEN above first.'; errEl.style.display = 'block'; return; }
   st.textContent = 'Loading…';
   try {
-    const resp = await fetch(`${BACKEND_URL}/api/ops/partner-capability-requests`, { headers: { 'X-Admin-Token': token } });
+    const resp = await fetch(`${BACKEND_URL}/api/ops/partner-capability-requests`, { headers: token ? { 'X-Admin-Token': token } : { 'Authorization': 'Bearer ' + platformToken } });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok){ errEl.textContent = data.error || `Couldn't load requests (${resp.status}).`; errEl.style.display = 'block'; st.textContent = ''; return; }
     const rows = data.requests || [];
