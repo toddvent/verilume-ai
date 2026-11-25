@@ -70,7 +70,18 @@
   .form-row{display:grid;grid-template-columns:1.4fr 1.4fr 1fr auto;gap:10px;align-items:end;}
   .form-row .field{margin-bottom:0;}
   .empty{color:var(--muted);font-size:14px;padding:10px 0;}
-  select.inline{padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:13px;}
+  .ctl,select.inline{appearance:none;-webkit-appearance:none;padding:9px 14px;border:1px solid var(--line);border-radius:12px;font-family:inherit;font-size:14px;color:var(--ink);background-color:var(--paper);line-height:1.2;}
+  .ctl:focus,select.inline:focus{outline:none;border-color:var(--cx);box-shadow:0 0 0 3px rgba(8,145,178,0.14);}
+  select.ctl,select.inline{padding-right:38px;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%231E2761' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;}
+  select.ctl:disabled{opacity:0.6;cursor:not-allowed;}
+  select.lvl{min-width:210px;}
+  #sparkBox{border:1px solid #E8E8ED;border-radius:18px;padding:18px 22px 20px;margin:0 0 20px;background:#FAFAFC;display:flex;flex-wrap:wrap;gap:14px 18px;align-items:flex-end;}
+  #sparkBox .box-title{width:100%;color:var(--navy);font-size:15px;}
+  #sparkBox>div{display:flex;flex-wrap:wrap;gap:14px 18px;align-items:flex-end;margin:0!important;}
+  .fl{display:flex;flex-direction:column;gap:6px;font-size:11.5px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);}
+  .fl .ctl{text-transform:none;letter-spacing:0;font-weight:400;}
+  .fl-note{font-size:13.5px;color:var(--muted);padding-bottom:10px;}
+  .fl-note strong{color:var(--ink);}
   @media (max-width:760px){ .form-row{grid-template-columns:1fr;} main{padding:16px;} header.bar{padding:0 16px;} }
 </style>
 </head>
@@ -164,12 +175,12 @@
     <div class="panel" id="paneClients">
       <h2>Client accounts</h2>
       <input class="search" id="clientSearch" placeholder="Search by name or ID" oninput="renderClients()">
-      <div id="sparkBox" style="border:1px solid #d9dce6;border-radius:12px;padding:14px 16px;margin:0 0 16px;background:#fff">
-        <strong style="color:#1E2761">Spark settings</strong>
+      <div id="sparkBox">
+        <strong class="box-title">Free trial settings</strong>
         <div style="display:flex;gap:14px;align-items:end;flex-wrap:wrap;margin-top:10px">
-          <label style="font-size:13px">Trial days<br><input id="spDays" type="number" min="1" max="60" style="width:90px;padding:7px;border:1px solid #d5d8e0;border-radius:8px"></label>
-          <label style="font-size:13px">Starter Kit drafts per month<br><input id="spDrafts" type="number" min="1" style="width:120px;padding:7px;border:1px solid #d5d8e0;border-radius:8px"></label>
-          <div style="font-size:13px;color:#555">Spark drafts for the trial: <strong id="spSpark">-</strong></div>
+          <label class="fl">Trial days<input class="ctl" id="spDays" type="number" min="1" max="60" style="width:100px"></label>
+          <label class="fl">Starter credits per month<input class="ctl" id="spDrafts" type="number" min="1" style="width:150px"></label>
+          <div class="fl-note">Free trial credits: <strong id="spSpark">-</strong></div>
           <button class="btn small" id="spSave" onclick="saveSpark()">Save</button>
           <span id="spMsg" style="font-size:13px;color:#555"></span>
         </div>
@@ -400,12 +411,12 @@ function renderClients(){
   const rows = clients.filter(c => !q || (c.company || '').toLowerCase().includes(q) || (c.accountId || '').toLowerCase().includes(q));
   $('clientsBody').innerHTML = rows.length
     ? `<table><thead><tr><th>Client</th><th>Account ID</th><th>Industry</th><th>Level</th><th></th></tr></thead><tbody>${rows.map(c =>
-        `<tr><td><strong>${esc(c.company)}</strong></td><td class="id">${esc(c.accountId)}</td><td>${esc(c.industry || '')}</td><td>${levelSelect(c)}</td><td style="text-align:right"><button class="btn small" onclick="openClient('${esc(c.accountId)}')">Open</button></td></tr>`).join('')}</tbody></table>`
+        `<tr><td><strong>${esc(c.company)}</strong></td><td class="id">${esc(c.accountId)}</td><td>${esc(c.industry || '')}</td><td>${levelSelect(c)}</td><td style="text-align:right"><button class="btn small ghost" onclick="openClient('${esc(c.accountId)}')">Open</button></td></tr>`).join('')}</tbody></table>`
     : '<div class="empty">No clients match.</div>';
 }
 function levelSelect(c){
   const dis = me && me.role === 'readonly' ? ' disabled' : '';
-  return `<select${dis} onchange="setLevel('${esc(c.accountId)}', this.value)"><option value="">Not activated</option>${levels.map(l => `<option value="${esc(l.key)}"${c.paidTier === l.key ? ' selected' : ''}>${esc(l.name)}${l.priceMonthly ? ' ($' + l.priceMonthly + '/mo)' : ''}</option>`).join('')}</select>`;
+  return `<select class="ctl lvl"${dis} onchange="setLevel('${esc(c.accountId)}', this.value)"><option value="">Not activated</option>${levels.map(l => `<option value="${esc(l.key)}"${c.paidTier === l.key ? ' selected' : ''}>${esc(l.name)}${l.priceMonthly ? ' ($' + l.priceMonthly + '/mo)' : ''}</option>`).join('')}</select>`;
 }
 let pendingLevel = null;
 function setLevel(accountId, tier){
